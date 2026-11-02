@@ -9,12 +9,14 @@ import {mkdtemp, mkdir, readFile, realpath, rm, writeFile} from 'node:fs/promise
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
-import {createHash} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {HOSTILE, PRIVATE, TOKEN, IDS, NOW, uuid} from './helpers/inspection-wire-fixture.ts';
 import {runInspectionProcess} from './helpers/inspection-wire-lifecycle.ts';
+import type {ProjectState} from './helpers/project-state.ts';
+
+interface StorageSnapshot {rows: ProjectState['tables']; version: [number, number]}
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const helper = path.join(repo, 'tests/helpers/inspection-wire-fixture.ts');
@@ -64,7 +66,8 @@ async function backendFixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-inspection-wire-'));
   const auditPath = path.join(root, 'forbidden-side-effects.jsonl');
   await writeFile(auditPath, '');
-  let child: ReturnType<typeof spawn>, port = 0, url: string, readOnly: DatabaseSync;
+  let child: ReturnType<typeof spawn>, port = 0, url: string;
+  const pending = new Map<string, PromiseWithResolvers<StorageSnapshot>>();
   async function stop() {
     if (!child || child.exitCode !== null || child.signalCode) return;
     const exit = once(child, 'exit');
@@ -72,13 +75,21 @@ async function backendFixture(t: test.TestContext) {
     const timer = setTimeout(() => child.kill('SIGKILL'), 10_000);
     try { await exit; } finally { clearTimeout(timer); }
   }
-  t.after(async () => { readOnly?.close(); await stop(); await rm(root, {recursive: true, force: true}); });
+  t.after(async () => { await stop(); await rm(root, {recursive: true, force: true}); });
   async function start() {
     let stdout = '', stderr = '';
     child = spawn(process.execPath, [helper, 'server'], {
       cwd: repo, env: environment({MIOON_DATA_DIR: root, PORT: String(port), MIOON_INSPECTION_WIRE_AUDIT: auditPath}),
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
+    child.on('message', (raw: unknown) => {
+      const message = raw as {type?: unknown; id?: string; data: StorageSnapshot; error?: {code: string; message: string}}|null;
+      const reply = message?.type === 'reply' && typeof message.id === 'string' ? pending.get(message.id) : undefined;
+      if (!reply) return;
+      if (message!.error) reply.reject(Object.assign(Error(message!.error.message), {code: message!.error.code}));
+      else reply.resolve(message!.data);
+    });
+    child.once('exit', () => { for (const reply of pending.values()) reply.reject(Error('The backend exited before it answered')); });
     let spawnError;
     child.once('error', error => { spawnError = error; });
     child.stdout!.setEncoding('utf8').on('data', (chunk: string) => { stdout += chunk; });
@@ -100,12 +111,19 @@ async function backendFixture(t: test.TestContext) {
     throw Error(`Fixture backend did not become ready: ${stdout}\n${stderr}`);
   }
   await start();
-  readOnly = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-  const tables = readOnly.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(row => row.name);
-  function storage() {
-    return Object.fromEntries(tables.map(table => [table, readOnly.prepare(`SELECT * FROM "${(table as string).replaceAll('"', '""')}" ORDER BY rowid`).all().map(row => ({...row}))]));
+  async function read(): Promise<StorageSnapshot> {
+    const current = child;
+    if (!current || current.exitCode !== null || current.signalCode || !current.connected) throw Error('No running backend to inspect');
+    const id = randomUUID(), reply = Promise.withResolvers<StorageSnapshot>(); pending.set(id, reply);
+    const timer = setTimeout(() => reply.reject(Error('The backend did not answer the storage question within 10 seconds')), 10_000);
+    try {
+      current.send({type: 'storage', id, projectId: IDS.project}, error => { if (error) reply.reject(error); });
+      return await reply.promise;
+    } finally { clearTimeout(timer); pending.delete(id); }
   }
-  const version = () => readOnly.prepare('PRAGMA data_version').get()!.data_version;
+  const first = await read(), tables = Object.keys(first.rows);
+  const storage = async () => { const {rows} = await read(); return Object.fromEntries(tables.map(table => [table, rows[table]])); };
+  const version = async () => (await read()).version;
   async function http(operation: unknown, input: unknown, expectedError?: unknown) {
     const response = await fetch(url + '/api/rpc', {method: 'POST', redirect: 'error',
       headers: {authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json'}, body: JSON.stringify({operation, input})});
@@ -185,7 +203,7 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
     try { await run(subtest); }
     catch (error) { report.failures.push({section: name, message: (error as Failure).message}); throw error; }
   });
-  const initial = backend.storage(), initialVersion = backend.version();
+  const initial = (await backend.storage()), initialVersion = (await backend.version());
   assert.ok(backend.tables.length >= 20, 'the snapshot covers business, timeline, reference, workspace and chat journals');
   for (const table of ['projects', 'assets', 'shots', 'nodes', 'edges', 'jobs', 'versions', 'exports', 'timelines',
     'timeline_requests', 'timeline_history', 'timeline_history_cursors', 'reference_requests', 'idempotency', 'job_events',
@@ -203,9 +221,9 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
       resultDigest: digest(http), resultBytes: Buffer.byteLength(JSON.stringify(http))});
     return error ? http.error : http.data;
   }
-  function unchanged(label: string, before = initial, dataVersion = initialVersion) {
-    assert.deepEqual(backend.storage(), before, `${label}: every table remains byte-for-byte identical`);
-    assert.equal(backend.version(), dataVersion, `${label}: no committed writes, including writes of equal data`);
+  async function unchanged(label: string, before = initial, dataVersion = initialVersion) {
+    assert.deepEqual((await backend.storage()), before, `${label}: every table remains byte-for-byte identical`);
+    assert.deepEqual((await backend.version()), dataVersion, `${label}: no committed writes, including writes of equal data`);
     report.zeroWrites.push({label, tables: backend.tables, snapshotSha256: digest(before), dataVersionUnchanged: true});
   }
 
@@ -247,14 +265,14 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
       }
       report.schemas.push(definition);
     }
-    unchanged('Discovery');
+    await unchanged('Discovery');
   });
 
   mcp = await mcpFixture(t, backend.env);
 
   await section('strict argument validation is identical on all three interfaces', async () => {
     for (const operation of operations) for (const input of invalidInputs(operation)) await parity(operation, input, 'VALIDATION_ERROR');
-    unchanged('Invalid input');
+    await unchanged('Invalid input');
   });
 
 
@@ -273,7 +291,7 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
       }
     }
     report.authentication = {operationsChecked: operations, unauthorizedRejected: true, untrustedOriginRejected: true};
-    unchanged('Authentication and origin rejection');
+    await unchanged('Authentication and origin rejection');
   });
 
   let oldCursor: string|unknown[];
@@ -307,7 +325,7 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
       clips: [{id: IDS.clip, trackId: IDS.track, assetId: IDS.asset, name: HOSTILE, startFrame: 0, durationFrames: 60,
         sourceInFrame: 0, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1}]});
     assert.equal(await backend.audit(), '', 'hostile saved text produces no model, provider, network or subprocess activity');
-    unchanged('Safe metadata DTOs');
+    await unchanged('Safe metadata DTOs');
   });
 
   await section('pages are stable, bounded, exhaustive, and cursors bind project, operation and page size', async () => {
@@ -332,7 +350,7 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
       const foreign = await parity(operation, {projectId: IDS.other});
       assert.deepEqual(foreign.items.map((item: { id: unknown; }) => item.id), [operation === 'asset.inspect' ? IDS.otherAsset : IDS.otherShot]);
     }
-    unchanged('Pagination and cursor rejection');
+    await unchanged('Pagination and cursor rejection');
   });
 
   await section('missing timelines stay absent and corrupt cross-project links fail uniformly without leakage', async () => {
@@ -347,20 +365,20 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
       ['asset.inspect', IDS.mismatchedAsset], ['shot.inspect', IDS.mismatchedShot], ['timeline.inspect', IDS.mismatchedTimeline],
       ['shot.inspect', IDS.foreignVersionAsset], ['shot.inspect', IDS.foreignVersionJob],
     ] as const) assert.deepEqual(await parity(operation, {projectId}, 'INSPECTION_UNAVAILABLE'), missingErrors[0]);
-    unchanged('Absent and corrupt project inspection');
+    await unchanged('Absent and corrupt project inspection');
     assert.equal(await backend.audit(), '');
   });
 
   await section('signed cursors expire after backend restart without requiring a different CLI or MCP connection', async () => {
-    unchanged('All inspection calls before restart');
+    await unchanged('All inspection calls before restart');
     await backend.restart();
-    const restarted = backend.storage(), restartedVersion = backend.version();
+    const restarted = (await backend.storage()), restartedVersion = (await backend.version());
     assert.deepEqual(restarted, initial, 'recovery does not modify already-terminal synthetic records');
     await parity('asset.inspect', {projectId: IDS.project, cursor: oldCursor}, 'INVALID_CURSOR');
     const fresh = await parity('asset.inspect', {projectId: IDS.project});
     assert.ok(fresh.nextCursor && fresh.nextCursor !== oldCursor);
     assert.equal(await parity('timeline.inspect', {projectId: IDS.absentTimeline}), null);
-    unchanged('Post-restart inspection', restarted, restartedVersion);
+    await unchanged('Post-restart inspection', restarted, restartedVersion);
   });
 
   await section('legacy get initialization and exact request replay retain their established mutation semantics', async () => {
@@ -378,11 +396,11 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
     assert.deepEqual((await mcp.call('timeline_get', {projectId: IDS.legacyTimeline})).data, created);
     const input = {projectId: IDS.legacyTimeline, expectedRevision: created.revision, requestId: 'inspection-wire-legacy-exact-replay', kind: 'video', name: 'Synthetic replay sentinel'};
     const edited = await backend.http('timeline.track.add', input);
-    const afterMutation = backend.storage(), afterMutationVersion = backend.version();
+    const afterMutation = (await backend.storage()), afterMutationVersion = (await backend.version());
     assert.deepEqual(await cli('timeline.track.add', input), edited);
     assert.deepEqual(await mcp.call('timeline_track_add', input), edited);
     await parity('timeline.inspect', {projectId: IDS.legacyTimeline});
-    unchanged('Legacy exact replay plus inspection', afterMutation, afterMutationVersion);
+    await unchanged('Legacy exact replay plus inspection', afterMutation, afterMutationVersion);
     report.legacy = {projectGetInitializesTimeline: true, timelineGetInitializesTimeline: true, exactRequestReplayPreserved: true};
   });
 

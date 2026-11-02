@@ -11,11 +11,17 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
+import {randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {IDS, TOKEN, snapshot, uuid} from './helpers/mutation-wire-fixture.ts';
+import {IDS, TOKEN, uuid} from './helpers/mutation-wire-fixture.ts';
 import {optionalRequestIdOperations} from './helpers/catalog-input-branches.ts';
+import {openStore} from '../packages/business/src/db.ts';
+import {openProjectDatabase} from './helpers/project-database.ts';
+import {readProjectState} from './helpers/project-state.ts';
+import type {ProjectState} from './helpers/project-state.ts';
+
+interface StorageSnapshot {rows: ProjectState['tables']; version: [number, number]}
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const helper = path.join(repo, 'tests/helpers/mutation-wire-fixture.ts');
@@ -105,13 +111,22 @@ async function backendFixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-mutation-wire-'));
   const auditPath = path.join(root, 'forbidden-side-effects.jsonl');
   await writeFile(auditPath, '');
-  let run!:ReturnType<typeof launch>, url:string, port = 0, db: DatabaseSync;
+  let run!:ReturnType<typeof launch>, url:string, port = 0;
+  const pending = new Map<string, PromiseWithResolvers<StorageSnapshot>>();
   t.after(async () => {
     for (const child of ownedChildren.get(t) || []) await stopOwned(child);
-    db?.close(); await rm(root, {recursive: true, force: true});
+    await rm(root, {recursive: true, force: true});
   });
   async function start() {
-    run = launch(t, [helper, 'server'], {MIOON_DATA_DIR: root, PORT: String(port), MIOON_MUTATION_WIRE_AUDIT: auditPath});
+    run = launch(t, [helper, 'server'], {MIOON_DATA_DIR: root, PORT: String(port), MIOON_MUTATION_WIRE_AUDIT: auditPath}, true);
+    run.child.on('message', (raw: unknown) => {
+      const message = raw as {type?: unknown; id?: string; data: StorageSnapshot; error?: {code: string; message: string}}|null;
+      const reply = message?.type === 'reply' && typeof message.id === 'string' ? pending.get(message.id) : undefined;
+      if (!reply) return;
+      if (message!.error) reply.reject(Object.assign(Error(message!.error.message), {code: message!.error.code}));
+      else reply.resolve(message!.data);
+    });
+    run.child.once('exit', () => { for (const reply of pending.values()) reply.reject(Error('The backend exited before it answered')); });
     const ready = await run.waitFor(value => value.ready, 'backend startup');
     url = ready.url; port = Number(new URL(url).port);
     assert.equal(new URL(url).hostname, '127.0.0.1');
@@ -119,13 +134,33 @@ async function backendFixture(t: test.TestContext) {
     return ready.pid;
   }
   await start();
-  db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-  const storage = () => snapshot(db);
-  const version = () => (db.prepare('PRAGMA data_version').get())!.data_version;
-  const record = (table:string,id:string) => JSON.parse((db.prepare(`SELECT data FROM ${table} WHERE id=?`).get(id))!.data as string) as Record<string,unknown>&{id:string;revision:number};
-  const unchanged = (before:ReturnType<typeof storage>,dataVersion:unknown,label:string) => {
-    assert.deepEqual(storage(), before, `${label}: every persisted row and revision remains identical`);
-    assert.equal(version(), dataVersion, `${label}: replay must not commit even equal-value writes`);
+  async function read(): Promise<StorageSnapshot> {
+    const child = run.child;
+    if (child.exitCode !== null || child.signalCode || !child.connected) throw Error('No running backend to inspect');
+    const id = randomUUID(), reply = Promise.withResolvers<StorageSnapshot>(); pending.set(id, reply);
+    const timer = setTimeout(() => reply.reject(Error('The backend did not answer the storage question within 10 seconds')), 10_000);
+    try {
+      child.send({type: 'storage', id, projectId: IDS.project}, error => { if (error) reply.reject(error); });
+      return await reply.promise;
+    } finally { clearTimeout(timer); pending.delete(id); }
+  }
+  const storage = async (): Promise<ProjectState['tables']> => {
+    if (run.child.exitCode === null && !run.child.signalCode) return (await read()).rows;
+    const db = openProjectDatabase(root);
+    try { return JSON.parse(JSON.stringify(readProjectState(db).tables)) as ProjectState['tables']; }
+    finally { db.close(); }
+  };
+  // Only after an explicitly owned writer was SIGKILLed: its lock remains.
+  const crashed = async (): Promise<ProjectState['tables']> => {
+    const store = openStore(root, {lock: false});
+    try { return JSON.parse(JSON.stringify(readProjectState(store.db).tables)) as ProjectState['tables']; }
+    finally { store.close(); }
+  };
+  const version = async () => (await read()).version;
+  const record = async (table:string,id:string) => JSON.parse((await storage())[table].find(row => row.id === id)!.data as string) as Record<string,unknown>&{id:string;revision:number};
+  const unchanged = async (before:Awaited<ReturnType<typeof storage>>,dataVersion:unknown,label:string) => {
+    assert.deepEqual(await storage(), before, `${label}: every persisted row and revision remains identical`);
+    assert.deepEqual(await version(), dataVersion, `${label}: replay must not commit even equal-value writes`);
   };
   async function request<O extends string>(operation: O, input?: unknown, expectedError?: string|undefined, target: string|undefined = url, authorization: string = `Bearer ${TOKEN}`):Promise<{raw:string;envelope:WireEnvelope<O>}> {
     const response = await fetch(target + '/api/rpc', {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5_000),
@@ -139,7 +174,7 @@ async function backendFixture(t: test.TestContext) {
     } else assert.equal(response.status, 200, raw);
     return {envelope, raw};
   }
-  return {root, auditPath, storage, version, record, unchanged, request,
+  return {root, auditPath, storage, crashed, version, record, unchanged, request,
     http: (async (...args:Parameters<typeof request>) => (await request(...args)).envelope) as <O extends string>(operation:O,input?:unknown,error?:string,target?:string,authorization?:string)=>Promise<WireEnvelope<O>>,
     get url() { return url; }, get pid() { return run.child.pid; },
     get env() { return {MIOON_BASE_URL: url, MIOON_TOKEN: TOKEN, MIOON_MUTATION_WIRE_ALLOWED_ORIGIN: url,
@@ -189,7 +224,7 @@ async function lossProxy(t:test.TestContext, backend:Awaited<ReturnType<typeof b
       // COMMIT. Verify its receipt before dropping only this proxy connection.
       const requestId = captured.request.input.requestId;
       assert.equal(upstream.status, 200, raw);
-      assert.ok(backend.storage().mutation_requests.some(row => row.requestId === requestId));
+      assert.ok((await backend.storage()).mutation_requests.some(row => row.requestId === requestId));
       response.destroy();
     } catch (error) { failure = error; response.destroy(); }
   });
@@ -207,16 +242,18 @@ async function lossProxy(t:test.TestContext, backend:Awaited<ReturnType<typeof b
   }};
 }
 
-function operationInputs(backend:Awaited<ReturnType<typeof backendFixture>>) {
+async function operationInputs(backend:Awaited<ReturnType<typeof backendFixture>>) {
   const projectId = IDS.project;
+  const rows = await backend.storage();
+  const record = (table: string, id: string) => JSON.parse(rows[table].find(row => row.id === id)!.data as string) as Record<string, unknown>&{id: string; revision: number};
   return {
     'shot.create': {projectId, title: 'Original private shot marker', prompt: 'Original prompt', position: {x: 10, y: 20}},
-    'shot.update': {shotId: IDS.shot, expectedRevision: backend.record('shots', IDS.shot).revision, patch: {title: 'Original update marker', prompt: 'Updated prompt'}},
-    'shot.reorder': {projectId, expectedRevision: backend.record('projects', projectId).revision,
-      shotIds: backend.storage().shots.filter((row) => row.projectId === projectId).map(row => row.id).reverse()},
+    'shot.update': {shotId: IDS.shot, expectedRevision: record('shots', IDS.shot).revision, patch: {title: 'Original update marker', prompt: 'Updated prompt'}},
+    'shot.reorder': {projectId, expectedRevision: record('projects', projectId).revision,
+      shotIds: rows.shots.filter((row) => row.projectId === projectId).map(row => row.id).reverse()},
     'node.create': {projectId, type: 'text', label: 'Original node marker', text: 'Original node text', position: {x: 10, y: 20}},
-    'node.update': {nodeId: IDS.node, expectedRevision: backend.record('nodes', IDS.node).revision, patch: {label: 'Original label marker', text: 'Original update text'}},
-    'version.select': {shotId: IDS.shot, versionId: IDS.version, expectedRevision: backend.record('shots', IDS.shot).revision},
+    'node.update': {nodeId: IDS.node, expectedRevision: record('nodes', IDS.node).revision, patch: {label: 'Original label marker', text: 'Original update text'}},
+    'version.select': {shotId: IDS.shot, versionId: IDS.version, expectedRevision: record('shots', IDS.shot).revision},
   };
 }
 
@@ -225,10 +262,10 @@ function operationInputs(backend:Awaited<ReturnType<typeof backendFixture>>) {
 test('six optional mutation keys retain exact results through lost HTTP responses, real CLI, official MCP and restart', {timeout: 120_000}, async t => {
   const backend = await backendFixture(t), mcp = await mcpFixture(t, backend.env), proxy = await lossProxy(t, backend);
   const cli = <O extends string>(operation:O,input:unknown,error?:string):Promise<WireEnvelope<O>> => runCli(t, [...operation.split('.'), '--input', JSON.stringify(input)], backend.env, error);
-  const initial = backend.storage(), accepted: {operation:MutationOperation;input:Record<string,unknown>&{requestId:string};raw:string;envelope:WireEnvelope<MutationOperation>}[]=[];
+  const initial = (await backend.storage()), accepted: {operation:MutationOperation;input:Record<string,unknown>&{requestId:string};raw:string;envelope:WireEnvelope<MutationOperation>}[]=[];
 
   await t.test('all discovery surfaces expose optional keys and conservative non-idempotent hints', async () => {
-    const before = backend.storage(), dataVersion = backend.version();
+    const before = (await backend.storage()), dataVersion = (await backend.version());
     const catalog = (await runCli(t,['schema'],backend.env)).data as TestCatalog;
     assert.deepEqual((await mcp.call('mioon_schema')).data, catalog);
     const optionalKeyOperations = optionalRequestIdOperations(catalog);
@@ -254,44 +291,44 @@ test('six optional mutation keys retain exact results through lost HTTP response
       for (const name of ['fileWrite', 'externalIO', 'localProcess', 'paidGeneration'] as const) assert.equal(definition.effects[name], false);
       assert.match(definition.effects.notes!, /requestId|request ID|replay/i);
     }
-    backend.unchanged(before, dataVersion, 'discovery');
+    await backend.unchanged(before, dataVersion, 'discovery');
   });
 
   await t.test('each of the six commits once despite response loss, and old responses survive newer changes', async () => {
     for (const [index, operation] of operations.entries()) {
-      const input = {...operationInputs(backend)[operation], requestId: `mutation-wire-original-${index}`};
+      const input = {...(await operationInputs(backend))[operation], requestId: `mutation-wire-original-${index}`};
       const original = await proxy.drop(operation, input), result = original.envelope.data;
       accepted.push({operation, input, ...original});
-      const afterCommit = backend.storage(), dataVersion = backend.version();
+      const afterCommit = (await backend.storage()), dataVersion = (await backend.version());
       assert.equal(afterCommit.mutation_requests.filter(row => row.requestId === input.requestId).length, 1);
       assert.equal(afterCommit.mutation_requests.length, index + 1);
       assert.deepEqual((await backend.request(operation, input)).raw, original.raw, 'immediate HTTP replay is the complete original wire response');
-      backend.unchanged(afterCommit, dataVersion, `${operation} immediate replay`);
+      await backend.unchanged(afterCommit, dataVersion, `${operation} immediate replay`);
       if (operation === 'shot.create' || operation === 'shot.update') {
         await backend.http('shot.update', {shotId: result.id, expectedRevision: result.revision, patch: {title: 'Intervening shot update', prompt: 'Intervening prompt'}});
       } else if (operation === 'node.create' || operation === 'node.update') {
         assert.ok(!Object.hasOwn(result, 'requestId'), 'transport identity does not leak into node records');
-        assert.ok(!Object.hasOwn(backend.record('nodes', result.id), 'requestId'), 'durable node rows also exclude requestId');
+        assert.ok(!Object.hasOwn((await backend.record('nodes', result.id)), 'requestId'), 'durable node rows also exclude requestId');
         await backend.http('node.update', {nodeId: result.id, expectedRevision: result.revision, patch: {text: 'Intervening node text'}});
       } else if (operation === 'shot.reorder') {
         await backend.http('shot.reorder', {projectId: IDS.project, expectedRevision: result.revision, shotIds: [...(input as {shotIds:unknown[]}).shotIds].reverse()});
       } else {
         await backend.http('version.select', {shotId: result.id, expectedRevision: result.revision, versionId: IDS.secondVersion});
       }
-      const afterChange = backend.storage(), changedVersion = backend.version();
+      const afterChange = (await backend.storage()), changedVersion = (await backend.version());
       assert.deepEqual(await cli(operation, input), original.envelope, `${operation} CLI returns original, not current record`);
       assert.deepEqual(await mcp.call(operation, input), original.envelope, `${operation} MCP returns original, not current record`);
-      backend.unchanged(afterChange, changedVersion, `${operation} stale-revision cross-transport replay`);
+      await backend.unchanged(afterChange, changedVersion, `${operation} stale-revision cross-transport replay`);
     }
-    for (const table of preservedTables) assert.deepEqual(backend.storage()[table], initial[table], `${table} is untouched by all six mutations`);
+    for (const table of preservedTables) assert.deepEqual((await backend.storage())[table], initial[table], `${table} is untouched by all six mutations`);
   });
 
   await t.test('actual backend restart and canonical object-key order retain every original response', async () => {
     assert.equal(accepted.length, 6, 'all six original committed responses are present');
-    const before = backend.storage(), priorPid = backend.pid;
+    const before = (await backend.storage()), priorPid = backend.pid;
     assert.notEqual(await backend.restart(), priorPid, 'restart uses a new actual process');
-    assert.deepEqual(backend.storage(), before);
-    const dataVersion = backend.version();
+    assert.deepEqual((await backend.storage()), before);
+    const dataVersion = (await backend.version());
     for (const {operation, input, envelope, raw} of accepted) {
       // Reconstruct nested fields in reverse insertion order. Object ordering
       // is insignificant, while arrays/revisions/field presence remain exact.
@@ -304,12 +341,12 @@ test('six optional mutation keys retain exact results through lost HTTP response
     const {requestId, ...fields} = accepted[0].input;
     assert.deepEqual(await runCli(t, ['shot', 'create', '--input', JSON.stringify(fields), '--request-id', requestId], backend.env),
       accepted[0].envelope, 'real CLI --request-id forwards the caller-owned optional identity unchanged');
-    backend.unchanged(before, dataVersion, 'post-restart replays');
+    await backend.unchanged(before, dataVersion, 'post-restart replays');
   });
 
   await t.test('changed payload, operation or project cannot consume or reveal another request receipt', async () => {
     assert.equal(accepted.length, 6);
-    const before = backend.storage(), dataVersion = backend.version();
+    const before = (await backend.storage()), dataVersion = (await backend.version());
     for (const original of accepted) {
       const {operation, input, envelope} = original;
       const changed = operation === 'shot.create' ? {...input, title: 'Changed'} : operation === 'node.create' ? {...input, text: 'Changed'} :
@@ -329,17 +366,17 @@ test('six optional mutation keys retain exact results through lost HTTP response
       }
       await cli(operation, changed, 'IDEMPOTENCY_CONFLICT');
       const otherOperation = operation === 'node.create' ? 'shot.create' : 'node.create';
-      await backend.http(otherOperation, {...operationInputs(backend)[otherOperation], requestId: input.requestId}, 'IDEMPOTENCY_CONFLICT');
+      await backend.http(otherOperation, {...(await operationInputs(backend))[otherOperation], requestId: input.requestId}, 'IDEMPOTENCY_CONFLICT');
       await backend.http(operation, input, 'UNAUTHORIZED', undefined, 'Bearer wrong-synthetic-token');
       await backend.http(operation, input, 'UNAUTHORIZED', undefined, '');
     }
-    backend.unchanged(before, dataVersion, 'reused-key and authentication failures');
+    await backend.unchanged(before, dataVersion, 'reused-key and authentication failures');
   });
 
   await t.test('strict validation rejects invalid optional keys before any write on all transports', async () => {
-    const before = backend.storage(), dataVersion = backend.version();
+    const before = (await backend.storage()), dataVersion = (await backend.version());
     for (const operation of operations) {
-      const base = operationInputs(backend)[operation];
+      const base = (await operationInputs(backend))[operation];
       for (const requestId of ['', '1234567', 'x'.repeat(201), null, 42]) {
         await backend.http(operation, {...base, requestId}, 'VALIDATION_ERROR');
         await mcp.call(operation, {...base, requestId}, 'VALIDATION_ERROR');
@@ -347,58 +384,58 @@ test('six optional mutation keys retain exact results through lost HTTP response
       await cli(operation, {...base, requestId: 'short'}, 'VALIDATION_ERROR');
       await backend.http(operation, {...base, requestId: 'valid-optional-key', unexpected: true}, 'VALIDATION_ERROR');
     }
-    await runCli(t, ['shot', 'create', '--input', JSON.stringify({...operationInputs(backend)['shot.create'], requestId: 'first-stable-key'}),
+    await runCli(t, ['shot', 'create', '--input', JSON.stringify({...(await operationInputs(backend))['shot.create'], requestId: 'first-stable-key'}),
       '--request-id', 'different-stable-key'], backend.env, 'VALIDATION_ERROR');
-    backend.unchanged(before, dataVersion, 'malformed keys and unknown fields');
+    await backend.unchanged(before, dataVersion, 'malformed keys and unknown fields');
   });
 
   await t.test('only a fresh-key definite rejection proves not applied, and it does not reserve the key', async () => {
-    const before = backend.storage(), dataVersion = backend.version();
+    const before = (await backend.storage()), dataVersion = (await backend.version());
     const input = {nodeId: IDS.node, expectedRevision: 1, patch: {label: 'Definite rejection'}, requestId: 'mutation-definite-rejection'};
     const rejected = await backend.http('node.update', input, 'REVISION_CONFLICT');
     assert.equal(rejected.error.details.mutationOutcome, 'not_applied');
     assert.equal(rejected.error.details.requestId, input.requestId);
     assert.deepEqual(await cli('node.update', input, 'REVISION_CONFLICT'), rejected);
     assert.deepEqual(await mcp.call('node.update', input, 'REVISION_CONFLICT'), rejected);
-    backend.unchanged(before, dataVersion, 'definite rejected request');
+    await backend.unchanged(before, dataVersion, 'definite rejected request');
     assert.ok(!before.mutation_requests.some(row => row.requestId === input.requestId));
-    const corrected = {...input, expectedRevision: backend.record('nodes', IDS.node).revision};
+    const corrected = {...input, expectedRevision: (await backend.record('nodes', IDS.node)).revision};
     const accepted = await backend.http('node.update', corrected);
     assert.equal((accepted.data as typeof accepted.data & {label:string}).label, input.patch.label, 'a rejected key has not been consumed');
-    const committed = backend.storage(), committedVersion = backend.version();
+    const committed = (await backend.storage()), committedVersion = (await backend.version());
     const reused = await backend.http('node.update', input, 'IDEMPOTENCY_CONFLICT');
     assert.ok(!Object.hasOwn(reused.error.details, 'mutationOutcome'), 'a committed key must never authorize clearing a pending receipt');
-    backend.unchanged(committed, committedVersion, 'prior-key failure lacks not-applied proof');
+    await backend.unchanged(committed, committedVersion, 'prior-key failure lacks not-applied proof');
   });
 
   await t.test('omitting requestId preserves legacy create and optimistic-revision behavior', async () => {
-    const beforeJournal = backend.storage().mutation_requests;
+    const beforeJournal = (await backend.storage()).mutation_requests;
     for (const operation of ['shot.create', 'node.create'] as const) {
-      const input = operationInputs(backend)[operation];
+      const input = (await operationInputs(backend))[operation];
       const first = await backend.http(operation, input), second = await cli(operation, input);
       assert.notEqual(first.data.id, second.data.id, 'legacy creation does not silently invent a replay identity');
       assert.ok(!Object.hasOwn(first.data, 'requestId') && !Object.hasOwn(second.data, 'requestId'));
     }
     for (const operation of ['shot.update', 'node.update', 'shot.reorder', 'version.select'] as const) {
-      const input = operationInputs(backend)[operation], first = await mcp.call(operation, input);
+      const input = (await operationInputs(backend))[operation], first = await mcp.call(operation, input);
       assert.equal(first.data.revision, input.expectedRevision + 1);
       await backend.http(operation, input, 'REVISION_CONFLICT');
     }
-    assert.deepEqual(backend.storage().mutation_requests, beforeJournal, 'legacy calls never create keyed receipts');
-    for (const table of preservedTables) assert.deepEqual(backend.storage()[table], initial[table]);
+    assert.deepEqual((await backend.storage()).mutation_requests, beforeJournal, 'legacy calls never create keyed receipts');
+    for (const table of preservedTables) assert.deepEqual((await backend.storage())[table], initial[table]);
     assert.equal(await backend.audit(), '', 'guard observed zero outbound/model/provider/media/subprocess attempts');
   });
 
   await t.test('an existing receipt cannot disclose a removed target or falsely prove not applied', async () => {
     const original = accepted.find(item => item.operation === 'node.create')!;
-    const journal = backend.storage().mutation_requests;
+    const journal = (await backend.storage()).mutation_requests;
     await backend.stop();
     const deletion = launch(t, [helper, 'delete-node'], {MIOON_DATA_DIR: backend.root, MIOON_MUTATION_WIRE_AUDIT: backend.auditPath,
       MIOON_MUTATION_WIRE_NODE_ID: original.envelope.data.id});
     assert.equal((await deletion.finish()).code, 0, deletion.stderr);
     assert.deepEqual(deletion.lines(), [{deleted: 1}]);
     await backend.restart();
-    const before = backend.storage(), dataVersion = backend.version();
+    const before = (await backend.storage()), dataVersion = (await backend.version());
     assert.deepEqual(before.mutation_requests, journal, 'removing the target cannot evict the retained receipt');
     for (const result of [await backend.http(original.operation, original.input, 'NOT_FOUND'),
       await cli(original.operation, original.input, 'NOT_FOUND'), await mcp.call(original.operation, original.input, 'NOT_FOUND')]) {
@@ -406,7 +443,7 @@ test('six optional mutation keys retain exact results through lost HTTP response
       assert.ok(!Object.hasOwn(result.error.details, 'mutationOutcome'), 'missing target is not proof the original mutation never committed');
       assert.ok(!JSON.stringify(result).includes('Original node marker'), 'retained original fields remain private after removal');
     }
-    backend.unchanged(before, dataVersion, 'removed target replay refusals');
+    await backend.unchanged(before, dataVersion, 'removed target replay refusals');
     assert.equal(await backend.audit(), '');
   });
 });
@@ -425,7 +462,7 @@ test('real competing SQLite writers converge on one stable mutation and producti
   const rejectedExit = await rejected.finish();
   assert.notEqual(rejectedExit.code, 0);
   assert.match(rejected.stderr, /already has a running backend/);
-  const before = backend.storage();
+  const before = (await backend.storage());
   const extra = {MIOON_MUTATION_WIRE_COMPETING_WRITER: '1'};
   const first = writer(t, backend, 'shot.create', input, {...extra, MIOON_MUTATION_WIRE_ROLE: 'holder'}, true);
   const second = writer(t, backend, 'shot.create', input, {...extra, MIOON_MUTATION_WIRE_ROLE: 'contender'}, true);
@@ -441,13 +478,13 @@ test('real competing SQLite writers converge on one stable mutation and producti
   }
   const a = first.lines().find(value => value.event === 'result'), b = second.lines().find(value => value.event === 'result');
   assert.equal(a.ok, true, JSON.stringify(a)); assert.deepEqual(b, a, 'both real writer processes return exactly one stable result');
-  const after = backend.storage();
+  const after = (await backend.storage());
   assert.equal(after.shots.length, before.shots.length + 1);
   assert.equal(after.mutation_requests.length, before.mutation_requests.length + 1);
-  assert.equal(backend.record('projects', IDS.project).revision, JSON.parse((before.projects.find(row=>row.id===IDS.project))!.data as string).revision + 1);
-  const dataVersion = backend.version();
+  assert.equal((await backend.record('projects', IDS.project)).revision, JSON.parse((before.projects.find(row=>row.id===IDS.project))!.data as string).revision + 1);
+  const dataVersion = (await backend.version());
   assert.deepEqual((await backend.http('shot.create', input)).data, a.data);
-  backend.unchanged(after, dataVersion, 'concurrent result replay');
+  await backend.unchanged(after, dataVersion, 'concurrent result replay');
   for (const table of preservedTables) assert.deepEqual(after[table], before[table]);
   assert.equal(await backend.audit(), '');
 });
@@ -457,7 +494,7 @@ test('test-child rollback and actual crash boundaries keep mutation and exact re
     await t.test(boundary, async subtest => {
       const backend = await backendFixture(subtest);
       await backend.stop();
-      const before = backend.storage();
+      const before = (await backend.storage());
       const input = {projectId: IDS.project, title: `Atomic ${boundary}`, requestId: `mutation-wire-${boundary}`};
       const child = writer(subtest, backend, 'shot.create', input, {MIOON_MUTATION_WIRE_BOUNDARY: boundary});
       const exited = await child.finish();
@@ -469,16 +506,17 @@ test('test-child rollback and actual crash boundaries keep mutation and exact re
       const observed = receipt.uncommitted || receipt.committed;
       assert.equal(observed.shots.length, before.shots.length + 1, 'injection reached the actual business write');
       assert.equal(observed.mutation_requests.length, before.mutation_requests.length + 1, 'injection reached the actual journal write');
-      if (boundary !== 'crash-after-commit') assert.deepEqual(backend.storage(), before, 'rollback/crash removes both uncommitted changes');
-      else assert.deepEqual(backend.storage(), receipt.committed, 'both committed changes survive process death');
+      const observed2 = boundary === 'rollback' ? await backend.storage() : await backend.crashed();
+      if (boundary !== 'crash-after-commit') assert.deepEqual(observed2, before, 'rollback/crash removes both uncommitted changes');
+      else assert.deepEqual(observed2, receipt.committed, 'both committed changes survive process death');
       await backend.restart();
       const recovered = await backend.http('shot.create', input);
       if (boundary === 'crash-after-commit') assert.deepEqual(recovered.data, receipt.result, 'post-commit crash replays the exact result without recreating it');
-      const after = backend.storage(), dataVersion = backend.version();
+      const after = (await backend.storage()), dataVersion = (await backend.version());
       assert.equal(after.shots.length, before.shots.length + 1);
       assert.equal(after.mutation_requests.length, before.mutation_requests.length + 1);
       assert.deepEqual(await backend.http('shot.create', input), recovered);
-      backend.unchanged(after, dataVersion, `${boundary} recovered replay`);
+      await backend.unchanged(after, dataVersion, `${boundary} recovered replay`);
       for (const table of preservedTables) assert.deepEqual(after[table], before[table]);
       assert.equal(await backend.audit(), '');
     });

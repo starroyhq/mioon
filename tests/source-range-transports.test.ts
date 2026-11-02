@@ -11,7 +11,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
+import {randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
@@ -19,8 +19,11 @@ import {discoverSchema} from '../packages/client/src/index.ts';
 import {optionalRequestIdOperations} from './helpers/catalog-input-branches.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {IDS, TOKEN, snapshot} from './helpers/mutation-wire-fixture.ts';
+import {IDS, TOKEN} from './helpers/mutation-wire-fixture.ts';
 import {PRIVATE, RANGE_IDS} from './helpers/source-range-wire-fixture.ts';
+import type {ProjectState} from './helpers/project-state.ts';
+
+interface StorageSnapshot {rows: ProjectState['tables']; version: [number, number]}
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const helper = path.join(repo, 'tests/helpers/source-range-wire-fixture.ts');
@@ -53,8 +56,8 @@ async function stopOwned(child: OwnedChild|undefined|null) {
   try { await bounded(ended, 'Owned child cleanup', 6_000); } finally { clearTimeout(timer); }
 }
 
-function launch(t:test.TestContext, args:string[], env:NodeJS.ProcessEnv) {
-  const child = spawn(process.execPath, args, {cwd: repo, env: environment(env), stdio: ['ignore', 'pipe', 'pipe']});
+function launch(t:test.TestContext, args:string[], env:NodeJS.ProcessEnv, {ipc = false}: {ipc?: boolean} = {}) {
+  const child = spawn(process.execPath, args, {cwd: repo, env: environment(env), stdio: ['ignore', 'pipe', 'pipe', ...(ipc ? ['ipc' as const] : [])]}) as PipedProcess;
   let stdout = '', stderr = '', failure:Error|undefined;
   // JSON descriptions may cross pipe chunks inside a UTF-8 character.
   child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
@@ -89,31 +92,49 @@ async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-range-wire-'));
   const auditPath = path.join(root, 'forbidden-side-effects.jsonl');
   await writeFile(auditPath, '');
-  let run!:ReturnType<typeof launch>, db: DatabaseSync, url:string, port = 0;
+  let run!:ReturnType<typeof launch>, url:string, port = 0;
+  const pending = new Map<string, PromiseWithResolvers<StorageSnapshot>>();
   const cleanups: (() => Promise<unknown>)[] = [];
   t.after(async () => {
     const failures = [];
-    for (const cleanup of [...cleanups.reverse(), () => stopOwned(run?.child), () => db?.close(),
+    for (const cleanup of [...cleanups.reverse(), () => stopOwned(run?.child),
       () => rm(root, {recursive: true, force: true})]) {
       try { await cleanup(); } catch (error) { failures.push(error); }
     }
     if (failures.length) throw new AggregateError(failures, 'Owned range-wire fixture cleanup failed');
   });
   async function start() {
-    run = launch(t, [helper, 'server'], {MIOON_DATA_DIR: root, PORT: String(port), MIOON_RANGE_WIRE_AUDIT: auditPath});
+    run = launch(t, [helper, 'server'], {MIOON_DATA_DIR: root, PORT: String(port), MIOON_RANGE_WIRE_AUDIT: auditPath}, {ipc: true});
+    run.child.on('message', (raw: unknown) => {
+      const message = raw as {type?: unknown; id?: string; data: StorageSnapshot; error?: {code: string; message: string}}|null;
+      const reply = message?.type === 'reply' && typeof message.id === 'string' ? pending.get(message.id) : undefined;
+      if (!reply) return;
+      if (message!.error) reply.reject(Object.assign(Error(message!.error.message), {code: message!.error.code}));
+      else reply.resolve(message!.data);
+    });
+    run.child.once('exit', () => { for (const reply of pending.values()) reply.reject(Error('The backend exited before it answered')); });
     const ready = await run.ready(); url = ready.url; port = Number(new URL(url).port);
     assert.equal(new URL(url).hostname, '127.0.0.1');
     assert.equal((await fetch(url + '/health', {signal: AbortSignal.timeout(5_000)})).status, 200);
     return ready.pid;
   }
   await start();
-  db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-  const storage = () => snapshot(db);
-  const version = () => (db.prepare('PRAGMA data_version').get())!.data_version;
-  const checkpoint = () => ({rows: storage(), version: version()});
-  const unchanged = (before:ReturnType<typeof checkpoint>,label:string) => {
-    assert.deepEqual(storage(), before.rows, `${label}: all persisted rows stay identical`);
-    assert.equal(version(), before.version, `${label}: no extra commit, including equal-value writes`);
+  async function read(): Promise<StorageSnapshot> {
+    const child = run.child;
+    if (child.exitCode !== null || child.signalCode || !child.connected) throw Error('No running backend to inspect');
+    const id = randomUUID(), reply = Promise.withResolvers<StorageSnapshot>(); pending.set(id, reply);
+    const timer = setTimeout(() => reply.reject(Error('The backend did not answer the storage question within 10 seconds')), 10_000);
+    try {
+      child.send({type: 'storage', id, projectId: IDS.project}, error => { if (error) reply.reject(error); });
+      return await reply.promise;
+    } finally { clearTimeout(timer); pending.delete(id); }
+  }
+  const storage = async () => (await read()).rows;
+  const version = async () => (await read()).version;
+  const checkpoint = async () => read();
+  const unchanged = async (before:Awaited<ReturnType<typeof checkpoint>>,label:string) => {
+    assert.deepEqual(await storage(), before.rows, `${label}: all persisted rows stay identical`);
+    assert.deepEqual(await version(), before.version, `${label}: no extra commit, including equal-value writes`);
   };
   const env = () => ({MIOON_BASE_URL: url, MIOON_TOKEN: TOKEN, MIOON_RANGE_WIRE_ALLOWED_ORIGIN: url, MIOON_RANGE_WIRE_AUDIT: auditPath});
   async function request<O extends string>(operation: O, input?: unknown, expectedError?: string|undefined, base: string|undefined = url, authorization: string = `Bearer ${TOKEN}`):Promise<{raw:string;envelope:WireEnvelope<O>}> {
@@ -179,7 +200,7 @@ async function lossProxy(t:test.TestContext, backend:Awaited<ReturnType<typeof f
         headers: {authorization: request.headers.authorization!, 'content-type': 'application/json'}, body: bytes});
       const raw = await upstream.text(); captured = {raw, envelope: JSON.parse(raw), submitted};
       assert.equal(upstream.status, 200, raw);
-      assert.ok(backend.storage().asset_range_requests.some(row => row.requestId === submitted.input.requestId),
+      assert.ok((await backend.storage()).asset_range_requests.some(row => row.requestId === submitted.input.requestId),
         'durable receipt is visible after backend COMMIT and before proxy drops the HTTP response');
       response.destroy();
     } catch (error) { failure = error; response.destroy(); }
@@ -224,7 +245,7 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
   const latest = {...target, expectedRevision: 1, requestId: 'source-range-later-save', inFrame: 10, outFrame: 55};
 
   await t.test('catalog, required keys and effect hints match every public discovery surface', async () => {
-    const before = backend.checkpoint(), catalog = discoverSchema() as unknown as TestCatalog;
+    const before = (await backend.checkpoint()), catalog = discoverSchema() as unknown as TestCatalog;
     assert.deepEqual((await backend.cliArgs(['schema'])).data, catalog);
     assert.deepEqual((await backend.mcp('mioon_schema')).data, catalog);
     const listed = (await backend.client.listTools()).tools;
@@ -251,11 +272,11 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
     assert.deepEqual(optionalRequestIdOperations(catalog), oldMutations.sort());
     assert.deepEqual(READ_TOOL_DEFINITIONS.map(tool => tool.name).sort(), ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect'].sort());
     assert.deepEqual(EDIT_TOOL_DEFINITIONS.map(tool => tool.name), ['mioon_propose_shot_update']);
-    backend.unchanged(before, 'discovery');
+    await backend.unchanged(before, 'discovery');
   });
 
   await t.test('unsaved video/audio reads are non-creating, project scoped and use complete 30fps frames', async () => {
-    const before = backend.checkpoint();
+    const before = (await backend.checkpoint());
     assert.equal(before.rows.asset_ranges.length, 0); assert.equal(before.rows.asset_range_requests.length, 0);
     for (const [assetId, sourceFrameCount] of [[IDS.asset, 60], [RANGE_IDS.audio, 60], [RANGE_IDS.boundary, 61], [RANGE_IDS.long, 36_000]]) {
       const input = {...target, assetId};
@@ -266,42 +287,42 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
     }
     const foreignProject = {projectId: IDS.other, assetId: IDS.otherAsset};
     assert.equal((await backend.http('asset.range.get', foreignProject)).data.revision, 0);
-    assert.ok(!backend.storage().timelines.some(row => row.projectId === IDS.other), 'read must not materialize an absent timeline');
-    backend.unchanged(before, 'unsaved reads');
+    assert.ok(!(await backend.storage()).timelines.some(row => row.projectId === IDS.other), 'read must not materialize an absent timeline');
+    await backend.unchanged(before, 'unsaved reads');
   });
 
   await t.test('lost committed response replays byte-for-byte after newer save and actual backend restart', async () => {
-    const before = backend.storage();
+    const before = (await backend.storage());
     const inspected = await backend.http('asset.inspect', {projectId: IDS.project, limit: 25});
     noRangeInspectionFields(inspected);
     original = await drop(first);
     assert.deepEqual(original.envelope.data, {id: IDS.asset, ...target, revision: 1, range: {inFrame: 7, outFrame: 31}, sourceFrameCount: 60, fps: 30});
-    const committed = backend.checkpoint();
+    const committed = (await backend.checkpoint());
     assert.equal(committed.rows.asset_ranges.length, 1); assert.equal(committed.rows.asset_range_requests.length, 1);
     assert.equal((await backend.request('asset.range.set', first)).raw, original.raw);
-    backend.unchanged(committed, 'immediate exact replay');
+    await backend.unchanged(committed, 'immediate exact replay');
     const newer = await backend.mcp('asset.range.set', latest);
     assert.equal(newer.data.revision, 2); assert.deepEqual(newer.data.range, {inFrame: 10, outFrame: 55});
-    const afterSave = backend.checkpoint();
+    const afterSave = (await backend.checkpoint());
     assert.deepEqual(await backend.cli('asset.range.set', first), original.envelope);
     assert.deepEqual(await backend.mcp('asset.range.set', first), original.envelope);
-    backend.unchanged(afterSave, 'historical replay despite newer range revision');
+    await backend.unchanged(afterSave, 'historical replay despite newer range revision');
     const priorPid = backend.pid;
     assert.notEqual(await backend.restart(), priorPid, 'the backend is a new actual process');
-    assert.deepEqual(backend.storage(), afterSave.rows);
-    const afterRestart = backend.checkpoint();
+    assert.deepEqual((await backend.storage()), afterSave.rows);
+    const afterRestart = (await backend.checkpoint());
     assert.equal((await backend.request('asset.range.set', Object.fromEntries(Object.entries(first).reverse()))).raw, original.raw);
     const {requestId, ...fields} = first;
     assert.deepEqual(await backend.cliArgs(['asset', 'range', 'set', '--input', JSON.stringify(fields), '--request-id', requestId]), original.envelope);
     assert.deepEqual(await backend.mcp('asset.range.set', first), original.envelope);
     assert.deepEqual(await backend.http('asset.range.get', target), newer);
     assert.deepEqual(await backend.http('asset.inspect', {projectId: IDS.project, limit: 25}), inspected, 'inspection DTO does not gain range fields');
-    backend.unchanged(afterRestart, 'post-restart exact replay and reads');
-    onlyRangeWrites(before, backend.storage(), [{...target, revision: 2}]);
+    await backend.unchanged(afterRestart, 'post-restart exact replay and reads');
+    onlyRangeWrites(before, (await backend.storage()), [{...target, revision: 2}]);
   });
 
   await t.test('changed reuse, stale revision, missing keys and invalid bounds never write', async () => {
-    const before = backend.checkpoint();
+    const before = (await backend.checkpoint());
     for (const changed of [{...first, outFrame: 32}, {...first, expectedRevision: 2}, {...first, assetId: RANGE_IDS.audio},
       {...first, projectId: IDS.other, assetId: IDS.otherAsset}]) {
       const result = await backend.http('asset.range.set', changed, 'IDEMPOTENCY_CONFLICT');
@@ -328,15 +349,15 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
     assert.deepEqual(await backend.cli('asset.range.set', outOfBounds, 'SOURCE_BOUNDS'), rejected);
     assert.deepEqual(await backend.mcp('asset.range.set', outOfBounds, 'SOURCE_BOUNDS'), rejected);
     for (const operation of operations) await backend.request(operation, operation.endsWith('.set') ? first : target, 'UNAUTHORIZED', undefined, '');
-    backend.unchanged(before, 'rejected writes and unauthenticated calls');
-    assert.ok(!backend.storage().asset_range_requests.some(row => row.requestId === base.requestId));
+    await backend.unchanged(before, 'rejected writes and unauthenticated calls');
+    assert.ok(!(await backend.storage()).asset_range_requests.some(row => row.requestId === base.requestId));
     const accepted = await backend.cli('asset.range.set', {...base, inFrame: 59, outFrame: 60});
     assert.equal(accepted.data.revision, 3, 'a rejected key is reusable after correction');
     assert.deepEqual(accepted.data.range, {inFrame: 59, outFrame: 60}, 'exclusive out point permits exactly one complete final frame');
   });
 
   await t.test('safe ownership and unsupported-media errors agree on all actual transports', async () => {
-    const before = backend.checkpoint();
+    const before = (await backend.checkpoint());
     for (const operation of operations) {
       const set = operation.endsWith('.set'), fields = set ? {expectedRevision: 0, requestId: 'source-range-no-target', inFrame: 0, outFrame: 1} : {};
       let absent;
@@ -360,29 +381,29 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
         assert.deepEqual(await backend.mcp(operation, input, 'SOURCE_RANGE_UNSUPPORTED'), result);
       }
     }
-    backend.unchanged(before, 'ownership and media-type failures');
+    await backend.unchanged(before, 'ownership and media-type failures');
   });
 
   await t.test('saved audio and long-source ranges are independent metadata and shared replay keys are global', async () => {
-    const before = backend.storage();
+    const before = (await backend.storage());
     const longInput = {...target, assetId: RANGE_IDS.long, expectedRevision: 0, requestId: 'source-range-long-source', inFrame: 20_000, outFrame: 30_000};
     const long = await backend.cli('asset.range.set', longInput);
     assert.equal(long.data.sourceFrameCount, 36_000); assert.deepEqual(long.data.range, {inFrame: 20_000, outFrame: 30_000});
     const audioInput = {...target, assetId: RANGE_IDS.audio, expectedRevision: 0, requestId: 'source-range-audio-source', inFrame: 0, outFrame: 60};
     assert.deepEqual((await backend.mcp('asset.range.set', audioInput)).data.range, {inFrame: 0, outFrame: 60});
-    onlyRangeWrites(before, backend.storage(), [
+    onlyRangeWrites(before, (await backend.storage()), [
       {...target, assetId: RANGE_IDS.long, revision: 1}, {...target, assetId: RANGE_IDS.audio, revision: 1},
     ]);
     const nodeInput = {projectId: IDS.project, type: 'text', text: 'Legacy keyed mutation', position: {x: 0, y: 0}, requestId: 'source-range-legacy-global-key'};
     await backend.http('node.create', nodeInput);
-    const stable = backend.checkpoint();
+    const stable = (await backend.checkpoint());
     for (const [operation, input] of [['asset.range.set', {...longInput, requestId: nodeInput.requestId}],
       ['node.create', {...nodeInput, requestId:first.requestId}]] as const) {
       const result = await backend.http(operation, input, 'IDEMPOTENCY_CONFLICT');
       assert.deepEqual(await backend.cli(operation, input, 'IDEMPOTENCY_CONFLICT'), result);
       assert.deepEqual(await backend.mcp(operation, input, 'IDEMPOTENCY_CONFLICT'), result);
     }
-    backend.unchanged(stable, 'cross-operation global key collisions in both directions');
+    await backend.unchanged(stable, 'cross-operation global key collisions in both directions');
   });
 
   await t.test('legacy clip insertion copies explicit numeric bounds and later saved ranges cannot change clips', async () => {
@@ -393,9 +414,9 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
       expectedRevision: track.revision, requestId: 'source-range-explicit-clip', trackId: track.tracks[0].id,
       startFrame: 0, sourceInFrame: saved.range!.inFrame, durationFrames: saved.range!.outFrame - saved.range!.inFrame})).data;
     assert.equal(timeline.clips[0].sourceInFrame, 59); assert.equal(timeline.clips[0].durationFrames, 1);
-    const before = backend.storage();
+    const before = (await backend.storage());
     await backend.http('asset.range.set', {...target, expectedRevision: saved.revision, requestId: 'source-range-after-clip', inFrame: 0, outFrame: 30});
-    onlyRangeWrites(before, backend.storage(), [{...target, revision: 4}]);
+    onlyRangeWrites(before, (await backend.storage()), [{...target, revision: 4}]);
     assert.deepEqual((await backend.http('timeline.get', {projectId: IDS.project})).data, timeline);
     assert.equal(await backend.audit(), '', 'zero model/provider, non-owned network or media subprocess attempts');
     assert.deepEqual((await readdir(path.join(backend.root, 'media')) as unknown), [], 'metadata-only wire fixture never creates media files');
