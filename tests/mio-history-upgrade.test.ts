@@ -3,7 +3,7 @@ import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -14,6 +14,12 @@ import {createProjectFile, openProjectConnection} from '../packages/business/src
 import type {ProjectConnection, ProjectLocation} from '../packages/business/src/project-file/connection.ts';
 import {buildDatabase, HISTORY_SCHEMA_VERSION, schemaStatements} from '../packages/business/src/project-file/schema/databases.ts';
 import {S0_HISTORY_V2_MANIFEST} from '../packages/business/src/project-file/schema/history-v2-manifest.ts';
+import {R1_HISTORY_V3_MANIFEST} from '../packages/business/src/project-file/schema/history-v3-manifest.ts';
+import {MIO_QUOTA_BYTES_SQL,MIO_QUOTA_ROWS_SQL} from '../packages/business/src/project-file/schema/domains/mio.ts';
+import {RECEIPT_SCHEMA} from '../packages/business/src/project-file/schema/domains/receipts.ts';
+import {TASK_SCHEMA} from '../packages/business/src/project-file/schema/domains/tasks.ts';
+import {TIMELINE_HISTORY_SCHEMA} from '../packages/business/src/project-file/schema/domains/timeline-history.ts';
+import {R1_MIO_V3_SCHEMA} from './fixtures/mio-history-v3-schema.ts';
 import {readSchemaManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
 import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
 import {LEGACY_MIO_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
@@ -24,6 +30,7 @@ const WORKER = fileURLToPath(new URL('./fixtures/mio-history-upgrade-worker.ts',
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 let oldStatements: readonly string[] | undefined;
 const legacyHistory = (): readonly string[] => oldStatements ??= schemaStatements('history', derivedDomainStatements(deriveFromFormat72(), 'history'));
+const r1History=():readonly string[]=>schemaStatements('history',[...RECEIPT_SCHEMA,...TASK_SCHEMA,...TIMELINE_HISTORY_SCHEMA,...R1_MIO_V3_SCHEMA]);
 
 interface Fixture extends ProjectLocation {
   readonly root: string;
@@ -111,6 +118,86 @@ function assertOld(value: Fixture): void {
   });
 }
 
+function r1Fixture(t:TestContext):Fixture{
+ const value=fixture(t,{fresh:true,processes:false}),db=new DatabaseSync(value.historyFile);
+ try{
+  const at='2026-11-02T00:00:00.000Z',conversationId=randomUUID(),runId=randomUUID(),stepId=randomUUID(),requestId=randomUUID(),body=JSON.stringify({text:'原件🙂'.repeat(20000)}),shared=createHash('sha256').update('{}').digest('hex');
+  db.exec('PRAGMA journal_mode=DELETE; BEGIN');buildDatabase(db,'history','main',r1History());db.exec('UPDATE schema_version SET version=3');
+  db.prepare('INSERT INTO history_state VALUES(1,?,?)').run(value.projectId,value.sequence);
+  db.prepare('INSERT INTO mio_blobs VALUES(?,?,?,?)').run(shared,2,'{}',at);
+  db.prepare('INSERT INTO mio_conversations VALUES(?,?,?,?)').run(conversationId,value.projectId,at,at);
+  db.prepare('INSERT INTO mio_runs(id,projectId,conversationId,requestId,digest,status,revision,stepLimit,budget,stepsUsed,locale,usageSummary,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(runId,value.projectId,conversationId,randomUUID(),'a'.repeat(64),'interrupted',3,30,30,1,'en','{"retained":true}',at,at);
+  db.prepare('INSERT INTO mio_steps(id,runId,projectId,position,kind,status,createdAt,updatedAt,partialText) VALUES(?,?,?,1,?,?,?,?,?)').run(stepId,runId,value.projectId,'model','intent',at,at,'已落盘 partial🙂');
+  const manifest=JSON.stringify({version:1,entryIds:[],noteEntryIds:[],configurationBlobHash:shared,toolsBlobHash:shared,systemBlobHash:shared,baselineBlobHash:shared,rulesBlobHash:null,parameters:{},viewVersion:1});
+  db.prepare('INSERT INTO mio_requests(id,stepId,assemblyNumber,assemblerVersion,protocol,bodySha256,bodyBytes,state,originalBody,inputManifest,assembledAt,assemblyReason) VALUES(?,?,1,1,?,?,?,?,?,?,?,?)').run(requestId,stepId,'responses',createHash('sha256').update(body).digest('hex'),Buffer.byteLength(body),'intent',body,manifest,at,'initial');
+  db.prepare("UPDATE mio_requests SET state='dispatch_started',dispatchStartedAt=? WHERE id=?").run(at,requestId);
+  db.prepare("UPDATE mio_requests SET state='unknown',completedAt=? WHERE id=?").run(at,requestId);
+  db.prepare("UPDATE mio_steps SET status='unknown',currentRequestId=? WHERE id=?").run(requestId,stepId);
+  for(const kind of PROCESS_KINDS)db.prepare('INSERT INTO mio_process_target_revisions VALUES(?,?,?,?)').run(value.projectId,kind,randomUUID(),9);
+  db.prepare("INSERT INTO idempotency VALUES('outside-mio','stable','request-hash','resource-id')").run();
+  db.exec('COMMIT');assert.deepEqual(readSchemaManifest(db,'main'),R1_HISTORY_V3_MANIFEST.entries);
+ }finally{db.close();}
+ return value;
+}
+function r1Data(db:DatabaseSync):unknown{
+ return R1_HISTORY_V3_MANIFEST.entries.filter(e=>e.type==='table'&&e.name.startsWith('mio_')).map(e=>({table:e.name,rows:db.prepare(`SELECT * FROM ${e.name} ORDER BY rowid`).all()}));
+}
+
+test('exact R1 history3 upgrades losslessly and initializes counters from retained rows without touching project sequence',t=>{
+ const value=r1Fixture(t),before=inspect(value,r1Data),sequenceBefore=inspect(value,sequence);
+ const connection=open(value);
+ try{
+  assert.deepEqual(r1Data(connection.db),before);assert.equal(sequence(connection.db),sequenceBefore);
+  assert.equal(connection.db.prepare('SELECT version FROM schema_version').get()!.version,4);
+  assert.deepEqual(connection.db.prepare('SELECT bytes,rows FROM mio_storage_counters').get(),connection.db.prepare(`SELECT ${MIO_QUOTA_BYTES_SQL} AS bytes,${MIO_QUOTA_ROWS_SQL} AS rows`).get());
+  assert.equal(connection.db.prepare('SELECT count(*) AS n FROM mio_process_target_revisions').get()!.n,4);
+  assert.deepEqual(readSchemaManifest(connection.db,'main'),SCHEMA_MANIFEST.history.entries);
+ }finally{connection.close();}
+ const reopened=open(value);try{assert.deepEqual(r1Data(reopened.db),before);assert.equal(sequence(reopened.db),sequenceBefore);}finally{reopened.close();}
+});
+
+for(const point of ['after-counter-table','after-counter-init','after-version'] as const)test(`R1 history3 counter upgrade failure ${point} retains every record, trigger and version`,t=>{
+ const value=r1Fixture(t),before=inspect(value,r1Data),exec=DatabaseSync.prototype.exec,prepare=DatabaseSync.prototype.prepare;
+ let hit=false;
+ t.mock.method(DatabaseSync.prototype,'exec',function(this:DatabaseSync,sql:string):void{
+  exec.call(this,sql);
+  if(point==='after-counter-table'&&sql.startsWith('CREATE TABLE main.mio_storage_counters(')||point==='after-version'&&sql==='UPDATE main.schema_version SET version=4'){hit=true;throw new Error('injected counter upgrade failure');}
+ });
+ t.mock.method(DatabaseSync.prototype,'prepare',function(this:DatabaseSync,sql:string){
+  const statement=prepare.call(this,sql);
+  if(point==='after-counter-init'&&sql.startsWith('INSERT INTO main.mio_storage_counters(')){
+   // The initialization INSERT has no bound parameters.
+   const run=statement.run.bind(statement);statement.run=()=>{run();hit=true;throw new Error('injected counter initialization failure');};
+  }
+  return statement;
+ });
+ assert.equal(errorOf(()=>open(value)).code,'PROJECT_INVALID');t.mock.restoreAll();assert.equal(hit,true);
+ inspect(value,db=>{assert.equal(db.prepare('SELECT version FROM schema_version').get()!.version,3);assert.deepEqual(readSchemaManifest(db,'main'),R1_HISTORY_V3_MANIFEST.entries);assert.deepEqual(r1Data(db),before);assert.equal(sequence(db),value.sequence);});
+ open(value).close();
+});
+
+test('modified R1 history3 manifests are refused without accounting repair or record loss',t=>{
+ const value=r1Fixture(t),before=inspect(value,r1Data);
+ inspect(value,db=>db.exec('CREATE TABLE unknown_mio_extension(value TEXT)'));
+ assert.equal(errorOf(()=>open(value)).code,'PROJECT_INVALID');
+ inspect(value,db=>{assert.equal(db.prepare('SELECT version FROM schema_version').get()!.version,3);assert.deepEqual(r1Data(db),before);assert.equal(db.prepare("SELECT 1 FROM sqlite_master WHERE name='mio_storage_counters'").get(),undefined);});
+});
+
+for(const point of ['counter-after-create','counter-after-init','counter-after-version','counter-after-commit'] as const)test(`SIGKILL ${point} preserves old R1 records and a complete counter profile`,{timeout:60_000},async t=>{
+ const value=r1Fixture(t),before=inspect(value,r1Data),kill=await atWorker(t,value,point);
+ await kill();
+ if(point!=='counter-after-commit')inspect(value,db=>{
+  assert.equal(db.prepare('SELECT version FROM schema_version').get()!.version,3);
+  assert.deepEqual(readSchemaManifest(db,'main'),R1_HISTORY_V3_MANIFEST.entries);assert.deepEqual(r1Data(db),before);
+ });
+ const connection=open(value);
+ try{
+  assert.deepEqual(r1Data(connection.db),before);assert.equal(sequence(connection.db),value.sequence);
+  assert.deepEqual(readSchemaManifest(connection.db,'main'),SCHEMA_MANIFEST.history.entries);
+  assert.deepEqual(connection.db.prepare('SELECT bytes,rows FROM mio_storage_counters').get(),connection.db.prepare(`SELECT ${MIO_QUOTA_BYTES_SQL} AS bytes,${MIO_QUOTA_ROWS_SQL} AS rows`).get());
+ }finally{connection.close();}
+});
+
 test('the exact S0 history resets only pre-release Mio in one locked opening transaction', t => {
   const value = fixture(t), before = inspect(value, otherData);
   const exec = DatabaseSync.prototype.exec, writes: {db: DatabaseSync; sql: string; transaction: boolean}[] = [];
@@ -134,7 +221,7 @@ test('the exact S0 history resets only pre-release Mio in one locked opening tra
     assert.equal(connection.db.prepare('PRAGMA foreign_keys').get()!.foreign_keys, 1);
     assert.equal(writes.filter(item => item.sql.startsWith('DROP TABLE')).length, 13);
     assert.ok(writes.every(item => item.db === connection.db && item.transaction));
-    assert.match(writes.at(-1)!.sql, /^UPDATE main\.schema_version SET version=3$/u, 'version is the last mutation in the upgrade');
+    assert.match(writes.at(-1)!.sql, /^UPDATE main\.schema_version SET version=4$/u, 'version is the last mutation in the upgrade');
     for (const table of LEGACY_MIO_TABLES) assert.equal(connection.db.prepare("SELECT 1 FROM main.sqlite_master WHERE type='table' AND name=?").get(table), undefined);
     connection.db.prepare('INSERT INTO main.mio_conversations(id,projectId,createdAt,updatedAt) VALUES(?,?,?,?)')
       .run(randomUUID(), value.projectId, '2026-11-02T00:00:00Z', '2026-11-02T00:00:00Z');
@@ -200,7 +287,7 @@ for (const point of ['after-drop', 'after-create', 'after-cleanup', 'after-versi
     const selected = point === 'after-drop' ? sql === 'DROP TABLE main.agent_task_runs_v2'
       : point === 'after-create' ? sql.startsWith('CREATE TABLE main.mio_conversations(')
       : point === 'after-cleanup' ? sql.startsWith('CREATE TRIGGER project.project_file_sequence_agent_task_target_revisions_v2_delete ')
-      : sql === 'UPDATE main.schema_version SET version=3';
+      : sql === 'UPDATE main.schema_version SET version=4';
     if (selected) { hit = true; throw new Error(`simulated upgrade ${point}`); }
   });
   assert.equal(errorOf(() => open(value)).code, 'PROJECT_INVALID');
@@ -262,7 +349,7 @@ for (const point of ['after-drop', 'after-cleanup', 'after-version', 'after-comm
     assert.deepEqual(otherData(connection.db), before);
     assert.equal(sequence(connection.db), value.sequence + 1);
     assert.equal(processRows(connection.db), 0);
-    assert.equal(connection.db.prepare('SELECT version FROM main.schema_version').get()!.version, 3);
+    assert.equal(connection.db.prepare('SELECT version FROM main.schema_version').get()!.version, 4);
     assert.deepEqual(readSchemaManifest(connection.db, 'main'), SCHEMA_MANIFEST.history.entries);
   } finally { connection.close(); }
 });

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "capturedAt": "2026-11-02T08:18:58.003749+00:00",
+  "capturedAt": "2026-11-02T09:07:43.371826+00:00",
   "gitHead": "80a10890e3f5a0485f2dcdb69e31dfad44d4600b",
   "sourceFilesSha256": {
     "pnpm-lock.yaml": "429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b",
@@ -4109,7 +4109,7 @@
   "capacity": {
     "formula": "C + N * maximumObservedCompleteRoundIncrement + E; rows analogously. B conservatively includes cold shared content where present, so C is an extra allowance, not a subtracted/average sample.",
     "C": 24478,
-    "Crows": 4,
+    "Crows": 5,
     "B": 1063915,
     "R": 388,
     "fixedRecoveryAllowance": {
@@ -4144,44 +4144,44 @@
     },
     "N100FreshEnvelopeOnly": {
       "bytesRequired": 120053429,
-      "rowsRequired": 38846
+      "rowsRequired": 38847
     },
     "N100FixedRecovery": {
       "bytesRequired": 124309089,
-      "rowsRequired": 40398,
+      "rowsRequired": 40399,
       "byteMarginAtCurrentLimit": 144126367,
-      "rowMarginAtCurrentLimit": -20398
+      "rowMarginAtCurrentLimit": 25137
     },
     "N100WithOneFailedUnknownAndUpgradePerCompleteRound": {
       "bytes": 1582689969,
-      "rows": 159000
+      "rows": 159001
     },
     "recommendedFixedScenarioCandidate": {
       "bytes": 268435456,
-      "rows": 45000,
+      "rows": 65536,
       "equivalentRuns": {
         "byBytes": 235,
-        "byRows": 111,
-        "minimum": 111
+        "byRows": 164,
+        "minimum": 164
       },
-      "decision": "Coordinator approval required; development constants unchanged."
+      "decision": "Coordinator approved candidateB; now implemented."
     },
     "currentLimits": {
       "bytes": 268435456,
-      "rows": 20000
+      "rows": 65536
     },
     "currentConservativeEquivalentRuns": {
       "byBytes": 235,
-      "byRows": 47,
-      "minimum": 47,
-      "role": "Current256MiB/20k reference only; does not satisfy D5 N100 target."
+      "byRows": 164,
+      "minimum": 164,
+      "role": "Selected256MiB/65536 policy; bounded scenario meets D5 N100."
     },
     "limitations": [
       "E adds one whole maximum observed complete workload prefix per recovery slot, plus unused headroom to the2MiB request-row ceiling; this conservatively covers late-round anomalies beyond the minimal fresh repository fixtures.",
       "Maximum is across observed completed samples, not a mathematical upper bound for arbitrary conversation lengths, tools, provider bodies or future catalogs.",
       "Stopped failed/unknown originals have no global count cap and can accumulate until quota. Fixed E is a stated scenario, not a production retention bound.",
       "One active request per project was observed with8 concurrent refusals; retained old intents may remain after stopping their runs.",
-      "Quota guard rejects usage>limit; storage status is full at usage>=limit. No development quota changed.",
+      "Quota guard rejects usage>limit; storage status is full at usage>=limit. Coordinator-selected65536-row quota is now implemented; the historical20000 value is retained in capacityBeforeIncrementalCounters.",
       "Physical peaks are sampled SQL/stat observations and exclude application-library B1 files and initial kernel schema creation; no fs read/open of held DB files.",
       "Checkpoint rewritten-column bytes exclude other SQL writes and physical write amplification. Network bytes are offline gateway request bodies, without sockets/headers/TLS/SSE."
     ],
@@ -4193,7 +4193,28 @@
         "byRows": 164,
         "minimum": 164
       },
-      "decision": "Coordinator approval required; development constants unchanged."
+      "decision": "Coordinator selected candidateB65536; now implemented."
+    },
+    "CrowsBeforeCounter": 4,
+    "selectedFixedScenarioCandidate": {
+      "bytes": 268435456,
+      "rows": 65536,
+      "equivalentRuns": {
+        "byBytes": 235,
+        "byRows": 164,
+        "minimum": 164
+      },
+      "decision": "Coordinator approved candidateB; now implemented."
+    },
+    "historicalCandidateA": {
+      "bytes": 268435456,
+      "rows": 45000,
+      "equivalentRuns": {
+        "byBytes": 235,
+        "byRows": 111,
+        "minimum": 111
+      },
+      "decision": "Historical candidateA; coordinator selected candidateB65536."
     }
   },
   "nearFullArchive": {
@@ -5343,16 +5364,22 @@
     }
   ],
   "verification": {
-    "test": {
-      "command": "TMPDIR=/private/tmp/r1c/tmp TZ=UTC node --test --test-timeout=600000 tests/mio-storage-report.test.ts",
+    "performanceTest": {
+      "command": "node --test --test-timeout=600000 tests/mio-quota-performance.test.ts",
+      "exit": 0,
+      "passed": 1,
+      "log": "/private/tmp/r1c-quota/performance-test.log"
+    },
+    "storageReportTest": {
+      "command": "node --test --test-timeout=600000 tests/mio-storage-report.test.ts",
       "exit": 0,
       "passed": 6,
-      "log": "/private/tmp/r1c/final-notification-fix/mio-storage-report-test-final.log"
+      "log": "/private/tmp/r1c-quota/storage-report-test.log"
     },
     "typecheck": {
       "command": "node scripts/tooling.ts typecheck",
       "exit": 0,
-      "log": "/private/tmp/r1c/final-notification-fix/typecheck-stress-final.log"
+      "log": "/private/tmp/r1c-quota/stress-typecheck.log"
     }
   },
   "adjacentContractProvenance": {
@@ -6196,5 +6223,260 @@
         "log": "/private/tmp/r1c/final-notification-fix/typecheck-stress-final.log"
       }
     }
+  },
+  "capacityBeforeIncrementalCounters": {
+    "formula": "C + N * maximumObservedCompleteRoundIncrement + E; rows analogously. B conservatively includes cold shared content where present, so C is an extra allowance, not a subtracted/average sample.",
+    "C": 24478,
+    "Crows": 4,
+    "B": 1063915,
+    "R": 388,
+    "fixedRecoveryAllowance": {
+      "retainedFailedRuns": 1,
+      "retainedUnknownRuns": 1,
+      "retainedSingleUpgradeRuns": 1,
+      "activeIntents": 1,
+      "freshRunEnvelopeBytes": 13635983,
+      "freshRunEnvelopeRows": 42,
+      "requestRowUnusedHeadroomBytes": 1468,
+      "completeWorkloadPrefixReserves": 4,
+      "bytes": 17893111,
+      "rows": 1594
+    },
+    "recoveryWholeScenarioUsage": {
+      "intent": {
+        "bytes": 2097753,
+        "rows": 8
+      },
+      "failed": {
+        "bytes": 3671474,
+        "rows": 11
+      },
+      "unknown": {
+        "bytes": 3671476,
+        "rows": 11
+      },
+      "upgraded": {
+        "bytes": 4195280,
+        "rows": 12
+      }
+    },
+    "N100FreshEnvelopeOnly": {
+      "bytesRequired": 120053429,
+      "rowsRequired": 38846
+    },
+    "N100FixedRecovery": {
+      "bytesRequired": 124309089,
+      "rowsRequired": 40398,
+      "byteMarginAtCurrentLimit": 144126367,
+      "rowMarginAtCurrentLimit": -20398
+    },
+    "N100WithOneFailedUnknownAndUpgradePerCompleteRound": {
+      "bytes": 1582689969,
+      "rows": 159000
+    },
+    "recommendedFixedScenarioCandidate": {
+      "bytes": 268435456,
+      "rows": 45000,
+      "equivalentRuns": {
+        "byBytes": 235,
+        "byRows": 111,
+        "minimum": 111
+      },
+      "decision": "Coordinator approval required; development constants unchanged."
+    },
+    "currentLimits": {
+      "bytes": 268435456,
+      "rows": 20000
+    },
+    "currentConservativeEquivalentRuns": {
+      "byBytes": 235,
+      "byRows": 47,
+      "minimum": 47,
+      "role": "Current256MiB/20k reference only; does not satisfy D5 N100 target."
+    },
+    "limitations": [
+      "E adds one whole maximum observed complete workload prefix per recovery slot, plus unused headroom to the2MiB request-row ceiling; this conservatively covers late-round anomalies beyond the minimal fresh repository fixtures.",
+      "Maximum is across observed completed samples, not a mathematical upper bound for arbitrary conversation lengths, tools, provider bodies or future catalogs.",
+      "Stopped failed/unknown originals have no global count cap and can accumulate until quota. Fixed E is a stated scenario, not a production retention bound.",
+      "One active request per project was observed with8 concurrent refusals; retained old intents may remain after stopping their runs.",
+      "Quota guard rejects usage>limit; storage status is full at usage>=limit. No development quota changed.",
+      "Physical peaks are sampled SQL/stat observations and exclude application-library B1 files and initial kernel schema creation; no fs read/open of held DB files.",
+      "Checkpoint rewritten-column bytes exclude other SQL writes and physical write amplification. Network bytes are offline gateway request bodies, without sockets/headers/TLS/SSE."
+    ],
+    "alternativeFixedScenarioCandidate": {
+      "bytes": 268435456,
+      "rows": 65536,
+      "equivalentRuns": {
+        "byBytes": 235,
+        "byRows": 164,
+        "minimum": 164
+      },
+      "decision": "Coordinator approval required; development constants unchanged."
+    }
+  },
+  "incrementalQuotaFinalization": {
+    "historyVersion": 4,
+    "inventoryTables": 19,
+    "counter": {
+      "name": "mio_storage_counters",
+      "logicalBytes": 0,
+      "quotaRows": 1
+    },
+    "policy": {
+      "bytes": 268435456,
+      "rows": 65536,
+      "rowBytes": 2097152,
+      "approved": true
+    },
+    "finalSourceHashes": {
+      "pnpm-lock.yaml": "429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b",
+      "tests/helpers/agent-task-context-report.ts": "00bd5cd7078a127a4c8f46699f4daa97f8816efef8f46aa636566e45daf15c20",
+      "tests/helpers/mio-storage-report.ts": "28b4221ef33de62c549385f648ec5f9569bc3d87207637fa8935b7abf905d886",
+      "tests/helpers/mio-storage-report-recovery.ts": "53980c894501299bbec536179354bffec2c67b0f842eb2b0fbbdc322c69b4088",
+      "tests/helpers/mio-runtime-fixture.ts": "ce1e6eaec9355cb37dd477a165045d58f863b559337c134c955d58438b1b5dea",
+      "packages/business/src/agent/mio-records.ts": "5d6566d8b1e31dce80f0bc891618bb3519171f87561c913fba3a902f873927ba",
+      "packages/business/src/agent/mio-journal.ts": "6a623282c90837665d56b15045b82ac183d56a8e1bc139fb100ef2fda19cf778",
+      "packages/business/src/agent/mio-assembly.ts": "737ac43945373814f70d0576d411a3f56c29962a93b75b6492c17424bd0b91e6",
+      "packages/business/src/agent/mio-storage.ts": "670efdf562d7f15d61fcee6117c2dcc185d5d79c4bcd869c11c90974abacc690",
+      "packages/business/src/agent/mio-run-usage.ts": "3bd349c225e792a62f287c52290b44d28bee4c27d52283ab6ae247d51a4357bd",
+      "packages/business/src/agent/mio-runtime.ts": "39514e57873da0ce910f292d3836e76e35307fd1fe1e10eb638872419714ca32",
+      "packages/business/src/agent/task-runtime-v2.ts": "6402d064c206fed67b78b75f19b904110d89f8aa686870abfd404f1f7f4487f4",
+      "packages/business/src/agent/task-gateway-v2.ts": "c42f99bac7b42eb30ef8bee1da2a30c5c482147147d420c772435b4581ca4efd",
+      "packages/business/src/agent/task-context-v2.ts": "8d119c505ea0578bb4db25dfc2752344415d4d6c369d5e2e8c7997e897a33d67",
+      "packages/business/src/project-file/schema/domains/mio.ts": "0828632a30c3e3ee65c070925ea6594c7c2477955b939f5cb1f872b78772f33a",
+      "packages/contracts/src/mio-storage.ts": "0963d0c60cbb942b6d862140a47fed0f737f808fd43063fd8b2afe0bb477f166",
+      "packages/business/src/project-file/schema/tables.ts": "89f8d6e996706781c860f2fc4a76194091b4364ba54e2a24d555e1a2bcf0f1be",
+      "packages/business/src/project-file/schema/databases.ts": "9c12b3e22a0ffdad26cf0f9c63247e2d52ad722be5f6d5d185e6a38ff462a3fe",
+      "packages/business/src/project-file/schema/history-upgrades.ts": "cd6bc6a064816a3806391307df5b51042801361a9982b1a9f01d2acbe5139c7a",
+      "packages/business/src/project-file/schema/manifest.ts": "c0ea9db06c8d0893535fa2c40b73193ff90f8e9bc56deb395b8a4015bdb1866d",
+      "packages/business/src/project-file/schema/history-v3-manifest.ts": "815a184de0f16374af9d32716a4d941a2a749d87da10736142b1fe0981cbf75e"
+    },
+    "sourceHashesCurrentMatch": {
+      "pnpm-lock.yaml": true,
+      "tests/helpers/agent-task-context-report.ts": true,
+      "tests/helpers/mio-storage-report.ts": true,
+      "tests/helpers/mio-storage-report-recovery.ts": true,
+      "tests/helpers/mio-runtime-fixture.ts": true,
+      "packages/business/src/agent/mio-records.ts": true,
+      "packages/business/src/agent/mio-journal.ts": true,
+      "packages/business/src/agent/mio-assembly.ts": true,
+      "packages/business/src/agent/mio-storage.ts": true,
+      "packages/business/src/agent/mio-run-usage.ts": true,
+      "packages/business/src/agent/mio-runtime.ts": true,
+      "packages/business/src/agent/task-runtime-v2.ts": true,
+      "packages/business/src/agent/task-gateway-v2.ts": true,
+      "packages/business/src/agent/task-context-v2.ts": true,
+      "packages/business/src/project-file/schema/domains/mio.ts": true,
+      "packages/contracts/src/mio-storage.ts": true,
+      "packages/business/src/project-file/schema/tables.ts": true,
+      "packages/business/src/project-file/schema/databases.ts": true,
+      "packages/business/src/project-file/schema/history-upgrades.ts": true,
+      "packages/business/src/project-file/schema/manifest.ts": true,
+      "packages/business/src/project-file/schema/history-v3-manifest.ts": true
+    },
+    "cc300": {
+      "old18TableIncrementsEqual": true,
+      "retainedBytes": 1063915,
+      "roundRows": 388,
+      "coldUsage": {
+        "bytes": 0,
+        "rows": 1
+      },
+      "afterUsage": {
+        "bytes": 1063915,
+        "rows": 389
+      },
+      "streaming": {
+        "appendCalls": 150,
+        "checkpointRewrittenColumnsBytes": 2614200
+      },
+      "requestBodyBytes": 1432640,
+      "afterReopen": {
+        "reconstructedRequests": 15,
+        "writes": 0
+      },
+      "artifact": "/private/tmp/r1c-quota/final-cc300.json",
+      "sha256": "163554b0cf47c8398a305d6cbfb06178083c58f4ff3b9a98a79a8a9573b6523d",
+      "exit": 0
+    },
+    "maxRetention": {
+      "old18TablesEqualAllFour": true,
+      "oneColdCounterRowPerIndependentFixture": true,
+      "artifact": "/private/tmp/r1c-quota/max-retention-after.json",
+      "sha256": "e0147771e7fa83553ad4a77c0d803cc10a618eb7a4b96a7dc0731d5b07dc7f37",
+      "exit": 0
+    },
+    "nearfull": {
+      "cases": [
+        {
+          "slack": 0,
+          "output": "text",
+          "outcome": {
+            "errorCode": null,
+            "state": "completed",
+            "originalBodyCleared": true,
+            "partialText": null,
+            "netBytes": -392788
+          }
+        },
+        {
+          "slack": 0,
+          "output": "tool_only",
+          "outcome": {
+            "errorCode": null,
+            "state": "completed",
+            "originalBodyCleared": true,
+            "partialText": null,
+            "netBytes": -523735
+          }
+        },
+        {
+          "slack": 1,
+          "output": "text",
+          "outcome": {
+            "errorCode": null,
+            "state": "completed",
+            "originalBodyCleared": true,
+            "partialText": null,
+            "netBytes": -392788
+          }
+        },
+        {
+          "slack": 1,
+          "output": "tool_only",
+          "outcome": {
+            "errorCode": null,
+            "state": "completed",
+            "originalBodyCleared": true,
+            "partialText": null,
+            "netBytes": -523735
+          }
+        }
+      ],
+      "artifact": "/private/tmp/r1c-quota/nearfull-formal-after.json",
+      "sha256": "c8e5ca202da642e8998a4cb23cdfb7fbaf636d44a5388842ac48d892b9f6e4b6",
+      "exit": 0
+    },
+    "verification": {
+      "performanceTest": {
+        "command": "node --test --test-timeout=600000 tests/mio-quota-performance.test.ts",
+        "exit": 0,
+        "passed": 1,
+        "log": "/private/tmp/r1c-quota/performance-test.log"
+      },
+      "storageReportTest": {
+        "command": "node --test --test-timeout=600000 tests/mio-storage-report.test.ts",
+        "exit": 0,
+        "passed": 6,
+        "log": "/private/tmp/r1c-quota/storage-report-test.log"
+      },
+      "typecheck": {
+        "command": "node scripts/tooling.ts typecheck",
+        "exit": 0,
+        "log": "/private/tmp/r1c-quota/stress-typecheck.log"
+      }
+    },
+    "performanceReport": "R1-C-QUOTA-PERFORMANCE.json",
+    "note": "Original13-round/raw and earlier notification-fix maps remain historical. This final code adds incremental accounting and one cold metadata row; no old raw artifact is relabeled."
   }
 }

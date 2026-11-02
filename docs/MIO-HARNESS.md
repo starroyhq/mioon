@@ -81,20 +81,22 @@ client 提供 `usage({projectId,runId})`，校验 DTO 和运行身份。GET 不�
 
 ## 项目存储计量与配额
 
-新 v2 storage 契约以 `scope: project` 和可信 projectId 标识范围，枚举完整 18 张 Mio 表。唯一 blob 只计一次；失败/unknown 原件、partial、对话 policy 及请求回执都不能漏计。全局 policy 属于应用库，不回算项目。
+新 v2 storage 契约以 `scope: project` 和可信 projectId 标识范围，枚举原 18 张记录表及单行 `mio_storage_counters`，共 19 张 Mio 表。计数表只有整数列，自身占 0 个逻辑字节、1 行；唯一 blob 只计一次，失败/unknown 原件、partial、对话 policy 及请求回执都不能漏计。全局 policy 属于应用库，不回算项目。
 
-`usage.bytes` 对齐内核的 `MIO_QUOTA_BYTES_SQL` 文本/JSON 字段计量；`usage.rows` 对齐执行配额行式。`retained.rows` 另外披露被执行行配额豁免的编辑回执。两者都不是 SQLite 物理文件大小。doctor 在明确项目请求上返回新清单，client 校验项目身份与计量等式；旧工作区只读诊断继续使用 v1 profile。
+`usage.bytes` 对齐内核的 `MIO_QUOTA_BYTES_SQL` 文本/JSON 字段计量；`usage.rows` 对齐执行配额行式。原 18 表的 INSERT/UPDATE/DELETE 触发器按 NEW/OLD 差额更新单行计数，并在同一触发器内只查询计数检查执行配额，不扫描已有记录。回执等豁免表只计数，不增加执行拦截。计数与领域写入共用事务/savepoint，回滚及强杀恢复也一起生效。
 
-开发期间仍为每项目 **256 MiB / 20000 行 / 单行 2 MiB**。编辑回执可在执行配额满时继续写，当前仅有单回执 payload 64 KiB 与单行保护，没有独立累计总量上限；新 DTO 明确披露 null，而非声称不存在的总量保护。它们的真实字节仍计入之后的执行占用。
+`retained.rows` 另外披露被执行行配额豁免的编辑回执。逻辑计量不是 SQLite 物理文件大小。doctor 在同一条 SQL 快照中全量枚举清单并核对计数，缺失、非法或不一致报 `AGENT_TASK_STORAGE_CORRUPT`，读取不修复。client 校验项目身份与计量等式；旧工作区只读诊断继续使用 v1 profile。
 
-新的限额由协调人按改后实测选择，本分支不提前改常量。至少 100 个同等 stress30 完整轮次的提案依据是：
+协调人已选定每项目 **256 MiB / 65,536 行 / 单行 2 MiB**。编辑回执可在执行配额满时继续写，当前仅有单回执 payload 64 KiB 与单行保护，没有独立累计总量上限；DTO 明确披露 null。它们的真实字节仍计入之后的执行占用。
+
+容量依据是至少 100 个同等 stress30 完整轮次，加冷启动和指定异常余量：
 
 ```text
 bytes >= C + 100 × max(B) + E
 rows  >= C_rows + 100 × max(R) + E_rows
 ```
 
-C 是冷启动共享成本，B/R 取完整轮和 H2 对照中的最大增量，E 明确列出保留的失败、unknown、活动 intent 与升级双份情景。旧异常可以累积，有限 E 不表示所有工作负载或无限失败都能装下。字节和行约束必须同时成立。
+C 是冷启动共享成本及计数表自身 1 行，B/R 取完整轮和 H2 对照中的最大增量，E 明确列出保留的失败、unknown、活动 intent 与升级双份情景。原记录的 C/B/R/E 不变，增加计数表后 N100 至少 124,309,089 字节 / 40,399 行；选定配额在此模型下约容纳 164 轮。旧异常可以累积，有限 E 不表示任意工作负载或无限失败都能装下。
 
 测量数据、四种量的区分、原始 artifact/source/lock/helper hash、命令、异常保留上界及候选数字见 [R1-C 存储测量](verification/mio-harness/R1-C-STORAGE.md) 和 [机器数据](verification/mio-harness/R1-C-STORAGE.json)。不在项目打开期间用 fs 打开/关闭数据库文件描述符。
 

@@ -11,6 +11,7 @@ import {fileURLToPath} from 'node:url';
 import {openStore} from '../packages/business/src/project-file/index.ts';
 import {openStore as openWorkspaceStore} from '../packages/business/src/db.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
+import {readMioStorage} from '../packages/business/src/agent/mio-storage.ts';
 import {createMioJournal} from '../packages/business/src/agent/mio-journal.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {aggregateMioRunUsage, readMioRunUsage, readAgentTaskRunUsage} from '../packages/business/src/agent/mio-run-usage.ts';
@@ -140,7 +141,7 @@ test('invalid passive measurements and cumulative overflow never fail canonical 
 test('archival failure after raw-body release rolls back completion, usage projection, and output together', t => {
   const f = fixture(t), model = f.model();
   f.store.tx(() => f.records.markDispatched(model.requestId, at));
-  const before = read(f), entries = f.records.entries(f.runId).length;
+  const before = read(f), beforeStorage = readMioStorage(f.store.db), entries = f.records.entries(f.runId).length;
   f.store.db.exec(`CREATE TEMP TRIGGER reject_usage_output BEFORE INSERT ON mio_entries WHEN NEW.kind='model_output' BEGIN SELECT RAISE(ABORT,'injected output archival failure'); END`);
   f.store.tx(() => {
     assert.throws(() => f.records.completeModelRequest(model.requestId, {entryId: randomUUID(), output: output({inputTokens: 12}), at}), /injected output archival failure/u);
@@ -149,6 +150,7 @@ test('archival failure after raw-body release rolls back completion, usage proje
     assert.equal(f.records.step(model.stepId).status, 'dispatch_started');
     assert.equal(f.records.step(model.stepId).resultEntryId, null); assert.equal(f.records.entries(f.runId).length, entries);
     assert.deepEqual(read(f), before);
+    assert.deepEqual(readMioStorage(f.store.db), beforeStorage);
   });
   f.store.db.exec('DROP TRIGGER reject_usage_output');
   f.store.tx(() => f.records.completeModelRequest(model.requestId, {entryId: randomUUID(), output: output({inputTokens: 12}), at}));
@@ -169,7 +171,7 @@ test('SIGKILL between raw-body release and output archival restores durable inte
   }
   child.kill('SIGKILL'); const [exitCode, signal] = await closed;
   assert.equal(exitCode, null); assert.equal(signal, 'SIGKILL');
-  const {runId, stepId, requestId} = JSON.parse(readFileSync(marker, 'utf8')) as {runId: string; stepId: string; requestId: string};
+  const {runId, stepId, requestId, beforeStorage} = JSON.parse(readFileSync(marker, 'utf8')) as {runId: string; stepId: string; requestId: string; beforeStorage: unknown};
   const store = openStore(root), records = createMioRecords(store); t.after(() => store.close());
   assert.equal(records.request(requestId).state, 'dispatch_started'); assert.equal(records.request(requestId).originalBody, '{"privateRequest":true}');
   assert.equal(records.step(stepId).status, 'dispatch_started'); assert.equal(records.step(stepId).partialText, 'DURABLE_PARTIAL');
@@ -177,6 +179,7 @@ test('SIGKILL between raw-body release and output archival restores durable inte
   const usage = readMioRunUsage(store, runId), {runId: _runId, revision: _revision, ...summary} = usage;
   assert.equal(usage.modelOutcomes.inflight, 1); assert.equal(usage.knownTotals.inputTokens, null);
   assert.deepEqual(records.run(runId).usageSummary, summary);
+  assert.deepEqual(readMioStorage(store.db), beforeStorage);
   assert.equal(store.db.prepare('PRAGMA main.foreign_key_check').all().length, 0);
 });
 

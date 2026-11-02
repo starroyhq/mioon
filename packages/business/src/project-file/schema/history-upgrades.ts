@@ -1,7 +1,8 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {projectFileError} from '../errors.ts';
-import {MIO_SCHEMA} from './domains/mio.ts';
+import {MIO_SCHEMA,MIO_COUNTER_SCHEMA,MIO_COUNTER_TRIGGERS,initializeMioStorageCounters} from './domains/mio.ts';
 import {S0_HISTORY_V2_MANIFEST} from './history-v2-manifest.ts';
+import {R1_HISTORY_V3_MANIFEST} from './history-v3-manifest.ts';
 import type {SchemaManifest} from './manifest-check.ts';
 import {LEGACY_MIO_TABLES} from './tables.ts';
 
@@ -10,6 +11,7 @@ import {LEGACY_MIO_TABLES} from './tables.ts';
 export interface HistoryUpgrade {
   readonly from: SchemaManifest;
   readonly toVersion: number;
+  readonly clearLegacyProcessRevisions?: boolean;
   readonly apply: (db: DatabaseSync) => void;
 }
 
@@ -27,10 +29,21 @@ function resetDevelopmentMio(db: DatabaseSync): void {
     if (!CREATE_PREFIX.test(sql)) throw new TypeError('Unqualified Mio schema statement');
     db.exec(sql.replace(CREATE_PREFIX, 'CREATE $1 main.'));
   }
+  initializeMioStorageCounters(db,'main');
+}
+
+/** The already-created R1 record format is retained byte-for-byte. Only the
+ * accounting mechanism changes; initialization scans once under the lock. */
+function addMioStorageCounters(db:DatabaseSync):void{
+ if(!db.isTransaction)throw new TypeError('A history upgrade requires the opening transaction');
+ for(const entry of R1_HISTORY_V3_MANIFEST.entries)if(entry.type==='trigger'&&entry.name.startsWith('quota_mio_'))db.exec(`DROP TRIGGER main.${entry.name}`);
+ for(const sql of [...MIO_COUNTER_SCHEMA,...MIO_COUNTER_TRIGGERS])db.exec(sql.replace(CREATE_PREFIX,'CREATE $1 main.'));
+ initializeMioStorageCounters(db,'main');
 }
 
 export const HISTORY_UPGRADES: readonly HistoryUpgrade[] = Object.freeze([
-  Object.freeze({from: S0_HISTORY_V2_MANIFEST, toVersion: 3, apply: resetDevelopmentMio}),
+  Object.freeze({from: S0_HISTORY_V2_MANIFEST, toVersion: 4, clearLegacyProcessRevisions:true, apply: resetDevelopmentMio}),
+  Object.freeze({from: R1_HISTORY_V3_MANIFEST, toVersion: 4, apply: addMioStorageCounters}),
 ]);
 
 /** Clears only the four local-process target kinds from an older project.

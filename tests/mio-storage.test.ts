@@ -64,10 +64,11 @@ function totals(snapshot: MioStorageSnapshot): MioStorageSnapshot {
     status: bytes >= snapshot.limits.bytes || rows >= snapshot.limits.rows ? 'full' : bytes >= snapshot.limits.bytes * .9 || rows >= snapshot.limits.rows * .9 ? 'near_limit' : 'available'};
 }
 
-test('project storage counts all eighteen real tables with the exact existing quota formula and one copy of each blob', t => {
+test('project storage counts nineteen real tables with the exact quota formula and one copy of each blob', t => {
   const f = seeded(t), actual = readMioStorage(f.db);
   assert.equal(actual.version, 2); assert.equal(actual.scope, 'project'); assert.equal(actual.projectId, f.store.projectId);
   assert.equal(actual.format, 'mio_records'); assert.deepEqual(actual.limits, MIO_STORAGE_LIMITS);
+  assert.equal(actual.limits.rows, 65536);
   assert.deepEqual(actual.tables.map(item => item.name), HISTORY_TABLES_BY_DOMAIN.mio);
   for (const item of actual.tables) {
     const rows = f.db.prepare(`SELECT * FROM main.${item.name}`).all();
@@ -82,6 +83,8 @@ test('project storage counts all eighteen real tables with the exact existing qu
   const blob = f.db.prepare('SELECT * FROM mio_blobs WHERE sha256=?').get(f.shared)!;
   assert.equal(table(actual, 'mio_blobs').rows, 1);
   assert.equal(table(actual, 'mio_blobs').bytes, Buffer.byteLength(String(blob.sha256) + String(blob.content) + String(blob.createdAt)));
+  assert.deepEqual(table(actual, 'mio_storage_counters'), {name: 'mio_storage_counters', bytes: 0, rows: 1, countedBytes: true, countedRows: true, quotaGuard: 'row_only'});
+  assert.deepEqual({...f.db.prepare('SELECT bytes,rows FROM mio_storage_counters WHERE singleton=1').get()}, actual.usage);
   assert.ok(!actual.tables.some(item => String(item.name).includes('agent_task_policy')));
   assert.doesNotMatch(JSON.stringify(actual), /PRIVATE_|\/PRIVATE\/|inputManifest|originalBody|partialText|digest/u);
 });
@@ -135,16 +138,24 @@ test('storage reads use only the registered kernel identity and cause zero write
 
 test('receipt payload protection is distinct from execution quota, and receipts disclose actual retained rows', t => {
   const f = fixture(t), {projectId} = f.store;
-  f.store.tx(() => {
+  let next = 0;
+  function fill(rows: number) { f.store.tx(() => {
     const insert = f.db.prepare('INSERT INTO mio_process_target_revisions VALUES(?,?,?,1)');
-    for (let index = 0; index < 20000; index++) insert.run(projectId, 'job', String(index));
-  });
-  const full = readMioStorage(f.db); assert.equal(full.status, 'full'); assert.equal(full.usage.rows, 20000);
+    while (next < rows) insert.run(projectId, 'job', String(next++));
+  }); }
+  // The numeric counter row occupies one counted row from the beginning.
+  assert.deepEqual(readMioStorage(f.db).usage, {bytes: 0, rows: 1});
+  fill(58981); const below = readMioStorage(f.db);
+  assert.equal(below.usage.rows, 58982); assert.equal(below.status, 'available');
+  fill(58982); const near = readMioStorage(f.db);
+  assert.equal(near.usage.rows, 58983); assert.equal(near.status, 'near_limit');
+  fill(65535);
+  const full = readMioStorage(f.db); assert.equal(full.status, 'full'); assert.equal(full.usage.rows, 65536);
   const receipt = {requestId: randomUUID(), ownerId: 'synthetic-owner', digest: hash('edit'), data: {text: 'x'.repeat(65525)}};
   assert.equal(Buffer.byteLength(JSON.stringify(receipt.data)), 65536);
   f.store.tx(() => f.records.saveEditReceipt(receipt));
   const after = readMioStorage(f.db);
-  assert.equal(after.usage.rows, full.usage.rows); assert.equal(after.retained.rows, 20001);
+  assert.equal(after.usage.rows, full.usage.rows); assert.equal(after.retained.rows, 65537);
   assert.ok(after.usage.bytes > full.usage.bytes); assert.equal(table(after, 'mio_edit_receipts').quotaGuard, 'row_only');
   assert.deepEqual(after.independentLimits, {editReceiptDataBytes: 65536, editReceiptTotalBytes: null, editReceiptTotalRows: null});
   assert.throws(() => f.store.tx(() => f.records.saveEditReceipt({...receipt, requestId: randomUUID(), data: {text: 'x'.repeat(65526)}})));
@@ -152,11 +163,65 @@ test('receipt payload protection is distinct from execution quota, and receipts 
   assert.deepEqual(readMioStorage(f.db), after);
 });
 
+test('doctor detects tampered or missing counters without repairing them or writing on GET', t => {
+  const f = seeded(t), original = readMioStorage(f.db).usage;
+  const corrupt = (error: unknown): boolean => error !== null && typeof error === 'object' && 'code' in error && error.code === 'AGENT_TASK_STORAGE_CORRUPT';
+  function rejectsWithoutWrites() {
+    const before = f.db.prepare('SELECT total_changes() AS n').get()!.n;
+    f.db.exec('PRAGMA query_only=ON');
+    assert.throws(() => readMioStorage(f.db), corrupt);
+    assert.equal(f.db.prepare('SELECT total_changes() AS n').get()!.n, before);
+    f.db.exec('PRAGMA query_only=OFF');
+  }
+  f.db.exec('UPDATE mio_storage_counters SET bytes=bytes+1'); rejectsWithoutWrites();
+  f.db.prepare('UPDATE mio_storage_counters SET bytes=?,rows=?').run(original.bytes, original.rows);
+  f.db.exec('UPDATE mio_storage_counters SET rows=rows+1'); rejectsWithoutWrites();
+  f.db.prepare('UPDATE mio_storage_counters SET bytes=?,rows=?').run(original.bytes, original.rows);
+  assert.deepEqual(readMioStorage(f.db).usage, original);
+  // Simulate on-disk structural damage after the kernel opened a valid file.
+  // Ordinary domain writes cannot remove this protected singleton.
+  for (const row of f.db.prepare("SELECT name FROM main.sqlite_master WHERE type='trigger' AND tbl_name='mio_storage_counters'").all()) {
+    assert.match(String(row.name), /^[a-z_][a-z0-9_]*$/u); f.db.exec(`DROP TRIGGER ${String(row.name)}`);
+  }
+  f.db.exec('DELETE FROM mio_storage_counters'); rejectsWithoutWrites();
+  f.db.exec('DROP TABLE mio_storage_counters'); rejectsWithoutWrites();
+  f.db.exec('CREATE TABLE mio_storage_counters(singleton INTEGER,bytes INTEGER,rows INTEGER)');
+  const insert = f.db.prepare('INSERT INTO mio_storage_counters VALUES(1,?,?)');
+  insert.run(original.bytes, original.rows); insert.run(original.bytes, original.rows); rejectsWithoutWrites();
+  f.db.exec('DELETE FROM mio_storage_counters WHERE rowid=2;UPDATE mio_storage_counters SET bytes=0.5'); rejectsWithoutWrites();
+  f.db.prepare('UPDATE mio_storage_counters SET bytes=?').run(BigInt(Number.MAX_SAFE_INTEGER) + 1n); rejectsWithoutWrites();
+});
+
+test('incremental counters equal full inventory after updates, no-ops, exempt writes, deletes and rollback', t => {
+  const f = seeded(t), {projectId} = f.store;
+  function equal() {
+    const actual = readMioStorage(f.db);
+    assert.deepEqual(actual.usage, {...f.db.prepare(`SELECT ${MIO_QUOTA_BYTES_SQL} AS bytes,${MIO_QUOTA_ROWS_SQL} AS rows`).get()});
+    assert.deepEqual({...f.db.prepare('SELECT bytes,rows FROM mio_storage_counters').get()}, actual.usage);
+    return actual;
+  }
+  const start = equal();
+  f.store.tx(() => f.db.prepare('UPDATE mio_steps SET partialText=? WHERE id=?').run('partial 中文🙂', f.stepId)); equal();
+  f.store.tx(() => f.db.prepare('UPDATE mio_steps SET partialText=partialText WHERE id=?').run(f.stepId)); equal();
+  f.store.tx(() => f.db.prepare('UPDATE mio_steps SET partialText=NULL WHERE id=?').run(f.stepId)); assert.deepEqual(equal(), start);
+  f.store.tx(() => f.records.saveEditReceipt({requestId: randomUUID(), ownerId: 'synthetic-owner', digest: hash('new edit'), data: {text: 'exempt receipt 中文'}}));
+  const receipt = equal(); assert.equal(receipt.usage.rows, start.usage.rows); assert.ok(receipt.usage.bytes > start.usage.bytes);
+  f.store.tx(() => f.db.prepare('UPDATE mio_edit_claims SET state=?').run('uncertain')); equal();
+  f.store.tx(() => f.db.prepare('DELETE FROM mio_edit_claims').run()); const removed = equal();
+  assert.equal(table(removed, 'mio_edit_claims').rows, 0);
+  assert.throws(() => f.store.tx(() => {
+    f.db.prepare('UPDATE mio_steps SET partialText=? WHERE id=?').run('rollback retained bytes', f.stepId); equal();
+    f.db.prepare('INSERT INTO mio_process_target_revisions VALUES(?,?,?,1)').run(projectId, 'job', randomUUID()); equal();
+    throw new Error('force synthetic rollback');
+  }), /force synthetic rollback/u);
+  assert.deepEqual(equal(), removed);
+});
+
 test('the closed version 2 schema enforces complete inventory, exact equations, boundaries and overflow safety', t => {
   const f = seeded(t), valid = readMioStorage(f.db);
   const invalid: unknown[] = [
     {...valid, version: 1}, {...valid, scope: 'workspace'}, {...valid, projectId: 'arbitrary'}, {...valid, format: 'inline'},
-    {...valid, limits: {...valid.limits, bytes: 2 ** 30}}, {...valid, independentLimits: {...valid.independentLimits, editReceiptTotalRows: 20000}},
+    {...valid, limits: {...valid.limits, bytes: 2 ** 30}}, {...valid, limits: {...valid.limits, rows: 20000}}, {...valid, independentLimits: {...valid.independentLimits, editReceiptTotalRows: 65536}},
     {...valid, retained: {...valid.retained, rows: valid.usage.rows}}, {...valid, usage: {...valid.usage, bytes: valid.usage.bytes + 1}},
     {...valid, remaining: {...valid.remaining, rows: 0}}, {...valid, status: 'full'}, {...valid, secret: 'PRIVATE'},
     {...valid, tables: valid.tables.slice(1)}, {...valid, tables: [...valid.tables.slice(1), valid.tables[1]]},
@@ -164,13 +229,15 @@ test('the closed version 2 schema enforces complete inventory, exact equations, 
     {...valid, tables: valid.tables.map(item => item.name === 'mio_edit_receipts' ? {...item, countedRows: true} : item)},
     {...valid, tables: valid.tables.map(item => item.name === 'mio_edit_claims' ? {...item, quotaGuard: 'execution'} : item)},
     {...valid, tables: valid.tables.map(item => item.name === 'mio_blobs' ? {...item, countedBytes: false} : item)},
+    totals({...valid, tables: valid.tables.map(item => item.name === 'mio_storage_counters' ? {...item, rows: 0} : item)}),
+    totals({...valid, tables: valid.tables.map(item => item.name === 'mio_storage_counters' ? {...item, bytes: 1} : item)}),
     {...valid, tables: valid.tables.map((item, index) => index ? item : {...item, rows: 0.5})},
     {...valid, usage: {...valid.usage, rows: -1}}, {...valid, usage: {...valid.usage, bytes: Infinity}},
   ];
   for (const value of invalid) assert.equal(mioStorageSnapshotSchema.safeParse(value).success, false);
   const empty = readMioStorage(fixture(t).db);
-  for (const [rows, status] of [[17999, 'available'], [18000, 'near_limit'], [20000, 'full'], [20001, 'full']] as const) {
-    const value = totals({...empty, tables: empty.tables.map(item => item.name === 'mio_events' ? {...item, rows} : item)});
+  for (const [rows, status] of [[58982, 'available'], [58983, 'near_limit'], [65536, 'full'], [65537, 'full']] as const) {
+    const value = totals({...empty, tables: empty.tables.map(item => item.name === 'mio_events' ? {...item, rows: rows - 1} : item)});
     assert.equal(value.status, status); assert.equal(mioStorageSnapshotSchema.safeParse(value).success, true);
   }
   for (const bytes of [Math.ceil(268435456 * .9) - 1, Math.ceil(268435456 * .9), 268435456, Number.MAX_SAFE_INTEGER]) {

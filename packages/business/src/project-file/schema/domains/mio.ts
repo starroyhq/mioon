@@ -3,9 +3,10 @@
 import {HISTORY_TABLES_BY_DOMAIN} from '../tables.ts';
 import {AGENT_TASK_STATUSES,AGENT_TASK_STEP_STATUSES} from '../../../../../contracts/src/agent-tasks-v2.ts';
 import {MIO_ENTRY_KINDS} from '../../../../../contracts/src/mio-records.ts';
+import type {DatabaseSync} from 'node:sqlite';
 
 export const MIO_PROCESS_TARGET_KINDS=Object.freeze(['job','export','image_task','frame_task'] as const);
-export const MIO_STORAGE_LIMITS=Object.freeze({bytes:256*1024*1024,rows:20000,rowBytes:2*1024*1024});
+export const MIO_STORAGE_LIMITS=Object.freeze({bytes:256*1024*1024,rows:65536,rowBytes:2*1024*1024});
 const integer=(name:string,min=0):string=>`${name} INTEGER NOT NULL CHECK(typeof(${name})='integer' AND ${name} BETWEEN ${min} AND 9007199254740991)`;
 const json=(name:string,limit=2097152):string=>`${name} TEXT NOT NULL CHECK(json_valid(${name}) AND length(CAST(${name} AS BLOB)) BETWEEN 1 AND ${limit})`;
 const optionalJson=(name:string):string=>`${name} TEXT CHECK(${name} IS NULL OR (json_valid(${name}) AND length(CAST(${name} AS BLOB))<=2097152))`;
@@ -41,12 +42,43 @@ const byteColumns:Readonly<Record<string,readonly string[]>>={
  mio_edit_owners:['ownerId','projectId'],mio_edit_receipts:['requestId','projectId','ownerId','digest','data'],
  mio_conversation_policies:['conversationId','projectId','data'],mio_conversation_policy_requests:['requestId','projectId','conversationId','inputHash','response'],
  mio_events:['runId','createdAt'],mio_process_target_revisions:['projectId','kind','targetId'],
+ mio_storage_counters:[],
 };
-export const MIO_QUOTA_BYTES_SQL=HISTORY_TABLES_BY_DOMAIN.mio.map(table=>`(SELECT COALESCE(sum(${byteColumns[table]!.map(c=>`COALESCE(length(CAST(${c} AS BLOB)),0)`).join('+')}),0) FROM ${table})`).join('+');
+const rowBytes=(table:string,prefix=''):string=>byteColumns[table]!.map(c=>`COALESCE(length(CAST(${prefix}${c} AS BLOB)),0)`).join('+')||'0';
+export const MIO_QUOTA_BYTES_SQL=HISTORY_TABLES_BY_DOMAIN.mio.map(table=>`(SELECT COALESCE(sum(${rowBytes(table)}),0) FROM ${table})`).join('+');
 export const MIO_QUOTA_ROWS_SQL=HISTORY_TABLES_BY_DOMAIN.mio.filter(table=>table!=='mio_edit_receipts').map(table=>`(SELECT count(*) FROM ${table})`).join('+');
-const rowTriggers=HISTORY_TABLES_BY_DOMAIN.mio.flatMap(table=>['INSERT','UPDATE'].map(operation=>`CREATE TRIGGER row_${table}_${operation.toLowerCase()} BEFORE ${operation} ON ${table} WHEN ${byteColumns[table]!.map(column=>`COALESCE(length(CAST(NEW.${column} AS BLOB)),0)`).join('+')}>${MIO_STORAGE_LIMITS.rowBytes} BEGIN SELECT RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT');END`));
-const quotaTables=HISTORY_TABLES_BY_DOMAIN.mio.filter(table=>!['mio_edit_claims','mio_edit_owners','mio_edit_receipts','mio_process_target_revisions'].includes(table));
-const quotaTriggers=quotaTables.flatMap(table=>['INSERT','UPDATE'].map(operation=>`CREATE TRIGGER quota_${table}_${operation.toLowerCase()} AFTER ${operation} ON ${table} BEGIN SELECT CASE WHEN ${MIO_QUOTA_ROWS_SQL}>${MIO_STORAGE_LIMITS.rows} OR ${MIO_QUOTA_BYTES_SQL}>${MIO_STORAGE_LIMITS.bytes} THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END`));
+const recordTables=HISTORY_TABLES_BY_DOMAIN.mio.filter(table=>table!=='mio_storage_counters');
+const rowTriggers=recordTables.flatMap(table=>['INSERT','UPDATE'].map(operation=>`CREATE TRIGGER row_${table}_${operation.toLowerCase()} BEFORE ${operation} ON ${table} WHEN ${rowBytes(table,'NEW.')}>${MIO_STORAGE_LIMITS.rowBytes} BEGIN SELECT RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT');END`));
+const quotaTables=recordTables.filter(table=>!['mio_edit_claims','mio_edit_owners','mio_edit_receipts','mio_process_target_revisions'].includes(table));
+/** Count and check in the same trigger: correctness cannot depend on the
+ * order SQLite chooses for multiple AFTER triggers. No retained-table scan. */
+export const MIO_COUNTER_TRIGGERS:readonly string[]=Object.freeze(recordTables.flatMap(table=>['INSERT','UPDATE','DELETE'].map(operation=>{
+ const bytes=operation==='INSERT'?`(${rowBytes(table,'NEW.')})`:operation==='DELETE'?`-(${rowBytes(table,'OLD.')})`:`(${rowBytes(table,'NEW.')})-(${rowBytes(table,'OLD.')})`;
+ const rows=table==='mio_edit_receipts'||operation==='UPDATE'?0:operation==='INSERT'?1:-1;
+ const guard=quotaTables.includes(table)?`SELECT CASE WHEN bytes>${MIO_STORAGE_LIMITS.bytes} OR rows>${MIO_STORAGE_LIMITS.rows} THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END FROM mio_storage_counters WHERE singleton=1;`:'';
+ // Explicit RAISE also overrides an outer OR IGNORE/REPLACE conflict policy;
+ // it must never keep the content write while silently skipping its delta.
+ const valid=`SELECT CASE WHEN bytes+(${bytes}) NOT BETWEEN 0 AND 9007199254740991 OR rows+(${rows}) NOT BETWEEN 1 AND 9007199254740991 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_CORRUPT') END FROM mio_storage_counters WHERE singleton=1;`;
+ return `CREATE TRIGGER quota_${table}_${operation.toLowerCase()} AFTER ${operation} ON ${table} BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM mio_storage_counters WHERE singleton=1) THEN RAISE(ABORT,'AGENT_TASK_STORAGE_CORRUPT') END;${valid}UPDATE mio_storage_counters SET bytes=bytes+(${bytes}),rows=rows+(${rows}) WHERE singleton=1;${guard}END`;
+})));
+
+export const MIO_COUNTER_SCHEMA:readonly string[]=Object.freeze([
+ `CREATE TABLE mio_storage_counters(singleton INTEGER PRIMARY KEY CHECK(singleton=1),${integer('bytes')},${integer('rows',1)})`,
+ "CREATE TRIGGER mio_storage_counters_insert BEFORE INSERT ON mio_storage_counters WHEN EXISTS(SELECT 1 FROM mio_storage_counters) BEGIN SELECT RAISE(ABORT,'AGENT_TASK_STORAGE_CORRUPT');END",
+ "CREATE TRIGGER mio_storage_counters_delete BEFORE DELETE ON mio_storage_counters BEGIN SELECT RAISE(ABORT,'AGENT_TASK_STORAGE_CORRUPT');END",
+ "CREATE TRIGGER mio_storage_counters_identity BEFORE UPDATE OF singleton ON mio_storage_counters WHEN NEW.singleton IS NOT OLD.singleton BEGIN SELECT RAISE(ABORT,'AGENT_TASK_STORAGE_CORRUPT');END",
+]);
+
+/** Used only while building an empty/current domain or its reviewed upgrade.
+ * Integer metadata has no logical text bytes; its own one row is charged. */
+export function initializeMioStorageCounters(db:DatabaseSync,schema:string):void{
+ if(!db.isTransaction||!/^[A-Za-z_][A-Za-z0-9_]*$/.test(schema))throw new TypeError('Counter initialization requires an opening transaction');
+ // REPLACE must run its implicit DELETE triggers (including evidence retain
+ // guards), otherwise an old row disappears without an OLD delta.
+ db.exec('PRAGMA recursive_triggers=ON');
+ const qualify=(sql:string):string=>sql.replace(/FROM (mio_[a-z_]+)/gu,`FROM ${schema}.$1`);
+ db.prepare(`INSERT INTO ${schema}.mio_storage_counters(singleton,bytes,rows) SELECT 1,${qualify(MIO_QUOTA_BYTES_SQL)},1+${qualify(MIO_QUOTA_ROWS_SQL)}`).run();
+}
 
 /** Exact UPDATE columns preserve the existing revision-trigger semantics. */
 const processTables=[
@@ -62,6 +94,7 @@ const processTriggers=processTables.flatMap(({table,kind,columns})=>['insert','u
 }));
 
 export const MIO_SCHEMA:readonly string[]=Object.freeze([
+ ...MIO_COUNTER_SCHEMA,
  `CREATE TABLE mio_blobs(${hash('sha256')},${integer('bytes')},content TEXT NOT NULL,createdAt TEXT NOT NULL,PRIMARY KEY(sha256),CHECK(bytes=length(CAST(content AS BLOB)) AND bytes<=2097152))`,
  `CREATE TABLE mio_conversations(${id},${projectId},${timestamps},UNIQUE(projectId,id))`,
  `CREATE INDEX mio_conversations_page ON mio_conversations(projectId,updatedAt,id)`,
@@ -109,8 +142,8 @@ export const MIO_SCHEMA:readonly string[]=Object.freeze([
  `CREATE TRIGGER mio_request_state BEFORE UPDATE ON mio_requests WHEN OLD.state IS NOT NEW.state AND NOT ((OLD.state='intent' AND NEW.state IN ('dispatch_started','failed','superseded')) OR (OLD.state='dispatch_started' AND NEW.state IN ('completed','failed','unknown'))) BEGIN SELECT RAISE(ABORT,'Mio request state cannot be replayed');END`,
  `CREATE TRIGGER mio_request_sent BEFORE UPDATE ON mio_requests WHEN (NEW.state IN ('dispatch_started','completed','unknown') AND NEW.dispatchStartedAt IS NULL) OR (NEW.state='superseded' AND NEW.dispatchStartedAt IS NOT NULL) OR (NEW.state='completed' AND (NEW.completedAt IS NULL OR NOT EXISTS(SELECT 1 FROM mio_steps WHERE id=NEW.stepId AND status='completed' AND currentRequestId=NEW.id))) BEGIN SELECT RAISE(ABORT,'Mio request must retain its dispatch and completion evidence');END`,
  `CREATE TRIGGER mio_process_revision BEFORE UPDATE ON mio_process_target_revisions WHEN NEW.projectId IS NOT OLD.projectId OR NEW.kind IS NOT OLD.kind OR NEW.targetId IS NOT OLD.targetId OR NEW.revision<=OLD.revision BEGIN SELECT RAISE(ABORT,'Mio process revisions only advance');END`,
- ...HISTORY_TABLES_BY_DOMAIN.mio.filter(table=>!['mio_blobs','mio_requests','mio_events'].includes(table)).flatMap(table=>['INSERT','UPDATE'].map(operation=>`CREATE TRIGGER project_${table}_${operation.toLowerCase()} BEFORE ${operation} ON ${table} WHEN NEW.projectId IS NOT (SELECT projectId FROM history_state WHERE singleton=1) BEGIN SELECT RAISE(ABORT,'Mio record belongs to another project');END`)),
+ ...recordTables.filter(table=>!['mio_blobs','mio_requests','mio_events'].includes(table)).flatMap(table=>['INSERT','UPDATE'].map(operation=>`CREATE TRIGGER project_${table}_${operation.toLowerCase()} BEFORE ${operation} ON ${table} WHEN NEW.projectId IS NOT (SELECT projectId FROM history_state WHERE singleton=1) BEGIN SELECT RAISE(ABORT,'Mio record belongs to another project');END`)),
  ...processTriggers,
  ...rowTriggers,
- ...quotaTriggers,
+ ...MIO_COUNTER_TRIGGERS,
 ]);

@@ -691,7 +691,7 @@ const PROCESS_REVISION_TRIGGER = /^agent_target_(?:jobs|exports|image_tasks|fram
 export function currentCrossFileRelations(derivation: Derivation): readonly RelationData[] {
   const legacy = new Set(LEGACY_MIO_TABLES);
   const relations = derivation.relations.filter(relation => !legacy.has(relation.child.table)).map(relation => ({...relation}));
-  const mioTables = HISTORY_TABLES_BY_DOMAIN.mio.filter(table => !['mio_blobs','mio_requests','mio_events'].includes(table));
+  const mioTables = HISTORY_TABLES_BY_DOMAIN.mio.filter(table => !['mio_blobs','mio_requests','mio_events','mio_storage_counters'].includes(table));
   for (const table of mioTables) relations.push({index: 0, child: {schema: 'main', table, columns: ['projectId'], nullable: [false]}, parent: {schema: 'project', table: 'projects', columns: ['id']}, originallyDeferred: false});
   relations.push({index:0,child:{schema:'main',table:'mio_imports',columns:['assetId'],nullable:[true]},parent:{schema:'project',table:'assets',columns:['id']},originallyDeferred:false});
   let nextIndex=Math.max(...derivation.relations.map(relation=>relation.index));

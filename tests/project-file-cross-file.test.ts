@@ -342,7 +342,7 @@ test('with all three databases attached and the triggers installed, every write 
     db.close();
   }
   // main also holds the Mock provider's two ledger tables.
-  assert.equal(tables, 47 + 2 + 5 + 20 + 3);
+  assert.equal(tables, 47 + 2 + 6 + 20 + 3);
 });
 
 test('real tables: cross-file keys, process-entity revisions and the content sequence', () => {

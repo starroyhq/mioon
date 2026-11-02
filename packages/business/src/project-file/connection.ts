@@ -418,6 +418,10 @@ function attachDatabases(projectFile: string, projectKey: string, identity: Proj
       database = kind;
       configure(db, schema);
     }
+    // Mio accounting needs DELETE triggers for REPLACE's implicit old row.
+    // The kernel's trigger writes are acyclic; legacy workspace/app openers
+    // do not share this connection setting.
+    db.exec('PRAGMA recursive_triggers=ON');
     database = 'history';
     if (upgrade) {
       const seen = sequenceOf(db, `SELECT seenContentSequence FROM ${HISTORY}.history_state`);
@@ -427,7 +431,7 @@ function attachDatabases(projectFile: string, projectKey: string, identity: Proj
       const transition = upgrade;
       inTransaction(db, () => {
         transition.apply(db);
-        clearProjectProcessRevisions(db, projectId);
+        if(transition.clearLegacyProcessRevisions)clearProjectProcessRevisions(db, projectId);
         db.exec(`UPDATE ${HISTORY}.schema_version SET version=${transition.toVersion}`);
         checkStructure(db, HISTORY, 'history', projectId);
         checkStructure(db, PROJECT, 'project', projectId);

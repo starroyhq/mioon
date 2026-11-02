@@ -1,6 +1,11 @@
 # R1-C 每项目存储实测与配额候选
 
-生产基线提交 `80a10890e3f5a0485f2dcdb69e31dfad44d4600b` 加本卡未提交源码；精确源码 SHA、发送向量、18 表增量、命令、exit 与原报告 hash 见 [R1-C-STORAGE.json](R1-C-STORAGE.json)。本报告只提出数字，开发常量仍为 **256MiB / 20,000 行 / 单行2MiB**。
+**协调人追加已实施：256MiB / 65,536行，history v4、19表incremental counter。** 原18数据的C/B/R/E不变；counter整数0B/1冷行使Crows4→5，N100由40,398→**40,399行**，字节仍124,309,089B；所选65,536行保守164轮。性能复测见 [R1-C-QUOTA-PERFORMANCE.md](R1-C-QUOTA-PERFORMANCE.md)。下方原13轮及旧额度/候选文字作为历史证据保留，原raw未覆盖；当前版本映射见JSON的 `incrementalQuotaFinalization`。
+
+<details>
+<summary>历史测量证据：计数表加入前的原13轮、额度提案和通知顺序修复</summary>
+
+生产基线提交 `80a10890e3f5a0485f2dcdb69e31dfad44d4600b` 加本卡未提交源码；精确源码 SHA、发送向量、18 表增量、命令、exit 与原报告 hash 见 [R1-C-STORAGE.json](R1-C-STORAGE.json)。原测量阶段只提出数字，当时开发常量为 **256MiB / 20,000 行 / 单行2MiB**；当前已按上方协调人决定实施65,536行。
 
 版本说明：下列原13轮矩阵在零余量通知顺序修复前执行（records SHA `47d006fe840178c9a9cdb13994025753be1f8befd0e2e64c894b5f6c6aea744c`），原raw及hash未覆盖。最终源码SHA `5d6566d8b1e31dce80f0bc891618bb3519171f87561c913fba3a902f873927ba` 只把同事务的step通知移至raw清理之后；最终CC/300完整轮、6项正式测试和0/1B四边界另附实测，容量最大B/R及18表最终增量相同。逐版本映射见JSON的 `originalMatrixVersion` / `finalProductionVerification`。
 
@@ -70,7 +75,7 @@
 
 近满验证：保持256MiB配额，填至 `268,434,432B`（仅余1,024B）；旧先INSERT输出顺序触发STORAGE_LIMIT并完整回滚。修复版在同一savepoint先完成证据状态/清原件再插入canonical输出，成功归档128KiB正文，清512KiB原件，净 `-392,788B`，最终 `268,041,644B`。归档插入失败后的raw/partial/summary原子回滚另由usage仓库故障测试验证。
 
-## C / B / R / E 与协调人候选
+## C / B / R / E 与协调人候选（counter加入前的历史）
 
 - chat_completions 冷共享blob：21,894B / 4行（两次同conversation请求都引用的冻结配置、目录、系统包络、baseline去重）。
 - responses 冷共享blob：24,478B / 4行（两次同conversation请求都引用的冻结配置、目录、系统包络、baseline去重）。
@@ -141,3 +146,9 @@ node scripts/tooling.ts typecheck # exit0
 | `fixed-identity-final-production-cc300.json` | `70d5ea69658e7e2eed7674320b3659d4401b0901f03f376dba7e27fe37dc3fbb` | 0 |
 
 未完成的重复合成测量已取消，记录见notes `aborted-synthetic-runs.json`，不纳入测量结果。原13轮完整原件全部保留。最终补测原件与私有探针在notes的 `final-notification-fix/` 子目录，JSON列出完整命令、sourcehash及逐15请求比较。
+
+</details>
+
+## 增量配额最终复核
+
+当前实现全量doctor独立核对19表与counter，写入quota只读单行counter。最终CC300的18数据表、B=1,063,915B、R=388、流式重写和网络正文均与旧版相同；counter只在cold占0B/1行，本轮counter增量0B/0行。nearfull0/1B四边界、原1024B及6项报告测试通过，max-retention四场景18表相同。最终sourcehash、raw hash/exit与性能7点分布在两个JSON报告中；全部当前source映射和旧证据版本分开保存。

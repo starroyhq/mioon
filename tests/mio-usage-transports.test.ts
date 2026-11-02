@@ -103,11 +103,29 @@ test('read-only runtime permits usage and doctor returns only the requested proj
   assert.deepEqual((await f.client.usage({projectId: f.projectId, runId: f.runId})).knownTotals, measured);
   const doctor = await f.client.doctor({projectId: f.projectId}); assert.ok(doctor.storage && 'scope' in doctor.storage);
   assert.deepEqual(mioStorageSnapshotSchema.parse(doctor.storage), readMioStorage(f.store.db));
-  assert.equal(doctor.storage.projectId, f.projectId); assert.equal(doctor.storage.tables.length, 18);
+  assert.equal(doctor.storage.projectId, f.projectId); assert.equal(doctor.storage.tables.length, 19);
   assert.equal((await f.client.doctor()).storage, undefined);
   assert.equal((await fetch(f.base + `/api/agent/diagnostics?projectId=${randomUUID()}`, {headers: f.headers})).status, 404);
   assert.doesNotMatch(JSON.stringify(doctor.storage), /PRIVATE_|providerOutput|originalBody|relativePath/u);
   assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n, before);
+});
+
+test('doctor reports corrupted counters through HTTP and client without repairing storage', async t => {
+  const f = await fixture(t, 'chat_completions');
+  const saved = readMioStorage(f.store.db);
+  f.store.tx(() => f.store.db.prepare('UPDATE mio_storage_counters SET bytes=bytes+1 WHERE singleton=1').run());
+  const changes = f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
+  f.store.db.exec('PRAGMA query_only=ON');
+  const response = await fetch(f.base + `/api/agent/diagnostics?projectId=${f.projectId}`, {headers: f.headers});
+  assert.equal(response.status, 409);
+  const body = await response.json();
+  assert.equal(object(object(body).error).code, 'AGENT_TASK_STORAGE_CORRUPT');
+  assert.doesNotMatch(JSON.stringify(body), /PRIVATE_|originalBody|inputManifest/u);
+  await assert.rejects(f.client.doctor({projectId: f.projectId}), error => error instanceof ClientError && error.code === 'AGENT_TASK_STORAGE_CORRUPT');
+  assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n, changes);
+  f.store.db.exec('PRAGMA query_only=OFF');
+  f.store.tx(() => f.store.db.prepare('UPDATE mio_storage_counters SET bytes=bytes-1 WHERE singleton=1').run());
+  assert.deepEqual(readMioStorage(f.store.db), saved);
 });
 
 test('usage client rejects wrong identity, unknown private fields and inconsistent coverage; doctor rejects project swaps', async t => {

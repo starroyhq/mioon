@@ -1,4 +1,4 @@
-import type {DatabaseSync} from 'node:sqlite';
+import type {DatabaseSync, SQLOutputValue} from 'node:sqlite';
 import {MIO_STORAGE_TABLES, mioStorageSnapshotSchema} from '../../../contracts/src/mio-storage.ts';
 import type {MioStorageSnapshot, MioStorageTable} from '../../../contracts/src/mio-storage.ts';
 import {isProjectDatabase} from '../project-file/connection.ts';
@@ -26,13 +26,36 @@ const byteColumns: Readonly<Record<MioStorageTable, readonly string[]>> = {
   mio_conversation_policy_requests: ['requestId', 'projectId', 'conversationId', 'inputHash', 'response'],
   mio_events: ['runId', 'createdAt'],
   mio_process_target_revisions: ['projectId', 'kind', 'targetId'],
+  mio_storage_counters: [],
 };
-const rowOnlyTables: readonly MioStorageTable[] = ['mio_edit_claims', 'mio_edit_owners', 'mio_edit_receipts', 'mio_process_target_revisions'];
-const inventorySql = MIO_STORAGE_TABLES.map(name => `SELECT '${name}' AS name,count(*) AS rows,COALESCE(sum(${byteColumns[name].map(column => `COALESCE(length(CAST(${column} AS BLOB)),0)`).join('+')}),0) AS bytes FROM main.${name}`).join(' UNION ALL ');
+const rowOnlyTables: readonly MioStorageTable[] = ['mio_edit_claims', 'mio_edit_owners', 'mio_edit_receipts', 'mio_process_target_revisions', 'mio_storage_counters'];
+const tableInventorySql = MIO_STORAGE_TABLES.map(name => {
+  const bytes = byteColumns[name].length ? `COALESCE(sum(${byteColumns[name].map(column => `COALESCE(length(CAST(${column} AS BLOB)),0)`).join('+')}),0)` : '0';
+  return `SELECT '${name}' AS name,count(*) AS rows,${bytes} AS bytes FROM main.${name}`;
+}).join(' UNION ALL ');
+const inventorySql = `WITH inventory AS (${tableInventorySql}), counters AS (
+  SELECT count(*) AS counterCount,min(singleton) AS counterSingleton,min(bytes) AS counterBytes,min(rows) AS counterRows
+  FROM main.mio_storage_counters
+) SELECT inventory.*,counters.* FROM inventory CROSS JOIN counters`;
+
+function corrupt(): never { throw Object.assign(new Error('AGENT_TASK_STORAGE_CORRUPT'), {code: 'AGENT_TASK_STORAGE_CORRUPT'}); }
 
 function safeCount(value: unknown): number {
-  if (typeof value !== 'bigint' || value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) throw new RangeError('Mio storage counters must be safe nonnegative integers');
+  if (typeof value !== 'bigint' || value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) return corrupt();
   return Number(value);
+}
+
+function readInventory(db: DatabaseSync): Record<string, SQLOutputValue>[] {
+  try {
+    const statement = db.prepare(inventorySql);
+    statement.setReadBigInts(true);
+    return statement.all();
+  } catch (error) {
+    // The registered kernel guarantees these fixed tables and their columns.
+    // A missing/replaced structure is corruption; I/O failures still propagate.
+    if (error !== null && typeof error === 'object' && 'errcode' in error && error.errcode === 1) return corrupt();
+    throw error;
+  }
 }
 
 /** A SQL-only snapshot of a live kernel-owned project's retained Mio records.
@@ -42,18 +65,20 @@ function safeCount(value: unknown): number {
 export function readMioStorage(db: DatabaseSync): MioStorageSnapshot {
   if (!isProjectDatabase(db)) throw new TypeError('Mio storage requires a live kernel project database');
   const identity = db.prepare('SELECT projectId FROM main.history_state WHERE singleton=1').get();
-  const statement = db.prepare(inventorySql);
-  statement.setReadBigInts(true);
-  const rows = statement.all();
+  // Both independently computed totals share one SQLite statement snapshot.
+  const rows = readInventory(db), counter = rows[0];
+  if (counter?.counterCount !== 1n || counter.counterSingleton !== 1n) return corrupt();
+  const counters = {bytes: safeCount(counter.counterBytes), rows: safeCount(counter.counterRows)};
   const tables = MIO_STORAGE_TABLES.map((name, index) => {
     const row = rows[index];
-    if (row?.name !== name) throw new TypeError('Mio storage inventory is inconsistent');
+    if (row?.name !== name) return corrupt();
     return {name, rows: safeCount(row.rows), bytes: safeCount(row.bytes), countedBytes: true as const,
       countedRows: name !== 'mio_edit_receipts', quotaGuard: rowOnlyTables.includes(name) ? 'row_only' as const : 'execution' as const};
   });
   const bytes = safeCount(tables.reduce((total, table) => total + BigInt(table.bytes), 0n));
   const countedRows = safeCount(tables.reduce((total, table) => total + (table.countedRows ? BigInt(table.rows) : 0n), 0n));
   const retainedRows = safeCount(tables.reduce((total, table) => total + BigInt(table.rows), 0n));
+  if (counters.bytes !== bytes || counters.rows !== countedRows) return corrupt();
   const limits = MIO_STORAGE_LIMITS;
   const status = bytes >= limits.bytes || countedRows >= limits.rows ? 'full'
     : bytes >= limits.bytes * .9 || countedRows >= limits.rows * .9 ? 'near_limit' : 'available';
