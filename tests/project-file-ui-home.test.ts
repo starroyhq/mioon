@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { LOCALES, translate } from '../packages/i18n/src/index.ts';
 import type { MessageArguments, MessageKey } from '../packages/i18n/src/index.ts';
 import { assertGroupEvidence, escapeHtml, projectFileScenes, tagOf } from './helpers/project-file-ui.ts';
+import { OPEN_FAILURES } from './fixtures/project-file-ui/fixtures.ts';
 
 // U1 group 1: home (12-01), new project (12-02) and the open failures (12-03 to 12-03d).
 const ui = await projectFileScenes();
@@ -82,9 +83,9 @@ test('12-02 new project: name checks, path preview, creating, exists and web', (
 test('12-03 the four open failures have distinct titles and the right buttons', () => {
   const titles = ['12-03', '12-03b', '12-03c', '12-03d'].map(title);
   assert.deepEqual(titles, ['找不到「访谈剪辑样片」', '「城市夜景短片」已在另一个 Mioon 中打开', text('projectFile.open.newer.title'), '无法打开「季节变换延时.mioon」']);
-  const inbox = text('projectFile.open.missing.inbox', { count: 2 });
+  const inbox = text('projectFile.open.missing.bodyWithInbox', { path: OPEN_FAILURES.missing.projectFile, count: 2 });
   assert.ok(html('12-03').includes(inbox));
-  assert.ok(!html('12-03-no-inbox').includes(text('projectFile.open.missing.inbox', { count: 0 })));
+  assert.ok(html('12-03-no-inbox').includes(text('projectFile.open.missing.body', { path: OPEN_FAILURES.missing.projectFile })));
   assert.doesNotMatch(html('12-03-no-inbox'), /data-testid="pf-open-inbox"/u);
   for (const id of ['pf-open-remove', 'pf-open-locate']) assert.ok(tagOf(html('12-03'), id), id);
   const locating = html('12-03-locating');
@@ -98,6 +99,13 @@ test('12-03 the four open failures have distinct titles and the right buttons', 
   assert.ok(html('12-03c-history').includes(text('projectFile.open.newerRecords.body', { format: 2, supported: 1 })));
   assert.ok(!html('12-03c-history').includes(text('projectFile.open.newer.body', { format: 2, supported: 1 })));
   assert.match(tagOf(html('12-03d-restoring'), 'pf-open-restore') ?? '', /aria-busy="true"/u);
+});
+
+test('open failure descriptions keep complete English sentences and inbox plurals', () => {
+  assert.ok(ui.render('12-03', 'en').includes('not connected. Once it is found, the 2 waiting generated results are written to it.'));
+  assert.ok(ui.render('12-03d', 'en').includes('never opened. If this project was opened on this computer before, you can restore it from a local backup.'));
+  const singular = translate('en', 'projectFile.open.missing.bodyWithInbox', { path: OPEN_FAILURES.missing.projectFile, count: 1 });
+  assert.ok(singular.includes('not connected. Once it is found, the 1 waiting generated result is written to it.'));
 });
 
 test('12-03d read-only keeps the layout and never calls the file damaged', () => {

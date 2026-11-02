@@ -13,6 +13,7 @@ import {createTimelineRecoveryBoundary} from '../packages/business/src/timeline-
 import {createLocalDrafts,LOCAL_DRAFT_FILENAME} from '../packages/business/src/local-drafts.ts';
 import {clipDraftDiskSchema} from '@mioon/contracts/local-drafts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
+import {schemaObjects} from './helpers/project-database.ts';
 import type { URL } from 'url';
 
 // These synchronous fault callbacks model explicit injected boundaries. They do
@@ -39,7 +40,7 @@ async function fixture(t: test.TestContext){
     readClipAsset:(id:string,value:Parameters<ReturnType<typeof createTimelineRecoveryBoundary>["clipSource"]>[0])=>{sourceHook();return createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(value);},
   };
   const drafts=createLocalDrafts(({root,storage,guards,signal:controller.signal,fault:(point:string)=>fault(point)} as unknown as Parameters<typeof createLocalDrafts>[0])) as OrdinaryLocalDrafts;
-  const snapshot=()=>JSON.stringify({schema:store.db.prepare('SELECT name,sql FROM sqlite_schema ORDER BY name').all(),tables:store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(({name})=>[name,store.db.prepare(`SELECT * FROM "${(name as string).replaceAll('"','""')}" ORDER BY rowid`).all()]),changes:store.db.prepare('SELECT total_changes() n').get()!.n});
+  const snapshot=()=>{const objects=schemaObjects(store.db);return JSON.stringify({schema:objects.map(({name,sql})=>({name,sql})),tables:objects.filter(({type,name})=>type==='table'&&!name.startsWith('sqlite_')).map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all()]),changes:store.db.prepare('SELECT total_changes() n').get()!.n});};
   const initialBusiness=snapshot();
   t.after(()=>{try{assert.equal(snapshot(),initialBusiness,'draft fences must not change business records, schema, history, CAS or revisions');}finally{store.close();fs.rmSync(root,{recursive:true,force:true});}});
   const input=(response=drafts.get(key),patch={})=>({workspaceScope:response.workspaceScope,instanceId:response.instanceId,...key,expectedRevision:response.revision,baseRevision:timeline.revision,source:{assetId:asset.id,assetSha256:asset.sha256},raw,...patch});

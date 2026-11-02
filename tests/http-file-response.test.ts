@@ -9,7 +9,7 @@ import {mkdtemp, mkdir, writeFile, readFile, open, rename, unlink, rm} from 'nod
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openStore} from '@mioon/business';
+import {createServerProject} from './helpers/project-database.ts';
 import {startServer} from '@mioon/server';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 import {createFileResponses, FILE_RESPONSE_LIMITS, type FileResponsesOptions} from '../apps/server/src/file-response.ts';
@@ -24,18 +24,18 @@ async function until(check: () => boolean, message: string) {
   const deadline = Date.now() + 3000;
   while (!check()) { if (Date.now() > deadline) assert.fail(message); await delay(5); }
 }
-async function actual(t: test.TestContext, {gateway}: {gateway?: NonNullable<Parameters<typeof startServer>[0]>['chatGateway']} = {}) {
+async function actual(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-http-files-'));
   const dataDir = path.join(root, 'data'), distDir = path.join(root, 'dist');
   await mkdir(distDir); await writeFile(path.join(distDir, 'index.html'), '<html>synthetic renderer</html>');
   await writeFile(path.join(distDir, 'entry.js'), 'console.log("synthetic")');
-  const store = (openStore(dataDir) as unknown as TypedStore), id = randomUUID(), projectId = randomUUID();
+  const created = createServerProject(dataDir, {name: 'Synthetic HTTP project'}),
+    store = created.store as unknown as TypedStore, id = randomUUID(), projectId = created.projectId;
   const file = path.join(dataDir, 'media', id + '.bin'), bytes = Buffer.from('0123456789abcdefghijklmnopqrstuvwxyz');
   await writeFile(file, bytes, {mode: 0o600});
-  store.put('projects', {id: projectId, name: 'Synthetic HTTP project'});
   store.put('assets', {id, projectId, name: 'Synthetic media', mimeType: 'video/mp4', relativePath: `media/${id}.bin`, sizeBytes: bytes.length, url: `/media/${id}`});
   store.close();
-  const options = {dataDir, distDir, port: 0, token, ...(gateway ? {chatGateway: gateway} : {})};
+  const options = {dataDir, distDir, port: 0, token};
   let service = await startServer(options);
   t.after(async () => { await service.close(); await rm(root, {recursive: true, force: true}); });
   return {root, file, distDir, get service() {return service;}, bytes, id, projectId,

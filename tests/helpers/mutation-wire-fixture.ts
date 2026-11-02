@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {installWireGuard} from './inspection-wire-fixture.ts';
+import type {InspectProject} from '../../apps/server/src/index.ts';
 
 export const TOKEN = 'mutation-wire-synthetic-backend-token';
 export const NOW = '2026-01-02T03:04:05.000Z';
@@ -80,15 +81,31 @@ if (direct) {
   if (mode === 'server') {
     if (!fs.existsSync(path.join(dataRoot, 'workbench.sqlite'))) await seedMutationStore(dataRoot);
     const {startServer} = await import('../../apps/server/src/index.ts');
+    const {readProjectState, changeMarks} = await import('./project-state.ts');
+    let inspect: InspectProject|undefined;
     const server = await startServer({dataDir: dataRoot, port: Number(process.env.PORT || 0), token: TOKEN,
-      chatGateway: async function* () {
-        fs.appendFileSync(process.env.MIOON_MUTATION_WIRE_AUDIT ?? '', '{"kind":"model gateway"}\n');
-        throw Error('Mutation replay must not enter the model gateway');
-      }});
+      inspectProject: received => { inspect = received; }});
+    // The parent asks the running server to read on its own connection.
+    if (process.connected) process.on('message', (raw: unknown) => {
+      const message = raw as {type?: unknown; id?: unknown; projectId?: unknown}|null;
+      if (typeof message?.id !== 'string') return;
+      let reply: unknown;
+      try {
+        if (message.type !== 'storage') throw Error('Unsupported mutation fixture message');
+        if (!inspect) throw Error('The server has not handed over its connection');
+        const data = inspect(String(message.projectId), db => ({rows: readProjectState(db).tables, version: changeMarks(db)}));
+        reply = {type: 'reply', id: message.id, data};
+      } catch (error) {
+        const failure = error as {code?: unknown; message?: unknown}|null;
+        reply = {type: 'reply', id: message.id, error: {code: failure?.code ?? 'FIXTURE_ERROR', message: String(failure?.message ?? error)}};
+      }
+      if (process.connected) process.send?.(reply);
+    });
     process.stdout.write(JSON.stringify({ready: true, url: server.url, pid: process.pid}) + '\n');
     let closing: Promise<unknown>|undefined;
-    const close = (): Promise<unknown> => closing ??= server.close().catch(() => { process.exitCode = 1; });
-    process.on('SIGTERM', close); process.on('SIGINT', close);
+    const close = (): Promise<unknown> => closing ??= server.close().catch(() => { process.exitCode = 1; })
+      .finally(() => { if (process.connected) process.disconnect(); });
+    process.on('SIGTERM', close); process.on('SIGINT', close); process.once('disconnect', close);
   }
   if (mode === 'writer') {
     const {openStore} = await import('../../packages/business/src/db.ts');

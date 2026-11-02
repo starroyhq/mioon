@@ -34,7 +34,6 @@ export const agentTaskMessages = {
   "agent.task.locate": {"zh-Hans": "定位", "zh-Hant": "定位", "en": "Locate", "ja": "場所を表示"},
   "agent.task.irreversible": {"zh-Hans": "不可撤销，保留产物及费用记录", "zh-Hant": "無法復原，保留產物及費用紀錄", "en": "Cannot be undone; outputs and cost records are retained", "ja": "取り消し不可。生成物と費用記録を保持します"},
   "agent.task.reverted": {"zh-Hans": "已撤销", "zh-Hant": "已復原", "en": "Undone", "ja": "取り消し済み"},
-  "agent.task.legacy": {"zh-Hans": "旧会话与提议历史（只读）", "zh-Hant": "舊對話與提議歷史（唯讀）", "en": "Previous conversations and proposals (read only)", "ja": "以前の会話と提案（読み取り専用）"},
   "agent.task.history": {"zh-Hans": "对话历史", "zh-Hant": "對話歷史", "en": "Conversation history", "ja": "会話履歴"},
   "agent.task.reload": {"zh-Hans": "重新读取", "zh-Hant": "重新讀取", "en": "Reload", "ja": "再読み込み"},
   "agent.task.confirmRead": {"zh-Hans": "查询原操作结果", "zh-Hant": "查詢原操作結果", "en": "Check original operation", "ja": "元の操作結果を確認"},
