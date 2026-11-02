@@ -14,7 +14,7 @@ const now='2026-10-21T00:00:00.000Z';
 test('the model-only loading step uses the actual four-language panel caption without requiring model prose',()=>{
  const loader=step('mioon_tools_load',{groups:['canvas']}),display=projectAgentTaskStepDisplay(loader);
  assert.ok(display);assert.equal(display.operation,'tools.load');
- const expected={'zh-Hans':'加载工具组','zh-Hant':'載入工具組',en:'Load tool groups',ja:'ツールグループを読み込む'};
+ const expected={'zh-Hans':'加载工具','zh-Hant':'載入工具',en:'Load tools',ja:'ツールを読み込む'};
  for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){
   assert.equal(taskStepTitle({...loader,display},locale),expected[locale]);
   assert.equal(taskStepTitle(loader,locale),expected[locale]);
