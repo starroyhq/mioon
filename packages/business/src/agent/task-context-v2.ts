@@ -2,7 +2,8 @@ import type {AgentTaskChange,AgentTaskDiagnostic,AgentTaskJson,AgentTaskLocale,A
 import type {AgentConfiguration} from './config.ts';
 import {TASK_DEFAULT_HISTORY_BUDGET,taskContinuation,taskHistoryFits,taskResponseLanguageContext,taskResponseLocale} from './task-gateway-v2.ts';
 import type {TaskHistoryBudget,TaskModelOutput,TaskToolDefinition} from './task-gateway-v2.ts';
-import {AGENT_TASK_CONVERSATION_TOOLS,agentTaskToolGroupForName,loadedAgentTaskToolGroups} from './task-tool-groups-v2.ts';
+import {AGENT_TASK_CONVERSATION_TOOLS,AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolGroupForName,loadedAgentTaskToolNames} from './task-tool-groups-v2.ts';
+import type {AgentTaskToolLoadMode} from './task-tool-groups-v2.ts';
 import {compactTaskModelHistory} from './task-context-compaction-v2.ts';
 import {taskBaseModelHistory,taskContextHistoryRound,taskContextProjectNotes,taskContextProjectOverview} from './task-context-base-v2.ts';
 import {taskRunRecordMessage} from './task-run-record-v2.ts';
@@ -102,8 +103,8 @@ export function selectTaskModelTools<T extends TaskToolDefinition&{risk:AgentTas
     if(diagnostic.profile==='read_only')return original.filter(tool=>tool.risk==='read_only');
     return diagnostic.toolNames?original.filter(tool=>diagnostic.toolNames!.includes(tool.name)):original;
   }
-  const groups=new Set<string>(['core',...loadedAgentTaskToolGroups(steps)]);
-  return definitions.filter(tool=>groups.has(agentTaskToolGroupForName(tool.name)??'')||attachments.length>0&&['mioon_asset_import_selected','mioon_lut_import_selected'].includes(tool.name));
+  const names=new Set(loadedAgentTaskToolNames(steps));
+  return definitions.filter(tool=>agentTaskToolGroupForName(tool.name)==='core'||names.has(tool.name)||attachments.length>0&&['mioon_asset_import_selected','mioon_lut_import_selected'].includes(tool.name));
 }
 
 /** Visibility belongs to the exact request that produced the response. A load
@@ -124,6 +125,41 @@ export function sourceTaskModelToolNames(protocol:AgentConfiguration['protocol']
     names.push(definition.name);
   }
   return names;
+}
+
+function sourceTaskModelToolLoadSchema(protocol:AgentConfiguration['protocol'],request:AgentTaskJson|undefined):{mode:AgentTaskToolLoadMode;values:string[];maxItems:number}{
+  const invalid=():never=>{throw Object.assign(new Error('Invalid frozen model loader schema.'),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});};
+  if(!sourceTaskModelToolNames(protocol,request).includes(AGENT_TASK_TOOLS_LOAD_NAME)||!record(request)||typeof request.body!=='string')return invalid();
+  const body:unknown=JSON.parse(request.body);if(!record(body)||!Array.isArray(body.tools))return invalid();
+  const definitions=body.tools.map(entry=>record(entry)&&protocol==='chat_completions'?entry.function:entry);
+  const loader=definitions.find(definition=>record(definition)&&definition.name===AGENT_TASK_TOOLS_LOAD_NAME);
+  const schema=record(loader)?loader[protocol==='anthropic_messages'?'input_schema':'parameters']:undefined;
+  if(!record(schema)||schema.type!=='object'||schema.additionalProperties!==false||!record(schema.properties)||!Array.isArray(schema.required)||schema.required.length!==1)return invalid();
+  if(Object.keys(schema).some(key=>!['type','properties','required','additionalProperties'].includes(key)))return invalid();
+  const mode=schema.required[0];if(mode!=='names'&&mode!=='groups')return invalid();
+  if(Object.keys(schema.properties).some(key=>key!==mode&&key!=='_mio_step')||!Object.hasOwn(schema.properties,mode))return invalid();
+  if(Object.hasOwn(schema.properties,'_mio_step')){
+    const explanation=schema.properties._mio_step;
+    if(!record(explanation)||Object.keys(explanation).some(key=>!['type','minLength','maxLength','description'].includes(key))||explanation.type!=='string'||explanation.minLength!==1||explanation.maxLength!==40||typeof explanation.description!=='string')return invalid();
+  }
+  const selection=schema.properties[mode];
+  if(!record(selection)||Object.keys(selection).some(key=>!['type','items','minItems','maxItems'].includes(key))||selection.type!=='array'||selection.minItems!==1||!Number.isSafeInteger(selection.maxItems)||(selection.maxItems as number)<1||!record(selection.items)||Object.keys(selection.items).some(key=>!['type','enum'].includes(key))||selection.items.type!=='string'||!Array.isArray(selection.items.enum)||!selection.items.enum.length||!selection.items.enum.every(value=>typeof value==='string'))return invalid();
+  return {mode,values:selection.items.enum as string[],maxItems:selection.maxItems as number};
+}
+
+/** The loader shape belongs to the request, never to the model's arguments.
+ * Old group requests remain strict while new requests expose names only. */
+export function sourceTaskModelToolLoadMode(protocol:AgentConfiguration['protocol'],request:AgentTaskJson|undefined):AgentTaskToolLoadMode{
+  return sourceTaskModelToolLoadSchema(protocol,request).mode;
+}
+
+/** A saved name enum can be smaller than today's catalog. Apply both bounds
+ * before preparing a tool, so an old intent cannot guess a later tool name. */
+export function sourceTaskModelToolLoadInputAllowed(protocol:AgentConfiguration['protocol'],request:AgentTaskJson|undefined,input:AgentTaskJson):boolean{
+  const {mode,values,maxItems}=sourceTaskModelToolLoadSchema(protocol,request);
+  if(!record(input)||Object.keys(input).length!==1||!Array.isArray(input[mode]))return false;
+  const selected=input[mode];
+  return selected.length>0&&selected.length<=maxItems&&selected.every(value=>typeof value==='string'&&values.includes(value));
 }
 
 export interface TaskModelToolResult {callId:string;result:AgentTaskJson}

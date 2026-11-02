@@ -10,7 +10,7 @@ import {openStore} from '../../packages/business/src/db.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
 import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../../packages/business/src/agent/presets.ts';
-import {AGENT_TASK_LOADABLE_TOOL_GROUP_IDS, AGENT_TASK_TOOLS_LOAD_NAME} from '../../packages/business/src/agent/task-tool-groups-v2.ts';
+import {AGENT_TASK_LOADABLE_TOOL_GROUP_IDS, AGENT_TASK_TOOLS_LOAD_NAME, agentTaskToolNamesForGroup} from '../../packages/business/src/agent/task-tool-groups-v2.ts';
 import type {AgentTaskLoadableToolGroupId} from '../../packages/business/src/agent/task-tool-groups-v2.ts';
 import {createAgentTaskTools} from '../../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../../packages/business/src/agent/task-runtime-v2.ts';
@@ -218,7 +218,7 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
         beforeDone.set(index, {textBytes: typeof saved.text === 'string' ? Buffer.byteLength(saved.text) : 0, textEvents: Number(store.db.prepare("SELECT count(*) AS n FROM agent_task_events_v2 WHERE type='text' AND json_extract(data,'$.data.stepId')=?").get(String(model.id))!.n)});
       }
       const callCount = index <= scenario.toolRounds ? scenario.stress30Steps && index === 1 ? scenario.firstRoundToolCalls! : 1 : 0;
-      const calls: AgentTaskToolCall[] = Array.from({length: callCount}, (_value, callIndex): AgentTaskToolCall => ({id: `synthetic_read_${String(index).padStart(3, '0')}${scenario.stress30Steps ? `_${callIndex + 1}` : ''}`, name: index === 1 && scenario.loadToolGroups ? AGENT_TASK_TOOLS_LOAD_NAME : 'mioon_project_inspect', arguments: index === 1 && scenario.loadToolGroups ? {groups: [...scenario.loadToolGroups]} : {}}));
+      const calls: AgentTaskToolCall[] = Array.from({length: callCount}, (_value, callIndex): AgentTaskToolCall => ({id: `synthetic_read_${String(index).padStart(3, '0')}${scenario.stress30Steps ? `_${callIndex + 1}` : ''}`, name: index === 1 && scenario.loadToolGroups ? AGENT_TASK_TOOLS_LOAD_NAME : 'mioon_project_inspect', arguments: index === 1 && scenario.loadToolGroups ? {names: scenario.loadToolGroups.flatMap(agentTaskToolNamesForGroup)} : {}}));
       yield {type: 'done', output: modelOutput(protocol, text, calls, index, options.syntheticUsage?.[index - 1])};
     };
     runtime = createAgentTaskRuntime({store, agentSettings: settings, authorizations, tools, gateway, selfPort: () => 4318});

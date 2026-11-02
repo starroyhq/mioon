@@ -25,7 +25,7 @@ import {CURRENT_RESTORE_PROFILE,CURRENT_RESTORED_SCHEMA,assertCurrentOrdinaryWor
 const record=(value:unknown):Record<string,unknown>=>{assert.ok(value&&typeof value==='object'&&!Array.isArray(value));return value as Record<string,unknown>;};
 // Questions are model input: deliberately loose here so invalid ones can be sent too.
 const ask=(args:object):AgentTaskToolCall=>({id:randomUUID(),name:'mioon_ask',arguments:args as AgentTaskJson});
-const load=():AgentTaskToolCall=>({id:randomUUID(),name:'mioon_tools_load',arguments:{groups:['canvas']}});
+const load=():AgentTaskToolCall=>({id:randomUUID(),name:'mioon_tools_load',arguments:{names:['mioon_shot_update']}});
 const rename=(shotId:string,expectedRevision:number,title:string):AgentTaskToolCall=>({id:randomUUID(),name:'mioon_shot_update',arguments:{shotId,expectedRevision,patch:{title}}});
 const opening={question:'Which opening should Mio use?',options:[{label:'Wide street',description:'Establish the city first'},{label:'Close-up'},{label:'Rooftop'}]};
 const {step:STEP,default:DEFAULT,full:FULL}=AGENT_TASK_POLICY_PRESETS;

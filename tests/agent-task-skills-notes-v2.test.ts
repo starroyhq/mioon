@@ -203,7 +203,7 @@ test('Mio updates notes as a reversible change, and undo restores the earlier te
  const f=await fixture(t);
  await f.setNotes(NOTES);
  const revision=Number(f.project().revision);
- f.queue([call('mioon_tools_load',{groups:['canvas']})],[call('mioon_project_notes_set',{expectedRevision:revision,notes:`${NOTES}\n周屿的伞是黑色的。`})]);
+ f.queue([call('mioon_tools_load',{names:['mioon_project_notes_set']})],[call('mioon_project_notes_set',{expectedRevision:revision,notes:`${NOTES}\n周屿的伞是黑色的。`})]);
  const done=await f.send('把伞的颜色写进项目说明');
  assert.equal(done.run.status,'completed');
  const [step]=tool(done,'mioon_project_notes_set');

@@ -13,7 +13,7 @@ summary.ja: クリップの一部だけがよくないとき、その区間を�
 
 ## 先确认
 
-- 加载 editing、scenes、canvas 和 video 组。用 timeline.inspect 找到这个片段，记下轨道、startFrame、durationFrames、sourceInFrame 和素材 ID。时间线固定 30fps，下面的帧号都按 30fps 算。
+- 先用 mioon_tools_load 的 names 按需加载 mioon_provider_list、mioon_frame_extract、mioon_shot_create、mioon_generation_submit、mioon_timeline_clip_split、mioon_timeline_clip_remove 和 mioon_timeline_clip_add。用 timeline.inspect 找到这个片段，记下轨道、startFrame、durationFrames、sourceInFrame 和素材 ID。时间线固定 30fps，下面的帧号都按 30fps 算。
 - 用 provider.list 选模型：inputModes 里要有 frames，才能同时用首帧和尾帧。没有这样的模型时告诉用户，不要改用只有首帧的生成。
 - 用 mioon_ask 确认要补的范围（从第几秒到第几秒）和所用模型，选项写成具体的值。
 - 有对白的段落不适合这样补：这一段原来的声音会和画面一起被换掉。
