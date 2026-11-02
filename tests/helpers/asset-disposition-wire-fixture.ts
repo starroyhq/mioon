@@ -17,28 +17,21 @@ export const ORIGINAL_BYTES = Buffer.from('immutable original fixture bytes\n');
 async function seed(root: string): Promise<void> {
   await seedMutationStore(root);
   const {openStore} = await import('../../packages/business/src/db.ts');
-  const store = openStore(root);
+  const {createServerProject, projectDirFor, withoutForeignKeys} = await import('./project-database.ts');
+  const asset = (id: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({id, projectId: IDS.project, name: 'Disposition metadata fixture',
+    mimeType: 'video/mp4', duration: 2, width: 720, height: 1280, hasVideo: true, hasAudio: false,
+    provenance: 'user-import', sha256: '2'.repeat(64), createdAt: NOW, ...extra});
+  const store = openStore(projectDirFor(root, IDS.project));
   try {
     // Keep inspection's generated-version relationship unambiguous.
     store.db.prepare('DELETE FROM versions WHERE id=?').run(IDS.secondVersion);
     store.db.prepare('DELETE FROM jobs WHERE id=?').run(IDS.secondJob);
-    const asset = (id: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({id, projectId: IDS.project, name: 'Disposition metadata fixture',
-      mimeType: 'video/mp4', duration: 2, width: 720, height: 1280, hasVideo: true, hasAudio: false,
-      provenance: 'user-import', sha256: '2'.repeat(64), createdAt: NOW, ...extra});
     store.put('assets', asset(DISPOSITION_IDS.audio, {mimeType: 'audio/wav', hasVideo: false, hasAudio: true}));
     store.put('assets', asset(DISPOSITION_IDS.image, {mimeType: 'image/png', duration: 0}));
     store.put('assets', asset(DISPOSITION_IDS.unknown, {duration: undefined}));
-    for (const id of [DISPOSITION_IDS.batchProject, DISPOSITION_IDS.corruptProject])
-      store.put('projects', {id, name: 'Independent fixture project', description: '', revision: 1, createdAt: NOW, updatedAt: NOW});
-    for (const id of BATCH_IDS) store.put('assets', asset(id, {projectId: DISPOSITION_IDS.batchProject}));
-    for (const id of [DISPOSITION_IDS.mismatchedOwner, DISPOSITION_IDS.mismatchedId])
-      store.put('assets', asset(id, {projectId: DISPOSITION_IDS.corruptProject, name: PRIVATE,
-        relativePath: `media/${PRIVATE}.mp4`, url: `https://private.invalid/${PRIVATE}`}));
-    store.db.prepare("UPDATE assets SET data=json_set(data,'$.projectId',?) WHERE id=?").run(IDS.other, DISPOSITION_IDS.mismatchedOwner);
-    store.db.prepare("UPDATE assets SET data=json_set(data,'$.id',?) WHERE id=?").run(IDS.otherAsset, DISPOSITION_IDS.mismatchedId);
     const original = JSON.parse((store.db.prepare('SELECT data FROM assets WHERE id=?').get(IDS.asset) as {data: string}).data);
     store.put('assets', {...original, relativePath: 'media/original.mp4'});
-    fs.writeFileSync(path.join(root, 'media/original.mp4'), ORIGINAL_BYTES);
+    fs.writeFileSync(path.join(projectDirFor(root, IDS.project), 'media/original.mp4'), ORIGINAL_BYTES);
     // An existing in-use clip must remain byte-for-byte identical when rejected.
     const timeline = JSON.parse((store.db.prepare('SELECT data FROM timelines WHERE id=?').get(IDS.timeline) as {data: string}).data);
     store.put('timelines', {...timeline, durationFrames: 30,
@@ -47,6 +40,22 @@ async function seed(root: string): Promise<void> {
         startFrame: 0, sourceInFrame: 3, durationFrames: 30, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1}],
     });
   } finally { store.close(); }
+  for (const projectId of [DISPOSITION_IDS.batchProject, DISPOSITION_IDS.corruptProject]) {
+    const {store: extra} = createServerProject(root, {name: 'Independent fixture project', projectId});
+    try {
+      if (projectId === DISPOSITION_IDS.batchProject) {
+        for (const id of BATCH_IDS) extra.put('assets', asset(id, {projectId}));
+      } else {
+        for (const id of [DISPOSITION_IDS.mismatchedOwner, DISPOSITION_IDS.mismatchedId])
+          extra.put('assets', asset(id, {projectId, name: PRIVATE,
+            relativePath: `media/${PRIVATE}.mp4`, url: `https://private.invalid/${PRIVATE}`}));
+        withoutForeignKeys(extra.db, () => {
+          extra.db.prepare("UPDATE assets SET data=json_set(data,'$.projectId',?) WHERE id=?").run(IDS.other, DISPOSITION_IDS.mismatchedOwner);
+          extra.db.prepare("UPDATE assets SET data=json_set(data,'$.id',?) WHERE id=?").run(IDS.otherAsset, DISPOSITION_IDS.mismatchedId);
+        });
+      }
+    } finally { extra.close(); }
+  }
 }
 
 // This opt-in is set only by the owned CLI test child, not production config.
