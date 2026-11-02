@@ -17,6 +17,7 @@ import {buildTaskModelRequest,taskResponseLanguageContext} from '../packages/bus
 import type {TaskGateway,TaskModelItem,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {validateAgentTaskRowsV2} from '../packages/business/src/agent/task-schema-v2.ts';
 import {createAgentTaskHttp} from '../apps/server/src/agent-task-http-v2.ts';
+import {projectRouteTarget} from '../apps/server/src/project-routes.ts';
 import type {AgentProtocol} from '../packages/contracts/src/agent-protocol.ts';
 import type {AgentTaskJson,AgentTaskSnapshot,AgentTaskToolCall,AgentTaskControlAction} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {agentTaskSnapshotSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
@@ -119,7 +120,9 @@ for(const protocol of protocols)test(`${protocol}: real HTTP, SSE and CLI status
   const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(object(modelSteps(done)[0]!.result).usage!==undefined,true);
   const route=createAgentTaskHttp({runtime:f.runtime}),token=randomUUID(),server=createServer((req,res)=>{
     if(req.headers.authorization!==`Bearer ${token}`){res.writeHead(401);res.end();return;}
-    void route.handle(req,res,new URL(req.url??'/','http://127.0.0.1')).then(handled=>{if(!handled){res.writeHead(404);res.end();}}).catch(()=>{res.destroy();});
+    // The CLI uses the project's address; serve it as the server does, at the route it replaces.
+    const url=new URL(req.url??'/','http://127.0.0.1'),scoped=projectRouteTarget(url.pathname);if(scoped)url.pathname=scoped.pathname;
+    void route.handle(req,res,url).then(handled=>{if(!handled){res.writeHead(404);res.end();}}).catch(()=>{res.destroy();});
   });
   await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
   const address=server.address();assert.ok(address&&typeof address!=='string');const base=`http://127.0.0.1:${address.port}`,path=`/api/agent/tasks/v2/${f.projectId}/${sent.run.id}`;

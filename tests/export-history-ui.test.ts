@@ -2,6 +2,7 @@ import type {ElementModule} from './helpers/strict-timeline-audio-harness-types.
 import type {ElementTree, ElementNode} from './helpers/strict-timeline-audio-harness-types.ts';
 import {transformSync} from 'esbuild';
 import {i18nTestModule} from './helpers/i18n.ts';
+import {mediaUrl, statusText} from '../apps/web/src/api.ts';
 import * as settingsState from '../apps/web/src/export-settings-state.ts';
 import * as deliveryState from '../apps/web/src/export-delivery-state.ts';
 import * as rangeState from '../apps/web/src/export-range-state.ts';
@@ -16,11 +17,16 @@ import {fileURLToPath} from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const date = '2026-10-10T12:34:56.000Z';
-const row = (id: string, patch = {}) => ({id, projectId: 'original-project', createdAt: date, status: 'succeeded', assetId: `asset-${id}`, ...patch});
+// Project and asset IDs are lowercase UUIDs: media is addressed at its project.
+const uuid = (n: number): string => `e4000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const ORIGINAL = uuid(1), CURRENT = uuid(2), OTHER = uuid(3), assets = new Map<string, string>();
+const assetOf = (name: string): string => { if (!assets.has(name)) assets.set(name, uuid(100 + assets.size)); return assets.get(name)!; };
+const media = (projectId: string, name: string): string => `/api/projects/${projectId}/media/${assetOf(name)}`;
+const row = (id: string, patch = {}) => ({id, projectId: ORIGINAL, createdAt: date, status: 'succeeded', assetId: assetOf(id), ...patch});
 const fixtures = {
   empty: {orderedExports: []},
   statuses: {orderedExports: [row('queued', {status: 'queued'}), row('failed', {status: 'failed', error: '字符串失败 <unsafe>'}), row('unknown', {status: 'submission_unknown', error: {message: '对象失败 & detail'}}), row('no-output', {assetId: undefined})]},
-  success: {projectId: 'current-project', projectName: '片名', orderedExports: [row('one', {url: '/media/explicit?download=1&name=%E7%89%87'}), row('two', {status: 'completed'}), row('three', {status: 'ready'})]},
+  success: {projectId: CURRENT, projectName: '片名', orderedExports: [row('one', {url: '/media/explicit?download=1&name=%E7%89%87'}), row('two', {status: 'completed'}), row('three', {status: 'ready'})]},
   snapshots: {timelineRevision: 7, orderedExports: [row('preview', {mode: 'timeline', purpose: 'preview', timelineRevision: 7}), row('export', {mode: 'timeline', purpose: 'export', timelineRevision: 6}), row('strict', {mode: 'timeline', timelineRevision: '7'}), row('story', {orderedVersionIds: ['version-a', 'version-b']}), row('empty-story')]},
   fallbacks: {orderedExports: [row('fallback')]},
   recoveryDisabled: {fileRecoveryEnabled: false, orderedExports: [row('fallback')]},
@@ -28,8 +34,8 @@ const fixtures = {
   escaped: {projectName: '片名 <script> " & 单引号\'', orderedExports: [row('escaped', {url: '/media/synthetic?download=1&label=%22%E4%B8%AD%22', error: '<img src=x onerror=alert(1)>'})]},
   escapedDownload: {fileRecoveryEnabled: false, orderedExports: [row('escaped', {url: '/media/synthetic?download=1&label=%22%E4%B8%AD%22&quoted="<&name=片名'})]},
   order: {orderedExports: [row('first', {url: '/media/order-first', createdAt: '2020-01-01'}), row('second', {url: '/media/order-second', createdAt: '2030-01-01'})]},
-  sizes:{projectId:'original-project',outputAssets:[{id:'owned-output',projectId:'original-project',sizeBytes:2*1024*1024},{id:'foreign-output',projectId:'other-project',sizeBytes:3*1024*1024}],orderedExports:[row('sized',{assetId:'owned-output',sizeBytes:99*1024*1024}),row('foreign-asset',{assetId:'foreign-output'}),row('foreign-row',{projectId:'other-project',assetId:'owned-output'}),row('missing-output',{sizeBytes:99*1024*1024})]},
-  invalidSizes:{projectId:'original-project',outputAssets:[0,-1,1.5,Number.MAX_SAFE_INTEGER+1].map((sizeBytes,index)=>({id:`invalid-size-${index}`,projectId:'original-project',sizeBytes})),orderedExports:[0,1,2,3].map(index=>row(`bad-${index}`,{assetId:`invalid-size-${index}`}))},
+  sizes:{projectId:ORIGINAL,outputAssets:[{id:assetOf('owned-output'),projectId:ORIGINAL,sizeBytes:2*1024*1024},{id:assetOf('foreign-output'),projectId:OTHER,sizeBytes:3*1024*1024}],orderedExports:[row('sized',{assetId:assetOf('owned-output'),sizeBytes:99*1024*1024}),row('foreign-asset',{assetId:assetOf('foreign-output')}),row('foreign-row',{projectId:OTHER,assetId:assetOf('owned-output')}),row('missing-output',{sizeBytes:99*1024*1024})]},
+  invalidSizes:{projectId:ORIGINAL,outputAssets:[0,-1,1.5,Number.MAX_SAFE_INTEGER+1].map((sizeBytes,index)=>({id:assetOf(`invalid-size-${index}`),projectId:ORIGINAL,sizeBytes})),orderedExports:[0,1,2,3].map(index=>row(`bad-${index}`,{assetId:assetOf(`invalid-size-${index}`)}))},
 };
 let rendered: Record<string, string>, actions: Record<string, {downloadHref?: string; disabled?:boolean}[]>, fileActions: Record<string, string[]>, unchanged: Record<string, boolean>;
 before(() => {
@@ -80,11 +86,12 @@ test('failed and pending outcomes keep the exact errors, badge and non-download 
   assert.match(rendered.statuses, /small-badge warn/); assert.doesNotMatch(rendered.statuses, /download-export/);
   assert.deepEqual((actions.statuses as unknown), [], 'Failed, pending and output-less rows cannot request a file action');
 });
-test('ready rows pass exact URL precedence and identity to the async file check without claiming a download', () => {
+test('ready rows pass their project media address and identity to the async file check without claiming a download', () => {
+  // A stored url is not an address: even an explicit one never becomes the download.
   assert.deepEqual(actions.success, [
-    {projectId:'current-project', exportId:'one', downloadHref:'/media/explicit?download=1&name=%E7%89%87', disabled:false},
-    {projectId:'current-project', exportId:'two', downloadHref:'/media/asset-two', disabled:false},
-    {projectId:'current-project', exportId:'three', downloadHref:'/media/asset-three', disabled:false},
+    {projectId:CURRENT, exportId:'one', downloadHref:media(ORIGINAL, 'one'), disabled:false},
+    {projectId:CURRENT, exportId:'two', downloadHref:media(ORIGINAL, 'two'), disabled:false},
+    {projectId:CURRENT, exportId:'three', downloadHref:media(ORIGINAL, 'three'), disabled:false},
   ]);
   assert.equal(fileActions.success.length, 3);
   for (const html of fileActions.success) {
@@ -98,30 +105,31 @@ test('snapshot labels preserve preview/export/storyboard and strict revision com
   assert.match(rendered.snapshots, /时间线导出 · 修订版 7 · 旧快照/); assert.match(rendered.snapshots, /分镜顺序导出 · 2 个镜头/);
   assert.match(rendered.snapshots, /分镜顺序导出 · 0 个镜头/);
   assert.equal(actions.snapshots[0].disabled, true, 'Preview downloads bypass the export-only recovery API');
-  assert.match(fileActions.snapshots[0], /href="\/media\/asset-preview"/);
+  assert.ok(fileActions.snapshots[0].includes(`href="${media(ORIGINAL, 'preview')}"`));
   assert.match(fileActions.snapshots[0], /data-testid="download-export"/);
   assert.equal(actions.snapshots[1].disabled, false);
 });
 test('fallback display name stays local while download filenames remain server-owned', () => {
   assert.match(rendered.fallbacks, /<strong>成片.mp4<\/strong>/);
-  assert.deepEqual(actions.fallbacks, [{projectId:'original-project', exportId:'fallback', downloadHref:'/media/asset-fallback', disabled:false}]);
+  assert.deepEqual(actions.fallbacks, [{projectId:ORIGINAL, exportId:'fallback', downloadHref:media(ORIGINAL, 'fallback'), disabled:false}]);
   assert.deepEqual(actions.recoveryDisabled, [{...actions.fallbacks[0], disabled:true}]);
-  assert.match(fileActions.recoveryDisabled[0], /href="\/media\/asset-fallback"/);
+  assert.ok(fileActions.recoveryDisabled[0].includes(`href="${media(ORIGINAL, 'fallback')}"`));
   assert.match(fileActions.recoveryDisabled[0], /download=""/);
   assert.doesNotMatch(fileActions.recoveryDisabled[0], /download="[^"\n]+"|film\.mp4|成片\.mp4|export-file-check/);
-  assert.deepEqual(actions.held, [{projectId:'original-project', exportId:'held', downloadHref:'/media/asset-held', disabled:true}]);
+  assert.deepEqual(actions.held, [{projectId:ORIGINAL, exportId:'held', downloadHref:media(ORIGINAL, 'held'), disabled:true}]);
   assert.match(fileActions.held[0], /data-testid="download-export"/);
 });
-test('project/error text and download attributes stay React-escaped without changing encoded media URLs', () => {
+test('project/error text stays React-escaped and a stored url never becomes the download address', () => {
   assert.match(rendered.escaped, /&lt;script&gt;/); assert.match(rendered.escaped, /&quot; &amp; 单引号&#x27;/);
   assert.match(rendered.escaped, /此导出遇到问题，请核对原记录与当前状态/); assert.doesNotMatch(rendered.escaped, /onerror|src=x/); assert.doesNotMatch(rendered.escaped, /<script>|<img src=x/);
-  assert.equal(actions.escaped[0].downloadHref, '/media/synthetic?download=1&label=%22%E4%B8%AD%22');
+  assert.equal(actions.escaped[0].downloadHref, media(ORIGINAL, 'escaped'));
   assert.match(fileActions.escaped[0], /data-testid="export-file-check"/);
-  assert.match(fileActions.escapedDownload[0], /href="\/media\/synthetic\?download=1&amp;label=%22%E4%B8%AD%22&amp;quoted=&quot;&lt;&amp;name=片名"/);
+  assert.ok(fileActions.escapedDownload[0].includes(`href="${media(ORIGINAL, 'escaped')}"`));
+  assert.doesNotMatch(fileActions.escapedDownload[0], /synthetic|quoted|label=|片名/);
   assert.match(fileActions.escapedDownload[0], /download=""/);
 });
 test('presentation uses supplied order and never mutates frozen input rows', () => {
-  assert.deepEqual(actions.order.map((action: { downloadHref?: string; }) => action.downloadHref), ['/media/order-first', '/media/order-second']);
+  assert.deepEqual(actions.order.map((action: { downloadHref?: string; }) => action.downloadHref), [media(ORIGINAL, 'first'), media(ORIGINAL, 'second')]);
   assert.ok(rendered.order.indexOf('data-export-id="first"') < rendered.order.indexOf('data-export-id="second"'));
   assert.ok(Object.values(unchanged).every(Boolean));
   const source = readFileSync(path.join(root, 'apps/web/src/ExportHistoryList.tsx'), 'utf8');
@@ -166,6 +174,7 @@ test('history filters actual retained rows locally and a project switch discards
  const original=JSON.stringify(props.orderedExports),react={createElement:(type: unknown,props: Record<string, unknown> | null,...children: ElementTree[])=>({type,props:{...props,children}}),useState(initial: unknown){state??=initial;return[state,(next: (arg0: unknown) => unknown)=>{state=typeof next==='function'?next(state):next;}];}};
  const mod=({exports:{}} as ElementModule);Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs'}).code)(mod,mod.exports,(name: string)=>{
   if(name==='react')return react;if(name.endsWith('I18nProvider.tsx'))return i18nTestModule();
+  if(name==='./api.ts')return{mediaUrl,statusText};
   if(name.endsWith('export-settings-state.ts'))return settingsState;if(name.endsWith('export-delivery-state.ts'))return deliveryState;if(name.endsWith('export-range-state.ts'))return rangeState;if(name.endsWith('export-display.ts'))return{exportHistoryStatusMessage};
   if(name==='@mioon/ui/components/button')return{Button:'Button'};if(name==='@mioon/ui/components/badge')return{Badge:'Badge'};
   return{__esModule:true,default:name};

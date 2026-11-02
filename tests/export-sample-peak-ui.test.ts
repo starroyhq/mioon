@@ -112,10 +112,10 @@ test('historical peak actions leave immutable file inspection inputs intact whil
   assert.match(rendered.history, /冻结的成片 &lt;v1&gt;/); assert.match(rendered.history, /修订版 4 · 旧快照/); assert.match(rendered.history, /export-history-range/);
   assert.deepEqual(fileActions.history, fileActions.withoutFeature, 'Peak observation cannot change file ownership, URL or recovery admission');
   assert.deepEqual(fileActions.history, [
-    {projectId, exportId:id(10), downloadHref:`/media/${id(110)}`, disabled:false},
-    {projectId, exportId:id(11), downloadHref:`/media/${id(111)}?download=1&exportId=${id(11)}`, disabled:false},
-    {projectId, exportId:id(20), downloadHref:`/media/${id(120)}`, disabled:true},
-    {projectId, exportId:id(21), downloadHref:`/media/${id(121)}`, disabled:false},
+    {projectId, exportId:id(10), downloadHref:`/api/projects/${projectId}/media/${id(110)}`, disabled:false},
+    {projectId, exportId:id(11), downloadHref:`/api/projects/${projectId}/media/${id(111)}?download=1&exportId=${id(11)}`, disabled:false},
+    {projectId, exportId:id(20), downloadHref:`/api/projects/${projectId}/media/${id(120)}`, disabled:true},
+    {projectId, exportId:id(21), downloadHref:`/api/projects/${projectId}/media/${id(121)}`, disabled:false},
   ]);
   assert.doesNotMatch(rendered.history, /data-testid="download-export"/);
   for (const [index, html] of actualFileActions.entries()) {

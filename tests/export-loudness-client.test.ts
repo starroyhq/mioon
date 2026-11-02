@@ -20,7 +20,7 @@ test('loudness defaults to 125 seconds; other defaults and explicit caller deadl
     const calls: Array<Record<string, unknown>>=[],report=readyLoudness(input) as unknown as MutableLoudness;
     const client=createClient({env,...clientOptions,fetchImpl:asFetch(async (url: string, request?: {body?: string})=>{calls.push({url,...request,body:JSON.parse(request?.body ?? '{}')});return success(report);})});
     assert.deepEqual(await client.rpc(operation,input,options as never),report);assert.equal(deadlines.at(-1),expected);
-    assert.equal(calls.length,1);assert.deepEqual(calls[0].body,{operation,input});assert.equal(calls[0].method,'POST');assert.equal(new URL(calls[0].url as string).pathname,'/api/rpc');
+    assert.equal(calls.length,1);assert.deepEqual(calls[0].body,{operation,input});assert.equal(calls[0].method,'POST');assert.equal(new URL(calls[0].url as string).pathname,`/api/projects/${input.projectId}/rpc`);
   }
   const client=createClient({env,fetchImpl:asFetch(async (_url: string, request?: {body?: string})=>{const {operation:op}=JSON.parse(request?.body ?? '{}') as {operation: string};return success(op==='timeline.export.preflight'?{
     projectId:input.projectId,expectedRevision:1,timelineId:null,timelineRevision:null,snapshotHash:null,checkedAt:'2026-10-13T00:00:00.000Z',

@@ -143,8 +143,10 @@ test('one MCP process follows private desktop descriptor and token rotation, pre
   const project = await mcp.call('project_create', {name:'Durable desktop rotation fixture'}) as {id: string};
   const shot = await mcp.call('shot_create', {projectId:project.id, title:'Before revision'}) as {id: string; revision: number};
   const updateInput = {shotId:shot.id, expectedRevision:shot.revision, patch:{title:'After revision'}};
-  const updated = await mcp.call('shot_update', updateInput) as {revision: number; title: string};
-  const conflict = await mcp.call('shot_update', updateInput, 'REVISION_CONFLICT') as ErrorEnvelope;
+  // The MCP tool takes the owning project beside the shared input.
+  const updateTool = {projectId:project.id, ...updateInput};
+  const updated = await mcp.call('shot_update', updateTool) as {revision: number; title: string};
+  const conflict = await mcp.call('shot_update', updateTool, 'REVISION_CONFLICT') as ErrorEnvelope;
   assert.equal(conflict.details.currentRevision, updated.revision);
   const viaHttp = await httpRpc(service, 'shot.update', updateInput);
   assert.equal(viaHttp.status, 409); assert.equal(viaHttp.body.error?.code, conflict.code);
@@ -167,7 +169,7 @@ test('one MCP process follows private desktop descriptor and token rotation, pre
   await publish();
   assert.deepEqual(await mcp.call('project_get', {projectId:project.id}), before);
   assert.equal(mcp.transport.pid, processId, 'rotation must work without restarting the MCP stdio process');
-  await mcp.call('shot_update', updateInput, 'REVISION_CONFLICT');
+  await mcp.call('shot_update', updateTool, 'REVISION_CONFLICT');
 
   const direct = await httpRpc(service, 'project.create', {name:'HTTP writes after rotation'});
   assert.equal(direct.body.ok, true);

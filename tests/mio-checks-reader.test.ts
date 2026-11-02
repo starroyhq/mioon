@@ -24,7 +24,7 @@ const microtasks=async()=>{for(let index=0;index<8;index++)await Promise.resolve
 test('checks reader uses only scoped GETs and requests full preflight only for true',async()=>{
  const calls:Array<{url:string;options:RequestInit|undefined}>=[],reader=createAgentTaskChecksReader({fetchImpl:async(url,options)=>{calls.push({url:String(url),options});return response(checks());}});
  assert.equal(typeof readAgentTaskChecks,'function');assert.deepEqual(await reader(projectId,runId),checks());await reader(projectId,runId,{preflight:false});await reader(projectId,runId,{preflight:true});
- const path=`/api/agent/tasks/v2/${projectId}/${runId}/checks`;assert.deepEqual(calls.map(call=>call.url),[path,path,`${path}?preflight=1`]);
+ const path=`/api/projects/${projectId}/agent/tasks/v2/${runId}/checks`;assert.deepEqual(calls.map(call=>call.url),[path,path,`${path}?preflight=1`]);
  for(const call of calls){assert.equal(call.options?.method,'GET');assert.equal(call.options?.body,undefined);assert.equal(call.options?.credentials,'same-origin');assert.equal(call.options?.cache,'no-store');assert.ok(call.options?.signal instanceof AbortSignal);assert.equal(call.options?.signal?.aborted,false);}
 });
 

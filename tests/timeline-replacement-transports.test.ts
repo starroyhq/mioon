@@ -258,7 +258,8 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
 
   // Local canvas replay keys and timeline replay keys are separate namespaces.
   // Reusing this string for selection is allowed, but never repoints the clip.
-  let selected = await command('version.select', {shotId: shot.id, versionId: versions.later.id, expectedRevision: shot.revision, requestId: firstInput.requestId});
+  // CLI and MCP give the shot's project beside the selection input.
+  let selected = await command('version.select', {projectId, shotId: shot.id, versionId: versions.later.id, expectedRevision: shot.revision, requestId: firstInput.requestId});
   assert.deepEqual(await backend.http('timeline.get', {projectId}), timeline);
   assert.equal(timeline.clips.find((clip: { id: unknown; }) => clip.id === clipId).versionId, versions.generated.id);
   outside = (await backend.storage()).outside; before = timeline;
@@ -267,7 +268,7 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
   assertReplacement(before, timeline, clipId, assets.laterGenerated.id);
   saved.push({input: assetOnlyInput, response: timeline});
   assert.deepEqual((await backend.storage()).outside, outside);
-  selected = (await mcp.call('version_select', {shotId: shot.id, versionId: versions.generated.id, expectedRevision: selected.revision, requestId: randomUUID()}) as unknown as typeof selected);
+  selected = (await mcp.call('version_select', {projectId, shotId: shot.id, versionId: versions.generated.id, expectedRevision: selected.revision, requestId: randomUUID()}) as unknown as typeof selected);
   assert.deepEqual(await backend.http('timeline.get', {projectId}), timeline, 'later selection cannot move asset-only generated clips either');
   outside = (await backend.storage()).outside;
 

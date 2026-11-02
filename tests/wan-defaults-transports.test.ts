@@ -19,6 +19,7 @@ import {defaultVideoModels} from '../packages/contracts/src/video-providers.ts';
 import type {VideoConnectionConfiguration, VideoModelEntry} from '../packages/contracts/src/video-providers.ts';
 import {generationParameters, generationProviderForModel, videoConnectionProviders} from '../apps/web/src/generation-settings.ts';
 import {rpc as webRpc} from '../apps/web/src/api.ts';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const execute = promisify(execFile);
@@ -71,10 +72,12 @@ async function fixture(t: TestContext, scenario: Scenario) {
   const captured: Array<{operation:string; input:Record<string,unknown>}> = [];
   server = http.createServer(async(request, response)=>{
     try {
-      assert.equal(request.url, '/api/rpc'); assert.equal(request.method, 'POST');
+      assert.equal(request.method, 'POST');
       assert.equal(request.headers.authorization, `Bearer ${token}`);
       let raw=''; for await(const chunk of request) {raw+=String(chunk); if (Buffer.byteLength(raw)>16384) throw Error('Request overflow');}
       const body = JSON.parse(raw) as {operation:string; input:Record<string,unknown>}; captured.push(body);
+      // Raw HTTP posts to the legacy /api/rpc; the clients use the operation's own address.
+      assert.ok(request.url === '/api/rpc' || request.url === rpcPathFor(body.operation, body.input, project.id as string), request.url);
       const data = await services.call(body.operation, body.input);
       response.writeHead(200, {'content-type':'application/json'}); response.end(JSON.stringify({ok:true, data}));
     } catch(error) {
@@ -94,7 +97,8 @@ async function fixture(t: TestContext, scenario: Scenario) {
     const body = await response.json() as Envelope; assert.equal(body.ok,true,JSON.stringify(body)); assert.equal(response.status,200); return body.data!;
   };
   const cliSubmit = async(input:Record<string,unknown>): Promise<JobRecord>=>{
-    const result = await execute(process.execPath, [path.join(repo,'apps/cli/src/index.ts'),'generation','submit','--input',JSON.stringify(input)], {cwd:repo, env, timeout:10000});
+    // CLI and MCP give the shot's project beside the shared input.
+    const result = await execute(process.execPath, [path.join(repo,'apps/cli/src/index.ts'),'generation','submit','--input',JSON.stringify({projectId:project.id, ...input})], {cwd:repo, env, timeout:10000});
     const body = JSON.parse(result.stdout) as Envelope; assert.equal(body.ok,true,JSON.stringify(body));
     assert.ok(!result.stdout.includes(token) && !result.stderr.includes(token)); return body.data!;
   };
@@ -103,7 +107,7 @@ async function fixture(t: TestContext, scenario: Scenario) {
   (transport.stderr as unknown as import('node:stream').Readable | undefined)?.resume();
   await client.connect(transport);
   const mcpSubmit = async(input:Record<string,unknown>): Promise<JobRecord>=>{
-    const result = await client!.callTool({name:'generation_submit',arguments:input}, undefined, {timeout:10000});
+    const result = await client!.callTool({name:'generation_submit',arguments:{projectId:project.id, ...input}}, undefined, {timeout:10000});
     const content = result.content as Array<{type:string; text:string}>;
     const block = content.find(value=>value.type==='text'); assert.ok(block);
     const body = JSON.parse(block.text) as Envelope;
@@ -126,7 +130,7 @@ for (const scenario of scenarios) test(`Web, HTTP, CLI and official MCP freeze i
     ...(scenario.overrides ? {parameters:scenario.overrides} : {})});
   const webInput = {...input(), parameters:webParameters};
   const cliInput = input(), mcpInput = input(), httpInput = input();
-  const jobs = [await webRpc<JobRecord>('generation.submit',webInput,{fetcher:f.fetcher}), await f.httpSubmit(httpInput), await f.cliSubmit(cliInput), await f.mcpSubmit(mcpInput)];
+  const jobs = [await webRpc<JobRecord>('generation.submit',webInput,{fetcher:f.fetcher,projectId:f.shot.projectId as string}), await f.httpSubmit(httpInput), await f.cliSubmit(cliInput), await f.mcpSubmit(mcpInput)];
   for (const job of jobs) {
     assert.equal(job.status,'queued'); assert.equal(job.submissionCount,0);
     assert.deepEqual(job.snapshot.parameters,scenario.expected);

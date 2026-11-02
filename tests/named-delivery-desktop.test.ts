@@ -45,6 +45,17 @@ test('named download uses actual response metadata and trusted Downloads only, w
   assert.deepEqual(await readdir(directory), before, 'cancel remains Chromium-owned with no helper write');
 });
 
+test('managed media downloads are also accepted at their project address, and only there', () => {
+  const media = `${origin}/api/projects/${otherId}/media/${assetId}`;
+  for (const good of [media, `${media}?download`, `${media}?download=1`, `${media}?download=1&exportId=${exportId}`]) assert.equal(isAllowedDownload(good, origin), true, good);
+  for (const bad of [`${origin}/api/projects/not-a-project/media/${assetId}`, `${media}/extra`, `${origin}/api/projects/${otherId}/rpc`,
+    `${origin}/api/projects/${otherId}/media/not-an-asset`, `${origin}/api/projects/${otherId}/export-files?projectId=${otherId}&exportId=${exportId}`,
+    `${origin}/api/projects/${otherId}/../media/${assetId}`, `${media}?download=1&exportId=invalid`]) assert.equal(isAllowedDownload(bad, origin), false, bad);
+  const named = `${media}?download=1&exportId=${exportId}`;
+  const f = fixture({directory: {downloadsDirectory: '/trusted/Downloads'}, overrides: {getURL: () => named, getURLChain: () => [url, named]}});
+  assert.equal(f.prevented, 0, 'a redirect from the legacy path to the project address keeps one identity');
+  assert.equal(f.options?.defaultPath, path.join('/trusted/Downloads', timelineDeliveryBasename('海边最终版', exportId)));
+});
 test('desktop accepts canonical named query and legacy managed routes, rejecting ambiguous or injected syntax', () => {
   for (const good of [url, `${origin}/media/${assetId}`, `${origin}/media/${assetId}?download`, `${origin}/media/${assetId}?download=1`]) assert.equal(isAllowedDownload(good, origin), true, good);
   for (const bad of [url + '&download=1', url + `&exportId=${exportId}`, url + '&filename=evil.mp4', url + '&path=/tmp/evil',

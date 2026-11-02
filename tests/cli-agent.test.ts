@@ -99,7 +99,7 @@ test('all task control aliases use one action endpoint and preserve CAS',async t
  const f=await fixture(t,(_req,res)=>reply(res,snapshot('paused',2)));
  const aliases={pause:'pause',resume:'resume',stop:'stop',approve:'approve',deny:'deny',skip:'skip',note:'note','undo-change':'undo_change','undo-all':'undo_all','resolve-unknown':'resolve_unknown'};
  for(const [commandName,action] of Object.entries(aliases)){const input={projectId,runId,requestId,expectedRevision:1,...(commandName==='note'?{text:'Additional local instruction'}:{stepId,changeId}),...(commandName==='resolve-unknown'?{resolution:'discard'}:{})};const result=await command(['agent','task',commandName,'--input',JSON.stringify(input)],{base:f.base}).result;assert.equal(result.code,0);assert.equal(f.calls.at(-1)!.body.action,action);assert.equal(f.calls.at(-1)!.body.expectedRevision,1);}
- assert.ok(f.calls.every(call=>call.url===`/api/agent/tasks/v2/${projectId}/${runId}/actions`));
+ assert.ok(f.calls.every(call=>call.url===`/api/projects/${projectId}/agent/tasks/v2/${runId}/actions`));
 });
 
 test('watch exit statuses and progress use one stdout envelope',async t=>{
@@ -127,5 +127,5 @@ test('conversation is an offline-discoverable management command and forwards th
  const f=await fixture(t,(req,res)=>reply(res,req.url!.includes('/conversations/')?{conversation,runs:[run],nextCursor:null}:req.method==='POST'?{...snapshot(),run}:{conversations:[conversation],nextCursor:null}));
  const sent=await command(['agent','task','send','--input',JSON.stringify({projectId,conversationId,requestId,text:'synthetic',expectedSettingsRevision:4})],{base:f.base}).result;assert.equal(sent.code,0);assert.equal(f.calls[0].body.conversationId,conversationId);
  const history=await command(['agent','task','history','--input',JSON.stringify({projectId})],{base:f.base}).result;assert.equal(history.code,0);assert.deepEqual(history.body.data,{conversations:[conversation],nextCursor:null});
- const members=await command(['agent','task','conversation','--input',JSON.stringify({projectId,conversationId,cursor:'retained-cursor'})],{base:f.base}).result;assert.equal(members.code,0);assert.deepEqual(members.body.data,{conversation,runs:[run],nextCursor:null});assert.equal(f.calls.at(-1)!.url,`/api/agent/tasks/v2/${projectId}/conversations/${conversationId}?cursor=retained-cursor`);
+ const members=await command(['agent','task','conversation','--input',JSON.stringify({projectId,conversationId,cursor:'retained-cursor'})],{base:f.base}).result;assert.equal(members.code,0);assert.deepEqual(members.body.data,{conversation,runs:[run],nextCursor:null});assert.equal(f.calls.at(-1)!.url,`/api/projects/${projectId}/agent/tasks/v2/conversations/${conversationId}?cursor=retained-cursor`);
 });

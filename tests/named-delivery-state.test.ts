@@ -161,15 +161,17 @@ test('pending exact key/input and retry preserve prior name when another draft i
 });
 
 test('named projection rejects malformed own name, path-shaped IDs and legacy status aliases', () => {
-  const base = { id: id(7), assetId: id(8), mode: 'timeline', purpose: 'export', status: 'succeeded', timelineRevision: 4, createdAt: '2026-10-12T06:00:00.000Z', snapshot: { timeline, deliveryName: 'frozen' } };
-  assert.equal(namedTimelineDeliveryHistory(base)!.downloadHref, `/media/${id(8)}?download=1&exportId=${id(7)}`);
+  const base = { id: id(7), projectId, assetId: id(8), mode: 'timeline', purpose: 'export', status: 'succeeded', timelineRevision: 4, createdAt: '2026-10-12T06:00:00.000Z', snapshot: { timeline, deliveryName: 'frozen' } };
+  assert.equal(namedTimelineDeliveryHistory(base)!.downloadHref, `/api/projects/${projectId}/media/${id(8)}?download=1&exportId=${id(7)}`);
+  // The download is addressed by the row's own project; without one there is none.
+  assert.equal(namedTimelineDeliveryHistory({ ...base, projectId: undefined })!.downloadHref, null);
   for (const patch of [{ id: '../path' }, { status: 'completed' }, { status: 'ready' }, { snapshot: { ...base.snapshot, deliveryName: undefined } }, { snapshot: { timeline } }]) assert.equal(namedTimelineDeliveryHistory({ ...base, ...patch }), null);
   assert.equal(namedTimelineDeliveryHistory({ ...base, assetId: '../file', url: 'https://bad.example/name.mp4' })!.downloadHref, null);
 });
 
 
 test('frozen rate descriptors use stable settings without changing legacy projection acceptance or original history', () => {
-  const base = { id: id(7), assetId: id(8), mode: 'timeline', purpose: 'export', status: 'succeeded', timelineRevision: 4, createdAt: '2026-10-12T06:00:00.000Z', snapshot: { timeline, deliveryName: 'literal 日本語 繁體' } };
+  const base = { id: id(7), projectId, assetId: id(8), mode: 'timeline', purpose: 'export', status: 'succeeded', timelineRevision: 4, createdAt: '2026-10-12T06:00:00.000Z', snapshot: { timeline, deliveryName: 'literal 日本語 繁體' } };
   const projection = { width: 720, height: 1280, fps: 30, rate: '紧凑 · CRF 28' };
   const variants = [
     [{ mode: 'crf', quality: 'compact' }, 'export.settings.compact'],
@@ -183,7 +185,7 @@ test('frozen rate descriptors use stable settings without changing legacy projec
     assert.equal(output!.output!.rate, projection.rate, 'Legacy projection stays exact, even when descriptor comes from different frozen settings');
     assert.equal(output!.output!.rateMessage!.key, key);
     for (const locale of LOCALES) assert.ok(renderMessage(locale, output!.output!.rateMessage));
-    assert.equal(output!.downloadHref, `/media/${id(8)}?download=1&exportId=${id(7)}`);
+    assert.equal(output!.downloadHref, `/api/projects/${projectId}/media/${id(8)}?download=1&exportId=${id(7)}`);
     assert.deepEqual(row, before);
   }
   const unknown = { ...base, snapshot: { ...base.snapshot, delivery: { exportSettings: { rateControl: { mode: 'future' } } } } };

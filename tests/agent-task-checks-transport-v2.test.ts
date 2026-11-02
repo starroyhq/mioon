@@ -66,11 +66,11 @@ test('checks client uses a single authenticated GET and rejects invalid identity
  const calls:Array<{url:string;options:RequestInit|undefined}>=[];
  const client=createAgentClient({env,fetchImpl:async(url,options)=>{calls.push({url:String(url),options});return ok(checks());}});
  assert.deepEqual(await client.checks({projectId,runId}),checks());
- assert.equal(calls.length,1);assert.equal(calls[0]!.url,`${env.MIOON_BASE_URL}/api/agent/tasks/v2/${projectId}/${runId}/checks`);
+ assert.equal(calls.length,1);assert.equal(calls[0]!.url,`${env.MIOON_BASE_URL}/api/projects/${projectId}/agent/tasks/v2/${runId}/checks`);
  assert.equal(calls[0]!.options?.method,'GET');assert.equal(calls[0]!.options?.body,undefined);assert.equal(calls[0]!.options?.redirect,'error');
  assert.deepEqual(calls[0]!.options?.headers,{authorization:`Bearer ${env.MIOON_TOKEN}`});
  await client.checks({projectId,runId,preflight:true});await client.checks({projectId,runId,preflight:false});
- assert.deepEqual(calls.map(call=>call.url),[`${env.MIOON_BASE_URL}/api/agent/tasks/v2/${projectId}/${runId}/checks`,`${env.MIOON_BASE_URL}/api/agent/tasks/v2/${projectId}/${runId}/checks?preflight=1`,`${env.MIOON_BASE_URL}/api/agent/tasks/v2/${projectId}/${runId}/checks`]);
+ assert.deepEqual(calls.map(call=>call.url),[`${env.MIOON_BASE_URL}/api/projects/${projectId}/agent/tasks/v2/${runId}/checks`,`${env.MIOON_BASE_URL}/api/projects/${projectId}/agent/tasks/v2/${runId}/checks?preflight=1`,`${env.MIOON_BASE_URL}/api/projects/${projectId}/agent/tasks/v2/${runId}/checks`]);
  assert.ok(calls.every(call=>call.options?.method==='GET'&&call.options.body===undefined));
  for(const bad of [{projectId,runId,requestId:randomUUID()},{projectId,runId:'invalid'},{projectId,runId,refresh:true},{projectId,runId,preflight:'1'}])await assert.rejects(client.checks(bad),{code:'VALIDATION_ERROR'});
  assert.equal(calls.length,3);
@@ -122,9 +122,9 @@ test('checks CLI discovers its strict schema offline and forwards only one GET',
  const address=server.address();assert.ok(address&&typeof address==='object');const base=`http://127.0.0.1:${address.port}`;
  const result=await command(['agent','task','checks','--input',JSON.stringify({projectId,runId})],base);
  assert.equal(result.code,0);assert.deepEqual(result.body,{ok:true,data:checks()});
- assert.deepEqual(calls,[{url:`/api/agent/tasks/v2/${projectId}/${runId}/checks`,method:'GET'}]);
+ assert.deepEqual(calls,[{url:`/api/projects/${projectId}/agent/tasks/v2/${runId}/checks`,method:'GET'}]);
  for(const preflight of [true,false])assert.equal((await command(['agent','task','checks','--input',JSON.stringify({projectId,runId,preflight})],base)).code,0);
- assert.deepEqual(calls.map(call=>call.url),[`/api/agent/tasks/v2/${projectId}/${runId}/checks`,`/api/agent/tasks/v2/${projectId}/${runId}/checks?preflight=1`,`/api/agent/tasks/v2/${projectId}/${runId}/checks`]);
+ assert.deepEqual(calls.map(call=>call.url),[`/api/projects/${projectId}/agent/tasks/v2/${runId}/checks`,`/api/projects/${projectId}/agent/tasks/v2/${runId}/checks?preflight=1`,`/api/projects/${projectId}/agent/tasks/v2/${runId}/checks`]);
  for(const input of [{projectId,runId,force:true},{projectId,runId,preflight:'1'}])assert.equal((await command(['agent','task','checks','--input',JSON.stringify(input)],base)).code,2);
  assert.equal(calls.length,3);
 });
@@ -148,7 +148,7 @@ test('H4b clients and CLI retain optional requirements while host check groups s
  const result=await command(['agent','task','checks','--input',JSON.stringify({projectId,runId})],base);
  assert.equal(result.code,0);assert.deepEqual(result.body,{ok:true,data:report});
  assert.ok(result.stdout.includes('requirements'));assert.ok(result.stdout.includes(goalStepId));
- assert.deepEqual(calls,Array.from({length:2},()=>({url:`/api/agent/tasks/v2/${projectId}/${runId}/checks`,method:'GET'})));
+ assert.deepEqual(calls,Array.from({length:2},()=>({url:`/api/projects/${projectId}/agent/tasks/v2/${runId}/checks`,method:'GET'})));
  assert.deepEqual(report.requirements?.[0]?.expected,{min:3,max:3},'presentation does not remove or mutate the backend requirement');
 });
 

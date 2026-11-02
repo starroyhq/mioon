@@ -225,7 +225,7 @@ test('task HTTP uses the authenticated UI endpoint, validates every 200 and neve
   const calls: {url: RequestInfo | URL; options?: RequestInit}[] = []; let payload: unknown = { ok: true, data: envelope() };
   const client = createEditTaskClient({ fetcher: async (url, options) => { calls.push({ url, options }); return { ok: true, status: 200, json: async () => payload } as Response; } });
   await client.prepare({ projectId, operation, input, origin: 'new' });
-  assert.equal(calls[0].url, '/api/tasks/prepare'); assert.equal(calls[0].options!.credentials, 'same-origin');
+  assert.equal(calls[0].url, `/api/projects/${projectId}/tasks/prepare`); assert.equal(calls[0].options!.credentials, 'same-origin');
   assert.equal(calls[0].options!.method, 'POST'); assert.deepEqual(JSON.parse(calls[0].options!.body as string), { projectId, operation, input, origin: 'new' });
   for (const invalid of [null, {}, { ok: true, data: null }, { ok: true, data: envelope(makeTask({ input: { ...input, requestId: 'different-original' } })) }]) {
     payload = invalid; await assert.rejects(client.prepare({ projectId, operation, input, origin: 'new' }), { code: 'BACKEND_PROTOCOL_ERROR' });
