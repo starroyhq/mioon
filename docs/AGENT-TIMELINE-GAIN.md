@@ -133,8 +133,8 @@ retarget or rebase an old proposal. UI guards supplement backend authorization.
 Explicit recovery of an already approved unknown outcome retains its original
 target rather than using a new selection.
 
-The same authenticated list/detail/approve/reject/recover routes in
-[AGENT-EDITS.md](AGENT-EDITS.md#http-surface) are used, including exact action
+The same authenticated list/detail/approve/reject/recover routes of the
+reviewed-edit increment are used, including exact action
 bodies `{instanceId,digest}`. No new API route, public RPC operation, MCP/CLI
 approval tool or generic model executor is added. Existing external clients
 retain their separately authorized `timeline.clip.update` gain contract.
@@ -267,10 +267,10 @@ The native exits are not forced-exit evidence. There was no subjective listening
 macOS/Windows validation or real-provider/model verification.
 
 Reproducible checked-in tests include
-[protocol/wire](../tests/agent-timeline-gain-wire.test.ts),
-[preservation](../tests/agent-timeline-gain-preservation.test.ts),
-[rendered media](../tests/agent-timeline-gain-media.test.ts) and
-[renderer boundaries](../tests/agent-timeline-gain-renderer.test.ts).
+protocol/wire (`tests/agent-timeline-gain-wire.test.ts`),
+preservation (`tests/agent-timeline-gain-preservation.test.ts`),
+rendered media (`tests/agent-timeline-gain-media.test.ts`) and
+renderer boundaries (`tests/agent-timeline-gain-renderer.test.ts`).
 Local evidence paths are `evidence/agent-gain/affected/`, `media/`,
 `native-summary.json`, `native-review.md`, `screenshots/`, build logs and the
 exact source/artifact manifest. Private runtime settings, connection material

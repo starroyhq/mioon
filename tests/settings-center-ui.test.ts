@@ -411,22 +411,15 @@ function composerSettingsHandler(kind: string, callback: { (): Promise<unknown>;
     setSettingsSlot: () => assert.fail('The independent center must not select a legacy inline slot'),
     setPage: () => assert.fail('The independent center must not show a legacy inline page'),
   };
-  let click;
-  if (kind === 'agent') {
-    const code = source('AgentPanel.tsx'), start = code.indexOf('  const usable ='), end = code.indexOf('  const { snapshot, phase } = state;', start);
-    assert.ok(start >= 0 && end > start);
-    click = Function('env', `with (env) { ${stripSourceTypes(code.slice(start, end))}; return () => dismiss(true); }`)(env);
-  } else {
-    const code = source('ImageGeneration.tsx'), button = code.indexOf('data-testid="image-settings-open"');
-    const start = code.indexOf('onClick={', button) + 'onClick={'.length, end = code.indexOf('})}><Icon name="settings"', start) + 2;
-    assert.ok(button >= 0 && start > button && end > start);
-    (env as typeof env&{run:(action:(session:typeof env.session.current)=>unknown)=>unknown}).run = (action: (arg0: { setVisible(value: unknown): void; load: () => never; generate: () => never; send: () => never; }) => unknown) => action(env.session.current);
-    click = Function('env', `with (env) { return (${stripSourceTypes(code.slice(start, end)).replace(/;\s*$/u, '')}); }`)(env);
-  }
+  const code = source('ImageGeneration.tsx'), button = code.indexOf('data-testid="image-settings-open"');
+  const start = code.indexOf('onClick={', button) + 'onClick={'.length, end = code.indexOf('})}><Icon name="settings"', start) + 2;
+  assert.ok(button >= 0 && start > button && end > start);
+  (env as typeof env&{run:(action:(session:typeof env.session.current)=>unknown)=>unknown}).run = (action: (arg0: { setVisible(value: unknown): void; load: () => never; generate: () => never; send: () => never; }) => unknown) => action(env.session.current);
+  const click = Function('env', `with (env) { return (${stripSourceTypes(code.slice(start, end)).replace(/;\s*$/u, '')}); }`)(env);
   return { env, current, visibility, requests, click, get reads() { return reads; } };
 }
 
-for (const kind of ['agent', 'image']) {
+for (const kind of ['image']) {
   test(`${kind} rejected settings restores only current visibility, including hidden-document denial and thrown callbacks`, async () => {
     for (const hidden of [false, true]) for (const outcome of ['denied', 'throws', 'rejects']) {
       const answer = Promise.withResolvers();

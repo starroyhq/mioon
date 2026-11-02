@@ -20,31 +20,10 @@ import {withRestoreInvocation,restoreEffectFence,freezeRestoreInput} from '../pa
 import {matchesRestoredExport,restoreExportIdentity} from '../packages/business/src/workspace-restore-exports.ts';
 import {startWorker, type Worker} from '../packages/business/src/jobs.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {createAgentEditService} from '../packages/business/src/agent/edit-proposals.ts';
-import {editToolPolicy} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {timelineEditToolPolicy} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
 
 const code=(value: string|{ expectedWorkspaceOrigin?: undefined; }|{ expectedWorkspaceOrigin: `${string}-${string}-${string}-${string}-${string}`; })=>(error: { code: unknown; })=>(error as unknown as import('./helpers/strict-opacity-fixture-types.ts').OpacityFailure)?.code===value;
 const captured=(db: DatabaseSync)=>JSON.stringify(db.prepare('SELECT * FROM workspace_restore_holds ORDER BY kind,id').all());
-function agentIntent(store: FixtureStore,services: FixtureServices,project: import('./helpers/strict-timeline-core-types.ts').FixtureProject,shot: import('./helpers/strict-service-responses.ts').MediaShot,timeline: import('./helpers/strict-timeline-core-types.ts').FixtureTimeline,operation: string){
- const edits=(createAgentEditService({store,services}) as unknown as import('./helpers/strict-agent-workspace-types.ts').TypedEdits<'shot'|'move'>),timelineMode=operation==='timeline.clip.update';
- const target=timelineMode?edits.pinTimelineTarget(project.id,{timelineId:timeline.id,clipId:timeline.clips[0].id,expectedRevision:timeline.revision}):edits.pinTarget(project.id,{shotId:shot.id,expectedRevision:shot.revision});
- const runId=randomUUID(),requestId=randomUUID(),toolId=randomUUID(),tid=store.db.prepare('SELECT id FROM agent_chat_threads WHERE projectId=?').get(project.id)?.id??randomUUID();
- if(!store.db.prepare('SELECT 1 FROM agent_chat_threads WHERE id=?').get(tid))store.db.prepare('INSERT INTO agent_chat_threads VALUES(?,?,0,1)').run(tid,project.id);
- const position=(store.db.prepare('SELECT count(*) n FROM agent_chat_runs WHERE projectId=?').get(project.id)!.n! as number)+1;
- const run={id:runId,projectId:project.id,requestId,threadId:tid,status:'running',contextMode:timelineMode?'selected_timeline_clip_move':'selected_shot_edit',editTarget:target,modelRequestState:'dispatch_started',activity:[]};
- const acceptance={version:1,execution:{version:1,target,policy:timelineMode?timelineEditToolPolicy(project.id):editToolPolicy(project.id)}};
- store.db.prepare('INSERT INTO agent_chat_requests VALUES(?,?,?,?,?,?,?)').run(requestId,project.id,tid,runId,'fixture',JSON.stringify(acceptance),100);
- store.db.prepare('INSERT INTO agent_chat_runs VALUES(?,?,?,?,?,?,?,?)').run(runId,project.id,tid,requestId,position,run.status,JSON.stringify(run),100);
- const changes=timelineMode?{startFrame:60}:{title:'Captured proposal',prompt:null};
- const toolCall={id:'call_'+randomUUID(),name:timelineMode?'mioon_propose_timeline_clip_move':'mioon_propose_shot_update',arguments:changes,argumentsJson:JSON.stringify(changes)};
- const tool={id:toolId,projectId:project.id,runId,position:2,kind:'tool',ordinal:1,status:'dispatch_started',intent:{toolCall,provenance:{category:timelineMode?'project_selected_timeline_timing':'project_selected_shot_text',projectId:project.id,operation}}};
- store.db.prepare('INSERT INTO agent_chat_steps VALUES(?,?,?,?,?,?,?,?)').run(toolId,runId,project.id,2,'tool',tool.status,JSON.stringify(tool),100);
- const proposal=store.tx(()=>edits.createInside(({run,tool,target,changes,toolCall,projectId:project.id,runId} as unknown as Parameters<typeof edits.createInside>[0])));
- run.status='completed';run.modelRequestState='completed';store.db.prepare('UPDATE agent_chat_runs SET status=?,data=? WHERE id=?').run('completed',JSON.stringify(run),runId);
- return JSON.parse(((store.db.prepare('SELECT definition FROM agent_edit_proposals WHERE id=?').get(proposal.id)!.definition as string))).input;
-}
-async function fixture(t: test.TestContext,{exportOptions,agent=false,media=false,subjectTask=false}:{exportOptions?:import('../packages/business/src/services.ts').CreateServicesOptions['exportOptions'];agent?:boolean;media?:boolean;subjectTask?:boolean}={}){
+async function fixture(t: test.TestContext,{exportOptions,media=false,subjectTask=false}:{exportOptions?:import('../packages/business/src/services.ts').CreateServicesOptions['exportOptions'];media?:boolean;subjectTask?:boolean}={}){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-restore-local-'));
  let store=(openStore(root) as unknown as FixtureStore),services=(createServices(store,new Map()) as unknown as FixtureServices),tasks=(createEditTasks({store,services}) as unknown as import("./helpers/strict-opacity-fixture-types.ts").OpacityTasks);
  const project=await services.call('project.create',{name:'Local restore'}),empty=await services.call('project.create',{name:'No timeline'});
@@ -57,12 +36,11 @@ async function fixture(t: test.TestContext,{exportOptions,agent=false,media=fals
  let capturedSubject;if(subjectTask){const image=store.put('assets',{id:randomUUID(),projectId:project.id,name:'Subject source',mimeType:'image/png',width:1,height:1,sha256:'b'.repeat(64),sizeBytes:32,relativePath:'media/subject.png',provenance:'user-import'});capturedSubject=tasks.prepare({projectId:project.id,operation:'subject.create',input:{projectId:project.id,requestId:randomUUID(),name:'Captured subject',kind:'character',assetId:image.id},origin:'new'});}
  if(media){const jobId=randomUUID(),versionId=randomUUID();store.put('jobs',{id:jobId,projectId:project.id,shotId:saved.id,status:'succeeded',versionId});store.put('versions',{id:versionId,projectId:project.id,shotId:saved.id,jobId,assetId:asset.id,sha256:asset.sha256,number:1});store.put('shots',{...saved,selectedVersionId:versionId});}
  const heldExport=await services.call('timeline.render',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'preview'});
- const intents=agent?['shot.update','timeline.clip.update'].map(operation=>({operation,input:agentIntent(store,services,project,saved,timeline,operation)})):[];
  await tasks.drain();await services.drain();store.close();
  const metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:now()};
  const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{installCurrentWorkspaceRestoreSchema(db,metadata);db.exec('PRAGMA wal_checkpoint(TRUNCATE)');}finally{db.close();}
  store=(openStore(root) as unknown as FixtureStore);services=(createServices(store,new Map(),{exportOptions}) as unknown as FixtureServices);tasks=(createEditTasks({store,services}) as unknown as import("./helpers/strict-opacity-fixture-types.ts").OpacityTasks);
- const f={root,store,services,tasks,project,empty,savedInput,saved,asset,timeline,pending,heldExport,intents,capturedSubject,metadata,context:{expectedWorkspaceOrigin:metadata.workspaceOrigin}};
+ const f={root,store,services,tasks,project,empty,savedInput,saved,asset,timeline,pending,heldExport,capturedSubject,metadata,context:{expectedWorkspaceOrigin:metadata.workspaceOrigin}};
  t.after(async()=>{await tasks.drain();await services.drain();if(store.db.isOpen)store.close();rmSync(root,{recursive:true,force:true});});return f;
 }
 
@@ -75,16 +53,9 @@ test('explicit origin admits shared fresh local mutations; immutable old receipt
  assert.equal(captured(f.store.db),before);
 });
 
-test('captured prepared task and Agent proposal keys cannot bypass holds through a new direct invocation',async t=>{
- const f=await fixture(t,{agent:true}),before=captured(f.store.db);
+test('captured prepared task keys cannot bypass holds through a new direct invocation',async t=>{
+ const f=await fixture(t),before=captured(f.store.db);
  await assert.rejects(f.services.call('timeline.track.add',f.pending.task.input,f.context),code('RESTORED_RECORD_HELD'));
- for(const intent of f.intents){
-  await assert.rejects(f.services.call(intent.operation,intent.input,f.context),code('RESTORED_RECORD_HELD'));
-  const operation=intent.operation==='shot.update'?'node.create':'timeline.track.add';
-  const input=intent.operation==='shot.update'?{projectId:f.project.id,type:'text',position:{x:0,y:0},requestId:intent.input.requestId}:{projectId:f.project.id,expectedRevision:f.timeline.revision,kind:'audio',requestId:intent.input.requestId};
-  await assert.rejects(f.services.call(operation,input,f.context),code('RESTORED_RECORD_HELD'));
-  await assert.rejects(f.services.call(operation,{...input,projectId:f.empty.id},f.context),code('RESTORE_OPERATION_UNAVAILABLE'));
- }
  assert.equal(f.store.get('shots',f.saved.id)!.title,f.saved.title);assert.equal(f.store.get('timelines',f.timeline.id)!.revision,f.timeline.revision);assert.equal(captured(f.store.db),before);
 });
 

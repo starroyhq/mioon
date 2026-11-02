@@ -68,7 +68,7 @@ unchanged clip duration, derived total duration, human-readable target/track and
 base revision. Audit identifiers remain available in details. The authoritative
 proposal status is separate from model prose.
 
-The same authenticated application routes described in [AGENT-EDITS.md](AGENT-EDITS.md)
+The same authenticated application routes of the reviewed-edit increment
 provide list/detail and explicit approve/reject/recover. No new public RPC, MCP
 or CLI approval operation exists. The public proposal union adds
 `operation:'timeline.clip.update'`, an exact `{startFrame}` patch, discriminated

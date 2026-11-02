@@ -195,13 +195,6 @@ test('a first-send authorization review from another conversation cannot authori
   const current=f.session.authorizationReview();assert.ok(current);assert.equal(await f.session.authorizeAndSend(current),true);assert.equal(f.posts.authorize,1);assert.equal(f.posts.send.length,1);assert.equal(f.posts.send[0]?.conversationId,conversationB);assert.equal(f.posts.send[0]?.text,'Draft B');
 });
 
-test('legacy selection is read only and cannot inherit a current conversation draft or upload',async t=>{
-  const a=snapshot(id(170),conversationA,'Current conversation',1),f=fixture(t,[a]);await f.session.load();f.session.edit('Current draft');assert.equal(await f.session.upload(file('current.mp4')),true);const uploadId=f.session.getState().uploads[0]!.id;
-  assert.equal(f.session.selectLegacy(id(171)),true);assert.equal(f.session.getState().legacy,true);assert.equal(f.session.getState().draft,'');assert.deepEqual(f.session.getState().uploads,[]);assert.deepEqual(f.session.getState().rounds,[]);
-  f.session.edit('Do not write this legacy draft');assert.equal(f.session.getState().draft,'');assert.equal(await f.session.upload(file('legacy.mp4')),false);assert.equal(await f.session.send(),false);assert.equal(f.posts.send.length,0);
-  await f.session.selectConversation(conversationA);assert.equal(f.session.getState().legacy,false);assert.equal(f.session.getState().draft,'Current draft');assert.deepEqual(f.session.getState().uploads.map(value=>value.id),[uploadId]);assert.equal(f.posts.upload.length,1);
-});
-
 for(const status of ['running','awaiting_approval','paused'] as const)test(`a ${status} round accepts a note without sending a new round or consuming staged attachments`,async t=>{
   const a=snapshot(id(180),conversationA,'The active request',1,status,4),f=fixture(t,[a],{action:async(_,input)=>acceptedNote(a,input)});
   await f.session.load();assert.equal(await f.session.upload(file('next-round.mp4')),true);const uploads=f.session.getState().uploads;

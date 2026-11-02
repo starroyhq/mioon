@@ -1,4 +1,4 @@
-import {invokeAgentSubmissionFence} from './gain-context-fence.ts';
+import {invokeAgentSubmissionFence} from './submission-fence.ts';
 import {AGENT_PROTOCOLS, deriveAgentEndpoint} from '@mioon/contracts';
 import {lookup as dnsLookup} from 'node:dns/promises';
 import {isIP} from 'node:net';

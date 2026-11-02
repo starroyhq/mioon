@@ -9,7 +9,7 @@ import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
-import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
+import {createAgentTaskRuntime,agentTaskFailure} from '../packages/business/src/agent/task-runtime-v2.ts';
 import type {TaskGateway,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {AgentTaskControlAction,AgentTaskJson,AgentTaskSnapshot,AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
@@ -67,7 +67,8 @@ for(const conflict of ['aba','claim'] as const)test(`approval after target ${con
  }else f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:1,action:'claim',targets:[target]});
  // The approval itself is still rejected with a durable receipt; a new plan needs a new approval.
  const request={requestId:randomUUID(),expectedRevision:waiting.run.revision,action:'approve',stepId:approval.id};
- await assert.rejects(f.runtime.action(f.projectId,waiting.run.id,request),{code:conflict==='aba'?'AGENT_TASK_TARGET_CHANGED':'AGENT_TASK_TARGET_CLAIMED'});
+ // The CLI prints this message: the step did not run and Mio replans, nothing paused.
+ await assert.rejects(f.runtime.action(f.projectId,waiting.run.id,request),conflict==='aba'?{code:'AGENT_TASK_TARGET_CHANGED',message:'该目标已被手动修改，这一步没有执行，Mio 会按当前内容重新规划。',handedBack:true}:{code:'AGENT_TASK_TARGET_CLAIMED',message:'该目标正在手动编辑，这一步没有执行，Mio 会重新规划。',handedBack:true});
  assert.equal(record(f.runtime.journal.lookupControl(request.requestId)?.result).state,'rejected');
  await f.runtime.drain();const done=f.runtime.get(f.projectId,waiting.run.id);
  assert.equal(done.run.status,'completed');assert.equal(f.modelRequests,3);assert.equal(done.changes.length,0);assert.deepEqual(done.run.skippedTargets,[]);
@@ -76,6 +77,16 @@ for(const conflict of ['aba','claim'] as const)test(`approval after target ${con
  assert.equal(error.code,conflict==='aba'?'TARGET_CHANGED':'TARGET_EDITING');assert.ok(Array.isArray(error.current));assert.equal(record(record(error.current[0]).value).prompt,'Saved prompt');
  assert.equal(done.steps.filter(step=>step.toolCall?.name==='mioon_shot_update').length,1);
  assert.equal(record(f.store.get('shots',f.shotId)).title,'Saved title');assert.equal(record(f.store.get('shots',f.shotId)).prompt,'Saved prompt');
+});
+
+test('a handed-back approval says the step did not run while paths that still pause keep their wording',()=>{
+ for(const [code,paused,handed] of [['AGENT_TASK_TARGET_CHANGED','该目标已被手动修改，任务已暂停。','该目标已被手动修改，这一步没有执行，Mio 会按当前内容重新规划。'],['AGENT_TASK_TARGET_CLAIMED','该目标正在手动编辑，任务已暂停。','该目标正在手动编辑，这一步没有执行，Mio 会重新规划。']] as const){
+  const kept=agentTaskFailure(code),back=agentTaskFailure(code,{handedBack:true});
+  assert.equal(kept.message,paused);assert.equal(kept.status,409);assert.equal(Object.hasOwn(kept,'handedBack'),false);
+  assert.equal(back.message,handed);assert.doesNotMatch(back.message,/暂停/u);assert.equal(back.code,code);assert.equal(back.status,409);assert.equal(back.handedBack,true);
+ }
+ // Only the two conflict codes have a hand-back wording.
+ const other=agentTaskFailure('AGENT_TASK_PAUSED',{handedBack:true});assert.equal(other.message,'任务已暂停。');assert.equal(Object.hasOwn(other,'handedBack'),false);
 });
 
 test('a stale approval can be denied after target changes and authorization revocation',async t=>{

@@ -11,7 +11,6 @@ import {ToolAnnotationsSchema} from '@modelcontextprotocol/sdk/types.js';
 import {schemas, inspectionArgumentSchemas, inspectionSchemas, operationEffects,IMAGE_FIXED_OPTIONS,IMAGE_MODELS,COMFY_IMAGE_OPTIONS,
   operationEffect, assertOperationEffectCoverage, effectAnnotations, parse} from '@mioon/contracts';
 import {operationDefinition, discoverSchema, discoveryEffects, jsonSchema} from '@mioon/client';
-import {readToolRequestFields, chatToolAccumulator, responseToolSnapshot} from '../packages/business/src/agent/tool-wire.ts';
 
 const projectId = '11111111-1111-4111-8111-111111111111';
 const inspections = ['project.inspect','asset.inspect','shot.inspect','timeline.inspect'] as const;
@@ -176,34 +175,9 @@ test('offline CLI schema and official MCP list/schema expose identical inspectio
   assert.equal((await call('mioon_capabilities')).error.code, 'CONNECTION_CONFIG_ERROR');
 });
 
-// Public service effects describe I/O, not built-in model authority.
-test('shared subject operations cannot enter either protocol built-in Agent catalog or parser', () => {
-  const readNames = ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect'];
-  const operations = Object.keys(schemas).filter(name => name.startsWith('subject.'));
-  // Six subject operations plus the five angle/lighting variant operations (schema62).
-  assert.equal(operations.length, 11);
-  for (const scope of [undefined, 'selected_shot_edit']) {
-    const request = {phase:'request', ...(scope ? {scope} : {})};
-    for (const protocol of ['chat_completions', 'responses']) {
-      const fields = readToolRequestFields(({presetId:'openai', protocol} as unknown as Parameters<typeof readToolRequestFields>[0]), request);
-      assert.deepEqual((fields.tools as {name?:string;function?:{name:string}}[]).map(tool=>protocol==='responses'?tool.name:tool.function!.name),
-        scope ? ['mioon_propose_shot_update'] : readNames);
-    }
-    for (const operation of operations) for (const name of [operation, `mioon_${operation.replaceAll('.', '_')}`]) {
-      assert.throws(() => chatToolAccumulator(request).add([{index:0, id:'call-subject', type:'function', function:{name, arguments:'{}'}}]), {code:'AGENT_CHAT_TOOLS_UNSUPPORTED'});
-      assert.throws(() => responseToolSnapshot({id:'item-subject', call_id:'call-subject', type:'function_call', name, arguments:'{}', status:'completed'}, 'completed', request), {code:'AGENT_CHAT_TOOLS_UNSUPPORTED'});
-    }
-  }
-});
-
-// Public observation capability is separate from built-in model tool authority.
-test('Comfy remote operations have truthful effects and remain outside built-in Agent tools',()=>{
+test('Comfy remote operations have truthful effects',()=>{
  const read=operationEffects['image.task.remote.get'],observe=operationEffects['image.task.observeRemote'];
  assert.equal(read.readOnly,true);assert.equal(read.externalIO,false);assert.equal(read.databaseWrite,false);
  for(const field of ['databaseWrite','externalIO','fileWrite','openWorld','idempotent'])assert.equal(observe[(field as keyof typeof observe)],true,field);
  for(const field of ['readOnly','paidGeneration','localProcess','destructive'])assert.equal(observe[(field as keyof typeof observe)],false,field);
- for(const scope of [undefined,'selected_shot_edit']){const request={phase:'request',...(scope?{scope}:{})};for(const operation of ['image.task.remote.get','image.task.observeRemote'])for(const name of [operation,`mioon_${operation.replaceAll('.','_')}`]){
-  assert.throws(()=>chatToolAccumulator(request).add([{index:0,id:'call-comfy',type:'function',function:{name,arguments:'{}'}}]),{code:'AGENT_CHAT_TOOLS_UNSUPPORTED'});
-  assert.throws(()=>responseToolSnapshot({id:'item-comfy',call_id:'call-comfy',type:'function_call',name,arguments:'{}',status:'completed'},'completed',request),{code:'AGENT_CHAT_TOOLS_UNSUPPORTED'});
- }}
 });

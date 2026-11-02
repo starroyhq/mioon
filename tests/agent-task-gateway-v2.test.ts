@@ -22,7 +22,7 @@ import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2
 import {schemas} from '../packages/contracts/src/index.ts';
 import {taskToolWireSchema} from '../packages/business/src/agent/task-tool-wire-schema.ts';
 import {AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
-import {agentChatAllowsNaturalEof,createChatCompletionGateway} from '../packages/business/src/agent/chat-completions.ts';
+import {agentChatAllowsNaturalEof} from '../packages/business/src/agent/model-profiles.ts';
 import {nativeAnthropicEvents,nativeAnthropicSse} from './helpers/anthropic-native-events.ts';
 
 const definitions=[{name:'mioon_shot_create',description:'Create a saved shot',parameters:{type:'object',properties:{title:{type:'string'}},required:['title'],additionalProperties:false}}];
@@ -275,14 +275,6 @@ test('official MiniMax natural EOF accepts complete text and tools through the a
     [text+json({error:{message:'PRIVATE_ERROR'}}),'AGENT_CHAT_PROVIDER_ERROR',{}],
     [text,'AGENT_CHAT_TRUNCATED',{readError:true}], [text,'AGENT_CHAT_ABORTED',{abortAfterDelta:true}], [text,'AGENT_CHAT_TIMEOUT',{timeout:true}],
   ] as const){const result=await exchange(miniMaxChina,frames,options);assert.equal(safeAgentChatError(result.failure).code,expected);assert.equal(result.items.some(item=>(item as {type:string}).type==='done'),false);}
-});
-test('legacy official MiniMax text gateway shares the exact natural EOF contract without changing other profiles',async()=>{
-  const frames=textFrames('chat_completions','complete').replace('data: [DONE]\n\n','');
-  for(const configuration of [miniMaxChina,{...miniMaxChina,presetId:'custom',platformId:'custom'}]){
-    const network=syntheticNetwork({body:frames}),dependencies={lookup:async()=>[{address:'8.8.8.8',family:4}],httpsRequest:network.request} as unknown as AgentTransportDependencies,items:unknown[]=[];let failure:unknown;
-    try{for await(const item of createChatCompletionGateway(dependencies)({configuration,apiKey:'SYNTHETIC_ONLY',messages:[{role:'user',content:'synthetic fixture'}]}))items.push(item);}catch(error){failure=error;}
-    assert.equal(network.ends,1);assert.equal(items.some(item=>(item as {type:string}).type==='done'),configuration.presetId==='minimax');if(configuration.presetId==='minimax')assert.equal(failure,undefined);else assert.equal(safeAgentChatError(failure).code,'AGENT_CHAT_TRUNCATED');
-  }
 });
 function syntheticOutput(protocol:AgentConfiguration['protocol'],network:ReturnType<typeof syntheticNetwork>,{answers=[{address:'8.8.8.8',family:4}],lookupError,beforeSubmit}: {answers?:Array<{address:string;family:number}>;lookupError?:Error;beforeSubmit?:()=>void}={}){
   const configuration={...DEFAULT_AGENT_CONFIGURATION,protocol},body=buildTaskModelRequest(configuration,[{role:'user',content:'synthetic local test'}],definitions,4318);
