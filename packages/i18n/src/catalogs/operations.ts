@@ -2,6 +2,30 @@ import type { MessageCatalog } from '../types.ts';
 
 /** Localized operation prose only; operation names, schemas and effect contracts stay unchanged. */
 export const operationMessages = {
+  "operation.project.backup.list": {
+    "zh-Hans": "只读列出项目最近三份自动备份，不打开项目或恢复任务；按内容序号去重，同序号分叉内容暂时无法识别",
+    "zh-Hant": "唯讀列出專案最近三份自動備份，不開啟專案或復原任務；按內容序號去重，同序號分叉內容暫時無法識別",
+    "en": "List the project's three latest automatic backups without opening it or resuming tasks. Deduplication uses content sequence only; divergent copies with the same sequence are not yet distinguishable",
+    "ja": "プロジェクトを開いたりタスクを再開したりせず、最新3件の自動バックアップを読み取り専用で一覧表示します。内容の連番で重複を判定するため、同じ連番を持つ分岐コピーはまだ識別できません"
+  },
+  "operation.project.backup.inspect": {
+    "zh-Hans": "通过专用只读连接查看指定项目备份的内容摘要和表计数，不将备份登记或作为普通项目打开",
+    "zh-Hant": "透過專用唯讀連線查看指定專案備份的內容摘要和資料表計數，不將備份登記或作為一般專案開啟",
+    "en": "Inspect one selected project backup through its dedicated read-only connection, including its content summary and table counts; never registers or opens the backup as an ordinary project",
+    "ja": "専用の読み取り専用接続で、指定したプロジェクトバックアップの内容概要とテーブル件数を確認します。バックアップの登録や通常プロジェクトとしてのオープンは行いません"
+  },
+  "operation.project.backup.restore": {
+    "zh-Hans": "把指定备份恢复到明确的新 .mioon 文件，分配新项目 ID 和空本机记录；拒绝覆盖目标，保留源项目、备份和素材。稳定 requestId 精确重放，不恢复旧任务",
+    "zh-Hant": "將指定備份復原到明確的新 .mioon 檔案，分配新專案 ID 和空本機記錄；拒絕覆寫目標，保留來源專案、備份和素材。穩定 requestId 精確重播，不復原舊任務",
+    "en": "Restore a selected backup to an explicit new .mioon file with a new project ID and empty local records. Refuses existing targets and preserves the source, backup and media. A stable requestId replays the exact receipt without resuming captured tasks",
+    "ja": "指定したバックアップを明示的な新しい .mioon ファイルへ復元し、新しいプロジェクトIDと空のローカル記録を割り当てます。既存の対象への上書きを拒否し、元のプロジェクト、バックアップ、メディアを保持します。安定した requestId で元の受領結果を再現し、旧タスクは再開しません"
+  },
+  "operation.project.backup.status": {
+    "zh-Hans": "只读查看项目自动备份的 running/slow 状态、最后完成时间和失败原因，不打开项目或启动备份",
+    "zh-Hant": "唯讀查看專案自動備份的 running/slow 狀態、最後完成時間和失敗原因，不開啟專案或啟動備份",
+    "en": "Read automatic project backup status, including running/slow, the last completion time and retained failure; never opens the project or starts a backup",
+    "ja": "自動バックアップの running/slow 状態、最終完了日時、保存された失敗理由を読み取り専用で確認します。プロジェクトを開いたりバックアップを開始したりしません"
+  },
   "operation.export.cancel": {
     "zh-Hans": "停止所属项目中排队或运行的本地导出，保留冻结请求和全部源媒体；重复调用不会重新开始渲染",
     "zh-Hant": "停止所屬專案中排隊或執行的本機匯出，保留凍結請求和全部來源媒體；重複呼叫不會重新開始算繪",

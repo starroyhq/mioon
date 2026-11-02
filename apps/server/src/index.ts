@@ -25,6 +25,7 @@ import {projectIdMismatch, isDatabaseMovedError, projectFileMoved} from './proje
 import {serverAppDirectories} from './project-host/directories.ts';
 import {validateApplicationStorage, createApplicationFileGuard} from './project-host/application-storage.ts';
 import {createProjectHostManager} from './project-host/manager.ts';
+import {createProjectBackups} from './project-host/backups.ts';
 import type {ProjectHostManager} from './project-host/manager.ts';
 import type {InspectProject} from './project-host/host.ts';
 import {composeHostedProject} from './project-host/runtime.ts';
@@ -158,7 +159,9 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     application = await composeApplicationRuntime(library, options, shutdown.signal, selfPort);
     const app = application;
     const assertProjectFile = createApplicationFileGuard(directories);
+    const backups = createProjectBackups({directories, registry: library.registry, identity: library.projectFileIdentity, assertProjectFile});
     manager = createProjectHostManager({directories, registry: library.registry, identity: library.projectFileIdentity, taskIndex: library.taskIndex,
+      hooks: [backups.hooks],
       openStore: options => { assertProjectFile(options.projectFile); return openProjectStore(options); },
       maintenance: {recoverProjectFile: file => { assertProjectFile(file); return recoverProjectFile(file); }},
       recoverySnapshot: recover => assertProjectFile.withSnapshot(recover),
@@ -180,7 +183,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     });
     if (token === undefined) { token = randomBytes(32).toString('hex'); writePrivateFileAtomic(tokenFile, token, {root, maxBytes: 4098, replace: false}); }
     const appAgentHttp = (await import('./application-agent-http.ts')).createApplicationAgentHttp(library, shutdown.signal);
-    const rpc = createApplicationRpc({library, app, manager, directories, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
+    const rpc = createApplicationRpc({library, app, manager, directories, backups, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
       imageProfiles: input => listImageProfiles(app.profileDependencies, input as never), refreshSummaries: () => {
         for (const [id, runtime] of opened) {
           // A closing runtime can remain indexed while findMoved awaits I/O,
