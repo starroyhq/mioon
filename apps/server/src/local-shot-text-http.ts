@@ -2,6 +2,8 @@ import type {IncomingMessage,ServerResponse} from 'node:http';
 import {LOCAL_SHOT_TEXT_LIMITS} from '@mioon/contracts/local-shot-text';
 import type {LocalShotTextEnvelope,LocalShotTextExecution} from '@mioon/contracts/local-shot-text';
 import {LocalShotTextError,safeLocalShotTextError} from '@mioon/business/local-shot-text';
+import {rejectProjectMismatch} from './project-routes.ts';
+import type {ProjectAddress} from './project-routes.ts';
 
 export interface LocalShotTextHttpService{
   get(input:unknown):LocalShotTextEnvelope;put(input:unknown):LocalShotTextEnvelope;
@@ -34,7 +36,7 @@ async function body(req:IncomingMessage,res:ServerResponse):Promise<unknown>{
 /** Call only after startServer's Host, Origin and authentication gates. No RPC,
  * Agent, native bridge, arbitrary operation or renderer outcome input exists. */
 export function createLocalShotTextHttp({shotText,signal}:{shotText:LocalShotTextHttpService;signal?:AbortSignal}){
-  return async(req:IncomingMessage,res:ServerResponse,url:URL):Promise<boolean>=>{
+  return async(req:IncomingMessage,res:ServerResponse,url:URL,address?:ProjectAddress):Promise<boolean>=>{
     if(!/^\/api\/local-shot-text(?:\/|$)/u.test(url.pathname))return false;
     const deadline=setTimeout(()=>{req.destroy();res.destroy();},15_000);deadline.unref();
     try{
@@ -48,6 +50,7 @@ export function createLocalShotTextHttp({shotText,signal}:{shotText:LocalShotTex
       if(req.method==='GET')result=shotText.get(query(url,['projectId','shotId']));
       else{
         query(url,[]);const input=await body(req,res);
+        if(rejectProjectMismatch(res,address,input))return true;
         if(signal?.aborted)throw new LocalShotTextError('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE');
         if(route==='/draft')result=req.method==='PUT'?shotText.put(input):shotText.discard(input);
         else if(route==='/prepare')result=shotText.prepare(input);

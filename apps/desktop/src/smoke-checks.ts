@@ -6,6 +6,8 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type {App, BrowserWindow, Cookie, Session, WebContents, WebPreferences} from 'electron';
 import { validateManagedFile } from '@mioon/contracts/private-storage';
+import { projectMediaPath } from '../../../packages/contracts/src/project-file.ts';
+import { rpcPathFor } from '../../../packages/contracts/src/project-addressing.ts';
 import type {DesktopIdentity, DesktopPaths} from './config.ts';
 import type {BackendReady, BackendRuntime, BackendSupervisor} from './supervisor.ts';
 
@@ -62,7 +64,8 @@ export async function runSmoke({ app, getWindow, getProjectWindow, getSession, g
   const requiredWindow = (): BrowserWindow => currentWindow()!;
   const record = (name: string, details: object = {}) => { checks.push({ name, ok: true, ...details }); console.info('Desktop smoke:', name); };
   const evaluate = (expression: string): Promise<unknown> => requiredWindow().webContents.executeJavaScript(expression, true);
-  const rpc = (operation: string, input: unknown = {}) => evaluate(`fetch('/api/rpc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(${JSON.stringify({ operation, input })})}).then(async r=>({status:r.status,body:await r.json()}))`) as Promise<RpcResponse>;
+  // Same addresses as the renderer: app-level at /api/rpc, the rest at its project.
+  const rpc = (operation: string, input: unknown = {}, projectId?: string) => evaluate(`fetch(${JSON.stringify(rpcPathFor(operation, input, projectId))},{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(${JSON.stringify({ operation, input })})}).then(async r=>({status:r.status,body:await r.json()}))`) as Promise<RpcResponse>;
   const waitFor = async <T>(predicate: () => T | false | Promise<T | false>, message: string, timeout = 60000): Promise<T> => {
     const deadline = Date.now() + timeout;
     while (Date.now() < deadline) {
@@ -75,14 +78,14 @@ export async function runSmoke({ app, getWindow, getProjectWindow, getSession, g
     if(currentWindow()&&!currentWindow()!.isDestroyed())await writeFile(output+'.partial.png',(await currentWindow()!.webContents.capturePage()).toPNG());
     throw new Error(`Timed out: ${message}`);
   };
-  const call = async <T>(operation: string, input: unknown = {}): Promise<T> => {
-    const response = await rpc(operation, input);
+  const call = async <T>(operation: string, input: unknown = {}, projectId?: string): Promise<T> => {
+    const response = await rpc(operation, input, projectId);
     const body = response.body as RpcRecord;
     assert.equal(response.status, 200, operation); assert.equal(body.ok, true, `${operation}: ${JSON.stringify(body.error)}`);
     return body.data as T;
   };
-  const waitExport = (id: string) => waitFor<ExportJob>(async () => {
-    const job = await call<ExportJob>('export.get', { exportId: id });
+  const waitExport = (id: string, projectId: string) => waitFor<ExportJob>(async () => {
+    const job = await call<ExportJob>('export.get', { exportId: id }, projectId);
     if (job.status === 'failed') throw new Error(`Render failed: ${JSON.stringify(job.error)}`);
     return job.status === 'succeeded' ? job : false;
   }, 'actual FFmpeg timeline render');
@@ -190,9 +193,9 @@ export async function runSmoke({ app, getWindow, getProjectWindow, getSession, g
   const enqueue = () => call<ExportJob>('timeline.render', { projectId: fixture.id, expectedRevision: timeline.revision,
     requestId: randomUUID(), purpose: 'preview' });
   const firstRender = await enqueue();
-  const rendered = await waitExport(firstRender.id);
+  const rendered = await waitExport(firstRender.id, fixture.id);
   assert.ok(rendered.assetId);
-  const mediaStatus = await evaluate(`fetch(${JSON.stringify(rendered.url)}).then(async r=>({status:r.status,bytes:(await r.arrayBuffer()).byteLength,mime:r.headers.get('Content-Type')}))`) as MediaStatus;
+  const mediaStatus = await evaluate(`fetch(${JSON.stringify(projectMediaPath(fixture.id, rendered.assetId))}).then(async r=>({status:r.status,bytes:(await r.arrayBuffer()).byteLength,mime:r.headers.get('Content-Type')}))`) as MediaStatus;
   assert.equal(mediaStatus.status, 200); assert.ok(mediaStatus.bytes > 10000); assert.equal(mediaStatus.mime, 'video/mp4');
   record('real-shared-ffmpeg-layered-render-and-authenticated-media', { bytes: mediaStatus.bytes });
 
@@ -215,7 +218,7 @@ export async function runSmoke({ app, getWindow, getProjectWindow, getSession, g
   const interrupted = await enqueue();
   await waitForLongMediaChild();
   await restart();
-  await waitExport(interrupted.id);
+  await waitExport(interrupted.id, fixture.id);
   record('graceful-restart-interrupts-and-recovers-active-render');
 
   await waitEntry();

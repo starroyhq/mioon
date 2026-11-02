@@ -4,6 +4,8 @@ import {sanitizeImageSettingsResult, sanitizeCustomImageSettingsResult, sanitize
 import type {createImageSettings, createCustomImageSettings} from '@mioon/business/images/settings';
 import {safeImageReviewError} from '@mioon/business/images/reviews';
 import {safeImageServiceError} from '@mioon/business/images';
+import {rejectProjectMismatch} from './project-routes.ts';
+import type {ProjectAddress} from './project-routes.ts';
 
 type ImageSettings = Awaited<ReturnType<typeof createImageSettings>>;
 type CustomImageSettings = Awaited<ReturnType<typeof createCustomImageSettings>>;
@@ -30,7 +32,7 @@ async function body(req: IncomingMessage, res: ServerResponse, max: number): Pro
  * These fixed user actions are intentionally absent from RPC/CLI/MCP/Agent
  * catalogs. They are not a cryptographic attestation of a physical human click. */
 export function createImageHttp({settings,customSettings,approve,reject,signal}: ImageHttpOptions) {
- return async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> => {
+ return async (req: IncomingMessage, res: ServerResponse, url: URL, address?: ProjectAddress): Promise<boolean> => {
   if(!/^\/api\/images(?:\/|$)/u.test(url.pathname))return false;
   const customSettingsRoute=url.pathname==='/api/images/custom-settings',settingsRoute=customSettingsRoute||url.pathname==='/api/images/settings',approval=url.pathname==='/api/images/reviews/approve',rejection=url.pathname==='/api/images/reviews/reject';
   try{
@@ -45,6 +47,7 @@ export function createImageHttp({settings,customSettings,approve,reject,signal}:
     result=customSettingsRoute?sanitizeCustomImageSettingsResult(stored):sanitizeImageSettingsResult(stored);
    } else {
     const input=await body(req,res,settingsRoute?IMAGE_SETTINGS_LIMITS.updateBytes:1024);
+    if(!settingsRoute&&rejectProjectMismatch(res,address,input))return true;
     if(signal?.aborted)throw Object.assign(Error(),{code:'IMAGE_SERVICE_STOPPED',status:503});
     if(settingsRoute) {
      const stored=await selectedSettings!.put(input);

@@ -76,6 +76,23 @@ test('proof is bound to actual frame/current document/lease and only fixed canon
   f.documents.delete(a.contents);assert.equal(f.host.beforeSendHeaders(details).cancel,true);
 });
 
+test('the PCM route at the input project address is signed; another project in the address is refused',async()=>{
+  const f=fixture(),a=f.owner(),request=f.request(a),grant=await f.dispatch(a,request);
+  const input={...request.input,clipId:uuid(),sourceHash:hash,planHash:hash};
+  const query=new URLSearchParams(input as unknown as Record<string,string>).toString(),origin='http://127.0.0.1:12345';
+  const details=(id:number,project:string)=>({id,url:`${origin}/api/projects/${project}/timeline-audio-preview/pcm?${query}`,method:'GET',resourceType:'xhr',
+    webContents:a.contents,frame:a.frame,requestHeaders:{'X-Mioon-Audio-Lease':grant!.lease!.leaseId}});
+  assert.equal(f.host.beforeSendHeaders(details(2,uuid())).cancel,true,'the address names another project than the input');
+  assert.equal(f.host.beforeSendHeaders({...details(3,input.projectId),url:`${origin}/api/projects/${input.projectId}/timeline-audio-preview/other?${query}`}).cancel,true);
+  const signed=f.host.beforeSendHeaders(details(1,input.projectId));assert.equal(signed.cancel,false);
+  const proof=JSON.parse(Buffer.from((signed.requestHeaders!['X-Mioon-Audio-Proof'] as string),'base64url').toString());
+  assert.equal(proof.sequence,1,'refused addresses consumed no sequence');assert.deepEqual(proof.input,input);
+  assert.equal(verify(null,Buffer.from(nativeAudioProofMaterial(proof)),createPublicKey({key:Buffer.from(f.identity.config.publicKey,'hex'),format:'der',type:'spki'}),Buffer.from((signed.requestHeaders!['X-Mioon-Audio-Signature'] as string),'hex')),true);
+  const unrelated=f.host.beforeSendHeaders({id:4,url:`${origin}/api/projects/${input.projectId}/rpc`,method:'POST',resourceType:'xhr',webContents:a.contents,frame:a.frame,
+    requestHeaders:{'X-Mioon-Audio-Proof':'forged','x-mioon-audio-signature':'forged'}});
+  assert.deepEqual(unrelated,{cancel:false,requestHeaders:{}},'other project routes pass without audio headers');
+});
+
 test('cancelled B never receives a late grant after A retires',async()=>{
   const f=fixture(),a=f.owner(),b=f.owner(),ar=f.request(a),br=f.request(b),grant=await f.dispatch(a,ar);
   const pending=f.dispatch(b,br);await tick();await f.dispatch(b,{action:'cancel',contextId:b.contextId,actionId:br.actionId});

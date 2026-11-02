@@ -332,7 +332,7 @@ test('native close includes pending task and unknown result metadata and accepts
 test('HTTP routes keep credentials same-origin and expose no provider error body', async () => {
   const calls: { url: string; init: RequestInit }[] = []; const client = createAgentTaskClient({ fetchImpl: async (url, init) => { calls.push({ url: String(url), init: init ?? {} }); return Response.json({ ok: true, data: { found: false } }); } });
   await client.lookup(projectId, { requestId: stepId, runId, action: 'pause' }); await client.lookup(projectId, { requestId: stepId, runId: null, action: 'send' });
-  assert.equal(calls[0]?.url, `/api/agent/tasks/v2/${projectId}/${runId}/actions/${stepId}`); assert.equal(calls[1]?.url, `/api/agent/tasks/v2/${projectId}/requests/${stepId}`); assert.ok(calls.every(call => call.init.credentials === 'same-origin' && call.init.method === 'GET'));
+  assert.equal(calls[0]?.url, `/api/projects/${projectId}/agent/tasks/v2/${runId}/actions/${stepId}`); assert.equal(calls[1]?.url, `/api/projects/${projectId}/agent/tasks/v2/requests/${stepId}`); assert.ok(calls.every(call => call.init.credentials === 'same-origin' && call.init.method === 'GET'));
   const failed = createAgentTaskClient({ fetchImpl: async () => Response.json({ ok: false, error: { code: 'PRIVATE SECRET', message: 'private credential' } }, { status: 502 }) }); await assert.rejects(failed.read(projectId, runId), error => error instanceof Error && !error.message.includes('private credential'));
 });
 

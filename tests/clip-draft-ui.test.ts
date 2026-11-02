@@ -224,7 +224,7 @@ test('busy lane and hidden view never dispatch a business save and recovery neve
 
 test('HTTP adapter uses same-origin sidecar only and rejects malformed/unsupported write acknowledgments', async () => {
   const calls: [string | Request | URL, RequestInit][] = [], client = createClipDraftClient(async (url, options) => { calls.push([url, options!]); return new Response(JSON.stringify({ ok: true, data: row() }), { status: 200 }); });
-  assert.deepEqual(await client.get(key), row()); assert.match(calls[0][0] as string, /^\/api\/local-drafts\/clip\?/); assert.equal(calls[0][1].credentials, 'same-origin');
+  assert.deepEqual(await client.get(key), row()); assert.match(calls[0][0] as string, /^\/api\/projects\/[0-9a-f-]{36}\/local-drafts\/clip\?/); assert.equal(calls[0][1].credentials, 'same-origin');
   for (const data of [{ ...row(), revision: '1' }, { ...row(), draft: record({ raw: { ...raw, injected: true } as unknown as ClipDraftRecord['raw'] }) }] as const) {
     const invalid = createClipDraftClient(async () => new Response(JSON.stringify({ ok: true, data }), { status: 200 })); await assert.rejects(invalid.get(key));
   }

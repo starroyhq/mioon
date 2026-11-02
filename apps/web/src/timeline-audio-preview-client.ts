@@ -4,9 +4,12 @@ import {
   type AudioPreviewPlan, type AudioPreviewPlanInput, type AudioPreviewSourceDescriptor,
 } from '@mioon/contracts/timeline-audio-preview';
 import {NATIVE_AUDIO_LEASE_HEADER,nativeAudioLeaseSchema} from '@mioon/contracts/native-audio-preview';
+import {projectApiPath} from '../../../packages/contracts/src/project-file.ts';
 import type {NativeAudioLease} from '@mioon/contracts/native-audio-preview';
 
 export const AUDIO_PREVIEW_PCM_ENDPOINT = '/api/timeline-audio-preview/pcm';
+/** The PCM route at the project's address. */
+export const audioPreviewPcmPath = (projectId: string): string => projectApiPath(projectId, 'timeline-audio-preview', 'pcm');
 /** A transferred BYOB view and its conservative copy fit the 2 MiB reserve. */
 export const AUDIO_PREVIEW_MAX_CHUNK_BYTES = 1024 * 1024;
 export const AUDIO_PREVIEW_PCM_HEADERS = Object.freeze({
@@ -247,7 +250,7 @@ export function createTimelineAudioPreviewClient({ readPlan, fetcher = (...args)
           check();
           const query = new URLSearchParams({ projectId: input.projectId, timelineId: input.timelineId, expectedRevision: String(input.expectedRevision),
             startFrame: String(input.startFrame), clipId: source.clipId, sourceHash: source.sourceHash, planHash: plan.planHash });
-          const response = await fetcher(`${AUDIO_PREVIEW_PCM_ENDPOINT}?${query}`, { method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: abort.signal,
+          const response = await fetcher(`${audioPreviewPcmPath(input.projectId)}?${query}`, { method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: abort.signal,
             ...(nativeLease?{headers:{[NATIVE_AUDIO_LEASE_HEADER]:nativeLease.leaseId}}:{}) });
           try { check(); } catch (error) { try { await response.body?.cancel(); } catch { cleanupUnconfirmed(); } throw error; }
           const buffer = await readTimelineAudioPreviewPcm(response, plan, source, options.context, readerAbort.signal, check,

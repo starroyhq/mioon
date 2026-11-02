@@ -19,6 +19,7 @@ import {createTimelineAudioContinuousServices} from '../../../packages/business/
 import {createTimelineAudioContinuousDecoder} from '../../../packages/business/src/timeline-audio-continuous-decoder.ts';
 import {createSavedTimelineAudioReader} from '../../../packages/business/src/timeline-audio-preview-coordinator.ts';
 import {createTimelineAudioContinuousHttp} from '../../../apps/server/src/timeline-audio-continuous-http.ts';
+import {projectRouteTarget} from '../../../apps/server/src/project-routes.ts';
 import {createNativeAudioPreviewAuthority} from '../../../packages/business/src/native-audio-preview.ts';
 import {createNativeAudioPreviewHost,createNativeAudioPreviewSigningIdentity} from '../../../apps/desktop/src/native-audio-preview-host.ts';
 import {NATIVE_AUDIO_CHANNEL} from '../../../packages/contracts/src/native-audio-preview.ts';
@@ -62,7 +63,10 @@ app.whenReady().then(async()=>{
       try{
         const origin=`http://127.0.0.1:${server.address().port}`;
         if(req.headers.host!==new URL(origin).host||req.headers.origin&&req.headers.origin!==origin){res.writeHead(403).end();return;}
-        const url=new URL(req.url,origin);
+        let url=new URL(req.url,origin);
+        // Serve a project address at the route it replaces, as the server does.
+        const scoped=projectRouteTarget(url.pathname);
+        if(scoped){const query=req.url.search(/[?#]/u);req.url=scoped.pathname+(query<0?'':req.url.slice(query));url=new URL(req.url,origin);}
         res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'");
         if(url.pathname.startsWith('/api/')&&!(req.headers.cookie??'').split(';').map(value=>value.trim()).includes(`mioon_session=${token}`)){res.writeHead(401).end();return;}
         if(await http(req,res,url))return;

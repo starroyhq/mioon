@@ -71,7 +71,7 @@ test('A3 official MCP SDK stdio initialize/list/call controls durable HTTP proje
     report.calls.push({ at: new Date().toISOString(), name, args: args.dataBase64 ? { ...args, dataBase64: `[${(args.dataBase64 as string).length} base64 characters]` } : args, result: body });
     assert.equal(Boolean(result.isError), expectError, JSON.stringify(body)); assert.equal(body.ok, !expectError, JSON.stringify(body)); return (body.ok ? body.data : body.error) as T;
   }
-  async function until(jobId: string): Promise<{status?: string; [key: string]: unknown}> { const end = Date.now() + 45_000; let job: {status?: string; [key: string]: unknown} = {}; do { job = await call('job_get', { jobId }); if (job.status === 'succeeded' || job.status === 'failed') break; await pause(150); } while (Date.now() < end); assert.equal(job.status, 'succeeded', JSON.stringify(job)); return job; }
+  async function until(jobId: string): Promise<{status?: string; [key: string]: unknown}> { const end = Date.now() + 45_000; let job: {status?: string; [key: string]: unknown} = {}; do { job = await call('job_get', { projectId: project.id, jobId }); if (job.status === 'succeeded' || job.status === 'failed') break; await pause(150); } while (Date.now() < end); assert.equal(job.status, 'succeeded', JSON.stringify(job)); return job; }
   const beforeInvalid = await call('project_list');
   const invalidInput = { name: 'Unexpected fields must not create a project', unexpectedField: 'rejected-by-shared-strict-schema' };
   let invalidResult: unknown;
@@ -99,20 +99,21 @@ test('A3 official MCP SDK stdio initialize/list/call controls durable HTTP proje
   await call('edge_create', { projectId: project.id, source: imageNode.id, target: shots[0].id });
   await call('edge_create', { projectId: project.id, source: shots[0].id, target: shots[1].id });
   await call('edge_create', { projectId: project.id, source: shots[1].id, target: shots[2].id });
-  const updated = await call<{id: string; revision: number; prompt: string}>('shot_update', { shotId: shots[0].id, expectedRevision: shots[0].revision, patch: { prompt: '缓慢向前推进，柔和电影光线，色彩清晰。', position: { x: 410, y: 190 } } });
-  const firstInput = { shotId: updated.id, expectedRevision: updated.revision, requestId: randomUUID(), providerId: 'mock' };
+  // Entity-addressed tools take the owning project beside their own fields.
+  const updated = await call<{id: string; revision: number; prompt: string}>('shot_update', { projectId: project.id, shotId: shots[0].id, expectedRevision: shots[0].revision, patch: { prompt: '缓慢向前推进，柔和电影光线，色彩清晰。', position: { x: 410, y: 190 } } });
+  const firstInput = { projectId: project.id, shotId: updated.id, expectedRevision: updated.revision, requestId: randomUUID(), providerId: 'mock' };
   const first = await call<{id: string}>('generation_submit', firstInput); assert.equal((await call<{id: string}>('generation_submit', firstInput)).id, first.id); await until(first.id);
   let state = await call<{shots: Array<{id: string; revision: number; prompt?: string; selectedVersionId?: string}>; versions: Array<{id: string; snapshot: {prompt: string}}>}>('project_get', { projectId: project.id }); const s1 = state.shots.find(shot => shot.id === updated.id)!;
-  const editedAgain = await call<{id: string; revision: number; prompt: string}>('shot_update', { shotId: s1.id, expectedRevision: s1.revision, patch: { prompt: '缓慢向前推进，暖色调光线，结尾停留。' } });
-  assert.equal((await call<{code?: string}>('shot_update', { shotId: s1.id, expectedRevision: s1.revision, patch: { prompt: 'stale must not overwrite' } }, true)).code, 'REVISION_CONFLICT');
-  const second = await call<{id: string}>('generation_submit', { shotId: s1.id, expectedRevision: editedAgain.revision, requestId: randomUUID(), providerId: 'mock' }); await until(second.id);
-  const versions = await call<Array<{id: string; snapshot: {prompt: string}}>>('version_list', { shotId: s1.id }); assert.equal(versions.length, 2); assert.equal(versions[0].snapshot.prompt, updated.prompt); assert.equal(versions[1].snapshot.prompt, editedAgain.prompt);
+  const editedAgain = await call<{id: string; revision: number; prompt: string}>('shot_update', { projectId: project.id, shotId: s1.id, expectedRevision: s1.revision, patch: { prompt: '缓慢向前推进，暖色调光线，结尾停留。' } });
+  assert.equal((await call<{code?: string}>('shot_update', { projectId: project.id, shotId: s1.id, expectedRevision: s1.revision, patch: { prompt: 'stale must not overwrite' } }, true)).code, 'REVISION_CONFLICT');
+  const second = await call<{id: string}>('generation_submit', { projectId: project.id, shotId: s1.id, expectedRevision: editedAgain.revision, requestId: randomUUID(), providerId: 'mock' }); await until(second.id);
+  const versions = await call<Array<{id: string; snapshot: {prompt: string}}>>('version_list', { projectId: project.id, shotId: s1.id }); assert.equal(versions.length, 2); assert.equal(versions[0].snapshot.prompt, updated.prompt); assert.equal(versions[1].snapshot.prompt, editedAgain.prompt);
   assert.equal((await call<{id: string}>('generation_submit', firstInput)).id, first.id);
-  await call('version_select', { shotId: s1.id, versionId: versions[1].id, expectedRevision: editedAgain.revision });
-  for (const shot of shots.slice(1)) { const job = await call<{id: string}>('generation_submit', { shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'mock' }); await until(job.id); }
+  await call('version_select', { projectId: project.id, shotId: s1.id, versionId: versions[1].id, expectedRevision: editedAgain.revision });
+  for (const shot of shots.slice(1)) { const job = await call<{id: string}>('generation_submit', { projectId: project.id, shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'mock' }); await until(job.id); }
   state = await call('project_get', { projectId: project.id }); assert.equal(state.shots.length, 3); assert.equal(state.versions.length, 4); assert.equal(state.shots.find(shot => shot.id === s1.id)?.selectedVersionId, versions[1].id); assert.equal(state.shots.find(shot => shot.id === s1.id)?.prompt, editedAgain.prompt);
   const exported = await call<{id: string}>('export_create', { projectId: project.id, requestId: randomUUID() });
-  const end = Date.now() + 50_000; let finalExport: {status?: string; [key: string]: unknown} = {}; do { finalExport = await call('export_get', { exportId: exported.id }); if (['succeeded', 'failed'].includes(finalExport.status as string)) break; await pause(200); } while (Date.now() < end); assert.equal(finalExport.status, 'succeeded', JSON.stringify(finalExport));
+  const end = Date.now() + 50_000; let finalExport: {status?: string; [key: string]: unknown} = {}; do { finalExport = await call('export_get', { projectId: project.id, exportId: exported.id }); if (['succeeded', 'failed'].includes(finalExport.status as string)) break; await pause(200); } while (Date.now() < end); assert.equal(finalExport.status, 'succeeded', JSON.stringify(finalExport));
   const http = await fetch(base + '/api/rpc', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ operation: 'project.get', input: { projectId: project.id } }) }); const httpBody = await http.json() as {ok?: boolean; data?: unknown}; assert.equal(httpBody.ok, true); const mcpState = await call('project_get', { projectId: project.id }); assert.deepEqual(httpBody.data, mcpState);
   assert.ok(traffic.some(record => record.direction === 'client-to-server' && record.message.method === 'initialize'));
   assert.ok(traffic.some(record => record.direction === 'client-to-server' && record.message.method === 'notifications/initialized'));

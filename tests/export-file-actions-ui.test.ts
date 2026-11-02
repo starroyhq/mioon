@@ -9,6 +9,7 @@ import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import {exportOutputSchema} from '../packages/contracts/src/export-controls.ts';
 import {exportFileStatusSchema} from '../packages/contracts/src/export-file-recovery.ts';
+import {projectApiPath,projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {i18nTestModule} from './helpers/i18n.ts';
 
 const id = (n: number) => `76000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -34,6 +35,7 @@ function harness(patch = {}) {
     if(name.endsWith('I18nProvider.tsx'))return i18nTestModule();
     if(name.endsWith('export-controls.ts'))return{exportOutputSchema};
     if(name.endsWith('export-file-recovery.ts'))return{exportFileStatusSchema};
+    if(name.endsWith('/packages/contracts/src/project-file.ts'))return{projectApiPath,projectRpcPath};
     if(name==='@mioon/ui/components/workbench-controls')return{WorkbenchButton:'Button',WorkbenchAlert:'Alert'};
     assert.fail(`Unexpected file action dependency ${name}`);
   },module,module.exports,(url:unknown,options:FetchCall["options"]={})=>{const waiting=deferred<ReturnType<typeof response>>();calls.push({url,options,...waiting});return waiting.promise;},testWindow,testNavigator);

@@ -8,6 +8,7 @@ import dns from 'node:dns';
 import childProcess from 'node:child_process';
 import {getCompileCacheDir, syncBuiltinESMExports} from 'node:module';
 import {fileURLToPath} from 'node:url';
+import {parseProjectApiPath} from '../../packages/contracts/src/project-file.ts';
 
 export const uuid = (value: number|string): string => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 export const TOKEN = 'inspection-wire-synthetic-backend-token';
@@ -38,7 +39,8 @@ export function installWireGuard({origin = '', auditPath, onFetchStage}: WireGua
     let url!: URL;
     try { url = new URL(typeof value === 'string' || value instanceof URL ? value : value.url); }
     catch { deny('unrecognized network request'); }
-    if (!allowed || url.origin !== allowed.origin || !['/api/rpc', '/health'].includes(url.pathname) || url.search || url.hash) deny('outbound network request');
+    // The app-level RPC, health, or one project's RPC address.
+    if (!allowed || url.origin !== allowed.origin || !(['/api/rpc', '/health'].includes(url.pathname) || parseProjectApiPath(url.pathname)?.kind === 'rpc') || url.search || url.hash) deny('outbound network request');
   };
   const nativeFetch = globalThis.fetch;
   globalThis.fetch = ((value: RequestInfo|URL, options?: RequestInit) => {

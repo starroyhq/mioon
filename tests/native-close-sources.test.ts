@@ -18,6 +18,7 @@ import * as imageEditIntent from '../apps/web/src/image-edit-intent.ts';
 import { createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
 import * as image from '../apps/web/src/image-generation.ts';
 import * as contracts from '@mioon/contracts';
+import { mediaUrl } from '../apps/web/src/api.ts';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), requestId = id(4), groupId = id(6), taskId = id(7), reviewId = id(8);
@@ -88,6 +89,7 @@ function renderer<F extends string>(filename:F, fixture: Record<string,unknown>,
   }; (react as typeof react & {default: unknown}).default = react;
   const module = ({ exports: {} } as ElementModule), primitives = new Proxy({}, { get: (_, name) => String(name) });
   const require = (name: string) => {
+    if (name === './api.ts') return { mediaUrl };
     if (name === 'react') return react;
     if (name === './i18n/I18nProvider.tsx') return { useI18n: () => ({ t: (key: unknown, params: { readonly [x: string]: string|number; }) => i18n.translate('zh-Hans', (key as unknown as Parameters<typeof i18n.translate>[1]), (params as unknown as Parameters<typeof i18n.translate>[2])), renderMessage: (value: string|i18n.DisplayMessage|null|undefined) => i18n.renderMessage('zh-Hans', value), formatDate: (value: string|number|Date, options: Intl.DateTimeFormatOptions|undefined) => i18n.formatDate('zh-Hans', value, options), formatNumber: (value: number, options: Intl.NumberFormatOptions|undefined) => i18n.formatNumber('zh-Hans', value, options) }) };
     if (name === './creation-i18n.ts') return creationI18n;

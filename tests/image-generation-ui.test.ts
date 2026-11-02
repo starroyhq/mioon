@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { createHash } from 'node:crypto';
 import { canonicalImageInput } from '../packages/contracts/src/images.ts';
-import { ApiError } from '../apps/web/src/api.ts';
+import { ApiError, mediaUrl } from '../apps/web/src/api.ts';
 import * as imageLogic from '../apps/web/src/image-generation.ts';
 import * as imageEditIntents from '../apps/web/src/image-edit-intent.ts';
 import { IMAGE_LIMITS } from '../packages/contracts/src/images.ts';
@@ -247,7 +247,7 @@ test('renderer remains an extracted dock with explicit providers, fixed paid dis
   assert.doesNotThrow(() => transformSync(source, { loader: 'tsx', format: 'esm' }));
   const displayCopy = source + Object.entries(creationUiMessages).filter(([key]) => source.includes(`'${key}'`)).map(([, value]) => JSON.stringify(value['zh-Hans'])).join('\n');
   for (const text of ['useWorkspaceVisibility', 'image-provider-openai', '真实调用尚未验证', '确定性测试图案', '未加密', 'image-paid-warning', 'image-review-approve', 'image-review-reject', 'image-draft-guard', 'image-edit-version', 'image-version-preview', 'image-reveal-asset', 'image-cancel-queued', 'image-recover-result']) assert.ok(displayCopy.includes(text), text);
-  assert.match(source, /composerVisible \? `\/media\/\$\{encodeURIComponent\(version.assetId\)\}` : undefined/);
+  assert.match(source, /composerVisible \? mediaUrl\(projectId, version\.assetId\) \|\| undefined : undefined/);
   assert.doesNotMatch(source, /type="password"|Dialog|dangerouslySetInnerHTML|node\.create|shot\.attach/);
   assert.match(source, /disabled=\{busy \|\| Boolean\(state.target\)\}/);
 });
@@ -312,6 +312,7 @@ function renderer(f: Fixture, options: RenderOptions = {}): Harness {
     if (name === './image-settings.ts') return {createImageSettingsClient: (value: {slot?: string}) => value?.slot === 'custom' ? f.customSettingsClient : f.settingsClient};
     if (name === './icons.tsx') return {default: 'Icon'};
     if (name === './image-generation.css') return {};
+    if (name === './api.ts') return {mediaUrl};
     if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitive;
     throw Error(name);
   };
@@ -621,7 +622,7 @@ test('actual history selection never labels or reveals A’s saved asset as B du
   const f = historyFixture({ api: (operation: string, input: InputView) => operation === 'image.task.list' && input.groupId === id(90) && fail ? held.promise : undefined });
   const ui = renderer(f, { onRevealAsset: (...args: unknown[]) => reveals.push(args) });
   try {
-    ui.render(); await flush(); ui.render(); assert.equal(ui.find('image-version-preview').props.src, `/media/${assetId}`);
+    ui.render(); await flush(); ui.render(); assert.equal(ui.find('image-version-preview').props.src, `/api/projects/${projectId}/media/${assetId}`);
     const oldReveal = ui.find('image-reveal-asset').props.onClick;
     ui.change('image-generation-prompt', 'Keep my current description');
     ui.change('image-history-group', f.otherGroupId); await flush(); ui.render();
@@ -632,7 +633,7 @@ test('actual history selection never labels or reveals A’s saved asset as B du
     held.reject(error()); await flush(); ui.render();
     assert.equal(ui.find('image-version-preview'), undefined); assert.equal(ui.find('image-reveal-asset'), undefined); assert.match(JSON.stringify(ui.find('image-history-status')), /暂时无法读取/);
     fail = false; ui.click('image-refresh'); await flush(); ui.render();
-    assert.equal(ui.find('image-version-preview').props.src, `/media/${f.otherAssetId}`); assert.match(ui.find('image-version-preview').props.alt, /Group B/);
+    assert.equal(ui.find('image-version-preview').props.src, `/api/projects/${projectId}/media/${f.otherAssetId}`); assert.match(ui.find('image-version-preview').props.alt, /Group B/);
     oldReveal(); assert.deepEqual((reveals as unknown), []);
     ui.click('image-reveal-asset'); assert.deepEqual(reveals, [[f.otherAssetId, projectId]]);
     assert.equal(ui.find('image-generation-prompt').props.value, 'Keep my current description'); assert.equal(mutations(f).length, 0);

@@ -18,7 +18,7 @@ test('explicit pair preserves nonlatest identities and frozen metadata across li
   c.versions.reverse(); c.shot.selectedVersionId = id(5); c.shot.duration = 555; c.shot.title = 'new mutable title';
   assert.ok(comparisonCurrent(a, c)); assert.ok(comparisonCurrent(b, c)); assert.deepEqual(comparisonOptions(c).map(v => v.number), [3, 2, 1]);
   assert.ok(Object.isFrozen(a)); assert.ok(Object.isFrozen((a)!.metadata));
-  assert.ok((a)!.url.startsWith('/api/version-comparison/media?')); assert.doesNotMatch((a)!.url, /untrusted/);
+  assert.ok((a)!.url.startsWith(`/api/projects/${c.projectId}/version-comparison/media?`)); assert.doesNotMatch((a)!.url, /untrusted/);
   const parsed = new URL((a)!.url, 'http://local'); assert.equal(parsed.searchParams.get('versionId'), id(3)); assert.equal(parsed.searchParams.get('assetId'), id(13)); assert.equal(parsed.searchParams.get('workspaceOrigin'), 'normal');
 });
 test('each cross-scope and malformed identity fails closed', () => {

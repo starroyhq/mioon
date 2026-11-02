@@ -52,7 +52,7 @@ test('execution response cap preserves the existing 4 MiB render boundary and re
 });
 test('production route is placed behind existing Host/Origin and authentication checks, absent from RPC and Agent declarations',()=>{
   const server=readFileSync(new URL('../apps/server/src/index.ts',import.meta.url),'utf8');
-  const route=server.indexOf('await localDeliveryHttp(req, res, url)');assert.ok(route>0);assert.ok(server.indexOf('ORIGIN_REJECTED')<route);assert.ok(server.indexOf('if (!auth(req))')<route);
+  const route=server.indexOf('await localDeliveryHttp(req, res, url, address)');assert.ok(route>0);assert.ok(server.indexOf('ORIGIN_REJECTED')<route);assert.ok(server.indexOf('if (!auth(req))')<route);
   const contracts=readFileSync(new URL('../packages/contracts/src/index.ts',import.meta.url),'utf8');assert.equal(contracts.includes("'local-delivery'"),false);
   const mcp=readFileSync(new URL('../apps/mcp/src/index.ts',import.meta.url),'utf8');assert.equal(mcp.includes('local-delivery'),false);
 });
