@@ -13,7 +13,7 @@
       "capture": "page",
       "file": "12-07.png",
       "format": "png",
-      "bytes": 8953,
+      "bytes": 8846,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -25,7 +25,7 @@
       "capture": "page",
       "file": "12-07-recent.png",
       "format": "png",
-      "bytes": 12005,
+      "bytes": 11898,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -37,7 +37,7 @@
       "capture": "page",
       "file": "12-07-recent-loading.png",
       "format": "png",
-      "bytes": 9556,
+      "bytes": 9455,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -49,7 +49,7 @@
       "capture": "page",
       "file": "12-07-recent-empty.png",
       "format": "png",
-      "bytes": 9698,
+      "bytes": 9594,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -61,7 +61,7 @@
       "capture": "page",
       "file": "12-07-recent-error.png",
       "format": "png",
-      "bytes": 10063,
+      "bytes": 9959,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -73,7 +73,7 @@
       "capture": "page",
       "file": "12-07-disabled.png",
       "format": "png",
-      "bytes": 8859,
+      "bytes": 8755,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -97,7 +97,7 @@
       "capture": "page",
       "file": "12-07-windows.png",
       "format": "png",
-      "bytes": 10168,
+      "bytes": 9818,
       "width": 1440,
       "height": 900,
       "errors": []

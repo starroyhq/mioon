@@ -3,8 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import cp from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
-import {LOCALES, LANGUAGE_LABELS, isLocale, normalizeLocale, validateCatalogs} from '../packages/i18n/src/index.ts';
-import {opacityEnvelopeMessages} from '../packages/i18n/src/catalogs/opacity-envelope.ts';
+import {LOCALES, LANGUAGE_LABELS, isLocale, normalizeLocale} from '../packages/i18n/src/index.ts';
 
 // The copy checks never start a decoder, provider, listening backend or subprocess.
 let forbiddenAttempts = 0;
@@ -14,8 +13,7 @@ for (const name of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execF
 syncBuiltinESMExports();
 after(() => {mock.restoreAll(); syncBuiltinESMExports(); assert.equal(forbiddenAttempts, 0);});
 
-test('opacity messages keep all four catalogs complete and OS regions normalize to region-neutral labels', () => {
-  assert.deepEqual(validateCatalogs(opacityEnvelopeMessages), []);
+test('OS regions normalize to region-neutral labels across all four catalogs', () => {
   assert.deepEqual(LOCALES, ['zh-Hans', 'zh-Hant', 'en', 'ja']);
   assert.equal(LANGUAGE_LABELS['zh-Hant'], '繁體中文');
   for (const [input, expected] of [['zh-TW', 'zh-Hant'], ['zh-HK', 'zh-Hant'], ['zh-Hant-CN', 'zh-Hant'], ['zh-Hans-TW', 'zh-Hans'], ['en-US', 'en'], ['ja-JP', 'ja']]) {

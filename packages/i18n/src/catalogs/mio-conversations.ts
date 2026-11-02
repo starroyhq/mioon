@@ -43,12 +43,6 @@ export const mioConversationMessages = {
     "en": "{count} changes",
     "ja": "変更 {count} 件"
   },
-  "agent.conversation.legacy": {
-    "zh-Hans": "旧版对话 · 只读",
-    "zh-Hant": "舊版對話 · 唯讀",
-    "en": "Legacy conversation · Read only",
-    "ja": "以前の会話・閲覧のみ"
-  },
   "agent.conversation.empty": {
     "zh-Hans": "还没有对话",
     "zh-Hant": "還沒有對話",

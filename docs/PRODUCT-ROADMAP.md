@@ -471,18 +471,17 @@ Acceptance: an agent can read only its selected project, propose a real edit, ex
 recover after interruption and surface a conflict without overwriting newer user work.
 Do not stop at a settings dialog or chat-only demonstration.
 
-Current bounded implementation: [reviewed selected-clip moves](AGENT-TIMELINE-MOVE.md),
-one saved clip start-frame patch through existing timeline history/replay after
-an immutable human review. This does not authorize arbitrary timeline tools,
-ripple edits, generation or paid actions; release status is recorded in that report.
+Historical checkpoint: [reviewed selected-clip moves](AGENT-TIMELINE-MOVE.md)
+changed one saved clip's start frame through existing timeline history/replay
+after an immutable human review. That v1 interface has since been removed;
+current Mio execution, confirmation and recovery use [Mio v2](AGENT-TASKS-V2.md).
 
-The bounded [reviewed selected-clip gain](AGENT-TIMELINE-GAIN.md) increment
-is implemented and accepted at local checkpoint `c3c1031` (2026-10-13). It proposes only one
-saved known-audio clip's 0–2 linear gain, then uses the existing timeline mutation
-and undo/redo after a separate immutable review. It does not measure loudness,
-normalize, unmute, render automatically or expand the older Agent catalogs.
-Its dated report records the passed final aggregate, synthetic-provider native
-and real local media gates. That evidence does not establish a live-model result.
+The historical [reviewed selected-clip gain](AGENT-TIMELINE-GAIN.md) increment
+was accepted at local checkpoint `c3c1031` (2026-10-13). It proposed one saved
+known-audio clip's 0–2 linear gain, followed by timeline mutation and undo/redo
+after a separate immutable review. Its v1 interface has also been removed.
+The dated report retains the passed aggregate, synthetic-provider native and
+real local media evidence for that implementation, without establishing a live-model result.
 
 ### 2. Make selection and editing dependable
 
