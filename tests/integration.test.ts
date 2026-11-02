@@ -206,7 +206,7 @@ test('durable HTTP acceptance: real process restarts, provider side effects, med
     assert.equal((await rpc('node.create', { projectId: scenarioProject.id, type: 'image', assetId: image.id, position: { x: 0, y: 0 } }, 404)).code, 'NOT_FOUND');
     assert.equal((await rpc('edge.create', { projectId: scenarioProject.id, source: text.id, target: shots[0].id }, 400)).code, 'INVALID_EDGE');
     const otherShot = (await rpc('project.get', { projectId: scenarioProject.id })).shots[0];
-    assert.equal((await scenarioRpc('version.select', { shotId: otherShot.id, expectedRevision: otherShot.revision, versionId: secondVersion.id }, 400)).code, 'INVALID_VERSION');
+    assert.equal((await scenarioRpc('version.select', { shotId: otherShot.id, expectedRevision: otherShot.revision, versionId: secondVersion.id }, 404)).code, 'NOT_FOUND');
     const publicState = JSON.stringify(await rpc('project.get', { projectId: project.id })); assert.ok(!publicState.includes(f.root)); assert.ok(!publicState.includes('relativePath')); assert.ok(!publicState.includes('requestHash')); assert.ok(!publicState.includes(token));
     const capabilities = await rpc('provider.list'); assert.equal((capabilities.find((p: { id: string; }) => p.id === 'runway'))!.enabled, false);
     const s = (await rpc('project.get', { projectId: project.id })).shots[0]; assert.equal((await rpc('generation.submit', { shotId: s.id, expectedRevision: s.revision, requestId: randomUUID(), providerId: 'runway' }, 403)).code, 'PROVIDER_DISABLED');
