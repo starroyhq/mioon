@@ -20,6 +20,7 @@ import type {
 } from './stores.ts';
 
 export {APP_LIBRARY_APPLICATION_ID, APP_LIBRARY_FILE, APP_LIBRARY_SCHEMA_VERSION, APP_DOCUMENT_LIMITS, APP_DOCUMENT_NAMES} from './schema.ts';
+export {isAppLibraryHeld} from './connection.ts';
 export type {AppDocumentName} from './schema.ts';
 export {appLibraryError, projectFileCopyError} from './errors.ts';
 export type {AppLibraryErrorCode, AppLibraryErrorDetails, AppLibraryInvalidReason} from './errors.ts';

@@ -8,6 +8,7 @@ import {ensurePrivateDirectory} from '@mioon/contracts/private-storage';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {isProjectId, PROJECT_CACHE_FILE, PROJECT_DATABASE_NAMES, PROJECT_FILE_EXISTS, PROJECT_HISTORY_FILE} from '../../../contracts/src/project-file.ts';
 import type {ProjectHistoryState, ProjectInvalidReason, ProjectStore as ProjectStoreContract} from '../../../contracts/src/project-file.ts';
+import type {ProjectFileIdentity} from '../../../contracts/src/project-registry.ts';
 import {installCrossFileTriggers} from './cross-file/install.ts';
 import {isSqliteBusy, isSqliteCorrupt, isSqliteReadOnly, projectFileError, projectFileMovedError} from './errors.ts';
 import {isHotJournal, isSuperJournalInUse, superJournalsIn} from './journals.ts';
@@ -109,6 +110,21 @@ const existingFile = (file: string): string => `${pathToFileURL(file).href}?mode
 const heldFiles = new Map<string, {readonly db: DatabaseSync; readonly kind: DatabaseKind}>();
 const identityOf = (info: BigIntStats, file: string): string => info.ino ? `${info.dev}:${info.ino}` : `path:${file}`;
 type HeldFile = readonly [key: string, kind: DatabaseKind];
+
+/** Whether this process still holds this project, history or cache file.
+ * The caller supplies its lstat identity, so aliases and hard links match
+ * without opening another descriptor and dropping SQLite's POSIX locks.
+ * File ID 0 conveys no identity; the kernel's path fallback is not exposed. */
+export function isProjectFileHeld(identity: ProjectFileIdentity): boolean {
+  return identity.ino !== '0' && heldFiles.get(`${identity.dev}:${identity.ino}`)?.db.isOpen === true;
+}
+
+/** Only a live connection registered by a successful kernel open qualifies.
+ * Store fields or another SQLite connection cannot establish ownership. */
+export function isProjectDatabase(db: DatabaseSync): boolean {
+  for (const held of heldFiles.values()) if (held.db === db && held.db.isOpen) return true;
+  return false;
+}
 
 // ---------------------------------------------------------------------------
 // Creating
@@ -418,6 +434,11 @@ function attachDatabases(projectFile: string, projectKey: string, identity: Proj
       [identityOf(lstatSync(historyFile, {bigint: true}), historyFile), 'history'],
       [identityOf(lstatSync(cacheFile, {bigint: true}), cacheFile), 'cache'],
     ];
+    // Native open() would reopen only main, losing the attached databases,
+    // exclusive locks and TEMP constraints while reviving this DB identity.
+    Object.defineProperty(db, 'open', {value: (): never => {
+      throw new TypeError('Reopen project databases through openProjectConnection or openProjectStore, not db.open().');
+    }});
     return {db, held, historyState: fresh ? 'fresh' : file === seen ? 'current' : file > seen ? 'file-newer' : 'file-older'};
   } catch (error) {
     try { opened?.close(); } catch {}

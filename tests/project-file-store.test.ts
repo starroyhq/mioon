@@ -8,10 +8,13 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import type {DatabaseSync} from 'node:sqlite';
-import {openStore as openWorkspaceStore} from '../packages/business/src/db.ts';
+import {
+  getWorkspaceRestoreContext, openStore as openWorkspaceStore, ownsStoreLock,
+  registerWorkspaceTransactionFence, registerWorkspaceTransactionObserver,
+} from '../packages/business/src/db.ts';
 import type {WorkspaceStore} from '../packages/business/src/db.ts';
 import {
-  createProjectStore, openProjectStore, openStore, registerProjectTransactionFence, registerProjectTransactionObserver,
+  createProjectStore, isProjectStore, openProjectStore, openStore, registerProjectTransactionFence, registerProjectTransactionObserver,
 } from '../packages/business/src/project-file/index.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/index.ts';
 import {isProjectId, TEST_STORE_LAYOUT} from '../packages/contracts/src/project-file.ts';
@@ -298,4 +301,86 @@ test('createProjectStore creates a project file with the given ID and never over
   assert.equal(reopened.projectId, projectId);
   assert.equal(reopened.historyState, 'current');
   reopened.close();
+});
+
+test('workspace ownership and restore checks require the exact live kernel store, not copied fields', t => {
+  const root = scratch(t), store = openedStore(t, root);
+  assert.equal(isProjectStore(store), true);
+  assert.equal(ownsStoreLock(store), true);
+  // No legacy schema probe is needed to prove a kernel store's role.
+  const prepare = store.db.prepare;
+  store.db.prepare = () => { throw new Error('unexpected legacy schema scan'); };
+  try {
+    assert.equal(getWorkspaceRestoreContext(store), null);
+  } finally {
+    store.db.prepare = prepare;
+  }
+  for (const copy of [{...store}, {db: store.db, root: store.root}]) {
+    assert.equal(isProjectStore(copy), false);
+    assert.equal(ownsStoreLock(copy), false);
+    assert.throws(() => getWorkspaceRestoreContext(copy), {code: 'RESTORE_STORE_UNVERIFIED'});
+  }
+  const rootDescriptor = Object.getOwnPropertyDescriptor(store, 'root')!;
+  Object.defineProperty(store, 'root', {value: path.join(root, 'other')});
+  assert.equal(isProjectStore(store), false);
+  assert.equal(ownsStoreLock(store), false);
+  assert.throws(() => getWorkspaceRestoreContext(store), {code: 'RESTORE_STORE_UNVERIFIED'});
+  Object.defineProperty(store, 'root', rootDescriptor);
+  assert.equal(isProjectStore(store), true);
+  store.close();
+  assert.equal(isProjectStore(store), false);
+  assert.equal(ownsStoreLock(store), false);
+  assert.throws(() => getWorkspaceRestoreContext(store), {code: 'RESTORE_STORE_UNVERIFIED'});
+  const reopened = openedStore(t, root);
+  assert.equal(isProjectStore(reopened), true);
+  assert.equal(ownsStoreLock(reopened), true);
+  assert.equal(getWorkspaceRestoreContext(reopened), null);
+  assert.equal(ownsStoreLock(store), false);
+  reopened.db.close();
+  assert.throws(() => reopened.db.open(), {name: 'TypeError'});
+  assert.equal(isProjectStore(reopened), false);
+  assert.equal(ownsStoreLock(reopened), false);
+  assert.throws(() => getWorkspaceRestoreContext(reopened), {code: 'RESTORE_STORE_UNVERIFIED'});
+  assert.throws(() => reopened.close(), {code: 'ERR_INVALID_STATE'});
+});
+
+test('workspace transaction registrations join the real kernel transaction and preserve ordering, rollback and removal', t => {
+  const store = openedStore(t), other = openedStore(t);
+  store.put('projects', {id: store.projectId});
+  const events: string[] = [];
+  const removeFence = registerWorkspaceTransactionFence(store.db, () => {
+    assert.equal(store.db.isTransaction, true);
+    events.push('workspace fence');
+    addReceipt(store.db, 's0-workspace-fence');
+  });
+  const removeKernelFence = registerProjectTransactionFence(store.db, () => events.push('kernel fence'));
+  const removeObserver = registerWorkspaceTransactionObserver(store.db, result => {
+    assert.equal(store.db.isTransaction, true);
+    events.push(`workspace observer: ${String(result)}`);
+    addReceipt(store.db, 's0-workspace-observer');
+    if (result === 'fail') throw new Error('observer failed');
+  });
+  const removeKernelObserver = registerProjectTransactionObserver(store.db, () => events.push('kernel observer'));
+  const kept = {id: randomUUID(), projectId: store.projectId}, dropped = {id: randomUUID(), projectId: store.projectId};
+  store.tx(() => { events.push('callback'); store.put('shots', kept); return 'ok'; });
+  assert.deepEqual(events, ['workspace fence', 'kernel fence', 'callback', 'workspace observer: ok', 'kernel observer']);
+  assert.throws(() => store.tx(() => { store.put('shots', dropped); return 'fail'; }), {message: 'observer failed'});
+  assert.deepEqual(store.get('shots', kept.id), kept);
+  assert.equal(store.get('shots', dropped.id), null);
+  assert.equal(receipts(store.db, 's0-workspace-fence'), 1);
+  assert.equal(receipts(store.db, 's0-workspace-observer'), 1);
+  const before = [...events];
+  other.tx(() => 'other project');
+  assert.deepEqual(events, before);
+  for (const remove of [removeFence, removeKernelFence, removeObserver, removeKernelObserver]) remove();
+  store.tx(() => 'unregistered');
+  assert.deepEqual(events, before);
+  const stop = registerWorkspaceTransactionFence(store.db, () => {
+    addReceipt(store.db, 's0-refused-fence');
+    throw new Error('fence failed');
+  });
+  assert.throws(() => store.tx(() => assert.fail('callback must not run')), {message: 'fence failed'});
+  assert.equal(receipts(store.db, 's0-refused-fence'), 0);
+  assert.equal(store.db.isTransaction, false);
+  stop();
 });

@@ -18,7 +18,8 @@ import {fileURLToPath} from 'node:url';
 import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import type {MediaReference} from '../packages/contracts/src/media-reference.ts';
 import {identityOfStats} from '../packages/business/src/app-db/identity.ts';
-import {openStore} from '../packages/business/src/project-file/index.ts';
+import {isProjectFileHeld, openStore} from '../packages/business/src/project-file/index.ts';
+import {isAppLibraryHeld, openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {
   admitMedia, checkMediaStatus, computeFullSha256, detectMediaType, insideAnyDirectory, isNotDownloaded, isProtectedName, MEDIA_HEADER_BYTES,
   mediaMtimeMs, mediaTypeOfName, NODE_MEDIA_FILE_SYSTEM, referenceForFile, sampleRanges,
@@ -485,6 +486,21 @@ test('an open project keeps its locks: its file, its journal, links to them, sup
     readFileSync(store.projectFile);
     assert.deepEqual(readInChild(store.projectFile), {ok: true});
   }
+});
+
+test('real kernel and app-library identities refuse media aliases before any file is opened', async t => {
+  const {root, project, opened, access} = layout(t);
+  const other = openStore(path.join(root, 'Other'));
+  const library = openAppLibrary({dataDir: path.join(root, 'data')});
+  t.after(() => { other.close(); library.close(); });
+  const protectedFiles = [other.projectFile, path.join(other.localDir, 'history.db'), path.join(other.cacheDir, 'cache.db'), library.databaseFile];
+  const holding = access({isHeld: identity => isProjectFileHeld(identity) || isAppLibraryHeld(identity)});
+  for (const [index, file] of protectedFiles.entries()) {
+    const alias = path.join(project, `foreign-database-${index}.png`);
+    linkSync(file, alias);
+    await assert.rejects(referenceForFile(holding, alias), {code: 'MEDIA_NOT_MEDIA', details: {reason: 'protected'}});
+  }
+  assert.deepEqual(opened, [], 'even a disguised database of another project is refused before fs.open');
 });
 
 test('a file isHeld names is never opened', async t => {
