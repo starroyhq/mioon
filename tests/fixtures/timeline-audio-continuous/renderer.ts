@@ -1,3 +1,4 @@
+import {projectRpcPath} from '../../../packages/contracts/src/project-file.ts';
 import {createContinuousAudioPreviewClient,type ContinuousAudioClientSession} from '../../../apps/web/src/timeline-audio-continuous-client.ts';
 import {createContinuousTimelineAudioTransport,type ContinuousAudioTransportState} from '../../../apps/web/src/timeline-audio-continuous-engine.ts';
 import {createNativeAudioPreviewAdmission,type NativeAudioContinuousAttempt} from '../../../apps/web/src/native-audio-preview-adapter.ts';
@@ -12,7 +13,7 @@ const assert: (value: unknown, label: string) => asserts value = (value, label) 
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 const percentile=(values:number[],p:number):number=>{const sorted=[...values].sort((a,b)=>a-b);return sorted[Math.min(sorted.length-1,Math.ceil(p*sorted.length)-1)]!;};
 const client=createContinuousAudioPreviewClient({readPlan:async(input,{signal})=>{
-  const response=await fetch('/api/rpc',{method:'POST',credentials:'same-origin',signal,headers:{'content-type':'application/json'},body:JSON.stringify({operation:'timeline.audioPreview.continuousPlan',input})});
+  const response=await fetch(projectRpcPath(input.projectId),{method:'POST',credentials:'same-origin',signal,headers:{'content-type':'application/json'},body:JSON.stringify({operation:'timeline.audioPreview.continuousPlan',input})});
   const reply=await response.json();assert(response.ok&&reply.ok,'Production metadata RPC failed');return reply.data;
 }});
 async function prepare(item:Case,context:AudioContext|OfflineAudioContext){

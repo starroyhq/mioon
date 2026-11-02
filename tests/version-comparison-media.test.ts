@@ -1,3 +1,4 @@
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureAsset,FixtureVersion} from './helpers/strict-timeline-core-types.ts';
 import type {AddressInfo} from 'node:net';
 import type {RootFailure} from './helpers/strict-root-error-types.ts';
@@ -84,8 +85,8 @@ async function fixture(t: test.TestContext, {serve = true, published = false} = 
   }
   // Historical playback must not follow current shot selection.
   store.put('shots', {...store.get('shots', shot.id), selectedVersionId: null});
-  const route = '/api/version-comparison/media?' + new URLSearchParams({projectId: project.id, shotId: shot.id, versionId: version.id,
-    assetId: asset.id, sha256: asset.sha256, workspaceOrigin: 'normal'}), url = new URL(route, 'http://127.0.0.1:12345');
+  const route = projectApiPath(project.id,'version-comparison','media')+'?' + new URLSearchParams({projectId: project.id, shotId: shot.id, versionId: version.id,
+    assetId: asset.id, sha256: asset.sha256, workspaceOrigin: 'normal'}), url = new URL('/api/version-comparison/media?'+route.split('?')[1], 'http://127.0.0.1:12345');
   if (serve) {
     await services.drain(); services = undefined; store!.close(); store = undefined;
     server = await startServer({dataDir: root, port: 0, token, chatGateway: async function* () {assert.fail('Media must not call AI');},
@@ -109,7 +110,7 @@ async function directServer(t: test.TestContext, f: Awaited<ReturnType<typeof fi
     validateFile: file => validateManagedFile(file, {root: f.root})!, createFiles: createFileResponses, resolvePath: safePath,
     assertAvailable: () => {if (getWorkspaceRestoreContext(f.store)) throw workspaceRestoreError(); if (!ownsStoreLock(f.store)) throw Object.assign(Error('Unavailable'), {code: 'FILE_UNAVAILABLE', status: 404});}, ...options});
   const server = http.createServer(async (req, res) => {
-    try {if (!await media.handle(req, res, new URL(req.url!, 'http://127.0.0.1'))) res.writeHead(404).end();}
+    try {const selected=new URL(req.url!, 'http://127.0.0.1');if(selected.pathname===projectApiPath(f.project.id,'version-comparison','media'))selected.pathname='/api/version-comparison/media';if (!await media.handle(req, res, selected)) res.writeHead(404).end();}
     catch (error) {res.writeHead((error as RootFailure).status || 500); res.end((error as RootFailure).code);}
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -143,15 +144,21 @@ test('exact query shape, identity, method, authentication and browser-origin env
   const f = await fixture(t), before = await f.checkpoint();
   const invalid = [f.route + '&', f.route + '&unknown=1', f.route + '&path=/tmp/private', f.route + '&sha256=' + f.asset.sha256,
     f.route.replace('workspaceOrigin=normal', 'workspaceOrigin=' + randomUUID()), f.route.replace('workspaceOrigin=normal', 'workspaceOrigin=restored%3A' + randomUUID()),
-    f.route.replace(f.asset.sha256, f.asset.sha256.toUpperCase()), f.route.replace(f.asset.sha256, f.asset.sha256 + '%0A'), f.route.replace(f.project.id, f.project.id + '%0A'), f.route.replace(f.asset.sha256, 'a'.repeat(63)), f.route.replace(f.asset.sha256, 'a'.repeat(64)),
-    f.route.replace(f.project.id, 'bad%ZZ'), f.route.replace(f.shot.id, '%00' + f.shot.id), f.route + '&long=' + 'x'.repeat(2050)];
+    f.route.replace(f.asset.sha256, f.asset.sha256.toUpperCase()), f.route.replace(f.asset.sha256, f.asset.sha256 + '%0A'), f.route.replace('projectId=' + f.project.id, 'projectId=' + f.project.id + '%0A'), f.route.replace(f.asset.sha256, 'a'.repeat(63)), f.route.replace(f.asset.sha256, 'a'.repeat(64)),
+    f.route.replace('projectId=' + f.project.id, 'projectId=bad%ZZ'), f.route.replace(f.shot.id, '%00' + f.shot.id), f.route + '&long=' + 'x'.repeat(2050)];
   for (const field of ['projectId', 'shotId', 'versionId', 'assetId', 'sha256', 'workspaceOrigin']) {
-    const missing = new URL(f.url); missing.searchParams.delete(field); invalid.push(missing.pathname + missing.search);
-    const duplicate = new URL(f.url); duplicate.searchParams.append(field, duplicate.searchParams.get(field)!); invalid.push(duplicate.pathname + duplicate.search);
+    const missing = new URL(f.route,'http://127.0.0.1'); missing.searchParams.delete(field); invalid.push(missing.pathname + missing.search);
+    const duplicate = new URL(f.route,'http://127.0.0.1'); duplicate.searchParams.append(field, duplicate.searchParams.get(field)!); invalid.push(duplicate.pathname + duplicate.search);
   }
-  for (const field of ['projectId', 'shotId', 'versionId', 'assetId']) {const missing = new URL(f.url); missing.searchParams.set(field, randomUUID()); invalid.push(missing.pathname + missing.search);}
-  invalid.push(f.route.replace(f.project.id, f.foreign.id), f.route.replace(f.shot.id, f.otherShot.id));
-  for (const route of invalid) {const response = await f.request(route); assert.equal(response.status, 404, route); const text = await response.text(); assert.ok(!text.includes(f.root)); assert.ok(!text.includes(f.asset.relativePath));}
+  for (const field of ['projectId', 'shotId', 'versionId', 'assetId']) {const missing = new URL(f.route,'http://127.0.0.1'); missing.searchParams.set(field, randomUUID()); invalid.push(missing.pathname + missing.search);}
+  invalid.push(f.route.replace('projectId=' + f.project.id, 'projectId=' + f.foreign.id), f.route.replace(f.shot.id, f.otherShot.id));
+  for (const route of invalid) {
+    const mismatch = new URL(route, 'http://127.0.0.1').searchParams.getAll('projectId').some(value => value !== f.project.id);
+    const response = await f.request(route); assert.equal(response.status, mismatch ? 400 : 404, route);
+    const text = await response.text();
+    if (mismatch) {const error = JSON.parse(text).error; assert.equal(error.code, 'PROJECT_ID_MISMATCH'); assert.deepEqual(error.details, {projectId: f.project.id});}
+    assert.ok(!text.includes(f.root)); assert.ok(!text.includes(f.asset.relativePath));
+  }
   assert.equal(versionComparisonMediaIdentity(new URL(f.url + '#fragment')), null);
   const unauthorized = await fetch(f.server.url + f.route); assert.equal(unauthorized.status, 401); await unauthorized.text();
   const origin = await f.request(undefined, {headers: {origin: 'https://foreign.invalid'}}); assert.equal(origin.status, 403); await origin.text();

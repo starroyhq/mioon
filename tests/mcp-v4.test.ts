@@ -1,3 +1,4 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, writeFile, rename, rm, chmod} from 'node:fs/promises';
@@ -50,8 +51,8 @@ async function bridge(t: TestContext, env: Record<string, string> = {}): Promise
     return envelope.data;
   }};
 }
-async function httpRpc(service: RpcService, operation: string, input: Record<string, unknown> = {}): Promise<{status: number; body: RpcBody}> {
-  const response = await fetch(service.url + '/api/rpc', {method:'POST', headers:{authorization:`Bearer ${service.token}`, 'content-type':'application/json'}, body:JSON.stringify({operation,input})});
+async function httpRpc(service: RpcService, operation: string, input: Record<string, unknown> = {}, projectId?: string): Promise<{status: number; body: RpcBody}> {
+  const response = await fetch(service.url + rpcPathFor(operation, input, projectId), {method:'POST', headers:{authorization:`Bearer ${service.token}`, 'content-type':'application/json'}, body:JSON.stringify({operation,input})});
   return {status:response.status, body:await response.json() as RpcBody};
 }
 
@@ -148,7 +149,7 @@ test('one MCP process follows private desktop descriptor and token rotation, pre
   const updated = await mcp.call('shot_update', updateTool) as {revision: number; title: string};
   const conflict = await mcp.call('shot_update', updateTool, 'REVISION_CONFLICT') as ErrorEnvelope;
   assert.equal(conflict.details.currentRevision, updated.revision);
-  const viaHttp = await httpRpc(service, 'shot.update', updateInput);
+  const viaHttp = await httpRpc(service, 'shot.update', updateInput, project.id);
   assert.equal(viaHttp.status, 409); assert.equal(viaHttp.body.error?.code, conflict.code);
   assert.deepEqual(viaHttp.body.error?.details, conflict.details);
   const doctor = await mcp.call('mioon_doctor') as {ready?: boolean; connection: {source?: string; credentialsReloadedPerRequest?: boolean}; backend: {service?: string}};

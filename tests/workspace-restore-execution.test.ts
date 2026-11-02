@@ -1,3 +1,5 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import {AGENT_TASK_ORDINARY_SCHEMAS} from './helpers/workspace-schema-current.ts';
 import {downgradeReviewedWorkspace} from './helpers/reviewed-schema-layers.ts';
 import type {WorkspaceInspection} from './helpers/strict-workspace-boundary-types.ts';
@@ -238,13 +240,13 @@ test('restored server skips settings/runtime constructors and special routes sha
  try{
   server=await startServer((({dataDir:f.root,port:0,token:TASK_TOKEN,agentSettings:{get:bomb,put:bomb,close:bomb},imageSecretCodec:{storage:bomb},imageNetwork:{request:bomb},comfyNetwork:{httpRequest:bomb},chatGateway:bomb}) as unknown as Parameters<typeof startServer>[0]));
   for(const directory of ['agent-settings','image-settings','comfy-settings'] as const)assert.equal(existsSync(path.join(f.root,directory)),false);
-  for(const [route,method] of [['/api/agent/settings','GET'],['/api/agent/settings','PUT'],['/api/images/settings','GET'],['/api/images/custom-settings','PUT'],['/api/images/comfy-settings','GET'],['/api/images/comfy-check','POST'],['/api/images/reviews/approve','POST'],['/api/images/reviews/reject','POST'],[`/api/agent/chat/${f.project.id}/runs`,'POST']] as const){
+  for(const [route,method] of [['/api/agent/settings','GET'],['/api/agent/settings','PUT'],['/api/images/settings','GET'],['/api/images/custom-settings','PUT'],['/api/images/comfy-settings','GET'],['/api/images/comfy-check','POST'],[projectApiPath(f.project.id,'images','reviews','approve'),'POST'],[projectApiPath(f.project.id,'images','reviews','reject'),'POST'],[`/api/agent/chat/${f.project.id}/runs`,'POST']] as const){
    const result=await request(server.url,route,{method,input:method==='GET'?undefined:{expectedWorkspaceOrigin:f.metadata.workspaceOrigin}});
    assert.equal(result.status,409,route);assert.equal((result.body.error as import('./helpers/strict-opacity-fixture-types.ts').OpacityFailure).code,'RESTORE_OPERATION_UNAVAILABLE',route);assert.deepEqual((result.body.error as import('./helpers/strict-opacity-fixture-types.ts').OpacityFailure).details,{});
   }
   const files=readdirSync(f.root,{recursive:true}).sort();
   for(const [operation,input]of Object.entries(deniedRedesignInputs(f.project.id)))for(const origin of [undefined,f.metadata.workspaceOrigin] as const){
-   const result=await request(server.url,'/api/rpc',{method:'POST',input:{operation,input,...(origin?{expectedWorkspaceOrigin:origin}:{})}});
+   const result=await request(server.url,rpcPathFor(operation,input,f.project.id),{method:'POST',input:{operation,input,...(origin?{expectedWorkspaceOrigin:origin}:{})}});
    assert.equal(result.status,409,operation);assert.equal(result.body.ok,false);assert.equal((result.body.error as import('./helpers/strict-opacity-fixture-types.ts').OpacityFailure).code,'RESTORE_OPERATION_UNAVAILABLE',operation);
    assert.deepEqual((result.body.error as import('./helpers/strict-opacity-fixture-types.ts').OpacityFailure).details,{});
   }
@@ -252,7 +254,7 @@ test('restored server skips settings/runtime constructors and special routes sha
   assert.equal(existsSync(path.join(f.root,'agent-authorizations-v1.json')),false);
   const denied=await request(server.url,'/api/rpc',{method:'POST',input:{operation:'project.create',input:{name:'No'}}});
   assert.equal((denied.body.error as import('./helpers/strict-opacity-fixture-types.ts').OpacityFailure).code,'RESTORE_WORKSPACE_ORIGIN_REQUIRED');
-  const held=await request(server.url,`/api/tasks/${f.pending.task.id}/reconcile`,{method:'POST',input:{projectId:f.project.id,digest:f.pending.task.digest,expectedWorkspaceOrigin:f.metadata.workspaceOrigin}});
+  const held=await request(server.url,projectApiPath(f.project.id,'tasks',f.pending.task.id,'reconcile'),{method:'POST',input:{projectId:f.project.id,digest:f.pending.task.digest,expectedWorkspaceOrigin:f.metadata.workspaceOrigin}});
   assert.equal(held.status,409);assert.equal((held.body.error as import('./helpers/strict-opacity-fixture-types.ts').OpacityFailure).code,'RESTORED_RECORD_HELD');
   assert.equal((await request(server.url,'/api/agent/settings',{authenticated:false})).status,401);
  }finally{await server?.close();}

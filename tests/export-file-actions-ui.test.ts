@@ -9,11 +9,11 @@ import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import {exportOutputSchema} from '../packages/contracts/src/export-controls.ts';
 import {exportFileStatusSchema} from '../packages/contracts/src/export-file-recovery.ts';
-import {projectApiPath,projectRpcPath} from '../packages/contracts/src/project-file.ts';
+import {projectApiPath,projectRpcPath,projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import {i18nTestModule} from './helpers/i18n.ts';
 
 const id = (n: number) => `76000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const initial = {projectId:id(1),exportId:id(2),downloadHref:'/media/original-immutable-file'};
+const initial = {projectId:id(1),exportId:id(2),downloadHref:projectMediaPath(id(1),id(3))};
 const status = (props = initial, patch = {}) => ({projectId:props.projectId,exportId:props.exportId,assetId:id(3),status:'missing',sizeBytes:4,sha256:'a'.repeat(64),...patch});
 const response = (value: Omit<ReturnType<typeof status>,"status"> & {status?:string;fileLocation?:string;url?:string}) => ({ok:true,json:async()=>({ok:true,data:value})});
 const deferred = <T = unknown>() => {let resolve!: (value?: T | PromiseLike<T>) => void,reject!: (reason?: unknown) => void;const promise=new Promise<T>((yes,no)=>{resolve=(yes as (value?: T | PromiseLike<T>) => void);reject=no;});return{promise,resolve,reject};};
@@ -35,7 +35,7 @@ function harness(patch = {}) {
     if(name.endsWith('I18nProvider.tsx'))return i18nTestModule();
     if(name.endsWith('export-controls.ts'))return{exportOutputSchema};
     if(name.endsWith('export-file-recovery.ts'))return{exportFileStatusSchema};
-    if(name.endsWith('/packages/contracts/src/project-file.ts'))return{projectApiPath,projectRpcPath};
+    if(name.endsWith('/packages/contracts/src/project-file.ts'))return{projectApiPath,projectRpcPath,projectMediaPath};
     if(name==='@mioon/ui/components/workbench-controls')return{WorkbenchButton:'Button',WorkbenchAlert:'Alert'};
     assert.fail(`Unexpected file action dependency ${name}`);
   },module,module.exports,(url:unknown,options:FetchCall["options"]={})=>{const waiting=deferred<ReturnType<typeof response>>();calls.push({url,options,...waiting});return waiting.promise;},testWindow,testNavigator);
@@ -65,7 +65,7 @@ test('an old file-chooser change cannot dispatch after hide, reopen, or owner re
     const h=harness();h.render();await h.missing();const old=h.choose();assert.equal(h.clicks(),1);
     if(transition==='hide'||transition==='reopen'){h.visible(false);h.render();if(transition==='reopen'){h.visible(true);h.render();}}
     else if(transition==='project')h.render({projectId:id(9),exportId:id(10)});
-    else if(transition==='href')h.render({downloadHref:'/media/different-frozen-file'});
+    else if(transition==='href')h.render({downloadHref:projectMediaPath(id(1),id(4))});
     else h.render({disabled:true});
     old.send();await tick();h.render();assert.equal(h.calls.filter(call=>call.options!.method==='POST').length,0,transition);
   }
@@ -82,14 +82,14 @@ test('a stale chooser cannot consume the new selection after the same history re
 test('late GET results cannot publish after hidden ABA or same-URL download ownership changes',async()=>{
   const h=harness();h.render();const first=h.calls[0];h.visible(false);h.render();assert.equal(first.options!.signal!.aborted,true);
   h.visible(true);h.render();const second=h.calls.at(-1);await h.settle(first,status(initial,{status:'present'}));assert.ok(h.find('export-file-check'));assert.equal(h.nodes().some((node: ElementNode)=>node.props?.render?.props?.href),false);
-  h.render({downloadHref:'/media/new-owner'});const third=h.calls.at(-1);await h.settle(second,status(initial,{status:'present'}));assert.ok(h.find('export-file-check'));
-  await h.settle(third,status(initial,{status:'present'}));assert.equal(h.nodes().find((node: ElementNode)=>node.props?.render)?.props.render!.props.href,'/media/new-owner');
+  h.render({downloadHref:projectMediaPath(id(1),id(5))});const third=h.calls.at(-1);await h.settle(second,status(initial,{status:'present'}));assert.ok(h.find('export-file-check'));
+  await h.settle(third,status(initial,{status:'present'}));assert.equal(h.nodes().find((node: ElementNode)=>node.props?.render)?.props.render!.props.href,projectMediaPath(id(1),id(5)));
 });
 
 for(const transition of ['hide-reopen','project','disabled'])test(`accepted POST finishes without publishing to a retired ${transition} owner and releases its shared flight`,async()=>{
   const h=harness();h.render();await h.missing();const old=h.choose();old.send();h.render();const post=h.calls.at(-1);assert.equal(post!.options!.method,'POST');assert.equal(h.find('export-file-locate')!.props.disabled,true);
   if(transition==='hide-reopen'){h.visible(false);h.render();h.visible(true);h.render();}
-  else if(transition==='project')h.render({projectId:id(9),exportId:id(10),downloadHref:'/media/current-project'});
+  else if(transition==='project')h.render({projectId:id(9),exportId:id(10),downloadHref:projectMediaPath(id(9),id(11))});
   else{h.render({disabled:true});h.render({disabled:false});}
   await h.missing();assert.equal(h.find('export-file-locate')!.props.disabled,true);const held=h.choose();held.send();assert.equal(h.calls.filter(call=>call.options!.method==='POST').length,1);
   await h.settle(post,status(initial,{status:'present'}));assert.equal(h.nodes().some((node: ElementNode)=>node.props?.render?.props?.href),false,'The old POST cannot make this scope claim the file is present');

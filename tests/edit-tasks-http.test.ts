@@ -1,5 +1,6 @@
 import type {TaskHttpFixture, TaskHttpResponse, TaskEnvelope} from './helpers/strict-edit-task-types.ts';
 import test from 'node:test';
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import http from 'node:http';
@@ -30,10 +31,10 @@ test('task HTTP preserves authentication, cookie, host/origin, exact methods and
   const f = (await taskFixture(t) as unknown as TaskHttpFixture), input = trackInput(f), prepared = await f.prepare('timeline.track.add', input);
   const before = snapshot(f.root), tasks = retained(f), exec = actionInput(f, prepared);
   const routes = [
-    {route: '/api/tasks/prepare', method: 'POST', input: {projectId: f.project.id, operation: 'timeline.track.add', input, origin: 'new'}},
+    {route: projectApiPath(f.project.id, 'tasks', 'prepare'), method: 'POST', input: {projectId: f.project.id, operation: 'timeline.track.add', input, origin: 'new'}},
     {route: listPath(f.project.id), method: 'GET'},
-    {route: taskPath(prepared.task.id) + '?projectId=' + f.project.id, method: 'GET'},
-    ...['execute', 'reconcile', 'acknowledge'].map(action => ({route: taskPath(prepared.task.id, action), method: 'POST', input: exec})),
+    {route: taskPath(f.project.id, prepared.task.id) + '?projectId=' + f.project.id, method: 'GET'},
+    ...['execute', 'reconcile', 'acknowledge'].map(action => ({route: taskPath(f.project.id, prepared.task.id, action), method: 'POST', input: exec})),
   ];
   for (const route of routes) {
     assert.equal((await f.request(route.route, {...route, authenticated: false})).status, 401);
@@ -46,32 +47,32 @@ test('task HTTP preserves authentication, cookie, host/origin, exact methods and
   assert.equal(cookie.status, 200); assert.equal(cookie.headers['cache-control'], 'no-store');
   assert.equal(cookie.headers['x-content-type-options'], 'nosniff'); assert.ok(isEditTaskListEnvelope(cookie.body.data));
   for (const [route, value] of [
-    ['/api/tasks/prepare', {...routes[0].input, taskFault: 'afterBusinessCommit'}],
-    ['/api/tasks/prepare', {...routes[0].input, input: {...input, extra: true}}],
-    ['/api/tasks/prepare', {...routes[0].input, origin: 'agent'}],
-    [taskPath(prepared.task.id, 'execute'), {...exec, extra: true}],
-    [taskPath(prepared.task.id, 'execute'), {...exec, taskId: randomUUID()}],
-    [taskPath(prepared.task.id, 'execute'), {...exec, taskId: prepared.task.id}],
-    [taskPath(prepared.task.id, 'reconcile'), exec],
-    [taskPath(prepared.task.id, 'acknowledge'), {...exec, expectedRevision: 1, status: 'applied'}],
+    [projectApiPath(f.project.id, 'tasks', 'prepare'), {...routes[0].input, taskFault: 'afterBusinessCommit'}],
+    [projectApiPath(f.project.id, 'tasks', 'prepare'), {...routes[0].input, input: {...input, extra: true}}],
+    [projectApiPath(f.project.id, 'tasks', 'prepare'), {...routes[0].input, origin: 'agent'}],
+    [taskPath(f.project.id, prepared.task.id, 'execute'), {...exec, extra: true}],
+    [taskPath(f.project.id, prepared.task.id, 'execute'), {...exec, taskId: randomUUID()}],
+    [taskPath(f.project.id, prepared.task.id, 'execute'), {...exec, taskId: prepared.task.id}],
+    [taskPath(f.project.id, prepared.task.id, 'reconcile'), exec],
+    [taskPath(f.project.id, prepared.task.id, 'acknowledge'), {...exec, expectedRevision: 1, status: 'applied'}],
   ] as const) {
     const rejected = await f.request(route, {method: 'POST', input: value});
     assert.equal(rejected.status, 400, JSON.stringify(rejected.body)); assertSafe(rejected, f);
   }
   for (const raw of ['{', 'null', '[]', 'true', '{"__proto__":{}}']) {
-    const rejected = await f.request('/api/tasks/prepare', {method: 'POST', raw});
+    const rejected = await f.request(projectApiPath(f.project.id, 'tasks', 'prepare'), {method: 'POST', raw});
     assert.equal(rejected.status, 400); assertSafe(rejected, f);
   }
-  assert.equal((await f.request('/api/tasks/prepare', {method: 'POST', input: routes[0].input, headers: {'content-type': 'text/plain'}})).status, 400);
-  assert.equal((await f.request('/api/tasks/prepare', {method: 'POST', input: routes[0].input, headers: {'content-encoding': 'gzip'}})).status, 400);
+  assert.equal((await f.request(projectApiPath(f.project.id, 'tasks', 'prepare'), {method: 'POST', input: routes[0].input, headers: {'content-type': 'text/plain'}})).status, 400);
+  assert.equal((await f.request(projectApiPath(f.project.id, 'tasks', 'prepare'), {method: 'POST', input: routes[0].input, headers: {'content-encoding': 'gzip'}})).status, 400);
   for (const chunked of [false, true]) {
-    const oversized = await f.request('/api/tasks/prepare', {method: 'POST', chunked, raw: JSON.stringify(routes[0].input) + ' '.repeat(EDIT_TASK_HTTP_LIMITS.prepareBytes)});
+    const oversized = await f.request(projectApiPath(f.project.id, 'tasks', 'prepare'), {method: 'POST', chunked, raw: JSON.stringify(routes[0].input) + ' '.repeat(EDIT_TASK_HTTP_LIMITS.prepareBytes)});
     assert.equal(oversized.status, 413); assertSafe(oversized, f);
-    const actionOversize = await f.request(taskPath(prepared.task.id, 'execute'), {method: 'POST', chunked, raw: JSON.stringify(exec) + ' '.repeat(EDIT_TASK_HTTP_LIMITS.actionBytes)});
+    const actionOversize = await f.request(taskPath(f.project.id, prepared.task.id, 'execute'), {method: 'POST', chunked, raw: JSON.stringify(exec) + ' '.repeat(EDIT_TASK_HTTP_LIMITS.actionBytes)});
     assert.equal(actionOversize.status, 413); assertSafe(actionOversize, f);
   }
-  assert.equal((await f.request('/api/tasks/' + prepared.task.id + '/other')).status, 404);
-  assert.equal((await f.request('/api/tasks/prepare/execute', {method: 'POST', input: {}})).status, 404);
+  assert.equal((await f.request(projectApiPath(f.project.id, 'tasks', prepared.task.id, 'other'))).status, 404);
+  assert.equal((await f.request(projectApiPath(f.project.id, 'tasks', 'prepare', 'execute'), {method: 'POST', input: {}})).status, 404);
   assert.deepEqual(snapshot(f.root), before); assert.deepEqual(retained(f), tasks); assert.equal(dispatches(f), 0);
 });
 
@@ -80,7 +81,7 @@ test('GET/list are noncreating, strictly bound queries and never convert reads i
   database(f.root, db => db.prepare('DELETE FROM timelines WHERE projectId=?').run(f.foreign.id), true);
   const before = snapshot(f.root), initial = retained(f);
   const empty = await f.data(listPath(f.foreign.id)); assert.deepEqual((empty.items as unknown), []);
-  assert.equal((await f.request(taskPath(randomUUID()) + '?projectId=' + f.foreign.id)).status, 404);
+  assert.equal((await f.request(taskPath(f.foreign.id, randomUUID()) + '?projectId=' + f.foreign.id)).status, 404);
   assert.deepEqual(snapshot(f.root), before); assert.deepEqual(retained(f), initial);
   const prepared = await f.prepare('timeline.track.add', trackInput(f));
   const reference = await f.prepare('reference.attach', attachInput(f));
@@ -100,8 +101,8 @@ test('GET/list are noncreating, strictly bound queries and never convert reads i
   assert.equal((await f.request(listPath(f.project.id) + '&pendingOnly=false&cursor=' + encodeURIComponent(first.nextCursor))).status, 400);
   for (const task of [prepared.task, reference.task]) {
     assert.deepEqual((await f.get(task.id)).task, task);
-    assert.equal((await f.request(taskPath(task.id) + '?projectId=' + f.foreign.id)).status, 404);
-    assert.equal((await f.request(taskPath(task.id) + '?projectId=' + f.project.id + '&limit=1')).status, 400);
+    assert.equal((await f.request(taskPath(f.foreign.id, task.id) + '?projectId=' + f.foreign.id)).status, 404);
+    assert.equal((await f.request(taskPath(f.project.id, task.id) + '?projectId=' + f.project.id + '&limit=1')).status, 400);
   }
   assert.deepEqual(snapshot(f.root), domain); assert.deepEqual(retained(f), taskRows); assert.equal(dispatches(f), 0);
 });
@@ -112,7 +113,7 @@ test('fixed durable tasks cannot expose generation, rendering, arbitrary RPC or 
   assert.equal(DURABLE_EDIT_OPERATIONS.includes('timeline.loudness.apply'), true);
   assert.equal(DURABLE_EDIT_OPERATIONS.includes('timeline.clip.rippleRemove'), true);
   for (const operation of ['timeline.render', 'generation.submit', 'shot.update', 'task.execute', 'agent.edit.approve', 'project.create']) {
-    const response = await f.request('/api/tasks/prepare', {method: 'POST', input: {projectId: f.project.id, operation, input: trackInput(f), origin: 'new'}});
+    const response = await f.request(projectApiPath(f.project.id, 'tasks', 'prepare'), {method: 'POST', input: {projectId: f.project.id, operation, input: trackInput(f), origin: 'new'}});
     assert.equal(response.status, 400); assertSafe(response, f);
   }
   for (const operation of ['tasks.prepare', 'tasks.execute', 'edit_tasks.execute', 'agent.tasks.execute']) {
@@ -124,8 +125,8 @@ test('fixed durable tasks cannot expose generation, rendering, arbitrary RPC or 
 
 test('real lost prepare acknowledgement rediscovers the exact persisted intent without automatic POST or business change', async t => {
   const f = (await taskFixture(t) as unknown as TaskHttpFixture), input = trackInput(f), before = snapshot(f.root);
-  f.lose('/api/tasks/prepare');
-  await assert.rejects(f.viaProxy('/api/tasks/prepare', {method: 'POST', input: {projectId: f.project.id, operation: 'timeline.track.add', input, origin: 'new'}}));
+  f.lose(projectApiPath(f.project.id, 'tasks', 'prepare'));
+  await assert.rejects(f.viaProxy(projectApiPath(f.project.id, 'tasks', 'prepare'), {method: 'POST', input: {projectId: f.project.id, operation: 'timeline.track.add', input, origin: 'new'}}));
   assert.equal(f.requests.length, 1); assert.equal(f.requests[0].method, 'POST');
   const accepted = f.observed[0].body.data as TaskEnvelope<'timeline.track.add'>; assert.ok(isEditTaskEnvelope(accepted)); assert.equal(accepted.task.status, 'prepared');
   assert.deepEqual(snapshot(f.root), before); assert.equal(dispatches(f), 0);
@@ -137,7 +138,7 @@ test('real lost prepare acknowledgement rediscovers the exact persisted intent w
   const recovered = await f.get(accepted.task.id) as TaskEnvelope<'timeline.track.add'>;
   assert.notEqual(recovered.instanceId, accepted.instanceId); assert.deepEqual(recovered.task, accepted.task);
   assert.deepEqual(retained(f), taskRows); assert.deepEqual(snapshot(f.root), before); assert.equal(dispatches(f), 0);
-  const stale = await f.request(taskPath(accepted.task.id, 'execute'), {method: 'POST', input: actionInput(f, accepted)});
+  const stale = await f.request(taskPath(f.project.id, accepted.task.id, 'execute'), {method: 'POST', input: actionInput(f, accepted)});
   assert.equal(stale.status, 409); assert.equal(stale.body.error.code, 'EDIT_TASK_STALE_INSTANCE');
   const executed = await f.execute(recovered); assert.equal(executed.task.status, 'applied'); assert.equal(dispatches(f), 1);
   assert.deepEqual(executed.task.input, input); assert.equal((executed.result)!.revision, input.expectedRevision + 1);
@@ -145,7 +146,7 @@ test('real lost prepare acknowledgement rediscovers the exact persisted intent w
 
 test('real dropped execute response commits once; reads/restart do not replay and explicit reconcile returns historical receipt', async t => {
   const f = (await taskFixture(t) as unknown as TaskHttpFixture), input = trackInput(f), prepared = await f.prepare('timeline.track.add', input);
-  const route = taskPath(prepared.task.id, 'execute'); f.lose(route);
+  const route = taskPath(f.project.id, prepared.task.id, 'execute'); f.lose(route);
   await assert.rejects(f.viaProxy(route, {method: 'POST', input: actionInput(f, prepared)}));
   assert.equal(f.requests.length, 1); assert.equal(dispatches(f), 1);
   const applied = f.observed[0].body.data as TaskEnvelope<'timeline.track.add'>; assert.equal(applied.task.status, 'applied'); assert.ok(isEditTaskEnvelope(applied));
@@ -171,8 +172,8 @@ for (const phase of ['afterPreparePersist', 'afterClaim', 'afterBusinessCommit']
     if (phase !== 'afterPreparePersist') prepared = await f.prepare('timeline.track.add', input);
     const oldInstance = prepared?.instanceId;
     await (f.backend)!.arm(phase);
-    if (!prepared) await assert.rejects(f.request('/api/tasks/prepare', {method: 'POST', input: {projectId: f.project.id, operation: 'timeline.track.add', input, origin: 'new'}}));
-    else await assert.rejects(f.request(taskPath(prepared.task.id, 'execute'), {method: 'POST', input: actionInput(f, prepared)}));
+    if (!prepared) await assert.rejects(f.request(projectApiPath(f.project.id, 'tasks', 'prepare'), {method: 'POST', input: {projectId: f.project.id, operation: 'timeline.track.add', input, origin: 'new'}}));
+    else await assert.rejects(f.request(taskPath(f.project.id, prepared.task.id, 'execute'), {method: 'POST', input: actionInput(f, prepared)}));
     assert.equal((await (f.backend)!.exited).signal, 'SIGKILL');
     await f.restart();
     const listed = await f.list(); assert.equal(listed.items.length, 1); assert.notEqual(listed.instanceId, oldInstance);
@@ -181,7 +182,7 @@ for (const phase of ['afterPreparePersist', 'afterClaim', 'afterBusinessCommit']
     assert.deepEqual(((await (f.backend)!.observe()).phases as unknown), [], 'startup and rediscovery must never dispatch');
     if (phase !== 'afterBusinessCommit') assert.deepEqual(snapshot(f.root), before);
     if (prepared) {
-      const stale = await f.request(taskPath(task.id, 'execute'), {method: 'POST', input: actionInput(f, prepared)});
+      const stale = await f.request(taskPath(f.project.id, task.id, 'execute'), {method: 'POST', input: actionInput(f, prepared)});
       assert.equal(stale.status, 409); assert.equal(stale.body.error.code, 'EDIT_TASK_STALE_INSTANCE');
     }
     const rows = retained(f), current = snapshot(f.root);
@@ -205,11 +206,11 @@ test('legacy session import reconciles exact old RPC receipts and closes the lan
   const rows = retained(f); assert.deepEqual((await f.get(imported.task.id)).task, imported.task); assert.deepEqual(retained(f), rows);
   const reconciled = await f.reconcile(imported.task); assert.equal(reconciled.task.status, 'applied'); assert.deepEqual(reconciled.result, result);
   const replacement = {projectId: f.project.id, operation: 'timeline.track.add', input: trackInput(f, {expectedRevision: result.revision}), origin: 'new'};
-  assert.equal((await f.request('/api/tasks/prepare', {method: 'POST', input: replacement})).status, 409);
-  const staleAck = await f.request(taskPath(imported.task.id, 'acknowledge'), {method: 'POST', input: {projectId: f.project.id, digest: imported.task.digest, expectedRevision: imported.task.revision, status: 'applied'}});
+  assert.equal((await f.request(projectApiPath(f.project.id, 'tasks', 'prepare'), {method: 'POST', input: replacement})).status, 409);
+  const staleAck = await f.request(taskPath(f.project.id, imported.task.id, 'acknowledge'), {method: 'POST', input: {projectId: f.project.id, digest: imported.task.digest, expectedRevision: imported.task.revision, status: 'applied'}});
   assert.equal(staleAck.status, 409);
   const acknowledged = await f.acknowledge(reconciled.task); assert.equal(acknowledged.task.acknowledged, true);
-  const next = await f.data('/api/tasks/prepare', {method: 'POST', input: replacement}); assert.notEqual(next.task.id, imported.task.id);
+  const next = await f.prepare(replacement.operation, replacement.input, replacement.origin); assert.notEqual(next.task.id, imported.task.id);
   assert.equal(dispatches(f), 0); assert.deepEqual(snapshot(f.root), domain);
 });
 
@@ -266,7 +267,7 @@ test('official CLI and MCP replay the same domain receipts after task execution 
 
 test('shutdown rejects a late request body and waits for owned HTTP work before releasing SQLite', {timeout: 15000}, async t => {
   const f = (await taskFixture(t) as unknown as TaskHttpFixture), input = JSON.stringify({projectId: f.project.id, operation: 'timeline.track.add', input: trackInput(f), origin: 'new'});
-  const req = http.request((f.backend)!.url + '/api/tasks/prepare', {method: 'POST', agent: false,
+  const req = http.request((f.backend)!.url + projectApiPath(f.project.id, 'tasks', 'prepare'), {method: 'POST', agent: false,
     headers: {authorization: 'Bearer ' + TASK_TOKEN, 'content-type': 'application/json', 'content-length': Buffer.byteLength(input)}}, res => res.resume());
   req.on('error', () => {}); req.write(input.slice(0, 20));
   await once(req, 'socket');

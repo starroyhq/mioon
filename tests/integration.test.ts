@@ -6,6 +6,8 @@ type Success<O extends string> = O extends 'version.list' ? IntegrationVersion[]
 type RpcResult<O extends string, S extends number> = S extends 200 ? Success<O> : {code: string; message: string; details: Record<string, unknown>};
 interface Evidence {startedAt: string; runtime: string; invocation: {executable: string; arguments: string[]}; commands: Record<string, unknown>[]; assertions: Record<string, unknown>[]; processEvents: Record<string, unknown>[]; http: Record<string, unknown>[]; finishedAt?: string; result?: string}
 import test from 'node:test';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
 import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -54,15 +56,15 @@ async function fixture(t: test.TestContext) {
     throw Error(`Backend failed to start: ${stderr}`);
   }
   async function stop(signal: NodeJS.Signals|number = 'SIGTERM') { if (!processHandle || processHandle.exitCode !== null || processHandle.signalCode) return; const child = processHandle; const ended = once(child, 'exit'); records.processEvents.push({ action: 'kill', pid: child.pid, signal }); child.kill(signal); await ended; }
-  async function rpc<O extends string, S extends number = 200>(operation: O, input: Record<string, unknown> = {}, expectedStatus: S = 200 as S, headers: HeadersInit = {}): Promise<RpcResult<O, S>> {
-    const response = await fetch(base + '/api/rpc', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, ...headers }, body: JSON.stringify({ operation, input }) });
+  async function rpc<O extends string, S extends number = 200>(operation: O, input: Record<string, unknown> = {}, expectedStatus: S = 200 as S, headers: HeadersInit = {}, projectId?: string): Promise<RpcResult<O, S>> {
+    const response = await fetch(base + (operation === 'unregistered.operation' ? '/api/rpc' : rpcPathFor(operation, input, projectId)), { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, ...headers }, body: JSON.stringify({ operation, input }) });
     const body = await response.json();
     records.http.push({ at: new Date().toISOString(), operation, input: input.dataBase64 ? { ...input, dataBase64: `[${(input.dataBase64 as string).length} base64 characters]` } : input, status: response.status, body });
     assert.equal(response.status, expectedStatus, `${operation}: ${JSON.stringify(body)}`);
     assert.equal(body.ok, expectedStatus === 200, JSON.stringify(body));
     return (body.ok ? body.data : body.error) as RpcResult<O, S>;
   }
-  async function until(jobId: string, predicate: (arg0: MediaJob) => unknown, timeout: number = 45_000) { const start = Date.now(); let job: MediaJob | undefined; while (Date.now() - start < timeout) { job = await rpc('job.get', { jobId }); if (predicate(job)) return job; await pause(100); } throw Error(`Job did not reach expected state: ${JSON.stringify(job)}`); }
+  async function until(projectId: string, jobId: string, predicate: (arg0: MediaJob) => unknown, timeout: number = 45_000) { const start = Date.now(); let job: MediaJob | undefined; while (Date.now() - start < timeout) { job = await rpc('job.get', { jobId }, 200, {}, projectId); if (predicate(job)) return job; await pause(100); } throw Error(`Job did not reach expected state: ${JSON.stringify(job)}`); }
   function inspect<T>(callback: (db: DatabaseSync) => T): T { const db = new DatabaseSync(path.join(root, 'workbench.sqlite'), { readOnly: true }); try { return callback(db); } finally { db.close(); } }
   // The Mock provider's ledger for a request, read on the running backend's own connection.
   async function ledger(projectId: string, requestId: string): Promise<LedgerRows> {
@@ -78,12 +80,13 @@ async function fixture(t: test.TestContext) {
 }
 
 test('durable HTTP acceptance: real process restarts, provider side effects, media and security', { timeout: 240_000 }, async t => {
-  const f = await fixture(t), rpc = f.rpc;
+  const f = await fixture(t);
   const imagePath = path.join(f.root, 'fixture.png'), videoPath = path.join(f.root, 'fixture.mp4');
   await command('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x240:rate=1', '-frames:v', '1', '-threads', '1', imagePath]);
   await command('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x240:rate=24', '-t', '0.5', '-an', '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '1', '-pix_fmt', 'yuv420p', videoPath]);
   const imageBytes = await readFile(imagePath), videoBytes = await readFile(videoPath);
-  const project = await rpc('project.create', { name: 'Acceptance · durable three-shot sequence', description: 'Synthetic fixture media; no paid provider calls.' });
+  const project = await f.rpc('project.create', { name: 'Acceptance · durable three-shot sequence', description: 'Synthetic fixture media; no paid provider calls.' });
+  const rpc = <O extends string, S extends number = 200>(operation: O, input: Record<string, unknown> = {}, expectedStatus: S = 200 as S, headers: HeadersInit = {}) => f.rpc(operation, input, expectedStatus, headers, project.id);
   const image = await rpc('asset.import', { projectId: project.id, name: 'reference.png', mimeType: 'image/png', dataBase64: imageBytes.toString('base64') });
   const video = await rpc('asset.import', { projectId: project.id, name: 'reference.mp4', mimeType: 'video/mp4', dataBase64: videoBytes.toString('base64') });
   const shots: MediaShot[] = [];
@@ -105,7 +108,7 @@ test('durable HTTP acceptance: real process restarts, provider side effects, med
     assert.deepEqual(after.shots.map(s => s.id), order); assert.equal(after.shots.length, 3); assert.equal(after.assets.length, 2);
     assert.equal((after.shots.find(s => s.id === shots[0].id))!.prompt, 'Durable revised prompt');
     assert.deepEqual((after.shots.find(s => s.id === shots[0].id))!.position, { x: 755, y: 123 });
-    for (const asset of [image, video]) { const response = await fetch(f.base + asset.url, { headers: { authorization: `Bearer ${token}` } }); assert.equal(response.status, 200); assert.equal(sha(Buffer.from(await response.arrayBuffer())), asset.sha256); }
+    for (const asset of [image, video]) { const response = await fetch(f.base + projectMediaPath(project.id, asset.id), { headers: { authorization: `Bearer ${token}` } }); assert.equal(response.status, 200); assert.equal(sha(Buffer.from(await response.arrayBuffer())), asset.sha256); }
     records.assertions.push({ id: 'A2', result: 'passed', projectId: project.id, shotIds: order, imageNodeId: imageNode.id, videoNodeId: videoNode.id, edgeId: edge.id, restart: 'actual SIGKILL and new child process' });
   });
 
@@ -116,10 +119,10 @@ test('durable HTTP acceptance: real process restarts, provider side effects, med
     assert.equal(new Set(results.map(job => job.id)).size, 1); firstJob = results[0];
     latest = await rpc('shot.update', { shotId: latest.id, expectedRevision: latest.revision, patch: { prompt: 'Later prompt must not mutate the running snapshot' } });
     assert.equal((await rpc('generation.submit', firstInput)).id, firstJob.id);
-    const running = await f.until(firstJob.id, (j: { status: string; }) => j.status === 'running'); assert.ok(running.providerJobId);
+    const running = await f.until(project.id, firstJob.id, (j: { status: string; }) => j.status === 'running'); assert.ok(running.providerJobId);
     const before = await f.ledger(project.id, firstInput.requestId); assert.equal(before.submissions.length, 1); assert.equal(before.tasks.length, 1);
     await f.stop('SIGKILL'); await f.start();
-    const finished = await f.until(firstJob.id, (j: { status: string; }) => j.status === 'succeeded'); assert.equal(finished.providerJobId, running.providerJobId); assert.equal(finished.submissionCount, 1);
+    const finished = await f.until(project.id, firstJob.id, (j: { status: string; }) => j.status === 'succeeded'); assert.equal(finished.providerJobId, running.providerJobId); assert.equal(finished.submissionCount, 1);
     const after = await f.ledger(project.id, firstInput.requestId); assert.equal(after.submissions.length, 1); assert.equal(after.tasks.length, 1); assert.equal(after.tasks[0].provider_job_id, before.tasks[0].provider_job_id);
     assert.equal((await rpc('generation.submit', firstInput)).id, firstJob.id);
     records.assertions.push({ id: 'A4-concurrent-and-restart', result: 'passed', jobId: firstJob.id, parallelReplays: 20, ledger: after });
@@ -138,15 +141,15 @@ test('durable HTTP acceptance: real process restarts, provider side effects, med
   });
 
   await t.test('A6 two real immutable versions survive later edits; original replay works and different reuse conflicts', async () => {
-    const [v1] = await rpc('version.list', { shotId: latest.id }); const beforeBytes = await (await fetch(f.base + v1.url, { headers: { authorization: `Bearer ${token}` } })).arrayBuffer(); assert.equal(sha(Buffer.from(beforeBytes)), v1.sha256);
+    const [v1] = await rpc('version.list', { shotId: latest.id }); const beforeBytes = await (await fetch(f.base + projectMediaPath(project.id, v1.assetId), { headers: { authorization: `Bearer ${token}` } })).arrayBuffer(); assert.equal(sha(Buffer.from(beforeBytes)), v1.sha256);
     const shot = (await rpc('project.get', { projectId: project.id })).shots.find(s => s.id === latest.id);
     const changed = await rpc('shot.update', { shotId: (shot)!.id, expectedRevision: (shot)!.revision, patch: { prompt: 'A different second-version prompt', position: { x: 777, y: 333 } } });
-    const second = await rpc('generation.submit', { shotId: changed.id, expectedRevision: changed.revision, requestId: randomUUID(), providerId: 'mock' }); await f.until(second.id, (j: { status: string; }) => j.status === 'succeeded');
+    const second = await rpc('generation.submit', { shotId: changed.id, expectedRevision: changed.revision, requestId: randomUUID(), providerId: 'mock' }); await f.until(project.id, second.id, (j: { status: string; }) => j.status === 'succeeded');
     const versions = await rpc('version.list', { shotId: (shot)!.id }); assert.equal(versions.length, 2); assert.deepEqual(versions[0], v1); secondVersion = versions[1]; assert.notEqual(secondVersion.sha256, v1.sha256); assert.notEqual(secondVersion.snapshot.prompt, v1.snapshot.prompt);
     const current = (await rpc('project.get', { projectId: project.id })).shots.find(s => s.id === (shot)!.id);
     await rpc('shot.update', { shotId: (shot)!.id, expectedRevision: (current)!.revision, patch: { prompt: 'Third edit after both immutable versions' } });
     assert.deepEqual(await rpc('version.list', { shotId: (shot)!.id }), versions);
-    const afterBytes = await (await fetch(f.base + v1.url, { headers: { authorization: `Bearer ${token}` } })).arrayBuffer(); assert.equal(sha(Buffer.from(afterBytes)), v1.sha256);
+    const afterBytes = await (await fetch(f.base + projectMediaPath(project.id, v1.assetId), { headers: { authorization: `Bearer ${token}` } })).arrayBuffer(); assert.equal(sha(Buffer.from(afterBytes)), v1.sha256);
     assert.equal((await rpc('generation.submit', firstInput)).id, firstJob.id);
     assert.equal((await rpc('generation.submit', { ...firstInput, parameters: { scenario: 'success' } }, 409)).code, 'IDEMPOTENCY_CONFLICT');
     assert.equal((await f.ledger(project.id, (firstInput)!.requestId)).submissions.length, 1);
@@ -155,19 +158,20 @@ test('durable HTTP acceptance: real process restarts, provider side effects, med
 
   const scenarioProject = await rpc('project.create', { name: 'Failure and recovery matrix' });
   const scenarioImage = await rpc('asset.import', { projectId: scenarioProject.id, name: 'reference.png', mimeType: 'image/png', dataBase64: imageBytes.toString('base64') });
-  async function scenario(name: string, delayMs?: number|undefined) { const shot = await rpc('shot.create', { projectId: scenarioProject.id, title: name, prompt: `Synthetic ${name}`, referenceAssetIds: [scenarioImage.id], duration: 2 }); const requestId = randomUUID(); return rpc('generation.submit', { shotId: shot.id, expectedRevision: shot.revision, requestId, providerId: 'mock', parameters: { scenario: name, ...(delayMs === undefined ? {} : { delayMs }) } }); }
+  const scenarioRpc = <O extends string, S extends number = 200>(operation: O, input: Record<string, unknown> = {}, expectedStatus: S = 200 as S) => f.rpc(operation, input, expectedStatus, {}, scenarioProject.id);
+  async function scenario(name: string, delayMs?: number|undefined) { const shot = await scenarioRpc('shot.create', { projectId: scenarioProject.id, title: name, prompt: `Synthetic ${name}`, referenceAssetIds: [scenarioImage.id], duration: 2 }); const requestId = randomUUID(); return scenarioRpc('generation.submit', { shotId: shot.id, expectedRevision: shot.revision, requestId, providerId: 'mock', parameters: { scenario: name, ...(delayMs === undefined ? {} : { delayMs }) } }); }
 
   await t.test('A7 rejection, terminal failure, unknown, poll timeout, download retry, accepted-response loss and local cancellation', async () => {
-    const reject = await scenario('reject'); const rejected = await f.until(reject.id, (j: { status: string; }) => j.status === 'failed'); assert.equal(rejected.phase, 'submit_failed'); assert.equal((await f.ledger(scenarioProject.id, reject.requestId)).tasks.length, 0);
-    const failure = await scenario('failure'); await f.until(failure.id, (j: { status: string; }) => j.status === 'failed'); assert.equal((await f.ledger(scenarioProject.id, failure.requestId)).tasks.length, 1);
-    const retryId = randomUUID(), retry = await rpc('job.retry', { jobId: failure.id, requestId: retryId }); assert.notEqual(retry.id, failure.id); assert.equal(retry.retryOfJobId, failure.id); assert.deepEqual(retry.snapshot, failure.snapshot); assert.equal((await rpc('job.retry', { jobId: failure.id, requestId: retryId })).id, retry.id); await f.until(retry.id, (j: { status: string; }) => j.status === 'failed'); assert.equal((await f.ledger(scenarioProject.id, retryId)).submissions.length, 1);
-    const unknown = await scenario('unknown'); await f.until(unknown.id, (j: { status: string; }) => j.status === 'submission_unknown'); assert.equal((await rpc('job.retry', { jobId: unknown.id, requestId: randomUUID() }, 409)).code, 'UNSAFE_RETRY'); await rpc('job.reconcile', { jobId: unknown.id }); assert.equal((await f.ledger(scenarioProject.id, unknown.requestId)).submissions.length, 1); assert.equal((await f.ledger(scenarioProject.id, unknown.requestId)).tasks.length, 0);
-    const timeout = await scenario('timeout'); const timedOut = await f.until(timeout.id, (j: MediaJob) => j.status === 'running' && j.error?.code === 'PROVIDER_POLL_TIMEOUT'); assert.ok(timedOut.providerJobId); assert.equal((await rpc('job.retry', { jobId: timeout.id, requestId: randomUUID() }, 409)).code, 'UNSAFE_RETRY');
-    const recovery = await scenario('poll_timeout_then_recover'); await f.until(recovery.id, (j: MediaJob) => j.status === 'running' && j.error?.code === 'PROVIDER_POLL_TIMEOUT'); await f.until(recovery.id, (j: { status: string; }) => j.status === 'succeeded'); assert.equal((await f.ledger(scenarioProject.id, recovery.requestId)).submissions.length, 1);
-    const download = await scenario('download_fail_once'); const downloading = await f.until(download.id, (j: MediaJob) => j.status === 'downloading' && j.error?.code === 'DOWNLOAD_FAILED'); const downloadTaskId = downloading.providerJobId; await f.until(download.id, (j: { status: string; }) => j.status === 'succeeded'); const downloadLedger = await f.ledger(scenarioProject.id, download.requestId); assert.equal(downloadLedger.submissions.length, 1); assert.equal(downloadLedger.tasks.length, 1); assert.equal(downloadLedger.tasks[0].download_attempts, 2); assert.equal(downloadLedger.tasks[0].provider_job_id, downloadTaskId);
-    const lost = await scenario('accepted_then_response_lost'); await f.until(lost.id, (j: { status: string; }) => j.status === 'submission_unknown'); const recovered = await f.until(lost.id, (j: { status: string; }) => j.status === 'succeeded'); const lostLedger = await f.ledger(scenarioProject.id, lost.requestId); assert.equal(lostLedger.submissions.length, 1); assert.equal(lostLedger.tasks.length, 1); assert.equal(lostLedger.submissions[0].outcome, 'accepted_response_lost'); assert.equal(recovered.providerJobId, lostLedger.tasks[0].provider_job_id);
-    const delayed = await scenario('delay', 20_000); await f.until(delayed.id, (j: { status: string; }) => j.status === 'running'); const cancelled = await rpc('job.cancel', { jobId: delayed.id }); assert.equal(cancelled.status, 'cancelled'); assert.equal(cancelled.cancelScope, 'local_only'); assert.equal(cancelled.phase, 'local_wait_stopped'); assert.equal((cancelled.error)!.code, 'LOCAL_WAIT_STOPPED'); assert.equal((await f.ledger(scenarioProject.id, delayed.requestId)).tasks[0].cancelled, 0);
-    await rpc('job.cancel', { jobId: timeout.id }); await rpc('job.cancel', { jobId: unknown.id });
+    const reject = await scenario('reject'); const rejected = await f.until(scenarioProject.id, reject.id, (j: { status: string; }) => j.status === 'failed'); assert.equal(rejected.phase, 'submit_failed'); assert.equal((await f.ledger(scenarioProject.id, reject.requestId)).tasks.length, 0);
+    const failure = await scenario('failure'); await f.until(scenarioProject.id, failure.id, (j: { status: string; }) => j.status === 'failed'); assert.equal((await f.ledger(scenarioProject.id, failure.requestId)).tasks.length, 1);
+    const retryId = randomUUID(), retry = await scenarioRpc('job.retry', { jobId: failure.id, requestId: retryId }); assert.notEqual(retry.id, failure.id); assert.equal(retry.retryOfJobId, failure.id); assert.deepEqual(retry.snapshot, failure.snapshot); assert.equal((await scenarioRpc('job.retry', { jobId: failure.id, requestId: retryId })).id, retry.id); await f.until(scenarioProject.id, retry.id, (j: { status: string; }) => j.status === 'failed'); assert.equal((await f.ledger(scenarioProject.id, retryId)).submissions.length, 1);
+    const unknown = await scenario('unknown'); await f.until(scenarioProject.id, unknown.id, (j: { status: string; }) => j.status === 'submission_unknown'); assert.equal((await scenarioRpc('job.retry', { jobId: unknown.id, requestId: randomUUID() }, 409)).code, 'UNSAFE_RETRY'); await scenarioRpc('job.reconcile', { jobId: unknown.id }); assert.equal((await f.ledger(scenarioProject.id, unknown.requestId)).submissions.length, 1); assert.equal((await f.ledger(scenarioProject.id, unknown.requestId)).tasks.length, 0);
+    const timeout = await scenario('timeout'); const timedOut = await f.until(scenarioProject.id, timeout.id, (j: MediaJob) => j.status === 'running' && j.error?.code === 'PROVIDER_POLL_TIMEOUT'); assert.ok(timedOut.providerJobId); assert.equal((await scenarioRpc('job.retry', { jobId: timeout.id, requestId: randomUUID() }, 409)).code, 'UNSAFE_RETRY');
+    const recovery = await scenario('poll_timeout_then_recover'); await f.until(scenarioProject.id, recovery.id, (j: MediaJob) => j.status === 'running' && j.error?.code === 'PROVIDER_POLL_TIMEOUT'); await f.until(scenarioProject.id, recovery.id, (j: { status: string; }) => j.status === 'succeeded'); assert.equal((await f.ledger(scenarioProject.id, recovery.requestId)).submissions.length, 1);
+    const download = await scenario('download_fail_once'); const downloading = await f.until(scenarioProject.id, download.id, (j: MediaJob) => j.status === 'downloading' && j.error?.code === 'DOWNLOAD_FAILED'); const downloadTaskId = downloading.providerJobId; await f.until(scenarioProject.id, download.id, (j: { status: string; }) => j.status === 'succeeded'); const downloadLedger = await f.ledger(scenarioProject.id, download.requestId); assert.equal(downloadLedger.submissions.length, 1); assert.equal(downloadLedger.tasks.length, 1); assert.equal(downloadLedger.tasks[0].download_attempts, 2); assert.equal(downloadLedger.tasks[0].provider_job_id, downloadTaskId);
+    const lost = await scenario('accepted_then_response_lost'); await f.until(scenarioProject.id, lost.id, (j: { status: string; }) => j.status === 'submission_unknown'); const recovered = await f.until(scenarioProject.id, lost.id, (j: { status: string; }) => j.status === 'succeeded'); const lostLedger = await f.ledger(scenarioProject.id, lost.requestId); assert.equal(lostLedger.submissions.length, 1); assert.equal(lostLedger.tasks.length, 1); assert.equal(lostLedger.submissions[0].outcome, 'accepted_response_lost'); assert.equal(recovered.providerJobId, lostLedger.tasks[0].provider_job_id);
+    const delayed = await scenario('delay', 20_000); await f.until(scenarioProject.id, delayed.id, (j: { status: string; }) => j.status === 'running'); const cancelled = await scenarioRpc('job.cancel', { jobId: delayed.id }); assert.equal(cancelled.status, 'cancelled'); assert.equal(cancelled.cancelScope, 'local_only'); assert.equal(cancelled.phase, 'local_wait_stopped'); assert.equal((cancelled.error)!.code, 'LOCAL_WAIT_STOPPED'); assert.equal((await f.ledger(scenarioProject.id, delayed.requestId)).tasks[0].cancelled, 0);
+    await scenarioRpc('job.cancel', { jobId: timeout.id }); await scenarioRpc('job.cancel', { jobId: unknown.id });
     records.assertions.push({ id: 'A7', result: 'passed', jobIds: [reject, failure, retry, unknown, timeout, recovery, download, lost, delayed].map(j => j.id), downloadLedger, lostLedger, cancellation: cancelled });
   });
 
@@ -177,7 +181,7 @@ test('durable HTTP acceptance: real process restarts, provider side effects, med
     try { const existing = JSON.parse((db.prepare('SELECT data FROM jobs WHERE id=?').get(firstJob.id))!.data as string); const injected = { ...existing, id: injectedId, requestId, status: 'submitting', phase: 'provider_submit', providerJobId: null, versionId: null, submissionCount: 1, error: null, nextPollAt: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }; db.prepare('INSERT INTO jobs(id,projectId,data) VALUES(?,?,?)').run(injected.id, injected.projectId, JSON.stringify(injected)); }
     finally { db.close(); }
     records.processEvents.push({ action: 'fault-injection', target: 'isolated fixture database only', jobId: injectedId, state: 'submitting', providerJobId: null });
-    await f.start(); const recovered = await f.until(injectedId, (j: { status: string; }) => j.status === 'submission_unknown'); assert.equal(recovered.providerJobId, null);
+    await f.start(); const recovered = await f.until(project.id, injectedId, (j: { status: string; }) => j.status === 'submission_unknown'); assert.equal(recovered.providerJobId, null);
     await pause(5300); assert.equal((await rpc('job.get', { jobId: injectedId })).status, 'submission_unknown'); assert.equal((await f.ledger(project.id, requestId)).submissions.length, 0); assert.equal((await f.ledger(project.id, requestId)).tasks.length, 0); assert.equal((await rpc('job.retry', { jobId: injectedId, requestId: randomUUID() }, 409)).code, 'UNSAFE_RETRY');
     records.assertions.push({ id: 'A4-submission-intent-gap', result: 'passed', jobId: injectedId, durableSubmitInvocations: 0, state: recovered.status, observedMilliseconds: 5300 });
     await rpc('job.cancel', { jobId: injectedId });
@@ -189,7 +193,7 @@ test('durable HTTP acceptance: real process restarts, provider side effects, med
     // Node's fetch discards Host overrides; use actual HTTP wire headers here.
     const foreignHost = await new Promise<{status: number | undefined; body: {error: {code: string}}}>((resolve, reject) => { const req = http.request(f.base + '/api/rpc', { method: 'POST', headers: { Host: 'evil.invalid', authorization: `Bearer ${token}`, 'content-type': 'application/json' } }, response => { let raw = ''; response.on('data', bytes => raw += bytes); response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(raw) })); }); req.on('error', reject); req.end(JSON.stringify({ operation: 'project.list', input: {} })); });
     assert.equal(foreignHost.status, 403); assert.equal(foreignHost.body.error.code, 'ORIGIN_REJECTED'); records.http.push({ operation: 'project.list', transport: 'node:http', sentHost: 'evil.invalid', ...foreignHost });
-    assert.equal((await fetch(f.base + image.url)).status, 401);
+    assert.equal((await fetch(f.base + projectMediaPath(project.id, image.id))).status, 401);
     const login = await fetch(f.base + '/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token }) }); assert.equal(login.status, 200); assert.match(login.headers.get('set-cookie')!, /HttpOnly/); assert.match(login.headers.get('set-cookie')!, /SameSite=Strict/);
     const baseImport = { projectId: project.id, name: 'bad', mimeType: 'image/png', dataBase64: imageBytes.toString('base64') };
     assert.equal((await rpc('asset.import', { ...baseImport, path: '/etc/passwd' }, 400)).code, 'VALIDATION_ERROR');
@@ -200,30 +204,31 @@ test('durable HTTP acceptance: real process restarts, provider side effects, med
     assert.equal((await rpc('node.create', { projectId: scenarioProject.id, type: 'image', assetId: image.id, position: { x: 0, y: 0 } }, 400)).code, 'CROSS_PROJECT_REFERENCE');
     assert.equal((await rpc('edge.create', { projectId: scenarioProject.id, source: text.id, target: shots[0].id }, 400)).code, 'INVALID_EDGE');
     const otherShot = (await rpc('project.get', { projectId: scenarioProject.id })).shots[0];
-    assert.equal((await rpc('version.select', { shotId: otherShot.id, expectedRevision: otherShot.revision, versionId: secondVersion.id }, 400)).code, 'INVALID_VERSION');
+    assert.equal((await scenarioRpc('version.select', { shotId: otherShot.id, expectedRevision: otherShot.revision, versionId: secondVersion.id }, 400)).code, 'INVALID_VERSION');
     const publicState = JSON.stringify(await rpc('project.get', { projectId: project.id })); assert.ok(!publicState.includes(f.root)); assert.ok(!publicState.includes('relativePath')); assert.ok(!publicState.includes('requestHash')); assert.ok(!publicState.includes(token));
     const capabilities = await rpc('provider.list'); assert.equal((capabilities.find((p: { id: string; }) => p.id === 'runway'))!.enabled, false);
     const s = (await rpc('project.get', { projectId: project.id })).shots[0]; assert.equal((await rpc('generation.submit', { shotId: s.id, expectedRevision: s.revision, requestId: randomUUID(), providerId: 'runway' }, 403)).code, 'PROVIDER_DISABLED');
     assert.equal((await rpc('unregistered.operation', {}, 404)).code, 'UNKNOWN_OPERATION');
-    const unassigned = await scenario('unknown'); await f.until(unassigned.id, (j: { status: string; }) => j.status === 'submission_unknown');
+    const unassigned = await scenario('unknown'); await f.until(scenarioProject.id, unassigned.id, (j: { status: string; }) => j.status === 'submission_unknown');
     const sourceJob = await rpc('job.get', { jobId: firstJob.id });
-    assert.equal((await rpc('job.reconcile', { jobId: unassigned.id, providerJobId: sourceJob.providerJobId }, 409)).code, 'TASK_ID_CONFLICT');
-    const untouched = await rpc('job.get', { jobId: unassigned.id }); assert.equal(untouched.providerJobId, null); assert.equal(untouched.status, 'submission_unknown');
-    assert.equal((await f.ledger(scenarioProject.id, unassigned.requestId)).tasks.length, 0); await rpc('job.cancel', { jobId: unassigned.id });
+    assert.equal((await scenarioRpc('job.reconcile', { jobId: unassigned.id, providerJobId: sourceJob.providerJobId }, 409)).code, 'TASK_ID_CONFLICT');
+    const untouched = await scenarioRpc('job.get', { jobId: unassigned.id }); assert.equal(untouched.providerJobId, null); assert.equal(untouched.status, 'submission_unknown');
+    assert.equal((await f.ledger(scenarioProject.id, unassigned.requestId)).tasks.length, 0); await scenarioRpc('job.cancel', { jobId: unassigned.id });
     records.assertions.push({ id: 'security', result: 'passed', guards: ['authentication', 'media auth', 'Host', 'Origin', 'HttpOnly SameSite cookie', 'strict schema path and URL denial', 'MIME bytes', 'project association', 'cross-job provider task ownership', 'public serialization', 'live provider disabled', 'unknown operation denial'] });
   });
 
   await t.test('A8 export stitches three genuine clips into default native H264 1080x1920 MP4 with summed duration', async () => {
-    for (const shot of (await rpc('project.get', { projectId: project.id })).shots) if (!shot.selectedVersionId) { const job = await rpc('generation.submit', { shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'mock' }); await f.until(job.id, (j: { status: string; }) => j.status === 'succeeded'); }
+    for (const shot of (await rpc('project.get', { projectId: project.id })).shots) if (!shot.selectedVersionId) { const job = await rpc('generation.submit', { shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'mock' }); await f.until(project.id, job.id, (j: { status: string; }) => j.status === 'succeeded'); }
     const state = await rpc('project.get', { projectId: project.id }); const selected = state.shots.map(s => state.versions.find(v => v.id === s.selectedVersionId)); assert.equal(selected.length, 3);
     const expectedDuration = selected.reduce((sum, v) => sum + (state.assets.find(a => a.id === v!.assetId))!.duration, 0);
     const requestId = randomUUID(), exported = await rpc('export.create', { projectId: project.id, requestId }); assert.deepEqual(exported.orderedVersionIds, selected.map(v => (v)!.id)); assert.equal((await rpc('export.create', { projectId: project.id, requestId })).id, exported.id);
     let done; const deadline = Date.now() + 60_000; do { done = await rpc('export.get', { exportId: exported.id }); if (done.status === 'succeeded' || done.status === 'failed') break; await pause(150); } while (Date.now() < deadline); assert.equal(done.status, 'succeeded', JSON.stringify(done));
-    const response = await fetch(f.base + done.url, { headers: { authorization: `Bearer ${token}` } }); assert.equal(response.status, 200); const bytes = Buffer.from(await response.arrayBuffer()); const file = path.join(evidence, 'three-shot-portrait.mp4'); await mkdir(evidence, { recursive: true }); await writeFile(file, bytes);
+    assert.ok(done.assetId, 'a successful export has a managed asset');
+    const response = await fetch(f.base + projectMediaPath(project.id, done.assetId), { headers: { authorization: `Bearer ${token}` } }); assert.equal(response.status, 200); const bytes = Buffer.from(await response.arrayBuffer()); const file = path.join(evidence, 'three-shot-portrait.mp4'); await mkdir(evidence, { recursive: true }); await writeFile(file, bytes);
     const probed = JSON.parse(await command('ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', file])); const stream = probed.streams.find((s: { codec_type: string; }) => s.codec_type === 'video'); assert.equal(stream.codec_name, 'h264'); assert.equal(stream.width, 1080); assert.equal(stream.height, 1920); assert.ok(Math.abs(Number(probed.format.duration) - expectedDuration) < 0.15); assert.match(probed.format.format_name, /mp4/);
     await command('ffmpeg', ['-v', 'error', '-i', file, '-f', 'null', '-']);
     await writeFile(path.join(evidence, 'export-probe.json'), JSON.stringify(probed, null, 2));
-    const range = await fetch(f.base + done.url, { headers: { authorization: `Bearer ${token}`, range: 'bytes=0-31' } }); assert.equal(range.status, 206); assert.equal((await range.arrayBuffer()).byteLength, 32);
+    const range = await fetch(f.base + projectMediaPath(project.id, done.assetId), { headers: { authorization: `Bearer ${token}`, range: 'bytes=0-31' } }); assert.equal(range.status, 206); assert.equal((await range.arrayBuffer()).byteLength, 32);
     records.assertions.push({ id: 'A8-export', result: 'passed', exportId: exported.id, orderedVersionIds: exported.orderedVersionIds, clipCount: 3, expectedDuration, actualDuration: Number(probed.format.duration), sha256: sha(bytes), bytes: bytes.length, codec: stream.codec_name, width: stream.width, height: stream.height, fullDecodeExitCode: 0 });
   });
 });

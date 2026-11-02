@@ -1,4 +1,5 @@
-import {isEntityAddressedOperation} from '../packages/contracts/src/project-addressing.ts';
+import {projectRpcPath,isProjectId} from '../packages/contracts/src/project-file.ts';
+import {isAppLevelOperation,isEntityAddressedOperation} from '../packages/contracts/src/project-addressing.ts';
 import type {PipedProcess,SqlRows,ProcessOutcome,BackendReady,IpcMessage,WireMessage,WireData,WireEnvelope,WireCall} from './helpers/strict-timeline-wire-response-types.ts';
 import type {SchemaNode,TestTool,TestCatalog,TestOperationDefinition,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
@@ -170,7 +171,7 @@ async function backendFixture(t: test.TestContext) {
     assert.deepEqual(await version(), dataVersion, `${label}: replay must not commit even equal-value writes`);
   };
   async function request<O extends string>(operation: O, input?: unknown, expectedError?: string|undefined, target: string|undefined = url, authorization: string = `Bearer ${TOKEN}`):Promise<{raw:string;envelope:WireEnvelope<O>}> {
-    const response = await fetch(target + '/api/rpc', {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5_000),
+    const response = await fetch(target + (isAppLevelOperation(operation)?'/api/rpc':projectRpcPath(isProjectId((transportInput(operation,input) as {projectId?:unknown}|null)?.projectId)?(transportInput(operation,input) as {projectId:string}).projectId:IDS.project)), {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5_000),
       headers: {'content-type': 'application/json', ...(authorization ? {authorization} : {})}, body: JSON.stringify({operation, input})});
     const raw = await response.text(), envelope = JSON.parse(raw);
     assert.equal(envelope.ok, !expectedError, raw);
@@ -223,7 +224,7 @@ async function lossProxy(t:test.TestContext, backend:Awaited<ReturnType<typeof b
     try {
       const chunks = []; for await (const chunk of request) chunks.push(chunk);
       const bytes = Buffer.concat(chunks);
-      const upstream = await fetch(backend.url + '/api/rpc', {method: 'POST', signal: AbortSignal.timeout(5_000),
+      const upstream = await fetch(backend.url + request.url!, {method: 'POST', signal: AbortSignal.timeout(5_000),
         headers: {authorization: request.headers.authorization!, 'content-type': 'application/json'}, body: bytes});
       const raw = await upstream.text(), envelope = JSON.parse(raw);
       captured = {request: JSON.parse(bytes as unknown as string), raw, envelope, status: upstream.status};

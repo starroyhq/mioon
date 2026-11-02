@@ -1,3 +1,4 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import type {MediaShot,ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {FixtureAsset} from './helpers/strict-timeline-core-types.ts';
@@ -52,7 +53,7 @@ async function fixture(t: test.TestContext){
  let inspect!:InspectProject;const start=()=>startServer({dataDir:root,port:0,token,inspectProject:received=>{inspect=received;}});
  backend=await start();let fault: { operation: unknown; mode: unknown; }|null=null;const requests: string[]=[],observed: { request: unknown; status: number; text: string; }[]=[];
  proxy=http.createServer(async(req,res)=>{try{const chunks:Buffer[]=[];let bytes=0;for await(const chunk of req){bytes+=chunk.length;if(bytes>128*1024)throw Error('Synthetic request cap');chunks.push(chunk);}const raw=Buffer.concat(chunks).toString();const request=JSON.parse(raw);requests.push(raw);
-  const upstream=await fetch(backend.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:raw});const text=await upstream.text();observed.push({request,status:upstream.status,text});
+  const upstream=await fetch(backend.url+req.url!,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:raw});const text=await upstream.text();observed.push({request,status:upstream.status,text});
   if(fault&&fault.operation===request.operation){const mode=fault.mode;fault=null;if(mode==='drop'){res.destroy();return;}res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,data:{malformed:true}}));return;}
   res.writeHead(upstream.status,{'content-type':'application/json'});res.end(text);
  }catch{res.destroy();}});
@@ -60,7 +61,7 @@ async function fixture(t: test.TestContext){
  mcp=new Client({name:'reference-recovery-tests',version:'1.0.0'},{capabilities:{}});const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env:environment(env),stderr:'pipe'});(transport.stderr as import("node:stream").Readable|null)?.resume();await mcp.connect(transport);
  // The server holds the project while it runs: read and damage the database on its own connection.
  const db=<T>(fn:(db:DatabaseSync)=>T):T=>inspect(project.id,fn);
- const raw=async(operation: unknown,input: unknown)=>{try{const r=await fetch(url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});return await r.json();}catch{return {ok:false,error:{code:'LOST_TRANSPORT'}};}};
+ const raw=async(operation: unknown,input: unknown)=>{try{const r=await fetch(url+rpcPathFor(String(operation),input,project.id),{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});return await r.json();}catch{return {ok:false,error:{code:'LOST_TRANSPORT'}};}};
  return {project,foreign,sources,requests,observed,db,raw,client,fault:(operation: unknown,mode='drop')=>{fault={operation,mode};},restart:async()=>{await backend.close();backend=await start();},transports:[
   {name:'HTTP',call:raw},
   {name:'CLI',call:(operation:string,input:unknown)=>command(operation,input,env)},

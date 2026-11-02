@@ -1,3 +1,4 @@
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -21,10 +22,10 @@ const dispatched=(f: TaskFixture)=>f.phases.filter((phase)=>String(phase)==='bef
 test('real subject task HTTP prepare is bounded/authenticated/closed and rediscovery never dispatches',async (t: TestContext)=>{
  const f=await taskFixture(t),input=inputFor(f),body={projectId:f.project.id,operation:'subject.create',input,origin:'new'},before=saved(f);
  for(const options of [{authenticated:false},{headers:{origin:'https://foreign.example'}},{headers:{host:'foreign.example'}}]){
-  const res=await f.request('/api/tasks/prepare',{method:'POST',input:body,...options} as never);assert.ok([401,403].includes(res.status));
+  const res=await f.request(projectApiPath(f.project.id,'tasks','prepare'),{method:'POST',input:body,...options} as never);assert.ok([401,403].includes(res.status));
  }
  for(const change of [{operation:'subject.delete'},{operation:'subject.list'},{input:{...input,requestId:undefined}},{input:{...input,extra:true}},{input:{...input,name:'x'.repeat(8193)}}]){
-  const res=await f.request('/api/tasks/prepare',{method:'POST',input:{...body,...change}});assert.ok([400,413].includes(res.status));
+  const res=await f.request(projectApiPath(f.project.id,'tasks','prepare'),{method:'POST',input:{...body,...change}});assert.ok([400,413].includes(res.status));
  }
  assert.deepEqual(saved(f),before);const prepared=await f.prepare('subject.create',input) as Prepared,domain=snapshot(f.root);
  assert.equal(prepared.task.lane,'subject:mutation');assert.ok(isEditTaskEnvelope(prepared));
@@ -33,17 +34,17 @@ test('real subject task HTTP prepare is bounded/authenticated/closed and redisco
 });
 
 test('real lost subject prepare acknowledgement survives backend restart without automatic execution',async (t: TestContext)=>{
- const f=await taskFixture(t),input=inputFor(f),before=snapshot(f.root);f.lose('/api/tasks/prepare');
- await assert.rejects(f.viaProxy('/api/tasks/prepare',{method:'POST',input:{projectId:f.project.id,operation:'subject.create',input,origin:'new'}}));
+ const f=await taskFixture(t),input=inputFor(f),before=snapshot(f.root);f.lose(projectApiPath(f.project.id,'tasks','prepare'));
+ await assert.rejects(f.viaProxy(projectApiPath(f.project.id,'tasks','prepare'),{method:'POST',input:{projectId:f.project.id,operation:'subject.create',input,origin:'new'}}));
  const accepted=(f.observed as {body: {data: unknown}}[])[0]!.body.data as Prepared;assert.ok(isEditTaskEnvelope(accepted));assert.equal(dispatched(f),0);assert.deepEqual(snapshot(f.root),before);
  await f.restart();const found=await f.viaProxy(listPath(f.project.id));assert.deepEqual((found.body.data as {items: unknown[]}).items,[accepted.task]);assert.equal(f.requests.filter(request=>request.method==='POST').length,1);
- assert.equal(dispatched(f),0);const stale=await f.request(taskPath(accepted.task.id,'execute'),{method:'POST',input:action(f,accepted as never)});assert.equal((stale.body.error as {code:string}).code,'EDIT_TASK_STALE_INSTANCE');
+ assert.equal(dispatched(f),0);const stale=await f.request(taskPath(f.project.id,accepted.task.id,'execute'),{method:'POST',input:action(f,accepted as never)});assert.equal((stale.body.error as {code:string}).code,'EDIT_TASK_STALE_INSTANCE');
  const result=await f.execute(await f.get(accepted.task.id) as never) as Prepared;assert.equal(result.task.status,'applied');assert.equal(dispatched(f),1);
  assert.equal(database(f.root,(db: import('node:sqlite').DatabaseSync)=>(db.prepare('SELECT count(*) n FROM subjects').get() as {n: number}).n),1);
 });
 
 test('real dropped subject execute response commits once and recovery returns historical ACK after newer head',async (t: TestContext)=>{
- const f=await taskFixture(t),input=inputFor(f),prepared=(await f.prepare('subject.create',input) as Prepared),route=taskPath(prepared.task.id,'execute');f.lose(route);
+ const f=await taskFixture(t),input=inputFor(f),prepared=(await f.prepare('subject.create',input) as Prepared),route=taskPath(f.project.id,prepared.task.id,'execute');f.lose(route);
  await assert.rejects(f.viaProxy(route,{method:'POST',input:action(f,prepared)}));
  const applied=(f.observed as {body: {data: unknown}}[])[0]!.body.data as Applied;assert.equal(applied.task.status,'applied');assert.ok(isEditTaskEnvelope(applied));
  // Add a second metadata-only fixture source. No media I/O or provider work.

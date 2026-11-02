@@ -1,3 +1,4 @@
+import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
@@ -67,7 +68,7 @@ async function fixture(t: test.TestContext, {serve = true} = {}) {
   // While the server runs, the database is read and damaged on its own connection.
   const use = <T>(fn: (db: DatabaseSync) => T): T => inspect ? inspect(project.id, fn) : fn(db!);
   const guardsFor = (db: DatabaseSync) => ({isTimelineRenderRecord, readOwnedAsset: (projectId: string, assetId: unknown) => readOwnedTimelineAsset(db, projectId, assetId)});
-  const route = `/media/${assetId}?download=1&exportId=${record.id}`, url = new URL(route, 'http://127.0.0.1:12345');
+  const route = projectMediaPath(project.id,assetId)+`?download=1&exportId=${record.id}`, url = new URL(`/media/${assetId}?download=1&exportId=${record.id}`, 'http://127.0.0.1:12345');
   const rows = (db: DatabaseSync) => Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').map(({name}) =>
     [name, db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
   // data_version counts other connections' commits only; total_changes() adds this connection's own writes.
@@ -182,7 +183,7 @@ test('existing safe output graph rejects foreign reverse owners without consulti
 
 test('unnamed/storyboard URL compatibility retains mioon default, while named missing bytes remain sanitized', async t => {
   const f = await fixture(t);
-  for (const route of [`/media/${f.asset.id}`, `/media/${f.asset.id}?download`, `/media/${f.asset.id}?download=1`]) {
+  for (const route of [projectMediaPath(f.project.id,f.asset.id), projectMediaPath(f.project.id,f.asset.id)+`?download`, projectMediaPath(f.project.id,f.asset.id)+`?download=1`]) {
     const response = await f.request(route); assert.equal(response.status, 200);
     assert.equal(response.headers.get('content-disposition'), route.includes('?') ? 'attachment; filename="mioon.mp4"' : null); await response.arrayBuffer();
   }
@@ -250,7 +251,7 @@ test('named download binds the exact worker output path and rejects swapped same
     db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(secondAssetId, f.project.id, JSON.stringify(secondAsset));
     db.prepare('INSERT INTO timeline_requests(requestId,requestHash,response) VALUES(?,?,?)').run(secondRequestId, 'd'.repeat(64), JSON.stringify(secondReceipt));
   });
-  const secondRoute = `/media/${secondAssetId}?download=1&exportId=${secondId}`;
+  const secondRoute = projectMediaPath(f.project.id,secondAssetId)+`?download=1&exportId=${secondId}`;
   for (const route of [f.route, secondRoute]) {const response = await f.request(route); assert.equal(response.status, 200); await response.arrayBuffer();}
   // Each asset and each frozen receipt independently belongs to this project;
   // only the cross-export output substitution is wrong.
@@ -260,10 +261,10 @@ test('named download binds the exact worker output path and rejects swapped same
   assert.equal(isTimelineRenderRecord(swapped, {...f.input, exportId: f.record.id}), true);
   f.use(db => replace(db, 'exports', swapped));
   const before = await f.checkpoint();
-  const response = await f.request(`/media/${secondAssetId}?download=1&exportId=${f.record.id}`);
+  const response = await f.request(projectMediaPath(f.project.id,secondAssetId)+`?download=1&exportId=${f.record.id}`);
   assert.equal(response.status, 404); assert.equal(response.headers.get('content-disposition'), null); await response.text(); await f.unchanged(before);
   // Generic legacy managed-media downloads retain their preexisting policy.
-  const legacy = await f.request(`/media/${secondAssetId}?download`);
+  const legacy = await f.request(projectMediaPath(f.project.id,secondAssetId)+`?download`);
   assert.equal(legacy.status, 200); assert.equal(legacy.headers.get('content-disposition'), 'attachment; filename="mioon.mp4"'); await legacy.arrayBuffer();
   f.use(db => replace(db, 'exports', f.record));
   for (const relativePath of [`media/export-${f.record.id}-${randomUUID()}.mp4\n`, `media/export-${f.record.id}-${randomUUID()}.mp4/../x.mp4`,

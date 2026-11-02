@@ -127,7 +127,7 @@ async function backendFixture(t: test.TestContext) {
   const version = async () => (await read()).version;
   async function http(operation: unknown, input: unknown, expectedError?: unknown) {
     const projectId = (input as {projectId?: unknown} | null | undefined)?.projectId;
-    const resource = isProjectId(projectId) ? projectRpcPath(projectId) : '/api/rpc';
+    const resource = projectRpcPath(isProjectId(projectId) ? projectId : IDS.project);
     const response = await fetch(url + resource, {method: 'POST', redirect: 'error',
       headers: {authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json'}, body: JSON.stringify({operation, input})});
     const body = await response.json();
@@ -215,13 +215,21 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
   }
   const cli = (operation: string, input: Record<string,unknown>, error?: string|undefined) => runCli([...operation.split('.'), '--input', JSON.stringify(input)], backend.env, error, t.signal);
   async function parity(operation: string, input: Record<string,unknown>, error?: string|undefined) {
-    const http = await backend.http(operation, input, error);
-    assert.deepEqual(await cli(operation, input, error), http, `${operation} CLI/HTTP envelope parity`);
-    assert.deepEqual(await mcp.call(toolName(operation), input, error), http, `${operation} official MCP/HTTP envelope parity`);
+    // K2 rejects a conflicting body project before domain validation; CLI/MCP
+    // still reject malformed arguments locally, without sending a request.
+    const addressMismatch = error === 'VALIDATION_ERROR' && Object.hasOwn(input, 'projectId') && input.projectId !== IDS.project;
+    const http = await backend.http(operation, input, addressMismatch ? 'PROJECT_ID_MISMATCH' : error);
+    const command = await cli(operation, input, error), protocol = await mcp.call(toolName(operation), input, error);
+    assert.deepEqual(addressMismatch ? command.error.code : command, addressMismatch ? 'VALIDATION_ERROR' : http, `${operation} CLI validation or HTTP envelope parity`);
+    assert.deepEqual(addressMismatch ? protocol.error.code : protocol, addressMismatch ? 'VALIDATION_ERROR' : http, `${operation} official MCP validation or HTTP envelope parity`);
+    if (addressMismatch) {
+      assert.deepEqual(protocol, command, `${operation} CLI/MCP local validation envelope parity`);
+      assert.deepEqual(http.error.details, {projectId: IDS.project}, 'address rejection exposes only the explicitly requested project');
+    }
     if (!error) assertSafe(http.data);
     else if (error === 'PROJECT_NOT_FOUND') assert.deepEqual(http.error.details, {projectId: input.projectId});
     else if (error !== 'VALIDATION_ERROR') assert.deepEqual(http.error.details, {}, 'inspection failures expose no record or project metadata');
-    report.cases.push({operation, arguments: {...input, ...(input.cursor ? {cursor: '<signed cursor>'} : {})}, expectedError: error || null,
+    report.cases.push({operation, arguments: {...input, ...(input.cursor ? {cursor: '<signed cursor>'} : {})}, expectedError: addressMismatch ? 'PROJECT_ID_MISMATCH' : error || null,
       resultDigest: digest(http), resultBytes: Buffer.byteLength(JSON.stringify(http))});
     return error ? http.error : http.data;
   }
@@ -274,7 +282,7 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
 
   mcp = await mcpFixture(t, backend.env);
 
-  await section('strict argument validation is identical on all three interfaces', async () => {
+  await section('strict argument validation and K2 project address rejection preserve zero writes', async () => {
     for (const operation of operations) for (const input of invalidInputs(operation)) await parity(operation, input, 'VALIDATION_ERROR');
     await unchanged('Invalid input');
   });
@@ -287,7 +295,7 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
         [{authorization: 'Bearer synthetic-wrong-token'}, 401, 'UNAUTHORIZED'],
         [{authorization: `Bearer ${TOKEN}`, origin: 'https://untrusted.invalid'}, 403, 'ORIGIN_REJECTED'],
       ] as const) {
-        const response = await fetch(backend.url + '/api/rpc', {method: 'POST', redirect: 'error',
+        const response = await fetch(backend.url + projectRpcPath(IDS.project), {method: 'POST', redirect: 'error',
           headers: {'content-type': 'application/json', ...headers}, body: JSON.stringify({operation, input: {projectId: IDS.project}})});
         const result = await response.json();
         assert.equal(response.status, status); assert.equal(result.ok, false); assert.equal(result.error.code, code);

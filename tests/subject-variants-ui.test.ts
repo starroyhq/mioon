@@ -18,7 +18,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import * as subjectState from '../apps/web/src/subject-state.ts';
 import * as variantState from '../apps/web/src/subject-variant-state.ts';
-import {ApiError} from '../apps/web/src/api.ts';
+import {ApiError,assetUrl} from '../apps/web/src/api.ts';
 import {i18nTestModule, translate} from './helpers/i18n.ts';
 
 type Row = Record<string, unknown>;
@@ -419,7 +419,7 @@ function harness(file: string) {
       if (request === '@mioon/ui/components/workbench-confirm') return {useConfirmation: () => async (value: unknown) => { h.confirmations.push(value); return h.answer; }};
       if (request.endsWith('workspace-visibility.tsx')) return {useWorkspaceVisibility: () => h.visible};
       if (request.endsWith('use-subjects.ts')) return load('use-subjects.ts');
-      if (request === './api.ts') return {assetUrl: (asset: {id: unknown}) => `/media/${String(asset.id)}`};
+      if (request === './api.ts') return {assetUrl};
       if (['./SubjectVariantDialog.tsx', './BoardInspectorGroup.tsx', './AgentEditingBoundary.tsx'].includes(request)) return {__esModule: true, default: request.slice(2, -4)};
       return new Proxy({}, {get: (_, key) => String(key)});
     }, module, module.exports);

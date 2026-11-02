@@ -1,3 +1,4 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 /** Seed only the copied synthetic workspace; no external network or paid calls. */
 import { readFile, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -5,7 +6,7 @@ import path from 'node:path';
 const runtime = path.resolve(process.env.MIOON_QA_RUNTIME || 'evidence/dual-workspace/runtime');
 if (!runtime.endsWith('/evidence/dual-workspace/runtime')) throw Error('Disposable dual-workspace runtime required');
 const server = JSON.parse(await readFile(`${runtime}/server.json`, 'utf8'));
-const rpc = async (operation,input={}) => { const response = await fetch(server.url+'/api/rpc',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer dualmode-local-synthetic-browser-token'},body:JSON.stringify({operation,input})}); const value=await response.json();if(!value.ok)throw Error(JSON.stringify(value));return value.data; };
+const rpc = async (operation,input={},entityProjectId) => { const response = await fetch(server.url+rpcPathFor(operation,input,entityProjectId),{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer dualmode-local-synthetic-browser-token'},body:JSON.stringify({operation,input})}); const value=await response.json();if(!value.ok)throw Error(JSON.stringify(value));return value.data; };
 const projects = await rpc('project.list');
 const project = projects.find(p=>p.name.includes('多轨工作台'));
 if(!project)throw Error('Copied synthetic multitrack fixture missing');
@@ -17,13 +18,13 @@ const edge=await rpc('reference.attach',{projectId:project.id,sourceNodeId:refer
 const versions=[];
 for(let i=0;i<2;i++){
  data=await rpc('project.get',{projectId:project.id});const current=data.shots.find(s=>s.id===shot.id);
- const job=await rpc('generation.submit',{shotId:shot.id,expectedRevision:current.revision,providerId:'mock',requestId:randomUUID()});
+ const job=await rpc('generation.submit',{shotId:shot.id,expectedRevision:current.revision,providerId:'mock',requestId:randomUUID()},project.id);
  for(let j=0;j<150;j++){data=await rpc('project.get',{projectId:project.id});const result=data.jobs.find(item=>item.id===job.id);if(result.status==='succeeded'){versions.push(data.versions.find(v=>v.id===result.versionId));break;}if(result.status==='failed')throw Error(JSON.stringify(result));await new Promise(r=>setTimeout(r,200));}
  if(versions.length!==i+1)throw Error('Mock generation timeout');
 }
 data=await rpc('project.get',{projectId:project.id});
 const current=data.shots.find(s=>s.id===shot.id);
-await rpc('version.select',{shotId:shot.id,versionId:versions[1].id,expectedRevision:current.revision});
+await rpc('version.select',{shotId:shot.id,versionId:versions[1].id,expectedRevision:current.revision},project.id);
 let timeline=data.timeline;
 timeline=await rpc('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),trackId:timeline.tracks.find(t=>t.kind==='video'&&t.orderIndex===0).id,assetId:versions[0].assetId,name:'晨光 V1 · 固定片段',startFrame:330,durationFrames:60,sourceInFrame:0});
 const second=await rpc('project.create',{name:'独立项目 · 视图不串联',description:'Synthetic per-project browser acceptance only.'});

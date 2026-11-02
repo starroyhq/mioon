@@ -140,7 +140,7 @@ async function fixture(t: test.TestContext) {
   const env = () => ({MIOON_BASE_URL: url, MIOON_TOKEN: TOKEN, MIOON_RANGE_WIRE_ALLOWED_ORIGIN: url, MIOON_RANGE_WIRE_AUDIT: auditPath});
   async function request<O extends string>(operation: O, input?: unknown, expectedError?: string|undefined, base: string|undefined = url, authorization: string = `Bearer ${TOKEN}`):Promise<{raw:string;envelope:WireEnvelope<O>}> {
     const projectId = (input as {projectId?: unknown} | null | undefined)?.projectId;
-    const resource = isProjectId(projectId) ? projectRpcPath(projectId) : '/api/rpc';
+    const resource = isProjectId(projectId) ? projectRpcPath(projectId) : projectRpcPath(IDS.project);
     const response = await fetch(base + resource, {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5_000),
       headers: {'content-type': 'application/json', ...(authorization ? {authorization} : {})}, body: JSON.stringify({operation, input})});
     const raw = await response.text(), envelope = JSON.parse(raw); noPrivate(raw);
@@ -199,7 +199,7 @@ async function lossProxy(t:test.TestContext, backend:Awaited<ReturnType<typeof f
     try {
       const chunks = []; for await (const chunk of request) chunks.push(chunk);
       const bytes = Buffer.concat(chunks), submitted = JSON.parse(bytes as unknown as string);
-      const upstream = await fetch(backend.url + '/api/rpc', {method: 'POST', signal: AbortSignal.timeout(5_000),
+      const upstream = await fetch(backend.url + request.url!, {method: 'POST', signal: AbortSignal.timeout(5_000),
         headers: {authorization: request.headers.authorization!, 'content-type': 'application/json'}, body: bytes});
       const raw = await upstream.text(); captured = {raw, envelope: JSON.parse(raw), submitted};
       assert.equal(upstream.status, 200, raw);

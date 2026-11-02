@@ -1,3 +1,4 @@
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import {CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_SCHEMA} from './helpers/workspace-schema-current.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -154,14 +155,14 @@ test('the current restored server reads v2 history without credentials or recove
   await createWorkspaceBackup({source:f.root,destination:backup});await restoreWorkspaceBackup({directory:backup,destination:restored});const before=dump(restored);
   const {startServer}=await import('../apps/server/src/index.ts');let models=0;server=await startServer({dataDir:restored,port:0,taskGatewayV2:async function*(){models++;throw Error('Restored records must never execute');}});
   const request=async(route:string,method='GET',input?:unknown)=>{const response=await fetch(server!.url+route,{method,headers:{Authorization:`Bearer ${server!.token}`,...(input!==undefined?{'Content-Type':'application/json'}:{})},...(input!==undefined?{body:JSON.stringify(input)}:{})});return {status:response.status,value:await response.json() as {ok?:boolean;data?:Record<string,unknown>;error?:{code:string}}};};
-  const prefix=`/api/agent/tasks/v2/${f.projectId}`,listed=await request(prefix);assert.equal(listed.status,200,JSON.stringify(listed.value));assert.equal(listed.value.data?.readOnly,true);assert.ok(listed.value.data?.settings);assert.equal((listed.value.data?.runs as {id:string}[])[0]?.id,run.id);
+  const prefix=projectApiPath(f.projectId,'agent','tasks','v2'),listed=await request(prefix);assert.equal(listed.status,200,JSON.stringify(listed.value));assert.equal(listed.value.data?.readOnly,true);assert.ok(listed.value.data?.settings);assert.equal((listed.value.data?.runs as {id:string}[])[0]?.id,run.id);
   const history=await request(`${prefix}/history`);assert.equal(history.status,200);assert.equal((history.value.data?.conversations as {lastRunId:string}[])[0]?.lastRunId,run.id);
   const detail=await request(`${prefix}/${run.id}`);assert.equal(detail.status,200);assert.equal((detail.value.data?.run as {status:string}).status,expected.run.status);assert.equal((detail.value.data?.steps as {status:string}[])[0]?.status,'dispatch_started');
   const writes:[string,string,unknown][]=[
    [prefix,'POST',{requestId:randomUUID(),text:'禁止发送',expectedSettingsRevision:0}],
    [`${prefix}/${run.id}/actions`,'POST',{requestId:randomUUID(),expectedRevision:run.revision,action:'stop'}],
    ['/api/agent/tasks/v2/policy','PUT',{requestId:randomUUID(),expectedRevision:0,stepLimit:30,modes:{...DEFAULT_AGENT_TASK_POLICY.modes}}],
-   ['/api/agent/tasks/v2/editing','POST',{requestId:randomUUID(),projectId:f.projectId,ownerId:randomUUID(),generation:1,sequence:1,action:'claim',targets:[]}],
+   [projectApiPath(f.projectId,'agent','tasks','v2','editing'),'POST',{requestId:randomUUID(),projectId:f.projectId,ownerId:randomUUID(),generation:1,sequence:1,action:'claim',targets:[]}],
    [`${prefix}/uploads`,'POST',{requestId:randomUUID(),name:'local.txt',mimeType:'text/plain',dataBase64:'eA=='}],
   ];
   for(const [route,method,input]of writes){const response=await request(route,method,input);assert.equal(response.status,409);assert.ok(['AGENT_TASK_READ_ONLY','RESTORE_OPERATION_UNAVAILABLE'].includes(response.value.error?.code??''));}

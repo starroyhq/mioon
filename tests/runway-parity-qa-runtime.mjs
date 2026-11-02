@@ -1,3 +1,4 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 /** Own-cloud disposable acceptance runtime. No live endpoint is contacted.
  * Seed through the real worker with an injected Runway HTTP 409, then serve
  * its persisted state using the ordinary backend with all live providers off.
@@ -25,7 +26,7 @@ const server = await startServer({ dataDir, port: 4891, token: 'q1-offline-local
 // Run HTTP checks in the same host network namespace as the backend. The CUA
 // JavaScript kernel and command sandbox may have separate loopback namespaces.
 const rpc = async (operation, input) => {
-  const response = await fetch(`${server.url}/api/rpc`, { method: 'POST', headers: { Authorization: 'Bearer q1-offline-local-synthetic-token', 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input }) });
+  const response = await fetch(server.url+rpcPathFor(operation,input,fixture.projectId), { method: 'POST', headers: { Authorization: 'Bearer q1-offline-local-synthetic-token', 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input }) });
   return { status: response.status, ...await response.json() };
 };
 const retry = await rpc('job.retry', { jobId: fixture.jobId, requestId: randomUUID() });

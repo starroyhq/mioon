@@ -110,14 +110,14 @@ test('real saved full mix matches across HTTP, CLI and official MCP without rows
   const before={rows:rows(),version:inspect(project.id,changeMarks),files:await manifest(root)};
   const listeners: ({ baseline: { request: unknown; response: unknown; }; remaining: { request: unknown; response: unknown; }; })[]=[];
   const observe=(req: { url: string; listenerCount: (arg0: string) => unknown; },res: { listenerCount: (arg0: string) => unknown; once: (arg0: string,arg1: () => void) => void; })=>{
-    if(req.url!=='/api/rpc'&&parseProjectApiPath(req.url)?.kind!=='rpc')return;
+    if(req.url!==projectRpcPath(input.projectId))return;
     const baseline={request:req.listenerCount('aborted'),response:res.listenerCount('close')};
     res.once('finish',()=>queueMicrotask(()=>listeners.push((({baseline,remaining:{request:req.listenerCount('aborted'),response:res.listenerCount('close')}}) as unknown as Parameters<typeof listeners.push>[0]))));
   };
   server.prependListener('request',observe);t.after(()=>server.removeListener('request',observe));
   const events: (MediaProcessEvent)[]=[];off=onMediaProcess(event=>events.push(event));
   const direct=async()=>{
-    const response=await fetch(backend.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+backend.token,'content-type':'application/json'},
+    const response=await fetch(backend.url+projectRpcPath(input.projectId),{method:'POST',headers:{authorization:'Bearer '+backend.token,'content-type':'application/json'},
       body:JSON.stringify({operation,input}),signal:AbortSignal.timeout(20000)});
     assert.equal(response.status,200);const body=await readTimelineMixLoudnessEnvelope(response) as import('./helpers/strict-timeline-transport-types.ts').RpcEnvelope<ServiceResponse<typeof operation>>;assert.equal(body.ok,true);return body.data;
   };
@@ -164,4 +164,4 @@ test('real saved full mix matches across HTTP, CLI and official MCP without rows
     candidateLufs:reports[0].candidate.measurement.integratedLufs,candidateTruePeakDbtp:reports[0].candidate.measurement.truePeakDbtp,
     counts,listeners,allRowsAndFilesUnchanged:true}));
 });
-import {parseProjectApiPath} from '../packages/contracts/src/project-file.ts';
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';

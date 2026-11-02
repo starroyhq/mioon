@@ -1,3 +1,4 @@
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -49,9 +50,9 @@ test('project files work over HTTP and stay out of the RPC and MCP catalog',{ski
  assert.equal((await call(base,'/api/project-packages/imports?source=elsewhere',{method:'POST',body:bytes,headers:{'content-type':'application/octet-stream'}})).status,400);
  const committed=await call(base,`/api/project-packages/imports/${staged.body.data.id}/commit`,{method:'POST',body:JSON.stringify({requestId:randomUUID(),name:'  导入的项目  '})});
  assert.equal(committed.status,200);
- const imported:any=(await call(base,'/api/rpc',{method:'POST',body:JSON.stringify({operation:'project.get',input:{projectId:committed.body.data.projectId}})})).body.data;
+ const imported:any=(await call(base,projectRpcPath(committed.body.data.projectId),{method:'POST',body:JSON.stringify({operation:'project.get',input:{projectId:committed.body.data.projectId}})})).body.data;
  assert.equal((imported.project??imported).name,'导入的项目');
- const jobs:any=(await call(base,'/api/rpc',{method:'POST',body:JSON.stringify({operation:'task.disposition.list',input:{projectId:committed.body.data.projectId,targets:(imported.jobs??[]).map((job:any)=>({kind:'generation',taskId:job.id}))}})})).body;
+ const jobs:any=(await call(base,projectRpcPath(committed.body.data.projectId),{method:'POST',body:JSON.stringify({operation:'task.disposition.list',input:{projectId:committed.body.data.projectId,targets:(imported.jobs??[]).map((job:any)=>({kind:'generation',taskId:job.id}))}})})).body;
  assert.equal(imported.jobs.length,1);assert.deepEqual(jobs.data.items.map((item:any)=>item.archived),[true],'imported generations are archived out of the task center');
  const copy=await call(base,'/api/project-packages/duplicates',{method:'POST',body:JSON.stringify({projectId:sample.project.id,requestId:randomUUID(),name:'UI 走查项目 副本'})});
  assert.equal(copy.status,200);

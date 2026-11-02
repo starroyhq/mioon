@@ -1,3 +1,4 @@
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,realpath,rm} from 'node:fs/promises';
@@ -171,7 +172,7 @@ test('checks HTTP is authenticated, rejects unknown ownership and parameters, an
  t.after(async()=>{await server?.close();await rm(f.directory,{recursive:true,force:true});});
  server=await startServer({dataDir:f.source,port:0,taskGatewayV2:async function*(){models++;throw Error('Checks cannot request a model');},inspectProject:received=>{inspect=received;}});
  // While the server runs, the database is read on its own connection.
- const prefix=`/api/agent/tasks/v2/${f.projectId}/${f.run.id}`,before=inspect(f.projectId,dumpDb);
+ const prefix=projectApiPath(f.projectId,'agent','tasks','v2',f.run.id),before=inspect(f.projectId,dumpDb);
  const request=(suffix='',method='GET',authenticated=true)=>fetch(server!.url+prefix+suffix,{method,headers:authenticated?{authorization:`Bearer ${server!.token}`}:{}});
  assert.equal((await request('/checks','GET',false)).status,401);
  const response=await request('/checks');assert.equal(response.status,200);const body:unknown=await response.json();
@@ -182,8 +183,8 @@ test('checks HTTP is authenticated, rejects unknown ownership and parameters, an
  for(const suffix of ['?preflight=0','?preflight=true','?preflight=','?preflight','?preflight=1&preflight=1','?preflight=1&refresh=true','?refresh=true'])assert.equal((await request('/checks'+suffix)).status,400,suffix);
  assert.equal((await request('/checks','POST')).status,405);
  const headers={authorization:`Bearer ${server.token}`};
- assert.equal((await fetch(`${server.url}/api/agent/tasks/v2/${f.foreignProjectId}/${f.run.id}/checks`,{headers})).status,404);
- assert.equal((await fetch(`${server.url}/api/agent/tasks/v2/${f.projectId}/${randomUUID()}/checks`,{headers})).status,404);
+ assert.equal((await fetch(`${server.url}${projectApiPath(f.foreignProjectId,'agent','tasks','v2',f.run.id,'checks')}`,{headers})).status,404);
+ assert.equal((await fetch(`${server.url}${projectApiPath(f.projectId,'agent','tasks','v2',randomUUID(),'checks')}`,{headers})).status,404);
  const snapshot=await request();const snapshotBody:unknown=await snapshot.json();assert.ok(snapshotBody&&typeof snapshotBody==='object'&&'data'in snapshotBody);assert.equal(snapshotBody.data!==null&&typeof snapshotBody.data==='object'&&Object.hasOwn(snapshotBody.data,'checks'),false);
  assert.equal(models,0);assert.deepEqual(inspect(f.projectId,dumpDb),before);
 });
@@ -218,10 +219,18 @@ test('disconnecting a checks observer cancels its local preflight and releases i
     return {};
    }finally{active--;if(calls===1)released();}
   }});
- let finished=0;const handler=createAgentTaskHttp({runtime}),server=http.createServer((req,res)=>{res.once('finish',()=>{finished++;});void handler.handle(req,res,new URL(req.url??'/',`http://${req.headers.host}`));});
+ let finished=0;const handler=createAgentTaskHttp({runtime}),server=http.createServer((req,res)=>{
+  res.once('finish',()=>{finished++;});
+  const url=new URL(req.url??'/',`http://${req.headers.host}`);
+  // This independent endpoint models the public address; its handler still
+  // consumes the route-local path used by the production adapter.
+  if(url.pathname!==projectApiPath(f.projectId,'agent','tasks','v2',run.id,'checks')){res.writeHead(404);res.end();return;}
+  url.pathname=`/api/agent/tasks/v2/${f.projectId}/${run.id}/checks`;
+  void handler.handle(req,res,url);
+ });
  t.after(async()=>{handler.close();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));runtime.close();await runtime.drain();await settings.close();store.close();await rm(f.directory,{recursive:true,force:true});});
  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));const address=server.address();assert.ok(address&&typeof address==='object');
- const url=`http://127.0.0.1:${address.port}/api/agent/tasks/v2/${f.projectId}/${run.id}/checks?preflight=1`,observer=new AbortController();
+ const url=`http://127.0.0.1:${address.port}${projectApiPath(f.projectId,'agent','tasks','v2',run.id,'checks')}?preflight=1`,observer=new AbortController();
  const lightweight=await fetch(url.replace('?preflight=1',''));assert.equal(lightweight.status,200);const lightBody:unknown=await lightweight.json();
  assert.ok(lightBody&&typeof lightBody==='object'&&'data'in lightBody);assert.equal(agentTaskChecksSchema.parse(lightBody.data).groups[2]!.items.find(item=>item.type==='timeline_preflight')?.reason?.code,'PREFLIGHT_NOT_REQUESTED');assert.equal(calls,0);assert.equal(active,0);
  const pending=fetch(url,{signal:observer.signal});await started;assert.equal(active,1);observer.abort();await assert.rejects(pending,{name:'AbortError'});await stopped;assert.equal(active,0);assert.equal(finished,1);

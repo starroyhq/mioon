@@ -1,3 +1,4 @@
+import {projectMediaPath,projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';import assert from 'node:assert/strict';import {mkdtemp,rm} from 'node:fs/promises';import path from 'node:path';import os from 'node:os';
 import {startServer} from '@mioon/server';import {createClient} from '@mioon/client';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
@@ -13,7 +14,7 @@ test('actual authenticated HTTP shared client imports, replays, lists and inspec
  assert.deepEqual((await client.rpc('lut.inspect',{projectId:project.id,lutId:saved.resource.id}) as {resource: unknown}).resource,saved.resource);
  await assert.rejects(client.rpc('lut.import',{...input,name:'other.cube'}),{code:'IDEMPOTENCY_CONFLICT'});
  assert.deepEqual(await client.rpc('asset.list',{projectId:project.id}),[]);
- const media=await fetch(service.url+'/media/'+saved.resource.id,{headers:{authorization:'Bearer '+token}});assert.equal(media.status,404);
- const unauthorized=await fetch(service.url+'/api/rpc',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({operation:'lut.list',input:{projectId:project.id}})});assert.equal(unauthorized.status,401);
+ const media=await fetch(service.url+projectMediaPath(project.id,saved.resource.id),{headers:{authorization:'Bearer '+token}});assert.equal(media.status,404);
+ const unauthorized=await fetch(service.url+projectRpcPath(project.id),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({operation:'lut.list',input:{projectId:project.id}})});assert.equal(unauthorized.status,401);
  assert.equal(READ_TOOL_DEFINITIONS.some(tool=>tool.name.includes('lut')),false);
 });

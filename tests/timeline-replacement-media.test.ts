@@ -1,3 +1,5 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {FloatRenderResult,ProbeJson} from './helpers/strict-timeline-media-result-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -40,15 +42,15 @@ test('explicit replacement keeps timing/fades and old exports while new media, p
  t.after(async()=>{await server?.close();await rm(root,{recursive:true,force:true});});
  const start=async()=>{server=await startServer({dataDir:workspace,port:0,token,inspectProject:received=>{inspect=received;}});};
  await start();
- const rpc=async(operation: string,input: { exportId?: unknown; name?: string; projectId?: unknown; expectedProjectRevision?: unknown; expectedRevision?: unknown; requestId?: `${string}-${string}-${string}-${string}-${string}`; presetId?: string; mimeType?: string; dataBase64?: string; assetId?: unknown; sourceStartFrame?: number; sourceEndFrame?: number; points?: number; purpose?: string; preflightSnapshotHash?: unknown; clipId?: unknown; },expected: number|undefined=200)=>{
-  const response=await fetch(server!.url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({operation,input})});
+ const rpc=async(operation: string,input: { exportId?: unknown; name?: string; projectId?: unknown; expectedProjectRevision?: unknown; expectedRevision?: unknown; requestId?: `${string}-${string}-${string}-${string}-${string}`; presetId?: string; mimeType?: string; dataBase64?: string; assetId?: unknown; sourceStartFrame?: number; sourceEndFrame?: number; points?: number; purpose?: string; preflightSnapshotHash?: unknown; clipId?: unknown; },expected: number|undefined=200,entityProjectId?: string)=>{
+  const response=await fetch(server!.url+rpcPathFor(operation,input,entityProjectId),{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({operation,input})});
   const body=await response.json();assert.equal(response.status,expected,JSON.stringify(body));return body.ok?body.data:body.error;
  };
- const finish=async (job: { id: string; })=>{
+ const finish=async (job: { id: string; projectId: string; })=>{
   const deadline=Date.now()+45000;let current;
-  do{current=await rpc('export.get',{exportId:job.id});if(['succeeded','failed'].includes(current.status))break;await pause(50);}while(Date.now()<deadline);
+  do{current=await rpc('export.get',{exportId:job.id},200,job.projectId);if(['succeeded','failed'].includes(current.status))break;await pause(50);}while(Date.now()<deadline);
   assert.equal(current.status,'succeeded',JSON.stringify(current));
-  const response=await fetch(server!.url+current.url,{headers:{authorization:`Bearer ${token}`}});assert.equal(response.status,200);
+  const response=await fetch(server!.url+projectMediaPath(current.projectId,current.assetId),{headers:{authorization:`Bearer ${token}`}});assert.equal(response.status,200);
   const bytes=Buffer.from(await response.arrayBuffer()),file=path.join(evidence,job.id+'.mp4');await writeFile(file,bytes);
   const probe:ProbeJson=JSON.parse(await run('ffprobe',['-v','error','-count_frames','-show_streams','-show_format','-of','json',file],{timeout:15000}));
   const video=probe.streams.find((s)=>s.codec_type==='video');assert.equal(Number((video)!.nb_read_frames),75);assert.equal((video)!.width,720);assert.equal((video)!.height,1280);assert.ok(Math.abs(Number(probe.format.duration)-2.5)<.04);
@@ -97,8 +99,8 @@ test('explicit replacement keeps timing/fades and old exports while new media, p
  await (server as unknown as Awaited<ReturnType<typeof startServer>>).close();server=null;await start();
  assert.deepEqual(await rpc('timeline.clip.replaceSource',replacement),changed,'restart retains replay identity and original response');
  assert.deepEqual((await rpc('timeline.get',{projectId:project.id})).clips,changed.clips);
- const originalAgain=await fetch((server as unknown as Awaited<ReturnType<typeof startServer>>).url+before.job.url,{headers:{authorization:`Bearer ${token}`}});assert.equal(hash(Buffer.from(await originalAgain.arrayBuffer())),before.sha256);
- assert.deepEqual((await rpc('export.get',{exportId:before.job.id})).snapshot,before.job.snapshot);
+ const originalAgain=await fetch((server as unknown as Awaited<ReturnType<typeof startServer>>).url+projectMediaPath(before.job.projectId,before.job.assetId),{headers:{authorization:`Bearer ${token}`}});assert.equal(hash(Buffer.from(await originalAgain.arrayBuffer())),before.sha256);
+ assert.deepEqual((await rpc('export.get',{exportId:before.job.id},200,project.id)).snapshot,before.job.snapshot);
  for(const a of assets){const stored=inspect(project.id,db=>JSON.parse((((db.prepare('SELECT data FROM assets WHERE id=?').get(a.id))!.data) as unknown as Parameters<typeof JSON.parse>[0])));assert.equal(hash(await readFile(path.join(workspace,stored.relativePath))),a.sha256);}
  assert.equal(inspect(project.id,db=>(db.prepare('SELECT COUNT(*) AS n FROM exports').get())!.n),2);assert.equal(inspect(project.id,db=>(db.prepare('SELECT COUNT(*) AS n FROM jobs').get())!.n),0);
  assert.equal(inspect(project.id,db=>(db.prepare('SELECT COUNT(*) AS n FROM waveform_cache').get())!.n),2);

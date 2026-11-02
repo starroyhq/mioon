@@ -1,3 +1,5 @@
+import {projectApiPath} from '../../packages/contracts/src/project-file.ts';
+import {rpcPathFor} from '../../packages/contracts/src/project-addressing.ts';
 /** Synthetic loopback listener, not the full desktop server. It uses the real
  * shared services, SQLite, observation adapter and private-delivery adapter.
  * No job worker is constructed, so admission/recovery cannot encode media.
@@ -128,7 +130,7 @@ export async function selectedRangeFixture(t: unknown): Promise<Record<string, u
   }
   async function listen() {
     server = http.createServer(async (request: import('node:http').IncomingMessage, response: ServerResponse) => {
-      const url = new URL(request.url ?? '', `http://${String(request.headers.host)}`);
+      const url = new URL(request.url ?? '', `http://${String(request.headers.host)}`), requestedPath=url.pathname;
       // Serve a project address at the route it replaces, as the server does.
       const scoped = projectRouteTarget(url.pathname);
       if (scoped) url.pathname = scoped.pathname;
@@ -138,8 +140,8 @@ export async function selectedRangeFixture(t: unknown): Promise<Record<string, u
       // companion commits are observed before the exact socket is destroyed.
       const end = response.end.bind(response);
       (response as unknown as {end: unknown}).end = (bytes?: string|Buffer) => {
-        if (bytes !== undefined) observations.push({path: url.pathname, body: JSON.parse(String(bytes)), status: response.statusCode});
-        if (dropPath === url.pathname) {dropPath = undefined; response.destroy(); return response;}
+        if (bytes !== undefined) observations.push({path: requestedPath, body: JSON.parse(String(bytes)), status: response.statusCode});
+        if (dropPath === requestedPath) {dropPath = undefined; response.destroy(); return response;}
         if (malformedRange && url.pathname === '/api/rpc') {
           const body = JSON.parse(String(bytes));
           assert.ok(body.data?.snapshot?.exportRange, 'range-ACK corruption targets only an accepted ranged render');
@@ -184,9 +186,9 @@ export async function selectedRangeFixture(t: unknown): Promise<Record<string, u
         headers: {authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json'}, ...(input === undefined ? {} : {body: JSON.stringify(input)})});
       const body = await response.json(); assert.equal(response.ok, body.ok, JSON.stringify(body)); return {status: response.status, body};
     },
-    async rpc(operation: string, input: unknown, options: Record<string, unknown> = {}) {return (await f.request('/api/rpc', {method: 'POST', input: {operation, input}, ...options})).body;},
+    async rpc(operation: string, input: unknown, options: Record<string, unknown> = {}) {return (await f.request(rpcPathFor(operation,input,project.id), {method: 'POST', input: {operation, input}, ...options})).body;},
     async local(suffix = '', input?: unknown) {
-      const result = await f.request(`/api/local-delivery${suffix || `?projectId=${project.id}`}`, input === undefined ? {} : {method: suffix === '/draft' ? 'PUT' : 'POST', input});
+      const result = await f.request(projectApiPath(project.id,'local-delivery')+(suffix || `?projectId=${project.id}`), input === undefined ? {} : {method: suffix === '/draft' ? 'PUT' : 'POST', input});
       assert.equal(result.status, 200, JSON.stringify(result.body)); return result.body.data;
     },
     prepare(value: AuthorityValue & {intentRevision?: unknown; intent?: {intentId?: unknown}; draft?: {draftId?: unknown; raw?: {deliveryName?: unknown}}; draftRevision?: unknown}, extra: Record<string, unknown> = {}) {return {...authority(value), expectedIntentRevision: value.intentRevision, expectedIntentId: value.intent?.intentId ?? null,

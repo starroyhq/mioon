@@ -1,3 +1,4 @@
+import {parseProjectApiPath} from '../packages/contracts/src/project-file.ts';
 /** Disposable UI fixture. Only copied synthetic media and existing shared RPCs.
  * Faults live in a loopback proxy, never in production code or renderer hooks. */
 import http from 'node:http';
@@ -58,9 +59,14 @@ if(invokedDirectly&&process.argv.includes('--serve')) {
       if(req.headers.host!==host||req.headers.origin&&req.headers.origin!==origin)return res.writeHead(403).end();
       const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>1024*1024)return res.writeHead(413).end();chunks.push(chunk);}
       const bytes=Buffer.concat(chunks);let input;try{input=JSON.parse(bytes);}catch{}
-      const event={seq:++seq,at:new Date().toISOString(),method:req.method,path:req.url,...(req.url==='/api/rpc'?{operation:input?.operation,input:input?.input}:{})};
-      if(req.url==='/api/rpc'||req.url.startsWith('/api/agent/'))await appendFile(path.join(mutationRuntime,'requests.jsonl'),JSON.stringify(event)+'\n');
-      let fault;try{const candidate=JSON.parse(await readFile(path.join(mutationRuntime,'fault.json'),'utf8'));if(req.method==='POST'&&req.url==='/api/rpc'&&candidate.operation===input?.operation&&['drop','hold','malformed'].includes(candidate.kind)){fault=candidate;await unlink(path.join(mutationRuntime,'fault.json'));}}catch{}
+      const rpc=req.url==='/api/rpc'||parseProjectApiPath(req.url)?.kind==='rpc';
+      // Agent reads can carry query parameters; classify their pathname and
+      // retain the complete original request URL in the observation below.
+      const scoped=parseProjectApiPath(new URL(req.url,origin).pathname);
+      const projectAgent=scoped?.kind==='other'&&scoped.segments[0]==='agent';
+      const event={seq:++seq,at:new Date().toISOString(),method:req.method,path:req.url,...(rpc?{operation:input?.operation,input:input?.input}:{})};
+      if(rpc||projectAgent||req.url.startsWith('/api/agent/'))await appendFile(path.join(mutationRuntime,'requests.jsonl'),JSON.stringify(event)+'\n');
+      let fault;try{const candidate=JSON.parse(await readFile(path.join(mutationRuntime,'fault.json'),'utf8'));if(req.method==='POST'&&rpc&&candidate.operation===input?.operation&&['drop','hold','malformed'].includes(candidate.kind)){fault=candidate;await unlink(path.join(mutationRuntime,'fault.json'));}}catch{}
       const headers={...req.headers,host:new URL(backend.url).host};if(headers.origin)headers.origin=backend.url;
       const upstream=http.request(backend.url+req.url,{method:req.method,headers},async response=>{
         if(!fault){res.writeHead(response.statusCode,response.headers);response.pipe(res);return;}

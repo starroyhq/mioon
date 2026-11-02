@@ -1,3 +1,4 @@
+import {projectRpcPath, parseProjectApiPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import type {Readable} from 'node:stream';
 import assert from 'node:assert/strict';
@@ -100,16 +101,22 @@ async function fixture(t: import('node:test').TestContext,{saved=true}: {saved?:
   const createServer=http.createServer,capture=t.mock.method(http,'createServer',((...args: Parameters<typeof http.createServer>): http.Server=>{const owned=createServer(...args);server=owned;return owned;}) as never);
   try{backend=await startServer({dataDir:root,port:0,token,inspectProject:received=>{inspect=received;}});}
   finally{capture.mock.restore();}
-  const requests: Fixture['requests']=[],observe=(request: http.IncomingMessage,response: http.ServerResponse)=>{if(request.url==='/api/rpc')requests.push({request,response,
+  const scopedRequests=new WeakSet<http.IncomingMessage>();
+  const captureAddress=(request: http.IncomingMessage)=>{if(typeof request.url==='string'&&parseProjectApiPath(request.url)?.kind==='rpc')scopedRequests.add(request);};
+  const requests: Fixture['requests']=[],observe=(request: http.IncomingMessage,response: http.ServerResponse)=>{if(scopedRequests.has(request))requests.push({request,response,
     baseline:{request:request.listenerCount('aborted'),response:response.listenerCount('close')}});};
   // Capture the normal authenticated-response lifetime guard before observing
   // media work, so only new per-operation cancellation listeners are compared.
-  assert.ok(server);const ownedServer=server;ownedServer.on('request',observe);cleanups.push(()=>{ownedServer.removeListener('request',observe);});
+  assert.ok(server);const ownedServer=server;
+  // Capture the public address before the legacy dispatcher normalizes req.url;
+  // keep listener baselines at the original post-authentication observation point.
+  ownedServer.prependListener('request',captureAddress);ownedServer.on('request',observe);
+  cleanups.push(()=>{ownedServer.removeListener('request',captureAddress);ownedServer.removeListener('request',observe);});
   assert.ok(backend);const client=createClient({env:environment(backend.url)});
   mcp=await official(t,backend.url);
   assert.ok(inspect);assert.ok(mcp);
   const f={root,backend,mcp,client,requests,cleanups,async http(op: string,input: Record<string, unknown>,{signal}: {signal?: AbortSignal} = {}){
-    const response=await fetch(backend.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},
+    const response=await fetch(backend.url+projectRpcPath(f.project.id),{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},
       body:JSON.stringify({operation:op,input}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(25000)]):AbortSignal.timeout(25000)});
     const body=await readTimelineLoudnessApplyEnvelope(response,signal) as WireEnvelope;assert.equal(response.ok,body.ok);
     assert.ok(!JSON.stringify(body).includes(token));return body;
@@ -120,7 +127,8 @@ async function fixture(t: import('node:test').TestContext,{saved=true}: {saved?:
   },rows:()=>inspect(f.project.id,db=>readProjectState(db).tables),receipt:(requestId: string)=>inspect(f.project.id,db=>db.prepare('SELECT * FROM timeline_requests WHERE requestId=?').get(requestId) as ReceiptRow | undefined),
   timeline:()=>inspect(f.project.id,db=>JSON.parse(String((db.prepare('SELECT data FROM timelines WHERE projectId=?').get(f.project.id) as {data: string} | undefined)?.data))) as TimelineWire} as Fixture;
   // Even strict-input-only cases inspect a real project on the server's own
-  // connection; their invalid requests keep the independent fixture ID.
+  // connection; invalid HTTP requests use its address and keep the independent
+  // fixture ID in their raw body, so addressing rejects the mismatch first.
   f.project=await client.rpc('project.create',{name:'固定增益 公共传输 🎬'}) as {id: string};
   if(!saved)return f;
   let timeline=await client.rpc('timeline.get',{projectId:f.project.id}) as TimelineWire;const bytes=wav();
@@ -257,7 +265,7 @@ test('real HTTP rejects client gains, paths and authority; CLI and official MCP 
     assert.equal(cliResult.code,2);assert.equal(cliResult.body.error?.code,'VALIDATION_ERROR');
     const mcpResult=await f.mcp.call(toolName,request);assert.equal(mcpResult.ok,false);assert.equal(mcpResult.error?.code,'VALIDATION_ERROR');
     assert.equal(f.requests.length,count,'clients reject extra authority before an HTTP dispatch');
-    const httpResult=await f.http(operation,request);assert.equal(httpResult.ok,false);assert.equal(httpResult.error?.code,'VALIDATION_ERROR');
+    const httpResult=await f.http(operation,request);assert.equal(httpResult.ok,false);assert.equal(httpResult.error?.code,'PROJECT_ID_MISMATCH');
     assert.equal(f.requests.length,count+1);assert.deepEqual(f.rows(),before);
   }
   const count=f.requests.length;
