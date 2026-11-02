@@ -254,5 +254,10 @@ export function createProjectBackups({directories, registry, identity, assertPro
       return {requestId, sourceProjectId, backupId, project};
     } finally {targets.delete(projectFile);}
   });
-  return {hooks, list, inspect, restore, status: async ({projectId}: {projectId: string}) => readStatus(projectId)};
+  const drain = async (): Promise<void> => {
+    // Closing an HTTP socket does not cancel native SQLite copies. Finish
+    // admitted app-level recoveries before the library or app lock is closed.
+    while (queues.size) await Promise.allSettled([...queues.values()]);
+  };
+  return {hooks, list, inspect, restore, drain, status: async ({projectId}: {projectId: string}) => readStatus(projectId)};
 }

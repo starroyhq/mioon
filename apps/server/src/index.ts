@@ -149,6 +149,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
   let library: ReturnType<typeof openAppLibrary> | undefined;
   let application: Awaited<ReturnType<typeof composeApplicationRuntime>> | undefined;
   let manager: ProjectHostManager<HostedProject> | undefined;
+  let drainBackups: (() => Promise<void>) | undefined;
   let server: Server | undefined;
   const opened = new Map<string, HostedProject>();
   const selfPort = (): number | undefined => { const address = server?.address(); return address !== null && typeof address === 'object' ? address.port : undefined; };
@@ -160,6 +161,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     const app = application;
     const assertProjectFile = createApplicationFileGuard(directories);
     const backups = createProjectBackups({directories, registry: library.registry, identity: library.projectFileIdentity, assertProjectFile});
+    drainBackups = backups.drain;
     manager = createProjectHostManager({directories, registry: library.registry, identity: library.projectFileIdentity, taskIndex: library.taskIndex,
       hooks: [backups.hooks],
       openStore: options => { assertProjectFile(options.projectFile); return openProjectStore(options); },
@@ -349,7 +351,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       const drain = new Promise<void>((resolve, reject) => server!.close(error => error ? reject(error) : resolve()));
       const force = setTimeout(() => server?.closeAllConnections(), 3000); force.unref();
       try {
-        await boundedShutdown(Promise.all([projects.closeAll(), files.close(), drain]), 'SERVER_STOP_TIMEOUT');
+        await boundedShutdown(Promise.all([projects.closeAll(), files.close(), drain, backups.drain()]), 'SERVER_STOP_TIMEOUT');
         await boundedShutdown(Promise.all([terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), app.close()]), 'SERVER_STOP_TIMEOUT');
       } finally { clearTimeout(force); }
       appLibrary.close();
@@ -360,7 +362,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
   } catch (error) {
     shutdown.abort(); server?.closeAllConnections();
     const drain = server?.listening ? new Promise<void>(resolve => server!.close(() => resolve())) : Promise.resolve();
-    await boundedShutdown(Promise.all([drain, manager?.closeAll(), files.close()]), 'SERVER_STOP_TIMEOUT');
+    await boundedShutdown(Promise.all([drain, manager?.closeAll(), files.close(), drainBackups?.()]), 'SERVER_STOP_TIMEOUT');
     await boundedShutdown(Promise.all([terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), application?.close()]), 'SERVER_STOP_TIMEOUT');
     library?.close(); lock.release(); throw error;
   }
