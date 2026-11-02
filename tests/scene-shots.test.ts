@@ -71,7 +71,7 @@ function fixture(t: test.TestContext,options: NonNullable<Parameters<typeof open
  t.after(async()=>{try{for(const close of closers.reverse())await close();}finally{rmSync(root,{recursive:true,force:true});}});
  const reopen=(patch: NonNullable<Parameters<typeof open>[1]>={})=>{const value=open(root,patch);closers.push(value.close);return value;};
  const opened=reopen(options),{store,call}=opened;
- const project=store.put('projects',{id:randomUUID(),name:'Storyboard project',revision:1}),other=store.put('projects',{id:randomUUID(),name:'Other project',revision:1});
+ const project=store.put('projects',{id:randomUUID(),name:'Storyboard project',revision:1}),other={id:randomUUID(),name:'Other project',revision:1};
  const video=(patch: Record<string, unknown>={})=>{
   const bytes=Buffer.from(`Synthetic reference film ${randomUUID()} PRIVATE_SENTINEL`),id=randomUUID(),relativePath=`media/${id}.mp4`;
   writeFileSync(path.join(root,relativePath),bytes,{mode:0o600});
@@ -129,7 +129,7 @@ test('acceptance freezes the plan, replays exactly and refuses with proofs', asy
  const receipt=await f.call('scene.request.get',{projectId:f.project.id,requestId:input.requestId});
  assert.ok(isSceneRequestResponse(receipt));assert.deepEqual(receipt,{projectId:f.project.id,requestId:input.requestId,operation:'scene.shots.create',response:ack});
  for(const patch of [{segments:[1,2]},{titlePrefix:'Ref'},{position:{x:0,y:0}},{projectId:f.other.id}])
-  await assert.rejects(f.call('scene.shots.create',{...input,...patch}),code('SCENE_REQUEST_CONFLICT'));
+  await assert.rejects(f.call('scene.shots.create',{...input,...patch}),code('projectId' in patch?'SCENE_NOT_FOUND':'SCENE_REQUEST_CONFLICT'));
  // One scene task per video at a time; a storyboard in progress locks the cut list.
  const again=f.input(resultId),detect={projectId:f.project.id,sourceAssetId:f.asset.id,sourceHash:f.asset.sha256,requestId:randomUUID()};
  const save={projectId:f.project.id,assetId:f.asset.id,sourceHash:f.asset.sha256,expectedResultId:resultId,cuts:[30],requestId:randomUUID()};

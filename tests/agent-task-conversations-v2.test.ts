@@ -20,8 +20,8 @@ function downgrade52(root:string){downgrade54(root);const db=new DatabaseSync(jo
 
 test('conversation creation is host-owned, fail-closed for unknown/foreign IDs and grouped with exact counts',()=>{const f=fixture();try{
  const first=completed(f,'  First line\n\u202esecond line  '),next=completed(f,'Next prompt',first.conversationId);assert.ok(first.conversationId);assert.equal(next.conversationId,first.conversationId);assert.notEqual(first.conversationId,first.id);
- const foreign=randomUUID();f.store.put('projects',{id:foreign,name:'Other',revision:1});const before=f.journal.list(f.projectId).length;
- for(const [projectId,conversationId] of [[f.projectId,randomUUID()],[foreign,first.conversationId]] as const)assert.throws(()=>f.journal.create({requestId:randomUUID(),projectId,conversationId,text:'must not create',configuration:{}}),{code:'AGENT_TASK_NOT_FOUND'});
+ const foreign=randomUUID(),before=f.journal.list(f.projectId).length;
+ for(const [projectId,conversationId] of [[f.projectId,randomUUID()],[foreign,first.conversationId]] as const)assert.throws(()=>f.journal.create({requestId:randomUUID(),projectId,conversationId,text:'must not create',configuration:{}}),{code:projectId===foreign?'PROJECT_NOT_FOUND':'AGENT_TASK_NOT_FOUND'});
  assert.equal(f.journal.list(f.projectId).length,before);const history=f.journal.history(f.projectId);assert.equal(history.conversations.length,1);const group=history.conversations[0]!;assert.equal(group.title,'First line second line');assert.equal(group.lastRunId,next.id);assert.equal(group.lastRunStatus,'completed');assert.equal(group.runCount,2);assert.equal(group.changeCount,0);
  assert.throws(()=>f.store.db.prepare("UPDATE agent_task_runs_v2 SET data=json_set(data,'$.conversationId',?) WHERE id=?").run(randomUUID(),first.id),/conversation identity is immutable/u);
 }finally{f.close();}});

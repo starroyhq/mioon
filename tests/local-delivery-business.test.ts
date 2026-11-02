@@ -15,7 +15,7 @@ import {createLocalDelivery,LOCAL_DELIVERY_FILENAME} from '@mioon/business/local
 import {LOCAL_DELIVERY_LIMITS,createLocalDeliverySchemas} from '@mioon/contracts/local-delivery';
 import {schemas,isTimelineMutationResponse,hasRequestNotAppliedProof,publicValue,AppError} from '@mioon/contracts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects,withoutForeignKeys} from './helpers/project-database.ts';
 const storage={readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile};
 const contract=createLocalDeliverySchemas(value=>schemas['timeline.render'].safeParse(value).success);
 const code=(value: string)=>(error: { code: string; message: string|string[]; })=>error.code===value&&!error.message.includes('PRIVATE');
@@ -131,7 +131,7 @@ test('late original timeline replacement, source-owner transfer and lease loss c
     const f=await fixture(t),prepared=f.delivery.prepare(f.prepare()),gate=deferred(),entered=deferred();f.setRender(async (input: unknown)=>{const accepted=await f.originalRender(input);entered.resolve();await gate.promise;return accepted;});
     const pending=f.delivery.execute(action(prepared));await entered.promise;
     if(mode==='timeline'){const changed={...f.timeline,id:randomUUID()};f.store.db.prepare('UPDATE timelines SET id=?,data=? WHERE id=?').run(changed.id,JSON.stringify(changed),f.timeline.id);}
-    if(mode==='source'){const foreign={...f.project,id:randomUUID()};f.store.put('projects',foreign);f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(foreign.id,f.asset.id);}
+    if(mode==='source')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(randomUUID(),f.asset.id));
     if(mode==='lease'){unlinkSync(path.join(f.root,'server.lock'));writeFileSync(path.join(f.root,'server.lock'),'0',{mode:0o600});}
     gate.resolve();await assert.rejects(pending);assert.equal(JSON.parse((readFileSync(f.file) as unknown as string)).entries[0].intent.outcome.status,'pending');
   }

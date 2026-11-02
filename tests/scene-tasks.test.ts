@@ -43,7 +43,7 @@ const cancelled=()=>Object.assign(new Error('cancelled'),{code:'MEDIA_CANCELLED'
 
 function fixture(t: test.TestContext,{autoRun=false,detect,fault,lock=true,real=false}: Pick<SceneServicesOptions, 'autoRun' | 'fault'> & {detect?: (input: DetectManagedScenesOptions) => unknown} & {lock?: boolean; real?: boolean}={}){
  const root=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-scene-tasks-'))),store=(openStore(root,{lock}) as unknown as TypedStore);
- const project=store.put('projects',{id:randomUUID(),name:'Scene source project'}),other=store.put('projects',{id:randomUUID(),name:'Other project'});
+ const project=store.put('projects',{id:randomUUID(),name:'Scene source project'}),other={id:randomUUID(),name:'Other project'};
  const video=(patch: Record<string, unknown>={})=>{
   const bytes=Buffer.from(`Synthetic reference film ${randomUUID()} PRIVATE_SENTINEL`),id=randomUUID(),relativePath=`media/${id}.mp4`;
   writeFileSync(path.join(root,relativePath),bytes,{mode:0o600});
@@ -93,9 +93,9 @@ test('the acceptance receipt is durable before decoding and replays exactly', as
  assert.deepEqual(await f.call('scene.detect',input),ack);assert.equal(rows(f.store.db),before);
  const receipt=await f.call('scene.request.get',{projectId:f.project.id,requestId:input.requestId});
  assert.ok(isSceneRequestResponse(receipt));assert.deepEqual((receipt)!.response,ack);
- assert.equal(await f.call('scene.request.get',{projectId:f.other.id,requestId:input.requestId}),null);
+ await assert.rejects(f.call('scene.request.get',{projectId:f.other.id,requestId:input.requestId}),code('SCENE_NOT_FOUND'));
  for(const patch of [{options:{sensitivity:80}},{sourceHash:'a'.repeat(64)},{projectId:f.other.id}])
-  await assert.rejects(f.call('scene.detect',{...input,...patch}),code('SCENE_REQUEST_CONFLICT'));
+  await assert.rejects(f.call('scene.detect',{...input,...patch}),code('projectId' in patch?'SCENE_NOT_FOUND':'SCENE_REQUEST_CONFLICT'));
  await assert.rejects(f.call('scene.task.get',{projectId:f.other.id,taskId:ack.id}),code('SCENE_NOT_FOUND'));
  // A second detection of a video already queued is refused with a proof.
  const again=f.input();

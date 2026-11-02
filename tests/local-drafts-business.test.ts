@@ -12,7 +12,7 @@ import {LOCAL_DRAFT_LIMITS,clipDraftEnvelopeSchema,clipDraftListSchema} from '@m
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
 import {type TestContext} from 'node:test';
 import {errorView} from './helpers/test-error.ts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects,withoutForeignKeys} from './helpers/project-database.ts';
 
 interface DraftKey {projectId: string; timelineId: string; clipId: string}
 interface DraftEnvelope {revision: number; draft: {raw: Record<string, unknown>; [key: string]: unknown} | null; workspaceScope?: string; instanceId?: string; [key: string]: unknown}
@@ -94,8 +94,8 @@ test('unreadable/corrupt/unknown-format storage never means empty and never gets
 test('historical source ownership is required after clip removal before draft/name/revision disclosure or mutation',async t=>{
   const f=await fixture(t),saved=f.drafts.put(f.input()),before=readFileSync(f.file);
   f.store.put('timelines',{...f.timeline,revision:f.timeline.revision+1,clips:[],durationFrames:0} as never);
-  const foreign=randomUUID();f.store.put('projects',{...f.project,id:foreign});
-  f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(foreign,JSON.stringify({...f.asset,projectId:foreign}),(f.asset as {id: string}).id);
+  const foreign=randomUUID();
+  withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(foreign,JSON.stringify({...f.asset,projectId:foreign}),(f.asset as {id: string}).id));
   for(const call of [()=>f.drafts.get(f.key),()=>f.drafts.list({projectId:f.project.id}),()=>f.drafts.put(f.input(saved)),()=>f.drafts.discard(f.deletion(saved))])assert.throws(call,code('LOCAL_DRAFT_STORAGE_UNAVAILABLE'));
   assert.deepEqual(readFileSync(f.file),before);
 });

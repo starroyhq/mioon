@@ -38,7 +38,7 @@ const code=(expected: string)=>(error: { code: string; })=>error.code===expected
 const noPrivate=(value: unknown)=>assert.doesNotMatch(JSON.stringify(value),/"(?:relativePath|bytes|sourceBytes|canonicalIntent|canonicalInput|apiKey|path)"\s*:/);
 async function fixture(t: test.TestContext,{autoRun=true,generate,liveGenerate,fault,comfySettings,comfyConnector}:ImageFixtureOptions={}){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-image-edit-')),store=(openStore(root) as TypedStore),projectId=randomUUID(),otherProjectId=randomUUID();
- for(const id of [projectId,otherProjectId])store.put('projects',{id,name:'Image edits',description:'',revision:1});
+ store.put('projects',{id:projectId,name:'Image edits',description:'',revision:1});
  let revision=1,enabled=true,calls=0,posts=0;
  const settings={
   [IMAGE_SETTINGS_READ_CURRENT]:()=>({revision,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled},secret:{configured:true}}),
@@ -161,12 +161,12 @@ for(const variant of ['foreign','wrong-hash','wrong-size','wrong-dimensions','no
  if(variant==='bad-png'){const bad=Buffer.alloc(f.bytes.length,0);writeFileSync(path.join(f.root,asset.relativePath),bad);asset.sha256=sha(bad);input.inputImage.sha256=asset.sha256;}
  if(variant==='symlink'){const target=path.join(f.root,'media','private.png');writeFileSync(target,f.bytes,{mode:0o600});unlinkSync(path.join(f.root,asset.relativePath));symlinkSync(target,path.join(f.root,asset.relativePath));}
  if(variant==='oversized')asset.sizeBytes=8*1024*1024+1;
- f.store.put('assets',asset);await assert.rejects(Promise.resolve().then(()=>f.call('image.generate',input)),error=>{assert.equal((error as Failure).code,'IMAGE_SOURCE_INVALID');noPrivate(error);return true;});assert.equal(f.store.db.prepare('SELECT count(*) n FROM image_tasks').get()!.n,0);
+ const write=()=>f.store.put('assets',asset);if(variant==='foreign')withoutForeignKeys(f.store.db,write);else write();await assert.rejects(Promise.resolve().then(()=>f.call('image.generate',input)),error=>{assert.equal((error as Failure).code,'IMAGE_SOURCE_INVALID');noPrivate(error);return true;});assert.equal(f.store.db.prepare('SELECT count(*) n FROM image_tasks').get()!.n,0);
 });
 
 test('public task, version and asset roots reject mutated edit source ownership without repair',async t=>{
  const f=await fixture(t),ack=await f.call('image.generate',f.input());await terminal(f,ack.id,'succeeded');const version=f.call('image.version.list',{projectId:f.projectId,groupId:ack.groupId}).items[0];
- f.store.put('assets',{...f.asset,projectId:f.otherProjectId,name:'PRIVATE_FOREIGN_SENTINEL'});
+ withoutForeignKeys(f.store.db,()=>f.store.put('assets',{...f.asset,projectId:f.otherProjectId,name:'PRIVATE_FOREIGN_SENTINEL'}));
  const count=f.store.db.prepare('SELECT total_changes() n').get()!.n;
  for(const read of [()=>f.call('image.task.get',taskInput(f,ack.id)),()=>f.call('image.version.list',{projectId:f.projectId,groupId:ack.groupId}),()=>createOwnedMediaGraphReader(f.store.db,f.projectId).asset(version.assetId)])assert.throws(read,error=>!JSON.stringify(error).includes('PRIVATE_FOREIGN_SENTINEL'));
  assert.equal(f.store.db.prepare('SELECT total_changes() n').get()!.n,count);
@@ -229,7 +229,7 @@ for(const variant of ['sql-owner-reassigned','version-deleted','foreign-extra-re
 
 for(const approved of [false,true])test(`${approved?'approved':'pending'} review reads reject foreign source ownership without filesystem checks`,async t=>{
  const f=await fixture(t,{autoRun:false}),input=liveInput(f),review=await f.prepare(input);if(approved)await f.approve(review);
- f.store.put('assets',{...f.asset,projectId:f.otherProjectId,name:'PRIVATE_FOREIGN_SENTINEL'});
+ withoutForeignKeys(f.store.db,()=>f.store.put('assets',{...f.asset,projectId:f.otherProjectId,name:'PRIVATE_FOREIGN_SENTINEL'}));
  for(const read of [()=>f.call('image.review.get',{projectId:f.projectId,reviewId:review.id}),()=>f.call('image.review.list',{projectId:f.projectId}),()=>f.prepare(input)])assert.throws(read,error=>(error as Failure).code==='IMAGE_SOURCE_INVALID'&&!JSON.stringify(error).includes('PRIVATE_FOREIGN_SENTINEL'));
 });
 
@@ -241,7 +241,7 @@ test('source rejections retain the request key without unsafe absence proof',asy
 
 test('source damage cannot prevent rejection of pending review or pre-dispatch cancellation',async t=>{
  const f=await fixture(t,{autoRun:false}),review=await f.prepare(liveInput(f)),ack=await f.call('image.generate',f.input());
- f.store.put('assets',{...f.asset,projectId:f.otherProjectId});
+ withoutForeignKeys(f.store.db,()=>f.store.put('assets',{...f.asset,projectId:f.otherProjectId}));
  const rejected=f.images.rejectReview({projectId:f.projectId,reviewId:review.id,expectedRevision:1});assert.equal(rejected.state,'rejected');assert.equal(rejected.sourceImage!.assetId,f.asset.id);
  const input={...taskInput(f,ack.id),expectedRevision:1,requestId:randomUUID()},cancelled=f.call('image.task.cancelQueued',input);assert.equal(cancelled.state,'cancelled_before_dispatch');assert.deepEqual(f.call('image.task.cancelQueued',input),cancelled);assert.equal(f.calls,0);
 });
@@ -251,7 +251,7 @@ for(const reviewMode of [false,true])test(`two-window ${reviewMode?'preparation'
  f.alter();const rejected=invoke();f.restore();const accepted=invoke();
  await assert.rejects(rejected as Promise<unknown>,(error: { code: string; details: { imageOutcome: unknown; }; })=>error.code==='IMAGE_SOURCE_INVALID'&&!error.details?.imageOutcome);
  const value=await accepted;assert.deepEqual(await invoke(),value);assert.equal(f.store.db.prepare(`SELECT count(*) n FROM ${reviewMode?'image_reviews':'image_tasks'}`).get()!.n,1);
- f.store.put('assets',{...f.asset,projectId:f.otherProjectId});
+ withoutForeignKeys(f.store.db,()=>f.store.put('assets',{...f.asset,projectId:f.otherProjectId}));
  await assert.rejects(Promise.resolve().then(invoke),error=>!(error as Failure).details?.imageOutcome);
 });
 
@@ -278,7 +278,7 @@ test('a fully owned extracted frame is admitted with bounded typed frame provena
  for(let i=0;i<500;i++){ready=frames.handlers['frame.task.get']({projectId:f.projectId,taskId:frame.id});if(ready.state==='succeeded')break;await pause(5);}assert.equal(ready.state,'succeeded');
  const ack=await f.call('image.generate',f.input({inputImage:{assetId:ready.result.assetId,sha256:ready.result.sha256}}));await terminal(f,ack.id,'succeeded');
  assert.deepEqual(ack.sourceImage!.origin,{kind:'extracted-frame',frameSource:{frameTaskId:frame.id,sourceAssetId:source.id,sourceHash:source.sha256,sourceFrame:0,fps:30,profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE}});assert.equal(ack.sourceImage!.width,4);
- f.store.put('assets',{...source,projectId:f.otherProjectId});assert.throws(()=>f.call('image.task.get',taskInput(f,ack.id)),code('IMAGE_RECORD_INVALID'));
+ withoutForeignKeys(f.store.db,()=>f.store.put('assets',{...source,projectId:f.otherProjectId}));assert.throws(()=>f.call('image.task.get',taskInput(f,ack.id)),code('IMAGE_RECORD_INVALID'));
 });
 
 test('a completed Comfy image is a valid edit source only through its full remote lineage',async t=>{

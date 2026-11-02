@@ -18,7 +18,7 @@ import {openStore,ownsStoreLock} from '../packages/business/src/db.ts';
 import {createFrameServices} from '../packages/business/src/frames.ts';
 import {validatePng} from '../packages/business/src/images/png.ts';
 import {FRAME_LIMITS,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,isFrameTaskResponse,isFrameRequestResponse,isFrameListResponse} from '../packages/contracts/src/frame-extraction.ts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects,withoutForeignKeys} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 const digest=(bytes: Buffer<ArrayBuffer>|BinaryLike)=>createHash('sha256').update(bytes).digest('hex');
@@ -39,7 +39,7 @@ function privateFree(value: { projectId: string; requestId: string; operation: "
 async function until<T>(fn: () => T | Promise<T>,label: unknown){const deadline=Date.now()+10000;while(Date.now()<deadline){const result=await fn();if(result)return result;await pause(5);}assert.fail(`Timed out: ${label}`);}
 function fixture(t: test.TestContext,{autoRun=false,decode,fault,lock=true}: FixtureFrameOptions={}){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-frame-business-')),store=(openStore(root,{lock}) as TypedStore);
- const project=store.put('projects',{id:randomUUID(),name:'Frame source project'}),other=store.put('projects',{id:randomUUID(),name:'Other project'});
+ const project=store.put('projects',{id:randomUUID(),name:'Frame source project'}),other={id:randomUUID(),name:'Other project'};
  const sourceBytes=Buffer.from('Synthetic managed source bytes PRIVATE_SENTINEL'),id=randomUUID(),relativePath=`media/${id}.mp4`;
  writeFileSync(path.join(root,relativePath),sourceBytes,{mode:0o600});
  const asset=store.put('assets',{id,projectId:project.id,name:'Managed original.mp4',mimeType:'video/mp4',sha256:digest(sourceBytes),sizeBytes:sourceBytes.length,relativePath,width:4,height:2,duration:1,provenance:'user-import'});
@@ -58,8 +58,8 @@ test('exact original ACK wins over stale CAS and changed keys, with no replay de
  assert.equal(cancelled.state,'cancelled_before_start');assert.equal(cancelled.revision,2);
  assert.deepEqual(await f.call('frame.extract',input),ack);assert.deepEqual(await f.call('frame.task.cancelQueued',control),cancelled);
  const receipt=await f.call('frame.request.get',{projectId:f.project.id,requestId:input.requestId});assert.ok(isFrameRequestResponse(receipt));assert.deepEqual(receipt!.response,ack);
- assert.equal(await f.call('frame.request.get',{projectId:f.other.id,requestId:input.requestId}),null);
- for(const patch of [{sourceFrame:1},{sourceHash:'a'.repeat(64)},{projectId:f.other.id}])await assert.rejects(f.call('frame.extract',{...input,...patch}),error('FRAME_REQUEST_CONFLICT'));
+ await assert.rejects(f.call('frame.request.get',{projectId:f.other.id,requestId:input.requestId}),error('FRAME_NOT_FOUND'));
+ for(const patch of [{sourceFrame:1},{sourceHash:'a'.repeat(64)},{projectId:f.other.id}])await assert.rejects(f.call('frame.extract',{...input,...patch}),error('projectId' in patch?'FRAME_NOT_FOUND':'FRAME_REQUEST_CONFLICT'));
  await assert.rejects(f.call('frame.task.cancelQueued',{...control,requestId:input.requestId}),error('FRAME_REQUEST_CONFLICT'));
  await assert.rejects(f.call('frame.task.cancelQueued',{...control,requestId:randomUUID()}),error('FRAME_REVISION_CONFLICT'));
  for(const taskId of [ack.id,randomUUID()])for(const op of ['frame.task.get','frame.task.cancelQueued','frame.task.recoverResult']){
@@ -115,8 +115,8 @@ test('HMAC cursor binds project, limit and stable order; pages and absent reads 
  const before=rows(f.store.db),changes=total(f.store.db),input={projectId:f.project.id,limit:2},first=await f.call('frame.task.list',input);
  assert.ok(isFrameListResponse('frame.task.list',input,first));assert.ok(first.nextCursor);const next=await f.call('frame.task.list',{...input,cursor:first.nextCursor});assert.equal(next.items.length,2);assert.equal(next.nextCursor,null);
  assert.equal(new Set([...first.items,...next.items].map(value=>value.id)).size,4);
- for(const patch of [{projectId:f.other.id},{limit:1},{cursor:first.nextCursor.slice(0,-1)+'!'}])await assert.rejects(f.call('frame.task.list',{...input,cursor:first.nextCursor,...patch}),error('INVALID_CURSOR'));
- assert.deepEqual(await f.call('frame.task.list',{projectId:f.other.id}),{projectId:f.other.id,items:[],nextCursor:null});assert.equal(rows(f.store.db),before);assert.equal(total(f.store.db),changes);
+ for(const patch of [{projectId:f.other.id},{limit:1},{cursor:first.nextCursor.slice(0,-1)+'!'}])await assert.rejects(f.call('frame.task.list',{...input,cursor:first.nextCursor,...patch}),error('projectId' in patch?'FRAME_NOT_FOUND':'INVALID_CURSOR'));
+ await assert.rejects(f.call('frame.task.list',{projectId:f.other.id}),error('FRAME_NOT_FOUND'));assert.equal(rows(f.store.db),before);assert.equal(total(f.store.db),changes);
 });
 
 test('cancel can win before first spawn, but never after the durable start fence',async t=>{
@@ -131,7 +131,7 @@ for(const variant of ['deleted-lock','replaced-lock','source-project','project-i
  if(variant.includes('lock')){unlinkSync(path.join(f.root,'server.lock'));if(variant==='replaced-lock')writeFileSync(path.join(f.root,'server.lock'),'2147483000',{mode:0o600});}
  else if(variant==='project-identity')f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify({id:f.other.id,name:'Changed owner'}),f.project.id);
  else if(variant==='source-bytes')writeFileSync(path.join(f.root,f.asset.relativePath),Buffer.from('changed managed bytes'),{mode:0o600});
- else{const patch=variant==='source-project'?{projectId:f.other.id}:variant==='source-hash'?{sha256:'b'.repeat(64)}:variant==='source-path'?{relativePath:'media/elsewhere.mp4'}:variant==='source-size'?{sizeBytes:9}:variant==='source-duration'?{duration:2}:{width:8};f.store.put('assets',{...f.asset,...patch});}
+ else{const patch=variant==='source-project'?{projectId:f.other.id}:variant==='source-hash'?{sha256:'b'.repeat(64)}:variant==='source-path'?{relativePath:'media/elsewhere.mp4'}:variant==='source-size'?{sizeBytes:9}:variant==='source-duration'?{duration:2}:{width:8};const write=()=>f.store.put('assets',{...f.asset,...patch});if(variant==='source-project')withoutForeignKeys(f.store.db,write);else write();}
  const before=count(f.store.db,'assets');release.resolve!();await pause(30);assert.equal(count(f.store.db,'assets'),before);assert.equal(readdirSync(path.join(f.root,'media')).filter(name=>name.endsWith('.png')).length,0);
  assert.equal(f.calls,1);
 });
