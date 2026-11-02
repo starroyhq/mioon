@@ -20,7 +20,7 @@ test('native Windows headless backend and separate CLI share private storage, di
   request.beforeSubmit?.();modelCalls++;
   const body=JSON.parse(request.body) as {tools?:Array<{function?:{name?:string}}> ;messages:Array<{role:string;tool_call_id?:string}>};
   if(!body.tools?.some(tool=>tool.function?.name==='mioon_shot_create')){
-   const call={id:'windows_load_canvas',name:'mioon_tools_load',arguments:{groups:['canvas']}};
+   const call={id:'windows_load_canvas',name:'mioon_tools_load',arguments:{names:['mioon_shot_create']}};
    yield {type:'done',output:{text:'',toolCalls:[call],providerOutput:{role:'assistant',content:null,tool_calls:[{id:call.id,type:'function' as const,function:{name:call.name,arguments:JSON.stringify(call.arguments)}}]}}};return;
   }
   const answered=body.messages.some(item=>item.role==='tool'&&item.tool_call_id==='windows_synthetic_shot');

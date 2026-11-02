@@ -129,11 +129,11 @@ function assertRequest(body: string, protocol: AgentProtocol): void {
 
 type Script = (index: number, request: TaskModelRequest) => AsyncGenerator<TaskModelItem, void, undefined>;
 /** Keep each original scripted response at its old relative index. The extra
- * first model turn loads canvas through the same durable path as a real model. */
+ * first model turn loads the required shot-update tool through the real path. */
 function withCanvasLoad(protocol: AgentProtocol, script: Script): Script {
   return async function* (index, request) {
     if (index === 1) yield {type: 'done', output: output(protocol,
-      [call(AGENT_TASK_TOOLS_LOAD_NAME, {groups: ['canvas']}, 'call_load_canvas')], 'Load the canvas tools.')};
+      [call(AGENT_TASK_TOOLS_LOAD_NAME, {names: ['mioon_shot_update']}, 'call_load_canvas')], 'Load the shot update tool.')};
     else yield* script(index - 1, request);
   };
 }
@@ -141,7 +141,7 @@ function assertCanvasLoaded(snapshot: AgentTaskSnapshot): void {
   const loads = snapshot.steps.filter(step => step.kind === 'tool' && step.toolCall?.name === AGENT_TASK_TOOLS_LOAD_NAME);
   assert.equal(loads.length, 1);
   assert.equal(loads[0]!.status, 'completed');
-  assert.deepEqual(object(loads[0]!.result).groups, ['canvas']);
+  assert.deepEqual(object(loads[0]!.result).names, ['mioon_shot_update']);
 }
 async function fixture(protocol: AgentProtocol, official = false) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-request-fingerprint-'));

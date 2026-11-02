@@ -15,7 +15,7 @@ summary.ja: 安いか速いモデルで複数ショットのプレビュー動�
 
 - 要有分镜脚本或剧本。没有时先按“剧本拆镜头”方法列出镜头，再回到这里。
 - 预演和正式镜头都要付费生成。预演用哪个模型、多长，用 mioon_ask 问一次：选项写成 provider.list 里可用的具体模型和时长，优先便宜或快速的模型和较低的分辨率。
-- 加载 video、scenes 和 canvas 组。用 provider.list 读所选模型的 durations 和 inputModes：预演只用文字生成；正式镜头要用首帧，模型的 inputModes 里要有 image 或 frames。
+- 先用 mioon_tools_load 的 names 按需加载 mioon_provider_list、mioon_shot_create、mioon_generation_submit、mioon_scene_detect、mioon_scene_result_get、mioon_scene_shots_create 和 mioon_shot_update。用 provider.list 读所选模型的 durations 和 inputModes：预演只用文字生成；正式镜头要用首帧，模型的 inputModes 里要有 image 或 frames。
 - 每轮默认最多 30 步。镜头较多时分几轮做：第一轮生成预演并拆成镜头，之后每轮补全并生成一批镜头。
 
 ## 写预演提示词

@@ -18,10 +18,10 @@ import {agentChatHttpStatus,agentChatStreamReason,safeAgentChatError} from './ch
 import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskModelHistoryBudget,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
 import type {TaskGateway,TaskHistoryBudget,TaskModelOutput,TaskModelItem} from './task-gateway-v2.ts';
 import {taskModelUsage} from './task-usage-v2.ts';
-import {assembleRunContext,assembleModelInput,cloneTaskBaseContext,selectTaskModelTools,sourceTaskModelToolNames} from './task-context-v2.ts';
+import {assembleRunContext,assembleModelInput,cloneTaskBaseContext,selectTaskModelTools,sourceTaskModelToolNames,sourceTaskModelToolLoadMode,sourceTaskModelToolLoadInputAllowed} from './task-context-v2.ts';
 import type {TaskModelContextFragment} from './task-context-v2.ts';
 import {collectTaskProjectNotes,collectTaskProjectOverview} from './task-context-observations-v2.ts';
-import {AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,agentTaskToolGroupForName} from './task-tool-groups-v2.ts';
+import {AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolGroupForName} from './task-tool-groups-v2.ts';
 import {agentTaskDisplayTargetReader,projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from './task-display-v2.ts';
 import {readAgentTaskChecks} from './task-checks-v2.ts';
 import type {AgentTaskChecksPreflight} from './task-checks-v2.ts';
@@ -67,6 +67,20 @@ const invalidatedBatchInstructions:Record<AgentTaskLocale,string>={
   en:'The old tool arguments in this batch are no longer valid. Replan from the current saved state.',
   ja:'このバッチの古いツール引数は無効になりました。現在の保存状態から計画し直してください。',
 };
+const userInvalidatedBatchInstructions:Record<'user_rejected'|'user_answered',Record<AgentTaskLocale,string>>={
+  user_rejected:{
+    'zh-Hans':'用户拒绝了此批计划中的一个操作，旧回复剩余调用没有执行。请尊重拒绝并重新规划，不要重放旧参数。',
+    'zh-Hant':'使用者拒絕了此批計畫中的一個操作，舊回覆剩餘呼叫沒有執行。請尊重拒絕並重新規劃，不要重播舊參數。',
+    en:'The user rejected an operation in this batch. Remaining calls from the old response did not run. Respect the refusal and replan instead of replaying old arguments.',
+    ja:'ユーザーがこのバッチの操作を拒否したため、古い応答の残りは実行されませんでした。拒否を尊重し、古い引数を再利用せず計画し直してください。',
+  },
+  user_answered:{
+    'zh-Hans':'用户已回答问题，获知回答以前计划的剩余调用没有执行。请先依据本次回答重新规划，不要重放旧参数。',
+    'zh-Hant':'使用者已回答問題，得知回答以前規劃的剩餘呼叫沒有執行。請先依本次回答重新規劃，不要重播舊參數。',
+    en:'The user answered the question. Remaining calls planned before that answer did not run. Replan from the answer instead of replaying old arguments.',
+    ja:'ユーザーが質問に回答したため、その回答を知る前に計画した残りの呼び出しは実行されませんでした。回答に基づいて計画し直し、古い引数を再利用しないでください。',
+  },
+};
 // X4 follow-up: a changed target set (a shot.reorder after a shot was added or
 // deleted) can leave no saved value to hand back. Mio must reread the project.
 const conflictProjectRereadInstructions:Record<AgentTaskLocale,string>={
@@ -84,10 +98,16 @@ const revisionConflictInstructions:Record<AgentTaskLocale,string>={
   ja:'引数のリビジョンが古いため、このステップは実行されず、何も変更されていません。まず対象を読み直し、現在のリビジョンで変更してください。古い引数を再利用しないでください。',
 };
 const unloadedToolMessages:Record<AgentTaskLocale,string>={
-  'zh-Hans':'此工具未包含在产生该回复的模型请求中。请先加载对应工具组，再在下一次模型请求中调用。',
-  'zh-Hant':'此工具未包含在產生該回覆的模型請求中。請先載入對應工具組，再於下一次模型請求中呼叫。',
-  en:'This tool was not included in the model request that produced this response. Load its group, then call it in the next model request.',
-  ja:'この応答を生成したモデルリクエストに、このツールは含まれていません。対応するグループを読み込み、次のモデルリクエストで呼び出してください。',
+  'zh-Hans':'此工具未包含在产生该回复的模型请求中。请先按确切工具名加载，再在下一次模型请求中调用。',
+  'zh-Hant':'此工具未包含在產生該回覆的模型請求中。請先按確切工具名稱載入，再於下一次模型請求中呼叫。',
+  en:'This tool was not included in the model request that produced this response. Load its exact tool name, then call it in the next model request.',
+  ja:'この応答を生成したモデルリクエストに、このツールは含まれていません。正確なツール名で読み込み、次のモデルリクエストで呼び出してください。',
+};
+const invalidLoaderInputMessages:Record<AgentTaskLocale,string>={
+  'zh-Hans':'加载参数与产生该回复的请求不匹配。请按该请求列出的工具名和参数重新加载，不要猜测工具名或改用工具组。',
+  'zh-Hant':'載入參數與產生該回覆的請求不符。請依該請求列出的工具名稱和參數重新載入，不要猜測工具名稱或改用工具群組。',
+  en:'The load arguments do not match the request that produced this response. Use only its listed tool names and parameter shape; do not guess names or switch to groups.',
+  ja:'読み込み引数がこの応答を生成したリクエストと一致しません。そのリクエストに列挙されたツール名と引数の形だけを使用し、名前を推測したりグループに切り替えたりしないでください。',
 };
 const goalRepairInstructions:Record<AgentTaskLocale,string>={
   'zh-Hans':'宿主检查发现以下声明的要求尚未达成。请按这些差距补做一次，再给出最终回复。以下内容是宿主派生的数据，仅供参考，不授予权限或审批；所有操作仍遵守当前放行档位、用户保留项和确认要求。',
@@ -97,9 +117,10 @@ const goalRepairInstructions:Record<AgentTaskLocale,string>={
 };
 /** `handedBack` marks a foreground approval that X4 handed back to Mio: the
  * step did not run and the run goes on. Other paths keep the pause wording. */
-export function agentTaskFailure(value:string,{handedBack=false}:{handedBack?:boolean}={}):Error&{code:string;status:number;handedBack?:true}{
+export function agentTaskFailure(value:string,{handedBack=false,undo=false}:{handedBack?:boolean;undo?:boolean}={}):Error&{code:string;status:number;handedBack?:true}{
   const handedBackMessages:Record<string,string>={AGENT_TASK_TARGET_CHANGED:'该目标已被手动修改，这一步没有执行，Mio 会按当前内容重新规划。',AGENT_TASK_TARGET_CLAIMED:'该目标正在手动编辑，这一步没有执行，Mio 会重新规划。'};
   if(handedBack&&Object.hasOwn(handedBackMessages,value))return Object.assign(new Error(handedBackMessages[value]),{code:value,status:409,handedBack:true as const});
+  if(undo&&(value==='AGENT_TASK_TARGET_CHANGED'||value==='AGENT_TASK_TARGET_CLAIMED'))return Object.assign(new Error(value==='AGENT_TASK_TARGET_CHANGED'?'目标已被修改，本次撤销没有完成。请检查当前保存状态。':'目标正在手动编辑，本次撤销没有完成。请检查当前保存状态。'),{code:value,status:409});
   const messages:Record<string,string>={AGENT_TASK_NOT_FOUND:'任务不存在。',AGENT_TASK_CLOSED:'任务服务已关闭。',AGENT_TASK_READ_ONLY:'恢复副本中的智能助理任务仅供查看。',AGENT_TASK_STOPPED:'任务已停止，尚未发出的工作已阻断。',AGENT_TASK_INVALID:'任务参数无效。',AGENT_TASK_BUSY:'本项目已有未结束任务，请继续或停止原任务。',AGENT_TASK_CONSENT_REQUIRED:'当前目标、模型和项目任务范围尚未授权，或授权已撤销。',AGENT_TASK_SETTINGS_CHANGED:'连接设置已变化，请重新确认目标和模型。',AGENT_TASK_TARGET_CHANGED:'该目标已被手动修改，任务已暂停。',AGENT_TASK_TARGET_CLAIMED:'该目标正在手动编辑，任务已暂停。',AGENT_TASK_UNKNOWN_RESULT:'上一步结果未知，请先核对原请求。',AGENT_TASK_REVISION_CONFLICT:'任务已被其他窗口更新，请重新读取。',AGENT_TASK_REQUEST_CONFLICT:'此请求标识已用于其他内容。',AGENT_TASK_STORAGE_LIMIT:'Mio 任务历史已达容量上限，已有记录保留，请先检查容量诊断。',AGENT_TASK_STORAGE_UNAVAILABLE:'无法安全读取或保存任务记录。',AGENT_TASK_FAILED:'任务未完成，请检查已保存记录。',AGENT_TASK_PAUSED:'任务已暂停。',AGENT_TASK_APPROVAL_REQUIRED:'此操作需要确认。'};
   return Object.assign(new Error(messages[value]??messages.AGENT_TASK_FAILED),{code:value,status:value==='AGENT_TASK_NOT_FOUND'?404:value==='AGENT_TASK_INVALID'?400:409});
 }
@@ -207,11 +228,11 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
   }
   /** X4: later calls of the same response never run after a handed-back call.
    * The saved flag answers them through the invalidated-batch path. */
-  function invalidateRestOfBatch(runId:string,step:AgentTaskStep):void {
+  function invalidateRestOfBatch(runId:string,step:AgentTaskStep,reason?:'user_rejected'|'user_answered'):void {
     const sourceId=record(step.data)&&typeof step.data.sourceModelStepId==='string'?step.data.sourceModelStepId:undefined;if(!sourceId)return;
     const source=journal.step(sourceId);if(source.runId!==runId||source.kind!=='model')return;
     const calls=modelOutput(source.result).toolCalls,position=calls.findIndex(item=>item.id===step.toolCall?.id);
-    if(position>=0&&position<calls.length-1&&(!record(source.data)||source.data.toolsInvalidated!==true))journal.updateStep(runId,source.id,{data:{...(record(source.data)?source.data:{}),toolsInvalidated:true}});
+    if(position>=0&&position<calls.length-1&&(!record(source.data)||source.data.toolsInvalidated!==true))journal.updateStep(runId,source.id,{data:{...(record(source.data)?source.data:{}),toolsInvalidated:true,...(reason?{toolsInvalidatedReason:reason}:{})}});
   }
   /** X4: a foreground step that meets a conflict before it runs is rejected
    * with the saved values of its conflicting targets, and the run continues.
@@ -283,7 +304,21 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     let step=journal.snapshot(runId).steps.find(item=>record(item.data)&&item.data.sourceModelStepId===source.id&&item.toolCall?.id===call.id);
     if(step&&['completed','rejected','denied','failed'].includes(step.status))return step;
     if(step&&['unknown','dispatch_started'].includes(step.status))throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
+    // A background approval can interrupt an awaited tool while this executor
+    // still holds its earlier source snapshot. Read the saved batch decision
+    // without reconstructing the frozen request or revision baseline.
+    source=journal.step(source.id);
+    if(source.runId!==runId||source.kind!=='model')throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
     const run=fence(runId);
+    // User decisions invalidate the entire suffix before visibility checks or
+    // target preparation. The durable source flag survives a restart; earlier
+    // terminal steps were returned above and never execute again.
+    const invalidatedReason=record(source.data)&&source.data.toolsInvalidated===true?source.data.toolsInvalidatedReason:undefined;
+    if(invalidatedReason==='user_rejected'||invalidatedReason==='user_answered'){
+      const message=userInvalidatedBatchInstructions[invalidatedReason][taskResponseLocale(run.context)];
+      const result={error:{code:invalidatedReason==='user_rejected'?'USER_REJECTED':'USER_ANSWERED',message}};
+      return step?journal.updateStep(runId,step.id,{status:'rejected',result}):{...source,kind:'tool',status:'rejected',toolCall:call,result};
+    }
     if(!run.diagnostic){
       let visible:string[];try{visible=sourceTaskModelToolNames(configuration(run).protocol,source.request);}catch(error){if(storageError(error))failStorage(error);throw error;}
       if(!visible.includes(call.name)){
@@ -295,7 +330,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     }
     if(!step&&record(source.data)&&source.data.toolsInvalidated===true){
       const current=run;let kept=false;
-      try{const pending=toolset().prepare({projectId:current.projectId,operation:call.name,input:call.arguments,beforeTargetRead:target=>assertNotSkipped(current,[{...target,revision:0}])});kept=(pending.referencedTargets??pending.targets).some(target=>current.skippedTargets?.some(item=>item.target.kind===target.kind&&item.target.id===target.id));}
+      try{const pending=toolset().prepare({projectId:current.projectId,operation:call.name,input:call.arguments,...(call.name===AGENT_TASK_TOOLS_LOAD_NAME?{toolLoadMode:sourceTaskModelToolLoadMode(configuration(current).protocol,source.request)}:{}),beforeTargetRead:target=>assertNotSkipped(current,[{...target,revision:0}])});kept=(pending.referencedTargets??pending.targets).some(target=>current.skippedTargets?.some(item=>item.target.kind===target.kind&&item.target.id===target.id));}
       catch(error){if(storageError(error))throw error;if(code(error)==='AGENT_TASK_TARGET_SKIPPED')kept=true;}
       return {...source,kind:'tool',status:kept?'denied':'rejected',toolCall:call,result:{error:{code:kept?'TARGET_SKIPPED':'TARGET_CHANGED',message:kept?skippedMessage(current):invalidatedBatchInstructions[taskResponseLocale(current.context)]}}};
     }
@@ -305,7 +340,12 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     if(run.diagnostic&&(run.diagnostic.profile!=='read_only'||!runTools(run).some(tool=>tool.name===call.name)))throw agentTaskFailure('AGENT_TASK_DIAGNOSTIC_TOOL_FORBIDDEN');
     if(!step){const explanation=taskToolExplanation(modelOutput(source.result),call.id);step=journal.beginStep(runId,{kind:'tool',toolCall:call,...(explanation?{text:explanation}:{}),data:{sourceModelStepId:source.id,...repairStepData(source)}});}
     try {
-      prepared=toolset().prepare({projectId:run.projectId,operation:call.name,input:call.arguments,beforeTargetRead:target=>assertNotSkipped(journal.run(runId),[{...target,revision:0}])});
+      const protocol=configuration(run).protocol;
+      if(call.name===AGENT_TASK_TOOLS_LOAD_NAME&&!sourceTaskModelToolLoadInputAllowed(protocol,source.request,call.arguments)){
+        const message=invalidLoaderInputMessages[taskResponseLocale(run.context)];
+        return journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:'VALIDATION_ERROR',message}},error:{code:'VALIDATION_ERROR',message}});
+      }
+      prepared=toolset().prepare({projectId:run.projectId,operation:call.name,input:call.arguments,...(call.name===AGENT_TASK_TOOLS_LOAD_NAME?{toolLoadMode:sourceTaskModelToolLoadMode(protocol,source.request)}:{}),beforeTargetRead:target=>assertNotSkipped(journal.run(runId),[{...target,revision:0}])});
       if(['asset.importSelected','lut.importSelected'].includes(prepared.operation)&&(!Array.isArray(run.attachments)||!run.attachments.includes(String(prepared.input.handle))))throw agentTaskFailure('AGENT_TASK_CONSENT_REQUIRED');
       assertNotSkipped(journal.run(runId),prepared.referencedTargets??prepared.targets);
       if(step.targets&&!isDeepStrictEqual(step.targets,prepared.targets)){
@@ -631,6 +671,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         const step=journal.step(request.stepId);
         if(step.runId!==runId||step.kind!=='tool'||step.status!=='awaiting_answer'||step.toolCall?.name!==AGENT_TASK_ASK_TOOL)throw agentTaskFailure('AGENT_TASK_INVALID');
         journal.updateStep(runId,step.id,{status:'completed',result:answerResult(step,request)});
+        invalidateRestOfBatch(runId,journal.step(step.id),'user_answered');
         journal.resume(runId,journal.run(runId).revision,{extendBudget:false});
         return {state:'completed',stepId:step.id};
       }
@@ -657,6 +698,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         if(request.action==='approve'){authorize(run);assertNotSkipped(run,referencedTargets(step));journal.assertTargets(projectId,background?dispatchTargets(step):step.targets??[]);}
         if(background){journal.updateStep(runId,step.id,{data:{...(record(step.data)?step.data:{}),backgroundApprovalRequired:false,...(request.action==='approve'?{approvalDigest:approvalDigest(step)}:{backgroundDenied:true})}});if(request.action==='deny')cancelBackgroundSteps.push(step.id);}
         else journal.updateStep(runId,step.id,{status:request.action==='approve'?'intent':'rejected',data:{...(record(step.data)?step.data:{}),...(request.action==='approve'?{approvalDigest:approvalDigest(step)}:{})},...(request.action==='deny'?{result:{error:{code:'USER_REJECTED',message:'用户拒绝了此操作。'}}}:{})});
+        if(request.action==='deny')invalidateRestOfBatch(runId,journal.step(step.id),'user_rejected');
         journal.resume(runId,journal.run(runId).revision,{extendBudget:false});
       }else if(request.action==='resolve_unknown'){
         if(!request.stepId)throw agentTaskFailure('AGENT_TASK_INVALID');const step=journal.step(request.stepId);if(step.runId!==runId||step.status!=='unknown')throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
@@ -665,7 +707,14 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           const prepared=toolset().prepare({projectId,operation:step.toolCall.name,input:step.toolCall.arguments}),result=toolset().recoverWait(prepared);
           if(result===null)throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');journal.updateStep(runId,step.id,{status:'completed',result});
         }else if(step.toolCall&&request.resolution==='discard'){
-          const prepared=toolset().prepare({projectId,operation:step.toolCall.name,input:step.toolCall.arguments}),proof=toolset().recoverLocalUnknown(prepared,{runId,stepId:step.id,requestId:step.id});
+          let toolLoadMode:'names'|'groups'|undefined;
+          if(step.toolCall.name===AGENT_TASK_TOOLS_LOAD_NAME){
+            const sourceId=record(step.data)&&typeof step.data.sourceModelStepId==='string'?step.data.sourceModelStepId:undefined;
+            if(!sourceId)throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
+            const source=journal.step(sourceId);if(source.runId!==runId||source.kind!=='model')throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
+            toolLoadMode=sourceTaskModelToolLoadMode(configuration(run).protocol,source.request);
+          }
+          const prepared=toolset().prepare({projectId,operation:step.toolCall.name,input:step.toolCall.arguments,...(toolLoadMode?{toolLoadMode}:{})}),proof=toolset().recoverLocalUnknown(prepared,{runId,stepId:step.id,requestId:step.id});
           if(!proof)throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');journal.updateStep(runId,step.id,{status:'failed',result:{...proof,error:{code:'UNKNOWN_NOT_APPLIED',message:'已核对原子回执，旧步骤未提交。请重新读取当前状态后规划，不要重放旧参数。'}}});
           const sourceId=record(step.data)&&typeof step.data.sourceModelStepId==='string'?step.data.sourceModelStepId:undefined;
           if(sourceId){const source=journal.step(sourceId);if(source.runId!==runId||source.kind!=='model'||source.status!=='completed')throw agentTaskFailure('AGENT_TASK_STATE_CONFLICT');journal.updateStep(runId,source.id,{data:{...(record(source.data)?source.data:{}),toolsInvalidated:true}});}
@@ -720,9 +769,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           const handBack=()=>{handBackConflict(runId,step.id,failure,journal.conflictingTargets(projectId,dispatchTargets(step)));journal.resume(runId,journal.run(runId).revision,{extendBudget:false});};
           if(store.db.isTransaction)handBack();else store.tx(handBack);handedBack=true;
         }else{
-          // Background approvals and undo keep the conflict pause.
+          // Background approvals may pause; an undo of a terminal run stays terminal.
           if(step)rememberConflict(runId,step.id,journal.conflictingTargets(projectId,dispatchTargets(step)));
-          pause(runId,failure==='AGENT_TASK_TARGET_CHANGED'?'conflict':'editing');
+          if(!undo)pause(runId,failure==='AGENT_TASK_TARGET_CHANGED'?'conflict':'editing');
         }
       }
       if(storageError(error))failStorage(error);
@@ -730,6 +779,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       // Background work this run held for approval is queued again with the run.
       if(handedBack&&journal.run(runId).status==='running'){resumeAgentTaskJobs(store.db,runId);launch(runId);}
       if(handedBack)throw agentTaskFailure(failure,{handedBack:true});
+      if(undo&&(failure==='AGENT_TASK_TARGET_CHANGED'||failure==='AGENT_TASK_TARGET_CLAIMED'))throw agentTaskFailure(failure,{undo:true});
       throw error;
     }
   }

@@ -22,10 +22,29 @@ import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2
 import {schemas} from '../packages/contracts/src/index.ts';
 import {taskToolWireSchema} from '../packages/business/src/agent/task-tool-wire-schema.ts';
 import {AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
-import {agentChatAllowsNaturalEof} from '../packages/business/src/agent/model-profiles.ts';
+import {agentChatAllowsNaturalEof,agentReadToolProfile} from '../packages/business/src/agent/model-profiles.ts';
 import {nativeAnthropicEvents,nativeAnthropicSse} from './helpers/anthropic-native-events.ts';
 
 const definitions=[{name:'mioon_shot_create',description:'Create a saved shot',parameters:{type:'object',properties:{title:{type:'string'}},required:['title'],additionalProperties:false}}];
+test('ordinary requests allow multiple calls only through documented protocol controls; diagnostics keep their original controls',()=>{
+  for(const preset of AGENT_PRESETS)for(const protocol of preset.availableProtocols){
+    const platform=preset.platforms.find(item=>item.baseUrl)??preset.platforms[0]!;
+    const configuration:AgentConfiguration={presetId:preset.id,platformId:platform.id,protocol,
+      baseUrl:protocol==='anthropic_messages'&&preset.id==='ollama'?new URL(platform.baseUrl).origin:platform.baseUrl||'https://example.com/v1',
+      model:(protocol==='responses'?preset.supportedModelHints?.responses?.[0]:undefined)||platform.model||'synthetic-mio'};
+    const regular=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'Only independent short tool calls'}],definitions,4318,{toolLoading:true})) as Record<string,unknown>;
+    const diagnostic=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'Only independent short tool calls'}],definitions,4318)) as Record<string,unknown>;
+    const label=`${preset.id}/${protocol}`;
+    if(protocol==='anthropic_messages'){
+      assert.deepEqual(regular.tool_choice,{type:'auto',disable_parallel_tool_use:false},label);
+      assert.deepEqual(diagnostic.tool_choice,{type:'auto',disable_parallel_tool_use:true},label);
+    }else{
+      const supported=agentReadToolProfile(configuration).parallel;
+      assert.equal(regular.parallel_tool_calls,supported?true:undefined,label);
+      assert.equal(diagnostic.parallel_tool_calls,supported?false:undefined,label);
+    }
+  }
+});
 test('stream diagnostics retain only trusted closed reasons and bounded state, never copied properties or causes',()=>{
   const failure=agentChatStreamError('missing_done',{finishReason:'tool_calls',done:false,frameCount:3,toolCount:2,outputBytes:6});
   assert.equal(agentChatStreamReason(failure),'missing_done');
@@ -142,16 +161,29 @@ for(const protocol of ['chat_completions','responses','anthropic_messages'] as c
     assert.ok(result);for(const call of result.toolCalls)assert.deepEqual(call.arguments,{title:'Saved shot',_mio_step:'Create a saved test shot'});
     assert.equal(f.requests[0]!.rawBody,requestBody);
   });
-  test(`${protocol}: group guidance is an explicit normal-run option in each language`,()=>{
+  test(`${protocol}: name loading and short independent batch guidance are explicit normal-run options in each language`,()=>{
+    const requiredRules={
+      'zh-Hans':['按确切名称','互不依赖、参数短','前一调用结果或新 ID','下一次回复','参数长的调用单独一次回复','提问放在一次回复的最后'],
+      'zh-Hant':['按確切名稱','互不依賴、參數短','前一呼叫結果或新 ID','下一次回覆','參數長的呼叫單獨一次回覆','提問放在一次回覆的最後'],
+      en:['exact tool names','independent calls with short arguments','previous result or new ID','next response','long arguments its own response','Put a question last'],
+      ja:['正確な名前','互いに依存せず引数が短い','前の結果や新しい ID','次の応答','引数が長い呼び出しは単独','質問は応答の最後'],
+    };
     for(const locale of AGENT_TASK_LOCALES){
       const configuration={...DEFAULT_AGENT_CONFIGURATION,protocol},history=[taskResponseLanguageContext(locale),{role:'user',content:'Synthetic request'}];
       const previous=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>;
       const normal=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318,{toolLoading:true})) as Record<string,unknown>;
       const instruction=(body:Record<string,unknown>)=>protocol==='chat_completions'?(body.messages as {content:string}[])[0]!.content:String(protocol==='responses'?body.instructions:body.system);
       assert.ok(!instruction(previous).includes('mioon_tools_load'));assert.ok(instruction(normal).startsWith(instruction(previous)+' '));assert.ok(instruction(normal).includes('mioon_tools_load'));
+      for(const fragment of requiredRules[locale])assert.ok(instruction(normal).includes(fragment),`${protocol}/${locale}: ${fragment}`);
       const field=protocol==='chat_completions'?'messages':protocol==='responses'?'instructions':'system';
       const {...rest}=normal;if(field==='messages')rest.messages=(normal.messages as unknown[]).slice(1);else delete rest[field];
       const {...oldRest}=previous;if(field==='messages')oldRest.messages=(previous.messages as unknown[]).slice(1);else delete oldRest[field];
+      if(protocol==='anthropic_messages'){
+        assert.deepEqual(oldRest.tool_choice,{type:'auto',disable_parallel_tool_use:true});
+        oldRest.tool_choice={type:'auto',disable_parallel_tool_use:false};
+      }else{
+        assert.equal(oldRest.parallel_tool_calls,false);oldRest.parallel_tool_calls=true;
+      }
       assert.deepEqual(rest,oldRest);
       const loader={name:AGENT_TASK_TOOLS_LOAD_NAME,description:AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS.en,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS};
       const localized=JSON.parse(buildTaskModelRequest(configuration,history,[loader],4318,{toolLoading:true})) as {tools:Array<{description?:string;function?:{description:string}}>};

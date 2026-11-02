@@ -92,7 +92,10 @@ function metadata(stats:ResultStats,locale:AgentTaskLocale,kept:Pick<Preview,'by
  * bounded view; an under-limit result retains its exact value and key order. */
 export function taskToolResultView(result:AgentTaskJson,locale:AgentTaskLocale,limitBytes:number):AgentTaskJson{
   if(!Number.isSafeInteger(limitBytes)||limitBytes<1)throw new RangeError('Invalid tool-result view byte limit.');
-  const stats=resultStats(result);if(stats.bytes<=limitBytes)return result;
+  return resultView(result,locale,limitBytes,resultStats(result));
+}
+function resultView(result:AgentTaskJson,locale:AgentTaskLocale,limitBytes:number,stats:ResultStats):AgentTaskJson{
+  if(stats.bytes<=limitBytes)return result;
   const empty={bytes:0,values:0,characters:0};
   const reserve=bytes({_mio_view:metadata(stats,locale,empty),value:null})-4;
   if(reserve+4>limitBytes)throw new RangeError('The tool-result view byte limit cannot hold omission metadata.');
@@ -103,7 +106,41 @@ export function taskToolResultView(result:AgentTaskJson,locale:AgentTaskLocale,l
 /** Stubs always describe the supplied complete raw result. Caller-provided JSON
  * resembling _mio_view is never trusted as host metadata or original size. */
 export function taskToolResultStub(result:AgentTaskJson,locale:AgentTaskLocale,toolName?:string):AgentTaskJson{
-  const stats=resultStats(result);
+  return resultStub(locale,resultStats(result),toolName);
+}
+function resultStub(locale:AgentTaskLocale,stats:ResultStats,toolName?:string):AgentTaskJson{
   return {_mio_view:metadata(stats,locale,{bytes:0,values:0,characters:0},true),
     ...(toolName&&/^[-A-Za-z0-9_]{1,64}$/u.test(toolName)?{toolName}:{})};
+}
+
+// Only public host control codes survive a batch's smallest view. Provider
+// messages, arbitrary strings and result-supplied metadata are not copied.
+const batchControlCodes=new Set(['VALIDATION_ERROR','REVISION_CONFLICT','TARGET_CHANGED','TARGET_EDITING','TARGET_SKIPPED','TOOL_NOT_LOADED','USER_REJECTED','USER_ANSWERED','DIAGNOSTIC_NOT_EXECUTED','AGENT_TASK_INVALID','AGENT_TASK_INVALID_TARGET','AGENT_TASK_TARGET_CHANGED','AGENT_TASK_TARGET_CLAIMED','AGENT_TASK_FAILED','completed','rejected','denied','failed']);
+const batchControlStatuses=new Set(['completed','rejected','denied','failed','not_applied']);
+function batchControlFacts(result:AgentTaskJson):Record<string,AgentTaskJson>{
+  if(result===null||typeof result!=='object'||Array.isArray(result))return {};
+  const facts:Record<string,AgentTaskJson>={},error=result.error;
+  if(error!==null&&typeof error==='object'&&!Array.isArray(error)&&typeof error.code==='string'&&batchControlCodes.has(error.code))facts.error={code:error.code};
+  if(typeof result.status==='string'&&batchControlStatuses.has(result.status))facts.status=result.status;
+  return facts;
+}
+
+/** Repeated batch allocation counts the complete raw result only once. The
+ * original per-result view stays exact when the batch does not need shrinking.
+ * Smaller views retain bounded host control facts separately from the preview;
+ * omission counts still describe the raw payload, never derived metadata. */
+export function createTaskToolResultViewProjector(result:AgentTaskJson,locale:AgentTaskLocale,limitBytes:number,toolName?:string):Readonly<{full:AgentTaskJson;stub:AgentTaskJson;view:(bytes:number)=>AgentTaskJson}>{
+  if(!Number.isSafeInteger(limitBytes)||limitBytes<1)throw new RangeError('Invalid tool-result view byte limit.');
+  const stats=resultStats(result),facts=batchControlFacts(result),reserve=Object.keys(facts).length?bytes(facts)-1:0;
+  const error=result!==null&&typeof result==='object'&&!Array.isArray(result)?result.error:undefined;
+  const previewSource=error!==null&&typeof error==='object'&&!Array.isArray(error)?{...(result as Record<string,AgentTaskJson>),error:facts.error??{}}:result;
+  const view=(budget:number):AgentTaskJson=>{
+    if(!Number.isSafeInteger(budget)||budget<1||budget>limitBytes)throw new RangeError('Invalid tool-result view byte limit.');
+    if(stats.bytes<=budget)return result;
+    if(budget<=reserve)throw new RangeError('The tool-result view byte limit cannot hold control facts.');
+    const projected=resultView(previewSource,locale,budget-reserve,stats);
+    if(projected===null||typeof projected!=='object'||Array.isArray(projected))throw new TypeError('A truncated result must carry host metadata.');
+    return {...projected,...facts};
+  };
+  return {full:resultView(result,locale,limitBytes,stats),stub:{...(resultStub(locale,stats,toolName) as Record<string,AgentTaskJson>),...facts},view};
 }
