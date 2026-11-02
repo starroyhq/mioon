@@ -1,8 +1,4 @@
-import {installWorkspaceEnvelopeRuntime} from './workspace-envelope-runtime.ts';
-import {createWorkspaceRestoreProfileV41} from './workspace-restore-schema-v41.ts';
-import {schemas} from '../../contracts/src/index.ts';
-import {isTimelineRecord} from '../../contracts/src/timeline-replacement.ts';
-import {isTimelineRenderRecord,TIMELINE_RENDER_RESPONSE_BYTES} from '../../contracts/src/timeline-acknowledgement.ts';
+import './workspace-envelope-startup.ts';
 import {DatabaseSync} from 'node:sqlite';
 import type {SQLInputValue} from 'node:sqlite';
 import {isAsyncFunction,isPromise} from 'node:util/types';
@@ -13,6 +9,8 @@ import {initializeWorkspaceSchemaThrough24} from './workspace-fixed-schema.ts';
 import {validateWorkspaceRestoreSchema,detectWorkspaceRestoreEvidence,classifyWorkspaceSchema,installWorkspaceRestoreSchema} from './workspace-restore-schema.ts';
 import {createWorkspaceSchemaDispatch} from './workspace-schema-dispatch.ts';
 import type {WorkspaceSchemaReader} from './workspace-schema-profile.ts';
+import {isProjectDatabase} from './project-file/connection.ts';
+import {isProjectStore,registerProjectTransactionFence,registerProjectTransactionObserver} from './project-file/store.ts';
 export {validateCurrentWorkspaceColourProfile} from './workspace-schema-dispatch.ts';
 
 /** Read contract of an opened workspace. Values cross this boundary as parsed
@@ -29,9 +27,13 @@ export interface WorkspaceStore {
 /** Backend-owned transaction observers run inside the domain transaction. An
  * observer failure rolls back both domain rows and its journal writes. */
 const transactionFences=new WeakMap<DatabaseSync,Set<()=>void>>();
-export function registerWorkspaceTransactionFence(db:DatabaseSync,fence:()=>void):()=>void{let set=transactionFences.get(db);if(!set){set=new Set();transactionFences.set(db,set);}set.add(fence);return ()=>{set?.delete(fence);};}
+export function registerWorkspaceTransactionFence(db:DatabaseSync,fence:()=>void):()=>void{
+ if(isProjectDatabase(db))return registerProjectTransactionFence(db,fence);
+ let set=transactionFences.get(db);if(!set){set=new Set();transactionFences.set(db,set);}set.add(fence);return ()=>{set?.delete(fence);};
+}
 const transactionObservers=new WeakMap<DatabaseSync,Set<(result:unknown)=>void>>();
 export function registerWorkspaceTransactionObserver(db:DatabaseSync,observer:(result:unknown)=>void):()=>void{
+ if(isProjectDatabase(db))return registerProjectTransactionObserver(db,observer);
  let observers=transactionObservers.get(db);if(!observers){observers=new Set();transactionObservers.set(db,observers);}observers.add(observer);
  return ()=>{observers?.delete(observer);};
 }
@@ -62,14 +64,6 @@ const sqlValue=(value:unknown):SQLInputValue=>{
   throw new TypeError('Workspace row values must be SQLite primitives');
 };
 
-// Actual legacy predicates are assembled before any workspace can be opened.
-const envelopeRestored41=createWorkspaceRestoreProfileV41(initializeWorkspaceSchemaThrough24);
-installWorkspaceEnvelopeRuntime({isTimelineRecord,isTimelineRenderRecord,
- timelineRenderResponseBytes:TIMELINE_RENDER_RESPONSE_BYTES,
- validateClipIntent:(operation,value)=>schemas[operation].safeParse(value).success,
- classify40Or41:envelopeRestored41.classifyWorkspaceSchemaV40V41,
- validateRestored41:envelopeRestored41.validateWorkspaceRestoreSchemaV41});
-
 const workspaceSchemas=createWorkspaceSchemaDispatch({initializeThrough24:initializeWorkspaceSchemaThrough24,
  detectRestoreEvidence:detectWorkspaceRestoreEvidence,classify:classifyWorkspaceSchema,
  install:installWorkspaceRestoreSchema,validate:validateWorkspaceRestoreSchema});
@@ -84,6 +78,10 @@ export const validateCurrentWorkspaceRestoreSchema=workspaceSchemas.validateRest
 const exclusiveOwners=new WeakMap<DatabaseSync,{root: string; lease: Readonly<{isOwned:()=>boolean;release:()=>boolean}>; active: boolean}>();
 const verifiedStores=new WeakMap<StoreIdentity,{db: DatabaseSync; root: string; profile: WorkspaceRestoreContext | null}>();
 export function getWorkspaceRestoreContext(store: StoreIdentity | null | undefined): WorkspaceRestoreContext | null {
+ // A kernel store is not a restored workspace. Its exact, live capability is
+ // the proof: never run a format-72 absence check against the attached layout.
+ if(isProjectStore(store))return null;
+ if(store&&isProjectDatabase(store.db))return storeUnverified();
  const verified=store?verifiedStores.get(store):undefined,db=store?.db;
  // Ordinary wrappers and established direct native-DB consumers remain valid.
  // Always bypass caller-overridden methods for this absence proof. A copied or
@@ -96,6 +94,7 @@ export function getWorkspaceRestoreContext(store: StoreIdentity | null | undefin
  return verified.profile;
 }
 export function ownsStoreLock(store: StoreIdentity | null | undefined): boolean {
+ if(isProjectStore(store))return true;
  const db=store?.db,owner=db?exclusiveOwners.get(db):undefined;
  if(!owner||!db||!owner.active||store?.root!==owner.root||db.isOpen!==true)return false;
  if(owner.lease.isOwned())return true;

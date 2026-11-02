@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {imageEditFields} from './images/edit-source.ts';
 import {validateComfyReceiptOwnership} from './comfy/ownership.ts';
@@ -79,7 +80,7 @@ export function createImageOwnershipReader(db: DatabaseSync,projectId: string,{c
   let parsed: unknown;try{parsed=JSON.parse(value);}catch{reject();}
   const result=schema.safeParse(parsed);if(!result.success)reject();return result.data;
  }
- const available=Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_versions'").get());
+ const available=isProjectLayout(db)||Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_versions'").get());
  if(!available&&db.prepare('SELECT 1 FROM schema_version WHERE version=16').get())reject();
  const groups=new Map<string,ImageGroup>(),tasks=new Map<string,ImageTaskView>(),versions=new Map<string,ImageVersionResponse>(),validatedTasks=new Set<string>();
  const checkSource=(value: ImageTaskView): ImageTaskView=>{if(property(value.input,'purpose')!=='edit'||validatedTasks.has(value.row.id))return value;try{(validateSource??((taskId: string)=>createOwnedMediaGraphReader(db,projectId).imageTask(taskId)))(value.row.id);validatedTasks.add(value.row.id);return value;}catch{reject();}};
@@ -87,7 +88,21 @@ export function createImageOwnershipReader(db: DatabaseSync,projectId: string,{c
   const cached=groups.get(id);if(cached)return cached;
   const raw=db.prepare(`SELECT ${groupColumns} FROM image_groups WHERE id=? LIMIT 1`).get(id);consume(raw?JSON.stringify(raw):'');
   if(!raw||!imageGroupResponseSchema.safeParse(raw).success||raw.id!==id||raw.projectId!==projectId)reject();
-  const row=raw as unknown as ImageGroup;groups.set(id,row);return row;
+  let row=raw as unknown as ImageGroup;
+  // A project received from elsewhere retains its last task ID, but the task
+  // journal is local. Reads stay noncreating; the next accepted generation's
+  // existing CAS update replaces this stale pointer atomically.
+  if(isProjectLayout(db)&&row.activeTaskId){
+   const active=db.prepare('SELECT projectId,groupId FROM image_tasks WHERE id=? LIMIT 1').get(row.activeTaskId);
+   if(active){if(active.projectId!==projectId||active.groupId!==row.id)reject();}
+   else{
+    // The removed content-to-history FK permits foreign task IDs, not a
+    // conflicting local task or a lost pointer to unfinished local work.
+    if(db.prepare(`SELECT 1 FROM image_tasks WHERE groupId=? AND state IN (${IMAGE_UNRESOLVED_STATES.map(()=>'?').join(',')}) LIMIT 1`).get(row.id,...IMAGE_UNRESOLVED_STATES))reject();
+    row={...row,activeTaskId:null};
+   }
+  }
+  groups.set(id,row);return row;
  }
  function task(id: string,{shallow=false}: {shallow?: boolean}={}): ImageTaskView {
   const cached=tasks.get(id);if(cached)return shallow?cached:checkSource(cached);

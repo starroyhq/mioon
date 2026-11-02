@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
+import {registerHooks} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
 import type {SQLOutputValue} from 'node:sqlite';
 import {
@@ -54,6 +55,38 @@ test('generated schema files equal a fresh derivation from the format-72 workspa
     'packages/business/src/project-file/schema/manifest.ts',
   ]);
   assert.deepEqual(staleDerivedFiles(files), [], 'run `node tests/helpers/project-file-schema-derivation.ts --write`');
+});
+
+test('the fixed format-72 source does not load the public opener or project-file connection', async () => {
+  const forbidden = new Set(['db.ts', 'project-file/store.ts', 'project-file/connection.ts'].map(file =>
+    new URL(`../packages/business/src/${file}`, import.meta.url).pathname));
+  let refused = 0;
+  const hooks = registerHooks({resolve(specifier, context, nextResolve) {
+    const resolved = nextResolve(specifier, context);
+    if (forbidden.has(new URL(resolved.url).pathname)) {
+      refused++;
+      throw Object.assign(new Error('Format-72 derivation must use fixed historical constructors'), {code: 'FORMAT72_OPENER_FORBIDDEN'});
+    }
+    return resolved;
+  }});
+  try {
+    // Prove the guard is active, then load a fresh reader rather than rely on
+    // the helper already imported above. Its output-side schema imports stay
+    // available; the historical source must never open those databases.
+    const openerUrl = new URL('../packages/business/src/db.ts?format72-guard', import.meta.url);
+    await assert.rejects(import(openerUrl.href), {code: 'FORMAT72_OPENER_FORBIDDEN'});
+    const readerUrl = new URL('./helpers/project-file-schema-derivation.ts?fixed-format72', import.meta.url);
+    const reader = await import(readerUrl.href) as {readFormat72: typeof readFormat72};
+    const source = reader.readFormat72();
+    assert.equal(refused, 1, 'only the explicit guard probe reached a forbidden opener');
+    assert.deepEqual(source, derivation().format72, 'creation order, SQL and table details remain the fixed source');
+    assert.equal(source.version, 72);
+    assert.equal(source.tables.has('schema_version'), true);
+    assert.equal(source.tables.has('project_file'), false);
+    assert.equal(source.tables.has('history_state'), false);
+  } finally {
+    hooks.deregister();
+  }
 });
 
 test('table placement lists every kept, application and removed table once', () => {

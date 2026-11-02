@@ -3,7 +3,7 @@ import {isAsyncFunction, isPromise} from 'node:util/types';
 import type {ProjectStore as ProjectStoreContract} from '../../../contracts/src/project-file.ts';
 // Types only: db.ts is going to open its stores through this kernel.
 import type {WorkspaceStore} from '../db.ts';
-import {createProjectFile, openProjectConnection} from './connection.ts';
+import {createProjectFile, isProjectDatabase, openProjectConnection} from './connection.ts';
 import type {CreateProjectFileOptions, OpenProjectConnectionOptions} from './connection.ts';
 
 /** The contract's project store with the read and write surface of today's
@@ -11,6 +11,20 @@ import type {CreateProjectFileOptions, OpenProjectConnectionOptions} from './con
  * begins with a deferred BEGIN, and tx and put refuse to write once the
  * project file alone was moved, see below). */
 export interface ProjectStore extends WorkspaceStore, ProjectStoreContract<DatabaseSync> {}
+
+// Only the exact store returned by this kernel has this capability. Copying
+// its public fields (even the native connection) must not manufacture a store
+// identity for the workspace compatibility boundary.
+const verifiedStores = new WeakMap<object, {readonly connection: ReturnType<typeof openProjectConnection>; readonly isClosed: () => boolean}>();
+export function isProjectStore(value: unknown): value is ProjectStore {
+  if (value === null || typeof value !== 'object') return false;
+  const verified = verifiedStores.get(value);
+  if (!verified || verified.isClosed()) return false;
+  const store = value as ProjectStore, connection = verified.connection;
+  return isProjectDatabase(connection.db) && store.db === connection.db && store.root === connection.projectDir
+    && store.projectId === connection.projectId && store.projectFile === connection.projectFile && store.projectDir === connection.projectDir
+    && store.localDir === connection.localDir && store.cacheDir === connection.cacheDir && store.tempDir === connection.tempDir;
+}
 
 /** Backend-owned transaction fences run first inside every store transaction,
  * observers last before its commit; an observer failure rolls back both domain
@@ -109,12 +123,14 @@ export function openProjectStore(options: OpenProjectConnectionOptions): Project
     connection.close();
     closed = true;
   };
-  return {
+  const store: ProjectStore = {
     db: database, root: connection.projectDir,
     projectId: connection.projectId, projectFile: connection.projectFile, projectDir: connection.projectDir,
     localDir: connection.localDir, cacheDir: connection.cacheDir, tempDir: connection.tempDir, historyState: connection.historyState,
     get, list, put, tx, close,
   };
+  verifiedStores.set(store, {connection, isClosed: () => closed});
+  return store;
 }
 
 /** Creates the project file (never replacing one), then opens it. */

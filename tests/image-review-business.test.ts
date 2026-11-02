@@ -35,7 +35,7 @@ function fixture(t: import('node:test').TestContext, options: Record<string, unk
   let store = (openStore(root) as unknown as TypedStore), settings = {revision: 1, enabled: true, destination: IMAGE_REVIEW_DESTINATION};
   store.tx(() => migrateImageReviewSchema(store.db));
   const projectId = randomUUID(), otherProjectId = randomUUID();
-  for (const id of [projectId, otherProjectId]) store.put('projects', {id, name: 'Review fixture'});
+  store.put('projects', {id: projectId, name: 'Review fixture'});
   const getSettings = () => settings;
   let reviews = createImageReviewServices(store, {getSettings, ...options});
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
@@ -96,7 +96,7 @@ test('prepare is retained exact local intent; no approval, task, receipt, or POS
   }
   assert.equal(rows(f.store.db), before); assert.equal(changes(f.store.db), count);
   for (const patch of [{prompt: 'Changed intent'}, {projectId: f.otherProjectId}, {name: 'Changed name'}])
-    assert.throws(() => f.prepare({...input, ...patch}), code('IMAGE_REVIEW_CONFLICT'));
+    assert.throws(() => f.prepare({...input, ...patch}), code('projectId' in patch ? 'IMAGE_REVIEW_NOT_FOUND' : 'IMAGE_REVIEW_CONFLICT'));
   f.configure({revision: 2});
   assert.throws(() => f.prepare(input), code('IMAGE_REVIEW_CONFLICT'));
   assert.deepEqual(f.reviews.handlers['image.review.prepare']({input, settingsRevision: 1}), value);
@@ -207,7 +207,7 @@ test('project isolation, cursor scope and restart expiration are read-only and b
   const before = rows(f.store.db), count = changes(f.store.db);
   assert.throws(() => f.reviews.handlers['image.review.get']({projectId: f.otherProjectId, reviewId: created[0].id}), code('IMAGE_REVIEW_NOT_FOUND'));
   for (const patch of [{projectId: f.otherProjectId}, {limit: 1}, {cursor: `${page.nextCursor}x`}])
-    assert.throws(() => f.reviews.handlers['image.review.list']({...query, cursor: page.nextCursor, ...patch}), code('INVALID_CURSOR'));
+    assert.throws(() => f.reviews.handlers['image.review.list']({...query, cursor: page.nextCursor, ...patch}), code('projectId' in patch ? 'IMAGE_REVIEW_NOT_FOUND' : 'INVALID_CURSOR'));
   assert.equal(rows(f.store.db), before); assert.equal(changes(f.store.db), count);
   f.restart(); assert.throws(() => f.reviews.handlers['image.review.list']({...query, cursor: page.nextCursor}), code('INVALID_CURSOR'));
   assert.deepEqual(f.get(created[0]), created[0]);
@@ -219,6 +219,7 @@ test('bounded retained capacity rejects new review but exact existing intent rem
   const before = rows(f.store.db);
   assert.throws(() => f.prepare(f.input()), code('IMAGE_REVIEW_CAPACITY'));
   assert.deepEqual(f.prepare(input), first); assert.equal(rows(f.store.db), before);
+  f.store.put('projects', {id: f.otherProjectId, name: 'Review fixture'});
   const foreign = f.prepare(generation(f.otherProjectId)); assert.equal(foreign.projectId, f.otherProjectId);
 });
 
@@ -249,7 +250,10 @@ test('review identity, exact canonical intent and reservations cannot be replace
 });
 
 test('non-owner may inspect but cannot prepare, approve, reject or consume a POST fence', t => {
-  const f = fixture(t), input = f.input(), value = f.prepare(input), observer = (openStore(f.root, {lock: false}) as unknown as TypedStore);
+  const f = fixture(t), input = f.input(), value = f.prepare(input);
+  // A second connection to the project opens only once the owner has closed it.
+  f.store.close();
+  const observer = (openStore(f.root, {lock: false}) as unknown as TypedStore);
   t.after(() => observer.close());
   const service = createImageReviewServices(observer, {getSettings: () => ({revision: 1, enabled: true, destination: IMAGE_REVIEW_DESTINATION})});
   assert.deepEqual(service.handlers['image.review.get']({projectId: f.projectId, reviewId: value.id}), value);

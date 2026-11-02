@@ -1,5 +1,5 @@
 import {isDeepStrictEqual} from 'node:util';
-import {agentTaskPolicySchema} from '../../../contracts/src/agent-tasks-v2.ts';
+import {agentTaskPolicySchema, DEFAULT_AGENT_TASK_POLICY} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskPolicy} from '../../../contracts/src/agent-tasks-v2.ts';
 import {isProjectId, projectIdSchema} from '../../../contracts/src/project-file.ts';
 import {
@@ -23,9 +23,12 @@ const decode = (data: unknown): unknown => JSON.parse(String(data));
 export interface AgentPolicyStore {
   read(): AgentTaskPolicy | null;
   readRequest(requestId: string): {readonly digest: string; readonly policy: AgentTaskPolicy} | null;
-  /** One transaction: the policy and, with a request, its receipt. A receipt
-   * is never replaced (AGENT_POLICY_REQUEST_EXISTS), changed or deleted. */
-  write(policy: AgentTaskPolicy, request?: {readonly requestId: string; readonly digest: string}): void;
+  /** One transaction: optional revision CAS, the policy and its receipt. A receipt
+   * is never replaced (AGENT_POLICY_REQUEST_EXISTS), changed or deleted. Omitting
+   * expectedRevision retains the original composable unconditional-write port.
+   * CAS owns its transaction, so returning cannot acknowledge an uncommitted
+   * savepoint inside the caller's application transaction. */
+  write(policy: AgentTaskPolicy, request?: {readonly requestId: string; readonly digest: string}, expectedRevision?: number): void;
 }
 
 const isRequestId = (value: unknown): value is string => typeof value === 'string' && value.length >= 1 && value.length <= 200;
@@ -42,14 +45,22 @@ export function createAgentPolicyStore(database: AppDatabase): AgentPolicyStore 
       const row = database.statement('SELECT digest,data FROM agent_task_policy_requests_v2 WHERE requestId=?').get(requestId);
       return row ? {digest: String(row.digest), policy: agentTaskPolicySchema.parse(decode(row.data))} : null;
     },
-    write(policy: AgentTaskPolicy, request?: {readonly requestId: string; readonly digest: string}): void {
+    write(policy: AgentTaskPolicy, request?: {readonly requestId: string; readonly digest: string}, expectedRevision?: number): void {
       const data = JSON.stringify(agentTaskPolicySchema.parse(policy));
       if (request !== undefined && (!isRequestId(request.requestId) || typeof request.digest !== 'string' || !DIGEST.test(request.digest))) {
         throw new TypeError('A policy receipt needs a request ID of 1-200 characters and a SHA-256 digest');
       }
-      database.atomically(() => {
+      const commit = expectedRevision === undefined ? database.atomically : database.tx;
+      commit(() => {
         if (request && database.statement('SELECT 1 FROM agent_task_policy_requests_v2 WHERE requestId=?').get(request.requestId) !== undefined) {
           throw appLibraryError('AGENT_POLICY_REQUEST_EXISTS', {requestId: request.requestId});
+        }
+        if (expectedRevision !== undefined) {
+          const row = database.statement('SELECT data FROM agent_task_policy_v2 WHERE id=1').get();
+          const current = row ? agentTaskPolicySchema.parse(decode(row.data)) : DEFAULT_AGENT_TASK_POLICY;
+          if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || current.revision !== expectedRevision) {
+            throw Object.assign(new Error('AGENT_TASK_REVISION_CONFLICT'), {code: 'AGENT_TASK_REVISION_CONFLICT'});
+          }
         }
         database.statement('INSERT INTO agent_task_policy_v2(id,data) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(data);
         if (request) database.statement('INSERT INTO agent_task_policy_requests_v2(requestId,digest,data) VALUES(?,?,?)').run(request.requestId, request.digest, data);

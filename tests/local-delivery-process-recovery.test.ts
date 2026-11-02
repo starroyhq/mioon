@@ -9,7 +9,7 @@ interface WorkerMessage extends WorkerReady{id:string;data:unknown;error?:{messa
 interface WorkerBoundary{type:string;phase:string;dispatches:number}
 type WorkerEnvelope=OrdinaryDeliveryEnvelope;
 type WorkerExecution={envelope:WorkerEnvelope;response:FixtureExport|null};
-type WorkerReply<M extends string>=M extends 'get'|'put'|'prepare'?WorkerEnvelope:M extends 'execute'|'recover'?WorkerExecution:M extends 'executeBoth'?[WorkerExecution,WorkerExecution]:M extends 'observe'?{dispatches:unknown[]}:M extends 'identity'?{instanceId:string}:unknown;
+type WorkerReply<M extends string>=M extends 'get'|'put'|'prepare'?WorkerEnvelope:M extends 'execute'|'recover'?WorkerExecution:M extends 'executeBoth'?[WorkerExecution,WorkerExecution]:M extends 'observe'?{dispatches:unknown[]}:M extends 'identity'?{instanceId:string}:M extends 'snapshot'?ProjectState:unknown;
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
 function withoutReviewedCurrentAgentObjects(objects:Parameters<typeof withoutReviewedStorageObjects>[0]){return reviewedCatalogAt(52,objects);}
@@ -25,11 +25,14 @@ import {mkdtemp,realpath,readFile,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
+import type {DatabaseSync} from 'node:sqlite';
 import {publicValue} from '@mioon/contracts';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
 import {currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
+import {openProjectDatabase} from './helpers/project-database.ts';
+import {readProjectState} from './helpers/project-state.ts';
+import type {ProjectState} from './helpers/project-state.ts';
 // Exact table names of the independently reviewed layers after schema52.
 const reviewedLayerTables=new Set(reviewedTablesAfter(52).map(([table])=>table));
 
@@ -92,9 +95,18 @@ async function fixture(t: test.TestContext){
   prepare:(value: WorkerEnvelope)=>({...authority(value),expectedIntentRevision:value.intentRevision,expectedIntentId:value.intent?.intentId??null,intentId:randomUUID(),timelineId:timeline.id,baseRevision:timeline.revision,
    draft:value.draft?{draftId:value.draft.draftId,revision:value.draftRevision,raw:value.draft.raw}:null,
    input:{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',...(value.draft?.raw.deliveryName?{deliveryName:value.draft.raw.deliveryName}:{})}}),
-  read<T>(fn:(db:DatabaseSync)=>T){const db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});try{db.exec('PRAGMA query_only=ON; BEGIN');return fn(db);}finally{if(db.isTransaction)db.exec('ROLLBACK');db.close();}},
-  snapshot(){return this.read((db: DatabaseSync)=>{
-   const schema=withoutReviewedCurrentAgentObjects(db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all() as unknown as Parameters<typeof withoutReviewedCurrentAgentObjects>[0]),names=new Set(currentOrdinary52Delta.objectNames),objects=schema.filter(value=>names.has(value.name)).map(value=>({...value}));
+  // A running worker holds the project and reads on its own connection. After
+  // SIGKILL its lock stays, so that evidence is read without taking the lock;
+  // after a clean close the test opens the project itself. Both paths go
+  // through JSON, so their rows compare the same.
+  async state():Promise<ProjectState>{
+   if(!worker.stopped)return await worker.ask('snapshot');
+   const read=(db:DatabaseSync):ProjectState=>JSON.parse(JSON.stringify(readProjectState(db)));
+   if(worker.stopped.signal==='SIGKILL'){const crashed=openStore(root,{lock:false});try{return read(crashed.db);}finally{crashed.close();}}
+   const db=openProjectDatabase(root);try{return read(db);}finally{db.close();}
+  },
+  async snapshot(){const state=await this.state();
+   const schema=withoutReviewedCurrentAgentObjects(state.schema as unknown as Parameters<typeof withoutReviewedCurrentAgentObjects>[0]),names=new Set(currentOrdinary52Delta.objectNames),objects=schema.filter(value=>names.has(value.name)).map(value=>({...value}));
    assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
    assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
    assert.equal(createHash('sha256').update(JSON.stringify(objects)).digest('hex'),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
@@ -102,12 +114,11 @@ async function fixture(t: test.TestContext){
    // Keep every new table and row in the crash oracle. Only the exact frozen52
    // and reviewed later-layer names may contain digits; unknown numeric table
    // names still fail closed.
-   return {schema,tables:Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name})=>{
-    assert.ok(/^[a-z_]+$/.test(name as string)||Object.hasOwn(currentOrdinary52Delta.tables,name as string)||reviewedLayerTables.has(name as string),'only safe legacy, independently frozen52 or reviewed later-layer table names');
-    return [name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()];
-   }))};
-  });},
-  receipt:(requestId:string)=>f.read((db: DatabaseSync)=>db.prepare('SELECT * FROM timeline_requests WHERE requestId=?').get(requestId)),
+   for(const name of Object.keys(state.tables))
+    assert.ok(/^[a-z_]+$/.test(name)||Object.hasOwn(currentOrdinary52Delta.tables,name)||reviewedLayerTables.has(name),'only safe legacy, independently frozen52 or reviewed later-layer table names');
+   return {schema,tables:state.tables};
+  },
+  receipt:async(requestId:string)=>(await f.state()).tables.timeline_requests.find(row=>row.requestId===requestId),
   sidecar:()=>readFile(path.join(root,'local-delivery-v1.json'),'utf8'),
   async crash(phase: string,method: string,input: unknown){await worker.ask('arm',phase);const reached=worker.waitBoundary(phase),reply=worker.ask(method,input);
    const lost=assert.rejects(reply,{code:'WORKER_EXITED',signal:'SIGKILL'});const point=await reached;
@@ -122,52 +133,52 @@ async function title(f: Awaited<ReturnType<typeof fixture>>){return f.ask('put',
 
 // Draft durability alone must never be confused with export intent durability.
 test('before intent publication: real process death preserves draft and zero dispatches',{timeout:45000},async t=>{
- const f=await fixture(t),draft=await title(f),input=f.prepare(draft),before=f.snapshot(),sidecar=await f.sidecar();
- const point=await f.crash('beforePersist','prepare',input);assert.equal(point.dispatches,0);assert.equal(await f.sidecar(),sidecar);assert.deepEqual(f.snapshot(),before);
+ const f=await fixture(t),draft=await title(f),input=f.prepare(draft),before=await f.snapshot(),sidecar=await f.sidecar();
+ const point=await f.crash('beforePersist','prepare',input);assert.equal(point.dispatches,0);assert.equal(await f.sidecar(),sidecar);assert.deepEqual(await f.snapshot(),before);
  await f.start();const current=await f.get();assert.equal(current.intent,null);assert.deepEqual(current.draft,draft.draft);assert.notEqual(current.instanceId,draft.instanceId);
- assert.equal(await f.sidecar(),sidecar);assert.deepEqual(f.snapshot(),before);await noDispatch(f);
+ assert.equal(await f.sidecar(),sidecar);assert.deepEqual(await f.snapshot(),before);await noDispatch(f);
  await assert.rejects(f.ask('prepare',input),{code:'LOCAL_DELIVERY_STALE_INSTANCE'});await noDispatch(f);
 });
 
 for(const phase of ['afterDirectorySync','beforeDispatch'])test(`${phase}: prepared process crash is passive on startup and explicitly recovers exact input once`,{timeout:45000},async t=>{
- const f=await fixture(t),draft=await title(f),input=f.prepare(draft),before=f.snapshot();let prepared;
+ const f=await fixture(t),draft=await title(f),input=f.prepare(draft),before=await f.snapshot();let prepared;
  if(phase==='afterDirectorySync')assert.equal((await f.crash(phase,'prepare',input)).dispatches,0);
  else{prepared=await f.ask('prepare',input);assert.equal((await f.crash(phase,'execute',action(prepared))).dispatches,0);}
- const bytes=await f.sidecar();assert.deepEqual(f.snapshot(),before);await f.start();const current=await f.get();
- assert.equal(current.intent!.outcome.status,'pending');assert.deepEqual(current.intent!.input,input.input);assert.equal(await f.sidecar(),bytes);assert.deepEqual(f.snapshot(),before);await noDispatch(f);
+ const bytes=await f.sidecar();assert.deepEqual(await f.snapshot(),before);await f.start();const current=await f.get();
+ assert.equal(current.intent!.outcome.status,'pending');assert.deepEqual(current.intent!.input,input.input);assert.equal(await f.sidecar(),bytes);assert.deepEqual(await f.snapshot(),before);await noDispatch(f);
  await assert.rejects(f.ask('recover',{...action(current),instanceId:draft.instanceId}),{code:'LOCAL_DELIVERY_STALE_INSTANCE'});
  const accepted=await f.ask('recover',action(current));assert.equal(accepted.envelope.intent!.outcome.status,'accepted');assert.equal(accepted.response!.requestId,input.input.requestId);
- assert.deepEqual((await f.ask('observe')).dispatches,[input.input]);assert.equal(f.snapshot().tables.exports.length,1);
- assert.equal(f.snapshot().tables.timeline_requests.length,before.tables.timeline_requests.length+1);
- const complete=f.snapshot(),settled=await f.sidecar();assert.deepEqual(await f.ask('recover',action(accepted.envelope)),accepted);
- assert.deepEqual(f.snapshot(),complete);assert.equal(await f.sidecar(),settled);assert.deepEqual((await f.ask('observe')).dispatches,[input.input]);
+ assert.deepEqual((await f.ask('observe')).dispatches,[input.input]);assert.equal((await f.snapshot()).tables.exports.length,1);
+ assert.equal((await f.snapshot()).tables.timeline_requests.length,before.tables.timeline_requests.length+1);
+ const complete=await f.snapshot(),settled=await f.sidecar();assert.deepEqual(await f.ask('recover',action(accepted.envelope)),accepted);
+ assert.deepEqual(await f.snapshot(),complete);assert.equal(await f.sidecar(),settled);assert.deepEqual((await f.ask('observe')).dispatches,[input.input]);
 });
 
 for(const phase of ['afterBusinessReceiptCommit','beforeOutcomePersist','afterOutcomePersist'])test(`${phase}: lost ACK uses immutable business receipt after process restart without a second export`,{timeout:45000},async t=>{
  const f=await fixture(t),draft=await title(f),prepared=await f.ask('prepare',f.prepare(draft)),frozen=JSON.stringify(prepared.intent!.input);
  assert.equal((await f.crash(phase,'execute',action(prepared))).dispatches,1);
- const receipt=f.receipt(prepared.intent!.input.requestId),original=publicValue(JSON.parse(receipt!.response as string)),committed=f.snapshot(),bytes=await f.sidecar();
+ const receipt=await f.receipt(prepared.intent!.input.requestId),original=publicValue(JSON.parse(receipt!.response as string)),committed=await f.snapshot(),bytes=await f.sidecar();
  assert.equal(receipt!.requestHash,hash({operation:'timeline.render',input:prepared.intent!.input}));assert.equal(committed.tables.exports.length,1);
  await f.start();const current=await f.get();assert.equal(current.intent!.outcome.status,phase==='afterOutcomePersist'?'accepted':'pending');
  assert.equal(JSON.stringify(current.intent!.input),frozen);assert.equal(current.workspaceScope,prepared.workspaceScope);assert.notEqual(current.instanceId,prepared.instanceId);
- assert.deepEqual(f.snapshot(),committed);assert.equal(await f.sidecar(),bytes);await noDispatch(f);
+ assert.deepEqual(await f.snapshot(),committed);assert.equal(await f.sidecar(),bytes);await noDispatch(f);
  await assert.rejects(f.ask('recover',action(prepared)),{code:'LOCAL_DELIVERY_STALE_INSTANCE'});
  // A later real business edit must not rebase the frozen recovery input.
  await f.ask('rpc',{operation:'timeline.track.add',input:{projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),kind:'audio'}});
- const newer=f.snapshot();assert.equal((await f.get()).intentTargetStatus,'changed');await noDispatch(f);
+ const newer=await f.snapshot();assert.equal((await f.get()).intentTargetStatus,'changed');await noDispatch(f);
  const recovered=await f.ask('recover',action(await f.get()));assert.deepEqual(recovered.response,original);assert.equal(JSON.stringify(recovered.envelope.intent!.input),frozen);
- assert.equal(recovered.envelope.intent!.outcome.status,'accepted');assert.deepEqual(f.receipt(prepared.intent!.input.requestId),receipt);assert.deepEqual(f.snapshot(),newer);await noDispatch(f);
- assert.deepEqual(await f.ask('recover',action(recovered.envelope)),recovered);assert.deepEqual(f.snapshot(),newer);await noDispatch(f);
+ assert.equal(recovered.envelope.intent!.outcome.status,'accepted');assert.deepEqual(await f.receipt(prepared.intent!.input.requestId),receipt);assert.deepEqual(await f.snapshot(),newer);await noDispatch(f);
+ assert.deepEqual(await f.ask('recover',action(recovered.envelope)),recovered);assert.deepEqual(await f.snapshot(),newer);await noDispatch(f);
 });
 
 test('durably not_applied remains terminal across process death and repeated explicit recovery',{timeout:45000},async t=>{
  const f=await fixture(t),draft=await title(f),prepared=await f.ask('prepare',f.prepare(draft));
  await f.ask('rpc',{operation:'timeline.track.add',input:{projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),kind:'audio'}});
- const before=f.snapshot();assert.equal((await f.crash('afterOutcomePersist','execute',action(prepared))).dispatches,1);
- assert.deepEqual(f.snapshot(),before);assert.equal(f.receipt(prepared.intent!.input.requestId),undefined);
+ const before=await f.snapshot();assert.equal((await f.crash('afterOutcomePersist','execute',action(prepared))).dispatches,1);
+ assert.deepEqual(await f.snapshot(),before);assert.equal(await f.receipt(prepared.intent!.input.requestId),undefined);
  await f.start();const current=await f.get(),sidecar=await f.sidecar();assert.equal(current.intent!.outcome.status,'not_applied');assert.equal(current.intent!.outcome.code,'REVISION_CONFLICT');assert.deepEqual(current.draft,draft.draft);
  for(let i=0;i<2;i++){const result=await f.ask('recover',action(current));assert.equal(result.response,null);assert.deepEqual(result.envelope,current);}
- assert.equal(await f.sidecar(),sidecar);assert.deepEqual(f.snapshot(),before);await noDispatch(f);
+ assert.equal(await f.sidecar(),sidecar);assert.deepEqual(await f.snapshot(),before);await noDispatch(f);
 });
 
 test('two windows share one durable reservation and one exact original dispatch',{timeout:45000},async t=>{
@@ -176,9 +187,9 @@ test('two windows share one durable reservation and one exact original dispatch'
  await assert.rejects(f.ask('recover',{...action(prepared),input:{...request.input,deliveryName:'Forged newer title'}}),{code:'LOCAL_DELIVERY_VALIDATION'});
  const newer=await f.ask('put',f.put(prepared,'另一个窗口的新名称'));
  const [a,b]=await f.ask('executeBoth',action(prepared));assert.deepEqual(a,b);assert.deepEqual(a.envelope.draft,newer.draft);assert.equal(a.response!.snapshot.deliveryName,draft.draft!.raw.deliveryName);
- assert.deepEqual((await f.ask('observe')).dispatches,[request.input]);assert.equal(f.snapshot().tables.exports.length,1);
+ assert.deepEqual((await f.ask('observe')).dispatches,[request.input]);assert.equal((await f.snapshot()).tables.exports.length,1);
  await assert.rejects(f.ask('put',f.put(windowB,'Stale overwrite')),{code:'LOCAL_DELIVERY_CONFLICT'});
- const before=f.snapshot(),sidecar=await f.sidecar();await f.restart();const current=await f.get();await noDispatch(f);
+ const before=await f.snapshot(),sidecar=await f.sidecar();await f.restart();const current=await f.get();await noDispatch(f);
  assert.deepEqual(current.draft,newer.draft);assert.deepEqual((await f.ask('recover',action(current))).response,a.response);
- assert.equal(await f.sidecar(),sidecar);assert.deepEqual(f.snapshot(),before);await noDispatch(f);
+ assert.equal(await f.sidecar(),sidecar);assert.deepEqual(await f.snapshot(),before);await noDispatch(f);
 });

@@ -6,6 +6,7 @@ import type {StatementSync} from 'node:sqlite';
 import {isAsyncFunction, isPromise} from 'node:util/types';
 import {ensurePrivateDirectory, PrivateStorageError, validateManagedFile} from '@mioon/contracts/private-storage';
 import {AppError} from '../../../contracts/src/app-error.ts';
+import type {ProjectFileIdentity} from '../../../contracts/src/project-registry.ts';
 import {appLibraryError, appLibraryInvalid, isSqliteBusy, isSqliteCorrupt, isSqliteReadOnly} from './errors.ts';
 import {
   APP_LIBRARY_APPLICATION_ID, APP_LIBRARY_FILE, APP_LIBRARY_SCHEMA_VERSION, APP_SCHEMA_VERSION_TABLE_SQL, buildAppLibrary, compareAppSchema,
@@ -22,6 +23,15 @@ const COMPANIONS = ['', '-journal', '-wal', '-shm'] as const;
  * fails before SQLite touches the file. */
 const heldLibraries = new Map<string, DatabaseSync>();
 const identityKey = (info: BigIntStats, file: string): string => info.ino ? `${info.dev}:${info.ino}` : `path:${file}`;
+
+/** Read the actual live-library registry without touching a file descriptor.
+ * The lstat identity also matches a renamed file or hard link; file ID 0
+ * cannot identify a file and never matches the path-based opening fallback.
+ * An optional connection binds ownership to that exact acquired handle. */
+export function isAppLibraryHeld(identity: ProjectFileIdentity, db?: DatabaseSync): boolean {
+  const owner = identity.ino === '0' ? undefined : heldLibraries.get(`${identity.dev}:${identity.ino}`);
+  return owner?.isOpen === true && (db === undefined || owner === db);
+}
 
 /** The app library's one connection. */
 export interface AppDatabase {
@@ -135,6 +145,11 @@ export function openAppDatabase(requestedDataDir: string): AppDatabase {
       checkStructure(db);
     }
     key = identityKey(lstatSync(file, {bigint: true}), file);
+    // Reopening this native handle would skip validation, locking and the
+    // library's registration lifecycle. A fresh opener must own a fresh DB.
+    Object.defineProperty(db, 'open', {value: (): never => {
+      throw new TypeError('Reopen app libraries through openAppDatabase or openAppLibrary, not db.open().');
+    }});
   } catch (error) {
     try { db?.close(); } catch {}
     throw openFailure(error);

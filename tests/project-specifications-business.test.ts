@@ -10,6 +10,7 @@ import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {TIMELINE_OUTPUT_PRESETS,hasRequestNotAppliedProof} from '@mioon/contracts';
 import type { FixtureProject, FixtureTimeline } from './helpers/strict-timeline-core-types.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 async function fixture(t: test.TestContext){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-format-'));let store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices);
  const project=await services.call('project.create',{name:'Output fixture'});
@@ -24,7 +25,8 @@ async function rejected(f: Awaited<ReturnType<typeof fixture>>,input: unknown,co
 async function addClip(f: Awaited<ReturnType<typeof fixture>>,timeline: FixtureTimeline){return f.call('timeline.clip.add',{projectId:f.project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:f.asset().id,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:30});}
 function corruptTimelineAggregate(f: Awaited<ReturnType<typeof fixture>>){
  const db=f.store.db,names=['agent_target_timeline_update_v2','agent_target_timeline_timeline_clip_update_v2','agent_target_timeline_timeline_track_update_v2','agent_target_timeline_timeline_subtitle_update_v2'];
- const guards=db.prepare(`SELECT name,sql FROM sqlite_schema WHERE name IN (${names.map(()=>'?').join(',')}) ORDER BY name`).all(...names);
+ const named=()=>schemaObjects(db).filter(({name})=>names.includes(name)).map(({name,sql})=>({name,sql})).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);
+ const guards=named();
  assert.deepEqual(guards.map(value=>value.name),[...names].sort());
  const before=f.capture(),targets=db.prepare('SELECT * FROM agent_task_target_revisions_v2 ORDER BY rowid').all();
  assert.throws(()=>db.prepare('UPDATE timelines SET data=? WHERE projectId=?').run('{',f.project.id),/malformed JSON/);
@@ -36,7 +38,7 @@ function corruptTimelineAggregate(f: Awaited<ReturnType<typeof fixture>>){
   for(const guard of guards)db.exec(`DROP TRIGGER "${guard.name}"`);
   db.prepare('UPDATE timelines SET data=? WHERE projectId=?').run('{',f.project.id);
  }finally{for(const guard of guards)db.exec(guard.sql as string);}
- assert.deepEqual(db.prepare(`SELECT name,sql FROM sqlite_schema WHERE name IN (${names.map(()=>'?').join(',')}) ORDER BY name`).all(...names),guards);
+ assert.deepEqual(named(),guards);
 }
 
 test('format read is genuinely noncreating and absence creates exactly revision one without modifying project bytes',async t=>{

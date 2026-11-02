@@ -25,6 +25,7 @@ import {SCENE_LIMITS,SCENE_MUTATION_OPERATIONS,SCENE_DETECTION_DEFAULTS,schemas,
 import {translate} from '../packages/i18n/src/index.ts';
 import type { BinaryLike } from 'crypto';
 import type { DetectManagedScenesOptions } from '@mioon/business/scene-detection-decoder';
+import {schemaObjects} from './helpers/project-database.ts';
 
 const digest=(bytes: Buffer<ArrayBuffer>|BinaryLike)=>createHash('sha256').update(bytes).digest('hex');
 const code=(expected: string,check: ((arg0: { code: string; }) => unknown)|undefined=()=>true)=>(error: unknown)=>(error as { code: string; details?: {sceneOutcome?: {status: string; operation: string; projectId: string; requestId: string; inputHash: string}} }).code===expected&&!JSON.stringify((error as { code: string; details?: {sceneOutcome?: {status: string; operation: string; projectId: string; requestId: string; inputHash: string}} })).includes('PRIVATE_SENTINEL')&&check((error as { code: string; details?: {sceneOutcome?: {status: string; operation: string; projectId: string; requestId: string; inputHash: string}} }));
@@ -42,7 +43,7 @@ const cancelled=()=>Object.assign(new Error('cancelled'),{code:'MEDIA_CANCELLED'
 
 function fixture(t: test.TestContext,{autoRun=false,detect,fault,lock=true,real=false}: Pick<SceneServicesOptions, 'autoRun' | 'fault'> & {detect?: (input: DetectManagedScenesOptions) => unknown} & {lock?: boolean; real?: boolean}={}){
  const root=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-scene-tasks-'))),store=(openStore(root,{lock}) as unknown as TypedStore);
- const project=store.put('projects',{id:randomUUID(),name:'Scene source project'}),other=store.put('projects',{id:randomUUID(),name:'Other project'});
+ const project=store.put('projects',{id:randomUUID(),name:'Scene source project'}),other={id:randomUUID(),name:'Other project'};
  const video=(patch: Record<string, unknown>={})=>{
   const bytes=Buffer.from(`Synthetic reference film ${randomUUID()} PRIVATE_SENTINEL`),id=randomUUID(),relativePath=`media/${id}.mp4`;
   writeFileSync(path.join(root,relativePath),bytes,{mode:0o600});
@@ -65,7 +66,7 @@ const rows=(db: DatabaseSync)=>JSON.stringify(['scene_tasks','scene_requests','s
 test('schema58 gives ordinary workspaces the three scene tables', t=>{
  const f=fixture(t);
  assert.equal(readCurrentWorkspaceRole(f.store.db),CURRENT_ORDINARY_ROLE);
- assert.deepEqual(f.store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name GLOB 'scene_*' ORDER BY name").all().map(row=>row.name),['scene_requests','scene_results','scene_tasks']);
+ assert.deepEqual(schemaObjects(f.store.db).filter(({type,name})=>type==='table'&&name.startsWith('scene_')).map(({name})=>name).sort(),['scene_requests','scene_results','scene_tasks']);
  assert.equal((f.store.db.prepare('SELECT max(version) AS v FROM schema_version').get())!.v,CURRENT_ORDINARY_SCHEMA);
  // Rows outside the accepted shape cannot be written directly.
  assert.throws(()=>f.store.db.prepare("INSERT INTO scene_tasks(id,projectId,kind,sourceAssetId,requestId,inputHash,input,snapshot,state,revision,started,createdAt,updatedAt) VALUES(?,?,'detect',?,?,?,?,?,'running',1,1,'t','t')")
@@ -92,9 +93,9 @@ test('the acceptance receipt is durable before decoding and replays exactly', as
  assert.deepEqual(await f.call('scene.detect',input),ack);assert.equal(rows(f.store.db),before);
  const receipt=await f.call('scene.request.get',{projectId:f.project.id,requestId:input.requestId});
  assert.ok(isSceneRequestResponse(receipt));assert.deepEqual((receipt)!.response,ack);
- assert.equal(await f.call('scene.request.get',{projectId:f.other.id,requestId:input.requestId}),null);
+ await assert.rejects(f.call('scene.request.get',{projectId:f.other.id,requestId:input.requestId}),code('SCENE_NOT_FOUND'));
  for(const patch of [{options:{sensitivity:80}},{sourceHash:'a'.repeat(64)},{projectId:f.other.id}])
-  await assert.rejects(f.call('scene.detect',{...input,...patch}),code('SCENE_REQUEST_CONFLICT'));
+  await assert.rejects(f.call('scene.detect',{...input,...patch}),code('projectId' in patch?'SCENE_NOT_FOUND':'SCENE_REQUEST_CONFLICT'));
  await assert.rejects(f.call('scene.task.get',{projectId:f.other.id,taskId:ack.id}),code('SCENE_NOT_FOUND'));
  // A second detection of a video already queued is refused with a proof.
  const again=f.input();
@@ -229,7 +230,10 @@ test('live progress is reported only while the task runs', async t=>{
 });
 
 test('a non-owner reads without writing and cannot mutate', async t=>{
- const f=fixture(t),ack=await f.call('scene.detect',f.input()),observer=(openStore(f.root,{lock:false}) as unknown as TypedStore),services=(createSceneServices(observer,({detect:()=>assert.fail('read spawned decode')} as SceneServicesOptions)) as SceneHandlerService<'detect'>);
+ const f=fixture(t),ack=await f.call('scene.detect',f.input());
+ // A second connection to the project opens only once the owner has closed it.
+ await f.close();
+ const observer=(openStore(f.root,{lock:false}) as unknown as TypedStore),services=(createSceneServices(observer,({detect:()=>assert.fail('read spawned decode')} as SceneServicesOptions)) as SceneHandlerService<'detect'>);
  t.after(async()=>{await services.drain();observer.close();});assert.equal(ownsStoreLock(observer),false);
  const before=rows(observer.db);
  assert.deepEqual(services.handlers['scene.task.get']({projectId:f.project.id,taskId:ack.id}),ack);

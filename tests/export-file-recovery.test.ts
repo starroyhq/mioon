@@ -7,9 +7,12 @@ import {createHash,randomUUID} from 'node:crypto';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
 import {startServer} from '../apps/server/src/index.ts';
+import {createServerProject} from './helpers/project-database.ts';
 test('missing export recovery verifies original bytes, never overwrites and preserves frozen rows', {timeout:60000},async t=>{
  const root=await mkdtemp(path.join(tmpdir(),'mioon-export-recovery-')),token='synthetic-export-file-recovery-token',bytes=Buffer.from('synthetic immutable export fixture');
- let store=openStore(root);const services=createServices(store,new Map()),project=await services.call('project.create',{name:'Output recovery'}) as {id:string},id=randomUUID(),assetId=randomUUID(),requestId=randomUUID(),versionId=randomUUID(),sourceId=randomUUID(),shotId=randomUUID(),relativePath=`media/export-${id}-${randomUUID()}.mp4`,stamp='2026-10-19T00:00:00.000Z';
+ // Filled before the server starts and closed before it does.
+ const created=createServerProject(root,{name:'Output recovery'});
+ let store:ReturnType<typeof openStore>=created.store;const services=createServices(store,new Map()),project={id:created.projectId},id=randomUUID(),assetId=randomUUID(),requestId=randomUUID(),versionId=randomUUID(),sourceId=randomUUID(),shotId=randomUUID(),relativePath=`media/export-${id}-${randomUUID()}.mp4`,stamp='2026-10-19T00:00:00.000Z';
  const asset={id:assetId,projectId:project.id,name:'film.mp4',mimeType:'video/mp4',provenance:'export',relativePath,sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,width:1080,height:1920,duration:1,hasVideo:true,hasAudio:true,url:`/media/${assetId}`,createdAt:stamp};
  const record={id,projectId:project.id,requestId,status:'succeeded',orderedVersionIds:[versionId],snapshot:[{versionId,shotId,assetId:sourceId,sha256:'b'.repeat(64)}],assetId,url:asset.url,error:null,createdAt:stamp,updatedAt:stamp};
  store.put('assets',asset);store.put('exports',record);store.db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('export',requestId,hash({projectId:project.id,requestId}),id);await services.drain();store.close();

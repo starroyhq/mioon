@@ -29,6 +29,7 @@ import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS,canonicalImageInput as canonical} from 
 import {IMAGE_SETTINGS_READ_CURRENT,IMAGE_SETTINGS_ASSERT_CURRENT} from '../packages/business/src/images/settings.ts';
 import {DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
+import {schemaObjects,withoutForeignKeys} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 const sha=(bytes: BinaryLike|Buffer<ArrayBuffer>)=>createHash('sha256').update(bytes).digest('hex');
@@ -37,7 +38,7 @@ const code=(expected: string)=>(error: { code: string; })=>error.code===expected
 const noPrivate=(value: unknown)=>assert.doesNotMatch(JSON.stringify(value),/"(?:relativePath|bytes|sourceBytes|canonicalIntent|canonicalInput|apiKey|path)"\s*:/);
 async function fixture(t: test.TestContext,{autoRun=true,generate,liveGenerate,fault,comfySettings,comfyConnector}:ImageFixtureOptions={}){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-image-edit-')),store=(openStore(root) as TypedStore),projectId=randomUUID(),otherProjectId=randomUUID();
- for(const id of [projectId,otherProjectId])store.put('projects',{id,name:'Image edits',description:'',revision:1});
+ store.put('projects',{id:projectId,name:'Image edits',description:'',revision:1});
  let revision=1,enabled=true,calls=0,posts=0;
  const settings={
   [IMAGE_SETTINGS_READ_CURRENT]:()=>({revision,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled},secret:{configured:true}}),
@@ -160,12 +161,12 @@ for(const variant of ['foreign','wrong-hash','wrong-size','wrong-dimensions','no
  if(variant==='bad-png'){const bad=Buffer.alloc(f.bytes.length,0);writeFileSync(path.join(f.root,asset.relativePath),bad);asset.sha256=sha(bad);input.inputImage.sha256=asset.sha256;}
  if(variant==='symlink'){const target=path.join(f.root,'media','private.png');writeFileSync(target,f.bytes,{mode:0o600});unlinkSync(path.join(f.root,asset.relativePath));symlinkSync(target,path.join(f.root,asset.relativePath));}
  if(variant==='oversized')asset.sizeBytes=8*1024*1024+1;
- f.store.put('assets',asset);await assert.rejects(Promise.resolve().then(()=>f.call('image.generate',input)),error=>{assert.equal((error as Failure).code,'IMAGE_SOURCE_INVALID');noPrivate(error);return true;});assert.equal(f.store.db.prepare('SELECT count(*) n FROM image_tasks').get()!.n,0);
+ const write=()=>f.store.put('assets',asset);if(variant==='foreign')withoutForeignKeys(f.store.db,write);else write();await assert.rejects(Promise.resolve().then(()=>f.call('image.generate',input)),error=>{assert.equal((error as Failure).code,'IMAGE_SOURCE_INVALID');noPrivate(error);return true;});assert.equal(f.store.db.prepare('SELECT count(*) n FROM image_tasks').get()!.n,0);
 });
 
 test('public task, version and asset roots reject mutated edit source ownership without repair',async t=>{
  const f=await fixture(t),ack=await f.call('image.generate',f.input());await terminal(f,ack.id,'succeeded');const version=f.call('image.version.list',{projectId:f.projectId,groupId:ack.groupId}).items[0];
- f.store.put('assets',{...f.asset,projectId:f.otherProjectId,name:'PRIVATE_FOREIGN_SENTINEL'});
+ withoutForeignKeys(f.store.db,()=>f.store.put('assets',{...f.asset,projectId:f.otherProjectId,name:'PRIVATE_FOREIGN_SENTINEL'}));
  const count=f.store.db.prepare('SELECT total_changes() n').get()!.n;
  for(const read of [()=>f.call('image.task.get',taskInput(f,ack.id)),()=>f.call('image.version.list',{projectId:f.projectId,groupId:ack.groupId}),()=>createOwnedMediaGraphReader(f.store.db,f.projectId).asset(version.assetId)])assert.throws(read,error=>!JSON.stringify(error).includes('PRIVATE_FOREIGN_SENTINEL'));
  assert.equal(f.store.db.prepare('SELECT total_changes() n').get()!.n,count);
@@ -191,7 +192,7 @@ function injectEdit(f: Awaited<ReturnType<typeof fixture>>,sourceImage: EditSour
  return {id,groupId,assetId,versionId,input,snapshot,receipt,version,sourceImage:{assetId,sha256:asset.sha256,mimeType:'image/png' as const,byteLength:asset.sizeBytes,width:1024,height:1024,name:asset.name,origin:{kind:'synthetic-mock' as const,imageSource:{imageGroupId:groupId,imageTaskId:id,imageVersionId:versionId}}}};
 }
 const importedDescriptor=(f: Awaited<ReturnType<typeof fixture>>)=>({assetId:f.asset.id,sha256:f.asset.sha256,mimeType:'image/png' as const,byteLength:f.bytes.length,width:1024,height:1024,name:f.asset.name,origin:{kind:'user-import' as const}});
-function removeIdentityTriggers(db: DatabaseSync){for(const row of db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND (tbl_name='image_tasks' OR tbl_name='image_versions')").all())db.exec(`DROP TRIGGER "${row.name}"`);db.exec('PRAGMA ignore_check_constraints=ON');}
+function removeIdentityTriggers(db: DatabaseSync){for(const {name} of schemaObjects(db).filter(({type,tbl_name})=>type==='trigger'&&(tbl_name==='image_tasks'||tbl_name==='image_versions')))db.exec(`DROP TRIGGER "${name}"`);db.exec('PRAGMA ignore_check_constraints=ON');}
 
 test('actual edit-source cycle is rejected rather than hidden by pending caches',async t=>{
  const f=await fixture(t,{autoRun:false}),one=injectEdit(f,importedDescriptor(f)),two=injectEdit(f,one.sourceImage);
@@ -212,20 +213,23 @@ test('edit source ancestry is bounded at 32 source tasks',async t=>{
 
 for(const variant of ['sql-owner-reassigned','version-deleted','foreign-extra-receipt'])test(`reverse ${variant} cannot hide an edited output behind an import label`,async t=>{
  const {validateImageConsumption}=await import('../packages/business/src/image-consumption.ts');
- const f=await fixture(t,{autoRun:false}),edited=injectEdit(f,importedDescriptor(f));removeIdentityTriggers(f.store.db);f.store.db.exec('PRAGMA foreign_keys=OFF');
- const asset={...f.store.get('assets',edited.assetId)!,provenance:'user-import'};f.store.put('assets',asset);
- if(variant==='sql-owner-reassigned')f.store.db.prepare('UPDATE image_versions SET assetId=? WHERE id=?').run(randomUUID(),edited.versionId);
- if(variant==='version-deleted')f.store.db.prepare('DELETE FROM image_versions WHERE id=?').run(edited.versionId);
- if(variant==='foreign-extra-receipt'){
-  const foreign=injectEdit(f,importedDescriptor(f));f.store.db.prepare('UPDATE image_tasks SET projectId=?,stagedReceipt=? WHERE id=?').run(f.otherProjectId,canonical({...foreign.receipt,assetId:edited.assetId}),foreign.id);
- }
+ const f=await fixture(t,{autoRun:false}),edited=injectEdit(f,importedDescriptor(f));removeIdentityTriggers(f.store.db);
+ const asset={...f.store.get('assets',edited.assetId)!,provenance:'user-import'};
+ withoutForeignKeys(f.store.db,()=>{
+  f.store.put('assets',asset);
+  if(variant==='sql-owner-reassigned')f.store.db.prepare('UPDATE image_versions SET assetId=? WHERE id=?').run(randomUUID(),edited.versionId);
+  if(variant==='version-deleted')f.store.db.prepare('DELETE FROM image_versions WHERE id=?').run(edited.versionId);
+  if(variant==='foreign-extra-receipt'){
+   const foreign=injectEdit(f,importedDescriptor(f));f.store.db.prepare('UPDATE image_tasks SET projectId=?,stagedReceipt=? WHERE id=?').run(f.otherProjectId,canonical({...foreign.receipt,assetId:edited.assetId}),foreign.id);
+  }
+ });
  assert.throws(()=>createOwnedMediaGraphReader(f.store.db,f.projectId).asset(edited.assetId));
  assert.throws(()=>validateImageConsumption(f.store.db,asset,f.projectId),code('IMAGE_SOURCE_INVALID'));
 });
 
 for(const approved of [false,true])test(`${approved?'approved':'pending'} review reads reject foreign source ownership without filesystem checks`,async t=>{
  const f=await fixture(t,{autoRun:false}),input=liveInput(f),review=await f.prepare(input);if(approved)await f.approve(review);
- f.store.put('assets',{...f.asset,projectId:f.otherProjectId,name:'PRIVATE_FOREIGN_SENTINEL'});
+ withoutForeignKeys(f.store.db,()=>f.store.put('assets',{...f.asset,projectId:f.otherProjectId,name:'PRIVATE_FOREIGN_SENTINEL'}));
  for(const read of [()=>f.call('image.review.get',{projectId:f.projectId,reviewId:review.id}),()=>f.call('image.review.list',{projectId:f.projectId}),()=>f.prepare(input)])assert.throws(read,error=>(error as Failure).code==='IMAGE_SOURCE_INVALID'&&!JSON.stringify(error).includes('PRIVATE_FOREIGN_SENTINEL'));
 });
 
@@ -237,7 +241,7 @@ test('source rejections retain the request key without unsafe absence proof',asy
 
 test('source damage cannot prevent rejection of pending review or pre-dispatch cancellation',async t=>{
  const f=await fixture(t,{autoRun:false}),review=await f.prepare(liveInput(f)),ack=await f.call('image.generate',f.input());
- f.store.put('assets',{...f.asset,projectId:f.otherProjectId});
+ withoutForeignKeys(f.store.db,()=>f.store.put('assets',{...f.asset,projectId:f.otherProjectId}));
  const rejected=f.images.rejectReview({projectId:f.projectId,reviewId:review.id,expectedRevision:1});assert.equal(rejected.state,'rejected');assert.equal(rejected.sourceImage!.assetId,f.asset.id);
  const input={...taskInput(f,ack.id),expectedRevision:1,requestId:randomUUID()},cancelled=f.call('image.task.cancelQueued',input);assert.equal(cancelled.state,'cancelled_before_dispatch');assert.deepEqual(f.call('image.task.cancelQueued',input),cancelled);assert.equal(f.calls,0);
 });
@@ -247,7 +251,7 @@ for(const reviewMode of [false,true])test(`two-window ${reviewMode?'preparation'
  f.alter();const rejected=invoke();f.restore();const accepted=invoke();
  await assert.rejects(rejected as Promise<unknown>,(error: { code: string; details: { imageOutcome: unknown; }; })=>error.code==='IMAGE_SOURCE_INVALID'&&!error.details?.imageOutcome);
  const value=await accepted;assert.deepEqual(await invoke(),value);assert.equal(f.store.db.prepare(`SELECT count(*) n FROM ${reviewMode?'image_reviews':'image_tasks'}`).get()!.n,1);
- f.store.put('assets',{...f.asset,projectId:f.otherProjectId});
+ withoutForeignKeys(f.store.db,()=>f.store.put('assets',{...f.asset,projectId:f.otherProjectId}));
  await assert.rejects(Promise.resolve().then(invoke),error=>!(error as Failure).details?.imageOutcome);
 });
 
@@ -274,7 +278,7 @@ test('a fully owned extracted frame is admitted with bounded typed frame provena
  for(let i=0;i<500;i++){ready=frames.handlers['frame.task.get']({projectId:f.projectId,taskId:frame.id});if(ready.state==='succeeded')break;await pause(5);}assert.equal(ready.state,'succeeded');
  const ack=await f.call('image.generate',f.input({inputImage:{assetId:ready.result.assetId,sha256:ready.result.sha256}}));await terminal(f,ack.id,'succeeded');
  assert.deepEqual(ack.sourceImage!.origin,{kind:'extracted-frame',frameSource:{frameTaskId:frame.id,sourceAssetId:source.id,sourceHash:source.sha256,sourceFrame:0,fps:30,profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE}});assert.equal(ack.sourceImage!.width,4);
- f.store.put('assets',{...source,projectId:f.otherProjectId});assert.throws(()=>f.call('image.task.get',taskInput(f,ack.id)),code('IMAGE_RECORD_INVALID'));
+ withoutForeignKeys(f.store.db,()=>f.store.put('assets',{...source,projectId:f.otherProjectId}));assert.throws(()=>f.call('image.task.get',taskInput(f,ack.id)),code('IMAGE_RECORD_INVALID'));
 });
 
 test('a completed Comfy image is a valid edit source only through its full remote lineage',async t=>{

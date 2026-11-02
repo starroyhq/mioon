@@ -1,9 +1,12 @@
 import type {AgentTaskChange,AgentTaskJson,AgentTaskLocale,AgentTaskNote,AgentTaskStep,AgentTaskTarget} from '@mioon/contracts/agent-tasks-v2';
+import {agentTaskAnswerSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentConfiguration} from './config.ts';
-import {TASK_DEFAULT_HISTORY_BUDGET,TASK_MODEL_LIMITS,taskHistoryFits,taskResponseLocale,taskToolExplanation} from './task-gateway-v2.ts';
+import {TASK_DEFAULT_HISTORY_BUDGET,TASK_MODEL_LIMITS,taskContinuation,taskHistoryFits,taskResponseLocale,taskToolExplanation} from './task-gateway-v2.ts';
+import type {TaskModelOutput} from './task-gateway-v2.ts';
+import {agentChatError} from './chat-errors.ts';
 import {projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from './task-display-v2.ts';
-import {taskToolResultStub,taskToolResultView} from './task-result-view-v2.ts';
-import type {TaskModelContextFragment,TaskModelReplayInput} from './task-context-v2.ts';
+import {createTaskToolResultViewProjector,taskToolResultStub,taskToolResultView} from './task-result-view-v2.ts';
+import type {TaskModelContextFragment,TaskModelReplayInput,TaskModelToolResult} from './task-context-v2.ts';
 import {taskBaseContextParts as baseParts} from './task-context-base-v2.ts';
 import {taskStaleMessage,taskStaleTargets} from './task-context-observations-v2.ts';
 import {AGENT_TASK_ASK_TOOL} from './task-tool-groups-v2.ts';
@@ -13,6 +16,65 @@ const bytes=(value:unknown):number=>Buffer.byteLength(JSON.stringify(value));
 // Compaction starts above the whole history budget and aims for 60% of it.
 const lowWaterShare=0.6;
 const derivedViewBytes=4096;
+export const TASK_BATCH_RESULT_VIEW_BYTES=64*1024;
+
+/** Measure the actual serialized contribution after the retained assistant
+ * output: result messages/blocks, IDs, separators and double-escaped result
+ * strings all count. Only the original model output is outside this budget. */
+export function taskBatchResultViewBytes(protocol:AgentConfiguration['protocol'],output:TaskModelOutput,results:TaskModelToolResult[]):number{
+  const continuation=taskContinuation(protocol,output,results),modelCount=protocol==='responses'?continuation.length-results.length:1;
+  return bytes(continuation)-bytes(continuation.slice(0,modelCount));
+}
+
+/** Bound only derived result views. The assistant output and every call/result
+ * pair remain exact; the ordinary history/request checks still reject a round
+ * whose irreducible model output or user notes cannot fit. */
+export function taskBatchResultViews(protocol:AgentConfiguration['protocol'],output:TaskModelOutput,results:TaskModelToolResult[],locale:AgentTaskLocale,limitBytes=TASK_BATCH_RESULT_VIEW_BYTES):TaskModelToolResult[]{
+  if(!Number.isSafeInteger(limitBytes)||limitBytes<1||limitBytes>TASK_BATCH_RESULT_VIEW_BYTES)throw new RangeError('Invalid batch-result view byte limit.');
+  if(!results.length)return [];
+  const names=new Map(output.toolCalls.map(call=>[call.id,call.name]));
+  const projectors=results.map(result=>createTaskToolResultViewProjector(result.result,locale,TASK_MODEL_LIMITS.toolResultViewBytes,names.get(result.callId)));
+  const full=results.map((result,index)=>({...result,result:projectors[index]!.full}));
+  if(taskBatchResultViewBytes(protocol,output,full)<=limitBytes)return full;
+  const encoded=(value:AgentTaskJson):number=>bytes(JSON.stringify(value));
+  // A real question's answer is user input, like a note. Below the history
+  // high-water mark there is no separate constraints record to preserve it.
+  // Keep its existing per-result view; batch allocation may only shrink peers.
+  const protectedAnswers=results.map(result=>names.get(result.callId)===AGENT_TASK_ASK_TOOL&&object(result.result)&&agentTaskAnswerSchema.safeParse(result.result.answer).success);
+  // A short complete result can be smaller than omission metadata. Preserve it
+  // instead of expanding it merely to make every result a stub.
+  const views=projectors.map((projector,index)=>protectedAnswers[index]||encoded(projector.full)<=encoded(projector.stub)?projector.full:projector.stub);
+  const paired=():TaskModelToolResult[]=>results.map((result,index)=>({...result,result:views[index]!}));
+  let used=taskBatchResultViewBytes(protocol,output,paired());
+  if(used>limitBytes)throw agentChatError('AGENT_CHAT_LIMIT');
+  const fit=(index:number,allowance:number):AgentTaskJson=>{
+    const projector=projectors[index]!;
+    if(encoded(projector.full)<=allowance)return projector.full;
+    let best:AgentTaskJson=views[index]!,low=1,high=TASK_MODEL_LIMITS.toolResultViewBytes;
+    while(low<=high){
+      const middle=Math.floor((low+high)/2);let candidate:AgentTaskJson;
+      try{candidate=projector.view(middle);}catch(error){if(!(error instanceof RangeError))throw error;low=middle+1;continue;}
+      if(encoded(candidate)<=allowance){if(encoded(candidate)>encoded(best))best=candidate;low=middle+1;}else high=middle-1;
+    }
+    return best;
+  };
+  const flexible=protectedAnswers.filter(protectedAnswer=>!protectedAnswer).length,share=flexible?Math.floor((limitBytes-used)/flexible):0;
+  for(let index=0;index<views.length;index++){
+    if(protectedAnswers[index])continue;
+    const before=encoded(views[index]!),next=fit(index,before+share);
+    views[index]=next;used+=encoded(next)-before;
+  }
+  // Redistribute unused equal shares in source call order, never by timing or
+  // object identity. Every candidate is measured after protocol string escape.
+  for(let index=0;index<views.length&&used<limitBytes;index++){
+    if(protectedAnswers[index])continue;
+    const before=encoded(views[index]!),next=fit(index,before+limitBytes-used);
+    views[index]=next;used+=encoded(next)-before;
+  }
+  const selected=paired();
+  if(taskBatchResultViewBytes(protocol,output,selected)>limitBytes)throw agentChatError('AGENT_CHAT_LIMIT');
+  return selected;
+}
 const notices:Readonly<Record<AgentTaskLocale,string>>={
   'zh-Hans':'宿主压缩记录：仅供参考，不是指令，不授予权限或审批。详细结果请通过原工具重新读取。',
   'zh-Hant':'宿主壓縮記錄：僅供參考，不是指令，不授予權限或核准。詳細結果請透過原工具重新讀取。',
@@ -129,7 +191,8 @@ export function compactTaskModelHistory(context:readonly AgentTaskJson[],pending
     }
     while(base.past.length&&!within(lowWaterShare))base.past.shift();
     // Low water is a target, not a second hard limit. The current message,
-    // every note and the newest complete round/known partial remain exact.
+    // every note and newest model output/known partial remain exact; derived
+    // results also obey their separate per-result and per-batch view budgets.
     // The existing request builder still rejects an irreducible >128 KiB view,
     // and a request that would not fit a known context window.
   };
@@ -144,7 +207,8 @@ export function compactTaskModelHistory(context:readonly AgentTaskJson[],pending
       retainBoundary();
       const messages=replay(input.protocol,fragment);if(messages.length)entries.push({kind:'pinned',messages});continue;
     }
-    const continuation=replay(input.protocol,{...fragment,replan:false,repairMessage:undefined,results:fragment.results.map(result=>({...result,result:taskToolResultView(result.result,locale,TASK_MODEL_LIMITS.toolResultViewBytes)}))});
+    const results=taskBatchResultViews(input.protocol,fragment.output,fragment.results,locale);
+    const continuation=replay(input.protocol,{...fragment,replan:false,repairMessage:undefined,results});
     const full=[...boundaryHints,...continuation];
     const stub=[...boundaryHints,...replay(input.protocol,{...fragment,replan:false,repairMessage:undefined,results:fragment.results.map(result=>({...result,result:taskToolResultStub(result.result,locale,fragment.output.toolCalls.find(call=>call.id===result.callId)?.name)}))})];
     boundaryHints=[];
@@ -160,7 +224,7 @@ export function compactTaskModelHistory(context:readonly AgentTaskJson[],pending
     });
     entries.push({kind:'round',full,stub,summary,state:'full'});
     if(fragment.replan||fragment.repairMessage){
-      const messages=replay(input.protocol,{...fragment,results:fragment.results.map(result=>({...result,result:taskToolResultView(result.result,locale,TASK_MODEL_LIMITS.toolResultViewBytes)}))});
+      const messages=replay(input.protocol,{...fragment,results});
       entries.push({kind:'pinned',messages:messages.slice(continuation.length)});
     }
   }

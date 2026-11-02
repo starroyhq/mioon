@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import {constants,openSync,fstatSync,fsyncSync,closeSync} from 'node:fs';
 import {ensurePrivateDirectory,validateManagedDirectory,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';
 import {FRAME_LIMITS,SCENE_LIMITS} from '@mioon/contracts';
+import {storeDirectories} from './store-layout.ts';
 
 export interface SceneShotsStorage {
  /** One staged PNG per segment position; a retried task never reuses one. */
@@ -23,14 +24,14 @@ const maxBytes=FRAME_LIMITS.resultBytes;
  * the directory is outside the backup families and every path is derived from
  * a task or asset UUID; reads never create directories. */
 export function createSceneShotsStorage(store: {readonly root: string}): SceneShotsStorage {
- const root=store.root,directory=path.join(root,'scene-staging'),media=path.join(root,'media');
- function syncDirectory(value: string): void {
-  const before=validateManagedDirectory(value,{root});let fd;
+ const {projectDir:root,tempDir:stagingRoot}=storeDirectories(store),directory=path.join(stagingRoot,'scene-staging'),media=path.join(root,'media');
+ function syncDirectory(value: string,ownerRoot=root): void {
+  const before=validateManagedDirectory(value,{root:ownerRoot});let fd;
   try{
    if(!before)throw failure();
    fd=openSync(value,constants.O_RDONLY|constants.O_NOFOLLOW);const opened=fstatSync(fd);
    if(!opened.isDirectory()||before.dev!==opened.dev||before.ino!==opened.ino)throw failure();
-   fsyncSync(fd);const after=validateManagedDirectory(value,{root});if(!after||after.dev!==opened.dev||after.ino!==opened.ino)throw failure();
+   fsyncSync(fd);const after=validateManagedDirectory(value,{root:ownerRoot});if(!after||after.dev!==opened.dev||after.ino!==opened.ino)throw failure();
   }finally{if(fd!==undefined)closeSync(fd);}
  }
  function stagePath(taskId: string,index: number): string {
@@ -41,11 +42,11 @@ export function createSceneShotsStorage(store: {readonly root: string}): SceneSh
  function stage(taskId: string,index: number,bytes: Buffer): void {
   const file=stagePath(taskId,index);
   if(!Buffer.isBuffer(bytes)||!bytes.length||bytes.length>maxBytes)throw failure();
-  if(!validateManagedDirectory(directory,{root,allowMissing:true,private:true})){ensurePrivateDirectory(directory,{create:true});validateManagedDirectory(directory,{root,private:true});syncDirectory(root);}
-  writePrivateFileAtomic(file,bytes,{root,maxBytes,replace:false});syncDirectory(directory);
+  if(!validateManagedDirectory(directory,{root:stagingRoot,allowMissing:true,private:true})){ensurePrivateDirectory(directory,{create:true});validateManagedDirectory(directory,{root:stagingRoot,private:true});syncDirectory(stagingRoot,stagingRoot);}
+  writePrivateFileAtomic(file,bytes,{root:stagingRoot,maxBytes,replace:false});syncDirectory(directory,stagingRoot);
  }
  function staged(taskId: string,index: number): Buffer {
-  const bytes=readPrivateFile(stagePath(taskId,index),{root,maxBytes});
+  const bytes=readPrivateFile(stagePath(taskId,index),{root:stagingRoot,maxBytes});
   if(!Buffer.isBuffer(bytes)||!bytes.length)throw failure();return bytes;
  }
  function publish(assetId: string,bytes: Buffer): string {
@@ -55,8 +56,8 @@ export function createSceneShotsStorage(store: {readonly root: string}): SceneSh
   syncDirectory(media);return `media/${assetId}.png`;
  }
  function discard(taskId: string,count: number): void {
-  if(!validateManagedDirectory(directory,{root,allowMissing:true,private:true}))return;
-  for(let index=0;index<Math.min(count,SCENE_LIMITS.shotsPerTask);index++)removePrivateFile(stagePath(taskId,index),{root,maxBytes});
+  if(!validateManagedDirectory(directory,{root:stagingRoot,allowMissing:true,private:true}))return;
+  for(let index=0;index<Math.min(count,SCENE_LIMITS.shotsPerTask);index++)removePrivateFile(stagePath(taskId,index),{root:stagingRoot,maxBytes});
  }
  function withdraw(assetIds: readonly string[],claimed: (assetId: string)=>boolean): void {
   for(const assetId of assetIds)if(!claimed(assetId))removePrivateFile(finalPath(assetId),{root,maxBytes});

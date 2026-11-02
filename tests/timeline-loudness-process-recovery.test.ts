@@ -6,14 +6,16 @@ import {mkdtemp,realpath,readFile,writeFile,unlink,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {timelineLoudnessCandidateDigest} from '../packages/contracts/src/timeline-loudness-apply.ts';
+import {openProjectDatabase} from './helpers/project-database.ts';
+import {readProjectState} from './helpers/project-state.ts';
+import type {ProjectState} from './helpers/project-state.ts';
 const repo=fileURLToPath(new URL('../',import.meta.url)),workerPath=fileURLToPath(new URL('./helpers/timeline-loudness-process-worker.ts',import.meta.url));
 interface WorkerReady {pid: number; startup: {processed: number; unavailable: number}}
 interface WorkerReply {[key: string]: unknown}
-interface WorkerHarness {pid: number | undefined; ready: Promise<WorkerReady>; exited: Promise<{code: number | null; signal: string | null}>; ask<T = WorkerReply>(method: string, input?: unknown): Promise<T>; close(): Promise<unknown>}
+interface WorkerHarness {pid: number | undefined; readonly stopped: {code: number | null; signal: string | null} | undefined; ready: Promise<WorkerReady>; exited: Promise<{code: number | null; signal: string | null}>; ask<T = WorkerReply>(method: string, input?: unknown): Promise<T>; close(): Promise<unknown>}
 interface TimelineView {id: string; revision: number; tracks: {id: string; kind: string; [key: string]: unknown}[]; clips: unknown[]; [key: string]: unknown}
 interface ProjectView {id: string}
 function deadline<T>(promise: Promise<T>, label: string, ms = 10000): Promise<T> {let timer: ReturnType<typeof setTimeout> | undefined;return Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error(`Timed out: ${label}`)),ms);})]).finally(()=>clearTimeout(timer));}
@@ -36,7 +38,7 @@ function startWorker(root: string,{missingTools=false}: {missingTools?: boolean}
     if(value.type==='ready')ready.resolve(value as WorkerReady);else if(value.type==='fatal')reject(Error(String(value.message)));
     else if(value.type==='reply'){const response=value.id===undefined?undefined:pending.get(value.id);if(value.error)response?.reject(Object.assign(Error(String(value.error.message)),{code:value.error.code}));else response?.resolve(value.data);}
   });
-  return {pid:child.pid,ready:ready.promise,exited:exited.promise,
+  return {pid:child.pid,get stopped(){return stopped;},ready:ready.promise,exited:exited.promise,
     async ask<T = WorkerReply>(method: string,input?: unknown): Promise<T> {if(stopped)throw Error('Owned worker stopped');const id=randomUUID(),reply=Promise.withResolvers<unknown>();pending.set(id,reply);
       child.send({id,method,input},(error: Error | null)=>{if(error)reply.reject(error);});try{return await deadline(reply.promise,method) as T;}finally{pending.delete(id);}},
     async close(){if(!stopped&&child.connected)child.send({method:'close'});try{return await deadline(exited.promise,'worker close');}
@@ -63,7 +65,16 @@ test('SIGKILL after real loudness commit retains one history/receipt and recover
     timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),
       assetId:id,trackId:audioTrack.id,startFrame:0,durationFrames:60,gain:.75}) as TimelineView;
   }finally{await services.drain();store.close();}
-  const read=<T,>(fn: (db: DatabaseSync) => T): T => {const db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});try{return fn(db);}finally{db.close();}};
+  // The active worker reads its own connection. A true SIGKILL leaves its lock,
+  // so crash evidence keeps the existing non-owner read; only a cleanly closed
+  // project can use the ordinary test connection. JSON keeps all paths equal.
+  const state=async(worker:WorkerHarness):Promise<ProjectState>=>{
+    if(!worker.stopped)return worker.ask<ProjectState>('snapshot');
+    if(worker.stopped.signal==='SIGKILL'){const crashed=openStore(root,{lock:false});try{return JSON.parse(JSON.stringify(readProjectState(crashed.db))) as ProjectState;}finally{crashed.close();}}
+    const db=openProjectDatabase(root);try{return JSON.parse(JSON.stringify(readProjectState(db))) as ProjectState;}finally{db.close();}
+  };
+  const receipt=(saved:ProjectState,requestId:string)=>{const row=saved.tables.timeline_requests.find(row=>row.requestId===requestId);
+    return row?{requestHash:row.requestHash,response:row.response as string}:undefined;};
   const start=async (options?: {missingTools?: boolean})=>{const worker=startWorker(root,options);workers.push(worker);const ready=await deadline(worker.ready,'worker ready');
     assert.equal(ready.pid,worker.pid);assert.notEqual(ready.pid,process.pid);assert.equal(await readFile(path.join(root,'server.lock'),'utf8'),String(worker.pid));return {worker,ready};};
   assert.ok(project && timeline && asset);
@@ -77,8 +88,8 @@ test('SIGKILL after real loudness commit retains one history/receipt and recover
   assert.deepEqual(await first.worker.exited,{code:null,signal:'SIGKILL'});assert.equal(await readFile(path.join(root,'server.lock'),'utf8'),String(first.worker.pid));
   const crash=JSON.parse(await readFile(path.join(root,'owned-loudness-crash-proof.json'),'utf8'));
   assert.deepEqual(crash,{phase:'afterBusinessCommit',pid:first.worker.pid,liveMediaCount:0,dispatchCount:1,operation:'timeline.loudness.apply',requestId:input.requestId});
-  const originalRow=read(db=>db.prepare('SELECT requestHash,response FROM timeline_requests WHERE requestId=?').get(input.requestId) as {requestHash: unknown; response: string} | undefined);assert.ok(originalRow);const original=originalRow,ack=JSON.parse(original.response);
-  const editStatus=read(db=>db.prepare('SELECT status FROM edit_tasks WHERE id=?').get(prepared.task.id) as {status: string} | undefined);assert.ok(editStatus);assert.equal(editStatus.status,'dispatching');
+  const committed=await state(first.worker),originalRow=receipt(committed,input.requestId);assert.ok(originalRow);const original=originalRow,ack=JSON.parse(original.response);
+  const editStatus=committed.tables.edit_tasks.find(row=>row.id===prepared.task.id);assert.ok(editStatus);assert.equal(editStatus.status,'dispatching');
   await unlink(path.join(root,String(asset.relativePath)));const second=await start({missingTools:true});assert.deepEqual(second.ready.startup,{processed:1,unavailable:0});
   const recovered=await second.worker.ask<{task:{status:string;requestId:string;digest:string;input:unknown}; instanceId:string}>('get',{projectId:project.id,taskId:prepared.task.id});assert.equal(recovered.task.status,'applied');
   assert.equal(recovered.task.requestId,input.requestId);assert.equal(recovered.task.digest,prepared.task.digest);assert.deepEqual(recovered.task.input,input);assert.notEqual(recovered.instanceId,prepared.instanceId);
@@ -87,9 +98,10 @@ test('SIGKILL after real loudness commit retains one history/receipt and recover
   assert.ok(timeline);assert.deepEqual(undone.clips,timeline.clips);
   assert.equal(JSON.stringify(((await second.worker.ask('execute',action(recovered))) as {result: unknown}).result),original.response);
   assert.equal(JSON.stringify(await second.worker.ask('rpc',{operation:'timeline.loudness.apply',input})),original.response);
-  assert.deepEqual(read(db=>db.prepare('SELECT requestHash,response FROM timeline_requests WHERE requestId=?').get(input.requestId)),original);
-  assert.equal(read(db=>(db.prepare("SELECT count(*) AS n FROM timeline_history WHERE operation='timeline.loudness.apply'").get() as {n: number}).n),1);
-  assert.equal(read(db=>(db.prepare('SELECT count(*) AS n FROM timeline_requests WHERE requestId=?').get(input.requestId) as {n: number}).n),1);
+  const retained=await state(second.worker);
+  assert.deepEqual(receipt(retained,input.requestId),original);
+  assert.equal(retained.tables.timeline_history.filter(row=>row.operation==='timeline.loudness.apply').length,1);
+  assert.equal(retained.tables.timeline_requests.filter(row=>row.requestId===input.requestId).length,1);
   assert.deepEqual(await second.worker.ask('observe'),{dispatches:[],media:[],liveMediaCount:0});
   t.diagnostic(`SIGKILL afterBusinessCommit confirmed for owned worker ${first.worker.pid}; new owner ${second.worker.pid} recovered original ACK without media or redispatch.`);
 });

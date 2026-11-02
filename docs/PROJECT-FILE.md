@@ -124,6 +124,27 @@
   - `invalid`：带打开时会报的 `PROJECT_INVALID` 原因，例如 `not-a-project-file`、`read-only`（只读位置上的热日志回滚不了）。
   - **没有热日志时不读项目文件**（10-31 定）：`lstat` 和本进程已持有的判断之后，先看项目文件旁边的 `-journal`：没有、是 0 字节或第一个字节是 0，就不是热日志，直接返回 `clean`，项目文件连文件头也不读。首页每次列项目都会调它；放在 iCloud 里、已经被系统移出本机的项目文件，一读文件头就会被整个下载回来。所以旁边没有热日志、又不是项目文件的普通文件，这里返回 `clean`，要等打开时才报 `PROJECT_INVALID`。
 - **事务：** `store.tx` 用 `BEGIN`，不用 `db.ts` 的 `BEGIN IMMEDIATE`，这是和 `db.ts` 唯一有意的差别。独占锁下 `BEGIN IMMEDIATE` 已经没有提前取锁的作用，反而让每次提交都把三个库拉进写事务、建一个超级日志。用 `BEGIN` 时只有写到的库进入写事务：只写本机记录的提交（例如 Mio 流式输出）不碰项目文件，也不建超级日志；同时写两个文件的提交照旧用超级日志。K1 实测，p50 从 1.11 ms 降到 0.34 ms。
+- **S0 P1 的内部接缝：** `db.ts` 的事务 fence/observer 注册遇到真实的新内核连接时，转交内核的注册表，仍在同一事务里按 fence、业务回调、observer 的顺序执行，失败一起回滚。`isProjectStore` 只认可内核返回的确切对象和仍然打开的原连接；复制公开字段不能获得锁归属或跳过旧恢复校验，关闭后证明失效。项目连接和应用库连接不允许用原生 `db.open()` 重开：它不会重新挂库、安装 TEMP 约束或登记，必须再次调用相应的内核或应用库 opener。默认 `db.ts.openStore`、测试辅助函数和服务端装配仍用旧工作区，真正切换在 P4。
+- **本进程持有的文件：** 内核的 `isProjectFileHeld(identity)` 查询项目文件、history.db、cache.db，应用库的 `isAppLibraryHeld(identity)` 查询 app-library.db；调用方按两者的或组合传给 L1 的 `isHeld`。只查询实际连接的持有表，不额外打开或关闭文件，不按路径名猜测；身份取 `lstat/stat` 的十进制 dev、ino，ino 为 0 时不作身份匹配。硬链接、改名仍是同一身份，连接关闭后不再持有。P1 只提供端口，素材读取接线归 S1。
+
+**S0 P2 的组装接缝（尚未切换生产存储）：**
+
+- `apps/server/src/project-runtime.ts` 的 `composeProjectRuntime` 从已打开的 store 组装 providers、业务服务、编辑任务、Mio、草稿及对应 HTTP handler。它不打开/关闭 store、不绑定监听器，也不创建宿主管理器。旧 `startServer` 调用同一个工厂，仍用旧目录、默认设置、路由和工作区；监听成功后才启动 worker，一个工厂只启动一个 worker。
+- 新内核只在定向集成测试中装配，必须显式提供应用库端口与 `ServiceApplicationPorts`。项目连接不挂载应用库。应用配置、偏好、全局 Mio policy、授权、最近项目使用应用范围；三个项目 JSON 使用 `localDir/history.db` 的身份。`databaseFile` 的验证仍要求私有根内的直接子文件，只做原有 stat 验证，不读取持有的数据库。
+- `isAppLibraryHeld(identity, db)` 可同时核对文件身份与实际持有它的连接；不能把一个仍打开的连接与另一个库的路径拼接成应用权限。应用 documents 的 companion 写入经独立应用事务提交后才返回确认，拒绝加入外层未提交事务。Mio policy 的 CAS 写入也使用独立应用事务，policy 与请求回执一起提交；无 CAS 的既有 B1 写法仍可组合进应用事务。
+- 新工厂支持借用应用设置；借用的设置和配置/备份端口由应用所有者关闭，关闭项目不关闭它们。工厂启动失败时先取消并等待内部任务和自建设置；清理成功才重抛原启动错误。清理失败或超时会保留两类错误，外层不得关闭 SQLite 或释放锁，遵守既有 `boundedShutdown` 的安全边界。
+- 领域能力来自真实内核登记和已验证结构，不把新连接伪装成 ordinary-72。固定历史构造器和验证源码保持原字节；旧布局检查继续执行原规则。Mock 的原 SQL 不变，只在真实内核跳过预建两表的安装；其当前运行时源码摘要随接缝更新，历史源摘要与 golden 不重设。内容表按 project、记录表按 main、缓存表按 cache 定位；LUT 的运行时读取复用原有有界投影、字节哈希及格式校验。
+- 图片组保留的 activeTaskId 若在本机没有任务、也没有该组其它未解决的本机任务，读取时视为空闲，下一次生成的原 CAS 更新替换旧指针。若本机任务存在，它必须属于同项目、同组；错绑或本机未解决任务与指针不一致仍是损坏，不能当作外来任务放行。
+- 新内核的图片、帧、分镜暂存放 `tempDir` 下原有 staging 子目录，最终素材仍在 projectDir/media。发布在目标目录内原子写入，成功前保留源文件和回执，跨盘暂存不依赖 rename。旧 store 的路径不变。编码能力探测可使用 tempDir；素材只读路径仍为 projectDir，波形缓存仍用 cache 库。
+
+P2 不改变公开地址、落盘格式、Mio 请求字节、生产入口或测试辅助函数。下面的激活与兼容性工作留到 P4：
+
+| 项目 | P4 必须处理的边界 |
+| --- | --- |
+| 生命周期、包、工作区备份 | 新内核不调用旧删除/导入/备份链；列暂不可用操作、精确错误及需改的正向测试。三处旧无库名 foreign_key_check 留在这些旧格式专用链中；新内核检查使用跨文件 foreignKeyCheck |
+| 存储统计 | 现有 11 表统计协议包含应用 policy 两表；项目库单独统计返回既有 unavailable，不伪造零计数。应用与项目的真实聚合随切换接入 |
+| 可携带内容 | 缺本机来源任务的 image_versions、scene_results 等需要单独保留来源核验及负例；P2 不放松严格 ownership/provenance。普通 0755 项目目录的最终媒体写入策略也须明确，当前私有存储拒绝和源文件保留规则不放宽 |
+| native 与容量 | 新内核不在各项目工厂重复 bind 原生音频 authority，P4 提供按项目分派的聚合服务。队列和配额的常量不在 P2 改动，按项目后的可达容量变化在 P4 列明 |
 - **应用库：** 不挂到项目连接上，单独开一个连接。
 - **锁：** 都用回滚日志模式和独占锁，打开时立即取得写锁。第二个进程打开同一个项目时报 `PROJECT_LOCKED`。
 
@@ -210,7 +231,7 @@
 | `path` | 相对路径相对项目目录，一律用 `/`，只有开头可以是 `..`；绝对路径是规范化的 POSIX、盘符或 UNC 路径 |
 | `volume` | 卷名。相对路径为 `null`；绝对路径在知道时填 |
 | `sizeBytes`、`mtimeMs` | 大小（字节）、修改时间。`mtimeMs` 由 bigint `lstat` 的 `mtimeNs` 换算，精确到微秒：`Number(mtimeNs / 1000n) / 1000`，早于 1970 年的记为 0。一律用 L1 的 `mediaMtimeMs` 算：Node 的数字 `mtimeMs` 末位和它不同，混用会让修改时间永远对不上 |
-| `sampledSha256` | 抽样哈希，规则由 L1 定，定了就不再改：不超过 1 MiB（1 048 576 字节）的文件取整个文件的 SHA-256，这时等于完整哈希；更大的文件取 5 段，每段 64 KiB（65 536 字节），第 i 段（i = 0…4）从 ⌊i × (大小 − 65 536) / 4⌋ 开始，5 段按顺序接起来算一个 SHA-256。5 段覆盖开头、中间和结尾，MP4 的 `moov` 在头在尾都抽得到；每个文件最多读 320 KiB |
+| `sampledSha256` | 抽样哈希，规则由 L1 定，定了就不再改：不超过 1 MiB（1 048 576 字节）的文件取整个文件的 SHA-256，这时等于完整哈希；更大的文件取 5 段，每段 64 KiB（65 536 字节），第 i 段（i = 0…4）从 ⌊i × (大小 − 65 536) / 4⌋ 开始，5 段按顺序接起来算一个 SHA-256。5 段覆盖开头、中间和结尾，MP4 的 `moov` 在头在尾都抽得到；每个文件最多读 1 MiB（大文件的 5 段合计 320 KiB） |
 | `fullSha256` | 完整哈希，需要时再算，例如付费生成派发前；没算过为 `null` |
 
 - 后四个字段合称指纹（`mediaFingerprintSchema`）。
@@ -281,7 +302,7 @@ projectDatabasePath(root: string): string                 // 取代直接拼 wor
 openProjectDatabase(root: string): DatabaseSync           // 按“一个连接，三个库”的顺序打开；只在 store 和服务端都没占着项目时用
 schemaObjects(db: DatabaseSync): SchemaObject[]           // 主库和挂载库的结构合在一起
 projectDirFor(dataDir: string, projectId: string): string // 取代直接拼 <dataDir>/media/…
-createServerProject(dataDir: string, options?: {name?: string}): {projectId: string; store: ProjectStore<DatabaseSync>}
+createServerProject(dataDir: string, options?: {name?: string; projectId?: string}): {projectId: string; store: ProjectStore<DatabaseSync>}
 foreignKeyCheck(db: DatabaseSync): ForeignKeyViolation[]  // 所有库，以及用临时触发器模拟的跨文件关系
 withoutForeignKeys<T>(db: DatabaseSync, write: () => T): T // 只在这次写入前后关外键，写坏数据用
 ```
@@ -291,6 +312,8 @@ withoutForeignKeys<T>(db: DatabaseSync, write: () => T): T // 只在这次写入
 - `openProjectDatabase` 设置和内核相同的 pragma，建同样的连接级临时触发器，否则经这个连接写入时会绕过跨文件约束和目标修订触发器。store 或服务端还占着这个项目时拒绝打开；旧存储上也执行这条规则，例如发现 `server.lock` 存在就拒绝。
 - `createServerProject` 给“先填库、再起服务”的测试用：按服务端的布局建一个已登记的项目，返回 `{projectId, store}`。写完先 `store.close()`，再 `startServer({dataDir})`。切换以后，服务端只认登记过的项目，看不到在 `dataDir` 本身建的 store。
   - 项目名用 `name` 选项给，不要建好以后再用 `store.put` 改名。切换以后，服务端的项目列表读的是登记里的名字；测试自己关掉的 store 不会更新登记，所以事后改的名字在列表里看不到。
+  - 共用种子可以用可选的 `projectId` 指定固定项目 ID，每个项目调一次；只接受 `isProjectId` 认可的小写 UUID，非法值抛错。重复检查和创建在同一事务中完成，已有 ID 会报错，不会覆盖原记录；失败时关闭已经打开的 store。不传或传 `undefined` 时照旧生成新 ID，显式的 `null` 或其他非字符串值不能当成缺省值。
+  - 固定 ID 只供测试种子使用，服务端不允许客户端选择项目 ID；这样的测试不能证明 ID 生成行为。S0 的新内核版沿用同一个选项。
 - `withoutForeignKeys` 给要写坏数据的测试用，例如一行属于或指向这个 store 里没有的项目；测试不再自己开关 `PRAGMA foreign_keys`。切换以后，本机记录指向项目文件的关系由临时触发器检查，这个 pragma 管不到，S0 只换这一个函数的实现。它必须在事务外开始；`write` 返回 Promise 时，等它结束再打开外键，所以能包住一次在自己的事务里篡改的 service 调用。
 - 查结构按名字找对象，不按库名断言。旧存储上的对象都在 `main` 里；切换以后，内容表在 `project`，本机记录在 `main`。
 

@@ -8,6 +8,7 @@ import {AGENT_AUTHORIZATION_LIMITS,AGENT_AUTHORIZATION_SCOPES,agentAuthorization
   agentAuthorizationTargetSchema,agentAuthorizationCurrentTargetSchema,agentAuthorizationDiskSchema} from '../../../contracts/src/agent-authorization.ts';
 import type {AgentAuthorizationTarget,AgentAuthorizationSnapshot,AgentAuthorizationList,AgentAuthorizationReceipt,AgentAuthorizationDisk} from '../../../contracts/src/agent-authorization.ts';
 import type {LocalDraftStorage} from '../local-drafts.ts';
+import {validateCompanionScope} from '../companion-scope.ts';
 
 export const AGENT_AUTHORIZATION_FILENAME='agent-authorizations-v1.json';
 const messages={
@@ -30,6 +31,8 @@ function fail(code:ErrorCode):never{throw new AgentAuthorizationError(code);}
 type Disk=AgentAuthorizationDisk;
 interface Options{
   root:string;channel?:'web'|'production'|'development';storage:LocalDraftStorage;
+  /** App library identity when composed by the project host; legacy default is workbench.sqlite. */
+  databaseFile?:string;
   guards:{ownsLock():boolean;isRestored():boolean};readCurrentTarget():Promise<unknown>;
   signal?:AbortSignal;
 }
@@ -54,7 +57,7 @@ const identity=(value:AgentAuthorizationTarget):string=>JSON.stringify([value.de
 const digest=(operation:string,input:unknown):string=>createHash('sha256').update(JSON.stringify([operation,input])).digest('hex');
 /** Separate, private workspace companion. It holds only target metadata and
  * exact authorization receipts, never messages, project text or credentials. */
-export function createAgentAuthorizations({root,channel='web',storage,guards,readCurrentTarget,signal}:Options):AgentAuthorizations{
+export function createAgentAuthorizations({root,channel='web',storage,guards,readCurrentTarget,signal,databaseFile}:Options):AgentAuthorizations{
   if(!path.isAbsolute(root)||!['web','production','development'].includes(channel))fail('AGENT_AUTHORIZATION_VALIDATION');
   const file=path.join(root,AGENT_AUTHORIZATION_FILENAME);let scope:string|undefined,tail:Promise<unknown>=Promise.resolve();
   function owned():void{
@@ -63,7 +66,7 @@ export function createAgentAuthorizations({root,channel='web',storage,guards,rea
   }
   function boundary():string{
     owned();
-    const directory=storage.validatePrivateDirectory(root),db=storage.validateManagedFile(path.join(root,'workbench.sqlite'),{root});
+    const {directory,db}=validateCompanionScope(root,storage,databaseFile);
     if(!directory||!db)fail('AGENT_AUTHORIZATION_UNAVAILABLE');
     const current=calculateWorkspaceScope({channel,root,directory,db});
     if(scope!==undefined&&scope!==current)fail('AGENT_AUTHORIZATION_UNAVAILABLE');scope=current;owned();return current;

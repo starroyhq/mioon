@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,readFile, realpath} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {startServer} from '@mioon/server';
+import {openProjectDatabase,projectDirFor} from './helpers/project-database.ts';
 import {onMediaProcess} from '@mioon/business/media-processes';
 const pause=(ms: number): Promise<void>=>new Promise(resolve=>setTimeout(resolve,ms));
 
@@ -33,7 +33,8 @@ test('shutdown interrupts a real long FFmpeg export, reaps its process and prese
   const started=Date.now();await service.close();closed=true;assert.ok(Date.now()-started<6000,'shutdown must not wait for ten-minute output');
   assert.equal(active.size,0,'no tracked child survives close');
   assert.throws(()=>process.kill(ffmpegPid,0),/ESRCH/);
-  const db=new DatabaseSync(path.join(dataDir,'workbench.sqlite'));
+  // The server has closed and let go of the project; the test opens it itself.
+  const db=openProjectDatabase(projectDirFor(dataDir,project.id));
   try{const raw=(db.prepare('SELECT data FROM exports WHERE id=?').get(render.id) as {data: string}).data;const row=JSON.parse(raw) as {status: string; error: unknown; snapshot: {timeline: {clips: {durationFrames: number}[]}}};assert.equal(row.status,'queued');assert.equal(row.error,null);assert.equal(row.snapshot.timeline.clips[0]!.durationFrames,18000);}finally{db.close();}
  }finally{if(!closed)await service.close();unsubscribe();}
 });

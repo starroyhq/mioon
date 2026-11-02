@@ -15,11 +15,11 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
 import {mkdtemp,realpath,readFile,stat,rm} from 'node:fs/promises';
-import {DatabaseSync} from 'node:sqlite';
 import {startServer} from '../apps/server/src/index.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
+import {createServerProject} from './helpers/project-database.ts';
 import {schemas,isTimelineMutationResponse} from '@mioon/contracts';
 import {createLocalDeliverySchemas} from '@mioon/contracts/local-delivery';
 import type { BinaryLike } from 'crypto';
@@ -43,15 +43,18 @@ function request<T=WireEnvelope>(url: string,suffix: string|undefined,{method='G
 }
 async function fixture(t: test.TestContext){
   const parent=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-delivery-wire-'))),root=path.join(parent,'workspace');
-  let server:Awaited<ReturnType<typeof startServer>>,proxy: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>;const store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices);let project,timeline;
+  let server:Awaited<ReturnType<typeof startServer>>,proxy: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>;
+  // Filled before the server starts and closed before it does.
+  const created=createServerProject(root,{name:'Synthetic local export recovery'}),store=(created.store as unknown as TypedStore),services=(createServices(store,new Map()) as TypedServices),project={id:created.projectId};let timeline;
   try{
-    project=await services.call('project.create',{name:'Synthetic local export recovery'});
     const asset=await services.call('asset.import',{projectId:project.id,name:'Synthetic PNG',mimeType:'image/png',dataBase64:(await renderMockImagePng()).toString('base64')});
     timeline=await services.call('timeline.get',{projectId:project.id});
     timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:asset.id,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:30});
   }finally{await services.drain();store.close();}
   t.after(async()=>{try{if(proxy){proxy.closeAllConnections();await new Promise(resolve=>proxy.close(resolve));}await server?.close();}finally{await rm(parent,{recursive:true,force:true});}});
-  const start=async()=>server=await startServer({dataDir:root,port:0,token,chatGateway:async function*(){throw Error('No model calls in local export fixture');}});
+  // Every start hands over that server's own connection.
+  let inspect!:InspectProject;
+  const start=async()=>server=await startServer({dataDir:root,port:0,token,inspectProject:received=>{inspect=received;}});
   await start();
   const call=async<T=WireEnvelope>(suffix:string,options?: WireOptions)=>{const result=await request<T>(server.url,suffix,options);assert.equal(result.status,200,JSON.stringify(result.body));assert.equal(result.body.ok,true);return result.body.data;};
   const get=()=>call(`${route}?projectId=${project.id}`);
@@ -59,7 +62,8 @@ async function fixture(t: test.TestContext){
   const prepare=(value: WireEnvelope)=>({...authority(value),expectedIntentRevision:value.intentRevision,expectedIntentId:value.intent?.intentId??null,intentId:randomUUID(),timelineId:timeline.id,baseRevision:timeline.revision,
     draft:value.draft?{draftId:value.draft.draftId,revision:value.draftRevision,raw:value.draft.raw}:null,
     input:{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',...(value.draft?.raw.deliveryName?{deliveryName:value.draft.raw.deliveryName}:{})}});
-  const rows=()=>{const db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});try{return {exports:db.prepare('SELECT id,data FROM exports ORDER BY rowid').all(),receipts:db.prepare('SELECT requestId,response FROM timeline_requests ORDER BY rowid').all()};}finally{db.close();}};
+  // The running server holds the project, so rows are read on its own connection.
+  const rows=()=>inspect(project.id,db=>({exports:db.prepare('SELECT id,data FROM exports ORDER BY rowid').all(),receipts:db.prepare('SELECT requestId,response FROM timeline_requests ORDER BY rowid').all()}));
   return {root,project,timeline,get,call,name,prepare,rows,get url(){return server.url;},file:path.join(root,'local-delivery-v1.json'),
     async restart(){await server.close();await start();},
     async dropNextExecution(){

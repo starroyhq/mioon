@@ -14,7 +14,6 @@ import {mkdtemp,readFile,readdir,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient,discoverSchema} from '@mioon/client';
@@ -22,8 +21,10 @@ import {readTimelineMixLoudnessEnvelope} from '@mioon/client/timeline-mix-loudne
 import {isTimelineMixLoudnessResponse,TIMELINE_MIX_LOUDNESS_PROFILE} from '@mioon/contracts/timeline-mix-loudness';
 import {EXPORT_LOUDNESS_PROFILE} from '@mioon/contracts/export-loudness';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess, type MediaProcessEvent} from '../packages/business/src/media-processes.ts';
+import {changeMarks,readProjectState} from './helpers/project-state.ts';
 import type { BinaryLike } from 'crypto';
 
 const execute=promisify(execFile),repo=fileURLToPath(new URL('..',import.meta.url));
@@ -78,13 +79,13 @@ async function official(url: string,token: string){
 }
 
 test('real saved full mix matches across HTTP, CLI and official MCP without rows/files/receipt changes or retained observation listeners',{timeout:120000},async t=>{
-  const root=await mkdtemp(path.join(tmpdir(),'mioon-mix-loudness-real-wire-'));let backend!:Awaited<ReturnType<typeof startServer>>|undefined,db!: DatabaseSync,mcp!:Awaited<ReturnType<typeof official>>,server!: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>,off!: () => void;
-  t.after(async()=>{off?.();await mcp?.close();db?.close();await backend?.close();await rm(root,{recursive:true,force:true});});
+  const root=await mkdtemp(path.join(tmpdir(),'mioon-mix-loudness-real-wire-'));let backend!:Awaited<ReturnType<typeof startServer>>|undefined,inspect!: InspectProject,mcp!:Awaited<ReturnType<typeof official>>,server!: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>,off!: () => void;
+  t.after(async()=>{off?.();await mcp?.close();await backend?.close();await rm(root,{recursive:true,force:true});});
   // Capture only the actual server handle for listener inspection. The genuine
   // route, shared business service, decoder and response are never substituted.
   const createServer=http.createServer;
   const capture=t.mock.method(http,'createServer',(...args: unknown[])=>{server=createServer(...((args) as unknown as Parameters<NonNullable<typeof createServer>>));return server;});
-  try{backend=await startServer({dataDir:root,port:0,chatGateway:async function*(){throw Error('No model/provider call permitted');}});}
+  try{backend=await startServer({dataDir:root,port:0,inspectProject:received=>{inspect=received;}});}
   finally{capture.mock.restore();}
   assert.equal(new URL(backend.url).hostname,'127.0.0.1');
   const client=(createClient({env:environment(backend.url,backend.token)}) as FixtureClient);
@@ -102,13 +103,11 @@ test('real saved full mix matches across HTTP, CLI and official MCP without rows
   assert.deepEqual(await cli(backend.url,backend.token,['schema',operation]),definition);
   assert.deepEqual(await mcp.call('mioon_schema',{operation}),definition);
   assert.ok(definition.description.includes('完整测量编码前浮点混音'));
-  db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});
-  const savedSource=JSON.parse((((db.prepare('SELECT data FROM assets WHERE id=?').get(source.id))!.data) as unknown as Parameters<NonNullable<(typeof JSON)["parse"]>>[0]));
+  const savedSource=inspect(project.id,db=>JSON.parse((((db.prepare('SELECT data FROM assets WHERE id=?').get(source.id))!.data) as unknown as Parameters<NonNullable<(typeof JSON)["parse"]>>[0])));
   assert.equal(savedSource.sha256,sha(bytes));assert.equal(savedSource.sizeBytes,bytes.length);
   assert.equal(sha(await readFile(path.join(root,savedSource.relativePath))),sha(bytes));
-  const rows=()=>Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name})=>
-    [name,db.prepare(`SELECT * FROM "${(name as string).replaceAll('"','""')}" ORDER BY rowid`).all()]));
-  const before={rows:rows(),version:(db.prepare('PRAGMA data_version').get())!.data_version,files:await manifest(root)};
+  const rows=()=>inspect(project.id,db=>readProjectState(db).tables);
+  const before={rows:rows(),version:inspect(project.id,changeMarks),files:await manifest(root)};
   const listeners: ({ baseline: { request: unknown; response: unknown; }; remaining: { request: unknown; response: unknown; }; })[]=[];
   const observe=(req: { url: string; listenerCount: (arg0: string) => unknown; },res: { listenerCount: (arg0: string) => unknown; once: (arg0: string,arg1: () => void) => void; })=>{
     if(req.url!=='/api/rpc'&&parseProjectApiPath(req.url)?.kind!=='rpc')return;
@@ -153,13 +152,13 @@ test('real saved full mix matches across HTTP, CLI and official MCP without rows
     let active=0,maximum=0;for(const event of actual){active+=event.type==='started'?1:-1;maximum=Math.max(maximum,active);}assert.equal(active,0);assert.equal(maximum,1);
     counts.push({channel:name,probeCount:2,decodeCount:2*report.checks.segmentCount,maximumChildren:maximum});
     assert.deepEqual(rows(),before.rows,name+' must not modify any database record, history or receipt');
-    assert.equal((db.prepare('PRAGMA data_version').get())!.data_version,before.version,name+' must not write the database');
+    assert.deepEqual(inspect(project.id,changeMarks),before.version,name+' must not write the database');
     assert.deepEqual(await manifest(root),before.files,name+' must not modify managed files or create sidefiles');
     assert.equal(listeners.length,reports.length);assert.deepEqual((listeners.at(-1))!.remaining,(listeners.at(-1))!.baseline);
   }
   const comparable=({checkedAt,...report}:ServiceResponse<typeof operation>)=>report;
   for(const report of reports)assert.deepEqual(comparable(report),comparable(reports[0]));
-  assert.equal((db.prepare('SELECT count(*) AS n FROM exports').get())!.n,0);
+  assert.equal(inspect(project.id,db=>(db.prepare('SELECT count(*) AS n FROM exports').get())!.n),0);
   assert.equal(listeners.length,3);assert.ok(listeners.every(({remaining})=>remaining.request===0&&remaining.response===0));
   t.diagnostic(JSON.stringify({observations:3,sampleFrames:reports[0].original.sampleFrames,originalLufs:reports[0].original.integratedLufs,
     candidateLufs:reports[0].candidate.measurement.integratedLufs,candidateTruePeakDbtp:reports[0].candidate.measurement.truePeakDbtp,

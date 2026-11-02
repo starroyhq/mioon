@@ -44,7 +44,9 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
   switch (failure.code) {
     case 'PROJECT_MISSING':
       title = t('projectFile.open.missing.title', { name });
-      body = <>{t('projectFile.open.missing.body', { path: failure.projectFile })}{props.inboxCount !== undefined && props.inboxCount > 0 && <span data-testid="pf-open-inbox">{t('projectFile.open.missing.inbox', { count: props.inboxCount })}</span>}</>;
+      body = props.inboxCount !== undefined && props.inboxCount > 0
+        ? <span data-testid="pf-open-inbox">{t('projectFile.open.missing.bodyWithInbox', { path: failure.projectFile, count: props.inboxCount })}</span>
+        : t('projectFile.open.missing.body', { path: failure.projectFile });
       buttons = <>{run('remove', t('projectFile.open.missing.remove'), props.onRemove)}{run('locate', t('projectFile.home.locate'), props.onLocate, true)}</>;
       break;
     case 'PROJECT_LOCKED':
@@ -67,7 +69,7 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
         body = t('projectFile.open.readOnly.body');
         buttons = <>{close(t('common.close'), !props.onReveal)}{props.onReveal && run('reveal', t(revealLabelKey(props.platform)), props.onReveal, true)}</>;
       } else {
-        body = <>{t('projectFile.open.invalid.body')}{props.onRestoreBackup && t('projectFile.open.invalid.backupHint')}</>;
+        body = t(props.onRestoreBackup ? 'projectFile.open.invalid.bodyWithBackup' : 'projectFile.open.invalid.body');
         buttons = <>{close(t('common.close'), !props.onRestoreBackup)}{props.onRestoreBackup && run('restore', t('projectFile.open.invalid.restore'), props.onRestoreBackup, true)}</>;
       }
       break;

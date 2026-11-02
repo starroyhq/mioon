@@ -4,13 +4,13 @@ import {randomUUID,createHash} from 'node:crypto';
 import {mkdtemp,readFile,rm,mkdir,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {DatabaseSync} from 'node:sqlite';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {createClient} from '@mioon/client';
 import {isTimelineMutationResponse} from '@mioon/contracts';
 import {timelineLoudnessCandidateDigest} from '@mioon/contracts/timeline-loudness-apply';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment,mediaExecutable} from '../packages/business/src/media-environment.ts';
 
 interface TimelineView {id: string; projectId: string; revision: number; durationFrames: number; clips: {id: string; trackId: string; assetId: string; gain: number; [key: string]: unknown}[]; tracks: {id: string; kind: string; [key: string]: unknown}[]; [key: string]: unknown}
@@ -29,9 +29,9 @@ function withoutRevision(value: Record<string, unknown>): Record<string, unknown
 // Genuine shared HTTP services and production export worker. No mocked decoder,
 // capability list, renderer or measurement result participates in this gate.
 test('real apply undo redo and explicit float-v2 export remeasure the final AAC artifact while legacy output stays identical',{timeout:120000},async t=>{
- const root=await mkdtemp(path.join(tmpdir(),'mioon-loudness-apply-media-'));let backend: Awaited<ReturnType<typeof startServer>> | undefined,db: DatabaseSync | undefined;
- t.after(async()=>{db?.close();await backend?.close();await rm(root,{recursive:true,force:true});});
- backend=await startServer({dataDir:root,port:0,chatGateway:async function*(){throw Error('No model call permitted');}} as never);
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-loudness-apply-media-'));let backend: Awaited<ReturnType<typeof startServer>> | undefined,inspect!: InspectProject;
+ t.after(async()=>{await backend?.close();await rm(root,{recursive:true,force:true});});
+ backend=await startServer({dataDir:root,port:0,inspectProject:received=>{inspect=received;}});
  const client=createClient({env:{...mediaEnvironment(),MIOON_BASE_URL:backend.url,MIOON_TOKEN:backend.token,MIOON_ENABLE_LIVE_PROVIDER:'0'}});
  const project=await client.rpc('project.create',{name:'固定增益 应用撤销与真实成片'}) as {id: string},bytes=wav();
  const source=await client.rpc('asset.import',{projectId:project.id,name:'Known stereo 997 Hz.wav',mimeType:'audio/wav',dataBase64:bytes.toString('base64')}) as {id: string};
@@ -39,10 +39,10 @@ test('real apply undo redo and explicit float-v2 export remeasure the final AAC 
  const audioTrack=timeline.tracks.find((track: {kind: string})=>track.kind==='audio');assert.ok(audioTrack);
  timeline=await client.rpc('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),
   trackId:audioTrack.id,assetId:source.id,startFrame:0,durationFrames:90,gain:.75}) as TimelineView;
- const original=structuredClone(timeline);db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});
- assert.ok(db);
- const record=(id: string)=>JSON.parse(String((db?.prepare('SELECT data FROM exports WHERE id=?').get(id) as {data: string} | undefined)?.data));
- const asset=(id: string)=>JSON.parse(String((db?.prepare('SELECT data FROM assets WHERE id=?').get(id) as {data: string} | undefined)?.data));
+ const original=structuredClone(timeline);
+ assert.ok(inspect);
+ const record=(id: string)=>inspect(project.id,db=>JSON.parse(String((db.prepare('SELECT data FROM exports WHERE id=?').get(id) as {data: string} | undefined)?.data)));
+ const asset=(id: string)=>inspect(project.id,db=>JSON.parse(String((db.prepare('SELECT data FROM assets WHERE id=?').get(id) as {data: string} | undefined)?.data)));
  const originalSource=asset(source.id) as {relativePath: string},sourceFile=path.join(root,originalSource.relativePath);
  async function render(exportSettings?: Record<string, unknown>): Promise<RenderOutput> {
   const input={projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',...(exportSettings?{exportSettings}:{})};
@@ -62,8 +62,8 @@ test('real apply undo redo and explicit float-v2 export remeasure the final AAC 
  const applied=await client.rpc(operation,input) as {timeline: TimelineView; application:{gains: unknown[]}; [key: string]: unknown};assert.equal(isTimelineMutationResponse(operation,input,applied),true);timeline=applied.timeline;
  assert.equal(timeline.revision,(original as TimelineView).revision+1);const firstClip=timeline.clips[0];assert.ok(firstClip);assert.equal(firstClip.gain,report.candidate.gains[0]?.afterGain);
  const expected=structuredClone(original) as TimelineView;const expectedClip=expected.clips[0];assert.ok(expectedClip);expectedClip.gain=firstClip.gain;assert.deepEqual(withoutRevision(timeline),withoutRevision(expected));
- assert.equal((db.prepare('SELECT COUNT(*) n FROM timeline_history WHERE operation=?').get(operation) as {n: number}).n,1);
- assert.equal((db.prepare('SELECT COUNT(*) n FROM timeline_requests WHERE requestId=?').get(input.requestId) as {n: number}).n,1);
+ assert.equal(inspect(project.id,db=>(db.prepare('SELECT COUNT(*) n FROM timeline_history WHERE operation=?').get(operation) as {n: number}).n),1);
+ assert.equal(inspect(project.id,db=>(db.prepare('SELECT COUNT(*) n FROM timeline_requests WHERE requestId=?').get(input.requestId) as {n: number}).n),1);
  timeline=await client.rpc('timeline.undo',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID()}) as TimelineView;
  assert.deepEqual(withoutRevision(timeline),withoutRevision(original as unknown as Record<string, unknown>));assert.deepEqual(await client.rpc(operation,input),applied);
  const legacyAfterUndo=await render();assert.deepEqual(legacyAfterUndo.raw,legacy.raw,'Same legacy render bytes after gain undo; omitted old input and delivery stay omitted');
@@ -88,7 +88,7 @@ test('real apply undo redo and explicit float-v2 export remeasure the final AAC 
  assert.ok(video);assert.ok(audio);
  assert.equal(video.codec_name,'h264');assert.equal(video.r_frame_rate,'30/1');assert.equal(Number(video.nb_read_frames),90);assert.equal(audio.codec_name,'aac');assert.equal(Number(audio.sample_rate),48000);assert.equal(audio.channels,2);
  assert.equal(sha(await readFile(sourceFile)),sha(bytes));assert.deepEqual(asset(source.id),originalSource);
- assert.equal((db.prepare('SELECT COUNT(*) n FROM timeline_history WHERE operation=?').get(operation) as {n: number}).n,1);
+ assert.equal(inspect(project.id,db=>(db.prepare('SELECT COUNT(*) n FROM timeline_history WHERE operation=?').get(operation) as {n: number}).n),1);
  const evidence={sourceSha256:sha(bytes),legacyBeforeSha256:sha(legacy.raw),legacyAfterUndoSha256:sha(legacyAfterUndo.raw),legacyBytesIdentical:true,
   applyRequestId:input.requestId,beforeRevision:(original as TimelineView).revision,afterRevision:applied.timeline.revision,finalRevision:timeline.revision,gains:applied.application.gains,
   candidate:report.candidate.measurement,finalArtifact:{sha256:sha(output.raw),bytes:output.raw.length,profile:delivery.exportSettings.profileId,frames:Number(video.nb_read_frames),width:video.width,height:video.height},

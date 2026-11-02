@@ -14,7 +14,7 @@ summary.ja: 服装、持ち物、けが、立ち位置、出入りの方向、�
 ## 读取范围
 
 - 用 shot.inspect 按顺序读完全部镜头，包括标题、提示词、时长和画幅。
-- 加载 subjects 组，用 subject.list 和 subject.binding.list 读主体和绑定，知道每个镜头里有哪些角色。
+- 先用 mioon_tools_load 的 names 加载 mioon_subject_list 和 mioon_subject_binding_list，再用 subject.list 和 subject.binding.list 读主体和绑定，知道每个镜头里有哪些角色。
 - 项目说明已在本轮上下文里，角色设定和禁忌以项目说明为准。
 
 ## 检查项

@@ -18,6 +18,7 @@ import {openStore,ownsStoreLock} from '../packages/business/src/db.ts';
 import {withProbePermit} from '../packages/business/src/media-probe.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createWaveformServices,probeWaveform,WAVEFORM_ALGORITHM,WAVEFORM_CACHE_LIMITS, type WaveformService} from '../packages/business/src/waveforms.ts';
+import {withoutForeignKeys} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 const hash=(bytes: Buffer<ArrayBuffer>|BinaryLike)=>createHash('sha256').update(bytes).digest('hex');
@@ -272,7 +273,7 @@ test('unknown non-WAV origins and matching negative origins are conservatively u
 
 test('ownership reassignment as a publication trigger rolls back both ready data and reassignment',async t=>{
  const f=await fixture(t),asset=await f.asset();
- f.store.db.exec(`CREATE TRIGGER reassign_waveform_owner AFTER UPDATE ON waveform_cache WHEN NEW.status='ready' BEGIN
+ f.store.db.exec(`CREATE TEMP TRIGGER reassign_waveform_owner AFTER UPDATE ON waveform_cache WHEN NEW.status='ready' BEGIN
  UPDATE assets SET projectId='${f.other.id}',data=json_set(data,'$.projectId','${f.other.id}') WHERE id='${asset.id}'; END;`);
  const result=await f.ready(asset);assert.equal(result.status,'error');assert.equal(f.store.get('assets',asset.id)!.projectId,f.project.id);assert.equal(rows(f)[0].status,'error');
 });
@@ -345,9 +346,7 @@ test('empty and ready-only construction performs zero transactions or writes; un
 
 test('oversized foreign relational ownership is filtered in SQL before any foreign row reaches the service',async t=>{
  const f=await fixture(t),asset=await f.asset(),foreign=await f.asset({projectId:f.other.id});
- f.store.db.exec('PRAGMA foreign_keys=OFF');
- f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run('foreign private owner '.repeat(100000),'{foreign secret malformed metadata',foreign.id);
- f.store.db.exec('PRAGMA foreign_keys=ON');
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run('foreign private owner '.repeat(100000),'{foreign secret malformed metadata',foreign.id));
  const before=changes(f);
  for(const operation of (['asset.waveform.get','asset.waveform.request'] as const))assert.throws(()=>f.call(operation,{projectId:f.project.id,assetId:foreign.id}),missing);
  assert.equal(f.get(asset).status,'missing');assert.equal(rows(f).length,0);assert.equal(changes(f),before);

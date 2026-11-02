@@ -9,7 +9,6 @@ import {mkdtemp,readFile,rm,unlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient,discoverSchema,schemas} from '@mioon/client';
@@ -17,6 +16,7 @@ import {effectAnnotations,operationEffect,isTimelineMutationResponse,EXPORT_LOUD
 import {timelineLoudnessCandidateDigest,isTimelineLoudnessApplicableReport} from '@mioon/contracts/timeline-loudness-apply';
 import {readTimelineLoudnessApplyEnvelope} from '@mioon/client/timeline-loudness-apply';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
@@ -24,6 +24,7 @@ import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-po
 import {TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
 import {TIMELINE_GAIN_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-gain-tool-policy.ts';
 import {loudnessApplyFixture} from './fixtures/timeline-loudness-apply.ts';
+import {readProjectState} from './helpers/project-state.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
 const operation='timeline.loudness.apply',toolName='timeline_loudness_apply';
@@ -35,7 +36,7 @@ interface ReportWire {applyAllowed: boolean; candidate: {applyAllowed: boolean; 
 interface MediaEvent {type?: string; kind?: string; pid?: number; [key: string]: unknown}
 interface DiscoveryWire {toolName: string; command: string; requiresRequestId: boolean; inputSchema: {required: string[]; properties: Record<string, Record<string, unknown> & {const?: unknown; minimum?: number; maximum?: number; pattern?: string; type?: string; minLength?: number; maxLength?: number}>; additionalProperties: boolean}; effects: {notes: string; [key: string]: unknown}}
 interface OfficialClient {client: Client; close(): Promise<void>; call(name: string, input: Record<string, unknown>, options?: Record<string, unknown>): Promise<WireEnvelope>}
-interface Fixture {root: string; backend: Awaited<ReturnType<typeof startServer>>; db: DatabaseSync; mcp: OfficialClient; client: ReturnType<typeof createClient>; requests: {request: http.IncomingMessage; response: http.ServerResponse; baseline: {request: number; response: number}}[]; cleanups: (() => void | Promise<void>)[]; project: {id: string}; source: {id: string}; before: TimelineWire; sourceRecord: {sha256: string; relativePath: string}; prepareInput: Record<string, unknown>; report: ReportWire; input: Record<string, unknown>; http(op: string, input: Record<string, unknown>, options?: {signal?: AbortSignal}): Promise<WireEnvelope>; call(channel: string, input: Record<string, unknown>): Promise<WireEnvelope>; rows(): Record<string, Record<string, unknown>[]>; receipt(requestId: string): ReceiptRow | undefined; timeline(): TimelineWire}
+interface Fixture {root: string; backend: Awaited<ReturnType<typeof startServer>>; mcp: OfficialClient; client: ReturnType<typeof createClient>; requests: {request: http.IncomingMessage; response: http.ServerResponse; baseline: {request: number; response: number}}[]; cleanups: (() => void | Promise<void>)[]; project: {id: string}; source: {id: string}; before: TimelineWire; sourceRecord: {sha256: string; relativePath: string}; prepareInput: Record<string, unknown>; report: ReportWire; input: Record<string, unknown>; http(op: string, input: Record<string, unknown>, options?: {signal?: AbortSignal}): Promise<WireEnvelope>; call(channel: string, input: Record<string, unknown>): Promise<WireEnvelope>; rows(): Record<string, Record<string, unknown>[]>; receipt(requestId: string): ReceiptRow | undefined; timeline(): TimelineWire}
 const sha=(bytes: Uint8Array): string=>createHash('sha256').update(bytes).digest('hex');
 const pause=(ms: number): Promise<void>=>new Promise<void>(resolve=>{setTimeout(resolve,ms);});
 const environment=(url?: string): Record<string, string | undefined>=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',
@@ -89,17 +90,15 @@ function wav(): Buffer {
     bytes.writeInt16LE(Math.round(6144*Math.sin(2*Math.PI*733*frame/48000)),46+frame*4);
   }return bytes;
 }
-function allRows(db: DatabaseSync): Record<string, Record<string, unknown>[]> {return Object.fromEntries((db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all() as {name: string}[]).map(({name}: {name: string})=>
-  [name,db.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all() as Record<string, unknown>[]]));}
 async function fixture(t: import('node:test').TestContext,{saved=true}: {saved?: boolean} = {}): Promise<Fixture> {
-  const root=await mkdtemp(path.join(tmpdir(),'mioon-loudness-apply-wire-'));let backend: Awaited<ReturnType<typeof startServer>> | undefined,db: DatabaseSync | undefined,mcp: OfficialClient | undefined,server: http.Server | undefined;
+  const root=await mkdtemp(path.join(tmpdir(),'mioon-loudness-apply-wire-'));let backend: Awaited<ReturnType<typeof startServer>> | undefined,inspect!: InspectProject,mcp: OfficialClient | undefined,server: http.Server | undefined;
   const cleanups: (() => void | Promise<void>)[] = [];
-  t.after(async()=>{for(const cleanup of cleanups)cleanup();try{await mcp?.close();}finally{db?.close();
+  t.after(async()=>{for(const cleanup of cleanups)cleanup();try{await mcp?.close();}finally{
     try{await backend?.close();}finally{await rm(root,{recursive:true,force:true});}}});
   // Only capture the listener for request counting and lifecycle assertions.
   // Routes, services, storage, FFprobe/FFmpeg and mutation handling stay real.
   const createServer=http.createServer,capture=t.mock.method(http,'createServer',((...args: Parameters<typeof http.createServer>): http.Server=>{const owned=createServer(...args);server=owned;return owned;}) as never);
-  try{backend=await startServer({dataDir:root,port:0,token,chatGateway:async function*(){throw Error('No model or provider call permitted');}} as never);}
+  try{backend=await startServer({dataDir:root,port:0,token,inspectProject:received=>{inspect=received;}});}
   finally{capture.mock.restore();}
   const requests: Fixture['requests']=[],observe=(request: http.IncomingMessage,response: http.ServerResponse)=>{if(request.url==='/api/rpc')requests.push({request,response,
     baseline:{request:request.listenerCount('aborted'),response:response.listenerCount('close')}});};
@@ -107,9 +106,9 @@ async function fixture(t: import('node:test').TestContext,{saved=true}: {saved?:
   // media work, so only new per-operation cancellation listeners are compared.
   assert.ok(server);const ownedServer=server;ownedServer.on('request',observe);cleanups.push(()=>{ownedServer.removeListener('request',observe);});
   assert.ok(backend);const client=createClient({env:environment(backend.url)});
-  db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});mcp=await official(t,backend.url);
-  assert.ok(db);assert.ok(mcp);
-  const f={root,backend,db,mcp,client,requests,cleanups,async http(op: string,input: Record<string, unknown>,{signal}: {signal?: AbortSignal} = {}){
+  mcp=await official(t,backend.url);
+  assert.ok(inspect);assert.ok(mcp);
+  const f={root,backend,mcp,client,requests,cleanups,async http(op: string,input: Record<string, unknown>,{signal}: {signal?: AbortSignal} = {}){
     const response=await fetch(backend.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},
       body:JSON.stringify({operation:op,input}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(25000)]):AbortSignal.timeout(25000)});
     const body=await readTimelineLoudnessApplyEnvelope(response,signal) as WireEnvelope;assert.equal(response.ok,body.ok);
@@ -118,16 +117,18 @@ async function fixture(t: import('node:test').TestContext,{saved=true}: {saved?:
     if(channel==='HTTP')return f.http(operation,input);
     if(channel==='CLI')return (await cli(t,backend?.url,[...operation.split('.'),'--input',JSON.stringify(input)]).result).body;
     return (mcp as OfficialClient).call(toolName,input);
-  },rows:()=>allRows(db as DatabaseSync),receipt:(requestId: string)=>db?.prepare('SELECT * FROM timeline_requests WHERE requestId=?').get(requestId) as ReceiptRow | undefined,
-  timeline:()=>JSON.parse(String((db?.prepare('SELECT data FROM timelines WHERE projectId=?').get(f.project.id) as {data: string} | undefined)?.data)) as TimelineWire} as Fixture;
-  if(!saved)return f;
+  },rows:()=>inspect(f.project.id,db=>readProjectState(db).tables),receipt:(requestId: string)=>inspect(f.project.id,db=>db.prepare('SELECT * FROM timeline_requests WHERE requestId=?').get(requestId) as ReceiptRow | undefined),
+  timeline:()=>inspect(f.project.id,db=>JSON.parse(String((db.prepare('SELECT data FROM timelines WHERE projectId=?').get(f.project.id) as {data: string} | undefined)?.data))) as TimelineWire} as Fixture;
+  // Even strict-input-only cases inspect a real project on the server's own
+  // connection; their invalid requests keep the independent fixture ID.
   f.project=await client.rpc('project.create',{name:'固定增益 公共传输 🎬'}) as {id: string};
+  if(!saved)return f;
   let timeline=await client.rpc('timeline.get',{projectId:f.project.id}) as TimelineWire;const bytes=wav();
   f.source=await client.rpc('asset.import',{projectId:f.project.id,name:'双声道 原始素材.wav',mimeType:'audio/wav',dataBase64:bytes.toString('base64')}) as {id: string};
   const audioTrack=timeline.tracks.find((track: {kind: string})=>track.kind==='audio');assert.ok(audioTrack);const trackId=audioTrack.id;
   timeline=await client.rpc('timeline.clip.add',{projectId:f.project.id,expectedRevision:timeline.revision,requestId:randomUUID(),
     trackId,assetId:f.source.id,name:'已保存片段 🎬',startFrame:0,durationFrames:60,gain:.75,fadeInFrames:0}) as TimelineWire;
-  f.before=timeline;f.sourceRecord=JSON.parse(String((db.prepare('SELECT data FROM assets WHERE id=?').get(f.source.id) as {data: string}).data)) as {sha256: string; relativePath: string};
+  f.before=timeline;f.sourceRecord=inspect(f.project.id,db=>JSON.parse(String((db.prepare('SELECT data FROM assets WHERE id=?').get(f.source.id) as {data: string}).data))) as {sha256: string; relativePath: string};
   assert.equal(f.sourceRecord.sha256,sha(bytes));assert.equal(sha(await readFile(path.join(root,f.sourceRecord.relativePath))),sha(bytes));
   f.prepareInput={projectId:f.project.id,expectedRevision:timeline.revision,mixProfile:TIMELINE_MIX_LOUDNESS_PROFILE,
     measurementProfile:EXPORT_LOUDNESS_PROFILE,target:{integratedLufs:-30,truePeakCeilingDbtp:-1}};

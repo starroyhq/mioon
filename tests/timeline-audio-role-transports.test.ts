@@ -2,7 +2,7 @@ import type {Readable} from 'node:stream';
 import type {ChildProcessWithoutNullStreams} from 'node:child_process';
 import type {TimelineRecord, TimelineTrackRecord} from '../packages/contracts/src/timeline-replacement.ts';
 interface RoleCall {(name: string, input: Record<string, unknown>, expectedError: string): Promise<Failure>; (name: string, input: Record<string, unknown>, expectedError?: undefined): Promise<TimelineRecord>}
-import type {TypedServices, Failure, SchemaNode, RpcEnvelope} from './helpers/strict-timeline-audio-types.ts';
+import type {Failure, SchemaNode, RpcEnvelope} from './helpers/strict-timeline-audio-types.ts';
 import type {TestContext} from 'node:test';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,13 +13,12 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient} from '../packages/client/src/index.ts';
-import {openStore} from '../packages/business/src/db.ts';
-import {createServices} from '../packages/business/src/services.ts';
+import {createServerProject} from './helpers/project-database.ts';
+import {createProjectStorageReader} from './fixtures/project-server-process.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -84,25 +83,26 @@ async function mcpFixture(t: TestContext, env: NodeJS.ProcessEnv = {}): Promise<
 async function backendFixture(t: TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-fades-transports-'));
   // Synthetic metadata only: no source files, provider keys, FFmpeg or rendering.
-  const store = openStore(root), services = (createServices(store, new Map()) as TypedServices);
-  const projectId = (await services.call('project.create', {name: 'Role transport parity'})).id;
+  const {projectId, store} = createServerProject(root, {name: 'Role transport parity'});
   const assets: Record<string, string> = {};
   for (const [name, mimeType, hasAudio] of [['video', 'video/mp4', true], ['audio', 'audio/wav', true], ['silent', 'video/mp4', false], ['unknown', 'video/mp4', undefined], ['image', 'image/png', true]] as const) {
     const id = randomUUID(); assets[name] = id;
     store.put('assets', {id, projectId, name: `Synthetic ${name}`, mimeType, duration: 30, width: 720, height: 1280, sha256: 'a'.repeat(64), relativePath: `media/${id}.fixture`, ...(hasAudio === undefined ? {} : {hasAudio})});
   }
   store.close();
-  let backend: ChildProcessWithoutNullStreams | undefined, url!: string, port = 0, readOnly: DatabaseSync | undefined;
+  let backend: ChildProcessWithoutNullStreams | undefined, url!: string, port = 0;
+  let read!: ReturnType<typeof createProjectStorageReader>;
   async function stop() {
     if (!backend || backend.exitCode !== null || backend.signalCode) return;
     const child = backend, ended = once(child, 'exit'); child.kill('SIGTERM');
     const timeout = setTimeout(() => child.kill('SIGKILL'), 10000);
     try { await ended; } finally { clearTimeout(timeout); }
   }
-  t.after(async () => { readOnly?.close(); await stop(); await rm(root, {recursive: true, force: true}); });
+  t.after(async () => { await stop(); await rm(root, {recursive: true, force: true}); });
   async function start() {
     let stdout = '', stderr = '', spawnError;
-    backend = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.ts')], {cwd: repo, env: environment({MIOON_DATA_DIR: root, PORT: String(port), MIOON_TOKEN: token}), stdio: ['ignore', 'pipe', 'pipe']}) as unknown as ChildProcessWithoutNullStreams;
+    backend = spawn(process.execPath, [path.join(repo, 'tests/fixtures/project-server-process.ts')], {cwd: repo, env: environment({MIOON_DATA_DIR: root, PORT: String(port), MIOON_TOKEN: token}), stdio: ['ignore', 'pipe', 'pipe', 'ipc']}) as unknown as ChildProcessWithoutNullStreams;
+    read = createProjectStorageReader(backend);
     backend.once('error', error => spawnError = error);
     backend.stdout.setEncoding('utf8').on('data', bytes => stdout += bytes); backend.stderr.setEncoding('utf8').on('data', bytes => stderr += bytes);
     const deadline = Date.now() + 20000;
@@ -116,8 +116,6 @@ async function backendFixture(t: TestContext) {
     throw Error(`Backend did not start: ${stdout}\n${stderr}`);
   }
   await start();
-  readOnly = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-  const tables = readOnly.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(row => row.name as string);
   return {projectId, assets, get url() { return url; }, get pid() { return backend!.pid; }, restart: async () => { await stop(); await start(); },
     async http(operation: string, input: Record<string, unknown>, expectedError?: string) {
       const response = await fetch(url + '/api/rpc', {method: 'POST', redirect: 'error', headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'}, body: JSON.stringify({operation, input})});
@@ -126,8 +124,8 @@ async function backendFixture(t: TestContext) {
       assert.equal(body.ok, !expectedError, JSON.stringify(body));
       if (expectedError) { assert.equal(body.error.code, expectedError); return body.error; } return body.data;
     },
-    storage: () => Object.fromEntries(tables.map(table => [table, readOnly!.prepare(`SELECT * FROM "${table.replaceAll('"', '""')}" ORDER BY rowid`).all()])),
-    version: () => readOnly!.prepare('PRAGMA data_version').get()!.data_version,
+    storage: async (projectId: string) => (await read(projectId)).rows,
+    version: async (projectId: string) => (await read(projectId)).version,
   };
 }
 
@@ -150,9 +148,9 @@ test('audio roles use the existing HTTP, CLI and official MCP timeline journal',
  timeline=await mcp.call('timeline_undo',request(projectId,timeline));assert.equal(timeline.clips[0].audioRole,'human');
  timeline=await backend.http('timeline.redo',request(projectId,timeline));assert.equal(timeline.clips[0].audioRole,'music');
  const clear=request(projectId,timeline,{clipId,patch:{audioRole:null}});timeline=await mcp.call('timeline_clip_update',clear);assert.equal(timeline.clips[0].audioRole,null);
- const bad=request(projectId,timeline,{clipId,patch:{audioRole:'invalid'}});const before=backend.storage();
- await backend.http('timeline.clip.update',bad,'VALIDATION_ERROR');await command('timeline.clip.update',bad,'VALIDATION_ERROR');await mcp.call('timeline_clip_update',bad,'VALIDATION_ERROR');assert.deepEqual(backend.storage(),before);
- await backend.restart();const recovered=backend.storage();assert.deepEqual(await backend.http('timeline.clip.update',update),labelled);assert.deepEqual(await command('timeline.clip.add',add),initial);assert.deepEqual(backend.storage(),recovered);
+ const bad=request(projectId,timeline,{clipId,patch:{audioRole:'invalid'}});const before=(await backend.storage(projectId));
+ await backend.http('timeline.clip.update',bad,'VALIDATION_ERROR');await command('timeline.clip.update',bad,'VALIDATION_ERROR');await mcp.call('timeline_clip_update',bad,'VALIDATION_ERROR');assert.deepEqual((await backend.storage(projectId)),before);
+ await backend.restart();const recovered=(await backend.storage(projectId));assert.deepEqual(await backend.http('timeline.clip.update',update),labelled);assert.deepEqual(await command('timeline.clip.add',add),initial);assert.deepEqual((await backend.storage(projectId)),recovered);
  const image=request(projectId,timeline,{trackId:lane,assetId:assets.image,startFrame:60,durationFrames:30,audioRole:'sfx'});
  const rejection=await backend.http('timeline.clip.add',image,'AUDIO_ROLE_CLIP_UNSUPPORTED');assert.equal(rejection.details.operation,'timeline.clip.add');assert.equal(rejection.details.projectId,projectId);
  const cliError=await command('timeline.clip.add',image,'AUDIO_ROLE_CLIP_UNSUPPORTED');assert.equal(cliError.details.operation,rejection.details.operation);assert.equal(cliError.details.requestId,rejection.details.requestId);assert.equal(cliError.details.mutationOutcome,'not_applied');

@@ -3,16 +3,18 @@ import {AppError} from '@mioon/contracts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory} from '@mioon/contracts/private-storage';
 import {workspaceSettingsUpdateSchema,type WorkspaceSettings,type WorkspaceSettingsUpdate} from '../../contracts/src/workspace-configuration.ts';
 import {checkSeparate} from './workspace-backup-storage.ts';
+import type {AppDocumentStore} from './app-db/stores.ts';
 
 const FILE='workspace-settings-v1.json',MAX_BYTES=16*1024;
 interface StoredSettings {formatVersion:1;revision:number;liveGeneration:boolean;automaticBackup:boolean;backupIntervalHours:1|6|24|168;backupLocation:'default'|'selected';selectedDirectory?:string}
 const failure=(code:string)=>new AppError(code,'Workspace settings could not be saved safely.',409);
-export function createWorkspaceConfiguration({root,env=process.env}:{root:string;env?:NodeJS.ProcessEnv}) {
+export function createWorkspaceConfiguration({root,env=process.env,documents}:{root:string;env?:NodeJS.ProcessEnv;documents?:Pick<AppDocumentStore,'read'|'write'>}) {
   root=path.resolve(root);validatePrivateDirectory(root);
   const file=path.join(root,FILE),defaultDirectory=path.join(path.dirname(root),`${path.basename(root)}-backups`);
   const read=():StoredSettings=>{
-    const raw=readPrivateFile(file,{root,maxBytes:MAX_BYTES,allowMissing:true,encoding:'utf8'});
+    const raw=documents?documents.read(FILE):readPrivateFile(file,{root,maxBytes:MAX_BYTES,allowMissing:true,encoding:'utf8'});
     if(raw===null)return {formatVersion:1,revision:0,liveGeneration:env.MIOON_ENABLE_LIVE_PROVIDER==='1',automaticBackup:false,backupIntervalHours:24,backupLocation:'default'};
+    if(Buffer.byteLength(String(raw))>MAX_BYTES)throw failure('WORKSPACE_SETTINGS_INVALID');
     let value:unknown;try{value=JSON.parse(String(raw));}catch{throw failure('WORKSPACE_SETTINGS_INVALID');}
     if(!value||typeof value!=='object'||Array.isArray(value))throw failure('WORKSPACE_SETTINGS_INVALID');
     const candidate=value as Record<string,unknown>;
@@ -22,7 +24,7 @@ export function createWorkspaceConfiguration({root,env=process.env}:{root:string
     return candidate as unknown as StoredSettings;
   };
   const publicValue=(value:StoredSettings):WorkspaceSettings=>({formatVersion:1,revision:value.revision,liveGeneration:value.liveGeneration,automaticBackup:value.automaticBackup,backupIntervalHours:value.backupIntervalHours,backupLocation:value.backupLocation,backupDirectory:value.backupLocation==='selected'?value.selectedDirectory!:defaultDirectory});
-  const save=(value:StoredSettings)=>{writePrivateFileAtomic(file,JSON.stringify(value),{root,maxBytes:MAX_BYTES});return publicValue(value);};
+  const save=(value:StoredSettings)=>{const text=JSON.stringify(value);if(documents)documents.write(FILE,text);else writePrivateFileAtomic(file,text,{root,maxBytes:MAX_BYTES});return publicValue(value);};
   const get=()=>publicValue(read());
   const listeners=new Set<()=>void>();
   return {

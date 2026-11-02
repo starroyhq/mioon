@@ -23,10 +23,10 @@ test('12-07 menu: items, separators and shortcuts differ between Mac and Windows
   const mac = html('12-07');
   for (const id of ['newProject', 'open', 'recent', 'saveVersion', 'versionHistory', 'saveAs', 'pack', 'reveal', 'rules', 'exportStoryboard', 'view']) assert.match(mac, new RegExp(`data-testid="pf-menu-${id}"`, 'u'), id);
   assert.equal(count(mac, /data-slot="dropdown-menu-separator"/gu), 3);
-  assert.deepEqual(shortcuts(mac), ['⌘N', '⌘O', '⌥⌘S', '⇧⌘S', '⇧⌘E']);
+  assert.deepEqual(shortcuts(mac), ['⌘N', '⌘O', '⌥⌘S', '⇧⌘S']);
   assert.match(mac, /data-testid="pf-menu-reveal"[\s\S]*?在 Finder 中显示/u);
   const windows = html('12-07-windows');
-  assert.deepEqual(shortcuts(windows), ['Ctrl+N', 'Ctrl+O', 'Ctrl+Alt+S', 'Ctrl+Shift+S', 'Ctrl+Shift+E']);
+  assert.deepEqual(shortcuts(windows), ['Ctrl+N', 'Ctrl+O', 'Ctrl+Alt+S', 'Ctrl+Shift+S']);
   assert.match(windows, /data-testid="pf-menu-reveal"[\s\S]*?在资源管理器中显示/u);
   const web = html('12-07-web');
   assert.deepEqual(shortcuts(web), []);

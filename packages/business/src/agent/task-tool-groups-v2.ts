@@ -20,10 +20,10 @@ export type AgentTaskToolGroupId=typeof AGENT_TASK_TOOL_GROUP_IDS[number];
 export type AgentTaskLoadableToolGroupId=Exclude<AgentTaskToolGroupId,'core'>;
 export const AGENT_TASK_LOADABLE_TOOL_GROUP_IDS=Object.freeze(AGENT_TASK_TOOL_GROUP_IDS.filter((group):group is AgentTaskLoadableToolGroupId=>group!=='core'));
 export const AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS:Readonly<Record<AgentTaskLocale,string>>=Object.freeze({
-  'zh-Hans':'修改项目前先加载本轮需要的工具组。加载只增加可见范围，不授予权限。组：canvas（画板与镜头）；subjects（主体与绑定）；assets（素材整理与所选媒体导入）；editing（时间线剪辑与格式）；subtitles（字幕编辑）；audio（响度与音频分析）；colour（LUT、调色分析与所选LUT导入）；exports（预检、渲染与导出）；video（视频生成与工作状态）；images（图片生成与结果）；scenes（视频拆解、分镜与关键帧）。',
-  'zh-Hant':'修改專案前先載入本輪需要的工具組。載入只增加可見範圍，不授予權限。組：canvas（畫板與鏡頭）；subjects（主體與綁定）；assets（素材整理與所選媒體匯入）；editing（時間軸剪輯與格式）；subtitles（字幕編輯）；audio（響度與音訊分析）；colour（LUT、調色分析與所選LUT匯入）；exports（預檢、算繪與匯出）；video（影片生成與工作狀態）；images（圖片生成與結果）；scenes（影片拆解、分鏡與關鍵影格）。',
-  en:'Load tool groups needed in this run before changing the project. Loading adds visibility only, never permission. Groups: canvas (canvas and shots); subjects (subjects and bindings); assets (asset organization and selected media import); editing (timeline editing and format); subtitles (subtitle editing); audio (loudness and audio analysis); colour (LUTs, colour analysis and selected LUT import); exports (preflight, rendering and export); video (video generation and jobs); images (image generation and results); scenes (scene detection, storyboard cuts and keyframes).',
-  ja:'プロジェクトを変更する前に、この実行で使うツールグループを読み込んでください。読み込みは可視範囲を増やすだけで、権限を与えません。グループ：canvas（キャンバスとショット）、subjects（被写体と関連付け）、assets（素材整理と選択済みメディアの取り込み）、editing（タイムライン編集と形式）、subtitles（字幕編集）、audio（ラウドネスと音声解析）、colour（LUT、色解析と選択済みLUTの取り込み）、exports（事前検査、レンダリングと書き出し）、video（動画生成と処理状況）、images（画像生成と結果）、scenes（シーン検出、絵コンテとキーフレーム）。',
+  'zh-Hans':'修改项目前按名称加载本轮需要的工具。names 只能使用列出的确切工具名，不支持组名、前缀或通配符。加载只增加可见范围，不授予权限；新加载工具从下一次回复起才可调用。',
+  'zh-Hant':'修改專案前按名稱載入本輪需要的工具。names 只能使用列出的完整工具名稱，不接受組名、前綴或萬用字元。載入只增加可見範圍，不授予權限；新載入工具從下一次回覆起才可呼叫。',
+  en:'Load tools needed in this run by their exact listed names before changing the project. names accepts no group names, prefixes or wildcards. Loading adds visibility only, never permission; newly loaded tools may be called only in a later response.',
+  ja:'プロジェクトを変更する前に、この実行で必要なツールを列挙された正確な名前で読み込んでください。names にグループ名、接頭辞、ワイルドカードは使えません。読み込みは可視範囲を増やすだけで権限を与えず、新しいツールは次の応答から呼び出せます。',
 });
 
 /** Explicit alongside the tool admission tiers: neither RPC discovery nor a
@@ -54,6 +54,8 @@ function toolName(operation:string):string{
 }
 const groupedTools=AGENT_TASK_TOOL_GROUP_IDS.flatMap(group=>AGENT_TASK_TOOL_GROUPS[group].map(operation=>({group,operation,name:toolName(operation)})));
 const groupByToolName=new Map(groupedTools.map(tool=>[tool.name,tool.group]));
+export const AGENT_TASK_LOADABLE_TOOL_NAMES=Object.freeze(groupedTools.filter(tool=>tool.group!=='core').map(tool=>tool.name));
+export type AgentTaskToolLoadMode='names'|'groups';
 export const agentTaskToolGroupForName=(name:string):AgentTaskToolGroupId|undefined=>groupByToolName.get(name);
 export const agentTaskToolNamesForGroup=(group:AgentTaskToolGroupId):string[]=>AGENT_TASK_TOOL_GROUPS[group].map(toolName);
 
@@ -71,8 +73,16 @@ export function assertAgentTaskToolGroupCoverage(definitions:readonly {name:stri
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const loadable=(value:unknown):value is AgentTaskLoadableToolGroupId=>typeof value==='string'&&AGENT_TASK_LOADABLE_TOOL_GROUP_IDS.some(group=>group===value);
 export const AGENT_TASK_TOOLS_LOAD_PARAMETERS=Object.freeze({
-  type:'object',properties:{groups:{type:'array',items:{type:'string',enum:AGENT_TASK_LOADABLE_TOOL_GROUP_IDS},minItems:1,maxItems:AGENT_TASK_LOADABLE_TOOL_GROUP_IDS.length}},required:['groups'],additionalProperties:false,
+  type:'object',properties:{names:{type:'array',items:{type:'string',enum:AGENT_TASK_LOADABLE_TOOL_NAMES},minItems:1,maxItems:AGENT_TASK_LOADABLE_TOOL_NAMES.length}},required:['names'],additionalProperties:false,
 });
+
+/** Current requests load only exact non-core names. Groups remain a separate
+ * legacy parser: accepting both shapes here would bypass the frozen schema. */
+export function parseAgentTaskToolNameLoadInput(value:unknown):string[]|null{
+  if(!object(value)||Object.keys(value).length!==1||!Array.isArray(value.names)||value.names.length<1||value.names.length>AGENT_TASK_LOADABLE_TOOL_NAMES.length||!value.names.every(name=>typeof name==='string'&&AGENT_TASK_LOADABLE_TOOL_NAMES.includes(name)))return null;
+  const selected=new Set(value.names);
+  return AGENT_TASK_LOADABLE_TOOL_NAMES.filter(name=>selected.has(name));
+}
 
 /** Duplicate requests are normalized without changing catalog order. */
 export function parseAgentTaskToolLoadInput(value:unknown):AgentTaskLoadableToolGroupId[]|null{
@@ -99,4 +109,21 @@ export function loadedAgentTaskToolGroups(steps:readonly TaskToolLoadStep[]):Age
     for(const group of result.groups)if(loadable(group))loaded.add(group);
   }
   return AGENT_TASK_LOADABLE_TOOL_GROUP_IDS.filter(group=>loaded.has(group));
+}
+
+/** Names receipts bind only their own requested subset. Retired names may stay
+ * in historical JSON, but never become visible. Legacy group receipts keep
+ * their original meaning; their `tools` metadata is not authority. */
+export function loadedAgentTaskToolNames(steps:readonly TaskToolLoadStep[]):string[]{
+  const groups=new Set(loadedAgentTaskToolGroups(steps));
+  const loaded=new Set(groupedTools.filter(tool=>tool.group!=='core'&&groups.has(tool.group)).map(tool=>tool.name));
+  for(const step of steps){
+    if(step.kind!=='tool'||step.status!=='completed'||step.toolCall?.name!==AGENT_TASK_TOOLS_LOAD_NAME)continue;
+    const input=step.toolCall.arguments,result=step.result;
+    if(!object(input)||Object.keys(input).length!==1||!Array.isArray(input.names)||!input.names.length||!input.names.every(name=>typeof name==='string')||!object(result)||Object.keys(result).length!==1||!Array.isArray(result.names)||!result.names.every(name=>typeof name==='string'))continue;
+    const requested=new Set(input.names);
+    if(result.names.some(name=>!requested.has(name)))continue;
+    for(const name of result.names)if(AGENT_TASK_LOADABLE_TOOL_NAMES.includes(name))loaded.add(name);
+  }
+  return AGENT_TASK_LOADABLE_TOOL_NAMES.filter(name=>loaded.has(name));
 }

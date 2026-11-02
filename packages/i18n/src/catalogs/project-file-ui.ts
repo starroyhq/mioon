@@ -80,11 +80,11 @@ export const projectFileUiMessages = {
   // Cannot open (12-03, 12-03b, 12-03c, 12-03d)
   'projectFile.open.missing.title': { 'zh-Hans': '找不到「{name}」', 'zh-Hant': '找不到「{name}」', en: 'Cannot find {name}', ja: '「{name}」が見つかりません' },
   'projectFile.open.missing.body': { 'zh-Hans': '上次的位置：{path}。文件可能被移动或改名，或者所在的磁盘没有连接。', 'zh-Hant': '上次的位置：{path}。檔案可能被移動或改名，或者所在的磁碟沒有連接。', en: 'Last location: {path}. The file may have been moved or renamed, or its disk is not connected.', ja: '前回の場所：{path}。ファイルが移動または名前変更されたか、保存先のディスクが接続されていない可能性があります。' },
-  'projectFile.open.missing.inbox': {
-    'zh-Hans': { one: '找到后，等待写入的 {count} 个生成结果会自动写入。', other: '找到后，等待写入的 {count} 个生成结果会自动写入。' },
-    'zh-Hant': { one: '找到後，等待寫入的 {count} 個生成結果會自動寫入。', other: '找到後，等待寫入的 {count} 個生成結果會自動寫入。' },
-    en: { one: 'Once it is found, the {count} waiting generated result is written to it.', other: 'Once it is found, the {count} waiting generated results are written to it.' },
-    ja: { one: '見つかると、書き込み待ちの生成結果 {count} 件が自動で書き込まれます。', other: '見つかると、書き込み待ちの生成結果 {count} 件が自動で書き込まれます。' },
+  'projectFile.open.missing.bodyWithInbox': {
+    'zh-Hans': { one: '上次的位置：{path}。文件可能被移动或改名，或者所在的磁盘没有连接。找到后，等待写入的 {count} 个生成结果会自动写入。', other: '上次的位置：{path}。文件可能被移动或改名，或者所在的磁盘没有连接。找到后，等待写入的 {count} 个生成结果会自动写入。' },
+    'zh-Hant': { one: '上次的位置：{path}。檔案可能被移動或改名，或者所在的磁碟沒有連接。找到後，等待寫入的 {count} 個生成結果會自動寫入。', other: '上次的位置：{path}。檔案可能被移動或改名，或者所在的磁碟沒有連接。找到後，等待寫入的 {count} 個生成結果會自動寫入。' },
+    en: { one: 'Last location: {path}. The file may have been moved or renamed, or its disk is not connected. Once it is found, the {count} waiting generated result is written to it.', other: 'Last location: {path}. The file may have been moved or renamed, or its disk is not connected. Once it is found, the {count} waiting generated results are written to it.' },
+    ja: { one: '前回の場所：{path}。ファイルが移動または名前変更されたか、保存先のディスクが接続されていない可能性があります。見つかると、書き込み待ちの生成結果 {count} 件が自動で書き込まれます。', other: '前回の場所：{path}。ファイルが移動または名前変更されたか、保存先のディスクが接続されていない可能性があります。見つかると、書き込み待ちの生成結果 {count} 件が自動で書き込まれます。' },
   },
   'projectFile.open.missing.remove': { 'zh-Hans': '从列表中移除', 'zh-Hant': '從列表中移除', en: 'Remove from list', ja: '一覧から削除' },
   'projectFile.open.locked.title': { 'zh-Hans': '「{name}」已在另一个 Mioon 中打开', 'zh-Hant': '「{name}」已在另一個 Mioon 中開啟', en: '{name} is open in another Mioon', ja: '「{name}」は別の Mioon で開いています' },
@@ -97,7 +97,7 @@ export const projectFileUiMessages = {
   'projectFile.open.newer.checkUpdate': { 'zh-Hans': '检查更新', 'zh-Hant': '檢查更新', en: 'Check for updates', ja: 'アップデートを確認' },
   'projectFile.open.invalid.title': { 'zh-Hans': '无法打开「{file}」', 'zh-Hant': '無法開啟「{file}」', en: 'Cannot open {file}', ja: '「{file}」を開けません' },
   'projectFile.open.invalid.body': { 'zh-Hans': '文件已损坏，或者不是 Mioon 项目文件。为了安全，结构对不上的文件不会被打开。', 'zh-Hant': '檔案已損壞，或者不是 Mioon 專案檔案。為了安全，結構對不上的檔案不會被開啟。', en: 'The file is damaged or is not a Mioon project file. For safety, a file whose structure does not match is never opened.', ja: 'ファイルが壊れているか、Mioon のプロジェクトファイルではありません。安全のため、構造が一致しないファイルは開きません。' },
-  'projectFile.open.invalid.backupHint': { 'zh-Hans': '如果这个项目在本机打开过，可以从本机的备份恢复。', 'zh-Hant': '如果這個專案在本機開啟過，可以從本機的備份還原。', en: 'If this project was opened on this computer before, you can restore it from a local backup.', ja: 'このコンピューターで開いたことがあるプロジェクトなら、ローカルのバックアップから復元できます。' },
+  'projectFile.open.invalid.bodyWithBackup': { 'zh-Hans': '文件已损坏，或者不是 Mioon 项目文件。为了安全，结构对不上的文件不会被打开。如果这个项目在本机打开过，可以从本机的备份恢复。', 'zh-Hant': '檔案已損壞，或者不是 Mioon 專案檔案。為了安全，結構對不上的檔案不會被開啟。如果這個專案在本機開啟過，可以從本機的備份還原。', en: 'The file is damaged or is not a Mioon project file. For safety, a file whose structure does not match is never opened. If this project was opened on this computer before, you can restore it from a local backup.', ja: 'ファイルが壊れているか、Mioon のプロジェクトファイルではありません。安全のため、構造が一致しないファイルは開きません。このコンピューターで開いたことがあるプロジェクトなら、ローカルのバックアップから復元できます。' },
   'projectFile.open.invalid.restore': { 'zh-Hans': '从备份恢复…', 'zh-Hant': '從備份還原…', en: 'Restore from backup…', ja: 'バックアップから復元…' },
   'projectFile.open.readOnly.body': { 'zh-Hans': '这个位置不能写入，Mioon 要能写入才能打开项目文件。可以把它复制到可以写入的位置，或者检查这个位置的权限。', 'zh-Hant': '這個位置不能寫入，Mioon 要能寫入才能開啟專案檔案。可以把它複製到可以寫入的位置，或者檢查這個位置的權限。', en: 'This location cannot be written to, and Mioon needs to write here to open a project file. Copy the file to a location you can write to, or check this location’s permissions.', ja: 'この場所には書き込めません。Mioon がプロジェクトファイルを開くには書き込みが必要です。書き込める場所にコピーするか、この場所のアクセス権を確認してください。' },
   'projectFile.open.failed.locate': { 'zh-Hans': '没有定位成功，请再试一次。', 'zh-Hant': '沒有定位成功，請再試一次。', en: 'The project could not be located. Try again.', ja: '場所を指定できませんでした。もう一度お試しください。' },

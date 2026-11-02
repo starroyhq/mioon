@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import {initializeWorkspaceSchema72} from './workspace-schema-v72.ts';
 import {createWorkspaceRestoreProfileV73} from './workspace-restore-schema-v73.ts';
 import {validateWorkspaceTransitionRows} from './workspace-transition-validation.ts';
@@ -628,20 +629,20 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
 
 /** Positive schema-role gate; absence or table-name probing never grants compatibility. */
 export function usesAssetAnnotationSchema(db:WorkspaceSchemaReader):boolean{
- return admitsSince(readCurrentWorkspaceRole(db),36);
+ return isProjectLayout(db)||admitsSince(readCurrentWorkspaceRole(db),36);
 }
 
 /** Positive schema-role gate for the previs receipt and thumbnail tables (schema64 on). */
 export function usesPrevisSchema(db:WorkspaceSchemaReader):boolean{
- return isWorkspaceRoleSince(readCurrentWorkspaceRole(db),64);
+ return isProjectLayout(db)||isWorkspaceRoleSince(readCurrentWorkspaceRole(db),64);
 }
 /** Positive schema-role gate for conversation policies and questions awaiting an answer (schema66 on). */
 export function usesAgentPolicyAnswerSchema(db:WorkspaceSchemaReader):boolean{
- return isWorkspaceRoleSince(readCurrentWorkspaceRole(db),66);
+ return isProjectLayout(db)||isWorkspaceRoleSince(readCurrentWorkspaceRole(db),66);
 }
 
 /** Runtime negative capability gate; existing invocation/origin checks still apply. */
 export function assertTimelineAudioRoleWorkspace(db:WorkspaceSchemaReader,value:unknown):void {
- if(!hasWorkspaceAudioRoleEvidence(value))return;
+ if(!hasWorkspaceAudioRoleEvidence(value)||isProjectLayout(db))return;
  if(!admitsSince(readCurrentWorkspaceRole(db),38))unsupported();
 }

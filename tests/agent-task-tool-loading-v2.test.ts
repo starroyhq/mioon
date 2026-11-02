@@ -10,12 +10,13 @@ import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
+import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 import type {PreparedAgentTaskTool,AgentTaskToolContext} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
 import {buildTaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {TaskModelItem,TaskModelOutput,TaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
-import {selectTaskModelTools,sourceTaskModelToolNames} from '../packages/business/src/agent/task-context-v2.ts';
-import {AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolGroupForName,AGENT_TASK_CONVERSATION_TOOLS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
+import {selectTaskModelTools,sourceTaskModelToolNames,sourceTaskModelToolLoadMode,sourceTaskModelToolLoadInputAllowed} from '../packages/business/src/agent/task-context-v2.ts';
+import {AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_LOADABLE_TOOL_GROUP_IDS,agentTaskToolGroupForName,AGENT_TASK_CONVERSATION_TOOLS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import type {AgentProtocol} from '../packages/contracts/src/agent-protocol.ts';
 import type {AgentTaskJson,AgentTaskToolCall,AgentTaskSnapshot,AgentTaskStatus,AgentTaskControlAction} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
@@ -32,6 +33,14 @@ function output(protocol:AgentProtocol,calls:AgentTaskToolCall[]=[],text='Comple
  return {text,toolCalls:calls,providerOutput};
 }
 function visible(request:TaskModelRequest):string[]{return sourceTaskModelToolNames(request.configuration.protocol,{body:request.body});}
+function legacyLoaderRequest(configuration:AgentConfiguration,history:AgentTaskJson[],tools:Parameters<typeof buildTaskModelRequest>[2]):string{
+ const body=object(JSON.parse(buildTaskModelRequest(configuration,history,tools,4318))),entries=body.tools;assert.ok(Array.isArray(entries));
+ for(const entry of entries){const wire=object(entry),definition=configuration.protocol==='chat_completions'?object(wire.function):wire;if(definition.name!==AGENT_TASK_TOOLS_LOAD_NAME)continue;
+  const key=configuration.protocol==='anthropic_messages'?'input_schema':'parameters',schema=object(definition[key]),properties=object(schema.properties);
+  schema.properties={groups:{type:'array',items:{type:'string',enum:AGENT_TASK_LOADABLE_TOOL_GROUP_IDS},minItems:1,maxItems:AGENT_TASK_LOADABLE_TOOL_GROUP_IDS.length},...(properties._mio_step?{_mio_step:properties._mio_step}:{})};schema.required=['groups'];
+ }
+ return JSON.stringify(body);
+}
 type Script=(index:number,request:TaskModelRequest)=>AsyncGenerator<TaskModelItem,void,undefined>;
 async function fixture(t:TestContext,protocol:AgentProtocol='responses'){
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-tool-loading-v2-')),store=openStore(root),services=createServices(store,new Map());
@@ -49,6 +58,13 @@ async function fixture(t:TestContext,protocol:AgentProtocol='responses'){
  return {store,services,projectId,shot,settings,tools,prepared,executed,requests,get runtime(){return runtime;},
   script(value:Script){script=value;},beforeExecute(value:(prepared:PreparedAgentTaskTool)=>void){beforeExecute=value;},
   async send(extra:Record<string,unknown>={}){return runtime.send(projectId,{requestId:randomUUID(),text:'Run the synthetic tool plan.',expectedSettingsRevision:(await settings.get()).revision,...extra});},
+  async sendLegacy(){
+   const saved=await settings.get(),context:AgentTaskJson[]=[{role:'user',content:'Continue the frozen group-loader intent.'}],body=legacyLoaderRequest(saved.configuration,context,selectTaskModelTools(base.list()));
+   const created=runtime.journal.create({projectId,requestId:randomUUID(),text:'Continue the frozen group-loader intent.',configuration:{...saved.configuration},settingsRevision:saved.revision,context});
+   runtime.journal.beginStep(created.run.id,{kind:'model',request:{body,history:context},data:{baseline:runtime.journal.revisionSnapshot(projectId).map(({kind,id,revision})=>({kind,id,revision}))}});
+   runtime.close();runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318});
+   return runtime.action(projectId,created.run.id,{requestId:randomUUID(),expectedRevision:runtime.get(projectId,created.run.id).run.revision,action:'resume'});
+  },
   async settle(runId:string){await runtime.drain();return runtime.get(projectId,runId);},
   async wait(runId:string,statuses:AgentTaskStatus[]){const end=Date.now()+10000;for(;;){const current=runtime.get(projectId,runId);if(statuses.includes(current.run.status))return current;if(Date.now()>end)throw Error(`Unexpected task status ${current.run.status}`);await delay(2);}},
   action(snapshot:AgentTaskSnapshot,action:AgentTaskControlAction,extra:Record<string,unknown>={}){return runtime.action(projectId,snapshot.run.id,{requestId:randomUUID(),expectedRevision:snapshot.run.revision,action,...extra});},
@@ -68,7 +84,7 @@ function staleCanvasReceipt(f:Awaited<ReturnType<typeof fixture>>,runId:string){
 for(const protocol of protocols)test(`${protocol}: a stale load receipt survives restart and exposes current group members`,async t=>{
  const f=await fixture(t,protocol);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:2});
  f.script(async function*(index){yield {type:'done',output:output(protocol,index===1?[call(AGENT_TASK_TOOLS_LOAD_NAME,{groups:['canvas']})]:[])};});
- const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'budget');
+ const sent=await f.sendLegacy(),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'budget');
  const stale=staleCanvasReceipt(f,sent.run.id);f.restart();await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');
  const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,2);
  assert.deepEqual(visible(f.requests[1]!),f.tools.list().filter(tool=>['core','canvas'].includes(agentTaskToolGroupForName(tool.name)??'')).map(tool=>tool.name));
@@ -83,7 +99,7 @@ for(const protocol of protocols)test(`${protocol}: a note with a stale load rece
   else if(index===2){entered.resolve();await release.promise;yield {type:'done',output:output(protocol,[call('mioon_project_inspect')])};}
   else yield {type:'done',output:output(protocol)};
  });
- const sent=await f.send();await entered.promise;const stale=staleCanvasReceipt(f,sent.run.id);
+ const sent=await f.sendLegacy();await entered.promise;const stale=staleCanvasReceipt(f,sent.run.id);
  try{const noted=await f.action(f.runtime.get(f.projectId,sent.run.id),'note',{text:note});assert.equal(noted.run.notes?.[0]?.text,note);}
  finally{release.resolve();}
  const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,3);
@@ -100,7 +116,7 @@ for(const protocol of protocols)test(`${protocol}: a load in the same response c
  const f=await fixture(t,protocol),entered=gate(),release=gate(),edit=call('mioon_shot_update',{shotId:String(f.shot.id),expectedRevision:1,patch:{title:'Only the later request may edit'}});
  f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,local_reversible:'confirm'}});
  f.script(async function*(index){
-  if(index===1)yield {type:'done',output:output(protocol,[call(AGENT_TASK_TOOLS_LOAD_NAME,{groups:['canvas']}),edit])};
+  if(index===1)yield {type:'done',output:output(protocol,[call(AGENT_TASK_TOOLS_LOAD_NAME,{names:[edit.name]}),edit])};
   else if(index===2){entered.resolve();await release.promise;yield {type:'done',output:output(protocol,[{...edit,id:randomUUID()}])};}
   else yield {type:'done',output:output(protocol)};
  });
@@ -121,15 +137,15 @@ for(const protocol of protocols)test(`${protocol}: a load in the same response c
  assert.equal(object(f.store.get('shots',String(f.shot.id))).title,'Only the later request may edit');
 });
 
-test('loaded groups accumulate only in this run, retain catalog order and reset for a later conversation round',async t=>{
- const f=await fixture(t);f.script(async function*(index){yield {type:'done',output:output('responses',index===1?[call(AGENT_TASK_TOOLS_LOAD_NAME,{groups:['canvas']})]:index===2?[call(AGENT_TASK_TOOLS_LOAD_NAME,{groups:['assets']})]:index===3?[call(AGENT_TASK_TOOLS_LOAD_NAME,{groups:['canvas']})]:[])};});
+test('loaded names accumulate only in this run, retain catalog order and reset for a later conversation round',async t=>{
+ const f=await fixture(t);f.script(async function*(index){yield {type:'done',output:output('responses',index===1?[call(AGENT_TASK_TOOLS_LOAD_NAME,{names:['mioon_shot_update']})]:index===2?[call(AGENT_TASK_TOOLS_LOAD_NAME,{names:['mioon_asset_range_set']})]:index===3?[call(AGENT_TASK_TOOLS_LOAD_NAME,{names:['mioon_shot_update']})]:[])};});
  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');
  const catalog=f.tools.list();
  assert.deepEqual(visible(f.requests[0]!),catalog.filter(tool=>agentTaskToolGroupForName(tool.name)==='core').map(tool=>tool.name));
- assert.deepEqual(visible(f.requests[1]!),catalog.filter(tool=>['core','canvas'].includes(agentTaskToolGroupForName(tool.name)??'')).map(tool=>tool.name));
- assert.deepEqual(visible(f.requests[2]!),catalog.filter(tool=>['core','canvas','assets'].includes(agentTaskToolGroupForName(tool.name)??'')).map(tool=>tool.name));
+ assert.deepEqual(visible(f.requests[1]!),catalog.filter(tool=>agentTaskToolGroupForName(tool.name)==='core'||tool.name==='mioon_shot_update').map(tool=>tool.name));
+ assert.deepEqual(visible(f.requests[2]!),catalog.filter(tool=>agentTaskToolGroupForName(tool.name)==='core'||['mioon_shot_update','mioon_asset_range_set'].includes(tool.name)).map(tool=>tool.name));
  assert.deepEqual(visible(f.requests[3]!),visible(f.requests[2]!));
- assert.deepEqual(done.steps.filter(step=>step.toolCall?.name===AGENT_TASK_TOOLS_LOAD_NAME).at(-1)?.result,{groups:[],tools:[]});
+ assert.deepEqual(done.steps.filter(step=>step.toolCall?.name===AGENT_TASK_TOOLS_LOAD_NAME).at(-1)?.result,{names:[]});
  await f.settle((await f.send({conversationId:done.run.conversationId})).run.id);
  assert.deepEqual(visible(f.requests[4]!),visible(f.requests[0]!));
 });
@@ -144,7 +160,7 @@ test('selected attachments expose both scoped import tools without loading their
 
 test('a confirmed read-only load consumes the normal budget and survives restart before the next model request',async t=>{
  const f=await fixture(t);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:2,modes:{...f.runtime.policy().modes,read_only:'confirm'}});
- f.script(async function*(index){yield {type:'done',output:output('responses',index===1?[call(AGENT_TASK_TOOLS_LOAD_NAME,{groups:['canvas']})]:[])};});
+ f.script(async function*(index){yield {type:'done',output:output('responses',index===1?[call(AGENT_TASK_TOOLS_LOAD_NAME,{names:['mioon_shot_update']})]:[])};});
  const sent=await f.send(),waiting=await f.wait(sent.run.id,['awaiting_approval']);await f.runtime.drain();
  assert.equal(waiting.run.stepsUsed,2);assert.ok(!selectTaskModelTools(f.tools.list(),undefined,{steps:waiting.steps}).some(tool=>tool.name==='mioon_shot_update'));
  await f.action(waiting,'approve',{stepId:waiting.steps.at(-1)!.id});const budget=await f.settle(sent.run.id);
@@ -153,11 +169,12 @@ test('a confirmed read-only load consumes the normal budget and survives restart
  assert.equal(done.run.status,'completed');assert.equal(done.run.stepsUsed,3);assert.equal(done.run.budget,4);assert.ok(visible(f.requests[1]!).includes('mioon_shot_update'));
 });
 
-for(const outcome of ['failed','unknown'] as const)test(`${outcome} load evidence does not expand visibility`,async t=>{
- const f=await fixture(t);f.script(async function*(){yield {type:'done',output:output('responses',[call(AGENT_TASK_TOOLS_LOAD_NAME,{groups:outcome==='failed'?['not-a-group']:['canvas']})])};});
+for(const outcome of ['rejected','unknown'] as const)test(`${outcome} load evidence does not expand visibility`,async t=>{
+ const f=await fixture(t);f.script(async function*(index){yield {type:'done',output:output('responses',index===1?[call(AGENT_TASK_TOOLS_LOAD_NAME,{names:outcome==='rejected'?['not-a-tool']:['mioon_shot_update']})]:[])};});
  if(outcome==='unknown')f.beforeExecute(prepared=>{if(prepared.operation==='tools.load')throw Object.assign(Error('Synthetic unknown load'),{code:'AGENT_TASK_UNKNOWN_RESULT'});});
  const sent=await f.send(),done=await f.settle(sent.run.id),step=done.steps.find(step=>step.toolCall?.name===AGENT_TASK_TOOLS_LOAD_NAME);
- assert.equal(step?.status,outcome);assert.ok(!selectTaskModelTools(f.tools.list(),undefined,{steps:done.steps}).some(tool=>tool.name==='mioon_shot_update'));assert.equal(done.changes.length,0);assert.equal(f.requests.length,1);
+ assert.equal(step?.status,outcome);assert.ok(!selectTaskModelTools(f.tools.list(),undefined,{steps:done.steps}).some(tool=>tool.name==='mioon_shot_update'));assert.equal(done.changes.length,0);assert.equal(f.requests.length,outcome==='unknown'?1:2);
+ if(outcome==='rejected'){assert.equal(step.error?.code,'VALIDATION_ERROR');assert.deepEqual(f.prepared,[]);}
 });
 
 for(const protocol of protocols)test(`${protocol}: a legacy full-catalog unsent intent keeps its original body and may execute its disclosed edit`,async t=>{
@@ -202,4 +219,37 @@ test('diagnostics retain their old catalog and cannot select or execute the new 
 
 for(const protocol of protocols)test(`${protocol}: missing or malformed source catalogs fail closed`,()=>{
  for(const request of [undefined,{body:'{'},{body:'{"tools":null}'},{body:'{"tools":[{}]}'},{body:JSON.stringify({tools:[{type:'function',name:'mioon_project_inspect',function:{name:'mioon_project_inspect'}},{type:'function',name:'mioon_project_inspect',function:{name:'mioon_project_inspect'}}]})}])assert.throws(()=>sourceTaskModelToolNames(protocol,request),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});
+});
+
+for(const protocol of protocols)for(const mode of ['names','groups'] as const)test(`${protocol}: a frozen ${mode} loader rejects the other parameter shape before prepare`,async t=>{
+ const f=await fixture(t,protocol),input:AgentTaskJson=mode==='names'?{groups:['canvas']}:{names:['mioon_shot_update']};
+ f.script(async function*(index){yield {type:'done',output:output(protocol,index===1?[call(AGENT_TASK_TOOLS_LOAD_NAME,input)]:[])};});
+ const sent=mode==='groups'?await f.sendLegacy():await f.send(),done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(done.changes.length,0);
+ const denied=done.steps.find(step=>step.toolCall?.name===AGENT_TASK_TOOLS_LOAD_NAME);assert.equal(denied?.status,'rejected');assert.equal(denied?.error?.code,'VALIDATION_ERROR');
+ assert.deepEqual(f.prepared,[]);assert.deepEqual(f.executed,[]);assert.equal(f.requests.length,2);
+ assert.ok(!visible(f.requests[1]!).includes('mioon_shot_update'));
+ assert.equal(sourceTaskModelToolLoadMode(protocol,{body:f.requests[0]!.body}),mode);
+});
+
+for(const protocol of protocols)test(`${protocol}: frozen loader enums constrain later names and schema modes independently of metadata`,async t=>{
+ const f=await fixture(t,protocol),configuration=(await f.settings.get()).configuration,history:AgentTaskJson[]=[{role:'user',content:'Frozen loader limits.'}];
+ const original=object(JSON.parse(buildTaskModelRequest(configuration,history,selectTaskModelTools(f.tools.list()),4318))),entries=original.tools;assert.ok(Array.isArray(entries));
+ const wire=entries.map(object).find(entry=>object(protocol==='chat_completions'?entry.function:entry).name===AGENT_TASK_TOOLS_LOAD_NAME);assert.ok(wire);
+ const definition=protocol==='chat_completions'?object(wire.function):wire,key=protocol==='anthropic_messages'?'input_schema':'parameters',schema=object(definition[key]),selection=object(object(schema.properties).names);
+ object(selection.items).enum=['mioon_shot_update'];wire.cache_control={type:'ephemeral'};
+ const request={body:JSON.stringify(original)};
+ assert.equal(sourceTaskModelToolLoadMode(protocol,request),'names');
+ assert.equal(sourceTaskModelToolLoadInputAllowed(protocol,request,{names:['mioon_shot_update']}),true);
+ assert.equal(sourceTaskModelToolLoadInputAllowed(protocol,request,{names:['mioon_shot_create']}),false,'a name added after the intent cannot be guessed');
+ assert.equal(sourceTaskModelToolLoadInputAllowed(protocol,request,{groups:['canvas']}),false);
+ const legacy={body:legacyLoaderRequest(configuration,history,selectTaskModelTools(f.tools.list()))};
+ assert.equal(sourceTaskModelToolLoadMode(protocol,legacy),'groups');assert.equal(sourceTaskModelToolLoadInputAllowed(protocol,legacy,{groups:['canvas']}),true);
+ assert.equal(sourceTaskModelToolLoadInputAllowed(protocol,legacy,{names:['mioon_shot_update']}),false);
+ const properties=object(schema.properties);properties.groups={type:'array'};
+ assert.throws(()=>sourceTaskModelToolLoadMode(protocol,{body:JSON.stringify(original)}),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});
+ delete properties.groups;schema.anyOf=[];
+ assert.throws(()=>sourceTaskModelToolLoadMode(protocol,{body:JSON.stringify(original)}),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});
+ delete schema.anyOf;object(selection.items).not={enum:['mioon_shot_update']};
+ assert.throws(()=>sourceTaskModelToolLoadMode(protocol,{body:JSON.stringify(original)}),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'},'unrecognized frozen item constraints cannot be ignored');
 });

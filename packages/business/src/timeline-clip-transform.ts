@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError,TIMELINE_RESPONSE_BYTES} from '@mioon/contracts';
 import {canonicalClipTransform,validateClipTransform,type ClipTransform} from '../../contracts/src/timeline-clip-transform.ts';
@@ -9,6 +10,7 @@ import type {TimelineRecoveryBoundary} from './timeline-recovery.ts';
  * is upgraded first; anything else (an opacity candidate store, a restored copy
  * whose policy did not already refuse the write) fails before the first write. */
 export function assertClipTransformWorkspace(db: DatabaseSync): void {
+ if(isProjectLayout(db))return;
  let allowed=false;
  try{allowed=isWorkspaceRoleSince(readCurrentWorkspaceRole(db),70,'ordinary');}catch{allowed=false;}
  if(!allowed)throw new AppError('CLIP_TRANSFORM_WORKSPACE_REQUIRED','当前工作区不支持片段变换',409);

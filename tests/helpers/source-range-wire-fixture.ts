@@ -3,6 +3,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {IDS, NOW, TOKEN, seedMutationStore, uuid} from './mutation-wire-fixture.ts';
 import {installWireGuard} from './inspection-wire-fixture.ts';
+import type {InspectProject} from '../../apps/server/src/index.ts';
 
 export const RANGE_IDS = Object.freeze({audio: uuid(80), long: uuid(81), boundary: uuid(82), image: uuid(83),
   unknown: uuid(84), corruptProject: uuid(85), mismatchedOwner: uuid(86), mismatchedId: uuid(87), missing: uuid(9999)});
@@ -11,7 +12,11 @@ export const PRIVATE = 'SOURCE_RANGE_PRIVATE_FIXTURE_MARKER';
 async function seed(root: string): Promise<void> {
   await seedMutationStore(root);
   const {openStore} = await import('../../packages/business/src/db.ts');
-  const store = openStore(root);
+  const {createServerProject, projectDirFor, withoutForeignKeys} = await import('./project-database.ts');
+  const asset = (id: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({id, projectId: IDS.project, name: 'Metadata-only range fixture',
+    mimeType: 'video/mp4', duration: 2, width: 720, height: 1280, hasVideo: true, hasAudio: false,
+    provenance: 'user-import', sha256: '2'.repeat(64), createdAt: NOW, ...extra});
+  const store = openStore(projectDirFor(root, IDS.project));
   try {
     // The shared mutation fixture's zero-track timeline is an intentionally
     // opaque preservation sentinel, not a service-produced aggregate. This
@@ -25,23 +30,23 @@ async function seed(root: string): Promise<void> {
     // keeps only the single generated version needed by the range scenario.
     store.db.prepare('DELETE FROM versions WHERE id=?').run(IDS.secondVersion);
     store.db.prepare('DELETE FROM jobs WHERE id=?').run(IDS.secondJob);
-    const asset = (id: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({id, projectId: IDS.project, name: 'Metadata-only range fixture',
-      mimeType: 'video/mp4', duration: 2, width: 720, height: 1280, hasVideo: true, hasAudio: false,
-      provenance: 'user-import', sha256: '2'.repeat(64), createdAt: NOW, ...extra});
     store.put('assets', asset(RANGE_IDS.audio, {mimeType: 'audio/wav', duration: 2.019, hasVideo: false, hasAudio: true}));
     store.put('assets', asset(RANGE_IDS.long, {duration: 1200}));
     store.put('assets', asset(RANGE_IDS.boundary, {duration: (61 - 1e-10) / 30}));
     store.put('assets', asset(RANGE_IDS.image, {mimeType: 'image/png', duration: 2}));
     store.put('assets', asset(RANGE_IDS.unknown, {duration: undefined}));
-    store.put('projects', {id: RANGE_IDS.corruptProject, name: PRIVATE, description: '', revision: 1,
-      createdAt: NOW, updatedAt: NOW});
+  } finally { store.close(); }
+  const {store: corrupt} = createServerProject(root, {name: PRIVATE, projectId: RANGE_IDS.corruptProject});
+  try {
     for (const id of [RANGE_IDS.mismatchedOwner, RANGE_IDS.mismatchedId]) {
-      store.put('assets', asset(id, {projectId: RANGE_IDS.corruptProject, name: PRIVATE,
+      corrupt.put('assets', asset(id, {projectId: RANGE_IDS.corruptProject, name: PRIVATE,
         relativePath: `media/${PRIVATE}.mp4`, url: `https://private.invalid/${PRIVATE}`}));
     }
-    store.db.prepare('UPDATE assets SET data=json_set(data,\'$.projectId\',?) WHERE id=?').run(IDS.other, RANGE_IDS.mismatchedOwner);
-    store.db.prepare('UPDATE assets SET data=json_set(data,\'$.id\',?) WHERE id=?').run(IDS.otherAsset, RANGE_IDS.mismatchedId);
-  } finally { store.close(); }
+    withoutForeignKeys(corrupt.db, () => {
+      corrupt.db.prepare('UPDATE assets SET data=json_set(data,\'$.projectId\',?) WHERE id=?').run(IDS.other, RANGE_IDS.mismatchedOwner);
+      corrupt.db.prepare('UPDATE assets SET data=json_set(data,\'$.id\',?) WHERE id=?').run(IDS.otherAsset, RANGE_IDS.mismatchedId);
+    });
+  } finally { corrupt.close(); }
 }
 
 // Imported before production modules in every server, CLI and MCP child. The
@@ -56,13 +61,29 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const dataRoot: string = root;
   if (!fs.existsSync(path.join(dataRoot, 'workbench.sqlite'))) await seed(dataRoot);
   const {startServer} = await import('../../apps/server/src/index.ts');
+  const {readProjectState, changeMarks} = await import('./project-state.ts');
+  let inspect: InspectProject|undefined;
   const server = await startServer({dataDir: dataRoot, port: Number(process.env.PORT || 0), token: TOKEN,
-    chatGateway: async function* () {
-      fs.appendFileSync(process.env.MIOON_RANGE_WIRE_AUDIT ?? '', '{"kind":"model gateway"}\n');
-      throw Error('Source ranges must never enter the model gateway');
-    }});
+    inspectProject: received => { inspect = received; }});
+  // The parent reads through the running server rather than opening its file.
+  if (process.connected) process.on('message', (raw: unknown) => {
+    const message = raw as {type?: unknown; id?: unknown; projectId?: unknown}|null;
+    if (typeof message?.id !== 'string') return;
+    let reply: unknown;
+    try {
+      if (message.type !== 'storage') throw Error('Unsupported range fixture message');
+      if (!inspect) throw Error('The server has not handed over its connection');
+      const data = inspect(String(message.projectId), db => ({rows: readProjectState(db).tables, version: changeMarks(db)}));
+      reply = {type: 'reply', id: message.id, data};
+    } catch (error) {
+      const failure = error as {code?: unknown; message?: unknown}|null;
+      reply = {type: 'reply', id: message.id, error: {code: failure?.code ?? 'FIXTURE_ERROR', message: String(failure?.message ?? error)}};
+    }
+    if (process.connected) process.send?.(reply);
+  });
   process.stdout.write(JSON.stringify({ready: true, url: server.url, pid: process.pid}) + '\n');
   let closing: Promise<unknown>|undefined;
-  const close = (): Promise<unknown> => closing ??= server.close().catch(() => { process.exitCode = 1; });
-  process.on('SIGTERM', close); process.on('SIGINT', close);
+  const close = (): Promise<unknown> => closing ??= server.close().catch(() => { process.exitCode = 1; })
+    .finally(() => { if (process.connected) process.disconnect(); });
+  process.on('SIGTERM', close); process.on('SIGINT', close); process.once('disconnect', close);
 }

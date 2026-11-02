@@ -17,14 +17,16 @@ import {mkdtemp, readFile, readdir, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync, type SQLOutputValue} from 'node:sqlite';
+import type {DatabaseSync, SQLOutputValue} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient, discoverSchema, effectAnnotations} from '@mioon/client';
 import {isExportPreflightResponse, isTimelineMutationResponse, publicValue} from '@mioon/contracts';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {openStore} from '../packages/business/src/db.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
+import {changeMarks,readProjectState} from './helpers/project-state.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
@@ -156,15 +158,16 @@ async function responseBytes(response: Response, cap = 4 * 1024 * 1024) {
 
 async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-named-delivery-wire-'));
-  let backend:Awaited<ReturnType<typeof startServer>>,proxy:http.Server,db:DatabaseSync,official: Awaited<ReturnType<typeof officialMcp>>, dropNext = false;
+  let backend:Awaited<ReturnType<typeof startServer>>,proxy:http.Server,official: Awaited<ReturnType<typeof officialMcp>>, dropNext = false;
+  // Every start hands over that server's own connection.
+  let inspect!: InspectProject;
   const submissions: (unknown)[] = [], observed: { body: unknown; text: string; status: number; }[] = [], proxyErrors: (string)[] = [];
-  const start = () => startServer({dataDir: root, port: 0, token: TOKEN,
-    chatGateway: async function* () { throw Error('No model or provider call is permitted'); }});
+  const start = () => startServer({dataDir: root, port: 0, token: TOKEN, inspectProject: received => {inspect = received;}});
   t.after(async () => {
     const failures: (unknown)[] = [];
     for (const cleanup of [() => official?.close(), async () => {
       if (proxy) { proxy.closeAllConnections(); await bounded(new Promise(resolve => proxy.close(resolve)), 'Proxy close', 5_000); }
-    }, () => backend?.close(), () => db?.close(), () => rm(root, {recursive: true, force: true})]) {
+    }, () => backend?.close(), () => rm(root, {recursive: true, force: true})]) {
       try { await cleanup(); } catch (error) { failures.push(error); }
     }
     if (failures.length) throw new AggregateError(failures, 'Named-delivery fixture cleanup failed');
@@ -200,13 +203,15 @@ async function fixture(t: test.TestContext) {
   timeline = await direct.rpc('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision,
     requestId: randomUUID(), assetId: source.id, trackId: timeline.tracks.find((track: { kind: string; }) => track.kind === 'video')!.id,
     startFrame: 0, durationFrames: 3});
-  db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-  const rows = () => Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name}) =>
-    [name, db.prepare(`SELECT * FROM "${(name as string).replaceAll('"', '""')}" ORDER BY rowid`).all()]));
-  const checkpoint = async () => ({rows: rows(), version: db.prepare('PRAGMA data_version').get()!.data_version, files: await manifest(root)});
+  // The running server holds the project, so every read is on its own
+  // connection. data_version counts other connections' commits only;
+  // total_changes() adds this connection's own writes.
+  const use = <T>(fn: (db: DatabaseSync) => T): T => inspect(project.id, fn);
+  const rows = () => use(db => readProjectState(db).tables);
+  const checkpoint = async () => ({rows: rows(), version: use(changeMarks), files: await manifest(root)});
   const unchanged = async (before: { rows: unknown; version: unknown; files: unknown; }) => {
     assert.deepEqual(rows(), before.rows, 'no additional persisted rows or equal-value changes');
-    assert.equal(db.prepare('PRAGMA data_version').get()!.data_version, before.version, 'no SQLite commit');
+    assert.deepEqual(use(changeMarks), before.version, 'no SQLite commit');
     assert.deepEqual(await manifest(root), before.files, 'no source/output/cache file writes');
   };
   official = await officialMcp(t, url);
@@ -216,7 +221,7 @@ async function fixture(t: test.TestContext) {
     const body = JSON.parse((await responseBytes(response)).toString('utf8'));
     assert.equal(response.ok, body.ok); noPrivate(body); return body;
   };
-  return {root, project, source, timeline, db, client, submissions, observed, checkpoint, unchanged,
+  return {root, project, source, timeline, use, client, submissions, observed, checkpoint, unchanged,
     lose: () => { dropNext = true; },
     transports: ([{name: 'HTTP', call: raw}, {name: 'CLI', call: (operation: string, input: unknown) => cli(url, [...operation.split('.'), '--input', JSON.stringify(input)])},
       {name: 'MCP', call: official.call}] as {name:string;call:TransportCall}[]),
@@ -327,10 +332,10 @@ test('actual HTTP CLI and official MCP preserve named and omitted delivery ident
       if (original) assert.deepEqual(accepted, original); else original = accepted;
       const render = success(accepted as RpcEnvelope<FixtureExport>); assert.equal(isTimelineMutationResponse('timeline.render', namedInput, render), true);
       assert.equal(render.snapshot.deliveryName, NAME); assert.equal(Object.hasOwn(render.snapshot, 'delivery'), false, 'name-only export does not opt into encoding settings');
-      const stored = w.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(namedInput.requestId)!.response;
+      const stored = w.use(db => db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(namedInput.requestId)!.response);
       if (receipt) assert.equal(stored, receipt); else receipt = stored;
       assert.deepEqual(publicValue(JSON.parse((stored as string))), render);
-      assert.equal(w.db.prepare('SELECT COUNT(*) AS n FROM exports').get()!.n, 1);
+      assert.equal(w.use(db => db.prepare('SELECT COUNT(*) AS n FROM exports').get()!.n), 1);
     }
   });
   const completed = await w.finished(original!.data.id);
@@ -350,7 +355,7 @@ test('actual HTTP CLI and official MCP preserve named and omitted delivery ident
   const legacy = await w.transports[1].call('timeline.render', legacyInput);
   assert.equal(Object.hasOwn(success(legacy).snapshot, 'deliveryName'), false);
   assert.equal(Object.hasOwn(legacy.data.snapshot, 'delivery'), false);
-  const legacyReceipt = w.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(legacyInput.requestId)!.response;
+  const legacyReceipt = w.use(db => db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(legacyInput.requestId)!.response);
   const legacyCompleted = await w.finished(legacy.data.id);
   const legacyDownload = await w.media(`/media/${legacyCompleted.assetId}?download=1`);
   assert.equal(legacyDownload.response.status, 200);
@@ -376,9 +381,9 @@ test('actual HTTP CLI and official MCP preserve named and omitted delivery ident
       }
       assert.deepEqual((events as unknown), [], 'replay and stable-key conflicts do not start media processes');
     } finally { off(); }
-    assert.equal(w.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(namedInput.requestId)!.response, receipt);
-    assert.equal(w.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(legacyInput.requestId)!.response, legacyReceipt);
-    assert.equal(w.db.prepare('SELECT COUNT(*) AS n FROM exports').get()!.n, 2, 'only two local renders were admitted');
+    assert.equal(w.use(db => db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(namedInput.requestId)!.response), receipt);
+    assert.equal(w.use(db => db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(legacyInput.requestId)!.response), legacyReceipt);
+    assert.equal(w.use(db => db.prepare('SELECT COUNT(*) AS n FROM exports').get()!.n), 2, 'only two local renders were admitted');
     const historical = await w.client.rpc('export.get', {exportId: completed.id}, {projectId: w.project.id});
     assert.deepEqual(historical.snapshot, original.data.snapshot); assert.equal(historical.status, 'succeeded');
     const renamed = await w.client.rpc('project.get', {projectId: w.project.id});

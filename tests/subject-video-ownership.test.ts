@@ -7,19 +7,21 @@ import {randomUUID} from 'node:crypto';
 import {fixture,typedFrame,typedImage,rowBytes} from './helpers/strict-timeline-audio-subject-fixtures.ts';
 import {createOwnedMediaGraphReader,INSPECTION_LIMITS} from '../packages/business/src/inspection.ts';
 import {createSubjectOwnershipReader,SUBJECT_OWNER_COLUMNS,SUBJECT_VERSION_COLUMNS} from '../packages/business/src/subject-ownership.ts';
+import {openProjectDatabase,withoutForeignKeys} from './helpers/project-database.ts';
 
 for(const drift of ['asset-sql','asset-json','asset-hash','asset-dimensions','shot-sql','job-sql','subject-owner','version-owner'])test(`subject ${drift} drift denies exact replay, reads and retry without disclosure`,async t=>{
  const f=await fixture(t),a=await f.asset(),subject=await f.subject(a),shot=await f.shot(),input=f.input(shot,subject.headVersionId),job=await f.call('generation.submit',input);
- if(drift==='asset-sql')f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,a.id);
- if(drift==='asset-json')f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify({...a,projectId:f.other.id}),a.id);
+ if(drift==='asset-sql')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,a.id));
+ if(drift==='asset-json')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify({...a,projectId:f.other.id}),a.id));
  if(drift==='asset-hash')f.store.put('assets',{...a,sha256:'d'.repeat(64)});
  if(drift==='asset-dimensions')f.store.put('assets',{...a,width:600});
- if(drift==='shot-sql')f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.other.id,shot.id);
- if(drift==='job-sql')f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.other.id,job.id);
+ if(drift==='shot-sql')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.other.id,shot.id));
+ if(drift==='job-sql')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.other.id,job.id));
  // Schema62 renamed the subject identity guard; drop whichever this workspace carries.
- if(drift==='subject-owner'){f.store.db.exec('PRAGMA foreign_keys=OFF; DROP TRIGGER IF EXISTS immutable_subject_identity; DROP TRIGGER IF EXISTS immutable_subject_identity_v62');f.store.db.prepare('UPDATE subjects SET projectId=? WHERE id=?').run(f.other.id,subject.id);}
- if(drift==='version-owner'){f.store.db.exec('PRAGMA foreign_keys=OFF; PRAGMA ignore_check_constraints=ON; DROP TRIGGER immutable_subject_versions');f.store.db.prepare('UPDATE subject_versions SET projectId=? WHERE id=?').run(f.other.id,subject.headVersionId);}
- const before=rowBytes(f,'jobs',job.id);await assert.rejects(f.call('generation.submit',input));await assert.rejects(f.call('job.get',{jobId:job.id}));await assert.rejects(f.call('job.retry',{jobId:job.id,requestId:randomUUID()}));assert.equal(rowBytes(f,'jobs',job.id),before);assert.equal(f.store.list('jobs').length,1);assert.equal(f.posts(),0);
+ if(drift==='subject-owner'){f.store.db.exec('DROP TRIGGER IF EXISTS immutable_subject_identity; DROP TRIGGER IF EXISTS immutable_subject_identity_v62');withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE subjects SET projectId=? WHERE id=?').run(f.other.id,subject.id));}
+ if(drift==='version-owner'){f.store.db.exec('PRAGMA ignore_check_constraints=ON; DROP TRIGGER immutable_subject_versions');withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE subject_versions SET projectId=? WHERE id=?').run(f.other.id,subject.headVersionId));}
+ const expectedCode=drift==='shot-sql'||drift==='job-sql'?'INVALID_GENERATION_OWNERSHIP':'INSPECTION_UNAVAILABLE';
+ const before=rowBytes(f,'jobs',job.id);await assert.rejects(f.call('generation.submit',input),{code:expectedCode});await assert.rejects(f.call('job.get',{jobId:job.id}),{code:expectedCode});await assert.rejects(f.call('job.retry',{jobId:job.id,requestId:randomUUID()}),{code:expectedCode});assert.equal(rowBytes(f,'jobs',job.id),before);assert.equal(f.store.list('jobs').length,1);assert.equal(f.posts(),0);
 });
 
 for(const kind of ['image','frame'])for(const stage of ['admission','replay','queued','retry'])test(`typed ${kind} source lineage checked at ${stage}`,async t=>{
@@ -72,7 +74,6 @@ test('subject ownership rows share supplied budget, bound materialization and us
 });
 
 test('large retained history keeps subject row reads bounded; native read-only reopen does not mutate',async t=>{
- const {DatabaseSync}=await import('node:sqlite'),path=await import('node:path');
  const {assertSubjectGenerationSelection,assertSubjectGenerationRequestVacant}=await import('../packages/business/src/generation-inputs.ts');
  const f=await fixture(t),a=await f.asset(),subject=await f.subject(a),shot=await f.shot(),otherShot=await f.shot(),db=f.store.db;
  f.store.tx(()=>{
@@ -88,8 +89,12 @@ test('large retained history keeps subject row reads bounded; native read-only r
  const reservationPlan=db.prepare("EXPLAIN QUERY PLAN SELECT CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 131072 THEN data END FROM jobs WHERE CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 131072 THEN CASE WHEN json_valid(data) THEN json_extract(data,'$.requestId')=? ELSE 1 END ELSE 1 END LIMIT 2").all(randomUUID()).map(row=>row.detail);assert.ok(reservationPlan.some(detail=>/SCAN jobs/.test((detail as string))));
  const elapsed=performance.now()-started,plans=db.prepare(`EXPLAIN QUERY PLAN SELECT ${SUBJECT_VERSION_COLUMNS} FROM subject_versions WHERE id=? AND projectId=? LIMIT 1`).all(subject.headVersionId,f.project.id).map(row=>row.detail);
  t.diagnostic(JSON.stringify({subjects:2001,subjectVersions:2001,unrelatedEdges:3000,retainedJobs:2000,reservationProbeMs,reservationQueryPlan:reservationPlan,materializedSubjectRows:records,materializedSubjectBytes:readBytes,elapsedMs:elapsed,subjectVersionQueryPlan:plans,edgeTargetQueryLimitation:'guarded JSON target predicate scans; LIMIT bounds materialized candidates only'}));
- const persisted=rowBytes(f,'shots',shot.id),readOnly=new DatabaseSync(path.join(f.root,'workbench.sqlite'),{readOnly:true});
- try{assert.equal((createOwnedMediaGraphReader(readOnly,f.project.id).subjectReference(subject.headVersionId) as import('../packages/contracts/src/subject-generation.ts').SubjectReference).subjectVersionId,subject.headVersionId);assert.equal(readOnly.prepare('SELECT total_changes() AS n').get()!.n,0);assert.equal(readOnly.prepare('SELECT data FROM shots WHERE id=?').get(shot.id)!.data,persisted);}finally{readOnly.close();}
+ const persisted=rowBytes(f,'shots',shot.id);
+ // The test's own connection opens only once the fixture's store has closed;
+ // query_only keeps it as read-only as the native reopen it stands for.
+ await f.services.drain();f.store.close();
+ const readOnly=openProjectDatabase(f.root);
+ try{readOnly.exec('PRAGMA query_only=ON');assert.equal((createOwnedMediaGraphReader(readOnly,f.project.id).subjectReference(subject.headVersionId) as import('../packages/contracts/src/subject-generation.ts').SubjectReference).subjectVersionId,subject.headVersionId);assert.equal(readOnly.prepare('SELECT total_changes() AS n').get()!.n,0);assert.equal(readOnly.prepare('SELECT data FROM shots WHERE id=?').get(shot.id)!.data,persisted);}finally{readOnly.close();}
 });
 
 for(const damage of ['missing','wrong-resource','wrong-hash','oversized-hash'])test(`damaged ${damage} generation receipt cannot disclose or recreate a retained subject request`,async t=>{
@@ -110,7 +115,7 @@ test('retained legacy request also prevents new explicit subject admission after
 
 for(const shape of ['oversized','nontext','malformed','null'])test(`foreign ${shape} edge cannot hide its first-frame relation before bounded JSON extraction`,async t=>{
  const f=await fixture(t),s=await f.subject(await f.asset()),shot=await f.shot(),id=randomUUID(),data=shape==='oversized'?JSON.stringify({id,projectId:f.other.id,target:shot.id,kind:'reference',role:'first_frame',padding:'x'.repeat(20000)}):shape==='nontext'?Buffer.from('binary edge'):shape==='null'?'null':'{broken foreign edge';
- f.store.db.prepare('INSERT INTO edges(id,projectId,data) VALUES(?,?,?)').run(id,f.other.id,data);await assert.rejects(f.submit(shot,s.headVersionId),{code:'REFERENCE_STATE_CONFLICT'});assert.equal(f.store.list('jobs').length,0);
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('INSERT INTO edges(id,projectId,data) VALUES(?,?,?)').run(id,f.other.id,data));await assert.rejects(f.submit(shot,s.headVersionId),{code:'REFERENCE_STATE_CONFLICT'});assert.equal(f.store.list('jobs').length,0);
 });
 
 test('paid subject cancel/reconcile can progress with unavailable source, but never disclose its invalid snapshot or resubmit',async t=>{
@@ -122,9 +127,9 @@ test('paid subject cancel/reconcile can progress with unavailable source, but ne
 
 for(const stage of ['cancel','reconcile-before','reconcile-after'])test(`subject identity drift at ${stage} cannot mutate a foreign job or shot`,async t=>{
  const f=await fixture(t),s=await f.subject(await f.asset()),shot=await f.shot(),job=await f.submit(shot,s.headVersionId);await f.tick();await f.stop();let polls=0;
- const provider=f.providers.get('mock'),drift=()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.other.id,shot.id);
+ const provider=f.providers.get('mock'),drift=()=>withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.other.id,shot.id));
  f.providers.set('mock',({...provider,poll:async()=>{polls++;drift();return {status:'running'};}} as unknown as Provider));if(stage!=='reconcile-after')drift();const before=rowBytes(f,'jobs',job.id);
- await assert.rejects(f.call(stage==='cancel'?'job.cancel':'job.reconcile',{jobId:job.id}));assert.equal(rowBytes(f,'jobs',job.id),before);assert.equal(polls,stage==='reconcile-after'?1:0);assert.equal(provider!.stats(job.requestId).submissionCount,1);
+ await assert.rejects(f.call(stage==='cancel'?'job.cancel':'job.reconcile',{jobId:job.id}),{code:'INVALID_GENERATION_OWNERSHIP'});assert.equal(rowBytes(f,'jobs',job.id),before);assert.equal(polls,stage==='reconcile-after'?1:0);assert.equal(provider!.stats(job.requestId).submissionCount,1);
 });
 
 for(const damage of ['missing','null','number','short','oversized'])test(`retained subject with ${damage} request identity is uncertain, never a vacant fresh key`,async t=>{

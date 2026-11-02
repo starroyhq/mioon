@@ -1,8 +1,10 @@
-# Reviewed Agent selected-clip gain
+# Reviewed Agent selected-clip gain（历史记录）
+
+本文保留 2026-10-13 旧版助理音量提议的实现与验收记录。旧版运行时、接口和提议界面已随 #122 移除，下述操作步骤不是当前入口；当前 Mio 的执行、确认与恢复见 [Mio v2 执行与恢复](AGENT-TASKS-V2.md)。
 
 Date: 2026-10-13 UTC. Implementation baseline:
 `c3a0a57da7b54f62a999fe006dbc47d46d6c83c0`.
-Status: implementation, focused checks, strict typecheck, fresh production builds,
+Status at that checkpoint: implementation, focused checks, strict typecheck, fresh production builds,
 packaged Linux native flow and real decoded-media checks passed. The independent
 parent gate also passed on the frozen source: strict typecheck exit 0, then
 5,729 total / 5,727 passed / 0 failed / 2 explicit skips in 1,057,619.29961 ms
