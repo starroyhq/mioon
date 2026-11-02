@@ -21,8 +21,6 @@ interface ApplicationFileMetadata {
   readonly dev: bigint;
   readonly ino: bigint;
   readonly birthtimeNs?: bigint;
-  readonly mtimeNs?: bigint;
-  readonly ctimeNs?: bigint;
   isFile(): boolean;
   isDirectory(): boolean;
   isSymbolicLink(): boolean;
@@ -45,13 +43,6 @@ export interface ApplicationFileGuard {
   withSnapshot<T>(inspect: () => T): T;
 }
 
-// Both times are needed: directory mtime may be restored by a caller, while
-// ctime still changes on entry creation/removal. Missing metadata never permits
-// a cached negative lookup. File content writes do not change its identity.
-const directoryStamp = (info: ApplicationFileMetadata): string | undefined =>
-  info.ino !== 0n && typeof info.mtimeNs === 'bigint' && info.mtimeNs > 0n && typeof info.ctimeNs === 'bigint' && info.ctimeNs > 0n
-    ? `${info.dev}:${info.ino}:${generation(info)}:${info.mtimeNs}:${info.ctimeNs}` : undefined;
-
 /** Remember identities as private files appear, including files subsequently
  * renamed outside the app directory. Metadata only: never open/close a live DB.
  * The default projects subtree is deliberately exempt. */
@@ -61,13 +52,13 @@ export function createApplicationFileGuard(directories: AppDirectories, {metadat
   // new generation when both observations provide it. Unknown time stays
   // conservative; it cannot erase a private file's retained identity.
   const identities = new Map<string, bigint>();
-  const directoryEntries = new Map<string, {stamp: string | undefined; directories: readonly string[]}>();
   const {dataDir, projectsDir, cacheDir, tempDir} = directories;
   const protectedRoots = [path.join(dataDir, 'records'), cacheDir, tempDir];
   const refresh = (): void => {
-    // Walk directories, not every unchanged file. There is no file-count or
-    // depth cutoff: an oversized tree must neither reject all projects nor
-    // silently leave some private identities unobserved.
+    // Directory timestamps are not entry versions: even positive ns values can
+    // stay equal across creation or same-size replacement in one filesystem
+    // clock tick. Enumerate synchronously; only a recovery sweep may share this
+    // scan. There is no count/depth cutoff that loses private identities.
     const pending = [dataDir, ...protectedRoots.filter(root => !within(dataDir, root))];
     const visited = new Set<string>();
     while (pending.length) {
@@ -75,29 +66,11 @@ export function createApplicationFileGuard(directories: AppDirectories, {metadat
       if (visited.has(file) || within(projectsDir, file)) continue;
       visited.add(file);
       const info = readMetadata(file);
-      if (!info || info.isSymbolicLink()) {directoryEntries.delete(file); continue;}
+      if (!info || info.isSymbolicLink()) continue;
       if (info.isFile()) {
         if (info.ino !== 0n) identities.set(`${info.dev}:${info.ino}`, generation(info));
       } else if (info.isDirectory()) {
-        const stamp = directoryStamp(info), previous = directoryEntries.get(file);
-        if (stamp !== undefined && previous?.stamp === stamp) {
-          for (const child of previous.directories) pending.push(child);
-          continue;
-        }
-        const children: string[] = [];
-        for (const name of readdirSync(file)) {
-          const child = path.join(file, name);
-          if (within(projectsDir, child)) continue;
-          const found = readMetadata(child);
-          if (!found || found.isSymbolicLink()) continue;
-          if (found.isDirectory()) children.push(child);
-          else if (found.isFile() && found.ino !== 0n) identities.set(`${found.dev}:${found.ino}`, generation(found));
-        }
-        // If an external writer changed entries during this scan, do not cache
-        // it as an unchanged directory on the next check.
-        const after = readMetadata(file);
-        directoryEntries.set(file, {stamp: after?.isDirectory() && directoryStamp(after) === stamp ? stamp : undefined, directories: children});
-        for (const child of children) pending.push(child);
+        for (const name of readdirSync(file)) pending.push(path.join(file, name));
       }
     }
   };

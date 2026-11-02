@@ -1,6 +1,7 @@
 import {readProjectState,changeMarks as nativeChangeMarks} from './helpers/project-state.ts';
 import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import {projectDirFor} from './helpers/project-database.ts';
+import {waitForProjectCover} from './helpers/project-cover-ready.ts';
 import type {ExportSamplePeakResponse} from '@mioon/contracts/export-sample-peak';
 import type {TypedClient} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
@@ -83,8 +84,10 @@ test('real succeeded named/ranged export has identical HTTP, CLI and MCP sample-
   const client=(createClient({env:environment(backend.url)}) as TypedClient);
   const project=await client.rpc('project.create',{name:'Synthetic final-export parity'});
   let timeline=await client.rpc('timeline.get',{projectId:project.id});
+  let coverSource:{assetId:string;mimeType:'image/png';sourceSha256:string}|undefined;
   for(const [name,mimeType,bytes,kind] of [['Synthetic pixels.png','image/png',png(),'video'],['Synthetic stereo.wav','audio/wav',stereoWav(),'audio']] as const){
     const asset=await client.rpc('asset.import',{projectId:project.id,name,mimeType,dataBase64:bytes.toString('base64')});
+    if(mimeType==='image/png')coverSource={assetId:asset.id,mimeType,sourceSha256:sha(bytes)};
     timeline=await client.rpc('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),
       trackId:timeline.tracks.find((track: { kind: string|Buffer<ArrayBuffer>; })=>track.kind===kind)!.id,assetId:asset.id,startFrame:0,durationFrames:6});
   }
@@ -99,6 +102,9 @@ test('real succeeded named/ranged export has identical HTTP, CLI and MCP sample-
   assert.equal(actualSha,asset.sha256);assert.equal(bytes.length,asset.sizeBytes);
   assert.ok(reference.peaks[0]>0&&reference.peaks[1]>reference.peaks[0]);
   const input={projectId:project.id,exportId:record.id},mcp=await official(t,backend.url);
+  assert.ok(coverSource);
+  await waitForProjectCover({client,url:backend.url,token,projectId:project.id,
+    cacheDir:path.join(root,'cache','projects',project.id),source:coverSource});
   const rows=()=>inspect(project.id,db=>Object.fromEntries(schemaObjects(db).filter(({type})=>type==='table').map(({name})=>
     [name,db.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all()])));
   // data_version counts other connections' commits only; total_changes() adds this connection's own writes.

@@ -1,4 +1,5 @@
 import {databaseFiles,dataFileSnapshot} from './helpers/data-file-snapshot.ts';
+import {waitForProjectCover} from './helpers/project-cover-ready.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
@@ -197,6 +198,8 @@ async function fixture(t: test.TestContext) {
   timeline = await direct.rpc('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision,
     requestId: randomUUID(), assetId: source.id, trackId: timeline.tracks.find((track: { kind: string; }) => track.kind === 'video')!.id,
     startFrame: 0, durationFrames: 3});
+  await waitForProjectCover({client:direct,url:backend.url,token:TOKEN,projectId:project.id,
+    cacheDir:path.join(root,'cache','projects',project.id),source:{assetId:source.id,mimeType:'image/png',sourceSha256:source.sha256}});
   // The running server holds the project, so every read is on its own
   // connection. data_version counts other connections' commits only;
   // total_changes() adds this connection's own writes.

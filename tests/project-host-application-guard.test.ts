@@ -34,7 +34,7 @@ test('one synchronous recovery snapshot refreshes directories once and only lsta
   }), 'complete');
   assert.equal(reads.get(f.directories.dataDir), 1, 'a sweep does not refresh once per project');
   assert.equal(reads.get(local), 1, 'each known private directory is checked once');
-  assert.equal(reads.get(privateFile), undefined, 'unchanged private files are not restatted');
+  assert.equal(reads.get(privateFile), 1, 'one complete scan per sweep discovers private identities without timestamp caching');
   assert.equal(reads.get(candidate), 101, 'every candidate still receives its own fresh lstat');
 });
 
@@ -50,7 +50,7 @@ test('nested additions invalidate immediately even when directory mtime is uncha
   }});
   const privateFile = path.join(local, 'new-draft.json'), linked = path.join(f.outside, 'linked.mioon');
   writeFileSync(privateFile, 'new private bytes'); linkSync(privateFile, linked);
-  assert.throws(() => guard(linked), denied, 'ctime invalidates the directory without any TTL or watcher delay');
+  assert.throws(() => guard(linked), denied, 'a complete scan discovers new identities without relying on a watcher or timestamp change');
   const moved = path.join(f.outside, 'moved.mioon'); renameSync(privateFile, moved);
   assert.throws(() => guard(moved), denied, 'the observed identity is retained after its private path disappears');
   assert.throws(() => guard(linked), denied);
@@ -72,7 +72,7 @@ test('missing or zero directory times never cache a negative identity lookup', t
     writeFileSync(privateFile, 'private'); linkSync(privateFile, candidate);
     assert.throws(() => guard(candidate), denied);
     assert.throws(() => guard(candidate), denied);
-    assert.equal(fileReads, 2, 'every refresh falls back to scanning actual file metadata');
+    assert.equal(fileReads, 2, 'every refresh scans actual file metadata regardless of directory timestamps');
   }
 });
 
@@ -125,4 +125,33 @@ test('external cache and temporary roots discover new private identities on the 
     const moved = path.join(f.outside, `moved-${index}.mioon`); renameSync(privateFile, moved);
     assert.throws(() => guard(moved), denied);
   }
+});
+
+test('constant positive directory times cannot hide newly created private files', t => {
+  const f = fixture(t), local = path.join(f.directories.dataDir, 'records'); mkdirSync(local);
+  const guard = createApplicationFileGuard(f.directories, {metadata(file) {
+    const info = lstatSync(file, {bigint: true, throwIfNoEntry: false}); if (!info) return undefined;
+    return {dev: info.dev, ino: info.ino, birthtimeNs: info.birthtimeNs, mtimeNs: 123n, ctimeNs: 123n,
+      isFile: () => info.isFile(), isDirectory: () => info.isDirectory(), isSymbolicLink: () => info.isSymbolicLink()};
+  }});
+  const privateFile = path.join(local, 'new.json'), candidate = path.join(f.outside, 'new-linked.mioon');
+  writeFileSync(privateFile, 'private'); linkSync(privateFile, candidate);
+  assert.throws(() => guard(candidate), denied, 'positive directory timestamps may share a filesystem clock tick');
+  const moved = path.join(f.outside, 'new-moved.mioon'); renameSync(privateFile, moved);
+  assert.throws(() => guard(moved), denied, 'the newly observed identity remains private after rename');
+});
+
+test('constant positive directory times cannot hide same-size atomic replacement', t => {
+  const f = fixture(t), local = path.join(f.directories.dataDir, 'records'); mkdirSync(local);
+  const privateFile = path.join(local, 'draft.json'); writeFileSync(privateFile, 'old');
+  const guard = createApplicationFileGuard(f.directories, {metadata(file) {
+    const info = lstatSync(file, {bigint: true, throwIfNoEntry: false}); if (!info) return undefined;
+    return {dev: info.dev, ino: info.ino, birthtimeNs: info.birthtimeNs, mtimeNs: 123n, ctimeNs: 123n,
+      isFile: () => info.isFile(), isDirectory: () => info.isDirectory(), isSymbolicLink: () => info.isSymbolicLink()};
+  }});
+  const replacement = path.join(f.outside, 'replacement'), candidate = path.join(f.outside, 'replacement-linked.mioon');
+  writeFileSync(replacement, 'new'); renameSync(replacement, privateFile); linkSync(privateFile, candidate);
+  assert.throws(() => guard(candidate), denied, 'directory entry count, nlink and byte size are unchanged');
+  const moved = path.join(f.outside, 'replacement-moved.mioon'); renameSync(privateFile, moved);
+  assert.throws(() => guard(moved), denied);
 });
