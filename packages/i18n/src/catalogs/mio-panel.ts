@@ -1547,10 +1547,10 @@ export const mioPanelMessages = {
     "ja": "バックグラウンドの結果を待つ"
   },
   "agent.display.operation.tools.load": {
-    "zh-Hans": "加载工具组",
-    "zh-Hant": "載入工具組",
-    "en": "Load tool groups",
-    "ja": "ツールグループを読み込む"
+    "zh-Hans": "加载工具",
+    "zh-Hant": "載入工具",
+    "en": "Load tools",
+    "ja": "ツールを読み込む"
   },
   "agent.display.enum.quality.low": {
     "zh-Hans": "低",

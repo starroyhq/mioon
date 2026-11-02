@@ -92,7 +92,7 @@ async function fixture(t: TestContext, {lostSubmission = false, finalModelFailur
           const recoveryPost = counters.modelPosts - 1;
           if (recoveryPost === 3 && failFinal) { failFinal = false; outgoing.emit('error', new Error('Synthetic model connection loss')); return; }
           let calls: Array<{name: string; arguments: unknown}> = [];
-          if (counters.modelPosts === 1) calls = [{name: 'mioon_tools_load', arguments: {groups: ['video']}}];
+          if (counters.modelPosts === 1) calls = [{name: 'mioon_tools_load', arguments: {names: ['mioon_generation_submit']}}];
           else if (recoveryPost === 1 || recoveryPost === 3 && secondProposal) calls = [{name: 'mioon_generation_submit', arguments: generationInput}];
           else if (recoveryPost === 2) calls = [{name: 'mioon_task_wait', arguments: {kind: 'job', id: job().id}}];
           respond(Object.assign(Readable.from([Buffer.from(response(calls))]), {statusCode: 200, headers: {'content-type': 'text/event-stream'}}));
