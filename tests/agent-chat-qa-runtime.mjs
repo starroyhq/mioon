@@ -1,3 +1,4 @@
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 /** Disposable local text-chat acceptance fixture. Real app auth, network gateway
  * and SSE routes; the only inference destination is a synthetic loopback server. */
 import http from 'node:http';
@@ -41,7 +42,7 @@ if (process.argv.includes('--serve')) {
     if (toolsQa) fixture.inspectionMarker = TOOLS_QA_HOSTILE_MARKER;
     await writeFile(path.join(chatRuntime, 'fixture.json'), JSON.stringify(fixture, null, 2));
   }
-  for (const project of [fixture.project, fixture.secondProject]) await direct('/api/rpc', {operation: 'project.get', input: {projectId: project.id}});
+  for (const project of [fixture.project, fixture.secondProject]) await direct(projectRpcPath(project.id), {operation: 'project.get', input: {projectId: project.id}});
   const initial = await direct('/api/agent/settings');
   await direct('/api/agent/settings', {expectedRevision: initial.revision, configuration: {protocol: responsesQa ? 'responses' : 'chat_completions', presetId: 'ollama', platformId: 'local', baseUrl: mock.baseUrl, model: 'qwen3:8b'}, secret: {action: 'remove'}}, 'PUT');
   const port = toolsQa ? 4893 : durableQa ? 4892 : responsesQa ? 4886 : 4885, host = `127.0.0.1:${port}`, origin = `http://${host}`;

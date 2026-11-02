@@ -1,4 +1,4 @@
-import {projectRpcPath, isProjectId} from '../packages/contracts/src/project-file.ts';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {TransportCall,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
 import type {WireResult} from './helpers/strict-timeline-transport-types.ts';
@@ -227,8 +227,7 @@ if(process.argv[2] === 'preflight-server'){
     return expectedError ? envelope.error : envelope.data;
   };
   async function http<O extends string,I=Record<string,never>,E extends string|undefined=undefined>(op:O, request?: I, expectedError?: E):Promise<WireResult<McpData<O,I>,E>> {
-    const projectId = (request as {projectId?: unknown} | null | undefined)?.projectId;
-    const resource = isProjectId(projectId) ? projectRpcPath(projectId) : '/api/rpc';
+    const resource = rpcPathFor(op, request);
     const response = await fetch(url + resource, {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10_000),
       headers: {authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json'}, body: JSON.stringify({operation: op, input: request})});
     const envelope = await response.json();

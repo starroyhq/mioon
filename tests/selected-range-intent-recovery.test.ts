@@ -1,3 +1,4 @@
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import type {SelectedRangeFixture} from './helpers/strict-timeline-selected-range-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -49,10 +50,10 @@ test('prepared ranged companion survives close/recreate and GET without dispatch
   assert.notEqual(current.instanceId, value.instanceId); assert.equal(current.workspaceScope, value.workspaceScope);
   assert.equal((current.intent)!.intentId, (value.intent)!.intentId); assert.equal(JSON.stringify((current.intent)!.input), frozen);
   assert.deepEqual(await readFile(f.file), sidecar); assert.equal(f.store.list('exports').length, 0);
-  const stale = await f.request('/api/local-delivery/recover', {method: 'POST', input: action(value as Parameters<typeof action>[0])});
+  const stale = await f.request(projectApiPath(f.project.id,'local-delivery','recover'), {method: 'POST', input: action(value as Parameters<typeof action>[0])});
   assert.equal(stale.status, 409); assert.equal(stale.body.error.code, 'LOCAL_DELIVERY_STALE_INSTANCE');
   const replacement = {...input, ...authority(current as Parameters<typeof authority>[0]), intentId: randomUUID(), input: {...input.input, requestId: randomUUID(), exportRange: {startFrame: 0, endFrame: 1}}};
-  const refused = await f.request('/api/local-delivery/prepare', {method: 'POST', input: replacement});
+  const refused = await f.request(projectApiPath(f.project.id,'local-delivery','prepare'), {method: 'POST', input: replacement});
   assert.equal(refused.status, 409); assert.equal(refused.body.error.code, 'LOCAL_DELIVERY_CONFLICT');
   await passiveGet(f); assert.deepEqual((f.dispatches as unknown), []);
   const recovered = await f.local('/recover', action(current as Parameters<typeof action>[0]));
@@ -74,11 +75,11 @@ for (const loss of ['after-business-commit', 'accepted-http-ack']) test(`${loss}
   const f = (await selectedRangeFixture(t) as unknown as SelectedRangeFixture), {value, input} = await prepared(f), frozen = JSON.stringify((value.intent)!.input);
   const before = f.rows();
   if (loss === 'after-business-commit') f.fault((point: string) => {if (point === 'afterDispatch') throw Error('Synthetic lost business acknowledgement');});
-  f.lose('/api/local-delivery/execute');
-  await assert.rejects(f.request('/api/local-delivery/execute', {method: 'POST', input: action(value as Parameters<typeof action>[0])}));
+  f.lose(projectApiPath(f.project.id,'local-delivery','execute'));
+  await assert.rejects(f.request(projectApiPath(f.project.id,'local-delivery','execute'), {method: 'POST', input: action(value as Parameters<typeof action>[0])}));
   f.fault(() => {});
   const observed = f.observations.at(-1);
-  assert.equal((observed)!.path, '/api/local-delivery/execute');
+  assert.equal((observed)!.path, projectApiPath(f.project.id,'local-delivery','execute'));
   if (loss === 'accepted-http-ack') {
     assert.equal((observed)!.status, 200); assert.equal((((observed)!.body as {data: unknown}).data as {envelope: {intent: {outcome: {status: string; responseSha256: string}}}; response: unknown}).envelope.intent.outcome.status, 'accepted');
     assert.equal((((observed)!.body as {data: unknown}).data as {envelope: {intent: {outcome: {status: string; responseSha256: string}}}; response: unknown}).envelope.intent.outcome.responseSha256, hash((((observed)!.body as {data: unknown}).data as {response: unknown}).response));

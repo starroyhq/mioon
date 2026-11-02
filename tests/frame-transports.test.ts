@@ -8,6 +8,8 @@ import type {TypedFrameServices} from './helpers/strict-timeline-audio-factory-t
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedStore, TypedClient} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
+import {inputProjectId} from '../packages/contracts/src/project-addressing.ts';
+import {isProjectId, projectRpcPath, projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
@@ -234,7 +236,7 @@ async function fixture(t: test.TestContext) {
       const chunks:Buffer[] = []; let size = 0;
       for await (const chunk of request) { size += chunk.length; if (size > 8192) throw Error('Bounded proxy request exceeded'); chunks.push(chunk); }
       const bytes = Buffer.concat(chunks), body = JSON.parse(bytes as unknown as string); proxyRequests.push(body);
-      const upstream = await fetch(url + '/api/rpc', {method:'POST', redirect:'error', signal:AbortSignal.timeout(10_000),
+      const upstream = await fetch(url + request.url, {method:'POST', redirect:'error', signal:AbortSignal.timeout(10_000),
         headers:{'content-type':'application/json', authorization:request.headers.authorization!}, body:bytes});
       const result = await upstream.json();
       if (nextMode && body.operation === 'frame.extract') {
@@ -248,7 +250,8 @@ async function fixture(t: test.TestContext) {
   await new Promise<void>(resolve => proxy.listen(0, '127.0.0.1', resolve));
   const proxyUrl = `http://127.0.0.1:${(proxy.address()! as import('node:net').AddressInfo).port}`;
   async function rpc(operation:string,input:Record<string,unknown>={},error?:string) {
-    const response = await fetch(url + '/api/rpc', {method:'POST', redirect:'error', signal:AbortSignal.timeout(10_000),
+    const named = inputProjectId(operation, input);
+    const response = await fetch(url + projectRpcPath(isProjectId(named) ? named : project.id), {method:'POST', redirect:'error', signal:AbortSignal.timeout(10_000),
       headers:{'content-type':'application/json', authorization:`Bearer ${token}`}, body:JSON.stringify({operation, input})});
     const result = await response.json(); noPrivate(result, root); assert.equal(result.ok, !error, JSON.stringify(result));
     if (error) assert.equal(result.error.code, error); else assert.equal(response.status, 200, JSON.stringify(result)); return result;
@@ -362,7 +365,7 @@ test('frames share strict real HTTP, actual CLI and official MCP extraction/reco
     assert.equal((await parity('frame.request.get', {projectId:f.other.id, requestId:original.requestId})).data, null);
     await parity('frame.task.get', {projectId:f.other.id, taskId:accepted.id}, 'FRAME_NOT_FOUND');
     await f.unchanged(before, 'duplicate/conflicting/cross-project operations');
-    const media = await fetch(f.url + '/media/' + done.result.assetId, {headers:{authorization:`Bearer ${token}`}, signal:AbortSignal.timeout(5_000)});
+    const media = await fetch(f.url + projectMediaPath(f.project.id, done.result.assetId as string), {headers:{authorization:`Bearer ${token}`}, signal:AbortSignal.timeout(5_000)});
     assert.equal(media.status, 200); assert.equal(media.headers.get('content-type'), 'image/png'); bytes = Buffer.from(await media.arrayBuffer());
     const png = await validatePng(bytes, {width:16, height:12}); assert.equal(png.sha256, done.result.sha256);
     assert.equal(done.result.byteLength, bytes.length); assert.notEqual(done.result.assetId, f.asset.id);

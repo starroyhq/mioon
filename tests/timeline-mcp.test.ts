@@ -1,3 +1,5 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {CliResult,McpData,WireResult,TestTool,SchemaNode} from './helpers/strict-timeline-transport-types.ts';
@@ -68,7 +70,7 @@ test('timeline official SDK protocol exercises strict tools, shared HTTP state, 
     if (expectedError) { assert.equal(body.error.code, expectedError); return body.error; } return body.data;
   }
   async function http<N extends string,I extends Record<string,unknown>=Record<string,never>,E extends string|undefined=undefined>(operation: N, input: I = {} as I):Promise<WireResult<ServiceResponse<N>,E>> {
-    const response = await fetch(base + '/api/rpc', { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ operation, input }) });
+    const response = await fetch(base + rpcPathFor(operation, input), { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ operation, input }) });
     const body = await response.json(); report.http.push((({ operation, input, status: response.status, body }) as unknown as Parameters<typeof report.http.push>[0])); assert.equal(response.status, 200, JSON.stringify(body)); assert.equal(body.ok, true); return body.data;
   }
   async function invalid(name: string, args: { projectId: unknown; extraneous?: boolean; expectedRevision?: unknown; requestId?: `${string}-${string}-${string}-${string}-${string}`; clipId?: unknown; patch?: { assetId: unknown; }|{ name: string; unexpected: boolean; }|{ rect: { x: number; y: number; width: number; height: number; rotation: number; }; }; trackId?: unknown; assetId?: unknown; startFrame?: number; durationFrames?: number; }) {
@@ -131,7 +133,7 @@ test('timeline official SDK protocol exercises strict tools, shared HTTP state, 
   for (const item of history) assert.deepEqual(await call(item.name, item.args), item.result, `${item.name} exact original replay survives actual backend restart`);
   assert.deepEqual(await call('timeline_render', renderArgs), queued);
   assert.deepEqual(await http('timeline.get', { projectId }), timeline);
-  const mediaResponse = await fetch(base + rendered.url, { headers: { authorization: `Bearer ${token}`, range: 'bytes=0-31' } });
+  const mediaResponse = await fetch(base + projectMediaPath(rendered.projectId, rendered.assetId!), { headers: { authorization: `Bearer ${token}`, range: 'bytes=0-31' } });
   assert.equal(mediaResponse.status, 206); assert.equal((await mediaResponse.arrayBuffer()).byteLength, 32);
   const publicState = JSON.stringify(await call('project_get', { projectId }));
   assert.ok(!publicState.includes(root)); assert.ok(!publicState.includes('relativePath')); assert.ok(!publicState.includes('requestHash')); assert.ok(!publicState.includes(token));

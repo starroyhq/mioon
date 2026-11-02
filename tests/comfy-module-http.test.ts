@@ -1,4 +1,6 @@
 import test from 'node:test';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectApiPath, projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, readFile, rm} from 'node:fs/promises';
@@ -71,9 +73,9 @@ async function fixture(t: TestContext, {mode, comfyNetwork}: {mode?: string; com
       assert.ok(!text.includes(root) && !text.includes(token), 'public HTTP response must not expose storage paths or credentials');
       return {status: response.status, headers: response.headers, body: (text ? JSON.parse(text) : null) as HttpBody};
     },
-    async rpc(operation: string, input: Record<string, unknown> = {}) { const result = await f.request('/api/rpc', {method: 'POST', input: {operation, input}});
+    async rpc(operation: string, input: Record<string, unknown> = {}) { const result = await f.request(rpcPathFor(operation, input), {method: 'POST', input: {operation, input}});
       assert.equal(result.status, 200, JSON.stringify(result.body)); assert.equal(result.body.ok, true); return result.body.data; },
-    async approve(review: {projectId: string; id: string}) { const result = await f.request('/api/images/reviews/approve', {method: 'POST', input: {projectId: review.projectId, reviewId: review.id, expectedRevision: 1}});
+    async approve(review: {projectId: string; id: string}) { const result = await f.request(projectApiPath(review.projectId, 'images', 'reviews', 'approve'), {method: 'POST', input: {projectId: review.projectId, reviewId: review.id, expectedRevision: 1}});
       assert.equal(result.status, 200, JSON.stringify(result.body)); return result.body.data; },
     task: (ack: {projectId: string; id: string}) => f.rpc('image.task.get', {projectId: ack.projectId, taskId: ack.id}),
     remote: (ack: {projectId: string; id: string}) => f.rpc('image.task.remote.get', {projectId: ack.projectId, taskId: ack.id}),
@@ -167,11 +169,11 @@ test('default server keeps Comfy available and omitted module keeps exact receip
     assert.deepEqual(retainedRows(f, project.id), beforeCli, 'CLI receipt replay must not rewrite any retained image row');
     assert.deepEqual(await f.task(ack), finished);
     assert.deepEqual(await f.rpc('image.version.list', {projectId: project.id, groupId: ack.groupId}), versions);
-    const media = await fetch(`${f.server.url}/media/${versions.items![0].assetId}`, {headers: {Authorization: `Bearer ${token}`}, signal: AbortSignal.timeout(10000)});
+    const media = await fetch(f.server.url + projectMediaPath(project.id, versions.items![0].assetId), {headers: {Authorization: `Bearer ${token}`}, signal: AbortSignal.timeout(10000)});
     assert.equal(media.status, 200); assert.deepEqual(Buffer.from(await media.arrayBuffer()), comfy.png);
     const fresh = inputFor(project.id);
     for (const [operation, request] of [['image.generate', fresh], ['image.review.prepare', {input: fresh, settingsRevision: 1}]]) {
-      const denied = await f.request('/api/rpc', {method: 'POST', input: {operation, input: request}});
+      const denied = await f.request(rpcPathFor(operation as string, request), {method: 'POST', input: {operation, input: request}});
       assert.equal(denied.status, 503, JSON.stringify(denied.body)); assert.equal(denied.body.error!.code, 'COMFY_MODULE_UNAVAILABLE');
     }
     const beforeCliRefusal = retainedRows(f, project.id);

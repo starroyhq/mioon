@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import {rpcPathFor} from '../../packages/contracts/src/project-addressing.ts';
+import {projectApiPath} from '../../packages/contracts/src/project-file.ts';
 import http from 'node:http';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
@@ -24,8 +26,8 @@ export function database<T>(root: string, read: (db: DatabaseSync)=>T, writable 
 }
 export const snapshot = (root: string, tables: readonly string[] = DOMAIN_TABLES): Record<string, unknown> => database(root, (db: DatabaseSync) => Object.fromEntries(tables.map((table: string) =>
   [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])));
-export const taskPath = (id: string, action?: string): string => `/api/tasks/${id}${action ? '/' + action : ''}`;
-export const listPath = (projectId: string): string => `/api/tasks?projectId=${projectId}`;
+export const taskPath = (projectId: string, id: string, action?: string): string => projectApiPath(projectId, 'tasks', id, ...(action ? [action] : []));
+export const listPath = (projectId: string): string => `${projectApiPath(projectId, 'tasks')}?projectId=${projectId}`;
 export async function until<T>(check: ()=>T|Promise<T>, label: string, ms = 5000): Promise<T> {
   const end = Date.now() + ms;
   do { const value = await check(); if (value) return value; await delay(10); } while (Date.now() < end);
@@ -151,12 +153,12 @@ export async function taskFixture(t: unknown, {subprocess = false, fault}: TaskF
     lose: (route: string) => { dropRoute = route; },
     async restart(): Promise<void> { await backend!.close(); backend = await start(); },
     async data(route: string, options?: FixtureRequestOptions): Promise<Record<string, unknown>> { const response = await this.request(route, options); assert.equal(response.status, 200, JSON.stringify(response.body)); assert.equal(response.body.ok, true); return response.body.data as Record<string, unknown>; },
-    rpc(operation: string, input: unknown): Promise<Record<string, unknown>> { return this.data('/api/rpc', {method: 'POST', input: {operation, input}}); },
-    prepare(operation: string, input: unknown, origin = 'new'): Promise<Record<string, unknown>> { return this.data('/api/tasks/prepare', {method: 'POST', input: {projectId: project.id, operation, input, origin}}); },
-    execute(prepared: {task: {id: string; digest: string}; instanceId: unknown}, overrides: Record<string, unknown> = {}): Promise<Record<string, unknown>> { return this.data(taskPath(prepared.task.id, 'execute'), {method: 'POST', input: {projectId: project.id, digest: prepared.task.digest, instanceId: prepared.instanceId, ...overrides}}); },
-    reconcile(task: {id: string; digest: string}): Promise<Record<string, unknown>> { return this.data(taskPath(task.id, 'reconcile'), {method: 'POST', input: {projectId: project.id, digest: task.digest}}); },
-    get(taskId: string): Promise<Record<string, unknown>> { return this.data(taskPath(taskId) + '?projectId=' + project.id); },
+    rpc(operation: string, input: unknown): Promise<Record<string, unknown>> { return this.data(rpcPathFor(operation, input, project.id), {method: 'POST', input: {operation, input}}); },
+    prepare(operation: string, input: unknown, origin = 'new'): Promise<Record<string, unknown>> { return this.data(projectApiPath(project.id, 'tasks', 'prepare'), {method: 'POST', input: {projectId: project.id, operation, input, origin}}); },
+    execute(prepared: {task: {id: string; digest: string}; instanceId: unknown}, overrides: Record<string, unknown> = {}): Promise<Record<string, unknown>> { return this.data(taskPath(project.id, prepared.task.id, 'execute'), {method: 'POST', input: {projectId: project.id, digest: prepared.task.digest, instanceId: prepared.instanceId, ...overrides}}); },
+    reconcile(task: {id: string; digest: string}): Promise<Record<string, unknown>> { return this.data(taskPath(project.id, task.id, 'reconcile'), {method: 'POST', input: {projectId: project.id, digest: task.digest}}); },
+    get(taskId: string): Promise<Record<string, unknown>> { return this.data(taskPath(project.id, taskId) + '?projectId=' + project.id); },
     list(suffix = ''): Promise<Record<string, unknown>> { return this.data(listPath(project.id) + suffix); },
-    acknowledge(task: {id: string; digest: string; revision: unknown; status: unknown}): Promise<Record<string, unknown>> { return this.data(taskPath(task.id, 'acknowledge'), {method: 'POST', input: {projectId: project.id, digest: task.digest, expectedRevision: task.revision, status: task.status}}); },
+    acknowledge(task: {id: string; digest: string; revision: unknown; status: unknown}): Promise<Record<string, unknown>> { return this.data(taskPath(project.id, task.id, 'acknowledge'), {method: 'POST', input: {projectId: project.id, digest: task.digest, expectedRevision: task.revision, status: task.status}}); },
   };
 }

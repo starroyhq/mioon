@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -76,7 +77,7 @@ async function startBackend(t: TestContext, dataDir: string) {
 }
 
 async function verifyBackendScope(backend: {url: string}, projectId: string, expectedScope: string) {
-  const response = await fetch(`${backend.url}/api/local-drafts?projectId=${projectId}`, {
+  const response = await fetch(`${backend.url}${projectApiPath(projectId, 'local-drafts')}?projectId=${projectId}`, {
     headers: { authorization: `Bearer ${token}` },
   });
   assert.equal(response.status, 200);

@@ -1,4 +1,5 @@
-import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectRpcPath,projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {PipedProcess,SqlRows,ProcessOutcome,BackendReady,IpcMessage,WireMessage,WireData,WireEnvelope,WireCall} from './helpers/strict-timeline-wire-response-types.ts';
 import type {SchemaNode,TestTool,TestCatalog,TestOperationDefinition,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
@@ -156,7 +157,7 @@ async function fixture(t: test.TestContext) {
       'read/replay/rejection does not perform an equal-value commit');
   };
   async function rpc<O extends string>(operation: O, input:unknown):Promise<WireData<O>> {
-    const response = await fetch(url + '/api/rpc', {method: 'POST', signal: AbortSignal.timeout(5_000),
+    const response = await fetch(url + rpcPathFor(operation,input), {method: 'POST', signal: AbortSignal.timeout(5_000),
       headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'}, body: JSON.stringify({operation, input})});
     const envelope = await response.json();
     assert.equal(response.status, 200, JSON.stringify(envelope));
@@ -226,7 +227,7 @@ async function fixture(t: test.TestContext) {
         const bytes = Buffer.concat(chunks), submitted = JSON.parse(bytes as unknown as string);
         assert.equal(submitted.operation, 'lut.import', 'the failure proxy accepts only this LUT mutation');
         assert.equal(request.url, projectRpcPath(submitted.input.projectId));
-        const upstream = await fetch(url + '/api/rpc', {method: 'POST', signal: AbortSignal.timeout(5_000),
+        const upstream = await fetch(url + projectRpcPath(submitted.input.projectId), {method: 'POST', signal: AbortSignal.timeout(5_000),
           headers: {authorization: request.headers.authorization!, 'content-type': 'application/json'}, body: bytes});
         const envelope = await upstream.json();
         assert.equal(upstream.status, 200, JSON.stringify(envelope));
@@ -302,7 +303,7 @@ test('actual CLI and official MCP stdio prove project-owned LUT import/replay an
       assert.equal(JSON.stringify(denied).includes(saved.resource.sha256), false);
       assert.deepEqual(((await call('asset.list', {projectId: project.id})).data as unknown), []);
     }
-    const media = await fetch(f.url + '/media/' + saved.resource.id, {signal: AbortSignal.timeout(5_000), headers: {authorization: `Bearer ${token}`}});
+    const media = await fetch(f.url + projectMediaPath(project.id,saved.resource.id), {signal: AbortSignal.timeout(5_000), headers: {authorization: `Bearer ${token}`}});
     assert.equal(media.status, 404, 'LUT IDs are not exposed through the playable media route');
     await media.arrayBuffer();
     f.unchanged(checkpoint);

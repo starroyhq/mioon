@@ -1,3 +1,4 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,readFile, realpath} from 'node:fs/promises';
@@ -13,7 +14,7 @@ test('shutdown interrupts a real long FFmpeg export, reaps its process and prese
  const dataDir=await mkdtemp(path.join(await realpath(tmpdir()),'wb-shutdown-render-')),token='synthetic-interruption-test-token';
  const active=new Map<number|undefined,string|undefined>();const unsubscribe=onMediaProcess((event)=>event.type==='started'?(active.set(event.pid,event.kind),undefined):active.delete(event.pid));
  const service=await startServer({dataDir,port:0,token});
- const rpc=async(operation: string,input: Record<string, unknown>={}): Promise<Record<string, unknown>>=>{const response=await fetch(service.url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({operation,input})});const value=await response.json() as {ok?: boolean; data?: Record<string, unknown>};assert.equal(value.ok,true,JSON.stringify(value));return value.data ?? {};};
+ const rpc=async(operation: string,input: Record<string, unknown>={}): Promise<Record<string, unknown>>=>{const response=await fetch(service.url+rpcPathFor(operation,input),{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({operation,input})});const value=await response.json() as {ok?: boolean; data?: Record<string, unknown>};assert.equal(value.ok,true,JSON.stringify(value));return value.data ?? {};};
  let closed=false;
  try{
   const project=await rpc('project.create',{name:'Shutdown render fixture'}) as {id: string};

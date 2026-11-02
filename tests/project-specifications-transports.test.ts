@@ -1,3 +1,4 @@
+import {projectRpcPath,isProjectId} from '../packages/contracts/src/project-file.ts';
 import type {TaskHttpFixture} from './helpers/strict-edit-task-types.ts';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedClient} from './helpers/strict-service-responses.ts';
@@ -33,7 +34,7 @@ async function wire(t: test.TestContext){
  const proxy=http.createServer(async(req,res)=>{try{
   const chunks: Buffer[]=[];let length=0;for await(const chunk of req){length+=chunk.length;if(length>32768)throw Error('fixture input cap');chunks.push(chunk);}
   const raw=Buffer.concat(chunks).toString('utf8'),body=JSON.parse(raw);submissions.push(body);
-  const upstream=await fetch(f.backend!.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+TASK_TOKEN,'content-type':'application/json'},body:raw,signal:AbortSignal.timeout(10000)});
+  const upstream=await fetch(f.backend!.url+(req.url??'/'),{method:'POST',headers:{authorization:'Bearer '+TASK_TOKEN,'content-type':'application/json'},body:raw,signal:AbortSignal.timeout(10000)});
   const text=await upstream.text();last={body,text,status:upstream.status};
   if(drop&&body.operation==='timeline.format.set'){drop=false;res.destroy();return;}
   res.writeHead(upstream.status,{'content-type':'application/json'});
@@ -44,7 +45,7 @@ async function wire(t: test.TestContext){
  const transport=new StdioClientTransport({command:process.execPath,args:[path.join(REPO,'apps/mcp/src/index.ts')],cwd:REPO,env:env(url),stderr:'pipe'});
  (transport.stderr as import('node:stream').Readable|null)?.setEncoding('utf8');(transport.stderr as import('node:stream').Readable|null)?.resume();await mcp.connect(transport);
  t.after(async()=>{await mcp.close();proxy.closeAllConnections();await new Promise(resolve=>proxy.close(resolve));});
- const raw=async(operation: unknown,input: unknown)=>{try{const r=await fetch(url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+TASK_TOKEN,'content-type':'application/json'},body:JSON.stringify({operation,input}),signal:AbortSignal.timeout(10000)});return await r.json();}catch{return {ok:false,error:{code:'LOST_TRANSPORT'}};}};
+ const raw=async(operation: unknown,input: unknown)=>{try{const r=await fetch(url+projectRpcPath(isProjectId((input as {projectId?:unknown}|null)?.projectId)?(input as {projectId:string}).projectId:f.project.id),{method:'POST',headers:{authorization:'Bearer '+TASK_TOKEN,'content-type':'application/json'},body:JSON.stringify({operation,input}),signal:AbortSignal.timeout(10000)});return await r.json();}catch{return {ok:false,error:{code:'LOST_TRANSPORT'}};}};
  return {f,url,mcp,submissions,client:(createClient({env:env(url)}) as TypedClient),last:()=>last,drop:()=>{drop=true;},malform:()=>{malformed=true;},
   transports:[{name:'HTTP',call:raw},{name:'CLI',call:(operation: string,input: unknown)=>cli(url,[...operation.split('.'),'--input',JSON.stringify(input)])},
    {name:'MCP',call:async(operation: string,input: Record<string,unknown>)=>{const result=await mcp.callTool({name:operation.replaceAll('.','_'),arguments:input},undefined,{timeout:10000});const body=JSON.parse((result.content as {type: string;text: string}[]).find((x: { type: string; })=>x.type==='text')!.text);assert.deepEqual(body,result.structuredContent);assert.equal(Boolean(result.isError),!(body as {ok: boolean}).ok);return body;}}]};
@@ -85,7 +86,7 @@ test('HTTP CLI and official MCP lost acknowledgements recover the exact format r
 
 test('format durable task survives lost execute response and restart with one exact intent and explicit recovery',{timeout:60000},async (t: test.TestContext)=>{
  const f=await taskFixture(t,{subprocess:true}) as unknown as TaskHttpFixture;const state=await f.rpc('timeline.format.get',{projectId:f.project.id});const input=formatInput(state,'landscape_720');const saved=await f.prepare('timeline.format.set',input);
- const route=taskPath(saved.task.id,'execute');f.lose(route);await assert.rejects(f.viaProxy(route,{method:'POST',input:{projectId:f.project.id,digest:saved.task.digest,instanceId:saved.instanceId}}));
+ const route=taskPath(f.project.id,saved.task.id,'execute');f.lose(route);await assert.rejects(f.viaProxy(route,{method:'POST',input:{projectId:f.project.id,digest:saved.task.digest,instanceId:saved.instanceId}}));
  const receipt=database(f.root,db=>db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId));assert.ok(receipt);
  await f.restart();const before=snapshot(f.root);const pending=await f.list();assert.equal(pending.items.length,1);assert.equal(pending.items[0].id,saved.task.id);assert.deepEqual(pending.items[0].input,input);assert.deepEqual(snapshot(f.root),before);
  const recovered=await f.reconcile(saved.task);assert.equal(recovered.task.status,'applied');assert.deepEqual(recovered.result,JSON.parse((receipt.response as string)));assert.deepEqual(snapshot(f.root),before);

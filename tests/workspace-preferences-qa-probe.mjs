@@ -1,3 +1,5 @@
+import {parseProjectApiPath} from '../packages/contracts/src/project-file.ts';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 /** Graphical-runtime verifier: bounded synthetic API mailbox, no browser hooks. */
 import {readdir,readFile,writeFile,unlink,mkdir} from 'node:fs/promises';
 import path from 'node:path';
@@ -9,8 +11,9 @@ for(;;){
   const reqPath=path.join(inbox,file),req=JSON.parse(await readFile(reqPath,'utf8'));await unlink(reqPath);
   const resultPath=path.join(inbox,file.replace('.request.json','.result.json'));
   try{
-   if(!['browser','native'].includes(req.kind)||!/^\/api\/(rpc|workspace-preferences\/[0-9a-f-]+)$/.test(req.pathname))throw Error('Only bounded local synthetic QA API allowed');
-   if(req.pathname==='/api/rpc'&&!allowed.has(JSON.parse(req.options.body).operation))throw Error('Operation outside QA verifier scope');
+   const rpc=req.pathname==='/api/rpc'||parseProjectApiPath(req.pathname)?.kind==='rpc';
+   if(!['browser','native'].includes(req.kind)||!rpc&&!/^\/api\/workspace-preferences\/[0-9a-f-]+$/.test(req.pathname))throw Error('Only bounded local synthetic QA API allowed');
+   if(rpc){const {operation,input}=JSON.parse(req.options.body);if(!allowed.has(operation)||req.pathname!==rpcPathFor(operation,input))throw Error('Operation outside QA verifier scope');}
    const runtime=path.join(root,req.kind+'-runtime');let url,token;
    if(req.kind==='native'){const d=JSON.parse(await readFile(path.join(runtime,'user-data/mcp-connection.json'),'utf8'));url=d.url;token=(await readFile(d.tokenFile,'utf8')).trim();}else{url=JSON.parse(await readFile(path.join(runtime,'server.json'),'utf8')).url;token=(await readFile(path.join(runtime,'token'),'utf8')).trim();}
    const response=await fetch(url+req.pathname,{...req.options,headers:{authorization:'Bearer '+token,'content-type':'application/json'},signal:AbortSignal.timeout(12000)});await writeFile(resultPath,JSON.stringify({status:response.status,...await response.json()}));

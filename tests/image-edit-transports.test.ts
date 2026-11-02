@@ -3,6 +3,8 @@ import type {FixtureImageTask,FixtureImageVersion,ServiceResponse} from './helpe
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedStore, TypedServices, TypedClient} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
+import {isAppLevelOperation, inputProjectId} from '../packages/contracts/src/project-addressing.ts';
+import {isProjectId, projectRpcPath, projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
@@ -152,7 +154,7 @@ async function fixture(t: test.TestContext) {
       const body = Buffer.concat(chunks);
       const operation = JSON.parse(body as unknown as string).operation;
       proxyRequests.push(operation);
-      const upstream = await fetch(url + '/api/rpc', {method: 'POST', redirect: 'error',
+      const upstream = await fetch(url + request.url, {method: 'POST', redirect: 'error',
         headers: {'content-type': 'application/json', authorization: request.headers.authorization!}, body,
         signal: AbortSignal.timeout(10_000)});
       const bytes = Buffer.from(await upstream.arrayBuffer());
@@ -165,7 +167,8 @@ async function fixture(t: test.TestContext) {
   await new Promise<void>(resolve => proxy.listen(0, '127.0.0.1', resolve));
   proxyUrl = `http://127.0.0.1:${(proxy.address() as import('node:net').AddressInfo).port}`;
   async function rpc(operation: string, input:unknown = {}, error?: string, base = url) {
-    const response = await fetch(base + '/api/rpc', {method: 'POST', redirect: 'error',
+    const named = inputProjectId(operation, input);
+    const response = await fetch(base + (isAppLevelOperation(operation) ? '/api/rpc' : projectRpcPath(isProjectId(named) ? named : project.id)), {method: 'POST', redirect: 'error',
       headers: {'content-type': 'application/json', authorization: `Bearer ${token}`},
       body: JSON.stringify({operation, input}), signal: AbortSignal.timeout(10_000)});
     const result = await response.json();
@@ -237,7 +240,7 @@ test('image edits preserve one durable contract across real HTTP, CLI and offici
   const descriptor = {assetId: source.asset.id, sha256: source.asset.sha256, mimeType: 'image/png', byteLength: source.asset.sizeBytes,
     width: 1024, height: 1024, name: source.asset.name, origin: {kind: 'synthetic-mock', imageSource: {imageGroupId: source.ack.groupId, imageTaskId: source.ack.id, imageVersionId: source.version.id}}};
   async function media(assetId: string) {
-    const response = await fetch(f.url + '/media/' + assetId, {headers: {authorization: `Bearer ${token}`}, signal: AbortSignal.timeout(10_000)});
+    const response = await fetch(f.url + projectMediaPath(f.project.id, assetId), {headers: {authorization: `Bearer ${token}`}, signal: AbortSignal.timeout(10_000)});
     assert.equal(response.status, 200); assert.equal(response.headers.get('content-type'), 'image/png'); return Buffer.from(await response.arrayBuffer());
   }
   async function originalUnchanged() {

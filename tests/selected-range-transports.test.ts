@@ -1,3 +1,4 @@
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {PipedProcess,SqlRows,ProcessOutcome,BackendReady,IpcMessage,WireMessage,WireData,WireEnvelope,WireCall} from './helpers/strict-timeline-wire-response-types.ts';
 import type {SchemaNode,TestTool,TestCatalog,TestOperationDefinition,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
@@ -123,7 +124,7 @@ test('real HTTP, CLI and official MCP preflight/render preserve exact range, ful
     assert.equal(checked.data.checks.bytesHashed, f.sources.reduce((n, value) => n + value.sizeBytes, 0));
     await f.unchanged(beforeCheck); assert.equal((f.store.db.prepare('SELECT total_changes() n').get())!.n, changes, 'each transport preflight is read-only');
     const input = {...checkInput, requestId: randomUUID(), purpose: 'export', preflightSnapshotHash: checked.data.snapshotHash};
-    f.lose('/api/rpc'); const start = f.submissions.length;
+    f.lose(projectRpcPath(f.project.id)); const start = f.submissions.length;
     if (transport.name === 'HTTP') await assert.rejects(transport.call('timeline.render', input));
     else {
       const lost = await transport.call('timeline.render', input); assert.equal(lost.ok, false); assert.equal(lost.error.details.submissionMayHaveSucceeded, true);

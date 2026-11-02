@@ -1,4 +1,6 @@
 import test from 'node:test';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -29,8 +31,8 @@ test('real checked sample and full export preserve timeline and exact receipt wh
   await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-n', '-f', 'lavfi', '-i', 'color=c=0x1b7194:s=64x64', '-frames:v', '1', '-threads', '1', png], { timeout: 20000, maxStdoutBytes: 0, maxStderrBytes: 65536 });
   backend = await startServer({ dataDir: path.join(root, 'store'), port: 0, chatGateway: async function* () { assert.fail('No provider calls permitted'); } });
   const server = backend;
-  async function rpc<T>(operation: string, input: Record<string, unknown>): Promise<T> {
-    const response = await fetch(server.url + '/api/rpc', { method: 'POST', headers: { authorization: `Bearer ${server.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ operation, input }), signal: AbortSignal.timeout(30000) });
+  async function rpc<T>(operation: string, input: Record<string, unknown>, projectId?: string): Promise<T> {
+    const response = await fetch(server.url + rpcPathFor(operation, input, projectId), { method: 'POST', headers: { authorization: `Bearer ${server.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ operation, input }), signal: AbortSignal.timeout(30000) });
     const body = await response.json(); assert.equal(response.status, 200, JSON.stringify(body)); assert.ok(body.ok); return body.data;
   }
   const project = await rpc<Project>('project.create', { name: 'Synthetic sample export acceptance' });
@@ -47,12 +49,12 @@ test('real checked sample and full export preserve timeline and exact receipt wh
     const receipt = await rpc<Receipt>('timeline.render', input); assert.ok(isTimelineRenderRecord(receipt, input));
     let record: ExportRecord | undefined;
     for (const deadline = Date.now() + 60000; Date.now() < deadline;) {
-      record = await rpc<ExportRecord>('export.get', { exportId: receipt.id }); if (['succeeded', 'failed'].includes(record.status)) break; await pause(50);
+      record = await rpc<ExportRecord>('export.get', { exportId: receipt.id }, project.id); if (['succeeded', 'failed'].includes(record.status)) break; await pause(50);
     }
     assert.equal(record?.status, 'succeeded', JSON.stringify(record?.error)); assert.ok(isTimelineRenderRecord(record, { ...input, exportId: receipt.id }));
     assert.deepEqual(await rpc('timeline.render', input), receipt, 'exact recovery is immutable and does not start another export');
     assert.deepEqual(await rpc('timeline.get', { projectId: project.id }), original, 'trial never edits saved timeline or final whole-range choice');
-    const route = `/media/${record!.assetId}?preview=1&exportId=${record!.id}`;
+    const route = `${projectMediaPath(project.id, record!.assetId!)}?preview=1&exportId=${record!.id}`;
     const response = await fetch(server.url + route, { headers: { authorization: `Bearer ${server.token}` }, signal: AbortSignal.timeout(30000) }); assert.equal(response.status, 200);
     const bytes = Buffer.from(await response.arrayBuffer()), file = path.join(root, `${name}.mp4`); await writeFile(file, bytes);
     const partial = await fetch(server.url + route, { headers: { authorization: `Bearer ${server.token}`, range: 'bytes=0-31' }, signal: AbortSignal.timeout(30000) });

@@ -1,3 +1,5 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureExport, FixtureExportRecord, FixtureTimeline, FixtureAsset} from './helpers/strict-timeline-core-types.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
@@ -68,27 +70,27 @@ async function fixture(t: test.TestContext) {
     const current = child, exited = once(current, 'exit');
     records.processes.push((({ action: 'stop', signal, pid: current.pid, at: new Date().toISOString() }) as unknown as Parameters<typeof records.processes.push>[0])); current.kill(((signal) as unknown as Parameters<typeof current.kill>[0])); await exited;
   }
-  async function rpc<O extends string,S extends number=200>(operation:O,input:Record<string,unknown> = {},expectedStatus:S=200 as S):Promise<S extends 200 ? ServiceResponse<O> : Failure> {
-    const response = await fetch(base + '/api/rpc', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ operation, input }) });
+  async function rpc<O extends string,S extends number=200>(operation:O,input:Record<string,unknown> = {},expectedStatus:S=200 as S,entityProjectId?:string):Promise<S extends 200 ? ServiceResponse<O> : Failure> {
+    const response = await fetch(base + rpcPathFor(operation,input,entityProjectId), { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ operation, input }) });
     const body = await response.json();
     records.http.push((({ at: new Date().toISOString(), operation, input: input.dataBase64 ? { ...input, dataBase64: `[${(input.dataBase64 as string).length} base64 characters]` } : input, status: response.status, body }) as unknown as Parameters<typeof records.http.push>[0]));
     assert.equal(response.status, expectedStatus, `${operation}: ${JSON.stringify(body)}`);
     assert.equal(body.ok, expectedStatus === 200, JSON.stringify(body)); return body.ok ? body.data : body.error;
   }
-  async function exportUntil(id:unknown,predicate:(job:FixtureExportRecord)=>unknown,timeout=90_000) {
+  async function exportUntil(projectId:string,id:unknown,predicate:(job:FixtureExportRecord)=>unknown,timeout=90_000) {
     const deadline = Date.now() + timeout; let job;
     while (Date.now() < deadline) {
-      job = await rpc('export.get', { exportId: id }); if (predicate(job)) return job;
+      job = await rpc('export.get', { exportId: id },200,projectId); if (predicate(job)) return job;
       await pause(75);
     }
     throw Error(`Export timeout: ${JSON.stringify(job)}`);
   }
-  async function finish(id?: unknown) {
-    const job = await exportUntil(id, (((j: { status: string; }) => ['succeeded', 'failed'].includes(j.status)) as unknown as Parameters<typeof exportUntil>[1]));
+  async function finish(projectId:string,id?: unknown) {
+    const job = await exportUntil(projectId,id, (((j: { status: string; }) => ['succeeded', 'failed'].includes(j.status)) as unknown as Parameters<typeof exportUntil>[2]));
     assert.equal(job.status, 'succeeded', JSON.stringify(job)); return job;
   }
-  async function download(job: { assetId: unknown; url: string; }, name: string) {
-    assert.ok(job.assetId && job.url); const response = await fetch(base + job.url, { headers: { authorization: `Bearer ${token}` } });
+  async function download(job: { projectId:string; assetId: string; url: string; }, name: string) {
+    assert.ok(job.assetId && job.url); const response = await fetch(base + projectMediaPath(job.projectId,job.assetId), { headers: { authorization: `Bearer ${token}` } });
     assert.equal(response.status, 200); const bytes = Buffer.from(await response.arrayBuffer());
     const file = path.join(evidence, name); await writeFile(file, bytes); return file;
   }
@@ -188,7 +190,7 @@ test('multitrack v2 real-media rendering acceptance', { timeout: 600_000 }, asyn
     // requested jobs must retain red frames 30..59 from their original snapshot.
     const originalLowerClip = p.timeline.clips.find((clip) => clip.assetId === red.id && clip.startFrame === 0);
     await p.mutate('timeline.clip.update', { clipId: (originalLowerClip)!.id, patch: { durationFrames: 30 } });
-    const previewDone = await f.finish(preview.id), exportDone = await f.finish(exported.id);
+    const previewDone = await f.finish(p.id,preview.id), exportDone = await f.finish(p.id,exported.id);
     const previewFile = await f.download(((previewDone) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'composite-preview.mp4'), exportFile = await f.download(((exportDone) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'composite-export.mp4');
     await probeOutput(previewFile, 120); await probeOutput(exportFile, 120);
     assert.deepEqual(await fingerprints(previewFile), await fingerprints(exportFile), 'preview/export must decode identically');
@@ -205,7 +207,7 @@ test('multitrack v2 real-media rendering acceptance', { timeout: 600_000 }, asyn
     const silenceBefore = analyzeAudio(sound, 0.1, 0.4), embedded = analyzeAudio(sound, 0.7, 1.2, [330, 660]), silenceBetween = analyzeAudio(sound, 1.6, 1.9), audioOnly = analyzeAudio(sound, 2.1, 2.8, [440, 880]), silenceAfter = analyzeAudio(sound, 3.1, 3.8);
     expectSilence(silenceBefore); expectTone(embedded, 660, 330); expectSilence(silenceBetween); expectTone(audioOnly, 880, 440); expectSilence(silenceAfter);
     await ffmpeg(['-i', exportFile, '-vf', 'select=eq(n\\,15)', '-frames:v', '1', '-threads', '1', path.join(evidence, 'layered-frame-15.png')]);
-    const range = await fetch(f.base + exportDone.url, { headers: { authorization: `Bearer ${token}`, range: 'bytes=0-31' } }); assert.equal(range.status, 206); assert.equal((await range.arrayBuffer()).byteLength, 32);
+    const range = await fetch(f.base + projectMediaPath(exportDone.projectId,exportDone.assetId!), { headers: { authorization: `Bearer ${token}`, range: 'bytes=0-31' } }); assert.equal(range.status, 206); assert.equal((await range.arrayBuffer()).byteLength, 32);
     composite = { p, red, video, audio, videos, audioTrack, frozen, preview, exported, exportDone, exportFile };
     return { projectId: p.id, previewId: preview.id, exportId: exported.id, frames: 120, pixels, audio: { silenceBefore, embedded, silenceBetween, audioOnly, silenceAfter }, previewExportDecodedEqual: true, mediaRangeStatus: 206 };
   });
@@ -217,7 +219,7 @@ test('multitrack v2 real-media rendering acceptance', { timeout: 600_000 }, asyn
     await p.mutate('timeline.clip.add', { trackId: videos[0].id, assetId: red.id, startFrame: 1, durationFrames: 1 });
     await p.mutate('timeline.clip.add', { trackId: videos[1].id, assetId: blue.id, startFrame: 1, durationFrames: 1 });
     await p.mutate('timeline.clip.add', { trackId: videos[0].id, assetId: red.id, startFrame: 65, durationFrames: 6 });
-    const job = await f.finish((await p.render()).id), file = await f.download(((job) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'single-frame-boundaries.mp4');
+    const job = await f.finish(p.id,(await p.render()).id), file = await f.download(((job) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'single-frame-boundaries.mp4');
     await probeOutput(file, 71); const pixels = [];
     for (const n of ([0, 2, 64] as const)) pixels.push({ frame: n, ...expectPixel(await frame(file, n), 360, 640, [0, 0, 0], 'leading/interior gap') });
     pixels.push({ frame: 1, ...expectPixel(await frame(file, 1), 360, 640, [0, 0, 255], 'exactly one blue upper-track frame') });
@@ -235,14 +237,14 @@ test('multitrack v2 real-media rendering acceptance', { timeout: 600_000 }, asyn
     const audio = p.timeline.tracks.find((track) => track.kind === 'audio');
     await p.mutate('timeline.clip.add', { trackId: videos[0].id, assetId: blue.id, startFrame: 0, durationFrames: 30 });
     await p.mutate('timeline.clip.add', { trackId: videos[1].id, assetId: alpha.id, startFrame: 0, durationFrames: 30, rect: { x: 300, y: 580, width: 120, height: 120 } });
-    const alphaFile = await f.download(((await f.finish((await p.render()).id)) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'alpha-source-composite.mp4');
+    const alphaFile = await f.download(((await f.finish(p.id,(await p.render()).id)) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'alpha-source-composite.mp4');
     await probeOutput(alphaFile, 30);
     const alphaFrame = await frame(alphaFile, 15);
     const blended = expectPixel(alphaFrame, 360, 640, [127, 0, 127], 'half-transparent red source blends over blue');
     const outside = expectPixel(alphaFrame, 80, 80, [0, 0, 255], 'outside image rectangle remains blue');
     for (const clip of ([...p.timeline.clips] as const)) await p.mutate('timeline.clip.remove', { clipId: clip.id });
     await p.mutate('timeline.clip.add', { trackId: (audio)!.id, assetId: sound.id, startFrame: 3, durationFrames: 27, sourceInFrame: 30 });
-    const audioFile = await f.download(((await f.finish((await p.render()).id)) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'audio-only-timeline.mp4');
+    const audioFile = await f.download(((await f.finish(p.id,(await p.render()).id)) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'audio-only-timeline.mp4');
     await probeOutput(audioFile, 30);
     for (const n of ([0, 15, 29] as const)) expectPixel(await frame(audioFile, n), 360, 640, [0, 0, 0], 'audio-only timeline stays black');
     const decoded = await pcm(audioFile);
@@ -259,14 +261,14 @@ test('multitrack v2 real-media rendering acceptance', { timeout: 600_000 }, asyn
     await p.mutate('timeline.clip.add', { trackId: (a)!.id, assetId: audio.id, startFrame: 0, durationFrames: 30, sourceInFrame: 30 });
     await p.mutate('timeline.track.update', { trackId: (v)!.id, patch: { hidden: true } });
     await p.mutate('timeline.track.update', { trackId: (a)!.id, patch: { muted: true } });
-    const hidden = await f.finish((await p.render()).id), hiddenFile = await f.download(((hidden) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'hidden-video-audible.mp4'); await probeOutput(hiddenFile, 30);
+    const hidden = await f.finish(p.id,(await p.render()).id), hiddenFile = await f.download(((hidden) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'hidden-video-audible.mp4'); await probeOutput(hiddenFile, 30);
     expectPixel(await frame(hiddenFile, 15), 360, 640, [0, 0, 0], 'hidden video has no picture');
     const hiddenAudio = analyzeAudio(await pcm(hiddenFile), 0.15, 0.85, [660, 880]); expectTone(hiddenAudio, 660, 880);
     await p.mutate('timeline.track.update', { trackId: (v)!.id, patch: { muted: true } });
-    const silent = await f.finish((await p.render()).id), silentFile = await f.download(((silent) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'all-muted-silence.mp4'); await probeOutput(silentFile, 30);
+    const silent = await f.finish(p.id,(await p.render()).id), silentFile = await f.download(((silent) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'all-muted-silence.mp4'); await probeOutput(silentFile, 30);
     const silentAudio = analyzeAudio(await pcm(silentFile), 0.15, 0.85); expectSilence(silentAudio);
     await p.mutate('timeline.track.update', { trackId: (a)!.id, patch: { muted: false } });
-    const audioOnly = await f.finish((await p.render()).id), audioFile = await f.download(((audioOnly) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'hidden-video-audio-track.mp4');
+    const audioOnly = await f.finish(p.id,(await p.render()).id), audioFile = await f.download(((audioOnly) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'hidden-video-audio-track.mp4');
     const audioTrack = analyzeAudio(await pcm(audioFile), 0.15, 0.85, [660, 880]); expectTone(audioTrack, 880, 660);
     return { hiddenAudio, silentAudio, audioTrack, hiddenPictureBlack: true };
   });
@@ -278,15 +280,15 @@ test('multitrack v2 real-media rendering acceptance', { timeout: 600_000 }, asyn
     await p.mutate('timeline.clip.add', { trackId: (v)!.id, assetId: video.id, startFrame: 0, durationFrames: 30, sourceInFrame: 30 });
     await p.mutate('timeline.clip.add', { trackId: (a)!.id, assetId: audio.id, startFrame: 0, durationFrames: 30, sourceInFrame: 30, gain: 0.5 });
     const audioClip = p.timeline.clips.find((clip) => clip.trackId === (a)!.id);
-    const mixedFile = await f.download(((await f.finish((await p.render()).id)) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'mixed-gain-half.mp4');
+    const mixedFile = await f.download(((await f.finish(p.id,(await p.render()).id)) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'mixed-gain-half.mp4');
     const mixed = analyzeAudio(await pcm(mixedFile), 0.15, 0.85, [660, 880]); expectTone(mixed, 660); expectTone(mixed, 880);
     await p.mutate('timeline.clip.update', { clipId: (audioClip)!.id, patch: { gain: 1 } });
-    const fullFile = await f.download(((await f.finish((await p.render()).id)) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'mixed-gain-full.mp4');
+    const fullFile = await f.download(((await f.finish(p.id,(await p.render()).id)) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'mixed-gain-full.mp4');
     const full = analyzeAudio(await pcm(fullFile), 0.15, 0.85, [660, 880]);
     const ratio = full.amplitudes[880] / mixed.amplitudes[880]; assert.ok(ratio > 1.85 && ratio < 2.15, `gain 0.5 -> 1 should double amplitude: ${ratio}`);
     assert.ok(Math.abs(full.amplitudes[660] / mixed.amplitudes[660] - 1) < 0.1, 'changing one clip gain preserves other embedded audio');
     await p.mutate('timeline.clip.update', { clipId: (audioClip)!.id, patch: { gain: 0 } });
-    const zeroFile = await f.download(((await f.finish((await p.render()).id)) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'mixed-gain-zero.mp4');
+    const zeroFile = await f.download(((await f.finish(p.id,(await p.render()).id)) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'mixed-gain-zero.mp4');
     const zero = analyzeAudio(await pcm(zeroFile), 0.15, 0.85, [660, 880]); expectTone(zero, 660, 880);
     return { mixed, full, zero, gainAmplitudeRatio: ratio };
   });
@@ -297,10 +299,10 @@ test('multitrack v2 real-media rendering acceptance', { timeout: 600_000 }, asyn
     const beforeHash = sha(await readFile(exportFile));
     const clip = p.timeline.clips.find((clip) => clip.assetId === red.id);
     await p.mutate('timeline.clip.update', { clipId: (clip)!.id, patch: { durationFrames: 15 } });
-    const after = await f.rpc('export.get', { exportId: exported.id }) as FixtureExport;
+    const after = await f.rpc('export.get', { exportId: exported.id },200,p.id) as FixtureExport;
     assert.deepEqual(after.snapshot.timeline, frozen); assert.equal(after.timelineRevision, frozen.revision); assert.equal(after.assetId, exportDone.assetId); assert.equal(after.url, exportDone.url);
-    const response = await fetch(f.base + after.url, { headers: { authorization: `Bearer ${token}` } }); assert.equal(sha(Buffer.from(await response.arrayBuffer())), beforeHash);
-    const next = await f.finish((await p.render()).id); assert.notEqual(next.id, after.id); assert.notEqual(next.assetId, after.assetId); assert.equal(next.timelineRevision, p.timeline.revision);
+    const response = await fetch(f.base + projectMediaPath(after.projectId,after.assetId!), { headers: { authorization: `Bearer ${token}` } }); assert.equal(sha(Buffer.from(await response.arrayBuffer())), beforeHash);
+    const next = await f.finish(p.id,(await p.render()).id); assert.notEqual(next.id, after.id); assert.notEqual(next.assetId, after.assetId); assert.equal(next.timelineRevision, p.timeline.revision);
     return { originalExportId: after.id, originalRevision: frozen.revision, currentRevision: p.timeline.revision, originalOutputSha256: beforeHash, laterExportId: next.id, frozenReferenceIds: after.snapshot.assets.map((a) => a.id) };
   });
 
@@ -309,7 +311,7 @@ test('multitrack v2 real-media rendering acceptance', { timeout: 600_000 }, asyn
     await p.mutate('timeline.clip.add', { trackId: (p.timeline.tracks.find((track) => track.kind === 'video'))!.id, assetId: red.id, startFrame: 0, durationFrames: 30 });
     const rawAsset = JSON.parse((await f.storage(p.id)).assets.find(row => row.id === red.id)!.data as string) as FixtureAsset;
     await writeFile(path.join(f.root, rawAsset.relativePath), await readFile(path.join(f.root, 'blue.png')));
-    const job = await p.render(), failed = await f.exportUntil(job.id, (((j: { status: string; }) => ['succeeded', 'failed'].includes(j.status)) as unknown as Parameters<typeof f.exportUntil>[1])) as FixtureExport;
+    const job = await p.render(), failed = await f.exportUntil(p.id,job.id, (((j: { status: string; }) => ['succeeded', 'failed'].includes(j.status)) as unknown as Parameters<typeof f.exportUntil>[2])) as FixtureExport;
     assert.equal(failed.status, 'failed', JSON.stringify(failed)); assert.equal((failed.assetId as unknown), null); assert.equal((failed.url as unknown), null); assert.match((failed.error)!.message, /hash|bytes|snapshot|哈希|快照|校验/i);
     assert.equal((failed.snapshot.assets.find((a) => a.id === red.id))!.sha256, red.sha256);
     return { exportId: failed.id, error: failed.error, expectedSha256: red.sha256, tamperedSha256: sha(await readFile(path.join(f.root, rawAsset.relativePath))) };
@@ -318,12 +320,12 @@ test('multitrack v2 real-media rendering acceptance', { timeout: 600_000 }, asyn
   await check(t, 'durable running timeline render recovers after actual backend SIGKILL', async () => {
     const p = await f.project('V2 render restart recovery'), red = await f.importFile(p.id, 'red.png', 'image/png');
     await p.mutate('timeline.clip.add', { trackId: (p.timeline.tracks.find((track) => track.kind === 'video'))!.id, assetId: red.id, startFrame: 0, durationFrames: 300 });
-    const queued = await p.render(); const running = await f.exportUntil(queued.id, (((j: { status: string; }) => j.status === 'running' || j.status === 'failed' || j.status === 'succeeded') as unknown as Parameters<typeof f.exportUntil>[1]));
+    const queued = await p.render(); const running = await f.exportUntil(p.id,queued.id, (((j: { status: string; }) => j.status === 'running' || j.status === 'failed' || j.status === 'succeeded') as unknown as Parameters<typeof f.exportUntil>[2]));
     assert.equal(running.status, 'running', 'capture a genuine in-progress worker before SIGKILL'); await f.stop('SIGKILL');
     // Let an orphan encoder finish or be reaped before reopening the same output.
     // This still exercises persisted `running` recovery in a fresh backend process.
     await pause(2500); await f.start();
-    const recovered = await f.finish(queued.id); assert.equal(recovered.id, queued.id); assert.deepEqual(recovered.snapshot, queued.snapshot);
+    const recovered = await f.finish(p.id,queued.id); assert.equal(recovered.id, queued.id); assert.deepEqual(recovered.snapshot, queued.snapshot);
     const file = await f.download(((recovered) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'recovered-running.mp4'); await probeOutput(file, 300);
     const duplicates = (await f.storage(p.id)).exports.filter(row => row.id === queued.id).length; assert.equal(duplicates, 1);
     return { exportId: recovered.id, recoveredFrom: 'running', restart: 'actual SIGKILL and new HTTP backend process', outputFrames: 300 };
@@ -332,14 +334,14 @@ test('multitrack v2 real-media rendering acceptance', { timeout: 600_000 }, asyn
   await check(t, 'v1 selected-shot sequence export remains separate and decodable with an empty v2 timeline', async () => {
     const p = await f.project('V1 sequence backward compatibility'), red = await f.importFile(p.id, 'red.png', 'image/png');
     const shot = await f.rpc('shot.create', (({ projectId: p.id, title: 'Original sequence', prompt: 'Local mock; no paid generation', referenceAssetIds: [red.id], duration: 2 }) as unknown as Parameters<NonNullable<(typeof f)["rpc"]>>[1]));
-    const generation = await f.rpc('generation.submit', (({ shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'mock' }) as unknown as Parameters<NonNullable<(typeof f)["rpc"]>>[1]));
+    const generation = await f.rpc('generation.submit', (({ shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'mock' }) as unknown as Parameters<NonNullable<(typeof f)["rpc"]>>[1]),200,p.id);
     const deadline = Date.now() + 45_000; let done;
-    do { done = await f.rpc('job.get', (({ jobId: generation.id }) as unknown as Parameters<NonNullable<(typeof f)["rpc"]>>[1])); if (['succeeded', 'failed'].includes(done.status)) break; await pause(100); } while (Date.now() < deadline);
+    do { done = await f.rpc('job.get', (({ jobId: generation.id }) as unknown as Parameters<NonNullable<(typeof f)["rpc"]>>[1]),200,p.id); if (['succeeded', 'failed'].includes(done.status)) break; await pause(100); } while (Date.now() < deadline);
     assert.equal(done.status, 'succeeded', JSON.stringify(done));
     const state = await f.rpc('project.get', { projectId: p.id }); assert.equal(state.timeline.clips.length, 0); assert.equal(state.shots.length, 1);
     const requestId = randomUUID(), job = await f.rpc('export.create', { projectId: p.id, requestId });
     assert.equal((await f.rpc('export.create', { projectId: p.id, requestId })).id, job.id); assert.notEqual(job.mode, 'timeline'); assert.deepEqual(job.orderedVersionIds, [state.shots[0].selectedVersionId]); assert.ok(Array.isArray(job.snapshot));
-    const exported = await f.finish(job.id), file = await f.download(((exported) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'v1-sequence-export.mp4'); await probeOutput(file, 60, { legacy: true });
+    const exported = await f.finish(p.id,job.id), file = await f.download(((exported) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'v1-sequence-export.mp4'); await probeOutput(file, 60, { legacy: true });
     assert.equal((await f.rpc('timeline.get', { projectId: p.id })).clips.length, 0);
     return { exportId: exported.id, selectedVersionId: state.shots[0].selectedVersionId, timelineClipCount: 0, frames: 60, provider: 'local synthetic mock' };
   });

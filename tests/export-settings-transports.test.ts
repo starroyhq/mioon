@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
@@ -121,7 +122,7 @@ async function wire(t: Pick<TestContext,'after'>,{media=false}: {media?: boolean
  proxy=http.createServer(async(req: http.IncomingMessage,res: http.ServerResponse)=>{try{
   const chunks: Buffer[]=[];let bytes=0;for await(const chunk of req as AsyncIterable<Buffer>){bytes+=chunk.length;if(bytes>32768)throw Error('Fixture request cap');chunks.push(chunk);}
   const raw=Buffer.concat(chunks).toString('utf8'),body=record(JSON.parse(raw));submissions.push(body);
-  const upstream=await fetch(backend!.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+TOKEN,'content-type':'application/json'},body:raw,signal:AbortSignal.timeout(30000)});
+  const upstream=await fetch(backend!.url+req.url,{method:'POST',headers:{authorization:'Bearer '+TOKEN,'content-type':'application/json'},body:raw,signal:AbortSignal.timeout(30000)});
   const text=await upstream.text();if(Buffer.byteLength(text)>4*1024*1024)throw Error('Fixture response cap');last={body,text,status:upstream.status};
   if(drop&&body.operation==='timeline.render'){drop=false;res.destroy();return;}
   res.writeHead(upstream.status,{'content-type':'application/json'});
@@ -147,7 +148,7 @@ async function wire(t: Pick<TestContext,'after'>,{media=false}: {media?: boolean
  const unchanged=async(before: WireCheckpoint): Promise<void>=>{use(db=>{assert.deepEqual(rows(db),before.rows);assert.deepEqual(changeMarks(db),before.version);});assert.deepEqual(await manifest(root),before.files);};
  const official=await officialMcp(t,url);
  const raw=async(op: string,input: Record<string, unknown>): Promise<WireResult>=>{
-  let response: Response;try{response=await fetch(url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+TOKEN,'content-type':'application/json'},body:JSON.stringify({operation:op,input}),signal:AbortSignal.timeout(30000)});}catch{return {ok:false,data:{},error:{code:'LOST_TRANSPORT'}};}
+  let response: Response;try{response=await fetch(url+rpcPathFor(op,input,project.id),{method:'POST',headers:{authorization:'Bearer '+TOKEN,'content-type':'application/json'},body:JSON.stringify({operation:op,input}),signal:AbortSignal.timeout(30000)});}catch{return {ok:false,data:{},error:{code:'LOST_TRANSPORT'}};}
   const body=record(await response.json());assert.equal(response.ok,body.ok);noPrivate(body);return wireResult(body);
  };
  return {root,project,empty,source,timeline,use,client,mcp:official.mcp,checkpoint,unchanged,submissions,

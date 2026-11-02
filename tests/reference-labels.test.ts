@@ -5,9 +5,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as references from '../apps/web/src/reference-connections.ts';
+import {assetUrl} from '../apps/web/src/api.ts';
 
-const projectId = 'project-a';
-const asset = { id: 'asset-a', projectId, name: '花园首帧.png', mimeType: 'image/png' };
+const projectId = '00000000-0000-4000-8000-0000000000a1';
+const asset = { id: '00000000-0000-4000-8000-0000000000a2', projectId, name: '花园首帧.png', mimeType: 'image/png' };
 const source = { id: '12345678-0000-4000-8000-000000000001', projectId, label: '花园构图', type: 'image', assetId: asset.id };
 const shot = { id: 'shot-a', projectId, title: '推近花园', orderIndex: 4, referenceAssetIds: [] };
 const edge = { id: 'edge-a', projectId, kind: 'reference', role: 'first_frame', source: source.id, sourceAssetId: asset.id, target: shot.id };
@@ -116,7 +117,7 @@ function harness(name: string) {
     if (id === './reference-connections.ts') return references;
     if (id === './WorkspaceControls.tsx') return { WorkbenchSelect: 'WorkbenchSelect' };
     if (id === './icons.tsx') return { default: 'Icon', __esModule: true };
-    if (id === './api.ts') return { assetUrl: (value: { id: unknown; }) => `/media/${value.id}` };
+    if (id === './api.ts') return { assetUrl };
     if (id === '@mioon/ui/components/button') return { Button: 'Button' };
     if (id === '@mioon/ui/components/label') return { Label: 'Label' };
     throw Error(`Unexpected component dependency: ${id}`);

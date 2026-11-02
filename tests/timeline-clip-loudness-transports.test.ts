@@ -56,7 +56,7 @@ async function fixture(t: TestContext,request: typeof input & {target?: typeof m
   const server=http.createServer(async(req,res)=>{
     if(req.url==='/health'){res.end('healthy');return;}
     try{
-      assert.ok(req.url==='/api/rpc'||req.url===projectRpcPath(input.projectId));assert.equal(req.method,'POST');
+      assert.equal(req.url,projectRpcPath(input.projectId));assert.equal(req.method,'POST');
       assert.equal(req.headers.authorization,'Bearer '+token);
       let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>8192)throw Error('Request overflow');}
       const body=JSON.parse(raw);calls.push(body);const parsed=parse(body.operation,body.input);
@@ -114,7 +114,7 @@ test('actual HTTP, CLI and official MCP carry identical ephemeral reports, valid
   const f=await fixture(t),mcp=await official(t,f.url),client=createClient({env:env(f.url)});
   const callCli=async()=>{const result=await cli(t,f.url,[...operation.split('.'),'--input',JSON.stringify(input)]).result;return result.body;};
   const callMcp=()=>mcp.call('timeline_clip_loudness',input);
-  const callHttp=async()=>{const response=await fetch(f.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});return response.json();};
+  const callHttp=async()=>{const response=await fetch(f.url+projectRpcPath(input.projectId),{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});return response.json();};
   for(const mode of ['ready','silence']){
     f.mode(mode);const expected=mode==='ready'?readyClipLoudness():silentClipLoudness();
     for(const call of [callHttp,callCli,callMcp]){const before=f.calls.length;const result=await call();assert.deepEqual(result,{ok:true,data:expected});assert.equal(isTimelineClipLoudnessResponse(result.data,input),true);assert.equal(f.calls.length,before+1);}
@@ -130,7 +130,7 @@ for(const transport of ['HTTP','CLI','MCP'])test(`actual ${transport} cancellati
   const f=await fixture(t);f.mode('wait');let stop,finished;
   if(transport==='HTTP'){
     const controller=new AbortController();stop=()=>controller.abort();
-    finished=fetch(f.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input}),signal:controller.signal}).then(()=>assert.fail('Cancelled HTTP must not succeed'),()=>{});
+    finished=fetch(f.url+projectRpcPath(input.projectId),{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input}),signal:controller.signal}).then(()=>assert.fail('Cancelled HTTP must not succeed'),()=>{});
   }else if(transport==='CLI'){
     const invocation=cli(t,f.url,[...operation.split('.'),'--input',JSON.stringify(input)]);stop=()=>invocation.child.kill('SIGINT');
     finished=invocation.result.then(({code,body})=>{assert.equal(code,130);assert.equal(body.error.code,'INTERRUPTED');});
@@ -154,7 +154,7 @@ test('HTTP rejects extra paths and authority while CLI/MCP reject before dispatc
     assert.equal(cliResult.code,2);assert.equal(cliResult.body.error.code,'VALIDATION_ERROR');
     const mcpResult=await mcp.call('timeline_clip_loudness',request);
     assert.equal(mcpResult.error.code,'VALIDATION_ERROR');assert.equal(f.calls.length,before);
-    const response=await fetch(f.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input:request})});
+    const response=await fetch(f.url+projectRpcPath(input.projectId),{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input:request})});
     assert.equal(response.status,400);assert.equal((await response.json()).ok,false);assert.equal(f.calls.length,before+1);
   }
   for(const flag of ['--file','--output']){

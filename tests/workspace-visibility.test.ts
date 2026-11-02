@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
-import { activeJob, mediaUrl } from '../apps/web/src/api.ts';
+import { activeJob, assetUrl, versionUrl, mediaUrl } from '../apps/web/src/api.ts';
 import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
 import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import * as sourceRanges from '../apps/web/src/source-range-state.ts';
@@ -99,7 +99,7 @@ function createHarness(file: string, exportName = 'default') {
     './TimelineAudioPreview.tsx': { default: 'TimelineAudioPreview', __esModule: true },
     './ClipTransformBox.tsx': { default: 'ClipTransformBox', __esModule: true },
     './icons.tsx': { default: 'Icon', __esModule: true },
-    './api.ts': { assetUrl: (asset: { url: unknown; }) => asset?.url || '', versionUrl: (version: { url: unknown; }) => version?.url || '', activeJob, mediaUrl, statusText: (value: unknown) => value, jobStatusText: (value: unknown) => value, outputReviewRequired: () => false },
+    './api.ts': { assetUrl, versionUrl, activeJob, mediaUrl, statusText: (value: unknown) => value, jobStatusText: (value: unknown) => value, outputReviewRequired: () => false },
     './Timeline.tsx': { assetKind: (asset: { mimeType: string; }) => asset?.mimeType?.split('/')[0], framesLabel: String, dragAsset: noop },
     './reference-connections.ts': { referenceForShot: () => null },
     './generation-settings.ts': { generationParameters, wanGenerationCapabilities: () => null, seedanceGenerationCapabilities: () => null, generationVideoInput: () => undefined, generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String, inputModeDescriptor: String, generationInputIssueDescriptor: () => '', providerAvailabilityDescriptor: () => '' },
@@ -158,7 +158,7 @@ function createHarness(file: string, exportName = 'default') {
   });
   return h;
 }
-const asset = (kind = 'video', id = 'asset-one') => ({ id, url: `/media/${id}`, mimeType: `${kind}/${kind === 'audio' ? 'wav' : 'mp4'}`, name: 'Fixture' });
+const asset = (kind = 'video', id = firstRenderAssetId) => ({ id, projectId: renderProjectId, url: '/media/asset-one', mimeType: `${kind}/${kind === 'audio' ? 'wav' : 'mp4'}`, name: 'Fixture' });
 const previewProps = <Patch extends Record<string,unknown>>(patch: Patch) => ({ visible: true, kind: 'source', asset: asset(), playhead: 0, onSeek: noop, ...patch });
 const inspectorProps = (patch?: Record<string,unknown>) => ({
   shot: { id: 'shot-one', title: 'Fixture shot', prompt: 'Original', revision: 1, orderIndex: 0 },
@@ -186,7 +186,7 @@ for (const kind of ['video', 'audio'] as const) {
     element.currentTime = 4.125; element.paused = false;
     h.ancestorVisible = false; h.render(props, { passive: false });
     assert.equal(element.paused, true); assert.equal(element.currentTime, 4.125);
-    assert.equal(element.src, props.asset.url); assert.equal(element.loads, 0);
+    assert.equal(element.src, mediaUrl(props.asset.projectId, props.asset.id)); assert.equal(element.loads, 0);
     for (const callback of ['onPlay', 'onPlaying', 'onTimeUpdate'] as const) {
       element.paused = false; node.props[callback]({ currentTarget: element });
       assert.equal(element.paused, true, `${callback} captured while visible must respect current hidden state`);
@@ -214,7 +214,7 @@ for (const kind of ['video', 'audio'] as const) {
     assert.deepEqual(seeks, []);
     h.render(props);
     assert.equal(h.mediaNode().props.ref.current, element); assert.equal(element.currentTime, 5.25);
-    assert.equal(element.paused, true); assert.equal(element.loads, 0); assert.equal(element.src, props.asset.url);
+    assert.equal(element.paused, true); assert.equal(element.loads, 0); assert.equal(element.src, mediaUrl(props.asset.projectId, props.asset.id));
     h.unmount(); assert.equal(element.loads, 1); assert.equal(element.src, null);
   });
 }
@@ -418,7 +418,7 @@ test('language-only updates preserve the exact media decoder, playback position 
   for (const locale of i18nCore.LOCALES) {
     h.locale = locale; h.render(props);
     assert.equal(h.mediaNode().props.ref.current, element); assert.equal(h.mediaNode().props.key, originalKey);
-    assert.equal(element.currentTime, 7.125); assert.equal(element.src, props.asset.url); assert.equal(element.paused, false);
+    assert.equal(element.currentTime, 7.125); assert.equal(element.src, mediaUrl(props.asset.projectId, props.asset.id)); assert.equal(element.paused, false);
     assert.equal(element.loads, baselineLoads); assert.equal(element.pauses, baselinePauses);
   }
 });

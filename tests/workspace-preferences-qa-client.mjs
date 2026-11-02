@@ -1,3 +1,4 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 /** Non-browser verification helpers for disposable runtime only. */
 import {readFile,writeFile,mkdir,unlink} from 'node:fs/promises';
 import path from 'node:path';
@@ -10,7 +11,7 @@ export async function qaClient(kind='browser'){
  const fixture=JSON.parse(await readFile(path.join(runtime,'fixture.json'),'utf8'));
  async function connection(){if(kind==='native'){const d=JSON.parse(await readFile(path.join(runtime,'user-data/mcp-connection.json'),'utf8'));return {url:d.url,token:(await readFile(d.tokenFile,'utf8')).trim(),pid:d.pid};}return {...JSON.parse(await readFile(path.join(runtime,'server.json'),'utf8')),token:(await readFile(path.join(runtime,'token'),'utf8')).trim()};}
  async function request(pathname,options={}){const id=randomUUID(),box=path.join(root,'api-mailbox');await mkdir(box,{recursive:true});await writeFile(path.join(box,id+'.request.json'),JSON.stringify({kind,pathname,options}));const result=await waitFor(async()=>{try{return JSON.parse(await readFile(path.join(box,id+'.result.json'),'utf8'));}catch{return false;}},'graphical-runtime API verifier');if(result.probeError)throw Error(result.probeError);return result;}
- async function rpc(operation,input={}){const r=await request('/api/rpc',{method:'POST',body:JSON.stringify({operation,input})});assert.equal(r.status,200);assert.equal(r.ok,true);return r.data;}
+ async function rpc(operation,input={}){const r=await request(rpcPathFor(operation,input),{method:'POST',body:JSON.stringify({operation,input})});assert.equal(r.status,200);assert.equal(r.ok,true);return r.data;}
  async function prefs(projectId=fixture.project.id){const r=await request('/api/workspace-preferences/'+projectId);assert.equal(r.status,200);assert.equal(r.ok,true);return r.data;}
  async function put(projectId,state,expectedRevision){return request('/api/workspace-preferences/'+projectId,{method:'PUT',body:JSON.stringify({state,expectedRevision})});}
  async function snapshot(){return {primary:await rpc('project.get',{projectId:fixture.project.id}),secondary:await rpc('project.get',{projectId:fixture.second.id}),history:await rpc('timeline.history.get',{projectId:fixture.project.id})};}

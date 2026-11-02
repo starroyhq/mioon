@@ -4,7 +4,7 @@ import type {ClipLutContext, ClipLutRpc, ClipLutState, ClipLutImportRecord} from
 import type {ClipColour, TimelineColourSource, TimelineColourLook, TimelineColourSourceInspection, TimelineJpegSource, TimelineJpegEvidence, TimelineJpegSourceInspection} from '../packages/contracts/src/timeline-colour.ts';
 import type {LutResource, LutImportInput} from '../packages/contracts/src/lut-resources.ts';
 import type {ClipLutRecovery} from '../apps/web/src/clip-lut-recovery.ts';
-import {mediaUrl} from '../apps/web/src/api.ts';
+import {assetUrl, mediaUrl} from '../apps/web/src/api.ts';
 import type {ClipDraftEnvelope, ClipDraftClient, ClipDraftContext, Gate} from './helpers/strict-timeline-ui-types.ts';
 type LutOptions = Partial<Pick<Parameters<typeof createClipLutController>[0], 'imports' | 'timeoutMs'>> & {current?: ClipLutContext;handler?: (operation: string, input: Record<string, unknown>) => unknown; recoveryStore?: Map<string,string>; recoveryAdapter?: ClipLutRecovery; workspaceReader?: Parameters<typeof createClipLutController>[0]['readWorkspace']};
 import type { TestNode, TestTree, TestElementProps, TestComponent, HookCell } from './helpers/strict-timeline-ui-types.ts';
@@ -226,7 +226,7 @@ test('actual source Preview visibly discloses unprocessed audio and image while 
       if (name === './creation-i18n.ts') return creationI18n;
       if (name === './export-settings-state.ts') return exportSettings;
       if (name === './source-range-state.ts') return sourceRanges;
-      if (name === './api.ts') return {assetUrl:(asset: {url?:string} | null | undefined) => asset?.url || '', mediaUrl};
+      if (name === './api.ts') return {assetUrl, mediaUrl};
       if (name === './Timeline.tsx') return {assetKind:(asset: {mimeType?:string} | null | undefined) => asset?.mimeType?.split('/')[0]};
       if (name === './workspace-visibility.tsx') return {useWorkspaceVisibility:() => true};
       if (name.endsWith('.css')) return {};
@@ -248,7 +248,7 @@ test('actual source Preview visibly discloses unprocessed audio and image while 
       const rule=css.match(/\.central-preview\.edit-preview \.preview-source-disclosure\s*\{([^}]+)\}/)?.[1];assert.ok(rule);
       assert.match(rule,/white-space:\s*normal/,'The visible source disclosure wraps instead of hiding its LUT qualification');assert.match(rule,/position:\s*static/);
       assert.doesNotMatch(rule,/display:\s*none|visibility:\s*hidden|overflow:\s*hidden|text-overflow:\s*ellipsis/);
-      assert.equal(nodes(tree).find(node => ['video','audio','img'].includes(node.type as string))?.props.src, asset.url);
+      assert.equal(nodes(tree).find(node => ['video','audio','img'].includes(node.type as string))?.props.src, mediaUrl(projectId, assetId));
     }
     const rendered = module.exports.default({...base, kind:'timeline', job:{id:id(90), status:'succeeded', timelineRevision:1, url:'/media/frozen-render', snapshot:{timeline}}});
     assert.equal(nodes(rendered).some(node => node.props?.['data-testid'] === 'preview-source-unprocessed'), false);

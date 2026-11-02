@@ -2,6 +2,7 @@ import type {OperationDefinition} from '@mioon/client';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedClient} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
@@ -50,6 +51,7 @@ async function fixture(t: test.TestContext){
   const server=http.createServer(async(req,res)=>{
     if(req.url==='/health'){res.end('healthy');return;}
     try{
+      assert.equal(req.url,projectRpcPath(input.projectId));
       assert.equal(req.headers.authorization,'Bearer '+token);
       let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>8192)throw Error('Request overflow');}
       const body=JSON.parse(raw);calls.push(body);const parsed=parse(body.operation,body.input);
@@ -87,7 +89,7 @@ test('actual HTTP, CLI and official MCP carry identical ephemeral reports, valid
   const f=await fixture(t),mcp=await official(t,f.url),client=(createClient({env:env(f.url)}) as TypedClient);
   const callCli=async()=>{const result=await cli(t,f.url,[...operation.split('.'),'--input',JSON.stringify(input)]).result;return result.body;};
   const callMcp=()=>mcp.call('timeline_export_samplePeak',input);
-  const callHttp=async()=>{const response=await fetch(f.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});return response.json();};
+  const callHttp=async()=>{const response=await fetch(f.url+projectRpcPath(input.projectId),{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});return response.json();};
   for(const mode of ['ready','busy']){
     f.mode(mode);const expected=mode==='ready'?readySamplePeak():incompleteSamplePeak();
     for(const call of [callHttp,callCli,callMcp]){const before=f.calls.length;const result=await call();assert.deepEqual(result,{ok:true,data:expected});assert.equal(isExportSamplePeakResponse(result.data,input),true);assert.equal(f.calls.length,before+1);}
@@ -103,7 +105,7 @@ for(const transport of ['HTTP','CLI','MCP'])test(`actual ${transport} cancellati
   const f=await fixture(t);f.mode('wait');let stop,finished;
   if(transport==='HTTP'){
     const controller=new AbortController();stop=()=>controller.abort();
-    finished=fetch(f.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input}),signal:controller.signal}).then(()=>assert.fail('Cancelled HTTP must not succeed'),()=>{});
+    finished=fetch(f.url+projectRpcPath(input.projectId),{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input}),signal:controller.signal}).then(()=>assert.fail('Cancelled HTTP must not succeed'),()=>{});
   }else if(transport==='CLI'){
     const invocation=cli(t,f.url,[...operation.split('.'),'--input',JSON.stringify(input)]);stop=()=>invocation.child.kill('SIGINT');
     finished=invocation.result.then(({code,body})=>{assert.equal(code,130);assert.equal(body.error.code,'INTERRUPTED');});

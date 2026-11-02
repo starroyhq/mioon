@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as subjectState from '../apps/web/src/subject-state.ts';
+import {assetUrl} from '../apps/web/src/api.ts';
 
 const { createSubjectController, subjectDraftDirty, filterSubjects, subjectImage } = subjectState;
 const id = (kind: number, n = 1) => `${kind}0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -237,7 +238,7 @@ const h = { visible: true, locale: 'zh-Hans' } as CapturedHarness1;
   function load(file: string):SubjectModule {
     if (modules[file]) return modules[file];
     const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), code = transformSync(source, { loader: file.endsWith('.tsx') ? 'tsx' : file.endsWith('.ts') ? 'ts' : 'jsx', format: 'cjs' }).code, module = { exports: {} as SubjectModule };
-    Function('require', 'module', 'exports', code)((name: string) => name === 'react' ? { ...react, default: react } : name === './i18n/I18nProvider.tsx' ? { useI18n: () => i18nTestModule(h.locale).useI18n() } : name.endsWith('subject-state.ts') ? subjectState : name.endsWith('workspace-visibility.tsx') ? { useWorkspaceVisibility: () => h.visible } : name.endsWith('use-subjects.ts') ? load('use-subjects.ts') : name==='./AgentEditingBoundary.tsx' ? {__esModule:true,default:'AgentEditingBoundary'} : name.endsWith('api.ts') ? { assetUrl: (asset: { id: unknown; }) => `/media/${asset.id}` } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+    Function('require', 'module', 'exports', code)((name: string) => name === 'react' ? { ...react, default: react } : name === './i18n/I18nProvider.tsx' ? { useI18n: () => i18nTestModule(h.locale).useI18n() } : name.endsWith('subject-state.ts') ? subjectState : name.endsWith('workspace-visibility.tsx') ? { useWorkspaceVisibility: () => h.visible } : name.endsWith('use-subjects.ts') ? load('use-subjects.ts') : name==='./AgentEditingBoundary.tsx' ? {__esModule:true,default:'AgentEditingBoundary'} : name.endsWith('api.ts') ? { assetUrl } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
     return modules[file] = module.exports;
   }
   const component = load(filename);
