@@ -7,12 +7,16 @@ import { workspaceOriginOptions } from './workspace-origin.ts';
 import { readTimelineMixLoudnessRpc } from './timeline-mix-loudness-rpc.ts';
 import type { TimelineMixLoudnessWireOptions } from './timeline-mix-loudness-rpc.ts';
 import { isTimelineMixLoudnessResponse } from '@mioon/contracts/timeline-mix-loudness';
+import { projectMediaPath } from '../../../packages/contracts/src/project-file.ts';
+import { rpcPathFor } from '../../../packages/contracts/src/project-addressing.ts';
 
 export type RpcFetcher = typeof fetch;
 export interface RpcOptions {
   readonly signal?: AbortSignal;
   readonly expectedWorkspaceOrigin?: unknown;
   readonly fetcher?: RpcFetcher;
+  /** Addresses the entity-addressed operations, whose input names no project. */
+  readonly projectId?: string | null;
 }
 interface RpcErrorBody {
   readonly code?: unknown;
@@ -42,10 +46,13 @@ export class ApiError extends Error {
   }
 }
 
-export async function rpc<T = unknown>(operation: string, input: unknown = {}, { signal, expectedWorkspaceOrigin, fetcher = (...args: Parameters<RpcFetcher>): ReturnType<RpcFetcher> => fetch(...args) }: RpcOptions = {}): Promise<T> {
+export async function rpc<T = unknown>(operation: string, input: unknown = {}, { signal, expectedWorkspaceOrigin, fetcher = (...args: Parameters<RpcFetcher>): ReturnType<RpcFetcher> => fetch(...args), projectId }: RpcOptions = {}): Promise<T> {
   const invocation = workspaceOriginOptions(expectedWorkspaceOrigin);
-  const mix = (operation === 'timeline.clip.loudness' ? await readTimelineClipLoudnessRpc(input, { ...invocation, signal, fetch: fetcher } as TimelineClipLoudnessWireOptions) : operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc('/api/rpc', { operation, input, ...invocation }, { signal, fetcher }) : operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessRpc(input, { ...invocation, signal, fetch: fetcher } as TimelineMixLoudnessWireOptions) : null) as LoudnessRpcResult | null;
-  const response = mix?.response ?? await fetcher('/api/rpc', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input, ...invocation }), ...(signal ? { signal } : {}) });
+  let path: string;
+  try { path = rpcPathFor(operation, input, projectId ?? undefined); }
+  catch { throw new ApiError('The request has no valid project address.', 'VALIDATION_ERROR', {}, true); }
+  const mix = (operation === 'timeline.clip.loudness' ? await readTimelineClipLoudnessRpc(input, { ...invocation, signal, fetch: fetcher } as TimelineClipLoudnessWireOptions) : operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc(path, { operation, input, ...invocation }, { signal, fetcher }) : operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessRpc(input, { ...invocation, signal, fetch: fetcher } as TimelineMixLoudnessWireOptions) : null) as LoudnessRpcResult | null;
+  const response = mix?.response ?? await fetcher(path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input, ...invocation }), ...(signal ? { signal } : {}) });
   let body: unknown;
   try { body = mix ? mix.body : await response.json(); } catch { throw protocolError(); }
   if (!isRecord(body) || typeof body.ok !== 'boolean' ||
@@ -68,14 +75,13 @@ export const requestId = (): string => crypto.randomUUID();
 export const activeJob = (job: unknown): boolean => ['queued', 'submitting', 'running', 'downloading'].includes(String(property(job, 'status')));
 const statuses: Readonly<Record<string, string>> = { queued: '等待生成', submitting: '正在提交', running: '生成中', downloading: '保存视频', succeeded: '已完成', failed: '失败', submission_unknown: '提交状态待确认', cancelled: '已停止', ready: '可下载', pending: '等待处理', completed: '已完成' };
 export const statusText = (status: unknown): string => (typeof status === 'string' ? statuses[status] : undefined) || (typeof status === 'string' ? status : '') || '待生成';
-export const assetUrl = (asset: unknown): string => {
-  const url = property(asset, 'url'), id = property(asset, 'id');
-  return typeof url === 'string' && url ? url : id ? `/media/${String(id)}` : '';
+/** Media at its project's address; the stored `url` is not an address. Empty
+ * when the record has no valid project or asset ID. */
+export const mediaUrl = (projectId: unknown, assetId: unknown): string => {
+  try { return projectMediaPath(projectId as string, assetId as string); } catch { return ''; }
 };
-export const versionUrl = (version: unknown): string => {
-  const url = property(version, 'url'), assetId = property(version, 'assetId');
-  return typeof url === 'string' && url ? url : assetId ? `/media/${String(assetId)}` : '';
-};
+export const assetUrl = (asset: unknown): string => mediaUrl(property(asset, 'projectId'), property(asset, 'id'));
+export const versionUrl = (version: unknown): string => mediaUrl(property(version, 'projectId'), property(version, 'assetId'));
 
 export const outputReviewRequired = (job: unknown): boolean => property(job, 'phase') === 'output_review_required';
 export const jobStatusText = (job: unknown): string => outputReviewRequired(job) ? '输出待核验' : statusText(property(job, 'status'));

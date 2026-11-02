@@ -1,4 +1,6 @@
 import type { AgentTaskClaim, AgentTaskEditingInput, AgentTaskTarget } from '../../../packages/contracts/src/agent-tasks-v2.ts';
+import { projectApiPath } from '../../../packages/contracts/src/project-file.ts';
+const editingPath = (projectId: string): string => projectApiPath(projectId, 'agent', 'tasks', 'v2', 'editing');
 
 export function agentEditingOwnerIdentity(workspaceScope: string, windowId: string, targets: readonly AgentTaskTarget[]): string { return `${workspaceScope}:${windowId}:${targets.map(target => `${target.kind}:${target.id}`).join(',')}`; }
 export function agentEditingOwnerInWindow(ownerId: string, workspaceScope: string, windowId: string): boolean { return ownerId.startsWith(`${workspaceScope}:${windowId}:`); }
@@ -21,7 +23,7 @@ export function createAgentEditingClient({ fetchImpl = globalThis.fetch, timeout
       return { claims: claims as AgentTaskClaim[], targets: targets as AgentTaskTarget[], ...(typeof envelope.data.timelineRevision==='number'&&Number.isSafeInteger(envelope.data.timelineRevision)?{timelineRevision:envelope.data.timelineRevision}:{}), ...(receipt&&typeof receipt.requestId==='string'&&typeof receipt.projectId==='string'&&typeof receipt.ownerId==='string'&&typeof receipt.generation==='number'&&typeof receipt.sequence==='number'?{receipt:{requestId:receipt.requestId,projectId:receipt.projectId,ownerId:receipt.ownerId,generation:receipt.generation,sequence:receipt.sequence}}:{}) };
     } finally { clearTimeout(timeout); }
   }
-  return { read: (projectId, ownerId) => request(`/api/agent/tasks/v2/editing?projectId=${encodeURIComponent(projectId)}${ownerId ? `&ownerId=${encodeURIComponent(ownerId)}` : ''}`), lookup:(projectId,ownerId,requestId)=>request(`/api/agent/tasks/v2/editing?projectId=${encodeURIComponent(projectId)}&ownerId=${encodeURIComponent(ownerId)}&requestId=${encodeURIComponent(requestId)}`), update: input => request('/api/agent/tasks/v2/editing', input) };
+  return { read: (projectId, ownerId) => request(`${editingPath(projectId)}?projectId=${encodeURIComponent(projectId)}${ownerId ? `&ownerId=${encodeURIComponent(ownerId)}` : ''}`), lookup:(projectId,ownerId,requestId)=>request(`${editingPath(projectId)}?projectId=${encodeURIComponent(projectId)}&ownerId=${encodeURIComponent(ownerId)}&requestId=${encodeURIComponent(requestId)}`), update: input => request(editingPath(input.projectId), input) };
 }
 export interface AgentEditingState { phase: 'idle' | 'loading' | 'acquiring' | 'active' | 'releasing' | 'uncertain' | 'retained'; claims: AgentTaskClaim[]; pending: AgentTaskEditingInput | null; timelineRevision?:number; targets?:AgentTaskTarget[] }
 export function createAgentEditingProtection({ projectId, ownerId, targets, generation = Date.now(), client = createAgentEditingClient(), requestId = () => crypto.randomUUID(), onChange = () => {} }: { projectId: string; ownerId: string; targets: readonly AgentTaskTarget[]; generation?: number; client?: AgentEditingClient; requestId?: () => string; onChange?: (state: AgentEditingState) => void }) {

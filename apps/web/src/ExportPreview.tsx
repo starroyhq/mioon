@@ -4,6 +4,7 @@ import { useI18n } from './i18n/I18nProvider.tsx';
 import type { PreviewResult } from './export-preview-state.ts';
 import {useExportWorkflowStep,useExportWorkflowMedia} from './ExportWorkflow.tsx';
 import Icon from './icons.tsx';
+import { mediaUrl } from './api.ts';
 import ExportRangeSummary from './ExportRangeSummary.tsx';
 
 /** This player owns only its exact real output. It never drives editor playback. */
@@ -18,7 +19,7 @@ export default function ExportPreview({ result, visible, canSelect, canGenerate,
 }) {
   const { t } = useI18n(), step=useExportWorkflowStep(), formal=useExportWorkflowMedia();
   const formalRecord=formal.record;
-  if(step>=4)result=step===5&&formal.enabled&&formalRecord?{phase:'succeeded',record:null,stale:false,url:formalRecord.url||(formalRecord.assetId?`/media/${formalRecord.assetId}`:null)}:{phase:'idle',record:null,stale:false,url:null};
+  if(step>=4)result=step===5&&formal.enabled&&formalRecord?{phase:'succeeded',record:null,stale:false,url:mediaUrl(formal.projectId,formalRecord.assetId)||null}:{phase:'idle',record:null,stale:false,url:null};
   const video = useRef<HTMLVideoElement | null>(null), [closed, setClosed] = useState(false), [mediaError, setMediaError] = useState(false), [playing,setPlaying]=useState(false),[playhead,setPlayhead]=useState(0),[duration,setDuration]=useState(0);
   const [requesting, setRequesting] = useState(false), generationFlight = useRef(false), mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);

@@ -1,5 +1,6 @@
 import { TIMELINE_MIX_LOUDNESS_LIMITS, timelineMixLoudnessInputSchema } from '@mioon/contracts/timeline-mix-loudness';
 import { readTimelineMixLoudnessEnvelope } from '@mioon/client/timeline-mix-loudness';
+import { projectRpcPath } from '../../../packages/contracts/src/project-file.ts';
 
 export interface TimelineMixLoudnessWireOptions {
   readonly signal?: AbortSignal;
@@ -37,7 +38,7 @@ export async function readTimelineMixLoudnessRpc(rawInput: unknown, options: Tim
     if (controller.signal.aborted) throw cancelled();
     let response: Response;
     try {
-      response = await observe((options.fetch ?? fetch)('/api/rpc', { method: 'POST', credentials: 'same-origin',
+      response = await observe((options.fetch ?? fetch)(projectRpcPath(parsed.data.projectId), { method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'timeline.loudness.prepare', input: parsed.data,
           ...(options.expectedWorkspaceOrigin ? { expectedWorkspaceOrigin: options.expectedWorkspaceOrigin } : {}) }), signal: controller.signal }).then(value => {
           if (controller.signal.aborted) { void value.body?.cancel().catch(() => {}); throw cancelled(); }

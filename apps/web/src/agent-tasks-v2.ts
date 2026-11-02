@@ -6,6 +6,7 @@ import type { AgentAuthorizationSnapshot } from '../../../packages/contracts/src
 import { deriveAgentEndpoint, safeAgentSettings } from './agent-settings.ts';
 import type { AgentSettingsSnapshot } from './agent-settings.ts';
 import { readAgentChatSSE } from './agent-sse.ts';
+import { projectApiPath } from '../../../packages/contracts/src/project-file.ts';
 
 export interface AgentTaskProjectSnapshot { version: 2; instanceId: string; projectId: string; runs: AgentTaskRun[]; policy: AgentTaskPolicy; settings: AgentSettingsSnapshot; authorization: AgentAuthorizationSnapshot; readOnly?: boolean }
 export interface AgentTaskUpload {id: string; name: string; mimeType: string; status: string}
@@ -78,7 +79,7 @@ export function createAgentTaskChecksReader({fetchImpl=globalThis.fetch,timeoutM
       if(signal?.aborted)controller.abort();
       const work=(async()=>{
         if(controller.signal.aborted)throw failure();
-        const response=await fetchImpl(`/api/agent/tasks/v2/${encodeURIComponent(projectId)}/${encodeURIComponent(runId)}/checks${preflight?'?preflight=1':''}`,{method:'GET',credentials:'same-origin',cache:'no-store',signal:controller.signal});
+        const response=await fetchImpl(`${projectApiPath(projectId,'agent','tasks','v2',runId,'checks')}${preflight?'?preflight=1':''}`,{method:'GET',credentials:'same-origin',cache:'no-store',signal:controller.signal});
         if(controller.signal.aborted)throw failure();
         let value:unknown;try{value=await response.json();}catch{throw failure(controller.signal.aborted?'NETWORK':'INVALID_RESPONSE');}
         if(controller.signal.aborted)throw failure();
@@ -99,7 +100,8 @@ export function createAgentTaskChecksReader({fetchImpl=globalThis.fetch,timeoutM
 }
 export const readAgentTaskChecks=createAgentTaskChecksReader();
 export function createAgentTaskClient({ fetchImpl = globalThis.fetch, timeoutMs = 12000 }: { fetchImpl?: typeof fetch; timeoutMs?: number } = {}): AgentTaskClient {
-  const root = '/api/agent/tasks/v2', path = (projectId: string, runId?: string) => `${root}/${encodeURIComponent(projectId)}${runId ? `/${encodeURIComponent(runId)}` : ''}`;
+  // Project tasks live at the project's address; the policy stays app-level.
+  const root = '/api/agent/tasks/v2', path = (projectId: string, runId?: string) => projectApiPath(projectId, 'agent', 'tasks', 'v2', ...(runId ? [runId] : []));
   async function json(url: string, method = 'GET', body?: unknown): Promise<unknown> {
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
