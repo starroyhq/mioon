@@ -218,8 +218,28 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const {startServer} = await import('../../apps/server/src/index.ts');
   const {readProjectState, changeMarks} = await import('./project-state.ts');
   let inspect: InspectProject|undefined,application:InspectApplication|undefined;
+  let retain: ((projectId: string) => Promise<() => void>) | undefined;
+  const retained: (() => void)[] = [];
+  const releaseRetained = (): void => {for (const release of retained.splice(0)) release();};
   const server = await startServer({dataDir: dataRoot, port: Number(process.env.PORT || 0), token: TOKEN,
-    inspectProject: received => { inspect = received; },inspectApplication:received=>{application=received;}});
+    inspectProject: received => { inspect = received; },inspectApplication:received=>{application=received;},
+    retainProjectForTest: received => {retain = received;}});
+  try {
+    if (!retain) throw Error('The server has not handed over its project retention port');
+    // Keep the real hosts open while checking inspection's zero-write contract.
+    // Otherwise a slow CI run crosses the ordinary 60-second idle deadline and
+    // close bookkeeping writes equal registrations into the application DB.
+    for (const projectId of INSPECTION_PROJECT_IDS) {
+      // Cold corrupt files must still fail the production summary gate after
+      // restart. Their synchronous kernel inspectors remain sufficient here.
+      if (!newlySeeded && [IDS.mismatchedAsset, IDS.mismatchedShot, IDS.mismatchedTimeline].includes(projectId)) continue;
+      retained.push(await retain(projectId));
+    }
+  } catch (error) {
+    try {await server.close();}
+    finally {releaseRetained();}
+    throw error;
+  }
   // While this process holds the project, storage questions use the server's
   // connection, including its own writes in the change marks.
   let corruptionInjected = false;
@@ -262,7 +282,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   process.stdout.write(JSON.stringify({ready: true, url: server.url, pid: process.pid}) + '\n');
   let closing: Promise<unknown>|undefined;
   const close = (): Promise<unknown> => closing ??= server.close().catch(() => { process.exitCode = 1; })
-    .finally(() => { if (process.connected) process.disconnect(); });
+    .finally(() => {releaseRetained(); if (process.connected) process.disconnect();});
   process.on('SIGTERM', close);
   process.on('SIGINT', close);
   process.once('disconnect', close);

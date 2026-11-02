@@ -357,6 +357,8 @@ type InspectProject = <T>(projectId: string, inspect: (db: DatabaseSync) => T) =
 
 应用库使用同样的受信接收方式：`startServer({inspectApplication: inspect => { … }})`，其中 `InspectApplication = <T>(read: (db: DatabaseSync) => T) => T`。它只借用当前服务端实际持有的 B1 连接，拒绝 async 回调、Promise/thenable 返回及关闭后的调用；不新增 HTTP、CLI 或环境变量开关。测试子进程只回答固定应用快照或固定故障问题，不把 SQL 接口公开出去。活动库文件及其日志、改名或硬链接不通过 `fs` 读取，快照使用真实 owner 的全行、结构和变更标记，普通文件另作字节快照。
 
+长时间核对零写入的夹具可通过仅进程内的 `retainProjectForTest` 接收端取得 `retain(projectId): Promise<() => void>`，在基线前持有真实 `window` 租约，结束后释放。这样普通的 60 秒空闲关闭及应用库登记不会混入只读操作的测量；原有行快照和 `total_changes()` 断言仍全部检查。它不接受 HTTP/环境输入，不改变生产空闲策略，也不允许异步持有检查回调里的数据库连接。
+
 ## 待定
 - 封面接口已在 P4 定为 `GET /api/project-covers/<ID>`；后续首页体验归 S6。
 - 打开副本时的提示还没有设计稿，打开结果里暂不带副本信息。
