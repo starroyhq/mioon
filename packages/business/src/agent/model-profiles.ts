@@ -2,7 +2,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {parseAgentConfiguration} from './config.ts';
 import type {AgentConfiguration} from './config.ts';
 import {agentChatError} from './chat-errors.ts';
-import {ANTHROPIC_MESSAGES_FIELDS, ANTHROPIC_THINKING_FIELDS} from './anthropic-protocol.ts';
+import {ANTHROPIC_MESSAGES_FIELDS, ANTHROPIC_MIN_THINKING_BUDGET_TOKENS, anthropicThinkingFields} from './anthropic-protocol.ts';
 import type {AgentProtocol} from '../../../contracts/src/agent-protocol.ts';
 
 function freeze<T extends object>(value: T): Readonly<T> { for (const child of Object.values(value as Record<string, unknown>)) if (child && typeof child === 'object') freeze(child as object); return Object.freeze(value); }
@@ -14,24 +14,49 @@ function fail(code: string): never { throw agentChatError(code); }
  * profile's fields are exactly that switch, and task requests send it. A
  * required model always thinks, so its profile carries no off switch. */
 export type AgentThinkingTier = 'unsupported' | 'optional' | 'required';
+/** Chat Completions and Responses always send this limit, including thinking
+ * requests. Messages also uses it when the model's maximum is unknown. */
+export const AGENT_DEFAULT_OUTPUT_TOKENS = 4096;
+/** Messages caps its documented maximum here. All protocols still share the
+ * 1 MiB / 8192-event SSE limits and 120-second deadline, so this does not
+ * guarantee that a reply reaches the token limit. Raising Chat Completions or
+ * Responses also requires reviewing those limits and rate-limit reservations. */
+export const AGENT_OUTPUT_TOKEN_CEILING = 16384;
+/** Target answer reserve for required-thinking Messages requests. The minimum
+ * thinking budget can leave less when the whole output limit is only 4096. */
+export const AGENT_THINKING_ANSWER_TOKENS = 4096;
+/** contextTokens is the documented context window (input plus output), or null
+ * when it is unknown or set by the user's server. outputTokens is the output
+ * limit a task request sends: 4096 for Chat Completions and Responses;
+ * min(documented maximum output, 16384) for a listed Messages model, otherwise
+ * 4096. Checked 2026-11-02; sources and per-model table: AGENT-PROVIDERS.md. */
+export interface AgentModelTokenLimits {contextTokens: number | null; outputTokens: number}
+/** Keep documented capability separate from the output limit sent today. */
+interface AgentModelTokenProfile extends AgentModelTokenLimits {maxOutputTokens: number | null}
 // These are explicit text-only profiles, not a vendor-wide compatibility claim.
 // Model aliases/edits remain saveable settings, but unsupported named profiles
 // fail before inference. Sources and region/account caveats: AGENT-PROVIDERS.md.
 // No catalog model requires thinking: each optional profile's model documents
 // the disable switch it sends, and gpt-4.1-mini does not reason.
-interface AgentChatProfile {models: string[] | null; tokenField: 'max_tokens' | 'max_completion_tokens'; fields: Record<string, unknown>; thinkingTier: AgentThinkingTier}
+// Documented maximum output: gpt-4.1-mini 32,768; deepseek-flash 393,216;
+// glm-4.7 128,000. Kimi and MiniMax list no separate maximum; input plus output
+// must fit the window. qwen-plus has no maximum on its official page.
+interface AgentChatProfile extends AgentModelTokenProfile {models: string[] | null; tokenField: 'max_tokens' | 'max_completion_tokens'; fields: Record<string, unknown>; thinkingTier: AgentThinkingTier}
 const profiles: Record<string, AgentChatProfile> = {
-  openai: Object.freeze({models: ['gpt-4.1-mini', 'gpt-4.1-mini-2025-04-14'], tokenField: 'max_completion_tokens', fields: {store: false}, thinkingTier: 'unsupported'}),
-  deepseek: Object.freeze({models: ['deepseek-flash'], tokenField: 'max_tokens', fields: {thinking: {type: 'disabled'}}, thinkingTier: 'optional'}),
-  qwen: Object.freeze({models: ['qwen-plus'], tokenField: 'max_tokens', fields: {enable_thinking: false}, thinkingTier: 'optional'}),
-  zhipu: Object.freeze({models: ['glm-4.7'], tokenField: 'max_tokens', fields: {thinking: {type: 'disabled'}}, thinkingTier: 'optional'}),
-  kimi: Object.freeze({models: ['kimi-k2.6'], tokenField: 'max_tokens', fields: {thinking: {type: 'disabled'}}, thinkingTier: 'optional'}),
-  minimax: Object.freeze({models: ['MiniMax-M3'], tokenField: 'max_completion_tokens', fields: {thinking: {type: 'disabled'}}, thinkingTier: 'optional'}),
-  openrouter: Object.freeze({models: ['openai/gpt-4.1-mini'], tokenField: 'max_tokens', fields: {provider: {require_parameters: true, allow_fallbacks: false}}, thinkingTier: 'unsupported'}),
-  custom: Object.freeze({models: null, tokenField: 'max_tokens', fields: {}, thinkingTier: 'unsupported'}),
+  openai: Object.freeze({models: ['gpt-4.1-mini', 'gpt-4.1-mini-2025-04-14'], tokenField: 'max_completion_tokens', fields: {store: false}, thinkingTier: 'unsupported', contextTokens: 1047576, maxOutputTokens: 32768, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS}),
+  deepseek: Object.freeze({models: ['deepseek-flash'], tokenField: 'max_tokens', fields: {thinking: {type: 'disabled'}}, thinkingTier: 'optional', contextTokens: 1000000, maxOutputTokens: 393216, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS}),
+  qwen: Object.freeze({models: ['qwen-plus'], tokenField: 'max_tokens', fields: {enable_thinking: false}, thinkingTier: 'optional', contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS}),
+  zhipu: Object.freeze({models: ['glm-4.7'], tokenField: 'max_tokens', fields: {thinking: {type: 'disabled'}}, thinkingTier: 'optional', contextTokens: 200000, maxOutputTokens: 128000, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS}),
+  kimi: Object.freeze({models: ['kimi-k2.6'], tokenField: 'max_tokens', fields: {thinking: {type: 'disabled'}}, thinkingTier: 'optional', contextTokens: 262144, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS}),
+  minimax: Object.freeze({models: ['MiniMax-M3'], tokenField: 'max_completion_tokens', fields: {thinking: {type: 'disabled'}}, thinkingTier: 'optional', contextTokens: 1000000, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS}),
+  // OpenRouter routes this model to OpenAI; its limits follow the OpenAI model page.
+  openrouter: Object.freeze({models: ['openai/gpt-4.1-mini'], tokenField: 'max_tokens', fields: {provider: {require_parameters: true, allow_fallbacks: false}}, thinkingTier: 'unsupported', contextTokens: 1047576, maxOutputTokens: 32768, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS}),
+  custom: Object.freeze({models: null, tokenField: 'max_tokens', fields: {}, thinkingTier: 'unsupported', contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS}),
   // Official compatibility docs, checked 2026-10-09: reasoning_effort:'none'
   // requests false for boolean-thinking models. No model pull/probe/cloud route.
-  ollama: Object.freeze({models: ['qwen3:8b'], tokenField: 'max_tokens', fields: {reasoning_effort: 'none'}, thinkingTier: 'optional'}),
+  // The local server sets the context window (default 4096), which the
+  // compatible API can neither set per request nor report.
+  ollama: Object.freeze({models: ['qwen3:8b'], tokenField: 'max_tokens', fields: {reasoning_effort: 'none'}, thinkingTier: 'optional', contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS}),
 };
 export const AGENT_CHAT_PROFILES: Readonly<Record<string, AgentChatProfile>> = freeze(profiles);
 /** Select request fields before dispatch. A preset without a dedicated profile
@@ -52,13 +77,15 @@ export function agentChatAllowsNaturalEof(configuration: AgentConfiguration, bod
 }
 
 // Documentation-backed, deliberately text-only profiles, not live certification.
-interface AgentResponsesProfile {models: string[] | null; fields: Record<string, unknown>; thinkingTier: AgentThinkingTier}
+// Token limits follow the Chat Completions profile of the same model;
+// qwen3.8-flash documents a 1,000,000-token window but no maximum output.
+interface AgentResponsesProfile extends AgentModelTokenProfile {models: string[] | null; fields: Record<string, unknown>; thinkingTier: AgentThinkingTier}
 const responseProfiles: Record<string, AgentResponsesProfile> = {
-  openai: {models: ['gpt-4.1-mini', 'gpt-4.1-mini-2025-04-14'], fields: {truncation: 'disabled'}, thinkingTier: 'unsupported'},
-  custom: {models: null, fields: {truncation: 'disabled'}, thinkingTier: 'unsupported'},
-  ollama: {models: ['qwen3:8b'], fields: {reasoning: {effort: 'none'}}, thinkingTier: 'optional'},
-  deepseek: {models: ['deepseek-flash'], fields: {reasoning: {effort: 'none'}}, thinkingTier: 'optional'},
-  qwen: {models: ['qwen3.8-flash'], fields: {reasoning: {effort: 'none'}}, thinkingTier: 'optional'},
+  openai: {models: ['gpt-4.1-mini', 'gpt-4.1-mini-2025-04-14'], fields: {truncation: 'disabled'}, thinkingTier: 'unsupported', contextTokens: 1047576, maxOutputTokens: 32768, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS},
+  custom: {models: null, fields: {truncation: 'disabled'}, thinkingTier: 'unsupported', contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS},
+  ollama: {models: ['qwen3:8b'], fields: {reasoning: {effort: 'none'}}, thinkingTier: 'optional', contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS},
+  deepseek: {models: ['deepseek-flash'], fields: {reasoning: {effort: 'none'}}, thinkingTier: 'optional', contextTokens: 1000000, maxOutputTokens: 393216, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS},
+  qwen: {models: ['qwen3.8-flash'], fields: {reasoning: {effort: 'none'}}, thinkingTier: 'optional', contextTokens: 1000000, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS},
 };
 export const AGENT_RESPONSES_PROFILES: Readonly<Record<string, AgentResponsesProfile>> = freeze(responseProfiles);
 /** Unlisted vendor/protocol combinations use the explicitly selected protocol's
@@ -76,10 +103,32 @@ export function agentModelThinkingTier(configuration: AgentConfiguration): Agent
   if (configuration.protocol === 'anthropic_messages') return 'optional';
   return fail('AGENT_CHAT_VALIDATION');
 }
+// Messages has no request profile, so its documented limits list exact model
+// names: claude-haiku-4-5 has a 200,000-token window and 64,000 maximum output.
+const messagesTokenLimits: Record<string, AgentModelTokenProfile & {models: string[]}> = {
+  anthropic: {models: ['claude-haiku-4-5', 'claude-haiku-4-5-20251001'], contextTokens: 200000, maxOutputTokens: 64000, outputTokens: Math.min(64000, AGENT_OUTPUT_TOKEN_CEILING)},
+};
+export const AGENT_MESSAGES_TOKEN_LIMITS: Readonly<Record<string, Readonly<AgentModelTokenProfile & {models: string[]}>>> = freeze(messagesTokenLimits);
+const tokenLimits = ({contextTokens, outputTokens}: AgentModelTokenLimits): AgentModelTokenLimits => ({contextTokens, outputTokens});
+/** Chat Completions and Responses read the protocol's profile. Any combination
+ * without verified limits has an unknown window and the default output limit. */
+export function agentModelTokenLimits(configuration: AgentConfiguration): AgentModelTokenLimits {
+  if (configuration.protocol === 'chat_completions') return tokenLimits(agentChatProfile(configuration));
+  if (configuration.protocol === 'responses') return tokenLimits(agentResponsesProfile(configuration));
+  if (configuration.protocol !== 'anthropic_messages') return fail('AGENT_CHAT_VALIDATION');
+  const listed = Object.hasOwn(AGENT_MESSAGES_TOKEN_LIMITS, configuration.presetId) ? AGENT_MESSAGES_TOKEN_LIMITS[configuration.presetId] : undefined;
+  return listed?.models.includes(configuration.model) ? tokenLimits(listed) : {contextTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS};
+}
 /** Messages thinking control: only a model that cannot disable thinking turns it
- * on. Chat Completions and Responses send their profile fields instead. */
-export function agentAnthropicThinkingFields(tier: AgentThinkingTier): typeof ANTHROPIC_MESSAGES_FIELDS | typeof ANTHROPIC_THINKING_FIELDS {
-  return tier === 'required' ? ANTHROPIC_THINKING_FIELDS : ANTHROPIC_MESSAGES_FIELDS;
+ * on. max_tokens counts thinking, so the manual budget leaves the answer at
+ * AGENT_THINKING_ANSWER_TOKENS when the output limit permits it, while thinking
+ * never goes below the documented minimum. Chat Completions and Responses send
+ * their profile fields instead. */
+export function agentAnthropicThinkingFields(tier: AgentThinkingTier, outputTokens: number): typeof ANTHROPIC_MESSAGES_FIELDS | ReturnType<typeof anthropicThinkingFields> {
+  if (tier !== 'required') return ANTHROPIC_MESSAGES_FIELDS;
+  const budget = Math.max(ANTHROPIC_MIN_THINKING_BUDGET_TOKENS, outputTokens - AGENT_THINKING_ANSWER_TOKENS);
+  if (budget >= outputTokens) fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
+  return anthropicThinkingFields(budget);
 }
 /** Thinking output is admitted only when this exact request asked for it, so a
  * journaled body keeps its meaning on recovery: always for a required model,
