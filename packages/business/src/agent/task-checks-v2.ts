@@ -6,6 +6,7 @@ import {agentTaskChecksSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskCheck,AgentTaskChecks,AgentTaskCheckValues,AgentTaskCheckGroup,AgentTaskCheckReason} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot,AgentTaskStep} from '@mioon/contracts/agent-tasks-v2';
 import type {WorkspaceStore} from '../db.ts';
+import {readMioTargetRevision} from './mio-target-revisions.ts';
 import {createOwnedMediaGraphReader} from '../inspection.ts';
 import {validateManagedSource} from '../managed-media.ts';
 import {freezeStoryboardOutputGeometry,storyboardOutputGeometry} from '../storyboard-output.ts';
@@ -76,7 +77,7 @@ export async function readAgentTaskChecks(store:WorkspaceStore,snapshot:AgentTas
  const groups:AgentTaskChecks['groups']=[{id:'export_render',items:[]},{id:'generation',items:[]},{id:'timeline',items:[]},{id:'decomposition_frames',items:[]}];
  const revision=(kind:Target['kind'],id:string,fallback=0):number=>{
   if(kind==='run')return run.revision;
-  const saved=store.db.prepare('SELECT revision FROM agent_task_target_revisions_v2 WHERE projectId=? AND kind=? AND targetId=?').get(projectId,kind,id)?.revision;
+  const saved=readMioTargetRevision(store.db,projectId,kind,id);
   return integer(saved)?saved:integer(fallback)?fallback:0;
  };
  const basis=(target:Target,fallback=0):Basis=>[{kind:target.kind,id:target.id,revision:revision(target.kind,target.id,fallback)}];

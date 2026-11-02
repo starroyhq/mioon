@@ -8,6 +8,7 @@ import {isTimelineMixLoudnessResponse} from '@mioon/contracts/timeline-mix-loudn
 import {isTimelineLoudnessApplicableReport,timelineLoudnessCandidateDigest} from '@mioon/contracts/timeline-loudness-apply';
 import type {OperationName} from '@mioon/contracts';
 import type {WorkspaceStore} from '../db.ts';
+import {readMioTargetRevision} from './mio-target-revisions.ts';
 import {registerWorkspaceTransactionObserver,registerWorkspaceTransactionFence} from '../db.ts';
 import type {OrdinaryServices} from '../services.ts';
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
@@ -165,7 +166,7 @@ const rowTables:Readonly<Record<string,string>>={shots:'shot',nodes:'node',edges
 const extraTables:Readonly<Record<string,{kind:string;id:string}>>={asset_ranges:{kind:'asset_range',id:'assetId'},asset_dispositions:{kind:'asset_disposition',id:'assetId'},asset_annotations:{kind:'asset_annotation',id:'assetId'},subjects:{kind:'subject',id:'id'},subject_versions:{kind:'subject_version',id:'id'},subject_bindings:{kind:'subject_binding',id:'id'},image_tasks:{kind:'image_task',id:'id'},image_groups:{kind:'image_group',id:'id'},image_versions:{kind:'image_version',id:'id'},frame_tasks:{kind:'frame_task',id:'id'}};
 const key=(kind:string,id:string):string=>`${kind}:${id}`;
 function readRevision(store:WorkspaceStore,projectId:string,kind:string,id:string):number{
- return Number(store.db.prepare('SELECT revision FROM agent_task_target_revisions_v2 WHERE projectId=? AND kind=? AND targetId=?').get(projectId,kind,id)?.revision??0);
+ return readMioTargetRevision(store.db,projectId,kind,id)??0;
 }
 function snapshot(store:WorkspaceStore,projectId:string):Snapshot{
  const result:Snapshot={};

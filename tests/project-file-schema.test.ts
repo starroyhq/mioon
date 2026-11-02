@@ -5,7 +5,7 @@ import {registerHooks} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
 import type {SQLOutputValue} from 'node:sqlite';
 import {
-  buildManifest, deriveFromFormat72, foreignKeyClauses, readFormat72, readTableShape, renderDerivedFiles, rewriteMioQuota,
+  buildManifest, currentCrossFileRelations, derivedDomainStatements, deriveFromFormat72, foreignKeyClauses, readFormat72, readTableShape, renderDerivedFiles, rewriteMioQuota,
   staleDerivedFiles, stripCrossFileForeignKeys, stripDeletionExemption, toTempTrigger, POLICY_QUOTA_TERMS,
 } from './helpers/project-file-schema-derivation.ts';
 import type {Derivation, DerivedObject} from './helpers/project-file-schema-derivation.ts';
@@ -17,7 +17,7 @@ import type {DatabaseKind} from '../packages/business/src/project-file/schema/da
 import {compareManifest, readSchemaManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
 import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
 import {
-  APP_DATABASE_TABLES, CACHE_TABLES, CONTENT_TABLES, HISTORY_TABLES, HISTORY_TABLES_BY_DOMAIN, REMOVED_TABLES, databaseOf,
+  APP_DATABASE_TABLES, CACHE_TABLES, CONTENT_TABLES, HISTORY_TABLES, HISTORY_TABLES_BY_DOMAIN, LEGACY_MIO_TABLES, REMOVED_TABLES, databaseOf,
 } from '../packages/business/src/project-file/schema/tables.ts';
 import {CROSS_FILE_RELATIONS, DROPPED_CONTENT_KEYS} from '../packages/business/src/project-file/cross-file/relations.ts';
 import {CONVERTED_TEMP_TRIGGERS} from '../packages/business/src/project-file/cross-file/converted-triggers.ts';
@@ -41,6 +41,14 @@ function buildAlone(kind: DatabaseKind, schema = 'main'): DatabaseSync {
   db.exec('COMMIT');
   return db;
 }
+function buildHistoricalAlone(kind:DatabaseKind):DatabaseSync {
+  const db=new DatabaseSync(':memory:');
+  db.exec('BEGIN');
+  buildDatabase(db,kind,'main',schemaStatements(kind,derivedDomainStatements(derivation(),kind)));
+  if(kind==='history')db.exec('UPDATE schema_version SET version=2');
+  db.exec('COMMIT');
+  return db;
+}
 function masterNames(db: DatabaseSync, type: string): string[] {
   return db.prepare('SELECT name FROM sqlite_master WHERE type=? ORDER BY name').all(type).map(row => String(row.name));
 }
@@ -51,7 +59,7 @@ test('generated schema files equal a fresh derivation from the format-72 workspa
   assert.deepEqual([...files.keys()].sort(), [
     'packages/business/src/project-file/cross-file/converted-triggers.ts',
     'packages/business/src/project-file/cross-file/relations.ts',
-    ...['cache', 'content', 'mio', 'receipts', 'tasks', 'timeline-history'].map(file => `packages/business/src/project-file/schema/domains/${file}.ts`),
+    ...['cache', 'content', 'receipts', 'tasks', 'timeline-history'].map(file => `packages/business/src/project-file/schema/domains/${file}.ts`),
     'packages/business/src/project-file/schema/manifest.ts',
   ]);
   assert.deepEqual(staleDerivedFiles(files), [], 'run `node tests/helpers/project-file-schema-derivation.ts --write`');
@@ -91,11 +99,11 @@ test('the fixed format-72 source does not load the public opener or project-file
 
 test('table placement lists every kept, application and removed table once', () => {
   // The task domain holds the Mock provider's two ledger tables as well.
-  assert.deepEqual([CONTENT_TABLES.length, HISTORY_TABLES.length, CACHE_TABLES.length, APP_DATABASE_TABLES.length, REMOVED_TABLES.length], [18, 45 + 2, 2, 3, 10]);
+  assert.deepEqual([CONTENT_TABLES.length, HISTORY_TABLES.length, CACHE_TABLES.length, APP_DATABASE_TABLES.length, REMOVED_TABLES.length], [18, 45 + 2 + 5, 2, 3, 10]);
   assert.deepEqual(Object.entries(HISTORY_TABLES_BY_DOMAIN).map(([domain, tables]) => [domain, tables.length]),
-    [['receipts', 17], ['tasks', 13 + 2], ['timelineHistory', 2], ['mio', 13]]);
+    [['receipts', 17], ['tasks', 13 + 2], ['timelineHistory', 2], ['mio', 18]]);
   const all = [...CONTENT_TABLES, ...HISTORY_TABLES, ...CACHE_TABLES, ...APP_DATABASE_TABLES, ...REMOVED_TABLES];
-  assert.equal(new Set(all).size, 78 + 2);
+  assert.equal(new Set(all).size, 78 + 2 + 5);
   assert.equal(databaseOf('jobs'), 'history');
   assert.deepEqual(['mock_provider_tasks', 'mock_provider_submissions'].map(table => [databaseOf(table), HISTORY_TABLES_BY_DOMAIN.tasks.includes(table)]), [['history', true], ['history', true]]);
   assert.equal(databaseOf('workspace_preferences'), 'app');
@@ -165,13 +173,14 @@ test('every format-72 object has exactly one destination and the planned counts'
   assert.deepEqual([droppedContentKeys.length, droppedContentKeys.reduce((sum, key) => sum + key.child.columns.length, 0)], [5, 10]);
   assert.deepEqual(droppedContentKeys.filter(key => key.originallyDeferred).map(key => `${key.child.table}(${key.child.columns.join(',')})`), ['image_groups(activeTaskId,id,projectId)', 'scene_results(requestId)']);
   assert.equal(columns((row, table) => databaseOf(table) === 'app' && databaseOf(String(row.table)) === 'project'), 1);
-  assert.equal(CROSS_FILE_RELATIONS.length, 55);
+  assert.equal(CROSS_FILE_RELATIONS.length, 57);
+  assert.deepEqual(CROSS_FILE_RELATIONS, currentCrossFileRelations(derivation()));
   assert.equal(DROPPED_CONTENT_KEYS.length, 5);
-  assert.deepEqual(convertedTriggers.map(trigger => trigger.name), CONVERTED_TEMP_TRIGGERS.map(trigger => trigger.name));
+  assert.deepEqual(convertedTriggers.filter(trigger => !/^agent_target_(jobs|exports|image_tasks|frame_tasks)_/.test(trigger.name)).map(trigger => trigger.name), CONVERTED_TEMP_TRIGGERS.map(trigger => trigger.name));
   assert.ok(CONVERTED_TEMP_TRIGGERS.every(trigger => trigger.sql.startsWith(`CREATE TEMP TRIGGER ${trigger.name} `)));
 });
 
-test('each built database holds exactly its derived objects plus the kernel metadata', () => {
+test('the frozen S0 profile holds its derived objects plus the kernel metadata', () => {
   const {objects} = derivation();
   const sequence = CONTENT_TABLES.flatMap(table => ['insert', 'update', 'delete'].map(operation => `project_file_sequence_${table}_${operation}`));
   const added: Record<DatabaseKind, {tables: string[]; triggers: string[]}> = {
@@ -182,20 +191,20 @@ test('each built database holds exactly its derived objects plus the kernel meta
   };
   assert.equal(sequence.length, 54);
   for (const kind of KINDS) {
-    const db = buildAlone(kind);
+    const db = buildHistoricalAlone(kind);
     try {
       for (const type of ['table', 'index', 'trigger'] as const) {
         const expected = objects.filter(object => object.type === type && object.fate === kind).map(object => object.name);
         if (type !== 'index') expected.push(...added[kind][type === 'table' ? 'tables' : 'triggers']);
         assert.deepEqual(masterNames(db, type), expected.sort(), `${kind} ${type}s`);
       }
-      assert.deepEqual(db.prepare('SELECT version FROM schema_version').all().map(row => row.version), [IDENTITY[kind].version]);
+      assert.deepEqual(db.prepare('SELECT version FROM schema_version').all().map(row => row.version), [kind==='history'?2:IDENTITY[kind].version]);
       assert.equal(db.prepare('PRAGMA application_id').get()?.application_id, IDENTITY[kind].applicationId);
     } finally {
       db.close();
     }
   }
-  assert.deepEqual(KINDS.map(kind => SCHEMA_MANIFEST[kind].entries.length), [225, 319 + 5, 11]);
+  assert.deepEqual(KINDS.map(kind => {const db=buildHistoricalAlone(kind);try{return readSchemaManifest(db,'main').length;}finally{db.close();}}), [225,319+5,11]);
 });
 
 test('kept tables keep format-72 columns and indexes; only cross-file foreign keys are gone', () => {
@@ -210,9 +219,9 @@ test('kept tables keep format-72 columns and indexes; only cross-file foreign ke
   };
   let compared = 0;
   for (const kind of KINDS) {
-    const db = buildAlone(kind);
+    const db = buildHistoricalAlone(kind);
     try {
-      for (const table of kind === 'project' ? CONTENT_TABLES : kind === 'history' ? HISTORY_TABLES : CACHE_TABLES) {
+      for (const table of kind === 'project' ? CONTENT_TABLES : kind === 'history' ? [...HISTORY_TABLES.filter(table=>!table.startsWith('mio_')), ...LEGACY_MIO_TABLES] : CACHE_TABLES) {
         const before = format72.tables.get(table)!, after = readTableShape(db, table);
         assert.deepEqual(after.columns, before.columns, `${table} table_xinfo`);
         assert.deepEqual(after.indexes, before.indexes, `${table} index_list`);
@@ -272,7 +281,7 @@ test('each database built alone compiles every insert, update and delete of ever
       db.close();
     }
   }
-  assert.equal(tables, 20 + 49 + 3);
+  assert.equal(tables, 20 + 54 + 3);
 });
 
 // Frozen per schema version: a DDL change that regenerates the manifest without
@@ -280,7 +289,7 @@ test('each database built alone compiles every insert, update and delete of ever
 const MANIFEST_DIGESTS: Readonly<Record<DatabaseKind, Readonly<Record<number, string>>>> = {
   project: {1: '6e96c3872a938817b65e71750d1e68bd8fa84c7f3f8d92490de22a0e34d649ce'},
   // 2: the Mock provider's ledger in the task domain.
-  history: {1: 'e0445f02d867f3aeedc283708f58d30efa7b0465e8987f7f739e8f5580791243', 2: '34ad833f0a676602490ce69b0f8804f79f1b30750b76a9f58d41abeb14dfd7a0'},
+  history: {1: 'e0445f02d867f3aeedc283708f58d30efa7b0465e8987f7f739e8f5580791243', 2: '34ad833f0a676602490ce69b0f8804f79f1b30750b76a9f58d41abeb14dfd7a0', 3: 'b9487064fb0fa4447f3eb3896121d648184007a2b675927222beea3518c91a3a'},
   cache: {1: 'be43585ad9045d7ed844c609b9af13829372efb83741b55f4f4f8e7b2f2fd61c'},
 };
 test('building as main or as an attached schema gives the committed manifest', () => {
