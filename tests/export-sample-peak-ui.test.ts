@@ -120,7 +120,7 @@ test('historical peak actions leave immutable file inspection inputs intact whil
   assert.doesNotMatch(rendered.history, /data-testid="download-export"/);
   for (const [index, html] of actualFileActions.entries()) {
     if (index === 2) {
-      assert.match(html, new RegExp(`href="/media/${id(120)}"`));
+      assert.match(html, new RegExp(`href="/api/projects/${projectId}/media/${id(120)}"`));
       assert.match(html, /data-testid="download-export"/); assert.match(html, /download=""/);
       assert.doesNotMatch(html, /export-file-check/);
     } else {

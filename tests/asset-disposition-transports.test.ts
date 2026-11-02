@@ -1,3 +1,5 @@
+import {isEntityAddressedOperation} from '../packages/contracts/src/project-addressing.ts';
+import {projectRpcPath, isProjectId} from '../packages/contracts/src/project-file.ts';
 interface DispositionSchema{required:string[];additionalProperties:boolean;properties:Record<string,DispositionSchema>;$ref?:string;items:DispositionSchema;enum:string[];minimum:number;minLength:number;maxLength:number;minItems:number;maxItems:number;format:string}
 type DispositionCatalog=Omit<DiscoverySchemaResult,'operations'>&{operations:(Omit<import('@mioon/client').OperationDefinition,'inputSchema'>&{inputSchema:DispositionSchema})[]};
 import type {DiscoverySchemaResult} from '@mioon/client';
@@ -173,13 +175,15 @@ async function fixture(t: test.TestContext) {
   };
   const env = () => ({MIOON_BASE_URL: url, MIOON_TOKEN: TOKEN, MIOON_DISPOSITION_WIRE_ALLOWED_ORIGIN: url, MIOON_DISPOSITION_WIRE_AUDIT: auditPath});
   async function request(operation: string, input: unknown, expectedError?: string, base = url, authorization = `Bearer ${TOKEN}`) {
-    const response = await fetch(base + '/api/rpc', {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5_000),
+    const projectId = (input as {projectId?: unknown} | null | undefined)?.projectId;
+    const resource = isProjectId(projectId) ? projectRpcPath(projectId) : '/api/rpc';
+    const response = await fetch(base + resource, {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5_000),
       headers: {'content-type': 'application/json', ...(authorization ? {authorization} : {})}, body: JSON.stringify({operation, input})});
     const raw = await response.text(), envelope = JSON.parse(raw); noPrivate(raw);
     assert.equal(envelope.ok, !expectedError, raw);
     if (expectedError) {
       assert.equal(envelope.error.code, expectedError, raw);
-      const status = expectedError === 'UNAUTHORIZED' ? 401 : expectedError === 'NOT_FOUND' ? 404 :
+      const status = expectedError === 'UNAUTHORIZED' ? 401 : ['NOT_FOUND', 'PROJECT_NOT_FOUND'].includes(expectedError) ? 404 :
         ['REVISION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'INVALID_ASSET_DISPOSITION_RECORD'].includes(expectedError) ? 409 : 400;
       assert.equal(response.status, status, raw);
     } else assert.equal(response.status, 200, raw);
@@ -198,7 +202,7 @@ async function fixture(t: test.TestContext) {
     else assert.equal(code, 0, child.stderr);
     return result;
   }
-  const cli = (operation: string, input: unknown, error?: string) => cliArgs([...operation.split('.'), '--input', JSON.stringify(input)], error);
+  const cli = (operation: string, input: unknown, error?: string) => cliArgs([...operation.split('.'), '--input', JSON.stringify(isEntityAddressedOperation(operation) ? {projectId: IDS.project, ...(input as Record<string, unknown>)} : input)], error);
   const client = new Client({name: 'asset-disposition-wire-acceptance', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath, cwd: repo, env: environment(env()), stderr: 'pipe',
     args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.ts')]});
@@ -209,7 +213,7 @@ async function fixture(t: test.TestContext) {
   assert.equal(client.getServerVersion()!.name, 'mioon');
   assert.ok(client.getServerCapabilities()!.tools);
   async function mcp(operation: string, input: unknown = {}, expectedError?: string) {
-    const result = (await client.callTool({name: operation === 'mioon_schema' ? operation : toolName(operation), arguments: input as Record<string, unknown>}, undefined, {timeout: 5_000}) as import("@modelcontextprotocol/sdk/types.js").CallToolResult);
+    const result = (await client.callTool({name: operation === 'mioon_schema' ? operation : toolName(operation), arguments: (isEntityAddressedOperation(operation) ? {projectId: IDS.project, ...(input as Record<string, unknown>)} : input) as Record<string, unknown>}, undefined, {timeout: 5_000}) as import("@modelcontextprotocol/sdk/types.js").CallToolResult);
     noPrivate(result); noPrivate(stderr);
     const blocks = result.content.filter(block => block.type === 'text');
     assert.equal(blocks.length, 1, 'official SDK receives one text JSON envelope');
@@ -422,10 +426,17 @@ test('asset dispositions share exact HTTP, real CLI and official MCP semantics w
       await backend.cli('asset.disposition.list', invalid, 'VALIDATION_ERROR');
       await backend.mcp('asset.disposition.list', invalid, 'VALIDATION_ERROR');
     }
+    for (const [operation, input] of [
+      ['asset.disposition.list', batch([IDS.asset], DISPOSITION_IDS.missing)],
+      ['asset.disposition.set', {...target, projectId: DISPOSITION_IDS.missing, expectedRevision: 0, requestId: 'asset-disposition-missing-project', disposition: 'favorite'}],
+    ] as const) {
+      const missingProject = await all(operation, input, 'PROJECT_NOT_FOUND');
+      assert.deepEqual(missingProject.error.details, {projectId: DISPOSITION_IDS.missing});
+    }
     let absent;
     for (const input of [batch([DISPOSITION_IDS.missing]), batch([IDS.otherAsset]),
       batch([IDS.asset, DISPOSITION_IDS.missing]), batch([IDS.asset, IDS.otherAsset]),
-      batch([IDS.otherAsset, IDS.asset]), batch([IDS.asset], DISPOSITION_IDS.missing),
+      batch([IDS.otherAsset, IDS.asset]),
       batch([DISPOSITION_IDS.mismatchedOwner], DISPOSITION_IDS.corruptProject)]) {
       const result = await all('asset.disposition.list', input, 'NOT_FOUND');
       assert.equal(result.data, undefined); assert.deepEqual(result.error.details, {});
@@ -433,7 +444,6 @@ test('asset dispositions share exact HTTP, real CLI and official MCP semantics w
       absent = result;
     }
     for (const scope of [{...target, assetId: DISPOSITION_IDS.missing}, {...target, assetId: IDS.otherAsset},
-      {...target, projectId: DISPOSITION_IDS.missing},
       {projectId: DISPOSITION_IDS.corruptProject, assetId: DISPOSITION_IDS.mismatchedOwner}]) {
       const result = await all('asset.disposition.set', {...scope, expectedRevision: 0,
         requestId: 'asset-disposition-no-target', disposition: 'favorite'}, 'NOT_FOUND');

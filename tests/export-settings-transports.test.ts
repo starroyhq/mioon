@@ -98,7 +98,7 @@ const schemaOperation=(value: unknown): SchemaOperation => value as SchemaOperat
 const requestId=(input: Record<string, unknown>): string => input.requestId as string;
 interface WireFixture {
   root: string; project: WireProject; empty: WireProject; source?: WireSource; timeline: WireTimeline;
-  use: <T>(read: (db: DatabaseSync)=>T)=>T; client: {rpc: <T = unknown>(op: string, input?: Record<string, unknown>)=>Promise<T>}; mcp: Client;
+  use: <T>(read: (db: DatabaseSync)=>T)=>T; client: {rpc: <T = unknown>(op: string, input?: Record<string, unknown>, options?: {projectId?: string})=>Promise<T>}; mcp: Client;
   checkpoint: ()=>Promise<WireCheckpoint>; unchanged: (before: WireCheckpoint)=>Promise<void>;
   submissions: Array<Record<string, unknown>>; last: ()=>WireLast|undefined;
   lose: ()=>void; malform: (op?: string)=>void; restart: ()=>Promise<void>;
@@ -154,7 +154,7 @@ async function wire(t: Pick<TestContext,'after'>,{media=false}: {media?: boolean
   last:()=>last,lose:()=>{drop=true;},malform:(op='timeline.render')=>{malformedOperation=op;},
   restart:async()=>{await backend!.close();backend=await start();},
   transports:[{name:'HTTP',call:raw},{name:'CLI',call:(op: string,input: Record<string, unknown>)=>cli(url,[...op.split('.'),'--input',JSON.stringify(input)]) as unknown as Promise<WireResult>},{name:'MCP',call:official.call as unknown as WireTransport['call']}],
-  async finished(id: string){const end=Date.now()+30000;while(Date.now()<end){const value=await client.rpc<{status: string; error?: unknown; assetId?: string; snapshot: {delivery?: unknown}}>('export.get',{exportId:id});if(['succeeded','failed'].includes(value.status)){assert.equal(value.status,'succeeded',JSON.stringify(value.error));return value;}await pause(25);}assert.fail('Synthetic render did not reach a terminal state');},
+  async finished(id: string){const end=Date.now()+30000;while(Date.now()<end){const value=await client.rpc<{status: string; error?: unknown; assetId?: string; snapshot: {delivery?: unknown}}>('export.get',{exportId:id},{projectId:project.id});if(['succeeded','failed'].includes(value.status)){assert.equal(value.status,'succeeded',JSON.stringify(value.error));return value;}await pause(25);}assert.fail('Synthetic render did not reach a terminal state');},
  };
 }
 test('export settings offline CLI and official MCP expose identical strict schemas and truthful effects without Agent authority',{timeout:45000},async t=>{

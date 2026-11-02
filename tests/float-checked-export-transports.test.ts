@@ -1,3 +1,4 @@
+import {isEntityAddressedOperation} from '../packages/contracts/src/project-addressing.ts';
 import type {FixtureExport} from './helpers/strict-timeline-core-types.ts';
 import type {TransportCall,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
 import type {WireResult} from './helpers/strict-timeline-transport-types.ts';
@@ -82,10 +83,11 @@ async function officialMcp(t: test.TestContext, url?: string|undefined) {
   }};
 }
 async function transports(t: test.TestContext, f: SelectedRangeFixture) {
+  const addressed = (operation: string, input: unknown) => isEntityAddressedOperation(operation) ? {projectId: f.project.id, ...(input as Record<string, unknown>)} : input;
   const mcp = await officialMcp(t, ((f.url) as unknown as Parameters<typeof officialMcp>[1]));
   return {mcp, all: [{name: 'HTTP', call: ((((operation?: unknown, input?: unknown) => (f.rpc(((operation) as unknown as Parameters<NonNullable<(typeof f)["rpc"]>>[0]), input))) as EnvelopeTransportCall))},
-    {name: 'CLI', call: (((<O extends string,E extends string|undefined=undefined>(operation:O, input?:unknown) => ((cli(t, ((f.url) as unknown as Parameters<typeof cli>[1]), [...operation.split('.'), '--input', JSON.stringify(input)]) as Promise<WireResult<ServiceResponse<O>,E>>))) as EnvelopeTransportCall))},
-    {name: 'MCP', call: (mcp.call as EnvelopeTransportCall)}]};
+    {name: 'CLI', call: (((<O extends string,E extends string|undefined=undefined>(operation:O, input?:unknown) => ((cli(t, ((f.url) as unknown as Parameters<typeof cli>[1]), [...operation.split('.'), '--input', JSON.stringify(addressed(operation, input))]) as Promise<WireResult<ServiceResponse<O>,E>>))) as EnvelopeTransportCall))},
+    {name: 'MCP', call: ((operation: string, input: unknown) => mcp.call(operation, addressed(operation, input) as Record<string, unknown>)) as EnvelopeTransportCall}]};
 }
 
 const PROFILE = 'mp4_h264_float_checked_v2';
@@ -238,7 +240,7 @@ test('HTTP CLI MCP expose one bounded terminal report while exact ACK remains qu
     for (const mutation of ([(value: { audioCheck: unknown; }) => {delete value.audioCheck; return value;}, (value: { audioCheck: { attemptId: string; }; }) => {value.audioCheck.attemptId = randomUUID(); return value;},
 (      value: { audioCheck: { measurement: { peakLinear: number; }; }; }) => {value.audioCheck.measurement.peakLinear = 0; return value;}, (value: { audioCheck: { path: string; }; }) => {value.audioCheck.path = '/private/forged'; return value;}] as const)) {
       mutate = (mutation as unknown as typeof mutate); const count = submissions;
-      const result = await call('export.get', {exportId: accepted.id});
+      const result = await call('export.get', {projectId: f.project.id, exportId: accepted.id});
       assert.equal(result.ok, false); assert.equal(result.error.code, 'BACKEND_PROTOCOL_ERROR', JSON.stringify(result));
       assert.equal(submissions, count + 1, 'strict current-outcome refusal never retries');
     }

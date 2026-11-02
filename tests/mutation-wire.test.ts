@@ -1,3 +1,4 @@
+import {isEntityAddressedOperation} from '../packages/contracts/src/project-addressing.ts';
 import type {PipedProcess,SqlRows,ProcessOutcome,BackendReady,IpcMessage,WireMessage,WireData,WireEnvelope,WireCall} from './helpers/strict-timeline-wire-response-types.ts';
 import type {SchemaNode,TestTool,TestCatalog,TestOperationDefinition,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
@@ -23,6 +24,12 @@ type MutationOperation='shot.create'|'shot.update'|'shot.reorder'|'node.create'|
 const operations = ['shot.create', 'shot.update', 'shot.reorder', 'node.create', 'node.update', 'version.select'] as const;
 const pause = (ms?: number|undefined) => new Promise(resolve => setTimeout(resolve, ms));
 const toolName = (operation: string) => operation.replaceAll('.', '_');
+function transportInput(operation: string, input: unknown): unknown {
+  if (!isEntityAddressedOperation(operation) || !input || typeof input !== 'object' || Array.isArray(input)) return input;
+  const entity = input as Record<string, unknown>;
+  const projectId = entity.nodeId === IDS.otherNode || entity.shotId === IDS.otherShot ? IDS.other : IDS.project;
+  return {projectId, ...entity};
+}
 const ownedChildren = new WeakMap<test.TestContext,Set<OwnedChild>>();
 const preservedTables = ['assets', 'edges', 'jobs', 'versions', 'exports', 'timelines', 'timeline_requests',
   'timeline_history', 'timeline_history_cursors', 'reference_requests', 'idempotency', 'job_events', 'workspace_preferences',
@@ -161,7 +168,7 @@ async function mcpFixture(t: test.TestContext, env?: {}|undefined) {
   assert.equal((client.getServerVersion())!.name, 'mioon');
   assert.ok((client.getServerCapabilities())!.tools);
   return {client, async call<O extends string,I extends Record<string,unknown> = Record<string,unknown>>(operation:O,input:I = {} as I,expectedError?:string):Promise<WireEnvelope<O,I>> {
-    const result = (await client.callTool({name: operation === 'mioon_schema' ? operation : toolName(operation), arguments: input}, undefined, {timeout: 5_000})) as CallToolResult;
+    const result = (await client.callTool({name: operation === 'mioon_schema' ? operation : toolName(operation), arguments: transportInput(operation, input) as Record<string, unknown>}, undefined, {timeout: 5_000})) as CallToolResult;
     const blocks = result.content.filter((block) => block.type === 'text');
     assert.equal(blocks.length, 1, 'official SDK receives one JSON text envelope');
     const envelope = JSON.parse(blocks[0].text);
@@ -224,7 +231,7 @@ function operationInputs(backend:Awaited<ReturnType<typeof backendFixture>>) {
 // and at most one CLI child. No generated media, model, or provider is used.
 test('six optional mutation keys retain exact results through lost HTTP responses, real CLI, official MCP and restart', {timeout: 120_000}, async t => {
   const backend = await backendFixture(t), mcp = await mcpFixture(t, backend.env), proxy = await lossProxy(t, backend);
-  const cli = <O extends string>(operation:O,input:unknown,error?:string):Promise<WireEnvelope<O>> => runCli(t, [...operation.split('.'), '--input', JSON.stringify(input)], backend.env, error);
+  const cli = <O extends string>(operation:O,input:unknown,error?:string):Promise<WireEnvelope<O>> => runCli(t, [...operation.split('.'), '--input', JSON.stringify(transportInput(operation, input))], backend.env, error);
   const initial = backend.storage(), accepted: {operation:MutationOperation;input:Record<string,unknown>&{requestId:string};raw:string;envelope:WireEnvelope<MutationOperation>}[]=[];
 
   await t.test('all discovery surfaces expose optional keys and conservative non-idempotent hints', async () => {

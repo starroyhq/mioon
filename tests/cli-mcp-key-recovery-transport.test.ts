@@ -1,3 +1,4 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -70,12 +71,12 @@ async function fixture(t: TestContext, label: string, {business = false}: {busin
     imageNetwork: {lookup() {networkCalls++; throw Error('Unexpected synthetic provider lookup');}, httpsRequest() {networkCalls++; throw Error('Unexpected synthetic provider request');}} as never});
   proxy = http.createServer(async (request: http.IncomingMessage, response: http.ServerResponse) => {
     try {
-      assert.equal(request.url, '/api/rpc');
       assert.equal(request.method, 'POST');
       assert.ok(request.headers.authorization === `Bearer ${token}`, 'fixture auth matches');
       let raw = '';
       for await (const chunk of request) {raw += chunk; if (raw.length > 65536) throw Error('Fixture request cap');}
       const body = JSON.parse(raw) as {operation: string; input: unknown};
+      assert.equal(request.url, rpcPathFor(body.operation, body.input));
       requests.push(body);
       let status = mode?.status ?? 200, value = mode?.body;
       if (backend && !mode?.body) {

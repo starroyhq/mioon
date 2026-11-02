@@ -1,3 +1,4 @@
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {PipedProcess,SqlRows,ProcessOutcome,BackendReady,IpcMessage,WireMessage,WireData,WireEnvelope,WireCall} from './helpers/strict-timeline-wire-response-types.ts';
 import type {SchemaNode,TestTool,TestCatalog,TestOperationDefinition,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
@@ -219,12 +220,12 @@ async function fixture(t: test.TestContext) {
     let failure: unknown;
     const server = http.createServer(async (request, response) => {
       try {
-        assert.equal(request.url, '/api/rpc');
         assert.equal(request.method, 'POST');
         const chunks = []; let length = 0;
         for await (const chunk of request) { length += chunk.length; assert.ok(length < 128 * 1024); chunks.push(chunk); }
         const bytes = Buffer.concat(chunks), submitted = JSON.parse(bytes as unknown as string);
         assert.equal(submitted.operation, 'lut.import', 'the failure proxy accepts only this LUT mutation');
+        assert.equal(request.url, projectRpcPath(submitted.input.projectId));
         const upstream = await fetch(url + '/api/rpc', {method: 'POST', signal: AbortSignal.timeout(5_000),
           headers: {authorization: request.headers.authorization!, 'content-type': 'application/json'}, body: bytes});
         const envelope = await upstream.json();
