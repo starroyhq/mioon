@@ -51,7 +51,7 @@ test('a shared sample-export lock blocks admission without becoming a formal exp
 });
 test('pending and completed exports show their bound result without automatically checking or resubmitting',()=>{
  const h=harness({phase:'ready',attempted:true,pendingExport:true});let tree=h.render();assert.equal(find(tree,'export-workflow').props['data-step'],4);assert.deepEqual(h.calls,[]);find(tree,'export-workflow-tasks').props.onClick();assert.deepEqual(h.calls,['tasks']);
- tree=h.render({projectId:PROJECT,pendingExport:false,record:{id:'export-1',status:'succeeded',assetId:ASSET,url:`/media/${ASSET}`}});assert.equal(find(tree,'export-workflow').props['data-step'],5);assert.ok(find(tree,'export-workflow-download'));assert.equal(find(tree,'export-workflow-result').props.hidden,false);
+ tree=h.render({pendingExport:false,record:{id:'export-1',projectId:PROJECT,status:'succeeded',assetId:ASSET,url:`/media/${ASSET}`}});assert.equal(find(tree,'export-workflow').props['data-step'],5);assert.equal(find(tree,'export-workflow-download').props.href,mediaUrl(PROJECT,ASSET));assert.equal(find(tree,'export-workflow-result').props.hidden,false);
  assert.equal(find(h.render({downloadEnabled:false}),'export-workflow-download'),undefined,'held and candidate output cannot acquire a new download authority');
  assert.deepEqual(h.calls,['tasks']);
 });

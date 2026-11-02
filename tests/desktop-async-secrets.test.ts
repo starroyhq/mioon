@@ -55,6 +55,8 @@ const diagnosticFs = await import(diagnosticFsUrl);
 after(() => assert.equal(diagnosticFs.writes, 0, 'Secrets-only fixtures must never attempt diagnostic writes'));
 const deliveryParserUrl = data('export let calls = 0; export function parseTimelineDeliveryContentDisposition() { calls++; throw Error("Timeline delivery parsing is outside this secrets fixture"); }');
 const deliveryParser = await import(deliveryParserUrl);
+const projectAddressParserUrl = data('export let calls = 0; export function parseProjectApiPath() { calls++; throw Error("Project address parsing is outside this secrets fixture"); }');
+const projectAddressParser = await import(projectAddressParserUrl);
 const nativeAudioContractsUrl = data('export let calls = 0; const forbidden = () => { calls++; throw Error("Native audition schemas are outside this secrets fixture"); }; export const nativeAudioConfigSchema = {parse: forbidden}; export const nativeAudioCommandSchema = {safeParse: forbidden}; export const nativeAudioReplySchema = {safeParse: forbidden};');
 const nativeAudioContracts = await import(nativeAudioContractsUrl);
 const workspaceNativeContractsUrl = data('export let calls = 0; const forbidden = () => { calls++; throw Error("Workspace native schemas are outside this secrets fixture"); }; export const workspaceNativeUtilityReplySchema = {safeParse: forbidden}; export const workspaceNativeUtilityRequestSchema = {parse: forbidden};');
@@ -62,9 +64,11 @@ const workspaceNativeContracts = await import(workspaceNativeContractsUrl);
 after(() => assert.equal(nativeAudioContracts.calls, 0, 'Secrets fixtures must never execute native audition schemas'));
 after(() => assert.equal(workspaceNativeContracts.calls, 0, 'Secrets fixtures must never execute workspace native schemas'));
 after(() => assert.equal(deliveryParser.calls, 0, 'Secrets fixtures must never execute download parsing'));
+after(() => assert.equal(projectAddressParser.calls, 0, 'Secrets fixtures must never execute project address parsing'));
 const overrides = new Map([
   ['node:fs', diagnosticFsUrl],
   ['@mioon/contracts/timeline-delivery', deliveryParserUrl],
+  ['../../../packages/contracts/src/project-file.ts', projectAddressParserUrl],
   ['@mioon/contracts/native-audio-preview', nativeAudioContractsUrl],
   ['../../../packages/contracts/src/workspace-native.ts', workspaceNativeContractsUrl],
   ['@mioon/contracts', data('export {AGENT_PROTOCOLS} from ' + JSON.stringify(new URL('packages/contracts/src/agent-protocol.ts', root).href) + '; export const IMAGE_SETTINGS_LIMITS = {ciphertextCharacters: 49152};')],
@@ -189,7 +193,7 @@ test('import fixture permits only six reviewed erased modules and refuses runtim
   assert.match(original, /import type \{[^}]*\} from 'electron'/);
   const erased = stripTypeScriptTypes(original, {mode: 'strip'});
   assert.doesNotMatch(erased, /from ['"]electron['"]/);
-  assert.deepEqual([...erased.matchAll(/\bfrom\s+(['"])([^'"]+)\1/g)].map(match => match[2]), ['./app-language-text.ts', 'node:path', '@mioon/contracts/timeline-delivery']);
+  assert.deepEqual([...erased.matchAll(/\bfrom\s+(['"])([^'"]+)\1/g)].map(match => match[2]), ['./app-language-text.ts', 'node:path', '@mioon/contracts/timeline-delivery', '../../../packages/contracts/src/project-file.ts']);
   assert.equal(overrides.has('electron'), false);
   assert.equal(overrides.has('@mioon/contracts/arbitrary'), false);
   for (const unreviewed of ['apps/desktop/src/main.ts', 'apps/desktop/src/backend.ts', 'packages/contracts/src/timeline-delivery.ts', 'apps/desktop/src/../src/not-approved.ts']) {
