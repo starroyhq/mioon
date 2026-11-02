@@ -25,7 +25,7 @@ summary.ja: 被写体と被写体の関連付けで、同じ人物の外見、�
 
 - 出场两次以上的角色建一个主体；只出场一次的角色可以不建。
 - 建主体前先问用户。先用 subject.list 看是否已有同一角色，避免重复。
-- 加载 subjects 组：subject.create 建主体，subject.version.add 添加参考图版本。参考图只能用项目里已有的素材。
+- 先用 mioon_tools_load 的 names 按需加载 mioon_subject_list、mioon_subject_create、mioon_subject_version_add、mioon_subject_binding_list、mioon_subject_binding_set 和 mioon_project_notes_set：subject.create 建主体，subject.version.add 添加参考图版本。参考图只能用项目里已有的素材。
 
 ## 绑定到镜头
 

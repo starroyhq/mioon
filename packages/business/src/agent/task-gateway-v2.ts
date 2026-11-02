@@ -57,10 +57,10 @@ const instructions:Readonly<Record<AgentTaskLocale,string>>=Object.freeze({
 });
 const explanationField='_mio_step';
 const toolLoadingInstructions:Readonly<Record<AgentTaskLocale,string>>=Object.freeze({
-  'zh-Hans':'修改项目前先调用 mioon_tools_load 加载对应的工具组，再在后续请求中使用已加载的工具。',
-  'zh-Hant':'修改專案前先呼叫 mioon_tools_load 載入對應的工具群組，再於後續請求使用已載入的工具。',
-  en:'Before modifying the project, call mioon_tools_load to load the relevant tool groups, then use the loaded tools in a subsequent request.',
-  ja:'プロジェクトを変更する前に mioon_tools_load で対応するツールグループを読み込み、後続のリクエストで読み込んだツールを使用してください。',
+  'zh-Hans':'修改项目前先用 mioon_tools_load 按确切名称加载需要的工具，再在后续请求中使用。同一回复只放互不依赖、参数短的调用；需要前一调用结果或新 ID 的操作放到下一次回复，参数长的调用单独一次回复。提问放在一次回复的最后。用户拒绝或回答后，旧回复中剩余调用不会执行，须按用户决定重新规划。',
+  'zh-Hant':'修改專案前先用 mioon_tools_load 按確切名稱載入需要的工具，再於後續請求使用。同一回覆只放互不依賴、參數短的呼叫；需要前一呼叫結果或新 ID 的操作放到下一次回覆，參數長的呼叫單獨一次回覆。提問放在一次回覆的最後。使用者拒絕或回答後，舊回覆中剩餘呼叫不會執行，須依使用者決定重新規劃。',
+  en:'Before modifying the project, use mioon_tools_load to load the exact tool names needed, then use them in a subsequent request. Batch only independent calls with short arguments. Calls that need a previous result or new ID belong in the next response; give a call with long arguments its own response. Put a question last in a response. After the user rejects a call or answers a question, remaining calls from the old response do not run; replan from the user decision.',
+  ja:'プロジェクトを変更する前に mioon_tools_load で必要なツールを正確な名前で読み込み、後続のリクエストで使用してください。同じ応答には互いに依存せず引数が短い呼び出しだけをまとめてください。前の結果や新しい ID が必要な操作は次の応答にし、引数が長い呼び出しは単独の応答にしてください。質問は応答の最後に置いてください。ユーザーが拒否または回答した後、古い応答の残りは実行されません。ユーザーの判断に従って計画し直してください。',
 });
 const goalInstructions:Readonly<Record<AgentTaskLocale,string>>=Object.freeze({
   'zh-Hans':'用户提出可判定的要求时，用 mioon_goal_set 声明本轮目标。目标只记录待检查条件，不授予权限，也不是用户确认。',
@@ -194,7 +194,7 @@ export function buildTaskModelRequest(configuration:AgentConfiguration,history:A
   const profile=agentReadToolProfile(configuration);
   if(!profile)fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
   const limits=agentModelTokenLimits(configuration);
-  const controls=definitions.length?{...(profile.parallel?{parallel_tool_calls:false}:{}),...(profile.choice?{tool_choice:'auto'}:{})}:{};
+  const controls=definitions.length?{...(profile.parallel?{parallel_tool_calls:options.toolLoading===true}:{}),...(profile.choice?{tool_choice:'auto'}:{})}:{};
   const locale=taskResponseLocale(history);
   // C6: the method catalog (names and summaries only) accompanies the tool that reads it.
   const skills=definitions.some(tool=>tool.name===AGENT_TASK_SKILL_READ_TOOL)?` ${agentTaskSkillInstructions(locale)}`:'';
@@ -214,7 +214,7 @@ export function buildTaskModelRequest(configuration:AgentConfiguration,history:A
       ...(wireTools.length?{tools:wireTools.map(tool=>({type:'function',function:{...tool,...(profile.strict?{strict:false}:{})}}))}:{}),...controls};
   }else if(configuration.protocol==='anthropic_messages'){
     body={model:configuration.model,stream:true,max_tokens:limits.outputTokens,...agentAnthropicThinkingFields(agentModelThinkingTier(configuration),limits.outputTokens),...native,
-      ...(wireTools.length?{tools:wireTools.map(tool=>({name:tool.name,description:tool.description,input_schema:tool.parameters})),tool_choice:{type:'auto',disable_parallel_tool_use:true}}:{})};
+      ...(wireTools.length?{tools:wireTools.map(tool=>({name:tool.name,description:tool.description,input_schema:tool.parameters})),tool_choice:{type:'auto',disable_parallel_tool_use:options.toolLoading!==true}}:{})};
   }else{
     const responses=agentResponsesProfile(configuration);
     body={model:configuration.model,stream:true,store:false,instructions:instruction,input:modelHistory,max_output_tokens:limits.outputTokens,

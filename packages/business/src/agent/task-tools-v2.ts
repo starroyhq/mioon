@@ -13,7 +13,8 @@ import type {OrdinaryServices} from '../services.ts';
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
 import {agentTaskQuestionSchema,agentTaskTargetSchema,AGENT_TASK_QUESTION_LIMITS,agentTaskContinuityReportSchema,AGENT_TASK_CONTINUITY_CATEGORIES,AGENT_TASK_CONTINUITY_LIMITS} from '../../../contracts/src/agent-tasks-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS} from './task-tool-schemas-v2.ts';
-import {AGENT_TASK_GOAL_SET_OPERATION,AGENT_TASK_GOAL_SET_TOOL,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_CONTINUITY_REPORT_TOOL,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS,agentTaskToolGroupForName,assertAgentTaskToolGroupCoverage,loadedAgentTaskToolGroups,parseAgentTaskToolLoadInput} from './task-tool-groups-v2.ts';
+import {AGENT_TASK_GOAL_SET_OPERATION,AGENT_TASK_GOAL_SET_TOOL,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_CONTINUITY_REPORT_TOOL,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS,agentTaskToolGroupForName,assertAgentTaskToolGroupCoverage,loadedAgentTaskToolGroups,loadedAgentTaskToolNames,parseAgentTaskToolLoadInput,parseAgentTaskToolNameLoadInput} from './task-tool-groups-v2.ts';
+import type {AgentTaskToolLoadMode} from './task-tool-groups-v2.ts';
 import {agentTaskContinuityFeedback,agentTaskParameterFeedback,agentTaskQuestionFeedback,agentTaskSkillReadFeedback} from './task-tool-errors-v2.ts';
 import {AGENT_TASK_SKILL_READ_PARAMETERS,parseAgentTaskSkillRead,readAgentTaskSkill} from './task-skills-v2.ts';
 import type {AgentTaskSkillReadInput} from './task-skills-v2.ts';
@@ -411,14 +412,14 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   }
   return agentTaskParameterFeedback({operation,input,capabilities});
  }
- function prepare({projectId,operation,input,beforeTargetRead}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void}):PreparedAgentTaskTool{
+ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names'}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void;toolLoadMode?:AgentTaskToolLoadMode}):PreparedAgentTaskTool{
   operation=taskToolOperation(operation);
   let risk=['task.wait','node.inspect','edge.inspect',AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_ASK_OPERATION,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_GOAL_SET_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
   if(!risk||!object(input))fail('AGENT_TASK_TOOL_FORBIDDEN','此工具未获准用于助理任务');rejectHostFields(input);
   if(operation===AGENT_TASK_TOOLS_LOAD_OPERATION){
-   const groups=parseAgentTaskToolLoadInput(input);if(!groups)fail('AGENT_TASK_INVALID_TOOL','工具组参数无效');
+   const selected=toolLoadMode==='groups'?parseAgentTaskToolLoadInput(input):parseAgentTaskToolNameLoadInput(input);if(!selected)fail('AGENT_TASK_INVALID_TOOL','工具加载参数无效');
    if(!store.get('projects',projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
-   return {projectId,operation,input:{groups},risk:'read_only',targets:[],referencedTargets:[],before:{}};
+   return {projectId,operation,input:toolLoadMode==='groups'?{groups:selected}:{names:selected},risk:'read_only',targets:[],referencedTargets:[],before:{}};
   }
   // Goals are a run-local declaration. Preparing one never reads domain data.
   if(operation===AGENT_TASK_GOAL_SET_OPERATION){
@@ -548,11 +549,19 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
    }
    if(prepared.operation===AGENT_TASK_TOOLS_LOAD_OPERATION){
     if(journal.run(context.runId).projectId!==prepared.projectId)fail('AGENT_TASK_PROJECT_MISMATCH','工具执行不属于当前项目');
-    const requested=parseAgentTaskToolLoadInput(prepared.input);if(!requested)fail('AGENT_TASK_INVALID_TOOL','工具组参数无效');
-    const loaded=new Set(loadedAgentTaskToolGroups(journal.snapshot(context.runId).steps));
-    const groups=requested.filter(group=>!loaded.has(group)),selected=new Set(groups);
-    const names=list().filter(tool=>{const group=agentTaskToolGroupForName(tool.name);return group!==undefined&&group!=='core'&&selected.has(group);}).map(tool=>tool.name);
-    return {result:{groups,tools:names},changes:[],recorded:false};
+    const steps=journal.snapshot(context.runId).steps;
+    if(Object.hasOwn(prepared.input,'groups')){
+     const requested=parseAgentTaskToolLoadInput(prepared.input);if(!requested)fail('AGENT_TASK_INVALID_TOOL','工具加载参数无效');
+     const loaded=new Set(loadedAgentTaskToolGroups(steps));
+     const groups=requested.filter(group=>!loaded.has(group)),selected=new Set(groups);
+     const names=list().filter(tool=>{const group=agentTaskToolGroupForName(tool.name);return group!==undefined&&group!=='core'&&selected.has(group);}).map(tool=>tool.name);
+     const result:AgentTaskJson={groups,tools:names};
+     return {result,changes:[],recorded:false};
+    }
+    const requested=parseAgentTaskToolNameLoadInput(prepared.input);if(!requested)fail('AGENT_TASK_INVALID_TOOL','工具加载参数无效');
+    const loaded=new Set(loadedAgentTaskToolNames(steps)),names=requested.filter(name=>!loaded.has(name));
+    const result:AgentTaskJson={names};
+    return {result,changes:[],recorded:false};
    }
    if(prepared.operation===AGENT_TASK_SKILL_READ_OPERATION)return {result:readAgentTaskSkill(prepared.input as unknown as AgentTaskSkillReadInput),changes:[],recorded:false};
    if(prepared.operation===AGENT_TASK_CONTINUITY_REPORT_OPERATION){

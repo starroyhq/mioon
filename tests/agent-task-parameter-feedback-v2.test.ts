@@ -104,7 +104,7 @@ async function runtimeFixture(t:TestContext,protocol:'chat_completions'|'respons
   const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
   const sourceTools=createAgentTaskTools({store,services}),requests:string[]=[];let script:TaskGateway=async function*(){throw Error('A synthetic model script is required');},executeFailure:unknown;
   const tools={...sourceTools,async execute(...args:Parameters<typeof sourceTools.execute>){if(executeFailure)throw executeFailure;return sourceTools.execute(...args);}};
-  const runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,selfPort:()=>4318,gateway:async function*(request){requests.push(request.body);if(requests.length===1){yield {type:'done',output:output({groups:['video']},'mioon_tools_load')};return;}yield*script(request);}});
+  const runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,selfPort:()=>4318,gateway:async function*(request){requests.push(request.body);if(requests.length===1){yield {type:'done',output:output({names:['mioon_generation_submit']},'mioon_tools_load')};return;}yield*script(request);}});
   let worker:ReturnType<typeof startWorker>|undefined;
   t.after(async()=>{await worker?.stop();runtime.close();await runtime.drain();tools.dispose();await services.drain();await settings.close();await videoSettings.close();store.close();await rm(root,{recursive:true,force:true});});
   const base={shotId:shot.id,expectedRevision:shot.revision,providerId:'minimax',model:'MiniMax-H3',connectionId:configuration.id,configurationRevision:1,modelEntryId:configuration.models[0]!.id};

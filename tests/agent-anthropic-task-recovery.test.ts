@@ -81,10 +81,10 @@ async function fixture(t:TestContext,{authorize=true,providers=new Map<string,Pr
   return {store,services,settings,authorizations,projectId,shot,requests,effects,loads,get runtime(){return runtime;},
     script(next:Script){script=next;},
     plan(calls:AgentTaskToolCall[]){
-      const groups=[...new Set(calls.map(item=>agentTaskToolGroupForName(item.name)).filter(group=>group!==undefined&&group!=='core'))];
-      script=(_request,response,index)=>response.end(groups.length&&index===1
-        ?frames([call('mioon_tools_load',{groups})],'加载本轮工具',{model:selectedConfiguration.model})
-        :index===(groups.length?2:1)?frames(calls,'准备处理',{model:selectedConfiguration.model}):frames([],'离线任务完成',{model:selectedConfiguration.model}));
+      const names=[...new Set(calls.filter(item=>{const group=agentTaskToolGroupForName(item.name);return group!==undefined&&group!=='core';}).map(item=>item.name))];
+      script=(_request,response,index)=>response.end(names.length&&index===1
+        ?frames([call('mioon_tools_load',{names})],'加载本轮工具',{model:selectedConfiguration.model})
+        :index===(names.length?2:1)?frames(calls,'准备处理',{model:selectedConfiguration.model}):frames([],'离线任务完成',{model:selectedConfiguration.model}));
     },
     async send(requestId:string=randomUUID()){return runtime.send(projectId,{requestId,text:'仅执行离线测试',expectedSettingsRevision:(await settings.get()).revision});},
     async settle(runId:string){await runtime.drain();return runtime.get(projectId,runId);},

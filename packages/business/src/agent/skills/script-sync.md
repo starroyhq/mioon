@@ -35,7 +35,7 @@ summary.ja: 台本やプロジェクトの説明が変わったら、影響を�
 
 ## 修改
 
-- 加载 canvas 组，对每个镜头调用 shot.update，带上 shot.inspect 读到的 expectedRevision。
+- 先用 mioon_tools_load 的 names 加载 mioon_shot_update，再对每个镜头调用 shot.update，带上 shot.inspect 读到的 expectedRevision。
 - 只改受影响的句子，保留用户写的其他内容和顺序，写法按“镜头提示词”方法。
 - 时长只在节拍长度明显变化时改，取所用模型 durations 里的值（见“剧本拆镜头”方法）。
 - 镜头绑定了主体、而角色外貌变了时，按“角色一致性”方法处理，先问用户要不要更新主体。
