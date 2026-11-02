@@ -11,6 +11,7 @@ import type {AgentTaskSnapshot} from '@mioon/contracts/agent-tasks-v2';
 import {agentTaskStorageSnapshotSchema} from '@mioon/contracts/agent-task-storage';
 import {agentTaskChecksSchema,agentTaskChecksInputSchema} from '@mioon/contracts/agent-tasks-v2';
 import {agentAuthorizationSnapshotSchema,AGENT_PROTOCOLS} from '@mioon/contracts';
+import {projectApiPath} from '../../contracts/src/project-file.ts';
 
 const id=z.string().uuid(),revision=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),requestId=z.string().min(8).max(200);
 const text=z.string().max(4096),code=z.string().regex(/^[A-Z][A-Z0-9_]{1,90}$/u);
@@ -63,7 +64,9 @@ const object=(value:unknown):value is Json=>value!==null&&typeof value==='object
 const invalid=():never=>{throw new ClientError('VALIDATION_ERROR','Invalid Agent command input. Run the command with --help.');};
 export function parseAgentInput<T>(schema:z.ZodType<T>,value:unknown):T {const parsed=schema.safeParse(value);if(!parsed.success)return invalid();return parsed.data;}
 const api='/api/agent/tasks/v2';
-const projectPath=(projectId:string)=>`${api}/${encodeURIComponent(projectId)}`;
+// Project tasks live at the project's address; settings, diagnostics and the
+// policy stay app-level under `api`.
+const projectPath=(projectId:string)=>{try{return projectApiPath(projectId,'agent','tasks','v2');}catch{return invalid();}};
 const runPath=(projectId:string,runId:string)=>`${projectPath(projectId)}/${encodeURIComponent(runId)}`;
 const requestLookupSchema=z.object({found:z.boolean(),snapshot:agentTaskSnapshotSchema.optional()}).refine(value=>value.found===(value.snapshot!==undefined));
 const uploadLookupSchema=z.object({found:z.boolean(),upload:uploadSchema.optional()}).refine(value=>value.found===(value.upload!==undefined));
