@@ -1,6 +1,6 @@
 /** Test helpers over the same project kernel and server layout as production.
  * A project is opened only by the kernel, including recovery and TEMP guards. */
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {lstatSync, readdirSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
@@ -16,6 +16,7 @@ import {projectFileError} from '../../packages/business/src/project-file/errors.
 import {foreignKeyCheck as kernelForeignKeyCheck} from '../../packages/business/src/project-file/cross-file/inspect.ts';
 import {relationTriggerStatements} from '../../packages/business/src/project-file/cross-file/install.ts';
 import {CROSS_FILE_RELATIONS} from '../../packages/business/src/project-file/cross-file/relations.ts';
+import {SCHEMA_MANIFEST} from '../../packages/business/src/project-file/schema/manifest.ts';
 import {openServerTestStore} from '../../packages/business/src/project-file/test-store.ts';
 import type {ProjectStore} from '../../packages/business/src/project-file/store.ts';
 import {projectLocation, serverAppDirectories} from '../../apps/server/src/project-host/directories.ts';
@@ -170,6 +171,58 @@ const relationTriggers = new Map(CROSS_FILE_RELATIONS.flatMap(relation => relati
   return [name, sql.replace('CREATE TEMP TRIGGER ', 'CREATE TRIGGER ')] as const;
 }));
 const disablingForeignKeys = new WeakSet<DatabaseSync>();
+const suspendingProcessRevisions = new WeakSet<DatabaseSync>();
+
+/** Inject a damaged process row without producing a second, invalid Mio
+ * revision row. Only these derived triggers are suspended; all Mio evidence,
+ * accounting and ownership guards stay installed. Consumers run after the
+ * original DDL has been restored and checked. This helper is synchronous. */
+export function withoutProcessTargetRevisions<T>(db: DatabaseSync, tables: readonly ('jobs'|'exports'|'image_tasks'|'frame_tasks')[], write: () => T): T {
+  if (db.isTransaction || suspendingProcessRevisions.has(db)) throw new Error('withoutProcessTargetRevisions requires an unnested synchronous fixture write');
+  if (write.constructor.name === 'AsyncFunction') throw new TypeError('withoutProcessTargetRevisions rejects asynchronous writes');
+  if (!tables.length || new Set(tables).size !== tables.length || tables.some(table => !['jobs','exports','image_tasks','frame_tasks'].includes(table))) throw new TypeError('Invalid process revision fixture table');
+  const triggers = tables.flatMap(table => ['insert','update','delete'].map(operation => {
+    const name = `agent_target_${table}_${operation}_v2`, row = db.prepare("SELECT sql,tbl_name FROM main.sqlite_master WHERE type='trigger' AND name=?").get(name);
+    const expected = SCHEMA_MANIFEST.history.entries.find(entry => entry.type === 'trigger' && entry.name === name && entry.tbl_name === table);
+    if (row?.tbl_name !== table || typeof row.sql !== 'string' || !expected || createHash('sha256').update(row.sql).digest('hex') !== expected.sha256) throw new Error(`Missing exact process revision trigger ${name}`);
+    return {name, sql: row.sql};
+  }));
+  suspendingProcessRevisions.add(db);
+  let removed = false;
+  let failed = false, failure: unknown;
+  try {
+    db.exec('SAVEPOINT suspend_process_revision_fixture');
+    try {for (const trigger of triggers) db.exec(`DROP TRIGGER main.${trigger.name}`); db.exec('RELEASE suspend_process_revision_fixture'); removed = true;}
+    catch (error) {if (db.isTransaction) db.exec('ROLLBACK TO suspend_process_revision_fixture; RELEASE suspend_process_revision_fixture'); throw error;}
+    const result = write();
+    if (isPromise(result) || (result !== null && (typeof result === 'object' || typeof result === 'function') && 'then' in result && typeof result.then === 'function')) {
+      Promise.resolve(result).catch(() => {});
+      throw new TypeError('withoutProcessTargetRevisions rejects asynchronous writes');
+    }
+    return result;
+  } catch (error) {
+    failed = true; failure = error;
+    throw error;
+  } finally {
+    const errors: unknown[] = [];
+    try {
+      if (db.isTransaction) {
+        db.exec('ROLLBACK');
+        errors.push(new Error('Process revision fixture left a transaction open'));
+      }
+      if (removed) {
+        db.exec('SAVEPOINT restore_process_revision_fixture');
+        try {
+          for (const trigger of triggers) db.exec(trigger.sql.replace(/^CREATE TRIGGER /, 'CREATE TRIGGER main.'));
+          db.exec('RELEASE restore_process_revision_fixture');
+        } catch (error) {if (db.isTransaction) db.exec('ROLLBACK TO restore_process_revision_fixture; RELEASE restore_process_revision_fixture'); throw error;}
+      }
+      for (const trigger of triggers) if (db.prepare("SELECT sql FROM main.sqlite_master WHERE type='trigger' AND name=?").get(trigger.name)?.sql !== trigger.sql) throw new Error(`Process revision fixture did not restore ${trigger.name}`);
+    } catch (error) {errors.push(error);}
+    suspendingProcessRevisions.delete(db);
+    if (errors.length) throw new AggregateError(failed ? [failure, ...errors] : errors, 'Process revision fixture restoration failed');
+  }
+}
 
 /** Runs `write` with foreign keys off, so a test can write a damaged row the
  * way a corrupt file would hold it, e.g. a row that belongs to or points at a

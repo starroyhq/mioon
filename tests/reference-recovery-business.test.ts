@@ -19,7 +19,7 @@ import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {DatabaseSync, type SQLOutputValue} from 'node:sqlite';
 import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
 import {snapshot as rawSnapshot} from './workspace-schema26-fixtures.mjs';
-import {withoutForeignKeys} from './helpers/project-database.ts';
+import {withoutForeignKeys,withoutProcessTargetRevisions} from './helpers/project-database.ts';
 
 const at='2026-10-10T00:00:00.000Z',clone=<T>(value: T): T=>JSON.parse(JSON.stringify(value));
 const tables=['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines','reference_requests','timeline_requests','idempotency'];
@@ -169,7 +169,7 @@ test('indirect current and frozen selected-version, snapshot references and gene
    if(kind==='version JSON')f.store.db.prepare("UPDATE versions SET data=json_set(data,'$.projectId',?) WHERE id=?").run(f.otherId,generated.version.id);
    if(kind==='version job SQL'){const job=f.store.put('jobs',{...generated.job,id:randomUUID()});f.store.db.prepare('UPDATE versions SET jobId=? WHERE id=?').run(job.id,generated.version.id);}
   }
-  if(kind==='job SQL')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.otherId,generated.job.id));
+  if(kind==='job SQL')withoutForeignKeys(f.store.db,()=>withoutProcessTargetRevisions(f.store.db,['jobs'],()=>f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.otherId,generated.job.id)));
   if(kind==='job JSON')f.store.db.prepare("UPDATE jobs SET data=json_set(data,'$.projectId',?) WHERE id=?").run(f.otherId,generated.job.id);
   if(kind==='job shot')f.store.put('jobs',{...generated.job,shotId:randomUUID()});
   if(kind==='snapshot reference')f.store.put('jobs',{...generated.job,snapshot:{...generated.job.snapshot,referenceAssetIds:[foreign.asset.id]}});
@@ -237,7 +237,7 @@ test('receipt insert failures and post-write owner corruption roll back atomical
  for(const operation of ['reference.attach','reference.detach'])for(const kind of ['receipt failure','receipt owner','domain owner'])await t.test(`${operation} ${kind}`,async t=>{
   const f=await fixture(t),{input,shot}=await prepared(f,operation);
   if(kind==='receipt failure')f.store.db.exec("CREATE TEMP TRIGGER fail_reference_receipt BEFORE INSERT ON reference_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure');END;");
-  else f.store.db.exec(`CREATE TEMP TRIGGER corrupt_reference_owner AFTER ${kind==='receipt owner'?'INSERT ON reference_requests':'UPDATE ON shots'} BEGIN UPDATE shots SET projectId='${f.otherId}' WHERE id='${shot.id}';END;`);
+  else f.store.db.exec(`CREATE TEMP TRIGGER corrupt_reference_owner AFTER ${kind==='receipt owner'?'INSERT ON reference_requests':`UPDATE ON shots WHEN NEW.projectId IS NOT '${f.otherId}'`} BEGIN UPDATE shots SET projectId='${f.otherId}' WHERE id='${shot.id}';END;`);
   // The trigger moves the shot to a project this store does not hold, inside the service's own transaction.
   const call=()=>rejected(f,operation,input,{code:kind==='receipt failure'?null:'INVALID_REFERENCE_RECORD',writes:true});
   await (kind==='receipt failure'?call():withoutForeignKeys(f.store.db,call));

@@ -20,7 +20,7 @@ import {initializeLegacyWorkspaceSchema} from '../packages/business/src/workspac
 import {createServices,canonical} from '../packages/business/src/services.ts';
 import {createMutationReplay} from '../packages/business/src/mutation-replay.ts';
 import {AppError} from '@mioon/contracts';
-import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 
 // Another project lives in a store of its own: a store holds one project.
 async function foreignProject(t: test.TestContext): Promise<FixtureProject> {
@@ -348,7 +348,7 @@ test('mutation replay helper and durable operation constraint cannot expand the 
 
 test('foreign version selection preserves legacy INVALID_VERSION without exposing or decoding foreign data',async t=>{
  // The foreign shot and version stay in this store, as a corrupt file would hold them, so the test can show they are never decoded.
- const f=await fixture(t),shot=await f.shot(f.project.id),version=withoutForeignKeys(f.store.db,()=>{const other=f.store.put('shots',{id:randomUUID(),projectId:f.other.id,title:'Shot'});return f.version(other);});
+ const f=await fixture(t),shot=await f.shot(f.project.id),version=withoutProcessTargetRevisions(f.store.db,['jobs'],()=>withoutForeignKeys(f.store.db,()=>{const other=f.store.put('shots',{id:randomUUID(),projectId:f.other.id,title:'Shot'});return f.version(other);}));
  const input={shotId:shot.id,versionId:version.id,expectedRevision:shot.revision};
  const before=capture(f);
  for(const supplied of [input,{...input,requestId:key()}])await assert.rejects(f.call('version.select',supplied),error=>(error as MutationFailure).code==='INVALID_VERSION'&&(error as MutationFailure).status===400&&!Object.hasOwn((error as MutationFailure).details,'current')&&!Object.hasOwn((error as MutationFailure).details,'mutationOutcome'));

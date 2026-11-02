@@ -7,7 +7,7 @@ import {randomUUID} from 'node:crypto';
 import {fixture,typedFrame,typedImage,rowBytes} from './helpers/strict-timeline-audio-subject-fixtures.ts';
 import {createOwnedMediaGraphReader,INSPECTION_LIMITS} from '../packages/business/src/inspection.ts';
 import {createSubjectOwnershipReader,SUBJECT_OWNER_COLUMNS,SUBJECT_VERSION_COLUMNS} from '../packages/business/src/subject-ownership.ts';
-import {openProjectDatabase,withoutForeignKeys} from './helpers/project-database.ts';
+import {openProjectDatabase,withoutForeignKeys,withoutProcessTargetRevisions} from './helpers/project-database.ts';
 
 for(const drift of ['asset-sql','asset-json','asset-hash','asset-dimensions','shot-sql','job-sql','subject-owner','version-owner'])test(`subject ${drift} drift denies exact replay, reads and retry without disclosure`,async t=>{
  const f=await fixture(t),a=await f.asset(),subject=await f.subject(a),shot=await f.shot(),input=f.input(shot,subject.headVersionId),job=await f.call('generation.submit',input);
@@ -16,7 +16,7 @@ for(const drift of ['asset-sql','asset-json','asset-hash','asset-dimensions','sh
  if(drift==='asset-hash')f.store.put('assets',{...a,sha256:'d'.repeat(64)});
  if(drift==='asset-dimensions')f.store.put('assets',{...a,width:600});
  if(drift==='shot-sql')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.other.id,shot.id));
- if(drift==='job-sql')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.other.id,job.id));
+ if(drift==='job-sql')withoutProcessTargetRevisions(f.store.db,['jobs'],()=>withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.other.id,job.id)));
  // Schema62 renamed the subject identity guard; drop whichever this workspace carries.
  if(drift==='subject-owner'){f.store.db.exec('DROP TRIGGER IF EXISTS immutable_subject_identity; DROP TRIGGER IF EXISTS immutable_subject_identity_v62');withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE subjects SET projectId=? WHERE id=?').run(f.other.id,subject.id));}
  if(drift==='version-owner'){f.store.db.exec('PRAGMA ignore_check_constraints=ON; DROP TRIGGER immutable_subject_versions');withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE subject_versions SET projectId=? WHERE id=?').run(f.other.id,subject.headVersionId));}

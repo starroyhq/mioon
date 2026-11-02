@@ -125,15 +125,19 @@ test('metadata cancellation rejects promptly, never reserves sound on a late rep
   pending.resolve(manifest()); await resources; assert.equal(settled, true); assert.equal(effects, 0);
 });
 
-test('a timed out initial response with unconfirmed late body cancellation cannot release the resource fence', async () => {
-  const pending = deferred<Response>(), plan = manifest(); let resources: Promise<unknown> | undefined, request: BlockRequest | undefined, gets = 0;
+test('a timed out initial response with unconfirmed late body cancellation cannot release the resource fence', async t => {
+  // Enter the initial GET before advancing the unchanged deadline. Real
+  // scheduling must not spend this test's 10 ms in metadata/hash preparation.
+  t.mock.timers.enable({apis: ['setTimeout', 'Date'], now: Date.now()});
+  const pending = deferred<Response>(), entered = deferred(), plan = manifest(); let resources: Promise<unknown> | undefined, request: BlockRequest | undefined, gets = 0;
   const client = makeClient({timeoutMs: 10, readPlan: async () => plan, fetcher: async (url: string, options: {method?: string; signal?: AbortSignal; headers?: Record<string, string>}) => {
     if (options.method === 'DELETE') return new Response(null, {status: 204});
-    gets++; request = parseRequest(url); return pending.promise;
+    gets++; request = parseRequest(url); entered.resolve(); return pending.promise;
   }});
   const work = client.prepare(input as never, {context: audioContext() as never, signal: new AbortController().signal,
     onResourceSettlement: (value: Promise<unknown>) => { resources = value; }});
-  await assert.rejects(work, {code: 'AUDIO_PREVIEW_TIMEOUT'}); assert.equal(gets, 1);
+  await entered.promise; const rejected = assert.rejects(work, {code: 'AUDIO_PREVIEW_TIMEOUT'});
+  t.mock.timers.tick(10); await rejected; assert.equal(gets, 1);
   pending.resolve(response(plan, request!, {body: new ReadableStream({cancel() { throw Error('Late response retained'); }})}));
   await assert.rejects(resources!, {code: 'AUDIO_PREVIEW_CLEANUP_UNCONFIRMED'});
 });

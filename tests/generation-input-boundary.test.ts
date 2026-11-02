@@ -17,7 +17,7 @@ import {startWorker, type Worker} from '../packages/business/src/jobs.ts';
 import {createJsonRequest} from '../packages/business/src/providers/live-common.ts';
 import {createVeoProvider} from '../packages/business/src/providers/veo.ts';
 import {INPUT_PROFILE_VERSION,getCapabilityProfile,getLegacyCapabilityProfile} from '../packages/contracts/src/index.ts';
-import {withoutForeignKeys} from './helpers/project-database.ts';
+import {withoutForeignKeys,withoutProcessTargetRevisions} from './helpers/project-database.ts';
 
 // Another project lives in a store of its own: a store holds one project.
 async function foreignProject(t: test.TestContext,name: string){
@@ -193,7 +193,10 @@ for(const target of ['jobs','shots'])test(`POST fence leaves relational ${target
  const f=await fixture(t,{providerId:'veo',image:true}),job=await f.submit(),other=await foreignProject(t,'Other owner');
  const provider=f.providers.get('veo')!,submit=provider!.submit;let afterTamper;
  const log=t.mock.method(console,'error',()=>{});
- f.providers.set('veo',{...provider,submit:async(snapshot,context)=>{await Promise.resolve();withoutForeignKeys(f.store.db,()=>f.store.db.prepare(`UPDATE ${target} SET projectId=? WHERE id=?`).run(other.id,target==='jobs'?job.id:f.shot.id));afterTamper=rawGenerationState(f);return submit(snapshot,context);}});
+ f.providers.set('veo',{...provider,submit:async(snapshot,context)=>{await Promise.resolve();
+  const corrupt=()=>f.store.db.prepare(`UPDATE ${target} SET projectId=? WHERE id=?`).run(other.id,target==='jobs'?job.id:f.shot.id);
+  withoutForeignKeys(f.store.db,()=>target==='jobs'?withoutProcessTargetRevisions(f.store.db,['jobs'],corrupt):corrupt());
+  afterTamper=rawGenerationState(f);return submit(snapshot,context);}});
  await f.tick();await f.stop();assert.deepEqual(rawGenerationState(f),afterTamper);assert.equal(f.posts(),0);
  assert.deepEqual(log.mock.calls.map(call=>call.arguments),[['Skipped invalid local generation record.']]);
 });
@@ -247,7 +250,7 @@ for(const providerId of ['minimax','vidu'])test(`${providerId} invalid server-co
 for(const status of ['queued','submitting'])for(const drift of ['relational-owner','json-owner','shot-owner'])test(`${status} startup ${drift} rejection leaves raw jobs and events unchanged`,async t=>{
  const f=await fixture(t,{providerId:'veo',image:true}),job=await f.submit(),other=await foreignProject(t,'Unrelated owner');
  const saved=f.store.get('jobs',job.id)!;saved.status=status;f.store.put('jobs',saved);
- if(drift==='relational-owner')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(other.id,job.id));
+ if(drift==='relational-owner')withoutForeignKeys(f.store.db,()=>withoutProcessTargetRevisions(f.store.db,['jobs'],()=>f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(other.id,job.id)));
  else if(drift==='json-owner')withoutForeignKeys(f.store.db,()=>f.store.put('jobs',{...saved,projectId:other.id}));
  else withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(other.id,f.shot.id));
  const before=rawGenerationState(f),log=t.mock.method(console,'error',()=>{});
@@ -265,9 +268,11 @@ for(const drift of ['deleted-job','json-identity','snapshot','revision','coheren
   else if(drift==='snapshot')f.store.put('jobs',{...saved,snapshot:{...saved.snapshot,prompt:'Different frozen request'}});
   else if(drift==='revision')f.store.put('jobs',{...saved,revision:saved.revision+1});
   else {
-   for(const [table,id] of [['jobs',job.id],['shots',f.shot.id],['assets',f.asset.id]] as const){
-    withoutForeignKeys(f.store.db,()=>f.store.put(table,{...f.store.get(table,id),projectId:other.id}));withoutForeignKeys(f.store.db,()=>f.store.db.prepare(`UPDATE ${table} SET projectId=? WHERE id=?`).run(other.id,id));
-   }
+   withoutForeignKeys(f.store.db,()=>withoutProcessTargetRevisions(f.store.db,['jobs'],()=>{
+    for(const [table,id] of [['jobs',job.id],['shots',f.shot.id],['assets',f.asset.id]] as const){
+     f.store.put(table,{...f.store.get(table,id),projectId:other.id});f.store.db.prepare(`UPDATE ${table} SET projectId=? WHERE id=?`).run(other.id,id);
+    }
+   }));
   }
   afterTamper=rawGenerationState(f);return submit(snapshot,context);
  }});

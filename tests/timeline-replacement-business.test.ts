@@ -10,7 +10,7 @@ import path from 'node:path';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import type { SQLInputValue } from 'node:sqlite';
-import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 
 const operation='timeline.clip.replaceSource';
 const clone=<T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -230,7 +230,7 @@ test('explicit versions and asset-only selection validate complete actual revers
   ['version SQL job',async(f: Awaited<ReturnType<typeof fixture>>,g: { version: { id: unknown; }; })=>{const other=await f.generated();f.store.db.prepare('DELETE FROM versions WHERE id=?').run(other.version.id);f.update('versions',((g.version.id) as unknown as Parameters<typeof f.update>[1]),{}, {jobId:other.job.id});}],
   ['version hash',async(f: Awaited<ReturnType<typeof fixture>>,g: { version: { id: unknown; }; })=>{f.update('versions',((g.version.id) as unknown as Parameters<typeof f.update>[1]),{sha256:'b'.repeat(64)});}],
   ['job JSON owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { job: { id: unknown; }; })=>{f.update('jobs',((g.job.id) as unknown as Parameters<typeof f.update>[1]),{projectId:f.otherId});}],
-  ['job SQL owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { job: { id: unknown; }; })=>{withoutForeignKeys(f.store.db,()=>f.update('jobs',((g.job.id) as unknown as Parameters<typeof f.update>[1]),{}, {projectId:f.otherId}));}],
+  ['job SQL owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { job: { id: unknown; }; })=>{withoutForeignKeys(f.store.db,()=>withoutProcessTargetRevisions(f.store.db,['jobs'],()=>f.update('jobs',((g.job.id) as unknown as Parameters<typeof f.update>[1]),{}, {projectId:f.otherId})));}],
   ['job asset mismatch',async(f: Awaited<ReturnType<typeof fixture>>,g: { job: { id: unknown; }; })=>{f.update('jobs',((g.job.id) as unknown as Parameters<typeof f.update>[1]),{assetId:f.asset().id});}],
   ['job version mismatch',async(f: Awaited<ReturnType<typeof fixture>>,g: { job: { id: unknown; }; })=>{f.update('jobs',((g.job.id) as unknown as Parameters<typeof f.update>[1]),{versionId:randomUUID()});}],
   ['job shot mismatch',async(f: Awaited<ReturnType<typeof fixture>>,g: { job: { id: unknown; }; })=>{f.update('jobs',((g.job.id) as unknown as Parameters<typeof f.update>[1]),{shotId:randomUUID()});}],
@@ -301,7 +301,7 @@ test('durable receipt failures and post-write owner corruption roll back timelin
   const f=await fixture(t),timeline=await f.timeline(undefined,{fadeInFrames:2}),next=f.asset(),extra=await f.call('timeline.track.add',params(f,timeline,{kind:'audio'}));
   const current=await f.call('timeline.undo',params(f,extra)),request=replace(f,current,next);
   if(mode==='receipt failure')f.store.db.exec("CREATE TEMP TRIGGER fail_replacement_receipt BEFORE INSERT ON timeline_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure'); END;");
-  if(mode==='timeline owner')f.store.db.exec(`CREATE TEMP TRIGGER corrupt_replacement_owner AFTER UPDATE ON timelines BEGIN UPDATE timelines SET projectId='${f.otherId}' WHERE id=NEW.id; END;`);
+  if(mode==='timeline owner')f.store.db.exec(`CREATE TEMP TRIGGER corrupt_replacement_owner AFTER UPDATE ON timelines WHEN NEW.projectId IS NOT '${f.otherId}' BEGIN UPDATE timelines SET projectId='${f.otherId}' WHERE id=NEW.id; END;`);
   if(mode==='asset owner')f.store.db.exec(`CREATE TEMP TRIGGER corrupt_replacement_source AFTER UPDATE ON timelines BEGIN UPDATE assets SET projectId='${f.otherId}' WHERE id='${next.id}'; END;`);
   if(mode==='source duration')f.store.db.exec(`CREATE TEMP TRIGGER corrupt_replacement_duration AFTER UPDATE ON timelines BEGIN UPDATE assets SET data=json_set(data,'$.duration',1) WHERE id='${next.id}'; END;`);
   if(mode==='source audio')f.store.db.exec(`CREATE TEMP TRIGGER corrupt_replacement_audio AFTER UPDATE ON timelines BEGIN UPDATE assets SET data=json_set(data,'$.hasAudio',json('false')) WHERE id='${next.id}'; END;`);

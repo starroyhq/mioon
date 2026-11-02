@@ -9,7 +9,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import {schemas,LOCAL_MUTATION_OPERATIONS,isSubjectMutationResponse,isSubjectListResponse} from '@mioon/contracts';
 import {type TestContext} from 'node:test';
 import {errorView} from './helpers/test-error.ts';
-import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 import {expectedContentMetadata} from './helpers/kernel-content-metadata.ts';
 interface SubjectRecord {id: string; projectId: string; revision: number; kind: string; headVersionId: string; name: string; needsReview?: boolean;
   subjectVersionId?: string | null; reviewedHeadVersionId?: string | null; items: SubjectRecord[]; nextCursor?: string | null;
@@ -140,7 +140,7 @@ test('owned media lineage rejects hidden foreign generated owners and freezes va
  const f=await fixture(t),a=f.asset(),shot=await f.call('shot.create',{projectId:f.project.id,title:'Source'}),jobId=randomUUID(),versionId=randomUUID();
  f.store.put('jobs',{id:jobId,projectId:f.project.id,shotId:shot.id,versionId,assetId:a.id});f.store.put('versions',{id:versionId,projectId:f.project.id,jobId,shotId:shot.id,assetId:a.id,sha256:a.sha256});
  const subject=await f.call('subject.create',f.create(a));assert.deepEqual(subject.headVersion.provenance,{kind:'user-import',versionId,shotId:shot.id,jobId});
- withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.other.id,jobId));await assert.rejects(f.call('subject.list',{projectId:f.project.id}),{code:'INVALID_SUBJECT_RECORD'});
+ withoutForeignKeys(f.store.db,()=>withoutProcessTargetRevisions(f.store.db,['jobs'],()=>f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.other.id,jobId)));await assert.rejects(f.call('subject.list',{projectId:f.project.id}),{code:'INVALID_SUBJECT_RECORD'});
 });
 
 test('shared namespace collisions are reciprocal, immutable history resists delete/update/replace, writes roll back with receipt',async t=>{
