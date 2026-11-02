@@ -21,7 +21,7 @@ function render(locale: Parameters<typeof createI18nTestContext>[0],count: numbe
     return{__esModule:true,default:'icon'};
   });
   const item={id:'conversation',projectId:'project',title:'A/B comparison',updatedAt:'2026-10-22T12:30:00.000Z',lastRunStatus:'completed',changeCount:count};
-  return module.exports.default({open:true,projectId:'project',conversations:[item],phase:'ready',nextCursor:null,currentId:null,newConversation:false,disabled:false,onClose(){},onSelect(){},onSelectLegacy(){},onMore(){}});
+  return module.exports.default({open:true,projectId:'project',conversations:[item],phase:'ready',nextCursor:null,currentId:null,newConversation:false,disabled:false,onClose(){},onSelect(){},onMore(){}});
 }
 
 test('history metadata separates time, dotted status and nonzero change count in all four languages',()=>{

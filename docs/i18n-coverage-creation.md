@@ -1,6 +1,8 @@
 # Creation, Agent, generation and task localization
 
-## Covered renderer surfaces
+本文保留创建域本地化阶段的实施与验证记录；下列模块、路径、目录数量和测试命令均描述当时的实现。旧版助理的 `AgentPanel`、`AgentRunActivity`、`AgentEditProposal`、`AgentTimelineGain` 及对应控制器已随 #122 移除，不代表当前仍有这些界面或入口。当前 Mio 的行为见 [Mio v2 执行与恢复](AGENT-TASKS-V2.md)。
+
+## 当时覆盖的界面
 
 - AgentPanel, AgentRunActivity, AgentEditProposal, AgentTimelineGain, AgentWorkspace: chat consent and scope, historical/recovery notices, read-only tool activity, immutable proposed before/after content, selection/dirty fences, gain and timeline proposal summaries, buttons, ARIA labels and tooltips.
 - ImageGeneration, ComfyImageDetails: local/mock and paid image preparation/approval/recovery, exact immutable source disclosure, known connection rejection codes, disabled Comfy connector, observation state, history and previews.
@@ -8,7 +10,7 @@
 - TaskCenter, TaskWorkspace, PendingSubmission: task status, recovered/restored-workspace holds, unknown outcomes, reconcile/cancel/retry controls, dynamically rendered confirmation descriptors and safe diagnostic summaries.
 - Connection settings surfaces and regression checks are detailed separately in `i18n-coverage-connections.md`.
 
-## Helper boundaries and reviewed exceptions
+## 当时的辅助模块与例外
 
 - `agent-chat.js`, `agent-edits.js`, `agent-timeline-context.js`, `agent-timeline-gain-context.ts`, `image-generation.js`, and `comfy-image-observation.js` expose display descriptors alongside the original controller messages. Original messages are retained for compatibility, never used as translation keys and never substituted into persisted requests.
 - `creation-i18n.ts` maps known statuses and safe error codes. Unknown third-party diagnostic text is not primary UI; only validated stable error codes may be shown under an explicit original-code label.
@@ -17,7 +19,7 @@
 - `AgentTimelineGain` owns only Agent proposals. Timeline edit/export/recovery UI and their controllers are owned by the timeline scope.
 - All current locale-dependent rendering is outside controller/session construction and effect dependency lists. Confirmations and later completion notices carry descriptors, not frozen translated strings.
 
-## Catalog and tests
+## 当时的文案目录与测试
 
 - `creation.ts` composes 1129 complete four-locale UI/state/connection/extra entries and runs duplicate-key preflight before spreading. Catalogs use `zh-Hans`, regionless `zh-Hant`, `en`, and `ja`.
 - Existing action/payload/safety tests are retained. Legacy transform fixtures use pinned Simplified Chinese presentation; new locale-switch tests use the actual language store and committed component harness lifetimes.
@@ -26,12 +28,12 @@
 - Connection worker: 89 targeted checks passed, including draft/password preservation and no automatic load/check/save on language changes.
 - Parent verified normal typecheck and Vite/desktop production compile before the latest ProviderSettings coverage expansion. Final integrated checks remain parent-owned.
 
-## Pending verification
+## 当时待完成的验证
 
 - All creation-owned targeted regressions are complete. Final cross-owner checks remain below.
 - Full integrated typecheck/catalog integrity and native/browser overflow verification are coordinated by the implementation lead; this scope makes no native screenshot claim.
 
-## Explicit retained-helper display ledger
+## 当时保留的辅助模块显示台账
 
 The fail-closed AST exception fragment is `docs/i18n-ui-exceptions-creation.json`. Its 345 deduplicated records cover 353 current owned source literal occurrences. A fresh inventory comparison reports no unexplained or stale owned records. This is a regression guard, not a claim of semantic/native-layout acceptance. Each record identifies its exact presentation boundary; no blanket "legacy helper" allowance is used.
 
@@ -50,7 +52,7 @@ The fail-closed AST exception fragment is `docs/i18n-ui-exceptions-creation.json
 - Shared `workspace-origin.js` / `workspace-task-origin.js` consumer audit only: TaskCenter forwards stable hold codes and PendingSubmission renders `tasks.unverifiedWorkspace` / `tasks.heldReason`; legacy reason strings only gate controls. DurableTask held rows use `workspaceHeldDescriptor`. App.readableError also maps storage-migration and workspace-origin/restore error codes to their specific safe descriptors. Shared `restored-workspace.js` is owned by delivery: creation surfaces use restored flags and their own localized hold/paused notices, not raw restore constants. These shared files intentionally do not appear in the creation exception fragment.
 - Technical JSX exceptions are narrowly identified: Agent and ComfyUI brands/version; exact URL examples; Base URL/Model ID API notation beside localized primary labels; PNG, KB, SHA-256, version marker V and SI second suffix. Hashes, endpoint examples and version identity must not be translated.
 
-## Reproducible bounded checks
+## 历史验证命令
 
 - Clean 250-test renderer command: `node --test --test-concurrency=1 --test-reporter=tap tests/agent-chat-ui.test.mjs tests/agent-edit-renderer.test.mjs tests/agent-timeline-gain-renderer.test.mjs tests/image-generation-ui.test.mjs tests/image-edit-ui.test.mjs tests/generation-input-ui.test.mjs tests/task-center-dock-ui.test.mjs tests/task-center-app.test.mjs tests/task-recovery-disclosure.test.mjs tests/i18n-creation.test.mjs`.
 - Focused local task-error suite is synthetic and local only. It verifies descriptor parity with original Simplified Chinese diagnostics, all four renderings, original error fields, exact pending input/storage preservation, and absence of additional task calls while relabeling.

@@ -1,7 +1,9 @@
-# Reviewed Agent timeline moves
+# Reviewed Agent timeline moves（历史记录）
+
+本文保留 2026-10-12 旧版助理移动提议的实现与验收记录。旧版运行时、接口和提议界面已随 #122 移除，下述操作步骤不是当前入口；当前 Mio 的执行、确认与恢复见 [Mio v2 执行与恢复](AGENT-TASKS-V2.md)。
 
 Date: 2026-10-12 UTC. Baseline: `9d75f5e68c510eb6cd67116e3431728402f7908f`.
-Status: implemented with focused checks and packaged Linux synthetic business-flow
+Status at that checkpoint: implemented with focused checks and packaged Linux synthetic business-flow
 acceptance, including a final copy-corrected package smoke. Final independent full
 gate passed4437/4439,0 failures,2 skips after two legacy migration fixture
 assertions were corrected. No live model verification.
