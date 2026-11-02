@@ -1,3 +1,4 @@
+import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,7 +23,7 @@ import {withProbePermit} from '../packages/business/src/media-probe.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createExportLoudnessDecoder} from '../packages/business/src/export-loudness-decoder.ts';
 import {floatSnapshotSha256} from '../packages/business/src/timeline-float-outcome.ts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects,projectDirFor} from './helpers/project-database.ts';
 
 // These bounded real-media fixtures run only in the parent-owned serial lane.
 // FFmpeg ebur128 is an independent implementation comparison, not certification.
@@ -80,15 +81,7 @@ function wav(seconds: number, sample: (frame: number, channel: number, rate: num
     bytes.writeFloatLE(sample(frame, channel, rate), 44 + (frame * channels + channel) * 4);
   return bytes;
 }
-async function manifest(root: string, relative = ''): Promise<Array<{directory?: string; file?: string; sha256?: string}>> {
-  const result: Array<{directory?: string; file?: string; sha256?: string}> = [];
-  for (const entry of await readdir(path.join(root, relative), {withFileTypes: true})) {
-    const name = path.join(relative, entry.name);
-    if (entry.isDirectory()) result.push({directory: name}, ...await manifest(root, name));
-    else if (!/^workbench\.sqlite(?:-wal|-shm|-journal)?$/.test(name) && name !== 'server.lock') result.push({file: name, sha256: hash(await readFile(path.join(root, name)))});
-  }
-  return result.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-}
+async function manifest(root: string) {return dataFileSnapshot(root,[path.join(root,'workbench.sqlite')]);}
 async function independentReference(file: string): Promise<{sampleFrames: number; samplePeak: number; integratedLufs: number; truePeakDbtp: number}> {
   const exec = (args: readonly string[], encoding: 'utf8' | 'buffer', maxBuffer: number): Promise<ExecResult> => execute(mediaExecutable('ffmpeg'), args, {env: mediaEnvironment(), encoding, maxBuffer, timeout: 30000});
   // Binary PCM is never UTF-8 decoded. The separate bounded collector checks
@@ -117,7 +110,7 @@ interface LoudnessReport {status: string; reason?: {message?: string}; measureme
   artifact: {hidden: never} & {snapshotSha256: string; sha256: string; timelineRevision: number; deliveryName: string; exportRange?: {startFrame: number; endFrame: number}}; checks: {bytesHashed: number; audioFullyDecoded: boolean}}
 interface TimelineRow {id: string; revision: number; tracks: Array<{id: string; kind: string}>}
 interface ExportRecordRow {id: string; assetId: string; status: string; timelineRevision: number; error?: unknown}
-interface ExportFixture {root: string; url: string; client: ReturnType<typeof createClient>; project: {id: string}; use<T>(fn: (db: DatabaseSync) => T): T; rows(): Record<string, unknown[]>; records: ExportRecordRow[]}
+interface ExportFixture {root: string;projectRoot:string; url: string; client: ReturnType<typeof createClient>; project: {id: string}; use<T>(fn: (db: DatabaseSync) => T): T; rows(): Record<string, unknown[]>; records: ExportRecordRow[]}
 // data_version counts other connections' commits only; total_changes() adds this connection's own writes.
 const changeMarks = (db: DatabaseSync) => [db.prepare('PRAGMA data_version').get()!.data_version, db.prepare('SELECT total_changes() AS n').get()!.n];
 async function exported(t: TestContext, {name, silent = false}: {name: string; silent?: boolean}): Promise<ExportFixture> {
@@ -157,7 +150,7 @@ async function exported(t: TestContext, {name, silent = false}: {name: string; s
   const use = <T>(fn: (db: DatabaseSync) => T): T => inspect!(project.id, fn);
   const rows = (): Record<string, unknown[]> => use(db => Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').map(({name}) =>
     [name, db.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`).all()])));
-  return {root, url: backend!.url, client, project, use, rows, records: [full, ranged].filter((value): value is ExportRecordRow => Boolean(value))};
+  return {root, projectRoot:projectDirFor(root,project.id), url: backend!.url, client, project, use, rows, records: [full, ranged].filter((value): value is ExportRecordRow => Boolean(value))};
 }
 
 test('real worker full/ranged AAC from 44.1k sources matches independent complete PCM and ebur128 without any observation writes', {timeout: 120000}, async t => {
@@ -165,7 +158,7 @@ test('real worker full/ranged AAC from 44.1k sources matches independent complet
   for (const record of f.records) {
     const saved = JSON.parse(f.use(db => db.prepare('SELECT data FROM exports WHERE id=?').get(record.id) as {data: string}).data) as {snapshot: {deliveryName: string; exportRange?: {startFrame: number; endFrame: number}}};
     const asset = JSON.parse(f.use(db => db.prepare('SELECT data FROM assets WHERE id=?').get(record.assetId) as {data: string}).data) as {relativePath: string};
-    const file = path.join(f.root, asset.relativePath), sourceBytes = await readFile(file), reference = await independentReference(file);
+    const file = path.join(f.projectRoot, asset.relativePath), sourceBytes = await readFile(file), reference = await independentReference(file);
     const input = {projectId: f.project.id, exportId: record.id, expectedArtifactSha256: hash(sourceBytes), measurementProfile: EXPORT_LOUDNESS_PROFILE,
       target: {integratedLufs: -23, truePeakCeilingDbtp: -1}};
     const before = {rows: f.rows(), version: f.use(changeMarks), files: await manifest(f.root)};

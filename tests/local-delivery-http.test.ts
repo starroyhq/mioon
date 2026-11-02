@@ -52,7 +52,10 @@ test('execution response cap preserves the existing 4 MiB render boundary and re
 });
 test('production route is placed behind existing Host/Origin and authentication checks, absent from RPC and Agent declarations',()=>{
   const server=readFileSync(new URL('../apps/server/src/index.ts',import.meta.url),'utf8');
-  const route=server.indexOf('await localDeliveryHttp(req, res, url, address)');assert.ok(route>0);assert.ok(server.indexOf('ORIGIN_REJECTED')<route);assert.ok(server.indexOf('if (!auth(req))')<route);
+  const runtime=readFileSync(new URL('../apps/server/src/project-host/runtime.ts',import.meta.url),'utf8');
+  const origin=server.indexOf('ORIGIN_REJECTED'),auth=server.indexOf('if (!authenticated(req))'),lease=server.indexOf("await projects.acquire(route.projectId, 'request')"),route=server.indexOf('await lease.host.runtime.handle(');
+  assert.ok(route>0);assert.ok(origin>=0&&origin<auth);assert.ok(auth>=0&&auth<lease);assert.ok(lease<route);
+  const handler=runtime.indexOf('project.localDeliveryHttp');assert.ok(handler>0);assert.ok(runtime.indexOf('const address = {projectId}')<handler);assert.match(runtime,/await handler\(req, res, local, address\)/u);
   const contracts=readFileSync(new URL('../packages/contracts/src/index.ts',import.meta.url),'utf8');assert.equal(contracts.includes("'local-delivery'"),false);
   const mcp=readFileSync(new URL('../apps/mcp/src/index.ts',import.meta.url),'utf8');assert.equal(mcp.includes('local-delivery'),false);
 });

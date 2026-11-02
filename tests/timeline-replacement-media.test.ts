@@ -1,3 +1,4 @@
+import {projectDirFor} from './helpers/project-database.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {FloatRenderResult,ProbeJson} from './helpers/strict-timeline-media-result-types.ts';
@@ -101,7 +102,7 @@ test('explicit replacement keeps timing/fades and old exports while new media, p
  assert.deepEqual((await rpc('timeline.get',{projectId:project.id})).clips,changed.clips);
  const originalAgain=await fetch((server as unknown as Awaited<ReturnType<typeof startServer>>).url+projectMediaPath(before.job.projectId,before.job.assetId),{headers:{authorization:`Bearer ${token}`}});assert.equal(hash(Buffer.from(await originalAgain.arrayBuffer())),before.sha256);
  assert.deepEqual((await rpc('export.get',{exportId:before.job.id},200,project.id)).snapshot,before.job.snapshot);
- for(const a of assets){const stored=inspect(project.id,db=>JSON.parse((((db.prepare('SELECT data FROM assets WHERE id=?').get(a.id))!.data) as unknown as Parameters<typeof JSON.parse>[0])));assert.equal(hash(await readFile(path.join(workspace,stored.relativePath))),a.sha256);}
+ for(const a of assets){const stored=inspect(project.id,db=>JSON.parse((((db.prepare('SELECT data FROM assets WHERE id=?').get(a.id))!.data) as unknown as Parameters<typeof JSON.parse>[0])));assert.equal(hash(await readFile(path.join(projectDirFor(workspace,project.id),stored.relativePath))),a.sha256);}
  assert.equal(inspect(project.id,db=>(db.prepare('SELECT COUNT(*) AS n FROM exports').get())!.n),2);assert.equal(inspect(project.id,db=>(db.prepare('SELECT COUNT(*) AS n FROM jobs').get())!.n),0);
  assert.equal(inspect(project.id,db=>(db.prepare('SELECT COUNT(*) AS n FROM waveform_cache').get())!.n),2);
  await writeFile(path.join(evidence,'acceptance.json'),JSON.stringify({status:'passed',synthetic:true,projectId:project.id,before,after,originalBytesUnchanged:true,oldExportUnchanged:true,exactRestartReplay:true,preflightHashes:[beforeCheck.snapshotHash,afterCheck.snapshotHash],waveformAttempts:[beforeWave.attemptId,afterWave.attemptId]},null,2)+'\n');

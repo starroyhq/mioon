@@ -10,6 +10,7 @@ import {schemas,LOCAL_MUTATION_OPERATIONS,isSubjectMutationResponse,isSubjectLis
 import {type TestContext} from 'node:test';
 import {errorView} from './helpers/test-error.ts';
 import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {expectedContentMetadata} from './helpers/kernel-content-metadata.ts';
 interface SubjectRecord {id: string; projectId: string; revision: number; kind: string; headVersionId: string; name: string; needsReview?: boolean;
   subjectVersionId?: string | null; reviewedHeadVersionId?: string | null; items: SubjectRecord[]; nextCursor?: string | null;
   headVersion: {assetId: string; provenance: Record<string, unknown>; id?: string; number?: number; [key: string]: unknown};
@@ -84,7 +85,8 @@ test('frozen heads, independent binding revisions, review old selection and tomb
   assert.equal(before.agent_task_target_revisions_v2.some(row=>row.kind===target.kind&&row.targetId===target.targetId),false);
   before.agent_task_target_revisions_v2.push(Object.assign(Object.create(null),{projectId:f.project.id,...target}));
  }
- assert.deepEqual(snapshot(f,subjectTables),before);assert.deepEqual(await readFile(path.join(f.root,'media/fixture')),bytes);
+ const after=snapshot(f,subjectTables);
+ assert.deepEqual(after,{...before,...expectedContentMetadata(before,after)});assert.deepEqual(await readFile(path.join(f.root,'media/fixture')),bytes);
  assert.equal(JSON.stringify(s2).includes('media/'),false);assert.equal(JSON.stringify(s2).includes('url'),false);
  assert.deepEqual(await f.call('subject.binding.set',first),binding1);assert.equal(binding2.revision,1);
 });

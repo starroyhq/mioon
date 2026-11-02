@@ -26,7 +26,7 @@ test('actual database startup supplies exact production timeline and receipt pre
 test('actual startup capability validates the complete catalog, not only markers',async t=>{
  const {DatabaseSync}=await import('node:sqlite');
  const {mkdtempSync,rmSync}=await import('node:fs');
- const {openStore}=await import('../packages/business/src/db.ts');
+ const {openLegacyWorkspaceStore:openStore}=await import('../packages/business/src/db.ts');
  const {readTimelineVolumeEnvelopeCapability}=await import('../packages/business/src/timeline-volume-envelope-capability.ts');
  const fake=new DatabaseSync(':memory:');t.after(()=>fake.close());
  fake.exec('CREATE TABLE schema_version(version INTEGER PRIMARY KEY)');

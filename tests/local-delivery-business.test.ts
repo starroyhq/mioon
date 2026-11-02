@@ -1,3 +1,4 @@
+import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import type {OrdinaryLocalDelivery,OrdinaryDeliveryEnvelope} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {LocalDeliveryOptions,LocalDeliveryGuards} from '../packages/business/src/local-delivery.ts';
 import type {LocalDeliveryPrepare,LocalDeliveryRenderInput} from '@mioon/contracts/local-delivery';
@@ -8,7 +9,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync,rmSync,existsSync,readFileSync,writeFileSync,statSync,copyFileSync,symlinkSync,linkSync,chmodSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {openStore,ownsStoreLock,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore,ownsStoreLock,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
 import {createTimelineRecoveryBoundary,readTimelineReceipt, type TimelineRecoveryInput} from '../packages/business/src/timeline-recovery.ts';
 import {createLocalDelivery,LOCAL_DELIVERY_FILENAME} from '@mioon/business/local-delivery';
@@ -22,8 +23,8 @@ const code=(value: string)=>(error: { code: string; message: string|string[]; })
 const authority=(value: Pick<OrdinaryDeliveryEnvelope, 'workspaceScope'|'instanceId'|'projectId'>)=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId});
 const action=(value:OrdinaryDeliveryEnvelope)=>({...authority(value),intentId:value.intent!.intentId,expectedIntentRevision:value.intentRevision});
 const deferred=<T=void>()=>Promise.withResolvers<T>();
-async function fixture(t: test.TestContext){
-  const root=mkdtempSync(path.join(tmpdir(),'mioon-local-delivery-'));let store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices),delivery:OrdinaryLocalDelivery,fault:(point:string)=>void=()=>{},render:(input:LocalDeliveryRenderInput)=>Promise<unknown>,extraGuards:Partial<LocalDeliveryGuards>={};let calls: (unknown)[]=[];
+async function fixture(t: test.TestContext,{legacy=false}={}){
+  const root=mkdtempSync(path.join(tmpdir(),'mioon-local-delivery-'));const open=legacy?openLegacyWorkspaceStore:openStore;let store=(open(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices),delivery:OrdinaryLocalDelivery,fault:(point:string)=>void=()=>{},render:(input:LocalDeliveryRenderInput)=>Promise<unknown>,extraGuards:Partial<LocalDeliveryGuards>={};let calls: (unknown)[]=[];
   const project=await services.call('project.create',{name:'Local delivery'}),assetId=randomUUID();
   const asset=store.put('assets',{id:assetId,projectId:project.id,name:'Synthetic',mimeType:'image/png',width:2,height:2,hasVideo:true,hasAudio:false,provenance:'user-import',sha256:'a'.repeat(64),relativePath:`media/${assetId}.png`,createdAt:new Date().toISOString()});
   let timeline=await services.call('timeline.get',{projectId:project.id});
@@ -36,16 +37,18 @@ async function fixture(t: test.TestContext){
     isNotApplied:(input: unknown,error: unknown)=>hasRequestNotAppliedProof(error,input,{operation:'timeline.render'}),
     readReceipt:(input: TimelineRecoveryInput)=>{const saved=readTimelineReceipt(store.db,input,'timeline.render');if(!saved)return null;if(saved.requestHash!==hash({operation:'timeline.render',input}))throw Error('PRIVATE bad hash');return publicValue(createTimelineRecoveryBoundary(store.db,input).replay('timeline.render',saved.response!));},
     render:(input:LocalDeliveryRenderInput)=>{calls.push(structuredClone(input));return render(input);},...extraGuards});
-  const start=(options:Partial<LocalDeliveryOptions>={})=>delivery=(createLocalDelivery({root,storage,guards:guards(),fault:(point:string)=>fault(point),...options})) as OrdinaryLocalDelivery;start();
+  const localRoot=()=>isProjectStore(store)?store.localDir:root;
+  const scope=()=>isProjectStore(store)?{databaseFile:path.join(store.localDir,'history.db')}:{};
+  const start=(options:Partial<LocalDeliveryOptions>={})=>delivery=(createLocalDelivery({root:localRoot(),...scope(),storage,guards:guards(),fault:(point:string)=>fault(point),...options})) as OrdinaryLocalDelivery;start();
   t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
   const get=()=>delivery.get({projectId:project.id});
   const put=(value=get(),name='Draft title')=>({...authority(value),expectedDraftRevision:value.draftRevision,draftId:value.draft?.draftId??randomUUID(),timelineId:timeline.id,baseRevision:timeline.revision,raw:{deliveryName:name}});
   const prepare=(value=get(),patch:Record<string,unknown>={}):LocalDeliveryPrepare&{input:LocalDeliveryRenderInput}=>({...authority(value),expectedIntentRevision:value.intentRevision,expectedIntentId:value.intent?.intentId??null,intentId:randomUUID(),timelineId:timeline.id,baseRevision:timeline.revision,
     draft:value.draft?{draftId:value.draft.draftId,revision:value.draftRevision,raw:value.draft.raw}:null,
     input:{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',...(value.draft?.raw.deliveryName?{deliveryName:value.draft.raw.deliveryName}:{})},...patch});
-  return {root,file:path.join(root,LOCAL_DELIVERY_FILENAME),project,asset,timeline,get,put,prepare,start,originalRender,get store(){return store;},get services(){return services;},get delivery(){return delivery;},get calls(){return calls;},
+  return {root:localRoot(),file:path.join(localRoot(),LOCAL_DELIVERY_FILENAME),project,asset,timeline,get,put,prepare,start,originalRender,get store(){return store;},get services(){return services;},get delivery(){return delivery;},get calls(){return calls;},
     setFault(fn: (point:string)=>void){fault=fn;},setRender(fn: (input:LocalDeliveryRenderInput)=>Promise<unknown>){render=fn;},setExportInspect(inspect: { (): Promise<{ status: string; code: string; }>; (): Promise<{ status: string; code: string; }>; (): Promise<{ status: string; code: string; }>; }){services=(createServices(store,new Map(),{exportOptions:{inspect}}) as TypedServices);},setGuards(value: { isRestored?: () => boolean; }){extraGuards=value;start();},
-    restart(){store.close();store=(openStore(root) as TypedStore);services=(createServices(store,new Map()) as TypedServices);start();},
+    restart(){store.close();store=(open(root) as TypedStore);services=(createServices(store,new Map()) as TypedServices);start();},
     snapshot(){return JSON.stringify(schemaObjects(store.db).map(({name,sql})=>({name,sql})))+'\n'+JSON.stringify(['projects','assets','timelines','timeline_requests','timeline_history','edit_tasks','exports'].map(table=>store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));},
     counts():number[]{return ['exports','timeline_requests','edit_tasks'].map(table=>store.db.prepare(`SELECT count(*) n FROM ${table}`).get()!.n as number);},
   };
@@ -128,7 +131,7 @@ test('foreign or malformed proof and forged acknowledgement cannot release pendi
 
 test('late original timeline replacement, source-owner transfer and lease loss cannot save terminal outcome',async t=>{
   for(const mode of ['timeline','source','lease']){
-    const f=await fixture(t),prepared=f.delivery.prepare(f.prepare()),gate=deferred(),entered=deferred();f.setRender(async (input: unknown)=>{const accepted=await f.originalRender(input);entered.resolve();await gate.promise;return accepted;});
+    const f=await fixture(t,{legacy:mode==='lease'}),prepared=f.delivery.prepare(f.prepare()),gate=deferred(),entered=deferred();f.setRender(async (input: unknown)=>{const accepted=await f.originalRender(input);entered.resolve();await gate.promise;return accepted;});
     const pending=f.delivery.execute(action(prepared));await entered.promise;
     if(mode==='timeline'){const changed={...f.timeline,id:randomUUID()};f.store.db.prepare('UPDATE timelines SET id=?,data=? WHERE id=?').run(changed.id,JSON.stringify(changed),f.timeline.id);}
     if(mode==='source')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(randomUUID(),f.asset.id));

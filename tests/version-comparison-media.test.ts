@@ -1,4 +1,4 @@
-import {projectApiPath} from '../packages/contracts/src/project-file.ts';
+import {projectRpcPath,projectApiPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureAsset,FixtureVersion} from './helpers/strict-timeline-core-types.ts';
 import type {AddressInfo} from 'node:net';
 import type {RootFailure} from './helpers/strict-root-error-types.ts';
@@ -11,7 +11,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
-import {getWorkspaceRestoreContext, ownsStoreLock} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore,getWorkspaceRestoreContext, ownsStoreLock} from '../packages/business/src/db.ts';
 import {workspaceRestoreError} from '../packages/business/src/workspace-restore-policy.ts';
 import {validateManagedFile} from '../packages/contracts/src/private-storage.ts';
 import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';
@@ -23,40 +23,40 @@ import {safePath} from '../packages/business/src/media.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {startServer} from '../apps/server/src/index.ts';
-import type {InspectProject} from '../apps/server/src/index.ts';
+import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {createVersionComparisonMediaHttp, readVersionComparisonMedia, versionComparisonMediaIdentity, type VersionComparisonMediaOptions} from '../apps/server/src/version-comparison-media.ts';
-import {createServerProject, schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {createServerProject, openProjectDatabase,projectDirFor,schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 import type { CreateReadStreamOptions, FileHandle } from 'fs/promises';
 import type { PathLike } from 'fs';
 
+import {isProjectStore} from '../packages/business/src/project-file/store.ts';
+import {resolveProjectMediaFile} from '../packages/business/src/project-media-storage.ts';
+import {dataFileSnapshot,databaseFiles} from './helpers/data-file-snapshot.ts';
+
 const token = 'synthetic-version-comparison-media-token';
 const hash = (bytes: NonSharedBuffer|BinaryLike) => createHash('sha256').update(bytes).digest('hex');
-async function manifest(root: string, relative: string|undefined = ''): Promise<({directory: string} | {file: string; hash: string})[]> {
-  const result = [];
-  for (const entry of await readdir(path.join(root, relative), {withFileTypes: true})) {
-    const name = path.join(relative, entry.name);
-    if (entry.isDirectory()) result.push({directory: name}, ...await manifest(root, name));
-    else if (!/^workbench\.sqlite(?:-wal|-shm)?$/.test(name) && name !== 'server.lock') result.push({file: name, hash: hash(await readFile(path.join(root, name)))});
-  }
-  return result.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-}
+const manifest=(root:string,databases:readonly string[]=[])=>dataFileSnapshot(root,databases);
 function replace(db: DatabaseSync, table: string, record: Record<string, unknown> & {id: string}) {db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(record), record.id);}
 // data_version counts other connections' commits only; total_changes() adds this connection's own writes.
 const changeMarks = (db: DatabaseSync) => [db.prepare('PRAGMA data_version').get()!.data_version, db.prepare('SELECT total_changes() AS n').get()!.n];
-async function fixture(t: test.TestContext, {serve = true, published = false} = {}) {
+async function fixture(t: test.TestContext, {serve = true, published = false, legacy = false} = {}) {
   const base = await mkdtemp(path.join(tmpdir(), 'mioon-version-comparison-')), root = path.join(base, 'source');
-  let store: TypedStore | undefined, services: TypedServices | undefined, server: Awaited<ReturnType<typeof startServer>> | undefined, worker: Worker | undefined, inspect: InspectProject | undefined;
+  let store: TypedStore | undefined, services: TypedServices | undefined, server: Awaited<ReturnType<typeof startServer>> | undefined, worker: Worker | undefined, inspect: InspectProject | undefined,inspectApp:InspectApplication|undefined;
   t.after(async () => {await server?.close(); await worker?.stop(); await services?.drain(); store?.close(); await rm(base, {recursive: true, force: true});});
   // The server knows the other project too: requests and damaged rows name it. Without a server
   // this project's store stays open, so the other project comes first.
-  const other = createServerProject(root, {name: 'Foreign project'}), foreign = (other.store as unknown as TypedStore).get('projects', other.projectId)!;
-  other.store.close();
-  const created = createServerProject(root, {name: 'Comparison source'});
-  store = (created.store as unknown as TypedStore);
-  const providers = createProviderRegistry({db: store.db, root, env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}});
+  let projectDir:string,project:{id:string;name:string},foreign:{id:string;name:string};
+  if(legacy){
+    if(serve)throw Error('Legacy fixtures only use their explicit direct test handler');
+    const native=openLegacyWorkspaceStore(root);store=native as TypedStore;projectDir=root;
+    project=native.put('projects',{id:randomUUID(),name:'Comparison source'});foreign=native.put('projects',{id:randomUUID(),name:'Foreign project'});
+  }else{
+    const other=createServerProject(root,{name:'Foreign project'});foreign=other.store.get('projects',other.projectId) as {id:string;name:string};other.store.close();
+    const created=createServerProject(root,{name:'Comparison source'});store=created.store as unknown as TypedStore;projectDir=created.store.projectDir;project=store.get('projects',created.projectId)!;
+  }
+  const providers = createProviderRegistry({db: store.db, root:projectDir, env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}});
   services = (createServices(store, providers) as unknown as TypedServices);
-  const project = store.get('projects', created.projectId)!;
   const shot = await services.call('shot.create', {projectId: project.id, title: 'Immutable source', prompt: 'Synthetic offline shape', duration: 2});
   const otherShot = await services.call('shot.create', {projectId: project.id, title: 'Other shot'});
   const input = {shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'mock', parameters: {delayMs: 0}};
@@ -67,7 +67,7 @@ async function fixture(t: test.TestContext, {serve = true, published = false} = 
     for (let count = 0; count < 10 && (store.get('jobs', submitted.id))!.status !== 'succeeded'; count++) await worker.tick();
     await worker.stop(); worker = undefined;
     job = store.get('jobs', submitted.id)!; assert.equal(job.status, 'succeeded', JSON.stringify(job.error));
-    version = store.get('versions', job.versionId!)!; asset = store.get('assets', version.assetId)!; bytes = await readFile(path.join(root, asset.relativePath));
+    version = store.get('versions', job.versionId!)!; asset = store.get('assets', version.assetId)!; bytes = await readFile(path.join(projectDir, asset.relativePath));
   } else {
     // Real submitted snapshot and production publication shape; only the media
     // payload is synthetic so corruption/transport cases never need decoding.
@@ -77,7 +77,7 @@ async function fixture(t: test.TestContext, {serve = true, published = false} = 
       duration: 2, hasVideo: true, hasAudio: false, sha256: hash(bytes), sizeBytes: bytes.length, relativePath: `media/result-${job.id}.mp4`,
       provenance: 'synthetic-mock', createdAt: job.createdAt} as FixtureAsset;
     asset.url = `/media/${asset.id}`;
-    await writeFile(path.join(root, asset.relativePath), bytes, {mode: 0o600}); store.put('assets', asset);
+    await writeFile(path.join(projectDir, asset.relativePath), bytes, {mode: 0o600}); store.put('assets', asset);
     version = {id: randomUUID(), projectId: project.id, shotId: shot.id, jobId: job.id, number: 1, providerId: job.providerId,
       model: job.model, isMock: true, snapshot: job.snapshot, assetId: asset.id, url: asset.url, sha256: asset.sha256, createdAt: job.createdAt};
     store.put('versions', version);
@@ -90,32 +90,38 @@ async function fixture(t: test.TestContext, {serve = true, published = false} = 
   if (serve) {
     await services.drain(); services = undefined; store!.close(); store = undefined;
     server = await startServer({dataDir: root, port: 0, token, chatGateway: async function* () {assert.fail('Media must not call AI');},
-      inspectProject: received => {inspect = received;}});
+      inspectProject: received => {inspect = received;},inspectApplication:received=>{inspectApp=received;}});
   }
   // While the server runs, the database is read and damaged on its own connection; otherwise on the open store's.
   const use = <T>(fn: (db: DatabaseSync) => T): T => inspect ? inspect(project.id, fn) : fn(store!.db);
+  const useForeign=<T>(read:(db:DatabaseSync)=>T):T=>{if(legacy)return read(store!.db);if(inspect)return inspect(foreign.id,read);const peer=openProjectDatabase(projectDirFor(root,foreign.id));try{return read(peer);}finally{peer.close();}};
+  if(server)for(const id of [project.id,foreign.id]){const opened:Response=await fetch(server.url+projectRpcPath(id),{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation:'project.get',input:{projectId:id}})});assert.equal(opened.status,200);await opened.arrayBuffer();}
   const rows = (db: DatabaseSync) => Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').map(({name}) =>
     [name, db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
-  const checkpoint = async () => ({...use(db => ({rows: rows(db), version: changeMarks(db)})), files: await manifest(root)});
-  return {base, root, project, foreign, shot, otherShot, job, version, asset, bytes, route, url, use,
+  const capture=(db:DatabaseSync)=>({rows:rows(db),schema:schemaObjects(db),version:changeMarks(db)});
+  const checkpoint = async () => ({...use(capture),foreign:useForeign(capture),application:inspectApp?.(capture),files:await manifest(root,[...use(databaseFiles),...useForeign(databaseFiles),...(inspectApp?.(databaseFiles)??[])])});
+  return {base, root,projectDir, project, foreign, shot, otherShot, job, version, asset, bytes, route, url, use,
     get db() {if (inspect) throw new Error('The server holds the project: use f.use(db => ...)'); return store!.db;}, get store() {return store!;}, get server() {return server!;},
     read: () => use(db => readVersionComparisonMedia(db, url, projectId => createOwnedMediaGraphReader(db, projectId))), checkpoint,
-    unchanged: async (before: Awaited<ReturnType<typeof checkpoint>>) => {use(db => {assert.deepEqual(rows(db), before.rows); assert.deepEqual(changeMarks(db), before.version);}); assert.deepEqual(await manifest(root), before.files);},
+    unchanged: async (before: Awaited<ReturnType<typeof checkpoint>>) => {use(db => {assert.deepEqual(rows(db), before.rows); assert.deepEqual(changeMarks(db), before.version);assert.deepEqual(schemaObjects(db),before.schema);});assert.deepEqual(useForeign(capture),before.foreign);assert.deepEqual(inspectApp?.(capture),before.application);assert.deepEqual(await manifest(root,[...use(databaseFiles),...useForeign(databaseFiles),...(inspectApp?.(databaseFiles)??[])]), before.files);},
     request: (selected: unknown = route, options: RequestInit|undefined = {}) => fetch(server!.url + selected, {...options, headers: {authorization: 'Bearer ' + token, ...options.headers}}),
     closeSource: async () => {await services?.drain(); services = undefined; store!.close(); store = undefined;}};
 }
 
-async function directServer(t: test.TestContext, f: Awaited<ReturnType<typeof fixture>>, options: Partial<VersionComparisonMediaOptions> = {}) {
-  const media = createVersionComparisonMediaHttp({db: f.db, root: f.root, readGraph: projectId => createOwnedMediaGraphReader(f.db, projectId),
-    validateFile: file => validateManagedFile(file, {root: f.root})!, createFiles: createFileResponses, resolvePath: safePath,
-    assertAvailable: () => {if (getWorkspaceRestoreContext(f.store)) throw workspaceRestoreError(); if (!ownsStoreLock(f.store)) throw Object.assign(Error('Unavailable'), {code: 'FILE_UNAVAILABLE', status: 404});}, ...options});
+async function comparisonPath(store:TypedStore,root:string,relative:string):Promise<string>{return isProjectStore(store)?resolveProjectMediaFile(store,relative).file:safePath(root,relative);}
+
+async function directServer(t: test.TestContext, f: Awaited<ReturnType<typeof fixture>>, options: Partial<VersionComparisonMediaOptions> = {},jsonErrors=false) {
+  const owner=f.store;
+  const media = createVersionComparisonMediaHttp({db: f.db, root: f.projectDir, readGraph: projectId => createOwnedMediaGraphReader(f.db, projectId),
+    validateFile: file => isProjectStore(owner)?resolveProjectMediaFile(owner,path.relative(f.projectDir,file)).info!:validateManagedFile(file, {root: f.projectDir})!, createFiles: createFileResponses, resolvePath:(root,relative)=>comparisonPath(owner,root,relative),
+    assertAvailable: () => {if (!ownsStoreLock(owner)) throw Object.assign(Error('Unavailable'), {code: 'FILE_UNAVAILABLE', status: 404});if (getWorkspaceRestoreContext(owner)) throw workspaceRestoreError();}, ...options});
   const server = http.createServer(async (req, res) => {
     try {const selected=new URL(req.url!, 'http://127.0.0.1');if(selected.pathname===projectApiPath(f.project.id,'version-comparison','media'))selected.pathname='/api/version-comparison/media';if (!await media.handle(req, res, selected)) res.writeHead(404).end();}
-    catch (error) {res.writeHead((error as RootFailure).status || 500); res.end((error as RootFailure).code);}
+    catch (error) {res.writeHead((error as RootFailure).status || 500,jsonErrors?{'content-type':'application/json'}:{});res.end(jsonErrors?JSON.stringify({ok:false,error:{code:(error as RootFailure).code}}):(error as RootFailure).code);}
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(async () => {await media.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));});
-  return (options: RequestInit|undefined = {}) => fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}${f.route}`, options);
+  return (options: RequestInit|undefined = {},route=f.route) => fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}${route}`, options);
 }
 
 for (const published of [false, true]) test(`comparison GET/HEAD/ranges serve exact ${published ? 'production Mock-published' : 'historical'} version with no writes`, async t => {
@@ -221,7 +227,7 @@ test('foreign and duplicate reverse owners cannot disguise generated bytes as an
 });
 
 test('missing file, symlink, hardlink and other-writable files never disclose media', async t => {
-  const f = await fixture(t), file = path.join(f.root, f.asset.relativePath), saved = file + '.saved';
+  const f = await fixture(t), file = path.join(f.projectDir, f.asset.relativePath), saved = file + '.saved';
   await rename(file, saved);
   for (const setup of [async () => {}, () => symlink(saved, file), () => link(saved, file), async () => {await writeFile(file, f.bytes); await chmod(file, 0o666);}]) {
     await setup(); const response = await f.request(); assert.equal(response.status, 404); await response.text(); await rm(file, {force: true});
@@ -233,7 +239,7 @@ for (const stage of ['resolve', 'open', 'stat']) test(`late ${stage} ownership c
   const f = await fixture(t, {serve: false}); let opened = 0, closed = 0, streamed = 0;
   const corrupt = () => withoutForeignKeys(f.db, () => f.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.foreign.id, f.asset.id));
   const request = await directServer(t, f, {
-    resolvePath: async (...args) => {const file = await safePath(...args); if (stage === 'resolve') corrupt(); return file;},
+    resolvePath: async (...args) => {const file = await comparisonPath(f.store,...args); if (stage === 'resolve') corrupt(); return file;},
     openFile: async (...args) => {const handle = await open(...args); opened++; if (stage === 'open') corrupt(); let stats = 0;
       return {stat: async () => {const result = await handle.stat(); if (stage === 'stat' && ++stats === 2) corrupt(); return result;},
         close: async () => {closed++; await handle.close();}, createReadStream: (options?: CreateReadStreamOptions|undefined) => {streamed++; return handle.createReadStream(options);}};},
@@ -258,23 +264,24 @@ test('late path replacement and immutable record edits cannot reuse a valid earl
 test('loss of actual workspace lock refuses playback, not just copied store metadata', async t => {
   const f = await fixture(t, {serve: false}); let opened = 0;
   const request = await directServer(t, f, {openFile: async (...args) => {opened++; return open(...args);}});
-  await unlink(path.join(f.root, 'server.lock'));
+  await f.closeSource();
   const response = await request(); assert.equal(response.status, 404); await response.text(); assert.equal(opened, 0);
 });
 
 test('restored workspace including held source versions refuses this route before file access', async t => {
-  const f = await fixture(t, {serve: false}); await f.closeSource();
+  const f = await fixture(t, {serve: false,legacy:true}),seed={...f}; await f.closeSource();
   const backup = path.join(f.base, 'backup'), destination = path.join(f.base, 'restored');
   await createWorkspaceBackup({source: f.root, destination: backup});
   const restored = await restoreWorkspaceBackup({directory: backup, destination});
-  // The restored server holds the project: read it on the server's own connection.
-  let inspect!: InspectProject;
-  const server = await startServer({dataDir: destination, port: 0, token, inspectProject: received => {inspect = received;}}); t.after(() => server.close());
+  const store=openLegacyWorkspaceStore(destination);t.after(()=>store.close());
+  const current={...seed,root:destination,projectDir:destination,store:store as TypedStore,db:store.db};
+  let opened=0;const request=await directServer(t,current,{openFile:async(...args)=>{opened++;return open(...args);}},true);
+  const inspect:InspectProject=(projectId,read)=>{assert.equal(projectId,f.project.id);return read(store.db);};
   assert.ok(inspect(f.project.id, db => db.prepare("SELECT 1 FROM workspace_restore_holds WHERE kind='versions' AND id=?").get(f.version.id)));
-  const before = await manifest(destination), changes = inspect(f.project.id, changeMarks);
+  const before = await manifest(destination,databaseFiles(store.db)), changes = inspect(f.project.id, changeMarks);
   for (const origin of ['normal', restored.workspaceOrigin, 'restored:' + restored.workspaceOrigin]) {
-    const url = new URL(f.route, server.url); url.searchParams.set('workspaceOrigin', origin as string);
-    for (const method of ['GET', 'HEAD']) {const response = await fetch(url, {method, headers: {authorization: 'Bearer ' + token}}); assert.equal(response.status, 409); if (method === 'GET') assert.equal((await response.json()).error.code, 'RESTORE_OPERATION_UNAVAILABLE');}
+    const url = new URL(f.route,'http://127.0.0.1'); url.searchParams.set('workspaceOrigin', origin as string);
+    for (const method of ['GET', 'HEAD']) {const response = await request({method},url.pathname+url.search); assert.equal(response.status, 409); if (method === 'GET') assert.equal((await response.json()).error.code, 'RESTORE_OPERATION_UNAVAILABLE');}
   }
-  assert.deepEqual(inspect(f.project.id, changeMarks), changes); assert.deepEqual(await manifest(destination), before);
+  assert.equal(opened,0);assert.deepEqual(inspect(f.project.id, changeMarks), changes); assert.deepEqual(await manifest(destination,databaseFiles(store.db)), before);
 });

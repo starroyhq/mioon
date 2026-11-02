@@ -11,6 +11,7 @@ import { isAppLibraryHeld, projectFileIdentity } from '@mioon/business/app-db/in
 import { createComfyConnector } from '@mioon/business/comfy/connector';
 import { createComfySettings } from '@mioon/business/comfy/settings';
 import { createAppCompanionDocuments } from '@mioon/business/companion-scope';
+import {resolveProjectMediaFile} from '@mioon/business/project-media-storage';
 import type { WorkspaceStore } from '@mioon/business/db';
 import { ownsStoreLock } from '@mioon/business/db';
 import { createEditTasks } from '@mioon/business/edit-tasks';
@@ -242,7 +243,8 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     const exportFileRecovery: ExportFileRecovery=createExportFileRecovery({root,db:store.db,signal:shutdown.signal,hold:deletionGate.hold,
       guards:{isTimelineRenderRecord,readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(store.db,projectId,assetId)},
       assertAvailable:()=>{if(restored)throw workspaceRestoreError();if(!ownsStoreLock(store))throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件不可用。',409);},
-      validateFile:(file,allowMissing)=>validateManagedFile(file,{root,allowMissing}),validateDirectory:directory=>validateManagedDirectory(directory,{root})});
+      validateFile:(file,allowMissing)=>kernel?resolveProjectMediaFile(store,path.relative(root,file),{allowMissing}).info:validateManagedFile(file,{root,allowMissing}),
+      validateDirectory:directory=>validateManagedDirectory(directory,{root:kernel?path.join(root,'media'):root})});
     let localShotText!: LocalShotText,localShotTextHttp: HttpHandler=async()=>false,audioPreviewHttp: HttpHandler=async()=>false,continuousAudioHttp: HttpHandler=async()=>false;
     const ordinary = services;
     const neverMutate=()=>{throw new Error('Read-only shot receipt boundary');};

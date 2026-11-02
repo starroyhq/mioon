@@ -24,7 +24,7 @@ import {ensureProjectRow} from './project-initialization.ts';
 import {readWorkspaceInfo} from '../workspace-info.ts';
 import {mediaExecutable} from '@mioon/business/media-environment';
 import packageMetadata from '../../../../package.json' with {type: 'json'};
-import {ensurePrivateDirectory} from '@mioon/contracts/private-storage';
+import {ensurePrivateDirectory, PrivateStorageError} from '@mioon/contracts/private-storage';
 import {registerProjectTransactionObserver} from '@mioon/business/project-file/index';
 import {createProjectCoverPublisher} from './cover-publisher.ts';
 
@@ -124,7 +124,14 @@ export async function composeHostedProject(context: ProjectHostContext, library:
       if (!asset || field(asset, 'projectId') !== projectId) throw new AppError('NOT_FOUND', '素材不存在', 404);
       const relativePath = field(asset, 'relativePath'), mimeType = field(asset, 'mimeType');
       if (typeof relativePath !== 'string' || typeof mimeType !== 'string') throw new AppError('NOT_FOUND', '素材不存在', 404);
-      const file = resolveProjectMediaFile(store, relativePath).file;
+      let resolved: ReturnType<typeof resolveProjectMediaFile>;
+      try {resolved = resolveProjectMediaFile(store, relativePath, {allowMissing: true});}
+      catch (error) {
+        if (error instanceof PrivateStorageError) throw new AppError('FILE_UNAVAILABLE', '本地文件不可用。', 404);
+        throw error;
+      }
+      if (!resolved.info) throw new AppError('FILE_UNAVAILABLE', '本地文件不可用。', 404);
+      const file = resolved.file;
       const headers: Record<string, string> = {'Content-Type': mimeType, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=3600'};
       if (!delivery && local.searchParams.has('download')) headers['Content-Disposition'] = `attachment; filename="mioon.${mimeType === 'video/mp4' ? 'mp4' : 'bin'}"`;
       await files.send(req, res, {file, headers: playback ? () => timelineExportPreviewResponseHeaders(store.db, local, guards, playback) : delivery ? () => timelineDeliveryResponseHeaders(store.db, local, guards, delivery) : headers, ranges: true});

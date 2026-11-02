@@ -1,3 +1,7 @@
+import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {isProjectDatabase} from '../packages/business/src/project-file/held-files.ts';
+import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {downgradeReviewedWorkspace} from './helpers/reviewed-schema-layers.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -24,8 +28,9 @@ import {createTestAuthorizations, authorizeTestScope} from './helpers/agent-auth
 import {createServerProject} from './helpers/project-database.ts';
 
 // These lists independently pin the pre-existing SQL quota's two inventories.
-const byteTables = ['agent_task_runs_v2', 'agent_task_steps_v2', 'agent_task_changes_v2', 'agent_task_events_v2',
+const legacyByteTables = ['agent_task_runs_v2', 'agent_task_steps_v2', 'agent_task_changes_v2', 'agent_task_events_v2',
   'agent_task_controls_v2', 'agent_task_control_states_v2', 'agent_task_policy_v2', 'agent_task_policy_requests_v2', 'agent_task_edit_receipts_v2'];
+const byteTables=legacyByteTables.filter(name=>!['agent_task_policy_v2','agent_task_policy_requests_v2'].includes(name));
 const rowTables = [...byteTables.filter(name => name !== 'agent_task_edit_receipts_v2'), 'agent_task_job_origins_v2', 'agent_task_imports_v2'];
 const diagnosticTables = [...new Set([...byteTables, ...rowTables])].sort();
 function record(value: unknown): Record<string, unknown> {
@@ -33,11 +38,12 @@ function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 function retained(db: DatabaseSync) {
-  return diagnosticTables.map(name => ({name, rows: db.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()}));
+  return (isProjectDatabase(db)?diagnosticTables:[...new Set([...legacyByteTables,'agent_task_job_origins_v2','agent_task_imports_v2'])].sort()).map(name => ({name, rows: db.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()}));
 }
-function temporary(t: TestContext) {
+function temporary(t: TestContext,legacy=false) {
   const root = mkdtempSync(join(realpathSync(tmpdir()), 'mioon-agent-storage-diagnostics-v2-'));
-  const {projectId, store} = createServerProject(root, {name: 'Synthetic diagnostics'}); let cleanup = async () => {};
+  const created=legacy?null:createServerProject(root,{name:'Synthetic diagnostics'}),store=created?.store??openLegacyWorkspaceStore(root),projectId=created?.projectId??randomUUID();
+  if(legacy)store.put('projects',{id:projectId,name:'Legacy diagnostics',revision:1}); let cleanup = async () => {};
   t.after(async () => {await cleanup(); if (store.db.isOpen) store.close(); rmSync(root, {recursive: true, force: true});});
   return {root, store, projectId, journal: createAgentTaskJournal(store), beforeClose(value: () => Promise<void>) {cleanup = value;}};
 }
@@ -72,7 +78,7 @@ test('storage diagnostics preserve the historical byte and row inventories, incl
 });
 
 test('fresh60 reports256MiB, genuine inline58 reports64MiB, and pre-Agent databases are unavailable without mutation', t => {
-  const f = temporary(t), fresh = readAgentTaskStorage(f.store.db), before = retained(f.store.db);
+  const f = temporary(t,true), fresh = readAgentTaskStorage(f.store.db), before = retained(f.store.db);
   assert.equal(fresh.version, 1); assert.equal(fresh.format, 'model_request_references'); assert.equal(fresh.limits.bytes, 256 * 1024 * 1024);
   downgradeReviewedWorkspace(f.store.db,58);
   const historical = readAgentTaskStorage(f.store.db);
@@ -98,17 +104,18 @@ test('real server and management client doctor return only safe aggregate storag
   const server = await startServer({dataDir: f.root, port: 0, taskGatewayV2: async function*() {modelRequests++; throw Error('Doctor must never execute a model');},
     inspectProject: received => {inspect = received;}});
   f.beforeClose(async () => {await server.close();});
-  // While the server runs, the database is read on its own connection.
+  // Open the requested project explicitly; a global doctor must not acquire it.
+  const opened=await fetch(server.url+projectRpcPath(f.projectId),{method:'POST',headers:{authorization:`Bearer ${server.token}`,'content-type':'application/json'},body:JSON.stringify({operation:'project.get',input:{projectId:f.projectId}})});assert.equal(opened.status,200);
   const before = inspect(f.projectId, db => retained(db)), routes: string[] = [];
   const client = createAgentClient({env: {MIOON_BASE_URL: server.url, MIOON_TOKEN: server.token}, fetchImpl: async (url, options) => {
     assert.equal(options?.method, 'GET'); routes.push(new URL(String(url)).pathname); return fetch(url, options);
   }});
-  const doctor = await client.doctor({projectId: f.projectId}), second = await client.doctor();
-  assert.ok(doctor.storage); assert.deepEqual(doctor.storage, inspect(f.projectId, db => readAgentTaskStorage(db))); assert.deepEqual(second.storage, doctor.storage);
+  const doctor = await client.doctor({projectId: f.projectId}), replay=await client.doctor({projectId:f.projectId}),second = await client.doctor();
+  assert.ok(doctor.storage); assert.deepEqual(doctor.storage, inspect(f.projectId, db => readAgentTaskStorage(db))); assert.deepEqual(replay.storage, doctor.storage);assert.equal(second.storage,undefined);
   assert.equal(doctor.storage.limits.bytes, 256 * 1024 * 1024); assert.equal(doctor.storage.format, 'model_request_references');
   assert.equal(doctor.verification, 'not_tested'); assert.equal(doctor.projectId, f.projectId); assert.equal(second.projectId, undefined);
   assert.equal(doctor.settings.secret.configured, false); assert.equal(modelRequests, 0);
-  assert.deepEqual(routes, ['/api/agent/diagnostics', '/api/agent/diagnostics']); assert.deepEqual(inspect(f.projectId, db => retained(db)), before);
+  assert.deepEqual(routes, ['/api/agent/diagnostics', '/api/agent/diagnostics', '/api/agent/diagnostics']); assert.deepEqual(inspect(f.projectId, db => retained(db)), before);
   const serialized = JSON.stringify(doctor);
   for (const denied of [marker, privatePath, f.root, server.token]) assert.equal(serialized.includes(denied), false);
 });

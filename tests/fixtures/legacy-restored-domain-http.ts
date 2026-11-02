@@ -17,7 +17,7 @@ import {assertProjectRpc, projectHandlerTarget} from '../../apps/server/src/proj
 import {callObservedRpc} from '../../apps/server/src/rpc-observation.ts';
 
 const RPC_OPERATIONS = new Set([
-  'timeline.track.add', 'timeline.get', 'shot.create', 'job.retry', 'project.create', 'project.rename', 'project.delete',
+  'timeline.colour.image.inspect', 'timeline.track.add', 'timeline.get', 'shot.create', 'job.retry', 'project.create', 'project.rename', 'project.delete',
   'export.cancel', 'export.activity.get', 'export.output.get',
   'workspace.restore.inspect', 'workspace.backup.inspect', 'workspace.settings.get', 'workspace.settings.set',
   'workspace.backup.status', 'workspace.backup.list', 'workspace.backup.create', 'workspace.backup.restore.stage',
@@ -55,12 +55,13 @@ async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
   return value as Record<string, unknown>;
 }
 
-export async function startLegacyRestoredDomainHttp({root, token}: {readonly root: string; readonly token: string}): Promise<{readonly url: string; close(): Promise<void>}> {
+export async function startLegacyRestoredDomainHttp({root, token, inspectStore}: {readonly root: string; readonly token: string; readonly inspectStore?: (inspect: <T>(read:(db:import('node:sqlite').DatabaseSync)=>T)=>T)=>void}): Promise<{readonly url: string; close(): Promise<void>}> {
   if (typeof token !== 'string' || token.length === 0) throw new TypeError('A synthetic fixture token is required');
   const store = openLegacyWorkspaceStore(root);
   let services: ReturnType<typeof createServices> | undefined, tasks: ReturnType<typeof createEditTasks> | undefined;
   try {
     if (getWorkspaceRestoreContext(store) === null) throw new TypeError('This fixture only serves verified historical restored domains');
+    inspectStore?.(read => read(store.db));
     services = createServices(store, new Map());
     tasks = createEditTasks({store, services});
     const restoredServices = services, restoredTasks = tasks;

@@ -39,13 +39,13 @@ const count=(db: DatabaseSync,table: string)=>db.prepare(`SELECT count(*) AS n F
 const rows=(db: DatabaseSync)=>JSON.stringify(schemaObjects(db).filter(({type})=>type==='table').map(({name})=>[name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
 async function until<T>(fn: () => T | Promise<T>,label: unknown){const end=Date.now()+10000;while(Date.now()<end){const result=await fn();if(result)return result;await pause(5);}assert.fail(`Timed out: ${label}`);}
 function fixture(t:test.TestContext,{autoRun=true,decode}:{autoRun?:boolean;decode?:RecoveryDecoder}={}){
- const root=mkdtempSync(path.join(tmpdir(),'mioon-frame-recovery-'));let store:TypedStore,services: TypedFrameServices,calls=0,fault:FrameFault=()=>{};
+ const root=mkdtempSync(path.join(tmpdir(),'mioon-frame-recovery-'));let exactStore:ReturnType<typeof openStore>,store:TypedStore,services: TypedFrameServices,calls=0,fault:FrameFault=()=>{};
  const decoder=async (input: RecoveryDecodeInput)=>{calls++;if(decode)return decode(input);input.beforeSpawn(input.signal);return {bytes,provenance:provenance(input.asset,input.requestedFrame)};};
- function start(){store=(openStore(root) as TypedStore);services=(createFrameServices(store,({autoRun,decode:decoder,fault:(label:string,context?:Record<string,unknown>)=>fault(label,context)} as unknown as Parameters<typeof createFrameServices>[1])) as TypedFrameServices);}
- start();const project=store!.put('projects',{id:randomUUID(),name:'Frame recovery project'}),sourceBytes=Buffer.from('synthetic private source'),id=randomUUID(),relativePath=`media/${id}.mp4`;
+ function start(){exactStore=openStore(root);store=(exactStore as TypedStore);services=(createFrameServices(store,({autoRun,decode:decoder,fault:(label:string,context?:Record<string,unknown>)=>fault(label,context)} as unknown as Parameters<typeof createFrameServices>[1])) as TypedFrameServices);}
+ start();const project=store!.put('projects',{id:exactStore!.projectId,name:'Frame recovery project'}),sourceBytes=Buffer.from('synthetic private source'),id=randomUUID(),relativePath=`media/${id}.mp4`;
  writeFileSync(path.join(root,relativePath),sourceBytes,{mode:0o600});const asset=store!.put('assets',{id,projectId:project.id,name:'Original.mp4',mimeType:'video/mp4',sha256:digest(sourceBytes),sizeBytes:sourceBytes.length,relativePath,width:4,height:2,duration:1,provenance:'user-import'});
  t.after(async()=>{try{await services.drain();}finally{store.close();rmSync(root,{recursive:true,force:true});}});
- return {root,project,asset,get store(){return store;},get services(){return services;},get calls(){return calls;},setFault(fn: FrameFault){fault=fn;},
+ return {root,get stagingRoot(){return exactStore.tempDir;},project,asset,get store(){return store;},get services(){return services;},get calls(){return calls;},setFault(fn: FrameFault){fault=fn;},
   input:()=>({projectId:project.id,sourceAssetId:asset.id,sourceHash:asset.sha256,sourceFrame:0,requestId:randomUUID()}),
   call:((async(op: string|number,input: unknown)=>services.handlers[op](input)) as unknown as TypedCall),get:async (taskId: unknown)=>services.handlers['frame.task.get']({projectId:project.id,taskId}),
   control:(value: { id: unknown; revision: unknown; })=>({projectId:project.id,taskId:value.id,expectedRevision:value.revision,requestId:randomUUID()}),
@@ -55,7 +55,7 @@ const state=(f: Awaited<ReturnType<typeof fixture>>,id: unknown,expected: string
 
 test('pre-ACK failure rolls back task and request atomically without decoding or staging',async t=>{
  const f=fixture(t),before=rows(f.store.db),input=f.input();f.setFault((label: string)=>{if(label==='before_request_receipt')throw Error('synthetic admission failure');});
- await assert.rejects(f.call('frame.extract',input),error('FRAME_STORAGE_FAILED'));await pause(0);assert.equal(rows(f.store.db),before);assert.equal(f.calls,0);assert.equal(existsSync(path.join(f.root,'frame-staging')),false);
+ await assert.rejects(f.call('frame.extract',input),error('FRAME_STORAGE_FAILED'));await pause(0);assert.equal(rows(f.store.db),before);assert.equal(f.calls,0);assert.equal(existsSync(path.join(f.stagingRoot,'frame-staging')),false);
  assert.equal(await f.call('frame.request.get',{projectId:f.project.id,requestId:input.requestId}),null);
 });
 
@@ -72,17 +72,17 @@ test('lost ACK lookup and replay never start extraction; restart only marks inte
 for(const phase of ['after_result_manifest','after_result_receipt','after_media_publication','before_result_commit'])test(`${phase} retains exact local result; explicit recovery publishes without re-decoding`,async t=>{
  const f=fixture(t),input=f.input();f.setFault((label: string)=>{if(label===phase)throw Error('PRIVATE_SENTINEL checkpoint failure');});
  const ack=await f.call('frame.extract',input),failed=await state(f,ack.id,'local_result_error');assert.equal(failed.started,true);assert.equal(failed.result,null);assert.equal(f.calls,1);assert.equal(count(f.store.db,'assets'),1);
- const initialReceipt=readFileSync(path.join(f.root,'frame-staging',`${ack.id}.json`),'utf8');assert.ok(!JSON.stringify(failed).includes('PRIVATE_SENTINEL'));f.setFault(()=>{});await f.restart();
+ const initialReceipt=readFileSync(path.join(f.stagingRoot,'frame-staging',`${ack.id}.json`),'utf8');assert.ok(!JSON.stringify(failed).includes('PRIVATE_SENTINEL'));f.setFault(()=>{});await f.restart();
  const current=await f.get(ack.id),control=f.control(current),recovery=await f.call('frame.task.recoverResult',control);assert.equal(recovery.state,'persisting');assert.equal(recovery.revision,current.revision+1);
  assert.deepEqual(await f.call('frame.task.recoverResult',control),recovery);const result=await state(f,ack.id,'succeeded');assert.equal(f.calls,1);assert.equal(count(f.store.db,'assets'),2);assert.equal(result.result.assetId,JSON.parse(initialReceipt).assetId);
- assert.deepEqual(readFileSync(path.join(f.root,'media',`${result.result.assetId}.png`)),bytes);assert.equal(readFileSync(path.join(f.root,'frame-staging',`${ack.id}.json`),'utf8'),initialReceipt);
+ assert.deepEqual(readFileSync(path.join(f.root,'media',`${result.result.assetId}.png`)),bytes);assert.equal(readFileSync(path.join(f.stagingRoot,'frame-staging',`${ack.id}.json`),'utf8'),initialReceipt);
  assert.deepEqual(await f.call('frame.extract',input),ack);assert.deepEqual(await f.call('frame.task.recoverResult',control),recovery);await f.restart();assert.equal((await f.get(ack.id)).state,'succeeded');assert.equal(f.calls,1);
 });
 
 for(const damage of ['missing-manifest','partial-png','wrong-png','wrong-manifest','symlink-png','unsafe-directory'])test(`recovery refuses ${damage} without new receipt or decode`,async t=>{
  const f=fixture(t);f.setFault((label: string)=>{if(label==='after_result_manifest')throw Error('synthetic staged result');});
  const ack=await f.call('frame.extract',f.input()),failed=await state(f,ack.id,'local_result_error');f.setFault(()=>{});
- const pngFile=path.join(f.root,'frame-staging',`${ack.id}.png`),manifest=path.join(f.root,'frame-staging',`${ack.id}.json`);
+ const pngFile=path.join(f.stagingRoot,'frame-staging',`${ack.id}.png`),manifest=path.join(f.stagingRoot,'frame-staging',`${ack.id}.json`);
  if(damage==='missing-manifest')unlinkSync(manifest);
  if(damage==='partial-png')writeFileSync(pngFile,bytes.subarray(0,30));
  if(damage==='wrong-png'){const wrong=Buffer.from(bytes);wrong[45]^=1;writeFileSync(pngFile,wrong);}
@@ -139,7 +139,7 @@ test('unconfirmed exact child close retains the active slot and bounded shutdown
 
 test('fresh missing checkpoint rejection carries only exact authoritative not-accepted proof',async t=>{
  const f=fixture(t);f.setFault((label: string)=>{if(label==='after_result_manifest')throw Error('synthetic staged failure');});
- const ack=await f.call('frame.extract',f.input()),failed=await state(f,ack.id,'local_result_error');f.setFault(()=>{});unlinkSync(path.join(f.root,'frame-staging',`${ack.id}.json`));
+ const ack=await f.call('frame.extract',f.input()),failed=await state(f,ack.id,'local_result_error');f.setFault(()=>{});unlinkSync(path.join(f.stagingRoot,'frame-staging',`${ack.id}.json`));
  const input=f.control(failed),before=rows(f.store.db),changes=f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
  await assert.rejects(f.call('frame.task.recoverResult',input),cause=>{
   assert.equal((cause as Failure).code,'FRAME_RESULT_INVALID');const proof={status:'not_accepted',projectId:f.project.id,operation:'frame.task.recoverResult',requestId:input.requestId,inputHash:digest(canonicalFrameInput(input))};

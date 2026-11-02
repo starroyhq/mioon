@@ -1,3 +1,4 @@
+import {expectedContentMetadata} from './helpers/kernel-content-metadata.ts';
 import {projectRpcPath, isProjectId} from '../packages/contracts/src/project-file.ts';
 import type {PipedProcess,SqlRows,ProcessOutcome,BackendReady,IpcMessage,WireMessage,WireData,WireEnvelope,WireCall} from './helpers/strict-timeline-wire-response-types.ts';
 import type {SchemaNode,TestTool,TestCatalog,TestOperationDefinition,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
@@ -24,7 +25,7 @@ import {IDS, TOKEN} from './helpers/mutation-wire-fixture.ts';
 import {PRIVATE, RANGE_IDS} from './helpers/source-range-wire-fixture.ts';
 import type {ProjectState} from './helpers/project-state.ts';
 
-interface StorageSnapshot {rows: ProjectState['tables']; version: [number, number]}
+interface StorageSnapshot {projectDir:string;rows: ProjectState['tables']; version: [number, number]}
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const helper = path.join(repo, 'tests/helpers/source-range-wire-fixture.ts');
@@ -120,17 +121,17 @@ async function fixture(t: test.TestContext) {
     return ready.pid;
   }
   await start();
-  async function read(): Promise<StorageSnapshot> {
+  async function read(projectId:string=IDS.project,type:'storage'|'corrupt-sources'='storage'): Promise<StorageSnapshot> {
     const child = run.child;
     if (child.exitCode !== null || child.signalCode || !child.connected) throw Error('No running backend to inspect');
     const id = randomUUID(), reply = Promise.withResolvers<StorageSnapshot>(); pending.set(id, reply);
     const timer = setTimeout(() => reply.reject(Error('The backend did not answer the storage question within 10 seconds')), 10_000);
     try {
-      child.send({type: 'storage', id, projectId: IDS.project}, error => { if (error) reply.reject(error); });
+      child.send(type==='storage'?{type,id,projectId}:{type,id}, error => { if (error) reply.reject(error); });
       return await reply.promise;
     } finally { clearTimeout(timer); pending.delete(id); }
   }
-  const storage = async () => (await read()).rows;
+  const storage = async (projectId:string=IDS.project) => (await read(projectId)).rows;
   const version = async () => (await read()).version;
   const checkpoint = async () => read();
   const unchanged = async (before:Awaited<ReturnType<typeof checkpoint>>,label:string) => {
@@ -185,7 +186,7 @@ async function fixture(t: test.TestContext) {
     if (expectedError) assert.equal(envelope.error.code, expectedError);
     return envelope;
   }
-  return {root, storage, checkpoint, unchanged, request, cli, cliArgs, client, mcp,
+  return {root,corruptSources:async()=>{await request('asset.range.get',{projectId:RANGE_IDS.corruptProject,assetId:RANGE_IDS.mismatchedOwner});return (await read(RANGE_IDS.corruptProject,'corrupt-sources')).rows;},projectRoot:async()=>(await read()).projectDir, storage, checkpoint, unchanged, request, cli, cliArgs, client, mcp,
     http: (async (...args:Parameters<typeof request>) => (await request(...args)).envelope) as WireCall,
     get url() { return url; }, get pid() { return run.child.pid; },
     restart: async () => { await stopOwned(run.child); return start(); },
@@ -220,6 +221,7 @@ async function lossProxy(t:test.TestContext, backend:Awaited<ReturnType<typeof f
 
 function onlyRangeWrites(before: Record<string,Record<string,unknown>[]>, after: Record<string,Record<string,unknown>[]>, expectedTargets: { revision: number; projectId: string; assetId: string; }[]) {
   assert.deepEqual(Object.keys(after), Object.keys(before), 'saving a range cannot create tables');
+  const metadata=expectedContentMetadata(before,after);
   const targets = before.agent_task_target_revisions_v2.map(row => ({...row}));
   for (const {projectId, assetId, revision} of expectedTargets) {
     const index = targets.findIndex(row => row.projectId === projectId && row.kind === 'asset_range' && row.targetId === assetId);
@@ -230,7 +232,7 @@ function onlyRangeWrites(before: Record<string,Record<string,unknown>[]>, after:
     }
   }
   for (const table of Object.keys(before)) if (!rangeTables.has(table))
-    assert.deepEqual(after[table], table === 'agent_task_target_revisions_v2' ? targets : before[table], `${table}: only the exact saved range target revisions may change`);
+    assert.deepEqual(after[table], table === 'agent_task_target_revisions_v2' ? targets : metadata[table]??before[table], `${table}: only the exact saved range target revisions may change`);
 }
 
 function noRangeInspectionFields(value: unknown) {
@@ -325,9 +327,15 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
   });
 
   await t.test('changed reuse, stale revision, missing keys and invalid bounds never write', async () => {
+    const owner=await backend.checkpoint(),foreignInput={...first,projectId:IDS.other,assetId:IDS.otherAsset};
+    const independent=await backend.http('asset.range.set',foreignInput);
+    assert.equal(independent.data.projectId,IDS.other);assert.equal(independent.data.assetId,IDS.otherAsset);assert.equal(independent.data.revision,1);
+    assert.deepEqual(independent.data.range,{inFrame:first.inFrame,outFrame:first.outFrame});
+    assert.deepEqual(await backend.cli('asset.range.set',foreignInput),independent);assert.deepEqual(await backend.mcp('asset.range.set',foreignInput),independent);
+    assert.equal((await backend.storage(IDS.other)).asset_range_requests.filter(row=>row.requestId===first.requestId).length,1,'one isolated foreign-project receipt');
+    await backend.unchanged(owner,'an independent project cannot affect the original owner');
     const before = (await backend.checkpoint());
-    for (const changed of [{...first, outFrame: 32}, {...first, expectedRevision: 2}, {...first, assetId: RANGE_IDS.audio},
-      {...first, projectId: IDS.other, assetId: IDS.otherAsset}]) {
+    for (const changed of [{...first, outFrame: 32}, {...first, expectedRevision: 2}, {...first, assetId: RANGE_IDS.audio}]) {
       const result = await backend.http('asset.range.set', changed, 'IDEMPOTENCY_CONFLICT');
       assert.equal(result.data, undefined); assert.deepEqual(Object.keys(result.error.details), ['requestId']);
       assert.deepEqual(await backend.cli('asset.range.set', changed, 'IDEMPOTENCY_CONFLICT'), result);
@@ -360,6 +368,7 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
   });
 
   await t.test('safe ownership and unsupported-media errors agree on all actual transports', async () => {
+    const corruptBefore=await backend.corruptSources();
     const before = (await backend.checkpoint());
     for (const operation of operations) {
       const set = operation.endsWith('.set'), fields = set ? {expectedRevision: 0, requestId: 'source-range-no-target', inFrame: 0, outFrame: 1} : {};
@@ -390,6 +399,7 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
       }
     }
     await backend.unchanged(before, 'ownership and media-type failures');
+    assert.deepEqual(await backend.storage(RANGE_IDS.corruptProject),corruptBefore,'every corrupt-project row stays unchanged by ownership denials');
   });
 
   await t.test('saved audio and long-source ranges are independent metadata and shared replay keys are global', async () => {
@@ -427,6 +437,6 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
     onlyRangeWrites(before, (await backend.storage()), [{...target, revision: 4}]);
     assert.deepEqual((await backend.http('timeline.get', {projectId: IDS.project})).data, timeline);
     assert.equal(await backend.audit(), '', 'zero model/provider, non-owned network or media subprocess attempts');
-    assert.deepEqual((await readdir(path.join(backend.root, 'media')) as unknown), [], 'metadata-only wire fixture never creates media files');
+    assert.deepEqual((await readdir(path.join(await backend.projectRoot(), 'media')) as unknown), [], 'metadata-only wire fixture never creates media files');
   });
 });

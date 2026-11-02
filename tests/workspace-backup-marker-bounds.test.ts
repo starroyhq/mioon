@@ -62,7 +62,7 @@ test('bounded marker projection refuses unsafe integer values without JavaScript
 });
 
 test('ordinary24 unknown journal survives startup migration and current cold archive while strict restore refuses it',async t=>{
- const {openStore}=await import('../packages/business/src/db.ts');
+ const {openLegacyWorkspaceStore:openStore}=await import('../packages/business/src/db.ts');
  const {restoreWorkspaceBackup}=await import('../packages/business/src/workspace-restore.ts');
  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'backup-custom-journal-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const source=path.join(root,'source'),backup24=path.join(root,'backup24'),backupCurrent=path.join(root,'backup-current'),destination=path.join(root,'restore41');

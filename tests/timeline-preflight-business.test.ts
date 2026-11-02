@@ -16,6 +16,8 @@ import path from 'node:path';
 import {createServer} from 'node:http';
 import {isExportPreflightResponse,EXPORT_PREFLIGHT_LIMITS} from '@mioon/contracts';
 import {openStore} from '../packages/business/src/db.ts';
+import {createProjectFile} from '../packages/business/src/project-file/index.ts';
+import {withoutForeignKeys} from './helpers/project-database.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createTimelinePreflightServices,timelineSnapshotHash} from '../packages/business/src/timeline-preflight.ts';
@@ -36,20 +38,22 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const meta=()=>({width:0,height:0,duration:1,hasAudio:true,hasVideo:false,audioStreamIndex:0,probe:{streams:[{index:0,codec_type:'audio'}]}});
 function wav(){const data=Buffer.alloc(44+96000);data.write('RIFF');data.writeUInt32LE(data.length-8,4);data.write('WAVEfmt ',8);data.writeUInt32LE(16,16);data.writeUInt16LE(1,20);data.writeUInt16LE(1,22);data.writeUInt32LE(48000,24);data.writeUInt32LE(96000,28);data.writeUInt16LE(2,32);data.writeUInt16LE(16,34);data.write('data',36);data.writeUInt32LE(96000,40);return data;}
 async function fixture(t: test.TestContext,options={}){
- const root=await mkdtemp(path.join(tmpdir(),'mioon-preflight-')),store=(openStore(root) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices);
- const project={id:randomUUID(),name:'Synthetic owned'},other={id:randomUUID(),name:'Synthetic private foreign'};store.put('projects',project);store.put('projects',other);
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-preflight-')),project={id:randomUUID(),name:'Synthetic owned'};
+ createProjectFile(path.join(root,'project.mioon'),{projectId:project.id});
+ const store=(openStore(root) as FixtureStore),foreignStore=openStore(path.join(root,'foreign')),services=(createServices(store,new Map()) as FixtureServices);
+ const other={id:foreignStore.projectId,name:'Synthetic private foreign'};store.put('projects',project);foreignStore.put('projects',other);
  const preflight=(createTimelinePreflightServices(store,{probe:((async()=>meta()) as unknown as ((file: string, options: PreflightProbeOptions) => Promise<PreflightProbeResult>) | undefined),...options}) as StrictPreflightService);
  const _strictFixtureBase={root,store,services,project,other,preflight,
   input:()=>({projectId:project.id,expectedRevision:f.timeline?.revision??1}),
   call:async (input?: { projectId: `${string}-${string}-${string}-${string}-${string}`; expectedRevision: unknown; })=>{const arg=input??f.input(),result=await preflight.handlers['timeline.export.preflight'](((arg) as unknown as Parameters<typeof preflight.handlers['timeline.export.preflight']>[0]));assert.ok(isExportPreflightResponse(result,arg),JSON.stringify(result));return result;},
   writes:()=>(store.db.prepare('SELECT total_changes() AS n').get())!.n,
-  state:()=>readProjectState(store.db).tables,
+  state:()=>({owned:readProjectState(store.db).tables,foreign:readProjectState(foreignStore.db).tables}),
   async asset(patch: { [x: string]: unknown; bytes?: Buffer; }={}){const id=randomUUID(),bytes=patch.bytes??wav(),relativePath=`media/${id}.wav`;await writeFile(path.join(root,relativePath),((bytes) as unknown as Parameters<typeof writeFile>[1]));const {bytes:_,...rest}=patch;return store.put('assets',{id,projectId:project.id,name:'Synthetic source',mimeType:'audio/wav',relativePath,sha256:sha(((bytes) as unknown as Parameters<typeof sha>[0])),sizeBytes:bytes.length,duration:1,width:0,height:0,hasAudio:true,...rest});},
   save(timeline: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: `${string}-${string}-${string}-${string}-${string}`; revision: number; fps: number; width: number; height: number; tracks: { id: `${string}-${string}-${string}-${string}-${string}`; name: string; kind: string; orderIndex: number; hidden: boolean; muted: boolean; }[]; clips: { id: `${string}-${string}-${string}-${string}-${string}`; trackId: `${string}-${string}-${string}-${string}-${string}`; assetId: `${string}-${string}-${string}-${string}-${string}`; name: string; startFrame: number; durationFrames: number; sourceInFrame: number; rect: { x: number; y: number; width: number; height: number; }; gain: number; }[]; durationFrames: number; createdAt: string; updatedAt: string; }){f.timeline=store.put('timelines',timeline);return f.timeline;},
   async seed(patch: {bytes?: Buffer<ArrayBuffer>;}={}){const asset=await f.asset(((patch) as unknown as Parameters<typeof f.asset>[0])),trackId=randomUUID();f.assetValue=(asset as unknown as (typeof f)["assetValue"]);f.save({id:randomUUID(),projectId:project.id,revision:1,fps:30,width:720,height:1280,tracks:[{id:trackId,name:'Audio',kind:'audio',orderIndex:0,hidden:false,muted:false}],clips:[{id:randomUUID(),trackId,assetId:asset.id,name:'Synthetic audio clip',startFrame:0,durationFrames:30,sourceInFrame:0,rect:{x:0,y:0,width:720,height:1280},gain:1}],durationFrames:30,createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z'});return asset;},
  };
  const f = _strictFixtureBase as typeof _strictFixtureBase & {timeline?: FixtureTimeline; assetValue?: FixtureAsset};
- t.after(async()=>{await preflight.drain();await services.drain();store.close();await rm(root,{recursive:true,force:true});});return f;
+ t.after(async()=>{await preflight.drain();await services.drain();store.close();foreignStore.close();await rm(root,{recursive:true,force:true});});return f;
 }
 
 test('preflight never initializes a legacy timeline, writes tables, or creates files',async t=>{
@@ -83,7 +87,7 @@ test('deep ownership and SQL JSON bounds prevent foreign reference and path leak
  for(const data of ([JSON.stringify({...asset,projectId:f.other.id,relativePath:'/secret-foreign-path'}),JSON.stringify({...asset,id:f.other.id}),JSON.stringify({...asset,padding:'SECRET'.repeat(4000)}),'{SECRET'] as const)){
   update(data);const result=await f.call();assert.equal(result.status,'blocked');assert.equal(result.issues[0].code,'TIMELINE_SOURCE_UNAVAILABLE');assert.ok(!JSON.stringify(result).includes(f.other.id));assert.ok(!JSON.stringify(result).includes('SECRET'));
  }
- update(JSON.stringify(asset));f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,asset.id);assert.equal((await f.call()).status,'blocked');assert.equal(probes,0);
+ update(JSON.stringify(asset));withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,asset.id));assert.equal((await f.call()).status,'blocked');assert.equal(probes,0);
  f.store.db.prepare('UPDATE timelines SET data=? WHERE id=?').run(JSON.stringify({...f.timeline,padding:'x'.repeat(256 * 1024)}),(f.timeline)!.id);assert.equal((await f.call()).issues[0].code,'INVALID_TIMELINE_SNAPSHOT');
 });
 
@@ -106,7 +110,7 @@ test('stale revision and source metadata drift never publish ready',async t=>{
 });
 
 test('source reassignment during a probe is stale without disclosing the foreign owner',async t=>{
- const f=await fixture(t,{probe:async()=>{f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.other.id,JSON.stringify({...f.assetValue,projectId:f.other.id}),(f.assetValue)!.id);return meta();}});await f.seed();
+ const f=await fixture(t,{probe:async()=>{withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.other.id,JSON.stringify({...f.assetValue,projectId:f.other.id}),(f.assetValue)!.id));return meta();}});await f.seed();
  const result=await f.call();assert.equal(result.status,'stale');assert.ok(!JSON.stringify(result).includes(f.other.id));
 });
 
@@ -166,7 +170,7 @@ test('optional foreign clip lineage and generated reverse ownership block before
  let probes=0;const f=await fixture(t,{probe:async()=>{probes++;return meta();}});await f.seed();const original=clone(f.timeline),foreign=randomUUID();
  for(const field of (['versionId','shotId','jobId'] as const)){f.save((({...clone(original),clips:(([{...clone((original)!.clips[0]),[field]:foreign}]) as unknown as { id: `${string}-${string}-${string}-${string}-${string}`; trackId: `${string}-${string}-${string}-${string}-${string}`; assetId: `${string}-${string}-${string}-${string}-${string}`; name: string; startFrame: number; durationFrames: number; sourceInFrame: number; rect: { x: number; y: number; width: number; height: number; }; gain: number; }[])}) as unknown as Parameters<NonNullable<(typeof f)["save"]>>[0]));const report=await f.call();assert.equal(report.status,'blocked');assert.ok(!JSON.stringify(report).includes(foreign));}
  f.save(((original) as unknown as Parameters<typeof f.save>[0]));f.store.put('assets',{...f.assetValue,provenance:'generated'});assert.equal((await f.call()).status,'blocked');assert.equal(probes,0);
- f.store.put('assets',((f.assetValue) as unknown as Parameters<NonNullable<((typeof f)["store"])["put"]>>[1]));const jobId=randomUUID(),versionId=randomUUID();f.store.put('jobs',{id:jobId,projectId:f.other.id});f.store.put('versions',{id:versionId,projectId:f.other.id,jobId,assetId:(f.assetValue)!.id});
+ f.store.put('assets',((f.assetValue) as unknown as Parameters<NonNullable<((typeof f)["store"])["put"]>>[1]));const jobId=randomUUID(),versionId=randomUUID();withoutForeignKeys(f.store.db,()=>{f.store.put('jobs',{id:jobId,projectId:f.other.id});f.store.put('versions',{id:versionId,projectId:f.other.id,jobId,assetId:(f.assetValue)!.id});});
  const report=await f.call();assert.equal(report.status,'blocked');assert.equal(probes,0);assert.ok(!JSON.stringify(report).includes(versionId));assert.ok(!JSON.stringify(report).includes(f.other.id));
 });
 
@@ -352,7 +356,7 @@ test('worker keeps valid timeline recovery and large ordinary storyboard recover
 test('worker rechecks relational identity inside recovery and queued status transactions before the first write',async t=>{
  for(const status of (['running','queued'] as const))await t.test(status,async t=>{
   const f=await fixture(t);await f.seed();const record=exportRecord(f,status);f.store.put('exports',record);const data=exportRows(f)[0].data;
-  const originalTx=f.store.tx;let moved=false,puts=0;f.store.tx=fn=>{if(!moved){moved=true;f.store.db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.other.id,record.id);}return originalTx(fn);};
+  const originalTx=f.store.tx;let moved=false,puts=0;f.store.tx=fn=>{if(!moved){moved=true;withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.other.id,record.id));}return originalTx(fn);};
   const put=f.store.put;f.store.put=(table,value)=>{if(table==='exports')puts++;return put(table,value);};const mocked=t.mock.method(console,'error',()=>{}),events: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[]=[],off=onMediaProcess(event=>events.push(event));
   const owner=new AbortController();if(status==='running')owner.abort();const worker=startWorker(f.store,f.services,new Map(),{signal:owner.signal});
   try{await worker.tick();await worker.stop();assert.equal(moved,true);assert.equal(puts,0);assert.equal(exportRows(f)[0].data,data);assert.equal(exportRows(f)[0].projectId,f.other.id);assert.deepEqual((events as unknown),[]);}finally{off();mocked.mock.restore();await worker.stop();}
@@ -362,7 +366,7 @@ test('worker rechecks relational identity inside recovery and queued status tran
 test('worker rechecks the timeline export owner after preparation before renderer dispatch',async t=>{
  const f=await fixture(t);await f.seed();const record=exportRecord(f);f.store.put('exports',record);let moved=false,dataAtMove,ownedPart,observerFailure;const events: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[]=[];
  const directory=path.join(f.root,'media'),filesBefore=(await readdir(directory)).sort(),receipts=f.store.db.prepare('SELECT * FROM timeline_requests ORDER BY rowid').all();
- const off=onMediaProcess(event=>{events.push(event);if(event.type==='started'&&event.kind==='ffprobe'&&!moved){moved=true;try{ownedPart=captureOwnedExportPart(directory,record.id);dataAtMove=exportRows(f)[0].data;f.store.db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.other.id,record.id);}catch(error){observerFailure=error;}}}),mocked=t.mock.method(console,'error',()=>{});
+ const off=onMediaProcess(event=>{events.push(event);if(event.type==='started'&&event.kind==='ffprobe'&&!moved){moved=true;try{ownedPart=captureOwnedExportPart(directory,record.id);dataAtMove=exportRows(f)[0].data;withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.other.id,record.id));}catch(error){observerFailure=error;}}}),mocked=t.mock.method(console,'error',()=>{});
  const worker=startWorker(f.store,f.services,new Map());
  try{await worker.tick();await worker.stop();assert.equal(observerFailure,undefined);assert.equal(moved,true);assert.equal(exportRows(f)[0].data,dataAtMove);assert.equal(exportRows(f)[0].projectId,f.other.id);assert.deepEqual(events.filter(e=>e.type==='started').map(e=>e.kind),['ffprobe']);assert.equal(f.store.list('assets').length,1);assert.deepEqual(f.store.db.prepare('SELECT * FROM timeline_requests ORDER BY rowid').all(),receipts);
   // The 01a83cb output fence reserves the part before source preparation. Once
@@ -374,7 +378,7 @@ test('worker rechecks the timeline export owner after preparation before rendere
 test('worker rechecks relational ownership after rendering and never publishes to a reassigned row',async t=>{
  const f=await fixture(t);await f.seed();(f.timeline)!.clips[0].durationFrames=1;(f.timeline)!.durationFrames=1;f.save(((f.timeline) as unknown as Parameters<typeof f.save>[0]));const record=exportRecord(f);f.store.put('exports',record);let moved=false,dataAtMove,ownedPart,observerFailure;
  const directory=path.join(f.root,'media'),filesBefore=(await readdir(directory)).sort(),receipts=f.store.db.prepare('SELECT * FROM timeline_requests ORDER BY rowid').all();
- const off=onMediaProcess(event=>{if(event.type==='started'&&event.kind==='ffmpeg'&&!moved){moved=true;try{ownedPart=captureOwnedExportPart(directory,record.id);dataAtMove=exportRows(f)[0].data;f.store.db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.other.id,record.id);}catch(error){observerFailure=error;}}}),mocked=t.mock.method(console,'error',()=>{});const worker=startWorker(f.store,f.services,new Map());
+ const off=onMediaProcess(event=>{if(event.type==='started'&&event.kind==='ffmpeg'&&!moved){moved=true;try{ownedPart=captureOwnedExportPart(directory,record.id);dataAtMove=exportRows(f)[0].data;withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.other.id,record.id));}catch(error){observerFailure=error;}}}),mocked=t.mock.method(console,'error',()=>{});const worker=startWorker(f.store,f.services,new Map());
  try{await worker.tick();await worker.stop();assert.equal(observerFailure,undefined);assert.equal(moved,true);assert.equal(exportRows(f)[0].data,dataAtMove);assert.equal(exportRows(f)[0].projectId,f.other.id);assert.equal(f.store.list('assets').length,1);assert.deepEqual(f.store.db.prepare('SELECT * FROM timeline_requests ORDER BY rowid').all(),receipts);
   await assertPreservedExportPart(directory,filesBefore,ownedPart);}
  finally{off();mocked.mock.restore();await worker.stop();}
@@ -382,7 +386,7 @@ test('worker rechecks relational ownership after rendering and never publishes t
 
 test('worker timeline failure guard and status write share one transaction and preserve a reassigned row',async t=>{
  const f=await fixture(t);await f.seed();await unlink(path.join(f.root,(f.assetValue)!.relativePath));const record=exportRecord(f);f.store.put('exports',record);
- const originalTx=f.store.tx;let transactions=0,dataAtMove;f.store.tx=fn=>{if(++transactions===2){dataAtMove=exportRows(f)[0].data;f.store.db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.other.id,record.id);}return originalTx(fn);};
+ const originalTx=f.store.tx;let transactions=0,dataAtMove;f.store.tx=fn=>{if(++transactions===2){dataAtMove=exportRows(f)[0].data;withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.other.id,record.id));}return originalTx(fn);};
  const mocked=t.mock.method(console,'error',()=>{}),events: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[]=[],off=onMediaProcess(event=>events.push(event));const worker=startWorker(f.store,f.services,new Map());
  try{await worker.tick();await worker.stop();assert.ok(transactions>=2);assert.equal(exportRows(f)[0].data,dataAtMove);assert.deepEqual((events as unknown),[]);assert.equal((f.store.get('exports',record.id)!.error as unknown),null);}
  finally{off();mocked.mock.restore();await worker.stop();}
@@ -394,7 +398,9 @@ test('worker rejects malformed 36-character and traversal UUID identities before
   const f=await fixture(t);await f.seed();const insert=f.store.db.prepare('INSERT INTO exports(id,projectId,data) VALUES(?,?,?)');
   for(const bad of identities){
    assert.equal(bad.length,36);const row=exportRecord(f,status,{id:bad});insert.run(bad,f.project.id,JSON.stringify(row));
-   f.store.put('projects',{id:bad,name:'Synthetic invalid identity'});const projectRow=exportRecord(f,status,{projectId:bad});projectRow.snapshot.timeline.projectId=bad;insert.run(projectRow.id,bad,JSON.stringify(projectRow));
+   // A kernel project cannot contain a second project row. Corrupt only the
+   // local export reference to exercise the same malformed owner identity.
+   const projectRow=exportRecord(f,status,{projectId:bad});projectRow.snapshot.timeline.projectId=bad;withoutForeignKeys(f.store.db,()=>insert.run(projectRow.id,bad,JSON.stringify(projectRow)));
   }
   const before=exportRows(f),writes=f.writes(),files=await readdir(f.root,{recursive:true}),events: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[]=[],off=onMediaProcess(event=>events.push(event));const mocked=t.mock.method(console,'error',()=>{});const owner=new AbortController();if(status==='running')owner.abort();const worker=startWorker(f.store,f.services,new Map(),{signal:owner.signal});
   try{await worker.tick();await worker.stop();assert.equal(f.writes(),writes);assert.deepEqual(exportRows(f),before);assert.deepEqual((events as unknown),[]);assert.deepEqual(await readdir(f.root,{recursive:true}),files);}
@@ -436,7 +442,7 @@ test('timeline byte mismatch preserves path-free legacy worker error text and pr
 test('ordinary storyboard recovery and queued dispatch re-read ownership inside the write transaction',async t=>{
  for(const status of (['running','queued'] as const))await t.test(status,async t=>{
   const f=await fixture(t);await f.seed();const record=exportRecord(f,status,{mode:undefined,snapshot:[] as unknown as FixtureSnapshot});f.store.put('exports',record);const data=exportRows(f)[0].data;
-  const originalTx=f.store.tx;let moved=false;f.store.tx=fn=>{if(!moved){moved=true;f.store.db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.other.id,record.id);}return originalTx(fn);};
+  const originalTx=f.store.tx;let moved=false;f.store.tx=fn=>{if(!moved){moved=true;withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.other.id,record.id));}return originalTx(fn);};
   const mocked=t.mock.method(console,'error',()=>{}),events: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[]=[],off=onMediaProcess(event=>events.push(event)),owner=new AbortController();if(status==='running')owner.abort();const worker=startWorker(f.store,f.services,new Map(),{signal:owner.signal});
   try{await worker.tick();await worker.stop();assert.equal(moved,true);assert.equal(exportRows(f)[0].data,data);assert.deepEqual((events as unknown),[]);}
   finally{off();mocked.mock.restore();await worker.stop();}

@@ -8,13 +8,15 @@ import path from 'node:path';
 import {argumentsFor, CheckFailure, cleanEnvironment, command, executable, fail, isMain, report, safeFailure, targetArch, targetPlatform} from './media-environment.ts';
 import type {Check, TargetArch, TargetPlatform} from './media-environment.ts';
 import {EXIT_DIAGNOSTIC_LIMITS} from '../../apps/desktop/src/exit-diagnostics.ts';
+import {rpcPathFor} from '../../packages/contracts/src/project-addressing.ts';
+import {projectMediaPath} from '../../packages/contracts/src/project-file.ts';
 import type {ExitDiagnosticRecord} from '../../apps/desktop/src/exit-diagnostics.ts';
 import {classifyRendererEvent,RENDERER_DIAGNOSTIC_LIMITS} from '../../apps/desktop/src/renderer-diagnostics.ts';
 import type {RendererDiagnosticRecord} from '../../apps/desktop/src/renderer-diagnostics.ts';
 
 interface Discovery {appId: string; channel: string; url: string; pid: number; tokenFile: string}
 interface Timeline {revision: number; tracks: Array<{id: string; kind: string}>; clips: unknown[]}
-interface Job {id: string; status: string; url?: string}
+interface Job {id: string; status: string; url?: string; assetId?: string}
 interface Outcome {code: number | null; signal: NodeJS.Signals | null}
 interface SmokeReport {ok: boolean; platform: TargetPlatform; arch: TargetArch; checks: Check[]; phase: string; error?: string; render?: {bytes: number; width: number; height: number}; exit?: Outcome; sigtermSent?: boolean; shutdownDiagnostics?: SmokeShutdownDiagnostics}
 export const smokeTimeouts = Object.freeze({startup: 90000, render: 120000, exit: 30000});
@@ -181,8 +183,9 @@ export async function exerciseComposition(options: CompositionOptions): Promise<
   const {origin, token, video, audio, ffprobe, directory, env} = options;
   const check = options.onCheck ?? (() => {});
   let renderDeadline = 0;
+  let projectContext: string | undefined;
   const rpc = async <T>(operation: string, input: unknown = {}): Promise<T> => {
-    const response = await fetch(`${origin}/api/rpc`, {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`}, body: JSON.stringify({operation, input}), signal: AbortSignal.timeout(renderDeadline ? Math.min(15000, Math.max(1, renderDeadline - Date.now())) : 15000)});
+    const response = await fetch(`${origin}${rpcPathFor(operation,input,projectContext)}`, {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`}, body: JSON.stringify({operation, input}), signal: AbortSignal.timeout(renderDeadline ? Math.min(15000, Math.max(1, renderDeadline - Date.now())) : 15000)});
     const body = await response.json() as {ok?: unknown; data: T};
     if (response.status !== 200 || body.ok !== true) fail('RPC_FAILED'); return body.data;
   };
@@ -190,6 +193,7 @@ export async function exerciseComposition(options: CompositionOptions): Promise<
   if (denied.status !== 401) fail('ANONYMOUS_RPC_NOT_DENIED'); check('anonymous-http-rpc-denied');
   options.onPhase?.('seed');
   const project = await rpc<{id: string; revision: number}>('project.create', {name: 'CI synthetic local composition', timelinePresetId: 'landscape_1080'});
+  projectContext = project.id;
   let timeline = await rpc<Timeline>('timeline.get', {projectId: project.id});
   const projectView = await rpc<{project: {revision: number}}>('project.get', {projectId: project.id});
   await rpc<unknown>('timeline.format.set', {projectId: project.id, expectedProjectRevision: projectView.project.revision, expectedRevision: timeline.revision, requestId: randomUUID(), presetId: 'landscape_720'});
@@ -206,8 +210,8 @@ export async function exerciseComposition(options: CompositionOptions): Promise<
     const current = await rpc<Job>('export.get', {exportId: queued.id});
     if (current.status === 'failed') fail('LOCAL_RENDER_FAILED'); return current.status === 'succeeded' ? current : false;
   }, Math.max(1, renderDeadline - Date.now()), 'LOCAL_RENDER_TIMEOUT', options.exited);
-  if (!completed.url || !completed.url.startsWith('/') || completed.url.startsWith('//')) fail('INVALID_RENDER_URL');
-  const response = await fetch(`${origin}${completed.url}`, {headers: {Authorization: `Bearer ${token}`}, signal: AbortSignal.timeout(Math.max(1, renderDeadline - Date.now()))});
+  if (!completed.url || !completed.url.startsWith('/') || completed.url.startsWith('//') || !completed.assetId) fail('INVALID_RENDER_URL');
+  const response = await fetch(`${origin}${projectMediaPath(project.id,completed.assetId)}`, {headers: {Authorization: `Bearer ${token}`}, signal: AbortSignal.timeout(Math.max(1, renderDeadline - Date.now()))});
   const bytes = Buffer.from(await response.arrayBuffer());
   if (response.status !== 200 || response.headers.get('Content-Type') !== 'video/mp4' || bytes.length < 1000 || bytes.toString('ascii', 4, 8) !== 'ftyp') fail('INVALID_RENDERED_MP4');
   const rendered = path.join(directory, 'rendered.mp4'); await writeFile(rendered, bytes, {mode: 0o600});

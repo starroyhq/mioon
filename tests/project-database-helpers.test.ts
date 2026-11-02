@@ -1,15 +1,18 @@
 import test from 'node:test';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {workspaceSettingsSchema} from '../packages/contracts/src/workspace-configuration.ts';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {lstatSync, mkdtempSync, realpathSync, rmSync} from 'node:fs';
+import {chmodSync, lstatSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {startServer} from '../apps/server/src/index.ts';
-import type {InspectProject} from '../apps/server/src/index.ts';
+import type {InspectProject, InspectApplication} from '../apps/server/src/index.ts';
 import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createProjectServiceApplication, testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {isProjectId} from '../packages/contracts/src/project-file.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {findHeldAppProjectFile} from '../packages/business/src/app-db/connection.ts';
@@ -219,11 +222,12 @@ test('schemaObjects and foreignKeyCheck cover every database on the connection',
     });
     const rowid = Number(db.prepare('SELECT rowid FROM shots WHERE id=?').get(orphan)?.rowid);
     const revisionRowid = Number(db.prepare("SELECT rowid FROM agent_task_target_revisions_v2 WHERE kind='shot' AND targetId=?").get(orphan)?.rowid);
-    assert.deepEqual(foreignKeyCheck(db), [
+    const orderViolation = (a: {schema: string; table: string}, b: {schema: string; table: string}) => a.schema.localeCompare(b.schema) || a.table.localeCompare(b.table);
+    assert.deepEqual(foreignKeyCheck(db).sort(orderViolation), [
       {schema: 'project', table: 'shots', rowid, parent: 'projects', parentSchema: 'project', constraint: 'fk:0'},
       {schema: 'project', table: 'agent_task_target_revisions_v2', rowid: revisionRowid, parent: 'projects', parentSchema: 'project', constraint: 'fk:0'},
       {schema: 'extra', table: 'child', rowid: 1, parent: 'parent', parentSchema: 'extra', constraint: 'fk:0'},
-    ]);
+    ].sort(orderViolation));
     const objects = schemaObjects(db);
     assert.deepEqual(objects.filter(object => object.schema === 'project'), content);
     assert.ok(objects.some(object => object.schema === 'main' && object.name === 'jobs'));
@@ -511,4 +515,74 @@ test('the server serves a project filled before it started, and inspectProject r
   assert.equal(connection?.isOpen, false, 'the callbacks ran on the connection the server closed');
   assert.throws(() => inspectProject(projectId, () => 1));
   openProjectDatabase(projectDirFor(dataDir, projectId)).close();
+});
+
+test('server-layout TEST projects share the real application owner until their last store closes', async t => {
+  const root = dataDirectory(t), a = createServerProject(root, {name: 'Shared A'}), first = createServices(a.store, new Map());
+  const app = testProjectAppLibrary(a.store); assert.ok(app);
+  const b = createServerProject(root, {name: 'Shared B'}), second = createServices(b.store, new Map());
+  t.after(async () => {await first.drain(); await second.drain(); a.store.close(); b.store.close();});
+  assert.equal(testProjectAppLibrary(b.store), app);
+  assert.notEqual(a.store.db, b.store.db);
+  await first.call('workspace.settings.set', {expectedRevision: 0, liveGeneration: true});
+  assert.deepEqual(await second.call('workspace.settings.get', {}), await first.call('workspace.settings.get', {}));
+  await first.drain(); a.store.close();
+  assert.equal(app.db.isOpen, true);
+  assert.equal(workspaceSettingsSchema.parse(await second.call('workspace.settings.get', {})).liveGeneration, true);
+  assert.equal(b.store.db.prepare('SELECT id FROM projects WHERE id=?').get(b.projectId)?.id, b.projectId);
+  await second.drain(); b.store.close();
+  assert.equal(app.db.isOpen, false);
+});
+
+test('trusted application inspection borrows only the live owner and rejects asynchronous work and use after shutdown', async t => {
+  const root = dataDirectory(t); let inspect!: InspectApplication, calls = 0;
+  const server = await startServer({dataDir: root, port: 0, token: TOKEN, inspectApplication: received => {inspect = received;}});
+  t.after(() => server.close());
+  const db = inspect(held => held);
+  assert.equal(inspect(held => held), db);
+  assert.equal(db.isOpen, true);
+  assert.equal(Number(inspect(held => held.prepare('SELECT count(*) AS n FROM recent_projects').get()!.n)), 0);
+  assert.throws(() => inspect(async () => {calls++;}), /synchronous/);
+  assert.equal(calls, 0, 'an async callback never runs');
+  assert.throws(() => inspect(() => Promise.resolve()), /synchronous/);
+  assert.equal((await fetch(server.url + '/api/inspectApplication', {headers: {authorization: `Bearer ${TOKEN}`}})).status, 404);
+  await server.close();
+  assert.equal(db.isOpen, false);
+  assert.throws(() => inspect(held => held.isOpen), {name: 'AbortError'});
+});
+
+test('the TEST opener accepts a public project folder but rejects linked roots and ancestors before writing', t => {
+  const root = dataDirectory(t), target = dataDirectory(t), link = path.join(root, 'linked');
+  chmodSync(target, 0o755);
+  symlinkSync(target, link, 'dir');
+  for (const projectRoot of [link, path.join(link, 'uncreated')]) {
+    assert.throws(() => openStore(projectRoot), {code: 'STORAGE_PRIVATE_REQUIRED', reason: 'SYMBOLIC_LINK'});
+    assert.deepEqual(readdirSync(target), [], 'rejection leaves the linked target untouched');
+  }
+  const store = openStore(target);
+  t.after(() => store.close());
+  assert.equal(lstatSync(target).mode & 0o777, 0o755);
+  assert.equal(lstatSync(store.localDir).mode & 0o777, 0o700);
+  assert.equal(lstatSync(path.join(target, 'media')).mode & 0o777, 0o700);
+});
+
+test('the assembled application configuration acknowledges only its own committed transaction', t => {
+  const root = dataDirectory(t), library = openAppLibrary({dataDir: root});
+  t.after(() => library.close());
+  const ports = createProjectServiceApplication(library, undefined, {MIOON_ENABLE_LIVE_PROVIDER: '0'});
+  const before = ports.configuration.get(); let acknowledged = false;
+  assert.throws(() => library.tx(() => {
+    ports.configuration.set({expectedRevision: before.revision, liveGeneration: true});
+    acknowledged = true;
+  }), /transaction/iu);
+  assert.equal(acknowledged, false);
+  assert.deepEqual(ports.configuration.get(), before);
+  assert.equal(library.documents.read('workspace-settings-v1.json'), null);
+  const saved = ports.configuration.set({expectedRevision: before.revision, liveGeneration: true});
+  assert.equal(saved.revision, before.revision + 1);
+  assert.equal(saved.liveGeneration, true);
+  assert.deepEqual(JSON.parse(library.documents.read('workspace-settings-v1.json')!), {
+    formatVersion: 1, revision: saved.revision, liveGeneration: true,
+    automaticBackup: before.automaticBackup, backupIntervalHours: before.backupIntervalHours, backupLocation: before.backupLocation,
+  });
 });

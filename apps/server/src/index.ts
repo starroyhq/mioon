@@ -40,6 +40,8 @@ import {createFileResponses} from './file-response.ts';
 import {readWorkspaceInfo} from './workspace-info.ts';
 import {randomBytes, timingSafeEqual} from 'node:crypto';
 import type {IncomingMessage, Server, ServerResponse} from 'node:http';
+import type {DatabaseSync} from 'node:sqlite';
+import {isAsyncFunction, isPromise} from 'node:util/types';
 import http from 'node:http';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -49,6 +51,8 @@ import type {ReviewedImageGatewayOptions} from '../../../packages/business/src/i
 import type {ComfyModuleMode} from '../../../packages/contracts/src/comfy-availability.ts';
 import type {WorkspaceInfo} from '../../../packages/contracts/src/workspace-info.ts';
 export type {InspectProject} from './project-host/host.ts';
+/** Trusted owner inspection, never an HTTP, CLI or environment surface. */
+export type InspectApplication = <T>(read: (db: DatabaseSync) => T) => T;
 const directory = path.dirname(fileURLToPath(import.meta.url));
 type LocalDraftChannel = WorkspaceInfo['channel'];
 type TaskFault = NonNullable<Parameters<typeof createEditTasks>[0]['fault']>;
@@ -94,6 +98,7 @@ export interface ServerOptions {
   /** Trusted in-process tests only; never HTTP/environment. Receives this
    * server's InspectProject once its store is open. */
   inspectProject?: (inspect: InspectProject) => void;
+  inspectApplication?: (inspect: InspectApplication) => void;
   localDraftChannel?: LocalDraftChannel;
   nativeAudioPreview?: NativeAudioPreviewAuthority;
 }
@@ -162,6 +167,16 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     const projects = manager;
     if (options.nativeAudioPreview) bindProjectNativeAudio(options.nativeAudioPreview, projects);
     options.inspectProject?.(manager.inspectProject);
+    options.inspectApplication?.(<T>(read: (db: DatabaseSync) => T): T => {
+      shutdown.signal.throwIfAborted();
+      if (typeof read !== 'function' || isAsyncFunction(read)) throw new TypeError('Application inspection requires a synchronous callback');
+      const result = read(appLibrary.db);
+      if (result !== null && (typeof result === 'object' || typeof result === 'function') && typeof field(result, 'then') === 'function') {
+        if (isPromise(result)) Promise.resolve(result).catch(() => {});
+        throw new TypeError('Application inspection requires a synchronous callback');
+      }
+      return result;
+    });
     if (token === undefined) { token = randomBytes(32).toString('hex'); writePrivateFileAtomic(tokenFile, token, {root, maxBytes: 4098, replace: false}); }
     const appAgentHttp = (await import('./application-agent-http.ts')).createApplicationAgentHttp(library, shutdown.signal);
     const rpc = createApplicationRpc({library, app, manager, directories, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
@@ -173,7 +188,8 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       }});
     const covers = createProjectCoverHttp({directories, readProject: id => library!.registry.get(id), signal: shutdown.signal});
     const policy = createApplicationPolicy(library.agentPolicy);
-    const appDiagnostics = createAgentDiagnosticsHttp({settings: app.agentSettings, authorizations: app.authorizations, tools: undefined,
+    const {listAgentTaskTools} = await import('@mioon/business/agent/task-tools-v2');
+    const appDiagnostics = createAgentDiagnosticsHttp({settings: app.agentSettings, authorizations: app.authorizations, tools: {list: listAgentTaskTools},
       policy: policy.policy, selfPort: listeningPort, hasProject: id => appLibrary.registry.get(id) !== null});
     const hosts = new Set<string>(), origins = new Set<string>();
     const authenticated = (req: IncomingMessage): boolean => {

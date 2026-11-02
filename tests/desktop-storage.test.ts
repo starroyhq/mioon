@@ -82,10 +82,10 @@ test('desktop rejects a symlink root or ancestor before creating anything outsid
   assert.deepEqual(calls, []);
 });
 
-const unsafeChildren: Array<[string, (f: Awaited<ReturnType<typeof fixture>>) => Promise<void>]> = [
+const unsafeChildren: Array<[string, (f: Awaited<ReturnType<typeof fixture>>) => Promise<void>, ((error: unknown) => boolean)?]> = [
   ['workspace root', async f => { await mkdir(f.paths.dataDir, {mode: 0o755}); }],
-  ['workspace media link', async f => { await mkdir(f.paths.dataDir, {mode: 0o700}); await symlink(f.root, path.join(f.paths.dataDir, 'media')); }],
-  ['workspace SQLite link', async f => { await mkdir(f.paths.dataDir, {mode: 0o700}); await symlink(path.join(f.root, 'original'), path.join(f.paths.dataDir, 'workbench.sqlite')); }],
+  ['application cache link', async f => { await mkdir(f.paths.dataDir, {mode: 0o700}); await symlink(f.root, path.join(f.paths.dataDir, 'cache')); }],
+  ['workspace SQLite link', async f => { await mkdir(f.paths.dataDir, {mode: 0o700}); await symlink(path.join(f.root, 'original'), path.join(f.paths.dataDir, 'workbench.sqlite')); }, error => {const failure = error as {code?: string; status?: number; message?: string}; return failure.code === 'VALIDATION_ERROR' && failure.status === 400 && failure.message === '此目录含旧工作区 workbench.sqlite，请选择新的应用数据目录；不会自动迁移旧文件。'; }],
   ['workspace token mode', async f => { await mkdir(f.paths.dataDir, {mode: 0o700}); await writeFile(path.join(f.paths.dataDir, 'access-token'), 'synthetic-token', {mode: 0o644}); }],
   ['settings directory', async f => { await mkdir(path.join(f.userData, 'agent-settings'), {mode: 0o755}); }],
   ['settings envelope mode', async f => { await mkdir(path.join(f.userData, 'agent-settings'), {mode: 0o700}); await writeFile(path.join(f.userData, 'agent-settings', 'settings.json'), '{synthetic', {mode: 0o644}); }],
@@ -93,13 +93,13 @@ const unsafeChildren: Array<[string, (f: Awaited<ReturnType<typeof fixture>>) =>
   ['config hardlink', async f => { await writeFile(path.join(f.root, 'original'), '{}', {mode: 0o600}); await link(path.join(f.root, 'original'), f.paths.configFile); }],
   ['discovery oversized', async f => { await writeFile(path.join(f.userData, 'mcp-connection.json'), 'x'.repeat(16 * 1024 + 1), {mode: 0o600}); }],
 ];
-for (const [name, arrange] of unsafeChildren) test(`desktop preflights unsafe ${name} before identity and Electron writes`, posix, async t => {
+for (const [name, arrange, expectedError = privateError] of unsafeChildren) test(`desktop preflights unsafe ${name} before identity and Electron writes`, posix, async t => {
   const f = await fixture(t), {app, calls} = fakeApp(f.root);
   await arrange(f);
   const before = await snapshot(f.userData);
-  assert.throws(() => prepareDesktopStorage(app as unknown as Parameters<typeof prepareDesktopStorage>[0], f.userData), privateError);
+  assert.throws(() => prepareDesktopStorage(app as unknown as Parameters<typeof prepareDesktopStorage>[0], f.userData), expectedError);
   assert.deepEqual(calls, []);
-  await assert.rejects(ensureDataIdentity(f.paths, identity), privateError);
+  await assert.rejects(ensureDataIdentity(f.paths, identity), expectedError);
   assert.deepEqual(await snapshot(f.userData), before);
 });
 

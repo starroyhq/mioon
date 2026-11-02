@@ -1,3 +1,4 @@
+import {writeProjectCover} from '../../apps/server/src/project-host/covers.ts';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -16,12 +17,11 @@ export const ORIGINAL_BYTES = Buffer.from('immutable original fixture bytes\n');
 
 async function seed(root: string): Promise<void> {
   await seedMutationStore(root);
-  const {openStore} = await import('../../packages/business/src/db.ts');
-  const {createServerProject, projectDirFor, withoutForeignKeys} = await import('./project-database.ts');
+  const {createServerProject, openServerProject, projectDirFor, withoutForeignKeys} = await import('./project-database.ts');
   const asset = (id: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({id, projectId: IDS.project, name: 'Disposition metadata fixture',
     mimeType: 'video/mp4', duration: 2, width: 720, height: 1280, hasVideo: true, hasAudio: false,
     provenance: 'user-import', sha256: '2'.repeat(64), createdAt: NOW, ...extra});
-  const store = openStore(projectDirFor(root, IDS.project));
+  const store = openServerProject(root, IDS.project);
   try {
     // Keep inspection's generated-version relationship unambiguous.
     store.db.prepare('DELETE FROM versions WHERE id=?').run(IDS.secondVersion);
@@ -32,6 +32,12 @@ async function seed(root: string): Promise<void> {
     const original = JSON.parse((store.db.prepare('SELECT data FROM assets WHERE id=?').get(IDS.asset) as {data: string}).data);
     store.put('assets', {...original, relativePath: 'media/original.mp4'});
     fs.writeFileSync(path.join(projectDirFor(root, IDS.project), 'media/original.mp4'), ORIGINAL_BYTES);
+    // This metadata-only fixture never decodes its sentinel video. A valid
+    // source-bound cache keeps cover preparation outside the guarded operation.
+    const savedAsset=store.get('assets',IDS.asset);
+    if(!savedAsset||typeof savedAsset!=='object'||!('sha256' in savedAsset)||typeof savedAsset.sha256!=='string')throw Error('The synthetic source has no saved hash');
+    writeProjectCover({cacheDir:store.cacheDir,source:{assetId:IDS.asset,mimeType:'video/mp4',sourceSha256:savedAsset.sha256},
+      jpeg:Buffer.from([0xff,0xd8,0xff,0xc0,0,17,8,0,1,0,1,3,1,0x22,0,2,0x11,1,3,0x11,1,0xff,0xda,0,12,3,1,0,2,0x11,3,0x11,0,0x3f,0,0x12,0x34,0xff,0xd9])});
     // An existing in-use clip must remain byte-for-byte identical when rejected.
     const timeline = JSON.parse((store.db.prepare('SELECT data FROM timelines WHERE id=?').get(IDS.timeline) as {data: string}).data);
     store.put('timelines', {...timeline, durationFrames: 30,
@@ -49,10 +55,7 @@ async function seed(root: string): Promise<void> {
         for (const id of [DISPOSITION_IDS.mismatchedOwner, DISPOSITION_IDS.mismatchedId])
           extra.put('assets', asset(id, {projectId, name: PRIVATE,
             relativePath: `media/${PRIVATE}.mp4`, url: `https://private.invalid/${PRIVATE}`}));
-        withoutForeignKeys(extra.db, () => {
-          extra.db.prepare("UPDATE assets SET data=json_set(data,'$.projectId',?) WHERE id=?").run(IDS.other, DISPOSITION_IDS.mismatchedOwner);
-          extra.db.prepare("UPDATE assets SET data=json_set(data,'$.id',?) WHERE id=?").run(IDS.otherAsset, DISPOSITION_IDS.mismatchedId);
-        });
+
       }
     } finally { extra.close(); }
   }
@@ -78,17 +81,17 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (process.argv[2] === 'move-asset') {
     // Only after the owned backend has stopped: retained receipts must not reveal
     // an asset whose current ownership no longer matches the original request.
-    const {openStore} = await import('../../packages/business/src/db.ts');
-    const store = openStore(dataRoot);
+      const {openServerProject,withoutForeignKeys} = await import('./project-database.ts');
+    const store = openServerProject(dataRoot, IDS.project);
     try {
-      const moved = store.db.prepare("UPDATE assets SET projectId=?,data=json_set(data,'$.projectId',?) WHERE id=?")
-        .run(IDS.other, IDS.other, IDS.asset).changes;
+      const moved = withoutForeignKeys(store.db, () => store.db.prepare("UPDATE assets SET projectId=?,data=json_set(data,'$.projectId',?) WHERE id=?")
+        .run(IDS.other, IDS.other, IDS.asset).changes);
       process.stdout.write(JSON.stringify({moved}) + '\n');
     } finally { store.close(); }
   } else if (process.argv[2] === 'server') {
-    if (!fs.existsSync(path.join(dataRoot, 'workbench.sqlite'))) await seed(dataRoot);
+    if (!fs.existsSync(path.join(dataRoot, 'app-library.db'))) await seed(dataRoot);
     const {startServer} = await import('../../apps/server/src/index.ts');
-    const {schemaObjects} = await import('./project-database.ts');
+    const {schemaObjects,withoutForeignKeys} = await import('./project-database.ts');
     let inspect: InspectProject|undefined;
     const server = await startServer({dataDir: dataRoot, port: Number(process.env.PORT || 0), token: TOKEN,
       inspectProject: received => { inspect = received; }});
@@ -101,14 +104,18 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       if (typeof message?.id !== 'string') return;
       let reply: unknown;
       try {
-        if (message.type !== 'storage') throw Error('Unsupported asset-disposition fixture message');
+        const moving=message.type==='move-asset',corrupting=message.type==='corrupt-sources';
+        if ((!moving&&!corrupting&&message.type!=='storage')||Object.keys(message).some(key=>!(moving||corrupting?['type','id']:['type','id','projectId']).includes(key))) throw Error('Unsupported asset-disposition fixture message');
         if (!inspect) throw Error('The server has not handed over its connection');
         // Plain rows, as they cross the IPC channel.
-        const data = inspect(String(message.projectId), db => ({
+        const data = inspect(moving?IDS.project:corrupting?DISPOSITION_IDS.corruptProject:String(message.projectId), db => {
+          if(corrupting){db.prepare("UPDATE assets SET data=json_set(data,'$.projectId',?) WHERE id=?").run(IDS.other,DISPOSITION_IDS.mismatchedOwner);db.prepare("UPDATE assets SET data=json_set(data,'$.id',?) WHERE id=?").run(IDS.otherAsset,DISPOSITION_IDS.mismatchedId);}
+          const moved=moving?withoutForeignKeys(db,()=>db.prepare("UPDATE assets SET projectId=?,data=json_set(data,'$.projectId',?) WHERE id=?").run(IDS.other,IDS.other,IDS.asset).changes):undefined;
+          return ({projectDir:path.dirname(String(db.prepare('PRAGMA database_list').all().find(row=>String(row.file).endsWith('.mioon'))!.file)),...(moved===undefined?{}:{moved}),
           rows: Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').map(({name}) =>
             [name, db.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`).all().map(row => ({...row}))])),
           version: [db.prepare('PRAGMA data_version').get()!.data_version, db.prepare('SELECT total_changes() AS n').get()!.n],
-        }));
+        });});
         reply = {type: 'reply', id: message.id, data};
       } catch (error) {
         const failure = error as {code?: unknown; message?: unknown} | null;

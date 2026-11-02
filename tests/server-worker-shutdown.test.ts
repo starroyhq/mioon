@@ -9,6 +9,7 @@ import path from 'node:path';
 import {startServer} from '@mioon/server';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import type {MediaProcessEvent} from '../packages/business/src/media-processes.ts';
+import {projectDirFor} from './helpers/project-database.ts';
 import {syntheticPng} from './helpers/runway-unknown-fixture.ts';
 import {deferred} from './helpers/worker-shutdown-fixture.ts';
 
@@ -36,7 +37,7 @@ test('server close aborts an active RPC media import, reaps its probe, and relau
   assert.ok(closing,'stop must start while the import probe is active');await closing;
   assert.equal(result.status,503);assert.equal(result.error?.code,'OPERATION_CANCELLED');assert.ok(performance.now()-began<5000);
   const started=events.filter(e=>e.type==='started').map(e=>e.pid),exited=events.filter(e=>e.type==='exited').map(e=>e.pid);
-  assert.equal(started.length,1);assert.deepEqual(exited,started);assert.deepEqual(await readdir(path.join(root,'media')),[]);
+  assert.equal(started.length,1);assert.deepEqual(exited,started);assert.deepEqual(await readdir(path.join(projectDirFor(root,project.id),'media')),[]);
  } finally {detach();}
  server=await startServer({dataDir:root,port:0,token});
  assert.deepEqual((await rpc(server,'asset.list',{projectId:project.id})).data,[]);

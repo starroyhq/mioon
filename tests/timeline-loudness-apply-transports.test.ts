@@ -1,3 +1,4 @@
+import {expectedContentMetadata} from './helpers/kernel-content-metadata.ts';
 import {projectRpcPath, parseProjectApiPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import type {Readable} from 'node:stream';
@@ -25,6 +26,7 @@ import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-po
 import {TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
 import {TIMELINE_GAIN_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-gain-tool-policy.ts';
 import {loudnessApplyFixture} from './fixtures/timeline-loudness-apply.ts';
+import {projectDirFor} from './helpers/project-database.ts';
 import {readProjectState} from './helpers/project-state.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
@@ -103,8 +105,15 @@ async function fixture(t: import('node:test').TestContext,{saved=true}: {saved?:
   finally{capture.mock.restore();}
   const scopedRequests=new WeakSet<http.IncomingMessage>();
   const captureAddress=(request: http.IncomingMessage)=>{if(typeof request.url==='string'&&parseProjectApiPath(request.url)?.kind==='rpc')scopedRequests.add(request);};
-  const requests: Fixture['requests']=[],observe=(request: http.IncomingMessage,response: http.ServerResponse)=>{if(scopedRequests.has(request))requests.push({request,response,
-    baseline:{request:request.listenerCount('aborted'),response:response.listenerCount('close')}});};
+  const requests: Fixture['requests']=[],observe=(request: http.IncomingMessage,response: http.ServerResponse)=>{
+    if(!scopedRequests.has(request))return;
+    const baseline={request:request.listenerCount('aborted'),response:response.listenerCount('close')};
+    requests.push({request,response,baseline});
+    // acquire() is asynchronous: the ordinary project lease and deletion gate
+    // attach after the server's request event. Body end runs after those guards
+    // and before the decoded RPC starts business work; measure that real baseline.
+    request.once('end',()=>{baseline.request=request.listenerCount('aborted');baseline.response=response.listenerCount('close');});
+  };
   // Capture the normal authenticated-response lifetime guard before observing
   // media work, so only new per-operation cancellation listeners are compared.
   assert.ok(server);const ownedServer=server;
@@ -137,7 +146,7 @@ async function fixture(t: import('node:test').TestContext,{saved=true}: {saved?:
   timeline=await client.rpc('timeline.clip.add',{projectId:f.project.id,expectedRevision:timeline.revision,requestId:randomUUID(),
     trackId,assetId:f.source.id,name:'已保存片段 🎬',startFrame:0,durationFrames:60,gain:.75,fadeInFrames:0}) as TimelineWire;
   f.before=timeline;f.sourceRecord=inspect(f.project.id,db=>JSON.parse(String((db.prepare('SELECT data FROM assets WHERE id=?').get(f.source.id) as {data: string}).data))) as {sha256: string; relativePath: string};
-  assert.equal(f.sourceRecord.sha256,sha(bytes));assert.equal(sha(await readFile(path.join(root,f.sourceRecord.relativePath))),sha(bytes));
+  assert.equal(f.sourceRecord.sha256,sha(bytes));assert.equal(sha(await readFile(path.join(projectDirFor(root,f.project.id),f.sourceRecord.relativePath))),sha(bytes));
   f.prepareInput={projectId:f.project.id,expectedRevision:timeline.revision,mixProfile:TIMELINE_MIX_LOUDNESS_PROFILE,
     measurementProfile:EXPORT_LOUDNESS_PROFILE,target:{integratedLufs:-30,truePeakCeilingDbtp:-1}};
   const events: MediaEvent[]=[];const off=onMediaProcess(((event: MediaEvent)=>{events.push(event);}) as never);
@@ -168,6 +177,7 @@ function assertSingleApplication(f: Fixture,before: Record<string, Record<string
   assert.deepEqual(after.timeline_requests.slice(0,-1),before.timeline_requests,'old immutable receipts retain exact bytes');
   const changedClips=new Set(f.before.clips.filter(clip=>gains.has(clip.id)&&gains.get(clip.id)!==clip.gain).map(clip=>clip.id));
   assert.equal(changedClips.size,1,'this fixture adjusts its single saved clip');
+  const metadata=expectedContentMetadata(before,after);
   let targetCount=0;
   const targets=before.agent_task_target_revisions_v2.map(row=>{
     if(row.projectId!==f.project.id||row.kind!=='timeline_clip'||!changedClips.has(String(row.targetId)))return row;
@@ -176,7 +186,7 @@ function assertSingleApplication(f: Fixture,before: Record<string, Record<string
   });
   assert.equal(targetCount,changedClips.size,'every changed gain has one exact target revision');
   for(const table of Object.keys(before))if(!['timelines','timeline_history','timeline_history_cursors','timeline_requests'].includes(table))
-    assert.deepEqual(after[table],table==='agent_task_target_revisions_v2'?targets:before[table],table+': only the exact changed clip target revision may advance');
+    assert.deepEqual(after[table],table==='agent_task_target_revisions_v2'?targets:metadata[table]??before[table],table+': only the exact changed clip target revision may advance');
   const receipt=f.receipt(String(f.input['requestId']));assert.ok(receipt);assert.equal(JSON.stringify(ack),receipt.response);
 }
 async function waitForReceipt(f: Fixture,requestId: string): Promise<ReceiptRow> {
@@ -248,7 +258,7 @@ for(const first of ['HTTP','CLI','MCP'])test(`real ${first}-first apply replays 
     const noMoreMedia=events.length;
     for(const channel of channels){const result=await f.call(channel,f.input);assert.deepEqual(result,original);assert.equal(JSON.stringify(result.data),raw);}
     assert.equal(events.length,noMoreMedia,'retained ACK survives actual decoder failure without another process');assert.deepEqual(f.rows(),undoRows);
-    await unlink(path.join(f.root,f.sourceRecord.relativePath));
+    await unlink(path.join(projectDirFor(f.root,f.project.id),f.sourceRecord.relativePath));
     for(const channel of channels)assert.deepEqual(await f.call(channel,f.input),original);
     assert.equal(events.length,noMoreMedia,'receipt-first replay does not reopen deleted media');assert.deepEqual(f.rows(),undoRows);
     assert.deepEqual(f.timeline(),undone,'replay after undo must never reapply its old gain');

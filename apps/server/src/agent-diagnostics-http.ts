@@ -33,7 +33,7 @@ export function inspectAgentTaskCatalog(tools:Pick<AgentTaskTools,'list'>|undefi
 }
 interface Dependencies {
   settings:{get(...args:Parameters<AgentSettingsService['get']>):Promise<unknown>};authorizations:Pick<ChatAuthorizations,'snapshot'>;
-  tools:AgentTaskTools|undefined;policy:()=>AgentTaskPolicy;selfPort:()=>number;hasProject:(id:string)=>boolean;storage?:()=>AgentTaskStorageSnapshot;
+  tools:Pick<AgentTaskTools,'list'>|undefined;policy:()=>AgentTaskPolicy;selfPort:()=>number;hasProject:(id:string)=>boolean;storage?:()=>AgentTaskStorageSnapshot;
 }
 /** Enclosing server enforces loopback Host/Origin and local bearer auth. This
  * management route is deliberately absent from the model and RPC catalogs. */

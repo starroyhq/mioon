@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {DURABLE_EDIT_OPERATIONS, EDIT_TASK_LIMITS, editTaskLane, isEditTaskEnvelope} from '@mioon/contracts';
+import {withoutForeignKeys} from './helpers/project-database.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {subjectFixture} from './helpers/strict-timeline-audio-subject-recovery-types.ts';
 const code=(expected: string)=>(error: { code: string; })=>error.code===expected&&!JSON.stringify(error).includes('PRIVATE');
@@ -100,7 +101,7 @@ test('shared local namespace collisions and duplicate receipts cannot authorize 
 test('current relational ownership is checked before historical receipt and foreign contents never escape',async t=>{
  const f=await subjectFixture(t),saved=f.prepare('subject.create',f.createInput()),applied=await f.execute(saved),before=f.row(saved.task);
  const source=f.store.get('assets',f.source.id)!;
- f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.other.id,JSON.stringify({...source,projectId:f.other.id,name:'PRIVATE_FOREIGN'}),source.id);
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.other.id,JSON.stringify({...source,projectId:f.other.id,name:'PRIVATE_FOREIGN'}),source.id));
  for(const call of [()=>f.tasks.get({projectId:f.project.id,taskId:saved.task.id}),()=>f.tasks.reconcile(f.request(saved.task)),()=>f.ack(applied.task)])assert.throws(call,code('EDIT_TASK_STORAGE_UNAVAILABLE'));
  assert.deepEqual(f.row(saved.task),before);assert.equal(f.calls,1);
 });

@@ -24,7 +24,7 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 | `APP_LIBRARY_LIMIT` | 507 | 新项目登记达到 8192 条上限；`{limit:8192}` |
 | `APP_LIBRARY_INVALID` | 422 | 全局 latest 读取到无效诊断摘要；`{reason:'unusable'}` |
 
-两者沿用 `{ok:false,error:{code,message,details,retryable:false}}`，严格契约见 [app-library-http.ts](../packages/contracts/src/app-library-http.ts)。应用库的 `LOCKED`、`FORMAT_NEWER` 在监听前拒绝启动，`CLOSED` 是内部生命周期错误，不能将它们都视为已有 HTTP 操作的可达响应。受信 `inspectProject` 仅交给测试代码；子进程测试使用固定 IPC，不增加 HTTP、CLI 或环境变量入口。
+两者沿用 `{ok:false,error:{code,message,details,retryable:false}}`，严格契约见 [app-library-http.ts](../packages/contracts/src/app-library-http.ts)。应用库的 `LOCKED`、`FORMAT_NEWER` 在监听前拒绝启动，`CLOSED` 是内部生命周期错误，不能将它们都视为已有 HTTP 操作的可达响应。受信 `inspectProject` 和 `inspectApplication` 仅交给测试代码，分别借用实际项目和 B1 连接；同步调用、拒绝异步回调及关闭后调用。子进程测试使用固定快照/故障 IPC，不接受 SQL 或任意路径，不增加 HTTP、CLI 或环境变量入口。
 
 以下能力仍等待后续卡接入新布局：
 

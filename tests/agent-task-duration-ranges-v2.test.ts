@@ -80,7 +80,7 @@ test('H4b old and ranged saved goal receipts keep the same last-valid-call bindi
  assert.equal(latestAgentTaskGoals([old,ranged,mismatched]),undefined);
 });
 test('H4b actual checks return duration bounds from the saved receipt without writes or a lazy timeline',async t=>{
- const root=await mkdtemp(join(await realpath(tmpdir()),'mioon-duration-ranges-')),store=openStore(root),services=createServices(store,new Map()),tools=createAgentTaskTools({store,services}),projectId=randomUUID(),stamp='2026-10-29T00:00:00.000Z';
+ const root=await mkdtemp(join(await realpath(tmpdir()),'mioon-duration-ranges-')),store=openStore(root),services=createServices(store,new Map()),tools=createAgentTaskTools({store,services}),projectId=store.projectId,stamp='2026-10-29T00:00:00.000Z';
  t.after(async()=>{tools.dispose();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
  store.put('projects',{id:projectId,name:'Synthetic range checks',revision:1,createdAt:stamp,updatedAt:stamp});
  const journal=createAgentTaskJournal(store),runId=journal.create({projectId,requestId:randomUUID(),text:'Duration limits',configuration:{}}).run.id;

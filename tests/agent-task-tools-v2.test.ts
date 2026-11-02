@@ -381,7 +381,7 @@ test('selected Cube import retains one atomic immutable receipt and cannot expos
 });
 test('selected import rejects symlink staging and enforces the 7 MiB Cube limit',async t=>{
  const f=await fixture(t),outside=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-import-outside-'));t.after(()=>rm(outside,{recursive:true,force:true}));
- await symlink(outside,path.join(f.root,'agent-imports'));
+ await symlink(outside,path.join(f.store.localDir,'imports'));
  await assert.rejects(f.tools.stageImport({projectId:f.projectId,requestId:randomUUID(),name:'small.cube',mimeType:'',dataBase64:Buffer.from('LUT_3D_SIZE 2').toString('base64')}),{code:'STORAGE_PRIVATE_REQUIRED'});
  await assert.rejects(f.tools.stageImport({projectId:f.projectId,requestId:randomUUID(),name:'large.cube',mimeType:'',dataBase64:Buffer.alloc(7*1024*1024+1).toString('base64')}),{code:'INVALID_MEDIA'});
 });
@@ -402,7 +402,7 @@ test('unknown wait recovery only observes an existing local result and never dri
 });
 test('selected file authority is rechecked before opening its private bytes',async t=>{
  const f=await fixture(t),selected=await f.tools.stageImport({projectId:f.projectId,requestId:randomUUID(),name:'small.cube',mimeType:'',dataBase64:Buffer.from('LUT_3D_SIZE 2').toString('base64')});if(!record(selected))throw Error('Invalid file');
- await rm(path.join(f.root,`agent-imports/${String(selected.id)}.bin`));
+ await rm(path.join(f.store.localDir,`imports/${String(selected.id)}.bin`));
  let fences=0;await assert.rejects(f.execute('lut.importSelected',{handle:selected.id},{beforeEffect:()=>{if(++fences===2)throw Object.assign(Error('revoked'),{code:'AGENT_TASK_CONSENT_REQUIRED'});}}),{code:'AGENT_TASK_CONSENT_REQUIRED'});
  assert.equal(fences,2);assert.equal(f.store.db.prepare('SELECT status FROM agent_task_imports_v2 WHERE id=?').get(String(selected.id))!.status,'selected');
 });

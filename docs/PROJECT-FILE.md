@@ -41,7 +41,7 @@
 - 直接 `INSERT INTO projects` 的测试改用 `project.create`（W1）。
 
 ## 入口与作用域
-`openStore(root)` 用于 store 级真实 TEST 布局；`startServer({dataDir})` 的 `dataDir` 是应用目录，项目通过真实登记和内核 opener 打开。`createServices` 仅为确切 TEST store 惰性接入真实测试应用库；生产布局必须显式注入应用配置/备份端口，不能靠 root 或复制 store 字段获得应用能力。
+`openStore(root)` 用于 store 级真实 TEST 布局；`startServer({dataDir})` 的 `dataDir` 是应用目录，项目通过真实登记和内核 opener 打开。`createServices` 仅为确切 TEST store 惰性接入真实测试应用库；生产宿主必须显式注入应用配置/备份端口，不能靠 root 或复制 store 字段获得应用能力。测试显式的 `createServerProject` / `openServerProject` 也登记同一 TEST 能力，使用真实服务端布局，不另外创建 TEST 布局的影子项目。共享一个应用目录的这些测试 store 复用唯一真实 B1，最后一个 store 关闭时才关闭 B1；生产服务端不参与这个 TEST 持有者表。
 
 ## 四个目录
 | 目录 | 位置 | 放什么 |
@@ -335,7 +335,7 @@ withoutForeignKeys<T>(db: DatabaseSync, write: () => T): T // 只在这次写入
 - 要模拟别的进程，或者检查重开后的状态：先 `store.close()`，再用 `openProjectDatabase(root)`。
 - 服务端运行期间要查库：
   - 进程内启动的服务端：用受信任的测试接口 `inspectProject`，见下一节；
-  - 子进程里的服务端：改成进程内启动，或者调整检查的时机；
+  - 子进程里的服务端：通过测试夹具的固定 IPC 消息让实际 owner 调用 `inspectProject`，或调整检查的时机；不传任意 SQL、路径或可执行回调；
   - 也可以先关掉服务端再打开，或者改用接口读取。
 - 生产代码由内核的 connection 统一打开项目。除了打开时第 1 步单独打开项目文件，不另开连接；K1 的守卫测试约束此边界。
 - 同一进程或另一个进程对活跃项目再开 store，均报 `PROJECT_LOCKED`，没有 `lock:false` 旁路。检查重开状态须先关 owner；检查运行中的服务端则复用其连接，不把第二连接搬进子进程绕锁。
@@ -352,6 +352,8 @@ type InspectProject = <T>(projectId: string, inspect: (db: DatabaseSync) => T) =
 - 这个选项是一个接收函数。服务端打开 store 以后、启动完成以前调用它一次，把 `InspectProject` 交给测试。测试把它存下来，服务端运行期间用它查库。
 - 回调在项目宿主自己的连接上同步执行，不会撞上独占锁，也不能跨 `await` 持有连接。
 - W2 先在旧服务端上加，只在 `apps/server/src/index.ts` 里加一小块；S0 再换成项目宿主的实现，交给测试的方式不变。
+
+应用库使用同样的受信接收方式：`startServer({inspectApplication: inspect => { … }})`，其中 `InspectApplication = <T>(read: (db: DatabaseSync) => T) => T`。它只借用当前服务端实际持有的 B1 连接，拒绝 async 回调、Promise/thenable 返回及关闭后的调用；不新增 HTTP、CLI 或环境变量开关。测试子进程只回答固定应用快照或固定故障问题，不把 SQL 接口公开出去。活动库文件及其日志、改名或硬链接不通过 `fs` 读取，快照使用真实 owner 的全行、结构和变更标记，普通文件另作字节快照。
 
 ## 待定
 - 封面接口已在 P4 定为 `GET /api/project-covers/<ID>`；后续首页体验归 S6。

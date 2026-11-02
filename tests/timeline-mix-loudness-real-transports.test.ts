@@ -1,3 +1,5 @@
+import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
+import {projectDirFor} from './helpers/project-database.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {CliResult,McpData,WireResult,TestTool,SchemaNode} from './helpers/strict-timeline-transport-types.ts';
 import type {TestCatalog as DiscoverySchemaResult} from './helpers/strict-timeline-transport-types.ts';
@@ -21,7 +23,7 @@ import {readTimelineMixLoudnessEnvelope} from '@mioon/client/timeline-mix-loudne
 import {isTimelineMixLoudnessResponse,TIMELINE_MIX_LOUDNESS_PROFILE} from '@mioon/contracts/timeline-mix-loudness';
 import {EXPORT_LOUDNESS_PROFILE} from '@mioon/contracts/export-loudness';
 import {startServer} from '../apps/server/src/index.ts';
-import type {InspectProject} from '../apps/server/src/index.ts';
+import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess, type MediaProcessEvent} from '../packages/business/src/media-processes.ts';
 import {changeMarks,readProjectState} from './helpers/project-state.ts';
@@ -44,16 +46,7 @@ function wav(){
   }
   return bytes;
 }
-async function manifest(root: string,relative: string|undefined=''){
-  const result: ({ directory: string; } | { file: string; sha256: string; })[]=[];
-  for(const entry of await readdir(path.join(root,relative),{withFileTypes:true})){
-    const name=path.join(relative,entry.name);
-    if(entry.isDirectory())result.push({directory:name},...await manifest(root,name));
-    else if(!/^workbench\.sqlite(?:-wal|-shm|-journal)?$/.test(name)&&name!=='server.lock')
-      result.push({file:name,sha256:sha(await readFile(path.join(root,name)))});
-  }
-  return result.sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
-}
+const manifest=(root:string)=>dataFileSnapshot(root,[]);
 async function cli(url: string,token: string,args: string[]){
   // execFile continuously decodes UTF-8, bounds both outputs and reaps its child.
   const {stdout,stderr}=await execute(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...args],
@@ -79,13 +72,13 @@ async function official(url: string,token: string){
 }
 
 test('real saved full mix matches across HTTP, CLI and official MCP without rows/files/receipt changes or retained observation listeners',{timeout:120000},async t=>{
-  const root=await mkdtemp(path.join(tmpdir(),'mioon-mix-loudness-real-wire-'));let backend!:Awaited<ReturnType<typeof startServer>>|undefined,inspect!: InspectProject,mcp!:Awaited<ReturnType<typeof official>>,server!: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>,off!: () => void;
+  const root=await mkdtemp(path.join(tmpdir(),'mioon-mix-loudness-real-wire-'));let backend!:Awaited<ReturnType<typeof startServer>>|undefined,inspect!: InspectProject,inspectApplication!:InspectApplication,mcp!:Awaited<ReturnType<typeof official>>,server!: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>,off!: () => void;
   t.after(async()=>{off?.();await mcp?.close();await backend?.close();await rm(root,{recursive:true,force:true});});
   // Capture only the actual server handle for listener inspection. The genuine
   // route, shared business service, decoder and response are never substituted.
   const createServer=http.createServer;
   const capture=t.mock.method(http,'createServer',(...args: unknown[])=>{server=createServer(...((args) as unknown as Parameters<NonNullable<typeof createServer>>));return server;});
-  try{backend=await startServer({dataDir:root,port:0,inspectProject:received=>{inspect=received;}});}
+  try{backend=await startServer({dataDir:root,port:0,inspectProject:received=>{inspect=received;},inspectApplication:received=>{inspectApplication=received;}});}
   finally{capture.mock.restore();}
   assert.equal(new URL(backend.url).hostname,'127.0.0.1');
   const client=(createClient({env:environment(backend.url,backend.token)}) as FixtureClient);
@@ -105,9 +98,10 @@ test('real saved full mix matches across HTTP, CLI and official MCP without rows
   assert.ok(definition.description.includes('完整测量编码前浮点混音'));
   const savedSource=inspect(project.id,db=>JSON.parse((((db.prepare('SELECT data FROM assets WHERE id=?').get(source.id))!.data) as unknown as Parameters<NonNullable<(typeof JSON)["parse"]>>[0])));
   assert.equal(savedSource.sha256,sha(bytes));assert.equal(savedSource.sizeBytes,bytes.length);
-  assert.equal(sha(await readFile(path.join(root,savedSource.relativePath))),sha(bytes));
+  assert.equal(sha(await readFile(path.join(projectDirFor(root,project.id),savedSource.relativePath))),sha(bytes));
   const rows=()=>inspect(project.id,db=>readProjectState(db).tables);
-  const before={rows:rows(),version:inspect(project.id,changeMarks),files:await manifest(root)};
+  const appState=()=>inspectApplication(db=>({state:readProjectState(db),version:changeMarks(db)}));
+  const before={rows:rows(),version:inspect(project.id,changeMarks),application:appState(),files:await manifest(root)};
   const listeners: ({ baseline: { request: unknown; response: unknown; }; remaining: { request: unknown; response: unknown; }; })[]=[];
   const observe=(req: { url: string; listenerCount: (arg0: string) => unknown; },res: { listenerCount: (arg0: string) => unknown; once: (arg0: string,arg1: () => void) => void; })=>{
     if(req.url!==projectRpcPath(input.projectId))return;
@@ -154,6 +148,7 @@ test('real saved full mix matches across HTTP, CLI and official MCP without rows
     assert.deepEqual(rows(),before.rows,name+' must not modify any database record, history or receipt');
     assert.deepEqual(inspect(project.id,changeMarks),before.version,name+' must not write the database');
     assert.deepEqual(await manifest(root),before.files,name+' must not modify managed files or create sidefiles');
+    assert.deepEqual(appState(),before.application,name+' application SQL/schema/write marks are unchanged');
     assert.equal(listeners.length,reports.length);assert.deepEqual((listeners.at(-1))!.remaining,(listeners.at(-1))!.baseline);
   }
   const comparable=({checkedAt,...report}:ServiceResponse<typeof operation>)=>report;

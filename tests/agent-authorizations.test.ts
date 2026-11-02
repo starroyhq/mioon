@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {openStore} from '../packages/business/src/db.ts';
+import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {AGENT_AUTHORIZATION_FILENAME} from '../packages/business/src/agent/authorizations.ts';
 import {AGENT_AUTHORIZATION_SCOPES,agentAuthorizationSchemas} from '../packages/contracts/src/agent-authorization.ts';
@@ -17,7 +18,7 @@ async function fixture(t: TestContext){
   await settings.put({expectedRevision:0,configuration:initial.configuration,secret:{action:'replace',storage:'session',value:'synthetic-authorization-secret'}});
   const authorizations=createTestAuthorizations((()=>store) as never,settings);
   t.after(async()=>{store.close();await settings.close();await rm(root,{recursive:true,force:true});});
-  return {root,settings,authorizations,get store(){return store;},file:path.join(root,AGENT_AUTHORIZATION_FILENAME),
+  return {root,settings,authorizations,get store(){return store;},file:path.join(testProjectAppLibrary(store)!.dataDir,AGENT_AUTHORIZATION_FILENAME),
     reopen(){store.close();store=openStore(root);},
     async input(scope='typed_chat_only'){
       const current=await authorizations.list();return {requestId:randomUUID(),expectedRevision:current.revision,

@@ -1,3 +1,4 @@
+import {expectedContentMetadata} from './helpers/kernel-content-metadata.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectRpcPath,projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {PipedProcess,SqlRows,ProcessOutcome,BackendReady,IpcMessage,WireMessage,WireData,WireEnvelope,WireCall} from './helpers/strict-timeline-wire-response-types.ts';
@@ -7,13 +8,12 @@ import type {ChildProcess as OwnedChild} from 'node:child_process';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import http from 'node:http';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types';
@@ -104,7 +104,7 @@ async function fixture(t: test.TestContext) {
   const audit = path.join(logRoot, 'forbidden-effects.jsonl');
   await writeFile(audit, '');
   const children: {label:string;run:ReturnType<typeof ownedProcess>}[] = [], mcpChildren: { label: string; client: Client<{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }>; transport: StdioClientTransport; stderr: string; }[] = [], proxies: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>[] = [], wire: { label: string; direction: string; message: JSONRPCMessage; }[] = [];
-  let db: DatabaseSync;
+  const projectIds: string[] = [];
   t.after(async () => {
     const failures:unknown[]=[];
     const cleanup = async (task:()=>unknown)=> { try { await task(); } catch (error) { failures.push(error); } };
@@ -126,7 +126,6 @@ async function fixture(t: test.TestContext) {
       await writeFile(path.join(logRoot, 'mcp-wire.jsonl'), wire.map(row => JSON.stringify(row)).join('\n') + '\n');
       await writeFile(path.join(logRoot, 'children.json'), JSON.stringify(children.map(({label, run}) => ({label, ...run.snapshot()})), null, 2));
     });
-    await cleanup(() => db?.close());
     await cleanup(() => rm(root, {recursive: true, force: true}));
     if (failures.length) throw new AggregateError(failures, 'Owned LUT transport cleanup failed');
   });
@@ -147,14 +146,27 @@ async function fixture(t: test.TestContext) {
   assert.notEqual(started.pid, process.pid);
   assert.equal(new URL(started.url).hostname, '127.0.0.1');
   const url = started.url;
-  db = new DatabaseSync(path.join(root, 'data/workbench.sqlite'), {readOnly: true});
-  const snapshot = ():SqlRows => Object.fromEntries(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
-    .map(({name}) => [name, db.prepare(`SELECT * FROM "${(name as string).replaceAll('"', '""')}" ORDER BY rowid`).all()]));
-  const checkpoint = () => ({rows: snapshot(), version: (db.prepare('PRAGMA data_version').get())!.data_version});
-  const unchanged = (before:{rows:SqlRows;version:unknown})=> {
-    assert.deepEqual(snapshot(), before.rows, 'read/replay/rejection does not change any persisted row');
-    assert.equal((db.prepare('PRAGMA data_version').get())!.data_version, before.version,
-      'read/replay/rejection does not perform an equal-value commit');
+  const pending = new Map<string, ReturnType<typeof Promise.withResolvers<{rows: SqlRows; version: [number, number];databases:string[]}>>>();
+  backend.child.on('message', (raw: unknown) => {
+    const message = raw as {type?: string; id?: string; data?: {rows: SqlRows; version: [number, number];databases:string[]}; message?: string};
+    if (message.type === 'reply' && message.id && message.data) pending.get(message.id)?.resolve(message.data);
+    if (message.type === 'fatal') for (const reply of pending.values()) reply.reject(Error(message.message));
+  });
+  const state = async (projectId: string) => {
+    const id = randomUUID(), reply = Promise.withResolvers<{rows: SqlRows; version: [number, number];databases:string[]}>(); pending.set(id, reply);
+    try { backend.child.send({type: 'lut-state', id, projectId}); return await bounded(reply.promise, 'LUT native storage snapshot'); }
+    finally { pending.delete(id); }
+  };
+  const checkpoint = async () => {
+    const states = await Promise.all(projectIds.map(state));
+    return {rows: Object.fromEntries(Object.keys(states[0].rows).map(table => [table, states.flatMap(item => item.rows[table])])) as SqlRows,
+      version: states.map(item => item.version)};
+  };
+  const snapshot = async () => (await checkpoint()).rows;
+  const unchanged = async (before: Awaited<ReturnType<typeof checkpoint>>) => {
+    const after = await checkpoint();
+    assert.deepEqual(after.rows, before.rows, 'read/replay/rejection does not change any persisted row in either real project');
+    assert.deepEqual(after.version, before.version, 'read/replay/rejection does not perform an equal-value commit');
   };
   async function rpc<O extends string>(operation: O, input:unknown):Promise<WireData<O>> {
     const response = await fetch(url + rpcPathFor(operation,input), {method: 'POST', signal: AbortSignal.timeout(5_000),
@@ -162,6 +174,7 @@ async function fixture(t: test.TestContext) {
     const envelope = await response.json();
     assert.equal(response.status, 200, JSON.stringify(envelope));
     assert.equal(envelope.ok, true, JSON.stringify(envelope));
+    if (operation === 'project.create') projectIds.push(envelope.data.id);
     return envelope.data;
   }
   const connectionEnv = (base:string) => environment(root, {MIOON_BASE_URL: base, MIOON_TOKEN: token,
@@ -232,7 +245,7 @@ async function fixture(t: test.TestContext) {
         const envelope = await upstream.json();
         assert.equal(upstream.status, 200, JSON.stringify(envelope));
         assert.equal(envelope.ok, true);
-        const receipt = db.prepare('SELECT resourceId FROM lut_import_requests WHERE requestId=?').get(submitted.input.requestId);
+        const receipt = (await state(submitted.input.projectId)).rows.lut_import_requests.find(row => row.requestId === submitted.input.requestId);
         assert.equal((receipt)!.resourceId, envelope.data.resource.id, 'actual committed receipt exists before response loss/tampering');
         seen.push({submitted, envelope});
         if (mode === 'drop') { response.destroy(); return; }
@@ -247,10 +260,10 @@ async function fixture(t: test.TestContext) {
     return {url: `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}`, seen,
       assertHealthy() { if (failure) throw failure; }};
   }
-  return {root, url, db, snapshot, checkpoint, unchanged, rpc, cli, mcpConnection, responseProxy,
+  return {root, url, state, snapshot, checkpoint, unchanged, rpc, cli, mcpConnection, responseProxy,
     async noSideEffects() {
       assert.equal(await readFile(audit, 'utf8'), '', 'no network/provider/model/media subprocess was attempted');
-      assert.deepEqual((await readdir(path.join(root, 'data/media')) as unknown), [], 'no managed playable media was created');
+      for (const projectId of projectIds) assert.deepEqual(await readdir(path.join(path.dirname((await state(projectId)).databases.find(file=>file.endsWith('.mioon'))!), 'media')), [], 'no managed playable media was created');
     }};
 }
 
@@ -258,7 +271,7 @@ test('actual CLI and official MCP stdio prove project-owned LUT import/replay an
   const f = await fixture(t);
   const project = await f.rpc('project.create', {name: 'LUT wire owner'});
   const other = await f.rpc('project.create', {name: 'Unrelated LUT wire project'});
-  const before = f.snapshot();
+  const before = await f.snapshot();
   const file = path.join(f.root, 'local look 色调.cube');
   await writeFile(file, source);
   const input = {projectId: project.id, requestId: 'wire-cli-original-key', name: path.basename(file), dataBase64: source.toString('base64')};
@@ -271,7 +284,7 @@ test('actual CLI and official MCP stdio prove project-owned LUT import/replay an
   assert.equal(saved.resource.metadata.size, 2);
   assert.equal(saved.resource.colourCompatibility, 'unverified');
   assert.equal(saved.resource.renderBinding, 'not_implemented');
-  assert.deepEqual(Buffer.from((f.db.prepare('SELECT content FROM project_lut_resources WHERE id=?').get(saved.resource.id))!.content as Uint8Array), source,
+  assert.deepEqual(Buffer.from((await f.snapshot()).project_lut_resources.find(row => row.id === saved.resource.id)!.content as string, 'base64'), source,
     'actual CLI --file preserves every original byte in real SQLite storage');
   metadataOnly(saved, f.root);
 
@@ -279,25 +292,29 @@ test('actual CLI and official MCP stdio prove project-owned LUT import/replay an
   const tools = await mcp.client.listTools({}, {timeout: 5_000});
   for (const name of ['lut_import', 'lut_list', 'lut_inspect']) assert.ok(tools.tools.some(tool => tool.name === name), `${name} is discoverable on official stdio`);
   await t.test('same-key replay crosses transports and changed-key payload cannot alter the resource', async () => {
-    const checkpoint = f.checkpoint();
+    const checkpoint = await f.checkpoint();
     assert.deepEqual((await mcp.call('lut.import', input)).data, saved);
     assert.deepEqual((await f.cli('lut.import', input)).data, saved);
-    for (const change of [{name: 'renamed.cube'}, {dataBase64: Buffer.concat([source, Buffer.from('\n')]).toString('base64')}, {projectId: other.id}])
+    for (const change of [{name: 'renamed.cube'}, {dataBase64: Buffer.concat([source, Buffer.from('\n')]).toString('base64')}])
       await mcp.call('lut.import', {...input, ...change}, 'IDEMPOTENCY_CONFLICT');
     await f.cli('lut.import', {...input, name: 'changed.cube'}, 'IDEMPOTENCY_CONFLICT');
-    f.unchanged(checkpoint);
+    await f.unchanged(checkpoint);
+    const owner=await f.state(project.id),independent=(await mcp.call('lut.import',{...input,projectId:other.id})).data;
+    assert.equal(independent.resource.projectId,other.id);assert.notEqual(independent.resource.id,saved.resource.id);
+    assert.deepEqual((await f.cli('lut.import',{...input,projectId:other.id})).data,independent,'a project replays only its own same-key receipt');
+    assert.deepEqual(await f.state(project.id),owner,'another project cannot write or replay the original owner');
   });
 
   await t.test('both transports return only owned metadata and never register playable media', async () => {
-    const checkpoint = f.checkpoint();
+    const checkpoint = await f.checkpoint();
     for (const call of [f.cli, mcp.call]) {
       const list = (await call('lut.list', {projectId: project.id, limit: 1})).data;
       assert.deepEqual(list, {projectId: project.id, items: [saved.resource], nextAfter: null});
       const inspected = (await call('lut.inspect', {projectId: project.id, lutId: saved.resource.id})).data;
       assert.deepEqual(inspected, {resource: saved.resource, integrity: 'verified'});
       metadataOnly(list, f.root); metadataOnly(inspected, f.root);
-      const empty = (await call('lut.list', {projectId: other.id})).data;
-      assert.deepEqual(empty, {projectId: other.id, items: [], nextAfter: null});
+      const otherList = (await call('lut.list', {projectId: other.id})).data;
+      assert.deepEqual(otherList, {projectId: other.id, items: [(await f.cli('lut.import',{...input,projectId:other.id})).data.resource], nextAfter: null});
       const denied = await call('lut.inspect', {projectId: other.id, lutId: saved.resource.id}, 'LUT_NOT_FOUND');
       assert.equal(JSON.stringify(denied).includes(saved.resource.name), false);
       assert.equal(JSON.stringify(denied).includes(saved.resource.sha256), false);
@@ -306,7 +323,7 @@ test('actual CLI and official MCP stdio prove project-owned LUT import/replay an
     const media = await fetch(f.url + projectMediaPath(project.id,saved.resource.id), {signal: AbortSignal.timeout(5_000), headers: {authorization: `Bearer ${token}`}});
     assert.equal(media.status, 404, 'LUT IDs are not exposed through the playable media route');
     await media.arrayBuffer();
-    f.unchanged(checkpoint);
+    await f.unchanged(checkpoint);
     await f.noSideEffects();
   });
 
@@ -324,24 +341,30 @@ test('actual CLI and official MCP stdio prove project-owned LUT import/replay an
     assert.equal(proxy.seen.length, 1, 'one actual request, not an automatic resubmission');
     assert.deepEqual(proxy.seen[0].submitted, {operation: 'lut.import', input: original});
     const committed = proxy.seen[0].envelope.data;
-    const checkpoint = f.checkpoint();
+    const checkpoint = await f.checkpoint();
     const recovered = mode === 'drop' ? await mcp.call('lut.import', original) : await f.cli('lut.import', original);
     assert.deepEqual(recovered.data, committed, 'explicit same-key cross-transport retry returns the original committed resource');
     await pause(50);
     assert.equal(proxy.seen.length, 1, 'no delayed automatic retry was scheduled');
-    f.unchanged(checkpoint);
+    await f.unchanged(checkpoint);
     metadataOnly(recovered, f.root);
   });
 
-  const after = f.snapshot();
+  const after = await f.snapshot();
   assert.deepEqual(Object.keys(after), Object.keys(before));
+  const metadata:Record<string,Record<string,unknown>[]>={project_file:[],history_state:[]};
+  for(const projectId of [project.id,other.id]){
+    const select=(rows:SqlRows)=>Object.fromEntries(Object.keys(metadata).map(table=>[table,rows[table].filter(row=>row.projectId===projectId)]));
+    const expected=expectedContentMetadata(select(before),select(after));
+    for(const table of Object.keys(metadata))metadata[table].push(...expected[table]);
+  }
   for (const table of Object.keys(before)) if (!changedTables.has(table) && table !== 'agent_task_target_revisions_v2')
-    assert.deepEqual(after[table], before[table], `${table} is untouched by LUT resource operations`);
+    assert.deepEqual(after[table], metadata[table]??before[table], `${table} is untouched by LUT resource operations`);
   for (const entry of before.agent_task_target_revisions_v2) assert.deepEqual(after.agent_task_target_revisions_v2.find(next => next.projectId === entry.projectId && next.kind === entry.kind && next.targetId === entry.targetId), entry, 'LUT import leaves prior target revisions unchanged');
   const lutEntries = after.agent_task_target_revisions_v2.filter(entry => !before.agent_task_target_revisions_v2.some(prior => prior.projectId === entry.projectId && prior.kind === entry.kind && prior.targetId === entry.targetId));
-  assert.equal(lutEntries.length,3);
-  for (const entry of lutEntries) {assert.equal(entry.kind,'lut');assert.equal(entry.projectId,project.id);assert.equal(entry.revision,1);assert.ok(after.project_lut_resources.some(resource=>resource.id===entry.targetId));}
-  assert.equal(after.project_lut_resources.length, 3);
-  assert.equal(after.lut_import_requests.length, 3);
+  assert.equal(lutEntries.length,4);
+  for (const entry of lutEntries) {assert.equal(entry.kind,'lut');assert.equal(entry.projectId,after.project_lut_resources.find(resource=>resource.id===entry.targetId)!.projectId);assert.equal(entry.revision,1);assert.ok(after.project_lut_resources.some(resource=>resource.id===entry.targetId));}
+  assert.equal(after.project_lut_resources.length, 4);
+  assert.equal(after.lut_import_requests.length, 4);
   await f.noSideEffects();
 });

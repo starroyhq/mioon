@@ -1,3 +1,4 @@
+import {projectDirFor} from './helpers/project-database.ts';
 import test from 'node:test';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectApiPath, projectMediaPath} from '../packages/contracts/src/project-file.ts';
@@ -81,7 +82,7 @@ async function fixture(t: TestContext,options: {dropAck?: boolean; hold?: boolea
     async asset(task: {projectId: string; groupId: string}){const versions=await f.rpc('image.version.list',{projectId:task.projectId,groupId:task.groupId});assert.equal(versions.items.length,1);const version=versions.items[0];
       const response=await fetch(server.url+projectMediaPath(task.projectId,version.assetId),{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(10000)});assert.equal(response.status,200);const bytes=Buffer.from(await response.arrayBuffer());
       assert.deepEqual(bytes,comfy.png);assert.equal(version.sha256,sha(bytes));assert.equal(version.width,512);assert.equal(version.height,512);assert.equal(version.providerId,'comfy-local');assert.equal(version.isMock,false);
-      assert.deepEqual(await readFile(path.join(root,'media',`${version.assetId}.png`)),bytes);return version;},
+      assert.deepEqual(await readFile(path.join(projectDirFor(root,task.projectId),'media',`${version.assetId}.png`)),bytes);return version;},
     async restart(){await server.close();server=await startServer({dataDir:root,port:0,token});},
   };
   return f;

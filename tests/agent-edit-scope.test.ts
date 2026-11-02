@@ -6,20 +6,23 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {fork} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createServices, canonical} from '../packages/business/src/services.ts';
 
 interface ScopeFixture {
-  root: string; store: ReturnType<typeof openStore>; services: ReturnType<typeof createServices>;
+  root: string; store: ReturnType<typeof openStore>|ReturnType<typeof openLegacyWorkspaceStore>; services: ReturnType<typeof createServices>;
   project: {id: string}; other: {id: string}; shot: {id: string; revision: number};
 }
 interface ShotRecordView {projectId: string; title: string; revision: number; prompt: string}
-async function fixture(t: TestContext): Promise<ScopeFixture> {
+async function fixture(t: TestContext,legacy=false): Promise<ScopeFixture> {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-edit-scope-'));
-  const store = openStore(root), services = createServices(store, new Map());
+  const store = legacy?openLegacyWorkspaceStore(root):openStore(root), services = createServices(store, new Map());
   t.after(async () => { store.close(); await rm(root, {recursive: true, force: true}); });
   const project = await services.call('project.create', {name: 'Approved project'}) as {id: string};
-  const other = await services.call('project.create', {name: 'Other private project'}) as {id: string};
+  const foreign=legacy?null:openStore(path.join(root,'foreign'));
+  const foreignServices=foreign?createServices(foreign,new Map()):services;
+  const other = await foreignServices.call('project.create', {name: 'Other private project'}) as {id: string};
+  t.after(async()=>{if(foreign){await foreignServices.drain();foreign.close();}await services.drain();});
   const shot = await services.call('shot.create', {projectId: project.id, title: 'Original saved title'}) as {id: string; revision: number};
   return {root, store, services, project, other, shot};
 }
@@ -40,7 +43,7 @@ const inputFor = (f: ScopeFixture) => ({shotId: f.shot.id, expectedRevision: f.s
 const noForeign = (error: unknown): boolean => {const failure = error as {code?: string; status?: number; message?: string}; return failure.code === 'NOT_FOUND' && failure.status === 404 && !JSON.stringify(error).includes('FOREIGN_SCOPE_SECRET');};
 
 for (const replay of [false, true]) test(`scoped shot update checks owner inside the SQLite lock on ${replay ? 'exact replay' : 'new dispatch'} after a separate writer reassigns it`, async (t: TestContext) => {
-  const f = await fixture(t), input = inputFor(f);
+  const f = await fixture(t,true), input = inputFor(f);
   let original: {revision: number} | undefined;
   if (replay) original = await f.services.updateShotInProject(f.project.id, input) as {revision: number};
   const priorCount = (f.store.db.prepare('SELECT count(*) AS n FROM mutation_requests').get() as {n: number}).n;
@@ -66,7 +69,7 @@ for (const replay of [false, true]) test(`scoped shot update checks owner inside
 });
 
 test('scoped foreign target rejects before decoding corrupt foreign text; helper is absent from RPC handlers', async (t: TestContext) => {
-  const f = await fixture(t), input = inputFor(f), ended = await reassignWhileLocked(t, f, true);
+  const f = await fixture(t,true), input = inputFor(f), ended = await reassignWhileLocked(t, f, true);
   await assert.rejects(f.services.updateShotInProject(f.project.id, input), noForeign); await ended;
   assert.equal(Object.hasOwn(f.services.handlers, 'updateShotInProject'), false);
   await assert.rejects(f.services.call('updateShotInProject', input), (error: unknown) => (error as {code?: string}).code === 'UNKNOWN_OPERATION');

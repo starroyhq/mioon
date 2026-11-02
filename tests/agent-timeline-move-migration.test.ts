@@ -6,7 +6,7 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
 import {migrateAgentEditProposalSchema} from '../packages/business/src/agent/edit-proposal-schema.ts';
 const legacy=readFileSync(new URL('./fixtures/agent-edit-legacy-schema10.sql',import.meta.url),'utf8');

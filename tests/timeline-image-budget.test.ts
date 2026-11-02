@@ -14,7 +14,7 @@ import {
   hasRequestNotAppliedProof, isTimelineMutationResponse, isTimelineRecord,
 } from '@mioon/contracts';
 import {
-  openStore, installCurrentWorkspaceRestoreSchema, validateCurrentWorkspaceRestoreSchema,
+  openStore, openLegacyWorkspaceStore, installCurrentWorkspaceRestoreSchema, validateCurrentWorkspaceRestoreSchema,
   getWorkspaceRestoreContext,
   classifyCurrentWorkspaceSchema,
 } from '../packages/business/src/db.ts';
@@ -106,9 +106,10 @@ function tuneBytes(timeline: FixtureTimeline, target: number) {
   return timeline;
 }
 
-async function fixture(t: test.TestContext, {bytes = limit, revision = 1, updatedAt = stamp} = {}) {
+async function fixture(t: test.TestContext, {bytes = limit, revision = 1, updatedAt = stamp, legacy = false} = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-image-budget-'));
-  let store = (openStore(root) as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
+  const opener = legacy ? openLegacyWorkspaceStore : openStore;
+  let store = (opener(root) as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
   const projectId = (await services.call('project.create', {name: 'Image aggregate budget'})).id;
   const assetId = randomUUID();
   const asset = store.put('assets', {
@@ -149,7 +150,7 @@ async function fixture(t: test.TestContext, {bytes = limit, revision = 1, update
     async close() { await services.drain(); if (store.db.isOpen) store.close(); },
     async reopen() {
       await f.close();
-      store = (openStore(root) as FixtureStore);
+      store = (opener(root) as FixtureStore);
       services = (createServices(store, new Map()) as FixtureServices);
     },
   };
@@ -374,7 +375,7 @@ for (const location of (['receipt', 'history'] as const)) test(`oversized persis
 });
 
 test('cold backup32 and restored33 preserve exact-limit evidence, receipts and history across reopen', async t => {
-  const f = await fixture(t, {bytes: limit - 1});
+  const f = await fixture(t, {bytes: limit - 1, legacy: true});
   const track = f.timeline.tracks.at(-1);
   const changed = await f.call('timeline.track.update', f.params(f.timeline, {trackId: (track)!.id, patch: {name: (track)!.name + 'x'}}));
   assert.equal(encodedBytes(changed), limit);
@@ -394,7 +395,7 @@ test('cold backup32 and restored33 preserve exact-limit evidence, receipts and h
   assert.equal(restored.profile, 'restored-local-v5');
   assert.equal(restored.sourceSchema, 32);
   for (let attempt = 0; attempt < 2; attempt++) {
-    const store = (openStore(destination) as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
+    const store = (openLegacyWorkspaceStore(destination) as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
     try {
       assert.equal((getWorkspaceRestoreContext(store))!.schemaVersion, 33);
       assert.equal(validateCurrentWorkspaceRestoreSchema(store.db).schemaVersion, 33);
@@ -408,7 +409,7 @@ test('cold backup32 and restored33 preserve exact-limit evidence, receipts and h
 });
 
 test('restored33 install rolls back exact-limit timeline, receipt and history bytes on commit failure', async t => {
-  const f = await fixture(t);
+  const f = await fixture(t, {legacy: true});
   await f.call('timeline.clip.update', f.params(f.timeline, {clipId: f.timeline.clips[0].id, patch: {gain: 0}}));
   await f.close();
   const frozenBase = mkdtempSync(path.join(tmpdir(), 'mioon-image-budget-source32-'));

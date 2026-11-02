@@ -6,7 +6,7 @@ import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
@@ -32,8 +32,8 @@ const {step:STEP,default:DEFAULT,full:FULL}=AGENT_TASK_POLICY_PRESETS;
 
 /** One runtime over a real workspace. Each model request answers with the
  * next queued batch of tool calls; an empty queue ends the round. */
-async function fixture(t:TestContext){
- const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-policy-answer-v2-')),store=openStore(root),services=createServices(store,new Map());
+async function fixture(t:TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){
+ const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-policy-answer-v2-')),store=opener(root),services=createServices(store,new Map());
  const projectId=String(record(await services.call('project.create',{name:'Policy and answer test'})).id);
  const shotId=String(record(await services.call('shot.create',{projectId,title:'Saved title'})).id);
  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();
@@ -247,7 +247,7 @@ test('the default policy confirms irreversible work, saved policies keep their m
 });
 
 test('a waiting question keeps its project from deletion; a finished conversation policy is deleted with its project',async t=>{
- const f=await fixture(t);f.queue([ask(opening)]);
+ const f=await fixture(t,openLegacyWorkspaceStore);f.queue([ask(opening)]);
  const waiting=await f.send('Plan the opening',{policy:{modes:STEP}}),step=question(waiting);
  f.services.setProjectDeletionCompanions({assertDeletable(){},removeProject(){}});
  const remove=()=>f.services.call('project.delete',{requestId:randomUUID(),projectId:f.projectId,expectedRevision:Number(record(f.store.get('projects',f.projectId)).revision),confirmPermanentDeletion:true});
@@ -262,25 +262,25 @@ test('a waiting question keeps its project from deletion; a finished conversatio
 test('schema64 upgrades to schema66 intact, and the schema64 profile refuses runs waiting for an answer',async()=>{
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-policy-answer-v64-'));
  try{
-  let store=openStore(root);const services=createServices(store,new Map()),journal=createAgentTaskJournal(store);
+  let store=openLegacyWorkspaceStore(root);const services=createServices(store,new Map()),journal=createAgentTaskJournal(store);
   const projectId=String(record(await services.call('project.create',{name:'Historical'})).id);
   const created=journal.create({requestId:randomUUID(),projectId,text:'Historical round',configuration:{}});
   await services.drain();store.close();
   let db=new DatabaseSync(join(root,'workbench.sqlite'));
   try{downgradeReviewedWorkspace(db,64);assert.equal(db.prepare('SELECT 1 FROM schema_version WHERE version=66').get(),undefined);}finally{db.close();}
   db=new DatabaseSync(join(root,'workbench.sqlite'));const before=db.prepare('SELECT id,digest,status,data FROM agent_task_runs_v2 ORDER BY id').all();db.close();
-  store=openStore(root);
+  store=openLegacyWorkspaceStore(root);
   try{assertCurrentOrdinaryWorkspace(store.db);assert.deepEqual(store.db.prepare('SELECT id,digest,status,data FROM agent_task_runs_v2 ORDER BY id').all(),before);assert.equal(store.db.prepare('SELECT count(*) AS n FROM agent_task_conversation_policies_v2').get()!.n,0);}finally{store.close();}
   db=new DatabaseSync(join(root,'workbench.sqlite'));
   try{downgradeReviewedWorkspace(db,64);db.prepare("UPDATE agent_task_runs_v2 SET status='awaiting_answer',data=json_set(data,'$.status','awaiting_answer') WHERE id=?").run(created.run.id);}finally{db.close();}
-  assert.throws(()=>openStore(root),/RESTORE_SCHEMA_UNSUPPORTED|unsupported|Invalid/iu);
+  assert.throws(()=>openLegacyWorkspaceStore(root),/RESTORE_SCHEMA_UNSUPPORTED|unsupported|Invalid/iu);
   db=new DatabaseSync(join(root,'workbench.sqlite'));
   try{assert.equal(db.prepare('SELECT 1 FROM schema_version WHERE version=66').get(),undefined,'a refused upgrade leaves the historical workspace untouched');}finally{db.close();}
  }finally{rmSync(root,{recursive:true,force:true});}
 });
 
 test('a current backup restores conversation policies and waiting questions as read-only evidence',async t=>{
- const f=await fixture(t);f.queue([ask(opening)]);
+ const f=await fixture(t,openLegacyWorkspaceStore);f.queue([ask(opening)]);
  const waiting=await f.send('Plan the opening',{policy:{modes:STEP}}),conversationId=waiting.run.conversationId!;
  f.setPolicy(conversationId,1,DEFAULT);
  await f.shutdown();
@@ -288,7 +288,7 @@ test('a current backup restores conversation policies and waiting questions as r
  t.after(()=>{rmSync(backup,{recursive:true,force:true});rmSync(restored,{recursive:true,force:true});});
  await createWorkspaceBackup({source:f.root,destination:backup});
  const result=await restoreWorkspaceBackup({directory:backup,destination:restored});assert.equal(result.databaseSchemaVersion,CURRENT_RESTORED_SCHEMA);
- const store=openStore(restored);
+ const store=openLegacyWorkspaceStore(restored);
  try{
   assert.deepEqual(classifyCurrentWorkspaceSchema(store.db),{schemaVersion:CURRENT_RESTORED_SCHEMA,profile:CURRENT_RESTORE_PROFILE});
   const journal=createAgentTaskJournal(store),policy=journal.conversationPolicy(f.projectId,conversationId);

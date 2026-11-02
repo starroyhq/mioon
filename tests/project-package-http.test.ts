@@ -4,6 +4,10 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {setTimeout as pause} from 'node:timers/promises';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
+import {startLegacyProjectHttp} from './fixtures/legacy-project-package-http.ts';
+import {schemaObjects} from './helpers/project-database.ts';
+import type {DatabaseSync} from 'node:sqlite';
 import {schemas} from '@mioon/contracts';
 import {writeFileSync} from 'node:fs';
 import path from 'node:path';
@@ -20,7 +24,7 @@ test('project files work over HTTP and stay out of the RPC and MCP catalog',{ski
  for(const name of ['project.export','project.import','project.duplicate'])assert.equal(Object.hasOwn(schemas,name),false);
  const root=tempRoot('package-http');t.after(()=>cleanup(root));
  const ws=openWorkspace(root),sample=await buildSampleProject(root,ws);ws.store.close();
- const server:any=await startServer({dataDir:root,port:0,token});t.after(()=>server.close());
+ const server=await startLegacyProjectHttp({root,token,domain:'packages'});t.after(()=>server.close());
  const base=server.url;
  assert.equal((await fetch(`${base}/api/projects/${sample.project.id}/package-preview`)).status,401);
  const preview=await call(base,`/api/projects/${sample.project.id}/package-preview?media=used`);
@@ -58,4 +62,22 @@ test('project files work over HTTP and stay out of the RPC and MCP catalog',{ski
  assert.equal(copy.status,200);
  assert.equal((await call(base,`/api/project-packages/exports/${status.id}`,{method:'DELETE'})).status,200);
  assert.equal((await call(base,`/api/project-packages/exports/${status.id}`)).status,404);
+});
+
+test('real project hosts refuse legacy package routes and permanent deletion without changing either database owner',async t=>{
+ const root=tempRoot('package-unavailable');let application!:InspectApplication,projectStore!:InspectProject;
+ const server=await startServer({dataDir:root,port:0,token,inspectApplication:read=>{application=read;},inspectProject:read=>{projectStore=read;}});
+ t.after(async()=>{await server.close();cleanup(root);});
+ const created=await call(server.url,'/api/rpc',{method:'POST',body:JSON.stringify({operation:'project.create',input:{name:'Real unavailable boundary'}})});
+ assert.equal(created.status,200);const project=created.body.data as {id:string;revision:number};
+ const quote=(name:string)=>'"'+name.replaceAll('"','""')+'"';
+ const snapshot=(db:DatabaseSync)=>({objects:schemaObjects(db),rows:schemaObjects(db).filter(row=>row.type==='table').map(({schema,name})=>[schema,name,db.prepare(`SELECT * FROM ${quote(schema)}.${quote(name)} ORDER BY rowid`).all()]),changes:db.prepare('SELECT total_changes() AS n').get()!.n});
+ const before={application:application(snapshot),project:projectStore(project.id,snapshot)};
+ for(const [route,method] of [[`/api/projects/${project.id}/package-preview?media=used`,'GET'],['/api/project-packages/exports','POST'],['/api/project-packages/imports','POST'],['/api/project-packages/duplicates','POST'],['/api/project-packages/save-as','POST']] as const){
+  const response=await call(server.url,route,{method,...(method==='POST'?{body:JSON.stringify({projectId:project.id,requestId:randomUUID()})}:{})});
+  assert.equal(response.status,404);assert.equal(response.body.error.code,'NOT_FOUND');
+ }
+ const rejected=await call(server.url,'/api/rpc',{method:'POST',body:JSON.stringify({operation:'project.delete',input:{projectId:project.id,requestId:randomUUID(),expectedRevision:project.revision,confirmPermanentDeletion:true}})});
+ assert.equal(rejected.status,409);assert.equal(rejected.body.error.code,'PROJECT_DELETE_UNAVAILABLE');
+ assert.deepEqual({application:application(snapshot),project:projectStore(project.id,snapshot)},before,'unavailable maintenance writes no project/application row, receipt, schema or change mark');
 });

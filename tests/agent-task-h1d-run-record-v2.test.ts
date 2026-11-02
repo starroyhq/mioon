@@ -1,3 +1,4 @@
+import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -5,7 +6,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {projectAgentTaskChangeDisplay} from '../packages/business/src/agent/task-display-v2.ts';
 import {taskRunRecordMessage,TASK_RUN_RECORD_BYTES,TASK_RUN_RECORD_KIND} from '../packages/business/src/agent/task-run-record-v2.ts';
@@ -20,7 +21,7 @@ const marker='SYNTHETIC_PRIVATE_PAYLOAD_NOT_MODEL_CONTEXT';
 function object(value:unknown):Record<string,unknown>{assert.ok(value!==null&&typeof value==='object'&&!Array.isArray(value));return value as Record<string,unknown>;}
 function content(value:AgentTaskJson):Record<string,unknown>{const message=object(value);assert.equal(message.role,'user');assert.equal(typeof message.content,'string');const body=object(JSON.parse((message.content as string).split('\n').slice(1).join('\n')));assert.equal(body.kind,TASK_RUN_RECORD_KIND);return object(body.data);}
 function freeze<T>(value:T):T{if(value!==null&&typeof value==='object'){for(const item of Object.values(value))freeze(item);Object.freeze(value);}return value;}
-function fixture(t:TestContext){const base=mkdtempSync(join(realpathSync(tmpdir()),'mioon-h1d-record-')),root=join(base,'source'),store=openStore(root),projectId=randomUUID();store.put('projects',{id:projectId,name:'Context records',revision:1,createdAt:stamp,updatedAt:stamp});t.after(()=>{store.close();rmSync(base,{recursive:true,force:true});});return {base,root,store,projectId,journal:createAgentTaskJournal(store)};}
+function fixture(t:TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){const base=mkdtempSync(join(realpathSync(tmpdir()),'mioon-h1d-record-')),root=join(base,'source'),store=opener(root),projectId=isProjectStore(store)?store.projectId:randomUUID();store.put('projects',{id:projectId,name:'Context records',revision:1,createdAt:stamp,updatedAt:stamp});t.after(()=>{store.close();rmSync(base,{recursive:true,force:true});});return {base,root,store,projectId,journal:createAgentTaskJournal(store)};}
 function createRun(f:ReturnType<typeof fixture>,text:string,conversationId?:string){return f.journal.create({projectId:f.projectId,requestId:randomUUID(),text,configuration:{protocol:'responses'},...(conversationId?{conversationId}:{}),context:[{role:'user',content:marker}]}).run;}
 function endRun(f:ReturnType<typeof fixture>,runId:string,status:AgentTaskStatus,reason?:string){return f.journal.transition(runId,f.journal.run(runId).revision,status,reason);}
 function model(f:ReturnType<typeof fixture>,runId:string,text:string){const step=f.journal.beginStep(runId,{kind:'model',request:{body:marker.repeat(6000),history:[]}});return f.journal.completeStep(runId,step.id,{result:{text,toolCalls:[],providerOutput:{privatePayload:marker.repeat(6000)}}});}
@@ -126,7 +127,7 @@ test('recent candidate limits keep honest omission counts and applied versus rev
 });
 
 test('restored workspace can read cross-run context without writes or recovery',async t=>{
- const f=fixture(t),run=createRun(f,'A failed historical request');endRun(f,run.id,'failed','AGENT_CHAT_LIMIT');f.store.close();const backup=join(f.base,'backup'),restored=join(f.base,'restored');await createWorkspaceBackup({source:f.root,destination:backup});await restoreWorkspaceBackup({directory:backup,destination:restored});const store=openStore(restored);try{
+ const f=fixture(t,openLegacyWorkspaceStore),run=createRun(f,'A failed historical request');endRun(f,run.id,'failed','AGENT_CHAT_LIMIT');f.store.close();const backup=join(f.base,'backup'),restored=join(f.base,'restored');await createWorkspaceBackup({source:f.root,destination:backup});await restoreWorkspaceBackup({directory:backup,destination:restored});const store=openLegacyWorkspaceStore(restored);try{
   const journal=createAgentTaskJournal(store),before=Number(store.db.prepare('SELECT total_changes() AS n').get()!.n),result=journal.modelContextRuns(f.projectId,run.conversationId!);assert.equal(result[0]!.status,'failed');assert.equal(result[0]!.record.failureCode,'AGENT_CHAT_LIMIT');assert.equal(Number(store.db.prepare('SELECT total_changes() AS n').get()!.n),before);
  }finally{store.close();}
 });

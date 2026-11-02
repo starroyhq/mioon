@@ -1,3 +1,5 @@
+import {writeProjectCover} from '../apps/server/src/project-host/covers.ts';
+import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {TransportCall,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
@@ -23,15 +25,14 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
-import {openStore} from '../packages/business/src/db.ts';
 import {createClient, discoverSchema} from '../packages/client/src/index.ts';
 import {parse, schemas, operationEffect, exportPreflightSchemas, exportPreflightResponseSchema,
   isExportPreflightResponse, EXPORT_PREFLIGHT_LIMITS} from '../packages/contracts/src/index.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {IDS, TOKEN, NOW, uuid, seedMutationStore} from './helpers/mutation-wire-fixture.ts';
-import {projectDirFor} from './helpers/project-database.ts';
-import {createProjectStorageReader} from './fixtures/project-server-process.ts';
+import {openServerProject,projectDirFor} from './helpers/project-database.ts';
+import {createApplicationStorageReader,createProjectStorageReader} from './fixtures/project-server-process.ts';
 import type { BinaryLike } from 'crypto';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -110,16 +111,7 @@ function syntheticPng() {
   const rows = Buffer.alloc(16 * (1 + 16 * 3), 90); for (let row = 0; row < 16; row++) rows[row * 49] = 0;
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', deflateSync(rows)), chunk('IEND', Buffer.alloc(0))]);
 }
-async function fileManifest(root: string, relative: string|undefined = '') {
-  const result: ({ directory: string; } | { file: string; hash: string; })[] = [];
-  for (const entry of await readdir(path.join(root, relative), {withFileTypes: true})) {
-    const name = path.join(relative, entry.name);
-    if (entry.isDirectory()) result.push({directory: name}, ...await fileManifest(root, name));
-    else if (!/^workbench\.sqlite(?:-wal|-shm)?$/.test(name) && name !== 'backend.lock')
-      result.push({file: name, hash: sha256(await readFile(path.join(root, name)))});
-  }
-  return result.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-}
+
 
 async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-preflight-wire-')), dataDir = path.join(root, 'data');
@@ -134,13 +126,16 @@ async function fixture(t: test.TestContext) {
   await seedMutationStore(dataDir);
   const wav = syntheticWav(), png = syntheticPng(), wavPath = `media/${PRIVATE}.wav`, pngPath = `media/${PRIVATE}.png`;
   const projectRoot = projectDirFor(dataDir, IDS.project);
-  const saved = [], seed = (openStore(projectRoot) as FixtureStore);
+  const saved = [], ownedSeed=openServerProject(dataDir, IDS.project),seed=ownedSeed as FixtureStore;
   try {
     await writeFile(path.join(projectRoot, wavPath), wav, {mode: 0o600}); await writeFile(path.join(projectRoot, pngPath), png, {mode: 0o600});
     const source = (id: string, bytes: string|unknown[]|Buffer<ArrayBuffer>, relativePath: string, properties: { mimeType: string; duration: number; width: number; height: number; hasVideo: boolean; hasAudio: boolean; }) => ({id, projectId: IDS.project, name: 'Synthetic preflight source', relativePath,
       sha256: sha256(bytes), sizeBytes: bytes.length, provenance: 'user-import', createdAt: NOW, ...properties});
     seed.put('assets', source(audioId, wav, wavPath, {mimeType: 'audio/wav', duration: 2, width: 0, height: 0, hasVideo: false, hasAudio: true}));
     seed.put('assets', source(imageId, png, pngPath, {mimeType: 'image/png', duration: 0, width: 16, height: 16, hasVideo: true, hasAudio: false}));
+    // Seed the source-bound cover independently; preflight's guard still forbids FFmpeg.
+    writeProjectCover({cacheDir:ownedSeed.cacheDir,source:{assetId:imageId,mimeType:'image/png',sourceSha256:sha256(png)},
+      jpeg:Buffer.from([0xff,0xd8,0xff,0xc0,0,17,8,0,1,0,1,3,1,0x22,0,2,0x11,1,3,0x11,1,0xff,0xda,0,12,3,1,0,2,0x11,3,0x11,0,0x3f,0,0x12,0x34,0xff,0xd9])});
     const clip = (id: string, trackId: string, assetId: string) => ({id, trackId, assetId, name: 'Synthetic fixture clip', startFrame: 0, durationFrames: 60,
       sourceInFrame: 0, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1});
     seed.put('timelines', {...seed.get('timelines', IDS.timeline), durationFrames: 60,
@@ -181,7 +176,7 @@ if(process.argv[2] === 'preflight-server'){
   childProcess.spawn = (command,args,options) => {
     if(path.basename(command) !== 'ffprobe' || options?.shell !== false) return deny('non-preflight subprocess');
     const input = args.at(-1);
-    if(typeof input !== 'string' || !input.startsWith(path.join(process.env.MIOON_DATA_DIR,'media')+path.sep)) return deny('non-managed preflight input');
+    if(typeof input !== 'string' || !input.startsWith(path.join(${JSON.stringify(projectDirFor(dataDir, IDS.project))},'media')+path.sep)) return deny('non-managed preflight input');
     const child = originalSpawn(command,args,options);
     fs.appendFileSync(process.env.MIOON_PREFLIGHT_WIRE_MEDIA,JSON.stringify({event:'start',kind:'ffprobe',pid:child.pid})+'\\n');
     child.once('close',()=>fs.appendFileSync(process.env.MIOON_PREFLIGHT_WIRE_MEDIA,JSON.stringify({event:'close',kind:'ffprobe',pid:child.pid})+'\\n'));
@@ -190,15 +185,21 @@ if(process.argv[2] === 'preflight-server'){
   syncBuiltinESMExports();
   const {startServer} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'apps/server/src/index.ts')).href)});
   const {readProjectState,changeMarks} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'tests/helpers/project-state.ts')).href)});
-  let inspect;
-  const server = await startServer({dataDir:process.env.MIOON_DATA_DIR,port:0,token:${JSON.stringify(TOKEN)},inspectProject:received=>{inspect=received;}});
+  const {databaseFiles} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'tests/helpers/data-file-snapshot.ts')).href)});
+  let inspect,inspectApplication;
+  const server = await startServer({dataDir:process.env.MIOON_DATA_DIR,port:0,token:${JSON.stringify(TOKEN)},inspectProject:received=>{inspect=received;},inspectApplication:received=>{inspectApplication=received;}});
   if(process.connected)process.on('message',message=>{
     if(typeof message?.id !== 'string')return;
     let reply;
     try{
+      if(message.type==='app-storage'&&Object.keys(message).every(key=>['type','id'].includes(key))){
+        if(!inspectApplication)throw Error('Application connection unavailable');
+        const data=inspectApplication(db=>{const state=readProjectState(db);return{schema:state.schema,rows:state.tables,version:changeMarks(db),databases:databaseFiles(db)}});
+        if(process.connected)process.send?.({type:'reply',id:message.id,data});return;
+      }
       if(message.type!=='storage'||typeof message.projectId!=='string'||Object.keys(message).some(key=>!['type','id','projectId'].includes(key)))throw Error('Unsupported preflight storage question');
       if(!inspect)throw Error('The server has not handed over its connection');
-      const data=inspect(message.projectId,db=>({rows:readProjectState(db).tables,version:changeMarks(db)}));
+      const data=inspect(message.projectId,db=>({rows:readProjectState(db).tables,version:changeMarks(db),databases:databaseFiles(db)}));
       reply={type:'reply',id:message.id,data};
     }catch(error){reply={type:'reply',id:message.id,error:{code:error?.code??'FIXTURE_ERROR',message:String(error?.message??error)}};}
     if(process.connected)process.send?.(reply);
@@ -214,12 +215,20 @@ if(process.argv[2] === 'preflight-server'){
   const read = createProjectStorageReader(run.child);
   const env = {...baseEnv, MIOON_BASE_URL: url, MIOON_TOKEN: TOKEN, MIOON_PREFLIGHT_WIRE_ORIGIN: url};
   const audit = async () => (await readFile(mediaAudit, 'utf8')).trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
-  const checkpoint = async () => ({...await read(IDS.project), files: await fileManifest(dataDir)});
-  const unchanged = async (before: { rows: unknown; version: unknown; files: unknown; }, label?: unknown) => {
-    const current=await read(IDS.project);
+  const readApplication=createApplicationStorageReader(run.child);
+  const checkpoint = async () => {
+    await http('asset.list',{projectId:IDS.project});await http('asset.list',{projectId:IDS.other});
+    const main=await read(IDS.project),foreign=await read(IDS.other),application=await readApplication();
+    assert.ok(main.databases&&foreign.databases&&application.databases,'each owner reports its actual native database paths');
+    return {...main,foreign,application,files:await dataFileSnapshot(dataDir,[...main.databases,...foreign.databases,...application.databases])};
+  };
+  const unchanged = async (before: Awaited<ReturnType<typeof checkpoint>>, label?: unknown) => {
+    const current=await checkpoint();
     assert.deepEqual(current.rows, before.rows, `${label}: no persisted changes, exports or cache writes`);
     assert.deepEqual(current.version, before.version, `${label}: no equal-value SQLite commit`);
-    assert.deepEqual(await fileManifest(dataDir), before.files, `${label}: no output/source/cache file writes`);
+    assert.deepEqual(current.files, before.files, `${label}: no output/source/cache file writes`);
+    assert.deepEqual(current.foreign,before.foreign,'the independent other project is unchanged');
+    assert.deepEqual(current.application,before.application,'the B1 application schema/rows/write marks are unchanged');
   };
   const validateEnvelope = (envelope: { ok: unknown; error: { code: unknown; }; data: unknown; }, expectedError?: string|undefined) => {
     noPrivate(((envelope) as unknown as Parameters<typeof noPrivate>[0])); assert.equal(envelope.ok, !expectedError, JSON.stringify(envelope));
@@ -257,7 +266,7 @@ if(process.argv[2] === 'preflight-server'){
   }
   return {http, cli, cliArgs, mcp, client, checkpoint, unchanged, audit, saved,
     receipt:async(requestId:string)=>(await read(IDS.project)).rows.timeline_requests.find(row=>row.requestId===requestId)?.response,
-    totalBytes: wav.length + png.length, removeSource: () => unlink(path.join(dataDir, wavPath)),
+    totalBytes: wav.length + png.length, removeSource: () => unlink(path.join(projectRoot, wavPath)),
     denials: async () => (await readFile(auditPath, 'utf8')).trim()};
 }
 

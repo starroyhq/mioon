@@ -1,3 +1,5 @@
+import {readProjectState} from './helpers/project-state.ts';
+import {databaseFiles,dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import test from 'node:test';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import assert from 'node:assert/strict';
@@ -16,7 +18,7 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient,discoverSchema,effectAnnotations} from '@mioon/client';
 import {isTimelineExportCapabilitiesResponse,isTimelineMutationResponse,publicValue,resolveTimelineExportDelivery} from '@mioon/contracts';
 import {startServer} from '../apps/server/src/index.ts';
-import type {InspectProject} from '../apps/server/src/index.ts';
+import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
@@ -76,17 +78,11 @@ function syntheticPng(){
  const rows=Buffer.alloc(16*49,90);for(let row=0;row<16;row++)rows[row*49]=0;
  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',head),chunk('IDAT',deflateSync(rows)),chunk('IEND',Buffer.alloc(0))]);
 }
-async function manifest(root: string,relative=''): Promise<Array<Record<string,unknown>>>{
- const entries: Array<Record<string,unknown>>=[];for(const entry of await readdir(path.join(root,relative),{withFileTypes:true})){
-  const name=path.join(relative,entry.name);
-  if(entry.isDirectory())entries.push({directory:name},...await manifest(root,name));
-  else if(!/^workbench\.sqlite(?:-wal|-shm)?$/.test(name)&&name!=='server.lock')entries.push({file:name,sha256:sha(await readFile(path.join(root,name)))});
- }return entries.sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
-}
+
 interface WireProject {id: string}
 interface WireTimeline {id: string; revision: number; width: number; height: number; tracks: Array<{id: string; kind: string}>; clips: Array<{id: string}>}
 interface WireSource {id: string; sha256: string; sizeBytes: number}
-interface WireCheckpoint {rows: Record<string, unknown>; version: unknown; files: Array<Record<string, unknown>>}
+interface WireCheckpoint {application:unknown;foreign:unknown;rows: Record<string, unknown>; version: unknown; files: Array<Record<string, unknown>>}
 interface WireData {status?: string; delivery?: unknown; timelineId?: unknown; issues?: Array<{code: string}>; snapshot?: {delivery?: unknown}; id?: string; [key: string]: unknown}
 interface WireResult {ok: boolean; data: WireData; error?: {code?: string; details?: Record<string, unknown>} }
 interface WireTransport {name: string; call: (op: string, input: Record<string, unknown>)=>Promise<WireResult>}
@@ -109,7 +105,7 @@ const record = (value: unknown): Record<string, unknown> => value as Record<stri
 const wireResult = (value: unknown): WireResult => value as WireResult;
 async function wire(t: Pick<TestContext,'after'>,{media=false}: {media?: boolean} = {}): Promise<WireFixture> {
  const root=await mkdtemp(path.join(tmpdir(),'mioon-export-settings-wire-'));
- let backend: Awaited<ReturnType<typeof startServer>>|undefined,proxy: http.Server|undefined,inspect!: InspectProject,drop=false,malformedOperation: string|null=null,last: WireLast|undefined;
+ let backend: Awaited<ReturnType<typeof startServer>>|undefined,proxy: http.Server|undefined,inspect!: InspectProject,inspectApplication!: InspectApplication,drop=false,malformedOperation: string|null=null,last: WireLast|undefined;
  const submissions: Array<Record<string, unknown>>=[];
  t.after(async()=>{
   const failures: unknown[]=[];for(const cleanup of [async()=>{if(proxy){proxy.closeAllConnections();await bounded(new Promise<void>(resolve=>proxy!.close(()=>resolve())),'Proxy close',5000);}},()=>backend?.close(),()=>rm(root,{recursive:true,force:true})])
@@ -117,7 +113,7 @@ async function wire(t: Pick<TestContext,'after'>,{media=false}: {media?: boolean
   if(failures.length)throw new AggregateError(failures,'Export settings fixture cleanup');
  });
  // Each server that starts hands over its own connection.
- const start=()=>startServer({dataDir:root,port:0,token:TOKEN,chatGateway:async function*(){throw Error('No model or provider call is permitted');},inspectProject:received=>{inspect=received;}});
+ const start=()=>startServer({dataDir:root,port:0,token:TOKEN,chatGateway:async function*(){throw Error('No model or provider call is permitted');},inspectProject:received=>{inspect=received;},inspectApplication:received=>{inspectApplication=received;}});
  backend=await start();
  proxy=http.createServer(async(req: http.IncomingMessage,res: http.ServerResponse)=>{try{
   const chunks: Buffer[]=[];let bytes=0;for await(const chunk of req as AsyncIterable<Buffer>){bytes+=chunk.length;if(bytes>32768)throw Error('Fixture request cap');chunks.push(chunk);}
@@ -144,8 +140,19 @@ async function wire(t: Pick<TestContext,'after'>,{media=false}: {media?: boolean
   [name,db.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all()]));
  // data_version counts other connections' commits only; total_changes() adds this connection's own writes.
  const changeMarks=(db: DatabaseSync): unknown[]=>[record(db.prepare('PRAGMA data_version').get()).data_version,record(db.prepare('SELECT total_changes() AS n').get()).n];
- const checkpoint=async(): Promise<WireCheckpoint>=>({...use(db=>({rows:rows(db),version:changeMarks(db)})),files:await manifest(root)});
- const unchanged=async(before: WireCheckpoint): Promise<void>=>{use(db=>{assert.deepEqual(rows(db),before.rows);assert.deepEqual(changeMarks(db),before.version);});assert.deepEqual(await manifest(root),before.files);};
+ const sqlState=(db:DatabaseSync)=>({state:readProjectState(db),version:changeMarks(db)});
+ const checkpoint=async(): Promise<WireCheckpoint>=>{
+  const current=createClient({env:environment(backend!.url)});
+  await current.rpc('project.get',{projectId:project.id});await current.rpc(operation,{projectId:empty.id,expectedRevision:1,exportSettings:settings()});
+  const main=use(db=>({rows:rows(db),version:changeMarks(db)})),foreign=inspect(empty.id,sqlState),application=inspectApplication(sqlState);
+  const files=await dataFileSnapshot(root,[...use(databaseFiles),...inspect(empty.id,databaseFiles),...inspectApplication(databaseFiles)]);
+  return {...main,foreign,application,files};
+ };
+ const unchanged=async(before: WireCheckpoint): Promise<void>=>{
+  const after=await checkpoint();
+  assert.deepEqual(after.rows,before.rows);assert.deepEqual(after.version,before.version);assert.deepEqual(after.files,before.files);
+  assert.deepEqual(after.foreign,before.foreign,'the other real project is untouched');assert.deepEqual(after.application,before.application,'B1 application rows/schema/commit marks are untouched');
+ };
  const official=await officialMcp(t,url);
  const raw=async(op: string,input: Record<string, unknown>): Promise<WireResult>=>{
   let response: Response;try{response=await fetch(url+rpcPathFor(op,input,project.id),{method:'POST',headers:{authorization:'Bearer '+TOKEN,'content-type':'application/json'},body:JSON.stringify({operation:op,input}),signal:AbortSignal.timeout(30000)});}catch{return {ok:false,data:{},error:{code:'LOST_TRANSPORT'}};}

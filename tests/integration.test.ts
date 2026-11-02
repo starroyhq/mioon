@@ -19,7 +19,8 @@ import net from 'node:net';
 import http from 'node:http';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { DatabaseSync, type SQLInputValue, type SQLOutputValue } from 'node:sqlite';
+import {type SQLOutputValue} from 'node:sqlite';
+import {openProjectDatabase, projectDirFor} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 type LedgerRows = { submissions: Record<string, SQLOutputValue>[]; tasks: Record<string, SQLOutputValue>[] };
@@ -65,18 +66,19 @@ async function fixture(t: test.TestContext) {
     return (body.ok ? body.data : body.error) as RpcResult<O, S>;
   }
   async function until(projectId: string, jobId: string, predicate: (arg0: MediaJob) => unknown, timeout: number = 45_000) { const start = Date.now(); let job: MediaJob | undefined; while (Date.now() - start < timeout) { job = await rpc('job.get', { jobId }, 200, {}, projectId); if (predicate(job)) return job; await pause(100); } throw Error(`Job did not reach expected state: ${JSON.stringify(job)}`); }
-  function inspect<T>(callback: (db: DatabaseSync) => T): T { const db = new DatabaseSync(path.join(root, 'workbench.sqlite'), { readOnly: true }); try { return callback(db); } finally { db.close(); } }
   // The Mock provider's ledger for a request, read on the running backend's own connection.
-  async function ledger(projectId: string, requestId: string): Promise<LedgerRows> {
+  async function requestInspection<T>(type: 'ledger' | 'journal-mode', projectId: string, requestId?: string): Promise<T> {
     const child = processHandle;
     if (!child || child.exitCode !== null || child.signalCode || !child.connected) throw Error('No running backend to read the ledger');
     const id = randomUUID(), reply = Promise.withResolvers<unknown>(); pending.set(id, reply);
     const timer = setTimeout(() => reply.reject(Error('The backend did not answer the ledger question within 10 seconds')), 10_000);
-    try { child.send({ type: 'ledger', id, projectId, requestId }, error => { if (error) reply.reject(error); }); return await reply.promise as LedgerRows; }
+    try { child.send({ type, id, projectId, requestId }, error => { if (error) reply.reject(error); }); return await reply.promise as T; }
     finally { clearTimeout(timer); pending.delete(id); }
   }
+  const ledger = (projectId: string, requestId: string) => requestInspection<LedgerRows>('ledger', projectId, requestId);
+  const journalMode = (projectId: string) => requestInspection<{journal_mode: string}>('journal-mode', projectId);
   t.after(async () => { await stop(); await mkdir(evidence, { recursive: true }); records.finishedAt = new Date().toISOString(); records.result = records.assertions.length === 8 ? 'passed' : 'failed_or_incomplete'; await writeFile(path.join(evidence, 'acceptance.json'), JSON.stringify(records, null, 2)); await rm(root, { recursive: true, force: true }); });
-  await start(); return { root, port, base, start, stop, rpc, until, inspect, ledger };
+  await start(); return { root, port, base, start, stop, rpc, until, journalMode, ledger };
 }
 
 test('durable HTTP acceptance: real process restarts, provider side effects, media and security', { timeout: 240_000 }, async t => {
@@ -102,7 +104,7 @@ test('durable HTTP acceptance: real process restarts, provider side effects, med
   const beforeRestart = await rpc('project.get', { projectId: project.id });
 
   await t.test('A2 three shots, both import types, prompt, positions, sequence and graph survive actual SIGKILL', async () => {
-    const pidBefore = f.inspect(db => db.prepare('PRAGMA journal_mode').get()); assert.equal((pidBefore)!.journal_mode, 'wal');
+    const pidBefore = await f.journalMode(project.id); assert.equal((pidBefore)!.journal_mode, 'delete');
     await f.stop('SIGKILL'); await f.start();
     const after = await rpc('project.get', { projectId: project.id }); assert.deepEqual(after, beforeRestart);
     assert.deepEqual(after.shots.map(s => s.id), order); assert.equal(after.shots.length, 3); assert.equal(after.assets.length, 2);
@@ -177,7 +179,7 @@ test('durable HTTP acceptance: real process restarts, provider side effects, med
 
   await t.test('A4 interrupted submitting state without provider ID becomes unknown and never POSTs', async () => {
     await f.stop('SIGKILL'); const injectedId = randomUUID(), requestId = randomUUID();
-    const db = new DatabaseSync(path.join(f.root, 'workbench.sqlite'));
+    const db = openProjectDatabase(projectDirFor(f.root, project.id));
     try { const existing = JSON.parse((db.prepare('SELECT data FROM jobs WHERE id=?').get(firstJob.id))!.data as string); const injected = { ...existing, id: injectedId, requestId, status: 'submitting', phase: 'provider_submit', providerJobId: null, versionId: null, submissionCount: 1, error: null, nextPollAt: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }; db.prepare('INSERT INTO jobs(id,projectId,data) VALUES(?,?,?)').run(injected.id, injected.projectId, JSON.stringify(injected)); }
     finally { db.close(); }
     records.processEvents.push({ action: 'fault-injection', target: 'isolated fixture database only', jobId: injectedId, state: 'submitting', providerJobId: null });
@@ -200,8 +202,8 @@ test('durable HTTP acceptance: real process restarts, provider side effects, med
     assert.equal((await rpc('asset.import', { ...baseImport, url: 'http://169.254.169.254/latest/meta-data/' }, 400)).code, 'VALIDATION_ERROR');
     assert.equal((await rpc('asset.import', { ...baseImport, mimeType: 'video/mp4' }, 400)).code, 'INVALID_MEDIA');
     assert.equal((await rpc('asset.import', { ...baseImport, dataBase64: Buffer.from('not media').toString('base64') }, 400)).code, 'INVALID_MEDIA');
-    assert.equal((await rpc('shot.create', { projectId: scenarioProject.id, title: 'cross project', referenceAssetIds: [image.id] }, 400)).code, 'CROSS_PROJECT_REFERENCE');
-    assert.equal((await rpc('node.create', { projectId: scenarioProject.id, type: 'image', assetId: image.id, position: { x: 0, y: 0 } }, 400)).code, 'CROSS_PROJECT_REFERENCE');
+    assert.equal((await rpc('shot.create', { projectId: scenarioProject.id, title: 'cross project', referenceAssetIds: [image.id] }, 404)).code, 'NOT_FOUND');
+    assert.equal((await rpc('node.create', { projectId: scenarioProject.id, type: 'image', assetId: image.id, position: { x: 0, y: 0 } }, 404)).code, 'NOT_FOUND');
     assert.equal((await rpc('edge.create', { projectId: scenarioProject.id, source: text.id, target: shots[0].id }, 400)).code, 'INVALID_EDGE');
     const otherShot = (await rpc('project.get', { projectId: scenarioProject.id })).shots[0];
     assert.equal((await scenarioRpc('version.select', { shotId: otherShot.id, expectedRevision: otherShot.revision, versionId: secondVersion.id }, 400)).code, 'INVALID_VERSION');

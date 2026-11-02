@@ -36,7 +36,8 @@ test('module availability adds no RPC admin authority and existing remote discov
  for(const name of ['image.generate','image.review.prepare','image.task.remote.get','image.task.observeRemote'])assert.ok((schemas as Record<string, unknown>)[name]);
  for(const name of ['image.comfy.settings','image.comfy.check','image.comfy.module.set','comfy.module.load'])assert.equal((schemas as Record<string, unknown>)[name],undefined);
  const index=readFileSync(new URL('../apps/server/src/index.ts',import.meta.url),'utf8');
- assert.ok(index.indexOf('if (!auth(req))')<index.indexOf('if (await comfyHttp(req,res,url))'));
+ const authGate=index.indexOf('if (!authenticated(req))'),comfyDispatch=index.indexOf('if (await app.comfyHttp(req, res, url)');
+ assert.ok(authGate>=0&&comfyDispatch>authGate, 'authenticated application dispatch must precede the Comfy handler');
  const config=readFileSync(new URL('../apps/desktop/src/config.ts',import.meta.url),'utf8');
  assert.ok(config.includes("'MIOON_COMFY_MODULE'"));
  assert.ok(readFileSync(new URL('../apps/desktop/src/backend.ts',import.meta.url),'utf8').includes('comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE)'));

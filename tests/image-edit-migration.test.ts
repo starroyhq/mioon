@@ -14,7 +14,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 import {migrateImageEditReviewSchema} from '../packages/business/src/images/review-schema.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import {canonicalImageInput as canonical} from '../packages/contracts/src/images.ts';
 import {imageReviewIntentSchema} from '../packages/contracts/src/image-reviews.ts';
 import {COMFY_IMAGE_OPTIONS,COMFY_IMAGE_POLICY,DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../packages/contracts/src/comfy-images.ts';

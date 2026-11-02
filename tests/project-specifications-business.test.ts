@@ -25,7 +25,7 @@ async function rejected(f: Awaited<ReturnType<typeof fixture>>,input: unknown,co
 async function addClip(f: Awaited<ReturnType<typeof fixture>>,timeline: FixtureTimeline){return f.call('timeline.clip.add',{projectId:f.project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:f.asset().id,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:30});}
 function corruptTimelineAggregate(f: Awaited<ReturnType<typeof fixture>>){
  const db=f.store.db,names=['agent_target_timeline_update_v2','agent_target_timeline_timeline_clip_update_v2','agent_target_timeline_timeline_track_update_v2','agent_target_timeline_timeline_subtitle_update_v2'];
- const named=()=>schemaObjects(db).filter(({name})=>names.includes(name)).map(({name,sql})=>({name,sql})).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);
+ const named=()=>schemaObjects(db).filter(({name})=>names.includes(name)).map(({schema,name,sql})=>({schema,name,sql})).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);
  const guards=named();
  assert.deepEqual(guards.map(value=>value.name),[...names].sort());
  const before=f.capture(),targets=db.prepare('SELECT * FROM agent_task_target_revisions_v2 ORDER BY rowid').all();
@@ -35,9 +35,9 @@ function corruptTimelineAggregate(f: Awaited<ReturnType<typeof fixture>>){
  // Only corrupt fixture construction runs without these JSON-reading target
  // guards; every business refusal below uses the exact restored original SQL.
  try{
-  for(const guard of guards)db.exec(`DROP TRIGGER "${guard.name}"`);
+  for(const guard of guards)db.exec(`DROP TRIGGER "${guard.schema}"."${guard.name}"`);
   db.prepare('UPDATE timelines SET data=? WHERE projectId=?').run('{',f.project.id);
- }finally{for(const guard of guards)db.exec(guard.sql as string);}
+ }finally{for(const guard of guards)db.exec((guard.sql as string).replace(/^CREATE TRIGGER /, `CREATE TRIGGER ${guard.schema}.`));}
  assert.deepEqual(named(),guards);
 }
 

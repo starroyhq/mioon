@@ -9,13 +9,14 @@ import {ensurePrivateDirectory} from '@mioon/contracts/private-storage';
 import {DEFAULT_PROJECTS_DIRECTORY, isProjectId, PROJECT_DATABASE_NAMES, TEST_STORE_LAYOUT} from '../../packages/contracts/src/project-file.ts';
 import type {ForeignKeyViolation} from '../../packages/contracts/src/project-file.ts';
 import {openAppLibrary} from '../../packages/business/src/app-db/index.ts';
+import {heldTestApplicationLibrary} from '../../packages/business/src/project-service-application.ts';
 import {findHeldAppProjectFile} from '../../packages/business/src/app-db/connection.ts';
 import {isProjectDatabase, openProjectConnection} from '../../packages/business/src/project-file/connection.ts';
 import {projectFileError} from '../../packages/business/src/project-file/errors.ts';
 import {foreignKeyCheck as kernelForeignKeyCheck} from '../../packages/business/src/project-file/cross-file/inspect.ts';
 import {relationTriggerStatements} from '../../packages/business/src/project-file/cross-file/install.ts';
 import {CROSS_FILE_RELATIONS} from '../../packages/business/src/project-file/cross-file/relations.ts';
-import {openProjectStore} from '../../packages/business/src/project-file/store.ts';
+import {openServerTestStore} from '../../packages/business/src/project-file/test-store.ts';
 import type {ProjectStore} from '../../packages/business/src/project-file/store.ts';
 import {projectLocation, serverAppDirectories} from '../../apps/server/src/project-host/directories.ts';
 import type {AppDirectories} from '../../apps/server/src/project-host/directories.ts';
@@ -97,6 +98,16 @@ export function projectDirFor(dataDir: string, projectId: string): string {
   return root;
 }
 
+/** Reopen a registered server project on its real three-file layout. Unlike
+ * openStore(projectDir), this never creates a second TEST-layout project. */
+export function openServerProject(dataDir: string, projectId: string): ProjectStore {
+  const root = projectDirFor(dataDir, projectId), known = serverLocations.get(root)!;
+  return openServerTestStore({projectFile: projectDatabasePath(root), locate: id => {
+    if (id !== projectId) throw projectFileError('PROJECT_INVALID', {database: 'project', reason: 'project-mismatch', projectId: id});
+    return projectLocation(known.directories, id);
+  }}, path.resolve(dataDir));
+}
+
 /** A new project where startServer({dataDir}) finds it, for tests that fill a
  * project before they start the server: write through `store`, call
  * store.close(), then start the server. Uses the same folder creation,
@@ -110,16 +121,17 @@ export function createServerProject(dataDir: string, options?: {name?: string; p
   if (!isProjectId(projectId)) throw new TypeError('Invalid project ID');
   const name = options?.name ?? 'Test project';
   const directories = serverAppDirectories(path.resolve(dataDir));
-  const library = openAppLibrary({dataDir: directories.dataDir});
+  const shared = heldTestApplicationLibrary(directories.dataDir);
+  const library = shared ?? openAppLibrary({dataDir: directories.dataDir});
   let store: ProjectStore | undefined;
   try {
     if (library.registry.get(projectId)) throw new Error('Project ID already exists');
     const entry = createProjectFiles({name, projectId}, {directories, registry: library.registry, identity: library.projectFileIdentity});
     try {
-      store = openProjectStore({projectFile: entry.projectFile, locate: id => {
+      store = openServerTestStore({projectFile: entry.projectFile, locate: id => {
         if (id !== projectId) throw new TypeError('Created project ID does not match its registration');
         return projectLocation(directories, id);
-      }, checkCopy: library.registry.checkCopy});
+      }, checkCopy: library.registry.checkCopy}, directories.dataDir);
       ensureProjectRow(store, {name});
       ensurePrivateDirectory(path.join(store.projectDir, 'media'), {create: true});
     } catch (error) {
@@ -130,7 +142,7 @@ export function createServerProject(dataDir: string, options?: {name?: string; p
     }
     serverLocations.set(store.projectDir, {directories, projectId});
     return {projectId, store};
-  } finally { library.close(); }
+  } finally { if (!shared) library.close(); }
 }
 
 /** Every row whose parent row is missing, in every database on the

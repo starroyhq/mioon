@@ -10,7 +10,7 @@ import {writeFile} from 'node:fs/promises';
 import {syncBuiltinESMExports} from 'node:module';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openStore} from '@mioon/business';
+import {createServerProject} from './project-database.ts';
 import type {Stats} from 'node:fs';
 import {startServer} from '../../apps/server/src/index.ts';
 import {FILE_RESPONSE_LIMITS} from '../../apps/server/src/file-response.ts';
@@ -29,10 +29,9 @@ let release!: ()=>void;
 const pending = new Promise<void>(resolve => {release = resolve;});
 const state = {intercepted: 0, opened: 0, closed: 0, streams: 0, endCalls: 0};
 interface FixtureTarget {readonly id: string; readonly file: string; readonly empty: boolean}
-const store = openStore(dataRoot), projectId = randomUUID(), targets: FixtureTarget[] = [];
-store.put('projects', {id: projectId, name: 'Synthetic nonsettling HTTP filesystem'});
+const {store, projectId} = createServerProject(dataRoot, {name: 'Synthetic nonsettling HTTP filesystem'}), targets: FixtureTarget[] = [];
 for (const empty of [false, true]) {
-  const id = randomUUID(), file = path.join(root, 'media', `${id}.bin`);
+  const id = randomUUID(), file = path.join(store.root, 'media', `${id}.bin`);
   await writeFile(file, empty ? '' : 'synthetic-local-bytes', {mode: 0o600});
   store.put('assets', {id, projectId, name: 'Synthetic transport', mimeType: 'application/octet-stream', relativePath: `media/${id}.bin`});
   targets.push({id, file, empty});

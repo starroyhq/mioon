@@ -23,8 +23,8 @@ const sha = (bytes: NonSharedBuffer|BinaryLike) => createHash('sha256').update(b
 async function fixture(t: test.TestContext) {
   // Only canonicalize the new test-owned directory; managed input guards still run.
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'media-source-compatibility-')));
-  const store = (openStore(root) as TypedStore), preflight = createTimelinePreflightServices(store);
-  const project = store.put('projects', { id: randomUUID(), name: 'Synthetic source compatibility' });
+  const owner = openStore(root), store = (owner as TypedStore), preflight = createTimelinePreflightServices(store);
+  const project = store.put('projects', { id: owner.projectId, name: 'Synthetic source compatibility' });
   t.after(async () => { await preflight.drain(); store.close(); await rm(root, { recursive: true, force: true }); });
   return {
     root, store,

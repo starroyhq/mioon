@@ -1,3 +1,6 @@
+import {readProjectState,changeMarks as nativeChangeMarks} from './helpers/project-state.ts';
+import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
+import {projectDirFor} from './helpers/project-database.ts';
 import type {ExportSamplePeakResponse} from '@mioon/contracts/export-sample-peak';
 import type {TypedClient} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
@@ -16,7 +19,7 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient} from '@mioon/client';
 import {isExportSamplePeakResponse,EXPORT_SAMPLE_PEAK_ALGORITHM} from '@mioon/contracts/export-sample-peak';
 import {startServer} from '../apps/server/src/index.ts';
-import type {InspectProject} from '../apps/server/src/index.ts';
+import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment,mediaExecutable} from '../packages/business/src/media-environment.ts';
 import {schemaObjects} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
@@ -43,13 +46,7 @@ function stereoWav(){
     bytes.writeInt16LE(Math.round(16384*Math.sin(2*Math.PI*frame/96)),46+frame*4);}
   return bytes;
 }
-async function manifest(root: string,relative=''){
-  const result: ({ directory: string; } | unknown | { file: string; sha256: string; })[]=[];for(const entry of await readdir(path.join(root,relative),{withFileTypes:true})){
-    const name=path.join(relative,entry.name);
-    if(entry.isDirectory())result.push({directory:name},...await manifest(root,name));
-    else if(!/^workbench\.sqlite(?:-wal|-shm|-journal)?$/.test(name)&&name!=='server.lock')result.push({file:name,sha256:sha(await readFile(path.join(root,name)))});
-  }return result.sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
-}
+const manifest=(root:string)=>dataFileSnapshot(root,[]);
 async function cli(url: string,input: { projectId: string; exportId: string; }){
   // execFile owns continuous UTF-8 decoding, process reaping and bounded output.
   const {stdout,stderr}=await execute(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...operation.split('.'),'--input',JSON.stringify(input)],
@@ -80,9 +77,9 @@ async function independentPcm(file: string){
 }
 
 test('real succeeded named/ranged export has identical HTTP, CLI and MCP sample-peak observations with no data or file mutation',{timeout:120000},async (t: test.TestContext)=>{
-  const root=await mkdtemp(path.join(tmpdir(),'mioon-sample-peak-real-wire-'));let backend: Awaited<ReturnType<typeof startServer>>,inspect!: InspectProject;
+  const root=await mkdtemp(path.join(tmpdir(),'mioon-sample-peak-real-wire-'));let backend: Awaited<ReturnType<typeof startServer>>,inspect!: InspectProject,inspectApplication!:InspectApplication;
   t.after(async()=>{await backend?.close();await rm(root,{recursive:true,force:true});});
-  backend=await startServer({dataDir:root,port:0,token,inspectProject:received=>{inspect=received;}});
+  backend=await startServer({dataDir:root,port:0,token,inspectProject:received=>{inspect=received;},inspectApplication:received=>{inspectApplication=received;}});
   const client=(createClient({env:environment(backend.url)}) as TypedClient);
   const project=await client.rpc('project.create',{name:'Synthetic final-export parity'});
   let timeline=await client.rpc('timeline.get',{projectId:project.id});
@@ -98,7 +95,7 @@ test('real succeeded named/ranged export has identical HTTP, CLI and MCP sample-
   assert.equal(record?.status,'succeeded',JSON.stringify(record?.error));
   // While the server runs, the database is read on its own connection.
   const asset=JSON.parse(inspect(project.id,db=>db.prepare('SELECT data FROM assets WHERE id=?').get(record.assetId)!.data as string));
-  const file=path.join(root,asset.relativePath),bytes=await readFile(file),actualSha=sha(bytes),reference=await independentPcm(file);
+  const file=path.join(projectDirFor(root,project.id),asset.relativePath),bytes=await readFile(file),actualSha=sha(bytes),reference=await independentPcm(file);
   assert.equal(actualSha,asset.sha256);assert.equal(bytes.length,asset.sizeBytes);
   assert.ok(reference.peaks[0]>0&&reference.peaks[1]>reference.peaks[0]);
   const input={projectId:project.id,exportId:record.id},mcp=await official(t,backend.url);
@@ -106,7 +103,8 @@ test('real succeeded named/ranged export has identical HTTP, CLI and MCP sample-
     [name,db.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all()])));
   // data_version counts other connections' commits only; total_changes() adds this connection's own writes.
   const changeMarks=()=>inspect(project.id,db=>[db.prepare('PRAGMA data_version').get()!.data_version,db.prepare('SELECT total_changes() AS n').get()!.n]);
-  const before={rows:rows(),version:changeMarks(),files:await manifest(root)};
+  const appState=()=>inspectApplication(db=>({state:readProjectState(db),version:nativeChangeMarks(db)}));
+  const before={rows:rows(),version:changeMarks(),application:appState(),files:await manifest(root)};
   const http=async()=>{const response=await fetch(backend.url+rpcPathFor(operation,input),{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});
     assert.equal(response.status,200);const body=await response.json();assert.equal(body.ok,true);return body.data;};
   const reports: ExportSamplePeakResponse[]=[];
@@ -121,6 +119,7 @@ test('real succeeded named/ranged export has identical HTTP, CLI and MCP sample-
     assert.ok(Buffer.byteLength(JSON.stringify(report))<=8192);
     assert.deepEqual(rows(),before.rows,name+' changed database records or receipts');assert.deepEqual(changeMarks(),before.version,name+' performed a database write');
     assert.deepEqual(await manifest(root),before.files,name+' changed managed files or wrote cache/sidefiles');
+    assert.deepEqual(appState(),before.application,name+' application SQL/schema/write marks are unchanged');
   }
   const comparable=({checkedAt,...report}: ExportSamplePeakResponse)=>report;
   for(const report of reports)assert.deepEqual(comparable(report),comparable(reports[0]));

@@ -1,10 +1,10 @@
 import {lstatSync} from 'node:fs';
 import type {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
-import {ensurePrivateDirectory, validateManagedDirectory} from '@mioon/contracts/private-storage';
+import {ensurePrivateDirectory} from '@mioon/contracts/private-storage';
 import {TEST_STORE_LAYOUT} from '../../../contracts/src/project-file.ts';
 import {createProjectFile} from './connection.ts';
-import type {ProjectLocation} from './connection.ts';
+import type {OpenProjectConnectionOptions, ProjectLocation} from './connection.ts';
 import {isProjectStore, openProjectStore} from './store.ts';
 import type {ProjectStore} from './store.ts';
 
@@ -17,7 +17,7 @@ export function testStoreForConnection(db: unknown, root: string): ProjectStore 
   const store = testConnections.get(db as DatabaseSync);
   return store && isProjectStore(store) && store.db === db && store.root === root && testStores.has(store) ? store : null;
 }
-/** Only this opener grants the test-layout application scope. Matching public
+/** Only the explicit test openers grant an application scope. Matching public
  * paths or copying a live store's fields cannot manufacture it. */
 export function testStoreApplicationDirectory(value: unknown): string | null {
   return isProjectStore(value) ? testStores.get(value)?.applicationDir ?? null : null;
@@ -35,7 +35,9 @@ export function registerTestStoreCloseCompanion(store: ProjectStore, close: () =
  * first call, so this replaces db.ts's `openStore(root)` one for one. */
 export function openStore(root: string): ProjectStore {
   root = path.resolve(root);
-  ensurePrivateDirectory(root, {create: true});
+  // Validate every ancestor before creating a project file. The portable
+  // project folder may be 0755; its TEST companions must remain private.
+  ensurePrivateDirectory(path.join(root, '.mioon-store'), {create: true});
   const projectFile = path.join(root, ...TEST_STORE_LAYOUT.projectFile);
   if (!lstatSync(projectFile, {throwIfNoEntry: false})) createProjectFile(projectFile);
   const location: ProjectLocation = {
@@ -47,12 +49,25 @@ export function openStore(root: string): ProjectStore {
   try {
     // Managed media copies stay in root/media for now, created as db.ts does.
     const media = path.join(root, 'media');
-    if (!validateManagedDirectory(media, {root, allowMissing: true})) ensurePrivateDirectory(media, {create: true});
+    ensurePrivateDirectory(media, {create: true});
   } catch (error) {
     store.close();
     throw error;
   }
-  const held = {applicationDir: path.join(root, '.mioon-store', 'app'), closeCompanions: new Set<() => void>()};
+  return ownTestStore(store, path.join(root, '.mioon-store', 'app'));
+}
+
+/** Trusted server-layout fixture opener. The caller passes its real app
+ * registration/copy check and locations, so seeds and services use the same
+ * project and B1 files the subsequent server opens. Production hosts call
+ * openProjectStore directly and never gain this TEST application fallback. */
+export function openServerTestStore(options: OpenProjectConnectionOptions, applicationDir: string): ProjectStore {
+  if (!path.isAbsolute(applicationDir)) throw new TypeError('A test application directory must be absolute');
+  return ownTestStore(openProjectStore(options), path.resolve(applicationDir));
+}
+
+function ownTestStore(store: ProjectStore, applicationDir: string): ProjectStore {
+  const held = {applicationDir, closeCompanions: new Set<() => void>()};
   testStores.set(store, held);
   testConnections.set(store.db, store);
   const close = store.close;
