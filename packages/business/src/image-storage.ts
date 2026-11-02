@@ -7,6 +7,7 @@ import {IMAGE_LIMITS,imageReceiptSchema,imageResultGeometry} from '@mioon/contra
 import {ensurePrivateDirectory,validateManagedDirectory,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';
 import {validatePng as validatePngBytes} from './images/png.ts';
 import type {PngMetadata} from './images/png.ts';
+import {storeDirectories} from './store-layout.ts';
 
 export interface ImageStorageSnapshot {
  readonly providerId?: string;
@@ -56,14 +57,14 @@ const uuid=(value: unknown): boolean=>typeof value==='string'&&/^[a-f0-9]{8}-[a-
  * No read invokes an adapter, writes a file or repairs permissions. */
 export function createImageStorage(store: {readonly root: string; readonly db: import('node:sqlite').DatabaseSync},
  {validatePng}: {readonly validatePng: (bytes: unknown,options?: {width?: unknown; height?: unknown; signal?: AbortSignal; opaque?: boolean})=>Promise<PngMetadata>}): ImageStorage {
- const root=store.root,directory=path.join(root,'image-staging');
- function syncDirectory(value: string): void {
-  const before=validateManagedDirectory(value,{root});let fd;
+ const {projectDir:root,tempDir:stagingRoot}=storeDirectories(store),directory=path.join(stagingRoot,'image-staging');
+ function syncDirectory(value: string,ownerRoot=root): void {
+  const before=validateManagedDirectory(value,{root:ownerRoot});let fd;
   try{
    if(!before)throw failure();
    fd=openSync(value,constants.O_RDONLY|constants.O_NOFOLLOW);const opened=fstatSync(fd);
    if(!opened.isDirectory()||before.dev!==opened.dev||before.ino!==opened.ino)throw failure();
-   fsyncSync(fd);const after=validateManagedDirectory(value,{root});if(!after||after.dev!==opened.dev||after.ino!==opened.ino)throw failure();
+   fsyncSync(fd);const after=validateManagedDirectory(value,{root:ownerRoot});if(!after||after.dev!==opened.dev||after.ino!==opened.ino)throw failure();
   }finally{if(fd!==undefined)closeSync(fd);}
  }
  const paths=(task: ImageStorageTask): {png: string; receipt: string}=>{
@@ -79,8 +80,8 @@ export function createImageStorage(store: {readonly root: string; readonly db: i
   return receipt;
  }
  function readReceipt(task: ImageStorageTask): ImageReceipt | null {
-  if(!validateManagedDirectory(directory,{root,allowMissing:true,private:true}))return null;
-  const raw=readPrivateFile(paths(task).receipt,{root,allowMissing:true,maxBytes:IMAGE_LIMITS.receiptBytes,encoding:'utf8'});
+  if(!validateManagedDirectory(directory,{root:stagingRoot,allowMissing:true,private:true}))return null;
+  const raw=readPrivateFile(paths(task).receipt,{root:stagingRoot,allowMissing:true,maxBytes:IMAGE_LIMITS.receiptBytes,encoding:'utf8'});
   if(raw===null)return null;
   if(typeof raw!=='string')throw failure();
   let value: unknown;try{value=JSON.parse(raw);}catch{throw failure();}
@@ -89,7 +90,7 @@ export function createImageStorage(store: {readonly root: string; readonly db: i
  async function verifiedBytes(task: ImageStorageTask,receipt: ImageReceipt,check: ()=>void): Promise<ImageStoredBytes> {
   validateReceipt(task,receipt);check();
   const final=path.join(root,'media',`${receipt.assetId}.png`);
-  const staged=readPrivateFile(paths(task).png,{root,allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes});
+  const staged=readPrivateFile(paths(task).png,{root:stagingRoot,allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes});
   const bytes=staged??readPrivateFile(final,{root,allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes});
   if(!bytes||typeof bytes==='string'||bytes.length!==receipt.byteLength||digest(bytes)!==receipt.sha256)throw failure();
   await validatePng(bytes,{...dimensions(task),opaque:true});check();
@@ -104,17 +105,17 @@ export function createImageStorage(store: {readonly root: string; readonly db: i
    byteLength:result.bytes.length,isMock:task.snapshot.providerId==='mock'};
   validateReceipt(task,receipt);
   ensurePrivateDirectory(directory,{create:true});
-  validateManagedDirectory(directory,{root,private:true});syncDirectory(root);check();
+  validateManagedDirectory(directory,{root:stagingRoot,private:true});syncDirectory(stagingRoot,stagingRoot);check();
   // Only an explicitly re-observed Comfy result can reuse a partial stage.
   // The caller has already pinned the full remote graph and exact byte hash.
-  const partial=task.snapshot.providerId==='comfy-local'?readPrivateFile(paths(task).png,{root,allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes}):null;
+  const partial=task.snapshot.providerId==='comfy-local'?readPrivateFile(paths(task).png,{root:stagingRoot,allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes}):null;
   if(partial){if(typeof partial==='string'||partial.length!==receipt.byteLength||digest(partial)!==receipt.sha256)throw failure();}
-  else writePrivateFileAtomic(paths(task).png,result.bytes,{root,maxBytes:IMAGE_LIMITS.resultBytes,replace:false});
-  syncDirectory(directory);
+  else writePrivateFileAtomic(paths(task).png,result.bytes,{root:stagingRoot,maxBytes:IMAGE_LIMITS.resultBytes,replace:false});
+  syncDirectory(directory,stagingRoot);
   // The manifest is published only after complete, verified PNG bytes. Its
   // immutable input hash binds recovery to this exact accepted generation.
-  writePrivateFileAtomic(paths(task).receipt,JSON.stringify(receipt),{root,maxBytes:IMAGE_LIMITS.receiptBytes,replace:false});
-  syncDirectory(directory);
+  writePrivateFileAtomic(paths(task).receipt,JSON.stringify(receipt),{root:stagingRoot,maxBytes:IMAGE_LIMITS.receiptBytes,replace:false});
+  syncDirectory(directory,stagingRoot);
   return receipt;
  }
  async function publish(task: ImageStorageTask,receipt: ImageReceipt,check: ()=>void): Promise<ImagePublishedResult> {
@@ -126,7 +127,7 @@ export function createImageStorage(store: {readonly root: string; readonly db: i
   return {relativePath:`media/${receipt.assetId}.png`,sizeBytes:receipt.byteLength};
  }
  function discardStagedPng(task: ImageStorageTask,check: ()=>void): void {
-  check();removePrivateFile(paths(task).png,{root,maxBytes:IMAGE_LIMITS.resultBytes});
+  check();removePrivateFile(paths(task).png,{root:stagingRoot,maxBytes:IMAGE_LIMITS.resultBytes});
  }
  return {stage,readReceipt,validateReceipt,publish,discardStagedPng};
 }

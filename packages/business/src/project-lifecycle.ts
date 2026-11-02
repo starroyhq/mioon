@@ -1,4 +1,5 @@
 import {validateWorkspaceSchema58} from './workspace-schema-v58.ts';
+import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import {AGENT_TASK_TABLES} from './agent/task-schema-v2.ts';
 import {AGENT_TASK_STORAGE_BYTES_V60} from './agent/task-storage-schema-v2.ts';
 import {readCurrentWorkspaceRole,isWorkspaceRoleSince} from './workspace-schema-dispatch.ts';
@@ -50,6 +51,7 @@ function strings(value:unknown,visit:(key:string,value:string)=>void,key='',dept
  * cleanup manifest together. Files/companions are removed only after that
  * commit; restart retries only this cleanup, never a provider or mutation. */
 export function createProjectLifecycleServices(store:Store,{ownsLock,isReadOnly,assertIdle,storage:{validateManagedFile,validateManagedDirectory},signal,now=()=>new Date().toISOString(),fault=()=>{}}:Options){
+  if(isProjectLayout(store.db))throw new TypeError('Project lifecycle operations require the application project host.');
   const {db,root}=store;let companions:ProjectDeletionCompanions|undefined;
   function owned():void{if(signal?.aborted||isReadOnly()||!ownsLock())fail();}
   function project(projectId:string):Record<string,unknown>{const value=store.get('projects',projectId);if(!object(value)||value.id!==projectId)fail('NOT_FOUND',404);return value;}

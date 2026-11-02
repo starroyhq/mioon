@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import type {DatabaseSync} from 'node:sqlite';
 
 const quote=(value:string)=>`"${value.replaceAll('"','""')}"`;
@@ -6,6 +7,7 @@ function unsupported():never{throw Object.assign(new Error('Project lifecycle sc
 /** Trusted schema construction only. A deletion grants each exact row for one
  * synchronous transaction; no authority may survive commit or a crash. */
 export function installProjectLifecycleDefinitions(db:DatabaseSync):void{
+ if(isProjectLayout(db))throw new TypeError('Legacy workspace schema installers cannot run on project databases.');
   db.exec(`CREATE TABLE project_deletion_scope(tableName TEXT NOT NULL,rowId INTEGER NOT NULL CHECK(typeof(rowId)='integer'),PRIMARY KEY(tableName,rowId));
     CREATE TABLE project_mutation_requests(requestId TEXT PRIMARY KEY,projectId TEXT NOT NULL REFERENCES projects(id),digest TEXT NOT NULL CHECK(length(digest)=64),response TEXT NOT NULL CHECK(json_valid(response)));
     CREATE TRIGGER immutable_project_mutation_requests BEFORE UPDATE ON project_mutation_requests BEGIN SELECT RAISE(ABORT,'project responses are immutable');END;
@@ -29,6 +31,7 @@ export function installProjectLifecycleDefinitions(db:DatabaseSync):void{
 }
 
 export function migrateProjectLifecycleSchema(db:DatabaseSync,classifySource:(db:DatabaseSync)=>unknown):void{
+ if(isProjectLayout(db))throw new TypeError('Legacy workspace schema installers cannot run on project databases.');
   if(db.isTransaction||db.prepare('PRAGMA foreign_keys').get()?.foreign_keys!==1||db.prepare('PRAGMA trusted_schema').get()?.trusted_schema!==0||db.prepare('SELECT 1 FROM temp.sqlite_schema LIMIT 1').get())unsupported();
   classifySource(db);
   db.exec('BEGIN IMMEDIATE');

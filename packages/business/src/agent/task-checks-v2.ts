@@ -1,3 +1,4 @@
+import {hasStoreTable,storeDirectories} from '../store-layout.ts';
 import {isDeepStrictEqual} from 'node:util';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
@@ -90,7 +91,7 @@ export async function readAgentTaskChecks(store:WorkspaceStore,snapshot:AgentTas
  };
  const reason=(status:AgentTaskCheck['status'],code:AgentTaskCheckReason,params?:AgentTaskCheckValues):Pick<AgentTaskCheck,'status'|'reason'>=>({status,reason:{code,...(params?{params}:{})}});
  const origins:Origin[]=[],boundSteps=new Set<string>();
- const hasOrigins=!!store.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_task_job_origins_v2'").get();
+ const hasOrigins=hasStoreTable(store.db,'agent_task_job_origins_v2');
  if(hasOrigins)for(const source of store.db.prepare('SELECT kind,jobId,stepId,operation,requestId FROM agent_task_job_origins_v2 WHERE projectId=? AND runId=? ORDER BY stepId,kind,jobId').all(projectId,run.id)){
   const step=typeof source.stepId==='string'?steps.get(source.stepId):undefined,description=step?.toolCall?operations[step.toolCall.name]:undefined;
   if(!step||!description||description.kind!==source.kind||typeof source.operation!=='string'||`mioon_${source.operation.replaceAll('.','_')}`!==step.toolCall?.name||source.requestId!==step.id||!uuid(source.jobId))continue;
@@ -115,7 +116,7 @@ export async function readAgentTaskChecks(store:WorkspaceStore,snapshot:AgentTas
   try{
    const value=graph.asset(id);if(value.projectId!==projectId||value.id!==id||!integer(value.sizeBytes)||typeof value.sha256!=='string')return;
    if(exportId&&(value.provenance!=='export'||value.mimeType!=='video/mp4'||typeof value.relativePath!=='string'||!new RegExp(`^media/export-${exportId}-[a-f\\d-]{36}\\.mp4$`,'iu').test(value.relativePath)))return;
-   const source=validateManagedSource(store.root,value);return source.info.size===value.sizeBytes?value:undefined;
+   const source=validateManagedSource(storeDirectories(store).projectDir,value);return source.info.size===value.sizeBytes?value:undefined;
   }catch(error){if(!knownObservationFailure(error))throw error;return;}
  };
  for(const origin of origins){

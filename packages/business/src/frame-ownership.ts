@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '@mioon/contracts';
@@ -94,9 +95,9 @@ const resultOf=(receipt: FrameReceipt): Record<string, unknown>=>Object.fromEntr
 // the same read budget used for all legacy/image/frame ancestry in the graph.
 export function createFrameOwnershipReader(db: DatabaseSync,projectId: string,{consume=(): void=>{},fail=unavailable}: {consume?: (value: unknown)=>void; fail?: ()=>never}={}): FrameOwnershipReader {
  const reject: ()=>never=fail;
- const tables=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('frame_tasks','frame_requests') LIMIT 2").all();
- const available=tables.length===2;
- if(!available&&(tables.length||db.prepare('SELECT 1 FROM schema_version WHERE version=20 LIMIT 1').get()))reject();
+ const tableCount=isProjectLayout(db)?2:db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('frame_tasks','frame_requests') LIMIT 2").all().length;
+ const available=tableCount===2;
+ if(!available&&(tableCount||db.prepare('SELECT 1 FROM schema_version WHERE version=20 LIMIT 1').get()))reject();
  const tasks=new Map<string,FrameTaskView>(),assets=new Map<string,Record<string,unknown>>();let metadataBytes=0,taskCount=0;
  const account=(value: unknown): void=>{const raw=JSON.stringify(value);consume(raw);if((metadataBytes+=Buffer.byteLength(raw))>FRAME_OWNERSHIP_LIMITS.maxMetadataBytes)exhausted();};
  function decodeRecord(value: unknown): Record<string, unknown> {

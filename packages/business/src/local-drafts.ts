@@ -5,6 +5,7 @@ import {isProxy} from 'node:util/types';
 import path from 'node:path';
 import {LOCAL_DRAFT_LIMITS,clipDraftKeySchema,clipDraftSourceSchema,clipDraftWriteSchema,clipDraftDeleteSchema,clipDraftProjectSchema,clipDraftDiskSchema} from '@mioon/contracts/local-drafts';
 import type {ClipDraftKey,ClipDraftSource,ClipDraftValue,ClipDraftEnvelope,ClipDraftList,ClipDraftSlot as Slot,ClipDraftDisk as Disk} from '@mioon/contracts/local-drafts';
+import {validateCompanionScope} from './companion-scope.ts';
 
 export const LOCAL_DRAFT_FILENAME='local-drafts-v1.json';
 const messages={
@@ -78,13 +79,15 @@ export interface LocalDraftGuards {
 }
 export interface LocalDraftOptions {
   root:string;channel?:'web'|'production'|'development';guards:LocalDraftGuards;storage:LocalDraftStorage;
+  /** The project's history.db in localDir; omitted for a legacy workspace. */
+  databaseFile?:string;
   signal?:AbortSignal;fault?:(point:'beforePersist'|'afterPersist'|'beforeDirectorySync'|'afterDirectorySync')=>void;
 }
 const unsupported={supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'} as const;
 
 /** One private companion envelope, serialized by synchronous owned-backend
  * calls. There is no main DB migration, provider, domain write or task method. */
-export function createLocalDrafts({root,channel='web',guards,storage,signal,fault=()=>{}}:LocalDraftOptions){
+export function createLocalDrafts({root,channel='web',guards,storage,signal,fault=()=>{},databaseFile}:LocalDraftOptions){
   if(!path.isAbsolute(root)||!['web','production','development'].includes(channel))fail('LOCAL_DRAFT_VALIDATION');
   const file=path.join(root,LOCAL_DRAFT_FILENAME),instanceId=randomUUID();
   let scope:string|undefined;
@@ -100,7 +103,7 @@ export function createLocalDrafts({root,channel='web',guards,storage,signal,faul
   }
   function owned():void{if(!active())fail('LOCAL_DRAFT_STORAGE_UNAVAILABLE');}
   function identity():string{
-    const directory=storage.validatePrivateDirectory(root),db=storage.validateManagedFile(path.join(root,'workbench.sqlite'),{root});
+    const {directory,db}=validateCompanionScope(root,storage,databaseFile);
     if(!directory||!db)fail('LOCAL_DRAFT_STORAGE_UNAVAILABLE');
     const current=calculateWorkspaceScope({channel,root,directory,db});
     if(scope!==undefined&&scope!==current)fail('LOCAL_DRAFT_SCOPE_MISMATCH');

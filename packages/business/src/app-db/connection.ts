@@ -26,9 +26,11 @@ const identityKey = (info: BigIntStats, file: string): string => info.ino ? `${i
 
 /** Read the actual live-library registry without touching a file descriptor.
  * The lstat identity also matches a renamed file or hard link; file ID 0
- * cannot identify a file and never matches the path-based opening fallback. */
-export function isAppLibraryHeld(identity: ProjectFileIdentity): boolean {
-  return identity.ino !== '0' && heldLibraries.get(`${identity.dev}:${identity.ino}`)?.isOpen === true;
+ * cannot identify a file and never matches the path-based opening fallback.
+ * An optional connection binds ownership to that exact acquired handle. */
+export function isAppLibraryHeld(identity: ProjectFileIdentity, db?: DatabaseSync): boolean {
+  const owner = identity.ino === '0' ? undefined : heldLibraries.get(`${identity.dev}:${identity.ino}`);
+  return owner?.isOpen === true && (db === undefined || owner === db);
 }
 
 /** The app library's one connection. */

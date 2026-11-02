@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import {randomUUID} from 'node:crypto';
 import {taskEffectOrigin} from './agent/task-effects-v2.ts';
 import type {AgentTaskJson} from '../../contracts/src/agent-tasks-v2.ts';
@@ -5,7 +6,8 @@ import {isProxy} from 'node:util/types';
 import type {DatabaseSync} from 'node:sqlite';
 import {LUT_RESOURCE_LIMITS,LUT_RESOURCE_PROFILE,lutImportInputSchema,lutListInputSchema,lutInspectInputSchema} from '../../contracts/src/lut-resources.ts';
 import type {LutImportInput,LutImportResponse,LutListResponse,LutInspectResponse} from '../../contracts/src/lut-resources.ts';
-import {lutResourceError,lutHash,lutInputHash,parseLutBytes,LUT_RESOURCE_COLUMNS,lutResourceFromRow,readLutResource} from './lut-resource-validation.ts';
+import {lutResourceError,lutHash,lutInputHash,parseLutBytes,LUT_RESOURCE_COLUMNS,lutResourceFromRow} from './lut-resource-validation.ts';
+import {readLutResource} from './project-lut-reader.ts';
 import {isRestoredWorkspaceSchemaSince} from '../../contracts/src/workspace-schema-lineage.ts';
 
 export interface LutResourceRuntime {
@@ -50,6 +52,11 @@ function decode(value:string):Buffer {
   return bytes;
 }
 function databaseBytes(db:DatabaseSync):number {
+  if(isProjectLayout(db))return ['main','project','cache'].reduce((total,schema)=>{
+    const pages=db.prepare(`PRAGMA ${schema}.page_count`).get()?.page_count,size=db.prepare(`PRAGMA ${schema}.page_size`).get()?.page_size;
+    if(typeof pages!=='number'||typeof size!=='number'||!Number.isSafeInteger(pages)||!Number.isSafeInteger(size)||pages<0||size<=0)throw lutResourceError();
+    return total+pages*size;
+  },0);
   const pages=db.prepare('PRAGMA main.page_count').get()?.page_count,size=db.prepare('PRAGMA main.page_size').get()?.page_size;
   if(typeof pages!=='number'||typeof size!=='number'||!Number.isSafeInteger(pages)||!Number.isSafeInteger(size)||pages<0||size<=0)throw lutResourceError();
   return pages*size;
@@ -63,7 +70,7 @@ export function createLutResourceServices(store:{db:DatabaseSync},{runtime,signa
   const {db}=store;
   const owned=():void=>{runtime.assertReadable();if(signal?.aborted||!runtime.ownsLock())throw lutResourceError('LUT_OWNER_REQUIRED',503);};
   const project=(projectId:string):void=>{
-    const row=db.prepare("SELECT id,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 16384 THEN data END AS data FROM main.projects WHERE id=?").get(projectId);
+    const row=db.prepare(`SELECT id,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 16384 THEN data END AS data FROM ${isProjectLayout(db)?'project':'main'}.projects WHERE id=?`).get(projectId);
     if(!row)throw lutResourceError('LUT_NOT_FOUND',404);
     let value:unknown;try{if(typeof row.data!=='string')throw Error();value=JSON.parse(row.data);}catch{throw lutResourceError();}
     if(!value||typeof value!=='object'||!('id' in value)||value.id!==projectId||row.id!==projectId)throw lutResourceError();
@@ -104,13 +111,13 @@ export function createLutResourceServices(store:{db:DatabaseSync},{runtime,signa
       if(databaseBytes(db)+2*bytes.length+LUT_RESOURCE_LIMITS.databaseReserveBytes>LUT_RESOURCE_LIMITS.databaseBytes)throw lutResourceError('LUT_CAPACITY',507);
       const counts=db.prepare(`SELECT count(*) AS count,COALESCE(SUM(sizeBytes),0) AS bytes,
         COALESCE(SUM(CASE WHEN projectId=? THEN 1 ELSE 0 END),0) AS projectCount,
-        COALESCE(SUM(CASE WHEN projectId=? THEN sizeBytes ELSE 0 END),0) AS projectBytes FROM main.project_lut_resources`).get(i.projectId,i.projectId)!;
+        COALESCE(SUM(CASE WHEN projectId=? THEN sizeBytes ELSE 0 END),0) AS projectBytes FROM ${isProjectLayout(db)?'project':'main'}.project_lut_resources`).get(i.projectId,i.projectId)!;
       if(Number(counts.count)>=LUT_RESOURCE_LIMITS.workspaceResources||Number(counts.projectCount)>=LUT_RESOURCE_LIMITS.projectResources||
         Number(counts.bytes)+bytes.length>LUT_RESOURCE_LIMITS.workspaceBytes||Number(counts.projectBytes)+bytes.length>LUT_RESOURCE_LIMITS.projectBytes||
         Number(db.prepare('SELECT count(*) AS count FROM main.lut_import_requests').get()?.count)>=LUT_RESOURCE_LIMITS.receipts)throw lutResourceError('LUT_CAPACITY',507);
       const id=randomUUID(),createdAt=new Date().toISOString();
       fault('beforeInsert');owned();runtime.assertImportAllowed();
-      db.prepare('INSERT INTO main.project_lut_resources(id,projectId,name,sha256,sizeBytes,profile,metadata,content,createdAt) VALUES(?,?,?,?,?,?,?,?,?)')
+      db.prepare(`INSERT INTO ${isProjectLayout(db)?'project':'main'}.project_lut_resources(id,projectId,name,sha256,sizeBytes,profile,metadata,content,createdAt) VALUES(?,?,?,?,?,?,?,?,?)`)
         .run(id,i.projectId,i.name,sha256,bytes.length,LUT_RESOURCE_PROFILE,metadata,bytes,createdAt);
       fault('afterResourceInsert');owned();
       db.prepare('INSERT INTO main.lut_import_requests(requestId,projectId,inputHash,resourceId) VALUES(?,?,?,?)').run(i.requestId,i.projectId,digest,id);
@@ -136,7 +143,7 @@ export function createLutResourceServices(store:{db:DatabaseSync},{runtime,signa
   }
   function listLuts(value:unknown):LutListResponse {
     owned();const i=input(lutListInputSchema,value);project(i.projectId);
-    const rows=db.prepare(`SELECT ${LUT_RESOURCE_COLUMNS} FROM main.project_lut_resources WHERE projectId=? AND id>? ORDER BY id LIMIT ?`).all(i.projectId,i.after??'',i.limit+1);
+    const rows=db.prepare(`SELECT ${LUT_RESOURCE_COLUMNS} FROM ${isProjectLayout(db)?'project':'main'}.project_lut_resources WHERE projectId=? AND id>? ORDER BY id LIMIT ?`).all(i.projectId,i.after??'',i.limit+1);
     const items=rows.slice(0,i.limit).map(lutResourceFromRow);owned();
     return {projectId:i.projectId,items,nextAfter:rows.length>i.limit?items.at(-1)!.id:null};
   }

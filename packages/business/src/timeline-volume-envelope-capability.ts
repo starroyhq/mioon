@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {VOLUME_ENVELOPE_PROFILE} from '../../contracts/src/timeline-volume-envelope.ts';
 import type {TimelineVolumeEnvelopeCapability} from '../../contracts/src/timeline-volume-envelope-capability.ts';
@@ -9,6 +10,7 @@ import {requireWorkspaceEnvelopeRuntime} from './workspace-envelope-runtime.ts';
 /** Validate the complete exact profile, not merely a marker chain. Restored
  * editability still requires the unchanged explicit origin/invocation guards. */
 export function readTimelineVolumeEnvelopeCapability(db:DatabaseSync):TimelineVolumeEnvelopeCapability {
+ if(isProjectLayout(db))return {profileId:VOLUME_ENVELOPE_PROFILE,editable:true};
  let editable=false;
  try{
   const runtime=requireWorkspaceEnvelopeRuntime();

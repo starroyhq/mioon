@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from '../project-file/held-files.ts';
 import {getWorkspaceRestoreContext} from '../workspace-restore-schema.ts';
 import {workspaceRestoreError} from '../workspace-restore-policy.ts';
 import {randomUUID, randomInt, randomBytes, createHash, createHmac, timingSafeEqual} from 'node:crypto';
@@ -108,7 +109,7 @@ export function validateImageTaskReview(db: DatabaseSync, projectId: string, tas
   if (!parsed.success || parsed.data.projectId !== projectId) invalid();
   const generation = parsed.data;
   if (generation.providerId === 'mock') return null;
-  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_reviews'").get()) invalid();
+  if (!isProjectLayout(db)&&!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_reviews'").get()) invalid();
   const canonicalInput = canonical(generation);
   const row = db.prepare(`SELECT ${columns} FROM image_reviews WHERE taskId=? AND projectId=? LIMIT 1`).get(taskId, projectId);
   if (row) consume(JSON.stringify(row));

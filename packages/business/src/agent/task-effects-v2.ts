@@ -1,3 +1,4 @@
+import {hasStoreTable} from '../store-layout.ts';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '@mioon/contracts';
@@ -83,7 +84,7 @@ export function bindAgentTaskJobInside(db:DatabaseSync,kind:string,id:string):vo
   .run(kind,id,origin.runId,origin.stepId,origin.projectId,origin.requestId,origin.operation);
 }
 export function agentTaskJobBinding(db:DatabaseSync,kind:string,id:string):AgentTaskJobBinding|undefined{
- if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_task_job_origins_v2'").get())return;
+ if(!hasStoreTable(db,'agent_task_job_origins_v2'))return;
  const row=db.prepare('SELECT runId,stepId,projectId,requestId,operation FROM agent_task_job_origins_v2 WHERE kind=? AND jobId=?').get(kind,id);
  if(!row)return;
  if(Object.values(row).some(value=>typeof value!=='string'))throw new AppError('AGENT_TASK_STORAGE_UNAVAILABLE','任务来源记录无法验证',503);

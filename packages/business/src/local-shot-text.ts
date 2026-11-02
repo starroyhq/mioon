@@ -5,6 +5,7 @@ import path from 'node:path';
 import {LOCAL_SHOT_TEXT_LIMITS,createLocalShotTextSchemas,isLocalShotTextMutationResponse} from '@mioon/contracts/local-shot-text';
 import type {LocalShotTextUpdateInput,LocalShotTextDraftValue,LocalShotTextIntent,LocalShotTextSlot,LocalShotTextDisk,LocalShotTextEnvelope,LocalShotTextExecution,LocalShotTextExecute,LocalShotTextKey} from '@mioon/contracts/local-shot-text';
 import type {LocalDraftStorage} from './local-drafts.ts';
+import {validateCompanionScope} from './companion-scope.ts';
 
 export const LOCAL_SHOT_TEXT_FILENAME='local-shot-text-v1.json';
 const messages={
@@ -63,6 +64,7 @@ export interface LocalShotTextGuards{
 export type LocalShotTextFaultPoint='beforePersist'|'afterPersist'|'beforeDirectorySync'|'afterDirectorySync'|'beforeDispatch'|'afterDispatch'|'beforeOutcomePersist';
 export interface LocalShotTextOptions{
   root:string;channel?:'web'|'production'|'development';guards:LocalShotTextGuards;storage:LocalDraftStorage;signal?:AbortSignal;
+  databaseFile?:string;
   fault?:(point:LocalShotTextFaultPoint)=>void;
 }
 const unsupported={supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'} as const;
@@ -70,7 +72,7 @@ const unsupported={supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'} as c
 /** Local raw title/prompt drafts and one immutable pending text intent per project. This is
  * deliberately not an operation journal, generic settlement API or RPC tool.
  * A pending reservation is durable before the single fixed service can run. */
-export function createLocalShotText({root,channel='web',guards,storage,signal,fault=()=>{}}:LocalShotTextOptions){
+export function createLocalShotText({root,channel='web',guards,storage,signal,fault=()=>{},databaseFile}:LocalShotTextOptions){
   if(!path.isAbsolute(root)||!['web','production','development'].includes(channel))fail('LOCAL_SHOT_TEXT_VALIDATION');
   const schemas=createLocalShotTextSchemas(guards.isShotUpdateInput),file=path.join(root,LOCAL_SHOT_TEXT_FILENAME),instanceId=randomUUID();
   const flights=new Map<string,{intentId:string;revision:number;promise:Promise<LocalShotTextExecution>}>();
@@ -81,7 +83,7 @@ export function createLocalShotText({root,channel='web',guards,storage,signal,fa
   function owned():void{if(guards.isRestored())fail('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE');if(signal?.aborted)fail('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE');if(guards.ownsLock()!==true)fail('LOCAL_SHOT_TEXT_OWNER_REQUIRED');}
   function active():boolean{if(guards.isRestored())return false;owned();return true;}
   function identity():string{
-    const directory=storage.validatePrivateDirectory(root),db=storage.validateManagedFile(path.join(root,'workbench.sqlite'),{root});
+    const {directory,db}=validateCompanionScope(root,storage,databaseFile);
     if(!directory||!db)fail('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE');
     const current=createHash('sha256').update(JSON.stringify([channel,path.resolve(root),String(directory.dev),String(directory.ino),String(db.dev),String(db.ino),db.birthtimeMs??null])).digest('hex');
     if(scope!==undefined&&scope!==current)fail('LOCAL_SHOT_TEXT_SCOPE_MISMATCH');scope=current;return current;

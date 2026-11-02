@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError,SCENE_KEYFRAME_PROVENANCE,SCENE_LIMITS,sceneShotsReceiptSchema} from '@mioon/contracts';
 import type {SceneKeyframe,SceneShotsReceipt} from '@mioon/contracts';
@@ -26,7 +27,7 @@ export function sceneKeyframeAssetMatches(asset: Record<string, unknown>,keyfram
 // shared read budget and validates the source video in the same graph.
 export function createSceneKeyframeOwnershipReader(db: DatabaseSync,projectId: string,{consume=(): void=>{},fail=unavailable}: {consume?: (value: unknown)=>void; fail?: ()=>never}={}): SceneKeyframeOwnershipReader {
  const reject: ()=>never=fail;
- const available=Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scene_tasks' LIMIT 1").get());
+ const available=isProjectLayout(db)||Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scene_tasks' LIMIT 1").get());
  if(!available&&db.prepare('SELECT 1 FROM schema_version WHERE version=58 LIMIT 1').get())reject();
  const receipts=new Map<string,SceneShotsReceipt>();
  function receipt(taskId: string): SceneShotsReceipt {

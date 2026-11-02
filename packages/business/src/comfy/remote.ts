@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from '../project-file/held-files.ts';
 import {createComfyAdmission} from './admission.ts';
 import {getWorkspaceRestoreContext} from '../workspace-restore-schema.ts';
 import {workspaceRestoreError} from '../workspace-restore-policy.ts';
@@ -82,7 +83,7 @@ export function createComfyRemoteServices(store: ComfyRemoteStore, {signal: pare
   if (getWorkspaceRestoreContext(store)) throw workspaceRestoreError();
   const {db, tx} = store, controller = new AbortController(), signal = parentSignal ? AbortSignal.any([parentSignal, controller.signal]) : controller.signal;
   let closed = false; const active = new Set<Promise<unknown>>();
-  const present = (): boolean => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_remote_runs'").get());
+  const present = (): boolean => isProjectLayout(db)||Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_remote_runs'").get());
   const activeOwner = (): void => {owner(); if (closed || signal.aborted) fail('COMFY_REMOTE_INTERRUPTED');};
   function owned(projectId: string, taskId: string) {
     const task = readTask(projectId, taskId);
