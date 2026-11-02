@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import { openStore, type WorkspaceStore } from '../packages/business/src/db.ts';
+import { openStore, openLegacyWorkspaceStore, type WorkspaceStore } from '../packages/business/src/db.ts';
 import { createServices, type OrdinaryServices } from '../packages/business/src/services.ts';
 import { withoutForeignKeys } from './helpers/project-database.ts';
 
@@ -28,11 +28,12 @@ async function fixture(t: test.TestContext, { legacy = false } = {}) {
     db.exec('CREATE TABLE schema_version(version INTEGER PRIMARY KEY); INSERT INTO schema_version VALUES(1); CREATE TABLE projects(id TEXT PRIMARY KEY,data TEXT NOT NULL);');
     db.prepare('INSERT INTO projects VALUES(?,?)').run(oldProject.id, JSON.stringify(oldProject)); db.close();
   }
-  let store = (openStore(root) as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
+  const open=legacy?openLegacyWorkspaceStore:openStore;
+  let store = (open(root) as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
   const _strictFixtureBase = {
     root, get store() { return store; }, get services() { return services; },
     call: <O extends string>(operation: O, input?: unknown) => services.call(operation, input) as Promise<FixtureServiceResult<O>>,
-    restart() { store.close(); store = (openStore(root) as FixtureStore); services = (createServices(store, new Map()) as FixtureServices); },
+    restart() { store.close(); store = (open(root) as FixtureStore); services = (createServices(store, new Map()) as FixtureServices); },
     asset(projectId?: string, mimeType: string|undefined = 'image/png', extra: {duration?: number|boolean;} = {}) {
       const id = randomUUID();
       return store.put('assets', { id, projectId, name: `fixture.${mimeType.split('/')[1]}`, mimeType, sha256: 'a'.repeat(64), sizeBytes: 128, width: 720, height: 1280, duration: mimeType.startsWith('image/') ? 0 : 2.001, relativePath: `media/${id}.fixture`, url: `/media/${id}`, createdAt: stamp, ...extra });

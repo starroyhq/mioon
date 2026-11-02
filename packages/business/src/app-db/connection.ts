@@ -6,11 +6,13 @@ import type {StatementSync} from 'node:sqlite';
 import {isAsyncFunction, isPromise} from 'node:util/types';
 import {ensurePrivateDirectory, PrivateStorageError, validateManagedFile} from '@mioon/contracts/private-storage';
 import {AppError} from '../../../contracts/src/app-error.ts';
+import {isProjectId} from '../../../contracts/src/project-file.ts';
+import {recentProjectSchema} from '../../../contracts/src/project-registry.ts';
 import type {ProjectFileIdentity} from '../../../contracts/src/project-registry.ts';
 import {appLibraryError, appLibraryInvalid, isSqliteBusy, isSqliteCorrupt, isSqliteReadOnly} from './errors.ts';
 import {
   APP_LIBRARY_APPLICATION_ID, APP_LIBRARY_FILE, APP_LIBRARY_SCHEMA_VERSION, APP_SCHEMA_VERSION_TABLE_SQL, buildAppLibrary, compareAppSchema,
-  readAppSchema,
+  readAppSchema, expectedAppSchema, upgradeAppLibraryV1,
 } from './schema.ts';
 
 /** As the project-file kernel opens its files: a busy timeout of 0 makes an
@@ -31,6 +33,21 @@ const identityKey = (info: BigIntStats, file: string): string => info.ino ? `${i
 export function isAppLibraryHeld(identity: ProjectFileIdentity, db?: DatabaseSync): boolean {
   const owner = identity.ino === '0' ? undefined : heldLibraries.get(`${identity.dev}:${identity.ino}`);
   return owner?.isOpen === true && (db === undefined || owner === db);
+}
+
+/** A path-only lookup on this process's already-held, validated app library.
+ * `undefined` means no live library is held here; `null` means this live
+ * registry has no such project. Never opens or closes another descriptor of a
+ * held SQLite file, and never lends its writable connection to the caller. */
+export function findHeldAppProjectFile(dataDir: string, projectId: string): string | null | undefined {
+  if (!isProjectId(projectId)) throw new TypeError('Invalid project ID');
+  const file = path.join(path.resolve(dataDir), APP_LIBRARY_FILE);
+  const info = lstatSync(file, {bigint: true, throwIfNoEntry: false});
+  if (!info?.isFile()) return undefined;
+  const database = heldLibraries.get(identityKey(info, file));
+  if (database?.isOpen !== true) return undefined;
+  const row = database.prepare('SELECT data FROM main.recent_projects WHERE projectId=?').get(projectId);
+  return row ? recentProjectSchema.parse(JSON.parse(String(row.data))).projectFile : null;
 }
 
 /** The app library's one connection. */
@@ -93,7 +110,11 @@ function checkStructure(db: DatabaseSync): void {
   if (typeof versions?.version === 'number' && versions.version > APP_LIBRARY_SCHEMA_VERSION) {
     throw appLibraryError('APP_LIBRARY_FORMAT_NEWER', {formatVersion: versions.version, supportedFormatVersion: APP_LIBRARY_SCHEMA_VERSION});
   }
-  if (versions?.count !== 1 || versions.version !== APP_LIBRARY_SCHEMA_VERSION) throw appLibraryInvalid('schema-version');
+  if (versions?.count === 1 && versions.version === 1) {
+    const differences = compareAppSchema(readAppSchema(db), expectedAppSchema(1));
+    if (differences.length) throw appLibraryInvalid('schema', differences);
+    upgradeAppLibraryV1(db);
+  } else if (versions?.count !== 1 || versions.version !== APP_LIBRARY_SCHEMA_VERSION) throw appLibraryInvalid('schema-version');
   const differences = compareAppSchema(readAppSchema(db));
   if (differences.length > 0) throw appLibraryInvalid('schema', differences);
 }

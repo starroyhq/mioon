@@ -11,7 +11,7 @@ import {fileURLToPath} from 'node:url';
 import {setImmediate as yieldIO} from 'node:timers/promises';
 import {initializeNodePrivateStorage} from '../packages/node-host/src/private-storage-bootstrap.ts';
 import {createPrivateTemporaryDirectory,getWindowsManagedFileIO,validateManagedFile} from '../packages/contracts/src/private-storage.ts';
-import {openStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {streamFile,createNewDirectory,sameFile,writeBoundedFile} from '../packages/business/src/workspace-backup-storage.ts';
 import {exportWorkspaceBackupBundle,importWorkspaceBackupBundle} from '../packages/business/src/workspace-backup-bundle.ts';

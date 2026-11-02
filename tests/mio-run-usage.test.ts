@@ -9,7 +9,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {openStore} from '../packages/business/src/project-file/index.ts';
-import {openStore as openWorkspaceStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openWorkspaceStore} from '../packages/business/src/db.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {readMioStorage} from '../packages/business/src/agent/mio-storage.ts';
 import {createMioJournal} from '../packages/business/src/agent/mio-journal.ts';

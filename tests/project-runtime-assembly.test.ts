@@ -10,8 +10,8 @@ import path from 'node:path';
 import {composeProjectRuntime, ProjectRuntimeCleanupError, type ProjectRuntime, type ProjectRuntimeOptions} from '../apps/server/src/project-runtime.ts';
 import {createProjectDeletionGate} from '../apps/server/src/project-deletion-gate.ts';
 import {startServer} from '../apps/server/src/index.ts';
-import {openStore, ownsStoreLock} from '../packages/business/src/db.ts';
-import {createProjectStore, schemaObjects, foreignKeyCheck} from '../packages/business/src/project-file/index.ts';
+import {openStore, openLegacyWorkspaceStore, ownsStoreLock} from '../packages/business/src/db.ts';
+import {createProjectStore, openProjectStore, isProjectStore, schemaObjects, foreignKeyCheck} from '../packages/business/src/project-file/index.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createWorkspaceConfiguration} from '../packages/business/src/workspace-configuration.ts';
 import {createAppCompanionDocuments} from '../packages/business/src/companion-scope.ts';
@@ -49,7 +49,7 @@ function fixture(t: TestContext, kernel: boolean) {
   const projectDir = path.join(root, 'Film');
   if (kernel) mkdirSync(projectDir, {mode: 0o700});
   const store = kernel ? createProjectStore({projectFile: path.join(projectDir, 'Film.mioon'), projectId: randomUUID(),
-    locate: id => ({localDir: path.join(root, 'app', 'records', id), cacheDir: path.join(root, 'cache', id), tempDir: path.join(root, 'tmp', id)})}) : openStore(projectDir);
+    locate: id => ({localDir: path.join(root, 'app', 'records', id), cacheDir: path.join(root, 'cache', id), tempDir: path.join(root, 'tmp', id)})}) : openLegacyWorkspaceStore(projectDir);
   const deletionGate = createProjectDeletionGate({signal: shutdown.signal, subscribeMedia: onMediaProcess, busy: () => { throw new Error('project busy'); }});
   let runtime: ProjectRuntime | undefined, worker: ReturnType<ProjectRuntime['startWorker']> | undefined;
   let closed = false;
@@ -130,7 +130,7 @@ test('the same factory assembles a real kernel with independent app policy, docu
   await f.close();
 });
 
-test('a factory startup failure preserves its error and releases the legacy server lock for retry', async t => {
+test('application startup failure preserves its error and releases the server lock for retry', async t => {
   const root = temporary(), marker = new Error('synthetic project factory failure');
   t.after(() => rmSync(root, {recursive: true, force: true}));
   await assert.rejects(startServer({dataDir: root, port: 0, agentSecretCodecFactory: async () => { throw marker; }}), error => error === marker);
@@ -159,25 +159,20 @@ test('project cleanup leaves borrowed settings owned and usable by the applicati
   } finally { await image.close(); }
 });
 
-test('failed private cleanup preserves both failures and prevents the outer server from closing SQLite', async t => {
-  const root = temporary(), startupError = new Error('synthetic late bind failure'), cleanupError = new Error('synthetic codec close failure');
-  let db: DatabaseSync | undefined;
-  t.after(() => { if (db?.isOpen) db.close(); rmSync(root, {recursive: true, force: true}); });
-  const seed = openStore(root), services = createServices(seed, createProviderRegistry({db: seed.db, root}));
-  const project = await services.call('project.create', {name: 'Owned startup fixture'}) as {id: string};
-  await services.drain(); seed.close();
-  const unreachable = (): never => { throw new Error('source admission must never run during startup'); };
-  const failure: unknown = await startServer({dataDir: root, port: 0,
-    inspectProject: inspect => { inspect(project.id, owned => { db = owned; }); },
+test('failed private kernel cleanup preserves both failures and cannot authorize closing its owned SQLite connection', async t => {
+  const f=fixture(t,true),store=f.store,startupError=new Error('synthetic late settings failure'),cleanupError=new Error('synthetic codec close failure');
+  assert.ok(isProjectStore(store));
+  const settings:NonNullable<ProjectRuntimeOptions['settings']>={get image():never{throw startupError;}};
+  const failure:unknown=await composeProjectRuntime({...f.options,application:f.library!,serviceApplication:testApplication(f.library!),settings,
     agentSecretCodecFactory: async () => ({secretCodec: {close: () => { throw cleanupError; }},
       storage: () => ({persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}), close() {}}),
-    nativeAudioPreview: {bind() { throw startupError; }, command: async () => unreachable(), accept: unreachable, acceptContinuous: unreachable},
   }).then(() => assert.fail('startup must fail'), error => error);
   assert.ok(failure instanceof ProjectRuntimeCleanupError);
   assert.equal(failure.cause, startupError);
   const errors: unknown[] = [...failure.errors];
   for (let index = 0; index < errors.length; index++) if (errors[index] instanceof AggregateError) errors.push(...(errors[index] as AggregateError).errors);
   assert.ok(errors.includes(cleanupError), 'cleanup rejection must not replace the original startup failure');
-  assert.equal(db?.isOpen, true, 'unconfirmed private cleanup cannot authorize SQLite close');
-  assert.throws(() => openStore(root), /running backend/, 'the original lock remains held');
+  assert.equal(store.db.isOpen, true, 'unconfirmed private cleanup cannot authorize SQLite close');
+  assert.equal(ownsStoreLock(store),true);
+  assert.throws(()=>openProjectStore({projectFile:store.projectFile,locate:()=>assert.fail('a second connection must fail before locating records')}),{code:'PROJECT_LOCKED'},'the original kernel lock remains held');
 });

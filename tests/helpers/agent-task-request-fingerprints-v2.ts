@@ -8,6 +8,9 @@ import {fileURLToPath} from 'node:url';
 import {ensurePrivateDirectory, writePrivateFileAtomic} from '@mioon/contracts/private-storage';
 import {openStore} from '../../packages/business/src/db.ts';
 import type {WorkspaceStore} from '../../packages/business/src/db.ts';
+import {createProjectFile} from '../../packages/business/src/project-file/connection.ts';
+import {isProjectStore} from '../../packages/business/src/project-file/store.ts';
+import {createMioRecords} from '../../packages/business/src/agent/mio-records.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
 import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../../packages/business/src/agent/presets.ts';
@@ -164,6 +167,10 @@ function assertCanvasLoaded(snapshot: AgentTaskSnapshot): void {
 }
 async function fixture(protocol: AgentProtocol, official = false, harness: TaskRequestFingerprintHarness = {}) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-request-fingerprint-'));
+  // The fixed request seed is also the real kernel file identity, not a
+  // second project inserted into a randomly identified project file.
+  try {if (!harness.openStore) createProjectFile(path.join(root, 'project.mioon'), {projectId});}
+  catch (error) {rmSync(root, {recursive: true, force: true}); throw error;}
   const store = (harness.openStore ?? openStore)(root), ports = harness.createFixturePorts?.(store), services = ports?.services ?? createServices(store, new Map());
   // Seed complete, fixed domain rows. Runtime/journal/control UUIDs remain
   // genuine; they must never accidentally become part of these request bodies.
@@ -232,6 +239,7 @@ async function fixture(protocol: AgentProtocol, official = false, harness: TaskR
       writePrivateFileAtomic(path.join(root, relativePath), bytes, {root, maxBytes: 30 * 1024 * 1024, replace: false});
       const input = {id: uploadId, projectId, requestId: 'fingerprint-selected-image', name: 'Selected image.png', mimeType: 'image/png', relativePath, sha256: createHash('sha256').update(bytes).digest('hex'), createdAt: fixtureTime};
       if (harness.stageAttachment) harness.stageAttachment(store, input);
+      else if (isProjectStore(store)) store.tx(() => createMioRecords(store).addImport({...input, status: 'selected', assetId: null, resourceId: null}));
       else store.db.prepare("INSERT INTO agent_task_imports_v2(id,projectId,requestId,name,mimeType,relativePath,sha256,status,assetId,createdAt) VALUES(?,?,?,?,?,?,?,'selected',NULL,?)")
         .run(input.id, input.projectId, input.requestId, input.name, input.mimeType, input.relativePath, input.sha256, input.createdAt);
       return uploadId;

@@ -1,7 +1,7 @@
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
-import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
+import {projectRpcPath,projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
 import {mkdtemp, writeFile, readFile, readdir, rm, unlink, open} from 'node:fs/promises';
@@ -16,28 +16,23 @@ import {createServices, type ServiceStore} from '../packages/business/src/servic
 import {readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.ts';
 import {readTimelineExportPreviewMedia, timelineExportPreviewIdentity, timelineExportPreviewResponseHeaders} from '../packages/business/src/timeline-delivery-read.ts';
 import {startServer} from '../apps/server/src/index.ts';
-import type {InspectProject} from '../apps/server/src/index.ts';
+import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {createFileResponses} from '../apps/server/src/file-response.ts';
 import {createServerProject, openProjectDatabase, projectDirFor, schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
+import {dataFileSnapshot,databaseFiles} from './helpers/data-file-snapshot.ts';
+
 const token = 'synthetic-named-delivery-download-token';
 const clone = <T>(value: T): T => structuredClone(value);
 const hash = (value: NonSharedBuffer|BinaryLike) => createHash('sha256').update(value).digest('hex');
-async function manifest(root: string, relative = '') {
-  const result: ({ directory: string; } | unknown | { file: string; hash: string; })[] = [];
-  for (const entry of await readdir(path.join(root, relative), {withFileTypes: true})) {
-    const name = path.join(relative, entry.name);
-    if (entry.isDirectory()) result.push({directory: name}, ...await manifest(root, name));
-    else if (!/^workbench\.sqlite(?:-wal|-shm)?$/.test(name) && name !== 'server.lock') result.push({file: name, hash: hash(await readFile(path.join(root, name)))});
-  }
-  return result.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-}
+const manifest=(root:string,databases:readonly string[]=[])=>dataFileSnapshot(root,databases);
 async function fixture(t: test.TestContext, {serve = true, named = false} = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-named-download-'));
-  let store: TypedStore|undefined, services: TypedServices|undefined, server: Awaited<ReturnType<typeof startServer>> | undefined, db: DatabaseSync|undefined, inspect: InspectProject|undefined;
+  let store: TypedStore|undefined, services: TypedServices|undefined, server: Awaited<ReturnType<typeof startServer>> | undefined, db: DatabaseSync|undefined, inspect: InspectProject|undefined,inspectApp:InspectApplication|undefined;
   t.after(async () => {await server?.close(); db?.close(); await services?.drain(); store?.close(); await rm(root, {recursive: true, force: true});});
   const created = createServerProject(root, {name: 'Named delivery project'});
+  const projectDir=created.store.projectDir;
   store = (created.store as unknown as TypedStore); services = (createServices(store, new Map()) as TypedServices);
   const project = store.get('projects', created.projectId)!;
   let timeline = await services.call('timeline.get', {projectId: project.id});
@@ -49,7 +44,7 @@ async function fixture(t: test.TestContext, {serve = true, named = false} = {}) 
   const input = {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'export', ...(named ? {deliveryName: '海边 交付 V1'} : {})};
   const queued = await services.call('timeline.render', input);
   const assetId = randomUUID(), relativePath = `media/export-${queued.id}-${randomUUID()}.mp4`, bytes = Buffer.from('named-delivery-original-mp4-bytes');
-  await writeFile(path.join(root, relativePath), bytes, {mode: 0o600});
+  await writeFile(path.join(projectDir, relativePath), bytes, {mode: 0o600});
   const asset = {id: assetId, projectId: project.id, name: 'Managed output', mimeType: 'video/mp4', provenance: 'export', relativePath,
     url: `/media/${assetId}`, sha256: hash(bytes), sizeBytes: bytes.length, createdAt: new Date().toISOString()};
   store.put('assets', asset);
@@ -63,10 +58,12 @@ async function fixture(t: test.TestContext, {serve = true, named = false} = {}) 
   other.store.close();
   if (serve) server = await startServer({dataDir: root, port: 0, token,
     chatGateway: async function* () {assert.fail('Download never calls a model or provider');},
-    inspectProject: received => {inspect = received;}});
+    inspectProject: received => {inspect = received;},inspectApplication:received=>{inspectApp=received;}});
   else db = openProjectDatabase(projectDirFor(root, project.id));
   // While the server runs, the database is read and damaged on its own connection.
   const use = <T>(fn: (db: DatabaseSync) => T): T => inspect ? inspect(project.id, fn) : fn(db!);
+  const useForeign=<T>(read:(db:DatabaseSync)=>T):T=>{if(inspect)return inspect(foreign.id,read);const peer=openProjectDatabase(projectDirFor(root,foreign.id));try{return read(peer);}finally{peer.close();}};
+  if(server)for(const id of [project.id,foreign.id]){const opened:Response=await fetch(server.url+projectRpcPath(id),{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation:'project.get',input:{projectId:id}})});assert.equal(opened.status,200);await opened.arrayBuffer();}
   const guardsFor = (db: DatabaseSync) => ({isTimelineRenderRecord, readOwnedAsset: (projectId: string, assetId: unknown) => readOwnedTimelineAsset(db, projectId, assetId)});
   const route = `${projectMediaPath(project.id, assetId)}?preview=1&exportId=${record.id}`;
   // Business readers receive the server's route-local URL after project routing.
@@ -75,13 +72,14 @@ async function fixture(t: test.TestContext, {serve = true, named = false} = {}) 
     [name, db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
   // data_version counts other connections' commits only; total_changes() adds this connection's own writes.
   const changeMarks = (db: DatabaseSync) => [db.prepare('PRAGMA data_version').get()!.data_version, db.prepare('SELECT total_changes() AS n').get()!.n];
-  const checkpoint = async () => ({...use(db => ({rows: rows(db), version: changeMarks(db)})), files: await manifest(root)});
-  return {root, project, foreign, sourceId, timeline, queued, record, asset, bytes, input, route, url, use,
+  const capture=(db:DatabaseSync)=>({rows:rows(db),schema:schemaObjects(db),version:changeMarks(db)});
+  const checkpoint = async () => ({...use(capture),foreign:useForeign(capture),application:inspectApp?.(capture),files:await manifest(root,[...use(databaseFiles),...useForeign(databaseFiles),...(inspectApp?.(databaseFiles)??[])])});
+  return {root, projectDir, project, foreign, sourceId, timeline, queued, record, asset, bytes, input, route, url, use,
     // The test's own connection exists only while no server holds the project.
     get db() {if (inspect) throw new Error('The server holds the project: use f.use(db => ...)'); return db!;},
     get guards() {return guardsFor(this.db);},
     read: () => use(db => readTimelineExportPreviewMedia(db, url, guardsFor(db))), checkpoint,
-    unchanged: async (before: { rows: unknown; version: unknown; files: unknown; }) => {use(db => {assert.deepEqual(rows(db), before.rows); assert.deepEqual(changeMarks(db), before.version);}); assert.deepEqual(await manifest(root), before.files);},
+    unchanged: async (before: Awaited<ReturnType<typeof checkpoint>>) => {use(db => {assert.deepEqual(rows(db), before.rows); assert.deepEqual(changeMarks(db), before.version);assert.deepEqual(schemaObjects(db),before.schema);});assert.deepEqual(useForeign(capture),before.foreign);assert.deepEqual(inspectApp?.(capture),before.application);assert.deepEqual(await manifest(root,[...use(databaseFiles),...useForeign(databaseFiles),...(inspectApp?.(databaseFiles)??[])]), before.files);},
     request: (selected = route, options: RequestInit = {}) => fetch(server!.url + selected, {...options, headers: {authorization: 'Bearer ' + token, ...options.headers}}),
     get server() {return server;}};
 }
@@ -160,7 +158,7 @@ test('preview revalidates after open and closes descriptor when ownership change
     return {stat: () => handle.stat(), close: async () => {closed++; await handle.close();}, createReadStream: options => {streamed++; return handle.createReadStream(options);}};
   }});
   const server = http.createServer(async (req, res) => {
-    try {await files.send(req, res, {file: path.join(f.root, descriptor.relativePath), ranges: true,
+    try {await files.send(req, res, {file: path.join(f.projectDir, descriptor.relativePath), ranges: true,
       headers: () => timelineExportPreviewResponseHeaders(f.db, f.url, f.guards, descriptor)});}
     catch (error) {res.writeHead((error as Failure).status || 500); res.end((error as Failure).code);}
   });

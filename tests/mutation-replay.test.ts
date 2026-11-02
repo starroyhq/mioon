@@ -15,7 +15,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore, type WorkspaceStore} from '../packages/business/src/db.ts';
+import {openStore, openLegacyWorkspaceStore as openMigratingLegacyStore, type WorkspaceStore} from '../packages/business/src/db.ts';
 import {initializeLegacyWorkspaceSchema} from '../packages/business/src/workspace-fixed-schema.ts';
 import {createServices,canonical} from '../packages/business/src/services.ts';
 import {createMutationReplay} from '../packages/business/src/mutation-replay.ts';
@@ -278,7 +278,7 @@ test('additive first migration and repeated startup preserve old rows and journa
  for(const table of ['timeline_requests','reference_requests'])db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`).run(key(),'old-hash',' { "legacy": true, "spacing": "preserve" } ');
  db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('generation',key(),'legacy-hash',randomUUID());
  const f={get store(){return {db};}},before=capture(f,['schema_version']);
- const restart=()=>{if(store)store.close();else db.close();store=(openStore(root) as unknown as TypedStore);db=store.db;};
+ const restart=()=>{if(store)store.close();else db.close();store=(openMigratingLegacyStore(root) as unknown as TypedStore);db=store.db;};
  restart();const after=capture(f);
  for(const [table,rows]of Object.entries(before))assert.deepEqual(after[table],rows,`${table} retains its original row bytes`);
  for(const table of ['project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests'])assert.equal((db.prepare(`SELECT COUNT(*) n FROM ${table}`).get())!.n,0);

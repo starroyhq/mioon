@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {setImmediate as pause} from 'node:timers/promises';
-import {openStore,ownsStoreLock} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore,ownsStoreLock} from '../packages/business/src/db.ts';
 import {acquireWorkspaceLock} from '../packages/business/src/workspace-lock.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import type {TestContext} from 'node:test';

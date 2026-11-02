@@ -6,7 +6,9 @@ import {resolve, join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {parseArgs} from 'node:util';
 import {mock} from 'node:test';
-import {openStore} from '../../packages/business/src/db.ts';
+// Preserve the historical 13-table rewrite baseline. Native R1 storage is
+// measured separately by mio-storage-report.ts with the same workload.
+import {openLegacyWorkspaceStore as openStore} from '../../packages/business/src/db.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
 import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../../packages/business/src/agent/presets.ts';

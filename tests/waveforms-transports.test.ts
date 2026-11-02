@@ -16,12 +16,11 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {openProjectDatabase,projectDirFor} from './helpers/project-database.ts';
+import {openProjectDatabase,openServerProject,projectDirFor} from './helpers/project-database.ts';
 import {createProjectStorageReader} from './fixtures/project-server-process.ts';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
-import {openStore} from '../packages/business/src/db.ts';
 import {discoverSchema} from '../packages/client/src/index.ts';
 import {parse, operationEffect, isWaveformResponse, WAVEFORM_ALGORITHM, WAVEFORM_MAX_POINTS} from '../packages/contracts/src/index.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
@@ -118,10 +117,10 @@ async function fixture(t: test.TestContext) {
   await writeFile(auditPath, ''); await writeFile(mediaAudit, '');
   await seedMutationStore(dataDir);
   const wav = syntheticWav(), sha256 = createHash('sha256').update(wav).digest('hex');
-  const relativePath = `media/${PRIVATE}.wav`;
+  const relativePath = `media/${PRIVATE}.wav`,projectRoot=projectDirFor(dataDir,IDS.project),otherRoot=projectDirFor(dataDir,IDS.other);
   const audio = (id: string, projectId: string) => ({id, projectId, name: 'Synthetic source waveform', mimeType: 'audio/wav',
     relativePath, sha256, sizeBytes: wav.length, duration: 2, hasVideo: false, hasAudio: true, provenance: 'user-import', createdAt: NOW});
-  const seed = (openStore(projectDirFor(dataDir, IDS.project)) as FixtureStore);
+  const seed = (openServerProject(dataDir, IDS.project) as FixtureStore);
   try {
     await writeFile(path.join(projectDirFor(dataDir, IDS.project), relativePath), wav, {mode: 0o600});
     seed.put('assets', audio(IDS.asset, IDS.project)); seed.put('assets', audio(alias, IDS.project));
@@ -129,7 +128,7 @@ async function fixture(t: test.TestContext) {
   } finally { seed.close(); }
   // The shared seed already registered this project; fill it only after the
   // first holder closes, without recreating its fixed ID or sharing a store.
-  const other = (openStore(projectDirFor(dataDir, IDS.other)) as FixtureStore);
+  const other = (openServerProject(dataDir, IDS.other) as FixtureStore);
   try {
     await writeFile(path.join(projectDirFor(dataDir, IDS.other), relativePath), wav, {mode: 0o600});
     other.put('assets', audio(IDS.otherAsset, IDS.other));
@@ -152,7 +151,7 @@ if(serverMode){
     const kind = path.basename(command);
     if(!['ffmpeg','ffprobe'].includes(kind) || options?.shell !== false) return deny('non-waveform subprocess');
     const input = kind === 'ffprobe' ? args.at(-1) : args[args.indexOf('-i')+1];
-    if(typeof input !== 'string' || !input.startsWith(path.join(process.env.MIOON_DATA_DIR,'media')+path.sep)) return deny('non-managed media input');
+    if(typeof input !== 'string' || !${JSON.stringify([projectRoot,otherRoot])}.some(root=>input.startsWith(path.join(root,'media')+path.sep))) return deny('non-managed media input');
     if(kind === 'ffmpeg' && !['pipe:1','-'].includes(args.at(-1))) return deny('media output file write');
     const child = kind === 'ffmpeg' && process.env.MIOON_WAVEFORM_WIRE_GATE === '1'
       ? originalSpawn(process.execPath,['-e','setTimeout(()=>process.exit(0),10000)'],options)
@@ -243,7 +242,7 @@ if(serverMode){
     if (expectedError) assert.equal(envelope.error.code, expectedError);
     return envelope;
   }
-  return {root, dataDir, storage, checkpoint, unchanged, request, cli, cliArgs, client, mcp, audit,
+  return {root, dataDir,projectRoot, storage, checkpoint, unchanged, request, cli, cliArgs, client, mcp, audit,
     http: async (...args: Parameters<typeof request>) => (await request(...args)).envelope,
     get url() { return url; }, get pid() { return run.child.pid; },
     async restart({crashRow = false} = {}) {
@@ -256,7 +255,7 @@ if(serverMode){
       return start();
     },
     denials: async () => (await readFile(auditPath, 'utf8')).trim(),
-    originalBytes: async () => readFile(path.join(dataDir, relativePath)), wav,
+    originalBytes: async () => readFile(path.join(projectRoot, relativePath)), wav,
   };
 }
 
@@ -407,9 +406,15 @@ test('waveforms have project-scoped HTTP, real CLI and official MCP parity acros
     const oldPid = backend.pid; await backend.restart({crashRow: true}); assert.notEqual(backend.pid, oldPid);
     const records = await backend.audit();
     for (const started of records.filter(row => row.event === 'start')) assert.ok(records.some(row => row.event === 'close' && row.pid === started.pid), 'every owned pre-restart media child is reaped');
-    const before = await backend.checkpoint();
+    const beforeOpen = await backend.checkpoint();
     const interrupted = await all('asset.waveform.get', target);
     assert.equal(interrupted.data.status, 'interrupted'); assert.equal(interrupted.data.attemptId, attempt);
+    // The application starts with projects closed. Its first waveform service
+    // open reconciles the retained attempt, then duplicate/get stays read-only.
+    const expected=structuredClone(beforeOpen.rows) as Record<string,Record<string,unknown>[]>;
+    expected.waveform_cache=expected.waveform_cache.map(row=>row.attemptId===attempt?{...row,status:'interrupted',reservedBytes:0,data:JSON.stringify({reason:interrupted.data.reason})}:row);
+    const before=await backend.checkpoint();
+    assert.deepEqual(before.rows,expected,'first project service open changes only the exact interrupted cache row');
     for (const call of ([backend.http, backend.cli, backend.mcp] as const)) {
       const same = (await call('asset.waveform.request', target)).data;
       assert.equal(same.status, 'interrupted'); assert.equal(same.attemptId, attempt);
@@ -470,7 +475,7 @@ test('waveforms have project-scoped HTTP, real CLI and official MCP parity acros
     await backend.unchanged(before, 'retained ready cache read after restart');
     onlyWaveformWrites(baseline, await backend.storage());
     assert.deepEqual(await backend.originalBytes(), backend.wav, 'source bytes remain unchanged');
-    assert.deepEqual(await readdir(path.join(backend.dataDir, 'media')), [`${PRIVATE}.wav`], 'no waveform output media file');
+    assert.deepEqual(await readdir(path.join(backend.projectRoot, 'media')), [`${PRIVATE}.wav`], 'no waveform output media file');
     assert.equal(await backend.denials(), '', 'no network/provider/model or forbidden subprocess attempt');
   });
 });

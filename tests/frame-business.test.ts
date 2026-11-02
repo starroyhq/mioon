@@ -1,7 +1,7 @@
 import type {FrameServicesOptions} from '../packages/business/src/frames.ts';
 import type {DecodeManagedFrameOptions, DecodedManagedFrame} from '../packages/business/src/frame-decoder.ts';
 type FixtureFrameInput = DecodeManagedFrameOptions & {requestedFrame:number;asset:{sha256:string};beforeSpawn:(signal:AbortSignal)=>void;signal:AbortSignal};
-type FixtureFrameOptions = Omit<FrameServicesOptions,'decode'> & {lock?:boolean; decode?:(input:FixtureFrameInput)=>Promise<Pick<DecodedManagedFrame,'bytes'|'provenance'>>};
+type FixtureFrameOptions = Omit<FrameServicesOptions,'decode'> & {decode?:(input:FixtureFrameInput)=>Promise<Pick<DecodedManagedFrame,'bytes'|'provenance'>>};
 import type {DatabaseSync} from 'node:sqlite';
 import type {TypedCall} from './helpers/strict-service-responses.ts';
 import type {TypedFrameServices, TypedFrameCall} from './helpers/strict-timeline-audio-factory-types.ts';
@@ -37,9 +37,9 @@ const count=(db: DatabaseSync,table: string)=>db.prepare(`SELECT count(*) AS n F
 const total=(db: DatabaseSync)=>db.prepare('SELECT total_changes() AS n').get()!.n;
 function privateFree(value: { projectId: string; requestId: string; operation: "frame.extract"|"frame.task.cancelQueued"|"frame.task.recoverResult"; response?: unknown; }|null){assert.doesNotMatch(JSON.stringify(value),/PRIVATE_SENTINEL|"(?:relativePath|snapshot|stagedReceipt|canonicalInput|bytes|path)"\s*:/);}
 async function until<T>(fn: () => T | Promise<T>,label: unknown){const deadline=Date.now()+10000;while(Date.now()<deadline){const result=await fn();if(result)return result;await pause(5);}assert.fail(`Timed out: ${label}`);}
-function fixture(t: test.TestContext,{autoRun=false,decode,fault,lock=true}: FixtureFrameOptions={}){
- const root=mkdtempSync(path.join(tmpdir(),'mioon-frame-business-')),store=(openStore(root,{lock}) as TypedStore);
- const project=store.put('projects',{id:randomUUID(),name:'Frame source project'}),other={id:randomUUID(),name:'Other project'};
+function fixture(t: test.TestContext,{autoRun=false,decode,fault}: FixtureFrameOptions={}){
+ const root=mkdtempSync(path.join(tmpdir(),'mioon-frame-business-')),opened=openStore(root),store=opened as TypedStore;
+ const project=store.put('projects',{id:opened.projectId,name:'Frame source project'}),other={id:randomUUID(),name:'Other project'};
  const sourceBytes=Buffer.from('Synthetic managed source bytes PRIVATE_SENTINEL'),id=randomUUID(),relativePath=`media/${id}.mp4`;
  writeFileSync(path.join(root,relativePath),sourceBytes,{mode:0o600});
  const asset=store.put('assets',{id,projectId:project.id,name:'Managed original.mp4',mimeType:'video/mp4',sha256:digest(sourceBytes),sizeBytes:sourceBytes.length,relativePath,width:4,height:2,duration:1,provenance:'user-import'});
@@ -81,10 +81,10 @@ test('bounded PNG publication owns a new asset and preserves original, legacy hi
 
 test('nonowner GET/list/request reads perform zero writes or storage creation',async t=>{
  const f=fixture(t),ack=await f.call('frame.extract',f.input());
- // A second connection to the project opens only once the owner has closed it.
- await f.services.drain();f.store.close();
- const observer=(openStore(f.root,{lock:false}) as TypedStore),services=(createFrameServices(observer,{decode:()=>assert.fail('read spawned decode')}) as TypedFrameServices);
- t.after(async()=>{await services.drain();observer.close();});assert.equal(ownsStoreLock(observer),false);
+ assert.throws(()=>openStore(f.root),{code:'PROJECT_LOCKED'});
+ const observer=f.store,services=f.services;
+ Object.defineProperty(observer,'root',{value:`${f.root}/lost-owner`});
+ t.after(()=>Object.defineProperty(observer,'root',{value:f.root}));assert.equal(ownsStoreLock(observer),false);
  const before=rows(observer.db),changes=total(observer.db),files=readdirSync(f.root).sort();
  for(const [op,input] of [['frame.task.get',{projectId:f.project.id,taskId:ack.id}],['frame.task.list',{projectId:f.project.id}],['frame.request.get',{projectId:f.project.id,requestId:ack.requestId}]] as const)privateFree(await services.handlers[op](input));
  for(const [op,input] of [['frame.extract',f.input()],['frame.task.cancelQueued',f.control(ack)],['frame.task.recoverResult',f.control(ack)]] as const)await assert.rejects(Promise.resolve().then(()=>services.handlers[op](input)),error('FRAME_OWNER_REQUIRED'));
@@ -125,10 +125,10 @@ test('cancel can win before first spawn, but never after the durable start fence
  assert.equal((await f.get(ack.id)).state,'cancelled_before_start');assert.equal(cancelled.started,false);assert.equal(count(f.store.db,'assets'),1);
 });
 
-for(const variant of ['deleted-lock','replaced-lock','source-project','project-identity','source-hash','source-path','source-size','source-duration','source-geometry','source-bytes'])test(`await fence refuses late publication after ${variant}`,async t=>{
+for(const variant of ['owner-root','owner-directory','source-project','project-identity','source-hash','source-path','source-size','source-duration','source-geometry','source-bytes'])test(`await fence refuses late publication after ${variant}`,async t=>{
  const entered=deferred(),release=deferred(),f=fixture(t,{autoRun:true,decode:async (input: FixtureFrameInput)=>{input.beforeSpawn(input.signal);entered.resolve!();await release.promise;return outcome(input);}});
  const ack=await f.call('frame.extract',f.input());await entered.promise;const running=await f.get(ack.id);await assert.rejects(f.call('frame.task.cancelQueued',f.control(running)),error('FRAME_STATE_CONFLICT'));
- if(variant.includes('lock')){unlinkSync(path.join(f.root,'server.lock'));if(variant==='replaced-lock')writeFileSync(path.join(f.root,'server.lock'),'2147483000',{mode:0o600});}
+ if(variant==='owner-root'||variant==='owner-directory'){const field=variant==='owner-root'?'root':'projectDir';Object.defineProperty(f.store,field,{value:`${f.root}/lost-owner`});t.after(()=>Object.defineProperty(f.store,field,{value:f.root}));assert.equal(ownsStoreLock(f.store),false);}
  else if(variant==='project-identity')f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify({id:f.other.id,name:'Changed owner'}),f.project.id);
  else if(variant==='source-bytes')writeFileSync(path.join(f.root,f.asset.relativePath),Buffer.from('changed managed bytes'),{mode:0o600});
  else{const patch=variant==='source-project'?{projectId:f.other.id}:variant==='source-hash'?{sha256:'b'.repeat(64)}:variant==='source-path'?{relativePath:'media/elsewhere.mp4'}:variant==='source-size'?{sizeBytes:9}:variant==='source-duration'?{duration:2}:{width:8};const write=()=>f.store.put('assets',{...f.asset,...patch});if(variant==='source-project')withoutForeignKeys(f.store.db,write);else write();}
@@ -137,16 +137,16 @@ for(const variant of ['deleted-lock','replaced-lock','source-project','project-i
 });
 
 
-test('global queue admission is bounded across projects and retained rows are never evicted',async t=>{
- const f=fixture(t),acks: (unknown)[]=[];
- for(let index=0;index<4;index++){
-  const project=index===0?f.project:f.store.put('projects',{id:randomUUID(),name:`Queue project ${index}`});
-  const asset=index===0?f.asset:f.store.put('assets',{...f.asset,id:randomUUID(),projectId:project.id});
-  for(let n=0;n<2;n++)acks.push(await f.call('frame.extract',f.input({projectId:project.id,sourceAssetId:asset.id})));
+test('queue admission is bounded per project across independent hosts and retained rows are never evicted',async t=>{
+ const fixtures=Array.from({length:5},()=>fixture(t)),acks:unknown[]=[];
+ for(const f of fixtures){
+  for(let n=0;n<FRAME_LIMITS.queuedPerProject;n++)acks.push(await f.call('frame.extract',f.input()));
+  const before=rows(f.store.db);await assert.rejects(f.call('frame.extract',f.input()),error('FRAME_QUEUE_FULL'));
+  assert.equal(rows(f.store.db),before);assert.equal(f.calls,0);
  }
- const project=f.store.put('projects',{id:randomUUID(),name:'Ninth queued project'}),asset=f.store.put('assets',{...f.asset,id:randomUUID(),projectId:project.id});
- const before=rows(f.store.db);await assert.rejects(f.call('frame.extract',f.input({projectId:project.id,sourceAssetId:asset.id})),error('FRAME_QUEUE_FULL'));
- assert.equal(rows(f.store.db),before);assert.equal(acks.length,FRAME_LIMITS.queuedGlobal);assert.equal(f.calls,0);
+ assert.equal(acks.length,FRAME_LIMITS.queuedPerProject*fixtures.length);
+ assert.ok(acks.length>FRAME_LIMITS.queuedGlobal,'the former workspace ceiling is local to each project connection');
+ assert.equal(new Set(fixtures.map(f=>f.store.db)).size,fixtures.length);
 });
 
 test('concurrent identical keys share one admission; asynchronous preparation is bounded before hashing',async t=>{

@@ -20,7 +20,7 @@ import type {InspectProject} from '../apps/server/src/index.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createClient} from '../packages/client/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
-import {createServerProject, schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {createServerProject, foreignKeyCheck, schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
 const token='timeline-recovery-public-synthetic-token';
@@ -77,6 +77,11 @@ test('real HTTP, CLI and official MCP retain ambiguous lost-commit errors and re
   f.db((((db:DatabaseSync)=>withoutForeignKeys(db,()=>db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.foreign.id,JSON.stringify({...f.source,projectId:f.foreign.id}),f.source.id)))));
   envelopeError(await transport.call(operation,input));
   f.db((((db:DatabaseSync)=>db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.project.id,JSON.stringify(f.source),f.source.id))));
+  // The corrupt ownership UPDATE also fires the normal target-revision trigger.
+  // Undo that exact foreign-project artifact when repairing the synthetic row;
+  // a three-file kernel correctly refuses an orphan target on the next open.
+  assert.equal(f.db(db=>db.prepare('DELETE FROM agent_task_target_revisions_v2 WHERE projectId=? AND targetId=?').run(f.foreign.id,f.source.id ).changes),1,'repair only the foreign target introduced by this fixture corruption');
+  assert.deepEqual(f.db(foreignKeyCheck),[],'restored fixture ownership leaves every real relation valid before reopen');
   await f.restart();
   timeline=(await f.raw('timeline.track.add',{projectId:f.project.id,expectedRevision:original.revision,requestId:randomUUID(),kind:'audio',name:'Later edit'})).data;assert.ok(timeline);
   const replay=await transport.call(operation,input);assert.equal(replay.ok,true);assert.deepEqual(replay.data,original);

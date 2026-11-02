@@ -18,11 +18,12 @@ import {createMioRuntime} from '../packages/business/src/agent/mio-runtime.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {collectTaskProjectOverview} from '../packages/business/src/agent/task-context-observations-v2.ts';
 import {agentTaskJobBinding} from '../packages/business/src/agent/task-effects-v2.ts';
-import {readAgentTaskStorage} from '../packages/business/src/agent/task-storage-v2.ts';
+import {readMioStorage} from '../packages/business/src/agent/mio-storage.ts';
 import {installAgentTaskDefinitionsV2, validateAgentTaskRowsV2, dropAgentTaskTargetTriggersV2} from '../packages/business/src/agent/task-schema-v2.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskToolCall, AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {createTestAuthorizations} from './helpers/agent-authorizations.ts';
+import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 
 function fixture(t: TestContext) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-task-project-assembly-'));
@@ -51,7 +52,9 @@ function beginSyntheticModel(journal: ReturnType<typeof projectJournal>, runId: 
 
 test('real project journals share only injected app policy, preserving CAS, replay and project transactions', t => {
   const {library, first, second} = fixture(t);
-  assert.throws(() => createAgentTaskJournal(first), {code: 'AGENT_TASK_POLICY_STORE_REQUIRED'});
+  const testPolicy = createAgentTaskJournal(first);
+  assert.deepEqual(testPolicy.policy(), DEFAULT_AGENT_TASK_POLICY);
+  assert.notEqual(testProjectAppLibrary(first)?.db, library.db);
   const policyStore = library.agentPolicy;
   const a = projectJournal(first, policyStore), b = projectJournal(second, policyStore);
   assert.deepEqual(a.policy(), DEFAULT_AGENT_TASK_POLICY);
@@ -221,10 +224,16 @@ test('legacy workspace schema entry points leave content TEMP and history proces
   }
   assert.ok(before.some(row => row.schema === 'project' && row.name === 'agent_target_shots_update_v2'));
   assert.ok(before.some(row => row.schema === 'project' && row.name === 'agent_target_subjects_update_v2'));
-  for (const legacy of [installAgentTaskDefinitionsV2, validateAgentTaskRowsV2, dropAgentTaskTargetTriggersV2]) {
+  for (const legacy of [installAgentTaskDefinitionsV2, dropAgentTaskTargetTriggersV2]) {
     assert.throws(() => legacy(first.db), {name: 'TypeError', message: 'Agent task workspace schema operations do not accept project databases'});
   }
+  assert.throws(() => validateAgentTaskRowsV2(first.db), {name: 'TypeError', message: 'Project Agent task row validation requires a live application context'});
+  assert.ok(testProjectAppLibrary(first));
+  validateAgentTaskRowsV2(first.db);
   assert.deepEqual(schemaObjects(first.db), before);
-  assert.equal(readAgentTaskStorage(first.db).status, 'unavailable');
+  const storage = readMioStorage(first.db);
+  assert.equal(storage.status, 'available');
+  assert.equal(storage.scope, 'project');
+  assert.ok(storage.tables.every(table => !['agent_task_policy_v2', 'agent_task_policy_requests_v2'].includes(table.name)));
   assert.deepEqual(schemaObjects(first.db), before);
 });

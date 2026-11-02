@@ -1,3 +1,5 @@
+import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
+import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import {mioRunUsageSchema} from '../packages/contracts/src/mio-run-usage.ts';
 import test from 'node:test';
@@ -62,8 +64,8 @@ for(const protocol of protocols)test(`${protocol}: measured usage is private and
   const sent=await f.send(),done=await f.settle(sent.run.id),models=modelSteps(done);
   assert.equal(done.run.status,'completed');assert.equal(models.length,2);assert.equal(done.steps.filter(step=>step.kind==='tool'&&step.status==='completed').length,1);
   for(const model of models){assert.deepEqual(object(model.result).usage,usage);assert.equal(Object.hasOwn(object(object(model.result).usage),'rawProviderMetadata'),false);}
-  const completed=f.runtime.journal.events(sent.run.id).filter(event=>event.type==='step'&&object(event.data).kind==='model'&&object(event.data).status==='completed');
-  assert.equal(completed.length,2);for(const event of completed)assert.deepEqual(object(object(event.data).result).usage,usage);
+  assert.ok(isProjectStore(f.store));const records=createMioRecords(f.store),completed=records.entries(sent.run.id).filter(entry=>entry.kind==='model_output');
+  assert.equal(completed.length,2);for(const entry of completed)assert.deepEqual(object(records.payload(entry)).usage,usage);assert.ok(f.runtime.journal.events(sent.run.id).every(event=>event.type==='invalidate'&&event.data===null));
   const frozen=models.map(model=>structuredClone(model.request));
   for(const body of f.requests)assert.doesNotMatch(body,/inputTokens|cacheReadTokens|PRIVATE_PASSIVE_USAGE/u);
   const safe=f.runtime.get(f.projectId,sent.run.id);assertPublic(safe);assert.equal(safe.run.context,undefined);assert.ok(safe.steps.every(step=>step.request===undefined&&step.data===undefined));assertPublic(f.runtime.lookup(f.projectId,sent.run.requestId));
@@ -101,7 +103,7 @@ for(const protocol of protocols)test(`${protocol}: missing and malformed optiona
 for(const protocol of protocols)test(`${protocol}: recovery sends the frozen original intent and stores only its observed completion usage`,async t=>{
   const f=await fixture(t,protocol),settings=await f.settings.get(),history=[{role:'user',content:'Frozen pre-H1e request'}],body=buildTaskModelRequest(settings.configuration,history,[],4318);
   const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Frozen pre-H1e request',configuration:{...settings.configuration},settingsRevision:settings.revision,context:[taskResponseLanguageContext('en')]});
-  const model=f.runtime.journal.beginStep(created.run.id,{kind:'model',request:{body,history},data:{baseline:[]}}),frozen=structuredClone(model.request);
+  const model=f.runtime.journal.beginModelStep(created.run.id,{request:{body,history},data:{baseline:[]}},[]),frozen=structuredClone(model.request);
   f.setScript(async function*(){yield {type:'done',output:{...output(protocol),usage:{inputTokens:0,outputTokens:0,cacheReadTokens:0,cacheWriteTokens:0}}};});
   f.restart();const interrupted=f.runtime.get(f.projectId,created.run.id);assert.equal(interrupted.run.status,'interrupted');
   await f.action(interrupted,'resume');const done=await f.settle(created.run.id);
@@ -112,7 +114,7 @@ for(const protocol of protocols)test(`${protocol}: recovery sends the frozen ori
 for(const protocol of protocols)test(`${protocol}: an interrupted dispatched request still has unknown outcome and no invented usage`,async t=>{
   const f=await fixture(t,protocol),settings=await f.settings.get(),history=[{role:'user',content:'Unknown exchange'}],body=buildTaskModelRequest(settings.configuration,history,[],4318);
   const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Unknown exchange',configuration:{...settings.configuration},settingsRevision:settings.revision,context:[]});
-  const model=f.runtime.journal.beginStep(created.run.id,{kind:'model',request:{body,history}});f.runtime.journal.markDispatch(created.run.id,model.id);
+  const model=f.runtime.journal.beginModelStep(created.run.id,{request:{body,history}},[]);f.runtime.journal.markDispatch(created.run.id,model.id);
   f.restart();const interrupted=f.runtime.get(f.projectId,created.run.id);assert.equal(interrupted.steps[0]?.status,'unknown');
   await assert.rejects(f.action(interrupted,'resume'),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.equal(f.requests.length,0);assert.equal(f.runtime.journal.step(model.id).result,undefined);assertPublic(f.runtime.get(f.projectId,created.run.id));
 });

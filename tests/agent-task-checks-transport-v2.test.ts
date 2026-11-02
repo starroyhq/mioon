@@ -1,3 +1,8 @@
+import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
+import {startLegacyAgentTaskHttp} from './helpers/legacy-agent-task-http-fixture.ts';
+import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {openServerTestStore} from '../packages/business/src/project-file/test-store.ts';
+import {serverAppDirectories,projectLocation} from '../apps/server/src/project-host/directories.ts';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -155,14 +160,17 @@ test('H4b clients and CLI retain optional requirements while host check groups s
  assert.deepEqual(report.requirements?.[0]?.expected,{min:3,max:3},'presentation does not remove or mutate the backend requirement');
 });
 
-async function workspace(){
+async function workspace(legacy=false){
  const directory=await mkdtemp(join(await realpath(tmpdir()),'mioon-checks-transport-'));
- const source=join(directory,'source'),{projectId,store}=createServerProject(source,{name:'Synthetic checks project'});
- const journal=createAgentTaskJournal(store),created=journal.create({requestId:randomUUID(),projectId,text:'Synthetic checks',configuration:{protocol:'responses'},policy:structuredClone(DEFAULT_AGENT_TASK_POLICY)}).run;
- const run=journal.transition(created.id,created.revision,'completed');store.close();
- // The server knows the other project too.
- const foreign=createServerProject(source,{name:'Synthetic checks project'});foreign.store.close();
- return {directory,source,projectId,foreignProjectId:foreign.projectId,run};
+ const source=join(directory,'source'),created=legacy?null:createServerProject(source,{name:'Synthetic checks project'}),store=created?.store??openLegacyWorkspaceStore(source),projectId=created?.projectId??randomUUID();
+ if(legacy)store.put('projects',{id:projectId,name:'Legacy checks fixture',revision:1});
+ const journal=createAgentTaskJournal(store),createdRun=journal.create({requestId:randomUUID(),projectId,text:'Synthetic checks',configuration:{protocol:'responses'},policy:structuredClone(DEFAULT_AGENT_TASK_POLICY)}).run;
+ const run=journal.transition(createdRun.id,createdRun.revision,'completed');
+ const foreignProjectId=legacy?randomUUID():undefined;
+ if(foreignProjectId)store.put('projects',{id:foreignProjectId,name:'Legacy foreign checks fixture',revision:1});
+ store.close();
+ const foreign=legacy?null:createServerProject(source,{name:'Synthetic checks project'});foreign?.store.close();
+ return {directory,source,projectId,foreignProjectId:foreignProjectId??foreign!.projectId,run,projectFile:created?.store.projectFile??join(source,'workbench.sqlite')};
 }
 function dumpDb(db:DatabaseSync):unknown{
  return schemaObjects(db).filter(({name})=>!name.startsWith('sqlite_')).map(({name,sql})=>({name,sql,...(String(sql).startsWith('CREATE TABLE')?{rows:db.prepare(`SELECT * FROM "${name}"`).all().map(item=>JSON.stringify(item)).sort()}:{})}));
@@ -189,22 +197,22 @@ test('checks HTTP is authenticated, rejects unknown ownership and parameters, an
  assert.equal(models,0);assert.deepEqual(inspect(f.projectId,dumpDb),before);
 });
 test('checks remain available in a restored read-only server without credentials, recovery or database writes',async t=>{
- const f=await workspace(),backup=join(f.directory,'backup'),restored=join(f.directory,'restored');let server:Awaited<ReturnType<typeof startServer>>|undefined;
+ const f=await workspace(true),backup=join(f.directory,'backup'),restored=join(f.directory,'restored');let server:Awaited<ReturnType<typeof startLegacyAgentTaskHttp>>|undefined;
  t.after(async()=>{await server?.close();await rm(f.directory,{recursive:true,force:true});});
  await createWorkspaceBackup({source:f.source,destination:backup});await restoreWorkspaceBackup({directory:backup,destination:restored});
  // Nobody holds the restored project yet: read it on the test's own connection.
- const reopened=openProjectDatabase(projectDirFor(restored,f.projectId));let before:unknown;
- try{before=dumpDb(reopened);}finally{reopened.close();}
+ const restoredStore=openLegacyWorkspaceStore(restored),reopened=restoredStore.db;let before:unknown;
+ try{before=dumpDb(reopened);}finally{restoredStore.close();}
  let models=0,inspect!:InspectProject;
- server=await startServer({dataDir:restored,port:0,taskGatewayV2:async function*(){models++;throw Error('Restored checks cannot request a model');},inspectProject:received=>{inspect=received;}});
+ server=await startLegacyAgentTaskHttp({dataDir:restored,taskGatewayV2:async function*(){models++;throw Error('Restored checks cannot request a model');}});inspect=server.inspectProject;
  const client=createAgentClient({env:{MIOON_BASE_URL:server.url,MIOON_TOKEN:server.token}}),result=await client.checks({projectId:f.projectId,runId:f.run.id});
  assert.equal(result.runId,f.run.id);assert.equal(result.runRevision,f.run.revision);assert.deepEqual(result.groups.map(group=>group.id),AGENT_TASK_CHECK_GROUPS);
  assert.equal(models,0);assert.deepEqual(inspect(f.projectId,dumpDb),before);
 });
 
 test('disconnecting a checks observer cancels its local preflight and releases it before the next read',{timeout:10000},async t=>{
- const f=await workspace(),store=openStore(f.source),journal=createAgentTaskJournal(store),timelineId=randomUUID();
- const run=journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Synthetic preflight cancellation',configuration:{}}).run,saved=journal.beginStep(run.id,{kind:'tool'});
+ const f=await workspace(),store=openServerTestStore({projectFile:f.projectFile,locate:id=>projectLocation(serverAppDirectories(f.source),id)},f.source),journal=createAgentTaskJournal(store),timelineId=randomUUID();
+ const run=journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Synthetic preflight cancellation',configuration:mioFixtureConfiguration}).run,saved=beginFixtureToolStep(journal,run.id,{});
  journal.markDispatch(run.id,saved.id);
  journal.completeStep(run.id,saved.id,{change:{projectId:f.projectId,operation:'timeline.format.set',targets:[{kind:'timeline',id:f.projectId,revision:1}],before:null,after:null,reversible:true}});
  journal.transition(run.id,journal.run(run.id).revision,'completed');

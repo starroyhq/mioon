@@ -9,7 +9,7 @@ import {
  splitClipTransformFields,validateClipTransform,type ClipTransform,type ClipTransformKeyframe,
 } from '../packages/contracts/src/timeline-clip-transform.ts';
 import {isTimelineMutationResponse} from '../packages/contracts/src/timeline-acknowledgement.ts';
-import {openStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
@@ -80,9 +80,9 @@ test('the geometry crops, fits, scales and offsets around the rectangle centre',
  assert.deepEqual(clipTransformGeometry(clip,{width:200,height:100},0),{centerX:320,centerY:140,width:600,height:600,rotation:-30});
 });
 
-async function fixture(t: test.TestContext){
+async function fixture(t: test.TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){
  const root=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-clip-transform-')));
- let store=openStore(root) as unknown as {db: import('node:sqlite').DatabaseSync;put(table: string,value: Rec): Rec;close(): void};
+ let store=opener(root) as unknown as {db: import('node:sqlite').DatabaseSync;put(table: string,value: Rec): Rec;close(): void};
  let services=createServices(store as never,new Map()) as unknown as {call(operation: string,input: unknown): Promise<Rec>};
  t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
  const project=await services.call('project.create',{name:'Transforms'}),projectId=project.id as string;
@@ -94,7 +94,7 @@ async function fixture(t: test.TestContext){
   async raw(operation: string,input: Rec){const response=await services.call(operation,input);timeline=response.timeline??response;return response;},
   call(operation: string,fields: Rec={}){return f.raw(operation,f.input(fields));},
   inspect:()=>services.call('timeline.inspect',{projectId}),
-  async reopen(){store.close();store=openStore(root) as never;services=createServices(store as never,new Map()) as never;timeline=await services.call('timeline.get',{projectId});},
+  async reopen(){store.close();store=opener(root) as never;services=createServices(store as never,new Map()) as never;timeline=await services.call('timeline.get',{projectId});},
  };
  return f;
 }
@@ -152,7 +152,7 @@ test('split, shrink and move carry the transform with the clip',async t=>{
 });
 
 test('schema68 refuses transforms; schema70 keeps them through backup and restore',async t=>{
- const f=await fixture(t),video=f.timeline.tracks.find((track: Rec)=>track.kind==='video');
+ const f=await fixture(t,openLegacyWorkspaceStore),video=f.timeline.tracks.find((track: Rec)=>track.kind==='video');
  await f.call('timeline.clip.add',{trackId:video.id,assetId:f.asset('video/mp4').id,startFrame:0,durationFrames:60});
  const clipId=f.timeline.clips[0].id;
  downgradeReviewedWorkspace(f.store.db,68);
@@ -171,7 +171,7 @@ test('schema68 refuses transforms; schema70 keeps them through backup and restor
  t.after(()=>rmSync(base,{recursive:true,force:true}));
  assert.equal((await createWorkspaceBackup({source:f.root,destination:backup})).integrity,'verified');
  await restoreWorkspaceBackup({directory:backup,destination:restored});
- const copy=openStore(restored) as unknown as {db: import('node:sqlite').DatabaseSync;close(): void};
+ const copy=openLegacyWorkspaceStore(restored) as unknown as {db: import('node:sqlite').DatabaseSync;close(): void};
  try{
   assert.equal(readCurrentWorkspaceRole(copy.db),CURRENT_RESTORED_ROLE);
   const saved=JSON.parse((copy.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(f.projectId) as {data: string}).data);

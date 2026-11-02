@@ -214,7 +214,7 @@ async function fixture(t: import('node:test').TestContext): Promise<TransportFix
       const asset: AssetFixture = {id, projectId, name: 'Synthetic owned JFIF JPEG', mimeType: 'image/jpeg', relativePath: `media/${id}.jpg`,
         sizeBytes: content.length, sha256: sha(content), width: 17, height: 13,
         duration: null, hasVideo: true, hasAudio: false, provenance: 'user-import', createdAt: stamp};
-      await writeFile(path.join(dataDir, asset.relativePath), content, {mode: 0o600});
+      await writeFile(path.join(store.root, asset.relativePath), content, {mode: 0o600});
       store.put('assets', asset as never); assets.push(asset);
     }
   } finally { store.close(); }
@@ -240,8 +240,8 @@ async function fixture(t: import('node:test').TestContext): Promise<TransportFix
     get env() { assert.ok(server);return childEnvironment(root, server.url, audit); },
     snapshot: () => { assert.ok(inspect);return inspect(projectId,databaseSnapshot); },
     async verifyFiles() {
-      assert.deepEqual((await readdir(path.join(dataDir, 'media'))).sort(), assets.map(asset => path.basename(asset.relativePath)).sort());
-      for (const [index, asset] of assets.entries()) assert.deepEqual(await readFile(path.join(dataDir, asset.relativePath)), fixtures[index]);
+      assert.deepEqual((await readdir(path.join(store.root, 'media'))).sort(), assets.map(asset => path.basename(asset.relativePath)).sort());
+      for (const [index, asset] of assets.entries()) assert.deepEqual(await readFile(path.join(store.root, asset.relativePath)), fixtures[index]);
       assert.equal(await readFile(audit, 'utf8'), '', 'CLI/MCP attempt no non-owned network or media subprocess');
       assert.ok(mediaProcesses.length >= 4, 'JPEG inspection explicitly uses a bounded local decoder');
       assert.equal(mediaProcesses.every(event => event.kind === 'ffmpeg'), true, 'no media process other than FFmpeg is used');

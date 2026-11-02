@@ -16,7 +16,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {TIMELINE_EXPORT_DEFAULT_SETTINGS,isTimelineRenderRecord,isExportPreflightResponse} from '@mioon/contracts';
-import {installCurrentWorkspaceRestoreSchema, openStore} from '../packages/business/src/db.ts';
+import {installCurrentWorkspaceRestoreSchema, openStore, openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
 import {createTimelinePreflightServices,timelineSnapshotHash} from '../packages/business/src/timeline-preflight.ts';
 import {readTimelinePreflightSnapshot} from '../packages/business/src/timeline-sources.ts';
@@ -27,9 +27,9 @@ import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {readProjectState} from './helpers/project-state.ts';
 
 const clone=<T>(value: T): T=>structuredClone(value),settings=()=>clone(TIMELINE_EXPORT_DEFAULT_SETTINGS);
-async function fixture(t: test.TestContext){
- const root=await mkdtemp(path.join(tmpdir(),'mioon-named-delivery-'));let store=(openStore(root) as TypedStore),probes=0,inspect:ExportInspect=async()=>{probes++;return {status:'available',code:'EXPORT_CAPABILITY_AVAILABLE'};},services=(createServices(store,new Map(),{exportOptions:{inspect:(...args)=>inspect(...args)}}) as TypedServices);
- const f=({root,get store(){return store;},get services(){return services;},get probes(){return probes;},setInspect(fn: ExportInspect){inspect=fn;},input:()=>({projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),purpose:'export'}),state:()=>readProjectState(store.db).tables,async restart({restore=false}={}){await services.drain();store.close();if(restore){f.metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()};const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{installCurrentWorkspaceRestoreSchema(db,f.metadata);db.exec('PRAGMA wal_checkpoint(TRUNCATE)');}finally{db.close();}f.context={expectedWorkspaceOrigin:f.metadata.workspaceOrigin};}store=(openStore(root) as TypedStore);services=(createServices(store,new Map(),{exportOptions:{inspect:(...args)=>inspect(...args)}}) as TypedServices);}} as unknown as NamedFixture);
+async function fixture(t: test.TestContext,{legacy=false}={}){
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-named-delivery-'));const open=legacy?openLegacyWorkspaceStore:openStore;let store=(open(root) as TypedStore),probes=0,inspect:ExportInspect=async()=>{probes++;return {status:'available',code:'EXPORT_CAPABILITY_AVAILABLE'};},services=(createServices(store,new Map(),{exportOptions:{inspect:(...args)=>inspect(...args)}}) as TypedServices);
+ const f=({root,get store(){return store;},get services(){return services;},get probes(){return probes;},setInspect(fn: ExportInspect){inspect=fn;},input:()=>({projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),purpose:'export'}),state:()=>readProjectState(store.db).tables,async restart({restore=false}={}){await services.drain();store.close();if(restore){f.metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()};const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{installCurrentWorkspaceRestoreSchema(db,f.metadata);db.exec('PRAGMA wal_checkpoint(TRUNCATE)');}finally{db.close();}f.context={expectedWorkspaceOrigin:f.metadata.workspaceOrigin};}store=(open(root) as TypedStore);services=(createServices(store,new Map(),{exportOptions:{inspect:(...args)=>inspect(...args)}}) as TypedServices);}} as unknown as NamedFixture);
  f.project=await services.call('project.create',{name:'Original project'});f.timeline=await services.call('timeline.get',{projectId:f.project.id});
  const id=randomUUID(),bytes=Buffer.from('synthetic source bytes'),relativePath='media/source.mp4';await writeFile(path.join(root,relativePath),bytes);
  f.asset=store.put('assets',{id,projectId:f.project.id,name:'Video',mimeType:'video/mp4',sha256:createHash('sha256').update(bytes).digest('hex'),relativePath,width:720,height:1280,duration:1,hasAudio:false,sizeBytes:bytes.length,createdAt:new Date().toISOString()});
@@ -93,7 +93,7 @@ test('normal SQLite mutation fences title-only exports and original receipt',asy
 
 test('title-only render completes legacy encoding in normal and restored workspaces; held work stays held',async t=>{
  for(const restored of [false,true])await t.test(restored?'restored':'normal',async t=>{
-  const f=await fixture(t);await fakeMedia(t,f);let held,heldTask: PreparedSubjectTask|undefined;
+  const f=await fixture(t,{legacy:restored});await fakeMedia(t,f);let held,heldTask: PreparedSubjectTask|undefined;
   if(restored){
    held=await f.services.call('timeline.render',{...f.input(),deliveryName:'Captured delivery'});const tasks=createEditTasks({store:f.store,services:f.services});heldTask=(tasks.prepare({projectId:f.project.id,operation:'timeline.track.add',input:{projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),kind:'audio'},origin:'new'}) as PreparedSubjectTask);await tasks.drain();await f.restart({restore:true});
   }

@@ -6,9 +6,9 @@ import {mkdirSync, mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore as openProjectStore} from '../packages/business/src/project-file/index.ts';
+import {createProjectStore, openStore as openProjectStore} from '../packages/business/src/project-file/index.ts';
 import {schemaObjects, foreignKeyCheck} from '../packages/business/src/project-file/cross-file/inspect.ts';
-import {openStore as openWorkspaceStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openWorkspaceStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import type {ServiceApplicationPorts} from '../packages/business/src/services.ts';
 import {createWorkspaceConfiguration} from '../packages/business/src/workspace-configuration.ts';
@@ -81,7 +81,7 @@ test('layout and table capabilities require the real live kernel, not an attache
 });
 
 test('kernel services require explicit application ports and borrow their lifecycle', async t => {
-  const store = openProjectStore(scratch(t));
+  const root = scratch(t), store = createProjectStore({projectFile: path.join(root, 'Production.mioon'), locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'tmp')})});
   t.after(() => store.close());
   const structure = schemaObjects(store.db);
   assert.throws(() => createServices(store, new Map()), /explicit application/u);

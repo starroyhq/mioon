@@ -20,7 +20,7 @@ test('desktop adapter transform refuses dynamic or escaped require and preserves
 test('a self-contained CJS bundle opens ordinary58 without source-tree runtime paths',{timeout:60000},async t=>{
  const root=await mkdtemp(path.join(tmpdir(),'mioon-desktop-adapters-'));t.after(()=>rm(root,{recursive:true,force:true}));const output=path.join(root,'program.cjs');
  const source=`import assert from 'node:assert/strict';import path from 'node:path';
-import {openStore,classifyCurrentWorkspaceSchema} from './packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore,classifyCurrentWorkspaceSchema} from './packages/business/src/db.ts';
 import {createServices} from './packages/business/src/services.ts';
 (async()=>{const base=process.argv[2];let ordinary=openStore(path.join(base,'ordinary')),services=createServices(ordinary,new Map());assert.equal(classifyCurrentWorkspaceSchema(ordinary.db).schemaVersion,${CURRENT_ORDINARY_SCHEMA});await services.call('project.create',{name:'Bundled ordinary'});await services.drain();ordinary.close();
 console.log(JSON.stringify({ordinary:62}));})().catch(error=>{console.error(error);process.exitCode=1;});`;

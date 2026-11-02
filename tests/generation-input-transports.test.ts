@@ -11,7 +11,9 @@ import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {openStore} from '../packages/business/src/db.ts';
+import {createServerProject} from './helpers/project-database.ts';
+import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
 import {defaultVideoModels} from '../packages/contracts/src/video-providers.ts';
@@ -26,10 +28,10 @@ async function cli(args: string[], env: EnvMap,failureExit=6): Promise<{ok?: boo
 }
 
 test('actual HTTP, CLI and official MCP expose identical dated profiles and reject complete oversized saved reference',{timeout:30000},async (t: unknown)=>{
- const root=await mkdtemp(path.join(tmpdir(),'mioon-input-transport-')),store=openStore(root),registry=createProviderRegistry({db:store.db,root,env:{}}),services=createServices(store,registry,{env:{}});
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-input-transport-')),created=createServerProject(root,{name:'Offline profile parity'}),store=created.store,library=openAppLibrary({dataDir:root}),registry=createProviderRegistry({db:store.db,root:store.projectDir,env:{}}),services=createServices(store,registry,{env:{},application:createProjectServiceApplication(library,undefined,{})});
  interface IdRecord {id: string; revision: number; [key: string]: unknown}
- const project=await services.call('project.create',{name:'Offline profile parity'}) as unknown as IdRecord,asset={id:randomUUID(),projectId:project.id,mimeType:'image/png',sha256:'a'.repeat(64),sizeBytes:31*1024*1024,width:360,height:640,relativePath:'media/inert-not-dispatched.png'};
- store.put('assets',asset as never);const shot=await services.call('shot.create',{projectId:project.id,title:'Oversized input',referenceAssetIds:[asset.id]}) as unknown as IdRecord;store.close();
+ const project=store.get('projects',created.projectId) as unknown as IdRecord,asset={id:randomUUID(),projectId:project.id,mimeType:'image/png',sha256:'a'.repeat(64),sizeBytes:31*1024*1024,width:360,height:640,relativePath:'media/inert-not-dispatched.png'};
+ store.put('assets',asset as never);const shot=await services.call('shot.create',{projectId:project.id,title:'Oversized input',referenceAssetIds:[asset.id]}) as unknown as IdRecord;await services.drain();store.close();library.close();
  let child: ChildProcess|undefined,url:string|undefined,stdout='',stderr='';
  (t as {after(callback: ()=>Promise<void>): void}).after(async()=>{const running=child;if(running?.exitCode===null){const ended=once(running,'exit');running.kill('SIGTERM');const timer=setTimeout(()=>running.kill('SIGKILL'),10000);try{await ended;}finally{clearTimeout(timer);}}await rm(root,{recursive:true,force:true});});
  child=spawn(process.execPath,[path.join(repo,'apps/server/src/cli.ts')],{cwd:repo,env:environment({MIOON_DATA_DIR:root,MIOON_TOKEN:token,PORT:'0'}),stdio:['ignore','pipe','pipe']}); child.stdout!.setEncoding('utf8').on('data',(data: string)=>stdout+=data);child.stderr!.setEncoding('utf8').on('data',(data: string)=>stderr+=data);

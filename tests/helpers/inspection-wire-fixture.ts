@@ -8,7 +8,7 @@ import dns from 'node:dns';
 import childProcess from 'node:child_process';
 import {getCompileCacheDir, syncBuiltinESMExports} from 'node:module';
 import {fileURLToPath} from 'node:url';
-import type {InspectProject} from '../../apps/server/src/index.ts';
+import type {InspectApplication,InspectProject} from '../../apps/server/src/index.ts';
 import {parseProjectApiPath} from '../../packages/contracts/src/project-file.ts';
 
 export const uuid = (value: number|string): string => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
@@ -24,6 +24,7 @@ export const IDS = Object.freeze({
   otherJob: uuid(501), version: uuid(600), otherVersion: uuid(601), timeline: uuid(700),
   track: uuid(701), clip: uuid(702), missing: uuid(9999),
 });
+export const INSPECTION_PROJECT_IDS = Object.freeze(['project','other','absentTimeline','legacyGet','legacyTimeline','foreignReference','foreignSelection','foreignClip','mismatchedAsset','mismatchedShot','mismatchedTimeline','foreignVersionAsset','foreignVersionJob','relationTarget'].map(name=>IDS[name as keyof typeof IDS]));
 
 // Preloaded in backend/CLI/MCP children. Only the client children may connect,
 // and only to the exact disposable backend port. Any denied action is durable
@@ -103,14 +104,26 @@ const secretFields = (): Record<string, unknown> => ({relativePath: `/private/${
   dataBase64: PRIVATE, bytes: PRIVATE, providerJobId: PRIVATE, snapshot: {secret: PRIVATE}, secret: PRIVATE, apiKey: PRIVATE});
 
 export async function seedInspectionStore(root: string): Promise<void> {
-  const {openStore} = await import('../../packages/business/src/db.ts');
-  const store = openStore(root), {put, db} = store;
+  const {createServerProject,withoutForeignKeys}=await import('./project-database.ts');
+  const {openAppLibrary}=await import('../../packages/business/src/app-db/index.ts');
+  const {createAgentTaskJournal}=await import('../../packages/business/src/agent/task-journal-v2.ts');
+  const {beginFixtureModelStep}=await import('./mio-model-fixture.ts');
+  const {DEFAULT_AGENT_TASK_POLICY}=await import('../../packages/contracts/src/agent-tasks-v2.ts');
+  const stores=new Map<string,ReturnType<typeof createServerProject>['store']>();
+  let library:ReturnType<typeof openAppLibrary>|undefined;
   try {
     const ids = IDS as unknown as Record<string, string>;
     const project = (id: string): Record<string, unknown> => ({id, name: id === IDS.project ? HOSTILE : `Synthetic project ${id.slice(-2)}`, description: HOSTILE,
       revision: 7, createdAt: NOW, updatedAt: NOW, ...secretFields()});
-    for (const name of ['project', 'other', 'absentTimeline', 'legacyGet', 'legacyTimeline', 'foreignReference', 'foreignSelection',
-      'foreignClip', 'mismatchedAsset', 'mismatchedShot', 'mismatchedTimeline', 'foreignVersionAsset', 'foreignVersionJob', 'relationTarget']) put('projects', project(ids[name]));
+    for(const id of INSPECTION_PROJECT_IDS){const created=createServerProject(root,{projectId:id,name:String(project(id).name)});stores.set(id,created.store);created.store.put('projects',project(id));}
+    const owner=(id:string)=>{const result=stores.get(id);if(!result)throw Error('Unknown exact inspection project');return result;};
+    const {db}=owner(IDS.project);
+    const put=(table:string,value:Record<string,unknown>)=>{
+      const projectId=table==='projects'?value.id:value.projectId;
+      if(typeof projectId!=='string')throw Error('Inspection seed requires an explicit owner');
+      const store=owner(projectId),write=()=>store.put(table,value);
+      return projectId===IDS.project||projectId===IDS.other||projectId===IDS.relationTarget?write():withoutForeignKeys(store.db,write);
+    };
     const asset = (id: string, projectId: string = IDS.project): Record<string, unknown> => ({id, projectId, name: HOSTILE, mimeType: 'image/png', width: 720, height: 1280,
       duration: 0, hasAudio: false, hasVideo: true, provenance: 'user-import', createdAt: NOW, sha256: '1'.repeat(64), ...secretFields()});
     const shot = (id: string, projectId: string = IDS.project, extra: Record<string, unknown> = {}): Record<string, unknown> => ({id, projectId, title: HOSTILE, prompt: HOSTILE,
@@ -150,11 +163,10 @@ export async function seedInspectionStore(root: string): Promise<void> {
     put('shots', shot(uuid(801), IDS.foreignSelection, {referenceAssetIds: [], selectedVersionId: IDS.otherVersion}));
     put('timelines', timeline(uuid(802), IDS.foreignClip, IDS.otherAsset));
     put('assets', asset(uuid(803), IDS.mismatchedAsset));
-    db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify(asset(uuid(803), IDS.other)), uuid(803));
     put('shots', shot(uuid(804), IDS.mismatchedShot, {referenceAssetIds: []}));
-    db.prepare('UPDATE shots SET data=? WHERE id=?').run(JSON.stringify(shot(uuid(804), IDS.other)), uuid(804));
     put('timelines', timeline(uuid(805), IDS.mismatchedTimeline, IDS.otherAsset));
-    db.prepare('UPDATE timelines SET data=? WHERE id=?').run(JSON.stringify(timeline(uuid(805), IDS.other, IDS.otherAsset)), uuid(805));
+    // JSON/SQL owner corruption is injected only after these real hosts open.
+    // The production summary gate must continue to reject corrupt cold files.
     for (const [projectId, base, foreignAsset, foreignJob] of [[IDS.foreignVersionAsset, 810, true, false], [IDS.foreignVersionJob, 820, false, true]] as const) {
       put('assets', asset(uuid(base), projectId));
       put('shots', shot(uuid(base + 1), projectId, {referenceAssetIds: [], selectedVersionId: uuid(base + 3)}));
@@ -165,7 +177,7 @@ export async function seedInspectionStore(root: string): Promise<void> {
       if (foreignJob) put('jobs', job(uuid(base + 2), projectId, uuid(base + 1), uuid(base + 3)));
       const record = version(uuid(base + 3), projectId, uuid(base + 1), uuid(base + 2), foreignAsset ? uuid(850) : uuid(base));
       if (foreignJob) {
-        db.prepare('INSERT INTO versions(id,projectId,jobId,data) VALUES(?,?,?,?)').run(String(record.id), String(record.projectId), String(record.jobId), JSON.stringify({...record, jobId: selectedJob}));
+        owner(projectId).db.prepare('INSERT INTO versions(id,projectId,jobId,data) VALUES(?,?,?,?)').run(String(record.id), String(record.projectId), String(record.jobId), JSON.stringify({...record, jobId: selectedJob}));
       } else put('versions', record);
     }
 
@@ -175,20 +187,16 @@ export async function seedInspectionStore(root: string): Promise<void> {
     db.prepare('INSERT INTO job_events(jobId,event,createdAt) VALUES(?,?,?)').run(IDS.job, JSON.stringify({snapshot: PRIVATE}), NOW);
     db.prepare('INSERT INTO timeline_history VALUES(?,?,?,?,?,?,?)').run(uuid(900), IDS.project, 1, 'timeline.track.add', NOW, JSON.stringify({snapshot: PRIVATE}), JSON.stringify({snapshot: PRIVATE}));
     db.prepare('INSERT INTO timeline_history_cursors VALUES(?,?)').run(IDS.project, 1);
-    db.prepare('INSERT INTO workspace_preferences VALUES(?,?,?)').run(IDS.project, 1, JSON.stringify({privateFixture: PRIVATE}));
-    // All chat journal tables contain terminal synthetic history; inspection
-    // must neither read it into DTOs nor revise it or its quota accounting.
-    const threadId = uuid(909), requestId = uuid(910), runId = uuid(911);
-    const run = {id: runId, projectId: IDS.project, threadId, requestId, status: 'completed', userText: PRIVATE,
-      assistantText: PRIVATE, lastEventId: 1, modelRequestId: uuid(912), modelRequestState: 'completed', modelRequestStartedAt: NOW,
-      configuration: {protocol: 'chat_completions', presetId: 'openai', platformId: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'synthetic-model'},
-      createdAt: NOW, updatedAt: NOW};
-    db.prepare('INSERT INTO agent_chat_threads VALUES(?,?,?,?)').run(threadId, IDS.project, 1, 2);
-    db.prepare('INSERT INTO agent_chat_requests VALUES(?,?,?,?,?,?,?)').run(requestId, IDS.project, threadId, runId, PRIVATE, JSON.stringify({privateFixture: PRIVATE}), 1024);
-    db.prepare('INSERT INTO agent_chat_runs VALUES(?,?,?,?,?,?,?,?)').run(runId, IDS.project, threadId, requestId, 1, 'completed', JSON.stringify(run), 1024);
-    db.prepare('INSERT INTO agent_chat_events VALUES(?,?,?,?)').run(runId, 1, JSON.stringify({privateFixture: PRIVATE}), 1024);
-    db.prepare('UPDATE agent_chat_quota SET runs=1,bytes=3072,reservedBytes=0 WHERE id=1').run();
-  } finally { store.close(); }
+    library=openAppLibrary({dataDir:root});
+    library.tx(()=>{library!.db.prepare('INSERT INTO workspace_preferences VALUES(?,?,?)').run(IDS.project,1,JSON.stringify({privateFixture:PRIVATE}));});
+    library.agentPolicy.write({...structuredClone(DEFAULT_AGENT_TASK_POLICY),revision:1},{requestId:uuid(910),digest:'1'.repeat(64)});
+    // Retired v1 chat tables are never recreated. Real v2 terminal history and
+    // B1 policy/receipt rows replace the old nonempty-history privacy sentinels.
+    const journal=createAgentTaskJournal(owner(IDS.project),{policyStore:library.agentPolicy});
+    const run=journal.create({requestId:uuid(911),projectId:IDS.project,text:PRIVATE,configuration:{protocol:'chat_completions',model:'synthetic-model'}}).run;
+    const model=beginFixtureModelStep(journal,run.id);model.complete(PRIVATE);
+    journal.appendEvent(run.id,'text',{text:PRIVATE});journal.transition(run.id,journal.run(run.id).revision,'completed');
+  } finally {for(const store of stores.values())store.close();library?.close();}
 }
 
 if (process.env.MIOON_INSPECTION_WIRE_GUARD === '1') {
@@ -205,22 +213,45 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const root = process.env.MIOON_DATA_DIR;
   if (!root) throw Error('Isolated fixture data directory is required');
   const dataRoot: string = root;
-  if (!fs.existsSync(path.join(dataRoot, 'workbench.sqlite'))) await seedInspectionStore(dataRoot);
+  const newlySeeded = !fs.existsSync(path.join(dataRoot, 'app-library.db'));
+  if (newlySeeded) await seedInspectionStore(dataRoot);
   const {startServer} = await import('../../apps/server/src/index.ts');
   const {readProjectState, changeMarks} = await import('./project-state.ts');
-  let inspect: InspectProject|undefined;
+  let inspect: InspectProject|undefined,application:InspectApplication|undefined;
   const server = await startServer({dataDir: dataRoot, port: Number(process.env.PORT || 0), token: TOKEN,
-    inspectProject: received => { inspect = received; }});
+    inspectProject: received => { inspect = received; },inspectApplication:received=>{application=received;}});
   // While this process holds the project, storage questions use the server's
   // connection, including its own writes in the change marks.
+  let corruptionInjected = false;
   if (process.connected) process.on('message', (raw: unknown) => {
     const message = raw as {type?: unknown; id?: unknown; projectId?: unknown}|null;
     if (typeof message?.id !== 'string') return;
     let reply: unknown;
     try {
-      if (message.type !== 'storage') throw Error('Unsupported inspection fixture message');
-      if (!inspect) throw Error('The server has not handed over its connection');
-      const data = inspect(String(message.projectId), db => ({rows: readProjectState(db).tables, version: changeMarks(db)}));
+      if (!inspect||!application) throw Error('The server has not handed over its owned connections');
+      const corrupt = message.type === 'corrupt-owner-json';
+      const keys = Object.keys(message).sort().join(',');
+      if (corrupt) {
+        if (keys !== 'id,type' || !newlySeeded || corruptionInjected) throw Error('Unsupported inspection corruption phase');
+        // Fixed synthetic faults only: no IPC SQL, table, path or value input.
+        // Preserve the original corrupt JSON, including its private markers.
+        for (const [projectId, table, id] of [[IDS.mismatchedAsset,'assets',uuid(803)],[IDS.mismatchedShot,'shots',uuid(804)],[IDS.mismatchedTimeline,'timelines',uuid(805)]] as const) {
+          inspect(projectId, db => {
+            const row = db.prepare(`SELECT data FROM ${table} WHERE id=?`).get(id);
+            if (typeof row?.data !== 'string') throw Error('Missing exact inspection corruption row');
+            const value = JSON.parse(row.data);
+            value.projectId = IDS.other;
+            if (table === 'shots') value.referenceAssetIds = [IDS.otherAsset];
+            if (db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(value),id).changes !== 1) throw Error('Inspection corruption must change exactly one row');
+          });
+        }
+        corruptionInjected = true;
+      } else if (message.type !== 'storage' || keys !== 'id,projectId,type' || message.projectId !== IDS.project) throw Error('Unsupported inspection fixture message');
+      const primary=inspect(IDS.project,db=>({rows:readProjectState(db).tables,version:changeMarks(db)}));
+      const rows={...primary.rows},version:Record<string,[number,number]>={[IDS.project]:primary.version};
+      for(const id of INSPECTION_PROJECT_IDS){if(id===IDS.project)continue;const other=inspect(id,db=>({rows:readProjectState(db).tables,version:changeMarks(db)}));version[id]=other.version;for(const [table,records]of Object.entries(other.rows))rows[`${id}:${table}`]=records;}
+      const app=application(db=>({rows:readProjectState(db).tables,version:changeMarks(db)}));version.application=app.version;for(const [table,records]of Object.entries(app.rows))rows[`app:${table}`]=records;
+      const data={rows,version};
       reply = {type: 'reply', id: message.id, data};
     } catch (error) {
       const failure = error as {code?: unknown; message?: unknown}|null;

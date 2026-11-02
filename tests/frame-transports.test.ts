@@ -21,7 +21,6 @@ import {fileURLToPath} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {openStore} from '../packages/business/src/db.ts';
 import {createFrameServices} from '../packages/business/src/frames.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {run} from '../packages/business/src/media-runtime.ts';
@@ -31,7 +30,7 @@ import {FRAME_MUTATION_OPERATIONS, frameSchemas, isFrameTaskResponse, isFrameReq
   isFrameListResponse, canonicalFrameInput} from '../packages/contracts/src/frame-extraction.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {createServerProject} from './helpers/project-database.ts';
+import {openServerProject,createServerProject,projectDirFor} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -174,9 +173,9 @@ async function fixture(t: test.TestContext) {
     await writeFile(rawFile, raw, {mode:0o600});
     await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-threads', '1', '-filter_threads', '1',
       '-f', 'rawvideo', '-pixel_format', 'rgb24', '-video_size', '16x12', '-framerate', '30', '-i', rawFile,
-      '-vf', 'setsar=1', '-an', '-c:v', 'libx264', '-preset', 'medium', '-crf', '12', '-bf', '0', '-pix_fmt', 'yuv420p', '-threads', '1', path.join(root, relativePath)], {timeout:15_000});
-    await chmod(path.join(root, relativePath), 0o600); await rm(rawFile);
-    originalBytes = await readFile(path.join(root, relativePath));
+      '-vf', 'setsar=1', '-an', '-c:v', 'libx264', '-preset', 'medium', '-crf', '12', '-bf', '0', '-pix_fmt', 'yuv420p', '-threads', '1', path.join(created.store.root, relativePath)], {timeout:15_000});
+    await chmod(path.join(created.store.root, relativePath), 0o600); await rm(rawFile);
+    originalBytes = await readFile(path.join(created.store.root, relativePath));
     asset = store.put('assets', {id, projectId:project.id, name:'Synthetic 30fps source.mp4', relativePath, mimeType:'video/mp4',
       sha256:hash(originalBytes), sizeBytes:originalBytes.length, width:16, height:12, duration:1, provenance:'user-import'});
     service = (createFrameServices(store, {fault:label => { if (label === 'after_result_manifest') throw Error('Synthetic retained-stage checkpoint'); }}) as TypedFrameServices);
@@ -188,8 +187,8 @@ async function fixture(t: test.TestContext) {
       assert.ok(['queued', 'running', 'persisting'].includes(task.state), JSON.stringify(task)); await pause(10);
     }
     assert.equal(service.handlers['frame.task.get']({projectId:project.id, taskId:staged.id}).state, 'local_result_error');
-    stageReceipt = JSON.parse(await readFile(path.join(root, 'frame-staging', `${staged.id}.json`), 'utf8'));
-    await service.drain(); service = null; store.close(); store = (openStore(root) as TypedStore);
+    stageReceipt = JSON.parse(await readFile(path.join(created.store.tempDir, 'frame-staging', `${staged.id}.json`), 'utf8'));
+    await service.drain(); service = null; store.close(); store = (openServerProject(root, created.projectId) as TypedStore);
     service = (createFrameServices(store, {autoRun:false}) as TypedFrameServices);
     queued = await service.handlers['frame.extract'](input({sourceFrame:1}));
     started = await service.handlers['frame.extract'](input({sourceFrame:2}));
@@ -265,7 +264,10 @@ async function fixture(t: test.TestContext) {
     }
     assert.fail('Real local frame extraction did not complete');
   }
-  return {root, project, other, asset, queued, started, staged, stageReceipt, originalBytes, input, rpc, succeeded, checkpoint, unchanged, audit, proxyRequests,
+  // Open this lazy project through its real read RPC before no-write baselines;
+  // the recovery assertions below still verify exact interrupted states and zero decoder work.
+  await rpc('frame.task.list',{projectId:project.id});
+  return {root,projectRoot:created.store.root, project, other, asset, queued, started, staged, stageReceipt, originalBytes, input, rpc, succeeded, checkpoint, unchanged, audit, proxyRequests,
     get url() { return url; }, get env() { return {MIOON_BASE_URL:url, MIOON_TOKEN:token}; },
     get proxyEnv() { return {MIOON_BASE_URL:proxyUrl, MIOON_TOKEN:token}; }, get altered() { return altered; },
     alterNext(mode: string) { nextMode = mode; },
@@ -360,7 +362,7 @@ test('frames share strict real HTTP, actual CLI and official MCP extraction/reco
     const receipt = (await parity('frame.request.get', {projectId:f.project.id, requestId:original.requestId})).data;
     assert.ok(isFrameRequestResponse(receipt)); assert.deepEqual(receipt!.response, accepted);
     await parity('frame.extract', {...original, sourceFrame:11}, 'FRAME_REQUEST_CONFLICT');
-    await parity('frame.extract', {...original, projectId:f.other.id}, 'FRAME_REQUEST_CONFLICT');
+    await parity('frame.extract', {...original, projectId:f.other.id}, 'FRAME_NOT_FOUND');
     await parity('frame.task.cancelQueued', {projectId:f.project.id, taskId:accepted.id, expectedRevision:done.revision, requestId:original.requestId}, 'FRAME_REQUEST_CONFLICT');
     assert.equal((await parity('frame.request.get', {projectId:f.other.id, requestId:original.requestId})).data, null);
     await parity('frame.task.get', {projectId:f.other.id, taskId:accepted.id}, 'FRAME_NOT_FOUND');
@@ -369,7 +371,7 @@ test('frames share strict real HTTP, actual CLI and official MCP extraction/reco
     assert.equal(media.status, 200); assert.equal(media.headers.get('content-type'), 'image/png'); bytes = Buffer.from(await media.arrayBuffer());
     const png = await validatePng(bytes, {width:16, height:12}); assert.equal(png.sha256, done.result.sha256);
     assert.equal(done.result.byteLength, bytes.length); assert.notEqual(done.result.assetId, f.asset.id);
-    assert.deepEqual(await readFile(path.join(f.root, f.asset.relativePath)), f.originalBytes);
+    assert.deepEqual(await readFile(path.join(f.projectRoot, f.asset.relativePath)), f.originalBytes);
   });
   await t.test('malformed 200 CLI/MCP acknowledgements preserve exact keys and accepted durable receipts', async () => {
     await mcp.close(); const proxyMcp = await sdk(t, f.proxyEnv);
@@ -406,7 +408,7 @@ test('frames share strict real HTTP, actual CLI and official MCP extraction/reco
     assert.deepEqual((await parity('frame.task.get', {projectId:f.project.id, taskId:accepted.id})).data, done);
     assert.deepEqual((await parity('frame.request.get', {projectId:f.project.id, requestId:original.requestId})).data.response, accepted);
     await f.unchanged(recreated, 'recreated client read/replay');
-    assert.deepEqual(await readFile(path.join(f.root, f.asset.relativePath)), f.originalBytes);
+    assert.deepEqual(await readFile(path.join(f.projectRoot, f.asset.relativePath)), f.originalBytes);
     const audit = await f.audit(); assert.ok(audit.every(event => ['started', 'exited'].includes(event.type)), 'no provider/network call was attempted');
     assert.equal(audit.filter(event => event.type === 'started').length, 6, 'three new extractions each use one probe and one decoder, with no replay/recovery/read spawn');
   });

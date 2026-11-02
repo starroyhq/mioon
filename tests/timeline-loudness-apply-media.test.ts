@@ -1,3 +1,4 @@
+import {projectDirFor} from './helpers/project-database.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
@@ -34,6 +35,7 @@ test('real apply undo redo and explicit float-v2 export remeasure the final AAC 
  backend=await startServer({dataDir:root,port:0,inspectProject:received=>{inspect=received;}});
  const client=createClient({env:{...mediaEnvironment(),MIOON_BASE_URL:backend.url,MIOON_TOKEN:backend.token,MIOON_ENABLE_LIVE_PROVIDER:'0'}});
  const project=await client.rpc('project.create',{name:'固定增益 应用撤销与真实成片'}) as {id: string},bytes=wav();
+ const projectRoot=projectDirFor(root,project.id);
  const source=await client.rpc('asset.import',{projectId:project.id,name:'Known stereo 997 Hz.wav',mimeType:'audio/wav',dataBase64:bytes.toString('base64')}) as {id: string};
  let timeline=await client.rpc('timeline.get',{projectId:project.id}) as TimelineView;
  const audioTrack=timeline.tracks.find((track: {kind: string})=>track.kind==='audio');assert.ok(audioTrack);
@@ -43,13 +45,13 @@ test('real apply undo redo and explicit float-v2 export remeasure the final AAC 
  assert.ok(inspect);
  const record=(id: string)=>inspect(project.id,db=>JSON.parse(String((db.prepare('SELECT data FROM exports WHERE id=?').get(id) as {data: string} | undefined)?.data)));
  const asset=(id: string)=>inspect(project.id,db=>JSON.parse(String((db.prepare('SELECT data FROM assets WHERE id=?').get(id) as {data: string} | undefined)?.data)));
- const originalSource=asset(source.id) as {relativePath: string},sourceFile=path.join(root,originalSource.relativePath);
+ const originalSource=asset(source.id) as {relativePath: string},sourceFile=path.join(projectRoot,originalSource.relativePath);
  async function render(exportSettings?: Record<string, unknown>): Promise<RenderOutput> {
   const input={projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',...(exportSettings?{exportSettings}:{})};
   const queued=await client.rpc('timeline.render',input) as {id: string};let result: RenderOutput['result'] | undefined;
   for(const deadline=Date.now()+40000;Date.now()<deadline;){result=await client.rpc('export.get',{exportId:queued.id},{projectId:project.id}) as RenderOutput['result'];if(['succeeded','failed'].includes(result.status))break;await pause(25);}
   assert.ok(result);assert.equal(result.status,'succeeded',JSON.stringify(result.error));
-  const saved=record(result.id) as {snapshot: Record<string, unknown>},assetValue=asset(result.assetId) as {relativePath: string; sha256: string},file=path.join(root,assetValue.relativePath),raw=await readFile(file);
+  const saved=record(result.id) as {snapshot: Record<string, unknown>},assetValue=asset(result.assetId) as {relativePath: string; sha256: string},file=path.join(projectRoot,assetValue.relativePath),raw=await readFile(file);
   const output={...assetValue};
   assert.equal(output.sha256,sha(raw));assert.deepEqual(await client.rpc('timeline.render',input),queued);
   return {input,queued,result,saved,output,file,raw};

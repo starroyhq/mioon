@@ -21,7 +21,7 @@ import {initializeWorkspaceSchema36} from '../packages/business/src/workspace-sc
 import {initializeWorkspaceSchema38,validateWorkspaceSchema38} from '../packages/business/src/workspace-schema-v38.ts';
 import {validateWorkspaceAudioRoleRows} from '../packages/business/src/workspace-audio-role-validation.ts';
 import {readCurrentWorkspaceRole,assertTimelineAudioRoleWorkspace} from '../packages/business/src/workspace-schema-dispatch.ts';
-import {openStore,classifyCurrentWorkspaceSchema,installCurrentWorkspaceRestoreSchema,validateCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore,classifyCurrentWorkspaceSchema,installCurrentWorkspaceRestoreSchema,validateCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
 import {open,snapshot} from './workspace-schema26-fixtures.mjs';
 import {copyFrozenUpgradeFixtureDatabase} from './helpers/opacity-upgrade-fixture.ts';
 import type { DatabaseSync } from 'node:sqlite';

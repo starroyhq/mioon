@@ -58,7 +58,7 @@ const base=(projectId: string,timeline: {revision: number})=>({projectId,expecte
 async function seed(f: TaskHttpFixture){return f.rpc('timeline.clip.add',{...base(f.project.id,f.timeline),assetId:f.source.id,trackId:f.timeline.tracks.find((x: { kind: string; })=>x.kind==='video')!.id,startFrame:0,durationFrames:90});}
 
 test('subtitle schemas are strict in actual CLI and official MCP and do not grant Agent tool authority',{timeout:60000},async t=>{
- const w=await wire(t),catalog=discoverSchema() as Extract<ReturnType<typeof discoverSchema>,{operations: unknown}>,before=snapshot(w.f.root);
+ const w=await wire(t),catalog=discoverSchema() as Extract<ReturnType<typeof discoverSchema>,{operations: unknown}>,before=await snapshot(w.f.root);
  assert.deepEqual((await cli(w.url,['schema'])).data,catalog);
  const tools=(await w.mcp.listTools()).tools;
  for(const operation of TIMELINE_SUBTITLE_OPERATIONS){
@@ -74,7 +74,7 @@ test('subtitle schemas are strict in actual CLI and official MCP and do not gran
   }
  }
  assert.ok(!JSON.stringify(READ_TOOL_DEFINITIONS).includes('subtitle'));assert.ok(!JSON.stringify(EDIT_TOOL_DEFINITIONS).includes('subtitle'));
- assert.deepEqual(snapshot(w.f.root),before);
+ assert.deepEqual(await snapshot(w.f.root),before);
 });
 
 test('subtitle HTTP CLI MCP preserve literal text, exact replay, CAS and history across lost acknowledgements and restart',{timeout:120000},async t=>{
@@ -86,17 +86,17 @@ test('subtitle HTTP CLI MCP preserve literal text, exact replay, CAS and history
   const original=JSON.parse(w.last().text);assert.equal(original.ok,true);assert.ok(isTimelineMutationResponse('timeline.subtitle.add',add,original.data));
   const cue=original.data.subtitles.cues[0];assert.equal(cue.text,add.text);
   const receipt=database(f.root,db=>db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(add.requestId));assert.equal((receipt)!.response,JSON.stringify(original.data));
-  await f.restart();let before=snapshot(f.root);const replay=await transport.call('timeline.subtitle.add',add);assert.deepEqual(replay,original);assert.deepEqual(snapshot(f.root),before);
-  const conflict=await transport.call('timeline.subtitle.add',{...add,text:'changed'});assert.equal(conflict.ok,false);assert.equal(conflict.error.code,'IDEMPOTENCY_CONFLICT');assert.deepEqual(snapshot(f.root),before);
+  await f.restart();let before=await snapshot(f.root);const replay=await transport.call('timeline.subtitle.add',add);assert.deepEqual(replay,original);assert.deepEqual(await snapshot(f.root),before);
+  const conflict=await transport.call('timeline.subtitle.add',{...add,text:'changed'});assert.equal(conflict.ok,false);assert.equal(conflict.error.code,'IDEMPOTENCY_CONFLICT');assert.deepEqual(await snapshot(f.root),before);
   timeline=original.data;
   const update={...base(f.project.id,timeline),cueId:cue.id,patch:{text:'第二句，Hello!',startFrame:30,durationFrames:30}};
   const changed=await transport.call('timeline.subtitle.update',update);assert.equal(changed.ok,true);assert.ok(isTimelineMutationResponse('timeline.subtitle.update',update,changed.data));timeline=changed.data;
   const stale=await transport.call('timeline.subtitle.update',{...update,requestId:randomUUID(),patch:{text:'stale'}});assert.equal(stale.ok,false);assert.equal(stale.error.code,'REVISION_CONFLICT');
   const remove={...base(f.project.id,timeline),cueId:cue.id};const removed=await transport.call('timeline.subtitle.remove',remove);assert.equal(removed.ok,true);assert.equal(removed.data.subtitles.cues.length,0);timeline=removed.data;
-  before=snapshot(f.root);assert.deepEqual(await transport.call('timeline.subtitle.remove',remove),removed);assert.deepEqual(snapshot(f.root),before);
+  before=await snapshot(f.root);assert.deepEqual(await transport.call('timeline.subtitle.remove',remove),removed);assert.deepEqual(await snapshot(f.root),before);
   const undone=await transport.call('timeline.undo',base(f.project.id,timeline));assert.equal(undone.ok,true);assert.deepEqual(undone.data.subtitles,changed.data.subtitles);timeline=undone.data;
   const redone=await transport.call('timeline.redo',base(f.project.id,timeline));assert.equal(redone.ok,true);assert.deepEqual(redone.data.subtitles,removed.data.subtitles);timeline=redone.data;
-  before=snapshot(f.root);assert.deepEqual(await transport.call('timeline.subtitle.add',add),original,'historical add receipt survives later edit/removal/undo/redo');assert.deepEqual(snapshot(f.root),before);
+  before=await snapshot(f.root);assert.deepEqual(await transport.call('timeline.subtitle.add',add),original,'historical add receipt survives later edit/removal/undo/redo');assert.deepEqual(await snapshot(f.root),before);
  }
 });
 
@@ -104,16 +104,17 @@ test('malformed subtitle success retains ambiguity and explicit exact request re
  const w=await wire(t),timeline=await seed(w.f),input={...base(w.f.project.id,timeline),text:'确认原句',startFrame:0,durationFrames:30};
  const count=w.submissions.length;w.malform('timeline.subtitle.add');await assert.rejects(w.client.rpc('timeline.subtitle.add',input),error=>(error as RootFailure).code==='BACKEND_PROTOCOL_ERROR'&&(error as RootFailure).details?.submissionMayHaveSucceeded===true);
  assert.equal(w.submissions.length,count+1);const original=JSON.parse(w.last().text);assert.equal(original.ok,true);
- await w.f.restart();const before=snapshot(w.f.root);assert.deepEqual(await w.client.rpc('timeline.subtitle.add',input),original.data);assert.deepEqual(snapshot(w.f.root),before);
+ await w.f.restart();const before=await snapshot(w.f.root);assert.deepEqual(await w.client.rpc('timeline.subtitle.add',input),original.data);assert.deepEqual(await snapshot(w.f.root),before);
 });
 
 test('subtitle durable intent rediscovers after original backend loss without automatic application',{timeout:60000},async t=>{
  const f=await taskFixture(t,{subprocess:true}) as unknown as TaskHttpFixture,timeline=await seed(f),input={...base(f.project.id,timeline),text:'重启后恢复',startFrame:0,durationFrames:30};
- const prepared=await f.prepare('timeline.subtitle.add',input);await f.restart();const before=snapshot(f.root),pending=await f.list();
- assert.equal(pending.items.length,1);assert.equal(pending.items[0].id,prepared.task.id);assert.deepEqual(pending.items[0].input,input);assert.deepEqual(snapshot(f.root),before);
+ const prepared=await f.prepare('timeline.subtitle.add',input);await f.restart();const before=await snapshot(f.root),pending=await f.list();
+ assert.equal(pending.items.length,1);assert.equal(pending.items[0].id,prepared.task.id);assert.deepEqual(pending.items[0].input,input);assert.deepEqual(await snapshot(f.root),before);
  const route=taskPath(f.project.id,prepared.task.id,'execute'),current=await f.get(prepared.task.id);f.lose(route);
  await assert.rejects(f.viaProxy(route,{method:'POST',input:{projectId:f.project.id,digest:prepared.task.digest,instanceId:current.instanceId}}));
- const receipt=database(f.root,db=>db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId));assert.ok(receipt);
- await f.restart();const committed=snapshot(f.root);const recovered=await f.reconcile(prepared.task);assert.equal(recovered.task.status,'applied');assert.deepEqual(recovered.result,JSON.parse(receipt.response as string));assert.deepEqual(snapshot(f.root),committed);
+ const receipts=(await snapshot(f.root,['timeline_requests']))[f.project.id] as {timeline_requests:{requestId:string;response:string}[]};
+ const receipt=receipts.timeline_requests.find(row=>row.requestId===input.requestId);assert.ok(receipt);
+ await f.restart();const committed=await snapshot(f.root);const recovered=await f.reconcile(prepared.task);assert.equal(recovered.task.status,'applied');assert.deepEqual(recovered.result,JSON.parse(receipt.response as string));assert.deepEqual(await snapshot(f.root),committed);
  await f.acknowledge(recovered.task);assert.equal((await f.list()).items.length,0);
 });

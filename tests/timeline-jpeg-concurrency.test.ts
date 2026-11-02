@@ -19,10 +19,17 @@ import {mediaExecutable} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createTimelinePreflightServices} from '../packages/business/src/timeline-preflight.ts';
 import {openStore} from '../packages/business/src/db.ts';
-import {snapshot as databaseSnapshot} from './workspace-schema26-fixtures.mjs';
+import {snapshot as schemaSnapshot} from './workspace-schema26-fixtures.mjs';
 import {png, sha, imageColour, stamp, timelineFixture} from './helpers/timeline-image-fixtures.ts';
 import {pillowJfifFixture} from './helpers/timeline-jpeg-fixtures.ts';
 import {jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.ts';
+
+import {isProjectDatabase} from '../packages/business/src/project-file/held-files.ts';
+import type {DatabaseSync} from 'node:sqlite';
+
+function databaseSnapshot(db: DatabaseSync) {
+  return Object.fromEntries((isProjectDatabase(db) ? ['main', 'project', 'cache'] : ['main']).map(schema => [schema, schemaSnapshot(db, schema)]));
+}
 
 const code = 'TIMELINE_IMAGE_COMPOSITOR_BUDGET';
 const budgetError = {code, message: TIMELINE_COLOUR_PREFLIGHT_MESSAGES[code]};
@@ -35,8 +42,7 @@ interface ConcurrencyFixture {projectId: string; assets: ConcurrencyAsset[]; byt
 type Range = [number, number];
 const intervals = (count: number): Range[] => Array.from({length: count}, (_, index) => [index * 3, 3]);
 
-function fixture(ranges: Range[], {hidden = [], formats = ranges.map((_, index) => index % 2 ? 'jpeg' : 'png')}: {hidden?: number[]; formats?: string[]} = {}): ConcurrencyFixture {
-  const projectId = randomUUID();
+function fixture(ranges: Range[], {hidden = [], formats = ranges.map((_, index) => index % 2 ? 'jpeg' : 'png'), projectId = randomUUID()}: {hidden?: number[]; formats?: string[];projectId?:string} = {}): ConcurrencyFixture {
   const sampling = (index: number): string => ['444', '422', '420'][index % 3] ?? '420';
   const bytes = ranges.map((_, index) => formats[index] === 'jpeg' ? pillowJfifFixture(sampling(index)) :
     png({width: 8, height: 8, pixel: () => [32 + index * 7, 96, 160, 128]}));
@@ -201,12 +207,12 @@ for (const scenario of ['PNG plus JPEG with hidden PNG/JPEG', 'six nonoverlappin
 }
 
 test('preflight rejects a combined third image before probing or writes, even when the selected range is safe', async t => {
-  const root = await directory(t), store = openStore(root);
   let probes = 0;
-  const preflight = createTimelinePreflightServices(store as never, {probe: async () => { probes++; assert.fail('budget must fail before probe'); }} as never);
-  t.after(async () => { await preflight.drain(); store.close(); });
   for (const formats of [['png', 'jpeg', 'png', 'jpeg'], ['png', 'jpeg', 'jpeg', 'png']] as string[][]) {
-    const f = fixture(intervals(4), {formats});
+    const root = await directory(t), store = openStore(root);
+    const preflight = createTimelinePreflightServices(store as never, {probe: async () => { probes++; assert.fail('budget must fail before probe'); }} as never);
+    t.after(async () => { await preflight.drain(); store.close(); });
+    const f = fixture(intervals(4), {formats, projectId: store.projectId});
     f.timeline.clips.slice(0, 3).forEach((clip: TimelineClipView) => { clip.startFrame = 0; });
     store.put('projects', {id: f.projectId, name: 'Combined image concurrency', createdAt: stamp, updatedAt: stamp} as never);
     f.assets.forEach((asset: ConcurrencyAsset) => store.put('assets', asset as never)); store.put('timelines', f.timeline as never);

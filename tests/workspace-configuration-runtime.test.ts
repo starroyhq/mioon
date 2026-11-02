@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import type {TestContext} from 'node:test';
-import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {createWorkspaceConfiguration} from '../packages/business/src/workspace-configuration.ts';
 import {createWorkspaceBackupRuntime,resolveWorkspaceActivation} from '../packages/business/src/workspace-backup-runtime.ts';
 import {verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';

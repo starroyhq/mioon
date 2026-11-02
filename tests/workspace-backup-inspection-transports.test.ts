@@ -5,10 +5,12 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectApplication} from '../apps/server/src/index.ts';
+import {startLegacyProjectHttp} from './fixtures/legacy-project-package-http.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {createClient,operationDefinition,effectAnnotations} from '@mioon/client';
 import type {TestContext} from 'node:test';
@@ -25,11 +27,11 @@ async function cli(args: string[],env: NodeJS.ProcessEnv): Promise<CliEnvelope> 
  try{const end=await bounded(closed,'inspection CLI');if(error)throw error;assert.equal(end.signal,null);assert.equal(stdout.includes(token)||stderr.includes(token),false);return {...end,envelope:JSON.parse(stdout) as Loose};}
  finally{if(child.exitCode===null&&!child.signalCode){child.kill('SIGTERM');const timer=setTimeout(()=>{if(child.exitCode===null&&!child.signalCode)child.kill('SIGKILL');},1000);try{await bounded(closed,'owned CLI cleanup',3000);}finally{clearTimeout(timer);}}}
 }
-test('actual authenticated HTTP, CLI and official MCP share exact non-path inspection and perform no DB writes',async()=>{
- const directory=mkdtempSync(path.join(tmpdir(),'mioon-backup-inspect-wire-'));let server: Awaited<ReturnType<typeof startServer>>|undefined,db: DatabaseSync|undefined,client: Client|undefined,transport: StdioClientTransport|undefined;
+test('legacy authenticated HTTP, CLI and official MCP share exact non-path inspection and perform no DB writes',async()=>{
+ const directory=mkdtempSync(path.join(tmpdir(),'mioon-backup-inspect-wire-'));let server: Awaited<ReturnType<typeof startLegacyProjectHttp>>|undefined,client: Client|undefined,transport: StdioClientTransport|undefined;
  try{
-  server=await startServer({dataDir:directory,port:0,token});db=new DatabaseSync(path.join(directory,'workbench.sqlite'),{readOnly:true});
-  const capture=()=>db!.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map((value: unknown)=>{const name=(value as {name: string}).name;return [name,db!.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all()];});
+  server=await startLegacyProjectHttp({root:directory,token,domain:'inspection'});
+  const capture=()=>server!.inspect(db=>db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map((value: unknown)=>{const name=(value as {name: string}).name;return [name,db.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all()];}));
   const before=capture();
   const rpc=async(input: Loose,authenticated=true)=>{const response=await fetch(server!.url+'/api/rpc',{method:'POST',headers:{'content-type':'application/json',...(authenticated?{authorization:`Bearer ${token}`}:{})},body:JSON.stringify({operation:'workspace.backup.inspect',input})});return {status:response.status,envelope:await response.json() as Loose};};
   const result=await rpc({});assert.equal(result.status,200);assert.equal(result.envelope.ok,true);assert.equal((result.envelope.data as Loose).captureReady,false);
@@ -45,7 +47,17 @@ test('actual authenticated HTTP, CLI and official MCP share exact non-path inspe
   for(const operation of ['workspace.backup.create','workspace.backup.restore.stage']){const definition=operationDefinition(operation),managed=listed.tools.find(value=>value.name===operation.replaceAll('.','_'));assert.ok(managed);assert.deepEqual(managed.inputSchema,definition.inputSchema);assert.deepEqual(managed.annotations,effectAnnotations(definition.effects));assert.equal(managed.annotations?.readOnlyHint,false);assert.equal(managed.inputSchema.additionalProperties,false);for(const key of ['source','destination','path','directory'])assert.equal(Object.hasOwn(managed.inputSchema.properties??{},key),false);}
   const called=await client.callTool({name:'workspace_backup_inspect',arguments:{}},undefined,{timeout:10000});assert.deepEqual(called.structuredContent,result.envelope);assert.equal(stderr.includes(token),false);
   assert.deepEqual(capture(),before,'no schema, journal, task, counter, receipt or project writes');
- }finally{if(client)await bounded(client.close(),'MCP close');if(transport)await transport.close();db?.close();await server?.close();rmSync(directory,{recursive:true,force:true});}
+ }finally{if(client)await bounded(client.close(),'MCP close');if(transport)await transport.close();await server?.close();rmSync(directory,{recursive:true,force:true});}
+});
+
+test('new application HTTP refuses historical workspace inspection without application writes',async t=>{
+ const directory=mkdtempSync(path.join(tmpdir(),'mioon-backup-inspect-unavailable-'));let inspect!:InspectApplication;
+ const server=await startServer({dataDir:directory,port:0,token,inspectApplication:read=>{inspect=read;}});
+ t.after(async()=>{await server.close();rmSync(directory,{recursive:true,force:true});});
+ const capture=()=>inspect(db=>({objects:schemaObjects(db),rows:schemaObjects(db).filter(row=>row.type==='table').map(({name})=>[name,db.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all()]),changes:db.prepare('SELECT total_changes() AS n').get()!.n}));
+ const before=capture(),response=await fetch(server.url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({operation:'workspace.backup.inspect',input:{}})});
+ assert.equal(response.status,409);assert.equal((await response.json()).error.code,'RESTORE_OPERATION_UNAVAILABLE');
+ assert.deepEqual(capture(),before,'rejected inspection creates no app row, task, receipt, schema or change mark');
 });
 test('shared client refuses malformed inspection ACK without implying an uncertain mutation',async()=>{
  const client=createClient({env:{MIOON_BASE_URL:'http://127.0.0.1:4318',MIOON_TOKEN:token},fetchImpl:async()=>new Response(JSON.stringify({ok:true,data:{captureReady:true,source:'/private'}}),{status:200,headers:{'content-type':'application/json'}})});

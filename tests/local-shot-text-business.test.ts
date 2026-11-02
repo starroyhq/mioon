@@ -1,3 +1,4 @@
+import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import type {LocalShotTextSupported} from '../apps/web/src/local-shot-text-state.ts';
 import type {MediaShot} from './helpers/strict-service-responses.ts';
 type OrdinaryShotText=Omit<ReturnType<typeof createLocalShotText>, 'get'|'put'|'discard'|'prepare'|'execute'|'recover'>&{get(value:unknown):LocalShotTextSupported;put(value:unknown):LocalShotTextSupported;discard(value:unknown):LocalShotTextSupported;prepare(value:unknown):LocalShotTextSupported;execute(value:unknown):Promise<{envelope:LocalShotTextSupported;response:MediaShot|null}>;recover(value:unknown):Promise<{envelope:LocalShotTextSupported;response:MediaShot|null}>};
@@ -9,7 +10,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync,rmSync,existsSync,readFileSync,writeFileSync,statSync,copyFileSync,chmodSync,symlinkSync,linkSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {openStore,ownsStoreLock,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore,ownsStoreLock,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {createServices,canonical} from '../packages/business/src/services.ts';
 import {createLocalMutationServices} from '../packages/business/src/local-mutations.ts';
 import {validateImageConsumption} from '../packages/business/src/image-consumption.ts';
@@ -32,25 +33,27 @@ async function foreignProject(t: test.TestContext,name: string){
   try{return await services.call('project.create',{name});}
   finally{await services.drain();store.close();}
 }
-async function fixture(t: test.TestContext){
-  const root=mkdtempSync(path.join(tmpdir(),'mioon-local-shot-text-'));let store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices),shotText: OrdinaryShotText,fault: (point: string) => void=()=>{},update: (arg0: string,arg1: LocalShotTextUpdateInput) => Promise<unknown>,extraGuards={},calls: (LocalShotTextUpdateInput)[]=[];
+async function fixture(t: test.TestContext,{legacy=false}={}){
+  const root=mkdtempSync(path.join(tmpdir(),'mioon-local-shot-text-'));const open=legacy?openLegacyWorkspaceStore:openStore;let store=(open(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices),shotText: OrdinaryShotText,fault: (point: string) => void=()=>{},update: (arg0: string,arg1: LocalShotTextUpdateInput) => Promise<unknown>,extraGuards={},calls: (LocalShotTextUpdateInput)[]=[];
   const project=await services.call('project.create',{name:'Local text'}),shot=await services.call('shot.create',{projectId:project.id,title:'Original title',prompt:'Original prompt'});
   const originalUpdate=(projectId: string,input: unknown)=>services.updateShotInProject(projectId,input);update=originalUpdate;
+  const localRoot=()=>isProjectStore(store)?store.localDir:root;
+  const scope=()=>isProjectStore(store)?{databaseFile:path.join(store.localDir,'history.db')}:{};
   const start=(options: Partial<Parameters<typeof createLocalShotText>[0]>={})=>{
     const never=()=>{throw Error('PRIVATE mutator called during read');};
     const replay=createLocalMutationServices(store,{canonical,readOnly:true,check:never,now:never,references:{guardManualUpdate:never}});
     const domain=createLocalShotTextDomain({db:store.db,canonical,replay:(projectId,input)=>replay.updateShotInProject(projectId,input),
       validateAsset:(projectId,asset)=>validateImageConsumption(store.db,(asset as unknown as Parameters<typeof validateImageConsumption>[1]),projectId),isRevisionConflict:error=>error instanceof AppError&&error.code==='REVISION_CONFLICT',
       updateShotInProject:(projectId,input)=>{calls.push(structuredClone(input));return update(projectId,input);}});
-    shotText=(createLocalShotText({root,storage,guards:{...domain,ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),isShotUpdateInput:value=>schemas['shot.update'].safeParse(value).success,...extraGuards},fault:point=>fault(point),...options}) as OrdinaryShotText);return shotText;
+    shotText=(createLocalShotText({root:localRoot(),...scope(),storage,guards:{...domain,ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),isShotUpdateInput:value=>schemas['shot.update'].safeParse(value).success,...extraGuards},fault:point=>fault(point),...options}) as OrdinaryShotText);return shotText;
   };start();
   t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
   const get=(value=shot)=>shotText.get({projectId:value.projectId,shotId:value.id});
   const put=(value=get(),raw={title:'Changed title',prompt:shot.prompt})=>({...authority(value),expectedDraftRevision:value.draftRevision,draftId:value.draft?.draftId??randomUUID(),baseRevision:value.draft?.baseRevision??store.get('shots',value.shotId)!.revision,baseText:value.draft?.baseText??{title:store.get('shots',value.shotId)!.title,prompt:store.get('shots',value.shotId)!.prompt},raw});
   const prepare=(value=get(),patch={title:value.draft!.raw.title})=>({...authority(value),expectedIntentRevision:value.intentRevision,expectedIntentId:value.intent?.intentId??null,intentId:randomUUID(),baseRevision:value.draft!.baseRevision,baseText:value.draft!.baseText,draft:{draftId:value.draft!.draftId,revision:value.draftRevision,raw:value.draft!.raw},input:{requestId:randomUUID(),shotId:value.shotId,expectedRevision:value.draft!.baseRevision,patch}});
-  return {root,file:path.join(root,LOCAL_SHOT_TEXT_FILENAME),project,shot,get,put,prepare,start,originalUpdate,get store(){return store;},get services(){return services;},get shotText(){return shotText;},get calls(){return calls;},
+  return {root:localRoot(),file:path.join(localRoot(),LOCAL_SHOT_TEXT_FILENAME),project,shot,get,put,prepare,start,originalUpdate,get store(){return store;},get services(){return services;},get shotText(){return shotText;},get calls(){return calls;},
     setFault(fn: (point: string) => void){fault=fn;},setUpdate(fn: (projectId: string, input: LocalShotTextUpdateInput) => Promise<unknown>){update=fn;},setGuards(value: { isRestored?: () => boolean; }){extraGuards=value;start();},
-    restart(){store.close();store=(openStore(root) as TypedStore);services=(createServices(store,new Map()) as TypedServices);start();},
+    restart(){store.close();store=(open(root) as TypedStore);services=(createServices(store,new Map()) as TypedServices);start();},
     receipt(input: {requestId: string}){return store.db.prepare('SELECT * FROM mutation_requests WHERE requestId=?').get(input.requestId);},
     snapshot(){return JSON.stringify(schemaObjects(store.db).sort(byName).map(({name,sql})=>({name,sql})))+'\n'+JSON.stringify(['projects','shots','assets','versions','jobs','mutation_requests','asset_range_requests','asset_disposition_requests','subject_requests'].map(table=>store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));},
   };
@@ -156,7 +159,7 @@ test('relational and JSON ownership checks cover current and historical referenc
 
 test('late owner reassignment, lease loss, abort and restored transition cannot persist a terminal result',async t=>{
   for(const kind of ['owner','lease','abort','restored']){
-    const f=await fixture(t),controller=new AbortController();let restored=false;f.setGuards({isRestored:()=>restored});f.start({signal:controller.signal});const prepared=f.shotText.prepare(f.prepare(f.shotText.put(f.put()))),gate=Promise.withResolvers<void>(),entered=Promise.withResolvers<void>();
+    const f=await fixture(t,{legacy:kind==='lease'}),controller=new AbortController();let restored=false;f.setGuards({isRestored:()=>restored});f.start({signal:controller.signal});const prepared=f.shotText.prepare(f.prepare(f.shotText.put(f.put()))),gate=Promise.withResolvers<void>(),entered=Promise.withResolvers<void>();
     f.setUpdate(async(projectId: string,input: unknown)=>{const result=await f.originalUpdate(projectId,input);entered.resolve();await gate.promise;return result;});const pending=f.shotText.execute(action(prepared));await entered.promise;
     if(kind==='owner'){const foreign=await foreignProject(t,'Foreign');withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(foreign.id,f.shot.id));}
     if(kind==='lease'){unlinkSync(path.join(f.root,'server.lock'));writeFileSync(path.join(f.root,'server.lock'),'0',{mode:0o600});}

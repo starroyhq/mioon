@@ -7,7 +7,7 @@ import {mkdtempSync,rmSync,existsSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openStore,installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore,installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
 import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
 import {initializeLegacyWorkspaceSchema} from '../packages/business/src/workspace-fixed-schema.ts';
 import {classifyWorkspaceSchema,installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema,getWorkspaceRestoreContext,isRestoredRecordHeld} from '../packages/business/src/workspace-restore-schema.ts';

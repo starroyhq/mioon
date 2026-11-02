@@ -69,11 +69,24 @@ export interface ImageProfileList {
  liveEnabled: boolean;
 }
 export interface ImageService {
+ readonly isBusy: ()=>boolean;
  readonly handlers: Readonly<Record<string,(input: unknown,context?: {signal?: AbortSignal|null; [key: string]: unknown})=>unknown>>;
  readonly drain: ()=>Promise<void>;
  readonly approveReviewed: ImageReviewService['readForApproval'] extends (...args: never[])=>unknown?(approval: unknown)=>unknown:never;
  readonly rejectReview: (input: unknown)=>unknown;
 }
+export type ImageProfileDependencies=Pick<ImageServicesOptions,'settings'|'customSettings'|'comfySettings'|'liveGateway'|'customGateway'|'comfyConnector'>;
+/** Pure catalog projection: no store, task history, adapter call or I/O. */
+export function listImageProfiles({settings,customSettings,comfySettings,liveGateway:live,customGateway:compatible,comfyConnector}:ImageProfileDependencies={},input:{includeSettingsRevision?:boolean}={}):ImageProfileList {
+ const profiles: ImageProfileList={items:[{providerId:'mock',model:IMAGE_MODELS.mock,name:'Mock 本地图像流程测试',enabled:true,isMock:true,evidence:'deterministic-mock',options:{...IMAGE_FIXED_OPTIONS}},{providerId:'openai',model:IMAGE_MODELS.openai,name:'OpenAI Images · 未启用',enabled:false,isMock:false,evidence:'offline-tested-not-live',options:{...IMAGE_FIXED_OPTIONS}}],liveEnabled:false};
+  const value=structuredClone(profiles);
+  const withRevision=(profile: ImageProfileItem,state: {revision?: unknown}|undefined): ImageProfileItem=>{if(input.includeSettingsRevision===true){const revision=state?.revision;if(Number.isSafeInteger(revision)&&(revision as number)>0)profile.settingsRevision=revision as number;}return profile;};
+  try{const state=settings?.[IMAGE_SETTINGS_READ_CURRENT]();value.liveEnabled=Boolean(live&&state?.configuration.enabled&&state?.secret.configured);const liveItem=value.items[1];if(liveItem){liveItem.enabled=value.liveEnabled;liveItem.name=value.liveEnabled?'OpenAI Images · 需逐次确认':'OpenAI Images · 未启用';withRevision(liveItem,state);}}catch{/* settings absence is not readiness */}
+  try{const state=customSettings?.[IMAGE_SETTINGS_READ_CURRENT]();if(state&&isCompleteCustomImageConfiguration(state.configuration)){const enabled=Boolean(compatible&&state.configuration.enabled&&state.secret.configured);value.items.push(withRevision({providerId:'openai-compatible',model:state.configuration.model,name:enabled?'自定义 Images · 需逐次确认':'自定义 Images · 未启用',enabled,isMock:false,evidence:'offline-tested-not-live',options:state.configuration.options},state));value.liveEnabled||=enabled;}}catch{/* settings absence is not readiness */}
+  try{const state=comfySettings?.[COMFY_SETTINGS_READ_CURRENT]();if(state&&isCompleteComfyImageConfiguration(state.configuration)){const enabled=Boolean(comfyConnector&&state.configuration.enabled&&state.readiness.checked);value.items.push(withRevision({providerId:'comfy-local',model:state.configuration.model,name:enabled?'ComfyUI 本机 · 逐次确认':'ComfyUI 本机 · 尚未检查',enabled,isMock:false,evidence:'offline-tested-not-live',options:state.configuration.options},state));value.liveEnabled||=enabled;}}catch{/* settings absence is not readiness */}
+  return value;
+}
+
 interface ImageAttempt {readonly id: string; readonly projectId: string; readonly local: boolean;resumeRequested?:boolean}
 interface ImageOwnerRecord {
  readonly root: string;
@@ -125,6 +138,8 @@ const asReceipt=(value: unknown): ImageReceipt|null=>value?value as ImageReceipt
 /** Image-specific durable lifecycle. No chat/tool authority and no generic
  * operation dispatch. Live images require dedicated settings and immutable
  * user approval; injected dependencies are trusted tests, never RPC options. */
+// S0: each real project owns this queue/connection. The historical Global
+// limits are connection-local; queuedPerProject=8 remains the tighter limit.
 export function createImageServices(store: ImageStore,{signal:ownerSignal,generate=defaultGenerate,autoRun=true,fault=noop,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,comfyModuleAvailability,assertLiveAllowed}: ImageServicesOptions={}): ImageService {
  if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
  const old=owners.get(store.db);
@@ -338,16 +353,8 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
     else change(target,{state:'outcome_unknown',errorCode:'IMAGE_OUTCOME_UNKNOWN'});});
   }catch{diagnose();}}
  }
- const profiles: ImageProfileList={items:[{providerId:'mock',model:IMAGE_MODELS.mock,name:'Mock 本地图像流程测试',enabled:true,isMock:true,evidence:'deterministic-mock',options:{...IMAGE_FIXED_OPTIONS}},{providerId:'openai',model:IMAGE_MODELS.openai,name:'OpenAI Images · 未启用',enabled:false,isMock:false,evidence:'offline-tested-not-live',options:{...IMAGE_FIXED_OPTIONS}}],liveEnabled:false};
- function listProfiles(input: {includeSettingsRevision?: boolean}={}): ImageProfileList {
-  const value=structuredClone(profiles);
-  const withRevision=(profile: ImageProfileItem,state: {revision?: unknown}|undefined): ImageProfileItem=>{if(input.includeSettingsRevision===true){const revision=state?.revision;if(Number.isSafeInteger(revision)&&(revision as number)>0)profile.settingsRevision=revision as number;}return profile;};
-  try{const state=settings?.[IMAGE_SETTINGS_READ_CURRENT]();value.liveEnabled=Boolean(live&&state?.configuration.enabled&&state?.secret.configured);const liveItem=value.items[1];if(liveItem){liveItem.enabled=value.liveEnabled;liveItem.name=value.liveEnabled?'OpenAI Images · 需逐次确认':'OpenAI Images · 未启用';withRevision(liveItem,state);}}catch{/* settings absence is not readiness */}
-  try{const state=customSettings?.[IMAGE_SETTINGS_READ_CURRENT]();if(state&&isCompleteCustomImageConfiguration(state.configuration)){const enabled=Boolean(compatible&&state.configuration.enabled&&state.secret.configured);value.items.push(withRevision({providerId:'openai-compatible',model:state.configuration.model,name:enabled?'自定义 Images · 需逐次确认':'自定义 Images · 未启用',enabled,isMock:false,evidence:'offline-tested-not-live',options:state.configuration.options},state));value.liveEnabled||=enabled;}}catch{/* settings absence is not readiness */}
-  try{const state=comfySettings?.[COMFY_SETTINGS_READ_CURRENT]();if(state&&isCompleteComfyImageConfiguration(state.configuration)){const enabled=Boolean(comfyConnector&&state.configuration.enabled&&state.readiness.checked);value.items.push(withRevision({providerId:'comfy-local',model:state.configuration.model,name:enabled?'ComfyUI 本机 · 逐次确认':'ComfyUI 本机 · 尚未检查',enabled,isMock:false,evidence:'offline-tested-not-live',options:state.configuration.options},state));value.liveEnabled||=enabled;}}catch{/* settings absence is not readiness */}
-  return value;
- }
- const handlers: Record<string,(input: unknown,context?: {signal?: AbortSignal|null; [key: string]: unknown})=>unknown>={...reviews.handlers,...remote.handlers,'image.profile.list':(input: unknown)=>listProfiles(isRecord(input)?input:{}) ,...history.handlers,...Object.fromEntries(IMAGE_MUTATION_OPERATIONS.map(operation=>[operation,(input: unknown)=>mutateWithSource(operation,input as unknown as ImageMutationInput)]))};
+
+ const handlers: Record<string,(input: unknown,context?: {signal?: AbortSignal|null; [key: string]: unknown})=>unknown>={...reviews.handlers,...remote.handlers,'image.profile.list':(input: unknown)=>listImageProfiles({settings,customSettings,comfySettings,liveGateway:live,customGateway:compatible,comfyConnector},isRecord(input)?input:{}) ,...history.handlers,...Object.fromEntries(IMAGE_MUTATION_OPERATIONS.map(operation=>[operation,(input: unknown)=>mutateWithSource(operation,input as unknown as ImageMutationInput)]))};
  const removeResumer=setAgentTaskJobResumer(db,'image',runId=>{for(const row of db.prepare(`SELECT t.id,t.projectId FROM image_tasks t JOIN ${mioTable(db,'origins')} o ON o.kind='image' AND o.jobId=t.id AND o.projectId=t.projectId WHERE o.runId=? AND t.state='queued' AND t.dispatched=0 ORDER BY t.createdAt,t.id`).all(runId)){const entry=pending.get(String(row.id));if(entry)entry.resumeRequested=true;else enqueue(String(row.id),String(row.projectId),false);}});
  const removeStopper=setAgentTaskJobStopper(db,'image',(runId,stepId)=>{for(const row of db.prepare(`SELECT t.id,t.projectId,t.revision FROM image_tasks t JOIN ${mioTable(db,'origins')} o ON o.kind='image' AND o.jobId=t.id AND o.projectId=t.projectId WHERE o.runId=? AND (? IS NULL OR o.stepId=?) AND t.state IN ('queued','interrupted_before_dispatch') AND t.dispatched=0 ORDER BY t.id`).all(runId,stepId??null,stepId??null))withAgentTaskJobOrigin(db,'image',String(row.id),()=>{
   try{handlers['image.task.cancelQueued']!({projectId:String(row.projectId),taskId:String(row.id),expectedRevision:Number(row.revision),requestId:`agent-stop:${runId}:${String(row.id)}`});}
@@ -361,7 +368,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
  async function drain(): Promise<void> {removeResumer();removeStopper();if(!stopped){stopped=true;controller.abort();reviews.stop();queue.length=0;}await Promise.all([boundedShutdown(Promise.allSettled([...active]),'IMAGE_STOP_TIMEOUT'),remote.drain()]);}
  for(const operation of Object.keys(handlers)){if(Object.hasOwn(history.handlers,operation))continue;const handler=handlers[operation];if(!handler)continue;handlers[operation]=(input: unknown)=>{if(!schemaPresent())fail('IMAGE_SCHEMA_REQUIRED',503);return handler(input);};}
  const approveReviewed=(approval: unknown): unknown=>{const input=reviews.readForApproval(approval);return mutateWithSource('image.generate',input as unknown as ImageMutationInput,approval);};
- const service: ImageService={handlers,drain,approveReviewed:approveReviewed as ImageService['approveReviewed'],rejectReview:reviews.reject};
+ const service: ImageService={handlers,drain,isBusy:()=>active.size>0||pending.size>0,approveReviewed:approveReviewed as ImageService['approveReviewed'],rejectReview:reviews.reject};
  owners.set(db,{root:store.root,signal:ownerSignal,generate,autoRun,fault,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,comfyModuleAvailability,service});
  reconcile();remote.reconcile();return service;
 }

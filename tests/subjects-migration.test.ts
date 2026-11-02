@@ -21,7 +21,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {mkdtempSync,rmSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import {createServices,hash, type ServiceStore} from '../packages/business/src/services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {bootstrapEditTaskSchema,migrateSubjectEditTasks} from '../packages/business/src/edit-task-schema.ts';

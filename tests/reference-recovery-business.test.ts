@@ -5,15 +5,15 @@ asset(patch?:Record<string,unknown>):FixtureAsset;image(patch?:Record<string,unk
 import type {MediaProcessEvent} from '../packages/business/src/media-processes.ts';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {MediaEdge, TypedServices, TypedStore} from './helpers/strict-service-responses.ts';
+import type {ReferenceMutationResponse} from '../packages/contracts/src/reference-acknowledgement.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {Worker} from 'node:worker_threads';
 import {AppError,REFERENCE_RESPONSE_BYTES,hasRequestNotAppliedProof} from '@mioon/contracts';
-import {openStore, type WorkspaceStore} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore as openHistoricalWorkspaceStore, type WorkspaceStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {DatabaseSync, type SQLOutputValue} from 'node:sqlite';
@@ -54,7 +54,7 @@ async function fixture(t: test.TestContext,{open=openStore}:{open?:(root:string)
  t.after(async()=>{store.close();await rm(root,{recursive:true,force:true});});return f;
 }
 const attach=(f: Awaited<ReturnType<typeof fixture>>,node: Pick<MediaNode,'id'|'revision'>,shot: Pick<MediaShot,'id'|'revision'>,patch={})=>({projectId:f.projectId,sourceNodeId:node.id,targetShotId:shot.id,expectedSourceRevision:node.revision,expectedShotRevision:shot.revision,requestId:randomUUID(),role:'first_frame',...patch});
-const detach=(f: Awaited<ReturnType<typeof fixture>>,edge: MediaEdge,shot: Pick<MediaShot,'id'|'revision'>,patch={})=>({projectId:f.projectId,edgeId:edge.id,expectedShotRevision:shot.revision,requestId:randomUUID(),...patch});
+const detach=(f: Awaited<ReturnType<typeof fixture>>,edge: Pick<MediaEdge,'id'>,shot: Pick<MediaShot,'id'|'revision'>,patch={})=>({projectId:f.projectId,edgeId:edge.id,expectedShotRevision:shot.revision,requestId:randomUUID(),...patch});
 async function rejected(f: Awaited<ReturnType<typeof fixture>>,operation: string,input: unknown,{code='INVALID_REFERENCE_RECORD',proof=false,writes=false,call=f.call}:{code?:string|null;proof?:boolean;writes?:boolean;call?:(operation:string,input:unknown)=>Promise<unknown>}={}){
  const before=f.capture(),changes=f.changes(),events: (MediaProcessEvent)[]=[],off=onMediaProcess(event=>events.push(event));
  try{
@@ -96,7 +96,7 @@ test('lost ACKs, no-op attach, detached historical edges and later rebinding rep
  assert.deepEqual(f.store.db.prepare('SELECT * FROM reference_requests ORDER BY requestId').all(),bytes);
  // A store opened without the lock is a second connection: it opens only after the owner's store has closed.
  f.store.close();
- const independent=(openStore(f.root,{lock:false}) as TypedStore);try{
+ const independent=(openStore(f.root) as TypedStore);try{
   const service=(createServices(independent,new Map()) as TypedServices);for(const [operation,input,response] of receipts)assert.deepEqual(await service.call(operation,input),response);
  }finally{independent.close();}
 });
@@ -270,17 +270,19 @@ test('fresh no-op attach rolls back a receipt-triggered extra binding without re
 
 test('commit uncertainty, failed transaction entry and incomplete rollback never emit not-applied proof',async t=>{
  const f=await fixture(t),{input,node,shot}=await prepared(f,'reference.attach');
- const uncertain=(createServices(({...f.store,tx:(fn: () => unknown)=>{f.store.tx(fn);throw new AppError('REVISION_CONFLICT','Synthetic lost ACK',409);}} as unknown as Parameters<typeof createServices>[0]),new Map()) as TypedServices);
+ const faulted=(tx:WorkspaceStore['tx']):TypedServices=>{const previous=f.store.tx;f.store.tx=tx;try{return createServices(f.store,new Map()) as TypedServices;}finally{f.store.tx=previous;}};
+ const firstTransaction=f.store.tx.bind(f.store);
+ const uncertain=faulted(fn=>{firstTransaction(fn);throw new AppError('REVISION_CONFLICT','Synthetic lost ACK',409);});
  await assert.rejects(uncertain.call('reference.attach',input),error=>(error as Failure).code==='REVISION_CONFLICT'&&(error as Failure).details?.mutationOutcome===undefined);
  const saved=JSON.parse((f.store.db.prepare('SELECT response FROM reference_requests WHERE requestId=?').get(input.requestId)!.response as string));
  f.restart();assert.deepEqual(await f.call('reference.attach',input),saved);
  const stale=attach(f,node,shot,{requestId:randomUUID(),expectedSourceRevision:2});
- const noEntry=(createServices(({...f.store,tx:()=>{throw new AppError('REVISION_CONFLICT','Transaction did not begin',409);}} as unknown as Parameters<typeof createServices>[0]),new Map()) as TypedServices);
+ const noEntry=faulted(()=>{throw new AppError('REVISION_CONFLICT','Transaction did not begin',409);});
  await rejected(f,'reference.attach',stale,{code:'REVISION_CONFLICT',call:(operation: string,input: unknown)=>noEntry.call(operation,input)});
- const failedRollback=(createServices(({...f.store,tx:(fn: () => unknown)=>{f.store.db.exec('BEGIN IMMEDIATE');return fn();}} as unknown as Parameters<typeof createServices>[0]),new Map()) as TypedServices);
+ const failedRollback=faulted(fn=>{f.store.db.exec('BEGIN IMMEDIATE');return fn();});
  await rejected(f,'reference.attach',stale,{code:'REVISION_CONFLICT',call:(operation: string,input: unknown)=>failedRollback.call(operation,input)});
  assert.equal(f.store.db.isTransaction,true);f.store.db.exec('ROLLBACK');
- const replacedError=(createServices(({...f.store,tx:(fn: () => unknown)=>{try{return f.store.tx(fn);}catch{throw new AppError('REVISION_CONFLICT','Different transaction failure',409);}}} as unknown as Parameters<typeof createServices>[0]),new Map()) as TypedServices);
+ const transaction=f.store.tx.bind(f.store),replacedError=faulted(fn=>{try{return transaction(fn);}catch{throw new AppError('REVISION_CONFLICT','Different transaction failure',409);}});
  await rejected(f,'reference.attach',stale,{code:'REVISION_CONFLICT',call:(operation: string,input: unknown)=>replacedError.call(operation,input)});
 });
 
@@ -303,7 +305,7 @@ test('fixed through24 retention triggers bootstrap additively, preserve legacy b
 });
 
 test('current52 startup refuses missing reference retention guards without repairing or rewriting retained evidence',async t=>{
- const f=await fixture(t),{input}=await prepared(f,'reference.attach');await f.call('reference.attach',input);
+ const f=await fixture(t,{open:openHistoricalWorkspaceStore}),{input}=await prepared(f,'reference.attach');await f.call('reference.attach',input);
  f.store.db.prepare('INSERT INTO reference_requests VALUES(?,?,?)').run('legacy-preserved-key','old-hash',' { "legacy": true, "spacing": "preserve" } ');
  f.store.db.exec('DROP TRIGGER reject_reference_request_replacement; DROP TRIGGER retain_reference_requests;');
  const before=rawSnapshot(f.store.db);
@@ -322,14 +324,12 @@ test('schema-valid maximally escaped shots remain attachable and replayable with
  assert.equal(f.store.db.prepare('SELECT response FROM reference_requests WHERE requestId=?').get(input.requestId)!.response,receipt);
 });
 
-test('independent SQLite writers return one exact receipt and competing fresh keys get pre-write proof',async t=>{
+test('one exclusive project host writers writers return one exact receipt and competing fresh keys get pre-write proof',async t=>{
  const f=await fixture(t),{input,node}=await prepared(f,'reference.attach');
- const source=`const {parentPort,workerData}=require('node:worker_threads');(async()=>{const {openStore}=await import(workerData.db);const {createServices}=await import(workerData.services);const store=openStore(workerData.root,{lock:false});parentPort.postMessage({ready:true});parentPort.once('message',async()=>{try{parentPort.postMessage({response:await createServices(store,new Map()).call(workerData.operation,workerData.input)});}catch(error){parentPort.postMessage({code:error.code,details:error.details});}finally{store.close();}});})();`;
- async function race(operation: string,inputs: unknown[]){
-  const workers=inputs.map((input: unknown)=>new Worker(source,{eval:true,workerData:{root:f.root,operation,input,db:new URL('../packages/business/src/db.ts',import.meta.url).href,services:new URL('../packages/business/src/services.ts',import.meta.url).href}}));
-  t.after(()=>Promise.all(workers.map((worker: Worker)=>worker.terminate())));
-  await Promise.all(workers.map((worker: Worker)=>new Promise<{response?:{edge:MediaEdge;shot:MediaShot};code?:string;details:{mutationOutcome:string}}>((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);})));const pending=workers.map((worker: Worker)=>new Promise<{response?:{edge:MediaEdge;shot:MediaShot};code?:string;details:{mutationOutcome:string}}>((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);}));
-  workers.forEach((worker: Worker)=>worker.postMessage('go'));return Promise.all(pending);
+ assert.throws(()=>openStore(f.root),{code:'PROJECT_LOCKED'});
+ async function race(operation: string,inputs: unknown[]):Promise<{response?:ReferenceMutationResponse;code?:string;details:{mutationOutcome:string}}[]>{
+  return Promise.all(inputs.map(async input=>{try{return {response:await f.call(operation==='reference.attach'?'reference.attach':'reference.detach',input),details:{mutationOutcome:''}};}
+   catch(error){const failure=error as Failure;return {code:failure.code,details:{mutationOutcome:String(failure.details?.mutationOutcome??'')}};}}));
  }
  const results=await race('reference.attach',[input,input]);assert.ok(results[0].response);assert.deepEqual(results[0].response,results[1].response);
  const {edge,shot}=results[0].response,remove=detach(f,edge,shot),released=await race('reference.detach',[remove,remove]);

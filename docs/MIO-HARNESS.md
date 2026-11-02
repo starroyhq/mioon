@@ -1,6 +1,6 @@
 # Mio harness：当前执行、记录和计量
 
-更新：2026-11-02。H1–H4、流式检查点和 X 线能力已实施；本分支包含 R1 的记录、运行时及用量/存储计量。R1 的合并仍须等待 S0 P4，合并前重新取最终 main 并验证。规范文件与界面不属于本轮实现。
+更新：2026-11-02。H1–H4、流式检查点和 X 线能力已实施；本分支包含 R1 的记录、运行时及用量/存储计量，已合进 S0 P4 的项目宿主接线，三张 R1 卡由 R1-C PR 一起合入。规范文件与界面不属于本轮实现。
 
 执行与恢复约定见 [AGENT-TASKS-V2](AGENT-TASKS-V2.md)，记录格式见 [MIO-RECORDS](MIO-RECORDS.md)。本文描述当前代码，历史的 2026-10-26 全目录请求、逐 delta 复制事件和容量基线不再作为现状。
 
@@ -77,7 +77,7 @@ GET /api/projects/<projectId>/agent/tasks/v2/<runId>/usage
 
 严格 v1 DTO 位于 `mio-run-usage.ts`：运行身份/修订、派发数、完成/失败/未知/进行中数量、四字段各自的 `knownTotals`、逐字段覆盖率与溢出标志。显式 0 与缺失的 null 不同。只有 input/cache-read 覆盖完整、input > 0 且 read ≤ input 时才返回 cacheReadRate，否则为 null。
 
-client 提供 `usage({projectId,runId})`，校验 DTO 和运行身份。GET 不计步、不写库、不调用模型或供应商。S0 P4 前沿 K2 项目地址映射进入现有处理函数，不增加旧地址的 usage 兼容入口。原 status、snapshot、events、控制回执仍不夹带 usage、原请求或 provider output。没有新增界面、CLI 命令或模型工具目录项。
+client 提供 `usage({projectId,runId})`，校验 DTO 和运行身份。GET 不计步、不写库、不调用模型或供应商，经 P4 项目宿主租约进入对应处理函数，不增加旧地址的 usage 兼容入口。原 status、snapshot、events、控制回执仍不夹带 usage、原请求或 provider output。没有新增界面、CLI 命令或模型工具目录项。
 
 ## 项目存储计量与配额
 

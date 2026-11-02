@@ -33,6 +33,7 @@ export interface SceneServicesOptions {
  fault?: SceneFault;
 }
 export interface SceneService {
+ readonly isBusy: ()=>boolean;
  readonly handlers: Readonly<Record<string,(input: unknown)=>unknown>>;
  readonly drain: ()=>Promise<void>;
 }
@@ -505,6 +506,6 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
    await Promise.allSettled([...active]);if([...attemptSignals].some(attemptSignal=>hasUnconfirmedMediaProcesses({signal:attemptSignal})))assertMediaTerminated([{status:'unconfirmed'}]);
   })(),'SCENE_STOP_TIMEOUT');draining=result;void result.catch(()=>{if(draining===result)draining=undefined;});return result;
  }
- const service: SceneService={handlers,drain};registration.service=service;owners.set(db,registration);
+ const service: SceneService={handlers,drain,isBusy:()=>active.size>0||pending.size>0};registration.service=service;owners.set(db,registration);
  try{reconcile();}catch(cause){owners.delete(db);removeResumer();removeStopper();throw cause;}return service;
 }

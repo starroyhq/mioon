@@ -24,9 +24,10 @@ const cube = 'LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 
 const file = () => new File([cube], 'restart.cube');
 const token = 'synthetic-desktop-lut-restart-token';
 const channel = 'development';
-function scope(dataDir: string) {
+function scope(dataDir: string, projectId: string) {
+  dataDir=path.join(dataDir,'records',projectId);
   const directory = storage.validatePrivateDirectory(dataDir);
-  const db = storage.validateManagedFile(path.join(dataDir, 'workbench.sqlite'), { root: dataDir });
+  const db = storage.validateManagedFile(path.join(dataDir, 'history.db'), { root: dataDir });
   assert.ok(directory && db);
   return calculateWorkspaceScope({ channel, root: dataDir, directory, db });
 }
@@ -102,13 +103,13 @@ interface RendererSessionOptions {userData: string; dataDir: string; projectId: 
 interface BackendClient {rpc(operation: string, input?: unknown): Promise<Record<string, unknown>>}
 function rendererSession({ userData, dataDir, projectId, backend, fault }: RendererSessionOptions) {
   let alive = true;
-  const workspaceScope = scope(dataDir), instanceId = randomUUID();
+  const workspaceScope = scope(dataDir, projectId), instanceId = randomUUID();
   const calls: Array<Record<string, unknown>> = [], replies: unknown[] = [], edits: unknown[] = [], writes: unknown[] = [];
   let dispatchedImports = 0, generatedIds = 0;
   const event = { url: backend.url, partition: randomUUID() };
   const host = createDesktopLutRecoveryHost({
     ownerForEvent: (input: unknown) => input === event ? { projectId, isCurrent: () => alive } : null,
-    currentWorkspaceScope: () => { assert.ok(alive); return scope(dataDir); },
+    currentWorkspaceScope: () => { assert.ok(alive); return scope(dataDir, projectId); },
     createStore: (guard: () => void) => {
       const store = createDesktopLutRecoveryStore({ userData, storage: storage as unknown as Parameters<typeof createDesktopLutRecoveryStore>[0]['storage'], guard });
       return { read: (identity: unknown) => store.read(identity as never), verify: (value: unknown) => store.verify(value as never),

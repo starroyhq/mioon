@@ -248,7 +248,7 @@ for(const status of ['queued','submitting'])for(const drift of ['relational-owne
  const f=await fixture(t,{providerId:'veo',image:true}),job=await f.submit(),other=await foreignProject(t,'Unrelated owner');
  const saved=f.store.get('jobs',job.id)!;saved.status=status;f.store.put('jobs',saved);
  if(drift==='relational-owner')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(other.id,job.id));
- else if(drift==='json-owner')f.store.put('jobs',{...saved,projectId:other.id});
+ else if(drift==='json-owner')withoutForeignKeys(f.store.db,()=>f.store.put('jobs',{...saved,projectId:other.id}));
  else withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(other.id,f.shot.id));
  const before=rawGenerationState(f),log=t.mock.method(console,'error',()=>{});
  await f.tick();await f.tick();await f.stop();assert.deepEqual(rawGenerationState(f),before);assert.equal(f.posts(),0);
@@ -266,7 +266,7 @@ for(const drift of ['deleted-job','json-identity','snapshot','revision','coheren
   else if(drift==='revision')f.store.put('jobs',{...saved,revision:saved.revision+1});
   else {
    for(const [table,id] of [['jobs',job.id],['shots',f.shot.id],['assets',f.asset.id]] as const){
-    f.store.put(table,{...f.store.get(table,id),projectId:other.id});withoutForeignKeys(f.store.db,()=>f.store.db.prepare(`UPDATE ${table} SET projectId=? WHERE id=?`).run(other.id,id));
+    withoutForeignKeys(f.store.db,()=>f.store.put(table,{...f.store.get(table,id),projectId:other.id}));withoutForeignKeys(f.store.db,()=>f.store.db.prepare(`UPDATE ${table} SET projectId=? WHERE id=?`).run(other.id,id));
    }
   }
   afterTamper=rawGenerationState(f);return submit(snapshot,context);

@@ -20,7 +20,7 @@ import {lookPackInspectInputSchema,lookPackInspectResponseSchema,isLookPackInspe
 import {LUT_RESOURCE_PROFILE,lutRestorePolicy} from '../packages/contracts/src/lut-resources.ts';
 import {schemas,operationEffect,effectAnnotations} from '../packages/contracts/src/index.ts';
 import {createClient,discoverSchema} from '../packages/client/src/index.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';

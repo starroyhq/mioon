@@ -7,7 +7,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {randomUUID} from 'node:crypto';
 import {restoreWorkspaceBackup,inspectWorkspaceRestorePublication} from '../packages/business/src/workspace-restore.ts';
 import {createWorkspaceBackup,verifyWorkspaceBackup, type WorkspaceBackupResult} from '../packages/business/src/workspace-backup.ts';
-import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {installWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';
 import {workspaceRestoreOfflineResultSchema,workspaceRestorePublicationStatusSchema} from '../packages/contracts/src/workspace-restore-offline.ts';
 import {restoreFixture,tree,logical,secret,refreshDatabaseManifest,runRestoreChild,repo} from './helpers/workspace-restore-offline-fixture.ts';

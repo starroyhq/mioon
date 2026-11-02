@@ -39,11 +39,15 @@ Mio 的新记录层位于每个项目的本机 `history.db`，与项目内容文
 
 R1-A 在 S0 P1 的内核和固定格式 72 推导工具上实现窄升级、新 Mio 领域及过程修订路由，并保留 S0 P2 负责的八处表探测和应用授权范围。R1-B 在 P2 合入后 merge main，再通过其连接身份接缝选择新 Mio 表，保留应用授权范围与全局 policy 语义。现有执行引擎在真实内核 store 下也默认创建新 journal，当前服务器项目装配因此可以消费新记录层。
 
-R1 的 PR 可以先取得 CI 和审查，但须等待 S0 P4 合入后，合进最新 main 并再次通过 CI，再由协调人合并。
+S0 P4 已合入。本分支把 R1-A、R1-B、R1-C 与 P4 作为一组验证，由包含前三张卡的 R1-C PR 一起合入；不单独部署只建新表而仍读旧 journal 的中间状态。全局放行策略的 CAS 和回执继续由 B1 应用库持有，应用 doctor 使用同一份纯工具目录；文字诊断结束后仍向应用 documents 写严格五字段摘要。
+
+项目行校验读取新的 `mio_*`，核对三库外键、内容序号、内容及过程修订、规范记录引用与哈希，并校验 B1 的全局策略和回执。doctor 使用 v2 项目清单，不把应用的两张全局表计入项目。
 
 ## 冻结装配与原件生命周期
 
 `mio-journal.ts` 从规范 entries 投影当前运行、步骤和历史，不把整段运行或事件正文反复写回。模型的原 provider output 是规范来源；文本、工具调用和来源能力从它与该请求的冻结视图派生。未完成模型只保存当前 partial 检查点，`mio_events` 只保存轮次、序号和时间，SSE 仍返回经过脱敏的快照。
+
+跨轮上下文只在 SQL 中提取所需的原消息、说明、回答、最终文本及有界执行摘要，不重建历史模型请求，也不把完整 provider metadata、before/after 或 undo 载入 JavaScript。详细快照和执行恢复仍按完整来源验证并重建请求。可信发送前检查拒绝请求时，只复位逻辑步骤；随后可记为失败并保留原件与派发边界，不能把明确未发送的尝试记成结果未知。
 
 `mio-assembly.ts` 的 collector 在 intent 事务中冻结配置、有效协议包装、工具 schema、baseline 和 entry 来源。描述符按 entry 身份和 JSON 路径引用正文、思考签名及原参数字符串，保留字段顺序和确定的压缩视图。纯函数 `assembleRequest(version, snapshot)` 只序列化冻结值，不读取数据库、文件、当前配置或目录，也不生成时间和身份。清原件后，重建需逐项验证来源和内容哈希，再核对请求字节数与 SHA-256；缺引用、损坏或未知版本都报错，不返回近似请求。
 
@@ -55,7 +59,7 @@ R1 的 PR 可以先取得 CI 和审查，但须等待 S0 P4 合入后，合进�
 
 `mio-runtime.ts` 的 `createMioRuntime` 接受真实内核 `ProjectStore`、设置与授权端口、工具、网关和全局 policy 的结构型端口，复用现有执行引擎。每次构造拥有独立的 executor、取消和关闭状态，不引用 server 类型，不打开第二条数据库连接。`createMioRuntimePort` 再接收调用方提供的 HTTP/SSE 适配器，返回 `handle`、`isBusy`、`interrupt`、`drain`、`dispose` 五方法；中断同时关闭流和 executor，排空等待两者结束。
 
-宿主先 interrupt，再 drain，最后 dispose 并关闭自己持有的 store；runtime 不替宿主关闭连接。S0 最终 composition、项目租约与 HTTP/SSE 接线仍由 S0 收尾。R1-A 与 R1-B 须在 S0 P4 后接连合入，不能单独部署只含新表而仍使用旧 journal 的中间状态。
+宿主先 interrupt，再 drain，最后 dispose 并关闭自己持有的 store；runtime 不替宿主关闭连接。服务器通过 P4 的项目宿主管理器持有项目租约和真实内核连接，再装配该运行时与 HTTP/SSE 端口。
 
 ## 每轮用量：规范来源与只读子资源
 
@@ -63,7 +67,7 @@ R1 的 PR 可以先取得 CI 和审查，但须等待 S0 P4 合入后，合进�
 
 `mio-run-usage.ts` 的严格 v1 DTO 只公开 runId、revision、派发/结果数量、逐字段 knownTotals、覆盖率/溢出和 cacheReadRate。全未知的字段为 null，明确报告零才是 0；input 包含缓存分项，不把 cache 再相加。只有 input/cache-read 完整且 input>0、read<=input 时返回命中率。无效/溢出计数不阻断任务完成，也不伪装成零。
 
-读取地址是 `GET /api/projects/<projectId>/agent/tasks/v2/<runId>/usage`，client 使用 `usage({projectId,runId})`。S0 P4 前复用 K2 的项目地址映射与现有 handler，旧地址不增加 usage 入口。它不计步、不写库、不调用模型，不把原请求、provider raw usage 或其他项目记录带入响应；原有 snapshot/events/控制回执继续保持私密边界。不新增界面或 CLI 命令。
+读取地址是 `GET /api/projects/<projectId>/agent/tasks/v2/<runId>/usage`，client 使用 `usage({projectId,runId})`，经项目宿主租约进入对应处理函数，旧地址不增加 usage 入口。它不计步、不写库、不调用模型，不把原请求、provider raw usage 或其他项目记录带入响应；原有 snapshot/events/控制回执继续保持私密边界。不新增界面或 CLI 命令。
 
 ## 每项目清单与归档边界
 

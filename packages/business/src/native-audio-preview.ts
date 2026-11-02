@@ -13,6 +13,9 @@ export interface NativeAudioPreviewPlanService {
   readonly handlers: {'timeline.audioPreview.plan': (input: AudioPreviewPlanInput) => Promise<unknown>;
     'timeline.audioPreview.continuousPlan'?: (input: AudioPreviewPlanInput) => Promise<unknown>};
   retireSessionById?(sessionId:string):Promise<void>;
+  /** Backend-only lifetime hook; called after every source settled, or after
+   * a rejected plan. No command/proof/signature format changes. */
+  retireProject?(projectId:string):void | Promise<void>;
 }
 /** These callbacks are trusted in-process plumbing, never renderer input. finish
  * closes only the HTTP invocation gate; it cannot settle original source work. */
@@ -138,7 +141,9 @@ export function createNativeAudioPreviewAuthority(rawConfig: NativeAudioConfig):
           }
           if (lease.stage === 'preparing') lease.stage = 'retained';
         } catch {lease.failure = 'UNAVAILABLE';}
-        finally {if (lease.failure && lease.stage === 'preparing' && current === lease) current = undefined;}
+        finally {if (lease.failure && lease.stage === 'preparing' && current === lease) {
+          await bound.retireProject?.(lease.request.input.projectId); current = undefined;
+        }}
       })();
     }
     const lease = current;
@@ -169,6 +174,7 @@ export function createNativeAudioPreviewAuthority(rawConfig: NativeAudioConfig):
         // work, but its own response and invocation still need exact settlement.
         while(lease.sources.size)await Promise.all([...lease.sources].map(source=>source.settled));
         if (lease.cleanupUnconfirmed) {lease.stage = 'blocked'; return false;}
+        try {await service!.retireProject?.(lease.request.input.projectId);} catch {lease.cleanupUnconfirmed=true;lease.stage='blocked';return false;}
         if (current === lease) {lastRetired = lease.request; current = undefined;}
         return true;
       })();

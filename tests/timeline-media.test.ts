@@ -1,5 +1,5 @@
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
-import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
+import {projectMediaPath,projectApiPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureExport, FixtureExportRecord, FixtureTimeline, FixtureAsset} from './helpers/strict-timeline-core-types.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
@@ -94,6 +94,7 @@ async function fixture(t: test.TestContext) {
     assert.equal(response.status, 200); const bytes = Buffer.from(await response.arrayBuffer());
     const file = path.join(evidence, name); await writeFile(file, bytes); return file;
   }
+  const projectDirectory=async(projectId:string):Promise<string>=>{const response=await fetch(base+projectApiPath(projectId,'workspace-info'),{headers:{authorization:`Bearer ${token}`}});assert.equal(response.status,200);const value=await response.json() as {data:{dataDirectory:string}};assert.equal(typeof value.data.dataDirectory,'string');return value.data.dataDirectory;};
   const storage = async (projectId: string) => (await read(projectId)).rows;
   async function importFile(projectId: unknown, name: string, mimeType?: unknown) {
     return rpc('asset.import', { projectId, name, mimeType, dataBase64: (await readFile(path.join(root, name))).toString('base64') });
@@ -114,7 +115,7 @@ async function fixture(t: test.TestContext) {
     await stop(); (records as typeof records & {finishedAt:(string)}).finishedAt = new Date().toISOString(); (records as typeof records & {result:("passed" | "failed_or_incomplete")}).result = records.checks.length && records.checks.every(c => ((c as typeof c & {result:("passed" | "failed_or_incomplete")}) as unknown as {result:("passed" | "failed_or_incomplete")}).result === 'passed') ? 'passed' : 'failed_or_incomplete';
     await writeFile(path.join(evidence, 'acceptance.json'), JSON.stringify(records, null, 2)); await rm(root, { recursive: true, force: true });
   });
-  await start(); return { root, base, start, stop, rpc, exportUntil, finish, download, storage, importFile, project };
+  await start(); return { root, base, start, stop, rpc, exportUntil, finish, download, storage, importFile, project,projectDirectory };
 }
 
 async function check<T extends object>(t:test.TestContext,name:string,fn:()=>Promise<T>) {
@@ -310,11 +311,11 @@ test('multitrack v2 real-media rendering acceptance', { timeout: 600_000 }, asyn
     const p = await f.project('V2 source bytes tamper guard'), red = await f.importFile(p.id, 'red.png', 'image/png');
     await p.mutate('timeline.clip.add', { trackId: (p.timeline.tracks.find((track) => track.kind === 'video'))!.id, assetId: red.id, startFrame: 0, durationFrames: 30 });
     const rawAsset = JSON.parse((await f.storage(p.id)).assets.find(row => row.id === red.id)!.data as string) as FixtureAsset;
-    await writeFile(path.join(f.root, rawAsset.relativePath), await readFile(path.join(f.root, 'blue.png')));
+    await writeFile(path.join(await f.projectDirectory(p.id), rawAsset.relativePath), await readFile(path.join(f.root, 'blue.png')));
     const job = await p.render(), failed = await f.exportUntil(p.id,job.id, (((j: { status: string; }) => ['succeeded', 'failed'].includes(j.status)) as unknown as Parameters<typeof f.exportUntil>[2])) as FixtureExport;
     assert.equal(failed.status, 'failed', JSON.stringify(failed)); assert.equal((failed.assetId as unknown), null); assert.equal((failed.url as unknown), null); assert.match((failed.error)!.message, /hash|bytes|snapshot|哈希|快照|校验/i);
     assert.equal((failed.snapshot.assets.find((a) => a.id === red.id))!.sha256, red.sha256);
-    return { exportId: failed.id, error: failed.error, expectedSha256: red.sha256, tamperedSha256: sha(await readFile(path.join(f.root, rawAsset.relativePath))) };
+    return { exportId: failed.id, error: failed.error, expectedSha256: red.sha256, tamperedSha256: sha(await readFile(path.join(await f.projectDirectory(p.id), rawAsset.relativePath))) };
   });
 
   await check(t, 'durable running timeline render recovers after actual backend SIGKILL', async () => {

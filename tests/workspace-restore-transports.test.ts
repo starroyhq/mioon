@@ -16,7 +16,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {startLegacyRestoredDomainHttp} from './fixtures/legacy-restored-domain-http.ts';
+import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
@@ -44,7 +45,7 @@ async function cli(t: { after: (arg0: () => Promise<void>) => void; },args: stri
 }
 async function fixture(t: test.TestContext){
  const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-restored-transports-')),source=path.join(base,'source'),backup=path.join(base,'backup'),root=path.join(base,'branch');
- let backend: Awaited<ReturnType<typeof startServer>>,proxy: import('node:http').Server,mcp: Client;let droppedRoute: string|null|undefined=null;const observed: { route: string|undefined; status: number; body: import("./helpers/strict-workspace-boundary-types.ts").WireEnvelope<import('./helpers/strict-opacity-fixture-types.ts').OpacityTaskEnvelope>; }[]=[],requests: { route: string|undefined; method: string|undefined; body: unknown; }[]=[];let mediaStarts=0;
+ let backend: Awaited<ReturnType<typeof startLegacyRestoredDomainHttp>>,proxy: import('node:http').Server,mcp: Client;let droppedRoute: string|null|undefined=null;const observed: { route: string|undefined; status: number; body: import("./helpers/strict-workspace-boundary-types.ts").WireEnvelope<import('./helpers/strict-opacity-fixture-types.ts').OpacityTaskEnvelope>; }[]=[],requests: { route: string|undefined; method: string|undefined; body: unknown; }[]=[];let mediaStarts=0;
  const off=onMediaProcess(event=>{if(event.type==='started')mediaStarts++;});
  t.after(async()=>{await mcp?.close();if(proxy){proxy.closeAllConnections();await new Promise(resolve=>proxy.close(resolve));}await backend?.close();off();fs.rmSync(base,{recursive:true,force:true});});
  const store=(openStore(source) as unknown as FixtureStore),services=(createServices(store,new Map()) as unknown as FixtureServices),tasks=(createEditTasks({store,services}) as unknown as import("./helpers/strict-opacity-fixture-types.ts").OpacityTasks);
@@ -61,8 +62,10 @@ async function fixture(t: test.TestContext){
  await (createWorkspaceBackup({source,destination:backup}) as Promise<import('./helpers/strict-workspace-boundary-types.ts').WorkspaceBackupResult>);const untouched={source:tree(source),backup:tree(backup)};
  const restored=await (restoreWorkspaceBackup({directory:backup,destination:root}) as Promise<import('./helpers/strict-workspace-boundary-types.ts').WorkspaceRestoreResult>),origin=restored.workspaceOrigin;
  const captured=database(root,(((db: { prepare: (arg0: string) => { (): unknown; new(): unknown; all: { (): unknown; new(): unknown; }; get: { (arg0: string): unknown; new(): unknown; }; }; })=>({jobs:db.prepare('SELECT * FROM jobs ORDER BY id').all(),task:db.prepare('SELECT * FROM edit_tasks WHERE id=?').get(pending.task.id),receipt:db.prepare('SELECT * FROM timeline_requests WHERE requestId=?').get(oldInput.requestId)})) as unknown as Parameters<typeof database>[1]));
- const forbidden=()=>{throw Error('Restored transport touched executing runtime');};
- const start=()=>startServer(({dataDir:root,port:0,token,agentSettings:{get:forbidden,put:forbidden,close:forbidden},chatGateway:forbidden,imageNetwork:{request:forbidden},comfyNetwork:{httpRequest:forbidden}} as unknown as Parameters<typeof startServer>[0]));
+ const rejectedTree=tree(root);
+ await assert.rejects(startServer({dataDir:root,port:0,token}),{code:'VALIDATION_ERROR',status:400});
+ assert.deepEqual(tree(root),rejectedTree,'production rejects the old workspace before migration or runtime construction');
+ const start=()=>startLegacyRestoredDomainHttp({root,token});
  backend=await start();
  proxy=http.createServer(async(req,res)=>{
   try{
@@ -122,5 +125,9 @@ test('restored origin is an explicit mismatch guard across real authenticated ro
  for(const route of ['/api/agent/settings','/api/images/settings','/api/images/custom-settings','/api/images/comfy-settings'] as const){const result=await f.raw(route);assert.equal(result.error.code,'RESTORE_OPERATION_UNAVAILABLE');}
  assert.equal((await f.rpc('job.retry',{jobId:(f.db((db)=>db.prepare('SELECT id FROM jobs LIMIT 1').get()) as {id:string}).id,requestId:randomUUID()})).error.code,'RESTORED_RECORD_HELD');
  assert.equal((await f.rpc('workspace.backup.inspect',{})).error.code,'RESTORE_OPERATION_UNAVAILABLE');
+ const taskCount=f.db(db=>db.prepare('SELECT count(*) AS n FROM edit_tasks').get()!.n);
+ const unlisted=await f.raw(projectApiPath(f.project.id,'tasks','prepare'),{projectId:f.project.id,operation:'timeline.track.remove',origin:'new',input:{projectId:f.project.id,requestId:randomUUID(),expectedRevision:f.timeline.revision,trackId:f.timeline.tracks[0].id},expectedWorkspaceOrigin:f.origin});
+ assert.equal(unlisted.error.code,'RESTORE_OPERATION_UNAVAILABLE');
+ assert.equal(f.db(db=>db.prepare('SELECT count(*) AS n FROM edit_tasks').get()!.n),taskCount,'the finite fixture refuses unlisted intents before a durable write');
  assert.equal(f.mediaStarts(),0);f.assertPreserved();
 });

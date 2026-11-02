@@ -11,12 +11,11 @@ export const PRIVATE = 'SOURCE_RANGE_PRIVATE_FIXTURE_MARKER';
 
 async function seed(root: string): Promise<void> {
   await seedMutationStore(root);
-  const {openStore} = await import('../../packages/business/src/db.ts');
-  const {createServerProject, projectDirFor, withoutForeignKeys} = await import('./project-database.ts');
+  const {createServerProject, openServerProject, projectDirFor, withoutForeignKeys} = await import('./project-database.ts');
   const asset = (id: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({id, projectId: IDS.project, name: 'Metadata-only range fixture',
     mimeType: 'video/mp4', duration: 2, width: 720, height: 1280, hasVideo: true, hasAudio: false,
     provenance: 'user-import', sha256: '2'.repeat(64), createdAt: NOW, ...extra});
-  const store = openStore(projectDirFor(root, IDS.project));
+  const store = openServerProject(root, IDS.project);
   try {
     // The shared mutation fixture's zero-track timeline is an intentionally
     // opaque preservation sentinel, not a service-produced aggregate. This
@@ -42,10 +41,7 @@ async function seed(root: string): Promise<void> {
       corrupt.put('assets', asset(id, {projectId: RANGE_IDS.corruptProject, name: PRIVATE,
         relativePath: `media/${PRIVATE}.mp4`, url: `https://private.invalid/${PRIVATE}`}));
     }
-    withoutForeignKeys(corrupt.db, () => {
-      corrupt.db.prepare('UPDATE assets SET data=json_set(data,\'$.projectId\',?) WHERE id=?').run(IDS.other, RANGE_IDS.mismatchedOwner);
-      corrupt.db.prepare('UPDATE assets SET data=json_set(data,\'$.id\',?) WHERE id=?').run(IDS.otherAsset, RANGE_IDS.mismatchedId);
-    });
+
   } finally { corrupt.close(); }
 }
 
@@ -59,7 +55,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const root = process.env.MIOON_DATA_DIR;
   if (!root || process.argv[2] !== 'server') throw Error('An isolated range-wire server fixture is required');
   const dataRoot: string = root;
-  if (!fs.existsSync(path.join(dataRoot, 'workbench.sqlite'))) await seed(dataRoot);
+  if (!fs.existsSync(path.join(dataRoot, 'app-library.db'))) await seed(dataRoot);
   const {startServer} = await import('../../apps/server/src/index.ts');
   const {readProjectState, changeMarks} = await import('./project-state.ts');
   let inspect: InspectProject|undefined;
@@ -71,9 +67,12 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     if (typeof message?.id !== 'string') return;
     let reply: unknown;
     try {
-      if (message.type !== 'storage') throw Error('Unsupported range fixture message');
+      const corrupting=message.type==='corrupt-sources';
+      if((!corrupting&&message.type!=='storage')||Object.keys(message).some(key=>!(corrupting?['type','id']:['type','id','projectId']).includes(key)))throw Error('Unsupported range fixture message');
       if (!inspect) throw Error('The server has not handed over its connection');
-      const data = inspect(String(message.projectId), db => ({rows: readProjectState(db).tables, version: changeMarks(db)}));
+      const data = inspect(corrupting?RANGE_IDS.corruptProject:String(message.projectId), db => {
+        if(corrupting){db.prepare("UPDATE assets SET data=json_set(data,'$.projectId',?) WHERE id=?").run(IDS.other,RANGE_IDS.mismatchedOwner);db.prepare("UPDATE assets SET data=json_set(data,'$.id',?) WHERE id=?").run(IDS.otherAsset,RANGE_IDS.mismatchedId);}
+        return ({projectDir:path.dirname(String(db.prepare('PRAGMA database_list').all().find(row=>String(row.file).endsWith('.mioon'))!.file)),rows: readProjectState(db).tables, version: changeMarks(db)});});
       reply = {type: 'reply', id: message.id, data};
     } catch (error) {
       const failure = error as {code?: unknown; message?: unknown}|null;

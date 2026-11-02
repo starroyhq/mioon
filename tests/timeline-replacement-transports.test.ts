@@ -1,3 +1,4 @@
+import {createProjectStorageReader,corruptReplacementSourceOwner} from './fixtures/project-server-process.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import type {MediaShot} from './helpers/strict-service-responses.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
@@ -24,7 +25,7 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient} from '../packages/client/src/index.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createServerProject, openProjectDatabase, projectDirFor, withoutForeignKeys} from './helpers/project-database.ts';
-import type { ChildProcessByStdio } from 'child_process';
+import type { ChildProcess } from 'node:child_process';
 import type { Readable } from 'stream';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -158,7 +159,7 @@ async function backendFixture(t: test.TestContext) {
   // Synthetic metadata only; every timeline mutation below uses real transports.
   // Succeeded jobs cannot trigger provider work and no media files are needed.
   store.close();
-  let backend!: ChildProcessByStdio<null,Readable,Readable>, url!: string, port = 0;
+  let backend!: ChildProcess,readStorage!:ReturnType<typeof createProjectStorageReader>, url!: string, port = 0;
   async function stop() {
     if (!backend || backend.exitCode !== null || backend.signalCode) return;
     const child = backend, ended = once(child, 'exit'); child.kill('SIGTERM');
@@ -168,7 +169,9 @@ async function backendFixture(t: test.TestContext) {
   t.after(async () => { await stop(); await rm(root, {recursive: true, force: true}); });
   async function start() {
     let stdout = '', stderr = '', spawnError;
-    backend = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.ts')], {cwd: repo, env: environment({MIOON_DATA_DIR: root, PORT: String(port), MIOON_TOKEN: token}), stdio: ['ignore', 'pipe', 'pipe']});
+    backend = spawn(process.execPath, [path.join(repo, 'tests/fixtures/project-server-process.ts')], {cwd: repo, env: environment({MIOON_DATA_DIR: root, PORT: String(port), MIOON_TOKEN: token}), stdio: ['ignore', 'pipe', 'pipe', 'ipc']});
+    assert.ok(backend.stdout&&backend.stderr);
+    readStorage=createProjectStorageReader(backend);
     backend.once('error', error => spawnError = error);
     backend.stdout.setEncoding('utf8').on('data', bytes => stdout += bytes); backend.stderr.setEncoding('utf8').on('data', bytes => stderr += bytes);
     const deadline = Date.now() + 20000;
@@ -200,12 +203,13 @@ async function backendFixture(t: test.TestContext) {
       assert.equal(body.ok, !expectedError, JSON.stringify(body));
       if (expectedError) { assert.equal(body.error.code, expectedError); return body.error; } return body.data;
     },
-    // Timeline storage and the tables outside it, read between a stop and a start of the backend on the same port.
+    // Observe the active owner's actual native connection, including deliberately
+    // corrupt evidence that a new kernel opener must correctly refuse.
     async storage() {
-      const state = await stopped(db => ({timeline: rows(db, ['timelines', 'timeline_history', 'timeline_history_cursors', 'timeline_requests']), outside: rows(db, outsideTables)}));
-      await start();
-      return state;
+      const state=await readStorage(projectId),select=(tables:readonly string[])=>Object.fromEntries(tables.map(table=>[table,state.rows[table]]));
+      return {timeline:select(['timelines','timeline_history','timeline_history_cursors','timeline_requests']),outside:select(outsideTables)};
     },
+    corruptSourceOwner:()=>corruptReplacementSourceOwner(backend,{projectId,assetId:assets.generated.id,foreignProjectId}),
   };
 }
 
@@ -296,7 +300,7 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
     [request(projectId, timeline, {clipId, assetId: assets.video.id, extra: true}), 'VALIDATION_ERROR'],
     [{...firstInput, assetId: assets.generated.id}, 'IDEMPOTENCY_CONFLICT'],
     [{...explicitInput, versionId: undefined}, 'IDEMPOTENCY_CONFLICT'],
-    [{...firstInput, projectId: backend.foreignProjectId}, 'IDEMPOTENCY_CONFLICT'],
+    [{...firstInput, projectId: backend.foreignProjectId}, 'CLIP_NOT_FOUND'],
     [{...firstInput, requestId: randomUUID()}, 'REVISION_CONFLICT'],
   ] as const);
   const {timeline: beforeErrors, outside: outsideErrors} = await backend.storage();
@@ -350,9 +354,11 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
   // A later definite 4xx is not proof that an earlier lost-ack mutation failed.
   // Corrupt only this disposable stopped fixture, never an active backend DB.
   const receipt = persisted.timeline_requests.find(row => row.requestId === uncertainInput.requestId);
+  assert.ok(receipt&&typeof receipt.requestId==='string'&&typeof receipt.requestHash==='string'&&typeof receipt.response==='string');
+  const receiptKey=receipt.requestId,receiptHash=receipt.requestHash;
   const installReceipt = (db:DatabaseSync, text:string) => {
-    db.prepare('DELETE FROM timeline_requests WHERE requestId=?').run((receipt)!.requestId);
-    db.prepare('INSERT INTO timeline_requests(requestId,requestHash,response) VALUES(?,?,?)').run((receipt)!.requestId, (receipt)!.requestHash, text);
+    db.prepare('DELETE FROM timeline_requests WHERE requestId=?').run(receiptKey);
+    db.prepare('INSERT INTO timeline_requests(requestId,requestHash,response) VALUES(?,?,?)').run(receiptKey, receiptHash, text);
   };
   await backend.restart((db?: unknown) => {
     const malformed = JSON.parse((((receipt)!.response) as unknown as Parameters<NonNullable<(typeof JSON)["parse"]>>[0]));
@@ -370,9 +376,10 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
   assert.deepEqual((await backend.storage()).timeline, deniedState);
   await backend.restart((((db: { prepare: (arg0: string) => { (): unknown; new(): unknown; run: { (arg0: unknown,arg1: string): void; new(): unknown; }; }; }) => {
     installReceipt(db as unknown as DatabaseSync, (((receipt)!.response) as unknown as Parameters<NonNullable<typeof installReceipt>>[1]));
-    // The asset is moved to the other project as a corrupt file would hold it.
-    withoutForeignKeys(db as unknown as DatabaseSync, () => db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(backend.foreignProjectId, assets.generated.id));
+
   }) as unknown as Parameters<typeof backend.restart>[0]));
+  assert.deepEqual(await backend.http('timeline.get',{projectId}),timeline,'open the actual host before the fixed ownership fault');
+  assert.deepEqual(await backend.corruptSourceOwner(),{moved:1},'one fixed ownership fault on the actual held native connection');
   const denied = await backend.storage();
   deniedState = denied.timeline;
   const deniedOutside = denied.outside;

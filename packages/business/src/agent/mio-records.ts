@@ -357,10 +357,15 @@ export function createMioRecords(store: ProjectStore) {
   }); }
   function failRequest(id: string, state: 'failed' | 'unknown', at: string): MioRequest { return write(() => {
     const old = request(id), item = step(old.stepId);
-    if (old.state !== 'dispatch_started' || item.currentRequestId !== old.id || item.status !== 'dispatch_started') fail('AGENT_TASK_STATE_CONFLICT');
+    // A trusted beforeSubmit denial resets only the logical step. Keep the
+    // immutable dispatch boundary while allowing its observed failure to close
+    // the request; it cannot turn that proven non-send into an unknown result.
+    const prevention = object(item.data) ? item.data.data : undefined;
+    const prevented = state === 'failed' && item.status === 'intent' && prevention !== undefined && object(prevention) && prevention.dispatchPrevented === true;
+    if (old.state !== 'dispatch_started' || item.currentRequestId !== old.id || item.status !== 'dispatch_started' && !prevented) fail('AGENT_TASK_STATE_CONFLICT');
     validated(dateSchema, at);
     db.prepare('UPDATE mio_requests SET state=?,completedAt=? WHERE id=?').run(state, at, id);
-    updateStepInside(item.id, 'dispatch_started', {status: state, updatedAt: at});
+    updateStepInside(item.id, item.status, {status: state, updatedAt: at});
     updateMioRunUsageSummary(store, item.runId); return request(id);
   }); }
   function changes(runId: string): AgentTaskChange[] {

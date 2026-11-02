@@ -65,7 +65,7 @@ async function fixture(t: test.TestContext){
     input:{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',...(value.draft?.raw.deliveryName?{deliveryName:value.draft.raw.deliveryName}:{})}});
   // The running server holds the project, so rows are read on its own connection.
   const rows=()=>inspect(project.id,db=>({exports:db.prepare('SELECT id,data FROM exports ORDER BY rowid').all(),receipts:db.prepare('SELECT requestId,response FROM timeline_requests ORDER BY rowid').all()}));
-  return {root,project,timeline,get,call,name,prepare,rows,get url(){return server.url;},file:path.join(root,'local-delivery-v1.json'),
+  return {root,project,timeline,get,call,name,prepare,rows,get url(){return server.url;},file:path.join(created.store.localDir,'local-delivery-v1.json'),
     async restart(){await server.close();await start();},
     async dropNextExecution(){
       const observed=Promise.withResolvers<WireResponse<WireExecution>>();

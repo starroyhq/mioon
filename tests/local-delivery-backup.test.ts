@@ -10,7 +10,7 @@ import path from 'node:path';
 import {randomUUID,randomBytes} from 'node:crypto';
 import {schemas,isTimelineMutationResponse,hasRequestNotAppliedProof,publicValue} from '@mioon/contracts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
-import {openStore,ownsStoreLock,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore,ownsStoreLock,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
 import {createLocalDelivery,LOCAL_DELIVERY_FILENAME} from '../packages/business/src/local-delivery.ts';
 import {createTimelineRecoveryBoundary,readTimelineReceipt} from '../packages/business/src/timeline-recovery.ts';

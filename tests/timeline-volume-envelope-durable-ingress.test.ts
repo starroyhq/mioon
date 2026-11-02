@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {assertTimelineVolumeEnvelopeWorkspace} from '../packages/business/src/timeline-volume-envelope-admission.ts';
 import {initializeFrozenUpgradeFixtureSchema} from './helpers/opacity-upgrade-fixture.ts';
@@ -18,7 +18,7 @@ const add=()=>({projectId:id,expectedRevision:1,requestId:'live-envelope-request
 const update=()=>({projectId:id,expectedRevision:1,requestId:'live-envelope-request',clipId:id,patch:{volumeEnvelope:{profileId,points:points()}}});
 function fixture(t: test.TestContext,{seedProject=false}={}){
  // Approved disposable synthetic fixture, confined to this isolated checkout.
- const root=mkdtempSync(path.join(process.cwd(),'.tmp-envelope-ingress-')),store=(openStore(root) as FixtureStore);
+ const root=mkdtempSync(path.join(process.cwd(),'.tmp-envelope-ingress-')),store=((seedProject?openLegacyWorkspaceStore:openStore)(root) as FixtureStore);
  t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
  const tasks=(createEditTasks({store,services:{call(){throw Error('Preparation must never dispatch.');}}}) as StrictTimelineTasks);
  if(seedProject){

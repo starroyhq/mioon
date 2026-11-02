@@ -1,3 +1,4 @@
+import {expectedContentMetadata} from './helpers/kernel-content-metadata.ts';
 import test from 'node:test';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import type {Readable} from 'node:stream';
@@ -272,7 +273,7 @@ test('annotations share authenticated HTTP, CLI and official MCP, with replay af
  const targets=before.agent_task_target_revisions_v2 as Record<string, unknown>[];
  assert.equal(targets.some(row=>row.projectId===IDS.project&&row.kind==='asset_annotation'&&row.targetId===IDS.asset),false);
  const expectedTargets=[...targets,{projectId:IDS.project,kind:'asset_annotation',targetId:IDS.asset,revision:2}];
- const after=await backend.storage();for(const [table,rows] of Object.entries(before))if(!['asset_annotations','asset_annotation_requests'].includes(table))
-  assert.deepEqual(after[table],table==='agent_task_target_revisions_v2'?expectedTargets:rows,table);
+ const after=await backend.storage(),metadata=expectedContentMetadata(before,after);for(const [table,rows] of Object.entries(before))if(!['asset_annotations','asset_annotation_requests'].includes(table))
+  assert.deepEqual(after[table],table==='agent_task_target_revisions_v2'?expectedTargets:metadata[table]??rows,table);
  assert.equal(await backend.audit(),'');
 });

@@ -16,7 +16,9 @@ import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {openStore} from '../packages/business/src/db.ts';
+import {createServerProject} from './helpers/project-database.ts';
+import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 
@@ -28,12 +30,12 @@ const request=(timeline: FixtureTimeline)=>({projectId:timeline.projectId,expect
 test('ripple HTTP durable tasks, actual CLI and official MCP agree on strict schema, undo and exact replay', {timeout:90000},async t=>{
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-ripple-transports-'));
  const env={...mediaEnvironment(process.env),MIOON_ENABLE_LIVE_PROVIDER:'0'};
- const store=(openStore(root) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices);
- const projectId=(await services.call('project.create',{name:'Ripple transports'})).id,assetId=randomUUID();
+ const created=createServerProject(root,{name:'Ripple transports'}),store=(created.store as unknown as FixtureStore),library=openAppLibrary({dataDir:root}),services=(createServices(created.store,new Map(),{application:createProjectServiceApplication(library)}) as FixtureServices);
+ const projectId=created.projectId,assetId=randomUUID();
  store.put('assets',{id:assetId,projectId,name:'Synthetic image',mimeType:'image/png',width:720,height:1280,sha256:'a'.repeat(64),relativePath:`media/${assetId}.fixture`});
  let timeline=await services.call('timeline.get',{projectId});
  for(const startFrame of ([0,30] as const))timeline=await services.call('timeline.clip.add',{...request(timeline),assetId,trackId:timeline.tracks[0].id,startFrame,durationFrames:10});
- const clipId=timeline.clips[0].id,following=timeline.clips[1].id;store.close();
+ const clipId=timeline.clips[0].id,following=timeline.clips[1].id;await services.drain();store.close();library.close();
  const backend=spawn(process.execPath,[path.join(repo,'apps/server/src/cli.ts')],{cwd:repo,env:{...env,MIOON_DATA_DIR:root,PORT:'0',MIOON_TOKEN:token},stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='';
  backend.stdout.setEncoding('utf8').on('data',value=>stdout+=value);backend.stderr.setEncoding('utf8').on('data',value=>stderr+=value);

@@ -75,34 +75,38 @@ const IDENTITY_READS = new Set(['isProjectDatabase', 'isProjectFileHeld']);
 /** Named imports preserve the read-only business boundary. A namespace,
  * dynamic import, require or re-export could otherwise expose registration
  * functions under an alias, including through the package's wildcard export. */
-function heldFileRegistryViolations(source: string, file: string): string[] {
+function heldFileRegistryViolations(source: string, file: string, rowContext = false): string[] {
+  const target = rowContext ? path.join(REPOSITORY, 'packages/business/src/agent/task-row-validation-context.ts') : HELD_FILES;
+  const owner = rowContext ? path.join(REPOSITORY, 'packages/business/src/agent/task-project-row-validation-v2.ts') : CONNECTION;
+  const reads = rowContext ? new Set(['agentTaskRowValidationContext']) : IDENTITY_READS;
+  const alias = rowContext ? '@mioon/business/agent/task-row-validation-context' : '@mioon/business/project-file/held-files';
   const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
   const violations: string[] = [];
   const isLeaf = (specifier: ts.Expression): boolean => {
     if (!ts.isStringLiteralLike(specifier)) return false;
-    if (specifier.text === '@mioon/business/project-file/held-files' || specifier.text === '@mioon/business/project-file/held-files.ts') return true;
-    return path.resolve(path.dirname(file), specifier.text) === HELD_FILES;
+    if (specifier.text === alias || specifier.text === alias + '.ts') return true;
+    return path.resolve(path.dirname(file), specifier.text) === target;
   };
   const refuse = (node: ts.Node): void => {violations.push(`${parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1}: ${node.getText(parsed)}`);};
   const visit = (node: ts.Node): void => {
     if (ts.isImportDeclaration(node) && isLeaf(node.moduleSpecifier)) {
       const clause = node.importClause;
-      if (clause?.isTypeOnly || file === CONNECTION) return;
+      if (clause?.isTypeOnly || file === owner) return;
       const bindings = clause?.namedBindings;
-      if (clause?.name || !bindings || !ts.isNamedImports(bindings) || bindings.elements.some(item => !item.isTypeOnly && !IDENTITY_READS.has((item.propertyName ?? item.name).text))) refuse(node);
+      if (clause?.name || !bindings || !ts.isNamedImports(bindings) || bindings.elements.some(item => !item.isTypeOnly && !reads.has((item.propertyName ?? item.name).text))) refuse(node);
       return;
     }
     if (ts.isExportDeclaration(node) && node.moduleSpecifier && isLeaf(node.moduleSpecifier)) {
       if (node.isTypeOnly) return;
-      if (!node.exportClause || !ts.isNamedExports(node.exportClause) || node.exportClause.elements.some(item => !item.isTypeOnly && !IDENTITY_READS.has((item.propertyName ?? item.name).text))) refuse(node);
+      if (!node.exportClause || !ts.isNamedExports(node.exportClause) || node.exportClause.elements.some(item => !item.isTypeOnly && !reads.has((item.propertyName ?? item.name).text))) refuse(node);
       return;
     }
     if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || ts.isIdentifier(node.expression) && node.expression.text === 'require') && node.arguments[0] && isLeaf(node.arguments[0])) {
-      if (file !== CONNECTION) refuse(node);
+      if (file !== owner) refuse(node);
       return;
     }
     if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference) && node.moduleReference.expression && isLeaf(node.moduleReference.expression)) {
-      if (!node.isTypeOnly && file !== CONNECTION) refuse(node);
+      if (!node.isTypeOnly && file !== owner) refuse(node);
       return;
     }
     ts.forEachChild(node, visit);
@@ -214,4 +218,23 @@ test('production code exposes only read-only project identities outside the conn
     }
   }
   assert.deepEqual(offenders, [], 'Only project-file/connection.ts may own the live-file registry; business code receives read-only identity queries');
+});
+
+test('only the real project/application adapter can register row validation context', () => {
+  const business = path.join(REPOSITORY, 'packages/business/src/zz-validation-probe.ts'), leaf = './agent/task-row-validation-context.ts';
+  for (const source of [
+    `import {registerAgentTaskRowValidationContext as bind} from '${leaf}';`,
+    `export {registerAgentTaskRowValidationContext} from '${leaf}';`, `export * from '${leaf}';`,
+    `import * as context from '${leaf}';`, `const context = await import('${leaf}');`,
+    `const context = require('${leaf}');`, `import context = require('${leaf}');`,
+    "import {registerAgentTaskRowValidationContext} from '@mioon/business/agent/task-row-validation-context';",
+  ]) assert.equal(heldFileRegistryViolations(source, business, true).length, 1, source);
+  assert.deepEqual(heldFileRegistryViolations(`import {agentTaskRowValidationContext} from '${leaf}';`, business, true), []);
+  const offenders: string[] = [];
+  for (const top of [...SCANNED, 'tests']) {
+    const directory = path.join(REPOSITORY, top);
+    if (!existsSync(directory)) continue;
+    for (const file of sourceFiles(directory)) for (const violation of heldFileRegistryViolations(readFileSync(file, 'utf8'), file, true)) offenders.push(`${relativePath(file)}:${violation}`);
+  }
+  assert.deepEqual(offenders, [], 'Only task-project-row-validation-v2.ts may bind actual project/application row validation');
 });

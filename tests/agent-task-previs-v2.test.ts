@@ -1,3 +1,4 @@
+import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
@@ -27,12 +28,12 @@ async function fixture(t:TestContext){
  const call=async<T=Row>(operation:string,input:unknown):Promise<T>=>await services.call(operation,input) as T;
  const projectId=(await call<{id:string}>('project.create',{name:'Previs tools'})).id;
  const journal=createAgentTaskJournal(store),tools=createAgentTaskTools({store,services});
- const run=journal.create({requestId:randomUUID(),projectId,text:'synthetic previs task',configuration:{}}).run;
+ const run=journal.create({requestId:randomUUID(),projectId,text:'synthetic previs task',configuration:mioFixtureConfiguration}).run;
  t.after(async()=>{tools.dispose();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
  const name=(operation:string)=>tools.list().find(tool=>tool.operation===operation)!.name;
  async function execute(operation:string,input:Row){
   const prepared=tools.prepare({projectId,operation:name(operation),input});
-  const step=journal.beginStep(run.id,{kind:'tool',tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:name(operation),arguments:JSON.parse(JSON.stringify(input)) as AgentTaskJson}});
+  const step=beginFixtureToolStep(journal,run.id,{tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:name(operation),arguments:JSON.parse(JSON.stringify(input)) as AgentTaskJson}});
   journal.markDispatch(run.id,step.id);
   const outcome=await tools.execute(prepared,{runId:run.id,stepId:step.id,requestId:step.id,beforeEffect:()=>journal.assertTargets(projectId,prepared.targets),
    recordInside:(result,changes)=>journal.completeStepInside(run.id,step.id,{result,changes}),appendChangesInside:changes=>journal.appendChangesInside(run.id,step.id,changes)});
@@ -173,7 +174,7 @@ test('a stale scene revision fails as not applied, an editing claim stops the wr
  assert.deepEqual(f.node(node.id),node,'nothing was saved while the editor held the node');
  f.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:2,action:'release',targets:[target]});
  const input={nodeId:node.id,expectedSceneRevision:node.sceneRevision,scene},prepared=f.tools.prepare({projectId:f.projectId,operation:'mioon_previs_scene_set',input});
- const step=f.journal.beginStep(f.run.id,{kind:'tool',tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:'mioon_previs_scene_set',arguments:input as unknown as AgentTaskJson}});
+ const step=beginFixtureToolStep(f.journal,f.run.id,{tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:'mioon_previs_scene_set',arguments:input as unknown as AgentTaskJson}});
  f.journal.markDispatch(f.run.id,step.id);f.journal.updateStep(f.run.id,step.id,{status:'unknown'});
  assert.deepEqual(f.tools.recoverLocalUnknown(prepared,{runId:f.run.id,stepId:step.id,requestId:step.id}),{outcome:'not_applied',reason:'atomic_receipt_absent'});
  await f.call('previs.scene.set',{projectId:f.projectId,nodeId:node.id,expectedSceneRevision:node.sceneRevision,scene:node.scene,requestId:step.id});

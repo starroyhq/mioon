@@ -1,3 +1,4 @@
+import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import type {OrdinaryLocalDrafts} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
@@ -29,7 +30,8 @@ async function fixture(t: test.TestContext){
   timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:90});
   const clip=timeline.clips[0],key={projectId:project.id,timelineId:timeline.id,clipId:clip.id};
   const raw={name:'Raw draft 文本',trackId:clip.trackId,startFrame:'',durationFrames:'9e',sourceInFrame:'0',rect:{x:'0',y:'',width:'-1',height:720},gain:'0.',fadeInFrames:''};
-  const file=path.join(root,LOCAL_DRAFT_FILENAME),dbFile=path.join(root,'workbench.sqlite');
+  const localRoot=isProjectStore(store)?store.localDir:root;
+  const file=path.join(localRoot,LOCAL_DRAFT_FILENAME),dbFile=path.join(localRoot,isProjectStore(store)?'history.db':'workbench.sqlite');
   let owned=true,foreignScope=false,fault:(point:string)=>void=()=>{},sourceHook:()=>void=()=>{},identityHook:(target:string)=>void=()=>{},writes=0,published:Buffer|null=null;
   const storage={readPrivateFile,validatePrivateDirectory,
     validateManagedFile(target:Parameters<typeof validateManagedFile>[0],options:Parameters<typeof validateManagedFile>[1]){const info=validateManagedFile(target,options);identityHook(target);return foreignScope&&target===dbFile?{...info,ino:info!.ino+1}:info;},
@@ -39,13 +41,13 @@ async function fixture(t: test.TestContext){
     readTimeline:(id:string)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),
     readClipAsset:(id:string,value:Parameters<ReturnType<typeof createTimelineRecoveryBoundary>["clipSource"]>[0])=>{sourceHook();return createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(value);},
   };
-  const drafts=createLocalDrafts(({root,storage,guards,signal:controller.signal,fault:(point:string)=>fault(point)} as unknown as Parameters<typeof createLocalDrafts>[0])) as OrdinaryLocalDrafts;
+  const drafts=createLocalDrafts(({root:localRoot,databaseFile:dbFile,storage,guards,signal:controller.signal,fault:(point:string)=>fault(point)} as unknown as Parameters<typeof createLocalDrafts>[0])) as OrdinaryLocalDrafts;
   const snapshot=()=>{const objects=schemaObjects(store.db);return JSON.stringify({schema:objects.map(({name,sql})=>({name,sql})),tables:objects.filter(({type,name})=>type==='table'&&!name.startsWith('sqlite_')).map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all()]),changes:store.db.prepare('SELECT total_changes() n').get()!.n});};
   const initialBusiness=snapshot();
   t.after(()=>{try{assert.equal(snapshot(),initialBusiness,'draft fences must not change business records, schema, history, CAS or revisions');}finally{store.close();fs.rmSync(root,{recursive:true,force:true});}});
   const input=(response=drafts.get(key),patch={})=>({workspaceScope:response.workspaceScope,instanceId:response.instanceId,...key,expectedRevision:response.revision,baseRevision:timeline.revision,source:{assetId:asset.id,assetSha256:asset.sha256},raw,...patch});
   const deletion=(response: { workspaceScope: unknown; instanceId: unknown; revision: unknown; })=>({workspaceScope:response.workspaceScope,instanceId:response.instanceId,...key,expectedRevision:response.revision});
-  return {root,file,dbFile,key,raw,drafts,controller,input,deletion,snapshot,
+  return {root:localRoot,file,dbFile,key,raw,drafts,controller,input,deletion,snapshot,
     get writes(){return writes;},get published(){return published;},
     setFault(fn: (point:string)=>void){fault=fn;},setSourceHook(fn: ()=>void){sourceHook=fn;},setIdentityHook(fn: (target:string)=>void){identityHook=fn;},
     revoke(kind: string){if(kind==='owner')owned=false;else if(kind==='abort')controller.abort();else foreignScope=true;},

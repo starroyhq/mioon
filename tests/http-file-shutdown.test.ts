@@ -51,7 +51,7 @@ function assertHeaderDrain(result: ShutdownResult) {
   assert.equal(result.beforeClose.opened, 2); assert.equal(result.beforeClose.closed, 2); assert.equal(result.beforeClose.streams, 0);
   assert.equal(result.outcome, 'closed');
   assert.deepEqual(result.afterClose, result.beforeClose, 'header shutdown neither reopens a descriptor nor starts a stream');
-  const forceTimers = result.timers.filter((timer: { delayMs: number; }) => timer.delayMs === 3000)!;
+  const forceTimers = result.timers.filter(timer => timer.delayMs === 3000 && /apps\/server\/src\/index\.ts/.test(timer.callsite))!;
   assert.equal(forceTimers.length, 1, 'one unchanged three-second force-drain timer');
   const timer = forceTimers[0], call = result.clock.forceCalls[0];
   assert.match(timer.callsite, /apps\/server\/src\/index\.ts/);
@@ -70,9 +70,11 @@ function assertHeaderDrain(result: ShutdownResult) {
     const owner = index >= 0 ? stack[index + 1] || '' : '';
     return timer.delayMs === 5000 && /at file:.*apps\/server\/src\/index\.ts/.test(owner);
   });
-  assert.equal(serverDeadline.length, 1, 'the outer server deadline is distinct from service and worker deadlines');
-  assert.equal(serverDeadline[0].firedAt, null, 'successful closure did not fire the server timeout');
-  assert.ok(serverDeadline[0].clearedAt >= call.at, 'server deadline is cancelled after drain');
+  assert.equal(serverDeadline.length, 2, 'project/HTTP drain and application/media cleanup each have their own server deadline');
+  for (const deadline of serverDeadline) {
+    assert.equal(deadline.firedAt, null, 'successful closure did not fire either server timeout');
+    assert.ok(deadline.clearedAt >= call.at, 'each server deadline is cancelled after drain');
+  }
   for (const deadline of result.timers.filter((timer: { delayMs: number; }) => timer.delayMs === 5000)) {
     assert.equal(deadline.firedAt, null, 'successful worker/service/server budgets did not expire');
     assert.ok(deadline.clearedAt >= deadline.armedAt, 'every cleanup deadline timer was cleared');

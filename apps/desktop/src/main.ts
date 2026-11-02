@@ -2,7 +2,8 @@ import { createDesktopLutRecoveryHost } from './lut-recovery-host.ts';
 import { createDesktopLutRecoveryStore } from './lut-recovery-store.ts';
 import { CLIP_LUT_RECOVERY_CHANNEL } from '../../../packages/contracts/src/clip-lut-recovery.ts';
 import { calculateWorkspaceScope } from '../../../packages/contracts/src/workspace-scope.ts';
-import { projectRpcPath } from '../../../packages/contracts/src/project-file.ts';
+import { isProjectId, projectApiPath, projectRpcPath } from '../../../packages/contracts/src/project-file.ts';
+import { desktopAppDirectories } from '../../server/src/project-host/directories.ts';
 import { ensurePrivateDirectory, validatePrivateDirectory, validateManagedFile, readPrivateFile, removePrivateFile, writePrivateFileAtomic, createPrivateTemporaryDirectory } from '@mioon/contracts/private-storage';
 import type {ReadPrivateFileOptions} from '@mioon/contracts/private-storage';
 import { createAppLanguageHost } from './app-language-host.ts';
@@ -407,6 +408,8 @@ async function start(): Promise<DesktopStartReport> {
     startup.checkpoint();
     const tools = await toolsFromUser(startup);
     startup.checkpoint();
+    const directories = desktopAppDirectories({platform:process.platform,home:app.getPath('home'),env:process.env,appId:identity.appId,
+      dataDir:paths.dataDir,videosDir:app.getPath('videos'),userDataOverridden:process.env.MIOON_DESKTOP_USER_DATA!==undefined});
     // Main owns the single settings instance across trusted backend restarts.
     if (!agentSettings) {
       const settings = await createDesktopAgentSettings({ safeStorage, userData: app.getPath('userData'), appId: identity.appId, signal: startup.signal });
@@ -432,7 +435,7 @@ async function start(): Promise<DesktopStartReport> {
       if (!expected) incident.fail();
       if (!expected && backend === ownedBackend && !quitting) { windowHost?.refresh(); if (windowContext?.incident === incident && !smokeOutput) void backendFailed(ownedBackend, incident); }
     });
-    const started = await backend.start({ dataDir: paths.dataDir, distDir: path.join(app.getAppPath(), 'web'),
+    const started = await backend.start({ dataDir: directories.dataDir, cacheDir:directories.cacheDir, projectsDir:directories.projectsDir, distDir: path.join(app.getAppPath(), 'web'),
       subtitleResourcesDir:path.join(app.isPackaged?process.resourcesPath:app.getAppPath(),'subtitles'),token, nativeAudioPreview: nativeAudioIdentity.config });
     startup.checkpoint();
     incident.assertAlive();
@@ -449,8 +452,12 @@ async function start(): Promise<DesktopStartReport> {
     // context only after this start owns a prepared session and discovery file.
     const context = windowContext = { startup, ready: started, session: activeSession, incident } as DesktopWindowContext;
     context.appearance = createDesktopWindowAppearance<BrowserWindow>({root:paths.dataDir,channel:identity.channel,nativeTheme,signal:startup.signal,
+      databaseFile:path.join(paths.dataDir,'app-library.db'),
+      readPreferences:()=>readNativeBackendMetadata({base:started.url,token,resource:'/api/ui-preferences',signal:startup.signal,
+        check:()=>{if(!ownsWindowContext(context))throw new Error('Application preferences owner unavailable.');}}),
       storage:{validatePrivateDirectory,validateManagedFile,readPrivateFile: storageRead},isCurrent:()=>ownsWindowContext(context),
       getWindows:()=>windowHost?.windows()||[],ownsWindow:window=>ownsWindow(window,context)});
+    await context.appearance.ready();startup.checkpoint();incident.assertAlive();
     windowHost = createProjectWindowHost<BrowserWindow>({
       backendId, launcherUrl: `${started.url}/`, editorUrl: (projectId: string) => `${started.url}/?project=${projectId}`,
       isCurrent: () => ownsWindowContext(context),
@@ -481,20 +488,24 @@ async function start(): Promise<DesktopStartReport> {
     // Host authority is independent of the renderer's workspace claim and of
     // localhost's random port/session partition. Pin the existing filesystem
     // fingerprint for this backend lifetime and recompute at every boundary.
-    const currentLutWorkspaceScope = () => {
+    const currentAppScope = () => {
       if (!ownsWindowContext(context) || backend !== ownedBackend || !quitRouter.allowsWindows || context.incident.failed || backendExitObserved) throw new Error('LUT recovery owner unavailable.');
       const directory = validatePrivateDirectory(paths.dataDir);
-      const db = validateManagedFile(path.join(paths.dataDir, 'workbench.sqlite'), { root: paths.dataDir });
+      const db = validateManagedFile(path.join(paths.dataDir, 'app-library.db'), { root: paths.dataDir });
       if (!directory || !db) throw new Error('LUT recovery workspace unavailable.');
       return calculateWorkspaceScope({ channel: identity.channel, root: paths.dataDir, directory, db });
     };
-    const lutWorkspaceScope = currentLutWorkspaceScope();
+    const appScope = currentAppScope(), lutScopes = new Map<string,string>();
+    const currentLutWorkspaceScope = (projectId:string) => {
+      if(currentAppScope()!==appScope||!isProjectId(projectId))throw new Error('LUT recovery application changed.');
+      const root=path.join(paths.dataDir,'records',projectId),directory=validatePrivateDirectory(root),db=validateManagedFile(path.join(root,'history.db'),{root});
+      if(!directory||!db)throw new Error('LUT recovery project unavailable.');
+      const scope=calculateWorkspaceScope({channel:identity.channel,root,directory,db});
+      const established=lutScopes.get(projectId);if(established!==undefined&&established!==scope)throw new Error('LUT recovery project changed.');
+      lutScopes.set(projectId,scope);return scope;
+    };
     lutRecoveryHost = createDesktopLutRecoveryHost<IpcMainInvokeEvent>({
-      currentWorkspaceScope: () => {
-        const scope = currentLutWorkspaceScope();
-        if (scope !== lutWorkspaceScope) throw new Error('LUT recovery workspace changed.');
-        return scope;
-      },
+      currentWorkspaceScope: currentLutWorkspaceScope,
       ownerForEvent: event => {
         const owner = windowHost?.ownerForContents(event.sender);
         if (!owner || owner.role !== 'editor' || !owner.projectId || event.senderFrame !== owner.frame || event.senderFrame !== event.sender.mainFrame || event.senderFrame?.url !== owner.url) return null;
@@ -521,7 +532,7 @@ async function start(): Promise<DesktopStartReport> {
       chooseDirectory:async()=>{const result=await dialog.showOpenDialog({title:nt('native.chooseBackupLocation'),properties:['openDirectory','createDirectory']});return result.canceled||result.filePaths.length!==1?null:result.filePaths[0];},
       setBackupDirectory:directory=>{nativeBackendCurrent();return ownedBackend.setBackupDirectory(directory);},
       readSettings:async()=>workspaceSettingsSchema.parse(await nativeRead('/api/rpc',{operation:'workspace.settings.get',input:{}})),
-      readWorkspaceRoot:async()=>workspaceInfoSchema.parse(await nativeRead('/api/workspace-info')).dataDirectory,
+      readWorkspaceRoot:async projectId=>workspaceInfoSchema.parse(await nativeRead(projectApiPath(projectId,'workspace-info'))).dataDirectory,
       readExport:identity=>nativeRead(projectRpcPath(identity.projectId),{operation:'export.output.get',input:identity}),
       openPath:file=>shell.openPath(file),revealPath:file=>shell.showItemInFolder(file),restart,
       chooseSaveFile:async suggestedName=>{const result=await dialog.showSaveDialog({title:nt('native.saveProjectFile'),defaultPath:path.join(app.getPath('documents'),suggestedName),filters:[{name:nt('native.projectFileFilter'),extensions:['mioon']}],properties:['showOverwriteConfirmation','createDirectory']});return result.canceled||!result.filePath?null:result.filePath;},

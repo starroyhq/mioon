@@ -8,7 +8,7 @@ import {UI_PREFERENCES_LIMITS} from '../../../contracts/src/ui-preferences.ts';
 export const APP_LIBRARY_FILE = 'app-library.db';
 /** Raising it means changing the DDL below; the manifest digest in
  * tests/app-db-library.test.ts records the current structure. */
-export const APP_LIBRARY_SCHEMA_VERSION = 1;
+export const APP_LIBRARY_SCHEMA_VERSION = 2;
 /** SQLite header `application_id`: 'MioA', next to the kernel's 'MioP', 'MioH'
  * and 'MioC', so the app library is never taken for a project file. */
 export const APP_LIBRARY_APPLICATION_ID = 0x4d696f41;
@@ -31,11 +31,15 @@ export const FORMAT_72_APP_STATEMENTS: readonly string[] = Object.freeze([
 
 /** The three JSON files of the app data directory the app library takes over,
  * by their file names, with the size limits the files had. */
-export const APP_DOCUMENT_LIMITS = Object.freeze({
+export const APP_DOCUMENT_LIMITS_V1 = Object.freeze({
   'ui-preferences-v1.json': UI_PREFERENCES_LIMITS.fileBytes,
   // workspace-configuration.ts's MAX_BYTES.
   'workspace-settings-v1.json': 16 * 1024,
   'last-project-v1.json': LAST_PROJECT_LIMITS.fileBytes,
+});
+export const APP_DOCUMENT_LIMITS = Object.freeze({...APP_DOCUMENT_LIMITS_V1,
+  // Five bounded fields only; never model input, output or credentials.
+  'agent-diagnostic-summary-v1.json': 4096,
 });
 export type AppDocumentName = keyof typeof APP_DOCUMENT_LIMITS;
 export const APP_DOCUMENT_NAMES = Object.freeze(Object.keys(APP_DOCUMENT_LIMITS) as AppDocumentName[]);
@@ -46,8 +50,11 @@ export const APP_RECORD_LIMITS = Object.freeze({
   recentProject: 65536, rulesTrust: 4096, outsidePath: 32768, taskIndex: 32768, inboxItem: 262144, receiptResponse: 65536,
 });
 
-const documentNames = APP_DOCUMENT_NAMES.map(name => `'${name}'`).join(',');
-const documentLimits = Object.entries(APP_DOCUMENT_LIMITS).map(([name, bytes]) => `WHEN '${name}' THEN ${bytes}`).join(' ');
+function documentTable(limits: Readonly<Record<string, number>>): string {
+  const names = Object.keys(limits).map(name => `'${name}'`).join(',');
+  const sizes = Object.entries(limits).map(([name, bytes]) => `WHEN '${name}' THEN ${bytes}`).join(' ');
+  return `CREATE TABLE app_documents(name TEXT PRIMARY KEY NOT NULL CHECK(name IN (${names})),data TEXT NOT NULL CHECK(json_valid(data) AND length(CAST(data AS BLOB))<=CASE name ${sizes} ELSE 0 END))`;
+}
 const json = (column: string, bytes: number): string => `json_valid(${column}) AND length(CAST(${column} AS BLOB))<=${bytes}`;
 const projectIdColumn = 'projectId TEXT NOT NULL CHECK(length(CAST(projectId AS BLOB))=36)';
 
@@ -56,7 +63,7 @@ const projectIdColumn = 'projectId TEXT NOT NULL CHECK(length(CAST(projectId AS 
  * repeat fields of that JSON, and the CHECKs keep the two equal. */
 export const APP_LIBRARY_STATEMENTS: readonly string[] = Object.freeze([
   // ui-preferences-v1.json, workspace-settings-v1.json and last-project-v1.json, as they were written.
-  `CREATE TABLE app_documents(name TEXT PRIMARY KEY NOT NULL CHECK(name IN (${documentNames})),data TEXT NOT NULL CHECK(json_valid(data) AND length(CAST(data AS BLOB))<=CASE name ${documentLimits} ELSE 0 END))`,
+  documentTable(APP_DOCUMENT_LIMITS),
   // Recent projects in the order they were first registered.
   `CREATE TABLE recent_projects(position INTEGER PRIMARY KEY,projectId TEXT NOT NULL UNIQUE CHECK(length(CAST(projectId AS BLOB))=36),data TEXT NOT NULL CHECK(${json('data', APP_RECORD_LIMITS.recentProject)} AND json_extract(data,'$.projectId') IS projectId))`,
   `CREATE TABLE project_rules_trust(${projectIdColumn} PRIMARY KEY,data TEXT NOT NULL CHECK(${json('data', APP_RECORD_LIMITS.rulesTrust)} AND json_extract(data,'$.projectId') IS projectId))`,
@@ -70,8 +77,8 @@ export const APP_LIBRARY_STATEMENTS: readonly string[] = Object.freeze([
 
 /** The complete DDL in order: `schema_version`, the format-72 objects, then
  * the app library's own. */
-export const appLibraryStatements = (): readonly string[] =>
-  [APP_SCHEMA_VERSION_TABLE_SQL, ...FORMAT_72_APP_STATEMENTS, ...APP_LIBRARY_STATEMENTS];
+export const appLibraryStatements = (version: 1 | 2 = 2): readonly string[] =>
+  [APP_SCHEMA_VERSION_TABLE_SQL, ...FORMAT_72_APP_STATEMENTS, ...APP_LIBRARY_STATEMENTS.map(sql => version === 1 && sql.startsWith('CREATE TABLE app_documents(') ? documentTable(APP_DOCUMENT_LIMITS_V1) : sql)];
 
 /** One `sqlite_master` row; `sql` is null for automatic indexes. */
 export interface AppSchemaObject {
@@ -87,20 +94,36 @@ export function readAppSchema(db: DatabaseSync): AppSchemaObject[] {
   }));
 }
 
-let expected: readonly AppSchemaObject[] | undefined;
+const expected = new Map<number, readonly AppSchemaObject[]>();
 /** Every object the current DDL creates, as SQLite stores it, built once in a
  * memory database. */
-export function expectedAppSchema(): readonly AppSchemaObject[] {
-  if (expected === undefined) {
+export function expectedAppSchema(version: 1 | 2 = 2): readonly AppSchemaObject[] {
+  if (!expected.has(version)) {
     const db = new DatabaseSync(':memory:');
     try {
-      for (const sql of appLibraryStatements()) db.exec(sql);
-      expected = Object.freeze(readAppSchema(db).map(object => Object.freeze(object)));
+      for (const sql of appLibraryStatements(version)) db.exec(sql);
+      expected.set(version, Object.freeze(readAppSchema(db).map(object => Object.freeze(object))));
     } finally {
       db.close();
     }
   }
-  return expected;
+  return expected.get(version)!;
+}
+
+/** Only the exact known v1 schema is eligible. Rebuild the one whitelist in
+ * the same transaction; all existing documents and other tables keep bytes. */
+export function upgradeAppLibraryV1(db: DatabaseSync): void {
+  const differences = compareAppSchema(readAppSchema(db), expectedAppSchema(1));
+  if (differences.length) throw new Error('The app library v1 schema does not match');
+  db.exec('BEGIN');
+  try {
+    db.exec('ALTER TABLE app_documents RENAME TO app_documents_v1');
+    db.exec(documentTable(APP_DOCUMENT_LIMITS));
+    db.exec('INSERT INTO app_documents SELECT name,data FROM app_documents_v1');
+    db.exec('DROP TABLE app_documents_v1');
+    db.prepare('UPDATE schema_version SET version=? WHERE version=1').run(APP_LIBRARY_SCHEMA_VERSION);
+    db.exec('COMMIT');
+  } catch (error) { if (db.isTransaction) db.exec('ROLLBACK'); throw error; }
 }
 
 /** Differences as `missing type:name`, `unexpected type:name` and

@@ -20,7 +20,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {LOCAL_MUTATION_OPERATIONS} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore as openHistoricalWorkspaceStore} from '../packages/business/src/db.ts';
 import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 import {snapshot as rawSnapshot} from './workspace-schema26-fixtures.mjs';
 import {createServices,canonical} from '../packages/business/src/services.ts';
@@ -34,11 +34,11 @@ async function foreignProject(t:test.TestContext):Promise<FixtureProject>{
  try{return await services.call('project.create',{name:'Foreign private project'});}
  finally{await services.drain();store.close();}
 }
-async function fixture(t:test.TestContext,{open=openStore}:{open?:typeof openStore|typeof openLegacyWorkspaceStore}={}){
+async function fixture(t:test.TestContext,{open=openStore}:{open?:typeof openStore|typeof openLegacyWorkspaceStore|typeof openHistoricalWorkspaceStore}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-asset-dispositions-'));
  let store=open(root) as TypedStore,services=(createServices(store,new Map()) as TypedServices);
  const f={root,get store(){return store;},call:<O extends string>(op: O,input: unknown)=>services.call(op,input),
-  restart(){store.close();store=(openStore(root) as TypedStore);services=(createServices(store,new Map()) as TypedServices);},
+  restart(){store.close();store=((open===openStore?openStore:openHistoricalWorkspaceStore)(root) as TypedStore);services=(createServices(store,new Map()) as TypedServices);},
   asset(mimeType='video/mp4',projectId=f.project.id){return store.put('assets',{id:randomUUID(),projectId,name:'Private disposition asset',mimeType,duration:2,sha256:'a'.repeat(64),relativePath:'media/fixture',url:'/media/fixture'});},
   input(asset:Pick<DispositionAsset,"projectId"|"id">,patch={}){return {projectId:asset.projectId,assetId:asset.id,expectedRevision:0,requestId:randomUUID(),disposition:'favorite',...patch};},
  } as DispositionFixture;
@@ -110,7 +110,7 @@ test('favorite/rejected/neutral edits retain independent revisions and leave all
  await f.call('timeline.clip.add',{projectId:f.project.id,expectedRevision:timeline.revision,requestId:randomUUID(),trackId:timeline.tracks[0].id,assetId:asset.id,startFrame:0,durationFrames:30});
  await f.call('asset.range.set',{projectId:f.project.id,assetId:asset.id,expectedRevision:0,requestId:randomUUID(),inFrame:1,outFrame:30});
  const media=path.join(f.root,'media','fixture');await writeFile(media,'unchanged synthetic media');
- const before=snapshot(f,['asset_dispositions','asset_disposition_requests']),bytes=await readFile(media);
+ const before=snapshot(f,['asset_dispositions','asset_disposition_requests','project_file','history_state']),bytes=await readFile(media);
  for(const target of [asset,image,audio]){
   for(const [index,disposition] of ['neutral','favorite','rejected','neutral','neutral'].entries()){
    const result=await f.call('asset.disposition.set',f.input(target,{disposition,expectedRevision:index}));
@@ -120,7 +120,7 @@ test('favorite/rejected/neutral edits retain independent revisions and leave all
   assert.equal(before.agent_task_target_revisions_v2.some((row: { kind: string; targetId: unknown; })=>row.kind==='asset_disposition'&&row.targetId===target.id),false);
   before.agent_task_target_revisions_v2.push(Object.assign(Object.create(null),{projectId:target.projectId,kind:'asset_disposition',targetId:target.id,revision:5n}));
  }
- assert.deepEqual(snapshot(f,['asset_dispositions','asset_disposition_requests']),before);assert.deepEqual(await readFile(media),bytes);
+ assert.deepEqual(snapshot(f,['asset_dispositions','asset_disposition_requests','project_file','history_state']),before);assert.deepEqual(await readFile(media),bytes);
  assert.equal(count(f,'asset_dispositions'),3);assert.equal(count(f,'asset_disposition_requests'),15);
  assert.equal((await f.call('asset.range.get',{projectId:f.project.id,assetId:asset.id})).revision,1);
 });
@@ -341,7 +341,7 @@ test('v12 upgrade preserves all old records and response bytes and has identical
  for(const table of ['timeline_requests','reference_requests'])f.store.db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`).run(randomUUID(),'old-hash',' { "old": true, "preserve": "spacing" } ');
  f.store.db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('generation',randomUUID(),'old-hash',randomUUID());
  const schema=()=>f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
- const current=await fixture(t);
+ const current=await fixture(t,{open:openHistoricalWorkspaceStore});
  const fresh=current.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
  // Reapply the targeted additive schema and the subject namespace extension
  // whose trigger belongs to the removed table. Unrelated later schemas remain
@@ -360,42 +360,15 @@ test('v12 upgrade preserves all old records and response bytes and has identical
  const migrated=snapshot(f),migratedRaw=(rawSnapshot(f.store.db) as unknown as RawSchemaSnapshot);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual((rawSnapshot(f.store.db) as unknown as RawSchemaSnapshot),migratedRaw);assert.deepEqual(schema(),fresh);
 });
 
-// Competing processes hold and request actual BEGIN IMMEDIATE locks, so every
-// helper performs the global receipt lookup only after the winner commits.
-const childCode=`
- import {existsSync} from 'node:fs';
- import {openStore} from './packages/business/src/db.ts';
- import {createServices} from './packages/business/src/services.ts';
- const [root,operation,json,release]=process.argv.slice(1),store=openStore(root,{lock:false});
- const tx=store.tx,signal=new Int32Array(new SharedArrayBuffer(4));
- const wrapped={...store,tx:callback=>{process.send({phase:'attempt'});return tx(()=>{
-  if(release){process.send({phase:'locked'});while(!existsSync(release))Atomics.wait(signal,0,0,10);}
-  return callback();
- });}};
- const services=createServices(wrapped,new Map());process.send({phase:'ready'});
- process.once('message',async()=>{try{const value=await services.call(operation,JSON.parse(json));process.send({phase:'result',ok:true,value});}
- catch(error){process.send({phase:'result',ok:false,code:error.code,details:error.details});}
- finally{store.close();process.disconnect();}});
-`;
-function child(t: test.TestContext,f: Awaited<ReturnType<typeof fixture>>,operation: string,input: unknown,release=''){
- const proc=spawn(process.execPath,['--input-type=module','-e',childCode,f.root,operation,JSON.stringify(input),release],{cwd:path.resolve(new URL('..',import.meta.url).pathname),stdio:['ignore','pipe','pipe','ipc']});
- const messages:RaceMessage[]=[],pending: { phase: unknown; resolve:(value:RaceMessage)=>void; reject: (reason?: unknown) => void; }[]=[];let errorText='';
- proc.stderr!.setEncoding('utf8').on('data',chunk=>errorText+=chunk);
- proc.on('message',((value: RaceMessage)=>{messages.push(value);for(const p of [...pending])if(p.phase===value.phase){pending.splice(pending.indexOf(p),1);p.resolve(value);}}) as unknown as (message: import('node:child_process').Serializable) => void);
- proc.on('error',error=>{for(const p of pending.splice(0))p.reject(error);});
- proc.on('exit',(code,signal)=>{for(const p of pending.splice(0))p.reject(Error(`Race child exited ${code}/${signal}: ${errorText}`));});
- t.after(()=>{if(proc.exitCode===null)proc.kill('SIGKILL');});
- return {proc,wait:(phase: unknown)=>{const value=messages.find(v=>v.phase===phase);return value?Promise.resolve(value):new Promise<RaceMessage>((resolve,reject)=>pending.push({phase,resolve,reject}));}};
-}
 for(const [winnerOperation,loserOperation] of [['asset.disposition.set','shot.create'],['shot.create','asset.disposition.set'],['asset.disposition.set','asset.range.set'],['asset.range.set','asset.disposition.set']] as const)
- test(`two-process namespace race: ${winnerOperation} wins and ${loserOperation} conflicts`,{timeout:15000},async t=>{
+ test(`exclusive project-host namespace race: ${winnerOperation} wins and ${loserOperation} conflicts`,{timeout:15000},async t=>{
   const f=await fixture(t),asset=f.asset(),requestId=randomUUID();
   const inputs={'asset.disposition.set':f.input(asset,{requestId}),'asset.range.set':{projectId:f.project.id,assetId:asset.id,expectedRevision:0,inFrame:0,outFrame:30,requestId},'shot.create':{projectId:f.project.id,title:'Race winner',requestId}};
-  const release=path.join(f.root,'release-writer'),winner=child(t,f,winnerOperation,inputs[winnerOperation],release),loser=child(t,f,loserOperation,inputs[loserOperation]);
-  await Promise.all([winner.wait('ready'),loser.wait('ready')]);winner.proc.send('start');await winner.wait('locked');
-  loser.proc.send('start');await loser.wait('attempt');await writeFile(release,'release');
-  const [accepted,rejected]=await Promise.all([winner.wait('result'),loser.wait('result')]);
-  assert.equal(accepted.ok,true);assert.equal(rejected.ok,false);assert.equal(rejected.code,'IDEMPOTENCY_CONFLICT');assert.ok(!rejected.details.current);
+  assert.throws(()=>openStore(f.root),{code:'PROJECT_LOCKED'});
+  const [accepted,rejected]=await Promise.allSettled([f.call(winnerOperation,inputs[winnerOperation]),f.call(loserOperation,inputs[loserOperation])]);
+  assert.ok(accepted.status==='fulfilled');assert.ok(rejected.status==='rejected');
+  const failure=rejected.reason as {code:string;details?:{current?:unknown}};
+  assert.equal(failure.code,'IDEMPOTENCY_CONFLICT');assert.ok(!failure.details?.current);
   assert.equal(receiptTables.reduce((sum,table)=>sum+count(f,table),0),1);
   assert.equal(count(f,'asset_dispositions'),winnerOperation==='asset.disposition.set'?1:0);
   assert.equal(count(f,'asset_ranges'),winnerOperation==='asset.range.set'?1:0);assert.equal(count(f,'shots'),winnerOperation==='shot.create'?1:0);

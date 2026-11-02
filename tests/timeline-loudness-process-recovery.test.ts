@@ -65,18 +65,17 @@ test('SIGKILL after real loudness commit retains one history/receipt and recover
     timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),
       assetId:id,trackId:audioTrack.id,startFrame:0,durationFrames:60,gain:.75}) as TimelineView;
   }finally{await services.drain();store.close();}
-  // The active worker reads its own connection. A true SIGKILL leaves its lock,
-  // so crash evidence keeps the existing non-owner read; only a cleanly closed
-  // project can use the ordinary test connection. JSON keeps all paths equal.
+  // The active worker reads its own connection. After SIGKILL or a clean close,
+  // the test reacquires the full kernel, including recovery and native locks.
+  // JSON keeps the IPC and local snapshot shapes equal.
   const state=async(worker:WorkerHarness):Promise<ProjectState>=>{
     if(!worker.stopped)return worker.ask<ProjectState>('snapshot');
-    if(worker.stopped.signal==='SIGKILL'){const crashed=openStore(root,{lock:false});try{return JSON.parse(JSON.stringify(readProjectState(crashed.db))) as ProjectState;}finally{crashed.close();}}
     const db=openProjectDatabase(root);try{return JSON.parse(JSON.stringify(readProjectState(db))) as ProjectState;}finally{db.close();}
   };
   const receipt=(saved:ProjectState,requestId:string)=>{const row=saved.tables.timeline_requests.find(row=>row.requestId===requestId);
     return row?{requestHash:row.requestHash,response:row.response as string}:undefined;};
   const start=async (options?: {missingTools?: boolean})=>{const worker=startWorker(root,options);workers.push(worker);const ready=await deadline(worker.ready,'worker ready');
-    assert.equal(ready.pid,worker.pid);assert.notEqual(ready.pid,process.pid);assert.equal(await readFile(path.join(root,'server.lock'),'utf8'),String(worker.pid));return {worker,ready};};
+    assert.equal(ready.pid,worker.pid);assert.notEqual(ready.pid,process.pid);assert.throws(()=>openProjectDatabase(root),{code:'PROJECT_LOCKED'});return {worker,ready};};
   assert.ok(project && timeline && asset);
   const first=await start();assert.deepEqual(first.ready.startup,{processed:0,unavailable:0});
   const prepareInput={projectId:project.id,expectedRevision:timeline.revision,mixProfile:'timeline-float-mix-v1',measurementProfile:'bs1770-5-48k-stereo-fir4x-v1',
@@ -85,7 +84,7 @@ test('SIGKILL after real loudness commit retains one history/receipt and recover
   const input={...prepareInput,requestId:randomUUID(),snapshotSha256:report.identity.snapshotSha256,candidateDigest:await timelineLoudnessCandidateDigest(report)};
   const prepared=await first.worker.ask<{task:{id:string;projectId:string;digest:string;input:unknown;requestId:string}; instanceId:string}>('prepare',{projectId:project.id,operation:'timeline.loudness.apply',input,origin:'new'});
   await first.worker.ask('arm','afterBusinessCommit');await assert.rejects(first.worker.ask('execute',action(prepared)),{code:'WORKER_EXITED',signal:'SIGKILL'});
-  assert.deepEqual(await first.worker.exited,{code:null,signal:'SIGKILL'});assert.equal(await readFile(path.join(root,'server.lock'),'utf8'),String(first.worker.pid));
+  assert.deepEqual(await first.worker.exited,{code:null,signal:'SIGKILL'});assert.doesNotThrow(()=>{const recovered=openProjectDatabase(root);recovered.close();},'the real SIGKILL releases kernel locks for normal recovery');
   const crash=JSON.parse(await readFile(path.join(root,'owned-loudness-crash-proof.json'),'utf8'));
   assert.deepEqual(crash,{phase:'afterBusinessCommit',pid:first.worker.pid,liveMediaCount:0,dispatchCount:1,operation:'timeline.loudness.apply',requestId:input.requestId});
   const committed=await state(first.worker),originalRow=receipt(committed,input.requestId);assert.ok(originalRow);const original=originalRow,ack=JSON.parse(original.response);

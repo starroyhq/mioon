@@ -7,7 +7,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore,installCurrentWorkspaceRestoreSchema} from '@mioon/business/db';
+import {openLegacyWorkspaceStore as openStore,installCurrentWorkspaceRestoreSchema} from '@mioon/business/db';
 import {currentMarkerChain} from './helpers/current-schema-delta.ts';
 import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
 

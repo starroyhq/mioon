@@ -13,7 +13,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {legacyDatabase,migrate,insert,imageFixture} from './images-fixture.mjs';
 import {migrateImageSchema} from '../packages/business/src/image-schema.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import type { DatabaseSync, SQLOutputValue } from 'node:sqlite';
 const schema=(db: DatabaseSync)=>reviewedCatalogAt(60,db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name').all() as unknown as ImageSchemaObject[]);
 const rows=(db: DatabaseSync,table: SQLOutputValue)=>db.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all();

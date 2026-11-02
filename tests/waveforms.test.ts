@@ -14,7 +14,7 @@ import {tmpdir} from 'node:os';
 import {createServer} from 'node:http';
 import path from 'node:path';
 import {parse,isWaveformResponse} from '@mioon/contracts';
-import {openStore,ownsStoreLock} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore,ownsStoreLock} from '../packages/business/src/db.ts';
 import {withProbePermit} from '../packages/business/src/media-probe.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createWaveformServices,probeWaveform,WAVEFORM_ALGORITHM,WAVEFORM_CACHE_LIMITS, type WaveformService} from '../packages/business/src/waveforms.ts';
@@ -31,22 +31,22 @@ async function waitFor<T>(read: ()=>T,predicate: (value:T)=>unknown=(value)=>!['
  do{value=read();if(predicate(((value) as unknown as Parameters<typeof predicate>[0])))return value;await tick();}while(Date.now()<until);
  assert.fail(`Timed out waiting for waveform state: ${JSON.stringify(value)}`);
 }
-async function fixture(t: test.TestContext,{decode=async()=>decoded(),probe=async()=>metadata(),signal}: {decode?: (file: string,options: Parameters<WaveformDecoder>[1])=>Promise<unknown>;probe?: (file: string,options: Parameters<WaveformProbe>[1])=>Promise<unknown>;signal?: AbortSignal}={}){
- const root=await mkdtemp(path.join(tmpdir(),'mioon-waveforms-'));let store=(openStore(root) as FixtureStore),service!: TestWaveformService;
- const project={id:randomUUID(),name:'Owned project'},other={id:randomUUID(),name:'Foreign private project'};
- store.put('projects',project);store.put('projects',other);
+async function fixture(t: test.TestContext,{decode=async()=>decoded(),probe=async()=>metadata(),signal,legacy=false}: {legacy?:boolean;decode?: (file: string,options: Parameters<WaveformDecoder>[1])=>Promise<unknown>;probe?: (file: string,options: Parameters<WaveformProbe>[1])=>Promise<unknown>;signal?: AbortSignal}={}){
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-waveforms-')),open=legacy?openLegacyWorkspaceStore:openStore,opened=open(root);let store=(opened as FixtureStore),service!: TestWaveformService;
+ const project={id:'projectId' in opened?String(opened.projectId):randomUUID(),name:'Owned project'},foreign=openStore(path.join(root,'foreign-project')),other={id:foreign.projectId,name:'Foreign private project'};
+ store.put('projects',project);foreign.put('projects',other);t.after(()=>foreign.close());
  const options={decode,probe,signal};service=(createWaveformServices(store,((options) as unknown as Parameters<typeof createWaveformServices>[1])) as TestWaveformService);
  const f={root,project,other,options,get store(){return store;},get service(){return service;},
   input:(asset: { projectId: unknown; id: unknown; },extra: Record<string, unknown>={})=>({projectId:asset.projectId,assetId:asset.id,...extra}),
   call(op: keyof TestWaveformService['handlers'],input?: unknown): WaveformResponse{const result=service.handlers[op](parse(op,input));assert.ok(isWaveformResponse(result),JSON.stringify(result));return result as WaveformResponse;},
-  get(asset: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: `${string}-${string}-${string}-${string}-${string}`; name: string; mimeType: string; duration: number; hasAudio: boolean; sizeBytes: number; sha256: string; relativePath: string; url: string; },extra?: {}|undefined){return f.call('asset.waveform.get',f.input(asset,extra));},
-  request(asset: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: `${string}-${string}-${string}-${string}-${string}`; name: string; mimeType: string; duration: number; hasAudio: boolean; sizeBytes: number; sha256: string; relativePath: string; url: string; },extra?: {}|undefined){return f.call('asset.waveform.request',f.input(asset,extra));},
-  async ready(asset: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: `${string}-${string}-${string}-${string}-${string}`; name: string; mimeType: string; duration: number; hasAudio: boolean; sizeBytes: number; sha256: string; relativePath: string; url: string; }){f.request(asset);return waitFor((()=>f.get(asset)));},
+  get(asset: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: string; name: string; mimeType: string; duration: number; hasAudio: boolean; sizeBytes: number; sha256: string; relativePath: string; url: string; },extra?: {}|undefined){return f.call('asset.waveform.get',f.input(asset,extra));},
+  request(asset: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: string; name: string; mimeType: string; duration: number; hasAudio: boolean; sizeBytes: number; sha256: string; relativePath: string; url: string; },extra?: {}|undefined){return f.call('asset.waveform.request',f.input(asset,extra));},
+  async ready(asset: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: string; name: string; mimeType: string; duration: number; hasAudio: boolean; sizeBytes: number; sha256: string; relativePath: string; url: string; }){f.request(asset);return waitFor((()=>f.get(asset)));},
   async asset({projectId=project.id,bytes=randomUUID(),...patch}={}){
    const id=randomUUID(),relativePath=`media/${id}.wav`,data=Buffer.from(bytes);await writeFile(path.join(root,relativePath),data);
-   return store.put('assets',{id,projectId,name:'Private source',mimeType:'audio/wav',duration:1,hasAudio:true,sizeBytes:data.length,sha256:hash(data),relativePath,url:`/media/${id}`,...patch});
+   const put=()=>store.put('assets',{id,projectId,name:'Private source',mimeType:'audio/wav',duration:1,hasAudio:true,sizeBytes:data.length,sha256:hash(data),relativePath,url:`/media/${id}`,...patch});return projectId===project.id?put():withoutForeignKeys(store.db,put);
   },
-  async restart(){await service.drain();store.close();store=(openStore(root) as FixtureStore);service=(createWaveformServices(store,((options) as unknown as Parameters<typeof createWaveformServices>[1])) as TestWaveformService);},
+  async restart(){await service.drain();store.close();store=(open(root) as FixtureStore);service=(createWaveformServices(store,((options) as unknown as Parameters<typeof createWaveformServices>[1])) as TestWaveformService);},
  };
  t.after(async()=>{await service.drain();store.close();await rm(root,{recursive:true,force:true});});
  return f;
@@ -88,14 +88,14 @@ test('actual PCM coverage is explicit and codec tails remain null rather than fa
 
 test('same project/source requests and duplicate service wrappers share one owned decode; projects never share cache state',async t=>{
  const gate=deferred();let count=0;const decode=async()=>{count++;await gate.promise;return decoded();};
- const f=await fixture(t,{decode}),asset=await f.asset({bytes:(('identical') as unknown as `${string}-${string}-${string}-${string}-${string}` | undefined)}),same=await f.asset({bytes:(('identical') as unknown as `${string}-${string}-${string}-${string}-${string}` | undefined)}),foreign=await f.asset({projectId:f.other.id,bytes:(('identical') as unknown as `${string}-${string}-${string}-${string}-${string}` | undefined)});
+ const f=await fixture(t,{decode}),other=await fixture(t,{decode}),asset=await f.asset({bytes:(('identical') as unknown as `${string}-${string}-${string}-${string}-${string}` | undefined)}),same=await f.asset({bytes:(('identical') as unknown as `${string}-${string}-${string}-${string}-${string}` | undefined)}),foreign=await other.asset({bytes:(('identical') as unknown as `${string}-${string}-${string}-${string}-${string}` | undefined)});
  assert.equal((createWaveformServices(f.store,((f.options) as unknown as Parameters<typeof createWaveformServices>[1])) as TestWaveformService),f.service);
- assert.equal((createWaveformServices({...f.store},((f.options) as unknown as Parameters<typeof createWaveformServices>[1])) as TestWaveformService),f.service);
+ assert.throws(()=>createWaveformServices({...f.store},((f.options) as unknown as Parameters<typeof createWaveformServices>[1])),{code:'RESTORE_STORE_UNVERIFIED'});
  assert.throws(()=>(createWaveformServices(f.store,(({...f.options,signal:new AbortController().signal}) as unknown as Parameters<typeof createWaveformServices>[1])) as TestWaveformService),{code:'WAVEFORM_SERVICE_ACTIVE'});
- const accepted=f.request(asset);assert.equal(f.request(same).attemptId,accepted.attemptId);assert.equal(f.get(foreign).status,'missing');
+ const accepted=f.request(asset);assert.equal(f.request(same).attemptId,accepted.attemptId);assert.equal(other.get(foreign).status,'missing');assert.throws(()=>f.get(foreign),missing);
  await waitFor(()=>({status:count===1?'started':'queued'}));assert.equal(count,1);(gate.resolve)!();
  await waitFor((()=>f.get(asset)));assert.equal(f.get(same).status,'ready');assert.equal(rows(f).length,1);
- await f.ready(foreign);assert.equal(count,2);assert.equal(rows(f).length,2);
+ await other.ready(foreign);assert.equal(count,2);assert.equal(rows(f).length,1);assert.equal(rows(other).length,1);
 });
 
 test('bounded owner checks reject missing, foreign, malformed and contradictory ownership before cache lookup or probing',async t=>{
@@ -125,7 +125,7 @@ test('hash mismatch is terminal and sanitized until explicit retry; no probe or 
 
 test('managed source validation rejects traversal, symlinks, hardlinks, FIFOs and oversized files before probing',async t=>{
  let processes=0;const f=await fixture(t,{probe:async()=>{processes++;return metadata();}}),target=await f.asset();
- const cases: ({ id: `${string}-${string}-${string}-${string}-${string}`; projectId: `${string}-${string}-${string}-${string}-${string}`; name: string; mimeType: string; duration: number; hasAudio: boolean; sizeBytes: number; sha256: string; relativePath: string; url: string; })[]=[];
+ const cases: ({ id: `${string}-${string}-${string}-${string}-${string}`; projectId: string; name: string; mimeType: string; duration: number; hasAudio: boolean; sizeBytes: number; sha256: string; relativePath: string; url: string; })[]=[];
  const symlinkAsset=await f.asset();await rm(path.join(f.root,symlinkAsset.relativePath));await symlink(path.join(f.root,target.relativePath),path.join(f.root,symlinkAsset.relativePath));cases.push(symlinkAsset);
  const hardlinkAsset=await f.asset();await rm(path.join(f.root,hardlinkAsset.relativePath));await link(path.join(f.root,target.relativePath),path.join(f.root,hardlinkAsset.relativePath));cases.push(hardlinkAsset);
  const fifo=await f.asset();await rm(path.join(f.root,fifo.relativePath));execFileSync('mkfifo',[path.join(f.root,fifo.relativePath)]);cases.push(fifo);
@@ -165,12 +165,12 @@ test('probe restrictions reject no audio, extra channels, long or unknown durati
 
 test('file mutation/replacement and current owned metadata changes fence ready publication',async t=>{
  for(const mode of (['bytes','replacement','sha256','relativePath','duration','sizeBytes','hasAudio','owner'] as const))await t.test(mode,async sub=>{
-  let f!: Awaited<ReturnType<typeof fixture>>,asset!: { relativePath: unknown; sizeBytes: unknown; id?: `${string}-${string}-${string}-${string}-${string}`; projectId?: `${string}-${string}-${string}-${string}-${string}`; name?: string; mimeType?: string; duration?: number; hasAudio?: boolean; sha256?: string; url?: string; };
+  let f!: Awaited<ReturnType<typeof fixture>>,asset!: { relativePath: unknown; sizeBytes: unknown; id?: `${string}-${string}-${string}-${string}-${string}`; projectId?: string; name?: string; mimeType?: string; duration?: number; hasAudio?: boolean; sha256?: string; url?: string; };
   f=await fixture(sub,{decode:async()=>{
    const file=path.join(((f.root) as unknown as Parameters<typeof path.join>[0]),((asset.relativePath) as unknown as Parameters<typeof path.join>[1]));
    if(mode==='bytes')await writeFile(file,Buffer.alloc(((asset.sizeBytes) as unknown as Parameters<typeof Buffer.alloc>[0]),120));
    else if(mode==='replacement'){const bytes=await readFile(file);await rename(file,file+'.old');await writeFile(file,bytes);}
-   else if(mode==='owner')patchAsset(((f) as unknown as Parameters<typeof patchAsset>[0]),((asset) as unknown as Parameters<typeof patchAsset>[1]),{projectId:f.other.id},f.other.id);
+   else if(mode==='owner')withoutForeignKeys(f.store.db,()=>patchAsset(((f) as unknown as Parameters<typeof patchAsset>[0]),((asset) as unknown as Parameters<typeof patchAsset>[1]),{projectId:f.other.id},f.other.id));
    else patchAsset(((f) as unknown as Parameters<typeof patchAsset>[0]),((asset) as unknown as Parameters<typeof patchAsset>[1]),{[mode]:({sha256:'f'.repeat(64),relativePath:'media/changed.wav',duration:2,sizeBytes:999,hasAudio:false})[mode]});
    return decoded();
   }});asset=await f.asset();f.request(((asset) as unknown as Parameters<NonNullable<(typeof f)["request"]>>[0]));
@@ -227,14 +227,14 @@ test('startup marks only unfinished rows interrupted and never probes; completed
 });
 
 test('explicit admission deterministically evicts oldest terminal entries; GET never refreshes ordering',async t=>{
- const f=await fixture(t),assets: ({ id: `${string}-${string}-${string}-${string}-${string}`; projectId: `${string}-${string}-${string}-${string}-${string}`; name: string; mimeType: string; duration: number; hasAudio: boolean; sizeBytes: number; sha256: string; relativePath: string; url: string; })[]=[];
+ const f=await fixture(t),assets: ({ id: `${string}-${string}-${string}-${string}-${string}`; projectId: string; name: string; mimeType: string; duration: number; hasAudio: boolean; sizeBytes: number; sha256: string; relativePath: string; url: string; })[]=[];
  for(let i=0;i<64;i++){const asset=await f.asset();assets.push(asset);assert.equal((await f.ready(asset)).status,'ready');}
  assert.equal(rows(f).length,64);const writes=changes(f);f.get(assets[0]);assert.equal(changes(f),writes);
  const fresh=await f.asset();assert.equal((await f.ready(fresh)).status,'ready');assert.equal(rows(f).length,64);assert.equal(f.get(assets[0]).status,'missing');assert.equal(f.get(assets[1]).status,'ready');
 });
 
 test('serialized peak payload plus in-flight maximum reservation respects the 16 MiB aggregate limit',async t=>{
- const f=await fixture(t,{probe:async()=>metadata(600),decode:async()=>decoded(600,65535)}),assets: ({ id: `${string}-${string}-${string}-${string}-${string}`; projectId: `${string}-${string}-${string}-${string}-${string}`; name: string; mimeType: string; duration: number; hasAudio: boolean; sizeBytes: number; sha256: string; relativePath: string; url: string; })[]=[];
+ const f=await fixture(t,{probe:async()=>metadata(600),decode:async()=>decoded(600,65535)}),assets: ({ id: `${string}-${string}-${string}-${string}-${string}`; projectId: string; name: string; mimeType: string; duration: number; hasAudio: boolean; sizeBytes: number; sha256: string; relativePath: string; url: string; })[]=[];
  for(let i=0;i<48;i++){
   const asset=await f.asset((({duration:600}) as unknown as Parameters<NonNullable<(typeof f)["asset"]>>[0]));assets.push(asset);f.request(asset);
   const total=(f.store.db.prepare('SELECT sum(max(bytes,reservedBytes)) AS bytes FROM waveform_cache').get())!.bytes;assert.ok((total as number)<=WAVEFORM_CACHE_LIMITS.bytes,((total) as unknown as Parameters<typeof assert.ok>[1]));
@@ -245,7 +245,7 @@ test('serialized peak payload plus in-flight maximum reservation respects the 16
 
 test('unconfirmed decoder termination remains a shutdown failure with no ready partial cache',async t=>{
  const error=Object.assign(new Error('private decoder diagnostic'),{terminationUnconfirmed:true,code:'MEDIA_TERMINATION_UNCONFIRMED'});
- const root=await mkdtemp(path.join(tmpdir(),'mioon-waveform-unconfirmed-')),store=(openStore(root) as FixtureStore),project={id:randomUUID()};store.put('projects',project);
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-waveform-unconfirmed-')),opened=openStore(root),store=(opened as FixtureStore),project={id:opened.projectId};store.put('projects',project);
  const bytes=Buffer.from('source'),asset={id:randomUUID(),projectId:project.id,mimeType:'audio/wav',duration:1,relativePath:'media/source.wav',sha256:hash(bytes)};store.put('assets',asset);await writeFile(path.join(root,asset.relativePath),bytes);
  const service=(createWaveformServices(store,{probe:((async()=>metadata()) as unknown as import("../packages/business/src/waveforms.ts").WaveformProbe | undefined),decode:async()=>{throw error;}}) as TestWaveformService),input={projectId:project.id,assetId:asset.id};
  service.handlers['asset.waveform.request'](input);const result=await waitFor((()=>service.handlers['asset.waveform.get'](input)));assert.equal(result.status,'error');assert.ok(!JSON.stringify(result).includes('private decoder'));
@@ -352,20 +352,20 @@ test('oversized foreign relational ownership is filtered in SQL before any forei
  assert.equal(f.get(asset).status,'missing');assert.equal(rows(f).length,0);assert.equal(changes(f),before);
 });
 
-test('a second lock:false process sees active state but cannot reconcile, steal, queue or decode',async t=>{
+test('a second process cannot open the active project to reconcile, steal, queue or decode',async t=>{
  const gate=deferred();let entered=false;
  const f=await fixture(t,{decode:async()=>{entered=true;await gate.promise;return decoded();}}),asset=await f.asset();
  const initial=f.request(asset);await waitFor(()=>({status:entered?'started':'queued'}));const before=rows(f);
  const helper=fileURLToPath(new URL('./helpers/waveform-readonly-owner.ts',import.meta.url));
  const {stdout}=await promisify(execFile)(process.execPath,[helper,f.root,JSON.stringify(f.input(asset))],{timeout:10000,maxBuffer:128*1024});
- const result=JSON.parse(stdout);assert.equal(result.owner,false);assert.equal(result.txCalls,0);assert.equal(result.spawns,0);assert.equal(result.changes,0);assert.equal(result.exclusiveDenied,true);
- assert.equal(result.read.status,'running');assert.equal(result.after.status,'running');assert.equal(result.read.attemptId,initial.attemptId);assert.equal(result.request.reason.code,'WAVEFORM_OWNER_REQUIRED');assert.deepEqual(rows(f),before);
+ const result=JSON.parse(stdout);assert.deepEqual(result,{code:'PROJECT_LOCKED',spawns:0});
+ assert.equal(f.get(asset).status,'running');assert.equal(f.get(asset).attemptId,initial.attemptId);assert.deepEqual(rows(f),before);
  (gate.resolve)!();assert.equal((await waitFor((()=>f.get(asset)))).status,'ready');
 });
 
-test('replaced or deleted workspace lock permanently fences admission, callbacks and shutdown error saves',async t=>{
+test('replaced or deleted legacy workspace lock permanently fences admission, callbacks and shutdown error saves',async t=>{
  for(const mode of (['replaced','deleted'] as const))await t.test(mode,async sub=>{
-  const gate=deferred();let entered=false;const f=await fixture(sub,{decode:async()=>{entered=true;await gate.promise;return decoded();}}),asset=await f.asset(),fresh=await f.asset();
+  const gate=deferred();let entered=false;const f=await fixture(sub,{legacy:true,decode:async()=>{entered=true;await gate.promise;return decoded();}}),asset=await f.asset(),fresh=await f.asset();
   f.request(asset);await waitFor(()=>({status:entered?'started':'queued'}));
   const lockFile=path.join(f.root,'server.lock');await rm(lockFile);if(mode==='replaced')await writeFile(lockFile,String(process.pid),{mode:0o600});
   assert.equal(ownsStoreLock(f.store),false);const before=rows(f),writes=changes(f);

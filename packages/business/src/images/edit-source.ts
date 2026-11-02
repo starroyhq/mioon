@@ -7,6 +7,9 @@ import {validateManagedSource} from '../managed-media.ts';
 import {validateImageEditSourceBytes} from './edit-source-bytes.ts';
 import {imageEditProfile, imageEditSourceIssue} from '../../../contracts/src/image-edit-profiles.ts';
 import type {DatabaseSync} from 'node:sqlite';
+import {isProjectDatabase} from '../project-file/held-files.ts';
+import {isProjectStore} from '../project-file/store.ts';
+import {readProjectMediaFile} from '../project-media-storage.ts';
 
 export type ImageEditSource = ReturnType<typeof imageEditSourceSchema.parse>;
 export interface InspectionAsset {
@@ -67,7 +70,7 @@ export function createImageEditSourceResolver(store: EditSourceStore, {signal}: 
       if (graph.legacySource(asset.id)) fail();
       const descriptor = describeImageEditSource(asset, graph.imageSource(asset.id), graph.frameSource(asset.id), graph.sceneKeyframeSource(asset.id));
       // Only schema68 reviews can store a storyboard keyframe source.
-      if (descriptor.origin.kind === SCENE_KEYFRAME_PROVENANCE && !store.db.prepare('SELECT 1 FROM schema_version WHERE version=68 LIMIT 1').get()) fail();
+      if (descriptor.origin.kind === SCENE_KEYFRAME_PROVENANCE && !isProjectDatabase(store.db) && !store.db.prepare('SELECT 1 FROM schema_version WHERE version=68 LIMIT 1').get()) fail();
       const profile = imageEditProfile(value.providerId, value.model);
       if (!profile || imageEditSourceIssue(profile, descriptor) || descriptor.assetId !== inputImage.assetId || descriptor.sha256 !== inputImage.sha256 || expected && canonical(descriptor) !== canonical(expected)) fail();
       return {asset, descriptor};
@@ -75,8 +78,10 @@ export function createImageEditSourceResolver(store: EditSourceStore, {signal}: 
   }
   function bytesFor(asset: InspectionAsset, descriptor: ImageEditSource): Buffer {
     try {
-      const source = validateManagedSource(store.root, asset, {maxBytes: IMAGE_EDIT_LIMITS.sourceBytes});
-      const raw = readPrivateFile(source.file, {root: store.root, private: false, maxBytes: IMAGE_EDIT_LIMITS.sourceBytes});
+      const raw = isProjectStore(store)
+        ? readProjectMediaFile(store, asset.relativePath, {private: false, maxBytes: IMAGE_EDIT_LIMITS.sourceBytes})
+        : readPrivateFile(validateManagedSource(store.root, asset, {maxBytes: IMAGE_EDIT_LIMITS.sourceBytes}).file,
+          {root: store.root, private: false, maxBytes: IMAGE_EDIT_LIMITS.sourceBytes});
       if (!Buffer.isBuffer(raw)) fail();
       if (raw.length !== descriptor.byteLength || digest(raw) !== descriptor.sha256) fail();
       return raw;

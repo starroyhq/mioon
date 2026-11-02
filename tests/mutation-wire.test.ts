@@ -16,14 +16,16 @@ import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {IDS, TOKEN, uuid} from './helpers/mutation-wire-fixture.ts';
+import {IDS,TOKEN,uuid,seedMutationStore} from './helpers/mutation-wire-fixture.ts';
 import {optionalRequestIdOperations} from './helpers/catalog-input-branches.ts';
-import {openStore} from '../packages/business/src/db.ts';
-import {openProjectDatabase} from './helpers/project-database.ts';
+import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {openProjectDatabase,projectDatabasePath} from './helpers/project-database.ts';
 import {readProjectState} from './helpers/project-state.ts';
 import type {ProjectState} from './helpers/project-state.ts';
 
-interface StorageSnapshot {rows: ProjectState['tables']; version: [number, number]}
+interface StorageSnapshot {rows: ProjectState['tables']; schema:ProjectState['schema'];version: [number, number]}
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const helper = path.join(repo, 'tests/helpers/mutation-wire-fixture.ts');
@@ -39,8 +41,8 @@ function transportInput(operation: string, input: unknown): unknown {
 }
 const ownedChildren = new WeakMap<test.TestContext,Set<OwnedChild>>();
 const preservedTables = ['assets', 'edges', 'jobs', 'versions', 'exports', 'timelines', 'timeline_requests',
-  'timeline_history', 'timeline_history_cursors', 'reference_requests', 'idempotency', 'job_events', 'workspace_preferences',
-  'agent_chat_requests', 'agent_chat_runs', 'agent_chat_events', 'agent_chat_steps', 'agent_chat_quota'];
+  'timeline_history','timeline_history_cursors','reference_requests','idempotency','job_events'];
+const removedTables=['agent_chat_requests','agent_chat_runs','agent_chat_events','agent_chat_steps','agent_chat_quota'];
 
 function environment(extra: {}|undefined = {}) {
   const env = {...process.env};
@@ -119,8 +121,12 @@ async function backendFixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-mutation-wire-'));
   const auditPath = path.join(root, 'forbidden-side-effects.jsonl');
   await writeFile(auditPath, '');
+  const locations=await seedMutationStore(root);
+  const initialLibrary=openAppLibrary({dataDir:root});
+  let initialPreferences:Record<string,unknown>[];
+  try{initialPreferences=initialLibrary.db.prepare('SELECT * FROM workspace_preferences ORDER BY projectId').all().map(row=>({...row}));}finally{initialLibrary.close();}
   let run!:ReturnType<typeof launch>, url:string, port = 0;
-  const pending = new Map<string, PromiseWithResolvers<StorageSnapshot>>();
+  const pending = new Map<string, PromiseWithResolvers<unknown>>();
   t.after(async () => {
     for (const child of ownedChildren.get(t) || []) await stopOwned(child);
     await rm(root, {recursive: true, force: true});
@@ -142,29 +148,45 @@ async function backendFixture(t: test.TestContext) {
     return ready.pid;
   }
   await start();
-  async function read(): Promise<StorageSnapshot> {
-    const child = run.child;
-    if (child.exitCode !== null || child.signalCode || !child.connected) throw Error('No running backend to inspect');
-    const id = randomUUID(), reply = Promise.withResolvers<StorageSnapshot>(); pending.set(id, reply);
-    const timer = setTimeout(() => reply.reject(Error('The backend did not answer the storage question within 10 seconds')), 10_000);
-    try {
-      child.send({type: 'storage', id, projectId: IDS.project}, error => { if (error) reply.reject(error); });
-      return await reply.promise;
-    } finally { clearTimeout(timer); pending.delete(id); }
+  async function ask<T>(type:string,projectId:string,extra:Record<string,unknown>={}):Promise<T>{
+    const child=run.child;
+    if(child.exitCode!==null||child.signalCode||!child.connected)throw Error('No running backend to inspect');
+    const id=randomUUID(),reply=Promise.withResolvers<unknown>();pending.set(id,reply);
+    const timer=setTimeout(()=>reply.reject(Error('The backend did not answer trusted fixture IPC within10seconds')),10000);
+    try{child.send({type,id,projectId,...extra},error=>{if(error)reply.reject(error);});return await reply.promise as T;}
+    finally{clearTimeout(timer);pending.delete(id);}
   }
-  const storage = async (): Promise<ProjectState['tables']> => {
-    if (run.child.exitCode === null && !run.child.signalCode) return (await read()).rows;
-    const db = openProjectDatabase(root);
-    try { return JSON.parse(JSON.stringify(readProjectState(db).tables)) as ProjectState['tables']; }
-    finally { db.close(); }
+  const read=(projectId=IDS.project)=>ask<StorageSnapshot>('storage',projectId);
+  const projectStorage=async(projectId:string):Promise<ProjectState['tables']>=>{
+    let state:Pick<StorageSnapshot,'rows'|'schema'>;
+    if(run.child.exitCode===null&&!run.child.signalCode)state=await read(projectId);
+    else{
+      const db=openProjectDatabase(locations.get(projectId)!);
+      try{const value=readProjectState(db);state={rows:JSON.parse(JSON.stringify(value.tables)) as ProjectState['tables'],schema:value.schema};}
+      finally{db.close();}
+    }
+    // These historical tables are removed by the project-file format. Prove
+    // actual absence instead of manufacturing empty rows for the old oracle.
+    for(const table of removedTables)assert.deepEqual(state.schema.filter(entry=>entry.name===table),[],`${table} is absent in the real kernel schema`);
+    return state.rows;
   };
-  // Only after an explicitly owned writer was SIGKILLed: its lock remains.
-  const crashed = async (): Promise<ProjectState['tables']> => {
-    const store = openStore(root, {lock: false});
-    try { return JSON.parse(JSON.stringify(readProjectState(store.db).tables)) as ProjectState['tables']; }
-    finally { store.close(); }
+  const storage=async():Promise<ProjectState['tables']>=>{
+    const combined:ProjectState['tables']={};
+    for(const id of [IDS.project,IDS.other])for(const [table,rows] of Object.entries(await projectStorage(id)))combined[table]=[...(combined[table]??[]),...rows];
+    return combined;
   };
-  const version = async () => (await read()).version;
+  // A true SIGKILL releases native ownership. Recovery uses the registered
+  // project's normal kernel path, never a flag that bypasses its locks.
+  const crashed=storage;
+  const projectVersion=async(id:string)=>(await read(id)).version;
+  const version=async()=>({[IDS.project]:await projectVersion(IDS.project),[IDS.other]:await projectVersion(IDS.other)});
+  const assertApplicationPreferences=async()=>{
+    await stopOwned(run.child);
+    const library=openAppLibrary({dataDir:root});
+    try{assert.deepEqual(library.db.prepare('SELECT * FROM workspace_preferences ORDER BY projectId').all().map(row=>({...row})),initialPreferences,'application preference raw rows remain byte-for-byte unchanged');}
+    finally{library.close();}
+    await start();
+  };
   const record = async (table:string,id:string) => JSON.parse((await storage())[table].find(row => row.id === id)!.data as string) as Record<string,unknown>&{id:string;revision:number};
   const unchanged = async (before:Awaited<ReturnType<typeof storage>>,dataVersion:unknown,label:string) => {
     assert.deepEqual(await storage(), before, `${label}: every persisted row and revision remains identical`);
@@ -182,7 +204,10 @@ async function backendFixture(t: test.TestContext) {
     } else assert.equal(response.status, 200, raw);
     return {envelope, raw};
   }
-  return {root, auditPath, storage, crashed, version, record, unchanged, request,
+  return {root,auditPath,storage,projectStorage,crashed,version,projectVersion,record,unchanged,request,assertApplicationPreferences,
+    projectFile:projectDatabasePath(locations.get(IDS.project)!),
+    armRace:(requestKey:string)=>ask<{armed:boolean}>('arm-race',IDS.project,{requestKey}),
+    holding:()=>run.waitFor(value=>value.event==='holding-transaction','real mutation transaction held before COMMIT',5000),
     http: (async (...args:Parameters<typeof request>) => (await request(...args)).envelope) as <O extends string>(operation:O,input?:unknown,error?:string,target?:string,authorization?:string)=>Promise<WireEnvelope<O>>,
     get url() { return url; }, get pid() { return run.child.pid; },
     get env() { return {MIOON_BASE_URL: url, MIOON_TOKEN: TOKEN, MIOON_MUTATION_WIRE_ALLOWED_ORIGIN: url,
@@ -250,18 +275,18 @@ async function lossProxy(t:test.TestContext, backend:Awaited<ReturnType<typeof b
   }};
 }
 
-async function operationInputs(backend:Awaited<ReturnType<typeof backendFixture>>) {
-  const projectId = IDS.project;
-  const rows = await backend.storage();
+async function operationInputs(backend:Awaited<ReturnType<typeof backendFixture>>,projectId=IDS.project) {
+  const foreign=projectId===IDS.other,shotId=foreign?IDS.otherShot:IDS.shot,nodeId=foreign?IDS.otherNode:IDS.node;
+  const rows = await backend.projectStorage(projectId);
   const record = (table: string, id: string) => JSON.parse(rows[table].find(row => row.id === id)!.data as string) as Record<string, unknown>&{id: string; revision: number};
   return {
     'shot.create': {projectId, title: 'Original private shot marker', prompt: 'Original prompt', position: {x: 10, y: 20}},
-    'shot.update': {shotId: IDS.shot, expectedRevision: record('shots', IDS.shot).revision, patch: {title: 'Original update marker', prompt: 'Updated prompt'}},
+    'shot.update': {shotId, expectedRevision: record('shots', shotId).revision, patch: {title: 'Original update marker', prompt: 'Updated prompt'}},
     'shot.reorder': {projectId, expectedRevision: record('projects', projectId).revision,
       shotIds: rows.shots.filter((row) => row.projectId === projectId).map(row => row.id).reverse()},
     'node.create': {projectId, type: 'text', label: 'Original node marker', text: 'Original node text', position: {x: 10, y: 20}},
-    'node.update': {nodeId: IDS.node, expectedRevision: record('nodes', IDS.node).revision, patch: {label: 'Original label marker', text: 'Original update text'}},
-    'version.select': {shotId: IDS.shot, versionId: IDS.version, expectedRevision: record('shots', IDS.shot).revision},
+    'node.update': {nodeId, expectedRevision: record('nodes', nodeId).revision, patch: {label: 'Original label marker', text: 'Original update text'}},
+    'version.select': {shotId, versionId: foreign?IDS.otherVersion:IDS.version, expectedRevision: record('shots', shotId).revision},
   };
 }
 
@@ -329,6 +354,7 @@ test('six optional mutation keys retain exact results through lost HTTP response
       await backend.unchanged(afterChange, changedVersion, `${operation} stale-revision cross-transport replay`);
     }
     for (const table of preservedTables) assert.deepEqual((await backend.storage())[table], initial[table], `${table} is untouched by all six mutations`);
+    await backend.assertApplicationPreferences();
   });
 
   await t.test('actual backend restart and canonical object-key order retain every original response', async () => {
@@ -354,13 +380,12 @@ test('six optional mutation keys retain exact results through lost HTTP response
 
   await t.test('changed payload, operation or project cannot consume or reveal another request receipt', async () => {
     assert.equal(accepted.length, 6);
-    const before = (await backend.storage()), dataVersion = (await backend.version());
+    let before = (await backend.storage()), dataVersion = (await backend.version());
     for (const original of accepted) {
       const {operation, input, envelope} = original;
       const changed = operation === 'shot.create' ? {...input, title: 'Changed'} : operation === 'node.create' ? {...input, text: 'Changed'} :
         {...input, expectedRevision: (input.expectedRevision as number) + 50};
-      const foreign = {...input, ...(input.projectId ? {projectId: IDS.other} : input.nodeId ? {nodeId: IDS.otherNode} : {shotId: IDS.otherShot})};
-      for (const attempt of [changed, foreign]) {
+      for (const attempt of [changed]) {
         const result = await backend.http(operation, attempt, 'IDEMPOTENCY_CONFLICT');
         assert.equal(result.data, undefined);
         assert.ok(!JSON.stringify(result).includes(JSON.stringify(envelope.data)), 'conflicts do not reveal stored output');
@@ -372,6 +397,18 @@ test('six optional mutation keys retain exact results through lost HTTP response
         }
         await mcp.call(operation, attempt, 'IDEMPOTENCY_CONFLICT');
       }
+      await backend.unchanged(before,dataVersion,'same-project changed input cannot alter either project');
+      const foreignBase=(await operationInputs(backend,IDS.other))[operation];
+      const independent={...foreignBase,requestId:input.requestId,...(operation==='shot.create'?{title:'Independent B shot'}:operation==='node.create'?{label:'Independent B node'}:{})};
+      const aBefore=await backend.projectStorage(IDS.project),aVersion=await backend.projectVersion(IDS.project),bBefore=await backend.projectStorage(IDS.other);
+      const separate=await backend.http(operation,independent);
+      assert.equal(separate.ok,true);assert.notDeepEqual(separate.data,envelope.data,'another project cannot replay the original result');
+      assert.deepEqual(await backend.projectStorage(IDS.project),aBefore);assert.deepEqual(await backend.projectVersion(IDS.project),aVersion,'B success performs zero writes on A');
+      const bAfter=await backend.projectStorage(IDS.other);
+      assert.equal(bAfter.mutation_requests.length,bBefore.mutation_requests.length+1);
+      assert.equal(bAfter.mutation_requests.filter(row=>row.requestId===input.requestId).length,1,'the same request key is owned independently by B');
+      before=await backend.storage();dataVersion=await backend.version();
+      assert.deepEqual(await mcp.call(operation,independent),separate,'B replays its own exact receipt through official MCP');
       await cli(operation, changed, 'IDEMPOTENCY_CONFLICT');
       const otherOperation = operation === 'node.create' ? 'shot.create' : 'node.create';
       await backend.http(otherOperation, {...(await operationInputs(backend))[otherOperation], requestId: input.requestId}, 'IDEMPOTENCY_CONFLICT');
@@ -431,6 +468,7 @@ test('six optional mutation keys retain exact results through lost HTTP response
     }
     assert.deepEqual((await backend.storage()).mutation_requests, beforeJournal, 'legacy calls never create keyed receipts');
     for (const table of preservedTables) assert.deepEqual((await backend.storage())[table], initial[table]);
+    await backend.assertApplicationPreferences();
     assert.equal(await backend.audit(), '', 'guard observed zero outbound/model/provider/media/subprocess attempts');
   });
 
@@ -458,43 +496,43 @@ test('six optional mutation keys retain exact results through lost HTTP response
 
 function writer(t:test.TestContext, backend:Awaited<ReturnType<typeof backendFixture>>, operation:string, input:unknown, extra:Record<string,unknown> = {}, ipc = false) {
   return launch(t, [helper, 'writer'], {MIOON_DATA_DIR: backend.root, MIOON_MUTATION_WIRE_AUDIT: backend.auditPath,
-    MIOON_MUTATION_WIRE_REQUEST: JSON.stringify({operation, input}), ...extra}, ipc);
+    MIOON_MUTATION_WIRE_REQUEST: JSON.stringify({operation,input}),MIOON_MUTATION_WIRE_PROJECT_FILE:backend.projectFile,...extra}, ipc);
 }
 
-test('real competing SQLite writers converge on one stable mutation and production ownership stays locked', {timeout: 45_000}, async t => {
-  const backend = await backendFixture(t);
-  // A normal second owner still fails; only the explicitly marked test writers
-  // below opt out of the production lock on this disposable database.
-  const input = {projectId: IDS.project, title: 'Concurrent original', requestId: 'mutation-real-concurrent-key'};
-  const rejected = writer(t, backend, 'shot.create', input);
-  const rejectedExit = await rejected.finish();
-  assert.notEqual(rejectedExit.code, 0);
-  assert.match(rejected.stderr, /already has a running backend/);
-  const before = (await backend.storage());
-  const extra = {MIOON_MUTATION_WIRE_COMPETING_WRITER: '1'};
-  const first = writer(t, backend, 'shot.create', input, {...extra, MIOON_MUTATION_WIRE_ROLE: 'holder'}, true);
-  const second = writer(t, backend, 'shot.create', input, {...extra, MIOON_MUTATION_WIRE_ROLE: 'contender'}, true);
-  await Promise.all([first.waitFor((value: { event: string; }) => value.event === 'ready', 'first writer ready'), second.waitFor((value: { event: string; }) => value.event === 'ready', 'second writer ready')]);
+test('real concurrent public writers converge on one stable mutation while the project kernel rejects second ownership',{timeout:45000},async t=>{
+  const backend=await backendFixture(t);
+  await backend.http('asset.list',{projectId:IDS.project});
+  const input={projectId:IDS.project,title:'Concurrent original',requestId:'mutation-real-concurrent-key'};
+  const rejected=writer(t,backend,'shot.create',input),rejectedExit=await rejected.finish();
+  assert.notEqual(rejectedExit.code,0);assert.match(rejected.stderr,/PROJECT_LOCKED/);
+  const before=await backend.storage();
+  await backend.armRace(input.requestId);
+  const client=()=>launch(t,[helper,'client'],{MIOON_DATA_DIR:backend.root,MIOON_MUTATION_WIRE_AUDIT:backend.auditPath,
+    MIOON_MUTATION_WIRE_ALLOWED_ORIGIN:backend.url,MIOON_MUTATION_WIRE_REQUEST:JSON.stringify({operation:'shot.create',input})},true);
+  const first=client(),second=client();
+  await Promise.all([first.waitFor(value=>value.event==='ready','first public writer ready'),second.waitFor(value=>value.event==='ready','second public writer ready')]);
   first.child.send!('go');
-  await first.waitFor((value: { event: string; }) => value.event === 'holding-transaction', 'first transaction lock', 5_000);
+  const firstSent=await first.waitFor(value=>value.event==='request-sent','first complete request in socket') as unknown as {bodyBytes:number;socketBytes:number};
+  const held=await backend.holding() as unknown as {inTransaction:boolean;requestKey:string};
+  assert.equal(held.inTransaction,true);assert.equal(held.requestKey,input.requestId);
   second.child.send!('go');
-  await second.waitFor((value: { event: string; }) => value.event === 'begin-attempt', 'competing BEGIN IMMEDIATE', 5_000);
-  assert.ok(!second.lines().some(value => value.event === 'result'), 'contender cannot complete while the first writer owns the transaction');
-  await writeFile(path.join(backend.root, 'release-writer'), 'release only owned test transaction');
-  for (const process of [first, second]) {
-    const result = await process.finish(); assert.equal(result.code, 0, process.stderr); assert.equal(result.signal, null);
-  }
-  const a = first.lines().find(value => value.event === 'result'), b = second.lines().find(value => value.event === 'result');
-  assert.equal(a.ok, true, JSON.stringify(a)); assert.deepEqual(b, a, 'both real writer processes return exactly one stable result');
-  const after = (await backend.storage());
-  assert.equal(after.shots.length, before.shots.length + 1);
-  assert.equal(after.mutation_requests.length, before.mutation_requests.length + 1);
-  assert.equal((await backend.record('projects', IDS.project)).revision, JSON.parse((before.projects.find(row=>row.id===IDS.project))!.data as string).revision + 1);
-  const dataVersion = (await backend.version());
-  assert.deepEqual((await backend.http('shot.create', input)).data, a.data);
-  await backend.unchanged(after, dataVersion, 'concurrent result replay');
-  for (const table of preservedTables) assert.deepEqual(after[table], before[table]);
-  assert.equal(await backend.audit(), '');
+  const secondSent=await second.waitFor(value=>value.event==='request-sent','second complete request in socket while COMMIT is held',5000) as unknown as {bodyBytes:number;socketBytes:number};
+  const bodyBytes=Buffer.byteLength(JSON.stringify({operation:'shot.create',input}));
+  for(const sent of [firstSent,secondSent]){assert.equal(sent.bodyBytes,bodyBytes);assert.ok(sent.socketBytes>=bodyBytes,'the real socket accepted the complete request, including its body');}
+  assert.notEqual(first.child.pid,second.child.pid,'both concurrent clients are actual independent processes');
+  assert.ok(!first.lines().some(value=>value.event==='result'),'first ACK is withheld until COMMIT');
+  assert.ok(!second.lines().some(value=>value.event==='result'),'contender cannot complete while the real first mutation transaction is held');
+  await writeFile(path.join(backend.root,'release-writer'),'release only the owned test transaction');
+  for(const process of [first,second]){const result=await process.finish();assert.equal(result.code,0,process.stderr);assert.equal(result.signal,null);}
+  const a=first.lines().find(value=>value.event==='result'),b=second.lines().find(value=>value.event==='result');
+  assert.equal(a.ok,true,JSON.stringify(a));assert.deepEqual(b,a,'both public writer processes receive exactly one stable result');
+  const after=await backend.storage();
+  assert.equal(after.shots.length,before.shots.length+1);assert.equal(after.mutation_requests.length,before.mutation_requests.length+1);
+  assert.equal((await backend.record('projects',IDS.project)).revision,JSON.parse(before.projects.find(row=>row.id===IDS.project)!.data as string).revision+1);
+  const dataVersion=await backend.version();assert.deepEqual((await backend.http('shot.create',input)).data,a.data);
+  await backend.unchanged(after,dataVersion,'concurrent public result replay');
+  for(const table of preservedTables)assert.deepEqual(after[table],before[table]);
+  await backend.assertApplicationPreferences();assert.equal(await backend.audit(),'');
 });
 
 test('test-child rollback and actual crash boundaries keep mutation and exact response receipt atomic', {timeout: 90_000}, async t => {
@@ -526,7 +564,21 @@ test('test-child rollback and actual crash boundaries keep mutation and exact re
       assert.deepEqual(await backend.http('shot.create', input), recovered);
       await backend.unchanged(after, dataVersion, `${boundary} recovered replay`);
       for (const table of preservedTables) assert.deepEqual(after[table], before[table]);
+      await backend.assertApplicationPreferences();
       assert.equal(await backend.audit(), '');
     });
   }
+});
+
+// The former workspace-wide namespace remains characterized explicitly. It
+// cannot be restored as a production fallback or a global project index.
+test('explicit legacy workspace retains global cross-project optional-key conflicts',async t=>{
+  const root=await mkdtemp(path.join(tmpdir(),'mioon-mutation-legacy-')),store=openLegacyWorkspaceStore(root),services=createServices(store,new Map());
+  t.after(async()=>{await services.drain();store.close();await rm(root,{recursive:true,force:true});});
+  const a=await services.call('project.create',{name:'Legacy A'}) as {id:string},b=await services.call('project.create',{name:'Legacy B'}) as {id:string};
+  const requestId='legacy-global-cross-project-key';
+  const result=await services.call('shot.create',{projectId:a.id,title:'Legacy original',requestId});
+  const before=readProjectState(store.db);
+  await assert.rejects(services.call('shot.create',{projectId:b.id,title:'Foreign legacy attempt',requestId}),{code:'IDEMPOTENCY_CONFLICT'});
+  assert.deepEqual(readProjectState(store.db),before);assert.deepEqual(await services.call('shot.create',{projectId:a.id,title:'Legacy original',requestId}),result);
 });

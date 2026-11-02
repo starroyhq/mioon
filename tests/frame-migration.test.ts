@@ -12,7 +12,7 @@ import {normalizeImageReviewObject} from './image-edit-migration-preservation.mj
 import {readFileSync,writeFileSync,mkdtempSync,rmSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {openStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import {migrateComfyImageReviewSchema} from '../packages/business/src/images/review-schema.ts';
 import {migrateComfyImageSchema} from '../packages/business/src/comfy-image-schema.ts';

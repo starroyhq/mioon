@@ -1,3 +1,4 @@
+import {isProjectId} from '../../packages/contracts/src/project-file.ts';
 // The real backend process of tests/integration.test.ts. It starts the server
 // as apps/server/src/cli.ts does. For the test only, it also answers one IPC
 // question on the server's own connection: the Mock provider's ledger for a
@@ -21,6 +22,8 @@ const service = await startServer({
   agentSecretCodecFactory: createHeadlessAgentSecretCodec,
   comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE),
   dataDir: process.env.MIOON_DATA_DIR || path.join(root, 'data'),
+  cacheDir: process.env.MIOON_CACHE_DIR,
+  projectsDir: process.env.MIOON_PROJECTS_DIR,
   port: Number(process.env.PORT || 4318),
   distDir: process.env.MIOON_DIST_DIR || path.join(root, 'apps/web/dist'),
   token: process.env.MIOON_TOKEN,
@@ -30,11 +33,13 @@ process.on('message', (raw: unknown) => {
   const message = raw as FixtureMessage;
   if (typeof message?.id !== 'string') return;
   try {
-    if (message.type !== 'ledger') throw Error('Unsupported integration fixture message');
+    if (message.type !== 'ledger' && message.type !== 'journal-mode') throw Error('Unsupported integration fixture message');
+    const allowed=message.type==='ledger'?['type','id','projectId','requestId']:['type','id','projectId'];
+    if(!isProjectId(message.projectId)||Object.keys(message).some(key=>!allowed.includes(key))||message.type==='ledger'&&typeof message.requestId!=='string')throw Error('Invalid fixed integration inspection question');
     if (!inspect) throw Error('The server has not handed over its connection');
     const requestId = String(message.requestId);
     // Plain rows, as they cross the IPC channel.
-    const data = inspect(String(message.projectId), db => ({
+    const data = inspect(String(message.projectId), db => message.type === 'journal-mode' ? {...db.prepare('PRAGMA journal_mode').get()} : ({
       submissions: db.prepare('SELECT * FROM mock_provider_submissions WHERE request_id=?').all(requestId).map(row => ({...row})),
       tasks: db.prepare('SELECT * FROM mock_provider_tasks WHERE request_id=?').all(requestId).map(row => ({...row})),
     }));

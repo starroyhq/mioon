@@ -1,8 +1,11 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import type {WorkspaceStore} from '../db.ts';
+import {isProjectStore} from '../project-file/store.ts';
+import {createMioProjectJournal} from './mio-journal-factory.ts';
 import {readMioTargetRevision,readMioTargetRevisions} from './mio-target-revisions.ts';
 import type {AgentPolicyStore} from '../app-db/stores.ts';
+import {testProjectAppLibrary} from '../project-service-application.ts';
 import {isProjectLayout,hasStoreTable} from '../store-layout.ts';
 import {readCurrentWorkspaceRole,isWorkspaceRoleSince,isPrivateStorageWorkspaceRole} from '../workspace-schema-dispatch.ts';
 import {referenceAgentTaskEventRequest,hydrateAgentTaskEventRequest,AGENT_TASK_EVENT_PAGE_BYTES} from './task-model-requests-v2.ts';
@@ -23,7 +26,10 @@ export type AgentTaskChangeInput=Omit<AgentTaskChange,'id'|'runId'|'stepId'|'cre
 export interface AgentTaskStepInput extends Pick<AgentTaskStep,'kind'> {request?:AgentTaskJson;data?:AgentTaskJson;toolCall?:AgentTaskStep['toolCall'];targets?:AgentTaskTarget[];tier?:AgentTaskStep['tier']}
 export interface AgentTaskControlRecord {requestId:string;runId:string;expectedRevision:number;action:string;stepId?:string;changeId?:string;resolution?:string;text?:string;undoChangeIds?:string[]}
 export interface AgentTaskJournalOptions {policyStore?:AgentPolicyStore}
-export function createAgentTaskJournal(store:WorkspaceStore,{policyStore}:AgentTaskJournalOptions={}){
+export function createAgentTaskJournal(store:WorkspaceStore,{policyStore=testProjectAppLibrary(store)?.agentPolicy}:AgentTaskJournalOptions={}):AgentTaskJournal{
+ return isProjectStore(store)?createMioProjectJournal(store,policyStore):createLegacyAgentTaskJournal(store,{policyStore});
+}
+function createLegacyAgentTaskJournal(store:WorkspaceStore,{policyStore}:AgentTaskJournalOptions){
  const {db}=store;
  const projectLayout=isProjectLayout(db);
  if(projectLayout&&!policyStore)fail('AGENT_TASK_POLICY_STORE_REQUIRED');
@@ -381,7 +387,7 @@ export function createAgentTaskJournal(store:WorkspaceStore,{policyStore}:AgentT
  function expireClaims(maxAgeMs=30000):number{return transact(()=>Number(db.prepare("UPDATE agent_task_edit_claims_v2 SET state='uncertain' WHERE state='active' AND updatedAt<?").run(new Date(Date.now()-maxAgeMs).toISOString()).changes));}
  return {expireClaims,markClaimsUncertain,edit,conversationPolicy,setConversationPolicy,effectiveModes,sentConversationModesMatch,conversationPolicies:()=>conversationPolicies,lookupRequest:(projectId:string,requestId:string):AgentTaskSnapshot|null=>{const row=db.prepare('SELECT id FROM agent_task_runs_v2 WHERE projectId=? AND requestId=?').get(projectId,requestId);return row?snapshot(String(row.id)):null;},lookupEdit:(requestId:string):unknown=>{const row=db.prepare('SELECT data FROM agent_task_edit_receipts_v2 WHERE requestId=?').get(requestId);return row?decode(row.data):null;},create,conversation,conversationSummary,contextRuns,modelContextRuns,requestConversationId,snapshot,hasPendingBackground,history,latestDiagnostic:(profile:AgentTaskDiagnostic['profile']):AgentTaskSnapshot|null=>{const row=db.prepare("SELECT id FROM agent_task_runs_v2 WHERE json_extract(data,'$.diagnostic.profile')=? ORDER BY json_extract(data,'$.createdAt') DESC,rowid DESC LIMIT 1").get(profile);return row?snapshot(String(row.id)):null;},list:(projectId:string,{excludeDiagnostics=false}:{excludeDiagnostics?:boolean}={}):AgentTaskRun[]=>db.prepare(`SELECT data FROM agent_task_runs_v2 WHERE projectId=?${excludeDiagnostics?` AND ${visibleRuns}`:''} ORDER BY rowid DESC LIMIT 100`).all(projectId).map(row=>decode<AgentTaskRun>(row.data)),events,eventSequence,run,step,transition,beginStep,beginModelStep,appendNoteInside,skipTargetsInside,updateStep,dispatchPrevented,markDispatch:(runId:string,stepId:string)=>updateStep(runId,stepId,{status:'dispatch_started'}),completeStepInside,appendChangesInside,completeStep:(runId:string,stepId:string,input:Parameters<typeof completeStepInside>[2])=>transact(()=>completeStepInside(runId,stepId,input)),appendText,appendEvent:(runId:string,type:string,data:AgentTaskJson)=>transact(()=>appendEventInside(runId,type,data)),control,performControl,rejectControl,beginControl,finishControl,lookupControl,resume,recover,policy,updatePolicy,lookupPolicy:(requestId:string):AgentTaskPolicy|null=>policyRequest(requestId)?.policy??null,targetRevision,revisionSnapshot:(projectId:string):AgentTaskTarget[]=>readMioTargetRevisions(db,projectId),assertTargets,conflictingTargets,claims,claim,releaseClaims,markChangeRevertedInside,markChangeRetainedInside,markChangeSupersededInside};
 }
-export type AgentTaskJournal=ReturnType<typeof createAgentTaskJournal>&{
+export type AgentTaskJournal=ReturnType<typeof createLegacyAgentTaskJournal>&{
  /** Only the versioned record journal can replace a provably unsent intent.
   * Ordinary reads and legacy journals never rebuild a persisted request. */
  prepareModelStep?:(runId:string,stepId:string)=>AgentTaskStep;

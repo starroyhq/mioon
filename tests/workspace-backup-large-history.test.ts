@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {registerHooks} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {AGENT_TASK_TABLES} from '../packages/business/src/agent/task-schema-v2.ts';
 import {createWorkspaceConfiguration} from '../packages/business/src/workspace-configuration.ts';

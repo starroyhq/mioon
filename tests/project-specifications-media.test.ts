@@ -49,7 +49,7 @@ async function makeFixtures(root: string){
  await ffmpeg(['-f','lavfi','-i','sine=frequency=440:sample_rate=48000:duration=1','-f','lavfi','-i','sine=frequency=880:sample_rate=48000:duration=2',
   '-filter_complex','[0:a][1:a]concat=n=2:v=0:a=1[a]','-map','[a]','-c:a','pcm_s16le','-ac','1',path.join(root,'tone.wav')]);
 }
-async function fixture(t: test.TestContext){
+async function fixture(t: test.TestContext,sourceRoot?:string){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-output-presets-')),store=(openStore(path.join(root,'data')) as TypedStore),providers=new Map();
  const services=(createServices(store,providers,{env:{MIOON_ENABLE_LIVE_PROVIDER:'0'}}) as TypedServices),worker=startWorker(store,services,providers);
  await mkdir(evidence,{recursive:true});
@@ -59,7 +59,7 @@ async function fixture(t: test.TestContext){
   await rm(root,{recursive:true,force:true});
  });
  const call=<O extends string>(operation: O,input: unknown)=>services.call(operation,input);
- async function importFile(projectId: unknown,name: string,mimeType: unknown){return call('asset.import',{projectId,name,mimeType,dataBase64:(await readFile(path.join(root,name))).toString('base64')});}
+ async function importFile(projectId: unknown,name: string,mimeType: unknown){return call('asset.import',{projectId,name,mimeType,dataBase64:(await readFile(path.join(sourceRoot??root,name))).toString('base64')});}
  async function finish(id: unknown,name: string){
   const deadline=Date.now()+120000;let job;
   do{job=await call('export.get',{exportId:id});if(['succeeded','failed'].includes(job.status))break;await pause(40);}while(Date.now()<deadline);
@@ -104,13 +104,17 @@ async function decodedFingerprint(file: string){
 }
 
 test('three current and three legacy frozen timeline presets render exact real media and retain project-sized storyboard exports',{timeout:300000},async t=>{
- const f=await fixture(t);await makeFixtures(f.root);const retained:{project:FixtureProject;request:{projectId:string;expectedRevision:number;requestId:string;purpose:string;preflightSnapshotHash:string|null};receipt:SQLOutputValue;queued:FixtureExport;output:Awaited<ReturnType<typeof f.finish>>;frozen:FixtureTimeline;source24:FixtureAsset}[]=[];
+ const sourceRoot=await mkdtemp(path.join(tmpdir(),'mioon-output-preset-sources-'));t.after(()=>rm(sourceRoot,{recursive:true,force:true}));
+ await makeFixtures(sourceRoot);type PresetFixture=Awaited<ReturnType<typeof fixture>>;
+ const retained:{f:PresetFixture;project:FixtureProject;request:{projectId:string;expectedRevision:number;requestId:string;purpose:string;preflightSnapshotHash:string|null};receipt:SQLOutputValue;queued:FixtureExport;output:Awaited<ReturnType<PresetFixture['finish']>>;frozen:FixtureTimeline;source24:FixtureAsset}[]=[];
  for(const rate of [24,60]){
-  const file=path.join(f.root,`source-${rate}.mp4`),info=JSON.parse(await command('ffprobe',['-v','error','-show_streams','-of','json',file]));
+  const file=path.join(sourceRoot,`source-${rate}.mp4`),info=JSON.parse(await command('ffprobe',['-v','error','-show_streams','-of','json',file]));
   const video=info.streams.find((stream: { codec_type: string; })=>stream.codec_type==='video');
   assert.equal(video.r_frame_rate,`${rate}/1`);assert.equal(video.avg_frame_rate,`${rate}/1`);
  }
  for(const [index,preset] of TIMELINE_OUTPUT_PRESETS.entries())await t.test(preset.id,async()=>{
+  // Parent-owned cleanup keeps every project alive for the retained-ACK audit.
+  const f=await fixture(t,sourceRoot);
   const {width,height}=preset,frames=index===1?91:71,project=await f.call('project.create',{name:`Output preset ${preset.id}`});
   const status=await f.call('timeline.format.get',{projectId:project.id});assert.equal(status.timelineRevision,0);
   // The current implicit portrait timeline is created without any format receipt; explicit legacy presets retain their own geometry.
@@ -166,16 +170,17 @@ test('three current and three legacy frozen timeline presets render exact real m
   for(const asset of sources){const stored=f.store.get('assets',asset.id)!;assert.deepEqual(await readFile(path.join(f.store.root,stored.relativePath)),sourceBytes.get(asset.id));assert.equal(stored.sha256,asset.sha256);}
   assert.equal(f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(request.requestId)!.response,receipt);
   assert.deepEqual(await f.call('timeline.render',request),queued,'Exact historical replay retains its own frozen format');
-  retained.push({project,request,receipt,queued,output,frozen,source24});
+  retained.push({f,project,request,receipt,queued,output,frozen,source24});
   records.checks.push({presetId:preset.id,result:'passed',...verified,pixels,audio:{beforeSwitch,afterSwitch,gap,tail,fadeIn,fadeOut},previewExportDecodedEqual:true,sourcesUnchanged:true});
  });
  await t.test('retained receipts/output stay unchanged while a new storyboard export freezes saved project geometry',async()=>{
   for(const item of retained){
+   const f=item.f;
    assert.deepEqual((await f.call('export.get',{exportId:item.queued.id}) as FixtureExport).snapshot.timeline,item.frozen);
    assert.equal(f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(item.request.requestId)!.response,item.receipt);
    assert.deepEqual(await readFile(path.join(f.store.root,item.output.asset.relativePath)),item.output.bytes);
   }
-  const landscape=retained.find(item=>item.frozen.width===1280),projectId=landscape!.project.id;
+  const landscape=retained.find(item=>item.frozen.width===1280),projectId=landscape!.project.id,f=landscape!.f;
   const before=f.store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId)!.data;
   const shot=await f.call('shot.create',{projectId,title:'Legacy storyboard',prompt:'Synthetic local fixture',duration:2});
   // Seed an already-selected version, then use the real legacy enqueue/worker.

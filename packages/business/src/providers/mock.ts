@@ -49,6 +49,15 @@ async function runFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
   }
 }
 
+/** Read-only discovery shared by the application catalog and project adapter. */
+export function createMockProviderCapabilities() {
+  return {
+      id: 'mock', name: 'Mock · simulated motion', models: ['mock-motion-v1'], inputModes: ['image', 'text'],
+      aspectRatios: ['9:16'], durations: [2, 4, 8], maxReferenceImages: 2, referenceSimulation: 'metadata-only', depictsPromptOrReferences: false, mock: true, configured: true, enabled: true,
+      scenarios: [...SCENARIOS], supportsRemoteCancel: true, reconciliation: 'request-id',
+    };
+}
+
 /** A durable simulated provider ledger, intentionally independent of application jobs. */
 export function createMockProvider({ db, root, now = Date.now }: MockProviderFactoryOptions) {
   if (!db?.prepare || !root) throw new TypeError('Mock provider requires a SQLite database and managed root.');
@@ -116,11 +125,7 @@ export function createMockProvider({ db, root, now = Date.now }: MockProviderFac
   }
   return {
     id: 'mock', validate,
-    capabilities: {
-      id: 'mock', name: 'Mock · simulated motion', models: ['mock-motion-v1'], inputModes: ['image', 'text'],
-      aspectRatios: ['9:16'], durations: [2, 4, 8], maxReferenceImages: 2, referenceSimulation: 'metadata-only', depictsPromptOrReferences: false, mock: true, configured: true, enabled: true,
-      scenarios: [...SCENARIOS], supportsRemoteCancel: true, reconciliation: 'request-id',
-    },
+    capabilities: createMockProviderCapabilities(),
     async submit(snapshot: unknown, context: ProviderContext = {}): Promise<{providerJobId: string}> {
       throwIfMediaAborted(context.signal);
       validate(snapshot);

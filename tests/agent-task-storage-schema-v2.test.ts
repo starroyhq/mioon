@@ -6,7 +6,7 @@ import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore, classifyCurrentWorkspaceSchema, type WorkspaceStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore, classifyCurrentWorkspaceSchema, type WorkspaceStore} from '../packages/business/src/db.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {AGENT_TASK_TABLES} from '../packages/business/src/agent/task-schema-v2.ts';
 import {AGENT_TASK_STORAGE_BYTES_V60, validateAgentTaskStorageRowsV2} from '../packages/business/src/agent/task-storage-schema-v2.ts';

@@ -8,11 +8,11 @@ import {createHash,randomUUID} from 'node:crypto';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
 import {startServer} from '../apps/server/src/index.ts';
-import {createServerProject} from './helpers/project-database.ts';
+import {createServerProject,projectDirFor,openServerProject} from './helpers/project-database.ts';
 test('missing export recovery verifies original bytes, never overwrites and preserves frozen rows', {timeout:60000},async t=>{
  const root=await mkdtemp(path.join(tmpdir(),'mioon-export-recovery-')),token='synthetic-export-file-recovery-token',bytes=Buffer.from('synthetic immutable export fixture');
  // Filled before the server starts and closed before it does.
- const created=createServerProject(root,{name:'Output recovery'});
+ const created=createServerProject(root,{name:'Output recovery'}),projectRoot=created.store.projectDir;
  let store:ReturnType<typeof openStore>=created.store;const services=createServices(store,new Map()),project={id:created.projectId},id=randomUUID(),assetId=randomUUID(),requestId=randomUUID(),versionId=randomUUID(),sourceId=randomUUID(),shotId=randomUUID(),relativePath=`media/export-${id}-${randomUUID()}.mp4`,stamp='2026-10-19T00:00:00.000Z';
  const asset={id:assetId,projectId:project.id,name:'film.mp4',mimeType:'video/mp4',provenance:'export',relativePath,sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,width:1080,height:1920,duration:1,hasVideo:true,hasAudio:true,url:`/media/${assetId}`,createdAt:stamp};
  const record={id,projectId:project.id,requestId,status:'succeeded',orderedVersionIds:[versionId],snapshot:[{versionId,shotId,assetId:sourceId,sha256:'b'.repeat(64)}],assetId,url:asset.url,error:null,createdAt:stamp,updatedAt:stamp};
@@ -23,9 +23,9 @@ test('missing export recovery verifies original bytes, never overwrites and pres
  const post=async (body: Buffer)=>fetch(route(),{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/octet-stream'},body: body as BodyInit});
  assert.equal((await fetch(route())).status,401);assert.equal((await get()).status,'missing');
  let response=await post(Buffer.alloc(bytes.length,'z'));assert.equal(response.status,400);assert.equal((await response.json()).error.code,'EXPORT_FILE_HASH_MISMATCH');assert.equal((await get()).status,'missing');
- response=await post(bytes);assert.equal(response.status,200);assert.equal((await response.json()).data.status,'present');assert.deepEqual(await readFile(path.join(root,relativePath)),bytes);
- response=await post(Buffer.from('must never replace'));assert.equal(response.status,200);await response.arrayBuffer();assert.deepEqual(await readFile(path.join(root,relativePath)),bytes);
- await server.close();store=openStore(root);assert.deepEqual(store.get('exports',id),record);assert.deepEqual(store.get('assets',assetId),asset);store.close();
- await rm(path.join(root,relativePath));await writeFile(path.join(root,'external'),bytes,{mode:0o600});await symlink(path.join(root,'external'),path.join(root,relativePath));
+ response=await post(bytes);assert.equal(response.status,200);assert.equal((await response.json()).data.status,'present');assert.deepEqual(await readFile(path.join(projectRoot,relativePath)),bytes);
+ response=await post(Buffer.from('must never replace'));assert.equal(response.status,200);await response.arrayBuffer();assert.deepEqual(await readFile(path.join(projectRoot,relativePath)),bytes);
+ await server.close();store=openServerProject(root,project.id);assert.deepEqual(store.get('exports',id),record);assert.deepEqual(store.get('assets',assetId),asset);store.close();
+ await rm(path.join(projectRoot,relativePath));await writeFile(path.join(root,'external'),bytes,{mode:0o600});await symlink(path.join(root,'external'),path.join(projectRoot,relativePath));
  server=await startServer({dataDir:root,port:0,token});response=await post(bytes);assert.ok(response.status>=400);await response.arrayBuffer();assert.deepEqual(await readFile(path.join(root,'external')),bytes);
 });

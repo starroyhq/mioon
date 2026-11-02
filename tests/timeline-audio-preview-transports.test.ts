@@ -1,3 +1,4 @@
+import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import {projectApiPath, projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {TestContext} from 'node:test';
 import type {Readable} from 'node:stream';
@@ -5,7 +6,7 @@ import type {OperationDefinition} from '@mioon/client';
 import type {AudioPreviewPlan} from '../packages/contracts/src/timeline-audio-preview.ts';
 import type {TypedClient, Failure, RpcEnvelope, Asset, SchemaNode} from './helpers/strict-timeline-audio-types.ts';
 type MediaEvent = Parameters<Parameters<typeof onMediaProcess>[0]>[0];
-type ManifestEntry = {directory: string} | {file: string; sha256: string};
+type ManifestEntry = Awaited<ReturnType<typeof dataFileSnapshot>>[number];
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -22,14 +23,14 @@ import {createClient, discoverSchema} from '@mioon/client';
 import {parse, effectAnnotations, operationEffect} from '@mioon/contracts';
 import {AUDIO_PREVIEW_PROFILE, isAudioPreviewPlan, audioPreviewPlanDigestMaterial} from '@mioon/contracts/timeline-audio-preview';
 import {startServer} from '../apps/server/src/index.ts';
-import type {InspectProject} from '../apps/server/src/index.ts';
+import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
 import {TIMELINE_GAIN_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-gain-tool-policy.ts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {projectDirFor, schemaObjects} from './helpers/project-database.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const operation = 'timeline.audioPreview.plan', toolName = 'timeline_audioPreview_plan';
@@ -103,19 +104,10 @@ function stereoWav() {
   }
   return bytes;
 }
-async function fileManifest(root: string, relative = ''): Promise<ManifestEntry[]> {
-  const result: ManifestEntry[] = [];
-  for (const entry of await readdir(path.join(root, relative), {withFileTypes: true})) {
-    const name = path.join(relative, entry.name);
-    if (entry.isDirectory()) result.push({directory: name}, ...await fileManifest(root, name));
-    else if (!/^workbench\.sqlite(?:-wal|-shm|-journal)?$/.test(name) && name !== 'server.lock')
-      result.push({file: name, sha256: sha(await readFile(path.join(root, name)))});
-  }
-  return result.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-}
+const fileManifest=(root:string)=>dataFileSnapshot(root,[]);
 async function fixture(t: TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-audio-preview-wire-'));
-  let backend: Awaited<ReturnType<typeof startServer>> | undefined, inspect!: InspectProject;
+  let backend: Awaited<ReturnType<typeof startServer>> | undefined, inspect!: InspectProject,inspectApplication!:InspectApplication;
   t.after(async () => {
     const errors: unknown[] = [];
     for (const cleanup of [() => backend && bounded(backend.close(), 'Owned backend cleanup'), () => rm(root, {recursive: true, force: true})]) {
@@ -124,7 +116,7 @@ async function fixture(t: TestContext) {
     if (errors.length) throw new AggregateError(errors, 'Audio preview fixture cleanup failed');
   });
   backend = await startServer({dataDir: root, port: 0, token, chatGateway: async function* () {throw Error('No model call permitted');},
-    inspectProject: received => {inspect = received;}});
+    inspectProject: received => {inspect = received;},inspectApplication:received=>{inspectApplication=received;}});
   const client = createClient({env: environment(backend.url)}) as TypedClient;
   const project = await client.rpc('project.create', {name: '合成声音 🎬 transport parity'});
   const foreign = await client.rpc('project.create', {name: 'Other synthetic project'});
@@ -144,14 +136,18 @@ async function fixture(t: TestContext) {
   const input = {projectId: project.id, timelineId: timeline.id, expectedRevision: timeline.revision, startFrame: 5};
   return {root, backend, client, project, foreign, timeline, asset, bytes, input,
     sourceInput: (plan: AudioPreviewPlan) => ({...input, clipId: plan.sources[0].clipId, sourceHash: plan.sources[0].sourceHash, planHash: plan.planHash}),
-    async checkpoint() {return {...use(db => ({rows: rows(db), version: changeMarks(db)})), files: await fileManifest(root)};},
-    async unchanged(before: {rows: ReturnType<typeof rows>; version: unknown; files: ManifestEntry[]}) {
+    async checkpoint() {
+      await client.rpc('asset.list',{projectId:foreign.id});
+      return {...use(db => ({rows: rows(db), version: changeMarks(db)})),foreign:inspect(foreign.id,db=>({rows:rows(db),version:changeMarks(db)})),application:inspectApplication(db=>({rows:rows(db),schema:schemaObjects(db),version:changeMarks(db)})), files: await fileManifest(root)};},
+    async unchanged(before: {rows: ReturnType<typeof rows>; version: unknown; files: ManifestEntry[];foreign:unknown;application:unknown}) {
       use(db => {
         assert.deepEqual(rows(db), before.rows, 'No durable jobs, receipts, history or other database changes');
         assert.deepEqual(changeMarks(db), before.version, 'No database write, including same-value updates');
       });
       assert.deepEqual(await fileManifest(root), before.files, 'No cache or sidefiles');
-      assert.equal(sha(await readFile(path.join(root, savedAsset.relativePath))), sha(bytes), 'Original source bytes unchanged');
+      assert.deepEqual(inspect(foreign.id,db=>({rows:rows(db),version:changeMarks(db)})),before.foreign,'independent project SQL is unchanged');
+      assert.deepEqual(inspectApplication(db=>({rows:rows(db),schema:schemaObjects(db),version:changeMarks(db)})),before.application,'application SQL/schema/write marks are unchanged');
+      assert.equal(sha(await readFile(path.join(projectDirFor(root, project.id), savedAsset.relativePath))), sha(bytes), 'Original source bytes unchanged');
       assert.equal(savedAsset.sha256, sha(bytes));
     },
   };

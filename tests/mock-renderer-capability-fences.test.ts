@@ -45,11 +45,12 @@ async function fixture(t: test.TestContext,configuration: { listings?: string[];
  let store: TypedStore|null|undefined,provider!: ReturnType<typeof createMockProvider>,providers!: Map<string, Provider>,services!: TypedServices;const workers: Worker[]=[];
  const reopen=()=>{store=(openStore(root) as unknown as TypedStore);provider=createMockProvider({db:store!.db,root});providers=new Map([['mock',provider as unknown as Provider]]);services=(createServices(store,providers) as unknown as TypedServices);};reopen();
  t.after(async()=>{await Promise.all(workers.map(worker=>worker.stop().catch(()=>{})));store?.close();if(previous.ffmpeg===undefined)delete process.env.MIOON_FFMPEG_PATH;else process.env.MIOON_FFMPEG_PATH=previous.ffmpeg;if(previous.path===undefined)delete process.env.PATH;else process.env.PATH=previous.path;await rm(root,{recursive:true,force:true});});
+ let jobProjectId: string|undefined;
  const f={root,tool,makeTool,get store(){return store!;},get provider(){return provider;},get services(){return services;},get providers(){return providers;},
   start(){const worker=startWorker(store!,services,providers);workers.push(worker);return worker;},
   async reopen(){await Promise.all(workers.map(worker=>worker.stop()));(store)!.close();store=null;reopen();},
   async task(){return (await provider.submit(input,{requestId:randomUUID()})).providerJobId;},
-  async job(){const project=await services.call('project.create',{name:'Mock capability boundary'});const shot=await services.call('shot.create',{projectId:project.id,title:'Synthetic Mock capability',duration:2});const request={shotId:shot.id,expectedRevision:shot.revision,providerId:'mock',parameters:input.parameters,requestId:randomUUID()};return {job:await services.call('generation.submit',request),request};},
+  async job(){if(jobProjectId===undefined)jobProjectId=(await services.call('project.create',{name:'Mock capability boundary'})).id;const shot=await services.call('shot.create',{projectId:jobProjectId,title:'Synthetic Mock capability',duration:2});const request={shotId:shot.id,expectedRevision:shot.revision,providerId:'mock',parameters:input.parameters,requestId:randomUUID()};return {job:await services.call('generation.submit',request),request};},
  };
  return f;
 }

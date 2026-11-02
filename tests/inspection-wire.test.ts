@@ -1,4 +1,5 @@
 import {projectRpcPath, isProjectId} from '../packages/contracts/src/project-file.ts';
+import {recentProjectSchema} from '../packages/contracts/src/project-registry.ts';
 import type {SQLOutputValue} from 'node:sqlite';
 interface InspectionEvidence extends Record<string,unknown>{cases:{operation:string;arguments:Record<string,unknown>;expectedError:string|null;resultDigest:string;resultBytes:number}[];zeroWrites:{label:string;tables:SQLOutputValue[];snapshotSha256:string;dataVersionUnchanged:boolean}[];schemas:unknown[];failures:{section:string|undefined;message:string}[]}
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
@@ -13,11 +14,11 @@ import {fileURLToPath} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {HOSTILE, PRIVATE, TOKEN, IDS, NOW, uuid} from './helpers/inspection-wire-fixture.ts';
+import {HOSTILE, PRIVATE, TOKEN, IDS, NOW, uuid,INSPECTION_PROJECT_IDS} from './helpers/inspection-wire-fixture.ts';
 import {runInspectionProcess} from './helpers/inspection-wire-lifecycle.ts';
 import type {ProjectState} from './helpers/project-state.ts';
 
-interface StorageSnapshot {rows: ProjectState['tables']; version: [number, number]}
+interface StorageSnapshot {rows: ProjectState['tables']; version: Record<string,[number,number]>}
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const helper = path.join(repo, 'tests/helpers/inspection-wire-fixture.ts');
@@ -68,6 +69,7 @@ async function backendFixture(t: test.TestContext) {
   const auditPath = path.join(root, 'forbidden-side-effects.jsonl');
   await writeFile(auditPath, '');
   let child: ReturnType<typeof spawn>, port = 0, url: string;
+  let firstStart = true;
   const pending = new Map<string, PromiseWithResolvers<StorageSnapshot>>();
   async function stop() {
     if (!child || child.exitCode !== null || child.signalCode) return;
@@ -105,6 +107,16 @@ async function backendFixture(t: test.TestContext) {
         const ready = JSON.parse(line); url = ready.url; port = Number(new URL(url).port);
         assert.equal(new URL(url).hostname, '127.0.0.1');
         assert.equal((await fetch(url + '/health')).status, 200);
+        // Complete ordinary host acquisition before the read-only operation
+        // baseline. Each registered file remains a separate real connection.
+        for(const projectId of INSPECTION_PROJECT_IDS){
+          // After restart, corrupt cold files remain protected by the real
+          // summary gate. Only their exact kernel inspectors read the snapshot;
+          // the later cursor phase uses the unchanged clean projects.
+          if(!firstStart&&[IDS.mismatchedAsset,IDS.mismatchedShot,IDS.mismatchedTimeline].includes(projectId))continue;
+          const response=await fetch(url+projectRpcPath(projectId),{method:'POST',headers:{authorization:`Bearer ${TOKEN}`,'content-type':'application/json'},body:JSON.stringify({operation:'project.inspect',input:{projectId}})});assert.equal(response.status,200,projectId+' '+await response.text());
+        }
+        if(firstStart){await read('corrupt-owner-json');firstStart=false;}
         return;
       }
       await pause(20);
@@ -112,13 +124,13 @@ async function backendFixture(t: test.TestContext) {
     throw Error(`Fixture backend did not become ready: ${stdout}\n${stderr}`);
   }
   await start();
-  async function read(): Promise<StorageSnapshot> {
+  async function read(type: 'storage'|'corrupt-owner-json' = 'storage'): Promise<StorageSnapshot> {
     const current = child;
     if (!current || current.exitCode !== null || current.signalCode || !current.connected) throw Error('No running backend to inspect');
     const id = randomUUID(), reply = Promise.withResolvers<StorageSnapshot>(); pending.set(id, reply);
     const timer = setTimeout(() => reply.reject(Error('The backend did not answer the storage question within 10 seconds')), 10_000);
     try {
-      current.send({type: 'storage', id, projectId: IDS.project}, error => { if (error) reply.reject(error); });
+      current.send(type==='storage'?{type,id,projectId:IDS.project}:{type,id}, error => { if (error) reply.reject(error); });
       return await reply.promise;
     } finally { clearTimeout(timer); pending.delete(id); }
   }
@@ -210,7 +222,7 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
   assert.ok(backend.tables.length >= 20, 'the snapshot covers business, timeline, reference, workspace and chat journals');
   for (const table of ['projects', 'assets', 'shots', 'nodes', 'edges', 'jobs', 'versions', 'exports', 'timelines',
     'timeline_requests', 'timeline_history', 'timeline_history_cursors', 'reference_requests', 'idempotency', 'job_events',
-    'workspace_preferences', 'agent_chat_threads', 'agent_chat_requests', 'agent_chat_runs', 'agent_chat_events', 'agent_chat_quota']) {
+    'app:workspace_preferences', 'mio_runs', 'mio_steps', 'mio_events', 'mio_entries', 'mio_requests', 'mio_blobs', 'mio_storage_counters', 'app:agent_task_policy_v2', 'app:agent_task_policy_requests_v2']) {
     assert.ok(initial[table]?.length > 0, `${table} has sentinel rows, not just an empty-table write check`);
   }
   const cli = (operation: string, input: Record<string,unknown>, error?: string|undefined) => runCli([...operation.split('.'), '--input', JSON.stringify(input)], backend.env, error, t.signal);
@@ -388,7 +400,26 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
     await unchanged('All inspection calls before restart');
     await backend.restart();
     const restarted = (await backend.storage()), restartedVersion = (await backend.version());
-    assert.deepEqual(restarted, initial, 'recovery does not modify already-terminal synthetic records');
+    // Real host reopening records its time in B1. This startup write precedes
+    // the next read-only baseline; every other byte, including the unchanged
+    // cold corrupt registrations and all terminal v2 records, remains exact.
+    const cold = new Set([IDS.mismatchedAsset, IDS.mismatchedShot, IDS.mismatchedTimeline]);
+    const priorRegistrations = initial['app:recent_projects'], nextRegistrations = restarted['app:recent_projects'];
+    assert.equal(priorRegistrations.length, INSPECTION_PROJECT_IDS.length);
+    assert.equal(nextRegistrations.length, priorRegistrations.length);
+    const expectedRegistrations = priorRegistrations.map(row => {
+      const nextRow = nextRegistrations.find(next => next.projectId === row.projectId);
+      assert.ok(nextRow, 'restart preserves every exact registration');
+      if (cold.has(String(row.projectId))) return row;
+      assert.equal(typeof row.data, 'string');assert.equal(typeof nextRow.data, 'string');
+      const prior = recentProjectSchema.parse(JSON.parse(String(row.data))), next = recentProjectSchema.parse(JSON.parse(String(nextRow.data)));
+      assert.ok(prior.lastOpenedAt !== null && next.lastOpenedAt !== null);
+      assert.equal(new Date(next.lastOpenedAt).toISOString(), next.lastOpenedAt);
+      assert.ok(Date.parse(next.lastOpenedAt) > Date.parse(prior.lastOpenedAt), 'the reopened host records a strictly later timestamp');
+      assert.deepEqual(next, {...prior, lastOpenedAt: next.lastOpenedAt}, 'reopening cannot alter any other registration field');
+      return {...row, data: JSON.stringify({...prior, lastOpenedAt: next.lastOpenedAt})};
+    });
+    assert.deepEqual(restarted, {...initial, 'app:recent_projects': expectedRegistrations}, 'recovery changes only the exact reopened-host timestamps and no already-terminal synthetic record');
     await parity('asset.inspect', {projectId: IDS.project, cursor: oldCursor}, 'INVALID_CURSOR');
     const fresh = await parity('asset.inspect', {projectId: IDS.project});
     assert.ok(fresh.nextCursor && fresh.nextCursor !== oldCursor);

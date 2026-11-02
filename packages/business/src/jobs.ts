@@ -44,6 +44,7 @@ export type WorkerOperation=(value: never,signal: AbortSignal)=>Promise<unknown>
 export interface Worker {
  readonly stop: ()=>Promise<void>;
  readonly tick: ()=>Promise<void>;
+ readonly isBusy: ()=>boolean;
 }
 const isRecord=(value: unknown): value is Record<string, unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const property=(value: unknown,key: string): unknown=>isRecord(value)?value[key]:undefined;
@@ -485,6 +486,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
  ownerSignal?.addEventListener('abort',abort,{once:true});
  if(stopped)clearInterval(timer);else void tick();
  return {
+  isBusy:()=>cycle!==null||operations.size>0,
   stop:()=>stopping??=(async(): Promise<void>=>{
    abort();
    // Abort first: the signal fences children that could otherwise spawn after

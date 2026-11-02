@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import desktopIdentity from '../apps/desktop/identity.ts';
 import { dataPaths, ensureDataIdentity, writeConnection, removeConnection } from '../apps/desktop/src/config.ts';
 import { migrateData } from '../apps/desktop/scripts/migrate-data.ts';
-import { openStore } from '@mioon/business';
+import { openLegacyWorkspaceStore } from '../packages/business/src/db.ts';
 const { identityForChannel, buildChannel } = desktopIdentity;
 const require = createRequire(import.meta.url);
 const production = identityForChannel('production'), development = identityForChannel('development');
@@ -135,7 +135,7 @@ test('new identity never moves legacy data; explicit migration copies into a fre
   const root = await temp(), legacy = path.join(root, 'video-workbench');
   const source = path.join(legacy, 'workspace'), prod = dataPaths(root, undefined, 'production');
   try {
-    const store = openStore(source); store.put('projects', { id: '12345678-1234-4234-8234-123456789abc', name: 'Legacy', revision: 1 }); store.close();
+    const store = openLegacyWorkspaceStore(source); store.put('projects', { id: '12345678-1234-4234-8234-123456789abc', name: 'Legacy', revision: 1 }); store.close();
     await writeFile(path.join(source, 'media/legacy.txt'), 'unchanged original');
     const hash = async (file: string): Promise<string> => createHash('sha256').update(await readFile(file)).digest('hex');
     const before = await hash(path.join(source, 'workbench.sqlite'));

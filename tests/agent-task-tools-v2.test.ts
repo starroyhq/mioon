@@ -10,6 +10,7 @@ import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {projectAgentTaskUndo,createAgentTaskTools,agentTaskExplicitTargets,AGENT_TASK_OPERATION_ADMISSION,assertAgentTaskOperationCoverage} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
+import {mioFixtureConfiguration,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import type {AgentTaskJson,AgentTaskChange} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {setAgentTaskEffectGate,assertAgentTaskJobEffect,allowAgentTaskJobTargetMutation,resumeAgentTaskJobs,stopAgentTaskJobs,isAgentTaskJobStopped,withAgentTaskJobOrigin,recordAgentTaskJobDispatch} from '../packages/business/src/agent/task-effects-v2.ts';
@@ -62,10 +63,10 @@ async function fixture(t:TestContext,options:CreateServicesOptions={},providers:
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-tools-v2-')),store=openStore(root),services=createServices(store,providers,options);
  const value=await services.call('project.create',{name:'Tools fixture'});if(!record(value)||typeof value.id!=='string')throw Error('Invalid test project');
  const projectId=value.id,journal=createAgentTaskJournal(store),tools=createAgentTaskTools({store,services});
- const run=journal.create({requestId:randomUUID(),projectId,text:'synthetic local task',configuration:{}}).run;
+ const run=journal.create({requestId:randomUUID(),projectId,text:'synthetic local task',configuration:mioFixtureConfiguration}).run;
  t.after(async()=>{tools.dispose();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
  async function execute(operation:string,input:Record<string,unknown>,options:{beforeEffect?:()=>void;failRecord?:boolean;runId?:string}={}){
-  const runId=options.runId??run.id,prepared=tools.prepare({projectId,operation,input}),step=journal.beginStep(runId,{kind:'tool',tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:tools.list().find(tool=>tool.operation===prepared.operation)!.name,arguments:JSON.parse(JSON.stringify(input)) as AgentTaskJson}});journal.markDispatch(runId,step.id);
+  const runId=options.runId??run.id,prepared=tools.prepare({projectId,operation,input}),step=beginFixtureToolStep(journal,runId,{tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:tools.list().find(tool=>tool.operation===prepared.operation)!.name,arguments:JSON.parse(JSON.stringify(input)) as AgentTaskJson}});journal.markDispatch(runId,step.id);
   const outcome=await tools.execute(prepared,{runId,stepId:step.id,requestId:step.id,beforeEffect:()=>{options.beforeEffect?.();journal.assertTargets(projectId,prepared.targets);},
    recordInside:(result,changes)=>{if(options.failRecord)throw Object.assign(Error('injected durable write failure'),{code:'SQLITE_FULL'});journal.completeStepInside(runId,step.id,{result,changes});},appendChangesInside:changes=>{journal.appendChangesInside(runId,step.id,changes);}});
   if(!outcome.recorded)journal.completeStep(runId,step.id,{result:outcome.result,changes:outcome.changes});return {outcome,step:journal.step(step.id),changes:journal.snapshot(runId).changes.filter(change=>change.stepId===step.id)};
@@ -88,13 +89,13 @@ test('background generation polling keeps one submission audit and bounded histo
  update({status:'running',phase:'polling',providerJobId:'synthetic-accepted-task',submissionCount:1});
  const before=f.journal.snapshot(f.run.id),events=f.journal.events(f.run.id),revision=f.journal.targetRevision(f.projectId,'job',jobId);
  // A full business-history budget must not block ordinary provider polling.
- f.store.db.exec("CREATE TEMP TRIGGER synthetic_poll_history_full BEFORE INSERT ON agent_task_changes_v2 BEGIN SELECT RAISE(ABORT,'synthetic history full');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER synthetic_poll_history_full BEFORE INSERT ON mio_changes BEGIN SELECT RAISE(ABORT,'synthetic history full');END;");
  for(let i=0;i<300;i++)update({progress:i%80,nextPollAt:1000+i});
  assert.deepEqual(f.journal.snapshot(f.run.id),before);assert.deepEqual(f.journal.events(f.run.id),events);
  assert.ok(f.journal.targetRevision(f.projectId,'job',jobId)>revision);assert.equal((f.store.get('jobs',jobId) as Record<string,unknown>).nextPollAt,1299);
  f.store.db.exec('DROP TRIGGER synthetic_poll_history_full');
  const originalJob=f.store.get('jobs',jobId);
- f.store.db.exec("CREATE TEMP TRIGGER synthetic_cost_audit_full BEFORE UPDATE ON agent_task_steps_v2 WHEN json_extract(NEW.data,'$.cost')='unknown' BEGIN SELECT RAISE(ABORT,'synthetic cost audit full');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER synthetic_cost_audit_full BEFORE UPDATE ON mio_steps WHEN json_extract(NEW.data,'$.controls.cost')='unknown' BEGIN SELECT RAISE(ABORT,'synthetic cost audit full');END;");
  assert.throws(()=>update({status:'submission_unknown',phase:'reconciliation_required'}),/synthetic cost audit full/u);
  assert.deepEqual(f.store.get('jobs',jobId),originalJob);assert.deepEqual(f.journal.snapshot(f.run.id),before);
  f.store.db.exec('DROP TRIGGER synthetic_cost_audit_full');
@@ -135,7 +136,7 @@ test('undo retains a same-run generated shot container with explicit durable met
  assert.equal(result.retained,true);assert.equal(retained.reversible,false);assert.equal(retained.status,'applied');assert.match(retained.summary??'',/保留生成记录及产物所需镜头/);
  assert.deepEqual(retained.before,before.before);assert.deepEqual(retained.after,before.after);assert.deepEqual(retained.undo,before.undo);assert.equal(retained.revertedAt,undefined);
  assert.deepEqual(f.store.get('shots',f.shotId),shot);assert.deepEqual(f.store.list('jobs',f.projectId),jobs);assert.deepEqual(f.journal.revisionSnapshot(f.projectId),targets);
- const event=f.journal.events(f.run.id).at(-1)!;assert.equal(event.type,'change');assert.ok(record(event.data));assert.equal(event.data.reversible,false);
+ const snapshot=f.journal.snapshot(f.run.id);assert.equal(snapshot.changes.find(item=>item.id===change.id)!.reversible,false);assert.ok(f.journal.events(f.run.id).every(event=>event.type==='invalidate'&&event.data===null));
 });
 for(const obstacle of ['unbound_job','foreign_run_job','aba','draft','edge','compound','extra_target'] as const)test(`same-run shot retention never skips ${obstacle}`,async t=>{
  const f=await acceptedGeneratedShot(t);let change=f.created.changes[0]!;
@@ -143,7 +144,7 @@ for(const obstacle of ['unbound_job','foreign_run_job','aba','draft','edge','com
  if(obstacle==='extra_target')change={...change,targets:[...change.targets,...change.targets]};
  if(obstacle==='unbound_job')await f.services.call('generation.submit',{...f.generation,requestId:randomUUID()});
  if(obstacle==='foreign_run_job'){
-  f.journal.transition(f.run.id,f.journal.run(f.run.id).revision,'completed');const other=f.journal.create({requestId:randomUUID(),projectId:f.projectId,text:'Another run',configuration:{}}).run;
+  f.journal.transition(f.run.id,f.journal.run(f.run.id).revision,'completed');const other=f.journal.create({requestId:randomUUID(),projectId:f.projectId,text:'Another run',configuration:mioFixtureConfiguration}).run;
   await f.execute('generation.submit',f.generation,{runId:other.id});
  }
  if(obstacle==='aba'){await f.services.call('shot.update',{shotId:f.shotId,expectedRevision:1,patch:{title:'External edit'}});await f.services.call('shot.update',{shotId:f.shotId,expectedRevision:2,patch:{title:'Retained generated shot'}});}
@@ -156,7 +157,7 @@ for(const obstacle of ['unbound_job','foreign_run_job','aba','draft','edge','com
 });
 test('retention audit failure rolls back the change classification, run revision and event atomically',async t=>{
  const f=await acceptedGeneratedShot(t),change=f.created.changes[0]!,before=f.journal.snapshot(f.run.id),events=f.journal.events(f.run.id),shot=f.store.get('shots',f.shotId),jobs=f.store.list('jobs',f.projectId);
- f.store.db.exec(`CREATE TEMP TRIGGER test_retention_audit BEFORE INSERT ON agent_task_events_v2 WHEN NEW.type='change' AND json_extract(NEW.data,'$.data.id')='${change.id}' AND json_extract(NEW.data,'$.data.reversible')=0 BEGIN SELECT RAISE(ABORT,'synthetic retention audit failure');END;`);
+ f.store.db.exec(`CREATE TEMP TRIGGER test_retention_audit BEFORE UPDATE ON mio_changes WHEN NEW.id='${change.id}' AND json_extract(NEW.data,'$.reversible')=0 BEGIN SELECT RAISE(ABORT,'synthetic retention audit failure');END;`);
  assert.throws(()=>f.undo(change),/synthetic retention audit failure/);assert.deepEqual(f.journal.snapshot(f.run.id),before);assert.deepEqual(f.journal.events(f.run.id),events);assert.deepEqual(f.store.get('shots',f.shotId),shot);assert.deepEqual(f.store.list('jobs',f.projectId),jobs);
 });
 test('all public operations have explicit admission; model cannot acquire administration or raw file authority',async t=>{
@@ -278,7 +279,7 @@ for(const operation of ['generation.submit','image.generate'] as const)test(`${o
   await assert.rejects(f.execute(operation,input,{failRecord:true}),{code:'SQLITE_FULL'},evidence);assert.equal(accepted(),0,evidence);
   const step=f.journal.snapshot(f.run.id).steps.at(-1)!;f.journal.updateStep(f.run.id,step.id,{status:'unknown'});
   if(evidence==='cost')f.journal.updateStep(f.run.id,step.id,{cost:'submitted'});
-  if(evidence==='origin')f.store.db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run(operation==='generation.submit'?'job':'image',randomUUID(),f.run.id,step.id,f.projectId,step.id,operation);
+  if(evidence==='origin')f.store.db.prepare('INSERT INTO mio_job_origins(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run(operation==='generation.submit'?'job':'image',randomUUID(),f.run.id,step.id,f.projectId,step.id,operation);
   // An acceptance without its v2 completion, as after a crash between the two commits.
   if(evidence==='receipt'){await f.services.call(operation,{...input,...(operation==='image.generate'?{projectId:f.projectId}:{}),requestId:step.id});assert.equal(accepted(),1);}
   assert.deepEqual(f.tools.recoverLocalUnknown(prepared,{runId:f.run.id,stepId:step.id,requestId:step.id}),evidence==='none'?{outcome:'not_applied',reason:'atomic_receipt_absent'}:null,evidence);
@@ -329,8 +330,8 @@ test('claims on the exact target block execution while a claim elsewhere leaves 
  f.store.put('jobs',{...job,progress:50,revision:2});assert.deepEqual(prepared.targets,[]);const latest=await f.execute('job.get',{jobId:job.id});assert.ok(record(latest.step.result));assert.equal(latest.step.result.progress,50);
 });
 test('durable worker origin cannot bypass a missing or revoked backend gate',async t=>{
- const f=await fixture(t),step=f.journal.beginStep(f.run.id,{kind:'tool'});
- f.store.tx(()=>f.store.db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run('job','synthetic-job',f.run.id,step.id,f.projectId,step.id,'generation.submit'));
+ const f=await fixture(t),step=beginFixtureToolStep(f.journal,f.run.id,{});
+ f.store.tx(()=>f.store.db.prepare('INSERT INTO mio_job_origins(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run('job','synthetic-job',f.run.id,step.id,f.projectId,step.id,'generation.submit'));
  assert.throws(()=>assertAgentTaskJobEffect(f.store.db,'job','synthetic-job'),{code:'AGENT_TASK_EFFECT_BLOCKED'});
  let allowed=true;const remove=setAgentTaskEffectGate(f.store.db,()=>{if(!allowed)throw Object.assign(Error('revoked'),{code:'AGENT_TASK_CONSENT_REQUIRED'});});
  assertAgentTaskJobEffect(f.store.db,'job','synthetic-job');allowed=false;assert.throws(()=>assertAgentTaskJobEffect(f.store.db,'job','synthetic-job'),{code:'AGENT_TASK_CONSENT_REQUIRED'});remove();
@@ -365,7 +366,7 @@ test('shot reorder uses exact shot targets while preserving an unrelated manual 
 });
 for(const change of ['add','edit','aba'] as const)test(`shot reorder still rejects ${change} after its intent without moving any shot`,async t=>{
  const f=await fixture(t),a=await f.shot('A'),b=await f.shot('B'),project=f.store.get('projects',f.projectId);assert.ok(record(project));
- const prepared=f.tools.prepare({projectId:f.projectId,operation:'shot.reorder',input:{expectedRevision:project.revision,shotIds:[b.id,a.id]}}),step=f.journal.beginStep(f.run.id,{kind:'tool',targets:prepared.targets,tier:prepared.risk});f.journal.markDispatch(f.run.id,step.id);
+ const prepared=f.tools.prepare({projectId:f.projectId,operation:'shot.reorder',input:{expectedRevision:project.revision,shotIds:[b.id,a.id]}}),step=beginFixtureToolStep(f.journal,f.run.id,{targets:prepared.targets,tier:prepared.risk});f.journal.markDispatch(f.run.id,step.id);
  if(change==='add')await f.shot('Manual C');else {await f.services.call('shot.update',{shotId:a.id,expectedRevision:1,patch:{title:'Manual renamed'}});if(change==='aba')await f.services.call('shot.update',{shotId:a.id,expectedRevision:2,patch:{title:'A'}});}
  await assert.rejects(f.tools.execute(prepared,{runId:f.run.id,stepId:step.id,requestId:step.id,beforeEffect:()=>f.journal.assertTargets(f.projectId,prepared.targets),recordInside:(result,changes)=>f.journal.completeStepInside(f.run.id,step.id,{result,changes})}),{code:'AGENT_TASK_TARGET_CHANGED'});
  assert.equal((f.store.get('shots',a.id) as Record<string,unknown>).orderIndex,0);assert.equal((f.store.get('shots',b.id) as Record<string,unknown>).orderIndex,1);assert.equal(f.journal.snapshot(f.run.id).changes.length,0);
@@ -376,12 +377,12 @@ test('selected Cube import retains one atomic immutable receipt and cannot expos
  const admitted=await f.execute('lut.importSelected',{handle:selected.id});assert.equal(admitted.step.status,'completed');assert.equal(admitted.changes[0]!.reversible,false);
  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM project_lut_resources').get()!.n,1);
  const replay=await f.execute('lut.importSelected',{handle:selected.id});assert.equal(replay.step.status,'completed');assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM project_lut_resources').get()!.n,1);
- const manifest=f.store.db.prepare('SELECT status,resourceId,assetId FROM agent_task_imports_v2 WHERE id=?').get(String(selected.id))!;assert.equal(manifest.status,'imported');assert.equal(typeof manifest.resourceId,'string');assert.equal(manifest.assetId,null);
+ const manifest=f.store.db.prepare('SELECT status,resourceId,assetId FROM mio_imports WHERE id=?').get(String(selected.id))!;assert.equal(manifest.status,'imported');assert.equal(typeof manifest.resourceId,'string');assert.equal(manifest.assetId,null);
  assert.doesNotMatch(JSON.stringify(admitted.step.result),/dataBase64|relativePath|LUT_3D_SIZE/);
 });
 test('selected import rejects symlink staging and enforces the 7 MiB Cube limit',async t=>{
  const f=await fixture(t),outside=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-import-outside-'));t.after(()=>rm(outside,{recursive:true,force:true}));
- await symlink(outside,path.join(f.root,'agent-imports'));
+ await symlink(outside,path.join(f.store.localDir,'imports'));
  await assert.rejects(f.tools.stageImport({projectId:f.projectId,requestId:randomUUID(),name:'small.cube',mimeType:'',dataBase64:Buffer.from('LUT_3D_SIZE 2').toString('base64')}),{code:'STORAGE_PRIVATE_REQUIRED'});
  await assert.rejects(f.tools.stageImport({projectId:f.projectId,requestId:randomUUID(),name:'large.cube',mimeType:'',dataBase64:Buffer.alloc(7*1024*1024+1).toString('base64')}),{code:'INVALID_MEDIA'});
 });
@@ -402,9 +403,9 @@ test('unknown wait recovery only observes an existing local result and never dri
 });
 test('selected file authority is rechecked before opening its private bytes',async t=>{
  const f=await fixture(t),selected=await f.tools.stageImport({projectId:f.projectId,requestId:randomUUID(),name:'small.cube',mimeType:'',dataBase64:Buffer.from('LUT_3D_SIZE 2').toString('base64')});if(!record(selected))throw Error('Invalid file');
- await rm(path.join(f.root,`agent-imports/${String(selected.id)}.bin`));
+ await rm(path.join(f.store.localDir,`imports/${String(selected.id)}.bin`));
  let fences=0;await assert.rejects(f.execute('lut.importSelected',{handle:selected.id},{beforeEffect:()=>{if(++fences===2)throw Object.assign(Error('revoked'),{code:'AGENT_TASK_CONSENT_REQUIRED'});}}),{code:'AGENT_TASK_CONSENT_REQUIRED'});
- assert.equal(fences,2);assert.equal(f.store.db.prepare('SELECT status FROM agent_task_imports_v2 WHERE id=?').get(String(selected.id))!.status,'selected');
+ assert.equal(fences,2);assert.equal(f.store.db.prepare('SELECT status FROM mio_imports WHERE id=?').get(String(selected.id))!.status,'selected');
 });
 test('image worker rechecks authority after acceptance and immediately before dispatch',async t=>{
  let enter:()=>void=()=>{},release:()=>void=()=>{};const entered=new Promise<void>(resolve=>{enter=resolve;}),barrier=new Promise<void>(resolve=>{release=resolve;});let dispatches=0;
@@ -493,7 +494,7 @@ test('existing image group accepts its own revision advance and single backgroun
  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await settings.put({expectedRevision:0,configuration:initial.configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_EXISTING_IMAGE_GROUP_ONLY'}});
  const authorizations=createTestAuthorizations(()=>({...f.store}),settings);await authorizeTestScope(authorizations,'project_agent');let modelCalls=0;
  const args={...input,prompt:'Same group second synthetic version',groupId:group.id,expectedRevision:group.revision};
- const gateway:TaskGateway=async function*(){const output:TaskModelOutput={text:'Synthetic image queued',toolCalls:[],providerOutput:[]};modelCalls++;if(modelCalls===1)output.toolCalls=[{id:'load-existing-image-group-tools',name:'mioon_tools_load',arguments:{names:['mioon_image_generate']}}];else if(modelCalls===2)output.toolCalls=[{id:'existing-image-group-call',name:'mioon_image_generate',arguments:args}];output.providerOutput=output.toolCalls.map(call=>({type:'function_call',id:`fc_${call.id}`,call_id:call.id,name:call.name,arguments:JSON.stringify(call.arguments),status:'completed'}));yield {type:'done',output};};
+ const gateway:TaskGateway=async function*(){const output:TaskModelOutput={text:'Synthetic image queued',toolCalls:[],providerOutput:[]};modelCalls++;if(modelCalls===1)output.toolCalls=[{id:'load-existing-image-group-tools',name:'mioon_tools_load',arguments:{names:['mioon_image_generate']}}];else if(modelCalls===2)output.toolCalls=[{id:'existing-image-group-call',name:'mioon_image_generate',arguments:args}];output.providerOutput={role:'assistant',content:output.text,tool_calls:output.toolCalls.map(call=>({id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}))};yield {type:'done',output};};
  const runtime=createAgentTaskRuntime({store:f.store,agentSettings:settings,authorizations,tools:f.tools,journal:f.journal,gateway,selfPort:()=>4318});
  try{
   runtime.updatePolicy({requestId:randomUUID(),expectedRevision:runtime.policy().revision,stepLimit:30,modes:{...runtime.policy().modes,paid:'direct'},acknowledgePaid:true});
@@ -519,7 +520,7 @@ for(const action of ['handBack','deny'] as const)test(`a background image approv
   if(modelCalls===1)output.toolCalls=[{id:'background-requeue-load',name:'mioon_tools_load',arguments:{names:['mioon_image_generate','mioon_shot_update']}}];
   else if(modelCalls===2)output.toolCalls=[{id:'background-requeue-image',name:'mioon_image_generate',arguments:{name:'Held behind approval',prompt:'Synthetic background image',providerId:'mock',model:'mock-image-v1',options:{...IMAGE_FIXED_OPTIONS}}}];
   else if(modelCalls===3)output.toolCalls=[{id:'background-requeue-shot',name:'mioon_shot_update',arguments:{shotId:shot.id,expectedRevision:shot.revision,patch:{prompt:'Foreground edit'}}}];
-  output.providerOutput=output.toolCalls.map(call=>({type:'function_call',id:`fc_${call.id}`,call_id:call.id,name:call.name,arguments:JSON.stringify(call.arguments),status:'completed'}));yield {type:'done',output};};
+  output.providerOutput={role:'assistant',content:output.text,tool_calls:output.toolCalls.map(call=>({id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}))};yield {type:'done',output};};
  const runtime=createAgentTaskRuntime({store:f.store,agentSettings:settings,authorizations,tools:f.tools,journal:f.journal,gateway,selfPort:()=>4318});
  try{
   runtime.updatePolicy({requestId:randomUUID(),expectedRevision:runtime.policy().revision,stepLimit:30,modes:{...runtime.policy().modes,paid:'direct',local_reversible:'confirm'},acknowledgePaid:true});
@@ -607,7 +608,7 @@ test('video worker has a final grant fence after its durable claim and never res
  const providers=new Map([['mock',provider]]),f=await fixture(t,{},providers),shot=await f.shot('Synthetic generation');
  let allowed=true;const remove=setAgentTaskEffectGate(f.store.db,()=>{if(!allowed)throw Object.assign(Error('revoked'),{code:'AGENT_TASK_CONSENT_REQUIRED'});});t.after(remove);
  const accepted=await f.execute('generation.submit',{shotId:shot.id,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'});
- assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM agent_task_job_origins_v2').get()!.n,1);
+ assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM mio_job_origins').get()!.n,1);
  const worker=startWorker(f.store,f.services,providers);
  try{await entered;allowed=false;release();await worker.tick();await worker.tick();
   assert.equal(posts,0);const blocked=f.store.list('jobs',f.projectId)[0] as Record<string,unknown>;assert.equal(blocked.status,'queued');assert.equal(blocked.submissionCount,0);assert.equal(f.journal.step(accepted.step.id).cost,undefined);
@@ -624,11 +625,11 @@ test('stopping a claimed but unsent video task finishes local cancellation after
  }finally{release();await worker.stop();}
 });
 test('background automatic selection retains products but pauses on a saved or draft target conflict',async t=>{
- const f=await fixture(t),shot=await f.shot('Selected target'),target={kind:'shot',id:shot.id,revision:f.journal.targetRevision(f.projectId,'shot',shot.id)},step=f.journal.beginStep(f.run.id,{kind:'tool',targets:[target]});f.journal.markDispatch(f.run.id,step.id);f.journal.completeStep(f.run.id,step.id,{result:{accepted:true}});
- f.store.tx(()=>f.store.db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run('job','synthetic-result',f.run.id,step.id,f.projectId,step.id,'generation.submit'));
+ const f=await fixture(t),shot=await f.shot('Selected target'),target={kind:'shot',id:shot.id,revision:f.journal.targetRevision(f.projectId,'shot',shot.id)},step=beginFixtureToolStep(f.journal,f.run.id,{targets:[target]});f.journal.markDispatch(f.run.id,step.id);f.journal.completeStep(f.run.id,step.id,{result:{accepted:true}});
+ f.store.tx(()=>f.store.db.prepare('INSERT INTO mio_job_origins(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run('job','synthetic-result',f.run.id,step.id,f.projectId,step.id,'generation.submit'));
  const remove=setAgentTaskEffectGate(f.store.db,()=>{});t.after(remove);assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job','synthetic-result',{kind:'shot',id:shot.id}),true);
  f.journal.claim({projectId:f.projectId,ownerId:randomUUID(),targets:[target]});
- assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job','synthetic-result',{kind:'shot',id:shot.id}),false);assert.equal(f.journal.run(f.run.id).status,'paused');assert.equal(f.journal.run(f.run.id).pauseReason,'editing');assert.ok(f.journal.events(f.run.id).some(event=>event.type==='conflict'));const source=f.journal.step(step.id).data;assert.ok(record(source));assert.deepEqual(source.conflictTargets,[target]);
+ assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job','synthetic-result',{kind:'shot',id:shot.id}),false);assert.equal(f.journal.run(f.run.id).status,'paused');assert.equal(f.journal.run(f.run.id).pauseReason,'editing');const source=f.journal.snapshot(f.run.id).steps.find(item=>item.id===step.id)!.data;assert.ok(record(source));assert.equal(source.backgroundInvalidated,true);assert.deepEqual(source.conflictTargets,[target]);
 });
 for(const action of ['revoke_grant','disable_paid_direct'] as const)test(`real runtime ${action} after video claim blocks its synthetic POST`,async t=>{
  let enter:()=>void=()=>{},release:()=>void=()=>{};const entered=new Promise<void>(resolve=>{enter=resolve;}),barrier=new Promise<void>(resolve=>{release=resolve;});let posts=0;
@@ -636,7 +637,7 @@ for(const action of ['revoke_grant','disable_paid_direct'] as const)test(`real r
  const providers=new Map([['mock',provider]]),f=await fixture(t,{},providers),shot=await f.shot('Real gate source');f.journal.transition(f.run.id,f.journal.run(f.run.id).revision,'stopped');
  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await settings.put({expectedRevision:0,configuration:initial.configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_TASK_GATE_ONLY'}});
  const authorizations=createTestAuthorizations(()=>({...f.store}),settings);await authorizeTestScope(authorizations,'project_agent');let modelCalls=0;
- const gateway:TaskGateway=async function*(){const output:TaskModelOutput={text:'Queued synthetic task',toolCalls:[],providerOutput:[]};modelCalls++;if(modelCalls===1)output.toolCalls=[{id:'load-synthetic-generation-tools',name:'mioon_tools_load',arguments:{names:['mioon_generation_submit']}}];else if(modelCalls===2){const args={shotId:shot.id,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'};output.toolCalls=[{id:'synthetic-generation-call',name:'mioon_generation_submit',arguments:args}];}output.providerOutput=output.toolCalls.map(call=>({type:'function_call',id:`fc_${call.id}`,call_id:call.id,name:call.name,arguments:JSON.stringify(call.arguments),status:'completed'}));yield {type:'done',output};};
+ const gateway:TaskGateway=async function*(){const output:TaskModelOutput={text:'Queued synthetic task',toolCalls:[],providerOutput:[]};modelCalls++;if(modelCalls===1)output.toolCalls=[{id:'load-synthetic-generation-tools',name:'mioon_tools_load',arguments:{names:['mioon_generation_submit']}}];else if(modelCalls===2){const args={shotId:shot.id,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'};output.toolCalls=[{id:'synthetic-generation-call',name:'mioon_generation_submit',arguments:args}];}output.providerOutput={role:'assistant',content:output.text,tool_calls:output.toolCalls.map(call=>({id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}))};yield {type:'done',output};};
  const runtime=createAgentTaskRuntime({store:f.store,agentSettings:settings,authorizations,tools:f.tools,journal:f.journal,gateway,selfPort:()=>4318});let worker:ReturnType<typeof startWorker>|undefined;
  try{
   runtime.updatePolicy({requestId:randomUUID(),expectedRevision:runtime.policy().revision,stepLimit:30,modes:{...runtime.policy().modes,paid:'direct'},acknowledgePaid:true});
@@ -738,12 +739,12 @@ test('saved argument reference fallback treats canonical and model tool names id
 
 for(const metadata of ['saved','legacy'] as const)test(`late selection recognizes a skipped reference with ${metadata} metadata without another conflict`,async t=>{
  const f=await fixture(t),shot=await f.shot('Late product target'),reference={kind:'asset',id:randomUUID(),revision:0},target={kind:'shot',id:shot.id,revision:f.journal.targetRevision(f.projectId,'shot',shot.id)};
- const source=f.journal.beginStep(f.run.id,{kind:'tool',targets:[reference],data:{conflictTargets:[reference]}});f.store.tx(()=>f.journal.skipTargetsInside(f.run.id,[{stepId:source.id,target:reference}]));
- const accepted=f.journal.beginStep(f.run.id,{kind:'tool',targets:[target],toolCall:{id:randomUUID(),name:'mioon_image_generate',arguments:{name:'Synthetic retained edit',providerId:'mock',model:IMAGE_MODELS.mock,prompt:'Retained input',options:IMAGE_FIXED_OPTIONS,purpose:'edit',inputImage:{assetId:reference.id,sha256:'a'.repeat(64)}}},...(metadata==='saved'?{data:{referencedTargets:[reference]}}:{})});
- f.store.tx(()=>f.store.db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run('job','synthetic-reference-result',f.run.id,accepted.id,f.projectId,accepted.id,'generation.submit'));
+ const source=beginFixtureToolStep(f.journal,f.run.id,{targets:[reference],data:{conflictTargets:[reference]}});f.store.tx(()=>f.journal.skipTargetsInside(f.run.id,[{stepId:source.id,target:reference}]));
+ const accepted=beginFixtureToolStep(f.journal,f.run.id,{targets:[target],toolCall:{id:randomUUID(),name:'mioon_image_generate',arguments:{name:'Synthetic retained edit',providerId:'mock',model:IMAGE_MODELS.mock,prompt:'Retained input',options:IMAGE_FIXED_OPTIONS,purpose:'edit',inputImage:{assetId:reference.id,sha256:'a'.repeat(64)}}},...(metadata==='saved'?{data:{referencedTargets:[reference]}}:{})});
+ f.store.tx(()=>f.store.db.prepare('INSERT INTO mio_job_origins(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run('job','synthetic-reference-result',f.run.id,accepted.id,f.projectId,accepted.id,'generation.submit'));
  const remove=setAgentTaskEffectGate(f.store.db,()=>{throw Object.assign(Error('Explicit reference was skipped'),{code:'AGENT_TASK_TARGET_SKIPPED'});});t.after(remove);
  assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job','synthetic-reference-result',{kind:'shot',id:shot.id}),false);assert.equal(f.journal.run(f.run.id).status,'running');
- const event=f.journal.events(f.run.id).at(-1)!;assert.equal(event.type,'background_selection_skipped');assert.ok(record(event.data));assert.equal(event.data.reason,'target_skipped');assert.equal(f.journal.events(f.run.id).some(item=>item.type==='conflict'),false);
+ const hint=f.store.db.prepare("SELECT payloadJson FROM mio_entries WHERE runId=? AND kind='host_hint' AND json_extract(payloadJson,'$.type')='background_selection_skipped' ORDER BY sequence DESC LIMIT 1").get(f.run.id);assert.ok(hint);assert.equal(JSON.parse(String(hint.payloadJson)).reason,'target_skipped');assert.equal(f.store.db.prepare("SELECT count(*) AS n FROM mio_entries WHERE runId=? AND kind='host_hint' AND json_extract(payloadJson,'$.type')='conflict'").get(f.run.id)!.n,0);assert.ok(f.journal.events(f.run.id).every(event=>event.type==='invalidate'&&event.data===null));
 });
 
 for(const kind of ['asset_range','asset_disposition','asset_annotation','subject_binding'] as const)test(`undo preview preserves the existing first ${kind} metadata compensation`,async t=>{
@@ -821,7 +822,7 @@ test('storyboard acceptance binds its task to the step and a stopped run retires
  const accepted=await f.execute('scene.shots.create',{sourceAssetId:source.id,sourceHash:source.sha256,resultId:source.resultId,segments:[1,2]});
  assert.ok(record(accepted.step.result));assert.deepEqual([accepted.step.result.kind,accepted.step.result.state,accepted.step.result.requestId],['shots','queued',accepted.step.id]);
  const taskId=String(accepted.step.result.id);
- assert.equal(f.store.db.prepare("SELECT count(*) AS n FROM agent_task_job_origins_v2 WHERE kind='scene' AND jobId=? AND runId=? AND stepId=?").get(taskId,f.run.id,accepted.step.id)!.n,1);
+ assert.equal(f.store.db.prepare("SELECT count(*) AS n FROM mio_job_origins WHERE kind='scene' AND jobId=? AND runId=? AND stepId=?").get(taskId,f.run.id,accepted.step.id)!.n,1);
  await delay(30);assert.equal(sceneState(f,taskId),'queued','the Assistant gate holds an unstarted storyboard');
  assert.equal(f.journal.snapshot(f.run.id).backgroundPending,true);
  f.journal.transition(f.run.id,f.journal.run(f.run.id).revision,'stopped');stopAgentTaskJobs(f.store.db,f.run.id);

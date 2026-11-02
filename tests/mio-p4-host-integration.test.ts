@@ -1,0 +1,154 @@
+import test, {type TestContext} from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import type {DatabaseSync} from 'node:sqlite';
+import {startServer, type InspectApplication, type InspectProject} from '../apps/server/src/index.ts';
+import {createAgentClient} from '../packages/client/src/agent.ts';
+import {agentTaskPolicySchema, agentTaskSnapshotSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {agentDiagnosticSummarySchema} from '../packages/contracts/src/agent-diagnostic-summary.ts';
+import {mioRunUsageSchema} from '../packages/contracts/src/mio-run-usage.ts';
+import {MIO_STORAGE_TABLES, mioStorageSnapshotSchema} from '../packages/contracts/src/mio-storage.ts';
+import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
+import {readMioStorage} from '../packages/business/src/agent/mio-storage.ts';
+import {authorizeHttpSnapshot} from './helpers/agent-authorizations.ts';
+import {openProjectDatabase, projectDirFor} from './helpers/project-database.ts';
+
+const token = 'synthetic-mio-p4-host-integration-token';
+const reply = 'PRIVATE_P4_CANONICAL_MODEL_OUTPUT';
+const reportedUsage = {inputTokens: 80, outputTokens: 4, cacheReadTokens: 20, cacheWriteTokens: 0};
+const diagnosticDocument = 'agent-diagnostic-summary-v1.json';
+const globalTables = ['agent_task_policy_v2', 'agent_task_policy_requests_v2'];
+function object(value: unknown): Record<string, unknown> {assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value)); return value as Record<string, unknown>;}
+
+async function fixture(t: TestContext) {
+  const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-mio-p4-host-'));
+  let server: Awaited<ReturnType<typeof startServer>> | undefined;
+  let client!: ReturnType<typeof createAgentClient>;
+  let inspectProject!: InspectProject, inspectApplication!: InspectApplication, calls = 0;
+  const outside: DatabaseSync[] = [];
+  const gateway: TaskGateway = async function* (request) {
+    request.beforeSubmit?.(); calls++;
+    yield {type: 'delta', text: reply};
+    yield {type: 'done', output: {text: reply, toolCalls: [], providerOutput: {role: 'assistant', content: reply}, usage: reportedUsage}};
+  };
+  t.after(async () => {
+    for (const db of outside) if (db.isOpen) db.close();
+    await server?.close(); rmSync(root, {recursive: true, force: true});
+  });
+  async function start() {
+    server = await startServer({dataDir: root, port: 0, token, comfyModule: 'skip', taskGatewayV2: gateway,
+      inspectProject: read => {inspectProject = read;}, inspectApplication: read => {inspectApplication = read;}});
+    client = createAgentClient({env: {MIOON_BASE_URL: server.url, MIOON_TOKEN: token}});
+  }
+  await start();
+  const initial = await client.settingsGet();
+  await client.settingsPut({expectedRevision: initial.revision, configuration: {presetId: 'ollama', platformId: 'local', protocol: 'chat_completions', model: 'qwen3:8b', baseUrl: 'http://127.0.0.1:11434/v1'}}, {action: 'remove'});
+  const request = async (route: string, options: {method?: string; input?: unknown} = {}) => {
+    const response = await fetch(server!.url + route, {method: options.method ?? 'GET', headers: {authorization: `Bearer ${token}`, ...(options.input === undefined ? {} : {'content-type': 'application/json'})}, ...(options.input === undefined ? {} : {body: JSON.stringify(options.input)})});
+    return {status: response.status, body: await response.json() as unknown};
+  };
+  async function createProject() {
+    const created = await request('/api/rpc', {method: 'POST', input: {operation: 'project.create', input: {name: 'Real P4 Mio project'}}});
+    assert.equal(created.status, 200); const id = object(object(created.body).data).id; assert.equal(typeof id, 'string');
+    const projectId = id as string;
+    await authorizeHttpSnapshot(request, await client.list({projectId}), 'project_agent');
+    return projectId;
+  }
+  async function completed(projectId: string, runId: string) {
+    const deadline = Date.now() + 30_000;
+    for (;;) {
+      const snapshot = await client.status({projectId, runId});
+      if (['completed', 'failed', 'stopped'].includes(snapshot.run.status)) {
+        assert.equal(snapshot.run.status, 'completed');
+        if (snapshot.executionEndedAt) return snapshot;
+      }
+      assert.ok(Date.now() < deadline, 'The offline P4 runtime did not complete');
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+  }
+  return {root, request, createProject, completed,
+    get client() {return client;}, get calls() {return calls;},
+    project: <T>(projectId: string, read: (db: DatabaseSync) => T) => inspectProject(projectId, read),
+    application: <T>(read: (db: DatabaseSync) => T) => inspectApplication(read),
+    async restart() {await server!.close(); server = undefined; await start();},
+    holdClosedProject(projectRoot: string) {const db = openProjectDatabase(projectRoot); outside.push(db); return db;},
+  };
+}
+
+test('production P4 hosts run R1 canonical records and keep global CAS policy/receipts in B1', {timeout: 60_000}, async t => {
+  const f = await fixture(t), beforePolicy = await f.client.policyGet(), requestId = randomUUID();
+  const input = {requestId, expectedRevision: beforePolicy.policy.revision, stepLimit: 12, modes: beforePolicy.policy.modes};
+  const saved = await f.client.policySet(input);
+  assert.equal(saved.policy.revision, beforePolicy.policy.revision + 1);
+  assert.deepEqual(await f.client.policySet(input), saved);
+  assert.deepEqual(await f.client.policyLookup({requestId}), {found: true, policy: saved.policy, readOnly: false});
+  const staleId = randomUUID(), stale = await f.request('/api/agent/tasks/v2/policy', {method: 'PUT', input: {...input, requestId: staleId}});
+  assert.equal(stale.status, 409); assert.equal(object(object(stale.body).error).code, 'AGENT_TASK_REVISION_CONFLICT');
+  assert.deepEqual(await f.client.policyLookup({requestId: staleId}), {found: false, readOnly: false});
+  const appPolicy = f.application(db => ({policy: db.prepare('SELECT data FROM agent_task_policy_v2 WHERE id=1').get(), receipts: db.prepare('SELECT requestId,data FROM agent_task_policy_requests_v2').all()}));
+  assert.deepEqual(agentTaskPolicySchema.parse(JSON.parse(String(appPolicy.policy!.data))), saved.policy);
+  assert.equal(appPolicy.receipts.length, 1); assert.equal(appPolicy.receipts[0]!.requestId, requestId);
+  assert.deepEqual(agentTaskPolicySchema.parse(JSON.parse(String(appPolicy.receipts[0]!.data))), saved.policy);
+
+  const projectId = await f.createProject(), settings = await f.client.settingsGet();
+  const accepted = await f.client.send({projectId, requestId: randomUUID(), text: 'PRIVATE_P4_USER_PROMPT', expectedSettingsRevision: settings.revision, locale: 'en'});
+  const done = agentTaskSnapshotSchema.parse(await f.completed(projectId, accepted.run.id));
+  assert.equal(done.run.stepLimit, saved.policy.stepLimit, 'The hosted R1 journal reads the real B1 policy port');
+  assert.equal(done.run.budget, saved.policy.stepLimit); assert.equal(f.calls, 1);
+  const records = f.project(projectId, db => {
+    const databases = db.prepare('PRAGMA database_list').all();
+    for (const database of databases) {
+      assert.match(String(database.name), /^(main|project|cache|temp)$/u);
+      const tables = db.prepare(`SELECT name FROM ${String(database.name)}.sqlite_schema WHERE type='table'`).all().map(row => String(row.name));
+      assert.ok(globalTables.every(table => !tables.includes(table)), 'Global policy tables must never be attached or built in the project');
+    }
+    return {tables: db.prepare("SELECT name FROM main.sqlite_schema WHERE type='table' AND name GLOB 'mio_*'").all().map(row => String(row.name)),
+      legacyRuns: db.prepare("SELECT count(*) AS n FROM main.sqlite_schema WHERE name='agent_task_runs_v2'").get()!.n,
+      requests: db.prepare('SELECT q.state,q.originalBody,q.bodyBytes,s.partialText FROM mio_requests q JOIN mio_steps s ON s.id=q.stepId WHERE s.runId=?').all(done.run.id),
+      outputs: db.prepare("SELECT coalesce(e.payloadJson,b.content) AS payload FROM mio_entries e LEFT JOIN mio_blobs b ON b.sha256=e.payloadBlobHash WHERE e.runId=? AND e.kind='model_output'").all(done.run.id)};
+  });
+  assert.deepEqual([...records.tables].sort(), [...MIO_STORAGE_TABLES].sort()); assert.equal(records.legacyRuns, 0);
+  assert.equal(records.requests.length, 1); assert.equal(records.requests[0]!.state, 'completed');
+  assert.equal(records.requests[0]!.originalBody, null); assert.equal(records.requests[0]!.partialText, null); assert.ok(Number(records.requests[0]!.bodyBytes) > 0);
+  assert.equal(records.outputs.length, 1); assert.equal(object(object(JSON.parse(String(records.outputs[0]!.payload))).providerOutput).content, reply);
+  const changes = f.project(projectId, db => db.prepare('SELECT total_changes() AS n').get()!.n), calls = f.calls;
+  const usage = mioRunUsageSchema.parse(await f.client.usage({projectId, runId: done.run.id}));
+  assert.deepEqual(usage.knownTotals, reportedUsage); assert.equal(usage.modelOutcomes.completed, 1); assert.equal(usage.dispatchedModelSteps, 1);
+  assert.doesNotMatch(JSON.stringify(usage), /PRIVATE_|providerOutput|originalBody|configurationBlobHash/u);
+  const doctor = await f.client.doctor({projectId}), storage = mioStorageSnapshotSchema.parse(doctor.storage);
+  assert.equal(storage.version, 2); assert.equal(storage.scope, 'project'); assert.equal(storage.projectId, projectId); assert.equal(storage.tables.length, 19);
+  assert.deepEqual(storage, f.project(projectId, db => readMioStorage(db)));
+  assert.equal(f.project(projectId, db => db.prepare('SELECT total_changes() AS n').get()!.n), changes); assert.equal(f.calls, calls);
+  assert.equal((await f.client.doctor()).storage, undefined);
+});
+
+test('a real text diagnostic persists only the five-field B1 summary, readable with its project closed and externally locked', {timeout: 60_000}, async t => {
+  const f = await fixture(t), projectId = await f.createProject(), settings = await f.client.settingsGet();
+  assert.deepEqual(await f.client.diagnoseLatest(), {test: null});
+  assert.equal(f.application(db => db.prepare('SELECT data FROM app_documents WHERE name=?').get(diagnosticDocument)), undefined);
+  const sent = await f.client.send({projectId, requestId: randomUUID(), text: 'PRIVATE_P4_DIAGNOSTIC_PROMPT', expectedSettingsRevision: settings.revision, locale: 'en', diagnostic: {profile: 'text'}});
+  await f.completed(projectId, sent.run.id);
+  const deadline = Date.now() + 30_000;
+  let latest = await f.client.diagnoseLatest();
+  while (latest.test === null) {assert.ok(Date.now() < deadline, 'The terminal diagnostic did not publish its application summary'); await new Promise(resolve => setTimeout(resolve, 5)); latest = await f.client.diagnoseLatest();}
+  const summary = agentDiagnosticSummarySchema.parse(latest.test);
+  assert.deepEqual(Object.keys(summary).sort(), ['completedAt', 'errorCode', 'model', 'protocol', 'status']);
+  assert.equal(summary.status, 'completed'); assert.equal(summary.protocol, settings.configuration.protocol); assert.equal(summary.model, settings.configuration.model); assert.equal(summary.errorCode, null);
+  const raw = f.application(db => String(db.prepare('SELECT data FROM app_documents WHERE name=?').get(diagnosticDocument)!.data));
+  assert.deepEqual(agentDiagnosticSummarySchema.parse(JSON.parse(raw)), summary);
+  for (const privateValue of ['PRIVATE_P4_DIAGNOSTIC_PROMPT', reply, sent.run.id, projectId, settings.configuration.baseUrl]) assert.equal(raw.includes(privateValue), false);
+  const projectRoot = projectDirFor(f.root, projectId), owner = f.project(projectId, db => db);
+  await f.restart(); assert.equal(owner.isOpen, false, 'Restart closes the original project and application owners');
+  // The external real-kernel owner makes any hidden acquire fail. Only the
+  // already-open B1 may serve the global diagnostic/policy reads below.
+  const outside = f.holdClosedProject(projectRoot), beforeProjectChanges = outside.prepare('SELECT total_changes() AS n').get()!.n;
+  const beforeAppChanges = f.application(db => db.prepare('SELECT total_changes() AS n').get()!.n), calls = f.calls;
+  assert.deepEqual(await f.client.diagnoseLatest(), {test: summary});
+  await f.client.policyGet();
+  assert.equal(f.application(db => String(db.prepare('SELECT data FROM app_documents WHERE name=?').get(diagnosticDocument)!.data)), raw);
+  assert.equal(f.application(db => db.prepare('SELECT total_changes() AS n').get()!.n), beforeAppChanges);
+  assert.equal(outside.prepare('SELECT total_changes() AS n').get()!.n, beforeProjectChanges); assert.equal(outside.isOpen, true); assert.equal(f.calls, calls);
+});

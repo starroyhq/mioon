@@ -8,8 +8,8 @@ const root=process.env.FIXTURE_ROOT!,protocol=GOAL_PROTOCOLS.find(value=>value==
 const boundary=process.env.FIXTURE_BOUNDARY!,f=await openGoalRepairFixture(root,protocol);
 f.plan(index=>index===1?[setCountGoal(2)]:[]);
 const tx=f.store.tx;f.store.tx=fn=>{const value=tx(fn);
- const marked=f.store.db.prepare("SELECT 1 FROM agent_task_steps_v2 WHERE json_type(data,'$.data.goalRepair')='object'").get();
- const intent=f.store.db.prepare("SELECT data FROM agent_task_steps_v2 WHERE status='intent' AND json_type(data,'$.data.goalRepairSourceModelStepId')='text'").get();
+ const marked=f.store.db.prepare("SELECT 1 FROM mio_steps WHERE json_type(data,'$.data.goalRepair')='object'").get();
+ const intent=f.store.db.prepare("SELECT data FROM mio_steps WHERE status='intent' AND json_type(data,'$.data.goalRepairSourceModelStepId')='text'").get();
  if(marked&&(boundary==='marker'||intent))process.kill(process.pid,'SIGKILL');
  return value;
 };

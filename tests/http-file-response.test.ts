@@ -32,7 +32,7 @@ async function actual(t: test.TestContext) {
   await writeFile(path.join(distDir, 'entry.js'), 'console.log("synthetic")');
   const created = createServerProject(dataDir, {name: 'Synthetic HTTP project'}),
     store = created.store as unknown as TypedStore, id = randomUUID(), projectId = created.projectId;
-  const file = path.join(dataDir, 'media', id + '.bin'), bytes = Buffer.from('0123456789abcdefghijklmnopqrstuvwxyz');
+  const file = path.join(created.store.root, 'media', id + '.bin'), bytes = Buffer.from('0123456789abcdefghijklmnopqrstuvwxyz');
   await writeFile(file, bytes, {mode: 0o600});
   store.put('assets', {id, projectId, name: 'Synthetic media', mimeType: 'video/mp4', relativePath: `media/${id}.bin`, sizeBytes: bytes.length, url: `/media/${id}`});
   store.close();

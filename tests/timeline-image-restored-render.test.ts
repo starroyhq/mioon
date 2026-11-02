@@ -7,7 +7,7 @@ import {mkdtemp, readFile, readdir, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openStore, getWorkspaceRestoreContext,
+import {openLegacyWorkspaceStore as openStore, getWorkspaceRestoreContext,
   validateCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
 import {createServices, type JobRecord, type ServiceRow, type ServiceStore} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';

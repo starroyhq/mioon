@@ -1,3 +1,4 @@
+import {startLegacyRestoredDomainHttp} from './fixtures/legacy-restored-domain-http.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import type {TestCatalog as DiscoverySchemaResult} from './helpers/strict-timeline-transport-types.ts';
@@ -192,7 +193,7 @@ function databaseSnapshot(db: DatabaseSync) {
 async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-image-transports-'));
   const audit = path.join(root, 'forbidden-effects.jsonl');
-  let dataDir = path.join(root, 'data'), source32!: { database: unknown; sha256: unknown; directory: unknown; }, server!:Awaited<ReturnType<typeof startServer>>|undefined, inspect!: InspectProject, mcp!: Client<{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }>|undefined, transport!: Transport|StdioClientTransport|undefined, off!: () => void;
+  let dataDir = path.join(root, 'data'), source32!: { database: unknown; sha256: unknown; directory: unknown; }, server!:{url:string;close():Promise<void>}|undefined, inspect!: InspectProject, mcp!: Client<{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }>|undefined, transport!: Transport|StdioClientTransport|undefined, off!: () => void;
   t.after(async () => {
     try { if (mcp) await bounded(mcp.close(), 'Owned image MCP cleanup', 7_000); }
     finally {
@@ -214,7 +215,7 @@ async function fixture(t: test.TestContext) {
       const asset = {id, projectId, name: 'Synthetic owned PNG', mimeType: 'image/png', relativePath: `media/${id}.png`,
         sizeBytes: content.length, sha256: sha(content), width: index === 0 ? 3 : 2, height: index === 0 ? 2 : 1,
         duration: null, hasVideo: true, hasAudio: false, provenance: 'user-import', createdAt: stamp};
-      await writeFile(path.join(dataDir, asset.relativePath), content, {mode: 0o600});
+      await writeFile(path.join(created.store.root, asset.relativePath), content, {mode: 0o600});
       store.put('assets', asset); assets.push(asset);
     }
   } finally { store.close(); }
@@ -246,8 +247,8 @@ async function fixture(t: test.TestContext) {
     get env() { return childEnvironment(root, (server)!.url, audit); },
     snapshot: () => use(databaseSnapshot),
     async verifyFiles() {
-      assert.deepEqual((await readdir(path.join(dataDir, 'media'))).sort(), assets.map(asset => path.basename(asset.relativePath)).sort());
-      for (const [index, asset] of assets.entries()) assert.deepEqual(await readFile(path.join(dataDir, asset.relativePath)), fixtures[index]);
+      assert.deepEqual((await readdir(path.join(source32?dataDir:created.store.root, 'media'))).sort(), assets.map(asset => path.basename(asset.relativePath)).sort());
+      for (const [index, asset] of assets.entries()) assert.deepEqual(await readFile(path.join(source32?dataDir:created.store.root, asset.relativePath)), fixtures[index]);
       assert.equal(await readFile(audit, 'utf8'), '', 'CLI/MCP attempt no non-owned network or media subprocess');
       assert.deepEqual((mediaProcesses as unknown), [], 'image inspection never invokes a media process');
       assert.deepEqual((backendEffects as unknown), [], 'inspection never attempts provider or model work, even if errors are caught');
@@ -319,7 +320,11 @@ async function fixture(t: test.TestContext) {
       finally { database.close(); }
       assert.equal(restored.schemaVersion, 33);
       assert.equal(sha(await readFile(sourceDatabase)), source32.sha256);
-      await open(); return restored;
+      const beforeRefusal=await readFile(path.join(dataDir,'workbench.sqlite'));
+      await assert.rejects(startServer({dataDir,port:0,token}),{code:'VALIDATION_ERROR',status:400});
+      assert.deepEqual(await readFile(path.join(dataDir,'workbench.sqlite')),beforeRefusal,'production refusal preserves the exact legacy database');
+      server=await startLegacyRestoredDomainHttp({root:dataDir,token,inspectStore:received=>{inspect=(_projectId,read)=>received(read);}});
+      return restored;
     },
   };
 }

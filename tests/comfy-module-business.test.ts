@@ -107,10 +107,10 @@ test('local-result recovery remains explicitly usable without the Comfy network 
   const failed = await until(() => f.task(ack.id), (task: {state: string}) => task.state === 'local_result_error');
   await until(() => f.remote(ack.id), (result) => result.observation?.state === 'finished');
   const journal = imageRows(f.store, ['image_reviews', 'image_requests', 'image_remote_runs', 'image_remote_observations']);
-  const manifest = readFileSync(path.join(f.root, 'image-staging', `${ack.id}.json`));
+  const manifest = readFileSync(path.join(f.store.tempDir, 'image-staging', `${ack.id}.json`));
   await f.reopen('not_provided');
   assert.deepEqual(imageRows(f.store, Object.keys(journal)), journal);
-  assert.deepEqual(readFileSync(path.join(f.root, 'image-staging', `${ack.id}.json`)), manifest);
+  assert.deepEqual(readFileSync(path.join(f.store.tempDir, 'image-staging', `${ack.id}.json`)), manifest);
   assert.deepEqual(await f.task(ack.id), failed, 'module absence must not auto-recover local results');
   const recovery = {projectId: f.project.id, taskId: ack.id, requestId: randomUUID(), expectedRevision: failed.revision};
   const recovered = await f.call('image.task.recoverResult', recovery);

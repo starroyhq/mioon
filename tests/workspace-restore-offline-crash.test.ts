@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {restoreFixture,tree,runRestoreChild} from './helpers/workspace-restore-offline-fixture.ts';
-import {validateWorkspaceStorage} from '../packages/business/src/db.ts';
+import {validateLegacyWorkspaceStorage as validateWorkspaceStorage} from '../packages/business/src/db.ts';
 import {validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';
 import {inspectWorkspaceRestorePublication} from '../packages/business/src/workspace-restore.ts';
 import type { WorkspaceBackupResult } from '@mioon/business/workspace-backup';

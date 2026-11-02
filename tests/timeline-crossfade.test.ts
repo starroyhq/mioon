@@ -5,7 +5,7 @@ import {writeFileSync} from 'node:fs';
 import {mkdtemp,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {AGENT_TASK_OPERATION_ADMISSION} from '../packages/business/src/agent/task-tools-v2.ts';
@@ -25,9 +25,9 @@ type Request = {projectId: string;expectedRevision: number;requestId: string;out
 const digest=(bytes: Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const writes=['timelines','timeline_history','timeline_history_cursors','timeline_requests'];
 
-async function fixture(t: test.TestContext){
+async function fixture(t: test.TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-crossfade-')));
- let store=openStore(root),services=createServices(store,new Map());
+ let store=opener(root),services=createServices(store,new Map());
  const call=async <T,>(operation: string,input: unknown): Promise<T>=>await services.call(operation,input) as T;
  const project=await call<{id: string}>('project.create',{name:t.name.slice(0,150)});
  const f={root,projectId:project.id,call,
@@ -52,7 +52,7 @@ async function fixture(t: test.TestContext){
    return next.clips.at(-1)!;
   },
   request:(timeline: Timeline,outgoingClipId: string,incomingClipId: string): Request=>({projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),outgoingClipId,incomingClipId}),
-  async reopen(){await services.drain();store.close();store=openStore(root);services=createServices(store,new Map());},
+  async reopen(){await services.drain();store.close();store=opener(root);services=createServices(store,new Map());},
   async close(){await services.drain();store.close();},
  };
  t.after(async()=>{await services.drain();store.close();await rm(root,{recursive:true,force:true});});
@@ -173,14 +173,14 @@ test('the clips may start together or end together, but the incoming clip may no
 });
 
 test('crossfaded receipts survive backup and restore, and the restored copy refuses new crossfades',async t=>{
- const f=await fixture(t),{a,b}=await audioPair(f),input=f.request(await f.timeline(),a.id,b.id),response=await f.call<Response>(CROSSFADE,input);
+ const f=await fixture(t,openLegacyWorkspaceStore),{a,b}=await audioPair(f),input=f.request(await f.timeline(),a.id,b.id),response=await f.call<Response>(CROSSFADE,input);
  await f.close();
  const backup=path.join(path.dirname(f.root),`${path.basename(f.root)}-backup`),destination=path.join(path.dirname(f.root),`${path.basename(f.root)}-restored`);
  t.after(async()=>{await rm(backup,{recursive:true,force:true});await rm(destination,{recursive:true,force:true});});
  const created=await createWorkspaceBackup({source:f.root,destination:backup}) as {integrity: string};
  assert.equal(created.integrity,'verified');assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
  const restored=await restoreWorkspaceBackup({directory:backup,destination}) as {workspaceOrigin: string};
- const store=openStore(destination),services=createServices(store,new Map());
+ const store=openLegacyWorkspaceStore(destination),services=createServices(store,new Map());
  try{
   const timeline=await services.call('timeline.get',{projectId:f.projectId}) as Timeline;
   assert.deepEqual(timeline.clips,response.timeline.clips,'the crossfaded curves are restored exactly');
@@ -189,7 +189,7 @@ test('crossfaded receipts survive backup and restore, and the restored copy refu
 });
 
 test('a crossfade beside a dialogue clip keeps the workspace valid through backup and restore',async t=>{
- const f=await fixture(t),{a,b}=await audioPair(f),line=await f.add(f.asset('audio'),await f.track('audio'),0,150,{audioRole:'human'});
+ const f=await fixture(t,openLegacyWorkspaceStore),{a,b}=await audioPair(f),line=await f.add(f.asset('audio'),await f.track('audio'),0,150,{audioRole:'human'});
  const response=await f.call<Response>(CROSSFADE,f.request(await f.timeline(),a.id,b.id));
  // The receipt wraps a timeline with an audio role; the workspace validators
  // behind both capabilities must still read it as a valid receipt.
@@ -200,7 +200,7 @@ test('a crossfade beside a dialogue clip keeps the workspace valid through backu
  t.after(async()=>{await rm(backup,{recursive:true,force:true});await rm(destination,{recursive:true,force:true});});
  assert.equal((await createWorkspaceBackup({source:f.root,destination:backup}) as {integrity: string}).integrity,'verified');
  await restoreWorkspaceBackup({directory:backup,destination});
- const store=openStore(destination),services=createServices(store,new Map());
+ const store=openLegacyWorkspaceStore(destination),services=createServices(store,new Map());
  try{
   const timeline=await services.call('timeline.get',{projectId:f.projectId}) as Timeline;
   assert.deepEqual(timeline.clips,response.timeline.clips);

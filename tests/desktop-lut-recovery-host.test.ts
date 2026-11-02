@@ -6,6 +6,19 @@ import { ClipLutRecoveryError, parseClipLutRecoveryRequest, parseClipLutRecovery
 const record = (change: Record<string, unknown> = {}) => ({ version: 1, workspaceScope: 'a'.repeat(64), projectId: '11111111-1111-4111-8111-111111111111', requestId: '22222222-2222-4222-8222-222222222222', name: 'look.cube', sizeBytes: 30, sha256: 'b'.repeat(64), ...change });
 const identity = (change: Record<string, unknown> = {}) => ({ workspaceScope: record().workspaceScope, projectId: record().projectId, ...change });
 const denied = { ok: false, code: 'LUT_RECOVERY_UNAVAILABLE' };
+
+test('scope is derived from the retained editor project rather than a shared application fingerprint',async()=>{
+  const first=identity(),second=identity({projectId:'33333333-3333-4333-8333-333333333333',workspaceScope:'c'.repeat(64)}),seen:string[]=[];
+  let projectId=first.projectId;
+  const host=createDesktopLutRecoveryHost({ownerForEvent:()=>({projectId,isCurrent:()=>true}),currentWorkspaceScope:id=>{
+    seen.push(id);return id===first.projectId?first.workspaceScope:second.workspaceScope;
+  },createStore:guard=>({read:()=>{guard();return null;},reserve:()=>assert.fail('No write'),verify:()=>assert.fail('No write'),complete:()=>assert.fail('No write')})});
+  assert.deepEqual(await host.dispatch({}, {action:'read',identity:first}),{ok:true,value:null});
+  projectId=second.projectId;
+  assert.deepEqual(await host.dispatch({}, {action:'read',identity:second}),{ok:true,value:null});
+  assert.ok(seen.includes(first.projectId));assert.ok(seen.includes(second.projectId));assert.equal(seen.includes(undefined as unknown as string),false);
+  assert.deepEqual(await host.dispatch({}, {action:'read',identity:first}),denied);
+});
 interface HostState {current: boolean; scope: string; owner: boolean; calls: unknown[]; guard: (() => void) | null}
 type Overrides = Record<string, ((state: HostState, value: Record<string, unknown>) => unknown) | undefined>;
 function fixture(overrides: Overrides = {}) {

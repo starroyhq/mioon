@@ -59,5 +59,5 @@ test('actual tool preparation refuses invalid delivery names before any change o
   assert.deepEqual(journal.revisionSnapshot(projectId), before);
   assert.deepEqual(store.list('jobs', projectId), []);
   assert.deepEqual(store.list('exports', projectId), []);
-  assert.equal(store.db.prepare('SELECT count(*) AS n FROM agent_task_changes_v2').get()?.n, 0);
+  assert.equal(store.db.prepare('SELECT count(*) AS n FROM mio_changes').get()?.n, 0);
 });

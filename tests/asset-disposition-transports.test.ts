@@ -1,3 +1,4 @@
+import {expectedContentMetadata} from './helpers/kernel-content-metadata.ts';
 import {isEntityAddressedOperation} from '../packages/contracts/src/project-addressing.ts';
 import {projectRpcPath, isProjectId} from '../packages/contracts/src/project-file.ts';
 interface DispositionSchema{required:string[];additionalProperties:boolean;properties:Record<string,DispositionSchema>;$ref?:string;items:DispositionSchema;enum:string[];minimum:number;minLength:number;maxLength:number;minItems:number;maxItems:number;format:string}
@@ -140,7 +141,7 @@ async function fixture(t: test.TestContext) {
     }
     if (failures.length) throw new AggregateError(failures, 'Owned disposition-wire fixture cleanup failed');
   });
-  type Checkpoint = {rows: Record<string, Record<string, unknown>[]>; version: unknown};
+  type Checkpoint = {projectDir:string;moved?:number;rows: Record<string, Record<string, unknown>[]>; version: unknown};
   // Storage questions waiting for the running backend; a backend that exits answers none of them.
   const pending = new Map<string, PromiseWithResolvers<Checkpoint>>();
   async function start() {
@@ -158,15 +159,15 @@ async function fixture(t: test.TestContext) {
   }
   // The backend holds the project, so every table's rows and the change marks
   // are read over IPC on its own connection.
-  async function read(): Promise<Checkpoint> {
+  async function read(type:'storage'|'move-asset'|'corrupt-sources'='storage',projectId:string=IDS.project): Promise<Checkpoint> {
     const child = run.child, id = randomUUID(), reply = Promise.withResolvers<Checkpoint>();
     pending.set(id, reply);
-    child.send({type: 'storage', id, projectId: IDS.project}, error => { if (error) reply.reject(error); });
+    child.send(type==='storage'?{type, id, projectId}:{type,id}, error => { if (error) reply.reject(error); });
     try { return await bounded(reply.promise, 'Owned backend storage', 10_000); }
     finally { pending.delete(id); }
   }
   await start();
-  const storage = async () => (await read()).rows;
+  const storage = async (projectId:string=IDS.project) => (await read('storage',projectId)).rows;
   const checkpoint = () => read();
   const unchanged = async (before: { rows: unknown; version: unknown; }, label: unknown) => {
     const current = await read();
@@ -224,16 +225,21 @@ async function fixture(t: test.TestContext) {
     if (expectedError) assert.equal(envelope.error.code, expectedError);
     return envelope;
   }
-  return {root, storage, checkpoint, unchanged, request, cli, cliArgs, client, mcp,
+  return {root,corruptSources:async()=>{await request('asset.disposition.list',{projectId:DISPOSITION_IDS.corruptProject,assetIds:[DISPOSITION_IDS.mismatchedOwner]});return (await read('corrupt-sources',DISPOSITION_IDS.corruptProject)).rows;},projectRoot:async()=>(await read()).projectDir, storage, checkpoint, unchanged, request, cli, cliArgs, client, mcp,
     http: async (...args: Parameters<typeof request>) => (await request(...args)).envelope,
     get url() { return url; }, get pid() { return run.child.pid; },
     stop: () => stopOwned(run.child),
     moveAsset: async () => {
       await stopOwned(run.child);
-      const child = launch(t, [helper, 'move-asset'], {MIOON_DATA_DIR: root, MIOON_DISPOSITION_WIRE_AUDIT: auditPath});
-      assert.equal((await child.finish()).code, 0, child.stderr);
-      assert.deepEqual(child.lines(), [{moved: 1}]);
-      return start();
+      const pid=await start();
+      // A reopened kernel validates real FK evidence before exposing any row.
+      // Corrupt this already-held native connection through one fixed TEST IPC,
+      // so the business replay guard remains observable without bypassing open.
+      await request('asset.disposition.list',{projectId:IDS.project,assetIds:[IDS.asset]});
+      const moved=await read('move-asset');
+      assert.equal(run.child.exitCode,null,'the exact native owner stays live');
+      assert.equal(moved.moved,1,'only the fixed synthetic asset changes ownership');
+      return pid;
     },
     restart: async () => { await stopOwned(run.child); return start(); },
     audit: async () => (await readFile(auditPath, 'utf8')).trim(),
@@ -267,6 +273,7 @@ async function lossProxy(t: test.TestContext, backend: Awaited<ReturnType<typeof
 
 function onlyDispositionWrites(before: Record<string,Record<string,unknown>[]>, after: Record<string,Record<string,unknown>[]>, expectedTargets: {assetId:string;revision:number;projectId:string;previousRevision?:number}[]) {
   assert.deepEqual(Object.keys(after), Object.keys(before), 'a disposition cannot create tables');
+  const metadata=expectedContentMetadata(before,after);
   const targets=before.agent_task_target_revisions_v2.map(row=>({...row}));
   for(const{projectId,assetId,previousRevision,revision}of expectedTargets){
     const index=targets.findIndex(row=>row.projectId===projectId&&row.kind==='asset_disposition'&&row.targetId===assetId);
@@ -274,7 +281,7 @@ function onlyDispositionWrites(before: Record<string,Record<string,unknown>[]>, 
     else{assert.equal(targets[index].revision,previousRevision,'the exact saved disposition target starts at its expected revision');targets[index]={...targets[index],revision};}
   }
   for (const table of Object.keys(before)) if (!dispositionTables.has(table))
-    assert.deepEqual(after[table], table==='agent_task_target_revisions_v2'?targets:before[table], `${table}: only the exact saved disposition target revisions may change`);
+    assert.deepEqual(after[table], table==='agent_task_target_revisions_v2'?targets:metadata[table]??before[table], `${table}: only the exact saved disposition target revisions may change`);
 }
 
 function noDispositionFields(value: unknown) {
@@ -389,13 +396,18 @@ test('asset dispositions share exact HTTP, real CLI and official MCP semantics w
     assert.deepEqual(await backend.http('asset.list', {projectId: IDS.project}), assets, 'legacy list retains rejected assets and its old DTO');
     await backend.unchanged(restarted, 'post-restart reads and replays');
     onlyDispositionWrites(before, await backend.storage(), [{...target,revision:2}]);
-    assert.deepEqual(await readFile(path.join(backend.root, 'media/original.mp4')), ORIGINAL_BYTES);
+    assert.deepEqual(await readFile(path.join(await backend.projectRoot(), 'media/original.mp4')), ORIGINAL_BYTES);
   });
 
   await t.test('changed keys, stale revisions, malformed set inputs and unauthorized calls do not write', async () => {
+    const owner=await backend.checkpoint(),foreignInput={...first,projectId:IDS.other,assetId:IDS.otherAsset};
+    const independent=await all('asset.disposition.set',foreignInput);
+    assert.equal(independent.data.projectId,IDS.other);assert.equal(independent.data.assetId,IDS.otherAsset);assert.equal(independent.data.revision,1);
+    assert.equal((await backend.storage(IDS.other)).asset_disposition_requests.filter(row=>row.requestId===first.requestId).length,1,'three transports share only the foreign project receipt');
+    await backend.unchanged(owner,'an independent project reusing a key cannot affect the owner');
     const before = await backend.checkpoint();
     for (const changed of [{...first, disposition: 'neutral'}, {...first, expectedRevision: 2},
-      {...first, assetId: DISPOSITION_IDS.image}, {...first, projectId: IDS.other, assetId: IDS.otherAsset}]) {
+      {...first, assetId: DISPOSITION_IDS.image}]) {
       const result = await all('asset.disposition.set', changed, 'IDEMPOTENCY_CONFLICT');
       assert.equal(result.data, undefined); assert.deepEqual(Object.keys(result.error.details), ['requestId']);
     }
@@ -419,6 +431,7 @@ test('asset dispositions share exact HTTP, real CLI and official MCP semantics w
   });
 
   await t.test('batch validation and all-or-nothing ownership failures agree without partial metadata or writes', async () => {
+    const corruptBefore=await backend.corruptSources();
     const before = await backend.checkpoint();
     for (const invalid of [{projectId: IDS.project}, batch([]), batch([IDS.asset, IDS.asset]), batch(['not-a-uuid']),
       batch([...BATCH_IDS, DISPOSITION_IDS.image]), {...batch([IDS.asset]), limit: 1}, batch('not-an-array')]) {
@@ -459,6 +472,7 @@ test('asset dispositions share exact HTTP, real CLI and official MCP semantics w
       assert.equal(result.data, undefined); assert.deepEqual(result.error.details, {});
     }
     await backend.unchanged(before, 'batch validation, safe ownership and corrupt-identity failures');
+    assert.deepEqual(await backend.storage(DISPOSITION_IDS.corruptProject),corruptBefore,'every corrupt-project row stays unchanged by ownership denials');
   });
 
   await t.test('neutral reset retains monotonic revision and supports image, audio and unknown-duration sources', async () => {
@@ -542,8 +556,8 @@ test('asset dispositions share exact HTTP, real CLI and official MCP semantics w
     assert.deepEqual(timeline.clips[0], timelineBefore.clips[0], 'rejecting never changes the pre-existing clip');
     for (const table of ['assets', 'versions', 'jobs', 'exports', 'reference_requests', 'idempotency'])
       assert.deepEqual((await backend.storage())[table], originalStorage[table], `${table} remains untouched by disposition and legacy tests`);
-    assert.deepEqual(await readFile(path.join(backend.root, 'media/original.mp4')), ORIGINAL_BYTES, 'original bytes stay identical');
-    assert.deepEqual(await readdir(path.join(backend.root, 'media')), ['original.mp4'], 'no derived media is created');
+    assert.deepEqual(await readFile(path.join(await backend.projectRoot(), 'media/original.mp4')), ORIGINAL_BYTES, 'original bytes stay identical');
+    assert.deepEqual(await readdir(path.join(await backend.projectRoot(), 'media')), ['original.mp4'], 'no derived media is created');
     assert.equal(await backend.audit(), '', 'zero model/provider, non-owned network or media subprocess attempts');
   });
 

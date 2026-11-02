@@ -7,7 +7,6 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {Worker} from 'node:worker_threads';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import type { SQLInputValue } from 'node:sqlite';
@@ -321,17 +320,15 @@ test('durable receipt failures and post-write owner corruption roll back timelin
 });
 
 async function race(t: test.TestContext,f: Awaited<ReturnType<typeof fixture>>,inputs: unknown[]){
- const source=`const {parentPort,workerData}=require('node:worker_threads');(async()=>{const {openStore}=await import(workerData.db);const {createServices}=await import(workerData.services);const store=openStore(workerData.root,{lock:false});parentPort.postMessage({ready:true});parentPort.once('message',async()=>{try{parentPort.postMessage({result:await createServices(store,new Map()).call('${operation}',workerData.input)});}catch(error){parentPort.postMessage({error:error.code||error.message});}finally{store.close();}});})().catch(error=>{throw error});`;
- const workers=inputs.map((input?)=>new Worker(source,{eval:true,workerData:{root:f.root,input,db:new URL('../packages/business/src/db.ts',import.meta.url).href,services:new URL('../packages/business/src/services.ts',import.meta.url).href}}));
- t.after(()=>Promise.all(workers.map((worker)=>worker.terminate())));
- await Promise.all(workers.map((worker)=>new Promise<{response:FixtureTimeline;result:FixtureTimeline;code:string;error:string;details:{mutationOutcome:string}}>((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);})));
- const pending=workers.map((worker)=>new Promise<{response:FixtureTimeline;result:FixtureTimeline;code:string;error:string;details:{mutationOutcome:string}}>((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);}));workers.forEach((worker)=>worker.postMessage('go'));
- return Promise.all(pending);
+ assert.throws(()=>openStore(f.root),{code:'PROJECT_LOCKED'});
+ return Promise.all(inputs.map(async input=>{try{return {result:await f.call(operation,input),error:undefined};}
+  catch(error){return {result:undefined,error:(error as {code:string}).code};}}));
 }
-test('independent SQLite writers serialize exact duplicates once and conflicting fresh writers by CAS',async t=>{
+
+test('exclusive project-host requests serialize exact duplicates once and conflicting fresh writers by CAS',async t=>{
  const f=await fixture(t),timeline=await f.timeline(),request=replace(f,timeline,f.asset());
  const duplicate=await race(t,f,[request,request,request]);duplicate.forEach(value=>{assert.equal(value.error,undefined);assert.deepEqual(value.result,duplicate[0].result);});
- assert.equal(duplicate[0].result.revision,timeline.revision+1);
+ assert.ok(duplicate[0].result);assert.equal(duplicate[0].result.revision,timeline.revision+1);
  const current=duplicate[0].result,requests=Array.from({length:3},()=>replace(f,current,f.asset()));
  const competing=await race(t,f,requests);assert.equal(competing.filter(value=>value.result).length,1);
  competing.filter(value=>value.error).forEach(value=>assert.equal(value.error,'REVISION_CONFLICT'));

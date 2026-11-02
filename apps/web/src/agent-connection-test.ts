@@ -15,7 +15,7 @@ export type AgentConnectionTestPhase = 'loading' | 'idle' | 'starting' | 'review
 export interface AgentConnectionTestReview { projectId: string; destination: string; model: string }
 export interface AgentConnectionTestState {
   phase: AgentConnectionTestPhase;
-  /** Newest text diagnostic in the workspace, for any connection. */
+  /** Newest completed application diagnostic, for any connection. */
   latest: AgentTaskConnectionTest | null;
   review: AgentConnectionTestReview | null;
   /** Why the last start did not produce a test run; null when it did or none was attempted. */
@@ -61,9 +61,10 @@ export function chooseAgentConnectionTestProject({ currentProjectId, recentOpene
   return updated[0]?.id ?? null;
 }
 
-/** A stored result describes the saved connection only when it tested the same protocol, address and model. */
+/** The minimal summary can compare protocol/model only. It contains no
+ * endpoint and therefore never attests the current connection's address. */
 export const agentConnectionTestMatches = (test: AgentTaskConnectionTest | null, configuration: AgentConfiguration | null | undefined): boolean =>
-  Boolean(test && configuration && test.protocol === configuration.protocol && test.baseUrl === configuration.baseUrl && test.model === configuration.model);
+  Boolean(test && configuration && test.protocol === configuration.protocol && test.model === configuration.model);
 
 /** One settings page's connection test. It sends at most one diagnostic per start, never resends after an
  * unconfirmed send, and only reads its run until the run ends. */
@@ -113,9 +114,7 @@ export function createAgentConnectionTestSession({ client = createAgentTaskClien
       const token = ++epoch;
       await refresh(token);
       if (!current(token)) return;
-      const value = state.latest;
-      if (value && !terminal.has(value.status)) { try { await follow(token, value.projectId, await client.read(value.projectId, value.runId)); } catch { if (current(token)) publish({ phase: 'idle' }); } }
-      else publish({ phase: 'idle' });
+      publish({ phase: 'idle' });
     },
     /** Tests the saved connection at `settingsRevision`; unsaved drafts are never tested. */
     async start({ settingsRevision, currentProjectId = null, locale: requested }: { settingsRevision: number; currentProjectId?: string | null; locale?: AgentTaskLocale }): Promise<boolean> {

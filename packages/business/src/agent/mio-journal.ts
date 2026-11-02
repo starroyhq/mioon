@@ -4,11 +4,12 @@ import type {ProjectStore} from '../project-file/store.ts';
 import {createMioRecords} from './mio-records.ts';
 import type {MioBeginRequest} from './mio-records.ts';
 import type {MioRequest, MioEntry} from '../../../contracts/src/mio-records.ts';
+import {mioEntrySchema} from '../../../contracts/src/mio-records.ts';
 import type {AgentTaskJournal, AgentTaskStepInput, AgentTaskControlRecord, AgentTaskChangeInput} from './task-journal-v2.ts';
 import type {AgentTaskRun, AgentTaskStep, AgentTaskJson, AgentTaskPolicy, AgentTaskEvent, AgentTaskSnapshot, AgentTaskNote, AgentTaskSkippedTarget, AgentTaskTarget, AgentTaskChange, AgentTaskReceipt, AgentTaskConversation, AgentTaskHistoryPage, AgentTaskConversationPage, AgentTaskStatus, AgentTaskStepStatus, AgentTaskClaim, AgentTaskEditingInput, AgentTaskPolicyModes, AgentTaskConversationPolicy, AgentTaskConversationPolicySetInput} from '../../../contracts/src/agent-tasks-v2.ts';
 import {agentTaskConversationPolicySchema, agentTaskPolicyModesSchema, agentTaskQuestionSchema, agentTaskAnswerSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {TaskContextHistoryRun, TaskContextHistoryInput} from './task-context-v2.ts';
-import type {TaskRunRecordTarget, TaskRunRecordBackground} from './task-run-record-v2.ts';
+import type {TaskRunRecordTarget, TaskRunRecordBackground, TaskRunRecordChange} from './task-run-record-v2.ts';
 import {projectAgentTaskChangeDisplay} from './task-display-v2.ts';
 import {readMioTargetRevision, readMioTargetRevisions} from './mio-target-revisions.ts';
 import {parseTaskArguments, taskResponseLocale, taskToolExplanation} from './task-gateway-v2.ts';
@@ -71,9 +72,16 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
   };
   const inside = (): void => { if (!db.isTransaction) fail('AGENT_TASK_TRANSACTION_REQUIRED'); invalidateProjection(); };
   const own = (id: string): void => { if (id !== projectId) fail('AGENT_TASK_NOT_FOUND'); };
-  const entries = (runId: string): MioEntry[] => {
-    const cache = readCache(), cached = cache?.entries.get(runId); if (cached !== undefined) return cached;
-    const value = records.entries(runId); cache?.entries.set(runId, value); return value;
+  const entries = (runId: string, kind: MioEntry['kind']): MioEntry[] => {
+    const key = `${runId}:${kind}`, cache = readCache(), cached = cache?.entries.get(key); if (cached !== undefined) return cached;
+    records.run(runId);
+    // Filtering before crossing the SQLite boundary keeps run metadata reads
+    // from hydrating unrelated canonical model outputs and tool originals.
+    const value = db.prepare('SELECT * FROM mio_entries WHERE runId=? AND projectId=? AND kind=? ORDER BY sequence').all(runId, projectId, kind).map(row => {
+      const parsed = mioEntrySchema.safeParse({...row, payloadJson: row.payloadJson === null ? null : decode<AgentTaskJson>(row.payloadJson)});
+      return parsed.success ? parsed.data : fail('AGENT_TASK_STORAGE_CORRUPT');
+    });
+    cache?.entries.set(key, value); return value;
   };
   const payload = (entry: MioEntry): AgentTaskJson => {
     const cache = readCache(), cached = cache?.payloads.get(entry.id); if (cached !== undefined) return cached;
@@ -92,7 +100,7 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
     const value = contextAssembly.hydrateContext(view); cache?.contexts.set(entryId, value); return value;
   };
   function content(runId: string, kind: MioEntry['kind']): Array<{entry: MioEntry; value: Record<string, AgentTaskJson>}> {
-    return entries(runId).filter(entry => entry.kind === kind).map(entry => {
+    return entries(runId, kind).map(entry => {
       const value = payload(entry); if (!object(value)) return fail('AGENT_TASK_STORAGE_CORRUPT'); return {entry, value};
     });
   }
@@ -266,39 +274,96 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
   }
   const newestRunFirst = (a: AgentTaskRun, b: AgentTaskRun): number => a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
   function modelContextRuns(id: string, conversationId: string): TaskContextHistoryRun[] {
-    conversationSummary(id, conversationId);
-    return allRuns().filter(item => !item.diagnostic && item.conversationId === conversationId && ['completed', 'failed', 'stopped', 'reverted'].includes(item.status)).sort(newestRunFirst).slice(0, 4).map(value => {
-      const steps = records.steps(value.id).map(item => step(item.id)), changes = records.changes(value.id), jobs = background(value.id);
+    own(id); records.conversation(conversationId);
+    const payloadSql = (entry: string): string => `coalesce(${entry}.payloadJson,(SELECT content FROM mio_blobs WHERE sha256=${entry}.payloadBlobHash))`;
+    const visible = `r.projectId=? AND r.conversationId=? AND NOT EXISTS(SELECT 1 FROM mio_entries h WHERE h.runId=r.id AND h.projectId=r.projectId AND h.kind='host_hint' AND json_extract(${payloadSql('h')},'$.type')='run_context' AND json_type(${payloadSql('h')},'$.diagnostic')='object')`;
+    if (!db.prepare(`SELECT 1 FROM mio_runs r WHERE ${visible} LIMIT 1`).get(projectId, conversationId)) fail('AGENT_TASK_NOT_FOUND');
+    const rows = db.prepare(`SELECT r.id,r.status FROM mio_runs r WHERE ${visible} AND r.status IN ('completed','failed','stopped','reverted') ORDER BY r.createdAt DESC,r.id DESC LIMIT 4`).all(projectId, conversationId);
+    // SQLite extracts only the canonical text/call/answer fields needed by the
+    // next round. Full step() also reconstructs its private request, so it must
+    // remain exclusive to detailed snapshots and execution/recovery paths.
+    const payloads = `payloads AS (SELECT e.id,e.runId,e.sequence,e.kind,${payloadSql('e')} AS payload FROM mio_entries e WHERE e.runId=? AND e.projectId=?)`;
+    const finalSql = `WITH ${payloads}, last_model AS (
+      SELECT p.payload FROM mio_steps s LEFT JOIN payloads p ON p.id=s.resultEntryId
+      WHERE s.runId=? AND s.projectId=? AND s.kind='model' AND s.status='completed' ORDER BY s.position DESC LIMIT 1)
+      SELECT json_extract(payload,'$.protocol') AS protocol,
+       CASE WHEN json_type(payload,'$.providerOutput.content')='text' THEN payload -> '$.providerOutput.content' END AS text,
+       CASE json_extract(payload,'$.protocol')
+        WHEN 'responses' THEN (SELECT json_group_array(part.value -> '$.text' ORDER BY CAST(message.key AS INTEGER),CAST(part.key AS INTEGER)) FROM json_each(payload,'$.providerOutput') message JOIN json_each(CASE WHEN message.type='object' AND json_type(message.value,'$.content')='array' THEN message.value -> '$.content' ELSE '[]' END) part WHERE json_extract(CASE WHEN message.type='object' THEN message.value ELSE '{}' END,'$.type')='message' AND json_extract(CASE WHEN part.type='object' THEN part.value ELSE '{}' END,'$.type')='output_text' AND json_type(CASE WHEN part.type='object' THEN part.value ELSE '{}' END,'$.text')='text')
+        WHEN 'anthropic_messages' THEN (SELECT json_group_array(part.value -> '$.text' ORDER BY CAST(part.key AS INTEGER)) FROM json_each(payload,'$.providerOutput.content') part WHERE json_extract(CASE WHEN part.type='object' THEN part.value ELSE '{}' END,'$.type')='text' AND json_type(CASE WHEN part.type='object' THEN part.value ELSE '{}' END,'$.text')='text')
+       END AS parts FROM last_model`;
+    const answersSql = `WITH ${payloads}, calls AS (
+      SELECT p.id,row_number() OVER(PARTITION BY p.id ORDER BY CAST(call.key AS INTEGER))-1 AS callIndex,
+       CASE json_extract(p.payload,'$.protocol') WHEN 'chat_completions' THEN json_extract(call.value,'$.function.name') ELSE json_extract(call.value,'$.name') END AS name,
+       CASE json_extract(p.payload,'$.protocol') WHEN 'chat_completions' THEN json_extract(call.value,'$.function.arguments') WHEN 'responses' THEN json_extract(call.value,'$.arguments') ELSE call.value -> '$.input' END AS arguments
+      FROM payloads p JOIN json_each(p.payload,CASE json_extract(p.payload,'$.protocol') WHEN 'chat_completions' THEN '$.providerOutput.tool_calls' WHEN 'responses' THEN '$.providerOutput' ELSE '$.providerOutput.content' END) call
+      WHERE p.kind='model_output' AND call.type='object' AND (json_extract(p.payload,'$.protocol')='chat_completions' OR json_extract(p.payload,'$.protocol')='responses' AND json_extract(CASE WHEN call.type='object' THEN call.value ELSE '{}' END,'$.type')='function_call' OR json_extract(p.payload,'$.protocol')='anthropic_messages' AND json_extract(CASE WHEN call.type='object' THEN call.value ELSE '{}' END,'$.type')='tool_use'))
+      SELECT s.position,c.arguments -> '$.question' AS question,
+       (SELECT json_group_array(CASE WHEN o.type='object' THEN o.value -> '$.label' END ORDER BY CAST(o.key AS INTEGER)) FROM json_each(c.arguments,'$.options') o WHERE json_type(c.arguments,'$.options')='array') AS labels,
+       c.arguments -> '$.multiple' AS multiple,c.arguments -> '$.allowOther' AS allowOther,
+       a.payload -> '$.answer.choices' AS choices,a.payload -> '$.answer.text' AS text
+      FROM mio_steps s JOIN calls c ON c.id=s.sourceEntryId AND c.callIndex=s.sourceCallIndex JOIN payloads a ON a.id=s.resultEntryId
+      WHERE s.runId=? AND s.projectId=? AND s.kind='tool' AND s.status='completed' AND c.name='mioon_ask' AND json_type(a.payload,'$.answer')='object' ORDER BY s.position`;
+    // A6 keeps basename-before-text-limit ordering and nontext fallback
+    // blockers. Only these four historical name fields cross into JavaScript;
+    // prompts, private payloads, before/after snapshots and undo stay in SQL.
+    const names = (side: 'before' | 'after'): string => `(SELECT json_group_array(json_object('kind',v.value -> '$.kind','id',v.value -> '$.id','value',json_object(${['name', 'label', 'title', 'text'].map(field => `'${field}',CASE COALESCE(json_type(v.value,'$.value.${field}'),'null') WHEN 'text' THEN v.value -> '$.value.${field}' WHEN 'null' THEN NULL ELSE 0 END`).join(',')})) ORDER BY CAST(v.key AS INTEGER)) FROM json_each(c.data,'$.${side}') v WHERE json_type(c.data,'$.${side}')='array' AND v.type='object' AND json_type(v.value,'$.kind')='text' AND json_type(v.value,'$.id')='text' AND json_type(v.value,'$.value')='object')`;
+    const changesSql = `SELECT id,stepId,json_extract(c.data,'$.operation') AS operation,json_extract(c.data,'$.status') AS status,json_extract(c.data,'$.reversible') AS reversible,json_extract(c.data,'$.createdAt') AS createdAt,json_extract(c.data,'$.targets') AS targets,${names('before')} AS beforeNames,${names('after')} AS afterNames FROM mio_changes c WHERE runId=? AND projectId=? ORDER BY rowid DESC LIMIT 64`;
+    const backgroundSql = `SELECT b.kind,b.jobId,CASE b.kind
+      WHEN 'job' THEN json_extract(j.data,'$.status') WHEN 'export' THEN json_extract(e.data,'$.status') WHEN 'image' THEN i.state WHEN 'frame' THEN f.state WHEN 'scene' THEN sc.state END AS status,json_extract(st.data,'$.controls.cost') AS cost
+      FROM mio_job_origins b LEFT JOIN jobs j ON b.kind='job' AND j.id=b.jobId AND j.projectId=b.projectId
+      LEFT JOIN exports e ON b.kind='export' AND e.id=b.jobId AND e.projectId=b.projectId
+      LEFT JOIN image_tasks i ON b.kind='image' AND i.id=b.jobId AND i.projectId=b.projectId
+      LEFT JOIN frame_tasks f ON b.kind='frame' AND f.id=b.jobId AND f.projectId=b.projectId
+      LEFT JOIN scene_tasks sc ON b.kind='scene' AND sc.id=b.jobId AND sc.projectId=b.projectId
+      LEFT JOIN mio_steps st ON st.id=b.stepId AND st.runId=b.runId AND st.projectId=b.projectId
+      WHERE b.runId=? AND b.projectId=? ORDER BY b.rowid DESC LIMIT 64`;
+    const identity = /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/iu;
+    return rows.map(row => {
+      const runId = String(row.id), status = String(row.status) as TaskContextHistoryRun['status'];
+      const states = content(runId, 'host_state').map(item => item.value), notes = content(runId, 'note'), bindings = new Map<string, string>();
+      for (const state of states) if (state.type === 'notes_bound' && typeof state.modelStepId === 'string' && Array.isArray(state.requestIds)) for (const requestId of state.requestIds) if (typeof requestId === 'string') bindings.set(requestId, state.modelStepId);
+      const steps = db.prepare("SELECT id,position,kind,status,json_extract(data,'$.controls.error.code') AS errorCode FROM mio_steps WHERE runId=? AND projectId=? ORDER BY position").all(runId, projectId);
       const history: Array<{position: number; order: number; input: TaskContextHistoryInput}> = [];
-      for (const item of steps) {
-        if (item.status !== 'completed' || item.kind !== 'tool' || item.toolCall?.name !== 'mioon_ask' || !object(item.toolCall.arguments) || !object(item.result) || !object(item.result.answer)) continue;
-        const args = item.toolCall.arguments, savedAnswer = item.result.answer;
-        const question = agentTaskQuestionSchema.safeParse({question: args.question, options: Array.isArray(args.options) ? args.options.map(option => ({label: object(option) ? option.label : undefined})) : [], ...(args.multiple === undefined ? {} : {multiple: args.multiple}), ...(args.allowOther === undefined ? {} : {allowOther: args.allowOther})});
-        const answer = agentTaskAnswerSchema.safeParse({choices: savedAnswer.choices, ...(savedAnswer.text === undefined ? {} : {text: savedAnswer.text})});
+      for (const item of db.prepare(answersSql).iterate(runId, projectId, runId, projectId)) {
+        const labels = decode<unknown[]>(item.labels), question = agentTaskQuestionSchema.safeParse({question: item.question === null ? undefined : decode<unknown>(item.question), options: labels.map(label => ({label})), ...(item.multiple === null ? {} : {multiple: decode<unknown>(item.multiple)}), ...(item.allowOther === null ? {} : {allowOther: decode<unknown>(item.allowOther)})});
+        const answer = agentTaskAnswerSchema.safeParse({choices: item.choices === null ? undefined : decode<unknown>(item.choices), ...(item.text === null ? {} : {text: decode<unknown>(item.text)})});
         if (!question.success || !answer.success) continue;
         const {choices, text} = answer.data;
         if (new Set(choices).size !== choices.length || choices.some(index => index >= question.data.options.length) || !question.data.multiple && choices.length > 1 || choices.length && text !== undefined && !question.data.allowOther || !choices.length && text === undefined) continue;
-        history.push({position: item.position, order: history.length, input: {kind: 'answer', question: question.data.question, selected: choices.map(index => question.data.options[index]!.label), ...(text === undefined ? {} : {text})}});
+        history.push({position: Number(item.position), order: history.length, input: {kind: 'answer', question: question.data.question, selected: choices.map(index => question.data.options[index]!.label), ...(text === undefined ? {} : {text})}});
       }
-      if (history.length) for (const note of value.notes ?? []) history.push({position: steps.find(item => item.id === note.modelStepId && item.kind === 'model')?.position ?? Number.POSITIVE_INFINITY, order: history.length, input: {kind: 'note', text: note.text}});
-      const final = value.status === 'completed' ? steps.filter(item => item.kind === 'model' && item.status === 'completed').at(-1)?.result : undefined;
-      const execution = content(value.id, 'host_state').filter(item => item.value.type === 'run_state' && item.value.status !== 'reverted').at(-1)?.value;
-      const errors = content(value.id, 'host_hint').filter(item => item.value.type === 'error').at(-1)?.value;
-      const failure = value.error?.code ?? value.pauseReason ?? (typeof errors?.code === 'string' ? errors.code : undefined) ?? steps.filter(item => ['failed', 'unknown'].includes(item.status)).at(-1)?.error?.code;
-      const failureCode = (value.status === 'failed' || execution?.status === 'failed') && failure && /^[A-Z][A-Z0-9_]{0,79}$/u.test(failure) ? failure : undefined;
-      const identity = /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/iu;
-      const skipped: TaskRunRecordTarget[] = (value.skippedTargets ?? []).slice(-64).reverse().flatMap(({target}) => /^[a-z][a-z0-9_]{0,79}$/u.test(target.kind) && identity.test(target.id) && typeof target.revision === 'number' ? [{kind: target.kind, id: target.id, revision: target.revision}] : []);
-      const projectedBackground: TaskRunRecordBackground[] = jobs.slice(-64).reverse().flatMap(item => {
-        if (!identity.test(item.id)) return [];
-        const candidate = steps.find(step => step.id === item.stepId)?.cost, cost = candidate === 'pending' || candidate === 'submitted' || candidate === 'unknown' || candidate === 'charged' ? candidate : undefined;
-        return [{kind: /^[a-z][a-z0-9_]{0,79}$/u.test(item.kind) ? item.kind : 'unknown', id: item.id, status: /^[a-z][a-z0-9_]{0,63}$/u.test(item.status) ? item.status : 'unknown', ...(cost ? {cost} : {})}];
-      });
-      return {id: value.id, text: value.text, notes: (value.notes ?? []).map(item => item.text), status: value.status as TaskContextHistoryRun['status'], ...(history.length ? {historyInputs: history.sort((a, b) => a.position - b.position || a.order - b.order).map(item => item.input)} : {}), ...(object(final) && typeof final.text === 'string' ? {finalText: final.text} : {}), record: {
-        runId: value.id, status: value.status as TaskContextHistoryRun['status'], ...(failureCode ? {failureCode} : {}),
-        skipped: {items: skipped, total: (value.skippedTargets ?? []).length},
-        background: {items: projectedBackground, total: jobs.length},
-        changes: {items: changes.slice(-64).reverse().map(item => { const display = projectAgentTaskChangeDisplay(item); return {id: item.id, status: item.status, reversible: item.reversible, operation: display.operation, targets: display.targets.slice(0, 8), targetCount: display.targetCount}; }), total: changes.length},
-      }};
+      if (history.length) for (const note of notes) history.push({position: Number(steps.find(item => item.id === bindings.get(String(note.value.requestId)) && item.kind === 'model')?.position ?? Number.POSITIVE_INFINITY), order: history.length, input: {kind: 'note', text: String(note.value.text)}});
+      let finalText: string | undefined;
+      if (status === 'completed') {
+        const final = db.prepare(finalSql).get(runId, projectId, runId, projectId);
+        if (final) {
+          if (final.protocol === 'chat_completions') finalText = final.text === null ? '' : decode<string>(final.text);
+          else if (final.protocol === 'responses' || final.protocol === 'anthropic_messages') finalText = decode<string[]>(final.parts).join('');
+          else fail('AGENT_TASK_STORAGE_CORRUPT');
+        }
+      }
+      const execution = states.filter(item => item.type === 'run_state' && item.status !== 'reverted').at(-1), current = states.filter(item => item.type === 'run_state').at(-1);
+      const error = db.prepare(`SELECT json_extract(${payloadSql('e')},'$.code') AS code FROM mio_entries e WHERE e.runId=? AND e.projectId=? AND e.kind='host_hint' AND json_extract(${payloadSql('e')},'$.type')='error' ORDER BY sequence DESC LIMIT 1`).get(runId, projectId);
+      const failure = current?.reason ?? error?.code ?? steps.filter(item => ['failed', 'unknown'].includes(String(item.status))).at(-1)?.errorCode;
+      const failureCode = (status === 'failed' || execution?.status === 'failed') && typeof failure === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/u.test(failure) ? failure : undefined;
+      const skippedTargets = states.filter(item => item.type === 'skipped_targets').flatMap(item => Array.isArray(item.items) ? item.items as unknown as AgentTaskSkippedTarget[] : []);
+      const skipped: TaskRunRecordTarget[] = skippedTargets.slice(-64).reverse().flatMap(({target}) => /^[a-z][a-z0-9_]{0,79}$/u.test(target.kind) && identity.test(target.id) && typeof target.revision === 'number' ? [{kind: target.kind, id: target.id, revision: target.revision}] : []);
+      const projectedBackground: TaskRunRecordBackground[] = [];
+      for (const item of db.prepare(backgroundSql).iterate(runId, projectId)) {
+        if (typeof item.jobId !== 'string' || !identity.test(item.jobId)) continue;
+        const cost = item.cost === 'pending' || item.cost === 'submitted' || item.cost === 'unknown' || item.cost === 'charged' ? item.cost : undefined;
+        projectedBackground.push({kind: typeof item.kind === 'string' && /^[a-z][a-z0-9_]{0,79}$/u.test(item.kind) ? item.kind : 'unknown', id: item.jobId, status: typeof item.status === 'string' && /^[a-z][a-z0-9_]{0,63}$/u.test(item.status) ? item.status : 'unknown', ...(cost ? {cost} : {})});
+      }
+      const changes: TaskRunRecordChange[] = [];
+      for (const item of db.prepare(changesSql).iterate(runId, projectId)) {
+        const change: AgentTaskChange = {id: String(item.id), runId, stepId: String(item.stepId), projectId, operation: String(item.operation), status: String(item.status) as AgentTaskChange['status'], reversible: item.reversible === 1, createdAt: String(item.createdAt), targets: decode<AgentTaskTarget[]>(item.targets), before: decode<AgentTaskJson>(item.beforeNames), after: decode<AgentTaskJson>(item.afterNames)};
+        const display = projectAgentTaskChangeDisplay(change); changes.push({id: change.id, status: change.status, reversible: change.reversible, operation: display.operation, targets: display.targets.slice(0, 8), targetCount: display.targetCount});
+      }
+      const user = content(runId, 'user_message')[0]?.value;
+      if (!user || typeof user.text !== 'string' || notes.some(note => typeof note.value.text !== 'string')) fail('AGENT_TASK_STORAGE_CORRUPT');
+      const backgroundTotal = Number(db.prepare('SELECT count(*) AS n FROM mio_job_origins WHERE runId=? AND projectId=?').get(runId, projectId)!.n), changeTotal = Number(db.prepare('SELECT count(*) AS n FROM mio_changes WHERE runId=? AND projectId=?').get(runId, projectId)!.n);
+      return {id: runId, text: user.text, notes: notes.map(note => String(note.value.text)), status, ...(history.length ? {historyInputs: history.sort((a, b) => a.position - b.position || a.order - b.order).map(item => item.input)} : {}), ...(finalText === undefined ? {} : {finalText}), record: {runId, status, ...(failureCode ? {failureCode} : {}), skipped: {items: skipped, total: skippedTargets.length}, background: {items: projectedBackground, total: backgroundTotal}, changes: {items: changes, total: changeTotal}}};
     });
   }
   const allowedRun: Record<AgentTaskStatus, AgentTaskStatus[]> = {accepted: ['running', 'stopped', 'failed', 'interrupted'], running: ['paused', 'awaiting_approval', 'awaiting_answer', 'completed', 'failed', 'stopped', 'interrupted'], paused: ['running', 'stopped', 'failed', 'interrupted'], awaiting_approval: ['running', 'paused', 'stopped', 'failed', 'interrupted'], awaiting_answer: ['running', 'stopped', 'failed', 'interrupted'], interrupted: ['running', 'stopped', 'failed'], completed: ['reverted'], failed: ['running', 'reverted'], stopped: ['reverted'], reverted: []};

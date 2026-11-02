@@ -18,7 +18,7 @@ test('subtitle preflight verifies font and renderer read-only without measuring 
  const executable=path.join(root,'ffmpeg'),setHelp=(output: string)=>writeFile(executable,`#!${process.execPath}\nif(process.argv.slice(2).join(' ')!=='-hide_banner -h filter=drawtext')process.exit(7);\nprocess.stdout.write(${JSON.stringify(output)});\n`,{mode:0o700});
  await setHelp(help);await chmod(executable,0o700);const previous=process.env.MIOON_FFMPEG_PATH;process.env.MIOON_FFMPEG_PATH=executable;
  t.after(()=>{if(previous===undefined)delete process.env.MIOON_FFMPEG_PATH;else process.env.MIOON_FFMPEG_PATH=previous;});
- const store=openStore(path.join(root,'data')),project={id:randomUUID(),name:'Caption preflight'};store.put('projects',project);
+ const store=openStore(path.join(root,'data')),project={id:store.projectId,name:'Caption preflight'};store.put('projects',project);
  const bytes=Buffer.from('owned synthetic metadata source'),asset={id:randomUUID(),projectId:project.id,name:'audio',mimeType:'audio/wav',relativePath:'media/source.wav',sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,duration:1,width:0,height:0,hasAudio:true};
  await writeFile(path.join(store.root,asset.relativePath),bytes);store.put('assets',asset);
  const track={id:randomUUID(),kind:'audio',name:'Audio',orderIndex:0,muted:false,hidden:false};

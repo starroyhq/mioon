@@ -10,7 +10,7 @@ import {createMioJournal} from '../packages/business/src/agent/mio-journal.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {createMioAssembly} from '../packages/business/src/agent/mio-assembly.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
-import {openStore as openWorkspaceStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openWorkspaceStore} from '../packages/business/src/db.ts';
 import {assembleRunContext} from '../packages/business/src/agent/task-context-v2.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskJson, AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
@@ -142,6 +142,23 @@ test('prevented model dispatch preserves immutable boundary evidence and never p
   assert.throws(() => f.records.reassembleRequest(id, {...dispatched, body: pending.body, inputManifest: dispatched.inputManifest, stepId: pending.step.id, assemblerVersion: 3, id: randomUUID(), assembledAt: new Date().toISOString()}, randomUUID()), {code: 'AGENT_TASK_TRANSACTION_REQUIRED'});
   f.store.tx(() => assert.throws(() => f.records.reassembleRequest(id, {...dispatched, body: pending.body, inputManifest: dispatched.inputManifest, stepId: pending.step.id, assemblerVersion: 3, id: randomUUID(), assembledAt: new Date().toISOString()}, randomUUID()), {code: 'AGENT_TASK_STATE_CONFLICT'}));
   f.journal.markDispatch(run.id, pending.step.id); assert.equal(f.records.request(id).dispatchStartedAt, dispatched.dispatchStartedAt);
+});
+
+test('a proven prevented model dispatch may fail from intent while unknown still requires a dispatched step', t => {
+  const f = fixture(t), run = f.start(), pending = model(f, run.id);
+  f.journal.markDispatch(run.id, pending.step.id);
+  const id = f.records.step(pending.step.id).currentRequestId!, dispatched = f.records.request(id);
+  f.journal.dispatchPrevented(run.id, pending.step.id, 'intent');
+  const before = f.journal.snapshot(run.id);
+  f.store.tx(() => assert.throws(() => f.records.failRequest(id, 'unknown', new Date().toISOString()), {code: 'AGENT_TASK_STATE_CONFLICT'}));
+  assert.deepEqual(f.journal.snapshot(run.id), before);
+  assert.deepEqual(f.records.request(id), dispatched);
+  f.journal.updateStep(run.id, pending.step.id, {status: 'failed', error: {code: 'AGENT_CHAT_DNS_UNSAFE', message: 'Synthetic pre-submit denial'}});
+  const failed = f.records.request(id);
+  assert.equal(failed.state, 'failed'); assert.equal(f.records.step(pending.step.id).status, 'failed');
+  assert.equal(failed.originalBody, pending.body); assert.equal(failed.bodySha256, dispatched.bodySha256);
+  assert.equal(failed.bodyBytes, dispatched.bodyBytes); assert.equal(failed.dispatchStartedAt, dispatched.dispatchStartedAt);
+  assert.ok(failed.completedAt); assert.equal(f.store.db.prepare("SELECT count(*) AS n FROM mio_requests WHERE state='unknown'").get()!.n, 0);
 });
 
 test('edit owners retain generation/sequence fencing, uncertain claims and original receipts', t => {

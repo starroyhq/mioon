@@ -5,7 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync,readFileSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
@@ -18,6 +18,8 @@ import {TASK_MODEL_LIMITS} from '../packages/business/src/agent/task-gateway-v2.
 import {collectProject,createProjectFromDocument} from '../packages/business/src/project-package/document.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 import {renderAgentTaskSkillCatalog} from '../scripts/generate-agent-skills.ts';
 import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {AGENT_TASK_LOCALES,AGENT_TASK_SKILL_NAMES} from '../packages/contracts/src/agent-tasks-v2.ts';
@@ -32,13 +34,13 @@ const call=(name:string,args:object):AgentTaskToolCall=>({id:randomUUID(),name,a
 const NOTES='画幅与时长\n9:16 竖屏，每集 90 秒。\n\n角色\n周屿：总是右手持伞。\n\n禁忌\n不出现真实品牌。';
 
 /** One runtime over a real workspace; each model request answers with the next queued batch. */
-async function fixture(t:TestContext){
- const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-skills-notes-v2-')),store=openStore(root),services=createServices(store,new Map());
+async function fixture(t:TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){
+ const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-skills-notes-v2-')),store=opener(root),services=createServices(store,new Map());
  const projectId=String(record(await services.call('project.create',{name:'Skills and notes test'})).id);
  const shotId=String(record(await services.call('shot.create',{projectId,title:'03 雨夜街口'})).id);
  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();
  await settings.put({expectedRevision:0,configuration:{...initial.configuration,protocol:'chat_completions'},secret:{action:'replace',storage:'session',value:'SYNTHETIC_SKILLS_NOTES_TEST_ONLY'}});
- const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
+ const authorizations=createTestAuthorizations(()=>store,settings);await authorizeTestScope(authorizations,'project_agent');
  const tools=createAgentTaskTools({store,services}),bodies:string[]=[],queue:AgentTaskToolCall[][]=[];
  const gateway:TaskGateway=async function*(request){
   bodies.push(request.body);const calls=queue.shift()??[];
@@ -215,8 +217,27 @@ test('Mio updates notes as a reversible change, and undo restores the earlier te
  await f.runtime.drain();
  assert.ok(undone);assert.equal(f.project().notes,NOTES);
 });
-test('project notes travel with the project file and with backups; restored copies refuse edits', async t => {
- const f=await fixture(t);
+test('project-layout notes stay unchanged when legacy import and workspace backup operations are unavailable', async t => {
+ const f=await fixture(t);await f.setNotes(NOTES);
+ const application=testProjectAppLibrary(f.store);assert.ok(application);
+ const quote=(name:string)=>'"'+name.replaceAll('"','""')+'"';
+ const capture=()=>[f.store.db,application.db].map(db=>({
+  rows:schemaObjects(db).filter(entry=>entry.type==='table').map(({schema,name})=>[schema,name,db.prepare(`SELECT * FROM ${quote(schema)}.${quote(name)} ORDER BY rowid`).all()]),
+  changes:db.prepare('SELECT total_changes() AS n').get()!.n,
+ }));
+ const before=capture(),collected=collectProject(f.store,f.projectId,{media:'used'} as never);
+ assert.equal(collected.document.project.notes,NOTES);
+ assert.throws(()=>createProjectFromDocument(f.store,{document:collected.document,files:new Map(),name:'Unavailable copy',move:false}),
+  {name:'TypeError',message:'Legacy project package imports cannot run on project databases.'});
+ for(const [operation,input] of [
+  ['workspace.backup.status',{}],['workspace.backup.list',{}],['workspace.backup.create',{requestId:randomUUID()}],
+  ['workspace.backup.restore.stage',{requestId:randomUUID(),backupId:randomUUID(),confirmation:'RESTORE_BACKUP'}],
+ ] as const)await assert.rejects(f.services.call(operation,input),{code:'RESTORE_OPERATION_UNAVAILABLE',status:409});
+ assert.deepEqual(capture(),before,'unavailable operations change neither project nor application rows or change marks');
+ assert.equal(f.project().notes,NOTES);
+});
+test('legacy project notes travel with project documents and backups; restored copies refuse edits', async t => {
+ const f=await fixture(t,openLegacyWorkspaceStore);
  await f.setNotes(NOTES);
  const collected=collectProject(f.store,f.projectId,{media:'used'} as never);
  assert.equal(collected.document.project.notes,NOTES);
@@ -230,7 +251,7 @@ test('project notes travel with the project file and with backups; restored copi
  t.after(()=>{rmSync(backup,{recursive:true,force:true});rmSync(restored,{recursive:true,force:true});});
  await createWorkspaceBackup({source:f.root,destination:backup});
  await restoreWorkspaceBackup({directory:backup,destination:restored});
- const store=openStore(restored),services=createServices(store,new Map());
+ const store=openLegacyWorkspaceStore(restored),services=createServices(store,new Map());
  try{
   const project=record(store.get('projects',f.projectId));assert.equal(project.notes,NOTES);
   await assert.rejects(services.call('project.notes.set',{requestId:randomUUID(),projectId:f.projectId,expectedRevision:Number(project.revision),notes:'edit in a restored copy'}));

@@ -6,6 +6,8 @@ import {FRAME_LIMITS,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,frameReceiptSchema,ca
 import {validatePng as validatePngBytes} from './images/png.ts';
 import type {PngMetadata} from './images/png.ts';
 import {storeDirectories} from './store-layout.ts';
+import {isProjectStore} from './project-file/store.ts';
+import {projectMediaDirectory,readProjectMediaFile,writeProjectMediaFileAtomic} from './project-media-storage.ts';
 
 export interface FrameSourceSnapshot {
  readonly assetId: string;
@@ -81,7 +83,11 @@ const isRecord=(value: unknown): value is Record<string, unknown>=>value!==null&
  * Every path is derived from an accepted task or a strictly validated receipt. */
 export function createFrameStorage(store: {readonly root: string},{validatePng}: {readonly validatePng: (bytes: unknown,options?: {width?: unknown; height?: unknown; signal?: AbortSignal; opaque?: boolean})=>Promise<PngMetadata>}): FrameStorage {
  const {projectDir:root,tempDir:stagingRoot}=storeDirectories(store),directory=path.join(stagingRoot,'frame-staging');
- function syncDirectory(value: string,ownerRoot=root): void {
+ const mediaRoot=isProjectStore(store)?projectMediaDirectory(store):root;
+ const relative=(file:string):string=>path.relative(root,file).split(path.sep).join('/');
+ const readMedia=(file:string,options:Omit<import('@mioon/contracts/private-storage').ReadPrivateFileOptions,'root'>)=>isProjectStore(store)?readProjectMediaFile(store,relative(file),options):readPrivateFile(file,{root,...options});
+ const writeMedia=(file:string,bytes:Buffer,options:Omit<import('@mioon/contracts/private-storage').WritePrivateFileOptions,'root'>):void=>{if(isProjectStore(store))writeProjectMediaFileAtomic(store,relative(file),bytes,options);else writePrivateFileAtomic(file,bytes,{root,...options});};
+ function syncDirectory(value: string,ownerRoot=mediaRoot): void {
   const before=validateManagedDirectory(value,{root:ownerRoot});let fd;
   try{
    if(!before)throw failure();
@@ -114,7 +120,7 @@ export function createFrameStorage(store: {readonly root: string},{validatePng}:
   // The complete manifest remains required even after final media publication.
   const manifest=readReceipt(task);if(!manifest||canonical(manifest)!==canonical(receipt))throw failure();
   const final=path.join(root,'media',`${receipt.assetId}.png`),staged=readPrivateFile(paths(task).png,{root:stagingRoot,allowMissing:true,maxBytes:FRAME_LIMITS.resultBytes});
-  const bytes=staged??readPrivateFile(final,{root,allowMissing:true,maxBytes:FRAME_LIMITS.resultBytes});
+  const bytes=staged??readMedia(final,{allowMissing:true,maxBytes:FRAME_LIMITS.resultBytes});
   if(!bytes||typeof bytes==='string'||bytes.length!==receipt.byteLength||digest(bytes)!==receipt.sha256)throw failure();
   await validatePng(bytes,{width:receipt.width,height:receipt.height,opaque:true,signal});check();
   return {bytes,final};
@@ -137,9 +143,9 @@ export function createFrameStorage(store: {readonly root: string},{validatePng}:
  }
  async function publish(task: FrameStorageTask,receipt: FrameReceipt,check: ()=>void,{signal}: {readonly signal?: AbortSignal}={}): Promise<FramePublishedResult> {
   const {bytes,final}=await verify(task,receipt,check,{signal});check();
-  const existing=readPrivateFile(final,{root,allowMissing:true,maxBytes:FRAME_LIMITS.resultBytes});
+  const existing=readMedia(final,{allowMissing:true,maxBytes:FRAME_LIMITS.resultBytes});
   if(existing){if(typeof existing==='string'||existing.length!==receipt.byteLength||digest(existing)!==receipt.sha256)throw failure();}
-  else{check();writePrivateFileAtomic(final,bytes,{root,maxBytes:FRAME_LIMITS.resultBytes,replace:false});}
+  else{check();writeMedia(final,bytes,{maxBytes:FRAME_LIMITS.resultBytes,replace:false});}
   syncDirectory(path.dirname(final));check();return {relativePath:`media/${receipt.assetId}.png`,sizeBytes:receipt.byteLength};
  }
  function discardStagedPng(task: FrameStorageTask,check: ()=>void): void {check();removePrivateFile(paths(task).png,{root:stagingRoot,maxBytes:FRAME_LIMITS.resultBytes});}

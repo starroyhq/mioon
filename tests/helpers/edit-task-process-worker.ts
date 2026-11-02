@@ -11,7 +11,7 @@ const crashPhases = new Set(['afterPreparePersist', 'afterClaim', 'afterBusiness
   'beforeOutcomePersist', 'afterOutcomePersist', 'afterAcknowledge']);
 interface WorkerMessage {readonly id: string; readonly method: string; readonly input: Record<string, unknown> & {operation?: string; input?: unknown; [key: string]: unknown}}
 type TaskWorker = ReturnType<typeof createEditTasks>
-let store: ReturnType<typeof openStore>|undefined, tasks: TaskWorker|undefined, armed: string|null, closing: Promise<void>|undefined;
+let store: ReturnType<typeof openStore>|undefined, services:ReturnType<typeof createServices>|undefined, tasks: TaskWorker|undefined, armed: string|null, closing: Promise<void>|undefined;
 const dispatches: {operation: string; input: unknown}[] = [], phases: string[] = [];
 const report = (message: unknown): void => { if (process.connected) process.send?.(message); };
 // WORKER_STARTUP_DIAGNOSTIC: fixed phase labels and numeric counters only, never fixture inputs or paths.
@@ -33,6 +33,7 @@ const crashAt = (phase: string): void => {
 };
 const close = () => closing ??= (async () => {
   await tasks?.drain();
+  await services?.drain();
   store?.close();
   if (process.connected) process.disconnect();
 })();
@@ -42,12 +43,12 @@ try {
   store = openStore(process.argv[2]);
   startupPhase('open-store-end');
   startupPhase('services-start');
-  const services = createServices(store, new Map());
+  services = createServices(store, new Map());
   startupPhase('services-end');
   startupPhase('tasks-start');
   tasks = createEditTasks({store, services: {call(operation: string, input: never) {
     dispatches.push({operation, input});
-    return services.call(operation, input);
+    return services!.call(operation, input);
   }}, fault: crashAt} as never);
   startupPhase('tasks-end');
   startupPhase('reconcile-start');
@@ -71,7 +72,7 @@ try {
         data = Object.fromEntries((tables as string[]).map(table => [table, store!.db.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all().map(row => ({...row}))]));
       } else if (message.method === 'rpc') {
         if (!localOperations.has(String(message.input.operation))) throw Error('Unsupported fixture operation');
-        data = await services.call(String(message.input.operation), message.input.input as never);
+        data = await services!.call(String(message.input.operation), message.input.input as never);
       } else {
         if (!taskMethods.has(message.method)) throw Error('Unsupported fixture task method');
         const taskMethod = (tasks as unknown as Record<string, (input: unknown) => Promise<unknown>>)[message.method];

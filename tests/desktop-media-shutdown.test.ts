@@ -1,4 +1,5 @@
 import type {DesktopHarnessMessage, DesktopHarnessDialog} from './helpers/strict-desktop-harness-types.ts';
+import {desktopAppDirectories} from '../apps/server/src/project-host/directories.ts';
 type BackendStartConfig = Parameters<BackendSupervisor['start']>[0];
 type SyntheticSupervisor = BackendSupervisor & {start(config: Partial<BackendStartConfig>): ReturnType<BackendSupervisor['start']>};
 type MutableUtility = Omit<BackendUtilityProcess, 'pid'> & {pid: number | undefined};
@@ -475,7 +476,7 @@ async function mainStartupHarness({ validate, settings }: {validate?(tools: unkn
   Object.assign(app, { isPackaged: false, enableSandbox() {}, setName() {}, setAppUserModelId() {}, setDesktopName() {},
     commandLine: { appendSwitch() {} }, getPath: () => '/synthetic', requestSingleInstanceLock: () => true,
     whenReady: () => new Promise(() => {}), quit: () => { counts.quits++; }, exit: (code: number) => counts.exits.push(code) });
-  const context = vm.createContext({ app, createMenuCommandHost, applicationMenuTemplate, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS,
+  const context = vm.createContext({ desktopAppDirectories, app, createMenuCommandHost, applicationMenuTemplate, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS,
     Menu: {buildFromTemplate: desktopMenuHarness, setApplicationMenu() {}},
     createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'linux', env: {}, on() {} }, path,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
@@ -576,7 +577,7 @@ async function backendHarness({ close = async () => {}, start, settingsClose = (
   const nativeAuthority = {command:async () => {throw Error('No audition command is expected in this lifecycle fixture');}};
   let enterStart!: (value: LaunchView) => void; const started = new Promise<LaunchView>(resolve => { enterStart = resolve; });
   port.postMessage = (message: DesktopHarnessMessage) => { messages.push(message); };
-  const sandbox = { comfyModuleModeFromEnvironment, createBackendLease, BACKEND_LEASE_TIMING, performance, process: { env: {}, parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
+  const sandbox = { path, comfyModuleModeFromEnvironment, createBackendLease, BACKEND_LEASE_TIMING, performance, process: { env: {}, parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
     pid: 23456, on: processEvents.on.bind(processEvents), exit: (code: number) => exits.push(code) },
     __MIOON_DESKTOP_CHANNEL__: 'development',
     DatabaseSync: function () {}, startServer: (options: LaunchView) => { assert.equal(options.localDraftChannel,'development'); assert.equal(options.nativeAudioPreview,nativeAuthority); enterStart(options); return (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); },
@@ -587,7 +588,7 @@ async function backendHarness({ close = async () => {}, start, settingsClose = (
     createNativeAudioPreviewAuthority: (config: unknown) => {assert.equal(config,nativeConfig);return nativeAuthority;},
     setInterval: () => 1, clearInterval: () => {}, setImmediate };
   vm.runInNewContext(source, sandbox, { filename: 'backend-lifecycle-fixture.mjs' });
-  return { messages, exits, port, started, start: () => port.emit('message', { data: { type: 'start',subtitleResourcesDir:'/synthetic/trusted/subtitles',nativeAudioPreview:nativeConfig } }),
+  return { messages, exits, port, started, start: () => port.emit('message', { data: { type: 'start',dataDir:'/synthetic/data',cacheDir:'/synthetic/cache',projectsDir:'/synthetic/projects',subtitleResourcesDir:'/synthetic/trusted/subtitles',nativeAudioPreview:nativeConfig } }),
     stop: () => port.emit('message', { data: { type: 'stop' } }) };
 }
 

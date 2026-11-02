@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {createHash,randomUUID} from 'node:crypto';
 import {syncBuiltinESMExports} from 'node:module';
 import {setImmediate as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {publishMarker} from '../packages/business/src/workspace-backup-storage.ts';
 import type {TestContext} from 'node:test';

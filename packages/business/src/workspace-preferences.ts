@@ -3,6 +3,9 @@ import {withRestoreInvocation,freezeRestoreInput} from './workspace-restore-invo
 import {refuseRestoredOperation,assertWorkspaceRestoreOrigin} from './workspace-restore-policy.ts';
 import {AppError, schemas} from '@mioon/contracts';
 import type {DatabaseSync} from 'node:sqlite';
+import {isProjectStore} from './project-file/store.ts';
+import {isProjectDatabase} from './project-file/held-files.ts';
+import {testProjectAppLibrary} from './project-service-application.ts';
 
 type PreferencesRow = {revision: number;state: string};
 interface PreferencesStore {db: DatabaseSync;tx: <T>(callback: ()=>T)=>T;get: (table: string,id: string)=>unknown}
@@ -116,6 +119,14 @@ export function parseWorkspacePreferencesState(value: unknown): Record<string, u
 }
 
 export function createWorkspacePreferences(store: PreferencesStore, {application}: {application?:ApplicationWorkspacePreferences} = {}) {
+  if (!application && isProjectDatabase(store.db) && !isProjectStore(store)) throw new TypeError('Project workspace preferences require the exact live project store');
+  if (!application && isProjectStore(store)) {
+    const library = testProjectAppLibrary(store);
+    if (!library) throw new TypeError('Project workspace preferences require explicit application persistence');
+    application = {db: library.db, tx: library.tx, hasProject: projectId =>
+      library.registry.get(projectId) !== null || isProjectStore(store) && projectId === store.projectId &&
+        !!store.db.prepare('SELECT 1 FROM project.projects WHERE id=?').get(projectId)};
+  }
   const {db, tx} = application ?? store;
   const requireProject = (projectId: string): void => {
     id(projectId, ['projectId'], false);

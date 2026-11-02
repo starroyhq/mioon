@@ -3,6 +3,10 @@ import {ownsStoreLock,getWorkspaceRestoreContext} from '../../packages/business/
 import {deriveAgentEndpoint} from '../../packages/contracts/src/agent-protocol.ts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
 import {createAgentAuthorizations} from '../../packages/business/src/agent/authorizations.ts';
+import {testStoreForConnection} from '../../packages/business/src/project-file/test-store.ts';
+import {testProjectAppLibrary} from '../../packages/business/src/project-service-application.ts';
+import {isAppLibraryHeld} from '../../packages/business/src/app-db/connection.ts';
+import {lstatSync} from 'node:fs';
 
 /** Runtime fixtures use actual private sidecar grants, not an always-allow
  * authorizer. Only explicit approved-input construction grants a scope. */
@@ -13,9 +17,17 @@ interface SettingsReader {get(): Promise<SettingsSnapshot>}
 type Authorizations = ReturnType<typeof createAgentAuthorizations>
 export function createTestAuthorizations(storeOrRead: StoreOrRead, settings: SettingsReader): Authorizations {
   const read=typeof storeOrRead==='function'?storeOrRead:()=>storeOrRead;
-  return createAgentAuthorizations({root:read().root,
+  const initial=read(),owner=testStoreForConnection(initial.db,initial.root),library=owner?testProjectAppLibrary(owner):undefined;
+  const root=library?.dataDir??initial.root,databaseFile=library?.databaseFile;
+  return createAgentAuthorizations({root,...(databaseFile?{databaseFile}:{}),
     storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
-    guards:{ownsLock:()=>ownsStoreLock(read() as never),isRestored:()=>Boolean(getWorkspaceRestoreContext(read() as never))},
+    guards:{ownsLock:()=>{
+      if(!databaseFile)return ownsStoreLock(read() as never);
+      const current=read(),actual=testStoreForConnection(current.db,current.root),app=actual?testProjectAppLibrary(actual):undefined;
+      if(!app||app.databaseFile!==databaseFile||app.dataDir!==root)return false;
+      const info=lstatSync(databaseFile,{bigint:true});
+      return isAppLibraryHeld({dev:String(info.dev),ino:String(info.ino)},app.db);
+    },isRestored:()=>databaseFile?false:Boolean(getWorkspaceRestoreContext(read() as never))},
     readCurrentTarget:async()=>{const current=await settings.get();return {
       destination:deriveAgentEndpoint(current.configuration as never),model:(current.configuration as {model: string}).model,settingsRevision:current.revision,
     };},
