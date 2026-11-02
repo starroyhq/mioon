@@ -4,11 +4,12 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {DatabaseSync} from 'node:sqlite';
 import {schemas} from '@mioon/contracts';
 import {APP_LEVEL_OPERATIONS, ENTITY_ADDRESSED_OPERATIONS, inputProjectId, isAppLevelOperation, isEntityAddressedOperation, rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectApiPath, projectMediaPath, projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {jsonSchema, operationDefinition, splitProjectAddress} from '../packages/client/src/index.ts';
-import {projectRouteTarget} from '../apps/server/src/project-routes.ts';
+import {assertProjectRpc, projectRouteTarget} from '../apps/server/src/project-routes.ts';
 import {startServer} from '../apps/server/src/index.ts';
 
 const TOKEN = 'synthetic-project-addressing-token';
@@ -111,6 +112,25 @@ test('project routes map to the paths they replace; app-level and unknown routes
   }
 });
 
+test('each entity-addressed RPC rejects a foreign owner without changing its record', t => {
+  const db = new DatabaseSync(':memory:');
+  t.after(() => db.close());
+  const projectId = randomUUID(), other = randomUUID(), id = randomUUID();
+  for (const table of ['edges', 'exports', 'shots', 'jobs', 'nodes']) {
+    db.exec(`CREATE TABLE ${table} (id TEXT PRIMARY KEY, projectId TEXT NOT NULL)`);
+    db.prepare(`INSERT INTO ${table} (id, projectId) VALUES (?, ?)`).run(id, projectId);
+  }
+  const input = {edgeId: id, exportId: id, shotId: id, jobId: id, nodeId: id};
+  for (const operation of ENTITY_ADDRESSED_OPERATIONS) {
+    assert.doesNotThrow(() => assertProjectRpc(db, {projectId}, operation, input), operation);
+    assert.throws(() => assertProjectRpc(db, {projectId: other}, operation, input),
+      {code: 'NOT_FOUND', status: 404, message: '找不到记录', details: {id}}, operation);
+  }
+  for (const table of ['edges', 'exports', 'shots', 'jobs', 'nodes']) {
+    assert.equal(db.prepare(`SELECT projectId FROM ${table} WHERE id=?`).get(id)?.projectId, projectId);
+  }
+});
+
 test('project addresses on the workspace server: registration, project checks, entity ownership and legacy paths', {timeout: 60_000}, async t => {
   const dataDir = realpathSync(mkdtempSync(path.join(tmpdir(), 'mioon-project-addressing-')));
   t.after(() => rmSync(dataDir, {recursive: true, force: true}));
@@ -145,6 +165,7 @@ test('project addresses on the workspace server: registration, project checks, e
   // RPC at a project's address.
   assert.equal(data<{project: {id: string}}>(await rpc(projectRpcPath(first), 'project.get', {projectId: first})).project.id, first);
   failure(await rpc(projectRpcPath(first), 'project.get', {projectId: second}), 400, 'PROJECT_ID_MISMATCH', {projectId: first});
+  failure(await rpc(projectRpcPath(first), 'image.review.prepare', {input: {projectId: second}}), 400, 'PROJECT_ID_MISMATCH', {projectId: first});
   failure(await rpc(projectRpcPath(first), 'provider.list', {}), 400, 'VALIDATION_ERROR');
   failure(await rpc(projectRpcPath(first), 'project.rename', {projectId: first, name: 'renamed'}), 400, 'VALIDATION_ERROR');
   failure(await rpc(projectRpcPath(second), 'shot.update', {shotId: shot.id, expectedRevision: shot.revision, patch: {title: 'moved'}}), 404, 'NOT_FOUND', {id: shot.id});
@@ -166,10 +187,17 @@ test('project addresses on the workspace server: registration, project checks, e
 
   // A projectId in the query or body must name the address's project.
   failure(await send(`${projectApiPath(first, 'tasks')}?projectId=${second}`), 400, 'PROJECT_ID_MISMATCH', {projectId: first});
+  failure(await send(`${projectApiPath(first, 'tasks')}?projectId=${first}&projectId=${second}`), 400, 'PROJECT_ID_MISMATCH', {projectId: first});
   failure(await send(`${projectApiPath(first, 'local-drafts')}?projectId=${second}`), 400, 'PROJECT_ID_MISMATCH', {projectId: first});
   for (const [route, method] of [[projectApiPath(first, 'local-drafts', 'clip'), 'PUT'], [projectApiPath(first, 'local-delivery', 'draft'), 'PUT'],
-    [projectApiPath(first, 'local-shot-text', 'draft'), 'DELETE'], [projectApiPath(first, 'tasks', 'prepare'), 'POST'],
-    [projectApiPath(first, 'images', 'reviews', 'approve'), 'POST'], [projectApiPath(first, 'agent', 'tasks', 'v2', 'editing'), 'POST']] as const) {
+    [projectApiPath(first, 'local-drafts', 'clip'), 'DELETE'], [projectApiPath(first, 'local-delivery', 'draft'), 'DELETE'],
+    [projectApiPath(first, 'local-shot-text', 'draft'), 'PUT'], [projectApiPath(first, 'local-shot-text', 'draft'), 'DELETE'],
+    [projectApiPath(first, 'local-shot-text', 'prepare'), 'POST'], [projectApiPath(first, 'local-shot-text', 'execute'), 'POST'],
+    [projectApiPath(first, 'local-shot-text', 'recover'), 'POST'], [projectApiPath(first, 'tasks', 'prepare'), 'POST'],
+    [projectApiPath(first, 'tasks', unknown, 'execute'), 'POST'], [projectApiPath(first, 'tasks', unknown, 'reconcile'), 'POST'],
+    [projectApiPath(first, 'tasks', unknown, 'acknowledge'), 'POST'],
+    [projectApiPath(first, 'images', 'reviews', 'approve'), 'POST'], [projectApiPath(first, 'images', 'reviews', 'reject'), 'POST'],
+    [projectApiPath(first, 'agent', 'tasks', 'v2', 'editing'), 'POST']] as const) {
     failure(await send(route, {method, body: {projectId: second}}), 400, 'PROJECT_ID_MISMATCH', {projectId: first});
   }
   failure(await send(projectApiPath(first, 'images', 'reviews', 'reject'), {body: {projectId: first, reviewId: unknown, expectedRevision: 1}}), 404, 'IMAGE_REVIEW_NOT_FOUND');

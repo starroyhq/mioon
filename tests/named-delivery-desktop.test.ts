@@ -49,6 +49,7 @@ test('managed media downloads are also accepted at their project address, and on
   const media = `${origin}/api/projects/${otherId}/media/${assetId}`;
   for (const good of [media, `${media}?download`, `${media}?download=1`, `${media}?download=1&exportId=${exportId}`]) assert.equal(isAllowedDownload(good, origin), true, good);
   for (const bad of [`${origin}/api/projects/not-a-project/media/${assetId}`, `${media}/extra`, `${origin}/api/projects/${otherId}/rpc`,
+    `${origin}/api/projects/${otherId.toUpperCase()}/media/${assetId}`, `${origin}/api/projects/${otherId}/media/${assetId.toUpperCase()}`,
     `${origin}/api/projects/${otherId}/media/not-an-asset`, `${origin}/api/projects/${otherId}/export-files?projectId=${otherId}&exportId=${exportId}`,
     `${origin}/api/projects/${otherId}/../media/${assetId}`, `${media}?download=1&exportId=invalid`]) assert.equal(isAllowedDownload(bad, origin), false, bad);
   const named = `${media}?download=1&exportId=${exportId}`;

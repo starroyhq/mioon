@@ -89,9 +89,9 @@ test('failed and pending outcomes keep the exact errors, badge and non-download 
 test('ready rows pass their project media address and identity to the async file check without claiming a download', () => {
   // A stored url is not an address: even an explicit one never becomes the download.
   assert.deepEqual(actions.success, [
-    {projectId:CURRENT, exportId:'one', downloadHref:media(ORIGINAL, 'one'), disabled:false},
-    {projectId:CURRENT, exportId:'two', downloadHref:media(ORIGINAL, 'two'), disabled:false},
-    {projectId:CURRENT, exportId:'three', downloadHref:media(ORIGINAL, 'three'), disabled:false},
+    {projectId:ORIGINAL, exportId:'one', downloadHref:media(ORIGINAL, 'one'), disabled:false},
+    {projectId:ORIGINAL, exportId:'two', downloadHref:media(ORIGINAL, 'two'), disabled:false},
+    {projectId:ORIGINAL, exportId:'three', downloadHref:media(ORIGINAL, 'three'), disabled:false},
   ]);
   assert.equal(fileActions.success.length, 3);
   for (const html of fileActions.success) {
