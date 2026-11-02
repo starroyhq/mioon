@@ -60,13 +60,22 @@ export function projectDirFor(dataDir: string, projectId: string): string {
  * writes, in the data directory's workspace. The open store holds the
  * workspace lock, so close it before the next call or the server starts.
  * Give the project's name as `name`, not a later store.put: after the switch
- * the server lists the name in the registry, which the store does not update. */
-export function createServerProject(dataDir: string, options?: {name?: string}): {projectId: string; store: ProjectStore} {
+ * the server lists the name in the registry, which the store does not update.
+ * Fixed IDs are only for shared test seeds, never proof of server ID generation. */
+export function createServerProject(dataDir: string, options?: {name?: string; projectId?: string}): {projectId: string; store: ProjectStore} {
+  const suppliedId = options?.projectId;
+  const projectId = suppliedId === undefined ? randomUUID() : suppliedId;
+  if (!isProjectId(projectId)) throw new TypeError('Invalid project ID');
   const root = path.resolve(dataDir);
   const workspace = openStore(root);
   try {
-    const projectId = randomUUID(), stamp = new Date().toISOString();
-    workspace.tx(() => workspace.put('projects', {id: projectId, name: options?.name ?? 'Test project', description: '', revision: 1, createdAt: stamp, updatedAt: stamp}));
+    const stamp = new Date().toISOString();
+    workspace.tx(() => {
+      // put() upserts, so reserve a fresh ID in the same transaction instead
+      // of silently changing an existing fixture project's stored identity.
+      if (workspace.db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId)) throw new Error('Project ID already exists');
+      workspace.put('projects', {id: projectId, name: options?.name ?? 'Test project', description: '', revision: 1, createdAt: stamp, updatedAt: stamp});
+    });
     // Today's workspace keeps all four directories in one.
     const store: ProjectStore = Object.assign(workspace, {
       projectId, projectFile: projectDatabasePath(root), projectDir: root, localDir: root, cacheDir: root, tempDir: root, historyState: 'fresh' as const,
