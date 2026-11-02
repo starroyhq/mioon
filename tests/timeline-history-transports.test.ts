@@ -15,7 +15,7 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
+import {createProjectStorageReader} from './fixtures/project-server-process.ts';
 import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -147,6 +147,7 @@ test('timeline history CLI and official MCP advertise identical strict schemas a
 async function backendFixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'wb-timeline-history-transports-'));
   let backend!: ChildProcessByStdio<null,Readable,Readable>, url!: string, port = 0;
+  let read!: ReturnType<typeof createProjectStorageReader>;
   async function stop() {
     if (!backend || backend.exitCode !== null || backend.signalCode) return;
     const child = backend, end = once(child, 'exit');
@@ -158,9 +159,10 @@ async function backendFixture(t: test.TestContext) {
   t.after(async () => { await stop(); await rm(root, {recursive: true, force: true}); });
   async function start() {
     let stdout = '', stderr = '';
-    backend = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.ts')], {
-      cwd: repo, env: environment({MIOON_DATA_DIR: root, PORT: String(port), MIOON_TOKEN: token}), stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    backend = spawn(process.execPath, [path.join(repo, 'tests/fixtures/project-server-process.ts')], {
+      cwd: repo, env: environment({MIOON_DATA_DIR: root, PORT: String(port), MIOON_TOKEN: token}), stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    }) as typeof backend;
+    read = createProjectStorageReader(backend);
     let spawnError;
     backend.once('error', error => spawnError = error);
     backend.stdout.setEncoding('utf8').on('data', bytes => stdout += bytes);
@@ -195,11 +197,9 @@ async function backendFixture(t: test.TestContext) {
     }
     return body.data;
   }
-  function storage() {
-    const db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-    try {
-      return Object.fromEntries(['timelines', 'timeline_history', 'timeline_history_cursors', 'timeline_requests'].map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map(row => ({...row}))]));
-    } finally { db.close(); }
+  async function storage(projectId: string) {
+    const {rows} = await read(projectId);
+    return Object.fromEntries(['timelines', 'timeline_history', 'timeline_history_cursors', 'timeline_requests'].map(table => [table, rows[table]]));
   }
   return {http, storage, root, url, get pid() { return backend.pid; }, restart: async () => { await stop(); return start(); }};
 }
@@ -261,7 +261,7 @@ test('timeline edit history round-trips HTTP, CLI and official MCP with durable 
   }
 
   await t.test('history reads and empty undo/redo do not create a timeline or journal', async () => {
-    const before = backend.storage();
+    const before = (await backend.storage(projectId));
     const empty = {projectId, timelineId: null, revision: null, cursor: 0, length: 0, canUndo: false, canRedo: false, undoEntry: null, redoEntry: null};
     for (const {call} of transports) {
       assert.deepEqual(await call('timeline.history.get', ((query) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>)), empty);
@@ -269,11 +269,11 @@ test('timeline edit history round-trips HTTP, CLI and official MCP with durable 
         await call(`timeline.${action}`, {...query, expectedRevision: 1, requestId: randomUUID()}, `NOTHING_TO_${action.toUpperCase()}`);
       }
     }
-    assert.deepEqual(backend.storage(), before, 'read-only history and failed empty traversal have zero persisted side effects');
+    assert.deepEqual((await backend.storage(projectId)), before, 'read-only history and failed empty traversal have zero persisted side effects');
     for (const operation of operations) {
       for (const input of invalidInputs(operation, ((projectId) as unknown as Parameters<NonNullable<typeof invalidInputs>>[1]))) await backend.http(operation, input, 'VALIDATION_ERROR', 400);
     }
-    assert.deepEqual(backend.storage(), before, 'strict HTTP validation also leaves every history table untouched');
+    assert.deepEqual((await backend.storage(projectId)), before, 'strict HTTP validation also leaves every history table untouched');
     current = await backend.http('timeline.get', query);
     assert.equal(current.revision, 1);
     await consistent(0, 0);
@@ -303,7 +303,7 @@ test('timeline edit history round-trips HTTP, CLI and official MCP with durable 
   });
 
   await t.test('exact successful replay wins over stale revisions and changed request data conflicts on every transport', async () => {
-    const before = backend.storage();
+    const before = (await backend.storage(projectId));
     const expectedErrors = new Map();
     const rejectedInputs = new Map(['undo', 'redo'].map(action => [`timeline.${action}:REVISION_CONFLICT`, {...query, expectedRevision: 1, requestId: randomUUID()}]));
     rejectedInputs.set('timeline.redo:NOTHING_TO_REDO', {...query, expectedRevision: ((current.revision) as unknown as number), requestId: randomUUID()});
@@ -328,7 +328,7 @@ test('timeline edit history round-trips HTTP, CLI and official MCP with durable 
       }
       await identicalError(((call) as unknown as Parameters<typeof identicalError>[0]), 'timeline.redo', rejectedInputs.get('timeline.redo:NOTHING_TO_REDO'), 'NOTHING_TO_REDO');
     }
-    assert.deepEqual(backend.storage(), before, 'replays and conflicts cannot modify cursor, journal, aggregate, or saved responses');
+    assert.deepEqual((await backend.storage(projectId)), before, 'replays and conflicts cannot modify cursor, journal, aggregate, or saved responses');
     await consistent(1, 1);
   });
 
@@ -341,7 +341,7 @@ test('timeline edit history round-trips HTTP, CLI and official MCP with durable 
       assert.deepEqual(editable(((results[0]) as unknown as Parameters<NonNullable<typeof editable>>[0])), editable(((snapshot) as unknown as Parameters<typeof editable>[0])));
       current = (remember(`timeline.${action}`, input, results[0]) as unknown as typeof current);
       await consistent(((expectedCursor) as unknown as Parameters<typeof consistent>[0]), 1);
-      const rows = backend.storage();
+      const rows = (await backend.storage(projectId));
       assert.equal(rows.timeline_history.length, 1, 'undo/redo are cursor movement, not additional journal edits');
       assert.equal(rows.timeline_requests.filter(row => row.requestId === input.requestId).length, 1);
     }
@@ -351,7 +351,7 @@ test('timeline edit history round-trips HTTP, CLI and official MCP with durable 
     // Restart with an active redo branch, rather than only testing the head.
     const input = {...query, expectedRevision: current.revision, requestId: randomUUID()};
     current = (remember('timeline.undo', input, await command('timeline.undo', input)) as unknown as typeof current);
-    const before = await consistent(0, 1), project = await backend.http('project.get', query), persisted = backend.storage();
+    const before = await consistent(0, 1), project = await backend.http('project.get', query), persisted = (await backend.storage(projectId));
     const previousPid = backend.pid;
     assert.notEqual(await backend.restart(), previousPid, 'restart launches a distinct HTTP backend process');
     assert.deepEqual(await backend.http('project.get', query), project);
@@ -359,13 +359,13 @@ test('timeline edit history round-trips HTTP, CLI and official MCP with durable 
     for (const {name, call} of transports) {
       for (const saved of successful) assert.deepEqual(await call(saved.operation, saved.input), saved.response, `${name} saved ${saved.operation} result survives process restart`);
     }
-    assert.deepEqual(backend.storage(), persisted, 'old successful replays must not move the restored cursor');
+    assert.deepEqual((await backend.storage(projectId)), persisted, 'old successful replays must not move the restored cursor');
   });
 
   await t.test('rejected edits preserve redo while new edits replace the branch without invalidating old replay', async () => {
-    const before = backend.storage();
+    const before = (await backend.storage(projectId));
     await mcp.call('timeline_track_update', {...query, expectedRevision: current.revision, requestId: randomUUID(), trackId: randomUUID(), patch: {name: 'Rejected branch'}}, 'TRACK_NOT_FOUND');
-    assert.deepEqual(backend.storage(), before);
+    assert.deepEqual((await backend.storage(projectId)), before);
     assert.deepEqual((await consistent(0, 1)).redoEntry, firstEntry);
     const input = {...query, expectedRevision: current.revision, requestId: randomUUID(), trackId: current.tracks[0].id, patch: {name: 'Replacement branch', hidden: true}};
     current = (remember('timeline.track.update', input, await command('timeline.track.update', input)) as unknown as typeof current);
@@ -373,12 +373,12 @@ test('timeline edit history round-trips HTTP, CLI and official MCP with durable 
     const history = await consistent(1, 1);
     assert.equal((history.undoEntry)!.operation, 'timeline.track.update');
     assert.notEqual((history.undoEntry)!.id, firstEntry.id);
-    const branched = backend.storage();
+    const branched = (await backend.storage(projectId));
     for (const {call} of transports) {
       await call('timeline.redo', {...query, expectedRevision: current.revision, requestId: randomUUID()}, 'NOTHING_TO_REDO');
       assert.deepEqual(await call('timeline.redo', ((redoInput) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>)), redone, 'replay remains exact even after its history branch was replaced');
     }
-    assert.deepEqual(backend.storage(), branched, 'replaying abandoned redo cannot resurrect the abandoned branch');
+    assert.deepEqual((await backend.storage(projectId)), branched, 'replaying abandoned redo cannot resurrect the abandoned branch');
     const project = await backend.http('project.get', query);
     for (const table of (['assets', 'shots', 'nodes', 'edges', 'jobs', 'versions', 'exports'] as const)) assert.deepEqual((project[table] as unknown), []);
     for (const secret of ([backend.root, token, 'requestHash', 'beforeSnapshot', 'afterSnapshot'] as const)) assert.ok(!JSON.stringify(project).includes(secret));
