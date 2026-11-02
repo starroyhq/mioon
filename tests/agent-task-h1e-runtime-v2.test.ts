@@ -1,4 +1,5 @@
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
+import {mioRunUsageSchema} from '../packages/contracts/src/mio-run-usage.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -116,19 +117,21 @@ for(const protocol of protocols)test(`${protocol}: an interrupted dispatched req
   await assert.rejects(f.action(interrupted,'resume'),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.equal(f.requests.length,0);assert.equal(f.runtime.journal.step(model.id).result,undefined);assertPublic(f.runtime.get(f.projectId,created.run.id));
 });
 
-for(const protocol of protocols)test(`${protocol}: real HTTP, SSE and CLI status expose no private usage`,async t=>{
+for(const protocol of protocols)test(`${protocol}: status and SSE keep usage private while the separate read exposes only the exact usage DTO`,async t=>{
   const f=await fixture(t,protocol);f.setScript(async function*(){yield {type:'done',output:{...output(protocol),usage:{inputTokens:87654,outputTokens:7,cacheReadTokens:86400,cacheWriteTokens:0}}};});
   const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(object(modelSteps(done)[0]!.result).usage!==undefined,true);
   const route=createAgentTaskHttp({runtime:f.runtime}),token=randomUUID(),server=createServer((req,res)=>{
     if(req.headers.authorization!==`Bearer ${token}`){res.writeHead(401);res.end();return;}
     // The CLI uses the project's address; serve it as the server does, at the route it replaces.
     const url=new URL(req.url??'/','http://127.0.0.1'),scoped=projectRouteTarget(url.pathname);if(scoped)url.pathname=scoped.pathname;
-    void route.handle(req,res,url).then(handled=>{if(!handled){res.writeHead(404);res.end();}}).catch(()=>{res.destroy();});
+    void route.handle(req,res,url,scoped?{projectId:scoped.projectId}:undefined).then(handled=>{if(!handled){res.writeHead(404);res.end();}}).catch(()=>{res.destroy();});
   });
   await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
   const address=server.address();assert.ok(address&&typeof address!=='string');const base=`http://127.0.0.1:${address.port}`,path=projectApiPath(f.projectId,'agent','tasks','v2',sent.run.id);
   try{
     const status=await fetch(base+path,{headers:{Authorization:`Bearer ${token}`}}),value:unknown=await status.json();assert.equal(status.status,200);assertPublic(object(value).data);
+    const response=await fetch(base+path+'/usage',{headers:{Authorization:`Bearer ${token}`}});assert.equal(response.status,200);
+    const usage=mioRunUsageSchema.parse(object(await response.json()).data);assert.deepEqual(usage.knownTotals,{inputTokens:87654,outputTokens:7,cacheReadTokens:86400,cacheWriteTokens:0});assert.equal(usage.runId,sent.run.id);
     const controller=new AbortController(),stream=await fetch(base+path+'/events?after=0',{headers:{Authorization:`Bearer ${token}`},signal:controller.signal});assert.equal(stream.status,200);const reader=stream.body!.getReader();
     try{const frame=await reader.read();assert.equal(frame.done,false);const wire=new TextDecoder().decode(frame.value);assert.match(wire,/event: changed/u);assert.doesNotMatch(wire,/usage|inputTokens|outputTokens|cacheReadTokens|cacheWriteTokens/u);}
     finally{controller.abort();await reader.cancel().catch(()=>{});}

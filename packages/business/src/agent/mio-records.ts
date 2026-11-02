@@ -7,6 +7,8 @@ import type {AgentTaskChange, AgentTaskConversationPolicy, AgentTaskJson, AgentT
 import {isProjectStore} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
 import {parseTaskArguments} from './task-gateway-v2.ts';
+import {taskModelUsage} from './task-usage-v2.ts';
+import {updateMioRunUsageSummary} from './mio-run-usage.ts';
 import {
   mioClaimSchema, mioConversationSchema, mioEditOwnerSchema, mioEntrySchema, mioImportSchema, mioInputManifestSchema,
   mioJsonSchema, mioOriginSchema, mioRequestSchema, mioRunSchema, mioStepSchema,
@@ -257,7 +259,7 @@ export function createMioRecords(store: ProjectStore) {
     emit(owner.id, value.createdAt); return value;
   }); }
   type StepPatch = Pick<MioStep, 'status' | 'updatedAt'> & Partial<Pick<MioStep, 'data' | 'partialText' | 'resultEntryId'>>;
-  function updateStepInside(id: string, expectedStatus: MioStep['status'], patch: StepPatch): MioStep {
+  function updateStepInside(id: string, expectedStatus: MioStep['status'], patch: StepPatch, notify = true): MioStep {
     const old = step(id);
     if (old.status !== expectedStatus || patch.status !== old.status && !stepTransitions[old.status].includes(patch.status)) fail('AGENT_TASK_STATE_CONFLICT');
     const value = validated(mioStepSchema, {...old, ...patch});
@@ -266,8 +268,8 @@ export function createMioRecords(store: ProjectStore) {
       if (result.runId !== old.runId || value.kind === 'tool' && !['tool_result', 'answer'].includes(result.kind) || value.kind === 'model' && result.kind !== 'model_output') fail('AGENT_TASK_INVALID');
     }
     db.prepare('UPDATE mio_steps SET status=?,updatedAt=?,data=?,partialText=?,resultEntryId=? WHERE id=?').run(value.status, value.updatedAt, encoded(value.data), value.partialText, value.resultEntryId, id);
-    touch(value.runId, value.updatedAt);
-    emit(value.runId, value.updatedAt); return value;
+    if (notify) { touch(value.runId, value.updatedAt); emit(value.runId, value.updatedAt); }
+    return value;
   }
   function updateStep(id: string, expectedStatus: MioStep['status'], patch: StepPatch): MioStep { return write(() => {
     const old = step(id);
@@ -326,19 +328,31 @@ export function createMioRecords(store: ProjectStore) {
     if (old.state !== 'intent' || old.dispatchStartedAt !== null || item.currentRequestId !== old.id || item.status !== 'intent') fail('AGENT_TASK_STATE_CONFLICT');
     validated(dateSchema, at);
     db.prepare("UPDATE mio_requests SET state='dispatch_started',dispatchStartedAt=? WHERE id=?").run(at, id);
-    updateStepInside(item.id, item.status, {status: 'dispatch_started', updatedAt: at}); return request(id);
+    updateStepInside(item.id, item.status, {status: 'dispatch_started', updatedAt: at});
+    updateMioRunUsageSummary(store, item.runId); return request(id);
   }); }
   function completeModelRequest(id: string, input: {readonly entryId: string; readonly output: MioModelOutput; readonly at: string}): MioRequest { return write(() => {
     const old = request(id), item = step(old.stepId);
     if (old.state !== 'dispatch_started' || item.currentRequestId !== old.id || item.status !== 'dispatch_started') fail('AGENT_TASK_STATE_CONFLICT');
-    const output = validated(mioModelOutputSchema, input.output);
+    const {usage: reportedUsage, ...completion} = input.output, usage = taskModelUsage(reportedUsage);
+    const output = validated(mioModelOutputSchema, {...completion, ...(usage ? {usage} : {})});
     if (output.protocol !== old.protocol) fail('AGENT_TASK_INVALID');
     const canonical = validated(mioJsonSchema, output);
     sourceCalls(canonical);
-    const result = appendEntry({id: input.entryId, runId: item.runId, kind: 'model_output', createdAt: input.at, payload: {json: canonical}});
-    updateStepInside(item.id, 'dispatch_started', {status: 'completed', updatedAt: input.at, resultEntryId: result.id, partialText: null});
+    // Validate the whole completion before releasing its raw request. Clearing
+    // first lets quota checks see the final net footprint; the savepoint makes
+    // output archival failure restore the request and dispatch state together.
+    validated(idSchema, input.entryId); encoded(canonical); validated(dateSchema, input.at);
+    // The body-clear trigger requires the completed step first. Defer its
+    // notification until raw-body release, so even zero quota headroom can
+    // archive a completion whose final footprint is smaller than the raw body.
+    updateStepInside(item.id, 'dispatch_started', {status: 'completed', updatedAt: input.at, partialText: null}, false);
     db.prepare("UPDATE mio_requests SET state='completed',completedAt=?,originalBody=NULL WHERE id=?").run(input.at, id);
     db.prepare("UPDATE mio_requests SET originalBody=NULL WHERE stepId=? AND state='superseded'").run(item.id);
+    touch(item.runId, input.at); emit(item.runId, input.at);
+    const result = appendEntry({id: input.entryId, runId: item.runId, kind: 'model_output', createdAt: input.at, payload: {json: canonical}});
+    db.prepare('UPDATE mio_steps SET resultEntryId=? WHERE id=?').run(result.id, item.id);
+    updateMioRunUsageSummary(store, item.runId);
     return request(id);
   }); }
   function failRequest(id: string, state: 'failed' | 'unknown', at: string): MioRequest { return write(() => {
@@ -346,7 +360,8 @@ export function createMioRecords(store: ProjectStore) {
     if (old.state !== 'dispatch_started' || item.currentRequestId !== old.id || item.status !== 'dispatch_started') fail('AGENT_TASK_STATE_CONFLICT');
     validated(dateSchema, at);
     db.prepare('UPDATE mio_requests SET state=?,completedAt=? WHERE id=?').run(state, at, id);
-    updateStepInside(item.id, 'dispatch_started', {status: state, updatedAt: at}); return request(id);
+    updateStepInside(item.id, 'dispatch_started', {status: state, updatedAt: at});
+    updateMioRunUsageSummary(store, item.runId); return request(id);
   }); }
   function changes(runId: string): AgentTaskChange[] {
     run(runId); return db.prepare('SELECT id,runId,stepId,projectId,data FROM mio_changes WHERE runId=? ORDER BY rowid').all(runId).map(row => {

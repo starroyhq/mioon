@@ -72,6 +72,13 @@ export function createAgentTaskHttp({runtime,tools,assertMutationAllowed}:{runti
         }
         const runId=tail[1];if(!/^[-a-f0-9]{36}$/u.test(runId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');
         if(tail.length===2&&req.method==='GET'){query(url,[]);json(res,200,runtime.get(projectId,runId));return true;}
+        // K2 supplies address only for the canonical project resource. Keep
+        // this new read off the old unscoped compatibility address.
+        if(address&&tail[2]==='usage'&&tail.length===3){
+          query(url,[]);
+          if(req.method==='GET')json(res,200,runtime.usage(projectId,runId));
+          else {res.setHeader('Allow','GET');json(res,405,{code:'METHOD_NOT_ALLOWED',message:'请使用 GET。'});}return true;
+        }
         if(tail[2]==='checks'&&tail.length===3){
           query(url,['preflight']);const requested=url.searchParams.get('preflight');if(requested!==null&&requested!=='1')throw agentTaskFailure('AGENT_TASK_INVALID');
           if(req.method==='GET'){

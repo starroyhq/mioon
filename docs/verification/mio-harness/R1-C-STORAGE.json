@@ -1,0 +1,6200 @@
+{
+  "version": 1,
+  "capturedAt": "2026-11-02T08:18:58.003749+00:00",
+  "gitHead": "80a10890e3f5a0485f2dcdb69e31dfad44d4600b",
+  "sourceFilesSha256": {
+    "pnpm-lock.yaml": "429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b",
+    "tests/helpers/agent-task-context-report.ts": "00bd5cd7078a127a4c8f46699f4daa97f8816efef8f46aa636566e45daf15c20",
+    "tests/helpers/mio-storage-report.ts": "3a2bd56dc089aa16955be850b0efd6134e1f61fbc99276ae3d85e2c47487e789",
+    "tests/helpers/mio-storage-report-recovery.ts": "20d2fdeb9c032c66f7a2f94f02234bb7f438bbbecd2374940591116aece57f50",
+    "tests/helpers/mio-runtime-fixture.ts": "ce1e6eaec9355cb37dd477a165045d58f863b559337c134c955d58438b1b5dea",
+    "packages/business/src/agent/mio-records.ts": "47d006fe840178c9a9cdb13994025753be1f8befd0e2e64c894b5f6c6aea744c",
+    "packages/business/src/agent/mio-journal.ts": "6a623282c90837665d56b15045b82ac183d56a8e1bc139fb100ef2fda19cf778",
+    "packages/business/src/agent/mio-assembly.ts": "737ac43945373814f70d0576d411a3f56c29962a93b75b6492c17424bd0b91e6",
+    "packages/business/src/agent/mio-storage.ts": "f64af39fb60a32da0631676912541c84532357a4d68d82b8408dd542de9b541b",
+    "packages/business/src/agent/mio-run-usage.ts": "3bd349c225e792a62f287c52290b44d28bee4c27d52283ab6ae247d51a4357bd",
+    "packages/business/src/agent/mio-runtime.ts": "39514e57873da0ce910f292d3836e76e35307fd1fe1e10eb638872419714ca32",
+    "packages/business/src/agent/task-runtime-v2.ts": "6402d064c206fed67b78b75f19b904110d89f8aa686870abfd404f1f7f4487f4",
+    "packages/business/src/agent/task-gateway-v2.ts": "c42f99bac7b42eb30ef8bee1da2a30c5c482147147d420c772435b4581ca4efd",
+    "packages/business/src/agent/task-context-v2.ts": "8d119c505ea0578bb4db25dfc2752344415d4d6c369d5e2e8c7997e897a33d67",
+    "packages/business/src/project-file/schema/domains/mio.ts": "343f4295c64cbf3cb339c93176e9f47c9e7ed99847f1347faa4a1ac5f8df9dcf",
+    "packages/contracts/src/mio-storage.ts": "235d08e4de8e97e83b1f5b517229de27e6e030f7d9544a05c313e17e5ead3334"
+  },
+  "finalHelperChange": {
+    "measuredSha256": "3a2bd56dc089aa16955be850b0efd6134e1f61fbc99276ae3d85e2c47487e789",
+    "finalSha256": "e769f1440548857a64a1dbe12beeed6d0e53f90ce9cf1096391c79709a23eedc",
+    "change": "Only add git -C process.cwd() to rev-parse/diff provenance commands; measurement logic unchanged. Main/H2 raw artifacts retain original source hashes, final-helper-cc-delta300.json and final5tests validate the final helper.",
+    "measuredSourceCopy": "/Users/kouzen/Documents/data/mioon/.agents/tasks/howard-r1-mio-usage-quota/measurements/mio-storage-report-measured.ts"
+  },
+  "maximumRetentionHelperSha256": "41c9afffa49c7a6dbe1d2e546b8ff5c1e2438ae9a8adcd88606b35bdb2b188ce",
+  "baselineComparison": [
+    {
+      "protocol": "chat_completions",
+      "baseline44a34212Bytes": 6485658,
+      "baselineRows": 198,
+      "newColdFullRoundBytes": 1058515,
+      "newRows": 298,
+      "byteReductionFraction": 0.8367914250180938
+    },
+    {
+      "protocol": "responses",
+      "baseline44a34212Bytes": 6490826,
+      "baselineRows": 198,
+      "newColdFullRoundBytes": 1019058,
+      "newRows": 298,
+      "byteReductionFraction": 0.8430002591349699
+    },
+    {
+      "protocol": "anthropic_messages",
+      "baseline44a34212Bytes": 6475222,
+      "baselineRows": 198,
+      "newColdFullRoundBytes": 1018628,
+      "newRows": 298,
+      "byteReductionFraction": 0.8426883279059776
+    }
+  ],
+  "completedRoundMeasurements": [
+    {
+      "artifact": "stress30-delta0.json",
+      "protocol": "chat_completions",
+      "projectOrdinal": 1,
+      "round": 1,
+      "sameConversationContinuation": false,
+      "bytes": 1058515,
+      "rows": 298,
+      "networkRequestBodyBytes": 1432640,
+      "requestVectors": [
+        {
+          "index": 1,
+          "round": 1,
+          "bytes": 24646,
+          "sha256": "e45964d976bc09691d6dcfe91fd4fbb9a011dd3e08195d1ac57171aa7697b793",
+          "tools": 17
+        },
+        {
+          "index": 2,
+          "round": 1,
+          "bytes": 88653,
+          "sha256": "3f1adea8f1f091c702655e5eb7c94b5175f50e3d40b9240b66b7846858784fed",
+          "tools": 17
+        },
+        {
+          "index": 3,
+          "round": 1,
+          "bytes": 136041,
+          "sha256": "3f5766c2f1fcc02a04f632a678a3d28d37e30f240fe06c001f6f9ce6f8bca9a0",
+          "tools": 17
+        },
+        {
+          "index": 4,
+          "round": 1,
+          "bytes": 73379,
+          "sha256": "b24485146d029ee0383ca7447eda8063b745c68b27b5501e49650e2413fe23f1",
+          "tools": 17
+        },
+        {
+          "index": 5,
+          "round": 1,
+          "bytes": 120767,
+          "sha256": "0c622545f75ec38be71d9732e3dc14aced089b2d4800301612387bf1ce34a2da",
+          "tools": 17
+        },
+        {
+          "index": 6,
+          "round": 1,
+          "bytes": 73993,
+          "sha256": "2bdb34a3a85e91456b19462a5435cee7481cbfc1a195d9e36a71a2ab754b7686",
+          "tools": 17
+        },
+        {
+          "index": 7,
+          "round": 1,
+          "bytes": 121381,
+          "sha256": "c4a818d44745ff9c5aa93e2b31fa9eb2e24b30a9e9034af26057c7b8b671aef8",
+          "tools": 17
+        },
+        {
+          "index": 8,
+          "round": 1,
+          "bytes": 74607,
+          "sha256": "bef778326b0b653e1cfe6ff8b675a9023ec82380381f9109cfb80c63378d341c",
+          "tools": 17
+        },
+        {
+          "index": 9,
+          "round": 1,
+          "bytes": 121995,
+          "sha256": "fc305fc79e4c6c216bc4cb516e644cd697970694bdf386c27c2696e7d24cf32a",
+          "tools": 17
+        },
+        {
+          "index": 10,
+          "round": 1,
+          "bytes": 75221,
+          "sha256": "cd7c9fdb982c38a91d47b778cbd4bc217c7f932e65138eb24b0beac185ae629d",
+          "tools": 17
+        },
+        {
+          "index": 11,
+          "round": 1,
+          "bytes": 122609,
+          "sha256": "570fffa539158def816e99a2801670ab1717a9868851f1748f5562acabeee884",
+          "tools": 17
+        },
+        {
+          "index": 12,
+          "round": 1,
+          "bytes": 75836,
+          "sha256": "f10c4021a4bab29512730dce52ca8cd040e78b0d03a720f0bfc7ad7323498815",
+          "tools": 17
+        },
+        {
+          "index": 13,
+          "round": 1,
+          "bytes": 123224,
+          "sha256": "ea7b256575b74fbbf7657978f32eb7240aab984da593f2518c9498795894e456",
+          "tools": 17
+        },
+        {
+          "index": 14,
+          "round": 1,
+          "bytes": 76450,
+          "sha256": "d49491c3b84d00d5c955f85286bb660a92f92ac3a111bac885184fa9da8e3b94",
+          "tools": 17
+        },
+        {
+          "index": 15,
+          "round": 1,
+          "bytes": 123838,
+          "sha256": "9a291a35a0011fc2a3dc82621e84c84109c694bed51db149676619ca4c4f5840",
+          "tools": 17
+        }
+      ],
+      "tableGrowth": [
+        {
+          "name": "mio_conversations",
+          "bytes": 120,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_runs",
+          "bytes": 940,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_entries",
+          "bytes": 778253,
+          "rows": 33,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_blobs",
+          "bytes": 21894,
+          "rows": 4,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_steps",
+          "bytes": 16500,
+          "rows": 30,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_requests",
+          "bytes": 227968,
+          "rows": 15,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_changes",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_controls",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_control_states",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_imports",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_job_origins",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_edit_claims",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_owners",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_receipts",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": false,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_conversation_policies",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_conversation_policy_requests",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_events",
+          "bytes": 12840,
+          "rows": 214,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_process_target_revisions",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        }
+      ],
+      "modelManifestBytes": [
+        4470,
+        8517,
+        10697,
+        10518,
+        12698,
+        12528,
+        14708,
+        14538,
+        16718,
+        16548,
+        18728,
+        18560,
+        20740,
+        20570,
+        22750
+      ],
+      "appendCalls": 60,
+      "checkpointRewrittenColumnsBytes": 1322160,
+      "beforeDoneCheckpoints": [
+        3
+      ],
+      "beforeDonePartialBytes": [
+        27648
+      ],
+      "physicalAfter": {
+        "databaseBytes": 3006464,
+        "journalBytes": 4616,
+        "pages": 734,
+        "freePages": 56,
+        "pageBytes": 3006464,
+        "indexBytes": 786432
+      },
+      "physicalProjectPeak": {
+        "databaseBytes": 4087808,
+        "journalBytes": 99520,
+        "pages": 998,
+        "freePages": 59,
+        "pageBytes": 4087808,
+        "indexBytes": 823296
+      },
+      "requestsRebuiltAfterReopen": 30
+    },
+    {
+      "artifact": "stress30-delta0.json",
+      "protocol": "chat_completions",
+      "projectOrdinal": 1,
+      "round": 2,
+      "sameConversationContinuation": true,
+      "bytes": 1044945,
+      "rows": 293,
+      "networkRequestBodyBytes": 1432268,
+      "requestVectors": [
+        {
+          "index": 1,
+          "round": 2,
+          "bytes": 55945,
+          "sha256": "b4eefeaba536d36af9be30c30ed83ff058c35f03fa392092a0b77f6184e38044",
+          "tools": 17
+        },
+        {
+          "index": 2,
+          "round": 2,
+          "bytes": 119952,
+          "sha256": "003466f305fd190aad2570a8e7d064b7ab0f4b7e02f8d8bc43b6bc4e85b74b24",
+          "tools": 17
+        },
+        {
+          "index": 3,
+          "round": 2,
+          "bytes": 73072,
+          "sha256": "50109236549901688cdf9139668670f4eb18bd23d0587fe7c6a975ad4eaf9bf1",
+          "tools": 17
+        },
+        {
+          "index": 4,
+          "round": 2,
+          "bytes": 120460,
+          "sha256": "3ebdd8e71cfacb8aa15ac22424a88f6baed2fafcb5104e6183666053ced2cf23",
+          "tools": 17
+        },
+        {
+          "index": 5,
+          "round": 2,
+          "bytes": 73686,
+          "sha256": "0eae0a6cacefa6efe2bf08f484b2dc30b74947201af6ade88dc90a46bc1585c3",
+          "tools": 17
+        },
+        {
+          "index": 6,
+          "round": 2,
+          "bytes": 121074,
+          "sha256": "8c77779db73a73f53ae6649495b745b06aaa80de827f4f63ea21b22f3b7b168d",
+          "tools": 17
+        },
+        {
+          "index": 7,
+          "round": 2,
+          "bytes": 74300,
+          "sha256": "5a3873bcf3cb1d5f96f24239889cf4319d97ce6c2e6a9e42ca86603d878a675b",
+          "tools": 17
+        },
+        {
+          "index": 8,
+          "round": 2,
+          "bytes": 121688,
+          "sha256": "52b6364c0ede761aa1c77e875b1533e31b7975a1ea80953772d8b928af399f5f",
+          "tools": 17
+        },
+        {
+          "index": 9,
+          "round": 2,
+          "bytes": 74914,
+          "sha256": "6745281557212b67297e7f966c7f4953374b580990828ef26431739681f702fa",
+          "tools": 17
+        },
+        {
+          "index": 10,
+          "round": 2,
+          "bytes": 122302,
+          "sha256": "1a46d0fecc90d8bb8c62699591cee96b9a210b99e813b517457f5302a9ebc050",
+          "tools": 17
+        },
+        {
+          "index": 11,
+          "round": 2,
+          "bytes": 75528,
+          "sha256": "4d5c0263cdecf42a3f50f280ba393ec52ed69f4d578a07faa4277cdf68697b03",
+          "tools": 17
+        },
+        {
+          "index": 12,
+          "round": 2,
+          "bytes": 122916,
+          "sha256": "1ba011ae595bd1a5ad9d2fb0771f12a91ccc23a7fb741a06c42c226751dd4d11",
+          "tools": 17
+        },
+        {
+          "index": 13,
+          "round": 2,
+          "bytes": 76143,
+          "sha256": "cad8da41f77f488b18aa17b901e1f3150c9eb54701fd215376e4ef5338957dcd",
+          "tools": 17
+        },
+        {
+          "index": 14,
+          "round": 2,
+          "bytes": 123531,
+          "sha256": "86e351c0741873ceff47beb4303b08c223c39aafc876332787666d4eb42c9fd0",
+          "tools": 17
+        },
+        {
+          "index": 15,
+          "round": 2,
+          "bytes": 76757,
+          "sha256": "2e6d3f2ed2ef093666e78552fee2b1f7ca3052ef75db7178e417ad456423ea6f",
+          "tools": 17
+        }
+      ],
+      "tableGrowth": [
+        {
+          "name": "mio_conversations",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_runs",
+          "bytes": 940,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_entries",
+          "bytes": 779114,
+          "rows": 33,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_blobs",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_steps",
+          "bytes": 16500,
+          "rows": 30,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_requests",
+          "bytes": 235551,
+          "rows": 15,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_changes",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_controls",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_control_states",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_imports",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_job_origins",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_edit_claims",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_owners",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_receipts",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": false,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_conversation_policies",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_conversation_policy_requests",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_events",
+          "bytes": 12840,
+          "rows": 214,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_process_target_revisions",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        }
+      ],
+      "modelManifestBytes": [
+        5715,
+        9762,
+        9996,
+        12176,
+        12006,
+        14186,
+        14016,
+        16196,
+        16026,
+        18206,
+        18036,
+        20216,
+        20048,
+        22228,
+        22058
+      ],
+      "appendCalls": 60,
+      "checkpointRewrittenColumnsBytes": 1322160,
+      "beforeDoneCheckpoints": [
+        3
+      ],
+      "beforeDonePartialBytes": [
+        27648
+      ],
+      "physicalAfter": {
+        "databaseBytes": 4087808,
+        "journalBytes": 4616,
+        "pages": 998,
+        "freePages": 36,
+        "pageBytes": 4087808,
+        "indexBytes": 823296
+      },
+      "physicalProjectPeak": {
+        "databaseBytes": 4087808,
+        "journalBytes": 99520,
+        "pages": 998,
+        "freePages": 59,
+        "pageBytes": 4087808,
+        "indexBytes": 823296
+      },
+      "requestsRebuiltAfterReopen": 30
+    },
+    {
+      "artifact": "stress30-delta0.json",
+      "protocol": "chat_completions",
+      "projectOrdinal": 2,
+      "round": 1,
+      "sameConversationContinuation": false,
+      "bytes": 1058515,
+      "rows": 298,
+      "networkRequestBodyBytes": 1432640,
+      "requestVectors": [
+        {
+          "index": 1,
+          "round": 1,
+          "bytes": 24646,
+          "sha256": "e45964d976bc09691d6dcfe91fd4fbb9a011dd3e08195d1ac57171aa7697b793",
+          "tools": 17
+        },
+        {
+          "index": 2,
+          "round": 1,
+          "bytes": 88653,
+          "sha256": "1ba3f0a97868c5b40d3b2316c39f5bbd7d871fb4b158d0d62c5ef2be26bb88d0",
+          "tools": 17
+        },
+        {
+          "index": 3,
+          "round": 1,
+          "bytes": 136041,
+          "sha256": "89a77a87cc8f4baab3576f02be33a370f11b13ff3b3f9adec82cde8c9c366173",
+          "tools": 17
+        },
+        {
+          "index": 4,
+          "round": 1,
+          "bytes": 73379,
+          "sha256": "df3ee8b2d64d25e657346cfcad00b6607f26c81d1e6ed41891008b22eaf1104a",
+          "tools": 17
+        },
+        {
+          "index": 5,
+          "round": 1,
+          "bytes": 120767,
+          "sha256": "0c48cd655dcc733fc8897f5297f98408fa6475837884e4adbbdf2e54df533533",
+          "tools": 17
+        },
+        {
+          "index": 6,
+          "round": 1,
+          "bytes": 73993,
+          "sha256": "c6821dd5073bcc9d862e35219b2000454dcf05c86c48e0a5bd397ef811df5478",
+          "tools": 17
+        },
+        {
+          "index": 7,
+          "round": 1,
+          "bytes": 121381,
+          "sha256": "24a3b0113cf7bcad112a695f9857a697b23ceb6ac9de9ba1c70dfa876d1d7676",
+          "tools": 17
+        },
+        {
+          "index": 8,
+          "round": 1,
+          "bytes": 74607,
+          "sha256": "76bef24894473a0a92c135baa31e1b491487acd8c0507d62eee6da917ae05221",
+          "tools": 17
+        },
+        {
+          "index": 9,
+          "round": 1,
+          "bytes": 121995,
+          "sha256": "dd1c6087d82c6d08c52f018c19fdc3acb55f8e28dcd9a4988df62471aff310b7",
+          "tools": 17
+        },
+        {
+          "index": 10,
+          "round": 1,
+          "bytes": 75221,
+          "sha256": "b91e6255b1764b0885d18e948a8f5949ec2b34850bef9fb606f7441409e29262",
+          "tools": 17
+        },
+        {
+          "index": 11,
+          "round": 1,
+          "bytes": 122609,
+          "sha256": "21a026bb47f5d9abbeabd99b66c73e268c938c83b0d6b226a63894342d822a61",
+          "tools": 17
+        },
+        {
+          "index": 12,
+          "round": 1,
+          "bytes": 75836,
+          "sha256": "d6bab7c1704641747abcc7e2af203d9be827b02b0ba82fb77f594e3fb40f4ada",
+          "tools": 17
+        },
+        {
+          "index": 13,
+          "round": 1,
+          "bytes": 123224,
+          "sha256": "4db0d1a942e92ad25d0ea961c3253851a0f94ff66b1801307344ccf8b0696840",
+          "tools": 17
+        },
+        {
+          "index": 14,
+          "round": 1,
+          "bytes": 76450,
+          "sha256": "a23b095eb3599c855b25987c26928c629361c07a5a2bd9ccfdc11d625fd46788",
+          "tools": 17
+        },
+        {
+          "index": 15,
+          "round": 1,
+          "bytes": 123838,
+          "sha256": "399658f7cd7651e61423b6e61dab52294769bb306ab4f973d4e9570e477b9b87",
+          "tools": 17
+        }
+      ],
+      "tableGrowth": [
+        {
+          "name": "mio_conversations",
+          "bytes": 120,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_runs",
+          "bytes": 940,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_entries",
+          "bytes": 778253,
+          "rows": 33,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_blobs",
+          "bytes": 21894,
+          "rows": 4,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_steps",
+          "bytes": 16500,
+          "rows": 30,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_requests",
+          "bytes": 227968,
+          "rows": 15,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_changes",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_controls",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_control_states",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_imports",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_job_origins",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_edit_claims",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_owners",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_receipts",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": false,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_conversation_policies",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_conversation_policy_requests",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_events",
+          "bytes": 12840,
+          "rows": 214,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_process_target_revisions",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        }
+      ],
+      "modelManifestBytes": [
+        4470,
+        8517,
+        10697,
+        10518,
+        12698,
+        12528,
+        14708,
+        14538,
+        16718,
+        16548,
+        18728,
+        18560,
+        20740,
+        20570,
+        22750
+      ],
+      "appendCalls": 60,
+      "checkpointRewrittenColumnsBytes": 1322160,
+      "beforeDoneCheckpoints": [
+        3
+      ],
+      "beforeDonePartialBytes": [
+        27648
+      ],
+      "physicalAfter": {
+        "databaseBytes": 3006464,
+        "journalBytes": 4616,
+        "pages": 734,
+        "freePages": 56,
+        "pageBytes": 3006464,
+        "indexBytes": 786432
+      },
+      "physicalProjectPeak": {
+        "databaseBytes": 3006464,
+        "journalBytes": 99520,
+        "pages": 734,
+        "freePages": 59,
+        "pageBytes": 3006464,
+        "indexBytes": 786432
+      },
+      "requestsRebuiltAfterReopen": 15
+    },
+    {
+      "artifact": "stress30-delta0.json",
+      "protocol": "responses",
+      "projectOrdinal": 1,
+      "round": 1,
+      "sameConversationContinuation": false,
+      "bytes": 1019058,
+      "rows": 298,
+      "networkRequestBodyBytes": 1431550,
+      "requestVectors": [
+        {
+          "index": 1,
+          "round": 1,
+          "bytes": 24389,
+          "sha256": "b5d511798946cf12ebfd8d4dd16c7fa14b68a4aa73bcd33bdb806759c5cc63f6",
+          "tools": 17
+        },
+        {
+          "index": 2,
+          "round": 1,
+          "bytes": 88553,
+          "sha256": "87b922b2f83dcba48afb6ce71c4c25537389972d531e53ecedf7c5d388ed0121",
+          "tools": 17
+        },
+        {
+          "index": 3,
+          "round": 1,
+          "bytes": 136070,
+          "sha256": "8deaf190d09ebf87b5bb4c03c89945eab48735457c227adda3e3db51dbc3dc6b",
+          "tools": 17
+        },
+        {
+          "index": 4,
+          "round": 1,
+          "bytes": 73251,
+          "sha256": "40d1466feecad6f6e400d77bf3767b82fc35dc32f384bc68be2f2fd4fb8ecf7b",
+          "tools": 17
+        },
+        {
+          "index": 5,
+          "round": 1,
+          "bytes": 120768,
+          "sha256": "c41f54ea77a3d0ff8283622d9501cd08d4ea7f7fb75ee16d7515b5f4c0a30ae6",
+          "tools": 17
+        },
+        {
+          "index": 6,
+          "round": 1,
+          "bytes": 73865,
+          "sha256": "74a9b826d869bea372871df5a6917e7591362b95022dbcec80cba1b7f2236309",
+          "tools": 17
+        },
+        {
+          "index": 7,
+          "round": 1,
+          "bytes": 121382,
+          "sha256": "40061c6284ef828aa7117e60ce2b4807cc93c8cd1296c9f1613cfbb753cdacaa",
+          "tools": 17
+        },
+        {
+          "index": 8,
+          "round": 1,
+          "bytes": 74479,
+          "sha256": "42e62498586ff4aa6fc44492d0b528048c988d2bd8e78db5053c3bbe6297b1fe",
+          "tools": 17
+        },
+        {
+          "index": 9,
+          "round": 1,
+          "bytes": 121996,
+          "sha256": "afcd478bcae31b190a78c55f6b8fc42e84f28b6dc445eadc18523703bf533fc3",
+          "tools": 17
+        },
+        {
+          "index": 10,
+          "round": 1,
+          "bytes": 75093,
+          "sha256": "544d8f602ed1b6fc7b9e63546b2411a2daab48995e033b36c92070b86ea81fdc",
+          "tools": 17
+        },
+        {
+          "index": 11,
+          "round": 1,
+          "bytes": 122610,
+          "sha256": "50f76178416e7e7aed46144f8fca93a713cdfef34e1338f3624ec3a26e926884",
+          "tools": 17
+        },
+        {
+          "index": 12,
+          "round": 1,
+          "bytes": 75708,
+          "sha256": "2b2e44a574e830d5376c6f5437078c4bfd26cb3c16a7f6b83a16f6076d0067de",
+          "tools": 17
+        },
+        {
+          "index": 13,
+          "round": 1,
+          "bytes": 123225,
+          "sha256": "908dd56a059123a5f91824536dfc6dd844a059eb51978da62b0bda6a178276ea",
+          "tools": 17
+        },
+        {
+          "index": 14,
+          "round": 1,
+          "bytes": 76322,
+          "sha256": "d349dc3698c170894e1ea117bc4d3162ee71ea0ce295dcf40b1e6ebc1031dbcc",
+          "tools": 17
+        },
+        {
+          "index": 15,
+          "round": 1,
+          "bytes": 123839,
+          "sha256": "228f91b59afa39f1d4c814f54b6c1716e8337c0a627fdf4baff2698100848fe5",
+          "tools": 17
+        }
+      ],
+      "tableGrowth": [
+        {
+          "name": "mio_conversations",
+          "bytes": 120,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_runs",
+          "bytes": 940,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_entries",
+          "bytes": 779978,
+          "rows": 33,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_blobs",
+          "bytes": 24478,
+          "rows": 4,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_steps",
+          "bytes": 16500,
+          "rows": 30,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_requests",
+          "bytes": 184202,
+          "rows": 15,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_changes",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_controls",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_control_states",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_imports",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_job_origins",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_edit_claims",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_owners",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_receipts",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": false,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_conversation_policies",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_conversation_policy_requests",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_events",
+          "bytes": 12840,
+          "rows": 214,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_process_target_revisions",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        }
+      ],
+      "modelManifestBytes": [
+        1591,
+        5994,
+        8354,
+        7675,
+        10035,
+        9589,
+        11949,
+        11503,
+        13863,
+        13417,
+        15777,
+        15333,
+        17693,
+        17247,
+        19607
+      ],
+      "appendCalls": 60,
+      "checkpointRewrittenColumnsBytes": 1322160,
+      "beforeDoneCheckpoints": [
+        3
+      ],
+      "beforeDonePartialBytes": [
+        27648
+      ],
+      "physicalAfter": {
+        "databaseBytes": 2973696,
+        "journalBytes": 4616,
+        "pages": 726,
+        "freePages": 56,
+        "pageBytes": 2973696,
+        "indexBytes": 786432
+      },
+      "physicalProjectPeak": {
+        "databaseBytes": 4014080,
+        "journalBytes": 99520,
+        "pages": 980,
+        "freePages": 59,
+        "pageBytes": 4014080,
+        "indexBytes": 823296
+      },
+      "requestsRebuiltAfterReopen": 30
+    },
+    {
+      "artifact": "stress30-delta0.json",
+      "protocol": "responses",
+      "projectOrdinal": 1,
+      "round": 2,
+      "sameConversationContinuation": true,
+      "bytes": 1002837,
+      "rows": 293,
+      "networkRequestBodyBytes": 1431021,
+      "requestVectors": [
+        {
+          "index": 1,
+          "round": 2,
+          "bytes": 55688,
+          "sha256": "632ae235e12cb96559802fdf1bf3bb625d0a24c0acc172affb3cec2c30e6e441",
+          "tools": 17
+        },
+        {
+          "index": 2,
+          "round": 2,
+          "bytes": 119852,
+          "sha256": "4529eb6c3f943bb502dfb4f452363ad295a4865f37a6d00f16e252db6b4c33e2",
+          "tools": 17
+        },
+        {
+          "index": 3,
+          "round": 2,
+          "bytes": 72944,
+          "sha256": "2f9b98a003029188439ef6b79734386c5884c6d86bbaa0e95aa8966dd2be28be",
+          "tools": 17
+        },
+        {
+          "index": 4,
+          "round": 2,
+          "bytes": 120461,
+          "sha256": "c6ab2df1ff0864dfc518c72244b9092e77a9f107d3f6f2bd737cb9319ba85e38",
+          "tools": 17
+        },
+        {
+          "index": 5,
+          "round": 2,
+          "bytes": 73558,
+          "sha256": "ebebcd0a17dcd599675f15c8dc23c038e59eb78ee8b94e2a4b11fa8beefc74f4",
+          "tools": 17
+        },
+        {
+          "index": 6,
+          "round": 2,
+          "bytes": 121075,
+          "sha256": "e506969721b00279d1e70959224ad08c0a4493f794779a09a619be88f6bf5ef4",
+          "tools": 17
+        },
+        {
+          "index": 7,
+          "round": 2,
+          "bytes": 74172,
+          "sha256": "b592130b8d579c2d6d19a0a9768f0ae87c862bd1ab4ff3a4d6bd7a5bf9d80dfe",
+          "tools": 17
+        },
+        {
+          "index": 8,
+          "round": 2,
+          "bytes": 121689,
+          "sha256": "fc73172459cce78dfa7f8d99cd55e137f02162444852f8e7cf160689217c8f40",
+          "tools": 17
+        },
+        {
+          "index": 9,
+          "round": 2,
+          "bytes": 74786,
+          "sha256": "23d677b7ded02307ef4355a97dbaf5c9e65cf01266d5d221d934efff4ebb87a2",
+          "tools": 17
+        },
+        {
+          "index": 10,
+          "round": 2,
+          "bytes": 122303,
+          "sha256": "25a045a244331f61a0ddf087508509a859b5ff614e701f8e52c5c515909bb476",
+          "tools": 17
+        },
+        {
+          "index": 11,
+          "round": 2,
+          "bytes": 75400,
+          "sha256": "b8f6b8d9bfee50b93282c0d49f279525e1b479d6078e597457e9ce7e07b45d3b",
+          "tools": 17
+        },
+        {
+          "index": 12,
+          "round": 2,
+          "bytes": 122917,
+          "sha256": "10e08907fabd4c47e91de0842da5f6bf677aa1697cbe0e45218c6d4ab9f1290c",
+          "tools": 17
+        },
+        {
+          "index": 13,
+          "round": 2,
+          "bytes": 76015,
+          "sha256": "28464a5ceab760b087c3f220e45df8124e378ecd5fec01fbc6645c0827677689",
+          "tools": 17
+        },
+        {
+          "index": 14,
+          "round": 2,
+          "bytes": 123532,
+          "sha256": "1ed5a9b704b9ff425a4393d0ca2ed0c6fd397ec72590cd68202d391be9a100e0",
+          "tools": 17
+        },
+        {
+          "index": 15,
+          "round": 2,
+          "bytes": 76629,
+          "sha256": "bbd96bacbb3dee393e4c2ab653773099b05946b47424c6cebefe93fa43f5e52c",
+          "tools": 17
+        }
+      ],
+      "tableGrowth": [
+        {
+          "name": "mio_conversations",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_runs",
+          "bytes": 940,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_entries",
+          "bytes": 780916,
+          "rows": 33,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_blobs",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_steps",
+          "bytes": 16500,
+          "rows": 30,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_requests",
+          "bytes": 191641,
+          "rows": 15,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_changes",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_controls",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_control_states",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_imports",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_job_origins",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_edit_claims",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_owners",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_receipts",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": false,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_conversation_policies",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_conversation_policy_requests",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_events",
+          "bytes": 12840,
+          "rows": 214,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_process_target_revisions",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        }
+      ],
+      "modelManifestBytes": [
+        2990,
+        7393,
+        7201,
+        9561,
+        9115,
+        11475,
+        11029,
+        13389,
+        12943,
+        15303,
+        14857,
+        17217,
+        16773,
+        19133,
+        18687
+      ],
+      "appendCalls": 60,
+      "checkpointRewrittenColumnsBytes": 1322160,
+      "beforeDoneCheckpoints": [
+        3
+      ],
+      "beforeDonePartialBytes": [
+        27648
+      ],
+      "physicalAfter": {
+        "databaseBytes": 4014080,
+        "journalBytes": 4616,
+        "pages": 980,
+        "freePages": 35,
+        "pageBytes": 4014080,
+        "indexBytes": 823296
+      },
+      "physicalProjectPeak": {
+        "databaseBytes": 4014080,
+        "journalBytes": 99520,
+        "pages": 980,
+        "freePages": 59,
+        "pageBytes": 4014080,
+        "indexBytes": 823296
+      },
+      "requestsRebuiltAfterReopen": 30
+    },
+    {
+      "artifact": "stress30-delta0.json",
+      "protocol": "responses",
+      "projectOrdinal": 2,
+      "round": 1,
+      "sameConversationContinuation": false,
+      "bytes": 1019058,
+      "rows": 298,
+      "networkRequestBodyBytes": 1431550,
+      "requestVectors": [
+        {
+          "index": 1,
+          "round": 1,
+          "bytes": 24389,
+          "sha256": "b5d511798946cf12ebfd8d4dd16c7fa14b68a4aa73bcd33bdb806759c5cc63f6",
+          "tools": 17
+        },
+        {
+          "index": 2,
+          "round": 1,
+          "bytes": 88553,
+          "sha256": "04ce3e599aec78571d35fe74b17f6d934bb96ea448f5e2bdc0791b18b53d5614",
+          "tools": 17
+        },
+        {
+          "index": 3,
+          "round": 1,
+          "bytes": 136070,
+          "sha256": "6ce4e4ddebb3756d0f07cf54b73b096065c83249498b9ac6bf68238f0991c094",
+          "tools": 17
+        },
+        {
+          "index": 4,
+          "round": 1,
+          "bytes": 73251,
+          "sha256": "bf103de8794efdea190725727b602bb9c56d8c6d52d1e054d292e1007da3732d",
+          "tools": 17
+        },
+        {
+          "index": 5,
+          "round": 1,
+          "bytes": 120768,
+          "sha256": "c3071e93858fbdfd904d7d61c2f005fd31b3a2ce1e8129c79a6d13d5c3d1cb0b",
+          "tools": 17
+        },
+        {
+          "index": 6,
+          "round": 1,
+          "bytes": 73865,
+          "sha256": "ced519bdf2fdf5b61dddd81227abc538eb2d791b90bd870aa5b62c991de9650f",
+          "tools": 17
+        },
+        {
+          "index": 7,
+          "round": 1,
+          "bytes": 121382,
+          "sha256": "fc078fa736b234f321e560a9887088fd20fc56d67d34abece51800646c63f777",
+          "tools": 17
+        },
+        {
+          "index": 8,
+          "round": 1,
+          "bytes": 74479,
+          "sha256": "c5acfa4d8251cbdfeea7b8b1bb9152095f5569b969c8bc9ff129d0b87206ff77",
+          "tools": 17
+        },
+        {
+          "index": 9,
+          "round": 1,
+          "bytes": 121996,
+          "sha256": "bf4eee5e2edeecbafe0d51573668df3d9920a9716ff08db1aaf9bd1295e1f875",
+          "tools": 17
+        },
+        {
+          "index": 10,
+          "round": 1,
+          "bytes": 75093,
+          "sha256": "f6271203a001efde5f91a74cc0317902b2995033ea3f6d400f92e9f682649db2",
+          "tools": 17
+        },
+        {
+          "index": 11,
+          "round": 1,
+          "bytes": 122610,
+          "sha256": "af726f5edb747082beb6f32b17115a2f3ef78cd5555f0c0305f0b05b1502cf38",
+          "tools": 17
+        },
+        {
+          "index": 12,
+          "round": 1,
+          "bytes": 75708,
+          "sha256": "f3ed77c1c95f7baff8a1415d2d1c9a74df55ff5790b0d9ecb71b62cf72983c37",
+          "tools": 17
+        },
+        {
+          "index": 13,
+          "round": 1,
+          "bytes": 123225,
+          "sha256": "75a756b196b9dd00631fa08a35ee0a81622cb16cfdeb65c50c4fc05c7e26509d",
+          "tools": 17
+        },
+        {
+          "index": 14,
+          "round": 1,
+          "bytes": 76322,
+          "sha256": "6b2e65b759af4d15e5fdde0ad5adea41303b06eb1fc19520bb295be0a2b491fa",
+          "tools": 17
+        },
+        {
+          "index": 15,
+          "round": 1,
+          "bytes": 123839,
+          "sha256": "8e848295806108c78eda76e74563fa4bdec73ca0197de9276d8af6804a67db57",
+          "tools": 17
+        }
+      ],
+      "tableGrowth": [
+        {
+          "name": "mio_conversations",
+          "bytes": 120,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_runs",
+          "bytes": 940,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_entries",
+          "bytes": 779978,
+          "rows": 33,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_blobs",
+          "bytes": 24478,
+          "rows": 4,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_steps",
+          "bytes": 16500,
+          "rows": 30,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_requests",
+          "bytes": 184202,
+          "rows": 15,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_changes",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_controls",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_control_states",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_imports",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_job_origins",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_edit_claims",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_owners",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_receipts",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": false,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_conversation_policies",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_conversation_policy_requests",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_events",
+          "bytes": 12840,
+          "rows": 214,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_process_target_revisions",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        }
+      ],
+      "modelManifestBytes": [
+        1591,
+        5994,
+        8354,
+        7675,
+        10035,
+        9589,
+        11949,
+        11503,
+        13863,
+        13417,
+        15777,
+        15333,
+        17693,
+        17247,
+        19607
+      ],
+      "appendCalls": 60,
+      "checkpointRewrittenColumnsBytes": 1322160,
+      "beforeDoneCheckpoints": [
+        3
+      ],
+      "beforeDonePartialBytes": [
+        27648
+      ],
+      "physicalAfter": {
+        "databaseBytes": 2973696,
+        "journalBytes": 4616,
+        "pages": 726,
+        "freePages": 56,
+        "pageBytes": 2973696,
+        "indexBytes": 786432
+      },
+      "physicalProjectPeak": {
+        "databaseBytes": 2973696,
+        "journalBytes": 99520,
+        "pages": 726,
+        "freePages": 59,
+        "pageBytes": 2973696,
+        "indexBytes": 786432
+      },
+      "requestsRebuiltAfterReopen": 15
+    },
+    {
+      "artifact": "stress30-delta0.json",
+      "protocol": "anthropic_messages",
+      "projectOrdinal": 1,
+      "round": 1,
+      "sameConversationContinuation": false,
+      "bytes": 1018628,
+      "rows": 298,
+      "networkRequestBodyBytes": 1423504,
+      "requestVectors": [
+        {
+          "index": 1,
+          "round": 1,
+          "bytes": 24027,
+          "sha256": "2263ceb10d8349fd3e15ec40e4801a3b07d520e1f580cf4f8977ac7ddff7d202",
+          "tools": 17
+        },
+        {
+          "index": 2,
+          "round": 1,
+          "bytes": 88021,
+          "sha256": "cfed290b64d932b46bac96212d5c64b9df5685bb1089282b9eed7947d68fc4c7",
+          "tools": 17
+        },
+        {
+          "index": 3,
+          "round": 1,
+          "bytes": 135434,
+          "sha256": "85db37d2c1defb29e2112dec68c1e019cd8dd3d3d25c107dbdb4370ae245e62d",
+          "tools": 17
+        },
+        {
+          "index": 4,
+          "round": 1,
+          "bytes": 72760,
+          "sha256": "2b65f4861346c7c4efc12e69a95b8a0d81eecbca22c63f8ca08bad2c140b0ffe",
+          "tools": 17
+        },
+        {
+          "index": 5,
+          "round": 1,
+          "bytes": 120173,
+          "sha256": "41c7c3ee1c33dc920f3c55e147b3496269295e5947e5ca88d557de55d8c122a8",
+          "tools": 17
+        },
+        {
+          "index": 6,
+          "round": 1,
+          "bytes": 73374,
+          "sha256": "32f5ea11baaaa6ba451d4a81714c300c71ad515687e7790ae75514f93c4f128d",
+          "tools": 17
+        },
+        {
+          "index": 7,
+          "round": 1,
+          "bytes": 120787,
+          "sha256": "dea79ea929ee929ffd2e60ad7d1ea7d5d61e29608026e31e6b9914b0f7b1c846",
+          "tools": 17
+        },
+        {
+          "index": 8,
+          "round": 1,
+          "bytes": 73988,
+          "sha256": "fd938a1f22384d2f9d1de1b0b8cd7c78ca4f6c9237dd05db5a26b400b3292dd1",
+          "tools": 17
+        },
+        {
+          "index": 9,
+          "round": 1,
+          "bytes": 121401,
+          "sha256": "e93f3f7790a46f7a31757f79f4a7a0182971cc0226292794d7fa056a9e0bba89",
+          "tools": 17
+        },
+        {
+          "index": 10,
+          "round": 1,
+          "bytes": 74602,
+          "sha256": "909f348362dde2072b353647d4870dd180b03816c14da2c15da32a59a784daf9",
+          "tools": 17
+        },
+        {
+          "index": 11,
+          "round": 1,
+          "bytes": 122015,
+          "sha256": "95994f28c6ebab1fb539f8f74a7be6847ea8f1d940b2d9c4bc0f2b6a639f4697",
+          "tools": 17
+        },
+        {
+          "index": 12,
+          "round": 1,
+          "bytes": 75217,
+          "sha256": "4d0b3c87d8cfad6ed5f67f334b1d40c7fa69c81b841be686db0f7cf4d784e567",
+          "tools": 17
+        },
+        {
+          "index": 13,
+          "round": 1,
+          "bytes": 122630,
+          "sha256": "1d4fa78f8c87937336a82a23e68eb3c9232debddb27eee9fbd57a6ce5a6b639d",
+          "tools": 17
+        },
+        {
+          "index": 14,
+          "round": 1,
+          "bytes": 75831,
+          "sha256": "bf9b792de74d9b183edccc28101d34e999b23c1c695f5208fa7ecfd754e9a498",
+          "tools": 17
+        },
+        {
+          "index": 15,
+          "round": 1,
+          "bytes": 123244,
+          "sha256": "e191270b9790b0a2ad3584ee368f30e82219dbd25fc0d0861820059be3a15e3b",
+          "tools": 17
+        }
+      ],
+      "tableGrowth": [
+        {
+          "name": "mio_conversations",
+          "bytes": 120,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_runs",
+          "bytes": 940,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_entries",
+          "bytes": 778163,
+          "rows": 33,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_blobs",
+          "bytes": 24028,
+          "rows": 4,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_steps",
+          "bytes": 16500,
+          "rows": 30,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_requests",
+          "bytes": 186037,
+          "rows": 15,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_changes",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_controls",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_control_states",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_imports",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_job_origins",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_edit_claims",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_owners",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_receipts",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": false,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_conversation_policies",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_conversation_policy_requests",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_events",
+          "bytes": 12840,
+          "rows": 214,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_process_target_revisions",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        }
+      ],
+      "modelManifestBytes": [
+        1713,
+        5850,
+        8168,
+        7755,
+        10073,
+        9709,
+        12027,
+        11663,
+        13981,
+        13617,
+        15935,
+        15573,
+        17891,
+        17527,
+        19845
+      ],
+      "appendCalls": 60,
+      "checkpointRewrittenColumnsBytes": 1322160,
+      "beforeDoneCheckpoints": [
+        3
+      ],
+      "beforeDonePartialBytes": [
+        27648
+      ],
+      "physicalAfter": {
+        "databaseBytes": 2969600,
+        "journalBytes": 4616,
+        "pages": 725,
+        "freePages": 56,
+        "pageBytes": 2969600,
+        "indexBytes": 786432
+      },
+      "physicalProjectPeak": {
+        "databaseBytes": 4009984,
+        "journalBytes": 99520,
+        "pages": 979,
+        "freePages": 59,
+        "pageBytes": 4009984,
+        "indexBytes": 823296
+      },
+      "requestsRebuiltAfterReopen": 30
+    },
+    {
+      "artifact": "stress30-delta0.json",
+      "protocol": "anthropic_messages",
+      "projectOrdinal": 1,
+      "round": 2,
+      "sameConversationContinuation": true,
+      "bytes": 1003093,
+      "rows": 293,
+      "networkRequestBodyBytes": 1423120,
+      "requestVectors": [
+        {
+          "index": 1,
+          "round": 2,
+          "bytes": 55326,
+          "sha256": "44a3906db82a843269e0490d2dfe9a4053c6ed7d5c039f9c5a12b8c4c5073e06",
+          "tools": 17
+        },
+        {
+          "index": 2,
+          "round": 2,
+          "bytes": 119320,
+          "sha256": "6d6dddb2dc5bf8f117c745832883c09655ae9607700ee4cdf6912caea436e641",
+          "tools": 17
+        },
+        {
+          "index": 3,
+          "round": 2,
+          "bytes": 72453,
+          "sha256": "b512a81f16157478f16dc4c6d7dcd73bf94a2932e971144005244ba2d79644b6",
+          "tools": 17
+        },
+        {
+          "index": 4,
+          "round": 2,
+          "bytes": 119866,
+          "sha256": "222b7824d7832f7077def38a91582dac351ba011cbd190ca64036ad9352e1d8d",
+          "tools": 17
+        },
+        {
+          "index": 5,
+          "round": 2,
+          "bytes": 73067,
+          "sha256": "24fcfe1423b597fe11932cf97920af2df32a200247b20c3c9449b2529fd035c6",
+          "tools": 17
+        },
+        {
+          "index": 6,
+          "round": 2,
+          "bytes": 120480,
+          "sha256": "e724d623a9173e78b6ff56d13108aade3d3da3893510cc4c96417fcc1081c040",
+          "tools": 17
+        },
+        {
+          "index": 7,
+          "round": 2,
+          "bytes": 73681,
+          "sha256": "bc2b05626c5669e64ddf642c8f15d2849bda3dd8df829ee858913e850a800fcc",
+          "tools": 17
+        },
+        {
+          "index": 8,
+          "round": 2,
+          "bytes": 121094,
+          "sha256": "8a54c2f90952efa13606fb24393363c64e7ec50d258de6492cc80aa2bef3f1dc",
+          "tools": 17
+        },
+        {
+          "index": 9,
+          "round": 2,
+          "bytes": 74295,
+          "sha256": "a924dac41d02ae50036318bb33f804699f9dbe2c326b6a66c09f148b1ed8b07b",
+          "tools": 17
+        },
+        {
+          "index": 10,
+          "round": 2,
+          "bytes": 121708,
+          "sha256": "7a0fd2a2ecf9eea832d19ed282290d6d1f5ec4b892440410efe26ac3713031ba",
+          "tools": 17
+        },
+        {
+          "index": 11,
+          "round": 2,
+          "bytes": 74909,
+          "sha256": "7f8bb929c27ae1c5d9ed1f868af9b3ff6ce0fca4fbbefcbfb3b7cf73cb15cbd0",
+          "tools": 17
+        },
+        {
+          "index": 12,
+          "round": 2,
+          "bytes": 122322,
+          "sha256": "6893946b272614107a983f55db8538639e767ec25669e078aa90e31bb8f44a13",
+          "tools": 17
+        },
+        {
+          "index": 13,
+          "round": 2,
+          "bytes": 75524,
+          "sha256": "d36e50408086521f1bc57a14f48c64a32f254fde9a2b99ae1e05947d9895940b",
+          "tools": 17
+        },
+        {
+          "index": 14,
+          "round": 2,
+          "bytes": 122937,
+          "sha256": "b0ad10c92ff4e4695a1d81f21af41adbdac43aa33e6c89b3e0f9f2ffa4305e13",
+          "tools": 17
+        },
+        {
+          "index": 15,
+          "round": 2,
+          "bytes": 76138,
+          "sha256": "88390d9470ffedafd3d77c69d22e34374967c0397115bb30a0ee1d5634b349c7",
+          "tools": 17
+        }
+      ],
+      "tableGrowth": [
+        {
+          "name": "mio_conversations",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_runs",
+          "bytes": 940,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_entries",
+          "bytes": 779099,
+          "rows": 33,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_blobs",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_steps",
+          "bytes": 16500,
+          "rows": 30,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_requests",
+          "bytes": 193714,
+          "rows": 15,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_changes",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_controls",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_control_states",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_imports",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_job_origins",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_edit_claims",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_owners",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_receipts",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": false,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_conversation_policies",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_conversation_policy_requests",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_events",
+          "bytes": 12840,
+          "rows": 214,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_process_target_revisions",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        }
+      ],
+      "modelManifestBytes": [
+        3108,
+        7245,
+        7261,
+        9579,
+        9215,
+        11533,
+        11169,
+        13487,
+        13123,
+        15441,
+        15077,
+        17395,
+        17033,
+        19351,
+        18987
+      ],
+      "appendCalls": 60,
+      "checkpointRewrittenColumnsBytes": 1322160,
+      "beforeDoneCheckpoints": [
+        3
+      ],
+      "beforeDonePartialBytes": [
+        27648
+      ],
+      "physicalAfter": {
+        "databaseBytes": 4009984,
+        "journalBytes": 4616,
+        "pages": 979,
+        "freePages": 35,
+        "pageBytes": 4009984,
+        "indexBytes": 823296
+      },
+      "physicalProjectPeak": {
+        "databaseBytes": 4009984,
+        "journalBytes": 99520,
+        "pages": 979,
+        "freePages": 59,
+        "pageBytes": 4009984,
+        "indexBytes": 823296
+      },
+      "requestsRebuiltAfterReopen": 30
+    },
+    {
+      "artifact": "stress30-delta0.json",
+      "protocol": "anthropic_messages",
+      "projectOrdinal": 2,
+      "round": 1,
+      "sameConversationContinuation": false,
+      "bytes": 1018628,
+      "rows": 298,
+      "networkRequestBodyBytes": 1423504,
+      "requestVectors": [
+        {
+          "index": 1,
+          "round": 1,
+          "bytes": 24027,
+          "sha256": "2263ceb10d8349fd3e15ec40e4801a3b07d520e1f580cf4f8977ac7ddff7d202",
+          "tools": 17
+        },
+        {
+          "index": 2,
+          "round": 1,
+          "bytes": 88021,
+          "sha256": "b0b0082817dc80b2a5abe9f52c8253af5ea5bcbeeddd3eee806016898420bcda",
+          "tools": 17
+        },
+        {
+          "index": 3,
+          "round": 1,
+          "bytes": 135434,
+          "sha256": "7be57188454451e99cad8e4b7dae749439636d2cdeceb9cbe2b344b720ab7512",
+          "tools": 17
+        },
+        {
+          "index": 4,
+          "round": 1,
+          "bytes": 72760,
+          "sha256": "fa88658182af4bc7e62ecd61921d8d8eda3f5b1e28c554e558e73b94f7d28b30",
+          "tools": 17
+        },
+        {
+          "index": 5,
+          "round": 1,
+          "bytes": 120173,
+          "sha256": "ad35f9b7b3d6bde8b11240e52926c89b4fef1fcf1892442d7c3c971fe0d60d1e",
+          "tools": 17
+        },
+        {
+          "index": 6,
+          "round": 1,
+          "bytes": 73374,
+          "sha256": "f1aea6ba83cfa2dfeda72febe5404c2f5f8bfa979a77d693a46917f44020cb3e",
+          "tools": 17
+        },
+        {
+          "index": 7,
+          "round": 1,
+          "bytes": 120787,
+          "sha256": "d1eebd9e27ab0540ee295a3bb12ef592ce8294e0b0f7e00b003a553fd30f14f5",
+          "tools": 17
+        },
+        {
+          "index": 8,
+          "round": 1,
+          "bytes": 73988,
+          "sha256": "df56347f18acd00ecd10aa9b7139ca78645b676f69a03ce075a1da57248d1395",
+          "tools": 17
+        },
+        {
+          "index": 9,
+          "round": 1,
+          "bytes": 121401,
+          "sha256": "e837f51994d6f43d12cf3e63ad4f2d28ff9690b55c3bdf4ef9805707b639912c",
+          "tools": 17
+        },
+        {
+          "index": 10,
+          "round": 1,
+          "bytes": 74602,
+          "sha256": "9d2a6b3ce98a6f6a7af2e0462d2d284f496b34253ba3897fdf3d39ded8307143",
+          "tools": 17
+        },
+        {
+          "index": 11,
+          "round": 1,
+          "bytes": 122015,
+          "sha256": "3362ae29ca219430e0ecf6d253b8d07ee65fda2b9fe5750eb3544eecb7f5c943",
+          "tools": 17
+        },
+        {
+          "index": 12,
+          "round": 1,
+          "bytes": 75217,
+          "sha256": "1ed1323b430f4bc369ffa5db24e57d8b5f77ba60ea18d1fb92fbcd9194f89a0f",
+          "tools": 17
+        },
+        {
+          "index": 13,
+          "round": 1,
+          "bytes": 122630,
+          "sha256": "fe9f9e8c43667fa2bf0f0a4733dedc44859e9f3167282bc7f5661f8bcf7bbb9a",
+          "tools": 17
+        },
+        {
+          "index": 14,
+          "round": 1,
+          "bytes": 75831,
+          "sha256": "a78628c32bce0abb7b4dbce0963aecdba9601a763d17b2c077f741de095907bb",
+          "tools": 17
+        },
+        {
+          "index": 15,
+          "round": 1,
+          "bytes": 123244,
+          "sha256": "f2f9919bdc16d4ab325e86a4a5849d85168d9d839455ed78ec7cc6eb66a80b3e",
+          "tools": 17
+        }
+      ],
+      "tableGrowth": [
+        {
+          "name": "mio_conversations",
+          "bytes": 120,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_runs",
+          "bytes": 940,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_entries",
+          "bytes": 778163,
+          "rows": 33,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_blobs",
+          "bytes": 24028,
+          "rows": 4,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_steps",
+          "bytes": 16500,
+          "rows": 30,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_requests",
+          "bytes": 186037,
+          "rows": 15,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_changes",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_controls",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_control_states",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_imports",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_job_origins",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_edit_claims",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_owners",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_receipts",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": false,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_conversation_policies",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_conversation_policy_requests",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_events",
+          "bytes": 12840,
+          "rows": 214,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_process_target_revisions",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        }
+      ],
+      "modelManifestBytes": [
+        1713,
+        5850,
+        8168,
+        7755,
+        10073,
+        9709,
+        12027,
+        11663,
+        13981,
+        13617,
+        15935,
+        15573,
+        17891,
+        17527,
+        19845
+      ],
+      "appendCalls": 60,
+      "checkpointRewrittenColumnsBytes": 1322160,
+      "beforeDoneCheckpoints": [
+        3
+      ],
+      "beforeDonePartialBytes": [
+        27648
+      ],
+      "physicalAfter": {
+        "databaseBytes": 2969600,
+        "journalBytes": 4616,
+        "pages": 725,
+        "freePages": 56,
+        "pageBytes": 2969600,
+        "indexBytes": 786432
+      },
+      "physicalProjectPeak": {
+        "databaseBytes": 2969600,
+        "journalBytes": 99520,
+        "pages": 725,
+        "freePages": 59,
+        "pageBytes": 2969600,
+        "indexBytes": 786432
+      },
+      "requestsRebuiltAfterReopen": 15
+    },
+    {
+      "artifact": "stress30-delta80.json",
+      "protocol": "responses",
+      "projectOrdinal": 1,
+      "round": 1,
+      "sameConversationContinuation": false,
+      "bytes": 1019058,
+      "rows": 298,
+      "networkRequestBodyBytes": 1431550,
+      "requestVectors": [
+        {
+          "index": 1,
+          "round": 1,
+          "bytes": 24389,
+          "sha256": "b5d511798946cf12ebfd8d4dd16c7fa14b68a4aa73bcd33bdb806759c5cc63f6",
+          "tools": 17
+        },
+        {
+          "index": 2,
+          "round": 1,
+          "bytes": 88553,
+          "sha256": "874cd12bcccb8832175bae2a1641a997e2ad054d55947526f6e342d6de67247f",
+          "tools": 17
+        },
+        {
+          "index": 3,
+          "round": 1,
+          "bytes": 136070,
+          "sha256": "1a212dd7ed020cf515256f744dc07c12aad4a851535b9a492397a69325bc024a",
+          "tools": 17
+        },
+        {
+          "index": 4,
+          "round": 1,
+          "bytes": 73251,
+          "sha256": "d1b1e23583256a9d5cfda2db5205bbfcdf7675f4c804ee9619fc1659157d87a1",
+          "tools": 17
+        },
+        {
+          "index": 5,
+          "round": 1,
+          "bytes": 120768,
+          "sha256": "4fe8a6395bf815f02c9be66ec7b0b8f49744519e20907076b24ae9239e1f8c5a",
+          "tools": 17
+        },
+        {
+          "index": 6,
+          "round": 1,
+          "bytes": 73865,
+          "sha256": "992b3673cce49e4b90037a8428329d3e642396012c4345e487a5576149465bc8",
+          "tools": 17
+        },
+        {
+          "index": 7,
+          "round": 1,
+          "bytes": 121382,
+          "sha256": "d97153eabc7c7555ff2d0a3b92e6ea9b715489f8c64720498c488dd3cca45057",
+          "tools": 17
+        },
+        {
+          "index": 8,
+          "round": 1,
+          "bytes": 74479,
+          "sha256": "dab2ce3656f4b6379adbfa885b55e2192ad1416a144bcf2d2651447cbd655d43",
+          "tools": 17
+        },
+        {
+          "index": 9,
+          "round": 1,
+          "bytes": 121996,
+          "sha256": "e3b97d256b11bbb6d2c25171c82072e56a405287b8262fb014badb3aa107891d",
+          "tools": 17
+        },
+        {
+          "index": 10,
+          "round": 1,
+          "bytes": 75093,
+          "sha256": "52fa39ec5640c82128576f679d8bd520d8178fe9982f6a94210e3569d8ef5c36",
+          "tools": 17
+        },
+        {
+          "index": 11,
+          "round": 1,
+          "bytes": 122610,
+          "sha256": "5ac48640e58ca1b00afd2b72cba6b0848422fc4a8ae8d79906ac9e1b38f71756",
+          "tools": 17
+        },
+        {
+          "index": 12,
+          "round": 1,
+          "bytes": 75708,
+          "sha256": "371c834cc4a867ffc0e29d5fe13c69c8ef8d0f6395445298a61bab981e5155e1",
+          "tools": 17
+        },
+        {
+          "index": 13,
+          "round": 1,
+          "bytes": 123225,
+          "sha256": "56a899ede70a01f16f5f873c056bf136b9ef0c073df10e7bfb0eae5933497ea2",
+          "tools": 17
+        },
+        {
+          "index": 14,
+          "round": 1,
+          "bytes": 76322,
+          "sha256": "7ce86e8ed2563356096f3f1136a6b51264a3ecf77435def525c514653af05274",
+          "tools": 17
+        },
+        {
+          "index": 15,
+          "round": 1,
+          "bytes": 123839,
+          "sha256": "e17d7d62a19b4268680d83419701d87cfbb316f1c8a5e1d91d0eddc1c2919a4e",
+          "tools": 17
+        }
+      ],
+      "tableGrowth": [
+        {
+          "name": "mio_conversations",
+          "bytes": 120,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_runs",
+          "bytes": 940,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_entries",
+          "bytes": 779978,
+          "rows": 33,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_blobs",
+          "bytes": 24478,
+          "rows": 4,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_steps",
+          "bytes": 16500,
+          "rows": 30,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_requests",
+          "bytes": 184202,
+          "rows": 15,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_changes",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_controls",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_control_states",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_imports",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_job_origins",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_edit_claims",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_owners",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_receipts",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": false,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_conversation_policies",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_conversation_policy_requests",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_events",
+          "bytes": 12840,
+          "rows": 214,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_process_target_revisions",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        }
+      ],
+      "modelManifestBytes": [
+        1591,
+        5994,
+        8354,
+        7675,
+        10035,
+        9589,
+        11949,
+        11503,
+        13863,
+        13417,
+        15777,
+        15333,
+        17693,
+        17247,
+        19607
+      ],
+      "appendCalls": 60,
+      "checkpointRewrittenColumnsBytes": 1322160,
+      "beforeDoneCheckpoints": [
+        3
+      ],
+      "beforeDonePartialBytes": [
+        27648
+      ],
+      "physicalAfter": {
+        "databaseBytes": 2973696,
+        "journalBytes": 4616,
+        "pages": 726,
+        "freePages": 56,
+        "pageBytes": 2973696,
+        "indexBytes": 786432
+      },
+      "physicalProjectPeak": {
+        "databaseBytes": 2973696,
+        "journalBytes": 99520,
+        "pages": 726,
+        "freePages": 59,
+        "pageBytes": 2973696,
+        "indexBytes": 786432
+      },
+      "requestsRebuiltAfterReopen": 15
+    },
+    {
+      "artifact": "stress30-delta300.json",
+      "protocol": "responses",
+      "projectOrdinal": 1,
+      "round": 1,
+      "sameConversationContinuation": false,
+      "bytes": 1024458,
+      "rows": 388,
+      "networkRequestBodyBytes": 1431550,
+      "requestVectors": [
+        {
+          "index": 1,
+          "round": 1,
+          "bytes": 24389,
+          "sha256": "b5d511798946cf12ebfd8d4dd16c7fa14b68a4aa73bcd33bdb806759c5cc63f6",
+          "tools": 17
+        },
+        {
+          "index": 2,
+          "round": 1,
+          "bytes": 88553,
+          "sha256": "13d58f3dd41b26472a1a5423c82f1f711f54a8b02dafd1a371473d26353b15ac",
+          "tools": 17
+        },
+        {
+          "index": 3,
+          "round": 1,
+          "bytes": 136070,
+          "sha256": "d11ff1a68f9464811d0d65c0c27c2308ae4c4c59df92b6db811d530cb8eb428c",
+          "tools": 17
+        },
+        {
+          "index": 4,
+          "round": 1,
+          "bytes": 73251,
+          "sha256": "5670d0d718485e6a33595f530ec86fff0386f01cdee00a3bb9b9caa0bc46c5ce",
+          "tools": 17
+        },
+        {
+          "index": 5,
+          "round": 1,
+          "bytes": 120768,
+          "sha256": "af3ceb34b7a65ee1d004218dc31b8542f23a1a3c91397a0445f7c97e235f4366",
+          "tools": 17
+        },
+        {
+          "index": 6,
+          "round": 1,
+          "bytes": 73865,
+          "sha256": "140271ba4b855a6b17bdfb500b9387a8784f3173742922955da3b7c97d41c155",
+          "tools": 17
+        },
+        {
+          "index": 7,
+          "round": 1,
+          "bytes": 121382,
+          "sha256": "5cbc1a72d6810c5f0989b9a1870c647866cbdcf83f03926fccfc310d2dacbcf6",
+          "tools": 17
+        },
+        {
+          "index": 8,
+          "round": 1,
+          "bytes": 74479,
+          "sha256": "263844b8c4b7ced74f32d1c5bebe059025de75c80222c5eae69026b08ac7c480",
+          "tools": 17
+        },
+        {
+          "index": 9,
+          "round": 1,
+          "bytes": 121996,
+          "sha256": "25bf691379206d98a9c6e698c0ee25786a8fd10a5795831a79c6f467dce7fb7d",
+          "tools": 17
+        },
+        {
+          "index": 10,
+          "round": 1,
+          "bytes": 75093,
+          "sha256": "cce4ce555580b617bd1c0bcaf4b09dce3cbcfad5e2735efb82379800a4bb1080",
+          "tools": 17
+        },
+        {
+          "index": 11,
+          "round": 1,
+          "bytes": 122610,
+          "sha256": "f446936c8931fd31b17511ac8f7bfce6e2b09971e4964b42d5a1ae14d3071b1f",
+          "tools": 17
+        },
+        {
+          "index": 12,
+          "round": 1,
+          "bytes": 75708,
+          "sha256": "039bc3f36ad5c3703b281c542041e75987ed1b9b43f762e8d679bcc92c4b9804",
+          "tools": 17
+        },
+        {
+          "index": 13,
+          "round": 1,
+          "bytes": 123225,
+          "sha256": "927b6c8cd24c192d898da6581414b82e0e3d9c665479f587ff4cc6b05ce6c379",
+          "tools": 17
+        },
+        {
+          "index": 14,
+          "round": 1,
+          "bytes": 76322,
+          "sha256": "9d4573157632a8a12f950365aeb34609142eabc39ac39c24c05984214fa050a3",
+          "tools": 17
+        },
+        {
+          "index": 15,
+          "round": 1,
+          "bytes": 123839,
+          "sha256": "9500c2bfc93568876047b2dc826533f683cc4504810c4ce1f04df8acecf19b62",
+          "tools": 17
+        }
+      ],
+      "tableGrowth": [
+        {
+          "name": "mio_conversations",
+          "bytes": 120,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_runs",
+          "bytes": 940,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_entries",
+          "bytes": 779978,
+          "rows": 33,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_blobs",
+          "bytes": 24478,
+          "rows": 4,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_steps",
+          "bytes": 16500,
+          "rows": 30,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_requests",
+          "bytes": 184202,
+          "rows": 15,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_changes",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_controls",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_control_states",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_imports",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_job_origins",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_edit_claims",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_owners",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_receipts",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": false,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_conversation_policies",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_conversation_policy_requests",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_events",
+          "bytes": 18240,
+          "rows": 304,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_process_target_revisions",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        }
+      ],
+      "modelManifestBytes": [
+        1591,
+        5994,
+        8354,
+        7675,
+        10035,
+        9589,
+        11949,
+        11503,
+        13863,
+        13417,
+        15777,
+        15333,
+        17693,
+        17247,
+        19607
+      ],
+      "appendCalls": 150,
+      "checkpointRewrittenColumnsBytes": 2614200,
+      "beforeDoneCheckpoints": [
+        10
+      ],
+      "beforeDonePartialBytes": [
+        30720
+      ],
+      "physicalAfter": {
+        "databaseBytes": 2985984,
+        "journalBytes": 4616,
+        "pages": 729,
+        "freePages": 56,
+        "pageBytes": 2985984,
+        "indexBytes": 790528
+      },
+      "physicalProjectPeak": {
+        "databaseBytes": 2985984,
+        "journalBytes": 103624,
+        "pages": 729,
+        "freePages": 57,
+        "pageBytes": 2985984,
+        "indexBytes": 790528
+      },
+      "requestsRebuiltAfterReopen": 15
+    },
+    {
+      "artifact": "stress30-delta0-tail300.json",
+      "protocol": "responses",
+      "projectOrdinal": 1,
+      "round": 1,
+      "sameConversationContinuation": false,
+      "bytes": 1019058,
+      "rows": 298,
+      "networkRequestBodyBytes": 1431550,
+      "requestVectors": [
+        {
+          "index": 1,
+          "round": 1,
+          "bytes": 24389,
+          "sha256": "b5d511798946cf12ebfd8d4dd16c7fa14b68a4aa73bcd33bdb806759c5cc63f6",
+          "tools": 17
+        },
+        {
+          "index": 2,
+          "round": 1,
+          "bytes": 88553,
+          "sha256": "0ae30ea23fcbc38b2e75b5eb28fd624b88eb66f3aa46af48a6eb72640db94754",
+          "tools": 17
+        },
+        {
+          "index": 3,
+          "round": 1,
+          "bytes": 136070,
+          "sha256": "f9b92b1cea26e6b40d97f7f4a4104920f5dcd995195e4ab1caecab464a18f738",
+          "tools": 17
+        },
+        {
+          "index": 4,
+          "round": 1,
+          "bytes": 73251,
+          "sha256": "65c5f221a5f79cdbb9c64f539a05c094b7f51ec918706d85eadf3c6a4eb354a3",
+          "tools": 17
+        },
+        {
+          "index": 5,
+          "round": 1,
+          "bytes": 120768,
+          "sha256": "4401b15f7908b8de60d09eee45a73bab5aea7d402566d133773ce91da70bfcdf",
+          "tools": 17
+        },
+        {
+          "index": 6,
+          "round": 1,
+          "bytes": 73865,
+          "sha256": "5d0ce964820802ab424a295d29ff2043e05056ec115cd50561ec777da2db8e7f",
+          "tools": 17
+        },
+        {
+          "index": 7,
+          "round": 1,
+          "bytes": 121382,
+          "sha256": "9af06eb773e9e3c40820495f8f3e33aeb76a262950942f843ba4fad3da0f05fd",
+          "tools": 17
+        },
+        {
+          "index": 8,
+          "round": 1,
+          "bytes": 74479,
+          "sha256": "693a835808eb67dbe9092dafa5a46ac030b47a4635b4049fa62d72dc3d591912",
+          "tools": 17
+        },
+        {
+          "index": 9,
+          "round": 1,
+          "bytes": 121996,
+          "sha256": "3abe45b5b0f8bf2e4a40937d5fc7325be3e72d606f9208c599230b4d12e3f10b",
+          "tools": 17
+        },
+        {
+          "index": 10,
+          "round": 1,
+          "bytes": 75093,
+          "sha256": "cc0649935fcd60515cecf5a5613cf45f1810e61edb6523844be2acb6e8bc3b04",
+          "tools": 17
+        },
+        {
+          "index": 11,
+          "round": 1,
+          "bytes": 122610,
+          "sha256": "18c4e5be6cbd225c7a0ce790214c7b730db05fa8919ce4e6c6e0fea8296551d1",
+          "tools": 17
+        },
+        {
+          "index": 12,
+          "round": 1,
+          "bytes": 75708,
+          "sha256": "b7818d8b166f73e2a697c2c5e0b0e00aeccbe88cf40f927adfea9312b1cdd502",
+          "tools": 17
+        },
+        {
+          "index": 13,
+          "round": 1,
+          "bytes": 123225,
+          "sha256": "d18cfde247ff8e86611b06fabc5ef80727b033419ab9b25ace3782c9131bf11f",
+          "tools": 17
+        },
+        {
+          "index": 14,
+          "round": 1,
+          "bytes": 76322,
+          "sha256": "55e05d17c377443362142dc25aaa54245ea5d9066c259fdc036b5226d09bd309",
+          "tools": 17
+        },
+        {
+          "index": 15,
+          "round": 1,
+          "bytes": 123839,
+          "sha256": "16a60d29506c5c86dc887175b879070e01f699bd893316cb5495bd536316b9d4",
+          "tools": 17
+        }
+      ],
+      "tableGrowth": [
+        {
+          "name": "mio_conversations",
+          "bytes": 120,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_runs",
+          "bytes": 940,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_entries",
+          "bytes": 779978,
+          "rows": 33,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_blobs",
+          "bytes": 24478,
+          "rows": 4,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_steps",
+          "bytes": 16500,
+          "rows": 30,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_requests",
+          "bytes": 184202,
+          "rows": 15,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_changes",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_controls",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_control_states",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_imports",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_job_origins",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_edit_claims",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_owners",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_receipts",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": false,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_conversation_policies",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_conversation_policy_requests",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_events",
+          "bytes": 12840,
+          "rows": 214,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_process_target_revisions",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        }
+      ],
+      "modelManifestBytes": [
+        1591,
+        5994,
+        8354,
+        7675,
+        10035,
+        9589,
+        11949,
+        11503,
+        13863,
+        13417,
+        15777,
+        15333,
+        17693,
+        17247,
+        19607
+      ],
+      "appendCalls": 60,
+      "checkpointRewrittenColumnsBytes": 1322160,
+      "beforeDoneCheckpoints": [
+        4
+      ],
+      "beforeDonePartialBytes": [
+        30720
+      ],
+      "physicalAfter": {
+        "databaseBytes": 2973696,
+        "journalBytes": 4616,
+        "pages": 726,
+        "freePages": 56,
+        "pageBytes": 2973696,
+        "indexBytes": 786432
+      },
+      "physicalProjectPeak": {
+        "databaseBytes": 2973696,
+        "journalBytes": 99520,
+        "pages": 726,
+        "freePages": 59,
+        "pageBytes": 2973696,
+        "indexBytes": 786432
+      },
+      "requestsRebuiltAfterReopen": 15
+    },
+    {
+      "artifact": "final-helper-cc-delta300.json",
+      "protocol": "chat_completions",
+      "projectOrdinal": 1,
+      "round": 1,
+      "sameConversationContinuation": false,
+      "bytes": 1063915,
+      "rows": 388,
+      "networkRequestBodyBytes": 1432640,
+      "requestVectors": [
+        {
+          "index": 1,
+          "round": 1,
+          "bytes": 24646,
+          "sha256": "e45964d976bc09691d6dcfe91fd4fbb9a011dd3e08195d1ac57171aa7697b793",
+          "tools": 17
+        },
+        {
+          "index": 2,
+          "round": 1,
+          "bytes": 88653,
+          "sha256": "dcedbaa37c2b92f1d02f52cbc0f48e63ae444bbf51e07baf6934edbecb6d057c",
+          "tools": 17
+        },
+        {
+          "index": 3,
+          "round": 1,
+          "bytes": 136041,
+          "sha256": "ac45d88f084292fd1382c76f5d1fd0a943e8bcdf84994e57bf7aa12626bfd51e",
+          "tools": 17
+        },
+        {
+          "index": 4,
+          "round": 1,
+          "bytes": 73379,
+          "sha256": "925acb05537b52a0d8c4d690a5cb7f217a8504f29f872aba64f207c265495fa3",
+          "tools": 17
+        },
+        {
+          "index": 5,
+          "round": 1,
+          "bytes": 120767,
+          "sha256": "d5403aeab36f7738b618a7510b83b5dd0f426a7c5b16fa3923685bf9f09e4116",
+          "tools": 17
+        },
+        {
+          "index": 6,
+          "round": 1,
+          "bytes": 73993,
+          "sha256": "e8a09048db2686e8a60ec7a63da92a9681ac7844f0214aee4dc2a25aa9045c0c",
+          "tools": 17
+        },
+        {
+          "index": 7,
+          "round": 1,
+          "bytes": 121381,
+          "sha256": "fab20ce412ccd7029503abdfac1ac8d8415e14b2f79dccbeaa2544484482c1c0",
+          "tools": 17
+        },
+        {
+          "index": 8,
+          "round": 1,
+          "bytes": 74607,
+          "sha256": "5fcdb229da43e793cfe6295b01cefede0006bcb744ecaeabbe9e873ac40a225d",
+          "tools": 17
+        },
+        {
+          "index": 9,
+          "round": 1,
+          "bytes": 121995,
+          "sha256": "99fac65102584d47e5fdb54da117a817b3021dbb4d9bc301000505d1ded0228d",
+          "tools": 17
+        },
+        {
+          "index": 10,
+          "round": 1,
+          "bytes": 75221,
+          "sha256": "e8bdabbd90ea5d0b8893cb5a7bf4c22e4507fb0d576133a51e6971ff2ee6c354",
+          "tools": 17
+        },
+        {
+          "index": 11,
+          "round": 1,
+          "bytes": 122609,
+          "sha256": "8d6b62117bb151973e9038074b7a7c117726a2211b4bbfdfbcd4e0d2a9401a68",
+          "tools": 17
+        },
+        {
+          "index": 12,
+          "round": 1,
+          "bytes": 75836,
+          "sha256": "a823a8b87c9f82021feecf95e8468b04c4b8477fc21b3ec40e66b44af5b97687",
+          "tools": 17
+        },
+        {
+          "index": 13,
+          "round": 1,
+          "bytes": 123224,
+          "sha256": "185cec9f5020340e75de64bd88d3b718e033d1ddb0707d125d81705e4f596a50",
+          "tools": 17
+        },
+        {
+          "index": 14,
+          "round": 1,
+          "bytes": 76450,
+          "sha256": "73de0504c68a2debcb8558b08d87a1f5a895e714f31cab6a0ac93f4d0a3337ee",
+          "tools": 17
+        },
+        {
+          "index": 15,
+          "round": 1,
+          "bytes": 123838,
+          "sha256": "a40519bbfb98b438f95b1ad0707b22b34ad02f9ffbee687517cc5bb48ba95a44",
+          "tools": 17
+        }
+      ],
+      "tableGrowth": [
+        {
+          "name": "mio_conversations",
+          "bytes": 120,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_runs",
+          "bytes": 940,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_entries",
+          "bytes": 778253,
+          "rows": 33,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_blobs",
+          "bytes": 21894,
+          "rows": 4,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_steps",
+          "bytes": 16500,
+          "rows": 30,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_requests",
+          "bytes": 227968,
+          "rows": 15,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_changes",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_controls",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_control_states",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_imports",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_job_origins",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_edit_claims",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_owners",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_receipts",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": false,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_conversation_policies",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_conversation_policy_requests",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_events",
+          "bytes": 18240,
+          "rows": 304,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_process_target_revisions",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        }
+      ],
+      "modelManifestBytes": [
+        4470,
+        8517,
+        10697,
+        10518,
+        12698,
+        12528,
+        14708,
+        14538,
+        16718,
+        16548,
+        18728,
+        18560,
+        20740,
+        20570,
+        22750
+      ],
+      "appendCalls": 150,
+      "checkpointRewrittenColumnsBytes": 2614200,
+      "beforeDoneCheckpoints": [
+        10
+      ],
+      "beforeDonePartialBytes": [
+        30720
+      ],
+      "physicalAfter": {
+        "databaseBytes": 3018752,
+        "journalBytes": 4616,
+        "pages": 737,
+        "freePages": 56,
+        "pageBytes": 3018752,
+        "indexBytes": 790528
+      },
+      "physicalProjectPeak": {
+        "databaseBytes": 3018752,
+        "journalBytes": 99520,
+        "pages": 737,
+        "freePages": 57,
+        "pageBytes": 3018752,
+        "indexBytes": 790528
+      },
+      "requestsRebuiltAfterReopen": 15
+    }
+  ],
+  "coldSharedBlobCosts": [
+    {
+      "protocol": "chat_completions",
+      "bytes": 21894,
+      "rows": 4,
+      "definition": "Unique frozen configuration/tools/system/baseline blobs referenced in both measured same-conversation rounds; content plus64B hash plus24B timestamp. Cold pre-send inventory is zero.",
+      "blobs": [
+        {
+          "sha256": "7abd51b65134e57584c1575ca99238f70347b0c2c9b28f2990ee2cf2a1cb9c68",
+          "contentBytes": 134,
+          "logicalBlobRowBytes": 222
+        },
+        {
+          "sha256": "ae05dbcf42fa0a5ad5375e5b3edfd8b16e37261b08ed747e4ee66f4ca742bb0e",
+          "contentBytes": 20967,
+          "logicalBlobRowBytes": 21055
+        },
+        {
+          "sha256": "17dfd885601a28937f050014dc450c658a30440bc5f4355995f305d19f441838",
+          "contentBytes": 364,
+          "logicalBlobRowBytes": 452
+        },
+        {
+          "sha256": "fa000eca1e31e381e009b73dc264036e0bda88707a214441ceab0f40d6808124",
+          "contentBytes": 77,
+          "logicalBlobRowBytes": 165
+        }
+      ]
+    },
+    {
+      "protocol": "responses",
+      "bytes": 24478,
+      "rows": 4,
+      "definition": "Unique frozen configuration/tools/system/baseline blobs referenced in both measured same-conversation rounds; content plus64B hash plus24B timestamp. Cold pre-send inventory is zero.",
+      "blobs": [
+        {
+          "sha256": "dda0a5e8cc46b533a2d72287119950a5a0b2d03cbdcf1257ceb2b89b1d99561d",
+          "contentBytes": 127,
+          "logicalBlobRowBytes": 215
+        },
+        {
+          "sha256": "bcc3f063b63cc0589248fec6e6308bd7b607426afe57f0658ab4f621ef4146aa",
+          "contentBytes": 20746,
+          "logicalBlobRowBytes": 20834
+        },
+        {
+          "sha256": "cb949de3e388449ee998109b3635c678c427147b8038f4f039324ef5630766bf",
+          "contentBytes": 3176,
+          "logicalBlobRowBytes": 3264
+        },
+        {
+          "sha256": "c8f2b2c72df0fda162609e4770a003f04ca9131d6c139480121f4c2a0b468795",
+          "contentBytes": 77,
+          "logicalBlobRowBytes": 165
+        }
+      ]
+    },
+    {
+      "protocol": "anthropic_messages",
+      "bytes": 24028,
+      "rows": 4,
+      "definition": "Unique frozen configuration/tools/system/baseline blobs referenced in both measured same-conversation rounds; content plus64B hash plus24B timestamp. Cold pre-send inventory is zero.",
+      "blobs": [
+        {
+          "sha256": "dd2392ca1b3b719c278fe87c9d90378800d4d09e6e70d296ee015dae285a7e7e",
+          "contentBytes": 143,
+          "logicalBlobRowBytes": 231
+        },
+        {
+          "sha256": "833dd1b6f3151e0926e1f1b9e2d49f0b6d07bdd2508607bacea7691b90de0cf5",
+          "contentBytes": 20256,
+          "logicalBlobRowBytes": 20344
+        },
+        {
+          "sha256": "01fd1ce0833c6fec5361dde1704af35290524e780151218ecf07d6ec8bec5359",
+          "contentBytes": 3200,
+          "logicalBlobRowBytes": 3288
+        },
+        {
+          "sha256": "27d029c8e3e7a1f785a33e1b9eb2acc565eb2cbba27a6631bfd8ea377d6303ca",
+          "contentBytes": 77,
+          "logicalBlobRowBytes": 165
+        }
+      ]
+    }
+  ],
+  "capacity": {
+    "formula": "C + N * maximumObservedCompleteRoundIncrement + E; rows analogously. B conservatively includes cold shared content where present, so C is an extra allowance, not a subtracted/average sample.",
+    "C": 24478,
+    "Crows": 4,
+    "B": 1063915,
+    "R": 388,
+    "fixedRecoveryAllowance": {
+      "retainedFailedRuns": 1,
+      "retainedUnknownRuns": 1,
+      "retainedSingleUpgradeRuns": 1,
+      "activeIntents": 1,
+      "freshRunEnvelopeBytes": 13635983,
+      "freshRunEnvelopeRows": 42,
+      "requestRowUnusedHeadroomBytes": 1468,
+      "completeWorkloadPrefixReserves": 4,
+      "bytes": 17893111,
+      "rows": 1594
+    },
+    "recoveryWholeScenarioUsage": {
+      "intent": {
+        "bytes": 2097753,
+        "rows": 8
+      },
+      "failed": {
+        "bytes": 3671474,
+        "rows": 11
+      },
+      "unknown": {
+        "bytes": 3671476,
+        "rows": 11
+      },
+      "upgraded": {
+        "bytes": 4195280,
+        "rows": 12
+      }
+    },
+    "N100FreshEnvelopeOnly": {
+      "bytesRequired": 120053429,
+      "rowsRequired": 38846
+    },
+    "N100FixedRecovery": {
+      "bytesRequired": 124309089,
+      "rowsRequired": 40398,
+      "byteMarginAtCurrentLimit": 144126367,
+      "rowMarginAtCurrentLimit": -20398
+    },
+    "N100WithOneFailedUnknownAndUpgradePerCompleteRound": {
+      "bytes": 1582689969,
+      "rows": 159000
+    },
+    "recommendedFixedScenarioCandidate": {
+      "bytes": 268435456,
+      "rows": 45000,
+      "equivalentRuns": {
+        "byBytes": 235,
+        "byRows": 111,
+        "minimum": 111
+      },
+      "decision": "Coordinator approval required; development constants unchanged."
+    },
+    "currentLimits": {
+      "bytes": 268435456,
+      "rows": 20000
+    },
+    "currentConservativeEquivalentRuns": {
+      "byBytes": 235,
+      "byRows": 47,
+      "minimum": 47,
+      "role": "Current256MiB/20k reference only; does not satisfy D5 N100 target."
+    },
+    "limitations": [
+      "E adds one whole maximum observed complete workload prefix per recovery slot, plus unused headroom to the2MiB request-row ceiling; this conservatively covers late-round anomalies beyond the minimal fresh repository fixtures.",
+      "Maximum is across observed completed samples, not a mathematical upper bound for arbitrary conversation lengths, tools, provider bodies or future catalogs.",
+      "Stopped failed/unknown originals have no global count cap and can accumulate until quota. Fixed E is a stated scenario, not a production retention bound.",
+      "One active request per project was observed with8 concurrent refusals; retained old intents may remain after stopping their runs.",
+      "Quota guard rejects usage>limit; storage status is full at usage>=limit. No development quota changed.",
+      "Physical peaks are sampled SQL/stat observations and exclude application-library B1 files and initial kernel schema creation; no fs read/open of held DB files.",
+      "Checkpoint rewritten-column bytes exclude other SQL writes and physical write amplification. Network bytes are offline gateway request bodies, without sockets/headers/TLS/SSE."
+    ],
+    "alternativeFixedScenarioCandidate": {
+      "bytes": 268435456,
+      "rows": 65536,
+      "equivalentRuns": {
+        "byBytes": 235,
+        "byRows": 164,
+        "minimum": 164
+      },
+      "decision": "Coordinator approval required; development constants unchanged."
+    }
+  },
+  "nearFullArchive": {
+    "beforeUsage": {
+      "bytes": 268434432,
+      "rows": 137
+    },
+    "afterUsage": {
+      "bytes": 268041644,
+      "rows": 140
+    },
+    "formerInsertFirst": {
+      "errorCode": "AGENT_TASK_STORAGE_LIMIT",
+      "rolledBack": true
+    },
+    "outcome": {
+      "errorCode": null,
+      "state": "completed",
+      "originalBodyCleared": true,
+      "netBytes": -392788
+    }
+  },
+  "maximumRetentionStates": [
+    {
+      "state": "intent",
+      "originalBodyBytes": 524288,
+      "manifestBytesPerRequest": 1572352,
+      "retainedRequestTableBytes": 2096829,
+      "decodedCheckpointBytes": 0,
+      "storedCheckpointBytes": 0,
+      "wholeScenario": {
+        "bytes": 2097753,
+        "rows": 8
+      },
+      "increment": {
+        "bytes": 2097154,
+        "rows": 4
+      },
+      "after": {
+        "version": 2,
+        "scope": "project",
+        "projectId": "84839e91-09ba-40ce-b847-9354e33c2bef",
+        "format": "mio_records",
+        "status": "available",
+        "limits": {
+          "bytes": 268435456,
+          "rows": 20000,
+          "rowBytes": 2097152
+        },
+        "usage": {
+          "bytes": 2097753,
+          "rows": 8
+        },
+        "retained": {
+          "bytes": 2097753,
+          "rows": 8
+        },
+        "remaining": {
+          "bytes": 266337703,
+          "rows": 19992
+        },
+        "independentLimits": {
+          "editReceiptDataBytes": 65536,
+          "editReceiptTotalBytes": null,
+          "editReceiptTotalRows": null
+        },
+        "tables": [
+          {
+            "name": "mio_conversations",
+            "bytes": 120,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_runs",
+            "bytes": 329,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_entries",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_blobs",
+            "bytes": 90,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_steps",
+            "bytes": 205,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_requests",
+            "bytes": 2096829,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_changes",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_controls",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_control_states",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_imports",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_job_origins",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_edit_claims",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "row_only"
+          },
+          {
+            "name": "mio_edit_owners",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "row_only"
+          },
+          {
+            "name": "mio_edit_receipts",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": false,
+            "quotaGuard": "row_only"
+          },
+          {
+            "name": "mio_conversation_policies",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_conversation_policy_requests",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_events",
+            "bytes": 180,
+            "rows": 3,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_process_target_revisions",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "row_only"
+          }
+        ]
+      },
+      "physical": {
+        "samples": 2,
+        "peak": {
+          "databaseBytes": 3710976,
+          "journalBytes": 59408,
+          "pages": 906,
+          "freePages": 0,
+          "pageBytes": 3710976,
+          "indexBytes": 774144
+        },
+        "indexSupport": "available",
+        "files": [
+          {
+            "schema": "main",
+            "name": "history.db"
+          },
+          {
+            "schema": "project",
+            "name": "project.mioon"
+          },
+          {
+            "schema": "cache",
+            "name": "cache.db"
+          }
+        ]
+      }
+    },
+    {
+      "state": "failed",
+      "originalBodyBytes": 524288,
+      "manifestBytesPerRequest": 1572352,
+      "retainedRequestTableBytes": 2096877,
+      "decodedCheckpointBytes": 262144,
+      "storedCheckpointBytes": 1572866,
+      "wholeScenario": {
+        "bytes": 3671474,
+        "rows": 11
+      },
+      "increment": {
+        "bytes": 3670875,
+        "rows": 7
+      },
+      "after": {
+        "version": 2,
+        "scope": "project",
+        "projectId": "9f5eec0f-7f7e-4dd5-900d-58220a133df5",
+        "format": "mio_records",
+        "status": "available",
+        "limits": {
+          "bytes": 268435456,
+          "rows": 20000,
+          "rowBytes": 2097152
+        },
+        "usage": {
+          "bytes": 3671474,
+          "rows": 11
+        },
+        "retained": {
+          "bytes": 3671474,
+          "rows": 11
+        },
+        "remaining": {
+          "bytes": 264763982,
+          "rows": 19989
+        },
+        "independentLimits": {
+          "editReceiptDataBytes": 65536,
+          "editReceiptTotalBytes": null,
+          "editReceiptTotalRows": null
+        },
+        "tables": [
+          {
+            "name": "mio_conversations",
+            "bytes": 120,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_runs",
+            "bytes": 932,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_entries",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_blobs",
+            "bytes": 90,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_steps",
+            "bytes": 1573095,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_requests",
+            "bytes": 2096877,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_changes",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_controls",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_control_states",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_imports",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_job_origins",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_edit_claims",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "row_only"
+          },
+          {
+            "name": "mio_edit_owners",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "row_only"
+          },
+          {
+            "name": "mio_edit_receipts",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": false,
+            "quotaGuard": "row_only"
+          },
+          {
+            "name": "mio_conversation_policies",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_conversation_policy_requests",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_events",
+            "bytes": 360,
+            "rows": 6,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_process_target_revisions",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "row_only"
+          }
+        ]
+      },
+      "physical": {
+        "samples": 2,
+        "peak": {
+          "databaseBytes": 7380992,
+          "journalBytes": 59408,
+          "pages": 1802,
+          "freePages": 512,
+          "pageBytes": 7380992,
+          "indexBytes": 774144
+        },
+        "indexSupport": "available",
+        "files": [
+          {
+            "schema": "main",
+            "name": "history.db"
+          },
+          {
+            "schema": "project",
+            "name": "project.mioon"
+          },
+          {
+            "schema": "cache",
+            "name": "cache.db"
+          }
+        ]
+      }
+    },
+    {
+      "state": "unknown",
+      "originalBodyBytes": 524288,
+      "manifestBytesPerRequest": 1572352,
+      "retainedRequestTableBytes": 2096878,
+      "decodedCheckpointBytes": 262144,
+      "storedCheckpointBytes": 1572866,
+      "wholeScenario": {
+        "bytes": 3671476,
+        "rows": 11
+      },
+      "increment": {
+        "bytes": 3670877,
+        "rows": 7
+      },
+      "after": {
+        "version": 2,
+        "scope": "project",
+        "projectId": "375fba1e-ed35-492f-95dd-4cab1e971b56",
+        "format": "mio_records",
+        "status": "available",
+        "limits": {
+          "bytes": 268435456,
+          "rows": 20000,
+          "rowBytes": 2097152
+        },
+        "usage": {
+          "bytes": 3671476,
+          "rows": 11
+        },
+        "retained": {
+          "bytes": 3671476,
+          "rows": 11
+        },
+        "remaining": {
+          "bytes": 264763980,
+          "rows": 19989
+        },
+        "independentLimits": {
+          "editReceiptDataBytes": 65536,
+          "editReceiptTotalBytes": null,
+          "editReceiptTotalRows": null
+        },
+        "tables": [
+          {
+            "name": "mio_conversations",
+            "bytes": 120,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_runs",
+            "bytes": 932,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_entries",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_blobs",
+            "bytes": 90,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_steps",
+            "bytes": 1573096,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_requests",
+            "bytes": 2096878,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_changes",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_controls",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_control_states",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_imports",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_job_origins",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_edit_claims",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "row_only"
+          },
+          {
+            "name": "mio_edit_owners",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "row_only"
+          },
+          {
+            "name": "mio_edit_receipts",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": false,
+            "quotaGuard": "row_only"
+          },
+          {
+            "name": "mio_conversation_policies",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_conversation_policy_requests",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_events",
+            "bytes": 360,
+            "rows": 6,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_process_target_revisions",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "row_only"
+          }
+        ]
+      },
+      "physical": {
+        "samples": 2,
+        "peak": {
+          "databaseBytes": 7380992,
+          "journalBytes": 59408,
+          "pages": 1802,
+          "freePages": 512,
+          "pageBytes": 7380992,
+          "indexBytes": 774144
+        },
+        "indexSupport": "available",
+        "files": [
+          {
+            "schema": "main",
+            "name": "history.db"
+          },
+          {
+            "schema": "project",
+            "name": "project.mioon"
+          },
+          {
+            "schema": "cache",
+            "name": "cache.db"
+          }
+        ]
+      }
+    },
+    {
+      "state": "upgraded",
+      "originalBodyBytes": 1048576,
+      "manifestBytesPerRequest": 1572352,
+      "retainedRequestTableBytes": 4193708,
+      "decodedCheckpointBytes": 0,
+      "storedCheckpointBytes": 0,
+      "wholeScenario": {
+        "bytes": 4195280,
+        "rows": 12
+      },
+      "increment": {
+        "bytes": 4194681,
+        "rows": 8
+      },
+      "after": {
+        "version": 2,
+        "scope": "project",
+        "projectId": "b42ebf74-bcaa-41fd-973d-f26eb1e8bbfb",
+        "format": "mio_records",
+        "status": "available",
+        "limits": {
+          "bytes": 268435456,
+          "rows": 20000,
+          "rowBytes": 2097152
+        },
+        "usage": {
+          "bytes": 4195280,
+          "rows": 12
+        },
+        "retained": {
+          "bytes": 4195280,
+          "rows": 12
+        },
+        "remaining": {
+          "bytes": 264240176,
+          "rows": 19988
+        },
+        "independentLimits": {
+          "editReceiptDataBytes": 65536,
+          "editReceiptTotalBytes": null,
+          "editReceiptTotalRows": null
+        },
+        "tables": [
+          {
+            "name": "mio_conversations",
+            "bytes": 120,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_runs",
+            "bytes": 329,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_entries",
+            "bytes": 528,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_blobs",
+            "bytes": 90,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_steps",
+            "bytes": 205,
+            "rows": 1,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_requests",
+            "bytes": 4193708,
+            "rows": 2,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_changes",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_controls",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_control_states",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_imports",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_job_origins",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_edit_claims",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "row_only"
+          },
+          {
+            "name": "mio_edit_owners",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "row_only"
+          },
+          {
+            "name": "mio_edit_receipts",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": false,
+            "quotaGuard": "row_only"
+          },
+          {
+            "name": "mio_conversation_policies",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_conversation_policy_requests",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_events",
+            "bytes": 300,
+            "rows": 5,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "execution"
+          },
+          {
+            "name": "mio_process_target_revisions",
+            "bytes": 0,
+            "rows": 0,
+            "countedBytes": true,
+            "countedRows": true,
+            "quotaGuard": "row_only"
+          }
+        ]
+      },
+      "physical": {
+        "samples": 2,
+        "peak": {
+          "databaseBytes": 5808128,
+          "journalBytes": 79928,
+          "pages": 1418,
+          "freePages": 0,
+          "pageBytes": 5808128,
+          "indexBytes": 774144
+        },
+        "indexSupport": "available",
+        "files": [
+          {
+            "schema": "main",
+            "name": "history.db"
+          },
+          {
+            "schema": "project",
+            "name": "project.mioon"
+          },
+          {
+            "schema": "cache",
+            "name": "cache.db"
+          }
+        ]
+      }
+    }
+  ],
+  "queue": {
+    "method": "Real MioRuntime: one held gateway plus eight concurrent same-project send calls.",
+    "attempted": 9,
+    "accepted": 1,
+    "refused": 8,
+    "refusalCodes": [
+      "AGENT_TASK_BUSY"
+    ],
+    "pendingRequests": 1
+  },
+  "artifacts": [
+    {
+      "path": "/private/tmp/r1c/stress30-delta0.json",
+      "bytes": 479190,
+      "sha256": "48e4b30061ee9810bbe593b6ab6da56f969dfb86382ec3fc7a40910705e819bf",
+      "commandExit": 0,
+      "command": [
+        "/Users/kouzen/.npm/_npx/538786c08bcb9442/node_modules/node/bin/node",
+        "/Users/kouzen/Documents/data/mioon-worktrees/howard-r1-mio-usage-quota/tests/helpers/mio-storage-report.ts",
+        "--output=/private/tmp/r1c/stress30-delta0.json"
+      ],
+      "sourceHashMapping": "sourceFilesSha256 plus maximumRetentionHelperSha256 for max-retention.json; final helper smoke uses finalHelperChange.finalSha256",
+      "embeddedSourceFilesSha256": {
+        "pnpm-lock.yaml": "429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b",
+        "tests/helpers/agent-task-context-report.ts": "00bd5cd7078a127a4c8f46699f4daa97f8816efef8f46aa636566e45daf15c20",
+        "tests/helpers/mio-storage-report.ts": "3a2bd56dc089aa16955be850b0efd6134e1f61fbc99276ae3d85e2c47487e789",
+        "tests/helpers/mio-storage-report-recovery.ts": "20d2fdeb9c032c66f7a2f94f02234bb7f438bbbecd2374940591116aece57f50",
+        "tests/helpers/mio-runtime-fixture.ts": "ce1e6eaec9355cb37dd477a165045d58f863b559337c134c955d58438b1b5dea",
+        "packages/business/src/agent/mio-records.ts": "47d006fe840178c9a9cdb13994025753be1f8befd0e2e64c894b5f6c6aea744c",
+        "packages/business/src/agent/mio-journal.ts": "6a623282c90837665d56b15045b82ac183d56a8e1bc139fb100ef2fda19cf778",
+        "packages/business/src/agent/mio-assembly.ts": "737ac43945373814f70d0576d411a3f56c29962a93b75b6492c17424bd0b91e6",
+        "packages/business/src/agent/mio-storage.ts": "f64af39fb60a32da0631676912541c84532357a4d68d82b8408dd542de9b541b",
+        "packages/business/src/agent/mio-run-usage.ts": "3bd349c225e792a62f287c52290b44d28bee4c27d52283ab6ae247d51a4357bd",
+        "packages/business/src/agent/mio-runtime.ts": "39514e57873da0ce910f292d3836e76e35307fd1fe1e10eb638872419714ca32",
+        "packages/business/src/agent/task-runtime-v2.ts": "6402d064c206fed67b78b75f19b904110d89f8aa686870abfd404f1f7f4487f4",
+        "packages/business/src/agent/task-gateway-v2.ts": "c42f99bac7b42eb30ef8bee1da2a30c5c482147147d420c772435b4581ca4efd",
+        "packages/business/src/agent/task-context-v2.ts": "8d119c505ea0578bb4db25dfc2752344415d4d6c369d5e2e8c7997e897a33d67",
+        "packages/business/src/project-file/schema/domains/mio.ts": "343f4295c64cbf3cb339c93176e9f47c9e7ed99847f1347faa4a1ac5f8df9dcf",
+        "packages/contracts/src/mio-storage.ts": "235d08e4de8e97e83b1f5b517229de27e6e030f7d9544a05c313e17e5ead3334"
+      }
+    },
+    {
+      "path": "/private/tmp/r1c/stress30-delta80.json",
+      "bytes": 60356,
+      "sha256": "f3270732950acf2d14d794a0f35ec9da0444547da471a3d02a9c40445831d760",
+      "commandExit": 0,
+      "command": [
+        "/Users/kouzen/.npm/_npx/538786c08bcb9442/node_modules/node/bin/node",
+        "/Users/kouzen/Documents/data/mioon-worktrees/howard-r1-mio-usage-quota/tests/helpers/mio-storage-report.ts",
+        "--protocol",
+        "responses",
+        "--rounds",
+        "1",
+        "--single-project",
+        "--delta-interval-ms",
+        "80",
+        "--tail-pause-ms",
+        "0",
+        "--output=/private/tmp/r1c/stress30-delta80.json"
+      ],
+      "sourceHashMapping": "sourceFilesSha256 plus maximumRetentionHelperSha256 for max-retention.json; final helper smoke uses finalHelperChange.finalSha256",
+      "embeddedSourceFilesSha256": {
+        "pnpm-lock.yaml": "429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b",
+        "tests/helpers/agent-task-context-report.ts": "00bd5cd7078a127a4c8f46699f4daa97f8816efef8f46aa636566e45daf15c20",
+        "tests/helpers/mio-storage-report.ts": "3a2bd56dc089aa16955be850b0efd6134e1f61fbc99276ae3d85e2c47487e789",
+        "tests/helpers/mio-storage-report-recovery.ts": "20d2fdeb9c032c66f7a2f94f02234bb7f438bbbecd2374940591116aece57f50",
+        "tests/helpers/mio-runtime-fixture.ts": "ce1e6eaec9355cb37dd477a165045d58f863b559337c134c955d58438b1b5dea",
+        "packages/business/src/agent/mio-records.ts": "47d006fe840178c9a9cdb13994025753be1f8befd0e2e64c894b5f6c6aea744c",
+        "packages/business/src/agent/mio-journal.ts": "6a623282c90837665d56b15045b82ac183d56a8e1bc139fb100ef2fda19cf778",
+        "packages/business/src/agent/mio-assembly.ts": "737ac43945373814f70d0576d411a3f56c29962a93b75b6492c17424bd0b91e6",
+        "packages/business/src/agent/mio-storage.ts": "f64af39fb60a32da0631676912541c84532357a4d68d82b8408dd542de9b541b",
+        "packages/business/src/agent/mio-run-usage.ts": "3bd349c225e792a62f287c52290b44d28bee4c27d52283ab6ae247d51a4357bd",
+        "packages/business/src/agent/mio-runtime.ts": "39514e57873da0ce910f292d3836e76e35307fd1fe1e10eb638872419714ca32",
+        "packages/business/src/agent/task-runtime-v2.ts": "6402d064c206fed67b78b75f19b904110d89f8aa686870abfd404f1f7f4487f4",
+        "packages/business/src/agent/task-gateway-v2.ts": "c42f99bac7b42eb30ef8bee1da2a30c5c482147147d420c772435b4581ca4efd",
+        "packages/business/src/agent/task-context-v2.ts": "8d119c505ea0578bb4db25dfc2752344415d4d6c369d5e2e8c7997e897a33d67",
+        "packages/business/src/project-file/schema/domains/mio.ts": "343f4295c64cbf3cb339c93176e9f47c9e7ed99847f1347faa4a1ac5f8df9dcf",
+        "packages/contracts/src/mio-storage.ts": "235d08e4de8e97e83b1f5b517229de27e6e030f7d9544a05c313e17e5ead3334"
+      }
+    },
+    {
+      "path": "/private/tmp/r1c/stress30-delta300.json",
+      "bytes": 78061,
+      "sha256": "4d0a8d6589a0de4921ca86625ee526927ebe419e95b5cd54192664448abfdff4",
+      "commandExit": 0,
+      "command": [
+        "/Users/kouzen/.npm/_npx/538786c08bcb9442/node_modules/node/bin/node",
+        "/Users/kouzen/Documents/data/mioon-worktrees/howard-r1-mio-usage-quota/tests/helpers/mio-storage-report.ts",
+        "--protocol",
+        "responses",
+        "--rounds",
+        "1",
+        "--single-project",
+        "--delta-interval-ms",
+        "300",
+        "--tail-pause-ms",
+        "0",
+        "--output=/private/tmp/r1c/stress30-delta300.json"
+      ],
+      "sourceHashMapping": "sourceFilesSha256 plus maximumRetentionHelperSha256 for max-retention.json; final helper smoke uses finalHelperChange.finalSha256",
+      "embeddedSourceFilesSha256": {
+        "pnpm-lock.yaml": "429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b",
+        "tests/helpers/agent-task-context-report.ts": "00bd5cd7078a127a4c8f46699f4daa97f8816efef8f46aa636566e45daf15c20",
+        "tests/helpers/mio-storage-report.ts": "3a2bd56dc089aa16955be850b0efd6134e1f61fbc99276ae3d85e2c47487e789",
+        "tests/helpers/mio-storage-report-recovery.ts": "20d2fdeb9c032c66f7a2f94f02234bb7f438bbbecd2374940591116aece57f50",
+        "tests/helpers/mio-runtime-fixture.ts": "ce1e6eaec9355cb37dd477a165045d58f863b559337c134c955d58438b1b5dea",
+        "packages/business/src/agent/mio-records.ts": "47d006fe840178c9a9cdb13994025753be1f8befd0e2e64c894b5f6c6aea744c",
+        "packages/business/src/agent/mio-journal.ts": "6a623282c90837665d56b15045b82ac183d56a8e1bc139fb100ef2fda19cf778",
+        "packages/business/src/agent/mio-assembly.ts": "737ac43945373814f70d0576d411a3f56c29962a93b75b6492c17424bd0b91e6",
+        "packages/business/src/agent/mio-storage.ts": "f64af39fb60a32da0631676912541c84532357a4d68d82b8408dd542de9b541b",
+        "packages/business/src/agent/mio-run-usage.ts": "3bd349c225e792a62f287c52290b44d28bee4c27d52283ab6ae247d51a4357bd",
+        "packages/business/src/agent/mio-runtime.ts": "39514e57873da0ce910f292d3836e76e35307fd1fe1e10eb638872419714ca32",
+        "packages/business/src/agent/task-runtime-v2.ts": "6402d064c206fed67b78b75f19b904110d89f8aa686870abfd404f1f7f4487f4",
+        "packages/business/src/agent/task-gateway-v2.ts": "c42f99bac7b42eb30ef8bee1da2a30c5c482147147d420c772435b4581ca4efd",
+        "packages/business/src/agent/task-context-v2.ts": "8d119c505ea0578bb4db25dfc2752344415d4d6c369d5e2e8c7997e897a33d67",
+        "packages/business/src/project-file/schema/domains/mio.ts": "343f4295c64cbf3cb339c93176e9f47c9e7ed99847f1347faa4a1ac5f8df9dcf",
+        "packages/contracts/src/mio-storage.ts": "235d08e4de8e97e83b1f5b517229de27e6e030f7d9544a05c313e17e5ead3334"
+      }
+    },
+    {
+      "path": "/private/tmp/r1c/stress30-delta0-tail300.json",
+      "bytes": 60275,
+      "sha256": "363900f958cf56de1f549b171b6f9f64951a8b3e828b5aff4826a47bc1872fc7",
+      "commandExit": 0,
+      "command": [
+        "/Users/kouzen/.npm/_npx/538786c08bcb9442/node_modules/node/bin/node",
+        "/Users/kouzen/Documents/data/mioon-worktrees/howard-r1-mio-usage-quota/tests/helpers/mio-storage-report.ts",
+        "--protocol",
+        "responses",
+        "--rounds",
+        "1",
+        "--single-project",
+        "--delta-interval-ms",
+        "0",
+        "--tail-pause-ms",
+        "300",
+        "--output=/private/tmp/r1c/stress30-delta0-tail300.json"
+      ],
+      "sourceHashMapping": "sourceFilesSha256 plus maximumRetentionHelperSha256 for max-retention.json; final helper smoke uses finalHelperChange.finalSha256",
+      "embeddedSourceFilesSha256": {
+        "pnpm-lock.yaml": "429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b",
+        "tests/helpers/agent-task-context-report.ts": "00bd5cd7078a127a4c8f46699f4daa97f8816efef8f46aa636566e45daf15c20",
+        "tests/helpers/mio-storage-report.ts": "3a2bd56dc089aa16955be850b0efd6134e1f61fbc99276ae3d85e2c47487e789",
+        "tests/helpers/mio-storage-report-recovery.ts": "20d2fdeb9c032c66f7a2f94f02234bb7f438bbbecd2374940591116aece57f50",
+        "tests/helpers/mio-runtime-fixture.ts": "ce1e6eaec9355cb37dd477a165045d58f863b559337c134c955d58438b1b5dea",
+        "packages/business/src/agent/mio-records.ts": "47d006fe840178c9a9cdb13994025753be1f8befd0e2e64c894b5f6c6aea744c",
+        "packages/business/src/agent/mio-journal.ts": "6a623282c90837665d56b15045b82ac183d56a8e1bc139fb100ef2fda19cf778",
+        "packages/business/src/agent/mio-assembly.ts": "737ac43945373814f70d0576d411a3f56c29962a93b75b6492c17424bd0b91e6",
+        "packages/business/src/agent/mio-storage.ts": "f64af39fb60a32da0631676912541c84532357a4d68d82b8408dd542de9b541b",
+        "packages/business/src/agent/mio-run-usage.ts": "3bd349c225e792a62f287c52290b44d28bee4c27d52283ab6ae247d51a4357bd",
+        "packages/business/src/agent/mio-runtime.ts": "39514e57873da0ce910f292d3836e76e35307fd1fe1e10eb638872419714ca32",
+        "packages/business/src/agent/task-runtime-v2.ts": "6402d064c206fed67b78b75f19b904110d89f8aa686870abfd404f1f7f4487f4",
+        "packages/business/src/agent/task-gateway-v2.ts": "c42f99bac7b42eb30ef8bee1da2a30c5c482147147d420c772435b4581ca4efd",
+        "packages/business/src/agent/task-context-v2.ts": "8d119c505ea0578bb4db25dfc2752344415d4d6c369d5e2e8c7997e897a33d67",
+        "packages/business/src/project-file/schema/domains/mio.ts": "343f4295c64cbf3cb339c93176e9f47c9e7ed99847f1347faa4a1ac5f8df9dcf",
+        "packages/contracts/src/mio-storage.ts": "235d08e4de8e97e83b1f5b517229de27e6e030f7d9544a05c313e17e5ead3334"
+      }
+    },
+    {
+      "path": "/private/tmp/r1c/recovery-final.json",
+      "bytes": 38197,
+      "sha256": "44ef0078f6898851bbd3de5628c407796d37b8b2570563a1934bdce9f7935df2",
+      "commandExit": 0,
+      "command": [
+        "node",
+        "tests/helpers/mio-storage-report-recovery.ts",
+        "--near-full",
+        "--output=/private/tmp/r1c/recovery-final.json"
+      ],
+      "sourceHashMapping": "sourceFilesSha256 plus maximumRetentionHelperSha256 for max-retention.json; final helper smoke uses finalHelperChange.finalSha256",
+      "embeddedSourceFilesSha256": null
+    },
+    {
+      "path": "/private/tmp/r1c/max-retention.json",
+      "bytes": 26993,
+      "sha256": "fbc2af9308873ade05961ea24cd122cb688aa69229071847c9b5d95caf38e1eb",
+      "commandExit": 0,
+      "command": [
+        "node",
+        "tests/helpers/mio-storage-report-max-retention.ts",
+        "--output=/private/tmp/r1c/max-retention.json"
+      ],
+      "sourceHashMapping": "sourceFilesSha256 plus maximumRetentionHelperSha256 for max-retention.json; final helper smoke uses finalHelperChange.finalSha256",
+      "embeddedSourceFilesSha256": {
+        "pnpm-lock.yaml": "429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b",
+        "tests/helpers/agent-task-context-report.ts": "00bd5cd7078a127a4c8f46699f4daa97f8816efef8f46aa636566e45daf15c20",
+        "tests/helpers/mio-storage-report.ts": "3a2bd56dc089aa16955be850b0efd6134e1f61fbc99276ae3d85e2c47487e789",
+        "tests/helpers/mio-storage-report-recovery.ts": "20d2fdeb9c032c66f7a2f94f02234bb7f438bbbecd2374940591116aece57f50",
+        "tests/helpers/mio-runtime-fixture.ts": "ce1e6eaec9355cb37dd477a165045d58f863b559337c134c955d58438b1b5dea",
+        "packages/business/src/agent/mio-records.ts": "47d006fe840178c9a9cdb13994025753be1f8befd0e2e64c894b5f6c6aea744c",
+        "packages/business/src/agent/mio-journal.ts": "6a623282c90837665d56b15045b82ac183d56a8e1bc139fb100ef2fda19cf778",
+        "packages/business/src/agent/mio-assembly.ts": "737ac43945373814f70d0576d411a3f56c29962a93b75b6492c17424bd0b91e6",
+        "packages/business/src/agent/mio-storage.ts": "f64af39fb60a32da0631676912541c84532357a4d68d82b8408dd542de9b541b",
+        "packages/business/src/agent/mio-run-usage.ts": "3bd349c225e792a62f287c52290b44d28bee4c27d52283ab6ae247d51a4357bd",
+        "packages/business/src/agent/mio-runtime.ts": "39514e57873da0ce910f292d3836e76e35307fd1fe1e10eb638872419714ca32",
+        "packages/business/src/agent/task-runtime-v2.ts": "6402d064c206fed67b78b75f19b904110d89f8aa686870abfd404f1f7f4487f4",
+        "packages/business/src/agent/task-gateway-v2.ts": "c42f99bac7b42eb30ef8bee1da2a30c5c482147147d420c772435b4581ca4efd",
+        "packages/business/src/agent/task-context-v2.ts": "8d119c505ea0578bb4db25dfc2752344415d4d6c369d5e2e8c7997e897a33d67",
+        "packages/business/src/project-file/schema/domains/mio.ts": "343f4295c64cbf3cb339c93176e9f47c9e7ed99847f1347faa4a1ac5f8df9dcf",
+        "packages/contracts/src/mio-storage.ts": "235d08e4de8e97e83b1f5b517229de27e6e030f7d9544a05c313e17e5ead3334"
+      }
+    },
+    {
+      "path": "/private/tmp/r1c/final-helper-cc-delta300.json",
+      "bytes": 78018,
+      "sha256": "3816cc5b486704be51fa72f276b025c4fb183879f4abdb3eba432db0773bbefb",
+      "commandExit": 0,
+      "command": [
+        "/Users/kouzen/.npm/_npx/538786c08bcb9442/node_modules/node/bin/node",
+        "/Users/kouzen/Documents/data/mioon-worktrees/howard-r1-mio-usage-quota/tests/helpers/mio-storage-report.ts",
+        "--protocol",
+        "chat_completions",
+        "--rounds",
+        "1",
+        "--single-project",
+        "--delta-interval-ms",
+        "300",
+        "--output=/private/tmp/r1c/final-helper-cc-delta300.json"
+      ],
+      "sourceHashMapping": "sourceFilesSha256 plus maximumRetentionHelperSha256 for max-retention.json; final helper smoke uses finalHelperChange.finalSha256",
+      "embeddedSourceFilesSha256": {
+        "pnpm-lock.yaml": "429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b",
+        "tests/helpers/agent-task-context-report.ts": "00bd5cd7078a127a4c8f46699f4daa97f8816efef8f46aa636566e45daf15c20",
+        "tests/helpers/mio-storage-report.ts": "e769f1440548857a64a1dbe12beeed6d0e53f90ce9cf1096391c79709a23eedc",
+        "tests/helpers/mio-storage-report-recovery.ts": "20d2fdeb9c032c66f7a2f94f02234bb7f438bbbecd2374940591116aece57f50",
+        "tests/helpers/mio-runtime-fixture.ts": "ce1e6eaec9355cb37dd477a165045d58f863b559337c134c955d58438b1b5dea",
+        "packages/business/src/agent/mio-records.ts": "47d006fe840178c9a9cdb13994025753be1f8befd0e2e64c894b5f6c6aea744c",
+        "packages/business/src/agent/mio-journal.ts": "6a623282c90837665d56b15045b82ac183d56a8e1bc139fb100ef2fda19cf778",
+        "packages/business/src/agent/mio-assembly.ts": "737ac43945373814f70d0576d411a3f56c29962a93b75b6492c17424bd0b91e6",
+        "packages/business/src/agent/mio-storage.ts": "f64af39fb60a32da0631676912541c84532357a4d68d82b8408dd542de9b541b",
+        "packages/business/src/agent/mio-run-usage.ts": "3bd349c225e792a62f287c52290b44d28bee4c27d52283ab6ae247d51a4357bd",
+        "packages/business/src/agent/mio-runtime.ts": "39514e57873da0ce910f292d3836e76e35307fd1fe1e10eb638872419714ca32",
+        "packages/business/src/agent/task-runtime-v2.ts": "6402d064c206fed67b78b75f19b904110d89f8aa686870abfd404f1f7f4487f4",
+        "packages/business/src/agent/task-gateway-v2.ts": "c42f99bac7b42eb30ef8bee1da2a30c5c482147147d420c772435b4581ca4efd",
+        "packages/business/src/agent/task-context-v2.ts": "8d119c505ea0578bb4db25dfc2752344415d4d6c369d5e2e8c7997e897a33d67",
+        "packages/business/src/project-file/schema/domains/mio.ts": "343f4295c64cbf3cb339c93176e9f47c9e7ed99847f1347faa4a1ac5f8df9dcf",
+        "packages/contracts/src/mio-storage.ts": "235d08e4de8e97e83b1f5b517229de27e6e030f7d9544a05c313e17e5ead3334"
+      }
+    },
+    {
+      "path": "/private/tmp/r1/stress30-baseline-44a34212.json",
+      "bytes": 86504,
+      "sha256": "39597edefd0fa6d041508d23d958c8daccddc1fa6c6c46cfd719cf409ee1f59c",
+      "commandExit": 0,
+      "baselineHead": "44a34212",
+      "command": [
+        "node",
+        "tests/helpers/agent-task-context-report.ts",
+        "--stress-30-steps",
+        "--official-presets",
+        "--delta-interval-ms",
+        "0",
+        "--output=/private/tmp/r1/stress30-baseline-44a34212.json"
+      ]
+    }
+  ],
+  "verification": {
+    "test": {
+      "command": "TMPDIR=/private/tmp/r1c/tmp TZ=UTC node --test --test-timeout=600000 tests/mio-storage-report.test.ts",
+      "exit": 0,
+      "passed": 6,
+      "log": "/private/tmp/r1c/final-notification-fix/mio-storage-report-test-final.log"
+    },
+    "typecheck": {
+      "command": "node scripts/tooling.ts typecheck",
+      "exit": 0,
+      "log": "/private/tmp/r1c/final-notification-fix/typecheck-stress-final.log"
+    }
+  },
+  "adjacentContractProvenance": {
+    "note": "Final adjacent usage contract and package subpaths, recorded separately; the pre/post guard covers the16 listed measured source files.",
+    "sha256": {
+      "packages/contracts/src/mio-run-usage.ts": "43c31af797fe52062ffe1f7a4d5107e8e04be5c55e34459709aaba17ad622029",
+      "packages/contracts/package.json": "9eb3a9e4bedf822296f275b31ad1c51afe6f5323bded28a27567461bede5f2f5"
+    }
+  },
+  "originalMatrixVersion": {
+    "label": "Original13 completed rounds before the zero-slack notification-deferral fix; raw files and recorded hashes are unchanged.",
+    "recordsSourceSha256": "47d006fe840178c9a9cdb13994025753be1f8befd0e2e64c894b5f6c6aea744c",
+    "completedRounds": 13
+  },
+  "finalProductionVerification": {
+    "label": "After notification deferral, verification was deliberately limited to final full CC300,6formaltests,typecheck,andfour exact-limit cases. No old matrix artifact is relabeled as final code.",
+    "recordsSourceBeforeSha256": "47d006fe840178c9a9cdb13994025753be1f8befd0e2e64c894b5f6c6aea744c",
+    "recordsSourceAfterSha256": "5d6566d8b1e31dce80f0bc891618bb3519171f87561c913fba3a902f873927ba",
+    "change": "Inside the same production savepoint, step completion clears partial first; touch/emit are deferred until current/superseded originalBody is cleared. Final revision/event count, DDL, usage summary and retained footprint remain unchanged.",
+    "finalGuardedSourceHashes": {
+      "pnpm-lock.yaml": "429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b",
+      "tests/helpers/agent-task-context-report.ts": "00bd5cd7078a127a4c8f46699f4daa97f8816efef8f46aa636566e45daf15c20",
+      "tests/helpers/mio-storage-report.ts": "e769f1440548857a64a1dbe12beeed6d0e53f90ce9cf1096391c79709a23eedc",
+      "tests/helpers/mio-storage-report-recovery.ts": "53980c894501299bbec536179354bffec2c67b0f842eb2b0fbbdc322c69b4088",
+      "tests/helpers/mio-runtime-fixture.ts": "ce1e6eaec9355cb37dd477a165045d58f863b559337c134c955d58438b1b5dea",
+      "packages/business/src/agent/mio-records.ts": "5d6566d8b1e31dce80f0bc891618bb3519171f87561c913fba3a902f873927ba",
+      "packages/business/src/agent/mio-journal.ts": "6a623282c90837665d56b15045b82ac183d56a8e1bc139fb100ef2fda19cf778",
+      "packages/business/src/agent/mio-assembly.ts": "737ac43945373814f70d0576d411a3f56c29962a93b75b6492c17424bd0b91e6",
+      "packages/business/src/agent/mio-storage.ts": "f64af39fb60a32da0631676912541c84532357a4d68d82b8408dd542de9b541b",
+      "packages/business/src/agent/mio-run-usage.ts": "3bd349c225e792a62f287c52290b44d28bee4c27d52283ab6ae247d51a4357bd",
+      "packages/business/src/agent/mio-runtime.ts": "39514e57873da0ce910f292d3836e76e35307fd1fe1e10eb638872419714ca32",
+      "packages/business/src/agent/task-runtime-v2.ts": "6402d064c206fed67b78b75f19b904110d89f8aa686870abfd404f1f7f4487f4",
+      "packages/business/src/agent/task-gateway-v2.ts": "c42f99bac7b42eb30ef8bee1da2a30c5c482147147d420c772435b4581ca4efd",
+      "packages/business/src/agent/task-context-v2.ts": "8d119c505ea0578bb4db25dfc2752344415d4d6c369d5e2e8c7997e897a33d67",
+      "packages/business/src/project-file/schema/domains/mio.ts": "343f4295c64cbf3cb339c93176e9f47c9e7ed99847f1347faa4a1ac5f8df9dcf",
+      "packages/contracts/src/mio-storage.ts": "235d08e4de8e97e83b1f5b517229de27e6e030f7d9544a05c313e17e5ead3334"
+    },
+    "sourceDifferencesFromOriginalMatrix": [
+      {
+        "path": "tests/helpers/mio-storage-report.ts",
+        "beforeSha256": "3a2bd56dc089aa16955be850b0efd6134e1f61fbc99276ae3d85e2c47487e789",
+        "afterSha256": "e769f1440548857a64a1dbe12beeed6d0e53f90ce9cf1096391c79709a23eedc"
+      },
+      {
+        "path": "tests/helpers/mio-storage-report-recovery.ts",
+        "beforeSha256": "20d2fdeb9c032c66f7a2f94f02234bb7f438bbbecd2374940591116aece57f50",
+        "afterSha256": "53980c894501299bbec536179354bffec2c67b0f842eb2b0fbbdc322c69b4088"
+      },
+      {
+        "path": "packages/business/src/agent/mio-records.ts",
+        "beforeSha256": "47d006fe840178c9a9cdb13994025753be1f8befd0e2e64c894b5f6c6aea744c",
+        "afterSha256": "5d6566d8b1e31dce80f0bc891618bb3519171f87561c913fba3a902f873927ba"
+      }
+    ],
+    "finalCumulativeMetrics": {
+      "retainedBytes": 1063915,
+      "retainedRows": 388,
+      "tables": [
+        {
+          "name": "mio_conversations",
+          "bytes": 120,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_runs",
+          "bytes": 940,
+          "rows": 1,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_entries",
+          "bytes": 778253,
+          "rows": 33,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_blobs",
+          "bytes": 21894,
+          "rows": 4,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_steps",
+          "bytes": 16500,
+          "rows": 30,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_requests",
+          "bytes": 227968,
+          "rows": 15,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_changes",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_controls",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_control_states",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_imports",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_job_origins",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_edit_claims",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_owners",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_edit_receipts",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": false,
+          "quotaGuard": "row_only"
+        },
+        {
+          "name": "mio_conversation_policies",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_conversation_policy_requests",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_events",
+          "bytes": 18240,
+          "rows": 304,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "execution"
+        },
+        {
+          "name": "mio_process_target_revisions",
+          "bytes": 0,
+          "rows": 0,
+          "countedBytes": true,
+          "countedRows": true,
+          "quotaGuard": "row_only"
+        }
+      ],
+      "networkRequestBodyBytes": 1432640,
+      "streaming": {
+        "appendCalls": 150,
+        "checkpointRewrittenColumnsBytes": 2614200
+      },
+      "afterReopen": {
+        "reconstructedRequests": 15,
+        "writes": 0
+      }
+    },
+    "comparison": {
+      "all18TableIncrementsEqual": true,
+      "all15RequestBodyByteCountsEqual": true,
+      "checkpointRewritesEqual": true,
+      "maximumBAndRUnchanged": true,
+      "rawHashComparisonFreshProject": [
+        {
+          "index": 1,
+          "beforeSha256": "e45964d976bc09691d6dcfe91fd4fbb9a011dd3e08195d1ac57171aa7697b793",
+          "afterSha256": "e45964d976bc09691d6dcfe91fd4fbb9a011dd3e08195d1ac57171aa7697b793",
+          "equal": true,
+          "bodyBytesBefore": 24646,
+          "bodyBytesAfter": 24646
+        },
+        {
+          "index": 2,
+          "beforeSha256": "dcedbaa37c2b92f1d02f52cbc0f48e63ae444bbf51e07baf6934edbecb6d057c",
+          "afterSha256": "076d3f18001ee509b111e71d995fcdba84cb72683f9c1d17940098a3401df390",
+          "equal": false,
+          "bodyBytesBefore": 88653,
+          "bodyBytesAfter": 88653
+        },
+        {
+          "index": 3,
+          "beforeSha256": "ac45d88f084292fd1382c76f5d1fd0a943e8bcdf84994e57bf7aa12626bfd51e",
+          "afterSha256": "bd19b43ea8775a4c716a8e406eb823d03b3ac4eee3d621aef5acaa8737b71569",
+          "equal": false,
+          "bodyBytesBefore": 136041,
+          "bodyBytesAfter": 136041
+        },
+        {
+          "index": 4,
+          "beforeSha256": "925acb05537b52a0d8c4d690a5cb7f217a8504f29f872aba64f207c265495fa3",
+          "afterSha256": "afebc6bb38870756e39ff36b7a2d61dc9b1f2f7d23e321e243927b027ec327a9",
+          "equal": false,
+          "bodyBytesBefore": 73379,
+          "bodyBytesAfter": 73379
+        },
+        {
+          "index": 5,
+          "beforeSha256": "d5403aeab36f7738b618a7510b83b5dd0f426a7c5b16fa3923685bf9f09e4116",
+          "afterSha256": "947a035f7dd6a9f4bb091b2744518fce58595c0f67cde64eb6df914afd6362c0",
+          "equal": false,
+          "bodyBytesBefore": 120767,
+          "bodyBytesAfter": 120767
+        },
+        {
+          "index": 6,
+          "beforeSha256": "e8a09048db2686e8a60ec7a63da92a9681ac7844f0214aee4dc2a25aa9045c0c",
+          "afterSha256": "c72045f842940236a4ee711400c108d9b2f65b38b4a606dd39a962c1f060109e",
+          "equal": false,
+          "bodyBytesBefore": 73993,
+          "bodyBytesAfter": 73993
+        },
+        {
+          "index": 7,
+          "beforeSha256": "fab20ce412ccd7029503abdfac1ac8d8415e14b2f79dccbeaa2544484482c1c0",
+          "afterSha256": "467433535e83eb2dde7c9a849bebde48d857155e644a2999827d6872c66dd436",
+          "equal": false,
+          "bodyBytesBefore": 121381,
+          "bodyBytesAfter": 121381
+        },
+        {
+          "index": 8,
+          "beforeSha256": "5fcdb229da43e793cfe6295b01cefede0006bcb744ecaeabbe9e873ac40a225d",
+          "afterSha256": "686721b0bc55afc0c274745ae91f1b9969cd2fae369668fb8753b8d4fc601370",
+          "equal": false,
+          "bodyBytesBefore": 74607,
+          "bodyBytesAfter": 74607
+        },
+        {
+          "index": 9,
+          "beforeSha256": "99fac65102584d47e5fdb54da117a817b3021dbb4d9bc301000505d1ded0228d",
+          "afterSha256": "0ba02d867a41d939df04dfb34b99bf927eefd4ee782286abdba9660390a6af98",
+          "equal": false,
+          "bodyBytesBefore": 121995,
+          "bodyBytesAfter": 121995
+        },
+        {
+          "index": 10,
+          "beforeSha256": "e8bdabbd90ea5d0b8893cb5a7bf4c22e4507fb0d576133a51e6971ff2ee6c354",
+          "afterSha256": "b61968b2b7bb3ea823331411c2d5f32742ec924b23b89dc5a3efe7aaec902a46",
+          "equal": false,
+          "bodyBytesBefore": 75221,
+          "bodyBytesAfter": 75221
+        },
+        {
+          "index": 11,
+          "beforeSha256": "8d6b62117bb151973e9038074b7a7c117726a2211b4bbfdfbcd4e0d2a9401a68",
+          "afterSha256": "561becf9b95e5a398bdf4812ba4ab5ef77c60c2dcbf420bd88a8198a1da3c84f",
+          "equal": false,
+          "bodyBytesBefore": 122609,
+          "bodyBytesAfter": 122609
+        },
+        {
+          "index": 12,
+          "beforeSha256": "a823a8b87c9f82021feecf95e8468b04c4b8477fc21b3ec40e66b44af5b97687",
+          "afterSha256": "8ac4199988969739b2e8f4812d21c30be195d77ca81897044a1541cc69cc254b",
+          "equal": false,
+          "bodyBytesBefore": 75836,
+          "bodyBytesAfter": 75836
+        },
+        {
+          "index": 13,
+          "beforeSha256": "185cec9f5020340e75de64bd88d3b718e033d1ddb0707d125d81705e4f596a50",
+          "afterSha256": "872da61d56597615721f476e72147e70b9bacd4aa901895f418033c1b0c4bd72",
+          "equal": false,
+          "bodyBytesBefore": 123224,
+          "bodyBytesAfter": 123224
+        },
+        {
+          "index": 14,
+          "beforeSha256": "73de0504c68a2debcb8558b08d87a1f5a895e714f31cab6a0ac93f4d0a3337ee",
+          "afterSha256": "774aba46fbc52e17ac25940cffe66967cb7176516499f80a3b06148712e1c93e",
+          "equal": false,
+          "bodyBytesBefore": 76450,
+          "bodyBytesAfter": 76450
+        },
+        {
+          "index": 15,
+          "beforeSha256": "a40519bbfb98b438f95b1ad0707b22b34ad02f9ffbee687517cc5bb48ba95a44",
+          "afterSha256": "f95258be4085cd519d40de5617462f85c5d7323dbb26b823af72723f125b4006",
+          "equal": false,
+          "bodyBytesBefore": 123838,
+          "bodyBytesAfter": 123838
+        }
+      ],
+      "freshProjectRawHashMatches": 1,
+      "rawHashComparisonSameProjectIdentity": [
+        {
+          "index": 1,
+          "beforeSha256": "e45964d976bc09691d6dcfe91fd4fbb9a011dd3e08195d1ac57171aa7697b793",
+          "afterSha256": "e45964d976bc09691d6dcfe91fd4fbb9a011dd3e08195d1ac57171aa7697b793",
+          "equal": true,
+          "bodyBytesBefore": 24646,
+          "bodyBytesAfter": 24646
+        },
+        {
+          "index": 2,
+          "beforeSha256": "dcedbaa37c2b92f1d02f52cbc0f48e63ae444bbf51e07baf6934edbecb6d057c",
+          "afterSha256": "dcedbaa37c2b92f1d02f52cbc0f48e63ae444bbf51e07baf6934edbecb6d057c",
+          "equal": true,
+          "bodyBytesBefore": 88653,
+          "bodyBytesAfter": 88653
+        },
+        {
+          "index": 3,
+          "beforeSha256": "ac45d88f084292fd1382c76f5d1fd0a943e8bcdf84994e57bf7aa12626bfd51e",
+          "afterSha256": "ac45d88f084292fd1382c76f5d1fd0a943e8bcdf84994e57bf7aa12626bfd51e",
+          "equal": true,
+          "bodyBytesBefore": 136041,
+          "bodyBytesAfter": 136041
+        },
+        {
+          "index": 4,
+          "beforeSha256": "925acb05537b52a0d8c4d690a5cb7f217a8504f29f872aba64f207c265495fa3",
+          "afterSha256": "5dfa80082c0ed44afbc99ba9a585d6f820adadf9b7a328aa6fffd47b436948b1",
+          "equal": false,
+          "bodyBytesBefore": 73379,
+          "bodyBytesAfter": 73379
+        },
+        {
+          "index": 5,
+          "beforeSha256": "d5403aeab36f7738b618a7510b83b5dd0f426a7c5b16fa3923685bf9f09e4116",
+          "afterSha256": "e8b54288cbd1cc28ba218ef1df7d68a24d862938cca2e4c0de1a8db6215ee65c",
+          "equal": false,
+          "bodyBytesBefore": 120767,
+          "bodyBytesAfter": 120767
+        },
+        {
+          "index": 6,
+          "beforeSha256": "e8a09048db2686e8a60ec7a63da92a9681ac7844f0214aee4dc2a25aa9045c0c",
+          "afterSha256": "705fffc1549c0bccd926e3912988033a852f96fb83e34b074ffe9ca6c0b0969f",
+          "equal": false,
+          "bodyBytesBefore": 73993,
+          "bodyBytesAfter": 73993
+        },
+        {
+          "index": 7,
+          "beforeSha256": "fab20ce412ccd7029503abdfac1ac8d8415e14b2f79dccbeaa2544484482c1c0",
+          "afterSha256": "630c24b5db6c7625bc3c4b20325409c746758fc11983549051c74775d91954f8",
+          "equal": false,
+          "bodyBytesBefore": 121381,
+          "bodyBytesAfter": 121381
+        },
+        {
+          "index": 8,
+          "beforeSha256": "5fcdb229da43e793cfe6295b01cefede0006bcb744ecaeabbe9e873ac40a225d",
+          "afterSha256": "e6755b49d8606594787298ecdcfad1b49eaf1da70ed77bc59e8592df18b521e9",
+          "equal": false,
+          "bodyBytesBefore": 74607,
+          "bodyBytesAfter": 74607
+        },
+        {
+          "index": 9,
+          "beforeSha256": "99fac65102584d47e5fdb54da117a817b3021dbb4d9bc301000505d1ded0228d",
+          "afterSha256": "2e3b8124a09c98f8c3a3d0a57f59948711fcbf8ff55acfefb065760857fed27d",
+          "equal": false,
+          "bodyBytesBefore": 121995,
+          "bodyBytesAfter": 121995
+        },
+        {
+          "index": 10,
+          "beforeSha256": "e8bdabbd90ea5d0b8893cb5a7bf4c22e4507fb0d576133a51e6971ff2ee6c354",
+          "afterSha256": "e0d98ae68ec09a421b4b0600b5dc990f4c56d7ae773a39fc68fa3084c8c0f439",
+          "equal": false,
+          "bodyBytesBefore": 75221,
+          "bodyBytesAfter": 75221
+        },
+        {
+          "index": 11,
+          "beforeSha256": "8d6b62117bb151973e9038074b7a7c117726a2211b4bbfdfbcd4e0d2a9401a68",
+          "afterSha256": "1d39351f90f0d24078f6eddc000dee8a4f0c98ae875ba5ce3442716043358e23",
+          "equal": false,
+          "bodyBytesBefore": 122609,
+          "bodyBytesAfter": 122609
+        },
+        {
+          "index": 12,
+          "beforeSha256": "a823a8b87c9f82021feecf95e8468b04c4b8477fc21b3ec40e66b44af5b97687",
+          "afterSha256": "2d927fa1e38d6bc58e4a348fa2f07184f6a488ad4ada7b2d6a7fba60fdc9b502",
+          "equal": false,
+          "bodyBytesBefore": 75836,
+          "bodyBytesAfter": 75836
+        },
+        {
+          "index": 13,
+          "beforeSha256": "185cec9f5020340e75de64bd88d3b718e033d1ddb0707d125d81705e4f596a50",
+          "afterSha256": "2ec8fc1d2ec4815554ebbca743b0e36a5a6bce5f931f43ecd720a96dc75b408e",
+          "equal": false,
+          "bodyBytesBefore": 123224,
+          "bodyBytesAfter": 123224
+        },
+        {
+          "index": 14,
+          "beforeSha256": "73de0504c68a2debcb8558b08d87a1f5a895e714f31cab6a0ac93f4d0a3337ee",
+          "afterSha256": "6b8e5f6228048552d40a08acfbaf51ae17a3badc9b424dd509bfc9bed86a79d2",
+          "equal": false,
+          "bodyBytesBefore": 76450,
+          "bodyBytesAfter": 76450
+        },
+        {
+          "index": 15,
+          "beforeSha256": "a40519bbfb98b438f95b1ad0707b22b34ad02f9ffbee687517cc5bb48ba95a44",
+          "afterSha256": "51dfe7b1b38855a0f9302471a16b250225b7c52de27b154e5292a83f22d091f9",
+          "equal": false,
+          "bodyBytesBefore": 123838,
+          "bodyBytesAfter": 123838
+        }
+      ],
+      "sameProjectIdentityRawHashMatches": 3,
+      "explanation": "Independent fixtures generate project/step identities and execution outputs. Fresh-project raw hashes match1/15; preserving projectId matches3/15. Compaction may embed modelStepId/stepId and other identity-dependent data. Cross-run raw-hash equality is not a compatibility criterion here, and these differences are not attributed to notification order. No body was rewritten, normalized or reserialized. Each final run independently rebuilds all15 exact gateway bytes/SHA after close/reopen with0writes; deterministic99-vector guards are reported separately by the root."
+    },
+    "exactLimitBefore": [
+      {
+        "slack": 0,
+        "output": "text",
+        "usageBefore": {
+          "bytes": 268435456,
+          "rows": 137
+        },
+        "usageAfter": {
+          "bytes": 268435456,
+          "rows": 137
+        },
+        "error": "AGENT_TASK_STORAGE_LIMIT",
+        "failedSQL": [
+          {
+            "sql": "INSERT INTO mio_events(runId,sequence,createdAt) SELECT ?,coalesce(max(sequence),0)+1,? FROM mio_events WHERE runId=?",
+            "error": "AGENT_TASK_STORAGE_LIMIT",
+            "atFailureUsage": {
+              "bytes": 268435449,
+              "rows": 137
+            }
+          }
+        ],
+        "originalBodyCleared": false
+      },
+      {
+        "slack": 0,
+        "output": "tool_only",
+        "usageBefore": {
+          "bytes": 268435456,
+          "rows": 137
+        },
+        "usageAfter": {
+          "bytes": 268435456,
+          "rows": 137
+        },
+        "error": "AGENT_TASK_STORAGE_LIMIT",
+        "failedSQL": [
+          {
+            "sql": "INSERT INTO mio_events(runId,sequence,createdAt) SELECT ?,coalesce(max(sequence),0)+1,? FROM mio_events WHERE runId=?",
+            "error": "AGENT_TASK_STORAGE_LIMIT",
+            "atFailureUsage": {
+              "bytes": 268435449,
+              "rows": 137
+            }
+          }
+        ],
+        "originalBodyCleared": false
+      },
+      {
+        "slack": 1,
+        "output": "text",
+        "usageBefore": {
+          "bytes": 268435455,
+          "rows": 137
+        },
+        "usageAfter": {
+          "bytes": 268435455,
+          "rows": 137
+        },
+        "error": "AGENT_TASK_STORAGE_LIMIT",
+        "failedSQL": [
+          {
+            "sql": "INSERT INTO mio_events(runId,sequence,createdAt) SELECT ?,coalesce(max(sequence),0)+1,? FROM mio_events WHERE runId=?",
+            "error": "AGENT_TASK_STORAGE_LIMIT",
+            "atFailureUsage": {
+              "bytes": 268435448,
+              "rows": 137
+            }
+          }
+        ],
+        "originalBodyCleared": false
+      },
+      {
+        "slack": 1,
+        "output": "tool_only",
+        "usageBefore": {
+          "bytes": 268435455,
+          "rows": 137
+        },
+        "usageAfter": {
+          "bytes": 268435455,
+          "rows": 137
+        },
+        "error": "AGENT_TASK_STORAGE_LIMIT",
+        "failedSQL": [
+          {
+            "sql": "INSERT INTO mio_events(runId,sequence,createdAt) SELECT ?,coalesce(max(sequence),0)+1,? FROM mio_events WHERE runId=?",
+            "error": "AGENT_TASK_STORAGE_LIMIT",
+            "atFailureUsage": {
+              "bytes": 268435448,
+              "rows": 137
+            }
+          }
+        ],
+        "originalBodyCleared": false
+      }
+    ],
+    "exactLimitAfter": [
+      {
+        "slack": 0,
+        "output": "text",
+        "usageBefore": {
+          "bytes": 268435456,
+          "rows": 137
+        },
+        "usageAfter": {
+          "bytes": 268042668,
+          "rows": 140
+        },
+        "outcome": {
+          "errorCode": null,
+          "state": "completed",
+          "originalBodyCleared": true,
+          "partialText": null,
+          "netBytes": -392788
+        }
+      },
+      {
+        "slack": 0,
+        "output": "tool_only",
+        "usageBefore": {
+          "bytes": 268435456,
+          "rows": 137
+        },
+        "usageAfter": {
+          "bytes": 267911721,
+          "rows": 140
+        },
+        "outcome": {
+          "errorCode": null,
+          "state": "completed",
+          "originalBodyCleared": true,
+          "partialText": null,
+          "netBytes": -523735
+        }
+      },
+      {
+        "slack": 1,
+        "output": "text",
+        "usageBefore": {
+          "bytes": 268435455,
+          "rows": 137
+        },
+        "usageAfter": {
+          "bytes": 268042667,
+          "rows": 140
+        },
+        "outcome": {
+          "errorCode": null,
+          "state": "completed",
+          "originalBodyCleared": true,
+          "partialText": null,
+          "netBytes": -392788
+        }
+      },
+      {
+        "slack": 1,
+        "output": "tool_only",
+        "usageBefore": {
+          "bytes": 268435455,
+          "rows": 137
+        },
+        "usageAfter": {
+          "bytes": 267911720,
+          "rows": 140
+        },
+        "outcome": {
+          "errorCode": null,
+          "state": "completed",
+          "originalBodyCleared": true,
+          "partialText": null,
+          "netBytes": -523735
+        }
+      }
+    ],
+    "newArtifacts": [
+      {
+        "label": "nearfull-zero-slack-before.json",
+        "path": "/private/tmp/r1c/nearfull-zero-slack-before.json",
+        "sha256": "3594766bc92dc5c17b61a2825b987c06e7aa3f1a2b4358950cb03f2ba026788a",
+        "bytes": 49622,
+        "commandExit": 0,
+        "provenance": {
+          "sourceHashes": {
+            "pnpm-lock.yaml": "429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b",
+            "tests/helpers/agent-task-context-report.ts": "00bd5cd7078a127a4c8f46699f4daa97f8816efef8f46aa636566e45daf15c20",
+            "tests/helpers/mio-storage-report.ts": "e769f1440548857a64a1dbe12beeed6d0e53f90ce9cf1096391c79709a23eedc",
+            "tests/helpers/mio-storage-report-recovery.ts": "20d2fdeb9c032c66f7a2f94f02234bb7f438bbbecd2374940591116aece57f50",
+            "tests/helpers/mio-runtime-fixture.ts": "ce1e6eaec9355cb37dd477a165045d58f863b559337c134c955d58438b1b5dea",
+            "packages/business/src/agent/mio-records.ts": "47d006fe840178c9a9cdb13994025753be1f8befd0e2e64c894b5f6c6aea744c",
+            "packages/business/src/agent/mio-journal.ts": "6a623282c90837665d56b15045b82ac183d56a8e1bc139fb100ef2fda19cf778",
+            "packages/business/src/agent/mio-assembly.ts": "737ac43945373814f70d0576d411a3f56c29962a93b75b6492c17424bd0b91e6",
+            "packages/business/src/agent/mio-storage.ts": "f64af39fb60a32da0631676912541c84532357a4d68d82b8408dd542de9b541b",
+            "packages/business/src/agent/mio-run-usage.ts": "3bd349c225e792a62f287c52290b44d28bee4c27d52283ab6ae247d51a4357bd",
+            "packages/business/src/agent/mio-runtime.ts": "39514e57873da0ce910f292d3836e76e35307fd1fe1e10eb638872419714ca32",
+            "packages/business/src/agent/task-runtime-v2.ts": "6402d064c206fed67b78b75f19b904110d89f8aa686870abfd404f1f7f4487f4",
+            "packages/business/src/agent/task-gateway-v2.ts": "c42f99bac7b42eb30ef8bee1da2a30c5c482147147d420c772435b4581ca4efd",
+            "packages/business/src/agent/task-context-v2.ts": "8d119c505ea0578bb4db25dfc2752344415d4d6c369d5e2e8c7997e897a33d67",
+            "packages/business/src/project-file/schema/domains/mio.ts": "343f4295c64cbf3cb339c93176e9f47c9e7ed99847f1347faa4a1ac5f8df9dcf",
+            "packages/contracts/src/mio-storage.ts": "235d08e4de8e97e83b1f5b517229de27e6e030f7d9544a05c313e17e5ead3334"
+          },
+          "privateProbeSha256": "7dea7beff3382f68cdbe6a8ff42be4e126fff11a84c561a0b3f772a755a80539",
+          "command": [
+            "node",
+            "/private/tmp/r1c/nearfull-zero-slack.ts"
+          ],
+          "exit": 0,
+          "artifactSha256": "3594766bc92dc5c17b61a2825b987c06e7aa3f1a2b4358950cb03f2ba026788a",
+          "sourceHashesStable": true,
+          "artifactPath": "/private/tmp/r1c/nearfull-zero-slack-before.json"
+        }
+      },
+      {
+        "label": "nearfull-formal-slack-after.json",
+        "path": "/private/tmp/r1c/final-notification-fix/nearfull-formal-slack-after.json",
+        "sha256": "0a443b604ee32e2ec1677db7a2ab54d86f4eb87876cfcdbf7d2a699e5bea018f",
+        "bytes": 46486,
+        "commandExit": 0,
+        "provenance": {
+          "sourcesBefore": {
+            "pnpm-lock.yaml": "429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b",
+            "tests/helpers/agent-task-context-report.ts": "00bd5cd7078a127a4c8f46699f4daa97f8816efef8f46aa636566e45daf15c20",
+            "tests/helpers/mio-storage-report.ts": "e769f1440548857a64a1dbe12beeed6d0e53f90ce9cf1096391c79709a23eedc",
+            "tests/helpers/mio-storage-report-recovery.ts": "53980c894501299bbec536179354bffec2c67b0f842eb2b0fbbdc322c69b4088",
+            "tests/helpers/mio-runtime-fixture.ts": "ce1e6eaec9355cb37dd477a165045d58f863b559337c134c955d58438b1b5dea",
+            "packages/business/src/agent/mio-records.ts": "5d6566d8b1e31dce80f0bc891618bb3519171f87561c913fba3a902f873927ba",
+            "packages/business/src/agent/mio-journal.ts": "6a623282c90837665d56b15045b82ac183d56a8e1bc139fb100ef2fda19cf778",
+            "packages/business/src/agent/mio-assembly.ts": "737ac43945373814f70d0576d411a3f56c29962a93b75b6492c17424bd0b91e6",
+            "packages/business/src/agent/mio-storage.ts": "f64af39fb60a32da0631676912541c84532357a4d68d82b8408dd542de9b541b",
+            "packages/business/src/agent/mio-run-usage.ts": "3bd349c225e792a62f287c52290b44d28bee4c27d52283ab6ae247d51a4357bd",
+            "packages/business/src/agent/mio-runtime.ts": "39514e57873da0ce910f292d3836e76e35307fd1fe1e10eb638872419714ca32",
+            "packages/business/src/agent/task-runtime-v2.ts": "6402d064c206fed67b78b75f19b904110d89f8aa686870abfd404f1f7f4487f4",
+            "packages/business/src/agent/task-gateway-v2.ts": "c42f99bac7b42eb30ef8bee1da2a30c5c482147147d420c772435b4581ca4efd",
+            "packages/business/src/agent/task-context-v2.ts": "8d119c505ea0578bb4db25dfc2752344415d4d6c369d5e2e8c7997e897a33d67",
+            "packages/business/src/project-file/schema/domains/mio.ts": "343f4295c64cbf3cb339c93176e9f47c9e7ed99847f1347faa4a1ac5f8df9dcf",
+            "packages/contracts/src/mio-storage.ts": "235d08e4de8e97e83b1f5b517229de27e6e030f7d9544a05c313e17e5ead3334"
+          },
+          "sourcesAfter": {
+            "pnpm-lock.yaml": "429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b",
+            "tests/helpers/agent-task-context-report.ts": "00bd5cd7078a127a4c8f46699f4daa97f8816efef8f46aa636566e45daf15c20",
+            "tests/helpers/mio-storage-report.ts": "e769f1440548857a64a1dbe12beeed6d0e53f90ce9cf1096391c79709a23eedc",
+            "tests/helpers/mio-storage-report-recovery.ts": "53980c894501299bbec536179354bffec2c67b0f842eb2b0fbbdc322c69b4088",
+            "tests/helpers/mio-runtime-fixture.ts": "ce1e6eaec9355cb37dd477a165045d58f863b559337c134c955d58438b1b5dea",
+            "packages/business/src/agent/mio-records.ts": "5d6566d8b1e31dce80f0bc891618bb3519171f87561c913fba3a902f873927ba",
+            "packages/business/src/agent/mio-journal.ts": "6a623282c90837665d56b15045b82ac183d56a8e1bc139fb100ef2fda19cf778",
+            "packages/business/src/agent/mio-assembly.ts": "737ac43945373814f70d0576d411a3f56c29962a93b75b6492c17424bd0b91e6",
+            "packages/business/src/agent/mio-storage.ts": "f64af39fb60a32da0631676912541c84532357a4d68d82b8408dd542de9b541b",
+            "packages/business/src/agent/mio-run-usage.ts": "3bd349c225e792a62f287c52290b44d28bee4c27d52283ab6ae247d51a4357bd",
+            "packages/business/src/agent/mio-runtime.ts": "39514e57873da0ce910f292d3836e76e35307fd1fe1e10eb638872419714ca32",
+            "packages/business/src/agent/task-runtime-v2.ts": "6402d064c206fed67b78b75f19b904110d89f8aa686870abfd404f1f7f4487f4",
+            "packages/business/src/agent/task-gateway-v2.ts": "c42f99bac7b42eb30ef8bee1da2a30c5c482147147d420c772435b4581ca4efd",
+            "packages/business/src/agent/task-context-v2.ts": "8d119c505ea0578bb4db25dfc2752344415d4d6c369d5e2e8c7997e897a33d67",
+            "packages/business/src/project-file/schema/domains/mio.ts": "343f4295c64cbf3cb339c93176e9f47c9e7ed99847f1347faa4a1ac5f8df9dcf",
+            "packages/contracts/src/mio-storage.ts": "235d08e4de8e97e83b1f5b517229de27e6e030f7d9544a05c313e17e5ead3334"
+          },
+          "probeSha256": "baaf8a81164f458704b34652b0b832d2ddb412af0696946857a53b2df499661d",
+          "command": [
+            "/Users/kouzen/.npm/_npx/538786c08bcb9442/node_modules/node/bin/node",
+            "/private/tmp/r1c/final-notification-fix/nearfull-formal-slack-after.ts"
+          ]
+        }
+      },
+      {
+        "label": "final-production-cc300.json",
+        "path": "/private/tmp/r1c/final-notification-fix/final-helper-cc-delta300.json",
+        "sha256": "170cbf22dcf8548b2148f808fd2b4cab70f1a065f65a515e06f0089320c1ca00",
+        "bytes": 78041,
+        "commandExit": 0,
+        "provenance": {
+          "gitHead": "80a10890e3f5a0485f2dcdb69e31dfad44d4600b",
+          "gitDiffSha256": "44bb7ec80db4c4142958c5ddf9cd03eb2a6a017da58a97d82a92b29ba342fe9d",
+          "nodeVersion": "v24.21.0",
+          "command": [
+            "/Users/kouzen/.npm/_npx/538786c08bcb9442/node_modules/node/bin/node",
+            "/Users/kouzen/Documents/data/mioon-worktrees/howard-r1-mio-usage-quota/tests/helpers/mio-storage-report.ts",
+            "--protocol",
+            "chat_completions",
+            "--rounds",
+            "1",
+            "--single-project",
+            "--delta-interval-ms",
+            "300",
+            "--output=/private/tmp/r1c/final-notification-fix/final-helper-cc-delta300.json"
+          ],
+          "sourcesBefore": {
+            "pnpm-lock.yaml": "429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b",
+            "tests/helpers/agent-task-context-report.ts": "00bd5cd7078a127a4c8f46699f4daa97f8816efef8f46aa636566e45daf15c20",
+            "tests/helpers/mio-storage-report.ts": "e769f1440548857a64a1dbe12beeed6d0e53f90ce9cf1096391c79709a23eedc",
+            "tests/helpers/mio-storage-report-recovery.ts": "53980c894501299bbec536179354bffec2c67b0f842eb2b0fbbdc322c69b4088",
+            "tests/helpers/mio-runtime-fixture.ts": "ce1e6eaec9355cb37dd477a165045d58f863b559337c134c955d58438b1b5dea",
+            "packages/business/src/agent/mio-records.ts": "5d6566d8b1e31dce80f0bc891618bb3519171f87561c913fba3a902f873927ba",
+            "packages/business/src/agent/mio-journal.ts": "6a623282c90837665d56b15045b82ac183d56a8e1bc139fb100ef2fda19cf778",
+            "packages/business/src/agent/mio-assembly.ts": "737ac43945373814f70d0576d411a3f56c29962a93b75b6492c17424bd0b91e6",
+            "packages/business/src/agent/mio-storage.ts": "f64af39fb60a32da0631676912541c84532357a4d68d82b8408dd542de9b541b",
+            "packages/business/src/agent/mio-run-usage.ts": "3bd349c225e792a62f287c52290b44d28bee4c27d52283ab6ae247d51a4357bd",
+            "packages/business/src/agent/mio-runtime.ts": "39514e57873da0ce910f292d3836e76e35307fd1fe1e10eb638872419714ca32",
+            "packages/business/src/agent/task-runtime-v2.ts": "6402d064c206fed67b78b75f19b904110d89f8aa686870abfd404f1f7f4487f4",
+            "packages/business/src/agent/task-gateway-v2.ts": "c42f99bac7b42eb30ef8bee1da2a30c5c482147147d420c772435b4581ca4efd",
+            "packages/business/src/agent/task-context-v2.ts": "8d119c505ea0578bb4db25dfc2752344415d4d6c369d5e2e8c7997e897a33d67",
+            "packages/business/src/project-file/schema/domains/mio.ts": "343f4295c64cbf3cb339c93176e9f47c9e7ed99847f1347faa4a1ac5f8df9dcf",
+            "packages/contracts/src/mio-storage.ts": "235d08e4de8e97e83b1f5b517229de27e6e030f7d9544a05c313e17e5ead3334"
+          },
+          "sourcesAfter": {
+            "pnpm-lock.yaml": "429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b",
+            "tests/helpers/agent-task-context-report.ts": "00bd5cd7078a127a4c8f46699f4daa97f8816efef8f46aa636566e45daf15c20",
+            "tests/helpers/mio-storage-report.ts": "e769f1440548857a64a1dbe12beeed6d0e53f90ce9cf1096391c79709a23eedc",
+            "tests/helpers/mio-storage-report-recovery.ts": "53980c894501299bbec536179354bffec2c67b0f842eb2b0fbbdc322c69b4088",
+            "tests/helpers/mio-runtime-fixture.ts": "ce1e6eaec9355cb37dd477a165045d58f863b559337c134c955d58438b1b5dea",
+            "packages/business/src/agent/mio-records.ts": "5d6566d8b1e31dce80f0bc891618bb3519171f87561c913fba3a902f873927ba",
+            "packages/business/src/agent/mio-journal.ts": "6a623282c90837665d56b15045b82ac183d56a8e1bc139fb100ef2fda19cf778",
+            "packages/business/src/agent/mio-assembly.ts": "737ac43945373814f70d0576d411a3f56c29962a93b75b6492c17424bd0b91e6",
+            "packages/business/src/agent/mio-storage.ts": "f64af39fb60a32da0631676912541c84532357a4d68d82b8408dd542de9b541b",
+            "packages/business/src/agent/mio-run-usage.ts": "3bd349c225e792a62f287c52290b44d28bee4c27d52283ab6ae247d51a4357bd",
+            "packages/business/src/agent/mio-runtime.ts": "39514e57873da0ce910f292d3836e76e35307fd1fe1e10eb638872419714ca32",
+            "packages/business/src/agent/task-runtime-v2.ts": "6402d064c206fed67b78b75f19b904110d89f8aa686870abfd404f1f7f4487f4",
+            "packages/business/src/agent/task-gateway-v2.ts": "c42f99bac7b42eb30ef8bee1da2a30c5c482147147d420c772435b4581ca4efd",
+            "packages/business/src/agent/task-context-v2.ts": "8d119c505ea0578bb4db25dfc2752344415d4d6c369d5e2e8c7997e897a33d67",
+            "packages/business/src/project-file/schema/domains/mio.ts": "343f4295c64cbf3cb339c93176e9f47c9e7ed99847f1347faa4a1ac5f8df9dcf",
+            "packages/contracts/src/mio-storage.ts": "235d08e4de8e97e83b1f5b517229de27e6e030f7d9544a05c313e17e5ead3334"
+          }
+        }
+      },
+      {
+        "label": "fixed-identity-final-production-cc300.json",
+        "path": "/private/tmp/r1c/final-notification-fix/fixed-identity-cc300.json",
+        "sha256": "70d5ea69658e7e2eed7674320b3659d4401b0901f03f376dba7e27fe37dc3fbb",
+        "bytes": 77994,
+        "commandExit": 0,
+        "provenance": {
+          "method": "Fresh temporary K1 project created with the prior CC300 projectId before the unchanged fixture opens it. Gateway bodies are never rewritten, normalized or reordered.",
+          "projectId": "8ffd607f-9d61-443e-8fe7-5f3a3dc743a5",
+          "privateHelperSha256": "b4f3e5e5c549ab22455ebdd7cf7c830aa0877ff4129e1e4f9b40f96d84e263c3",
+          "originalHelperSha256": "e769f1440548857a64a1dbe12beeed6d0e53f90ce9cf1096391c79709a23eedc",
+          "beforeRecordsSha256": "5d6566d8b1e31dce80f0bc891618bb3519171f87561c913fba3a902f873927ba",
+          "command": [
+            "node",
+            "/private/tmp/r1c/final-notification-fix/fixed-identity-cc300.ts",
+            "--protocol",
+            "chat_completions",
+            "--rounds",
+            "1",
+            "--single-project",
+            "--delta-interval-ms",
+            "300",
+            "--output=/private/tmp/r1c/final-notification-fix/fixed-identity-cc300.json"
+          ]
+        }
+      }
+    ],
+    "abortedSyntheticReruns": {
+      "at": "2026-11-02T08:13:34.492306+00:00",
+      "signal": "SIGTERM",
+      "pids": [
+        79364,
+        79410,
+        84218
+      ],
+      "reason": "Root narrowed final verification to CC300 plus6tests/typecheck/four exact boundaries. These disposable synthetic reruns are not measurement results or test failures. Original13-round artifacts remain unchanged.",
+      "sessions": [
+        "69595",
+        "75195"
+      ]
+    },
+    "verification": {
+      "test": {
+        "command": "TMPDIR=/private/tmp/r1c/tmp TZ=UTC node --test --test-timeout=600000 tests/mio-storage-report.test.ts",
+        "exit": 0,
+        "passed": 6,
+        "log": "/private/tmp/r1c/final-notification-fix/mio-storage-report-test-final.log"
+      },
+      "typecheck": {
+        "command": "node scripts/tooling.ts typecheck",
+        "exit": 0,
+        "log": "/private/tmp/r1c/final-notification-fix/typecheck-stress-final.log"
+      }
+    }
+  }
+}

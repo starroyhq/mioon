@@ -1,6 +1,6 @@
 # Mio 本机记录
 
-Mio 的新记录层位于每个项目的本机 `history.db`，与项目内容文件通过同一 SQLite 连接工作。R1-A 提供结构、仓库、修订号路由和内核升级，R1-B 提供 entries 投影、冻结请求的重建和每宿主 runtime 构造器。用量接口及规范文件分别由 R1-C、R2 完成。旧工作区入口继续使用原 journal；项目宿主通过业务层构造器选择新记录层。
+Mio 的新记录层位于每个项目的本机 `history.db`，与项目内容文件通过同一 SQLite 连接工作。R1-A 提供结构、仓库、修订号路由和内核升级，R1-B 提供 entries 投影、冻结请求的重建和每宿主 runtime 构造器，R1-C 提供每轮用量、项目存储清单及配额实测。规范文件由 R2 单独实施。旧工作区入口继续使用原 journal；项目宿主通过业务层构造器选择新记录层。
 
 ## 发布前的开发数据重置
 
@@ -24,7 +24,7 @@ Mio 的新记录层位于每个项目的本机 `history.db`，与项目内容文
 - `mio_events` 仅通知某一轮有变化，不复制正文或模型请求。
 - `mio_process_target_revisions` 保存四类过程实体的修订号。
 
-仓库写入必须在调用方的项目事务内进行，使项目变化和 Mio 证据一起提交；读取不写库。内容引用、归属、哈希和状态转换都在仓库和数据库约束中验证。开发阶段暂用每项目 256 MiB / 20000 行的执行记录保护，最终配额由 R1-C 在改后 stress30 测量后确定；本 PR 不宣称已达到 100 轮目标。
+仓库写入必须在调用方的项目事务内进行，使项目变化和 Mio 证据一起提交；读取不写库。内容引用、归属、哈希和状态转换都在仓库和数据库约束中验证。开发阶段仍用每项目 256 MiB / 20000 行的执行记录保护；[改后 stress30 测量与配额候选](verification/mio-harness/R1-C-STORAGE.md) 已分列字节、行和异常余量，最终数字由协调人选择。现有 20000 行不能承诺 100 个同等完整轮次。
 
 ## 过程修订不再修改项目文件
 
@@ -53,3 +53,21 @@ R1 的 PR 可以先取得 CI 和审查，但须等待 S0 P4 合入后，合进�
 `mio-runtime.ts` 的 `createMioRuntime` 接受真实内核 `ProjectStore`、设置与授权端口、工具、网关和全局 policy 的结构型端口，复用现有执行引擎。每次构造拥有独立的 executor、取消和关闭状态，不引用 server 类型，不打开第二条数据库连接。`createMioRuntimePort` 再接收调用方提供的 HTTP/SSE 适配器，返回 `handle`、`isBusy`、`interrupt`、`drain`、`dispose` 五方法；中断同时关闭流和 executor，排空等待两者结束。
 
 宿主先 interrupt，再 drain，最后 dispose 并关闭自己持有的 store；runtime 不替宿主关闭连接。S0 最终 composition、项目租约与 HTTP/SSE 接线仍由 S0 收尾。R1-A 与 R1-B 须在 S0 P4 后接连合入，不能单独部署只含新表而仍使用旧 journal 的中间状态。
+
+## 每轮用量：规范来源与只读子资源
+
+规范 model_output entry 保存服务方被实际报告的四字段用量。请求身份决定唯一贡献，重放不重复累加；失败、unknown 和仍在进行的派发进入覆盖分母，明确未发送的 intent 不进入。`mio_runs.usageSummary` 是同完成/失败事务更新的可重算投影，GET 始终按规范记录读取，不通过读操作补写投影。
+
+`mio-run-usage.ts` 的严格 v1 DTO 只公开 runId、revision、派发/结果数量、逐字段 knownTotals、覆盖率/溢出和 cacheReadRate。全未知的字段为 null，明确报告零才是 0；input 包含缓存分项，不把 cache 再相加。只有 input/cache-read 完整且 input>0、read<=input 时返回命中率。无效/溢出计数不阻断任务完成，也不伪装成零。
+
+读取地址是 `GET /api/projects/<projectId>/agent/tasks/v2/<runId>/usage`，client 使用 `usage({projectId,runId})`。S0 P4 前复用 K2 的项目地址映射与现有 handler，旧地址不增加 usage 入口。它不计步、不写库、不调用模型，不把原请求、provider raw usage 或其他项目记录带入响应；原有 snapshot/events/控制回执继续保持私密边界。不新增界面或 CLI 命令。
+
+## 每项目清单与归档边界
+
+`mio-storage.ts` 的严格 v2 契约用内核登记的连接与 history_state 确认 projectId，枚举全部18表。SQL UTF-8 文本列的计量和执行配额字节式一致；唯一 blob 只计一次，失败/unknown 原件、partial、对话 policy 和回执均有真实占用。`retained.rows` 披露被执行行配额豁免的编辑回执，`usage.rows` 则按现有行配额式计算。全局 policy 属于应用库，不计回项目。
+
+doctor 只有在明确请求该项目时返回新项目清单；client 校验版本、项目身份、闭合表名及计量等式。旧工作区诊断仍为原 v1 profile。字节计量不是 SQLite 页、索引、journal 或网络字节，四种测量分列在实测报告中。
+
+claims、owners、edit receipts 和过程修订沿用现有写入豁免；回执受单条 payload 64 KiB 和单行保护，没有独立累计总量上限，新契约明确披露 null。它们仍占真实逻辑字节，不能因为执行配额已满就丢弃手工回执或删除旧原件。
+
+完整响应归档在原事务内先释放成功原件/partial，再写通知、output 与最终指针，因此近满时可按净占用完成。步骤完成通知也必须晚于原件释放，避免 partial 为空、字节配额恰好用满时被一条中间通知挡住。若归档任意位置出错或在清原件后、写输出前强杀，原件、状态、partial、entry 和用量投影一起回滚。SQL 限额和完成证据约束没有移除，开发配额常量也没有改变。

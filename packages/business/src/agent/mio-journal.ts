@@ -14,6 +14,7 @@ import {readMioTargetRevision, readMioTargetRevisions} from './mio-target-revisi
 import {parseTaskArguments, taskResponseLocale, taskToolExplanation} from './task-gateway-v2.ts';
 import type {TaskModelOutput} from './task-gateway-v2.ts';
 import {createMioAssembly} from './mio-assembly.ts';
+import {updateMioRunUsageSummary} from './mio-run-usage.ts';
 
 type ModelInput = Omit<AgentTaskStepInput, 'kind'>;
 export interface MioJournalAssembly {
@@ -394,7 +395,9 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
       else if (request.state === 'intent' && status === 'failed') db.prepare("UPDATE mio_requests SET state='failed',completedAt=? WHERE id=?").run(at, request.id);
     }
     db.prepare('UPDATE mio_steps SET status=?,tier=?,data=?,resultEntryId=?,updatedAt=? WHERE id=?').run(status, patch.tier ?? saved.tier, encode(meta), resultEntryId, at, stepId);
-    touch(runId, at); notify(runId, at); return step(stepId);
+    touch(runId, at); notify(runId, at);
+    if (saved.kind === 'model' && status !== saved.status) updateMioRunUsageSummary(store, runId);
+    return step(stepId);
   }); }
   function markDispatch(runId: string, stepId: string): AgentTaskStep { return transact(() => {
     const saved = records.step(stepId); if (saved.runId !== runId) fail('AGENT_TASK_NOT_FOUND');
@@ -404,6 +407,7 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
       if (request.state === 'intent') records.markDispatched(request.id, date());
       else if (request.state === 'dispatch_started' && saved.status === 'intent' && object(saved.data) && object(saved.data.data) && saved.data.data.dispatchPrevented === true) {
         db.prepare("UPDATE mio_steps SET status='dispatch_started',updatedAt=? WHERE id=?").run(date(), stepId); touch(runId); notify(runId);
+        updateMioRunUsageSummary(store, runId);
       } else fail('AGENT_TASK_STATE_CONFLICT');
       return step(stepId);
     }
@@ -415,7 +419,9 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
     const meta = object(saved.data) ? {...saved.data} : {}; meta.data = {...(object(meta.data) ? meta.data : {}), dispatchPrevented: true};
     // The beforeSubmit guard proved this attempt did not send. Historical
     // dispatch evidence remains immutable and cannot authorize reassembly.
-    db.prepare('UPDATE mio_steps SET status=?,data=?,updatedAt=? WHERE id=?').run(next, encode(meta), date(), stepId); touch(runId); notify(runId); return step(stepId);
+    db.prepare('UPDATE mio_steps SET status=?,data=?,updatedAt=? WHERE id=?').run(next, encode(meta), date(), stepId); touch(runId); notify(runId);
+    if (saved.kind === 'model') updateMioRunUsageSummary(store, runId);
+    return step(stepId);
   }); }
   function appendChangesInside(runId: string, stepId: string, changes: AgentTaskChangeInput[]): AgentTaskChange[] {
     inside(); const value = records.step(stepId); if (value.runId !== runId) fail('AGENT_TASK_NOT_FOUND');
