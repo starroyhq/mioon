@@ -64,7 +64,7 @@ test('transport failure keeps legacy keyless mutations keyless and keyed generat
   for (const [operation, args] of transportCases) {
     let calls = 0;
     const client = createClient({env, fetchImpl: (async () => {calls++; throw Error('Synthetic connection loss');}) as unknown as typeof fetch});
-    await assert.rejects(client.rpc(operation, args), (error: unknown) => {
+    await assert.rejects(client.rpc(operation, args, {projectId}), (error: unknown) => {
       const failure = failureOf(error);
       assert.equal(failure.code, 'BACKEND_UNAVAILABLE');
       assert.equal(failure.details?.operation, operation);

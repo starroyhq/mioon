@@ -13,6 +13,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildSync, transformSync } from 'esbuild';
 import type {MenuHelpControl} from '../apps/web/src/desktop-menu-client.ts';
+import {mediaUrl} from '../apps/web/src/api.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const sourceFile = join(root, 'apps/web/src/ProjectHome.tsx');
@@ -104,6 +105,7 @@ function harness(patch:Record<string,unknown> = {}) {
     if (name === '@mioon/ui/components/dialog') return { Dialog: ({children}:{children?:import("react").ReactNode}) => actual.React.createElement(actual.React.Fragment, null, children) };
     if (name === '@mioon/ui/components/workbench-controls') return { WorkbenchButton: actual.WorkbenchButton, WorkbenchDialogContent: ({children}:{children?:import("react").ReactNode}) => actual.React.createElement('section', {role:'dialog'}, children) };
     if (name.endsWith('.css')) return {};
+    if (name === './api.ts') return { mediaUrl };
     const key = ({ '@mioon/ui/components/button': 'Button', '@mioon/ui/components/input': 'Input', '@mioon/ui/components/textarea': 'Textarea', '@mioon/ui/components/label':'Label'} as Record<string,string>)[name];
     if (key) return { [key]: actual[key] };
     assert.fail(`Unexpected presentation dependency: ${name}`);

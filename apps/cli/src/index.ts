@@ -2,7 +2,7 @@
 import {open} from 'node:fs/promises';
 import type {FileHandle} from 'node:fs/promises';
 import path from 'node:path';
-import {createClient, workspaceOriginOptions, discoverSchema, schemas, ClientError, errorEnvelope, errorExitCode, successEnvelope, VERSION, EXIT_CODES} from '@mioon/client';
+import {createClient, workspaceOriginOptions, discoverSchema, schemas, splitProjectAddress, ClientError, errorEnvelope, errorExitCode, successEnvelope, VERSION, EXIT_CODES} from '@mioon/client';
 import {downloadAsset} from '@mioon/client/download';
 import {exportProjectPackage,importProjectPackage,duplicateProject} from '@mioon/client/project-package';
 import {importLutFile, LutImportFileError} from './lut-import-file.ts';
@@ -115,7 +115,8 @@ try {
       data = await client[operation]({signal: abort.signal, ...invocation});
     } else if (watch) {
       let previous: string | undefined;
-      data = await client.watch(operation.split('.')[0] as 'job' | 'export', input, {timeoutMs: numberOption(options, 'timeout-ms', 60_000), intervalMs: numberOption(options, 'interval-ms', 500), signal: abort.signal, onProgress: (progress: unknown) => {
+      const kind = operation.split('.')[0] as 'job' | 'export', watched = splitProjectAddress(`${kind}.get`, input);
+      data = await client.watch(kind, watched.input as CliInput, {...(watched.projectId === undefined ? {} : {projectId: watched.projectId}), timeoutMs: numberOption(options, 'timeout-ms', 60_000), intervalMs: numberOption(options, 'interval-ms', 500), signal: abort.signal, onProgress: (progress: unknown) => {
         const current = JSON.stringify(progress);
         if (previous !== current) { process.stderr.write(current + '\n'); previous = current; }
       }});
@@ -126,12 +127,15 @@ try {
       else data = await duplicateProject(input, {signal: abort.signal});
     } else if (download) {
       let assetId = input.assetId;
+      // Media is addressed by its project, like the entity-addressed reads.
+      const projectId = input.projectId;
       if (operation === 'export.download') {
-        const exported = await client.rpc('export.get', input, {signal: abort.signal, ...invocation}) as {id?: unknown; status?: unknown; assetId?: unknown};
-        if (exported.status !== 'succeeded' || !exported.assetId) throw new ClientError('EXPORT_NOT_READY', 'Export is not ready. Use export watch before downloading.', {details: {exportId: exported.id, status: exported.status}});
-        assetId = exported.assetId;
-      } else if (Object.keys(input).some(key => key !== 'assetId')) fail('asset download only accepts assetId.');
-      data = await downloadAsset({assetId}, output as string, {signal: abort.signal, timeoutMs: numberOption(options, 'timeout-ms', 60_000), maxBytes: numberOption(options, 'max-bytes', 512 * 1024 * 1024)});
+        const exported = splitProjectAddress('export.get', input);
+        const record = await client.rpc('export.get', exported.input, {signal: abort.signal, ...invocation, ...(exported.projectId === undefined ? {} : {projectId: exported.projectId})}) as {id?: unknown; status?: unknown; assetId?: unknown};
+        if (record.status !== 'succeeded' || !record.assetId) throw new ClientError('EXPORT_NOT_READY', 'Export is not ready. Use export watch before downloading.', {details: {exportId: record.id, status: record.status}});
+        assetId = record.assetId;
+      } else if (Object.keys(input).some(key => key !== 'assetId' && key !== 'projectId')) fail('asset download only accepts projectId and assetId.');
+      data = await downloadAsset({projectId, assetId}, output as string, {signal: abort.signal, timeoutMs: numberOption(options, 'timeout-ms', 60_000), maxBytes: numberOption(options, 'max-bytes', 512 * 1024 * 1024)});
     } else {
       if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown command. Run --help or schema for available operations.');
       if (file !== undefined) {
@@ -143,7 +147,8 @@ try {
           }
         } else input = await importFile(input, file);
       }
-      data = await client.rpc(operation, input, {signal: abort.signal, ...invocation});
+      const addressed = splitProjectAddress(operation, input);
+      data = await client.rpc(operation, addressed.input, {signal: abort.signal, ...invocation, ...(addressed.projectId === undefined ? {} : {projectId: addressed.projectId})});
     }
     }
   }

@@ -3,8 +3,9 @@ import path from 'node:path';
 import {z} from 'zod';
 import {resolveConnection} from './connection.ts';
 import {ClientError} from './index.ts';
+import {projectMediaPath} from '../../contracts/src/project-file.ts';
 
-const assetInput = z.object({assetId: z.string().uuid()}).strict();
+const assetInput = z.object({projectId: z.string().uuid(), assetId: z.string().uuid()}).strict();
 export interface DownloadAssetOptions {
   env?: NodeJS.ProcessEnv;
   fetchImpl?: typeof fetch;
@@ -14,9 +15,13 @@ export interface DownloadAssetOptions {
 }
 export interface DownloadedAsset {assetId: string; output: string; bytes: number; mimeType: string}
 const errorCode = (error: unknown): unknown => (error as {code?: unknown} | null | undefined)?.code;
-/** Save only a UUID managed-media resource. A local destination never reaches HTTP. */
+/** Save only a UUID managed-media resource, addressed by its project. A local
+ * destination never reaches HTTP. */
 export async function downloadAsset(input: unknown, output: unknown, {env = process.env, fetchImpl = fetch, signal, timeoutMs = 60_000, maxBytes = 512 * 1024 * 1024}: DownloadAssetOptions = {}): Promise<DownloadedAsset> {
-  if (!assetInput.safeParse(input).success || typeof output !== 'string' || !output) throw new ClientError('VALIDATION_ERROR', 'Download requires a UUID assetId and an explicit output file.');
+  let resource = '';
+  try { if (assetInput.safeParse(input).success) resource = projectMediaPath((input as {projectId: string}).projectId, (input as {assetId: string}).assetId); }
+  catch { resource = ''; }
+  if (!resource || typeof output !== 'string' || !output) throw new ClientError('VALIDATION_ERROR', 'Download requires lowercase UUID projectId and assetId and an explicit output file.');
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 86_400_000 || !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 2 * 1024 * 1024 * 1024) throw new ClientError('VALIDATION_ERROR', 'Invalid download timeout or size bound.');
   if (signal?.aborted) throw new ClientError('INTERRUPTED', 'Download stopped locally. No remote job was cancelled.');
   const assetId = (input as {assetId: string}).assetId;
@@ -28,7 +33,7 @@ export async function downloadAsset(input: unknown, output: unknown, {env = proc
     // Exclusive creation rejects existing files and symlinks. Never overwrite user data.
     try { handle = await open(destination, 'wx', 0o600); }
     catch (error) { throw new ClientError(errorCode(error) === 'EEXIST' ? 'OUTPUT_EXISTS' : 'FILE_WRITE_ERROR', errorCode(error) === 'EEXIST' ? 'Output already exists. Choose a new filename; no file was overwritten.' : 'Cannot create the requested output file.', {exitCode: errorCode(error) === 'EEXIST' ? 3 : 2}); }
-    const response = await fetchImpl(`${base}/media/${assetId}`, {headers: {authorization: `Bearer ${token}`}, redirect: 'error', signal: combined});
+    const response = await fetchImpl(`${base}${resource}`, {headers: {authorization: `Bearer ${token}`}, redirect: 'error', signal: combined});
     if (!response.ok) {
       await response.body?.cancel();
       throw new ClientError(response.status === 401 ? 'UNAUTHORIZED' : response.status === 404 ? 'NOT_FOUND' : 'BACKEND_UNAVAILABLE', 'Managed media could not be downloaded.', {status: response.status});

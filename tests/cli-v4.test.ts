@@ -196,29 +196,31 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
   await t.test('stable request IDs replay exactly across CLI and MCP and never duplicate provider submits', async () => {
     const requestId = randomUUID();
     const input = {shotId:shot.id, expectedRevision:shot.revision, providerId:'mock'};
+    // CLI and MCP give the owning project beside the shared input; HTTP bodies stay the contract input.
+    const addressed = {projectId:project.id, ...input};
     const before = proxy.requests.length;
-    failed(await cli(['generation','submit','--input',JSON.stringify(input)], env), 2, 'VALIDATION_ERROR');
+    failed(await cli(['generation','submit','--input',JSON.stringify(addressed)], env), 2, 'VALIDATION_ERROR');
     assert.equal(proxy.requests.length, before, 'the CLI must never invent an idempotency key');
-    const first = await command('generation.submit', input, ['--request-id',requestId]);
+    const first = await command('generation.submit', addressed, ['--request-id',requestId]);
     assert.equal(first.requestId, requestId);
-    assert.equal((await command('generation.submit', input, ['--request-id',requestId])).id, first.id);
-    assert.equal((await callMcp('generation_submit', {...input, requestId})).id, first.id);
-    finished = await command('job.watch', {jobId:first.id}, ['--timeout-ms','45000','--interval-ms','40']);
+    assert.equal((await command('generation.submit', addressed, ['--request-id',requestId])).id, first.id);
+    assert.equal((await callMcp('generation_submit', {...addressed, requestId})).id, first.id);
+    finished = await command('job.watch', {projectId:project.id, jobId:first.id}, ['--timeout-ms','45000','--interval-ms','40']);
     assert.equal(finished.status, 'succeeded');
     assert.equal(inspect(project.id, db => db.prepare('SELECT COUNT(*) AS n FROM mock_provider_submissions WHERE request_id=?').get(requestId)!.n), 1);
     const payloads = proxy.requests.filter(item => item.operation === 'generation.submit' && item.input.requestId === requestId);
     assert.equal(payloads.length, 3);
     for (const body of payloads) assert.deepEqual(body.input, {...input, requestId});
-    const changed = await cli(['generation','submit','--input',JSON.stringify({...input, parameters:{seed:123}}),'--request-id',requestId], env);
+    const changed = await cli(['generation','submit','--input',JSON.stringify({...addressed, parameters:{seed:123}}),'--request-id',requestId], env);
     failed(changed, 3, 'IDEMPOTENCY_CONFLICT');
   });
 
   await t.test('version selection, timeline editing and export watch use actual durable media', async () => {
-    const versions = await command('version.list', {shotId:shot.id});
+    const versions = await command('version.list', {projectId:project.id, shotId:shot.id});
     assert.equal(versions.length, 1); assert.equal(versions[0].id, finished.versionId);
     const state = await command('project.get', {projectId:project.id});
     const current = state.shots.find(item => item.id === shot.id);
-    const selected = await command('version.select', {shotId:shot.id, versionId:versions[0].id, expectedRevision:current!.revision});
+    const selected = await command('version.select', {projectId:project.id, shotId:shot.id, versionId:versions[0].id, expectedRevision:current!.revision});
     assert.equal(selected.selectedVersionId, versions[0].id);
     const timeline = await command('timeline.get', {projectId:project.id});
     const seeded = await command('timeline.seed', {projectId:project.id, expectedRevision:timeline.revision}, ['--request-id',randomUUID()]);
@@ -228,25 +230,25 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
     const exportRequest = {projectId:project.id, expectedRevision:short.revision, purpose:'export', requestId:randomUUID()};
     const queued = await command('timeline.render', exportRequest);
     assert.equal((await callMcp('timeline_render', exportRequest)).id, queued.id);
-    const rendered = await command('export.watch', {exportId:queued.id}, ['--timeout-ms','45000','--interval-ms','50']);
+    const rendered = await command('export.watch', {projectId:project.id, exportId:queued.id}, ['--timeout-ms','45000','--interval-ms','50']);
     assert.equal(rendered.status, 'succeeded');
-    assert.equal((await callMcp('export_get', {exportId:queued.id})).assetId, rendered.assetId);
+    assert.equal((await callMcp('export_get', {projectId:project.id, exportId:queued.id})).assetId, rendered.assetId);
     const media = await fetch(service.url + rendered.url, {headers:{authorization:`Bearer ${token}`}});
     assert.equal(media.status, 200); assert.equal(media.headers.get('content-type'), 'video/mp4');
     const file = path.join(root, 'verified-export.mp4'); await writeFile(file, Buffer.from(await media.arrayBuffer()));
     const probe = JSON.parse((await exec(process.env.MIOON_FFPROBE_PATH || 'ffprobe', ['-v','error','-show_streams','-show_format','-of','json',file])).stdout);
     const downloadPath = path.join(root, 'cli-export.mp4');
-    succeeded(await cli(['export','download','--input',JSON.stringify({exportId:queued.id}),'--output',downloadPath], env));
+    succeeded(await cli(['export','download','--input',JSON.stringify({projectId:project.id, exportId:queued.id}),'--output',downloadPath], env));
     const exportedBytes = await readFile(file);
     assert.deepEqual(await readFile(downloadPath), exportedBytes, 'CLI downloads the exact managed export bytes');
-    const existing = await cli(['export','download','--input',JSON.stringify({exportId:queued.id}),'--output',downloadPath], env);
+    const existing = await cli(['export','download','--input',JSON.stringify({projectId:project.id, exportId:queued.id}),'--output',downloadPath], env);
     failed(existing, 3, 'OUTPUT_EXISTS');
     assert.deepEqual(await readFile(downloadPath), exportedBytes, 'existing output is never overwritten');
     const assetDownload = path.join(root, 'cli-asset.mp4');
-    succeeded(await cli(['asset','download','--input',JSON.stringify({assetId:rendered.assetId}),'--output',assetDownload], env));
+    succeeded(await cli(['asset','download','--input',JSON.stringify({projectId:project.id, assetId:rendered.assetId}),'--output',assetDownload], env));
     assert.deepEqual(await readFile(assetDownload), exportedBytes);
     const limitedPath = path.join(root, 'too-small-download.mp4');
-    failed(await cli(['asset','download','--input',JSON.stringify({assetId:rendered.assetId}),'--output',limitedPath,'--max-bytes','1'], env), 2, 'FILE_TOO_LARGE');
+    failed(await cli(['asset','download','--input',JSON.stringify({projectId:project.id, assetId:rendered.assetId}),'--output',limitedPath,'--max-bytes','1'], env), 2, 'FILE_TOO_LARGE');
     await assert.rejects(readFile(limitedPath), {code:'ENOENT'}, 'size-limit errors remove any partial local file');
     const video = probe.streams.find((item: { codec_type: string; }) => item.codec_type === 'video');
     assert.equal(video.width, 1080); assert.equal(video.height, 1920);
@@ -255,7 +257,7 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
 
   await t.test('HTTP response loss is recoverable by exact replay without a second provider submit', async () => {
     const state = await command('project.get', {projectId:project.id});
-    const input = {shotId:shot.id, expectedRevision:state.shots[0].revision, providerId:'mock', requestId:randomUUID(), parameters:{scenario:'delay',delayMs:60_000}};
+    const input = {projectId:project.id, shotId:shot.id, expectedRevision:state.shots[0].revision, providerId:'mock', requestId:randomUUID(), parameters:{scenario:'delay',delayMs:60_000}};
     proxy.drop(input.requestId);
     const lost = failed(await cli(['generation','submit','--input',JSON.stringify(input)], env), 4);
     assert.equal(lost.details!.requestId, input.requestId);
@@ -270,8 +272,8 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
     assert.deepEqual(payloads[0], payloads[1]);
 
     const watchStart = proxy.requests.length;
-    failed(await cli(['job','watch','--input',JSON.stringify({jobId:replay.id}),'--timeout-ms','140','--interval-ms','20'], env), 5);
-    const observer = startCli(['job','watch','--input',JSON.stringify({jobId:replay.id}),'--timeout-ms','60000','--interval-ms','40'], env);
+    failed(await cli(['job','watch','--input',JSON.stringify({projectId:project.id, jobId:replay.id}),'--timeout-ms','140','--interval-ms','20'], env), 5);
+    const observer = startCli(['job','watch','--input',JSON.stringify({projectId:project.id, jobId:replay.id}),'--timeout-ms','60000','--interval-ms','40'], env);
     t.after(() => {if (observer.child.exitCode === null && !observer.child.signalCode) observer.child.kill('SIGTERM');});
     const beforePoll = proxy.requests.filter(item => item.operation === 'job.get').length;
     await until(() => proxy.requests.filter(item => item.operation === 'job.get').length, (n: number) => n > beforePoll, 'watch never reached HTTP');
@@ -285,9 +287,9 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
   await t.test('watch reports terminal failure and strict revision conflicts without mutating existing work', async () => {
     const state = await command('project.get', {projectId:project.id});
     const current = state.shots[0];
-    const failedJob = await command('generation.submit', {shotId:shot.id, expectedRevision:current!.revision, providerId:'mock', parameters:{scenario:'terminal_failure', delayMs:0}}, ['--request-id',randomUUID()]);
-    failed(await cli(['job','watch','--input',JSON.stringify({jobId:failedJob.id}),'--timeout-ms','15000','--interval-ms','40'], env), 6);
-    const stale = await cli(['shot','update','--input',JSON.stringify({shotId:shot.id, expectedRevision:1, patch:{title:'must not overwrite'}})], env);
+    const failedJob = await command('generation.submit', {projectId:project.id, shotId:shot.id, expectedRevision:current!.revision, providerId:'mock', parameters:{scenario:'terminal_failure', delayMs:0}}, ['--request-id',randomUUID()]);
+    failed(await cli(['job','watch','--input',JSON.stringify({projectId:project.id, jobId:failedJob.id}),'--timeout-ms','15000','--interval-ms','40'], env), 6);
+    const stale = await cli(['shot','update','--input',JSON.stringify({projectId:project.id, shotId:shot.id, expectedRevision:1, patch:{title:'must not overwrite'}})], env);
     const conflict = failed(stale, 3, 'REVISION_CONFLICT');
     assert.equal(conflict.details!.currentRevision, current.revision);
     assert.equal((await rpc(service, 'project.get', {projectId:project.id})).shots[0].title, current.title);

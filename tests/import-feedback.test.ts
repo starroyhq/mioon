@@ -14,6 +14,8 @@ import * as contracts from '@mioon/contracts';
 import * as mixLoudnessRpc from '../apps/web/src/timeline-mix-loudness-rpc.ts';
 import * as mixLoudnessContracts from '@mioon/contracts/timeline-mix-loudness';
 import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
+import * as projectFile from '../packages/contracts/src/project-file.ts';
+import * as projectAddressing from '../packages/contracts/src/project-addressing.ts';
 import * as restoredWorkspace from '../apps/web/src/restored-workspace.ts';
 import * as projectOpening from '../apps/web/src/project-open-state.ts';
 import { rpc as realRpc } from '../apps/web/src/api.ts';
@@ -54,6 +56,8 @@ function actualApiDependency(name: string) {
   if (name === '@mioon/contracts/timeline-clip-loudness') return clipLoudnessContracts;
   if (name === './timeline-mix-loudness-rpc.ts') return mixLoudnessRpc;
   if (name === '@mioon/contracts/timeline-mix-loudness') return mixLoudnessContracts;
+  if (name === '../../../packages/contracts/src/project-file.ts') return projectFile;
+  if (name === '../../../packages/contracts/src/project-addressing.ts') return projectAddressing;
   throw new Error(`Unexpected API dependency ${name}`);
 }
 function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = false, workspace = { restored: false }, projectReady = true }: ImportOptions = {}) {
@@ -436,7 +440,7 @@ test('home presentation never starts project polling or performs the loaded-proj
 
 test('actual API harness loads the exact current real dependencies and rejects any unlisted module', () => {
   const names = [...new Set([...apiSource.matchAll(/^import .+ from ['"]([^'"]+)['"];$/gm)].map(match => match[1]))];
-  const expected = [['./timeline-clip-loudness-rpc.ts', clipLoudnessRpc], ['@mioon/contracts/timeline-clip-loudness', clipLoudnessContracts], ['./timeline-loudness-apply-rpc.ts', loudnessApplyRpc], ['@mioon/contracts', contracts], ['./workspace-origin.ts', workspaceOrigin], ['./timeline-mix-loudness-rpc.ts', mixLoudnessRpc], ['@mioon/contracts/timeline-mix-loudness', mixLoudnessContracts]] as const;
+  const expected = [['./timeline-clip-loudness-rpc.ts', clipLoudnessRpc], ['@mioon/contracts/timeline-clip-loudness', clipLoudnessContracts], ['./timeline-loudness-apply-rpc.ts', loudnessApplyRpc], ['@mioon/contracts', contracts], ['./workspace-origin.ts', workspaceOrigin], ['./timeline-mix-loudness-rpc.ts', mixLoudnessRpc], ['@mioon/contracts/timeline-mix-loudness', mixLoudnessContracts], ['../../../packages/contracts/src/project-file.ts', projectFile], ['../../../packages/contracts/src/project-addressing.ts', projectAddressing]] as const;
   assert.deepEqual(names, expected.map(([name]) => name));
   for (const [name, module] of expected) assert.equal(actualApiDependency(name), module);
   for (const name of ['./timeline-loudness-apply-rpc.js', './timeline-mix-loudness-rpc.js', './arbitrary.ts', '@mioon/contracts/arbitrary', 'node:fs']) {

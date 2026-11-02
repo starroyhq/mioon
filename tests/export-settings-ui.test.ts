@@ -15,6 +15,7 @@ import { prepareSubmission, prepareRequestReplay, readPending, reconcilePending 
 import { isDurableEditOperation } from '../apps/web/src/edit-task-client.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
+import {mediaUrl} from '../apps/web/src/api.ts';
 const Function = lenientFunction;
 type Loose = Record<string, unknown>;
 interface DeferredTask {promise: Promise<unknown>; resolve: (value: unknown)=>void; reject: (reason?: unknown)=>void}
@@ -249,7 +250,7 @@ const textOf = (tree: unknown): string => Array.isArray(tree) ? tree.map(textOf)
 function component(file: string, extra: Loose = {}): (props: Loose)=>Element {
   const module: {exports: {default?: unknown}} = { exports: {} }, react: Loose = { createElement: element, useRef: (current: unknown) => ({ current }), useEffect() {}, useLayoutEffect() {}, useState: (value: unknown) => [value, () => {}] }; react.default = react;
   const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8');
-  Function('module', 'exports', 'require', 'fetch', transformSync(source, { loader: file.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, (name: string) => name === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : name === '../../../packages/i18n/src/index.ts' ? i18n : name === 'react' ? extra.react || react : name === './creation-i18n.ts' ? creationI18n : name === './export-display.ts' ? exportDisplay : name === './export-settings-state.ts' ? settingsState : name === './export-delivery-state.ts' ? deliveryState : name === './export-range-state.ts' ? rangeState : name === './export-preflight-state.ts' ? preflightState : name === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : name === './api.ts' ? { statusText: String } : extra[name] || { __esModule: true, default: 'Stub', Button: 'Button', WorkbenchButton: 'WorkbenchButton', WorkbenchAlert: 'WorkbenchAlert', Label: 'Label', WorkbenchSelect: 'Select', Badge: 'Badge' }, extra.fetch || globalThis.fetch);
+  Function('module', 'exports', 'require', 'fetch', transformSync(source, { loader: file.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, (name: string) => name === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : name === '../../../packages/i18n/src/index.ts' ? i18n : name === 'react' ? extra.react || react : name === './creation-i18n.ts' ? creationI18n : name === './export-display.ts' ? exportDisplay : name === './export-settings-state.ts' ? settingsState : name === './export-delivery-state.ts' ? deliveryState : name === './export-range-state.ts' ? rangeState : name === './export-preflight-state.ts' ? preflightState : name === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : name === './api.ts' ? { statusText: String, mediaUrl } : extra[name] || { __esModule: true, default: 'Stub', Button: 'Button', WorkbenchButton: 'WorkbenchButton', WorkbenchAlert: 'WorkbenchAlert', Label: 'Label', WorkbenchSelect: 'Select', Badge: 'Badge' }, extra.fetch || globalThis.fetch);
   return module.exports.default as (props: Loose)=>Element;
 }
 
@@ -275,39 +276,40 @@ test('actual capability panel labels unknown and unsupported safely and never pr
   }
 });
 
-test('history renders the actual frozen settings and output dimensions; old records retain their labels and file URL', () => {
+test('history renders the actual frozen settings and output dimensions; old records retain their labels and download at their project', () => {
   const View = component('ExportHistoryList.tsx');
-  const legacy = { id: id(40), mode: 'timeline', purpose: 'export', timelineRevision: 4, status: 'succeeded', createdAt: '2026-10-11T18:00:00.000Z', url: '/media/original-file', snapshot: { timeline } };
-  const custom = { ...legacy, id: id(41), url: '/media/frozen-custom-file', snapshot: { timeline, delivery: resolveTimelineExportDelivery(timeline, settings({ resolution: 'short_1080', rateControl: { mode: 'bitrate', targetKbps: 8000 } })) } };
+  const legacy = { id: id(40), projectId, mode: 'timeline', purpose: 'export', timelineRevision: 4, status: 'succeeded', createdAt: '2026-10-11T18:00:00.000Z', assetId: id(50), url: `/media/${id(50)}`, snapshot: { timeline } };
+  const custom = { ...legacy, id: id(41), assetId: id(51), url: `/media/${id(51)}`, snapshot: { timeline, delivery: resolveTimelineExportDelivery(timeline, settings({ resolution: 'short_1080', rateControl: { mode: 'bitrate', targetKbps: 8000 } })) } };
   assert.equal(settingsState.exportHistoryDelivery(legacy), null);
   const oldTree = View({ orderedExports: [legacy], projectName: '作品', timelineRevision: 4 });
   assert.match(textOf(oldTree), /时间线导出 · 修订版 4 · 当前/); assert.doesNotMatch(textOf(oldTree), /CRF|AAC|1080/);
   const tree = View({ orderedExports: [custom], projectName: '作品', timelineRevision: 4 });
   assert.match(textOf(tree), /1080 × 1920/); assert.match(textOf(tree), /平均目标 8 Mb\/s/); assert.match(textOf(tree), /放大输出，不增加细节/);
-  assert.equal(nodes(tree).find(node => node.props.exportId === custom.id && typeof node.props.downloadHref === 'string')!.props.downloadHref, custom.url);
+  assert.equal(nodes(tree).find(node => node.props.exportId === custom.id && typeof node.props.downloadHref === 'string')!.props.downloadHref, `/api/projects/${projectId}/media/${custom.assetId}`);
 });
 
 test('successful timeline preview keeps its original download and never probes the export-only recovery endpoint', () => {
   const View = component('ExportHistoryList.tsx');
-  const preview = { id: id(42), projectId, mode: 'timeline', purpose: 'preview', timelineRevision: 4, status: 'succeeded', createdAt: '2026-10-11T18:00:00.000Z', url: '/media/original-editing-preview', snapshot: { timeline } };
+  const preview = { id: id(42), projectId, mode: 'timeline', purpose: 'preview', timelineRevision: 4, status: 'succeeded', createdAt: '2026-10-11T18:00:00.000Z', assetId: id(52), url: `/media/${id(52)}`, snapshot: { timeline } };
+  const href = `/api/projects/${projectId}/media/${preview.assetId}`;
   const tree = View({ orderedExports: [preview], projectId, projectName: '作品', timelineRevision: 4, fileRecoveryEnabled: true });
   const action = nodes(tree).find(node => node.props.exportId === preview.id && typeof node.props.downloadHref === 'string')!;
-  assert.equal(action.props.disabled, true); assert.equal(action.props.downloadHref, preview.url);
+  assert.equal(action.props.disabled, true); assert.equal(action.props.downloadHref, href);
   let reads = 0;
   const react = { createElement: element, useRef: (current: unknown) => ({ current }), useState: (value: unknown) => [value, () => {}], useEffect: (run: ()=>unknown) => run(), useLayoutEffect: (run: ()=>unknown) => run(), useMemo: (run: ()=>unknown) => run() };
   const Actions = component('ExportFileActions.tsx', { react, './workspace-visibility.tsx': {useWorkspaceVisibility: () => true}, fetch: () => { reads++; return Promise.reject(new Error('Preview must not use export recovery')); } });
   const download = Actions(action.props);
   const rendered=((download.props.render as Element).props) as Loose;
-  assert.equal(reads, 0); assert.equal(rendered.href, preview.url); assert.equal(rendered.download, true);
+  assert.equal(reads, 0); assert.equal(rendered.href, href); assert.equal(rendered.download, true);
 });
 
 
-test('actual playback keeps the produced artifact URL and shows its frozen dimensions instead of editor preview dimensions', () => {
-  const View = component('Preview.tsx', { './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '', statusText: String }, './Timeline.tsx': { assetKind: () => 'video', framesLabel: String }, './source-range-state.ts': { SOURCE_RANGE_FPS: 30 } });
+test('actual playback plays the produced artifact at its project and shows its frozen dimensions instead of editor preview dimensions', () => {
+  const View = component('Preview.tsx', { './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '', statusText: String, mediaUrl }, './Timeline.tsx': { assetKind: () => 'video', framesLabel: String }, './source-range-state.ts': { SOURCE_RANGE_FPS: 30 } });
   const delivery = resolveTimelineExportDelivery(timeline, settings({ resolution: 'short_360', rateControl: { mode: 'crf', quality: 'compact' } }));
-  const job = { id: id(90), mode: 'timeline', purpose: 'export', timelineRevision: 4, status: 'succeeded', url: '/media/exact-produced-file', snapshot: { timeline, delivery } };
+  const job = { id: id(90), projectId, mode: 'timeline', purpose: 'export', timelineRevision: 4, status: 'succeeded', assetId: id(91), url: `/media/${id(91)}`, snapshot: { timeline, delivery } };
   const tree = View({ kind: 'timeline', timeline: { ...timeline, revision: 5 }, job, playhead: 0 });
-  assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'timeline-preview-video')!.props.src, job.url);
+  assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'timeline-preview-video')!.props.src, `/api/projects/${projectId}/media/${job.assetId}`);
   const metadata = nodes(tree).find(node => typeof node.props.metadata === 'string')!.props.metadata as string;
   assert.match(textOf(tree), new RegExp(String(i18n.translate('zh-Hans', 'timeline.preview.final')))); assert.match(metadata, /360 × 640/); assert.match(metadata, /CRF 28/); assert.doesNotMatch(metadata, /720 × 1280/);
   const preview = View({ kind: 'timeline', timeline, job: { ...job, purpose: 'preview', snapshot: { timeline } }, playhead: 0 });

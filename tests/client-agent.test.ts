@@ -81,7 +81,7 @@ test('send forwards diagnostic modes and exact identities to REST without host I
  for(const profile of ['text','read_only','catalog']){
   const requests: FetchCapture[]=[];const client=createAgentClient({env,fetchImpl:async(url,options)=>{requests.push({url,options} as FetchCapture);return ok(snapshot());}});
   await client.send({projectId,requestId,text:'synthetic',expectedSettingsRevision:4,diagnostic:{profile,...(profile==='catalog'?{toolNames:['mioon_project_inspect']}: {})}});
-  assert.equal(requests.length,1);assert.equal(requests[0].url,`http://127.0.0.1:4318/api/agent/tasks/v2/${projectId}`);
+  assert.equal(requests.length,1);assert.equal(requests[0].url,`http://127.0.0.1:4318/api/projects/${projectId}/agent/tasks/v2`);
   const body=JSON.parse(((requests[0].options)!.body)!);assert.equal(body.requestId,requestId);assert.equal(body.expectedSettingsRevision,4);assert.equal(body.projectId,undefined);assert.equal(body.diagnostic.profile,profile);
   assert.equal((requests[0].options)!.redirect,'error');assert.equal(((requests[0].options)!.headers)!.origin,undefined);
  }

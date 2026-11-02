@@ -5,6 +5,7 @@ import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import {resolveConnection} from './connection.ts';
 import {ClientError} from './index.ts';
+import {projectRpcPath} from '../../contracts/src/project-file.ts';
 
 // Project files are workspace management like backups: these calls use
 // dedicated routes outside the RPC catalog, so they never become MCP tools.
@@ -77,6 +78,6 @@ export async function duplicateProject(input:Json,options:ProjectPackageClientOp
  if(Object.keys(input).some(key=>!['projectId','name','requestId'].includes(key)))throw new ClientError('VALIDATION_ERROR','project duplicate accepts projectId, name and requestId.');
  const id=projectId(input);
  let name=typeof input.name==='string'?input.name:'';
- if(!name){const project=await call('/api/rpc',{method:'POST',json:{operation:'project.get',input:{projectId:id}}},options) as {project?:{name?:string};name?:string};name=`${(project.project??project).name??'project'} 副本`;}
+ if(!name){const project=await call(projectRpcPath(id),{method:'POST',json:{operation:'project.get',input:{projectId:id}}},options) as {project?:{name?:string};name?:string};name=`${(project.project??project).name??'project'} 副本`;}
  return call('/api/project-packages/duplicates',{method:'POST',json:{projectId:id,requestId:requestIdOf(input),name}},options);
 }

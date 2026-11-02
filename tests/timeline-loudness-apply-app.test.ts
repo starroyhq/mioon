@@ -1,3 +1,4 @@
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -43,8 +44,8 @@ function server({ lose, invalidAck = false }: {lose?: string; invalidAck?: boole
   const reply = (data: unknown): Response => new Response(JSON.stringify({ ok: true, data }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   const fetcher = async (path: string, options: RequestInit = {}): Promise<Response> => {
     const body: Record<string, unknown> = options.body ? JSON.parse(String(options.body)) : {}; calls.push({ path, body, method: options.method });
-    if (path.startsWith('/api/tasks?')) return reply({ items: task && !task.acknowledged ? [task] : [], nextCursor: null, instanceId });
-    if (path === '/api/tasks/prepare') {
+    if (path.startsWith(`${projectApiPath(projectId, 'tasks')}?`)) return reply({ items: task && !task.acknowledged ? [task] : [], nextCursor: null, instanceId });
+    if (path === projectApiPath(projectId, 'tasks', 'prepare')) {
       const prepareInput = body.input as ApplyIntentView['input'];
       task = { id: id(70), projectId: String(body.projectId), operation: String(body.operation), input: structuredClone(prepareInput), requestId: prepareInput.requestId,
         digest: 'd'.repeat(64), lane: 'timeline:mutation', status: 'prepared', revision: 1, createdAt: stamp, updatedAt: stamp, acknowledged: false, origin: body.origin };
@@ -58,7 +59,7 @@ function server({ lose, invalidAck = false }: {lose?: string; invalidAck?: boole
       return reply({ task, instanceId, result: ack });
     }
     if (path.endsWith('/acknowledge')) { assert.ok(task); task = { ...task, acknowledged: true, revision: task.revision + 1 }; return reply({ task, instanceId }); }
-    if (path.startsWith(`/api/tasks/${id(70)}?`)) return reply({ task, instanceId });
+    if (path.startsWith(`${projectApiPath(projectId, 'tasks', id(70))}?`)) return reply({ task, instanceId });
     throw Error(`Unexpected request ${path}`);
   };
   return { fetcher, calls, get task() { return task; }, restart() { instanceId = id(72); } };
@@ -88,7 +89,7 @@ async function harness(wire: Wire, onBusy: (busy: boolean) => void = () => {}): 
 test('actual App callback routes scalar request through real task client prepare/execute/ACK; no direct RPC or gain array', async () => {
   const wire = server(), h = await harness(wire), exact = await intent();
   assert.equal((await h.submit(exact, () => true)).status, 'applied');
-  assert.deepEqual(wire.calls.map(call => call.path.split('?')[0]), ['/api/tasks','/api/tasks/prepare',`/api/tasks/${id(70)}/execute`,`/api/tasks/${id(70)}/acknowledge`]);
+  assert.deepEqual(wire.calls.map(call => call.path.split('?')[0]), [projectApiPath(projectId, 'tasks'),projectApiPath(projectId, 'tasks', 'prepare'),projectApiPath(projectId, 'tasks', id(70), 'execute'),projectApiPath(projectId, 'tasks', id(70), 'acknowledge')]);
   assert.deepEqual(wire.calls[1].body.input, exact.input); assert.equal(wire.calls[1].body.input.requestId, 'one-original-apply-key');
   assert.equal(Object.hasOwn(wire.calls[1].body.input, 'gains'), false); assert.equal(Object.hasOwn(wire.calls[2].body, 'input'), false);
   assert.equal(h.tasks.blocked(projectId), false); assert.deepEqual(h.refreshed, [projectId]);
@@ -100,13 +101,13 @@ for (const lose of ['prepare','execute']) test(`actual App unknown ${lose} survi
   wire.restart(); const next = await harness(wire), saved = next.tasks.getState(projectId).items[0];
   assert.equal(saved.requestId, exact.input.requestId); assert.deepEqual(saved.input, exact.input);
   await next.recoverTask(saved); assert.equal(next.tasks.blocked(projectId), false); assert.equal(wire.task.acknowledged, true);
-  assert.equal(wire.calls.filter(call => call.path === '/api/tasks/prepare').length, 1);
+  assert.equal(wire.calls.filter(call => call.path === projectApiPath(projectId, 'tasks', 'prepare')).length, 1);
   assert.equal(wire.calls.filter(call => call.path.endsWith('/execute')).length, 1);
   assert.equal(next.recovered[0].requestId, exact.input.requestId);
 });
 test('late navigation after persisted prepare leaves original durable task recoverable without execute', async () => {
   const wire = server(), original = wire.fetcher; let allowed = true;
-  wire.fetcher = async (...args) => { const value = await original(...args); if (args[0] === '/api/tasks/prepare') allowed = false; return value; };
+  wire.fetcher = async (...args) => { const value = await original(...args); if (args[0] === projectApiPath(projectId, 'tasks', 'prepare')) allowed = false; return value; };
   const h = await harness(wire), exact = await intent(); assert.equal((await h.submit(exact, () => allowed)).status, 'unknown');
   assert.ok(wire.task); assert.equal(wire.task.status, 'prepared'); assert.equal(wire.calls.some(call => call.path.endsWith('/execute')), false);
   assert.deepEqual(h.tasks.getState(projectId).items[0].input, exact.input);

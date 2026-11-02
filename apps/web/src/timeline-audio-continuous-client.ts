@@ -1,11 +1,14 @@
 import {
-  CONTINUOUS_AUDIO_ENDPOINT, CONTINUOUS_AUDIO_HEADERS as H, CONTINUOUS_AUDIO_LIMITS as L,
+  CONTINUOUS_AUDIO_HEADERS as H, CONTINUOUS_AUDIO_LIMITS as L,
   CONTINUOUS_AUDIO_PROFILE, continuousAudioPlanInputSchema, continuousAudioPlanSchema,
   continuousAudioPlanDigestMaterial, continuousAudioQuery, isContinuousAudioPlan,
   type ContinuousAudioPlan, type ContinuousAudioPlanInput, type ContinuousAudioBlockInput,
 } from '@mioon/contracts/timeline-audio-continuous';
 import {NATIVE_AUDIO_LEASE_HEADER} from '@mioon/contracts/native-audio-preview';
+import {projectApiPath} from '../../../packages/contracts/src/project-file.ts';
 import {TimelineAudioPreviewError, type AudioPreviewReadOptions} from './timeline-audio-preview-client.ts';
+/** The continuous route at the project's address. */
+export const continuousAudioPath = (projectId: string): string => projectApiPath(projectId, 'timeline-audio-preview', 'continuous');
 import type {ContinuousAudioBlock} from './timeline-audio-continuous-engine.ts';
 
 const failure = (code: string): never => { throw new TimelineAudioPreviewError(code, code); };
@@ -156,7 +159,7 @@ export function createContinuousAudioPreviewClient(options: {
         for (const source of signals) source.addEventListener('abort', interrupt, {once: true});
         if (signals.some(source => source.aborted)) interrupt();
         try {
-          const response = await fetcher(`${CONTINUOUS_AUDIO_ENDPOINT}?${continuousAudioQuery(request)}`, {
+          const response = await fetcher(`${continuousAudioPath(request.projectId)}?${continuousAudioQuery(request)}`, {
             method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: network.signal,
             ...(leaseId ? {headers: {[NATIVE_AUDIO_LEASE_HEADER]: leaseId}} : {}),
           });
@@ -194,7 +197,7 @@ export function createContinuousAudioPreviewClient(options: {
         if (!last || leaseId) { if (cleanupFailure) throw cleanupFailure; return; }
         const timed = new AbortController(), timer = setTimeout(() => timed.abort(), timeout);
         try {
-          const response = await fetcher(`${CONTINUOUS_AUDIO_ENDPOINT}?${continuousAudioQuery(last)}`, {
+          const response = await fetcher(`${continuousAudioPath(last.projectId)}?${continuousAudioQuery(last)}`, {
             method: 'DELETE', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: timed.signal,
           });
           if (!response.ok) { await cancelBody(response); failure('AUDIO_PREVIEW_CLEANUP_UNCONFIRMED'); }

@@ -13,7 +13,7 @@ import { Button } from '@mioon/ui/components/button';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Icon from './icons.tsx';
 import { disposeMedia } from './Nodes.tsx';
-import { assetUrl } from './api.ts';
+import { assetUrl, mediaUrl } from './api.ts';
 import { assetKind } from './Timeline.tsx';
 import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import { exportHistoryDelivery } from './export-settings-state.ts';
@@ -26,7 +26,7 @@ type Translate = ReturnType<typeof useI18n>['t'];
 export interface PreviewCaptureIntent {readonly sourceScope: string; readonly sourceAssetId: string; readonly sourceHash: string; readonly sourceFrame: number}
 export interface PreviewSeek {scope?: string | null; id: number | string; frame: number}
 export interface PreviewRenderJobView {
-  id?: string; status: string; url?: string | null; assetId?: string | null; timelineRevision?: number | null;
+  id?: string; projectId?: string | null; status: string; url?: string | null; assetId?: string | null; timelineRevision?: number | null;
   purpose?: string; progress?: number; error?: unknown; providerId?: string;
   snapshot?: {timeline?: {durationFrames?: number; width?: number; height?: number} | null} | null;
   [key: string]: unknown;
@@ -120,7 +120,7 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   const rendered = kind === 'timeline';
   const ready = Boolean(job && ['succeeded','completed','ready'].includes(job.status) && (job.url || job.assetId));
   const stale = Boolean(ready && job!.timelineRevision !== timeline?.revision);
-  const url = rendered ? ready ? (job!.url || `/media/${job!.assetId}`) : '' : assetUrl(asset);
+  const url = rendered ? ready ? mediaUrl(job!.projectId, job!.assetId) : '' : assetUrl(asset);
   const type: string = rendered ? 'video' : assetKind(asset);
   const mediaKey = `${kind}:${type}:${url}:${rendered ? job?.id || job?.timelineRevision : asset?.id || ''}:${clip?.id || ''}:${!rendered && !clip ? sourceScope || '' : ''}:${!rendered ? asset?.sha256 || '' : ''}`;
   const activeMedia = useRef<MediaBinding | null>(null);

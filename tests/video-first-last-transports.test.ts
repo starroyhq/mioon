@@ -124,7 +124,7 @@ test('saved frame pairs share strict real HTTP/CLI/official MCP, exact recovery 
  });
  await t.test('HTTP creates, CLI saves and MCP exactly replays the complete stored tail',async()=>{
   shot=await f.rpc('shot.create',{projectId:f.project.id,title:'Paired shot',prompt:'Synthetic pair, no visual conditioning',referenceAssetIds:[f.first.id],duration:4,parameters:{delayMs:120000},requestId:randomUUID()});
-  update={shotId:shot.id,expectedRevision:shot.revision,patch:{lastFrameAssetId:f.last.id},requestId:randomUUID()};receipt=(await runCli(['rpc','shot.update','--input',JSON.stringify(update)],f.env)).data;assert.equal(receipt.lastFrameAssetId,f.last.id);assert.deepEqual(await bridge.call('shot.update',update),receipt);shot=receipt;
+  update={shotId:shot.id,expectedRevision:shot.revision,patch:{lastFrameAssetId:f.last.id},requestId:randomUUID()};receipt=(await runCli(['rpc','shot.update','--input',JSON.stringify({projectId:f.project.id,...update})],f.env)).data;assert.equal(receipt.lastFrameAssetId,f.last.id);assert.deepEqual(await bridge.call('shot.update',{projectId:f.project.id,...update}),receipt);shot=receipt;
   await f.rpc('shot.update',{...update,patch:{lastFrameAssetId:null}},'IDEMPOTENCY_CONFLICT');
   await f.rpc('shot.update',{...update,requestId:randomUUID(),expectedRevision:shot.revision,patch:{lastFrameAssetId:f.foreign.id}},'CROSS_PROJECT_REFERENCE');
   await f.rpc('shot.update',{...update,requestId:randomUUID(),expectedRevision:shot.revision,patch:{lastFrameAssetId:f.last.id,arbitraryAuthority:true}},'VALIDATION_ERROR');
@@ -132,13 +132,13 @@ test('saved frame pairs share strict real HTTP/CLI/official MCP, exact recovery 
  await t.test('lost generation HTTP acknowledgement retains one immutable pair and one provider submission',async()=>{
   assert.ok(shot);input={shotId:shot.id,expectedRevision:shot.revision,providerId:'mock',requestId:randomUUID()};f.drop();await assert.rejects(f.rpc('generation.submit',input,undefined,f.proxyUrl));assert.equal(f.dropped.ok,true);job=f.dropped.data;
   assert.deepEqual(job.snapshot.referenceAssetIds,[f.first.id,f.last.id]);assert.deepEqual(job.snapshot.referenceBindings!.map((x: { role: unknown; })=>x.role),['first_frame','last_frame']);assert.deepEqual(job.snapshot.referenceBindings!.map((x: { sha256: unknown; })=>x.sha256),[f.first.sha256,f.last.sha256]);
-  const replay=await bridge.call('generation.submit',input);assert.equal(replay.id,job.id);assert.deepEqual(replay.snapshot,job.snapshot);
+  const replay=await bridge.call('generation.submit',{projectId:f.project.id,...input});assert.equal(replay.id,job.id);assert.deepEqual(replay.snapshot,job.snapshot);
   const until=Date.now()+10_000;while((await f.submissions())===0&&Date.now()<until)await sleep(20);assert.equal(await f.submissions(),1);
   await f.rpc('generation.submit',{...input,model:'different'},'IDEMPOTENCY_CONFLICT');
  });
  await t.test('restart finds saved selection and exact keys; explicit clear leaves frozen job unchanged',async()=>{
   assert.ok(job);await bridge.client.close();await f.restart();const project=await f.rpc('project.get',{projectId:f.project.id});const saved=project.shots.find((s: { id: unknown; })=>s.id===shot.id)!;assert.equal(saved.lastFrameAssetId,f.last.id);assert.deepEqual(await f.rpc('shot.update',update),receipt);
-  const replay=(await runCli(['rpc','generation.submit','--input',JSON.stringify(input)],f.env)).data;assert.equal(replay.id,job.id);assert.deepEqual(replay.snapshot,job.snapshot);assert.equal(await f.submissions(),1);
+  const replay=(await runCli(['rpc','generation.submit','--input',JSON.stringify({projectId:f.project.id,...input})],f.env)).data;assert.equal(replay.id,job.id);assert.deepEqual(replay.snapshot,job.snapshot);assert.equal(await f.submissions(),1);
   const cleared=await f.rpc('shot.update',{shotId:shot.id,expectedRevision:saved.revision,patch:{lastFrameAssetId:null},requestId:randomUUID()});assert.equal(cleared.lastFrameAssetId,null);assert.deepEqual((await f.rpc('job.get',{jobId:job.id})).snapshot,job.snapshot);await f.original();assert.equal(await readFile(path.join(f.root,'wire-audit.jsonl'),'utf8'),'','No fixture guard observed a forbidden network/process action');
  });
 });

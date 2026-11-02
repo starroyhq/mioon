@@ -234,7 +234,7 @@ async function fixture(t: test.TestContext) {
     async finished(exportId: unknown) {
       const deadline = Date.now() + 35_000;
       while (Date.now() < deadline) {
-        const value = await client.rpc('export.get', {exportId}, {timeoutMs: Math.max(1, deadline - Date.now())});
+        const value = await client.rpc('export.get', {exportId}, {timeoutMs: Math.max(1, deadline - Date.now()), projectId: project.id});
         if (['succeeded', 'failed'].includes(value.status)) {
           assert.equal(value.status, 'succeeded', JSON.stringify(value.error)); return value;
         }
@@ -379,7 +379,7 @@ test('actual HTTP CLI and official MCP preserve named and omitted delivery ident
     assert.equal(w.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(namedInput.requestId)!.response, receipt);
     assert.equal(w.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(legacyInput.requestId)!.response, legacyReceipt);
     assert.equal(w.db.prepare('SELECT COUNT(*) AS n FROM exports').get()!.n, 2, 'only two local renders were admitted');
-    const historical = await w.client.rpc('export.get', {exportId: completed.id});
+    const historical = await w.client.rpc('export.get', {exportId: completed.id}, {projectId: w.project.id});
     assert.deepEqual(historical.snapshot, original.data.snapshot); assert.equal(historical.status, 'succeeded');
     const renamed = await w.client.rpc('project.get', {projectId: w.project.id});
     assert.equal(renamed.project.name, 'Renamed after delivery 新项目');

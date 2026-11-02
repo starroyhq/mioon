@@ -1,3 +1,4 @@
+import {projectRpcPath, isProjectId} from '../packages/contracts/src/project-file.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {TransportCall,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
 import type {WireResult} from './helpers/strict-timeline-transport-types.ts';
@@ -210,10 +211,12 @@ if(process.argv[2] === 'preflight-server'){
     return expectedError ? envelope.error : envelope.data;
   };
   async function http<O extends string,I=Record<string,never>,E extends string|undefined=undefined>(op:O, request?: I, expectedError?: E):Promise<WireResult<McpData<O,I>,E>> {
-    const response = await fetch(url + '/api/rpc', {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10_000),
+    const projectId = (request as {projectId?: unknown} | null | undefined)?.projectId;
+    const resource = isProjectId(projectId) ? projectRpcPath(projectId) : '/api/rpc';
+    const response = await fetch(url + resource, {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10_000),
       headers: {authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json'}, body: JSON.stringify({operation: op, input: request})});
     const envelope = await response.json();
-    assert.equal(response.status, !expectedError ? 200 : expectedError === 'NOT_FOUND' ? 404 : /CONFLICT|STALE/.test(expectedError) ? 409 : 400, JSON.stringify(envelope));
+    assert.equal(response.status, !expectedError ? 200 : ['NOT_FOUND', 'PROJECT_NOT_FOUND'].includes(expectedError) ? 404 : /CONFLICT|STALE/.test(expectedError) ? 409 : 400, JSON.stringify(envelope));
     return (validateEnvelope(envelope, expectedError) as WireResult<McpData<O,I>,E>);
   }
   async function cliArgs<const A extends readonly string[],E extends string|undefined=undefined>(args: A, expectedError?: E):Promise<WireResult<CliResult<A>,E>> {
@@ -378,7 +381,7 @@ test('preflight agrees across actual HTTP, CLI and official MCP without export/c
     const missing = await call(operation, {projectId: IDS.other, expectedRevision: 1});
     assert.equal(isExportPreflightResponse(missing, {projectId: IDS.other, expectedRevision: 1}), true, name);
     assert.equal(missing.status, 'blocked'); assert.equal((missing.timelineId as unknown), null); assert.equal((missing.timelineRevision as unknown), null); assert.equal((missing.snapshotHash as unknown), null);
-    await call(operation, {projectId: uuid(9999), expectedRevision: 1}, 'NOT_FOUND');
+    await call(operation, {projectId: uuid(9999), expectedRevision: 1}, 'PROJECT_NOT_FOUND');
     for (const invalid of ([{...input, expectedRevision: 0}, {...input, token: 'not-a-credential'}, {projectId: IDS.project}] as const)) await call(operation, invalid, 'VALIDATION_ERROR');
   }
   assert.deepEqual(await backend.audit(), beforeStale, 'stale, absent and malformed inputs never start source analysis');
