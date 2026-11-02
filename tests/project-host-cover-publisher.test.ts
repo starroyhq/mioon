@@ -5,10 +5,10 @@ import {mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync} from 'node
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setImmediate} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/project-file/index.ts';
+import {openStore,registerProjectTransactionObserver} from '../packages/business/src/project-file/index.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/index.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {createProjectHomeServices} from '../packages/business/src/project-home.ts';
+import {createProjectHomeServices,readProjectCover} from '../packages/business/src/project-home.ts';
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {runStreaming} from '../packages/business/src/media-runtime.ts';
 import {previsJpegSize} from '../packages/business/src/previs.ts';
@@ -63,8 +63,8 @@ async function fixture(t: TestContext) {
   const saved = record(await services.call('timeline.clip.add', {projectId: store.projectId, requestId: randomUUID(), expectedRevision: timeline.revision,
     assetId: original.id, trackId: record(timeline.tracks[0]).id, startFrame: 0, durationFrames: 30}));
   const timelineId = String(saved.id);
-  const makePublisher = (render?: typeof runStreaming) => {
-    const selected = store, controller = new AbortController(), publisher = createProjectCoverPublisher({store: selected, summarize: () => summary(selected), signal: controller.signal, ...(render ? {render} : {})});
+  const makePublisher = (render?: typeof runStreaming,readCover=()=>readProjectCover(store,store.projectId)) => {
+    const selected = store, controller = new AbortController(), publisher = createProjectCoverPublisher({store: selected, readCover, signal: controller.signal, ...(render ? {render} : {})});
     publishers.push({publisher, controller}); return {publisher, controller};
   };
   return {root, original, addAsset, makePublisher, get store() {return store;},
@@ -113,7 +113,7 @@ test('switching or deleting the actual source during an admitted render preserve
   for (const mutation of ['switch', 'delete'] as const) {
     const f = await fixture(t), cache = await f.renderActual(), next = await f.addAsset(); f.switchCover(next.id);
     const render = f.delayedRender(cache.jpeg); await render.entered;
-    assert.equal(render.publisher.isBusy(), true);
+    assert.equal(render.publisher.isBusy(), true);assert.equal(render.publisher.isRendering(),true,'admitted media still blocks exclusive close');
     const sourceFile = path.join(f.root, next.relativePath), source = readFileSync(sourceFile);
     if (mutation === 'switch') f.switchCover(f.original.id);
     else rmSync(sourceFile);
@@ -139,9 +139,51 @@ test('abort waits for an admitted late media result and publishes no cache, SQL 
   const draining = render.publisher.drain().then(() => {drained = true;});
   render.controller.abort(); await setImmediate();
   assert.equal(drained, false, 'drain cannot resolve before the admitted media invocation settles');
+  assert.equal(render.publisher.isRendering(),true,'abort cannot claim that admitted media has already drained');
   render.finish(); await draining;
-  assert.equal(drained, true); assert.equal(render.publisher.isBusy(), false); assert.ok(render.publisher.lastFailure() instanceof Error);
+  assert.equal(drained, true); assert.equal(render.publisher.isBusy(), false);assert.equal(render.publisher.isRendering(),false); assert.ok(render.publisher.lastFailure() instanceof Error);
   assert.deepEqual(pair(f.store), cache); assert.deepEqual(readProjectState(f.store.db), before);
   assert.deepEqual([f.store.db, library.db].map(db => db.prepare('SELECT total_changes() AS n').get()), changes);
   assert.deepEqual(readdirSync(path.join(f.root, 'media')).sort().map(name => [name, readFileSync(path.join(f.root, 'media', name))]), media);
+});
+
+
+test('real committed bursts schedule one cover-only read and no synchronous summary work', {timeout:60000}, async t=>{
+  const f=await fixture(t),cache=await f.renderActual();
+  assert.deepEqual(readProjectCover(f.store,f.store.projectId),{...summary(f.store).summary!.cover!,url:`/api/project-covers/${f.store.projectId}`});
+  let reads=0,prepared=0;
+  const originalPrepare=f.store.db.prepare.bind(f.store.db);
+  t.mock.method(f.store.db,'prepare',((sql:string)=>{
+    prepared++;
+    assert.doesNotMatch(sql,/SELECT[\s\S]*FROM (?:nodes|edges)\b/iu,'cover refresh never runs the complete project summary');
+    return originalPrepare(sql);
+  }) as typeof f.store.db.prepare);
+  const owned=f.makePublisher(undefined,()=>{reads++;return readProjectCover(f.store,f.store.projectId);});
+  const remove=registerProjectTransactionObserver(f.store.db,()=>{
+    const before=prepared;owned.publisher.refresh();assert.equal(prepared,before,'transaction observer performs no SQL or row parsing');
+  });t.after(remove);
+  t.mock.timers.enable({apis:['setTimeout']});
+  const nodeId=randomUUID();
+  for(let i=0;i<20;i++){
+    f.store.tx(()=>f.store.put('nodes',{id:nodeId,projectId:f.store.projectId,type:'text',text:String(i),position:{x:0,y:0}}));
+    await Promise.resolve();
+  }
+  await Promise.resolve();assert.equal(reads,0,'post-COMMIT microtasks do not read a project-size summary');
+  assert.equal(owned.publisher.isBusy(),true);assert.equal(owned.publisher.isRendering(),false,'an unadmitted delayed refresh does not block exclusive project close');
+  t.mock.timers.tick(1999);await Promise.resolve();assert.equal(reads,0,'the burst waits for the batching delay');
+  t.mock.timers.tick(1);await owned.publisher.drain();
+  assert.equal(reads,1,'twenty unrelated commits share one narrow candidate read');assert.equal(owned.publisher.isBusy(),false);
+  assert.deepEqual(pair(f.store),cache);
+  f.store.tx(()=>{const current=record(f.store.get('assets',f.original.id));f.store.put('assets',{...current,name:'Related committed metadata'});});
+  assert.equal(reads,1,'a related commit also returns before the candidate read');
+  await owned.publisher.drain();assert.equal(reads,2,'close drain flushes the queued related refresh without waiting two seconds');
+  assert.deepEqual(pair(f.store),cache);assert.equal(owned.publisher.lastFailure(),undefined);
+});
+
+test('abort cancels a queued refresh before source inspection and drain returns with no pending timer',async t=>{
+  const f=await fixture(t),cache=await f.renderActual();let reads=0;
+  const owned=f.makePublisher(undefined,()=>{reads++;return readProjectCover(f.store,f.store.projectId);});
+  t.mock.timers.enable({apis:['setTimeout']});owned.publisher.refresh();assert.equal(owned.publisher.isBusy(),true);
+  owned.controller.abort();await owned.publisher.drain();t.mock.timers.tick(2000);await Promise.resolve();
+  assert.equal(reads,0);assert.equal(owned.publisher.isBusy(),false);assert.equal(owned.publisher.isRendering(),false);assert.deepEqual(pair(f.store),cache);
 });
