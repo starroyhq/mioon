@@ -94,10 +94,10 @@ test('shared client rejects malformed subject success as unknown with original k
  const client=(createClient({env:{MIOON_BASE_URL:'http://127.0.0.1:32109',MIOON_TOKEN:'synthetic-subject-ack-token'},fetchImpl:(async(_url: string,options: RequestInit | undefined)=>{
   calls++;assert.deepEqual(JSON.parse(options!.body as string),{operation:entry.operation,input:entry.input});return new Response(JSON.stringify({ok:true,data:current}),{status:200,headers:{'content-type':'application/json'}});
  }) as unknown as typeof fetch}) as TypedClient);
- assert.deepEqual(await client.rpc(entry.operation,entry.input),job);assert.equal(calls,1);
+ assert.deepEqual(await client.rpc(entry.operation,entry.input,{projectId:entry.projectId}),job);assert.equal(calls,1);
  for(const mutate of [(x: { snapshot: { subjectReference: unknown; }; })=>{delete x.snapshot.subjectReference;},(x: { requestId: string; })=>{x.requestId='different';},(x: { snapshot: { referenceBindings: { sha256: string; }[]; }; })=>{x.snapshot.referenceBindings[0].sha256='c'.repeat(64);},(x: { snapshot: { subjectReference: { subjectVersion: { projectId: string; }; }; }; })=>{x.snapshot.subjectReference.subjectVersion.projectId=id(99);}]){
   current=copy(job);(mutate as unknown as (value:typeof current)=>void)(current);const before:number=calls;
-  await assert.rejects(client.rpc(entry.operation,entry.input),error=>(error as Failure).code==='BACKEND_PROTOCOL_ERROR'&&(error as Failure).details.requestId===entry.input.requestId&&(error as Failure).details.submissionMayHaveSucceeded===true);
+  await assert.rejects(client.rpc(entry.operation,entry.input,{projectId:entry.projectId}),error=>(error as Failure).code==='BACKEND_PROTOCOL_ERROR'&&(error as Failure).details.requestId===entry.input.requestId&&(error as Failure).details.submissionMayHaveSucceeded===true);
   assert.equal(calls,before+1,'no implicit POST retry');
  }
 });
@@ -188,9 +188,9 @@ test('shared client validates subject-bearing retry ACK without broadening the l
  const client=(createClient({env:{MIOON_BASE_URL:'http://127.0.0.1:32109',MIOON_TOKEN:'synthetic-subject-retry-token'},fetchImpl:(async(_url: string,options: RequestInit | undefined)=>{
   calls++;assert.deepEqual(JSON.parse(options!.body as string),{operation:'job.retry',input:entry.input});return new Response(JSON.stringify({ok:true,data:current}),{status:200,headers:{'content-type':'application/json'}});
  }) as unknown as typeof fetch}) as TypedClient);
- assert.deepEqual(await client.rpc('job.retry',entry.input),job);
+ assert.deepEqual(await client.rpc('job.retry',entry.input,{projectId:entry.projectId}),job);
  for(const mutate of [(x: { retryOfJobId: string; })=>{x.retryOfJobId=id(99);},(x: { requestId: string; })=>{x.requestId='changed';},(x: { snapshot: { referenceBindings: { sha256: string; }[]; }; })=>{x.snapshot.referenceBindings[0].sha256='c'.repeat(64);},(x: { snapshot: { subjectReference: unknown; }; })=>{delete x.snapshot.subjectReference;}]){
   current=copy(job);(mutate as unknown as (value:typeof current)=>void)(current);const before:number=calls;
-  await assert.rejects(client.rpc('job.retry',entry.input),error=>(error as Failure).code==='BACKEND_PROTOCOL_ERROR'&&(error as Failure).details.requestId===entry.input.requestId&&(error as Failure).details.submissionMayHaveSucceeded===true);assert.equal(calls,before+1);
+  await assert.rejects(client.rpc('job.retry',entry.input,{projectId:entry.projectId}),error=>(error as Failure).code==='BACKEND_PROTOCOL_ERROR'&&(error as Failure).details.requestId===entry.input.requestId&&(error as Failure).details.submissionMayHaveSucceeded===true);assert.equal(calls,before+1);
  }
 });

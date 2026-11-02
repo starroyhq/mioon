@@ -8,13 +8,14 @@ import type { ExportActivity, ExportOutput } from '../../../packages/contracts/s
 import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import ExportFileActions from './ExportFileActions.tsx';
+import { mediaUrl } from './api.ts';
 import './export-workflow.css';
 
 type Step = 1 | 2 | 3 | 4 | 5;
-export interface ExportWorkflowRecord { readonly id: string; readonly status: string; readonly progress?: number; readonly url?: string; readonly assetId?: string; readonly snapshot?: unknown; readonly error?: unknown }
+export interface ExportWorkflowRecord { readonly id: string; readonly projectId?: string; readonly status: string; readonly progress?: number; readonly url?: string; readonly assetId?: string; readonly snapshot?: unknown; readonly error?: unknown }
 const WorkflowContext = createContext<Step>(1);
 const WorkflowNavigateContext=createContext<(step:Step)=>void>(()=>{});
-const WorkflowMediaContext = createContext<{record: ExportWorkflowRecord | null; enabled: boolean}>({record:null,enabled:false});
+const WorkflowMediaContext = createContext<{record: ExportWorkflowRecord | null; enabled: boolean; projectId?: string | null}>({record:null,enabled:false});
 export function ExportWorkflowBack(){const navigate=useContext(WorkflowNavigateContext),{t}=useI18n();return <WorkbenchButton variant="ghost" onClick={()=>navigate(2)} data-testid="export-workflow-back">{t('redesign.export.previous')}</WorkbenchButton>;}
 export const useExportWorkflowStep = () => useContext(WorkflowContext);
 export const useExportWorkflowMedia = () => useContext(WorkflowMediaContext);
@@ -64,8 +65,9 @@ export default function ExportWorkflow({ preview, children, phase, attempted, ex
       if(alive.current&&latest.owner===captured.owner&&latest.visible&&latest.projectId===captured.projectId&&latest.record?.id===captured.record.id&&['queued','running'].includes(latest.record.status)&&!latest.cancelBusy&&latest.onCancel)await latest.onCancel();
     }finally{cancelFlight.current=false;if(alive.current)setConfirming(false);}
   }
-  const downloadable=downloadEnabled&&succeeded&&record&&(record.url||record.assetId);
-  return <WorkflowContext.Provider value={step}><WorkflowNavigateContext.Provider value={choose}><WorkflowMediaContext.Provider value={{record:record??null,enabled:Boolean(downloadable)}}><div className="export-workflow" data-testid="export-workflow" data-step={step}>
+  // The output downloads at its project's address; a stored url is not one.
+  const downloadHref=record?mediaUrl(record.projectId||projectId,record.assetId):'',downloadable=downloadEnabled&&succeeded&&record&&downloadHref;
+  return <WorkflowContext.Provider value={step}><WorkflowNavigateContext.Provider value={choose}><WorkflowMediaContext.Provider value={{record:record??null,enabled:Boolean(downloadable),projectId:projectId??null}}><div className="export-workflow" data-testid="export-workflow" data-step={step}>
     <aside className="export-workflow-preview">{preview}</aside>
     <div className="export-workflow-main">
       <ol className="export-workflow-steps" aria-label={t('redesign.export.steps')}>
@@ -78,7 +80,7 @@ export default function ExportWorkflow({ preview, children, phase, attempted, ex
           {!succeeded&&!failed&&<div className="export-workflow-activity" data-testid="export-workflow-activity"><div className="export-progress-heading"><span>{stage?t(`redesign.export.stage.${stage}`):t('redesign.export.processing')}</span><output data-testid="export-workflow-progress">{progress===null?t('redesign.export.indeterminate'):t('redesign.export.progress',{progress:Math.round(progress)})}</output></div>{progress===null?<div className="export-indeterminate-progress" role="progressbar" aria-label={t('redesign.export.step4')} data-testid="export-workflow-indeterminate"><span/></div>:<WorkbenchProgress value={progress} label={t('redesign.export.step4')} />}{observed&&<p>{t('redesign.export.elapsed',{seconds:formatNumber(Math.floor(observed.elapsedSeconds))})}</p>}<ol className="export-stage-list">{stages.map((value,index)=><li key={value} data-state={stageIndex<0?'pending':index<stageIndex?'complete':index===stageIndex?'active':'pending'}><span className={index===stageIndex?'spinner':''}>{index<stageIndex?<WorkbenchIcon name="check" size={14}/>:null}</span><strong>{t(`redesign.export.stage.${value}`)}</strong><small>{t(index<stageIndex?'redesign.export.stageDone':index===stageIndex?'redesign.export.processing':'redesign.export.stageWaiting')}</small></li>)}</ol></div>}
           <p className="export-workflow-background-note">{t(succeeded?'redesign.export.completeHelp':cancelled?'redesign.export.cancelledHelp':'redesign.export.closeKeepsTask')}</p>
           {succeeded&&ownedOutput&&<p className="export-completed-specs">{t('redesign.export.fileSize',{size:formatNumber(ownedOutput.sizeBytes/1024/1024,{maximumFractionDigits:1})})}{observed?` · ${t('redesign.export.elapsed',{seconds:formatNumber(Math.floor(observed.elapsedSeconds))})}`:''}</p>}
-          {downloadable&&record&&projectId?<ExportFileActions projectId={projectId} exportId={record.id} downloadHref={record.url||`/media/${record.assetId}`} output={ownedOutput} disabled={!fileRecoveryEnabled} detailed/>:downloadable&&record?<a className="wb-button wb-button-primary" href={record.url||`/media/${record.assetId}`} download data-testid="export-workflow-download">{t('export.history.download')}</a>:null}
+          {downloadable&&record&&projectId?<ExportFileActions projectId={projectId} exportId={record.id} downloadHref={downloadHref} output={ownedOutput} disabled={!fileRecoveryEnabled} detailed/>:downloadable&&record?<a className="wb-button wb-button-primary" href={downloadHref} download data-testid="export-workflow-download">{t('export.history.download')}</a>:null}
           {!succeeded&&onTasks&&<WorkbenchButton onClick={onTasks} data-testid="export-workflow-tasks">{t('redesign.export.viewTasks')}</WorkbenchButton>}
         </div>
         <footer className="export-workflow-result-actions">

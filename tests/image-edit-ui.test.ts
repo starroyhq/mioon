@@ -10,7 +10,7 @@ import { transformSync } from 'esbuild';
 import * as contracts from '../packages/contracts/src/index.ts';
 import * as logic from '../apps/web/src/image-generation.ts';
 import { createImageReviewClient, imageReviewIdentity } from '../apps/web/src/image-review.ts';
-import { ApiError } from '../apps/web/src/api.ts';
+import { ApiError, mediaUrl } from '../apps/web/src/api.ts';
 const { canonicalImageInput: canonical, IMAGE_FIXED_OPTIONS: options, IMAGE_MODELS: models, DEFAULT_IMAGE_CONFIGURATION, IMAGE_REVIEW_POLICY, IMAGE_EDIT_REVIEW_DESTINATION } = contracts;
 const id = (n: number): string => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), groupId = id(2), assetId = id(3), taskId = id(4), requestId = id(5), at = '2026-10-11T12:00:00.000Z';
@@ -141,7 +141,7 @@ test('old text-only pending receipts remain readable and never acquire edit fiel
 test('private edit approval body contains only bound review identity and verifies server source metadata', async () => {
   const calls: Array<{url: unknown; init: RequestInit}> = [], original = review();
   const client = createImageReviewClient({ fetchImpl: (async (url: RequestInfo | URL, init: RequestInit = {}) => { calls.push({url, init}); return {ok: true, status: 200, json: async () => ({ok: true, data: task()})}; }) as unknown as typeof fetch });
-  await client.approve(original); assert.equal(calls[0].url, '/api/images/reviews/approve'); assert.deepEqual(JSON.parse(String(calls[0].init.body)), { projectId, reviewId: original.id, expectedRevision: 1 }); assert.equal(calls[0].init.credentials, 'same-origin');
+  await client.approve(original); assert.equal(calls[0].url, `/api/projects/${projectId}/images/reviews/approve`); assert.deepEqual(JSON.parse(String(calls[0].init.body)), { projectId, reviewId: original.id, expectedRevision: 1 }); assert.equal(calls[0].init.credentials, 'same-origin');
   const identity = imageReviewIdentity as (value: unknown) => unknown;
   assert.notEqual(identity(original), identity({...original, sourceImage: {...(original.sourceImage as Record<string, unknown>), name: 'Other.png'}}));
   const bad = createImageReviewClient({ fetchImpl: (async () => ({ok: true, json: async () => ({ok: true, data: task(input(), {sourceImage: {...(original.sourceImage as Record<string, unknown>), name: 'Other.png'}})})})) as unknown as typeof fetch }); await assert.rejects(bad.approve(original as never));
@@ -208,6 +208,7 @@ function renderer(f: Fixture): Harness {
     if (name === './comfy-image-settings.ts') return {comfyConnectorAvailabilityDescriptor, createComfyImageSettingsClient: () => ({read: async () => {throw Error('Not configured');}})};
     if (name === './icons.tsx') return {default: 'Icon'};
     if (name.endsWith('.css')) return {};
+    if (name === './api.ts') return {mediaUrl};
     if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitive;
     throw Error(name);
   };
@@ -232,7 +233,7 @@ function renderer(f: Fixture): Harness {
 async function uiCompose(ui: Harness): Promise<void> { ui.render(); await flush(); ui.render(); ui.change('image-generation-name', input().name); ui.change('image-generation-prompt', input().prompt); ui.click('image-provider-openai'); ui.click('image-mode-edit'); ui.change('image-source-asset', `${assetId}:${'a'.repeat(64)}`); }
 
 test('actual source handlers retain dirty selection and reject late clicks after source change, tab change and project change', async () => {
-  const f = fixture(), ui = renderer(f); await uiCompose(ui); assert.equal(ui.dirty, true); assert.equal((ui.find('image-source-preview').props.children as UiNode[])[0].props.src, `/media/${assetId}`);
+  const f = fixture(), ui = renderer(f); await uiCompose(ui); assert.equal(ui.dirty, true); assert.equal((ui.find('image-source-preview').props.children as UiNode[])[0].props.src, `/api/projects/${projectId}/media/${assetId}`);
   const oldPrepare = ui.find('image-generate').props.onClick, oldSource = ui.find('image-source-asset').props.onChange;
   ui.change('image-source-asset', `${id(21)}:${'b'.repeat(64)}`); oldPrepare(); oldSource({ target: { value: `${assetId}:${'a'.repeat(64)}` } }); ui.render(); assert.equal(ui.find('image-source-asset').props.value, `${id(21)}:${'b'.repeat(64)}`); assert.equal(f.calls.some(call => call.operation === 'image.review.prepare'), false);
   const beforeHide = ui.find('image-generate').props.onClick; ui.hide(true); beforeHide(); ui.hide(false); await flush(); ui.render(); beforeHide(); assert.equal(ui.find('image-generation-prompt').props.value, input().prompt); assert.equal(f.approvals.length, 0);

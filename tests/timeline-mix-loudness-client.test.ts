@@ -1,3 +1,4 @@
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 type StrictIntersection<T> = (T extends unknown ? (value: T)=>void : never) extends ((value: infer I)=>void) ? I : never;
 import type {TypedClient as FixtureClient} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
@@ -17,7 +18,7 @@ test('full-mix default is125s; explicit timeouts and unrelated30s defaults stay 
     const client=(createClient({env,...(clientOptions as Record<string, unknown>),fetchImpl:async(url,request)=>{calls.push((((({url,...request,body:JSON.parse((((request)!.body) as unknown as Parameters<typeof JSON.parse>[0]))}) as unknown as Parameters<typeof calls.push>[0])) as unknown as StrictIntersection<Parameters<NonNullable<(typeof calls)["push"]>>[0]>));return success(report);}}) as FixtureClient);
     assert.deepEqual(await client.rpc(operation,input,options),report);assert.equal(deadlines.at(-1),expected);
     assert.equal(calls.length,1);assert.deepEqual(calls[0].body,{operation,input});assert.equal(calls[0].method,'POST');
-    assert.equal(new URL(calls[0].url as string).pathname,'/api/rpc');assert.equal(calls[0].redirect,'error');
+    assert.equal(new URL(calls[0].url as string).pathname,projectRpcPath(input.projectId));assert.equal(calls[0].redirect,'error');
   }
   const client=(createClient({env,fetchImpl:async()=>success([])}) as FixtureClient);
   await client.rpc('project.list',{});assert.equal(deadlines.at(-1),30000);

@@ -1,4 +1,5 @@
 /** Read-only comparison of existing managed shot-video versions. No selection RPC. */
+import { projectApiPath } from '../../../packages/contracts/src/project-file.ts';
 export interface ComparisonVersion {
   id: string; projectId: string; shotId: string; assetId: string; sha256: string;
   number: number; providerId?: string; model?: string; createdAt?: string; isMock?: boolean;
@@ -42,9 +43,11 @@ export function captureComparison(context: ComparisonContext, versionId: string)
     references: Array.isArray(version.snapshot?.referenceAssetIds) && version.snapshot.referenceAssetIds.length <= 100 && version.snapshot.referenceAssetIds.every(id) ? version.snapshot.referenceAssetIds.join(', ') : null,
     seed: Number.isSafeInteger(version.snapshot?.parameters?.seed) ? version.snapshot!.parameters!.seed! : null });
   const identity = { projectId: context.projectId!, shotId: context.shot!.id, versionId, assetId: version.assetId, sha256: version.sha256, workspaceOrigin: 'normal' };
+  let route: string;
+  try { route = projectApiPath(identity.projectId, 'version-comparison', 'media'); } catch { return null; }
   return Object.freeze({ ...identity, scope: context.scope!, number: version.number, metadata,
     key: JSON.stringify([context.scope, identity, version.number, metadata]),
-    url: `/api/version-comparison/media?${new URLSearchParams(identity)}` });
+    url: `${route}?${new URLSearchParams(identity)}` });
 }
 export function comparisonCurrent(binding: ComparisonBinding | null, context: ComparisonContext): boolean {
   return Boolean(binding && captureComparison(context, binding.versionId)?.key === binding.key);

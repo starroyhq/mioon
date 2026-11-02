@@ -5,6 +5,8 @@ import type {AgentTaskRuntime} from '@mioon/business/agent/task-runtime-v2';
 import type {AgentTaskTools} from '@mioon/business/agent/task-tools-v2';
 import {createChatSse} from './chat-sse.ts';
 import type {ChatSseStream} from './chat-sse.ts';
+import {rejectProjectMismatch} from './project-routes.ts';
+import type {ProjectAddress} from './project-routes.ts';
 const prefix='/api/agent/tasks/v2';
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const json=(res:ServerResponse,status:number,data:unknown):void=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify({ok:status<400,...(status<400?{data}:{error:data})}));};
@@ -20,7 +22,7 @@ export function createAgentTaskHttp({runtime,tools,assertMutationAllowed}:{runti
   const clients=new Set<ChatSseStream>();
   const mutationBody=async(req:IncomingMessage,maxBytes?:number):Promise<unknown>=>{const input=await body(req,maxBytes);assertMutationAllowed?.();return input;};
   return {
-    async handle(req:IncomingMessage,res:ServerResponse,url:URL):Promise<boolean>{
+    async handle(req:IncomingMessage,res:ServerResponse,url:URL,address?:ProjectAddress):Promise<boolean>{
       if(url.pathname!==prefix&&!url.pathname.startsWith(prefix+'/'))return false;
       try{
         if(url.pathname===prefix+'/policy'){
@@ -42,7 +44,8 @@ export function createAgentTaskHttp({runtime,tools,assertMutationAllowed}:{runti
             if(!projectId||!/^[-a-f0-9]{36}$/u.test(projectId))throw agentTaskFailure('AGENT_TASK_INVALID');
             const requestId=url.searchParams.get('requestId');json(res,200,{claims:runtime.journal.claims(projectId,ownerId),targets:runtime.journal.revisionSnapshot(projectId),timelineRevision:runtime.timelineRevision(projectId),...(requestId?{receipt:runtime.journal.lookupEdit(requestId)}:{})});
           }else if(req.method==='POST'){
-            query(url,[]);const parsed=agentTaskEditingSchema.safeParse(await mutationBody(req));if(!parsed.success)throw agentTaskFailure('AGENT_TASK_INVALID');
+            query(url,[]);const input=await mutationBody(req);if(rejectProjectMismatch(res,address,input))return true;
+            const parsed=agentTaskEditingSchema.safeParse(input);if(!parsed.success)throw agentTaskFailure('AGENT_TASK_INVALID');
             json(res,200,runtime.journal.edit(parsed.data));
           }else {res.setHeader('Allow','GET, POST');json(res,405,{code:'METHOD_NOT_ALLOWED',message:'请使用 GET 或 POST。'});}return true;
         }

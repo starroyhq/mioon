@@ -336,7 +336,8 @@ test('third dock integrates with original keep-mounted/inert panes, existing mod
 test('rpc optional signal preserves exact existing call shape and only attaches observer signal on request', async t => {
   const previous = globalThis.fetch, calls: Array<[unknown, RequestInit]> = []; globalThis.fetch = (async (...args: [unknown, RequestInit]) => { calls.push(args); return { ok: true, json: async () => ({ ok: true, data: { ok: 1 } }) }; }) as unknown as typeof fetch;
   t.after(() => { globalThis.fetch = previous; });
-  await rpc('timeline.render', { purpose: 'preview' }); assert.equal(Object.hasOwn(calls[0]![1], 'signal'), false);
+  await rpc('timeline.render', { projectId, purpose: 'preview' }); assert.equal(Object.hasOwn(calls[0]![1], 'signal'), false);
+  assert.equal(calls[0]![0], `/api/projects/${projectId}/rpc`);
   const controller = new AbortController(); await rpc('timeline.export.preflight', { projectId, expectedRevision: 4 }, { signal: controller.signal });
   assert.equal(calls[1]![1].signal, controller.signal); assert.deepEqual(JSON.parse(String(calls[1]![1].body)), { operation: 'timeline.export.preflight', input: { projectId, expectedRevision: 4 } });
 });

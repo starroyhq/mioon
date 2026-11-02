@@ -35,6 +35,8 @@ import {isTimelineMixLoudnessResponse, TIMELINE_MIX_LOUDNESS_LIMITS} from '@mioo
 import {readTimelineMixLoudnessEnvelope} from './timeline-mix-loudness.ts';
 export {prepareTimelineMixLoudness} from './timeline-mix-loudness.ts';
 import {isSubjectGenerationResponse,isSubjectGenerationRetryResponse} from '@mioon/contracts';
+import {isEntityAddressedOperation, rpcPathFor} from '../../contracts/src/project-addressing.ts';
+import {isProjectId} from '../../contracts/src/project-file.ts';
 
 export {schemas, descriptions, resolveConnection, effectAnnotations};
 export const VERSION = applicationPackage.version;
@@ -137,9 +139,17 @@ export interface OperationDefinition {
   requiresRequestId: boolean;
   effects: ReturnType<typeof operationEffect>;
 }
+/** CLI and MCP take the project of an entity-addressed operation as a required
+ * `projectId` beside the operation's own fields. It is the request's address,
+ * never part of the shared input (splitProjectAddress). */
+function withProjectAddress(schema: JsonSchema): JsonSchema {
+  const projectId = {type: 'string', pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'};
+  return {...schema, properties: {projectId, ...schema.properties as Record<string, unknown>}, required: ['projectId', ...schema.required as string[]]};
+}
 export function operationDefinition(operation: string): OperationDefinition {
   if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
-  const inputSchema = jsonSchema(operationSchemas[operation]);
+  const shared = jsonSchema(operationSchemas[operation]);
+  const inputSchema = isEntityAddressedOperation(operation) ? withProjectAddress(shared) : shared;
   return {operation, toolName: operation.replaceAll('.', '_'), command: operation.replaceAll('.', ' '), description: operationDescriptions[operation] || operation, inputSchema, requiresRequestId: requiresField(inputSchema,'requestId'), effects: operationEffect(operation)};
 }
 export interface DiscoverySchemaResult {version: string; operations: OperationDefinition[]; validation: string}
@@ -235,8 +245,18 @@ function sceneNotAccepted(error: unknown, status: number, operation: string, inp
 
 export interface ClientOptions {env?: NodeJS.ProcessEnv; fetchImpl?: typeof fetch; requestTimeoutMs?: number}
 export interface RequestOptions {body?: RpcBody; signal?: AbortSignal; timeoutMs?: number}
-export interface RpcOptions {signal?: AbortSignal; timeoutMs?: number; expectedWorkspaceOrigin?: string}
-export interface WatchOptions {timeoutMs?: number; intervalMs?: number; signal?: AbortSignal; onProgress?: (progress: WatchProgress) => void}
+/** `projectId` addresses the entity-addressed operations, whose input names
+ * no project; every other operation takes its project from its input. */
+export interface RpcOptions {signal?: AbortSignal; timeoutMs?: number; expectedWorkspaceOrigin?: string; projectId?: string}
+export interface WatchOptions {timeoutMs?: number; intervalMs?: number; signal?: AbortSignal; onProgress?: (progress: WatchProgress) => void; projectId?: string}
+/** Separates the `projectId` that CLI and MCP give beside an entity-addressed
+ * operation's own fields. Any other input is returned unchanged. */
+export function splitProjectAddress(operation: string, args: unknown): {input: unknown; projectId?: string} {
+  if (!isEntityAddressedOperation(operation) || !args || typeof args !== 'object' || Array.isArray(args) || !Object.hasOwn(args, 'projectId')) return {input: args};
+  const {projectId, ...input} = args as Record<string, unknown>;
+  if (!isProjectId(projectId)) throw new ClientError('VALIDATION_ERROR', 'projectId must be the lowercase UUID of the project that owns the record.');
+  return {input, projectId};
+}
 export interface WatchProgress {kind: string; id: string; status: string; progress: unknown}
 export interface WatchRecord {id: string; status: string; progress?: unknown; error?: unknown; allowedActions?: unknown; [key: string]: unknown}
 export interface DoctorReport {
@@ -342,9 +362,12 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
     if(operation==='lut.look.inspect'&&(isProxy(input)||!isLookPackInspectInput(input)))throw new ClientError('VALIDATION_ERROR','Expected only a project ID and LUT resource ID.');
     const parsed = parse(operation as OperationName, input) as Record<string, unknown>;
-    const {expectedWorkspaceOrigin, ...transportOptions} = options ?? {};
+    const {expectedWorkspaceOrigin, projectId, ...transportOptions} = options ?? {};
     const body: RpcBody = {operation, input: parsed, ...workspaceOriginOptions(expectedWorkspaceOrigin)};
-    const envelope = (await request('/api/rpc', {...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : operation === 'timeline.export.samplePeak' ? {timeoutMs: samplePeakTimeoutMs} : operation === 'timeline.export.loudness' ? {timeoutMs: loudnessTimeoutMs} : operation === 'timeline.clip.loudness' ? {timeoutMs: clipLoudnessTimeoutMs} : operation === 'timeline.loudness.prepare' ? {timeoutMs: mixLoudnessTimeoutMs} : operation === 'timeline.loudness.apply' ? {timeoutMs: loudnessApplyTimeoutMs} : {}), ...transportOptions, body})) as {data?: unknown};
+    let resource: string;
+    try { resource = rpcPathFor(operation, parsed, projectId); }
+    catch { throw new ClientError('VALIDATION_ERROR', 'This operation is addressed by its project: give the lowercase UUID projectId of the project that owns the record.'); }
+    const envelope = (await request(resource, {...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : operation === 'timeline.export.samplePeak' ? {timeoutMs: samplePeakTimeoutMs} : operation === 'timeline.export.loudness' ? {timeoutMs: loudnessTimeoutMs} : operation === 'timeline.clip.loudness' ? {timeoutMs: clipLoudnessTimeoutMs} : operation === 'timeline.loudness.prepare' ? {timeoutMs: mixLoudnessTimeoutMs} : operation === 'timeline.loudness.apply' ? {timeoutMs: loudnessApplyTimeoutMs} : {}), ...transportOptions, body})) as {data?: unknown};
     const result = envelope.data;
     const resultRecord = result as Record<string, unknown> | null | undefined;
     if (operation === 'generation.submit' && Object.hasOwn(parsed, 'subjectVersionId') && !isSubjectGenerationResponse(operation, parsed, result))
@@ -439,7 +462,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     const providers = await capabilities(options);
     return {ready: true, clientVersion: VERSION, backend: {service: health.service, version: health.version, sqlite: health.sqlite}, connection: {source: connectionSource(env), localOnly: true, credentialsReloadedPerRequest: true}, providers};
   }
-  async function watch(kind: 'job' | 'export', input: Record<string, unknown>, {timeoutMs = 60_000, intervalMs = 500, signal, onProgress}: WatchOptions = {}): Promise<WatchRecord> {
+  async function watch(kind: 'job' | 'export', input: Record<string, unknown>, {timeoutMs = 60_000, intervalMs = 500, signal, onProgress, projectId}: WatchOptions = {}): Promise<WatchRecord> {
     if (!['job', 'export'].includes(kind)) throw new ClientError('VALIDATION_ERROR', 'Watch supports job or export.');
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 86_400_000 || !Number.isSafeInteger(intervalMs) || intervalMs < 20 || intervalMs > 60_000) throw new ClientError('VALIDATION_ERROR', 'Watch timeout must be 1–86400000 ms and interval 20–60000 ms.');
     parse(`${kind}.get`, input);
@@ -449,7 +472,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       checkSignal(signal);
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw new ClientError('WATCH_TIMEOUT', 'Stopped waiting at the deadline. No remote job was cancelled.', {details: {kind, id: input[`${kind}Id`], status: last?.status || null}});
-      try { last = await rpc<WatchRecord>(`${kind}.get`, input, {signal, timeoutMs: Math.min(requestTimeoutMs, remaining)}); }
+      try { last = await rpc<WatchRecord>(`${kind}.get`, input, {signal, timeoutMs: Math.min(requestTimeoutMs, remaining), ...(projectId === undefined ? {} : {projectId})}); }
       catch (error) {
         const failure = error as {code?: unknown};
         if (failure.code === 'TIMEOUT' && Date.now() >= deadline) throw new ClientError('WATCH_TIMEOUT', 'Stopped waiting at the deadline. No remote job was cancelled.', {details: {kind, id: input[`${kind}Id`], status: last?.status || null}});

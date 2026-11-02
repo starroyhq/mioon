@@ -1,4 +1,5 @@
 
+import { projectMediaPath } from '../../../packages/contracts/src/project-file.ts';
 type PreviewRange = { startFrame: number; endFrame: number };
 type Context = { scope: string; projectId: string; timelineId: string; revision: number; exportSettings?: unknown; settingsVersion?: number; exportRange?: unknown; rangeVersion?: number };
 type SavedTimeline = { clips?: { assetId: string }[]; [key: string]: unknown };
@@ -7,6 +8,10 @@ export type PreviewRecord = { id: string; requestId: string; status: 'queued' | 
 export type PreviewAttempt = { scope: string; timelineId: string; contextKey: string; input: PreviewInput; submitting: boolean; exportId: string | null; receipt: PreviewRecord | null };
 export type PreviewResult = { phase: 'idle' | 'submitting' | 'unknown' | 'unavailable' | PreviewRecord['status']; record: PreviewRecord | null; stale: boolean; url: string | null };
 const object = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+/** Inline playback of the preview's own output at its project's address. */
+const previewMediaUrl = (projectId: string, record: PreviewRecord): string | null => {
+  try { return `${projectMediaPath(projectId, record.assetId as string)}?preview=1&exportId=${record.id}`; } catch { return null; }
+};
 export const EXPORT_PREVIEW_MAX_FRAMES = 300;
 export function isExportPreviewRange(range: PreviewRange | null | undefined, durationFrames: number) {
   return Boolean(range && Number.isSafeInteger(durationFrames) && Number.isSafeInteger(range.startFrame) && Number.isSafeInteger(range.endFrame) &&
@@ -36,5 +41,5 @@ export function exportPreviewResult(attempt: PreviewAttempt | null, exports: unk
   if (matches.length && !row) return { phase: 'unavailable', record: null, stale, url: null };
   const held = record && heldExportIds.includes(record.id);
   return { phase: !connected || held ? 'unavailable' : record?.status || (attempt.submitting ? 'submitting' : 'unknown'), record, stale,
-    url: connected && !held && !stale && record?.status === 'succeeded' ? `/media/${record.assetId}?preview=1&exportId=${record.id}` : null };
+    url: connected && !held && !stale && record?.status === 'succeeded' ? previewMediaUrl(attempt.input.projectId, record) : null };
 }

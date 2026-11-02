@@ -1,3 +1,4 @@
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {WorkspaceServices as FixtureServices,WorkspaceClient as FixtureClient} from './helpers/strict-workspace-boundary-types.ts';
 import type {FixtureStore} from './helpers/strict-timeline-core-types.ts';
 import test from 'node:test';
@@ -89,7 +90,7 @@ test('restored actual HTTP, CLI and official MCP edit once, retain lost acknowle
  const f=await fixture(t);let timeline=f.timeline;
  for(const transport of f.transports){
   const before=f.requests.length,input={projectId:f.project.id,expectedRevision:timeline.revision,requestId:randomUUID(),kind:'audio',name:`新 ${transport.name} · 中文`};
-  f.drop('/api/rpc');const lost=await transport.call('timeline.track.add',input);assert.equal(lost.ok,false);assert.equal(f.requests.length,before+1,'no hidden retry');
+  f.drop(transport.name==='HTTP'?'/api/rpc':projectRpcPath(f.project.id));const lost=await transport.call('timeline.track.add',input);assert.equal(lost.ok,false);assert.equal(f.requests.length,before+1,'no hidden retry');
   const accepted=f.observed.at(-1)!.body;assert.equal(accepted.ok,true);const receipt=f.db((db)=>db.prepare('SELECT * FROM timeline_requests WHERE requestId=?').get(input.requestId));
   await f.restart();const replay=await transport.call('timeline.track.add',input);assert.deepEqual(replay,accepted);timeline=replay.data;
   assert.deepEqual(f.db((db)=>db.prepare('SELECT * FROM timeline_requests WHERE requestId=?').get(input.requestId)),receipt);

@@ -111,7 +111,7 @@ test('real saved full mix matches across HTTP, CLI and official MCP without rows
   const before={rows:rows(),version:(db.prepare('PRAGMA data_version').get())!.data_version,files:await manifest(root)};
   const listeners: ({ baseline: { request: unknown; response: unknown; }; remaining: { request: unknown; response: unknown; }; })[]=[];
   const observe=(req: { url: string; listenerCount: (arg0: string) => unknown; },res: { listenerCount: (arg0: string) => unknown; once: (arg0: string,arg1: () => void) => void; })=>{
-    if(req.url!=='/api/rpc')return;
+    if(req.url!=='/api/rpc'&&parseProjectApiPath(req.url)?.kind!=='rpc')return;
     const baseline={request:req.listenerCount('aborted'),response:res.listenerCount('close')};
     res.once('finish',()=>queueMicrotask(()=>listeners.push((({baseline,remaining:{request:req.listenerCount('aborted'),response:res.listenerCount('close')}}) as unknown as Parameters<typeof listeners.push>[0]))));
   };
@@ -165,3 +165,4 @@ test('real saved full mix matches across HTTP, CLI and official MCP without rows
     candidateLufs:reports[0].candidate.measurement.integratedLufs,candidateTruePeakDbtp:reports[0].candidate.measurement.truePeakDbtp,
     counts,listeners,allRowsAndFilesUnchanged:true}));
 });
+import {parseProjectApiPath} from '../packages/contracts/src/project-file.ts';

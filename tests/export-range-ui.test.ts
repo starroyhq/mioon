@@ -216,7 +216,7 @@ test('only malformed range-present rows suppress file actions; valid selected an
     for (const snapshot of [{ timeline, exportRange: range, ...name }, { timeline, ...name }]) {
       const tree = View({ orderedExports: [{ ...base, snapshot }], projectName: 'Current name', timelineRevision: 99 });
       assert.equal(actions(tree).length, 1);
-      assert.deepEqual(actions(tree)[0].props, {projectId, exportId:id(10), downloadHref:named ? `/media/${id(11)}?download=1&exportId=${id(10)}` : base.url, disabled:false, children:[]});
+      assert.deepEqual(actions(tree)[0].props, {projectId, exportId:id(10), downloadHref:named ? `/api/projects/${projectId}/media/${id(11)}?download=1&exportId=${id(10)}` : `/api/projects/${projectId}/media/${id(11)}`, disabled:false, children:[]});
       assert.equal(nodes(tree).some(node => node.props['data-testid'] === 'download-export'), false, 'Composition cannot claim an asynchronous file check has succeeded');
     }
     for (const patch of [

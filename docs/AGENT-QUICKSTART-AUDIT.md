@@ -65,7 +65,7 @@ MCP 是 stdio bridge，由已获配置授权的宿主以 `node` 和绝对 `apps/
 | `image.task.cancelQueued` | `image_task_cancelQueued` |
 | `image.task.recoverResult` | `image_task_recoverResult` |
 
-辅助工具为 `mioon_doctor({})`、`mioon_capabilities({})`、`mioon_schema({"operation":"image.review.prepare"})`。CLI 的 watch/download 包装器不是 MCP 工具。HTTP 公共操作外形为 `POST /api/rpc`，body 为 `{operation,input}`；CLI `--input` 和 MCP arguments 只传内层 input，不能再次包上 operation。HTTP 认证由现有客户端处理，本文不提供携带 token 或代替用户批准的 curl。
+辅助工具为 `mioon_doctor({})`、`mioon_capabilities({})`、`mioon_schema({"operation":"image.review.prepare"})`。CLI 的 watch/download 包装器不是 MCP 工具。项目级 HTTP 公共操作为 `POST /api/projects/{projectId}/rpc`，应用级操作保留 `POST /api/rpc`，body 均为 `{operation,input}`；CLI `--input` 和 MCP arguments 只传输入，不能再次包上 operation。`edge.delete`、`export.get`、`generation.submit`、`job.cancel/get/reconcile/retry`、`node.update`、`shot.update`、`version.list/select` 的 CLI/MCP 输入额外要求传输字段 `projectId`，客户端取出它用于地址，原 HTTP 业务 input 不变。watch/download 同样显式携带项目 ID；其他项目操作保留已有项目字段（`image.review.prepare` 位于嵌套 input）。HTTP 认证由现有客户端处理，寻址细节见 [API](API.md#按项目寻址)；本文不提供携带 token 或代替用户批准的 curl。
 
 ## 2. 项目选择和授权素材导入
 
@@ -163,11 +163,11 @@ prepare ACK 丢失时有 reviewId 就 get，否则在 bounded list 中核对 req
 node apps/cli/src/index.ts image generate --input '{"projectId":"11111111-1111-4111-8111-111111111111","name":"本地流程测试","providerId":"mock","model":"mock-image-v1","prompt":"仅验证本地流程。","options":{"size":"1024x1024","quality":"low","outputFormat":"png","background":"opaque","n":1},"requestId":"quickstart-mock-image-0001"}'
 ```
 
-已有视频镜头的版本是另一族契约：`version.list` 只收 shotId，按 number 升序；不是 image version list，也没有 `version get`。选择版本是独立写入，需要当前 shot revision，不能借图片完成自动修改镜头。
+已有视频镜头的版本是另一族契约：`version.list` 的业务 input 只收 shotId，CLI/MCP 还须提供所属项目的 projectId 用于寻址，结果按 number 升序；不是 image version list，也没有 `version get`。选择版本是独立写入，需要当前 shot revision，不能借图片完成自动修改镜头。
 
 <!-- quickstart video-version-read read -->
 ```sh
-node apps/cli/src/index.ts version list --input '{"shotId":"55555555-5555-4555-8555-555555555555"}'
+node apps/cli/src/index.ts version list --input '{"projectId":"11111111-1111-4111-8111-111111111111","shotId":"55555555-5555-4555-8555-555555555555"}'
 ```
 
 ## 4. 时间线编排与本地导出
@@ -208,15 +208,15 @@ node apps/cli/src/index.ts timeline render --input '{"projectId":"11111111-1111-
 
 <!-- quickstart export-observe read -->
 ```sh
-node apps/cli/src/index.ts export get --input '{"exportId":"88888888-8888-4888-8888-888888888888"}'
-node apps/cli/src/index.ts export watch --input '{"exportId":"88888888-8888-4888-8888-888888888888"}' --timeout-ms 60000 --interval-ms 500
+node apps/cli/src/index.ts export get --input '{"projectId":"11111111-1111-4111-8111-111111111111","exportId":"88888888-8888-4888-8888-888888888888"}'
+node apps/cli/src/index.ts export watch --input '{"projectId":"11111111-1111-4111-8111-111111111111","exportId":"88888888-8888-4888-8888-888888888888"}' --timeout-ms 60000 --interval-ms 500
 ```
 
 **写入客户端新文件**：成功后下载到用户选定的未存在路径，拒绝覆盖（`packages/client/src/download.ts:18–21`）。返回的 output/bytes 及实际文件存在/播放应在未来运行时验证；本文未下载。导出 URL 是需认证的本地资源，不是公开链接。
 
 <!-- quickstart export-download local-write -->
 ```sh
-node apps/cli/src/index.ts export download --input '{"exportId":"88888888-8888-4888-8888-888888888888"}' --output '/ABS/新输出目录/quickstart-result.mp4'
+node apps/cli/src/index.ts export download --input '{"projectId":"11111111-1111-4111-8111-111111111111","exportId":"88888888-8888-4888-8888-888888888888"}' --output '/ABS/新输出目录/quickstart-result.mp4'
 ```
 
 `export create` 是按镜头已选版本顺序导出，和 `timeline render` 不同，不能互换；没有公共 `export list`。长 JSON 可改用 `--input-file /ABS/intent.json` 或 `--input -` 从 stdin 读取，两种输入源不能并用。没有 `--project`、`--token`、`--provider`、`--model`、`--prompt` 业务 flags；字段放严格 JSON。恢复时保存完整输入，不能每次运行重新生成 key。

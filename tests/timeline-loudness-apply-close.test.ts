@@ -1,3 +1,4 @@
+import {parseProjectApiPath, projectApiPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -89,14 +90,19 @@ async function harness(t: import('node:test').TestContext, { lose = 'execute' }:
   const instanceId = id(69);
   const fetcher = async (path: string, options: RequestInit = {}): Promise<Response> => {
     const body: Record<string, unknown> | undefined = options.body ? JSON.parse(String(options.body)) : undefined; calls.push({ path, body });
-    if (path.startsWith('/api/tasks?')) return reply({ items: [...wireTasks.values()].filter(task => !task.acknowledged && task.projectId === new URL(path, 'http://localhost').searchParams.get('projectId')), nextCursor: null, instanceId });
-    if (path === '/api/tasks/prepare') {
+    const url = new URL(path, 'http://localhost'), route = parseProjectApiPath(url.pathname);
+    assert.ok(route?.kind === 'other' && route.segments[0] === 'tasks', `Expected project task route for ${path}`);
+    if (route.segments.length === 1) {
+      assert.equal(url.searchParams.get('projectId'), route.projectId);
+      return reply({ items: [...wireTasks.values()].filter(task => !task.acknowledged && task.projectId === route.projectId), nextCursor: null, instanceId });
+    }
+    if (route.segments.length === 2 && route.segments[1] === 'prepare') {
       const prepareInput = (body?.input ?? {}) as TaskRecord['input'];
       const task: TaskRecord = { id: id(serial++), digest: 'd'.repeat(64), projectId: String(body?.projectId), operation: String(body?.operation), input: structuredClone(prepareInput), requestId: prepareInput.requestId,
         lane: 'timeline:mutation', status: 'prepared', revision: 1, acknowledged: false, createdAt: stamp, updatedAt: stamp, origin: body?.origin };
       wireTasks.set(task.id, task); if (lose === 'prepare') throw Error('Prepare response lost after persistence'); return reply({ task, instanceId });
     }
-    const taskId = path.split('/')[3]?.split('?')[0]; assert.ok(taskId); const task = wireTasks.get(taskId);
+    const taskId = route.segments[1]; assert.ok(taskId); const task = wireTasks.get(taskId);
     assert.ok(task, `Expected original task for ${path}`);
     if (path.endsWith('/execute')) { wireTasks.set(task.id, { ...task, status: 'applied', revision: 3 }); throw Object.assign(Error('Execute response timed out after commit'), { code: 'REQUEST_TIMEOUT' }); }
     if (path.endsWith('/acknowledge')) { const ack = { ...task, acknowledged: true, revision: task.revision + 1 }; wireTasks.set(task.id, ack); if (ackGate) { const gate = ackGate; ackGate = null; gate.started.resolve(ack); await gate.wait.promise; } return reply({ task: ack, instanceId }); }
@@ -154,7 +160,7 @@ test('actual App timeout clears generic busy, but apply unknown remains a native
   assert.equal(h.view().controller.getState().phase, 'applied');
   assert.equal(h.admission.inspect().disposition, 'clean');
   assert.deepEqual(h.unload(), { allowed: true, prevented: false });
-  assert.equal(h.calls.filter(call => call.path === '/api/tasks/prepare').length, 1);
+  assert.equal(h.calls.filter(call => call.path === projectApiPath(projectId, 'tasks', 'prepare')).length, 1);
   assert.equal(h.calls.filter(call => call.path.endsWith('/execute')).length, 1);
 });
 
@@ -192,7 +198,7 @@ test('lost prepare retains original scalar binding and clears only after explici
   h.wireTasks.set(original.id, { ...original, status: 'not_applied', revision: 2 });
   await h.tasks.load(projectId); await h.recover(h.tasks.getState(projectId).items[0] as unknown as TaskRecord);
   assert.equal(h.view().controller.getState().phase, 'error'); assert.equal(h.admission.inspect().disposition, 'clean');
-  assert.equal(h.calls.filter(call => call.path === '/api/tasks/prepare').length, 1);
+  assert.equal(h.calls.filter(call => call.path === projectApiPath(projectId, 'tasks', 'prepare')).length, 1);
   assert.equal(h.calls.some(call => call.path.endsWith('/execute')), false);
 });
 
@@ -290,13 +296,13 @@ for (const [name, scope, blocked] of identityCasesB) {
     const h = await harness(t); h.setStorage(scope, blocked); h.render();
     assert.equal(await h.apply(), null);
     assert.equal(h.confirms.length, 0); assert.equal(h.requestKeys(), 0);
-    assert.equal(h.calls.some(call => call.path === '/api/tasks/prepare'), false); assert.equal(h.wireTasks.size, 0);
+    assert.equal(h.calls.some(call => call.path === projectApiPath(projectId, 'tasks', 'prepare')), false); assert.equal(h.wireTasks.size, 0);
     assert.equal(h.view().controller.getCloseState().blocked, false); assert.equal(h.view().controller.getCloseState().busy, false);
     assert.equal(h.admission.inspect().disposition, 'clean');
     assert.match(String(h.view().controller.getState().error), /工作区身份.*未.*核验|身份尚未核验/);
     h.setStorage('a'.repeat(64)); h.observation.edit(); await h.observation.ready(undefined); h.render();
     assert.equal((await h.apply())?.status, 'unknown'); assert.equal(h.confirms.length, 1); assert.ok(h.requestKeys() > 0);
-    assert.equal(h.calls.filter(call => call.path === '/api/tasks/prepare').length, 1);
+    assert.equal(h.calls.filter(call => call.path === projectApiPath(projectId, 'tasks', 'prepare')).length, 1);
     const original = [...h.wireTasks.values()][0]; await h.recover(original); assert.equal(h.admission.inspect().disposition, 'clean');
   });
 }
@@ -308,7 +314,7 @@ for (const notify of [false, true]) for (const [name, scope, blocked] of identit
     assert.equal(h.view().controller.getState().phase, 'confirming');
     h.setStorage(scope, blocked); if (notify) h.render(); gate.wait.resolve(true); assert.equal(await reviewing, null);
     const state = h.view().controller.getState(); assert.ok(['stale', 'error'].includes(state.phase)); assert.match(String(state.error), /身份/);
-    assert.equal(h.wireTasks.size, 0); assert.equal(h.calls.some(call => call.path === '/api/tasks/prepare'), false);
+    assert.equal(h.wireTasks.size, 0); assert.equal(h.calls.some(call => call.path === projectApiPath(projectId, 'tasks', 'prepare')), false);
     assert.equal(h.view().controller.getCloseState().busy, false); assert.equal(h.view().controller.getCloseState().blocked, false);
     assert.equal(h.admission.inspect().disposition, 'clean');
     h.setStorage('a'.repeat(64)); h.observation.edit(); await h.observation.ready(undefined); h.render();

@@ -27,5 +27,5 @@ test('H4b real checks CLI preserves optional duration requirements and only send
   const result=await execute(process.execPath,[entry,'agent','task','checks','--input',JSON.stringify({projectId,runId})],{cwd:repository,env,timeout:15000,encoding:'utf8'});
   assert.deepEqual(JSON.parse(result.stdout),{ok:true,data:expected});assert.equal(result.stdout.includes(session),false);assert.equal(result.stderr.includes(session),false);
  }
- assert.deepEqual(calls,Array.from({length:2},()=>({method:'GET',url:`/api/agent/tasks/v2/${projectId}/${runId}/checks`})));
+ assert.deepEqual(calls,Array.from({length:2},()=>({method:'GET',url:`/api/projects/${projectId}/agent/tasks/v2/${runId}/checks`})));
 });
