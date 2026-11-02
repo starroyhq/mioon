@@ -94,10 +94,11 @@
       "legacyConstructorSha256": "a0c0dc758234af6ad475dc7f1ec037c54f871aa1c44faf5e8d099b6a5214ae3b",
       "legacyClosureSha256": null,
       "legacyClosureStatements": null,
-      "typeErasedSha256": "e79df022a0e08528f7f8bfbbddbd2da6ed238ec1d7042ce450d6fd302036ae7d",
-      "typeErasedClosureSha256": "67b565682471e08b36aaad6a58dece4850cf39cb2fdcc66b07c45524b7420cd8",
+      "typeErasedSha256": "cefde28b90cb93feee11eb08e67f1089c2ccdf4e7875ed437d7e7b42b85845ee",
+      "typeErasedClosureSha256": "cb09067b18234bcaeb1250f593c944a86d7a35ca73d62efb0bce2f3cc51acf37",
       "typeErasedClosureStatements": 10,
       "typeErasedDependencyDeclarations": [
+        "import { isProjectDatabase as isProjectLayout } from \"../project-file/held-files.ts\";",
         "import { createHash, randomUUID } from \"node:crypto\";",
         "import { throwIfMediaAborted } from \"../media-processes.ts\";",
         "import { run } from \"../media-runtime.ts\";",
