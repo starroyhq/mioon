@@ -43,6 +43,26 @@
 
 应用级总量调度和限额归 S3，P4 没有新增跨项目全局调度器。
 
+### S6-A：项目目录与受信控制
+
+应用级认证读取新增 GET /api/project-entries，严格契约在 packages/contracts/src/project-entry.ts。响应为版本 1、appLibraryScope、instanceId 和 registered；每条含完整 RecentProject（summary 可以为空）、availability 和 coverUrl。封面仍只读 GET /api/project-covers/<ID>，没有缓存就显示占位。
+
+- 网页渠道只列配置 projectsDir 内已登记的项目；生产/开发桌面渠道列全部最近登记。范围由启动时的受信渠道决定，HTTP 不接受目录、模式或分页参数，也不扫描未知文件。手工放进目录的文件，须经明确的打开流程登记一次后才出现；0.1.0 没有新增网页文件扫描或任意路径打开接口。
+- 读取经 manager.list()，保留热日志恢复及后台查找移动位置的规则，不为补摘要自动组装项目。availability 是提示，实际打开结果仍是权威。
+- appLibraryScope 与原 last-project 的 workspaceScope 使用同一应用库身份算法；instanceId 仅表示这次服务实例，不能用来代替稳定缓存身份。读取前后检查身份，换库或失去应用库持有权时拒绝。旧 /api/last-project 和全部消费者在后续迁完前保留。
+- 目录最多 8192 条（沿用 B1），本新资源的完整 JSON 传输单独限 384 MiB，超过返回 PROJECT_ENTRY_LIMIT（413），不截断成假完整列表。这是读取资源的上限，不改变应用库容量或保证容纳其全部理论极限数据。
+
+ServerInstance.projectEntries 是生产受信端口，契约在 project-entry-native.ts：listRecent、create、openPath、acquire、release、onWindowRevoked。它由当前服务实例闭包持有，不注册到 HTTP、RPC、CLI 或环境变量，也不使用 retainProjectForTest。S6-A 只交付此端口；桌面主进程/utility 消息和真实窗口接线归 S6-B。
+
+- create 共用 createInitializedProject：校验位置、创建唯一文件、初始化项目行和画幅，然后关初始化连接；原生创建本身不组装运行时。原公共 project.create 在共用初始化后继续保留既有 request 租约激活行为，响应字段不变。
+- 名称由独立 project-name.ts 同时给服务端和 U1 预检使用：拒绝空名、超过 150 个 UTF-16 单元、控制字符、非法路径字符、首尾空白/点、Windows 设备保留名（含扩展名、大小写和上标数字）。底层文件夹清洗/NFC/序号规则保留，不用静默清洗代替公共输入校验。
+- 宿主在 factory、afterOpen 和摘要全部成功后才提交 lastOpenedAt；身份登记提前保留旧时间或 null。失败不刷新打开时间，也不盲目回滚并发的新登记。
+- openPath/acquire 固定取得 window 租约。windowId 是主进程生成的 UUID owner，不是页面任选的租约种类或 BrowserWindow 数字 ID。同一 owner 同一意图共享绑定；不同意图冲突。release 幂等，pending open 的晚到租约会回收，不能交给替代 owner。
+- 普通 release 只释放自己的 window 租约；强制撤销或退出通过 onWindowRevoked 通知。网页编辑页仍使用原 request 租约/空闲关闭规则，网页 window-session 留到 0.1.x；S6-A 没有新增持久化窗口表。
+- 当前端口不提供忘记登记或显式强关项目：忘记仅限缺失且无活跃窗口、无待写入结果的已审流程，显式强关会撤任务，均不能用这个端口绕过后续 S3/S6 的准入。
+
+Node 只读客户端为 @mioon/client/project-entry 的 createProjectEntriesClient().list()：固定地址、认证 GET、严格响应/UTF-8/字节上限、取消和超时，不自动重试。新增错误为 PROJECT_ENTRY_SCOPE_MISMATCH（409）、PROJECT_ENTRY_UNAVAILABLE（503）、PROJECT_ENTRY_WINDOW_CONFLICT（409，受信端口）、PROJECT_ENTRY_LIMIT（413）。未改应用库/项目/history/cache 格式、Mio 工具目录或请求指纹。
+
 以下保留 10-31 的接口设计、切换前清点和第 6 节实施计划作为历史依据；其中“下一轮”“现在的 composeServer”指当时的旧入口，当前行为以上述 P4 状态和实际源码为准。S0a 内核接口的调用时机仍见第 5 节。
 
 约定以 `PROJECT-FILE.md` 为准，本文只引用、不重复。代码在 `apps/server/src/project-host/`：

@@ -1,4 +1,5 @@
 import { PROJECT_FILE_EXTENSION } from '../../../../packages/contracts/src/project-file.ts';
+export { projectNameProblem } from '../../../../packages/contracts/src/project-name.ts';
 import type { HostPlatform } from './types.ts';
 
 /** Pure helpers for the project file screens. They return structured values;
@@ -64,14 +65,6 @@ export function projectFilePathPreview(location: string, name: string, createFol
   const file = `${name}${PROJECT_FILE_EXTENSION}`;
   return [base, ...(createFolder ? [name] : []), file].join(separator);
 }
-const NAME_FORBIDDEN = /[/\\:*?"<>|]/u;
-/** Why a new project name cannot be used: empty, or with characters the file
- * systems refuse or with spaces around it. */
-export function projectNameProblem(name: string): 'empty' | 'invalid' | null {
-  if (name.trim() === '') return 'empty';
-  return NAME_FORBIDDEN.test(name) || name !== name.trim() ? 'invalid' : null;
-}
-
 export type ByteUnit = 'b' | 'kb' | 'mb' | 'gb' | 'tb';
 const BYTE_UNITS: readonly ByteUnit[] = ['b', 'kb', 'mb', 'gb', 'tb'];
 /** Decimal units (1 KB = 1000 bytes), as the Finder shows them. The value is

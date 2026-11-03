@@ -7,7 +7,7 @@ import {sanitizeAgentSettingsError, sanitizeAgentSettingsResult} from '@mioon/bu
 import type {TaskGateway} from '@mioon/business/agent/task-gateway-v2';
 import {agentTaskFailure} from '@mioon/business/agent/task-runtime-v2';
 import {createApplicationPolicy} from '@mioon/business/agent/application-policy-v2';
-import {openAppLibrary} from '@mioon/business/app-db/index';
+import {openAppLibrary, isAppLibraryHeld, projectFileIdentity} from '@mioon/business/app-db/index';
 import {createEditTasks} from '@mioon/business/edit-tasks';
 import type {NativeAudioPreviewAuthority} from '@mioon/business/native-audio-preview';
 import {boundedShutdown, assertMediaTerminated} from '@mioon/business/operation-lifecycle';
@@ -20,7 +20,9 @@ import {openProjectStore, recoverProjectFile} from '@mioon/business/project-file
 import {createProviderCatalog} from '@mioon/business/provider-registry';
 import {listImageProfiles} from '@mioon/business/images';
 import {AppError} from '@mioon/contracts';
-import {readPrivateFile, writePrivateFileAtomic} from '@mioon/contracts/private-storage';
+import {readPrivateFile, writePrivateFileAtomic, validateManagedFile, validatePrivateDirectory} from '@mioon/contracts/private-storage';
+import {calculateWorkspaceScope} from '../../../packages/contracts/src/workspace-scope.ts';
+import type {ProjectEntryControlPort} from '../../../packages/contracts/src/project-entry-native.ts';
 import {parseProjectApiPath} from '../../../packages/contracts/src/project-file.ts';
 import {agentDiagnosticSummarySchema} from '../../../packages/contracts/src/agent-diagnostic-summary.ts';
 import {projectIdMismatch, isDatabaseMovedError, projectFileMoved} from './project-host/errors.ts';
@@ -36,6 +38,8 @@ import {createProjectCoverHttp} from './project-host/covers.ts';
 import {bindProjectNativeAudio} from './project-host/native-audio.ts';
 import {composeApplicationRuntime} from './application-runtime.ts';
 import {createApplicationRpc} from './application-rpc.ts';
+import {createInitializedProject} from './project-host/create-project.ts';
+import {createProjectEntries} from './project-entries.ts';
 import {createAgentDiagnosticsHttp} from './agent-diagnostics-http.ts';
 import {body, json, field} from './http-json.ts';
 import {callObservedRpc} from './rpc-observation.ts';
@@ -117,6 +121,8 @@ interface ServerInstance {
   token: string;
   tokenFile: string;
   dataDir: string;
+  /** Trusted utility-process capability; never dispatched from HTTP/CLI/env. */
+  readonly projectEntries: ProjectEntryControlPort;
   setBackupDirectory(directory:string): unknown;
   close(): Promise<void>;
 }
@@ -197,9 +203,20 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       return result;
     });
     if (token === undefined) { token = randomBytes(32).toString('hex'); writePrivateFileAtomic(tokenFile, token, {root, maxBytes: 4098, replace: false}); }
+    const createProject = createInitializedProject({manager, registry: appLibrary.registry, directories,
+      identity: appLibrary.projectFileIdentity, assertProjectFile});
+    const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir,
+      channel, signal: shutdown.signal, createProject, readScope: () => {
+        const directory = validatePrivateDirectory(root), db = validateManagedFile(appLibrary.databaseFile, {root});
+        const identity = projectFileIdentity(appLibrary.databaseFile);
+        if (!directory || !db || !identity || !appLibrary.db.isOpen || !isAppLibraryHeld(identity, appLibrary.db)) {
+          throw new AppError('PROJECT_ENTRY_UNAVAILABLE', '应用库身份不可用', 503);
+        }
+        return calculateWorkspaceScope({root, channel, directory, db});
+      }});
     const userRules=createMioUserRules(library,{signal:shutdown.signal});
     const appAgentHttp = (await import('./application-agent-http.ts')).createApplicationAgentHttp(library, shutdown.signal);
-    const rpc = createApplicationRpc({library, app, manager, directories, backups, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
+    const rpc = createApplicationRpc({library, app, manager, directories, backups, createProject, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
       imageProfiles: input => listImageProfiles(app.profileDependencies, input as never), refreshSummaries: () => {
         for (const [id, runtime] of opened) {
           // A closing runtime can remain indexed while findMoved awaits I/O,
@@ -240,6 +257,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/media/')) {
           if (!authenticated(req)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '请使用本地访问令牌登录'}});
         }
+        if (projectEntries.handle(req, res, url)) return;
         const route = parseProjectApiPath(url.pathname);
         if (route) {
           if (url.searchParams.getAll('projectId').some(value => value !== route.projectId)) throw projectIdMismatch(route.projectId);
@@ -372,7 +390,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       appLibrary.close();
       if (!lock.release()) throw new Error('Application lock cleanup could not be confirmed');
     })();
-    return {url: `http://127.0.0.1:${actualPort}`, port: actualPort, token, tokenFile, dataDir: root,
+    return {url: `http://127.0.0.1:${actualPort}`, port: actualPort, token, tokenFile, dataDir: root, projectEntries: projectEntries.control,
       setBackupDirectory: directory => { shutdown.signal.throwIfAborted(); return (awaitConfiguration(appLibrary)).setBackupDirectory(directory); }, close};
   } catch (error) {
     shutdown.abort(); server?.closeAllConnections();

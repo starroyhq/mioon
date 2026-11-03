@@ -10,9 +10,8 @@ import type {ProjectHostManager} from './project-host/manager.ts';
 import type {HostedProject} from './project-host/runtime.ts';
 import type {ApplicationRuntime} from './application-runtime.ts';
 import {projectNotFound} from './project-host/errors.ts';
-import {ensureProjectRow} from './project-host/project-initialization.ts';
-import {rmSync, rmdirSync} from 'node:fs';
-import path from 'node:path';
+import type {createInitializedProject} from './project-host/create-project.ts';
+import type {ProjectEntryCreateInput} from '../../../packages/contracts/src/project-entry-native.ts';
 import {VOLUME_ENVELOPE_PROFILE} from '../../../packages/contracts/src/timeline-volume-envelope.ts';
 import {TIMELINE_AUDIO_ROLE_PROFILE} from '../../../packages/contracts/src/timeline-audio-role.ts';
 import {isProjectBackupOperation} from '../../../packages/contracts/src/project-backups.ts';
@@ -21,11 +20,12 @@ import type {ProjectBackupOperations} from './project-backup-operations.ts';
 
 /** App operations never choose an arbitrary project's service as a global
  * facade. Settings and listings work with every project closed. */
-export function createApplicationRpc({library, app, manager, directories, signal, providerList, imageProfiles, refreshSummaries, backups}: {
+export function createApplicationRpc({library, app, manager, directories, signal, providerList, imageProfiles, refreshSummaries, backups, createProject}: {
   library: AppLibrary; app: ApplicationRuntime; manager: ProjectHostManager<HostedProject>; directories: AppDirectories; signal: AbortSignal;
   providerList: () => unknown; imageProfiles: (input: unknown) => unknown;
   refreshSummaries: () => void;
   backups?: ProjectBackupOperations;
+  createProject: ReturnType<typeof createInitializedProject>;
 }) {
   const ports = createProjectServiceApplication(library, signal);
   const invalid = () => new AppError('VALIDATION_ERROR', '这个操作需要项目地址 /api/projects/<项目 ID>/rpc', 400);
@@ -53,23 +53,12 @@ export function createApplicationRpc({library, app, manager, directories, signal
       case 'project.list': return library.registry.list().map(entry => ({id: entry.projectId, name: entry.name,
         ...(entry.summary ? {description: entry.summary.description, revision: entry.summary.revision, createdAt: entry.summary.createdAt, updatedAt: entry.summary.updatedAt} : {})}));
       case 'project.create': {
-        const entry = await manager.create({name: input.name as string});
-        let initialized = false;
-        try {
-          const store = openProjectStore({projectFile: entry.projectFile, locate: id => projectLocation(directories, id), checkCopy: library.registry.checkCopy});
-          try { ensureProjectRow(store, {name: input.name as string, description: input.description as string | undefined,
-            ...(input.timelinePresetId === undefined ? {} : {timelinePresetId: input.timelinePresetId as string})}); initialized = true; }
-          finally { store.close(); }
-          const lease = await manager.acquire(entry.projectId, 'request');
-          try { return publicValue(lease.host.store.get('projects', entry.projectId)); } finally { lease.release(); }
-        } catch (error) {
-          if (!initialized) {
-            library.registry.remove(entry.projectId);
-            rmSync(entry.projectFile, {force: true});
-            try { rmdirSync(path.dirname(entry.projectFile)); } catch { /* Only an empty folder made by this create may be removed. */ }
-          }
-          throw error;
-        }
+        const created = await createProject({name: input.name as string,
+          ...(input.description === undefined ? {} : {description: input.description as string}),
+          ...(input.timelinePresetId === undefined ? {} : {timelinePresetId: input.timelinePresetId as NonNullable<ProjectEntryCreateInput['timelinePresetId']>})});
+        const lease = await manager.acquire(created.registration.projectId, 'request');
+        try {return publicValue(lease.host.store.get('projects', created.registration.projectId));}
+        finally {lease.release();}
       }
       case 'project.rename': {
         const id = input.projectId as string;

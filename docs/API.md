@@ -10,6 +10,7 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 
 | 应用/项目接口 | 当前行为 |
 | --- | --- |
+| `GET /api/project-entries` | S6-A 新增：只读登记目录、availability、封面缓存地址和应用库/服务实例身份；网页渠道限 projectsDir 内已登记项，桌面渠道为全部最近项；不扫描、不 acquire 运行时 |
 | `GET /api/project-covers/{projectId}` | 应用级认证，只读缓存 `cover.jpg/cover.json`；缺失或与登记摘要不匹配为 404 `NOT_FOUND`，不 acquire 项目 |
 | `GET /api/workspace-info` | 应用目录信息 |
 | `GET /api/projects/{projectId}/workspace-info` | 正常项目请求租约内的真实项目目录信息；复用 `workspaceInfoSchema`，供已验证 owner 的桌面导出选择素材根，不接受调用方文件路径 |
@@ -25,6 +26,18 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 | `APP_LIBRARY_INVALID` | 422 | 全局 latest 读取到无效诊断摘要；`{reason:'unusable'}` |
 
 两者沿用 `{ok:false,error:{code,message,details,retryable:false}}`，严格契约见 [app-library-http.ts](../packages/contracts/src/app-library-http.ts)。应用库的 `LOCKED`、`FORMAT_NEWER` 在监听前拒绝启动，`CLOSED` 是内部生命周期错误，不能将它们都视为已有 HTTP 操作的可达响应。受信 `inspectProject` 和 `inspectApplication` 仅交给测试代码，分别借用实际项目和 B1 连接；同步调用、拒绝异步回调及关闭后调用。子进程测试使用固定快照/故障 IPC，不接受 SQL 或任意路径，不增加 HTTP、CLI 或环境变量入口。
+
+### S6-A 目录读取
+
+独立严格契约见 packages/contracts/src/project-entry.ts，成功数据为 version=1、appLibraryScope（与原 last-project 的 workspaceScope 同算法）、instanceId、registered；registered 的每条是 project（RecentProject，summary 可为空）、availability、coverUrl。封面有值时严格等于该项目的 /api/project-covers/<ID>，不读取关闭项目补摘要。
+
+仅 GET，不接受查询参数、GET 请求体或原生路径控制；其它方法 405，未知子路径 404。路由沿用 Host/Origin 与令牌/会话认证，Cache-Control: no-store。网页不显示未登记文件，手工放入文件须先经明确打开流程登记；本轮未增加网页任意路径打开、目录扫描或 window-session。
+
+目录最多 8192 条，沿用 B1；本资源完整 JSON 上限 384 MiB，超过报 PROJECT_ENTRY_LIMIT（413），不截断。这是传输边界，不是应用库配额或全部理论数据都能列出的承诺。身份改变报 PROJECT_ENTRY_SCOPE_MISMATCH（409），应用库持有权/生命周期不可用报 PROJECT_ENTRY_UNAVAILABLE（503），标准认证错误不变。
+
+@mioon/client/project-entry 提供 createProjectEntriesClient().list({signal?, timeoutMs?})，固定地址、严格 UTF-8/DTO/字节限额，不重试。旧 /api/last-project 在后续调用方迁完前保留。
+
+受信 ServerInstance.projectEntries 的创建、按路径打开、window 租约等方法不是 HTTP/RPC/CLI/环境入口；JSON 里写 path、windowId 或 lease kind 不能取得这些能力。主进程/utility 和真实窗口接线留 S6-B，接口与生命周期见 [PROJECT-HOST.md](PROJECT-HOST.md#s6-a项目目录与受信控制)。
 
 以下能力仍等待后续卡接入新布局：
 
