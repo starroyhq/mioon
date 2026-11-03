@@ -1,10 +1,10 @@
-/** Where every format-72 workspace table lives in the project-file layout,
- * including the two ledger tables the Mock provider creates on the workspace
- * connection. Content tables are stored in the project file, process records
+/** Canonical table ownership in the project-file layout, including the Mock
+ * provider's two ledger tables. Content tables are stored in the project file, process records
  * in the local history database and rebuildable data in the cache database.
  * Application tables belong to the application database, which this kernel
- * never builds; removed tables are not built anywhere. `schema_version` exists
- * in each of the three databases and is defined in databases.ts. */
+ * never builds; removed tables are not built anywhere. Historical names remain
+ * for supported history upgrades and the legacy workspace until S7-B2.
+ * `schema_version` exists in all three databases and is defined in databases.ts. */
 export type TablePlacement = 'project' | 'history' | 'cache' | 'app' | 'removed';
 export type HistoryDomain = 'receipts' | 'tasks' | 'timelineHistory' | 'mio';
 
