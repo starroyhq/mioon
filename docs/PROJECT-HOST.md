@@ -1,5 +1,5 @@
 # 项目宿主
-日期：2026-10-31 起草，2026-11-02 补充 P4 实现状态，2026-11-03 补充 V2 自动备份与 V1-A 手动版本。当前代码已切换到真实项目内核；本轮整体验收和发布状态以 PR 为准。
+日期：2026-10-31 起草，2026-11-02 补充 P4 实现状态，2026-11-03 补充 V2 自动备份与 V1-B 版本恢复及自动保存。当前代码已切换到真实项目内核；本轮整体验收和发布状态以 PR 为准。
 
 项目文件 v1 以后，后端同时开着多个项目：每个打开的项目有一个“项目宿主”，里面是这个项目的 store、服务、后台任务循环和 Mio 运行时；应用级的“宿主管理器”负责列出、新建、打开、关闭项目，按 URL 里的项目 ID 把请求交给对应的宿主。
 
@@ -19,7 +19,7 @@
 - V2 的 `createProjectBackups` 已在生产注册第一个生命周期 hook。打开先复制项目文件，关闭在运行时排空后、store 关闭前复制；按内容序号去重、保留最近三份。`project.backup.list/inspect/restore/status` 走应用 RPC，不 acquire 原项目，恢复为新 ID、空本机记录的新文件。实现边界和契约见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)，本卡没有备份界面。
 - S1 素材媒体 GET/HEAD/Range 使用精确宿主 store 的 L1 引用服务，逐块重查权限与身份，响应 no-store；宿主不再预建私有 `media/`。受信用户路径导入/位置确认走固定 `asset-media/trusted` 项目路由，沿用认证与 origin 检查，普通 RPC/MCP 无确认入口。封面缓存绑定无路径内容指纹，首页仍不 acquire 项目。导入、复制恢复许可和格式拒旧见 [ASSET-REFERENCES.md](ASSET-REFERENCES.md)。
 - 备份完整校验成功后按文件身份和变动时间在同一服务实例内缓存；安全属性仍逐次检查，替换或变动即重验。打开去重只确认最近有效项，列表仍核对全部有效项，inspect/restore 仍完整只读校验。
-- V1-A 在真实项目服务中接入 `project.version.list/save/preview`，走项目前缀 RPC；只提供手动版本和只读预览，不注册每日或 Mio 自动拍摄 hook，也不提供版本恢复。当前 history 6 新增四张版本领域表，精确已知 2–5 可升级；S1 将项目/cache 升为 2，详见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。备份四项与版本三项统一进契约根操作表及 effect 表，内置 Mio 均禁用。
+- 版本领域在真实项目服务中接入 `project.version.list/save/preview/restore`，走项目前缀 RPC；每日 hook 在 V2 打开备份校验后执行，Mio 首改与恢复前保存使用同一真实连接和事务。恢复同时核对完整摘要与内容序号，并在写入前检查应用能力和宿主在途工作。当前 history 6 新增四张版本领域表，精确已知 2–5 可升级；项目/cache 沿用 S1 的 2，详见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。备份四项与版本四项统一进契约根操作表及 effect 表，内置 Mio 均禁用。
 
 ### 暂不可用的后续能力
 

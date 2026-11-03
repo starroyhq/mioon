@@ -12,7 +12,7 @@ R2 的 history 格式为 5：已知格式 4 经完整清单核对后无损增加
 
 V1-A 的当前 history 格式为 **6**，在 R2 后增加独立 `versions` 领域的四表：`project_versions`、`project_version_blobs`、`project_version_requests`、`project_version_capture_marks`。精确已知格式 2、3、4、5 均可直接升级到 6；格式 2 沿用上述开发期重置，3–5 保留原 Mio 记录和原件，按原格式补齐规则写入/计数及版本领域。项目文件和 cache 仍为格式 1，Mio 存储清单与配额只统计 Mio 领域，不把版本 BLOB 算入 Mio 用量。
 
-版本接口仅提供手动 `project.version.list/save/preview`，不启用 Mio 自动拍摄或版本恢复；预览固定 `restoreAvailable:false`。完整内容范围、回执和差异语义见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。版本三项与备份四项虽已合入契约根注册表，但都在内置 Mio 禁用列表中，模型请求字节保持不变。
+版本接口提供 `project.version.list/save/preview/restore`；Mio 每轮首次内容修改前自动保存，恢复后沿用目标修订与既有撤销规则，不主动标记 Mio change。完整内容范围、回执和差异语义见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。版本四项与备份四项虽已合入契约根注册表，但都在内置 Mio 禁用列表中，模型请求字节保持不变。
 
 升级只接受已知旧版本和完整结构清单，不能用它修复任意损坏的库。它在项目宿主建立 Mio 之前、持有独占锁的同一连接中执行，一个事务完成，版本最后写入；失败回滚。未知结构和未来版本仍拒绝打开。项目文件与本机记录的内容序号不一致时，先完成 S0 的外部变更处置，不能用升级把差异掩盖成“当前”。
 

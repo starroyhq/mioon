@@ -234,6 +234,10 @@ async function fixture(t: test.TestContext) {
     get client() { return (createClient({env: {MIOON_BASE_URL: (server)!.url, MIOON_TOKEN: token}}) as FixtureClient); },
     get env() { return childEnvironment(root, (server)!.url, audit); },
     snapshot: () => use(databaseSnapshot),
+    dailyState: () => use(db => ({
+      versions: db.prepare("SELECT count(*) n FROM main.project_versions WHERE projectId=? AND trigger='daily-open'").get(projectId)!.n,
+      marks: db.prepare("SELECT count(*) n FROM main.project_version_capture_marks WHERE projectId=? AND kind='daily-open'").get(projectId)!.n,
+    })),
     async verifyFiles() {
       assert.deepEqual((await readdir(path.join(created.store.root, 'media'))).sort(), assets.map(asset => path.basename(asset.relativePath)).sort());
       for (const [index, asset] of assets.entries()) assert.deepEqual(await readFile(path.join(created.store.root, asset.relativePath)), fixtures[index]);
@@ -270,7 +274,13 @@ async function fixture(t: test.TestContext) {
 
 test('actual authenticated HTTP, CLI and official MCP preserve image inspection scope across a cold kernel reopen',
   {timeout: 60_000}, async t => {
-    const f = await fixture(t), before = f.snapshot();
+    const f = await fixture(t);
+    // The host's first open owns a daily capture; keep all inspection comparisons after that write.
+    const opened = await f.rpc('project.inspect', {projectId: f.input.projectId});
+    assert.equal(opened.status, 200); assert.equal(opened.envelope.ok, true);
+    const before = f.snapshot(), daily = f.dailyState();
+    assert.equal(daily.versions, 1);
+    assert.equal(daily.marks, 1);
     // The project ID comes from createServerProject: the requests and the expected response use it.
     const {input, response} = f;
     const direct = await f.rpc(operation, input);

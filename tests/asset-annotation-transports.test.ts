@@ -257,7 +257,11 @@ async function fixture(t: import('node:test').TestContext): Promise<WireFixture>
 
 test('annotations share authenticated HTTP, CLI and official MCP, with replay after restart and no external work', {timeout:120_000}, async t=>{
  const backend=await fixture(t),read={projectId:IDS.project,assetIds:[IDS.asset]};
+ // Opening owns the daily history write; annotation reads are measured after it.
+ await backend.http('project.inspect',{projectId:IDS.project});
  const before=await backend.storage();
+ assert.equal((before.project_versions as Record<string,unknown>[]).filter(row=>row.projectId===IDS.project&&row.trigger==='daily-open').length,1);
+ assert.equal((before.project_version_capture_marks as Record<string,unknown>[]).filter(row=>row.projectId===IDS.project&&row.kind==='daily-open').length,1);
  const dataOf=(envelope: EnvelopeView): Record<string, unknown> => { const data=envelope.data; assert.ok(data); return data; };
  await backend.http('asset.annotation.list',read,'UNAUTHORIZED',backend.url,'');
  const initial=await backend.http('asset.annotation.list',read);assert.equal((dataOf(initial).items as {revision: number}[])[0]?.revision,0);
