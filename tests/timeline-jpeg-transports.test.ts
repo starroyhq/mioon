@@ -267,7 +267,24 @@ async function fixture(t: import('node:test').TestContext): Promise<TransportFix
 }
 test('actual authenticated HTTP, CLI and official MCP inspect JPEG without changing rows or managed files',
   {timeout: 60_000}, async t => {
-    const f = await fixture(t), ownedInput={...input,projectId:f.projectId}, expectedResponse={...response,projectId:f.projectId}, before = f.snapshot();
+    const f = await fixture(t), ownedInput={...input,projectId:f.projectId}, expectedResponse={...response,projectId:f.projectId};
+    const dailyState = () => {
+      const rows = new Map(f.snapshot().rows);
+      return {versions: rows.get('project_versions')!.length,
+        daily: rows.get('project_versions')!.filter(row => row.trigger === 'daily-open').length,
+        blobs: rows.get('project_version_blobs')!.length,
+        marks: rows.get('project_version_capture_marks')!.length,
+        dailyMarks: rows.get('project_version_capture_marks')!.filter(row => row.kind === 'daily-open').length};
+    };
+    assert.deepEqual(dailyState(), {versions: 0, daily: 0, blobs: 0, marks: 0, dailyMarks: 0});
+    assert.equal((await f.rpc(operation, ownedInput, {authenticated: false})).status, 401);
+    assert.deepEqual(dailyState(), {versions: 0, daily: 0, blobs: 0, marks: 0, dailyMarks: 0});
+    // Warm the authenticated host without decoding JPEG or excluding any
+    // tables from the subsequent complete rows/commit-version comparison.
+    const opened = await f.rpc('project.inspect', {projectId: f.projectId});
+    assert.equal(opened.status, 200); assert.equal(opened.envelope.ok, true);
+    assert.deepEqual(dailyState(), {versions: 1, daily: 1, blobs: 1, marks: 1, dailyMarks: 1});
+    const before = f.snapshot();
     const direct = await f.rpc(operation, ownedInput);
     assert.equal(direct.status, 200); assert.deepEqual(direct.envelope, {ok: true, data: expectedResponse});
     assert.deepEqual(await f.client.rpc(operation, ownedInput), expectedResponse);

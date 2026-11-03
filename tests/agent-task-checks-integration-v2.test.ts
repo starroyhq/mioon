@@ -45,6 +45,18 @@ test('kernel checks run complete local preflight and observe missing media witho
  try{
   const saved=await savedTimeline(source),root=source;
   server=await startServer({dataDir:root,port:0,taskGatewayV2:async function*(){models++;throw Error('Checks must not request a model');},inspectProject:received=>{inspect=received;}});
+  const dailyState=()=>inspect(saved.projectId,db=>({
+    versions:Number(db.prepare('SELECT count(*) n FROM main.project_versions').get()!.n),
+    daily:Number(db.prepare("SELECT count(*) n FROM main.project_versions WHERE trigger='daily-open'").get()!.n),
+    blobs:Number(db.prepare('SELECT count(*) n FROM main.project_version_blobs').get()!.n),
+    marks:Number(db.prepare('SELECT count(*) n FROM main.project_version_capture_marks').get()!.n),
+    dailyMarks:Number(db.prepare("SELECT count(*) n FROM main.project_version_capture_marks WHERE kind='daily-open'").get()!.n),
+   }));
+  assert.deepEqual(dailyState(),{versions:0,daily:0,blobs:0,marks:0,dailyMarks:0});
+  // Complete the real first-open lifecycle before measuring read-only checks.
+  const opened=await fetch(`${server.url}${projectApiPath(saved.projectId,'agent','tasks','v2',saved.runId)}`,{headers:{Authorization:`Bearer ${server.token}`}});
+  assert.equal(opened.status,200);await opened.arrayBuffer();
+  assert.deepEqual(dailyState(),{versions:1,daily:1,blobs:1,marks:1,dailyMarks:1});
   // While the server runs, the database is read on its own connection.
   const before=inspect(saved.projectId,dumpDb),read=async(preflight=false)=>{
    const response=await fetch(`${server!.url}${projectApiPath(saved.projectId,'agent','tasks','v2',saved.runId,'checks')}${preflight?'?preflight=1':''}`,{headers:{Authorization:`Bearer ${server!.token}`}});

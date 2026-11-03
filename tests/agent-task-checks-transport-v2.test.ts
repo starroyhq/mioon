@@ -180,10 +180,24 @@ test('checks HTTP is authenticated, rejects unknown ownership and parameters, an
  const f=await workspace();let models=0,server:Awaited<ReturnType<typeof startServer>>|undefined,inspect!:InspectProject;
  t.after(async()=>{await server?.close();await rm(f.directory,{recursive:true,force:true});});
  server=await startServer({dataDir:f.source,port:0,taskGatewayV2:async function*(){models++;throw Error('Checks cannot request a model');},inspectProject:received=>{inspect=received;}});
- // While the server runs, the database is read on its own connection.
- const prefix=projectApiPath(f.projectId,'agent','tasks','v2',f.run.id),before=inspect(f.projectId,dumpDb);
+ const prefix=projectApiPath(f.projectId,'agent','tasks','v2',f.run.id);
+ const dailyState=()=>inspect(f.projectId,db=>({
+  versions:Number(db.prepare('SELECT count(*) n FROM main.project_versions').get()!.n),
+  dailyVersions:Number(db.prepare("SELECT count(*) n FROM main.project_versions WHERE trigger='daily-open'").get()!.n),
+  blobs:Number(db.prepare('SELECT count(*) n FROM main.project_version_blobs').get()!.n),
+  marks:Number(db.prepare('SELECT count(*) n FROM main.project_version_capture_marks').get()!.n),
+  dailyMarks:Number(db.prepare("SELECT count(*) n FROM main.project_version_capture_marks WHERE kind='daily-open'").get()!.n),
+ }));
+ const unopened={versions:0,dailyVersions:0,blobs:0,marks:0,dailyMarks:0};
+ assert.deepEqual(dailyState(),unopened);
  const request=(suffix='',method='GET',authenticated=true)=>fetch(server!.url+prefix+suffix,{method,headers:authenticated?{authorization:`Bearer ${server!.token}`}:{}});
  assert.equal((await request('/checks','GET',false)).status,401);
+ assert.deepEqual(dailyState(),unopened,'an unauthenticated request must not open the host or save a daily version');
+ // First authenticated host opening owns the daily capture. Take the complete
+ // read-only checks baseline only after that real lifecycle work has finished.
+ const opened=await request();assert.equal(opened.status,200);await opened.arrayBuffer();
+ assert.deepEqual(dailyState(),{versions:1,dailyVersions:1,blobs:1,marks:1,dailyMarks:1});
+ const before=inspect(f.projectId,dumpDb);
  const response=await request('/checks');assert.equal(response.status,200);const body:unknown=await response.json();
  assert.ok(body&&typeof body==='object'&&'data'in body);const result=agentTaskChecksSchema.parse(body.data);
  assert.equal(result.projectId,f.projectId);assert.equal(result.runId,f.run.id);assert.equal(result.runRevision,f.run.revision);

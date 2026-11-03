@@ -170,7 +170,16 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     const backups = createProjectBackups({directories, registry: library.registry, identity: library.projectFileIdentity, assertProjectFile, outsidePaths: library.outsidePaths, copy: options.projectBackupCopyForTest});
     drainBackups = backups.drain;
     manager = createProjectHostManager({directories, registry: library.registry, identity: library.projectFileIdentity, taskIndex: library.taskIndex,
-      hooks: [backups.hooks],
+      hooks: [backups.hooks, {afterOpen: context => {
+        try { opened.get(context.projectId)!.captureDailyVersion(); }
+        catch (error) {
+          // A daily version is best effort; no success mark is committed on
+          // failure, so another open can retry. Never log private file text.
+          const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+            ? error.code : 'PROJECT_VERSION_DAILY_CAPTURE_FAILED';
+          console.warn('Project daily version:', context.projectId, code);
+        }
+      }}],
       openStore: options => { assertProjectFile(options.projectFile); return openProjectStore(options); },
       maintenance: {recoverProjectFile: file => { assertProjectFile(file); return recoverProjectFile(file); }},
       recoverySnapshot: recover => assertProjectFile.withSnapshot(recover),

@@ -3,6 +3,7 @@ import {PROJECT_DATABASE_NAMES} from '../../../../contracts/src/project-file.ts'
 import {CONVERTED_TEMP_TRIGGERS} from './converted-triggers.ts';
 import {CROSS_FILE_RELATIONS} from './relations.ts';
 import type {CrossFileRelation} from './relations.ts';
+import {installRestoreScopeFunction} from './restore-admission.ts';
 
 /** SQLite's own foreign-key message. The emulation raises it with RAISE(ABORT),
  * so the error code is SQLITE_CONSTRAINT_TRIGGER (1811) instead of
@@ -83,6 +84,7 @@ const listed = (names: readonly string[]): string => names.length > 5 ? `${names
  * when exactly these triggers already exist; throws when only some of them, or
  * other TEMP triggers, exist. */
 export function installCrossFileTriggers(db: DatabaseSync): void {
+  installRestoreScopeFunction(db);
   const attached = new Set(db.prepare('PRAGMA database_list').all().map(row => String(row.name)));
   const absent = DATABASES.filter(schema => !attached.has(schema));
   if (absent.length) throw new Error(`Cross-file triggers need the ${absent.join(', ')} database attached`);

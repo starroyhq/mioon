@@ -17,6 +17,7 @@ import type {ConvertedTempTrigger} from '../../packages/business/src/project-fil
 import {relationTriggerStatements, SEEN_SEQUENCE_TRIGGER} from '../../packages/business/src/project-file/cross-file/install.ts';
 import {tokenizeSql} from './sql-tokenizer.ts';
 import {verifyTempGuardBehavior} from './project-file-temp-probes.ts';
+import {installRestoreScopeFunction} from '../../packages/business/src/project-file/cross-file/restore-admission.ts';
 
 export const REPOSITORY = fileURLToPath(new URL('../../', import.meta.url));
 const COMMAND = 'node tests/helpers/project-file-schema-derivation.ts';
@@ -77,6 +78,7 @@ function triggerTarget(sql: string): {schema: string; table: string; name: strin
 export function validateDeclaredSchema(input: SchemaDeclarations = declaredSchema()): void {
   const db = new DatabaseSync(':memory:');
   try {
+    installRestoreScopeFunction(db);
     db.exec("PRAGMA foreign_keys=ON; PRAGMA recursive_triggers=ON; ATTACH DATABASE ':memory:' AS project; ATTACH DATABASE ':memory:' AS cache; BEGIN");
     for (const kind of KINDS) buildDatabase(db, kind, SCHEMAS[kind], input.statements[kind]);
     db.exec('COMMIT');
