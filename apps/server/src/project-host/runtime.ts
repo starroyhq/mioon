@@ -75,7 +75,9 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     let result: unknown;
     switch (operation) {
       case 'project.version.list': result = await versions.list(parsed.data as ProjectVersionListInput); break;
-      case 'project.version.save': result = await versions.save(parsed.data as ProjectVersionSaveInput); break;
+      case 'project.version.save':
+        project.services.assertMutationAllowed();
+        result = await versions.save(parsed.data as ProjectVersionSaveInput); break;
       case 'project.version.preview': result = await versions.preview(parsed.data as ProjectVersionPreviewInput); break;
     }
     if (!isProjectVersionResponse(operation, parsed.data, result)) throw new AppError('INTERNAL_ERROR', '项目版本服务返回无效数据', 500);
