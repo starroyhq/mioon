@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, readFile, readdir, realpath, rm} from 'node:fs/promises';
+import {mkdtemp, readFile, readdir, realpath, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {argumentsFor, cleanEnvironment, command, mediaCapabilities, mediaFailureReport, MediaCapabilityFailure, probeMediaCli, safeFailure, targetArch, targetPlatform, CheckFailure, report} from '../.github/scripts/media-environment.ts';
 import {boundedPoll, extractedTarFor, mountedDmgFor, smokeEnvironment, smokeTimeouts, validateDiscovery} from '../.github/scripts/desktop-smoke.ts';
-import {runMacInspectionCheck, validateArchitecture, validateTarListing, verifySigningIdentity} from '../.github/scripts/inspect-desktop.ts';
+import {runMacInspectionCheck, validateArchitecture, validateMacStapledArtifact, validateTarListing, verifyPackagedProjectNotices, verifySigningIdentity} from '../.github/scripts/inspect-desktop.ts';
+import type {MacStaplerDiagnostic} from '../.github/scripts/inspect-desktop.ts';
+import {PROJECT_NOTICES} from '../apps/desktop/scripts/stage-project-notices.ts';
 
 test('desktop helper CLI rejects missing, duplicate, unknown and multiline options', () => {
   assert.deepEqual(argumentsFor(['--platform=linux', '--output=result.json'], ['platform', 'output']), {platform: 'linux', output: 'result.json'});
@@ -173,4 +175,98 @@ test('Mac package subchecks expose only fixed phases and error codes', async () 
   const fixed = new CheckFailure('FUSE_MUST_BE_DISABLED');
   await assert.rejects(runMacInspectionCheck('staged-mac-app', 'fuses', async () => { throw fixed; }), error => error === fixed);
   assert.equal(await runMacInspectionCheck('mounted-dmg-app', 'runtime-notice-source', async () => 'verified'), 'verified');
+});
+
+test('staged app, delivered app and DMG validation retain mandatory gates and safe terminal diagnostics', async () => {
+  const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-apple-inspection-'));
+  const secret = 'synthetic-private-apple-output';
+  const failures = [
+    {exitCode: 66, signal: null, timedOut: false, category: 'invalid_ticket'},
+    {exitCode: null, signal: 'SIGKILL', timedOut: true, category: 'timeout'},
+    {exitCode: null, signal: 'SIGTERM', timedOut: false, category: 'signal'}
+  ] as const;
+  try {
+    for (const scope of ['staged-mac-app', 'mounted-dmg-app', 'signed-dmg'] as const) for (const fixture of failures) {
+      const diagnostics: MacStaplerDiagnostic[] = [], phases: string[] = [], commands: Array<{file: string; args: readonly string[]}> = [];
+      const artifact = path.join(directory, `${secret}.${scope === 'signed-dmg' ? 'dmg' : 'app'}`);
+      const validate = () => validateMacStapledArtifact(scope, artifact, {
+        onDiagnostic: value => diagnostics.push(value),
+        execute: async (file, args) => {
+          commands.push({file, args});
+          return {...fixture, stdout: `${secret}: ticket missing`, stderr: `${secret}: private command output`};
+        },
+        wait: async () => { assert.fail('permanent validation failure must not be retried'); }
+      });
+      const failure = await (scope === 'signed-dmg' ? validate()
+        : runMacInspectionCheck(scope, 'app-staple', validate, phase => phases.push(phase))).catch(error => error as unknown);
+      const code = scope === 'signed-dmg' ? 'DMG_STAPLE_INVALID' : 'APP_STAPLE_INVALID';
+      assert.ok(failure instanceof CheckFailure); assert.equal(safeFailure(failure), code);
+      assert.deepEqual(commands, [{file: 'xcrun', args: ['stapler', 'validate', '-v', artifact]}]);
+      assert.deepEqual(phases, scope === 'signed-dmg' ? [] : [`${scope}:app-staple`]);
+      assert.deepEqual(diagnostics, [{scope, operation: 'validate', artifactKind: scope === 'signed-dmg' ? 'dmg' : 'app',
+        attempt: 1, ok: false, exitCode: fixture.exitCode, signal: fixture.signal, timedOut: fixture.timedOut,
+        category: fixture.category, willRetry: false}]);
+      const output = path.join(directory, 'inspection.json');
+      await report(output, {ok: false, phase: scope === 'signed-dmg' ? scope : phases[0], error: safeFailure(failure), appleStaplerDiagnostics: diagnostics});
+      const serialized = await readFile(output, 'utf8');
+      assert.equal(JSON.parse(serialized).error, code);
+      assert.deepEqual(JSON.parse(serialized).appleStaplerDiagnostics, diagnostics);
+      assert.ok(!serialized.includes(secret)); assert.ok(!serialized.includes(artifact));
+    }
+  } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test('a recovered ticket validation keeps later Gatekeeper rejection mandatory', async () => {
+  const diagnostics: MacStaplerDiagnostic[] = [], phases: string[] = [], waits: number[] = [];
+  let commands = 0;
+  const artifact = path.resolve('synthetic-release.app');
+  await runMacInspectionCheck('staged-mac-app', 'app-staple', () => validateMacStapledArtifact('staged-mac-app', artifact, {
+    onDiagnostic: value => diagnostics.push(value), wait: async milliseconds => { waits.push(milliseconds); },
+    execute: async () => ++commands === 1
+      ? {exitCode: 68, signal: null, timedOut: false, stdout: '', stderr: 'CloudKit NSURLErrorDomain Code=-1005 synthetic-private-output'}
+      : {exitCode: 0, signal: null, timedOut: false, stdout: 'synthetic-private-output', stderr: ''}
+  }), phase => phases.push(phase));
+  assert.equal(commands, 2); assert.equal(waits.length, 1);
+  assert.deepEqual(diagnostics.map(value => ({scope: value.scope, category: value.category, ok: value.ok, willRetry: value.willRetry})), [
+    {scope: 'staged-mac-app', category: 'transient_network', ok: false, willRetry: true},
+    {scope: 'staged-mac-app', category: 'success', ok: true, willRetry: false}
+  ]);
+  await assert.rejects(runMacInspectionCheck('staged-mac-app', 'app-gatekeeper', async () => {
+    throw new CheckFailure('GATEKEEPER_REJECTED');
+  }, phase => phases.push(phase)), {message: 'GATEKEEPER_REJECTED'});
+  assert.deepEqual(phases, ['staged-mac-app:app-staple', 'staged-mac-app:app-gatekeeper']);
+  assert.doesNotMatch(JSON.stringify(diagnostics), /synthetic-private-output/);
+});
+
+test('the packaged project license and notices must exist and match the checked source byte for byte', async () => {
+  const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-project-notice-inspection-'));
+  const archive = path.join(directory, 'app.asar');
+  const entries = new Map<string, Buffer>();
+  const asar = {extractFile(selected: string, name: string): Buffer {
+    assert.equal(selected, archive);
+    const bytes = entries.get(name);
+    if (!bytes) throw new Error('missing synthetic archive member');
+    return bytes;
+  }};
+  try {
+    for (const [index, file] of PROJECT_NOTICES.entries()) {
+      const source = Buffer.from(`Synthetic ${file.source}\r\n声明 ${index}\n`, 'utf8');
+      await writeFile(path.join(directory, file.source), source);
+      entries.set(`licenses/${file.output}`, source);
+    }
+    await verifyPackagedProjectNotices(archive, asar, directory);
+    for (const scope of ['staged-mac-app', 'mounted-dmg-app'] as const) for (const file of PROJECT_NOTICES) {
+      const entry = `licenses/${file.output}`, source = entries.get(entry)!;
+      for (const change of ['missing', 'modified', 'empty-source'] as const) {
+        if (change === 'missing') entries.delete(entry);
+        else if (change === 'modified') entries.set(entry, Buffer.concat([source, Buffer.from('tampered')]));
+        else await writeFile(path.join(directory, file.source), '');
+        const phases: string[] = [];
+        await assert.rejects(runMacInspectionCheck(scope, 'asar-required-files', () => verifyPackagedProjectNotices(archive, asar, directory), phase => phases.push(phase)), {message: 'ASAR_REQUIRED_FILES_MISSING'});
+        assert.deepEqual(phases, [`${scope}:asar-required-files`]);
+        entries.set(entry, source); await writeFile(path.join(directory, file.source), source);
+      }
+    }
+    await verifyPackagedProjectNotices(archive, asar, directory);
+  } finally { await rm(directory, {recursive: true, force: true}); }
 });
