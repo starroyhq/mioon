@@ -1,5 +1,5 @@
 # 项目宿主
-日期：2026-10-31 起草，2026-11-02 补充 P4 实现状态。当前代码已切换到真实项目内核；本轮整体验收和发布状态以 PR 为准。
+日期：2026-10-31 起草，2026-11-02 补充 P4 实现状态，2026-11-03 补充 V2 自动备份。当前代码已切换到真实项目内核；本轮整体验收和发布状态以 PR 为准。
 
 项目文件 v1 以后，后端同时开着多个项目：每个打开的项目有一个“项目宿主”，里面是这个项目的 store、服务、后台任务循环和 Mio 运行时；应用级的“宿主管理器”负责列出、新建、打开、关闭项目，按 URL 里的项目 ID 把请求交给对应的宿主。
 
@@ -16,6 +16,7 @@
 - 全局 `GET /api/agent/tasks/v2/diagnostics/latest` 只读应用 documents 的 `agent-diagnostic-summary-v1.json`，返回 `{test: null | summary}`，summary 严格只有 `completedAt`、`status`、`protocol`、`model`、`errorCode`。项目诊断完成时更新，不复制对话、请求原文或密钥，不扫描或打开关闭的项目。应用库版本为 2：只允许精确已知 v1 结构事务升级，保留原三种文档字节及其它登记、策略回执。
 - 经过 HTTP 的 B1 错误仅列 `APP_LIBRARY_LIMIT`（507，登记容量上限）和 `APP_LIBRARY_INVALID`（422，无效诊断摘要，`details: {reason:'unusable'}`）。`APP_LIBRARY_LOCKED`、`APP_LIBRARY_FORMAT_NEWER` 是监听前的启动错误；`APP_LIBRARY_CLOSED` 是内部生命周期错误，不据此新增公开端点。
 - `inspectProject: receive => …` 是受信测试接收选项；真实服务端子进程可用固定测试 IPC 读取其 own connection。HTTP、CLI 和环境变量不接受 SQL、回调或 inspect 开关；活跃连接复用、关闭项目短开即关、同步回调和 transition 拒绝规则不变。
+- V2 的 `createProjectBackups` 已在生产注册第一个生命周期 hook。打开先复制项目文件，关闭在运行时排空后、store 关闭前复制；按内容序号去重、保留最近三份。`project.backup.list/inspect/restore/status` 走应用 RPC，不 acquire 原项目，恢复为新 ID、空本机记录的新文件。实现边界和契约见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)，本卡没有备份界面。
 
 ### 暂不可用的后续能力
 
@@ -25,7 +26,7 @@
 | S5、V4 | 复制、另存为、打包导入导出尚无新生产接口；旧 `/api/project-packages/…`、项目 `package-preview` | 404 `NOT_FOUND`；不进入旧复制、删除或导入链 |
 | S7 | 应用 RPC `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（含 bundle 下载/导入、directory 导入） | 409 `RESTORE_OPERATION_UNAVAILABLE` |
 
-`workspace.restore.inspect` 仍可返回 `{restored:false}` 和明确请求的能力字段；它不启用旧恢复服务。工作区设置中的既有备份字段不代表自动备份已接入。历史旧格式领域的正例只在显式 legacy 测试入口验证，不恢复生产旧路由。S5、V4、S7 接入时恢复对应业务正例。
+`workspace.restore.inspect` 仍可返回 `{restored:false}` 和明确请求的能力字段；它不启用旧恢复服务。工作区设置中的既有备份字段不控制 V2；新项目自动备份由宿主 hooks 提供，与旧工作区备份链分开。历史旧格式领域的正例只在显式 legacy 测试入口验证，不恢复生产旧路由。S5、V4、S7 接入时恢复对应业务正例。
 
 ### 配额口径
 
@@ -373,10 +374,12 @@ export function createMemoryAgentPolicyStore(initial?: AgentTaskPolicy | null): 
 | `AppLibraryPort` | B1 | 切换时由 `startServer` 打开，交给管理器和 Mio；`databaseFile` 给各个范围文件 | 无；S0 切换要等 B1 合入 |
 | `BackgroundTaskIndexPort` | S3 | `restore()` 读；每次关闭用 `unfinishedTasks()` 的结果替换这个项目的条目 | `createMemoryBackgroundTaskIndex`；启动时没有要恢复的项目 |
 | `ProjectInboxPort` | S3 | 宿主不直接调；S3 的 `afterOpen` 钩子把结果写进项目再删掉，应用级的 S3 代码 `add` | `createMemoryProjectInbox` |
-| `ProjectLifecycleHooks` | V1、V2，也给 S3 | `afterOpen`：组装好以后（V2 的打开备份、S3 的收件箱）；`beforeClose`：倒序，排空以后（V1 的关闭时存版本、V2 的关闭备份） | 不注册 |
+| `ProjectLifecycleHooks` | V1、V2，也给 S3 | `afterOpen`：组装好以后，顺序调用；`beforeClose`：倒序，排空以后。V2 已注册第一个 hook，打开先备份、关闭最后备份；V1 每日版本和 S3 收件箱按后续卡接入 | V2 已用真实 hooks；其他卡未接入前不注册 |
 | `MioRuntimeFactory`、`MioRuntimePort` | R1 | 工厂里每个宿主建一份；`handle`、`isBusy`、`interrupt`、`drain`、`dispose` 并进宿主的同名方法 | 现在的 `createAgentTaskRuntime` 加 `createAgentTaskHttp`。设置和发送授权也是应用级的，由工厂的闭包带进去 |
 | `ProjectDraftsFactory`、`ProjectDraftsPort` | S8 | 工厂里每个宿主建一份 | 现在的三个 JSON 模块，每个宿主一份，根目录用 `localDir`，范围文件用 `history.db`（6.2 第 4 步） |
 | `KernelMaintenancePort` | S0a（#106，已合入） | `list()`、`restore()`，见第 5 节 | 不用替身：默认就是内核的 `recoverProjectFile`，测试可以换成别的 |
+
+V2 的 hook 捕获自身已经结束的备份失败，落安全状态后正常返回，不能让 `afterOpen` 因备份失败而失败。factory 此时可能已有后台写入，备份采用 SQLite 完成时一致副本，从副本读身份/序号，不增加激活闸门。关闭开始时 context.signal 已中止，V2 不用它取消原生备份；完整等待结束后才让管理器关库。状态与列表等应用操作详见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)，均不以 acquire 原项目来读备份。
 
 ### 2.5 路由
 
@@ -566,7 +569,7 @@ export function claimProjectFolder(parentDir: string, folderName: string): Claim
 4. 等在途请求结束，最多 3 秒，超时就撤销它们的租约（租约的 `signal` 中止）。空闲关闭时本来就没有在途请求；
 5. 撤销其余的租约（窗口、任务）；
 6. `runtime.drain()`：停 `worker`，排空服务、编辑任务、Mio；
-7. 各钩子的 `beforeClose`，倒序；
+7. 各钩子的 `beforeClose`，倒序；V2 第一个注册、最后执行关闭备份；
 8. `summarize()`、`unfinishedTasks()`，它们要读库，所以在关库之前；
 9. `runtime.dispose()`；
 10. `store.close()`；
@@ -574,7 +577,7 @@ export function claimProjectFolder(parentDir: string, folderName: string): Claim
 12. 写后台任务索引；
 13. 删条目，发 `closed` 事件（带收集到的错误）。
 
-每一步出错都记下来，关闭照样走完，宿主不会停在半开的状态。测试按日志核对了这个顺序。
+已结束的钩子等清理错误会收集，关闭继续；**runtime.drain 失败例外**：管理器保留 closing 条目、连接和锁，不继续调用备份或关闭 store，以免迟到发布写入已关库。V2 自行记录已结束的备份错误，不阻断开关。慢备份完整等待原生结束，running/slow 可查，不用硬超时跳过关库前等待。测试按日志核对这一顺序。
 
 ### 4.4 关闭窗口后还有未完成的任务（S3）
 
@@ -585,6 +588,8 @@ S3 在项目有未完成任务时持有 `task` 租约，宿主就不关。任务
 ### 4.5 应用退出
 
 `closeAll()` 并行关闭全部宿主，等独占操作结束，然后关应用级的资源。之后的请求报 `PROJECT_HOST_STOPPED`。
+
+若某项目还在 afterOpen 备份，关闭先等其 opening 完成；运行中的原生备份持有源连接，不提前关库。V2 不承诺慢 I/O 下有界关闭。服务端既有 5 秒总停机预算仍可能报 `SERVER_STOP_TIMEOUT`；这不是备份取消或安全退出确认，超时不得据此关闭仍被使用的 SQLite 或释放应用锁，详见 [备份失败与慢 I/O](PROJECT-BACKUPS.md#失败慢备份和已知边界)。
 
 ### 4.6 打开期间被移动或改名
 

@@ -15,13 +15,17 @@ import {rmSync, rmdirSync} from 'node:fs';
 import path from 'node:path';
 import {VOLUME_ENVELOPE_PROFILE} from '../../../packages/contracts/src/timeline-volume-envelope.ts';
 import {TIMELINE_AUDIO_ROLE_PROFILE} from '../../../packages/contracts/src/timeline-audio-role.ts';
+import {isProjectBackupOperation} from '../../../packages/contracts/src/project-backups.ts';
+import {callProjectBackupOperation} from './project-backup-operations.ts';
+import type {ProjectBackupOperations} from './project-backup-operations.ts';
 
 /** App operations never choose an arbitrary project's service as a global
  * facade. Settings and listings work with every project closed. */
-export function createApplicationRpc({library, app, manager, directories, signal, providerList, imageProfiles, refreshSummaries}: {
+export function createApplicationRpc({library, app, manager, directories, signal, providerList, imageProfiles, refreshSummaries, backups}: {
   library: AppLibrary; app: ApplicationRuntime; manager: ProjectHostManager<HostedProject>; directories: AppDirectories; signal: AbortSignal;
   providerList: () => unknown; imageProfiles: (input: unknown) => unknown;
   refreshSummaries: () => void;
+  backups?: ProjectBackupOperations;
 }) {
   const ports = createProjectServiceApplication(library, signal);
   const invalid = () => new AppError('VALIDATION_ERROR', '这个操作需要项目地址 /api/projects/<项目 ID>/rpc', 400);
@@ -34,6 +38,10 @@ export function createApplicationRpc({library, app, manager, directories, signal
   }).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id)));
   return {async call(operation: string, raw: unknown): Promise<unknown> {
     signal.throwIfAborted();
+    if (isProjectBackupOperation(operation)) {
+      if (!backups) throw new AppError('PROJECT_BACKUP_UNAVAILABLE', '项目备份服务尚未配置', 503);
+      return await callProjectBackupOperation(backups, operation, raw);
+    }
     const schema = (schemas as Record<string, {safeParse(value: unknown): {success: boolean; data?: unknown; error?: unknown}}>)[operation];
     if (!schema) throw new AppError('UNKNOWN_OPERATION', '未知操作', 404);
     if (!isAppLevelOperation(operation)) throw invalid();

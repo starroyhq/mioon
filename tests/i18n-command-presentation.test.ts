@@ -81,6 +81,7 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   expectedOperations.splice(expectedOperations.indexOf('timeline.clip.remove') + 1, 0, 'timeline.clip.rippleRemove');
   expectedOperations.splice(expectedOperations.indexOf('timeline.loudness.apply') + 1, 0, 'timeline.clip.refreshSources', 'timeline.shots.append', 'timeline.clip.splitAtScenes', 'timeline.clip.crossfade', 'timeline.clip.setGains', 'timeline.clip.setTransform', 'timeline.clip.setTransition');
   expectedOperations.splice(expectedOperations.indexOf('frame.task.recoverResult') + 1, 0, 'scene.detect', 'scene.request.get', 'scene.task.get', 'scene.task.list', 'scene.task.cancel', 'scene.result.get', 'scene.cuts.save', 'scene.shots.create', 'scene.shots.undo');
+  expectedOperations.push('project.backup.list', 'project.backup.inspect', 'project.backup.restore', 'project.backup.status');
   const expectedUsage = [...snapshot.data.usage];
   expectedUsage.splice(expectedUsage.indexOf('mioon capabilities') + 1, 0, 'mioon agent --help');
   expectedUsage.splice(expectedUsage.indexOf('mioon export download --input <JSON> --output <new-local-file>') + 1, 0, 'mioon project export --input <JSON> --output <new-local-file.mioon>', 'mioon project import --file <local-file.mioon> --request-id <id> [--input <JSON>]', 'mioon project duplicate --request-id <id> --input <JSON>');
