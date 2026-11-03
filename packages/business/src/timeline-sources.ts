@@ -150,6 +150,18 @@ export async function probeTimelineSource(file: string,{signal,timeout,beforeSpa
 
 // These are preparation budgets, never export limits. The render worker omits
 // budget entirely and re-verifies source ownership, bytes and metadata itself.
+/** Internal worker failures retain the legacy path-free error family, including
+ * the final cross-source fence after later inputs have been prepared. */
+function timelineInputSourceError(error:unknown,assetId:string):unknown {
+ const failure=error as {timelineAssetId?:string;code?:string;message?:string};
+ if(error&&typeof error==='object'){
+  failure.timelineAssetId=assetId;
+  if(['MEDIA_CHANGED','MEDIA_CHANGED_DURING_READ'].includes(failure.code as string))failure.code='MANAGED_SOURCE_CHANGED';
+  else if(['MEDIA_MISSING','MEDIA_NOT_MEDIA','MEDIA_OUTSIDE_NOT_CONFIRMED'].includes(failure.code as string))failure.code='MANAGED_SOURCE_INVALID';
+  if(failure.code==='MANAGED_SOURCE_CHANGED')failure.message='Export input bytes differ from frozen version hash';
+ }
+ return error;
+}
 export async function prepareTimelineInputs(snapshot: TimelineSnapshotLike,{root,projectId,readAsset,signal,budget,probe=probeTimelineSource,onChecked,validateLinks,beforeEffect,readLut,retainOpacitySourceIdentity=false}: PrepareOptions): Promise<Map<string, PreparedSource>>{
  checkMediaEffect(beforeEffect,signal);
  if(!snapshot?.timeline||!Array.isArray(snapshot.assets))throw Error('Timeline render has no frozen snapshot');
@@ -201,13 +213,15 @@ export async function prepareTimelineInputs(snapshot: TimelineSnapshotLike,{root
   assets.set(a.id,{...frozen,sizeBytes:hashed.sizeBytes,sha256:hashed.sha256,width:media.width,height:media.height,duration:media.duration as number|null,
    hasVideo:media.hasVideo,hasAudio:media.hasAudio,videoStreamIndex:media.videoStreamIndex,audioStreamIndex:media.audioStreamIndex,path:hashed.file,...(retainOpacitySourceIdentity?{opacitySourceIdentity:hashed.info}:{}),...(snapshot.colourPlan?{colourProbe:media.probe,colourSourceIdentity:hashed.info,...(imageColour?{colourImageEvidence:imageColour.evidence}:{})}:{})} as PreparedSource);
   onChecked?.(a.id);
-  }catch(error){const failure=error as {timelineAssetId?: string;code?: string;message?: string};if(error&&typeof error==='object'){failure.timelineAssetId=a.id;if(['MEDIA_CHANGED','MEDIA_CHANGED_DURING_READ'].includes(failure.code as string))failure.code='MANAGED_SOURCE_CHANGED';else if(['MEDIA_MISSING','MEDIA_NOT_MEDIA','MEDIA_OUTSIDE_NOT_CONFIRMED'].includes(failure.code as string))failure.code='MANAGED_SOURCE_INVALID';if(failure.code==='MANAGED_SOURCE_CHANGED')failure.message='Export input bytes differ from frozen version hash';}throw error;}
+  }catch(error){throw timelineInputSourceError(error,a.id);}
  }
  checkMediaEffect(beforeEffect,signal);validateTimeline(snapshot.timeline,assets);
  if(snapshot.colourPlan||retainOpacitySourceIdentity){
   for(const verified of assets.values()){
-   checkMediaEffect(beforeEffect,signal);const current=readAsset(verified.id);
-   if(!current||current.sha256!==verified.sha256||current.mimeType!==verified.mimeType||!sameMediaLocator(current,verified)||!sameManagedFile((retainOpacitySourceIdentity?verified.opacitySourceIdentity:verified.colourSourceIdentity) as never,validateManagedSource(root,current).info as never))throw fault('MANAGED_SOURCE_CHANGED',retainOpacitySourceIdentity?'A verified source changed during preparation.':'A colour-managed source changed during preparation.');
+   try{
+    checkMediaEffect(beforeEffect,signal);const current=readAsset(verified.id);
+    if(!current||current.sha256!==verified.sha256||current.mimeType!==verified.mimeType||!sameMediaLocator(current,verified)||!sameManagedFile((retainOpacitySourceIdentity?verified.opacitySourceIdentity:verified.colourSourceIdentity) as never,validateManagedSource(root,current).info as never))throw fault('MANAGED_SOURCE_CHANGED',retainOpacitySourceIdentity?'A verified source changed during preparation.':'A colour-managed source changed during preparation.');
+   }catch(error){throw timelineInputSourceError(error,verified.id);}
   }
   if(snapshot.colourPlan)verifyTimelineColourLuts(snapshot.colourPlan as never,readLut as never,true);
  }

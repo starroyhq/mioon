@@ -32,9 +32,11 @@ async function actual(t: test.TestContext) {
   await writeFile(path.join(distDir, 'entry.js'), 'console.log("synthetic")');
   const created = createServerProject(dataDir, {name: 'Synthetic HTTP project'}),
     store = created.store as unknown as TypedStore, id = randomUUID(), projectId = created.projectId;
-  const file = path.join(created.store.root, 'media', id + '.bin'), bytes = Buffer.from('0123456789abcdefghijklmnopqrstuvwxyz');
+  const file = path.join(created.store.root, 'media', id + '.mp4');
+  // A real ftyp header passes L1 admission; these transport tests never decode.
+  const bytes = Buffer.concat([Buffer.from([0,0,0,24,102,116,121,112,105,115,111,109,0,0,0,0,105,115,111,109,109,112,52,50]), Buffer.from('0123456789abcdefghijklmnopqrstuvwxyz')]);
   await writeFile(file, bytes, {mode: 0o600});
-  store.put('assets', {id, projectId, name: 'Synthetic media', mimeType: 'video/mp4', relativePath: `media/${id}.bin`, sizeBytes: bytes.length, url: `/media/${id}`});
+  store.put('assets', {id, projectId, name: 'Synthetic media', mimeType: 'video/mp4', relativePath: `media/${id}.mp4`, sizeBytes: bytes.length});
   store.close();
   const options = {dataDir, distDir, port: 0, token};
   let service = await startServer(options);
@@ -76,7 +78,7 @@ test('actual media full/HEAD/range/cache/auth and static fallback contracts rema
   const f = await actual(t);
   let response = await f.request();
   assert.equal(response.status, 200); assert.equal(response.headers.get('content-length'), String(f.bytes.length));
-  assert.equal(response.headers.get('cache-control'), 'private, max-age=3600'); assert.equal(response.headers.get('accept-ranges'), 'bytes');
+  assert.equal(response.headers.get('cache-control'), 'private, no-store'); assert.equal(response.headers.get('accept-ranges'), 'bytes');
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), f.bytes);
   for (const [range, expected] of [['bytes=0-3', f.bytes.subarray(0, 4)], ['bytes=3-', f.bytes.subarray(3)], ['bytes=-4', f.bytes.subarray(-4)], ['bytes=-999', f.bytes], ['bytes=3-999', f.bytes.subarray(3)]] as const) {
     response = await f.request(undefined, {headers: {range}}); assert.equal(response.status, 206, range);
@@ -100,7 +102,8 @@ test('actual media full/HEAD/range/cache/auth and static fallback contracts rema
 test('missing managed bytes and absent renderer return sanitized failures; backend stays healthy', async t => {
   const f = await actual(t); await unlink(f.file);
   const missing = await f.request(); assert.equal(missing.status, 404); const text = await missing.text();
-  assert.match(text, /FILE_UNAVAILABLE/); assert.ok(!text.includes(f.root));
+  assert.deepEqual(JSON.parse(text), {ok: false, error: {code: 'MEDIA_MISSING', message: '找不到素材文件', details: {assetId: f.id, reason: 'not-found'}, retryable: false}});
+  assert.ok(!text.includes(f.root));
   await unlink(path.join(f.distDir, 'index.html'));
   const noBuild = await f.request('/'); assert.equal(noBuild.status, 503); assert.match(await noBuild.text(), /BUILD_REQUIRED/);
   assert.equal((await (await f.request('/health')).json()).ok, true);

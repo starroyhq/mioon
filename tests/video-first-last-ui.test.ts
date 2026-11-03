@@ -54,7 +54,7 @@ Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/sr
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), shotId = id(2), firstId = id(3), tailId = id(4), otherId = id(5);
-const asset = (assetId: string, name: string) => ({ id: assetId, projectId, name, mimeType: 'image/png', sha256: String(assetId === firstId ? 'a' : assetId === tailId ? 'b' : 'c').repeat(64), width: 720, height: 1280, sizeBytes: 100, relativePath: `assets/${assetId}.png` });
+const asset = (assetId: string, name: string) => ({ id: assetId, projectId, name, mimeType: 'image/png', sha256: String(assetId === firstId ? 'a' : assetId === tailId ? 'b' : 'c').repeat(64), width: 720, height: 1280, sizeBytes: 100, referenceRevision:1 });
 const assets = [asset(firstId, '晨光首帧'), asset(tailId, '暮色尾帧'), asset(otherId, '另一张图片')];
 // The project library also holds audio, which has a duration instead of a size in pixels.
 type LibraryAsset = Omit<(typeof assets)[number], 'width' | 'height'> & {width?: number; height?: number; duration?: number};
@@ -155,17 +155,17 @@ function configuredConnectionFixture() {
 
 function appGenerationFlow({ providers, options, currentShot }: {providers: GenerationProvider[]; options: GenerationOptionState; currentShot: VideoShot}) {
   const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
-  const functions = source.slice(source.indexOf('  function checkGeneration('), source.indexOf('  function retryGeneration(')) + source.slice(source.indexOf('  function reviewGeneration('), source.indexOf('  async function createProject('));
+  const functions = source.slice(source.indexOf('  function checkGeneration('), source.indexOf('  function retryGeneration(')) + source.slice(source.indexOf('  async function reviewGeneration('), source.indexOf('  async function createProject('));
   const state: {calls: [string, string, GenerationSubmitInput][]; notices: unknown[][]; review: GenerationReviewArgs | null} = { calls: [], notices: [], review: null }, scope = { ...settings, ...subjectVideo, ...contracts, msg,
     providers, generationOptionsRef: { current: { [shotId]: structuredClone(options) } }, currentProject: { current: projectId },
-    generationUnavailableReason: '', workspaceRef: { current: { restored: false } }, shotTextRef: { current: { blocksLegacy: () => false } }, referenceWorkBlocked: () => false,
+    readableError:(error:unknown)=>String(error),rpc:async(_operation:string,input:{assetIds:string[]})=>({items:input.assetIds.map(assetId=>({assetId,referenceRevision:1,status:'online',reason:'same-stats',outside:false,readable:true,fingerprintToken:'a'.repeat(64)})),nextCursor:null}),generationUnavailableReason: '', workspaceRef: { current: { restored: false } }, shotTextRef: { current: { blocksLegacy: () => false } }, referenceWorkBlocked: () => false,
     dataRef: { current: { shots: [currentShot], assets: structuredClone<LibraryAsset[]>(assets), edges: [], jobs: [] } },
     realConfirmRef: { current: null }, generationReviewScope: { current: { key: 'configured-connection' } }, context: () => ({ epoch: 1 }), isCurrent: (value: { epoch: number; }) => value.epoch === 1,
     setRealConfirm: (value: GenerationReviewArgs | null) => { state.review = value; }, notify: (...values: unknown[]) => state.notices.push(values),
     run: async (...args: [string, string, GenerationSubmitInput]) => { state.calls.push(args); return { status: 'queued' }; }, requestId: () => 'synthetic-configured-inspector-request', openTasks: () => {},
     captureTaskWorkspaceIntent: () => () => false, readTaskRevealContext: () => ({}) };
   const methods = Function(...Object.keys(scope), `${functions}; return { generate, submitGeneration, confirmGeneration };`)(...Object.values(scope)) as Pick<GenerationMethods, 'generate' | 'submitGeneration' | 'confirmGeneration'>;
-  return { ...methods, state, scope };
+  return { ...methods,generate:async(...args:Parameters<GenerationMethods['generate']>)=>{methods.generate(...args);await new Promise<void>(resolve=>setImmediate(resolve));}, state, scope };
 }
 
 test('actual Inspector forwards an exact configured connection through App review and submit without an environment provider', async () => {
@@ -182,11 +182,11 @@ test('actual Inspector forwards an exact configured connection through App revie
     assert.equal(h.saves.length, dirty ? 1 : 0);
     if (dirty) { assert.equal(generatedShot.prompt, 'Saved configured generation prompt'); assert.equal(generatedShot.revision, 2); assert.deepEqual(h.saves[0].draft.parameters, {}); }
     const app = appGenerationFlow({ providers: f.providers, options: h.props().generationOptions, currentShot: h.props().shot });
-    app.generate(generatedShot, options);
+    await app.generate(generatedShot, options);
     const review = app.state.review; assert.ok(review, 'The exact account reaches paid review with no environment-configured provider');
     assert.equal(review.connectionId, f.options.connectionId); assert.equal(review.modelEntryId, f.options.modelEntryId);
     assert.deepEqual(review.shot.parameters, f.options.parameters);
-    app.confirmGeneration(review); app.confirmGeneration(review); await Promise.resolve();
+    await Promise.all([app.confirmGeneration(review),app.confirmGeneration(review)]);
     assert.equal(app.state.calls.length, 1);
     const wire = app.state.calls[0][2];
     assert.equal(app.state.calls[0][1], 'generation.submit'); assert.equal(wire.providerId, 'kling');
@@ -205,10 +205,10 @@ test('configured Inspector saves and paid reviews cannot submit stale connection
     const clean = harness({ shot: f.selectedShot, providers: f.providers, generationOptions: f.options });
     await clean.click('generate-shot'); assert.equal(clean.generated.length, 1);
     const app = appGenerationFlow({ providers: f.providers, options: f.options, currentShot: f.selectedShot });
-    app.generate(...clean.generated[0]); const review = app.state.review; assert.ok(review);
+    await app.generate(...clean.generated[0]); const review = app.state.review; assert.ok(review);
     assert.equal(review.connectionId, f.options.connectionId);
     app.scope.generationOptionsRef.current[shotId] = next;
-    app.confirmGeneration(review); await Promise.resolve();
+    await app.confirmGeneration(review);
     assert.equal(app.state.calls.length, 0, `A changed ${change} invalidates paid confirmation without switching accounts`);
   }
 });
@@ -391,47 +391,47 @@ test('App paid review wires complete frames and count, frozen retries, asset-use
   assert.doesNotMatch(submit, /lastFrameAssetId|referenceAssetIds|approve|budget|limit/);
 });
 
-test('actual App confirmation sends once and rejects changed content, navigation, provider or stale view scope', () => {
+test('actual App confirmation sends once and rejects changed content, navigation, provider or stale view scope', async () => {
   const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
-  const functions = source.slice(source.indexOf('  function reviewGeneration('), source.indexOf('  async function createProject('));
-  function reviewHarness({ frozen = false, connected = false } = {}) {
+  const functions = source.slice(source.indexOf('  async function reviewGeneration('), source.indexOf('  async function createProject('));
+  async function reviewHarness({ frozen = false, connected = false } = {}) {
     const p = { ...provider('ark'), ...(connected ? { connectionId: id(45), configurationRevision: 1 } : {}) }, current = shot({ lastFrameAssetId: tailId });
     if (connected) p.modelCapabilities = p.modelCapabilities.map(model => ({ ...model, modelEntryId: id(47) }));
     const old = { ...shot(), referenceAssets: [assets[0]] }; delete (old as Partial<typeof old>).id;
     const job = { id: id(44), snapshot: old };
     const state: {epoch: number; notices: string[]; submitted: GenerationReviewArgs[]; review: GenerationReviewArgs | null} = { epoch: 0, notices: [], submitted: [], review: null };
-    const scope = { msg, ...createI18nTestContext(), localizedError: (value: string|i18nCore.DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), dataRef: { current: { shots: [current], assets: structuredClone(assets), jobs: [job] } }, providers: [p, ...(connected ? [{ ...p, connectionId: id(46) }] : [])],
+    const scope = { ...settings,currentProject:{current:projectId},rpc:async(_operation:string,input:{assetIds:string[]})=>({items:input.assetIds.map(assetId=>({assetId,referenceRevision:1,status:'online',reason:'same-stats',outside:false,readable:true,fingerprintToken:'a'.repeat(64)})),nextCursor:null}),readableError:(error:unknown)=>String(error),msg, ...createI18nTestContext(), localizedError: (value: string|i18nCore.DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), dataRef: { current: { shots: [current], assets: structuredClone(assets), jobs: [job] } }, providers: [p, ...(connected ? [{ ...p, connectionId: id(46) }] : [])],
       generationOptionsRef: { current: { [shotId]: { providerId: p.id, model: p.models[0], inputMode: 'image', ...(connected ? { connectionId: p.connectionId, modelEntryId: id(47) } : {}) } } },
       realConfirmRef: { current: null }, generationReviewScope: { current: { key: 'original' } },
       context: () => ({ epoch: state.epoch }), isCurrent: (value: { epoch: number; }) => value.epoch === state.epoch,
       setRealConfirm: (value: null) => { state.review = value; }, notify: (message: string|i18nCore.DisplayMessage|null|undefined) => state.notices.push(renderCoreMessage('zh-Hans', message)), submitGeneration: (args: GenerationReviewArgs) => state.submitted.push(args),
       generationSelection: settings.generationSelection, generationParameters: settings.generationParameters, generationProviderIdentity: settings.generationProviderIdentity, generationReferences: settings.generationReferences, generationReferenceIdentity: settings.generationReferenceIdentity };
     const api = Function(...Object.keys(scope), `${functions}; return { reviewGeneration, confirmGeneration };`)(...Object.values(scope)) as Pick<GenerationMethods, 'reviewGeneration' | 'confirmGeneration'>;
-    api.reviewGeneration({ shot: frozen ? { ...old, id: shotId } : current, providerId: p.id, model: p.models[0], inputMode: 'image', ...(connected ? { connectionId: p.connectionId, configurationRevision: p.configurationRevision, modelEntryId: id(47) } : {}), ...(frozen ? { retryJobId: job.id } : {}) });
+    await api.reviewGeneration({ shot: frozen ? { ...old, id: shotId } : current, providerId: p.id, model: p.models[0], inputMode: 'image', ...(connected ? { connectionId: p.connectionId, configurationRevision: p.configurationRevision, modelEntryId: id(47) } : {}), ...(frozen ? { retryJobId: job.id } : {}) });
     return { ...api, state, scope, original: state.review };
   }
   for (const change of ['none', 'epoch', 'tab', 'revision', 'asset', 'provider', 'cancel']) {
-    const h = reviewHarness(), { state, scope, original } = h;
+    const h = await reviewHarness(), { state, scope, original } = h;
     if (change === 'epoch') state.epoch++;
     if (change === 'tab') scope.generationReviewScope.current = { key: 'original' }; // away/back is a new scope
     if (change === 'revision') scope.dataRef.current.shots[0] = { ...scope.dataRef.current.shots[0], revision: 2 };
     if (change === 'asset') scope.dataRef.current.assets[1].sha256 = 'f'.repeat(64);
     if (change === 'provider') scope.generationOptionsRef.current[shotId].providerId = 'mock';
     if (change === 'cancel') scope.realConfirmRef.current = null;
-    h.confirmGeneration(original); h.confirmGeneration(original);
+    await Promise.all([h.confirmGeneration(original),h.confirmGeneration(original)]);
     assert.equal(state.submitted.length, change === 'none' ? 1 : 0, change);
   }
   for (const change of ['none', 'connection']) {
-    const h = reviewHarness({ connected: true });
+    const h = await reviewHarness({ connected: true });
     assert.equal(h.original!.connectionId, id(45));
     if (change === 'connection') h.scope.generationOptionsRef.current[shotId].connectionId = id(46);
-    h.confirmGeneration(h.original); h.confirmGeneration(h.original);
+    await Promise.all([h.confirmGeneration(h.original),h.confirmGeneration(h.original)]);
     assert.equal(h.state.submitted.length, change === 'none' ? 1 : 0, `same-provider ${change}`);
     if (change === 'none') assert.equal(h.state.submitted[0].connectionId, id(45));
   }
-  const retry = reviewHarness({ frozen: true });
+  const retry = await reviewHarness({ frozen: true });
   assert.equal(retry.original!.referenceAssets!.length, 1, 'Original job review does not add the current saved tail');
-  retry.confirmGeneration(retry.original); assert.equal(retry.state.submitted.length, 1);
+  await retry.confirmGeneration(retry.original); assert.equal(retry.state.submitted.length, 1);
   assert.equal(retry.state.submitted[0].shot.referenceAssetIds.length, 1);
 });
 
@@ -568,9 +568,9 @@ test('Seedance 2.5 sets duration, ratio, resolution and sound for one generation
   assert.deepEqual(h.generated[0][1].parameters, expected);
   // The paid review and the submitted request carry the generation duration, not the shot's 4 seconds.
   const app = appGenerationFlow({ providers: [p], options: h.props().generationOptions, currentShot: h.props().shot });
-  app.generate(h.generated[0][0], h.generated[0][1]);
+  await app.generate(h.generated[0][0], h.generated[0][1]);
   const review = app.state.review; assert.ok(review); assert.deepEqual(review.shot.parameters, expected); assert.equal(review.shot.duration, 4);
-  app.confirmGeneration(review); await Promise.resolve();
+  await app.confirmGeneration(review);
   assert.equal(app.state.calls.length, 1); assert.equal(app.state.calls[0][2].providerId, 'ark'); assert.deepEqual(app.state.calls[0][2].parameters, expected);
 });
 test('custom Ark models keep shot-only duration and ratio controls', () => {
@@ -600,9 +600,9 @@ test('Seedance 2.5 reference mode builds an ordered group for one generation and
   assert.equal(h.generated.length, 1); assert.deepEqual(h.generated[0][1].videoInput, { version: 1, mode: 'reference_images', images: group });
   // The paid review and the request carry the same group and no separate prompt.
   const app = appGenerationFlow({ providers: [p], options: h.props().generationOptions, currentShot: h.props().shot });
-  app.generate(h.generated[0][0], h.generated[0][1]);
+  await app.generate(h.generated[0][0], h.generated[0][1]);
   const review = app.state.review; assert.ok(review); assert.deepEqual(review.shot.videoInput, { version: 1, mode: 'reference_images', images: group });
-  app.confirmGeneration(review); await Promise.resolve();
+  await app.confirmGeneration(review);
   assert.equal(app.state.calls.length, 1); assert.deepEqual(app.state.calls[0][2].videoInput, { version: 1, mode: 'reference_images', images: group });
   // Leaving the mode drops the group; the saved first frame is untouched.
   h.edit('input-mode-select', 'image'); h.render();
@@ -670,7 +670,7 @@ test('Seedance 2.5 subject prefill waits for the binding list and needs a subjec
   assert.equal(none.find('seedance-subject-map'), undefined, 'Without a subject library the reference list starts empty');
   assert.deepEqual(none.props().generationOptions.videoInput!.images, []);
 });
-const audioAsset = (n: number, name: string, mimeType: string, duration: number, sizeBytes = 160_000) => ({ id: id(900 + n), projectId, name, mimeType, sha256: String(n % 10).repeat(64), sizeBytes, duration, relativePath: `media/${id(900 + n)}.audio` });
+const audioAsset = (n: number, name: string, mimeType: string, duration: number, sizeBytes = 160_000) => ({ id: id(900 + n), projectId, name, mimeType, sha256: String(n % 10).repeat(64), sizeBytes, duration, referenceRevision:1 });
 const voice = audioAsset(1, '旁白.wav', 'audio/wav', 12), music = audioAsset(2, '配乐.mp3', 'audio/mpeg', 15), m4a = audioAsset(3, '采访.m4a', 'audio/mp4', 8), long = audioAsset(4, '长音乐.wav', 'audio/wav', 35), loud = audioAsset(5, '大文件.wav', 'audio/wav', 20, 15_000_001);
 test('Seedance 2.5 reference mode lists audio clips, takes them in order and explains the ones it cannot send', async () => {
   const p = seedanceProvider(), h = harness({ shot: shot({ referenceAssetIds: [] }), assets: [...assets, voice, music, m4a, long, loud], providers: [p], generationOptions: { connectionId: p.connectionId, modelEntryId: p.modelCapabilities![0].modelEntryId } });
@@ -703,10 +703,10 @@ test('Seedance 2.5 can send reference audio alone, through the paid review and s
   assert.equal(h.generated.length, 1); assert.deepEqual(h.generated[0][1].videoInput, expected);
   const app = appGenerationFlow({ providers: [p], options: h.props().generationOptions, currentShot: h.props().shot });
   app.scope.dataRef.current.assets = structuredClone(library);
-  app.generate(h.generated[0][0], h.generated[0][1]);
+  await app.generate(h.generated[0][0], h.generated[0][1]);
   const review = app.state.review; assert.ok(review); assert.deepEqual(review.shot.videoInput, expected);
   assert.ok(review.referenceAssets!.some(item => item.id === voice.id), 'The review carries the clip for its name and duration');
-  app.confirmGeneration(review); await Promise.resolve();
+  await app.confirmGeneration(review);
   assert.equal(app.state.calls.length, 1); assert.deepEqual(app.state.calls[0][2].videoInput, expected);
 });
 test('Seedance 2.5 audio advisories follow the clip limits, the 30-second total and the reference mode', () => {

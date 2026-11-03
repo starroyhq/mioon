@@ -83,7 +83,7 @@ test('large retained history keeps subject row reads bounded; native read-only r
   for(let i=0;i<2000;i++)f.store.put('jobs',{id:randomUUID(),projectId:f.project.id,shotId:shot.id,requestId:randomUUID(),status:'failed',snapshot:{}});
  });
  let records=0,readBytes=0;const started=performance.now();
- const reader=createSubjectOwnershipReader(db,f.project.id,{consume:value=>{records++;readBytes+=Buffer.byteLength(value);},resolveAsset:()=>({asset:a})});assert.equal(reader.version(subject.headVersionId).id,subject.headVersionId);assert.equal(records,2);assert.ok(readBytes<8192);
+ const reader=createSubjectOwnershipReader(db,f.project.id,{consume:value=>{records++;readBytes+=Buffer.byteLength(value);},resolveAsset:()=>({asset:{...f.store.get('assets',a.id)!,provenance:a.provenance}})});assert.equal(reader.version(subject.headVersionId).id,subject.headVersionId);assert.equal(records,2);assert.ok(readBytes<8192);
  assertSubjectGenerationSelection(db,shot);
  const probeStart=performance.now();assertSubjectGenerationRequestVacant(db,{requestId:randomUUID()});const reservationProbeMs=performance.now()-probeStart;
  const reservationPlan=db.prepare("EXPLAIN QUERY PLAN SELECT CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 131072 THEN data END FROM jobs WHERE CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 131072 THEN CASE WHEN json_valid(data) THEN json_extract(data,'$.requestId')=? ELSE 1 END ELSE 1 END LIMIT 2").all(randomUUID()).map(row=>row.detail);assert.ok(reservationPlan.some(detail=>/SCAN jobs/.test((detail as string))));

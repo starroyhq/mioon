@@ -22,7 +22,7 @@ import {readTimelineReceipt} from './timeline-recovery.ts';
 import {prepareTimelineInputs,readOwnedTimelineAsset,validateFrozenTimelineSourceGraph,validatePreparedTimelineSources} from './timeline-sources.ts';
 import {now} from './services.ts';
 import {validateManagedSource, verifiedManagedHash} from './managed-media.ts';
-import {registeredProjectStore, registeredProjectAssetReferences, referenceForPublishedMedia} from './project-media-storage.ts';
+import {ensureProjectOutputDirectory, registeredProjectStore, registeredProjectAssetReferences, referenceForPublishedMedia} from './project-media-storage.ts';
 import type {JobRecord,OrdinaryServices,ServiceStore,ServiceRow} from './services.ts';
 import type {Provider} from './provider-registry.ts';
 import {readVideoBinding} from './video/generation.ts';
@@ -376,6 +376,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    beforeEffect?.();
    // Every cancellable export owns its staging inode, including legacy
    // delivery without an opt-in profile. A late cancel may land after link.
+   const writerOwner=registeredProjectStore(root);if(writerOwner)ensureProjectOutputDirectory(writerOwner);
    outputHandle=await open(part,'wx');outputIdentity=await outputHandle.stat();beforeEffect?.();
    if(e.mode==='timeline') {
     if(!isTimelineExportSnapshot(e.snapshot,{purpose:e.purpose}))throw Object.assign(Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});

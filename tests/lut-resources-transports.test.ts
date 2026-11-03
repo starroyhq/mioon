@@ -263,7 +263,7 @@ async function fixture(t: test.TestContext) {
   return {root, url, state, snapshot, checkpoint, unchanged, rpc, cli, mcpConnection, responseProxy,
     async noSideEffects() {
       assert.equal(await readFile(audit, 'utf8'), '', 'no network/provider/model/media subprocess was attempted');
-      for (const projectId of projectIds) assert.deepEqual(await readdir(path.join(path.dirname((await state(projectId)).databases.find(file=>file.endsWith('.mioon'))!), 'media')), [], 'no managed playable media was created');
+      for (const projectId of projectIds) assert.deepEqual(await readdir(path.join(path.dirname((await state(projectId)).databases.find(file=>file.endsWith('.mioon'))!), 'media')).catch(error=>{assert.equal(error.code,'ENOENT');return [];}), [], 'no managed playable media was created');
     }};
 }
 

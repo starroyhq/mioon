@@ -334,7 +334,7 @@ export function createTimelineMixLoudnessServices(store: TimelineMixLoudnessStor
         if (code === 'MEDIA_TIMEOUT') throw fault('TIMELINE_MIX_LOUDNESS_TIMEOUT', 503);
         if (code === 'MEDIA_CANCELLED') throw fault('OPERATION_CANCELLED', 503);
         if (code === 'LOUDNESS_INVALID_PCM' || code === 'LOUDNESS_DURATION_MISMATCH') throw fault('TIMELINE_MIX_LOUDNESS_INVALID_PCM');
-        if (code?.startsWith('MANAGED_') || code?.startsWith('MEDIA_')) throw fault('TIMELINE_MIX_LOUDNESS_STALE');
+        if (code?.startsWith('MANAGED_') || ['MEDIA_MISSING','MEDIA_CHANGED','MEDIA_CHANGED_DURING_READ','MEDIA_NOT_MEDIA','MEDIA_OUTSIDE_NOT_CONFIRMED'].includes(code??'')) throw fault('TIMELINE_MIX_LOUDNESS_STALE');
         throw fault('TIMELINE_MIX_LOUDNESS_DECODE_FAILED');
       }
       // All children have retired. Crucially, transaction/commit errors from

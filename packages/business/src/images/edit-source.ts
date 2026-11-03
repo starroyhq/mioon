@@ -102,7 +102,8 @@ export function createImageEditSourceResolver(store: EditSourceStore, {signal}: 
     admission.count++; admission.projects.set(projectId, count + 1);
     try {
       const current = owned(input, expected);
-      if(isProjectStore(store))await admitProjectAssetSource(store.projectDir,current.asset.id,{signal});
+      if(isProjectStore(store))try{await admitProjectAssetSource(store.projectDir,current.asset.id,{signal});}
+      catch(error){if(error!==null&&typeof error==='object'&&'code' in error&&typeof error.code==='string'&&error.code.startsWith('MEDIA_'))fail();throw error;}
       const bytes = bytesFor(current.asset, current.descriptor);
       try {await validateImageEditSourceBytes(bytes, {mimeType: current.descriptor.mimeType, width: current.descriptor.width, height: current.descriptor.height, signal});} catch {fail();}
       const verified: VerifiedEditSource = {descriptor: structuredClone(current.descriptor), bytes};

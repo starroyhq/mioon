@@ -8,6 +8,7 @@ import {isProjectFileHeld} from './project-file/held-files.ts';
 import {isProjectStore, commitProjectAssetHash} from './project-file/store.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
+import {IMAGE_EDIT_SOURCE_BOUNDS} from '../../contracts/src/image-edit-profiles.ts';
 import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {mediaUnavailableError} from '../../contracts/src/media-reference-errors.ts';
 import type {OutsidePathConfirmationStore} from './app-db/stores.ts';
@@ -92,7 +93,7 @@ export function validatedProjectAssetSource(root: string, asset: ProjectReferenc
  * recheck at their transaction fence. Metadata/held/permission checks precede
  * every descriptor open and every chunk; no arbitrary file path is accepted. */
 export function readProjectReferencedAssetBytes(store: ProjectStore, asset: ProjectReferencedAsset, {maxBytes}: {maxBytes: number}): Buffer {
-  if (registeredProjectStore(store.projectDir) !== store || !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 32 * 1024 * 1024) throw new TypeError('A bounded exact project image source is required');
+  if (registeredProjectStore(store.projectDir) !== store || !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > IMAGE_EDIT_SOURCE_BOUNDS.maxBytes) throw new TypeError('A bounded exact project image source is required');
   const source = validatedProjectAssetSource(store.projectDir, asset, {maxBytes}), id = typeof asset.id === 'string' ? asset.id : String(asset.assetId);
   const fence = (): void => {const current = validatedProjectAssetSource(store.projectDir, asset, {maxBytes}); if (current.file !== source.file || !sameStats(current.info, source.info)) throw mediaUnavailableError('MEDIA_CHANGED_DURING_READ', id);};
   fence();const fd = openSync(source.file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -179,7 +180,8 @@ export function resolveProjectMediaFile(store: ProjectStore, relativePath: strin
   if (!file.startsWith(root + path.sep)) throw new PrivateStorageError('OUTSIDE_ROOT', 'Project output must remain in its fixed directory');
   const info = lstatSync(file, {throwIfNoEntry: false});
   if (!info) {if (options.allowMissing) return {file, info: null}; throw new PrivateStorageError('MISSING', 'The project output is missing');}
-  if (info.isSymbolicLink() || !info.isFile()) throw new PrivateStorageError('FILE_TYPE', 'Project output must be a regular file');
+  if (info.isSymbolicLink()) throw new PrivateStorageError('SYMBOLIC_LINK', 'Project output cannot be a symbolic link');
+  if (!info.isFile()) throw new PrivateStorageError('FILE_TYPE', 'Project output must be a regular file');
   const identity = lstatSync(file, {bigint: true});
   if (isProjectFileHeld({dev: String(identity.dev), ino: String(identity.ino)}) || isAppLibraryHeld({dev: String(identity.dev), ino: String(identity.ino)})) throw new PrivateStorageError('HELD_DATABASE', 'A held database cannot be used as project media');
   if (options.maxBytes !== undefined && info.size > options.maxBytes) throw new PrivateStorageError('SIZE_LIMIT', 'The project output exceeds its byte limit');

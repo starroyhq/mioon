@@ -1,3 +1,5 @@
+import type {MediaReference} from '../packages/contracts/src/media-reference.ts';
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,readFile,rm,readdir} from 'node:fs/promises';
@@ -27,7 +29,7 @@ type AssetsArg = Parameters<typeof renderTimeline>[1];
 type RenderOptions = Parameters<typeof renderTimeline>[3];
 type DeliveryInput = Parameters<typeof resolveTimelineExportDelivery>[0];
 type TimelineShape = {id: string; projectId: string; revision: number; fps: number; width: number; height: number; durationFrames: number; tracks: Array<{id: string; kind: string}>; clips: Array<Record<string, unknown>>; subtitles?: Record<string, unknown>};
-type AssetShape = {id: string; relativePath: string; sha256: string};
+type AssetShape = {id:string;reference:MediaReference;referenceRevision:number;sha256:string};
 type ProjectShape = {id: string};
 interface LocalServices {call<T = Record<string, unknown>>(operation: string, input?: unknown): Promise<T>; drain(): Promise<unknown>}
 interface LooseStore {
@@ -254,7 +256,7 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
   const input={projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',exportSettings:selected('short_360')};
   const accepted=await services.call<ProjectShape>('timeline.render',input),receipt=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response;
   const acceptedSnapshot=store.get('exports',accepted.id).snapshot;
-  const sourceFile=path.join(workspace,asset.relativePath),sourceHash=hash(await readFile(sourceFile)),files=(await readdir(path.join(workspace,'media'))).sort();
+  const sourceFile=mediaFixturePath(workspace,asset),sourceHash=hash(await readFile(sourceFile)),files=(await readdir(path.join(workspace,'media'))).sort();
   // The normal version trigger rejects this corruption; remove only that
   // fixture-local protection when testing the independent retained-graph fence.
   if(mutation==='version-sql-owner')store.db.exec('DROP TRIGGER immutable_versions');
@@ -376,7 +378,7 @@ test('postcommit publication exception preserves the successful custom export an
   assert.deepEqual(store.get('exports',accepted.id),committed,'postcommit exception cannot downgrade an already published success');
   assert.deepEqual(store.get('assets',String(committed!.assetId)),committedAsset);assert.equal(store.list('assets').length,2);
   assert.equal(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response,receipt);
-  const file=path.join(workspace,String(committedAsset!.relativePath));assert.equal(hash(await readFile(file)),committedAsset!.sha256);await verifyOutput(file,360,640,3);
+  const file=mediaFixturePath(workspace,committedAsset);assert.equal(hash(await readFile(file)),committedAsset!.sha256);await verifyOutput(file,360,640,3);
   assert.equal((await readdir(path.join(workspace,'media'))).some(name=>name.startsWith('.timeline-render-')||name.endsWith('.part.mp4')),false);
   assert.equal(events.filter(event=>event.type==='started').length,events.filter(event=>event.type==='exited').length);
  }finally{await worker?.stop();await services.drain();store.close();}

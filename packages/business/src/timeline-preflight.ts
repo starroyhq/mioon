@@ -108,7 +108,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   let initial,referencePreparedBytes=0;
   try{if(!hasSampledTimelineReferences(store,input.projectId))initial=readSnapshot(input);}
   catch(error){const failure=error as {code?:string};if(failure.code==='NOT_FOUND')throw error;const [status,code]=classify(error);report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];return report;}
-  if(initial?.timeline){report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;report.snapshotHash=timelineSnapshotHash(initial.snapshot);report.summary=summary(initial.snapshot!);report.checks.totalAssets=initial.snapshot!.assets.length;}
+  if(initial?.timeline){report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;}
   const referenceController=new AbortController(),referenceSignal=external?AbortSignal.any([external,referenceController.signal]):referenceController.signal;
   const referenceEntry: PreflightAttempt={controller:referenceController,task:null};active.add(referenceEntry);
   let referenceTimedOut=false;
@@ -122,7 +122,12 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
    checkpoint(external);if(stopped)checkpoint(referenceController.signal);if(hostEffectFailure)throw hostEffectFailure;
    const failure=error as {code?: string};if(failure.code==='NOT_FOUND')throw error;
    const [status,code]=referenceTimedOut?['incomplete','PREFLIGHT_TIMEOUT']:classify(error);
-   report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];return report;
+   report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];
+   if(failure.code?.startsWith('MEDIA_')&&initial?.snapshot){report.snapshotHash=timelineSnapshotHash(initial.snapshot);report.summary=summary(initial.snapshot);report.checks.totalAssets=initial.snapshot.assets.length;}
+   const unavailable=error as {details?:{assetId?:unknown}};
+   const assetId=unavailable.details?.assetId;
+   if(typeof assetId==='string'&&initial?.snapshot?.assets.some(asset=>asset.id===assetId))report.issues[0].assetId=assetId;
+   return report;
   }finally{referenceController.abort();}
   if(!initial.timeline){report.issues=[issue('TIMELINE_MISSING')];return report;}
   report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;

@@ -21,6 +21,7 @@ async function seed(root: string): Promise<void> {
   await seedMutationStore(root);
   const {createServerProject, openServerProject, projectDirFor, withoutForeignKeys} = await import('./project-database.ts');
   const asset = (id: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({id, projectId: IDS.project, name: 'Disposition metadata fixture',
+    relativePath: `media/${id}.${extra.mimeType === 'image/png' ? 'png' : extra.mimeType === 'audio/wav' ? 'wav' : 'mp4'}`,
     mimeType: 'video/mp4', duration: 2, width: 720, height: 1280, hasVideo: true, hasAudio: false,
     provenance: 'user-import', sha256: '2'.repeat(64), createdAt: NOW, ...extra});
   const store = openServerProject(root, IDS.project);
@@ -32,8 +33,11 @@ async function seed(root: string): Promise<void> {
     store.put('assets', asset(DISPOSITION_IDS.image, {mimeType: 'image/png', duration: 0}));
     store.put('assets', asset(DISPOSITION_IDS.unknown, {duration: undefined}));
     const original = JSON.parse((store.db.prepare('SELECT data FROM assets WHERE id=?').get(IDS.asset) as {data: string}).data);
-    store.put('assets', {...original, relativePath: 'media/original.mp4'});
     fs.writeFileSync(path.join(projectDirFor(root, IDS.project), 'media/original.mp4'), ORIGINAL_BYTES);
+    // Explicit fixture conversion samples this actual sentinel. Persist only
+    // its current reference, never a second relativePath beside an old one.
+    const {reference: _reference, referenceRevision: _revision, relativePath: _relativePath, ...fields} = original;
+    store.put('assets', {...fields, relativePath: 'media/original.mp4'});
     // This metadata-only fixture never decodes its sentinel video. A valid
     // source-bound cache keeps cover preparation outside the guarded operation.
     const savedAsset=store.get('assets',IDS.asset);

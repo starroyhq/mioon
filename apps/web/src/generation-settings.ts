@@ -1,7 +1,7 @@
 import {assetMediaStatusListResponseSchema} from '../../../packages/contracts/src/asset-media.ts';
 import { VIDEO_INPUT_PROFILE_VERSION, getVideoGenerationIssue, wanVideoInputSchema } from '../../../packages/contracts/src/video-providers.ts';
 import { resolveWanGenerationParameters } from '../../../packages/contracts/src/wan-video.ts';
-import { message } from '../../../packages/i18n/src/index.ts';
+import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage, MessageKey } from '../../../packages/i18n/src/index.ts';
 import { isSubjectReference, findModelCapabilities, getGenerationIssue, INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, SUBJECT_REFERENCE_PROFILE_VERSION, GENERATION_INPUT_ROLES, getShotGenerationReferenceSelection } from '@mioon/contracts';
 import type { GenerationIssue, SubjectReference } from '@mioon/contracts';
@@ -240,20 +240,21 @@ export function generationReferenceIdentity(shot: GenerationShot, assets: readon
 export function generationMediaReferences(shot:GenerationShot,options:GenerationReferenceOptions={}):readonly GenerationReference[]{
   return [...generationReferences(shot,options).references,...(shot.videoInput?.audios??[]).map(audio=>({assetId:audio.assetId,role:audio.role}))];
 }
+const generationReferenceError=(key:MessageKey):Error=>{const displayMessage=message(key);return Object.assign(new Error(renderMessage('zh-Hans',displayMessage)),{displayMessage});};
 /** A paid review is formed only from readable online image/audio references
  * whose stored whole-file hash and captured revision are still current. */
 export async function checkGenerationMediaReferences(shot:GenerationShot,assets:readonly GenerationAsset[],options:GenerationReferenceOptions,
   status:(input:{projectId:string;assetIds:string[]})=>Promise<unknown>):Promise<void>{
   const refs=generationMediaReferences(shot,options),ids=[...new Set(refs.map(item=>item.assetId))];
   if(!ids.length)return;
-  if(typeof shot.projectId!=='string'||ids.some(id=>typeof id!=='string'))throw Error('参考素材归属无效。');
+  if(typeof shot.projectId!=='string'||ids.some(id=>typeof id!=='string'))throw generationReferenceError('connections.generation.referenceOwnerInvalid');
   const selected=ids.map(id=>assets.find(asset=>asset.id===id));
-  if(selected.some(asset=>!asset||asset.projectId!==shot.projectId||!Number.isSafeInteger(asset.referenceRevision)||Number(asset.referenceRevision)<1||typeof asset.sha256!=='string'||!(/^[a-f0-9]{64}$/u).test(asset.sha256)))throw Error('参考素材缺少已登记的完整哈希，请重新核对素材。');
+  if(selected.some(asset=>!asset||asset.projectId!==shot.projectId||!Number.isSafeInteger(asset.referenceRevision)||Number(asset.referenceRevision)<1||typeof asset.sha256!=='string'||!(/^[a-f0-9]{64}$/u).test(asset.sha256)))throw generationReferenceError('connections.generation.referenceHashMissing');
   const result=assetMediaStatusListResponseSchema.parse(await status({projectId:shot.projectId,assetIds:ids as string[]}));
   if(result.nextCursor!==null||result.items.length!==ids.length||selected.some(asset=>{
     const state=result.items.find(item=>item.assetId===asset!.id);
     return !state||state.status!=='online'||!state.readable||state.referenceRevision!==asset!.referenceRevision;
-  }))throw Error('参考素材已缺失、变化或未确认，请先处理素材。');
+  }))throw generationReferenceError('connections.generation.referenceUnavailable');
 }
 
 export function generationInputIssue(shot: GenerationShot, provider: GenerationProvider | null | undefined, model: string, assets: readonly GenerationAsset[], inputMode: string, { frozen = false, subjectReference, boundReference = false, savedShot }: GenerationInputIssueOptions = {}): string {

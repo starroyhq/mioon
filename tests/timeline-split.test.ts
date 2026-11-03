@@ -5,7 +5,9 @@ import type {ServiceResponse as FixtureServiceResult, TypedStore as FixtureStore
 import type {SQLInputValue} from 'node:sqlite';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import {writeFileSync} from 'node:fs';
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -31,11 +33,12 @@ async function fixture(t: test.TestContext) {
     call: <O extends string>(name: O, input?: unknown) => services.call(name, input) as Promise<FixtureServiceResult<O>>,
     restart() { store.close(); store = (openStore(root) as FixtureStore); services = (createServices(store, new Map()) as FixtureServices); },
     asset(projectId?: string, mimeType: string|undefined = 'image/png', extra: {duration?: number;} = {}) {
-      const id = randomUUID();
+      const id = randomUUID(),bytes=mimeType==='video/mp4'?mp4HeaderFixture('metadata-only split fixture; no decoder runs'):null,relativePath=`media/${id}.${bytes?'mp4':'fixture'}`;
+      if(bytes)writeFileSync(path.join(root,relativePath),bytes);
       return store.put('assets', {
         id, projectId, name: `Synthetic ${mimeType}`, mimeType, duration: mimeType.startsWith('image/') ? 0 : 8,
-        width: 720, height: 1280, sha256: 'a'.repeat(64), sizeBytes: 128,
-        relativePath: `media/${id}.fixture`, url: `/media/${id}`, createdAt: '2026-10-09T00:00:00.000Z', ...extra,
+        width: 720, height: 1280, sha256:bytes?createHash('sha256').update(bytes).digest('hex'):'a'.repeat(64), sizeBytes:bytes?.length??128,
+        relativePath, url: `/media/${id}`, createdAt: '2026-10-09T00:00:00.000Z', ...extra,
       });
     },
     version(shot: MediaShot, asset: { id: unknown; projectId?: unknown; name?: string; mimeType?: string; duration?: number; width?: number; height?: number; sha256: unknown; sizeBytes?: number; relativePath?: string; url: unknown; createdAt?: string; }, number: number) {

@@ -98,7 +98,8 @@ function classify(error: unknown): {status: 'unsupported' | 'incomplete' | 'stal
     case 'MEDIA_SPAWN_FAILED': case 'MEDIA_INVALID_CONFIGURATION': return {status: 'incomplete', code: 'DECODER_UNAVAILABLE'};
     case 'MEDIA_TIMEOUT': return {status: 'incomplete', code: 'TIMEOUT'};
     case 'MEDIA_CANCELLED': case 'OPERATION_CANCELLED': return {status: 'incomplete', code: 'CANCELLED'};
-    case 'LOUDNESS_ARTIFACT_CHANGED': case 'MANAGED_SOURCE_CHANGED': case 'MANAGED_SOURCE_INVALID': return {status: 'stale', code: 'ARTIFACT_CHANGED'};
+    case 'LOUDNESS_ARTIFACT_CHANGED': case 'MANAGED_SOURCE_CHANGED': case 'MANAGED_SOURCE_INVALID':
+    case 'MEDIA_MISSING': case 'MEDIA_CHANGED': case 'MEDIA_NOT_MEDIA': case 'MEDIA_OUTSIDE_NOT_CONFIRMED': case 'MEDIA_CHANGED_DURING_READ': return {status: 'stale', code: 'ARTIFACT_CHANGED'};
     default: return {status: 'incomplete', code: 'DECODE_FAILED'};
   }
 }

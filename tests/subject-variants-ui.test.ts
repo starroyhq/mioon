@@ -46,7 +46,7 @@ async function services(t: TestContext, {autoRun = true}: {autoRun?: boolean} = 
   async function asset(): Promise<{id: string; sha256: string; width: number; height: number; sizeBytes: number}> {
     const bytes = await renderMockImagePng({width: 768, height: 1024}), id = randomUUID();
     const value = {id, projectId, name: 'Lin.png', mimeType: 'image/png', provenance: 'user-import', sha256: sha(bytes), width: 768, height: 1024, sizeBytes: bytes.length, relativePath: `media/${id}.png`, url: `/media/${id}`, createdAt: new Date().toISOString()};
-    store.put('assets', value); writeFileSync(path.join(root, value.relativePath), bytes, {mode: 0o600});
+    writeFileSync(path.join(root, value.relativePath), bytes, {mode: 0o600}); store.put('assets', value);
     return value;
   }
   const source = await asset();

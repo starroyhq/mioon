@@ -47,7 +47,7 @@ async function fixture(t:TestContext,inputModes?:VideoInputMode[]){
   let assetIndex=0;
   const asset=async({width=360,height=640,projectId=String(project.id)}:{width?:number;height?:number;projectId?:string}={}):Promise<ManagedAsset>=>{
     const id=randomUUID(),bytes=png(width,height,assetIndex++),value:ManagedAsset={id,projectId,name:'Synthetic managed reference',relativePath:`media/${id}.png`,mimeType:'image/png',sha256:hash(bytes),sizeBytes:bytes.length,width,height,provenance:'user-import',createdAt:'2026-10-20T00:00:00.000Z'};
-    store.put('assets',value);await writeFile(path.join(root,value.relativePath),bytes);return value;
+    await writeFile(path.join(root,value.relativePath),bytes);store.put('assets',value);return value;
   };
   const shot=async(patch:Record<string,unknown>={})=>row(await services.call('shot.create',{projectId:project.id,title:'Ark shot',prompt:'A synthetic object turns slowly.',aspectRatio:'9:16',duration:4,referenceAssetIds:[],...patch}));
   const input=(selected:ServiceRow,patch:Record<string,unknown>={})=>({shotId:selected.id,expectedRevision:selected.revision,requestId:randomUUID(),providerId:'ark',model:configuration.models[0]!.modelId,connectionId:configuration.id,configurationRevision:1,modelEntryId:configuration.models[0]!.id,parameters:{resolution:'720p'},...patch});

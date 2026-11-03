@@ -1957,5 +1957,23 @@ export const connectionMessages = {
     "zh-Hant": "輸入包含不受支援的結構版本或欄位，不會自動忽略。請核對原始請求",
     "en": "The input contains an unsupported schema version or field. It will not be silently ignored. Review the original request",
     "ja": "入力に未対応のスキーマバージョンまたはフィールドが含まれています。自動で無視することはありません。元のリクエストを確認してください"
+  },
+  "connections.generation.referenceOwnerInvalid": {
+    "zh-Hans": "参考素材归属无效。",
+    "zh-Hant": "參考素材歸屬無效。",
+    "en": "The reference media does not belong to this project.",
+    "ja": "参照素材はこのプロジェクトに属していません。"
+  },
+  "connections.generation.referenceHashMissing": {
+    "zh-Hans": "参考素材缺少已登记的完整哈希，请重新核对素材。",
+    "zh-Hant": "參考素材缺少已登記的完整雜湊，請重新核對素材。",
+    "en": "The reference media has no registered full-file hash. Review the media again.",
+    "ja": "参照素材に登録済みの完全ハッシュがありません。素材を再確認してください。"
+  },
+  "connections.generation.referenceUnavailable": {
+    "zh-Hans": "参考素材已缺失、变化或未确认，请先处理素材。",
+    "zh-Hant": "參考素材已遺失、變更或未確認，請先處理素材。",
+    "en": "Reference media is missing, changed, or unconfirmed. Resolve it before continuing.",
+    "ja": "参照素材が見つからないか、変更されたか、未確認です。先に素材を確認してください。"
   }
 } as const satisfies MessageCatalog;

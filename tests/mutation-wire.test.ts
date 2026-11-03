@@ -1,3 +1,4 @@
+import {modelOperationDefinition,operationDefinition} from '../packages/client/src/index.ts';
 import {projectRpcPath,isProjectId} from '../packages/contracts/src/project-file.ts';
 import {isAppLevelOperation,isEntityAddressedOperation} from '../packages/contracts/src/project-addressing.ts';
 import type {PipedProcess,SqlRows,ProcessOutcome,BackendReady,IpcMessage,WireMessage,WireData,WireEnvelope,WireCall} from './helpers/strict-timeline-wire-response-types.ts';
@@ -302,7 +303,9 @@ test('six optional mutation keys retain exact results through lost HTTP response
     const catalog = (await runCli(t,['schema'],backend.env)).data as TestCatalog;
     assert.deepEqual((await mcp.call('mioon_schema')).data, catalog);
     const optionalKeyOperations = optionalRequestIdOperations(catalog);
-    assert.deepEqual(optionalKeyOperations, [...operations].sort(), 'optional keys are added only to the approved six operations');
+    assert.deepEqual(optionalKeyOperations, ['asset.import',...operations].sort(), 'public S1 upload adds its optional key beside the approved six mutations');
+    assert.deepEqual(catalog.operations.find(item=>item.operation==='asset.import'),operationDefinition('asset.import'));
+    assert.equal(Object.hasOwn(modelOperationDefinition('asset.import').inputSchema.properties??{},'requestId'),false,'the fixed model upload catalog retains its original unkeyed input');
     const tools = (await mcp.client.listTools()).tools;
     for (const operation of operations) {
       const definition = (await runCli(t,['schema',operation],backend.env)).data as TestOperationDefinition;
