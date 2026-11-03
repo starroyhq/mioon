@@ -119,7 +119,7 @@ test('production P4 hosts run R1 canonical records and keep global CAS policy/re
   assert.deepEqual(usage.knownTotals, reportedUsage); assert.equal(usage.modelOutcomes.completed, 1); assert.equal(usage.dispatchedModelSteps, 1);
   assert.doesNotMatch(JSON.stringify(usage), /PRIVATE_|providerOutput|originalBody|configurationBlobHash/u);
   const doctor = await f.client.doctor({projectId}), storage = mioStorageSnapshotSchema.parse(doctor.storage);
-  assert.equal(storage.version, 2); assert.equal(storage.scope, 'project'); assert.equal(storage.projectId, projectId); assert.equal(storage.tables.length, 19);
+  assert.equal(storage.version, 3); assert.equal(storage.scope, 'project'); assert.equal(storage.projectId, projectId); assert.equal(storage.tables.length, 20);
   assert.deepEqual(storage, f.project(projectId, db => readMioStorage(db)));
   assert.equal(f.project(projectId, db => db.prepare('SELECT total_changes() AS n').get()!.n), changes); assert.equal(f.calls, calls);
   assert.equal((await f.client.doctor()).storage, undefined);

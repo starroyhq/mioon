@@ -11,8 +11,38 @@ import {appLibraryError} from './errors.ts';
 import {APP_DOCUMENT_LIMITS, APP_DOCUMENT_NAMES, APP_RECORD_LIMITS} from './schema.ts';
 import type {AppDocumentName} from './schema.ts';
 import {agentDiagnosticSummarySchema} from '../../../contracts/src/agent-diagnostic-summary.ts';
+import {rulesTextSchema} from '../../../contracts/src/mio-rules.ts';
+import {mioIdentitySchemas} from '../../../contracts/src/mio-records.ts';
 
 const decode = (data: unknown): unknown => JSON.parse(String(data));
+
+/** Application-wide standing rules, independent of project trust. The absent
+ * singleton has revision zero; receipts compose with CAS in the caller's tx. */
+export interface UserRules {readonly text:string;readonly revision:number;readonly updatedAt:string|null}
+export interface UserRulesStore {
+ get():UserRules;
+ cas(expectedRevision:number,text:string,updatedAt:string):UserRules;
+}
+export function createUserRulesStore(database:AppDatabase):UserRulesStore{
+ function get():UserRules{
+  const row=database.statement('SELECT text,revision,updatedAt FROM user_rules WHERE singleton=1').get();
+  if(!row)return{text:'',revision:0,updatedAt:null};
+  const text=rulesTextSchema.safeParse(row.text),revision=mioIdentitySchemas.count.safeParse(row.revision),updatedAt=mioIdentitySchemas.date.safeParse(row.updatedAt);
+  if(!text.success||!revision.success||revision.data<1||!updatedAt.success)throw appLibraryError('APP_LIBRARY_INVALID',{reason:'unusable'});
+  return{text:text.data,revision:revision.data,updatedAt:updatedAt.data};
+ }
+ return{get,cas(expectedRevision,text,updatedAt){
+  const checkedText=rulesTextSchema.parse(text),checkedAt=mioIdentitySchemas.date.parse(updatedAt);
+  if(!Number.isSafeInteger(expectedRevision)||expectedRevision<0||expectedRevision>=Number.MAX_SAFE_INTEGER)throw new TypeError('Invalid user rules revision');
+  return database.atomically(()=>{
+   const current=get();
+   if(current.revision!==expectedRevision)throw Object.assign(new Error('MIO_RULES_REVISION_CONFLICT'),{code:'MIO_RULES_REVISION_CONFLICT'});
+   const revision=expectedRevision+1;
+   database.statement('INSERT INTO user_rules(singleton,text,revision,updatedAt) VALUES(1,?,?,?) ON CONFLICT(singleton) DO UPDATE SET text=excluded.text,revision=excluded.revision,updatedAt=excluded.updatedAt').run(checkedText,revision,checkedAt);
+   return{text:checkedText,revision,updatedAt:checkedAt};
+  });
+ }};
+}
 
 // ---------------------------------------------------------------------------
 // Global Mio policy (task card §3, item 7)

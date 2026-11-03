@@ -1,6 +1,8 @@
 import {isTimelineClipLoudnessResponse, TIMELINE_CLIP_LOUDNESS_LIMITS} from '@mioon/contracts/timeline-clip-loudness';
 import {readTimelineClipLoudnessEnvelope} from './timeline-clip-loudness.ts';
 export {measureTimelineClipLoudness} from './timeline-clip-loudness.ts';
+export {createProjectRulesClient} from './project-rules.ts';
+export type {ProjectRulesClient, ProjectRulesRequestOptions} from './project-rules.ts';
 import {isTimelineImageSourceInspection,isTimelineJpegSourceInspection} from '../../contracts/src/timeline-colour.ts';
 import {isProxy} from 'node:util/types';
 import {isLookPackInspectInput,isLookPackInspectResponse} from '@mioon/contracts';

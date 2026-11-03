@@ -79,7 +79,7 @@ async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='re
  const gateway=async function*(request:TaskModelRequest){
   requests.push(request);const visible=sourceTaskModelToolNames(protocol,{body:request.body});
   const missing=loadGroups.filter(group=>!agentTaskToolNamesForGroup(group).every(name=>visible.includes(name)));
-  if(missing.length&&visible.includes(AGENT_TASK_TOOLS_LOAD_NAME)){loadingRequests++;yield {type:'done' as const,output:output(protocol,[call(AGENT_TASK_TOOLS_LOAD_NAME,{names:missing.flatMap(agentTaskToolNamesForGroup)})])};return;}
+  if(missing.length&&visible.includes(AGENT_TASK_TOOLS_LOAD_NAME)){loadingRequests++;yield {type:'done' as const,output:output(protocol,[call(AGENT_TASK_TOOLS_LOAD_NAME,{names:missing.flatMap(group=>agentTaskToolNamesForGroup(group))})])};return;}
   scriptRequestIndexes.push(requests.length-1);yield*script(scriptRequestIndexes.length,request);
  };
  let runtime=createAgentTaskRuntime({store,agentSettings:runtimeSettings,authorizations,tools,gateway,selfPort:()=>4318});

@@ -1,3 +1,4 @@
+import {handleMioRulesHttp} from '../mio-rules-http.ts';
 import {AppError, isTimelineRenderRecord} from '@mioon/contracts';
 import path from 'node:path';
 import {resolveProjectMediaFile} from '@mioon/business/project-media-storage';
@@ -91,6 +92,10 @@ export async function composeHostedProject(context: ProjectHostContext, library:
       json(res, 200, {ok: true, data: await readWorkspaceInfo({root, channel: options.localDraftChannel ?? 'web', version: packageMetadata.version,
         tools: {ffmpeg: mediaExecutable('ffmpeg'), ffprobe: mediaExecutable('ffprobe')}, signal})}); return true;
     }
+    if(project.projectRules && route.kind==='other' && route.segments[0]==='rules'){
+      deletionGate.track(res);
+      return handleMioRulesHttp({req,res,url,projectId,rules:project.projectRules,signal});
+    }
     const target = projectHandlerTarget(route);
     if (!target) return false;
     const local = new URL(url);
@@ -140,9 +145,9 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     return false;
   }
   return {project, handle, summarize: summary, unfinishedTasks,
-    isBusy: () => files.isBusy() || cover.isRendering() || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy() || !deletionGate.isQuiescent(),
-    interrupt: () => { shutdown.abort(); project.taskRuntimeV2?.close(); project.taskHttpV2?.close(); },
-    drain: async () => { await boundedShutdown(Promise.all([worker.stop(), project.taskRuntimeV2?.drain(), project.serviceDrain(), project.editTasks.drain(), cover.drain(), files.close(), comparisons.close(), project.closeSettings()]), 'SERVER_STOP_TIMEOUT'); },
-    dispose: () => { removeCoverObserver(); project.taskToolsV2?.dispose(); deletionGate.close(); releaseRowValidation(); context.signal.removeEventListener('abort', abort); },
+    isBusy: () => files.isBusy() || cover.isRendering() || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy() || Boolean(project.projectRules?.isBusy()) || !deletionGate.isQuiescent(),
+    interrupt: () => { shutdown.abort(); project.projectRules?.close(); project.taskRuntimeV2?.close(); project.taskHttpV2?.close(); },
+    drain: async () => { await boundedShutdown(Promise.all([worker.stop(), project.taskRuntimeV2?.drain(), project.projectRules?.drain(), project.serviceDrain(), project.editTasks.drain(), cover.drain(), files.close(), comparisons.close(), project.closeSettings()]), 'SERVER_STOP_TIMEOUT'); },
+    dispose: () => { project.projectRules?.close(); removeCoverObserver(); project.taskToolsV2?.dispose(); deletionGate.close(); releaseRowValidation(); context.signal.removeEventListener('abort', abort); },
   };
 }

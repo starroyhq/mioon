@@ -1,6 +1,6 @@
 import type {DatabaseSync, SQLOutputValue} from 'node:sqlite';
-import {MIO_STORAGE_TABLES, mioStorageSnapshotSchema} from '../../../contracts/src/mio-storage.ts';
-import type {MioStorageSnapshot, MioStorageTable} from '../../../contracts/src/mio-storage.ts';
+import {MIO_STORAGE_TABLES, mioStorageSnapshotV3Schema} from '../../../contracts/src/mio-storage.ts';
+import type {MioStorageSnapshotV3, MioStorageTable} from '../../../contracts/src/mio-storage.ts';
 import {isProjectDatabase} from '../project-file/connection.ts';
 import {MIO_STORAGE_LIMITS} from '../project-file/schema/domains/mio.ts';
 
@@ -27,8 +27,9 @@ const byteColumns: Readonly<Record<MioStorageTable, readonly string[]>> = {
   mio_events: ['runId', 'createdAt'],
   mio_process_target_revisions: ['projectId', 'kind', 'targetId'],
   mio_storage_counters: [],
+  mio_rule_writes: ['requestId','projectId','actor','runId','stepId','digest','approvalReceiptId','beforeHash','afterHash','beforeBlobHash','afterBlobHash','fixedRelativeName','fileIdentity','state','createdAt','updatedAt'],
 };
-const rowOnlyTables: readonly MioStorageTable[] = ['mio_edit_claims', 'mio_edit_owners', 'mio_edit_receipts', 'mio_process_target_revisions', 'mio_storage_counters'];
+const rowOnlyTables: readonly MioStorageTable[] = ['mio_edit_claims', 'mio_edit_owners', 'mio_edit_receipts', 'mio_process_target_revisions', 'mio_storage_counters','mio_rule_writes'];
 const tableInventorySql = MIO_STORAGE_TABLES.map(name => {
   const bytes = byteColumns[name].length ? `COALESCE(sum(${byteColumns[name].map(column => `COALESCE(length(CAST(${column} AS BLOB)),0)`).join('+')}),0)` : '0';
   return `SELECT '${name}' AS name,count(*) AS rows,${bytes} AS bytes FROM main.${name}`;
@@ -62,7 +63,7 @@ function readInventory(db: DatabaseSync): Record<string, SQLOutputValue>[] {
  * No caller-supplied identity or SQLite marker can select the project profile.
  * Querying all tables in one statement also keeps their counters consistent,
  * without starting a transaction or invoking any write fences/observers. */
-export function readMioStorage(db: DatabaseSync): MioStorageSnapshot {
+export function readMioStorage(db: DatabaseSync): MioStorageSnapshotV3 {
   if (!isProjectDatabase(db)) throw new TypeError('Mio storage requires a live kernel project database');
   const identity = db.prepare('SELECT projectId FROM main.history_state WHERE singleton=1').get();
   // Both independently computed totals share one SQLite statement snapshot.
@@ -82,7 +83,7 @@ export function readMioStorage(db: DatabaseSync): MioStorageSnapshot {
   const limits = MIO_STORAGE_LIMITS;
   const status = bytes >= limits.bytes || countedRows >= limits.rows ? 'full'
     : bytes >= limits.bytes * .9 || countedRows >= limits.rows * .9 ? 'near_limit' : 'available';
-  return mioStorageSnapshotSchema.parse({version: 2, scope: 'project', projectId: identity?.projectId, format: 'mio_records', status, limits,
+  return mioStorageSnapshotV3Schema.parse({version: 3, scope: 'project', projectId: identity?.projectId, format: 'mio_records', status, limits,
     usage: {bytes, rows: countedRows}, retained: {bytes, rows: retainedRows},
     remaining: {bytes: Math.max(0, limits.bytes - bytes), rows: Math.max(0, limits.rows - countedRows)},
     independentLimits: {editReceiptDataBytes: 65536, editReceiptTotalBytes: null, editReceiptTotalRows: null}, tables});
