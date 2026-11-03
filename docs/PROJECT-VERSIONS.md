@@ -1,8 +1,8 @@
-# 本机项目版本（V1-A）
+# 本机项目版本
 
-V1-A 提供手动保存、分页列表和只读预览数据。版本正文保存在该项目的本机 `history.db`，不放进 `.mioon`，不随发送项目文件自动携带。本文记录实现边界，验证与发布状态以对应 PR 为准。
+版本领域提供手动保存、自动保存、分页列表、只读预览和确认恢复。版本正文保存在该项目的本机 `history.db`，不放进 `.mioon`，不随发送项目文件自动携带。本文记录实现边界，验证与发布状态以对应 PR 为准。
 
-本阶段没有恢复接口，预览固定返回 `restoreAvailable:false`。也没有接入 Mio 首次修改、大改动前、每天第一次打开等自动拍摄，未接自动保留清理或版本界面。它们属于 V1-B、U2；不要把已有的触发类型或预留表当成自动保存已经启用。
+宿主预览返回 `restoreAvailable:true`；恢复必须提交完整摘要与当前内容序号。版本界面仍属于 U2。自动保存和恢复只使用当前项目宿主的真实连接，不重新启动已完成的任务。
 
 ## 快照格式与封闭台账
 
@@ -23,7 +23,7 @@ V1-A 提供手动保存、分页列表和只读预览数据。版本正文保存
 | --- | --- |
 | `schema_version` | 以当前项目格式版本作证据，不保存为可回写的旧格式行 |
 | `project_file` | 以真实 projectId 和 contentSequence 作证据，不倒退内容序号或改项目身份 |
-| `agent_task_target_revisions_v2` | 记录目标修订证据；以后恢复应推进当前修订，不能写回旧账本 |
+| `agent_task_target_revisions_v2` | 记录目标修订证据；恢复推进当前修订，不能写回旧账本 |
 
 该台账是显式封闭清单，实际项目库出现未分类的新表或不匹配的列结构时拒绝拍摄，测试也会失败。不是从收集器的当前输出反推“所有表都已覆盖”。
 
@@ -34,6 +34,8 @@ V1-A 提供手动保存、分页列表和只读预览数据。版本正文保存
 ## 规范编码与容量
 
 对象键使用固定顺序，用户字符串和业务数组顺序不变；内容行按其稳定主键排序。JSON 列解析后规范化，SQLite BLOB 显式编码为 base64，超出 JavaScript 安全整数范围的整数使用带类型的十进制表示。歧义的重复 JSON 键、非法值、归属不一致、重复主键或约束/FK 不合法的文档会拒绝。
+
+补回行使用规范化 JSON 文本。主体归属及未 pin 的生成参考清单按结构和值严格比较，不依赖对象键的存储顺序；字段、数组顺序和内容哈希仍必须一致。
 
 规范文档的 UTF-8 字节计算 SHA-256，使用 `gzip` level 1，记录 profile、codec、原文长度、压缩长度和正文。版本名称、版本 ID、保存时间不进入正文；完全相同的规范文档共用 blob，不同手动请求仍保存为不同版本记录。内容序号和修订证据仍属于文档，不能把不同证据误认为同一正文。
 
@@ -52,13 +54,13 @@ V1-A 提供手动保存、分页列表和只读预览数据。版本正文保存
 | `project_versions` | 不可变版本摘要、正文哈希、内容序号及保存时 Mio change 的 rowid 边界；按项目/时间/ID 分页 |
 | `project_version_blobs` | 规范正文去重、长度与 profile 元数据、gzip BLOB |
 | `project_version_requests` | 输入 digest 和稳定的完整保存回执；同请求不得换输入 |
-| `project_version_capture_marks` | 为后续自动拍摄保留的标记结构；V1-A 不写自动拍摄标记 |
+| `project_version_capture_marks` | Mio 每轮和本地日历日期/时区的持久化去重标记 |
 
 公开保存只能产生 `manual` 版本，不能指定 trigger、mioRunId 或任意 snapshot。事务内先检查旧请求，再采集和编码当前内容、保存正文和版本、记录回执；任何失败一起回滚。手动保存不改变项目内容序号、业务修订或内容行。
 
 同 projectId/requestId 和相同输入重放原始回执，即使当前内容后来已改变；同 requestId 换名称等输入报 `REQUEST_ID_REUSED`。相同内容使用新 requestId 仍创建另一条手动版本。已存在的 blob 在复用前会校验，不接受损坏正文冒充去重命中。
 
-正文、版本和回执有不可变/拒绝 REPLACE 约束；手动版本有保留保护。本阶段不提供删除或清理入口。history 的目标版本由 `HISTORY_SCHEMA_VERSION` 决定，不在本文写死数字；V1-A 接在 R2 后新增领域，必须以精确历史清单完成窄升级。旧 2–5 到新终点的实际验收结果见本 PR，不以计划代替已通过的升级测试。
+正文、版本和回执有不可变/拒绝 REPLACE 约束；手动版本有保留保护。没有公开的任意删除入口；可信自动保存事务按保留规则清理。history 的目标版本由 `HISTORY_SCHEMA_VERSION` 决定，不在本文写死数字；V1-A 接在 R2 后新增领域，必须以精确历史清单完成窄升级。旧 2–5 到新终点的实际验收结果见本 PR，不以计划代替已通过的升级测试。
 
 ## 预览、来源与保持当前
 
@@ -71,7 +73,26 @@ V1-A 提供手动保存、分页列表和只读预览数据。版本正文保存
 - `totalChanges` 是完整差异总数，`keptCurrentCount` 是其中保持当前的数量；页面只返回最多 100 条。`previewDigest` 绑定整份当前文档、所选正文和完整差异，不能只对当前页签名。
 - 列表游标绑定项目、页大小和时间/ID 锚点；预览游标还绑定版本、完整 digest 和偏移。后续内容变化会使原预览分页失效；游标由本进程签名，重启后旧游标失效，调用方重新读首页。
 
-上述结果仍是 **V1-A 的预览数据，不是执行恢复的许可**。V1-B 才会接入恢复前版本、内容独占/CAS、实际修订推进、恢复回执及与 Mio 撤销的组合验收。V1-A 不主动把 Mio change 标为已取代，也不新增来源索引、选用状态或内容令牌。同内容序号的分叉副本盲点仍归 V5。
+## 确认恢复与自动保存
+
+`project.version.restore` 同时验证 `expectedContentSequence` 与完整 `previewDigest`。宿主拒绝尚有工作、未知提交结果或在途内容请求的项目；随后在原连接的同步事务里重新核对基线、保存恢复前版本、应用预览计划、写完整原始回执。内容和目标修订只向前推进。任一步失败，内容、恢复前版本、回执、清理均回滚。
+
+可变状态恢复到快照；快照以后新增的对象按删除、墓碑、保持当前的顺序处理。保留对象的依赖闭包不能丢失。`keep-current` 项与原因原样写进成功回执，不是部分失败。不可变结果不覆盖；缺失的历史结果可在事务内按经校验计划精确补回，不伪造 job、不关闭 FK 或删除本机过程记录。时间线经领域入口追加手动历史，保留正常 undo/redo；不相关子目标保持其当前 JSON 表示和修订。
+
+现存素材保留这台机器上的当前定位及其配套身份信息。S1 的 `reference`、`referenceRevision` 合入后也应保持当前，避免恢复旧版本使已经修复的链接再次失效；缺失素材则补回快照引用，仍须通过通常的读取授权，不新授予外部目录访问权。恢复不读取或复制外部媒体字节。
+
+同请求重试先返回原始回执，不要求再次满足旧基线，即使自动版本后来已轮转也不重新恢复。仍须通过当前应用写入守卫。换输入报 `REQUEST_ID_REUSED`。回执包含全部应用项与保持项；超过已有 64 KiB 回执上限整笔拒绝，不截断。主体修订须遵守原生逐次 +1 约束；单次恢复累计最多推进 10,000 步，过大跨度在预览阶段报 `PROJECT_VERSION_RESTORE_LIMIT`，执行阶段再防御核对，避免小快照携带巨大编号而阻塞宿主。
+
+自动保存时机：
+
+- 手动：公开 save 操作，稳定请求回执；永久保留。
+- Mio 每轮首改：事务开始前准备完整前态，仅内容序号实际推进才写 `mio-turn` 版本和 run 标记。同值、仅 history、失败或回滚不消耗首改；后台绑定和 LUT 的原始事务同样覆盖。
+- 大改动前：可信批量入口，当前恢复入口必调；先完成重放和 CAS 检查，再与大改动一起提交。
+- 每天第一次打开：在 V2 打开备份校验之后按本地日期和 IANA 时区拍摄。失败仅记录安全错误码，不阻止打开、不记成功标记，同日可重试。当前尚无 S3 升级钩子，未来顺序为备份校验、S3、每日版本。
+
+自动版本保留最近 20 条与最近 7 个本地日历日各自最早一条的并集，时区和 DST 使用日历计算。执行中的版本 pin 和新恢复前版本受保护；只删除无剩余版本引用的 blob。请求回执、捕获标记和手动版本不删除。采集、内存库校验和 gzip 同步进行；首改/大改前存不下则整笔回滚，每日失败可稍后重试，不通过删除手动版本腾空间，不承诺文件立即缩小。
+
+恢复不主动更改 Mio change 的状态。被恢复目标的修订变化使旧 undo 按现有规则报 `AGENT_TASK_TARGET_CHANGED`；独立目标仍可撤销，`undo_all` 沿用现有 supersession 规则。同内容序号的分叉副本盲点仍归 V5。
 
 ## HTTP、CLI、MCP 契约
 
@@ -81,9 +102,11 @@ V1-A 提供手动保存、分页列表和只读预览数据。版本正文保存
 | --- | --- | --- |
 | `project.version.list` | `{projectId,limit?,cursor?}` | `{projectId,versions,nextCursor}` |
 | `project.version.save` | `{projectId,requestId,name?}` | `{projectId,requestId,version}`，稳定手动保存回执 |
-| `project.version.preview` | `{projectId,versionId,limit?,cursor?}` | `{projectId,version,contentSequence,previewDigest,totalChanges,keptCurrentCount,changes,nextCursor,restoreAvailable:false}` |
+| `project.version.preview` | `{projectId,versionId,limit?,cursor?}` | `{projectId,version,contentSequence,previewDigest,totalChanges,keptCurrentCount,changes,nextCursor,restoreAvailable:boolean}` |
 
-limit 为 1–100，默认 100；name 为 1–150 字符；游标最多 4096 字符。HTTP 使用认证 `POST /api/projects/<projectId>/rpc` 的 `{operation,input}`。URL 与 input 项目不一致报 `PROJECT_ID_MISMATCH`；旧应用 `/api/rpc` 不接受这三个项目级操作。版本不存在和外项目版本都返回同样的未找到，不泄露另一项目。
+| `project.version.restore` | `{projectId,versionId,requestId,expectedContentSequence,previewDigest}` | `{projectId,requestId,versionId,beforeVersionId,contentSequence,totalChanges,appliedChanges,keptCurrent}`，完整原始回执 |
+
+limit 为 1–100，默认 100；name 为 1–150 字符；游标最多 4096 字符。HTTP 使用认证 `POST /api/projects/<projectId>/rpc` 的 `{operation,input}`。URL 与 input 项目不一致报 `PROJECT_ID_MISMATCH`；旧应用 `/api/rpc` 不接受这四个项目级操作。版本不存在和外项目版本都返回同样的未找到，不泄露另一项目。
 
 CLI 沿用现有 JSON 输入，不新增 `--project-id` 参数：
 
@@ -93,7 +116,7 @@ node apps/cli/src/index.ts project version list --input '{"projectId":"11111111-
 node apps/cli/src/index.ts project version preview --input '{"projectId":"11111111-aaaa-4111-8111-111111111111","versionId":"33333333-cccc-4333-8333-333333333333"}'
 ```
 
-MCP 名称为 `project_version_list/save/preview`，参数和结果与表格一致。客户端严格校验项目、请求、版本、名称和分页边界；丢 ACK 不自动换 requestId 或重发保存。版本三个操作及备份四个操作统一到契约根注册表与 effect 表；客户端不再保留一份备份操作组合。Mio 禁用列表显式归类，重新生成模型 schema 不代表把这些操作开放给内置 Mio，99 条模型请求指纹必须不变。
+MCP 名称为 `project_version_list/save/preview/restore`，参数和结果与表格一致。客户端严格校验项目、请求、版本、名称和分页边界；丢 ACK 不自动换 requestId 或重发写入。版本四个操作及备份四个操作统一到契约根注册表与 effect 表；客户端不再保留一份备份操作组合。Mio 禁用列表显式归类，重新生成模型 schema 不代表把这些操作开放给内置 Mio，99 条模型请求指纹必须不变。
 
 ## 主要错误
 
@@ -102,6 +125,10 @@ MCP 名称为 `project_version_list/save/preview`，参数和结果与表格一�
 | `VALIDATION_ERROR` / `PROJECT_ID_MISMATCH` | 400；严格输入或 K2 地址不一致，未保存版本 |
 | `PROJECT_VERSION_NOT_FOUND` | 404；当前项目没有该版本，外项目 ID 同样处理 |
 | `REQUEST_ID_REUSED` | 409；保存请求 ID 对应的输入已不同，不新增版本 |
+| `PROJECT_HOST_BUSY` | 409；项目仍有在途工作或不确定的外部结果，未恢复 |
+| `PROJECT_VERSION_BASELINE_CHANGED` / `PROJECT_VERSION_PREVIEW_CHANGED` | 409；内容序号或完整计划已变化，需重新预览 |
+| `PROJECT_VERSION_RESTORE_LIMIT` | 409；主体修订推进超过单次 10,000 步执行预算，未应用恢复 |
+| `PROJECT_VERSION_RECEIPT_LIMIT` | 413；完整回执超过 64 KiB，未应用恢复 |
 | `PROJECT_VERSION_CURSOR_INVALID` | 400；签名、请求绑定、重启或预览内容变化导致游标无效 |
 | `PROJECT_VERSION_RECORD_INVALID` | 422；本机摘要、正文关联、保存回执或 Mio 来源记录损坏 |
 | `PROJECT_VERSION_SNAPSHOT_INVALID` | 422；profile、规范文档、行、归属、gzip、长度或哈希不合法 |
