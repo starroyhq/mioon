@@ -1,20 +1,14 @@
-import {DatabaseSync} from 'node:sqlite';
 import assert from 'node:assert/strict';
-import {mkdtempSync,readFileSync,realpathSync,rmSync} from 'node:fs';
+import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
-import {migrateImageSchema} from '../packages/business/src/image-schema.ts';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {CROSS_FILE_RELATIONS} from '../packages/business/src/project-file/cross-file/relations.ts';
 import {relationConstraintName} from '../packages/business/src/project-file/cross-file/install.ts';
 import {schemaObjects} from '../packages/business/src/project-file/cross-file/inspect.ts';
 import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '../packages/contracts/src/images.ts';
 export const canonical=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b))):v);
-export function legacyDatabase(file=':memory:'){
- const db=new DatabaseSync(file);db.exec('PRAGMA foreign_keys=ON');db.exec(readFileSync(new URL('./fixtures/images-legacy-schema15.sql',import.meta.url),'utf8'));return db;
-}
-export function migrate(db){db.exec('BEGIN IMMEDIATE');try{migrateImageSchema(db);db.exec('INSERT OR IGNORE INTO schema_version VALUES(16);COMMIT');}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}}
 export function insert(db,table,value){const keys=Object.keys(value);return db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`).run(...keys.map(key=>value[key]));}
 /** Explicit damage on the actual held connection. Native same-file keys and
  * the affected TEMP emulations must both be removed before injecting orphans;
@@ -27,12 +21,6 @@ export function allowCorruptOwnerRows(db,tables){
  for(const relation of CROSS_FILE_RELATIONS.filter(relation=>tables.includes(relation.child.table)||tables.includes(relation.parent.table))){
   for(const event of ['child_insert','child_update','parent_delete','parent_update'])db.exec(`DROP TRIGGER IF EXISTS temp.${relationConstraintName(relation)}_${event}`);
  }
-}
-export function legacyImageFixture(t){
- const db=legacyDatabase();migrate(db);t?.after(()=>db.close());
- const projectId=randomUUID(),otherProjectId=randomUUID();
- for(const id of [projectId,otherProjectId])insert(db,'projects',{id,data:JSON.stringify({id,name:'Image test',description:'',revision:1})});
- return seedImageFixture(db,projectId,otherProjectId);
 }
 export function imageFixture(t){
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-image-owner-')),store=openStore(root),foreignStore=openStore(join(root,'foreign'));

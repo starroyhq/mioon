@@ -44,10 +44,6 @@ export function assertManagedFileIOAvailable(): void{
  assertStoragePrivacyAvailable();
  if(process.platform==='win32')getWindowsManagedFileIO();
 }
-export function checkSeparate(source: string,destination: string): void{
- const nested=(a: string,b: string): boolean=>{const r=path.relative(a,b);return !r||(!r.startsWith(`..${path.sep}`)&&r!=='..'&&!path.isAbsolute(r));};
- if(nested(source,destination)||nested(destination,source))fail('INVALID_PATH');
-}
 export function checkedDirectory(directory: string,root: string,{private:privateMode=true}: DirectoryOptions={}): Stats|null{
  assertManagedFileIOAvailable();
  return validateManagedDirectory(directory,{root,private:privateMode});

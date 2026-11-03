@@ -55,7 +55,3 @@ test('damaged, foreign and newer files are rejected with distinct codes',{skip:!
  const head=Buffer.alloc(4),body=Buffer.from(JSON.stringify({path:'manifest.json',bytes:newer.length}));head.writeUInt32BE(body.length);
  await rejects(Buffer.concat([PROJECT_PACKAGE_MAGIC,head,body,newer]),'PROJECT_PACKAGE_NEWER_FORMAT');
 });
-
-
-
-

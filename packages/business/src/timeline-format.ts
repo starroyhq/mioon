@@ -117,7 +117,7 @@ export function readTimelineFormatState(db: DatabaseSync,input: TimelineRecovery
    const response=createTimelineRecoveryBoundary(db,saved as TimelineRecoveryInput).replay(row.operation as string,retained.response as string);
    if(row.receiptDigest!==null&&row.receiptDigest!==hash(response))invalidTimeline();
   }
-  
+
   if(row.acknowledged===1)continue;
   if(++pendingCount>1)invalidTimeline();
   const executing=admission&&executingTimelineFormatTask(db);

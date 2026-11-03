@@ -242,7 +242,7 @@ test('same-revision metadata, revision, owned hash, bytes and owner revocation f
       return decoded(request, f.bytes.length);
     }}});
     const consume=f.consume({consume: async () => {consumed++;}});
-    if(phase==='lock')await assert.rejects(consume,{code:'PROJECT_STORE_UNVERIFIED'});
+    if(phase==='lock')await assert.rejects(consume,{code:'AUDIO_PREVIEW_OWNER_REQUIRED',status:403});
     else await assert.rejects(consume, error => ['AUDIO_PREVIEW_STALE', 'AUDIO_PREVIEW_REVISION_CONFLICT', 'AUDIO_PREVIEW_UNAVAILABLE', 'AUDIO_PREVIEW_OWNER_REQUIRED'].includes((error as Failure).code));
     assert.equal(consumed, 0);
   });
@@ -302,7 +302,3 @@ test('all source memory/hash admissions are counted before any byte read, even w
   replace(f, 'timelines', {...base, tracks: tracks.slice(0, 2), clips: clips.slice(0, 2)});
   await assert.rejects(f.plan(), {code: 'AUDIO_PREVIEW_HASH_LIMIT'}); assert.equal(reads, 0);
 });
-
-
-
-

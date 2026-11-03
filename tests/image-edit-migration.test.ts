@@ -1,3 +1,4 @@
+import {kernelFixture} from './helpers/current-retained-fixture.ts';
 
 
 
@@ -25,74 +26,15 @@ import assert from 'node:assert/strict';
 
 import {DatabaseSync} from 'node:sqlite';
 
-import {readFileSync} from 'node:fs';
 
 
 import {randomUUID,createHash} from 'node:crypto';
-import {migrateImageEditReviewSchema} from '../packages/business/src/images/review-schema.ts';
 
 import {canonicalImageInput as canonical} from '../packages/contracts/src/images.ts';
 
 import {COMFY_IMAGE_OPTIONS,COMFY_IMAGE_POLICY,DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../packages/contracts/src/comfy-images.ts';
 import {buildComfyWorkflow,hashComfyWorkflow} from '../packages/business/src/comfy/workflow.ts';
-const fixtureSql=readFileSync(new URL('./fixtures/image-edit-legacy-schema22.sql',import.meta.url),'utf8');
-// Reviewed current ordinary48 delta beyond the independent ordinary24 golden:
-// project-lifecycle tables/guards, lifecycle-aware retention triggers, ripple
-// edit-task operation and markers44/48. Frozen independently of this test.
-const currentSchemaDelta=JSON.parse(readFileSync(new URL('./fixtures/workspace-schema-profiles/current-ordinary-48-delta.json',import.meta.url),'utf8'));
-const currentStartupAdditions=Object.freeze([
- "advance_asset_annotation_revision",
- "asset_annotation_requests",
- "asset_annotations",
- "asset_annotations_project",
- "bound_lut_import_requests",
- "bound_project_lut_resources",
- "immutable_agent_edit_target_v24",
- "immutable_asset_annotation_identity",
- "immutable_asset_annotation_requests",
- "immutable_lut_import_requests",
- "immutable_project_deletion_receipts",
- "immutable_project_lut_resources",
- "immutable_project_mutation_requests",
- "lut_import_requests",
- "project_deletion_cleanup",
- "project_deletion_receipts",
- "project_deletion_scope",
- "project_lut_resources",
- "project_lut_resources_project",
- "project_mutation_requests",
- "reject_annotation_cross_asset_disposition_requests",
- "reject_annotation_cross_asset_range_requests",
- "reject_annotation_cross_mutation_requests",
- "reject_annotation_cross_subject_requests",
- "reject_asset_annotation_replacement",
- "reject_asset_annotation_request_replacement",
- "reject_asset_disposition_requests_cross_annotation",
- "reject_asset_range_requests_cross_annotation",
- "reject_lut_import_request_replacement",
- "reject_mutation_requests_cross_annotation",
- "reject_project_lut_resource_replacement",
- "reject_subject_requests_cross_annotation",
- "retain_asset_annotation_requests",
- "retain_asset_annotations",
- "retain_lut_import_requests",
- "retain_project_deletion_receipts",
- "retain_project_lut_resources",
- "retain_project_mutation_requests",
- "sqlite_autoindex_asset_annotation_requests_1",
- "sqlite_autoindex_asset_annotations_1",
- "sqlite_autoindex_lut_import_requests_1",
- "sqlite_autoindex_lut_import_requests_2",
- "sqlite_autoindex_project_deletion_cleanup_1",
- "sqlite_autoindex_project_deletion_receipts_1",
- "sqlite_autoindex_project_deletion_scope_1",
- "sqlite_autoindex_project_lut_resources_1",
- "sqlite_autoindex_project_lut_resources_2",
- "sqlite_autoindex_project_mutation_requests_1"
-]);
-interface SchemaObject {type: string; name: string; tbl_name: string; sql: string; [key: string]: unknown}
 interface Row {[key: string]: unknown}
-interface Snapshot {objects: SchemaObject[]; rows: Record<string, Row[]>; foreignKeys: Record<string, Row[]>}
 interface EditSourceImage {assetId: string; sha256: string; mimeType: string; byteLength: number; width: number; height: number;
   name: string; origin: Record<string, unknown>; path?: string; [key: string]: unknown}
 interface EditIntentView {schemaVersion: number; reviewId: string; settingsRevision: number; destination: string;
@@ -104,14 +46,12 @@ const options={size:'1024x1024',quality:'low',outputFormat:'png',background:'opa
 const model='gpt-image-2.5-flare-2026-09-08',destination='https://api.openai.com/v1/images/generations';
 const policy={maxPostAttempts:1,automaticRetry:false,price:'usage-based-unknown',promptStorage:'local-plaintext'};
 const insert=(db: DatabaseSync,table: string,value: Row)=>{const keys=Object.keys(value);const statement=db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`);statement.setReadBigInts(true);return statement.run(...Object.values(value) as never[]);};
-function database(file: string=':memory:'): DatabaseSync {const db=new DatabaseSync(file);db.exec('PRAGMA foreign_keys=ON');db.exec(fixtureSql);return db;}
+function database(t: test.TestContext): DatabaseSync {return kernelFixture(t).store.db;}
 
 
 
-function migrate(db: DatabaseSync,adapter: DatabaseSync=db): void {db.exec('PRAGMA foreign_keys=OFF');try{db.exec('BEGIN IMMEDIATE');migrateImageEditReviewSchema(adapter);db.exec('INSERT OR IGNORE INTO schema_version VALUES(23);COMMIT');}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}finally{db.exec('PRAGMA foreign_keys=ON');}}
 function seed(db: DatabaseSync){
- insert(db,'agent_chat_quota',{id:1,runs:0,bytes:0,reservedBytes:0});
- const projectId=randomUUID();insert(db,'projects',{id:projectId,data:`{ "id": "${projectId}", "name": "原始项目", "revision": 1 }`});
+ const projectId=String(db.prepare('SELECT id FROM projects').get()!.id);
  insert(db,'timeline_requests',{requestId:randomUUID(),requestHash:'retained-hash',response:'{ "old": "exact bytes 原始" }'});
  insert(db,'reference_requests',{requestId:randomUUID(),requestHash:'retained-reference',response:'{ "retained" : [3, 2, 1] }'});
  const records=[];
@@ -147,8 +87,7 @@ function seed(db: DatabaseSync){
 }
 
 function localFixture(db: DatabaseSync) {
- const projectId=randomUUID(),taskId=randomUUID(),groupId=randomUUID(),reviewId=randomUUID(),requestId=randomUUID();
- insert(db,'projects',{id:projectId,data:JSON.stringify({id:projectId,name:'Comfy migration'})});
+ const projectId=String(db.prepare('SELECT id FROM projects').get()!.id),taskId=randomUUID(),groupId=randomUUID(),reviewId=randomUUID(),requestId=randomUUID();
  const input={projectId,requestId,name:'Local image',providerId:'comfy-local',model:'model.safetensors',prompt:'One red tree',options:COMFY_IMAGE_OPTIONS};
  const configuration={...DEFAULT_COMFY_IMAGE_CONFIGURATION,enabled:true,baseUrl:'http://127.0.0.1:8188',model:input.model};
  const seed=123,outputNonce=randomUUID(),graph=buildComfyWorkflow({prompt:input.prompt,checkpoint:input.model,seed,outputNonce});
@@ -182,20 +121,11 @@ function saveReview(db: DatabaseSync,intent: EditIntentView){const input=canonic
 
 
 
-test('schema23 admits only a bound official edit descriptor and rejects cross-branch, oversized and mutable source authority',()=>{
- const db=database();try{const {old}=populate(db);migrate(db);const valid=editIntent(old.projectId);saveReview(db,valid);
+test('current kernel admits only a bound official edit descriptor and rejects cross-branch, oversized and mutable source authority',t=>{
+ const db=database(t);{const {old}=populate(db);const valid=editIntent(old.projectId);saveReview(db,valid);
  const imageSource={imageGroupId:randomUUID(),imageTaskId:randomUUID(),imageVersionId:randomUUID()},frameSource={frameTaskId:randomUUID(),sourceAssetId:randomUUID(),sourceHash:'b'.repeat(64),sourceFrame:30,fps:30,profileId:'local-png-1024-v1',selectionRule:'first-pts-at-or-after-v1'};
  for(const origin of [{kind:'generated',imageSource},{kind:'synthetic-mock',imageSource},{kind:'extracted-frame',frameSource}]){const v=editIntent(old.projectId);v.sourceImage.origin=origin;saveReview(db,v);}
  for(const mutate of [(v: EditIntentView)=>{v.schemaVersion=1;},(v: EditIntentView)=>{v.destination=destination;},(v: EditIntentView)=>{v.input.providerId='mock';},(v: EditIntentView)=>{v.input.model='other';},(v: EditIntentView)=>{delete v.input.purpose;},(v: EditIntentView)=>{delete v.input.inputImage;},(v: EditIntentView)=>{v.input.inputImage!.mask='unsupported';},(v: EditIntentView)=>{v.input.mask='unsupported';},(v: EditIntentView)=>{delete (v as {sourceImage?: unknown}).sourceImage;},(v: EditIntentView)=>{v.sourceImage.assetId=randomUUID();},(v: EditIntentView)=>{v.sourceImage.sha256='b'.repeat(64);},(v: EditIntentView)=>{v.sourceImage.byteLength=8388609;},(v: EditIntentView)=>{v.sourceImage.width=1025;},(v: EditIntentView)=>{v.sourceImage.height=1.5;},(v: EditIntentView)=>{v.sourceImage.name='x'.repeat(201);},(v: EditIntentView)=>{v.sourceImage.origin={};},(v: EditIntentView)=>{v.sourceImage.origin={kind:'generated'};},(v: EditIntentView)=>{v.sourceImage.origin={kind:'user-import',imageSource};},(v: EditIntentView)=>{v.sourceImage.origin={kind:'extracted-frame',frameSource:{...frameSource,fps:60}};},(v: EditIntentView)=>{v.sourceImage.path='/private';},(v: EditIntentView)=>{v.policy.automaticRetry=true;},(v: EditIntentView)=>{v.options={};}]){const changed=structuredClone(editIntent(old.projectId));mutate(changed);assert.throws(()=>saveReview(db,changed),/CHECK/,JSON.stringify(changed));}
  const changed=structuredClone(valid);changed.sourceImage.name='Changed.png';const raw=canonical(changed);assert.throws(()=>db.prepare('UPDATE image_reviews SET canonicalIntent=?,intentHash=?,revision=2 WHERE id=?').run(raw,hash(raw),valid.reviewId),/immutable/);
- }finally{db.close();}
+ }
 });
-
-
-
-
-
-
-
-
-

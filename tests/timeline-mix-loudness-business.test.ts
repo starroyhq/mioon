@@ -27,7 +27,7 @@ import {readTimelinePreflightSnapshot, readTimelineSourceGraph} from '../package
 import {validateTimeline} from '../packages/business/src/timeline-inputs.ts';
 import {validateManagedSource, verifiedManagedHash} from '../packages/business/src/managed-media.ts';
 
-import {workspaceRestoreError} from '../packages/business/src/workspace-restore-policy.ts';
+
 
 import {exportAudioObservationAdmission} from '../packages/business/src/export-audio-observation.ts';
 import type { BinaryLike } from 'crypto';
@@ -121,12 +121,11 @@ test('full saved original and separately rendered candidate are byte-pinned and 
   assert.ok(!JSON.stringify(result).includes('candidateId')); await f.unchanged(before);
 });
 
-test('fresh snapshot rechecks ownership and restore state before any subsequent source read', async t => {
-  for (const drift of (['owner', 'restored'] as const)) for (const stage of (['initial', 'decode'] as const)) await t.test(`${drift} during ${stage} snapshot`, async t => {
+test('fresh snapshot rechecks ownership before any subsequent source read', async t => {
+  for (const drift of (['owner'] as const)) for (const stage of (['initial', 'decode'] as const)) await t.test(`${drift} during ${stage} snapshot`, async t => {
     let f!: Awaited<ReturnType<typeof fixture>>, armed = stage === 'initial', changed = false, validated = 0, validationsAtDrift = null, decodes = 0;
     f = await fixture(t, {runtime: {
-      assertOrdinaryWorkspace() {if (changed && drift === 'restored') throw workspaceRestoreError();},
-      ownsLock: () => !(changed && drift === 'owner'),
+      ownsLock: () => ownsStoreLock(f.store) && !changed,
       readSavedTimeline(projectId?: unknown) {
         const saved = readSaved(f.store, projectId);
         if (armed) {changed = true; validationsAtDrift ??= validated;}
@@ -136,7 +135,7 @@ test('fresh snapshot rechecks ownership and restore state before any subsequent 
       decode(timeline: FixtureTimeline, assets?: unknown, options?: unknown) {decodes++; armed = true; return fakeDecode(timeline, assets, ((options) as unknown as Parameters<NonNullable<typeof fakeDecode>>[2]));},
     }});
     const before = await f.checkpoint();
-    await assert.rejects(f.call(), {code: drift === 'owner' ? 'TIMELINE_MIX_LOUDNESS_OWNER_REQUIRED' : 'RESTORE_OPERATION_UNAVAILABLE'});
+    await assert.rejects(f.call(), {code: 'TIMELINE_MIX_LOUDNESS_OWNER_REQUIRED'});
     assert.equal(changed, true); assert.equal(validated, validationsAtDrift);
     assert.equal(decodes, stage === 'initial' ? 0 : 1); await f.unchanged(before);
   });

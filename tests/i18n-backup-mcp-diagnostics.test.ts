@@ -56,11 +56,3 @@ test('MCP injected stdio startup failure is fixed safe copy in all locales, neve
     assert.ok(!result.stderr.includes(secret));
   }
 });
-
-
-
-
-
-
-
-

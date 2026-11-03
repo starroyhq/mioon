@@ -103,7 +103,7 @@ test('project and configuration writes use application admission independently o
 test('a kernel cannot substitute a backup port for missing application write admission', t => {
   const f = fixture(t), before = f.changes();
   assert.equal(Reflect.deleteProperty(f.ports, 'assertMutationAllowed'), true);
-  assert.throws(() => createServices(f.store, new Map(), {application: f.ports}), /explicit application configuration, write admission/u);
+  assert.throws(() => createServices(f.store, new Map(), {application: f.ports}), /explicit application configuration and write admission/u);
   assert.deepEqual(f.changes(), before);
   assert.equal(f.library.documents.read('workspace-settings-v1.json'), null);
   assert.deepEqual(f.store.list('shots'), []);

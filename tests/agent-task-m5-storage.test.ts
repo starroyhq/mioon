@@ -51,3 +51,13 @@ for(const [field,value]of projections)test(`current Mio refuses persisted ${fiel
  assert.equal(f.store.db.prepare("SELECT 1 FROM main.sqlite_schema WHERE name='workspace_restoration'").get(),undefined);
  f.store.db.prepare('UPDATE mio_changes SET data=json_remove(data,?) WHERE id=?').run(`$.${field}`,f.change.id);assert.deepEqual(retained(f.store),original);validateAgentTaskRowsV2(f.store.db);assert.equal(readMioStorage(f.store.db).format,'mio_records');
 });
+
+test('public M5 undo projections are optional and never need persisted fields',t=>{
+ const f=fixture(t),saved=f.journal.snapshot(f.run.id),before=retained(f.store);
+ assert.deepEqual(agentTaskSnapshotSchema.parse(saved),saved);
+ for(const undoDisposition of ['undo','retain','blocked'] as const)for(const modifiedAfter of [false,true]){
+  const change={...saved.changes[0]!,modifiedAfter,undoDisposition},response=agentTaskSnapshotSchema.parse({...saved,changes:[change]});
+  assert.deepEqual(response.changes,[change]);assert.deepEqual(retained(f.store),before);
+ }
+ validateAgentTaskRowsV2(f.store.db);assert.equal(readMioStorage(f.store.db).format,'mio_records');
+});

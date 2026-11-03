@@ -202,5 +202,3 @@ test('canonical prevented dispatch is excluded until the same immutable request 
   journal.markDispatch(run.id, model.id); assert.equal(usage().modelOutcomes.inflight, 1);
   assert.equal(records.request(requestId).dispatchStartedAt, dispatchedAt);
 });
-
-

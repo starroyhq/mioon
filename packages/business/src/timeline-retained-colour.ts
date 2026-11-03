@@ -51,7 +51,7 @@ export function validateTimelineColourRows(db:Pick<DatabaseSync,'prepare'>,proje
    // Standalone declarations/evidence can also occur in retained receipts or
    // intents. Historical roles may never acquire mixed-image capability by
    // omitting the outer colour/colourPlan key.
-   
+
    const owner=entry.projectId??value.projectId,tracks=Array.isArray(value.tracks)?value.tracks:entry.tracks;
    if(Object.hasOwn(value,'colour')){
     if(!isTimelineClipColour(value.colour))invalid();
@@ -90,7 +90,7 @@ export function validateTimelineColourRows(db:Pick<DatabaseSync,'prepare'>,proje
   const columns=new Set(db.prepare(`PRAGMA table_info(${quote(table)})`).all().map(row=>row.name));
   // A newly definite image-budget rejection is stored outside task input JSON.
   // Do not let the shared proof decoder retroactively widen an old role.
-  
+
   // A malformed schema remains the responsibility of its existing classifier.
   // Scan only known JSON columns which actually exist on an old partial schema.
   const present=fields.filter(field=>columns.has(field));if(!present.length)continue;

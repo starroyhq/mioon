@@ -28,5 +28,3 @@ test('replaced or altered leases are permanently revoked and never delete replac
  fs.renameSync(lock,`${lock}.old`);fs.writeFileSync(lock,String(process.pid),{mode:0o600});assert.equal(lease.isOwned(),false);lease.release();assert.equal(fs.existsSync(lock),true);
  fs.unlinkSync(lock);fs.renameSync(`${lock}.old`,lock);assert.equal(lease.isOwned(),false);lease.release();assert.equal(fs.existsSync(lock),true);
 });
-
-

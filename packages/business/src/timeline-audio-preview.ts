@@ -297,7 +297,8 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
       const cause = fencedFailure ?? error, code = codeOf(cause);
       if (timedOut) throw fault('AUDIO_PREVIEW_TIMEOUT', 503);
       // Keep public failures opaque; neither decoder stderr nor local paths leak.
-      if (code?.startsWith('AUDIO_PREVIEW_') || code === 'OPERATION_CANCELLED' || code?.startsWith('WORKSPACE_') || code?.startsWith('RESTORE_')) throw fault(code, code === 'AUDIO_PREVIEW_OWNER_REQUIRED' ? 403 : 409);
+      if(code==='PROJECT_STORE_UNVERIFIED')throw fault('AUDIO_PREVIEW_OWNER_REQUIRED',403);
+      if (code?.startsWith('AUDIO_PREVIEW_') || code === 'OPERATION_CANCELLED') throw fault(code, code === 'AUDIO_PREVIEW_OWNER_REQUIRED' ? 403 : 409);
       if (code?.startsWith('MANAGED_')) throw fault('AUDIO_PREVIEW_STALE');
       throw fault('AUDIO_PREVIEW_DECODE_FAILED');
     } finally {controller.abort();}

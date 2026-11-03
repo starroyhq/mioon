@@ -156,5 +156,3 @@ test('split, shrink and move carry the transform with the clip',async t=>{
  await f.call('timeline.clip.update',{clipId:left.id,patch:{startFrame:100}});
  assert.deepEqual(f.timeline.clips.find((clip: Rec)=>clip.id===left.id).transform,left.transform,'a move keeps clip-local keyframes');
 });
-
-

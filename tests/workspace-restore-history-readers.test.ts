@@ -9,8 +9,8 @@ import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
 import {syncBuiltinESMExports} from 'node:module';
-import {initializeLegacyWorkspaceSchema} from '../packages/business/src/workspace-fixed-schema.ts';
-import {installWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';
+import {kernelFixture,snapshot as currentSnapshot} from './helpers/current-retained-fixture.ts';
+
 import {createImageHistoryReaders} from '../packages/business/src/images/history.ts';
 import {createFrameHistoryReaders} from '../packages/business/src/frames-history.ts';
 import {createImageServices} from '../packages/business/src/images.ts';
@@ -21,7 +21,7 @@ import {insert} from './images-fixture.mjs';
 
 const at='2026-10-12T00:00:00.000Z',hash=(value: unknown)=>createHash('sha256').update(canonical(value)).digest('hex');
 const code=(expected: string)=>(cause: { code: unknown; })=>(cause as unknown as import('./helpers/strict-opacity-fixture-types.ts').OpacityFailure).code===expected;
-const snapshot=(db: DatabaseSync)=>JSON.stringify(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name})=>[name,db.prepare(`SELECT rowid AS capturedRowid,* FROM "${name}" ORDER BY rowid`).all()]));
+const snapshot=(db: DatabaseSync)=>JSON.stringify(currentSnapshot(db));
 function seedImage(db: DatabaseSync,projectId: string,state='queued'){
  const groupId=randomUUID(),taskId=randomUUID(),requestId=randomUUID(),versionId=randomUUID(),assetId=randomUUID();
  const input={projectId,name:'Saved image 界',prompt:'Synthetic historical image',providerId:'mock',model:IMAGE_MODELS.mock,options:IMAGE_FIXED_OPTIONS,requestId};
@@ -64,20 +64,26 @@ function seedFrame(db: DatabaseSync,projectId: string,state='queued'){
  db.exec('COMMIT');return {projectId,taskId,requestId,sourceId,assetId,input,ack,source,asset};
 }
 function fixture(t: test.TestContext){
- const db=new DatabaseSync(':memory:');db.exec('PRAGMA foreign_keys=ON;PRAGMA trusted_schema=OFF');initializeLegacyWorkspaceSchema(db);t.after(()=>db.close());
- const projectId=randomUUID(),otherProjectId=randomUUID();for(const id of [projectId,otherProjectId] as const)insert(db,'projects',{id,data:JSON.stringify({id,name:'Saved history 界'})});
- return {db,projectId,otherProjectId};
+ const native=kernelFixture(t,'Saved reader'),foreign=kernelFixture(t,'Foreign reader');
+ const db=native.store.db;
+ const projectId=native.projectId,otherProjectId=foreign.projectId;
+ return {db,store:native.store,foreignStore:foreign.store,projectId,otherProjectId};
 }
-function seal(db: DatabaseSync){return installWorkspaceRestoreSchema(db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'d'.repeat(64),sourceDbHash:'e'.repeat(64),createdAt:at});}
+// Observe the exact owner connection: a DB proxy would lose the kernel identity.
+const readScopes=new WeakMap<object,<T>(read:()=>T)=>T>();
 function readOnlyStore(db: DatabaseSync){
- const queries: (string)[]=[],rows: { sql: string; args: unknown[]; value: unknown; }[]=[],transactions: string[]=[];
- const readDb=new Proxy(db,{get(target,key){
-  if(key==='prepare')return (sql: string)=>{assert.match(sql,/^SELECT\b/i);queries.push(sql);const statement=target.prepare(sql);return new Proxy(statement,{get(s,method){const fn=Reflect.get(s,method,s);if(['get','all'].includes(method as string))return(...args: unknown[])=>{const value=fn.apply(s,args);rows.push({sql,args,value});return value;};if(method==='run')return()=>assert.fail('Read used SQL run');return typeof fn==='function'?fn.bind(s):fn;}});};
-  if(key==='exec')return (sql: string)=>{assert.ok(['BEGIN DEFERRED','COMMIT'].includes(sql!),sql);transactions.push(sql);return target.exec((sql! as unknown as Parameters<typeof target.exec>[0]));};
-  const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
- }});
- const store=new Proxy({db:readDb},{get(target,key){assert.equal(key,'db','Pure factory inspected a non-DB store capability');return target.db;}});
- return {store,queries,rows,transactions};
+ const queries:string[]=[],rows:{sql:string;args:unknown[];value:unknown}[]=[],transactions:string[]=[];
+ const store=new Proxy({db},{get(target,key){assert.equal(key,'db','Pure factory inspected a non-DB store capability');return target.db;}});
+ function run<T>(read:()=>T):T {
+  const prepare=db.prepare,exec=db.exec,prepareOwn=Object.getOwnPropertyDescriptor(db,'prepare'),execOwn=Object.getOwnPropertyDescriptor(db,'exec');
+  Object.defineProperty(db,'prepare',{configurable:true,value:(sql:string)=>{
+   assert.match(sql,/^SELECT\b/i);queries.push(sql);const statement=prepare.call(db,sql);
+   return new Proxy(statement,{get(target,key){const value=Reflect.get(target,key,target);if(key==='get'||key==='all')return(...args:unknown[])=>{const result=value.apply(target,args);rows.push({sql,args,value:result});return result;};if(key==='run')return()=>assert.fail('Read used SQL run');return typeof value==='function'?value.bind(target):value;}});
+  }});
+  Object.defineProperty(db,'exec',{configurable:true,value:(sql:string)=>{assert.ok(['BEGIN DEFERRED','COMMIT'].includes(sql),sql);transactions.push(sql);return exec.call(db,sql);}});
+  try{return read();}finally{if(prepareOwn)Object.defineProperty(db,'prepare',prepareOwn);else Reflect.deleteProperty(db,'prepare');if(execOwn)Object.defineProperty(db,'exec',execOwn);else Reflect.deleteProperty(db,'exec');}
+ }
+ readScopes.set(store,run);return {store,queries,rows,transactions,run};
 }
 function withoutIO(t: test.TestContext,fn: { (): void; (): unknown; }){
  const guards: {mock:{restore():void}}[]=[];
@@ -87,19 +93,24 @@ function withoutIO(t: test.TestContext,fn: { (): void; (): unknown; }){
   for(const name of names)guards.push((t.mock.method as unknown as (object:object,name:PropertyKey,fn:()=>never)=>{mock:{restore():void}})(object,name,()=>assert.fail(`Pure history entered ${name}`)));
  syncBuiltinESMExports();try{return fn();}finally{for(const guard of guards)guard.mock.restore();syncBuiltinESMExports();}
 }
-const readers=(store: { db: unknown; })=>({...(createImageHistoryReaders as unknown as (store:Parameters<typeof createImageHistoryReaders>[0],options?:unknown)=>import('./helpers/strict-workspace-boundary-types.ts').ImageHistory)((store as unknown as Parameters<typeof createImageHistoryReaders>[0])).handlers,...(createFrameHistoryReaders as unknown as (store:Parameters<typeof createFrameHistoryReaders>[0],options?:unknown)=>import('./helpers/strict-workspace-boundary-types.ts').FrameHistory)((store as unknown as Parameters<typeof createFrameHistoryReaders>[0])).handlers});
+const rawReaders=(store: { db: unknown; })=>({...(createImageHistoryReaders as unknown as (store:Parameters<typeof createImageHistoryReaders>[0],options?:unknown)=>import('./helpers/strict-workspace-boundary-types.ts').ImageHistory)((store as unknown as Parameters<typeof createImageHistoryReaders>[0])).handlers,...(createFrameHistoryReaders as unknown as (store:Parameters<typeof createFrameHistoryReaders>[0],options?:unknown)=>import('./helpers/strict-workspace-boundary-types.ts').FrameHistory)((store as unknown as Parameters<typeof createFrameHistoryReaders>[0])).handlers});
+const readers=(store:Parameters<typeof rawReaders>[0])=>{
+ const handlers=rawReaders(store),run=readScopes.get(store);
+ return Object.fromEntries(Object.entries(handlers).map(([operation,handler])=>[operation,(input:unknown)=>run?run(()=>handler(input as never)):handler(input as never)])) as typeof handlers;
+};
 const cases=(image: { projectId: unknown; groupId: unknown; taskId: unknown; requestId: unknown; versionId?: `${string}-${string}-${string}-${string}-${string}`; assetId?: `${string}-${string}-${string}-${string}-${string}`; input?: { projectId: unknown; name: string; prompt: string; providerId: string; model: "mock-image-v1"; options: Readonly<{ size: "1024x1024"; quality: "low"; outputFormat: "png"; background: "opaque"; n: 1; }>; requestId: `${string}-${string}-${string}-${string}-${string}`; }; ack?: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: unknown; groupId: `${string}-${string}-${string}-${string}-${string}`; requestId: `${string}-${string}-${string}-${string}-${string}`; name: string; prompt: string; providerId: string; model: "mock-image-v1"; options: Readonly<{ size: "1024x1024"; quality: "low"; outputFormat: "png"; background: "opaque"; n: 1; }>; state: string; revision: number; dispatched: boolean; versionId: null; errorCode: null; createdAt: string; updatedAt: string; }; asset?: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: unknown; name: string; mimeType: string; width: number; height: number; sizeBytes: number; sha256: string; relativePath: string; provenance: string; createdAt: string; }; version?: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: unknown; groupId: `${string}-${string}-${string}-${string}-${string}`; taskId: `${string}-${string}-${string}-${string}-${string}`; number: number; assetId: `${string}-${string}-${string}-${string}-${string}`; sha256: string; mimeType: string; width: number; height: number; byteLength: number; isMock: boolean; providerId: string; model: "mock-image-v1"; options: Readonly<{ size: "1024x1024"; quality: "low"; outputFormat: "png"; background: "opaque"; n: 1; }>; createdAt: string; }; },frame: { projectId: unknown; taskId: unknown; requestId: unknown; sourceId?: `${string}-${string}-${string}-${string}-${string}`; assetId?: `${string}-${string}-${string}-${string}-${string}`; input?: { projectId: unknown; sourceAssetId: `${string}-${string}-${string}-${string}-${string}`; sourceHash: string; sourceFrame: number; requestId: `${string}-${string}-${string}-${string}-${string}`; }; ack?: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: unknown; requestId: `${string}-${string}-${string}-${string}-${string}`; sourceAssetId: `${string}-${string}-${string}-${string}-${string}`; sourceHash: string; sourceFrame: number; fps: number; profileId: string; state: string; revision: number; started: boolean; result: null; errorCode: null; createdAt: string; updatedAt: string; }; source?: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: unknown; name: string; mimeType: string; sha256: string; sizeBytes: number; relativePath: string; duration: number; width: number; height: number; hasVideo: boolean; hasAudio: boolean; provenance: string; createdAt: string; }; asset?: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: unknown; name: string; sha256: string; mimeType: string; provenance: string; relativePath: string; width: number; height: number; sizeBytes: number; createdAt: string; }; })=>[
  ['image.request.get',{projectId:image.projectId,requestId:image.requestId}],['image.task.get',{projectId:image.projectId,taskId:image.taskId}],
  ['image.group.get',{projectId:image.projectId,groupId:image.groupId}],['image.task.list',{projectId:image.projectId}],['image.group.list',{projectId:image.projectId}],['image.version.list',{projectId:image.projectId,groupId:image.groupId}],
  ['frame.request.get',{projectId:frame.projectId,requestId:frame.requestId}],['frame.task.get',{projectId:frame.projectId,taskId:frame.taskId}],['frame.task.list',{projectId:frame.projectId}],
 ] as const;
 
-test('restored pure factories and every saved history handler do zero SQL writes, file I/O, scheduling, provider access, network or spawn',t=>{
- const f=fixture(t),image=seedImage(f.db,f.projectId,'succeeded'),frame=seedFrame(f.db,f.projectId,'succeeded');seal(f.db);
+test('current pure factories and every saved history handler do zero SQL writes, file I/O, scheduling, provider access, network or spawn',t=>{
+ const f=fixture(t),image=seedImage(f.db,f.projectId,'succeeded'),frame=seedFrame(f.db,f.projectId,'succeeded');
  const before=snapshot(f.db),changes=f.db.prepare('SELECT total_changes() n').get()!.n,guard=readOnlyStore(f.db);
  const hostile=new Proxy({},{get(){assert.fail('Pure factory inspected provider options');}});
  withoutIO(t,()=>{
-  const read={...(createImageHistoryReaders as unknown as (store:Parameters<typeof createImageHistoryReaders>[0],options?:unknown)=>import('./helpers/strict-workspace-boundary-types.ts').ImageHistory)(guard.store,hostile).handlers,...(createFrameHistoryReaders as unknown as (store:Parameters<typeof createFrameHistoryReaders>[0],options?:unknown)=>import('./helpers/strict-workspace-boundary-types.ts').FrameHistory)(guard.store,hostile).handlers};
+  const raw={...(createImageHistoryReaders as unknown as (store:Parameters<typeof createImageHistoryReaders>[0],options?:unknown)=>import('./helpers/strict-workspace-boundary-types.ts').ImageHistory)(guard.store,hostile).handlers,...(createFrameHistoryReaders as unknown as (store:Parameters<typeof createFrameHistoryReaders>[0],options?:unknown)=>import('./helpers/strict-workspace-boundary-types.ts').FrameHistory)(guard.store,hostile).handlers};
+  const read=Object.fromEntries(Object.entries(raw).map(([op,handler])=>[op,(input:unknown)=>guard.run(()=>handler(input as never))])) as typeof raw;
   assert.deepEqual(Object.keys(read).sort(),cases(image,frame).map(([op])=>op).sort());
   for(const [op,input] of cases(image,frame))assert.ok(read[op](input));
   assert.deepEqual(read['image.request.get']({projectId:f.projectId,requestId:image.requestId})!.response,image.ack);
@@ -109,7 +120,7 @@ test('restored pure factories and every saved history handler do zero SQL writes
 });
 
 for(const [imageState,frameState] of [['queued','queued'],['dispatching','running'],['outcome_unknown','running']] as const)test(`captured ${imageState}/${frameState} reads preserve states, revisions and original ACK bytes`,t=>{
- const f=fixture(t),image=seedImage(f.db,f.projectId,imageState),frame=seedFrame(f.db,f.projectId,frameState);seal(f.db);const before=snapshot(f.db),read=readers(readOnlyStore(f.db).store);
+ const f=fixture(t),image=seedImage(f.db,f.projectId,imageState),frame=seedFrame(f.db,f.projectId,frameState);const before=snapshot(f.db),read=readers(readOnlyStore(f.db).store);
  assert.equal(read['image.task.get']({projectId:f.projectId,taskId:image.taskId}).state,imageState);
  assert.equal(read['frame.task.get']({projectId:f.projectId,taskId:frame.taskId}).state,frameState);
  assert.equal(JSON.stringify(read['image.request.get']({projectId:f.projectId,requestId:image.requestId})!.response),JSON.stringify(image.ack));
@@ -117,20 +128,20 @@ for(const [imageState,frameState] of [['queued','queued'],['dispatching','runnin
  for(const [op,input] of cases(image,frame))read[op](input);assert.equal(snapshot(f.db),before);
 });
 
-test('normal lifecycle and pure readers return identical response bytes without constructing lifecycle on restored data',async t=>{
+test('normal lifecycle and pure readers return identical response bytes on the same real kernel connection',async t=>{
  const f=fixture(t),image=seedImage(f.db,f.projectId,'succeeded'),frame=seedFrame(f.db,f.projectId,'succeeded');
- const store={db:f.db,root:'/synthetic-history-no-files',tx:()=>assert.fail('Read used a write transaction')};
+ const store=f.store;
  const imageService=createImageServices(store,{autoRun:false,generate:()=>assert.fail('Generation entered')}),frameService=createFrameServices(store,{autoRun:false,decode:()=>assert.fail('Decode entered')});
  try{
   const normal={...imageService.handlers,...frameService.handlers},expected=cases(image,frame).map(([op,input])=>JSON.stringify(normal[op](input)));
-  seal(f.db);const read=readers(readOnlyStore(f.db).store),before=snapshot(f.db);
+  const read=readers(readOnlyStore(f.db).store),before=snapshot(f.db);
   for(const [index,[op,input]] of cases(image,frame).entries())assert.equal(JSON.stringify(read[op](input)),expected[index],(op as unknown as Parameters<typeof assert.equal>[2]));
   assert.equal(snapshot(f.db),before);
  }finally{await imageService.drain();await frameService.drain();}
 });
 
 test('read snapshots preserve caller transactions, including failed reads',t=>{
- const f=fixture(t),image=seedImage(f.db,f.projectId),frame=seedFrame(f.db,f.projectId);seal(f.db);const guard=readOnlyStore(f.db),read=readers(guard.store);
+ const f=fixture(t),image=seedImage(f.db,f.projectId),frame=seedFrame(f.db,f.projectId);const guard=readOnlyStore(f.db),read=readers(guard.store);
  f.db.exec('BEGIN');try{
   for(const [op,input] of cases(image,frame))read[op](input);
   assert.throws(()=>read['image.task.get']({projectId:f.projectId,taskId:randomUUID()}),code('IMAGE_NOT_FOUND'));
@@ -143,11 +154,11 @@ test('read snapshots preserve caller transactions, including failed reads',t=>{
 
 test('history cursors retain project, operation, group and limit binding; page/input limits reject before materialization',t=>{
  const f=fixture(t);for(let n=0;n<3;n++){seedImage(f.db,f.projectId);seedFrame(f.db,f.projectId,'succeeded');}
- seal(f.db);const guard=readOnlyStore(f.db),read=readers(guard.store),before=snapshot(f.db);
+ const guard=readOnlyStore(f.db),read=readers(guard.store),before=snapshot(f.db);
  for(const family of ['image','frame'] as const){
   const op=`${family}.task.list` as const,input={projectId:f.projectId,limit:1},first=read[op](input),next=read[op]({...input,cursor:first.nextCursor});
   assert.equal(first.items.length,1);assert.equal(next.items.length,1);assert.notEqual(first.items[0].id,next.items[0].id);assert.ok(first.nextCursor);
-  for(const patch of [{projectId:f.otherProjectId},{limit:2},{cursor:first.nextCursor.slice(0,-1)+'!'}] as const)assert.throws(()=>read[op]({...input,cursor:first.nextCursor,...patch}),code('INVALID_CURSOR'));
+  for(const patch of [{projectId:f.otherProjectId},{limit:2},{cursor:first.nextCursor.slice(0,-1)+'!'}] as const)assert.throws(()=>('projectId' in patch&&patch.projectId===f.otherProjectId?readers(readOnlyStore(f.foreignStore.db).store):read)[op]({...input,cursor:first.nextCursor,...patch}),code('INVALID_CURSOR'));
   if(family==='image')assert.throws(()=>read['image.group.list']({...input,cursor:first.nextCursor}),code('INVALID_CURSOR'));
   const previous=guard.rows.length;
   for(const limit of [0,-1,1.5,Number.MAX_SAFE_INTEGER] as const)assert.throws(()=>read[op]({...input,limit}),code('VALIDATION_ERROR'));
@@ -160,22 +171,24 @@ test('history cursors retain project, operation, group and limit binding; page/i
 });
 
 test('foreign and absent requests remain undisclosed; tasks and groups preserve the normal ownership errors',t=>{
- const f=fixture(t),image=seedImage(f.db,f.projectId),frame=seedFrame(f.db,f.projectId);seal(f.db);const read=readers(readOnlyStore(f.db).store),before=snapshot(f.db);
+ const f=fixture(t),image=seedImage(f.db,f.projectId),frame=seedFrame(f.db,f.projectId);const read=readers(readOnlyStore(f.db).store),before=snapshot(f.db);
  for(const [family,item] of [['image',image],['frame',frame]] as const){
-  assert.equal(read[`${family}.request.get`]({projectId:f.otherProjectId,requestId:item.requestId}),null);
+  assert.equal(readers(readOnlyStore(f.foreignStore.db).store)[`${family}.request.get`]({projectId:f.otherProjectId,requestId:item.requestId}),null);
   assert.equal(read[`${family}.request.get`]({projectId:f.projectId,requestId:randomUUID()}),null);
   assert.throws(()=>read[`${family}.task.get`]({projectId:f.otherProjectId,taskId:item.taskId}),code(`${family.toUpperCase()}_NOT_FOUND`));
  }
  assert.throws(()=>read['image.group.get']({projectId:f.otherProjectId,groupId:image.groupId}),code('IMAGE_NOT_FOUND'));assert.equal(snapshot(f.db),before);
 });
 
-function corrupt(db: DatabaseSync){
- db.exec('PRAGMA foreign_keys=OFF;PRAGMA ignore_check_constraints=ON');
- for(const {name} of db.prepare("SELECT name FROM sqlite_schema WHERE type='trigger'").all())db.exec(`DROP TRIGGER "${name}"`);
+function corrupt(db: DatabaseSync,write:()=>void){
+ const definitions=['main','project','temp'].flatMap(schema=>db.prepare(`SELECT name,sql FROM ${schema}.sqlite_schema WHERE type='trigger'`).all().map(row=>({schema,name:String(row.name),sql:String(row.sql)})));
+ const foreign=Number(db.prepare('PRAGMA foreign_keys').get()!.foreign_keys),ignored=Number(db.prepare('PRAGMA ignore_check_constraints').get()!.ignore_check_constraints);
+ try{db.exec('PRAGMA foreign_keys=OFF;PRAGMA ignore_check_constraints=ON');for(const row of definitions)db.exec(`DROP TRIGGER ${row.schema}."${row.name}"`);write();}
+ finally{for(const row of definitions){const sql=row.schema==='temp'?row.sql.replace(/^CREATE TRIGGER /,'CREATE TEMP TRIGGER '):row.sql.replace(/^CREATE TRIGGER /,`CREATE TRIGGER ${row.schema}.`);db.exec(sql);assert.equal(db.prepare(`SELECT sql FROM ${row.schema}.sqlite_schema WHERE name=?`).get(row.name)!.sql,row.sql);}db.exec(`PRAGMA foreign_keys=${foreign};PRAGMA ignore_check_constraints=${ignored}`);}
 }
 for(const family of ['image','frame'] as const)for(const damage of ['oversized-input','missing-source','foreign-source','mixed-video-owner'] as const)test(`${family} request/task/list fail closed for ${damage}, without returning oversized private data`,t=>{
  const f=fixture(t),image=seedImage(f.db,f.projectId,'succeeded'),frame=seedFrame(f.db,f.projectId,'succeeded'),item=family==='image'?image:frame;
- corrupt(f.db);
+ corrupt(f.db,()=>{
  if(damage==='oversized-input')f.db.prepare(`UPDATE ${family}_tasks SET input=? WHERE id=?`).run('PRIVATE_SENTINEL'.repeat((family==='image'?IMAGE_LIMITS:FRAME_LIMITS).inputBytes),item.taskId);
  else if(damage==='missing-source')f.db.prepare('DELETE FROM assets WHERE id=?').run(family==='image'?image.assetId:frame.sourceId);
  else if(damage==='foreign-source')f.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.otherProjectId,family==='image'?image.assetId:frame.sourceId);
@@ -185,6 +198,7 @@ for(const family of ['image','frame'] as const)for(const damage of ['oversized-i
   insert(f.db,'jobs',{id:jobId,projectId:f.projectId,data:JSON.stringify({id:jobId,projectId:f.projectId,shotId,assetId,versionId})});
   insert(f.db,'versions',{id:versionId,projectId:f.projectId,jobId,data:JSON.stringify({id:versionId,projectId:f.projectId,jobId,shotId,assetId})});
  }
+ });
  const guard=readOnlyStore(f.db),read=readers(guard.store),before=snapshot(f.db);
  for(const [op,input] of [[`${family}.request.get`,{projectId:f.projectId,requestId:item.requestId}],[`${family}.task.get`,{projectId:f.projectId,taskId:item.taskId}],[`${family}.task.list`,{projectId:f.projectId}]] as const)
   assert.throws(()=>read[op](input),cause=>['IMAGE_RECORD_INVALID','INSPECTION_UNAVAILABLE'].includes((cause as unknown as import('./helpers/strict-opacity-fixture-types.ts').OpacityFailure).code)&&!JSON.stringify(cause).includes('PRIVATE_SENTINEL'),op);
@@ -192,10 +206,12 @@ for(const family of ['image','frame'] as const)for(const damage of ['oversized-i
 });
 
 test('one result claimed by both image and frame history fails closed from either read family',t=>{
- const f=fixture(t),image=seedImage(f.db,f.projectId,'succeeded'),frame=seedFrame(f.db,f.projectId,'succeeded');corrupt(f.db);
+ const f=fixture(t),image=seedImage(f.db,f.projectId,'succeeded'),frame=seedFrame(f.db,f.projectId,'succeeded');
+ corrupt(f.db,()=>{
  const row=f.db.prepare('SELECT stagedReceipt FROM frame_tasks WHERE id=?').get(frame.taskId),receipt=JSON.parse(((row!.stagedReceipt as string)));
  Object.assign(receipt,{assetId:image.assetId,sha256:image.asset.sha256,width:image.asset.width,height:image.asset.height,byteLength:image.asset.sizeBytes});
  f.db.prepare('UPDATE frame_tasks SET assetId=?,stagedReceipt=? WHERE id=?').run(image.assetId,canonical(receipt),frame.taskId);
+ });
  const read=readers(readOnlyStore(f.db).store),before=snapshot(f.db);
  for(const [family,item] of [['image',image],['frame',frame]] as const)for(const [op,input] of [
   [`${family}.request.get`,{projectId:f.projectId,requestId:item.requestId}],
@@ -206,12 +222,12 @@ test('one result claimed by both image and frame history fails closed from eithe
 });
 
 for(const family of ['image','frame'] as const)test(`${family} original receipt input and response bounds apply inside SQLite`,t=>{
- const f=fixture(t),image=seedImage(f.db,f.projectId),frame=seedFrame(f.db,f.projectId),item=family==='image'?image:frame;corrupt(f.db);
+ const f=fixture(t),image=seedImage(f.db,f.projectId),frame=seedFrame(f.db,f.projectId),item=family==='image'?image:frame;
  const original=f.db.prepare(`SELECT * FROM ${family}_requests WHERE requestId=?`).get(item.requestId),guard=readOnlyStore(f.db),read=readers(guard.store);
  for(const field of ['canonicalInput','response'] as const){
-  f.db.prepare(`UPDATE ${family}_requests SET ${field}=? WHERE requestId=?`).run('PRIVATE_SENTINEL'.repeat((family==='image'?IMAGE_LIMITS:FRAME_LIMITS).responseBytes),item.requestId);
+  corrupt(f.db,()=>f.db.prepare(`UPDATE ${family}_requests SET ${field}=? WHERE requestId=?`).run('PRIVATE_SENTINEL'.repeat((family==='image'?IMAGE_LIMITS:FRAME_LIMITS).responseBytes),item.requestId));
   const before=snapshot(f.db);assert.throws(()=>read[`${family}.request.get`]({projectId:f.projectId,requestId:item.requestId}),code(`${family.toUpperCase()}_RECORD_INVALID`));
   assert.equal(snapshot(f.db),before);assert.ok(guard.rows.every(({value})=>!JSON.stringify(value??null).includes('PRIVATE_SENTINEL')));
-  f.db.prepare(`UPDATE ${family}_requests SET ${field}=? WHERE requestId=?`).run(original![field],item.requestId);
+  corrupt(f.db,()=>f.db.prepare(`UPDATE ${family}_requests SET ${field}=? WHERE requestId=?`).run(original![field],item.requestId));
  }
 });

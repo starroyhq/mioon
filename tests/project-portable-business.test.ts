@@ -57,7 +57,7 @@ test('the exact test opener owns one real B1 application and releases it with it
   assert.equal(one.configuration.root, app); assert.equal(two.configuration.root, app);
   assert.ok(existsSync(path.join(app, 'app-library.db')));
   assert.equal(existsSync(path.join(root, 'workbench.sqlite')), false);
-  await assert.rejects(one.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
+  await assert.rejects(one.call('workspace.backup.create', {requestId: randomUUID()}), {code:'UNKNOWN_OPERATION'});
   await one.drain(); await two.drain(); store.close();
   assert.equal(testStoreForConnection(store.db, root), null);
   const reopened = openAppLibrary({dataDir: app}); reopened.close();

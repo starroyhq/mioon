@@ -577,4 +577,3 @@ test('test-child rollback and actual crash boundaries keep mutation and exact re
 
 // The former workspace-wide namespace remains characterized explicitly. It
 // cannot be restored as a production fallback or a global project index.
-

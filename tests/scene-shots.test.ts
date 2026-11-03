@@ -19,7 +19,6 @@ import {validateImageConsumption} from '../packages/business/src/image-consumpti
 import {createPngStreamSplitter,keyframeTargets,decodeSceneKeyframes, type DecodeSceneKeyframesOptions, type SceneKeyframe} from '../packages/business/src/scene-keyframe-decoder.ts';
 import {decodeManagedFrame} from '../packages/business/src/frame-decoder.ts';
 import {validateManagedSource} from '../packages/business/src/managed-media.ts';
-import {RESTORE_DENIED_OPERATIONS,RESTORE_READ_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {AGENT_TASK_OPERATION_ADMISSION} from '../packages/business/src/agent/task-tools-v2.ts';
 import {run} from '../packages/business/src/media-runtime.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
@@ -99,7 +98,7 @@ test('storyboard operations are registered, described, effect-annotated, restore
   for(const locale of ['zh-Hant','en','ja'] as const)assert.ok(translate(locale,`operation.${operation}`).length>30,`${operation} ${locale}`);
   const effect=operationEffect(operation);
   assert.equal(effect.readOnly,false);assert.equal(effect.paidGeneration,false);assert.equal(effect.externalIO,false);assert.equal(effect.idempotent,true);
-  assert.ok(RESTORE_DENIED_OPERATIONS.includes(operation)&&!RESTORE_READ_OPERATIONS.includes(operation),operation);
+
  }
  for(const operation of ['scene.task.get','scene.task.list','scene.task.cancel'] as const)assert.equal(translate('zh-Hans',`operation.${operation}`),descriptions[operation]);
  assert.equal(operationEffect('scene.shots.create').localProcess,true);

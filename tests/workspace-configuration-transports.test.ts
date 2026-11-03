@@ -101,5 +101,3 @@ test('workspace settings agree across public transports; retired workspace entri
   await client.close(); await server.close();
   assert.deepEqual(closedFiles(base), before, 'rejected maintenance leaves every application/project database byte, companion and file unchanged');
 });
-
-

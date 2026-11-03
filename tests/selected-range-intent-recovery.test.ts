@@ -119,5 +119,3 @@ for (const loss of ['after-business-commit', 'accepted-http-ack']) test(`${loss}
   const again = await passiveRestart(f); assert.deepEqual((await f.local('/recover', action(again as Parameters<typeof action>[0]))).response, original);
   assert.deepEqual(f.dispatches, [input.input]); assert.deepEqual(f.receipt(input.input.requestId), receipt); await f.assertNoWorker();
 });
-
-

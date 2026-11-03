@@ -11,16 +11,13 @@
 
 
 
-import {reviewedCatalogAt} from './helpers/reviewed-schema-layers.ts';
-interface ImageSchemaObject {type: string; name: string; tbl_name: string; sql: string}
-interface ImageSnapshot {objects: ImageSchemaObject[]; tables: string[]; rows: Record<string, Record<string, unknown>[]>; hashes: Record<string, string[]>}
 
 import test from 'node:test';
 
 
 import assert from 'node:assert/strict';
 
-import {randomUUID,createHash} from 'node:crypto';
+import {randomUUID} from 'node:crypto';
 
 
 
@@ -29,9 +26,7 @@ import {withoutForeignKeys} from './helpers/project-database.ts';
 
 
 import type { DatabaseSync, SQLOutputValue } from 'node:sqlite';
-const schema=(db: DatabaseSync)=>reviewedCatalogAt(60,db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name').all() as unknown as ImageSchemaObject[]);
 const rows=(db: DatabaseSync,table: SQLOutputValue)=>db.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all();
-const digest=(value: unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
 
 

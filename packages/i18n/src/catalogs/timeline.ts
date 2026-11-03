@@ -80,12 +80,7 @@ const timelineCoreMessages = {
     "en": "JPEG support is limited to baseline JFIF without EXIF or ICC; its markers do not establish sRGB. Images are interpreted as sRGB and converted to Rec.709 / Gamma 2.4 relative reference display (black 0, white 1) before applying the creative LUT. Alpha is not color graded; scaling is bilinear after premultiplication. At most 2 managed image clips (PNG and JPEG combined) may be visible at once; more can be placed at different times. Compositing uses 8-bit encoded RGB, not linear light or HDR. Actual preview appearance depends on the player, system, and display settings",
     "ja": "JPEG は EXIF と ICC を含まないベースライン JFIF のみ対応します。マーカーだけでは sRGB と確認できません。画像を sRGB と解釈し、Rec.709 / Gamma 2.4 の相対参照表示（黒 0、白 1）に変換してからクリエイティブ LUT を適用します。アルファは色調整せず、乗算済みにした後にバイリニアで拡大縮小します。同時に表示できる管理対象画像クリップは PNG と JPEG 合計で 2 個までです。時間をずらせばさらに配置できます。合成は 8 ビット符号化 RGB で、リニアライトや HDR ではありません。実際のプレビューの見え方はプレーヤー、システム、ディスプレイの設定に依存します"
   },
-  "colour.lut.restoredReadOnly": {
-    "zh-Hans": "恢复工作区中这里只显示已保存设置，不提供 LUT 导入或修改",
-    "zh-Hant": "還原工作區中僅顯示已儲存設定，不提供 LUT 匯入或修改",
-    "en": "In a restored workspace, only saved settings are shown. LUT import and editing are unavailable",
-    "ja": "復元したワークスペースでは保存済み設定のみを表示します。LUT の読み込みや編集はできません"
-  },
+
   "colour.lut.inspectAdjust": {
     "zh-Hans": "检查来源与调整 LUT",
     "zh-Hant": "檢查來源與調整 LUT",

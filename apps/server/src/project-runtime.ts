@@ -252,7 +252,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
       guards:{...shotTextDomain,ownsLock:()=>ownsStoreLock(store),
         isShotUpdateInput:value=>schemas['shot.update'].safeParse(value).success}});
     localShotTextHttp=createLocalShotTextHttp({shotText:localShotText,signal:shutdown.signal});
-    
+
     audioPreviewHttp=createTimelineAudioPreviewHttp({service:ordinary.audioPreview,nativeAdmission:nativeAudioPreview,signal:shutdown.signal,assertAvailable:()=>{assertProjectStore(store);}});
     continuousAudioHttp=createTimelineAudioContinuousHttp({service:ordinary.audioPreview,nativeAdmission:nativeAudioPreview,signal:shutdown.signal,assertAvailable:()=>{assertProjectStore(store);}});
     // Desktop injects a narrow trusted-main proxy. Web mode persists only
@@ -272,7 +272,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2,tools:taskToolsV2,assertMutationAllowed:()=>ordinary.assertMutationAllowed()});
     agentDiagnosticsHttp=createAgentDiagnosticsHttp({settings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,policy:()=>taskRuntimeV2!.policy(),selfPort:()=>listeningPort(),hasProject:id=>!!store.get('projects',id),storage:projectId=>projectId===store.projectId?readMioStorage(store.db):undefined});
     }
-    
+
     return {
       providers, services, serviceCall, serviceDrain, agentSettings, agentAuthorizations, uiPreferences, imageSettings, customImageSettings, videoSettings, comfySettings,
       localDrafts, lastProject, localDelivery, localShotText,

@@ -59,7 +59,7 @@ export function validateTimelineAudioRoleRows(db:Pick<DatabaseSync,'prepare'>,pr
   const catalog=names.get(table);if(!catalog)continue;
   if(catalog.type!=='table'||typeof catalog.sql!=='string'||/^\s*CREATE\s+VIRTUAL\s+TABLE/i.test(catalog.sql))invalid();
   const columns=new Set(db.prepare(`PRAGMA table_info(${quote(table)})`).all().map(row=>row.name));
-  
+
   const owner=columns.has('projectId')?"CASE WHEN typeof(projectId)='text' AND length(CAST(projectId AS BLOB))=36 THEN projectId END":'NULL';
   for(const field of fields.filter(field=>columns.has(field))){
    const column=quote(field);

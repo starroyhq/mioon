@@ -62,31 +62,14 @@ const hooks = registerHooks({resolve(specifier,context,next){
   return next(url, context);
 }});
 
-// Dynamic imports occur only after interception; actual planners, frozen schema
-// constructors, source interpretation checks and filter builders remain in use.
-const [currentRenderer, oldRenderer, contracts, colour, inputs, dbModule, schemas,
-  schema26, schema28, schema30, schema32, schema34, schema36, schema38, schema40,
-  restore41, databaseHelpers, imageFixtures, imageAdmission] = await Promise.all([
-  import(rendererUrl), import(baselineUrl), import('@mioon/contracts'),
-  import('../packages/contracts/src/timeline-colour.ts'),
-  import('../packages/business/src/timeline-inputs.ts'),
-  import('../packages/business/src/db.ts'),
-  import('../packages/business/src/workspace-fixed-schema.ts'),
-  import('../packages/business/src/workspace-schema-v26.ts'),
-  import('../packages/business/src/workspace-schema-v28.ts'),
-  import('../packages/business/src/workspace-schema-v30.ts'),
-  import('../packages/business/src/workspace-schema-v32.ts'),
-  import('../packages/business/src/workspace-schema-v34.ts'),
-  import('../packages/business/src/workspace-schema-v36.ts'),
-  import('../packages/business/src/workspace-schema-v38.ts'),
-  import('../packages/business/src/workspace-schema-v40.ts'),
-  import('../packages/business/src/workspace-restore-schema-v41.ts'),
-  import('./workspace-schema26-fixtures.mjs'),
-  import('./helpers/timeline-image-fixtures.ts'),
-  import('../packages/business/src/timeline-image-admission.ts'),
+// Dynamic imports occur only after interception; actual planners, current kernel,
+// source interpretation checks and filter builders remain in use.
+const [currentRenderer,oldRenderer,contracts,colour,inputs,databaseHelpers,imageFixtures,imageAdmission,retainedValidation]=await Promise.all([
+ import(rendererUrl),import(baselineUrl),import('@mioon/contracts'),
+ import('../packages/contracts/src/timeline-colour.ts'),import('../packages/business/src/timeline-inputs.ts'),
+ import('./helpers/project-database.ts'),import('./helpers/timeline-image-fixtures.ts'),
+ import('../packages/business/src/timeline-image-admission.ts'),import('../packages/business/src/project-retained-validation.ts'),
 ]);
-void dbModule; // Installs the unchanged fixed envelope runtime before schema use.
-const profile = restore41.createWorkspaceRestoreProfileV41(schemas.initializeWorkspaceSchemaThrough24);
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const stamp = '2026-10-16T00:00:00.000Z';
 const subtitleHelp = 'Filter drawtext\n  Synthetic drawtext filter\ndrawtext AVOptions:\n' +
@@ -140,36 +123,22 @@ async function fixture(root: string, managed: boolean) {
   return {snapshot, assets};
 }
 
-function retainedSnapshots(snapshot:FixtureSnapshot,assets:Map<string,{id:string;[key:string]:unknown}>):[number,FixtureSnapshot][] {
-  const db = databaseHelpers.open(':memory:');
-  try {
-    for (const initialize of ([schemas.initializeWorkspaceSchemaThrough24,
-      schema26.initializeWorkspaceSchema26, schema28.initializeWorkspaceSchema28,
-      schema30.initializeWorkspaceSchema30, schema32.initializeWorkspaceSchema32,
-      schema34.initializeWorkspaceSchema34, schema36.initializeWorkspaceSchema36,
-      schema38.initializeWorkspaceSchema38, schema40.initializeWorkspaceSchema40] as const)) initialize(db);
-    databaseHelpers.insert(db, 'projects', {id: id(1), data: JSON.stringify({id: id(1)})});
-    for (const asset of assets.values()) databaseHelpers.insert(db, 'assets', {
-      id: asset.id, projectId: id(1), data: JSON.stringify(asset),
-    });
-    const record = {id: id(40), projectId: id(1), requestId: 'legacy-render-regression',
-      mode: 'timeline', purpose: 'export', timelineRevision: snapshot.timeline.revision,
-      snapshot, status: 'queued', assetId: null, url: null, error: null, createdAt: stamp, updatedAt: stamp};
-    databaseHelpers.insert(db, 'exports', {id: record.id, projectId: id(1), data: JSON.stringify(record)});
-    schema40.validateWorkspaceSchema40(db);
-    assert.deepEqual(profile.classifyWorkspaceSchemaV40V41(db), {schemaVersion: 40, profile: 'ordinary'});
-    const ordinaryRaw = (db.prepare('SELECT data FROM exports WHERE id=?').get(record.id))!.data;
-    profile.installWorkspaceRestoreSchemaV41(db, {restorationId: id(101), workspaceOrigin: id(102),
-      sourceBackupId: id(103), manifestHash: 'c'.repeat(64), sourceDbHash: 'd'.repeat(64), createdAt: stamp});
-    profile.validateWorkspaceRestoreSchemaV41(db);
-    assert.deepEqual(profile.classifyWorkspaceSchemaV40V41(db), {schemaVersion: 41, profile: 'restored-local-v9'});
-    const restoredRaw = (db.prepare('SELECT data FROM exports WHERE id=?').get(record.id))!.data;
-    assert.equal(restoredRaw, ordinaryRaw, 'restoration keeps original receipt bytes');
-    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM workspace_restore_holds WHERE kind='exports'").get())!.count, 1);
-    // These held snapshots are inspected only by the inert graph harness. This
-    // deliberately grants no restored job permission and invokes no worker.
-    return [[40, JSON.parse(((ordinaryRaw) as unknown as Parameters<typeof JSON.parse>[0])).snapshot], [41, JSON.parse(((restoredRaw) as unknown as Parameters<typeof JSON.parse>[0])).snapshot]];
-  } finally { db.close(); }
+function retainedSnapshots(snapshot:FixtureSnapshot,assets:Map<string,{id:string;[key:string]:unknown}>,root:string):[string,FixtureSnapshot][] {
+ const dataDir=path.join(root,'current-retained-capture');
+ let store=databaseHelpers.createServerProject(dataDir,{projectId:id(1),name:'Renderer continuity'}).store;
+ try{
+  for(const asset of assets.values())store.put('assets',asset);
+  store.put('timelines',snapshot.timeline);
+  const record={id:id(40),projectId:id(1),requestId:'current-render-regression',mode:'timeline',purpose:'export',timelineRevision:snapshot.timeline.revision,snapshot,status:'queued',assetId:null,url:null,error:null,createdAt:stamp,updatedAt:stamp};
+  store.put('exports',record);retainedValidation.validateProjectRetainedRows(store);
+  const ordinaryRaw=store.db.prepare('SELECT data FROM exports WHERE id=?').get(record.id)!.data as string;
+  assert.equal(ordinaryRaw,JSON.stringify(record),'current receipt retains exact original bytes');
+  store.close();store=databaseHelpers.openServerProject(dataDir,id(1));
+  retainedValidation.validateProjectRetainedRows(store);
+  const reopenedRaw=store.db.prepare('SELECT data FROM exports WHERE id=?').get(record.id)!.data as string;
+  assert.equal(reopenedRaw,ordinaryRaw,'cold kernel reopen preserves the exact receipt');
+  return [['current',JSON.parse(ordinaryRaw).snapshot],['reopened',JSON.parse(reopenedRaw).snapshot]];
+ }finally{store.close();fs.rmSync(dataDir,{recursive:true,force:true});}
 }
 
 function fakeRuntime(snapshot:FixtureSnapshot,root:string) {
@@ -232,7 +201,7 @@ function fakeRuntime(snapshot:FixtureSnapshot,root:string) {
   };
 }
 
-test('old40/41 graphs and argv match pinned pre-seam renderer except equivalent file-option aliases', async t => {
+test('current and cold-reopened graphs and argv match pinned pre-seam renderer except equivalent file-option aliases', async t => {
   const root = await fsp.realpath(await fsp.mkdtemp(path.join(tmpdir(), 'mioon-opacity-legacy-')));
   // Only the two reviewed equivalent file-option names are canonicalized. Every
   // path, remaining argument, filter byte and concat byte stays literal.
@@ -247,7 +216,7 @@ test('old40/41 graphs and argv match pinned pre-seam renderer except equivalent 
   let compared = 0;
   for (const managed of ([false, true] as const)) {
     const source = await fixture(root, managed);
-    for (const [version, retained] of retainedSnapshots(source.snapshot, source.assets)) {
+    for (const [version, retained] of retainedSnapshots(source.snapshot, source.assets,root)) {
       for (const range of ([null, {startFrame: 1, endFrame: 8}] as const)) {
         const snapshot = structuredClone(retained); if (range) snapshot.exportRange = range;
         const frozenRaw = JSON.stringify(snapshot), destination = path.join(root, 'result.mp4');
@@ -278,5 +247,5 @@ test('old40/41 graphs and argv match pinned pre-seam renderer except equivalent 
   }
   assert.equal(childAttempts, 0);
   assert.equal(compared, 8);
-  t.diagnostic('8 before/after comparisons with two explicit file-option aliases; all other argv and bytes exact; real in-memory40/41 receipt capture; all media mocked; zero child attempts; no encoded-file identity claim');
+  t.diagnostic('8 before/after comparisons with two explicit file-option aliases; all other argv and bytes exact; real current kernel receipt capture before/after cold reopen; all media mocked; zero child attempts; no encoded-file identity claim');
 });

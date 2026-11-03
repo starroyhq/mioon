@@ -1,7 +1,7 @@
 import type {ProjectOpenAttempt, ProjectOpenObservation} from '../apps/web/src/project-open-state.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, hasProjectResponseOriginMismatch, projectOpenFailureKind } from '../apps/web/src/project-open-state.ts';
+import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from '../apps/web/src/project-open-state.ts';
 
 const projectA = '00000000-0000-4000-8000-000000000001';
 const projectB = '00000000-0000-4000-8000-000000000002';
@@ -20,7 +20,7 @@ test('project-open captures an immutable project, epoch, and workspace identity'
   }
   assert.equal(canPublishProjectOpen(ticket, observation()), true);
   assert.equal(projectOpenAttempt(projectA, 0, 'normal').epoch, 0);
-  assert.equal(projectOpenAttempt(projectA, Number.MAX_SAFE_INTEGER, `restored:${projectB}`).epoch, Number.MAX_SAFE_INTEGER);
+  assert.equal(projectOpenAttempt(projectA, Number.MAX_SAFE_INTEGER, 'editor-session-max').epoch, Number.MAX_SAFE_INTEGER);
 });
 
 test('project-open rejects malformed project IDs, unsafe epochs, and missing workspace scopes', () => {
@@ -134,8 +134,7 @@ test('project response identity requires a project object with the exact valid r
 test('project-open failures keep authentication and workspace identity failures distinct', () => {
   assert.equal(projectOpenFailureKind({ code: 'UNAUTHORIZED' }), 'auth');
   assert.equal(projectOpenFailureKind(Object.assign(new Error('session expired'), { code: 'UNAUTHORIZED' })), 'auth');
-  for (const code of ['WORKSPACE_ORIGIN_UNVERIFIED', 'RESTORE_WORKSPACE_ORIGIN_MISMATCH',
-    'LAST_PROJECT_SCOPE_MISMATCH', 'LAST_PROJECT_STALE_INSTANCE']) {
+  for (const code of ['LAST_PROJECT_SCOPE_MISMATCH', 'LAST_PROJECT_STALE_INSTANCE']) {
     assert.equal(projectOpenFailureKind(Object.freeze({ code, message: 'identity changed' })), 'identity', code);
   }
   for (const error of [null, undefined, 'UNAUTHORIZED', [], new Error('UNAUTHORIZED'), {},
@@ -143,19 +142,4 @@ test('project-open failures keep authentication and workspace identity failures 
     { code: 'UNAUTHORIZED ' }, { code: null }, { code: 401 }, { error: { code: 'UNAUTHORIZED' } }]) {
     assert.equal(projectOpenFailureKind(error), 'project');
   }
-});
-
-test('restore-origin mismatch distinguishes an explicit foreign origin from malformed response structure', () => {
-  const matching = Object.freeze({ restore: Object.freeze({ workspaceOrigin: projectA }) });
-  assert.equal(hasProjectResponseOriginMismatch(matching, projectA), false);
-  assert.equal(hasProjectResponseOriginMismatch({ restore: { workspaceOrigin: projectB } }, projectA), true);
-  for (const value of [null, undefined, [], {}, { restore: null }, { restore: [] }, { restore: {} },
-    { restore: { workspaceOrigin: null } }, { restore: { workspaceOrigin: 7 } },
-    Object.assign([], { restore: { workspaceOrigin: projectB } })]) {
-    assert.equal(hasProjectResponseOriginMismatch(value, projectA), false);
-  }
-  for (const expected of ['', 'not-an-origin', null, undefined]) {
-    assert.equal(hasProjectResponseOriginMismatch({ restore: { workspaceOrigin: projectB } }, expected as string), false);
-  }
-  assert.deepEqual(matching, { restore: { workspaceOrigin: projectA } });
 });

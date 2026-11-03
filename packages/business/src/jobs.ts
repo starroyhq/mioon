@@ -114,7 +114,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
  }
  const currentOwnedExport=(e: ExportRecord,{cleanupOnly=false}: {cleanupOnly?: boolean}={}): ExportRecord|null=>{
   const latest=workerExport(e.id);
-  
+
   if(!latest||latest.mode!==e.mode||latest.id!==e.id||latest.projectId!==e.projectId)return null;
   if((hasTimelineDeliveryIdentity(e)||hasTimelineDeliveryIdentity(latest)||receiptHasDelivery(e))&&(exportIdentity(latest)!==exportIdentity(e)||!customReceiptMatches(e)))return null;
   if(!cleanupOnly&&!sameFloatTimelineAttempt(e,latest as never))return null;
@@ -132,7 +132,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    const latest=table==='exports'?workerExport(id):recordValue(get(table,id)) as (JobRecord&Record<string,unknown>)|null;
    const status=stringValue(property(latest,'status'));
    if(!latest||status===undefined||['succeeded','cancelled'].includes(status)||table==='exports'&&(property(latest,'mode')!==mode||property(latest,'projectId')!==projectId))return;
-   
+
    if(table==='exports'&&isFloatTimelineExport(latest)&&(!attempt||!sameFloatTimelineAttempt(attempt,latest)))return;
    const error=mediaPauseError(table,status);
    if(property(property(latest,'error'),'code')===error.code&&property(property(latest,'error'),'message')===error.message)return;
@@ -361,14 +361,25 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const assets=await prepareTimelineInputs(e.snapshot as never,{root,projectId:e.projectId,signal,
      beforeEffect,readLut:readLut as never,readAsset:(id: string)=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,e.projectId,id) as never;},validateLinks:(timeline: unknown)=>{beforeEffect?.();return validateFrozenTimelineSourceGraph(store.db,e.projectId,timeline as never);}});checkpoint(signal);
     if(currentOwnedExport(e)?.status!=='running')return;
-    if(customExport(e))preparedAssets=assets as unknown as Map<string, unknown>;
-    if(fencedAttempt)validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});
+    preparedAssets=assets as unknown as Map<string, unknown>;
+    validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});
     const rendered=await (exportStage(store,e.id,'encoding'),renderTimeline(e.snapshot as never,assets as never,part,{signal,beforeEffect,...(agentBound?{beforeStart}:{}),readLut:readLut as never,...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{})}));checkpoint(signal);
     if(floatExport)floatMeasurement=ownedFloatTimelineMeasurement(rendered);
    } else {
+    // Every native await retains source ownership, including storyboard output
+    // and timeline exports without an opt-in delivery profile.
+    validateSources=()=>{
+     for(const value of arrayValue(e.snapshot)){
+      const frozen=recordValue(value);if(!frozen)throw effectError();
+      const graph=createOwnedMediaGraphReader(store.db,e.projectId);
+      const asset=graph.asset(frozen.assetId),version=graph.version(frozen.versionId,frozen.shotId,frozen.assetId);
+      if(asset.sha256!==frozen.sha256||version.sha256!==frozen.sha256)throw effectError();
+     }
+    };
+    beforeEffect();
     const files: string[]=[];
-   
-    
+
+
     for(const rawVersion of arrayValue(e.snapshot)) {
      checkpoint(signal);
      const frozen=recordValue(rawVersion);if(!frozen)throw Error('Export snapshot hash mismatch');

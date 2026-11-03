@@ -28,7 +28,6 @@ import {createSceneServices} from '../packages/business/src/scene-tasks.ts';
 
 
 
-import {RESTORE_DENIED_OPERATIONS,RESTORE_READ_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {run} from '../packages/business/src/media-runtime.ts';
 import {SCENE_LIMITS,SCENE_MUTATION_OPERATIONS,SCENE_DETECTION_DEFAULTS,schemas,descriptions,operationEffect,isSceneTaskResponse,isSceneResultResponse,
  isSceneRequestResponse,isSceneListResponse,isSceneMutationResponse,canonicalSceneInput} from '@mioon/contracts';
@@ -90,7 +89,7 @@ test('operations are registered, described, effect-annotated, restore-classified
   for(const locale of ['zh-Hant','en','ja'] as const)assert.ok(translate(locale,`operation.${operation}`).length>30,`${operation} ${locale}`);
   const mutation=(SCENE_MUTATION_OPERATIONS as readonly string[]).includes(operation),effect=operationEffect(operation);
   assert.equal(effect.readOnly,!mutation,operation);assert.equal(effect.paidGeneration,false);assert.equal(effect.externalIO,false);
-  assert.ok((mutation?RESTORE_DENIED_OPERATIONS:RESTORE_READ_OPERATIONS).includes(operation),operation);
+
  }
 });
 

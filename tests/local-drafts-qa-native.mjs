@@ -1,3 +1,5 @@
+/** SQL audit actions require the native application to be closed. Keep screenshots/UI observations first, then close before cold audit; no GUI verification is implied by prepare. */
+import {prepareNativeQaProject,openNativeQaProject,listNativeQaProjects,closeQaProject,captureNativeQa,readNativeQaDocument,checkedNativeMetadata,checkedNativeApplication} from './helpers/native-local-qa-fixture.ts';
 /** Synthetic Linux packaged acceptance. Native UI is operated separately with
  * the supported computer-use API. A crash request signals only this helper's
  * still-owned ChildProcess handle, never a PID recovered from a file. */
@@ -8,22 +10,22 @@ import {spawn} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {createReadStream} from 'node:fs';
 import {readFile,writeFile,readdir,lstat,open} from 'node:fs/promises';
-import {DatabaseSync} from 'node:sqlite';
 import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
-import {openStore,ownsStoreLock} from '../packages/business/src/db.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createLocalDrafts} from '../packages/business/src/local-drafts.ts';
 import {createTimelineRecoveryBoundary} from '../packages/business/src/timeline-recovery.ts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '../packages/contracts/src/private-storage.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createWorkspacePreferences} from '../packages/business/src/workspace-preferences.ts';
 import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
-import {ownQaChild} from './agent-timeline-move-qa-native.mjs';
+import {ownQaChild} from './helpers/qa-owned-child.mjs';
 
+const ffmpeg=process.env.MIOON_FFMPEG_PATH||(process.platform==='linux'?'/usr/bin/ffmpeg':'/opt/homebrew/bin/ffmpeg'),ffprobe=process.env.MIOON_FFPROBE_PATH||(process.platform==='linux'?'/usr/bin/ffprobe':'/opt/homebrew/bin/ffprobe');
 const repo=fileURLToPath(new URL('../',import.meta.url));
 const scenario=process.env.MIOON_DRAFT_QA_SCENARIO||'recovery';
 if(!['recovery','capacity'].includes(scenario))throw Error('Unknown synthetic draft scenario');
-const root=path.join(repo,'evidence/local-drafts',scenario==='capacity'?'native-capacity':'native'),runtime=path.join(root,'private-runtime'),report=path.join(root,'report');
-const userData=path.join(runtime,'user-data'),workspace=path.join(userData,'workspace');
+const root=process.env.MIOON_QA_FIXTURE_ROOT?path.resolve(process.env.MIOON_QA_FIXTURE_ROOT):path.join(repo,'evidence/local-drafts',scenario==='capacity'?'native-capacity':'native'),runtime=path.join(root,'private-runtime'),report=path.join(root,'report');
+const userData=path.join(runtime,'user-data'),workspace=path.join(userData,'data');
 const executable=path.join(repo,'release/desktop/production/linux-unpacked/mioon');
 const fixtureFile=path.join(runtime,'fixture.json');
 const sha=value=>createHash('sha256').update(value).digest('hex');
@@ -33,22 +35,21 @@ async function exists(file){try{await lstat(file);return true;}catch(error){if(e
 async function readJson(file){const info=await lstat(file);if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1||info.size>2*1024*1024)throw Error('Expected bounded synthetic report');return JSON.parse(await readFile(file,'utf8'));}
 async function writeReport(name,value){if(!/^[a-z0-9-]+\.json$/.test(name))throw Error('Invalid report name');await writeFile(path.join(report,name),json(value),{mode:0o600,flag:'wx'});}
 async function fileHash(file){const info=await lstat(file);if(!info.isFile()||info.isSymbolicLink()||info.size>512*1024*1024)throw Error('Unexpected evidence file');const hash=createHash('sha256');for await(const chunk of createReadStream(file))hash.update(chunk);return {bytes:info.size,sha256:hash.digest('hex')};}
-function environment(){return {...Object.fromEntries(['PATH','HOME','LANG','LC_ALL','DISPLAY','XAUTHORITY','XDG_RUNTIME_DIR','DBUS_SESSION_BUS_ADDRESS','TMPDIR'].filter(key=>typeof process.env[key]==='string').map(key=>[key,process.env[key]])),MIOON_DRAFT_QA_SCENARIO:scenario,MIOON_DESKTOP_USER_DATA:userData,MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_FFMPEG_PATH:'/usr/bin/ffmpeg',MIOON_FFPROBE_PATH:'/usr/bin/ffprobe'};}
+function environment(){return {...Object.fromEntries(['PATH','HOME','LANG','LC_ALL','DISPLAY','XAUTHORITY','XDG_RUNTIME_DIR','DBUS_SESSION_BUS_ADDRESS','TMPDIR'].filter(key=>typeof process.env[key]==='string').map(key=>[key,process.env[key]])),MIOON_DRAFT_QA_SCENARIO:scenario,MIOON_DESKTOP_USER_DATA:userData,MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_FFMPEG_PATH:ffmpeg,MIOON_FFPROBE_PATH:ffprobe};}
 async function command(binary,args,label){const stdout=await open(path.join(runtime,label+'.stdout'),'wx',0o600),stderr=await open(path.join(runtime,label+'.stderr'),'wx',0o600);const owned=ownQaChild(spawn(binary,args,{cwd:repo,env:environment(),stdio:['ignore',stdout.fd,stderr.fd]}));let timer;try{const result=await Promise.race([owned.done,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Bounded fixture command timed out')),60000);})]);assert.equal(result.code,0);assert.equal(result.signal,null);return result;}catch(error){await owned.stop();throw error;}finally{clearTimeout(timer);await stdout.close();await stderr.close();}}
 
 async function prepare(){
  for(const directory of [root,runtime,report,userData])ensurePrivateDirectory(directory,{create:true});
  if(await exists(fixtureFile))throw Error('Fixture already exists; use its explicit launch/reopen commands');
  const source=path.join(runtime,'synthetic-green-880hz.mp4');
- await command('/usr/bin/ffmpeg',['-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=0x18bf57:s=320x180:r=30:d=2','-f','lavfi','-i','sine=frequency=880:sample_rate=48000:duration=2','-c:v','libx264','-threads','1','-pix_fmt','yuv420p','-c:a','aac','-shortest',source],'source-media');
- const store=openStore(workspace),services=createServices(store,new Map());let fixture;
+ await command(ffmpeg,['-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=0x18bf57:s=320x180:r=30:d=2','-f','lavfi','-i','sine=frequency=880:sample_rate=48000:duration=2','-c:v','libx264','-threads','1','-pix_fmt','yuv420p','-c:a','aac','-shortest',source],'source-media');
+ const prepared=await prepareNativeQaProject(workspace,scenario==='capacity'?'片段草稿 · 容量拒绝退出验收':'片段草稿 · 强杀恢复验收'),{store,services,project}=prepared;let fixture;
  try{
-  const project=await services.call('project.create',{name:scenario==='capacity'?'片段草稿 · 容量拒绝退出验收':'片段草稿 · 强杀恢复验收'});
   const asset=await services.call('asset.import',{projectId:project.id,name:'合成绿色画面与 880Hz.mp4',mimeType:'video/mp4',dataBase64:(await readFile(source)).toString('base64')});
   let timeline=await services.call('timeline.format.set',{projectId:project.id,expectedProjectRevision:project.revision,expectedRevision:0,requestId:randomUUID(),presetId:'landscape_720'});
   timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:asset.id,trackId:timeline.tracks.find(track=>track.kind==='video').id,startFrame:0,durationFrames:60,name:'原来已保存的片段'});
   if(scenario==='capacity'){
-   const drafts=createLocalDrafts({root:workspace,channel:'production',storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>false,readTimeline:id=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),readClipAsset:(id,clip)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(clip)}});
+   const drafts=createLocalDrafts({root:store.localDir,databaseFile:path.join(store.localDir,'history.db'),channel:'production',storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},guards:{ownsLock:()=>ownsStoreLock(store),readTimeline:id=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),readClipAsset:(id,clip)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(clip)}});
    // Fill the documented retained-slot limit through real service writes and
    // exact CAS deletes. No forged sidecar row, authority, or backend test switch.
    for(let index=0;index<128;index++){
@@ -62,7 +63,7 @@ async function prepare(){
   }
   const clip=timeline.clips[0],state=defaultWorkspaceState();state.activeMode='editing';state.editing.selectedClipId=clip.id;state.editing.quickAssetId=null;state.editing.previewKind='source';state.shared.inspectorCollapsed=false;delete state.shared.assetSearch;
   createWorkspacePreferences(store).put(project.id,{expectedRevision:0,state});
-  fixture={synthetic:true,scenario,id:randomUUID(),projectId:project.id,timelineId:timeline.id,clipId:clip.id,assetId:asset.id,baseRevision:timeline.revision,originalClip:clip,sourceHash:asset.sha256,sourceFile:await fileHash(source)};
+  fixture={synthetic:true,kernel:true,scenario,id:randomUUID(),workspace,projectDir:store.projectDir,localDir:store.localDir,projectFile:store.projectFile,projectId:project.id,timelineId:timeline.id,clipId:clip.id,assetId:asset.id,baseRevision:timeline.revision,originalClip:clip,sourceHash:asset.sha256,sourceFile:await fileHash(source)};
  }finally{await services.drain();store.close();}
  await writeFile(fixtureFile,json(fixture),{mode:0o600,flag:'wx'});await writeReport('fixture.json',fixture);await audit('prepared');
  for(const label of ['first','reopen','final'])await writeFile(path.join(runtime,'launch-'+label+'.sh'),`#!/bin/bash\ncd ${JSON.stringify(repo)}\nexport MIOON_DRAFT_QA_SCENARIO=${JSON.stringify(scenario)}\nexec ${JSON.stringify(process.execPath)} tests/local-drafts-qa-native.mjs launch ${label}\n`,{mode:0o700,flag:'wx'});
@@ -70,12 +71,11 @@ async function prepare(){
 }
 async function audit(label){
  if(!/^[a-z0-9-]{1,60}$/.test(label))throw Error('Invalid audit label');const fixture=await readJson(fixtureFile);
- const db=new DatabaseSync(path.join(workspace,'workbench.sqlite'),{readOnly:true});let rows;
- try{db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF');rows=Object.fromEntries(['projects','assets','shots','jobs','versions','exports','timelines','timeline_requests','timeline_history','edit_tasks'].map(table=>[table,db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));}finally{db.close();}
- const sidecar=path.join(workspace,'local-drafts-v1.json'),draft=await exists(sidecar)?await readJson(sidecar):null;
- const media=[];for(const name of (await readdir(path.join(workspace,'media'))).sort())media.push({name,...await fileHash(path.join(workspace,'media',name))});
+ const {rows,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries}=captureNativeQa(workspace);
+ const sidecar=path.join(fixture.localDir,'local-drafts-v1.json'),draft=await exists(sidecar)?await readJson(sidecar):null;
+ const media=[];for(const name of (await readdir(path.join(fixture.projectDir,'media'))).sort())media.push({name,...await fileHash(path.join(fixture.projectDir,'media',name))});
  const timeline=rows.timelines.map(row=>JSON.parse(row.data)).find(value=>value.id===fixture.timelineId);
- const result={synthetic:true,at:new Date().toISOString(),tables:Object.fromEntries(Object.entries(rows).map(([key,value])=>[key,{count:value.length,sha256:sha(JSON.stringify(value))}])),timeline,editTasks:rows.edit_tasks.map(row=>({id:row.id,requestId:row.requestId,status:row.status,acknowledged:row.acknowledged})),exports:rows.exports.map(row=>JSON.parse(row.data)),draft,media};
+ const result={synthetic:true,at:new Date().toISOString(),kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries,tables:Object.fromEntries(Object.entries(rows).map(([key,value])=>[key,{count:value.length,sha256:sha(JSON.stringify(value))}])),timeline,editTasks:rows.edit_tasks.map(row=>({id:row.id,requestId:row.requestId,status:row.status,acknowledged:row.acknowledged})),exports:rows.exports.map(row=>JSON.parse(row.data)),draft,media};
  await writeReport(label+'-audit.json',result);return result;
 }
 async function launch(label){
@@ -100,7 +100,7 @@ async function launch(label){
  const until=Date.now()+45000;while(await exists(path.join(workspace,'server.lock'))&&Date.now()<until)await pause(250);
  const backendLockReleased=!await exists(path.join(workspace,'server.lock'));
  await writeReport(label+'-exit.json',{...initial,endedAt:new Date().toISOString(),result,crashRequested,backendLockReleased,childSignals:crashRequested?['SIGKILL']:[]});
- if(!backendLockReleased)throw Error('Backend cleanup unconfirmed; no replacement launch allowed');
+ if(!backendLockReleased&&!crashRequested)throw Error('Normal backend cleanup unconfirmed; no replacement launch allowed');
 }
 async function crash(label){if(label!=='first')throw Error('Only initial synthetic launch may be killed');const fixture=await readJson(fixtureFile);await writeFile(path.join(runtime,label+'-crash-request.json'),json({fixtureId:fixture.id,label}),{mode:0o600,flag:'wx'});}
 async function final(){const until=Date.now()+45000;while(!await exists(path.join(report,'final-exit.json'))&&Date.now()<until)await pause(100);if(!await exists(path.join(report,'final-exit.json')))throw Error('Final owned exit has not settled');const fixture=await readJson(fixtureFile),result=await audit('final'),prepared=await readJson(path.join(report,'prepared-audit.json'));assert.equal(result.timeline.clips[0].name,'Crash-recovered draft');assert.equal(result.timeline.revision,fixture.baseRevision+1);assert.equal(result.editTasks.length,1);assert.equal(result.editTasks[0].status,'applied');assert.equal(result.editTasks[0].acknowledged,1);
@@ -108,10 +108,10 @@ async function final(){const until=Date.now()+45000;while(!await exists(path.joi
  for(const item of prepared.media)assert.deepEqual(result.media.find(value=>value.name===item.name),item);
  assert.ok(result.draft.entries.every(entry=>entry.draft===null),'Applied exact draft was not cleared');
  const exported=result.exports.filter(item=>item.purpose==='export'&&item.status==='succeeded');assert.equal(exported.length,1);const mediaId=exported[0].assetId;
- const db=new DatabaseSync(path.join(workspace,'workbench.sqlite'),{readOnly:true});let asset;try{asset=JSON.parse(db.prepare('SELECT data FROM assets WHERE id=?').get(mediaId).data);}finally{db.close();}
- assert.equal(asset.projectId,fixture.projectId);assert.ok(/^media\/[a-zA-Z0-9._-]+\.mp4$/.test(asset.relativePath));const file=path.join(workspace,asset.relativePath);
- await command('/usr/bin/ffprobe',['-v','error','-show_streams','-show_format','-of','json',file],'final-probe');const probe=await readJson(path.join(runtime,'final-probe.stdout'));const video=probe.streams.find(stream=>stream.codec_type==='video'),audio=probe.streams.find(stream=>stream.codec_type==='audio');assert.equal(video.width,1280);assert.equal(video.height,720);assert.equal(video.r_frame_rate,'30/1');assert.equal(Number(video.nb_frames),60);assert.equal(audio.sample_rate,'48000');
- await command('/usr/bin/ffmpeg',['-v','error','-i',file,'-f','null','-'],'final-decode');
+ const asset=JSON.parse(captureNativeQa(workspace).rows.assets.find(row=>row.id===mediaId).data);
+ assert.equal(asset.projectId,fixture.projectId);assert.ok(/^media\/[a-zA-Z0-9._-]+\.mp4$/.test(asset.relativePath));const file=path.join(fixture.projectDir,asset.relativePath);
+ await command(ffprobe,['-v','error','-show_streams','-show_format','-of','json',file],'final-probe');const probe=await readJson(path.join(runtime,'final-probe.stdout'));const video=probe.streams.find(stream=>stream.codec_type==='video'),audio=probe.streams.find(stream=>stream.codec_type==='audio');assert.equal(video.width,1280);assert.equal(video.height,720);assert.equal(video.r_frame_rate,'30/1');assert.equal(Number(video.nb_frames),60);assert.equal(audio.sample_rate,'48000');
+ await command(ffmpeg,['-v','error','-i',file,'-f','null','-'],'final-decode');
  const summary={synthetic:true,productionBackend:true,providerCalls:0,mainCrash:await readJson(path.join(report,'first-exit.json')),normalReopens:[await readJson(path.join(report,'reopen-exit.json')),await readJson(path.join(report,'final-exit.json'))],output:await fileHash(file),video:{width:video.width,height:video.height,rate:video.r_frame_rate,frames:video.nb_frames},audio:{codec:audio.codec_name,sampleRate:audio.sample_rate},decodeExit:0,originalMediaUnchanged:true};await writeReport('summary.json',summary);return summary;}
 async function inspectCrash(){
  const connection=await readJson(path.join(userData,'mcp-connection.json'));
@@ -127,15 +127,15 @@ async function inspectCrash(){
 
 async function capacityFinal(){
  assert.equal(scenario,'capacity');
- const prepared=await readJson(path.join(report,'prepared-audit.json')),result=await audit('capacity-final');
- assert.deepEqual(result.tables,prepared.tables,'Refused autosave and local-only discard must not dispatch a business write');
+ const fixture=await readJson(fixtureFile),prepared=await readJson(path.join(report,'prepared-audit.json')),result=await audit('capacity-final');
+ const systemTables=new Set([...checkedNativeMetadata(prepared,result),...checkedNativeApplication(prepared,result,[fixture.projectId])]);for(const table of Object.keys(prepared.tables))if(!systemTables.has(table))assert.deepEqual(result.tables[table],prepared.tables[table],'Refused autosave and local-only discard must not dispatch a business write');
  assert.deepEqual(result.timeline,prepared.timeline);assert.deepEqual(result.draft,prepared.draft);assert.deepEqual(result.media,prepared.media);
  assert.equal(result.draft.entries.length,128);assert.ok(result.draft.entries.every(entry=>entry.draft===null));
  const exits=await Promise.all(['first','reopen'].map(label=>readJson(path.join(report,label+'-exit.json'))));
  for(const exit of exits){assert.deepEqual(exit.result,{code:0,signal:null});assert.equal(exit.backendLockReleased,true);}
- const summary={synthetic:true,scenario,productionBackend:true,slots:128,allRetainedRecordsUnchanged:true,businessTablesUnchanged:true,originalMediaUnchanged:true,normalExits:exits};
+ const summary={synthetic:true,kernel:true,scenario,productionBackend:true,slots:128,allRetainedRecordsUnchanged:true,businessTablesUnchanged:true,originalMediaUnchanged:true,normalExits:exits};
  await writeReport('capacity-summary.json',summary);return summary;
 }
 
 const [action,label]=process.argv.slice(2);
-if(action==='prepare')console.log(json(await prepare()));else if(action==='launch')await launch(label);else if(action==='audit')console.log(json(await audit(label)));else if(action==='crash')await crash(label);else if(action==='final')console.log(json(await final()));else if(action==='capacity-final')console.log(json(await capacityFinal()));else if(action==='inspect-crash')console.log(json(await inspectCrash()));else throw Error('Expected prepare/launch/audit/crash/final');
+if(action==='--help')console.log('prepare; launch first; capture screenshots and wait for autosave; crash first; inspect-crash; launch reopen; normal Quit before audit; complete current save/export through the native UI; normal Quit before final. SQL audit is cold only; prepare does not imply GUI validation.');else if(action==='prepare')console.log(json(await prepare()));else if(action==='launch')await launch(label);else if(action==='audit')console.log(json(await audit(label)));else if(action==='crash')await crash(label);else if(action==='final')console.log(json(await final()));else if(action==='capacity-final')console.log(json(await capacityFinal()));else if(action==='inspect-crash')console.log(json(await inspectCrash()));else throw Error('Expected prepare/launch/audit/crash/final');

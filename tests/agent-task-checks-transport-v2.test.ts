@@ -164,17 +164,14 @@ test('H4b clients and CLI retain optional requirements while host check groups s
  assert.deepEqual(report.requirements?.[0]?.expected,{min:3,max:3},'presentation does not remove or mutate the backend requirement');
 });
 
-async function workspace(legacy=false){
+async function workspace(){
  const directory=await mkdtemp(join(await realpath(tmpdir()),'mioon-checks-transport-'));
- const source=join(directory,'source'),created=legacy?null:createServerProject(source,{name:'Synthetic checks project'}),store=created?.store??openLegacyWorkspaceStore(source),projectId=created?.projectId??randomUUID();
- if(legacy)store.put('projects',{id:projectId,name:'Legacy checks fixture',revision:1});
+ const source=join(directory,'source'),created=createServerProject(source,{name:'Synthetic checks project'}),store=created.store,projectId=created.projectId;
  const journal=createAgentTaskJournal(store),createdRun=journal.create({requestId:randomUUID(),projectId,text:'Synthetic checks',configuration:{protocol:'responses'},policy:structuredClone(DEFAULT_AGENT_TASK_POLICY)}).run;
  const run=journal.transition(createdRun.id,createdRun.revision,'completed');
- const foreignProjectId=legacy?randomUUID():undefined;
- if(foreignProjectId)store.put('projects',{id:foreignProjectId,name:'Legacy foreign checks fixture',revision:1});
  store.close();
- const foreign=legacy?null:createServerProject(source,{name:'Synthetic checks project'});foreign?.store.close();
- return {directory,source,projectId,foreignProjectId:foreignProjectId??foreign!.projectId,run,projectFile:created?.store.projectFile??join(source,'workbench.sqlite')};
+ const foreign=createServerProject(source,{name:'Foreign checks project'});foreign.store.close();
+ return {directory,source,projectId,foreignProjectId:foreign.projectId,run,projectFile:created.store.projectFile};
 }
 function dumpDb(db:DatabaseSync):unknown{
  return schemaObjects(db).filter(({name})=>!name.startsWith('sqlite_')).map(({name,sql})=>({name,sql,...(String(sql).startsWith('CREATE TABLE')?{rows:db.prepare(`SELECT * FROM "${name}"`).all().map(item=>JSON.stringify(item)).sort()}:{})}));

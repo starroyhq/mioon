@@ -99,5 +99,3 @@ test('full historical ACK uses its record/byte contract rather than the prepare 
   const acknowledge={projectId:id(1),taskId:id(2),digest:'a'.repeat(64),expectedRevision:3,status:'applied'};
   assert.equal(count(execute),5);assert.equal(count(acknowledge),6);
 });
-
-

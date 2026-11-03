@@ -7,9 +7,8 @@
 import type {LastProjectEnvelope} from '@mioon/contracts/last-project';
 import type {RootFailure} from './helpers/strict-root-error-types.ts';
 import type {FixtureProject} from './helpers/strict-timeline-core-types.ts';
-import type {BackupResult,RestoreResult} from './helpers/strict-timeline-backup-types.ts';
 type SupportedLocator=Extract<LastProjectEnvelope,{supported:true}>;
-type LocatorData<S extends string,R extends boolean>=S extends '/api/rpc'?FixtureProject:R extends true?Extract<LastProjectEnvelope,{supported:false}>:SupportedLocator;
+type LocatorData<S extends string>=S extends '/api/rpc'?FixtureProject:SupportedLocator;
 interface LocatorOptions {method?:string;input?:unknown;raw?:string|Buffer;authenticated?:boolean;headers?:http.OutgoingHttpHeaders;chunked?:boolean}
 interface LocatorHttpResponse<T=SupportedLocator> {status:number;headers:http.IncomingHttpHeaders;body:{ok:boolean;data:T;error:RootFailure}}
 import type {ProcessOutcome, BackendReady, IpcMessage} from './helpers/strict-timeline-wire-response-types.ts';
@@ -28,13 +27,9 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {LAST_PROJECT_LIMITS,lastProjectEnvelopeSchema} from '@mioon/contracts/last-project';
 import {schemas} from '@mioon/contracts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 
 import {createServerProject} from './helpers/project-database.ts';
 import {createApplicationStorageReader} from './fixtures/project-server-process.ts';
-import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
-import {createServices} from '../packages/business/src/services.ts';
 
 const repo=fileURLToPath(new URL('../',import.meta.url));
 const workerPath=fileURLToPath(new URL('./fixtures/local-drafts-process.ts',import.meta.url));
@@ -70,8 +65,8 @@ function request(url: string, route?: string|undefined, {method = 'GET', input, 
   });
 }
 
-function startProcess(root: string, auditPath: string, historical=false) {
-  const selected=historical?fileURLToPath(new URL('./fixtures/legacy-last-project-process.ts',import.meta.url)):workerPath;
+function startProcess(root: string, auditPath: string) {
+  const selected=workerPath;
   const child = spawn(process.execPath, [selected, auditPath], {cwd: repo, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     env: {PATH: process.env.PATH || '', HOME: root, TMPDIR: root, LANG: 'C.UTF-8', NODE_ENV: 'test',
       MIOON_ENABLE_LIVE_PROVIDER: '0'},
@@ -119,32 +114,21 @@ function startProcess(root: string, auditPath: string, historical=false) {
   };
 }
 
-async function fixture<R extends boolean=false>(t:test.TestContext,{restored=false as R,legacy=false}:{restored?:R;legacy?:boolean}={}){
-  const base=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-last-project-http-'))),source=path.join(base,'source'),backup=path.join(base,'backup'),root=restored?path.join(base,'restored'):source;
+async function fixture(t:test.TestContext){
+  const base=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-last-project-http-'))),source=path.join(base,'source'),root=source;
   const auditPath=path.join(base,'forbidden-effects.jsonl');await writeFile(auditPath,'');
-  const historical=restored||legacy,processes:ReturnType<typeof startProcess>[]=[],reservations:http.Server[]=[];let backend!:ReturnType<typeof startProcess>,url!:string,proxy!:http.Server,drop=false,appRead!:ReturnType<typeof createApplicationStorageReader>;const observed:LocatorHttpResponse[]=[];
+  const processes:ReturnType<typeof startProcess>[]=[],reservations:http.Server[]=[];let backend!:ReturnType<typeof startProcess>,url!:string,proxy!:http.Server,drop=false,appRead!:ReturnType<typeof createApplicationStorageReader>;const observed:LocatorHttpResponse[]=[];
   t.after(async()=>{
     const failures=[];
     for(const clean of [async()=>{if(proxy){proxy.closeAllConnections();await deadline(new Promise(resolve=>proxy.close(resolve)),'proxy close');}},...reservations.map(server=>async()=>{server.closeAllConnections();await deadline(new Promise(resolve=>server.close(resolve)),'reservation close');}),...processes.map(worker=>()=>worker.close()),()=>rm(base,{recursive:true,force:true})])try{await clean();}catch(error){failures.push(error);}
     if(failures.length)throw new AggregateError(failures,'Owned last-project cleanup failed');
   });
   let project:FixtureProject,other:FixtureProject;
-  if(historical){
-    const store=openLegacyWorkspaceStore(source),services=createServices(store,new Map());
-    try{project=await services.call('project.create',{name:'Existing remembered project'}) as FixtureProject;other=await services.call('project.create',{name:'OTHER_PROJECT_MUST_NOT_LEAK'}) as FixtureProject;}
-    finally{await services.drain();store.close();}
-  }else{
-    const remembered=createServerProject(source,{name:'Existing remembered project'});project=(remembered.store as unknown as TypedStore).get('projects',remembered.projectId)! as FixtureProject;remembered.store.close();
-    const second=createServerProject(source,{name:'OTHER_PROJECT_MUST_NOT_LEAK'});other=(second.store as unknown as TypedStore).get('projects',second.projectId)! as FixtureProject;second.store.close();
-  }
-  let workspaceOrigin;
-  const file=path.join(root,'last-project-v1.json'),unsafeTarget=path.join(base,'untouched-private-evidence');
-  if(restored){
-    (await createWorkspaceBackup({source,destination:backup}) as BackupResult);workspaceOrigin=(await restoreWorkspaceBackup({directory:backup,destination:root}) as RestoreResult).workspaceOrigin;
-    await writeFile(unsafeTarget,'RESTORED_SIDECAR_MUST_NOT_BE_READ',{mode:0o600});await symlink(unsafeTarget,file);
-  }
+  const remembered=createServerProject(source,{name:'Existing remembered project'});project=(remembered.store as unknown as TypedStore).get('projects',remembered.projectId)! as FixtureProject;remembered.store.close();
+  const second=createServerProject(source,{name:'OTHER_PROJECT_MUST_NOT_LEAK'});other=(second.store as unknown as TypedStore).get('projects',second.projectId)! as FixtureProject;second.store.close();
+  const file=path.join(root,'last-project-v1.json');
   const start=async()=>{
-    backend=startProcess(root,auditPath,historical);processes.push(backend);if(!historical)appRead=createApplicationStorageReader(backend.child);const ready=await deadline(backend.ready,'owned backend readiness');
+    backend=startProcess(root,auditPath);processes.push(backend);appRead=createApplicationStorageReader(backend.child);const ready=await deadline(backend.ready,'owned backend readiness');
     assert.equal(ready.pid,backend.child.pid);assert.notEqual(ready.pid,process.pid);url=ready.url;assert.equal(new URL(url).hostname,'127.0.0.1');
   };await start();
   proxy=http.createServer(async(req,res)=>{
@@ -156,18 +140,17 @@ async function fixture<R extends boolean=false>(t:test.TestContext,{restored=fal
     }catch{res.destroy();}
   });await deadline(new Promise((resolve,reject)=>{proxy.once('error',reject);proxy.listen(0,'127.0.0.1',resolve as ()=>void);}),'proxy listen');
   const proxyUrl=`http://127.0.0.1:${(proxy.address() as import('node:net').AddressInfo).port}`;
-  return {base,source,backup,root,file,project,other,workspaceOrigin,unsafeTarget,observed,get url(){return url;},get backend(){return backend;},
+  return {base,source,root,file,project,other,observed,get url(){return url;},get backend(){return backend;},
     request:(selected: string|undefined=route,options?:LocatorOptions)=>request(url,selected,options),viaProxy:(options?:LocatorOptions)=>request(proxyUrl,route,options),lose(){drop=true;},
-    async data<S extends string=typeof route>(selected:S=route as S,options?:LocatorOptions):Promise<LocatorData<S,R>>{const result=await this.request(selected,options);assert.equal(result.status,200,JSON.stringify(result.body));assert.equal(result.body.ok,true);return result.body.data as unknown as LocatorData<S,R>;},
+    async data<S extends string=typeof route>(selected:S=route as S,options?:LocatorOptions):Promise<LocatorData<S>>{const result=await this.request(selected,options);assert.equal(result.status,200,JSON.stringify(result.body));assert.equal(result.body.ok,true);return result.body.data as unknown as LocatorData<S>;},
     async get(){const data=await this.data();assert.ok(lastProjectEnvelopeSchema.safeParse(data).success);return data;},
     async restart(){const oldUrl=url,oldPid=backend.child.pid;await backend.kill();const reserve=http.createServer((_req,res)=>res.end());reservations.push(reserve);await deadline(new Promise((resolve,reject)=>{reserve.once('error',reject);reserve.listen(Number(new URL(oldUrl).port),'127.0.0.1',resolve as ()=>void);}),'reserve old port');await start();assert.notEqual(url,oldUrl);assert.notEqual(backend.child.pid,oldPid);},
     async snapshot(){
-      if(historical)return backend.ask('snapshot');
       const app=await appRead();
       return {schema:app.schema,application:{...app.rows,app_documents:app.rows.app_documents.filter(row=>row.name!=='last-project-v1.json')},projects:await Promise.all([project,other].map(value=>backend.ask('snapshot',{projectId:value.id})))};
     },
-    async bytes(){if(historical)return readFile(file);const row=(await appRead()).rows.app_documents.find(row=>row.name==='last-project-v1.json');if(typeof row?.data!=='string')throw Error('Expected the real app locator document');return Buffer.from(row.data);},
-    metadata:()=>stat(historical?file:path.join(root,'app-library.db')),
+    async bytes(){const row=(await appRead()).rows.app_documents.find(row=>row.name==='last-project-v1.json');if(typeof row?.data!=='string')throw Error('Expected the real app locator document');return Buffer.from(row.data);},
+    metadata:()=>stat(path.join(root,'app-library.db')),
     corrupt:()=>backend.ask('corrupt-last-project-document'),
     async noEffects(){assert.equal(await readFile(auditPath,'utf8'),'');assert.deepEqual(((await backend.ask('observe')).phases as unknown),[]);},
   };
@@ -230,7 +213,3 @@ test('route and storage failure are private, nonrepairing and absent from the op
   safeError(await f.request(),f,'LAST_PROJECT_STORAGE_UNAVAILABLE',503);safeError(await f.request(route,{method:'PUT',input}),f,'LAST_PROJECT_STORAGE_UNAVAILABLE',503);
   assert.deepEqual(await f.bytes(),bytes);assert.deepEqual(await f.snapshot(),before);await f.noEffects();
 });
-
-
-
-

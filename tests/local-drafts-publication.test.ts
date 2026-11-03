@@ -10,7 +10,6 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
-import {getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createTimelineRecoveryBoundary} from '../packages/business/src/timeline-recovery.ts';
 import {createLocalDrafts,LOCAL_DRAFT_FILENAME} from '../packages/business/src/local-drafts.ts';

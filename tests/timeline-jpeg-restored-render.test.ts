@@ -159,7 +159,7 @@ test('cold current kernel reopen rerenders mixed JFIF/PNG/video/subtitle with ex
     // kernel reopen. Restore-only queued holds are no longer a runtime concept.
     const held=baseline.completed;
     assert.deepEqual(held.snapshot,ordinary.snapshot);
-    const heldRecord=store.get('exports',held.id)!;
+    const heldRecord=store.get('exports',held.id)! as ExportRowView;
     const captured = rawRows(store.db);
     const sourceFiles = new Map([[String((store.get('assets', video.id) as AssetRowView).relativePath), videoBytes],
       [String((store.get('assets', image.id) as AssetRowView).relativePath), imageBytes],

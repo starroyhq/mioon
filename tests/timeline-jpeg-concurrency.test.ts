@@ -19,7 +19,7 @@ import {mediaExecutable} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createTimelinePreflightServices} from '../packages/business/src/timeline-preflight.ts';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
-import {snapshot as schemaSnapshot} from './workspace-schema26-fixtures.mjs';
+import {snapshot as schemaSnapshot} from './helpers/current-retained-fixture.ts';
 import {png, sha, imageColour, stamp, timelineFixture} from './helpers/timeline-image-fixtures.ts';
 import {pillowJfifFixture} from './helpers/timeline-jpeg-fixtures.ts';
 import {jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.ts';
@@ -28,7 +28,7 @@ import {isProjectDatabase} from '../packages/business/src/project-file/held-file
 import type {DatabaseSync} from 'node:sqlite';
 
 function databaseSnapshot(db: DatabaseSync) {
-  return Object.fromEntries((isProjectDatabase(db) ? ['main', 'project', 'cache'] : ['main']).map(schema => [schema, schemaSnapshot(db, schema)]));
+  return schemaSnapshot(db);
 }
 
 const code = 'TIMELINE_IMAGE_COMPOSITOR_BUDGET';

@@ -22,14 +22,13 @@ import {randomUUID} from 'node:crypto';
 
 
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
-import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {beginFixtureModelStep,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
 
-function fixture(opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-v2-')),store=opener(root),projectId=isProjectStore(store)?store.projectId:randomUUID();store.put('projects',{id:projectId,name:'Task fixture',revision:1,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});return {root,store,projectId,journal:createAgentTaskJournal(store),close(){store.close();rmSync(root,{recursive:true,force:true});}};}
+function fixture(){const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-v2-')),store=openStore(root),projectId=store.projectId;store.put('projects',{id:projectId,name:'Task fixture',revision:1,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});return {root,store,projectId,journal:createAgentTaskJournal(store),close(){store.close();rmSync(root,{recursive:true,force:true});}};}
 function start(f:ReturnType<typeof fixture>,stepLimit=30){return f.journal.create({requestId:randomUUID(),projectId:f.projectId,text:'测试',configuration:{protocol:'responses'},policy:{...structuredClone(DEFAULT_AGENT_TASK_POLICY),stepLimit}});}
-function reversibleChange(f:ReturnType<typeof fixture>,runId:string){const step=isProjectStore(f.store)?beginFixtureToolStep(f.journal,runId,{}):f.journal.beginStep(runId,{kind:'tool'});f.journal.markDispatch(runId,step.id);f.journal.completeStep(runId,step.id,{change:{projectId:f.projectId,operation:'shot.update',targets:[],before:null,after:null,reversible:true}});return f.journal.snapshot(runId).changes[0]!;}
+function reversibleChange(f:ReturnType<typeof fixture>,runId:string){const step=beginFixtureToolStep(f.journal,runId,{});f.journal.markDispatch(runId,step.id);f.journal.completeStep(runId,step.id,{change:{projectId:f.projectId,operation:'shot.update',targets:[],before:null,after:null,reversible:true}});return f.journal.snapshot(runId).changes[0]!;}
 
 for(const status of ['completed','failed','stopped'] as const)test(`${status} execution end survives later undo, reverted state and restart`,t=>{
  const beginning=Date.parse('2026-10-23T00:00:00.000Z');t.mock.timers.enable({apis:['Date'],now:beginning});
@@ -69,9 +68,9 @@ test('execution end follows the last execution segment and does not reuse earlie
   f.journal.appendEvent(run.id,'run',{id:run.id,projectId:f.projectId,status:'completed'});assert.equal(f.journal.snapshot(run.id).executionEndedAt,undefined);
  }finally{f.close();}
 });
-test('legacy terminal runs without execution timestamps do not invent an end from current metadata',()=>{
- const f=fixture(openLegacyWorkspaceStore);try{
-  const run=start(f).run;f.store.db.prepare('UPDATE agent_task_runs_v2 SET status=?,data=? WHERE id=?').run('completed',JSON.stringify({...run,status:'completed'}),run.id);
+test('native terminal runs without canonical execution timestamps do not invent an end from current metadata',()=>{
+ const f=fixture();try{
+  const run=start(f).run;f.store.db.prepare("UPDATE mio_runs SET status='completed' WHERE id=?").run(run.id);
   assert.equal(f.journal.snapshot(run.id).executionEndedAt,undefined);
   f.journal.appendEvent(run.id,'run',{id:run.id,projectId:f.projectId,status:'completed',updatedAt:'invalid'});assert.equal(f.journal.snapshot(run.id).executionEndedAt,undefined);
  }finally{f.close();}
@@ -149,5 +148,3 @@ test('aggregate project revision changes do not invalidate a project text target
 test('history keyset pages discover every run without overlap and reject a foreign project cursor',()=>{const f=fixture();try{const ids:string[]=[];for(let i=0;i<4;i++){const run=start(f).run;ids.push(run.id);f.journal.transition(run.id,run.revision,'completed');}const first=f.journal.history(f.projectId,{limit:2});assert.equal(first.conversations.length,2);assert.ok(first.nextCursor);const second=f.journal.history(f.projectId,{limit:2,cursor:first.nextCursor});assert.equal(second.nextCursor,null);assert.deepEqual([...first.conversations,...second.conversations].map(conversation=>conversation.lastRunId).sort(),ids.sort());const cursor=JSON.parse(Buffer.from(first.nextCursor!,'base64url').toString('utf8')) as unknown[],foreignCursor=Buffer.from(JSON.stringify([randomUUID(),...cursor.slice(1)])).toString('base64url');assert.throws(()=>f.journal.history(f.projectId,{cursor:foreignCursor}),{code:'AGENT_TASK_INVALID'});assert.throws(()=>f.journal.history(randomUUID(),{cursor:first.nextCursor!}),{code:'AGENT_TASK_NOT_FOUND'});}finally{f.close();}});
 
 test('stale control rejection has a retained receipt and exact replay never performs the action',()=>{const f=fixture();try{const run=start(f).run;f.journal.transition(run.id,run.revision,'paused');const input={requestId:randomUUID(),runId:run.id,expectedRevision:run.revision,action:'resume'};let calls=0;assert.throws(()=>f.journal.performControl(input,()=>{calls++;return null;}),{code:'AGENT_TASK_REVISION_CONFLICT'});const rejected=f.journal.rejectControl(input,'AGENT_TASK_REVISION_CONFLICT');assert.equal(rejected.revision,f.journal.run(run.id).revision);assert.deepEqual(rejected.result,{state:'rejected',code:'AGENT_TASK_REVISION_CONFLICT'});assert.deepEqual(f.journal.lookupControl(input.requestId),rejected);assert.deepEqual(f.journal.performControl(input,()=>{calls++;return null;}),rejected);assert.equal(calls,0);assert.throws(()=>f.journal.rejectControl({...input,action:'stop'},'AGENT_TASK_REVISION_CONFLICT'),{code:'AGENT_TASK_REQUEST_CONFLICT'});}finally{f.close();}});
-
-

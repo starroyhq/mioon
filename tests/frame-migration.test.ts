@@ -1,3 +1,5 @@
+import {kernelFixture,snapshot as captureKernel} from './helpers/current-retained-fixture.ts';
+import {foreignKeyCheck} from './helpers/project-database.ts';
 
 
 
@@ -9,45 +11,29 @@
 
 
 
-import {reviewedCatalogAt} from './helpers/reviewed-schema-layers.ts';
 import type {SQLInputValue} from 'node:sqlite';
-interface SchemaObject {type:string;name:string;tbl_name:string;sql:string|null}
 
 import test from 'node:test';
 
 
 import assert from 'node:assert/strict';
 
-import {DatabaseSync, type SQLOutputValue} from 'node:sqlite';
+import {DatabaseSync} from 'node:sqlite';
 
-import {readFileSync} from 'node:fs';
 
 
 
 import {randomUUID,createHash} from 'node:crypto';
-import {migrateComfyImageReviewSchema} from '../packages/business/src/images/review-schema.ts';
-import {migrateComfyImageSchema} from '../packages/business/src/comfy-image-schema.ts';
-import {migrateFrameSchema} from '../packages/business/src/frame-schema.ts';
 import {FRAME_PROFILE,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,FRAME_LIMITS,canonicalFrameInput as canonical} from '../packages/contracts/src/frame-extraction.ts';
 const at='2026-10-11T00:00:00.000Z';
 const hash=(value: unknown)=>createHash('sha256').update(typeof value==='string'?value:canonical(value)).digest('hex');
 const insert=(db: DatabaseSync,table: string,row: ArrayLike<unknown>|{ [s: string]: unknown; })=>{const keys=Object.keys(row);return db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`).run(...Object.values(row) as SQLInputValue[]);};
 function transaction(db: DatabaseSync,fn: { (): void; (): void; (): void; (): void; (): void; (): void; (): void; (): unknown; }){db.exec('BEGIN IMMEDIATE');try{const value=fn();db.exec('COMMIT');return value;}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}}
-function database(t: test.TestContext|null,filename=':memory:'){
- const db=new DatabaseSync(filename);db.exec('PRAGMA foreign_keys=ON');
- db.exec(readFileSync(new URL('./fixtures/images-legacy-schema18.sql',import.meta.url),'utf8'));
- transaction(db,()=>{migrateComfyImageReviewSchema(db);migrateComfyImageSchema(db);db.exec('INSERT OR IGNORE INTO schema_version VALUES(19)');});
- t?.after(()=>db.close());return db;
-}
-function migrate(db: DatabaseSync){transaction(db,()=>{migrateFrameSchema(db);db.exec('INSERT OR IGNORE INTO schema_version VALUES(20)');});}
-function capture(db: DatabaseSync){
- const objects=reviewedCatalogAt(60,db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all() as unknown as SchemaObject[]),rows:Record<string,Record<string,SQLOutputValue>[]>={};
- for(const {name} of objects.filter((value)=>value.type==='table'))rows[name as string]=db.prepare(`SELECT rowid AS retainedRowid,* FROM "${name}" ORDER BY rowid`).all();
- return {objects,rows,hashes:Object.fromEntries(Object.entries(rows).map(([name,values])=>[name,values.map(hash)]))};
-}
+function database(t: test.TestContext){return kernelFixture(t).store.db;}
+function capture(db: DatabaseSync){return captureKernel(db);}
 
 
-function accept(db: DatabaseSync,{projectId=randomUUID(),sourceAssetId=randomUUID()}={}){
+function accept(db: DatabaseSync,{projectId=String(db.prepare('SELECT id FROM projects').get()!.id),sourceAssetId=randomUUID()}={}){
  if(!db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId))insert(db,'projects',{id:projectId,data:canonical({id:projectId,name:'Frames'})});
  if(!db.prepare('SELECT 1 FROM assets WHERE id=?').get(sourceAssetId))insert(db,'assets',{id:sourceAssetId,projectId,data:canonical({id:sourceAssetId,projectId,mimeType:'video/mp4'})});
  const taskId=randomUUID(),requestId=randomUUID(),assetId=randomUUID(),sourceHash='a'.repeat(64);
@@ -67,7 +53,7 @@ function accept(db: DatabaseSync,{projectId=randomUUID(),sourceAssetId=randomUUI
  });
  return {db,projectId,sourceAssetId,taskId,requestId,assetId,input,snapshot,receipt,task,row,request,start,stage,succeed};
 }
-function fixture(t: test.TestContext){const db=database(t);migrate(db);return accept(db);}
+function fixture(t: test.TestContext){const db=database(t);return accept(db);}
 
 // Existing schema19 is established independently from frozen schema18 plus its
 // unchanged migrations. The tested schema20 never rewrites that baseline.
@@ -91,7 +77,7 @@ test('frame task and original queued ACK commit together and resist mutation, re
  f.start();f.stage();f.succeed();
  assert.equal(db.prepare('SELECT response FROM frame_requests WHERE requestId=?').get(f.requestId)!.response,canonical(f.task));
  assert.throws(()=>db.prepare("UPDATE frame_tasks SET state='persisting',revision=revision+1 WHERE id=?").run(f.taskId),/transition/);
- assert.deepEqual((db.prepare('PRAGMA foreign_key_check').all() as unknown),[]);
+ assert.deepEqual(foreignKeyCheck(db),[]);
 });
 
 test('start fence, interrupted cancellation and recovery never reopen decoding',t=>{
@@ -100,7 +86,7 @@ test('start fence, interrupted cancellation and recovery never reopen decoding',
  assert.throws(()=>f.start(),/immutable|transition/);
  db.prepare("UPDATE frame_tasks SET state='cancelled_before_start',revision=3 WHERE id=?").run(f.taskId);
  assert.throws(()=>db.prepare("UPDATE frame_tasks SET state='queued',revision=4 WHERE id=?").run(f.taskId),/transition/);
- const g=accept(db);g.start();db.prepare("UPDATE frame_tasks SET state='interrupted',revision=3 WHERE id=?").run(g.taskId);
+ const g=accept(db,{projectId:f.projectId});g.start();db.prepare("UPDATE frame_tasks SET state='interrupted',revision=3 WHERE id=?").run(g.taskId);
  assert.throws(()=>db.prepare("UPDATE frame_tasks SET state='cancelled_before_start',revision=4 WHERE id=?").run(g.taskId),/transition|CHECK/);
  assert.throws(()=>db.prepare("UPDATE frame_tasks SET state='running',revision=4 WHERE id=?").run(g.taskId),/transition/);
  assert.throws(()=>db.prepare("UPDATE frame_tasks SET state='persisting',revision=4 WHERE id=?").run(g.taskId),/CHECK/);
@@ -117,8 +103,9 @@ test('queued admission and active transition caps do not block running-to-persis
  g.start();assert.throws(()=>f.stage(),/active task capacity/);
  db.prepare("UPDATE frame_tasks SET state='interrupted',revision=revision+1 WHERE id=?").run(g.taskId);
  f.stage();f.succeed();
- for(let i=0;i<FRAME_LIMITS.queuedGlobal;i++)accept(db);
- assert.throws(()=>accept(db),/queued task capacity/);
+ const peers=Array.from({length:Math.ceil(FRAME_LIMITS.queuedGlobal/FRAME_LIMITS.queuedPerProject)+1},()=>database(t));
+ let queued=0;for(const peer of peers){for(let n=0;n<FRAME_LIMITS.queuedPerProject;n++){accept(peer);queued++;}assert.throws(()=>accept(peer),/queued task capacity/);}
+ assert.ok(queued>FRAME_LIMITS.queuedGlobal,'independent kernel projects do not share the former workspace queue ceiling');
 });
 
 test('staged frame ownership excludes legacy and image owners regardless of provenance and raw JSON size',t=>{
@@ -139,9 +126,10 @@ test('staged frame ownership excludes legacy and image owners regardless of prov
 test('frame result attachment rejects cross-project publication and altered receipt identity',t=>{
  const f=fixture(t),{db}=f;f.start();
  for(const patch of [{projectId:randomUUID()},{taskId:randomUUID()},{sourceHash:'c'.repeat(64)},{inputHash:'c'.repeat(64)},{assetId:f.sourceAssetId},{width:1025},{byteLength:FRAME_LIMITS.resultBytes+1}])assert.throws(()=>f.stage({...f.receipt,...patch}),/CHECK/);
- f.stage();const otherProjectId=randomUUID();insert(db,'projects',{id:otherProjectId,data:'{}'});
- insert(db,'assets',{id:f.assetId,projectId:otherProjectId,data:canonical({id:f.assetId,projectId:otherProjectId})});
- assert.throws(()=>db.prepare("UPDATE frame_tasks SET state='succeeded',assetId=?,revision=revision+1 WHERE id=?").run(f.assetId,f.taskId),/task project/);
+ f.stage();const peer=database(t),otherProjectId=String(peer.prepare('SELECT id FROM projects').get()!.id);
+ insert(peer,'assets',{id:f.assetId,projectId:otherProjectId,data:canonical({id:f.assetId,projectId:otherProjectId})});
+ const peerBefore=capture(peer);
+ assert.throws(()=>db.prepare("UPDATE frame_tasks SET state='succeeded',assetId=?,revision=revision+1 WHERE id=?").run(f.assetId,f.taskId),/task project/);assert.deepEqual(capture(peer),peerBefore);
 });
 
 test('control receipt budget is retained per task and exact acknowledgement bytes remain immutable',t=>{
@@ -161,7 +149,7 @@ test('control receipt budget is retained per task and exact acknowledgement byte
 
 
 test('retained task cap never evicts old acknowledgements or consumes another task control reserve',t=>{
- const db=database(t);migrate(db);const projectId=randomUUID(),sourceAssetId=randomUUID();
+ const db=database(t);const projectId=String(db.prepare('SELECT id FROM projects').get()!.id),sourceAssetId=randomUUID();
  let first;
  for(let i=0;i<FRAME_LIMITS.tasksPerProject;i++){
   const f=accept(db,{projectId,sourceAssetId});first??=f;
@@ -169,8 +157,5 @@ test('retained task cap never evicts old acknowledgements or consumes another ta
  }
  const before=capture(db);assert.throws(()=>accept(db,{projectId,sourceAssetId}),/retained task capacity/);assert.deepEqual(capture(db),before);
  assert.equal(db.prepare('SELECT response FROM frame_requests WHERE requestId=?').get(first!.requestId)!.response,canonical(first!.task));
- assert.ok(accept(db).taskId);
+ assert.ok(accept(database(t)).taskId);
 });
-
-
-

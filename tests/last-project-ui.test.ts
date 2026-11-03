@@ -186,13 +186,6 @@ test('malformed or mismatched successful write response never produces saved sta
   }
 });
 
-test('restored profile is explicitly unsupported and no selection or flush can write', async t => {
-  const h = harness(t, (({ initial: unsupported }) as unknown as Parameters<typeof harness>[1])); const found = await h.controller.discover(); h.open(id(1)); await h.controller.flush();
-  assert.equal((found)!.workspaceScope, null); assert.equal((found)!.candidateProjectId, null);
-  assert.equal(h.controller.getState().phase, 'unavailable'); assert.equal(h.controller.getState().canRetry, false); assert.equal(h.controller.getState().canRecheck, false);
-  assert.equal(puts(h).length, 0);
-});
-
 test('dispose suppresses callbacks, fences old reads across activation, and does not create writes', async t => {
   const old = deferred(), fresh = deferred(); let count = 0;
   const h = harness(t, { get: () => ++count === 1 ? old.promise : fresh.promise });
@@ -217,7 +210,7 @@ test('bounded flush does not cancel an in-flight authorized write or invent work
 });
 
 const nodes = (tree: RootTree) : RootNode[] => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
-function view(state: LastProjectState, controller: { discover: () => Promise<LastProjectDiscovery|null>; rememberOpened: (projectId: string,capturedEpoch: number) => void; invalidateNavigation: (next: number) => void; retry: () => Promise<void>; recheck: () => Promise<void>; flush: (timeoutMs?: number) => Promise<boolean>; dispose: () => void; activate: () => void; getState: () => LastProjectState; getVerifiedScope: () => string|null; }, restored: boolean|undefined = false) {
+function view(state: LastProjectState, controller: { discover: () => Promise<LastProjectDiscovery|null>; rememberOpened: (projectId: string,capturedEpoch: number) => void; invalidateNavigation: (next: number) => void; retry: () => Promise<void>; recheck: () => Promise<void>; flush: (timeoutMs?: number) => Promise<boolean>; dispose: () => void; activate: () => void; getState: () => LastProjectState; getVerifiedScope: () => string|null; }) {
   const source = readFileSync(new URL('../apps/web/src/LastProjectStatus.tsx', import.meta.url), 'utf8');
   const react = { createElement: (type: string, props: Record<string, unknown> | null, ...children: RootTree[]) => ({ type, props: { ...props, children } }) }; (react as typeof react & {default?: unknown}).default = react;
   const module = { exports: {} as import('./helpers/strict-root-ui-types.ts').RootModule<typeof import('../apps/web/src/LastProjectStatus.tsx')> };
@@ -229,7 +222,7 @@ function view(state: LastProjectState, controller: { discover: () => Promise<Las
     if (name === '@mioon/ui/components/button') return { Button: 'Button' };
     throw new Error(`Unexpected UI dependency: ${name}`);
   }, module, module.exports);
-  return module.exports.default({ state, controller, restored });
+  return module.exports.default({ state, controller });
 }
 
 test('status component uses accessible shared controls, scopes its copy, and exposes only state-approved actions', async t => {
@@ -240,8 +233,6 @@ test('status component uses accessible shared controls, scopes its copy, and exp
   assert.ok(all.some((node) => node.type === 'Button' && node.props['data-testid'] === 'last-project-recheck'));
   assert.match(JSON.stringify(tree), /项目内容和片段草稿分别保存/);
   h.navigate(1); h.open(id(2)); assert.equal(nodes(view(h.controller.getState(), h.controller)).some((node) => node.props['data-testid'] === 'last-project-retry'), false);
-  const restored = view(h.controller.getState(), h.controller, true);
-  assert.match(JSON.stringify(restored), /恢复分支暂不记住最近项目/); assert.equal(nodes(restored).some((node) => node.type === 'Button'), false);
 });
 
 test('request deadlines bound hanging GET and body reads, and tiny PUT permits keepalive', async () => {

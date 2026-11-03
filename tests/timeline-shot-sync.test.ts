@@ -14,7 +14,6 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 
 
@@ -70,7 +69,7 @@ test('both operations are registered, described, effect-annotated, restore-denie
  for(const operation of TIMELINE_SHOT_SYNC_OPERATIONS){
   assert.ok(schemas[operation]&&descriptions[operation].length>40,operation);
   assert.ok(TIMELINE_MUTATION_OPERATIONS.includes(operation),'shares the timeline request namespace and history');
-  assert.ok(RESTORE_DENIED_OPERATIONS.includes(operation),'unavailable in restored workspaces');
+
   const effect=operationEffect(operation);
   assert.deepEqual([effect.readOnly,effect.idempotent,effect.destructive,effect.paidGeneration,effect.externalIO],[false,true,true,false,false]);
   assert.equal(translate('zh-Hans',`operation.${operation}`),descriptions[operation]);
@@ -243,5 +242,3 @@ test('both operations stay out of the durable edit-task ledger, whose table chec
   assert.throws(()=>tasks.prepare({projectId:f.projectId,operation,input:f.request(timeline,fields),origin:'new'}),error=>typeof (error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code==='string',operation);
  assert.equal(rows(),before,'nothing is recorded in the ledger');
 }) as unknown as test.TestFn));
-
-

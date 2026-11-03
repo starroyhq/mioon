@@ -23,7 +23,7 @@ import {readProjectState,changeMarks} from './helpers/project-state.ts';
 
 
 
-import {collectProject,packageDocumentBytes,buildManifest,createProjectFromDocument} from '../packages/business/src/project-package/document.ts';
+import {collectProject,packageDocumentBytes,buildManifest,createProjectFromDocument,type ProjectDocument} from '../packages/business/src/project-package/document.ts';
 
 import {writeProjectPackage,readProjectPackage} from '../packages/business/src/project-package/container.ts';
 import {AGENT_TASK_OPERATION_ADMISSION} from '../packages/business/src/agent/task-tools-v2.ts';
@@ -265,7 +265,8 @@ test('project containers carry previs scenes without receipts or thumbnails; cur
  t.after(()=>{for(const directory of [work,targetRoot,staging])rmSync(directory,{recursive:true,force:true});});
  const document=packageDocumentBytes(collected.document),manifest=buildManifest({collected,document,appVersion:'test',options,name:'Previs'});
  await pipeline(Readable.from(writeProjectPackage({manifest,document,media:collected.media.map(entry=>entry.source)})),createWriteStream(file));
- const read=await readProjectPackage({source:createReadStream(file),destination:staging});
+ const result=await readProjectPackage({source:createReadStream(file),destination:staging});
+ const read={...result,document:result.document as ProjectDocument};
  assert.deepEqual(read.document.nodes,collected.document.nodes);
  assert.deepEqual(read.document.assets,collected.document.assets);
  const packaged=read.document.nodes.find(item=>item.type==='previs')!;

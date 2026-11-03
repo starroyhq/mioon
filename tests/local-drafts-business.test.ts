@@ -126,7 +126,7 @@ test('unsafe sidecar files and unavailable storage refuse without repairing perm
 
 test('a closed real kernel owner cannot write companion files',async t=>{
   const f=await fixture(t),input=f.input();assert.throws(()=>openStore(f.store.projectDir),{code:'PROJECT_LOCKED'});f.store.close();
-  const drafts=createLocalDrafts({root:f.root,databaseFile:path.join(f.store.localDir,'history.db'),storage,guards:{ownsLock:()=>ownsStoreLock(f.store),isRestored:()=>false,readTimeline:()=>f.timeline,readClipAsset:()=>f.asset}});
+  const drafts=createLocalDrafts({root:f.root,databaseFile:path.join(f.store.localDir,'history.db'),storage,guards:{ownsLock:()=>ownsStoreLock(f.store),readTimeline:()=>f.timeline,readClipAsset:()=>f.asset}});
   assert.throws(()=>drafts.put(input),code('LOCAL_DRAFT_OWNER_REQUIRED'));assert.equal(existsSync(f.file),false);
   assert.throws(()=>drafts.get(f.key),code('LOCAL_DRAFT_OWNER_REQUIRED'));assert.throws(()=>drafts.list({projectId:f.project.id}),code('LOCAL_DRAFT_OWNER_REQUIRED'));
 });

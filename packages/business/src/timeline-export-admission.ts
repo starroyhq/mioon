@@ -47,7 +47,11 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
  const active=new Set<ActiveCheck>();let stopped=false,shutdownFailure: unknown;
  async function inspectOwned(delivery: unknown,{signal:callSignal}: AdmissionOptions={}): Promise<unknown>{
   assertProjectStore(store);
-  const beforeEffect=()=>assertProjectStore(store);
+  let settled=false;
+  const beforeEffect=()=>{
+   if(settled||stopped)throw new AppError('OPERATION_CANCELLED','Export capability observation has ended',503);
+   checkpoint(signal);assertProjectStore(store);
+  };
   const external=ownerSignal&&callSignal&&ownerSignal!==callSignal?AbortSignal.any([ownerSignal,callSignal]):ownerSignal||callSignal;
   checkpoint(external);if(shutdownFailure)throw shutdownFailure;if(stopped)throw new AppError('OPERATION_CANCELLED','Operation interrupted by shutdown',503);
   if(store.db.isTransaction)throw new AppError('EXPORT_CAPABILITY_CONFIGURATION',messages.EXPORT_CAPABILITY_CONFIGURATION,409);
@@ -65,7 +69,7 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
    if((error as {code?:unknown})?.code==='PROJECT_STORE_UNVERIFIED')throw error;
    checkpoint(signal);if(['OPERATION_CANCELLED','MEDIA_CANCELLED'].includes(failure.code as string))throw error;
    return {status:'incomplete',code:'EXPORT_CAPABILITY_FAILED'};
-  }
+  }finally{settled=true;}
  }
  function read(input: TimelineRecoveryInput): {timeline: TimelineRecord;delivery: unknown}|null{
   const timeline=createTimelineRecoveryBoundary(store.db,input).read();

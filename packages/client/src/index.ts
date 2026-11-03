@@ -37,7 +37,7 @@ export {prepareTimelineMixLoudness} from './timeline-mix-loudness.ts';
 import {isSubjectGenerationResponse,isSubjectGenerationRetryResponse} from '@mioon/contracts';
 import {isEntityAddressedOperation, rpcPathFor} from '../../contracts/src/project-addressing.ts';
 import {isProjectId} from '../../contracts/src/project-file.ts';
-import {isProjectBackupOperation, isProjectBackupResponse} from '../../contracts/src/project-backups.ts';
+import {projectBackupSchemas,isProjectBackupOperation, isProjectBackupResponse} from '../../contracts/src/project-backups.ts';
 import {isProjectVersionOperation, isProjectVersionResponse} from '../../contracts/src/project-version-operations.ts';
 
 // CLI, MCP and the server share the contracts registry. Mio classifies its

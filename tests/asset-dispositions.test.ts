@@ -12,11 +12,9 @@ import type {FixtureProject} from './helpers/strict-timeline-core-types.ts';
 type SqlRow=Record<string,SQLOutputValue>;
 interface DispositionAsset{id:string;projectId:string;name:string;mimeType:string;duration:number;sha256:string;relativePath:string;url:string}
 interface DispositionFixture {root:string;readonly store:TypedStore;call:TypedCall;project:FixtureProject;other:FixtureProject;restart():void;asset(mimeType?:string,projectId?:string):DispositionAsset;input(asset:Pick<DispositionAsset,'id'|'projectId'>,patch?:Record<string,unknown>):{projectId:string;assetId:string;expectedRevision:number;requestId:string;disposition:string};subjectInputs?:Record<string,Record<string,unknown>>}
-interface RawSchemaSnapshot{objects:Parameters<typeof withoutReviewedStorageObjects>[0];tables:Record<string,{fields:unknown;rows:unknown[]}>}
 interface RaceMessage{phase:string;ok:boolean;code:string;details:Record<string,unknown>;value:unknown}
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedServices, TypedStore} from './helpers/strict-service-responses.ts';
-import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -44,7 +42,7 @@ async function fixture(t:test.TestContext,{open=openStore}:{open?:typeof openSto
  const root=await mkdtemp(path.join(tmpdir(),'mioon-asset-dispositions-'));
  let store=open(root) as TypedStore,services=(createServices(store,new Map()) as TypedServices);
  const f={root,get store(){return store;},call:<O extends string>(op: O,input: unknown)=>services.call(op,input),
-  restart(){store.close();store=((open===openStore?openStore:openHistoricalWorkspaceStore)(root) as TypedStore);services=(createServices(store,new Map()) as TypedServices);},
+  restart(){store.close();store=(openStore(root) as TypedStore);services=(createServices(store,new Map()) as TypedServices);},
   asset(mimeType='video/mp4',projectId=f.project.id){return store.put('assets',{id:randomUUID(),projectId,name:'Private disposition asset',mimeType,duration:2,sha256:'a'.repeat(64),relativePath:'media/fixture',url:'/media/fixture'});},
   input(asset:Pick<DispositionAsset,"projectId"|"id">,patch={}){return {projectId:asset.projectId,assetId:asset.id,expectedRevision:0,requestId:randomUUID(),disposition:'favorite',...patch};},
  } as DispositionFixture;

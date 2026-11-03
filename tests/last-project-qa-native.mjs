@@ -1,3 +1,9 @@
+/** Live first-boot/close-decision/pre-crash stages record bounded physical/JSON
+ * captures only. SQL audit/verify stages require normal Quit, or confirmed owned
+ * SIGKILL plus backend exit. Use resume <unique-label> between cold stages,
+ * reselecting/reapplying the saved form through native UI after each restart.
+ * prepare/help/syntax never imply native GUI validation. */
+import {prepareNativeQaProject,openNativeQaProject,listNativeQaProjects,closeQaProject,captureNativeQa,readNativeQaDocument,checkedNativeMetadata,checkedNativeApplication,prepareNativeQaLiveLayout,captureNativeQaLive} from './helpers/native-local-qa-fixture.ts';
 /** Synthetic packaged Linux acceptance; never a product entry point.
  * Native UI actions and screenshots are performed separately. No locator,
  * renderer storage, credentials, or injected application switches are seeded.
@@ -21,22 +27,22 @@ import {spawn} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {createReadStream} from 'node:fs';
 import {readFile,writeFile,readdir,lstat,open,readlink} from 'node:fs/promises';
-import {DatabaseSync} from 'node:sqlite';
 import {ensurePrivateDirectory,readPrivateFile,validateManagedFile} from '../packages/contracts/src/private-storage.ts';
 import {lastProjectDiskSchema} from '../packages/contracts/src/last-project.ts';
-import {openStore} from '../packages/business/src/db.ts';
+
 import {createServices} from '../packages/business/src/services.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
 import {createWorkspacePreferences} from '../packages/business/src/workspace-preferences.ts';
 import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
-import {ownQaChild} from './agent-timeline-move-qa-native.mjs';
+import {ownQaChild} from './helpers/qa-owned-child.mjs';
 
+const ffmpeg=process.env.MIOON_FFMPEG_PATH||(process.platform==='linux'?'/usr/bin/ffmpeg':'/opt/homebrew/bin/ffmpeg'),ffprobe=process.env.MIOON_FFPROBE_PATH||(process.platform==='linux'?'/usr/bin/ffprobe':'/opt/homebrew/bin/ffprobe');
 const repo=fileURLToPath(new URL('../',import.meta.url));
 const scenario=process.env.MIOON_LAST_PROJECT_QA_RUN||'native';
 assert.ok(['native','native-repeat'].includes(scenario),'Unexpected synthetic QA run directory');
-const root=path.join(repo,'evidence/last-project',scenario);
+const root=process.env.MIOON_QA_FIXTURE_ROOT?path.resolve(process.env.MIOON_QA_FIXTURE_ROOT):path.join(repo,'evidence/last-project',scenario);
 const runtime=path.join(root,'private-runtime'),report=path.join(root,'report');
-const userData=path.join(runtime,'user-data'),workspace=path.join(userData,'workspace');
+const userData=path.join(runtime,'user-data'),workspace=path.join(userData,'data');
 const executable=path.join(repo,'release/desktop/production/linux-unpacked/mioon');
 const asar=path.join(path.dirname(executable),'resources/app.asar');
 const fixtureFile=path.join(runtime,'fixture.json'),locatorFile=path.join(workspace,'last-project-v1.json');
@@ -65,10 +71,10 @@ async function packageHashes(){return {executable:await fileHash(executable),asa
 function environment(){
  return {...Object.fromEntries(['PATH','HOME','LANG','LC_ALL','DISPLAY','XAUTHORITY','XDG_RUNTIME_DIR','DBUS_SESSION_BUS_ADDRESS','TMPDIR']
   .filter(key=>typeof process.env[key]==='string').map(key=>[key,process.env[key]])),
-  MIOON_DESKTOP_USER_DATA:userData,MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_FFMPEG_PATH:'/usr/bin/ffmpeg',MIOON_FFPROBE_PATH:'/usr/bin/ffprobe'};
+  MIOON_DESKTOP_USER_DATA:userData,MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_FFMPEG_PATH:ffmpeg,MIOON_FFPROBE_PATH:ffprobe};
 }
 async function command(binary,args,label){
- assert.ok(['/usr/bin/ffmpeg','/usr/bin/ffprobe'].includes(binary));assert.ok(safeLabel(label));
+ assert.ok([ffmpeg,ffprobe].includes(binary));assert.ok(safeLabel(label));
  const stdout=await open(path.join(runtime,label+'.stdout'),'wx',0o600);let stderr,owned,timer;
  try{
   stderr=await open(path.join(runtime,label+'.stderr'),'wx',0o600);
@@ -80,12 +86,12 @@ async function command(binary,args,label){
 }
 function fixture(){
  for(const directory of [root,runtime,report,userData,workspace])ensurePrivateDirectory(directory);
- const value=readJson(fixtureFile,128*1024);
+ const value=readJson(fixtureFile,128*1024);assert.equal(value.kernel,true,'Use a fresh current-kernel fixture');
  assert.equal(value.synthetic,true);assert.equal(value.scenario,'last-project');assert.equal(value.workspace,workspace);
  assert.notEqual(value.target.id,value.originalFallback.id);return value;
 }
 function locator(){
- const bytes=readPrivateFile(locatorFile,{root:workspace,allowMissing:true,private:true,maxBytes:4096});
+ const document=readNativeQaDocument(workspace,'last-project-v1.json'),bytes=document===null?null:Buffer.from(document,'utf8');
  return bytes===null?null:{...lastProjectDiskSchema.parse(JSON.parse(bytes.toString('utf8'))),bytes:bytes.length,sha256:sha(bytes)};
 }
 function lockSnapshot(){
@@ -136,32 +142,27 @@ async function waitConnection(owned,previous){
 }
 
 async function prepare(){
- assert.equal(process.platform,'linux','This fixture is Linux-only');
+
  assert.equal(await exists(root),false,'Native fixture directory already exists; no overwrite or cleanup is permitted');
  for(const directory of [root,runtime,report,userData])ensurePrivateDirectory(directory,{create:true});
  await writeFile(path.join(runtime,'prepare-claim.json'),json({synthetic:true,id:randomUUID()}),{mode:0o600,flag:'wx'});
  const source=path.join(runtime,'synthetic-green-880hz.mp4');
- await command('/usr/bin/ffmpeg',['-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=0x18bf57:s=320x180:r=30:d=2',
+ await command(ffmpeg,['-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=0x18bf57:s=320x180:r=30:d=2',
   '-f','lavfi','-i','sine=frequency=880:sample_rate=48000:duration=2','-c:v','libx264','-threads','1','-pix_fmt','yuv420p',
   '-c:a','aac','-ac','2','-shortest','-movflags','+faststart','-n',source],'source-media');
  // The real asset-import service owns its probe; use the same installed tools
  // as the packaged launch, without inheriting an unrelated tool override.
- process.env.MIOON_FFMPEG_PATH='/usr/bin/ffmpeg';process.env.MIOON_FFPROBE_PATH='/usr/bin/ffprobe';
- // Match ordinary server schema initialization, including the empty mock
- // provider tables. Constructing this registry never submits a provider task.
- const fixtureProviderEnvironment={MIOON_ENABLE_LIVE_PROVIDER:'0'};
- const store=openStore(workspace),providers=createProviderRegistry({db:store.db,root:workspace,env:fixtureProviderEnvironment});
- const services=createServices(store,providers,{env:fixtureProviderEnvironment});let value;
+ process.env.MIOON_FFMPEG_PATH=ffmpeg;process.env.MIOON_FFPROBE_PATH=ffprobe;
+ const initialized=[];
+ for(const name of ['最近项目 · 合成项目 A','最近项目 · 合成项目 B']){
+  const current=await prepareNativeQaProject(workspace,name),{project,services}=current;
+  try{const timeline=await services.call('timeline.format.set',{projectId:project.id,expectedProjectRevision:project.revision,expectedRevision:0,requestId:randomUUID(),presetId:'landscape_720'});initialized.push({project,timeline});}
+  finally{await closeQaProject(current);}
+ }
+ const listed=listNativeQaProjects(workspace);assert.equal(listed.length,2);
+ const originalFallback=listed[0],target=listed[1];assert.notEqual(target.id,originalFallback.id);
+ const {store,services}=openNativeQaProject(workspace,target.id);let value;
  try{
-  const initialized=[];
-  for(const name of ['最近项目 · 合成项目 A','最近项目 · 合成项目 B']){
-   const project=await services.call('project.create',{name});
-   const timeline=await services.call('timeline.format.set',{projectId:project.id,expectedProjectRevision:project.revision,
-    expectedRevision:0,requestId:randomUUID(),presetId:'landscape_720'});
-   initialized.push({project,timeline});
-  }
-  const listed=await services.call('project.list',{});assert.equal(listed.length,2);
-  const originalFallback=listed[0],target=listed[1];assert.notEqual(target.id,originalFallback.id);
   const asset=await services.call('asset.import',{projectId:target.id,name:'合成绿色画面与 880Hz.mp4',mimeType:'video/mp4',dataBase64:(await readFile(source)).toString('base64')});
   let timeline=initialized.find(item=>item.project.id===target.id).timeline;
   timeline=await services.call('timeline.clip.add',{projectId:target.id,expectedRevision:timeline.revision,requestId:randomUUID(),
@@ -173,37 +174,28 @@ async function prepare(){
    if(project.id===target.id){state.activeMode='editing';state.editing.selectedClipId=clip.id;state.editing.playhead=17;state.editing.previewKind='source';}
    saved.push(preferences.put(project.id,{expectedRevision:0,state}));
   }
-  const finalList=await services.call('project.list',{});assert.equal(finalList[0].id,originalFallback.id);
-  assert.equal(await exists(locatorFile),false,'Preparation must never seed a locator');
-  value={synthetic:true,scenario:'last-project',id:randomUUID(),workspace,
+  const finalList=listNativeQaProjects(workspace,store);assert.equal(finalList[0].id,originalFallback.id);
+
+  value={synthetic:true,kernel:true,scenario:'last-project',id:randomUUID(),workspace,projectDir:store.projectDir,localDir:store.localDir,projectFile:store.projectFile,
    projectList:finalList.map(({id,name})=>({id,name})),originalFallback:{id:originalFallback.id,name:originalFallback.name},
    target:{id:target.id,name:target.name},timelineId:timeline.id,clipId:clip.id,assetId:asset.id,baseRevision:timeline.revision,
    expectedTimeline:timeline,targetPreferences:saved.find(item=>item.projectId===target.id),sourceSha256:asset.sha256,
    sourceFile:await fileHash(source),initialLocatorAbsent:true};
  }finally{try{await services.drain();}finally{store.close();}}
+ assert.equal(readNativeQaDocument(workspace,'last-project-v1.json'),null,'Preparation must never seed a locator');
  await writeFile(fixtureFile,json(value),{mode:0o600,flag:'wx'});
- await writeReport('fixture.json',value);await audit('prepared');
+ await writeReport('fixture.json',value);await audit('prepared');await writeReport('database-layout.json',await prepareNativeQaLiveLayout(workspace));
  for(const label of ['first','reopen','final'])await writeFile(path.join(runtime,'launch-'+label+'.sh'),
   `#!/bin/bash\nset -e\ncd ${shellQuote(repo)}\nexport MIOON_LAST_PROJECT_QA_RUN=${shellQuote(scenario)}\nexec ${shellQuote(process.execPath)} tests/last-project-qa-native.mjs launch ${label}\n`,{mode:0o700,flag:'wx'});
  return value;
 }
 
-function readDatabase(){
- validateManagedFile(path.join(workspace,'workbench.sqlite'),{root:workspace,maxBytes:32*1024*1024});
- const db=new DatabaseSync(path.join(workspace,'workbench.sqlite'),{readOnly:true}),rows={};let schema;
- try{
-  db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF; BEGIN');
-  schema=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name LIMIT 513').all();
-  assert.ok(schema.length<=512,'Schema audit limit');
-  const names=schema.filter(item=>item.type==='table');assert.ok(names.length<=128,'Table audit limit');
-  for(const {name} of names){
-   assert.match(name,/^[a-z_]+$/);rows[name]=db.prepare(`SELECT * FROM "${name}" ORDER BY rowid LIMIT 1001`).all();
-   assert.ok(rows[name].length<=1000&&Buffer.byteLength(JSON.stringify(rows[name]))<=1024*1024,'Synthetic row audit limit');
-  }
-  db.exec('COMMIT');
- }finally{if(db.isTransaction)db.exec('ROLLBACK');db.close();}
- return {rows,schemaSha256:sha(JSON.stringify(schema))};
+
+function expectedSystemTables(result,before,{content=false,preferences=false}={}){
+ const prepared=fixture(),selected=prepared.projectId??prepared.target.id,opened=prepared.projectId?[prepared.projectId]:[prepared.originalFallback.id,prepared.target.id];
+ return new Set([...checkedNativeMetadata(before,result,content?[selected]:[]),...checkedNativeApplication(before,result,opened,preferences?[prepared.originalFallback?.id??selected]:[])]);
 }
+function readDatabase(){return captureNativeQa(workspace);}
 function assertTargetPreferences(result,preparedFixture){
  const preference=result.preferences.find(item=>item.projectId===preparedFixture.target.id);
  assert.deepEqual(preference,preparedFixture.targetPreferences,'Saved target editing preferences changed');
@@ -217,18 +209,44 @@ function assertRemembered(result,preparedFixture){
 function assertUnchanged(result,baseline,{allowFallbackPreferences=false}={}){
  assert.equal(result.schemaSha256,baseline.schemaSha256);
  assert.deepEqual(Object.keys(result.tables),Object.keys(baseline.tables));
- for(const name of Object.keys(baseline.tables))if(!(allowFallbackPreferences&&name==='workspace_preferences'))
+ const systemTables=expectedSystemTables(result,baseline,{preferences:allowFallbackPreferences});
+ for(const name of Object.keys(baseline.tables))if(!systemTables.has(name)&&!(allowFallbackPreferences&&name==='workspace_preferences'))
   assert.deepEqual(result.tables[name],baseline.tables[name],`Unexpected change in ${name}`);
  assert.deepEqual(result.media,baseline.media,'Unexpected original media change');
  assert.deepEqual(result.timelines,baseline.timelines,'Saved timeline changed');
 }
-async function audit(label){
- assert.ok(safeLabel(label),'Invalid audit label');const preparedFixture=fixture(),{rows,schemaSha256}=readDatabase();
- const names=(await readdir(path.join(workspace,'media'))).sort();assert.ok(names.length<=32,'Media audit limit');
- const media=[];for(const name of names){assert.match(name,/^[a-zA-Z0-9._-]+\.(mp4|png|wav)$/);media.push({name,...await fileHash(path.join(workspace,'media',name),32*1024*1024)});}
+function assertPhysicalUnchanged(result,before){assert.equal(result.kind,'live-physical');assert.equal(before.kind,'live-physical');assert.deepEqual(result.physical.files,before.physical.files,'All real SQLite files and journals remain byte/identity-exact');assert.deepEqual(result.physical.databases,before.physical.databases);}
+async function liveCapture(label){
+ assert.ok(['first-boot','before-crash'].includes(label),'This SQL audit requires normal Quit before capture');
+ const prepared=fixture(),lock=lockSnapshot();assert.ok(lock,'a hot capture requires the real backend lock');
+ const names=(await readdir(report)).filter(name=>/^[a-z0-9-]+-connection\.json$/.test(name));assert.ok(names.length<=32);
+ let owner;for(const name of names){const connection=readJson(path.join(report,name));if(connection.backendPid!==lock.pid)continue;
+  const launch=readJson(path.join(report,name.replace('-connection.json','-launch.json')));assert.equal(connection.launchId,launch.launchId);owner=[launch.mainPid,connection.backendPid];}
+ assert.ok(owner,'the exact owned launch and backend connection must match');
+ const result={synthetic:true,kind:'live-physical',label,fixtureId:prepared.id,at:new Date().toISOString(),lock,physical:captureNativeQaLive(readJson(path.join(report,'database-layout.json')),owner),locatorEvidence:'cold-only'};
+ if(label==='before-crash')assert.equal(lock.pid,readJson(path.join(report,'first-connection.json')).backendPid);
+ await writeReport(label+'-capture.json',result);return result;
+}
+async function resume(label){
+ assert.equal(process.platform,'linux');assert.ok(safeLabel(label));const prepared=fixture();assert.equal(lockSnapshot(),null,'normal quit is required before a continuation');const hashes=await packageHashes();
+ const log=await open(path.join(runtime,'resume-'+label+'-native.log'),'wx',0o600);let owned,timer;
+ try{owned=ownQaChild(spawn(executable,[],{cwd:repo,env:environment(),stdio:['ignore',log.fd,log.fd]}));
+  const initial={synthetic:true,fixtureId:prepared.id,launchId:randomUUID(),label,mainPid:owned.child.pid,packageHashes:hashes,sandboxUnchanged:true,debugging:false};await writeReport('resume-'+label+'-launch.json',initial);
+  const connection=await waitConnection(owned,null);await writeReport('resume-'+label+'-connection.json',{...connection,launchId:initial.launchId});
+  const result=await Promise.race([owned.done,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Native continuation observation window ended')),30*60*1000);})]);
+  for(const deadline=Date.now()+45000;lockSnapshot()!==null&&Date.now()<deadline;)await pause(250);
+  assert.deepEqual(result,{code:0,signal:null});assert.equal(lockSnapshot(),null);assert.deepEqual(await packageHashes(),hashes);
+  await writeReport('resume-'+label+'-exit.json',{...initial,result,backendLockReleased:true});
+ }catch(error){if(owned&&!owned.closed)await owned.stop();throw error;}finally{clearTimeout(timer);await log.close();}
+}
+async function audit(label,{afterCrash=false}={}){
+ if(!afterCrash&&lockSnapshot()!==null)return liveCapture(label);
+ assert.ok(safeLabel(label),'Invalid audit label');const preparedFixture=fixture(),{rows,schemaSha256,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries}=readDatabase();
+ const names=(await readdir(path.join(fixture().projectDir,'media'))).sort();assert.ok(names.length<=32,'Media audit limit');
+ const media=[];for(const name of names){assert.match(name,/^[a-zA-Z0-9._-]+\.(mp4|png|wav)$/);media.push({name,...await fileHash(path.join(fixture().projectDir,'media',name),32*1024*1024)});}
  const tables=Object.fromEntries(Object.entries(rows).map(([name,value])=>[name,{count:value.length,sha256:sha(JSON.stringify(value)),rowSha256:value.map(row=>sha(JSON.stringify(row)))}]));
- const result={synthetic:true,at:new Date().toISOString(),label,fixtureId:preparedFixture.id,schemaSha256,tables,
-  logicalDatabaseSha256:sha(JSON.stringify(tables)),databaseFile:await fileHash(path.join(workspace,'workbench.sqlite'),32*1024*1024),
+ const result={synthetic:true,at:new Date().toISOString(),label,fixtureId:preparedFixture.id,schemaSha256,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries,tables,
+  logicalDatabaseSha256:sha(JSON.stringify(tables)),databaseFiles:await Promise.all(Object.values(captureNativeQa(workspace).locations).flatMap(location=>[location.projectFile,path.join(location.localDir,'history.db'),path.join(location.cacheDir,'cache.db')]).map(async file=>({file,...await fileHash(file,32*1024*1024)}))),
   preferences:rows.workspace_preferences.map(row=>({projectId:row.projectId,revision:row.revision,state:JSON.parse(row.state)})),
   timelines:rows.timelines.map(row=>JSON.parse(row.data)),assets:rows.assets.map(row=>JSON.parse(row.data)),
   exports:rows.exports.map(row=>JSON.parse(row.data)),timelineRequests:rows.timeline_requests.map(row=>({requestId:row.requestId,response:JSON.parse(row.response)})),
@@ -257,7 +275,7 @@ async function launch(label){
  const preparedFixture=fixture();let previous=null;
  assert.equal(await exists(path.join(report,label+'-launch.json')),false,'Launch evidence already exists');
  if(label==='first'){
-  assert.equal(lockSnapshot(),null);assert.equal(locator(),null);assert.equal(await exists(path.join(userData,'mcp-connection.json')),false);
+  assert.equal(lockSnapshot(),null);assert.equal(locator(),null);if(await exists(path.join(report,'resume-boot-exit.json'))){assert.deepEqual(readJson(path.join(report,'resume-boot-exit.json')).result,{code:0,signal:null});previous=readJson(path.join(report,'resume-boot-connection.json'));}else assert.equal(await exists(path.join(userData,'mcp-connection.json')),false);
  }else if(label==='reopen'){
   const exit=readJson(path.join(report,'first-exit.json')),inspection=readJson(path.join(report,'crash-inspection.json'));
   assert.deepEqual(exit.result,{code:null,signal:'SIGKILL'});assert.equal(exit.crashRequested,true);
@@ -285,8 +303,8 @@ async function launch(label){
    if(label==='first'&&!crashRequested&&await exists(path.join(runtime,'first-crash-request.json'))){
     const request=readJson(path.join(runtime,'first-crash-request.json'));
     assert.equal(request.fixtureId,preparedFixture.id);assert.equal(request.launchId,initial.launchId);assert.equal(request.label,'first');
-    const before=readJson(path.join(report,'before-crash-audit.json'));assertRemembered(before,preparedFixture);
-    assert.deepEqual(lockSnapshot(),before.lock);assert.deepEqual(locator(),before.locator);
+    const before=readJson(path.join(report,'before-crash-capture.json'));assert.equal(before.locatorEvidence,'cold-only');
+    assert.deepEqual(lockSnapshot(),before.lock);
     crashRequested=true;assert.equal(owned.child.kill('SIGKILL'),true,'The exact owned main process was not signalled');childSignals.push('SIGKILL');
    }
    if(!owned.closed)await pause(200);
@@ -298,7 +316,7 @@ async function launch(label){
   await writeReport(label+'-exit.json',exit);assert.deepEqual(endedPackageHashes,hashes);
   if(crashRequested){
    assert.deepEqual(result,{code:null,signal:'SIGKILL'});assert.equal(backendLockReleased,false,'Expected the real crash to leave a stale lock');
-   assert.deepEqual(remainingLock,readJson(path.join(report,'before-crash-audit.json')).lock);
+   assert.deepEqual(remainingLock,readJson(path.join(report,'before-crash-capture.json')).lock);
   }else{assert.deepEqual(result,{code:0,signal:null});assert.equal(backendLockReleased,true,'Normal quit did not release the backend lock');}
  }catch(error){if(owned&&!owned.closed)await owned.stop();throw error;}
  finally{await log.close();}
@@ -306,14 +324,14 @@ async function launch(label){
 async function crash(label){
  assert.equal(label,'first','Only the initial exact owned native main process may be crashed');const preparedFixture=fixture();
  assert.equal(await exists(path.join(report,'first-exit.json')),false,'The initial launch already exited');
- const launchRecord=readJson(path.join(report,'first-launch.json')),before=readJson(path.join(report,'before-crash-audit.json'));
- assertRemembered(before,preparedFixture);assert.deepEqual(locator(),before.locator);assert.deepEqual(lockSnapshot(),before.lock);
+ const launchRecord=readJson(path.join(report,'first-launch.json')),before=readJson(path.join(report,'before-crash-capture.json'));
+ assert.equal(before.locatorEvidence,'cold-only');assert.deepEqual(lockSnapshot(),before.lock);
  await writeFile(path.join(runtime,'first-crash-request.json'),json({fixtureId:preparedFixture.id,label,launchId:launchRecord.launchId}),{mode:0o600,flag:'wx'});
 }
 async function inspectCrash(){
  const preparedFixture=fixture(),exit=readJson(path.join(report,'first-exit.json')),connection=readJson(path.join(report,'first-connection.json'));
  assert.deepEqual(exit.result,{code:null,signal:'SIGKILL'});
- const before=readJson(path.join(report,'before-crash-audit.json')),nativeNamespaces=await namespaces();
+ const before=readJson(path.join(report,'before-crash-capture.json')),nativeNamespaces=await namespaces();
  assert.deepEqual(nativeNamespaces,connection.namespaces,'Inspect in the native PID/network namespaces, not another executor');
  assert.deepEqual(await safeConnection(),Object.fromEntries(Object.entries(connection).filter(([key])=>['origin','port','backendPid','channel','namespaces'].includes(key))));
  let stat,probe;
@@ -329,6 +347,7 @@ async function inspectCrash(){
  await writeReport('crash-inspection.json',result);
  assert.equal(result.backendProcessAbsent,true,'Backend still exists; do not relaunch or remove its lock');
  assert.equal(probe.error,'ECONNREFUSED','Old backend port is not confirmed closed');assert.equal(result.lockUnchanged,true);
+ const cold=await audit('before-crash',{afterCrash:true});assert.deepEqual(cold.lock,before.lock);
  return result;
 }
 
@@ -342,7 +361,8 @@ async function verifyExport(){
  const exported=result.exports[0];assert.equal(exported.status,'succeeded');assert.equal(exported.purpose,'export');assert.equal(exported.mode,'timeline');
  assert.equal(exported.projectId,preparedFixture.target.id);assert.equal(exported.timelineRevision,preparedFixture.baseRevision);
  assert.deepEqual(exported.snapshot.timeline,preparedFixture.expectedTimeline);
- for(const [name,table] of Object.entries(before.tables)){
+ const systemTables=expectedSystemTables(result,before,{content:true,preferences:true});
+ for(const [name,table] of Object.entries(before.tables)){if(systemTables.has(name))continue;
   if(['assets','exports','timeline_requests'].includes(name)){
    assert.equal(result.tables[name].count,table.count+1,`One export must add exactly one ${name} row`);
    for(const hash of table.rowSha256)assert.ok(result.tables[name].rowSha256.includes(hash),`Original ${name} row changed`);
@@ -355,12 +375,12 @@ async function verifyExport(){
  for(const original of before.media)assert.deepEqual(result.media.find(item=>item.name===original.name),original);
  assert.equal(result.media.length,before.media.length+1);
  const asset=result.assets.find(item=>item.id===exported.assetId);assert.ok(asset);assert.equal(asset.projectId,preparedFixture.target.id);assert.equal(asset.provenance,'export');
- assert.match(asset.relativePath,/^media\/[a-zA-Z0-9._-]+\.mp4$/);const file=path.join(workspace,asset.relativePath),output=await fileHash(file,32*1024*1024);
+ assert.match(asset.relativePath,/^media\/[a-zA-Z0-9._-]+\.mp4$/);const file=path.join(fixture().projectDir,asset.relativePath),output=await fileHash(file,32*1024*1024);
  assert.equal(output.sha256,asset.sha256);assert.ok(!before.media.some(item=>item.name===path.basename(file)));
- await command('/usr/bin/ffprobe',['-v','error','-show_streams','-show_format','-of','json',file],'export-probe');
+ await command(ffprobe,['-v','error','-show_streams','-show_format','-of','json',file],'export-probe');
  const probe=readJson(path.join(runtime,'export-probe.stdout')),video=probe.streams.find(stream=>stream.codec_type==='video'),audio=probe.streams.find(stream=>stream.codec_type==='audio');
  assert.ok(video&&audio);assert.equal(video.width,1280);assert.equal(video.height,720);assert.equal(video.r_frame_rate,'30/1');assert.equal(Number(video.nb_frames),60);assert.equal(audio.sample_rate,'48000');
- await command('/usr/bin/ffmpeg',['-v','error','-i',file,'-f','null','-'],'export-decode');
+ await command(ffmpeg,['-v','error','-i',file,'-f','null','-'],'export-decode');
  const verification={synthetic:true,fixtureId:preparedFixture.id,at:new Date().toISOString(),exportId:exported.id,assetId:asset.id,requestId:exported.requestId,
   onlyAddedRows:{assets:1,exports:1,timeline_requests:1},originalMediaUnchanged:true,output,
   video:{width:video.width,height:video.height,rate:video.r_frame_rate,frames:Number(video.nb_frames)},audio:{codec:audio.codec_name,sampleRate:audio.sample_rate},decodeExit:0};
@@ -396,7 +416,7 @@ async function final(){
  assert.deepEqual(exits[0].result,{code:null,signal:'SIGKILL'});assert.deepEqual(exits[0].childSignals,['SIGKILL']);assert.equal(exits[0].backendLockReleased,false);
  for(const item of exits.slice(1)){assert.deepEqual(item.result,{code:0,signal:null});assert.equal(item.crashRequested,false);assert.deepEqual(item.childSignals,[]);assert.equal(item.backendLockReleased,true);}
  const inspection=readJson(path.join(report,'crash-inspection.json'));assert.equal(inspection.backendProcessAbsent,true);assert.equal(inspection.health.error,'ECONNREFUSED');assert.equal(inspection.lockUnchanged,true);
- const summary={synthetic:true,scenario:'last-project',platform:'linux',productionBackend:true,fixtureId:preparedFixture.id,
+ const summary={synthetic:true,kernel:true,scenario:'last-project',platform:'linux',productionBackend:true,fixtureId:preparedFixture.id,
   selectedTarget:preparedFixture.target,originalFallback:preparedFixture.originalFallback,selectedTargetIsNotOrdinaryFallback:true,
   originalLocatorAbsent:true,locatorRevision:result.locator.revision,locatorBytesUnchangedAcrossRecovery:true,
   targetEditingPreferencesUnchanged:true,businessTablesAndRequestsUnchangedBeforeExport:true,originalMediaUnchanged:true,
@@ -408,7 +428,7 @@ async function final(){
 }
 
 const [action,label,...extra]=process.argv.slice(2);assert.equal(extra.length,0,'Unexpected fixture arguments');
-if(action==='prepare')console.log(json(await prepare()));
+if(action==='--help')console.log('prepare; launch first; audit first-boot (physical while live); audit before-crash (JSON/physical only); crash first; inspect-crash (cold SQL after confirmed backend exit); launch reopen; normal Quit before SQL audit; resume <unique-label> for later UI stages; close before verify/final. Last-project starts with resume boot, normal Quit, audit first-boot, then launch first. No GUI validation is implied by prepare.');else if(action==='resume')await resume(label);else if(action==='prepare')console.log(json(await prepare()));
 else if(action==='launch')await launch(label);
 else if(action==='audit')console.log(json(await audit(label)));
 else if(action==='crash')await crash(label);

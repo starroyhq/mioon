@@ -214,7 +214,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const idem=(scope: string,key: string,h: string,id: string): void=>{db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run(scope,key,h,id);};
  const event=(job: ServiceRow,entry: ServiceRow): void=>{db.prepare('INSERT INTO job_events(jobId,event,createdAt) VALUES(?,?,?)').run(job.id as string,JSON.stringify(entry),now());};
  const saveJob=(job: JobRecord,patch: ServiceRow): ServiceRow=>{
-  
+
   const save=():ServiceRow=>{
    const current=required('jobs',job.id);
    const currentRevision=typeof current.revision==='number'?current.revision:0,jobRevision=typeof job.revision==='number'?job.revision:0;
@@ -227,7 +227,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const capabilitiesFor=(provider: Provider,asOf=currentProfileDate())=>normalizedCapabilities(provider,runtimeEnv,0,{asOf,requireInputProfiles:profilePolicy||usesInputProfiles(provider)});
  const configuredVideoProviders=new Map<string,Provider>();
  const boundProvider=(binding:VideoExecutionBinding):Provider=>{
-  
+
   if(!videoSettings)throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','视频连接设置不可用。',409);
   videoSettings.assertBinding(binding);
   const key=canonical(binding);let provider=configuredVideoProviders.get(key);
@@ -290,7 +290,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   return job;
  }
  const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null): JobRecord=>tx(()=>{
-  
+
   const requestHash=hash(input),prior=dedupe('generation',input.requestId,requestHash,'jobs');
   if(prior){const priorJob=prior as JobRecord;return input.subjectVersionId!==undefined||hasSubjectGeneration(priorJob.snapshot)?replaySubjectJob(priorJob,input,retryOfJobId):priorJob;}
   assertSubjectGenerationRequestVacant(db,input);
@@ -548,14 +548,14 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const removeExportStopper=setAgentTaskJobStopper(db,'export',(runId,stepId)=>{
   for(const row of db.prepare(`SELECT e.id,e.projectId FROM exports e JOIN ${mioTable(db,'origins')} o ON o.kind='export' AND o.jobId=e.id AND o.projectId=e.projectId WHERE o.runId=? AND (? IS NULL OR o.stepId=?) AND json_valid(e.data) AND json_extract(e.data,'$.status')='queued'`).all(runId,stepId??null,stepId??null))withAgentTaskJobOrigin(db,'export',String(row.id),()=>domainHandlers['export.cancel']!({projectId:String(row.projectId),exportId:String(row.id)} as never));
  });
- 
+
  async function call(op: string,input: unknown,context: ServiceHandlerContext={}): Promise<unknown> {
   if(op==='lut.look.inspect')assertLookPackInspectInput(input);
   const {signal:callSignal}=context;
   const signal: AbortSignal|undefined=ownerSignal&&callSignal&&ownerSignal!==callSignal?AbortSignal.any([ownerSignal,callSignal]):(ownerSignal||callSignal)??undefined;
   checkpoint(signal);
   const operation: Promise<unknown>=(async()=>{
-   
+
    if(Object.hasOwn(inspection.handlers,op))return inspection.handlers[op](input as never);
    const parsed=parse(op as OperationName,input);const effect=operationEffect(op);if(op!=='workspace.settings.set'&&(effect.databaseWrite||effect.fileWrite||effect.localProcess)){assertApplicationMutationAllowed();assertMutationAllowed?.();}const result=await domainHandlers[op](parsed as never,{signal});checkpoint(signal);
    return publicValue(result);
@@ -598,7 +598,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // Only queued/new provider dispatch uses lifecycle validation. Paid task
  // polling, download and reconciliation deliberately never call this boundary.
  function validateGenerationDispatch(job: JobRecord): unknown {
-  
+
   assertAgentTaskJobEffect(db,'job',job.id);
   const binding=readVideoBinding(job.snapshot);
   if(binding){
@@ -622,7 +622,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // Policy rejection must not authorize writing a foreign or replaced record.
  let invalidGenerationReported=false;
  function saveGenerationGuarded(job: JobRecord,patch: ServiceRow): ServiceRow|null {
-  
+
   const hasVideoBinding=job.snapshot!==null&&typeof job.snapshot==='object'&&Object.hasOwn(job.snapshot,'executionBinding');
   if(!profilePolicy&&!usesInputProfiles(providers.get(job.providerId))&&!hasSubjectGeneration(job.snapshot)&&!hasVideoBinding)return saveJob(job,patch);
   return tx(()=>{

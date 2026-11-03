@@ -8,7 +8,6 @@ import path from 'node:path';
 import {writeSync} from 'node:fs';
 import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 import {ownsStoreLock} from '../../packages/business/src/store-runtime.ts';
-import {getWorkspaceRestoreContext} from '../../packages/business/src/db.ts';
 import {createServices,hash} from '../../packages/business/src/services.ts';
 import {createTimelineRecoveryBoundary,readTimelineReceipt} from '../../packages/business/src/timeline-recovery.ts';
 import {createLocalDelivery} from '../../packages/business/src/local-delivery.ts';
@@ -27,7 +26,7 @@ function boundary(phase: string): never|void{
  throw Error('A crash-only boundary unexpectedly resumed');
 }
 const delivery=createLocalDelivery({root:store.localDir,databaseFile:path.join(store.localDir,'history.db'),storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
- guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),
+ guards:{ownsLock:()=>ownsStoreLock(store),
   readTimeline:(projectId: string)=>createTimelineRecoveryBoundary(store.db,{projectId}).read({sourceSemantics:false}),
   isRenderInput:(value: unknown)=>schemas['timeline.render'].safeParse(value).success,
   isRenderResponse:(input: unknown,value: unknown)=>isTimelineMutationResponse('timeline.render',input,value),

@@ -10,6 +10,8 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {createServerProject,openServerProject} from './helpers/project-database.ts';
 import {validateProjectRetainedRows} from '../packages/business/src/project-retained-validation.ts';
+import {assertProjectStore} from '../packages/business/src/store-runtime.ts';
+function assertRetained(store:FixtureStore):void{assertProjectStore(store);validateProjectRetainedRows(store);}
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import {run, runStreaming} from '../packages/business/src/media-runtime.ts';
@@ -116,7 +118,7 @@ test('cold current kernel reopen explicitly rerenders mixed PNG/video/subtitle w
 
     const created=createServerProject(dataDir,{name:'Cold mixed SDR rerender'});
     store=created.store;source=store.root;restored=source;
-    services=createServices(store,new Map());
+    services=(createServices(store,new Map()) as FixtureServices);
     const project=store.get('projects',created.projectId)! as {id:string;revision:number};
     const projectId=created.projectId;
     let timeline = await services.call('timeline.format.set', {projectId,
@@ -160,7 +162,7 @@ test('cold current kernel reopen explicitly rerenders mixed PNG/video/subtitle w
     await close();
     store=openServerProject(dataDir,projectId);
     services = (createServices(store, new Map()) as FixtureServices);
-    assert.doesNotThrow(()=>validateProjectRetainedRows(store!));
+    assert.doesNotThrow(()=>assertRetained(store!));
     assertRetainedRows(store.db, captured);
     await assertSourceBytes(restored, sourceFiles);
     assert.deepEqual(await services.call('timeline.get', {projectId}), timeline);
@@ -171,9 +173,7 @@ test('cold current kernel reopen explicitly rerenders mixed PNG/video/subtitle w
     assert.notEqual(accepted.requestId, held.requestId);
     assert.deepEqual(accepted.snapshot, held.snapshot);
     assert.deepEqual((store.get('exports', accepted.id)! as FixtureExport).snapshot, heldRecord!.snapshot);
-    assert.equal((binding)!.workspaceOrigin, context.expectedWorkspaceOrigin);
-    assert.equal((binding)!.requestId, request.requestId);
-    assert.doesNotThrow(()=>validateProjectRetainedRows(store!),'valid before actual rerender');
+    assert.doesNotThrow(()=>assertRetained(store!),'valid before actual rerender');
 
     const rerendered = await executeQueued(store, services, accepted);
     const restoredRgb = await decoded(rerendered.file);
@@ -188,13 +188,13 @@ test('cold current kernel reopen explicitly rerenders mixed PNG/video/subtitle w
     assert.deepEqual((store.get('exports', held.id)! as FixtureExport), heldRecord, 'prior completed export never changes');
     assertRetainedRows(store.db, captured);
     await assertSourceBytes(restored, sourceFiles);
-    assert.doesNotThrow(()=>validateProjectRetainedRows(store!),'valid after actual rerender');
+    assert.doesNotThrow(()=>assertRetained(store!),'valid after actual rerender');
     assert.equal((await readdir(path.join(restored, 'media'))).some(name =>
       name.startsWith('.timeline-render-') || name.endsWith('.part.mp4')), false);
 
     await close();
     store = openServerProject(dataDir,projectId);
-    assert.doesNotThrow(()=>validateProjectRetainedRows(store!),'valid after cold kernel reopen');
+    assert.doesNotThrow(()=>assertRetained(store!),'valid after cold kernel reopen');
     assertRetainedRows(store.db, captured);
     assert.deepEqual((store.get('exports', rerendered.completed.id)! as FixtureExport), rerendered.persisted);
     await assertSourceBytes(restored, sourceFiles);

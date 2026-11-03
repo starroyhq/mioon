@@ -10,7 +10,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {openStore} from '../../../packages/business/src/project-file/test-store.ts';
 import {ownsStoreLock} from '../../../packages/business/src/store-runtime.ts';
-import {getWorkspaceRestoreContext} from '../../../packages/business/src/db.ts';
+import {assertProjectStore} from '../../../packages/business/src/store-runtime.ts';
 import {validateTimeline} from '../../../packages/business/src/timeline-inputs.ts';
 import {readTimelinePreflightSnapshot,readTimelineSourceGraph} from '../../../packages/business/src/timeline-sources.ts';
 import {validateManagedSource,verifiedManagedHash} from '../../../packages/business/src/managed-media.ts';
@@ -56,7 +56,7 @@ app.whenReady().then(async()=>{
       readAssets:(projectId,timeline)=>readTimelineSourceGraph(store.db,projectId,timeline),
       validate:(timeline,assets)=>validateTimeline(timeline,assets,{structureOnly:true})});
     offMedia=onMediaProcess(event=>{processes.push({...event,observedAt:Date.now()});});
-    service=createTimelineAudioContinuousServices(store,{signal:ownerAbort.signal,runtime:{assertOrdinaryWorkspace(){if(getWorkspaceRestoreContext(store))throw Error('Synthetic fixture unexpectedly restored');},ownsLock:()=>ownsStoreLock(store),
+    service=createTimelineAudioContinuousServices(store,{signal:ownerAbort.signal,runtime:{assertOrdinaryWorkspace(){assertProjectStore(store);},ownsLock:()=>ownsStoreLock(store),
       readSavedTimeline:readSavedAudio,validateSource:validateManagedSource,hash:verifiedManagedHash,
       decoder:createTimelineAudioContinuousDecoder({run,runStreamingWithBackpressure,withProbePermit,checkMediaEffect}),boundedShutdown,
       telemetry:event=>{telemetry.push({...event,observedAt:Date.now()});}}});

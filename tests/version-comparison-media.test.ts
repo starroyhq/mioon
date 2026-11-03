@@ -272,5 +272,3 @@ test('loss of actual workspace lock refuses playback, not just copied store meta
   await f.closeSource();
   const response = await request(); assert.equal(response.status, 404); await response.text(); assert.equal(opened, 0);
 });
-
-

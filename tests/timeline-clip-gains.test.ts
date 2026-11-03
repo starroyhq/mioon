@@ -9,9 +9,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {AGENT_TASK_OPERATION_ADMISSION} from '../packages/business/src/agent/task-tools-v2.ts';
-import {WRAPPED_TIMELINE_OPERATIONS} from '../packages/business/src/workspace-wrapped-timeline-receipts.ts';
 import {schemas,descriptions,operationEffect,isTimelineMutationResponse,hasRequestNotAppliedProof,TIMELINE_MUTATION_OPERATIONS,DURABLE_EDIT_OPERATIONS,
  TIMELINE_CLIP_GAINS_OPERATION,TIMELINE_CLIP_GAINS_RESPONSE_BYTES,TIMELINE_CLIP_GAINS_LIMITS,TIMELINE_RESPONSE_BYTES} from '@mioon/contracts';
 import {translate} from '../packages/i18n/src/index.ts';
@@ -78,10 +76,9 @@ async function rejects(f: Fixture,input: Request,code: string){
  assert.deepEqual(f.capture(),before,`${code} writes nothing`);
 }
 
-test('the clip-gain batch is registered, described, effect-annotated, restore-denied, a reversible Mio tool and localized',()=>{
+test('the clip-gain batch is registered, described, effect-annotated, a reversible Mio tool and localized',()=>{
  assert.ok(schemas[GAINS]&&descriptions[GAINS].length>40);
  assert.ok(TIMELINE_MUTATION_OPERATIONS.includes(GAINS));assert.ok(!DURABLE_EDIT_OPERATIONS.includes(GAINS));
- assert.ok(RESTORE_DENIED_OPERATIONS.includes(GAINS));assert.ok(WRAPPED_TIMELINE_OPERATIONS.includes(GAINS));
  assert.equal(TIMELINE_CLIP_GAINS_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES+16*1024);assert.equal(TIMELINE_CLIP_GAINS_LIMITS.clips,100);
  assert.deepEqual((AGENT_TASK_OPERATION_ADMISSION as Record<string,unknown>)[GAINS],{allowed:true,tier:'local_reversible'});
  const effect=operationEffect(GAINS);
@@ -143,5 +140,3 @@ test('fades and volume envelopes are kept',async t=>{
  const saved=response.timeline.clips.find(item=>item.id===clip.id)!;
  assert.deepEqual([saved.gain,saved.fadeInFrames,saved.fadeOutFrames,saved.volumeEnvelope],[1.7,6,12,volumeEnvelope]);
 });
-
-

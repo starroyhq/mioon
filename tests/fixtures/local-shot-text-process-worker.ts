@@ -7,7 +7,6 @@ import {fileURLToPath} from 'node:url';
 import {writeSync} from 'node:fs';
 import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 import {ownsStoreLock} from '../../packages/business/src/store-runtime.ts';
-import {getWorkspaceRestoreContext} from '../../packages/business/src/db.ts';
 import type { Store as WorkspaceStore } from '../../packages/business/src/store-contract.ts';
 import {isProjectStore} from '../../packages/business/src/project-file/store.ts';
 import {createServices,canonical} from '../../packages/business/src/services.ts';
@@ -34,7 +33,7 @@ export function shotTextForStore(store: Store, services: Services, {fault=()=>{}
  const storage = {readPrivateFile: wrap(readPrivateFile as never), writePrivateFileAtomic: wrap(writePrivateFileAtomic as never), validatePrivateDirectory: wrap(validatePrivateDirectory as never), validateManagedFile: wrap(validateManagedFile as never)} as never;
  const scope=isProjectStore(store)?{root:store.localDir,databaseFile:path.join(store.localDir,'history.db')}:{root:store.root};
  const local=createLocalShotText({...scope,storage,fault,guards:{...domain,
-  ownsLock:()=>{calls.ownsLock++;return ownsStoreLock(store);},isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),isShotUpdateInput:(value: unknown)=>schemas['shot.update'].safeParse(value).success,
+  ownsLock:()=>{calls.ownsLock++;return ownsStoreLock(store);},isShotUpdateInput:(value: unknown)=>schemas['shot.update'].safeParse(value).success,
   readShot:(...args: never[])=>{calls.readShot++;return (domain.readShot as (...rest: never[])=>unknown)(...args);},readReceipt:(...args: never[])=>{calls.readReceipt++;return (domain.readReceipt as (...rest: never[])=>unknown)(...args);},
   update:async(projectId: string,input: {requestId: string})=>{calls.update++;dispatches.push({projectId,input:structuredClone(input)});const response=await domain.update(projectId,input as never);
    const saved=store.db.prepare('SELECT * FROM mutation_requests WHERE requestId=?').get(input.requestId) as {operation: string; response: string}|undefined;assert.ok(saved,'Real shot commit requires immutable shared receipt');assert.equal(saved.operation,'shot.update');assert.deepEqual(JSON.parse(saved.response),response);afterCommit();return response;}}} as never);

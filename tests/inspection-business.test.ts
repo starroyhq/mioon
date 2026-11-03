@@ -1,3 +1,4 @@
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 
 
 import type {SQLInputValue} from 'node:sqlite';
@@ -12,7 +13,7 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {parse} from '@mioon/contracts';
-import {openStore, createServices, createInspectionServices, INSPECTION_OPERATIONS, INSPECTION_LIMITS} from '@mioon/business';
+import { createServices, createInspectionServices, INSPECTION_OPERATIONS, INSPECTION_LIMITS} from '@mioon/business';
 import type { FixtureProject } from './helpers/strict-timeline-core-types.ts';
 import {schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 

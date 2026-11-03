@@ -40,5 +40,3 @@ test('HTTP, CLI and MCP share real registry rename CAS and exact receipts',{time
   assert.deepEqual(await http('project.list'),listed);
   const tools=(await client.listTools()).tools;assert.equal(tools.find(value=>value.name==='project_delete')!.annotations!.destructiveHint,true);assert.equal(tools.find(value=>value.name==='project_delete')!.annotations!.idempotentHint,true);
 });
-
-

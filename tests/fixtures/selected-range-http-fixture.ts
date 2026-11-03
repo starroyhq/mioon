@@ -14,7 +14,7 @@ import {mkdtemp, readFile, readdir, writeFile, rm, realpath, stat} from 'node:fs
 import {schemas, parse, isTimelineMutationResponse, hasRequestNotAppliedProof, publicValue, AppError} from '@mioon/contracts';
 import {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile} from '@mioon/contracts/private-storage';
 import {openStore} from '../../packages/business/src/project-file/test-store.ts';
-import {openLegacyWorkspaceStore, getWorkspaceRestoreContext} from '../../packages/business/src/db.ts';
+
 import {ownsStoreLock} from '../../packages/business/src/store-runtime.ts';
 import type { Store as WorkspaceStore } from '../../packages/business/src/store-contract.ts';
 import {isProjectStore, isProjectFileHeld} from '../../packages/business/src/project-file/index.ts';
@@ -83,7 +83,7 @@ type DeliveryHttp = ReturnType<typeof createLocalDeliveryHttp>;
 interface ObservationRecord {path: string; body: unknown; status: number|undefined}
 interface CancellationState {service: ReturnType<typeof createTimelinePreflightServices>; entered: PromiseWithResolvers<void>; aborted: PromiseWithResolvers<void>; settled: PromiseWithResolvers<void>}
 export interface SelectedRangeFixtureOptions {[key: string]: unknown}
-export async function selectedRangeFixture(t: unknown, {legacy = false}: {legacy?: boolean} = {}): Promise<Record<string, unknown>> {
+export async function selectedRangeFixture(t: unknown): Promise<Record<string, unknown>> {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-selected-range-wire-')));
   const dispatches: unknown[] = [], submissions: unknown[] = [], observations: ObservationRecord[] = [], media: unknown[] = [], faults: string[] = [], capabilityChecks: unknown[] = [];
   let store: Store|null = null, services: Services|null = null, delivery: Delivery|null = null, deliveryHttp: DeliveryHttp|null = null;
@@ -92,7 +92,7 @@ export async function selectedRangeFixture(t: unknown, {legacy = false}: {legacy
   let fault: (point: string)=>void = () => {};
   const off = onMediaProcess((event: unknown) => media.push(event));
   const reopen = (): void => {
-    store = legacy ? openLegacyWorkspaceStore(root) : openStore(root);
+    store = openStore(root);
     services = createServices(store!, new Map(), {env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}, exportOptions: {
       // Admission-only deterministic proof; encoding correctness has separate
       // real-media gates. No renderer, model or provider is started here.
@@ -101,7 +101,7 @@ export async function selectedRangeFixture(t: unknown, {legacy = false}: {legacy
     const localRoot = isProjectStore(store) ? store.localDir : root;
     delivery = createLocalDelivery({root: localRoot, ...(isProjectStore(store) ? {databaseFile: path.join(localRoot, 'history.db')} : {}), storage: {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile},
       fault: (point: string) => fault(point), guards: {
-        ownsLock: () => ownsStoreLock(store!), isRestored: () => Boolean(getWorkspaceRestoreContext(store!)),
+        ownsLock: () => ownsStoreLock(store!),
         readTimeline: (projectId: string) => createTimelineRecoveryBoundary(store!.db, {projectId}).read({sourceSemantics: false}),
         isRenderInput: (value: unknown) => schemas['timeline.render'].safeParse(value).success,
         isRenderResponse: (input: unknown, value: unknown) => isTimelineMutationResponse('timeline.render', input, value),

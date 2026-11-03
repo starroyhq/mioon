@@ -172,5 +172,3 @@ test('the kernel LUT reader uses project content and the existing strict Cube, o
   assert.throws(() => readLutResource(f.store.db, projectId, invalidId, true), {code: 'LUT_RESOURCE_INVALID'});
   assert.deepEqual(schemaObjects(f.store.db), f.structure);
 });
-
-

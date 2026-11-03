@@ -7,7 +7,6 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
-import {getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createLastProject,readLastProjectTarget,LAST_PROJECT_FILENAME, type LastProjectOptions} from '@mioon/business/last-project';
 import {LAST_PROJECT_LIMITS,lastProjectEnvelopeSchema} from '@mioon/contracts/last-project';
@@ -65,7 +64,7 @@ test('missing remembered project is discoverable without reset; PUT missing targ
   // Availability comes from the app's registry port; project deletion is a
   // separate, temporarily unavailable lifecycle operation during the switch.
   const service=createServices(f.store,new Map());
-  assert.throws(()=>service.setProjectDeletionCompanions({assertDeletable:()=>assert.fail('legacy deletion admission must not run'),removeProject:()=>assert.fail('legacy deletion cleanup must not run')}),/application project host/);
+  assert.equal(Object.hasOwn(service,'setProjectDeletionCompanions'),false,'retired deletion companions cannot be installed');
   f.setMissingTarget(f.project.id);
   assert.equal(f.snapshot(),protectedState,'changing registry availability never deletes project rows');
   const before=f.snapshot(),found=f.locator.get();

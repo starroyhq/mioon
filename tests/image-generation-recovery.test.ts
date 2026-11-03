@@ -271,7 +271,7 @@ async function child(script: string, args: string[], expectedCode: number|undefi
   } finally {clearTimeout(timer);}
 }
 const childImports = `
-  import {openStore} from './packages/business/src/db.ts';
+  import {openStore} from './packages/business/src/project-file/test-store.ts';
   import {createServices} from './packages/business/src/services.ts';
   import {renderMockImagePng} from './packages/business/src/images/png.ts';
   import {appendFileSync,readFileSync,existsSync} from 'node:fs';

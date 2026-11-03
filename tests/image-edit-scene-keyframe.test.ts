@@ -14,7 +14,7 @@ import {setTimeout as pause} from 'node:timers/promises';
 import type {BinaryLike} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
-import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+
 import {createSceneServices} from '../packages/business/src/scene-tasks.ts';
 import type {SceneServicesOptions} from '../packages/business/src/scene-tasks.ts';
 import type {DecodeSceneKeyframesOptions} from '../packages/business/src/scene-keyframe-decoder.ts';
@@ -61,7 +61,7 @@ async function until<T>(read: () => T | false | Promise<T | false>, label: strin
   return assert.fail(`Timed out waiting for ${label}`);
 }
 
-function open(root: string,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore) {
+function open(root: string,opener:typeof openStore=openStore) {
   const native=opener(root),store = native as unknown as Store;
   const scenes = createSceneServices(store as never, {autoRun: true,
     detect: async input => {
@@ -85,7 +85,7 @@ function open(root: string,opener:typeof openStore|typeof openLegacyWorkspaceSto
   return {store, projectId: isProjectStore(native) ? native.projectId : randomUUID(), scenes, images, async close() { if (closed) return; closed = true; try { await scenes.drain(); await images.drain(); } finally { store.close(); } }};
 }
 
-async function fixture(t: test.TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore) {
+async function fixture(t: test.TestContext,opener:typeof openStore=openStore) {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'mioon-keyframe-edit-')));
   let opened = open(root,opener);
   t.after(async () => { try { await opened.close(); } finally { rmSync(root, {recursive: true, force: true}); } });
@@ -174,7 +174,3 @@ test('an image only labelled as a keyframe, without its storyboard receipt, is r
   await assert.rejects(f.prepare(f.input(forged)), refused('IMAGE_SOURCE_INVALID'));
   assert.equal(reviewRows(f.store.db).length, 0);
 });
-
-
-
-

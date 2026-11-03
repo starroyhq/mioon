@@ -20,7 +20,7 @@ import {openStore} from '../packages/business/src/project-file/test-store.ts';
 
 
 
-import {collectProject,packageDocumentBytes,buildManifest,createProjectFromDocument} from '../packages/business/src/project-package/document.ts';
+import {collectProject,packageDocumentBytes,buildManifest,createProjectFromDocument,type ProjectDocument} from '../packages/business/src/project-package/document.ts';
 import {writeProjectPackage,readProjectPackage} from '../packages/business/src/project-package/container.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {readProjectState,changeMarks} from './helpers/project-state.ts';
@@ -216,7 +216,8 @@ test('a project container leaves hidden variant versions behind and preserves vi
  t.after(()=>{for(const directory of [work,targetRoot,staging])rmSync(directory,{recursive:true,force:true});});
  const document=packageDocumentBytes(collected.document),manifest=buildManifest({collected,document,appVersion:'test',options,name:'Subject variants'});
  await pipeline(Readable.from(writeProjectPackage({manifest,document,media:collected.media.map(entry=>entry.source)})),createWriteStream(file));
- const read=await readProjectPackage({source:createReadStream(file),destination:staging});
+ const result=await readProjectPackage({source:createReadStream(file),destination:staging});
+ const read={...result,document:result.document as ProjectDocument};
  assert.deepEqual(read.document.subjectVersions,collected.document.subjectVersions);
  assert.deepEqual(read.document.subjectVersions.map(row=>[row.number,row.data.variant?.kind??null,row.data.variant?.position??null]),[[1,null,null],[2,'angle','front']]);
  assert.deepEqual(read.document.subjects,collected.document.subjects);

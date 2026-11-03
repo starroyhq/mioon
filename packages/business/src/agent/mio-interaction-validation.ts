@@ -2,7 +2,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {agentTaskNoteSchema,agentTaskSkippedTargetSchema,agentTaskTargetSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
-const invalid=():never=>{throw Object.assign(new Error('Invalid retained Mio interaction'),{code:'RESTORE_SCHEMA_UNSUPPORTED'});};
+const invalid:()=>never=()=>{throw Object.assign(new Error('Invalid retained Mio interaction'),{code:'RESTORE_SCHEMA_UNSUPPORTED'});};
 const decode=(text:unknown):unknown=>{if(typeof text!=='string'||Buffer.byteLength(text)>2097152)invalid();try{return JSON.parse(text);}catch{return invalid();}};
 interface Step {runId:string;kind:string;position:number;targets:unknown[];conflicts:unknown[]}
 /** Current immutable entries replace the old run JSON arrays. Check the same
@@ -34,7 +34,7 @@ export function validateMioInteractionRows(db:DatabaseSync):void {
    for(const item of value.items){
     const parsed=agentTaskSkippedTargetSchema.safeParse(item);if(!parsed.success)invalid();const skip=parsed.data,key=JSON.stringify([skip.target.kind,skip.target.id]),step=steps.get(skip.stepId);
     const contains=(target:unknown)=>object(target)&&target.kind===skip.target.kind&&target.id===skip.target.id;
-    if(state.skipped.has(key)||!step||step.runId!==runId||step.kind!=='tool'||!step.targets.some(contains)||!step.conflicts.some(target=>agentTaskTargetSchema.safeParse(target).success&&contains(target)))invalid();
+    if(state.skipped.has(key)||!step||step.runId!==runId||step.kind!=='tool'||!step.targets.some(target=>agentTaskTargetSchema.safeParse(target).success&&contains(target))||!step.conflicts.some(target=>agentTaskTargetSchema.safeParse(target).success&&contains(target)))invalid();
     // A background conflict can be accepted after a later tool's skip.
     state.skipped.add(key);
    }

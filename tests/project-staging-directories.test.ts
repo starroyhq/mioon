@@ -105,17 +105,10 @@ test('private media directory permissions stay rejected without losing kernel st
 
 
 
-test('export capability inspection receives kernel tempDir and retains legacy and absent-root defaults', async t => {
-  const kernel = fixture(t), legacy = fixture(t, false), observed: (string | undefined)[] = [];
-  for (const store of [kernel.store, legacy.store, {db: legacy.store.db}]) {
-    const service = createTimelineExportAdmissionServices(store, {inspect: async (_delivery, {capabilityWorkRoot}) => {
-      observed.push(capabilityWorkRoot); return {status: 'available', code: 'EXPORT_CAPABILITY_AVAILABLE'};
-    }});
-    try { assert.deepEqual(await service.inspect({}), {status: 'available', code: 'EXPORT_CAPABILITY_AVAILABLE'}); }
-    finally { await service.drain(); }
-  }
-  const forged = createTimelineExportAdmissionServices({...kernel.store}, {inspect: async () => { throw Error('An unverified kernel wrapper must never inspect'); }});
-  try { await assert.rejects(forged.inspect({}), {code: 'PROJECT_STORE_UNVERIFIED'}); }
-  finally { await forged.drain(); }
-  assert.deepEqual(observed, [kernel.tempDir, legacy.projectDir, undefined]);
+test('export capability inspection uses the actual kernel tempDir and rejects wrappers before inspection',async t=>{
+ const kernel=fixture(t),observed:(string|undefined)[]=[];
+ const service=createTimelineExportAdmissionServices(kernel.store,{inspect:async(_delivery,{capabilityWorkRoot})=>{observed.push(capabilityWorkRoot);return {status:'available',code:'EXPORT_CAPABILITY_AVAILABLE'};}});
+ try{assert.deepEqual(await service.inspect({}),{status:'available',code:'EXPORT_CAPABILITY_AVAILABLE'});}finally{await service.drain();}
+ for(const forged of [{...kernel.store},{db:kernel.store.db}])assert.throws(()=>createTimelineExportAdmissionServices(forged,{inspect:async()=>assert.fail('Unverified wrapper must never inspect')}),{code:'PROJECT_STORE_UNVERIFIED'});
+ assert.deepEqual(observed,[kernel.tempDir]);
 });

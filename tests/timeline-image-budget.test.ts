@@ -27,7 +27,6 @@ import {
   hasRequestNotAppliedProof, isTimelineMutationResponse, isTimelineRecord,
 } from '@mioon/contracts';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
-import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createServices, type ServiceHandlerContext} from '../packages/business/src/services.ts';
 import {createTimelineServices} from '../packages/business/src/timeline.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
@@ -59,11 +58,6 @@ const editableSnapshot = (timeline: FixtureTimeline) => ({
   tracks: timeline.tracks, clips: timeline.clips, durationFrames: timeline.durationFrames,
   subtitles: timeline.subtitles,
 });
-const restoreMetadata = () => ({
-  restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(),
-  manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: stamp,
-});
-
 function corruptStoredText(db: DatabaseSync, table: string, sql: string, ...values: string[]) {
   const guards = db.prepare("SELECT name, sql FROM sqlite_schema WHERE type='trigger' AND tbl_name=? AND sql LIKE '%BEFORE UPDATE%'").all(table);
   for (const guard of guards) db.exec(`DROP TRIGGER "${guard.name}"`);
@@ -116,9 +110,9 @@ function tuneBytes(timeline: FixtureTimeline, target: number) {
   return timeline;
 }
 
-async function fixture(t: test.TestContext, {bytes = limit, revision = 1, updatedAt = stamp, legacy = false} = {}) {
+async function fixture(t: test.TestContext, {bytes = limit, revision = 1, updatedAt = stamp} = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-image-budget-'));
-  const opener = legacy ? openLegacyWorkspaceStore : openStore;
+  const opener = openStore;
   let store = (opener(root) as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
   const projectId = (await services.call('project.create', {name: 'Image aggregate budget'})).id;
   const assetId = randomUUID();
@@ -383,12 +377,3 @@ for (const location of (['receipt', 'history'] as const)) test(`oversized persis
     await assertNoWrites(f, 'timeline.undo', f.params(changed), {code: 'INVALID_TIMELINE_SNAPSHOT', proof: false});
   }
 });
-
-
-
-
-
-for (const sourceVersion of ([24, 26, 28, 30, 32] as const)) for (const restored of ([false, true] as const)) {
-  const role = sourceVersion + Number(restored);
-  
-}

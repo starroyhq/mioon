@@ -9,7 +9,6 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {AGENT_TASK_OPERATION_ADMISSION} from '../packages/business/src/agent/task-tools-v2.ts';
 import {schemas,descriptions,operationEffect,isTimelineMutationResponse,hasRequestNotAppliedProof,TIMELINE_MUTATION_OPERATIONS,DURABLE_EDIT_OPERATIONS,
  TIMELINE_CROSSFADE_OPERATION,TIMELINE_CROSSFADE_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES,timelineCrossfadeOverlap} from '@mioon/contracts';
@@ -76,10 +75,10 @@ async function rejects(f: Fixture,input: Request,code: string){
  assert.deepEqual(f.capture(),before,`${code} writes nothing`);
 }
 
-test('the crossfade is registered, described, effect-annotated, restore-denied, a reversible Mio tool and localized',()=>{
+test('the crossfade is registered, described, effect-annotated, a reversible Mio tool and localized',()=>{
  assert.ok(schemas[CROSSFADE]&&descriptions[CROSSFADE].length>40);
  assert.ok(TIMELINE_MUTATION_OPERATIONS.includes(CROSSFADE));assert.ok(!DURABLE_EDIT_OPERATIONS.includes(CROSSFADE));
- assert.ok(RESTORE_DENIED_OPERATIONS.includes(CROSSFADE));assert.equal(TIMELINE_CROSSFADE_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES+1024);
+ assert.equal(TIMELINE_CROSSFADE_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES+1024);
  assert.deepEqual((AGENT_TASK_OPERATION_ADMISSION as Record<string,unknown>)[CROSSFADE],{allowed:true,tier:'local_reversible'});
  const effect=operationEffect(CROSSFADE);
  assert.deepEqual([effect.readOnly,effect.idempotent,effect.destructive,effect.paidGeneration,effect.externalIO],[false,true,true,false,false]);
@@ -173,7 +172,3 @@ test('the clips may start together or end together, but the incoming clip may no
  assert.deepEqual(ended.timeline.clips.find(clip=>clip.id===sameEnd.id)!.volumeEnvelope,{profileId:'mioon-clip-linear-attenuation-v1',points:[{frame:0,multiplier:0},{frame:60,multiplier:1}]});
  await rejects(f,f.request(await f.timeline(),together.id,a.id),'CROSSFADE_GEOMETRY');
 });
-
-
-
-

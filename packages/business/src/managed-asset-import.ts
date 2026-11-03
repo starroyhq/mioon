@@ -70,7 +70,7 @@ export function createManagedAssetImportHandler(store: ManagedAssetImportStore, 
       }
     };
     origin?.beforeEffect();beforeEffect?.();
-    
+
     try {
       {ownedHandle = await open(file, 'wx'); ownedIdentity = await ownedHandle.stat(); beforeEffect!(); await ownedHandle.writeFile(bytes); writtenIdentity = await ownedHandle.stat(); beforeEffect!();}
       checkpoint(signal);

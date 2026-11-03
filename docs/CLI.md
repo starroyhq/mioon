@@ -23,7 +23,7 @@ The CLI is a local HTTP client for the **same running backend and database** use
 | `agent task list/history` | `{projectId}`；history 按对话返回 `conversations`，另接受原样返回的 `cursor`，不含诊断运行 |
 | `agent task conversation` | `{projectId, conversationId, cursor?}`；升序分页读取本对话轮次摘要，逐轮详情使用 status |
 | `agent task status` | `{projectId, runId}`；读取持久快照 |
-| `agent task checks` | `{projectId, runId, preflight?}`；`preflight` 为可选布尔值，默认不跑完整预检，`true` 才运行；只读计算本轮检查，恢复副本可用，不调用模型或查询供应商 |
+| `agent task checks` | `{projectId, runId, preflight?}`；`preflight` 为可选布尔值，默认不跑完整预检，`true` 才运行；只读计算本轮检查，不调用模型或查询供应商 |
 | `agent task send/lookup` | send 为 `{projectId, requestId, expectedSettingsRevision, text, conversationId?, locale?, uploads?, policy?}`；`policy` 为 `{modes, acknowledgePaid?}`，只用于新对话，与第一轮一起保存；lookup 为 `{projectId, requestId}` |
 | `agent task upload/upload-lookup` | upload 为 `{projectId, requestId, name?, mimeType?}` 加 `--file`；返回托管句柄。lookup 为 `{projectId, requestId}` |
 | `agent task pause/resume/retry/stop/approve/deny/skip` | `{projectId, runId, requestId, expectedRevision, stepId?}`；approve/deny 使用快照中的精确 stepId；retry 可携带最后失败步骤的 stepId |
@@ -1097,7 +1097,7 @@ On a lost response, retain the original complete JSON and key; do not rebuild it
 
 Discover `mioon schema timeline.export.samplePeak`, then explicitly call `mioon timeline export samplePeak --input '{"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222"}'`. This checks an existing succeeded timeline MP4; no request ID, file path or caller hash is accepted. It can consume local CPU/file reads for a bounded 120-second attempt (shared-client default125s unless explicitly overridden). Ctrl+C cancels this observation, not the original export. Output loss does not trigger an automatic retry.
 
-This is decoded sample peak of the final artifact, not loudness or true peak. Reports are ephemeral; unsupported/incomplete/stale checks leave existing downloads usable. Restored-v1 branches explicitly refuse the new analysis. See [contract and limits](EXPORT-SAMPLE-PEAK.md).
+This is decoded sample peak of the final artifact, not loudness or true peak. Reports are ephemeral; unsupported/incomplete/stale checks leave existing downloads usable. See [contract and limits](EXPORT-SAMPLE-PEAK.md).
 
 
 ## Explicit exported-file loudness check
@@ -1108,7 +1108,7 @@ Discover `mioon schema timeline.export.loudness`, then use `mioon timeline expor
 
 Discover `mioon schema timeline.loudness.prepare`, then use `mioon timeline loudness prepare --input '<JSON>'` (or `mioon rpc timeline.loudness.prepare`). Supply the owned `projectId`, saved `expectedRevision`, fixed `mixProfile:"timeline-float-mix-v1"`, fixed `measurementProfile:"bs1770-5-48k-stereo-fir4x-v1"` and explicit user-selected `target:{integratedLufs,truePeakCeilingDbtp}`. No target/profile is defaulted; no request ID, path, URL, export ID, arbitrary file flag or permission flag is accepted.
 
-This complete pre-encode float-mix observation returns the original measurement and, if every resulting gain is representable, a separately measured fixed-multiplier candidate. Passing target/true-peak checks leaves `applyAllowed:false`; nothing is edited, queued or exported. The bounded local work uses120s with125s shared-client grace and a64KiB response reader. Ctrl+C retires only its owned observation; response loss never triggers an automatic retry. Restored-v1 refuses it. See [exact report boundary](API.md#saved-timeline-full-mix-loudness-preparation).
+This complete pre-encode float-mix observation returns the original measurement and, if every resulting gain is representable, a separately measured fixed-multiplier candidate. Passing target/true-peak checks leaves `applyAllowed:false`; nothing is edited, queued or exported. The bounded local work uses120s with125s shared-client grace and a64KiB response reader. Ctrl+C retires only its owned observation; response loss never triggers an automatic retry. See [exact report boundary](API.md#saved-timeline-full-mix-loudness-preparation).
 
 ## Explicit atomic fixed-gain application
 

@@ -62,6 +62,9 @@ test('the real K2 server serves usage only at the authenticated read-only projec
 
 
 
+function cliSnapshot(url:string,token:string,projectId:string,runId:string,command?:'status'):Promise<AgentTaskSnapshot>;
+function cliSnapshot(url:string,token:string,projectId:string,runId:string,command:'history'):Promise<AgentTaskHistoryPage>;
+function cliSnapshot(url:string,token:string,projectId:string,runId:string,command:'conversation'):Promise<AgentTaskConversationPage>;
 async function cliSnapshot(url:string,token:string,projectId:string,runId:string,command:'status'|'history'|'conversation'='status'):Promise<AgentTaskSnapshot|AgentTaskHistoryPage|AgentTaskConversationPage>{
  const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','task',command,'--input',JSON.stringify(command==='status'?{projectId,runId}:command==='history'?{projectId}:{projectId,conversationId:runId})],{env:{...process.env,MIOON_BASE_URL:url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(chunk:string)=>{stdout+=chunk;});child.stderr.setEncoding('utf8').on('data',(chunk:string)=>{stderr+=chunk;});
@@ -189,21 +192,21 @@ test('editor claims and control lookup remain project scoped and stale releases 
  assert.equal((await f.request(projectApiPath(f.projectId,'agent','tasks','v2','editing'),'POST',{...input,requestId:randomUUID(),action:'release',sequence:0})).status,409);
  const active=await f.request(`${projectApiPath(f.projectId,'agent','tasks','v2','editing')}?projectId=${f.projectId}&ownerId=${input.ownerId}`);assert.ok(object(active.data)&&Array.isArray(active.data.claims));assert.equal(active.data.claims.length,1);assert.equal(f.models,0);
 });
-test('project layout refuses workspace backup during and after a live v2 model without maintenance effects',async t=>{
+test('retired workspace backup stays unknown during and after a live v2 model without maintenance effects',async t=>{
  let enter=()=>{},release=()=>{};const entered=new Promise<void>(resolve=>{enter=resolve;}),released=new Promise<void>(resolve=>{release=resolve;});
  const gateway:TaskGateway=async function*(request){request.beforeSubmit?.();enter();await released;yield {type:'done',output:{text:'合成完成',toolCalls:[],providerOutput:{role:'assistant',content:'合成完成'}}};};
  const f=await fixture(t,'chat_completions',gateway),backupDirectory=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-v2-backup-destination-'));
  let subprocesses=0;const stopObserving=onMediaProcess(()=>{subprocesses++;});t.after(stopObserving);
  t.after(async()=>{await rm(backupDirectory,{recursive:true,force:true});});
  try{
-  f.server.setBackupDirectory(backupDirectory);await f.authorize();
+  await f.authorize();
   const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'等待本地合成模型',expectedSettingsRevision:(await f.settings.get()).revision});assert.equal(sent.status,200);await entered;
   const running=(sent.data as AgentTaskSnapshot).run.id,before=f.state();
-  const blocked=await f.request('/api/rpc','POST',{operation:'workspace.backup.create',input:{requestId:randomUUID()}});assert.equal(blocked.status,409);assert.ok(object(blocked.error));assert.equal(blocked.error.code,'RESTORE_OPERATION_UNAVAILABLE');
+  const blocked=await f.request('/api/rpc','POST',{operation:'workspace.backup.create',input:{requestId:randomUUID()}});assert.equal(blocked.status,404);assert.ok(object(blocked.error));assert.equal(blocked.error.code,'UNKNOWN_OPERATION');
   assert.deepEqual(f.state(),before);assert.deepEqual(await readdir(backupDirectory),[]);
   const current=await f.request(`${f.prefix}/${running}`);assert.equal((current.data as AgentTaskSnapshot).run.status,'running');assert.equal(f.models,1);assert.equal(subprocesses,0);
   release();const done=await f.settle((sent.data as AgentTaskSnapshot).run.id);assert.equal(done.run.status,'completed');
-  const settled=f.state(),saved=await f.request('/api/rpc','POST',{operation:'workspace.backup.create',input:{requestId:randomUUID()}});assert.equal(saved.status,409,JSON.stringify(saved.error));assert.ok(object(saved.error));assert.equal(saved.error.code,'RESTORE_OPERATION_UNAVAILABLE');
+  const settled=f.state(),saved=await f.request('/api/rpc','POST',{operation:'workspace.backup.create',input:{requestId:randomUUID()}});assert.equal(saved.status,404,JSON.stringify(saved.error));assert.ok(object(saved.error));assert.equal(saved.error.code,'UNKNOWN_OPERATION');
   assert.deepEqual(f.state(),settled);assert.deepEqual(await readdir(backupDirectory),[]);assert.equal(f.models,1);assert.equal(subprocesses,0);
  }finally{release();}
 });

@@ -9,7 +9,6 @@ import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {schemas,descriptions,operationEffect,isTimelineMutationResponse,hasRequestNotAppliedProof,TIMELINE_MUTATION_OPERATIONS,DURABLE_EDIT_OPERATIONS,
  TIMELINE_SCENE_SPLIT_OPERATION,TIMELINE_SCENE_SPLIT_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES} from '@mioon/contracts';
 import {translate} from '../packages/i18n/src/index.ts';
@@ -56,7 +55,7 @@ async function fixture(t: test.TestContext,cuts: number[]|undefined=[45,100,230,
 test('the split is registered, described, effect-annotated, restore-denied and localized', ()=>{
  assert.ok(schemas[SPLIT]&&descriptions[SPLIT].length>40);
  assert.ok(TIMELINE_MUTATION_OPERATIONS.includes(SPLIT));assert.ok(!DURABLE_EDIT_OPERATIONS.includes(SPLIT));
- assert.ok(RESTORE_DENIED_OPERATIONS.includes(SPLIT));assert.equal(TIMELINE_SCENE_SPLIT_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES+64*1024);
+ assert.equal(TIMELINE_SCENE_SPLIT_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES+64*1024);
  const effect=operationEffect(SPLIT);
  assert.deepEqual([effect.readOnly,effect.idempotent,effect.destructive,effect.paidGeneration,effect.externalIO],[false,true,true,false,false]);
  assert.equal(translate('zh-Hans',`operation.${SPLIT}`),descriptions[SPLIT]);

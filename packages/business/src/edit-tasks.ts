@@ -153,7 +153,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
       (row.status==='applied')!==(row.receiptDigest!==null) || row.receiptDigest!==null&&!digest(row.receiptDigest) ||
       (row.status==='not_applied')!==(row.errorCode!==null) || row.status==='dispatching'&&row.claim===null ||
       row.status==='prepared'&&(row.origin!=='new'||row.claim!==null)) corrupt();
-  
+
   if (row.status==='not_applied' && !hasRequestNotAppliedProof({code:row.errorCode,status:409,details:{mutationOutcome:'not_applied',operation:row.operation,projectId,requestId:row.requestId}},input,{operation:row.operation})) corrupt();
   return {row,task};
  }
@@ -250,12 +250,12 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    open();owner();
    // Private storage59 preserves captured history only; do not persist a new
    // executable intent before the shared domain dispatch can reject it.
-   
+
    const args: {projectId: string;operation: string;input: Record<string,unknown>;origin: string}=prepareFields(input);
    if(!['new','legacy_session'].includes(args.origin))invalid();
-   
+
    const intent=parseIntent(args.operation,args.input,args.projectId);
-   
+
    const result=store.tx(()=>{
     owner();project(args.projectId);
     const prior=db.prepare(`${select} WHERE lane=? AND requestId=?`).get(intent.lane,intent.requestId) as EditTaskRow|undefined;

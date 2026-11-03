@@ -17,11 +17,11 @@ function parse(argv: string[]): ParsedCommand {
   try { return {...argumentsFor(argv, fail, (value: Locale | undefined) => { locale = value; }), locale}; }
   catch (error) { return { json:errorEnvelope(error as ClientError), display: locale ? renderMessage(locale, errors.get(error as object) as DisplayMessage) : (error as Error).message }; }
 }
-test('pure help retains exact legacy bytes and schema object content in every presentation locale',()=>{
+test('pure help preserves independent frozen content and ordering after explicit S7 entrypoint retirements',()=>{
   const original=help(undefined,dependencies);
   const frozen = readFileSync(new URL('./fixtures/cli-help-legacy.json',import.meta.url),'utf8');
   // Application versions follow the root manifest; retain the historical fixture
-  // and every other legacy byte, including prose and operation ordering.
+  // and the independent prose and operation ordering outside explicit retirements.
   assert.equal(frozen.split('"version":"0.4.1"').length,2);
   const expected = frozen
     .replace('"version":"0.4.1"', `"version":${JSON.stringify(VERSION)}`)
@@ -37,8 +37,11 @@ test('pure help retains exact legacy bytes and schema object content in every pr
     .replace('"timeline.loudness.apply",', '"timeline.loudness.apply","timeline.clip.refreshSources","timeline.shots.append","timeline.clip.splitAtScenes","timeline.clip.crossfade","timeline.clip.setGains","timeline.clip.setTransform","timeline.clip.setTransition",')
     .replace('"frame.task.recoverResult",', '"frame.task.recoverResult","scene.detect","scene.request.get","scene.task.get","scene.task.list","scene.task.cancel","scene.result.get","scene.cuts.save","scene.shots.create","scene.shots.undo",')
     .replace('"timeline.render"]', '"timeline.render","project.backup.list","project.backup.inspect","project.backup.restore","project.backup.status","project.version.list","project.version.save","project.version.preview"]');
+  const retired=new Set(['workspace.backup.status','workspace.backup.list','workspace.backup.create','workspace.backup.restore.stage','workspace.backup.inspect','workspace.restore.inspect']);
+  const current=JSON.parse(expected) as {data:{options:Record<string,string>;operations:string[]}};
+  delete current.data.options['--workspace-origin'];current.data.operations=current.data.operations.filter(operation=>!retired.has(operation));
   assert.notEqual(expected, frozen);
-  assert.equal(JSON.stringify(successEnvelope(original))+'\n', expected);
+  assert.equal(JSON.stringify(successEnvelope(original))+'\n',JSON.stringify(current)+'\n');
   assert.equal(localizeHelp(original),original);
   for(const locale of LOCALES){
     const localized=localizeHelp(original,locale);
