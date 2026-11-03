@@ -184,6 +184,14 @@ async function fixture(t: test.TestContext) {
     if (expectedError) assert.equal(envelope.error.code, expectedError);
     return envelope;
   }
+  // Daily opening is an explicit lifecycle write, before the complete read-only
+  // baselines below. The foreign project has its own real host and history.
+  for (const projectId of [IDS.project, IDS.other]) {
+    const opened = await request('project.version.list', {projectId});
+    const data = opened.envelope.data as {projectId: string; versions: {projectId: string; trigger: string}[]};
+    assert.equal(data.projectId, projectId);
+    assert.equal(data.versions.filter(version => version.projectId === projectId && version.trigger === 'daily-open').length, 1);
+  }
   return {root,corruptSources:async()=>{await request('asset.range.get',{projectId:RANGE_IDS.corruptProject,assetId:RANGE_IDS.mismatchedOwner});return (await read(RANGE_IDS.corruptProject,'corrupt-sources')).rows;},projectRoot:async()=>(await read()).projectDir, storage, checkpoint, unchanged, request, cli, cliArgs, client, mcp,
     http: (async (...args:Parameters<typeof request>) => (await request(...args)).envelope) as WireCall,
     get url() { return url; }, get pid() { return run.child.pid; },

@@ -1,6 +1,7 @@
 import {mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
 import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import type {DatabaseSync} from 'node:sqlite';
+import {isDeepStrictEqual} from 'node:util';
 import {isProjectDatabase} from './project-file/held-files.ts';
 
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -22,6 +23,6 @@ export function mediaLocatorFields(value: unknown): MediaLocator {
  return object(value) && typeof value.relativePath === 'string' ? {relativePath: value.relativePath} : {};
 }
 export function sameMediaLocator(left: unknown, right: unknown): boolean {
- if (hasAssetReference(left) || hasAssetReference(right)) return hasAssetReference(left) && hasAssetReference(right) && left.referenceRevision === right.referenceRevision && JSON.stringify(left.reference) === JSON.stringify(right.reference);
+ if (hasAssetReference(left) || hasAssetReference(right)) return hasAssetReference(left) && hasAssetReference(right) && left.referenceRevision === right.referenceRevision && isDeepStrictEqual(left.reference, right.reference);
  return object(left) && object(right) && (!Object.hasOwn(left,'relativePath') || !Object.hasOwn(right,'relativePath') || left.relativePath === right.relativePath);
 }

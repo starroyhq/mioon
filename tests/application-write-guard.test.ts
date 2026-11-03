@@ -11,7 +11,7 @@ import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import type {AppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createProjectStore, openProjectStore} from '../packages/business/src/project-file/store.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
-import {createServices} from '../packages/business/src/services.ts';
+import {createServices, hash} from '../packages/business/src/services.ts';
 import type {WorkspaceSettings} from '../packages/contracts/src/workspace-configuration.ts';
 import {parseProjectApiPath, projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {ProjectVersionListResponse, ProjectVersionSaveResponse, ProjectVersionPreviewResponse} from '../packages/contracts/src/project-version-operations.ts';
@@ -19,6 +19,10 @@ import {composeApplicationRuntime} from '../apps/server/src/application-runtime.
 import {createProjectFiles} from '../apps/server/src/project-host/manager.ts';
 import {projectLocation, serverAppDirectories} from '../apps/server/src/project-host/directories.ts';
 import {composeHostedProject} from '../apps/server/src/project-host/runtime.ts';
+import {saveBeforeBulkChangeInside} from '../packages/business/src/project-versions/capture.ts';
+import {withTaskEffectOrigin} from '../packages/business/src/agent/task-effects-v2.ts';
+import {createMioProjectJournal} from '../packages/business/src/agent/mio-journal-factory.ts';
+import {mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import {createAssetMediaHttp} from '../apps/server/src/asset-media-http.ts';
 import {referenceForPublishedMedia} from '../packages/business/src/project-media-storage.ts';
 import {createProjectAssetReferenceServices} from '../packages/business/src/project-asset-references.ts';
@@ -88,7 +92,7 @@ async function versionFixture(t: TestContext) {
       const response = JSON.parse(String(end.mock.calls[0]!.arguments[0])) as {ok: boolean; data: T};
       assert.equal(response.ok, true);
       return response.data;
-    } finally {socket.destroy();}
+    } finally {res.emit('close'); socket.destroy();}
   };
   const empty = {project_versions: [], project_version_blobs: [], project_version_requests: [], project_version_capture_marks: []};
   assert.deepEqual(state().tables, empty);
@@ -284,7 +288,7 @@ test('hosted manual versions use application admission while list and preview re
   const listed = await f.rpc<ProjectVersionListResponse>('project.version.list', {projectId});
   assert.deepEqual(listed.versions, [saved.version]);
   const preview = await f.rpc<ProjectVersionPreviewResponse>('project.version.preview', {projectId, versionId: saved.version.id});
-  assert.equal(preview.restoreAvailable, false);
+  assert.equal(preview.restoreAvailable, true);
   assert.deepEqual(preview.changes, []);
   assert.equal(guard.mock.callCount(), 1);
   assert.deepEqual(f.state(), before);
@@ -320,6 +324,75 @@ test('a reopened B1 owner cannot authorize manual versions from the old hosted c
   assert.deepEqual(f.state(), before);
   assert.deepEqual(f.state().tables, f.empty);
   assert.equal(replacement.documents.read('workspace-settings-v1.json'), null);
+});
+
+test('hosted restore, daily, Mio and bulk captures cannot write after application admission is lost', async t => {
+  for (const mode of ['aborted', 'replaced'] as const) await t.test(mode, async child => {
+    const f = await versionFixture(child), projectId = f.store.projectId;
+    const saved = await f.rpc<ProjectVersionSaveResponse>('project.version.save', {projectId, requestId: randomUUID(), name: 'Before guarded restore'});
+    const shot = await f.runtime.project.services.call('shot.create', {projectId, title: 'Keep the current edit', requestId: randomUUID()});
+    const preview = await f.rpc<ProjectVersionPreviewResponse>('project.version.preview', {projectId, versionId: saved.version.id});
+    assert.equal(preview.restoreAvailable, true); assert.ok(preview.totalChanges > 0);
+    const journal = createMioProjectJournal(f.store, f.library.agentPolicy);
+    const run = journal.create({requestId: randomUUID(), projectId, text: 'A guarded content edit', configuration: mioFixtureConfiguration}).run;
+    const before = f.state(), content = f.store.list('shots');
+    if (mode === 'aborted') f.owner.abort();
+    else {
+      f.library.close();
+      const replacement = openAppLibrary({dataDir: f.root}); f.libraries.add(replacement);
+      assert.doesNotThrow(() => createProjectServiceApplication(replacement).assertMutationAllowed());
+    }
+    let abortReason: unknown;
+    const denied = (error: unknown): boolean => {
+      if (mode === 'aborted') {
+        assert.ok(error instanceof DOMException); assert.equal(error.name, 'AbortError'); assert.equal(error.message, 'This operation was aborted');
+        if (abortReason === undefined) abortReason = error;
+        assert.equal(error, abortReason);
+      } else {assert.ok(error instanceof TypeError); assert.equal(error.message, 'Project services require a live application library owner');}
+      return true;
+    };
+    await assert.rejects(f.rpc('project.version.restore', {projectId, versionId: saved.version.id, requestId: randomUUID(),
+      expectedContentSequence: preview.contentSequence, previewDigest: preview.previewDigest}), denied);
+    assert.throws(() => f.runtime.captureDailyVersion(), denied);
+    assert.throws(() => f.store.tx(() => saveBeforeBulkChangeInside(f.store, {trigger: 'bulk-change', requestId: randomUUID(),
+      assertMutationAllowed: () => f.runtime.project.services.assertMutationAllowed()})), denied);
+    assert.throws(() => withTaskEffectOrigin({runId: run.id, stepId: randomUUID(), projectId, requestId: randomUUID(), operation: 'shot.update',
+      recorded: false, beforeEffect() {}, recordInside() {assert.fail('A refused write cannot record a task acknowledgement');}}, () => f.store.tx(() => {
+        f.store.db.exec('UPDATE main.history_state SET seenContentSequence=seenContentSequence');
+        f.store.put('shots', {id: randomUUID(), projectId, title: 'Must not be inserted'});
+      })), denied);
+    assert.deepEqual(f.state(), before);
+    assert.deepEqual(f.store.list('shots'), content); assert.ok(shot);
+    assert.deepEqual((await f.rpc<ProjectVersionListResponse>('project.version.list', {projectId})).versions, [saved.version]);
+    assert.equal((await f.rpc<ProjectVersionPreviewResponse>('project.version.preview', {projectId, versionId: saved.version.id})).previewDigest, preview.previewDigest);
+    assert.deepEqual(f.state(), before);
+  });
+});
+
+test('hosted restore refuses retained prepared or unknown edit effects without changing their records or content', async t => {
+  for (const status of ['unknown', 'prepared'] as const) await t.test(status, async child => {
+    const f = await versionFixture(child), projectId = f.store.projectId;
+    const saved = await f.rpc<ProjectVersionSaveResponse>('project.version.save', {projectId, requestId: randomUUID()});
+    const clean = await f.rpc<ProjectVersionPreviewResponse>('project.version.preview', {projectId, versionId: saved.version.id});
+    const admitted = await f.rpc<{versionId: string}>('project.version.restore', {projectId, versionId: saved.version.id, requestId: randomUUID(),
+      expectedContentSequence: clean.contentSequence, previewDigest: clean.previewDigest});
+    assert.equal(admitted.versionId, saved.version.id, 'the quiet real host admits restoration before any retained effect exists');
+    await f.runtime.project.services.call('shot.create', {projectId, title: 'Current content must survive busy restore', requestId: randomUUID()});
+    const preview = await f.rpc<ProjectVersionPreviewResponse>('project.version.preview', {projectId, versionId: saved.version.id});
+    assert.ok(preview.totalChanges > 0);
+    assert.deepEqual(f.runtime.unfinishedTasks!(), []);
+    const taskId = randomUUID(), requestId = randomUUID(), input = {projectId, requestId, expectedRevision: 1}, at = '2026-11-03T00:00:00.000Z';
+    f.store.tx(() => f.store.db.prepare("INSERT INTO main.edit_tasks(id,projectId,operation,input,requestId,digest,lane,origin,status,revision,acknowledged,createdAt,updatedAt,bytes) VALUES(?,?,'timeline.undo',?,?,?,'timeline:mutation','new',?,1,0,?,?,16384)")
+      .run(taskId, projectId, JSON.stringify(input), requestId, hash({operation: 'timeline.undo', input}), status, at, at));
+    assert.ok(f.runtime.unfinishedTasks!().some(task => task.kind === 'edit_task' && task.taskId === taskId));
+    const before = f.state(), content = f.store.list('shots'), tasks = f.store.db.prepare('SELECT * FROM main.edit_tasks ORDER BY position').all();
+    await assert.rejects(f.rpc('project.version.restore', {projectId, versionId: saved.version.id, requestId: randomUUID(),
+      expectedContentSequence: preview.contentSequence, previewDigest: preview.previewDigest}), {code: 'PROJECT_HOST_BUSY', status: 409});
+    assert.deepEqual(f.state(), before);
+    assert.deepEqual(f.store.list('shots'), content);
+    assert.deepEqual(f.store.db.prepare('SELECT * FROM main.edit_tasks ORDER BY position').all(), tasks);
+    assert.equal(f.store.db.prepare('SELECT status FROM main.edit_tasks WHERE id=?').get(taskId)!.status, status);
+  });
 });
 
 test('configuration ACK follows its own real B1 commit and failed/nested transactions retain the previous document', t => {
