@@ -112,6 +112,7 @@ jobs:
       MIOON_ARCH: ${{ matrix.arch }}
       MIOON_DESKTOP_INSPECTION_REPORT: artifacts/desktop-${{ matrix.target }}/inspection.json
       MIOON_DESKTOP_SMOKE_REPORT: artifacts/desktop-${{ matrix.target }}/smoke.json
+      MIOON_APPLE_NOTARIZATION_REPORT: artifacts/desktop-${{ matrix.target }}/app-notarization.json
     steps:
       - name: Checkout frozen source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -234,15 +235,19 @@ jobs:
           export APPLE_API_KEY="$APPLE_API_KEY_PATH"
           # electron-builder selects the certificate type and rejects its prefix.
           signing_qualifier="${APPLE_SIGNING_IDENTITY#Developer ID Application: }"
+          # The release-only hook submits the app once and recovers only explicit
+          # transient ticket-service failures; it must finish before DMG creation.
           pnpm exec electron-builder --config .generated/electron-builder.cjs --mac dmg "--$MIOON_ARCH" --publish never \
-            "-c.mac.identity=$signing_qualifier" -c.mac.notarize=true -c.dmg.sign=true -c.forceCodeSigning=true
-          # v26 notarizes the application, so submit the final signed DMG too.
+            "-c.mac.identity=$signing_qualifier" -c.mac.notarize=false \
+            -c.afterSign=../../.github/scripts/notarize-app.cjs -c.dmg.sign=true -c.forceCodeSigning=true
+          # The hook notarizes the application; submit the final signed DMG too.
           dmg=$(node --input-type=module -e 'import {readdirSync} from "node:fs"; import path from "node:path"; const dir=path.resolve("../../release/desktop/production"); const names=readdirSync(dir).filter(name=>name.endsWith("-mac-"+process.env.MIOON_ARCH+".dmg")); if(names.length!==1)process.exit(1); process.stdout.write(path.join(dir,names[0]));')
           notarization_report="$RUNNER_TEMP/mioon-apple-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/dmg-notarization.json"
           xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" \
             --issuer "$APPLE_API_ISSUER" --wait --timeout 30m --output-format json > "$notarization_report"
           node --input-type=module -e 'import {readFileSync} from "node:fs"; const report=JSON.parse(readFileSync(process.argv[1],"utf8")); if(report.status!=="Accepted")process.exit(1);' "$notarization_report"
-          xcrun stapler staple "$dmg"
+          node ../../.github/scripts/apple-notarization.ts --operation=staple --artifact="$dmg" \
+            --output="../../artifacts/desktop-$MIOON_TARGET/dmg-stapling.json"
 
       - name: Inspect final package, signatures and resources
         id: inspect
@@ -305,7 +310,9 @@ jobs:
             artifacts/desktop-${{ matrix.target }}/inspection.json
             artifacts/desktop-${{ matrix.target }}/smoke.json
             artifacts/desktop-${{ matrix.target }}/status.log
-          retention-days: 7
+            artifacts/desktop-${{ matrix.target }}/app-notarization.json
+            artifacts/desktop-${{ matrix.target }}/dmg-stapling.json
+          retention-days: 14
           if-no-files-found: warn
 
       - name: Clean temporary Apple signing credentials

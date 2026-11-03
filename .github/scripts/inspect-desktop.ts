@@ -10,13 +10,16 @@ import {verifySubtitleResources} from '../../apps/desktop/subtitle-resources.ts'
 import {verifyPackagedTrayResources} from '../../apps/desktop/tray-resources.ts';
 import {readBuildMetadata} from '../../apps/desktop/build-metadata.ts';
 import {readMacRuntimeNoticeProvenance, verifyMacRuntimeNoticeFiles} from '../../apps/desktop/runtime-notices.ts';
+import {PROJECT_NOTICES} from '../../apps/desktop/scripts/stage-project-notices.ts';
 import {argumentsFor, CheckFailure, command, fail, isMain, report, safeFailure, targetArch, targetPlatform} from './media-environment.ts';
 import type {TargetArch, TargetPlatform} from './media-environment.ts';
+import {runAppleStapler} from './apple-notarization.ts';
+import type {AppleStaplerDiagnostic, AppleStaplerExecutor} from './apple-notarization.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 interface Asar {listPackage(file: string): string[]; statFile(file: string, entry: string, follow: false): {link?: string; files?: unknown}; extractFile(file: string, entry: string): Buffer}
 interface Fuses {getCurrentFuseWire(file: string): Promise<Record<number, number>>; FuseV1Options: Record<string, number>}
-interface Inspection {ok: boolean; platform: TargetPlatform; arch: TargetArch; checks: Array<{name: string; ok: boolean}>; phase: string; executable?: string; packagePath?: string; mountPoint?: string; extractRoot?: string; error?: string; cleanupError?: string}
+interface Inspection {ok: boolean; platform: TargetPlatform; arch: TargetArch; checks: Array<{name: string; ok: boolean}>; phase: string; executable?: string; packagePath?: string; mountPoint?: string; extractRoot?: string; error?: string; cleanupError?: string; appleStaplerDiagnostics?: MacStaplerDiagnostic[]}
 const MAC_CHECK_ERRORS = {
   'bundle-executable': 'MAC_BUNDLE_EXECUTABLE_FAILED', 'bundle-architecture': 'MAC_BUNDLE_ARCHITECTURE_FAILED',
   'bundle-identity': 'MAC_BUNDLE_IDENTITY_FAILED', 'asar-content': 'ASAR_STAGING_MISMATCH',
@@ -27,6 +30,8 @@ const MAC_CHECK_ERRORS = {
   'signing-identity': 'SIGNING_IDENTITY_MISMATCH', 'app-staple': 'APP_STAPLE_INVALID', 'app-gatekeeper': 'GATEKEEPER_REJECTED'
 } as const;
 type MacScope = 'staged-mac-app' | 'mounted-dmg-app';
+type MacStaplerScope = MacScope | 'signed-dmg';
+export interface MacStaplerDiagnostic extends AppleStaplerDiagnostic {scope: MacStaplerScope}
 type MacCheck = keyof typeof MAC_CHECK_ERRORS;
 type MacPhase = `${MacScope}:${MacCheck}`;
 type MacCheckRunner = <T>(name: MacCheck, action: () => Promise<T>) => Promise<T>;
@@ -34,6 +39,20 @@ export async function runMacInspectionCheck<T>(scope: MacScope, name: MacCheck, 
   onPhase?.(`${scope}:${name}`);
   try { return await action(); }
   catch (error) { if (error instanceof CheckFailure) throw error; fail(MAC_CHECK_ERRORS[name]); }
+}
+/** Keep ticket validation mandatory while retaining only bounded, safe attempt
+ * evidence. Raw tool output, artifact paths and signing inputs never enter the
+ * inspection report, including when the final validation attempt fails. */
+export async function validateMacStapledArtifact(scope: MacStaplerScope, artifact: string, options: {
+  execute?: AppleStaplerExecutor; wait?(milliseconds: number): Promise<void>; onDiagnostic?(diagnostic: MacStaplerDiagnostic): void;
+} = {}): Promise<void> {
+  await runAppleStapler('validate', artifact, {
+    failureCode: scope === 'signed-dmg' ? 'DMG_STAPLE_INVALID' : 'APP_STAPLE_INVALID',
+    execute: options.execute, wait: options.wait,
+    onDiagnostic: value => options.onDiagnostic?.({scope, operation: value.operation, artifactKind: value.artifactKind,
+      attempt: value.attempt, ok: value.ok, exitCode: value.exitCode, signal: value.signal, timedOut: value.timedOut,
+      category: value.category, willRetry: value.willRetry})
+  });
 }
 class DesktopInspectionFailure extends CheckFailure {
   readonly inspection: Inspection;
@@ -100,6 +119,13 @@ async function treeDigest(directory: string): Promise<string> {
   }
   await visit(''); return hash.digest('hex');
 }
+export async function verifyPackagedProjectNotices(archive: string, asar: Pick<Asar, 'extractFile'>, sourceRoot = root): Promise<void> {
+  for (const file of PROJECT_NOTICES) {
+    const source = await readFile(path.join(sourceRoot, file.source));
+    assert.ok(source.length > 0, 'PROJECT_NOTICE_EMPTY');
+    assert.deepEqual(asar.extractFile(archive, `licenses/${file.output}`), source, 'PROJECT_NOTICE_MISMATCH');
+  }
+}
 async function inspectAsar(resources: string, run: MacCheckRunner = async (_name, action) => action()): Promise<void> {
   const asar = await run('asar-content', async () => dependencies().asar), archive = path.join(resources, 'app.asar');
   await run('asar-content', async () => {
@@ -122,6 +148,7 @@ async function inspectAsar(resources: string, run: MacCheckRunner = async (_name
   });
   await run('asar-required-files', async () => {
     for (const name of ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/index.html', 'icons/icon.png', 'licenses/shadcn-ui-LICENSE.md']) asar.extractFile(archive, name);
+    await verifyPackagedProjectNotices(archive, asar);
   });
   await run('tray-resources', () => verifyPackagedTrayResources(archive, asar, path.join(root, 'apps/desktop/build')));
   await run('subtitle-resources', () => verifySubtitleResources(path.join(resources, 'subtitles')));
@@ -131,7 +158,7 @@ async function inspectFuses(binary: string): Promise<void> {
   for (const name of ['RunAsNode', 'EnableNodeOptionsEnvironmentVariable', 'EnableNodeCliInspectArguments', 'GrantFileProtocolExtraPrivileges']) if (wire[fuses.FuseV1Options[name]] !== 48) fail('FUSE_MUST_BE_DISABLED');
   for (const name of ['EnableCookieEncryption', 'EnableEmbeddedAsarIntegrityValidation', 'OnlyLoadAppFromAsar']) if (wire[fuses.FuseV1Options[name]] !== 49) fail('FUSE_MUST_BE_ENABLED');
 }
-async function macApp(app: string, arch: TargetArch, appOutDir: string, scope: MacScope, onPhase: (phase: MacPhase) => void): Promise<string> {
+async function macApp(app: string, arch: TargetArch, appOutDir: string, scope: MacScope, onPhase: (phase: MacPhase) => void, onAppleDiagnostic: (diagnostic: MacStaplerDiagnostic) => void): Promise<string> {
   const run: MacCheckRunner = (name, action) => runMacInspectionCheck(scope, name, action, onPhase);
   const executable = path.join(app, 'Contents/MacOS/Mioon');
   // CFBundleExecutable is generated by electron-builder and must be checked,
@@ -160,7 +187,7 @@ async function macApp(app: string, arch: TargetArch, appOutDir: string, scope: M
   await run('runtime-notice-bytes', () => verifyMacRuntimeNoticeFiles(app, provenance));
   await run('codesign', () => command('codesign', ['--verify', '--deep', '--strict', '--verbose=2', app], 'CODESIGN_VERIFICATION_FAILED'));
   await run('signing-identity', async () => verifySigningIdentity(await command('codesign', ['--display', '--verbose=4', app], 'CODESIGN_IDENTITY_FAILED'), process.env.APPLE_SIGNING_IDENTITY, process.env.APPLE_TEAM_ID));
-  await run('app-staple', () => command('xcrun', ['stapler', 'validate', app], 'APP_STAPLE_INVALID'));
+  await run('app-staple', () => validateMacStapledArtifact(scope, app, {onDiagnostic: onAppleDiagnostic}));
   await run('app-gatekeeper', () => command('spctl', ['--assess', '--type', 'execute', '--verbose=4', app], 'GATEKEEPER_REJECTED'));
   return binary;
 }
@@ -170,6 +197,7 @@ export async function inspectDesktop(platform: TargetPlatform, arch: TargetArch,
   if (path.resolve(packageDir) !== expected) fail('INVALID_PACKAGE_DIRECTORY');
   const result: Inspection = {ok: false, platform, arch, checks: [], phase: 'package-preflight'};
   const check = (name: string): void => { result.checks.push({name, ok: true}); };
+  const onAppleDiagnostic = (diagnostic: MacStaplerDiagnostic): void => { (result.appleStaplerDiagnostics ??= []).push(diagnostic); };
   try {
   if (platform === 'linux') {
     result.phase = 'linux-package';
@@ -202,12 +230,13 @@ export async function inspectDesktop(platform: TargetPlatform, arch: TargetArch,
     const candidates = (await readdir(path.join(expected, suffix))).filter(name => name.endsWith('.app'));
     if (candidates.length !== 1) fail('UNIQUE_APP_REQUIRED');
     const app = path.join(expected, suffix, candidates[0]);
-    await macApp(app, arch, path.join(expected, suffix), 'staged-mac-app', phase => { result.phase = phase; }); check('staged-signed-app-identity-architecture-asar-licenses-subtitles-fuses');
+    await macApp(app, arch, path.join(expected, suffix), 'staged-mac-app', phase => { result.phase = phase; }, onAppleDiagnostic); check('staged-signed-app-identity-architecture-asar-licenses-subtitles-fuses');
+    check('staged-project-license-notice-third-party-notices');
     const dmgs = (await readdir(expected)).filter(name => name.endsWith(`-mac-${arch}.dmg`));
     if (dmgs.length !== 1) fail('UNIQUE_DMG_REQUIRED');
     result.phase = 'signed-dmg';
     const dmg = path.join(expected, dmgs[0]);
-    await command('xcrun', ['stapler', 'validate', dmg], 'DMG_STAPLE_INVALID');
+    await validateMacStapledArtifact('signed-dmg', dmg, {onDiagnostic: onAppleDiagnostic});
     await command('spctl', ['--assess', '--type', 'open', '--context', 'context:primary-signature', '--verbose=4', dmg], 'DMG_GATEKEEPER_REJECTED');
     const canonicalTemp = await realpath(tmpdir()), mount = await mkdtemp(path.join(canonicalTemp, 'mioon-ci-dmg-'));
     let mounted = false;
@@ -218,8 +247,9 @@ export async function inspectDesktop(platform: TargetPlatform, arch: TargetArch,
       if (mountedApps.length !== 1) fail('UNIQUE_MOUNTED_APP_REQUIRED');
       const delivered = path.join(mount, mountedApps[0]);
       if (await treeDigest(app) !== await treeDigest(delivered)) fail('DMG_APP_MISMATCH');
-      result.executable = await macApp(delivered, arch, path.join(expected, suffix), 'mounted-dmg-app', phase => { result.phase = phase; }); result.packagePath = dmg; result.mountPoint = mount;
+      result.executable = await macApp(delivered, arch, path.join(expected, suffix), 'mounted-dmg-app', phase => { result.phase = phase; }, onAppleDiagnostic); result.packagePath = dmg; result.mountPoint = mount;
       check('read-only-dmg-app-exactly-matches-staged-app'); check('dmg-and-delivered-app-signature-notarization-gatekeeper');
+      check('delivered-project-license-notice-third-party-notices');
     } catch (error) {
       if (mounted) {
         try { await command('hdiutil', ['detach', mount], 'DMG_DETACH_FAILED'); }
