@@ -1,3 +1,4 @@
+import {importNativeQaAsset,nativeQaAssetFile,coldNativeQaAssetFile} from './helpers/native-local-qa-fixture.ts';
 /** Synthetic preparation and read-only audits for manual native recovery QA.
  * This is NOT a native lost-ACK capture. No GUI launch, control, kill, RPC after
  * preparation, or production mutation is implemented here. Close GUI normally.
@@ -80,7 +81,7 @@ async function prepare(kind) {
   writeAppLanguagePreference({ userData }, serializeLanguagePreference('en'));
   const prepared=await prepareNativeQaProject(workspace,`Synthetic LUT recovery: ${kind}`),{store,services,project}=prepared;let fixture;
   try {
-    const asset = await services.call('asset.import', { projectId: project.id, name: 'Synthetic Rec709 green.mp4', mimeType: 'video/mp4', dataBase64: (await readFile(sourceFile)).toString('base64') });
+    const asset = await importNativeQaAsset(prepared, { projectId: project.id, name: 'Synthetic Rec709 green.mp4', mimeType: 'video/mp4', dataBase64: (await readFile(sourceFile)).toString('base64') });
     let timeline = await services.call('timeline.format.set', { projectId: project.id, expectedProjectRevision: project.revision, expectedRevision: 0, requestId: randomUUID(), presetId: 'landscape_720' });
     timeline = await services.call('timeline.clip.add', { projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), assetId: asset.id, trackId: timeline.tracks.find(t => t.kind === 'video').id, startFrame: 0, durationFrames: 90, name: 'Synthetic SDR clip' });
     const clip = timeline.clips[0], state = defaultWorkspaceState();
@@ -96,8 +97,8 @@ async function prepare(kind) {
     const receipts = store.db.prepare('SELECT count(*) AS n FROM lut_import_requests').get().n;
     assert.equal(resources, kind === 'committed' ? 1 : 0); assert.equal(receipts, resources);
     if (reply) assert.equal(store.db.prepare('SELECT requestId FROM lut_import_requests').get().requestId, requestId);
-    const storedAsset = JSON.parse(store.db.prepare('SELECT data FROM assets WHERE id=?').get(asset.id).data);
-    fixture = { synthetic: true,kernel:true,projectDir:store.projectDir,localDir:store.localDir,projectFile:store.projectFile,nativeLostAckCapture: false, preparation: 'Synthetic pending state seeded using real typed recovery storage and services; no native ACK was lost or captured.', kind, channel: 'production', root, userData, workspace, projectId: project.id, timelineId: timeline.id, clipId: clip.id, assetId: asset.id, baseRevision: timeline.revision, originalClip: clip, originalRequestId: requestId, pending, seededResourceId: reply?.resource.id ?? null, sourceFile, sourceFileHash: await fileHash(sourceFile), sourceRelativePath: storedAsset.relativePath, sourceHash: asset.sha256, lutFile, lutFileHash: await fileHash(lutFile) };
+    const sourceMedia=await nativeQaAssetFile(store,asset.id);
+    fixture = { synthetic: true, assetReferenceFixture:1,kernel:true,projectDir:store.projectDir,localDir:store.localDir,projectFile:store.projectFile,nativeLostAckCapture: false, preparation: 'Synthetic pending state seeded using real typed recovery storage and services; no native ACK was lost or captured.', kind, channel: 'production', root, userData, workspace, projectId: project.id, timelineId: timeline.id, clipId: clip.id, assetId: asset.id, baseRevision: timeline.revision, originalClip: clip, originalRequestId: requestId, pending, seededResourceId: reply?.resource.id ?? null, sourceFile, sourceFileHash: await fileHash(sourceFile), sourceMediaFile: sourceMedia.file, sourceHash: asset.sha256, lutFile, lutFileHash: await fileHash(lutFile) };
   } finally { await closeQaProject(prepared); }
   await save(path.join(root,'native-audit-layout.json'),await prepareNativeQaLiveLayout(workspace));
   await save(path.join(root, 'fixture.json'), fixture);
@@ -109,7 +110,7 @@ async function audit(kind, label, live = false) {
   assert.match(label, /^[a-z0-9-]{1,50}$/);
   const root = rootFor(kind), fixture = JSON.parse(await readFile(path.join(root, 'fixture.json'), 'utf8'));
   assert.equal(await exists(path.join(fixture.workspace, 'server.lock')), live, live ? 'Live audit requires the running synthetic backend' : 'Audit only after normal close and backend lock release');
-  assert.equal(fixture.kernel,true,'Historical fixture must be preserved');
+  assert.equal(fixture.assetReferenceFixture,1,'Historical pre-reference fixture must be preserved');assert.equal(fixture.kernel,true,'Historical fixture must be preserved');
   if(live){
     assert.equal(process.platform,'linux');
     const connection=JSON.parse(await readFile(path.join(fixture.userData,'mcp-connection.json'),'utf8'));
@@ -119,7 +120,7 @@ async function audit(kind, label, live = false) {
     const pendingFile=path.join(fixture.userData,'lut-import-pending-v1.json');
     const result={synthetic:true,kernel:true,nativeLostAckCapture:false,auditContract:'live-physical',kind,label,physical,originalRequestId:fixture.originalRequestId,originalPending:fixture.pending,
       pendingStore:await exists(pendingFile)?{...(await fileHash(pendingFile)),metadata:JSON.parse(await readFile(pendingFile,'utf8'))}:null,
-      source:await fileHash(path.join(fixture.projectDir,fixture.sourceRelativePath)),sourceFixture:await fileHash(fixture.sourceFile),exactLut:await fileHash(fixture.lutFile),semanticEvidence:'Normal Quit then cold audit is required for timeline/LUT/receipt rows.'};
+      source:await fileHash(fixture.sourceMediaFile),sourceFixture:await fileHash(fixture.sourceFile),exactLut:await fileHash(fixture.lutFile),semanticEvidence:'Normal Quit then cold audit is required for timeline/LUT/receipt rows.'};
     assert.equal(result.source.sha256,fixture.sourceHash);assert.equal(result.sourceFixture.sha256,fixture.sourceFileHash.sha256);assert.equal(result.exactLut.sha256,fixture.lutFileHash.sha256);
     await save(path.join(root,`${label}-physical-audit.json`),result);return result;
   }
@@ -132,7 +133,7 @@ async function audit(kind, label, live = false) {
     currentWorkspaceScope: captured.applicationScope, tables: Object.fromEntries(Object.entries(rows).map(([name, value]) => [name, { count: value.length, sha256: hash(json(value)) }])),
     lutResources: rows.project_lut_resources, lutRequests: rows.lut_import_requests, timelines: rows.timelines, timelineRequests: rows.timeline_requests, history: rows.timeline_history, editTasks: rows.edit_tasks, assets: rows.assets,
     pendingStore: await exists(pendingFile) ? { ...(await fileHash(pendingFile)), metadata: JSON.parse(await readFile(pendingFile, 'utf8')) } : null,
-    source: await fileHash(path.join(fixture.projectDir, fixture.sourceRelativePath)), sourceFixture: await fileHash(fixture.sourceFile), exactLut: await fileHash(fixture.lutFile) };
+    source: await coldNativeQaAssetFile(fixture.workspace,fixture.projectId,fixture.assetId), sourceFixture: await fileHash(fixture.sourceFile), exactLut: await fileHash(fixture.lutFile) };
   assert.equal(result.source.sha256, fixture.sourceHash); assert.equal(result.sourceFixture.sha256, fixture.sourceFileHash.sha256); assert.equal(result.exactLut.sha256, fixture.lutFileHash.sha256);
   await save(path.join(root, `${label}-audit.json`), result); return result;
 }

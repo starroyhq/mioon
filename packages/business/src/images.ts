@@ -1,4 +1,7 @@
 import {assertProjectStore} from './store-runtime.ts';
+import path from 'node:path';
+import {isProjectStore} from './project-file/store.ts';
+import {referenceForPublishedMedia, registerProjectMediaStore} from './project-media-storage.ts';
 import {mioTable} from './agent/mio-table-layout.ts';
 import {bindAgentTaskJobInside,assertAgentTaskJobEffect,withAgentTaskJobOrigin,recordAgentTaskJobDispatch,isAgentTaskEffectBlocked,setAgentTaskJobResumer,setAgentTaskJobStopper,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
 import {createComfyAdmission,COMFY_MODULE_UNAVAILABLE_MESSAGE} from './comfy/admission.ts';
@@ -144,6 +147,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
  const old=owners.get(store.db);
  if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.generate!==generate||old.autoRun!==autoRun||old.fault!==fault||old.settings!==settings||old.liveGateway!==liveGateway||old.customSettings!==customSettings||old.customGateway!==customGateway||old.comfySettings!==comfySettings||old.comfyConnector!==comfyConnector||old.comfyModuleAvailability!==comfyModuleAvailability)fail('IMAGE_SERVICE_ACTIVE');return old.service;}
  const {db,tx}=store,queue: ImageAttempt[]=[],pending=new Map<string,ImageAttempt>(),active=new Set<Promise<unknown>>();
+ const releaseProjectMedia=registerProjectMediaStore(store);
  const controller=new AbortController(),signal: AbortSignal=ownerSignal?AbortSignal.any([ownerSignal,controller.signal]):controller.signal;
  let stopped=false,running=false,reconciled=false,reported=false;
  const comfyAdmission=createComfyAdmission(comfyConnector,comfyModuleAvailability);
@@ -265,10 +269,11 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   const check=(): ImageHistoryTask=>{const latest=current(target);if(source)editSources.assertCurrent(toInput(latest.input),source);return latest;};
   const file=await storage.publish(stageTask(target),receipt,check);check();fault('after_media_publication',{taskId:target.row.id});
   check();
+  const referenceFields=isProjectStore(store)?await referenceForPublishedMedia(store,path.join(store.root,file.relativePath),{sha256:receipt.sha256,beforeEffect:()=>{check();}}):null;
   const result=tx(()=>{
    const latest=current(target);if(source)editSources.assertOwned(toInput(latest.input),source.descriptor);const g=group(latest.row.projectId,latest.row.groupId);if(g.activeTaskId!==latest.row.id)invalid();
    const maximum=Number(db.prepare('SELECT max(number) AS n FROM image_versions WHERE groupId=?').get(g.id)?.n??0);maxRevision(maximum);const timestamp=now();
-   const asset={id:receipt.assetId,projectId:g.projectId,name:`${g.name} · 图像 ${maximum+1}.png`,mimeType:'image/png',sha256:receipt.sha256,width:receipt.width,height:receipt.height,sizeBytes:receipt.byteLength,relativePath:file.relativePath,url:`/media/${receipt.assetId}`,provenance:receipt.isMock?'synthetic-mock':'generated',createdAt:timestamp};
+   const asset={id:receipt.assetId,projectId:g.projectId,name:`${g.name} · 图像 ${maximum+1}.png`,mimeType:'image/png',sha256:receipt.sha256,width:receipt.width,height:receipt.height,sizeBytes:receipt.byteLength,...(referenceFields??{relativePath:file.relativePath}),url:`/media/${receipt.assetId}`,provenance:receipt.isMock?'synthetic-mock':'generated',createdAt:timestamp};
    const version={id:receipt.versionId,projectId:g.projectId,groupId:g.id,taskId:latest.row.id,number:maximum+1,assetId:asset.id,sha256:receipt.sha256,mimeType:'image/png',width:receipt.width,height:receipt.height,byteLength:receipt.byteLength,isMock:receipt.isMock,providerId:latest.snapshot.providerId,model:latest.snapshot.model,options:latest.snapshot.options,...imageEditFields(latest.snapshot),createdAt:timestamp};
    db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(asset.id,asset.projectId,JSON.stringify(asset));
    db.prepare('INSERT INTO image_versions(id,projectId,groupId,taskId,number,assetId,data) VALUES(?,?,?,?,?,?,?)').run(version.id,g.projectId,g.id,latest.row.id,version.number,asset.id,JSON.stringify(version));
@@ -364,10 +369,10 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
    tx(()=>{const target=task(String(row.projectId),String(row.id),{shallow:true});reviewBinding(target);if(!target.dto.dispatched&&['queued','interrupted_before_dispatch'].includes(target.row.state))change(target,{state:'cancelled_before_dispatch',errorCode:null},{release:true});});
   }
  });});
- async function drain(): Promise<void> {removeResumer();removeStopper();if(!stopped){stopped=true;controller.abort();reviews.stop();queue.length=0;}await Promise.all([boundedShutdown(Promise.allSettled([...active]),'IMAGE_STOP_TIMEOUT'),remote.drain()]);}
+ async function drain(): Promise<void> {removeResumer();removeStopper();if(!stopped){stopped=true;controller.abort();reviews.stop();queue.length=0;}await Promise.all([boundedShutdown(Promise.allSettled([...active]),'IMAGE_STOP_TIMEOUT'),remote.drain()]);releaseProjectMedia();}
  for(const operation of Object.keys(handlers)){if(Object.hasOwn(history.handlers,operation))continue;const handler=handlers[operation];if(!handler)continue;handlers[operation]=(input: unknown)=>{if(!schemaPresent())fail('IMAGE_SCHEMA_REQUIRED',503);return handler(input);};}
  const approveReviewed=(approval: unknown): unknown=>{const input=reviews.readForApproval(approval);return mutateWithSource('image.generate',input as unknown as ImageMutationInput,approval);};
  const service: ImageService={handlers,drain,isBusy:()=>active.size>0||pending.size>0,approveReviewed:approveReviewed as ImageService['approveReviewed'],rejectReview:reviews.reject};
  owners.set(db,{root:store.root,signal:ownerSignal,generate,autoRun,fault,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,comfyModuleAvailability,service});
- reconcile();remote.reconcile();return service;
+ try{reconcile();remote.reconcile();}catch(error){releaseProjectMedia();owners.delete(db);throw error;}return service;
 }

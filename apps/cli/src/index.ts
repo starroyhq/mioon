@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {assertLocalAssetImportOrigin} from './asset-import-path.ts';
 import {open} from 'node:fs/promises';
 import type {FileHandle} from 'node:fs/promises';
 import path from 'node:path';
@@ -61,7 +62,7 @@ function numberOption(options: Record<string, OptionValue>, key: string, fallbac
   if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) fail(`--${key} must be a positive integer.`);
   return Number(value);
 }
-async function importFile(input: CliInput, file: string): Promise<CliInput> {
+async function uploadFile(input: CliInput, file: string): Promise<CliInput> {
   if (input.dataBase64 !== undefined) fail('Use --file or dataBase64, not both.');
   let handle: FileHandle | undefined;
   try {
@@ -105,6 +106,8 @@ try {
     // Project files use dedicated management routes, not the RPC/MCP catalog.
     const projectPackage = ['project.export', 'project.import', 'project.duplicate'].includes(operation);
     const file = optionText(options.file), output = optionText(options.output);
+    if ((options['confirm-outside'] || options.upload) && (operation !== 'asset.import' || file === undefined)) fail('--confirm-outside and --upload are only valid with asset import --file.');
+    if (options['confirm-outside'] && options.upload) fail('--confirm-outside cannot be combined with --upload.');
     if (file !== undefined && !['asset.import', 'lut.import', 'project.import'].includes(operation)) fail('--file is only valid for asset, LUT or project import.');
     if (output !== undefined && !download && operation !== 'project.export') fail('--output is only valid for downloads and project export.');
     if (options['max-bytes'] !== undefined && !download) fail('--max-bytes is only valid for download.');
@@ -148,10 +151,21 @@ try {
             if (error instanceof LutImportFileError) throw new ClientError(error.code, error.message);
             throw error;
           }
-        } else input = await importFile(input, file);
+        } else if (operation === 'asset.import' && !options.upload) {
+          if (['dataBase64','mimeType','sourcePath'].some(key=>Object.hasOwn(input,key))) fail('--file path import cannot contain dataBase64, mimeType or sourcePath.');
+          input={...input,sourcePath:path.resolve(file)};
+        } else input = await uploadFile(input, file);
       }
+      if(operation==='asset.import' && typeof input.sourcePath==='string')assertLocalAssetImportOrigin(process.env.MIOON_BASE_URL);
+      if(operation==='asset.import' && file!==undefined && options['confirm-outside']) {
+        const result=await client.trustedAssetMedia<{asset:unknown;confirmedDirectories:string[]}>('asset.import.path',input,{signal:abort.signal});
+        if(!result || !Array.isArray(result.confirmedDirectories) || result.confirmedDirectories.some(value=>typeof value!=='string')) throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid directory confirmation acknowledgement.');
+        for(const directory of result.confirmedDirectories) process.stderr.write(JSON.stringify({confirmedDirectory:directory})+'\n');
+        data=result.asset;
+      } else {
       const addressed = splitProjectAddress(operation, input);
       data = await client.rpc(operation, addressed.input, {signal: abort.signal, ...(addressed.projectId === undefined ? {} : {projectId: addressed.projectId})});
+      }
     }
     }
   }

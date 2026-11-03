@@ -233,7 +233,7 @@ test('safe revision limit and stale writes fail without mutation; independent ra
 
 async function subjectCollisionFixture(f: Awaited<ReturnType<typeof fixture>>){
  if(f.subjectInputs)return;
- const image=()=>{const asset=f.asset('image/png');return f.store.put('assets',{...asset,width:640,height:480,provenance:'user-import'});};
+ const image=()=>{const asset=f.asset('image/png'),saved=f.store.get('assets',asset.id);assert.ok(saved);return f.store.put('assets',{...saved,width:640,height:480,provenance:'user-import'});};
  const asset=image(),next=image(),create={projectId:f.project.id,kind:'character',name:'Namespace subject',assetId:asset.id};
  const subject=await f.call('subject.create',{...create,requestId:randomUUID()}),shot=await f.call('shot.create',{projectId:f.project.id,title:'Subject target'});
  f.subjectInputs={

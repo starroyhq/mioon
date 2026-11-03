@@ -1,3 +1,4 @@
+import {mediaFixturePath, mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import type {FrameServicesOptions} from '../packages/business/src/frames.ts';
 import type {DecodeManagedFrameOptions, DecodedManagedFrame} from '../packages/business/src/frame-decoder.ts';
 type FixtureFrameInput = DecodeManagedFrameOptions & {requestedFrame:number;asset:{sha256:string};beforeSpawn:(signal:AbortSignal)=>void;signal:AbortSignal};
@@ -41,7 +42,7 @@ async function until<T>(fn: () => T | Promise<T>,label: unknown){const deadline=
 function fixture(t: test.TestContext,{autoRun=false,decode,fault}: FixtureFrameOptions={}){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-frame-business-')),opened=openStore(root),store=opened as TypedStore;
  const project=store.put('projects',{id:opened.projectId,name:'Frame source project'}),other={id:randomUUID(),name:'Other project'};
- const sourceBytes=Buffer.from('Synthetic managed source bytes PRIVATE_SENTINEL'),id=randomUUID(),relativePath=`media/${id}.mp4`;
+ const sourceBytes=mp4HeaderFixture('Synthetic managed source bytes PRIVATE_SENTINEL'),id=randomUUID(),relativePath=`media/${id}.mp4`;
  writeFileSync(path.join(root,relativePath),sourceBytes,{mode:0o600});
  const asset=store.put('assets',{id,projectId:project.id,name:'Managed original.mp4',mimeType:'video/mp4',sha256:digest(sourceBytes),sizeBytes:sourceBytes.length,relativePath,width:4,height:2,duration:1,provenance:'user-import'});
  let calls=0;
@@ -73,7 +74,7 @@ test('bounded PNG publication owns a new asset and preserves original, legacy hi
  const f=fixture(t,{autoRun:true}),original=JSON.stringify(f.store.get('assets',f.asset.id)),source=readFileSync(path.join(f.root,f.asset.relativePath));
  const job=f.store.put('jobs',{id:randomUUID(),projectId:f.project.id,state:'legacy-byte-sentinel'}),input=f.input({sourceFrame:1}),ack=await f.call('frame.extract',input),result=await state(f,ack.id,'succeeded');
  assert.equal(f.calls,1);assert.notEqual(result.result.assetId,f.asset.id);assert.equal(result.revision,4);assert.equal(result.started,true);
- const asset=f.store.get('assets',result.result.assetId)!,file=path.join(f.root,asset.relativePath);assert.equal(asset.provenance,'extracted-frame');assert.deepEqual(readFileSync(file),bytes);assert.equal(statSync(file).mode&0o777,0o600);
+ const asset=f.store.get('assets',result.result.assetId)!,file=mediaFixturePath(f.root,asset);assert.equal(asset.provenance,'extracted-frame');assert.deepEqual(readFileSync(file),bytes);assert.equal(statSync(file).mode&0o777,0o600);
  assert.deepEqual(await validatePng(readFileSync(file),{width:4,height:2}),{mimeType:'image/png',width:4,height:2,byteLength:bytes.length,sha256:digest(bytes)});
  assert.equal(JSON.stringify(f.store.get('assets',f.asset.id)),original);assert.deepEqual(readFileSync(path.join(f.root,f.asset.relativePath)),source);assert.deepEqual(f.store.get('jobs',job.id),job);
  assert.equal(count(f.store.db,'versions'),0);assert.equal(count(f.store.db,'image_versions'),0);assert.deepEqual(await f.call('frame.extract',input),ack);assert.equal(f.calls,1);

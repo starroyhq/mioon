@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
-import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
+import {mkdtempSync,realpathSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {referenceTestAsset} from '../packages/business/src/project-file/test-asset-fixture.ts';
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
+import {png} from './helpers/timeline-image-fixtures.ts';
 import {CROSS_FILE_RELATIONS} from '../packages/business/src/project-file/cross-file/relations.ts';
 import {relationConstraintName} from '../packages/business/src/project-file/cross-file/install.ts';
 import {schemaObjects} from '../packages/business/src/project-file/cross-file/inspect.ts';
@@ -29,20 +32,28 @@ export function imageFixture(t){
  t.after(()=>{try{if(foreignBefore)assert.deepEqual(captureForeign(),foreignBefore,'foreign project keeps all three native catalogs and every row');}finally{foreignStore.close();store.close();rmSync(root,{recursive:true,force:true});}});
  for(const current of [store,foreignStore])insert(current.db,'projects',{id:current.projectId,data:JSON.stringify({id:current.projectId,name:'Image test',description:'',revision:1})});
  foreignBefore=captureForeign();
- return {...seedImageFixture(store.db,store.projectId,foreignStore.projectId),store,foreignStore};
+ return {...seedImageFixture(store.db,store.projectId,foreignStore.projectId,root),store,foreignStore};
 }
 /** @param {import('node:sqlite').DatabaseSync} db
  * @param {string} projectId
  * @param {string} otherProjectId
+ * @param {string} [root] Real project only; the explicit historical fixture keeps its original bytes.
  */
-function seedImageFixture(db,projectId,otherProjectId){
+function seedImageFixture(db,projectId,otherProjectId,root){
  const groupId=randomUUID(),taskId=randomUUID(),versionId=randomUUID(),assetId=randomUUID(),requestId=randomUUID(),timestamp='2026-10-10T00:00:00.000Z';
  const input={projectId,name:'Image group',prompt:'Mock deterministic image',providerId:'mock',model:IMAGE_MODELS.mock,options:IMAGE_FIXED_OPTIONS,requestId},inputHash=createHash('sha256').update(canonical(input)).digest('hex');
  const snapshot={schemaVersion:1,projectId,groupId,taskId,name:input.name,prompt:input.prompt,providerId:input.providerId,model:input.model,options:input.options};
- const receipt={schemaVersion:1,taskId,projectId,groupId,inputHash,assetId,versionId,sha256:'a'.repeat(64),mimeType:'image/png',width:1024,height:1024,byteLength:128,isMock:true};
+ const relativePath=`media/${assetId}.png`,bytes=root?png({width:1024,height:1024}):null;
+ if(root&&bytes)writeFileSync(join(root,relativePath),bytes);
+ const sha256=bytes?createHash('sha256').update(bytes).digest('hex'):'a'.repeat(64),byteLength=bytes?.length??128;
+ const receipt={schemaVersion:1,taskId,projectId,groupId,inputHash,assetId,versionId,sha256,mimeType:'image/png',width:1024,height:1024,byteLength,isMock:true};
  const task={id:taskId,projectId,groupId,requestId,name:input.name,prompt:input.prompt,providerId:input.providerId,model:input.model,options:input.options,state:'queued',revision:1,dispatched:false,versionId:null,errorCode:null,createdAt:timestamp,updatedAt:timestamp};
- const asset={id:assetId,projectId,name:'Image.png',mimeType:receipt.mimeType,width:1024,height:1024,sizeBytes:128,sha256:receipt.sha256,relativePath:`media/${assetId}.png`,provenance:'synthetic-mock',createdAt:timestamp};
- const version={id:versionId,projectId,groupId,taskId,number:1,assetId,sha256:receipt.sha256,mimeType:receipt.mimeType,width:1024,height:1024,byteLength:128,isMock:true,providerId:input.providerId,model:input.model,options:input.options,createdAt:timestamp};
+ const metadata={id:assetId,projectId,name:'Image.png',mimeType:receipt.mimeType,width:1024,height:1024,sizeBytes:byteLength,sha256:receipt.sha256,relativePath,provenance:'synthetic-mock',createdAt:timestamp};
+ // Raw SQL ownership fixtures bypass Store.put; register the already-written
+ // file explicitly and keep the returned assertion object identical to storage.
+ const {relativePath: _relativePath,...record}=metadata;
+ const asset=root?{...record,reference:mediaReferenceSchema.parse(referenceTestAsset(root,metadata).reference),referenceRevision:1}:metadata;
+ const version={id:versionId,projectId,groupId,taskId,number:1,assetId,sha256:receipt.sha256,mimeType:receipt.mimeType,width:1024,height:1024,byteLength,isMock:true,providerId:input.providerId,model:input.model,options:input.options,createdAt:timestamp};
  db.exec('BEGIN');
  insert(db,'image_groups',{id:groupId,projectId,name:input.name,revision:1,headVersionId:null,activeTaskId:taskId,createdAt:timestamp,updatedAt:timestamp});
  insert(db,'image_tasks',{id:taskId,projectId,groupId,requestId,inputHash,input:canonical(input),snapshot:canonical(snapshot),state:'queued',revision:1,dispatched:0,stagedReceipt:null,versionId:null,errorCode:null,createdAt:timestamp,updatedAt:timestamp});

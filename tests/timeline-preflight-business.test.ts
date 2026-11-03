@@ -1,4 +1,9 @@
-import type {FixtureTimeline, FixtureSnapshot, FixtureAsset} from './helpers/strict-timeline-core-types.ts';
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
+import {assetMediaRecordSchema} from '../packages/contracts/src/asset-media.ts';
+import type {AssetMediaRecord} from '../packages/contracts/src/asset-media.ts';
+type FullFixtureAsset=AssetMediaRecord & {sha256:string};
+import {mediaMtimeMs} from '../packages/business/src/media-reference/fingerprint.ts';
+import type {FixtureTimeline, FixtureSnapshot} from './helpers/strict-timeline-core-types.ts';
 import type {StrictPreflightService} from './helpers/strict-timeline-handler-types.ts';
 type StrictIntersection<T> = (T extends unknown ? (value: T)=>void : never) extends ((value: infer I)=>void) ? I : never;
 type TimelineProbeResult = Awaited<ReturnType<NonNullable<Parameters<typeof prepareTimelineInputs>[1]['probe']>>>;
@@ -48,11 +53,11 @@ async function fixture(t: test.TestContext,options={}){
   call:async (input?: { projectId: `${string}-${string}-${string}-${string}-${string}`; expectedRevision: unknown; })=>{const arg=input??f.input(),result=await preflight.handlers['timeline.export.preflight'](((arg) as unknown as Parameters<typeof preflight.handlers['timeline.export.preflight']>[0]));assert.ok(isExportPreflightResponse(result,arg),JSON.stringify(result));return result;},
   writes:()=>(store.db.prepare('SELECT total_changes() AS n').get())!.n,
   state:()=>({owned:readProjectState(store.db).tables,foreign:readProjectState(foreignStore.db).tables}),
-  async asset(patch: { [x: string]: unknown; bytes?: Buffer; }={}){const id=randomUUID(),bytes=patch.bytes??wav(),relativePath=`media/${id}.wav`;await writeFile(path.join(root,relativePath),((bytes) as unknown as Parameters<typeof writeFile>[1]));const {bytes:_,...rest}=patch;return store.put('assets',{id,projectId:project.id,name:'Synthetic source',mimeType:'audio/wav',relativePath,sha256:sha(((bytes) as unknown as Parameters<typeof sha>[0])),sizeBytes:bytes.length,duration:1,width:0,height:0,hasAudio:true,...rest});},
+  async asset(patch: { [x: string]: unknown; bytes?: Buffer; }={}){const id=randomUUID(),bytes=patch.bytes??wav(),relativePath=`media/${id}.wav`;await writeFile(path.join(root,relativePath),((bytes) as unknown as Parameters<typeof writeFile>[1]));const {bytes:_,...rest}=patch;store.put('assets',{id,projectId:project.id,name:'Synthetic source',mimeType:'audio/wav',relativePath,sha256:sha(((bytes) as unknown as Parameters<typeof sha>[0])),sizeBytes:bytes.length,duration:1,width:0,height:0,hasAudio:true,...rest});const asset=assetMediaRecordSchema.parse(store.get('assets',id));assert.ok(typeof asset.sha256==='string');return {...asset,id,sha256:asset.sha256};},
   save(timeline: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: `${string}-${string}-${string}-${string}-${string}`; revision: number; fps: number; width: number; height: number; tracks: { id: `${string}-${string}-${string}-${string}-${string}`; name: string; kind: string; orderIndex: number; hidden: boolean; muted: boolean; }[]; clips: { id: `${string}-${string}-${string}-${string}-${string}`; trackId: `${string}-${string}-${string}-${string}-${string}`; assetId: `${string}-${string}-${string}-${string}-${string}`; name: string; startFrame: number; durationFrames: number; sourceInFrame: number; rect: { x: number; y: number; width: number; height: number; }; gain: number; }[]; durationFrames: number; createdAt: string; updatedAt: string; }){f.timeline=store.put('timelines',timeline);return f.timeline;},
   async seed(patch: {bytes?: Buffer<ArrayBuffer>;}={}){const asset=await f.asset(((patch) as unknown as Parameters<typeof f.asset>[0])),trackId=randomUUID();f.assetValue=(asset as unknown as (typeof f)["assetValue"]);f.save({id:randomUUID(),projectId:project.id,revision:1,fps:30,width:720,height:1280,tracks:[{id:trackId,name:'Audio',kind:'audio',orderIndex:0,hidden:false,muted:false}],clips:[{id:randomUUID(),trackId,assetId:asset.id,name:'Synthetic audio clip',startFrame:0,durationFrames:30,sourceInFrame:0,rect:{x:0,y:0,width:720,height:1280},gain:1}],durationFrames:30,createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z'});return asset;},
  };
- const f = _strictFixtureBase as typeof _strictFixtureBase & {timeline?: FixtureTimeline; assetValue?: FixtureAsset};
+ const f = _strictFixtureBase as typeof _strictFixtureBase & {timeline?: FixtureTimeline; assetValue?: FullFixtureAsset};
  t.after(async()=>{await preflight.drain();await services.drain();store.close();foreignStore.close();await rm(root,{recursive:true,force:true});});return f;
 }
 
@@ -65,16 +70,16 @@ test('preflight never initializes a legacy timeline, writes tables, or creates f
 test('ready report summarizes saved state, hashes once and probes once without writes',async t=>{
  let probes=0;const f=await fixture(t,{probe:async()=>{probes++;return meta();}}),asset=await f.seed();
  (f.timeline)!.clips.push({...(f.timeline)!.clips[0],id:randomUUID(),startFrame:30});(f.timeline)!.durationFrames=60;(f.timeline)!.clips.forEach((c)=>c.durationFrames=15);(f.timeline)!.clips[1].startFrame=15;(f.timeline)!.durationFrames=30;f.save(((f.timeline) as unknown as Parameters<typeof f.save>[0]));
- const before=f.state(),writes=f.writes(),bytes=await readFile(path.join(f.root,asset.relativePath)),result=await f.call();
+ const before=f.state(),writes=f.writes(),bytes=await readFile(mediaFixturePath(f.root,asset)),result=await f.call();
  assert.equal(result.status,'ready');assert.equal((result.summary)!.clipCount,2);assert.equal((result.summary)!.audibleClipCount,2);assert.equal((result.summary)!.visualClipCount,0);assert.equal(probes,1);
  assert.deepEqual(result.checks,{totalAssets:1,checkedAssets:1,bytesHashed:bytes.length,fullDecode:false});assert.match(((result.snapshotHash) as unknown as Parameters<typeof assert.match>[0]),/^[a-f0-9]{64}$/);
  assert.equal(result.snapshotHash,timelineSnapshotHash((readTimelinePreflightSnapshot as (...args:Partial<Parameters<typeof readTimelinePreflightSnapshot>>)=>{timeline:FixtureTimeline|null;snapshot:FixtureSnapshot|null})(f.store,f.project.id).snapshot));
- assert.equal(f.writes(),writes);assert.deepEqual(f.state(),before);assert.deepEqual(await readFile(path.join(f.root,asset.relativePath)),bytes);
- assert.ok(!JSON.stringify(result).includes(f.root));assert.ok(!JSON.stringify(result).includes(asset.relativePath));
+ assert.equal(f.writes(),writes);assert.deepEqual(f.state(),before);assert.deepEqual(await readFile(mediaFixturePath(f.root,asset)),bytes);
+ assert.ok(!JSON.stringify(result).includes(f.root));assert.ok(!JSON.stringify(result).includes(asset.reference.path));
 });
 
 test('missing, corrupt and byte-replaced sources block with sanitized reasons',async t=>{
- const f=await fixture(t),asset=await f.seed(),file=path.join(f.root,asset.relativePath);await unlink(file);
+ const f=await fixture(t),asset=await f.seed(),file=mediaFixturePath(f.root,asset);await unlink(file);
  assert.equal((await f.call()).issues[0].code,'PREFLIGHT_SOURCE_INVALID');await writeFile(file,'different private bytes');
  const changed=await f.call();assert.equal(changed.status,'blocked');assert.equal(changed.issues[0].code,'PREFLIGHT_SOURCE_CHANGED');assert.ok(!JSON.stringify(changed).includes('private bytes'));
  const corrupt=(createTimelinePreflightServices(f.store,{probe:async()=>{throw Object.assign(Error('SECRET /private/path'),{code:'MEDIA_EXIT_FAILED'});}}) as StrictPreflightService);
@@ -91,9 +96,10 @@ test('deep ownership and SQL JSON bounds prevent foreign reference and path leak
  f.store.db.prepare('UPDATE timelines SET data=? WHERE id=?').run(JSON.stringify({...f.timeline,padding:'x'.repeat(256 * 1024)}),(f.timeline)!.id);assert.equal((await f.call()).issues[0].code,'INVALID_TIMELINE_SNAPSHOT');
 });
 
-test('symlinks are refused without repairing files or permissions',async t=>{
- const f=await fixture(t),asset=await f.seed(),file=path.join(f.root,asset.relativePath),target=path.join(f.root,'private.wav');await writeFile(target,wav());await unlink(file);await symlink(target,file);
- assert.equal((await f.call()).issues[0].code,'PREFLIGHT_SOURCE_INVALID');assert.deepEqual(await readFile(target),wav());
+test('ordinary symlink references remain readable without repairing files and reject target changes',async t=>{
+ const f=await fixture(t),asset=await f.seed(),file=mediaFixturePath(f.root,asset),target=path.join(f.root,'private.wav');await writeFile(target,wav());await unlink(file);await symlink(target,file);
+ assert.equal((await f.call()).status,'ready');assert.equal(lstatSync(file).isSymbolicLink(),true);assert.deepEqual(await readFile(target),wav());
+ await writeFile(target,Buffer.from('changed symlink target'));const changed=await f.call();assert.equal(changed.status,'blocked');assert.equal(changed.issues[0].code,'PREFLIGHT_SOURCE_CHANGED');assert.equal(lstatSync(file).isSymbolicLink(),true);assert.deepEqual(await readFile(target),Buffer.from('changed symlink target'));
 });
 
 test('caps and exhausted total budget return incomplete while legacy rendering still queues',async t=>{
@@ -177,7 +183,7 @@ test('optional foreign clip lineage and generated reverse ownership block before
 test('oversized relational timeline identity is replaced with SQL NULL before materialization',async t=>{
  const f=await fixture(t);await f.seed();f.store.db.prepare('UPDATE timelines SET id=? WHERE id=?').run('secret'.repeat(350000),(f.timeline)!.id);
  const original=f.store.db.prepare.bind(f.store.db);let sawTimeline=false;
- const mocked=t.mock.method(f.store.db,'prepare',function(sql:string){const statement=original(((sql) as unknown as Parameters<typeof original>[0]));if(sql.includes('FROM timelines WHERE projectId=')){const get=statement.get.bind(statement);statement.get=(...args)=>{const row=get(...((args) as unknown as Parameters<NonNullable<typeof get>>));assert.equal(((row)!.id as unknown),null);sawTimeline=true;return row;};}return statement;});
+ const mocked=t.mock.method(f.store.db,'prepare',function(sql:string){const statement=original(((sql) as unknown as Parameters<typeof original>[0]));if(sql.includes('FROM timelines WHERE projectId=')&&sql.includes('THEN id END AS id')){const get=statement.get.bind(statement);statement.get=(...args)=>{const row=get(...((args) as unknown as Parameters<NonNullable<typeof get>>));assert.equal(((row)!.id as unknown),null);sawTimeline=true;return row;};}return statement;});
  try{assert.equal((await f.call()).status,'blocked');assert.equal(sawTimeline,true);}finally{mocked.mock.restore();}
 });
 
@@ -273,14 +279,16 @@ test('restricted metadata probe accepts PNG JPEG WEBP MP4 WebM MP3 WAV and M4A w
  ] as const);
  for(const [ext,mimeType,args] of recipes){
   const relativePath=`media/fixture-${ext}.${ext}`,file=path.join(f.root,relativePath);await run('ffmpeg',['-hide_banner','-loglevel','error','-n',...args,file]);
-  const bytes=await readFile(file),audio=mimeType.startsWith('audio/');f.store.put('assets',{...f.assetValue,mimeType,relativePath,sha256:sha(bytes),sizeBytes:bytes.length,duration:mimeType.startsWith('image/')?0:1,width:audio?0:16,height:audio?0:16,hasAudio:audio});
+  const bytes=await readFile(file),audio=mimeType.startsWith('audio/'),{reference:_reference,referenceRevision:_referenceRevision,...metadata}=f.assetValue!;f.store.put('assets',{...metadata,mimeType,relativePath,sha256:sha(bytes),sizeBytes:bytes.length,duration:mimeType.startsWith('image/')?0:1,width:audio?0:16,height:audio?0:16,hasAudio:audio});
   (f.timeline)!.tracks[0].kind=audio?'audio':'video';f.save(((f.timeline) as unknown as Parameters<typeof f.save>[0]));const events: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[]=[],off=onMediaProcess(event=>events.push(event));
   try{const report=await f.call();assert.equal(report.status,'ready',`${ext}: ${JSON.stringify(report)}`);assert.equal(report.checks.fullDecode,false);assert.deepEqual(events.filter(e=>e.type==='started').map(e=>e.kind),['ffprobe']);}finally{off();}
  }
 });
 
 test('default source byte cap rejects sparse oversized files before SHA or probe',async t=>{
- let probes=0;const f=await fixture(t,{probe:async()=>{probes++;return meta();}}),asset=await f.seed();await truncate(path.join(f.root,asset.relativePath),EXPORT_PREFLIGHT_LIMITS.sourceBytes+1);
+ let probes=0;const f=await fixture(t,{probe:async()=>{probes++;return meta();}}),asset=await f.seed(),file=mediaFixturePath(f.root,asset),sizeBytes=EXPORT_PREFLIGHT_LIMITS.sourceBytes+1;await truncate(file,sizeBytes);
+ // This deliberately oversized negative fixture must reach the byte cap before hashing.
+ f.store.put('assets',{...asset,sizeBytes,reference:{...asset.reference,sizeBytes,mtimeMs:mediaMtimeMs(lstatSync(file,{bigint:true}))}});
  const report=await f.call();assert.equal(report.status,'incomplete');assert.equal(report.issues[0].code,'PREFLIGHT_BUDGET');assert.equal(report.checks.bytesHashed,0);assert.equal(probes,0);
 });
 
@@ -302,7 +310,7 @@ test('recovered snapshots bind the exact expected project and contain only refer
 (  snapshot: { assets: never[]; })=>{snapshot.assets=[];},
  ];
  for(const mutate of cases){const snapshot=clone(original);mutate(((((snapshot) as unknown as Parameters<typeof mutate>[0])) as unknown as StrictIntersection<Parameters<NonNullable<typeof mutate>>[0]>));let reads=0,probes=0,graphs=0;
-  await assert.rejects(prepareTimelineInputs(((snapshot) as unknown as Parameters<typeof prepareTimelineInputs>[0]),{root:f.root,projectId:f.project.id,readAsset:()=>{reads++;return f.assetValue;},
+  await assert.rejects(prepareTimelineInputs(((snapshot) as unknown as Parameters<typeof prepareTimelineInputs>[0]),{root:f.root,projectId:f.project.id,readAsset:()=>{reads++;return f.assetValue?{...f.assetValue,duration:f.assetValue.duration??null}:undefined;},
    probe:((async()=>{probes++;return meta();}) as unknown as ((file: string, options: ProbeOptions) => Promise<TimelineProbeResult>) | undefined),validateLinks:()=>{graphs++;}}),{code:'INVALID_TIMELINE_SNAPSHOT'});
   assert.deepEqual({reads,probes,graphs},{reads:0,probes:0,graphs:0});
  }
@@ -385,7 +393,7 @@ test('worker rechecks relational ownership after rendering and never publishes t
 });
 
 test('worker timeline failure guard and status write share one transaction and preserve a reassigned row',async t=>{
- const f=await fixture(t);await f.seed();await unlink(path.join(f.root,(f.assetValue)!.relativePath));const record=exportRecord(f);f.store.put('exports',record);
+ const f=await fixture(t);await f.seed();await unlink(mediaFixturePath(f.root,f.assetValue));const record=exportRecord(f);f.store.put('exports',record);
  const originalTx=f.store.tx;let transactions=0,dataAtMove;f.store.tx=fn=>{if(++transactions===2){dataAtMove=exportRows(f)[0].data;withoutProcessTargetRevisions(f.store.db,['exports'],()=>withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.other.id,record.id)));}return originalTx(fn);};
  const mocked=t.mock.method(console,'error',()=>{}),events: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[]=[],off=onMediaProcess(event=>events.push(event));const worker=startWorker(f.store,f.services,new Map());
  try{await worker.tick();await worker.stop();assert.ok(transactions>=2);assert.equal(exportRows(f)[0].data,dataAtMove);assert.deepEqual((events as unknown),[]);assert.equal((f.store.get('exports',record.id)!.error as unknown),null);}
@@ -434,7 +442,7 @@ test('worker row identity cannot be bypassed by absent storyboard or relabeled l
 });
 
 test('timeline byte mismatch preserves path-free legacy worker error text and preflight classification',async t=>{
- const f=await fixture(t);await f.seed();const snapshot=(readTimelinePreflightSnapshot as (...args:Partial<Parameters<typeof readTimelinePreflightSnapshot>>)=>{timeline:FixtureTimeline|null;snapshot:FixtureSnapshot|null})(f.store,f.project.id).snapshot;await writeFile(path.join(f.root,(f.assetValue)!.relativePath),'synthetic changed bytes');let probes=0;
+ const f=await fixture(t);await f.seed();const snapshot=(readTimelinePreflightSnapshot as (...args:Partial<Parameters<typeof readTimelinePreflightSnapshot>>)=>{timeline:FixtureTimeline|null;snapshot:FixtureSnapshot|null})(f.store,f.project.id).snapshot;await writeFile(mediaFixturePath(f.root,f.assetValue),'synthetic changed bytes');let probes=0;
  await assert.rejects(prepareTimelineInputs(((snapshot) as unknown as Parameters<typeof prepareTimelineInputs>[0]),{root:f.root,projectId:f.project.id,readAsset:(((id?: unknown)=>readOwnedTimelineAsset(f.store.db,f.project.id,id)) as unknown as (id: string) => import("../packages/business/src/timeline-inputs.ts").ManagedAssetRecord | null | undefined),probe:((async()=>{probes++;return meta();}) as unknown as ((file: string, options: ProbeOptions) => Promise<TimelineProbeResult>) | undefined)}),error=>(error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code==='MANAGED_SOURCE_CHANGED'&&(error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).message==='Export input bytes differ from frozen version hash');
  assert.equal(probes,0);const report=await f.call();assert.equal(report.status,'blocked');assert.equal(report.issues[0].code,'PREFLIGHT_SOURCE_CHANGED');assert.ok(!JSON.stringify(report).includes(f.root));
 });

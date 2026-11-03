@@ -1,3 +1,4 @@
+import {importNativeQaAsset,nativeQaAssetFile,coldNativeQaAssetFile,coldNativeQaMediaSnapshot} from './helpers/native-local-qa-fixture.ts';
 /** Isolated synthetic packaged-native SDR acceptance. UI input is performed
  * separately through supported CUA. This helper never drives UI or calls RPCs
  * after preparation; logical audits require normal native shutdown; live audits are physical-only. */
@@ -27,7 +28,7 @@ const mediaTool=name=>process.env[`MIOON_${name.toUpperCase()}_PATH`]||`/usr/bin
 const launchLabels=['first','imported','saved','undone','redone','reopen'];
 const shellQuote=value=>"'"+String(value).replaceAll("'","'\\''")+"'";
 async function exists(file) { try { await lstat(file); return true; } catch (e) { if (e.code === 'ENOENT') return false; throw e; } }
-async function readJson(file) { return JSON.parse(await readFile(file, 'utf8')); }
+async function readJson(file) { const value=JSON.parse(await readFile(file, 'utf8'));if(file===fixtureFile&&value.assetReferenceFixture!==1)throw Error('Historical pre-reference fixture must be preserved; choose a fresh MIOON_QA_FIXTURE_ROOT');return value; }
 async function save(name, value) { assert.match(name, /^[a-z0-9-]+\.json$/); await writeFile(path.join(report, name), json(value), { mode: 0o600, flag: 'wx' }); }
 async function fileHash(file) { const stat = await lstat(file); assert.ok(stat.isFile() && !stat.isSymbolicLink() && stat.size < 512 * 1024 * 1024); return { bytes: stat.size, sha256: sha(await readFile(file)) }; }
 function environment() {
@@ -51,14 +52,14 @@ async function prepare() {
   await writeFile(lutFile, await readFile(path.join(repo, 'examples/look-packs/synthetic-nonlinear.mioon-look.cube')), { mode: 0o600, flag: 'wx' });
   const prepared=await prepareNativeQaProject(workspace,'单 Look 数据包 · 合成原生验收'),{store,services,project}=prepared;let fixture;
   try {
-    const asset = await services.call('asset.import', { projectId: project.id, name: 'Synthetic Rec709 green.mp4', mimeType: 'video/mp4', dataBase64: (await readFile(source)).toString('base64') });
+    const asset = await importNativeQaAsset(prepared, { projectId: project.id, name: 'Synthetic Rec709 green.mp4', mimeType: 'video/mp4', dataBase64: (await readFile(source)).toString('base64') });
     let timeline = await services.call('timeline.format.set', { projectId: project.id, expectedProjectRevision: project.revision, expectedRevision: 0, requestId: randomUUID(), presetId: 'landscape_720' });
     timeline = await services.call('timeline.clip.add', { projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), assetId: asset.id, trackId: timeline.tracks.find(t => t.kind === 'video').id, startFrame: 0, durationFrames: 90, name: 'Synthetic SDR clip' });
     const clip = timeline.clips[0], state = defaultWorkspaceState();
     state.activeMode = 'editing'; state.editing.selectedClipId = clip.id; state.editing.quickAssetId = null; state.editing.previewKind = 'source'; state.shared.inspectorCollapsed = false; delete state.shared.assetSearch;
     createWorkspacePreferences(store).put(project.id, { expectedRevision: 0, state });
-    const storedAsset = JSON.parse(store.db.prepare('SELECT data FROM assets WHERE id=?').get(asset.id).data);
-    fixture = { synthetic: true, kernel:true, projectDir:store.projectDir,localDir:store.localDir,projectFile:store.projectFile,id: randomUUID(), projectId: project.id, timelineId: timeline.id, clipId: clip.id, assetId: asset.id, originalClip: clip, baseRevision: timeline.revision, sourceHash: asset.sha256, sourceRelativePath: storedAsset.relativePath, sourceFile: source, sourceFileHash: await fileHash(source), lutFile, lutFileHash: await fileHash(lutFile), userData, workspace };
+    const sourceMedia=await nativeQaAssetFile(store,asset.id);
+    fixture = { synthetic: true, assetReferenceFixture:1, kernel:true, projectDir:store.projectDir,localDir:store.localDir,projectFile:store.projectFile,id: randomUUID(), projectId: project.id, timelineId: timeline.id, clipId: clip.id, assetId: asset.id, originalClip: clip, baseRevision: timeline.revision, sourceHash: asset.sha256, sourceMediaFile: sourceMedia.file, sourceFile: source, sourceFileHash: await fileHash(source), lutFile, lutFileHash: await fileHash(lutFile), userData, workspace };
   } finally { await closeQaProject(prepared); }
   await writeFile(path.join(runtime,'native-audit-layout.json'),json(await prepareNativeQaLiveLayout(workspace)),{mode:0o600,flag:'wx'});
   await writeFile(fixtureFile, json(fixture), { mode: 0o600, flag: 'wx' }); await save('fixture.json', fixture); await audit('prepared');
@@ -72,12 +73,12 @@ async function audit(label) {
   for(const schema of Object.values(storage.schemas)){const names=schema.filter(row=>row.type==='table');assert.ok(names.length<=128);for(const {name} of names)assert.match(name,/^[a-z_][a-z0-9_]*$/);}
   for(const values of Object.values(rows))assert.ok(values.length<=1000);
   assert.equal(storage.locations[fixture.projectId]?.projectFile,fixture.projectFile);
-  const media = []; for (const name of (await readdir(path.join(fixture.projectDir, 'media'))).sort()) media.push({ name, ...await fileHash(path.join(fixture.projectDir, 'media', name)) });
+  const media=coldNativeQaMediaSnapshot(workspace,fixture.projectId);
   const draftPath = path.join(fixture.localDir, 'local-drafts-v1.json');
   const result = { synthetic: true,kernel:true,kind:'cold-sql',storage, at: new Date().toISOString(), tables: Object.fromEntries(Object.entries(rows).map(([name, value]) => [name, { count: value.length, sha256: sha(json(value)) }])),
     timeline: rows.timelines.map(row => JSON.parse(row.data)).find(t => t.id === fixture.timelineId), requests: rows.timeline_requests, history: rows.timeline_history,
     editTasks: rows.edit_tasks, exports: rows.exports.map(row => JSON.parse(row.data)), assets: rows.assets.map(row => JSON.parse(row.data)), lutResources: rows.project_lut_resources, lutRequests: rows.lut_import_requests,
-    draft: await exists(draftPath) ? await readJson(draftPath) : null, media, originalSource: await fileHash(path.join(fixture.projectDir, fixture.sourceRelativePath)) };
+    draft: await exists(draftPath) ? await readJson(draftPath) : null, media, originalSource: await coldNativeQaAssetFile(workspace,fixture.projectId,fixture.assetId) };
   assert.equal(result.originalSource.sha256, fixture.sourceHash); await save(label + '-audit.json', result);
   return { label, revision: result.timeline.revision, colour: result.timeline.clips[0].colour, exports: result.exports.map(e => ({ id: e.id, status: e.status, purpose: e.purpose })), tables: result.tables };
 }
@@ -121,8 +122,8 @@ async function final() {
   const outputs = [];
   for (const purpose of ['preview', 'export']) {
     const items = result.exports.filter(e => e.status === 'succeeded' && e.purpose === purpose); assert.ok(items.length >= 1, `Missing successful ${purpose}`);
-    const record = items.at(-1), asset = result.assets.find(a => a.id === record.assetId); assert.ok(asset); assert.match(asset.relativePath, /^media\/[a-zA-Z0-9._-]+\.mp4$/);
-    const file = path.join(fixture.projectDir, asset.relativePath);
+    const record = items.at(-1), asset = result.assets.find(a => a.id === record.assetId); assert.ok(asset);assert.deepEqual(asset.producer,{kind:'export',id:record.id}); const resolved=await coldNativeQaAssetFile(workspace,asset.projectId,asset.id);assert.match(resolved.projectRelativeFile, /^media\/[a-zA-Z0-9._-]+\.mp4$/);assert.equal(resolved.sha256,asset.sha256);assert.equal(resolved.bytes,asset.sizeBytes);
+    const file=resolved.file;
     await command(mediaTool('ffprobe'), ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', file], purpose + '-probe');
     const probe = await readJson(path.join(runtime, purpose + '-probe.stdout')), video = probe.streams.find(s => s.codec_type === 'video');
     for (const key of ['color_space', 'color_transfer', 'color_primaries']) assert.equal(video[key], 'bt709'); assert.equal(video.color_range, 'tv'); assert.equal(video.pix_fmt, 'yuv420p'); assert.equal(Number(video.nb_frames), 90);

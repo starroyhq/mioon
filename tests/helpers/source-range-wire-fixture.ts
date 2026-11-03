@@ -1,3 +1,4 @@
+import {mediaReferenceFixture} from './media-reference-fixtures.ts';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -14,7 +15,7 @@ async function seed(root: string): Promise<void> {
   const {createServerProject, openServerProject, projectDirFor, withoutForeignKeys} = await import('./project-database.ts');
   const asset = (id: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({id, projectId: IDS.project, name: 'Metadata-only range fixture',
     mimeType: 'video/mp4', duration: 2, width: 720, height: 1280, hasVideo: true, hasAudio: false,
-    provenance: 'user-import', sha256: '2'.repeat(64), createdAt: NOW, ...extra});
+    provenance: 'user-import', sha256: '2'.repeat(64),sizeBytes:1,referenceRevision:1,reference:mediaReferenceFixture(`media/${id}.mp4`,1,'2'.repeat(64)), createdAt: NOW, ...extra});
   const store = openServerProject(root, IDS.project);
   try {
     // The shared mutation fixture's zero-track timeline is an intentionally
@@ -29,6 +30,8 @@ async function seed(root: string): Promise<void> {
     // keeps only the single generated version needed by the range scenario.
     store.db.prepare('DELETE FROM versions WHERE id=?').run(IDS.secondVersion);
     store.db.prepare('DELETE FROM jobs WHERE id=?').run(IDS.secondJob);
+    const generated=store.get('assets',IDS.asset) as Record<string,unknown>;
+    store.put('assets',{...generated,sizeBytes:1,referenceRevision:1,reference:mediaReferenceFixture(`media/${IDS.asset}.mp4`,1,'1'.repeat(64)),producer:{kind:'generation',id:IDS.job}});
     store.put('assets', asset(RANGE_IDS.audio, {mimeType: 'audio/wav', duration: 2.019, hasVideo: false, hasAudio: true}));
     store.put('assets', asset(RANGE_IDS.long, {duration: 1200}));
     store.put('assets', asset(RANGE_IDS.boundary, {duration: (61 - 1e-10) / 30}));

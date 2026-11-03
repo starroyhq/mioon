@@ -1,3 +1,5 @@
+import {legacyWorkspaceSceneSnapshotSchema,legacyWorkspaceSceneShotsSnapshotSchema} from '../../contracts/src/scene-tasks.ts';
+import {validAssetLocator} from './asset-reference-record.ts';
 import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import {randomBytes,createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import type {DatabaseSync,SQLOutputValue} from 'node:sqlite';
@@ -166,7 +168,7 @@ export function createSceneHistoryReaders({db}: {db: DatabaseSync}): SceneHistor
   if(typeof row.revision!=='number'||row.revision<1||![0,1].includes(row.started))invalid();
   if(row.kind==='shots')return shotsTask(projectId,row,graph);
   if(row.kind!=='detect'||row.stagedReceipt!==null||row.outcome!==null)invalid();
-  const input=parsed(sceneSchemas['scene.detect'],row.input) as SceneDetectInput,snapshot=parsed(sceneSnapshotSchema,row.snapshot);
+  const input=parsed(sceneSchemas['scene.detect'],row.input) as SceneDetectInput,snapshot=parsed(isProjectLayout(db)?sceneSnapshotSchema:sceneSnapshotSchema.or(legacyWorkspaceSceneSnapshotSchema),row.snapshot);
   const exact=canonical(input);
   if(row.input!==exact||row.inputHash!==sha(exact)||input.projectId!==projectId||input.requestId!==row.requestId||input.sourceAssetId!==row.sourceAssetId||
    snapshot.projectId!==projectId||snapshot.taskId!==id||snapshot.source.assetId!==input.sourceAssetId||snapshot.source.sha256!==input.sourceHash)invalid();
@@ -184,13 +186,13 @@ export function createSceneHistoryReaders({db}: {db: DatabaseSync}): SceneHistor
   acceptance(row,'scene.detect',{...dto,state:'queued',revision:1,started:false,result:null,errorCode:null,updatedAt:row.createdAt});
   // Size and probe metadata may be refreshed; the frozen identity may not.
   const source=asset(projectId,input.sourceAssetId,graph);
-  if(source.sha256!==snapshot.source.sha256||source.mimeType!==snapshot.source.mimeType||source.relativePath!==snapshot.source.relativePath)invalid();
+  if(source.sha256!==snapshot.source.sha256||source.mimeType!==snapshot.source.mimeType)invalid();
   return {kind:'detect',row,input,snapshot:snapshot as SceneTaskSnapshot,dto:dto as SceneDetectTaskResponse};
  }
  function shotsTask(projectId: string,row: SceneTaskRow,graph?: MediaGraph): SceneShotsView {
   const id=row.id;
   if(row.resultId!==null)invalid();
-  const input=parsed(sceneSchemas['scene.shots.create'],row.input) as SceneShotsInput,snapshot=parsed(sceneShotsSnapshotSchema,row.snapshot) as SceneShotsSnapshot;
+  const input=parsed(sceneSchemas['scene.shots.create'],row.input) as SceneShotsInput,snapshot=parsed(isProjectLayout(db)?sceneShotsSnapshotSchema:sceneShotsSnapshotSchema.or(legacyWorkspaceSceneShotsSnapshotSchema),row.snapshot) as SceneShotsSnapshot;
   const receipt=row.stagedReceipt===null?null:parsed(sceneShotsReceiptSchema,row.stagedReceipt) as SceneShotsReceipt;
   const outcome=row.outcome===null?null:parsed(sceneShotsOutcomeSchema,row.outcome) as SceneShotsOutcome;
   const exact=canonical(input);
@@ -215,7 +217,7 @@ export function createSceneHistoryReaders({db}: {db: DatabaseSync}): SceneHistor
   if(!sceneShotsTaskResponseSchema.safeParse(dto).success)invalid();
   acceptance(row,'scene.shots.create',{...dto,state:'queued',revision:1,started:false,shots:null,errorCode:null,updatedAt:row.createdAt});
   const source=asset(projectId,input.sourceAssetId,graph);
-  if(source.sha256!==snapshot.source.sha256||source.mimeType!==snapshot.source.mimeType||source.relativePath!==snapshot.source.relativePath)invalid();
+  if(source.sha256!==snapshot.source.sha256||source.mimeType!==snapshot.source.mimeType)invalid();
   // A built storyboard's images were saved with it and are never removed.
   if(outcome&&receipt)for(const keyframe of receipt.keyframes){const saved=assetRow(projectId,keyframe.assetId);if(!saved||!sceneKeyframeAssetMatches(saved,keyframe,projectId))invalid();}
   return {kind:'shots',row,input,snapshot,receipt,outcome,dto:dto as SceneShotsTaskResponse};

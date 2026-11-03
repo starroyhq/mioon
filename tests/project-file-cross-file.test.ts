@@ -396,7 +396,7 @@ test('real tables: cross-file keys, process-entity revisions and the content seq
     // Local process-revision tombstones still belong to this project.
     assert.deepEqual(deleteProject(), {message: FOREIGN_KEY_MESSAGE, errcode: 1811});
 
-    const waveform = (owner: string) => db.prepare('INSERT INTO waveform_cache(cacheKey,projectId,sourceSha256,algorithm,status,attemptId,data,bytes,reservedBytes) VALUES(?,?,?,?,?,?,?,?,?)')
+    const waveform = (owner: string) => db.prepare('INSERT INTO waveform_cache(cacheKey,projectId,sourceFingerprint,algorithm,status,attemptId,data,bytes,reservedBytes) VALUES(?,?,?,?,?,?,?,?,?)')
       .run(randomUUID().replaceAll('-', '').padEnd(64, '0'), owner, 'a'.repeat(64), 'peaks-v1', 'ready', randomUUID(), '{}', 1, 0);
     assert.deepEqual(sqliteError(() => waveform(elsewhere)), {message: FOREIGN_KEY_MESSAGE, errcode: 1811});
     waveform(projectId);

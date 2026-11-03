@@ -10,7 +10,7 @@ export interface SubjectAsset {
   projectId?: string;
   mimeType?: string;
   name?: string;
-  sha256?: string;
+  sha256?: string | null;
   [key: string]: unknown;
 }
 export interface SubjectPage<T> {

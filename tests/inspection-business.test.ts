@@ -16,7 +16,7 @@ import {parse} from '@mioon/contracts';
 import { createServices, createInspectionServices, INSPECTION_OPERATIONS, INSPECTION_LIMITS} from '@mioon/business';
 import type { FixtureProject } from './helpers/strict-timeline-core-types.ts';
 import {schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
-
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 
 const at = '2026-10-09T00:00:00.000Z';
 const unsafe = {relativePath: '/private/secret', path: '/private/path', url: 'https://unsafe.invalid/media', dataBase64: 'PRIVATE_BYTES',
@@ -97,7 +97,10 @@ test('all four inspect operations use safe DTOs, preserve legacy data, make zero
   const inspectedTimeline = await f.call('timeline.inspect');
   assert.equal(inspectedTimeline!.clips.length, 2); assert.deepEqual(Object.keys(inspectedTimeline!.clips[0].rect), ['x', 'y', 'width', 'height']);
   assert.equal(outbound, 0); assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n, changes); assert.deepEqual(capture(f), before);
-  assert.equal(f.store.get('assets', a.id)!.relativePath, unsafe.relativePath);
+  const storedAsset = f.store.get('assets', a.id);
+  assert.ok(storedAsset);
+  assert.equal(Object.hasOwn(storedAsset, 'relativePath'), false);
+  assert.equal(mediaFixturePath(f.store.root, storedAsset), unsafe.relativePath);
 });
 
 test('absent timeline stays null and inspection requires an existing owned project', async t => {

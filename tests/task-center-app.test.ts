@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {captureTaskWorkspaceIntent, navigateTaskShot} from '../apps/web/src/task-workspace-intent.ts';
-import {findGenerationProvider, generationProviderForModel, generationProviderIdentity, generationParameters} from '../apps/web/src/generation-settings.ts';
+import {findGenerationProvider, generationProviderForModel, generationProviderIdentity, generationParameters,checkGenerationMediaReferences,generationMediaReferences} from '../apps/web/src/generation-settings.ts';
 import {parseVideoBinding, videoBindingCapabilities} from '../packages/contracts/src/video-providers.ts';
 import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '@mioon/contracts';
 import {parseAgentTaskRecoveryLocation,resolveAgentTaskRecoveryLocation} from '../apps/web/src/agent-task-recovery-location.ts';
@@ -191,20 +191,20 @@ for(const changedProject of [false,true])test(`Tasks hidden recovery 401 retains
  assert.equal(h.state.ack.length,0);assert.equal(h.state.busy.at(-1)![2],false);
 });
 
-test('paid retry keeps its Tasks review and rejects a revoked pane before submission',()=>{
+test('paid retry keeps its Tasks review and rejects a revoked pane before submission',async()=>{
  const code=section('  function retryGeneration(', '  async function createProject('),snapshot={title:'Fixed original',duration:4,aspectRatio:'16:9',referenceAssetIds:[]};
  const job={id:jobId,shotId,projectId,providerId:'synthetic-paid-adapter',model:'fixed-test-model',snapshot};
  const state={reviews:[] as unknown[],submitted:[] as {retryJobId: string}[],notices:[] as unknown[]},realConfirmRef={current:null as GenerationApproval | null};let viewCurrent=true;
  const deps={message,msg:message,...createI18nTestContext(),findGenerationProvider,generationProviderForModel,generationProviderIdentity,generationParameters,parseVideoBinding,videoBindingCapabilities,providers:[{id:job.providerId,mock:false}],checkGeneration:()=>true,reviewGeneration:null,
   dataRef:{current:{shots:[{id:shotId,projectId}],jobs:[job],assets:[]}},generationReviewScope:{current:{key:'tasks'}},realConfirmRef,
   setRealConfirm:(value: unknown)=>state.reviews.push(value),context:()=>({projectId,epoch:1}),isCurrent:()=>true,
-  generationReferenceIdentity:()=> 'fixed-source',generationReferences:()=>({references:[]}),generationOptionsRef:{current:{}},generationSelection:()=>({}),
+  currentProject:{current:projectId},checkGenerationMediaReferences,generationMediaReferences,readableError:(error:unknown)=>String(error),rpc:()=>assert.fail('A retry without references needs no media status request'),generationReferenceIdentity:()=> 'fixed-source',generationReferences:()=>({references:[]}),generationOptionsRef:{current:{}},generationSelection:()=>({}),
   subjectVideoIdentity:()=>null,subjectVideoProfileIdentity:()=>null,submitGeneration:(args: {retryJobId: string})=>state.submitted.push(args),notify:(message: unknown)=>state.notices.push(message)};
  // reviewGeneration is declared by the actual extracted code, not a stub.
- delete (deps as {reviewGeneration?: unknown}).reviewGeneration;const h=make(code,deps,['retryGeneration','confirmGeneration']);h.retryGeneration(job,()=>viewCurrent);
+ delete (deps as {reviewGeneration?: unknown}).reviewGeneration;const h=make(code,deps,['retryGeneration','confirmGeneration']);h.retryGeneration(job,()=>viewCurrent);await new Promise<void>(resolve=>setImmediate(resolve));
  const approval=realConfirmRef.current;assert.ok(approval);assert.deepEqual(approval.shot,{...snapshot,id:shotId});assert.equal(approval.approvalView,deps.generationReviewScope.current);assert.equal(typeof approval.taskViewGuard,'function');
- viewCurrent=false;h.confirmGeneration(approval);assert.equal(state.submitted.length,0);assert.equal(state.notices.length,1);
- viewCurrent=true;h.retryGeneration(job,()=>viewCurrent);h.confirmGeneration(realConfirmRef.current);assert.equal(state.submitted.length,1);assert.equal(state.submitted[0].retryJobId,jobId);
+ viewCurrent=false;await h.confirmGeneration(approval);assert.equal(state.submitted.length,0);assert.equal(state.notices.length,1);
+ viewCurrent=true;h.retryGeneration(job,()=>viewCurrent);await new Promise<void>(resolve=>setImmediate(resolve));await h.confirmGeneration(realConfirmRef.current);assert.equal(state.submitted.length,1);assert.equal(state.submitted[0].retryJobId,jobId);
 });
 
 test('actual App keeps retained owners mounted and routes task opening through its overlay',()=>{

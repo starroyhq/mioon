@@ -21,6 +21,7 @@ export function createProjectServiceApplication(library: AppLibrary, signal?: Ab
   };
   assertOwner();
   return {
+    outsidePaths: library.outsidePaths,
     configuration: createWorkspaceConfiguration({root: library.dataDir, documents: createAppCompanionDocuments(library), env}),
     assertMutationAllowed: assertOwner,
 

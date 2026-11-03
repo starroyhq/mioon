@@ -873,3 +873,11 @@ Effects are `readOnly:true`, `localProcess:true`, `fileWrite:false`, with no dat
 ## LUT resource foundation
 
 Discovery now includes `lut_import`, `lut_list` and `lut_inspect`. Import requires an explicit project, stable request ID, name and canonical base64 source bytes (maximum7MiB); no local path or URL parameter is accepted. Metadata includes explicit unverified-colour/not-implemented-rendering status. The current SDK's10MiB stdio limit is unchanged, and a maximum complete LUT message is checked against its actual ReadBuffer. A new bounded LUT-only lane also exercises actual official MCP stdio import/replay/list/inspect and lost/tampered ACK recovery. It does not rerun issue #1 or change built-in Agent authority. See [LUT resources](LUT-RESOURCES.md).
+
+## 素材引用
+
+`asset_import` 接受严格互斥的路径分支（projectId、requestId、sourcePath、可选name）或原上传分支（上传上限30 MiB，可选requestId）。路径分支只能读取后端本机上已经确认的位置。MCP和Mio不能确认目录，也没有位置路径、outside confirm/revoke或桌面导入权限。
+
+MCP的独立客户端目录提供 `asset_media_status_list`、`asset_media_prepare` 和重新指向/使用新内容操作；prepare只准备完整哈希并核对引用修订，不是付费生成授权。普通素材结果只有按ID媒体URL、内容指纹、完整哈希状态和referenceRevision，不返回引用路径、卷名或本机可用状态。
+
+公共MCP发现使用S1输入扩展；内置Mio模型工具另用固定目录，保留原上传和生成输入，不接受sourcePath或referenceRevisions。固定模型schema不随公共客户端目录更新。

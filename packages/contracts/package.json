@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./public-operations": "./src/public-operations.ts",
     "./private-storage": "./src/private-storage.ts",
     "./asset-media": "./src/asset-media.ts",
     "./media-reference": "./src/media-reference.ts",

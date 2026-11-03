@@ -1,3 +1,4 @@
+import {mediaFixturePath, mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
@@ -42,12 +43,12 @@ test('running cancellation aborts only its owned operation and terminal publicat
 });
 test('output location is bound to the accepted export and rejects changed bytes, foreign owners and injected paths',async t=>{
   const f=await fixture(t),record=await queued(f),assetId=randomUUID(),relativePath=`media/export-${record.id}-${randomUUID()}.mp4`;
-  const bytes=Buffer.from('Owned synthetic output bytes; file validation is independent of media decoding');
-  const asset={id:assetId,projectId:f.project.id,name:'Owned output.mp4',mimeType:'video/mp4',relativePath,sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,width:1080,height:1920,duration:10,hasVideo:true,hasAudio:true,provenance:'export',createdAt:new Date().toISOString(),url:`/media/${assetId}`};
+  const bytes=mp4HeaderFixture('Owned synthetic output bytes; file validation is independent of media decoding');
+  const asset={id:assetId,projectId:f.project.id,name:'Owned output.mp4',mimeType:'video/mp4',relativePath,sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,width:1080,height:1920,duration:10,hasVideo:true,hasAudio:true,provenance:'export',producer:{kind:'export',id:record.id},createdAt:new Date().toISOString(),url:`/media/${assetId}`};
   await writeFile(path.join(f.root,relativePath),bytes,{mode:0o600,flag:'wx'});f.store.put('assets',asset);f.store.put('exports',{...record,status:'succeeded',assetId,url:asset.url,error:null});
   const identity={projectId:f.project.id,exportId:record.id},output=exportOutputSchema.parse(await f.services.call('export.output.get',identity));assert.equal(output.fileLocation,path.join(f.root,relativePath));assert.equal(output.sha256,asset.sha256);assert.equal(output.sizeBytes,bytes.length);
   await assert.rejects(f.services.call('export.output.get',{...identity,path:'/tmp/foreign.mp4'}));await assert.rejects(f.services.call('export.output.get',{...identity,projectId:randomUUID()}),{code:'NOT_FOUND'});
-  const changed=Buffer.from(bytes);changed[changed.length-1]^=1;await writeFile(output.fileLocation,changed);await assert.rejects(f.services.call('export.output.get',identity),{code:'MANAGED_SOURCE_CHANGED'});
+  const changed=Buffer.from(bytes);changed[changed.length-1]^=1;await writeFile(output.fileLocation,changed);await assert.rejects(f.services.call('export.output.get',identity),{code:'MEDIA_CHANGED'});
   const before=f.store.get('exports',String(record.id));assert.equal(object(await f.services.call('export.cancel',identity)).status,object(before).status);
 });
 
@@ -80,7 +81,7 @@ test('real legacy worker cleans only its owned unpublished inode after link canc
       const final=object(store.get('exports',exportId)),files=await readdir(path.join(root,'media'));
       assert.deepEqual(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(String(accepted.requestId)),receipt,'immutable acceptance remains exact');
       const storedAsset=object(store.get('assets',String(asset.id)));
-      assert.deepEqual(await readFile(path.join(root,String(storedAsset.relativePath))),bytes,'source media remains exact');
+      assert.deepEqual(await readFile(mediaFixturePath(root,storedAsset)),bytes,'source media remains exact');
       if(mode==='published'){
         assert.equal(final.status,'succeeded');assert.deepEqual(await services.call('export.cancel',{projectId,exportId}),publicValue(final));assert.deepEqual(store.get('exports',exportId),final);assert.ok((await readFile(linkedFile)).length>0);
       }else{

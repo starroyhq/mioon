@@ -1,3 +1,4 @@
+import {importNativeQaAsset,coldNativeQaAssetFile} from './helpers/native-local-qa-fixture.ts';
 /** Ordinary sandboxed native Q3 fixture. All media/data are synthetic. The
  * launcher observes only children of its own Electron/backend processes; it
  * never drives the renderer or uses the app's authentication token. */
@@ -24,6 +25,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 export async function prepareMediaNativeFixture() {
   ensurePrivateDirectory(runtime, {create: true});
   const previous = readQaFixture(path.join(runtime, 'fixture.json'), workspace);
+  if(previous&&previous.assetReferenceFixture!==1)throw Error('Historical pre-reference fixture must be preserved; choose a fresh MIOON_QA_FIXTURE_ROOT');
   if (previous) return previous;
   if (existsSync(path.join(workspace, 'app-library.db'))) throw Error('Partial QA data must be preserved; choose a fresh MIOON_QA_FIXTURE_ROOT');
   ensurePrivateDirectory(userData, {create: true});
@@ -31,24 +33,26 @@ export async function prepareMediaNativeFixture() {
   for (const [name, frames] of [['Q3 · 实际媒体导出', 60], ['Q3 · 长导出退出恢复', 18000]]) {
     const prepared = await prepareNativeQaProject(workspace, name), {store, services, project} = prepared;
     try {
-      const asset = await services.call('asset.import', {projectId: project.id, name: 'synthetic-reference.png', mimeType: 'image/png', dataBase64: bytes.toString('base64')});
+      const asset = await importNativeQaAsset(prepared, {projectId: project.id, name: 'synthetic-reference.png', mimeType: 'image/png', dataBase64: bytes.toString('base64')});
       const timeline = await services.call('timeline.get', {projectId: project.id});
       await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision,
         requestId: randomUUID(), assetId: asset.id, trackId: timeline.tracks.find(track => track.kind === 'video').id, startFrame: 0, durationFrames: frames});
       projects.push({id: project.id, name, assetId: asset.id, frames, projectDir: store.projectDir, localDir: store.localDir, projectFile: store.projectFile});
     } finally {await closeQaProject(prepared);}
   }
-  const fixture = {synthetic: true, kernel: true, runtime, userData, workspace, projects};
+  const fixture = {synthetic: true, kernel: true, assetReferenceFixture:1, runtime, userData, workspace, projects};
   await json(path.join(runtime, 'fixture.json'), fixture);
   return fixture;
 }
 
 export async function auditMediaNativeFixture() {
   // Cold only: the real B1 opener rejects any live native owner before project SQL.
+  const fixture=readQaFixture(path.join(runtime,'fixture.json'),workspace);
+  if(!fixture||fixture.assetReferenceFixture!==1)throw Error('Historical pre-reference fixture must be preserved; choose a fresh MIOON_QA_FIXTURE_ROOT');
   const snapshot = captureNativeQa(workspace), rows = table => snapshot.rows[table].map(row => JSON.parse(row.data));
   const assets = rows('assets'), exports = rows('exports');
   const published = exports.filter(row => row.status === 'succeeded').map(row => assets.find(asset => asset.id === row.assetId));
-  const report = {synthetic: true, kernel: true, projects: rows('projects').map(({id, name}) => ({id, name})),
+  const report = {synthetic: true, kernel: true, assetReferenceFixture:1, projects: rows('projects').map(({id, name}) => ({id, name})),
     exports: exports.map(({id, projectId, status, error, assetId, snapshot}) => ({id, projectId, status, error, assetId,
       frames: snapshot?.timeline?.clips?.map(clip => clip.durationFrames)})),
     assets: assets.map(({id, projectId, kind, sha256, sizeBytes, width, height, duration}) => ({id, projectId, kind, sha256, sizeBytes, width, height, duration})),
@@ -59,7 +63,11 @@ export async function auditMediaNativeFixture() {
     if (!asset) throw Error('Synthetic export asset missing');
     const location = snapshot.locations[asset.projectId];
     if (!location) throw Error('Synthetic export belongs to an unregistered project');
-    const file = await safePath(location.projectDir, asset.relativePath), actual = await fileInfo(file), metadata = await probe(file);
+    const producer=exports.find(item=>item.status==='succeeded'&&item.assetId===asset.id);
+    if(asset.producer?.kind!=='export'||asset.producer?.id!==producer?.id)throw Error('Synthetic export producer differs');
+    const resolved=await coldNativeQaAssetFile(workspace,asset.projectId,asset.id);
+    if(!/^media\/[A-Za-z0-9._-]+\.mp4$/u.test(resolved.projectRelativeFile))throw Error('Export must remain in the actual project media directory');
+    const file = resolved.file, actual = await fileInfo(file), metadata = await probe(file);
     if (actual.sha256 !== asset.sha256 || actual.sizeBytes !== asset.sizeBytes) throw Error('Synthetic export bytes differ from publication');
     report.verifiedOutputs.push({assetId: asset.id, ...actual, codec: metadata.codec, matchesPublishedBytes: true});
   }

@@ -1,8 +1,9 @@
+import {validAssetLocator} from './asset-reference-record.ts';
 import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '@mioon/contracts';
-import {canonicalFrameInput as canonical,FRAME_LIMITS,frameSchemas,frameSnapshotSchema,frameReceiptSchema,frameTaskResponseSchema} from '../../contracts/src/frame-extraction.ts';
+import {canonicalFrameInput as canonical,FRAME_LIMITS,frameSchemas,frameSnapshotSchema,legacyWorkspaceFrameSnapshotSchema,frameReceiptSchema,frameTaskResponseSchema} from '../../contracts/src/frame-extraction.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
 import type {FrameReceipt,FrameSourceSnapshot} from './frame-storage.ts';
 
@@ -121,12 +122,14 @@ export function createFrameOwnershipReader(db: DatabaseSync,projectId: string,{c
  function sourceAsset(snapshot: FrameTaskSnapshot): Record<string, unknown> {
   const frozen=snapshot.source,asset=assetRecord(frozen.assetId);
   // Size, duration, dimensions and audio flags are mutable probe metadata.
-  // Historical ACKs depend on the frozen metadata and immutable file identity.
-  if(asset.sha256!==frozen.sha256||asset.mimeType!==frozen.mimeType||asset.relativePath!==frozen.relativePath||!frozen.relativePath.startsWith('media/'))reject();
+  // Historical ACKs depend on the frozen metadata and complete content hash.
+  // Relinking identical content must not rewrite or invalidate old receipts;
+  // execution separately compares the current locator and reference revision.
+  if(asset.sha256!==frozen.sha256||asset.mimeType!==frozen.mimeType||!validAssetLocator(db,asset))reject();
   return asset;
  }
  function outputAsset(row: FrameTaskRow,receipt: FrameReceipt|null,asset: Record<string,unknown>|undefined): void {
-  if(row.state!=='succeeded'||!receipt||!asset||asset.id!==row.assetId||asset.projectId!==projectId||asset.sha256!==receipt.sha256||asset.mimeType!==receipt.mimeType||asset.width!==receipt.width||asset.height!==receipt.height||asset.sizeBytes!==receipt.byteLength||asset.provenance!=='extracted-frame'||asset.relativePath!==`media/${String(asset.id)}.png`)reject();
+  if(row.state!=='succeeded'||!receipt||!asset||asset.id!==row.assetId||asset.projectId!==projectId||asset.sha256!==receipt.sha256||asset.mimeType!==receipt.mimeType||asset.width!==receipt.width||asset.height!==receipt.height||asset.sizeBytes!==receipt.byteLength||asset.provenance!=='extracted-frame'||!validAssetLocator(db,asset))reject();
  }
  function task(taskId: string): FrameTaskView {
   const cached=tasks.get(taskId);if(cached)return cached;
@@ -135,7 +138,7 @@ export function createFrameOwnershipReader(db: DatabaseSync,projectId: string,{c
   const rows=db.prepare(`SELECT ${taskColumns} FROM frame_tasks WHERE id=? LIMIT 2`).all(taskId);if(rows.length!==1)reject();const raw=rows[0];if(!raw)reject();account(raw);
   if(raw.id!==taskId||raw.projectId!==projectId||typeof raw.started!=='number'||![0,1].includes(raw.started))reject();
   const row=raw as unknown as FrameTaskRow;
-  const input=decodeWith<FrameExtractInput>(frameSchemas['frame.extract'],row.input),snapshot=decodeWith<FrameTaskSnapshot>(frameSnapshotSchema,row.snapshot),
+  const input=decodeWith<FrameExtractInput>(frameSchemas['frame.extract'],row.input),snapshot=decodeWith<FrameTaskSnapshot>(isProjectLayout(db)?frameSnapshotSchema:frameSnapshotSchema.or(legacyWorkspaceFrameSnapshotSchema),row.snapshot),
    receipt=row.stagedReceipt===null?null:decodeWith<FrameReceipt>(frameReceiptSchema,row.stagedReceipt);
   const exactInput=canonical(input),inputHash=createHash('sha256').update(exactInput).digest('hex');
   if(row.input!==exactInput||row.inputHash!==inputHash||input.projectId!==projectId||input.requestId!==row.requestId||snapshot.projectId!==projectId||snapshot.taskId!==taskId||

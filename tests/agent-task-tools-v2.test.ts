@@ -1,6 +1,8 @@
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
+import {s1PublicOperationSchemas} from '../packages/contracts/src/asset-generation.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm,realpath,symlink,writeFile} from 'node:fs/promises';
+import {mkdtemp,rm,realpath,symlink,writeFile,readFile} from 'node:fs/promises';
 import {setTimeout as delay} from 'node:timers/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -8,6 +10,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {crc32,deflateSync} from 'node:zlib';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
+import {run as runMedia} from '../packages/business/src/media-runtime.ts';
 import {projectAgentTaskUndo,createAgentTaskTools,agentTaskExplicitTargets,AGENT_TASK_OPERATION_ADMISSION,assertAgentTaskOperationCoverage} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {mioFixtureConfiguration,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
@@ -16,7 +19,7 @@ import type {AgentTaskJson,AgentTaskChange} from '../packages/contracts/src/agen
 import {setAgentTaskEffectGate,assertAgentTaskJobEffect,allowAgentTaskJobTargetMutation,resumeAgentTaskJobs,stopAgentTaskJobs,isAgentTaskJobStopped,withAgentTaskJobOrigin,recordAgentTaskJobDispatch} from '../packages/business/src/agent/task-effects-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS,AGENT_TASK_TOOL_SCHEMA_HASH} from '../packages/business/src/agent/task-tool-schemas-v2.ts';
 import {projectAgentTaskToolSchema} from '../packages/business/src/agent/task-tool-model-schema.ts';
-import {operationDefinition} from '../packages/client/src/index.ts';
+import {operationDefinition,modelOperationDefinition} from '../packages/client/src/index.ts';
 import {createMockImageAdapter} from '../packages/business/src/images/adapter.ts';
 import type {CreateServicesOptions} from '../packages/business/src/services.ts';
 import {createImageSettings} from '../packages/business/src/images/settings.ts';
@@ -191,11 +194,34 @@ test('projected nested identifiers retain the exact shared UUID constraints and 
  assert.equal(schemas['shot.create'].safeParse({...input,unexpected:true}).success,false);
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'shot.update',input:{shotId:randomUUID(),expectedRevision:1,patch:{title:'Denied',projectId:f.projectId}}}),{code:'AGENT_TASK_INVALID_TOOL'});
 });
+test('public S1 inputs extend two operations without widening the reviewed model catalog',()=>{
+ const projectId=randomUUID(),assetId=randomUUID(),requestId=randomUUID(),shotId=randomUUID();
+ const pathInput={projectId,requestId,sourcePath:'/local/reference.png'};
+ assert.equal(s1PublicOperationSchemas['asset.import'].safeParse(pathInput).success,true);
+ assert.equal(schemas['asset.import'].safeParse(pathInput).success,false);
+ const upload={projectId,name:'reference.png',mimeType:'image/png',dataBase64:'iVBORw=='};
+ assert.equal(schemas['asset.import'].safeParse(upload).success,true);
+ assert.equal(s1PublicOperationSchemas['asset.import'].safeParse({...upload,sourcePath:'/local/reference.png',requestId}).success,false);
+ const original={shotId,expectedRevision:1,requestId,providerId:'mock'},referenceRevisions=[{assetId,referenceRevision:1,sha256:'a'.repeat(64)}];
+ assert.equal(schemas['generation.submit'].safeParse(original).success,true);
+ assert.equal(s1PublicOperationSchemas['generation.submit'].safeParse({...original,referenceRevisions}).success,true);
+ assert.equal(schemas['generation.submit'].safeParse({...original,referenceRevisions}).success,false);
+ for(const changed of [{providerId:'wan'},{shotId:'not-a-uuid'},{expectedRevision:0},{parameters:{resolution:'720p'}},{videoInput:{version:1,mode:'text',images:[]}}, {unexpected:true}]){
+  const input={...original,...changed};
+  assert.equal(schemas['generation.submit'].safeParse(input).success,false);
+  assert.equal(s1PublicOperationSchemas['generation.submit'].safeParse({...input,referenceRevisions}).success,false);
+ }
+ for(const pin of [{...referenceRevisions[0],referenceRevision:0},{...referenceRevisions[0],sha256:'sampled'},{...referenceRevisions[0],sourcePath:'/secret'}])
+  assert.equal(s1PublicOperationSchemas['generation.submit'].safeParse({...original,referenceRevisions:[pin]}).success,false);
+ assert.notDeepEqual(operationDefinition('asset.import').inputSchema,modelOperationDefinition('asset.import').inputSchema);
+ assert.notDeepEqual(operationDefinition('generation.submit').inputSchema,modelOperationDefinition('generation.submit').inputSchema);
+});
+
 test('fixed tool JSON schemas match shared runtime schema projection without adding runtime dependencies',()=>{
  assert.equal(AGENT_TASK_TOOL_SCHEMA_HASH,createHash('sha256').update(JSON.stringify(AGENT_TASK_TOOL_SCHEMAS)).digest('hex'));
  const hidden=new Set(['projectId','requestId']);
  function scrub(value:unknown):unknown{if(Array.isArray(value))return value.map(scrub);if(!record(value))return value;return Object.fromEntries(Object.entries(value).map(([key,child])=>[key,key==='properties'&&record(child)?Object.fromEntries(Object.entries(child).filter(([field])=>!hidden.has(field)).map(([field,nested])=>[field,scrub(nested)])):key==='required'&&Array.isArray(child)?child.filter(field=>!hidden.has(String(field))):scrub(child)]));}
- for(const operation of Object.keys(schemas)){const shared=operationDefinition(operation).inputSchema;assert.deepEqual(AGENT_TASK_TOOL_SCHEMAS[operation],scrub(expandSchemaReferences(shared)),operation);}
+ for(const operation of Object.keys(schemas)){const shared=modelOperationDefinition(operation).inputSchema;assert.deepEqual(AGENT_TASK_TOOL_SCHEMAS[operation],scrub(expandSchemaReferences(shared)),operation);}
 });
 test('video tool discovery preserves Wan input bounds while runtime admission rejects invalid combinations and host fields',async t=>{
  const f=await fixture(t),shot=await f.shot('Wan tool discovery'),tool=f.tools.list().find(item=>item.operation==='generation.submit');assert.ok(tool);
@@ -422,15 +448,36 @@ test('image worker rechecks authority after acceptance and immediately before di
  for(let i=0;i<500;i++){if(f.store.db.prepare('SELECT state FROM image_tasks LIMIT 1').get()?.state==='succeeded')break;await delay(5);}
  assert.equal(f.store.db.prepare('SELECT state FROM image_tasks LIMIT 1').get()!.state,'succeeded');assert.equal(dispatches,1);resumeAgentTaskJobs(f.store.db,f.run.id);await delay(10);assert.equal(dispatches,1);
 });
+test('selected video handles retain sampled DTOs while frame and scene acceptance prepare full reference snapshots',async t=>{
+ const f=await fixture(t,{frameOptions:{autoRun:false},sceneOptions:{autoRun:false}}),file=path.join(f.root,'selected-video.mp4');
+ await runMedia('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-n','-f','lavfi','-i','color=c=blue:s=32x32:r=30:d=1','-an','-c:v','libx264','-preset','ultrafast','-threads','1','-pix_fmt','yuv420p','-movflags','+faststart',file],{timeout:30000});
+ const bytes=await readFile(file),sha256=createHash('sha256').update(bytes).digest('hex');
+ for(const kind of ['frame','scene'] as const)await t.test(kind,async()=>{
+  const selected=await f.tools.stageImport({projectId:f.projectId,requestId:randomUUID(),name:`Selected ${kind}.mp4`,mimeType:'video/mp4',dataBase64:bytes.toString('base64')});assert.ok(record(selected)&&typeof selected.handle==='string');
+  const imported=await f.execute('asset.importSelected',{handle:selected.handle});assert.ok(record(imported.outcome.result)&&typeof imported.outcome.result.id==='string');
+  const id=imported.outcome.result.id,initial=f.store.get('assets',id);assert.ok(record(initial)&&record(initial.reference));
+  assert.equal(imported.outcome.result.sha256,null);assert.equal(imported.outcome.result.hashState,'sampled');assert.equal(initial.sha256,null);assert.equal(initial.reference.fullSha256,null);assert.equal(Object.hasOwn(initial,'relativePath'),false);
+  assert.deepEqual(imported.step.result,imported.outcome.result,'the selected import journal keeps the same public asset DTO as its ACK');
+  assert.doesNotMatch(JSON.stringify([imported.outcome.result,imported.step.result]),/"(?:relativePath|reference|sourcePath|path|volume|fileLocation)"\s*:/);
+  const assetTargetRevision=f.journal.targetRevision(f.projectId,'asset',id);
+  const accepted=await f.execute(kind==='frame'?'frame.extract':'scene.detect',{sourceAssetId:id,sourceHash:sha256,...(kind==='frame'?{sourceFrame:0}:{})});
+  assert.equal(accepted.outcome.recorded,true,'the strong operation records its validated final ACK inside acceptance');
+  const response=accepted.outcome.result;assert.ok(record(response)&&typeof response.id==='string');assert.equal(response.state,'queued');assert.ok(record(accepted.step.result));assert.deepEqual(accepted.step.result,response,'the step retains its task ACK rather than the preparatory asset write');
+  const current=f.store.get('assets',id);assert.ok(record(current)&&record(current.reference));assert.equal(current.sha256,sha256);assert.equal(current.reference.fullSha256,sha256);assert.equal(current.referenceRevision,initial.referenceRevision);
+  assert.equal(f.journal.targetRevision(f.projectId,'asset',id),assetTargetRevision,'preparing a full hash keeps the source asset semantic target revision');
+  assert.equal(accepted.changes.some(change=>change.targets.some(target=>target.kind==='asset'&&target.id===id)),false,'preparatory hash metadata must not become a business asset Change');
+  const task=f.store.db.prepare(`SELECT snapshot FROM ${kind==='frame'?'frame_tasks':'scene_tasks'} WHERE id=?`).get(response.id);assert.ok(task&&typeof task.snapshot==='string');const frozen=JSON.parse(task.snapshot);assert.equal(frozen.source.sha256,sha256);assert.equal(frozen.source.referenceRevision,current.referenceRevision);assert.deepEqual(frozen.source.reference,current.reference);assert.equal(Object.hasOwn(frozen.source,'relativePath'),false);
+ });
+});
 test('frame acceptance persists the public task reference in its atomic step receipt',async t=>{
- const f=await fixture(t,{frameOptions:{autoRun:false}}),bytes=Buffer.from('Synthetic local frame admission source; decoder is disabled'),id=randomUUID(),sha256=createHash('sha256').update(bytes).digest('hex'),relativePath=`media/${id}.mp4`;
+ const f=await fixture(t,{frameOptions:{autoRun:false}}),bytes=mp4HeaderFixture('Synthetic local frame admission source; decoder is disabled'),id=randomUUID(),sha256=createHash('sha256').update(bytes).digest('hex'),relativePath=`media/${id}.mp4`;
  await writeFile(path.join(f.root,relativePath),bytes,{mode:0o600});
  f.store.put('assets',{id,projectId:f.projectId,name:'Source.mp4',mimeType:'video/mp4',sha256,relativePath,sizeBytes:bytes.length,duration:2,width:32,height:32,hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:new Date().toISOString()});
  const result=await f.execute('frame.extract',{sourceAssetId:id,sourceHash:sha256,sourceFrame:0});
  assert.equal(result.outcome.recorded,true);assert.deepEqual(result.step.result,result.outcome.result);assert.ok(record(result.step.result)&&typeof result.step.result.id==='string');assert.equal(result.step.result.projectId,f.projectId);assert.equal(result.step.result.state,'queued');assert.equal(Object.hasOwn(result.step.result,'value'),false);assert.equal(Object.hasOwn(result.step.result,'replayed'),false);
 });
 test('cancelled frame wait returns the original cancellation instead of waiting forever',async t=>{
- const f=await fixture(t,{frameOptions:{autoRun:false}}),bytes=Buffer.from('Synthetic cancelled frame source; decoder disabled'),id=randomUUID(),sha256=createHash('sha256').update(bytes).digest('hex'),relativePath=`media/${id}.mp4`;
+ const f=await fixture(t,{frameOptions:{autoRun:false}}),bytes=mp4HeaderFixture('Synthetic cancelled frame source; decoder disabled'),id=randomUUID(),sha256=createHash('sha256').update(bytes).digest('hex'),relativePath=`media/${id}.mp4`;
  await writeFile(path.join(f.root,relativePath),bytes,{mode:0o600});f.store.put('assets',{id,projectId:f.projectId,name:'Source.mp4',mimeType:'video/mp4',sha256,relativePath,sizeBytes:bytes.length,duration:2,width:32,height:32,hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:new Date().toISOString()});
  const accepted=await f.execute('frame.extract',{sourceAssetId:id,sourceHash:sha256,sourceFrame:0});assert.ok(record(accepted.step.result));
  const taskId=String(accepted.step.result.id);await f.services.call('frame.task.cancelQueued',{projectId:f.projectId,taskId,expectedRevision:accepted.step.result.revision,requestId:randomUUID()});
@@ -440,7 +487,7 @@ test('cancelled frame wait returns the original cancellation instead of waiting 
 for(const kind of ['image','frame'] as const)test(`${kind} local result error stops host waiting for explicit recovery`,async t=>{
  const f=await fixture(t,{imageOptions:{autoRun:false},frameOptions:{autoRun:false}});let accepted;
  if(kind==='image')accepted=await f.execute('image.generate',{name:'Synthetic',prompt:'Local fixture',providerId:'mock',model:'mock-image-v1',options:{size:'1024x1024',quality:'low',background:'opaque',outputFormat:'png',n:1}});
- else {const id=randomUUID(),bytes=Buffer.from('Synthetic frame recovery source; decoder disabled'),sha256=createHash('sha256').update(bytes).digest('hex'),relativePath=`media/${id}.mp4`;await writeFile(path.join(f.root,relativePath),bytes,{mode:0o600});f.store.put('assets',{id,projectId:f.projectId,name:'Source.mp4',mimeType:'video/mp4',sha256,relativePath,sizeBytes:bytes.length,duration:2,width:32,height:32,hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:new Date().toISOString()});accepted=await f.execute('frame.extract',{sourceAssetId:id,sourceHash:sha256,sourceFrame:0});}
+ else {const id=randomUUID(),bytes=mp4HeaderFixture('Synthetic frame recovery source; decoder disabled'),sha256=createHash('sha256').update(bytes).digest('hex'),relativePath=`media/${id}.mp4`;await writeFile(path.join(f.root,relativePath),bytes,{mode:0o600});f.store.put('assets',{id,projectId:f.projectId,name:'Source.mp4',mimeType:'video/mp4',sha256,relativePath,sizeBytes:bytes.length,duration:2,width:32,height:32,hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:new Date().toISOString()});accepted=await f.execute('frame.extract',{sourceAssetId:id,sourceHash:sha256,sourceFrame:0});}
  assert.ok(record(accepted.step.result));const id=String(accepted.step.result.id),operation=kind==='image'?'image.task.get':'frame.task.get',reader=f.services.handlers[operation]!;
  // Inject a public domain observation after the source has passed its own
  // dispatch/start fence. Waiting must hand control back to the recovery UI.
@@ -451,7 +498,7 @@ for(const kind of ['image','frame'] as const)test(`${kind} local result error st
 test('stopping retires only bound unstarted video image frame and export work and closes background pending',async t=>{
  const provider:Provider={id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},async submit(){throw Error('No worker may send');},async reconcile(){return null;},async poll(){return {status:'running'};},async download(){throw Error('No worker may download');}};
  const fullRequestQuota=(code:string)=>(point:string,details:Record<string,unknown>={})=>{if(point==='before_request_receipt'&&String(details.operation).endsWith('cancelQueued'))throw Object.assign(Error('Synthetic legacy request quota is full'),{code});};
- const f=await fixture(t,{imageOptions:{autoRun:false,fault:fullRequestQuota('IMAGE_CAPACITY')},frameOptions:{autoRun:false,fault:fullRequestQuota('FRAME_CAPACITY')}},new Map([['mock',provider]])),shot=await f.shot('Queued source'),bytes=Buffer.from('Synthetic locally selected video'),id=randomUUID(),relativePath=`media/${id}.mp4`,sha256=createHash('sha256').update(bytes).digest('hex');
+ const f=await fixture(t,{imageOptions:{autoRun:false,fault:fullRequestQuota('IMAGE_CAPACITY')},frameOptions:{autoRun:false,fault:fullRequestQuota('FRAME_CAPACITY')}},new Map([['mock',provider]])),shot=await f.shot('Queued source'),bytes=mp4HeaderFixture('Synthetic locally selected video'),id=randomUUID(),relativePath=`media/${id}.mp4`,sha256=createHash('sha256').update(bytes).digest('hex');
  await writeFile(path.join(f.root,relativePath),bytes,{mode:0o600});f.store.put('assets',{id,projectId:f.projectId,name:'Selected source.mp4',mimeType:'video/mp4',relativePath,sha256,sizeBytes:bytes.length,width:32,height:32,duration:2,hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:new Date().toISOString()});
  await f.execute('generation.submit',{shotId:shot.id,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'});
  await f.execute('image.generate',{name:'Queued image',prompt:'Synthetic',providerId:'mock',model:'mock-image-v1',options:{...IMAGE_FIXED_OPTIONS}});
@@ -552,7 +599,7 @@ for(const action of ['handBack','deny'] as const)test(`a background image approv
 });
 test('an unstarted frame task remains queued across a blocked final fence and resumes its original request once',async t=>{
  let enter:()=>void=()=>{},release:()=>void=()=>{};const entered=new Promise<void>(resolve=>{enter=resolve;}),barrier=new Promise<void>(resolve=>{release=resolve;});let decodes=0;
- const f=await fixture(t,{frameOptions:{decode:async input=>{if(!input?.signal||!input.beforeSpawn)throw Error('Missing frame fence');enter();await barrier;input.beforeSpawn(input.signal);decodes++;throw Object.assign(Error('Synthetic decoder found no frame'),{code:'FRAME_NO_FRAME'});}}}),bytes=Buffer.from('Synthetic frame source'),id=randomUUID(),sha256=createHash('sha256').update(bytes).digest('hex'),relativePath=`media/${id}.mp4`;
+ const f=await fixture(t,{frameOptions:{decode:async input=>{if(!input?.signal||!input.beforeSpawn)throw Error('Missing frame fence');enter();await barrier;input.beforeSpawn(input.signal);decodes++;throw Object.assign(Error('Synthetic decoder found no frame'),{code:'FRAME_NO_FRAME'});}}}),bytes=mp4HeaderFixture('Synthetic frame source'),id=randomUUID(),sha256=createHash('sha256').update(bytes).digest('hex'),relativePath=`media/${id}.mp4`;
  await writeFile(path.join(f.root,relativePath),bytes,{mode:0o600});f.store.put('assets',{id,projectId:f.projectId,name:'Source.mp4',mimeType:'video/mp4',sha256,relativePath,sizeBytes:bytes.length,duration:2,width:32,height:32,hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:new Date().toISOString()});
  let allowed=true;const remove=setAgentTaskEffectGate(f.store.db,()=>{if(!allowed)throw Object.assign(Error('paused'),{code:'AGENT_TASK_PAUSED'});});t.after(remove);
  const accepted=await f.execute('frame.extract',{sourceAssetId:id,sourceHash:sha256,sourceFrame:0});await entered;allowed=false;release();await delay(20);
@@ -575,7 +622,7 @@ test('a queued v2 render paused during preparation starts no encoding and resume
  }finally{await worker.stop();}
 });
 test('media observation rechecks task authority after an async boundary and before hashing or probing again',async t=>{
- const f=await fixture(t),bytes=Buffer.from('Local synthetic source; revocation must prevent probing'),id=randomUUID(),relativePath=`media/${id}.mp4`,sha256=createHash('sha256').update(bytes).digest('hex');
+ const f=await fixture(t),bytes=mp4HeaderFixture('Local synthetic source; revocation must prevent probing'),id=randomUUID(),relativePath=`media/${id}.mp4`,sha256=createHash('sha256').update(bytes).digest('hex');
  await writeFile(path.join(f.root,relativePath),bytes,{mode:0o600});f.store.put('assets',{id,projectId:f.projectId,name:'Observation.mp4',mimeType:'video/mp4',sha256,relativePath,sizeBytes:bytes.length,duration:2,width:32,height:32,hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:new Date().toISOString()});
  const timeline=await f.services.call('timeline.get',{projectId:f.projectId});if(!record(timeline)||!Array.isArray(timeline.tracks)||!record(timeline.tracks[0]))throw Error('Invalid timeline');
  await f.services.call('timeline.clip.add',{projectId:f.projectId,requestId:randomUUID(),expectedRevision:1,assetId:id,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:30});
@@ -806,7 +853,7 @@ function storyboardPng(index:number):Buffer{
  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(rows)),chunk('IEND',Buffer.alloc(0))]);
 }
 async function storyboardSource(f:Awaited<ReturnType<typeof fixture>>){
- const bytes=Buffer.from('Synthetic storyboard reference; decoder replaced'),id=randomUUID(),sha256=createHash('sha256').update(bytes).digest('hex'),relativePath=`media/${id}.mp4`;
+ const bytes=mp4HeaderFixture('Synthetic storyboard reference; decoder replaced'),id=randomUUID(),sha256=createHash('sha256').update(bytes).digest('hex'),relativePath=`media/${id}.mp4`;
  await writeFile(path.join(f.root,relativePath),bytes,{mode:0o600});
  f.store.put('assets',{id,projectId:f.projectId,name:'Reference.mp4',mimeType:'video/mp4',sha256,relativePath,sizeBytes:bytes.length,duration:3,width:32,height:32,hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:new Date().toISOString()});
  const ack=await f.services.call('scene.detect',{projectId:f.projectId,sourceAssetId:id,sourceHash:sha256,requestId:randomUUID()});assert.ok(record(ack));

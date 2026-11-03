@@ -3,6 +3,7 @@
 
 
 
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -90,7 +91,7 @@ async function fixture(t: test.TestContext,opener:typeof openStore=openStore) {
   let opened = open(root,opener);
   t.after(async () => { try { await opened.close(); } finally { rmSync(root, {recursive: true, force: true}); } });
   const projectId = opened.store.put('projects', {id: opened.projectId, name: 'Keyframe edits', revision: 1}).id as string;
-  const film = Buffer.from(`Synthetic reference film ${randomUUID()}`), videoId = randomUUID(), relativePath = `media/${videoId}.mp4`;
+  const film = mp4HeaderFixture(`Synthetic reference film ${randomUUID()}`), videoId = randomUUID(), relativePath = `media/${videoId}.mp4`;
   writeFileSync(path.join(root, relativePath), film, {mode: 0o600});
   const video = opened.store.put('assets', {id: videoId, projectId, name: 'Reference.mp4', mimeType: 'video/mp4', sha256: sha(film), sizeBytes: film.length, relativePath,
     width: W, height: H, duration: 60, provenance: 'user-import'});

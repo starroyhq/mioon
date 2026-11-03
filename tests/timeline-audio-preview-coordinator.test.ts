@@ -147,7 +147,8 @@ test('real V1 and V2 services share saved graph reads, reject corrupt and missin
   store = openStore(root); services = (createServices(store, new Map()) as TypedServices);
   const project = await services.call('project.create', {name: 'shared saved audio'});
   let timeline = await services.call('timeline.get', {projectId: project.id});
-  const bytes = Buffer.alloc(4096, 7), assetId = randomUUID();
+  const bytes = Buffer.alloc(44+48000*2*60), assetId = randomUUID();
+  bytes.write('RIFF');bytes.writeUInt32LE(bytes.length-8,4);bytes.write('WAVEfmt ',8);bytes.writeUInt32LE(16,16);bytes.writeUInt16LE(1,20);bytes.writeUInt16LE(1,22);bytes.writeUInt32LE(48000,24);bytes.writeUInt32LE(96000,28);bytes.writeUInt16LE(2,32);bytes.writeUInt16LE(16,34);bytes.write('data',36);bytes.writeUInt32LE(bytes.length-44,40);
   const asset = {id: assetId, projectId: project.id, name: 'saved.wav', mimeType: 'audio/wav', relativePath: `media/${assetId}.wav`,
     sha256: createHash('sha256').update(bytes).digest('hex'), sizeBytes: bytes.length, duration: 60, hasAudio: true, hasVideo: false,
     width: 0, height: 0, url: `/media/${assetId}`, createdAt: new Date().toISOString()};

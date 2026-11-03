@@ -1,3 +1,5 @@
+import {assetMediaRecordSchema} from '../packages/contracts/src/asset-media.ts';
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {TEST_STORE_LAYOUT} from '../packages/contracts/src/project-file.ts';
 import type {TaskEnvelope} from './helpers/strict-edit-task-types.ts';
 import type {BackendSupervisorOptions} from '../apps/desktop/src/supervisor.ts';
@@ -112,10 +114,11 @@ async function fixture(t: test.TestContext) {
     project = await services.call('project.create', {name: 'Synthetic desktop recovery'});
     const id = randomUUID();
     await writeFile(path.join(root, 'media', `${id}.fixture`), sourceBytes, {flag: 'wx', mode: 0o600});
-    source = store.put('assets', {id, projectId: project.id, name: 'Synthetic preserved source', mimeType: 'image/png',
+    store.put('assets', {id, projectId: project.id, name: 'Synthetic preserved source', mimeType: 'image/png',
       relativePath: `media/${id}.fixture`, sha256: createHash('sha256').update(sourceBytes).digest('hex'),
       sizeBytes: sourceBytes.length, duration: 0, width: 64, height: 64,
       hasVideo: true, hasAudio: false, provenance: 'user-import', createdAt: new Date().toISOString()});
+    source = assetMediaRecordSchema.parse(store.get('assets',id));
     shot = await services.call('shot.create', {projectId: project.id, title: 'Saved shot', prompt: 'Saved prompt'});
     timeline = await services.call('timeline.get', {projectId: project.id});
     timeline = await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision,
@@ -186,7 +189,7 @@ for (const phase of ['afterClaim', 'afterBusinessCommit']) {
       'Previously committed receipt bytes must remain immutable');
     assert.equal(committed.subject_requests.length, baseline.subject_requests.length + (phase === 'afterBusinessCommit' ? 1 : 0));
     assert.equal(await f.sidecar(), draftBytes);
-    assert.deepEqual(await readFile(path.join(f.root, f.source.relativePath)), sourceBytes);
+    assert.deepEqual(await readFile(mediaFixturePath(f.root,f.source)), sourceBytes);
 
     assert.deepEqual(await f.start(), {processed: 1, unavailable: 0});
     assert.equal(f.workers.length, 2, 'Only the explicit restart creates the replacement');
@@ -209,7 +212,7 @@ for (const phase of ['afterClaim', 'afterBusinessCommit']) {
     assert.deepEqual(await f.snapshot(), committed);
     assert.deepEqual(await f.snapshot(['edit_tasks']), taskRows);
     assert.equal(await f.sidecar(), draftBytes);
-    assert.deepEqual(await readFile(path.join(f.root, f.source.relativePath)), sourceBytes);
+    assert.deepEqual(await readFile(mediaFixturePath(f.root,f.source)), sourceBytes);
 
     await f.supervisor.stop();
     await f.worker.close();
@@ -217,7 +220,7 @@ for (const phase of ['afterClaim', 'afterBusinessCommit']) {
     assert.deepEqual(exits.map(record => record.classification), ['abnormal', 'normal']);
     assert.equal(exits[1].code, 0);
     assert.notEqual(exits[0].runId, exits[1].runId);
-    for (const privateValue of [f.root, f.source.relativePath, sourceBytes.toString(), input.name,
+    for (const privateValue of [f.root, f.source.reference.path, sourceBytes.toString(), input.name,
       f.savedDraft.draft.raw.title, f.savedDraft.draft.raw.prompt])
       assert.equal(JSON.stringify(diagnostics).includes(privateValue), false, 'Diagnostics must omit workspace/task/media/draft content');
     const reopened = (openStore(f.root) as unknown as TypedStore), services = (createServices(reopened, new Map()) as unknown as TypedServices);

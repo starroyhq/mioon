@@ -1,15 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {startServer} from '../apps/server/src/index.ts';
 import {lastProjectEnvelopeSchema} from '../packages/contracts/src/last-project.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
+import {run} from '../packages/business/src/media.ts';
+import {createHash} from 'node:crypto';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {openServerProject} from './helpers/project-database.ts';
-import {prepareNativeQaProject,closeQaProject,captureNativeQa,readNativeQaDocument,checkedNativeMetadata,checkedNativeApplication} from './helpers/native-local-qa-fixture.ts';
+import {prepareNativeQaProject,closeQaProject,captureNativeQa,readNativeQaDocument,checkedNativeMetadata,checkedNativeApplication,importNativeQaAsset,nativeQaAssetFile,coldNativeQaAssetFile,coldNativeQaMediaSnapshot} from './helpers/native-local-qa-fixture.ts';
 function directory(t:test.TestContext){const root=mkdtempSync(path.join(tmpdir(),'mioon-native-qa-'));t.after(()=>rmSync(root,{recursive:true,force:true}));return root;}
 test('cold native QA captures two actual hosts, every database role and real B1 documents',async t=>{
  const root=directory(t),a=await prepareNativeQaProject(root,'QA A');await closeQaProject(a);
@@ -26,9 +28,9 @@ test('cold native QA captures two actual hosts, every database role and real B1 
 test('native QA refuses a live B1 or project owner without opening a second SQLite connection',async t=>{
  const root=directory(t),fixture=await prepareNativeQaProject(root,'Locked QA');await closeQaProject(fixture);
  const app=openAppLibrary({dataDir:root});const changes=app.db.prepare('SELECT total_changes() AS n').get()!.n;
- try{assert.throws(()=>captureNativeQa(root),{code:'APP_LIBRARY_LOCKED'});assert.equal(app.db.prepare('SELECT total_changes() AS n').get()!.n,changes);}finally{app.close();}
+ try{assert.throws(()=>captureNativeQa(root),{code:'APP_LIBRARY_LOCKED'});await assert.rejects(coldNativeQaAssetFile(root,fixture.project.id,randomUUID()),{code:'APP_LIBRARY_LOCKED'});assert.equal(app.db.prepare('SELECT total_changes() AS n').get()!.n,changes);}finally{app.close();}
  const store=openServerProject(root,fixture.project.id);const rows=store.db.prepare('SELECT * FROM projects').all();
- try{assert.throws(()=>captureNativeQa(root),{code:'PROJECT_LOCKED'});assert.deepEqual(store.db.prepare('SELECT * FROM projects').all(),rows);}finally{store.close();}
+ try{assert.throws(()=>captureNativeQa(root),{code:'PROJECT_LOCKED'});await assert.rejects(coldNativeQaAssetFile(root,fixture.project.id,randomUUID()),{code:'PROJECT_LOCKED'});assert.deepEqual(store.db.prepare('SELECT * FROM projects').all(),rows);}finally{store.close();}
  assert.equal(captureNativeQa(root).rows.projects!.length,1);
 });
 test('expected native content metadata advances only its real host and keeps all other fields exact',async t=>{
@@ -58,4 +60,15 @@ test('cold native QA validates real acquire summaries and rejects unrelated appl
  const wrongScope=structuredClone(after),doc=wrongScope.applicationRows['main.app_documents']!.find(row=>row.name==='last-project-v1.json')!;doc.data=JSON.stringify({...JSON.parse(String(doc.data)),workspaceScope:'a'.repeat(64)});assert.throws(()=>checkedNativeApplication(before,wrongScope,[fixture.project.id]),{code:'ERR_ASSERTION'});
  const other=structuredClone(after);other.applicationRows['main.app_documents']!.push({name:'unrelated.json',data:'changed'});
  assert.throws(()=>checkedNativeApplication(before,other,[fixture.project.id]),{code:'ERR_ASSERTION'});
+});
+
+test('native QA imports video with real prepare CAS and resolves current references through held B1 and cold owners',async t=>{
+ const root=directory(t),fixture=await prepareNativeQaProject(root,'Reference QA'),source=path.join(fixture.store.tempDir,randomUUID()+'.mp4');
+ await run('ffmpeg',['-nostdin','-v','error','-n','-f','lavfi','-i','color=c=0x336699:s=32x32:r=30:d=1','-c:v','libx264','-threads','1','-pix_fmt','yuv420p',source]);
+ const bytes=readFileSync(source),expected=createHash('sha256').update(bytes).digest('hex');
+ const asset=await importNativeQaAsset(fixture,{projectId:fixture.project.id,name:'Real reference.mp4',mimeType:'video/mp4',dataBase64:bytes.toString('base64')});
+ assert.equal(asset.sha256,expected);assert.equal(asset.hashState,'full');
+ const proof=await nativeQaAssetFile(fixture.store,asset.id);assert.equal(proof.sha256,expected);assert.equal(proof.bytes,bytes.length);assert.ok(!proof.projectRelativeFile.startsWith('../')&&path.extname(proof.file)==='.mp4');
+ const prior=JSON.stringify(fixture.store.get('assets',asset.id));await assert.rejects(fixture.services.call('asset.media.prepare',{projectId:fixture.project.id,assets:[{assetId:asset.id,referenceRevision:asset.referenceRevision+1}],purpose:'timeline'}),{code:'REVISION_CONFLICT'});assert.equal(JSON.stringify(fixture.store.get('assets',asset.id)),prior);
+ await closeQaProject(fixture);const cold=await coldNativeQaAssetFile(root,fixture.project.id,asset.id);assert.deepEqual(cold,proof);const media=coldNativeQaMediaSnapshot(root,fixture.project.id);assert.deepEqual(media,[{name:proof.projectRelativeFile,bytes:bytes.length,sha256:expected}]);
 });

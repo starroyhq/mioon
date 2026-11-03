@@ -69,7 +69,7 @@ async function fixture(t: TestContext){
  async function asset(patch: Row={}): Promise<{id: string}> {
   const bytes=await renderMockImagePng({width:64,height:96}),id=randomUUID();
   const value={id,projectId,name:'K1.png',mimeType:'image/png',provenance:'user-import',sha256:sha(bytes),width:64,height:96,sizeBytes:bytes.length,relativePath:`media/${id}.png`,url:`/media/${id}`,createdAt:new Date().toISOString(),...patch};
-  store.put('assets',value);writeFileSync(path.join(root,String(value.relativePath)),bytes,{mode:0o600});return value;
+  writeFileSync(path.join(root,String(value.relativePath)),bytes,{mode:0o600});store.put('assets',value);return value;
  }
  const f={root,projectId,asset,call,
   get store(){return store;},
@@ -299,4 +299,26 @@ test('the thumbnail reader accepts canvas JPEG containers and refuses everything
  const twoFrames=Buffer.concat([jpeg(8,8).subarray(0,39),jpeg(8,8).subarray(20)]);
  for(const bytes of [jpeg(8,8,{frame:0xc3}),jpeg(8,8).subarray(0,30),twoFrames,await renderMockImagePng({width:8,height:8}),Buffer.from([0xff,0xd8,0xff,0xd9])])
   assert.equal(previsJpegSize(bytes),null);
+});
+
+
+test('S1 thumbnails bind service-derived fingerprints and stop returning bytes after source or consent changes',async t=>{
+ const f=await fixture(t),image=await f.asset(),created=await f.create(),node=await f.save(created,scene({keyframes:[keyframe('k1',[image.id])]}));
+ await f.thumbnail(node,'k1');assert.equal((await f.thumbnails(node,['k1'])).items.length,1);
+ const cache=()=>f.store.db.prepare('SELECT * FROM previs_thumbnails WHERE nodeId=?').all(node.id);
+ const original=cache(),digest=original[0]!.sourceFingerprintDigest;assert.match(String(digest),/^[a-f0-9]{64}$/);
+ const {mediaReferenceSchema}=await import('../packages/contracts/src/media-reference.ts');
+ const {referenceTestAsset}=await import('../packages/business/src/project-file/test-asset-fixture.ts');
+ const fs=await import('node:fs/promises'),saved=f.store.get('assets',image.id) as Row,reference=mediaReferenceSchema.parse(saved.reference),file=path.resolve(f.root,reference.path),info=await fs.stat(file);
+ await fs.utimes(file,info.atime,new Date(info.mtimeMs+2000));
+ await assert.rejects(f.thumbnails(node,['k1']),{code:'MEDIA_CHANGED'});assert.deepEqual(cache(),original);
+ const refreshed=referenceTestAsset(f.root,{...saved,relativePath:reference.path,reference:undefined,referenceRevision:2});f.store.put('assets',refreshed);
+ assert.deepEqual((await f.thumbnails(node,['k1'])).items,[],'accepted fingerprint changes invalidate prior cache');
+ await f.thumbnail(node,'k1');assert.notEqual(cache()[0]!.sourceFingerprintDigest,digest);
+ const outside=await fs.mkdtemp(path.join(tmpdir(),'previs-consent-'));t.after(()=>fs.rm(outside,{recursive:true,force:true}));
+ const destination=path.join(outside,'source.png');await fs.rename(file,destination);
+ const relinked=referenceTestAsset(f.root,{...refreshed,relativePath:path.relative(f.root,destination),reference:undefined,referenceRevision:3});f.store.put('assets',relinked);
+ let confirmed=true;const {registerProjectMediaStore}=await import('../packages/business/src/project-media-storage.ts');const release=registerProjectMediaStore(f.store,{outsidePaths:{list:()=>confirmed?[{projectId:f.projectId,directory:outside,confirmedAt:new Date().toISOString()}]:[]}});t.after(release);
+ assert.equal((await f.thumbnails(node,['k1'])).items.length,1);confirmed=false;
+ await assert.rejects(f.thumbnails(node,['k1']),{code:'MEDIA_OUTSIDE_NOT_CONFIRMED'});
 });

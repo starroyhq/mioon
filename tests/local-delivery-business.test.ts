@@ -20,16 +20,19 @@ import {LOCAL_DELIVERY_LIMITS,createLocalDeliverySchemas} from '@mioon/contracts
 import {schemas,isTimelineMutationResponse,hasRequestNotAppliedProof,publicValue,AppError} from '@mioon/contracts';
 
 import {schemaObjects,withoutForeignKeys} from './helpers/project-database.ts';
+import {writeStubMediaFixture} from './helpers/media-reference-fixtures.ts';
 const storage={readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile};
 const contract=createLocalDeliverySchemas(value=>schemas['timeline.render'].safeParse(value).success);
 const code=(value: string)=>(error: { code: string; message: string|string[]; })=>error.code===value&&!error.message.includes('PRIVATE');
 const authority=(value: Pick<OrdinaryDeliveryEnvelope, 'workspaceScope'|'instanceId'|'projectId'>)=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId});
 const action=(value:OrdinaryDeliveryEnvelope)=>({...authority(value),intentId:value.intent!.intentId,expectedIntentRevision:value.intentRevision});
 const deferred=<T=void>()=>Promise.withResolvers<T>();
-async function fixture(t: test.TestContext,{legacy=false}={}){
+async function fixture(t: test.TestContext,{mimeType='image/png'}={}){
   const root=mkdtempSync(path.join(tmpdir(),'mioon-local-delivery-'));const open=openStore;let store=(open(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices),delivery:OrdinaryLocalDelivery,fault:(point:string)=>void=()=>{},render:(input:LocalDeliveryRenderInput)=>Promise<unknown>,extraGuards:Partial<LocalDeliveryGuards>={};let calls: (unknown)[]=[];
   const project=await services.call('project.create',{name:'Local delivery'}),assetId=randomUUID();
-  const asset=store.put('assets',{id:assetId,projectId:project.id,name:'Synthetic',mimeType:'image/png',width:2,height:2,hasVideo:true,hasAudio:false,provenance:'user-import',sha256:'a'.repeat(64),relativePath:`media/${assetId}.png`,createdAt:new Date().toISOString()});
+  const media=writeStubMediaFixture(root,assetId,mimeType);
+  store.put('assets',{id:assetId,projectId:project.id,name:'Synthetic',mimeType,duration:mimeType.startsWith('video/')?3:0,width:2,height:2,hasVideo:true,hasAudio:false,provenance:'user-import',...media,createdAt:new Date().toISOString()});
+  const asset=store.get('assets',assetId);assert.ok(asset);
   let timeline=await services.call('timeline.get',{projectId:project.id});
   timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:90});
   const originalRender=(input: unknown)=>services.call('timeline.render',input);render=originalRender;
@@ -162,7 +165,7 @@ test('restart, copied scope, other build channel, strict input and unsafe files 
 
 
 test('historical receipt recovery survives later source duration metadata without changing the original receipt',async t=>{
-  const f=await fixture(t);f.store.put('assets',{...f.asset,mimeType:'video/mp4',duration:3,hasAudio:true});
+  const f=await fixture(t,{mimeType:'video/mp4'});f.store.put('assets',{...f.asset,mimeType:'video/mp4',duration:3,hasAudio:true});
   const prepared=f.delivery.prepare(f.prepare());f.setFault((point: string)=>{if(point==='afterDispatch')throw Error('PRIVATE dropped response');});
   await assert.rejects(f.delivery.execute(action(prepared)));f.setFault(()=>{});
   const bytes=readTimelineReceipt(f.store.db,prepared.intent!.input,'timeline.render')!.response;

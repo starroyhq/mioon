@@ -1,3 +1,4 @@
+import {importNativeQaAsset,coldNativeQaAssetFile,coldNativeQaMediaSnapshot} from './helpers/native-local-qa-fixture.ts';
 /** Live first-boot/close-decision/pre-crash stages record bounded physical/JSON
  * captures only. SQL audit/verify stages require normal Quit, or confirmed owned
  * SIGKILL plus backend exit. Use resume <unique-label> between cold stages,
@@ -86,7 +87,7 @@ async function command(binary,args,label){
 }
 function fixture(){
  for(const directory of [root,runtime,report,userData,workspace])ensurePrivateDirectory(directory);
- const value=readJson(fixtureFile,128*1024);assert.equal(value.kernel,true,'Use a fresh current-kernel fixture');
+ const value=readJson(fixtureFile,128*1024);assert.equal(value.assetReferenceFixture,1,'Historical pre-reference fixture must be preserved; use a fresh root');assert.equal(value.kernel,true,'Use a fresh current-kernel fixture');
  assert.equal(value.synthetic,true);assert.equal(value.scenario,'last-project');assert.equal(value.workspace,workspace);
  assert.notEqual(value.target.id,value.originalFallback.id);return value;
 }
@@ -163,7 +164,7 @@ async function prepare(){
  const originalFallback=listed[0],target=listed[1];assert.notEqual(target.id,originalFallback.id);
  const {store,services}=openNativeQaProject(workspace,target.id);let value;
  try{
-  const asset=await services.call('asset.import',{projectId:target.id,name:'合成绿色画面与 880Hz.mp4',mimeType:'video/mp4',dataBase64:(await readFile(source)).toString('base64')});
+  const asset=await importNativeQaAsset({store,services},{projectId:target.id,name:'合成绿色画面与 880Hz.mp4',mimeType:'video/mp4',dataBase64:(await readFile(source)).toString('base64')});
   let timeline=initialized.find(item=>item.project.id===target.id).timeline;
   timeline=await services.call('timeline.clip.add',{projectId:target.id,expectedRevision:timeline.revision,requestId:randomUUID(),
    assetId:asset.id,trackId:timeline.tracks.find(track=>track.kind==='video').id,startFrame:0,durationFrames:60,name:'上次项目的已保存片段'});
@@ -176,7 +177,7 @@ async function prepare(){
   }
   const finalList=listNativeQaProjects(workspace,store);assert.equal(finalList[0].id,originalFallback.id);
 
-  value={synthetic:true,kernel:true,scenario:'last-project',id:randomUUID(),workspace,projectDir:store.projectDir,localDir:store.localDir,projectFile:store.projectFile,
+  value={synthetic:true,assetReferenceFixture:1,kernel:true,scenario:'last-project',id:randomUUID(),workspace,projectDir:store.projectDir,localDir:store.localDir,projectFile:store.projectFile,
    projectList:finalList.map(({id,name})=>({id,name})),originalFallback:{id:originalFallback.id,name:originalFallback.name},
    target:{id:target.id,name:target.name},timelineId:timeline.id,clipId:clip.id,assetId:asset.id,baseRevision:timeline.revision,
    expectedTimeline:timeline,targetPreferences:saved.find(item=>item.projectId===target.id),sourceSha256:asset.sha256,
@@ -242,8 +243,8 @@ async function resume(label){
 async function audit(label,{afterCrash=false}={}){
  if(!afterCrash&&lockSnapshot()!==null)return liveCapture(label);
  assert.ok(safeLabel(label),'Invalid audit label');const preparedFixture=fixture(),{rows,schemaSha256,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries}=readDatabase();
- const names=(await readdir(path.join(fixture().projectDir,'media'))).sort();assert.ok(names.length<=32,'Media audit limit');
- const media=[];for(const name of names){assert.match(name,/^[a-zA-Z0-9._-]+\.(mp4|png|wav)$/);media.push({name,...await fileHash(path.join(fixture().projectDir,'media',name),32*1024*1024)});}
+ const media=coldNativeQaMediaSnapshot(workspace,preparedFixture.target.id);assert.ok(media.length<=32,'Media audit limit');
+ for(const item of media)assert.match(path.basename(item.name),/^[a-zA-Z0-9._-]+\.(mp4|png|wav)$/);
  const tables=Object.fromEntries(Object.entries(rows).map(([name,value])=>[name,{count:value.length,sha256:sha(JSON.stringify(value)),rowSha256:value.map(row=>sha(JSON.stringify(row)))}]));
  const result={synthetic:true,at:new Date().toISOString(),label,fixtureId:preparedFixture.id,schemaSha256,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries,tables,
   logicalDatabaseSha256:sha(JSON.stringify(tables)),databaseFiles:await Promise.all(Object.values(captureNativeQa(workspace).locations).flatMap(location=>[location.projectFile,path.join(location.localDir,'history.db'),path.join(location.cacheDir,'cache.db')]).map(async file=>({file,...await fileHash(file,32*1024*1024)}))),
@@ -374,8 +375,8 @@ async function verifyExport(){
  assert.equal(request[0].response.status,'queued');assert.deepEqual(request[0].response.snapshot,exported.snapshot);
  for(const original of before.media)assert.deepEqual(result.media.find(item=>item.name===original.name),original);
  assert.equal(result.media.length,before.media.length+1);
- const asset=result.assets.find(item=>item.id===exported.assetId);assert.ok(asset);assert.equal(asset.projectId,preparedFixture.target.id);assert.equal(asset.provenance,'export');
- assert.match(asset.relativePath,/^media\/[a-zA-Z0-9._-]+\.mp4$/);const file=path.join(fixture().projectDir,asset.relativePath),output=await fileHash(file,32*1024*1024);
+ const asset=result.assets.find(item=>item.id===exported.assetId);assert.ok(asset);assert.equal(asset.projectId,preparedFixture.target.id);assert.equal(asset.provenance,'export');assert.deepEqual(asset.producer,{kind:'export',id:exported.id});
+ const resolved=await coldNativeQaAssetFile(workspace,asset.projectId,asset.id);assert.match(resolved.projectRelativeFile,/^media\/[a-zA-Z0-9._-]+\.mp4$/);assert.equal(resolved.bytes,asset.sizeBytes);const file=resolved.file,output=await fileHash(file,32*1024*1024);
  assert.equal(output.sha256,asset.sha256);assert.ok(!before.media.some(item=>item.name===path.basename(file)));
  await command(ffprobe,['-v','error','-show_streams','-show_format','-of','json',file],'export-probe');
  const probe=readJson(path.join(runtime,'export-probe.stdout')),video=probe.streams.find(stream=>stream.codec_type==='video'),audio=probe.streams.find(stream=>stream.codec_type==='audio');

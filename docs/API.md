@@ -1717,3 +1717,15 @@ Exact retained ACK replay precedes media or current-revision admission, includin
 ## Project-owned LUT resources (candidate foundation)
 
 `lut.import`, `lut.list` and `lut.inspect` share the typed resource service. Import accepts `{projectId, requestId, name, dataBase64}` with a7MiB exact-byte cap and stable-request replay; list and inspect return metadata/hash only. This is not grading or applied LUT support. Project-owned storage and quotas are documented in [LUT resource foundation](LUT-RESOURCES.md).
+
+## 素材引用接口
+
+`asset.import` 是严格互斥的路径/上传输入。路径分支必须有requestId；上传仍接受原字段和30 MiB上限，可选requestId。同一key同一规范化输入精确重放，不同内容冲突。普通RPC永远不因输入中的路径或来源标记授予目录许可。
+
+独立资产接口：`asset.media.status.list` 返回有界items/nextCursor；`asset.media.prepare` 在事务外算完整哈希并按referenceRevision核对后返回assets；`asset.media.relink.preview/apply` 预览并重指向同内容；`asset.media.acceptChanged` 创建新素材身份，保留旧历史。
+
+敏感操作通过已认证且通过Origin检查的 `POST /api/projects/<ID>/asset-media/trusted`，请求 `{operation,input}`。`asset.import.path` 仅由桌面真实文件选择/拖入和CLI显式目录确认调用，返回asset和confirmedDirectories；`asset.media.location.list`、outside.confirm/revoke不进入MCP或Mio的普通操作目录。用户动作header仅表达意图，不能替代认证、窗口/项目所有权或目录能力检查。
+
+公共目录由 `@mioon/contracts/public-operations` 的 publicOperationSchemas/publicOperationDescriptions 统一提供，客户端直接导出同一对象。HTTP/CLI/MCP使用上述路径/上传导入和可选referenceRevisions；Mio的固定模型目录保留原上传输入和原generation.submit输入，不接受路径或网页确认版本字段。模型冻结schema可用 `node scripts/generate-agent-task-schemas.ts --check` 只读核对。
+
+普通Asset DTO不含reference或relativePath；sha256仅表示完整哈希，可以为null，fingerprint中的sampledSha256不能替代它。状态和位置是本机观测，分别获取，媒体URL存在不代表素材当前在线。付费网页确认绑定有序referenceRevisions（assetId、referenceRevision、完整sha256），派发前仍须完整复核字节。

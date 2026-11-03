@@ -1,4 +1,8 @@
 import {assertProjectStore} from './store-runtime.ts';
+import path from 'node:path';
+import {isProjectStore} from './project-file/store.ts';
+import {hasAssetReference, mediaLocatorFields} from './asset-reference-record.ts';
+import {prepareProjectAssetFullHash, referenceForPublishedMedia} from './project-media-storage.ts';
 import {mioTable} from './agent/mio-table-layout.ts';
 import {bindAgentTaskJobInside,assertAgentTaskJobEffect,withAgentTaskJobOrigin,assertTaskEffectOrigin,isAgentTaskEffectBlocked,setAgentTaskJobResumer,setAgentTaskJobStopper,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
 import {randomUUID,createHash} from 'node:crypto';
@@ -123,7 +127,8 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
   project(input.projectId);if(!db.prepare('SELECT 1 FROM assets WHERE id=? AND projectId=? LIMIT 1').get(input.sourceAssetId,input.projectId))missing();
   const asset=graph(input.projectId).asset(input.sourceAssetId);
   if(asset.sha256!==input.sourceHash)fail('FRAME_SOURCE_CHANGED');
-  const frozen={assetId:asset.id as string,sha256:asset.sha256 as string,mimeType:asset.mimeType as string,sizeBytes:asset.sizeBytes as number,relativePath:asset.relativePath as string,duration:asset.duration as number,width:asset.width as number,height:asset.height as number};
+  if(isProjectStore(store)&&!hasAssetReference(asset))fail('FRAME_SOURCE_INVALID');
+  const frozen={...mediaLocatorFields(asset),assetId:asset.id as string,sha256:asset.sha256 as string,mimeType:asset.mimeType as string,sizeBytes:asset.sizeBytes as number,duration:asset.duration as number,width:asset.width as number,height:asset.height as number};
   if(snapshot&&!equal(frozen,snapshot.source))fail('FRAME_SOURCE_CHANGED');
   return {asset,frozen};
  }
@@ -152,6 +157,12 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
  }
  async function extract(input: FrameExtractRequest): Promise<FrameTaskResponse> {
   owner();project(input.projectId);const replay=prior('frame.extract',input);if(replay)return replay;
+  if(isProjectStore(store)){
+   if(!db.prepare('SELECT 1 FROM assets WHERE id=? AND projectId=? LIMIT 1').get(input.sourceAssetId,input.projectId))missing();
+   const before=graph(input.projectId).asset(input.sourceAssetId);if(before.sha256!==null&&before.sha256!==input.sourceHash)fail('FRAME_SOURCE_CHANGED');
+   try{await prepareProjectAssetFullHash(root,input.sourceAssetId,{signal,beforeEffect:assertTaskEffectOrigin,maxBytes:FRAME_LIMITS.sourceBytes});}
+   catch(error){const code=property(error,'code');if(typeof code==='string'&&code.startsWith('MEDIA_'))fail(code==='MEDIA_CHANGED'||code==='MEDIA_CHANGED_DURING_READ'?'FRAME_SOURCE_CHANGED':'FRAME_SOURCE_INVALID');throw error;}
+  }
   capacity(input.projectId,{extract:true});const {asset,frozen}=source(input),id=randomUUID(),snapshot={schemaVersion:1,projectId:input.projectId,taskId:id,source:frozen,requested:{sourceFrame:input.sourceFrame,fps:30},profile:FRAME_PROFILE};
   if(!frameSnapshotSchema.safeParse(snapshot).success)fail('FRAME_SOURCE_INVALID');
   const file=sourceFile(asset),verified=await sourceHash(asset,file.info);owner();
@@ -198,8 +209,9 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
   const receipt=checked.value.receipt;if(!receipt)fail('FRAME_RESULT_INVALID');
   const check=(): void=>{sourceFence(original,verified.info);if(db.prepare('SELECT 1 FROM assets WHERE id=? LIMIT 1').get(receipt.assetId))fail('FRAME_RESULT_INVALID');};
   const file=await storage.publish(stageTask(original),receipt,check,{signal});check();fault('after_media_publication',{taskId:original.row.id});
+  const referenceFields=isProjectStore(store)?await referenceForPublishedMedia(store,path.join(root,file.relativePath),{sha256:receipt.sha256,signal,beforeEffect:check}):null;
   const result=tx(()=>{
-   check();const timestamp=now(),asset={id:receipt.assetId,projectId:original.row.projectId,name:`Frame ${original.input.sourceFrame}.png`,mimeType:'image/png',sha256:receipt.sha256,width:receipt.width,height:receipt.height,sizeBytes:receipt.byteLength,relativePath:file.relativePath,url:`/media/${receipt.assetId}`,provenance:'extracted-frame',createdAt:timestamp};
+   check();const timestamp=now(),asset={id:receipt.assetId,projectId:original.row.projectId,name:`Frame ${original.input.sourceFrame}.png`,mimeType:'image/png',sha256:receipt.sha256,width:receipt.width,height:receipt.height,sizeBytes:receipt.byteLength,...(referenceFields??{relativePath:file.relativePath}),url:`/media/${receipt.assetId}`,provenance:'extracted-frame',createdAt:timestamp};
    db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(asset.id,asset.projectId,JSON.stringify(asset));
    const completed=change(original,{state:'succeeded',assetId:asset.id,errorCode:null});graph(asset.projectId).asset(asset.id);fault('before_result_commit',{taskId:original.row.id});return completed;
   });

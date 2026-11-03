@@ -16,6 +16,9 @@ import {fileURLToPath} from 'node:url';
 import {tmpdir} from 'node:os';
 import {createServer} from 'node:http';
 import path from 'node:path';
+import {referenceTestAsset} from '../packages/business/src/project-file/test-asset-fixture.ts';
+import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import {parse,isWaveformResponse} from '@mioon/contracts';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
@@ -26,6 +29,8 @@ import {withoutForeignKeys} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 const hash=(bytes: Buffer<ArrayBuffer>|BinaryLike)=>createHash('sha256').update(bytes).digest('hex');
+const wav=(payload:Buffer):Buffer=>{const h=Buffer.alloc(44);h.write('RIFF');h.writeUInt32LE(payload.length+36,4);h.write('WAVEfmt ',8);h.writeUInt32LE(16,16);h.writeUInt16LE(1,20);h.writeUInt16LE(2,22);h.writeUInt32LE(48000,24);h.writeUInt32LE(192000,28);h.writeUInt16LE(4,32);h.writeUInt16LE(16,34);h.write('data',36);h.writeUInt32LE(payload.length,40);return Buffer.concat([h,payload]);};
+const fingerprint=(asset:object):string=>mediaFingerprintToken(mediaReferenceSchema.parse((asset as Record<string,unknown>).reference));
 const metadata=(duration: number|undefined=1,channels: number|undefined=2,patch: {start_time?: string; duration?: string;}={})=>({duration,probe:{format:{duration:String(duration),start_time:'0',format_name:'wav'},streams:[{codec_type:'audio',duration:String(duration),channels,start_time:'0',...patch}]}});
 const decoded=(duration: number|undefined=1,peak: number|undefined=32768)=>({sampleFrames:Math.round(duration*48000),clipped:false,peaks:new Uint16Array(Math.ceil(duration*100)).fill(peak)});
 const deferred=<T = unknown>()=>{let resolve!: (value?: T | PromiseLike<T | undefined>)=>void;return {promise:new Promise<T | undefined>(r=>{resolve=r;}),resolve};};
@@ -47,7 +52,7 @@ async function fixture(t: test.TestContext,{decode=async()=>decoded(),probe=asyn
   request(asset: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: string; name: string; mimeType: string; duration: number; hasAudio: boolean; sizeBytes: number; sha256: string; relativePath: string; url: string; },extra?: {}|undefined){return f.call('asset.waveform.request',f.input(asset,extra));},
   async ready(asset: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: string; name: string; mimeType: string; duration: number; hasAudio: boolean; sizeBytes: number; sha256: string; relativePath: string; url: string; }){f.request(asset);return waitFor((()=>f.get(asset)));},
   async asset({projectId=project.id,bytes=randomUUID(),...patch}={}){
-   const id=randomUUID(),relativePath=`media/${id}.wav`,data=Buffer.from(bytes);await writeFile(path.join(root,relativePath),data);
+   const id=randomUUID(),relativePath=`media/${id}.wav`,data=Buffer.from(bytes).subarray(0,4).toString()==='RIFF'?Buffer.from(bytes):wav(Buffer.from(bytes));await writeFile(path.join(root,relativePath),data);
    const put=()=>store.put('assets',{id,projectId,name:'Private source',mimeType:'audio/wav',duration:1,hasAudio:true,sizeBytes:data.length,sha256:hash(data),relativePath,url:`/media/${id}`,...patch});return projectId===project.id?put():withoutForeignKeys(store.db,put);
   },
   async restart(){await service.drain();store.close();store=(open(root) as FixtureStore);service=(createWaveformServices(store,((options) as unknown as Parameters<typeof createWaveformServices>[1])) as TestWaveformService);},
@@ -59,10 +64,10 @@ const changes=(f: Awaited<ReturnType<typeof fixture>>)=>(f.store.db.prepare('SEL
 const rows=(f: Awaited<ReturnType<typeof fixture>>)=>f.store.db.prepare('SELECT * FROM waveform_cache ORDER BY position').all();
 const sourceRows=(f: Awaited<ReturnType<typeof fixture>>)=>Object.fromEntries(['projects','assets','versions','timelines','timeline_history','timeline_requests','mutation_requests','asset_range_requests','asset_disposition_requests'].map(table=>[table,f.store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
 const missing=(error?: Error&{ code: string; status?: number; details?: { mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[];[key: string]: unknown; }; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; })=>(error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code==='NOT_FOUND'&&(error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).status===404&&(error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).message==='找不到记录'&&JSON.stringify((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).details)==='{}';
-const patchAsset=(f: Awaited<ReturnType<typeof fixture>>,asset: { id: unknown; projectId: unknown; name?: string; mimeType?: string; duration?: number; hasAudio?: boolean; sizeBytes?: number; sha256?: string; relativePath?: string; url?: string; },patch: { [x: string]: unknown; sha256?: string; sizeBytes?: number; relativePath?: string; projectId?: unknown; duration?: number; },projectId: unknown=asset.projectId)=>f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(((((projectId) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as Parameters<NonNullable<(ReturnType<(((typeof f)["store"])["db"])["prepare"]>)["run"]>>[0]),JSON.stringify({...asset,...patch}),((asset.id) as unknown as SQLInputValue));
+const patchAsset=(f: Awaited<ReturnType<typeof fixture>>,asset: { id: unknown; projectId: unknown; name?: string; mimeType?: string; duration?: number; hasAudio?: boolean; sizeBytes?: number; sha256?: string; relativePath?: string; url?: string; },patch: { [x: string]: unknown; sha256?: string; sizeBytes?: number; relativePath?: string; projectId?: unknown; duration?: number; },projectId: unknown=asset.projectId)=>f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(((((projectId) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as Parameters<NonNullable<(ReturnType<(((typeof f)["store"])["db"])["prepare"]>)["run"]>>[0]),JSON.stringify(referenceTestAsset(f.root,{...asset,...patch,reference:undefined})),((asset.id) as unknown as SQLInputValue));
 function replaceCacheRow(f: Awaited<ReturnType<typeof fixture>>,row: Record<string,unknown>|undefined,patch: { attemptId?: `${string}-${string}-${string}-${string}-${string}`; status?: string; reservedBytes?: number; data: unknown; }){
  const next: Record<string, unknown>={...(row as Record<string, unknown>),...patch},data=typeof next.data==='string'?JSON.parse(next.data):next.data;
- const bytes=Buffer.byteLength(JSON.stringify({cacheKey:next.cacheKey,projectId:next.projectId,sourceSha256:next.sourceSha256,algorithm:next.algorithm,status:next.status,attemptId:next.attemptId,data}));
+ const bytes=Buffer.byteLength(JSON.stringify({cacheKey:next.cacheKey,projectId:next.projectId,sourceFingerprint:next.sourceFingerprint??next.sourceSha256,algorithm:next.algorithm,status:next.status,attemptId:next.attemptId,data}));
  f.store.db.prepare('UPDATE waveform_cache SET status=?,attemptId=?,data=?,bytes=?,reservedBytes=? WHERE cacheKey=?').run(next.status as SQLInputValue,next.attemptId as SQLInputValue,JSON.stringify(data),bytes,next.reservedBytes as SQLInputValue,next.cacheKey as SQLInputValue);
 }
 
@@ -96,6 +101,9 @@ test('same project/source requests and duplicate service wrappers share one owne
  assert.equal((createWaveformServices(f.store,((f.options) as unknown as Parameters<typeof createWaveformServices>[1])) as TestWaveformService),f.service);
  assert.throws(()=>createWaveformServices({...f.store},((f.options) as unknown as Parameters<typeof createWaveformServices>[1])),{code:'PROJECT_STORE_UNVERIFIED'});
  assert.throws(()=>(createWaveformServices(f.store,(({...f.options,signal:new AbortController().signal}) as unknown as Parameters<typeof createWaveformServices>[1])) as TestWaveformService),{code:'WAVEFORM_SERVICE_ACTIVE'});
+ // Equal bytes share cache only when the full sampled fingerprint, including mtime, matches.
+ const fs=await import('node:fs/promises'),seconds=Math.floor(Date.now()/1000);
+ for(const a of [asset,same]){await fs.utimes(path.join(f.root,a.relativePath),seconds,seconds);const fixed=referenceTestAsset(f.root,{...a,reference:undefined});f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify(fixed),a.id);Object.assign(a,fixed);}
  const accepted=f.request(asset);assert.equal(f.request(same).attemptId,accepted.attemptId);assert.equal(other.get(foreign).status,'missing');assert.throws(()=>f.get(foreign),missing);
  await waitFor(()=>({status:count===1?'started':'queued'}));assert.equal(count,1);(gate.resolve)!();
  await waitFor((()=>f.get(asset)));assert.equal(f.get(same).status,'ready');assert.equal(rows(f).length,1);
@@ -121,13 +129,13 @@ test('hash mismatch is terminal and sanitized until explicit retry; no probe or 
  await writeFile(path.join(f.root,asset.relativePath),'changed secret bytes');
  const failed=await f.ready(asset);assert.equal(failed.status,'error');assert.equal((failed.reason)!.code,'WAVEFORM_SOURCE_CHANGED');assert.equal(processes,0);
  const attempt=failed.attemptId,writes=changes(f);assert.equal(f.request(asset).attemptId,attempt);assert.equal(changes(f),writes);
- const bytes=Buffer.from('restored');await writeFile(path.join(f.root,asset.relativePath),bytes);
+ const bytes=wav(Buffer.from('restored'));await writeFile(path.join(f.root,asset.relativePath),bytes);
  patchAsset(f,asset,{sha256:hash(bytes),sizeBytes:bytes.length});asset.sha256=hash(bytes);asset.sizeBytes=bytes.length;
  const ready=await f.ready(asset);assert.equal(ready.status,'ready');assert.notEqual(ready.attemptId,attempt);assert.equal(processes,1);
  assert.ok(!JSON.stringify(ready).includes('media/'));assert.ok(!JSON.stringify(failed).includes('secret'));
 });
 
-test('managed source validation rejects traversal, symlinks, hardlinks, FIFOs and oversized files before probing',async t=>{
+test('reference validation rejects changed links, traversal, FIFOs and changed sizes before probing',async t=>{
  let processes=0;const f=await fixture(t,{probe:async()=>{processes++;return metadata();}}),target=await f.asset();
  const cases: ({ id: `${string}-${string}-${string}-${string}-${string}`; projectId: string; name: string; mimeType: string; duration: number; hasAudio: boolean; sizeBytes: number; sha256: string; relativePath: string; url: string; })[]=[];
  const symlinkAsset=await f.asset();await rm(path.join(f.root,symlinkAsset.relativePath));await symlink(path.join(f.root,target.relativePath),path.join(f.root,symlinkAsset.relativePath));cases.push(symlinkAsset);
@@ -136,9 +144,11 @@ test('managed source validation rejects traversal, symlinks, hardlinks, FIFOs an
  const traversal=await f.asset();patchAsset(f,traversal,{relativePath:'media/../workbench.sqlite'});cases.push(traversal);
  await mkdir(path.join(f.root,'media','real'));await symlink(path.join(f.root,'media','real'),path.join(f.root,'media','linked'));
  const descendant=await f.asset();patchAsset(f,descendant,{relativePath:'media/linked/file.wav'});await writeFile(path.join(f.root,'media','real','file.wav'),'x');cases.push(descendant);
- for(const asset of cases){const result=await f.ready(asset);assert.equal(result.status,'error');assert.equal((result.reason)!.code,'WAVEFORM_SOURCE_INVALID');}
+ for(const [index,asset] of cases.entries()){const result=await f.ready(asset);assert.equal(result.status,'error');assert.equal((result.reason)!.code,index===0||index===1||index===4?'WAVEFORM_SOURCE_CHANGED':'WAVEFORM_SOURCE_INVALID');}
  const huge=await f.asset();await truncate(path.join(f.root,huge.relativePath),WAVEFORM_CACHE_LIMITS.sourceBytes+1);
- const result=await f.ready(huge);assert.equal(result.status,'unsupported');assert.equal((result.reason)!.code,'WAVEFORM_SOURCE_TOO_LARGE');assert.equal(processes,0);
+ const result=await f.ready(huge);assert.equal(result.status,'error');assert.equal((result.reason)!.code,'WAVEFORM_SOURCE_CHANGED');assert.equal(processes,0);
+ patchAsset(f,huge,{sizeBytes:WAVEFORM_CACHE_LIMITS.sourceBytes+1});
+ const overBudget=await f.ready(huge);assert.equal(overBudget.status,'unsupported');assert.equal(overBudget.reason!.code,'WAVEFORM_SOURCE_TOO_LARGE');assert.equal(processes,0);
 });
 
 test('probe restrictions reject no audio, extra channels, long or unknown duration and unaligned/unknown origins',async t=>{
@@ -224,9 +234,9 @@ test('owned drain interrupts queued work, joins a late callback, and restart req
 
 test('startup marks only unfinished rows interrupted and never probes; completed rows persist byte-for-byte',async t=>{
  let probes=0;const f=await fixture(t,{probe:async()=>{probes++;return metadata();}}),ready=await f.asset(),unfinished=await f.asset();
- await f.ready(ready);await f.ready(unfinished);const originalReady=rows(f).find(((row)=>row.sourceSha256===ready.sha256)),old=rows(f).find(((row)=>row.sourceSha256===unfinished.sha256));
+ await f.ready(ready);await f.ready(unfinished);const originalReady=rows(f).find(((row)=>row.sourceFingerprint===fingerprint(ready))),old=rows(f).find(((row)=>row.sourceFingerprint===fingerprint(unfinished)));
  replaceCacheRow(f,old,{status:'running',data:{},reservedBytes:WAVEFORM_CACHE_LIMITS.recordBytes});await f.restart();
- assert.equal(probes,2);assert.deepEqual(rows(f).find(((row)=>row.sourceSha256===ready.sha256)),originalReady);assert.equal(f.get(unfinished).status,'interrupted');
+ assert.equal(probes,2);assert.deepEqual(rows(f).find(((row)=>row.sourceFingerprint===fingerprint(ready))),originalReady);assert.equal(f.get(unfinished).status,'interrupted');
  assert.equal(f.get(unfinished).attemptId,(old)!.attemptId);assert.equal(f.request(unfinished).status,'interrupted');assert.equal(probes,2);
 });
 
@@ -250,7 +260,7 @@ test('serialized peak payload plus in-flight maximum reservation respects the 16
 test('unconfirmed decoder termination remains a shutdown failure with no ready partial cache',async t=>{
  const error=Object.assign(new Error('private decoder diagnostic'),{terminationUnconfirmed:true,code:'MEDIA_TERMINATION_UNCONFIRMED'});
  const root=await mkdtemp(path.join(tmpdir(),'mioon-waveform-unconfirmed-')),opened=openStore(root),store=(opened as FixtureStore),project={id:opened.projectId};store.put('projects',project);
- const bytes=Buffer.from('source'),asset={id:randomUUID(),projectId:project.id,mimeType:'audio/wav',duration:1,relativePath:'media/source.wav',sha256:hash(bytes)};store.put('assets',asset);await writeFile(path.join(root,asset.relativePath),bytes);
+ const bytes=wav(Buffer.from('source')),asset={id:randomUUID(),projectId:project.id,mimeType:'audio/wav',duration:1,relativePath:'media/source.wav',sha256:hash(bytes)};await writeFile(path.join(root,asset.relativePath),bytes);store.put('assets',asset);
  const service=(createWaveformServices(store,{probe:((async()=>metadata()) as unknown as import("../packages/business/src/waveforms.ts").WaveformProbe | undefined),decode:async()=>{throw error;}}) as TestWaveformService),input={projectId:project.id,assetId:asset.id};
  service.handlers['asset.waveform.request'](input);const result=await waitFor((()=>service.handlers['asset.waveform.get'](input)));assert.equal(result.status,'error');assert.ok(!JSON.stringify(result).includes('private decoder'));
  await assert.rejects(service.drain(),e=>e===error);store.close();await rm(root,{recursive:true,force:true});
@@ -300,7 +310,7 @@ test('excess cache row corruption does not block startup or original editing and
  const f=await fixture(t),asset=await f.asset();await f.ready(asset);const seed=rows(f)[0];
  for(let i=1;i<65;i++){
   const sourceSha256=hash(String(i)),cacheKey=hash(JSON.stringify([asset.projectId,sourceSha256,WAVEFORM_ALGORITHM]));
-  f.store.db.prepare('INSERT INTO waveform_cache(cacheKey,projectId,sourceSha256,algorithm,status,attemptId,data,bytes,reservedBytes) VALUES(?,?,?,?,?,?,?,?,?)')
+  f.store.db.prepare('INSERT INTO waveform_cache(cacheKey,projectId,sourceFingerprint,algorithm,status,attemptId,data,bytes,reservedBytes) VALUES(?,?,?,?,?,?,?,?,?)')
    .run(cacheKey,asset.projectId,sourceSha256,WAVEFORM_ALGORITHM,'ready',randomUUID(),seed.data,seed.bytes,0);
  }
  const before=rows(f);await f.restart();assert.deepEqual(rows(f),before);assert.equal((f.get(asset).reason)!.code,'WAVEFORM_CACHE_UNAVAILABLE');
@@ -411,4 +421,35 @@ test('ownership is rechecked after a saturated global probe permit before any la
  (gate.resolve)!();await Promise.all(permits);await waitFor(()=>({status:ownershipDenied?'denied':'queued'}));await f.service.drain();
  assert.equal(spawns,0);assert.deepEqual(replacement.db.prepare('SELECT * FROM waveform_cache').all(),before);
  await service.drain();replacement.close();
+});
+
+test('S1 ready waveform checks reference mtime and rejects revoked exact-directory consent immediately',async t=>{
+ const f=await fixture(t),asset=await f.asset();await f.ready(asset);
+ const before=rows(f),file=path.join(f.root,asset.relativePath),fs=await import('node:fs/promises');
+ const info=await fs.stat(file);await fs.utimes(file,info.atime, new Date(info.mtimeMs+2000));
+ assert.equal(f.get(asset).status,'error');assert.equal(f.get(asset).reason!.code,'WAVEFORM_SOURCE_CHANGED');assert.deepEqual(rows(f),before);
+ // Relink the same full content, with the same recorded mtime, outside the project.
+ await fs.utimes(file,info.atime,info.mtime);const outside=await mkdtemp(path.join(tmpdir(),'waveform-consent-'));t.after(()=>rm(outside,{recursive:true,force:true}));
+ const destination=path.join(outside,'source.wav');await rename(file,destination);
+ const held=f.store.get('assets',asset.id);assert.ok(held);const saved:Record<string,unknown>={...held},ref=mediaReferenceSchema.parse(saved.reference);
+ // utimes can round submillisecond metadata, so explicitly prepare the test fixture anew.
+ const record=referenceTestAsset(f.root,{...saved,relativePath:path.relative(f.root,destination),reference:undefined,referenceRevision:2});f.store.put('assets',record);
+ let confirmed=true;const {registerProjectMediaStore}=await import('../packages/business/src/project-media-storage.ts');
+ const release=registerProjectMediaStore(f.store,{outsidePaths:{list:()=>confirmed?[{projectId:f.project.id,directory:outside,confirmedAt:new Date().toISOString()}]:[]}});t.after(release);
+ assert.equal((await f.ready(asset)).status,'ready');confirmed=false;
+ assert.equal(f.get(asset).status,'error');assert.equal(f.request(asset).status,'error');
+ assert.equal(ref.fullSha256,asset.sha256);
+});
+
+test('S1 in-flight waveform cannot publish ready after external directory consent is revoked',async t=>{
+ const gate=deferred();let entered=false;
+ const f=await fixture(t,{decode:async()=>{entered=true;await gate.promise;return decoded();}}),asset=await f.asset();
+ const outside=await mkdtemp(path.join(tmpdir(),'waveform-revoke-'));t.after(()=>rm(outside,{recursive:true,force:true}));
+ const destination=path.join(outside,'source.wav');await rename(path.join(f.root,asset.relativePath),destination);
+ const held=f.store.get('assets',asset.id);assert.ok(held);const saved:Record<string,unknown>={...held},record=referenceTestAsset(f.root,{...saved,relativePath:path.relative(f.root,destination),reference:undefined,referenceRevision:2});f.store.put('assets',record);
+ let confirmed=true;const {registerProjectMediaStore}=await import('../packages/business/src/project-media-storage.ts');
+ const release=registerProjectMediaStore(f.store,{outsidePaths:{list:()=>confirmed?[{projectId:f.project.id,directory:outside,confirmedAt:new Date().toISOString()}]:[]}});t.after(release);
+ assert.equal(f.request(asset).status,'running');await waitFor(()=>({status:entered?'started':'queued'}));confirmed=false;gate.resolve();
+ await waitFor(()=>rows(f),value=>value.every(row=>!['queued','running'].includes(String(row.status))));
+ assert.equal(rows(f).some(row=>row.status==='ready'),false);assert.equal(f.get(asset).status,'error');
 });

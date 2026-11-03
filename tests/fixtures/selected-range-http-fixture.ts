@@ -1,3 +1,5 @@
+import {mediaFixturePath} from '../helpers/media-reference-fixtures.ts';
+import type {MediaReference} from '../../packages/contracts/src/media-reference.ts';
 import {projectApiPath, parseProjectApiPath} from '../../packages/contracts/src/project-file.ts';
 import {rpcPathFor} from '../../packages/contracts/src/project-addressing.ts';
 /** Synthetic loopback listener, not the full desktop server. It uses the real
@@ -128,17 +130,17 @@ export async function selectedRangeFixture(t: unknown): Promise<Record<string, u
   reopen();
   interface FixtureProject {id: string}
   interface FixtureTimeline {id: string; revision: number; tracks: {id: string}[]; [key: string]: unknown}
-  interface FixtureSource {id: string; relativePath: string}
+  type FixtureSource={id:string}&({reference:MediaReference;referenceRevision:number}|{relativePath:string});
   const project = await services!.call('project.create', {name: 'Selected range synthetic transport 🎬'}) as unknown as FixtureProject;
   let timeline = await services!.call('timeline.get', {projectId: project.id}) as unknown as FixtureTimeline;
   const sources: FixtureSource[] = [];
   for (const index of [0, 1]) {
     const id = randomUUID(), bytes = syntheticPng(), relativePath = `media/${id}.png`;
     await writeFile(path.join(root, relativePath), bytes, {mode: 0o600, flag: 'wx'});
-    const asset = store!.put('assets', {id, projectId: project.id, name: `Synthetic ${index}.png`, mimeType: 'image/png', relativePath,
+    store!.put('assets', {id, projectId: project.id, name: `Synthetic ${index}.png`, mimeType: 'image/png', relativePath,
       sha256: sha(bytes), sizeBytes: bytes.length, width: 16, height: 16, duration: 0, hasVideo: true, hasAudio: false,
       provenance: 'user-import', createdAt: new Date().toISOString()});
-    sources.push(asset as unknown as FixtureSource);
+    sources.push(store!.get('assets',id) as FixtureSource);
     timeline = await services!.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
       assetId: id, trackId: timeline.tracks[0]!.id, startFrame: index * 90, durationFrames: index ? 30 : 90}) as unknown as FixtureTimeline;
   }
@@ -232,7 +234,7 @@ export async function selectedRangeFixture(t: unknown): Promise<Record<string, u
         events.filter(event => event.type === 'exited').map(event => event.pid).sort(), 'every bounded source probe has confirmed close');
       assert.equal(store!.list('exports').some((value: unknown) => {const row=value as Record<string, unknown>;return row.status !== 'queued' || row.assetId !== null || row.url !== null;}), false);
       assert.equal(store!.list('assets').some((value: unknown) => (value as Record<string, unknown>).provenance === 'export'), false, 'no output asset exists');
-      assert.deepEqual((await readdir(path.join(root, 'media'))).sort(), sources.map((value: FixtureSource) => path.basename(value.relativePath)).sort(), 'only the two managed source files exist');
+      assert.deepEqual((await readdir(path.join(root, 'media'))).sort(), sources.map((value: FixtureSource) => path.basename(mediaFixturePath(root,value))).sort(), 'only the two managed source files exist');
     },
     async armCancellation() {
       assert.ok(cancellation == null);

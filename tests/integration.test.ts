@@ -110,7 +110,7 @@ test('durable HTTP acceptance: real process restarts, provider side effects, med
     assert.deepEqual(after.shots.map(s => s.id), order); assert.equal(after.shots.length, 3); assert.equal(after.assets.length, 2);
     assert.equal((after.shots.find(s => s.id === shots[0].id))!.prompt, 'Durable revised prompt');
     assert.deepEqual((after.shots.find(s => s.id === shots[0].id))!.position, { x: 755, y: 123 });
-    for (const asset of [image, video]) { const response = await fetch(f.base + projectMediaPath(project.id, asset.id), { headers: { authorization: `Bearer ${token}` } }); assert.equal(response.status, 200); assert.equal(sha(Buffer.from(await response.arrayBuffer())), asset.sha256); }
+    for (const asset of [image, video]) { const response = await fetch(f.base + projectMediaPath(project.id, asset.id), { headers: { authorization: `Bearer ${token}` } }); assert.equal(response.status, 200); assert.equal(sha(Buffer.from(await response.arrayBuffer())), asset.id===image.id?sha(imageBytes):sha(videoBytes)); }
     records.assertions.push({ id: 'A2', result: 'passed', projectId: project.id, shotIds: order, imageNodeId: imageNode.id, videoNodeId: videoNode.id, edgeId: edge.id, restart: 'actual SIGKILL and new child process' });
   });
 

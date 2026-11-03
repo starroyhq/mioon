@@ -1,3 +1,5 @@
+import {projectExportObservation} from './project-export-observation.ts';
+import {validAssetLocator} from './asset-reference-record.ts';
 import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
 import {types} from 'node:util';
 import {AppError, parse, inspectionArgumentSchemas, inspectionSchemas,timelineOutputPreset,getTimelineSubtitleIssue,getSubjectGenerationSnapshotIssue,SCENE_KEYFRAME_PROVENANCE} from '@mioon/contracts';
@@ -240,6 +242,7 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
       }catch(error){validatedVersions.delete(versionId as string);throw error;}
     }
     function validateAsset(asset: InspectionRecord,{sourceEdge=false}: {sourceEdge?: boolean}={}): InspectionRecord {
+      if(!validAssetLocator(db,asset))unavailable();
       if(sourceEdge&&pendingAssets.has(asset.id as string))unavailable();
       if (validatedAssets.has(asset.id as string)||pendingAssets.has(asset.id as string)) return asset;
       pendingAssets.add(asset.id as string);
@@ -393,7 +396,7 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
 // unscoped raw reader; all paths retain the same bounded project-owner gates.
 export function createOwnedMediaGraphReader(db: DatabaseSync,projectId: string): OwnedMediaGraphReader{
  const read=inspectionReader(db,projectId);
- return {subjectAsset:read.subjectAsset,subjectOwner:read.subjectOwner,subjectVersion:read.subjectVersion,subjectReference:read.subjectReference,validateSubjectReference:read.validateSubjectReference,asset:read.ownedAsset,clipSource:read.clipSource,version:read.version,imageVersion:read.imageVersion,imageSource:read.imageSource,imageTask:read.imageTask,legacySource:read.legacySource,frameTask:read.frameTask,frameSource:read.frameSource,sceneKeyframeSource:read.sceneKeyframeSource,timeline:read.ownedTimeline,validateTimeline:read.validateTimeline};
+ return {subjectAsset:read.subjectAsset,subjectOwner:read.subjectOwner,subjectVersion:read.subjectVersion,subjectReference:read.subjectReference,validateSubjectReference:read.validateSubjectReference,asset:(assetId:unknown)=>projectExportObservation(db,projectId,read.ownedAsset(assetId)),clipSource:read.clipSource,version:read.version,imageVersion:read.imageVersion,imageSource:read.imageSource,imageTask:read.imageTask,legacySource:read.legacySource,frameTask:read.frameTask,frameSource:read.frameSource,sceneKeyframeSource:read.sceneKeyframeSource,timeline:read.ownedTimeline,validateTimeline:read.validateTimeline};
 }
 
 type InspectionScope = {projectId: string;capabilities: Set<unknown>;maxCalls: number;maxResultBytes: number;maxTotalBytes: number;calls: number;bytes: number};

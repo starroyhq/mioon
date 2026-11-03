@@ -11,6 +11,7 @@ import path from 'node:path';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {writeStubMediaFixture} from './helpers/media-reference-fixtures.ts';
 import {hasRequestNotAppliedProof,isTimelineMutationResponse,TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
 const at='2026-10-11T12:00:00.000Z';
 const tables=['projects','timelines','assets','shots','jobs','versions','exports','timeline_requests','timeline_history','timeline_history_cursors','edit_tasks'];
@@ -25,7 +26,7 @@ async function fixture(t: test.TestContext){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-subtitles-business-'));let store=(openStore(root) as unknown as TypedStore),services=(createServices(store,new Map()) as unknown as TypedServices);
  const f={root,get store(){return store;},call:((operation: string,input: unknown)=>services.call(operation,input)) as TypedCall,restart(){store.close();store=(openStore(root) as unknown as TypedStore);services=(createServices(store,new Map()) as unknown as TypedServices);},
  capture:()=>JSON.stringify(tables.map(table=>[table,store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])),
- asset(patch: Record<string, unknown>={}){const id=randomUUID();return store.put('assets',{id,projectId:f.projectId,name:'Fixture',mimeType:'video/mp4',duration:20,width:720,height:1280,hasVideo:true,hasAudio:true,sha256:'a'.repeat(64),relativePath:`media/${id}.fixture`,provenance:'user-import',createdAt:at,...patch});}} as SubtitleFixture;
+ asset(patch: Record<string, unknown>={}){const id=randomUUID(),mimeType=typeof patch.mimeType==='string'?patch.mimeType:'video/mp4',source=writeStubMediaFixture(root,id,mimeType);return store.put('assets',{id,projectId:f.projectId,name:'Fixture',mimeType,duration:20,width:720,height:1280,hasVideo:true,hasAudio:true,...source,provenance:'user-import',createdAt:at,...patch});}} as SubtitleFixture;
  f.projectId=(await f.call('project.create',{name:'Manual subtitles'})).id;f.otherId=(await foreignProject(t,'Foreign project')).id;
  t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});return f;
 }
@@ -89,7 +90,7 @@ test('exact replay survives later update/remove/undo/restart and changed request
  await rejected(f,'timeline.subtitle.add',{...input,projectId:f.otherId},'IDEMPOTENCY_CONFLICT',{proof:false});
 });
 
-test('frozen render snapshots bind exact subtitle state and font without reading media or font files at acceptance',async t=>{
+test('frozen render snapshots bind exact subtitle state and font with admitted reference sources',async t=>{
  const f=await fixture(t);let timeline=await populated(f);const legacyInput=request(f,timeline,{purpose:'preview'}),legacy=await f.call('timeline.render',legacyInput);
  assert.equal(Object.hasOwn(legacy.snapshot,'subtitleProfile'),false);const legacyBytes=JSON.stringify(legacy);
  timeline=await add(f,timeline);const renderInput=request(f,timeline,{purpose:'export'}),render=await f.call('timeline.render',renderInput);

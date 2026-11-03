@@ -30,7 +30,7 @@ export type SceneMutation = typeof SCENE_MUTATION_OPERATIONS[number];
 export interface ScenePending { readonly operation: SceneMutation; readonly input: Readonly<Record<string, unknown>>; readonly assetId: string }
 export interface SceneResultView { readonly phase: 'loading' | 'ready' | 'error'; readonly response: SceneResultResponse | null }
 export interface SceneNotice { readonly assetId: string | null; readonly descriptor: DisplayMessage; readonly tone: 'neutral' | 'warning' | 'danger' }
-export interface SceneSourceAsset { id: string; projectId?: string; name?: string; sha256?: string; mimeType?: string; duration?: unknown; sizeBytes?: unknown }
+export interface SceneSourceAsset { referenceRevision?:number; id: string; projectId?: string; name?: string; sha256?: string | null; mimeType?: string; duration?: unknown; sizeBytes?: unknown }
 /** Whether a built storyboard can still be undone. Task pages leave this out, so it is read per task. */
 export interface SceneUndoView { readonly phase: 'loading' | 'ready' | 'error'; readonly revision: number | null; readonly undo: SceneShotsTask['undo'] }
 export interface SceneDetectionState {
@@ -79,7 +79,7 @@ export function sceneTaskPercent(task: SceneTask | null | undefined): number {
 export const sceneStoryboardFailed = (task: SceneTask | null | undefined): task is SceneShotsTask => task?.kind === 'shots' && ['failed', 'interrupted', 'local_result_error'].includes(task.state);
 /** Why a video cannot be detected; null when it can. Mirrors the frame capture limits the backend checks. */
 export function sceneSourceIssue(asset: SceneSourceAsset | null | undefined): 'type' | 'duration' | 'size' | null {
-  if (!asset || !['video/mp4', 'video/webm'].includes(String(asset.mimeType)) || typeof asset.sha256 !== 'string') return 'type';
+  if (!asset || !['video/mp4', 'video/webm'].includes(String(asset.mimeType)) || (typeof asset.sha256 !== 'string' && !(asset.sha256===null&&Number.isSafeInteger(asset.referenceRevision)&&Number(asset.referenceRevision)>0))) return 'type';
   const duration = Number(asset.duration), size = Number(asset.sizeBytes);
   if (!Number.isFinite(duration) || duration <= 0 || duration > SCENE_LIMITS.sourceDuration) return 'duration';
   if (Number.isFinite(size) && size > SCENE_LIMITS.sourceBytes) return 'size';

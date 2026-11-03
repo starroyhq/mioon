@@ -1,3 +1,4 @@
+import {importNativeQaAsset,nativeQaAssetFile,coldNativeQaAssetFile} from './helpers/native-local-qa-fixture.ts';
 /** Ordinary sandboxed Q4 native fixture. Synthetic private data only; no
  * renderer hooks, remote debugging, token reads or external provider calls. */
 import path from 'node:path';
@@ -22,6 +23,7 @@ const hash = async file => createHash('sha256').update(await readFile(file)).dig
 export async function prepareHttpNativeFixture() {
   ensurePrivateDirectory(root, {create: true});
   const previous = readQaFixture(path.join(root, 'fixture.json'), workspace);
+  if(previous&&previous.assetReferenceFixture!==1)throw Error('Historical pre-reference fixture must be preserved; choose a fresh MIOON_QA_FIXTURE_ROOT');
   if (previous) return previous;
   if (existsSync(path.join(workspace, 'app-library.db'))) throw Error('Partial QA data must be preserved; choose a fresh MIOON_QA_FIXTURE_ROOT');
   ensurePrivateDirectory(userData, {create: true});
@@ -32,16 +34,16 @@ export async function prepareHttpNativeFixture() {
     await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-n', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=30',
       '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000', '-t', '4', '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-movflags', '+faststart', video]);
-    const missing = await services.call('asset.import', {projectId: project.id, name: '模拟已缺失素材.png', mimeType: 'image/png',
+    const missing = await importNativeQaAsset(prepared, {projectId: project.id, name: '模拟已缺失素材.png', mimeType: 'image/png',
       dataBase64: (await readFile(path.join(repo, 'examples/synthetic/reference.png'))).toString('base64')});
-    const healthy = await services.call('asset.import', {projectId: project.id, name: '正常视频 · 断连后仍可播放.mp4', mimeType: 'video/mp4',
+    const healthy = await importNativeQaAsset(prepared, {projectId: project.id, name: '正常视频 · 断连后仍可播放.mp4', mimeType: 'video/mp4',
       dataBase64: (await readFile(video)).toString('base64')});
     const timeline = await services.call('timeline.get', {projectId: project.id});
     await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
       assetId: healthy.id, trackId: timeline.tracks.find(track => track.kind === 'video').id, startFrame: 0, durationFrames: 120});
-    const missingFile = await safePath(store.projectDir, store.get('assets', missing.id).relativePath);
+    const missingFile = (await nativeQaAssetFile(store,missing.id)).file;
     await unlink(missingFile); // Exact new synthetic file; no existing user data.
-    fixture = {synthetic: true, kernel: true, workspace, projectDir: store.projectDir, localDir: store.localDir, projectFile: store.projectFile,
+    fixture = {synthetic: true, kernel: true, assetReferenceFixture:1, workspace, projectDir: store.projectDir, localDir: store.localDir, projectFile: store.projectFile,
       projectId: project.id, healthyAssetId: healthy.id, missingAssetId: missing.id, expectedVideo: await fileInfo(video)};
   } finally {
     try {await closeQaProject(prepared);} finally {try {await unlink(video);} catch (error) {if (error.code !== 'ENOENT') throw error;}}
@@ -57,7 +59,7 @@ async function audit() {
   const asset = JSON.parse(row.data), location = snapshot.locations[asset.projectId];
   if (asset.projectId !== fixture.projectId || !location) throw Error('Synthetic video owner differs');
   const counts = Object.fromEntries(['assets', 'jobs', 'exports', 'mio_runs'].map(table => [table, snapshot.rows[table].length]));
-  const bytes = await fileInfo(await safePath(location.projectDir, asset.relativePath));
+  const bytes = await fileInfo((await coldNativeQaAssetFile(workspace,asset.projectId,asset.id)).file);
   return {counts, agentCounter: 'mio_runs', storage: snapshot, healthyVideo: bytes,
     publishedBytesMatch: bytes.sha256 === asset.sha256 && bytes.sizeBytes === asset.sizeBytes};
 }

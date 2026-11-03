@@ -105,6 +105,9 @@ export interface ServerOptions {
   /** Trusted in-process tests only; never HTTP/environment. Retains a real
    * window lease so a read-only baseline excludes idle-close bookkeeping. */
   retainProjectForTest?: (retain: (projectId: string) => Promise<() => void>) => void;
+  /** In-process shutdown fixture only; the default still performs the real
+   * SQLite backup/copy. No request or environment can select this port. */
+  projectBackupCopyForTest?: Parameters<typeof createProjectBackups>[0]['copy'];
   localDraftChannel?: LocalDraftChannel;
   nativeAudioPreview?: NativeAudioPreviewAuthority;
 }
@@ -164,7 +167,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     application = await composeApplicationRuntime(library, options, shutdown.signal, selfPort);
     const app = application;
     const assertProjectFile = createApplicationFileGuard(directories);
-    const backups = createProjectBackups({directories, registry: library.registry, identity: library.projectFileIdentity, assertProjectFile});
+    const backups = createProjectBackups({directories, registry: library.registry, identity: library.projectFileIdentity, assertProjectFile, outsidePaths: library.outsidePaths, copy: options.projectBackupCopyForTest});
     drainBackups = backups.drain;
     manager = createProjectHostManager({directories, registry: library.registry, identity: library.projectFileIdentity, taskIndex: library.taskIndex,
       hooks: [backups.hooks],

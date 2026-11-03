@@ -6,7 +6,8 @@ import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
+import {crc32,deflateSync} from 'node:zlib';
 import {mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -32,8 +33,14 @@ async function fixture(t: test.TestContext,{providerId='mock',date='2026-10-10',
  const providers=createProviderRegistry({db:store.db,root,env});let current=date,worker: Worker,posts=0,polls=0;
  const services=(createServices(store,providers,{env,profileNow:()=>Date.parse(`${current}T12:00:00Z`)}) as TypedServices);
  const project=await services.call('project.create',{name:'Input boundary synthetic fixture'});
- const asset={id:randomUUID(),projectId:project.id,mimeType:'image/png',relativePath:'media/inert.png',sha256:'a'.repeat(64),sizeBytes:1024,width:360,height:640};
- store.put('assets',asset);await writeFile(path.join(root,asset.relativePath),'Inert managed fixture; never decoded or sent outside this process.');
+ // A real 1024-byte PNG keeps the original metadata boundary assertions while
+ // reference admission now verifies actual local bytes before any paid submit.
+ const chunk=(type:string,data:Buffer)=>{const content=Buffer.concat([Buffer.from(type),data]),size=Buffer.alloc(4),checksum=Buffer.alloc(4);size.writeUInt32BE(data.length);checksum.writeUInt32BE(crc32(content));return Buffer.concat([size,content,checksum]);};
+ const header=Buffer.alloc(13);header.writeUInt32BE(360);header.writeUInt32BE(640,4);header[8]=8;header[9]=2;
+ const start=Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(Buffer.alloc((360*3+1)*640)))]),end=chunk('IEND',Buffer.alloc(0));
+ const bytes=Buffer.concat([start,chunk('tEXt',Buffer.from('padding\0'+'x'.repeat(1024-start.length-end.length-12-8))),end]);assert.equal(bytes.length,1024);
+ const imported={id:randomUUID(),projectId:project.id,name:'inert.png',mimeType:'image/png',relativePath:'media/inert.png',sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:1024,width:360,height:640};
+ await writeFile(path.join(root,imported.relativePath),bytes);const asset=store.put('assets',imported);
  const shot=await services.call('shot.create',{projectId:project.id,title:'Input limits',prompt:'Synthetic shape',duration:4,referenceAssetIds:image?[asset.id]:[]});
  const input={shotId:shot.id,expectedRevision:shot.revision,requestId:randomUUID(),providerId};
  const original=providers.get(providerId)!;

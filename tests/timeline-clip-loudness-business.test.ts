@@ -84,10 +84,11 @@ async function fixture(t: TestContext, {durationFrames = 60, runtime: overrides 
   const project = await services.call('project.create', {name: 'Owned full timeline loudness'}), foreign = await foreignProject(t, 'Other project');
   let timeline = await services.call('timeline.get', {projectId: project.id});
   const id = randomUUID(), bytes = Buffer.alloc(96 * 1024, 7);
+  bytes.write('RIFF'); bytes.writeUInt32LE(bytes.length-8,4); bytes.write('WAVE',8);
   const asset = {id, projectId: project.id, name: 'Owned sound.wav', mimeType: 'audio/wav', relativePath: `media/${id}.wav`,
     sha256: sha(bytes), sizeBytes: bytes.length, duration: 60, hasAudio: true, hasVideo: false, width: 0, height: 0,
     url: `/media/${id}`, createdAt: new Date().toISOString()};
-  await writeFile(path.join(root, asset.relativePath), bytes, {mode: 0o600}); store.put('assets', asset);
+  await writeFile(path.join(root, asset.relativePath), bytes, {mode: 0o600}); store.put('assets', asset); Object.assign(asset,store.get('assets',id));
   timeline = await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
     trackId: timeline.tracks.find(track => track.kind === 'audio')!.id, assetId: id, startFrame: 0, sourceInFrame: 17,
     durationFrames, gain: .75});
@@ -105,7 +106,7 @@ async function fixture(t: TestContext, {durationFrames = 60, runtime: overrides 
     checkpoint: async () => ({rows: rows(), writes: store.db.prepare('SELECT total_changes() AS n').get()!.n, files: await files(root)}),
     unchanged: async (before: {rows: ReturnType<typeof rows>; writes: unknown; files: [string, string][]}) => {assert.deepEqual(rows(), before.rows); assert.equal(store.db.prepare('SELECT total_changes() AS n').get()!.n, before.writes); assert.deepEqual(await files(root), before.files);}};
 }
-const replace = (f: {store: ReturnType<typeof openStore>}, table: string, value: {id: string; [key: string]: unknown}) => f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(value), value.id);
+const replace = (f: {store: ReturnType<typeof openStore>}, table: string, value: {id: string; [key: string]: unknown}) => {const saved={...value};if(table==='assets'&&'reference' in saved)delete saved.relativePath;return f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(saved), value.id);};
 
 
 test('missing or corrupt owned timeline graph never initializes or reaches media', async t => {
@@ -296,7 +297,7 @@ test('selected exact sample count rejects one missing or extra sample frame', as
 });
 test('source resource admission refuses over 512 MiB before file access', async t => {
   let reads = 0; const f = await fixture(t, {runtime: {validateSource: () => {reads++; throw Error('No read');}}});
-  replace(f, 'assets', {...f.asset, sizeBytes: 512 * 1024 * 1024 + 1});
+  replace(f, 'assets', {...f.asset, sizeBytes: 512 * 1024 * 1024 + 1, reference:{...(f.store.get('assets',f.asset.id) as unknown as {reference:object}).reference,sizeBytes:512 * 1024 * 1024 + 1}});
   await assert.rejects(f.call(), {code: 'TIMELINE_CLIP_LOUDNESS_SOURCE_LIMIT'}); assert.equal(reads, 0);
 });
 

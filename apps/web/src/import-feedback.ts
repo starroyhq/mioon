@@ -29,5 +29,5 @@ export function importAcknowledged(asset: unknown, input: {projectId?: unknown; 
   const value = asset as {id?: unknown; projectId?: unknown; name?: unknown; mimeType?: unknown} | null | undefined;
   return Boolean(value && typeof value === 'object' && !Array.isArray(value)
     && typeof value.id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.id)
-    && value.projectId === input.projectId && value.name === input.name && value.mimeType === input.mimeType);
+    && value.projectId === input.projectId && (input.name===undefined||value.name === input.name) && (input.mimeType===undefined||value.mimeType === input.mimeType));
 }

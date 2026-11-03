@@ -31,6 +31,8 @@ export interface FileResponseSendOptions {
   fallbackFile?: string;
   headers?: Record<string, string> | ((selected: string) => Record<string, string>);
   ranges?: boolean;
+  beforeEffect?: () => void;
+  verifyMetadata?: (metadata: Stats) => void;
 }
 export interface FileResponses {
   send(req: IncomingMessage, res: ServerResponse, options: FileResponseSendOptions): Promise<void>;
@@ -82,7 +84,7 @@ export function createFileResponses({signal, openFile = open, limits = {}}: File
   signal?.addEventListener('abort', stop, {once: true});
   if (signal?.aborted) stop();
 
-  async function send(req: IncomingMessage, res: ServerResponse, {file, fallbackFile, headers = {}, ranges = false}: FileResponseSendOptions): Promise<void> {
+  async function send(req: IncomingMessage, res: ServerResponse, {file, fallbackFile, headers = {}, ranges = false, beforeEffect, verifyMetadata}: FileResponseSendOptions): Promise<void> {
     if (closing) throw failure('FILE_RESPONSE_CLOSED', 503, '本地服务正在关闭。');
     if (active.size >= policy.active) throw failure('FILE_RESPONSE_BUSY', 503, '本地文件传输繁忙，请稍后重试。');
     let handle: ReadHandle | undefined, source: Readable | undefined, timer: NodeJS.Timeout | undefined, cancelled = false, release: (() => void) | undefined;
@@ -95,6 +97,8 @@ export function createFileResponses({signal, openFile = open, limits = {}}: File
     };
     const record = {cancel, done};
     active.add(record);
+    let effectFailure: unknown;
+    const effect = (): void => {try {beforeEffect?.();} catch (error) {effectFailure = error; throw error;}};
     const alive = () => !cancelled && !closing && !req.aborted && !res.destroyed;
     const resetIdle = () => {
       clearTimeout(timer);
@@ -110,14 +114,16 @@ export function createFileResponses({signal, openFile = open, limits = {}}: File
       for (const candidate of candidates) {
         if (!alive()) return;
         try {
+          effect();
           handle = await openResponseFile(candidate, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
           if (!alive()) return;
-          metadata = await handle.stat();
+          effect(); metadata = await handle.stat(); effect(); try {verifyMetadata?.(metadata);} catch (error) {effectFailure = error; throw error;}
           if (!metadata.isFile()) throw unavailable();
           if (!Number.isSafeInteger(metadata.size) || metadata.size < 0) throw failure('FILE_METADATA_INVALID', 500, '本地文件元数据无效。');
           selected = candidate; break;
         } catch (error) {
           if (handle) { await handle.close(); handle = undefined; }
+          if (effectFailure) throw effectFailure;
           if (!alive()) return;
           if (error instanceof HeldFileResponseFailure) throw error;
           const code = coded(error).code;
@@ -128,6 +134,7 @@ export function createFileResponses({signal, openFile = open, limits = {}}: File
       }
       if (!selected || !metadata) throw fallbackFile ? failure('BUILD_REQUIRED', 503, '请先运行 pnpm build') : unavailable();
       if (!alive()) return;
+      effect();
       const range = fileRange(ranges ? req.headers.range : undefined, metadata.size);
       if (range.status === 416) { res.writeHead(416); res.end(); return; }
       const responseHeaders = typeof headers === 'function' ? headers(selected) : headers;
@@ -137,12 +144,13 @@ export function createFileResponses({signal, openFile = open, limits = {}}: File
       // can still receive a sanitized response. Empty files never read end=-1.
       if (req.method !== 'HEAD' && range.length) source = handle!.createReadStream({start: range.start, end: range.end,
         autoClose: false, highWaterMark: policy.chunkBytes});
+      effect();
       res.writeHead(range.status, {...responseHeaders, ...lengthHeaders, ...rangeHeaders});
       if (!source) { res.end(); return; }
       resetIdle();
       let bytes = 0;
       const count = new Transform({highWaterMark: policy.chunkBytes,
-        transform(chunk: Buffer, _encoding, callback) { bytes += chunk.length; resetIdle(); callback(null, chunk); },
+        transform(chunk: Buffer, _encoding, callback) { try {effect(); bytes += chunk.length; resetIdle(); callback(null, chunk);} catch (error) {callback(error instanceof Error ? error : Error('File response fence failed'));} },
         flush(callback) { callback(bytes === range.length ? null : failure('FILE_READ_TRUNCATED', 500, '本地文件传输未完成。')); },
       });
       // pipeline owns source/transform/response errors and respects writable
@@ -150,6 +158,7 @@ export function createFileResponses({signal, openFile = open, limits = {}}: File
       await pipeline(source, count, res);
     } catch (error) {
       if (res.headersSent || !alive()) { cancel(); return; }
+      if (effectFailure) throw effectFailure;
       const fields = coded(error);
       if (fields.status && typeof fields.code === 'string' && ['FILE_UNAVAILABLE', 'BUILD_REQUIRED', 'FILE_METADATA_INVALID', 'FILE_READ_FAILED'].includes(fields.code)) throw error;
       throw failure('FILE_READ_FAILED', 500, '无法读取本地文件。');

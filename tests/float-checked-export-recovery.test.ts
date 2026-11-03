@@ -9,7 +9,7 @@ import type {SQLInputValue,SQLOutputValue} from 'node:sqlite';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
-import {mkdtemp, mkdir, readFile, writeFile, readdir, rm} from 'node:fs/promises';
+import {mkdtemp, mkdir, readFile, writeFile, readdir, rm, stat} from 'node:fs/promises';
 import {readdirSync, existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -18,6 +18,8 @@ import {isTimelineRenderRecord, publicValue} from '@mioon/contracts';
 import {isTimelineExportAudioOutcome} from '@mioon/contracts/timeline-export-float';
 import {isProjectDatabase} from '../packages/business/src/project-file/held-files.ts';
 import {createServices} from '../packages/business/src/services.ts';
+import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
+import {databaseFiles, dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import {onMediaProcess, type MediaProcessEvent} from '../packages/business/src/media-processes.ts';
 
@@ -188,7 +190,7 @@ test('storyboard and float timeline request keys remain separate in both orders 
       owner.store.put = (table, value) => {if (table === 'exports' && (value as typeof value & {id:("malformed-id")}).id === legacy.id) writes.push((value as typeof value & {status:("failed")}).status); return put(table, value);};
       try {await tick(owner);} finally {owner.store.put = put;}
       assert.deepEqual(writes, ['queued', 'running', 'failed'], 'legacy worker recovery/dispatch remains eligible; deliberately missing source fails normally');
-      assert.equal((owner.store.get('exports', legacy.id)!.error)!.code, 'ENOENT');
+      assert.equal((owner.store.get('exports', legacy.id)!.error)!.code, 'MEDIA_MISSING');
       assert.deepEqual(receipt(f, input), saved);
       assert.equal(f.store.list('exports').length + (owner === f ? 0 : owner.store.list('exports').length), owner === f ? 2 : 3);
     });
@@ -214,7 +216,7 @@ test('a stripped float row cannot borrow a real storyboard row and its receipt, 
   }
 });
 
-test('pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and rows survive open/read/replay byte-exact', async t => {
+test('pristine 140fa882 receipts and six business tables replay byte-exact after explicit asset locator adaptation; raw old locators refuse without writes', async t => {
   const bytes = await readFile(new URL('./fixtures/float-checked-export-legacy-140fa882.json', import.meta.url));
   assert.equal(sha(bytes), 'fafe232360d51726403dfbe67bc18341c9f29d7fce65b12c243156bbc81a36c2');
   const baseline:{tables:Record<string,Record<string,SQLInputValue>[]>;sequence:{__rowid__:number;name:string;seq:number}[];media:{relativePath:string;base64:string};renders:{inputJson:string;responseJson:string;exportId:string;requestId:string}[];projectId:string}=JSON.parse(bytes.toString('utf8'));
@@ -244,18 +246,61 @@ test('pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and
   assert.deepEqual(foreignKeyCheck(db),[]);
   await mkdir(path.dirname(path.join(root,baseline.media.relativePath)),{recursive:true,mode:0o700});
   await writeFile(path.join(root,baseline.media.relativePath),Buffer.from(baseline.media.base64,'base64'));
-  const before=rows(db);
-  function assertFrozenGolden(actual:ReturnType<typeof rows>){
+  const rawBefore=rows(db);
+  function assertFrozenGolden(actual:ReturnType<typeof rows>,expectedAssets:typeof baseline.tables.assets,allBefore:ReturnType<typeof rows>){
     for(const table of frozenTables){
       const schema=storeTableSchema(store.db,table);assert.ok(schema);
-      const values=actual[`${schema}.${table}`],expected=baseline.tables[table];
+      const values=actual[`${schema}.${table}`],expected=table==='assets'?expectedAssets:baseline.tables[table];
       assert.deepEqual(values.map(row=>Object.fromEntries(Object.keys(expected[0]??row).map(key=>[key,row[key]]))),expected,`${table}: independently hashed business rows remain byte-exact`);
     }
-    assert.deepEqual(actual,before,'all three current native catalogs retain their exact rows during open/read/replay');
+    assert.deepEqual(actual,allBefore,'all three current native catalogs retain their exact rows during open/read/replay');
   }
-  assertFrozenGolden(before);store.close();store=openServerProject(dataDir,baseline.projectId) as FixtureStore;
-  services = (createServices(store, new Map(), {exportOptions: {inspect: async () => {throw Error('Old replay must not probe');}}}) as FixtureServices);
-  assertFrozenGolden(rows(store.db));
+  assertFrozenGolden(rawBefore,baseline.tables.assets,rawBefore);
+  const assemble=()=>createServices(store,new Map(),{exportOptions:{inspect:async()=>{throw Error('Old replay must not probe');}}}) as FixtureServices;
+  services=assemble();
+  const library=()=>{const owned=testProjectAppLibrary(store);assert.ok(owned);return owned;};
+  const sqlState=(connection:DatabaseSync)=>({schema:schemaObjects(connection),rows:rows(connection),
+    dataVersions:connection.prepare('PRAGMA database_list').all().map(row=>[row.name,connection.prepare(`PRAGMA "${row.name}".data_version`).get()!.data_version]),
+    changes:connection.prepare('SELECT total_changes() AS n').get()!.n});
+  const allSql=()=>({project:sqlState(store.db),application:sqlState(library().db)});
+  const files=()=>dataFileSnapshot(dataDir,[...databaseFiles(store.db),...databaseFiles(library().db)]);
+  const rawSql=allSql(),rawFiles=await files();
+  // A current project never accepts a raw old relativePath as a locator, even
+  // when the immutable request exists. Refusal cannot repair any stored bytes.
+  for(const render of baseline.renders){
+    await assert.rejects(services.call('timeline.render',JSON.parse(render.inputJson)),{code:'TIMELINE_SOURCE_UNAVAILABLE',status:404});
+    assertFrozenGolden(rows(store.db),baseline.tables.assets,rawBefore);
+    assert.deepEqual(allSql(),rawSql);assert.deepEqual(await files(),rawFiles);
+  }
+  assert.equal(baseline.tables.assets.length,1);
+  const goldenRow=baseline.tables.assets[0]!,parsed:unknown=JSON.parse(String(goldenRow.data));
+  assert.ok(parsed!==null&&typeof parsed==='object'&&!Array.isArray(parsed));
+  const goldenAsset=parsed as Record<string,unknown>,sourceFile=path.join(root,baseline.media.relativePath),sourceBytes=Buffer.from(baseline.media.base64,'base64');
+  assert.equal(sourceBytes.length,68);assert.equal(sha(sourceBytes),goldenAsset.sha256);
+  const sourceStat=await stat(sourceFile,{bigint:true});
+  // This explicit TEST-only put converts the fixture representation; it does
+  // not grant a production opener compatibility with old project locators.
+  store.tx(()=>store.put('assets',goldenAsset));
+  const persisted=store.db.prepare('SELECT rowid AS __rowid__,* FROM assets WHERE id=?').get(String(goldenAsset.id));assert.ok(persisted);
+  assert.equal(typeof persisted.data,'string');
+  const current:unknown=JSON.parse(String(persisted.data));assert.ok(current!==null&&typeof current==='object'&&!Array.isArray(current));
+  const canonicalAsset=current as Record<string,unknown>,{relativePath:_oldPath,...goldenFields}=goldenAsset,
+    {reference,referenceRevision,...canonicalFields}=canonicalAsset;
+  assert.deepEqual(canonicalFields,goldenFields,'every non-locator asset field remains the independent golden value');
+  assert.equal(Object.hasOwn(canonicalAsset,'relativePath'),false);assert.equal(referenceRevision,1);
+  assert.deepEqual(reference,{pathForm:'relative',path:'media/frozen-source.png',volume:null,sizeBytes:68,
+    mtimeMs:Number(sourceStat.mtimeNs/1000n)/1000,sampledSha256:'07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca',
+    fullSha256:'07ccce9f91c7f24a6485c849360fb7fea8c0efe5c5c1c00259f304f2cdc31eca'});
+  const {data:_canonicalJson,...canonicalColumns}=persisted,{data:_goldenJson,...goldenColumns}=goldenRow;
+  assert.deepEqual({...canonicalColumns},goldenColumns,'SQL identity and rowid do not change during fixture normalization');
+  assert.deepEqual(await readFile(sourceFile),sourceBytes);
+  const canonicalBefore=rows(store.db),schema=storeTableSchema(store.db,'assets');assert.ok(schema);
+  const expectedAssets=canonicalBefore[`${schema}.assets`];
+  assertFrozenGolden(canonicalBefore,expectedAssets,canonicalBefore);
+  await services.drain();services=undefined;store.close();store=openServerProject(dataDir,baseline.projectId) as FixtureStore;
+  services=assemble();
+  assertFrozenGolden(rows(store.db),expectedAssets,canonicalBefore);
+  const readSql=allSql(),readFiles=await files();
   for (const render of baseline.renders) {
     const input = JSON.parse(render.inputJson), expected = JSON.parse(render.responseJson);
     assert.equal(JSON.stringify(await services.call('timeline.render', input)), render.responseJson);
@@ -265,7 +310,10 @@ test('pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and
     assert.equal((store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(render.requestId))!.response,
       (baseline.tables.timeline_requests.find((value) => value.requestId === render.requestId))!.response);
   }
-  await services.call('project.get', {projectId: baseline.projectId}); assertFrozenGolden(rows(store.db));
+  await services.call('project.get', {projectId: baseline.projectId}); assertFrozenGolden(rows(store.db),expectedAssets,canonicalBefore);
+  assert.deepEqual(allSql(),readSql);assert.deepEqual(await files(),readFiles);
+  assert.deepEqual(await readFile(sourceFile),sourceBytes);
+  assert.deepEqual(await readFile(new URL('./fixtures/float-checked-export-legacy-140fa882.json',import.meta.url)),bytes);
 });
 
 test('failed v2 current report never enters immutable ACK; exact replay precedes changed capability/revision after restart', async t => {

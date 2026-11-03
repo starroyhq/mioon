@@ -1,3 +1,4 @@
+import {importNativeQaAsset,coldNativeQaAssetFile,coldNativeQaMediaSnapshot} from './helpers/native-local-qa-fixture.ts';
 /** Live first-boot/close-decision/pre-crash stages record bounded physical/JSON
  * captures only. SQL audit/verify stages require normal Quit, or confirmed owned
  * SIGKILL plus backend exit. Use resume <unique-label> between cold stages,
@@ -90,7 +91,7 @@ async function mediaCommand(binary,args,label){
   const result=await Promise.race([owned.done,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Bounded synthetic media command timed out')),60000);})]);assert.deepEqual(result,{code:0,signal:null});return result;
  }catch(error){if(owned&&!owned.closed)await owned.stop();throw error;}finally{clearTimeout(timer);await stdout.close();await stderr?.close();}
 }
-function fixture(){for(const directory of [root,runtime,report,userData,workspace])ensurePrivateDirectory(directory);const value=readJson(fixtureFile,128*1024);assert.equal(value.kernel,true,'Use a fresh current-kernel fixture');
+function fixture(){for(const directory of [root,runtime,report,userData,workspace])ensurePrivateDirectory(directory);const value=readJson(fixtureFile,128*1024);assert.equal(value.assetReferenceFixture,1,'Historical pre-reference fixture must be preserved; use a fresh root');assert.equal(value.kernel,true,'Use a fresh current-kernel fixture');
  assert.equal(value.synthetic,true);assert.equal(value.kind,'clip-close');assert.equal(value.scenario,scenario);assert.equal(value.workspace,workspace);assert.equal(value.repo,repo);return value;}
 function sidecarFile(){return path.join(fixture().localDir,'local-drafts-v1.json');}
 function sidecar(){const info=validateManagedFile(sidecarFile(),{root:fixture().localDir,allowMissing:true,private:true,maxBytes:LOCAL_DRAFT_LIMITS.envelopeBytes});
@@ -148,7 +149,7 @@ assert.equal(await exists(root),false,'Fixture already exists; no overwrite or c
  const prepared=await prepareNativeQaProject(workspace,scenario==='capacity'?'片段关闭 · 容量拒绝合成验收':'片段关闭 · 正常退出恢复合成验收'),{store,services,project}=prepared;let value;
  try{
   let timeline=await services.call('timeline.format.set',{projectId:project.id,expectedProjectRevision:project.revision,expectedRevision:0,requestId:randomUUID(),presetId:'landscape_720'});
-  const asset=await services.call('asset.import',{projectId:project.id,name:'合成绿色画面与 880Hz.mp4',mimeType:'video/mp4',dataBase64:(await readFile(source)).toString('base64')});
+  const asset=await importNativeQaAsset(prepared,{projectId:project.id,name:'合成绿色画面与 880Hz.mp4',mimeType:'video/mp4',dataBase64:(await readFile(source)).toString('base64')});
   timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:asset.id,
    trackId:timeline.tracks.find(track=>track.kind==='video').id,startFrame:0,durationFrames:60,name:'Original saved clip'});
   if(scenario==='capacity'){
@@ -170,7 +171,7 @@ assert.equal(await exists(root),false,'Fixture already exists; no overwrite or c
   assert.equal(timeline.clips.length,1);assert.equal(timeline.durationFrames,60);const clip=timeline.clips[0],state=defaultWorkspaceState();
   delete state.shared.assetSearch;state.canvas.viewport={x:0,y:0,zoom:1};state.activeMode='editing';state.editing.selectedClipId=clip.id;state.editing.quickAssetId=null;state.editing.previewKind='source';
   createWorkspacePreferences(store).put(project.id,{expectedRevision:0,state});
-  value={synthetic:true,kind:'clip-close',scenario,id:randomUUID(),repo,workspace,projectDir:store.projectDir,localDir:store.localDir,projectFile:store.projectFile,projectId:project.id,projectName:project.name,timelineId:timeline.id,clipId:clip.id,
+  value={synthetic:true,kernel:true,assetReferenceFixture:1,kind:'clip-close',scenario,id:randomUUID(),repo,workspace,projectDir:store.projectDir,localDir:store.localDir,projectFile:store.projectFile,projectId:project.id,projectName:project.name,timelineId:timeline.id,clipId:clip.id,
    assetId:asset.id,baseRevision:timeline.revision,originalClip:clip,expectedTimeline:timeline,expectedName:scenario==='capacity'?'Capacity-refused current input':'Close-recovered draft',
    sourceSha256:asset.sha256,sourceFile:await fileHash(source),initialSidecarAbsent:scenario==='recovery',packageHashes:await packageHashes()};
  }finally{try{await services.drain();}finally{store.close();}}
@@ -224,8 +225,8 @@ async function audit(label,{afterCrash=false}={}){
  if(!afterCrash&&lockSnapshot()!==null)return liveCapture(label);
  const labels=scenario==='capacity'?['prepared','first-boot','after-refusal','after-continue','after-abandon','after-close','after-reopen','capacity-final']:
   ['prepared','first-boot','after-close','after-reopen','after-restore','after-clip-save','after-clip-save-recheck','after-export','after-normal-reopen','final'];assert.ok(labels.includes(label),'Unexpected serial audit stage');
- const prepared=fixture(),{rows,schemaSha256,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries}=readDatabase(),names=(await readdir(path.join(fixture().projectDir,'media'))).sort();assert.ok(names.length<=32);const media=[];
- for(const name of names){assert.match(name,/^[a-zA-Z0-9._-]+\.(mp4|png|wav)$/);media.push({name,...await fileHash(path.join(fixture().projectDir,'media',name),32*1024*1024)});}
+ const prepared=fixture(),{rows,schemaSha256,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries}=readDatabase();const media=coldNativeQaMediaSnapshot(workspace,prepared.projectId);assert.ok(media.length<=32);
+ for(const item of media)assert.match(path.basename(item.name),/^[a-zA-Z0-9._-]+\.(mp4|png|wav)$/);
  const tables=Object.fromEntries(Object.entries(rows).map(([name,value])=>[name,{count:value.length,sha256:sha(JSON.stringify(value)),rowSha256:value.map(item=>sha(JSON.stringify(item)))}]));
  const result={synthetic:true,at:new Date().toISOString(),scenario,label,fixtureId:prepared.id,schemaSha256,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries,tables,logicalDatabaseSha256:sha(JSON.stringify(tables)),
   databaseHashMeaning:'All SQLite schema/table/row contents; SQLite/WAL physical pages are not a logical-data hash',timelines:rows.timelines.map(row=>JSON.parse(row.data)),
@@ -337,8 +338,8 @@ async function verifyExport(){
  for(const name of Object.keys(before.tables))if(systemTables.has(name))continue;else if(['assets','exports','timeline_requests'].includes(name))retainedRows(result,before,name,1);else if(name!=='workspace_preferences')assert.deepEqual(result.tables[name],before.tables[name],`Unexpected export change in ${name}`);
  const requests=result.timelineRequests.filter(item=>!before.timelineRequests.some(prior=>prior.requestId===item.requestId));assert.equal(requests.length,1);const receipt=requests[0];assert.equal(receipt.requestId,exported.requestId);assert.notEqual(receipt.requestId,result.editTasks[0].requestId);assert.equal(receipt.response.id,exported.id);assert.equal(receipt.response.status,'queued');assert.deepEqual(receipt.response.snapshot,exported.snapshot);
  for(const original of before.media)assert.deepEqual(result.media.find(item=>item.name===original.name),original);assert.equal(result.media.length,before.media.length+1);
- const asset=result.assets.find(item=>item.id===exported.assetId);assert.ok(asset);assert.equal(asset.projectId,prepared.projectId);assert.equal(asset.provenance,'export');assert.match(asset.relativePath,/^media\/[a-zA-Z0-9._-]+\.mp4$/);
- const file=path.join(fixture().projectDir,asset.relativePath),output=await fileHash(file,32*1024*1024);assert.equal(output.sha256,asset.sha256);
+ const asset=result.assets.find(item=>item.id===exported.assetId);assert.ok(asset);assert.equal(asset.projectId,prepared.projectId);assert.equal(asset.provenance,'export');assert.deepEqual(asset.producer,{kind:'export',id:exported.id});const resolved=await coldNativeQaAssetFile(workspace,asset.projectId,asset.id);assert.match(resolved.projectRelativeFile,/^media\/[a-zA-Z0-9._-]+\.mp4$/);assert.equal(resolved.bytes,asset.sizeBytes);
+ const file=resolved.file,output=await fileHash(file,32*1024*1024);assert.equal(output.sha256,asset.sha256);
  await mediaCommand(ffprobe,['-v','error','-show_streams','-show_format','-of','json',file],'export-probe');const probe=readJson(path.join(runtime,'export-probe.stdout')),video=probe.streams.find(stream=>stream.codec_type==='video'),audio=probe.streams.find(stream=>stream.codec_type==='audio');
  assert.ok(video&&audio);assert.equal(video.width,1280);assert.equal(video.height,720);assert.equal(video.r_frame_rate,'30/1');assert.equal(Number(video.nb_frames),60);assert.equal(audio.sample_rate,'48000');
  await mediaCommand(ffmpeg,['-v','error','-i',file,'-f','null','-'],'export-decode');

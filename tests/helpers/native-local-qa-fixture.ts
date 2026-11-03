@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {lstatSync} from 'node:fs';
+import {lstatSync,readdirSync,readFileSync} from 'node:fs';
 import path from 'node:path';
 import type {DatabaseSync,SQLOutputValue} from 'node:sqlite';
 import {openAppLibrary} from '../../packages/business/src/app-db/index.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import type {ProjectStore} from '../../packages/business/src/project-file/store.ts';
 import {testProjectAppLibrary} from '../../packages/business/src/project-service-application.ts';
+import {assetMediaPrepareResponseSchema,PROJECT_ASSETS_FOLDER,type AssetImportInput} from '../../packages/contracts/src/asset-media.ts';
+import {createProjectAssetReferenceServices} from '../../packages/business/src/project-asset-references.ts';
+import {isProjectFileHeld} from '../../packages/business/src/project-file/held-files.ts';
+import {isAppLibraryHeld} from '../../packages/business/src/app-db/connection.ts';
+import {validAssetLocator} from '../../packages/business/src/asset-reference-record.ts';
+import {realpathSync} from 'node:fs';
 import {openServerProject} from './project-database.ts';
 import {createQaProject,closeQaProject} from './kernel-qa-fixture.mjs';
 import {expectedContentMetadata} from './kernel-content-metadata.ts';
@@ -158,4 +164,60 @@ export const prepareNativeQaLiveLayout=prepareNativeQaAuditLayout;
 export function captureNativeQaLive(layout:Awaited<ReturnType<typeof prepareNativeQaAuditLayout>>,ownerPids:number[]){
  assert.ok(ownerPids.length===2&&ownerPids.every(pid=>pid!==process.pid&&nativeQaProcessAlive(pid)),'both exact native owners must be alive');
  return snapshotNativeQaFiles(layout,{ownerPids});
+}
+
+type QaProject=Pick<Awaited<ReturnType<typeof prepareNativeQaProject>>,'store'|'services'>;
+export interface NativeQaAssetFile {file:string;projectDir:string;projectRelativeFile:string;sha256:string;bytes:number;referenceRevision:number}
+function qaAsset(store:ProjectStore,assetId:string){
+ const row=store.get('assets',assetId);assert.ok(row&&typeof row==='object'&&!Array.isArray(row));const asset=row as Record<string,unknown>;
+ assert.equal(asset.id,assetId);assert.equal(asset.projectId,store.projectId);assert.ok(validAssetLocator(store.db,asset),'QA must use a canonical current asset reference');
+ assert.ok(typeof asset.referenceRevision==='number'&&Number.isSafeInteger(asset.referenceRevision)&&asset.referenceRevision>0);
+ return asset;
+}
+/** Explicit real import + prepare CAS. This never replaces services.call or
+ * promotes a sampled fingerprint to a whole-file hash. */
+export async function importNativeQaAsset(fixture:QaProject,input:AssetImportInput){
+ const imported=await fixture.services.call('asset.import',input);assert.ok(imported&&typeof imported==='object'&&'id'in imported&&typeof imported.id==='string');
+ const old=qaAsset(fixture.store,imported.id);
+ const response=assetMediaPrepareResponseSchema.parse(await fixture.services.call('asset.media.prepare',{projectId:fixture.store.projectId,assets:[{assetId:imported.id,referenceRevision:old.referenceRevision}],purpose:'timeline'}));
+ assert.equal(response.assets.length,1);const asset=response.assets[0]!;assert.equal(asset.id,imported.id);assert.equal(asset.projectId,fixture.store.projectId);
+ const sha256=asset.sha256;assert.ok(typeof sha256==='string'&&/^[a-f0-9]{64}$/u.test(sha256),'a real full hash is required');
+ const current=qaAsset(fixture.store,asset.id);assert.equal(current.sha256,sha256);assert.equal(current.referenceRevision,asset.referenceRevision);
+ return {...asset,sha256};
+}
+/** Resolve and hash through the actual TEST owner's real B1 grants and L1
+ * fences. Returned evidence is a report value, never Store authority. */
+export async function nativeQaAssetFile(store:ProjectStore,assetId:string):Promise<NativeQaAssetFile>{
+ const library=testProjectAppLibrary(store);assert.ok(library,'an exact TEST owner and real B1 are required');
+ const asset=qaAsset(store,assetId),sha256=asset.sha256,revision=asset.referenceRevision;
+ assert.ok(typeof sha256==='string'&&/^[a-f0-9]{64}$/u.test(sha256));assert.ok(typeof revision==='number');
+ assert.ok(typeof asset.sizeBytes==='number'&&Number.isSafeInteger(asset.sizeBytes)&&asset.sizeBytes<512*1024*1024,'bounded actual media');
+ const proof=await createProjectAssetReferenceServices(store,{outsidePaths:library.outsidePaths}).prepareFullHash(assetId,{expectedReferenceRevision:revision,maxBytes:512*1024*1024});
+ assert.equal(proof.sha256,sha256);assert.equal(proof.reference.sizeBytes,asset.sizeBytes);assert.equal(proof.referenceRevision,revision);
+ return{file:proof.file,projectDir:store.projectDir,projectRelativeFile:path.relative(realpathSync(store.projectDir),proof.file).split(path.sep).join('/'),sha256:proof.sha256,bytes:proof.reference.sizeBytes,referenceRevision:revision};
+}
+/** Cold audit: reject an existing B1 owner before project access; then normal
+ * registered kernel open + its exact real application owner, never a bare DB. */
+export async function coldNativeQaAssetFile(dataDir:string,projectId:string,assetId:string):Promise<NativeQaAssetFile>{
+ assert.ok(lstatSync(path.join(dataDir,'app-library.db')).isFile());const admission=openAppLibrary({dataDir});admission.close();
+ const store=openServerProject(dataDir,projectId);try{return await nativeQaAssetFile(store,assetId);}finally{store.close();}
+}
+
+/** Full cold filesystem oracle, including S1's canonical imported-material
+ * directory and the generated-output directory. No held DB is opened. */
+export function coldNativeQaMediaSnapshot(dataDir:string,projectId:string){
+ const storage=captureNativeQa(dataDir),location=storage.locations[projectId];assert.ok(location);
+ const files:{name:string;bytes:number;sha256:string}[]=[];
+ for(const folder of ['media',PROJECT_ASSETS_FOLDER]){
+  const directory=path.join(location.projectDir,folder);let names:string[];
+  try{const info=lstatSync(directory);assert.ok(info.isDirectory()&&!info.isSymbolicLink());names=readdirSync(directory).sort();}catch(error){if(error&&typeof error==='object'&&'code'in error&&error.code==='ENOENT')continue;throw error;}
+  assert.ok(names.length<=64,'bounded actual media inventory');
+  for(const name of names){
+   assert.match(name,/^[a-zA-Z0-9._-]+$/);const file=path.join(directory,name),before=lstatSync(file,{bigint:true}),id={dev:String(before.dev),ino:String(before.ino)};
+   assert.ok(before.isFile()&&!before.isSymbolicLink()&&before.size<32n*1024n*1024n);assert.ok(!isProjectFileHeld(id)&&!isAppLibraryHeld(id),'no held SQLite identity may be read');
+   const bytes=readFileSync(file),after=lstatSync(file,{bigint:true});for(const key of ['dev','ino','size','mtimeNs','ctimeNs']as const)assert.equal(after[key],before[key]);
+   assert.equal(BigInt(bytes.length),before.size);files.push({name:folder==='media'?name:folder+'/'+name,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')});
+  }
+ }
+ return files;
 }

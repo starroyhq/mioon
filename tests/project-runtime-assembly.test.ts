@@ -36,7 +36,7 @@ function temporary(): string {
 function testApplication(library: ReturnType<typeof openAppLibrary>): ServiceApplicationPorts {
   const configuration = createWorkspaceConfiguration({root: library.dataDir, documents: createAppCompanionDocuments(library)});
   const assertOwner = createProjectServiceApplication(library).assertMutationAllowed;
-  return {configuration, assertMutationAllowed() { assertOwner(); assert.equal(library.db.isOpen, true, 'the real application connection must still own admission'); }};
+  return {configuration, outsidePaths: library.outsidePaths, assertMutationAllowed() { assertOwner(); assert.equal(library.db.isOpen, true, 'the real application connection must still own admission'); }};
 }
 
 function fixture(t: TestContext) {

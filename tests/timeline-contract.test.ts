@@ -1,11 +1,13 @@
 
 
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
+import {writeFileSync} from 'node:fs';
 import type {MediaShot} from './helpers/strict-service-responses.ts';
 import type {FixtureProject, FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 import type {ServiceResponse as FixtureServiceResult, TypedStore as FixtureStore, TypedServices as FixtureServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomUUID,createHash } from 'node:crypto';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -33,8 +35,9 @@ async function fixture(t: test.TestContext) {
     call: <O extends string>(operation: O, input?: unknown) => services.call(operation, input) as Promise<FixtureServiceResult<O>>,
     restart() { store.close(); store = (open(root) as FixtureStore); services = (createServices(store, new Map()) as FixtureServices); },
     asset(projectId?: string, mimeType: string|undefined = 'image/png', extra: {duration?: number|boolean;} = {}) {
-      const id = randomUUID();
-      return store.put('assets', { id, projectId, name: `fixture.${mimeType.split('/')[1]}`, mimeType, sha256: 'a'.repeat(64), sizeBytes: 128, width: 720, height: 1280, duration: mimeType.startsWith('image/') ? 0 : 2.001, relativePath: `media/${id}.fixture`, url: `/media/${id}`, createdAt: stamp, ...extra });
+      const id = randomUUID(),bytes=mimeType==='video/mp4'?mp4HeaderFixture(`Synthetic contract source ${id}`):null,relativePath=`media/${id}.${bytes?'mp4':'fixture'}`;
+      if(bytes)writeFileSync(path.join(root,relativePath),bytes);
+      return store.put('assets', { id, projectId, name: `fixture.${mimeType.split('/')[1]}`, mimeType, sha256: bytes?createHash('sha256').update(bytes).digest('hex'):'a'.repeat(64), sizeBytes: bytes?.length??128, width: 720, height: 1280, duration: mimeType.startsWith('image/') ? 0 : 2.001, relativePath, url: `/media/${id}`, createdAt: stamp, ...extra });
     },
     version(shot: MediaShot, asset: { id: unknown; projectId?: unknown; name?: string; mimeType?: string; sha256: unknown; sizeBytes?: number; width?: number; height?: number; duration?: number; relativePath?: string; url: unknown; createdAt?: string; }, number: number|undefined = 1) {
       const jobId = randomUUID(), versionId = randomUUID();

@@ -18,6 +18,7 @@ process.env.MIOON_ENABLE_LIVE_PROVIDER = '0';
 for (const key of Object.keys(process.env)) if (/^(RUNWAY|RUNWAYML|ARK_|VEO_|GEMINI_|MINIMAX_|HAILUO_|VIDU_)/.test(key)) delete process.env[key];
 await import('./timeline-snapping-qa-seed.mjs');
 const fixture=JSON.parse(await readFile(path.join(runtime,'fixture.json'),'utf8')),projectIds=[fixture.project.id,fixture.second.id];
+if(fixture.assetReferenceFixture!==1)throw Error('Historical pre-reference snapping fixture must be preserved');
 let inspectProject;
 const backend = await startServer({inspectProject:received=>{inspectProject=received;}, dataDir: path.join(runtime, 'data'), port: 0, token: 'timeline-snapping-local-synthetic-token', distDir: path.resolve('apps/web/dist') });
 const port=Number(process.env.MIOON_QA_PORT||4878);if(!Number.isSafeInteger(port)||port<0||port>65535)throw Error('Invalid QA port');

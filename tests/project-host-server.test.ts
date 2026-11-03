@@ -8,6 +8,8 @@ import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
+import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import {startServer, type InspectProject, type InspectApplication, type ServerOptions} from '../apps/server/src/index.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {DEFAULT_REQUEST_DRAIN_MS} from '../apps/server/src/project-host/types.ts';
@@ -50,7 +52,7 @@ async function seed(dataDir: string, name: string): Promise<Seed> {
     assert.equal(cover?.assetId, assetId);
     library.registry.upsert({...library.registry.get(created.projectId)!, name: title,
       summary: {...rest, cover: {assetId, mimeType: 'image/png'}}});
-    writeProjectCover({cacheDir: store.cacheDir, source: {assetId, mimeType: 'image/png', sourceSha256: sha256}, jpeg});
+    writeProjectCover({cacheDir: store.cacheDir, source: {assetId, mimeType: 'image/png', sourceFingerprint: mediaFingerprintToken(mediaReferenceSchema.parse((store.get('assets',assetId) as Record<string,unknown>).reference))}, jpeg});
     return {projectId: created.projectId, root: store.projectDir, projectFile: store.projectFile, assetId, shotId: shot.id, shotRevision: shot.revision, summary};
   } finally {await services.drain(); store.close(); library.close();}
 }

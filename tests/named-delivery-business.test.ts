@@ -4,6 +4,7 @@
 
 
 
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import type {ExportPreflightReport} from '../apps/web/src/export-preflight-state.ts';
 
 import type {FixtureProject,FixtureTimeline,FixtureAsset} from './helpers/strict-timeline-core-types.ts';
@@ -36,7 +37,7 @@ async function fixture(t: test.TestContext){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-named-delivery-'));const open=openStore;let store=(open(root) as TypedStore),probes=0,inspect:ExportInspect=async()=>{probes++;return {status:'available',code:'EXPORT_CAPABILITY_AVAILABLE'};},services=(createServices(store,new Map(),{exportOptions:{inspect:(...args)=>inspect(...args)}}) as TypedServices);
  const f=({root,get store(){return store;},get services(){return services;},get probes(){return probes;},setInspect(fn: ExportInspect){inspect=fn;},input:()=>({projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),purpose:'export'}),state:()=>readProjectState(store.db).tables,async restart(){await services.drain();store.close();store=(open(root) as TypedStore);services=(createServices(store,new Map(),{exportOptions:{inspect:(...args)=>inspect(...args)}}) as TypedServices);}} as unknown as NamedFixture);
  f.project=await services.call('project.create',{name:'Original project'});f.timeline=await services.call('timeline.get',{projectId:f.project.id});
- const id=randomUUID(),bytes=Buffer.from('synthetic source bytes'),relativePath='media/source.mp4';await writeFile(path.join(root,relativePath),bytes);
+ const id=randomUUID(),bytes=mp4HeaderFixture('synthetic source bytes'),relativePath='media/source.mp4';await writeFile(path.join(root,relativePath),bytes);
  f.asset=store.put('assets',{id,projectId:f.project.id,name:'Video',mimeType:'video/mp4',sha256:createHash('sha256').update(bytes).digest('hex'),relativePath,width:720,height:1280,duration:1,hasAudio:false,sizeBytes:bytes.length,createdAt:new Date().toISOString()});
  f.timeline=await services.call('timeline.clip.add',{projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),trackId:f.timeline.tracks[0].id,assetId:id,startFrame:0,durationFrames:30});
  t.after(async()=>{await services.drain();store.close();await rm(root,{recursive:true,force:true});});return f;
@@ -44,7 +45,7 @@ async function fixture(t: test.TestContext){
 async function fakeMedia(t: test.TestContext,f: Awaited<ReturnType<typeof fixture>>){
  const binary=path.join(f.root,'synthetic-media.ts'),old={MIOON_FFMPEG_PATH:process.env.MIOON_FFMPEG_PATH,MIOON_FFPROBE_PATH:process.env.MIOON_FFPROBE_PATH};
  const video={index:0,codec_type:'video',codec_name:'h264',width:720,height:1280,r_frame_rate:'30/1',avg_frame_rate:'30/1',nb_frames:'30'},renderedVideo={...video,width:f.timeline.width,height:f.timeline.height},audio={index:1,codec_type:'audio',codec_name:'aac',sample_rate:'48000',channels:2};
- await writeFile(binary,`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';const args=process.argv.slice(2);if(args.includes('-show_streams')){const source=args.at(-1).endsWith('source.mp4');process.stdout.write(JSON.stringify({streams:source?[${JSON.stringify(video)}]:[${JSON.stringify(renderedVideo)},${JSON.stringify(audio)}],format:{duration:'1'}}));}else writeFileSync(args.at(-1),'synthetic rendered bytes',{flag:args.includes('-n')?'wx':'w'});\n`,{mode:0o700});
+ await writeFile(binary,`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';const args=process.argv.slice(2);if(args.includes('-show_streams')){const source=args.at(-1).endsWith('source.mp4');process.stdout.write(JSON.stringify({streams:source?[${JSON.stringify(video)}]:[${JSON.stringify(renderedVideo)},${JSON.stringify(audio)}],format:{duration:'1'}}));}else writeFileSync(args.at(-1),Buffer.from(${JSON.stringify(mp4HeaderFixture('synthetic rendered bytes').toString('base64'))},'base64'),{flag:args.includes('-n')?'wx':'w'});\n`,{mode:0o700});
  process.env.MIOON_FFMPEG_PATH=binary;process.env.MIOON_FFPROBE_PATH=binary;t.after(()=>{for(const [key,value]of Object.entries(old))if(value===undefined)delete process.env[key];else process.env[key]=value;});
 }
 

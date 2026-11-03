@@ -19,6 +19,8 @@ import {renderTimeline} from './timeline-media.ts';
 import {readTimelineReceipt} from './timeline-recovery.ts';
 import {prepareTimelineInputs,readOwnedTimelineAsset,validateFrozenTimelineSourceGraph,validatePreparedTimelineSources} from './timeline-sources.ts';
 import {now} from './services.ts';
+import {validateManagedSource, verifiedManagedHash} from './managed-media.ts';
+import {ensureProjectOutputDirectory, registeredProjectStore, registeredProjectAssetReferences, referenceForPublishedMedia} from './project-media-storage.ts';
 import type {JobRecord,OrdinaryServices,ServiceStore,ServiceRow} from './services.ts';
 import type {Provider} from './provider-registry.ts';
 import {readVideoBinding} from './video/generation.ts';
@@ -28,6 +30,14 @@ import {markGenerationPreflightFailure,isGenerationPreflightFailure} from './gen
 import {assertMediaTerminated,awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
 
 type Services=Pick<OrdinaryServices,'saveJob'|'saveGenerationGuarded'|'validateGenerationDispatch'|'resolveGenerationProvider'>;
+
+async function paidReferenceHash<T>(operation: Promise<T>): Promise<T> {
+ try{return await operation;}catch(error){
+  if(error&&typeof error==='object'&&'code' in error&&(error.code==='MEDIA_CHANGED'||error.code==='MEDIA_CHANGED_DURING_READ'))throw Object.assign(new Error('参考素材与已确认内容不一致'),{code:'REFERENCE_CHANGED',cause:error});
+  throw error;
+ }
+}
+
 type ExportRecord=Record<string, unknown>&{id: string; projectId: string; status: string};
 type ExportSnapshotRow=Record<string, unknown>;
 interface JobsStore {
@@ -172,11 +182,15 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
      const reference=recordValue(rawReference);if(!reference)throw Error('Reference snapshot no longer matches managed asset');
      const asset=recordValue(get('assets',String(reference.id)));
      if(!asset||asset.projectId!==j.projectId||asset.sha256!==reference.sha256)throw Error('Reference snapshot no longer matches managed asset');
-     const file=await safePath(root,String(asset.relativePath));checkpoint(signal);
+     const references=registeredProjectAssetReferences(root);
+     if(references&&(asset.referenceRevision!==reference.referenceRevision||JSON.stringify(asset.reference)!==JSON.stringify(reference.reference)))throw Error('Reference revision no longer matches frozen asset');
+     const admitted=references?await paidReferenceHash(references.prepareFullHash(String(asset.id),{signal,expectedReferenceRevision:Number(reference.referenceRevision),maxBytes:100*1024*1024,beforeEffect:()=>{services.validateGenerationDispatch(j!);checkpoint(signal);}})):null;
+     if(admitted&&admitted.sha256!==reference.sha256)throw Error('Reference bytes differ from frozen full hash');
+     const file=admitted?.file??await safePath(root,String(asset.relativePath));checkpoint(signal);
      // A source owner can change during an awaited path read, before an
      // adapter's own byte reads and final POST fence begin.
      services.validateGenerationDispatch(j);
-     referenceAssets.push({...reference,path:file});
+     referenceAssets.push({...reference,...(references?{projectId:asset.projectId,reference:asset.reference,referenceRevision:asset.referenceRevision}:{}),path:file});
     }
     // Seedance 2.5 reference audio gets the same ownership, hash and path checks.
     const referenceAudios: Record<string, unknown>[]=[];
@@ -185,9 +199,13 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
      const audio=recordValue(rawAudio);if(!audio)throw Error('Reference snapshot no longer matches managed asset');
      const asset=recordValue(get('assets',String(audio.id)));
      if(!asset||asset.projectId!==j.projectId||asset.sha256!==audio.sha256)throw Error('Reference snapshot no longer matches managed asset');
-     const file=await safePath(root,String(asset.relativePath));checkpoint(signal);
+     const references=registeredProjectAssetReferences(root);
+     if(references&&(asset.referenceRevision!==audio.referenceRevision||JSON.stringify(asset.reference)!==JSON.stringify(audio.reference)))throw Error('Reference revision no longer matches frozen audio');
+     const admitted=references?await paidReferenceHash(references.prepareFullHash(String(asset.id),{signal,expectedReferenceRevision:Number(audio.referenceRevision),maxBytes:100*1024*1024,beforeEffect:()=>{services.validateGenerationDispatch(j!);checkpoint(signal);}})):null;
+     if(admitted&&admitted.sha256!==audio.sha256)throw Error('Audio bytes differ from frozen full hash');
+     const file=admitted?.file??await safePath(root,String(asset.relativePath));checkpoint(signal);
      services.validateGenerationDispatch(j);
-     referenceAudios.push({...audio,path:file});
+     referenceAudios.push({...audio,...(references?{projectId:asset.projectId,reference:asset.reference,referenceRevision:asset.referenceRevision}:{}),path:file});
     }
     checkpoint(signal);
     const current=recordValue(get('jobs',j.id)) as JobRecord|null;
@@ -276,8 +294,9 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
      }
     }
     checkpoint(signal);
+    const projectOwner=registeredProjectStore(root),publishedReference=projectOwner?await referenceForPublishedMedia(projectOwner,file,{sha256:info.sha256,signal}):null;
     tx(()=>{const previous=list('versions',j!.projectId).map(value=>recordValue(value)).find(v=>v?.jobId===j!.id);if(previous){services.saveJob(j!,{status:'succeeded',phase:'complete',versionId:previous.id,progress:100,error:null});return;}
-     const asset={id:randomUUID(),projectId:j!.projectId,name:`${String(property(j!.snapshot,'title'))} ${j!.providerId==='mock'?'模拟':'生成'}视频.mp4`,mimeType:'video/mp4',...info,relativePath,url:null as string|null,provenance:j!.providerId==='mock'?'synthetic-mock':'generated',createdAt:now()};asset.url=`/media/${asset.id}`;put('assets',asset);
+     const asset={id:randomUUID(),projectId:j!.projectId,name:`${String(property(j!.snapshot,'title'))} ${j!.providerId==='mock'?'模拟':'生成'}视频.mp4`,mimeType:'video/mp4',...info,...(publishedReference?{...publishedReference,producer:{kind:'generation',id:j!.id}}:{relativePath}),url:null as string|null,provenance:j!.providerId==='mock'?'synthetic-mock':'generated',createdAt:now()};asset.url=`/media/${asset.id}`;put('assets',asset);
      const version={id:randomUUID(),projectId:j!.projectId,shotId:j!.shotId,jobId:j!.id,number:list('versions',j!.projectId).filter(value=>property(value,'shotId')===j!.shotId).length+1,providerId:j!.providerId,model:j!.model,isMock:j!.providerId==='mock',snapshot:j!.snapshot,assetId:asset.id,url:asset.url,sha256:info.sha256,createdAt:now()};put('versions',version);
      const shot=recordValue(get('shots',j!.shotId));if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number'&&allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId}))put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
     });
@@ -355,6 +374,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    beforeEffect?.();
    // Every cancellable export owns its staging inode, including legacy
    // delivery without an opt-in profile. A late cancel may land after link.
+   const writerOwner=registeredProjectStore(root);if(writerOwner)ensureProjectOutputDirectory(writerOwner);
    outputHandle=await open(part,'wx');outputIdentity=await outputHandle.stat();beforeEffect?.();
    if(e.mode==='timeline') {
     if(!isTimelineExportSnapshot(e.snapshot,{purpose:e.purpose}))throw Object.assign(Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});
@@ -385,8 +405,8 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
      const frozen=recordValue(rawVersion);if(!frozen)throw Error('Export snapshot hash mismatch');
      const asset=recordValue(get('assets',String(frozen.assetId)));
      if(!asset||asset.projectId!==e.projectId||asset.sha256!==frozen.sha256)throw Error('Export snapshot hash mismatch');
-     const mediaPath=await safePath(root,String(asset.relativePath));checkpoint(signal);
-     const actual=await fileInfo(mediaPath,{signal,beforeEffect});checkpoint(signal);
+     const mediaPath=registeredProjectStore(root)?validateManagedSource(root,asset).file:await safePath(root,String(asset.relativePath));checkpoint(signal);
+     const actual=registeredProjectStore(root)?await verifiedManagedHash(root,asset,{signal,beforeEffect}):await fileInfo(mediaPath,{signal,beforeEffect});checkpoint(signal);
      if(actual.sha256!==frozen.sha256)throw Error('Export input bytes differ from frozen version hash');
      files.push(mediaPath);
     }
@@ -415,9 +435,10 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    await link(part,file);linkedOutput=true;checkpoint(signal);beforeEffect?.();
    if(fencedAttempt&&outputIdentity){const actual=await lstat(part);beforeEffect?.();if(actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw effectError();}
    await unlink(part);checkpoint(signal);beforeEffect?.();
+   const projectOwner=registeredProjectStore(root),publishedReference=projectOwner?await referenceForPublishedMedia(projectOwner,file,{sha256:info.sha256,signal,beforeEffect}):null;
    tx(()=>{beforeEffect?.();if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('Invalid local export record.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();
     const output=e.mode==='timeline'?property(e.snapshot,'timeline') as Record<string, unknown>:storyboardOutputGeometry(e);const width=numberValue(property(output,'width'))??0,height=numberValue(property(output,'height'))??0,ratio=width===height?'1x1':width>height?'16x9':'9x16';
-    const a: Record<string, unknown>&{url: string}={id:randomUUID(),projectId:e.projectId,name:e.mode==='timeline'?`多轨时间线-${e.purpose==='preview'?'预览':'导出'}-${ratio}.mp4`:`分镜拼接-${ratio}.mp4`,mimeType:'video/mp4',relativePath,...info,provenance:'export',createdAt:now(),url:''};a.url=`/media/${String(a.id)}`;put('assets',a);put('exports',{...e,status:'succeeded',assetId:a.id,url:a.url,error:null,...(floatExport&&floatMeasurement?{audioCheck:bindFloatTimelineMeasurement(e as never,floatMeasurement,now(),{assetId:String(a.id),sha256:info.sha256})}:{}),updatedAt:now()});});
+    const a: Record<string, unknown>&{url: string}={id:randomUUID(),projectId:e.projectId,name:e.mode==='timeline'?`多轨时间线-${e.purpose==='preview'?'预览':'导出'}-${ratio}.mp4`:`分镜拼接-${ratio}.mp4`,mimeType:'video/mp4',...info,...(publishedReference?{...publishedReference,producer:{kind:'export',id:e.id}}:{relativePath}),provenance:'export',createdAt:now(),url:''};a.url=`/media/${String(a.id)}`;put('assets',a);put('exports',{...e,status:'succeeded',assetId:a.id,url:a.url,error:null,...(floatExport&&floatMeasurement?{audioCheck:bindFloatTimelineMeasurement(e as never,floatMeasurement,now(),{assetId:String(a.id),sha256:info.sha256})}:{}),updatedAt:now()});});
    publicationAccepted=true;
   } catch(error) {
    terminationUnconfirmed=Boolean(property(error,'terminationUnconfirmed'));

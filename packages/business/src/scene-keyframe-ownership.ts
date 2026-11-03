@@ -1,3 +1,4 @@
+import {hasAssetReference} from './asset-reference-record.ts';
 import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError,SCENE_KEYFRAME_PROVENANCE,SCENE_LIMITS,sceneShotsReceiptSchema} from '@mioon/contracts';
@@ -20,7 +21,7 @@ export const SCENE_KEYFRAME_OWNER_SQL="SELECT CASE WHEN length(CAST(t.id AS BLOB
 export function sceneKeyframeAssetMatches(asset: Record<string, unknown>,keyframe: SceneKeyframe,projectId: string): boolean {
  return asset.id===keyframe.assetId&&asset.projectId===projectId&&asset.provenance===SCENE_KEYFRAME_PROVENANCE&&asset.mimeType==='image/png'&&
   asset.sha256===keyframe.sha256&&asset.width===keyframe.width&&asset.height===keyframe.height&&asset.sizeBytes===keyframe.byteLength&&
-  asset.relativePath===`media/${keyframe.assetId}.png`;
+  (hasAssetReference(asset)||asset.relativePath===`media/${keyframe.assetId}.png`);
 }
 
 // Like the frame reader: no work, no repair, no file reads. The caller owns the

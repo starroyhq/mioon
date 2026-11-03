@@ -1,18 +1,17 @@
 import path from 'node:path';
-import {createHash,randomUUID} from 'node:crypto';
-import {createReadStream,constants,openSync,fstatSync,closeSync,writeSync,fsyncSync,renameSync,unlinkSync} from 'node:fs';
-import type {Stats} from 'node:fs';
-import {validatePrivateDirectory,validateManagedFile,getWindowsManagedFileIO,samePrivateStorageIdentity} from '@mioon/contracts/private-storage';
+import {randomUUID} from 'node:crypto';
+import {constants,openSync,closeSync,writeSync,fsyncSync,renameSync,unlinkSync,lstatSync,realpathSync} from 'node:fs';
+import type {BigIntStats} from 'node:fs';
 import {workspaceNativeRequestSchema} from '../../../packages/contracts/src/workspace-native.ts';
 import {exportOutputSchema,type ExportOutput} from '../../../packages/contracts/src/export-controls.ts';
 import {parseProjectApiPath} from '../../../packages/contracts/src/project-file.ts';
 import {isProjectFileHeld} from '@mioon/business/project-file/held-files';
 import {isAppLibraryHeld} from '@mioon/business/app-db/connection';
-import {projectFileIdentity} from '@mioon/business/app-db/identity';
+import {computeFullSha256,isInsideRealDirectory,referencePathForRealFile} from '@mioon/business/media-reference/index';
 interface Owner {projectId?:string;isCurrent():boolean}
 interface Options<E>{ownerForEvent(event:E):Owner|null;readWorkspaceRoot(projectId:string):Promise<string>;readExport(identity:{projectId:string;exportId:string}):Promise<unknown>;openPath(file:string):Promise<string>;revealPath(file:string):void;restart():Promise<boolean>;chooseSaveFile?(suggestedName:string):Promise<string|null>;fetchProjectPackage?(exportId:string):Promise<Response>}
 const unavailable=()=>Object.assign(new Error('Native workspace action is unavailable.'),{code:'WORKSPACE_NATIVE_UNAVAILABLE'});
-const same=(a:{dev:number;ino:number;size:number;mtimeMs:number;ctimeMs:number},b:{dev:number;ino:number;size:number;mtimeMs:number;ctimeMs:number})=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;
+const same=(a:BigIntStats,b:BigIntStats):boolean=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mtimeNs===b.mtimeNs&&a.ctimeNs===b.ctimeNs;
 /** Fixed authenticated metadata reads for the current backend lifetime: the
  * app-level RPC, workspace information, or one project's RPC. */
 export async function readNativeBackendMetadata({base,token,resource,input,signal,check}:{base:string;token:string;resource:string;input?:object;signal:AbortSignal;check:()=>void}):Promise<unknown> {
@@ -25,30 +24,41 @@ export async function readNativeBackendMetadata({base,token,resource,input,signa
  check();let value:unknown;try{value=JSON.parse(content);}catch{throw unavailable();}
  if(!response.ok||!value||typeof value!=='object'||!('ok' in value)||value.ok!==true||!('data' in value))throw unavailable();return value.data;
 }
-async function verifyExport(root:string,output:ExportOutput,check:()=>void) {
- if(!path.isAbsolute(root)||path.resolve(root)!==root||!path.isAbsolute(output.fileLocation)||path.resolve(output.fileLocation)!==output.fileLocation||path.dirname(output.fileLocation)!==path.join(root,'media'))throw unavailable();
- // A project's ordinary folder may be 0755; only its media child is private.
- // The private policy still walks and checks every ancestor before opening.
- const media=path.join(root,'media');validatePrivateDirectory(media);
- const identity=validateManagedFile(output.fileLocation,{root:media})!;if(identity.size!==output.sizeBytes)throw unavailable();
- const fileId=projectFileIdentity(output.fileLocation);
- if(!fileId||isProjectFileHeld(fileId)||isAppLibraryHeld(fileId))throw unavailable();
- if(process.platform==='win32'){await verifyWindowsExport(media,output,identity,check);return;}
- const fd=openSync(output.fileLocation,constants.O_RDONLY|constants.O_NOFOLLOW);if(!same(identity,fstatSync(fd))){closeSync(fd);throw unavailable();}
- const stream=createReadStream(output.fileLocation,{fd,autoClose:true,highWaterMark:1024*1024}),hash=createHash('sha256');let bytes=0;
- try{for await(const chunk of stream){check();bytes+=chunk.length;if(bytes>output.sizeBytes)throw unavailable();hash.update(chunk);}}finally{stream.destroy();}
- check();const after=validateManagedFile(output.fileLocation,{root:media});if(!after||!same(identity,after)||bytes!==output.sizeBytes||hash.digest('hex')!==output.sha256)throw unavailable();
-}
-/** Windows has no CRT descriptor for a verified file: the ACL backend's handle
- * reads it, yielding between chunks, and full file identities replace dev/ino. */
-async function verifyWindowsExport(root:string,output:ExportOutput,identity:Stats,check:()=>void) {
- const handle=getWindowsManagedFileIO().openFile(output.fileLocation,{root,private:false,maxBytes:output.sizeBytes,mode:'read',expected:identity}),hash=createHash('sha256');let bytes=0;
+/** Native effects consume only a backend-verified export descriptor. Project
+ * media is ordinary storage; L1 supplies header/sample/full-hash admission,
+ * held-file exclusion and descriptor identity fences on both platforms. */
+async function verifyExport(root:string,output:ExportOutput,check:()=>void):Promise<()=>void> {
  try{
-  if(!samePrivateStorageIdentity(identity,handle.metadata()))throw unavailable();
-  for(;;){check();const chunk=handle.read(1024*1024);if(!chunk.length)break;bytes+=chunk.length;if(bytes>output.sizeBytes)throw unavailable();hash.update(chunk);await new Promise(resolve=>setImmediate(resolve));}
- }finally{handle.close();}
- check();const after=validateManagedFile(output.fileLocation,{root});
- if(!after||!samePrivateStorageIdentity(identity,after)||after.size!==identity.size||bytes!==output.sizeBytes||hash.digest('hex')!==output.sha256)throw unavailable();
+  check();
+  if(!path.isAbsolute(root)||path.resolve(root)!==root||!path.isAbsolute(output.fileLocation)||path.resolve(output.fileLocation)!==output.fileLocation||output.producer.kind!=='export'||output.producer.id!==output.exportId)throw unavailable();
+  const realRoot=realpathSync(root),file=realpathSync(output.fileLocation),directory=path.join(realRoot,'media');
+  if(file!==output.fileLocation||path.dirname(file)!==directory||!isInsideRealDirectory(realRoot,file))throw unavailable();
+  const projectIdentity=lstatSync(realRoot,{bigint:true}),identity=lstatSync(file,{bigint:true});
+  if(!identity.isFile()||identity.isSymbolicLink()||identity.size!==BigInt(output.sizeBytes))throw unavailable();
+  const held=(info:BigIntStats):boolean=>{const id={dev:String(info.dev),ino:String(info.ino)};return isProjectFileHeld(id)||isAppLibraryHeld(id);};
+  if(held(identity))throw unavailable();
+  const current=():void=>{
+   check();
+   const actual=lstatSync(file,{bigint:true}),parent=lstatSync(realRoot,{bigint:true});
+   if(realpathSync(root)!==realRoot||!parent.isDirectory()||parent.dev!==projectIdentity.dev||parent.ino!==projectIdentity.ino||realpathSync(file)!==file||!actual.isFile()||!same(identity,actual)||held(actual))throw unavailable();
+  };
+  if(process.platform==='win32')await verifyWindowsExport(realRoot,output,current);
+  else await verifyOrdinaryExport(realRoot,output,current);
+  current();return current;
+ }catch{throw unavailable();}
+}
+async function verifyOrdinaryExport(root:string,output:ExportOutput,check:()=>void):Promise<void>{
+ const reference={...referencePathForRealFile(root,output.fileLocation,true),...output.fingerprint};
+ const verified=await computeFullSha256({projectDir:root,projectFile:path.join(root,'project.mioon'),mayReadOutside:()=>false,
+  isHeld:id=>isProjectFileHeld(id)||isAppLibraryHeld(id)},reference,{maxBytes:8*1024**3,beforeEffect:check});
+ if(verified.sha256!==output.sha256||verified.reference.sizeBytes!==output.sizeBytes)throw unavailable();
+ check();
+}
+/** Windows ordinary media uses the same bigint volume/file-index identity and
+ * L1 descriptor reader as other asset references. Private-storage ACL/single-
+ * link readers remain reserved for app/local/cache/temp files. */
+async function verifyWindowsExport(root:string,output:ExportOutput,check:()=>void):Promise<void>{
+ await verifyOrdinaryExport(root,output,check);
 }
 /** Renderer input contains only fixed actions and export identities. Paths come
  * from the OS picker or a verified current backend response, never IPC input. */
@@ -89,9 +99,14 @@ export function createWorkspaceNativeHost<E>(options:Options<E>) {
     await writeProjectPackage(await options.fetchProjectPackage(request.exportId),file,check);check();return {fileName:path.basename(file)};
    }
    if(request.action==='revealProjectPackage'){options.revealPath(destination(request.token));return true;}
-   const identity=request.identity,output=exportOutputSchema.parse(await options.readExport(identity));check();
-   if(output.projectId!==identity.projectId||output.exportId!==identity.exportId)throw unavailable();
-   const root=await options.readWorkspaceRoot(identity.projectId);check();await verifyExport(root,output,check);check();
+   const identity=request.identity;
+   const readOutput=async():Promise<ExportOutput>=>{try{const result=exportOutputSchema.parse(await options.readExport(identity));check();if(result.projectId!==identity.projectId||result.exportId!==identity.exportId)throw unavailable();return result;}catch{throw unavailable();}};
+   const output=await readOutput(),root=await options.readWorkspaceRoot(identity.projectId);check();
+   const current=await verifyExport(root,output,check);check();
+   // An async hash is not authority for a later revision or a different owner.
+   // Re-read the exact authenticated export immediately before the shell effect.
+   if(JSON.stringify(await readOutput())!==JSON.stringify(output))throw unavailable();
+   current();check();
    if(request.action==='openExport')return (await options.openPath(output.fileLocation))==='';
    options.revealPath(output.fileLocation);return true;
   }finally{busy=false;}

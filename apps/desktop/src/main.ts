@@ -1,3 +1,4 @@
+import {ASSET_IMPORT_CHANNEL,createAssetImportHost,importNativeAssetPath} from './asset-import-host.ts';
 import { createDesktopLutRecoveryHost } from './lut-recovery-host.ts';
 import { createDesktopLutRecoveryStore } from './lut-recovery-store.ts';
 import { CLIP_LUT_RECOVERY_CHANNEL } from '../../../packages/contracts/src/clip-lut-recovery.ts';
@@ -153,6 +154,7 @@ let startupOperation: DesktopStartup | null = null;
 let windowContext: DesktopWindowContext | null | undefined, windowHost: ProjectWindowHost | null | undefined, nativeAudioHost: NativeAudioHost | null | undefined, lutRecoveryHost: LutRecoveryHost | null | undefined;
 let workspaceToolsHost: WorkspaceToolsHost | null = null;
 let workspaceNativeHost:WorkspaceNativeHost|null=null;
+let assetImportHost:ReturnType<typeof createAssetImportHost<IpcMainInvokeEvent>>|null=null;
 let trayHost: ReturnType<typeof createDesktopTray> | null = null;
 let trayOperation: {action: TrayAction; settingsSlot: ProjectWindowSettingsSlot; intent: number; promise: Promise<void>} | null = null, trayIntent = 0;
 const nativeDialogs = new Set<{window: BrowserWindow}>();
@@ -522,6 +524,15 @@ async function start(): Promise<DesktopStartReport> {
 
     const nativeBackendCurrent=()=>{if(!ownsWindowContext(context)||backend!==ownedBackend||ownedBackend.state!=='running'||!quitRouter.allowsWindows||context.incident.failed||backendExitObserved)throw new Error('Native workspace action is unavailable.');};
     const nativeRead=(resource:string,input?:object)=>readNativeBackendMetadata({base:started.url,token,resource,input,signal:context.startup.signal,check:nativeBackendCurrent});
+    assetImportHost=createAssetImportHost<IpcMainInvokeEvent>({
+      ownerForEvent:event=>{
+        const owner=windowHost?.ownerForContents(event.sender),window=windowHost?.windowForContents(event.sender);
+        if(!window||!owner||owner.role!=='editor'||!owner.projectId||!owner.isCurrent()||!ownsWindow(window,context)||event.senderFrame!==window.webContents.mainFrame||event.senderFrame!==owner.frame||event.senderFrame?.url!==owner.url)return null;
+        return {projectId:owner.projectId,key:owner.frame,isCurrent:()=>{try{nativeBackendCurrent();return !restarting&&owner.isCurrent()&&ownsWindow(window,context)&&event.senderFrame===window.webContents.mainFrame&&event.senderFrame===owner.frame&&event.senderFrame?.url===owner.url;}catch{return false;}}};
+      },
+      chooseFiles:async()=>{const result=await dialog.showOpenDialog({properties:['openFile','multiSelections'],filters:[{name:'Media',extensions:['png','jpg','jpeg','webp','mp4','webm','wav','mp3','m4a']}]});return result.canceled?[]:result.filePaths;},
+      importPath:input=>importNativeAssetPath({base:started.url,token,input,signal:context.startup.signal,check:nativeBackendCurrent}),
+    });
     workspaceNativeHost=createWorkspaceNativeHost<IpcMainInvokeEvent>({
       ownerForEvent:event=>{
         const owner=windowHost?.ownerForContents(event.sender),window=windowHost?.windowForContents(event.sender);
@@ -902,6 +913,7 @@ ipcMain.handle(WORKSPACE_TOOLS_CHANNEL,(event,request)=>{
   if(!workspaceToolsHost)throw new Error('Workspace tools are unavailable.');
   return workspaceToolsHost.dispatch(event,request);
 });
+ipcMain.handle(ASSET_IMPORT_CHANNEL,(event,request)=>{if(!assetImportHost)throw new Error('Asset import is unavailable.');return assetImportHost.dispatch(event,request);});
 ipcMain.handle(WORKSPACE_NATIVE_CHANNEL,(event,request)=>{
   if(!workspaceNativeHost)throw new Error('Native workspace action is unavailable.');
   return workspaceNativeHost.dispatch(event,request);

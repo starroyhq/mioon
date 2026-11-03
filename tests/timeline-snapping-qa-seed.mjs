@@ -11,7 +11,7 @@ const runtime=path.resolve(process.env.MIOON_QA_RUNTIME||'evidence/timeline-snap
 if(!runtime.endsWith('/evidence/timeline-snapping/runtime'))throw Error('Disposable timeline-snapping runtime required');
 ensurePrivateDirectory(runtime,{create:true});
 const previous=readQaFixture(path.join(runtime,'fixture.json'),dataDir);
-if(previous&&previous.snappingLayoutVersion!==1)throw Error('Historical snapping geometry must be preserved; choose a fresh MIOON_QA_RUNTIME');
+if(previous&&(previous.snappingLayoutVersion!==1||previous.assetReferenceFixture!==1))throw Error('Historical snapping geometry must be preserved; choose a fresh MIOON_QA_RUNTIME');
 if(!previous){
  if(existsSync(path.join(dataDir,'app-library.db')))throw Error('Partial snapping data must be preserved; choose a fresh MIOON_QA_RUNTIME');
  const first=await prepareNativeQaProject(dataDir,'吸附验收 · 合成项目'),{store,services:s,project}=first,projectId=project.id;
@@ -38,7 +38,7 @@ if(!previous){
   // Unknown duration is an explicit synthetic metadata vector, not a copied store.
   const unknown={...store.get('assets',firstVideo.id),id:randomUUID(),name:'验收专用 · 时长未知',duration:null};store.tx(()=>store.put('assets',unknown));
   other=await prepareNativeQaProject(dataDir,'吸附验收 · 独立项目');await other.services.call('timeline.get',{projectId:other.project.id});
-  await writeFile(path.join(runtime,'fixture.json'),JSON.stringify({kernel:true,snappingLayoutVersion:1,fixtureId:randomUUID(),workspace:dataDir,dataDir,projectDir:store.projectDir,localDir:store.localDir,projectFile:store.projectFile,runtime,project,second:other.project,targetTrack,audioTrack,timeline,unknownAssetId:unknown.id},null,2),{mode:0o600,flag:'wx'});
+  await writeFile(path.join(runtime,'fixture.json'),JSON.stringify({kernel:true,assetReferenceFixture:1,snappingLayoutVersion:1,fixtureId:randomUUID(),workspace:dataDir,dataDir,projectDir:store.projectDir,localDir:store.localDir,projectFile:store.projectFile,runtime,project,second:other.project,targetTrack,audioTrack,timeline,unknownAssetId:unknown.id},null,2),{mode:0o600,flag:'wx'});
  }finally{
   try{if(other)await closeQaProject(other);}finally{try{await closeQaProject(first);}finally{for(const file of generated)try{await unlink(file);}catch(error){if(error.code!=='ENOENT')throw error;}}}
  }

@@ -1,3 +1,4 @@
+import {importNativeQaAsset,coldNativeQaAssetFile,coldNativeQaMediaSnapshot} from './helpers/native-local-qa-fixture.ts';
 /** Live first-boot/close-decision/pre-crash stages record bounded physical/JSON
  * captures only. SQL audit/verify stages require normal Quit, or confirmed owned
  * SIGKILL plus backend exit. Use resume <unique-label> between cold stages,
@@ -71,7 +72,7 @@ async function command(binary,args,label){
   const result=await Promise.race([owned.done,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Bounded synthetic media command timed out')),60000);})]);assert.deepEqual(result,{code:0,signal:null});return result;
  }catch(error){if(owned&&!owned.closed)await owned.stop();throw error;}finally{clearTimeout(timer);await stdout.close();await stderr?.close();}
 }
-function fixture(){for(const directory of [root,runtime,report,userData,workspace])ensurePrivateDirectory(directory);const value=readJson(fixtureFile,128*1024);assert.equal(value.kernel,true,'Use a fresh current-kernel fixture');
+function fixture(){for(const directory of [root,runtime,report,userData,workspace])ensurePrivateDirectory(directory);const value=readJson(fixtureFile,128*1024);assert.equal(value.assetReferenceFixture,1,'Historical pre-reference fixture must be preserved; use a fresh root');assert.equal(value.kernel,true,'Use a fresh current-kernel fixture');
  assert.equal(value.synthetic,true);assert.equal(value.scenario,'local-shot-text');assert.equal(value.workspace,workspace);return value;}
 function sidecarFile(){return path.join(fixture().localDir,'local-shot-text-v1.json');}
 function sidecar(){const info=validateManagedFile(sidecarFile(),{root:fixture().localDir,allowMissing:true,private:true,maxBytes:16*1024*1024});const bytes=readPrivateFile(sidecarFile(),{root:fixture().localDir,allowMissing:true,private:true,maxBytes:16*1024*1024});
@@ -111,13 +112,13 @@ assert.equal(await exists(root),false,'Native fixture already exists; no overwri
  try{
   let timeline=await services.call('timeline.format.set',{projectId:project.id,expectedProjectRevision:project.revision,expectedRevision:0,requestId:randomUUID(),presetId:'landscape_720'});
   const shot=await services.call('shot.create',{projectId:project.id,title:'Saved native title',prompt:'Saved native prompt',duration:7,aspectRatio:'16:9',parameters:{seed:42},lastFrameAssetId:null});
-  const asset=await services.call('asset.import',{projectId:project.id,name:'合成绿色画面与 880Hz.mp4',mimeType:'video/mp4',dataBase64:(await readFile(source)).toString('base64')});
+  const asset=await importNativeQaAsset(prepared,{projectId:project.id,name:'合成绿色画面与 880Hz.mp4',mimeType:'video/mp4',dataBase64:(await readFile(source)).toString('base64')});
   timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:asset.id,
    trackId:timeline.tracks.find(track=>track.kind==='video').id,startFrame:0,durationFrames:60,name:'镜头文字恢复验收的 2 秒时间线'});
   const state=defaultWorkspaceState();delete state.shared.assetSearch;state.canvas.viewport={x:0,y:0,zoom:1};state.activeMode='canvas';state.canvas.selectedId=shot.id;state.editing.selectedClipId=timeline.clips[0].id;state.editing.playhead=17;state.editing.previewKind='source';
   createWorkspacePreferences(store).put(project.id,{expectedRevision:0,state});
   assert.equal(await exists(path.join(store.localDir,'local-shot-text-v1.json')),false,'Preparation must never seed a text draft or text intent');
-  value={synthetic:true,kernel:true,scenario:'local-shot-text',id:randomUUID(),workspace,projectDir:store.projectDir,localDir:store.localDir,projectFile:store.projectFile,projectId:project.id,projectName:project.name,timelineId:timeline.id,clipId:timeline.clips[0].id,
+  value={synthetic:true,assetReferenceFixture:1,kernel:true,scenario:'local-shot-text',id:randomUUID(),workspace,projectDir:store.projectDir,localDir:store.localDir,projectFile:store.projectFile,projectId:project.id,projectName:project.name,timelineId:timeline.id,clipId:timeline.clips[0].id,
    assetId:asset.id,shotId:shot.id,baseRevision:shot.revision,timelineRevision:timeline.revision,expectedShot:shot,expectedTimeline:timeline,expectedTitle:'Crash-recovered title',expectedPrompt:'Crash-recovered prompt with exact original text.',optionalUnsavedFormDuration:9,sourceSha256:asset.sha256,sourceFile:await fileHash(source),initialSidecarAbsent:true};
  }finally{try{await services.drain();}finally{store.close();}}
  await writeFile(fixtureFile,json(value),{mode:0o600,flag:'wx'});const {workspace:privateWorkspace,...sanitized}=value;await writeReport('fixture.json',sanitized);await audit('prepared');await writeReport('database-layout.json',await prepareNativeQaLiveLayout(workspace));
@@ -166,8 +167,8 @@ async function resume(label){
 }
 async function audit(label,{afterCrash=false}={}){
  if(!afterCrash&&lockSnapshot()!==null)return liveCapture(label);
- assert.ok(safeLabel(label));const prepared=fixture(),{rows,schemaSha256,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries}=readDatabase(),names=(await readdir(path.join(fixture().projectDir,'media'))).sort();assert.ok(names.length<=32,'Media audit limit');
- const media=[];for(const name of names){assert.match(name,/^[a-zA-Z0-9._-]+\.(mp4|png|wav)$/);media.push({name,...await fileHash(path.join(fixture().projectDir,'media',name),32*1024*1024)});}
+ assert.ok(safeLabel(label));const prepared=fixture(),{rows,schemaSha256,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries}=readDatabase();const media=coldNativeQaMediaSnapshot(workspace,prepared.projectId);assert.ok(media.length<=32,'Media audit limit');
+ for(const item of media)assert.match(path.basename(item.name),/^[a-zA-Z0-9._-]+\.(mp4|png|wav)$/);
  const tables=Object.fromEntries(Object.entries(rows).map(([name,value])=>[name,{count:value.length,sha256:sha(JSON.stringify(value)),rowSha256:value.map(item=>sha(JSON.stringify(item)))}]));
  const result={synthetic:true,at:new Date().toISOString(),label,fixtureId:prepared.id,schemaSha256,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries,tables,logicalDatabaseSha256:sha(JSON.stringify(tables)),
   shots:rows.shots.map(item=>JSON.parse(item.data)),mutationRequests:rows.mutation_requests.map(item=>({...item,response:JSON.parse(item.response),responseRaw:item.response})),
@@ -258,7 +259,7 @@ async function verifyExport(){
  }
  const requests=result.timelineRequests.filter(item=>!before.timelineRequests.some(prior=>prior.requestId===item.requestId));assert.equal(requests.length,1);const receipt=requests[0];assert.equal(receipt.requestId,exported.requestId);assert.equal(receipt.response.id,exported.id);assert.equal(receipt.response.status,'queued');assert.deepEqual(receipt.response.snapshot,exported.snapshot);
  for(const original of before.media)assert.deepEqual(result.media.find(item=>item.name===original.name),original);assert.equal(result.media.length,before.media.length+1);
- const asset=result.assets.find(item=>item.id===exported.assetId);assert.ok(asset);assert.equal(asset.projectId,prepared.projectId);assert.equal(asset.provenance,'export');assert.match(asset.relativePath,/^media\/[a-zA-Z0-9._-]+\.mp4$/);const file=path.join(fixture().projectDir,asset.relativePath),output=await fileHash(file,32*1024*1024);assert.equal(output.sha256,asset.sha256);
+ const asset=result.assets.find(item=>item.id===exported.assetId);assert.ok(asset);assert.equal(asset.projectId,prepared.projectId);assert.equal(asset.provenance,'export');assert.deepEqual(asset.producer,{kind:'export',id:exported.id});const resolved=await coldNativeQaAssetFile(workspace,asset.projectId,asset.id);assert.match(resolved.projectRelativeFile,/^media\/[a-zA-Z0-9._-]+\.mp4$/);assert.equal(resolved.bytes,asset.sizeBytes);const file=resolved.file,output=await fileHash(file,32*1024*1024);assert.equal(output.sha256,asset.sha256);
  await command(ffprobe,['-v','error','-show_streams','-show_format','-of','json',file],'export-probe');const probe=readJson(path.join(runtime,'export-probe.stdout')),video=probe.streams.find(stream=>stream.codec_type==='video'),audio=probe.streams.find(stream=>stream.codec_type==='audio');assert.ok(video&&audio);assert.equal(video.width,1280);assert.equal(video.height,720);assert.equal(video.r_frame_rate,'30/1');assert.equal(Number(video.nb_frames),60);assert.equal(audio.sample_rate,'48000');
  await command(ffmpeg,['-v','error','-i',file,'-f','null','-'],'export-decode');const verification={synthetic:true,fixtureId:prepared.id,at:new Date().toISOString(),exportId:exported.id,assetId:asset.id,requestId:exported.requestId,onlyAddedBusinessRows:{assets:1,exports:1,timeline_requests:1},originalMediaUnchanged:true,shotTextReceiptUnchanged:true,output,video:{width:video.width,height:video.height,rate:video.r_frame_rate,frames:Number(video.nb_frames)},audio:{codec:audio.codec_name,sampleRate:audio.sample_rate},decodeExit:0};await writeReport('export-verification.json',verification);return verification;
 }

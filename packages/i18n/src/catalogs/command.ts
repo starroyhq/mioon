@@ -1,5 +1,18 @@
-import type { MessageCatalog } from '../types.ts';
+import type {MessageCatalog } from '../types.ts';
 export const commandMessages = {
+  "cli.option.confirm-outside": {
+    "zh-Hans": "仅限 asset import --file：明确同意当前项目读取该目录自身，不含子目录，并逐项打印确认目录",
+    "zh-Hant": "僅限 asset import --file：明確同意目前專案讀取該目錄本身，不含子目錄，並逐項列出確認目錄",
+    "en": "asset import --file only: explicitly confirm this project's exact source directory, excluding descendants, and print each confirmed directory",
+    "ja": "asset import --file 専用。このプロジェクトの読み取り対象ディレクトリ自体に明示的に同意し、確認済みディレクトリを表示します。サブディレクトリは含みません"
+  },
+  "cli.option.upload": {
+    "zh-Hans": "仅限 asset import --file：显式上传最多30 MiB字节到后端，不能同时使用 --confirm-outside",
+    "zh-Hant": "僅限 asset import --file：明確上傳最多30 MiB位元組至後端，不能同時使用 --confirm-outside",
+    "en": "asset import --file only: explicitly upload at most 30 MiB to the backend; exclusive with --confirm-outside",
+    "ja": "asset import --file 専用。最大30 MiBをバックエンドへ明示的にアップロードします。--confirm-outside とは併用できません"
+  },
+
   "cli.option.input": {
     "zh-Hans": "JSON 对象；使用 - 读取标准输入",
     "zh-Hant": "JSON 物件；使用 - 讀取標準輸入",
@@ -19,10 +32,10 @@ export const commandMessages = {
     "ja": "呼び出し元が指定する固定 requestId。クライアントは生成しません"
   },
   "cli.option.file": {
-    "zh-Hans": "仅限 asset/lut import：读取本地字节，绝不发送路径；LUT .cube 文件上限为 7 MiB",
-    "zh-Hant": "僅限 asset/lut import：讀取本機位元組，絕不傳送路徑；LUT .cube 檔案上限為 7 MiB",
-    "en": "asset/lut import only: reads local bytes, never sends a path; LUT .cube files are limited to 7 MiB",
-    "ja": "asset/lut import 専用。ローカルのバイトを読み取り、パスは送信しません。LUT .cube ファイルは最大 7 MiB"
+    "zh-Hans": "asset import：传本机路径并要求 requestId；--upload 显式上传最多30 MiB。LUT 仍读取最多7 MiB",
+    "zh-Hant": "asset import：傳送本機路徑並要求 requestId；--upload 明確上傳最多30 MiB。LUT 仍讀取最多7 MiB",
+    "en": "asset import sends a local path with requestId; --upload explicitly uploads up to 30 MiB. LUT still reads up to 7 MiB",
+    "ja": "asset import は requestId とローカルパスを送信します。--upload は最大30 MiBを明示的にアップロードします。LUTは最大7 MiBです"
   },
   "cli.option.output": {
     "zh-Hans": "仅限 download：独占创建新的本地文件，绝不发送到后端",

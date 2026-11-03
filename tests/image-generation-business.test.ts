@@ -1,5 +1,6 @@
 import type {TypedStore, TypedServices, TypedCall} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
 import {mkdtempSync, rmSync, readdirSync, readFileSync, statSync} from 'node:fs';
@@ -153,7 +154,7 @@ test('V1 and V2 retain their original receipt and name without rewriting project
   assert.deepEqual(f.store.get('jobs', job.id), job); assert.equal(f.calls, 2);
   for (const projection of f.projections) assert.deepEqual(Object.keys(projection).sort(), ['model', 'options', 'prompt', 'providerId']);
   for (const version of versions.items) {
-    const generated = f.store.get('assets', version.assetId) as unknown as GeneratedAssetView, file = path.join(f.root, generated.relativePath), bytes = readFileSync(file);
+    const generated = f.store.get('assets', version.assetId) as unknown as GeneratedAssetView, file = mediaFixturePath(f.root, generated), bytes = readFileSync(file);
     assert.equal(digest(bytes), version.sha256); assert.equal(bytes.length, version.byteLength);
     assert.equal(statSync(file).mode & 0o777, 0o600);
     assert.deepEqual(await validatePng(bytes), {mimeType: 'image/png', width: 1024, height: 1024, byteLength: bytes.length, sha256: digest(bytes)});

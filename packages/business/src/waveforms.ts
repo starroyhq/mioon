@@ -1,4 +1,8 @@
 import {assertProjectStore} from './store-runtime.ts';
+import {lstatSync} from 'node:fs';
+import {mediaMtimeMs} from './media-reference/fingerprint.ts';
+import {mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
+import {registeredProjectAssetReferences} from './project-media-storage.ts';
 import {randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError,parse,WAVEFORM_ALGORITHM,sourceFrameCount} from '@mioon/contracts';
@@ -71,12 +75,12 @@ export function createWaveformServices(store: WaveformStore,{signal:ownerSignal,
  }
  const {db,root,tx}=store,queue: WaveformAttempt[]=[],inflight=new Map<string,WaveformAttempt>(),tasks=new Set<Promise<void>>();
  let active: WaveformAttempt|null=null,stopped=false,shutdownFailure: unknown,draining: Promise<void>|undefined;
- const history=createWaveformHistoryReaders(store),{cacheBounded,owned,sourceKey,load,response,state}=history;
+ const history=createWaveformHistoryReaders(store),{cacheBounded,owned,sourceKey,load,response,state,sourceColumn,fingerprint}=history;
  function safeBudgetRows(): boolean {
   return !db.prepare(`SELECT 1 AS invalid FROM waveform_cache WHERE
    typeof(cacheKey)!='text' OR length(CAST(cacheKey AS BLOB))!=64 OR
    typeof(projectId)!='text' OR length(CAST(projectId AS BLOB))!=36 OR
-   typeof(sourceSha256)!='text' OR length(CAST(sourceSha256 AS BLOB))!=64 OR
+   typeof(${sourceColumn})!='text' OR length(CAST(${sourceColumn} AS BLOB))!=64 OR
    typeof(algorithm)!='text' OR length(CAST(algorithm AS BLOB)) NOT BETWEEN 1 AND 100 OR
    typeof(attemptId)!='text' OR length(CAST(attemptId AS BLOB))!=36 OR
    typeof(status)!='text' OR status NOT IN ('queued','running','ready','interrupted','error','unsupported') OR
@@ -89,7 +93,7 @@ export function createWaveformServices(store: WaveformStore,{signal:ownerSignal,
 
  function save(row: WaveformCacheRow,status: WaveformStatus,data: unknown,reservedBytes=0): boolean {
   if(!ownsStoreLock(store))return false;
-  const next={...row,status,data},bytes=rowBytes(next);
+  const next={...row,status,data},bytes=rowBytes(next,sourceColumn);
   if(bytes>WAVEFORM_CACHE_LIMITS.recordBytes)throw fault('WAVEFORM_CAPACITY');
   return db.prepare(`UPDATE waveform_cache SET status=?,data=?,bytes=?,reservedBytes=?
    WHERE cacheKey=? AND projectId=? AND attemptId=? AND status IN ('queued','running')`)
@@ -106,7 +110,7 @@ export function createWaveformServices(store: WaveformStore,{signal:ownerSignal,
    for(const candidate of db.prepare("SELECT cacheKey FROM waveform_cache WHERE status IN ('queued','running') AND length(CAST(cacheKey AS BLOB))=64 LIMIT 64").all()){
     const cacheKey=candidate.cacheKey;
     if(typeof cacheKey!=='string')continue;
-    const row=load(cacheKey);if(!row||!row.projectId||!row.sourceSha256||!row.algorithm||!uuid.test(row.attemptId))continue;
+    const row=load(cacheKey);if(!row||!row.projectId||!row.sourceFingerprint||!row.algorithm||!uuid.test(row.attemptId))continue;
     save(row,'interrupted',{reason:reason('WAVEFORM_INTERRUPTED')});
    }
   });
@@ -115,20 +119,29 @@ export function createWaveformServices(store: WaveformStore,{signal:ownerSignal,
  function sourceFailure(error: unknown,signal?: AbortSignal|null): never {
   checkSignal(signal);
   if(property(error,'code')==='MANAGED_SOURCE_LIMIT')throw fault('WAVEFORM_SOURCE_TOO_LARGE','unsupported');
-  throw fault(property(error,'code')==='MANAGED_SOURCE_CHANGED'?'WAVEFORM_SOURCE_CHANGED':'WAVEFORM_SOURCE_INVALID');
+  throw fault(['MANAGED_SOURCE_CHANGED','MEDIA_CHANGED','MEDIA_CHANGED_DURING_READ'].includes(String(property(error,'code')))?'WAVEFORM_SOURCE_CHANGED':'WAVEFORM_SOURCE_INVALID');
  }
  function validatedSource(asset: WaveformAsset): ManagedSource {
-  try{return validateManagedSource(root,asset,{maxBytes:WAVEFORM_CACHE_LIMITS.sourceBytes});}
-  catch(error){sourceFailure(error);}
+  if(typeof asset.sizeBytes==='number'&&asset.sizeBytes>WAVEFORM_CACHE_LIMITS.sourceBytes)throw fault('WAVEFORM_SOURCE_TOO_LARGE','unsupported');
+  try{const source=validateManagedSource(root,asset,{maxBytes:WAVEFORM_CACHE_LIMITS.sourceBytes}),reference=mediaReferenceSchema.safeParse(asset.reference);
+   if(reference.success&&mediaMtimeMs(lstatSync(source.file,{bigint:true}))!==reference.data.mtimeMs)throw fault('WAVEFORM_SOURCE_CHANGED');
+   return source;}
+  catch(error){if(isFault(error))throw error;sourceFailure(error);}
  }
  async function verifiedHash(asset: WaveformAsset,signal?: AbortSignal|null,expected?: ManagedSource['info']): Promise<VerifiedManagedSource> {
   try{return await verifiedManagedHash(root,asset,{signal,expected,maxBytes:WAVEFORM_CACHE_LIMITS.sourceBytes});}
   catch(error){sourceFailure(error,signal);}
  }
+ async function inspectCurrent(asset: WaveformAsset,signal?: AbortSignal|null): Promise<void> {
+  const references=registeredProjectAssetReferences(root);
+  if(!references)return;
+  const current=await references.inspect(asset.id,{signal:signal??undefined});
+  if(current.status!=='online'||!current.readable||current.fingerprintToken!==fingerprint(asset)||current.referenceRevision!==asset.referenceRevision)throw fault('WAVEFORM_SOURCE_CHANGED');
+ }
  function currentSource(entry: {asset: WaveformAsset;input: WaveformGetInput}): WaveformAsset {
   requireOwner();
   const latest=owned(entry.input);
-  if(latest.sha256!==entry.asset.sha256||latest.relativePath!==entry.asset.relativePath||latest.duration!==entry.asset.duration||latest.mimeType!==entry.asset.mimeType||
+  if(latest.sha256!==entry.asset.sha256||fingerprint(latest)!==fingerprint(entry.asset)||latest.duration!==entry.asset.duration||latest.mimeType!==entry.asset.mimeType||
    latest.hasAudio!==entry.asset.hasAudio||latest.sizeBytes!==entry.asset.sizeBytes)throw fault('WAVEFORM_SOURCE_CHANGED');
   return latest;
  }
@@ -158,7 +171,7 @@ export function createWaveformServices(store: WaveformStore,{signal:ownerSignal,
  async function runAttempt(entry: WaveformAttempt): Promise<void> {
   const controller=entry.controller,timer=setTimeout(()=>{entry.timedOut=true;controller.abort();},WAVEFORM_CACHE_LIMITS.attemptMs);
   try{
-   checkSignal(controller.signal);currentSource(entry);
+   checkSignal(controller.signal);currentSource(entry);await inspectCurrent(entry.asset,controller.signal);
    if(!isWaveformMediaType(entry.asset.mimeType)||entry.asset.hasAudio===false)throw fault('WAVEFORM_NO_AUDIO','unsupported');
    const before=await verifiedHash(entry.asset,controller.signal);currentSource(entry);
    if(entry.asset.sizeBytes!==undefined&&entry.asset.sizeBytes!==before.info.size)throw fault('WAVEFORM_SOURCE_CHANGED');
@@ -180,6 +193,8 @@ export function createWaveformServices(store: WaveformStore,{signal:ownerSignal,
    const after=await verifiedHash(entry.asset,controller.signal,before.info);checkSignal(controller.signal);requireOwner();
    const data={duration,sourceFrames,sampleFrames:decoded.sampleFrames,channels:plan.channels,source:sourceMetadata(entry.asset),
     peaks:Array.from(decoded.peaks),peakDigest:digest(decoded.peaks),clipped:decoded.clipped};
+   await inspectCurrent(entry.asset,controller.signal);
+   if(after.sha256!==before.sha256)throw fault('WAVEFORM_SOURCE_CHANGED');
    tx(()=>{
     checkSignal(controller.signal);if(stopped)throw fault('WAVEFORM_INTERRUPTED','interrupted');
     currentSource(entry);
@@ -212,10 +227,10 @@ export function createWaveformServices(store: WaveformStore,{signal:ownerSignal,
   // reaches pump/finally. drain reports the failure rather than closing early.
   task.catch(error=>{if(shutdownFailure===undefined||shutdownFailure===null)shutdownFailure=error;});
  }
- function admit(asset: WaveformAsset,input: WaveformGetInput,cacheKey: string,sourceSha256: string): WaveformCacheRow {
+ function admit(asset: WaveformAsset,input: WaveformGetInput,cacheKey: string,sourceFingerprint: string): WaveformCacheRow {
   requireOwner();
-  const seed: {cacheKey: string;projectId: string;sourceSha256: string;algorithm: string;status: string;attemptId: string;data: unknown}={cacheKey,projectId:asset.projectId,sourceSha256,algorithm:WAVEFORM_ALGORITHM,
-   status:'queued',attemptId:randomUUID(),data:{}},bytes=rowBytes(seed),row=seed as unknown as WaveformCacheRow;
+  const seed: {cacheKey: string;projectId: string;sourceFingerprint: string;algorithm: string;status: string;attemptId: string;data: unknown}={cacheKey,projectId:asset.projectId,sourceFingerprint,algorithm:WAVEFORM_ALGORITHM,
+   status:'queued',attemptId:randomUUID(),data:{}},bytes=rowBytes(seed,sourceColumn),row=seed as unknown as WaveformCacheRow;
   tx(()=>{
    currentSource({asset,input});
    if(!cacheBounded())throw fault('WAVEFORM_CAPACITY');
@@ -226,7 +241,7 @@ export function createWaveformServices(store: WaveformStore,{signal:ownerSignal,
    if(!safeBudgetRows())throw fault('WAVEFORM_CAPACITY');
    const totals=(): {entries: number; bytes: number}=>{
     const row=db.prepare(`SELECT count(*) AS entries,
-     coalesce(sum(max(bytes,reservedBytes,length(CAST(data AS BLOB))+length(CAST(cacheKey||projectId||sourceSha256||algorithm||status||attemptId AS BLOB))+512)),0) AS bytes
+     coalesce(sum(max(bytes,reservedBytes,length(CAST(data AS BLOB))+length(CAST(cacheKey||projectId||${sourceColumn}||algorithm||status||attemptId AS BLOB))+512)),0) AS bytes
      FROM waveform_cache`).get();
     const entries=row?.entries,sum=row?.bytes;
     return {entries:typeof entries==='number'?entries:0,bytes:typeof sum==='number'?sum:0};
@@ -239,24 +254,27 @@ export function createWaveformServices(store: WaveformStore,{signal:ownerSignal,
     db.prepare('DELETE FROM waveform_cache WHERE cacheKey=?').run(candidate.cacheKey);total=totals();
    }
    if(total.entries>=WAVEFORM_CACHE_LIMITS.entries||total.bytes+WAVEFORM_CACHE_LIMITS.recordBytes>WAVEFORM_CACHE_LIMITS.bytes)throw fault('WAVEFORM_CAPACITY');
-   db.prepare(`INSERT INTO waveform_cache(cacheKey,projectId,sourceSha256,algorithm,status,attemptId,data,bytes,reservedBytes)
-    VALUES(?,?,?,?,?,?,?,?,?)`).run(cacheKey,asset.projectId,sourceSha256,WAVEFORM_ALGORITHM,'queued',row.attemptId,'{}',bytes,WAVEFORM_CACHE_LIMITS.recordBytes);
+   db.prepare(`INSERT INTO waveform_cache(cacheKey,projectId,${sourceColumn},algorithm,status,attemptId,data,bytes,reservedBytes)
+    VALUES(?,?,?,?,?,?,?,?,?)`).run(cacheKey,asset.projectId,sourceFingerprint,WAVEFORM_ALGORITHM,'queued',row.attemptId,'{}',bytes,WAVEFORM_CACHE_LIMITS.recordBytes);
    currentSource({asset,input});
   });
   return row;
  }
+ function unavailable(input: WaveformGetInput,error: unknown): WaveformResponse {if(!isFault(error))throw error;return response(input,error.waveformStatus as WaveformStatus,{reason:reason(messageCode(error.waveformCode))});}
  function request(input: WaveformGetInput): WaveformResponse {
   // A revoked native connection cannot be inspected, even for a refusal.
   if(!db.isOpen)return response(input,'error',{reason:reason('WAVEFORM_OWNER_REQUIRED')});
   const asset=owned(input);
+  if(!isWaveformMediaType(asset.mimeType)||asset.hasAudio===false)return response(input,'unsupported',{reason:reason('WAVEFORM_NO_AUDIO')});
+  if(sourceColumn==='sourceFingerprint')try{validatedSource(asset);}catch(error){return unavailable(input,error);}
   if(!ownsStoreLock(store))return response(input,'error',{reason:reason('WAVEFORM_OWNER_REQUIRED')});
-  const sourceSha256=typeof asset.sha256==='string'?asset.sha256:null,cacheKey=sourceSha256?sourceKey(asset):null,row=cacheKey?load(cacheKey):null,current=state(input,asset,row);
-  if(!cacheKey||!sourceSha256||current.status==='ready'||inflight.has(cacheKey))return current;
+  const sourceFingerprint=fingerprint(asset),cacheKey=sourceFingerprint?sourceKey(asset):null,row=cacheKey?load(cacheKey):null,current=state(input,asset,row);
+  if(!cacheKey||!sourceFingerprint||current.status==='ready'||inflight.has(cacheKey))return current;
   if(row&&!input.retry)return current;
   if(stopped)return response(input,'interrupted',{reason:reason('WAVEFORM_INTERRUPTED')});
   if(inflight.size>=WAVEFORM_CACHE_LIMITS.active+WAVEFORM_CACHE_LIMITS.queued)return response(input,'error',{reason:reason('WAVEFORM_BUSY')});
   let admitted: WaveformCacheRow;
-  try{admitted=admit(asset,input,cacheKey,sourceSha256);}
+  try{admitted=admit(asset,input,cacheKey,sourceFingerprint);}
   catch(error){
    if(isFault(error))return response(input,error.waveformStatus as WaveformStatus,{reason:reason(messageCode(property(error,'waveformCode')))});
    throw error;
@@ -286,6 +304,6 @@ export function createWaveformServices(store: WaveformStore,{signal:ownerSignal,
   })();
   return draining;
  }
- ownToken.service={handlers:{'asset.waveform.request':(input: unknown,context?: {signal?: AbortSignal|null})=>request(asInput(parse('asset.waveform.request',input))),...history.handlers},drain};
+ ownToken.service={handlers:{'asset.waveform.request':(input: unknown,context?: {signal?: AbortSignal|null})=>request(asInput(parse('asset.waveform.request',input))),...Object.fromEntries(Object.entries(history.handlers).map(([operation,handler])=>[operation,(input: unknown)=>{if(sourceColumn==='sourceSha256')return handler(input);const asset=owned(asInput(input));if(!isWaveformMediaType(asset.mimeType)||asset.hasAudio===false)return response(asInput(input),'unsupported',{reason:reason('WAVEFORM_NO_AUDIO')});try{validatedSource(asset);}catch(error){return unavailable(asInput(input),error);}return handler(input);}]))},drain};
  return ownToken.service;
 }

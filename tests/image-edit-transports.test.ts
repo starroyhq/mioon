@@ -1,3 +1,4 @@
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import type {FixtureProject,FixtureAsset} from './helpers/strict-timeline-core-types.ts';
 import type {FixtureImageTask,FixtureImageVersion,ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
@@ -106,7 +107,7 @@ async function fixture(t: test.TestContext) {
     assert.equal(task!.state, 'succeeded');
     const version: FixtureImageVersion = (await services.call('image.version.list', {projectId: project.id, groupId: ack.groupId})).items[0];
     const asset = store.get('assets', version.assetId)!;
-    source = {input, ack, task:task!, version, asset, bytes: await readFile(path.join(created.store.root, asset.relativePath))};
+    source = {input, ack, task:task!, version, asset, bytes: await readFile(mediaFixturePath(created.store.root,asset))};
     await services.drain();
   } finally { store.close(); }
   // The queued edits need other image options, so this second fill reopens the project's store.
