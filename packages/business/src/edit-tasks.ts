@@ -1,16 +1,12 @@
-import {readCurrentWorkspaceRole} from './workspace-schema-dispatch.ts';
+import {assertProjectStore} from './store-runtime.ts';
 import {assertTimelineVolumeEnvelopeWorkspace} from './timeline-volume-envelope-admission.ts';
-import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
-import {getWorkspaceRestoreContext as legacyRestoreContext} from './workspace-restore-schema.ts';
-import {refuseRestoredTask as legacyRefuseTask,safeWorkspaceRestoreError,assertWorkspaceRestoreOrigin as legacyAssertOrigin,assertRestoreRequestVacant as legacyRequestVacant} from './workspace-restore-policy.ts';
-import {withRestoreTaskInvocation as legacyTaskInvocation} from './workspace-restore-invocation.ts';
+import {assertTimelineAudioRoleWorkspace} from './store-capabilities.ts';
 import {randomUUID} from 'node:crypto';
 import {withTimelineFormatTaskDispatch} from './timeline-format-task-context.ts';
 import {isProxy} from 'node:util/types';
 import {AppError, schemas, publicValue, DURABLE_EDIT_OPERATIONS, EDIT_TASK_LIMITS, editTaskLane, isEditTask, hasRequestNotAppliedProof} from '@mioon/contracts';
-import {isRestoredWorkspaceSchemaSince} from '../../contracts/src/workspace-schema-lineage.ts';
 import {hash} from './services.ts';
-import {ownsStoreLock} from './db.ts';
+import {ownsStoreLock} from './store-runtime.ts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {readTimelineReceipt, createTimelineRecoveryBoundary as legacyTimelineBoundary} from './timeline-recovery.ts';
 import {readReferenceReceipt, createReferenceRecoveryBoundary} from './reference-recovery.ts';
@@ -48,7 +44,7 @@ const errors: Readonly<Record<string,[number,string]>>=Object.freeze({
  EDIT_TASK_STORAGE_LIMIT: [507, '编辑任务保留容量已满（最多 4096 个身份、64 MiB 逻辑预留）。已完成身份仍保留，不能自动清理；这不表示磁盘已满。'],
  EDIT_TASK_STORAGE_UNAVAILABLE: [503, '无法安全读取或保存编辑任务。'],
 });
-export const editTaskError = (code: string): AppError => { const restore=safeWorkspaceRestoreError({code});if(restore)return restore as AppError;const key = Object.hasOwn(errors, code) ? code : 'EDIT_TASK_STORAGE_UNAVAILABLE'; const entry=errors[key]; return new AppError(key, entry[1], entry[0]); };
+export const editTaskError = (code: string): AppError => { const key = Object.hasOwn(errors, code) ? code : 'EDIT_TASK_STORAGE_UNAVAILABLE'; const entry=errors[key]; return new AppError(key, entry[1], entry[0]); };
 export function safeEditTaskError(error: unknown) { const safe = editTaskError((error as {code?: string}|null|undefined)?.code as string); return {status: safe.status, code: safe.code, message: safe.message}; }
 const fail: (code: string)=>never = code => { throw editTaskError(code); };
 const corrupt: ()=>never = () => fail('EDIT_TASK_STORAGE_UNAVAILABLE');
@@ -114,21 +110,9 @@ function prepareFields(value: unknown): {projectId: string;operation: string;inp
  * service outside a coordinator transaction. No model/RPC capability is added. */
 export function createEditTasks({store, services, fault = () => {}, limits = {}}: EditTaskDeps) {
  if (!store?.db || typeof store.tx !== 'function' || typeof services?.call !== 'function' || typeof fault !== 'function') corrupt();
- const restored=legacyRestoreContext(store);
- const refuseRestoredTask=(target: unknown,taskId?: string,projectId?: string): void=>{
-  legacyRefuseTask(target as never,taskId,projectId);
- };
- const assertWorkspaceRestoreOrigin=(target: unknown,context: Record<string,unknown>): unknown=>{
-  return legacyAssertOrigin(target as never,context);
- };
- const assertRestoreRequestVacant=(target: unknown,operation: string,input: Record<string,unknown>): void=>{
-  legacyRequestVacant(target as never,operation,input);
- };
- const withRestoreTaskInvocation=(target: unknown,row: EditTaskRow,options: {signal?: AbortSignal},callback: ()=>unknown): unknown=>{
-  return legacyTaskInvocation(target as never,row as never,options,callback);
- };
+ assertProjectStore(store);
  const createTimelineRecoveryBoundary=(target: DatabaseSync,input: Record<string,unknown>): TimelineRecoveryBoundary=>legacyTimelineBoundary(target,input as TimelineRecoveryInput);
- const select=`SELECT ${columns}${restored?',executionEpoch':''} FROM edit_tasks`;
+ const select=`SELECT ${columns}${''} FROM edit_tasks`;
  const {db} = store, bounds: Record<string,number> = {...EDIT_TASK_LIMITS,...limits};
  for (const key of Object.keys(EDIT_TASK_LIMITS)) if (!integer(bounds[key]) || bounds[key] > (EDIT_TASK_LIMITS as Readonly<Record<string,number>>)[key]) invalid();
  if (bounds.rowBytes !== EDIT_TASK_LIMITS.rowBytes || bounds.pageSize > bounds.maxPageSize) invalid();
@@ -169,7 +153,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
       (row.status==='applied')!==(row.receiptDigest!==null) || row.receiptDigest!==null&&!digest(row.receiptDigest) ||
       (row.status==='not_applied')!==(row.errorCode!==null) || row.status==='dispatching'&&row.claim===null ||
       row.status==='prepared'&&(row.origin!=='new'||row.claim!==null)) corrupt();
-  if(restored&&row.executionEpoch!=='captured'&&row.executionEpoch!==restored.workspaceOrigin)corrupt();
+
   if (row.status==='not_applied' && !hasRequestNotAppliedProof({code:row.errorCode,status:409,details:{mutationOutcome:'not_applied',operation:row.operation,projectId,requestId:row.requestId}},input,{operation:row.operation})) corrupt();
   return {row,task};
  }
@@ -219,7 +203,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
   const result = receipt(value);
   if (value.row.status==='applied' && result===null || value.row.status==='not_applied' && result!==null) corrupt();
   if (result===null) ownership(value);
-  return {task:value.task,instanceId,...(restored?{restore:{workspaceOrigin:restored.workspaceOrigin,executionEpoch:value.row.executionEpoch,held:value.row.executionEpoch!==restored.workspaceOrigin}}:{}),...(includeResult&&value.row.status==='applied'?{result}: {})};
+  return {task:value.task,instanceId,...({}),...(includeResult&&value.row.status==='applied'?{result}: {})};
  }
  function action(input: unknown, extra: string[] = []): {args: Record<string,unknown>;value:DecodedTask} {
   const args=fields(input,['projectId','taskId','digest',...extra]);
@@ -266,12 +250,12 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    open();owner();
    // Private storage59 preserves captured history only; do not persist a new
    // executable intent before the shared domain dispatch can reject it.
-   if(restored&&readCurrentWorkspaceRole(db)==='storage-private-59-evidence')refuseRestoredTask(store);
+
    const args: {projectId: string;operation: string;input: Record<string,unknown>;origin: string}=prepareFields(input);
    if(!['new','legacy_session'].includes(args.origin))invalid();
-   if(restored&&args.operation==='timeline.clip.rippleRemove'&&!isRestoredWorkspaceSchemaSince(44,restored.schemaVersion))refuseRestoredTask(store);
+
    const intent=parseIntent(args.operation,args.input,args.projectId);
-   if(restored){project(args.projectId);assertWorkspaceRestoreOrigin(store,context);if(args.origin!=='new')refuseRestoredTask(store);assertRestoreRequestVacant(store,args.operation,intent.input);if(args.operation==='timeline.loudness.apply')refuseRestoredTask(store);}
+
    const result=store.tx(()=>{
     owner();project(args.projectId);
     const prior=db.prepare(`${select} WHERE lane=? AND requestId=?`).get(intent.lane,intent.requestId) as EditTaskRow|undefined;
@@ -279,13 +263,13 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
      if(prior.projectId!==args.projectId||prior.operation!==args.operation||prior.digest!==intent.digest)fail('EDIT_TASK_CONFLICT');
      return envelope(decode(prior,args.projectId));
     }
-    if(db.prepare(`SELECT 1 FROM edit_tasks WHERE projectId=? AND lane=? AND acknowledged=0 ${restored?'AND executionEpoch=?':''} LIMIT 1`).get(args.projectId,intent.lane,...(restored?[restored.workspaceOrigin]:[])))fail('EDIT_TASK_CONFLICT');
+    if(db.prepare(`SELECT 1 FROM edit_tasks WHERE projectId=? AND lane=? AND acknowledged=0 ${''} LIMIT 1`).get(args.projectId,intent.lane,...([])))fail('EDIT_TASK_CONFLICT');
     const quota=db.prepare('SELECT count(*) AS rows,coalesce(sum(bytes),0) AS bytes FROM edit_tasks').get() as {rows: number;bytes: number};
     if(quota.rows>=bounds.rows||quota.bytes+EDIT_TASK_LIMITS.rowBytes>bounds.bytes)fail('EDIT_TASK_STORAGE_LIMIT');
     const now=timestamp(),id=randomUUID(),status=args.origin==='new'?'prepared':'unknown';
     inject('beforePreparePersist');
-    db.prepare(`INSERT INTO edit_tasks(id,projectId,operation,input,requestId,digest,lane,origin,status,revision,acknowledged,createdAt,updatedAt,bytes${restored?',executionEpoch':''}) VALUES(?,?,?,?,?,?,?,?,?,1,0,?,?,?${restored?',?':''})`)
-     .run(id,args.projectId,args.operation,intent.text,intent.requestId,intent.digest,intent.lane,args.origin,status,now,now,EDIT_TASK_LIMITS.rowBytes,...(restored?[restored.workspaceOrigin]:[]));
+    db.prepare(`INSERT INTO edit_tasks(id,projectId,operation,input,requestId,digest,lane,origin,status,revision,acknowledged,createdAt,updatedAt,bytes${''}) VALUES(?,?,?,?,?,?,?,?,?,1,0,?,?,?${''})`)
+     .run(id,args.projectId,args.operation,intent.text,intent.requestId,intent.digest,intent.lane,args.origin,status,now,now,EDIT_TASK_LIMITS.rowBytes,...([]));
     return envelope(byId(args.projectId,id));
    });
    inject('afterPreparePersist');return result;
@@ -307,19 +291,14 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    }
    return readOnly(()=>{
     project(args.projectId as string);
-    const rows=db.prepare(`${select} WHERE projectId=? ${pendingOnly?'AND acknowledged=0':''} ${pendingOnly&&restored?'AND executionEpoch=?':''} AND position<? ORDER BY position DESC LIMIT ?`).all(args.projectId as string,...(pendingOnly&&restored?[restored.workspaceOrigin]:[]),before,limit+1) as EditTaskRow[];
+    const rows=db.prepare(`${select} WHERE projectId=? ${pendingOnly?'AND acknowledged=0':''} ${''} AND position<? ORDER BY position DESC LIMIT ?`).all(args.projectId as string,...([]),before,limit+1) as EditTaskRow[];
     const items=rows.slice(0,limit).map((row: EditTaskRow)=>(envelope(decode(row,args.projectId as string)) as {task: unknown}).task);
-    return {items,nextCursor:rows.length>limit?Buffer.from(JSON.stringify([args.projectId,pendingOnly,rows[limit-1].position])).toString('base64url'):null,instanceId,...(restored?{restore:{workspaceOrigin:restored.workspaceOrigin,tasks:rows.slice(0,limit).map((row: EditTaskRow)=>({taskId:row.id,executionEpoch:row.executionEpoch,held:row.executionEpoch!==restored.workspaceOrigin}))}}:{})};
+    return {items,nextCursor:rows.length>limit?Buffer.from(JSON.stringify([args.projectId,pendingOnly,rows[limit-1].position])).toString('base64url'):null,instanceId,...({})};
    });
   }); },
   execute(input: unknown,context: Record<string,unknown>={}) {
    const work=(async()=>{
-    open();owner();if(restored){
-     const {args,value}=action(input,['instanceId']);
-     if(!uuid(args.instanceId))invalid();
-     if(value.row.executionEpoch!==restored.workspaceOrigin)refuseRestoredTask(store,value.row.id,value.row.projectId);
-     assertWorkspaceRestoreOrigin(store,context);
-    }let claimed: DecodedTask|undefined;
+    open();owner();let claimed: DecodedTask|undefined;
     const initial=store.tx(()=>{
      owner();const {args,value}=action(input,['instanceId']);
      if(!uuid(args.instanceId))invalid();if(args.instanceId!==instanceId)fail('EDIT_TASK_STALE_INSTANCE');
@@ -333,7 +312,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
      inject('afterClaim');inject('beforeDispatch');owner();
      if(!claimed)corrupt();
      let dispatchError: unknown;
-     try { await (restored?withRestoreTaskInvocation(store,claimed.row,{signal:lifetime.signal},()=>dispatch(claimed!.task.operation,structuredClone(claimed!.task.input) as Record<string,unknown>,claimed!)):dispatch(claimed.task.operation,structuredClone(claimed.task.input) as Record<string,unknown>,claimed)); }
+     try { await (dispatch(claimed.task.operation,structuredClone(claimed.task.input) as Record<string,unknown>,claimed)); }
      catch(error){dispatchError=error;}
      inject('afterBusinessCommit');
      const finished=store.tx(()=>{
@@ -355,7 +334,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    active.add(work);work.then(()=>active.delete(work),()=>active.delete(work));return work;
   },
   reconcile(input: unknown,context: Record<string,unknown>={}) { return guarded(()=>{
-   open();owner();if(restored){const {value}=action(input);if(value.row.executionEpoch!==restored.workspaceOrigin)refuseRestoredTask(store,value.row.id,value.row.projectId);assertWorkspaceRestoreOrigin(store,context);}return store.tx(()=>{
+   open();owner();return store.tx(()=>{
     owner();const {value}=action(input);
     if(terminal(value.row))return envelope(value,true);
     const result=receipt(value);
@@ -366,12 +345,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    });
   }); },
   acknowledge(input: unknown,context: Record<string,unknown>={}) { return guarded(()=>{
-   open();owner();if(restored){
-    const {args,value}=action(input,['expectedRevision','status']);
-    if(!integer(args.expectedRevision)||!['applied','not_applied'].includes(args.status as string))invalid();
-    if(value.row.executionEpoch!==restored.workspaceOrigin)refuseRestoredTask(store,value.row.id,value.row.projectId);
-    assertWorkspaceRestoreOrigin(store,context);
-   }return store.tx(()=>{
+   open();owner();return store.tx(()=>{
     owner();const {args,value}=action(input,['expectedRevision','status']);
     if(!integer(args.expectedRevision)||!['applied','not_applied'].includes(args.status as string))invalid();
     if(!terminal(value.row)||value.row.status!==args.status||value.row.revision!==(args.expectedRevision as number))fail('EDIT_TASK_CONFLICT');
@@ -384,7 +358,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    // The real exclusive owner may recover a previous lifetime only. A second
    // manager/reader cannot steal a live asynchronous claim.
    while(true){
-    const rows=db.prepare(`SELECT position,${bounded('id',36)},${bounded('projectId',36)} FROM edit_tasks WHERE status='dispatching' ${restored?'AND executionEpoch=?':''} AND position>? ORDER BY position LIMIT 50`).all(...(restored?[restored.workspaceOrigin]:[]),position) as EditTaskRow[];
+    const rows=db.prepare(`SELECT position,${bounded('id',36)},${bounded('projectId',36)} FROM edit_tasks WHERE status='dispatching' ${''} AND position>? ORDER BY position LIMIT 50`).all(...([]),position) as EditTaskRow[];
     if(!rows.length)break;
     for(const row of rows){position=row.position;try{store.tx(()=>{
      owner();const value=byId(row.projectId,row.id);

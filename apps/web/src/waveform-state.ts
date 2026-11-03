@@ -69,7 +69,6 @@ export interface WaveformEntry {
 export interface WaveformSnapshot {
   readonly projectId: string | null;
   readonly enabled: boolean;
-  readonly readOnly: boolean;
   readonly active: boolean;
   readonly entries: Map<string, WaveformEntry>;
   readonly pending: number;
@@ -89,8 +88,6 @@ export interface WaveformView {
   projectId: string | null;
   active: boolean;
   windows?: readonly WaveformWindow[];
-  readOnly?: boolean;
-  workspaceOrigin?: unknown;
 }
 
 export const supportsWaveform = (asset: WaveformAsset | null | undefined): asset is WaveformAsset => asset?.hasAudio === true && /^(audio|video)\//.test(asset?.mimeType || '');
@@ -175,13 +172,12 @@ function waveformReply(value: unknown): WaveformReply | null {
 // Separate transport scheduling from React so visibility and late acknowledgments
 // have one owner. The in-flight lock survives project changes until it settles.
 export function createWaveformController({ api, onChange = () => {}, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, pollMs = 800 }: WaveformControllerOptions) {
-  let readOnly = false, workspaceOrigin: unknown = null;
   let projectId: string | null = null, enabled = false, visible = false, connected = true, epoch = 0, timer: number | null = null, active: { key: string; epoch: number } | null = null, queue: WaveformEntry[] = [];
   let listener = onChange;
   const entries = new Map<string, WaveformEntry>(), attempted = new Set<string>();
   let wanted = new Map<string, WaveformWindow>();
   const live = (): boolean => connected && enabled && visible && Boolean(projectId);
-  const snapshot = (): WaveformSnapshot => ({ projectId, enabled, readOnly, active: live(), entries: new Map(entries), pending: queue.length, inFlight: Boolean(active), autoLimitReached: attempted.size >= WAVEFORM_LIMITS.attempts, retryable: !readOnly && [...wanted.keys()].some(key => retriable(entries.get(key))) });
+  const snapshot = (): WaveformSnapshot => ({ projectId, enabled, active: live(), entries: new Map(entries), pending: queue.length, inFlight: Boolean(active), autoLimitReached: attempted.size >= WAVEFORM_LIMITS.attempts, retryable: [...wanted.keys()].some(key => retriable(entries.get(key))) });
   const emit = (): void => { if (connected) listener(snapshot()); };
   const clearWake = (): void => { if (timer !== null) clearTimer(timer); timer = null; };
   function fence(): void {
@@ -212,7 +208,6 @@ export function createWaveformController({ api, onChange = () => {}, now = Date.
       return;
     }
     entry.status = result.status; entry.reason = result.reason; entry.peaks = undefined;
-    if (readOnly) { entry.phase = 'idle'; entry.retry = false; entry.held = true; return; }
     if (result.status === 'ready') { entry.phase = 'discover'; entry.nextAt = 0; }
     else if (['queued', 'running'].includes(result.status)) { entry.phase = 'poll'; entry.nextAt = now() + pollMs; entry.retry = false; }
     else if (operation === 'asset.waveform.get' && result.status !== 'unsupported' && (entry.retry || (result.status === 'missing' && !attempted.has(entry.assetId) && attempted.size < WAVEFORM_LIMITS.attempts))) { entry.phase = 'request'; entry.nextAt = 0; }
@@ -235,7 +230,6 @@ export function createWaveformController({ api, onChange = () => {}, now = Date.
       if (attempted.has(entry.assetId)) entry.phase = 'discover';
       else if (attempted.size >= WAVEFORM_LIMITS.attempts) { entry.phase = 'idle'; entry.status = 'missing'; pump(); return; }
     }
-    if (readOnly && entry.phase === 'request') { entry.phase = 'idle'; entry.held = true; pump(); return; }
     const operation: WaveformOperation = entry.phase === 'request' ? 'asset.waveform.request' : 'asset.waveform.get';
     const requestEpoch = epoch, requestProject = projectId;
     const input = operation === 'asset.waveform.request' ? { projectId, assetId: entry.assetId, retry: entry.retry } : { projectId, assetId: entry.assetId, sourceStartFrame: entry.sourceStartFrame, sourceEndFrame: entry.sourceEndFrame, points: entry.points };
@@ -246,7 +240,7 @@ export function createWaveformController({ api, onChange = () => {}, now = Date.
     void Promise.resolve().then(() => {
       // A synchronous hide/project switch between scheduling and transport must
       // not launch a new request, including a POST prepared by a prior GET.
-      if (!current() || readOnly && operation === 'asset.waveform.request') return null;
+      if (!current()) return null;
       // Bounded receipts survive peak-cache eviction and off/on toggles. Once
       // full, unknown assets require explicit retry rather than risking replay.
       if (operation === 'asset.waveform.request' && attempted.size < WAVEFORM_LIMITS.attempts) attempted.add(entry.assetId);
@@ -262,8 +256,7 @@ export function createWaveformController({ api, onChange = () => {}, now = Date.
     snapshot,
     connect(callback: (value: WaveformSnapshot) => void = onChange): void { connected = true; listener = callback; emit(); },
     disconnect(): void { connected = false; enabled = false; visible = false; fence(); },
-    setView({ projectId: nextProject, active: nextVisible, windows = [], readOnly: nextReadOnly = false, workspaceOrigin: nextOrigin = null }: WaveformView): void {
-      if (readOnly !== Boolean(nextReadOnly) || workspaceOrigin !== nextOrigin) { fence(); readOnly = Boolean(nextReadOnly); workspaceOrigin = nextOrigin; enabled = false; entries.clear(); attempted.clear(); wanted.clear(); }
+    setView({ projectId: nextProject, active: nextVisible, windows = [] }: WaveformView): void {
       if (projectId !== nextProject) { fence(); projectId = nextProject; enabled = false; entries.clear(); attempted.clear(); wanted.clear(); }
       if (visible !== Boolean(nextVisible)) { fence(); visible = Boolean(nextVisible); }
       // Render/cache at most 32 visible windows; the toolbar discloses the cap.
@@ -279,7 +272,7 @@ export function createWaveformController({ api, onChange = () => {}, now = Date.
       pump(); emit();
     },
     retryVisible(): void {
-      if (!live() || readOnly) return;
+      if (!live()) return;
       for (const key of wanted.keys()) { const entry = entries.get(key); if (entry && retriable(entry)) { entry.retry = true; entry.phase = 'discover'; entry.status = 'loading'; entry.nextAt = 0; } }
       pump(); emit();
     },

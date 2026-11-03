@@ -7,7 +7,7 @@ import {execFileSync} from 'node:child_process';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices,hash, type OrdinaryServices} from '../packages/business/src/services.ts';
 import {createEditTasks,safeEditTaskError} from '../packages/business/src/edit-tasks.ts';
 import {DURABLE_EDIT_OPERATIONS,EDIT_TASK_LIMITS,isEditTaskEnvelope,isEditTaskListEnvelope,schemas} from '@mioon/contracts';

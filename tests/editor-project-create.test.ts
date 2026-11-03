@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { createEditorWindowInputs } from '../apps/web/src/editor-window-inputs.ts';
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS, TIMELINE_MUTATION_OPERATIONS, REFERENCE_MUTATION_OPERATIONS } from '@mioon/contracts';
 import { isMutationOperation } from '../apps/web/src/mutation-submissions.ts';
-import { schemas, workspaceRestoreInspectionSchema } from '../packages/contracts/src/index.ts';
+import { schemas } from '../packages/contracts/src/index.ts';
 import { createLauncherClient, LauncherCreateError, type LauncherCreateMetadata, type LauncherOperation } from '../apps/web/src/launcher-state.ts';
 import { createProjectEntryController } from '../apps/web/src/project-entry-state.ts';
 import { ApiError } from '../apps/web/src/api.ts';
@@ -43,8 +43,8 @@ function appFixture(options: { noEntry?: unknown; web?: unknown; create?:(input:
     guardProjectNavigation: async (_message: unknown, _dirty: unknown, current: () => unknown) => current() && (options.web || !read(true).busy && !read(true).unknown),
     captureTaskWorkspaceIntent: () => () => true, readTaskRevealContext: () => ({}), isMutationOperation,
     TIMELINE_MUTATION_OPERATIONS, REFERENCE_MUTATION_OPERATIONS,
-    pinNewWorkspaceIntent: () => ({}), assertWorkspaceIntent: () => ({}),
-    assertWorkspaceOperation: () => { if (options.predispatch) throw Error('Local workspace rejection before dispatch'); },
+
+
     async refresh() { refreshCalls++; calls.push(['refresh']); if (options.refreshFailure && refreshCalls === 1) throw Error('Follow-up read failed'); },
     async rpc(operation: string, input: unknown) {
       calls.push(['rpc', operation, input]);
@@ -73,10 +73,10 @@ const openResult = (patch?: { ok: boolean; reason: string; targetWindowId: null;
 const main = readFileSync(new URL('../apps/web/src/main.tsx', import.meta.url), 'utf8');
 const declaration = main.match(/^const launcherContracts(?:: [^=]+)? = (.+);$/m);
 assert.ok(declaration, 'Main retains one narrow contract DI declaration');
-const checks = (Function('ApiError', 'schemas', 'workspaceRestoreInspectionSchema', `return (${stripSourceTypes('('+declaration[1]+')',{loader:'ts'}).trim().replace(/;$/,'')});`)(ApiError, schemas, workspaceRestoreInspectionSchema) as import('../apps/web/src/launcher-state.ts').LauncherContractChecks);
+const checks = (Function('ApiError', 'schemas', `return (${stripSourceTypes('('+declaration[1]+')',{loader:'ts'}).trim().replace(/;$/,'')});`)(ApiError, schemas) as import('../apps/web/src/launcher-state.ts').LauncherContractChecks);
 async function entryFixture(options: { create?: unknown; open?:(input:unknown)=>unknown; }|undefined = {}) {
   const calls: (LauncherOperation|Readonly<Record<string,unknown>>|undefined)[][] = [], opens: { projectId: unknown; remember: unknown; entryToken: unknown; }[] = []; let current = nativeContext(), token = 100, controller!: ReturnType<typeof createProjectEntryController>;
-  const failure = { inspect: false, list: false, describe: false };
+  const failure = { list: false, describe: false };
   const bridge = {
     context: async () => { if (failure.describe) throw Error('Describe unavailable before dispatch'); return current; },
     async openProject(projectId: string, remember: boolean, entryToken: string) {
@@ -88,14 +88,13 @@ async function entryFixture(options: { create?: unknown; open?:(input:unknown)=>
   };
   const client = createLauncherClient(async (operation, input) => {
     calls.push([operation, input]);
-    if (operation === 'workspace.restore.inspect') { if (failure.inspect) throw Error('Workspace refresh unavailable'); return { restored: false }; }
     if (operation === 'project.list') { if (failure.list) throw Error('Project list unavailable'); return [row()]; }
     if (operation === 'project.create') return options.create ? (options.create as (input:unknown)=>unknown)(input) : row();
     assert.fail(`Unexpected entry operation ${operation}`);
   }, checks as import('../apps/web/src/launcher-state.ts').LauncherContractChecks);
   controller = createProjectEntryController({ client, bridge:bridge as unknown as Parameters<typeof createProjectEntryController>[0]['bridge'], context: current, confirm: async () => true, newToken: () => id(++token) });
   controller.activate(); await controller.show('new'); await tick();
-  assert.ok(controller.getState().workspace, 'The real canonical inspection and catalog reads completed');
+  assert.ok(controller.getState().catalogReady, 'The real canonical project catalog read completed');
   return { controller, client, calls, opens, failure, read: () => controller.readCloseSnapshot(),
     posts: () => calls.filter(([operation]) => operation === 'project.create'),
     receive(patch: { version: number; role: string; windowId: string; contextId: string; backendId: string; initialProjectId: string; autoOpen: boolean; editorProjectId: string; editorPhase: string; editorCount: number; entryMode: null; entryVersion: number; entryReceipt: null; settingsSlot: null; settingsVersion: number; selectionProjectId: null; selectionVersion: number; locatorStatus: null; locatorIntent: null; quitting: boolean; }) { current = { ...current, ...patch } as ProjectWindowContext; controller.updateContext(current as Parameters<typeof controller.updateContext>[0]); } };
@@ -126,7 +125,7 @@ for (const invalid of [{ id: id(2) }, { ...row(), name: 'Another name' }, { ...r
   });
 }
 
-for (const readFailure of ['inspect', 'list']) test(`valid native create ACK stays confirmed after ${readFailure} refresh failure`, async () => {
+for (const readFailure of ['list']) test(`valid native create ACK stays confirmed after ${readFailure} refresh failure`, async () => {
   const f = await entryFixture(); assert.equal(await f.controller.create!(name, description), true);
   f.failure[readFailure as keyof typeof f.failure] = true; await f.controller.refresh!();
   assert.ok(f.controller.getState().listError);
@@ -206,7 +205,7 @@ test('native known rejection permits only a new explicit submission after the us
 });
 
 test('create client defaults to unknown without trusted transport classification and never classifies an invalid ACK as rejection', async () => {
-  const plainChecks = { parseCreateInput: checks.parseCreateInput, parseWorkspaceInspection: checks.parseWorkspaceInspection };
+  const plainChecks = { parseCreateInput: checks.parseCreateInput };
   const definitive = new ApiError('Rejected', 'VALIDATION_ERROR', undefined, true, 400);
   for (const contractChecks of [plainChecks, { ...plainChecks, isDefinitiveCreateRejection() { throw Error('No proof available'); } }]) {
     const client = createLauncherClient(async () => { throw definitive; }, contractChecks);

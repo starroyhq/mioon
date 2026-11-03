@@ -12,7 +12,7 @@ import {join} from 'node:path';
 import {createServer} from 'node:http';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
@@ -72,7 +72,7 @@ for(const protocol of protocols)test(`${protocol}: measured usage is private and
   const events=f.runtime.events(f.projectId,sent.run.id);assertPublic(events);assert.ok(events.sequence>0);
   const actionId=randomUUID(),action=await f.runtime.action(f.projectId,sent.run.id,{requestId:actionId,expectedRevision:done.run.revision,action:'stop'});
   assertPublic(action);assertPublic(f.runtime.lookupAction(f.projectId,sent.run.id,actionId));
-  validateAgentTaskRowsV2(f.store.db,{allowConversations:true,allowInteractions:true,allowRequestReferences:true,allowAnswers:true});
+  validateAgentTaskRowsV2(f.store.db);
   f.restart(true);const before=f.store.db.prepare('SELECT total_changes() n').get()!.n;
   assertPublic(f.runtime.get(f.projectId,sent.run.id));assert.deepEqual(modelSteps(f.runtime.journal.snapshot(sent.run.id)).map(model=>model.request),frozen);
   assert.deepEqual(modelSteps(f.runtime.journal.snapshot(sent.run.id)).map(model=>object(model.result).usage),[usage,usage]);
@@ -92,7 +92,7 @@ for(const protocol of protocols)test(`${protocol}: missing and malformed optiona
   // malformed metadata must not tighten restore validation or continuation.
   const retained={...object(models[0]!.result),usage:{inputTokens:'old-provider-field',outputTokens:-1,extension:true}};
   f.runtime.journal.updateStep(sent.run.id,models[0]!.id,{result:JSON.parse(JSON.stringify(retained)) as AgentTaskJson});
-  validateAgentTaskRowsV2(f.store.db,{allowConversations:true,allowInteractions:true,allowRequestReferences:true,allowAnswers:true});
+  validateAgentTaskRowsV2(f.store.db);
   f.restart();const interrupted=f.runtime.get(f.projectId,sent.run.id);assertPublic(interrupted);assert.equal(interrupted.run.status,'interrupted');
   await f.action(interrupted,'resume');const replayed=await f.settle(sent.run.id);assert.equal(replayed.run.status,'completed');assert.equal(f.requests.length,2,'Completed tool/model receipts are replayed without another provider request');
   // A fresh run also exercises the same runtime after legacy continuation.

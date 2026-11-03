@@ -39,7 +39,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
   let visible = true, autoConsumed = initialContext.role !== 'launcher' || !initialContext.autoOpen;
   let observedEntry = 0, observedSelection = -1, rememberedSelection = -1;
   let metadata: LauncherCreateMetadata = { dirty: false, busy: false, version: 0 }, permit: Permit | null = null;
-  let state: ProjectEntryState = { projects: [], workspace: null, listBusy: true, listError: '', phase: 'home', openingProjectId: null,
+  let state: ProjectEntryState = { projects: [], catalogReady: false, listBusy: true, listError: '', phase: 'home', openingProjectId: null,
     error: '', notice: '', creating: false, createUnknown: false, version: 0, shown: initialContext.role === 'launcher', mode: 'open',
     formIntent: 0, sealed: false, openUnknown: false, createdProjectId: null };
   const emit = (patch: Partial<ProjectEntryState> = {}) => { state = Object.freeze({ ...state, ...patch, version: state.version + 1 }); if (active) onChange(state); };
@@ -74,7 +74,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
   function observeLocator(next: ProjectWindowContext) {
     if (!locator || next.role !== 'launcher' || next.selectionVersion < observedSelection) return;
     if (next.selectionVersion > observedSelection) { observedSelection = next.selectionVersion; locator.invalidateNavigation(observedSelection); }
-    if (!next.quitting && next.selectionProjectId && next.selectionVersion > rememberedSelection && state.workspace && !state.workspace.restored) {
+    if (!next.quitting && next.selectionProjectId && next.selectionVersion > rememberedSelection && state.catalogReady) {
       rememberedSelection = next.selectionVersion;
       locator.rememberOpened(next.selectionProjectId, next.selectionVersion);
     }
@@ -151,13 +151,10 @@ export function createProjectEntryController({ client, bridge, context: initialC
     const owner = lifetime, serial = ++readSerial, selection = interactionSerial;
     emit({ listBusy: true, listError: '' });
     try {
-      const workspace = await client.inspect();
-      if (!alive(owner) || serial !== readSerial) return;
-      if (state.workspace && (workspace.restored !== state.workspace.restored || workspace.workspaceOrigin !== state.workspace.workspaceOrigin)) throw new Error('Workspace changed');
-      const [projects, remembered] = await Promise.all([client.list(workspace), initial && locator && !workspace.restored ? locator.discover() : Promise.resolve(null)]);
+      const [projects, remembered] = await Promise.all([client.list(), initial && locator ? locator.discover() : Promise.resolve(null)]);
       if (!alive(owner) || serial !== readSerial) return;
       if (locator) assertLastProjectBootIdentity(locator.getState());
-      emit({ workspace, projects, listBusy: false }); observeLocator(context);
+      emit({ catalogReady: true, projects, listBusy: false }); observeLocator(context);
       if (initial && context.role === 'launcher' && context.autoOpen && !autoConsumed && selection === interactionSerial && !context.quitting && context.editorCount === 0) {
         autoConsumed = true;
         const choice = chooseInitialProject(projects, explicitProjectId, remembered?.envelope ?? null);
@@ -167,7 +164,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     } catch { if (alive(owner) && serial === readSerial) emit({ listBusy: false, listError: msg('projects.listUnavailable') }); }
   }
   async function create(name: string, description: string, timelinePresetId?: string): Promise<boolean> {
-    if (!available() || !state.workspace || state.workspace.restored) return false;
+    if (!available() || !state.catalogReady) return false;
     // The view's submit latch may already be busy; this exact call alone owns
     // it. No second submission can enter after creating is set synchronously.
     interact(); const owner = lifetime;

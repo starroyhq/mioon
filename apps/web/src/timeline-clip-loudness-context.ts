@@ -24,7 +24,7 @@ export function clipLoudnessDraftContext(context: TimelineClipLoudnessContext, d
 
 /** The candidate does not get a separate mutation path or an implicit Save. */
 export function stageClipLoudnessGain(controller: ClipDraftController, context: TimelineClipLoudnessContext, gain: number): boolean {
-  if (!context.visible || !context.connected || context.restored || context.hasUnsavedDrafts || context.pending ||
+  if (!context.visible || !context.connected || context.hasUnsavedDrafts || context.pending ||
       controller.hasPendingComposition() || controller.isDiscarding() || !Number.isFinite(gain) || gain <= 0 || gain > 2) return false;
   return controller.edit('gain', String(gain));
 }

@@ -1,13 +1,11 @@
+import type { Store } from './store-contract.ts';
+import {ownsStoreLock} from './store-runtime.ts';
 import {mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
 import {isPublishedProjectOutput} from './project-output-publication.ts';
 import {projectOutputPublicationProofSchema} from '../../contracts/src/project-output-publication.ts';
 import {exportOutputArtifactIdentity} from '../../contracts/src/output-artifact.ts';
 import {createHash} from 'node:crypto';
 import {validAssetLocator} from './asset-reference-record.ts';
-import {isProjectDatabase} from './project-file/held-files.ts';
-import type { Store as WorkspaceStore } from './store-contract.ts';
-import {ownsStoreLock} from './db.ts';
-import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
 import {isTimelineRenderRecord,AppError} from '@mioon/contracts';
 import {readTimelineExportOutput} from './timeline-delivery-read.ts';
 import {readOwnedTimelineAsset} from './timeline-sources.ts';
@@ -31,8 +29,8 @@ export function registerExportActivity(store:object,id:string,abort:()=>void):{s
   const activity:Activity={stage:'preparing',started:Date.now(),abort};owned.set(id,activity);
   return {stage:value=>{if(owned.get(id)===activity)activity.stage=value;},close:()=>{if(owned.get(id)===activity)owned.delete(id);}};
 }
-export function createExportControlServices(store:WorkspaceStore,{signal}:{signal?:AbortSignal}={}){
-  function checkpoint(){signal?.throwIfAborted();if(!ownsStoreLock(store)||getWorkspaceRestoreContext(store))throw new AppError('WORKSPACE_READ_ONLY','当前工作区不支持此操作',409);}
+export function createExportControlServices(store:Store,{signal}:{signal?:AbortSignal}={}){
+  function checkpoint(){signal?.throwIfAborted();if(!ownsStoreLock(store))throw new AppError('WORKSPACE_READ_ONLY','当前工作区不支持此操作',409);}
   function read(projectId:string,exportId:string){
     checkpoint();const raw=store.db.prepare('SELECT data FROM exports WHERE id=? AND projectId=? AND length(CAST(data AS BLOB))<=4194304').get(exportId,projectId);
     let value:unknown;try{value=raw&&typeof raw.data==='string'?JSON.parse(raw.data):null;}catch{value=null;}
@@ -70,9 +68,9 @@ export function createExportControlServices(store:WorkspaceStore,{signal}:{signa
       const output=readTimelineExportOutput(store.db,input,{isTimelineRenderRecord,readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(store.db,projectId,assetId)});
       if(record.mode==='timeline'&&!output)throw new AppError('EXPORT_FILE_UNAVAILABLE','导出回执无法核对',409);
       const asset=output?.asset??(typeof record.assetId==='string'?readOwnedTimelineAsset(store.db,input.projectId,record.assetId):null);
-      if(!row(asset)||!(isProjectDatabase(store.db)?validAssetLocator(store.db,asset)&&row(asset.producer)&&asset.producer.kind==='export'&&asset.producer.id===input.exportId&&isPublishedProjectOutput(asset,{projectId:input.projectId,owner:{kind:'export',id:input.exportId,requestId:typeof record.requestId==='string'?record.requestId:record.id as string,inputHash:createHash('sha256').update(exportOutputArtifactIdentity(record)).digest('hex')},targetKind:'exports',mimeType:'video/mp4'}):typeof asset.relativePath==='string'&&new RegExp(`^media/export-${input.exportId}-[a-f0-9-]{36}\\.mp4$`,'u').test(asset.relativePath))||asset.mimeType!=='video/mp4'||asset.provenance!=='export'||typeof asset.sha256!=='string')throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件无法核对',409);
+      if(!row(asset)||!validAssetLocator(store.db,asset)||!row(asset.producer)||asset.producer.kind!=='export'||asset.producer.id!==input.exportId||!isPublishedProjectOutput(asset,{projectId:input.projectId,owner:{kind:'export',id:input.exportId,requestId:typeof record.requestId==='string'?record.requestId:record.id as string,inputHash:createHash('sha256').update(exportOutputArtifactIdentity(record)).digest('hex')},targetKind:'exports',mimeType:'video/mp4'})||asset.mimeType!=='video/mp4'||asset.provenance!=='export'||typeof asset.sha256!=='string')throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件无法核对',409);
       const verified=await verifiedManagedHash(store.root,asset,{signal,maxBytes:8*1024**3,beforeEffect:checkpoint});
-      if(asset.sizeBytes!==verified.sizeBytes||!isProjectDatabase(store.db)&&store.db.prepare("SELECT 1 FROM assets WHERE id<>? AND json_extract(data,'$.relativePath')=? LIMIT 1").get(String(asset.id),String(asset.relativePath))||JSON.stringify(read(input.projectId,input.exportId))!==JSON.stringify(record)||JSON.stringify(readOwnedTimelineAsset(store.db,input.projectId,asset.id))!==JSON.stringify(asset))throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件已变化',409);
+      if(asset.sizeBytes!==verified.sizeBytes||JSON.stringify(read(input.projectId,input.exportId))!==JSON.stringify(record)||JSON.stringify(readOwnedTimelineAsset(store.db,input.projectId,asset.id))!==JSON.stringify(asset))throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件已变化',409);
       const reference=mediaReferenceSchema.parse(asset.reference);
       const publication=asset.publication?projectOutputPublicationProofSchema.parse(asset.publication):null;
       const descriptor=publication?(({relativePath,...proof})=>({...proof,projectRelativePath:relativePath}))(publication):undefined;

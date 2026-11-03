@@ -14,7 +14,7 @@ export function formatTimelineAudioFrame(frame: number): string {
 export function timelineAudioPreviewStatusMessage(state: TimelineAudioPreviewState): DisplayMessage {
   if (state.retirement === 'failed') return message('audio.preview.retirementFailed');
   if (state.retirement === 'closing') return message('audio.preview.retirementClosing');
-  if (state.restored) return message('audio.preview.restored');
+
   if (!state.connected) return message('audio.preview.offline');
   if (!state.visible) return message('audio.preview.hidden');
   if (state.nativeAdmission === 'blocked') return message('audio.preview.nativeBlocked');
@@ -44,7 +44,7 @@ export default function TimelineAudioPreview({ audioPreview, startFrame }: Timel
   const from = state.continuousPlan?.startFrame ?? state.plan?.range.startFrame ?? state.requestedStartFrame ?? requested;
   const to = state.continuousPlan?.durationFrames ?? state.plan?.range.endFrame ?? (Number.isSafeInteger(from) && from >= 0 && from < state.durationFrames ? continuous ? state.durationFrames : Math.min(from + 600, state.durationFrames) : from);
   const hasRange = Number.isSafeInteger(from) && from >= 0 && to > from;
-  const enabled = state.connected && state.visible && !state.restored && Boolean(state.projectId && state.timelineId && state.revision && state.scope) && state.durationFrames > 0;
+  const enabled = state.connected && state.visible && Boolean(state.projectId && state.timelineId && state.revision && state.scope) && state.durationFrames > 0;
   const preparing = state.phase === 'preparing', playing = state.phase === 'playing' || state.phase === 'starting' || state.phase === 'buffering';
   const prepared = Boolean(state.plan || state.continuousPlan) && ['ready', 'starting', 'playing', 'buffering', 'paused', 'ended'].includes(state.phase);
   const position = Math.max(continuous ? 0 : from, Math.min(to, state.positionFrame ?? from));

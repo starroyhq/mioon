@@ -5,9 +5,9 @@ import {randomUUID, createHash} from 'node:crypto';
 import {mkdtempSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createImageReviewServices, validateImageTaskReview, safeImageReviewError, type ImageGenerationInput} from '../packages/business/src/images/reviews.ts';
-import {migrateImageReviewSchema} from '../packages/business/src/images/review-schema.ts';
+
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, canonicalImageInput as canonical} from '../packages/contracts/src/images.ts';
 import {IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_LIMITS, isImageReviewResponse} from '../packages/contracts/src/image-reviews.ts';
 import {DatabaseSync} from 'node:sqlite';

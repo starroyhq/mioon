@@ -15,7 +15,7 @@ import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 import {BackendSupervisor} from '../apps/desktop/src/supervisor.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {shotTextForStore} from './fixtures/local-shot-text-process-worker.ts';
 import {openProjectDatabase} from './helpers/project-database.ts';

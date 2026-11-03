@@ -10,7 +10,8 @@ import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
 import {DatabaseSync} from 'node:sqlite';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore, ownsStoreLock} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
@@ -274,7 +275,7 @@ async function child(script: string, args: string[], expectedCode: number|undefi
   } finally {clearTimeout(timer);}
 }
 const childImports = `
-  import {openStore} from './packages/business/src/db.ts';
+  import {openStore} from './packages/business/src/project-file/test-store.ts';
   import {createServices} from './packages/business/src/services.ts';
   import {renderMockImagePng} from './packages/business/src/images/png.ts';
   import {appendFileSync,readFileSync,existsSync} from 'node:fs';

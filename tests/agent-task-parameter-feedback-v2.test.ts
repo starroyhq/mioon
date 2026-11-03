@@ -7,7 +7,7 @@ import path from 'node:path';
 import {agentTaskParameterFeedback} from '../packages/business/src/agent/task-tool-errors-v2.ts';
 import {defaultVideoModels,resolveVideoEndpoint,videoBindingCapabilities} from '../packages/contracts/src/video-providers.ts';
 import type {VideoExecutionBinding,VideoProviderId,VideoTemplateId,VideoConnectionConfiguration} from '../packages/contracts/src/video-providers.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import type {JobRecord} from '../packages/business/src/services.ts';
 import {createVideoSettings} from '../packages/business/src/video/settings.ts';

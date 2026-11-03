@@ -46,7 +46,7 @@ const sameIdentity = (left: NativeLegacyCloseSnapshot, right: NativeLegacyCloseS
 const emptyShot = ():LocalShotTextSupported => ({ supported: true, workspaceScope: 'a'.repeat(64), instanceId: id(7), projectId, shotId, draftRevision: 0, draft: null, intentRevision: 0, intent: null, draftTargetStatus: 'unset', intentTargetStatus: 'unset', projectPendingIntent: null });
 function shotFixture(t:test.TestContext,options:{context?:Partial<LocalShotTextContext>;put?:(input:Parameters<LocalShotTextClient["put"]>[0])=>unknown;retention?:Parameters<typeof createShot>[0]["retention"]} = {}) {
   let context:LocalShotTextContext = { scope: 'project:1', projectId, shotId, revision: 4, baseRevision: 4, baseText: copy(baseText), savedText: copy(baseText),
-    restored: false, connected: true, visible: true, busy: false, raw: copy(baseText), textVersion: 1, formSerial: 0, textDirty: false, formDirty: false, executionEpoch: 'execution:1', ...options.context };
+    connected: true, visible: true, busy: false, raw: copy(baseText), textVersion: 1, formSerial: 0, textDirty: false, formDirty: false, executionEpoch: 'execution:1', ...options.context };
   let stored = emptyShot(), sequence = 10;
   const counts = { context: 0, change: 0, transport: 0, schedule: 0, clear: 0 }, calls: string[] = [];
   const client = {
@@ -123,7 +123,7 @@ test('shot local save/saved ACK changes no semantic close identity and performs 
 
 test('real clip sidecar ACK keeps raw/base/source identity while edit and owner changes invalidate', async t => {
   const key = { projectId, timelineId, clipId }, source = { assetId, assetSha256: 'b'.repeat(64) }, raw = { name: 'Saved clip', trackId, startFrame: 0, durationFrames: 60, sourceInFrame: 0, rect: { x: 0, y: 0, width: 720, height: 1280 }, gain: 1 };
-  const context = { ...key, scope: 'clip:1', restored: false, connected: true, visible: true, busy: false, timelineRevision: 7, source, saved: raw };
+  const context = { ...key, scope: 'clip:1', connected: true, visible: true, busy: false, timelineRevision: 7, source, saved: raw };
   let stored:OrdinaryDraftEnvelope = { supported: true, workspaceScope: 'a'.repeat(64), instanceId: id(7), key, revision: 0, targetStatus: 'matching', draft: null }, calls = 0;
   const client = { get: async () => { calls++; return copy(stored); }, put: async (input:ClipDraftWrite) => { calls++; stored = { ...stored, revision: input.expectedRevision + 1,
     draft: { baseRevision: input.baseRevision, source: copy(input.source), raw: copy(input.raw), updatedAt: stamp } }; return copy(stored); }, remove: async () => { throw Error('No delete'); } };
@@ -254,7 +254,7 @@ async function inspectorContinuation(t: test.TestContext, { wan = false, videoIn
     baseline: { current: { ...baseText, referenceAssetIds: [id(20)], lastFrameAssetId: id(21) } }, draftRef: { current: { ...baseText, referenceAssetIds: [id(20)], lastFrameAssetId: id(21) } } };
   const counts = { getCurrent: 0, onChange: 0, transport: 0, timer: 0, clearTimer: 0 }, queuedState:{draft?:unknown;dirty?:unknown;generation?:unknown} = {}, shotText = {} as {controller:ReturnType<typeof createShot>}, appShot = {current:null} as {current:ReturnType<typeof createShot>|null}, appLocal = {current:null} as {current:{readLocalClose:LocalCloseReader}|null};
   let resolveConfirmation!:(value:boolean)=>void, unregister: () => void; const confirmation = new Promise<boolean>(resolve => { resolveConfirmation = resolve; });
-  const scope = { scope: 'inspector:1', connected: true, restored: false, busy: false, executionEpoch: 'execution:1' };
+  const scope = { scope: 'inspector:1', connected: true, busy: false, executionEpoch: 'execution:1' };
   const register = actualShotRegistration(appShot, appLocal);
   const env = { msg, ...refs, shotText, shot: { id: shotId, revision: 4, ...baseText }, project: { id: projectId }, draft: refs.draftRef.current,
     shotTextContext: { ...scope, getCurrent: () => { counts.getCurrent++; return scope; } }, actionScope: 'action:1', actionEpoch: { current: 0 }, frameEpoch: { current: 0 },

@@ -1,11 +1,10 @@
+import {assertProjectStore} from './store-runtime.ts';
 import path from 'node:path';
 import {isProjectStore} from './project-file/store.ts';
 import {referenceForPublishedMedia, registerProjectMediaStore} from './project-media-storage.ts';
 import {mioTable} from './agent/mio-table-layout.ts';
 import {bindAgentTaskJobInside,assertAgentTaskJobEffect,withAgentTaskJobOrigin,recordAgentTaskJobDispatch,isAgentTaskEffectBlocked,setAgentTaskJobResumer,setAgentTaskJobStopper,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
 import {createComfyAdmission,COMFY_MODULE_UNAVAILABLE_MESSAGE} from './comfy/admission.ts';
-import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
-import {workspaceRestoreError} from './workspace-restore-policy.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import type {DatabaseSync,SQLInputValue} from 'node:sqlite';
 import {IMAGE_LIMITS,IMAGE_MODELS,IMAGE_FIXED_OPTIONS,IMAGE_MUTATION_OPERATIONS,IMAGE_UNRESOLVED_STATES,isImageMutationResponse} from '@mioon/contracts';
@@ -20,7 +19,7 @@ import type {ImageReceipt,ImageStorageTask} from './image-storage.ts';
 import {createMockImageAdapter} from './images/adapter.ts';
 import type {ImageAdapterResult} from './images/adapter.ts';
 import {validatePng} from './images/png.ts';
-import {ownsStoreLock} from './db.ts';
+import {ownsStoreLock} from './store-runtime.ts';
 import {awaitProvider,boundedShutdown} from './operation-lifecycle.ts';
 import {createImageReviewServices} from './images/reviews.ts';
 import type {ImageGenerationInput,ImageReviewDto,ImageStore,ExpectedImageSettings} from './images/reviews.ts';
@@ -145,7 +144,7 @@ const asReceipt=(value: unknown): ImageReceipt|null=>value?value as ImageReceipt
 // S0: each real project owns this queue/connection. The historical Global
 // limits are connection-local; queuedPerProject=8 remains the tighter limit.
 export function createImageServices(store: ImageStore,{signal:ownerSignal,generate=defaultGenerate,autoRun=true,fault=noop,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,comfyModuleAvailability,assertLiveAllowed}: ImageServicesOptions={}): ImageService {
- if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
+ assertProjectStore(store);
  const old=owners.get(store.db);
  if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.generate!==generate||old.autoRun!==autoRun||old.fault!==fault||old.settings!==settings||old.liveGateway!==liveGateway||old.customSettings!==customSettings||old.customGateway!==customGateway||old.comfySettings!==comfySettings||old.comfyConnector!==comfyConnector||old.comfyModuleAvailability!==comfyModuleAvailability)fail('IMAGE_SERVICE_ACTIVE');return old.service;}
  const {db,tx}=store,queue: ImageAttempt[]=[],pending=new Map<string,ImageAttempt>(),active=new Set<Promise<unknown>>();

@@ -7,7 +7,7 @@ import {png} from './helpers/timeline-image-fixtures.ts';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { openStore } from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import { createServices, type ServiceRow } from '../packages/business/src/services.ts';
 import { startWorker, type Worker } from '../packages/business/src/jobs.ts';
 

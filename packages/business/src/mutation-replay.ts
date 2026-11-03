@@ -1,5 +1,5 @@
-import {usesAssetAnnotationSchema} from './workspace-schema-dispatch.ts';
-import {refuseRestoredOperation} from './workspace-restore-policy.ts';
+import {assertProjectStore} from './store-runtime.ts';
+import {usesAssetAnnotationSchema} from './store-capabilities.ts';
 import {AppError,publicValue,LOCAL_MUTATION_OPERATIONS,SUBJECT_MUTATION_OPERATIONS} from '@mioon/contracts';
 import {isAsyncFunction,isPromise} from 'node:util/types';
 import type {DatabaseSync} from 'node:sqlite';
@@ -44,7 +44,7 @@ export function createMutationReplay(store: MutationReplayStore,{canonical,readO
  const conflict=(requestId: unknown): never=>{throw new AppError('IDEMPOTENCY_CONFLICT','同一请求 ID 已用于不同操作、项目或内容',409,{requestId});};
  const transaction: <T>(callback: () => T) => T=readOnly?callback=>{if(db.isTransaction)return callback();db.exec('BEGIN');try{const value=callback();db.exec('COMMIT');return value;}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}}:tx;
  return function mutation<T extends MutationContext, R>(operation: string, input: MutationInput, {resolve,validate,apply,replay,verify}: MutationCallbacks<T,R>): R | unknown {
-  if(!readOnly)refuseRestoredOperation(store,operation,input as Record<string, unknown>);
+  if(!readOnly)assertProjectStore(store);
   if(!includesString(LOCAL_MUTATION_OPERATIONS,operation))throw new AppError('UNKNOWN_OPERATION','此操作不支持本地变更重放',404);
   if([resolve,validate,apply,replay,verify].some(callback=>callback&&isAsyncFunction(callback)))
    throw new TypeError('Mutation transactions require synchronous callbacks');
@@ -113,7 +113,7 @@ export function createMutationReplay(store: MutationReplayStore,{canonical,readO
      return response;
     }
     if(readOnly)return NO_MUTATION_REPLAY;
-    refuseRestoredOperation(store,operation,input as Record<string, unknown>);
+    assertProjectStore(store);
     const response=synchronous(apply,context);
     if(requestId===undefined)return response;
     const serialized=JSON.stringify(publicValue(response));

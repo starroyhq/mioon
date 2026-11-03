@@ -1,3 +1,10 @@
+import {importNativeQaAsset,coldNativeQaAssetFile,coldNativeQaMediaSnapshot} from './helpers/native-local-qa-fixture.ts';
+/** Live first-boot/close-decision/pre-crash stages record bounded physical/JSON
+ * captures only. SQL audit/verify stages require normal Quit, or confirmed owned
+ * SIGKILL plus backend exit. Use resume <unique-label> between cold stages,
+ * reselecting/reapplying the saved form through native UI after each restart.
+ * prepare/help/syntax never imply native GUI validation. */
+import {prepareNativeQaProject,openNativeQaProject,listNativeQaProjects,closeQaProject,captureNativeQa,readNativeQaDocument,checkedNativeMetadata,checkedNativeApplication,prepareNativeQaLiveLayout,captureNativeQaLive} from './helpers/native-local-qa-fixture.ts';
 /** Isolated synthetic Linux packaged acceptance. No GUI automation in this helper.
  * Run serially, never alongside tests/build/media QA. CUA's native shell launcher
  * opens only the generated private-runtime/launch-*.sh scripts in this checkout.
@@ -42,24 +49,24 @@ import {spawn} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {createReadStream} from 'node:fs';
 import {readFile,writeFile,readdir,lstat,open,readlink} from 'node:fs/promises';
-import {DatabaseSync} from 'node:sqlite';
 import {clipDraftDiskSchema,LOCAL_DRAFT_LIMITS} from '@mioon/contracts/local-drafts';
 import {ensurePrivateDirectory,readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '../packages/contracts/src/private-storage.ts';
-import {openStore,ownsStoreLock} from '../packages/business/src/db.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createServices,hash as businessHash} from '../packages/business/src/services.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
 import {createLocalDrafts} from '../packages/business/src/local-drafts.ts';
 import {createTimelineRecoveryBoundary} from '../packages/business/src/timeline-recovery.ts';
 import {createWorkspacePreferences} from '../packages/business/src/workspace-preferences.ts';
 import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
-import {ownQaChild} from './agent-timeline-move-qa-native.mjs';
+import {ownQaChild} from './helpers/qa-owned-child.mjs';
 
+const ffmpeg=process.env.MIOON_FFMPEG_PATH||(process.platform==='linux'?'/usr/bin/ffmpeg':'/opt/homebrew/bin/ffmpeg'),ffprobe=process.env.MIOON_FFPROBE_PATH||(process.platform==='linux'?'/usr/bin/ffprobe':'/opt/homebrew/bin/ffprobe');
 const repo=fileURLToPath(new URL('../',import.meta.url)),scenario=process.env.MIOON_CLIP_CLOSE_QA_SCENARIO||'recovery';
 assert.ok(['recovery','capacity'].includes(scenario),'Unexpected synthetic close scenario');
-const evidence=path.join(repo,'evidence/clip-close'),root=path.join(evidence,scenario==='capacity'?'native-capacity':'native');
-const runtime=path.join(root,'private-runtime'),report=path.join(root,'report'),userData=path.join(runtime,'user-data'),workspace=path.join(userData,'workspace');
+const evidence=path.join(repo,'evidence/clip-close'),root=process.env.MIOON_QA_FIXTURE_ROOT?path.resolve(process.env.MIOON_QA_FIXTURE_ROOT):path.join(evidence,scenario==='capacity'?'native-capacity':'native');
+const runtime=path.join(root,'private-runtime'),report=path.join(root,'report'),userData=path.join(runtime,'user-data'),workspace=path.join(userData,'data');
 const executable=path.join(repo,'release/desktop/production/linux-unpacked/mioon'),asar=path.join(path.dirname(executable),'resources/app.asar');
-const fixtureFile=path.join(runtime,'fixture.json'),sidecarFile=path.join(workspace,'local-drafts-v1.json'),lockFile=path.join(workspace,'server.lock');
+const fixtureFile=path.join(runtime,'fixture.json'),lockFile=path.join(workspace,'server.lock');
 const sha=value=>createHash('sha256').update(value).digest('hex'),json=value=>JSON.stringify(value,null,2)+'\n';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms)),safeLabel=value=>typeof value==='string'&&/^[a-z0-9-]{1,60}$/.test(value);
 const quote=value=>"'"+String(value).replaceAll("'","'\\''")+"'";
@@ -76,18 +83,19 @@ async function fileHash(file,maxBytes=512*1024*1024){
 }
 async function packageHashes(){return {executable:await fileHash(executable),asar:await fileHash(asar)};}
 function environment(){return {...Object.fromEntries(['PATH','HOME','LANG','LC_ALL','DISPLAY','XAUTHORITY','XDG_RUNTIME_DIR','DBUS_SESSION_BUS_ADDRESS','TMPDIR']
- .filter(key=>typeof process.env[key]==='string').map(key=>[key,process.env[key]])),MIOON_DESKTOP_USER_DATA:userData,MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_FFMPEG_PATH:'/usr/bin/ffmpeg',MIOON_FFPROBE_PATH:'/usr/bin/ffprobe'};}
+ .filter(key=>typeof process.env[key]==='string').map(key=>[key,process.env[key]])),MIOON_DESKTOP_USER_DATA:userData,MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_FFMPEG_PATH:ffmpeg,MIOON_FFPROBE_PATH:ffprobe};}
 async function mediaCommand(binary,args,label){
- assert.ok(['/usr/bin/ffmpeg','/usr/bin/ffprobe'].includes(binary));assert.ok(safeLabel(label));
+ assert.ok([ffmpeg,ffprobe].includes(binary));assert.ok(safeLabel(label));
  const stdout=await open(path.join(runtime,label+'.stdout'),'wx',0o600);let stderr,owned,timer;
  try{stderr=await open(path.join(runtime,label+'.stderr'),'wx',0o600);owned=ownQaChild(spawn(binary,args,{cwd:repo,env:environment(),stdio:['ignore',stdout.fd,stderr.fd]}));
   const result=await Promise.race([owned.done,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Bounded synthetic media command timed out')),60000);})]);assert.deepEqual(result,{code:0,signal:null});return result;
  }catch(error){if(owned&&!owned.closed)await owned.stop();throw error;}finally{clearTimeout(timer);await stdout.close();await stderr?.close();}
 }
-function fixture(){for(const directory of [root,runtime,report,userData,workspace])ensurePrivateDirectory(directory);const value=readJson(fixtureFile,128*1024);
+function fixture(){for(const directory of [root,runtime,report,userData,workspace])ensurePrivateDirectory(directory);const value=readJson(fixtureFile,128*1024);assert.equal(value.assetReferenceFixture,1,'Historical pre-reference fixture must be preserved; use a fresh root');assert.equal(value.kernel,true,'Use a fresh current-kernel fixture');
  assert.equal(value.synthetic,true);assert.equal(value.kind,'clip-close');assert.equal(value.scenario,scenario);assert.equal(value.workspace,workspace);assert.equal(value.repo,repo);return value;}
-function sidecar(){const info=validateManagedFile(sidecarFile,{root:workspace,allowMissing:true,private:true,maxBytes:LOCAL_DRAFT_LIMITS.envelopeBytes});
- const bytes=readPrivateFile(sidecarFile,{root:workspace,allowMissing:true,private:true,maxBytes:LOCAL_DRAFT_LIMITS.envelopeBytes});
+function sidecarFile(){return path.join(fixture().localDir,'local-drafts-v1.json');}
+function sidecar(){const info=validateManagedFile(sidecarFile(),{root:fixture().localDir,allowMissing:true,private:true,maxBytes:LOCAL_DRAFT_LIMITS.envelopeBytes});
+ const bytes=readPrivateFile(sidecarFile(),{root:fixture().localDir,allowMissing:true,private:true,maxBytes:LOCAL_DRAFT_LIMITS.envelopeBytes});
  return bytes===null?null:{disk:clipDraftDiskSchema.parse(JSON.parse(bytes.toString('utf8'))),bytes:bytes.length,sha256:sha(bytes),mode:info.mode&0o777};}
 function lockSnapshot(){const info=validateManagedFile(lockFile,{root:workspace,allowMissing:true,private:true,maxBytes:64});if(!info)return null;
  const bytes=readPrivateFile(lockFile,{root:workspace,private:true,maxBytes:64});assert.match(bytes.toString('utf8'),/^[1-9][0-9]{0,9}$/);
@@ -122,7 +130,8 @@ function assertCapacity(result,prepared){assert.equal(result.sidecar?.disk.entri
 function assertSavedTimeline(result,prepared){assert.equal(result.timelines.length,1);const expected=structuredClone(prepared.expectedTimeline),actual=result.timelines[0];
  expected.revision++;expected.updatedAt=actual.updatedAt;expected.clips[0].name=prepared.expectedName;assert.deepEqual(actual,expected,'Only the saved name/revision/timestamp may change');}
 function unchanged(result,before,{allowPreferences=false}={}){assert.equal(result.schemaSha256,before.schemaSha256);assert.deepEqual(Object.keys(result.tables),Object.keys(before.tables));
- for(const name of Object.keys(before.tables))if(!(allowPreferences&&name==='workspace_preferences'))assert.deepEqual(result.tables[name],before.tables[name],`Unexpected change in ${name}`);
+ const systemTables=expectedSystemTables(result,before,{preferences:allowPreferences});
+ for(const name of Object.keys(before.tables))if(!systemTables.has(name)&&!(allowPreferences&&name==='workspace_preferences'))assert.deepEqual(result.tables[name],before.tables[name],`Unexpected change in ${name}`);
  assert.deepEqual(result.media,before.media);assert.deepEqual(result.timelines,before.timelines);}
 function retainedRows(result,before,name,added){assert.equal(result.tables[name].count,before.tables[name].count+added,`Unexpected ${name} count`);
  for(const digest of before.tables[name].rowSha256)assert.ok(result.tables[name].rowSha256.includes(digest),`Existing ${name} row changed`);}
@@ -130,23 +139,22 @@ function tableDigest(rows){return {count:rows.length,sha256:sha(JSON.stringify(r
 function snapshot(timeline){return {tracks:timeline.tracks,clips:timeline.clips,durationFrames:timeline.durationFrames,...(Object.hasOwn(timeline,'subtitles')?{subtitles:timeline.subtitles}:{})};}
 
 async function prepare(){
- assert.equal(process.platform,'linux');assert.equal(await exists(root),false,'Fixture already exists; no overwrite or cleanup permitted');
+assert.equal(await exists(root),false,'Fixture already exists; no overwrite or cleanup permitted');
  for(const directory of [root,runtime,report,userData])ensurePrivateDirectory(directory,{create:true});
- await writeFile(path.join(runtime,'prepare-claim.json'),json({synthetic:true,scenario,id:randomUUID()}),{mode:0o600,flag:'wx'});
+ await writeFile(path.join(runtime,'prepare-claim.json'),json({synthetic:true,kernel:true,scenario,id:randomUUID()}),{mode:0o600,flag:'wx'});
  const source=path.join(runtime,'synthetic-green-880hz.mp4');
- await mediaCommand('/usr/bin/ffmpeg',['-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=0x18bf57:s=320x180:r=30:d=2',
+ await mediaCommand(ffmpeg,['-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=0x18bf57:s=320x180:r=30:d=2',
   '-f','lavfi','-i','sine=frequency=880:sample_rate=48000:duration=2','-c:v','libx264','-threads','1','-pix_fmt','yuv420p','-c:a','aac','-ac','2','-shortest','-movflags','+faststart','-n',source],'source-media');
- process.env.MIOON_FFMPEG_PATH='/usr/bin/ffmpeg';process.env.MIOON_FFPROBE_PATH='/usr/bin/ffprobe';
- const env={MIOON_ENABLE_LIVE_PROVIDER:'0'},store=openStore(workspace),providers=createProviderRegistry({db:store.db,root:workspace,env}),services=createServices(store,providers,{env});let value;
+ process.env.MIOON_FFMPEG_PATH=ffmpeg;process.env.MIOON_FFPROBE_PATH=ffprobe;
+ const prepared=await prepareNativeQaProject(workspace,scenario==='capacity'?'片段关闭 · 容量拒绝合成验收':'片段关闭 · 正常退出恢复合成验收'),{store,services,project}=prepared;let value;
  try{
-  const project=await services.call('project.create',{name:scenario==='capacity'?'片段关闭 · 容量拒绝合成验收':'片段关闭 · 正常退出恢复合成验收'});
   let timeline=await services.call('timeline.format.set',{projectId:project.id,expectedProjectRevision:project.revision,expectedRevision:0,requestId:randomUUID(),presetId:'landscape_720'});
-  const asset=await services.call('asset.import',{projectId:project.id,name:'合成绿色画面与 880Hz.mp4',mimeType:'video/mp4',dataBase64:(await readFile(source)).toString('base64')});
+  const asset=await importNativeQaAsset(prepared,{projectId:project.id,name:'合成绿色画面与 880Hz.mp4',mimeType:'video/mp4',dataBase64:(await readFile(source)).toString('base64')});
   timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:asset.id,
    trackId:timeline.tracks.find(track=>track.kind==='video').id,startFrame:0,durationFrames:60,name:'Original saved clip'});
   if(scenario==='capacity'){
-   const drafts=createLocalDrafts({root:workspace,channel:'production',storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
-    guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>false,readTimeline:id=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),readClipAsset:(id,clip)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(clip)}});
+   const drafts=createLocalDrafts({root:store.localDir,databaseFile:path.join(store.localDir,'history.db'),channel:'production',storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
+    guards:{ownsLock:()=>ownsStoreLock(store),readTimeline:id=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),readClipAsset:(id,clip)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(clip)}});
    assert.equal(LOCAL_DRAFT_LIMITS.slots,128);
    // All retained tombstones come from the real service and exact CAS discard.
    // No direct sidecar write, fabricated authority, or backend test switch.
@@ -159,16 +167,16 @@ async function prepare(){
     const discarded=drafts.discard({...key,workspaceScope:written.workspaceScope,instanceId:written.instanceId,expectedRevision:written.revision});assert.equal(discarded.draft,null);assert.equal(discarded.revision,2);
     timeline=await services.call('timeline.clip.remove',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),clipId:padding.id});
    }
-  }else assert.equal(await exists(sidecarFile),false,'Recovery preparation must not seed a draft');
+  }else assert.equal(await exists(path.join(store.localDir,'local-drafts-v1.json')),false,'Recovery preparation must not seed a draft');
   assert.equal(timeline.clips.length,1);assert.equal(timeline.durationFrames,60);const clip=timeline.clips[0],state=defaultWorkspaceState();
   delete state.shared.assetSearch;state.canvas.viewport={x:0,y:0,zoom:1};state.activeMode='editing';state.editing.selectedClipId=clip.id;state.editing.quickAssetId=null;state.editing.previewKind='source';
   createWorkspacePreferences(store).put(project.id,{expectedRevision:0,state});
-  value={synthetic:true,kind:'clip-close',scenario,id:randomUUID(),repo,workspace,projectId:project.id,projectName:project.name,timelineId:timeline.id,clipId:clip.id,
+  value={synthetic:true,kernel:true,assetReferenceFixture:1,kind:'clip-close',scenario,id:randomUUID(),repo,workspace,projectDir:store.projectDir,localDir:store.localDir,projectFile:store.projectFile,projectId:project.id,projectName:project.name,timelineId:timeline.id,clipId:clip.id,
    assetId:asset.id,baseRevision:timeline.revision,originalClip:clip,expectedTimeline:timeline,expectedName:scenario==='capacity'?'Capacity-refused current input':'Close-recovered draft',
    sourceSha256:asset.sha256,sourceFile:await fileHash(source),initialSidecarAbsent:scenario==='recovery',packageHashes:await packageHashes()};
  }finally{try{await services.drain();}finally{store.close();}}
  await writeFile(fixtureFile,json(value),{mode:0o600,flag:'wx'});const {workspace:privateWorkspace,repo:privateRepo,...sanitized}=value;
- await writeReport('fixture.json',sanitized);await audit('prepared');
+ await writeReport('fixture.json',sanitized);await audit('prepared');await writeReport('database-layout.json',await prepareNativeQaLiveLayout(workspace));
  const native={version:1,fixtureId:value.id,scenario,screenshotsReviewed:null,syntheticDesktopOnly:null,
   screenshots:(scenario==='capacity'?capacityScreens:recoveryScreens).map(name=>name+'.jpg'),
   ...(scenario==='capacity'?{refusedName:null,capacityMessage:null,quitWarning:{title:null,message:null,detail:null,selectedButton:null},continuedSameInput:null,
@@ -182,19 +190,45 @@ async function prepare(){
   `#!/bin/bash\nset -e\ncd ${quote(repo)}\nexport MIOON_CLIP_CLOSE_QA_SCENARIO=${quote(scenario)}\nexec ${quote(process.execPath)} tests/clip-close-qa-native.mjs launch ${label}\n`,{mode:0o700,flag:'wx'});
  return sanitized;
 }
-function readDatabase(){validateManagedFile(path.join(workspace,'workbench.sqlite'),{root:workspace,maxBytes:32*1024*1024});
- const db=new DatabaseSync(path.join(workspace,'workbench.sqlite'),{readOnly:true}),rows={};let schema;
- try{db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF; BEGIN');schema=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name LIMIT 513').all();assert.ok(schema.length<=512);
-  const tables=schema.filter(item=>item.type==='table');assert.ok(tables.length<=128);for(const {name} of tables){assert.match(name,/^[a-z_]+$/);
-   rows[name]=db.prepare(`SELECT * FROM "${name}" ORDER BY rowid LIMIT 1001`).all();assert.ok(rows[name].length<=1000&&Buffer.byteLength(JSON.stringify(rows[name]))<=2*1024*1024,'Synthetic table audit limit');}db.exec('COMMIT');
- }finally{if(db.isTransaction)db.exec('ROLLBACK');db.close();}return {rows,schemaSha256:sha(JSON.stringify(schema))};}
-async function audit(label){
+
+function expectedSystemTables(result,before,{content=false,preferences=false}={}){
+ const prepared=fixture(),selected=prepared.projectId??prepared.target.id,opened=prepared.projectId?[prepared.projectId]:[prepared.originalFallback.id,prepared.target.id];
+ return new Set([...checkedNativeMetadata(before,result,content?[selected]:[]),...checkedNativeApplication(before,result,opened,preferences?[prepared.originalFallback?.id??selected]:[])]);
+}
+function readDatabase(){return captureNativeQa(workspace);}
+function assertPhysicalUnchanged(result,before){assert.equal(result.kind,'live-physical');assert.equal(before.kind,'live-physical');assert.deepEqual(result.physical.files,before.physical.files,'All real SQLite files and journals remain byte/identity-exact');assert.deepEqual(result.physical.databases,before.physical.databases);}
+async function liveCapture(label){
+ assert.ok(['first-boot','after-refusal','after-continue','after-abandon'].includes(label),'This SQL audit requires normal Quit before capture');
+ const prepared=fixture(),lock=lockSnapshot();assert.ok(lock,'a hot capture requires the real backend lock');
+ const names=(await readdir(report)).filter(name=>/^[a-z0-9-]+-connection\.json$/.test(name));assert.ok(names.length<=32);
+ let owner;for(const name of names){const connection=readJson(path.join(report,name));if(connection.backendPid!==lock.pid)continue;
+  const launch=readJson(path.join(report,name.replace('-connection.json','-launch.json')));assert.equal(connection.launchId,launch.launchId);owner=[launch.mainPid,connection.backendPid];}
+ assert.ok(owner,'the exact owned launch and backend connection must match');
+ const result={synthetic:true,kind:'live-physical',label,fixtureId:prepared.id,at:new Date().toISOString(),lock,physical:captureNativeQaLive(readJson(path.join(report,'database-layout.json')),owner),sidecar:sidecar()};
+ if(label==='first-boot'){if(scenario==='capacity')assertCapacity(result,prepared);else assert.equal(result.sidecar,null);assert.equal(lock.pid,readJson(path.join(report,'first-connection.json')).backendPid);}
+ else{const before=readJson(path.join(report,'first-boot-capture.json'));assertPhysicalUnchanged(result,before);assert.deepEqual(result.sidecar,before.sidecar);assertCapacity(result,prepared);if(label==='after-continue'){readJson(path.join(report,'after-refusal-capture.json'));assert.equal(await exists(path.join(report,'first-exit.json')),false,'Continue Editing unexpectedly exited');const connection=readJson(path.join(report,'first-connection.json'));assert.equal(lock.pid,connection.backendPid);assert.ok(await processStat(connection.backendPid));assert.equal((await health(connection.origin)).status,200);}if(label==='after-abandon')readJson(path.join(report,'after-continue-capture.json'));}
+ await writeReport(label+'-capture.json',result);return result;
+}
+async function resume(label){
+ assert.equal(process.platform,'linux');assert.ok(safeLabel(label));const prepared=fixture();assert.equal(lockSnapshot(),null,'normal quit is required before a continuation');const hashes=await packageHashes();
+ const log=await open(path.join(runtime,'resume-'+label+'-native.log'),'wx',0o600);let owned,timer;
+ try{owned=ownQaChild(spawn(executable,[],{cwd:repo,env:environment(),stdio:['ignore',log.fd,log.fd]}));
+  const initial={synthetic:true,fixtureId:prepared.id,launchId:randomUUID(),label,mainPid:owned.child.pid,packageHashes:hashes,sandboxUnchanged:true,debugging:false};await writeReport('resume-'+label+'-launch.json',initial);
+  const connection=await waitConnection(owned,null);await writeReport('resume-'+label+'-connection.json',{...connection,launchId:initial.launchId});
+  const result=await Promise.race([owned.done,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Native continuation observation window ended')),30*60*1000);})]);
+  for(const deadline=Date.now()+45000;lockSnapshot()!==null&&Date.now()<deadline;)await pause(250);
+  assert.deepEqual(result,{code:0,signal:null});assert.equal(lockSnapshot(),null);assert.deepEqual(await packageHashes(),hashes);
+  await writeReport('resume-'+label+'-exit.json',{...initial,result,backendLockReleased:true});
+ }catch(error){if(owned&&!owned.closed)await owned.stop();throw error;}finally{clearTimeout(timer);await log.close();}
+}
+async function audit(label,{afterCrash=false}={}){
+ if(!afterCrash&&lockSnapshot()!==null)return liveCapture(label);
  const labels=scenario==='capacity'?['prepared','first-boot','after-refusal','after-continue','after-abandon','after-close','after-reopen','capacity-final']:
   ['prepared','first-boot','after-close','after-reopen','after-restore','after-clip-save','after-clip-save-recheck','after-export','after-normal-reopen','final'];assert.ok(labels.includes(label),'Unexpected serial audit stage');
- const prepared=fixture(),{rows,schemaSha256}=readDatabase(),names=(await readdir(path.join(workspace,'media'))).sort();assert.ok(names.length<=32);const media=[];
- for(const name of names){assert.match(name,/^[a-zA-Z0-9._-]+\.(mp4|png|wav)$/);media.push({name,...await fileHash(path.join(workspace,'media',name),32*1024*1024)});}
+ const prepared=fixture(),{rows,schemaSha256,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries}=readDatabase();const media=coldNativeQaMediaSnapshot(workspace,prepared.projectId);assert.ok(media.length<=32);
+ for(const item of media)assert.match(path.basename(item.name),/^[a-zA-Z0-9._-]+\.(mp4|png|wav)$/);
  const tables=Object.fromEntries(Object.entries(rows).map(([name,value])=>[name,{count:value.length,sha256:sha(JSON.stringify(value)),rowSha256:value.map(item=>sha(JSON.stringify(item)))}]));
- const result={synthetic:true,at:new Date().toISOString(),scenario,label,fixtureId:prepared.id,schemaSha256,tables,logicalDatabaseSha256:sha(JSON.stringify(tables)),
+ const result={synthetic:true,at:new Date().toISOString(),scenario,label,fixtureId:prepared.id,schemaSha256,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries,tables,logicalDatabaseSha256:sha(JSON.stringify(tables)),
   databaseHashMeaning:'All SQLite schema/table/row contents; SQLite/WAL physical pages are not a logical-data hash',timelines:rows.timelines.map(row=>JSON.parse(row.data)),
   assets:rows.assets.map(row=>JSON.parse(row.data)),exports:rows.exports.map(row=>JSON.parse(row.data)),editTasks:rows.edit_tasks.map(row=>({...row,input:JSON.parse(row.input)})),
   timelineRequests:rows.timeline_requests.map(row=>({requestId:row.requestId,requestHash:row.requestHash,response:JSON.parse(row.response)})),
@@ -204,19 +238,19 @@ async function audit(label){
  if(scenario==='capacity'){
   assertCapacity(result,prepared);assert.deepEqual(result.timelines,[prepared.expectedTimeline]);
   if(label==='first-boot'){const before=readJson(path.join(report,'prepared-audit.json'));unchanged(result,before,{allowPreferences:true});assert.deepEqual(result.sidecar,before.sidecar);}
-  else if(label!=='prepared'){const before=readJson(path.join(report,'first-boot-audit.json'));unchanged(result,before);assert.deepEqual(result.sidecar,before.sidecar);}
+  else if(label!=='prepared'){const before=readJson(path.join(report,label==='after-close'?'prepared-audit.json':'after-close-audit.json'));unchanged(result,before,{allowPreferences:label==='after-close'});assert.deepEqual(result.sidecar,before.sidecar);}
   if(label==='after-continue'){readJson(path.join(report,'after-refusal-audit.json'));assert.equal(await exists(path.join(report,'first-exit.json')),false,'Continue Editing unexpectedly exited');
    const connection=readJson(path.join(report,'first-connection.json'));assert.equal(result.lock?.pid,connection.backendPid);assert.ok(await processStat(connection.backendPid));assert.equal((await health(connection.origin)).status,200);}
   if(label==='after-abandon')readJson(path.join(report,'after-continue-audit.json'));
  }else{
   if(['prepared','first-boot','after-close','after-reopen','after-restore'].includes(label))assert.deepEqual(result.timelines,[prepared.expectedTimeline]);else assertSavedTimeline(result,prepared);
   if(label==='prepared'||label==='first-boot'){assert.equal(result.sidecar,null);if(label==='first-boot')unchanged(result,readJson(path.join(report,'prepared-audit.json')),{allowPreferences:true});}
-  if(['after-close','after-reopen','after-restore'].includes(label)){assertDraft(result,prepared);unchanged(result,readJson(path.join(report,'first-boot-audit.json')),{allowPreferences:true});
+  if(['after-close','after-reopen','after-restore'].includes(label)){assertDraft(result,prepared);unchanged(result,readJson(path.join(report,'prepared-audit.json')),{allowPreferences:true});
    if(label!=='after-close')assert.deepEqual(result.sidecar,readJson(path.join(report,'after-close-audit.json')).sidecar,'Discovery/restore changed durable draft bytes');}
   if(label==='after-normal-reopen'||label==='final'){const before=readJson(path.join(report,'after-export-audit.json'));unchanged(result,before,{allowPreferences:true});assert.deepEqual(result.sidecar,before.sidecar);}
  }
  if(label==='first-boot'){const connection=readJson(path.join(report,'first-connection.json'));assert.equal(result.lock?.pid,connection.backendPid);}
- if(label==='after-close'){const exit=readJson(path.join(report,'first-exit.json'));assertNormalExit(exit);assert.equal(result.lock,null);if(scenario==='capacity')readJson(path.join(report,'after-abandon-audit.json'));}
+ if(label==='after-close'){const exit=readJson(path.join(report,'first-exit.json'));assertNormalExit(exit);assert.equal(result.lock,null);if(scenario==='capacity')readJson(path.join(report,'after-abandon-capture.json'));}
  await writeReport(label+'-audit.json',result);return result;
 }
 function assertNormalExit(exit){assert.deepEqual(exit.result,{code:0,signal:null});assert.deepEqual(exit.childSignals,[]);assert.equal(exit.backendLockReleased,true);assert.equal(exit.backendProcessAbsent,true);assert.equal(exit.health.error,'ECONNREFUSED');assert.deepEqual(exit.endedPackageHashes,exit.packageHashes);}
@@ -235,7 +269,7 @@ async function launch(label){
  const log=await open(path.join(runtime,label+'-native.log'),'wx',0o600);let owned,initial,connection;
  try{
   owned=ownQaChild(spawn(executable,[],{cwd:repo,env:environment(),stdio:['ignore',log.fd,log.fd]}));
-  initial={synthetic:true,scenario,fixtureId:prepared.id,launchId:randomUUID(),label,at:new Date().toISOString(),mainPid:owned.child.pid,argv:[],packageHashes:hashes,namespaces:await namespaces(),sandboxUnchanged:true,gpuUnchanged:true,debugging:false};
+  initial={synthetic:true,kernel:true,scenario,fixtureId:prepared.id,launchId:randomUUID(),label,at:new Date().toISOString(),mainPid:owned.child.pid,argv:[],packageHashes:hashes,namespaces:await namespaces(),sandboxUnchanged:true,gpuUnchanged:true,debugging:false};
   await writeReport(label+'-launch.json',initial);connection=await waitConnection(owned,previous);
   if(previous){assert.notEqual(connection.backendPid,previous.backendPid);assert.notEqual(connection.port,previous.port,'Fresh-origin acceptance needs a different port');}
   await writeReport(label+'-connection.json',{synthetic:true,label,launchId:initial.launchId,at:new Date().toISOString(),...connection});
@@ -276,7 +310,8 @@ async function verifyClipSave({recheck=false}={}){
  const addedHistory=result.timelineHistory.filter(item=>!before.timelineHistory.some(prior=>prior.id===item.id));assert.equal(addedHistory.length,1);const history=addedHistory[0];
  assert.equal(history.projectId,prepared.projectId);assert.equal(history.operation,'timeline.clip.update');assert.equal(history.beforeSha256,businessHash(snapshot(prepared.expectedTimeline)));assert.equal(history.afterSha256,businessHash(snapshot(result.timelines[0])));
  assert.equal(result.historyCursors.length,1);assert.equal(before.historyCursors.length,1);assert.equal(result.historyCursors[0].projectId,prepared.projectId);assert.equal(result.historyCursors[0].position,before.historyCursors[0].position+1);assert.equal(history.position,result.historyCursors[0].position);
- for(const name of Object.keys(before.tables)){
+ const systemTables=expectedSystemTables(result,before,{content:true,preferences:true});
+ for(const name of Object.keys(before.tables)){if(systemTables.has(name))continue;
   if(['edit_tasks','timeline_requests','timeline_history'].includes(name))retainedRows(result,before,name,1);
   else if(['timelines','timeline_history_cursors'].includes(name))assert.equal(result.tables[name].count,before.tables[name].count);
   else if(name==='sqlite_sequence'){
@@ -299,14 +334,15 @@ async function verifyExport(){
  assert.deepEqual(result.tables.sqlite_sequence,tableDigest([{name:'edit_tasks',seq:1}]),'Timeline export must not allocate any AUTOINCREMENT identity');
  assert.deepEqual(result.tables.sqlite_sequence,before.tables.sqlite_sequence);
  assert.equal(exported.purpose,'export');assert.equal(exported.mode,'timeline');assert.equal(exported.projectId,prepared.projectId);assert.equal(exported.timelineRevision,prepared.baseRevision+1);assert.deepEqual(exported.snapshot.timeline,result.timelines[0]);
- for(const name of Object.keys(before.tables))if(['assets','exports','timeline_requests'].includes(name))retainedRows(result,before,name,1);else if(name!=='workspace_preferences')assert.deepEqual(result.tables[name],before.tables[name],`Unexpected export change in ${name}`);
+ const systemTables=expectedSystemTables(result,before,{content:true,preferences:true});
+ for(const name of Object.keys(before.tables))if(systemTables.has(name))continue;else if(['assets','exports','timeline_requests'].includes(name))retainedRows(result,before,name,1);else if(name!=='workspace_preferences')assert.deepEqual(result.tables[name],before.tables[name],`Unexpected export change in ${name}`);
  const requests=result.timelineRequests.filter(item=>!before.timelineRequests.some(prior=>prior.requestId===item.requestId));assert.equal(requests.length,1);const receipt=requests[0];assert.equal(receipt.requestId,exported.requestId);assert.notEqual(receipt.requestId,result.editTasks[0].requestId);assert.equal(receipt.response.id,exported.id);assert.equal(receipt.response.status,'queued');assert.deepEqual(receipt.response.snapshot,exported.snapshot);
  for(const original of before.media)assert.deepEqual(result.media.find(item=>item.name===original.name),original);assert.equal(result.media.length,before.media.length+1);
- const asset=result.assets.find(item=>item.id===exported.assetId);assert.ok(asset);assert.equal(asset.projectId,prepared.projectId);assert.equal(asset.provenance,'export');assert.match(asset.relativePath,/^media\/[a-zA-Z0-9._-]+\.mp4$/);
- const file=path.join(workspace,asset.relativePath),output=await fileHash(file,32*1024*1024);assert.equal(output.sha256,asset.sha256);
- await mediaCommand('/usr/bin/ffprobe',['-v','error','-show_streams','-show_format','-of','json',file],'export-probe');const probe=readJson(path.join(runtime,'export-probe.stdout')),video=probe.streams.find(stream=>stream.codec_type==='video'),audio=probe.streams.find(stream=>stream.codec_type==='audio');
+ const asset=result.assets.find(item=>item.id===exported.assetId);assert.ok(asset);assert.equal(asset.projectId,prepared.projectId);assert.equal(asset.provenance,'export');assert.deepEqual(asset.producer,{kind:'export',id:exported.id});const resolved=await coldNativeQaAssetFile(workspace,asset.projectId,asset.id);assert.match(resolved.projectRelativeFile,/^media\/[a-zA-Z0-9._-]+\.mp4$/);assert.equal(resolved.bytes,asset.sizeBytes);
+ const file=resolved.file,output=await fileHash(file,32*1024*1024);assert.equal(output.sha256,asset.sha256);
+ await mediaCommand(ffprobe,['-v','error','-show_streams','-show_format','-of','json',file],'export-probe');const probe=readJson(path.join(runtime,'export-probe.stdout')),video=probe.streams.find(stream=>stream.codec_type==='video'),audio=probe.streams.find(stream=>stream.codec_type==='audio');
  assert.ok(video&&audio);assert.equal(video.width,1280);assert.equal(video.height,720);assert.equal(video.r_frame_rate,'30/1');assert.equal(Number(video.nb_frames),60);assert.equal(audio.sample_rate,'48000');
- await mediaCommand('/usr/bin/ffmpeg',['-v','error','-i',file,'-f','null','-'],'export-decode');
+ await mediaCommand(ffmpeg,['-v','error','-i',file,'-f','null','-'],'export-decode');
  const verification={synthetic:true,fixtureId:prepared.id,at:new Date().toISOString(),exportId:exported.id,assetId:asset.id,requestId:exported.requestId,onlyAddedBusinessRows:{assets:1,exports:1,timeline_requests:1},
   originalMediaUnchanged:true,clipSaveReceiptUnchanged:true,output,video:{width:video.width,height:video.height,rate:video.r_frame_rate,frames:Number(video.nb_frames)},audio:{codec:audio.codec_name,sampleRate:audio.sample_rate},decodeExit:0};
  await writeReport('export-verification.json',verification);return verification;
@@ -338,18 +374,19 @@ async function nativeEvidence(prepared){
 async function final(){
  const prepared=fixture(),last=scenario==='capacity'?'reopen':'final';for(const deadline=Date.now()+45000;!await exists(path.join(report,last+'-exit.json'))&&Date.now()<deadline;)await pause(100);
  assert.equal(await exists(path.join(report,last+'-exit.json')),true);assert.equal(lockSnapshot(),null);const native=await nativeEvidence(prepared);
- const result=await audit(scenario==='capacity'?'capacity-final':'final'),baseline=readJson(path.join(report,'prepared-audit.json')),firstBoot=readJson(path.join(report,'first-boot-audit.json'));
- unchanged(firstBoot,baseline,{allowPreferences:true});const labels=scenario==='capacity'?['first','reopen']:['first','reopen','final'],launches=[],connections=[],exits=[];const hashes=await packageHashes();assert.deepEqual(hashes,prepared.packageHashes);
+ const result=await audit(scenario==='capacity'?'capacity-final':'final'),baseline=readJson(path.join(report,'prepared-audit.json')),firstBoot=readJson(path.join(report,'first-boot-capture.json'));
+ assert.equal(firstBoot.kind,'live-physical');assert.equal(firstBoot.lock.pid,readJson(path.join(report,'first-connection.json')).backendPid);assert.equal(firstBoot.physical.databases.length,readJson(path.join(report,'database-layout.json')).databases.length);const labels=scenario==='capacity'?['first','reopen']:['first','reopen','final'],launches=[],connections=[],exits=[];const hashes=await packageHashes();assert.deepEqual(hashes,prepared.packageHashes);
  for(const label of labels){const launch=readJson(path.join(report,label+'-launch.json')),connection=readJson(path.join(report,label+'-connection.json')),exit=readJson(path.join(report,label+'-exit.json'));
   assert.equal(launch.fixtureId,prepared.id);assert.equal(connection.launchId,launch.launchId);assertNormalExit(exit);assert.deepEqual(launch.packageHashes,hashes);assert.deepEqual(exit.endedPackageHashes,hashes);launches.push(launch);connections.push(connection);exits.push(exit);}
  assert.equal(new Set(connections.map(item=>item.port)).size,connections.length);assert.equal(new Set(connections.map(item=>item.backendPid)).size,connections.length);
  let acceptance;
  if(scenario==='capacity'){
-  for(const label of ['after-refusal','after-continue','after-abandon','after-close','after-reopen','capacity-final']){const observed=label==='capacity-final'?result:readJson(path.join(report,label+'-audit.json'));unchanged(observed,firstBoot);assert.deepEqual(observed.sidecar,baseline.sidecar);assertCapacity(observed,prepared);}
-  acceptance={retainedSlots:128,tombstonesCreatedThroughRealDraftService:true,allDatabaseTablesUnchangedAfterFirstBoot:true,sidecarBytesUnchangedFromPreparation:true,originalMediaUnchanged:true,
-   noBusinessSaveOrExport:true,continueEditingKeptBackendAlive:true,explicitAbandonKeptRecords:true,preparedToFirstBootPreferencesUnchanged:JSON.stringify(firstBoot.tables.workspace_preferences)===JSON.stringify(baseline.tables.workspace_preferences)};
+  for(const label of ['after-refusal','after-continue','after-abandon']){const observed=readJson(path.join(report,label+'-capture.json'));assertPhysicalUnchanged(observed,readJson(path.join(report,'first-boot-capture.json')));assert.deepEqual(observed.sidecar,baseline.sidecar);assertCapacity(observed,prepared);}
+  for(const label of ['after-close','after-reopen','capacity-final']){const observed=label==='capacity-final'?result:readJson(path.join(report,label+'-audit.json'));unchanged(observed,label==='after-close'?baseline:readJson(path.join(report,'after-close-audit.json')),{allowPreferences:label==='after-close'});assert.deepEqual(observed.sidecar,baseline.sidecar);assertCapacity(observed,prepared);}
+  acceptance={retainedSlots:128,tombstonesCreatedThroughRealDraftService:true,persistentBytesUnchangedAcrossLiveCloseDecisions:true,allColdBusinessTablesVerified:true,sidecarBytesUnchangedFromPreparation:true,originalMediaUnchanged:true,
+   noBusinessSaveOrExport:true,continueEditingKeptBackendAlive:true,explicitAbandonKeptRecords:true,preparedToColdClosePreferencesUnchanged:JSON.stringify(readJson(path.join(report,'after-close-audit.json')).tables.workspace_preferences)===JSON.stringify(baseline.tables.workspace_preferences)};
  }else{
-  for(const label of ['after-close','after-reopen','after-restore']){const observed=readJson(path.join(report,label+'-audit.json'));assertDraft(observed,prepared);unchanged(observed,firstBoot,{allowPreferences:true});}
+  for(const label of ['after-close','after-reopen','after-restore']){const observed=readJson(path.join(report,label+'-audit.json'));assertDraft(observed,prepared);unchanged(observed,baseline,{allowPreferences:true});}
   const closed=readJson(path.join(report,'after-close-audit.json'));for(const label of ['after-reopen','after-restore'])assert.deepEqual(readJson(path.join(report,label+'-audit.json')).sidecar,closed.sidecar);
   const exported=readJson(path.join(report,'after-export-audit.json')),reopened=readJson(path.join(report,'after-normal-reopen-audit.json'));unchanged(reopened,exported,{allowPreferences:true});assert.deepEqual(reopened.sidecar,exported.sidecar);
   acceptance={normalCloseRecoveredExactName:true,discoveryAndExplicitRestoreHadZeroBusinessWrites:true,exactlyOneClipSave:true,exactlyOneTimelineExport:true,unrelatedClipFieldsUnchanged:true,originalMediaUnchanged:true,
@@ -371,6 +408,6 @@ async function suiteFinal(){
 }
 
 const [action,label,...extra]=process.argv.slice(2);assert.equal(extra.length,0);if(!['launch','audit'].includes(action))assert.equal(label,undefined);
-if(action==='prepare')console.log(json(await prepare()));else if(action==='launch')await launch(label);else if(action==='audit')console.log(json(await audit(label)));
+if(action==='--help')console.log('prepare; launch first; audit first-boot (physical only). Capacity after-refusal/after-continue/after-abandon remain live physical captures. Complete normal Quit before after-close SQL audit. launch reopen; normal Quit before SQL audit. resume <unique-label>, reapply the saved form in native UI for later save/export stages, normal Quit before verify/final. This script has no crash action. No GUI validation is implied by prepare.');else if(action==='resume')await resume(label);else if(action==='prepare')console.log(json(await prepare()));else if(action==='launch')await launch(label);else if(action==='audit')console.log(json(await audit(label)));
 else if(action==='verify-clip-save')console.log(json(await verifyClipSave()));else if(action==='reverify-clip-save')console.log(json(await verifyClipSave({recheck:true})));else if(action==='verify-export')console.log(json(await verifyExport()));
 else if(action==='final')console.log(json(await final()));else if(action==='suite-final')console.log(json(await suiteFinal()));else throw Error('Expected prepare/launch first|reopen|final/audit label/verify-clip-save/reverify-clip-save/verify-export/final/suite-final');

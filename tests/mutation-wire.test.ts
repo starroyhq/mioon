@@ -1,8 +1,13 @@
+
+
+
+
+
 import {modelOperationDefinition,operationDefinition} from '../packages/client/src/index.ts';
 import {projectRpcPath,isProjectId} from '../packages/contracts/src/project-file.ts';
 import {isAppLevelOperation,isEntityAddressedOperation} from '../packages/contracts/src/project-addressing.ts';
-import type {PipedProcess,SqlRows,ProcessOutcome,BackendReady,IpcMessage,WireMessage,WireData,WireEnvelope,WireCall} from './helpers/strict-timeline-wire-response-types.ts';
-import type {SchemaNode,TestTool,TestCatalog,TestOperationDefinition,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
+import type {PipedProcess, ProcessOutcome, WireMessage, WireEnvelope} from './helpers/strict-timeline-wire-response-types.ts';
+import type {TestCatalog, TestOperationDefinition} from './helpers/strict-timeline-transport-types.ts';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import type {ChildProcess as OwnedChild} from 'node:child_process';
 import test from 'node:test';
@@ -17,11 +22,11 @@ import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {IDS,TOKEN,uuid,seedMutationStore} from './helpers/mutation-wire-fixture.ts';
+import {IDS, TOKEN, seedMutationStore} from './helpers/mutation-wire-fixture.ts';
 import {optionalRequestIdOperations} from './helpers/catalog-input-branches.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
-import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
-import {createServices} from '../packages/business/src/services.ts';
+
+
 import {openProjectDatabase,projectDatabasePath} from './helpers/project-database.ts';
 import {readProjectState} from './helpers/project-state.ts';
 import type {ProjectState} from './helpers/project-state.ts';
@@ -575,13 +580,3 @@ test('test-child rollback and actual crash boundaries keep mutation and exact re
 
 // The former workspace-wide namespace remains characterized explicitly. It
 // cannot be restored as a production fallback or a global project index.
-test('explicit legacy workspace retains global cross-project optional-key conflicts',async t=>{
-  const root=await mkdtemp(path.join(tmpdir(),'mioon-mutation-legacy-')),store=openLegacyWorkspaceStore(root),services=createServices(store,new Map());
-  t.after(async()=>{await services.drain();store.close();await rm(root,{recursive:true,force:true});});
-  const a=await services.call('project.create',{name:'Legacy A'}) as {id:string},b=await services.call('project.create',{name:'Legacy B'}) as {id:string};
-  const requestId='legacy-global-cross-project-key';
-  const result=await services.call('shot.create',{projectId:a.id,title:'Legacy original',requestId});
-  const before=readProjectState(store.db);
-  await assert.rejects(services.call('shot.create',{projectId:b.id,title:'Foreign legacy attempt',requestId}),{code:'IDEMPOTENCY_CONFLICT'});
-  assert.deepEqual(readProjectState(store.db),before);assert.deepEqual(await services.call('shot.create',{projectId:a.id,title:'Legacy original',requestId}),result);
-});

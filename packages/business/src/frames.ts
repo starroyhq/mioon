@@ -1,14 +1,13 @@
+import {assertProjectStore} from './store-runtime.ts';
 import {isProjectStore} from './project-file/store.ts';
 import {hasAssetReference, mediaLocatorFields} from './asset-reference-record.ts';
 import {prepareProjectAssetFullHash} from './project-media-storage.ts';
 import {mioTable} from './agent/mio-table-layout.ts';
 import {bindAgentTaskJobInside,assertAgentTaskJobEffect,withAgentTaskJobOrigin,assertTaskEffectOrigin,isAgentTaskEffectBlocked,setAgentTaskJobResumer,setAgentTaskJobStopper,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
-import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
-import {workspaceRestoreError} from './workspace-restore-policy.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '@mioon/contracts';
-import {FRAME_LIMITS,FRAME_PROFILE,FRAME_PROFILE_ID,FRAME_MUTATION_OPERATIONS,frameSchemas,frameSnapshotSchema,legacyWorkspaceFrameSnapshotSchema,frameTaskResponseSchema,isFrameMutationResponse,canonicalFrameInput as canonical} from '../../contracts/src/frame-extraction.ts';
+import {FRAME_LIMITS,FRAME_PROFILE,FRAME_PROFILE_ID,FRAME_MUTATION_OPERATIONS,frameSchemas,frameSnapshotSchema,frameTaskResponseSchema,isFrameMutationResponse,canonicalFrameInput as canonical} from '../../contracts/src/frame-extraction.ts';
 import {createFrameHistoryReaders,frameServiceMessages as messages,frameServiceFailure as failure,safeFrameFailure,framePublicFailure} from './frames-history.ts';
 import type {FrameHistoryReaders,FrameTaskInput,FrameTaskResponse} from './frames-history.ts';
 import {createFrameOwnershipReader} from './frame-ownership.ts';
@@ -23,7 +22,7 @@ import {validateManagedSource,verifiedManagedHash,sameManagedFile} from './manag
 import {registerProjectMediaStore} from './project-media-storage.ts';
 import type {ManagedFileIdentity,ManagedSource,VerifiedManagedSource} from './managed-media.ts';
 import {validatePng} from './images/png.ts';
-import {ownsStoreLock} from './db.ts';
+import {ownsStoreLock} from './store-runtime.ts';
 import {boundedShutdown,assertMediaTerminated} from './operation-lifecycle.ts';
 import {hasUnconfirmedMediaProcesses,terminateMediaProcesses,waitForMediaProcesses} from './media-processes.ts';
 
@@ -86,7 +85,7 @@ const stageTask=(value: FrameTaskView): FrameStorageTask=>({...value.row,snapsho
 // S0: Global counters describe this one project connection. The original
 // queuedPerProject=2 and retained per-project limits remain unchanged.
 export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode=decodeManagedFrame as unknown as (options?: DecodeManagedFrameOptions)=>Promise<DecodedManagedFrame>,autoRun=true,fault=noop}: FrameServicesOptions={}): FrameService {
- if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
+ assertProjectStore(store);
  const old=owners.get(store.db);
  if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.decode!==decode||old.autoRun!==autoRun||old.fault!==fault)fail('FRAME_SERVICE_ACTIVE');return old.service;}
  const {db,root,tx}=store,queue: FrameAttempt[]=[],pending=new Set<string>(),preparations=new Map<string,{operation: string;projectId: string;canonicalInput: string;promise: Promise<unknown>}>(),active=new Set<Promise<unknown>>(),attemptSignals=new Set<AbortSignal>();
@@ -165,7 +164,7 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
    catch(error){const code=property(error,'code');if(typeof code==='string'&&code.startsWith('MEDIA_'))fail(code==='MEDIA_CHANGED'||code==='MEDIA_CHANGED_DURING_READ'?'FRAME_SOURCE_CHANGED':'FRAME_SOURCE_INVALID');throw error;}
   }
   capacity(input.projectId,{extract:true});const {asset,frozen}=source(input),id=randomUUID(),snapshot={schemaVersion:1,projectId:input.projectId,taskId:id,source:frozen,requested:{sourceFrame:input.sourceFrame,fps:30},profile:FRAME_PROFILE};
-  if(!(isProjectStore(store)?frameSnapshotSchema:legacyWorkspaceFrameSnapshotSchema).safeParse(snapshot).success)fail('FRAME_SOURCE_INVALID');
+  if(!frameSnapshotSchema.safeParse(snapshot).success)fail('FRAME_SOURCE_INVALID');
   const file=sourceFile(asset),verified=await sourceHash(asset,file.info);owner();
   const result=tx(()=>{
    owner();project(input.projectId);const previous=prior('frame.extract',input);if(previous)return {value:previous,replayed:true};

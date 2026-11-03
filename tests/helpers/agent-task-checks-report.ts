@@ -4,7 +4,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash,randomUUID} from 'node:crypto';
 import assert from 'node:assert/strict';
-import {openStore} from '../../packages/business/src/db.ts';
+import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentTaskJournal} from '../../packages/business/src/agent/task-journal-v2.ts';
 import {createAgentTaskTools} from '../../packages/business/src/agent/task-tools-v2.ts';

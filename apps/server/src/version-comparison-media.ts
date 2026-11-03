@@ -13,7 +13,7 @@ import {createHash} from 'node:crypto';
 import {AsyncLocalStorage} from 'node:async_hooks';
 
 const route = '/api/version-comparison/media';
-const fields = ['projectId', 'shotId', 'versionId', 'assetId', 'sha256', 'workspaceOrigin'] as const;
+const fields = ['projectId', 'shotId', 'versionId', 'assetId', 'sha256'] as const;
 type Identity = Readonly<Record<typeof fields[number], string>>;
 export interface VersionComparisonMedia extends Identity {
   readonly jobId: string; readonly relativePath?: string; readonly referenceRevision?: number; readonly locatorDigest?: string; readonly mimeType: string; readonly sizeBytes: number; readonly identityDigest: string;
@@ -31,7 +31,7 @@ interface FileResponses {
 export interface VersionComparisonMediaOptions {
   db: DatabaseSync; root: string; signal?: AbortSignal;
   readGraph: GraphReader;
-  /** Trusted wiring checks the actual store lock and refuses restored scope. */
+  /** Trusted wiring checks the actual project-store identity. */
   assertAvailable(): void;
   validateFile(file: string): Stats;
   resolvePath(root: string, relativePath: string): Promise<string>;
@@ -52,7 +52,7 @@ export function versionComparisonMediaIdentity(url: URL): Identity | null {
       keys.length !== fields.length || new Set(keys).size !== fields.length || keys.some(key => !(fields as readonly string[]).includes(key))) return null;
   const input = Object.fromEntries(url.searchParams);
   if (fields.slice(0, 4).some(key => input[key].length !== 36 || !uuid.test(input[key])) ||
-      input.sha256.length !== 64 || !digest.test(input.sha256) || input.workspaceOrigin !== 'normal') return null;
+      input.sha256.length !== 64 || !digest.test(input.sha256)) return null;
   return Object.freeze(input) as Identity;
 }
 

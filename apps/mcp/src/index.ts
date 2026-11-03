@@ -1,17 +1,16 @@
 import {Server} from '@modelcontextprotocol/sdk/server/index.js';
 import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {ListToolsRequestSchema, CallToolRequestSchema} from '@modelcontextprotocol/sdk/types.js';
-import {createClient, workspaceOriginOptions, schemas, operationDefinition, discoverySchemas, discoveryEffects, effectAnnotations, discoverSchema, validateDiscovery, jsonSchema, splitProjectAddress, successEnvelope, errorEnvelope, ClientError, VERSION} from '@mioon/client';
+import {createClient, schemas, operationDefinition, discoverySchemas, discoveryEffects, effectAnnotations, discoverSchema, validateDiscovery, jsonSchema, splitProjectAddress, successEnvelope, errorEnvelope, ClientError, VERSION} from '@mioon/client';
 
 import {translate} from '@mioon/i18n';
 import type {Locale, MessageKey} from '@mioon/i18n';
 import {localizeToolDescription} from '@mioon/i18n/presentation';
 
 import {localizedLaunchOptions} from './launch-presentation.ts';
-type WorkspaceInvocation = ReturnType<typeof workspaceOriginOptions>;
 type JsonSchema = ReturnType<typeof jsonSchema>;
 type EffectAnnotations = ReturnType<typeof effectAnnotations>;
-interface ToolCallOptions {signal?: AbortSignal | undefined; expectedWorkspaceOrigin?: string | undefined}
+interface ToolCallOptions {signal?: AbortSignal | undefined}
 interface McpTool {
   name: string;
   description: string;
@@ -20,7 +19,7 @@ interface McpTool {
   call(input: unknown, options: ToolCallOptions): Promise<unknown>;
 }
 type DiscoveryName = 'doctor' | 'capabilities' | 'schema';
-interface LaunchOptions {invocation: WorkspaceInvocation; locale: Locale | undefined}
+interface LaunchOptions {locale: Locale | undefined}
 const displayErrors = new WeakMap<object, MessageKey>();
 function launchFailure(text: string, key: MessageKey): never {
   const error = new ClientError('VALIDATION_ERROR', text);
@@ -32,33 +31,16 @@ function launchFailure(text: string, key: MessageKey): never {
 // and backend errors share the same safe, structured result envelope as the CLI.
 // No backend or credentials are required just to initialize/list/schema-discover.
 function launchOptions(argv: readonly string[], onLocale: (value: Locale | undefined) => void): LaunchOptions {
-  // Preserve every legacy launch diagnostic when no presentation option is used.
-  if (!argv.some(argument => argument === '--locale' || argument.startsWith('--locale='))) {
-    let origin: string | undefined, supplied = false;
-    for (let index = 0; index < argv.length; index++) {
-      const argument = argv[index];
-      if (supplied || !(argument === '--workspace-origin' || argument.startsWith('--workspace-origin=')))
-        throw new ClientError('VALIDATION_ERROR', 'MCP accepts only one optional --workspace-origin UUID at process launch.');
-      supplied = true;
-      origin = argument === '--workspace-origin' ? argv[++index] : argument.slice('--workspace-origin='.length);
-      if (origin === undefined) throw new ClientError('VALIDATION_ERROR', '--workspace-origin requires an explicit UUID.');
-    }
-    return Object.freeze({invocation: Object.freeze(workspaceOriginOptions(origin)), locale: undefined});
-  }
-  return localizedLaunchOptions(argv, value => {
-    try { return workspaceOriginOptions(value); }
-    catch (error) { if (error !== null && typeof error === 'object') displayErrors.set(error, 'mcp.error.origin'); throw error; }
-  }, launchFailure, onLocale);
+  return localizedLaunchOptions(argv, launchFailure, onLocale);
 }
-let invocation: WorkspaceInvocation, locale: Locale | undefined;
-try { ({invocation, locale} = launchOptions(process.argv.slice(2), value => { locale = value; })); }
+let locale: Locale | undefined;
+try { ({locale} = launchOptions(process.argv.slice(2), value => { locale = value; })); }
 catch (error) {
   const envelope = errorEnvelope(error);
   const key = error !== null && typeof error === 'object' ? displayErrors.get(error) : undefined;
   process.stderr.write(`${envelope.error.code}: ${locale === undefined || !key ? envelope.error.message : translate(locale, key)}\n`);
   process.exit(2);
 }
-// Immutable for this process. Connection/token reloads never update this pin.
 const client = createClient();
 const tools = new Map<string, McpTool>(Object.keys(schemas).map(operation => {
   const definition = operationDefinition(operation);
@@ -83,7 +65,7 @@ for (const [name, description, call] of discoveryTools) tools.set(`mioon_${name}
 
 const server = new Server({name: 'mioon', version: VERSION}, {
   capabilities: {tools: {}},
-  instructions: locale === undefined ? 'All operations use one existing local backend and shared schemas. Prefer project_inspect, asset_inspect, shot_inspect and timeline_inspect for bounded, non-creating metadata inspection. Legacy project_get and timeline_get may initialize an empty timeline. Effect annotations are advisory, not authorization. Preserve the exact requestId and input on retry after an uncertain response. Never invent a new requestId to recover an unknown submission, automatically retry paid generation, or assume local job.cancel cancelled a remote provider job. Use provider_list before choosing models. Desktop connection files are re-read per request; credentials must never enter tool arguments. Restored workspace effectful calls require an explicit --workspace-origin UUID pinned at process launch. workspace_restore_inspect is read-only disclosure; it never authorizes or updates this process pin. Do not use a new origin to recover captured tasks or uncertain requests.' : translate(locale, 'mcp.instructions'),
+  instructions: locale === undefined ? 'All operations use one existing local backend and shared schemas. Prefer project_inspect, asset_inspect, shot_inspect and timeline_inspect for bounded, non-creating metadata inspection. Legacy project_get and timeline_get may initialize an empty timeline. Effect annotations are advisory, not authorization. Preserve the exact requestId and input on retry after an uncertain response. Never invent a new requestId to recover an unknown submission, automatically retry paid generation, or assume local job.cancel cancelled a remote provider job. Use provider_list before choosing models. Desktop connection files are re-read per request; credentials must never enter tool arguments.' : translate(locale, 'mcp.instructions'),
 });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({tools: [...tools.values()].map(({call, ...definition}) => definition)}));
 server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
@@ -92,7 +74,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const tool = tools.get(request.params.name);
     if (!tool) throw new ClientError('UNKNOWN_OPERATION', 'Unknown tool. Use tools/list to discover supported tools.');
     if(request.params.name!=='mioon_schema')await (await import('@mioon/node-host/private-storage-bootstrap')).initializeNodePrivateStorage();
-    result = successEnvelope(await tool.call(request.params.arguments ?? {}, {signal: extra.signal, ...invocation}));
+    result = successEnvelope(await tool.call(request.params.arguments ?? {}, {signal: extra.signal}));
   } catch (error) { result = errorEnvelope(error); }
   return {content: [{type: 'text', text: JSON.stringify(result)}], structuredContent: result, isError: !result.ok};
 });

@@ -10,7 +10,8 @@ import type {Locale, MessageKey} from '../packages/i18n/src/index.ts';
 import {presentationLocale, localizeHelp, localizeToolDescription} from '../packages/i18n/src/presentation.ts';
 import {operationMessages} from '../packages/i18n/src/catalogs/operations.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
-const round2Operations = ['export.cancel', 'export.activity.get', 'export.output.get', 'workspace.settings.get', 'workspace.settings.set', 'workspace.backup.status', 'workspace.backup.list', 'workspace.backup.create', 'workspace.backup.restore.stage', 'task.disposition.list', 'task.disposition.markFailed', 'task.disposition.archiveCompleted'] as const;
+const round2Operations = ['export.cancel', 'export.activity.get', 'export.output.get', 'workspace.settings.get', 'workspace.settings.set', 'task.disposition.list', 'task.disposition.markFailed', 'task.disposition.archiveCompleted'] as const;
+const retiredOperations = ['workspace.backup.status', 'workspace.backup.list', 'workspace.backup.create', 'workspace.backup.restore.stage', 'workspace.backup.inspect', 'workspace.restore.inspect'] as const;
 const cleanEnv = (): Record<string, string | undefined> => Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('MIOON_')));
 interface CliResult { status: number | null; stdout: string; stderr: string; json: Record<string, unknown> }
 interface McpToolView { name: string; description: string; [key: string]: unknown }
@@ -70,7 +71,9 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   const snapshot=JSON.parse(readFileSync(new URL('./fixtures/cli-help-legacy.json',import.meta.url),'utf8'));
   // Keep the frozen help fixture: application version and explicit discovery
   // additions may differ, but prose, schemas and operation ordering stay exact.
-  const expectedOperations = [...snapshot.data.operations];
+  const expectedOperations = snapshot.data.operations.filter((operation: string) => !retiredOperations.includes(operation as typeof retiredOperations[number]));
+  const {'--workspace-origin': retiredOrigin, ...expectedOptions} = snapshot.data.options;
+  assert.equal(typeof retiredOrigin, 'string');
   expectedOperations.unshift('project.rename', 'project.notes.set', 'project.delete', 'project.summary.list', 'agent.authorization.list', 'agent.authorization.grant', 'agent.authorization.revoke');
   expectedOperations.unshift(...round2Operations);
   expectedOperations.splice(expectedOperations.indexOf('timeline.loudness.prepare') + 1, 0, 'timeline.clip.loudness');
@@ -87,7 +90,7 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   const expectedUsage = [...snapshot.data.usage];
   expectedUsage.splice(expectedUsage.indexOf('mioon capabilities') + 1, 0, 'mioon agent --help');
   expectedUsage.splice(expectedUsage.indexOf('mioon export download --input <JSON> --output <new-local-file>') + 1, 0, 'mioon project export --input <JSON> --output <new-local-file.mioon>', 'mioon project import --file <local-file.mioon> --request-id <id> [--input <JSON>]', 'mioon project duplicate --request-id <id> --input <JSON>');
-  assert.deepEqual(original.json,{...snapshot, data:{...snapshot.data, version:VERSION, usage:expectedUsage, operations:expectedOperations,options:{...snapshot.data.options,'--file':'asset import: sends a normalized local path with caller requestId; no copying or 30 MiB upload limit. LUT import still reads up to 7 MiB','--confirm-outside':'asset import --file only: explicitly confirms this project and the exact source directory, prints each confirmed directory; excludes descendants','--upload':'asset import --file only: explicitly upload bytes to a remote backend, at most 30 MiB; exclusive with --confirm-outside'}}});
+  assert.deepEqual(original.json,{...snapshot, data:{...snapshot.data, version:VERSION, usage:expectedUsage, operations:expectedOperations,options:{...expectedOptions,'--file':'asset import: sends a normalized local path with caller requestId; no copying or 30 MiB upload limit. LUT import still reads up to 7 MiB','--confirm-outside':'asset import --file only: explicitly confirms this project and the exact source directory, prints each confirmed directory; excludes descendants','--upload':'asset import --file only: explicitly upload bytes to a remote backend, at most 30 MiB; exclusive with --confirm-outside'}}});
   const schema=cli(['schema','project.create']).stdout;
   const version=cli(['--version']).stdout;
   const bad=cli(['--unknown']).stdout;
@@ -131,6 +134,12 @@ test('MCP offline list/instructions translate while schemas, effects and call en
       const described=await localized.request('tools/call',{name:'mioon_schema',arguments:{operation}});
       assert.equal(described.result.isError,false);
       assert.deepEqual(described.result.structuredContent,{ok:true,data:discoverSchema({operation})});
+    }
+    for(const operation of retiredOperations){
+      const described=await localized.request('tools/call',{name:'mioon_schema',arguments:{operation}});
+      assert.equal(described.result.isError,true);
+      assert.equal((described.result.structuredContent as {error:{code:string}}).error.code,'VALIDATION_ERROR');
+      assert.equal(listing.some(tool=>tool.name===operation.replaceAll('.','_')),false);
     }
   }
 });

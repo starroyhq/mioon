@@ -1,21 +1,23 @@
-import {AGENT_TASK_ORDINARY_SCHEMAS,CURRENT_ORDINARY_SCHEMA} from './helpers/workspace-schema-current.ts';
-import {downgradeReviewedWorkspace} from './helpers/reviewed-schema-layers.ts';
+
+
+
+
+
+
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { DatabaseSync } from 'node:sqlite';
-import { openLegacyWorkspaceStore as openStore, getWorkspaceRestoreContext } from '../packages/business/src/db.ts';
+import { createHash, randomUUID } from 'node:crypto';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import { createServices } from '../packages/business/src/services.ts';
 import { startWorker } from '../packages/business/src/jobs.ts';
 import { run } from '../packages/business/src/media-runtime.ts';
-import { createWorkspaceBackup } from '../packages/business/src/workspace-backup.ts';
-import { restoreWorkspaceBackup } from '../packages/business/src/workspace-restore.ts';
-import { classifyWorkspaceSchemaV52V53 } from '../packages/business/src/workspace-restore-schema-v53.ts';
+import {assetMediaDtoSchema,assetMediaPrepareResponseSchema} from '../packages/contracts/src/asset-media.ts';
 
-for (const sourceSchema of AGENT_TASK_ORDINARY_SCHEMAS) test(`project-owned Look survives removed source file, cold reopen, render and ordinary${sourceSchema}/restored${sourceSchema + 1} backup`, { timeout: 120000 }, async t => {
+test('project-owned Look survives removed source file, cold reopen and actual render', {timeout:120000}, async t => {
   const base = await mkdtemp(path.join(tmpdir(), 'mioon-look-portable-')), root = path.join(base, 'workspace');
   (t as {after(callback: ()=>void): void}).after(() => rm(base, { recursive: true, force: true }));
   const localPack = path.join(base, 'selected.mioon-look.cube'), source = path.join(base, 'source.mp4');
@@ -23,7 +25,6 @@ for (const sourceSchema of AGENT_TASK_ORDINARY_SCHEMAS) test(`project-owned Look
   await writeFile(localPack, original, { flag: 'wx', mode: 0o600 });
   await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-n', '-f', 'lavfi', '-i', 'color=c=0x18bf57:s=64x48:r=30:d=1', '-an', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-color_range', 'tv', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709', source], { timeout: 30000, maxStdoutBytes: 0 });
   interface ProjectShape {id: string}
-  interface AssetShape {id: string; sha256: string}
   interface TimelineShape {revision: number; id?: string; tracks: {id: string}[]; clips: {id: string}[]}
   interface ResourceShape {id: string; sha256: string; profile: unknown}
   interface ImportedShape {resource: ResourceShape}
@@ -33,7 +34,12 @@ for (const sourceSchema of AGENT_TASK_ORDINARY_SCHEMAS) test(`project-owned Look
   let project!: ProjectShape, input!: Record<string, unknown>, imported!: ImportedShape, inspection!: InspectionShape, timeline!: TimelineShape;
   try {
     project = await services.call('project.create', { name: 'Look pack portability' }) as unknown as ProjectShape;
-    const asset = await services.call('asset.import', { projectId: project.id, name: 'SDR.mp4', mimeType: 'video/mp4', dataBase64: (await readFile(source)).toString('base64') }) as unknown as AssetShape;
+    const sourceBytes=await readFile(source);
+    const importedAsset=assetMediaDtoSchema.parse(await services.call('asset.import',{projectId:project.id,name:'SDR.mp4',mimeType:'video/mp4',dataBase64:sourceBytes.toString('base64')}));
+    // Colour declarations bind the whole-file hash, never a sampled import DTO.
+    const prepared=assetMediaPrepareResponseSchema.parse(await services.call('asset.media.prepare',{projectId:project.id,assets:[{assetId:importedAsset.id,referenceRevision:importedAsset.referenceRevision}],purpose:'timeline'}));
+    assert.equal(prepared.assets.length,1);const asset=prepared.assets[0]!;assert.equal(asset.id,importedAsset.id);assert.equal(asset.projectId,project.id);
+    assert.equal(asset.hashState,'full');assert.equal(asset.sha256,createHash('sha256').update(sourceBytes).digest('hex'));
     input = { projectId: project.id, name: path.basename(localPack), requestId: randomUUID(), dataBase64: (await readFile(localPack)).toString('base64') };
     imported = await services.call('lut.import', input) as unknown as ImportedShape;
     inspection = await services.call('lut.look.inspect', { projectId: project.id, lutId: imported.resource.id }) as unknown as InspectionShape; assert.equal(inspection.status, 'verified');
@@ -53,26 +59,14 @@ for (const sourceSchema of AGENT_TASK_ORDINARY_SCHEMAS) test(`project-owned Look
     worker = startWorker(store, services, new Map()); await worker.tick();
     const result = await services.call('export.get', { exportId: accepted.id }) as {status: string; error?: unknown}; assert.equal(result.status, 'succeeded', JSON.stringify(result.error));
   } finally { await worker?.stop(); await services.drain(); store.close(); }
-  if(sourceSchema<CURRENT_ORDINARY_SCHEMA){
-    // Keep each historical backup case exact after all ordinary reopen/render
-    // work: opening it through openStore again would migrate it to current.
-    const db=new DatabaseSync(path.join(root,'workbench.sqlite'));
-    try{downgradeReviewedWorkspace(db,sourceSchema);if(sourceSchema===52)assert.deepEqual(classifyWorkspaceSchemaV52V53(db),{schemaVersion:52,profile:'ordinary'});}finally{db.close();}
-  }
-  const backup = path.join(base, 'backup'), restored = path.join(base, 'restored');
-  assert.equal((await createWorkspaceBackup({ source: root, destination: backup })).databaseSchemaVersion, sourceSchema);
-  assert.equal((await restoreWorkspaceBackup({ directory: backup, destination: restored })).databaseSchemaVersion, sourceSchema + 1);
-  store = openStore(restored); services = createServices(store, new Map()); worker = undefined;
+  store = openStore(root); services = createServices(store, new Map());
   try {
-    assert.deepEqual(await services.call('lut.look.inspect', { projectId: project.id, lutId: imported.resource.id }), inspection);
-    assert.deepEqual(Buffer.from((store.db.prepare('SELECT content FROM project_lut_resources WHERE id=?').get(imported.resource.id) as {content: Uint8Array}).content), original);
-    const inspected = await services.call('workspace.restore.inspect', {}) as {operationPolicy: {operation: string; available: boolean}[]};
-    assert.equal(inspected.operationPolicy.find((p: {operation: string}) => p.operation === 'lut.look.inspect')!.available, true);
-    await assert.rejects(services.call('lut.import', input), { code: 'RESTORE_OPERATION_UNAVAILABLE' });
-    const accepted = await services.call('timeline.render', { projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'export' }, { expectedWorkspaceOrigin: getWorkspaceRestoreContext(store)!.workspaceOrigin }) as unknown as {id: string};
-    worker = startWorker(store, services, new Map()); await worker.tick();
-    const result = await services.call('export.get', { exportId: accepted.id }) as {status: string; error?: unknown}; assert.equal(result.status, 'succeeded', JSON.stringify(result.error));
-    assert.equal((store.db.prepare('SELECT count(*) AS n FROM project_lut_resources').get() as {n: number}).n, 1);
-    assert.equal((store.db.prepare('SELECT count(*) AS n FROM lut_import_requests').get() as {n: number}).n, 1);
-  } finally { await worker?.stop(); await services.drain(); store.close(); }
+    const before = store.db.prepare('SELECT total_changes() AS n').get()!.n;
+    assert.deepEqual(await services.call('lut.look.inspect', {projectId: project.id, lutId: imported.resource.id}), inspection);
+    assert.deepEqual(Buffer.from(store.db.prepare('SELECT content FROM project_lut_resources WHERE id=?').get(imported.resource.id)!.content as Uint8Array), original);
+    await assert.rejects(services.call('workspace.backup.create', {requestId: randomUUID()}), {code:'UNKNOWN_OPERATION', status:404});
+    assert.equal(store.db.prepare('SELECT total_changes() AS n').get()!.n, before);
+    assert.equal(store.db.prepare('SELECT count(*) AS n FROM project_lut_resources').get()!.n, 1);
+    assert.equal(store.db.prepare('SELECT count(*) AS n FROM lut_import_requests').get()!.n, 1);
+  } finally {await services.drain(); store.close();}
 });

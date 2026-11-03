@@ -96,7 +96,7 @@ test('actual App hook connects capture/rpc/reveal with source or narrow Properti
   const app = text('App.tsx'), start = app.indexOf('  const frameExtraction = useFrameExtraction('), end = app.indexOf('\n\n', start);
   assert.ok(start > 0 && end > start);
   const calls:(Omit<UseFrameExtractionOptions,"onResult">&{onResult?:(projectId:string,task?:FrameTaskResponse)=>unknown})[] = [], controller = { capture: () => {} }, state = { visible: true }, refreshes: (unknown)[] = [];
-  const env = { workbenchReady: true, data: { project: { id: projectId }, assets: [sourceAsset] }, sourceRangeScope: sourceScope, rangeAsset: sourceAsset, workspaceMode: 'editing', rightDockTab: 'agent', panelVisible: (name: string):boolean => name === 'canvas', quickAssetId: sourceId, restored: false, sourceRangeBlocked: false, busy: {}, rpc: () => {}, requestId: () => 'stable-request-key', currentProject: { current: projectId }, refresh: (pid: unknown) => refreshes.push(pid), revealImageAsset: () => {}, useFrameExtraction: (input:Omit<UseFrameExtractionOptions,"onResult">&{onResult?:(projectId:string,task?:FrameTaskResponse)=>unknown}) => { calls.push(input); return { controller, state }; } };
+  const env = { workbenchReady: true, data: { project: { id: projectId }, assets: [sourceAsset] }, sourceRangeScope: sourceScope, rangeAsset: sourceAsset, workspaceMode: 'editing', rightDockTab: 'agent', panelVisible: (name: string):boolean => name === 'canvas', quickAssetId: sourceId, sourceRangeBlocked: false, busy: {}, rpc: () => {}, requestId: () => 'stable-request-key', currentProject: { current: projectId }, refresh: (pid: unknown) => refreshes.push(pid), revealImageAsset: () => {}, useFrameExtraction: (input:Omit<UseFrameExtractionOptions,"onResult">&{onResult?:(projectId:string,task?:FrameTaskResponse)=>unknown}) => { calls.push(input); return { controller, state }; } };
   const evaluate = () => (Function(...Object.keys(env), `${app.slice(start, end)}; return frameExtraction;`)(...Object.values(env))) as {controller:{capture():void};state:{visible:boolean}};
   assert.equal(evaluate().controller, controller); const configured = calls.at(-1);
   assert.equal(configured!.visible, true); assert.equal(configured!.blocked, false); assert.equal(configured!.rpc, env.rpc); assert.equal(configured!.sourceScope, sourceScope); assert.equal(configured!.revealAsset, env.revealImageAsset);
@@ -112,37 +112,36 @@ test('actual App hook connects capture/rpc/reveal with source or narrow Properti
   env.panelVisible = name => name === 'inspector'; env.rightDockTab = 'properties'; evaluate(); assert.equal(calls.at(-1)!.visible, true, 'narrow Properties can read and recover with canvas hidden');
   env.rightDockTab = 'agent'; evaluate(); assert.equal(calls.at(-1)!.visible, false, 'all frame surfaces are hidden');
   env.panelVisible = () => false; env.rightDockTab = 'properties'; evaluate(); assert.equal(calls.at(-1)!.visible, false);
-  env.restored = true; env.busy = {}; env.panelVisible = name => name === 'canvas'; evaluate();
-  assert.equal(calls.at(-1)!.visible, true); assert.equal(calls.at(-1)!.blocked, true, 'a restored source remains blocked without other busy work');
+  env.sourceRangeBlocked = true; env.busy = {}; env.panelVisible = name => name === 'canvas'; evaluate();
+  assert.equal(calls.at(-1)!.visible, true); assert.equal(calls.at(-1)!.blocked, true, 'a disconnected or pending source remains blocked without other busy work');
   const rpcCalls: ({ operation: unknown; input: unknown; })[] = [], h = hooksHarness(text('use-frame-extraction.ts'), { './frame-extraction.ts': frame }, 'useFrameExtraction');
   h.render({ ...calls.at(-1), rpc: (operation: unknown, input: unknown) => { rpcCalls.push({ operation, input }); return page(); } }); await tick(); h.render();
   assert.equal(await h.value.controller.capture({ sourceScope, sourceAssetId: sourceId, sourceHash: sha256, sourceFrame: 56 }), null);
   await h.value.controller.refreshTasks(); await h.value.controller.refreshActive();
   assert.equal(await h.value.controller.cancelQueued(task()), null);
   assert.equal(await h.value.controller.recoverResult(task({ state: 'interrupted' })), null);
-  assert.deepEqual((rpcCalls as unknown), [], 'restored mode neither reads live frame history nor starts or controls a task');
+  assert.deepEqual((rpcCalls as unknown), [], 'a blocked current source neither reads history nor starts or controls a task');
   assert.equal(h.value.controller.getSnapshot().pending, null); h.unmount();
   assert.match(app, /onCaptureFrame=\{\(\(\(\) => \(frameExtraction\.controller/); assert.match(app, /frameExtraction\.controller as unknown as \{capture\(\): unknown\}\)\.capture\(\)/); assert.match(app, /captureBusy=\{frameCaptureBusy\(frameExtraction\.state\)\}/);
-  assert.match(app, /quickAssetId && sourceAsset \? <AgentEditingBoundary /); assert.match(app, /<SourceRangeInspector[^>]+>\{restored \? <RestoredUnavailable[^>]+\/> : <FrameExtractionPanel controller=\{frameExtraction\.controller(?: as never)?\} revealTask=\{agentRecovery\?\.kind === 'frame' \? agentRecovery : null\} \/>\}<\/SourceRangeInspector>/);
+  assert.match(app, /quickAssetId && sourceAsset \? <AgentEditingBoundary /); assert.match(app, /<SourceRangeInspector[^>]+>\{<FrameExtractionPanel controller=\{frameExtraction\.controller(?: as never)?\} revealTask=\{agentRecovery\?\.kind === 'frame' \? agentRecovery : null\} \/>\}<\/SourceRangeInspector>/);
 });
 
-test('actual App source inspector keeps the normal frame panel and replaces it with the restored hold notice', () => {
+test('actual App source inspector binds current frame recovery without changing range drafts', () => {
   const app = text('App.tsx'), start = app.indexOf('<SourceRangeInspector '), end = app.indexOf('</SourceRangeInspector>', start) + '</SourceRangeInspector>'.length;
   assert.ok(start > 0 && end > start);
   const controller = {}, rangeState = { dirty: true, draft: { inFrame: 12, outFrame: 88 } }, rangeController = {};
-  for (const restored of [false, true]) for (const recoveryKind of [null, 'image', 'frame']) {
+  for (const recoveryKind of [null, 'image', 'frame']) {
     const agentRecovery = recoveryKind ? {kind: recoveryKind, projectId, taskId, key: 'fixed-reveal', current: () => true} : null;
     const h = hooksHarness(`import React from 'react'; export default function Fixture() { return (${app.slice(start, end)}); }`, {}, 'default', {
-      SourceRangeInspector: 'SourceRangeInspector', FrameExtractionPanel: 'FrameExtractionPanel', RestoredUnavailable: 'RestoredUnavailable', t: (key: unknown) => translate('zh-Hans', (key as unknown as Parameters<typeof translate>[1])),
-      restored, sourceAsset, sourceRanges: { state: rangeState, controller: rangeController }, timeline: { projectId }, sourceRangeBlocked: false,
+      SourceRangeInspector: 'SourceRangeInspector', FrameExtractionPanel: 'FrameExtractionPanel', t: (key: unknown) => translate('zh-Hans', (key as unknown as Parameters<typeof translate>[1])),
+      sourceAsset, sourceRanges: { state: rangeState, controller: rangeController }, timeline: { projectId }, sourceRangeBlocked: false,
       addSavedSourceRange() {}, frameExtraction: { controller }, agentRecovery, sceneSummary: () => null,
     });
     const tree = h.render(), all = nodes(tree), panel = all.find((node: ElementNode) => node.type === 'FrameExtractionPanel'), notice = all.find((node: ElementNode) => node.type === 'RestoredUnavailable');
     assert.equal(tree.type, 'SourceRangeInspector'); assert.equal(tree.props.asset, sourceAsset);
     assert.equal(tree.props.state, rangeState); assert.equal(tree.props.controller, rangeController);
-    assert.equal(Boolean(panel), !restored); assert.equal(Boolean(notice), restored);
-    if (restored) assert.equal(notice!.props.title, '抽帧任务保留，执行暂不可用');
-    else { assert.equal(panel!.props.controller, controller); assert.equal(panel!.props.revealTask, recoveryKind === 'frame' ? agentRecovery : null, 'only an exact frame recovery intent reaches the retained panel'); }
+    assert.ok(panel); assert.equal(Boolean(notice), false);
+    assert.equal(panel.props.controller, controller); assert.equal(panel.props.revealTask, recoveryKind === 'frame' ? agentRecovery : null, 'only an exact frame recovery intent reaches the current panel');
     assert.deepEqual(rangeState, { dirty: true, draft: { inFrame: 12, outFrame: 88 } }); h.unmount();
   }
 });

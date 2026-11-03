@@ -20,7 +20,7 @@ export interface TimelineAudioPreviewContext {
   sourceIdentity: string;
   connected: boolean;
   visible: boolean;
-  restored: boolean;
+
   hasUnsavedDrafts: boolean;
 }
 export type TimelineAudioPreviewPhase = 'idle' | 'preparing' | 'ready' | 'starting' | 'playing' | 'buffering' | 'paused' | 'ended' | 'cancelled' | 'error';
@@ -45,7 +45,6 @@ export interface TimelineAudioPreviewControllerOptions {
   readPlan: (input: AudioPreviewPlanInput, options: AudioPreviewReadOptions) => Promise<unknown>;
   readContinuousPlan?: (input: ContinuousAudioPlanInput, options: AudioPreviewReadOptions) => Promise<unknown>;
   getContext?: () => TimelineAudioPreviewContext;
-  getInvocation?: () => Readonly<{ expectedWorkspaceOrigin?: string }>;
   onChange?: (state: TimelineAudioPreviewState) => void;
   onUnauthorized?: () => void;
   /** Explicit user seek/stop only. RAF and all lifecycle changes never call this. */
@@ -58,16 +57,16 @@ export interface TimelineAudioPreviewControllerOptions {
   nativeAdmission?: NativeAudioPreviewAdmission;
 }
 const emptyContext = (): TimelineAudioPreviewContext => ({ scope: null, executionScope: '', projectId: null, timelineId: null,
-  revision: null, durationFrames: 0, sourceIdentity: '', connected: false, visible: false, restored: false, hasUnsavedDrafts: false });
+  revision: null, durationFrames: 0, sourceIdentity: '', connected: false, visible: false,  hasUnsavedDrafts: false });
 const initial = (): TimelineAudioPreviewState => ({ ...emptyContext(), phase: 'idle', retirement: 'none', nativeAdmission:'none', plan: null, positionFrame: null,
   requestedStartFrame: null, preparedSources: 0, totalSources: 0, error: '' });
 const sameBinding = (a: TimelineAudioPreviewContext, b: TimelineAudioPreviewContext): boolean =>
   a.scope === b.scope && a.executionScope === b.executionScope && a.projectId === b.projectId && a.timelineId === b.timelineId &&
   a.revision === b.revision && a.durationFrames === b.durationFrames && a.sourceIdentity === b.sourceIdentity &&
-  a.connected === b.connected && a.visible === b.visible && a.restored === b.restored;
+  a.connected === b.connected && a.visible === b.visible;
 const canPrepare = (context: TimelineAudioPreviewContext): boolean => Boolean(context.scope && context.projectId && context.timelineId &&
   Number.isSafeInteger(context.revision) && (context.revision ?? 0) > 0 && Number.isSafeInteger(context.durationFrames) && context.durationFrames > 0 &&
-  context.durationFrames <= AUDIO_PREVIEW_LIMITS.timelineFrames && context.sourceIdentity.length > 0 && context.connected && context.visible && !context.restored);
+  context.durationFrames <= AUDIO_PREVIEW_LIMITS.timelineFrames && context.sourceIdentity.length > 0 && context.connected && context.visible);
 const codeOf = (error: unknown): string => error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : '';
 export function timelineAudioPreviewErrorDescriptor(error: unknown): DisplayMessage {
   const code = codeOf(error);
@@ -88,7 +87,7 @@ export function timelineAudioPreviewErrorDescriptor(error: unknown): DisplayMess
   if (code === 'AUDIO_PREVIEW_SHUTDOWN_FAILED' || code === 'AUDIO_PREVIEW_STOP_TIMEOUT') return message('audio.preview.error.stopPending');
   if (code === 'AUDIO_PREVIEW_CONTEXT_CLOSED') return message('audio.preview.error.contextClosedPreparing');
   if (code === 'AUDIO_PREVIEW_SAMPLE_RATE') return message('audio.preview.error.sampleRate');
-  if (code === 'AUDIO_PREVIEW_UNSUPPORTED' || code.startsWith('RESTORE_')) return message('audio.preview.error.unsupported');
+  if (code === 'AUDIO_PREVIEW_UNSUPPORTED') return message('audio.preview.error.unsupported');
   if (code === 'AUDIO_PREVIEW_PROTOCOL' || code === 'AUDIO_PREVIEW_INVALID_GRAPH') return message('audio.preview.error.protocol');
   return message('audio.preview.error.failed');
 }
@@ -201,7 +200,7 @@ export function createTimelineAudioPreviewController(options: TimelineAudioPrevi
           onWaiting:nativeAdmission=>{if(current(attempt))emit({nativeAdmission});}})??null;
         if (context.sampleRate !== 48000) throw new TimelineAudioPreviewError('AUDIO_PREVIEW_SAMPLE_RATE', '48 kHz clock unavailable');
         if (!current(attempt)) return false;
-        const prepared = await preparePcm(input, { context, signal: abort.signal, ...options.getInvocation?.(),
+        const prepared = await preparePcm(input, { context, signal: abort.signal,
           ...(owned.native?{reserveNative:(plan:AudioPreviewPlan,signal:AbortSignal)=>owned.native!.acquire(plan,signal)}:{}),
           onResourceSettlement: resources => { owned.resources = resources; void resources.catch(() => {}); },
           onProgress: (preparedSources, totalSources) => { if (current(attempt)) emit({ preparedSources, totalSources }); } });
@@ -326,7 +325,6 @@ export function useTimelineAudioPreview(options: TimelineAudioPreviewControllerO
     const shared: TimelineAudioPreviewControllerOptions = {
     readPlan: (input, invocation) => callbacks.current.readPlan(input, invocation),
     getContext: () => withPageVisibility(callbacks.current.getContext?.() ?? callbacks.current.context,Boolean(callbacks.current.nativeAdmission)),
-    getInvocation: () => callbacks.current.getInvocation?.() ?? {},
     onExplicitPosition: frame => callbacks.current.onExplicitPosition?.(frame), onBeforePlay: () => callbacks.current.onBeforePlay?.(),
     onUnauthorized: () => callbacks.current.onUnauthorized?.(), onChange: setState,
     ...(options.createContext ? { createContext: () => callbacks.current.createContext!() } : {}),

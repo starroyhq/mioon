@@ -9,13 +9,13 @@ import { TIMELINE_CLIP_LOUDNESS_LIMITS } from '@mioon/contracts/timeline-clip-lo
 test('attach and context changes never analyze; explicit read sends exact saved selection only', async () => {
   const f = fixture(); assert.equal(f.calls.length, 0); f.set({ executionScope: '2' }); assert.equal(f.calls.length, 0);
   await f.ready(); assert.deepEqual(f.calls[0].input, input()); assert.equal(f.state().phase, 'ready');
-  assert.equal(f.calls[0].options.expectedWorkspaceOrigin, id(7)); assert.equal(f.state().report!.applyAllowed, false);
+  assert.deepEqual(Object.keys(f.calls[0].options), ['signal']); assert.equal(f.state().report!.applyAllowed, false);
   assert.ok(Object.isFrozen(f.state().report!.identity)); assert.equal('draft' in f.state(), false);
 });
 test('saved-only admission blocks invalid identity, dirty/conflict/pending/recovery, mute/zero/no-audio, and long clip', async () => {
   const patches = [{ scope: null }, { projectId: null }, { timelineId: null }, { revision: 0 }, { clipId: null }, { assetId: null }, { assetSha256: 'bad' },
     { trackId: null }, { durationFrames: 0 }, { durationFrames: TIMELINE_CLIP_LOUDNESS_LIMITS.clipFrames + 1 }, { gain: 0 }, { gain: NaN }, { gain: 3 },
-    { muted: true }, { audioSupported: false }, { sourceIdentity: '' }, { connected: false }, { visible: false }, { restored: true }, { hasUnsavedDrafts: true }, { pending: true }];
+    { muted: true }, { audioSupported: false }, { sourceIdentity: '' }, { connected: false }, { visible: false },  { hasUnsavedDrafts: true }, { pending: true }];
   for (const patch of patches) { const f = fixture(patch); assert.equal(timelineClipLoudnessAvailable(f.state()), false, JSON.stringify(patch)); assert.equal(await f.prepare(), null); assert.equal(f.calls.length, 0); }
   assert.equal(timelineClipLoudnessAvailable(context({ durationFrames: TIMELINE_CLIP_LOUDNESS_LIMITS.clipFrames })), true);
   for (const patch of [{ dirty: true }, { conflict: true }, { submitting: true }, { candidate: {} }, { phase: 'loading' }, { phase: 'error' }, { businessPending: true }]) {
@@ -27,7 +27,7 @@ test('every identity/execution/visibility change aborts and clears before late f
   const patches = [{ scope: 'workspace:other' }, { executionScope: 'selection:2' }, { projectId: id(8) }, { timelineId: id(9) }, { revision: 5 },
     { clipId: id(10) }, { assetId: id(11) }, { assetSha256: 'c'.repeat(64) }, { trackId: id(12) }, { sourceIdentity: 'new-graph' },
     { startFrame: 18 }, { sourceInFrame: 7 }, { durationFrames: 29 }, { gain: .5 }, { fadeInFrames: 2 }, { fadeOutFrames: 3 },
-    { muted: true }, { audioSupported: false }, { visible: false }, { connected: false }, { restored: true }, { hasUnsavedDrafts: true }, { pending: true }];
+    { muted: true }, { audioSupported: false }, { visible: false }, { connected: false },  { hasUnsavedDrafts: true }, { pending: true }];
   for (const patch of patches) for (const reject of [false, true]) {
     const f = fixture(), work = f.prepare(); f.set(patch); assert.equal(f.calls[0].options.signal.aborted, true);
     if (reject) f.reads[0].reject({ code: 'UNAUTHORIZED' }); else f.reads[0].resolve(report());

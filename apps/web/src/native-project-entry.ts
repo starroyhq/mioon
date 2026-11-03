@@ -32,7 +32,7 @@ export function useNativeProjectEntry({ context, bridge, rpc, contractChecks, lo
       controller.setVisible(visible);
       // Do not supersede boot's first catalog and initial choice. A launcher
       // that finished boot while hidden still refreshes on its first reveal.
-      if (returned && context.role === 'launcher' && (!bootPending || controller.getState().workspace)) void controller.refresh();
+      if (returned && context.role === 'launcher' && (!bootPending || controller.getState().catalogReady)) void controller.refresh();
     };
     const interaction = () => controller.interacted();
     visibility(); controller.updateContext(context); if (context.role === 'launcher') void controller.boot().finally(() => { bootPending = false; });

@@ -14,7 +14,6 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
 import { projectOpenAttempt, canPublishProjectOpen } from '../apps/web/src/project-open-state.ts';
-import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 import * as replacement from '../apps/web/src/clip-source-replacement.ts';
 import * as submissions from '../apps/web/src/submissions.ts';
 import { timelineHistoryState } from '../apps/web/src/timeline-history.ts';
@@ -254,12 +253,12 @@ function sessionFixture(t: TestContext) {
 }
 function parentHarness({ ready = true } = {}) {
   const c = context(), calls: [string, unknown, number, {review?: replacement.ReplacementReview}][] = [], dataRef = { current: { project: { id: projectId }, ...c } }, viewRef = { current: { activeMode: 'editing', editing: { selectedClipId: clipId, quickAssetId: null as string | null } } };
-  const deps = { ...replacement, canPublishProjectOpen, workspaceOriginScope,
+  const deps = { ...replacement, canPublishProjectOpen,
     nativeWindow: null, projectOpening: { phase: ready ? 'ready' : 'loading' },
     // This extracted App slice reaches the passive native status hook. Web has
     // no native binding; preserve that exact boundary without any host action.
     useEditorWindowStatus: (binding: unknown) => assert.equal(binding, null),
-    openedProject: { current: ready ? projectOpenAttempt(projectId, 1, 'normal') : null }, importSession: { current: { active: true, selection: 0 } }, viewReady: { current: true }, workspaceRef: { current: { restored: false } }, dataRef, viewRef, currentProject: { current: projectId }, projectEpoch: { current: 1 }, inspectorEpoch: 0, dirtyRef: { current: false }, isBusy: () => false,
+    openedProject: { current: ready ? projectOpenAttempt(projectId, 1, 'normal') : null }, importSession: { current: { active: true, selection: 0 } }, viewReady: { current: true }, editorSession: {current: 'normal'}, workspaceRef: { current: {  } }, dataRef, viewRef, currentProject: { current: projectId }, projectEpoch: { current: 1 }, inspectorEpoch: 0, dirtyRef: { current: false }, isBusy: () => false,
     tasksRef: { current: { blocked: () => false } }, pendingForProject: () => [], online: true, auth: true, loading: false, mutateTimeline: async (...args: [string, unknown, number, {review?: replacement.ReplacementReview}]) => { calls.push(args); return acknowledged(args[3].review || replacement.createClipReplacementReview(c, `asset:${newAssetId}`)!); } };
   const compiled = Function('deps', `const { ${Object.keys(deps).join(', ')} } = deps; ${extract('function projectSessionReady()', '  const panelSurface =')} ${extract('function clipReplacementContext()', 'function exportSettingsContext()')} return { clipReplacementContext, replaceTimelineClipSource };`)(deps) as {clipReplacementContext(): replacement.ReplacementContext;replaceTimelineClipSource(review: replacement.ReplacementReview | null): Promise<replacement.ClipReplacementSubmitResult>};
   return { ...compiled, deps, calls, c };

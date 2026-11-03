@@ -73,7 +73,7 @@ test('rapid same/different repeated clicks never queue work', async () => {
   const f = fixtureOf(), pending = f.measure(); await f.measure(); await f.measure(1); assert.equal(f.calls.length, 1);
   f.reads[0].resolve(reportOf(f.target())); await pending; assert.equal(f.state().phase, 'ready');
 });
-for (const patch of [{ scope: 'other:2:normal', projectId: id(99) }, { scope: `${projectId}:2:normal` }, { restored: true }, { executionScope: '1:9:canvas' }, { visible: false }, { connected: false }]) test(`live result fence before layout: ${JSON.stringify(patch)}`, async () => {
+for (const patch of [{ scope: 'other:2:normal', projectId: id(99) }, { scope: `${projectId}:2:normal` },  { executionScope: '1:9:canvas' }, { visible: false }, { connected: false }]) test(`live result fence before layout: ${JSON.stringify(patch)}`, async () => {
   const f = fixtureOf(), file = f.target(), pending = f.measure(); f.set(patch, false); f.reads[0].resolve(reportOf(file)); await pending;
   assert.equal(f.calls[0].options.signal.aborted, true); assert.equal(f.state().report, null); assert.notEqual(f.state().phase, 'ready');
 });
@@ -111,7 +111,7 @@ test('historical observation survives unrelated timeline/source edits; exact out
 });
 test('pre-layout replacement and owner projections never flash old numeric advice', async () => {
   const f = fixtureOf(); f.edit(custom); await f.ready(); const assets = contextOf().assets; assets[0].sha256 = 'b'.repeat(64);
-  for (const patch of [{ assets }, { scope: 'new-owner' }, { connected: false }, { restored: true }]) {
+  for (const patch of [{ assets }, { scope: 'new-owner' }, { connected: false }]) {
     const projected = viewStateOf(f.state(), contextOf(patch), isTimelineRenderRecord); assert.equal(projected.report, null); assert.deepEqual(projected.draft, blank);
   }
   assert.equal(viewStateOf(f.state(), contextOf(), isTimelineRenderRecord), f.state());
@@ -137,8 +137,8 @@ test('current unauthorized is surfaced once and server/private messages are not 
   assert.deepEqual(f.auth, [false]); assert.match(f.state().error, /会话已过期/); assert.doesNotMatch(f.state().error, /secret|path/);
   assert.doesNotMatch(exportLoudnessErrorMessage({ message: '/private/token' }), /private|token/);
 });
-test('restored, hidden, disconnected, stale scope and arbitrary caller artifact cannot authorize measurement', async () => {
-  for (const patch of [{ restored: true }, { visible: false }, { connected: false }]) { const f = fixtureOf(patch); await f.measure(); assert.equal(f.calls.length, 0); }
+test('hidden, disconnected, stale scope and arbitrary caller artifact cannot authorize measurement', async () => {
+  for (const patch of [ { visible: false }, { connected: false }]) { const f = fixtureOf(patch); await f.measure(); assert.equal(f.calls.length, 0); }
   const f = fixtureOf(), target = f.target(), old = f.state(); f.set({ scope: `${projectId}:2:normal` }); await f.controller.measure(target, old.scope, old.draftVersion); assert.equal(f.calls.length, 0);
   const forged = { ...f.target(), artifact: { ...f.target().artifact, sha256: 'b'.repeat(64) }, outputFrames: 30 };
   const pending = f.controller.measure(forged, f.state().scope, f.state().draftVersion); assert.equal(f.calls[0].input.expectedArtifactSha256, 'a'.repeat(64));

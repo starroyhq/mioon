@@ -4,15 +4,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {DatabaseSync} from 'node:sqlite';
+
 import path from 'node:path';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createProjectFile,isProjectDatabase} from '../packages/business/src/project-file/connection.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
-import {assertTimelineVolumeEnvelopeWorkspace} from '../packages/business/src/timeline-volume-envelope-admission.ts';
-import {initializeFrozenUpgradeFixtureSchema} from './helpers/opacity-upgrade-fixture.ts';
+
+
 import {hash} from '../packages/business/src/services.ts';
 import {VOLUME_ENVELOPE_PROFILE as profileId} from '../packages/contracts/src/timeline-volume-envelope.ts';
+
 const id='11111111-1111-4111-8111-111111111111';
 const points=()=>[{frame:0,multiplier:1},{frame:20,multiplier:.5}];
 const add=()=>({projectId:id,expectedRevision:1,requestId:'live-envelope-request',assetId:id,trackId:id,startFrame:0,durationFrames:20,volumeEnvelope:{profileId,points:points()}});
@@ -34,21 +35,8 @@ function fixture(t: test.TestContext,{seedProject=false}={}){
  const state=()=>({changes:(store.db.prepare('SELECT total_changes() AS n').get())!.n,rows:(store.db.prepare('SELECT count(*) AS n FROM edit_tasks').get())!.n});
  return {store,tasks,prepare,state};
 }
-test('frozen old38 admission refuses both typed paths and explicit null before any durable insert',t=>{
- const db=new DatabaseSync(':memory:');t.after(()=>db.close());initializeFrozenUpgradeFixtureSchema(db,38);
- assert.equal((db.prepare('SELECT MAX(version) AS v FROM schema_version').get())!.v,38);
- for(const operation of (['timeline.clip.add','timeline.clip.update'] as const))for(const value of ([null,{profileId,points:points()}] as const)){
-  const input=operation.endsWith('.add')?add():update();(((input as {patch?:ReturnType<typeof update>['patch']}).patch??input) as {volumeEnvelope:ReturnType<typeof add>['volumeEnvelope']|null}).volumeEnvelope=value;const before=(db.prepare('SELECT total_changes() AS n').get())!.n;
-  assert.throws(()=>assertTimelineVolumeEnvelopeWorkspace(db,input),{code:'TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED'});
-  assert.equal((db.prepare('SELECT total_changes() AS n').get())!.n,before);assert.equal((db.prepare('SELECT count(*) n FROM edit_tasks').get())!.n,0);
- }
-});
-test('frozen ordinary40 still admits valid envelope evidence without acquiring execution authority',t=>{
- const db=new DatabaseSync(':memory:');t.after(()=>db.close());initializeFrozenUpgradeFixtureSchema(db,40);
- const before=(db.prepare('SELECT total_changes() AS n').get())!.n;
- for(const input of ([add(),update()] as const))assert.doesNotThrow(()=>assertTimelineVolumeEnvelopeWorkspace(db,input));
- assert.equal((db.prepare('SELECT total_changes() AS n').get())!.n,before);assert.equal((db.prepare('SELECT count(*) n FROM edit_tasks').get())!.n,0);
-});
+
+
 test('outer prepare and nested point capture execute zero getter/proxy traps',t=>{
  const f=fixture(t);let calls=0;const get=()=>{calls++;throw Error('Untrusted getter or trap executed.');};
  const handler={get,getPrototypeOf:get,ownKeys:get,getOwnPropertyDescriptor:get};

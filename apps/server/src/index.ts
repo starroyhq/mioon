@@ -117,7 +117,6 @@ interface ServerInstance {
   token: string;
   tokenFile: string;
   dataDir: string;
-  setBackupDirectory(directory:string): unknown;
   close(): Promise<void>;
 }
 
@@ -315,8 +314,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
           if (req.method === 'PUT') {
             const input = await body(req, MAX_WORKSPACE_PREFERENCES_BYTES);
             const record = input !== null && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : undefined;
-            const payload = record && Object.hasOwn(record, 'expectedWorkspaceOrigin') ? Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'expectedWorkspaceOrigin')) : input;
-            return json(res, 200, {ok: true, data: app.preferences.put(id, payload, {signal: shutdown.signal})});
+            return json(res, 200, {ok: true, data: app.preferences.put(id, input, {signal: shutdown.signal})});
           }
           res.setHeader('Allow', 'GET, PUT'); return json(res, 405, {ok: false, error: {code: 'METHOD_NOT_ALLOWED', message: '请使用 GET 或 PUT'}});
         }
@@ -327,7 +325,6 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
           if (!res.destroyed && !res.writableEnded) json(res, 200, {ok: true, data});
           return;
         }
-        if (url.pathname.startsWith('/api/workspace-backups/')) throw new AppError('RESTORE_OPERATION_UNAVAILABLE', '工作区备份和恢复尚未接入项目文件布局。', 409);
         if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/media/') || req.method !== 'GET') return notFound(res);
         const requested = decodeURIComponent(url.pathname);
         if (requested.includes('..') || requested.includes('\\')) { res.writeHead(400).end(); return; }
@@ -373,7 +370,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       if (!lock.release()) throw new Error('Application lock cleanup could not be confirmed');
     })();
     return {url: `http://127.0.0.1:${actualPort}`, port: actualPort, token, tokenFile, dataDir: root,
-      setBackupDirectory: directory => { shutdown.signal.throwIfAborted(); return (awaitConfiguration(appLibrary)).setBackupDirectory(directory); }, close};
+      close};
   } catch (error) {
     shutdown.abort(); server?.closeAllConnections();
     const drain = server?.listening ? new Promise<void>(resolve => server!.close(() => resolve())) : Promise.resolve();

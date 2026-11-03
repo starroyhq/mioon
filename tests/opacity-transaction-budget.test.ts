@@ -1,3 +1,6 @@
+
+
+
 import type {OpacityTasks} from './helpers/strict-opacity-fixture-types.ts';
 import type {OpacityServices as FixtureServices} from './helpers/strict-opacity-fixture-types.ts';
 import type {FixtureStore} from './helpers/strict-timeline-core-types.ts';
@@ -8,9 +11,9 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {Readable} from 'node:stream';
-import { openStore, openLegacyWorkspaceStore, getWorkspaceRestoreContext } from '../packages/business/src/db.ts';
-import type { StoreIdentity } from '../packages/business/src/store-contract.ts';
-import {createServices, type ServiceStore} from '../packages/business/src/services.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+
+import {createServices} from '../packages/business/src/services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {createEditTasksHttp} from '../apps/server/src/edit-tasks-http.ts';
 import {schemas,isTimelineRecord,isTimelineMutationResponse,isEditTaskEnvelope} from '../packages/contracts/src/index.ts';
@@ -60,22 +63,22 @@ test('actual owned task prepare accepts complete old maximum and refuses opacity
   assert.deepEqual(captured.input,input);
   const snapshot=()=>JSON.stringify(['edit_tasks','timelines','timeline_requests','timeline_history','timeline_history_cursors'].map(table=>store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));
   const before=snapshot(),changes=store.db.prepare('SELECT total_changes() AS n').get()!.n;
-  for(const context of [{},{expectedWorkspaceOrigin:randomUUID()}] as const){
-    assert.throws(()=>tasks.prepare(prepare(input),context),{code:'EDIT_TASK_VALIDATION'});
+  for(const envelope of [prepare(input),{...prepare(input),expectedWorkspaceOrigin:randomUUID()}]){
+    assert.throws(()=>tasks.prepare(envelope,{}),{code:'EDIT_TASK_VALIDATION'});
     assert.equal(snapshot(),before);assert.equal(store.db.prepare('SELECT total_changes() AS n').get()!.n,changes);
   }
   assert.equal(dispatches,0);assert.equal(store.db.isTransaction,false);
   t.diagnostic('127 nodes is candidate capture plus the unchanged complete prepare wrapper only; production still rejects the opacity array. No opacity transaction, execution, commit or restore profile is implemented by this test.');
 });
 
-test('real HTTP prepare separates restored-origin context before the 128-node task walker',async()=>{
+test('real HTTP prepare passes the complete 127-node candidate to the closed task validator',async()=>{
   const input=maximumInput(),withOpacity={...input,patch:{...input.patch,opacityEnvelope:opacity()}};
-  const wrapper=prepare(withOpacity),workspaceOrigin=randomUUID(),body={...wrapper,expectedWorkspaceOrigin:workspaceOrigin};
-  assert.equal(count(wrapper),127);assert.equal(count(body),128);
+  const wrapper=prepare(withOpacity),body=wrapper;
+  assert.equal(count(wrapper),127);assert.equal(count(body),127);
   const data=Buffer.from(JSON.stringify(body)),req=Readable.from([data]);
   Object.assign(req,{url:'/api/tasks/prepare',method:'POST',headers:{'content-type':'application/json','content-length':String(data.length)}});
   let received=0;
-  const handler=createEditTasksHttp((({tasks:{prepare(actual:unknown,context:Record<string,unknown>|undefined){received++;assert.deepEqual(actual,wrapper);assert.equal(count(actual),127);assert.deepEqual(context,{expectedWorkspaceOrigin:workspaceOrigin});return {qualification:true};}}}) as unknown as Parameters<typeof createEditTasksHttp>[0]));
+  const handler=createEditTasksHttp((({tasks:{prepare(actual:unknown,context:Record<string,unknown>|undefined){received++;assert.deepEqual(actual,wrapper);assert.equal(count(actual),127);assert.deepEqual(context,{});return {qualification:true};}}}) as unknown as Parameters<typeof createEditTasksHttp>[0]));
   const res={destroyed:false,writableEnded:false,headersSent:false,setHeader(){},writeHead(status: unknown){(this as unknown as {status:unknown}).status=status;this.headersSent=true;},end(text: unknown){(this as unknown as {text:unknown}).text=text;this.writableEnded=true;}};
   assert.equal(await handler((req as unknown as Parameters<typeof handler>[0]),(res as unknown as Parameters<typeof handler>[1]),new URL('http://127.0.0.1/api/tasks/prepare')),true);
   assert.equal((res as typeof res&{status:number}).status,200);assert.equal(received,1);
@@ -95,24 +98,4 @@ test('full historical ACK uses its record/byte contract rather than the prepare 
   const execute={projectId:id(1),taskId:id(2),digest:'a'.repeat(64),instanceId:id(3)};
   const acknowledge={projectId:id(1),taskId:id(2),digest:'a'.repeat(64),expectedRevision:3,status:'applied'};
   assert.equal(count(execute),5);assert.equal(count(acknowledge),6);
-});
-
-test('actual owned store cannot register or reopen42/43 through the frozen production assembly',(t: test.TestContext)=>{
-  for(const extra of [[42],[42,43]] as const){
-    const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-opacity-assembly-refusal-'));
-    let store: import('./helpers/strict-timeline-core-types.ts').FixtureStore;
-    t.after(()=>{store?.close();rmSync(root,{recursive:true,force:true});});
-    store=(openLegacyWorkspaceStore(root) as unknown as FixtureStore);
-    // Deliberately forged marker evidence in a newly created test database.
-    // This is a refusal probe, not a42/43 constructor, migration or admission.
-    for(const version of extra)store.db.prepare('INSERT INTO schema_version VALUES(?)').run(version);
-    const before=JSON.stringify(store.db.prepare('SELECT * FROM schema_version ORDER BY version').all());
-    const changes=store.db.prepare('SELECT total_changes() AS n').get()!.n;
-    assert.throws(()=>(getWorkspaceRestoreContext(store) as unknown as import('./helpers/strict-workspace-boundary-types.ts').RestoreMetadata|null),{code:'RESTORE_STORE_UNVERIFIED'});
-    assert.throws(()=>(createEditTasks({store,services:{call(){throw Error('Must not dispatch');}}}) as unknown as OpacityTasks),{code:'RESTORE_STORE_UNVERIFIED'});
-    assert.equal(JSON.stringify(store.db.prepare('SELECT * FROM schema_version ORDER BY version').all()),before);
-    assert.equal(store.db.prepare('SELECT total_changes() AS n').get()!.n,changes);
-    store.close();(store as FixtureStore|undefined)=undefined;
-    assert.throws(()=>(openLegacyWorkspaceStore(root) as unknown as FixtureStore),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
-  }
 });

@@ -3,9 +3,8 @@ import React from 'react';
 import { Button } from '@mioon/ui/components/button';
 import type { LastProjectController, LastProjectState } from './last-project-state.ts';
 
-export default function LastProjectStatus({ state, controller, restored = false }: { state: LastProjectState; controller: LastProjectController; restored?: boolean }) {
+export default function LastProjectStatus({ state, controller }: { state: LastProjectState; controller: LastProjectController }) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
-  if (restored) return <section className="input-hint" aria-label={t('projects.locator')} title={t('projects.locatorRestoredHint')} data-testid="last-project-status" data-phase="unavailable"><span role="status">{t('projects.locatorRestored')}</span></section>;
   const status = state.phase === 'saved' ? t('projects.locatorSaved')
     : state.phase === 'pending' ? t('projects.locatorPending')
       : state.phase === 'conflict' ? t('projects.locatorConflict')

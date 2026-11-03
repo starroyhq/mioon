@@ -40,7 +40,6 @@
     "desktop:package:linux": "pnpm --filter @mioon/desktop package:linux",
     "test:desktop": "node --test \"tests/desktop*.test.ts\"",
     "cli": "node apps/cli/src/index.ts",
-    "backup": "node apps/cli/src/backup.ts",
     "test:cli": "node --test \"tests/cli*.test.ts\"",
     "test:providers": "node --test \"tests/providers*.test.ts\"",
     "test:browser:providers": "python3 tests/browser_providers_v4.py",

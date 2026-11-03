@@ -6,7 +6,7 @@ import {mkdtemp,realpath,readFile,writeFile,unlink,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {timelineLoudnessCandidateDigest} from '../packages/contracts/src/timeline-loudness-apply.ts';
 import {openProjectDatabase} from './helpers/project-database.ts';

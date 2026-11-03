@@ -6,7 +6,7 @@ import { validateCatalogs } from '../packages/i18n/src/index.ts';
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const hash = 'a'.repeat(64);
 export function fixture() {
-  return { scope: 'project:epoch:normal', projectId: id(1), workspaceOrigin: 'normal', connected: true, visible: true, restored: false,
+  return { scope: 'project:epoch:normal', projectId: id(1), connected: true, visible: true,
     shot: { id: id(2), projectId: id(1), title: 'Current mutable title', selectedVersionId: id(3), duration: 99, aspectRatio: 'mutable' },
     versions: [3, 4, 5].map((n, at) => ({ id: id(n), projectId: id(1), shotId: id(2), assetId: id(n + 10), sha256: hash, number: at + 1, providerId: 'mock', model: 'fixed-model', isMock: true, createdAt: '2026-10-15T00:00:00Z', url: 'https://untrusted.invalid/media', snapshot: { prompt: `literal <script> ${n}`, duration: n, aspectRatio: '16:9' } })),
     assets: [13, 14, 15].map(n => ({ id: id(n), projectId: id(1), sha256: hash, mimeType: 'video/mp4', url: 'https://untrusted.invalid/asset' })) };
@@ -19,7 +19,7 @@ test('explicit pair preserves nonlatest identities and frozen metadata across li
   assert.ok(comparisonCurrent(a, c)); assert.ok(comparisonCurrent(b, c)); assert.deepEqual(comparisonOptions(c).map(v => v.number), [3, 2, 1]);
   assert.ok(Object.isFrozen(a)); assert.ok(Object.isFrozen((a)!.metadata));
   assert.ok((a)!.url.startsWith(`/api/projects/${c.projectId}/version-comparison/media?`)); assert.doesNotMatch((a)!.url, /untrusted/);
-  const parsed = new URL((a)!.url, 'http://local'); assert.equal(parsed.searchParams.get('versionId'), id(3)); assert.equal(parsed.searchParams.get('assetId'), id(13)); assert.equal(parsed.searchParams.get('workspaceOrigin'), 'normal');
+  const parsed = new URL((a)!.url, 'http://local'); assert.equal(parsed.searchParams.get('versionId'), id(3)); assert.equal(parsed.searchParams.get('assetId'), id(13)); assert.equal(parsed.searchParams.has('workspaceOrigin'), false);
 });
 test('each cross-scope and malformed identity fails closed', () => {
   const mutations = [(c: { projectId: string; }) => c.projectId = id(90), (c: { shot: { projectId: string; }; }) => c.shot.projectId = id(90), (c: { shot: { id: string; }; }) => c.shot.id = id(90),
@@ -28,8 +28,8 @@ test('each cross-scope and malformed identity fails closed', () => {
     (c: ReturnType<typeof fixture>) => c.versions.push(c.versions[0]), (c: ReturnType<typeof fixture>) => c.assets.push(c.assets[0]), (c: { versions: { number: number; }[]; }) => c.versions[0].number = NaN, (c: { versions: { id: string; }[]; }) => c.versions[0].id = '../bad'];
   for (const mutate of mutations) { const c = fixture(); mutate(c); assert.equal(captureComparison(c, id(3)), null); }
 });
-test('offline hidden restored unknown-workspace and scope changes revoke earlier bindings', () => {
-  for (const patch of [{ connected: false }, { visible: false }, { restored: true }, { workspaceOrigin: null }, { workspaceOrigin: 'restored:any' }, { scope: null }, { shot: null }]) {
+test('offline hidden and scope changes revoke earlier bindings', () => {
+  for (const patch of [{ connected: false }, { visible: false }, { scope: null }, { shot: null }]) {
     const c = fixture(), a = captureComparison(c, id(3)); Object.assign(c, patch); assert.equal(comparisonAvailable(c), false); assert.equal(comparisonCurrent(a, c), false);
   }
   const c = fixture(), a = captureComparison(c, id(3)); c.scope = 'new epoch'; assert.equal(comparisonCurrent(a, c), false);

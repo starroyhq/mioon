@@ -46,7 +46,7 @@ test('real project notes survive reopening while legacy package imports and work
   assert.throws(() => createProjectFromDocument(reopened, {document: collected.document, files: new Map(), name: 'Refused copy', move: false}), {
     name: 'TypeError', message: 'Legacy project package imports cannot run on project databases.',
   });
-  await assert.rejects(current.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'RESTORE_OPERATION_UNAVAILABLE', status: 409});
+  await assert.rejects(current.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'UNKNOWN_OPERATION', status: 404});
   assert.equal(reopened.db.prepare('SELECT total_changes() AS n').get()!.n, before);
   assert.equal(reopened.db.prepare('SELECT count(*) AS n FROM projects').get()!.n, 1);
   assert.deepEqual(reopened.get('projects', projectId), project);
@@ -62,7 +62,7 @@ test('the exact test opener owns one real B1 application and releases it with it
   assert.equal(one.configuration.root, app); assert.equal(two.configuration.root, app);
   assert.ok(existsSync(path.join(app, 'app-library.db')));
   assert.equal(existsSync(path.join(root, 'workbench.sqlite')), false);
-  await assert.rejects(one.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
+  await assert.rejects(one.call('workspace.backup.create', {requestId: randomUUID()}), {code:'UNKNOWN_OPERATION'});
   await one.drain(); await two.drain(); store.close();
   assert.equal(testStoreForConnection(store.db, root), null);
   const reopened = openAppLibrary({dataDir: app}); reopened.close();

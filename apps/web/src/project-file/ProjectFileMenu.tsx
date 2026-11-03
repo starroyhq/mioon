@@ -37,7 +37,7 @@ export interface ProjectFileMenuItemsProps {
   readonly onExportStoryboard?: () => void;
   /** Items of the View submenu; without them there is no View submenu. */
   readonly viewItems?: ReactNode;
-  /** Shown but not available now, e.g. in a restored read-only copy. */
+  /** Shown but not available now, e.g. while the current project is unavailable. */
   readonly disabledItems?: ReadonlySet<ProjectFileMenuItem>;
   /** Opens the Recent projects submenu with the menu. */
   readonly recentOpen?: boolean;

@@ -3,7 +3,6 @@ import type {DatabaseSync} from 'node:sqlite';
 import {AppError,TIMELINE_RESPONSE_BYTES,sourceFrameCount} from '@mioon/contracts';
 import {CLIP_TRANSITION_LIMITS,canonicalClipTransition,clipTransitionFits,clipTransitionPredecessor,clipTransitionRoom,
  savedClipTransition,staleClipTransitions,validateClipTransition,type ClipTransition,type TransitionSources} from '../../contracts/src/timeline-clip-transition.ts';
-import {readCurrentWorkspaceRole,isWorkspaceRoleSince} from './workspace-schema-dispatch.ts';
 import type {TimelineRecord} from './timeline-inputs.ts';
 import type {TimelineRecoveryBoundary} from './timeline-recovery.ts';
 
@@ -15,9 +14,8 @@ type TransitionClipRecord=TimelineRecord['clips'][number]&{transitionIn?: unknow
  * whose policy did not already refuse the write) fails before the first write. */
 export function assertClipTransitionWorkspace(db: DatabaseSync): void {
  if(isProjectLayout(db))return;
- let allowed=false;
- try{allowed=isWorkspaceRoleSince(readCurrentWorkspaceRole(db),72,'ordinary');}catch{allowed=false;}
- if(!allowed)throw new AppError('CLIP_TRANSITION_WORKSPACE_REQUIRED','当前工作区不支持片段转场',409);
+ if(!isProjectLayout(db))throw new AppError('CLIP_TRANSITION_WORKSPACE_REQUIRED','当前工作区不支持片段转场',409);
+
 }
 /** Source handles as the transition rules read them: a still repeats, a video
  * offers its whole frame count. Each lookup opens the media graph, so assets

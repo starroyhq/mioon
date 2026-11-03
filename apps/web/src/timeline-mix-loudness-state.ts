@@ -20,7 +20,7 @@ export interface TimelineMixLoudnessContext {
   readonly sourceIdentity: string;
   readonly connected: boolean;
   readonly visible: boolean;
-  readonly restored: boolean;
+
   readonly hasUnsavedDrafts: boolean;
   readonly pending: boolean;
 }
@@ -33,25 +33,24 @@ export interface TimelineMixLoudnessState extends TimelineMixLoudnessContext {
   readonly error: string;
   readonly errorCode?: string;
 }
-export interface TimelineMixLoudnessReadOptions { readonly signal: AbortSignal; readonly expectedWorkspaceOrigin?: string }
+export interface TimelineMixLoudnessReadOptions { readonly signal: AbortSignal;  }
 export interface TimelineMixLoudnessControllerOptions {
   readonly read: (input: TimelineMixLoudnessInput, options: TimelineMixLoudnessReadOptions) => Promise<unknown>;
   readonly getContext?: () => TimelineMixLoudnessContext;
-  readonly getInvocation?: () => Readonly<{ expectedWorkspaceOrigin?: string }>;
   readonly onChange?: (state: TimelineMixLoudnessState) => void;
   readonly onUnauthorized?: () => void;
 }
 const blank = (): ExportLoudnessDraft => Object.freeze({ integratedLufs: '', truePeakCeilingDbtp: '' });
 const initial = (): TimelineMixLoudnessState => ({ scope: null, executionScope: '', projectId: null, timelineId: null,
-  revision: null, durationFrames: 0, sourceIdentity: '', connected: false, visible: false, restored: false, hasUnsavedDrafts: false,
+  revision: null, durationFrames: 0, sourceIdentity: '', connected: false, visible: false,  hasUnsavedDrafts: false,
   pending: false, draft: blank(), version: 0, phase: 'idle', report: null, error: '' });
 const contextKeys = ['scope', 'executionScope', 'projectId', 'timelineId', 'revision', 'durationFrames', 'sourceIdentity',
-  'connected', 'visible', 'restored', 'hasUnsavedDrafts', 'pending'] as const;
+  'connected', 'visible', 'hasUnsavedDrafts', 'pending'] as const;
 const sameContext = (a: TimelineMixLoudnessContext, b: TimelineMixLoudnessContext): boolean => contextKeys.every(key => a[key] === b[key]);
 export function timelineMixLoudnessAvailable(context: TimelineMixLoudnessContext): boolean {
   return Boolean(context.scope && context.projectId && context.timelineId && Number.isSafeInteger(context.revision) && (context.revision ?? 0) > 0 &&
     Number.isSafeInteger(context.durationFrames) && context.durationFrames > 0 && context.durationFrames <= TIMELINE_MIX_LOUDNESS_LIMITS.timelineFrames &&
-    context.sourceIdentity && context.connected && context.visible && !context.restored && !context.hasUnsavedDrafts && !context.pending);
+    context.sourceIdentity && context.connected && context.visible && !context.hasUnsavedDrafts && !context.pending);
 }
 /** Both targets are required. There is deliberately no measurement-only/default-target path. */
 export function parseTimelineMixLoudnessTarget(draft: ExportLoudnessDraft, locale: Locale = 'zh-Hans'): Readonly<{ target?: ExportLoudnessTarget; error: string }> {
@@ -70,7 +69,6 @@ const codeOf = (error: unknown): string => error !== null && typeof error === 'o
 export function timelineMixLoudnessErrorMessage(error: unknown, locale: Locale = 'zh-Hans'): string {
   const code = codeOf(error);
   if (code === 'UNAUTHORIZED') return translate(locale, 'audio.loudness.mix.unauthorized');
-  if (code.startsWith('RESTORE_')) return translate(locale, 'audio.loudness.mix.restored');
   if (code === 'TIMELINE_MIX_LOUDNESS_REVISION_CONFLICT' || code === 'TIMELINE_MIX_LOUDNESS_STALE') return translate(locale, 'audio.loudness.mix.changed');
   if (code === 'TIMELINE_MIX_LOUDNESS_BUSY') return translate(locale, 'audio.loudness.mix.busy');
   if (code === 'TIMELINE_MIX_LOUDNESS_TIMEOUT') return translate(locale, 'audio.loudness.mix.timeout');
@@ -139,9 +137,8 @@ export function createTimelineMixLoudnessController(options: TimelineMixLoudness
       emit({ version: ++version, phase: 'preparing', report: null, error: '' });
       const captured = state;
       try {
-        const invocation = options.getInvocation?.() ?? {};
         if (!current(attempt, captured, abort)) return null;
-        const result = await options.read(input, { ...invocation, signal: abort.signal });
+        const result = await options.read(input, { signal: abort.signal });
         if (!current(attempt, captured, abort)) return null;
         if (!isTimelineMixLoudnessResponse(result, input) || result.identity.timelineId !== captured.timelineId ||
           result.identity.range.endFrame !== captured.durationFrames) throw protocolError();

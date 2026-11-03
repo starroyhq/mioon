@@ -1,7 +1,7 @@
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {WorkbenchAlert,WorkbenchBadge,WorkbenchButton,WorkbenchProgress} from '@mioon/ui/components/workbench-controls';
 import {useI18n} from './i18n/I18nProvider.tsx';
-import {workspaceBackupBridge} from './workspace-settings-client.ts';
+import {workspaceNativeBridge} from './workspace-native-client.ts';
 import type {MediaToolDiagnostics,MediaToolsStatus,ToolPaths,WorkspaceToolsBridge} from '../../../packages/contracts/src/workspace-info.ts';
 
 const ACTIVE=new Set(['downloading','verifying','checking','installing']);
@@ -28,7 +28,7 @@ export default function SettingsMediaToolsDownload({native,active,saved,onInstal
  // Progress is polled only while an installation runs, including one started before this page opened.
  useEffect(()=>{if(!installing)return;const timer=setInterval(()=>{void refresh();},400);return()=>clearInterval(timer);},[installing,refresh]);
  if(!status?.offer)return null;
- const {offer,progress}=status,inUse=same(status.installed,saved),restart=workspaceBackupBridge()?.restart;
+ const {offer,progress}=status,inUse=same(status.installed,saved),restart=workspaceNativeBridge()?.restart;
  const install=async()=>{
   if(runningRef.current||!active)return;runningRef.current=true;setRunning(true);setFailure(null);setDone(false);
   try{const result=await native.installMediaTools();if(!mounted.current)return;if(result.ok){onInstalled(result.paths,result.diagnostics);setDone(true);}else setFailure(result.code);}

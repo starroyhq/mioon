@@ -1,16 +1,17 @@
+
+import {validatePng} from '../packages/business/src/images/png.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
 import {chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createProjectFile, openProjectStore} from '../packages/business/src/project-file/index.ts';
 import {createImageStorage, type ImageStorageTask} from '../packages/business/src/image-storage.ts';
 import {createFrameStorage, type FrameStorageTask} from '../packages/business/src/frame-storage.ts';
 import {createSceneShotsStorage,type SceneShotsStorageTask} from '../packages/business/src/scene-shots-storage.ts';
 import {createTimelineExportAdmissionServices} from '../packages/business/src/timeline-export-admission.ts';
-import {renderMockImagePng, validatePng} from '../packages/business/src/images/png.ts';
+import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import {FRAME_PROFILE_ID, FRAME_SELECTION_RULE} from '../packages/contracts/src/frame-extraction.ts';
 
 import type {SceneShotsReceipt} from '../packages/contracts/src/scene-tasks.ts';
@@ -22,23 +23,17 @@ let pngPromise: Promise<Buffer> | undefined;
 const png = () => pngPromise ??= renderMockImagePng();
 const check = () => {};
 
-function fixture(t: TestContext, kernel = true) {
+function fixture(t: TestContext) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-staging-directories-'));
   const projectDir = path.join(root, 'project');
   mkdirSync(projectDir, {mode: 0o700});
-  let store, projectId: string;
-  const tempDir = path.join(root, 'tmp');
-  if (kernel) {
-    const projectFile = path.join(projectDir, 'project.mioon');
-    projectId = createProjectFile(projectFile);
-    store = openProjectStore({projectFile, locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir})});
-    mkdirSync(path.join(projectDir, 'media'), {mode: 0o700});store.put('projects',{id:projectId,name:'Storage publication fixture',revision:1});
-  } else {
-    store = openLegacyWorkspaceStore(projectDir);
-    projectId = randomUUID();
-  }
+  const tempDir = path.join(root, 'tmp'), projectFile = path.join(projectDir, 'project.mioon');
+  const projectId = createProjectFile(projectFile);
+  const store = openProjectStore({projectFile, locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir})});
+  mkdirSync(path.join(projectDir, 'media'), {mode: 0o700});
+  store.put('projects',{id:projectId,name:'Storage publication fixture',revision:1});
   t.after(() => { store.close(); rmSync(root, {recursive: true, force: true}); });
-  return {root, projectDir, tempDir, store, projectId, stagingRoot: kernel ? tempDir : projectDir};
+  return {root, projectDir, tempDir, store, projectId, stagingRoot: tempDir};
 }
 
 async function stagedResults(f: ReturnType<typeof fixture>) {
@@ -66,21 +61,21 @@ async function stagedResults(f: ReturnType<typeof fixture>) {
   return {bytes, image, imageTask, imageReceipt, frame, frameTask, frameReceipt, scene, sceneTaskId, sceneAssetId, sceneTask, sceneReceipt, stagedPaths, assertStaged};
 }
 
-for (const kernel of [false, true]) test(`${kernel ? 'kernel' : 'legacy'} staging retains its owned directory and publishes only into its fixed project output directory`, async t => {
-  const f = fixture(t, kernel), s = await stagedResults(f);
-  if (kernel) chmodSync(f.projectDir, 0o755);
-  const sentinels=isProjectStore(f.store)?[f.projectDir,f.store.localDir,f.store.cacheDir,f.tempDir].map(root=>path.join(root,'keep-unrelated.bin')):[];
+test('kernel staging retains its owned directory and publishes only into its fixed project output directory', async t => {
+  const f = fixture(t), s = await stagedResults(f);
+  chmodSync(f.projectDir, 0o755);
+  const sentinels=[f.projectDir,f.store.localDir,f.store.cacheDir,f.tempDir].map(root=>path.join(root,'keep-unrelated.bin'));
   for(const file of sentinels)writeFileSync(file,'unrelated bytes',{mode:0o600});
   s.assertStaged();
-  const otherRoot = kernel ? f.projectDir : f.tempDir;
+  const otherRoot = f.projectDir;
   for (const family of ['image-staging', 'frame-staging', 'scene-staging']) assert.equal(existsSync(path.join(otherRoot, family)), false);
   const image = await s.image.publish(s.imageTask, s.imageReceipt, check);
   const frame = await s.frame.publish(s.frameTask, s.frameReceipt, check);
   const scene = await s.scene.publish(s.sceneTask,s.sceneReceipt,0,check);
   for (const relativePath of [image.relativePath, frame.relativePath, scene.relativePath]) {
-    assert.match(relativePath,kernel?/^生成\/[^/]+\.png$/:/^media\/[a-f0-9-]+\.png$/);
+    assert.match(relativePath,/^生成\/[^/]+\.png$/);
     assert.deepEqual(readFileSync(path.join(f.projectDir, relativePath)), s.bytes);
-    if (kernel) assert.equal(existsSync(path.join(f.tempDir, relativePath)), false);
+    assert.equal(existsSync(path.join(f.tempDir, relativePath)), false);
   }
   s.assertStaged(); // Durable stages and manifests remain until a committed registration.
   assert.deepEqual(await s.image.publish(s.imageTask, s.imageReceipt, check), image);
@@ -100,7 +95,7 @@ for (const kernel of [false, true]) test(`${kernel ? 'kernel' : 'legacy'} stagin
   assert.deepEqual(s.image.readReceipt(s.imageTask), s.imageReceipt);
   assert.deepEqual(s.frame.readReceipt(s.frameTask), s.frameReceipt);
   assert.deepEqual(s.scene.readReceipt(s.sceneTask),s.sceneReceipt);
-  if(kernel)assert.deepEqual(await s.scene.artifact(s.sceneTask,s.sceneReceipt,0,check),s.bytes);
+  assert.deepEqual(await s.scene.artifact(s.sceneTask,s.sceneReceipt,0,check),s.bytes);
   for(const relative of [image.relativePath,frame.relativePath,scene.relativePath])assert.deepEqual(readFileSync(path.join(f.projectDir,relative)),s.bytes);
   for(const file of sentinels)assert.equal(readFileSync(file,'utf8'),'unrelated bytes');
   await s.frame.verify(s.frameTask, s.frameReceipt, check);
@@ -125,13 +120,6 @@ test('publication collision preserves the previous file and publishes under its 
  s.assertStaged();
 });
 
-test('legacy collision retains its existing rejection and every staged PNG',async t=>{
- const f=fixture(t,false),s=await stagedResults(f),other=Buffer.from('Existing different media');
- const paths=[s.imageReceipt.assetId,s.frameReceipt.assetId,s.sceneAssetId].map(id=>path.join(f.projectDir,'media',`${id}.png`));for(const file of paths)writeFileSync(file,other,{mode:0o600});
- await assert.rejects(s.image.publish(s.imageTask,s.imageReceipt,check),{code:'IMAGE_RESULT_INVALID'});await assert.rejects(s.frame.publish(s.frameTask,s.frameReceipt,check),{code:'FRAME_RESULT_INVALID'});
- await assert.rejects(s.scene.publish(s.sceneTask,s.sceneReceipt,0,check),{code:'SCENE_STORAGE_FAILED'});s.assertStaged();for(const file of paths)assert.deepEqual(readFileSync(file),other);
-});
-
 test('ordinary kernel media permits 0755 while private staging permissions stay enforced without losing bytes', async t => {
   const f = fixture(t), s = await stagedResults(f);
   chmodSync(path.join(f.projectDir, 'media'), 0o755);mkdirSync(path.join(f.projectDir,'生成'),{mode:0o755});
@@ -153,30 +141,12 @@ test('ordinary kernel media permits 0755 while private staging permissions stay 
   for (const relative of [image.relativePath, frame.relativePath, scene.relativePath]) assert.deepEqual(readFileSync(path.join(f.projectDir, relative)), s.bytes);
 });
 
-test('copied kernel fields cannot redirect staging outside the legacy root', async t => {
-  const f = fixture(t), bytes = await png(), copied = {...f.store};
-  const image = createImageStorage(copied, {validatePng});
-  const task: ImageStorageTask = {id: randomUUID(), projectId: f.projectId, groupId: randomUUID(), inputHash: 'a'.repeat(64), input: '{}', snapshot: {providerId: 'mock'}};
-  await image.stage(task, {bytes}, check);
-  const scene = createSceneShotsStorage(copied), taskId = randomUUID();
-  scene.stage(taskId, 0, bytes);
-  assert.deepEqual(readFileSync(path.join(f.projectDir, 'image-staging', `${task.id}.png`)), bytes);
-  assert.deepEqual(readFileSync(path.join(f.projectDir, 'scene-staging', `${taskId}-0.png`)), bytes);
-  assert.equal(existsSync(path.join(f.tempDir, 'image-staging')), false);
-  assert.equal(existsSync(path.join(f.tempDir, 'scene-staging')), false);
-});
 
-test('export capability inspection receives kernel tempDir and retains legacy and absent-root defaults', async t => {
-  const kernel = fixture(t), legacy = fixture(t, false), observed: (string | undefined)[] = [];
-  for (const store of [kernel.store, legacy.store, {db: legacy.store.db}]) {
-    const service = createTimelineExportAdmissionServices(store, {inspect: async (_delivery, {capabilityWorkRoot}) => {
-      observed.push(capabilityWorkRoot); return {status: 'available', code: 'EXPORT_CAPABILITY_AVAILABLE'};
-    }});
-    try { assert.deepEqual(await service.inspect({}), {status: 'available', code: 'EXPORT_CAPABILITY_AVAILABLE'}); }
-    finally { await service.drain(); }
-  }
-  const forged = createTimelineExportAdmissionServices({...kernel.store}, {inspect: async () => { throw Error('An unverified kernel wrapper must never inspect'); }});
-  try { await assert.rejects(forged.inspect({}), {code: 'RESTORE_STORE_UNVERIFIED'}); }
-  finally { await forged.drain(); }
-  assert.deepEqual(observed, [kernel.tempDir, legacy.projectDir, undefined]);
+
+test('export capability inspection uses the actual kernel tempDir and rejects wrappers before inspection',async t=>{
+ const kernel=fixture(t),observed:(string|undefined)[]=[];
+ const service=createTimelineExportAdmissionServices(kernel.store,{inspect:async(_delivery,{capabilityWorkRoot})=>{observed.push(capabilityWorkRoot);return {status:'available',code:'EXPORT_CAPABILITY_AVAILABLE'};}});
+ try{assert.deepEqual(await service.inspect({}),{status:'available',code:'EXPORT_CAPABILITY_AVAILABLE'});}finally{await service.drain();}
+ for(const forged of [{...kernel.store},{db:kernel.store.db}])assert.throws(()=>createTimelineExportAdmissionServices(forged,{inspect:async()=>assert.fail('Unverified wrapper must never inspect')}),{code:'PROJECT_STORE_UNVERIFIED'});
+ assert.deepEqual(observed,[kernel.tempDir]);
 });

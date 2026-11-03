@@ -22,7 +22,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import { isTimelineRenderRecord } from '@mioon/contracts';
-import { pinNewWorkspaceIntent, workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 import { createExportSamplePeakController, EXPORT_SAMPLE_PEAK_LABEL, type ExportSamplePeakControllerOptions } from '../apps/web/src/export-sample-peak-state.ts';
 import {context,fixture,row,report} from './helpers/strict-export-sample-peak-types.ts';
 import {asset,unready,projectId,id} from './helpers/export-sample-peak-ui-fixture.ts';
@@ -31,8 +30,8 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 let rendered: Record<string,string>, fileActions: {history:unknown[];withoutFeature:unknown[]}, actualFileActions: string[];
 before(async () => {
   const values:Record<string,{exportId:string;state:ExportSamplePeakState}> = {};
-  for (const name of ['idle', 'ready', 'silent', 'over', 'checking', 'busy', 'unsupported', 'incomplete', 'stale', 'cancelled', 'restored', 'offline']) {
-    const f = fixture(name === 'restored' ? { restored: true } : name === 'offline' ? { connected: false } : {});
+  for (const name of ['idle', 'ready', 'silent', 'over', 'checking', 'busy', 'unsupported', 'incomplete', 'stale', 'cancelled',  'offline']) {
+    const f = fixture(name === 'restored' ? {  } : name === 'offline' ? { connected: false } : {});
     if (name === 'ready') await f.ready();
     if (name === 'silent') await f.ready(report(f.target(), 0, 0));
     if (name === 'over') await f.ready(report(f.target(), 1.25, 0.5));
@@ -98,14 +97,6 @@ test('all row actions reflect busy; cancel is explicit and only appears on the c
   assert.match(rendered.checking, /正在检查已导出文件解码样本峰值/); assert.match(rendered.checking, /取消本次检查/);
   assert.match(rendered.busy, /另一文件正在检查/); assert.doesNotMatch(rendered.busy, /取消本次检查/);
 });
-test('nonready statuses keep numeric claims absent and explicit recheck available', () => {
-  for (const name of ['unsupported', 'incomplete', 'stale', 'cancelled']) {
-    const html = rendered[name]; assert.match(html, /data-testid="export-sample-peak-not-ready"/); assert.match(html, />重新检查<\/button>/);
-    assert.doesNotMatch(html, /data-testid="export-sample-peak-overall"|已解码检查此成片|SHA-256/);
-  }
-  assert.match(rendered.offline, /连接恢复后可明确发起检查/); assert.match(rendered.offline, /disabled/);
-  assert.match(rendered.restored, /恢复分支暂不支持已导出文件解码样本峰值检查/); assert.doesNotMatch(rendered.restored, /<button/);
-});
 test('historical peak actions leave immutable file inspection inputs intact while preview keeps its original download', () => {
   assert.equal((rendered.history.match(/data-testid="export-sample-peak-check"/g) || []).length, 2);
   assert.equal(fileActions.history.length, 4);
@@ -140,9 +131,9 @@ test('actual App context uses current refs, transport option shape, and frozen r
   const source = app(), start = source.indexOf('  function exportSamplePeakContext()'), end = source.indexOf('  function checkTimelineExport(', start), block = source.slice(start, end);
   assert.doesNotMatch(block, /timeline\?\.revision|setRightDockTab|setShowExports|refresh\(/);
   const live = context(), calls: {operation:string;input:{projectId:string;exportId:string};options:ExportSamplePeakReadOptions}[] = [], dataRef = { current: { project: { id: projectId }, exports: live.exports, assets: live.assets } }, currentProject = { current: projectId };
-  const workspaceRef = { current:{restored:false} as {restored:boolean;workspaceOrigin?:string} }, projectEpoch = { current: 1 }, navigationEpoch = { current: 0 }, panelIntent = { current: 0 }, viewRef = { current: { activeMode: 'editing' } };
+  const workspaceRef = { current:{} as {} }, projectEpoch = { current: 1 }, navigationEpoch = { current: 0 }, panelIntent = { current: 0 }, viewRef = { current: { activeMode: 'editing' } };
   let controller:ExportSamplePeakController;
-  const environment = { workspaceOriginScope, pinNewWorkspaceIntent, workspaceRef, currentProject, projectEpoch, navigationEpoch, panelIntent, viewRef, dataRef,
+  const environment = {editorSession: {current:'normal'},  workspaceRef, currentProject, projectEpoch, navigationEpoch, panelIntent, viewRef, dataRef,
     projectSessionReady: () => true, workbenchReady: true,
     online: true, auth: true, loading: false, showDelivery: true, showExports: true, isTimelineRenderRecord,
     setAuth() { assert.fail('unexpected auth mutation'); }, async rpc(operation:string,input:{projectId:string;exportId:string},options:ExportSamplePeakReadOptions) { calls.push({ operation, input, options }); return report(controller.getState().targets.find((target: { exportId: unknown; }) => target.exportId === input.exportId)!); },
@@ -167,7 +158,7 @@ test('actual App context uses current refs, transport option shape, and frozen r
     read() { assert.fail('Unaccepted project data cannot start historical-file observation'); } } as unknown as Parameters<typeof createExportSamplePeakController>[0]));
   blocked.setContext((unopened as unknown as Parameters<typeof blocked.setContext>[0])); await blocked.check(target, unopened.scope); assert.equal(calls.length, 1);
   projectEpoch.current++; controller!.setContext(actual.exportSamplePeakContext()); assert.equal(controller!.getState().report, null);
-  workspaceRef.current = { restored: true, workspaceOrigin: id(88) }; controller!.setContext(actual.exportSamplePeakContext());
+  currentProject.current = id(88); controller!.setContext(actual.exportSamplePeakContext());
   await controller!.check(controller!.getState().targets[0], controller!.getState().scope); assert.equal(calls.length, 1);
 });
 test('actual action and cancel callbacks do no work until clicked and retain checked target/scope', () => {
@@ -183,4 +174,12 @@ test('actual action and cancel callbacks do no work until clicked and retain che
   buttons.find((item:ElementNode) => item.props['data-testid'] === 'export-sample-peak-check')!.props.onClick();
   buttons.find((item:ElementNode) => item.props['data-testid'] === 'export-sample-peak-cancel')!.props.onClick();
   assert.deepEqual(calls, [['check', f.target(), state.scope], ['cancel']]);
+});
+
+test('nonready statuses keep numeric claims absent and explicit recheck available', () => {
+  for (const name of ['unsupported', 'incomplete', 'stale', 'cancelled']) {
+    const html = rendered[name]; assert.match(html, /data-testid="export-sample-peak-not-ready"/); assert.match(html, />重新检查<\/button>/);
+    assert.doesNotMatch(html, /data-testid="export-sample-peak-overall"|已解码检查此成片|SHA-256/);
+  }
+  assert.match(rendered.offline, /连接恢复后可明确发起检查/); assert.match(rendered.offline, /disabled/);
 });

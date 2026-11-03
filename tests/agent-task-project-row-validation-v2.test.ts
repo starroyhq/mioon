@@ -15,7 +15,7 @@ import {bindAgentTaskRowValidation} from '../packages/business/src/agent/task-pr
 import {withoutForeignKeys} from './helpers/project-database.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
 
-const options = {allowConversations: true, allowInteractions: true, allowRequestReferences: true, allowAnswers: true};
+const options = {};
 const invalid = {code: 'RESTORE_SCHEMA_UNSUPPORTED'};
 function scratch(t: TestContext): string {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-task-row-validation-'));
@@ -60,8 +60,6 @@ test('the TEST validator reads the actual app policy and project rows without wr
   assert.equal(f.store.db.prepare("SELECT 1 FROM main.sqlite_schema WHERE name='agent_task_policy_v2'").get(), undefined);
   assert.equal(f.store.db.prepare('PRAGMA database_list').all().some(row => row.file === f.library.databaseFile), false);
   assert.throws(() => validateAgentTaskRowsV2(f.store.db, {...options, maxBytes: 1}), invalid);
-  // Legacy captured-profile flags do not downgrade the native Mio format.
-  validateAgentTaskRowsV2(f.store.db, {allowRequestReferences:false});
   const saved = f.library.db.prepare('SELECT data FROM agent_task_policy_v2 WHERE id=1').get()!.data;
   f.library.db.prepare('UPDATE agent_task_policy_v2 SET data=? WHERE id=1').run('{}');
   const badBefore = [changes(f.store.db), changes(f.library.db)];

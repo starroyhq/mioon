@@ -1,3 +1,5 @@
+
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
@@ -5,16 +7,15 @@ import {writeFileSync} from 'node:fs';
 import {mkdtemp,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {AGENT_TASK_OPERATION_ADMISSION} from '../packages/business/src/agent/task-tools-v2.ts';
 import {schemas,descriptions,operationEffect,isTimelineMutationResponse,hasRequestNotAppliedProof,TIMELINE_MUTATION_OPERATIONS,DURABLE_EDIT_OPERATIONS,
  TIMELINE_CROSSFADE_OPERATION,TIMELINE_CROSSFADE_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES,timelineCrossfadeOverlap} from '@mioon/contracts';
 import {createVolumeEnvelopeEvaluator} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {translate} from '../packages/i18n/src/index.ts';
-import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+
+
 
 const CROSSFADE=TIMELINE_CROSSFADE_OPERATION;
 interface Clip {id: string;trackId: string;startFrame: number;durationFrames: number;volumeEnvelope?: unknown;fadeInFrames?: number;fadeOutFrames?: number}
@@ -25,7 +26,7 @@ type Request = {projectId: string;expectedRevision: number;requestId: string;out
 const digest=(bytes: Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const writes=['timelines','timeline_history','timeline_history_cursors','timeline_requests'];
 
-async function fixture(t: test.TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){
+async function fixture(t: test.TestContext,opener:typeof openStore=openStore){
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-crossfade-')));
  let store=opener(root),services=createServices(store,new Map());
  const call=async <T,>(operation: string,input: unknown): Promise<T>=>await services.call(operation,input) as T;
@@ -74,10 +75,10 @@ async function rejects(f: Fixture,input: Request,code: string){
  assert.deepEqual(f.capture(),before,`${code} writes nothing`);
 }
 
-test('the crossfade is registered, described, effect-annotated, restore-denied, a reversible Mio tool and localized',()=>{
+test('the crossfade is registered, described, effect-annotated, a reversible Mio tool and localized',()=>{
  assert.ok(schemas[CROSSFADE]&&descriptions[CROSSFADE].length>40);
  assert.ok(TIMELINE_MUTATION_OPERATIONS.includes(CROSSFADE));assert.ok(!DURABLE_EDIT_OPERATIONS.includes(CROSSFADE));
- assert.ok(RESTORE_DENIED_OPERATIONS.includes(CROSSFADE));assert.equal(TIMELINE_CROSSFADE_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES+1024);
+ assert.equal(TIMELINE_CROSSFADE_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES+1024);
  assert.deepEqual((AGENT_TASK_OPERATION_ADMISSION as Record<string,unknown>)[CROSSFADE],{allowed:true,tier:'local_reversible'});
  const effect=operationEffect(CROSSFADE);
  assert.deepEqual([effect.readOnly,effect.idempotent,effect.destructive,effect.paidGeneration,effect.externalIO],[false,true,true,false,false]);
@@ -170,40 +171,4 @@ test('the clips may start together or end together, but the incoming clip may no
  assert.deepEqual(ended.crossfade,{outgoingClipId:a.id,incomingClipId:sameEnd.id,startFrame:30,durationFrames:60});
  assert.deepEqual(ended.timeline.clips.find(clip=>clip.id===sameEnd.id)!.volumeEnvelope,{profileId:'mioon-clip-linear-attenuation-v1',points:[{frame:0,multiplier:0},{frame:60,multiplier:1}]});
  await rejects(f,f.request(await f.timeline(),together.id,a.id),'CROSSFADE_GEOMETRY');
-});
-
-test('crossfaded receipts survive backup and restore, and the restored copy refuses new crossfades',async t=>{
- const f=await fixture(t,openLegacyWorkspaceStore),{a,b}=await audioPair(f),input=f.request(await f.timeline(),a.id,b.id),response=await f.call<Response>(CROSSFADE,input);
- await f.close();
- const backup=path.join(path.dirname(f.root),`${path.basename(f.root)}-backup`),destination=path.join(path.dirname(f.root),`${path.basename(f.root)}-restored`);
- t.after(async()=>{await rm(backup,{recursive:true,force:true});await rm(destination,{recursive:true,force:true});});
- const created=await createWorkspaceBackup({source:f.root,destination:backup}) as {integrity: string};
- assert.equal(created.integrity,'verified');assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
- const restored=await restoreWorkspaceBackup({directory:backup,destination}) as {workspaceOrigin: string};
- const store=openLegacyWorkspaceStore(destination),services=createServices(store,new Map());
- try{
-  const timeline=await services.call('timeline.get',{projectId:f.projectId}) as Timeline;
-  assert.deepEqual(timeline.clips,response.timeline.clips,'the crossfaded curves are restored exactly');
-  await assert.rejects(services.call(CROSSFADE,{...input,requestId:randomUUID(),expectedRevision:timeline.revision},{expectedWorkspaceOrigin:restored.workspaceOrigin}),{code:'RESTORE_OPERATION_UNAVAILABLE'});
- }finally{await services.drain();store.close();}
-});
-
-test('a crossfade beside a dialogue clip keeps the workspace valid through backup and restore',async t=>{
- const f=await fixture(t,openLegacyWorkspaceStore),{a,b}=await audioPair(f),line=await f.add(f.asset('audio'),await f.track('audio'),0,150,{audioRole:'human'});
- const response=await f.call<Response>(CROSSFADE,f.request(await f.timeline(),a.id,b.id));
- // The receipt wraps a timeline with an audio role; the workspace validators
- // behind both capabilities must still read it as a valid receipt.
- const inspected=await f.call<{audioRoleCapability?: {editable: boolean};volumeEnvelopeCapability?: {editable: boolean}}>('workspace.restore.inspect',{includeAudioRoleCapability:true,includeVolumeEnvelopeCapability:true});
- assert.deepEqual([inspected.audioRoleCapability?.editable,inspected.volumeEnvelopeCapability?.editable],[true,true]);
- await f.close();
- const backup=path.join(path.dirname(f.root),`${path.basename(f.root)}-backup`),destination=path.join(path.dirname(f.root),`${path.basename(f.root)}-restored`);
- t.after(async()=>{await rm(backup,{recursive:true,force:true});await rm(destination,{recursive:true,force:true});});
- assert.equal((await createWorkspaceBackup({source:f.root,destination:backup}) as {integrity: string}).integrity,'verified');
- await restoreWorkspaceBackup({directory:backup,destination});
- const store=openLegacyWorkspaceStore(destination),services=createServices(store,new Map());
- try{
-  const timeline=await services.call('timeline.get',{projectId:f.projectId}) as Timeline;
-  assert.deepEqual(timeline.clips,response.timeline.clips);
-  assert.equal((timeline.clips.find(clip=>clip.id===line.id) as Clip&{audioRole?: string}).audioRole,'human');
- }finally{await services.drain();store.close();}
 });

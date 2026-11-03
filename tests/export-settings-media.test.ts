@@ -13,7 +13,7 @@ import {renderTimeline} from '../packages/business/src/timeline-media.ts';
 import {run,runStreaming} from '../packages/business/src/media-runtime.ts';
 import {probe} from '../packages/business/src/media.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import type {DatabaseSync} from 'node:sqlite';

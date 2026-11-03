@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 

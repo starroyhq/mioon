@@ -10,7 +10,7 @@ import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
 import {randomUUID,createHash} from 'node:crypto';
 import {mkdtemp,mkdir,writeFile,readFile,readdir,rm} from 'node:fs/promises';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
 import {onMediaProcess,hasUnconfirmedMediaProcesses,waitForMediaProcesses} from '../packages/business/src/media-processes.ts';

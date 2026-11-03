@@ -11,6 +11,7 @@ import {ensurePrivateDirectory, readPrivateFile, writePrivateFileAtomic} from '.
 import {createProjectAssetReferenceServices} from './project-asset-references.ts';
 import type {OutsidePathConfirmationStore} from './app-db/stores.ts';
 import {isProjectStore} from './project-file/store.ts';
+import {assertProjectStore} from './store-runtime.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {probe} from './media.ts';
 import {createPreparedMediaFileFence} from './prepared-media-file.ts';
@@ -34,6 +35,7 @@ const importsInFlight = new WeakMap<ProjectStore, Map<string, Promise<unknown>>>
  * exclusive and are never removed on failure; only registered assets are served.
  * The private receipt binds a request before any project-file effect. */
 export function createReferencedAssetImportHandler(store: ProjectStore, options: ManagedAssetImportOptions & {outsidePaths: OutsidePathConfirmationStore}) {
+  assertProjectStore(store);
   const references = createProjectAssetReferenceServices(store, options);
   const receipts = path.join(store.tempDir, 'asset-imports');
   ensurePrivateDirectory(receipts, {create: true});
@@ -60,17 +62,27 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
         }
         throw error;
       }
-      if (options.safeError(error) || object(error) && (error.terminationUnconfirmed || typeof error.code === 'string' && error.code.startsWith('AGENT_TASK_'))) throw error;
+      if (object(error) && (error.code === 'PROJECT_STORE_UNVERIFIED' || error.terminationUnconfirmed || typeof error.code === 'string' && error.code.startsWith('AGENT_TASK_'))) throw error;
       checkpoint(context.signal ?? options.signal);
       throw new AppError('INVALID_MEDIA', '无法读取或解码素材，请检查文件');
     };
     const execute = async (): Promise<unknown> => {
-      const signal = context.signal ?? options.signal, origin = importOrigin, invocationFence = options.effectFence();
+      const signal = context.signal ?? options.signal, origin = importOrigin;
+      let admittedProject: {createdAt: unknown} | undefined;
       const fence = (): void => {
         checkpoint(signal);
-        try {invocationFence?.(); origin?.beforeEffect();}
+        try {assertProjectStore(store); options.beforeEffect(); origin?.beforeEffect();}
         catch (error) {effectFailure = error; throw error;}
         if (!isProjectStore(store) || store.projectId !== input.projectId) throw new AppError('NOT_FOUND', '找不到项目', 404);
+        // Recheck the physical row after native awaits: a lookup by SQL id
+        // alone does not prove that its JSON still belongs to the admitted owner.
+        const row: unknown = store.db.prepare("SELECT id,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 16384 THEN data END AS data FROM projects WHERE id=?").get(input.projectId);
+        if (row === undefined && !admittedProject) options.required('projects', input.projectId);
+        let project: unknown;
+        try {project = object(row) && typeof row.data === 'string' ? JSON.parse(row.data) as unknown : undefined;} catch {project = undefined;}
+        if (!object(row) || !object(project) || row.id !== input.projectId || project.id !== row.id ||
+            admittedProject && project.createdAt !== admittedProject.createdAt) throw new AppError('INVALID_MEDIA', '素材或项目身份已改变', 409);
+        admittedProject ??= {createdAt: project.createdAt};
         options.required('projects', input.projectId);
       };
       fence();
@@ -166,7 +178,7 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
         // whose path its older narrow projector would merely remove.
         return origin?.importHandle ? toAssetMediaDto(value) : value;
       });
-      receipt.phase = 'registered';
+      fence(); receipt.phase = 'registered';
       writePrivateFileAtomic(receiptFile, JSON.stringify(receipt), {root: receipts, maxBytes: 32 * 1024});
       const proof=projectOutputPublicationProofSchema.safeParse(asset.publication);
       if(proof.success)await markProjectOutputRegistered(store,proof.data,{signal,beforeEffect:fence});

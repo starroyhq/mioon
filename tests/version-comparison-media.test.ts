@@ -1,3 +1,13 @@
+
+
+
+
+
+
+
+
+
+import {assertProjectStore} from '../packages/business/src/store-runtime.ts';
 import {admitProjectAssetSource} from '../packages/business/src/project-media-storage.ts';
 import {mediaFixturePath, mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {projectRpcPath,projectApiPath} from '../packages/contracts/src/project-file.ts';
@@ -8,29 +18,31 @@ import type {TypedStore, TypedServices, MediaJob, GenerationSnapshot} from './he
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
-import {mkdtemp, writeFile, readFile, readdir, rm, open, rename, symlink, link, chmod, unlink} from 'node:fs/promises';
+import {mkdtemp, writeFile, readFile, rm, open, rename, symlink, link, chmod} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
-import {openLegacyWorkspaceStore,getWorkspaceRestoreContext, ownsStoreLock} from '../packages/business/src/db.ts';
-import {workspaceRestoreError} from '../packages/business/src/workspace-restore-policy.ts';
+
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
+
 import {validateManagedFile} from '../packages/contracts/src/private-storage.ts';
 import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';
 import {createFileResponses} from '../apps/server/src/file-response.ts';
-import {createServices, type JobRecord, type ServiceRow} from '../packages/business/src/services.ts';
-import {createProviderRegistry, type Provider} from '../packages/business/src/provider-registry.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
 import {startWorker, type Worker} from '../packages/business/src/jobs.ts';
 import {safePath} from '../packages/business/src/media.ts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+
+
 import {startServer} from '../apps/server/src/index.ts';
 import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {createVersionComparisonMediaHttp, readVersionComparisonMedia, versionComparisonMediaIdentity, type VersionComparisonMediaOptions} from '../apps/server/src/version-comparison-media.ts';
+import {captureComparison} from '../apps/web/src/version-comparison-state.ts';
 import {createServerProject, openProjectDatabase,projectDirFor,schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
-import type { CreateReadStreamOptions, FileHandle } from 'fs/promises';
-import type { PathLike } from 'fs';
+import type {CreateReadStreamOptions} from 'fs/promises';
+
 
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import {resolveProjectMediaFile} from '../packages/business/src/project-media-storage.ts';
@@ -47,21 +59,15 @@ const manifest=(root:string,databases:readonly string[]=[])=>dataFileSnapshot(ro
 function replace(db: DatabaseSync, table: string, record: Record<string, unknown> & {id: string}) {db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(record), record.id);}
 // data_version counts other connections' commits only; total_changes() adds this connection's own writes.
 const changeMarks = (db: DatabaseSync) => [db.prepare('PRAGMA data_version').get()!.data_version, db.prepare('SELECT total_changes() AS n').get()!.n];
-async function fixture(t: test.TestContext, {serve = true, published = false, legacy = false} = {}) {
+async function fixture(t: test.TestContext, {serve = true, published = false} = {}) {
   const base = await mkdtemp(path.join(tmpdir(), 'mioon-version-comparison-')), root = path.join(base, 'source');
   let store: TypedStore | undefined, services: TypedServices | undefined, server: Awaited<ReturnType<typeof startServer>> | undefined, worker: Worker | undefined, inspect: InspectProject | undefined,inspectApp:InspectApplication|undefined;
   t.after(async () => {await server?.close(); await worker?.stop(); await services?.drain(); store?.close(); await rm(base, {recursive: true, force: true});});
   // The server knows the other project too: requests and damaged rows name it. Without a server
   // this project's store stays open, so the other project comes first.
   let projectDir:string,project:{id:string;name:string},foreign:{id:string;name:string};
-  if(legacy){
-    if(serve)throw Error('Legacy fixtures only use their explicit direct test handler');
-    const native=openLegacyWorkspaceStore(root);store=native as TypedStore;projectDir=root;
-    project=native.put('projects',{id:randomUUID(),name:'Comparison source'});foreign=native.put('projects',{id:randomUUID(),name:'Foreign project'});
-  }else{
-    const other=createServerProject(root,{name:'Foreign project'});foreign=other.store.get('projects',other.projectId) as {id:string;name:string};other.store.close();
-    const created=createServerProject(root,{name:'Comparison source'});store=created.store as unknown as TypedStore;projectDir=created.store.projectDir;project=store.get('projects',created.projectId)!;
-  }
+  const other=createServerProject(root,{name:'Foreign project'});foreign=other.store.get('projects',other.projectId) as {id:string;name:string};other.store.close();
+  const created=createServerProject(root,{name:'Comparison source'});store=created.store as unknown as TypedStore;projectDir=created.store.projectDir;project=store.get('projects',created.projectId)!;
   const providers = createProviderRegistry({db: store.db, root:projectDir, env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}});
   services = (createServices(store, providers) as unknown as TypedServices);
   const shot = await services.call('shot.create', {projectId: project.id, title: 'Immutable source', prompt: 'Synthetic offline shape', duration: 2});
@@ -98,7 +104,7 @@ async function fixture(t: test.TestContext, {serve = true, published = false, le
   // Historical playback must not follow current shot selection.
   store.put('shots', {...store.get('shots', shot.id), selectedVersionId: null});
   const route = projectApiPath(project.id,'version-comparison','media')+'?' + new URLSearchParams({projectId: project.id, shotId: shot.id, versionId: version.id,
-    assetId: asset.id, sha256: asset.sha256, workspaceOrigin: 'normal'}), url = new URL('/api/version-comparison/media?'+route.split('?')[1], 'http://127.0.0.1:12345');
+    assetId: asset.id, sha256: asset.sha256}), url = new URL('/api/version-comparison/media?'+route.split('?')[1], 'http://127.0.0.1:12345');
   if (serve) {
     await services.drain(); services = undefined; store!.close(); store = undefined;
     server = await startServer({dataDir: root, port: 0, token, chatGateway: async function* () {assert.fail('Media must not call AI');},
@@ -106,7 +112,7 @@ async function fixture(t: test.TestContext, {serve = true, published = false, le
   }
   // While the server runs, the database is read and damaged on its own connection; otherwise on the open store's.
   const use = <T>(fn: (db: DatabaseSync) => T): T => inspect ? inspect(project.id, fn) : fn(store!.db);
-  const useForeign=<T>(read:(db:DatabaseSync)=>T):T=>{if(legacy)return read(store!.db);if(inspect)return inspect(foreign.id,read);const peer=openProjectDatabase(projectDirFor(root,foreign.id));try{return read(peer);}finally{peer.close();}};
+  const useForeign=<T>(read:(db:DatabaseSync)=>T):T=>{if(inspect)return inspect(foreign.id,read);const peer=openProjectDatabase(projectDirFor(root,foreign.id));try{return read(peer);}finally{peer.close();}};
   if(server)for(const id of [project.id,foreign.id]){const opened:Response=await fetch(server.url+projectRpcPath(id),{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation:'project.get',input:{projectId:id}})});assert.equal(opened.status,200);await opened.arrayBuffer();}
   const rows = (db: DatabaseSync) => Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').map(({name}) =>
     [name, db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
@@ -126,7 +132,7 @@ async function directServer(t: test.TestContext, f: Awaited<ReturnType<typeof fi
   const owner=f.store;
   const media = createVersionComparisonMediaHttp({db: f.db, root: f.projectDir, readGraph: projectId => createOwnedMediaGraphReader(f.db, projectId),
     validateFile: file => isProjectStore(owner)?resolveProjectMediaFile(owner,path.relative(f.projectDir,file)).info!:validateManagedFile(file, {root: f.projectDir})!, createFiles: createFileResponses, resolvePath:(root,relative)=>comparisonPath(owner,root,relative),
-    assertAvailable: () => {if (!ownsStoreLock(owner)) throw Object.assign(Error('Unavailable'), {code: 'FILE_UNAVAILABLE', status: 404});if (getWorkspaceRestoreContext(owner)) throw workspaceRestoreError();}, ...options});
+    assertAvailable: () => {if (!ownsStoreLock(owner)) throw Object.assign(Error('Unavailable'), {code: 'FILE_UNAVAILABLE', status: 404});assertProjectStore(owner);}, ...options});
   const server = http.createServer(async (req, res) => {
     try {const selected=new URL(req.url!, 'http://127.0.0.1');if(selected.pathname===projectApiPath(f.project.id,'version-comparison','media'))selected.pathname='/api/version-comparison/media';if (!await media.handle(req, res, selected)) res.writeHead(404).end();}
     catch (error) {res.writeHead((error as RootFailure).status || 500,jsonErrors?{'content-type':'application/json'}:{});res.end(jsonErrors?JSON.stringify({ok:false,error:{code:(error as RootFailure).code}}):(error as RootFailure).code);}
@@ -158,13 +164,23 @@ for (const published of [false, true]) test(`comparison GET/HEAD/ranges serve ex
   await f.unchanged(before);
 });
 
+test('the actual browser comparison binding streams its exact managed bytes without a legacy origin field',async t=>{
+  const f=await fixture(t),before=await f.checkpoint();
+  const binding=captureComparison({scope:'synthetic-current-project',projectId:f.project.id,connected:true,visible:true,shot:f.shot,
+    versions:[{id:f.version.id,projectId:f.project.id,shotId:f.shot.id,assetId:f.asset.id,sha256:f.asset.sha256,number:1}],
+    assets:[{id:f.asset.id,projectId:f.project.id,sha256:f.asset.sha256,mimeType:f.asset.mimeType}]},f.version.id);
+  assert.ok(binding);assert.equal(new URL(binding.url,f.server.url).searchParams.has('workspaceOrigin'),false);
+  const response=await f.request(binding.url);assert.equal(response.status,200);
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()),f.bytes);await f.unchanged(before);
+});
+
 test('exact query shape, identity, method, authentication and browser-origin envelope fail closed', async t => {
   const f = await fixture(t), before = await f.checkpoint();
   const invalid = [f.route + '&', f.route + '&unknown=1', f.route + '&path=/tmp/private', f.route + '&sha256=' + f.asset.sha256,
-    f.route.replace('workspaceOrigin=normal', 'workspaceOrigin=' + randomUUID()), f.route.replace('workspaceOrigin=normal', 'workspaceOrigin=restored%3A' + randomUUID()),
+    ...['normal',randomUUID(),'restored:'+randomUUID()].map(value=>f.route+'&workspaceOrigin='+encodeURIComponent(value)),
     f.route.replace(f.asset.sha256, f.asset.sha256.toUpperCase()), f.route.replace(f.asset.sha256, f.asset.sha256 + '%0A'), f.route.replace('projectId=' + f.project.id, 'projectId=' + f.project.id + '%0A'), f.route.replace(f.asset.sha256, 'a'.repeat(63)), f.route.replace(f.asset.sha256, 'a'.repeat(64)),
     f.route.replace('projectId=' + f.project.id, 'projectId=bad%ZZ'), f.route.replace(f.shot.id, '%00' + f.shot.id), f.route + '&long=' + 'x'.repeat(2050)];
-  for (const field of ['projectId', 'shotId', 'versionId', 'assetId', 'sha256', 'workspaceOrigin']) {
+  for (const field of ['projectId', 'shotId', 'versionId', 'assetId', 'sha256']) {
     const missing = new URL(f.route,'http://127.0.0.1'); missing.searchParams.delete(field); invalid.push(missing.pathname + missing.search);
     const duplicate = new URL(f.route,'http://127.0.0.1'); duplicate.searchParams.append(field, duplicate.searchParams.get(field)!); invalid.push(duplicate.pathname + duplicate.search);
   }
@@ -279,22 +295,4 @@ test('loss of actual workspace lock refuses playback, not just copied store meta
   const request = await directServer(t, f, {openFile: async (...args) => {opened++; return open(...args);}});
   await f.closeSource();
   const response = await request(); assert.equal(response.status, 404); await response.text(); assert.equal(opened, 0);
-});
-
-test('restored workspace including held source versions refuses this route before file access', async t => {
-  const f = await fixture(t, {serve: false,legacy:true}),seed={...f}; await f.closeSource();
-  const backup = path.join(f.base, 'backup'), destination = path.join(f.base, 'restored');
-  await createWorkspaceBackup({source: f.root, destination: backup});
-  const restored = await restoreWorkspaceBackup({directory: backup, destination});
-  const store=openLegacyWorkspaceStore(destination);t.after(()=>store.close());
-  const current={...seed,root:destination,projectDir:destination,store:store as TypedStore,db:store.db};
-  let opened=0;const request=await directServer(t,current,{openFile:async(...args)=>{opened++;return open(...args);}},true);
-  const inspect:InspectProject=(projectId,read)=>{assert.equal(projectId,f.project.id);return read(store.db);};
-  assert.ok(inspect(f.project.id, db => db.prepare("SELECT 1 FROM workspace_restore_holds WHERE kind='versions' AND id=?").get(f.version.id)));
-  const before = await manifest(destination,databaseFiles(store.db)), changes = inspect(f.project.id, changeMarks);
-  for (const origin of ['normal', restored.workspaceOrigin, 'restored:' + restored.workspaceOrigin]) {
-    const url = new URL(f.route,'http://127.0.0.1'); url.searchParams.set('workspaceOrigin', origin as string);
-    for (const method of ['GET', 'HEAD']) {const response = await request({method},url.pathname+url.search); assert.equal(response.status, 409); if (method === 'GET') assert.equal((await response.json()).error.code, 'RESTORE_OPERATION_UNAVAILABLE');}
-  }
-  assert.equal(opened,0);assert.deepEqual(inspect(f.project.id, changeMarks), changes); assert.deepEqual(await manifest(destination,databaseFiles(store.db)), before);
 });

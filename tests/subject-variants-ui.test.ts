@@ -13,7 +13,7 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {transformSync} from 'esbuild';
 import * as contracts from '@mioon/contracts';
 import * as i18nIndex from '../packages/i18n/src/index.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import * as subjectState from '../apps/web/src/subject-state.ts';

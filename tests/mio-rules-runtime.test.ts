@@ -5,7 +5,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {createMioProjectRules} from '../packages/business/src/agent/mio-rules.ts';

@@ -1,3 +1,4 @@
+import {validateProjectRetainedRows} from '@mioon/business/project-retained-validation';
 import {createMioProjectRules} from '@mioon/business/agent/mio-rules';
 import { createProviderRegistry,createServices,createWorkspacePreferences,startWorker } from '@mioon/business';
 import { createAgentAuthorizations } from '@mioon/business/agent/authorizations';
@@ -5,7 +6,6 @@ import type { AgentSettingsService } from '@mioon/business/agent/settings';
 import { createAgentSettings,sanitizeAgentSettingsResult } from '@mioon/business/agent/settings';
 import { createAgentSettingsFile } from '@mioon/business/agent/settings-file';
 import { createAgentTaskRuntime } from '@mioon/business/agent/task-runtime-v2';
-import { readAgentTaskStorage } from '@mioon/business/agent/task-storage-v2';
 import { readMioStorage } from '@mioon/business/agent/mio-storage';
 import { createAgentTaskTools } from '@mioon/business/agent/task-tools-v2';
 import type { AppLibrary } from '@mioon/business/app-db/index';
@@ -14,8 +14,8 @@ import { createComfyConnector } from '@mioon/business/comfy/connector';
 import { createComfySettings } from '@mioon/business/comfy/settings';
 import { createAppCompanionDocuments } from '@mioon/business/companion-scope';
 import {resolveProjectMediaFile} from '@mioon/business/project-media-storage';
-import type { Store as WorkspaceStore } from '@mioon/business/store-contract';
-import { ownsStoreLock } from '@mioon/business/db';
+import type { Store as Store } from '@mioon/business/store-contract';
+import { ownsStoreLock, assertProjectStore } from '@mioon/business/store-runtime';
 import { createEditTasks } from '@mioon/business/edit-tasks';
 import { validateImageConsumption } from '@mioon/business/image-consumption';
 import { createCompatibleImageGateway,createLiveImageGateway } from '@mioon/business/images/gateway';
@@ -37,8 +37,6 @@ import { readOwnedTimelineAsset } from '@mioon/business/timeline-sources';
 import { createUiPreferences } from '@mioon/business/ui-preferences';
 import { createVideoSettings } from '@mioon/business/video/settings';
 import { createWorkspaceConfiguration } from '@mioon/business/workspace-configuration';
-import { workspaceRestoreError } from '@mioon/business/workspace-restore-policy';
-import { getWorkspaceRestoreContext } from '@mioon/business/workspace-restore-schema';
 import { AppError,hasRequestNotAppliedProof,isTimelineMutationResponse,isTimelineRenderRecord,publicValue,schemas } from '@mioon/contracts';
 import { readPrivateFile,validateManagedDirectory,validateManagedFile,validatePrivateDirectory,writePrivateFileAtomic } from '@mioon/contracts/private-storage';
 import { randomUUID } from 'node:crypto';
@@ -47,7 +45,6 @@ import path from 'node:path';
 import packageMetadata from '../../../package.json' with { type: 'json' };
 import { deriveAgentEndpoint } from '../../../packages/contracts/src/agent-protocol.ts';
 import {agentDiagnosticSummarySchema} from '../../../packages/contracts/src/agent-diagnostic-summary.ts';
-import { isRestoredWorkspaceSchemaSince } from '../../../packages/contracts/src/workspace-schema-lineage.ts';
 import { createAgentDiagnosticsHttp } from './agent-diagnostics-http.ts';
 import { createAgentTaskHttp } from './agent-task-http-v2.ts';
 import { createComfyHttp } from './comfy-http.ts';
@@ -102,7 +99,7 @@ const invokeCleanup = (close: () => unknown): Promise<unknown> => {
 export interface ProjectRuntimeOptions extends Pick<ServerOptions,
   'agentSettings' | 'agentSecretCodecFactory' | 'imageSecretCodec' | 'videoSecretCodec' | 'imageNetwork' | 'comfyNetwork' |
   'comfyModule' | 'taskGatewayV2' | 'taskFault' | 'localDraftChannel' | 'nativeAudioPreview'> {
-  readonly store: WorkspaceStore;
+  readonly store: Store;
   readonly shutdown: AbortController;
   readonly deletionGate: ReturnType<typeof createProjectDeletionGate>;
   readonly baseRoot?: string;
@@ -123,19 +120,20 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
   comfyModule = 'load', taskGatewayV2, taskFault, localDraftChannel = 'web', nativeAudioPreview, application, serviceApplication, settings,
 }: ProjectRuntimeOptions) {
   const root = store.root, ordinaryStore = store;
-  const kernel = isProjectStore(store);
-  if (kernel && (!application || !serviceApplication)) throw new TypeError('Kernel project assembly requires application ports');
+  assertProjectStore(store);
+  validateProjectRetainedRows(store);
+  const kernel = true;
+  if ((!application || !serviceApplication)) throw new TypeError('Kernel project assembly requires application ports');
   const appRoot = application?.dataDir ?? root;
-  const localRoot = kernel ? store.localDir : root;
+  const localRoot = store.localDir;
   const appScope = application ? {databaseFile: application.databaseFile} : {};
-  const draftScope = kernel ? {databaseFile: path.join(store.localDir, 'history.db')} : {};
+  const draftScope = {databaseFile: path.join(store.localDir, 'history.db')};
   const documents = application ? {documents: createAppCompanionDocuments(application)} : {};
   const ownsLock = () => ownsStoreLock(store);
   const ownsAppLock = application ? () => {
     const identity = projectFileIdentity(application.databaseFile);
     return application.db.isOpen && identity !== null && isAppLibraryHeld(identity, application.db);
   } : ownsLock;
-  const isRestored = () => Boolean(getWorkspaceRestoreContext(store));
   const hasProject = (id: string) => application ? application.registry.get(id) !== null : readLastProjectTarget(store.db, id) !== null;
   let services!: Services, serviceCall!: ServiceCall;
   let serviceDrain: () => Promise<void> = async () => {};
@@ -159,12 +157,11 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     if (failures.length) throw new AggregateError(failures, 'Project settings cleanup failed');
   };
   try {
-    const restored=getWorkspaceRestoreContext(store);
     const configuration=serviceApplication?.configuration ?? createWorkspaceConfiguration({root:application?.dataDir ?? baseRoot,env:process.env,...documents});
     const providerEnv=configuration?.environment()??process.env;
-    const providers = restored ? new Map() : createProviderRegistry({db: store.db, root,env:providerEnv});
+    const providers = createProviderRegistry({db: store.db, root,env:providerEnv});
     let imageHttp: HttpHandler=async()=>false,comfyHttp: HttpHandler=async()=>false,videoHttp: HttpHandler=async()=>false;
-    if(!restored){
+    {
     if(suppliedAgentSettings)agentSettings=suppliedAgentSettings;
     else {
       const directory=path.join(appRoot,'agent-settings'),codec=await agentSecretCodecFactory?.({directory,channel:localDraftChannel});
@@ -173,7 +170,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     }
     agentAuthorizations = createAgentAuthorizations({root:appRoot,...appScope,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
-      guards:{ownsLock:ownsAppLock,isRestored},readCurrentTarget:async()=>{
+      guards:{ownsLock:ownsAppLock},readCurrentTarget:async()=>{
         const settings=sanitizeAgentSettingsResult(await agentSettings!.get({selfPort:serverPort()}));
         return {destination:deriveAgentEndpoint(settings.configuration),model:settings.configuration.model,settingsRevision:settings.revision};
       }});
@@ -188,18 +185,13 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     const comfyReservedPorts = (): Set<number> => new Set([port, serverPort()].filter((value): value is number => value !== undefined && Number.isInteger(value) && value > 0));
     comfySettings = settings?.comfy ?? await createComfySettings({directory:path.join(appRoot,'comfy-settings'),privateRoot:appRoot,reservedPorts:comfyReservedPorts});
     const {connector:comfyConnector,availability:comfyModuleAvailability} = composeOfficialComfyModule(comfyModule,()=>createComfyConnector({reservedPorts:comfyReservedPorts,...(comfyNetwork ? {networkDeps:{httpRequest:comfyNetwork.httpRequest}} : {})}));
-    const composed = createServices(ordinaryStore, providers, {...(serviceApplication?{application:serviceApplication}:{}),env:providerEnv,workspaceBaseRoot:baseRoot,backupQuiescent:()=>!taskRuntimeV2?.isBusy()&&deletionGate.isQuiescent(['workspace.backup.create','workspace.backup.restore.stage','workspace.backup.import']),signal: shutdown.signal,videoSettings,agentAuthorizations,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
+    const composed = createServices(ordinaryStore, providers, {...(serviceApplication?{application:serviceApplication}:{}),env:providerEnv,signal: shutdown.signal,videoSettings,agentAuthorizations,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
     services = composed;
     serviceCall = (operation, input, context) => composed.call(operation, input, context);
     serviceDrain = () => composed.drain();
     imageHttp=createImageHttp({settings:imageSettings,customSettings:customImageSettings,approve:composed.imageApproval,reject:composed.imageRejection,signal:shutdown.signal});
     videoHttp=createVideoHttp({settings:videoSettings,signal:shutdown.signal});
     comfyHttp=createComfyHttp({settings:comfySettings,connector:comfyConnector,availability:comfyModuleAvailability,signal:shutdown.signal});
-    }else {
-      const restoredServices = createServices(ordinaryStore,providers,{signal:shutdown.signal,workspaceBaseRoot:baseRoot});
-      services = restoredServices;
-      serviceCall = (operation, input, context) => restoredServices.call(operation, input, context);
-      serviceDrain = () => restoredServices.drain();
     }
     editTasks = createEditTasks({store: ordinaryStore, services, ...(taskFault ? {fault: taskFault} : {})});
     // openStore already owns the exclusive workspace lock. Startup only
@@ -209,28 +201,24 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     const workspacePreferences: WorkspacePreferences = createWorkspacePreferences(ordinaryStore,application?{application:{db:application.db,tx:application.tx,hasProject}}:{});
     uiPreferences = createUiPreferences({root:appRoot,...appScope,...documents,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
-      guards:{ownsLock:ownsAppLock,isReadOnly:()=>Boolean(restored),hasProject}});
+      guards:{ownsLock:ownsAppLock,isReadOnly:()=>false,hasProject}});
     const localDrafts: LocalDrafts = createLocalDrafts({root:localRoot,...draftScope,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
-      guards:{ownsLock,isRestored,
+      guards:{ownsLock,
         readTimeline:projectId=>createTimelineRecoveryBoundary(store.db,{projectId}).read(),
         readClipAsset:(projectId,clip)=>createTimelineRecoveryBoundary(store.db,{projectId}).clipSource(clip)}});
     const localDraftHttp: LocalDraftHttpHandler = createLocalDraftHttp({drafts:localDrafts,signal:shutdown.signal});
     const lastProject: LastProject = createLastProject({root:appRoot,...appScope,...documents,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
-      guards:{ownsLock:ownsAppLock,isRestored,
+      guards:{ownsLock:ownsAppLock,
         readProject:projectId=>application?(hasProject(projectId)?{id:projectId}:null):readLastProjectTarget(store.db,projectId)}});
     const lastProjectHttp = createLastProjectHttp({lastProject,signal:shutdown.signal});
     // Imported generations are finished history, so they are archived out of the task center.
-    const projectPackages = !restored && !kernel ? createProjectPackageService({store:ordinaryStore,appVersion:packageMetadata.version,afterCreate:async({projectId,jobIds})=>{
-      for(let index=0;index<jobIds.length;index+=100)await serviceCall!('task.disposition.archiveCompleted',{projectId,requestId:randomUUID(),targets:jobIds.slice(index,index+100).map(taskId=>({kind:'generation',taskId,expectedRevision:0,expectedStatus:'succeeded'}))},undefined as never);
-    }}) : null;
-    projectPackages?.clearStale();
-    shutdown.signal.addEventListener('abort',()=>{void projectPackages?.close();},{once:true});
+    const projectPackages = null;
     const projectPackageHttp = createProjectPackageHttp({service:()=>projectPackages!,available:()=>projectPackages!==null,signal:shutdown.signal});
     const localDelivery: LocalDelivery = createLocalDelivery({root:localRoot,...draftScope,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
-      guards:{ownsLock,isRestored,
+      guards:{ownsLock,
         readTimeline:projectId=>createTimelineRecoveryBoundary(store.db,{projectId}).read({sourceSemantics:false}),
         isRenderInput:value=>schemas['timeline.render'].safeParse(value).success,
         isRenderResponse:(input,value)=>isTimelineMutationResponse('timeline.render',input,value),
@@ -245,9 +233,9 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     const localDeliveryHttp = createLocalDeliveryHttp({delivery:localDelivery,signal:shutdown.signal});
     const exportFileRecovery: ExportFileRecovery=createExportFileRecovery({root,db:store.db,signal:shutdown.signal,hold:deletionGate.hold,
       guards:{isTimelineRenderRecord,readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(store.db,projectId,assetId)},
-      assertAvailable:()=>{if(restored)throw workspaceRestoreError();if(!ownsStoreLock(store))throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件不可用。',409);},
-      validateFile:(file,allowMissing)=>kernel?resolveProjectMediaFile(store,path.relative(root,file),{allowMissing}).info:validateManagedFile(file,{root,allowMissing}),
-      validateDirectory:directory=>validateManagedDirectory(directory,{root:kernel?path.join(root,'media'):root})});
+      assertAvailable:()=>{if(!ownsStoreLock(store))throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件不可用。',409);},
+      validateFile:(file,allowMissing)=>resolveProjectMediaFile(store,path.relative(root,file),{allowMissing}).info,
+      validateDirectory:directory=>validateManagedDirectory(directory,{root:path.join(root,'media')})});
     let localShotText!: LocalShotText,localShotTextHttp: HttpHandler=async()=>false,audioPreviewHttp: HttpHandler=async()=>false,continuousAudioHttp: HttpHandler=async()=>false;
     const ordinary = services;
     const neverMutate=()=>{throw new Error('Read-only shot receipt boundary');};
@@ -261,26 +249,16 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
       updateShotInProject:(projectId,input)=>ordinary.updateShotInProject(projectId,input)});
     localShotText=createLocalShotText({root:localRoot,...draftScope,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
-      guards:{...shotTextDomain,ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),
+      guards:{...shotTextDomain,ownsLock:()=>ownsStoreLock(store),
         isShotUpdateInput:value=>schemas['shot.update'].safeParse(value).success}});
     localShotTextHttp=createLocalShotTextHttp({shotText:localShotText,signal:shutdown.signal});
-    if(!kernel)nativeAudioPreview?.bind(ordinary.audioPreview);
-    audioPreviewHttp=createTimelineAudioPreviewHttp({service:ordinary.audioPreview,nativeAdmission:nativeAudioPreview,signal:shutdown.signal,assertAvailable:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();}});
-    continuousAudioHttp=createTimelineAudioContinuousHttp({service:ordinary.audioPreview,nativeAdmission:nativeAudioPreview,signal:shutdown.signal,assertAvailable:()=>{if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();}});
+
+    audioPreviewHttp=createTimelineAudioPreviewHttp({service:ordinary.audioPreview,nativeAdmission:nativeAudioPreview,signal:shutdown.signal,assertAvailable:()=>{assertProjectStore(store);}});
+    continuousAudioHttp=createTimelineAudioContinuousHttp({service:ordinary.audioPreview,nativeAdmission:nativeAudioPreview,signal:shutdown.signal,assertAvailable:()=>{assertProjectStore(store);}});
     // Desktop injects a narrow trusted-main proxy. Web mode persists only
     // nonsecret metadata here; newly entered Agent keys remain in backend RAM.
-    if(!restored){
+    {
     const ordinary = services;
-    if(!kernel)ordinary.setProjectDeletionCompanions({
-      assertDeletable:projectId=>{
-        if(taskRuntimeV2?.isBusy())throw new AppError('PROJECT_DELETE_BUSY','智能助理仍有请求在执行，请暂停或停止后再删除项目。',409);
-        deletionGate.assertIdle(projectId);
-        localDrafts.assertProjectDeletable(projectId);localDelivery.assertProjectDeletable(projectId);localShotText.assertProjectDeletable(projectId);
-      },
-      removeProject:projectId=>{
-        localDrafts.removeProject(projectId);localDelivery.removeProject(projectId);localShotText.removeProject(projectId);uiPreferences!.removeProject(projectId);
-      },
-    });
     // The trusted desktop proxy validates and sanitizes these values itself; the
     // local engine exposes the same dependency. createAgentTaskRuntime re-sanitizes reads.
     const chatSettings = agentSettings as unknown as AgentSettingsService;
@@ -292,18 +270,11 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
       if(previous===null||previous.completedAt<=summary.completedAt)application.documents.write('agent-diagnostic-summary-v1.json',JSON.stringify(summary));
     })}:{}),agentSettings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,...(projectRules?{rules:projectRules}:{}),selfPort:()=>listeningPort(),assertMutationAllowed:()=>ordinary.assertMutationAllowed(),checksPreflight:(input,{signal}={})=>ordinary.call('timeline.export.preflight',input,{signal:signal?AbortSignal.any([shutdown.signal,signal]):shutdown.signal}),...(taskGatewayV2?{gateway:taskGatewayV2}:{})});
     taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2,tools:taskToolsV2,assertMutationAllowed:()=>ordinary.assertMutationAllowed()});
-    agentDiagnosticsHttp=createAgentDiagnosticsHttp({settings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,policy:()=>taskRuntimeV2!.policy(),selfPort:()=>listeningPort(),hasProject:id=>!!store.get('projects',id),storage:projectId=>isProjectStore(store)?projectId===store.projectId?readMioStorage(store.db):undefined:readAgentTaskStorage(store.db)});
+    agentDiagnosticsHttp=createAgentDiagnosticsHttp({settings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,policy:()=>taskRuntimeV2!.policy(),selfPort:()=>listeningPort(),hasProject:id=>!!store.get('projects',id),storage:projectId=>projectId===store.projectId?readMioStorage(store.db):undefined});
     }
-    // Restored task histories exist from source schema52 on.
-    if(restored&&isRestoredWorkspaceSchemaSince(52,restored.schemaVersion)){
-      if(!agentSettings){agentSettings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{throw workspaceRestoreError();}}});ownsAgentSettings=true;}
-      taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,agentSettings:agentSettings as unknown as AgentSettingsService,
-        authorizations:{assertAuthorized(){throw workspaceRestoreError();},snapshot(){return {revision:0,scopes:[]};}},selfPort:()=>listeningPort(),readOnly:true,
-        checksPreflight:(input,{signal}={})=>services.call('timeline.export.preflight',input,{signal:signal?AbortSignal.any([shutdown.signal,signal]):shutdown.signal,expectedWorkspaceOrigin:restored.workspaceOrigin})});
-      taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2});
-    }
+
     return {
-      restored, providers, services, serviceCall, serviceDrain, agentSettings, agentAuthorizations, uiPreferences, imageSettings, customImageSettings, videoSettings, comfySettings,
+      providers, services, serviceCall, serviceDrain, agentSettings, agentAuthorizations, uiPreferences, imageSettings, customImageSettings, videoSettings, comfySettings,
       localDrafts, lastProject, localDelivery, localShotText,
       editTasks, workspacePreferences, imageHttp, comfyHttp, videoHttp, editTasksHttp, localDraftHttp, lastProjectHttp, projectPackageHttp,
       localDeliveryHttp, exportFileRecovery, localShotTextHttp, audioPreviewHttp, continuousAudioHttp,

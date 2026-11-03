@@ -1,21 +1,32 @@
-import {reviewedCatalogAt,reviewedTablesAfter} from './helpers/reviewed-schema-layers.ts';
+
+
+
+
+
+
+
+
+
+
+
 import type {FixtureProject} from './helpers/strict-timeline-core-types.ts';
-import type {SQLInputValue, SQLOutputValue} from 'node:sqlite';
+import type {SQLOutputValue} from 'node:sqlite';
 import type {RootFailure} from './helpers/strict-root-error-types.ts';
 import type {TypedServices, TypedCall, TypedStore} from './helpers/strict-service-responses.ts';
-import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects: Parameters<typeof withoutReviewedStorageObjects>[0]){return reviewedCatalogAt(52,objects);}
+
+
 import test from 'node:test';
-import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
+
 import assert from 'node:assert/strict';
-import {createHash,randomUUID} from 'node:crypto';
+import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm,writeFile,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {spawn} from 'node:child_process';
-import {openStore,openLegacyWorkspaceStore as openHistoricalWorkspaceStore} from '../packages/business/src/db.ts';
-import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
-import {snapshot as rawSnapshot} from './workspace-schema26-fixtures.mjs';
+
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+
+
+
 import {createServices,canonical} from '../packages/business/src/services.ts';
 import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
@@ -29,11 +40,11 @@ async function foreignProject(t: test.TestContext,name='Foreign project'){
  finally{await services.drain();store.close();}
 }
 const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.name?1:0;
-async function fixture(t: test.TestContext,{open=openStore as (root: string) => unknown}={}){
+async function fixture(t: test.TestContext){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-source-ranges-'));
- let store=open(root) as unknown as TypedStore,services=(createServices(store,new Map()) as unknown as TypedServices);
+ let store=openStore(root) as unknown as TypedStore,services=(createServices(store,new Map()) as unknown as TypedServices);
  const f={root,get store(){return store;},call:((op: string,input: unknown)=>services.call(op,input)) as TypedCall,
-  restart(){store.close();store=((open===openStore?openStore:openHistoricalWorkspaceStore)(root) as unknown as TypedStore);services=(createServices(store,new Map()) as unknown as TypedServices);},
+  restart(){store.close();store=(openStore(root) as unknown as TypedStore);services=(createServices(store,new Map()) as unknown as TypedServices);},
   asset(mimeType: string|undefined='video/mp4',duration: string|number|null|undefined=2,projectId: string=f.project.id){return store.put('assets',{id:randomUUID(),projectId,name:'Private fixture',mimeType,duration,sha256:'a'.repeat(64),relativePath:'media/fixture',url:'/media/fixture'}) as unknown as RangeAsset;},
   input(asset: { id: unknown; projectId: unknown; name?: string; mimeType?: unknown; duration?: unknown; sha256?: string; relativePath?: string; url?: string; },patch: { inFrame?: number; outFrame?: number; expectedRevision?: number; requestId?: `${string}-${string}-${string}-${string}-${string}`; }|undefined={}){return {projectId:asset.projectId,assetId:asset.id,expectedRevision:0,requestId:randomUUID(),inFrame:0,outFrame:30,...patch};},
  } as unknown as RangeFixture;
@@ -42,30 +53,7 @@ async function fixture(t: test.TestContext,{open=openStore as (root: string) => 
 }
 const snapshot=(f: Pick<RangeFixture, 'store'>,omit: string[]=[]): Record<string, Record<string,SQLOutputValue>[]>=>Object.fromEntries(schemaObjects(f.store.db).filter(({type,name})=>type==='table'&&!name.startsWith('sqlite_')).sort(byName).filter(({name})=>!omit.includes(name)).map(({name})=>[name,f.store.db.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()]));
 
-function assertReviewed52Migration(f: Pick<RangeFixture,'store'>,before: Record<string, Record<string,SQLOutputValue>[]>,rawBefore: ReturnType<typeof rawSnapshot>,expectedTargetCount: number){
- const actual=rawSnapshot(f.store.db);actual.objects=withoutReviewedCurrentAgentObjects(actual.objects);const names=new Set<string>(currentOrdinary52Delta.objectNames),objects=actual.objects.filter((object: { name: string; })=>names.has(object.name));
- assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
- assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
- assert.equal(createHash('sha256').update(JSON.stringify(objects)).digest('hex'),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
- assert.deepEqual((actual.objects.filter((object: { name: string; })=>/^(?:agent_task_|agent_target_)/.test(object.name)&&!names.has(object.name)) as unknown),[],'unknown task/target objects are not reviewed52 additions');
- const revisions=[];
- for(const[kind,table]of [['project','projects'],['shot','shots'],['asset','assets'],['asset_range','asset_ranges']])
-  for(const row of before[table]??[])revisions.push({retainedRowid:BigInt(revisions.length+1),projectId:kind==='project'?row.id:row.projectId,kind,targetId:kind==='asset_range'?row.assetId:row.id,revision:1n});
- assert.equal(revisions.length,expectedTargetCount,'the independent legacy seed has the exact target count');
- for(const[name,table]of Object.entries(currentOrdinary52Delta.tables)){
-  assert.deepEqual(actual.tables[name].fields,table.fields,`${name}: reviewed52 fields`);
-  if(name==='agent_task_target_revisions_v2'){
-   const statement=f.store.db.prepare('SELECT rowid AS retainedRowid,* FROM agent_task_target_revisions_v2 ORDER BY rowid');statement.setReadBigInts(true);
-   const rows=statement.all().map(row=>({...row}));
-   assert.deepEqual(rows.map(row=>({retainedRowid:row.retainedRowid,kind:row.kind})),revisions.map(row=>({retainedRowid:row.retainedRowid,kind:row.kind})),'initial target rowids and kind ranges');
-   // An unordered initial SQL scan may use a covering index. Preserve exact
-   // identities without making the first UUID scan order a migration contract.
-   const targets=(values: Record<string, SQLOutputValue>[])=>values.map(row=>{const value={...row};delete value.retainedRowid;return value;}).sort((a,b)=>(a.kind as string).localeCompare(b.kind as string)||(a.targetId as string).localeCompare(b.targetId as string));
-   assert.deepEqual(targets(rows),targets(revisions),'original legacy project/target identities and exact initial revision1');
-  }else assert.deepEqual((actual.tables[name].rows as unknown),[],`${name}: reviewed empty52 rows`);
- }
- for(const[name,table]of Object.entries(rawBefore.tables))if(name!=='schema_version')assert.deepEqual(actual.tables[name],table,`${name}: original SQLite types, raw bytes, rowids and sequence`);
-}
+
 const changes=(f: Pick<RangeFixture,'store'>)=>f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
 const read=(f: RangeFixture,asset: RangeAsset)=>f.call('asset.range.get',{projectId:asset.projectId,assetId:asset.id});
 const count=(f: Pick<RangeFixture,'store'>,table: string)=>f.store.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()!.n as number;
@@ -226,39 +214,7 @@ test('retained source receipts reject update/delete/replacement, and cross-table
  assert.deepEqual(snapshot(f),before);f.restart();assert.deepEqual(snapshot(f),before);
 });
 
-test('targeted v11/v12 additive reapplication preserves all old receipt bytes and fresh schema invariants',async t=>{
- const f=await fixture(t,{open:openLegacyWorkspaceStore});
- // The legacy seed this migration preserves holds a second project in the same file, created before the shot.
- await f.call('project.create',{name:'Foreign private project'});
- await f.call('shot.create',{projectId:f.project.id,title:'Legacy keyed shot',requestId:randomUUID()});
- const old=f.store.db.prepare('SELECT * FROM mutation_requests').get();
- for(const table of ['timeline_requests','reference_requests'])f.store.db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`).run(randomUUID(),'old-hash',' { "old": true, "preserve": "spacing" } ');
- const fullSchema=()=>f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
- const current=await fixture(t,{open:openHistoricalWorkspaceStore});
- // The reviewed current-schema view of the range/trigger catalog: the historical fixture predates the annotation cross-table guards and lifecycle wrappers, so the current fresh store is the byte-exact expected catalog here (historical rows/bytes are asserted separately above).
- const fresh=current.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE '%asset_range%' OR name='reject_mutation_cross_range_request' ORDER BY name").all();
- const completeFresh=current.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
- // Reapply only the two removed asset companions and the subject extension
- // that owns reciprocal triggers on them. Keep unrelated later schema markers:
- // deleting those while retaining their tables would fabricate a downgrade.
- // Reapplying subject schema rebuilds the edit-task CHECK. Remove the later
- // empty format extension and its marker together, so startup can truthfully
- // compose schema21 and schema22 again rather than leave a newer marker on an older table.
- assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM timeline_format_requests').get()!.n,0);
- f.store.db.exec('DROP TABLE timeline_format_requests; DROP INDEX timeline_requests_project; DELETE FROM schema_version WHERE version IN (21,22);');
- f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version IN (12,15);');
- f.store.db.exec('DROP TRIGGER reject_mutation_cross_range_request; DROP TABLE asset_range_requests; DROP TABLE asset_ranges; DELETE FROM schema_version WHERE version=11;');
- const before=snapshot(f,['schema_version']),rawBefore=rawSnapshot(f.store.db);f.restart();
- assertReviewed52Migration(f,before,rawBefore,3);
- assert.deepEqual(snapshot(f,['schema_version','asset_ranges','asset_range_requests','asset_dispositions','asset_disposition_requests','timeline_format_requests','project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests',...Object.keys(currentOrdinary48Delta.lifecycleTables),...Object.keys(currentOrdinary50Delta.tables),...Object.keys(currentOrdinary52Delta.tables),...reviewedTablesAfter(52).map(([name])=>name)]),before);
- for(const table of Object.keys(currentOrdinary50Delta.tables))assert.equal(f.store.db.prepare(`SELECT count(*) n FROM ${table}`).get()!.n,0);
- assert.deepEqual(f.store.db.prepare('SELECT * FROM mutation_requests').get(),old);
- assert.deepEqual(f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE '%asset_range%' OR name='reject_mutation_cross_range_request' ORDER BY name").all(),fresh);
- assert.ok(f.store.db.prepare('SELECT version FROM schema_version WHERE version=11').get());
- assert.deepEqual(f.store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...currentMarkerChain]);
- assert.deepEqual(fullSchema(),completeFresh);
- const migrated=snapshot(f),migratedRaw=rawSnapshot(f.store.db);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(rawSnapshot(f.store.db),migratedRaw);assert.deepEqual(fullSchema(),completeFresh);
-});
+
 
 for(const winnerOperation of ['asset.range.set','shot.create'] as const)test(`exclusive project-host cross-table key race: ${winnerOperation} commits once and the opposite helper conflicts`,{timeout:15000},async t=>{
  const f=await fixture(t),asset=f.asset(),requestId=randomUUID(),range=f.input(asset,{requestId}),legacy={projectId:f.project.id,title:'Race winner',requestId};

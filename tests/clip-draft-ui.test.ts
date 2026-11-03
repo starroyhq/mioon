@@ -18,7 +18,7 @@ const projectId = id(1), timelineId = id(2), clipId = id(3), trackId = id(4), as
 const source = { assetId, assetSha256: 'b'.repeat(64) };
 const raw = { name: 'Saved clip', trackId, startFrame: 0, durationFrames: 120, sourceInFrame: 0, rect: { x: 0, y: 0, width: 720, height: 1280 }, gain: 1 };
 const key = { projectId, timelineId, clipId };
-const context = (): ClipDraftContext => ({ ...key, scope: 'project:1:inspector:1', restored: false, connected: true, visible: true, busy: false, timelineRevision: 7, source: structuredClone(source), saved: structuredClone(raw) });
+const context = (): ClipDraftContext => ({ ...key, scope: 'project:1:inspector:1', connected: true, visible: true, busy: false, timelineRevision: 7, source: structuredClone(source), saved: structuredClone(raw) });
 const record = (patch: Partial<ClipDraftRecord> = {}): ClipDraftRecord => ({ baseRevision: 7, source: structuredClone(source), raw: { ...structuredClone(raw), name: 'Recovered draft' }, updatedAt: stamp, ...patch });
 const row = (draft: ClipDraftRecord | null = null): ClipDraftEnvelope => ({ supported: true, workspaceScope: 'a'.repeat(64), instanceId: id(6), key, revision: draft ? 1 : 0, targetStatus: 'matching', draft });
 const timeline = (patch: Record<string, unknown> = {}, revision = 8) => ({ id: timelineId, projectId, revision, fps: 30, width: 720, height: 1280, durationFrames: Number(patch.startFrame ?? raw.startFrame) + Number(patch.durationFrames ?? raw.durationFrames),
@@ -201,12 +201,6 @@ test('backend identity changes require explicit page reload, never silently adop
   h.replace({ ...h.current(), instanceId: id(77) }); await h.controller.load();
   assert.equal(h.controller.getState().phase, 'error'); assert.match(h.controller.getState().error, /实例/); assert.equal(h.controller.getState().raw.name, 'Retain');
   const writes = h.calls.filter(x => x[0] === 'put').length; await h.controller.flush(); assert.equal(h.calls.filter(x => x[0] === 'put').length, writes);
-});
-
-test('restored branch retains ordinary in-memory editing and discard without local draft I/O', async t => {
-  const h = harness(t, { ctx: { ...context(), restored: true } }); await h.controller.load(); h.controller.edit('name', 'Restored local input');
-  assert.equal(await h.controller.discard(h.controller.capture()), true); assert.equal(h.controller.getState().raw.name, raw.name); assert.equal(h.controller.getState().phase, 'unsupported'); assert.deepEqual(h.calls, []);
-  h.controller.edit('name', 'Explicit business save'); await h.controller.save(async (_id, patch) => timeline(patch)); assert.equal(h.controller.getState().dirty, false); assert.deepEqual(h.calls, []);
 });
 
 test('lost autosave ACK followed by applied business ACK cannot falsely mark the sidecar cleared', async t => {
@@ -534,7 +528,7 @@ test('a valid dispatched draft DELETE is acknowledged but cannot clear input aft
   assert.equal(await discarding, false); assert.equal(h.current().draft, null, 'The already dispatched exact DELETE was not cancelled');
   assert.equal(h.controller.getState().dirty, true); assert.equal(h.controller.getState().raw.name, 'Keep visible input');
 });
-test('false navigation fence cannot clear a restored-workspace local form', async t => {
-  const h = harness(t, { ctx: { ...context(), restored: true } }); h.controller.edit('name', 'Keep restored input');
-  assert.equal(await h.controller.discard(h.controller.capture(), () => false), false); assert.equal(h.controller.getState().raw.name, 'Keep restored input'); assert.deepEqual(h.calls, []);
+test('false navigation fence cannot clear an ordinary local form', async t => {
+  const h = harness(t, { ctx: context() }); h.controller.edit('name', 'Keep local input');
+  assert.equal(await h.controller.discard(h.controller.capture(), () => false), false); assert.equal(h.controller.getState().raw.name, 'Keep local input'); assert.deepEqual(h.calls, []);
 });

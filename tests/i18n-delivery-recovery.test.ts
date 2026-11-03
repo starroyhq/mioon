@@ -11,7 +11,6 @@ import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
 import * as range from '../apps/web/src/export-range-state.ts';
 import * as delivery from '../apps/web/src/export-delivery-state.ts';
 import * as deliveryContracts from '@mioon/contracts/timeline-delivery';
-import * as restored from '../apps/web/src/restored-workspace.ts';
 import { createLocalDeliveryController } from '../apps/web/src/local-delivery-state.ts';
 import { createLocalShotTextController } from '../apps/web/src/local-shot-text-state.ts';
 import { LocalDeliveryRequestError } from '../apps/web/src/local-delivery-client.ts';
@@ -28,7 +27,7 @@ function mounted(filename:string,getProps:()=>unknown) {
   const react = { createElement: (type:string,props:RootNode['props'],...children:RootTree[]) => ({ type, props: { ...props, children } }), useId: () => slots[cursor++] ||= `stable-id-${cursor}`, useRef: (current:unknown) => slots[cursor++] ||= { current } } as {createElement(type:string,props:RootNode['props'],...children:RootTree[]):RootNode;useId():unknown;useRef(current:unknown):unknown;default?:unknown}; react.default = react;
   const useI18n = () => { const { locale } = store.getSnapshot(); return { locale, t: (key:Parameters<typeof i18n.translate>[1],params?:Parameters<typeof i18n.translate>[2]) => i18n.translate(locale, key as Parameters<typeof i18n.translate>[1], params), renderMessage: (value?: string|i18n.DisplayMessage|null|undefined) => i18n.renderMessage(locale, value), formatDate: (value: string|number|Date, options?: Intl.DateTimeFormatOptions|undefined) => i18n.formatDate(locale, value, options), formatNumber: (value: number, options?: Intl.NumberFormatOptions|undefined) => i18n.formatNumber(locale, value, options) }; };
   const module = {exports:{} as {default(props:unknown):RootTree}}, source = readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8');
-  Function('require', 'module', 'exports', transformSync(source, { loader: filename.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)((name: string) => name === 'react' ? react : name === './i18n/I18nProvider.tsx' ? { useI18n } : name === './export-range-state.ts' ? range : name === './export-delivery-state.ts' ? delivery : name === '@mioon/contracts/timeline-delivery' ? deliveryContracts : name === './restored-workspace.ts' ? restored : name.endsWith('packages/i18n/src/index.ts') ? i18n : name.endsWith('.css') ? {} : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+  Function('require', 'module', 'exports', transformSync(source, { loader: filename.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)((name: string) => name === 'react' ? react : name === './i18n/I18nProvider.tsx' ? { useI18n } : name === './export-range-state.ts' ? range : name === './export-delivery-state.ts' ? delivery : name === '@mioon/contracts/timeline-delivery' ? deliveryContracts : name.endsWith('packages/i18n/src/index.ts') ? i18n : name.endsWith('.css') ? {} : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
   const render = () => { cursor = 0; renders++; tree = module.exports.default(getProps()); };
   const release = store.subscribe(render); render();
   return { store, render, nodes: () => nodes(tree), text: () => text(tree), renders: () => renders, find: (id: unknown) => nodes(tree).find(node => node.props?.['data-testid'] === id), close: () => { release(); store.dispose(); } };
@@ -104,31 +103,6 @@ test('mounted recovery disclosures relabel without opening, reading, restoring o
   }
 });
 
-test('mounted restored-workspace notice preserves original provenance and held records in every locale', async () => {
-  const workspace = { restored: true, heldCounts: [{ kind: 'render', count: 1 }, { kind: 'generation', count: 0 }], operationPolicy: ['asset.import', 'shot.update', 'timeline.render'].map(operation => ({ operation, available: true })), createdAt: '2026-10-15T00:30:00.000Z', source: { backupId: literal }, workspaceOrigin: 'b'.repeat(64) };
-  const before = structuredClone(workspace), ui = mounted('RestoredWorkspace.tsx', () => ({ workspace })), labels = new Set();
-  for (const locale of i18n.LOCALES) {
-    await ui.store.setPreference(locale); labels.add(ui.text());
-    assert.ok(ui.text().includes(literal)); assert.ok(ui.text().includes(workspace.workspaceOrigin)); assert.deepEqual(workspace, before);
-    assert.ok(ui.text().includes(i18n.translate(locale, 'recovery.restored.disabledReason')));
-    assert.ok(ui.text().includes(i18n.translate(locale, 'recovery.restored.backupReason')));
-    assert.ok(ui.text().includes(i18n.translate(locale, 'recovery.restored.historyCount', { availability: i18n.translate(locale, 'recovery.restored.localReady'), count: 1 })));
-    assert.equal((ui.nodes().find((node: RootNode) => node.type === 'details'))!.props.open, undefined);
-    assert.ok(ui.nodes().every(node => !node.props?.onClick && !node.props?.onChange));
-  }
-  assert.equal(labels.size, 4); ui.close();
-});
-
-test('offline backup guide translations preserve every command and immutable safety marker', () => {
-  const original = readFileSync(new URL('../docs/WORKSPACE-BACKUP-GUIDE.zh-CN.md', import.meta.url), 'utf8');
-  const commands = [...original.matchAll(/node apps\/cli\/src\/backup\.mjs[^`\n]+/gu)].map(match => match[0]);
-  for (const locale of ['zh-Hant', 'en', 'ja']) {
-    const guide = readFileSync(new URL(`../docs/WORKSPACE-BACKUP-GUIDE.${locale}.md`, import.meta.url), 'utf8');
-    for (const command of commands) assert.ok(guide.includes(command), `${locale}: ${command}`);
-    for (const value of ['512MiB','8GiB','64GiB','20,000','8MiB','1MiB','64MiB','0700/0600','COMPLETE.json','SOURCE_LOCK_RELEASE_UNCONFIRMED','sourceLockRelease: unconfirmed','format1/schema24','observed_guarded','fsync']) assert.ok(guide.includes(value), `${locale}: ${value}`);
-  }
-});
-
 
 for (const domain of ['delivery', 'shot-text']) {
   for (const failure of ['local-validation', 'unknown-preparation']) {
@@ -137,7 +111,7 @@ for (const domain of ['delivery', 'shot-text']) {
       const shotId = id(3), stamp = '2026-10-15T00:30:00.000Z';
       const invalid = failure === 'local-validation', raw = { title: literal, prompt: invalid ? 'x'.repeat(6001) : literal };
       const name = invalid ? 'x'.repeat(513) : literal, baseText = { title: 'Original user title', prompt: 'Original user prompt' };
-      const context = { scope: 'stable-recovery', projectId, restored: false, connected: true, visible: true, busy: false,
+      const context = { scope: 'stable-recovery', projectId,  connected: true, visible: true, busy: false,
         ...(shotText ? { shotId, revision: 7, baseRevision: 7, baseText, savedText: baseText, raw, textVersion: 1, formSerial: 1, textDirty: true, formDirty: true }
           : { timelineId, timelineRevision: 7, deliveryName: name, nameVersion: 1, dirty: true }) };
       interface StoredDraft {draftId:string;baseRevision:number;raw:unknown;updatedAt:string;baseText?:unknown;timelineId?:string}
@@ -190,12 +164,9 @@ test('typed plural templates render count one and other without changing source 
   for (const count of [1, 2]) {
     assert.equal(i18n.translate('en', 'timeline.view.clipCount', { duration: '00:01:00', count }), `00:01:00 · ${count} ${count === 1 ? 'clip' : 'clips'}`);
     assert.equal(i18n.translate('en', 'export.history.storyboard', { count }), `Storyboard-order export · ${count} ${count === 1 ? 'shot' : 'shots'}`);
-    assert.equal(i18n.translate('en', 'recovery.restored.historyCount', { availability: 'Available', count }), `Available · ${count} historical ${count === 1 ? 'record' : 'records'} retained`);
     for (const locale of i18n.LOCALES) {
       assert.ok(i18n.translate(locale, 'timeline.view.clipCount', { duration: '00:01:00', count }).includes(String(count)));
       assert.ok(i18n.translate(locale, 'export.history.storyboard', { count }).includes(String(count)));
-      assert.ok(i18n.translate(locale, 'recovery.restored.historyCount', { availability: literal, count }).includes(literal));
     }
   }
-  assert.throws(() => i18n.translate('en', 'recovery.restored.historyCount', { availability: 'Available', count: '1' as unknown as number }), /finite count/);
 });

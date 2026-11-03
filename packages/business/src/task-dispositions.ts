@@ -2,9 +2,6 @@ import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts
 import {createHash} from 'node:crypto';
 import {isProxy} from 'node:util/types';
 import type {DatabaseSync, SQLInputValue} from 'node:sqlite';
-import {validateWorkspaceSchema50} from './workspace-schema-v50.ts';
-import {readCurrentWorkspaceRole,isWorkspaceRoleSince} from './workspace-schema-dispatch.ts';
-import {validateFixedWorkspaceRole} from './workspace-role-validation.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {taskDispositionSchemas, taskDispositionSchema, isTaskDispositionUnicode, isTaskDispositionMutationResponse} from '../../contracts/src/task-dispositions.ts';
 import type {TaskDisposition, TaskDispositionKind, TaskDispositionTarget, TaskDispositionCheckedTarget, TaskDispositionListInput, TaskDispositionMarkFailedInput, TaskDispositionArchiveInput, TaskDispositionMutationResponse} from '../../contracts/src/task-dispositions.ts';
@@ -54,7 +51,7 @@ export function createTaskDispositionServices(store:Store,{ownsLock,isReadOnly,s
     const tables=db.prepare("SELECT name FROM main.sqlite_schema WHERE type='table' AND name IN ('task_dispositions','task_disposition_requests')").all();
     if(tables.length!==2)fail('TASK_DISPOSITION_UNAVAILABLE');
     // Writes require the complete ordinary profile: schema52 on by role, else ordinary50.
-    if(write&&!isProjectLayout(db)){try{const role=readCurrentWorkspaceRole(db);if(isWorkspaceRoleSince(role,52,'ordinary'))validateFixedWorkspaceRole(db,role);else validateWorkspaceSchema50(db);}catch{fail('TASK_DISPOSITION_UNAVAILABLE');}}
+    if(!isProjectLayout(db))fail('TASK_DISPOSITION_UNAVAILABLE');
   }
   function project(projectId:string):void {
     const row=db.prepare(`SELECT id,CASE WHEN length(CAST(data AS BLOB))<=1048576 AND json_valid(data) THEN json_extract(data,'$.id') END AS bodyId FROM projects WHERE id=?`).get(projectId);

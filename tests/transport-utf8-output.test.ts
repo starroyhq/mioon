@@ -108,15 +108,9 @@ const textSites = {
   'tests/timeline-jpeg-transports.test.mjs': 2,
   "tests/named-delivery-transports.test.mjs": 2,
   "tests/typecheck-runtime.test.mjs": 1,
-  "tests/workspace-restore-transports.test.mjs": 2,
-  "tests/helpers/workspace-restore-offline-fixture.ts": 2,
-  "tests/workspace-origin-transports.test.mjs": 2,
-  "tests/workspace-backup-cli.test.mjs": 2,
-  "tests/workspace-backup-inspection-transports.test.mjs": 3,
   // The v2 crash harness collects only continuously decoded child stderr.
   'tests/agent-task-crash-v2.test.ts': 1,
   'tests/agent-task-goal-repair-v2.test.ts': 1,
-  "tests/agent-edit-scope.test.mjs": 1,
   "tests/asset-disposition-transports.test.mjs": 2,
   "tests/cli-mcp-key-recovery-transport.test.mjs": 3,
   "tests/cli-v4.test.mjs": 2,
@@ -126,7 +120,6 @@ const textSites = {
   "tests/dual-workspace-server.mjs": 2,
   "tests/edit-task-process-recovery.test.mjs": 1,
   "tests/timeline-loudness-process-recovery.test.mjs": 1,
-  "tests/workspace-schema26.test.mjs": 2,
   "tests/edit-tasks-http.test.mjs": 2,
   "tests/export-preflight-http-observer.test.mjs": 2,
   "tests/export-settings-transports.test.mjs": 3,
@@ -193,8 +186,7 @@ const textSites = {
   'tests/project-file-recover.test.ts': 2,
 };
 // Byte-preserving passthrough forwarders: no text concatenation or decoding.
-const passthroughSites = {
-  'tests/fixtures/workspace-restore-electron/main.ts': 2,
+const passthroughSites:Record<string,number> = {
 };
 // These two new SDK stderr drains deliberately discard bytes: no conversion,
 // concatenation, parsing or text assertion occurs in their exact empty listener.
@@ -209,19 +201,12 @@ const binarySites = {
   'tests/inspection-qa-native.mjs': 1,
   'tests/agent-settings-qa-native.mjs': 1,
   'tests/media-runtime-qa-native.mjs': 1,
-  'tests/agent-edits-qa-native.mjs': 1,
   'tests/dockable-panels-qa-native.mjs': 1,
   'tests/private-storage-qa-native.mjs': 1,
-  'tests/agent-chat-qa-native.mjs': 1,
 };
 // These are not appendFile loggers or streaming text decoders. Keep each exact
 // Buffer collection and final sink explicit: no directory/file-wide exemption.
 const bufferedSites = {
-  'tests/project-lifecycle-transports.test.mjs': {
-    count: 1, kind: 'diagnostic-string',
-    registration: "child.stderr.on('data',chunk=>{stderr+=chunk;});",
-    sink: "assert.equal(outcome[1],'SIGKILL',stderr);",
-  },
   'tests/desktop-exit-backend.test.mjs': {
     count: 1, kind: 'complete-message',
     registration: "child.stdout.on('data', chunk => chunks.push(chunk))",

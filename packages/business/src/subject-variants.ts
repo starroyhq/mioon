@@ -1,3 +1,4 @@
+import {assertProjectStore} from './store-runtime.ts';
 import {randomUUID,randomBytes,createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import type {DatabaseSync,SQLInputValue} from 'node:sqlite';
 import {AppError,IMAGE_FIXED_OPTIONS,IMAGE_STATES,SUBJECT_VARIANT_LIMITS,SUBJECT_VARIANT_MUTATION_OPERATIONS,SUBJECT_VARIANT_SUBJECT_KINDS,SUBJECT_VARIANT_UNDO_BLOCKERS,
@@ -7,9 +8,7 @@ import type {SubjectVariantBatch,SubjectVariantBlocker,SubjectVariantItem,Subjec
 import {createSubjectRecoveryBoundary} from './subjects.ts';
 import {setImageResultListener} from './images.ts';
 import {subjectVariantImageName,subjectVariantPrompt} from './subject-variant-prompts.ts';
-import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
-import {workspaceRestoreError} from './workspace-restore-policy.ts';
-import {ownsStoreLock} from './db.ts';
+import {ownsStoreLock} from './store-runtime.ts';
 import {isSubjectVersionHidden,subjectVariantSchemaPresent} from './subject-variant-visibility.ts';
 
 export interface SubjectVariantStore {readonly db: DatabaseSync; tx<T>(callback: ()=>T): T}
@@ -61,7 +60,7 @@ const RETRYABLE=new Set(['failed','cancelled_before_dispatch']);
 const EDIT_ORIGINS=new Set(['user-import','generated','synthetic-mock','extracted-frame']);
 
 export function createSubjectVariantServices(store: SubjectVariantStore): SubjectVariantService {
- if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
+ assertProjectStore(store);
  const {db,tx}=store,secret=randomBytes(32);
  const schemaPresent=(): boolean=>subjectVariantSchemaPresent(db);
  function owner(): void {if(!ownsStoreLock(store))fail('SUBJECT_VARIANT_STATE_CONFLICT',403);}

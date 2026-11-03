@@ -13,7 +13,7 @@ const empty = (): AnnotationState => ({ scope: null, ownerScope: null, projectId
 const sameValue = (a: { tags: string[]; note: string }, b: { tags: string[]; note: string }) => a.note === b.note && JSON.stringify(a.tags) === JSON.stringify(b.tags);
 const draftFor = (row: AssetAnnotation): Draft => ({ tags: [...row.tags], note: row.note, tagInput: '' });
 export function annotationError(error: any): DisplayMessage {
-  return msg(error?.code === 'REVISION_CONFLICT' ? 'annotations.conflict' : error?.code === 'ANNOTATION_REVISION_LIMIT' ? 'annotations.revisionLimit' : error?.code === 'INVALID_ASSET_ANNOTATION_RECORD' ? 'annotations.corrupt' : error?.code === 'RESTORE_OPERATION_UNAVAILABLE' ? 'annotations.readOnly' : error?.code === 'VALIDATION_ERROR' ? 'annotations.invalid' : error?.code === 'IDEMPOTENCY_CONFLICT' ? 'annotations.requestConflict' : error?.code === 'NOT_FOUND' ? 'annotations.missing' : 'annotations.failed');
+  return msg(error?.code === 'REVISION_CONFLICT' ? 'annotations.conflict' : error?.code === 'ANNOTATION_REVISION_LIMIT' ? 'annotations.revisionLimit' : error?.code === 'INVALID_ASSET_ANNOTATION_RECORD' ? 'annotations.corrupt' : error?.code === 'VALIDATION_ERROR' ? 'annotations.invalid' : error?.code === 'IDEMPOTENCY_CONFLICT' ? 'annotations.requestConflict' : error?.code === 'NOT_FOUND' ? 'annotations.missing' : 'annotations.failed');
 }
 export const annotationRow = (state: AnnotationState | null | undefined, id: string) => { const e = state?.entries[id]; return e && e.verified ? e.row : null; };
 export function annotationMatches(state: AnnotationState | null | undefined, id: string, tag: string): boolean { const row = annotationRow(state, id); return !tag || !row || row.tags.includes(tag); }

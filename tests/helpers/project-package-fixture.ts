@@ -3,7 +3,6 @@ import {mkdtempSync,realpathSync,readFileSync,copyFileSync,rmSync,existsSync} fr
 import {execFileSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openLegacyWorkspaceStore} from '../../packages/business/src/db.ts';
 import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {isProjectStore} from '../../packages/business/src/project-file/store.ts';
@@ -42,7 +41,7 @@ function legacyPackageAssetView<T>(root:string,value:T):T{
 /** Keep real S1 records and services underneath the historical serializer.
  * This fixture-only read view does not enable native packaging in production;
  * its real SQLite identity still rejects legacy imports into a project file. */
-function legacyPackageViewForReferencedStore(store:ProjectStore):Store{
+export function legacyPackageViewForReferencedStore(store:ProjectStore):Store{
  const view:Store={db:store.db,root:store.root,
   get:(table,id)=>{const value=store.get(table,id);return table==='assets'?legacyPackageAssetView(store.projectDir,value):value;},
   list:(table,projectId)=>store.list(table,projectId).map(value=>table==='assets'?legacyPackageAssetView(store.projectDir,value):value),
@@ -52,9 +51,6 @@ function legacyPackageViewForReferencedStore(store:ProjectStore):Store{
  referencedPackageStores.set(view,store);return view;
 }
 export function openWorkspace(root:string){const store=openStore(root);return {store:legacyPackageViewForReferencedStore(store),services:createServices(store,new Map(),{imageOptions:{autoRun:false}})};}
-/** Only the explicit old package import/duplicate/backup positives use this.
- * Native projects cannot import a second project into their own SQLite file. */
-export function openLegacyWorkspace(root:string){const store=openLegacyWorkspaceStore(root);return {store,services:createServices(store,new Map(),{imageOptions:{autoRun:false}})};}
 export function tempRoot(label:string):string{return realpathSync(mkdtempSync(path.join(tmpdir(),`mioon-${label}-`)));}
 
 /** Builds a project that touches every entity a `.mioon` file carries. */

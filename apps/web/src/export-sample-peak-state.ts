@@ -24,7 +24,7 @@ export interface ExportSamplePeakContext {
   readonly executionScope: string;
   readonly connected: boolean;
   readonly visible: boolean;
-  readonly restored: boolean;
+
   readonly exports: readonly unknown[];
   readonly assets: readonly unknown[];
 }
@@ -34,7 +34,7 @@ export interface ExportSamplePeakState {
   readonly projectId: string | null;
   readonly connected: boolean;
   readonly visible: boolean;
-  readonly restored: boolean;
+
   readonly targets: readonly ExportSamplePeakTarget[];
   readonly targetId: string | null;
   readonly targetKey: string | null;
@@ -44,12 +44,11 @@ export interface ExportSamplePeakState {
   readonly error: string;
   readonly errorCode?: string;
 }
-export interface ExportSamplePeakReadOptions { readonly signal: AbortSignal; readonly expectedWorkspaceOrigin?: string }
+export interface ExportSamplePeakReadOptions { readonly signal: AbortSignal;  }
 export interface ExportSamplePeakControllerOptions {
   read: (input: ExportSamplePeakInput, options: ExportSamplePeakReadOptions) => Promise<unknown>;
   isRenderRecord: (value: unknown, input: unknown) => boolean;
   getContext?: () => ExportSamplePeakContext;
-  getInvocation?: () => Readonly<{ expectedWorkspaceOrigin?: string }>;
   onChange?: (state: ExportSamplePeakState) => void;
   onUnauthorized?: () => void;
 }
@@ -88,11 +87,11 @@ export function exportSamplePeakViewState(state: ExportSamplePeakState, context:
   const sameOwner = state.scope === context.scope && state.projectId === context.projectId;
   const target = sameOwner ? targets.find(item => item.exportId === state.targetId) : undefined;
   const sameTarget = state.targetId === null || target?.key === state.targetKey;
-  const sameExecution = state.executionScope === context.executionScope && state.visible === context.visible && state.connected === context.connected && state.restored === context.restored;
+  const sameExecution = state.executionScope === context.executionScope && state.visible === context.visible && state.connected === context.connected;
   if (sameOwner && sameTarget && sameExecution && canonical(targets.map(item => item.key)) === canonical(state.targets.map(item => item.key))) return state;
-  const retain = sameOwner && sameTarget && context.connected && !context.restored && (state.phase !== 'checking' || sameExecution);
+  const retain = sameOwner && sameTarget && context.connected && (state.phase !== 'checking' || sameExecution);
   const visibleState: ExportSamplePeakState = { ...state, scope: context.scope, projectId: context.projectId, executionScope: context.executionScope,
-    connected: context.connected, visible: context.visible, restored: context.restored, targets,
+    connected: context.connected, visible: context.visible,  targets,
     ...(retain ? {} : { report: null, error: '', targetId: target?.exportId ?? null, targetKey: target?.key ?? null,
       phase: target ? sameTarget ? 'cancelled' : 'stale' : 'idle' }) };
   return Object.freeze(visibleState);
@@ -101,7 +100,6 @@ export function exportSamplePeakViewState(state: ExportSamplePeakState, context:
 export function exportSamplePeakErrorMessage(error: unknown, locale: Locale = 'zh-Hans'): string {
   const code = object(error) ? error.code : null;
   if (code === 'UNAUTHORIZED') return translate(locale, 'audio.loudness.peak.unauthorized');
-  if (code === 'RESTORE_OPERATION_UNAVAILABLE') return translate(locale, 'audio.loudness.peak.restored');
   if (code === 'BACKEND_PROTOCOL_ERROR') return translate(locale, 'audio.loudness.peak.protocol');
   return translate(locale, 'audio.loudness.peak.failed');
 }
@@ -113,14 +111,14 @@ export function exportSamplePeakStatusMessage(state: ExportSamplePeakState, loca
   if (state.phase === 'stale') return translate(locale, 'audio.loudness.peak.stale');
   return '';
 }
-const initial = (): ExportSamplePeakState => ({ scope: null, projectId: null, connected: false, visible: false, restored: false, targets: [], targetId: null, targetKey: null, phase: 'idle', executionScope: '', report: null, error: '' });
+const initial = (): ExportSamplePeakState => ({ scope: null, projectId: null, connected: false, visible: false,  targets: [], targetId: null, targetKey: null, phase: 'idle', executionScope: '', report: null, error: '' });
 function freezeObservation(value: unknown): void {
   if (value !== null && typeof value === 'object') { Object.values(value).forEach(freezeObservation); Object.freeze(value); }
 }
 const protocolError = () => Object.assign(new Error('Invalid export sample peak response'), { code: 'BACKEND_PROTOCOL_ERROR' });
 
 /** One explicit observer, no queue, retries, persistence, render or navigation. */
-export function createExportSamplePeakController({ read, isRenderRecord, getContext, getInvocation = () => ({}), onChange = () => {}, onUnauthorized = () => {} }: ExportSamplePeakControllerOptions) {
+export function createExportSamplePeakController({ read, isRenderRecord, getContext, onChange = () => {}, onUnauthorized = () => {} }: ExportSamplePeakControllerOptions) {
   let state = initial(), generation = 0, disposed = false;
   let active: AbortController | null = null;
   const emit = (patch: Partial<ExportSamplePeakState>) => { state = Object.freeze({ ...state, ...patch }); onChange(state); };
@@ -128,7 +126,7 @@ export function createExportSamplePeakController({ read, isRenderRecord, getCont
   const sync = () => { if (!disposed && getContext) controller.setContext(getContext()); };
   const current = (attempt: number, target: ExportSamplePeakTarget, scope: string | null): boolean => {
     sync();
-    return !disposed && generation === attempt && state.scope === scope && state.connected && state.visible && !state.restored &&
+    return !disposed && generation === attempt && state.scope === scope && state.connected && state.visible &&
       state.targetId === target.exportId && state.targetKey === target.key && active !== null && !active.signal.aborted;
   };
   const controller = {
@@ -140,28 +138,27 @@ export function createExportSamplePeakController({ read, isRenderRecord, getCont
       const ownerChanged = context.scope !== state.scope || context.projectId !== state.projectId;
       const target = targets.find(item => item.exportId === state.targetId);
       const targetChanged = state.targetId !== null && target?.key !== state.targetKey;
-      const executionChanged = context.executionScope !== state.executionScope || context.connected !== state.connected || context.visible !== state.visible || context.restored !== state.restored;
+      const executionChanged = context.executionScope !== state.executionScope || context.connected !== state.connected || context.visible !== state.visible;
       const targetsChanged = canonical(targets.map(item => [item.exportId, item.key])) !== canonical(state.targets.map(item => [item.exportId, item.key]));
       if (!ownerChanged && !executionChanged && !targetsChanged) return;
       const wasChecking = state.phase === 'checking';
       if (ownerChanged || targetChanged || executionChanged) invalidate();
-      const clear = ownerChanged || targetChanged || !context.connected || context.restored;
-      emit({ scope: context.scope, projectId: context.projectId, executionScope: context.executionScope, connected: context.connected, visible: context.visible, restored: context.restored, targets,
+      const clear = ownerChanged || targetChanged || !context.connected;
+      emit({ scope: context.scope, projectId: context.projectId, executionScope: context.executionScope, connected: context.connected, visible: context.visible,  targets,
         ...(clear ? { report: null, error: '', targetId: ownerChanged || !target ? null : target.exportId, targetKey: ownerChanged || !target ? null : target.key,
           phase: !ownerChanged && target ? 'stale' : 'idle' } : wasChecking && executionChanged ? { phase: 'cancelled', report: null, error: '' } : {}) });
     },
     async check(requestedTarget: ExportSamplePeakTarget, scope: string | null): Promise<ExportSamplePeakResponse | null> {
       sync();
       const target = state.targets.find(item => item.exportId === requestedTarget.exportId && item.key === requestedTarget.key);
-      if (disposed || active || !state.projectId || !state.scope || scope !== state.scope || !state.connected || !state.visible || state.restored ||
+      if (disposed || active || !state.projectId || !state.scope || scope !== state.scope || !state.connected || !state.visible ||
           !target) return null;
       const attempt = ++generation, abort = new AbortController(); active = abort;
       const input = { projectId: state.projectId, exportId: target.exportId };
       emit({ targetId: target.exportId, targetKey: target.key, phase: 'checking', report: null, error: '' });
       try {
-        const invocation = getInvocation();
         if (!current(attempt, target, scope)) return null;
-        const result = await read(input, { ...invocation, signal: abort.signal });
+        const result = await read(input, { signal: abort.signal });
         if (!current(attempt, target, scope)) return null;
         if (!isExportSamplePeakResponse(result, input) || result.status === 'ready' && (canonical(result.artifact) !== canonical(target.artifact) || !isExportSamplePeakFrameCountCompatible(result.measurement.sampleFrames, target.outputFrames))) throw protocolError();
         const report = structuredClone(result); freezeObservation(report);

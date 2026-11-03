@@ -9,7 +9,6 @@ import {TIMELINE_CLIP_TRANSITION_OPERATION} from './timeline-clip-transition-ope
 import {TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse} from './timeline-acknowledgement.ts';
 import {REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse} from './reference-acknowledgement.ts';
 import {SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse} from './subjects.ts';
-import {workspaceRestoreTaskContextSchema,workspaceRestoreTaskListContextSchema} from './workspace-restore.ts';
 import {type z} from 'zod';
 import {schemas} from './index.ts';
 
@@ -67,21 +66,16 @@ export function isEditTask(value: unknown): value is EditTask {
   } catch { return false; }
 }
 export function isEditTaskEnvelope(value: unknown): boolean {
-  if (!exact(value, ['task', 'instanceId'], ['result','restore']) || !uuid(value.instanceId) || !isEditTask(value.task)) return false;
+  if (!exact(value, ['task', 'instanceId'], ['result']) || !uuid(value.instanceId) || !isEditTask(value.task)) return false;
   const envelope = value as Rec, task = envelope.task as EditTask;
-  if (Object.hasOwn(envelope,'restore') && !workspaceRestoreTaskContextSchema.safeParse(envelope.restore).success) return false;
   if (!Object.hasOwn(envelope, 'result')) return true;
   return task.status === 'applied' && Boolean(responseValidators[task.lane]?.(task.operation, task.input, envelope.result));
 }
 export function isEditTaskListEnvelope(value: unknown): boolean {
-  if (!exact(value, ['items', 'nextCursor', 'instanceId'], ['restore']) || !uuid(value.instanceId) || !Array.isArray(value.items)) return false;
+  if (!exact(value, ['items', 'nextCursor', 'instanceId'], []) || !uuid(value.instanceId) || !Array.isArray(value.items)) return false;
   const envelope = value as Rec;
   const items = envelope.items as unknown[];
   if (items.length > EDIT_TASK_LIMITS.maxPageSize || !items.every(isEditTask) || new Set(items.map(item => (item as unknown as Rec).id)).size !== items.length) return false;
-  if (Object.hasOwn(envelope,'restore')) {
-    if (!workspaceRestoreTaskListContextSchema.safeParse(envelope.restore).success) return false;
-    const restore = envelope.restore as {tasks: {taskId?: unknown}[]};
-    if (restore.tasks.length !== items.length || !restore.tasks.every((item,index)=>item.taskId === (items[index] as unknown as Rec).id)) return false;
-  }
+
   return envelope.nextCursor === null || typeof envelope.nextCursor === 'string' && envelope.nextCursor.length >= 1 && envelope.nextCursor.length <= 512;
 }

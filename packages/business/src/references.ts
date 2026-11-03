@@ -1,4 +1,4 @@
-import {refuseRestoredOperation} from './workspace-restore-policy.ts';
+import {assertProjectStore} from './store-runtime.ts';
 import {randomUUID} from 'node:crypto';
 import {AppError} from '@mioon/contracts';
 import {createReferenceRecoveryBoundary,readReferenceReceipt,rejectReferenceMutation,invalidReference} from './reference-recovery.ts';
@@ -52,7 +52,7 @@ export function createReferenceServices(store: ReferenceStore,{check,hash,now}: 
    conflict('REFERENCE_CONNECTED','此镜头的首帧由画布连线控制；请先断开首帧连线，再修改参考图',{shotId:shot.id,edgeIds:edges.map(edge=>edge.id)});
  }
  function mutation(operation: string,input: ReferenceInput,apply: (boundary: ReferenceBoundary)=>{response: RefRecord;save?: ()=>void}): RefRecord {
-  refuseRestoredOperation(store as never,operation,input);
+  assertProjectStore(store);
   const state: ReferenceState={receiptAbsent:false,writesStarted:false,transactionEntered:false,callbackFailed:false};
   const write=()=>{state.writesStarted=true;};
   try{return tx(()=>{
@@ -64,7 +64,7 @@ export function createReferenceServices(store: ReferenceStore,{check,hash,now}: 
      return createReferenceRecoveryBoundary(db,input).replay(operation,previous.response as string) as RefRecord;
     }
     state.receiptAbsent=true;
-    refuseRestoredOperation(store as never,operation,input);
+    assertProjectStore(store);
     const boundary=createReferenceRecoveryBoundary(db,input);boundary.project();
     const {response,save}=apply(boundary as unknown as ReferenceBoundary);
     boundary.validateResponse(operation,response);

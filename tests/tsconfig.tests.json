@@ -35,9 +35,6 @@
     "../apps/web/src/style-modules.d.ts"
   ],
   "exclude": [
-    "./fixtures/workspace-restore-legacy/**",
-    "./fixtures/workspace-restore-v27/legacy-contracts/**",
-    "./helpers/legacy-workspace-store.ts",
     "./helpers/timeline-mix-loudness-ui-fixture.ts",
     "./typecheck/**",
     "./fixtures/local-drafts-v1-contracts.ts",

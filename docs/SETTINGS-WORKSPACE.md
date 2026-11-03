@@ -8,10 +8,10 @@
 
 `GET /api/workspace-info` 返回当前版本、渠道、数据目录、受限文件大小估计和工具路径；不返回访问令牌、模型密钥或连接配置。统计最多检查 20000 个目录项，跳过符号链接，遇到边界或读取失败时明确标记估计不完整。
 
-`POST /api/media-tools/check` 只接受空对象，检测服务启动时确定的 FFmpeg / ffprobe 版本及 libx264、AAC、drawtext、subtitles。请求不能指定命令、参数或可执行路径；恢复和候选工作区不执行该检测。
+`POST /api/media-tools/check` 只接受空对象，检测服务启动时确定的 FFmpeg / ffprobe 版本及 libx264、AAC、drawtext、subtitles。请求不能指定命令、参数或可执行路径。
 
 桌面设置通过固定的 `mioon:workspace-tools` 桥复用首次启动的路径校验。浏览和保存只接受工具路径，保存前验证工具身份与必需编码器，原生当前主文档在异步校验后仍须有效。保存后重启应用生效；显式启动环境路径继续遵循原有优先级。浏览器展示服务配置并支持检测，不提供任意程序执行入口。
 
-“打开所在位置”在桌面端只打开当前工作区目录，不接受调用方路径。浏览器展示可复制的规范路径；项目内容由工作区数据库与托管媒体共同保存，没有每项目独立目录。
+“打开所在位置”在桌面端只打开当前工作区目录，不接受调用方路径。浏览器展示可复制的规范路径；每个项目使用独立 `.mioon` 文件，本机历史、缓存与托管素材按项目隔离。
 
 项目永久删除的准入、受控事务和中断恢复见 [PROJECT-LIFECYCLE.md](PROJECT-LIFECYCLE.md)。Mio授权见 [AGENT-AUTHORIZATION.md](AGENT-AUTHORIZATION.md)。

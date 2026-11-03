@@ -7,7 +7,7 @@ import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {png} from './helpers/timeline-image-fixtures.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProviderRegistry,normalizedCapabilities,providerEnvironmentKeys} from '../packages/business/src/provider-registry.ts';
 import {getGenerationIssue,findModelCapabilities} from '../packages/contracts/src/index.ts';

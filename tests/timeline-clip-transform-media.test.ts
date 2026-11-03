@@ -6,7 +6,7 @@ import {mkdtempSync,realpathSync,rmSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {renderTimeline} from '../packages/business/src/timeline-media.ts';
 import {clipTransformGeometry,CLIP_TRANSFORM_PROFILE,type ClipTransform} from '../packages/contracts/src/timeline-clip-transform.ts';

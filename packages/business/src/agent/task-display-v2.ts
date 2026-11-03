@@ -1,7 +1,7 @@
 import path from 'node:path';
 import {AGENT_TASK_DISPLAY_TARGET_KINDS} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskChange,AgentTaskDisplay,AgentTaskDisplayField,AgentTaskDisplayTarget,AgentTaskDisplayValue,AgentTaskStep,AgentTaskTarget} from '@mioon/contracts/agent-tasks-v2';
-import type { Store as WorkspaceStore } from '../store-contract.ts';
+import type { Store } from '../store-contract.ts';
 
 type Value=Record<string,unknown>;
 type Property=AgentTaskDisplayField['property'];
@@ -150,7 +150,7 @@ export function projectAgentTaskStepDisplay(step:AgentTaskStep,readTarget?:Targe
 
 /** Lazy project-local names for approval previews. This reads saved metadata
  * only; it cannot execute a tool, read a media file, or contact a provider. */
-export function agentTaskDisplayTargetReader(store:WorkspaceStore,projectId:string):TargetReader {
+export function agentTaskDisplayTargetReader(store:Store,projectId:string):TargetReader {
   let timeline:Value|undefined,loaded=false;
   const tables:Readonly<Record<string,string>>={project:'projects',shot:'shots',node:'nodes',edge:'edges',asset:'assets',version:'versions',job:'jobs',export:'exports'};
   return target=>{
