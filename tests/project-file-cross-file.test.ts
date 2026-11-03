@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import type {SQLInputValue} from 'node:sqlite';
-import {readFormat72} from './helpers/project-file-schema-derivation.ts';
+import {declaredSchema, validateDeclaredSchema} from './helpers/project-file-schema-derivation.ts';
+import {tokenizeSql} from './helpers/sql-tokenizer.ts';
 import {buildDatabase, schemaStatements} from '../packages/business/src/project-file/schema/databases.ts';
 import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
 import {CROSS_FILE_RELATIONS} from '../packages/business/src/project-file/cross-file/relations.ts';
@@ -308,20 +309,44 @@ test('installed connection-level triggers are exactly the generated statements',
   }
 });
 
-test('converted triggers restore to their format-72 text', () => {
-  const originals = new Map(readFormat72().objects.filter(object => object.type === 'trigger').map(object => [object.name, object.sql] as const));
-  const exemption = "NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects')";
-  let restored = 0;
-  for (const trigger of CONVERTED_TEMP_TRIGGERS) {
-    let sql = storedText(trigger.sql).replace(/\b(?:project|main|cache)\./g, '');
-    if (/^agent_target_(?:jobs|exports|image_tasks|frame_tasks)_(?:insert|update|delete)_v2$/.test(trigger.name)) {
-      // Put the project-deletion exemption back: `WHEN X BEGIN` for insert and delete, `WHEN X AND (` for update.
-      sql = sql.replace(/^(CREATE TRIGGER \w+ AFTER (?:INSERT|UPDATE|DELETE) ON \w+) (WHEN )?/, (_, head: string, when?: string) => `${head} WHEN ${exemption} ${when ? 'AND ' : ''}`);
-      restored++;
+test('current TEMP declarations match native targets and reject missing or mis-scoped guards', () => {
+  const declared = declaredSchema();
+  assert.doesNotThrow(() => validateDeclaredSchema(declared));
+  assert.deepEqual(declared.tempTriggers.map(({name, schema, table}) => [name, schema, table]), [
+    ['reject_legacy_frame_asset_owner', 'project', 'versions'],
+    ['subject_variant_version_binding', 'project', 'subject_versions'],
+    ['reject_image_frame_asset_owner', 'project', 'image_versions'],
+    ['scene_result_identity', 'project', 'scene_results'],
+    ['scene_request_identity', 'main', 'scene_requests'],
+    ['previs_request_identity', 'main', 'previs_requests'],
+    ['frame_asset_project', 'main', 'frame_tasks'],
+    ['reject_frame_mixed_asset_owner', 'main', 'frame_tasks'],
+    ['scene_task_insert_identity', 'main', 'scene_tasks'],
+    ['scene_task_result_binding', 'main', 'scene_tasks'],
+    ['subject_variant_batch_insert_identity', 'main', 'subject_variant_batches'],
+    ['subject_variant_item_version', 'main', 'subject_variant_items'],
+    ['previs_thumbnail_insert_identity', 'cache', 'previs_thumbnails'],
+    ['previs_thumbnail_update_identity', 'cache', 'previs_thumbnails'],
+  ]);
+  const db = kernelConnection();
+  try {
+    const installed = new Map(db.prepare('SELECT name,tbl_name,sql FROM temp.sqlite_master').all().map(row => [String(row.name), row] as const));
+    for (const trigger of declared.tempTriggers) {
+      assert.deepEqual(plain(installed.get(trigger.name)), {name: trigger.name, tbl_name: trigger.table, sql: storedText(trigger.sql)}, trigger.name);
+      const tokens = tokenizeSql(trigger.sql);
+      const on = tokens.findIndex(token => token.kind === 'word' && token.value.toUpperCase() === 'ON');
+      assert.deepEqual(tokens.slice(on + 1, on + 4).map(token => token.value), [trigger.schema, '.', trigger.table], trigger.name);
+      assert.equal(tokens.some(token => token.kind === 'word' && /^(?:project_deletion_|agent_task_policy_v2$|agent_task_policy_requests_v2$|workspace_preferences$)/iu.test(token.value)), false, trigger.name);
     }
-    assert.equal(sql, originals.get(trigger.name), trigger.name);
+    assert.equal(declared.tempTriggers.some(trigger => /^agent_target_(?:jobs|exports|image_tasks|frame_tasks)_(?:insert|update|delete)_v2$/u.test(trigger.name)), false);
+  } finally {
+    db.close();
   }
-  assert.equal(restored, 0);
+  const guard = 'reject_image_frame_asset_owner';
+  assert.throws(() => validateDeclaredSchema({...declared, tempTriggers: declared.tempTriggers.map(trigger => trigger.name === guard ? {...trigger, schema: 'cache' as const} : trigger)}),
+    {message: `TEMP trigger ${guard} has mismatched target schema`});
+  assert.throws(() => validateDeclaredSchema({...declared, tempTriggers: declared.tempTriggers.filter(trigger => trigger.name !== guard)}),
+    {message: `Missing TEMP trigger ${guard}`});
 });
 
 test('with all three databases attached and the triggers installed, every write to every table compiles', () => {

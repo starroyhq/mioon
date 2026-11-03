@@ -6,8 +6,8 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {openStore} from '../packages/business/src/project-file/index.ts';
 import {schemaObjects} from '../packages/business/src/project-file/cross-file/inspect.ts';
-import {tokenizeSql} from './helpers/project-file-schema-derivation.ts';
-import type {SqlToken} from './helpers/project-file-schema-derivation.ts';
+import {tokenizeSql} from './helpers/sql-tokenizer.ts';
+import type {SqlToken} from './helpers/sql-tokenizer.ts';
 
 type Catalog = ReturnType<typeof schemaObjects>;
 const lower = (value: string): string => value.replace(/[A-Z]/gu, char => char.toLowerCase());

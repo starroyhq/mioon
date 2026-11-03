@@ -12,25 +12,35 @@ import {DatabaseSync} from 'node:sqlite';
 import {AppError} from '../packages/contracts/src/app-error.ts';
 import {createProjectFile, openProjectConnection} from '../packages/business/src/project-file/connection.ts';
 import type {ProjectConnection, ProjectLocation} from '../packages/business/src/project-file/connection.ts';
-import {buildDatabase, HISTORY_SCHEMA_VERSION, schemaStatements} from '../packages/business/src/project-file/schema/databases.ts';
+import {HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {S0_HISTORY_V2_MANIFEST} from '../packages/business/src/project-file/schema/history-v2-manifest.ts';
 import {R1_HISTORY_V3_MANIFEST} from '../packages/business/src/project-file/schema/history-v3-manifest.ts';
 import {MIO_QUOTA_BYTES_SQL,MIO_QUOTA_ROWS_SQL} from '../packages/business/src/project-file/schema/domains/mio.ts';
-import {RECEIPT_SCHEMA} from '../packages/business/src/project-file/schema/domains/receipts.ts';
-import {TASK_SCHEMA} from '../packages/business/src/project-file/schema/domains/tasks.ts';
-import {TIMELINE_HISTORY_SCHEMA} from '../packages/business/src/project-file/schema/domains/timeline-history.ts';
-import {R1_MIO_V3_SCHEMA} from './fixtures/mio-history-v3-schema.ts';
+import {buildPreviousHistoryDatabase} from './fixtures/kernel-history-previous-schema.ts';
 import {readSchemaManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
 import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
 import {LEGACY_MIO_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
-import {deriveFromFormat72, derivedDomainStatements} from './helpers/project-file-schema-derivation.ts';
 
 const PROCESS_KINDS = ['job', 'export', 'image_task', 'frame_task'] as const;
 const WORKER = fileURLToPath(new URL('./fixtures/mio-history-upgrade-worker.ts', import.meta.url));
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
-let oldStatements: readonly string[] | undefined;
-const legacyHistory = (): readonly string[] => oldStatements ??= schemaStatements('history', derivedDomainStatements(deriveFromFormat72(), 'history'));
-const r1History=():readonly string[]=>schemaStatements('history',[...RECEIPT_SCHEMA,...TASK_SCHEMA,...TIMELINE_HISTORY_SCHEMA,...R1_MIO_V3_SCHEMA]);
+
+for (const [version, manifest] of [
+  [2, S0_HISTORY_V2_MANIFEST],
+  [3, R1_HISTORY_V3_MANIFEST],
+  // R2 freezes this exact main-9f profile as its history4 upgrade whitelist.
+  [4, SCHEMA_MANIFEST.history],
+] as const) test(`frozen history${version} fixture matches every whitelisted schema object`, () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec('BEGIN');
+    buildPreviousHistoryDatabase(db, version);
+    db.exec('COMMIT');
+    assert.deepEqual(readSchemaManifest(db, 'main'), manifest.entries);
+    assert.equal(db.prepare('SELECT version FROM schema_version').get()!.version, version);
+    assert.equal(db.prepare('PRAGMA application_id').get()!.application_id, 0x4d696f48);
+  } finally { db.close(); }
+});
 
 interface Fixture extends ProjectLocation {
   readonly root: string;
@@ -62,8 +72,7 @@ function fixture(t: TestContext, {fresh = false, processes = true}: {fresh?: boo
   const db = new DatabaseSync(value.historyFile);
   try {
     db.exec('PRAGMA journal_mode=DELETE; BEGIN');
-    buildDatabase(db, 'history', 'main', legacyHistory());
-    db.exec('UPDATE schema_version SET version=2');
+    buildPreviousHistoryDatabase(db, 2);
     db.prepare('INSERT INTO history_state VALUES(1,?,?)').run(projectId, sequence);
     const runId = randomUUID(), stepId = randomUUID();
     db.prepare('INSERT INTO agent_task_runs_v2 VALUES(?,?,?,?,?,?,?)').run(runId, projectId, randomUUID(), '0'.repeat(64), 'completed', 1,
@@ -74,7 +83,7 @@ function fixture(t: TestContext, {fresh = false, processes = true}: {fresh?: boo
     db.prepare('INSERT INTO timeline_history_cursors VALUES(?,?)').run(projectId, 7);
     db.prepare('INSERT INTO jobs(id,projectId,data) VALUES(?,?,?)').run('existing-job', projectId, '{"status":"running"}');
     db.exec('COMMIT');
-    assert.deepEqual(readSchemaManifest(db, 'main'), S0_HISTORY_V2_MANIFEST.entries, 'fixture is the exact S0 profile, independently derived from frozen format 72');
+    assert.deepEqual(readSchemaManifest(db, 'main'), S0_HISTORY_V2_MANIFEST.entries, 'fixture is the exact frozen S0 history profile');
   } finally {
     db.close();
   }
@@ -122,7 +131,7 @@ function r1Fixture(t:TestContext):Fixture{
  const value=fixture(t,{fresh:true,processes:false}),db=new DatabaseSync(value.historyFile);
  try{
   const at='2026-11-02T00:00:00.000Z',conversationId=randomUUID(),runId=randomUUID(),stepId=randomUUID(),requestId=randomUUID(),body=JSON.stringify({text:'原件🙂'.repeat(20000)}),shared=createHash('sha256').update('{}').digest('hex');
-  db.exec('PRAGMA journal_mode=DELETE; BEGIN');buildDatabase(db,'history','main',r1History());db.exec('UPDATE schema_version SET version=3');
+  db.exec('PRAGMA journal_mode=DELETE; BEGIN');buildPreviousHistoryDatabase(db,3);
   db.prepare('INSERT INTO history_state VALUES(1,?,?)').run(value.projectId,value.sequence);
   db.prepare('INSERT INTO mio_blobs VALUES(?,?,?,?)').run(shared,2,'{}',at);
   db.prepare('INSERT INTO mio_conversations VALUES(?,?,?,?)').run(conversationId,value.projectId,at,at);
