@@ -194,3 +194,25 @@ for(const mode of ['overwrite','revoke'] as const)test(`acceptChanged refuses a 
  assert.equal(f.store.db.prepare('SELECT 1 FROM idempotency WHERE scope=? AND requestId=?').get('asset.media.acceptChanged',input.requestId),undefined);
  if(mode==='overwrite')assert.deepEqual(readFileSync(file),third);else assert.equal(f.app.outsidePaths.list(f.store.projectId).length,0);
 });
+
+for(const failure of [
+ {name:'nonzero exit',body:"process.stderr.write('synthetic-private-probe-failure');process.exitCode=9;",code:'MEDIA_EXIT_FAILED'},
+ {name:'invalid metadata',body:"process.stdout.write('not-json');",code:'MEDIA_INVALID_METADATA'},
+ {name:'no stream',body:"process.stdout.write(JSON.stringify({streams:[]}));",code:'MEDIA_NO_STREAM'},
+])for(const changed of [true,false])test(`acceptChanged classifies deterministic ${failure.name} with source changed=${changed}`,async t=>{
+ const f=await fixture(t),file=path.join(f.projectDir,'deterministic-probe.png');writeFileSync(file,png());
+ const imported=row(await f.services.call('asset.import',{projectId:f.store.projectId,requestId:randomUUID(),sourcePath:file})),original=f.store.get('assets',String(imported.id));
+ const second=png({pixel:()=>[1,2,3,255]}),third=png({pixel:()=>[4,5,6,255]});writeFileSync(file,second);
+ const tool=path.join(f.root,'failed-probe.cjs'),previous=process.env.MIOON_FFPROBE_PATH;
+ const body=`${changed?`require('node:fs').writeFileSync(${JSON.stringify(file)},Buffer.from(${JSON.stringify(third.toString('base64'))},'base64'));`:''}${failure.body}`;
+ writeFileSync(tool,`#!${process.execPath}\n${body}\n`,{mode:0o700});
+ const input={projectId:f.store.projectId,requestId:randomUUID(),assetId:imported.id,expectedReferenceRevision:1};
+ const sequence=f.store.db.prepare('SELECT contentSequence FROM project_file').get()!.contentSequence;
+ process.env.MIOON_FFPROBE_PATH=tool;
+ try{await assert.rejects(f.media.call('asset.media.acceptChanged',input),{code:changed?'MEDIA_CHANGED_DURING_READ':failure.code});}
+ finally{if(previous===undefined)delete process.env.MIOON_FFPROBE_PATH;else process.env.MIOON_FFPROBE_PATH=previous;}
+ assert.equal(f.store.list('assets',f.store.projectId).length,1);assert.deepEqual(f.store.get('assets',String(imported.id)),original);
+ assert.equal(f.store.db.prepare('SELECT contentSequence FROM project_file').get()!.contentSequence,sequence);
+ assert.equal(f.store.db.prepare('SELECT 1 FROM idempotency WHERE scope=? AND requestId=?').get('asset.media.acceptChanged',input.requestId),undefined);
+ assert.deepEqual(readFileSync(file),changed?third:second);
+});

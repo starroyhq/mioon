@@ -20,6 +20,7 @@ import {createReferencedAssetImportHandler} from './referenced-asset-import.ts';
 import {checkpoint} from './operation-lifecycle.ts';
 import {createPreparedMediaFileFence} from './prepared-media-file.ts';
 import {probe} from './media.ts';
+import {isMediaToolFailure} from './media-runtime.ts';
 import {mediaUnavailableError, mediaUnavailableErrorDetailsSchemas} from '../../contracts/src/media-reference-errors.ts';
 import {EXPORT_PREFLIGHT_LIMITS} from '../../contracts/src/export-preflight.ts';
 
@@ -192,7 +193,12 @@ export function createAssetMediaServices(store: ProjectStore, {outsidePaths, sig
       const current = mediaReferenceSchema.parse(old.reference), file = resolveReferencePath(store.projectDir, current); if (!file) fail('MEDIA_MISSING');
       const prepared = await references.referenceForImport(file, {signal, beforeEffect: fence}); fence();
       const sourceFence=createPreparedMediaFileFence(store,prepared.file,{assetId:String(old.id),outsidePaths,beforeEffect:fence});
-      const metadata=await probe(prepared.file,{signal,beforeEffect:sourceFence});sourceFence();
+      const metadata=await probe(prepared.file,{signal,beforeEffect:sourceFence}).catch((error:unknown)=>{
+        // A source changed while the tool was reading may make the tool fail
+        // before it can return metadata. Keep cancellation/owner sentinels intact.
+        if(isMediaToolFailure(error)||(object(error)&&!('terminationUnconfirmed' in error)&&(error.code==='MEDIA_INVALID_METADATA'||error.code==='MEDIA_NO_STREAM')))sourceFence();
+        throw error;
+      });sourceFence();
       const status=await checkMediaStatus(access(),prepared.reference,{signal,beforeEffect:sourceFence});sourceFence();
       if(status.status!=='online'||!status.readable)throw mediaUnavailableError('MEDIA_CHANGED_DURING_READ',String(old.id));
       if(prepared.reference.fullSha256)await computeFullSha256(access(),prepared.reference,{signal,beforeEffect:sourceFence});sourceFence();
