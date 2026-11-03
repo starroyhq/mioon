@@ -75,7 +75,10 @@ export const CROSS_FILE_RELATIONS: readonly CrossFileRelation[] = Object.freeze(
   {index: 69, child: {schema: "main", table: "mio_conversation_policy_requests", columns: ["projectId"], nullable: [false]}, parent: {schema: "project", table: "projects", columns: ["id"]}, originallyDeferred: false},
   {index: 70, child: {schema: "main", table: "mio_process_target_revisions", columns: ["projectId"], nullable: [false]}, parent: {schema: "project", table: "projects", columns: ["id"]}, originallyDeferred: false},
   {index: 71, child: {schema: "main", table: "mio_rule_writes", columns: ["projectId"], nullable: [false]}, parent: {schema: "project", table: "projects", columns: ["id"]}, originallyDeferred: false},
-  {index: 72, child: {schema: "main", table: "mio_imports", columns: ["assetId"], nullable: [true]}, parent: {schema: "project", table: "assets", columns: ["id"]}, originallyDeferred: false},
+  {index: 72, child: {schema: "main", table: "project_versions", columns: ["projectId"], nullable: [false]}, parent: {schema: "project", table: "projects", columns: ["id"]}, originallyDeferred: false},
+  {index: 73, child: {schema: "main", table: "project_version_requests", columns: ["projectId"], nullable: [false]}, parent: {schema: "project", table: "projects", columns: ["id"]}, originallyDeferred: false},
+  {index: 74, child: {schema: "main", table: "project_version_capture_marks", columns: ["projectId"], nullable: [false]}, parent: {schema: "project", table: "projects", columns: ["id"]}, originallyDeferred: false},
+  {index: 75, child: {schema: "main", table: "mio_imports", columns: ["assetId"], nullable: [true]}, parent: {schema: "project", table: "assets", columns: ["id"]}, originallyDeferred: false},
 ]);
 export const DROPPED_CONTENT_KEYS: readonly DroppedContentKey[] = Object.freeze([
   {child: {table: "image_groups", columns: ["activeTaskId","id","projectId"]}, parent: {table: "image_tasks", columns: ["id","groupId","projectId"]}, originallyDeferred: true},

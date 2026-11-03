@@ -43,6 +43,7 @@ import type {ManifestEntry} from '../../packages/business/src/project-file/schem
 import {APP_DATABASE_TABLES, CACHE_TABLES, CONTENT_TABLES, HISTORY_TABLES, HISTORY_TABLES_BY_DOMAIN, LEGACY_MIO_TABLES, databaseOf} from '../../packages/business/src/project-file/schema/tables.ts';
 import type {TablePlacement} from '../../packages/business/src/project-file/schema/tables.ts';
 import {MIO_SCHEMA} from '../../packages/business/src/project-file/schema/domains/mio.ts';
+import {VERSION_SCHEMA} from '../../packages/business/src/project-file/schema/domains/versions.ts';
 
 export const REPOSITORY = fileURLToPath(new URL('../../', import.meta.url));
 const COMMAND = 'node tests/helpers/project-file-schema-derivation.ts';
@@ -676,6 +677,7 @@ function renderManifest(derivation: Derivation): string {
     'export const SCHEMA_MANIFEST: Readonly<Record<DatabaseKind, SchemaManifest>> = Object.freeze({'];
   for (const kind of ['project', 'history', 'cache'] as const) {
     const statements = DOMAIN_FILES.filter(domain => domain.database === kind).flatMap(domain => domain.file === 'mio' ? MIO_SCHEMA : derivation.domains[domain.file]);
+    if(kind==='history')statements.push(...VERSION_SCHEMA);
     const entries = buildManifest(kind, schemaStatements(kind, statements));
     lines.push(`  ${kind}: {version: ${VERSIONS[kind]}, entries: Object.freeze([`,
       ...entries.map(entry => `    {type: ${json(entry.type)}, name: ${json(entry.name)}, tbl_name: ${json(entry.tbl_name)}, sha256: ${json(entry.sha256)}},`),
@@ -693,6 +695,7 @@ export function currentCrossFileRelations(derivation: Derivation): readonly Rela
   const relations = derivation.relations.filter(relation => !legacy.has(relation.child.table)).map(relation => ({...relation}));
   const mioTables = HISTORY_TABLES_BY_DOMAIN.mio.filter(table => !['mio_blobs','mio_requests','mio_events','mio_storage_counters'].includes(table));
   for (const table of mioTables) relations.push({index: 0, child: {schema: 'main', table, columns: ['projectId'], nullable: [false]}, parent: {schema: 'project', table: 'projects', columns: ['id']}, originallyDeferred: false});
+  for (const table of HISTORY_TABLES_BY_DOMAIN.versions.filter(table=>table!=='project_version_blobs')) relations.push({index:0,child:{schema:'main',table,columns:['projectId'],nullable:[false]},parent:{schema:'project',table:'projects',columns:['id']},originallyDeferred:false});
   relations.push({index:0,child:{schema:'main',table:'mio_imports',columns:['assetId'],nullable:[true]},parent:{schema:'project',table:'assets',columns:['id']},originallyDeferred:false});
   let nextIndex=Math.max(...derivation.relations.map(relation=>relation.index));
   return relations.map(relation=>relation.index===0?{...relation,index:++nextIndex}:relation);
