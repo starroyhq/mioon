@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {
-  parse, schemas, isTimelineMutationResponse, isTimelineRenderRecord, isTimelineExportSnapshot,
+  parse, isTimelineMutationResponse, isTimelineRenderRecord, isTimelineExportSnapshot,
   isExportPreflightResponse, exportPreflightResponseSchema, resolveTimelineExportDelivery,
   TIMELINE_EXPORT_DEFAULT_SETTINGS, hasRequestNotAppliedProof, DURABLE_EDIT_OPERATIONS,
 } from '@mioon/contracts';
@@ -15,7 +15,7 @@ import {
   timelineRenderDeliveryFields, hasTimelineDeliveryIdentity, TIMELINE_DELIVERY_RECEIPT_SQL,
 } from '@mioon/contracts/timeline-delivery';
 import {createLocalDeliverySchemas} from '@mioon/contracts/local-delivery';
-import {discoverSchema} from '@mioon/client';
+import {schemas, discoverSchema} from '@mioon/client';
 import {assertOperationInputBranches} from './helpers/catalog-input-branches.ts';
 
 const clone = <T>(value: T): T => structuredClone(value);

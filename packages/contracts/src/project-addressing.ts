@@ -10,6 +10,7 @@ import {projectRpcPath} from './project-file.ts';
 export const APP_LEVEL_OPERATIONS = Object.freeze([
   'agent.authorization.grant', 'agent.authorization.list', 'agent.authorization.revoke',
   'image.profile.list', 'project.create', 'project.delete', 'project.list', 'project.rename', 'project.summary.list',
+  'project.backup.list', 'project.backup.inspect', 'project.backup.restore', 'project.backup.status',
   'provider.list', 'video.connection.list',
   'workspace.backup.create', 'workspace.backup.inspect', 'workspace.backup.list', 'workspace.backup.restore.stage', 'workspace.backup.status',
   'workspace.restore.inspect', 'workspace.settings.get', 'workspace.settings.set',
