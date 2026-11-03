@@ -7,7 +7,8 @@ import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
-import {createProjectHostManager} from '../apps/server/src/project-host/manager.ts';
+import {createProjectHostManager, SYSTEM_CLOCK} from '../apps/server/src/project-host/manager.ts';
+import type {ManagerClock} from '../apps/server/src/project-host/manager.ts';
 import {createMemoryProjectRegistry, createMemoryBackgroundTaskIndex} from '../apps/server/src/project-host/stand-ins.ts';
 import {projectLocation, serverAppDirectories} from '../apps/server/src/project-host/directories.ts';
 import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
@@ -20,13 +21,13 @@ import type {ProjectHistoryStatus} from '../packages/contracts/src/project-histo
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 
-async function fixture(t: TestContext, processTargets = false) {
+async function fixture(t: TestContext, processTargets = false, clock?: ManagerClock) {
   const root = mkdtempSync(path.join(tmpdir(), 'history-recovery-'));
   const directories = serverAppDirectories(root), registry = createMemoryProjectRegistry(), taskIndex = createMemoryBackgroundTaskIndex();
   const counts = {factory: 0, opened: 0, closed: 0}, owner = new AbortController();
   const library = openAppLibrary({dataDir: path.join(root, 'app-owner')});
   const guard = createProjectServiceApplication(library, owner.signal).assertMutationAllowed;
-  const manager = createProjectHostManager({directories, registry, taskIndex, assertMutationAllowed: guard,
+  const manager = createProjectHostManager({directories, registry, taskIndex, assertMutationAllowed: guard, ...(clock ? {clock} : {}),
     factory: async context => {
       counts.factory++; ensureProjectRow(context.store, {name: 'Original'});
       return {handle: async () => false, isBusy: () => false, interrupt() {}, drain: async () => {}, dispose() {}};
@@ -75,6 +76,37 @@ test('diverged admission precedes factory, lifecycle hooks and all business disp
   assert.deepEqual(session.status(), status); assert.deepEqual(files(f.local.localDir), before);
   assert.throws(() => lease.host.store.db.exec('UPDATE project.projects SET data=data'), /readonly|PROJECT_HISTORY_DIVERGED/u);
   lease.release(); await f.manager.close(f.projectId); assert.deepEqual(f.counts, counts);
+});
+
+test('recovery admission and confirmation preserve lastOpenedAt until the resolved project opens normally', async t => {
+  let now = Date.UTC(2026, 10, 4, 0, 0, 0);
+  const f = await fixture(t, false, {...SYSTEM_CLOCK, now: () => now});
+  const registration = f.registry.get(f.projectId)!;
+  assert.equal(registration.lastOpenedAt, new Date(now).toISOString());
+  const counts = {...f.counts};
+
+  now += 60_000;
+  const lease = await f.manager.openPath(f.registration.projectFile, 'window');
+  assert.ok(lease.host.recovery);
+  assert.deepEqual(f.registry.get(f.projectId), registration);
+  assert.deepEqual(f.counts, counts);
+  const input = confirmation(lease.host.recovery.status(), 'continue');
+  lease.release(); await f.manager.close(f.projectId);
+  assert.deepEqual(f.registry.get(f.projectId), registration);
+
+  now += 60_000;
+  const result = await f.manager.resolveHistory(input);
+  assert.equal(result.activation, 'pending');
+  assert.deepEqual(f.registry.get(f.projectId), registration);
+  assert.deepEqual(f.counts, counts);
+
+  now += 60_000;
+  const current = await f.manager.acquire(f.projectId, 'window');
+  assert.equal(current.host.recovery, undefined);
+  assert.deepEqual(f.counts, {...counts, factory: counts.factory + 1, opened: counts.opened + 1});
+  assert.deepEqual(f.registry.get(f.projectId), {...registration, lastOpenedAt: new Date(now).toISOString()});
+  assert.equal((current.host.store.get('projects', f.projectId) as {name: string}).name, 'External');
+  current.release();
 });
 
 test('continue archives the complete original history, carries only immutable versions, then normal runtime admits new work', async t => {
