@@ -46,7 +46,7 @@ test('retention keeps manual forever and the exact union of latest twenty and se
 test('pins are reference counted and shared blobs survive until their final unprotected version is pruned',t=>{
   const f=fixture(t),first=f.add('2026-10-01T00:00:00.000Z'),second=f.add('2026-10-02T00:00:00.000Z');
   const releaseFirst=pinProjectVersion(f.store.db,first.id),releaseSecond=pinProjectVersion(f.store.db,first.id);
-  const requestId=randomUUID(),receipt=JSON.stringify({projectId:f.projectId,requestId,versionId:first.id,beforeVersionId:second.id,contentSequence:first.contentSequence,totalChanges:0,appliedChanges:[],keptCurrent:[]});
+  const requestId=randomUUID(),receipt=JSON.stringify({projectId:f.projectId,requestId,versionId:first.id,beforeVersionId:second.id,contentSequence:first.contentSequence,contentToken:'e'.repeat(32),totalChanges:0,appliedChanges:[],keptCurrent:[]});
   f.store.tx(()=>f.store.db.prepare("INSERT INTO main.project_version_requests VALUES(?,?,'project.version.restore',?,?)").run(f.projectId,requestId,'b'.repeat(64),receipt));
   f.store.put('projects',{...f.store.get('projects',f.projectId) as Record<string,unknown>,name:'A different canonical body'});
   const fresh=f.encode();

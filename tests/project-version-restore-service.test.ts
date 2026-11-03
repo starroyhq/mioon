@@ -22,7 +22,7 @@ function fixture(t: TestContext) {
   const rename = (name: string) => store.put('projects', {...(store.get('projects', projectId) as {id: string; name: string}), name});
   const select = (versionId: string) => {
     const preview = api.preview({projectId, versionId});
-    return {projectId, versionId, requestId: randomUUID(), expectedContentSequence: preview.contentSequence, previewDigest: preview.previewDigest};
+    return {projectId, versionId, requestId: randomUUID(), expectedContentSequence: preview.contentSequence, expectedContentToken: preview.contentToken, previewDigest: preview.previewDigest};
   };
   const state = () => Object.fromEntries(['project.projects', 'project.project_file', 'project.agent_task_target_revisions_v2',
     'main.project_versions', 'main.project_version_blobs', 'main.project_version_requests', 'main.project_version_capture_marks']
@@ -94,7 +94,7 @@ test('confirmation and the complete successful receipt cover differences beyond 
   f.store.put('shots', {...(f.store.get('shots', tail) as Record<string, unknown>), title: 'Changed beyond the first two pages'});
   const current = f.select(saved.version.id), before = f.state();
   assert.notEqual(original.previewDigest, current.previewDigest);
-  assert.throws(() => f.api.restore({...original, expectedContentSequence: current.expectedContentSequence}), {code: 'PROJECT_VERSION_PREVIEW_CHANGED'});
+  assert.throws(() => f.api.restore({...original, expectedContentSequence: current.expectedContentSequence, expectedContentToken: current.expectedContentToken}), {code: 'PROJECT_VERSION_PREVIEW_CHANGED'});
   assert.deepEqual(f.state(), before); assert.equal(f.store.list('shots', f.projectId).length, 205);
   const result = f.api.restore(current);
   assert.equal(result.totalChanges, 205); assert.equal(result.appliedChanges.length, 205);

@@ -1,4 +1,4 @@
-import {randomUUID} from 'node:crypto';
+import {randomBytes,randomUUID} from 'node:crypto';
 import {closeSync, lstatSync, openSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import {backup, DatabaseSync} from 'node:sqlite';
@@ -9,7 +9,7 @@ import {isProjectId, PROJECT_DATABASE_NAMES} from '../../../contracts/src/projec
 import {referencePathForRealFile, resolveReferencePath} from '../media-reference/paths.ts';
 import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
 import {
-  isProjectBackupReader, openProjectBackup, publishCopiedFile, readCopiedProjectIdentity, syncCopiedFile,
+  isProjectBackupReader, openProjectBackup, PROJECT_BACKUP_APPLICATION_ID, publishCopiedFile, readCopiedProjectIdentity, syncCopiedFile,
 } from './backup.ts';
 import type {ProjectBackupIdentity, ProjectBackupReader} from './backup.ts';
 import {projectFileError} from './errors.ts';
@@ -24,6 +24,10 @@ export interface CopyProjectOptions {
   readonly sourceProjectDir: string;
   /** Trusted recovery-intent ID, or a fresh UUID when S5 copies directly. */
   readonly projectId?: string;
+  /** Durable restore intents allocate this once; direct copies allocate fresh. */
+  readonly contentToken?: string;
+  /** Bind a retry to the verified source, including same-sequence forks. */
+  readonly expectedSource?: Pick<ProjectBackupIdentity,'projectId'|'contentSequence'|'contentToken'>;
 }
 export interface ProjectCopyResult extends ProjectBackupIdentity {readonly projectFile: string}
 type Row = Record<string, SQLInputValue>;
@@ -69,7 +73,9 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
   if (!live && !saved) throw new TypeError('Copy requires a live project store or verified backup reader');
   if (source.db.isTransaction) throw new TypeError('Copy cannot start inside a transaction');
   const projectId = options.projectId ?? randomUUID();
+  const contentToken=options.contentToken??randomBytes(16).toString('hex');
   if (!isProjectId(projectId)) throw new TypeError('Invalid project ID');
+  if(!/^[a-f0-9]{32}$/u.test(contentToken))throw new TypeError('Invalid content token');
   const oldId = live ? source.projectId : source.identity.projectId;
   if (projectId === oldId) throw new TypeError('A project copy requires a new ID');
   const target = path.resolve(options.projectFile), parent = path.dirname(target), sourceProjectDir = path.resolve(options.sourceProjectDir);
@@ -84,6 +90,9 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
     let identity: ProjectBackupIdentity;
     try {
       db.exec('PRAGMA trusted_schema=OFF; PRAGMA synchronous=FULL');
+      const actual=readCopiedProjectIdentity(db,live?PROJECT_FILE_APPLICATION_ID:PROJECT_BACKUP_APPLICATION_ID,Number(lstatSync(temporary).size));
+      if(actual.projectId!==oldId || actual.contentToken===contentToken)throw failed('metadata');
+      if(options.expectedSource && (actual.projectId!==options.expectedSource.projectId || actual.contentSequence!==options.expectedSource.contentSequence || actual.contentToken!==options.expectedSource.contentToken))throw failed('source-changed');
       const triggers = db.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' ORDER BY rowid").all();
       const rows = new Map(CONTENT_TABLES.map(table => [table, db.prepare(`SELECT * FROM "${table}"`).all() as Row[]]));
       const sequence = db.prepare('SELECT contentSequence FROM project_file').get()?.contentSequence;
@@ -94,7 +103,7 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
       try {
         for (const trigger of triggers) db.exec(`DROP TRIGGER "${String(trigger.name).replaceAll('"', '""')}"`);
         for (const table of [...CONTENT_TABLES].reverse()) db.exec(`DELETE FROM "${table}"`);
-        db.prepare('UPDATE project_file SET projectId=?,contentSequence=?').run(projectId, sequence);
+        db.prepare('UPDATE project_file SET projectId=?,contentSequence=?,contentToken=?').run(projectId, sequence,contentToken);
         for (const table of CONTENT_TABLES) {
           for (const original of rows.get(table) ?? []) {
             const row = rewriteRow(table, original, oldId, projectId);

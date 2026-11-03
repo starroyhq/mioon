@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {gzipSync, gunzipSync} from 'node:zlib';
 import {AppError} from '../../../contracts/src/app-error.ts';
-import {canonicalJson, PROJECT_SNAPSHOT_PROFILE, snapshotInvalid, validateProjectDocument} from './document.ts';
+import {canonicalJson, PROJECT_SNAPSHOT_PROFILE, snapshotInvalid, validateProjectDocument, decodeSupportedProjectDocument, validateProjectDocumentForCopy} from './document.ts';
 import type {ProjectDocument} from './document.ts';
 import {PROJECT_SNAPSHOT_MAX_RAW_BYTES, PROJECT_SNAPSHOT_MAX_COMPRESSED_BYTES} from './limits.ts';
 export {PROJECT_SNAPSHOT_MAX_RAW_BYTES, PROJECT_SNAPSHOT_MAX_COMPRESSED_BYTES} from './limits.ts';
@@ -28,7 +28,7 @@ export function encodeProjectDocument(document: ProjectDocument): EncodedProject
   return {hash: digest(raw), rawBytes, compressedBytes: payload.byteLength, payload, profile: PROJECT_SNAPSHOT_PROFILE, codec: 'gzip'};
 }
 
-export function decodeProjectDocument(input: EncodedProjectDocument): ProjectDocument {
+function decodeEnvelope(input: EncodedProjectDocument): unknown {
   if (!input || input.profile !== PROJECT_SNAPSHOT_PROFILE || input.codec !== 'gzip' || typeof input.hash !== 'string' || !/^[0-9a-f]{64}$/u.test(input.hash)
     || !Number.isSafeInteger(input.rawBytes) || input.rawBytes < 1 || !Number.isSafeInteger(input.compressedBytes) || input.compressedBytes < 1
     || !(input.payload instanceof Uint8Array) || input.payload.byteLength !== input.compressedBytes) throw snapshotInvalid('blob-metadata');
@@ -43,5 +43,19 @@ export function decodeProjectDocument(input: EncodedProjectDocument): ProjectDoc
     document = JSON.parse(text);
     if (canonicalJson(document) !== text) throw snapshotInvalid('canonical-json');
   } catch {throw snapshotInvalid('json');}
-  return validateProjectDocument(document);
+  return document;
+}
+
+export function decodeProjectDocument(input: EncodedProjectDocument): ProjectDocument {
+  return decodeSupportedProjectDocument(decodeEnvelope(input));
+}
+
+/** Checks transport and known frozen structure without claiming that every
+ * preserved historical business format can be executed by this release. */
+export function inspectProjectDocumentForCopy(input: EncodedProjectDocument): {
+  projectId: string; contentSequence: number; projectFormatVersion: number; restoreSupported: boolean;
+} {
+  const envelope = decodeEnvelope(input), document = validateProjectDocumentForCopy(envelope);
+  return {projectId: document.projectId, contentSequence: document.evidence.contentSequence,
+    projectFormatVersion: (envelope as ProjectDocument).projectFormatVersion, restoreSupported: document.projectFormatVersion !== 1};
 }

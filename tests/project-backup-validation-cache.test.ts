@@ -111,12 +111,37 @@ test('cache hits still reject permission changes and hard links before opening S
   assert.equal(f.validations.length, calls + 2);
 });
 
+test('an index token cannot borrow a warm validation result and malformed tokens never reach the reader',async t=>{
+ const f=await fixture(t),latest=f.saved.backups[0]!,indexFile=path.join(path.dirname(path.dirname(f.fileFor(latest.backupId))),'index.json');
+ f.cold();await f.backups.list({projectId:f.projectId});const calls=f.validations.length;
+ const index=JSON.parse(fs.readFileSync(indexFile,'utf8'));assert.equal(index.version,2);
+ index.backups[0].contentToken=latest.contentToken==='0'.repeat(32)?'1'.repeat(32):'0'.repeat(32);
+ fs.writeFileSync(indexFile,JSON.stringify(index),{mode:0o600});
+ const listed=await f.backups.list({projectId:f.projectId});
+ assert.deepEqual(listed.backups,f.saved.backups.slice(1));assert.equal(f.validations.length,calls+1);
+ await assert.rejects(f.backups.inspect({projectId:f.projectId,backupId:latest.backupId}),{code:'PROJECT_BACKUP_CHANGED'});
+ const beforeInvalid=f.validations.length;index.backups[0].contentToken='A'.repeat(32);fs.writeFileSync(indexFile,JSON.stringify(index),{mode:0o600});
+ await assert.rejects(f.backups.list({projectId:f.projectId}),{code:'PROJECT_BACKUP_INDEX_INVALID'});assert.equal(f.validations.length,beforeInvalid);
+});
+
+test('a newly appearing journal cannot borrow an unchanged file validation cache',async t=>{
+ const f=await fixture(t),latest=f.saved.backups[0]!,file=f.fileFor(latest.backupId),journal=file+'-journal';
+ f.cold();await f.backups.list({projectId:f.projectId});const calls=f.validations.length;
+ fs.writeFileSync(journal,'unconfirmed journal',{mode:0o600});const before=fs.readFileSync(journal);
+ assert.deepEqual((await f.backups.list({projectId:f.projectId})).backups,f.saved.backups.slice(1));assert.equal(f.validations.length,calls);
+ await assert.rejects(f.backups.inspect({projectId:f.projectId,backupId:latest.backupId}),{code:'PROJECT_BACKUP_CHANGED'});assert.deepEqual(fs.readFileSync(journal),before);
+ fs.unlinkSync(journal);assert.deepEqual(await f.backups.list({projectId:f.projectId}),f.saved);assert.equal(f.validations.length,calls+1);
+});
+
 test('a new inode generation cannot inherit validation even when dev/ino/size/mtime are reused', async t => {
   const f = await fixture(t), file = f.fileFor(f.saved.backups[0]!.backupId);
   const lstat = fs.lstatSync; let generation = 1n;
   t.mock.method(fs, 'lstatSync', (...args: Parameters<typeof fs.lstatSync>) => {
     const info = Reflect.apply(lstat, fs, args);
-    if (String(args[0]) !== file || !args[1]?.bigint || !new Error().stack?.replaceAll('\\', '/').includes('/project-host/backups.ts')) return info;
+    const stack=new Error().stack?.replaceAll('\\','/')??'';
+    // Simulate the cache's observed generation, leaving the independent
+    // descriptor-versus-path checks of the full reader on real fs metadata.
+    if (String(args[0]) !== file || !args[1]?.bigint || !stack.includes('/project-host/backups.ts') || stack.includes('/project-file/backup.ts')) return info;
     if (!info) return info;
     return new Proxy(info, {get: (target, property, receiver) => property === 'ctimeNs' || property === 'birthtimeNs'
       ? Reflect.get(target, property, receiver) + generation : Reflect.get(target, property, receiver)});
