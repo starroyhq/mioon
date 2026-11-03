@@ -10,7 +10,8 @@ import {frameSchemas,legacyWorkspaceFrameSnapshotSchema,frameReceiptSchema,FRAME
 import {isWorkspaceBackupPayloadPath} from '../../contracts/src/workspace-backup.ts';
 import {readPrivateFile,validateManagedDirectory} from '@mioon/contracts/private-storage';
 import {validateComfyReceiptOwnership} from './comfy/ownership.ts';
-import {BACKUP_IO_LIMITS,fail,inspectFile,scanDirectory,checkCancelled} from './workspace-backup-storage.ts';
+import {BACKUP_IO_LIMITS,fail} from './workspace-backup-storage.ts';
+import {inspectFile,scanDirectory,checkCancelled} from './managed-file-io.ts';
 import type {Stats} from 'node:fs';
 import type {DatabaseSync} from 'node:sqlite';
 

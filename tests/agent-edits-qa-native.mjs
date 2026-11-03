@@ -44,6 +44,9 @@ export async function startEditsQaNative({protocol = 'responses'} = {}) {
         await appendFile(path.join(fixture.runtime, 'electron.log'), bytes);
       });
     });
+    // The ordinary sandboxed app exposes no trusted in-process inspector to
+    // this fixture. Its live audit therefore refuses the real owner lock;
+    // after exit close() performs the full cold kernel/app audit above.
     mailbox = await startEditQaMailbox(fixture, model);
     // Read the ordinary connection descriptor only for readiness. Its random
     // app auth token is never copied, overridden, logged or used by this fixture.

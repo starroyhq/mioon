@@ -11,7 +11,8 @@ import {mkdtemp, writeFile, readFile, readdir, rm, unlink} from 'node:fs/promise
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore, openLegacyWorkspaceStore, ownsStoreLock, getWorkspaceRestoreContext, type WorkspaceStore} from '../packages/business/src/db.ts';
+import { openStore, openLegacyWorkspaceStore, ownsStoreLock, getWorkspaceRestoreContext } from '../packages/business/src/db.ts';
+import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createTimelineMixLoudnessServices} from '../packages/business/src/timeline-mix-loudness.ts';
 import {planTimelineMixLoudnessDecode} from '../packages/business/src/timeline-mix-loudness-decoder.ts';

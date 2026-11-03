@@ -25,6 +25,7 @@ export function createProjectServiceApplication(library: AppLibrary, signal?: Ab
   return {
     outsidePaths: library.outsidePaths,
     configuration: createWorkspaceConfiguration({root: library.dataDir, documents: createAppCompanionDocuments(library), env}),
+    assertMutationAllowed: assertOwner,
     backups: {
       getStatus: unavailable, list: unavailable, create: unavailable, stageRestore: unavailable,
       exportBundle: unavailable, importBundle: unavailable, importDirectory: unavailable,

@@ -7,7 +7,7 @@ import path from 'node:path';
 import {openStore, schemaObjects, foreignKeyCheck} from '../packages/business/src/project-file/index.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {createWorkspaceConfiguration} from '../packages/business/src/workspace-configuration.ts';
+import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import type {AgentPolicyStore} from '../packages/business/src/app-db/stores.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/store.ts';
@@ -137,12 +137,7 @@ test('runtime policy injection retains explicit paid confirmation and rejects st
 
 test('project tools snapshot all eight attached content families and stage attachments under localDir/imports', async t => {
   const {root, library, first: store} = fixture(t), {db, projectId} = store;
-  const unused = (): never => {throw Error('This read/import-staging test must not invoke application backups');};
-  const configuration = createWorkspaceConfiguration({root: path.join(root, 'app'), documents: library.documents});
-  const services = createServices(store, new Map(), {application: {configuration,outsidePaths:library.outsidePaths, backups: {
-    getStatus: unused, list: unused, create: unused, stageRestore: unused, exportBundle: unused, importBundle: unused, importDirectory: unused,
-    isBusy: () => false, assertMutationAllowed() {}, start() {}, stop() {}, drain: async () => {}, tick: async () => {},
-  }}});
+  const services = createServices(store, new Map(), {application: createProjectServiceApplication(library)});
   const tools = createAgentTaskTools({store, services, policyStore: library.agentPolicy});
   t.after(async () => {tools.dispose(); await services.drain();});
   const assetId = randomUUID(), shotId = randomUUID(), subjectId = randomUUID(), subjectVersionId = randomUUID(), bindingId = randomUUID();

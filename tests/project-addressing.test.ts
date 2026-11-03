@@ -7,9 +7,9 @@ import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {schemas} from '@mioon/client';
 import {APP_LEVEL_OPERATIONS, ENTITY_ADDRESSED_OPERATIONS, inputProjectId, isAppLevelOperation, isEntityAddressedOperation, rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
-import {projectApiPath, projectMediaPath, projectRpcPath} from '../packages/contracts/src/project-file.ts';
+import {parseProjectApiPath, projectApiPath, projectMediaPath, projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {jsonSchema, operationDefinition, splitProjectAddress} from '../packages/client/src/index.ts';
-import {assertProjectRpc, projectRouteTarget} from '../apps/server/src/project-routes.ts';
+import {assertProjectRpc, projectHandlerTarget} from '../apps/server/src/project-host/request.ts';
 import {startServer} from '../apps/server/src/index.ts';
 
 const TOKEN = 'synthetic-project-addressing-token';
@@ -107,7 +107,7 @@ test('project routes map to the paths they replace; app-level and unknown routes
     [`/media/${asset}`, null],
   ];
   for (const [pathname, expected] of cases) {
-    const target = projectRouteTarget(pathname);
+    const route = parseProjectApiPath(pathname), target = route ? projectHandlerTarget(route) : null;
     assert.deepEqual(target, expected === null ? null : {projectId: id, pathname: expected}, pathname);
   }
 });

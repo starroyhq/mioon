@@ -11,7 +11,7 @@ import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createTimelinePreflightServices,timelineSnapshotHash} from '../packages/business/src/timeline-preflight.ts';
 import type {TestContext} from 'node:test';
-import type {WorkspaceStore} from '../packages/business/src/db.ts';
+import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
 import {readTimelinePreflightSnapshot,validatePreparedTimelineSources} from '../packages/business/src/timeline-sources.ts';
 import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 

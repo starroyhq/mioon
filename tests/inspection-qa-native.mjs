@@ -3,13 +3,14 @@ import {spawn} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {access, appendFile, mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
-import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
+import {ensureQaProject,closeQaProject} from './helpers/kernel-qa-fixture.mjs';
+import {prepareNativeQaAuditLayout} from './helpers/native-qa-audit.mjs';
 
 const root = path.resolve('evidence/agent-inspection/native-runtime');
-const userData = path.join(root, 'user-data'), workspace = path.join(userData, 'workspace');
+const userData = path.join(root, 'user-data'), workspace = path.join(userData, 'data');
 await mkdir(root, {recursive: true});
-try { await access(path.join(workspace, 'workbench.sqlite')); }
-catch { await migrateData(path.resolve('examples/multitrack-project'), workspace); }
+await closeQaProject(await ensureQaProject(workspace));
+await writeFile(path.join(root,'native-audit-layout.json'),JSON.stringify(await prepareNativeQaAuditLayout(workspace),null,2));
 if (process.argv.includes('--prepare')) { console.log(workspace); process.exit(0); }
 
 const require = createRequire(import.meta.url);

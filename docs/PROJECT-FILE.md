@@ -45,7 +45,11 @@
 - 直接 `INSERT INTO projects` 的测试改用 `project.create`（W1）。
 
 ## 入口与作用域
-`openStore(root)` 用于 store 级真实 TEST 布局；`startServer({dataDir})` 的 `dataDir` 是应用目录，项目通过真实登记和内核 opener 打开。`createServices` 仅为确切 TEST store 惰性接入真实测试应用库；生产宿主必须显式注入应用配置/备份端口，不能靠 root 或复制 store 字段获得应用能力。测试显式的 `createServerProject` / `openServerProject` 也登记同一 TEST 能力，使用真实服务端布局，不另外创建 TEST 布局的影子项目。共享一个应用目录的这些测试 store 复用唯一真实 B1，最后一个 store 关闭时才关闭 B1；生产服务端不参与这个 TEST 持有者表。
+`openStore(root)` 用于 store 级真实 TEST 布局；`startServer({dataDir})` 的 `dataDir` 是应用目录，项目通过真实登记和内核 opener 打开。`createServices` 仅为确切 TEST store 惰性接入真实测试应用库；生产宿主必须显式注入应用配置、写入守卫和备份端口，不能靠 root 或复制 store 字段获得应用能力。测试显式的 `createServerProject` / `openServerProject` 也登记同一 TEST 能力，使用真实服务端布局，不另外创建 TEST 布局的影子项目。共享一个应用目录的这些测试 store 复用唯一真实 B1，最后一个 store 关闭时才关闭 B1；生产服务端不参与这个 TEST 持有者表。
+
+- 共用存储类型由 `store-contract.ts` 的 `Store` / `StoreIdentity` 提供，不初始化旧工作区。`db.ts` 暂保 `WorkspaceStore` 类型别名供历史代码过渡；事务、真实持有身份和观察者规则不变。
+- `ServiceApplicationPorts.assertMutationAllowed()` 独立于 `backups`，由应用所有者提供。项目业务、Mio 派发和设置写入使用这个守卫；正式应用实现仍检查中止信号和确切 B1 连接的有效持有身份，配置写入仍通过 B1 的真实事务。历史工作区缺省接线继续委托原备份/恢复忙状态守卫。
+- 配置和交换文件复用的安全 IO 位于 `managed-file-io.ts`；路径、身份、拒绝覆盖、有界读写、原子发布和同步规则保持。为维持现有错误语义，共用 IO 暂保 `WORKSPACE_BACKUP_*` 错误码；旧备份容器保留自身的发布编排，并重导出共用 IO 的兼容入口。
 
 ## 四个目录
 | 目录 | 位置 | 放什么 |

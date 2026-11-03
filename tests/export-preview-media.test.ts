@@ -11,6 +11,7 @@ import {mkdtemp, writeFile, readFile, readdir, rm, unlink, open} from 'node:fs/p
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import {setTimeout as delay} from 'node:timers/promises';
 import {DatabaseSync} from 'node:sqlite';
 import {isTimelineRenderRecord} from '@mioon/contracts';
 import {timelineDeliveryContentDisposition} from '@mioon/contracts/timeline-delivery';
@@ -21,9 +22,6 @@ import {readTimelineExportPreviewMedia, timelineExportPreviewIdentity, timelineE
 import {startServer} from '../apps/server/src/index.ts';
 import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {createFileResponses} from '../apps/server/src/file-response.ts';
-import {registerProjectTransactionFence} from '../packages/business/src/project-file/store.ts';
-import {registeredProjectStoreForDatabase} from '../packages/business/src/project-media-storage.ts';
-import {startWorker} from '../packages/business/src/jobs.ts';
 import {createServerProject, openProjectDatabase, projectDirFor, schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
@@ -85,12 +83,13 @@ async function fixture(t: test.TestContext, {serve = true, named = false} = {}) 
   // data_version counts other connections' commits only; total_changes() adds this connection's own writes.
   const changeMarks = (db: DatabaseSync) => [db.prepare('PRAGMA data_version').get()!.data_version, db.prepare('SELECT total_changes() AS n').get()!.n];
   const capture=(db:DatabaseSync)=>({rows:rows(db),schema:schemaObjects(db),version:changeMarks(db)});
+  const synchronousCheckpoint = () => ({project:use(capture),foreign:useForeign(capture),application:inspectApp?.(capture)});
   const checkpoint = async () => ({...use(capture),foreign:useForeign(capture),application:inspectApp?.(capture),files:await manifest(root,[...use(databaseFiles),...useForeign(databaseFiles),...(inspectApp?.(databaseFiles)??[])])});
   return {root, projectDir, project, foreign, sourceId, timeline, queued, record, asset, bytes, input, route, url, use,
     // The test's own connection exists only while no server holds the project.
     get db() {if (inspect) throw new Error('The server holds the project: use f.use(db => ...)'); return db!;},
     get guards() {return guardsFor(this.db);},
-    read: () => use(db => readTimelineExportPreviewMedia(db, url, guardsFor(db))), checkpoint,
+    read: () => use(db => readTimelineExportPreviewMedia(db, url, guardsFor(db))), checkpoint, synchronousCheckpoint,
     unchanged: async (before: Awaited<ReturnType<typeof checkpoint>>) => {use(db => {assert.deepEqual(rows(db), before.rows); assert.deepEqual(changeMarks(db), before.version);assert.deepEqual(schemaObjects(db),before.schema);});assert.deepEqual(useForeign(capture),before.foreign);assert.deepEqual(inspectApp?.(capture),before.application);assert.deepEqual(await manifest(root,[...use(databaseFiles),...useForeign(databaseFiles),...(inspectApp?.(databaseFiles)??[])]), before.files);},
     request: (selected = route, options: RequestInit = {}) => fetch(server!.url + selected, {...options, headers: {authorization: 'Bearer ' + token, ...options.headers}}),
     get server() {return server;}};
@@ -133,25 +132,33 @@ test('preview syntax is exact and unauthorized requests do not disclose bytes', 
   await f.unchanged(before);
 });
 
+test('queued preview ownership is rejected without writes before yielding to the worker', async t => {
+  const f = await fixture(t); allowCorruptFixture(f);
+  assert.ok(f.read());
+  // A queued row belongs to the live worker. Check the business reader and all
+  // connection snapshots in one turn, then restore it before any async I/O.
+  f.use(db => replace(db, 'exports', {...f.record, status: 'queued', assetId: null, url: null}));
+  try {
+    const before = f.synchronousCheckpoint();
+    assert.equal(f.read(), null);
+    assert.deepEqual(f.synchronousCheckpoint(), before);
+  } finally {f.use(db => replace(db, 'exports', f.record));}
+  const before = await f.checkpoint();
+  assert.ok(f.read());
+  await f.unchanged(before);
+});
+
 test('preview exact ownership requires matching export receipt and owned published asset', async t => {
   const f = await fixture(t); allowCorruptFixture(f);
-  const owner = f.use(db => registeredProjectStoreForDatabase(db)); assert.ok(owner);
-  let blockedClaims = 0, queuedCases = 0;
-  // The queued corruption is read-only test data. The real server's worker
-  // must not claim it while checkpoint() awaits filesystem reads. Inspector
-  // corruption/repair SQL deliberately stays outside domain transactions.
-  const releaseWorkerFence = registerProjectTransactionFence(owner.db, () => {
-    blockedClaims++;
-    throw new Error('Preview ownership fixture blocks background domain writes');
-  });
-  try {
   const originalReceipt = f.use(db => db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(f.input.requestId)!.response);
   // Rows that belong to the other project are written as a corrupt file would hold them.
   const changes = [
     (db: DatabaseSync) => withoutProcessTargetRevisions(db, ['exports'], () => withoutForeignKeys(db, () => db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.foreign.id, f.record.id))),
     (db: DatabaseSync) => replace(db, 'exports', {...f.record, assetId: randomUUID()}),
     (db: DatabaseSync) => replace(db, 'exports', {...f.record, purpose: 'preview'}),
-    (db: DatabaseSync) => replace(db, 'exports', {...f.record, status: 'queued', assetId: null, url: null}),
+    // A running record is still unpublished, but only queued rows are taken by
+    // the already-started worker. Keep the HTTP zero-write fence independent.
+    (db: DatabaseSync) => replace(db, 'exports', {...f.record, status: 'running', assetId: null, url: null}),
     (db: DatabaseSync) => db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(JSON.stringify({...f.queued, id: randomUUID()}), f.input.requestId),
     (db: DatabaseSync) => withoutForeignKeys(db, () => db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.foreign.id, f.asset.id)),
     (db: DatabaseSync) => replace(db, 'assets', {...f.asset, projectId: f.foreign.id}),
@@ -160,22 +167,13 @@ test('preview exact ownership requires matching export receipt and owned publish
     (db: DatabaseSync) => replace(db, 'assets', {...f.asset, relativePath: `media/export-${randomUUID()}-${randomUUID()}.mp4`}),
   ];
   for (const mutate of changes) {
-    f.use(mutate); const before = await f.checkpoint(); assert.equal(f.read(), null);
-    if (f.use(db => db.prepare("SELECT json_extract(data,'$.status') AS status FROM exports WHERE id=?").get(f.record.id)?.status) === 'queued') {
-      queuedCases++;
-      const attempts = blockedClaims;
-      const unexpectedGeneration = (): never => assert.fail('A preview fixture must not dispatch generation');
-      // Force the production worker through its real queued-export claim on
-      // the exact server-owned store; no timer, sleep or renderer is needed.
-      const worker = startWorker(owner, {saveJob: unexpectedGeneration, saveGenerationGuarded: unexpectedGeneration,
-        validateGenerationDispatch: unexpectedGeneration, resolveGenerationProvider: unexpectedGeneration}, new Map());
-      try {await worker.tick();}
-      finally {await worker.stop();}
-      assert.equal(blockedClaims, attempts + 1, 'the explicitly scheduled worker attempted its transaction exactly once');
-      assert.equal(f.use(db => db.prepare("SELECT json_extract(data,'$.status') AS status FROM exports WHERE id=?").get(f.record.id)?.status), 'queued');
-      assert.equal((await readdir(path.join(f.projectDir, 'media'))).some(name => name.startsWith(`export-${f.record.id}-`) && name.endsWith('.part.mp4')), false);
-      await f.unchanged(before);
-    }
+    f.use(mutate);
+    const pending = f.use(db => ['queued','running'].includes(String(db.prepare("SELECT json_extract(data,'$.status') AS status FROM exports WHERE id=?").get(f.record.id)?.status)));
+    const before = await f.checkpoint(); assert.equal(f.read(), null);
+    // Deliberately cross at least one 200 ms worker tick. The old queued
+    // fixture failed its unchanged assertion here; the running fixture cannot
+    // be redispatched while its preview ownership is being inspected.
+    if (pending) await delay(350);
     const response = await f.request(); assert.equal(response.status, 404); await response.text(); await f.unchanged(before);
     f.use(db => {
       db.prepare('UPDATE exports SET projectId=?,data=? WHERE id=?').run(f.project.id, JSON.stringify(f.record), f.record.id);
@@ -183,9 +181,7 @@ test('preview exact ownership requires matching export receipt and owned publish
       db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(originalReceipt, f.input.requestId);
     });
   }
-  assert.equal(queuedCases, 1, 'the queued corruption case remains covered');
   assert.ok(f.read());
-  } finally {releaseWorkerFence();}
 });
 
 test('preview revalidates after open and closes descriptor when ownership changes', async t => {

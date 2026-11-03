@@ -2,7 +2,7 @@ import path from 'node:path';
 import {AppError} from '@mioon/contracts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory} from '@mioon/contracts/private-storage';
 import {workspaceSettingsUpdateSchema,type WorkspaceSettings,type WorkspaceSettingsUpdate} from '../../contracts/src/workspace-configuration.ts';
-import {checkSeparate} from './workspace-backup-storage.ts';
+import {checkSeparate} from './managed-file-io.ts';
 import type {AppDocumentStore} from './app-db/stores.ts';
 
 const FILE='workspace-settings-v1.json',MAX_BYTES=16*1024;

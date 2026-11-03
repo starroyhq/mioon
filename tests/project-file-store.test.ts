@@ -13,7 +13,7 @@ import {
   getWorkspaceRestoreContext, openLegacyWorkspaceStore as openWorkspaceStore, ownsStoreLock,
   registerWorkspaceTransactionFence, registerWorkspaceTransactionObserver,
 } from '../packages/business/src/db.ts';
-import type {WorkspaceStore} from '../packages/business/src/db.ts';
+import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
 import {
   createProjectStore, isProjectStore, openProjectStore, openStore, registerProjectTransactionFence, registerProjectTransactionObserver,
 } from '../packages/business/src/project-file/index.ts';

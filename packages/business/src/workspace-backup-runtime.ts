@@ -6,13 +6,15 @@ import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory} from '@
 import {WORKSPACE_BACKUP_LIMITS} from '../../contracts/src/workspace-backup.ts';
 import {workspaceBackupIndexSchema as indexSchema,workspaceActivationSchema as activationSchema,workspaceBackupStatusSchema,workspaceConfigurationSchemas,type WorkspaceBackupEntry,type WorkspaceBackupStatus,type WorkspaceBackupIndex as Index} from '../../contracts/src/workspace-configuration.ts';
 import type {WorkspaceConfiguration} from './workspace-configuration.ts';
-import {type WorkspaceStore,ownsStoreLock,getWorkspaceRestoreContext} from './db.ts';
+import { ownsStoreLock, getWorkspaceRestoreContext } from './db.ts';
+import type { Store as WorkspaceStore } from './store-contract.ts';
 import {inspectWorkspaceBackup} from './backup-readiness.ts';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from './workspace-backup.ts';
 import {buildWorkspaceInventory,createIssueCollector} from './workspace-backup-inventory.ts';
 import {restoreWorkspaceBackup,inspectWorkspaceRestorePublication} from './workspace-restore.ts';
 import {exportWorkspaceBackupBundle,importWorkspaceBackupBundle} from './workspace-backup-bundle.ts';
-import {checkSeparate,createDestination,createNewDirectory,inspectFile,streamFile,writeBoundedFile,removeOwnedFile,removeOwnedDirectory} from './workspace-backup-storage.ts';
+import {createDestination} from './workspace-backup-storage.ts';
+import {checkSeparate,createNewDirectory,inspectFile,streamFile,writeBoundedFile,removeOwnedFile,removeOwnedDirectory} from './managed-file-io.ts';
 import type {Stats} from 'node:fs';
 
 const INDEX='workspace-backups-index-v1.json',ACTIVATION='workspace-activation-v1.json',MAX_INDEX=128*1024;

@@ -7,7 +7,7 @@ import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
 import {createAgentTaskRuntime} from '../../packages/business/src/agent/task-runtime-v2.ts';
 import {createAgentTaskHttp} from '../../apps/server/src/agent-task-http-v2.ts';
-import {projectRouteTarget} from '../../apps/server/src/project-routes.ts';
+import {projectHandlerTarget} from '../../apps/server/src/project-host/request.ts';
 import {parseProjectApiPath} from '../../packages/contracts/src/project-file.ts';
 import type {InspectProject} from '../../apps/server/src/project-host/host.ts';
 import type {TaskGateway} from '../../packages/business/src/agent/task-gateway-v2.ts';
@@ -22,7 +22,7 @@ export async function startLegacyAgentTaskHttp({dataDir,taskGatewayV2}: {dataDir
   const handler=createAgentTaskHttp({runtime}),token=randomUUID();
   const server=createServer(async(req,res)=>{
     if(req.headers.authorization!==`Bearer ${token}`){res.writeHead(401);res.end();return;}
-    const url=new URL(req.url??'/','http://127.0.0.1'),route=parseProjectApiPath(url.pathname),target=projectRouteTarget(url.pathname);
+    const url=new URL(req.url??'/','http://127.0.0.1'),route=parseProjectApiPath(url.pathname),target=route?projectHandlerTarget(route):null;
     if(target)url.pathname=target.pathname;
     try{if(!await handler.handle(req,res,url,route?{projectId:route.projectId}:undefined)){res.writeHead(404);res.end();}}
     catch(error){const failure=error as {status?:number;code?:string};if(!res.headersSent&&!res.destroyed){res.writeHead(failure.status??500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:{code:failure.code??'INTERNAL_ERROR'}}));}}

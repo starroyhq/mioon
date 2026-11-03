@@ -1,7 +1,7 @@
 import {mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
 import {validAssetLocator} from './asset-reference-record.ts';
 import {isProjectDatabase} from './project-file/held-files.ts';
-import type {WorkspaceStore} from './db.ts';
+import type { Store as WorkspaceStore } from './store-contract.ts';
 import {ownsStoreLock} from './db.ts';
 import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
 import {isTimelineRenderRecord,AppError} from '@mioon/contracts';

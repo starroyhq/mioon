@@ -13,7 +13,7 @@ import {initializeNodePrivateStorage} from '../packages/node-host/src/private-st
 import {createPrivateTemporaryDirectory,getWindowsManagedFileIO,validateManagedFile} from '../packages/contracts/src/private-storage.ts';
 import {openLegacyWorkspaceStore as openStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {streamFile,createNewDirectory,sameFile,writeBoundedFile} from '../packages/business/src/workspace-backup-storage.ts';
+import {streamFile,createNewDirectory,sameFile,writeBoundedFile} from '../packages/business/src/managed-file-io.ts';
 import {exportWorkspaceBackupBundle,importWorkspaceBackupBundle} from '../packages/business/src/workspace-backup-bundle.ts';
 import {CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_SCHEMA} from './helpers/workspace-schema-current.ts';
 import type { BinaryLike } from 'crypto';

@@ -11,7 +11,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import { openStore, openLegacyWorkspaceStore, type WorkspaceStore } from '../packages/business/src/db.ts';
+import { openStore, openLegacyWorkspaceStore } from '../packages/business/src/db.ts';
+import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
 import { createServices, type OrdinaryServices } from '../packages/business/src/services.ts';
 import { withoutForeignKeys } from './helpers/project-database.ts';
 

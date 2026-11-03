@@ -16,6 +16,7 @@ import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createWorkspaceConfiguration} from '../packages/business/src/workspace-configuration.ts';
 import {createAppCompanionDocuments} from '../packages/business/src/companion-scope.ts';
 import type {ServiceApplicationPorts} from '../packages/business/src/services.ts';
+import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
@@ -31,7 +32,8 @@ function temporary(): string {
 function testApplication(library: ReturnType<typeof openAppLibrary>): ServiceApplicationPorts {
   const unavailable = (): never => { throw new TypeError('Historical backup operations are unavailable in this kernel test'); };
   const configuration = createWorkspaceConfiguration({root: library.dataDir, documents: createAppCompanionDocuments(library)});
-  return {configuration,outsidePaths:library.outsidePaths, backups: {
+  const assertOwner = createProjectServiceApplication(library).assertMutationAllowed;
+  return {configuration, outsidePaths: library.outsidePaths, assertMutationAllowed() { assertOwner(); assert.equal(library.db.isOpen, true, 'the real application connection must still own admission'); }, backups: {
     getStatus: unavailable, list: unavailable, create: unavailable, stageRestore: unavailable,
     exportBundle: unavailable, importBundle: unavailable, importDirectory: unavailable,
     isBusy: () => false,

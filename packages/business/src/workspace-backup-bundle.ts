@@ -5,7 +5,7 @@ import {AppError} from '@mioon/contracts';
 import {validateManagedDirectory,getWindowsManagedFileIO} from '@mioon/contracts/private-storage';
 import {WORKSPACE_BACKUP_LIMITS,isWorkspaceBackupPayloadPath} from '../../contracts/src/workspace-backup.ts';
 import {withVerifiedWorkspaceBackup,verifyWorkspaceBackup,type VerifiedWorkspaceBackupContext} from './workspace-backup.ts';
-import {createNewDirectory,inspectFile,sameFile,syncDirectory} from './workspace-backup-storage.ts';
+import {createNewDirectory,inspectFile,sameFile,syncDirectory} from './managed-file-io.ts';
 
 // This transfer container keeps format1's manifest and payload byte-for-byte.
 // It contains regular files only: no links, compression, external paths or

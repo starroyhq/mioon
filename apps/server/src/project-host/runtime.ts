@@ -74,7 +74,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     const {id: _id, name, lastOpenedAt: _opened, cover, ...rest} = value;
     return {name, summary: {...rest, cover: cover ? {assetId: cover.assetId, mimeType: cover.mimeType} : null}};
   };
-  const assetMediaHttp = createAssetMediaHttp({store, outsidePaths: library.outsidePaths, signal: shutdown.signal});
+  const assetMediaHttp = createAssetMediaHttp({store, outsidePaths: library.outsidePaths, signal: shutdown.signal, assertMutationAllowed: () => project.services.assertMutationAllowed()});
   const cover = createProjectCoverPublisher({store, readCover:()=>readProjectCover(store,projectId), signal: shutdown.signal});
   const removeCoverObserver = registerProjectTransactionObserver(store.db, () => cover.refresh());
   cover.refresh();

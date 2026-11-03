@@ -6,7 +6,7 @@ import {isTimelineRecord,isTimelineRenderRecord,exportPreflightResponseSchema} f
 import {agentTaskChecksSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskCheck,AgentTaskChecks,AgentTaskCheckValues,AgentTaskCheckGroup,AgentTaskCheckReason} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot,AgentTaskStep} from '@mioon/contracts/agent-tasks-v2';
-import type {WorkspaceStore} from '../db.ts';
+import type { Store as WorkspaceStore } from '../store-contract.ts';
 import {readMioTargetRevision} from './mio-target-revisions.ts';
 import {createOwnedMediaGraphReader} from '../inspection.ts';
 import {validateManagedSource} from '../managed-media.ts';

@@ -5,13 +5,13 @@ import {randomUUID} from 'node:crypto';
 import {setTimeout as pause} from 'node:timers/promises';
 import path from 'node:path';
 import {createProjectPackageService} from '../packages/business/src/project-package/service.ts';
-import {buildSampleProject,openWorkspace,tempRoot,cleanup,mediaToolsAvailable} from './helpers/project-package-fixture.ts';
+import {buildSampleProject,openWorkspace,openLegacyWorkspace,tempRoot,cleanup,mediaToolsAvailable} from './helpers/project-package-fixture.ts';
 
 async function settle(service:any,id:string){for(let i=0;i<200;i++){const status=service.status(id);if(status.phase!=='running')return status;await pause(20);}throw new Error('export did not finish');}
 
 test('export, stage, preview and commit run through the service with exact replay',{skip:!mediaToolsAvailable&&'ffmpeg unavailable'},async t=>{
  const root=tempRoot('package-service');t.after(()=>cleanup(root));
- const ws=openWorkspace(root);t.after(()=>ws.store.close());
+ const ws=openLegacyWorkspace(root);t.after(()=>ws.store.close());
  const sample=await buildSampleProject(root,ws);
  const jobs:string[]=[];
  const service=createProjectPackageService({store:ws.store,appVersion:'0.4.1',afterCreate:async result=>{jobs.push(...result.jobIds);}});

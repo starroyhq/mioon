@@ -91,7 +91,10 @@ export function createApplicationRpc({library, app, manager, directories, signal
       case 'agent.authorization.grant': return await app.authorizations.grant(input);
       case 'agent.authorization.revoke': return app.authorizations.revoke(input);
       case 'workspace.settings.get': return ports.configuration.get();
-      case 'workspace.settings.set': return ports.configuration.set(input as Parameters<typeof ports.configuration.set>[0]);
+      case 'workspace.settings.set': {
+        ports.assertMutationAllowed();
+        return ports.configuration.set(input as Parameters<typeof ports.configuration.set>[0]);
+      }
       case 'workspace.restore.inspect': return {restored: false,
         ...(input.includeVolumeEnvelopeCapability === true ? {volumeEnvelopeCapability: {profileId: VOLUME_ENVELOPE_PROFILE, editable: true}} : {}),
         ...(input.includeAudioRoleCapability === true ? {audioRoleCapability: {profileId: TIMELINE_AUDIO_ROLE_PROFILE, editable: true}} : {})};

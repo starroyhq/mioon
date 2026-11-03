@@ -9,7 +9,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {selectedRangeFixture} from './fixtures/selected-range-http-fixture.ts';
 import {registerExportActivity,exportStage} from '../packages/business/src/export-controls.ts';
-import type {WorkspaceStore} from '../packages/business/src/db.ts';
+import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
 import type {OrdinaryServices} from '../packages/business/src/services.ts';
 import {exportActivitySchema,exportOutputSchema} from '../packages/contracts/src/export-controls.ts';
 import {publicValue} from '@mioon/contracts';

@@ -1,8 +1,7 @@
 import type {DatabaseSync, SQLInputValue} from 'node:sqlite';
 import {isAsyncFunction, isPromise} from 'node:util/types';
 import type {ProjectStore as ProjectStoreContract} from '../../../contracts/src/project-file.ts';
-// Types only: db.ts is going to open its stores through this kernel.
-import type {WorkspaceStore} from '../db.ts';
+import type {Store} from '../store-contract.ts';
 import {createProjectFile, isProjectDatabase, openProjectConnection} from './connection.ts';
 import type {CreateProjectFileOptions, OpenProjectConnectionOptions} from './connection.ts';
 import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
@@ -10,10 +9,10 @@ import type {MediaReference} from '../../../contracts/src/media-reference.ts';
 import {mediaUnavailableError} from '../../../contracts/src/media-reference-errors.ts';
 
 /** The contract's project store with the read and write surface of today's
- * WorkspaceStore (same tables, columns, errors and transaction rules; tx
+ * Store (same tables, columns, errors and transaction rules; tx
  * begins with a deferred BEGIN, and tx and put refuse to write once the
  * project file alone was moved, see below). */
-export interface ProjectStore extends WorkspaceStore, ProjectStoreContract<DatabaseSync> {}
+export interface ProjectStore extends Store, ProjectStoreContract<DatabaseSync> {}
 
 // Only the exact store returned by this kernel has this capability. Copying
 // its public fields (even the native connection) must not manufacture a store
