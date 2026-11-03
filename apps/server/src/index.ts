@@ -100,6 +100,9 @@ export interface ServerOptions {
    * server's InspectProject once its store is open. */
   inspectProject?: (inspect: InspectProject) => void;
   inspectApplication?: (inspect: InspectApplication) => void;
+  /** Trusted in-process tests only; never HTTP/environment. Retains a real
+   * window lease so a read-only baseline excludes idle-close bookkeeping. */
+  retainProjectForTest?: (retain: (projectId: string) => Promise<() => void>) => void;
   localDraftChannel?: LocalDraftChannel;
   nativeAudioPreview?: NativeAudioPreviewAuthority;
 }
@@ -173,6 +176,11 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     const projects = manager;
     if (options.nativeAudioPreview) bindProjectNativeAudio(options.nativeAudioPreview, projects);
     options.inspectProject?.(manager.inspectProject);
+    options.retainProjectForTest?.(async projectId => {
+      shutdown.signal.throwIfAborted();
+      const lease = await projects.acquire(projectId, 'window');
+      return () => lease.release();
+    });
     options.inspectApplication?.(<T>(read: (db: DatabaseSync) => T): T => {
       shutdown.signal.throwIfAborted();
       if (typeof read !== 'function' || isAsyncFunction(read)) throw new TypeError('Application inspection requires a synchronous callback');

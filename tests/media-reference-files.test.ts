@@ -21,8 +21,8 @@ import {identityOfStats} from '../packages/business/src/app-db/identity.ts';
 import {isProjectFileHeld, openStore} from '../packages/business/src/project-file/index.ts';
 import {isAppLibraryHeld, openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {
-  admitMedia, checkMediaStatus, computeFullSha256, detectMediaType, insideAnyDirectory, isNotDownloaded, isProtectedName, MEDIA_HEADER_BYTES,
-  mediaMtimeMs, mediaTypeOfName, NODE_MEDIA_FILE_SYSTEM, referenceForFile, sampleRanges,
+  admitMedia, checkMediaStatus, computeFullSha256, detectMediaType, inExactDirectories, insideAnyDirectory, isNotDownloaded, isProtectedName,
+  MEDIA_HEADER_BYTES, mediaMtimeMs, mediaTypeOfName, NODE_MEDIA_FILE_SYSTEM, readMediaBytes, referenceForFile, sampleRanges,
 } from '../packages/business/src/media-reference/index.ts';
 import type {MediaAccess, MediaFileSystem, MediaStatusResult, MediaType} from '../packages/business/src/media-reference/index.ts';
 import {hashSamples, hashWhole} from '../packages/business/src/media-reference/fingerprint.ts';
@@ -408,6 +408,78 @@ test('outside the project directory only lstat is used until the folder is confi
   assert.deepEqual(opened, [file]);
 });
 
+test('real NFC and NFD directories do not share authorization or collapse the stored reference', async t => {
+  const {root, project, outside} = layout(t), base = NODE_MEDIA_FILE_SYSTEM;
+  const actual = path.join(outside, 'a.mp4'), content = writeMp4(actual);
+  const virtualProject = path.join(root, 'Caf\u00e9'), virtualOutside = path.join(root, 'Cafe\u0301');
+  const virtualFile = path.join(virtualOutside, 'a.mp4'), projectFile = path.join(virtualProject, 'Film.mioon');
+  const backing = (file: string): string | null => file === virtualProject ? project : file === virtualOutside ? outside :
+    file === virtualFile ? actual : file === projectFile ? path.join(project, 'Film.mioon') : null;
+  const opened: string[] = [];
+  const fileSystem: MediaFileSystem = {
+    ...base,
+    realpath: async file => backing(file) === null ? null : file,
+    lstat: file => {const target = backing(file); return target === null ? Promise.resolve(null) : base.lstat(target);},
+    open: file => {
+      opened.push(file);
+      const target = backing(file);
+      if (target === null) throw new Error('Unexpected file open');
+      return base.open(target);
+    },
+  };
+  const access: MediaAccess = {projectDir: virtualProject, projectFile, fileSystem, mayReadOutside: inExactDirectories([virtualProject])};
+  await assert.rejects(referenceForFile(access, virtualFile), {code: 'MEDIA_OUTSIDE_NOT_CONFIRMED'});
+  assert.deepEqual(opened, []);
+  const reference = (await referenceForFile({...access, mayReadOutside: inExactDirectories([virtualOutside])}, virtualFile)).reference;
+  assert.equal(reference.path, `../Cafe\u0301/a.mp4`);
+  assert.equal(reference.sampledSha256, sha256(content));
+  opened.length = 0;
+  assert.deepEqual(await checkMediaStatus(access, reference), {status: 'online', reason: 'same-stats', file: virtualFile,
+    outside: true, readable: false, reference});
+  assert.deepEqual(opened, []);
+});
+
+test('bounded bytes preserve exact bytes, samples and full hash, and reject limits before opening', async t => {
+  const {project, opened, access} = layout(t), file = path.join(project, 'bounded.mp4'), content = writeMp4(file, 2 * MIB);
+  utimesSync(file, EARLIER, EARLIER);
+  const {reference} = await referenceForFile(access(), file), expected = sha256(content);
+  let counted = 0;
+  const actual = await readMediaBytes(access(), reference, {maxBytes: content.length, expectedSha256: expected, onBytes: bytes => {counted += bytes;}});
+  assert.deepEqual(actual, {file, type: VIDEO_MP4, bytes: content, sha256: expected, reference: {...reference, fullSha256: expected}});
+  assert.equal(counted, content.length);
+  opened.length = 0;
+  await assert.rejects(referenceForFile(access(), file, {maxBytes: content.length - 1}), {code: 'MEDIA_REFERENCE_INVALID', details: {reason: 'size-limit'}});
+  await assert.rejects(readMediaBytes(access(), reference, {maxBytes: content.length - 1}), {code: 'MEDIA_REFERENCE_INVALID', details: {reason: 'size-limit'}});
+  await assert.rejects(computeFullSha256(access(), reference, {maxBytes: content.length - 1}), {code: 'MEDIA_REFERENCE_INVALID', details: {reason: 'size-limit'}});
+  assert.deepEqual(opened, []);
+  await assert.rejects(readMediaBytes(access(), reference, {maxBytes: 0}), TypeError);
+  await assert.rejects(readMediaBytes(access(), reference, {maxBytes: content.length, expectedSha256: 'f'.repeat(64)}), {code: 'MEDIA_CHANGED', details: {reason: 'content'}});
+  await assert.rejects(readMediaBytes(access(), {...reference, fullSha256: 'f'.repeat(64)}, {maxBytes: content.length}), {code: 'MEDIA_CHANGED', details: {reason: 'content'}});
+  // The stat-only status is deliberately cheap; consumers of actual bytes
+  // still compare the saved sample when a same-size/time file was changed.
+  const altered = Buffer.from(content);
+  altered[sampleRanges(content.length)[2]!.start + 10] = altered[sampleRanges(content.length)[2]!.start + 10]! ^ 255;
+  writeFileSync(file, altered); utimesSync(file, EARLIER, EARLIER);
+  assert.equal((await checkMediaStatus(access(), reference)).reason, 'same-stats');
+  await assert.rejects(readMediaBytes(access(), reference, {maxBytes: content.length}), {code: 'MEDIA_CHANGED', details: {reason: 'content'}});
+  await assert.rejects(computeFullSha256(access(), reference), {code: 'MEDIA_CHANGED', details: {reason: 'content'}});
+});
+
+test('bounded reads and full hashes stop on owner fences, cancellation or revoked exact-directory permission', async t => {
+  const {outside, access} = layout(t), file = path.join(outside, 'a.mp4'), content = writeMp4(file, 2 * MIB);
+  let allowed = true;
+  const permitted = access({mayReadOutside: () => allowed});
+  const {reference} = await referenceForFile(permitted, file);
+  const failure = new Error('Owner changed');
+  await assert.rejects(readMediaBytes(permitted, reference, {maxBytes: content.length, beforeEffect: () => {throw failure;}}), error => error === failure);
+  await assert.rejects(computeFullSha256(permitted, reference, {onBytes: () => {throw failure;}}), error => error === failure);
+  const controller = new AbortController();
+  await assert.rejects(readMediaBytes(permitted, reference, {maxBytes: content.length, signal: controller.signal, onBytes: () => controller.abort()}), {name: 'AbortError'});
+  await assert.rejects(readMediaBytes(permitted, reference, {maxBytes: content.length, onBytes: () => {allowed = false;}}), {code: 'MEDIA_OUTSIDE_NOT_CONFIRMED'});
+  allowed = true;
+  await assert.rejects(computeFullSha256(permitted, reference, {onBytes: () => {allowed = false;}}), {code: 'MEDIA_OUTSIDE_NOT_CONFIRMED'});
+});
+
 test('admitMedia admits an online file that may be read; computeFullSha256 hashes it whole and compares a recorded hash', async t => {
   const {project, outside, access} = layout(t);
   const file = path.join(project, 'a.mp4'), content = writeMp4(file, 3 * MIB);
@@ -455,6 +527,7 @@ test('a file that changes while it is read is MEDIA_CHANGED_DURING_READ', async 
   const {reference} = await referenceForFile(access(), file);
   await assert.rejects(referenceForFile(access({fileSystem: changing}), file), {code: 'MEDIA_CHANGED_DURING_READ'});
   await assert.rejects(computeFullSha256(access({fileSystem: changing}), reference), {code: 'MEDIA_CHANGED_DURING_READ'});
+  await assert.rejects(readMediaBytes(access({fileSystem: changing}), reference, {maxBytes: reference.sizeBytes}), {code: 'MEDIA_CHANGED_DURING_READ'});
 });
 
 test('an open project keeps its locks: its file, its journal, links to them, super-journals and the test store are never opened', async t => {
