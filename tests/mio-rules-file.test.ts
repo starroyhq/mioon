@@ -135,15 +135,21 @@ test('read still rejects repeated same-inode rewrites and replaced project direc
 });
 
 test('read retries after an unrelated file is created in the project directory', t => {
-  const f = fixture(t); writeFileSync(f.target, 'Keep these rules\r\n'); let created = false, attempts = 0;
+  const f = fixture(t); writeFileSync(f.target, 'Keep these rules\r\n'); let created = false, attempts = 0, directoryChanged = false;
   const result = readRulesFile(f.projectDir, {onPhase: phase => {
     if (phase === 'directory_checked') attempts++;
-    if (phase === 'file_read' && !created) {created = true; writeFileSync(path.join(f.projectDir, 'unrelated.tmp'), 'temporary');}
+    if (phase === 'file_read' && !created) {
+      const before = statSync(f.projectDir, {bigint: true});
+      created = true; writeFileSync(path.join(f.projectDir, 'unrelated.tmp'), 'temporary');
+      const after = statSync(f.projectDir, {bigint: true});
+      directoryChanged = before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs;
+    }
   }});
   assert.equal(result.status, 'safe');
   if (result.status !== 'safe') return;
   assert.equal(result.text, 'Keep these rules\r\n'); assert.equal(result.hash, hash('Keep these rules\r\n'));
-  assert.equal(attempts, 2);
+  // Coalesced directory timestamps need no retry; an observed change needs exactly one.
+  assert.equal(attempts, directoryChanged ? 2 : 1);
   assert.deepEqual(names(f.projectDir), ['AGENTS.md', 'unrelated.tmp']);
 });
 
