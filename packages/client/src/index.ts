@@ -38,6 +38,7 @@ import {isSubjectGenerationResponse,isSubjectGenerationRetryResponse} from '@mio
 import {isEntityAddressedOperation, rpcPathFor} from '../../contracts/src/project-addressing.ts';
 import {isProjectId} from '../../contracts/src/project-file.ts';
 import {projectBackupSchemas, projectBackupDescriptions, projectBackupEffects, isProjectBackupOperation, isProjectBackupResponse} from '../../contracts/src/project-backups.ts';
+import {isProjectVersionOperation, isProjectVersionResponse} from '../../contracts/src/project-version-operations.ts';
 
 // Application extensions stay in their own contracts leaves. CLI and MCP
 // discover this exact composition without extending Mio's model tool catalog.
@@ -174,6 +175,7 @@ const keyedMutationOperations = new Set<string>([
   ...LOCAL_MUTATION_OPERATIONS, ...TIMELINE_MUTATION_OPERATIONS, ...REFERENCE_MUTATION_OPERATIONS, ...IMAGE_MUTATION_OPERATIONS, ...FRAME_MUTATION_OPERATIONS, ...SCENE_MUTATION_OPERATIONS, ...PREVIS_MUTATION_OPERATIONS,
   'generation.submit', 'job.retry', 'export.create', 'image.task.observeRemote', 'image.review.prepare', 'lut.import',
   'project.backup.restore',
+  'project.version.save',
 ]);
 interface RpcBody {operation: string; input: Record<string, unknown>; expectedWorkspaceOrigin?: string}
 function uncertainRequestDetails(body: unknown): Record<string, unknown> {
@@ -383,6 +385,8 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     const resultRecord = result as Record<string, unknown> | null | undefined;
     if (isProjectBackupOperation(operation) && !isProjectBackupResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid project backup response.', {details: uncertainRequestDetails(body)});
+    if (isProjectVersionOperation(operation) && !isProjectVersionResponse(operation, parsed, result))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid project version response.', {details: uncertainRequestDetails(body)});
     if (operation === 'generation.submit' && Object.hasOwn(parsed, 'subjectVersionId') && !isSubjectGenerationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject-generation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     const retry = result as {snapshot?: {subjectReference?: unknown; subjectVersionId?: unknown; referenceBindings?: unknown; referenceAssets?: unknown}} | null | undefined;
