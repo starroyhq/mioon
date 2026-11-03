@@ -22,6 +22,9 @@ import {referenceForFile, computeFullSha256} from '../packages/business/src/medi
 import {registerProjectMediaStore, registeredProjectAssetReferences, validatedProjectAssetSource, prepareProjectAssetFullHash, referenceForPublishedMedia} from '../packages/business/src/project-media-storage.ts';
 import {validateManagedSource, verifiedManagedHash} from '../packages/business/src/managed-media.ts';
 import {readProviderReferenceBytes} from '../packages/business/src/providers/live-common.ts';
+import {publishOutputFixture,markProjectOutputRegistered} from './helpers/project-output-fixture.ts';
+import {exportOutputArtifactIdentity} from '../packages/contracts/src/output-artifact.ts';
+import {isProjectExportObservation} from '../packages/business/src/project-export-observation.ts';
 
 function timelineRecord(value:unknown){assert.ok(isTimelineRecord(value));return value;}
 
@@ -173,33 +176,33 @@ test('sampled videos can be edited through business timeline entries before rend
  }finally{await services.drain();}
 });
 
-test('canonical export observation exposes only its real inherited path and conservatively excludes relinked outputs',async t=>{
+test('published export observation uses its strict proof and conservatively excludes relinked outputs',async t=>{
  const f=await fixture(t,false,true),services=createServices(f.store,new Map(),{application:createProjectServiceApplication(f.app)});
  try{
   f.store.put('assets',{...f.asset,width:4,height:2,duration:1,hasVideo:true,hasAudio:false});
   let timeline=timelineRecord(await services.call('timeline.get',{projectId:f.store.projectId}));
   timeline=timelineRecord(await services.call('timeline.clip.add',{projectId:f.store.projectId,expectedRevision:timeline.revision,requestId:randomUUID(),trackId:timeline.tracks.find(track=>track.kind==='video')!.id,assetId:f.asset.id,startFrame:0,durationFrames:30}));
   const ack=await services.call('timeline.render',{projectId:f.store.projectId,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export'});
-  assert.ok(ack&&typeof ack==='object'&&'id' in ack&&typeof ack.id==='string');const exportId=ack.id,id=randomUUID(),relativePath=`media/export-${exportId}-${randomUUID()}.mp4`,file=path.join(f.projectDir,relativePath);
-  writeFileSync(file,f.bytes);
-  const reference=await referenceForPublishedMedia(f.store,file,{sha256:digest(f.bytes)});
-  const output={id,projectId:f.store.projectId,name:'Published.mp4',mimeType:'video/mp4',provenance:'export',producer:{kind:'export',id:exportId},url:`/media/${id}`,width:4,height:2,duration:1,...reference};
-  f.store.put('assets',output);
-  const accepted=f.store.get('exports',exportId) as Record<string,unknown>,published={...accepted,status:'succeeded',assetId:id,url:`/media/${id}`,updatedAt:new Date().toISOString()};f.store.put('exports',published);
+  assert.ok(ack&&typeof ack==='object'&&'id' in ack&&typeof ack.id==='string');const exportId=ack.id,id=randomUUID(),accepted=f.store.get('exports',exportId) as Record<string,unknown>;
+  const publication=await publishOutputFixture(f.store,{assetId:id,owner:{kind:'export',id:exportId,requestId:String(accepted.requestId),inputHash:createHash('sha256').update(exportOutputArtifactIdentity(accepted)).digest('hex')},targetKind:'exports',bytes:f.bytes,mimeType:'video/mp4'});
+  const output={id,projectId:f.store.projectId,name:'Published.mp4',mimeType:'video/mp4',provenance:'export',producer:{kind:'export',id:exportId},url:`/media/${id}`,width:4,height:2,duration:1,...publication};
+  const published={...accepted,status:'succeeded',assetId:id,url:`/media/${id}`,updatedAt:new Date().toISOString()};f.store.tx(()=>{f.store.put('assets',output);f.store.put('exports',published);});
+  await markProjectOutputRegistered(f.store,publication.publication);
   const observe=()=>createOwnedMediaGraphReader(f.store.db,f.store.projectId).asset(id);
-  const observed=observe();assert.equal(observed.relativePath,relativePath);assert.equal(Object.hasOwn(observed,'relativePath'),false);assert.equal(Object.hasOwn({...observed},'relativePath'),false);assert.doesNotMatch(JSON.stringify(observed),/"relativePath"/u);
-  const property=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(observed),'relativePath');assert.equal(property?.enumerable,false);assert.equal(property?.set,undefined);assert.throws(()=>{observed.relativePath='media/forged.mp4';},TypeError);
+  const valid=()=>isProjectExportObservation(f.store.db,f.store.projectId,exportId,observe());
+  const observed=observe();assert.equal(observed.relativePath,undefined);assert.equal(Object.hasOwn(observed,'relativePath'),false);assert.equal(Object.hasOwn({...observed},'relativePath'),false);assert.doesNotMatch(JSON.stringify({...observed,publication:undefined}),/"relativePath"/u);assert.deepEqual(observed.publication,publication.publication);
+  assert.equal(Object.getOwnPropertyDescriptor(Object.getPrototypeOf(observed),'relativePath'),undefined);assert.equal(valid(),true);assert.match(output.reference.path,/^导出\//u);
   assert.equal((await verifiedManagedHash(f.projectDir,observed)).sha256,digest(f.bytes));
   for(const producer of [undefined,{kind:'generation',id:exportId},{kind:'export',id:randomUUID()}]){
-   f.store.put('assets',{...output,producer});assert.equal(observe().relativePath,undefined);
+   f.store.put('assets',{...output,producer});assert.equal(valid(),false);
   }
-  f.store.put('assets',{...output,reference:{...output.reference,path:`media/export-${randomUUID()}-${randomUUID()}.mp4`}});assert.equal(observe().relativePath,undefined);
+  f.store.put('assets',{...output,reference:{...output.reference,path:`导出/${randomUUID()}.mp4`}});assert.equal(valid(),false);
   f.store.put('assets',output);
-  f.store.db.prepare('UPDATE exports SET data=? WHERE id=?').run(JSON.stringify({...published,projectId:randomUUID()}),exportId);assert.equal(observe().relativePath,undefined);f.store.put('exports',published);
+  f.store.db.prepare('UPDATE exports SET data=? WHERE id=?').run(JSON.stringify({...published,projectId:randomUUID()}),exportId);assert.equal(valid(),false);f.store.put('exports',published);
   const external=path.join(f.directory,'relocated-output.mp4');writeFileSync(external,f.bytes);f.confirm();
   const media=createAssetMediaServices(f.store,{outsidePaths:f.app.outsidePaths}),preview=await media.call('asset.media.relink.preview',{projectId:f.store.projectId,assetId:id,sourcePath:external,expectedReferenceRevision:1});
   assert.ok(preview&&typeof preview==='object'&&'previewToken' in preview&&typeof preview.previewToken==='string');await media.call('asset.media.relink.apply',{projectId:f.store.projectId,previewToken:preview.previewToken,requestId:randomUUID()});
-  const relocated=observe();assert.equal(relocated.relativePath,undefined);assert.equal(Object.hasOwn(f.store.get('assets',id)!,'relativePath'),false);
+  const relocated=observe();assert.equal(relocated.relativePath,undefined);assert.equal(valid(),false);assert.equal(Object.hasOwn(f.store.get('assets',id)!,'relativePath'),false);
   const status=await registeredProjectAssetReferences(f.projectDir)!.inspect(id);assert.equal(status.status,'online');assert.equal(status.readable,true);assert.equal((await verifiedManagedHash(f.projectDir,relocated)).sha256,digest(f.bytes));
   unlinkSync(external);await assert.rejects(verifiedManagedHash(f.projectDir,relocated),{code:'MEDIA_MISSING'});
  }finally{await services.drain();}

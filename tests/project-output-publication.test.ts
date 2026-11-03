@@ -46,6 +46,12 @@ for(const sameBytes of [false,true])test(`a preexisting ${sameBytes?'same-byte':
  const output=await publishProjectOutput(f.store,f.input);assert.notEqual(path.join(f.projectDir,output.relativePath),collision);assert.deepEqual(readFileSync(collision),hostile);assert.deepEqual(readFileSync(path.join(f.projectDir,output.relativePath)),bytes);
 });
 
+for(const name of ['CON.png','.hidden.png','e\u0301 预演🎬.png','过长'.repeat(100)+'.png'])test(`publication safely bounds and normalizes display name ${name.slice(0,16)}`,async t=>{
+ const f=fixture(t),output=await publishProjectOutput(f.store,{...f.input,displayName:name}),base=path.basename(output.relativePath);
+ assert.equal(base,base.normalize('NFC'));assert.ok(Buffer.byteLength(base)<=255);assert.ok(!base.startsWith('.'));assert.doesNotMatch(base,/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iu);
+ assert.deepEqual(readFileSync(path.join(f.projectDir,output.relativePath)),bytes);
+});
+
 for(const point of ['after_intent','after_target_create','after_target_identity','after_copy_chunk','after_final'] as const)test(`durable copy recovery at ${point} never registers or overwrites an uncertain file`,async t=>{
  const f=fixture(t),sentinel=Error(point),before=f.count();let final='';const remove=setProjectOutputPublicationTestHooks(f.store,{forceCopy:true,fault:(seen,proof)=>{final=path.join(f.projectDir,proof.relativePath);if(seen===point)throw sentinel;}});
  await assert.rejects(publishProjectOutput(f.store,f.input),error=>error===sentinel);remove();assert.equal(f.count(),before);assert.equal(f.store.get('assets',f.input.assetId),null);assert.deepEqual(readFileSync(f.input.stageFile),bytes);

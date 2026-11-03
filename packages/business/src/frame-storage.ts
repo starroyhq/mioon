@@ -2,7 +2,7 @@ import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {constants,lstatSync,openSync,fstatSync,fsyncSync,closeSync} from 'node:fs';
-import {ensurePrivateDirectory,validateManagedDirectory,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';
+import {ensurePrivateDirectory,validateManagedDirectory,readPrivateFile,writePrivateFileAtomic,removePrivateFile,getWindowsManagedFileIO} from '@mioon/contracts/private-storage';
 import {FRAME_LIMITS,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,frameReceiptSchema,canonicalFrameInput as canonical} from '../../contracts/src/frame-extraction.ts';
 import {validatePng as validatePngBytes} from './images/png.ts';
 import type {PngMetadata} from './images/png.ts';
@@ -95,6 +95,7 @@ export function createFrameStorage(store: {readonly root: string},{validatePng}:
  const readMedia=(file:string,options:Omit<import('@mioon/contracts/private-storage').ReadPrivateFileOptions,'root'>)=>isProjectStore(store)?readProjectMediaFile(store,relative(file),options):readPrivateFile(file,{root,...options});
  const writeMedia=(file:string,bytes:Buffer,options:Omit<import('@mioon/contracts/private-storage').WritePrivateFileOptions,'root'>):void=>{if(isProjectStore(store))writeProjectMediaFileAtomic(store,relative(file),bytes,options);else writePrivateFileAtomic(file,bytes,{root,...options});};
  function syncDirectory(value: string,ownerRoot=mediaRoot): void {
+  if(process.platform==='win32'){getWindowsManagedFileIO().syncDirectory(value,{root:ownerRoot,private:!(isProjectStore(store)&&ownerRoot===mediaRoot)});return;}
   const ordinary=isProjectStore(store)&&ownerRoot===mediaRoot;const before=ordinary?lstatSync(value):validateManagedDirectory(value,{root:ownerRoot});let fd;
   try{
    if(!before)throw failure();

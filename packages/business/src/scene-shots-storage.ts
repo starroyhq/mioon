@@ -1,7 +1,7 @@
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {constants,lstatSync,openSync,fstatSync,fsyncSync,closeSync} from 'node:fs';
-import {ensurePrivateDirectory,validateManagedDirectory,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';
+import {ensurePrivateDirectory,validateManagedDirectory,readPrivateFile,writePrivateFileAtomic,removePrivateFile,getWindowsManagedFileIO} from '@mioon/contracts/private-storage';
 import {FRAME_LIMITS,SCENE_LIMITS,sceneShotsReceiptSchema,sceneShotPlan,canonicalSceneInput as canonical} from '@mioon/contracts';
 import type {SceneShotsReceipt,SceneShotsSnapshot} from '@mioon/contracts';
 import {storeDirectories} from './store-layout.ts';
@@ -45,6 +45,7 @@ export function createSceneShotsStorage(store: {readonly root: string}): SceneSh
  const readMedia=(file:string,options:Omit<import('@mioon/contracts/private-storage').ReadPrivateFileOptions,'root'>)=>isProjectStore(store)?readProjectMediaFile(store,relative(file),options):readPrivateFile(file,{root,...options});
  const writeMedia=(file:string,bytes:Buffer,options:Omit<import('@mioon/contracts/private-storage').WritePrivateFileOptions,'root'>):void=>{if(isProjectStore(store))writeProjectMediaFileAtomic(store,relative(file),bytes,options);else writePrivateFileAtomic(file,bytes,{root,...options});};
  function syncDirectory(value: string,ownerRoot=mediaRoot): void {
+  if(process.platform==='win32'){getWindowsManagedFileIO().syncDirectory(value,{root:ownerRoot,private:!(isProjectStore(store)&&ownerRoot===mediaRoot)});return;}
   const ordinary=isProjectStore(store)&&ownerRoot===mediaRoot;const before=ordinary?lstatSync(value):validateManagedDirectory(value,{root:ownerRoot});let fd;
   try{
    if(!before)throw failure();

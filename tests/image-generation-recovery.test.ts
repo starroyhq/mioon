@@ -149,6 +149,7 @@ for (const phase of ['after_dispatch_fence', 'after_result_manifest', 'after_res
     assert.deepEqual(await f.call('image.task.recoverResult', recoveryInput), recoveryAck, 'historical local-recovery response retained');
     const version = ((await f.call('image.version.list', {projectId: f.project.id, groupId: ack.groupId})).items)![0];
     assert.equal(version.id, result.versionId); assert.equal(version.number, 1);
+    assert.ok(typeof version.assetId==='string');
     const asset = JSON.parse(String(f.store.db.prepare('SELECT data FROM assets WHERE id=?').get(version.assetId)!.data)) as Record<string, unknown>;
     const reference = mediaReferenceSchema.parse(asset.reference);assert.equal(reference.pathForm,'relative');assert.match(reference.path,/^生成\//u);
     assert.deepEqual(readFileSync(path.join(f.root, reference.path)), await png());

@@ -2,7 +2,6 @@ import type {DatabaseSync} from 'node:sqlite';
 import {hasAssetReference,validAssetLocator} from './asset-reference-record.ts';
 import {isProjectDatabase} from './project-file/held-files.ts';
 import {createHash} from 'node:crypto';
-import {AppError} from '../../contracts/src/app-error.ts';
 import {exportOutputArtifactIdentity} from '../../contracts/src/output-artifact.ts';
 import {isPublishedProjectOutput} from './project-output-publication.ts';
 
@@ -27,9 +26,8 @@ export function isProjectExportObservation(db:DatabaseSync,projectId:string,expo
  return isPublishedProjectOutput(asset,{projectId,assetId:asset.id,owner:{kind:'export',id:exportId,requestId:owner.requestId,
   inputHash:createHash('sha256').update(exportOutputArtifactIdentity(owner)).digest('hex')},targetKind:'exports',mimeType:'video/mp4',sha256:asset.sha256,sizeBytes:Number(asset.sizeBytes)});
 }
-export function projectExportObservation(db:DatabaseSync,projectId:string,asset:RecordValue):RecordValue {
- if(!isProjectDatabase(db)||asset.provenance!=='export')return asset;
- const exportId=object(asset.producer)?asset.producer.id:undefined;
- if(typeof exportId!=='string'||!isProjectExportObservation(db,projectId,exportId,asset))throw new AppError('INSPECTION_UNAVAILABLE','导出来源无法核对',404);
+export function projectExportObservation(_db:DatabaseSync,_projectId:string,asset:RecordValue):RecordValue {
+ // Ordinary media keeps its real locator, including an authorized relink.
+ // Export consumers use the strict gate above; no inherited path is invented.
  return asset;
 }

@@ -34,7 +34,7 @@ for(const scenario of cases)test(`SIGKILL ${scenario.point} preserves project fi
  setProjectOutputPublicationTestHooks(store,{forceCopy:scenario.forceCopy});const output=await publishProjectOutput(store,publication);
  for(const old of prior){assert.deepEqual(readFileSync(old.file),old.bytes);assert.equal(statSync(old.file,{bigint:true}).ino,old.ino);}
  if(!committed)store.tx(()=>{assertPublishedProjectOutput(store,output.publication);const {relativePath:_relative,...stored}=output;store.put('assets',{id:publication.assetId,projectId,name:'Crash output.png',mimeType:'image/png',width:64,height:64,...stored,provenance:'generated',createdAt:'2026-11-03T00:00:00.000Z'});});
- assert.equal(store.list('assets',projectId).length,1);assert.equal(store.list('assets',projectId)[0]!.id,publication.assetId);
+ assert.equal(store.list('assets',projectId).length,1);const asset=store.list('assets',projectId)[0];assert.ok(asset&&typeof asset==='object'&&'id' in asset);assert.equal(asset.id,publication.assetId);
  await markProjectOutputRegistered(store,output.publication);assert.equal(existsSync(stageFile),false);
  assert.deepEqual(readFileSync(path.join(projectDir,output.relativePath)),bytes);
  const names=readdirSync(generated);await publishProjectOutput(store,publication);assert.deepEqual(readdirSync(generated),names);assert.equal(store.list('assets',projectId).length,1);

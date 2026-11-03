@@ -6,7 +6,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {setTimeout as pause} from 'node:timers/promises';
 import type {SQLInputValue} from 'node:sqlite';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {openProjectStore} from '../packages/business/src/project-file/index.ts';
 import {createFrameServices} from '../packages/business/src/frames.ts';
 import {createSceneServices} from '../packages/business/src/scene-tasks.ts';

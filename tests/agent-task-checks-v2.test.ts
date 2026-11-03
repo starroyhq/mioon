@@ -7,7 +7,7 @@ import {linkSync,mkdtempSync,realpathSync,renameSync,rmSync,writeFileSync,symlin
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
-import {setImmediate} from 'node:timers/promises';
+import {setTimeout as pause} from 'node:timers/promises';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
@@ -200,7 +200,8 @@ test('image generation reads its saved local task and cancellation without start
 test('a completed mock image publishes an owned version and checks never restart generation',async t=>{
  const f=await fixture(t,{imageAutoRun:true}),step=await f.tool('mioon_image_generate',{name:'Synthetic image',prompt:'Synthetic fixture',providerId:'mock',model:'mock-image-v1',options:{size:'1024x1024',quality:'low',outputFormat:'png',background:'opaque',n:1}}),id=String(object(step.result).id);
  let saved:Record<string,unknown>|undefined;
- for(let attempt=0;attempt<1000;attempt++){const current=object(await f.services.call('image.task.get',{projectId:f.projectId,taskId:id}));if(current.state==='succeeded'){saved=current;break;}await setImmediate();}
+ const deadline=Date.now()+10000;
+ while(Date.now()<deadline){const current=object(await f.services.call('image.task.get',{projectId:f.projectId,taskId:id}));if(current.state==='succeeded'){saved=current;break;}await pause(5);}
  assert.ok(saved,'The local mock worker completes without provider network');const before=f.store.db.prepare('SELECT total_changes() AS n').get()!.n,checks=await f.read();assert.equal(item(checks,'generation_status',id).status,'passed');assert.equal(item(checks,'generation_publication',id).status,'passed');assert.equal(item(checks,'generation_publication',id).current?.versionId,saved.versionId);assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n,before);
  const publication=item(checks,'generation_publication',id),assetId=publication.current?.assetId;assert.ok(assetId);const output=object(f.store.get('assets',assetId));unlinkSync(mediaFixturePath(f.root,output));assert.equal(item(await f.read(),'generation_publication',id).status,'failed');assert.equal(object(await f.services.call('image.task.get',{projectId:f.projectId,taskId:id})).state,'succeeded');
 });

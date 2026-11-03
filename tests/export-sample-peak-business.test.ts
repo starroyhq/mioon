@@ -86,7 +86,7 @@ async function fixture(t: test.TestContext, {named = false, range = false, durat
   const bytes = Buffer.alloc(96 * 1024, 7);
   mp4HeaderFixture('synthetic sampled output').copy(bytes);
   assert.ok(isProjectStore(store));const accepted=store.get('exports',queued.id) as import('./helpers/strict-timeline-core-types.ts').FixtureExport;
-  const published=await publishOutputFixture(store,{assetId,owner:{kind:'export',id:queued.id,requestId:accepted.requestId,inputHash:sha(exportOutputArtifactIdentity(accepted))},targetKind:'exports',bytes,mimeType:'video/mp4'});
+  const published=await publishOutputFixture(store,{assetId,owner:{kind:'export',id:queued.id,requestId:accepted.requestId,inputHash:sha(exportOutputArtifactIdentity({...accepted}))},targetKind:'exports',bytes,mimeType:'video/mp4'});
   const output = {id: assetId, projectId: project.id, name: 'Historical output', mimeType: 'video/mp4', provenance: 'export', producer:{kind:'export',id:queued.id},...published,
     url: `/media/${assetId}`, createdAt: new Date().toISOString()};
   const record = {...accepted, status: 'succeeded', assetId, url: output.url, updatedAt: new Date().toISOString()};store.tx(()=>{store.put('assets',output);store.put('exports',record);});await markProjectOutputRegistered(store,published.publication);

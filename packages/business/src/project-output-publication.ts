@@ -108,7 +108,7 @@ function readReceipt(store: ProjectStore, owner: ProjectOutputOwner, assetId: st
   return receipt;
 }
 function safeName(value: string): string {
-  let name = value.normalize('NFC').replace(/[<>:"/\\|?*\u0000-\u001f]/gu, '-').replace(/[. ]+$/gu, '').trim();
+  let name = value.normalize('NFC').replace(/[<>:"/\\|?*\u0000-\u001f]/gu, '-').trim().replace(/^[. ]+|[. ]+$/gu, '');
   let bounded = ''; for (const character of name) {if (Buffer.byteLength(bounded + character) > 80) break; bounded += character;}
   name = bounded || 'output'; if (/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iu.test(name)) name = `_${name}`;
   return name;
@@ -182,12 +182,20 @@ export function isPublishedProjectOutput(asset: unknown, expected: PublishedProj
     (expected.sha256 === undefined || proof.sha256 === expected.sha256) && (expected.sizeBytes === undefined || proof.sizeBytes === expected.sizeBytes) &&
     (expected.mimeType === undefined || proof.mimeType === expected.mimeType);
 }
-async function verifiedFinal(store: ProjectStore, receipt: Receipt, options: ProjectOutputOptions): Promise<PublishedProjectOutput> {
+async function verifiedFinal(store: ProjectStore, receipt: Receipt, options: ProjectOutputOptions, durable=false): Promise<PublishedProjectOutput> {
   const check = (): void => checkReceiptDirectories(store, receipt, options);
   check(); const file = path.join(store.projectDir, receipt.proof.relativePath);
   const identity = receipt.targetIdentity ?? (receipt.mode === 'link' ? receipt.stageIdentity : undefined);
   if (!identity) invalid();
   const hashed=await hashFile(file, receipt.proof, check, identity); check();
+  if(durable){
+    // Recovery can observe a complete copy/link whose creator died before
+    // syncing it. Verified bytes alone do not make a DB registration durable.
+    const finalHandle=await open(file,constants.O_RDWR|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+    try{check();const opened=await finalHandle.stat({bigint:true});check();if(!unchanged(hashed,opened))throw new BytesMismatch();await finalHandle.sync();check();const synced=await finalHandle.stat({bigint:true});check();if(!unchanged(opened,synced)||!unchanged(synced,fileMetadata(file,check)))throw new BytesMismatch();}
+    finally{await finalHandle.close();}
+    syncDirectory(path.dirname(file));check();
+  }
   const reference = await referenceForPublishedMedia(store, file, {sha256: receipt.proof.sha256, signal: options.signal, beforeEffect: check}); check();
   const final=fileMetadata(file,check);if(!unchanged(hashed,final))throw new BytesMismatch();
   receipt.finalStats={mtimeNs:String(final.mtimeNs),ctimeNs:String(final.ctimeNs)};
@@ -271,7 +279,7 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
     if (existing) {
       const identity = current.targetIdentity ?? (current.mode === 'link' ? current.stageIdentity : null);
       if (identity && sameOutputIdentity(identity, outputFileIdentity(existing))) {
-        try {const result = await verifiedFinal(store, current, options); current.targetIdentity = identity; current.phase = current.phase === 'registered' ? 'registered' : 'prepared'; writeReceipt(store, current, options); return result;}
+        try {const result = await verifiedFinal(store, current, options,true); current.targetIdentity = identity; current.phase = current.phase === 'registered' ? 'registered' : 'prepared'; writeReceipt(store, current, options); return result;}
         catch (error) {if (!(error instanceof BytesMismatch) || current.phase === 'prepared' || current.phase === 'registered') throw error;}
       } else if (current.targetIdentity || current.phase === 'prepared' || current.phase === 'registered') invalid();
       receipt = nextAttempt(store, current, input, options); continue;
@@ -312,8 +320,7 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
           await target.sync(); check();
         } finally {if (source) await source.close(); await target.close();}
       }
-      syncDirectory(path.dirname(file)); check();
-      const result = await verifiedFinal(store, current, options); check(); current.phase = 'prepared'; writeReceipt(store, current, options);
+      const result = await verifiedFinal(store, current, options,true); check(); current.phase = 'prepared'; writeReceipt(store, current, options);
       testHooks.get(store)?.fault?.('after_final', current.proof); check(); return result;
     } catch (error) {
       if (record(error) && error.code === 'EEXIST') {receipt = nextAttempt(store, current, input, options); continue;}

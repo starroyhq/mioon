@@ -17,6 +17,7 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createSceneServices} from '../packages/business/src/scene-tasks.ts';
+import {setAgentTaskJobOriginRunner,setAgentTaskEffectGate,resumeAgentTaskJobs} from '../packages/business/src/agent/task-effects-v2.ts';
 import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';
 import {validateImageConsumption} from '../packages/business/src/image-consumption.ts';
 import {createPngStreamSplitter,keyframeTargets,decodeSceneKeyframes, type DecodeSceneKeyframesOptions, type SceneKeyframe} from '../packages/business/src/scene-keyframe-decoder.ts';
@@ -291,6 +292,40 @@ test('restart without a complete durable manifest stays interrupted and retains 
  // Only the never-started one can still be cancelled.
  assert.equal(restarted.services.handlers['scene.task.cancel']({projectId:f.project.id,taskId:queued.id,expectedRevision:2,requestId:randomUUID()}).state,'cancelled_before_start');
  assert.throws(()=>restarted.services.handlers['scene.task.cancel']({projectId:f.project.id,taskId:saving.id,expectedRevision:4,requestId:randomUUID()}),code('SCENE_STATE_CONFLICT'));
+});
+
+for(const unavailable of ['origin','effect'] as const)test(`complete scene recovery releases its active slot while ${unavailable} is unavailable and resumes only local finalize`,async t=>{
+ const f=fixture(t,{fault:phase=>{if(phase==='after_shots_receipt')throw Error('synthetic complete batch interruption');}}),resultId=await f.detected(),other=f.video();
+ const accepted=await f.call('scene.shots.create',f.input(resultId));await f.state(accepted.id,'local_result_error');
+ const manifestFile=path.join(f.root,'.mioon-store','tmp','scene-staging',`${accepted.id}.json`),manifest=readFileSync(manifestFile,'utf8'),saved=JSON.parse(manifest) as {keyframes:{assetId:string}[]};
+ const runId=randomUUID(),stepId=randomUUID(),conversationId=randomUUID(),stamp=new Date().toISOString();
+ // Real immutable origin rows reproduce service startup before Mio registers
+ // its runner/gate. No schema or owner guard is disabled by this fixture.
+ f.store.tx(()=>{
+  f.store.db.prepare('INSERT INTO mio_conversations(id,projectId,createdAt,updatedAt) VALUES(?,?,?,?)').run(conversationId,f.project.id,stamp,stamp);
+  f.store.db.prepare("INSERT INTO mio_runs(id,projectId,conversationId,requestId,digest,status,revision,stepLimit,budget,stepsUsed,locale,createdAt,updatedAt) VALUES(?,?,?,?,?,'completed',1,5,5,1,'zh-Hans',?,?)").run(runId,f.project.id,conversationId,randomUUID(),'a'.repeat(64),stamp,stamp);
+  f.store.db.prepare("INSERT INTO mio_steps(id,runId,projectId,position,kind,status,createdAt,updatedAt) VALUES(?,?,?,1,'tool','completed',?,?)").run(stepId,runId,f.project.id,stamp,stamp);
+  f.store.db.prepare("INSERT INTO mio_job_origins(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES('scene',?,?,?,?,?,'scene.shots.create')").run(accepted.id,runId,stepId,f.project.id,accepted.requestId);
+ });
+ await f.close();const recovered=f.reopen({decode:async()=>assert.fail('local recovery must not decode')});
+ const read=()=>recovered.call('scene.task.get',{projectId:f.project.id,taskId:accepted.id});
+ let removeOrigin:()=>void=()=>{};
+ if(unavailable==='effect')removeOrigin=setAgentTaskJobOriginRunner(recovered.store.db,(_binding,callback)=>callback());
+ const held=await until(async()=>{const value=await read();return !recovered.services.isBusy()&&['interrupted','local_result_error'].includes(value.state)&&value;},'released local recovery');
+ assert.equal(held.state,unavailable==='origin'?'interrupted':'local_result_error');
+ assert.equal(recovered.store.list('shots',f.project.id).length,0);assert.equal(recovered.decodes,0);
+ resumeAgentTaskJobs(recovered.store.db,runId);assert.equal((await read()).state,held.state);assert.equal(recovered.services.isBusy(),false);
+ const unrelated=await recovered.call('scene.detect',{projectId:f.project.id,sourceAssetId:other.id,sourceHash:other.sha256,requestId:randomUUID()});
+ await until(async()=>{const value=await recovered.call('scene.task.get',{projectId:f.project.id,taskId:unrelated.id});return value.state==='succeeded'&&value;},'unrelated scene task while origin is held');
+ if(unavailable==='origin')removeOrigin=setAgentTaskJobOriginRunner(recovered.store.db,(_binding,callback)=>callback());
+ const removeGate=setAgentTaskEffectGate(recovered.store.db,()=>{});
+ try{
+  resumeAgentTaskJobs(recovered.store.db,runId);
+  const done=await until(async()=>{const value=await read();return value.state==='succeeded'&&value;},'explicit origin resume local finalize');
+  assert.deepEqual(done.shots!.map(item=>item.assetId),saved.keyframes.map(item=>item.assetId));assert.equal(recovered.decodes,0);
+  assert.equal(recovered.store.list('shots',f.project.id).length,3);assert.equal(recovered.store.list('assets',f.project.id).filter(item=>item.provenance===SCENE_KEYFRAME_PROVENANCE).length,3);
+  assert.equal(readFileSync(manifestFile,'utf8'),manifest);assert.equal(readdirSync(path.join(f.root,'生成')).length,3);
+ }finally{removeGate();removeOrigin();}
 });
 
 for(const phase of ['after_shots_manifest','after_shots_receipt','after_keyframe_publication','before_shots_commit'])test(`complete durable batch recovers locally after ${phase} with one atomic outcome`,async t=>{

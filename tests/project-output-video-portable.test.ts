@@ -4,7 +4,7 @@ import {mkdtemp,copyFile,cp,mkdir,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {openProjectStore} from '../packages/business/src/project-file/index.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
@@ -35,7 +35,7 @@ async function fixture(t:TestContext){
  const receivedDir=path.join(root,'received');await mkdir(receivedDir,{mode:0o755});await cp(path.join(root,'original','project.mioon'),path.join(receivedDir,'project.mioon'));
  await cp(path.join(root,'original','生成'),path.join(receivedDir,'生成'),{recursive:true,preserveTimestamps:true});
  received=openProjectStore({projectFile:path.join(receivedDir,'project.mioon'),locate:()=>({localDir:path.join(root,'received-records'),cacheDir:path.join(root,'received-cache'),tempDir:path.join(root,'received-temp')})});
- const db=received.db,url=new URL('/api/version-comparison/media?'+new URLSearchParams({projectId,shotId:String(version.shotId),versionId,assetId,sha256:String(asset.sha256),workspaceOrigin:'normal'}),'http://127.0.0.1');
+ const db=received.db,url=new URL('/api/version-comparison/media?'+new URLSearchParams({projectId,shotId:String(version.shotId),versionId,assetId,sha256:String(asset.sha256)}),'http://127.0.0.1');
  return {store:received,projectId,jobId,job,versionId,version,assetId,asset,calls,comparison:()=>readVersionComparisonMedia(db,url,id=>createOwnedMediaGraphReader(db,id))};
 }
 
