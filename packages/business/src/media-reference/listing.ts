@@ -189,7 +189,8 @@ export interface ProjectMediaPageOptions {
   readonly cursor?: string;
   readonly signal?: AbortSignal;
   readonly beforeEffect?: () => void;
-  /** Trusted publication-state reader; never supplied by a model. */
+  /** Trusted private-scope/publication reader for files and directories;
+   * never supplied by a model. */
   readonly isExcluded?: (file: string, stats: BigIntStats) => boolean;
   /** Only the host can prove this is still the registered physical file. */
   readonly registeredDuration?: (file: string, stats: BigIntStats) => {readonly durationSeconds: number | null} | undefined;
@@ -255,11 +256,16 @@ export async function listProjectMediaPage(access: MediaAccess, directory = '', 
   const folderInfo = stat(folder);
   if (folderInfo === null) throw invalidPath('missing');
   if (!folderInfo.isDirectory()) throw invalidPath('not-a-directory');
+  if (isExcluded?.(folder, folderInfo)) throw invalidPath('path');
   let fenceFailed = false, fenceFailure: unknown;
   const fence = (): void => {
     if (fenceFailed) throw fenceFailure;
     try {
       signal?.throwIfAborted(); beforeEffect?.(); signal?.throwIfAborted();
+      const exclusionInfo = stat(folder);
+      if (exclusionInfo && isExcluded?.(folder, exclusionInfo)) throw invalidPath('path');
+      // The trusted exclusion reader can run owner callbacks. Read directory
+      // identities again afterwards, before any asynchronous filesystem work.
       const currentRoot = realpath(access.projectDir), currentFolder = realpath(requestedFolder);
       const rootNow = currentRoot === null ? null : stat(currentRoot), folderNow = currentFolder === null ? null : stat(currentFolder);
       if (currentRoot !== root || currentFolder !== folder || !rootNow?.isDirectory() || !sameIdentity(rootNow, rootInfo) ||
@@ -335,12 +341,17 @@ export async function listProjectMediaPage(access: MediaAccess, directory = '', 
     if (candidate.kind === 'directory') {
       const reached = realpath(file), info = stat(file);
       if (reached === null || !info?.isDirectory() || !isInsideRealDirectory(root, reached) || isHiddenInside(prepared, reached)) {position++; continue;}
+      if (isExcluded?.(reached, info)) {position++; continue;}
       const entry: MioProjectMediaEntry = {name: candidate.name, kind: 'folder', mimeType: null, sizeBytes: null, durationSeconds: null};
       if (!fits(entry)) break;
-      selected.push({entry, target: null, verify: () => {
+      const verify = (): void => {
         fence(); const now = stat(file);
         if (realpath(file) !== reached || !now?.isDirectory() || !sameIdentity(now, info)) throw listingChanged('file');
-      }});
+        if (isExcluded?.(reached, now)) throw listingChanged('file');
+        const admitted = stat(file);
+        if (realpath(file) !== reached || !admitted?.isDirectory() || !sameIdentity(admitted, info)) throw listingChanged('file');
+      };
+      verify(); selected.push({entry, target: null, verify});
     } else {
       const target = await guarded(() => inspectTarget(prepared, file));
       if (target.kind !== 'media' || target.outside || isExcluded?.(target.file, target.stats) ||

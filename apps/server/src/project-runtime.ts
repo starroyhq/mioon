@@ -109,6 +109,8 @@ export interface ProjectRuntimeOptions extends Pick<ServerOptions,
   readonly listeningPort: () => number;
   readonly application?: ProjectApplication;
   readonly serviceApplication?: ServiceApplicationPorts;
+  /** Host-owned app data/cache/temp roots; never model or request input. */
+  readonly privateMediaDirectories: readonly string[];
   /** Borrowed app settings are closed by their owner, not this project. */
   readonly settings?: {readonly image?: ImageSettings; readonly customImage?: CustomImageSettings; readonly video?: VideoSettings; readonly comfy?: ComfySettings};
 }
@@ -118,7 +120,7 @@ export interface ProjectRuntimeOptions extends Pick<ServerOptions,
  * requires explicit app dependencies until the host switches in S0 P4. */
 export async function composeProjectRuntime({store, shutdown, deletionGate, baseRoot = store.root, port, serverPort, listeningPort,
   agentSettings: suppliedAgentSettings, agentSecretCodecFactory, imageSecretCodec, videoSecretCodec, imageNetwork, comfyNetwork,
-  comfyModule = 'load', taskGatewayV2, taskFault, localDraftChannel = 'web', nativeAudioPreview, application, serviceApplication, settings,
+  comfyModule = 'load', taskGatewayV2, taskFault, localDraftChannel = 'web', nativeAudioPreview, application, serviceApplication, privateMediaDirectories, settings,
 }: ProjectRuntimeOptions) {
   const root = store.root, ordinaryStore = store;
   assertProjectStore(store);
@@ -264,7 +266,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     // local engine exposes the same dependency. createAgentTaskRuntime re-sanitizes reads.
     const chatSettings = agentSettings as unknown as AgentSettingsService;
     if(isProjectStore(store)&&application)projectRules=createMioProjectRules({store,application,signal:shutdown.signal,assertMutationAllowed:()=>ordinary.assertMutationAllowed()});
-    taskToolsV2=createAgentTaskTools({store:ordinaryStore,services:ordinary,projectMedia:createMioProjectMedia({store,signal:shutdown.signal}),...(projectRules?{rules:projectRules}:{}),...(application?{policyStore:application.agentPolicy}:{})});
+    taskToolsV2=createAgentTaskTools({store:ordinaryStore,services:ordinary,projectMedia:createMioProjectMedia({store,privateDirectories:privateMediaDirectories,signal:shutdown.signal}),...(projectRules?{rules:projectRules}:{}),...(application?{policyStore:application.agentPolicy}:{})});
     taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,...(application?{policyStore:application.agentPolicy,onDiagnosticCompleted:summary=>application.tx(()=>{
       const raw=application.documents.read('agent-diagnostic-summary-v1.json');
       const previous=raw===null?null:agentDiagnosticSummarySchema.parse(JSON.parse(raw));

@@ -87,6 +87,60 @@ test('directory aliases remain inside the real visible project boundary and fold
   assert.deepEqual((await listProjectMediaPage(f.access, '', f.options)).entries.map(item => item.name), ['inside']); assert.deepEqual([...f.opened], []);
 });
 
+test('trusted private directory scopes are omitted and cannot be entered directly or through an internal alias', async t => {
+  const f = fixture(t), privateRoot = path.join(f.root, 'private-cache');
+  mkdirSync(privateRoot); mkdirSync(path.join(privateRoot, 'nested')); mkdirSync(path.join(f.root, 'public'));
+  f.write('private-cache/cover.png', PNG); f.write('private-cache/nested/stage.mp4'); f.write('public/visible.png', PNG);
+  symlinkSync(privateRoot, path.join(f.root, 'cache-alias'));
+  const enumerated: string[] = [];
+  const access: MediaAccess = {...f.access, fileSystem: {...f.access.fileSystem!, async readDirectory(directory, limit) {
+    enumerated.push(directory); return NODE_MEDIA_FILE_SYSTEM.readDirectory(directory, limit);
+  }}};
+  const options: ProjectMediaPageOptions = {...f.options,
+    isExcluded: file => file === privateRoot || file.startsWith(privateRoot + path.sep),
+  };
+  assert.deepEqual((await listProjectMediaPage(access, '', options)).entries.map(entry => entry.name), ['public']);
+  assert.deepEqual([...f.opened], []);
+  for (const directory of ['private-cache', 'private-cache/nested', 'cache-alias']) {
+    await assert.rejects(listProjectMediaPage(access, directory, options), {code: 'MEDIA_LIST_PATH_INVALID', details: {reason: 'path'}});
+  }
+  assert.deepEqual(enumerated, [f.root]);
+  assert.deepEqual((await listProjectMediaPage(access, 'public', options)).entries.map(entry => entry.name), ['visible.png']);
+  assert.deepEqual(enumerated, [f.root, path.join(f.root, 'public')]);
+  assert.deepEqual(f.opened, ['visible.png']);
+});
+
+for (const scope of ['candidate', 'requested'] as const) for (const mode of ['exclude', 'owner-error'] as const)
+test(`directory admission is checked again after page metadata awaits: ${scope}/${mode}`, async t => {
+  const f = fixture(t); mkdirSync(path.join(f.root, 'public')); f.write(scope === 'candidate' ? 'video.mp4' : 'public/video.mp4');
+  const denied = new Error('private scope owner ended'); let revoked = false;
+  const pending = listProjectMediaPage(f.access, scope === 'candidate' ? '' : 'public', {...f.options,
+    isExcluded: (file, info) => {
+      if (revoked && info.isDirectory() && file === path.join(f.root, 'public')) {
+        if (mode === 'owner-error') throw denied;
+        return true;
+      }
+      return false;
+    },
+    probeDuration: async () => {await Promise.resolve(); revoked = true; return 1;},
+  });
+  if (mode === 'owner-error') await assert.rejects(pending, error => error === denied);
+  else await assert.rejects(pending, scope === 'candidate' ? changed : {code: 'MEDIA_LIST_PATH_INVALID', details: {reason: 'path'}});
+});
+
+test('requested directory identity is read again after the trusted exclusion callback', async t => {
+  const f = fixture(t), directory = path.join(f.root, 'public'); mkdirSync(directory); f.write('public/video.mp4');
+  let replaced = false, enumerated = 0;
+  const access: MediaAccess = {...f.access, fileSystem: {...f.access.fileSystem!, async readDirectory(folder, limit) {
+    enumerated++; return NODE_MEDIA_FILE_SYSTEM.readDirectory(folder, limit);
+  }}};
+  await assert.rejects(listProjectMediaPage(access, 'public', {...f.options, isExcluded: file => {
+    if (file === directory && !replaced) {replaced = true; renameSync(directory, path.join(f.root, 'old')); mkdirSync(directory);}
+    return false;
+  }}), changed);
+  assert.equal(replaced, true); assert.equal(enumerated, 0); assert.deepEqual([...f.opened], []);
+});
+
 test('publication filtering and held identities run before opening, and trusted registered duration avoids another probe', async t => {
   const f = fixture(t); f.write('held.mp4'); f.write('partial.mp4'); f.write('registered.mp4'); f.write('unknown.mp4');
   const held = lstatSync(path.join(f.root, 'held.mp4'), {bigint: true}); let probed = 0, checked = 0;
@@ -184,7 +238,7 @@ for (const at of ['owner', 'publication'] as const) test(`the final ${at} callba
   };
   await assert.rejects(listProjectMediaPage(access, '', {...f.options,
     beforeEffect: () => {if (at === 'owner' && checked >= 3) held = true;},
-    isExcluded: () => {if (at === 'publication' && ++exclusions === 3) held = true; return false;},
+    isExcluded: (_file, info) => {if (at === 'publication' && info.isFile() && ++exclusions === 3) held = true; return false;},
   }), changed);
   assert.equal(held, true); assert.equal(opened, 0);
 });

@@ -1,5 +1,6 @@
 import {lstatSync, realpathSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
+import path from 'node:path';
 import {mioProjectMediaListInputSchema, mioProjectMediaListingSchema} from '../../../contracts/src/mio-project-media.ts';
 import type {MioProjectMediaPort} from '../../../contracts/src/mio-project-media.ts';
 import {mediaReferenceError} from '../../../contracts/src/media-reference-errors.ts';
@@ -8,6 +9,7 @@ import {isProjectFileHeld} from '../project-file/held-files.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
 import {listProjectMediaPage} from '../media-reference/listing.ts';
+import {isInsideRealDirectory} from '../media-reference/paths.ts';
 import {readProjectUnpublishedMediaSnapshot} from '../referenced-asset-unpublished.ts';
 
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -16,12 +18,30 @@ const unavailable = () => mediaReferenceError('MEDIA_CHANGED_DURING_READ', {reas
 
 /** An exact native host owns the root and lifetime. A model, copied store or
  * confirmed outside directory cannot manufacture this filesystem capability. */
-export function createMioProjectMedia({store, signal}: {readonly store: ProjectStore; readonly signal?: AbortSignal}): MioProjectMediaPort {
+export function createMioProjectMedia({store, privateDirectories, signal}: {
+  readonly store: ProjectStore;
+  /** Complete app data/cache/temp roots from the trusted host, not inferred
+   * from a project's locator (other projects have private cache entries too). */
+  readonly privateDirectories: readonly string[];
+  readonly signal?: AbortSignal;
+}): MioProjectMediaPort {
   if (!isProjectStore(store)) throw unavailable();
+  if (!Array.isArray(privateDirectories) || privateDirectories.length === 0 ||
+      privateDirectories.some(directory => typeof directory !== 'string' || !path.isAbsolute(directory))) throw unavailable();
   const projectId = store.projectId, directory = store.projectDir, file = store.projectFile;
   const realDirectory = realpathSync(directory), realFile = realpathSync(file);
   const directoryIdentity = lstatSync(realDirectory, {bigint: true}), fileIdentity = lstatSync(realFile, {bigint: true});
   if (!directoryIdentity.isDirectory() || !fileIdentity.isFile() || !isProjectFileHeld({dev: String(fileIdentity.dev), ino: String(fileIdentity.ino)})) throw unavailable();
+  const privateRoots = [...new Set([...privateDirectories, store.localDir, store.cacheDir, store.tempDir])].map(directory => {
+    const real = realpathSync(directory), identity = lstatSync(real, {bigint: true});
+    if (!identity.isDirectory()) throw unavailable();
+    return {directory, real, identity};
+  });
+  // Default projects may themselves be below app data. Protect only private
+  // roots reached inside this project's boundary; its ancestors grant no new
+  // access because the ordinary realpath boundary still confines every read.
+  const blocked = privateRoots.filter(root => isInsideRealDirectory(realDirectory, root.real));
+  const isPrivate = (file: string): boolean => blocked.some(root => isInsideRealDirectory(root.real, file));
   let admittedProject: {readonly createdAt: unknown} | undefined;
   function live(): void {
     signal?.throwIfAborted();
@@ -30,6 +50,10 @@ export function createMioProjectMedia({store, signal}: {readonly store: ProjectS
       if (realpathSync(directory) !== realDirectory || realpathSync(file) !== realFile ||
           !sameIdentity(lstatSync(realDirectory, {bigint: true}), directoryIdentity) ||
           !sameIdentity(lstatSync(realFile, {bigint: true}), fileIdentity)) throw unavailable();
+      for (const root of privateRoots) {
+        const now = lstatSync(root.real, {bigint: true});
+        if (realpathSync(root.directory) !== root.real || !now.isDirectory() || !sameIdentity(now, root.identity)) throw unavailable();
+      }
     } catch {throw unavailable();}
     const row: unknown = store.db.prepare("SELECT id,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 16384 THEN data END AS data FROM projects WHERE id=?").get(projectId);
     let project: unknown;
@@ -44,7 +68,13 @@ export function createMioProjectMedia({store, signal}: {readonly store: ProjectS
       if (!parsed.success) throw mediaReferenceError('MEDIA_LIST_PATH_INVALID', {reason: 'path'});
       if (owner !== projectId) throw unavailable();
       const combined = signal && context.signal ? AbortSignal.any([signal, context.signal]) : signal ?? context.signal;
-      const fence = (): void => {combined?.throwIfAborted(); live(); context.beforeEffect(); combined?.throwIfAborted(); live();};
+      const fence = (): void => {
+        combined?.throwIfAborted(); live(); context.beforeEffect(); combined?.throwIfAborted(); live();
+        let requested: string;
+        try {requested = realpathSync(path.join(directory, parsed.data.directory ?? ''));}
+        catch {throw mediaReferenceError('MEDIA_LIST_PATH_INVALID', {reason: 'missing'});}
+        if (isPrivate(requested)) throw mediaReferenceError('MEDIA_LIST_PATH_INVALID', {reason: 'path'});
+      };
       fence();
       const publications = await readProjectUnpublishedMediaSnapshot(store, {signal: combined, beforeEffect: fence});
       const beforeEffect = (): void => {fence(); publications.assertCurrent(); fence();};
@@ -55,7 +85,8 @@ export function createMioProjectMedia({store, signal}: {readonly store: ProjectS
       const result = await listProjectMediaPage({projectDir: directory, projectFile: file, mayReadOutside: () => false,
         isHeld: identity => isProjectFileHeld(identity) || isAppLibraryHeld(identity)}, parsed.data.directory ?? '', {
         projectId, ...parsed.data, signal: combined, beforeEffect,
-        scopeVersion: publications.version, isExcluded: publications.isExcluded,
+        scopeVersion: JSON.stringify([publications.version, blocked.map(root => root.real)]),
+        isExcluded: (file, stats) => isPrivate(file) || publications.isExcluded(file, stats),
       });
       beforeEffect();
       return mioProjectMediaListingSchema.parse(result);
