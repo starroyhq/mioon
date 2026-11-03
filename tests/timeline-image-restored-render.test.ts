@@ -1,3 +1,5 @@
+import {importNativeQaAsset,nativeQaAssetFile} from './helpers/native-local-qa-fixture.ts';
+import {assetMediaRecordSchema} from '../packages/contracts/src/asset-media.ts';
 
 
 import type {FixtureExport} from './helpers/strict-timeline-core-types.ts';
@@ -35,10 +37,9 @@ function assertRetainedRows(db: DatabaseSync, captured: Record<string,Record<str
   }
 }
 
-async function assertSourceBytes(root: string, files: Map<unknown,Buffer<ArrayBufferLike>>) {
-  for (const [relativePath, bytes] of files) {
-    assert.deepEqual(await readFile(path.join(root, ((relativePath) as unknown as Parameters<typeof path.join>[1]))), bytes, ((relativePath) as unknown as Parameters<NonNullable<(typeof assert)["deepEqual"]>>[2]));
-  }
+async function assertSourceBytes(store:FixtureStore,files:Map<string,Buffer<ArrayBufferLike>>){
+  assertProjectStore(store);
+  for(const [assetId,bytes]of files){const resolved=await nativeQaAssetFile(store,assetId);assert.deepEqual(await readFile(resolved.file),bytes,assetId);}
 }
 
 async function executeQueued(store: FixtureStore, services: FixtureServices, accepted?: FixtureExport) {
@@ -50,8 +51,8 @@ async function executeQueued(store: FixtureStore, services: FixtureServices, acc
     const completed = await services.call('export.get', {exportId: (accepted)!.id}) as FixtureExport;
     assert.equal(completed.status, 'succeeded', JSON.stringify(completed.error));
     assert.deepEqual(completed.snapshot, (accepted)!.snapshot);
-    const asset = store.get('assets', ((completed.assetId) as unknown as Parameters<NonNullable<(typeof store)["get"]>>[1]))!;
-    const file = path.join(store.root, asset!.relativePath);
+    assertProjectStore(store);assert.ok(typeof completed.assetId==='string');const rawAsset=store.get('assets',completed.assetId);assert.ok(rawAsset&&typeof rawAsset==='object'&&'url'in rawAsset);const {url:_url,...record}=rawAsset;const asset=assetMediaRecordSchema.parse(record);
+    assert.deepEqual(asset.producer,{kind:'export',id:completed.id});const resolved=await nativeQaAssetFile(store,asset.id),file=resolved.file;assert.match(resolved.projectRelativeFile,/^media\/[A-Za-z0-9._-]+\.mp4$/u);assert.equal(resolved.bytes,asset.sizeBytes);
     assert.equal(sha(await readFile(file)), asset!.sha256);
     return {completed, persisted: (store.get('exports', completed.id)! as FixtureExport), asset, file};
   } finally {
@@ -124,9 +125,9 @@ test('cold current kernel reopen explicitly rerenders mixed PNG/video/subtitle w
     let timeline = await services.call('timeline.format.set', {projectId,
       expectedProjectRevision: project.revision, expectedRevision: 0,
       requestId: randomUUID(), presetId: 'square_720'});
-    const video = await services.call('asset.import', {projectId, name: 'Video.mp4',
+    const video = await importNativeQaAsset({store:created.store,services}, {projectId, name: 'Video.mp4',
       mimeType: 'video/mp4', dataBase64: videoBytes.toString('base64')});
-    const image = await services.call('asset.import', {projectId, name: 'Still.png',
+    const image = await importNativeQaAsset({store:created.store,services}, {projectId, name: 'Still.png',
       mimeType: 'image/png', dataBase64: imageBytes.toString('base64')});
     const motion = await services.call('timeline.colour.source.inspect', {projectId, assetId: video.id});
     const picture = await services.call('timeline.colour.image.inspect', {projectId, assetId: image.id});
@@ -156,15 +157,15 @@ test('cold current kernel reopen explicitly rerenders mixed PNG/video/subtitle w
     assert.deepEqual(held.snapshot,ordinary.snapshot);
     const heldRecord=store.get('exports',held.id)!;
     const captured = rawRows(store.db);
-    const sourceFiles = new Map([[store.get('assets', video.id)!.relativePath, videoBytes],
-      [store.get('assets', image.id)!.relativePath, imageBytes],
-      [baseline!.asset.relativePath, await readFile(baseline.file)]]);
+    const sourceFiles = new Map([[video.id, videoBytes],
+      [image.id, imageBytes],
+      [baseline!.asset.id, await readFile(baseline.file)]]);
     await close();
     store=openServerProject(dataDir,projectId);
     services = (createServices(store, new Map()) as FixtureServices);
     assert.doesNotThrow(()=>assertRetained(store!));
     assertRetainedRows(store.db, captured);
-    await assertSourceBytes(restored, sourceFiles);
+    await assertSourceBytes(store, sourceFiles);
     assert.deepEqual(await services.call('timeline.get', {projectId}), timeline);
     const request = params({purpose: 'export'});
     assert.equal(store.db.prepare('SELECT 1 FROM timeline_requests WHERE requestId=?').get(request.requestId), undefined);
@@ -187,7 +188,7 @@ test('cold current kernel reopen explicitly rerenders mixed PNG/video/subtitle w
     assert.equal((stream)!.color_range, 'tv');
     assert.deepEqual((store.get('exports', held.id)! as FixtureExport), heldRecord, 'prior completed export never changes');
     assertRetainedRows(store.db, captured);
-    await assertSourceBytes(restored, sourceFiles);
+    await assertSourceBytes(store, sourceFiles);
     assert.doesNotThrow(()=>assertRetained(store!),'valid after actual rerender');
     assert.equal((await readdir(path.join(restored, 'media'))).some(name =>
       name.startsWith('.timeline-render-') || name.endsWith('.part.mp4')), false);
@@ -197,8 +198,8 @@ test('cold current kernel reopen explicitly rerenders mixed PNG/video/subtitle w
     assert.doesNotThrow(()=>assertRetained(store!),'valid after cold kernel reopen');
     assertRetainedRows(store.db, captured);
     assert.deepEqual((store.get('exports', rerendered.completed.id)! as FixtureExport), rerendered.persisted);
-    await assertSourceBytes(restored, sourceFiles);
-    await assertSourceBytes(source, sourceFiles);
+    await assertSourceBytes(store, sourceFiles);
+    await assertSourceBytes(store, sourceFiles);
     t.diagnostic(`decoded RGB SHA-256: ${sha(restoredRgb)}; bytes: ${restoredRgb.length}; frames: 6; output: 720x720`);
     t.diagnostic(`ordinary MP4 SHA-256: ${baseline!.asset.sha256}; restored MP4 SHA-256: ${rerendered!.asset.sha256}`);
   });

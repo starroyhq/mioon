@@ -40,7 +40,7 @@ function legacyPackageAssetView<T>(root:string,value:T):T{
 /** Keep real S1 records and services underneath the historical serializer.
  * This fixture-only read view does not enable native packaging in production;
  * its real SQLite identity still rejects legacy imports into a project file. */
-function legacyPackageViewForReferencedStore(store:ProjectStore):Store{
+export function legacyPackageViewForReferencedStore(store:ProjectStore):Store{
  const view:Store={db:store.db,root:store.root,
   get:(table,id)=>{const value=store.get(table,id);return table==='assets'?legacyPackageAssetView(store.projectDir,value):value;},
   list:(table,projectId)=>store.list(table,projectId).map(value=>table==='assets'?legacyPackageAssetView(store.projectDir,value):value),

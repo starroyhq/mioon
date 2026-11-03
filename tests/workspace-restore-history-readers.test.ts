@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID,createHash} from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
+import {registeredProjectStoreForDatabase} from '../packages/business/src/project-media-storage.ts';
 import fsPromises from 'node:fs/promises';
 import childProcess from 'node:child_process';
 import http from 'node:http';
@@ -22,6 +25,14 @@ import {insert} from './images-fixture.mjs';
 const at='2026-10-12T00:00:00.000Z',hash=(value: unknown)=>createHash('sha256').update(canonical(value)).digest('hex');
 const code=(expected: string)=>(cause: { code: unknown; })=>(cause as unknown as import('./helpers/strict-opacity-fixture-types.ts').OpacityFailure).code===expected;
 const snapshot=(db: DatabaseSync)=>JSON.stringify(currentSnapshot(db));
+function currentAsset<T extends {id:string;relativePath:string;sizeBytes:number}>(db:DatabaseSync,value:T){
+ const owner=registeredProjectStoreForDatabase(db);assert.ok(owner);
+ fs.writeFileSync(path.join(owner.projectDir,value.relativePath),Buffer.alloc(value.sizeBytes));
+ owner.put('assets',value);
+ const persisted=owner.get('assets',value.id);assert.ok(persisted&&typeof persisted==='object'&&!Array.isArray(persisted));
+ const record=persisted as Record<string,unknown>;assert.equal(record.referenceRevision,1);
+ return {...value,reference:mediaReferenceSchema.parse(record.reference),referenceRevision:1};
+}
 function seedImage(db: DatabaseSync,projectId: string,state='queued'){
  const groupId=randomUUID(),taskId=randomUUID(),requestId=randomUUID(),versionId=randomUUID(),assetId=randomUUID();
  const input={projectId,name:'Saved image 界',prompt:'Synthetic historical image',providerId:'mock',model:IMAGE_MODELS.mock,options:IMAGE_FIXED_OPTIONS,requestId};
@@ -38,7 +49,7 @@ function seedImage(db: DatabaseSync,projectId: string,state='queued'){
  if(state==='outcome_unknown')db.prepare("UPDATE image_tasks SET state='outcome_unknown',revision=3,errorCode='IMAGE_OUTCOME_UNKNOWN' WHERE id=?").run(taskId);
  if(state==='succeeded'){
   db.prepare("UPDATE image_tasks SET state='persisting',stagedReceipt=?,revision=3 WHERE id=?").run(JSON.stringify(receipt),taskId);
-  insert(db,'assets',{id:assetId,projectId,data:JSON.stringify(asset)});insert(db,'image_versions',{id:versionId,projectId,groupId,taskId,number:1,assetId,data:JSON.stringify(version)});
+  currentAsset(db,asset);insert(db,'image_versions',{id:versionId,projectId,groupId,taskId,number:1,assetId,data:JSON.stringify(version)});
   db.prepare("UPDATE image_tasks SET state='succeeded',versionId=?,revision=4 WHERE id=?").run(versionId,taskId);
   db.prepare('UPDATE image_groups SET revision=2,headVersionId=?,activeTaskId=NULL WHERE id=?').run(versionId,groupId);
  }
@@ -46,19 +57,19 @@ function seedImage(db: DatabaseSync,projectId: string,state='queued'){
 }
 function seedFrame(db: DatabaseSync,projectId: string,state='queued'){
  const taskId=randomUUID(),requestId=randomUUID(),sourceId=randomUUID(),assetId=randomUUID();
- const source={id:sourceId,projectId,name:'Saved source.mp4',mimeType:'video/mp4',sha256:'b'.repeat(64),sizeBytes:256,relativePath:`media/${sourceId}.mp4`,duration:3,width:1920,height:1080,hasVideo:true,hasAudio:true,provenance:'user-import',createdAt:at};
+ const source=currentAsset(db,{id:sourceId,projectId,name:'Saved source.mp4',mimeType:'video/mp4',sha256:'b'.repeat(64),sizeBytes:256,relativePath:`media/${sourceId}.mp4`,duration:3,width:1920,height:1080,hasVideo:true,hasAudio:true,provenance:'user-import',createdAt:at});
  const input={projectId,sourceAssetId:sourceId,sourceHash:source.sha256,sourceFrame:56,requestId};
- const frozen={schemaVersion:1,projectId,taskId,source:{assetId:sourceId,sha256:source.sha256,mimeType:source.mimeType,sizeBytes:source.sizeBytes,relativePath:source.relativePath,duration:source.duration,width:source.width,height:source.height},requested:{sourceFrame:56,fps:30},profile:FRAME_PROFILE};
+ const frozen={schemaVersion:1,projectId,taskId,source:{assetId:sourceId,sha256:source.sha256,mimeType:source.mimeType,sizeBytes:source.sizeBytes,reference:source.reference,referenceRevision:source.referenceRevision,duration:source.duration,width:source.width,height:source.height},requested:{sourceFrame:56,fps:30},profile:FRAME_PROFILE};
  const ack={id:taskId,projectId,requestId,sourceAssetId:sourceId,sourceHash:source.sha256,sourceFrame:56,fps:30,profileId:FRAME_PROFILE_ID,state:'queued',revision:1,started:false,result:null,errorCode:null,createdAt:at,updatedAt:at};
  const receipt={schemaVersion:1,projectId,taskId,inputHash:hash(input),sourceAssetId:sourceId,sourceHash:source.sha256,sourceFrame:56,fps:30,profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE,assetId,sha256:'c'.repeat(64),mimeType:'image/png',width:1024,height:576,byteLength:100,probe:{streamIndex:0,timeBaseNumerator:1,timeBaseDenominator:15360,width:1920,height:1080,rotation:0,sarNumerator:1,sarDenominator:1}};
  const asset={id:assetId,projectId,name:'Saved frame.png',sha256:receipt.sha256,mimeType:'image/png',provenance:'extracted-frame',relativePath:`media/${assetId}.png`,width:1024,height:576,sizeBytes:100,createdAt:at};
- db.exec('BEGIN');insert(db,'assets',{id:sourceId,projectId,data:JSON.stringify(source)});
+ db.exec('BEGIN');
  insert(db,'frame_tasks',{id:taskId,projectId,requestId,inputHash:hash(input),input:canonical(input),snapshot:canonical(frozen),state:'queued',revision:1,started:0,stagedReceipt:null,assetId:null,errorCode:null,createdAt:at,updatedAt:at});
  insert(db,'frame_requests',{requestId,operation:'frame.extract',projectId,taskId,inputHash:hash(input),canonicalInput:canonical(input),response:canonical(ack)});
  if(state!=='queued')db.prepare("UPDATE frame_tasks SET state='running',started=1,revision=2 WHERE id=?").run(taskId);
  if(state==='succeeded'){
   db.prepare("UPDATE frame_tasks SET state='persisting',stagedReceipt=?,revision=3 WHERE id=?").run(canonical(receipt),taskId);
-  insert(db,'assets',{id:assetId,projectId,data:JSON.stringify(asset)});
+  currentAsset(db,asset);
   db.prepare("UPDATE frame_tasks SET state='succeeded',assetId=?,revision=4 WHERE id=?").run(assetId,taskId);
  }
  db.exec('COMMIT');return {projectId,taskId,requestId,sourceId,assetId,input,ack,source,asset};

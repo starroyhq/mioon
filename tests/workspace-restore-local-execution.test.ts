@@ -13,7 +13,7 @@ import {createMockProvider} from '../packages/business/src/providers/mock.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
-import {mkdtempSync,rmSync,writeFileSync,readdirSync,unlinkSync,readFileSync} from 'node:fs';
+import {mkdtempSync,rmSync,writeFileSync,readdirSync,readFileSync,existsSync,renameSync,lstatSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
@@ -22,6 +22,8 @@ import {withoutForeignKeys} from './helpers/project-database.ts';
 import {withNativeTriggerFault} from './helpers/current-native-fault.ts';
 
 import {publicValue} from '@mioon/contracts';
+import {PROJECT_ASSETS_FOLDER} from '../packages/contracts/src/asset-media.ts';
+import {mediaFixturePath,mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {createServices, hash, now} from '../packages/business/src/services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 
@@ -37,8 +39,9 @@ async function fixture(t: test.TestContext,{exportOptions,media=false,subjectTas
  const foreignRoot=mkdtempSync(path.join(tmpdir(),'mioon-local-execution-foreign-')),foreign=openStore(foreignRoot),foreignServices=createServices(foreign,new Map());
  const empty=await foreignServices.call('project.create',{name:'Foreign project'}) as {id:string};await foreignServices.drain();foreign.close();t.after(()=>rmSync(foreignRoot,{recursive:true,force:true}));
  const savedInput={projectId:project.id,title:'Saved before restore',requestId:randomUUID()},saved=await services.call('shot.create',savedInput);
- const sourceBytes=Buffer.from('synthetic frozen source');if(media)writeFileSync(path.join(root,'media','synthetic.mp4'),sourceBytes);
- const asset=store.put('assets',{id:randomUUID(),projectId:project.id,name:'Synthetic source',mimeType:'video/mp4',duration:10,width:720,height:1280,hasAudio:false,hasVideo:true,provenance:'user-import',sha256:media?createHash('sha256').update(sourceBytes).digest('hex'):'a'.repeat(64),relativePath:'media/synthetic.mp4',createdAt:now()});
+ // The worker tests stub decoding explicitly; the source still passes real L1 media sniff/hash admission.
+ const sourceBytes=mp4HeaderFixture('synthetic frozen source');writeFileSync(path.join(root,'media','synthetic.mp4'),sourceBytes);
+ const asset=store.put('assets',{id:randomUUID(),projectId:project.id,name:'Synthetic source',mimeType:'video/mp4',duration:10,width:720,height:1280,hasAudio:false,hasVideo:true,provenance:'user-import',sha256:createHash('sha256').update(sourceBytes).digest('hex'),relativePath:'media/synthetic.mp4',createdAt:now()});
  let timeline=await services.call('timeline.get',{projectId:project.id});
  timeline=await services.call('timeline.clip.add',{projectId:project.id,requestId:randomUUID(),expectedRevision:timeline.revision,assetId:asset.id,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:30,sourceInFrame:0});
  const pending=tasks.prepare({projectId:project.id,operation:'timeline.track.add',input:{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),kind:'audio'},origin:'new'});
@@ -84,20 +87,20 @@ test('import path replacement after native observation is never adopted or remov
  const f=await fixture(t),binary=path.join(f.root,'synthetic-probe.mjs'),previous=process.env.MIOON_FFPROBE_PATH;
  writeFileSync(binary,`#!${process.execPath}\nprocess.stdout.write(JSON.stringify({streams:[{index:0,codec_type:'video',codec_name:'png',width:1,height:1}],format:{duration:'1'}}));\n`,{mode:0o700});
  process.env.MIOON_FFPROBE_PATH=binary;t.after(()=>{if(previous===undefined)delete (process.env as unknown as Record<PropertyKey,unknown>).MIOON_FFPROBE_PATH;else process.env.MIOON_FFPROBE_PATH=previous;});
- let replaced!:string,spawns=0;const off=onMediaProcess(event=>{if(event.type!=='started')return;spawns++;const name=readdirSync(path.join(f.root,'media')).find(name=>name.endsWith('.png'));if(name){replaced=path.join(f.root,'media',name);unlinkSync(replaced);writeFileSync(replaced,'foreign replacement');}});t.after(off);
+ let replaced!:string,spawns=0,oldInode!:number;const off=onMediaProcess(event=>{if(event.type!=='started'||event.kind!=='ffprobe')return;const directory=path.join(f.root,PROJECT_ASSETS_FOLDER);if(!existsSync(directory))return;const name=readdirSync(directory).find(name=>name.endsWith('.png'));if(name){spawns++;replaced=path.join(directory,name);oldInode=lstatSync(replaced).ino;renameSync(replaced,replaced+'.owned-before-replacement');writeFileSync(replaced,'foreign replacement');}});t.after(off);
  const before=f.store.list('assets',f.project.id).length;
- await assert.rejects(f.services.call('asset.import',{projectId:f.project.id,name:'One pixel',mimeType:'image/png',dataBase64:Buffer.from([137,80,78,71,13,10,26,10,0]).toString('base64')}),code('INVALID_MEDIA'));
- assert.equal(spawns,1);assert.equal(f.store.list('assets',f.project.id).length,before);assert.equal(readFileSync(replaced,'utf8'),'foreign replacement');
+ await assert.rejects(f.services.call('asset.import',{projectId:f.project.id,name:'One pixel',mimeType:'image/png',dataBase64:Buffer.from([137,80,78,71,13,10,26,10,0]).toString('base64')}),code('MEDIA_CHANGED_DURING_READ'));
+ assert.equal(spawns,1);assert.equal(f.store.list('assets',f.project.id).length,before);assert.equal(readFileSync(replaced,'utf8'),'foreign replacement');assert.notEqual(lstatSync(replaced).ino,oldInode);
 });
 
 for(const drift of ['same-inode bytes','project JSON owner'] as const)test(`import ${drift} drift while probe awaits cannot publish an asset`,async t=>{
  const f=await fixture(t),binary=path.join(f.root,'synthetic-probe.mjs'),previous=process.env.MIOON_FFPROBE_PATH;
  writeFileSync(binary,`#!${process.execPath}\nsetTimeout(()=>process.stdout.write(JSON.stringify({streams:[{index:0,codec_type:'video',codec_name:'png',width:1,height:1}],format:{duration:'1'}})),20);\n`,{mode:0o700});
  process.env.MIOON_FFPROBE_PATH=binary;t.after(()=>{if(previous===undefined)delete (process.env as unknown as Record<PropertyKey,unknown>).MIOON_FFPROBE_PATH;else process.env.MIOON_FFPROBE_PATH=previous;});
- const before=f.store.list('assets',f.project.id).length;let spawns=0;
- const off=onMediaProcess(event=>{if(event.type!=='started')return;spawns++;if(drift==='same-inode bytes'){const name=readdirSync(path.join(f.root,'media')).find(name=>name.endsWith('.png'));writeFileSync(path.join(f.root,'media',name!),'rewritten in place');}else f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify({...f.project,id:randomUUID()}),f.project.id);});t.after(off);
- await assert.rejects(f.services.call('asset.import',{projectId:f.project.id,name:'One pixel',mimeType:'image/png',dataBase64:Buffer.from([137,80,78,71,13,10,26,10,0]).toString('base64')}),code('INVALID_MEDIA'));
- assert.equal(spawns,1);assert.equal(f.store.list('assets',f.project.id).length,before);
+ const before=f.store.list('assets',f.project.id).length;let spawns=0,inodeBefore:number|undefined,inodeAfter:number|undefined;
+ const off=onMediaProcess(event=>{if(event.type!=='started'||event.kind!=='ffprobe')return;const directory=path.join(f.root,PROJECT_ASSETS_FOLDER);if(!existsSync(directory))return;const name=readdirSync(directory).find(name=>name.endsWith('.png'));if(!name)return;spawns++;if(drift==='same-inode bytes'){const file=path.join(directory,name);inodeBefore=lstatSync(file).ino;writeFileSync(file,'rewritten in place');inodeAfter=lstatSync(file).ino;}else f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify({...f.project,id:randomUUID()}),f.project.id);});t.after(off);
+ await assert.rejects(f.services.call('asset.import',{projectId:f.project.id,name:'One pixel',mimeType:'image/png',dataBase64:Buffer.from([137,80,78,71,13,10,26,10,0]).toString('base64')}),code(drift==='same-inode bytes'?'MEDIA_CHANGED_DURING_READ':'INVALID_MEDIA'));
+ assert.equal(spawns,1);assert.equal(f.store.list('assets',f.project.id).length,before);if(drift==='same-inode bytes'){assert.ok(inodeBefore!==undefined);assert.equal(inodeAfter,inodeBefore);}
 });
 
 
@@ -105,7 +108,7 @@ for(const drift of ['same-inode bytes','project JSON owner'] as const)test(`impo
 test('current timeline and storyboard exports publish through the shared worker without rewriting terminal history',async t=>{
  const f=await fixture(t,{media:true}),binary=path.join(f.root,'synthetic-media.ts'),old={MIOON_FFMPEG_PATH:process.env.MIOON_FFMPEG_PATH,MIOON_FFPROBE_PATH:process.env.MIOON_FFPROBE_PATH};
  const video={index:0,codec_type:'video',codec_name:'h264',width:720,height:1280,r_frame_rate:'30/1',avg_frame_rate:'30/1',nb_frames:'30'},renderedVideo={...video,width:f.timeline.width,height:f.timeline.height},audio={index:1,codec_type:'audio',codec_name:'aac',sample_rate:'48000',channels:2};
- writeFileSync(binary,`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';const args=process.argv.slice(2);if(args.includes('-show_streams')){const source=args.at(-1).endsWith('synthetic.mp4');process.stdout.write(JSON.stringify({streams:source?[${JSON.stringify(video)}]:[${JSON.stringify(renderedVideo)},${JSON.stringify(audio)}],format:{duration:source?'10':'1'}}));}else writeFileSync(args.at(-1),'synthetic rendered bytes',{flag:args.includes('-n')?'wx':'w'});\n`,{mode:0o700});
+ writeFileSync(binary,`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';const args=process.argv.slice(2);if(args.includes('-show_streams')){const source=args.at(-1).endsWith('synthetic.mp4');process.stdout.write(JSON.stringify({streams:source?[${JSON.stringify(video)}]:[${JSON.stringify(renderedVideo)},${JSON.stringify(audio)}],format:{duration:source?'10':'1'}}));}else writeFileSync(args.at(-1),Buffer.from('${mp4HeaderFixture('synthetic rendered bytes').toString('base64')}','base64'),{flag:args.includes('-n')?'wx':'w'});\n`,{mode:0o700});
  process.env.MIOON_FFMPEG_PATH=binary;process.env.MIOON_FFPROBE_PATH=binary;t.after(()=>{for(const [key,value]of Object.entries(old))if(value===undefined)delete (process.env as unknown as Record<PropertyKey,unknown>)[key];else process.env[key]=value;});
  const heldBefore=JSON.stringify(f.store.db.prepare('SELECT * FROM exports WHERE id=?').get(f.heldExport.id));
  const timeline=await f.services.call('timeline.render',{projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),purpose:'preview'});
@@ -124,7 +127,7 @@ test('fresh import pins caller name, MIME and bytes while its native probe await
  const bytes=Buffer.from([137,80,78,71,13,10,26,10,0]),input={projectId:f.project.id,name:'Pinned image',mimeType:'image/png',dataBase64:bytes.toString('base64')};
  const off=onMediaProcess(event=>{if(event.type==='started'){input.name='Changed caller';input.mimeType='audio/wav';input.dataBase64='AAAA';}});t.after(off);
  const result=await f.services.call('asset.import',input);assert.equal(result.name,'Pinned image');assert.equal(result.mimeType,'image/png');assert.equal(result.sha256,createHash('sha256').update(bytes).digest('hex'));
- assert.deepEqual(readFileSync(path.join(f.root,f.store.get('assets',result.id)!.relativePath)),bytes);
+ assert.deepEqual(readFileSync(mediaFixturePath(f.root,f.store.get('assets',result.id))),bytes);
 });
 
 test('deferred export admission pins parsed input and revokes inherited callbacks after settlement',async t=>{
@@ -140,7 +143,7 @@ test('deferred export admission pins parsed input and revokes inherited callback
 for(const scenario of ['timeline after first segment','storyboard source probe','storyboard final output probe','storyboard version source probe','storyboard version final output probe'] as const)test(`current ${scenario} owner drift blocks all later effects and publication`,async t=>{
  const f=await fixture(t,{media:true}),binary=path.join(f.root,'synthetic-media.ts'),old={MIOON_FFMPEG_PATH:process.env.MIOON_FFMPEG_PATH,MIOON_FFPROBE_PATH:process.env.MIOON_FFPROBE_PATH};
  const metadata={streams:[{index:0,codec_type:'video',codec_name:'h264',width:720,height:1280,r_frame_rate:'30/1',avg_frame_rate:'30/1',nb_frames:'30'},{index:1,codec_type:'audio',codec_name:'aac',sample_rate:'48000',channels:2}],format:{duration:'1'}};
- writeFileSync(binary,`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';const args=process.argv.slice(2);if(args.includes('-show_streams')){const value=${JSON.stringify(metadata)};if(args.at(-1).endsWith('synthetic.mp4'))value.format.duration='10';process.stdout.write(JSON.stringify(value));}else writeFileSync(args.at(-1),'synthetic rendered bytes',{flag:args.includes('-n')?'wx':'w'});\n`,{mode:0o700});
+ writeFileSync(binary,`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';const args=process.argv.slice(2);if(args.includes('-show_streams')){const value=${JSON.stringify(metadata)};if(args.at(-1).endsWith('synthetic.mp4'))value.format.duration='10';process.stdout.write(JSON.stringify(value));}else writeFileSync(args.at(-1),Buffer.from('${mp4HeaderFixture('synthetic rendered bytes').toString('base64')}','base64'),{flag:args.includes('-n')?'wx':'w'});\n`,{mode:0o700});
  process.env.MIOON_FFMPEG_PATH=binary;process.env.MIOON_FFPROBE_PATH=binary;t.after(()=>{for(const [key,value]of Object.entries(old))if(value===undefined)delete (process.env as unknown as Record<PropertyKey,unknown>)[key];else process.env[key]=value;});
  let value;
  if(scenario.startsWith('timeline')){
@@ -151,7 +154,8 @@ for(const scenario of ['timeline after first segment','storyboard source probe',
  let probes=0,encodes=0,changed=false;
  const off=onMediaProcess(event=>{
   if(event.type==='started'){if(event.kind==='ffprobe')probes++;if(event.kind==='ffmpeg')encodes++;}
-  const drift=scenario==='timeline after first segment'?event.type==='exited'&&event.kind==='ffmpeg'&&encodes===1:event.type==='started'&&event.kind==='ffprobe'&&probes===(scenario.endsWith('source probe')?1:4);
+  // S1 reference hashing has no probe: stitch source/output and final fileInfo are the three native observations.
+  const drift=scenario==='timeline after first segment'?event.type==='exited'&&event.kind==='ffmpeg'&&encodes===1:event.type==='started'&&event.kind==='ffprobe'&&probes===(scenario.endsWith('source probe')?1:3);
   if(!changed&&drift){
    changed=true;
    if(replacementShot){
@@ -176,5 +180,5 @@ test('current actual Mock download decodes and publishes a selected version', {t
  const job=await services.call('generation.submit',{shotId:shot.id,expectedRevision:shot.revision,providerId:'mock',requestId:randomUUID(),parameters:{delayMs:0}});
  worker=startWorker(store,services,(providers as unknown as Parameters<typeof startWorker>[2]));await worker.tick();await worker.tick();
  const result=store.get('jobs',job.id);assert.equal(result!.status,'succeeded',JSON.stringify(result!.error));assert.ok(result!.versionId);
- const version=store.get('versions',result!.versionId),asset=store.get('assets',version!.assetId);assert.equal((version as typeof version&{isMock:boolean}).isMock,true);assert.equal(asset!.provenance,'synthetic-mock');assert.equal(store.get('shots',shot.id)!.selectedVersionId,version!.id);assert.ok(readFileSync(path.join(root,asset!.relativePath)).length>0);
+ const version=store.get('versions',result!.versionId),asset=store.get('assets',version!.assetId);assert.equal((version as typeof version&{isMock:boolean}).isMock,true);assert.equal(asset!.provenance,'synthetic-mock');assert.equal(store.get('shots',shot.id)!.selectedVersionId,version!.id);const bytes=readFileSync(mediaFixturePath(root,asset));assert.ok(bytes.length>0);assert.equal(asset!.sha256,createHash('sha256').update(bytes).digest('hex'));assert.ok(Object.hasOwn(asset!,'reference')&&!Object.hasOwn(asset!,'relativePath'));
 });

@@ -7,6 +7,8 @@ import type {WorkspaceServices as FixtureServices} from './helpers/strict-worksp
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
+import {writeFileSync} from 'node:fs';
+import path from 'node:path';
 
 import {DatabaseSync} from 'node:sqlite';
 
@@ -156,6 +158,9 @@ async function currentMutationFixture(t: test.TestContext){
  const services=createServices(store,new Map()) as FixtureServices;
  t.after(()=>services.drain());
  const f=seed(store.db,{render:false,owner:kernel.projectId});
+ // Lexer-only corrupt-row tests keep their independent raw cells. The real
+ // kernel edit path uses the current TEST asset representation over real bytes.
+ for(const asset of f.assets){writeFileSync(path.join(store.projectDir,asset.relativePath),asset.mimeType==='image/jpeg'?imageBytes:videoBytes);store.put('assets',asset);}
  return {store,services,f};
 }
 

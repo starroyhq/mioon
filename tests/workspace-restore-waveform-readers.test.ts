@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID,createHash} from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
+import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
 import fsPromises from 'node:fs/promises';
 import childProcess from 'node:child_process';
 import http from 'node:http';
@@ -17,20 +20,26 @@ import type { BinaryLike } from 'crypto';
 
 const at='2026-10-12T00:00:00.000Z',sha=(value: Buffer<ArrayBuffer>|BinaryLike)=>createHash('sha256').update(value).digest('hex');
 const snapshot=(db: DatabaseSync)=>JSON.stringify(currentSnapshot(db));
-const rowBytes=(row: { cacheKey: unknown; projectId: unknown; sourceSha256: unknown; algorithm: unknown; status: unknown; attemptId: unknown; data: unknown; reservedBytes?: number; })=>Buffer.byteLength(JSON.stringify({cacheKey:row.cacheKey,projectId:row.projectId,sourceSha256:row.sourceSha256,algorithm:row.algorithm,status:row.status,attemptId:row.attemptId,data:row.data}));
+const rowBytes=(row: { cacheKey: unknown; projectId: unknown; sourceFingerprint: unknown; algorithm: unknown; status: unknown; attemptId: unknown; data: unknown; reservedBytes?: number; })=>Buffer.byteLength(JSON.stringify({cacheKey:row.cacheKey,projectId:row.projectId,sourceFingerprint:row.sourceFingerprint,algorithm:row.algorithm,status:row.status,attemptId:row.attemptId,data:row.data}));
 function fixture(t: test.TestContext){
  const native=kernelFixture(t,'Saved reader'),foreign=kernelFixture(t,'Foreign reader');
  const db=native.store.db;
  const projectId=native.projectId,otherProjectId=foreign.projectId;
- const id=randomUUID(),asset={id,projectId,name:'Historical source.wav',mimeType:'audio/wav',duration:1,hasAudio:true,sizeBytes:64,sha256:'a'.repeat(64),relativePath:`media/${id}.wav`,provenance:'user-import'};
- db.prepare('INSERT INTO assets VALUES(?,?,?)').run(id,projectId,JSON.stringify(asset));return {db,store:native.store,projectId,otherProjectId,asset,input:{projectId,assetId:id}};
+ const id=randomUUID(),bytes=Buffer.alloc(64);bytes.write('RIFF');bytes.writeUInt32LE(56,4);bytes.write('WAVEfmt ',8);bytes.writeUInt32LE(16,16);bytes.writeUInt16LE(1,20);bytes.writeUInt16LE(1,22);bytes.writeUInt32LE(48000,24);bytes.writeUInt32LE(96000,28);bytes.writeUInt16LE(2,32);bytes.writeUInt16LE(16,34);bytes.write('data',36);bytes.writeUInt32LE(20,40);
+ const fixtureAsset={id,projectId,name:'Saved source.wav',mimeType:'audio/wav',duration:1,hasAudio:true,sizeBytes:bytes.length,sha256:sha(bytes),relativePath:`media/${id}.wav`,provenance:'user-import'};
+ fs.writeFileSync(path.join(native.store.projectDir,fixtureAsset.relativePath),bytes);native.store.put('assets',fixtureAsset);
+ const persisted=native.store.get('assets',id);assert.ok(persisted&&typeof persisted==='object'&&!Array.isArray(persisted));
+ const {relativePath:_fixturePath,...fields}=fixtureAsset;
+ const asset={...fields,reference:mediaReferenceSchema.parse((persisted as Record<string,unknown>).reference),referenceRevision:1};
+ const sourceFingerprint=mediaFingerprintToken(asset.reference);
+ return {db,store:native.store,projectId,otherProjectId,asset,sourceFingerprint,input:{projectId,assetId:id}};
 }
 function seed(f: Awaited<ReturnType<typeof fixture>>,status='ready',patch={}){
  const peaks=Array.from({length:100},(_,i)=>i<50?6553:52428),peakBytes=Buffer.alloc(peaks.length*2);peaks.forEach((value,i)=>peakBytes.writeUInt16LE(value,i*2));
  const data=status==='ready'?{duration:f.asset.duration,sourceFrames:sourceFrameCount(f.asset.duration),sampleFrames:48000,peaks,peakDigest:sha(peakBytes),clipped:false,channels:2,source:{mimeType:f.asset.mimeType,hasAudio:f.asset.hasAudio,sizeBytes:f.asset.sizeBytes}}:
  status==='queued'||status==='running'?{}:{reason:{code:'WAVEFORM_INTERRUPTED',message:'Waveform preparation was interrupted. Request an explicit retry to restart it.'}};
- const row: {cacheKey:string;projectId:string;sourceSha256:string;algorithm:string;status:string;attemptId:string;data:typeof data;bytes?:number;reservedBytes:number}={cacheKey:sha(JSON.stringify([f.projectId,f.asset.sha256,WAVEFORM_ALGORITHM])),projectId:f.projectId,sourceSha256:f.asset.sha256,algorithm:WAVEFORM_ALGORITHM,status,attemptId:randomUUID(),data,reservedBytes:['queued','running'].includes(status)?WAVEFORM_CACHE_LIMITS.recordBytes:0,...patch};(row as unknown as {bytes:number}).bytes=rowBytes(row);
- f.db.prepare('INSERT INTO waveform_cache(cacheKey,projectId,sourceSha256,algorithm,status,attemptId,data,bytes,reservedBytes) VALUES(?,?,?,?,?,?,?,?,?)').run(row.cacheKey,row.projectId,row.sourceSha256,row.algorithm,row.status,row.attemptId,JSON.stringify(row.data),row.bytes!,row.reservedBytes);return row;
+ const row: {cacheKey:string;projectId:string;sourceFingerprint:string;algorithm:string;status:string;attemptId:string;data:typeof data;bytes?:number;reservedBytes:number}={cacheKey:sha(JSON.stringify([f.projectId,f.sourceFingerprint,WAVEFORM_ALGORITHM])),projectId:f.projectId,sourceFingerprint:f.sourceFingerprint,algorithm:WAVEFORM_ALGORITHM,status,attemptId:randomUUID(),data,reservedBytes:['queued','running'].includes(status)?WAVEFORM_CACHE_LIMITS.recordBytes:0,...patch};(row as unknown as {bytes:number}).bytes=rowBytes(row);
+ f.db.prepare('INSERT INTO waveform_cache(cacheKey,projectId,sourceFingerprint,algorithm,status,attemptId,data,bytes,reservedBytes) VALUES(?,?,?,?,?,?,?,?,?)').run(row.cacheKey,row.projectId,row.sourceFingerprint,row.algorithm,row.status,row.attemptId,JSON.stringify(row.data),row.bytes!,row.reservedBytes);return row;
 }
 function guarded(db: DatabaseSync){
  const returned: unknown[]=[];
@@ -100,7 +109,7 @@ for(const damage of ['digest','oversized-cache','source-metadata'] as const)test
 });
 
 test('over-capacity captured waveform cache returns unavailable without LRU eviction',t=>{
- const f=fixture(t);seed(f);for(let index=0;index<64;index++)seed(f,'interrupted',{cacheKey:sha(String(index)),sourceSha256:sha(`source-${index}`)});
+ const f=fixture(t);seed(f);for(let index=0;index<64;index++)seed(f,'interrupted',{cacheKey:sha(String(index)),sourceFingerprint:sha(`source-${index}`)});
  const before=snapshot(f.db),result=(createWaveformHistoryReaders as unknown as (store:Parameters<typeof createWaveformHistoryReaders>[0],options?:unknown)=>import('./helpers/strict-workspace-boundary-types.ts').WaveformHistory)(guarded(f.db).store).handlers['asset.waveform.get'](f.input);
  assert.equal(result.status,'error');assert.equal(result.reason!.code,'WAVEFORM_CACHE_UNAVAILABLE');assert.equal(snapshot(f.db),before);
 });

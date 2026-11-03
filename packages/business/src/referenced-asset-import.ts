@@ -66,11 +66,21 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
     };
     const execute = async (): Promise<unknown> => {
       const signal = context.signal ?? options.signal, origin = importOrigin;
+      let admittedProject: {createdAt: unknown} | undefined;
       const fence = (): void => {
         checkpoint(signal);
         try {assertProjectStore(store); options.beforeEffect(); origin?.beforeEffect();}
         catch (error) {effectFailure = error; throw error;}
         if (!isProjectStore(store) || store.projectId !== input.projectId) throw new AppError('NOT_FOUND', '找不到项目', 404);
+        // Recheck the physical row after native awaits: a lookup by SQL id
+        // alone does not prove that its JSON still belongs to the admitted owner.
+        const row: unknown = store.db.prepare("SELECT id,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 16384 THEN data END AS data FROM projects WHERE id=?").get(input.projectId);
+        if (row === undefined && !admittedProject) options.required('projects', input.projectId);
+        let project: unknown;
+        try {project = object(row) && typeof row.data === 'string' ? JSON.parse(row.data) as unknown : undefined;} catch {project = undefined;}
+        if (!object(row) || !object(project) || row.id !== input.projectId || project.id !== row.id ||
+            admittedProject && project.createdAt !== admittedProject.createdAt) throw new AppError('INVALID_MEDIA', '素材或项目身份已改变', 409);
+        admittedProject ??= {createdAt: project.createdAt};
         options.required('projects', input.projectId);
       };
       fence();
@@ -170,7 +180,7 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
         // whose path its older narrow projector would merely remove.
         return origin?.importHandle ? toAssetMediaDto(value) : value;
       });
-      receipt.phase = 'registered';
+      fence(); receipt.phase = 'registered';
       writePrivateFileAtomic(receiptFile, JSON.stringify(receipt), {root: receipts, maxBytes: 32 * 1024});
       return result;
     };

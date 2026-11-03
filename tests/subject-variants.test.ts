@@ -24,6 +24,7 @@ import {collectProject,packageDocumentBytes,buildManifest,createProjectFromDocum
 import {writeProjectPackage,readProjectPackage} from '../packages/business/src/project-package/container.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {readProjectState,changeMarks} from './helpers/project-state.ts';
+import {legacyPackageViewForReferencedStore} from './helpers/project-package-fixture.ts';
 import {setImageResultListener} from '../packages/business/src/images.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import {subjectVariantPrompt,subjectVariantImageName} from '../packages/business/src/subject-variant-prompts.ts';
@@ -209,7 +210,7 @@ test('a project container leaves hidden variant versions behind and preserves vi
  const hidden=await f.create([angle('left'),angle('right')]);await f.submit(hidden);const done=await f.settled(hidden);
  await f.call('subject.variants.undo',{projectId:f.projectId,batchId:hidden.id,expectedRevision:done.revision,requestId:randomUUID()});
  const visible=await f.versions();assert.deepEqual(visible.map(version=>version.number),[1,2]);
- const options={media:'all' as const,includeExports:false},collected=collectProject(f.store as never,f.projectId,options);
+ const options={media:'all' as const,includeExports:false},collected=collectProject(legacyPackageViewForReferencedStore(f.store),f.projectId,options);
  assert.deepEqual(collected.missing,[]);
  assert.deepEqual(collected.document.subjectVersions.map(row=>row.id),visible.map(version=>version.id),'versions of the undone batch stay behind');
  const work=mkdtempSync(path.join(tmpdir(),'mioon-subject-variant-package-')),targetRoot=mkdtempSync(path.join(tmpdir(),'mioon-subject-variant-target-')),staging=mkdtempSync(path.join(tmpdir(),'mioon-subject-variant-stage-')),file=path.join(work,'variants.mioon');

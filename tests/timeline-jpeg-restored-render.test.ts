@@ -1,3 +1,5 @@
+import {importNativeQaAsset,nativeQaAssetFile} from './helpers/native-local-qa-fixture.ts';
+import {assetMediaRecordSchema,type AssetMediaRecord} from '../packages/contracts/src/asset-media.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, readFile, readdir, rm} from 'node:fs/promises';
@@ -15,7 +17,7 @@ import {greyJfif,jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.ts'
 import {png, sha, imageColour, stamp} from './helpers/timeline-image-fixtures.ts';
 import type {DatabaseSync} from 'node:sqlite';
 interface ExportRowView {id: string; requestId: string; snapshot: Record<string, unknown>; assetId: string; status?: string; [key: string]: unknown}
-interface AssetRowView {id: string; relativePath: string; sha256: string; [key: string]: unknown}
+type AssetRowView=AssetMediaRecord;
 interface RenderResultView {id: string; requestId: string; snapshot: {colourPlan: {profileId?: string}; [key: string]: unknown}; [key: string]: unknown}
 interface TimelineRowView {id: string; projectId: string; revision: number; tracks: {id: string; kind?: string; [key: string]: unknown}[]; clips: {id: string; trackId: string; assetId: string; startFrame: number; durationFrames: number; [key: string]: unknown}[]; [key: string]: unknown}
 interface ExecuteResult {completed: ExportRowView; persisted: unknown; asset: AssetRowView; file: string}
@@ -34,10 +36,8 @@ function assertRetainedRows(db: DatabaseSync, captured: Record<string, Record<st
   }
 }
 
-async function assertSourceBytes(root: string, files: Map<string, Uint8Array>): Promise<void> {
-  for (const [relativePath, bytes] of files) {
-    assert.deepEqual(await readFile(path.join(root, relativePath)), bytes, relativePath);
-  }
+async function assertSourceBytes(store:ReturnType<typeof openServerProject>,files:Map<string,Uint8Array>):Promise<void>{
+  for(const [assetId,bytes]of files){const resolved=await nativeQaAssetFile(store,assetId);assert.deepEqual(await readFile(resolved.file),bytes,assetId);}
 }
 
 async function executeQueued(store: ReturnType<typeof openServerProject>, services: ReturnType<typeof createServices>, accepted: RenderResultView): Promise<ExecuteResult> {
@@ -49,8 +49,8 @@ async function executeQueued(store: ReturnType<typeof openServerProject>, servic
     const completed = await services.call('export.get', {exportId: accepted.id}) as ExportRowView;
     assert.equal(completed.status, 'succeeded', JSON.stringify(completed['error']));
     assert.deepEqual(completed.snapshot, accepted.snapshot);
-    const asset = store.get('assets', completed.assetId) as AssetRowView;
-    const file = path.join(store.root, asset.relativePath);
+    const rawAsset=store.get('assets',completed.assetId);assert.ok(rawAsset&&typeof rawAsset==='object'&&'url'in rawAsset);const {url:_url,...record}=rawAsset;const asset=assetMediaRecordSchema.parse(record);
+    assert.deepEqual(asset.producer,{kind:'export',id:completed.id});const resolved=await nativeQaAssetFile(store,asset.id),file=resolved.file;assert.match(resolved.projectRelativeFile,/^media\/[A-Za-z0-9._-]+\.mp4$/u);assert.equal(resolved.bytes,asset.sizeBytes);
     assert.equal(sha(await readFile(file)), asset.sha256);
     return {completed, persisted: store.get('exports', completed.id), asset, file};
   } finally {
@@ -123,16 +123,16 @@ test('cold current kernel reopen rerenders mixed JFIF/PNG/video/subtitle with ex
     let timeline = await services.call('timeline.format.set', {projectId,
       expectedProjectRevision: project.revision, expectedRevision: 0,
       requestId: randomUUID(), presetId: 'square_720'}) as TimelineRowView;
-    const video = await services.call('asset.import', {projectId, name: 'Video.mp4',
-      mimeType: 'video/mp4', dataBase64: videoBytes.toString('base64')}) as AssetRowView;
-    const image = await services.call('asset.import', {projectId, name: 'Still.jpg',
-      mimeType: 'image/jpeg', dataBase64: imageBytes.toString('base64')}) as AssetRowView;
+    const video = await importNativeQaAsset({store,services}, {projectId, name: 'Video.mp4',
+      mimeType: 'video/mp4', dataBase64: videoBytes.toString('base64')});
+    const image = await importNativeQaAsset({store,services}, {projectId, name: 'Still.jpg',
+      mimeType: 'image/jpeg', dataBase64: imageBytes.toString('base64')});
     const motion = await services.call('timeline.colour.source.inspect', {projectId, assetId: video.id}) as {status: string; streamIndex: number; evidence: {range?: string}};
     const picture = await services.call('timeline.colour.jpeg.inspect', {projectId, assetId: image.id}) as {status: string; evidence: Record<string, unknown>};
     assert.equal(motion.status, 'compatible');
     assert.equal(motion.evidence.range, 'limited');
     assert.equal(picture.status, 'needs_interpretation');
-    const overlay=await services.call('asset.import',{projectId,name:'Overlay.png',mimeType:'image/png',dataBase64:overlayBytes.toString('base64')}) as AssetRowView;
+    const overlay=await importNativeQaAsset({store,services},{projectId,name:'Overlay.png',mimeType:'image/png',dataBase64:overlayBytes.toString('base64')});
     const overlayInspection=await services.call('timeline.colour.image.inspect',{projectId,assetId:overlay.id}) as {evidence: Record<string, unknown>};
     const cube=Buffer.from('LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n');
     const lut=await services.call('lut.import',{projectId,requestId:randomUUID(),name:'Retained.cube',dataBase64:cube.toString('base64')}) as {resource: {id: string}};
@@ -161,16 +161,16 @@ test('cold current kernel reopen rerenders mixed JFIF/PNG/video/subtitle with ex
     assert.deepEqual(held.snapshot,ordinary.snapshot);
     const heldRecord=store.get('exports',held.id)! as ExportRowView;
     const captured = rawRows(store.db);
-    const sourceFiles = new Map([[String((store.get('assets', video.id) as AssetRowView).relativePath), videoBytes],
-      [String((store.get('assets', image.id) as AssetRowView).relativePath), imageBytes],
-      [String((store.get('assets', overlay.id) as AssetRowView).relativePath), overlayBytes],
-      [baseline.asset.relativePath, await readFile(baseline.file)]]);
+    const sourceFiles = new Map([[video.id, videoBytes],
+      [image.id, imageBytes],
+      [overlay.id, overlayBytes],
+      [baseline.asset.id, await readFile(baseline.file)]]);
     await close();
     store=openServerProject(dataDir,projectId);
     services = createServices(store, new Map());
     assert.doesNotThrow(()=>validateProjectRetainedRows(store!));
     assertRetainedRows(store.db, captured);
-    await assertSourceBytes(restored, sourceFiles);
+    await assertSourceBytes(store, sourceFiles);
     assert.deepEqual(await services.call('timeline.get', {projectId}), timeline);
     const listed=await services.call('lut.list',{projectId}) as {items: unknown[]};assert.equal(listed.items.length,1);
     const retainedLut=await services.call('lut.inspect',{projectId,lutId:lut.resource.id}) as {resource: unknown; integrity: string};assert.deepEqual(retainedLut.resource,lut.resource);assert.equal(retainedLut.integrity,'verified');
@@ -196,7 +196,7 @@ test('cold current kernel reopen rerenders mixed JFIF/PNG/video/subtitle with ex
     assert.equal(stream.color_range, 'tv');
     assert.deepEqual(store.get('exports', held.id), heldRecord, 'prior completed export never changes');
     assertRetainedRows(store.db, captured);
-    await assertSourceBytes(restored, sourceFiles);
+    await assertSourceBytes(store, sourceFiles);
     assert.doesNotThrow(()=>validateProjectRetainedRows(store!),'valid after actual rerender');
     assert.equal((await readdir(path.join(restored, 'media'))).some(name =>
       name.startsWith('.timeline-render-') || name.endsWith('.part.mp4')), false);
@@ -206,8 +206,8 @@ test('cold current kernel reopen rerenders mixed JFIF/PNG/video/subtitle with ex
     assert.doesNotThrow(()=>validateProjectRetainedRows(store!),'valid after cold kernel reopen');
     assertRetainedRows(store.db, captured);
     assert.deepEqual(store.get('exports', rerendered.completed.id), rerendered.persisted);
-    await assertSourceBytes(restored, sourceFiles);
-    await assertSourceBytes(source, sourceFiles);
+    await assertSourceBytes(store, sourceFiles);
+    await assertSourceBytes(store, sourceFiles);
     t.diagnostic(`decoded RGB SHA-256: ${sha(restoredRgb)}; bytes: ${restoredRgb.length}; frames: 6; output: 720x720`);
     t.diagnostic(`ordinary MP4 SHA-256: ${baseline.asset.sha256}; restored MP4 SHA-256: ${rerendered.asset.sha256}`);
   });

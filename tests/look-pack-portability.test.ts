@@ -10,11 +10,12 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import { createServices } from '../packages/business/src/services.ts';
 import { startWorker } from '../packages/business/src/jobs.ts';
 import { run } from '../packages/business/src/media-runtime.ts';
+import {assetMediaDtoSchema,assetMediaPrepareResponseSchema} from '../packages/contracts/src/asset-media.ts';
 
 test('project-owned Look survives removed source file, cold reopen and actual render', {timeout:120000}, async t => {
   const base = await mkdtemp(path.join(tmpdir(), 'mioon-look-portable-')), root = path.join(base, 'workspace');
@@ -24,7 +25,6 @@ test('project-owned Look survives removed source file, cold reopen and actual re
   await writeFile(localPack, original, { flag: 'wx', mode: 0o600 });
   await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-n', '-f', 'lavfi', '-i', 'color=c=0x18bf57:s=64x48:r=30:d=1', '-an', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-color_range', 'tv', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709', source], { timeout: 30000, maxStdoutBytes: 0 });
   interface ProjectShape {id: string}
-  interface AssetShape {id: string; sha256: string}
   interface TimelineShape {revision: number; id?: string; tracks: {id: string}[]; clips: {id: string}[]}
   interface ResourceShape {id: string; sha256: string; profile: unknown}
   interface ImportedShape {resource: ResourceShape}
@@ -34,7 +34,12 @@ test('project-owned Look survives removed source file, cold reopen and actual re
   let project!: ProjectShape, input!: Record<string, unknown>, imported!: ImportedShape, inspection!: InspectionShape, timeline!: TimelineShape;
   try {
     project = await services.call('project.create', { name: 'Look pack portability' }) as unknown as ProjectShape;
-    const asset = await services.call('asset.import', { projectId: project.id, name: 'SDR.mp4', mimeType: 'video/mp4', dataBase64: (await readFile(source)).toString('base64') }) as unknown as AssetShape;
+    const sourceBytes=await readFile(source);
+    const importedAsset=assetMediaDtoSchema.parse(await services.call('asset.import',{projectId:project.id,name:'SDR.mp4',mimeType:'video/mp4',dataBase64:sourceBytes.toString('base64')}));
+    // Colour declarations bind the whole-file hash, never a sampled import DTO.
+    const prepared=assetMediaPrepareResponseSchema.parse(await services.call('asset.media.prepare',{projectId:project.id,assets:[{assetId:importedAsset.id,referenceRevision:importedAsset.referenceRevision}],purpose:'timeline'}));
+    assert.equal(prepared.assets.length,1);const asset=prepared.assets[0]!;assert.equal(asset.id,importedAsset.id);assert.equal(asset.projectId,project.id);
+    assert.equal(asset.hashState,'full');assert.equal(asset.sha256,createHash('sha256').update(sourceBytes).digest('hex'));
     input = { projectId: project.id, name: path.basename(localPack), requestId: randomUUID(), dataBase64: (await readFile(localPack)).toString('base64') };
     imported = await services.call('lut.import', input) as unknown as ImportedShape;
     inspection = await services.call('lut.look.inspect', { projectId: project.id, lutId: imported.resource.id }) as unknown as InspectionShape; assert.equal(inspection.status, 'verified');

@@ -20,6 +20,7 @@ import {openStore} from '../packages/business/src/project-file/test-store.ts';
 
 import {createServices} from '../packages/business/src/services.ts';
 import {readProjectState,changeMarks} from './helpers/project-state.ts';
+import {legacyPackageViewForReferencedStore} from './helpers/project-package-fixture.ts';
 
 
 
@@ -258,7 +259,7 @@ test('project containers carry previs scenes without receipts or thumbnails; cur
  const f=await fixture(t),image=await f.asset(),spare=await f.asset({name:'unused.png'});
  const node=await f.save(await f.create({label:'雨夜街口'}),scene({keyframes:[keyframe('k1',[image.id]),keyframe('k2')],activeKeyframeId:'k1'}));
  await f.thumbnail(node,'card');
- const options={media:'used' as const,includeExports:false},collected=collectProject(f.store as never,f.projectId,options);
+ const options={media:'used' as const,includeExports:false},collected=collectProject(legacyPackageViewForReferencedStore(f.store),f.projectId,options);
  assert.deepEqual(collected.document.assets.map(asset=>asset.id),[image.id],'an exported keyframe image counts as used');
  assert.notEqual(spare.id,image.id);
  const work=mkdtempSync(path.join(tmpdir(),'mioon-previs-package-')),targetRoot=mkdtempSync(path.join(tmpdir(),'mioon-previs-target-')),staging=mkdtempSync(path.join(tmpdir(),'mioon-previs-stage-')),file=path.join(work,'previs.mioon');
