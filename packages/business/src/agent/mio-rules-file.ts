@@ -3,6 +3,8 @@ import {closeSync, constants, fstatSync, fsyncSync, linkSync, lstatSync, openSyn
   renameSync, unlinkSync, writeSync, type BigIntStats} from 'node:fs';
 import path from 'node:path';
 import {rulesTextProblem} from '../../../contracts/src/mio-rules.ts';
+import {isAppLibraryHeld} from '../app-db/connection.ts';
+import {isProjectFileHeld} from '../project-file/held-files.ts';
 
 export const RULES_FILE_NAME = 'AGENTS.md' as const;
 export const RULES_FILE_MAX_BYTES = 8192;
@@ -68,11 +70,17 @@ function checkDirectory(projectDir: string, expected: RulesFileIdentity, exact =
   const current = directory(projectDir);
   if (!(exact ? sameVersion(current, expected) : sameNode(current, expected))) throw new RulesFailure('changed');
 }
+function checkUnheld(info: BigIntStats): void {
+  const file = {dev: String(info.dev), ino: String(info.ino)};
+  // Closing any descriptor of a held SQLite inode drops this process's POSIX locks.
+  if (isProjectFileHeld(file) || isAppLibraryHeld(file)) throw new RulesFailure('unsafe_file');
+}
 function readRegular(file: string, options: RulesFileReadOptions, validateText = true, maxBytes = RULES_FILE_MAX_BYTES): {text: string; hash: string; identity: RulesFileIdentity} | null {
   checkSignal(options.signal);
   const before = stat(file);
   if (!before) return null;
   if (!before.isFile() || before.isSymbolicLink()) throw new RulesFailure('unsafe_file');
+  checkUnheld(before);
   const expected = identity(before);
   options.onPhase?.('file_checked'); checkSignal(options.signal);
   // NONBLOCK also makes a regular-file -> FIFO race fail without hanging on open.
@@ -124,16 +132,21 @@ function readRegular(file: string, options: RulesFileReadOptions, validateText =
 
 /** Reads only projectDir/AGENTS.md; neither parent discovery nor arbitrary paths exist. */
 export function readRulesFile(projectDir: string, options: RulesFileReadOptions = {}): RulesFileRead {
-  try {
-    checkSignal(options.signal);
-    const owner = directory(projectDir);
-    options.onPhase?.('directory_checked'); checkSignal(options.signal);
-    const file = readRegular(path.join(projectDir, RULES_FILE_NAME), options);
-    checkDirectory(projectDir, owner, true);
-    return file ? {status: 'safe', ...file, directoryIdentity: owner} : {status: 'missing', directoryIdentity: owner};
-  } catch (error) {
-    return {status: 'error', code: error instanceof RulesFailure ? error.code
-      : codeOf(error) === 'ELOOP' ? 'unsafe_file' : 'io'};
+  // A journal or unrelated file can change the directory during a safe read.
+  // Make at most three complete snapshot attempts, retaining every file check.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      checkSignal(options.signal);
+      const owner = directory(projectDir);
+      options.onPhase?.('directory_checked'); checkSignal(options.signal);
+      const file = readRegular(path.join(projectDir, RULES_FILE_NAME), options);
+      checkDirectory(projectDir, owner, true);
+      return file ? {status: 'safe', ...file, directoryIdentity: owner} : {status: 'missing', directoryIdentity: owner};
+    } catch (error) {
+      const code = error instanceof RulesFailure ? error.code : codeOf(error) === 'ELOOP' ? 'unsafe_file' : 'io';
+      if (code === 'changed' && attempt < 3) continue;
+      return {status: 'error', code};
+    }
   }
 }
 
@@ -250,6 +263,7 @@ export function publishRulesFile(projectDir: string, input: RulesPublicationInpu
       const current = stat(target);
       if (!current) throw new RulesFailure('before_conflict');
       if (!current.isFile() || current.isSymbolicLink()) throw new RulesFailure('unsafe_file');
+      checkUnheld(current);
       renameSync(target, backup);
       input.afterEffect?.('original_renamed', evidence); checkSignal(input.signal);
       const captureStart = stat(backup);
