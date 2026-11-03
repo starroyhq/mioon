@@ -86,7 +86,7 @@ const forbiddenOperations=[
  'workspace.settings.get','workspace.settings.set',
  'project.delete','project.summary.list','agent.authorization.list','agent.authorization.grant','agent.authorization.revoke','lut.import','project.create','project.list','project.get','asset.import',
  'project.backup.list','project.backup.inspect','project.backup.restore','project.backup.status',
- 'project.version.list','project.version.save','project.version.preview',
+ 'project.version.list','project.version.save','project.version.preview','project.version.restore',
  'export.cancel','export.output.get','task.disposition.markFailed','task.disposition.archiveCompleted',
  'job.retry','job.cancel','job.reconcile','frame.task.cancelQueued','frame.task.recoverResult','scene.task.cancel','scene.cuts.save','scene.shots.undo','image.task.cancelQueued','image.task.recoverResult','image.task.observeRemote','image.review.prepare','image.review.get','image.review.list','timeline.get','timeline.undo','timeline.redo',
  // Angle and lighting batches are user-driven for now; Mio can still read the

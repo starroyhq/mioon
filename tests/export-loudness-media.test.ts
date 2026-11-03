@@ -2,8 +2,6 @@ import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import {waitForProjectCover} from './helpers/project-cover-ready.ts';
 import type {TypedClient} from './helpers/strict-service-responses.ts';
-import {assetMediaDtoSchema} from '../packages/contracts/src/asset-media.ts';
-import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,6 +26,8 @@ import {withProbePermit} from '../packages/business/src/media-probe.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createExportLoudnessDecoder} from '../packages/business/src/export-loudness-decoder.ts';
 import {floatSnapshotSha256} from '../packages/business/src/timeline-float-outcome.ts';
+import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
+import {assetMediaDtoSchema} from '../packages/contracts/src/asset-media.ts';
 import {schemaObjects,projectDirFor} from './helpers/project-database.ts';
 
 // These bounded real-media fixtures run only in the parent-owned serial lane.
@@ -151,11 +151,11 @@ async function exported(t: TestContext, {name, silent = false}: {name: string; s
   // A later editable revision is deliberately outside this file observation.
   timeline = await client.rpc('timeline.track.update', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
     trackId: timeline.tracks.find(track => track.kind === 'audio')!.id, patch: {muted: true}}) as TimelineRow;
-  // Fixture-owned cover publication must finish before a no-effects baseline.
-  // The unchanged source makes later queued refreshes reuse this cache pair.
-  await waitForProjectCover({client:client as TypedClient,url:backend.url,token,projectId:project.id,
-    cacheDir:path.join(root,'cache','projects',project.id),source:{assetId:pixels.id,mimeType:'image/png',
-      sourceFingerprint:mediaFingerprintToken(assetMediaDtoSchema.parse(pixels).fingerprint)}});
+  // Finish the fixture's delayed cover publication before the complete
+  // no-observation-writes baseline, including the cache pair itself.
+  await waitForProjectCover({client: client as TypedClient, url: backend.url, token, projectId: project.id,
+    cacheDir: path.join(root, 'cache', 'projects', project.id),
+    source: {assetId: pixels.id, mimeType: 'image/png', sourceFingerprint: mediaFingerprintToken(assetMediaDtoSchema.parse(pixels).fingerprint)}});
   // While the server runs, the database is read on its own connection.
   const use = <T>(fn: (db: DatabaseSync) => T): T => inspect!(project.id, fn);
   const rows = (): Record<string, unknown[]> => use(db => Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').map(({name}) =>

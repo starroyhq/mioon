@@ -1,6 +1,7 @@
 import {AppError} from '../../../contracts/src/app-error.ts';
 import type {ProjectVersionDifference} from '../../../contracts/src/project-version-operations.ts';
 import {agentTaskChangeSchema} from '../../../contracts/src/agent-tasks-v2.ts';
+import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
 import {CROSS_FILE_RELATIONS} from '../project-file/cross-file/relations.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
@@ -22,6 +23,17 @@ const targetKinds: Record<Table, string> = {projects: 'project', assets: 'asset'
 const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
 const token = (table: Table, key: string) => `${table}\0${key}`;
+export interface RestorePlan {readonly changes: ProjectVersionDifference[]; readonly document: ProjectDocument}
+const restorePlans = new WeakMap<RestorePlan, {store: ProjectStore; current: ProjectDocument}>();
+/** The execution capability is local to a reviewed plan on its original store.
+ * HTTP callers cannot construct one by posting a document or a diff. */
+export function restorePlanCurrent(store: ProjectStore, plan: RestorePlan): ProjectDocument {
+  const context = restorePlans.get(plan);
+  if (!isProjectStore(store) || !store.db.isTransaction || context?.store !== store) throw new TypeError('Restoration requires a plan from this live store inside its transaction');
+  const sequence = store.db.prepare('SELECT contentSequence FROM project.project_file').get()?.contentSequence;
+  if (sequence !== context.current.evidence.contentSequence) fail('PROJECT_VERSION_BASELINE_CHANGED', '项目内容已改变，请重新预览。');
+  return context.current;
+}
 function fail(code: string, message: string, details?: Record<string, unknown>): never {
   throw new AppError(code, message, code === 'PROJECT_ID_MISMATCH' ? 400 : code.endsWith('_INVALID') ? 422 : 409, details);
 }
@@ -31,6 +43,37 @@ function data(row: SnapshotRow): Record<string, unknown> {
   const result: unknown = JSON.parse(row.data);
   if (!object(result)) fail('PROJECT_VERSION_SNAPSHOT_INVALID', '内容行不是合法对象。');
   return result;
+}
+/** Subject revisions may have real numbering gaps. Bound their cumulative
+ * traversal per restoration, independently of the snapshot's byte limit. */
+export const PROJECT_VERSION_RESTORE_MAX_SUBJECT_STEPS = 10_000;
+export interface SubjectRestoreRevision {readonly revision: number; readonly headVersionId: SnapshotRow[string]}
+export function planSubjectRestoreRevisions(saved: SnapshotRow, before: SnapshotRow, versions: readonly SnapshotRow[], budget: number): readonly SubjectRestoreRevision[] {
+  if(!Number.isSafeInteger(budget)||budget<0||budget>PROJECT_VERSION_RESTORE_MAX_SUBJECT_STEPS)throw new TypeError('Invalid subject restoration budget');
+  const relevant=versions.filter(row=>row.subjectId===saved.id),byNumber=new Map(relevant.map(row=>[Number(row.number),row]));
+  const ordinary=relevant.filter(row=>!Object.hasOwn(data(row),'variant'));
+  let revision=Number(before.revision),head=before.headVersionId;
+  if(!Number.isSafeInteger(revision)||revision>=Number.MAX_SAFE_INTEGER)fail('PROJECT_VERSION_REVISION_LIMIT','恢复目标修订已达到安全上限。');
+  const required=relevant.reduce((maximum,row)=>Math.max(maximum,Number(row.number)),revision+1);
+  if(required-revision>budget)fail('PROJECT_VERSION_RESTORE_LIMIT','恢复的主体修订推进超过单次执行上限。');
+  const steps: SubjectRestoreRevision[]=[];
+  do{
+    if(steps.length>=budget)fail('PROJECT_VERSION_RESTORE_LIMIT','恢复的主体修订推进超过单次执行上限。');
+    if(revision>=Number.MAX_SAFE_INTEGER)fail('PROJECT_VERSION_REVISION_LIMIT','恢复目标修订已达到安全上限。');
+    const next=revision+1,version=byNumber.get(next);
+    let desiredHead=saved.headVersionId;
+    if(next<required||head===desiredHead){
+      const variant=version&&Object.hasOwn(data(version),'variant');
+      // Retained ordinary heads traverse a gap without inventing a version.
+      const alternate=version&&!variant&&version.id!==head?version:ordinary.find(row=>row.id!==head);
+      if(variant)desiredHead=head;
+      else if(alternate)desiredHead=alternate.id;
+      else fail('PROJECT_VERSION_DEPENDENCY_CONFLICT','主体的保留版本无法按现有修订规则补齐。');
+    }
+    steps.push({revision:next,headVersionId:desiredHead});
+    revision=next;head=desiredHead;
+  }while(revision<required||head!==saved.headVersionId);
+  return steps;
 }
 function semantic(row: SnapshotRow): Record<string, unknown> {
   return Object.fromEntries(Object.entries(row).filter(([name]) => !metadata.has(name)).map(([name, value]) => [name,
@@ -125,7 +168,7 @@ function logicalReferences(table: Table, row: SnapshotRow): {table: Table; id: s
 
 /** Complete diff data only: no content writes, receipt writes, trigger changes
  * or effects. V1-A does not expose executable restoration. */
-export function previewDifferences(store: ProjectStore, saved: ProjectDocument, current: ProjectDocument, mioChangeRowid: number, versionCreatedAt: string): ProjectVersionDifference[] {
+export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, current: ProjectDocument, mioChangeRowid: number, versionCreatedAt: string): RestorePlan {
   if (!isProjectStore(store) || !store.db.isTransaction) throw new TypeError('Preview requires a real project store in its transaction');
   if (saved.projectId !== store.projectId || current.projectId !== store.projectId) fail('PROJECT_ID_MISMATCH', '版本内容不属于此项目。');
   const touched = mioTargets(store, saved, mioChangeRowid, versionCreatedAt);
@@ -137,28 +180,55 @@ export function previewDifferences(store: ProjectStore, saved: ProjectDocument, 
     const finalRows = new Map(now); predicted.set(table, finalRows);
     for (const key of [...new Set([...old.keys(), ...now.keys()])].sort(compare)) {
       if (key.length > 4096) fail('PROJECT_VERSION_PREVIEW_LIMIT', '对象标识超过预览上限，未截断标识。');
-      const before = now.get(key), after = old.get(key), identity = token(table, key);
+      const before = now.get(key), original = old.get(key), identity = token(table, key);
+      let after = original, keptLocation = false;
+      if (table === 'assets' && before && after) {
+        const value = data(before), previous = data(after);
+        if (mediaReferenceSchema.safeParse(value.reference).success && Number.isSafeInteger(value.referenceRevision) && Number(value.referenceRevision) >= 1) {
+          const preserved = {...previous};
+          for (const name of ['reference', 'referenceRevision', 'sha256', 'sizeBytes', 'fingerprint', 'hashState']) {
+            if (Object.hasOwn(value, name)) preserved[name] = value[name]; else delete preserved[name];
+          }
+          keptLocation = canonicalJson(previous) !== canonicalJson(preserved);
+          after = {...after, data: canonicalJson(preserved)};
+        }
+      }
       if (before && after && immutable.has(table) && canonicalJson(before) !== canonicalJson(after)) {
         fail('PROJECT_VERSION_IMMUTABLE_CONFLICT', '同一标识的不可变内容不同，不能生成恢复计划。', {table, key});
       }
       const changed = fields(table, before, after);
-      if (before && after && !changed.length) continue;
+      if (table === 'subjects' && before && after && saved.tables.subject_versions.some(version => version.subjectId === after?.id
+        && Number(version.number) > Number(before.revision))) changed.push('revision');
+      if (before && after && !changed.length && !keptLocation) continue;
       const diff: ProjectVersionDifference = {table, key, fields: changed, action: after ? before ? 'change' : 'add' : 'remove',
         source: source(table, before ?? after!, store.projectId, touched), reason: null};
+      if (keptLocation) {
+        diff.reason = '素材文件定位及其引用修订保持当前，其他可变内容按版本恢复。';
+        if (!changed.length) diff.action = 'keep-current';
+      }
       if (table === 'timelines' && after && source(table, after, store.projectId, touched) === 'mio') diff.source = 'mio';
       if (before && after) {
-        if (immutable.has(table) || identityColumns[table]?.some(column => canonicalJson(before[column]) !== canonicalJson(after[column]))) {
+        const target = after;
+        if (immutable.has(table) || identityColumns[table]?.some(column => canonicalJson(before[column]) !== canonicalJson(target[column]))) {
           fail('PROJECT_VERSION_IMMUTABLE_CONFLICT', '同一标识的不可变内容不同，不能生成恢复计划。', {table, key});
         }
         if (table === 'image_groups') {
           diff.action = 'keep-current'; diff.reason = '图像组的版本链只能向前，当前 headVersionId 和过程选择保持当前。';
         } else if (table === 'subjects' && before.headVersionId !== after.headVersionId
-          && saved.tables.subject_versions.some(version => version.id === after.headVersionId && Object.hasOwn(data(version), 'variant'))) {
+          && saved.tables.subject_versions.some(version => version.id === target.headVersionId && Object.hasOwn(data(version), 'variant'))) {
           diff.action = 'keep-current'; diff.reason = '领域禁止把带变体过程标记的版本设为主体当前头；当前选择保持不变。';
         } else finalRows.set(key, after);
-      } else if (after) finalRows.set(key, after);
+      } else if (after) {
+        if (table === 'image_groups' && after.activeTaskId !== null) {
+          after = {...after, activeTaskId: null};
+          diff.reason = '补回图像组内容身份，不重建或重放本机活动任务。';
+        }
+        finalRows.set(key, after);
+      }
       else if (retained.has(table)) {
         diff.action = 'keep-current'; diff.reason = '快照后新增的受保护结果或只前进对象不能删除，保持当前。';
+      } else if (table === 'timelines' && store.db.prepare('SELECT 1 FROM main.timeline_history WHERE projectId=? LIMIT 1').get(store.projectId)) {
+        diff.action = 'keep-current'; diff.reason = '本机时间线编辑历史仍引用此聚合，保持当前身份和内容，不删除过程历史。';
       } else if (table === 'asset_annotations') {
         const reset = {...before!, tags: '[]', note: ''}; finalRows.set(key, reset);
         diff.fields = fields(table, before, reset); diff.action = diff.fields.length ? 'change' : 'keep-current';
@@ -223,8 +293,33 @@ export function previewDifferences(store: ProjectStore, saved: ProjectDocument, 
   // Both input files can be valid while their retained/additive combination
   // conflicts (for example two binding IDs with one shot/subject/role key).
   // Reject that whole preview rather than describe an impossible restore.
-  try {validateProjectDocument({...current, tables: Object.fromEntries([...predicted].map(([table, rows]) =>
+  const imageGroups=new Map([...predicted.get('image_groups')!.values()].map(row=>[row.id,row]));
+  const imageVersions=new Map([...predicted.get('image_versions')!.values()].map(row=>[row.id,row]));
+  for(const version of imageVersions.values()){
+    const owner=imageGroups.get(version.groupId),head=owner?imageVersions.get(owner.headVersionId):undefined;
+    if(!owner||!head||head.groupId!==version.groupId||Number(head.number)<Number(version.number)||Number(owner.revision)<Number(version.number)||Number(head.number)>Number(owner.revision)) {
+      fail('PROJECT_VERSION_DEPENDENCY_CONFLICT','补回图像版本将超出保持当前的图像组头或修订，无法生成可读取的恢复计划。');
+    }
+  }
+  let document: ProjectDocument;
+  try {document = validateProjectDocument({...current, tables: Object.fromEntries([...predicted].map(([table, rows]) =>
     [table, [...rows.values()].sort((a, b) => compare(rowKey(table, a), rowKey(table, b)))]))});}
   catch {fail('PROJECT_VERSION_DEPENDENCY_CONFLICT', '保留当前内容与快照的引用或唯一性约束冲突，无法生成恢复计划。');}
-  return [...differences.values()].sort((a, b) => compare(a.table, b.table) || compare(a.key, b.key));
+  const changes = [...differences.values()].sort((a, b) => compare(a.table, b.table) || compare(a.key, b.key));
+  let subjectBudget=PROJECT_VERSION_RESTORE_MAX_SUBJECT_STEPS;
+  const currentSubjects=new Map(current.tables.subjects.map(row=>[rowKey('subjects',row),row]));
+  const desiredSubjects=new Map(document.tables.subjects.map(row=>[rowKey('subjects',row),row]));
+  for(const change of changes)if(change.table==='subjects'&&change.action!=='keep-current'){
+    const before=currentSubjects.get(change.key),after=desiredSubjects.get(change.key);
+    if(before&&after)subjectBudget-=planSubjectRestoreRevisions(after,before,document.tables.subject_versions,subjectBudget).length;
+  }
+  for (const change of changes) {Object.freeze(change.fields); Object.freeze(change);}
+  Object.freeze(changes);
+  const plan = Object.freeze({changes, document});
+  restorePlans.set(plan, {store, current});
+  return plan;
+}
+
+export function previewDifferences(store: ProjectStore, saved: ProjectDocument, current: ProjectDocument, mioChangeRowid: number, versionCreatedAt: string): ProjectVersionDifference[] {
+  return buildRestorePlan(store, saved, current, mioChangeRowid, versionCreatedAt).changes;
 }

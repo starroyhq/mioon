@@ -246,6 +246,14 @@ if(serverMode){
     if (expectedError) assert.equal(envelope.error.code, expectedError);
     return envelope;
   }
+  // Establish each real project's one daily-open version before taking any
+  // whole-database baseline; subsequent reads still compare every table.
+  for (const projectId of [IDS.project, IDS.other]) {
+    const opened = await request('project.version.list', {projectId});
+    const data = opened.envelope.data as {projectId: string; versions: {projectId: string; trigger: string}[]};
+    assert.equal(data.projectId, projectId);
+    assert.equal(data.versions.filter(version => version.projectId === projectId && version.trigger === 'daily-open').length, 1);
+  }
   return {root, dataDir,projectRoot, storage, checkpoint, unchanged, request, cli, cliArgs, client, mcp, audit,
     http: async (...args: Parameters<typeof request>) => (await request(...args)).envelope,
     get url() { return url; }, get pid() { return run.child.pid; },

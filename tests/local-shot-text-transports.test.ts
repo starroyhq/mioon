@@ -1,6 +1,6 @@
 import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
 import {CONVERTED_TEMP_TRIGGERS} from '../packages/business/src/project-file/cross-file/converted-triggers.ts';
-import {projectApiPath} from '../packages/contracts/src/project-file.ts';
+import {projectApiPath,projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {RpcEnvelope} from './helpers/strict-timeline-audio-types.ts';
 import type {OrdinaryDeliveryEnvelope} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {LocalShotTextSupported} from '../apps/web/src/local-shot-text-state.ts';
@@ -63,7 +63,15 @@ async function fixture(t: test.TestContext){const parent=await realpath(await mk
  return {root,project,shot,get,call,put,prepare,rows,get url(){return server.url;},file:path.join(created.store.localDir,'local-shot-text-v1.json'),async restart(){await server.close();await start();},
  async dropNextExecution(){const observed=Promise.withResolvers<WireResponse<WireExecution>>();void observed.promise.catch(()=>{});proxy=http.createServer(async(req,res)=>{try{let raw='';req.setEncoding('utf8');for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>256*1024)throw Error('Synthetic request limit');}const result=await request<WireExecution>(server.url,req.url,{method:req.method,input:JSON.parse(raw)});observed.resolve(result);res.destroy();}catch(error){observed.reject(error);res.destroy();}});await new Promise<void>((resolve,reject)=>{proxy.once('error',reject);proxy.listen(0,'127.0.0.1',resolve);});return {url:`http://127.0.0.1:${(proxy.address()! as import('node:net').AddressInfo).port}`,observed:observed.promise};}};
 }
-test('authenticated HTTP raw title/prompt draft is durable without business writes; GET never creates',{timeout:30000},async t=>{const f=await fixture(t),before=f.rows(),initial=await f.get();assert.equal(initial.draft,null);assert.equal(initial.intent,null);await assert.rejects(stat(f.file),{code:'ENOENT'});const raw={title:'',prompt:'invalid-for-save bounded raw prompt\n界🙂'};const saved=await f.call(route(f.project.id)+'/draft',{method:'PUT',input:f.put(initial,raw)});assert.deepEqual(saved.draft!.raw,raw);assert.deepEqual(f.rows(),before);const bytes=await readFile(f.file),info=await stat(f.file);assert.equal(info.mode&0o777,0o600);await f.get();assert.deepEqual(await readFile(f.file),bytes);assert.deepEqual(f.rows(),before);assert.equal((await request(f.url,route(f.project.id)+'/prepare',{method:'POST',input:f.prepare(saved)})).status,400);assert.deepEqual(f.rows(),before);assert.deepEqual(await readFile(f.file),bytes);
+test('authenticated HTTP raw title/prompt draft is durable without business writes; GET never creates',{timeout:30000},async t=>{
+ const f=await fixture(t);
+ // Account for the host's daily version before proving every draft read/write leaves the database identical.
+ const opened=await request<Record<string,unknown>>(f.url,projectRpcPath(f.project.id),{method:'POST',input:{operation:'project.inspect',input:{projectId:f.project.id}}});
+ assert.equal(opened.status,200);assert.equal(opened.body.ok,true);
+ const before=f.rows();
+ assert.equal(before.tables.project_versions.filter(row=>row.projectId===f.project.id&&row.trigger==='daily-open').length,1);
+ assert.equal(before.tables.project_version_capture_marks.filter(row=>row.projectId===f.project.id&&row.kind==='daily-open').length,1);
+ const initial=await f.get();assert.equal(initial.draft,null);assert.equal(initial.intent,null);await assert.rejects(stat(f.file),{code:'ENOENT'});const raw={title:'',prompt:'invalid-for-save bounded raw prompt\n界🙂'};const saved=await f.call(route(f.project.id)+'/draft',{method:'PUT',input:f.put(initial,raw)});assert.deepEqual(saved.draft!.raw,raw);assert.deepEqual(f.rows(),before);const bytes=await readFile(f.file),info=await stat(f.file);assert.equal(info.mode&0o777,0o600);await f.get();assert.deepEqual(await readFile(f.file),bytes);assert.deepEqual(f.rows(),before);assert.equal((await request(f.url,route(f.project.id)+'/prepare',{method:'POST',input:f.prepare(saved)})).status,400);assert.deepEqual(f.rows(),before);assert.deepEqual(await readFile(f.file),bytes);
  for(const options of [{authenticated:false},{headers:{origin:'https://foreign.example'}}]){const denied=await request(f.url,`${route(f.project.id)}?projectId=${f.project.id}&shotId=${f.shot.id}`,options);assert.ok([401,403].includes(denied.status));assert.equal(JSON.stringify(denied.body).includes(raw.prompt),false);}
  for(const suffix of [`${route(f.project.id)}?projectId=${f.project.id}&shotId=${f.shot.id}&extra=1`,`${route(f.project.id)}?projectId=${f.project.id}&shotId=${f.shot.id}&shotId=${f.shot.id}`,`${route(f.project.id)}?projectId=${f.project.id}`])assert.equal((await request(f.url,suffix)).status,400);
 });

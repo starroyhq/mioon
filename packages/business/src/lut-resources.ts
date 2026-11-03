@@ -2,6 +2,7 @@ import {mioTable} from './agent/mio-table-layout.ts';
 import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import {randomUUID} from 'node:crypto';
 import {taskEffectOrigin} from './agent/task-effects-v2.ts';
+import {beginProjectVersionCaptureInside} from './project-versions/capture-port.ts';
 import type {AgentTaskJson} from '../../contracts/src/agent-tasks-v2.ts';
 import {isProxy} from 'node:util/types';
 import type {DatabaseSync} from 'node:sqlite';
@@ -94,6 +95,7 @@ export function createLutResourceServices(store:{db:DatabaseSync},{runtime,signa
     const origin=taskEffectOrigin();origin?.beforeEffect();
     db.exec('BEGIN IMMEDIATE');let committed=false,commitAttempted=false;
     try{
+      const commitVersionCapture=beginProjectVersionCaptureInside(db);
       owned();runtime.assertImportAllowed();project(i.projectId);
       const concurrent=replay(i,digest);
       if(concurrent){commitAttempted=true;db.exec('COMMIT');committed=true;return concurrent;}
@@ -117,6 +119,7 @@ export function createLutResourceServices(store:{db:DatabaseSync},{runtime,signa
       const response={requestId:i.requestId,resource:readLutResource(db,i.projectId,id,true)};
       if(databaseBytes(db)>LUT_RESOURCE_LIMITS.databaseBytes)throw lutResourceError('LUT_CAPACITY',507);
       fault('beforeCommit');owned();runtime.assertImportAllowed();
+      commitVersionCapture();
       if(origin){
         origin.beforeEffect();
         if(origin.importHandle){const updated=db.prepare(`UPDATE ${mioTable(db,'imports')} SET status='imported',resourceId=? WHERE id=? AND projectId=? AND status='importing'`).run(id,origin.importHandle,i.projectId);if(updated.changes!==1)throw Object.assign(Error('Agent import identity changed'),{code:'AGENT_TASK_UNKNOWN_RESULT'});}
