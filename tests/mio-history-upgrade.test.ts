@@ -17,6 +17,8 @@ import {S0_HISTORY_V2_MANIFEST} from '../packages/business/src/project-file/sche
 import {R1_HISTORY_V3_MANIFEST} from '../packages/business/src/project-file/schema/history-v3-manifest.ts';
 import {R1_HISTORY_V4_MANIFEST} from '../packages/business/src/project-file/schema/history-v4-manifest.ts';
 import {R2_HISTORY_V5_MANIFEST} from '../packages/business/src/project-file/schema/history-v5-manifest.ts';
+import {V1B_HISTORY_V6_MANIFEST} from '../packages/business/src/project-file/schema/history-v6-manifest.ts';
+import {gzipSync} from 'node:zlib';
 import {MIO_QUOTA_BYTES_SQL,MIO_QUOTA_ROWS_SQL} from '../packages/business/src/project-file/schema/domains/mio.ts';
 import {buildPreviousHistoryDatabase} from './fixtures/kernel-history-previous-schema.ts';
 import {readSchemaManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
@@ -34,6 +36,7 @@ for (const [version, manifest] of [
   [3, R1_HISTORY_V3_MANIFEST],
   [4, R1_HISTORY_V4_MANIFEST],
   [5, R2_HISTORY_V5_MANIFEST],
+  [6, V1B_HISTORY_V6_MANIFEST],
 ] as const) test(`frozen history${version} fixture matches every whitelisted schema object`, () => {
   const db = new DatabaseSync(':memory:');
   try {
@@ -131,7 +134,7 @@ function assertOld(value: Fixture): void {
   });
 }
 
-function r1Fixture(t:TestContext,version:3|4|5=3):Fixture{
+function r1Fixture(t:TestContext,version:3|4|5|6=3):Fixture{
  const value=fixture(t,{fresh:true,processes:false}),db=new DatabaseSync(value.historyFile);
  try{
   const at='2026-11-02T00:00:00.000Z',conversationId=randomUUID(),runId=randomUUID(),stepId=randomUUID(),requestId=randomUUID(),body=JSON.stringify({text:'原件🙂'.repeat(20000)}),shared=createHash('sha256').update('{}').digest('hex');
@@ -148,12 +151,12 @@ function r1Fixture(t:TestContext,version:3|4|5=3):Fixture{
   db.prepare("UPDATE mio_steps SET status='unknown',currentRequestId=? WHERE id=?").run(requestId,stepId);
   for(const kind of PROCESS_KINDS)db.prepare('INSERT INTO mio_process_target_revisions VALUES(?,?,?,?)').run(value.projectId,kind,randomUUID(),9);
   db.prepare("INSERT INTO idempotency VALUES('outside-mio','stable','request-hash','resource-id')").run();
-  db.exec('COMMIT');assert.deepEqual(readSchemaManifest(db,'main'),version===3?R1_HISTORY_V3_MANIFEST.entries:version===4?R1_HISTORY_V4_MANIFEST.entries:R2_HISTORY_V5_MANIFEST.entries);
+  db.exec('COMMIT');assert.deepEqual(readSchemaManifest(db,'main'),version===3?R1_HISTORY_V3_MANIFEST.entries:version===4?R1_HISTORY_V4_MANIFEST.entries:version===5?R2_HISTORY_V5_MANIFEST.entries:V1B_HISTORY_V6_MANIFEST.entries);
  }finally{db.close();}
  return value;
 }
 function r1Data(db:DatabaseSync):unknown{
- return R1_HISTORY_V3_MANIFEST.entries.filter(e=>e.type==='table'&&e.name.startsWith('mio_')).map(e=>({table:e.name,rows:db.prepare(`SELECT * FROM ${e.name} ORDER BY rowid`).all()}));
+ return R1_HISTORY_V3_MANIFEST.entries.filter(e=>e.type==='table'&&e.name.startsWith('mio_')).map(e=>({table:e.name,rows:db.prepare(`SELECT ${e.name==='history_state'?'singleton,projectId,seenContentSequence':'*'} FROM ${e.name} ORDER BY rowid`).all()}));
 }
 
 function v4Fixture(t:TestContext):Fixture{
@@ -172,7 +175,7 @@ function v4Fixture(t:TestContext):Fixture{
   assert.deepEqual(readSchemaManifest(db,'main'),R1_HISTORY_V4_MANIFEST.entries,'v4 fixture uses frozen DDL, not current Mio schema');
  });return value;
 }
-function v4Data(db:DatabaseSync):unknown{return R1_HISTORY_V4_MANIFEST.entries.filter(e=>e.type==='table'&&e.name!=='schema_version').map(e=>({table:e.name,rows:db.prepare(`SELECT * FROM ${e.name} ORDER BY rowid`).all()}));}
+function v4Data(db:DatabaseSync):unknown{return R1_HISTORY_V4_MANIFEST.entries.filter(e=>e.type==='table'&&e.name!=='schema_version').map(e=>({table:e.name,rows:db.prepare(`SELECT ${e.name==='history_state'?'singleton,projectId,seenContentSequence':'*'} FROM ${e.name} ORDER BY rowid`).all()}));}
 
 /** The source profile is frozen R2 DDL, not today's history minus V1 tables. */
 function v5Fixture(t: TestContext): Fixture {
@@ -191,7 +194,7 @@ function v5Fixture(t: TestContext): Fixture {
 }
 function v5Data(db: DatabaseSync): unknown {
   return R2_HISTORY_V5_MANIFEST.entries.filter(entry => entry.type === 'table' && entry.name !== 'schema_version')
-    .map(entry => ({table: entry.name, rows: db.prepare(`SELECT * FROM main."${entry.name.replaceAll('"', '""')}" ORDER BY rowid`).all()}));
+    .map(entry => ({table: entry.name, rows: db.prepare(`SELECT ${entry.name==='history_state'?'singleton,projectId,seenContentSequence':'*'} FROM main."${entry.name.replaceAll('"', '""')}" ORDER BY rowid`).all()}));
 }
 function assertV5(value: Fixture, before: unknown): void {
   inspect(value, db => {
@@ -262,7 +265,7 @@ for (const point of ['versions-after-table', 'versions-after-trigger', 'versions
     finally {connection.close();}
   });
 
-for (const mutation of ['extra-table', 'changed-trigger', 'extra-version', 'wrong-application-id', 'mismatched-seen'] as const)
+for (const mutation of ['extra-table', 'changed-trigger', 'extra-version', 'wrong-application-id', 'invalid-seen'] as const)
   test(`history5 refuses ${mutation} without creating version tables or rewriting retained rows`, t => {
     const value = v5Fixture(t), before = inspect(value, v5Data);
     inspect(value, db => {
@@ -270,7 +273,7 @@ for (const mutation of ['extra-table', 'changed-trigger', 'extra-version', 'wron
       else if (mutation === 'changed-trigger') db.exec("DROP TRIGGER immutable_mio_blobs;CREATE TRIGGER immutable_mio_blobs BEFORE UPDATE ON mio_blobs BEGIN SELECT 1;END");
       else if (mutation === 'extra-version') db.exec('INSERT INTO main.schema_version VALUES(4)');
       else if (mutation === 'wrong-application-id') db.exec('PRAGMA main.application_id=1');
-      else db.exec('UPDATE main.history_state SET seenContentSequence=seenContentSequence+1');
+      else db.exec('PRAGMA ignore_check_constraints=ON;UPDATE main.history_state SET seenContentSequence=-1');
     });
     const poisoned = inspect(value, v5Data);
     assert.equal(errorOf(() => open(value)).code, 'PROJECT_INVALID');
@@ -278,7 +281,7 @@ for (const mutation of ['extra-table', 'changed-trigger', 'extra-version', 'wron
       assert.deepEqual(v5Data(db), poisoned, 'even deliberately corrupted source rows are not repaired in place');
       for (const table of VERSION_TABLES) assert.equal(db.prepare("SELECT 1 FROM main.sqlite_master WHERE type='table' AND name=?").get(table), undefined);
       assert.equal(sequence(db), value.sequence);
-      if (mutation !== 'mismatched-seen') assert.deepEqual(v5Data(db), before);
+      if (mutation !== 'invalid-seen') assert.deepEqual(v5Data(db), before);
     });
   });
 
@@ -366,13 +369,13 @@ test('the exact S0 history resets only pre-release Mio in one locked opening tra
   });
   const connection = open(value);
   try {
-    assert.equal(connection.historyState, 'current');
+    assert.equal(connection.historyState, 'diverged');
     assert.equal(connection.db.prepare('SELECT version FROM main.schema_version').get()!.version, HISTORY_SCHEMA_VERSION);
     assert.deepEqual(readSchemaManifest(connection.db, 'main'), SCHEMA_MANIFEST.history.entries);
     assert.deepEqual(otherData(connection.db), before);
-    assert.equal(processRows(connection.db), 0);
-    assert.equal(sequence(connection.db), value.sequence + 1, 'four removed rows advance the content sequence only once');
-    assert.equal(connection.db.prepare('SELECT seenContentSequence FROM main.history_state').get()!.seenContentSequence, value.sequence + 1);
+    assert.equal(processRows(connection.db), 4);
+    assert.equal(sequence(connection.db), value.sequence, 'unconfirmed legacy history cannot remove project process evidence');
+    assert.equal(connection.db.prepare('SELECT seenContentSequence FROM main.history_state').get()!.seenContentSequence, value.sequence);
     assert.equal(connection.db.prepare('SELECT count(*) AS n FROM main.mio_runs').get()!.n, 0);
     assert.equal(connection.db.prepare('SELECT count(*) AS n FROM main.mio_changes').get()!.n, 0);
     assert.equal(connection.db.prepare('SELECT count(*) AS n FROM main.mio_process_target_revisions').get()!.n, 0, 'existing jobs are not assigned migrated revision tombstones');
@@ -382,20 +385,20 @@ test('the exact S0 history resets only pre-release Mio in one locked opening tra
     assert.ok(writes.every(item => item.db === connection.db && item.transaction));
     assert.equal(writes.at(-1)!.sql, CURRENT_VERSION_WRITE, 'version is the last mutation in the upgrade');
     for (const table of LEGACY_MIO_TABLES) assert.equal(connection.db.prepare("SELECT 1 FROM main.sqlite_master WHERE type='table' AND name=?").get(table), undefined);
-    connection.db.prepare('INSERT INTO main.mio_conversations(id,projectId,createdAt,updatedAt) VALUES(?,?,?,?)')
-      .run(randomUUID(), value.projectId, '2026-11-02T00:00:00Z', '2026-11-02T00:00:00Z');
-    connection.db.prepare('UPDATE main.jobs SET data=? WHERE id=?').run('{"status":"succeeded"}', 'existing-job');
-    assert.equal(connection.db.prepare("SELECT revision FROM main.mio_process_target_revisions WHERE kind='job' AND targetId='existing-job'").get()!.revision, 1);
-    assert.equal(sequence(connection.db), value.sequence + 1, 'normal process progress no longer touches the project');
+    assert.throws(()=>connection.db.prepare('INSERT INTO main.mio_conversations(id,projectId,createdAt,updatedAt) VALUES(?,?,?,?)')
+      .run(randomUUID(), value.projectId, '2026-11-02T00:00:00Z', '2026-11-02T00:00:00Z'),/readonly/i);
+    assert.throws(()=>connection.db.prepare('UPDATE main.jobs SET data=? WHERE id=?').run('{"status":"succeeded"}', 'existing-job'),/readonly/i);
+    assert.equal(connection.db.prepare("SELECT revision FROM main.mio_process_target_revisions WHERE kind='job' AND targetId='existing-job'").get(), undefined);
+    assert.equal(sequence(connection.db), value.sequence, 'normal process progress no longer touches the project');
   } finally {
     connection.close();
   }
   t.mock.restoreAll();
   const reopened = open(value);
   try {
-    assert.equal(sequence(reopened.db), value.sequence + 1, 'reopening does not repeat the reset');
-    assert.equal(reopened.db.prepare('SELECT count(*) AS n FROM main.mio_conversations').get()!.n, 1, 'new Mio records survive subsequent opening');
-    assert.equal(reopened.db.prepare("SELECT revision FROM main.mio_process_target_revisions WHERE kind='job' AND targetId='existing-job'").get()!.revision, 1);
+    assert.equal(sequence(reopened.db), value.sequence, 'reopening does not repeat the reset');
+    assert.equal(reopened.db.prepare('SELECT count(*) AS n FROM main.mio_conversations').get()!.n, 0, 'reopening does not construct or execute Mio records');
+    assert.equal(reopened.db.prepare("SELECT revision FROM main.mio_process_target_revisions WHERE kind='job' AND targetId='existing-job'").get(), undefined);
   } finally { reopened.close(); }
 });
 
@@ -426,6 +429,19 @@ for (const mutation of ['extra-table', 'changed-trigger', 'unknown-old-version',
         db.exec("CREATE TRIGGER main.history_state_guard_identity BEFORE UPDATE OF singleton,projectId ON history_state WHEN NEW.singleton IS NOT OLD.singleton OR NEW.projectId IS NOT OLD.projectId BEGIN SELECT RAISE(ABORT,'HISTORY_STATE_IDENTITY_IMMUTABLE');END");
       } else db.prepare('UPDATE main.history_state SET seenContentSequence=?').run(value.sequence + (mutation === 'file-older' ? 1 : -1));
     });
+    if (mutation === 'file-newer' || mutation === 'file-older') {
+      const connection=open(value);
+      try {
+        assert.equal(connection.historyState,'diverged');
+        assert.equal(connection.historyAdmission.reason,'legacy-token-missing');
+        assert.equal(connection.db.prepare('SELECT seenContentToken FROM main.history_state').get()?.seenContentToken,null);
+        assert.equal(connection.db.prepare('SELECT count(*) AS n FROM main.mio_runs').get()?.n,0);
+        assert.equal(connection.db.prepare('SELECT count(*) AS n FROM main.mio_changes').get()?.n,0);
+        assert.equal(processRows(connection.db),4);assert.equal(sequence(connection.db),value.sequence);
+        assert.deepEqual(readSchemaManifest(connection.db,'main'),SCHEMA_MANIFEST.history.entries);
+      } finally {connection.close();}
+      return;
+    }
     const error = errorOf(() => open(value));
     assert.equal(error.code, mutation === 'future-version' ? 'PROJECT_FORMAT_NEWER' : 'PROJECT_INVALID');
     inspect(value, db => {
@@ -437,7 +453,7 @@ for (const mutation of ['extra-table', 'changed-trigger', 'unknown-old-version',
   });
 }
 
-for (const point of ['after-drop', 'after-create', 'after-cleanup', 'after-version'] as const) test(`a thrown upgrade failure ${point} rolls back all files and DDL`, t => {
+for (const point of ['after-drop', 'after-create', 'after-metadata', 'after-version'] as const) test(`a thrown upgrade failure ${point} rolls back all files and DDL`, t => {
   const value = fixture(t);
   const exec = DatabaseSync.prototype.exec;
   let hit = false;
@@ -445,7 +461,7 @@ for (const point of ['after-drop', 'after-create', 'after-cleanup', 'after-versi
     exec.call(this, sql);
     const selected = point === 'after-drop' ? sql === 'DROP TABLE main.agent_task_runs_v2'
       : point === 'after-create' ? sql.startsWith('CREATE TABLE main.mio_conversations(')
-      : point === 'after-cleanup' ? sql.startsWith('CREATE TRIGGER project.project_file_sequence_agent_task_target_revisions_v2_delete ')
+      : point === 'after-metadata' ? sql.startsWith('CREATE TRIGGER main.history_state_guard_identity ')
       : sql === CURRENT_VERSION_WRITE;
     if (selected) { hit = true; throw new Error(`simulated upgrade ${point}`); }
   });
@@ -456,15 +472,22 @@ for (const point of ['after-drop', 'after-create', 'after-cleanup', 'after-versi
   open(value).close();
 });
 
-test('content-sequence overflow rolls back the reset and its temporarily removed trigger', t => {
+test('legacy maximum sequence stays gated without cleanup; fresh cleanup overflow rolls its transaction back', t => {
   const base = fixture(t);
   inspect(base, db => {
     db.prepare('UPDATE project.project_file SET contentSequence=?').run(Number.MAX_SAFE_INTEGER);
     db.prepare('UPDATE main.history_state SET seenContentSequence=?').run(Number.MAX_SAFE_INTEGER);
   });
-  const value = {...base, sequence: Number.MAX_SAFE_INTEGER};
-  assert.equal(errorOf(() => open(value)).code, 'PROJECT_INVALID');
-  assertOld(value);
+  const value = {...base, sequence: Number.MAX_SAFE_INTEGER}, connection=open(value);
+  try {
+    assert.equal(connection.historyState,'diverged');assert.equal(sequence(connection.db),value.sequence);
+    assert.equal(processRows(connection.db),4);assert.equal(connection.historyAdmission.seen.contentToken,null);
+  } finally {connection.close();}
+  const fresh=fixture(t,{fresh:true});
+  const db=new DatabaseSync(fresh.projectFile);db.prepare('UPDATE project_file SET contentSequence=?').run(Number.MAX_SAFE_INTEGER);db.close();
+  assert.equal(errorOf(()=>open(fresh)).code,'PROJECT_INVALID');
+  const verify=new DatabaseSync(fresh.projectFile);
+  try {assert.equal(verify.prepare('SELECT contentSequence FROM project_file').get()?.contentSequence,Number.MAX_SAFE_INTEGER);assert.equal(verify.prepare("SELECT count(*) AS n FROM agent_task_target_revisions_v2 WHERE kind IN ('job','export','image_task','frame_task')").get()?.n,4);}finally{verify.close();}
 });
 
 async function atWorker(t: TestContext, value: Fixture, point: string): Promise<() => Promise<void>> {
@@ -492,7 +515,7 @@ async function atWorker(t: TestContext, value: Fixture, point: string): Promise<
   };
 }
 
-for (const point of ['after-drop', 'after-cleanup', 'after-version', 'after-commit']) test(`SIGKILL ${point} recovers a complete old or new profile`, {timeout: 60_000}, async t => {
+for (const point of ['after-drop', 'after-metadata', 'after-version', 'after-commit']) test(`SIGKILL ${point} recovers a complete old or new profile`, {timeout: 60_000}, async t => {
   const value = fixture(t), before = inspect(value, otherData);
   const kill = await atWorker(t, value, point);
   if (point !== 'after-commit') assert.ok(statSync(`${value.historyFile}-journal`).size > 0, 'the killed reset has a real rollback journal');
@@ -506,8 +529,8 @@ for (const point of ['after-drop', 'after-cleanup', 'after-version', 'after-comm
   const connection = open(value);
   try {
     assert.deepEqual(otherData(connection.db), before);
-    assert.equal(sequence(connection.db), value.sequence + 1);
-    assert.equal(processRows(connection.db), 0);
+    assert.equal(sequence(connection.db), value.sequence);
+    assert.equal(processRows(connection.db), 4);
     assert.equal(connection.db.prepare('SELECT version FROM main.schema_version').get()!.version, HISTORY_SCHEMA_VERSION);
     assert.deepEqual(readSchemaManifest(connection.db, 'main'), SCHEMA_MANIFEST.history.entries);
   } finally { connection.close(); }
@@ -520,4 +543,48 @@ test('another process holding the old history prevents any upgrade', {timeout: 6
   await kill();
   assertOld(value);
   open(value).close();
+});
+
+function v6Fixture(t:TestContext):Fixture {
+ const value=r1Fixture(t,6);
+ inspect(value,db=>{
+  const raw=Buffer.from('{"frozen":"opaque retained bytes"}'),payload=gzipSync(raw),hash=createHash('sha256').update(raw).digest('hex'),at='2026-11-02T00:00:00.000Z';
+  const run=db.prepare('SELECT id FROM mio_runs LIMIT 1').get()!;
+  db.exec('BEGIN');
+  db.prepare("INSERT INTO project_version_blobs VALUES(?,1,'gzip',?,?,?)").run(hash,raw.length,payload.length,payload);
+  db.prepare("INSERT INTO project_versions VALUES(?,?,'manual','retained',NULL,?, ?,?,9)").run(randomUUID(),value.projectId,value.sequence,at,hash);
+  db.prepare("INSERT INTO project_versions VALUES(?,?,'mio-turn',NULL,?,?, ?,?,9)").run(randomUUID(),value.projectId,run.id,value.sequence,at,hash);
+  db.prepare("INSERT INTO project_version_requests VALUES(?,?,'project.version.save',?,?)").run(value.projectId,randomUUID(),'a'.repeat(64),'{"ok":true,"retained":"原字节"}');
+  db.prepare("INSERT INTO project_version_capture_marks VALUES(?,'daily-open','2026-11-02|UTC',?)").run(value.projectId,at);
+  db.exec('COMMIT');assert.deepEqual(readSchemaManifest(db,'main'),V1B_HISTORY_V6_MANIFEST.entries);
+ });return value;
+}
+function v6Data(db:DatabaseSync):unknown {
+ return V1B_HISTORY_V6_MANIFEST.entries.filter(entry=>entry.type==='table'&&entry.name!=='schema_version').map(entry=>({table:entry.name,rows:db.prepare(`SELECT ${entry.name==='history_state'?'singleton,projectId,seenContentSequence':'*'} FROM main."${entry.name}" ORDER BY rowid`).all()}));
+}
+test('history6 retains every Mio, blob, version, request and mark byte while detaching version provenance from execution rows',t=>{
+ const value=v6Fixture(t),before=inspect(value,v6Data),connection=open(value);
+ try {
+  assert.equal(connection.historyState,'diverged');assert.equal(connection.historyAdmission.seen.contentToken,null);
+  assert.deepEqual(v6Data(connection.db),before);assert.equal(sequence(connection.db),value.sequence);
+  assert.deepEqual(connection.db.prepare('PRAGMA main.foreign_key_check').all(),[]);
+  assert.deepEqual(connection.db.prepare('PRAGMA main.foreign_key_list(project_versions)').all().map(row=>row.table),['project_version_blobs']);
+  assert.equal(connection.db.prepare('SELECT count(*) AS n FROM main.project_history_resolution').get()?.n,0);
+ } finally {connection.close();}
+});
+for(const point of ['after-metadata','before-version','after-version'] as const)test(`history6 failed ${point} upgrade restores its exact profile and all retained bytes`,t=>{
+ const value=v6Fixture(t),before=inspect(value,v6Data),exec=DatabaseSync.prototype.exec;let hit=false;
+ const mock=t.mock.method(DatabaseSync.prototype,'exec',function(this:DatabaseSync,sql:string):void{
+  if(point==='before-version'&&sql===CURRENT_VERSION_WRITE){hit=true;throw Error('injected v6 upgrade failure');}
+  exec.call(this,sql);
+  if(point==='after-metadata'&&sql.startsWith('CREATE TRIGGER main.history_state_guard_identity ')||point==='after-version'&&sql===CURRENT_VERSION_WRITE){hit=true;throw Error('injected v6 upgrade failure');}
+ });
+ assert.equal(errorOf(()=>open(value)).code,'PROJECT_INVALID');mock.mock.restore();assert.equal(hit,true);
+ inspect(value,db=>{assert.deepEqual(readSchemaManifest(db,'main'),V1B_HISTORY_V6_MANIFEST.entries);assert.deepEqual(v6Data(db),before);assert.equal(sequence(db),value.sequence);});
+ open(value).close();
+});
+for(const point of ['after-metadata','versions-before-version','versions-after-version','versions-after-commit'] as const)test(`SIGKILL history6 ${point} retains an entire exact old or committed profile`,{timeout:60000},async t=>{
+ const value=v6Fixture(t),before=inspect(value,v6Data),kill=await atWorker(t,value,point);await kill();
+ inspect(value,db=>{assert.deepEqual(readSchemaManifest(db,'main'),point==='versions-after-commit'?SCHEMA_MANIFEST.history.entries:V1B_HISTORY_V6_MANIFEST.entries);assert.deepEqual(v6Data(db),before);assert.equal(sequence(db),value.sequence);});
+ const connection=open(value);try{assert.equal(connection.historyState,'diverged');assert.deepEqual(v6Data(connection.db),before);}finally{connection.close();}
 });

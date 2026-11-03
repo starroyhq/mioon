@@ -2,11 +2,11 @@
  * records (history.db) and its cache (cache.db). Runtime code here never
  * imports db.ts or services.ts. */
 export {openStore} from './test-store.ts';
-export {commitProjectAssetHash, createProjectStore, isProjectStore, openProjectStore, registerProjectTransactionFence, registerProjectTransactionObserver} from './store.ts';
+export {commitProjectAssetHash, createProjectStore, isProjectStore, openProjectStore, openStagedProjectStore, registerProjectTransactionFence, registerProjectTransactionObserver} from './store.ts';
 export type {CommitProjectAssetHashOptions, ProjectStore} from './store.ts';
-export {createProjectFile, isProjectDatabase, isProjectFileHeld, openProjectConnection, PROJECT_JOURNAL_SIZE_LIMIT, recoverProjectFile} from './connection.ts';
+export {createProjectFile, isProjectDatabase, isProjectFileHeld, openProjectConnection, openStagedProjectConnection, inspectProjectFileReadOnly, PROJECT_JOURNAL_SIZE_LIMIT, recoverProjectFile} from './connection.ts';
 export type {
-  CreateProjectFileOptions, OpenProjectConnectionOptions, ProjectConnection, ProjectCopyCheck, ProjectFileRecovery, ProjectLocation,
+  CreateProjectFileOptions, OpenProjectConnectionOptions, ProjectConnection, ProjectCopyCheck, ProjectFileRecovery, ProjectLocation, ProjectIdentity, StagedProjectConnectionOptions,
 } from './connection.ts';
 export {isSuperJournalInUse, superJournalsIn} from './journals.ts';
 export {isSqliteBusy, MAX_REPORTED_DIFFERENCES, projectFileError} from './errors.ts';
@@ -24,3 +24,6 @@ export {createProjectBackup, inspectCopiedProjectFile, inspectProjectBackup, ope
 export type {ProjectBackupIdentity, ProjectBackupReader} from './backup.ts';
 export {copyProjectBackup, copyProjectToNewFile} from './copy.ts';
 export type {CopyProjectOptions, ProjectCopyResult} from './copy.ts';
+
+export {readProjectContentStamp, sameContentStamp} from './content-stamp.ts';
+export type {ContentStamp, ProjectHistoryAdmission} from './content-stamp.ts';

@@ -19,9 +19,9 @@ export type DatabaseKind = keyof typeof PROJECT_DATABASE_NAMES;
 /** Changing a database's DDL requires raising its version, regenerating
  * schema/manifest.ts (`node tests/helpers/project-file-schema-derivation.ts --write`)
  * and recording the new manifest digest in tests/project-file-schema.test.ts. */
-export const PROJECT_FILE_SCHEMA_VERSION = 2;
-/** 3 replaced development task tables; 4 adds counters; 5 adds rule-write intents; 6 adds local project versions. */
-export const HISTORY_SCHEMA_VERSION = 6;
+export const PROJECT_FILE_SCHEMA_VERSION = 3;
+/** 3 replaced development task tables; 4 adds counters; 5 adds rule-write intents; 6 adds local project versions; 7 adds content tokens and recovery confirmation. */
+export const HISTORY_SCHEMA_VERSION = 7;
 export const CACHE_SCHEMA_VERSION = 2;
 
 /** SQLite header `application_id` values: 'MioP', 'MioH' and 'MioC'. */
@@ -42,7 +42,7 @@ const APPLICATION_IDS: Readonly<Record<DatabaseKind, number>> = {
 /** The single metadata row of a project file. `contentSequence` grows by at
  * least one in every commit that changes a content table and never decreases. */
 const PROJECT_FILE_METADATA: readonly string[] = Object.freeze([
-  "CREATE TABLE project_file(singleton INTEGER PRIMARY KEY CHECK(singleton=1),projectId TEXT NOT NULL CHECK(length(CAST(projectId AS BLOB))=36),contentSequence INTEGER NOT NULL CHECK(typeof(contentSequence)='integer' AND contentSequence BETWEEN 0 AND 9007199254740991))",
+  "CREATE TABLE project_file(singleton INTEGER PRIMARY KEY CHECK(singleton=1),projectId TEXT NOT NULL CHECK(length(CAST(projectId AS BLOB))=36),contentSequence INTEGER NOT NULL CHECK(typeof(contentSequence)='integer' AND contentSequence BETWEEN 0 AND 9007199254740991),contentToken TEXT NOT NULL CHECK(typeof(contentToken)='text' AND length(contentToken)=32 AND contentToken NOT GLOB '*[^a-f0-9]*'))",
   // BEFORE INSERT also rejects INSERT OR REPLACE over the existing row.
   "CREATE TRIGGER project_file_guard_insert BEFORE INSERT ON project_file WHEN EXISTS(SELECT 1 FROM project_file) BEGIN SELECT RAISE(ABORT,'PROJECT_FILE_METADATA_EXISTS');END",
   "CREATE TRIGGER project_file_guard_delete BEFORE DELETE ON project_file BEGIN SELECT RAISE(ABORT,'PROJECT_FILE_METADATA_REQUIRED');END",
@@ -62,16 +62,19 @@ const SINGLE_PROJECT_TRIGGERS: readonly string[] = Object.freeze([
  * existing domain triggers of the same table. */
 const CONTENT_SEQUENCE_TRIGGERS: readonly string[] = Object.freeze(CONTENT_TABLES.flatMap(table =>
   (['insert', 'update', 'delete'] as const).map(operation =>
-    `CREATE TRIGGER project_file_sequence_${table}_${operation} AFTER ${operation.toUpperCase()} ON ${table} BEGIN UPDATE project_file SET contentSequence=contentSequence+1;END`)));
+    `CREATE TRIGGER project_file_sequence_${table}_${operation} AFTER ${operation.toUpperCase()} ON ${table} BEGIN UPDATE project_file SET contentSequence=contentSequence+1,contentToken=lower(hex(randomblob(16)));END`)));
 
 /** The single state row of a local history database: which project it records
  * and the last project-file content sequence it has seen. */
-const HISTORY_STATE_METADATA: readonly string[] = Object.freeze([
-  "CREATE TABLE history_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),projectId TEXT NOT NULL CHECK(length(CAST(projectId AS BLOB))=36),seenContentSequence INTEGER NOT NULL CHECK(typeof(seenContentSequence)='integer' AND seenContentSequence BETWEEN 0 AND 9007199254740991))",
+export const HISTORY_STATE_METADATA: readonly string[] = Object.freeze([
+  "CREATE TABLE history_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),projectId TEXT NOT NULL CHECK(length(CAST(projectId AS BLOB))=36),seenContentSequence INTEGER NOT NULL CHECK(typeof(seenContentSequence)='integer' AND seenContentSequence BETWEEN 0 AND 9007199254740991),seenContentToken TEXT CHECK(seenContentToken IS NULL OR (typeof(seenContentToken)='text' AND length(seenContentToken)=32 AND seenContentToken NOT GLOB '*[^a-f0-9]*')))",
   "CREATE TRIGGER history_state_guard_insert BEFORE INSERT ON history_state WHEN EXISTS(SELECT 1 FROM history_state) BEGIN SELECT RAISE(ABORT,'HISTORY_STATE_EXISTS');END",
   "CREATE TRIGGER history_state_guard_delete BEFORE DELETE ON history_state BEGIN SELECT RAISE(ABORT,'HISTORY_STATE_REQUIRED');END",
   "CREATE TRIGGER history_state_guard_identity BEFORE UPDATE OF singleton,projectId ON history_state WHEN NEW.singleton IS NOT OLD.singleton OR NEW.projectId IS NOT OLD.projectId BEGIN SELECT RAISE(ABORT,'HISTORY_STATE_IDENTITY_IMMUTABLE');END",
 ]);
+
+/** One fixed outcome committed atomically with a staged history resolution. */
+export const HISTORY_RESOLUTION_SCHEMA = "CREATE TABLE project_history_resolution(singleton INTEGER PRIMARY KEY CHECK(singleton=1),requestId TEXT NOT NULL,digest TEXT NOT NULL,result TEXT NOT NULL CHECK(json_valid(result)))";
 
 const DOMAIN_STATEMENTS: Readonly<Record<DatabaseKind, readonly string[]>> = {
   project: CONTENT_SCHEMA,
@@ -84,7 +87,7 @@ const DOMAIN_STATEMENTS: Readonly<Record<DatabaseKind, readonly string[]>> = {
  * the committed domain files; only the schema derivation passes it. */
 export function schemaStatements(kind: DatabaseKind, domainStatements: readonly string[] = DOMAIN_STATEMENTS[kind]): readonly string[] {
   if (kind === 'project') return [SCHEMA_VERSION_TABLE_SQL, ...PROJECT_FILE_METADATA, ...domainStatements, ...SINGLE_PROJECT_TRIGGERS, ...CONTENT_SEQUENCE_TRIGGERS];
-  if (kind === 'history') return [SCHEMA_VERSION_TABLE_SQL, ...HISTORY_STATE_METADATA, ...domainStatements];
+  if (kind === 'history') return [SCHEMA_VERSION_TABLE_SQL, ...HISTORY_STATE_METADATA, HISTORY_RESOLUTION_SCHEMA, ...domainStatements];
   return [SCHEMA_VERSION_TABLE_SQL, ...domainStatements];
 }
 
@@ -103,5 +106,6 @@ export function buildDatabase(db: DatabaseSync, kind: DatabaseKind, schema: stri
   // incremental counter only when that schema actually includes it.
   if(kind==='history'&&statements.some(sql=>sql.startsWith('CREATE TABLE mio_storage_counters(')))initializeMioStorageCounters(db,schema);
   db.exec(`PRAGMA ${schema}.application_id=${APPLICATION_IDS[kind]}`);
+  if (kind === 'project') db.exec(`PRAGMA ${schema}.user_version=${PROJECT_FILE_SCHEMA_VERSION}`);
   db.prepare(`INSERT INTO ${schema}.schema_version VALUES(?)`).run(SCHEMA_VERSIONS[kind]);
 }

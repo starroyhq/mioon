@@ -195,7 +195,7 @@ test('every native object belongs to its declared database and old workspace sta
   for (const kind of KINDS) {
     const db = buildAlone(kind);
     try {
-      const metadata = kind === 'project' ? ['project_file', 'schema_version'] : kind === 'history' ? ['history_state', 'schema_version'] : ['schema_version'];
+      const metadata = kind === 'project' ? ['project_file', 'schema_version'] : kind === 'history' ? ['history_state', 'project_history_resolution', 'schema_version'] : ['schema_version'];
       const actual = names(db, 'table').filter(name => !name.startsWith('sqlite_'));
       assert.deepEqual(actual, sorted([...input.tables[kind], ...metadata]));
       assert.equal(new Set(names(db, 'index')).size, names(db, 'index').length);
@@ -229,7 +229,7 @@ test('the independent versions domain has four exact table shapes, indexes and n
   const db = buildAlone('history');
   try {
     assert.deepEqual([...HISTORY_TABLES_BY_DOMAIN.versions], Object.keys(expected));
-    assert.equal(readSchemaManifest(db, 'main').length, 524);
+    assert.equal(readSchemaManifest(db, 'main').length, 525);
     for (const [table, shape] of Object.entries(expected)) {
       const actual = readTableShape(db, table);
       assert.deepEqual(actual.columns.map(column => column.name), shape.columns, `${table}: all columns independently listed`);
@@ -239,7 +239,7 @@ test('the independent versions domain has four exact table shapes, indexes and n
       assert.ok(actual.indexes.every(index => Array.isArray(actual.indexColumns[String(index.name)])), `${table}: every index has readable column metadata`);
     }
     assert.deepEqual(readTableShape(db, 'project_versions').foreignKeys.map(row => `${String(row.from)}->${String(row.table)}.${String(row.to)}`).sort(),
-      ['blobHash->project_version_blobs.hash', 'mioRunId->mio_runs.id', 'projectId->mio_runs.projectId']);
+      ['blobHash->project_version_blobs.hash']);
     for (const table of ['project_version_blobs','project_version_requests','project_version_capture_marks']) assert.deepEqual(readTableShape(db, table).foreignKeys, []);
     assert.deepEqual(CROSS_FILE_RELATIONS.filter(relation => Object.hasOwn(expected, relation.child.table)).map(relation => ({
       table: relation.child.table, childSchema: relation.child.schema, columns: relation.child.columns, nullable: relation.child.nullable,
@@ -252,12 +252,12 @@ test('kernel metadata and immutable guards preserve project identity and monoton
   const db = buildAlone('project');
   const id = '00000000-0000-4000-8000-000000000001';
   try {
-    db.prepare('INSERT INTO project_file VALUES(1,?,7)').run(id);
+    db.prepare("INSERT INTO project_file VALUES(1,?,7,'00000000000000000000000000000001')").run(id);
     assert.equal(db.prepare('SELECT projectId FROM project_file').get()?.projectId, id);
     assert.throws(() => db.exec('DELETE FROM project_file'), /PROJECT_FILE_METADATA_REQUIRED/);
     assert.throws(() => db.prepare('UPDATE project_file SET projectId=?').run('00000000-0000-4000-8000-000000000002'), /PROJECT_FILE_IDENTITY_IMMUTABLE/);
     assert.throws(() => db.exec('UPDATE project_file SET contentSequence=6'), /PROJECT_FILE_SEQUENCE_DECREASED/);
-    assert.throws(() => db.prepare('INSERT OR REPLACE INTO project_file VALUES(1,?,9)').run(id), /PROJECT_FILE_METADATA_EXISTS/);
+    assert.throws(() => db.prepare("INSERT OR REPLACE INTO project_file VALUES(1,?,9,'00000000000000000000000000000002')").run(id), /PROJECT_FILE_METADATA_EXISTS/);
     assert.equal(db.prepare('SELECT contentSequence FROM project_file').get()?.contentSequence, 7);
     assert.throws(() => db.prepare('INSERT INTO projects(id,data) VALUES(?,?)').run('00000000-0000-4000-8000-000000000002', '{}'), /PROJECT_FILE_SINGLE_PROJECT/);
     assert.equal(db.prepare('SELECT count(*) AS n FROM projects').get()?.n, 0);
@@ -267,11 +267,11 @@ test('kernel metadata and immutable guards preserve project identity and monoton
   } finally { db.close(); }
   const history = buildAlone('history');
   try {
-    history.prepare('INSERT INTO history_state VALUES(1,?,7)').run(id);
+    history.prepare("INSERT INTO history_state VALUES(1,?,7,'00000000000000000000000000000001')").run(id);
     assert.throws(() => history.exec('DELETE FROM history_state'), /HISTORY_STATE_REQUIRED/);
     assert.throws(() => history.prepare('UPDATE history_state SET projectId=?').run('00000000-0000-4000-8000-000000000002'), /HISTORY_STATE_IDENTITY_IMMUTABLE/);
-    assert.throws(() => history.prepare('INSERT OR REPLACE INTO history_state VALUES(1,?,9)').run(id), /HISTORY_STATE_EXISTS/);
-    assert.deepEqual(plain(history.prepare('SELECT * FROM history_state').get()), {singleton:1,projectId:id,seenContentSequence:7});
+    assert.throws(() => history.prepare("INSERT OR REPLACE INTO history_state VALUES(1,?,9,'00000000000000000000000000000002')").run(id), /HISTORY_STATE_EXISTS/);
+    assert.deepEqual(plain(history.prepare('SELECT * FROM history_state').get()), {singleton:1,projectId:id,seenContentSequence:7,seenContentToken:'00000000000000000000000000000001'});
   } finally { history.close(); }
 });
 
@@ -326,14 +326,14 @@ test('each database built alone compiles every insert, update and delete of ever
       }
     } finally { db.close(); }
   }
-  assert.equal(tables, 83);
-  assert.equal(tables, CONTENT_TABLES.length+HISTORY_TABLES.length+CACHE_TABLES.length+5);
+  assert.equal(tables, 84);
+  assert.equal(tables, CONTENT_TABLES.length+HISTORY_TABLES.length+CACHE_TABLES.length+6);
 });
 
 const MANIFEST_DIGESTS: Readonly<Record<DatabaseKind, Readonly<Record<number, string>>>> = {
-  project: {1: '6e96c3872a938817b65e71750d1e68bd8fa84c7f3f8d92490de22a0e34d649ce', 2: 'f86a2d31c85aa42896bd7d93e8ececa66c039942a0e32d36cb22b7483ea9929f'},
+  project: {1: '6e96c3872a938817b65e71750d1e68bd8fa84c7f3f8d92490de22a0e34d649ce', 2: 'f86a2d31c85aa42896bd7d93e8ececa66c039942a0e32d36cb22b7483ea9929f', 3: 'a663d3fb003fc82b43864342da6799664d1524a0876cf2314930b62ae27f5142'},
   // 2: the Mock provider's ledger in the task domain.
-  history: {1: 'e0445f02d867f3aeedc283708f58d30efa7b0465e8987f7f739e8f5580791243', 2: '34ad833f0a676602490ce69b0f8804f79f1b30750b76a9f58d41abeb14dfd7a0', 3: 'b9487064fb0fa4447f3eb3896121d648184007a2b675927222beea3518c91a3a', 4: '047b9b4d7c2aa2376f2a97c2d4b042b326d730b5ad79504e77d3f8df1ca8dc82', 5: '6d2615d8d96d70d8d5926d387f1709e13d74dacf9d77414592750ec3ee3848de', 6: '7c150a8de4736982f109c04f71d1965385fa9629bc1bd4f48ebeda141d48eeb9'},
+  history: {1: 'e0445f02d867f3aeedc283708f58d30efa7b0465e8987f7f739e8f5580791243', 2: '34ad833f0a676602490ce69b0f8804f79f1b30750b76a9f58d41abeb14dfd7a0', 3: 'b9487064fb0fa4447f3eb3896121d648184007a2b675927222beea3518c91a3a', 4: '047b9b4d7c2aa2376f2a97c2d4b042b326d730b5ad79504e77d3f8df1ca8dc82', 5: '6d2615d8d96d70d8d5926d387f1709e13d74dacf9d77414592750ec3ee3848de', 6: '7c150a8de4736982f109c04f71d1965385fa9629bc1bd4f48ebeda141d48eeb9', 7: 'df1a5b98dd7baa7bd21d6a1342147d39eb9b37840270f645410128851bb9df51'},
   cache: {1: 'be43585ad9045d7ed844c609b9af13829372efb83741b55f4f4f8e7b2f2fd61c', 2: '21b8f4c33fcb2c2b20d87c8bfd8a51d15bb6fdef8a7ae081aba462a900048fa3'},
 };
 
@@ -421,7 +421,7 @@ test('persistent metadata and Mio quota guards cannot drift behind an unchanged 
   assert.deepEqual(diff.unexpected,[]);
   const db=buildAlone('project','main',changed);
   try {
-    db.prepare('INSERT INTO project_file VALUES(1,?,7)').run('00000000-0000-4000-8000-000000000001');
+    db.prepare("INSERT INTO project_file VALUES(1,?,7,'00000000000000000000000000000001')").run('00000000-0000-4000-8000-000000000001');
     assert.doesNotThrow(()=>db.exec('UPDATE project_file SET contentSequence=6'));
     assert.equal(db.prepare('SELECT contentSequence FROM project_file').get()?.contentSequence,6);
     assert.throws(()=>db.exec('DELETE FROM project_file'),/PROJECT_FILE_METADATA_REQUIRED/);

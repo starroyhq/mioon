@@ -52,7 +52,7 @@ export function relationTriggerStatements(relation: CrossFileRelation, overrides
 
 /** Copies every new content sequence of the project file into the local records,
  * in the same transaction. */
-export const SEEN_SEQUENCE_TRIGGER = `CREATE TEMP TRIGGER project_file_seen_sequence AFTER UPDATE OF contentSequence ON ${PROJECT_DATABASE_NAMES.project}.project_file BEGIN UPDATE history_state SET seenContentSequence=NEW.contentSequence;END`;
+export const SEEN_SEQUENCE_TRIGGER = `CREATE TEMP TRIGGER project_file_seen_sequence AFTER UPDATE OF contentSequence,contentToken ON ${PROJECT_DATABASE_NAMES.project}.project_file WHEN (SELECT seenContentSequence FROM history_state)=OLD.contentSequence AND (SELECT seenContentToken FROM history_state)=OLD.contentToken BEGIN UPDATE history_state SET seenContentSequence=NEW.contentSequence,seenContentToken=NEW.contentToken;END`;
 
 const STATEMENTS: readonly string[] = Object.freeze([
   ...CONVERTED_TEMP_TRIGGERS.map(trigger => trigger.sql),
@@ -118,4 +118,17 @@ export function installCrossFileTriggers(db: DatabaseSync): void {
     }
     throw error;
   }
+}
+
+/** Extra immutable connection guards for recovery sessions. query_only also
+ * blocks DDL; these triggers keep raw DML forbidden if a caller toggles it. */
+export function installDivergedWriteGuards(db: DatabaseSync): void {
+  for (const schema of ['main', 'project'] as const) {
+    const tables = db.prepare(`SELECT name FROM ${schema}.sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'`).all();
+    for (const {name} of tables) for (const operation of ['INSERT', 'UPDATE', 'DELETE']) {
+      const target = quote(String(name)), guard = quote(`project_history_readonly_${schema}_${String(name)}_${operation.toLowerCase()}`);
+      db.exec(`CREATE TEMP TRIGGER ${guard} BEFORE ${operation} ON ${schema}.${target} BEGIN SELECT RAISE(ABORT,'PROJECT_HISTORY_DIVERGED');END`);
+    }
+  }
+  db.exec('PRAGMA query_only=ON');
 }

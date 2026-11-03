@@ -24,7 +24,7 @@ const COMMAND = 'node tests/helpers/project-file-schema-derivation.ts';
 const KINDS = ['project', 'history', 'cache'] as const;
 const SCHEMAS = {project: 'project', history: 'main', cache: 'cache'} as const;
 const VERSIONS = {project: PROJECT_FILE_SCHEMA_VERSION, history: HISTORY_SCHEMA_VERSION, cache: CACHE_SCHEMA_VERSION};
-const METADATA = {project: ['schema_version', 'project_file'], history: ['schema_version', 'history_state'], cache: ['schema_version']} as const;
+const METADATA = {project: ['schema_version', 'project_file'], history: ['schema_version', 'history_state', 'project_history_resolution'], cache: ['schema_version']} as const;
 const quote = (name: string): string => '"' + name.replaceAll('"', '""') + '"';
 type Row = Record<string, SQLOutputValue>;
 
