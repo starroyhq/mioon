@@ -79,7 +79,7 @@ async function prepare(kind) {
   await writeFile(lutFile, cube.join('\n') + '\n', { mode: 0o600, flag: 'wx' });
   await saveToolConfig(path.join(userData, 'desktop-config.json'), { ffmpeg: mediaTool('ffmpeg'), ffprobe: mediaTool('ffprobe') });
   writeAppLanguagePreference({ userData }, serializeLanguagePreference('en'));
-  const prepared=await prepareNativeQaProject(workspace,`Synthetic LUT recovery: ${kind}`),{store,services,project}=prepared;let fixture;
+  const prepared=await prepareNativeQaProject(workspace,`Synthetic LUT recovery ${kind}`),{store,services,project}=prepared;let fixture;
   try {
     const asset = await importNativeQaAsset(prepared, { projectId: project.id, name: 'Synthetic Rec709 green.mp4', mimeType: 'video/mp4', dataBase64: (await readFile(sourceFile)).toString('base64') });
     let timeline = await services.call('timeline.format.set', { projectId: project.id, expectedProjectRevision: project.revision, expectedRevision: 0, requestId: randomUUID(), presetId: 'landscape_720' });
