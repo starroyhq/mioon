@@ -461,6 +461,7 @@ test('selected video handles retain sampled DTOs while frame and scene acceptanc
   assert.doesNotMatch(JSON.stringify([imported.outcome.result,imported.step.result]),/"(?:relativePath|reference|sourcePath|path|volume|fileLocation)"\s*:/);
   const assetTargetRevision=f.journal.targetRevision(f.projectId,'asset',id);
   const accepted=await f.execute(kind==='frame'?'frame.extract':'scene.detect',{sourceAssetId:id,sourceHash:sha256,...(kind==='frame'?{sourceFrame:0}:{})});
+  assert.equal(accepted.outcome.recorded,true,'the strong operation records its validated final ACK inside acceptance');
   const response=accepted.outcome.result;assert.ok(record(response)&&typeof response.id==='string');assert.equal(response.state,'queued');assert.ok(record(accepted.step.result));assert.deepEqual(accepted.step.result,response,'the step retains its task ACK rather than the preparatory asset write');
   const current=f.store.get('assets',id);assert.ok(record(current)&&record(current.reference));assert.equal(current.sha256,sha256);assert.equal(current.reference.fullSha256,sha256);assert.equal(current.referenceRevision,initial.referenceRevision);
   assert.equal(f.journal.targetRevision(f.projectId,'asset',id),assetTargetRevision,'preparing a full hash keeps the source asset semantic target revision');

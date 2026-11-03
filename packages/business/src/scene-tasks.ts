@@ -4,7 +4,7 @@ import {isProjectStore} from './project-file/store.ts';
 import {prepareProjectAssetFullHash, referenceForPublishedMedia, registerProjectMediaStore} from './project-media-storage.ts';
 import {mediaLocatorFields, sameMediaLocator, hasAssetReference, validAssetLocator} from './asset-reference-record.ts';
 import {mioTable} from './agent/mio-table-layout.ts';
-import {bindAgentTaskJobInside,assertAgentTaskJobEffect,withAgentTaskJobOrigin,isAgentTaskEffectBlocked,setAgentTaskJobResumer,setAgentTaskJobStopper,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
+import {taskEffectOrigin,bindAgentTaskJobInside,assertAgentTaskJobEffect,withAgentTaskJobOrigin,isAgentTaskEffectBlocked,setAgentTaskJobResumer,setAgentTaskJobStopper,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
 import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
 import {workspaceRestoreError} from './workspace-restore-policy.ts';
 import {randomUUID,createHash} from 'node:crypto';
@@ -170,6 +170,13 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
    db.prepare("INSERT INTO scene_tasks(id,projectId,kind,sourceAssetId,requestId,inputHash,input,snapshot,state,revision,started,resultId,stagedReceipt,outcome,errorCode,createdAt,updatedAt) VALUES(?,?,'detect',?,?,?,?,?,'queued',1,0,NULL,NULL,NULL,NULL,?,?)")
     .run(id,input.projectId,input.sourceAssetId,input.requestId,hash(input),canonical(input),canonical(snapshot),timestamp,timestamp);
    record('scene.detect',input as unknown as SceneMutationInput,value,{taskId:id});task(input.projectId,id);
+   // Detection is an observation: its accepted task changes no business asset.
+   // Commit the same validated ACK here so the older observation runner does
+   // not attribute a preparatory full-hash promotion to a business mutation.
+   const origin=taskEffectOrigin();
+   if(origin&&!origin.recorded&&origin.operation==='scene.detect'&&origin.projectId===input.projectId&&origin.requestId===input.requestId){
+    origin.beforeEffect();origin.recordInside({...value,options:{...value.options}},[]);origin.recorded=true;
+   }
    return {value:value as SceneDetectTaskResponse,replayed:false};
   });
   if(!result.replayed){fault('after_acceptance',{input,response:result.value});enqueue(result.value.id,input.projectId);}

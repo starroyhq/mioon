@@ -11,6 +11,7 @@ import type {OutsidePathConfirmationStore} from './app-db/stores.ts';
 import {isProjectStore} from './project-file/store.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {probe} from './media.ts';
+import {createPreparedMediaFileFence} from './prepared-media-file.ts';
 import {decodeMediaUpload} from './media-upload.ts';
 import {checkMediaStatus, computeFullSha256} from './media-reference/index.ts';
 import {isAppLibraryHeld} from './app-db/connection.ts';
@@ -25,6 +26,7 @@ type Row = Record<string, unknown>;
 const object = (v: unknown): v is Row => v !== null && typeof v === 'object' && !Array.isArray(v);
 const extensions: Readonly<Record<string, string>> = {'image/png':'png','image/jpeg':'jpg','image/webp':'webp','video/mp4':'mp4','video/webm':'webm','audio/wav':'wav','audio/mpeg':'mp3','audio/mp4':'m4a'};
 function conflict(): never {throw new AppError('IDEMPOTENCY_CONFLICT', '同一请求 ID 已用于不同内容', 409);}
+const importsInFlight = new WeakMap<ProjectStore, Map<string, Promise<unknown>>>();
 
 /** Project imports have one location: a reference. Upload publications are
  * exclusive and are never removed on failure; only registered assets are served.
@@ -33,7 +35,10 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
   const references = createProjectAssetReferenceServices(store, options);
   const receipts = path.join(store.tempDir, 'asset-imports');
   ensurePrivateDirectory(receipts, {create: true});
-  const running = new Map<string, Promise<unknown>>();
+  // RPC and trusted chooser requests can use different handler instances for
+  // the same owner. Serialize their shared durable receipt across both paths.
+  const running = importsInFlight.get(store) ?? new Map<string, Promise<unknown>>();
+  importsInFlight.set(store, running);
   return (raw: Row, context: {signal?: AbortSignal} = {}): Promise<unknown> => {
     const input = assetImportSchema.parse(raw);
     const digest = createHash('sha256').update(JSON.stringify(input)).digest('hex');
@@ -131,16 +136,7 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
         }
         const prepared = await references.referenceForImport(file, {signal, beforeEffect: fence}); fence();
         if (declared && declared !== prepared.type.mimeType) throw new AppError('INVALID_MEDIA', '文件类型与实际内容不符');
-        const initial = lstatSync(prepared.file, {bigint: true});
-        const sourceFence = (): void => {
-          fence();
-          const actual = lstatSync(prepared.file, {bigint: true}), identity = {dev: String(actual.dev), ino: String(actual.ino)};
-          if (!actual.isFile() || isProjectFileHeld(identity) || isAppLibraryHeld(identity) ||
-              realpathSync(prepared.file) !== prepared.file || actual.dev !== initial.dev || actual.ino !== initial.ino || actual.size !== initial.size || actual.mtimeNs !== initial.mtimeNs || actual.ctimeNs !== initial.ctimeNs) throw new AppError('MEDIA_CHANGED_DURING_READ', '读取期间素材已变化', 409, {assetId, reason: null});
-          const project = realpathSync(store.projectDir);
-          if (!isInsideRealDirectory(project, prepared.file) && !options.outsidePaths.list(store.projectId).some(value => isFileInDirectory(value.directory, prepared.file))) throw new AppError('MEDIA_OUTSIDE_NOT_CONFIRMED', '素材目录尚未确认', 403, {assetId, reason: null});
-        };
-        sourceFence();
+        const sourceFence=createPreparedMediaFileFence(store,prepared.file,{assetId,outsidePaths:options.outsidePaths,beforeEffect:fence});
         const access = {projectDir: store.projectDir, projectFile: store.projectFile,
           mayReadOutside: (candidate: string) => options.outsidePaths.list(store.projectId).some(value => isFileInDirectory(value.directory, candidate)),
           isHeld: (identity: {dev: string; ino: string}) => isProjectFileHeld(identity) || isAppLibraryHeld(identity)};

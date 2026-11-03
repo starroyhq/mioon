@@ -11,6 +11,7 @@
 - 首页封面使用应用级 `GET /api/project-covers/<ID>`，只读缓存，缺失返回 404，不 acquire 项目；`projectSummaryCoverSchema` 已同步此 URL。应用 `/api/workspace-info` 返回应用根，新增项目 `/api/projects/<ID>/workspace-info` 在真实租约内返回项目根，复用原 schema，供可信桌面导出使用。
 - 全局 `diagnostics/latest` 从应用 documents 读取严格五字段摘要：`completedAt/status/protocol/model/errorCode`；无项目对话、请求或密钥，也不打开项目。应用库 v2 仅由精确已知 v1 结构事务升级，保原三种文档及其它记录。HTTP B1 错误仅公开 `APP_LIBRARY_LIMIT`（507）与 `APP_LIBRARY_INVALID`（422）。
 - V2 已接入宿主打开/关闭的项目自动备份，最近三份按内容序号去重；`project.backup.list/inspect/restore/status` 是应用级操作，恢复使用新 ID 和空本机记录。专用 `MioB` 标记使备份不能作为普通项目打开或登记；接口、提交点和故障边界见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)。不启用旧工作区备份接口，也没有接入备份界面。
+- S1 已接通生产素材引用：项目格式为 2、cache 为 2，history 沿 R2 的 5。格式 1 的旧开发项目及备份明确拒绝、零写入，需重建。路径导入不复制，网页/Mio 上传写固定 `素材/`；生成和导出当前仍用原目录，S2 再切换。完整契约、强哈希与目录许可见 [素材引用](ASSET-REFERENCES.md)。
 - S5 的删除、复制和另存为，V4 的打包导入导出，S7 的工作区备份/恢复仍未接入新布局；精确错误和按项目后的图片、帧、LUT 可达容量见 [宿主当前状态](PROJECT-HOST.md#0-p4-当前运行状态)。不调用旧生产生命周期链；全应用总量控制留 S3。
 
 下文保留内核约定和 P1/P2 阶段记录；注明阶段的历史说明不代表 P4 仍在使用旧默认入口。
@@ -249,7 +250,7 @@ P2 当时不改变公开地址、落盘格式、Mio 请求字节、生产入口�
 完整接口、JSON 发布/恢复重试、媒体和停机边界见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)。V2 不改 history 结构，不修改 agent 实现或请求指纹；逻辑版本和备份界面由后续卡交付。
 
 ## 素材引用
-S1 基础接口已提供共享状态/错误契约、L1 真实目录授权和精确 store 的引用服务；尚未切换生产导入或项目/cache 格式。已审定的后续导入、目录确认和格式拒旧规则见 [素材引用基础接口](ASSET-REFERENCES.md)。下文的 S0 托管素材说明仍描述本次未切换的生产入口。
+S1 已切换生产导入和全部素材读端。资产只以 `reference` 定位，普通结果返回无路径指纹与 `referenceRevision`；图片/音频导入即完整哈希，视频强执行前 prepare→CAS。目录许可按项目和实际目录本身确认，不含子目录；普通 MCP/Mio 不能确认。完整导入、状态、重连和格式拒旧规则见 [素材引用](ASSET-REFERENCES.md)。注明 S0 的托管素材说明仅为阶段记录。
 
 引用的字段一次定全（`mediaReferenceSchema`）：
 
@@ -264,7 +265,7 @@ S1 基础接口已提供共享状态/错误契约、L1 真实目录授权和精�
 
 - 后四个字段合称指纹（`mediaFingerprintSchema`）。
 - 素材状态：`online`（指纹一致）、`missing`（路径上没有文件）、`changed`（文件在，但指纹对不上）。
-- 素材和项目文件在同一个盘上时存相对路径，跨盘时存绝对路径和卷名。S0 先把托管副本记成相对路径 `media/<ID>.<扩展名>`，S1 再改成引用原文件。
+- 素材和项目文件在同一个盘上时存相对路径，跨盘时存绝对路径和卷名。路径导入引用原文件；上传在 `素材/` 创建副本后引用。没有旧 `relativePath` 资产定位回退。
 - 项目外位置（`outsideProjectLocationSchema`）：引用落在项目目录以外的文件夹，带素材数，以及这台电脑上有没有这个文件夹（12-06）。别人发来的项目，用户确认后才读取这些位置；确认记录在应用库，见下一节。
 
 ## 登记与记录

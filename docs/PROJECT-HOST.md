@@ -17,6 +17,7 @@
 - 经过 HTTP 的 B1 错误仅列 `APP_LIBRARY_LIMIT`（507，登记容量上限）和 `APP_LIBRARY_INVALID`（422，无效诊断摘要，`details: {reason:'unusable'}`）。`APP_LIBRARY_LOCKED`、`APP_LIBRARY_FORMAT_NEWER` 是监听前的启动错误；`APP_LIBRARY_CLOSED` 是内部生命周期错误，不据此新增公开端点。
 - `inspectProject: receive => …` 是受信测试接收选项；真实服务端子进程可用固定测试 IPC 读取其 own connection。HTTP、CLI 和环境变量不接受 SQL、回调或 inspect 开关；活跃连接复用、关闭项目短开即关、同步回调和 transition 拒绝规则不变。
 - V2 的 `createProjectBackups` 已在生产注册第一个生命周期 hook。打开先复制项目文件，关闭在运行时排空后、store 关闭前复制；按内容序号去重、保留最近三份。`project.backup.list/inspect/restore/status` 走应用 RPC，不 acquire 原项目，恢复为新 ID、空本机记录的新文件。实现边界和契约见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)，本卡没有备份界面。
+- S1 素材媒体 GET/HEAD/Range 使用精确宿主 store 的 L1 引用服务，逐块重查权限与身份，响应 no-store；宿主不再预建私有 `media/`。受信用户路径导入/位置确认走固定 `asset-media/trusted` 项目路由，沿用认证与 origin 检查，普通 RPC/MCP 无确认入口。封面缓存绑定无路径内容指纹，首页仍不 acquire 项目。导入、复制恢复许可和格式拒旧见 [ASSET-REFERENCES.md](ASSET-REFERENCES.md)。
 
 ### 暂不可用的后续能力
 

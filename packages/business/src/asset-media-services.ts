@@ -18,6 +18,7 @@ import {isFileInDirectory, isInsideRealDirectory} from './media-reference/paths.
 import {admitMedia, checkMediaStatus, computeFullSha256, relinkMedia, resolveReferencePath} from './media-reference/index.ts';
 import {createReferencedAssetImportHandler} from './referenced-asset-import.ts';
 import {checkpoint} from './operation-lifecycle.ts';
+import {createPreparedMediaFileFence} from './prepared-media-file.ts';
 import {probe} from './media.ts';
 import {mediaUnavailableError, mediaUnavailableErrorDetailsSchemas} from '../../contracts/src/media-reference-errors.ts';
 import {EXPORT_PREFLIGHT_LIMITS} from '../../contracts/src/export-preflight.ts';
@@ -190,12 +191,16 @@ export function createAssetMediaServices(store: ProjectStore, {outsidePaths, sig
       const old = record(String(input.assetId)); if (old.referenceRevision !== input.expectedReferenceRevision) fail();
       const current = mediaReferenceSchema.parse(old.reference), file = resolveReferencePath(store.projectDir, current); if (!file) fail('MEDIA_MISSING');
       const prepared = await references.referenceForImport(file, {signal, beforeEffect: fence}); fence();
-      const metadata=await probe(prepared.file,{signal,beforeEffect:fence});fence();
+      const sourceFence=createPreparedMediaFileFence(store,prepared.file,{assetId:String(old.id),outsidePaths,beforeEffect:fence});
+      const metadata=await probe(prepared.file,{signal,beforeEffect:sourceFence});sourceFence();
+      const status=await checkMediaStatus(access(),prepared.reference,{signal,beforeEffect:sourceFence});sourceFence();
+      if(status.status!=='online'||!status.readable)throw mediaUnavailableError('MEDIA_CHANGED_DURING_READ',String(old.id));
+      if(prepared.reference.fullSha256)await computeFullSha256(access(),prepared.reference,{signal,beforeEffect:sourceFence});sourceFence();
       const key=digest([store.projectId,op,input.requestId]),id=`${key.slice(0,8)}-${key.slice(8,12)}-5${key.slice(13,16)}-a${key.slice(17,20)}-${key.slice(20,32)}`;
       const existing=store.get('assets',id);if(object(existing))return {asset:toAssetMediaDto(existing),replacesAssetId:old.id};
       const asset={id,projectId:store.projectId,name:old.name,mimeType:prepared.type.mimeType,width:metadata.width,height:metadata.height,duration:metadata.duration,hasAudio:metadata.hasAudio,hasVideo:metadata.hasVideo,provenance:'user-import',reference:prepared.reference,referenceRevision:1,sha256:prepared.reference.fullSha256,sizeBytes:prepared.reference.sizeBytes,url:projectMediaPath(store.projectId,id),createdAt:new Date().toISOString()};
       return store.tx(() => {
-        fence(); if (digest(record(String(old.id))) !== digest(old)) fail();
+        sourceFence(); if (digest(record(String(old.id))) !== digest(old)) fail();
         const result = toAssetMediaDto(store.put('assets', asset));
         store.db.prepare('INSERT INTO idempotency(scope,requestId,requestHash,resourceId) VALUES(?,?,?,?)').run(op, String(input.requestId), digest(input), id);
         return {asset: result, replacesAssetId: old.id};

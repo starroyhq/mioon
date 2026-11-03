@@ -13,6 +13,7 @@ import {assetMediaDtoSchema} from '../packages/contracts/src/asset-media.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 import {run} from '../packages/business/src/media.ts';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {writePrivateFileAtomic} from '../packages/contracts/src/private-storage.ts';
 
 const hash = (value: Buffer): string => createHash('sha256').update(value).digest('hex');
@@ -106,6 +107,23 @@ test('ordinary RPC cannot confirm; trusted import confirms one directory and rep
   const status = row((state.items as unknown[])[0]); assert.equal(status.readable, false); assert.equal(status.outside, true);
 });
 
+test('ordinary and trusted import handlers share one request receipt under concurrency', async t => {
+  const f = await fixture(t), file = path.join(f.projectDir, 'shared-request.png'); writeFileSync(file, png());
+  const input = {projectId: f.store.projectId, requestId: randomUUID(), sourcePath: file};
+  const before = Number(f.store.db.prepare('SELECT contentSequence FROM project_file').get()!.contentSequence);
+  const [ordinary, trusted] = await Promise.all([f.services.call('asset.import', input), f.media.trustedCall('asset.import.path', input)]);
+  assert.equal(row(ordinary).id, row(row(trusted).asset).id);
+  assert.equal(f.store.list('assets', f.store.projectId).length, 1);
+  const concurrentDelta=Number(f.store.db.prepare('SELECT contentSequence FROM project_file').get()!.contentSequence)-before;
+  const singleBefore=Number(f.store.db.prepare('SELECT contentSequence FROM project_file').get()!.contentSequence);
+  await f.services.call('asset.import',{...input,requestId:randomUUID()});
+  const singleDelta=Number(f.store.db.prepare('SELECT contentSequence FROM project_file').get()!.contentSequence)-singleBefore;
+  assert.ok(singleDelta>0);assert.equal(concurrentDelta,singleDelta,'two handlers register exactly one import, including its semantic target row');
+  assert.equal(f.store.list('assets',f.store.projectId).length,2);
+  assert.deepEqual(readFileSync(file), png());
+  assert.equal(readdirSync(f.projectDir).includes('素材'), false);
+});
+
 test('status reports changed and missing without accepting the new content', async t => {
   const f = await fixture(t), file = path.join(f.projectDir, 'state.png'); writeFileSync(file, png());
   const asset = row(await f.services.call('asset.import', {projectId: f.store.projectId, requestId: randomUUID(), sourcePath: file}));
@@ -160,4 +178,19 @@ test('invalid uploads are rejected before creating project media', async t => {
   await assert.rejects(f.services.call('asset.import', {...f.upload(randomUUID()), mimeType: 'audio/wav'}), {code: 'INVALID_MEDIA'});
   assert.equal(f.store.list('assets', f.store.projectId).length, 0);
   assert.equal(readdirSync(f.projectDir).includes('素材'), false);
+});
+
+
+for(const mode of ['overwrite','revoke'] as const)test(`acceptChanged refuses a real probe-time ${mode} without registering a replacement`,async t=>{
+ const f=await fixture(t),file=path.join(mode==='revoke'?f.external:f.projectDir,'probe-race.png');writeFileSync(file,png());
+ if(mode==='revoke')f.app.outsidePaths.confirm({projectId:f.store.projectId,directory:f.external,confirmedAt:new Date().toISOString()});
+ const imported=row(await f.services.call('asset.import',{projectId:f.store.projectId,requestId:randomUUID(),sourcePath:file})),original=f.store.get('assets',String(imported.id));
+ const second=png({pixel:()=>[1,2,3,255]}),third=png({pixel:()=>[4,5,6,255]});writeFileSync(file,second);
+ let changed=false;
+ const off=onMediaProcess(event=>{if(event.type==='started'&&event.kind==='ffprobe'&&!changed){changed=true;if(mode==='overwrite')writeFileSync(file,third);else f.app.outsidePaths.revoke(f.store.projectId,f.external);}});
+ const input={projectId:f.store.projectId,requestId:randomUUID(),assetId:imported.id,expectedReferenceRevision:1};
+ try{await assert.rejects(f.media.call('asset.media.acceptChanged',input),{code:mode==='overwrite'?'MEDIA_CHANGED_DURING_READ':'MEDIA_OUTSIDE_NOT_CONFIRMED'});}finally{off();}
+ assert.equal(changed,true);assert.equal(f.store.list('assets',f.store.projectId).length,1);assert.deepEqual(f.store.get('assets',String(imported.id)),original);
+ assert.equal(f.store.db.prepare('SELECT 1 FROM idempotency WHERE scope=? AND requestId=?').get('asset.media.acceptChanged',input.requestId),undefined);
+ if(mode==='overwrite')assert.deepEqual(readFileSync(file),third);else assert.equal(f.app.outsidePaths.list(f.store.projectId).length,0);
 });
