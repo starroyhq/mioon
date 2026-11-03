@@ -1,3 +1,4 @@
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import type {Provider, ProviderContext} from '../packages/business/src/provider-registry.ts';
 import type {GenerationSnapshot, GenerationReferenceAsset} from './helpers/strict-service-responses.ts';
 type ProviderSnapshot = Omit<GenerationSnapshot, 'referenceAssets'> & {referenceAssets: (GenerationReferenceAsset & {path: string})[]};
@@ -63,7 +64,7 @@ test('reference attach binds one managed image and detach removes only its owned
  const released=await f.call('reference.detach',detach(f,result.edge,result.shot));
  assert.equal(released.detached,true);assert.deepEqual(released.edge,result.edge);assert.equal(released.shot.revision,result.shot.revision+1);assert.deepEqual((released.shot.referenceAssetIds as unknown),[]);
  assert.equal(f.store.list('edges').length,0);assert.deepEqual(f.state().assets,outside.assets);assert.deepEqual(f.state().nodes,outside.nodes);
- assert.equal(createHash('sha256').update(await readFile(path.join(f.root,f.store.get('assets',asset.id)!.relativePath))).digest('hex'),asset.sha256);
+ assert.equal(createHash('sha256').update(await readFile(mediaFixturePath(f.root,f.store.get('assets',asset.id)))).digest('hex'),asset.sha256);
 });
 
 test('exact reference request responses survive detach, new bindings and store restart',async t=>{

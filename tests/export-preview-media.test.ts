@@ -21,6 +21,9 @@ import {readTimelineExportPreviewMedia, timelineExportPreviewIdentity, timelineE
 import {startServer} from '../apps/server/src/index.ts';
 import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {createFileResponses} from '../apps/server/src/file-response.ts';
+import {registerProjectTransactionFence} from '../packages/business/src/project-file/store.ts';
+import {registeredProjectStoreForDatabase} from '../packages/business/src/project-media-storage.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
 import {createServerProject, openProjectDatabase, projectDirFor, schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
@@ -132,6 +135,16 @@ test('preview syntax is exact and unauthorized requests do not disclose bytes', 
 
 test('preview exact ownership requires matching export receipt and owned published asset', async t => {
   const f = await fixture(t); allowCorruptFixture(f);
+  const owner = f.use(db => registeredProjectStoreForDatabase(db)); assert.ok(owner);
+  let blockedClaims = 0, queuedCases = 0;
+  // The queued corruption is read-only test data. The real server's worker
+  // must not claim it while checkpoint() awaits filesystem reads. Inspector
+  // corruption/repair SQL deliberately stays outside domain transactions.
+  const releaseWorkerFence = registerProjectTransactionFence(owner.db, () => {
+    blockedClaims++;
+    throw new Error('Preview ownership fixture blocks background domain writes');
+  });
+  try {
   const originalReceipt = f.use(db => db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(f.input.requestId)!.response);
   // Rows that belong to the other project are written as a corrupt file would hold them.
   const changes = [
@@ -148,6 +161,21 @@ test('preview exact ownership requires matching export receipt and owned publish
   ];
   for (const mutate of changes) {
     f.use(mutate); const before = await f.checkpoint(); assert.equal(f.read(), null);
+    if (f.use(db => db.prepare("SELECT json_extract(data,'$.status') AS status FROM exports WHERE id=?").get(f.record.id)?.status) === 'queued') {
+      queuedCases++;
+      const attempts = blockedClaims;
+      const unexpectedGeneration = (): never => assert.fail('A preview fixture must not dispatch generation');
+      // Force the production worker through its real queued-export claim on
+      // the exact server-owned store; no timer, sleep or renderer is needed.
+      const worker = startWorker(owner, {saveJob: unexpectedGeneration, saveGenerationGuarded: unexpectedGeneration,
+        validateGenerationDispatch: unexpectedGeneration, resolveGenerationProvider: unexpectedGeneration}, new Map());
+      try {await worker.tick();}
+      finally {await worker.stop();}
+      assert.equal(blockedClaims, attempts + 1, 'the explicitly scheduled worker attempted its transaction exactly once');
+      assert.equal(f.use(db => db.prepare("SELECT json_extract(data,'$.status') AS status FROM exports WHERE id=?").get(f.record.id)?.status), 'queued');
+      assert.equal((await readdir(path.join(f.projectDir, 'media'))).some(name => name.startsWith(`export-${f.record.id}-`) && name.endsWith('.part.mp4')), false);
+      await f.unchanged(before);
+    }
     const response = await f.request(); assert.equal(response.status, 404); await response.text(); await f.unchanged(before);
     f.use(db => {
       db.prepare('UPDATE exports SET projectId=?,data=? WHERE id=?').run(f.project.id, JSON.stringify(f.record), f.record.id);
@@ -155,7 +183,9 @@ test('preview exact ownership requires matching export receipt and owned publish
       db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(originalReceipt, f.input.requestId);
     });
   }
+  assert.equal(queuedCases, 1, 'the queued corruption case remains covered');
   assert.ok(f.read());
+  } finally {releaseWorkerFence();}
 });
 
 test('preview revalidates after open and closes descriptor when ownership changes', async t => {

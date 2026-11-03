@@ -2,6 +2,8 @@
 
 项目资产只有引用一种定位方式。路径导入不复制；网页上传先暂存，再排他发布到固定的 `素材/`。项目格式为 2，旧格式明确拒绝打开、零写入；旧开发项目需要重建，不做转换。cache v2 不匹配时只重建缓存，history 保持原版本。Mio 工具目录、请求指纹和 agent 运行时不改。
 
+直接打开旧格式时，内核返回 `PROJECT_INVALID`（422），`details.reason` 为 `schema-version`。通过项目 ID 打开时，宿主返回 `PROJECT_UNAVAILABLE`（409），`details.reason` 为 `PROJECT_INVALID`、`invalidReason` 为 `schema-version`。
+
 ## 共享契约
 
 领域契约独立定义；根契约只复用现有导入 schema 和公共投影：
