@@ -13,6 +13,7 @@ import {anthropicMessages} from './anthropic-wire.ts';
 import {agentAnthropicThinkingFields,agentModelThinkingTier,agentModelTokenLimits,agentRequestThinks,type AgentModelTokenLimits} from './model-profiles.ts';
 import {taskToolWireSchema} from './task-tool-wire-schema.ts';
 import {createTaskUsageCollector} from './task-usage-v2.ts';
+import {chatUsageRequest} from './chat-usage-profile.ts';
 import type {TaskModelUsage} from './task-usage-v2.ts';
 import {applyTaskAnthropicCaching} from './task-cache-v2.ts';
 import {AGENT_TASK_GOAL_SET_TOOL,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS} from './task-tool-groups-v2.ts';
@@ -140,15 +141,6 @@ export function taskResponseLocale(context:readonly AgentTaskJson[]|undefined):A
   return DEFAULT_AGENT_TASK_LOCALE;
 }
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
-// Presets can point at a compatible server, so documented optional fields also
-// require its official endpoint. Workspace Qwen endpoints stay passive until
-// their usage-option support has been established for that endpoint shape.
-function chatUsageRequest(configuration:AgentConfiguration):boolean {
-  const url=new URL(configuration.baseUrl),path=url.pathname.replace(/\/+$/u,'');
-  if(configuration.presetId==='openai')return url.origin==='https://api.openai.com'&&path==='/v1';
-  if(configuration.presetId==='deepseek')return url.origin==='https://api.deepseek.com'&&['','/v1'].includes(path);
-  return configuration.presetId==='qwen'&&['https://dashscope.aliyuncs.com','https://dashscope-intl.aliyuncs.com'].includes(url.origin)&&path==='/compatible-mode/v1';
-}
 function fail(code='AGENT_CHAT_PROTOCOL_ERROR'):never {throw agentChatError(code);}
 function string(value:unknown,max=TASK_MODEL_LIMITS.outputBytes):string {
   if(typeof value!=='string'||Buffer.byteLength(value)>max||Buffer.from(value).toString('utf8')!==value)fail();

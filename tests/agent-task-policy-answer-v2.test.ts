@@ -227,13 +227,29 @@ test('a new conversation saves its modes with the first run and replays bind the
  await assert.rejects(f.runtime.send(f.projectId,{...plain,policy:{modes:STEP}}),{code:'AGENT_TASK_REQUEST_CONFLICT'});
  assert.equal(f.runtime.conversationPolicy(f.projectId,unpoliced.run.conversationId!).revision,0);
  // Only a new conversation chooses modes when sending; later changes use its policy.
- await assert.rejects(f.runtime.send(f.projectId,{requestId:randomUUID(),text:'Continue',expectedSettingsRevision,conversationId:sent.run.conversationId,policy:{modes:FULL,acknowledgePaid:true}}),{code:'AGENT_TASK_INVALID'});
+ await assert.rejects(f.runtime.send(f.projectId,{requestId:randomUUID(),text:'Continue',expectedSettingsRevision,conversationId:sent.run.conversationId,policy:{modes:FULL,acknowledgePaid:true}}),{code:'AGENT_TASK_INVALID',status:400,message:'policy 只能在新对话的第一轮携带；继续对话时请省略 policy。'});
  await assert.rejects(f.runtime.send(f.projectId,{requestId:randomUUID(),text:'Start loosely',expectedSettingsRevision,policy:{modes:FULL}}),{code:'AGENT_TASK_APPROVAL_REQUIRED'});
  await assert.rejects(f.runtime.send(f.projectId,{requestId:randomUUID(),text:'Start oddly',expectedSettingsRevision,policy:{modes:STEP,extra:true}}),{code:'AGENT_TASK_INVALID'});
  await assert.rejects(f.runtime.send(f.projectId,{requestId:randomUUID(),text:'Start oddly',expectedSettingsRevision,policy:{modes:STEP,acknowledgePaid:false}}),{code:'AGENT_TASK_INVALID'});
  const loose=await f.submit({requestId:randomUUID(),text:'Start loosely',expectedSettingsRevision,policy:{modes:FULL,acknowledgePaid:true}});
  assert.deepEqual(f.runtime.conversationPolicy(f.projectId,loose.run.conversationId!).effective,FULL);
  assert.equal(f.runtime.journal.list(f.projectId).length,3,'refused sends create no run');
+});
+
+for(const opener of [openStore,openLegacyWorkspaceStore])test(`${opener===openStore?'native':'legacy'}: continued policy errors leave first-send receipts and conversation modes intact`,async t=>{
+ const f=await fixture(t,opener),expectedSettingsRevision=await f.settingsRevision();
+ const first={requestId:randomUUID(),text:'Start with a per-conversation policy',expectedSettingsRevision,policy:{modes:STEP}};
+ const sent=await f.submit(first),conversationId=sent.run.conversationId!,before=f.runtime.conversationPolicy(f.projectId,conversationId);
+ assert.equal((await f.submit(first)).run.id,sent.run.id,'Exact first-send replay remains valid');
+ const requestId=randomUUID();
+ await assert.rejects(f.runtime.send(f.projectId,{requestId,text:'Continue incorrectly',expectedSettingsRevision,conversationId,policy:{modes:STEP}}),{code:'AGENT_TASK_INVALID',status:400,message:'policy 只能在新对话的第一轮携带；继续对话时请省略 policy。'});
+ assert.equal(f.runtime.journal.lookupRequest(f.projectId,requestId),null);assert.equal(f.runtime.journal.list(f.projectId).length,1);
+ assert.deepEqual(f.runtime.conversationPolicy(f.projectId,conversationId),before);
+ assert.equal((await f.submit(first)).run.id,sent.run.id,'Rejected continuation cannot poison the original receipt');
+ await assert.rejects(f.runtime.send(f.projectId,{...first,policy:{modes:DEFAULT}}),{code:'AGENT_TASK_REQUEST_CONFLICT'});
+ const continued={requestId:randomUUID(),text:'Continue without policy',expectedSettingsRevision,conversationId};
+ const accepted=await f.submit(continued);assert.equal(accepted.run.conversationId,conversationId);
+ assert.equal((await f.submit(continued)).run.id,accepted.run.id);assert.deepEqual(f.runtime.conversationPolicy(f.projectId,conversationId),before);
 });
 
 test('the default policy confirms irreversible work, saved policies keep their modes, and presets name the composer choices',async t=>{

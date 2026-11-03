@@ -24,6 +24,25 @@ import type {AgentTaskLoadableToolGroupId} from '../packages/business/src/agent/
 
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 
+test('continued policy has a specific fixed HTTP error without exposing internal markers or consuming a receipt',async t=>{
+ const f=await fixture(t,'chat_completions',async function*(request){request.beforeSubmit?.();yield {type:'done',output:{text:'Completed locally',toolCalls:[],providerOutput:{role:'assistant',content:'Completed locally'}}};});
+ await f.authorize();
+ const expectedSettingsRevision=(await f.settings.get()).revision,first={requestId:randomUUID(),text:'Start with a conversation policy',expectedSettingsRevision,policy:{modes:AGENT_TASK_POLICY_PRESETS.step}};
+ const sent=await f.request(f.prefix,'POST',first);assert.equal(sent.status,200);
+ const original=await f.settle(agentTaskSnapshotSchema.parse(sent.data).run.id),conversationId=original.run.conversationId!,requestId=randomUUID();
+ const continued={requestId,text:'Continue without changing the conversation modes',expectedSettingsRevision,conversationId};
+ const invalid=await f.request(f.prefix,'POST',{...continued,policy:first.policy});
+ assert.equal(invalid.status,400);assert.ok(object(invalid.error));
+ assert.equal(invalid.error.code,'AGENT_TASK_INVALID');assert.equal(invalid.error.message,'policy 只能在新对话的第一轮携带；继续对话时请省略 policy。');
+ assert.deepEqual(Object.keys(invalid.error).sort(),['code','details','message','retryable']);assert.deepEqual(invalid.error.details,{});assert.equal(invalid.error.retryable,false);
+ const lookup=await f.request(`${f.prefix}/requests/${requestId}`);assert.equal(lookup.status,200);assert.ok(object(lookup.data));assert.equal(lookup.data.found,false);
+ const replay=await f.request(f.prefix,'POST',first);assert.equal(replay.status,200);assert.equal(agentTaskSnapshotSchema.parse(replay.data).run.id,original.run.id);assert.equal(f.models,1);
+ const spoofed=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'Not a trusted error marker',expectedSettingsRevision,policyOnContinuation:true});
+ assert.equal(spoofed.status,400);assert.ok(object(spoofed.error));assert.equal(spoofed.error.code,'AGENT_TASK_INVALID');assert.equal(spoofed.error.message,'任务参数无效。');
+ const accepted=await f.request(f.prefix,'POST',continued);assert.equal(accepted.status,200);
+ const ended=await f.settle(agentTaskSnapshotSchema.parse(accepted.data).run.id);assert.equal(ended.run.status,'completed');assert.equal(ended.run.conversationId,conversationId);assert.equal(f.models,2);
+});
+
 test('the real K2 server serves usage only at the authenticated read-only project subresource',async t=>{
  const reported={inputTokens:80,outputTokens:4,cacheReadTokens:20,cacheWriteTokens:0};
  const f=await fixture(t,'chat_completions',async function*(request){request.beforeSubmit?.();yield {type:'done',output:{text:'Private passive counters',toolCalls:[],providerOutput:{role:'assistant',content:'Private passive counters'},usage:reported}};});
