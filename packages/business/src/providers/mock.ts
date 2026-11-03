@@ -19,17 +19,17 @@ const stable = (value: unknown): string => JSON.stringify(value, (_key, item: un
 export interface MockProviderFactoryOptions {db: DatabaseSync; root: string; now?: () => number}
 type MockTaskRow = Record<string, unknown> & {provider_job_id: string; request_id: string; snapshot_json: string; snapshot_hash: string; scenario: string; created_at_ms: number; ready_at_ms: number; poll_count: number; download_attempts: number; cancelled: number};
 
-async function managedDestination(root: string, destination: string, signal?: AbortSignal): Promise<string> {
-  throwIfMediaAborted(signal);
+async function managedDestination(root: string, destination: string, check: () => void): Promise<string> {
+  check();
   const base = await realpath(root);
-  throwIfMediaAborted(signal);
+  check();
   const absolute = path.resolve(destination);
   const relative = path.relative(base, absolute);
   if (!relative || relative.startsWith(`..${path.sep}`) || relative === '..' || path.isAbsolute(relative)) throw error('UNSAFE_PATH', 'Output must be inside the managed data directory.');
   await mkdir(path.dirname(absolute), { recursive: true });
-  throwIfMediaAborted(signal);
+  check();
   const parent = await realpath(path.dirname(absolute));
-  throwIfMediaAborted(signal);
+  check();
   if (parent !== base && !parent.startsWith(`${base}${path.sep}`)) throw error('UNSAFE_PATH', 'Output directory is outside managed storage.');
   return absolute;
 }
@@ -37,12 +37,16 @@ async function managedDestination(root: string, destination: string, signal?: Ab
 // Unknown capability preserves the existing retryable render path.
 const lacksDrawtext = createMockRendererCapability({run, throwIfMediaAborted});
 
-async function runFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
-  try { await run('ffmpeg', args, { timeout: 60_000, signal }); }
+async function runFfmpeg(args: string[], signal: AbortSignal | undefined, beforeEffect: () => void): Promise<void> {
+  try { await run('ffmpeg', args, { timeout: 60_000, signal, beforeEffect }); }
   catch (cause) {
     const failure = object(cause), code = failure?.code;
     if (code === 'MEDIA_CANCELLED' || failure?.terminationUnconfirmed) throw cause;
-    if (code !== 'MEDIA_INVALID_CONFIGURATION' && code !== 'MEDIA_SPAWN_FAILED' && await lacksDrawtext(signal)) throw error('MOCK_RENDERER_UNSUPPORTED', DRAWTEXT_MESSAGE, { retryable: false });
+    beforeEffect();
+    if (code !== 'MEDIA_INVALID_CONFIGURATION' && code !== 'MEDIA_SPAWN_FAILED') {
+      const unsupported=await lacksDrawtext(signal);beforeEffect();
+      if(unsupported)throw error('MOCK_RENDERER_UNSUPPORTED', DRAWTEXT_MESSAGE, { retryable: false });
+    }
     const message = code === 'MEDIA_INVALID_CONFIGURATION' ? 'Configured renderer must be an absolute executable path.'
       : code === 'MEDIA_SPAWN_FAILED' ? 'Could not start the simulated video renderer.' : 'Simulated video rendering failed.';
     throw error('MOCK_RENDER_FAILED', message, { retryable: true, ...(failure?.terminationUnconfirmed ? { terminationUnconfirmed: true } : {}) });
@@ -61,8 +65,10 @@ export function createMockProviderCapabilities() {
 /** A durable simulated provider ledger, intentionally independent of application jobs. */
 export function createMockProvider({ db, root, now = Date.now }: MockProviderFactoryOptions) {
   if (!db?.prepare || !root) throw new TypeError('Mock provider requires a SQLite database and managed root.');
-  assertProjectDatabase(db);
+  // Discovery and snapshot validation are pure. Require the real live kernel
+  // only when a method actually reads or changes its durable provider ledger.
   const get = (id: unknown): MockTaskRow => {
+    assertProjectDatabase(db);
     const row = db.prepare('SELECT * FROM mock_provider_tasks WHERE provider_job_id = ?').get(id as SQLInputValue) as MockTaskRow | undefined;
     if (!row) throw error('PROVIDER_TASK_NOT_FOUND', 'Simulated provider task was not found.');
     return row;
@@ -115,6 +121,7 @@ export function createMockProvider({ db, root, now = Date.now }: MockProviderFac
     capabilities: createMockProviderCapabilities(),
     async submit(snapshot: unknown, context: ProviderContext = {}): Promise<{providerJobId: string}> {
       throwIfMediaAborted(context.signal);
+      assertProjectDatabase(db);
       validate(snapshot);
       const requestId = context.requestId;
       if (typeof requestId !== 'string' || !requestId || requestId.length > 256) throw error('INVALID_REQUEST_ID', 'A bounded request ID is required.');
@@ -124,7 +131,7 @@ export function createMockProvider({ db, root, now = Date.now }: MockProviderFac
       const delayMs = typeof parameters.delayMs === 'number' ? parameters.delayMs : (scenario === 'delay' ? 2000 : 250);
       const json = stable(snapshot), hash = createHash('sha256').update(json).digest('hex');
       const timestamp = now();
-      context.beforeSubmit?.();throwIfMediaAborted(context.signal);
+      context.beforeSubmit?.();throwIfMediaAborted(context.signal);assertProjectDatabase(db);
       db.exec('SAVEPOINT mock_submission');
       let taskId: string | undefined, failure: Error | undefined;
       try {
@@ -164,23 +171,29 @@ export function createMockProvider({ db, root, now = Date.now }: MockProviderFac
       db.prepare('UPDATE mock_provider_tasks SET poll_count = poll_count + 1 WHERE provider_job_id = ?').run(providerJobId);
       const status = statusOf(get(providerJobId));
       // A render that cannot succeed on this FFmpeg ends the job now instead of retrying the download for ever.
-      if (status.status === 'succeeded' && await lacksDrawtext(context.signal)) return { status: 'failed' as const, progress: 1, error: { code: 'MOCK_RENDERER_UNSUPPORTED', message: DRAWTEXT_MESSAGE, retryable: false } };
+      if (status.status === 'succeeded') {
+        const unsupported=await lacksDrawtext(context.signal);
+        throwIfMediaAborted(context.signal);assertProjectDatabase(db);
+        if(unsupported)return { status: 'failed' as const, progress: 1, error: { code: 'MOCK_RENDERER_UNSUPPORTED', message: DRAWTEXT_MESSAGE, retryable: false } };
+      }
       return status;
     },
     async reconcile(requestId: string, context: ProviderContext = {}) {
       throwIfMediaAborted(context.signal);
+      assertProjectDatabase(db);
       const row = db.prepare('SELECT provider_job_id FROM mock_provider_tasks WHERE request_id = ?').get(requestId) as {provider_job_id: string} | undefined;
       return row ? { providerJobId: row.provider_job_id } : null;
     },
     async download(providerJobId: string, destination: string, context: ProviderContext = {}) {
       const { signal } = context;
-      throwIfMediaAborted(signal);
+      const check=(): void=>{throwIfMediaAborted(signal);assertProjectDatabase(db);};
+      check();
       const row = get(providerJobId);
       if (statusOf(row).status !== 'succeeded') throw error('PROVIDER_NOT_READY', 'Simulated output is not available yet.', { retryable: true });
       db.prepare('UPDATE mock_provider_tasks SET download_attempts = download_attempts + 1 WHERE provider_job_id = ?').run(providerJobId);
       if (row.scenario === 'download_fail_once' && row.download_attempts === 0) throw error('DOWNLOAD_FAILED', 'Simulated first download failed. Retry download of the same provider task.', { retryable: true });
-      const output = await managedDestination(root, destination, signal);
-      throwIfMediaAborted(signal);
+      const output = await managedDestination(root, destination, check);
+      check();
       const temporary = `${output}.${randomUUID()}.partial.mp4`;
       const snapshot = JSON.parse(row.snapshot_json) as {duration: number};
       const hue = parseInt(row.snapshot_hash.slice(0, 4), 16) % 360;
@@ -190,10 +203,10 @@ export function createMockProvider({ db, root, now = Date.now }: MockProviderFac
           '-t', String(snapshot.duration), '-vf', `hue=h=${hue},drawbox=x=0:y=0:w=iw:h=74:color=black@0.85:t=fill,drawtext=text='SIMULATED MOCK':fontcolor=white:fontsize=26:x=(w-tw)/2:y=20`,
           '-an', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '24', '-pix_fmt', 'yuv420p', '-threads', '1',
           '-metadata', 'comment=SIMULATED MOCK VIDEO - NOT AI GENERATED', '-movflags', '+faststart', temporary,
-        ], signal);
-        throwIfMediaAborted(signal);
+        ], signal, check);
+        check();
         await rename(temporary, output);
-        throwIfMediaAborted(signal);
+        check();
       } finally { await rm(temporary, { force: true }); }
       return { mimeType: 'video/mp4', width: 360, height: 640, duration: snapshot.duration, isMock: true };
     },
@@ -207,6 +220,7 @@ export function createMockProvider({ db, root, now = Date.now }: MockProviderFac
       return { cancelled: true, remoteCancelled: true, scope: 'remote' };
     },
     stats(requestId?: unknown) {
+      assertProjectDatabase(db);
       const filter = requestId === undefined ? '' : ' WHERE request_id = ?';
       const args: SQLInputValue[] = requestId === undefined ? [] : [requestId as SQLInputValue];
       const submitted = db.prepare(`SELECT COUNT(*) AS n FROM mock_provider_submissions${filter}`).get(...args) as {n: number};

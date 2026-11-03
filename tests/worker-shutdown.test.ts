@@ -237,12 +237,14 @@ test('unconfirmed existing-result probe never falls back to provider download or
 
 
 test('unconfirmed export failure stays queued with its snapshot and a durable pause diagnostic',async t=>{
- const f=await shutdownFixture(t);f.transition({status:'cancelled'});
- const snapshot=[{assetId:'synthetic-unconfirmed-input',sha256:'a'.repeat(64)}];
+ const f=await shutdownFixture(t,{}, {reference:true}),asset=f.assets[0],versionId=randomUUID(),job=f.read();
+ f.transition({status:'cancelled',versionId,assetId:asset.id});
+ f.store.put('versions',{id:versionId,projectId:f.project.id,shotId:job.shotId,jobId:job.id,assetId:asset.id,sha256:asset.sha256,snapshot:job.snapshot});
+ const snapshot=[{versionId,shotId:job.shotId,assetId:asset.id,sha256:asset.sha256}];
  const render={id:randomUUID(),projectId:f.project.id,status:'queued',snapshot,assetId:null};f.store.put('exports',render);
  const originalGet=f.store.get;
  f.store.get=((table:string,id:string)=>{
-  if(table==='assets'&&id==='synthetic-unconfirmed-input')throw Object.assign(Error('Synthetic unconfirmed input probe'),{code:'MEDIA_TERMINATION_UNCONFIRMED',terminationUnconfirmed:true});
+  if(table==='assets'&&id===asset.id)throw Object.assign(Error('Synthetic unconfirmed input probe'),{code:'MEDIA_TERMINATION_UNCONFIRMED',terminationUnconfirmed:true});
   return originalGet(table,id);
  }) as typeof f.store.get;
  const worker=f.start();await worker.tick();await assert.rejects(worker.stop(),error=>(error as RootFailure & {terminationUnconfirmed?:boolean}).terminationUnconfirmed===true);

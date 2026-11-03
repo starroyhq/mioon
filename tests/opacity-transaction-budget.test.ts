@@ -63,22 +63,22 @@ test('actual owned task prepare accepts complete old maximum and refuses opacity
   assert.deepEqual(captured.input,input);
   const snapshot=()=>JSON.stringify(['edit_tasks','timelines','timeline_requests','timeline_history','timeline_history_cursors'].map(table=>store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));
   const before=snapshot(),changes=store.db.prepare('SELECT total_changes() AS n').get()!.n;
-  for(const context of [{},{expectedWorkspaceOrigin:randomUUID()}] as const){
-    assert.throws(()=>tasks.prepare(prepare(input),context),{code:'EDIT_TASK_VALIDATION'});
+  for(const envelope of [prepare(input),{...prepare(input),expectedWorkspaceOrigin:randomUUID()}]){
+    assert.throws(()=>tasks.prepare(envelope,{}),{code:'EDIT_TASK_VALIDATION'});
     assert.equal(snapshot(),before);assert.equal(store.db.prepare('SELECT total_changes() AS n').get()!.n,changes);
   }
   assert.equal(dispatches,0);assert.equal(store.db.isTransaction,false);
   t.diagnostic('127 nodes is candidate capture plus the unchanged complete prepare wrapper only; production still rejects the opacity array. No opacity transaction, execution, commit or restore profile is implemented by this test.');
 });
 
-test('real HTTP prepare separates restored-origin context before the 128-node task walker',async()=>{
+test('real HTTP prepare passes the complete 127-node candidate to the closed task validator',async()=>{
   const input=maximumInput(),withOpacity={...input,patch:{...input.patch,opacityEnvelope:opacity()}};
-  const wrapper=prepare(withOpacity),workspaceOrigin=randomUUID(),body={...wrapper,expectedWorkspaceOrigin:workspaceOrigin};
-  assert.equal(count(wrapper),127);assert.equal(count(body),128);
+  const wrapper=prepare(withOpacity),body=wrapper;
+  assert.equal(count(wrapper),127);assert.equal(count(body),127);
   const data=Buffer.from(JSON.stringify(body)),req=Readable.from([data]);
   Object.assign(req,{url:'/api/tasks/prepare',method:'POST',headers:{'content-type':'application/json','content-length':String(data.length)}});
   let received=0;
-  const handler=createEditTasksHttp((({tasks:{prepare(actual:unknown,context:Record<string,unknown>|undefined){received++;assert.deepEqual(actual,wrapper);assert.equal(count(actual),127);assert.deepEqual(context,{expectedWorkspaceOrigin:workspaceOrigin});return {qualification:true};}}}) as unknown as Parameters<typeof createEditTasksHttp>[0]));
+  const handler=createEditTasksHttp((({tasks:{prepare(actual:unknown,context:Record<string,unknown>|undefined){received++;assert.deepEqual(actual,wrapper);assert.equal(count(actual),127);assert.deepEqual(context,{});return {qualification:true};}}}) as unknown as Parameters<typeof createEditTasksHttp>[0]));
   const res={destroyed:false,writableEnded:false,headersSent:false,setHeader(){},writeHead(status: unknown){(this as unknown as {status:unknown}).status=status;this.headersSent=true;},end(text: unknown){(this as unknown as {text:unknown}).text=text;this.writableEnded=true;}};
   assert.equal(await handler((req as unknown as Parameters<typeof handler>[0]),(res as unknown as Parameters<typeof handler>[1]),new URL('http://127.0.0.1/api/tasks/prepare')),true);
   assert.equal((res as typeof res&{status:number}).status,200);assert.equal(received,1);

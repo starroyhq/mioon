@@ -15,7 +15,7 @@ function fixture(t: TestContext){const base=fs.mkdtempSync(path.join(fs.realpath
 
 test('backend retains established stale-lock takeover and opaque db-bound ownership',t=>{
  const f=fixture(t),lock=path.join(f.source,'server.lock');fs.writeFileSync(lock,'invalid stale token',{mode:0o600});
- const lease=acquireWorkspaceLock(f.source),store=openStore(f.source);t.after(()=>{store.close();lease.release();});
+ const lease=acquireWorkspaceLock(f.source,{allowStale:true}),store=openStore(f.source);t.after(()=>{store.close();lease.release();});
  assert.equal(lease.isOwned(),true);assert.equal(ownsStoreLock(store),true);
  assert.equal(ownsStoreLock({...store,db:{isOpen:true}} as unknown as Parameters<typeof ownsStoreLock>[0]),false);
  assert.equal(ownsStoreLock({...store,root:f.base}),false);

@@ -1,18 +1,20 @@
 import { clickWorkbenchAction } from './browser-workbench-actions.mjs';
 /** Supported own-cloud CUA + native pointer drags, normal authenticated backend.
- * Reads only the copied synthetic SQLite database; no renderer state injection.
+ * Reads only the QA runtime’s trusted fixed project-observation snapshot; no renderer state injection.
  * screenshotDir must be the current CUA task workspace. */
 import assert from 'node:assert/strict';
-import {DatabaseSync} from 'node:sqlite';
+import {readFileSync} from 'node:fs';
 import {mkdir,writeFile,unlink} from 'node:fs/promises';
 import path from 'node:path';
 const domain=t=>({tracks:t.tracks,clips:t.clips,durationFrames:t.durationFrames});
 export async function createSnappingAcceptance({tab,sky,fixture,screenshotDir,desktopOffset}) {
- assert.ok(fixture.dataDir.endsWith('/evidence/timeline-snapping/runtime/workspace'));
+ assert.ok(fixture.kernel===true&&fixture.snappingLayoutVersion===1);
+ assert.ok(fixture.runtime.endsWith('/evidence/timeline-snapping/runtime'));assert.equal(fixture.dataDir,path.join(fixture.runtime,'data'));
  await mkdir(screenshotDir,{recursive:true});
- const db=new DatabaseSync(path.join(fixture.dataDir,'workbench.sqlite'),{readOnly:true});
- const read=(id=fixture.project.id)=>JSON.parse(db.prepare('SELECT data FROM timelines WHERE projectId=?').get(id).data);
- const cursor=()=>db.prepare('SELECT position FROM timeline_history_cursors WHERE projectId=?').get(fixture.project.id)?.position||0;
+ const projectIds=[fixture.project.id,fixture.second.id].sort(),snapshotFile=path.join(fixture.runtime,'project-observation.json');
+ const observation=()=>{const bytes=readFileSync(snapshotFile);assert.ok(bytes.length<=4*1024*1024);const value=JSON.parse(bytes.toString('utf8'));assert.equal(value.version,1);assert.equal(value.fixtureId,fixture.fixtureId);assert.equal(value.dataDir,fixture.dataDir);assert.deepEqual(Object.keys(value.projects).sort(),projectIds);return value.projects;};
+ const read=(id=fixture.project.id)=>{assert.ok(projectIds.includes(id));const value=observation()[id];assert.equal(value.timeline.projectId,id);return value.timeline;};
+ const cursor=()=>{const value=observation()[fixture.project.id].cursor;assert.ok(Number.isSafeInteger(value)&&value>=0);return value;};
  const report={browser:'Own-cloud CUA Chromium with native Sky pointer drag; unchanged sandbox',startedAt:new Date().toISOString(),checks:[],screenshots:[]};
  const save=()=>writeFile(path.join(screenshotDir,'browser-snapping-report.json'),JSON.stringify(report,null,2));
  const log=async(name,details={})=>{report.checks.push({name,passed:true,...details});await save();};
@@ -45,12 +47,12 @@ export async function createSnappingAcceptance({tab,sky,fixture,screenshotDir,de
   } finally {const result=await input;if(result?.error)throw result.error;}
   await tab.getAXState({emit:false});return preview;
  }
- return {read,cursor,report,log,capture,settle,frame,undo,project,fault,release,drag,domain,db,save};
+ return {read,cursor,report,log,capture,settle,frame,undo,project,fault,release,drag,domain,save};
 }
 
 /** Run on a signed-in Editing tab showing the copied baseline project at 76px/s,
  * scroll 0. desktopOffset is measured from a fresh native screenshot, never guessed.
- * Each native drag is observed in-flight before the actual drop is checked in SQLite. */
+ * Each native drag is observed in-flight before the actual drop is checked in the trusted manager snapshot. */
 export async function runSnappingAcceptance(options) {
  const q=await createSnappingAcceptance(options),{tab,sky,fixture,desktopOffset}=options;
  const base=q.read(),initialCursor=q.cursor(),clip=base.clips[0],target=fixture.targetTrack.id;
@@ -90,6 +92,6 @@ export async function runSnappingAcceptance(options) {
   revision=q.read().revision;const other=q.read(fixture.second.id);await q.fault('hold');await move({startFrame:298,expectFrame:300});assert.equal(q.read().revision,revision+1);const held=q.read();await q.project(fixture.second.name);await q.release();await tab.getAXState({emit:false});assert.ok((await tab.playwright.getByTestId('project-switcher').innerText()).includes(fixture.second.name));assert.deepEqual(q.read(fixture.second.id),other);await q.project(fixture.project.name);await q.settle(revision+1);assert.deepEqual(q.read(),held);await q.log('Late accepted move cannot hijack a newer project or workspace');await q.capture('10-final-snapping-workspace.jpg');
   q.report.result='passed';q.report.finalTimeline=q.read();q.report.finalCursor=q.cursor();
  }catch(error){q.report.result='failed';q.report.error=String(error.stack||error);try{await q.release();await q.capture('failure.jpg');}catch{}throw error;}
- finally{q.report.finishedAt=new Date().toISOString();await q.save();q.db.close();}
+ finally{q.report.finishedAt=new Date().toISOString();await q.save();}
  return q.report;
 }

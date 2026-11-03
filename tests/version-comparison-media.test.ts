@@ -36,6 +36,7 @@ import {safePath} from '../packages/business/src/media.ts';
 import {startServer} from '../apps/server/src/index.ts';
 import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {createVersionComparisonMediaHttp, readVersionComparisonMedia, versionComparisonMediaIdentity, type VersionComparisonMediaOptions} from '../apps/server/src/version-comparison-media.ts';
+import {captureComparison} from '../apps/web/src/version-comparison-state.ts';
 import {createServerProject, openProjectDatabase,projectDirFor,schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 import type {CreateReadStreamOptions} from 'fs/promises';
@@ -91,7 +92,7 @@ async function fixture(t: test.TestContext, {serve = true, published = false} = 
   // Historical playback must not follow current shot selection.
   store.put('shots', {...store.get('shots', shot.id), selectedVersionId: null});
   const route = projectApiPath(project.id,'version-comparison','media')+'?' + new URLSearchParams({projectId: project.id, shotId: shot.id, versionId: version.id,
-    assetId: asset.id, sha256: asset.sha256, workspaceOrigin: 'normal'}), url = new URL('/api/version-comparison/media?'+route.split('?')[1], 'http://127.0.0.1:12345');
+    assetId: asset.id, sha256: asset.sha256}), url = new URL('/api/version-comparison/media?'+route.split('?')[1], 'http://127.0.0.1:12345');
   if (serve) {
     await services.drain(); services = undefined; store!.close(); store = undefined;
     server = await startServer({dataDir: root, port: 0, token, chatGateway: async function* () {assert.fail('Media must not call AI');},
@@ -151,13 +152,23 @@ for (const published of [false, true]) test(`comparison GET/HEAD/ranges serve ex
   await f.unchanged(before);
 });
 
+test('the actual browser comparison binding streams its exact managed bytes without a legacy origin field',async t=>{
+  const f=await fixture(t),before=await f.checkpoint();
+  const binding=captureComparison({scope:'synthetic-current-project',projectId:f.project.id,connected:true,visible:true,shot:f.shot,
+    versions:[{id:f.version.id,projectId:f.project.id,shotId:f.shot.id,assetId:f.asset.id,sha256:f.asset.sha256,number:1}],
+    assets:[{id:f.asset.id,projectId:f.project.id,sha256:f.asset.sha256,mimeType:f.asset.mimeType}]},f.version.id);
+  assert.ok(binding);assert.equal(new URL(binding.url,f.server.url).searchParams.has('workspaceOrigin'),false);
+  const response=await f.request(binding.url);assert.equal(response.status,200);
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()),f.bytes);await f.unchanged(before);
+});
+
 test('exact query shape, identity, method, authentication and browser-origin envelope fail closed', async t => {
   const f = await fixture(t), before = await f.checkpoint();
   const invalid = [f.route + '&', f.route + '&unknown=1', f.route + '&path=/tmp/private', f.route + '&sha256=' + f.asset.sha256,
-    f.route.replace('workspaceOrigin=normal', 'workspaceOrigin=' + randomUUID()), f.route.replace('workspaceOrigin=normal', 'workspaceOrigin=restored%3A' + randomUUID()),
+    ...['normal',randomUUID(),'restored:'+randomUUID()].map(value=>f.route+'&workspaceOrigin='+encodeURIComponent(value)),
     f.route.replace(f.asset.sha256, f.asset.sha256.toUpperCase()), f.route.replace(f.asset.sha256, f.asset.sha256 + '%0A'), f.route.replace('projectId=' + f.project.id, 'projectId=' + f.project.id + '%0A'), f.route.replace(f.asset.sha256, 'a'.repeat(63)), f.route.replace(f.asset.sha256, 'a'.repeat(64)),
     f.route.replace('projectId=' + f.project.id, 'projectId=bad%ZZ'), f.route.replace(f.shot.id, '%00' + f.shot.id), f.route + '&long=' + 'x'.repeat(2050)];
-  for (const field of ['projectId', 'shotId', 'versionId', 'assetId', 'sha256', 'workspaceOrigin']) {
+  for (const field of ['projectId', 'shotId', 'versionId', 'assetId', 'sha256']) {
     const missing = new URL(f.route,'http://127.0.0.1'); missing.searchParams.delete(field); invalid.push(missing.pathname + missing.search);
     const duplicate = new URL(f.route,'http://127.0.0.1'); duplicate.searchParams.append(field, duplicate.searchParams.get(field)!); invalid.push(duplicate.pathname + duplicate.search);
   }

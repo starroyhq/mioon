@@ -14,6 +14,7 @@ test('application provider catalog matches project discovery without creating a 
   const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-app-catalog-')),db=new DatabaseSync(':memory:');
   t.after(()=>{db.close();rmSync(root,{recursive:true,force:true});});
   const before=globalThis.fetch;globalThis.fetch=async()=>assert.fail('Discovery cannot use the network');t.after(()=>{globalThis.fetch=before;});
+  const schema=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(),changes=db.prepare('SELECT total_changes() AS n').get();
   for(const env of [{},{MIOON_ENABLE_LIVE_PROVIDER:'1',RUNWAYML_API_SECRET:'synthetic-catalog-key',ARK_API_KEY:'synthetic-catalog-key',GEMINI_API_KEY:'synthetic-catalog-key',MINIMAX_API_KEY:'synthetic-catalog-key',VIDU_API_KEY:'synthetic-catalog-key'},
     {MINIMAX_REGION:'invalid',VIDU_REGION:'invalid'}]) {
     const catalog=createProviderCatalog({root,env}),registry=createProviderRegistry({db,root,env});
@@ -22,6 +23,8 @@ test('application provider catalog matches project discovery without creating a 
     assert.deepEqual(Object.keys(catalog),['list']);
   }
   assert.deepEqual(readdirSync(root),[]);
+  assert.deepEqual(db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(),schema);
+  assert.deepEqual(db.prepare('SELECT total_changes() AS n').get(),changes);
 });
 
 test('application catalog exposes independent metadata snapshots without execution handles',()=>{

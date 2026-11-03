@@ -93,18 +93,16 @@ test('fade CLI and official MCP schemas are optional, strict, offline and retain
   const timelineOperations = ['timeline.audioPreview.continuousPlan', 'timeline.colour.source.inspect', 'timeline.colour.image.inspect', 'timeline.colour.jpeg.inspect', 'timeline.audioPreview.plan', 'timeline.subtitle.add', 'timeline.subtitle.update', 'timeline.subtitle.remove', 'timeline.format.get', 'timeline.format.set', 'timeline.get', 'timeline.inspect', 'timeline.history.get', 'timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak', 'timeline.export.loudness', 'timeline.loudness.prepare', 'timeline.clip.loudness', 'timeline.loudness.apply', 'timeline.undo', 'timeline.redo', 'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.remove', 'timeline.clip.rippleRemove', 'timeline.clip.split', 'timeline.clip.replaceSource', 'timeline.seed', 'timeline.render', 'timeline.clip.refreshSources', 'timeline.shots.append', 'timeline.clip.splitAtScenes', 'timeline.clip.crossfade', 'timeline.clip.setGains', 'timeline.clip.setTransform', 'timeline.clip.setTransition'];
   assert.deepEqual(catalog.operations.filter((item) => item.operation.startsWith('timeline.')).map((item) => item.operation).sort(), timelineOperations.sort(), 'timeline discovery includes explicit source replacement and ripple removal alongside existing fade fields');
   // Public local inspection is broader than the explicitly consented Agent tool set.
-  assert.deepEqual(catalog.operations.filter((item) => item.operation.endsWith('.inspect')).map((item) => item.operation).sort(), ['asset.inspect', 'lut.inspect', 'lut.look.inspect', 'project.backup.inspect', 'project.inspect', 'shot.inspect', 'timeline.colour.image.inspect', 'timeline.colour.jpeg.inspect', 'timeline.colour.source.inspect', 'timeline.inspect', 'workspace.backup.inspect', 'workspace.restore.inspect']);
+  assert.deepEqual(catalog.operations.filter((item) => item.operation.endsWith('.inspect')).map((item) => item.operation).sort(), ['asset.inspect', 'lut.inspect', 'lut.look.inspect', 'project.backup.inspect', 'project.inspect', 'shot.inspect', 'timeline.colour.image.inspect', 'timeline.colour.jpeg.inspect', 'timeline.colour.source.inspect', 'timeline.inspect']);
   assert.deepEqual(READ_TOOL_DEFINITIONS.map(tool => tool.name), ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect']);
-  const restoreInspection = tools.find(tool => tool.name === 'workspace_restore_inspect');
-  assert.ok(restoreInspection); assert.equal((restoreInspection.annotations)!.readOnlyHint, true);
-  assert.deepEqual(Object.keys(((restoreInspection.inputSchema.properties) as unknown as Parameters<typeof Object.keys>[0])), ['includeAudioRoleCapability','includeVolumeEnvelopeCapability']); assert.equal((restoreInspection.inputSchema.properties)!.includeAudioRoleCapability.const, true); assert.equal(restoreInspection.inputSchema.required?.includes('includeAudioRoleCapability')??false, false); assert.equal(restoreInspection.inputSchema.additionalProperties, false);
-  const restoreEffects = (catalog.operations.find((item) => item.operation === 'workspace.restore.inspect'))!.effects;
-  for (const field of (['databaseWrite', 'fileWrite', 'externalIO', 'localProcess', 'paidGeneration'] as const)) assert.equal(restoreEffects[field], false);
-  const backupInspection = tools.find(tool => tool.name === 'workspace_backup_inspect');
-  assert.ok(backupInspection); assert.equal((backupInspection.annotations)!.readOnlyHint, true);
-  assert.deepEqual(backupInspection.inputSchema.properties, {}); assert.equal(backupInspection.inputSchema.additionalProperties, false);
-  const backupEffects = (catalog.operations.find((item) => item.operation === 'workspace.backup.inspect'))!.effects;
-  for (const field of (['databaseWrite', 'fileWrite', 'externalIO', 'localProcess', 'paidGeneration'] as const)) assert.equal(backupEffects[field], false);
+  // These two former capability probes are retired, including their advisory
+  // schemas/effects. Offline discovery must reject them without a backend.
+  for (const operation of ['workspace.restore.inspect','workspace.backup.inspect']) {
+    assert.equal(tools.find(tool=>tool.name===toolName(operation)),undefined);
+    assert.equal(catalog.operations.find(item=>item.operation===operation),undefined);
+    const error=await mcp.call('mioon_schema',{operation},'VALIDATION_ERROR');
+    assert.equal(error.code,'VALIDATION_ERROR');
+  }
   for (const operation of (['timeline.clip.add', 'timeline.clip.update'] as const)) {
     const definition = await cli(['schema', operation]), tool = tools.find(item => item.name === toolName(operation));
     assert.ok(tool); assert.deepEqual(tool.inputSchema, definition.inputSchema);

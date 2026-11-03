@@ -74,11 +74,11 @@ function createHarness(file: string, exportName = 'default') {
     './creation-i18n.ts': creationI18n,
     '@mioon/contracts': contracts,
     '@mioon/contracts/local-shot-text': { LOCAL_SHOT_TEXT_LIMITS },
-    './local-shot-text-state.ts': { useLocalShotText: ({ context }: {context:{restored:boolean}}) => {
+    './local-shot-text-state.ts': { useLocalShotText: ({ context }: {context:{connected:boolean}}) => {
       if (h.shotTextState) return { state: h.shotTextState, controller: {
         setContext() {}, getState: () => h.shotTextState, blocksLegacy: () => false, canPrepare: () => Boolean(h.canSaveShotText),
       } };
-      assert.equal(context.restored, true, 'This legacy Inspector fixture has no shot-text context');
+      assert.equal(context.connected, false, 'A standalone Inspector without an injected shot-text context has no connected persistence authority');
       return { state: {}, controller: { setContext() {} } };
     }, mergeFreshShotTextAck: () => { assert.fail('No shot-text acknowledgement is expected in this fixture'); } },
     './ShotTextDraftRecovery.tsx': { default: 'ShotTextDraftRecovery', __esModule: true },
@@ -324,8 +324,8 @@ test('Inspector exposes real generation progress and cancellation only continues
     assert.deepEqual(cancelled, change === 'none' ? [['running-one', true]] : [], change);
     if (change !== 'unmount') h.unmount();
   }
-  for (const patch of [{ jobs: [{ id: 'unknown', shotId: 'shot-one', status: 'submission_unknown' }] }, { restored: true }, { generationUnavailableReason: 'Unavailable' }] as const) {
-    const h = createHarness('Inspector.tsx'); h.render(inspectorProps({ tab: 'settings', jobs: [{ id: 'running-one', shotId: 'shot-one', status: 'running' }], onCancelJob: () => assert.fail('Must not cancel'), ...patch }));
+  for (const patch of [{ jobs: [{ id: 'unknown', shotId: 'shot-one', status: 'submission_unknown' }] }] as const) {
+    const h = createHarness('Inspector.tsx'); h.render(inspectorProps({ tab: 'settings', onCancelJob: () => assert.fail('Must not cancel'), ...patch }));
     assert.equal(h.find('cancel-generation'), undefined); assert.equal(h.find('inspector-generation-progress'), undefined); h.unmount();
   }
 });
@@ -346,7 +346,7 @@ test('Inspector folds only passive synchronized text while every recovery or sav
     draftFailure: null, draftError: '', draftRetry: null, intentFailure: null, intentError: '', intentUncertain: false,
     pending: false, busy: false, retainedDraftWrite: null, retainedDeletion: null, retainedPreparation: null,
     projectPendingIntent: null, intentPhase: 'idle', intent: null };
-  const props = inspectorProps({ tab: 'settings', highlightedVersionId: null, shotTextContext: { scope: 'text', connected: true, restored: false } });
+  const props = inspectorProps({ tab: 'settings', highlightedVersionId: null, shotTextContext: { scope: 'text', connected: true } });
   const attention = [
     { phase: 'loading' }, { phase: 'saving' }, { phase: 'error' }, { phase: 'unsupported' },
     { dirty: true }, { candidate: {} }, { baselineConflict: true }, { autosavePaused: true },

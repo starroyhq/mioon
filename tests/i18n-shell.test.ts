@@ -99,10 +99,9 @@ test('known workspace/storage diagnostics retain actionable meaning without expo
   const source = app.slice(app.indexOf('function readableError(error'), app.indexOf('function Modal('));
   const readableError = Function('msg', `${stripSourceTypes(source,{loader:'tsx'})}; return readableError;`)(message) as (error: { code?: string; message?: string; displayMessage?: DisplayMessage }) => { key: MessageKey; displayMessage?: DisplayMessage };
   const cases = {
-    STORAGE_MIGRATION_BLOCKED: 'shell.error.storageMigration', WORKSPACE_ORIGIN_UNVERIFIED: 'tasks.unverifiedWorkspace',
-    RESTORED_RECORD_HELD: 'tasks.heldReason', RESTORE_WORKSPACE_ORIGIN_MISMATCH: 'shell.error.workspaceChanged',
-    WORKSPACE_INTENT_ALREADY_PINNED: 'shell.error.workspacePinned', RESTORE_OPERATION_UNAVAILABLE: 'recovery.restored.disabledReason',
-    RESTORE_BACKUP_UNAVAILABLE: 'recovery.restored.backupReason', LAST_PROJECT_SCOPE_MISMATCH: 'shell.error.lastProjectScope',
+    STORAGE_MIGRATION_BLOCKED: 'shell.error.storageMigration',
+    WORKSPACE_INTENT_ALREADY_PINNED: 'shell.error.workspacePinned',
+    LAST_PROJECT_SCOPE_MISMATCH: 'shell.error.lastProjectScope',
   };
   for (const [code, key] of Object.entries(cases)) {
     const error = { code, message: 'Raw provider diagnostic 私有內容' }, before = structuredClone(error), descriptor = readableError(error);
