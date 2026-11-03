@@ -38,6 +38,7 @@ export function createTaskUsageCollector(protocol:AgentProtocol):{observe:(raw:u
         const details=object(raw.prompt_tokens_details)?raw.prompt_tokens_details:undefined;
         // DeepSeek's cache miss counter is uncached input, not a cache write.
         save('cacheReadTokens',count(details?.cached_tokens)?details.cached_tokens:raw.prompt_cache_hit_tokens);
+        save('cacheWriteTokens',details?.cache_write_tokens);
       }else if(protocol==='responses'){
         save('inputTokens',raw.input_tokens);save('outputTokens',raw.output_tokens);
         const details=object(raw.input_tokens_details)?raw.input_tokens_details:undefined;

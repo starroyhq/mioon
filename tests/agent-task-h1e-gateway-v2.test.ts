@@ -71,7 +71,7 @@ async function exchange(protocol:AgentConfiguration['protocol'],frames:string,bo
 }
 
 test('H1e Chat Completions requests ask for usage only on documentation-backed presets',()=>{
-  const supported=new Set(['openai','qwen','deepseek']);
+  const supported=new Set(['openai','qwen','deepseek','minimax']);
   // Chat Completions keeps 4096 even when the documented model limit is larger.
   for(const preset of AGENT_PRESETS){
     const platform=preset.platforms.find(item=>item.baseUrl)||preset.platforms[0]!;
