@@ -96,24 +96,55 @@ test('read rejects file and directory symlinks, directories, and FIFO without bl
 });
 
 for (const phase of ['file_checked', 'file_opened', 'file_read'] as const) {
-  test(`read rejects a replaced path at ${phase} even when bytes match`, t => {
-    const f = fixture(t); writeFileSync(f.target, 'original'); let changed = false;
+  test(`read retries the whole snapshot after one replaced path at ${phase}`, t => {
+    const f = fixture(t); writeFileSync(f.target, 'original'); let changed = false, attempts = 0;
     const result = readRulesFile(f.projectDir, {onPhase: current => {
+      if (current === 'directory_checked') attempts++;
       if (!changed && current === phase) {changed = true; renameSync(f.target, `${f.target}.old`); writeFileSync(f.target, 'original');}
     }});
+    assert.equal(result.status, 'safe');
+    if (result.status !== 'safe') return;
+    assert.equal(result.text, 'original'); assert.equal(result.hash, hash('original'));
+    assert.equal(result.identity.ino, String(statSync(f.target, {bigint: true}).ino));
+    assert.equal(attempts, 2);
+  });
+
+  test(`read rejects a path replaced during every attempt at ${phase}`, t => {
+    const f = fixture(t); writeFileSync(f.target, 'original'); let attempts = 0;
+    const result = readRulesFile(f.projectDir, {onPhase: current => {
+      if (current === 'directory_checked') attempts++;
+      if (current === phase) {renameSync(f.target, `${f.target}.old-${attempts}`); writeFileSync(f.target, 'original');}
+    }});
     assert.deepEqual(result, {status: 'error', code: 'changed'});
+    assert.equal(attempts, 3, 'three complete attempts are the upper bound');
   });
 }
 
-test('read rejects same-inode rewrites and a replaced project directory', t => {
-  const f = fixture(t); writeFileSync(f.target, 'same size');
+test('read still rejects repeated same-inode rewrites and replaced project directories after three attempts', t => {
+  const f = fixture(t); writeFileSync(f.target, 'same size'); let rewrites = 0;
   assert.deepEqual(readRulesFile(f.projectDir, {onPhase: phase => {
-    if (phase === 'file_read') writeFileSync(f.target, 'new bytes');
+    if (phase === 'file_read') writeFileSync(f.target, ++rewrites % 2 ? 'new bytes' : 'same size');
   }}), {status: 'error', code: 'changed'});
+  assert.equal(rewrites, 3);
+  let replacements = 0;
   const result = readRulesFile(f.projectDir, {onPhase: phase => {
-    if (phase === 'directory_checked') {renameSync(f.projectDir, `${f.projectDir}.old`); mkdirSync(f.projectDir); writeFileSync(f.target, 'replacement');}
+    if (phase === 'directory_checked') {renameSync(f.projectDir, `${f.projectDir}.old-${++replacements}`); mkdirSync(f.projectDir); writeFileSync(f.target, 'replacement');}
   }});
   assert.deepEqual(result, {status: 'error', code: 'changed'});
+  assert.equal(replacements, 3);
+});
+
+test('read retries after an unrelated file is created in the project directory', t => {
+  const f = fixture(t); writeFileSync(f.target, 'Keep these rules\r\n'); let created = false, attempts = 0;
+  const result = readRulesFile(f.projectDir, {onPhase: phase => {
+    if (phase === 'directory_checked') attempts++;
+    if (phase === 'file_read' && !created) {created = true; writeFileSync(path.join(f.projectDir, 'unrelated.tmp'), 'temporary');}
+  }});
+  assert.equal(result.status, 'safe');
+  if (result.status !== 'safe') return;
+  assert.equal(result.text, 'Keep these rules\r\n'); assert.equal(result.hash, hash('Keep these rules\r\n'));
+  assert.equal(attempts, 2);
+  assert.deepEqual(names(f.projectDir), ['AGENTS.md', 'unrelated.tmp']);
 });
 
 for (const artifact of [false, true]) {
@@ -123,16 +154,33 @@ for (const artifact of [false, true]) {
     const before = statSync(file, {bigint: true}), positions: number[] = [];
     const restore = freezeFileMetadata(file, (position, count) => {if (count > 0) positions.push(position);});
     try {
-      const options = {onPhase: (phase: string) => {if (phase === 'file_read') writeFileSync(file, 'new bytes');}};
+      let rewrites = 0;
+      const options = {onPhase: (phase: string) => {if (phase === 'file_read') writeFileSync(file, ++rewrites % 2 ? 'new bytes' : 'same size');}};
       const result = artifact ? inspectRulesArtifact(f.projectDir, f.candidateName, options) : readRulesFile(f.projectDir, options);
       assert.deepEqual(result, {status: 'error', code: 'changed'});
       assert.equal(statSync(file, {bigint: true}).ino, before.ino);
       assert.deepEqual(fs.lstatSync(file, {bigint: true}), before);
-      assert.deepEqual(positions, [0, 0], 'both bounded passes use the same descriptor from offset zero');
+      assert.deepEqual(positions, Array(artifact ? 2 : 6).fill(0), 'each attempt keeps both bounded passes on the same descriptor from offset zero');
+      assert.equal(rewrites, artifact ? 1 : 3);
     } finally {restore();}
     assert.equal(readFileSync(file, 'utf8'), 'new bytes');
   });
 }
+
+test('read retries a single equal-metadata byte conflict and returns the new stable bytes', t => {
+  const f = fixture(t); writeFileSync(f.target, 'same size'); let changed = false, attempts = 0;
+  const positions: number[] = [], restore = freezeFileMetadata(f.target, (position, count) => {if (count > 0) positions.push(position);});
+  try {
+    const result = readRulesFile(f.projectDir, {onPhase: phase => {
+      if (phase === 'directory_checked') attempts++;
+      if (phase === 'file_read' && !changed) {changed = true; writeFileSync(f.target, 'new bytes');}
+    }});
+    assert.equal(result.status, 'safe');
+    if (result.status !== 'safe') return;
+    assert.equal(result.text, 'new bytes'); assert.equal(result.hash, hash('new bytes'));
+    assert.equal(attempts, 2); assert.deepEqual(positions, [0, 0, 0, 0]);
+  } finally {restore();}
+});
 
 test('same-metadata candidate rewrite is detected before publishing or losing the captured original', t => {
   const f = fixture(t); writeFileSync(f.target, 'before');
