@@ -46,7 +46,7 @@ export default function TimelineClipLoudness({ loudness }: { readonly loudness: 
       </div>}
     </>}
     <p className="input-hint">{t('round3.audio.measurementScope')}</p>
-    {!available && <p className="clip-loudness-blocked" data-testid="clip-loudness-blocked">{state.durationFrames > TIMELINE_CLIP_LOUDNESS_LIMITS.clipFrames ? t('audio.loudness.clip.tooLong') : t(state.restored ? 'audio.loudness.clip.restored' : !state.audioSupported || state.muted || state.gain <= 0 ? 'audio.loudness.clip.inaudible' : 'audio.loudness.clip.blocked')}</p>}
+    {!available && <p className="clip-loudness-blocked" data-testid="clip-loudness-blocked">{state.durationFrames > TIMELINE_CLIP_LOUDNESS_LIMITS.clipFrames ? t('audio.loudness.clip.tooLong') : t(!state.audioSupported || state.muted || state.gain <= 0 ? 'audio.loudness.clip.inaudible' : 'audio.loudness.clip.blocked')}</p>}
     <div id={statusId} role="status" aria-live="polite" aria-atomic="true">{status && <p data-testid="clip-loudness-status">{status}</p>}</div>
     {preparing && available && <Button type="button" variant="ghost" size="sm" data-testid="clip-loudness-cancel" onClick={() => controller.cancel(state)}>{t('audio.loudness.cancelObservation')}</Button>}
     <details className="clip-audio-help"><summary>{t('round3.audio.learnMore')}</summary>

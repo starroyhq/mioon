@@ -10,7 +10,7 @@ import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import type {JobRecord, ServiceRow} from '../packages/business/src/services.ts';

@@ -47,7 +47,7 @@ export interface SubjectLibraryProps {
   assets?: readonly SubjectAssetView[];
   shots?: readonly { id: string; title?: string; [key: string]: unknown }[];
   blocked?: boolean;
-  restored?: boolean;
+
   onShowTasks?: () => unknown;
   onInspectShot?: (shotId: string) => unknown;
   /** Shows the subject in the properties pane. Without a host the card only selects it. */

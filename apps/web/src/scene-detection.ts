@@ -101,7 +101,7 @@ const errorKeys: Readonly<Record<string, MessageKey>> = Object.freeze({
   SCENE_RESULT_STALE: 'scene.error.resultStale', SCENE_CUTS_INVALID: 'scene.error.cutsInvalid', SCENE_CUTS_LIMIT: 'scene.error.cutsLimit',
   SCENE_INTERRUPTED: 'scene.error.interrupted', SCENE_ATTEMPT_TIMEOUT: 'scene.error.timeout', SCENE_DECODE_INCOMPLETE: 'scene.error.decode',
   SCENE_FRAMES_INVALID: 'scene.error.decode', SCENE_FRAME_LIMIT: 'scene.error.decode', SCENE_SERVICE_STOPPED: 'scene.error.serviceStopped',
-  SCENE_OWNER_REQUIRED: 'scene.error.serviceStopped', RESTORE_OPERATION_UNAVAILABLE: 'scene.error.restored',
+  SCENE_OWNER_REQUIRED: 'scene.error.serviceStopped',
 });
 /** Refusals and task failures in the user's words; unknown codes fall back to the generic failure. */
 export const sceneErrorMessage = (code: string | null | undefined): DisplayMessage => msg(code && Object.hasOwn(errorKeys, code) ? errorKeys[code]! : 'scene.error.failed');

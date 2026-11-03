@@ -23,7 +23,7 @@ export type ClipDraftUnsupported = Extract<WireEnvelope, { supported: false }>;
 export type ClipDraftRead = ClipDraftEnvelope | ClipDraftUnsupported;
 export interface ClipDraftClient { get(key: ClipDraftKey): Promise<ClipDraftRead>; put(value: ClipDraftWrite): Promise<ClipDraftEnvelope>; remove(value: ClipDraftDelete): Promise<ClipDraftEnvelope> }
 export interface ClipDraftContext extends ClipDraftKey {
-  scope: string; restored: boolean; workspaceOrigin?: string; connected: boolean; busy: boolean; visible: boolean;
+  scope: string;   connected: boolean; busy: boolean; visible: boolean;
   audioRoleEditable?: boolean;
   volumeEnvelopeEditable?: boolean;
   opacityEnvelopeEditable?: boolean;
@@ -100,13 +100,12 @@ function acknowledged(value: unknown, context: ClipDraftContext, base: number, s
 export function createClipDraftController({ context: initial, client, validateTimeline = () => false, onChange = () => {}, delay = 250 }: { context: ClipDraftContext; client: ClipDraftClient; validateTimeline?: (value: unknown, projectId: string) => boolean; onChange?: (state: ClipDraftState) => void; delay?: number }) {
   const rawFor = (clip: Record<string, unknown>): ClipDraftRaw => ({ ...clipDraftRaw(clip) });
   let context = copy(initial), generation = 1, serial = 0, active = true, readSerial = 0, loaded = false;
-  const memoryOnly = () => context.restored;
   let deleting: object | null = null, discarding: object | null = null;
   let composition: { token: ClipVolumeCompositionToken; generation: number; serial: number; kind: 'volume' | 'opacity' } | null = null;
   let envelope: ClipDraftEnvelope | null = null, timer: ReturnType<typeof setTimeout> | undefined, flight: Promise<void> | null = null;
   let closeFlight: Promise<boolean> | null = null;
   let state: ClipDraftState = { raw: copy(context.saved), dirty: false, baseRevision: context.timelineRevision, source: copy(context.source), conflict: false,
-    compositionPending: false, phase: memoryOnly() ? 'unsupported' : 'loading', error: '', errorDisplay: undefined, candidate: null, savedAt: null, submitting: false, businessPending: false, autosavePaused: false, failure: null, retainedRecord: false };
+    compositionPending: false, phase: 'loading', error: '', errorDisplay: undefined, candidate: null, savedAt: null, submitting: false, businessPending: false, autosavePaused: false, failure: null, retainedRecord: false };
   let collaborationBaseline: {proof:AgentEditingProof;saved:ClipDraftRaw}|null=context.collaboration?{proof:copy(context.collaboration),saved:copy(context.saved)}:null;
   const captures = new WeakSet<ClipDraftCapture>();
   const emit = (patch: Partial<ClipDraftState>) => { state = { ...state, ...patch }; if (active) onChange(state); };
@@ -121,8 +120,8 @@ export function createClipDraftController({ context: initial, client, validateTi
   const draftMatches = () => Boolean(envelope?.draft && sameClipDraftValue(envelope.draft.raw, state.raw) && envelope.draft.baseRevision === state.baseRevision && sameClipDraftValue(envelope.draft.source, state.source));
   // Business dirty remains true after a sidecar ACK. A clean form (including an
   // explicit local-only abandonment) has no current raw input left to persist.
-  const hasUnpersisted = () => Boolean(composition || flight || deleting || discarding || state.dirty && (!active || memoryOnly() || !loaded || state.autosavePaused || ['loading', 'error', 'unsupported'].includes(state.phase) || !draftMatches()));
-  const readyToWrite = () => active && !composition && !state.autosavePaused && !deleting && !discarding && loaded && envelope && context.connected && !memoryOnly() && state.dirty && !state.candidate && !['loading', 'error', 'unsupported'].includes(state.phase);
+  const hasUnpersisted = () => Boolean(composition || flight || deleting || discarding || state.dirty && (!active || !loaded || state.autosavePaused || ['loading', 'error', 'unsupported'].includes(state.phase) || !draftMatches()));
+  const readyToWrite = () => active && !composition && !state.autosavePaused && !deleting && !discarding && loaded && envelope && context.connected && state.dirty && !state.candidate && !['loading', 'error', 'unsupported'].includes(state.phase);
   function schedule() { if (timer) clearTimeout(timer); timer = undefined; if (readyToWrite() && !flight && !closeFlight) timer = setTimeout(() => { timer = undefined; void flush(); }, delay); }
   function accept(next: ClipDraftEnvelope, expected: ClipDraftEnvelope | null, write = false) {
     if (!sameClipDraftValue(next.key, keyOf(context)) || expected && (next.workspaceScope !== expected.workspaceScope || next.instanceId !== expected.instanceId || next.revision !== expected.revision + (write ? 1 : 0))) throw recoveryDisplayError(Error('本地草稿确认与当前记录不一致；已停止覆盖。'), displayMessage('recovery.clip.error.ackMismatch'));
@@ -130,7 +129,7 @@ export function createClipDraftController({ context: initial, client, validateTi
     envelope = copy(next);
   }
   async function load() {
-    if (!active || composition || memoryOnly() || flight || deleting || discarding || state.submitting) return;
+    if (!active || composition || flight || deleting || discarding || state.submitting) return;
     const owner = generation, reading = ++readSerial, key = keyOf(context), existing = envelope;
     emit({ phase: 'loading', error: state.autosavePaused ? state.error : '', errorDisplay: state.autosavePaused ? state.errorDisplay : undefined });
     try {
@@ -243,7 +242,7 @@ export function createClipDraftController({ context: initial, client, validateTi
     },
     setContext(next: ClipDraftContext) {
       if (!active) return;
-      if (next.scope !== context.scope || next.restored !== context.restored || next.workspaceOrigin !== context.workspaceOrigin || !sameClipDraftValue(keyOf(next), keyOf(context))) {
+      if (next.scope !== context.scope || !sameClipDraftValue(keyOf(next), keyOf(context))) {
         if (composition) {
           // An external context replacement cannot revoke the old input owner.
           // Keep its composing DOM/token available to settle, but freeze effects.
@@ -304,7 +303,7 @@ export function createClipDraftController({ context: initial, client, validateTi
       if (timer) clearTimeout(timer); timer = undefined;
       const owner = generation, cancellation = {};discarding = cancellation;emit({});
       try {
-        if (memoryOnly()) { serial++; emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), dirty: false, conflict: false, candidate: null, savedAt: null, phase: 'unsupported', error: '', errorDisplay: undefined }); return true; }
+
         if (flight) await flight;
         if (!isCurrent(token) || !canDiscard()) return false;
         // Unknown writes cannot be forgotten merely because their response failed.
@@ -345,7 +344,7 @@ export function createClipDraftController({ context: initial, client, validateTi
       await flush();
       if (!belongs(owner)) return null;
       if (savedSerial !== serial || composition || deleting || discarding || context.busy || !context.visible || !context.connected || own(patch, 'audioRole') && context.audioRoleEditable !== true || own(patch, 'volumeEnvelope') && context.volumeEnvelopeEditable !== true || own(patch, 'opacityEnvelope') && context.opacityEnvelopeEditable !== true || conflict()) { emit({ submitting: false, businessPending: false }); return null; }
-      const stored = envelope ? copy(envelope) : null, localUnconfirmed = !memoryOnly() && (!loaded || state.autosavePaused || state.phase === 'error');
+      const stored = envelope ? copy(envelope) : null, localUnconfirmed = (!loaded || state.autosavePaused || state.phase === 'error');
       emit({ error: localUnconfirmed ? state.error : '', errorDisplay: localUnconfirmed ? state.errorDisplay : undefined });
       try {
         const canExecute = () => !composition && !deleting && !discarding && serial === savedSerial && (!own(patch, 'volumeEnvelope') || context.volumeEnvelopeEditable === true) && (!own(patch, 'opacityEnvelope') || context.opacityEnvelopeEditable === true) && (!own(patch, 'audioRole') || context.audioRoleEditable === true) && belongs(owner) && context.visible && context.connected && sameClipDraftValue(keyOf(context), keyOf(original)) && context.scope === original.scope && context.timelineRevision === base && sameClipDraftValue(context.source, source);
@@ -363,7 +362,7 @@ export function createClipDraftController({ context: initial, client, validateTi
           catch (error) { if (belongs(owner)) { emit({ submitting: false, businessPending: false, conflict: true }); pausePersistence(error, '片段已保存，但本地草稿清除未确认。', false, displayMessage('recovery.clip.clearUnconfirmed')); } return result; }
         }
         if (!belongs(owner) || savedSerial !== serial) { if (belongs(owner)) emit({ submitting: false, businessPending: false, conflict: true }); return result; }
-        serial++; emit({ raw: rawFor(saved), dirty: false, baseRevision: base + 1, source, conflict: false, submitting: false, businessPending: false, candidate: null, savedAt: null, phase: memoryOnly() ? 'unsupported' : 'ready', error: '', errorDisplay: undefined }); return result;
+        serial++; emit({ raw: rawFor(saved), dirty: false, baseRevision: base + 1, source, conflict: false, submitting: false, businessPending: false, candidate: null, savedAt: null, phase: 'ready', error: '', errorDisplay: undefined }); return result;
       } catch (error) { if (belongs(owner)) emit({ submitting: false, businessPending: false, error: message(error), errorDisplay: recoveryErrorMessage(error) }); return null; }
     },
     load, flush, flushForClose,

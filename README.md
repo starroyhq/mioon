@@ -95,7 +95,7 @@ Mio 是工作台里的创作 Agent，不只回答问题，会直接动手：
 ## 使用前了解这几件事
 
 - **素材默认保存在本机**：导入素材不会自动上传。使用外部 AI 功能时，相关提示词或素材会发送给你配置的服务，并可能产生费用
-- **记得备份项目**：当前没有自动云同步，重要项目请按[备份指南](docs/WORKSPACE-BACKUP-GUIDE.zh-CN.md)保存副本
+- **记得备份项目**：当前没有自动云同步；本机[项目备份](docs/PROJECT-BACKUPS.md)按项目保存，仍需妥善保管项目文件与数据目录
 - **先从短片开始**：当前适合轻量剪辑，复杂转场、变速和多人协作等功能尚未提供
 - **仍在桌面试用阶段**：先用不重要的素材完成一个短片。模型与生成服务的支持范围不等于所有供应商均已通过真实付费验收；版本范围见[发布说明](docs/releases/v0.1.0.zh-CN.md)。问题与验证限制持续记录在 [Issues](https://github.com/starroyhq/mioon/issues) 中，遇到问题欢迎反馈
 
@@ -103,7 +103,7 @@ Mio 是工作台里的创作 Agent，不只回答问题，会直接动手：
 
 - [安装与首次运行](docs/INSTALL.zh-CN.md) · [完整使用指南](docs/WORKSPACE-GUIDE.zh-CN.md) · [源码试用](docs/CORE-TRIAL.zh-CN.md)
 - [连接 AI 视频服务](docs/PROVIDERS.md) · [生成图片](docs/IMAGE-ACTIVATION.md) · [编辑图片](docs/IMAGE-EDITING.md)
-- [导出设置](docs/EXPORT-SETTINGS.md) · [备份与恢复](docs/WORKSPACE-BACKUP-GUIDE.zh-CN.md)
+- [导出设置](docs/EXPORT-SETTINGS.md) · [项目备份](docs/PROJECT-BACKUPS.md)
 - [反馈问题与建议](https://github.com/starroyhq/mioon/issues)
 - [参与贡献](CONTRIBUTING.md) · [安全问题报告](SECURITY.md)
 

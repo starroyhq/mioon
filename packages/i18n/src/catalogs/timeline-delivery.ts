@@ -1632,234 +1632,6 @@ export const timelineDeliveryMessages = {
     "en": "Snapshot unverified; attempt export anyway",
     "ja": "スナップショット未検証でも書き出しを試す"
   },
-  "recovery.backup.scope": {
-    "zh-Hans": "范围：整个工作区，包含所有项目、聊天、提示词，以及 SQLite 内的本地缓存",
-    "zh-Hant": "範圍：整個工作區，包含所有專案、聊天、提示詞，以及 SQLite 內的本機快取",
-    "en": "Scope: the entire workspace, including all projects, chats, prompts and local caches in SQLite",
-    "ja": "対象はワークスペース全体です。すべてのプロジェクト、チャット、プロンプト、SQLite 内のローカルキャッシュを含みます"
-  },
-  "recovery.backup.media": {
-    "zh-Hans": "媒体按离线指南的固定清单收集，不代表工作区内所有文件都会复制",
-    "zh-Hant": "媒體依離線指南的固定清單收集，不代表工作區內所有檔案都會複製",
-    "en": "Media is collected from the fixed list in the offline guide; not every workspace file is copied",
-    "ja": "メディアはオフラインガイドの固定リストに従って収集します。ワークスペース内の全ファイルをコピーするわけではありません"
-  },
-  "recovery.backup.privacy": {
-    "zh-Hans": "不包含应用凭据与应用设置；用户文本仍可能含密钥或其他秘密。请妥善保管备份",
-    "zh-Hant": "不包含應用程式憑證與設定；使用者文字仍可能含金鑰或其他機密。請妥善保管備份",
-    "en": "Application credentials and settings are excluded, but user text may still contain keys or other secrets. Keep backups secure",
-    "ja": "アプリの認証情報や設定は含みませんが、ユーザーテキストにキーなどの機密情報が含まれる場合があります。バックアップは安全に保管してください"
-  },
-  "recovery.backup.readOnly": {
-    "zh-Hans": "运行中的后端不能创建冷备份。这里只读核对数据库记录，未逐一检查源文件，也没有创建备份或验证恢复",
-    "zh-Hant": "執行中的後端無法建立冷備份。此處僅以唯讀方式核對資料庫記錄，未逐一檢查來源檔案，也未建立備份或驗證還原",
-    "en": "A running backend cannot create a cold backup. This only checks database records read-only; it does not inspect each source file, create a backup or verify restoration",
-    "ja": "バックエンドの実行中はコールドバックアップを作成できません。ここではデータベース記録を読み取り専用で確認するだけです。個々のソースファイルの検査、バックアップの作成、復元の検証は行いません"
-  },
-  "recovery.backup.checking": {
-    "zh-Hans": "正在核对…",
-    "zh-Hant": "正在核對…",
-    "en": "Checking…",
-    "ja": "照合中…"
-  },
-  "recovery.backup.refresh": {
-    "zh-Hans": "刷新数据库核对",
-    "zh-Hant": "重新整理資料庫核對",
-    "en": "Refresh database check",
-    "ja": "データベース確認を更新"
-  },
-  "recovery.backup.check": {
-    "zh-Hans": "核对数据库状态",
-    "zh-Hant": "核對資料庫狀態",
-    "en": "Check database status",
-    "ja": "データベースの状態を確認"
-  },
-  "recovery.backup.disconnected": {
-    "zh-Hans": "连接不可用，恢复连接后请手动核对",
-    "zh-Hant": "連線無法使用，恢復連線後請手動核對",
-    "en": "Connection unavailable. Check manually after reconnecting",
-    "ja": "接続を利用できません。再接続後に手動で確認してください"
-  },
-  "recovery.backup.reading": {
-    "zh-Hans": "正在读取有上限的数据库记录…",
-    "zh-Hant": "正在讀取有上限的資料庫記錄…",
-    "en": "Reading bounded database records…",
-    "ja": "上限付きでデータベース記録を読み取り中…"
-  },
-  "recovery.backup.stale": {
-    "zh-Hans": "上次核对结果仅供参考，请手动刷新",
-    "zh-Hant": "上次核對結果僅供參考，請手動重新整理",
-    "en": "The previous check is for reference only. Refresh manually",
-    "ja": "前回の確認結果は参考用です。手動で更新してください"
-  },
-  "recovery.backup.failed": {
-    "zh-Hans": "核对失败，未取得可用结果",
-    "zh-Hant": "核對失敗，未取得可用結果",
-    "en": "The check failed; no usable result was obtained",
-    "ja": "確認に失敗し、利用できる結果は取得できませんでした"
-  },
-  "recovery.backup.incomplete": {
-    "zh-Hans": "数据库核对未完成；未知数量不等于零",
-    "zh-Hant": "資料庫核對未完成；未知數量不等於零",
-    "en": "Database check incomplete. Unknown counts do not mean zero",
-    "ja": "データベースの確認が未完了です。件数不明は 0 件という意味ではありません"
-  },
-  "recovery.backup.complete": {
-    "zh-Hans": "数据库记录核对完成，仅为本次瞬时结果；仍须关闭应用后离线创建备份",
-    "zh-Hant": "資料庫記錄核對完成，僅為本次瞬間結果；仍須關閉應用程式後離線建立備份",
-    "en": "Database record checks are complete, but only for this instant. Close the application and create the backup offline",
-    "ja": "データベース記録の確認が完了しましたが、この時点だけの結果です。バックアップはアプリを終了してからオフラインで作成する必要があります"
-  },
-  "recovery.backup.idle": {
-    "zh-Hans": "尚未核对。展开、切换页面或恢复连接不会自动发起请求",
-    "zh-Hant": "尚未核對。展開、切換頁面或恢復連線不會自動發起請求",
-    "en": "Not checked yet. Expanding, switching pages or reconnecting does not automatically send a request",
-    "ja": "まだ確認していません。展開、ページ切り替え、再接続だけではリクエストを自動送信しません"
-  },
-  "recovery.backup.report": {
-    "zh-Hans": "数据库记录核对",
-    "zh-Hant": "資料庫記錄核對",
-    "en": "Database record check",
-    "ja": "データベース記録の確認"
-  },
-  "recovery.backup.unresolved": {
-    "zh-Hans": "未解决的任务与请求",
-    "zh-Hant": "未解決的工作與請求",
-    "en": "Unresolved tasks and requests",
-    "ja": "未解決のタスクとリクエスト"
-  },
-  "recovery.backup.noneUnresolved": {
-    "zh-Hans": "本次数据库核对未发现未解决记录；这不是备份可用性保证",
-    "zh-Hant": "本次資料庫核對未發現未解決記錄；這不是備份可用性的保證",
-    "en": "No unresolved records were found in this database check; this does not guarantee backup usability",
-    "ja": "今回のデータベース確認で未解決の記録は見つかりませんでした。バックアップが利用可能である保証ではありません"
-  },
-  "recovery.backup.retention": {
-    "zh-Hans": "备份保留这些记录，不会自动恢复、提交或重试任务",
-    "zh-Hant": "備份保留這些記錄，不會自動還原、提交或重試工作",
-    "en": "Backups retain these records without automatically recovering, submitting or retrying tasks",
-    "ja": "バックアップはこれらの記録を保持しますが、タスクの復元、送信、再試行は自動で行いません"
-  },
-  "recovery.backup.limits": {
-    "zh-Hans": "离线命令的容量上限",
-    "zh-Hant": "離線命令的容量上限",
-    "en": "Offline command capacity limits",
-    "ja": "オフラインコマンドの容量上限"
-  },
-  "recovery.backup.steps": {
-    "zh-Hans": "离线备份步骤",
-    "zh-Hant": "離線備份步驟",
-    "en": "Offline backup steps",
-    "ja": "オフラインバックアップの手順"
-  },
-  "recovery.backup.terminal": {
-    "zh-Hans": "关闭应用后，在本地终端操作",
-    "zh-Hant": "關閉應用程式後，在本機終端操作",
-    "en": "After closing the app, use a local terminal",
-    "ja": "アプリを終了してからローカル端末で操作"
-  },
-  "recovery.backup.close": {
-    "zh-Hans": "保存草稿，正常关闭 Mioon 和所有使用同一工作区的后端。不要删除锁文件、WAL 或日志文件来绕过检查",
-    "zh-Hant": "儲存草稿，正常關閉 Mioon 與所有使用同一工作區的後端。請勿刪除鎖定檔案、WAL 或記錄檔來繞過檢查",
-    "en": "Save drafts and shut down Mioon and every backend using the same workspace normally. Do not delete lock files, WAL or logs to bypass checks",
-    "ja": "下書きを保存し、Mioon と同じワークスペースを使うすべてのバックエンドを正常に終了してください。検査を回避するためにロックファイル、WAL、ログを削除しないでください"
-  },
-  "recovery.backup.run": {
-    "zh-Hans": "在已安装锁定依赖的源码仓库根目录，使用 Node 24+ 运行下面的命令。替换占位绝对路径；目标必须是工作区之外的新目录。平台支持与限制请先查看指南",
-    "zh-Hant": "在已安裝鎖定相依套件的原始碼儲存庫根目錄，使用 Node 24+ 執行以下命令。替換佔位絕對路徑；目標必須是工作區以外的新目錄。平台支援與限制請先查看指南",
-    "en": "From the source repository root with locked dependencies installed, run the commands below using Node 24+. Replace the placeholder absolute paths. The destination must be a new directory outside the workspace. Read the guide first for platform support and limitations",
-    "ja": "固定された依存関係をインストール済みのソースリポジトリのルートで、Node 24+ を使って以下のコマンドを実行してください。仮の絶対パスを置き換え、保存先にはワークスペース外の新しいディレクトリを指定します。対応環境と制限は先にガイドを確認してください"
-  },
-  "recovery.backup.verify": {
-    "zh-Hans": "单独核验已有备份：",
-    "zh-Hant": "單獨核驗既有備份：",
-    "en": "Verify an existing backup separately:",
-    "ja": "既存バックアップを個別に検証："
-  },
-  "recovery.backup.restoreWarning": {
-    "zh-Hans": "核验成功只表示声明的备份内容通过完整性检查，不表示可以安全恢复。恢复需按离线指南写入全新目录；恢复分支仅开放本地编辑与导出，受限功能和后续备份限制请先阅读指南",
-    "zh-Hant": "核驗成功僅表示聲明的備份內容通過完整性檢查，不代表可安全還原。還原須依離線指南寫入全新目錄；還原分支僅開放本機編輯與匯出，受限功能及後續備份限制請先閱讀指南",
-    "en": "Successful verification means only that the declared backup contents passed integrity checks, not that restoration is safe. Follow the offline guide to restore into a new directory. Restored branches allow only local editing and export; read the guide first for restricted features and later-backup limitations",
-    "ja": "検証成功は、宣言されたバックアップ内容が整合性検査に合格したことだけを示し、安全に復元できることを意味しません。オフラインガイドに従って新規ディレクトリに復元してください。復元ブランチはローカル編集と書き出しのみ利用できます。制限機能とその後のバックアップ制限は先にガイドを確認してください"
-  },
-  "recovery.backup.closeGuide": {
-    "zh-Hans": "收起离线备份指南",
-    "zh-Hant": "收合離線備份指南",
-    "en": "Collapse offline backup guide",
-    "ja": "オフラインバックアップガイドを閉じる"
-  },
-  "recovery.backup.openGuide": {
-    "zh-Hans": "查看离线备份指南",
-    "zh-Hant": "查看離線備份指南",
-    "en": "View offline backup guide",
-    "ja": "オフラインバックアップガイドを表示"
-  },
-  "recovery.backup.title": {
-    "zh-Hans": "工作区离线备份",
-    "zh-Hant": "工作區離線備份",
-    "en": "Offline workspace backup",
-    "ja": "ワークスペースのオフラインバックアップ"
-  },
-  "recovery.backup.subtitle": {
-    "zh-Hans": "整工作区 · 需先正常关闭应用",
-    "zh-Hant": "整個工作區 · 須先正常關閉應用程式",
-    "en": "Entire workspace · Shut down the app normally first",
-    "ja": "ワークスペース全体 · 先にアプリを正常終了"
-  },
-  "recovery.restored.unavailable": {
-    "zh-Hans": "此功能暂不可用",
-    "zh-Hant": "此功能暫時無法使用",
-    "en": "This feature is currently unavailable",
-    "ja": "現在この機能は利用できません"
-  },
-  "recovery.restored.records": {
-    "zh-Hans": "已保存的记录仍被保留；此视图暂不能安全读取或操作这些任务。已完成的素材和版本可在素材库查看",
-    "zh-Hant": "已儲存的記錄仍保留；此檢視暫時無法安全讀取或操作這些工作。已完成的素材與版本可在素材庫查看",
-    "en": "Saved records are retained, but this view cannot safely read or operate these tasks yet. Completed assets and versions are available in the asset library",
-    "ja": "保存済み記録は保持していますが、この画面ではまだ安全にタスクを読み取り、操作できません。完了済みの素材とバージョンは素材ライブラリで確認できます"
-  },
-  "recovery.restored.branch": {
-    "zh-Hans": "恢复分支",
-    "zh-Hant": "還原分支",
-    "en": "Restored branch",
-    "ja": "復元ブランチ"
-  },
-  "recovery.restored.localReady": {
-    "zh-Hans": "可本地导入、编辑、预览和导出",
-    "zh-Hant": "可在本機匯入、編輯、預覽與匯出",
-    "en": "Local import, editing, preview and export available",
-    "ja": "ローカルで読み込み、編集、プレビュー、書き出しが可能"
-  },
-  "recovery.restored.localLimited": {
-    "zh-Hans": "本地操作按当前支持范围开放",
-    "zh-Hant": "本機操作依目前支援範圍開放",
-    "en": "Local operations follow current support limits",
-    "ja": "現在の対応範囲でローカル操作が可能"
-  },
-  "recovery.restored.details": {
-    "zh-Hans": "分支与暂停范围",
-    "zh-Hant": "分支與暫停範圍",
-    "en": "Branch and paused operations",
-    "ja": "ブランチと停止対象"
-  },
-  "recovery.restored.independent": {
-    "zh-Hans": "这是原备份时点的独立工作区。原工作区之后的修改不会合并；旧任务状态不代表正在执行",
-    "zh-Hant": "這是原備份時點的獨立工作區。原工作區之後的修改不會合併；舊工作狀態不代表正在執行",
-    "en": "This is an independent workspace from the original backup point. Later changes in the original workspace are not merged; old task statuses do not indicate active execution",
-    "ja": "これは元のバックアップ時点の独立したワークスペースです。元のワークスペースでの以後の変更は統合されません。古いタスク状態は現在実行中であることを意味しません"
-  },
-  "recovery.restored.disabledReason": {
-    "zh-Hans": "恢复分支第一版暂不支持新生成、Mio、Comfy、抽帧或波形解码。历史任务保持原状态并暂停执行",
-    "zh-Hant": "還原分支第一版暫不支援新生成、Mio、Comfy、影格擷取或波形解碼。歷史工作保留原狀態並暫停執行",
-    "en": "The first version of restored branches does not support new generation, Mio, Comfy, frame extraction or waveform decoding. Historical tasks retain their original status and execution is paused",
-    "ja": "復元ブランチの初期版は、新規生成、Mio、Comfy、フレーム抽出、波形デコードに対応していません。過去のタスクは元の状態を保持し、実行を停止しています"
-  },
-  "recovery.restored.backupReason": {
-    "zh-Hans": "此恢复分支暂不能再次创建可恢复备份；请保留原始备份。新成片可本地导出",
-    "zh-Hant": "此還原分支暫時無法再次建立可還原備份；請保留原始備份。新成片可在本機匯出",
-    "en": "This restored branch cannot yet create another restorable backup. Keep the original backup. New output can be exported locally",
-    "ja": "この復元ブランチからは、まだ再復元可能なバックアップを作成できません。元のバックアップを保管してください。新しい完成映像はローカルに書き出せます"
-  },
   "audio.loudness.export.label": {
     "zh-Hans": "已导出文件响度与真峰值",
     "zh-Hant": "已匯出檔案響度與真峰值",
@@ -1872,12 +1644,6 @@ export const timelineDeliveryMessages = {
     "en": "An estimate for this exported file only, not standards certification, proof of no clipping or a guarantee for another AAC encode. Suggestions do not change volume",
     "ja": "この書き出し済みファイルだけの推定値です。規格認証、クリッピングがない証明、AAC 再エンコードの保証ではありません。提案だけで音量は変更しません"
   },
-  "audio.loudness.export.restored": {
-    "zh-Hans": "恢复分支暂不支持已导出文件响度与真峰值测量",
-    "zh-Hant": "還原分支暫不支援已匯出檔案響度與真峰值測量",
-    "en": "Exported-file loudness and true-peak measurement is not supported in restored branches yet",
-    "ja": "復元ブランチでは現在、書き出し済みファイルのラウドネスとトゥルーピークの測定を利用できません"
-  },
   "audio.loudness.peak.label": {
     "zh-Hans": "已导出文件解码样本峰值",
     "zh-Hant": "已匯出檔案解碼樣本峰值",
@@ -1889,12 +1655,6 @@ export const timelineDeliveryMessages = {
     "zh-Hant": "僅檢查成片樣本，並非響度或真峰值，也無法證明來源音訊或混音未削波",
     "en": "Checks only output samples, not loudness or true peak. It cannot prove that source audio or the mix is free of clipping",
     "ja": "出力サンプルのみを検査し、ラウドネスやトゥルーピークは測定しません。ソース音声やミックスにクリッピングがない証明にはなりません"
-  },
-  "audio.loudness.peak.restored": {
-    "zh-Hans": "恢复分支暂不支持已导出文件解码样本峰值检查",
-    "zh-Hant": "還原分支暫不支援已匯出檔案解碼樣本峰值檢查",
-    "en": "Decoded sample-peak checks for exported files are not supported in restored branches yet",
-    "ja": "復元ブランチでは現在、書き出し済みファイルのデコード後サンプルピーク検査を利用できません"
   },
   "audio.loudness.state.valid": {
     "zh-Hans": "可计算综合响度",
@@ -2424,54 +2184,6 @@ export const timelineDeliveryMessages = {
     "en": "Checked {checked} / {total} assets · Verified {bytes}",
     "ja": "素材 {checked} / {total} 件を確認 · {bytes} を検証済み"
   },
-  "recovery.backup.schema": {
-    "zh-Hans": "数据库记录 · 版本 {version}",
-    "zh-Hant": "資料庫記錄 · 版本 {version}",
-    "en": "Database records · Version {version}",
-    "ja": "データベース記録 · バージョン {version}"
-  },
-  "recovery.backup.capacityDetails": {
-    "zh-Hans": "数据库 {database} · 文件 {files} 个 · 单文件 {file} · 总计 {total}。实际文件范围与磁盘空间须由离线命令再次核对",
-    "zh-Hant": "資料庫 {database} · 檔案 {files} 個 · 單檔 {file} · 總計 {total}。實際檔案範圍與磁碟空間須由離線命令再次核對",
-    "en": "Database {database} · {files} files · {file} per file · {total} total. The offline command must recheck the actual file scope and disk space",
-    "ja": "データベース {database} · ファイル {files} 件 · 1 ファイル {file} · 合計 {total}。実際のファイル範囲とディスク空き容量はオフラインコマンドで再確認が必要です"
-  },
-  "recovery.restored.historyCount": {
-    "zh-Hans": {
-      "one": "{availability} · 保留 {count} 条历史记录",
-      "other": "{availability} · 保留 {count} 条历史记录"
-    },
-    "zh-Hant": {
-      "one": "{availability} · 保留 {count} 筆歷史記錄",
-      "other": "{availability} · 保留 {count} 筆歷史記錄"
-    },
-    "en": {
-      "one": "{availability} · {count} historical record retained",
-      "other": "{availability} · {count} historical records retained"
-    },
-    "ja": {
-      "one": "{availability} · 履歴 {count} 件を保持",
-      "other": "{availability} · 履歴 {count} 件を保持"
-    }
-  },
-  "recovery.restored.created": {
-    "zh-Hans": "恢复分支创建时间：{time}",
-    "zh-Hant": "還原分支建立時間：{time}",
-    "en": "Restored branch created: {time}",
-    "ja": "復元ブランチの作成日時：{time}"
-  },
-  "recovery.restored.source": {
-    "zh-Hans": "来源备份：{id}",
-    "zh-Hant": "來源備份：{id}",
-    "en": "Source backup: {id}",
-    "ja": "復元元バックアップ：{id}"
-  },
-  "recovery.restored.origin": {
-    "zh-Hans": "分支来源：{origin}",
-    "zh-Hant": "分支來源：{origin}",
-    "en": "Branch origin: {origin}",
-    "ja": "ブランチの元情報：{origin}"
-  },
   "recovery.storage.durableCount": {
     "zh-Hans": "{count} 类本地编辑请求由现有 SQLite 任务台账保留原编号与完整参数。最多保留 4096 个请求身份，已完成并关闭的记录也占容量；尚未提供归档或槽位清理，不会自动删除旧身份。达到上限会阻止新建此类任务，不表示磁盘已满，也不是整个数据库或 WAL 的大小上限",
     "zh-Hant": "{count} 類本機編輯請求由既有 SQLite 工作台帳保留原編號與完整參數。最多保留 4096 個請求身分，已完成並關閉的記錄也占容量；尚未提供封存或槽位清理，不會自動刪除舊身分。達到上限將阻止建立此類新工作，不表示磁碟已滿，也不是整個資料庫或 WAL 的大小上限",
@@ -2946,12 +2658,6 @@ export const timelineDeliveryMessages = {
     "en": "Your session expired. Sign in again and explicitly prepare again",
     "ja": "セッションの有効期限が切れました。再ログインしてから明示的に再準備してください"
   },
-  "audio.loudness.mix.restored": {
-    "zh-Hans": "恢复分支暂不支持当前整片浮点混音测量",
-    "zh-Hant": "還原分支暫不支援目前整片浮點混音測量",
-    "en": "Current full-timeline float-mix measurement is not supported in restored branches yet",
-    "ja": "復元ブランチでは現在、タイムライン全体の浮動小数点ミックス測定を利用できません"
-  },
   "audio.loudness.mix.changed": {
     "zh-Hans": "已保存时间线或来源已变化，结果已丢弃，请重新准备",
     "zh-Hant": "已儲存時間軸或來源已變更，結果已捨棄，請重新準備",
@@ -3318,12 +3024,6 @@ export const timelineDeliveryMessages = {
     "en": "The candidate has no gain changes to save. Prepare again",
     "ja": "候補に保存できるゲイン変更がありません。再準備してください"
   },
-  "audio.loudness.apply.restored": {
-    "zh-Hans": "恢复分支不能应用响度候选",
-    "zh-Hant": "還原分支無法套用響度候選",
-    "en": "Restored branches cannot apply loudness candidates",
-    "ja": "復元ブランチではラウドネス候補を適用できません"
-  },
   "audio.loudness.apply.failed": {
     "zh-Hans": "本次应用未完成。请先核对任务中心的原请求，再明确重新准备",
     "zh-Hant": "本次套用未完成。請先核對工作中心的原請求，再明確重新準備",
@@ -3533,108 +3233,6 @@ export const timelineDeliveryMessages = {
     "zh-Hant": "片段已儲存，但本機草稿清除尚未確認。目前輸入與原記錄仍保留，請重新核對；不會自動重試",
     "en": "The clip was saved, but clearing its local draft is unconfirmed. Current input and original records are retained; recheck. No automatic retry will occur",
     "ja": "クリップは保存しましたが、ローカル下書きの消去は未確認です。現在の入力と元の記録を保持しています。再確認してください。自動再試行は行いません"
-  },
-  "recovery.backup.count.projects": {
-    "zh-Hans": "项目",
-    "zh-Hant": "專案",
-    "en": "Projects",
-    "ja": "プロジェクト"
-  },
-  "recovery.backup.count.assets": {
-    "zh-Hans": "素材记录",
-    "zh-Hant": "素材記錄",
-    "en": "Asset records",
-    "ja": "素材記録"
-  },
-  "recovery.backup.count.videoTasks": {
-    "zh-Hans": "视频任务",
-    "zh-Hant": "影片工作",
-    "en": "Video tasks",
-    "ja": "動画タスク"
-  },
-  "recovery.backup.count.imageTasks": {
-    "zh-Hans": "图像任务",
-    "zh-Hant": "圖像工作",
-    "en": "Image tasks",
-    "ja": "画像タスク"
-  },
-  "recovery.backup.count.frameTasks": {
-    "zh-Hans": "抽帧任务",
-    "zh-Hant": "影格擷取工作",
-    "en": "Frame extraction tasks",
-    "ja": "フレーム抽出タスク"
-  },
-  "recovery.backup.count.exports": {
-    "zh-Hans": "导出任务",
-    "zh-Hant": "匯出工作",
-    "en": "Export tasks",
-    "ja": "書き出しタスク"
-  },
-  "recovery.backup.count.agentRuns": {
-    "zh-Hans": "Mio 运行",
-    "zh-Hant": "Mio 執行",
-    "en": "Mio runs",
-    "ja": "Mio の実行"
-  },
-  "recovery.backup.count.agentProposals": {
-    "zh-Hans": "Mio 提案",
-    "zh-Hant": "Mio 提案",
-    "en": "Mio proposals",
-    "ja": "Mio の提案"
-  },
-  "recovery.backup.count.editTasks": {
-    "zh-Hans": "编辑请求",
-    "zh-Hant": "編輯請求",
-    "en": "Edit requests",
-    "ja": "編集リクエスト"
-  },
-  "recovery.backup.issue.ROW_LIMIT": {
-    "zh-Hans": "记录数量超过本次核对上限，部分数量未知",
-    "zh-Hant": "記錄數量超過本次核對上限，部分數量未知",
-    "en": "The record count exceeds this check's limit; some counts are unknown",
-    "ja": "記録件数が今回の確認上限を超えており、一部の件数は不明です"
-  },
-  "recovery.backup.issue.JSON_LIMIT": {
-    "zh-Hans": "部分记录超过检查容量，计数未知",
-    "zh-Hant": "部分記錄超過檢查容量，計數未知",
-    "en": "Some records exceed the check capacity; their count is unknown",
-    "ja": "一部の記録が検査容量を超えており、件数は不明です"
-  },
-  "recovery.backup.issue.INVALID_ROW": {
-    "zh-Hans": "存在无法识别的数据库记录，部分数量未知",
-    "zh-Hant": "存在無法辨識的資料庫記錄，部分數量未知",
-    "en": "Some database records are unrecognized; some counts are unknown",
-    "ja": "認識できないデータベース記録があり、一部の件数は不明です"
-  },
-  "recovery.backup.issue.SCHEMA_UNSUPPORTED": {
-    "zh-Hans": "数据库版本不在支持范围内，无法完成核对",
-    "zh-Hant": "資料庫版本不在支援範圍內，無法完成核對",
-    "en": "The database version is unsupported; the check cannot complete",
-    "ja": "データベースのバージョンが対応範囲外のため、確認を完了できません"
-  },
-  "recovery.backup.issue.DATABASE_UNAVAILABLE": {
-    "zh-Hans": "数据库暂不可读取，无法完成核对",
-    "zh-Hant": "資料庫暫時無法讀取，無法完成核對",
-    "en": "The database cannot currently be read; the check cannot complete",
-    "ja": "現在データベースを読み取れないため、確認を完了できません"
-  },
-  "recovery.backup.error.unauthorized": {
-    "zh-Hans": "会话已过期，请重新登录后再核对",
-    "zh-Hant": "工作階段已過期，請重新登入後再核對",
-    "en": "Your session expired. Sign in again before checking",
-    "ja": "セッションの有効期限が切れました。再ログインしてから確認してください"
-  },
-  "recovery.backup.error.protocol": {
-    "zh-Hans": "返回的核对信息不完整或无法识别，请刷新后重试",
-    "zh-Hant": "傳回的核對資訊不完整或無法辨識，請重新整理後重試",
-    "en": "Returned check information is incomplete or unrecognized. Refresh and retry",
-    "ja": "返された確認情報が不完全か認識できません。更新して再試行してください"
-  },
-  "recovery.backup.error.failed": {
-    "zh-Hans": "暂时无法核对数据库状态。请检查连接后手动重试",
-    "zh-Hant": "暫時無法核對資料庫狀態。請檢查連線後手動重試",
-    "en": "Database status cannot be checked right now. Check the connection and retry manually",
-    "ja": "現在データベースの状態を確認できません。接続を確認して手動で再試行してください"
   },
   "recovery.clip.error.ackMismatch": {
     "zh-Hans": "本地草稿确认与当前记录不一致；已停止覆盖",

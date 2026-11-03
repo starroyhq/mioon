@@ -41,7 +41,7 @@ function harness<File extends 'SettingsExtraPages.tsx'|'SettingsVideoTools.tsx'|
   };
 }
 
-const workspaceSettings=(enabled: boolean)=>({formatVersion:1,revision:0,liveGeneration:enabled,automaticBackup:false,backupIntervalHours:24,backupLocation:'default',backupDirectory:'/private/local-backups'});
+const workspaceSettings=(enabled: boolean)=>({formatVersion:1,revision:0,liveGeneration:enabled});
 for (const enabled of [false, true]) test(`service panel shows the persisted live gate ${enabled} independently from missing credentials and checks only local metadata`, async () => {
   const calls: unknown[][] = [], missing = ['ARK_API_KEY', ...enabled ? [] : ['MIOON_ENABLE_LIVE_PROVIDER']];
   const h = harness('SettingsExtraPages.tsx', 'SettingsModelServices', {
@@ -72,7 +72,7 @@ test('failed service discovery leaves the live gate unknown instead of presentin
 
 test('live switch waits for the persisted revision and stale hidden callbacks cannot enable generation',async()=>{
  let value=workspaceSettings(false),resolve!:()=>void;const writes: unknown[]=[];
- const h=harness('SettingsExtraPages.tsx','SettingsModelServices',{'./workspace-info-client.ts':{},'./browser-rpc.ts':{browserRpc:async()=>[]},'./workspace-settings-client.ts':{readWorkspaceSettings:async()=>value,saveWorkspaceSettings:(input: {liveGeneration:boolean})=>{writes.push(input);return new Promise<({ formatVersion: number; revision: number; liveGeneration: boolean; automaticBackup: boolean; backupIntervalHours: number; backupLocation: string; backupDirectory: string; })>(done=>{resolve=()=>{value={...value,revision:1,liveGeneration:input.liveGeneration};done(value);};});}}});
+ const h=harness('SettingsExtraPages.tsx','SettingsModelServices',{'./workspace-info-client.ts':{},'./browser-rpc.ts':{browserRpc:async()=>[]},'./workspace-settings-client.ts':{readWorkspaceSettings:async()=>value,saveWorkspaceSettings:(input: {liveGeneration:boolean})=>{writes.push(input);return new Promise<ReturnType<typeof workspaceSettings>>(done=>{resolve=()=>{value={...value,revision:1,liveGeneration:input.liveGeneration};done(value);};});}}});
  h.render();await flush();h.render();const edit=(h.find('settings-live-generation'))!.props.onCheckedChange;edit(true);h.render();
  assert.equal((h.find('settings-live-generation'))!.props.checked,false);assert.equal((h.find('settings-live-generation'))!.props.disabled,true);assert.deepEqual(writes,[{expectedRevision:0,liveGeneration:true}]);
  (resolve)!();await flush();h.render();await flush();h.render();assert.equal((h.find('settings-live-generation'))!.props.checked,true);
@@ -99,7 +99,7 @@ test('Mioon media tools card downloads through the native bridge, reports progre
   let status: Record<string, unknown> = { offer, installed: null, progress: { phase: 'idle', receivedBytes: 0, totalBytes: 0, code: null } }, finish!: (value: unknown) => void;
   const installedCalls: unknown[][] = [], busy: boolean[] = [], requests: string[] = [];
   const native = { mediaToolsStatus: async () => { requests.push('status'); return status; }, installMediaTools: () => { requests.push('install'); return new Promise(resolve => { finish = resolve; }); }, cancelMediaToolsInstall: async () => { requests.push('cancel'); return true; } };
-  const h = harness('SettingsMediaToolsDownload.tsx', 'default', { './workspace-settings-client.ts': { workspaceBackupBridge: () => ({ restart: async () => { requests.push('restart'); } }) } },
+  const h = harness('SettingsMediaToolsDownload.tsx', 'default', { './workspace-native-client.ts': { workspaceNativeBridge: () => ({ restart: async () => { requests.push('restart'); } }) } },
     { native, saved: { ffmpeg: '/opt/homebrew/bin/ffmpeg', ffprobe: '/opt/homebrew/bin/ffprobe' }, onInstalled: (...args: unknown[]) => installedCalls.push(args), onBusyChange: (value: boolean) => busy.push(value) });
   h.render(); await flush(); h.render();
   assert.match(text(h.tree), /Mioon 提供的版本.*FFmpeg 7\.1\.5 · Apple 芯片 · 约 30\.0 MB.*GPL.*media-tools-7\.1\.5-1/u);
@@ -123,86 +123,34 @@ test('Mioon media tools card downloads through the native bridge, reports progre
   assert.equal(h.find('workspace-tools-download-install'), undefined, 'the copy in use offers no install button');
   assert.deepEqual(requests.filter(request => request !== 'status'), ['install', 'cancel', 'install']);
   h.unmount();
-  const hidden = harness('SettingsMediaToolsDownload.tsx', 'default', { './workspace-settings-client.ts': { workspaceBackupBridge: () => undefined } },
+  const hidden = harness('SettingsMediaToolsDownload.tsx', 'default', { './workspace-native-client.ts': { workspaceNativeBridge: () => undefined } },
     { native: { ...native, mediaToolsStatus: async () => ({ ...status, offer: null }) }, saved: null, onInstalled: () => {} });
   hidden.render(); await flush(); hidden.render();
   assert.equal(hidden.tree, null, 'platforms without a Mioon build show nothing');
   hidden.unmount();
 });
 
-function workspaceFixture(options: { readSettings?:(settings:ReturnType<typeof workspaceSettings>,signal:unknown)=>unknown;save?:(input:unknown)=>unknown;create?:(request:unknown)=>unknown;confirm?:()=>Promise<unknown>; }|undefined={}) {
- let settings=workspaceSettings(false),backup:import('./helpers/strict-root-ui-types.ts').RootWorkspaceBackupStatus={phase:'idle',directory:settings.backupDirectory,automatic:false,intervalHours:24,lastBackupAt:null,nextBackupAt:null,lastError:null,backups:[],pendingRestore:null};
- const writes: { formatVersion: number; revision: number; liveGeneration: boolean; automaticBackup: boolean; backupIntervalHours: number; backupLocation: string; backupDirectory: string; }[]=[],creates: unknown[]=[],restores: unknown[][]=[];
- const client={workspaceBackupBridge:()=>undefined,workspaceBackupDownloadUrl:(id: unknown)=>`/api/workspace-backups/${id}/download`,readWorkspaceSettings:async (signal: unknown)=>options.readSettings?options.readSettings(settings,signal):settings,readWorkspaceBackupStatus:async()=>backup,
-  saveWorkspaceSettings:async (input: { formatVersion: number; revision: number; liveGeneration: boolean; automaticBackup: boolean; backupIntervalHours: number; backupLocation: string; backupDirectory: string; })=>{writes.push(input);if(options.save)await options.save(input);settings={...settings,...input,revision:settings.revision+1};return settings;},
-  createLocalWorkspaceBackup:async (requestId: unknown)=>{creates.push(requestId);if(options.create)return options.create(requestId);return {id:'new-backup'};},
-  stageLocalWorkspaceRestore:async(...args: unknown[])=>{restores.push(args);backup={...backup,pendingRestore:{state:'pending',restartRequired:true}};},
-  importLocalWorkspaceBackup:async()=>{throw Error('Unexpected import');},};
- const h=harness('SettingsWorkspace.tsx','default',{'./workspace-info-client.ts':{workspaceToolsBridge:()=>undefined,readWorkspaceInfo:async()=>({dataDirectory:'/private/workspace',usage:{bytes:1024,complete:true},pendingProjectCleanup:0})},'./workspace-settings-client.ts':client,'./WorkspaceControls.tsx':{WorkbenchSelect:'WorkbenchSelect'},'@mioon/ui/components/workbench-confirm':{useConfirmation:()=>options.confirm??(async()=>true)}});
- return {h,writes,creates,restores,get settings(){return settings;},setBackup:(value:Partial<import('./helpers/strict-root-ui-types.ts').RootWorkspaceBackupStatus>)=>{backup={...backup,...value};}};
-}
-
-function captureWorkspacePoll(t: test.TestContext){
- const callbacks: (()=>unknown)[]=[];
- t.mock.method(globalThis,'setInterval',(callback: unknown)=>{callbacks.push(callback as ()=>unknown);return callbacks.length;});
- t.mock.method(globalThis,'clearInterval',()=>{});
- return ()=>callbacks.at(-1)!();
-}
-
-test('late workspace polling cannot overwrite a successful save ACK before the next effect cleanup',async t=>{
- const poll=captureWorkspacePoll(t);let resolveRead!: (value?:unknown)=>void,reads=0;
- const f=workspaceFixture({readSettings:(snapshot: unknown)=>++reads===2?new Promise(resolve=>{resolveRead=()=>resolve(snapshot);}):snapshot});t.after(()=>f.h.unmount());
- f.h.render();await flush();f.h.render();poll();
- (f.h.find('workspace-auto-backup'))!.props.onCheckedChange(true);await flush();
- assert.equal(f.settings.automaticBackup,true);(resolveRead)!();await flush();f.h.render();
- assert.equal((f.h.find('workspace-auto-backup'))!.props.checked,true);
- await flush();f.h.render();assert.match(text(nodes(f.h.tree).find((node)=>node.type==='footer')),/更改立即保存在本机/);
+test('workspace settings preserve directory, usage and cleanup information without retired backup controls', async t => {
+  const calls: string[] = [];
+  const h = harness('SettingsWorkspace.tsx','default',{
+    './workspace-info-client.ts': {workspaceToolsBridge:()=>undefined,readWorkspaceInfo:async()=>{calls.push('info');return {dataDirectory:'/private/current-data',usage:{bytes:1024,complete:false},pendingProjectCleanup:2};}},
+    './workspace-settings-client.ts': {readWorkspaceSettings:async()=>{calls.push('settings');return workspaceSettings(false);}},
+  });
+  t.after(()=>h.unmount());h.render();await flush();h.render();
+  assert.deepEqual(calls,['info','settings']);
+  assert.equal(nodes(h.tree).find(node=>node.type==='input')!.props.value,'/private/current-data');
+  assert.match(text(h.tree),/部分文件未统计/);assert.match(text(h.tree),/2/);
+  assert.equal(h.find('workspace-backup-create'),undefined);assert.equal(h.find('workspace-auto-backup'),undefined);
+  assert.match(text(nodes(h.tree).find(node=>node.type==='footer')),/更改立即保存在本机/);
 });
-
-test('retired workspace reads and callbacks cannot act after switching settings categories',async t=>{
- const poll=captureWorkspacePoll(t);let rejectRead!: (value?:unknown)=>void,reads=0;
- const f=workspaceFixture({readSettings:(snapshot: unknown)=>++reads===2?new Promise((resolve,reject)=>{rejectRead=()=>reject(Object.assign(Error('private old read'),{code:'WORKSPACE_SETTINGS_CONFLICT'}));}):snapshot});t.after(()=>f.h.unmount());
- f.h.render();await flush();f.h.render();const edit=(f.h.find('workspace-auto-backup'))!.props.onCheckedChange;poll();
- edit(true);f.h.render({active:false});await flush();assert.equal(f.settings.automaticBackup,true);
- (rejectRead)!();await flush();f.h.render();edit(false);assert.equal(f.writes.length,1);
- f.h.render({active:true});await flush();f.h.render();
- assert.equal((f.h.find('workspace-auto-backup'))!.props.checked,true);assert.doesNotMatch(text(f.h.tree),/其他窗口已更改|状态未确认|private old read/);
- assert.match(text(nodes(f.h.tree).find((node)=>node.type==='footer')),/更改立即保存在本机/);
-});
-
-test('workspace save failures stay visible through retired polls and retry the persisted revision',async t=>{
- const poll=captureWorkspacePoll(t);let resolveRead!: (value?:unknown)=>void,reads=0,attempts=0;
- const f=workspaceFixture({readSettings:(snapshot: unknown)=>++reads===2?new Promise(resolve=>{resolveRead=()=>resolve(snapshot);}):snapshot,save:async()=>{if(++attempts===1)throw Object.assign(Error('private write failure'),{code:'NETWORK'});}});t.after(()=>f.h.unmount());
- f.h.render();await flush();f.h.render();poll();(f.h.find('workspace-auto-backup'))!.props.onCheckedChange(true);await flush();(resolveRead)!();await flush();f.h.render();await flush();f.h.render();
- assert.equal((f.h.find('workspace-auto-backup'))!.props.checked,false);assert.match(text(nodes(f.h.tree).find((node)=>node.type==='footer')),/状态未确认/);assert.doesNotMatch(text(f.h.tree),/private write failure/);
- (f.h.find('workspace-auto-backup'))!.props.onCheckedChange(true);await flush();f.h.render();await flush();f.h.render();
- assert.deepEqual(f.writes,[{expectedRevision:0,automaticBackup:true},{expectedRevision:0,automaticBackup:true}]);
- assert.equal((f.h.find('workspace-auto-backup'))!.props.checked,true);assert.match(text(nodes(f.h.tree).find((node)=>node.type==='footer')),/更改立即保存在本机/);
-});
-
-test('workspace automatic backup changes persist immediately and backup retries retain their original request identity',async t=>{
- let attempts=0;const f=workspaceFixture({create:async (requestId: unknown)=>{if(++attempts===1)throw Object.assign(Error('private'),{code:'NETWORK'});return{id:'new-backup',requestId};}});t.after(()=>f.h.unmount());
- f.h.render();await flush();f.h.render();await (f.h.find('workspace-auto-backup'))!.props.onCheckedChange(true);await flush();f.h.render();
- assert.deepEqual(f.writes,[{expectedRevision:0,automaticBackup:true}]);
- await (f.h.find('workspace-backup-create'))!.props.onClick();await flush();f.h.render();await flush();f.h.render();
- assert.match(text(f.h.tree),/核对并重试同一备份请求/);assert.match(text(nodes(f.h.tree).find((node)=>node.type==='footer')),/状态未确认/);await (f.h.find('workspace-backup-create'))!.props.onClick();await flush();f.h.render();
- assert.equal(f.creates.length,2);assert.equal(f.creates[0],f.creates[1]);assert.match(text(f.h.tree),/备份已完成并验证/);assert.doesNotMatch(text(f.h.tree),/private/);
-});
-
-test('workspace restore requires explicit confirmation and a late approval cannot act on a hidden settings page',async t=>{
- let approve!: (value?:unknown)=>void;const f=workspaceFixture({confirm:()=>new Promise(resolve=>{approve=resolve;})});t.after(()=>f.h.unmount());f.setBackup((({backups:[{id:'saved-backup',createdAt:'2026-10-20T00:00:00Z',payloadBytes:1024}]}) as unknown as Parameters<typeof f.setBackup>[0]));
- f.h.render();await flush();f.h.render();(f.h.find('workspace-backup-restore'))!.props.onClick();assert.equal(f.restores.length,0);
- f.h.render({active:false});(approve)!(true);await flush();f.h.render();assert.equal(f.restores.length,0);
-});
-
-test('staged workspace restore reports restart and prevents another backup rather than fabricating immediate replacement',async t=>{
- const f=workspaceFixture();t.after(()=>f.h.unmount());f.setBackup((({backups:[{id:'saved-backup',createdAt:'2026-10-20T00:00:00Z',payloadBytes:1024}]}) as unknown as Parameters<typeof f.setBackup>[0]));
- f.h.render();await flush();f.h.render();(f.h.find('workspace-backup-restore'))!.props.onClick();await flush();f.h.render();await flush();f.h.render();
- assert.equal(f.restores.length,1);assert.equal(f.restores[0][0],'saved-backup');assert.match(text(f.h.tree),/重启应用或本地服务后生效/);assert.equal((f.h.find('workspace-backup-create'))!.props.disabled,true);
- assert.match(text(nodes(f.h.tree).find((node)=>node.type==='footer')),/等待重启以切换工作区/);
-});
-
-test('persisted automatic backup failures remain visible after reopening settings',async t=>{
- const f=workspaceFixture();t.after(()=>f.h.unmount());f.setBackup((({automatic:true,lastError:'WORKSPACE_BACKUP_BUSY'}) as unknown as Parameters<typeof f.setBackup>[0]));
- f.h.render();await flush();f.h.render();assert.match(text(f.h.tree),/待对账的任务/);assert.match(text(nodes(f.h.tree).find((node)=>node.type==='footer')),/状态未确认/);
+test('hidden workspace settings abort pending reads and a late failure cannot publish into a new visible owner', async t => {
+  let reject!: (reason:unknown)=>void;const signals: AbortSignal[]=[];let reads=0;
+  const h = harness('SettingsWorkspace.tsx','default',{
+    './workspace-info-client.ts': {workspaceToolsBridge:()=>undefined,readWorkspaceInfo:async()=>({dataDirectory:'/private/current-data',usage:{bytes:1024,complete:true},pendingProjectCleanup:0})},
+    './workspace-settings-client.ts': {readWorkspaceSettings:async(signal:AbortSignal)=>{signals.push(signal);if(++reads===1)return new Promise((_yes,no)=>{reject=no;});return workspaceSettings(false);}},
+  });
+  t.after(()=>h.unmount());h.render();h.render({active:false});assert.equal(signals[0].aborted,true);
+  h.render({active:true});await flush();h.render();reject(Object.assign(Error('private stale error'),{code:'NETWORK'}));await flush();h.render();
+  assert.equal(reads,2);assert.doesNotMatch(text(h.tree),/private stale error|状态未确认/);
+  assert.match(text(nodes(h.tree).find(node=>node.type==='footer')),/更改立即保存在本机/);
 });

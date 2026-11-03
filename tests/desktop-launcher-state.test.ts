@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { schemas, workspaceRestoreInspectionSchema } from '../packages/contracts/src/index.ts';
+import { schemas } from '../packages/contracts/src/index.ts';
 import { createLauncherClient, createLauncherController, parseLauncherProjects } from '../apps/web/src/launcher-state.ts';
 import type { LauncherProject } from '../apps/web/src/launcher-state.ts';
 import { createProjectEntryController } from '../apps/web/src/project-entry-state.ts';
@@ -21,7 +21,7 @@ interface OpenRecord { projectId: string; remember: boolean; entryToken: string 
 interface InvokeArgs extends OpenRecord { controller: ProjectController }
 
 const uuid = (n: number): string => `78000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const checks: ContractChecks = { parseCreateInput: value => schemas['project.create'].parse(value), parseWorkspaceInspection: value => workspaceRestoreInspectionSchema.parse(value) };
+const checks: ContractChecks = { parseCreateInput: value => schemas['project.create'].parse(value) };
 const ctx = (patch: object = {}): LauncherContext => ({ version: 2, role: 'launcher', windowId: uuid(9), contextId: uuid(1), backendId: uuid(2), initialProjectId: null, autoOpen: false,
   editorProjectId: null, editorPhase: 'none', editorCount: 0, entryMode: null, entryVersion: 0, entryReceipt: null,
   settingsSlot: null, settingsVersion: 0, selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false, ...patch }) as LauncherContext;
@@ -43,7 +43,6 @@ function fixture({ context = ctx(), confirm = async () => true, rpc, invoke, loc
   const client = createLauncherClient(async (operation, input) => {
     calls.push([operation, input]);
     if (rpc) return rpc(operation, input);
-    if (operation === 'workspace.restore.inspect') return { restored: false };
     if (operation === 'project.list') return [row(), row(uuid(4))];
     if (operation === 'project.create') return row(uuid(5), String((input as { name?: unknown } | undefined)?.name));
   }, checks);
@@ -94,7 +93,7 @@ test('an exact late accepted receipt closes the editor picker after an unknown o
 });
 test('programmatic open cannot bypass unknown creation and refreshing never proves creation success', async () => {
   const pending = Promise.withResolvers<unknown>();
-  const f = fixture({ rpc: async (op) => op === 'workspace.restore.inspect' ? { restored: false } : op === 'project.list' ? [row()] : pending.promise });
+  const f = fixture({ rpc: async (op) => op === 'project.list' ? [row()] : pending.promise });
   await f.controller.boot();
   f.controller.reportCreate({ dirty: true, busy: true, version: 1 });
   const work = f.controller.create('new', '');
@@ -150,7 +149,7 @@ test('first startup is read-only, consumed once, and cancelled by newer local in
   const locator = { activate() {}, dispose() {}, discover: async () => null, getState: () => ({ identityBlocked: false }), invalidateNavigation() {}, rememberOpened() { assert.fail('startup cannot remember'); } } as unknown as Locator;
   const f = fixture({ context: ctx({ autoOpen: true }), locator }); await f.controller.boot(); await f.controller.boot();
   assert.deepEqual(f.opens.map(value => value.remember), [false]);
-  const held = Promise.withResolvers<unknown>(); const g = fixture({ context: ctx({ autoOpen: true }), locator, rpc: async op => op === 'workspace.restore.inspect' ? { restored: false } : held.promise });
+  const held = Promise.withResolvers<unknown>(); const g = fixture({ context: ctx({ autoOpen: true }), locator, rpc: async op => held.promise });
   const boot = g.controller.boot(); g.controller.interacted(); held.resolve([row()]); await boot; assert.equal(g.opens.length, 0);
 });
 test('launcher-only locator queue invalidates stale selections before a later ready target', async () => {
@@ -165,7 +164,7 @@ test('launcher-only locator queue invalidates stale selections before a later re
   assert.deepEqual(writes, [[uuid(4), 2]]); assert.deepEqual(order, [['invalidate', 0], ['invalidate', 1], ['invalidate', 2]]);
 });
 test('entry unknown creation preserves exact P0 close-only risk admission across quit context', async () => {
-  const f = fixture({ rpc: async op => op === 'workspace.restore.inspect' ? { restored: false } : op === 'project.list' ? [row()] : Promise.reject(new Error('unknown')) });
+  const f = fixture({ rpc: async op => op === 'project.list' ? [row()] : Promise.reject(new Error('unknown')) });
   await f.controller.boot(); f.controller.reportCreate({ dirty: true, busy: false, version: 1 }); await f.controller.create('new', '');
   const admission = createNativeCloseAdmission({ registry: createNativeCloseRegistry(), settings: createSettingsNavigationRegistry(),
     readScope: () => 'same', readDocumentURL: () => 'http://localhost/', readAdditionalSnapshot: f.controller.readCloseSnapshot,

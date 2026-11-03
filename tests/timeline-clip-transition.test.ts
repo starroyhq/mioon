@@ -1,3 +1,9 @@
+
+
+
+
+
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -9,13 +15,13 @@ import {
  validateClipTransition,type ClipTransition,type ClipTransitionKind,type TransitionSource,
 } from '../packages/contracts/src/timeline-clip-transition.ts';
 import {isTimelineMutationResponse} from '../packages/contracts/src/timeline-acknowledgement.ts';
-import {openStore,openLegacyWorkspaceStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
-import {downgradeReviewedWorkspace} from './helpers/reviewed-schema-layers.ts';
-import {CURRENT_ORDINARY_ROLE,CURRENT_RESTORED_ROLE} from './helpers/workspace-schema-current.ts';
+
+
+
+
+
 import {TIMELINE_COLOUR_PREFLIGHT_MESSAGES} from '../packages/contracts/src/timeline-colour.ts';
 import {freezeTimelineSnapshot} from '../packages/business/src/timeline-inputs.ts';
 import {assertTransitionImageBudget} from '../packages/business/src/timeline-transition-filter.ts';
@@ -72,7 +78,7 @@ test('a transition needs a cut, source handles on both sides and room beside its
  assert.deepEqual(staleClipTransitions({durationFrames:2000,clips:many},sources),Array.from({length:49},(_,index)=>`c${99-index}`));
 });
 
-async function fixture(t: test.TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){
+async function fixture(t: test.TestContext,opener:typeof openStore=openStore){
  const root=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-clip-transition-')));
  let store=opener(root) as unknown as {db: import('node:sqlite').DatabaseSync;put(table: string,value: Rec): Rec;close(): void};
  let services=createServices(store as never,new Map()) as unknown as {call(operation: string,input: unknown): Promise<Rec>};
@@ -182,35 +188,7 @@ test('edits keep transitions that still fit and remove the ones they break',asyn
  assert.equal(Object.hasOwn(f.clip('B'),'transitionIn'),false);
 });
 
-test('schema70 refuses transitions; schema72 keeps them through backup and restore',async t=>{
- const f=await fixture(t,openLegacyWorkspaceStore),{b}=await f.pair(),clipId=b.id;
- downgradeReviewedWorkspace(f.store.db,70);
- assert.equal(readCurrentWorkspaceRole(f.store.db),'ordinary-70');
- await assert.rejects(f.call('timeline.clip.setTransition',{clipId,transition:dissolve}),notApplied('CLIP_TRANSITION_WORKSPACE_REQUIRED'));
- // A transition written into a schema70 timeline fails classification.
- const row=f.store.db.prepare('SELECT id,data FROM timelines WHERE projectId=?').get(f.projectId) as {id: string;data: string},data=JSON.parse(row.data);
- data.clips[1].transitionIn=dissolve;f.store.db.prepare('UPDATE timelines SET data=? WHERE id=?').run(JSON.stringify(data),row.id);
- assert.throws(()=>classifyCurrentWorkspaceSchema(f.store.db as never),(error: Rec)=>error.code==='RESTORE_SCHEMA_UNSUPPORTED');
- f.store.db.prepare('UPDATE timelines SET data=? WHERE id=?').run(row.data,row.id);
- await f.reopen();
- assert.equal(readCurrentWorkspaceRole(f.store.db),CURRENT_ORDINARY_ROLE,'opening upgrades it again');
- await f.call('timeline.clip.setTransition',{clipId,transition:dissolve});
- f.store.close();
- const base=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-clip-transition-backup-'))),backup=path.join(base,'backup'),restored=path.join(base,'restored');
- t.after(()=>rmSync(base,{recursive:true,force:true}));
- assert.equal((await createWorkspaceBackup({source:f.root,destination:backup})).integrity,'verified');
- await restoreWorkspaceBackup({directory:backup,destination:restored});
- const copy=openLegacyWorkspaceStore(restored) as unknown as {db: import('node:sqlite').DatabaseSync;close(): void};
- try{
-  assert.equal(readCurrentWorkspaceRole(copy.db),CURRENT_RESTORED_ROLE);
-  const saved=JSON.parse((copy.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(f.projectId) as {data: string}).data);
-  assert.deepEqual(saved.clips.find((clip: Rec)=>clip.id===clipId).transitionIn,dissolve);
-  const services=createServices(copy as never,new Map()) as unknown as {call(operation: string,input: unknown): Promise<Rec>};
-  await assert.rejects(services.call('timeline.clip.setTransition',{projectId:f.projectId,expectedRevision:saved.revision,requestId:randomUUID(),clipId,transition:null}),
-   (error: Rec)=>typeof error.code==='string'&&error.code.startsWith('RESTORE'),'a restored copy refuses transition edits');
- }finally{copy.close();}
- await f.reopen();
-});
+
 
 test('a transition between images counts both towards the managed image budget',async t=>{
  const root=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-transition-images-')));

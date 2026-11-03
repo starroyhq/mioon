@@ -4,7 +4,6 @@ import type {TimelineMixLoudnessInput, TimelineMixLoudnessResponse} from '@mioon
 export interface TimelineMixLoudnessClientOptions {
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
-  readonly expectedWorkspaceOrigin?: string;
 }
 export interface TimelineMixLoudnessRpcClient {
   rpc(operation: 'timeline.loudness.prepare', input: TimelineMixLoudnessInput,

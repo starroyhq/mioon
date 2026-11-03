@@ -12,8 +12,7 @@ export const APP_LEVEL_OPERATIONS = Object.freeze([
   'image.profile.list', 'project.create', 'project.delete', 'project.list', 'project.rename', 'project.summary.list',
   'project.backup.list', 'project.backup.inspect', 'project.backup.restore', 'project.backup.status',
   'provider.list', 'video.connection.list',
-  'workspace.backup.create', 'workspace.backup.inspect', 'workspace.backup.list', 'workspace.backup.restore.stage', 'workspace.backup.status',
-  'workspace.restore.inspect', 'workspace.settings.get', 'workspace.settings.set',
+  'workspace.settings.get', 'workspace.settings.set',
 ] as const);
 export type AppLevelOperation = typeof APP_LEVEL_OPERATIONS[number];
 /** Project-level operations whose input names only an entity, never its

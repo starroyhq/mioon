@@ -35,6 +35,10 @@ Do not mix a desktop descriptor with `MIOON_BASE_URL`/`MIOON_TOKEN_FILE`. Explic
 
 源码默认构建开发版。两个渠道独立运行、轮换令牌；客户端只连明确配置的那一个，不自动猜测或回退。旧 `video-workbench/` 数据及历史连接配置保留；迁移项目后需手动把客户端连接路径改为目标渠道，详见 [数据迁移](DESKTOP.md#数据位置与单实例)。descriptor 的 `appId` / `channel` 是附加非敏感元数据，协议版本仍为 1。
 
+## 已退役的工作区入口
+
+五个 `workspace.backup.*` 操作和 `workspace.restore.inspect` 已从 schema、CLI 和 MCP 发现列表删除。直接调用返回 `UNKNOWN_OPERATION`；CLI 退出 2，MCP 返回 `isError:true`。`--workspace-origin` 已删除，离线 `backup.ts` / `pnpm backup` 入口不再提供。当前单项目备份使用 `project.backup.*`，见 [项目备份](PROJECT-BACKUPS.md)。
+
 ## Standalone Codex configuration
 
 This is a configuration example for the user's review, not an installer. No files under `~/.codex` are modified by this repository. In a trusted project, the user may place this block in a project-scoped `.codex/config.toml`. Replace the absolute paths:
@@ -833,42 +837,6 @@ changed versions conflict, and confirmed-failure retry uses its original source.
 Only a validated original acknowledgement/read settles the request. Mock proves
 workflow only; Ark real-face direct uploads are unsupported and no live call is
 approved by schema discovery. See [SUBJECT-VIDEO-INPUTS.md](SUBJECT-VIDEO-INPUTS.md).
-
-## Workspace backup status and offline boundary
-
-`workspace_backup_inspect` is an authenticated, strict-empty-input, read-only
-workspace DB summary. Null counts mean unknown or bounded inspection incomplete,
-not zero. It never checks/copies media, stops the backend, reads credentials or
-resumes work. The result always explains that a running backend must close
-before cold capture. This is an external discovery tool, not an added built-in
-Agent capability.
-
-There is no MCP backup create/verify/restore tool or filesystem-path executor.
-For explicitly requested local backup creation, use the documented offline CLI
-in [the guide](WORKSPACE-BACKUP-GUIDE.zh-CN.md) after normal backend shutdown.
-A verified package is not evidence that restoring or repeating old tasks is safe.
-
-
-## Restored-branch discovery and origin pin
-
-`workspace_restore_inspect` is an authenticated strict-empty read-only tool. It
-returns `{restored:false}` for ordinary workspaces; restored ones disclose safe
-origin/profile, source hashes, bounded held counts and explicit restrictions.
-There are no filesystem paths or added built-in Agent capabilities.
-
-For an explicitly chosen restored branch, launch MCP with `--workspace-origin`
-and its exact inspected UUID. The bridge pins this outer invocation context;
-ordinary tool input schemas and replay keys are unchanged. It never updates the
-pin on backend reconnect. Missing/foreign origins refuse fresh effects. Discovery
-does not approve execution, restore old tasks or give a model paid authority.
-
-Captured tasks/approvals/unknown requests remain held, including when callers
-supply a new outer origin or another key. Only supported new local edits/imports
-and previews/exports are enabled in restored v1; disabled calls return the same
-structured business refusal as UI/CLI. Do not interpret it as confirmed rollback.
-Offline restore/status has no MCP filesystem executor; use the explicitly
-requested local CLI described in [CLI.md](CLI.md#guarded-offline-restoration).
-
 
 ## Named timeline deliveries
 

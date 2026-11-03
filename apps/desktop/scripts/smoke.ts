@@ -4,16 +4,15 @@ import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { migrateData } from './migrate-data.ts';
+import {seedDesktopQaProject} from './synthetic-qa-project.ts';
 import {providerEnvironmentKeys} from '@mioon/business';
 const require = createRequire(import.meta.url);
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const directory = await mkdtemp(path.join(tmpdir(), 'mioon-electron-smoke-'));
 const output = process.env.MIOON_DESKTOP_SMOKE_OUTPUT || path.join(directory, 'report.json');
 await mkdir(path.dirname(output), { recursive: true });
-// Only the repository's original geometric/tonal synthetic example is seeded.
-// Migration deliberately excludes tokens, locks and Chromium state.
-await migrateData(path.resolve(desktop, '../../examples/multitrack-project'), path.join(directory, 'user-data/workspace'));
+// Seed a fresh registered project; no historical database or Chromium state is copied.
+await seedDesktopQaProject(path.join(directory, 'user-data/data'));
 const env: NodeJS.ProcessEnv = { ...process.env, MIOON_DESKTOP_USER_DATA: path.join(directory, 'user-data'), MIOON_DESKTOP_SMOKE_OUTPUT: output,
   MIOON_ENABLE_LIVE_PROVIDER: '0' };
 for (const name of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', ...providerEnvironmentKeys.filter(key=>key!=='MIOON_ENABLE_LIVE_PROVIDER')]) delete env[name];

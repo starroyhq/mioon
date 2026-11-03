@@ -1,3 +1,5 @@
+
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
@@ -5,7 +7,7 @@ import {writeFileSync} from 'node:fs';
 import {mkdtemp,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {AGENT_TASK_OPERATION_ADMISSION} from '../packages/business/src/agent/task-tools-v2.ts';
@@ -13,8 +15,8 @@ import {WRAPPED_TIMELINE_OPERATIONS} from '../packages/business/src/workspace-wr
 import {schemas,descriptions,operationEffect,isTimelineMutationResponse,hasRequestNotAppliedProof,TIMELINE_MUTATION_OPERATIONS,DURABLE_EDIT_OPERATIONS,
  TIMELINE_CLIP_GAINS_OPERATION,TIMELINE_CLIP_GAINS_RESPONSE_BYTES,TIMELINE_CLIP_GAINS_LIMITS,TIMELINE_RESPONSE_BYTES} from '@mioon/contracts';
 import {translate} from '../packages/i18n/src/index.ts';
-import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+
+
 
 const GAINS=TIMELINE_CLIP_GAINS_OPERATION;
 interface Clip {id: string;trackId: string;gain: number;fadeInFrames?: number;fadeOutFrames?: number;volumeEnvelope?: unknown;audioRole?: string|null}
@@ -26,7 +28,7 @@ type Request = {projectId: string;expectedRevision: number;requestId: string;gai
 const digest=(bytes: Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const writes=['timelines','timeline_history','timeline_history_cursors','timeline_requests'];
 
-async function fixture(t: test.TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){
+async function fixture(t: test.TestContext,opener:typeof openStore=openStore){
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-clip-gains-')));
  let store=opener(root),services=createServices(store,new Map());
  const call=async <T,>(operation: string,input: unknown): Promise<T>=>await services.call(operation,input) as T;
@@ -142,23 +144,4 @@ test('fades and volume envelopes are kept',async t=>{
  assert.deepEqual([saved.gain,saved.fadeInFrames,saved.fadeOutFrames,saved.volumeEnvelope],[1.7,6,12,volumeEnvelope]);
 });
 
-test('gain receipts beside dialogue keep the workspace valid through backup and restore, and the restored copy refuses new batches',async t=>{
- const f=await fixture(t,openLegacyWorkspaceStore),{a,b}=await dialogue(f);
- const input=f.request(await f.timeline(),[{clipId:a.id,gain:1.3},{clipId:b.id,gain:0.7}]),response=await f.call<Response>(GAINS,input);
- // The receipt wraps a timeline whose clips carry audio roles; the workspace
- // validators behind both capabilities must still read it as a valid receipt.
- const inspected=await f.call<{audioRoleCapability?: {editable: boolean};volumeEnvelopeCapability?: {editable: boolean}}>('workspace.restore.inspect',{includeAudioRoleCapability:true,includeVolumeEnvelopeCapability:true});
- assert.deepEqual([inspected.audioRoleCapability?.editable,inspected.volumeEnvelopeCapability?.editable],[true,true]);
- await f.close();
- const backup=path.join(path.dirname(f.root),`${path.basename(f.root)}-backup`),destination=path.join(path.dirname(f.root),`${path.basename(f.root)}-restored`);
- t.after(async()=>{await rm(backup,{recursive:true,force:true});await rm(destination,{recursive:true,force:true});});
- const created=await createWorkspaceBackup({source:f.root,destination:backup}) as {integrity: string};
- assert.equal(created.integrity,'verified');assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
- const restored=await restoreWorkspaceBackup({directory:backup,destination}) as {workspaceOrigin: string};
- const store=openLegacyWorkspaceStore(destination),services=createServices(store,new Map());
- try{
-  const timeline=await services.call('timeline.get',{projectId:f.projectId}) as Timeline;
-  assert.deepEqual(timeline.clips,response.timeline.clips,'the new gains are restored exactly');
-  await assert.rejects(services.call(GAINS,{...input,requestId:randomUUID(),expectedRevision:timeline.revision,gains:[{clipId:a.id,gain:1}]},{expectedWorkspaceOrigin:restored.workspaceOrigin}),{code:'RESTORE_OPERATION_UNAVAILABLE'});
- }finally{await services.drain();store.close();}
-});
+

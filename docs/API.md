@@ -1,12 +1,12 @@
 # HTTP API
 
-HTTP、CLI 和官方 MCP 共享相同的严格参数、权限与副作用描述。本文 2026-11-02 的 P4 状态如下；工作区备份、恢复等历史协议说明仍保留，不能据此启用旧生产入口。
+HTTP、CLI 和官方 MCP 共享相同的严格参数、权限与副作用描述。本文包含 S7 的公开入口退役状态。项目备份采用独立的 `project.backup.*` 契约。
 
 Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted. All `/api/*` except login, including project-scoped media, require `Authorization: Bearer <local token>` or the HttpOnly SameSite=Strict login cookie. `/health` is public. The token is server-side configuration; do not place it in URLs.
 
 ## P4 当前状态与应用接口
 
-`startServer({dataDir})` 现在以 B1 应用库和真实项目宿主管理器运行，每个项目使用独立内核连接；`dataDir` 是应用根，不是素材根。服务端默认项目位于 `<dataDir>/projects/`，桌面使用 `<userData>/data/` 并默认将项目放在 `<videos>/Mioon/`。覆盖 `MIOON_DESKTOP_USER_DATA` 时，项目和缓存留在该覆盖目录的 `data/` 内。旧 `workbench.sqlite` 目录启动返回 `VALIDATION_ERROR`（400），不迁移；历史旧格式测试必须显式使用 legacy 领域入口。目录与生命周期详见 [PROJECT-HOST.md](PROJECT-HOST.md#0-p4-当前运行状态)。
+`startServer({dataDir})` 现在以 B1 应用库和真实项目宿主管理器运行，每个项目使用独立内核连接；`dataDir` 是应用根，不是素材根。服务端默认项目位于 `<dataDir>/projects/`，桌面使用 `<userData>/data/` 并默认将项目放在 `<videos>/Mioon/`。覆盖 `MIOON_DESKTOP_USER_DATA` 时，项目和缓存留在该覆盖目录的 `data/` 内。旧 `workbench.sqlite` 目录启动返回 `VALIDATION_ERROR`（400），不迁移；旧工作区 opener、迁移与恢复实现已随 S7 退役。目录与生命周期详见 [PROJECT-HOST.md](PROJECT-HOST.md#0-p4-当前运行状态)。
 
 | 应用/项目接口 | 当前行为 |
 | --- | --- |
@@ -32,9 +32,9 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 | --- | --- | --- |
 | S5 | 应用 RPC `project.delete` | 409 `PROJECT_DELETE_UNAVAILABLE`，复用原生命周期错误码 |
 | S5、V4 | 复制、另存为、打包导入导出；旧 `/api/project-packages/…` 和项目 `package-preview` | 未注册生产接口，旧地址为 404 `NOT_FOUND` |
-| S7 | `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（bundle 下载/导入、directory 导入） | 409 `RESTORE_OPERATION_UNAVAILABLE` |
+| S7 | `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（bundle 下载/导入、directory 导入） | 404 `UNKNOWN_OPERATION`（旧文件地址为 `NOT_FOUND`） |
 
-`workspace.restore.inspect` 在新布局返回 `{restored:false}`，可附明确请求的能力字段，不授予恢复权限。设置中的备份字段不启动旧备份任务。普通项目不进入旧删除、包导入或恢复链。
+`workspace.restore.inspect` 已完全退役，返回 404 `UNKNOWN_OPERATION`。音频角色和音量包络直接按普通编辑条件使用，不再发能力探测。工作区设置仅保留真实生成开关和修订号，详见 [工作区设置](WORKSPACE-SETTINGS.md)。
 
 项目隔离也作用于幂等与容量：相同 `requestId` 在不同项目各自保存回执，不能跨项目重放。原 `Global/workspace` 配额现在只在当前项目库计算；N 个项目的图片排队/任务/请求可达 `8N/1000N/3000N`（旧总量 `32/10000/30000`），帧排队/活跃/任务/请求可达 `2N/1N/256N/4096N`（旧 `8/1/2048/32768`），LUT 可达 `128N` 个及 `64 MiB × N`（旧 `512` 个及 `128 MiB`）。每项目约束不变，跨应用总量调度留 S3。
 
@@ -49,7 +49,6 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 应用级 RPC 继续使用 `POST /api/rpc`：`project.create/list/summary.list/rename/delete`、
 `provider.list`、`video.connection.list`、`image.profile.list`、
 `agent.authorization.grant/list/revoke`、`workspace.settings.get/set`、
-`workspace.backup.create/inspect/list/restore.stage/status` 和 `workspace.restore.inspect`，
 共 19 个。登录、应用设置、全局 Agent 策略/诊断等应用级 HTTP 接口保留原地址；
 把应用级操作发到项目 RPC 地址返回 HTTP 400 `VALIDATION_ERROR`。
 
@@ -1658,52 +1657,6 @@ requests. The renderer's full reviewed pin is session storage, not a new durable
 intent ledger. No operation, migration or Agent authority is added. See
 [SUBJECT-VIDEO-INPUTS.md](SUBJECT-VIDEO-INPUTS.md) for implementation status, exact
 wire mapping, real-face restrictions, immutable provenance and acceptance.
-
-## Offline workspace backup readiness
-
-本节保留旧格式领域协议。P4 生产 `workspace.backup.inspect` 与其它工作区备份操作统一返回 409 `RESTORE_OPERATION_UNAVAILABLE`，不再提供下述旧库统计；S7 将删除旧的工作区备份和恢复，项目备份由 V2 实现，复制、另存为和打包由 S5、V4 实现。
-
-`workspace.backup.inspect` accepts only `{}` and returns bounded workspace-wide
-DB counts with `captureReady:false`, `reason:"BACKEND_RUNNING"`, nullable unknown
-counts and fixed capacity limits. It requires the existing local authentication.
-It reads no media, paths or credentials and creates no task, directory, receipt,
-or project. A completed count inspection is not file validation or a cold backup.
-The built-in Agent tool allowlist is unchanged.
-
-Actual create/verify are explicit offline local CLI actions backed by shared Node
-business services. No HTTP RPC accepts backup paths or grants restore authority.
-See [scope and safeguards](WORKSPACE-BACKUP.md) and the
-[offline user guide](WORKSPACE-BACKUP-GUIDE.zh-CN.md).
-
-
-## Restored workspace profile
-
-本节描述显式旧格式恢复领域及其历史数据合同，不是 P4 生产旧工作区入口。生产 `startServer` 拒绝旧 `workbench.sqlite` 目录；新布局的 `workspace.restore.inspect` 返回 `{restored:false}` 及明确请求的能力字段。旧格式成功/安全用例只通过测试专用显式领域适配验证。
-
-`workspace.restore.inspect` accepts exactly `{}` under normal local authentication.
-An ordinary workspace returns exactly `{restored:false}`. A restored workspace
-returns fixed `restored-local-v1` schema25 identity, source backup/hash binding,
-creation time, bounded held counts and explicit operation availability. It returns
-no filesystem paths, prompts, credentials or generic execution capability.
-Built-in Agent tools stay unchanged.
-
-For explicitly fresh allowed effects on a restored branch, the RPC outer body
-adds `expectedWorkspaceOrigin: UUID` alongside `operation` and `input`. It is not
-a domain field, request hash change, bearer credential or permission to resume
-captured work. Missing/mismatched origin refuses; old valid receipt reads remain
-exact and cannot enqueue work. Special edit-task/preference routes enforce the
-same backend profile. Captured identities, even terminal ones, are held.
-
-Local metadata/timeline editing and fresh local export share existing validators,
-CAS, history and request journals. New generation/Agent/Comfy/frame/waveform
-execution is unavailable. Fixed saved history/media readers do not construct
-recovery runtimes. `RESTORED_RECORD_HELD` and `RESTORE_*` refusals are not proof that
-an earlier unknown write failed. Never discard its original key on that basis.
-
-Restore and status discovery are explicit offline Node/CLI actions only. No
-HTTP endpoint receives restore filesystem paths. See [WORKSPACE-RESTORE.md](WORKSPACE-RESTORE.md)
-for fixed schema gates, limits, recursive-backup restriction and current evidence.
-
 
 ## Named timeline deliveries
 

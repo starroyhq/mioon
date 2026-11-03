@@ -9,9 +9,9 @@ import {openStore} from '../packages/business/src/project-file/index.ts';
 import {createMioJournal} from '../packages/business/src/agent/mio-journal.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {createMioAssembly} from '../packages/business/src/agent/mio-assembly.ts';
-import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
-import {openLegacyWorkspaceStore as openWorkspaceStore} from '../packages/business/src/db.ts';
 import {assembleRunContext} from '../packages/business/src/agent/task-context-v2.ts';
+import type {TaskContextHistoryRun} from '../packages/business/src/agent/task-context-v2.ts';
+import type {TaskRunRecordBackground,TaskRunRecordChange,TaskRunRecordTarget} from '../packages/business/src/agent/task-run-record-v2.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskJson, AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
 
@@ -299,9 +299,11 @@ test('conversation ordering includes a late edit to an earlier run under clock r
   assert.deepEqual(f.journal.conversation(f.store.projectId, first.conversationId!).runs.map(run => run.id), [first.id, second.id, third.id]);
 });
 
-test('terminal history projection and serialized conversation context match the legacy journal byte-for-byte', t => {
+test('terminal history projection and serialized conversation context match independent expected DTOs byte-for-byte', t => {
   const f = fixture(t), projectId = f.store.projectId, conversationRuns: string[] = []; let conversationId: string | undefined;
-  for (const [index, status] of ['completed', 'completed', 'failed', 'stopped', 'reverted', 'completed'].entries()) {
+  const expectedRuns:TaskContextHistoryRun[]=[];
+  for (const [index, status] of (['completed', 'completed', 'failed', 'stopped', 'reverted', 'completed'] as const).entries()) {
+    const changes:TaskRunRecordChange[]=[],background:TaskRunRecordBackground[]=[],skipped:TaskRunRecordTarget[]=[];
     const run = f.start({conversationId, text: `history message ${index} \ud800`}); conversationId = run.conversationId; conversationRuns.push(run.id);
     if (index === 3) {
       f.store.tx(() => f.journal.appendNoteInside(run.id, randomUUID(), 'bound note 😀'));
@@ -314,10 +316,13 @@ test('terminal history projection and serialized conversation context match the 
         f.journal.appendNoteInside(run.id, randomUUID(), 'unbound note after answer');
         for (let count = 0; count < 66; count++) {
           const id = randomUUID();
-          f.journal.appendChangesInside(run.id, tool.id, [{projectId, operation: 'shot.update', targets: [{kind: 'shot', id, revision: 1}], before: [{kind: 'shot', id, value: {title: `title before ${count}`, prompt: 'private prompt', duration: 2}}], after: [{kind: 'shot', id, value: {title: `title after ${count}`, prompt: 'changed private prompt', duration: 4}}], reversible: true}]);
+          const [change]=f.journal.appendChangesInside(run.id, tool.id, [{projectId, operation: 'shot.update', targets: [{kind: 'shot', id, revision: 1}], before: [{kind: 'shot', id, value: {title: `title before ${count}`, prompt: 'private prompt', duration: 2}}], after: [{kind: 'shot', id, value: {title: `title after ${count}`, prompt: 'changed private prompt', duration: 4}}], reversible: true}]);
           f.journal.skipTargetsInside(run.id, [{stepId: tool.id, target: {kind: 'shot', id, revision: count, revisionBefore: count - 1, revisionAfter: count + 1}}]);
+          changes.push({id:change!.id,status:'applied',reversible:true,operation:'shot.update',targets:[{kind:'shot',id,name:`title after ${count}`}],targetCount:1});
+          skipped.push({kind:'shot',id,revision:count});
           const jobId = randomUUID(); f.store.put('jobs', {id: jobId, projectId, status: count === 65 ? 'invalid status' : 'succeeded'});
           f.records.addOrigin({kind: 'job', jobId, runId: run.id, stepId: tool.id, requestId: randomUUID(), operation: 'generation.submit'});
+          background.push({kind:'job',id:jobId,status:count===65?'unknown':'succeeded',cost:'charged'});
         }
         f.journal.skipTargetsInside(run.id, [{stepId: tool.id, target: {kind: 'INVALID', id: randomUUID(), revision: 0}}]);
       });
@@ -327,32 +332,16 @@ test('terminal history projection and serialized conversation context match the 
     f.journal.transition(run.id, f.journal.run(run.id).revision, status === 'reverted' ? 'completed' : status as 'completed' | 'failed' | 'stopped');
     if (status === 'reverted') f.journal.transition(run.id, f.journal.run(run.id).revision, 'reverted');
     if (status === 'failed') f.journal.appendEvent(run.id, 'error', {code: 'HISTORY_FAILURE', message: 'private error detail'});
+    // Expected values come from submitted seed data and generated identities,
+    // never a projected run/snapshot or a second journal implementation.
+    expectedRuns.push({id:run.id,text:`history message ${index} \ud800`,notes:index===3?['bound note 😀','unbound note after answer']:[],status,
+      ...(index===3?{historyInputs:[{kind:'note' as const,text:'bound note 😀'},{kind:'answer' as const,question:'Pick one?',selected:['Yes'],text:'user answer \ud800'},{kind:'note' as const,text:'unbound note after answer'}]}:{}),
+      ...(status==='completed'?{finalText:'响应'}:{}),record:{runId:run.id,status,...(status==='failed'?{failureCode:'HISTORY_FAILURE'}:{}),
+        skipped:{items:index===3?skipped.slice(-63).reverse():[],total:index===3?67:0},
+        background:{items:background.slice(-64).reverse(),total:background.length},changes:{items:changes.slice(-64).reverse(),total:changes.length}}});
   }
-  const active = f.start({conversationId, text: 'nonterminal excluded'});
-  const legacyRoot = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-mio-journal-legacy-')), legacyStore = openWorkspaceStore(legacyRoot);
-  t.after(() => {legacyStore.close(); rmSync(legacyRoot, {recursive: true, force: true});});
-  legacyStore.put('projects', {id: projectId, name: 'Equivalent synthetic history'});
-  legacyStore.tx(() => {
-    for (const id of [...conversationRuns, active.id]) {
-      const run = f.journal.run(id), snapshot = f.journal.snapshot(id);
-      legacyStore.db.prepare('INSERT INTO agent_task_runs_v2(id,projectId,requestId,digest,status,revision,data) VALUES(?,?,?,?,?,?,?)').run(id, projectId, run.requestId, f.records.run(id).digest, run.status, run.revision, JSON.stringify(run));
-      for (const step of snapshot.steps) legacyStore.db.prepare('INSERT INTO agent_task_steps_v2(id,runId,projectId,position,status,data) VALUES(?,?,?,?,?,?)').run(step.id, id, projectId, step.position, step.status, JSON.stringify(step));
-      for (const change of snapshot.changes) legacyStore.db.prepare('INSERT INTO agent_task_changes_v2(id,runId,stepId,projectId,data) VALUES(?,?,?,?,?)').run(change.id, id, change.stepId, projectId, JSON.stringify(change));
-      let sequence = 0;
-      for (const entry of f.records.entries(id)) {
-        const value = f.records.payload(entry) as Record<string, AgentTaskJson>;
-        if (entry.kind === 'host_state' && value.type === 'run_state' || entry.kind === 'host_hint' && value.type === 'error') {
-          const type = value.type === 'run_state' ? 'run' : 'error', data = type === 'run' ? {id, projectId, status: value.status, updatedAt: value.updatedAt} : {code: value.code};
-          legacyStore.db.prepare('INSERT INTO agent_task_events_v2(runId,projectId,sequence,type,data) VALUES(?,?,?,?,?)').run(id, projectId, ++sequence, type, JSON.stringify({runId: id, sequence, type, data, createdAt: entry.createdAt}));
-        }
-      }
-      for (const row of f.store.db.prepare('SELECT * FROM mio_job_origins WHERE runId=?').all(id)) {
-        legacyStore.put('jobs', f.store.get('jobs', String(row.jobId)) as object);
-        legacyStore.db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run(String(row.kind), String(row.jobId), id, String(row.stepId), projectId, String(row.requestId), String(row.operation));
-      }
-    }
-  });
-  const legacy = createAgentTaskJournal(legacyStore), actual = f.journal.modelContextRuns(projectId, conversationId!), expected = legacy.modelContextRuns(projectId, conversationId!);
+  f.start({conversationId, text: 'nonterminal excluded'});
+  const actual=f.journal.modelContextRuns(projectId,conversationId!),expected=expectedRuns.slice(-4).reverse();
   assert.equal(JSON.stringify(actual), JSON.stringify(expected));
   assert.deepEqual(actual.map(run => run.id), conversationRuns.slice(-4).reverse());
   const rich = actual.find(run => run.id === conversationRuns[3])!;
@@ -360,7 +349,7 @@ test('terminal history projection and serialized conversation context match the 
   assert.equal(rich.record.background.total, 66); assert.equal(rich.record.background.items.length, 64); assert.equal(rich.record.background.items[0]?.status, 'unknown');
   assert.equal(rich.record.skipped.total, 67); assert.equal(rich.record.skipped.items.length, 63);
   assert.equal(actual.find(run => run.status === 'failed')?.record.failureCode, 'HISTORY_FAILURE');
-  assert.deepEqual(f.journal.contextRuns(projectId, conversationId!).map(run => run.id), legacy.contextRuns(projectId, conversationId!).map(run => run.id));
+  assert.deepEqual(f.journal.contextRuns(projectId, conversationId!).map(run => run.id), expectedRuns.filter(run=>run.status==='completed').slice(-4).reverse().map(run=>run.id));
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) assert.equal(JSON.stringify(assembleRunContext({locale, text: 'next round', historyRuns: [...actual].reverse()})), JSON.stringify(assembleRunContext({locale, text: 'next round', historyRuns: [...expected].reverse()})));
 });
 

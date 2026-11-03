@@ -1,9 +1,15 @@
+
+
+
+
+
+
 import type {FixtureExport} from './helpers/strict-timeline-core-types.ts';
 import type {WorkspaceServices as FixtureServices} from './helpers/strict-workspace-boundary-types.ts';
 import type {FixtureStore} from './helpers/strict-timeline-core-types.ts';
 import {createMockProvider} from '../packages/business/src/providers/mock.ts';
-import {createWorkspacePreferences} from '../packages/business/src/workspace-preferences.ts';
-import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
+
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
@@ -12,11 +18,11 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import { installCurrentWorkspaceRestoreSchema, openLegacyWorkspaceStore as openStore } from '../packages/business/src/db.ts';
-import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
-import {createServices,hash,canonical,now, type OrdinaryServices} from '../packages/business/src/services.ts';
+
+import {createServices, hash, now} from '../packages/business/src/services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
-import {createTimelineServices} from '../packages/business/src/timeline.ts';
-import {createMutationReplay,NO_MUTATION_REPLAY} from '../packages/business/src/mutation-replay.ts';
+
+
 import {withRestoreInvocation,restoreEffectFence,freezeRestoreInput} from '../packages/business/src/workspace-restore-invocation.ts';
 import {matchesRestoredExport,restoreExportIdentity} from '../packages/business/src/workspace-restore-exports.ts';
 import {startWorker, type Worker} from '../packages/business/src/jobs.ts';
@@ -45,52 +51,17 @@ async function fixture(t: test.TestContext,{exportOptions,media=false,subjectTas
  t.after(async()=>{await tasks.drain();await services.drain();if(store.db.isOpen)store.close();rmSync(root,{recursive:true,force:true});});return f;
 }
 
-test('explicit origin admits shared fresh local mutations; immutable old receipts replay without origin or writes',async t=>{
- const f=await fixture(t),before=captured(f.store.db),raw=f.store.db.prepare('SELECT response FROM mutation_requests WHERE requestId=?').get(f.savedInput.requestId)!.response;
- assert.deepEqual(await f.services.call('shot.create',f.savedInput),f.saved);
- assert.equal(f.store.db.prepare('SELECT response FROM mutation_requests WHERE requestId=?').get(f.savedInput.requestId)!.response,raw);
- for(const [context,expected] of [[{},'RESTORE_WORKSPACE_ORIGIN_REQUIRED'],[{expectedWorkspaceOrigin:randomUUID()},'RESTORE_WORKSPACE_ORIGIN_MISMATCH']] as const)await assert.rejects(f.services.call('shot.update',{shotId:f.saved.id,expectedRevision:1,patch:{title:'Fresh'},requestId:randomUUID()},context),code(expected));
- const result=await f.services.call('shot.update',{shotId:f.saved.id,expectedRevision:1,patch:{title:'Fresh'},requestId:randomUUID()},f.context);assert.equal(result.title,'Fresh');assert.equal(result.revision,2);
- assert.equal(captured(f.store.db),before);
-});
 
-test('captured prepared task keys cannot bypass holds through a new direct invocation',async t=>{
- const f=await fixture(t),before=captured(f.store.db);
- await assert.rejects(f.services.call('timeline.track.add',f.pending.task.input,f.context),code('RESTORED_RECORD_HELD'));
- assert.equal(f.store.get('shots',f.saved.id)!.title,f.saved.title);assert.equal(f.store.get('timelines',f.timeline.id)!.revision,f.timeline.revision);assert.equal(captured(f.store.db),before);
-});
 
-test('fresh durable tasks use current epoch and shared nested dispatch; held lane rows never block or mutate',async t=>{
- const f=await fixture(t),before=JSON.stringify(f.store.db.prepare('SELECT * FROM edit_tasks WHERE id=?').get(f.pending.task.id));
- const made=f.tasks.prepare({projectId:f.project.id,operation:'timeline.track.add',input:{...f.pending.task.input,requestId:randomUUID()},origin:'new'},f.context);
- assert.equal(made.restore!.executionEpoch,f.metadata.workspaceOrigin);assert.equal(made.restore!.held,false);
- const done=await f.tasks.execute({projectId:f.project.id,taskId:made.task.id,digest:made.task.digest,instanceId:made.instanceId},f.context);
- assert.equal(done.task.status,'applied');assert.equal(done.result!.revision,f.timeline.revision+1);
- f.tasks.acknowledge({projectId:f.project.id,taskId:done.task.id,digest:done.task.digest,expectedRevision:done.task.revision,status:'applied'},f.context);
- assert.equal(JSON.stringify(f.store.db.prepare('SELECT * FROM edit_tasks WHERE id=?').get(f.pending.task.id)),before);
- assert.equal(f.tasks.list({projectId:f.project.id}).items.length,0);
-});
 
-test('missing restored timeline remains absent on reads and explicit format initialization creates it',async t=>{
- const f=await fixture(t);assert.equal((await f.services.call('project.get',{projectId:f.empty.id})).timeline,null);
- const format=await f.services.call('timeline.format.get',{projectId:f.empty.id});assert.equal(format.timelineRevision,0);
- const result=await f.services.call('timeline.format.set',{projectId:f.empty.id,expectedProjectRevision:f.empty.revision,expectedRevision:0,presetId:format.presetId,requestId:randomUUID()},f.context);
- assert.equal(result.projectId,f.empty.id);assert.ok((await f.services.call('timeline.get',{projectId:f.empty.id})).id);
-});
 
-test('read-only replay never enters apply without a receipt and cannot manufacture not-applied proof',async t=>{
- const f=await fixture(t);let effects=0;
- const mutate=createMutationReplay(f.store,{canonical,readOnly:true});
- assert.equal(mutate('shot.create',{projectId:f.project.id,requestId:randomUUID()},{resolve:()=>({projectId:f.project.id}),apply:()=>{effects++;},replay:()=>{effects++;}}),NO_MUTATION_REPLAY);assert.equal(effects,0);
-});
 
-test('invocation capabilities expire on settlement and abort, retain exact frozen input, and cannot delegate another operation',async t=>{
- const f=await fixture(t),input=freezeRestoreInput({projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),kind:'audio'});
- const timeline=createTimelineServices((f.store as unknown as Parameters<typeof createTimelineServices>[0]),({required:f.services.required,check:f.services.check,hash,now} as unknown as Parameters<typeof createTimelineServices>[1]));let late!:()=>unknown,fence!:()=>void;
- await withRestoreInvocation(f.store,'timeline.track.add',input,{},async()=>{fence=restoreEffectFence(f.store)!;late=()=>timeline.handlers['timeline.track.add'](((input) as unknown as Parameters<typeof timeline.handlers['timeline.track.add']>[0]));fence!();await assert.rejects(f.services.call('project.create',{name:'Unexpected'}),code('RESTORE_OPERATION_UNAVAILABLE'));});
- assert.throws(fence!,code('RESTORE_OPERATION_UNAVAILABLE'));assert.throws(late!,code('RESTORE_OPERATION_UNAVAILABLE'));assert.ok(Object.isFrozen(input));
- const controller=new AbortController();await withRestoreInvocation(f.store,'timeline.track.add',input,{signal:controller.signal},async()=>{const check=restoreEffectFence(f.store);controller.abort();assert.throws(check!,code('RESTORE_OPERATION_UNAVAILABLE'));});
-});
+
+
+
+
+
+
 
 test('new export seals receipt hash and immutable identity atomically; worker ignores held, unbound and replaced rows',async t=>{
  const f=await fixture(t),input={projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),purpose:'preview'},before=f.store.db.prepare('SELECT count(*) n FROM exports').get()!.n;
@@ -128,12 +99,7 @@ for(const drift of ['same-inode bytes','project JSON owner'] as const)test(`impo
  assert.equal(spawns,1);assert.equal(f.store.list('assets',f.project.id).length,before);
 });
 
-test('captured subject task reserves its shared local key across operations, while unrelated namespaces remain usable',async t=>{
- const f=await fixture(t,{subjectTask:true}),key=f.capturedSubject!.task.requestId;
- await assert.rejects(f.services.call('shot.create',{projectId:f.project.id,title:'Blocked',requestId:key},f.context),code('RESTORED_RECORD_HELD'));
- await assert.rejects(f.services.call('node.create',{projectId:f.empty.id,type:'text',position:{x:0,y:0},requestId:key},f.context),code('RESTORE_OPERATION_UNAVAILABLE'));
- const node=await f.services.call('node.create',{projectId:f.project.id,type:'text',position:{x:0,y:0},requestId:f.pending.task.requestId},f.context);assert.equal(node.type,'text');
-});
+
 
 test('positive current-origin timeline and storyboard exports publish through the shared worker without touching held exports',async t=>{
  const f=await fixture(t,{media:true}),binary=path.join(f.root,'synthetic-media.ts'),old={MIOON_FFMPEG_PATH:process.env.MIOON_FFMPEG_PATH,MIOON_FFPROBE_PATH:process.env.MIOON_FFPROBE_PATH};
@@ -170,11 +136,7 @@ test('deferred export admission keeps its parsed input and revokes inherited cal
  await withRestoreInvocation(f.store,'project.create',(freezeRestoreInput({name:'Pinned'}) as unknown as Parameters<typeof withRestoreInvocation>[2]),{},()=>{setImmediate(()=>{assert.throws(()=>restoreEffectFence(f.store),code('RESTORE_OPERATION_UNAVAILABLE'));resolveLate();});});await finished;
 });
 
-test('restored preference writes require explicit origin and share the existing strict revision boundary',async t=>{
- const f=await fixture(t),preferences=(createWorkspacePreferences(f.store) as unknown as import('./helpers/strict-workspace-boundary-types.ts').PreferenceService),state=defaultWorkspaceState();delete (state.shared as unknown as Record<PropertyKey,unknown>).assetSearch;
- const input={expectedRevision:0,state};assert.throws(()=>preferences.put(f.project.id,input),code('RESTORE_WORKSPACE_ORIGIN_REQUIRED'));
- const accepted=preferences.put(f.project.id,input,f.context);assert.equal(accepted.revision,1);assert.deepEqual(preferences.put(f.project.id,input,f.context),accepted);
-});
+
 
 for(const scenario of ['timeline after first segment','storyboard source probe','storyboard final output probe'] as const)test(`restored ${scenario} owner drift blocks all later effects and publication`,async t=>{
  const f=await fixture(t,{media:true}),binary=path.join(f.root,'synthetic-media.ts'),old={MIOON_FFMPEG_PATH:process.env.MIOON_FFMPEG_PATH,MIOON_FFPROBE_PATH:process.env.MIOON_FFPROBE_PATH};

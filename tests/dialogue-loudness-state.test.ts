@@ -17,7 +17,7 @@ function context(patch: Partial<DialogueLoudnessContext> = {}): DialogueLoudness
   return { scope: 'project:1:workspace', executionScope: '1:inspector', projectId, timelineId, revision: 9, sourceIdentity: 'saved-9',
     clips, tracks: [{ id: voice, name: 'Voice', orderIndex: 1, muted: false }, { id: music, name: 'Music', orderIndex: 2, muted: false }, { id: muted, name: 'Muted', orderIndex: 3, muted: true }],
     assetHashes: Object.fromEntries(clips.filter(item => item.assetId !== id(999)).map((item, index) => [item.assetId, hash(index + 1)])),
-    connected: true, visible: true, restored: false, hasUnsavedDrafts: false, pending: false, ...patch };
+    connected: true, visible: true,  hasUnsavedDrafts: false, pending: false, ...patch };
 }
 /** A server-shaped reading of one clip at the given loudness and peak, scaled to the target. */
 function measured(input: TimelineClipLoudnessInput, lufs: number, peakDbtp: number, gain = 1) {
@@ -137,8 +137,6 @@ test('stopping, a newer revision or a new target discard readings; a hidden pane
   assert.deepEqual([drafted.state().phase, drafted.state().rows.length], ['idle', 0], 'readings belong to their target');
   const hidden = harness(context({ visible: false }));
   assert.equal(await hidden.controller.analyze(hidden.state()), false); assert.equal(hidden.reads.length, 0);
-  const restored = harness(context({ restored: true }));
-  assert.equal(await restored.controller.analyze(restored.state()), false); assert.equal(restored.reads.length, 0);
 });
 
 test('applying sends the kept gains once at the measured revision and survives the pending and revision changes it causes', async () => {

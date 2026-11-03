@@ -79,4 +79,3 @@ export interface RootTopbarView {Component(props:unknown):RootNode;React:{Fragme
 export interface RootTopbarActions {selectProject(projectId:string|null,...options:boolean[]):Promise<unknown>;reloadPreferences():Promise<unknown>}
 export type RootTopbarExpression<E extends string> = E extends 'project'?(env:unknown)=>RootNode:E extends '{ selectProject, reloadPreferences }'?RootTopbarActions:(...args:unknown[])=>unknown;
 export interface RootModalElement {attributes:Record<string,string|undefined>;parent:RootModalElement|null;closest(selector:string):RootModalElement|null}
-export interface RootWorkspaceBackupStatus {phase:string;directory:string;automatic:boolean;intervalHours:number;lastBackupAt:string|null;nextBackupAt:string|null;lastError:string|null;backups:{id:string;createdAt:string;payloadBytes:number}[];pendingRestore:{state:string;restartRequired:boolean}|null}

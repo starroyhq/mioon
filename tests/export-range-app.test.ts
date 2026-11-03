@@ -23,7 +23,6 @@ import {createExportSettingsController, type ExportSettingsContext, type ExportS
 import {createTimelineDeliveryNameController} from '../apps/web/src/export-delivery-state.ts';
 import {createExportPreflightController} from '../apps/web/src/export-preflight-state.ts';
 import {createLocalDeliveryController} from '../apps/web/src/local-delivery-state.ts';
-import {pinNewWorkspaceIntent} from '../apps/web/src/workspace-origin.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
@@ -69,7 +68,7 @@ function preflight(input:CheckInput,saved:ReturnType<typeof timeline>) {
 
 // Only the React hook shell is replaced. Every App context/options/callback is
 // extracted verbatim, and each adapter uses its real production controller.
-async function harness(t: test.TestContext, {restored = false, gates = {}, projectReady = true}:{restored?:boolean;gates?:Partial<Record<"execute"|"put"|"prepare"|"refresh"|"preflight"|"direct",{promise:Promise<unknown>}>>;projectReady?:boolean} = {}) {
+async function harness(t: test.TestContext, {gates = {}, projectReady = true}:{gates?:Partial<Record<"execute"|"put"|"prepare"|"refresh"|"preflight"|"direct",{promise:Promise<unknown>}>>;projectReady?:boolean} = {}) {
   const transportCalls:DeliveryCall[] = [], reads:{operation:unknown;input:CheckInput;options:Record<string,unknown>}[] = [], direct:[key:string,operation:string,input:RenderInput][] = [], history: (boolean|unknown[])[] = [], notices: unknown[][] = [], refreshes: (unknown)[] = [], panels: (string|unknown[])[] = [];
   const saved = timeline(), dataRef = {current: {project: {id: projectId}, timeline: saved}};
   let visible = true, requestCount = 0, sequence = 100;
@@ -103,9 +102,9 @@ async function harness(t: test.TestContext, {restored = false, gates = {}, proje
     async recover(input: Parameters<LocalDeliveryClient['recover']>[0]) { record('recover', input); return settle('recover'); },
     async discard() { assert.fail('Range changes cannot discard the title through transport'); },
   };
-  const environment = {msg, schemas, isTimelineMutationResponse, hasRequestNotAppliedProof, pinNewWorkspaceIntent,
+  const environment = {msg, schemas, isTimelineMutationResponse, hasRequestNotAppliedProof,
     dataRef, currentProject: {current: projectId}, projectEpoch: {current: 1}, navigationEpoch: {current: 0}, panelIntent: {current: 0},
-    workspaceRef: {current: restored ? {restored: true, workspaceOrigin: id(8)} : {restored: false}},
+    editorSession: {current: 'normal'}, workspaceRef: {current: {}},
     exportSettingsRef: {current: null}, exportRangeRef: {current: null},
     deliveryNameRef: {current: null}, localDeliveryRef: {current: null}, online: true, auth: true, loading: false,
     // Existing export cases start inside an already opened workbench. Exercise
@@ -256,18 +255,8 @@ for (const moment of ['execute', 'refresh']) test(`late actual ACK preserves sav
   assert.equal(h.attemptRange(), true, 'Editing can resume only after the accepted operation settles');
 });
 
-test('restored actual route preserves frozen range and separately pinned origin without opening local delivery storage', async t => {
-  const h = await harness(t, {restored: true}); h.choose(); const binding = await h.ready();
-  assert.equal(h.localDelivery.controller.getState().phase, 'unsupported'); assert.deepEqual((h.transportCalls as unknown), []);
-  for (const read of h.reads) assert.equal(read.options.expectedWorkspaceOrigin, id(8));
-  await h.render('export', binding);
-  assert.deepEqual(h.direct, [['timeline:render:export', 'timeline.render', {...binding, requestId: 'range-app-request-1', purpose: 'export'}]]);
-  assert.equal(Object.hasOwn(h.direct[0][2], 'expectedWorkspaceOrigin'), false);
-  assert.deepEqual((h.transportCalls as unknown), []); assert.deepEqual(h.history, [['attempt', {projectId,id:id(6)}]]);
-});
-
-for (const restored of [false, true]) test(`hidden actual delivery pane cannot submit its retained range closure: restored=${restored}`, async t => {
-  const h = await harness(t, {restored}); h.choose(); const binding = await h.ready();
+test(`hidden actual delivery pane cannot submit its retained range closure`, async t => {
+  const h = await harness(t); h.choose(); const binding = await h.ready();
   const beforeReads = h.reads.length, beforeCalls = h.transportCalls.length;
   h.setVisible(false); await h.render('export', binding);
   assert.equal(h.reads.length, beforeReads); assert.equal(h.transportCalls.length, beforeCalls); assert.deepEqual((h.direct as unknown), []);

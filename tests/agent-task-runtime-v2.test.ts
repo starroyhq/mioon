@@ -1,3 +1,4 @@
+
 import {beginFixtureModelStep,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
@@ -12,7 +13,8 @@ import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
 import type {IncomingMessage} from 'node:http';
 import {setTimeout as delay} from 'node:timers/promises';
-import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import type {JobRecord} from '../packages/business/src/services.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
@@ -26,7 +28,7 @@ import {withAgentTaskJobOrigin,allowAgentTaskJobTargetMutation,setAgentTaskEffec
 import type {Provider,ProviderContext} from '../packages/business/src/provider-registry.ts';
 import type {TaskModelItem,TaskModelRequest,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskResponseLanguageContext,taskResponseLocale,TASK_MODEL_LIMITS} from '../packages/business/src/agent/task-gateway-v2.ts';
-import {sourceTaskModelToolNames,selectTaskModelTools} from '../packages/business/src/agent/task-context-v2.ts';
+import {sourceTaskModelToolNames} from '../packages/business/src/agent/task-context-v2.ts';
 import {taskBaseModelHistory} from '../packages/business/src/agent/task-context-base-v2.ts';
 import {AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolNamesForGroup} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import type {AgentTaskLoadableToolGroupId} from '../packages/business/src/agent/task-tool-groups-v2.ts';

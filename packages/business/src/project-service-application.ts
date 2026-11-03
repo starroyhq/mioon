@@ -1,5 +1,4 @@
 import {lstatSync} from 'node:fs';
-import {AppError} from '@mioon/contracts';
 import {openAppLibrary} from './app-db/index.ts';
 import type {AppLibrary} from './app-db/index.ts';
 import {isAppLibraryHeld} from './app-db/connection.ts';
@@ -21,16 +20,10 @@ export function createProjectServiceApplication(library: AppLibrary, signal?: Ab
     if (!isAppLibraryHeld(identity, library.db)) throw new TypeError('Project services require a live application library owner');
   };
   assertOwner();
-  const unavailable = (): never => {assertOwner(); throw new AppError('RESTORE_OPERATION_UNAVAILABLE', 'This project host does not yet support workspace backup or restoration.', 409);};
   return {
     configuration: createWorkspaceConfiguration({root: library.dataDir, documents: createAppCompanionDocuments(library), env}),
     assertMutationAllowed: assertOwner,
-    backups: {
-      getStatus: unavailable, list: unavailable, create: unavailable, stageRestore: unavailable,
-      exportBundle: unavailable, importBundle: unavailable, importDirectory: unavailable,
-      isBusy: () => false, assertMutationAllowed: assertOwner,
-      start: assertOwner, stop() {}, tick: async () => {assertOwner();}, drain: async () => {},
-    },
+
   };
 }
 

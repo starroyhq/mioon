@@ -4,19 +4,15 @@ import {mkdtemp, readFile, readdir, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openLegacyWorkspaceStore as openStore, getWorkspaceRestoreContext,
-  validateCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
+import {createServerProject,openServerProject} from './helpers/project-database.ts';
+import {validateProjectRetainedRows} from '../packages/business/src/project-retained-validation.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
-import {createWorkspaceBackup, verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
-import {matchesRestoredExport} from '../packages/business/src/workspace-restore-exports.ts';
 import {run, runStreaming} from '../packages/business/src/media-runtime.ts';
 import {probe} from '../packages/business/src/media.ts';
 import {timelineColourInputFilter} from '../packages/business/src/timeline-colour-lut.ts';
 import {greyJfif,jpegColour} from './helpers/timeline-jpeg-workflow-fixtures.ts';
 import {png, sha, imageColour, stamp} from './helpers/timeline-image-fixtures.ts';
-import {materializeHistoricalWorkspace} from './helpers/historical-workspace.ts';
 import type {DatabaseSync} from 'node:sqlite';
 interface ExportRowView {id: string; requestId: string; snapshot: Record<string, unknown>; assetId: string; status?: string; [key: string]: unknown}
 interface AssetRowView {id: string; relativePath: string; sha256: string; [key: string]: unknown}
@@ -44,7 +40,7 @@ async function assertSourceBytes(root: string, files: Map<string, Uint8Array>): 
   }
 }
 
-async function executeQueued(store: ReturnType<typeof openStore>, services: ReturnType<typeof createServices>, accepted: RenderResultView): Promise<ExecuteResult> {
+async function executeQueued(store: ReturnType<typeof openServerProject>, services: ReturnType<typeof createServices>, accepted: RenderResultView): Promise<ExecuteResult> {
   // The real local worker owns preparation, rendering, verification and publication.
   // No server, desktop runtime, provider or synthetic renderer is started.
   const worker = startWorker(store, services, new Map());
@@ -94,12 +90,12 @@ function assertMixedPixels(bytes: Buffer): void {
   }
 }
 
-test('cold backup34→restored35 rerenders mixed JFIF/PNG/video/subtitle with exact decoded parity and retained LUT reads',
+test('cold current kernel reopen rerenders mixed JFIF/PNG/video/subtitle with exact decoded parity and retained LUT reads',
   {timeout: 120000}, async t => {
     const base = await mkdtemp(path.join(tmpdir(), 'mioon-image-restored-render-'));
-    let source = path.join(base, 'source'), backup = path.join(base, 'backup');
-    const restored = path.join(base, 'restored'), videoFile = path.join(base, 'video.mp4');
-    let store: ReturnType<typeof openStore> | undefined, services: ReturnType<typeof createServices> | undefined;
+    const dataDir=path.join(base,'application'),videoFile=path.join(base,'video.mp4');
+    let source!:string,restored!:string;
+    let store: ReturnType<typeof openServerProject> | undefined, services: ReturnType<typeof createServices> | undefined;
     const close = async () => {
       await services?.drain();
       services = undefined;
@@ -107,7 +103,7 @@ test('cold backup34→restored35 rerenders mixed JFIF/PNG/video/subtitle with ex
       store = undefined;
     };
     t.after(async () => { await close(); await rm(base, {recursive: true, force: true}); });
-    t.mock.method(globalThis, 'fetch', () => { throw Error('Network is forbidden in this local restore test'); });
+    t.mock.method(globalThis, 'fetch', () => { throw Error('Network is forbidden in this local kernel reopen test'); });
 
     await run('ffmpeg', ['-v', 'error', '-threads', '1', '-f', 'lavfi', '-i',
       'color=black:s=64x64:r=30', '-frames:v', '6', '-an', '-c:v', 'libx264',
@@ -119,10 +115,11 @@ test('cold backup34→restored35 rerenders mixed JFIF/PNG/video/subtitle with ex
     const imageBytes = greyJfif();
     const overlayBytes = png({width:8,height:8,pixel:()=>[0,0,255,128]});
 
-    store = openStore(source);
-    services = createServices(store, new Map());
-    const project = await services.call('project.create', {name: 'Cold mixed SDR rerender'}) as {id: string; revision: number};
-    const projectId = project.id;
+    const created=createServerProject(dataDir,{name:'Cold mixed SDR rerender'});
+    store=created.store;source=store.root;restored=source;
+    services=createServices(store,new Map());
+    const project=store.get('projects',created.projectId)! as {id:string;revision:number};
+    const projectId=created.projectId;
     let timeline = await services.call('timeline.format.set', {projectId,
       expectedProjectRevision: project.revision, expectedRevision: 0,
       requestId: randomUUID(), presetId: 'square_720'}) as TimelineRowView;
@@ -158,64 +155,37 @@ test('cold backup34→restored35 rerenders mixed JFIF/PNG/video/subtitle with ex
     const baseline = await executeQueued(store, services, ordinary);
     const ordinaryRgb = await decoded(baseline.file);
     assertMixedPixels(ordinaryRgb);
-    // A second captured request remains genuinely queued. Restore must preserve it,
-    // not resume it, while an independently acknowledged request may render.
-    const held = await services.call('timeline.render', params({purpose: 'export'})) as RenderResultView;
-    assert.deepEqual(held.snapshot, ordinary.snapshot);
-    const heldRecord = store.get('exports', held.id) as ExportRowView;
+    // A completed ordinary receipt and its immutable snapshot survive a cold
+    // kernel reopen. Restore-only queued holds are no longer a runtime concept.
+    const held=baseline.completed;
+    assert.deepEqual(held.snapshot,ordinary.snapshot);
+    const heldRecord=store.get('exports',held.id)!;
     const captured = rawRows(store.db);
     const sourceFiles = new Map([[String((store.get('assets', video.id) as AssetRowView).relativePath), videoBytes],
       [String((store.get('assets', image.id) as AssetRowView).relativePath), imageBytes],
       [String((store.get('assets', overlay.id) as AssetRowView).relativePath), overlayBytes],
       [baseline.asset.relativePath, await readFile(baseline.file)]]);
-    await close();// Reviewed historical JPEG-capable fixture; never relabel or downgrade the current workspace.
-    source = materializeHistoricalWorkspace({root: source}, path.join(base, 'source34'), {version: 34}).root;
-    const coldDb = await readFile(path.join(source, 'workbench.sqlite'));
-
-    const capturedBackup = await createWorkspaceBackup({source, destination: backup}) as {databaseSchemaVersion: number; integrity: string} as {databaseSchemaVersion: number; integrity: string};
-    assert.equal(capturedBackup.databaseSchemaVersion, 34);
-    assert.equal(capturedBackup.integrity, 'verified');
-    const verified = await verifyWorkspaceBackup({directory: backup}) as {databaseSchemaVersion: number};
-    assert.equal(verified.databaseSchemaVersion, 34);
-    assert.deepEqual(await readFile(path.join(backup, 'payload/workbench.sqlite')), coldDb);
-    const installed = await restoreWorkspaceBackup({directory: backup, destination: restored}) as {databaseSchemaVersion: number; sourceSchema: number; profile: string};
-    assert.equal(installed.databaseSchemaVersion, 35);
-    assert.equal(installed.sourceSchema, 34);
-    assert.equal(installed.profile, 'restored-local-v6');
-
-    store = openStore(restored);
+    await close();
+    store=openServerProject(dataDir,projectId);
     services = createServices(store, new Map());
-    const restoredInfo = validateCurrentWorkspaceRestoreSchema(store.db) as {schemaVersion: number; sourceSchema: number; [key: string]: unknown};
-    assert.equal(restoredInfo.schemaVersion, 35);
-    assert.equal(restoredInfo.sourceSchema, 34);
+    assert.doesNotThrow(()=>validateProjectRetainedRows(store!));
     assertRetainedRows(store.db, captured);
     await assertSourceBytes(restored, sourceFiles);
     assert.deepEqual(await services.call('timeline.get', {projectId}), timeline);
-    assert.ok(store.db.prepare("SELECT 1 FROM workspace_restore_holds WHERE kind='exports' AND id=?").get(held.id));
-    assert.equal(matchesRestoredExport(store, heldRecord as never), false, 'captured queued export grants no execution authority');
     const listed=await services.call('lut.list',{projectId}) as {items: unknown[]};assert.equal(listed.items.length,1);
     const retainedLut=await services.call('lut.inspect',{projectId,lutId:lut.resource.id}) as {resource: unknown; integrity: string};assert.deepEqual(retainedLut.resource,lut.resource);assert.equal(retainedLut.integrity,'verified');
-    for(const op of ['timeline.colour.jpeg.inspect','timeline.colour.image.inspect','timeline.colour.source.inspect'])await assert.rejects(services.call(op,{projectId,assetId:image.id}),{code:'RESTORE_OPERATION_UNAVAILABLE'});
-    const restoreContext=getWorkspaceRestoreContext(store);assert.ok(restoreContext);const context = {expectedWorkspaceOrigin: restoreContext.workspaceOrigin};
     const request = params({purpose: 'export'});
-    await assert.rejects(services.call('timeline.render', request), {code: 'RESTORE_WORKSPACE_ORIGIN_REQUIRED'});
-    await assert.rejects(Promise.resolve(services.call('timeline.render', request as never, {expectedWorkspaceOrigin: randomUUID()} as never)),
-      {code: 'RESTORE_WORKSPACE_ORIGIN_MISMATCH'});
     assert.equal(store.db.prepare('SELECT 1 FROM timeline_requests WHERE requestId=?').get(request.requestId as string), undefined);
-    const accepted = await services.call('timeline.render', request as never, context as never) as RenderResultView;
+    const accepted = await services.call('timeline.render', request as never) as RenderResultView;
     assert.notEqual(accepted.id, held.id);
     assert.notEqual(accepted.requestId, held.requestId);
     assert.deepEqual(accepted.snapshot, held.snapshot);
     assert.deepEqual((store.get('exports', accepted.id) as ExportRowView).snapshot, heldRecord.snapshot);
-    assert.equal(matchesRestoredExport(store, store.get('exports', accepted.id) as never), true);
-    const binding = store.db.prepare('SELECT * FROM workspace_restore_export_origins WHERE exportId=?').get(accepted.id) as {workspaceOrigin?: unknown; requestId?: string} | undefined;assert.ok(binding);
-    assert.equal(binding.workspaceOrigin, context.expectedWorkspaceOrigin);
-    assert.equal(binding.requestId, request.requestId);
-    assert.deepEqual(validateCurrentWorkspaceRestoreSchema(store.db), restoredInfo, 'valid before actual rerender');
+    assert.doesNotThrow(()=>validateProjectRetainedRows(store!),'valid before actual rerender');
 
     const rerendered = await executeQueued(store, services, accepted);
     const restoredRgb = await decoded(rerendered.file);
-    assert.deepEqual(restoredRgb, ordinaryRgb, 'decoded RGB is byte-identical after genuine cold restore');
+    assert.deepEqual(restoredRgb, ordinaryRgb, 'decoded RGB is byte-identical after genuine cold kernel reopen');
     assertMixedPixels(restoredRgb);
     const probeResult = await probe(rerendered.file) as unknown as {probe: {streams: {codec_type?: string; width?: number; height?: number; nb_frames?: string | number; color_primaries?: string; color_transfer?: string; color_space?: string; color_range?: string}[]}};
     const stream = probeResult.probe.streams.find((s: {codec_type?: string}) => s.codec_type === 'video');assert.ok(stream);
@@ -224,21 +194,19 @@ test('cold backup34→restored35 rerenders mixed JFIF/PNG/video/subtitle with ex
     assert.equal(Number(stream.nb_frames), 6);
     for (const key of ['color_primaries', 'color_transfer', 'color_space'] as const) assert.equal(stream[key], 'bt709');
     assert.equal(stream.color_range, 'tv');
-    assert.deepEqual(store.get('exports', held.id), heldRecord, 'captured queued export never resumes or changes');
+    assert.deepEqual(store.get('exports', held.id), heldRecord, 'prior completed export never changes');
     assertRetainedRows(store.db, captured);
     await assertSourceBytes(restored, sourceFiles);
-    assert.deepEqual(validateCurrentWorkspaceRestoreSchema(store.db), restoredInfo, 'valid after actual rerender');
+    assert.doesNotThrow(()=>validateProjectRetainedRows(store!),'valid after actual rerender');
     assert.equal((await readdir(path.join(restored, 'media'))).some(name =>
       name.startsWith('.timeline-render-') || name.endsWith('.part.mp4')), false);
 
     await close();
-    store = openStore(restored);
-    assert.deepEqual(validateCurrentWorkspaceRestoreSchema(store.db), restoredInfo, 'valid after cold restored reopen');
+    store = openServerProject(dataDir,projectId);
+    assert.doesNotThrow(()=>validateProjectRetainedRows(store!),'valid after cold kernel reopen');
     assertRetainedRows(store.db, captured);
     assert.deepEqual(store.get('exports', rerendered.completed.id), rerendered.persisted);
     await assertSourceBytes(restored, sourceFiles);
-    assert.deepEqual(await readFile(path.join(source, 'workbench.sqlite')), coldDb, 'ordinary database is untouched');
-    assert.deepEqual(await readFile(path.join(backup, 'payload/workbench.sqlite')), coldDb, 'backup database is untouched');
     await assertSourceBytes(source, sourceFiles);
     t.diagnostic(`decoded RGB SHA-256: ${sha(restoredRgb)}; bytes: ${restoredRgb.length}; frames: 6; output: 720x720`);
     t.diagnostic(`ordinary MP4 SHA-256: ${baseline.asset.sha256}; restored MP4 SHA-256: ${rerendered.asset.sha256}`);

@@ -1,6 +1,5 @@
-import type { Store as WorkspaceStore } from './store-contract.ts';
-import {ownsStoreLock} from './db.ts';
-import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
+import type { Store } from './store-contract.ts';
+import {ownsStoreLock} from './store-runtime.ts';
 import {isTimelineRenderRecord,AppError} from '@mioon/contracts';
 import {readTimelineExportOutput} from './timeline-delivery-read.ts';
 import {readOwnedTimelineAsset} from './timeline-sources.ts';
@@ -24,8 +23,8 @@ export function registerExportActivity(store:object,id:string,abort:()=>void):{s
   const activity:Activity={stage:'preparing',started:Date.now(),abort};owned.set(id,activity);
   return {stage:value=>{if(owned.get(id)===activity)activity.stage=value;},close:()=>{if(owned.get(id)===activity)owned.delete(id);}};
 }
-export function createExportControlServices(store:WorkspaceStore,{signal}:{signal?:AbortSignal}={}){
-  function checkpoint(){signal?.throwIfAborted();if(!ownsStoreLock(store)||getWorkspaceRestoreContext(store))throw new AppError('WORKSPACE_READ_ONLY','当前工作区不支持此操作',409);}
+export function createExportControlServices(store:Store,{signal}:{signal?:AbortSignal}={}){
+  function checkpoint(){signal?.throwIfAborted();if(!ownsStoreLock(store))throw new AppError('WORKSPACE_READ_ONLY','当前工作区不支持此操作',409);}
   function read(projectId:string,exportId:string){
     checkpoint();const raw=store.db.prepare('SELECT data FROM exports WHERE id=? AND projectId=? AND length(CAST(data AS BLOB))<=4194304').get(exportId,projectId);
     let value:unknown;try{value=raw&&typeof raw.data==='string'?JSON.parse(raw.data):null;}catch{value=null;}

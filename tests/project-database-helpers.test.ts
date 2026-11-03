@@ -10,7 +10,7 @@ import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {startServer} from '../apps/server/src/index.ts';
 import type {InspectProject, InspectApplication} from '../apps/server/src/index.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProjectServiceApplication, testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {isProjectId} from '../packages/contracts/src/project-file.ts';

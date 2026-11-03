@@ -9,7 +9,6 @@ import {LUT_RESOURCE_LIMITS,LUT_RESOURCE_PROFILE,lutImportInputSchema,lutListInp
 import type {LutImportInput,LutImportResponse,LutListResponse,LutInspectResponse} from '../../contracts/src/lut-resources.ts';
 import {lutResourceError,lutHash,lutInputHash,parseLutBytes,LUT_RESOURCE_COLUMNS,lutResourceFromRow} from './lut-resource-validation.ts';
 import {readLutResource} from './project-lut-reader.ts';
-import {isRestoredWorkspaceSchemaSince} from '../../contracts/src/workspace-schema-lineage.ts';
 
 export interface LutResourceRuntime {
   ownsLock():boolean;
@@ -22,16 +21,6 @@ export interface LutResourceOptions {
   signal?:AbortSignal;
   /** Trusted test-only interruption seam, never part of an RPC input. */
   fault?:(point:LutImportFaultPoint)=>void;
-}
-export function assertLutReadProfile(schemaVersion:number):void {
-  if(schemaVersion!==29&&schemaVersion!==31&&schemaVersion!==33&&schemaVersion!==35&&schemaVersion!==37&&schemaVersion!==39&&schemaVersion!==41&&schemaVersion!==45&&schemaVersion!==49&&schemaVersion!==51)throw lutResourceError('RESTORE_OPERATION_UNAVAILABLE',409);
-}
-/** The verified restore-53 assembly is a separate generation, shared by every
- * restored profile from source schema52 on. Preserve the historical read gate
- * above for callers bound to frozen restore profiles. */
-export function assertAgentTaskLutReadProfile(schemaVersion:number):void {
-  if(isRestoredWorkspaceSchemaSince(52,schemaVersion))return;
-  assertLutReadProfile(schemaVersion);
 }
 function input<T>(schema:{safeParse(value:unknown):{success:true;data:T}|{success:false}},value:unknown):T {
   if(!value||typeof value!=='object'||Array.isArray(value)||isProxy(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw lutResourceError('VALIDATION_ERROR',400);

@@ -1,8 +1,11 @@
+import {openProjectDatabase} from './helpers/project-database.ts';
+import {readProjectState} from './helpers/project-state.ts';
+
 type TestWaveformService = Omit<WaveformService,'handlers'> & {handlers:{'asset.waveform.get':(input?:unknown)=>WaveformResponse; 'asset.waveform.request':(input?:unknown)=>WaveformResponse}};
 import type {WaveformResponse} from '../packages/contracts/src/waveforms.ts';
 import type {WaveformDecoder, WaveformProbe} from '../packages/business/src/waveforms.ts';
 import type {TypedStore as FixtureStore} from './helpers/strict-service-responses.ts';
-import type {SQLInputValue, SQLOutputValue} from 'node:sqlite';
+import type {SQLInputValue} from 'node:sqlite';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
@@ -14,7 +17,8 @@ import {tmpdir} from 'node:os';
 import {createServer} from 'node:http';
 import path from 'node:path';
 import {parse,isWaveformResponse} from '@mioon/contracts';
-import {openStore,openLegacyWorkspaceStore,ownsStoreLock} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {withProbePermit} from '../packages/business/src/media-probe.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createWaveformServices,probeWaveform,WAVEFORM_ALGORITHM,WAVEFORM_CACHE_LIMITS, type WaveformService} from '../packages/business/src/waveforms.ts';
@@ -31,8 +35,8 @@ async function waitFor<T>(read: ()=>T,predicate: (value:T)=>unknown=(value)=>!['
  do{value=read();if(predicate(((value) as unknown as Parameters<typeof predicate>[0])))return value;await tick();}while(Date.now()<until);
  assert.fail(`Timed out waiting for waveform state: ${JSON.stringify(value)}`);
 }
-async function fixture(t: test.TestContext,{decode=async()=>decoded(),probe=async()=>metadata(),signal,legacy=false}: {legacy?:boolean;decode?: (file: string,options: Parameters<WaveformDecoder>[1])=>Promise<unknown>;probe?: (file: string,options: Parameters<WaveformProbe>[1])=>Promise<unknown>;signal?: AbortSignal}={}){
- const root=await mkdtemp(path.join(tmpdir(),'mioon-waveforms-')),open=legacy?openLegacyWorkspaceStore:openStore,opened=open(root);let store=(opened as FixtureStore),service!: TestWaveformService;
+async function fixture(t: test.TestContext,{decode=async()=>decoded(),probe=async()=>metadata(),signal}: {decode?: (file: string,options: Parameters<WaveformDecoder>[1])=>Promise<unknown>;probe?: (file: string,options: Parameters<WaveformProbe>[1])=>Promise<unknown>;signal?: AbortSignal}={}){
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-waveforms-')),open=openStore,opened=open(root);let store=(opened as FixtureStore),service!: TestWaveformService;
  const project={id:'projectId' in opened?String(opened.projectId):randomUUID(),name:'Owned project'},foreign=openStore(path.join(root,'foreign-project')),other={id:foreign.projectId,name:'Foreign private project'};
  store.put('projects',project);foreign.put('projects',other);t.after(()=>foreign.close());
  const options={decode,probe,signal};service=(createWaveformServices(store,((options) as unknown as Parameters<typeof createWaveformServices>[1])) as TestWaveformService);
@@ -90,7 +94,7 @@ test('same project/source requests and duplicate service wrappers share one owne
  const gate=deferred();let count=0;const decode=async()=>{count++;await gate.promise;return decoded();};
  const f=await fixture(t,{decode}),other=await fixture(t,{decode}),asset=await f.asset({bytes:(('identical') as unknown as `${string}-${string}-${string}-${string}-${string}` | undefined)}),same=await f.asset({bytes:(('identical') as unknown as `${string}-${string}-${string}-${string}-${string}` | undefined)}),foreign=await other.asset({bytes:(('identical') as unknown as `${string}-${string}-${string}-${string}-${string}` | undefined)});
  assert.equal((createWaveformServices(f.store,((f.options) as unknown as Parameters<typeof createWaveformServices>[1])) as TestWaveformService),f.service);
- assert.throws(()=>createWaveformServices({...f.store},((f.options) as unknown as Parameters<typeof createWaveformServices>[1])),{code:'RESTORE_STORE_UNVERIFIED'});
+ assert.throws(()=>createWaveformServices({...f.store},((f.options) as unknown as Parameters<typeof createWaveformServices>[1])),{code:'PROJECT_STORE_UNVERIFIED'});
  assert.throws(()=>(createWaveformServices(f.store,(({...f.options,signal:new AbortController().signal}) as unknown as Parameters<typeof createWaveformServices>[1])) as TestWaveformService),{code:'WAVEFORM_SERVICE_ACTIVE'});
  const accepted=f.request(asset);assert.equal(f.request(same).attemptId,accepted.attemptId);assert.equal(other.get(foreign).status,'missing');assert.throws(()=>f.get(foreign),missing);
  await waitFor(()=>({status:count===1?'started':'queued'}));assert.equal(count,1);(gate.resolve)!();
@@ -363,15 +367,19 @@ test('a second process cannot open the active project to reconcile, steal, queue
  (gate.resolve)!();assert.equal((await waitFor((()=>f.get(asset)))).status,'ready');
 });
 
-test('replaced or deleted legacy workspace lock permanently fences admission, callbacks and shutdown error saves',async t=>{
- for(const mode of (['replaced','deleted'] as const))await t.test(mode,async sub=>{
-  const gate=deferred();let entered=false;const f=await fixture(sub,{legacy:true,decode:async()=>{entered=true;await gate.promise;return decoded();}}),asset=await f.asset(),fresh=await f.asset();
-  f.request(asset);await waitFor(()=>({status:entered?'started':'queued'}));
-  const lockFile=path.join(f.root,'server.lock');await rm(lockFile);if(mode==='replaced')await writeFile(lockFile,String(process.pid),{mode:0o600});
-  assert.equal(ownsStoreLock(f.store),false);const before=rows(f),writes=changes(f);
-  assert.equal((f.request(fresh).reason)!.code,'WAVEFORM_OWNER_REQUIRED');(gate.resolve)!();await f.service.drain();
-  assert.deepEqual(rows(f),before);assert.equal(changes(f),writes);assert.equal(f.get(asset).status,'running');
-  f.store.close();if(mode==='replaced')assert.equal(await readFile(lockFile,'utf8'),String(process.pid));
+test('closing the exact owner permanently fences admission, callbacks and shutdown error saves',async t=>{
+ for(const mode of ['connection-observer','new-store-owner'] as const)await t.test(mode,async sub=>{
+  const gate=deferred();let entered=false;
+  const f=await fixture(sub,{decode:async()=>{entered=true;await gate.promise;return decoded();}}),asset=await f.asset(),fresh=await f.asset();
+  f.request(asset);await waitFor(()=>({status:entered?'started':'queued'}));f.store.close();
+  const replacement=mode==='new-store-owner'?openStore(f.root):null,db=replacement?.db??openProjectDatabase(f.root);
+  try {
+   assert.equal(ownsStoreLock(f.store),false);const before=readProjectState(db),writes=db.prepare('SELECT total_changes() AS n').get()!.n;
+   assert.equal(f.request(fresh).reason!.code,'WAVEFORM_OWNER_REQUIRED');gate.resolve!();await f.service.drain();
+   assert.deepEqual(readProjectState(db),before);assert.equal(db.prepare('SELECT total_changes() AS n').get()!.n,writes);
+   assert.equal(db.prepare('SELECT status FROM waveform_cache ORDER BY position LIMIT 1').get()!.status,'running');
+   assert.equal(ownsStoreLock(f.store),false,'a replacement owner cannot revive the closed capability');
+  } finally {if(replacement)replacement.close();else db.close();}
  });
 });
 

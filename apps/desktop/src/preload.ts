@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('__mioonDesktop', true);
 import {createWorkspaceNativeBridges} from './workspace-native-preload.ts';
 const workspaceNative=createWorkspaceNativeBridges((channel,request)=>ipcRenderer.invoke(channel,request));
-contextBridge.exposeInMainWorld('__mioonWorkspaceBackups',workspaceNative.backups);
+contextBridge.exposeInMainWorld('__mioonWorkspaceNative',workspaceNative.native);
 contextBridge.exposeInMainWorld('__mioonExportFiles',workspaceNative.exports);
 contextBridge.exposeInMainWorld('__mioonProjectPackages',workspaceNative.projectPackages);
 import {createWorkspaceToolsBridge} from './workspace-tools-preload.ts';

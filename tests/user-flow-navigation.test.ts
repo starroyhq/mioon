@@ -5,7 +5,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createClipDraftController } from '../apps/web/src/clip-draft-state.ts';
-import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 import type { DisplayMessage } from '../packages/i18n/src/types.ts';
@@ -46,7 +45,7 @@ function harness({ dock = 'tasks', page = 'format', mode = 'editing', dirty = fa
     selectedId: selectedShotId, selectedClipId: key.clipId, workspaceMode: mode, quickAssetId,
     currentProject: { current: key.projectId }, navigationEpoch: { current: 5 }, panelIntent: { current: 2 },
     setNavigationPresentation: (update: (arg0: number) => number) => { presentation = update(presentation); presentations.push({ value: presentation, epoch: env.navigationEpoch.current }); },
-    workspaceRef: { current: { restored: false } as {restored:boolean;workspaceOrigin?:string} }, workspaceOriginScope,
+    editorSession: {current: 'normal'}, workspaceRef: { current: {  } as {} },
     dataRef: { current: { shots: [{ id: selectedShotId }, { id: targetShotId }], nodes: [{ id: targetNodeId }],
       timeline: { id: key.timelineId, projectId: key.projectId, revision: 7, clips: [
         { ...raw, id: key.clipId, ...clipSource }, { ...raw, id: targetClipId, ...clipSource, startFrame: 90 },
@@ -78,7 +77,7 @@ function harness({ dock = 'tasks', page = 'format', mode = 'editing', dirty = fa
       useCallback: (callback: (...args: never[]) => unknown) => callback, clipLoudnessEpoch: { current: 0 },
       setView: rejectUnexpected('view state write for equivalent values'),
       preferencesRef: { current: { update: rejectUnexpected('project preference write for equivalent values') } },
-      pinNewWorkspaceIntent: rejectUnexpected('restored preference intent'),
+
     };
     delete (viewEnv as {updateView?: unknown}).updateView;
     const actualUpdateView = section('  const updateView = useCallback(', '  const field =');
@@ -94,7 +93,7 @@ function draftFixture(t: test.TestContext) {
   let stored = ({ supported: true, workspaceScope: 'b'.repeat(64), instanceId: id(6), key, revision: 0, targetStatus: 'matching', draft: null } as unknown as Extract<import('../packages/contracts/src/local-drafts.ts').ClipDraftEnvelope,{supported:true}>);
   let removeGate: ReturnType<typeof deferred>|null = null;
   const writes: { source: { assetSha256: string; assetId: string; versionId?: string|undefined; shotId?: string|undefined; jobId?: string|undefined; }; projectId: string; timelineId: string; clipId: string; baseRevision: number; raw: { name: string; trackId: string; startFrame: string|number; durationFrames: string|number; sourceInFrame: string|number; rect: { width: string|number; height: string|number; x: string|number; y: string|number; }; gain: string|number; fadeInFrames?: string|number|undefined; fadeOutFrames?: string|number|undefined; colour?: { profileId: "mioon-rec709-sdr-clip-v1"; source: { profileId: "rec709-yuv-sdr-v1"; assetSha256: string; streamIndex: number; range: "limited"|"full"; declaredBy: "user"; declaredAt: string; }|null; look: { declaredBy: "user"; resourceId: string; resourceSha256: string; resourceProfile: "mioon-cube3d-normalized-tetrahedral-v1"; purpose: "rec709-sdr-creative"; enabled: boolean; strength: number; }|null; }|{ profileId: "mioon-srgb-image-clip-v1"; source: { profileId: "png-rgb8-srgb-v1"; assetSha256: string; declaredBy: "user"; declaredAt: string; interpretation: "srgb"; evidence: { width: number; height: number; profileId: "png-rgb8-srgb-v1"; sha256: string; sourceByteLength: number; bitDepth: 8; alphaMode: "opaque"|"straight"; orientation: 1; colourTag: "srgb"|"untagged"; }; }|null; look: { declaredBy: "user"; resourceId: string; resourceSha256: string; resourceProfile: "mioon-cube3d-normalized-tetrahedral-v1"; purpose: "rec709-sdr-creative"; enabled: boolean; strength: number; }|null; }|{ profileId: "mioon-jfif-image-clip-v1"; source: { profileId: "jfif-ycbcr8-srgb-v1"; assetSha256: string; declaredBy: "user"; declaredAt: string; interpretation: "srgb"; evidence: { width: number; height: number; profileId: "jfif-ycbcr8-srgb-v1"; sha256: string; sourceByteLength: number; bitDepth: 8; alphaMode: "opaque"; orientation: 1; colourTag: "untagged"; sampling: "444"|"422"|"420"; decoderPolicy: "ffmpeg-mjpeg-int-bt601-full-bilinear-rgb24-v1"; }; }|null; look: { declaredBy: "user"; resourceId: string; resourceSha256: string; resourceProfile: "mioon-cube3d-normalized-tetrahedral-v1"; purpose: "rec709-sdr-creative"; enabled: boolean; strength: number; }|null; }|null|undefined; audioRole?: "human"|"music"|"sfx"|null|undefined; volumeEnvelope?: { profileId: "mioon-clip-linear-attenuation-v1"; points: { frame: string; multiplier: string; }[]; }|null|undefined; }; workspaceScope: string; instanceId: string; expectedRevision: number; }[] = [], removals: { projectId: string; timelineId: string; clipId: string; workspaceScope: string; instanceId: string; expectedRevision: number; }[] = [], removeEntered = deferred();
-  const context = { ...key, scope: 'project:1:clip:1', restored: false, connected: true, busy: false, visible: true, timelineRevision: 7, source: clipSource, saved: raw };
+  const context = { ...key, scope: 'project:1:clip:1',  connected: true, busy: false, visible: true, timelineRevision: 7, source: clipSource, saved: raw };
   const controller = createClipDraftController({
     context,
     delay: 60_000,
@@ -263,7 +262,7 @@ for (const action of actions) {
     const h = harness({ controller: f.controller, dirty: true, confirm: () => gate.promise }), before = structuredClone(h.state), pending = action.invoke(h);
     if (change === 'project') h.env.currentProject.current = id(90);
     if (change === 'selection') h.env.navigationEpoch.current++;
-    if (change === 'workspace') h.env.workspaceRef.current = { restored: true, workspaceOrigin: id(90) };
+    if (change === 'workspace') h.env.editorSession.current = 'another-renderer-session';
     (gate.resolve)!(true); await pending; unchanged(h, ((before) as unknown as Parameters<typeof unchanged>[1])); assert.deepEqual((h.resets as unknown), []); assert.deepEqual((f.removals as unknown), []);
     assert.equal(f.controller.getState().raw.name, 'Unsent clip'); assert.equal(f.controller.hasUnsaved(), true);
   });

@@ -103,6 +103,5 @@ export function shotSyncErrorMessage(error: unknown): ReturnType<typeof message>
   if (code === 'TIMELINE_LIMIT') return message('timeline.sync.error.limit');
   if (code === 'TRACK_NOT_FOUND') return message('timeline.sync.error.noVideoTrack');
   if (typeof code === 'string' && ['CLIP_NOT_FOUND', 'INVALID_VERSION', 'ASSET_HASH_MISMATCH', 'SOURCE_BOUNDS', 'INVALID_CLIP_TYPE', 'NOT_FOUND'].includes(code)) return message('timeline.sync.error.changed');
-  if (code === 'RESTORE_OPERATION_UNAVAILABLE') return message('timeline.sync.restoredUnavailable');
   return null;
 }

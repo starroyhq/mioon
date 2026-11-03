@@ -7,7 +7,7 @@ import {mkdtemp,writeFile,readFile,mkdir,stat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {freezeTimelineSnapshot} from '../packages/business/src/timeline-inputs.ts';
 import {renderTimeline} from '../packages/business/src/timeline-media.ts';

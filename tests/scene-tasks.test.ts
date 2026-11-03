@@ -1,23 +1,33 @@
-import {CURRENT_ORDINARY_ROLE,CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_ROLE} from './helpers/workspace-schema-current.ts';
-import type {SceneCall, SceneServices, SceneHandlerService} from './helpers/strict-scene-types.ts';
+
+
+
+
+
+
+
+
+
+
+import type {SceneCall, SceneHandlerService} from './helpers/strict-scene-types.ts';
 import type {SceneServicesOptions} from '../packages/business/src/scene-tasks.ts';
 import type {SceneDetectTaskResponse} from '@mioon/contracts';
 import type {DatabaseSync} from 'node:sqlite';
-import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
+import type {TypedStore} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
 import {mkdtempSync,realpathSync,rmSync,writeFileSync} from 'node:fs';
-import {mkdtemp,readFile,rm,realpath} from 'node:fs/promises';
+import {readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore,openLegacyWorkspaceStore,ownsStoreLock} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createSceneServices} from '../packages/business/src/scene-tasks.ts';
-import {createServices} from '../packages/business/src/services.ts';
-import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+
+
+
+
 import {RESTORE_DENIED_OPERATIONS,RESTORE_READ_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {run} from '../packages/business/src/media-runtime.ts';
 import {SCENE_LIMITS,SCENE_MUTATION_OPERATIONS,SCENE_DETECTION_DEFAULTS,schemas,descriptions,operationEffect,isSceneTaskResponse,isSceneResultResponse,
@@ -245,26 +255,7 @@ test('a non-owner reads without writing and cannot mutate', async t=>{
  assert.equal(rows(observer.db),before);
 });
 
-test('scene records survive backup and restore; the restored copy only reads them', async t=>{
- const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-scene-restore-')));t.after(()=>rm(root,{recursive:true,force:true}));
- const source=path.join(root,'source'),store=(openLegacyWorkspaceStore(source) as unknown as TypedStore),bytes=Buffer.from('Synthetic reference film for backup');
- const services=(createServices(store,new Map(),{sceneOptions:{detect:async input=>{(input.beforeSpawn)!(input.signal!);return detection(input);}}}) as unknown as SceneServices);
- const project=await services.call('project.create',{name:'Scene backup'}),id=randomUUID();
- writeFileSync(path.join(source,`media/${id}.mp4`),bytes,{mode:0o600});
- const asset=store.put('assets',{id,projectId:project.id,name:'Reference.mp4',mimeType:'video/mp4',sha256:digest(bytes),sizeBytes:bytes.length,relativePath:`media/${id}.mp4`,width:320,height:180,duration:3,provenance:'user-import'});
- const input={projectId:project.id,sourceAssetId:asset.id,sourceHash:asset.sha256,requestId:randomUUID()},ack=await services.call('scene.detect',input);
- const done=await until(async()=>{const value=await services.call('scene.task.get',{projectId:project.id,taskId:ack.id});return value.state==='succeeded'&&value;},'succeeded');
- await services.drain();store.close();
- await createWorkspaceBackup({source,destination:path.join(root,'backup')});
- await restoreWorkspaceBackup({directory:path.join(root,'backup'),destination:path.join(root,'restored')});
- const restoredStore=(openLegacyWorkspaceStore(path.join(root,'restored')) as unknown as TypedStore),restored=(createServices(restoredStore,new Map()) as unknown as SceneServices);
- t.after(()=>restoredStore.close());
- assert.equal(readCurrentWorkspaceRole(restoredStore.db),CURRENT_RESTORED_ROLE);
- assert.deepEqual(await restored.call('scene.task.get',{projectId:project.id,taskId:ack.id}),done);
- assert.equal(((await restored.call('scene.result.get',{projectId:project.id,assetId:asset.id})).result)!.id,(done.result)!.id);
- await assert.rejects(restored.call('scene.detect',{...input,requestId:randomUUID()}),code('RESTORE_OPERATION_UNAVAILABLE'));
- await assert.rejects(restored.call('scene.cuts.save',{projectId:project.id,assetId:asset.id,sourceHash:asset.sha256,expectedResultId:(done.result)!.id,cuts:[],requestId:randomUUID()}),code('RESTORE_OPERATION_UNAVAILABLE'));
-});
+
 
 // Real FFmpeg on a managed source: three shots with hard cuts at frames 45 and 100.
 test('real detection through the service finds the hard cuts', async t=>{

@@ -5,7 +5,7 @@
 
 ## 0. P4 当前运行状态
 
-`startServer` 在应用数据目录预检、取得 `server.lock` 后打开唯一的 B1 应用库，再组装应用设置和 `createProjectHostManager`；`manager.restore()` 完成后开始监听。项目请求经真实租约进入 `composeHostedProject` / `composeProjectRuntime`，一个项目只持有一个内核连接，应用库不挂到项目连接上。关闭项目不关闭借用的应用设置或应用库。普通 `db.ts.openStore(root)` 和七个数据库测试辅助函数已切换为真实内核；历史 schema、备份和恢复测试显式用 `openLegacyWorkspaceStore`，没有生产旧工作区开关。
+`startServer` 在应用数据目录预检、取得 `server.lock` 后打开唯一的 B1 应用库，再组装应用设置和 `createProjectHostManager`；`manager.restore()` 完成后开始监听。项目请求经真实租约进入 `composeHostedProject` / `composeProjectRuntime`，一个项目只持有一个内核连接，应用库不挂到项目连接上。关闭项目不关闭借用的应用设置或应用库。普通测试通过 `project-file/test-store.ts` 的 `openStore(root)` 和七个数据库辅助函数使用真实内核；旧工作区 opener、迁移、备份和恢复实现已退役。
 
 `dataDir` 是应用数据目录，放应用库、设置、令牌、`records/`、`tmp/`；项目目录独立。服务端默认项目在 `<dataDir>/projects/`，缓存为 `<dataDir>/cache/projects/<ID>/`。桌面使用 `<userData>/data/`，旧 `<userData>/workspace/` 不迁移、不再读取；默认项目在 `<videos>/Mioon/`，缓存用系统缓存目录。设置 `MIOON_DESKTOP_USER_DATA` 时，项目和缓存均留在覆盖目录的 `data/` 内，具体布局见 2.1。应用目录含旧 `workbench.sqlite` 时，生产启动精确拒绝 `VALIDATION_ERROR`（400），不迁移旧树或旧库。
 
@@ -24,9 +24,9 @@
 |---|---|---|
 | S5 | 应用 RPC `project.delete` | 409 `PROJECT_DELETE_UNAVAILABLE`，复用原生命周期错误码 |
 | S5、V4 | 复制、另存为、打包导入导出尚无新生产接口；旧 `/api/project-packages/…`、项目 `package-preview` | 404 `NOT_FOUND`；不进入旧复制、删除或导入链 |
-| S7 | 应用 RPC `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（含 bundle 下载/导入、directory 导入） | 409 `RESTORE_OPERATION_UNAVAILABLE` |
+| S7 | 应用 RPC `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（含 bundle 下载/导入、directory 导入） | 404 `UNKNOWN_OPERATION`（旧文件地址为 `NOT_FOUND`） |
 
-`workspace.restore.inspect` 仍可返回 `{restored:false}` 和明确请求的能力字段；它不启用旧恢复服务。工作区设置中的既有备份字段不控制 V2；新项目自动备份由宿主 hooks 提供，与旧工作区备份链分开。历史旧格式领域的正例只在显式 legacy 测试入口验证，不恢复生产旧路由。S5、V4、S7 接入时恢复对应业务正例。
+`workspace.restore.inspect` 已退役并返回 404 `UNKNOWN_OPERATION`；不再有旧恢复来源或能力探测协议。工作区设置去掉五个退役备份键；项目自动备份仍由 V2 宿主 hooks 提供。S5、V4 的未接入边界保持不变。
 
 ### 配额口径
 

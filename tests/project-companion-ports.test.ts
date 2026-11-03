@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openAppLibrary, isAppLibraryHeld, projectFileIdentity} from '../packages/business/src/app-db/index.ts';
 import {createProjectFile, openProjectStore} from '../packages/business/src/project-file/index.ts';
-import {ownsStoreLock} from '../packages/business/src/db.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createUiPreferences, UI_PREFERENCES_FILENAME} from '../packages/business/src/ui-preferences.ts';
 import {createLastProject, LAST_PROJECT_FILENAME} from '../packages/business/src/last-project.ts';
 import {createWorkspaceConfiguration} from '../packages/business/src/workspace-configuration.ts';

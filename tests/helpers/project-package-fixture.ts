@@ -3,7 +3,6 @@ import {mkdtempSync,realpathSync,readFileSync,copyFileSync,rmSync,existsSync} fr
 import {execFileSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openLegacyWorkspaceStore} from '../../packages/business/src/db.ts';
 import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 
@@ -27,9 +26,6 @@ export function sampleMedia(dir:string){
 export const sampleCube=Buffer.from('TITLE "look"\nLUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n');
 
 export function openWorkspace(root:string){const store=openStore(root);return {store,services:createServices(store,new Map(),{imageOptions:{autoRun:false}})};}
-/** Only the explicit old package import/duplicate/backup positives use this.
- * Native projects cannot import a second project into their own SQLite file. */
-export function openLegacyWorkspace(root:string){const store=openLegacyWorkspaceStore(root);return {store,services:createServices(store,new Map(),{imageOptions:{autoRun:false}})};}
 export function tempRoot(label:string):string{return realpathSync(mkdtempSync(path.join(tmpdir(),`mioon-${label}-`)));}
 
 /** Builds a project that touches every entity a `.mioon` file carries. */

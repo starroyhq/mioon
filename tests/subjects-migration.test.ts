@@ -1,4 +1,11 @@
-import {reviewedCatalogAt,reviewedTablesAfter} from './helpers/reviewed-schema-layers.ts';
+
+
+
+
+
+
+
+import {reviewedCatalogAt} from './helpers/reviewed-schema-layers.ts';
 import type {SQLInputValue,SQLOutputValue} from 'node:sqlite';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
@@ -12,19 +19,19 @@ import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts
 function withoutReviewedCurrentAgentObjects(objects: Parameters<typeof withoutReviewedStorageObjects>[0]){return reviewedCatalogAt(52,objects);}
 import test from 'node:test';
 import {currentMarkerChain} from './helpers/current-schema-delta.ts';
-import {currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta,reviewedObjectSql} from './helpers/current-schema-delta.ts';
+import {currentOrdinary48Delta, currentOrdinary50Delta, currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
 import assert from 'node:assert/strict';
-import {normalizeAgentEditProposalObject,legacyAgentEditProposalRows,assertAgentEditTargetTrigger} from './agent-edit-migration-preservation.mjs';
+
 import {randomUUID,createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {mkdtempSync,rmSync,existsSync} from 'node:fs';
+import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
-import {createServices,hash, type ServiceStore} from '../packages/business/src/services.ts';
+import {createServices, hash} from '../packages/business/src/services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
-import {bootstrapEditTaskSchema,migrateSubjectEditTasks} from '../packages/business/src/edit-task-schema.ts';
+
 import {schemas,DURABLE_EDIT_OPERATIONS,editTaskLane} from '@mioon/contracts';
 
 // Independently frozen from schema 14 at 1b08cf2. Do not derive this fixture
@@ -249,28 +256,7 @@ function assertReviewed52(db: DatabaseSync,legacyRecords?: Record<string,SqlRows
  assert.deepEqual(targets(actual),targets(expected),'original schema14 project/target identities and initial revision1');
 }
 
-function assertLegacyPreserved(db: DatabaseSync,before: ReturnType<typeof snapshotSchema14>) {
- assertReviewed52(db,before.records);
- const after=snapshotSchema14(db);
- for(const name of Object.keys(currentOrdinary52Delta.tables))delete after.records[name];
- for(const [name] of reviewedTablesAfter(52)){assert.deepEqual((after.records[name] as unknown),[],`${name}: reviewed empty layer table`);delete after.records[name];}
- assertAgentEditTargetTrigger(after.schema);
- after.records.agent_edit_proposals=legacyAgentEditProposalRows(after.records.agent_edit_proposals);
- assert.deepEqual(after.records,before.records,'all preexisting table records, including sequence rows, remain byte-for-byte equivalent');
- assert.deepEqual(after.editTasks,before.editTasks,'all task columns and positions survive without normalization or recovery');
- assert.deepEqual(after.inputBytes,before.inputBytes,'raw UTF-8 input bytes survive unchanged');
- assert.deepEqual(after.sequence,before.sequence,'AUTOINCREMENT high-water and row absence survive');
- const reviewedObjects=(values: SchemaRow[])=>values.map((row: { name: string|number; })=>{const reviewed=currentOrdinary48Delta.objectSql[row.name];return reviewed===undefined?row:Object.assign(Object.create(Object.getPrototypeOf(row)),row,{sql:reviewed});});
- assert.deepEqual(reviewedObjects(after.editObjects),reviewedObjects(before.editObjects),'all legacy indexes and triggers retain exact definitions');
- for(const object of before.schema.filter((row: { type: string; name: string; })=>!(row.type==='table'&&row.name==='edit_tasks'))){
-  const current=after.schema.find(row=>row.type===object.type&&row.name===object.name);
-  const normalized=object.type==='table'&&object.name==='agent_edit_proposals'?normalizeAgentEditProposalObject(current):current;
-  const reviewed=!db.prepare('SELECT 1 FROM schema_version WHERE version=48').get()||currentOrdinary48Delta.objectSql[object.name]===undefined?object:Object.assign(Object.create(Object.getPrototypeOf(object)),object,{sql:reviewedObjectSql(object.name,object.sql!)});
-  assert.deepEqual(normalized,reviewed,`preexisting schema object ${object.name} remains unchanged outside the pinned schema24 additions`);
- }
- assert.equal(db.prepare('PRAGMA integrity_check').get()!.integrity_check,'ok');
- assert.deepEqual((db.prepare('PRAGMA foreign_key_check').all() as unknown),[]);
-}
+
 function assertNewSchema(db: DatabaseSync) {
  assertReviewed52(db);
  const names=new Set(currentOrdinary50Delta.objects.map(value=>value.name));
@@ -363,35 +349,9 @@ function assertConstraintAndTriggerBehavior(db: DatabaseSync,{expanded}: { expan
  assert.deepEqual(snapshotSchema14(db),before);
 }
 
-test('schema14 bootstrap helper exactly matches the independently frozen historical task schema',t=>{
- const root=temporaryRoot(t),store=createSchema14Store(root);t.after(()=>store.close());
- const before=snapshotSchema14(store.db),fresh=new DatabaseSync(':memory:');
- try {
-  fresh.exec('CREATE TABLE schema_version(version INTEGER PRIMARY KEY); CREATE TABLE projects(id TEXT PRIMARY KEY,data TEXT NOT NULL);');
-  bootstrapEditTaskSchema(fresh);
-  assert.deepEqual(schema(fresh).filter((row: { tbl_name: string; })=>row.tbl_name==='edit_tasks'),before.schema.filter((row: { tbl_name: string; })=>row.tbl_name==='edit_tasks'));
- }finally{fresh.close();}
- bootstrapEditTaskSchema(store.db);
- assert.deepEqual(snapshotSchema14(store.db),before);
- assertConstraintAndTriggerBehavior(store.db,{expanded:false});
-});
 
-test('subject migration preserves all old rows, raw inputs, claims, receipts, indexes, triggers and sequence across repeated startup',async t=>{
- const root=temporaryRoot(t);let store=createSchema14Store(root);t.after(()=>store.close());
- const {snapshot,recovered}=await seedSchema14Fixture(store);
- assertConstraintAndTriggerBehavior(store.db,{expanded:false});store.close();store=(openStore(root) as TypedStore);
- assertNewSchema(store.db);assertLegacyPreserved(store.db,snapshot);
- for(const table of SUBJECT_TABLES)assert.deepEqual((rows(store.db,table) as unknown),[],'migration never derives subjects or bindings from legacy data');
- const tasks=(createEditTasks({store,services:{call(){assert.fail('migration/replay must never dispatch');}}}) as TypedEditTasks);
- for(const {row,result} of recovered) {
-  const replay=tasks.reconcile({projectId:row.projectId,taskId:row.id,digest:row.digest});
-  assert.deepEqual(replay.result,result);assert.equal(replay.task.id,row.id);assert.equal(replay.task.revision,row.revision);
- }
- assertLegacyPreserved(store.db,snapshot);assertConstraintAndTriggerBehavior(store.db,{expanded:true});
- const after=snapshotSchema14(store.db);
- for(let n=0;n<3;n++){store.close();store=(openStore(root) as TypedStore);assert.deepEqual(snapshotSchema14(store.db),after);assertNewSchema(store.db);}
- rollbackProbe(store.db,()=>{const row=candidate(store.db);insertTask(store.db,row);assert.equal(store.db.prepare('SELECT position FROM edit_tasks WHERE id=?').get(row.id)!.position,7001);});
-});
+
+
 
 test('fresh and upgraded stores expose identical v15 schema and retain original twelve service/receipt behaviors',async t=>{
  const root=temporaryRoot(t);let upgraded=createSchema14Store(root);t.after(()=>upgraded.close());
@@ -410,34 +370,8 @@ test('fresh and upgraded stores expose identical v15 schema and retain original 
  }
 });
 
-for(const priorSequence of [null,0,8123])test(`empty legacy task migration preserves sqlite_sequence ${priorSequence===null?'absence':priorSequence}`,t=>{
- const root=temporaryRoot(t);let store=createSchema14Store(root);t.after(()=>store.close());
- assert.deepEqual((sequence(store.db) as unknown),[]);
- if(priorSequence!==null)store.db.prepare("INSERT INTO sqlite_sequence(name,seq) VALUES('edit_tasks',?)").run(priorSequence);
- const before=snapshotSchema14(store.db);store.close();store=(openStore(root) as TypedStore);assertNewSchema(store.db);assertLegacyPreserved(store.db,before);
- rollbackProbe(store.db,()=>{const row=candidate(store.db);insertTask(store.db,row);assert.equal(store.db.prepare('SELECT position FROM edit_tasks WHERE id=?').get(row.id)!.position,(priorSequence??0)+1);});
-});
 
-test('failure after the rebuild rolls back every schema15 change, all rows and sequence, then normal restart succeeds',async t=>{
- const root=temporaryRoot(t);let store=createSchema14Store(root);t.after(()=>store.close());
- await seedSchema14Fixture(store);
- store.db.exec("CREATE TRIGGER abort_subject_upgrade BEFORE INSERT ON schema_version WHEN NEW.version=15 BEGIN SELECT RAISE(ABORT,'injected schema15 failure');END");
- const before=snapshotSchema14(store.db);store.close();
- assert.throws(()=>(openStore(root) as TypedStore),/injected schema15 failure/);
- assert.equal(existsSync(path.join(root,'server.lock')),false,'failed migration releases its own lock');
- let db=rawDatabase(root),beforeRetry;
- try {
-  assert.deepEqual(snapshotSchema14(db),before,'DDL, table replacement, raw rows, indexes, triggers and AUTOINCREMENT all roll back');
-  assert.equal(db.prepare("SELECT count(*) n FROM sqlite_master WHERE name='edit_tasks_subjects' OR name IN ('subjects','subject_versions','subject_bindings','subject_requests')").get()!.n,0);
-  db.exec('DROP TRIGGER abort_subject_upgrade');beforeRetry=snapshotSchema14(db);
- }finally{db.close();}
- store=(openStore(root) as TypedStore);assertNewSchema(store.db);assertLegacyPreserved(store.db,beforeRetry);
-});
 
-test('direct helper rejects unowned transactions and rolls back a collision without modifying legacy task state',async t=>{
- const root=temporaryRoot(t),store=createSchema14Store(root);t.after(()=>store.close());
- await seedSchema14Fixture(store);const before=snapshotSchema14(store.db);
- assert.throws(()=>migrateSubjectEditTasks(store.db),/requires a transaction/);assert.deepEqual(snapshotSchema14(store.db),before);
- assert.throws(()=>store.tx(()=>{store.db.exec('CREATE TABLE edit_tasks_subjects(marker TEXT)');migrateSubjectEditTasks(store.db);}),/staging table already exists/);
- assert.deepEqual(snapshotSchema14(store.db),before);
-});
+
+
+

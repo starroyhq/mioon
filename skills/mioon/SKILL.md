@@ -546,40 +546,6 @@ the local library does not establish platform portrait authorization. Mock only
 tests workflow, never subject likeness. This adds no paid permission or built-in
 Agent tool. Scope and status: ../../docs/SUBJECT-VIDEO-INPUTS.md.
 
-### Whole-workspace offline backup
-
-Use `workspace.backup.inspect` with exactly `{}` only for bounded current database
-counts. It is not project-scoped: the backup covers every project and the entire
-plain SQLite database, including chat/prompts and cache rows. Application
-credential/settings files are excluded, but user-entered text may contain
-secrets. Do not send the backup to a third party without the user's sharing intent.
-
-Actual creation requires normal shutdown of all backends using that workspace
-and the explicit local CLI in ../../docs/WORKSPACE-BACKUP-GUIDE.zh-CN.md. No MCP
-or HTTP operation accepts arbitrary backup paths or restores data. Do not delete
-locks/WAL/journals, retry an unknown paid task, erase old request keys, or open a
-backup as an executable workspace. Successful verify checks the declared cold
-snapshot; guarded restore is a separate explicit offline workflow and does not restore inherited execution authority.
-
-
-### Restored branch safety
-
-Read `workspace.restore.inspect` with exactly `{}` before intentionally operating
-on a restored branch. Pin the disclosed origin once at CLI/MCP launch with
-`--workspace-origin`; never infer or silently replace it after reconnect. The
-origin is not authorization to generate, approve or release old work. Preserve
-original pending keys and all historical outcomes on a restore refusal.
-
-Restored v1 allows fresh supported local imports/edits/previews/exports. Captured
-tasks and approvals remain held, even terminal or unknown ones. New supplier,
-image, Agent, Comfy, extraction and waveform decoding are unavailable. Recursive
-backup creation is also unavailable: preserve the verified original backup.
-Only explicit offline `backup.ts restore` writes a new destination; no model
-RPC accepts restore paths. `restore-status` with the original backup and target
-can discover a guarded branch after total stdout loss, but never repairs,
-reexecutes or proves an earlier fsync. See ../../docs/WORKSPACE-RESTORE.md.
-
-
 ## Named timeline deliveries
 
 When the user wants a named timeline export, discover the shared render/preflight schemas and use the same optional `deliveryName` in both. A blank UI draft means omitted name; API text must be nonblank. Preserve the exact original request/name/settings/key after ambiguity. Renaming the project does not rename a named historical export. Capabilities and previews do not accept a name. Download filenames are server-derived; any local destination still needs the existing explicit user-selected path.

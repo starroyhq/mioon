@@ -12,7 +12,7 @@ import path from 'node:path';
 import {DatabaseSync, type SQLOutputValue} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 import {isEditTaskEnvelope} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {openProjectDatabase} from './helpers/project-database.ts';
 

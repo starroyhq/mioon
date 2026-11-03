@@ -1,5 +1,8 @@
+
+
+
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
-import type {BackupResult,RestoreResult} from './helpers/strict-timeline-backup-types.ts';
+
 import type {StrictTimelineTasks} from './helpers/strict-timeline-handler-types.ts';
 type StrictIntersection<T> = (T extends unknown ? (value: T)=>void : never) extends ((value: infer I)=>void) ? I : never;
 import type {ServiceResponse as FixtureServiceResult, TypedStore as FixtureStore, TypedServices as FixtureServices} from './helpers/strict-service-responses.ts';
@@ -9,12 +12,12 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+
+
 import {schemas,descriptions,operationEffect,isTimelineMutationResponse,TIMELINE_MUTATION_OPERATIONS,
  TIMELINE_SHOT_SYNC_OPERATIONS,TIMELINE_SHOT_SYNC_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES,DURABLE_EDIT_OPERATIONS} from '@mioon/contracts';
 import {translate} from '../packages/i18n/src/index.ts';
@@ -25,7 +28,7 @@ const at='2026-10-23T00:00:00.000Z';
 const writes=['timelines','timeline_history','timeline_history_cursors','timeline_requests'];
 const code=(expected: string,check: ((arg0?: unknown) => unknown)|undefined=()=>true)=>(error?: Error&{ code: string; status?: number; details?: { mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[];[key: string]: unknown; }; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; })=>(error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code===expected&&check(error);
 
-async function fixture(t: test.TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){
+async function fixture(t: test.TestContext,opener:typeof openStore=openStore){
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-shot-sync-')));
  const store=(opener(root) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices);let closed=false;
  const _strictFixtureBase={root,store,call:<O extends string>(op: O, input?: unknown) => services.call(op,input) as Promise<FixtureServiceResult<O>>,
@@ -241,24 +244,4 @@ test('both operations stay out of the durable edit-task ledger, whose table chec
  assert.equal(rows(),before,'nothing is recorded in the ledger');
 }) as unknown as test.TestFn));
 
-test('shot-sync history and receipts survive backup and restore; restored copies only replay them', async t => {
- const f=await fixture(t,openLegacyWorkspaceStore),a=await f.shot('Shot A',[10,10],0),clip=await f.add(((a.versions[0].asset) as unknown as Parameters<typeof f.add>[0]));
- await f.select(a.id,a.versions[1].id);await f.shot('Shot B',[2],0);
- const refreshInput=f.request(await f.timeline(),{clipIds:[(clip)!.id]}),refreshed=await f.call(REFRESH,refreshInput);
- const appendInput=f.request(((refreshed.timeline) as unknown as Parameters<NonNullable<(typeof f)["request"]>>[0])),appended=await f.call(APPEND,appendInput);
- f.close();
- const base=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-shot-sync-restore-')));
- t.after(()=>rm(base,{recursive:true,force:true}));
- await (createWorkspaceBackup({source:f.root,destination:path.join(base,'backup')}) as Promise<BackupResult>);
- await (restoreWorkspaceBackup({directory:path.join(base,'backup'),destination:path.join(base,'restored')}) as Promise<RestoreResult>);
- const store=(openLegacyWorkspaceStore(path.join(base,'restored')) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices);
- t.after(()=>store.close());
- const history=await services.call('timeline.history.get',{projectId:f.projectId});
- assert.equal((history.undoEntry)!.operation,APPEND);
- assert.deepEqual((await services.call('timeline.get',{projectId:f.projectId})).clips,appended.timeline.clips);
- assert.deepEqual(await services.call(REFRESH,refreshInput),refreshed,'a retained acknowledgement replays');
- assert.deepEqual(await services.call(APPEND,appendInput),appended);
- const current=await services.call('timeline.get',{projectId:f.projectId});
- await assert.rejects(services.call(APPEND,f.request(current)),code('RESTORE_OPERATION_UNAVAILABLE'));
- await assert.rejects(services.call(REFRESH,f.request(current,{clipIds:[(clip)!.id]})),code('RESTORE_OPERATION_UNAVAILABLE'));
-});
+

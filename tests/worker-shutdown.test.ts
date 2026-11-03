@@ -9,7 +9,7 @@ import {ChildProcess} from 'node:child_process';
 import {once} from 'node:events';
 import {readFile,readdir,writeFile} from 'node:fs/promises';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker, type Worker} from '../packages/business/src/jobs.ts';
 import {onMediaProcess,spawnMedia, type PipedMediaChild} from '../packages/business/src/media-processes.ts';

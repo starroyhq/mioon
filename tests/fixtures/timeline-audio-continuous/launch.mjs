@@ -11,7 +11,7 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {build} from 'esbuild';
-import {openStore} from '../../../packages/business/src/db.ts';
+import {openStore} from '../../../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../../../packages/business/src/services.ts';
 import {timelineCompositionSegments} from '../../../packages/contracts/src/timeline-segments.ts';
 

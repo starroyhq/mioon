@@ -1,4 +1,11 @@
-import {reviewedCatalogAt,reviewedTablesAfter} from './helpers/reviewed-schema-layers.ts';
+
+
+
+
+
+
+
+
 import type {SQLOutputValue} from 'node:sqlite';
 import type {TypedCall} from './helpers/strict-service-responses.ts';
 import type {FixtureProject} from './helpers/strict-timeline-core-types.ts';
@@ -10,19 +17,18 @@ interface RaceMessage{phase:string;ok:boolean;code:string;details:Record<string,
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedServices, TypedStore} from './helpers/strict-service-responses.ts';
 import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects: Parameters<typeof withoutReviewedStorageObjects>[0]){return reviewedCatalogAt(52,objects);}
+
 import test from 'node:test';
-import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
 import assert from 'node:assert/strict';
-import {createHash,randomUUID} from 'node:crypto';
+import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm,readFile,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {spawn} from 'node:child_process';
+
 import {LOCAL_MUTATION_OPERATIONS} from '@mioon/contracts';
-import {openStore,openLegacyWorkspaceStore as openHistoricalWorkspaceStore} from '../packages/business/src/db.ts';
-import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
-import {snapshot as rawSnapshot} from './workspace-schema26-fixtures.mjs';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+
+
 import {createServices,canonical} from '../packages/business/src/services.ts';
 import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
@@ -34,7 +40,7 @@ async function foreignProject(t:test.TestContext):Promise<FixtureProject>{
  try{return await services.call('project.create',{name:'Foreign private project'});}
  finally{await services.drain();store.close();}
 }
-async function fixture(t:test.TestContext,{open=openStore}:{open?:typeof openStore|typeof openLegacyWorkspaceStore|typeof openHistoricalWorkspaceStore}={}){
+async function fixture(t:test.TestContext,{open=openStore}:{open?:typeof openStore}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-asset-dispositions-'));
  let store=open(root) as TypedStore,services=(createServices(store,new Map()) as TypedServices);
  const f={root,get store(){return store;},call:<O extends string>(op: O,input: unknown)=>services.call(op,input),
@@ -53,30 +59,7 @@ const snapshot=(f: Awaited<ReturnType<typeof fixture>>,omit:string[]=[]): Record
 }));
 const changes=(f: Awaited<ReturnType<typeof fixture>>)=>f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
 
-function assertReviewed52Migration(f: Awaited<ReturnType<typeof fixture>>,before:Record<string,SqlRow[]>,rawBefore:RawSchemaSnapshot,expectedTargetCount: number){
- const actual=(rawSnapshot(f.store.db) as unknown as RawSchemaSnapshot);actual.objects=withoutReviewedCurrentAgentObjects(actual.objects);const names=new Set(currentOrdinary52Delta.objectNames),objects=actual.objects.filter((object: { name: string; })=>names.has(object.name));
- assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
- assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
- assert.equal(createHash('sha256').update(JSON.stringify(objects)).digest('hex'),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
- assert.deepEqual((actual.objects.filter((object: { name: string; })=>/^(?:agent_task_|agent_target_)/.test(object.name)&&!names.has(object.name)) as unknown),[],'unknown task/target objects are not reviewed52 additions');
- const revisions: ({ retainedRowid: bigint; projectId:SQLOutputValue;kind: "project" | "shot" | "asset" | "asset_range"; targetId:SQLOutputValue;revision: bigint; })[]=[];
- for(const[kind,table]of [['project','projects'],['shot','shots'],['asset','assets'],['asset_range','asset_ranges']] as const)
-  for(const row of before[table]??[])revisions.push({retainedRowid:BigInt(revisions.length+1),projectId:kind==='project'?row.id:row.projectId,kind,targetId:kind==='asset_range'?row.assetId:row.id,revision:1n});
- assert.equal(revisions.length,expectedTargetCount,'the independent legacy seed has the exact target count');
- for(const[name,table]of Object.entries(currentOrdinary52Delta.tables)){
-  assert.deepEqual(actual.tables[name].fields,table.fields,`${name}: reviewed52 fields`);
-  if(name==='agent_task_target_revisions_v2'){
-   const statement=f.store.db.prepare('SELECT rowid AS retainedRowid,* FROM agent_task_target_revisions_v2 ORDER BY rowid');statement.setReadBigInts(true);
-   const rows=statement.all().map((row:SqlRow)=>({...row}));
-   assert.deepEqual(rows.map((row:SqlRow)=>({retainedRowid:row.retainedRowid,kind:row.kind})),revisions.map(row=>({retainedRowid:row.retainedRowid,kind:row.kind})),'initial target rowids and kind ranges');
-   // An unordered initial SQL scan may use a covering index. Preserve exact
-   // identities without making the first UUID scan order a migration contract.
-   const targets=(values:SqlRow[])=>values.map((row:SqlRow)=>{const value={...row};delete value.retainedRowid;return value;}).sort((a,b)=>(a.kind as string).localeCompare(b.kind as string)||(a.targetId as string).localeCompare(b.targetId as string));
-   assert.deepEqual(targets(rows),targets(revisions),'original legacy project/target identities and exact initial revision1');
-  }else assert.deepEqual((actual.tables[name].rows as unknown),[],`${name}: reviewed empty52 rows`);
- }
- for(const[name,table]of Object.entries(rawBefore.tables))if(name!=='schema_version')assert.deepEqual(actual.tables[name],table,`${name}: original SQLite types, raw bytes, rowids and sequence`);
-}
+
 const list=(f: Awaited<ReturnType<typeof fixture>>,assets:Pick<DispositionAsset,"id">[])=>f.call('asset.disposition.list',{projectId:f.project.id,assetIds:assets.map((asset: { id: unknown; })=>asset.id)});
 const read=async(f: Awaited<ReturnType<typeof fixture>>,asset:Pick<DispositionAsset,"id">)=>(await list(f,[asset])).items[0];
 const count=(f: Awaited<ReturnType<typeof fixture>>,table: string)=>(f.store.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as {n:number}).n;
@@ -333,32 +316,7 @@ test('duplicate presence and corrupted wrong-table placement fail closed for all
  }
 });
 
-test('v12 upgrade preserves all old records and response bytes and has identical fresh schema invariants on repeated restart',async t=>{
- // The legacy seed keeps its second project in this workspace; f.other lives in a store of its own.
- const f=await fixture(t,{open:openLegacyWorkspaceStore});await f.call('project.create',{name:'Foreign private project'});
- const asset=f.asset();await f.call('shot.create',{projectId:f.project.id,title:'Legacy keyed shot',requestId:randomUUID()});
- await f.call('asset.range.set',{projectId:f.project.id,assetId:asset.id,expectedRevision:0,requestId:randomUUID(),inFrame:0,outFrame:30});
- for(const table of ['timeline_requests','reference_requests'])f.store.db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`).run(randomUUID(),'old-hash',' { "old": true, "preserve": "spacing" } ');
- f.store.db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('generation',randomUUID(),'old-hash',randomUUID());
- const schema=()=>f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
- const current=await fixture(t,{open:openHistoricalWorkspaceStore});
- const fresh=current.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
- // Reapply the targeted additive schema and the subject namespace extension
- // whose trigger belongs to the removed table. Unrelated later schemas remain
- // installed; deleting their markers would manufacture a review downgrade.
- // Reapplying subject schema rebuilds the edit-task CHECK. Remove the later
- // empty format extension and its marker together, so startup can truthfully
- // compose schema21 and schema22 again rather than leave a newer marker on an older table.
- assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM timeline_format_requests').get()!.n,0);
- f.store.db.exec('DROP TABLE timeline_format_requests; DROP INDEX timeline_requests_project; DELETE FROM schema_version WHERE version IN (21,22);');
- f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version IN (12,15);');
- const old=snapshot(f,['schema_version']),rawBefore=(rawSnapshot(f.store.db) as unknown as RawSchemaSnapshot);f.restart();
- assertReviewed52Migration(f,old,rawBefore,5);
- assert.deepEqual(snapshot(f,['schema_version','asset_dispositions','asset_disposition_requests','timeline_format_requests','project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests',...Object.keys(currentOrdinary48Delta.lifecycleTables),...Object.keys(currentOrdinary50Delta.tables),...Object.keys(currentOrdinary52Delta.tables),...reviewedTablesAfter(52).map(([name])=>name)]),old);assert.deepEqual(schema(),fresh);
- assert.deepEqual(f.store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map((row:SqlRow)=>row.version),[...currentMarkerChain]);
- for(const table of ['project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests',...Object.keys(currentOrdinary50Delta.tables)])assert.equal(count(f,table),0);
- const migrated=snapshot(f),migratedRaw=(rawSnapshot(f.store.db) as unknown as RawSchemaSnapshot);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual((rawSnapshot(f.store.db) as unknown as RawSchemaSnapshot),migratedRaw);assert.deepEqual(schema(),fresh);
-});
+
 
 for(const [winnerOperation,loserOperation] of [['asset.disposition.set','shot.create'],['shot.create','asset.disposition.set'],['asset.disposition.set','asset.range.set'],['asset.range.set','asset.disposition.set']] as const)
  test(`exclusive project-host namespace race: ${winnerOperation} wins and ${loserOperation} conflicts`,{timeout:15000},async t=>{

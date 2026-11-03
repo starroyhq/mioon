@@ -2,7 +2,7 @@
 // afterBusinessCommit boundary; it never deletes a lock or signals a neighbor.
 import path from 'node:path';
 import {writeFileSync} from 'node:fs';
-import {openStore} from '../../packages/business/src/db.ts';
+import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createEditTasks} from '../../packages/business/src/edit-tasks.ts';
 import {onMediaProcess} from '../../packages/business/src/media-processes.ts';

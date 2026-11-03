@@ -1,4 +1,7 @@
-import {CURRENT_RESTORED_SCHEMA} from './helpers/workspace-schema-current.ts';
+
+
+
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
@@ -12,8 +15,8 @@ import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.ts';
-import {resolveWorkspaceActivation} from '../packages/business/src/workspace-backup-runtime.ts';
-import {openLegacyWorkspaceConfiguration} from './fixtures/legacy-workspace-configuration.ts';
+
+
 
 const run = promisify(execFile), repo = fileURLToPath(new URL('../', import.meta.url));
 type WireBody = {ok: boolean; data?: unknown; error?: {code: string; message: string; details: unknown; retryable: boolean}};
@@ -27,7 +30,7 @@ function closedFiles(root: string, relative = ''): unknown[] {
   });
 }
 
-test('workspace settings agree across public transports; project layout refuses backup/import/restore without writes', {timeout: 90000}, async t => {
+test('workspace settings agree across public transports; retired workspace entries return unknown-operation without writes', {timeout: 90000}, async t => {
   const base = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-workspace-wire-'))), root = path.join(base, 'workspace'), token = 'synthetic-workspace-configuration-token';
   let server = await startServer({dataDir: root, port: 0, token});
   let client = new Client({name: 'workspace-configuration-wire-test', version: '1'}, {capabilities: {}});
@@ -76,56 +79,27 @@ test('workspace settings agree across public transports; project layout refuses 
   client = new Client({name: 'workspace-configuration-rejections', version: '1'}, {capabilities: {}}); await connect();
   const key = randomUUID(), backupId = randomUUID();
   for (const [operation, input] of [
-    ['workspace.backup.status', {}], ['workspace.backup.list', {}],
+    ['workspace.backup.status', {}], ['workspace.backup.list', {}], ['workspace.backup.inspect', {backupId}], ['workspace.restore.inspect', {}],
     ['workspace.backup.create', {requestId: key}],
     ['workspace.backup.restore.stage', {requestId: randomUUID(), backupId, confirmation: 'RESTORE_BACKUP'}],
   ] as const) {
     const failure = await http(operation, input);
-    assert.equal(failure.status, 409); assert.equal(failure.body.ok, false); assert.equal(failure.body.error?.code, 'RESTORE_OPERATION_UNAVAILABLE');
-    // CLI/MCP retain their explicit invocation address in recovery details.
-    const transported={...failure.body,error:{...failure.body.error!,details:{operation}}};
-    assert.deepEqual(await cli(operation, input, 3), transported); assert.deepEqual(await mcp(operation, input, true), transported);
+    assert.equal(failure.status, 404); assert.equal(failure.body.ok, false); assert.equal(failure.body.error?.code, 'UNKNOWN_OPERATION');
+    const cliFailure = await cli(operation, input, 2), mcpFailure = await mcp(operation, input, true);
+    assert.equal(cliFailure.ok, false); assert.equal(cliFailure.error?.code, 'UNKNOWN_OPERATION');
+    assert.equal(mcpFailure.ok, false); assert.equal(mcpFailure.error?.code, 'UNKNOWN_OPERATION');
   }
-  assert.deepEqual(await rpc('workspace.restore.inspect', {}), {restored: false});
+  const tools = await client.listTools();
+  assert.equal(tools.tools.some(tool => tool.name.startsWith('workspace_backup_') || tool.name === 'workspace_restore_inspect'), false);
   const bad = await http('workspace.backup.restore.stage', {requestId: randomUUID(), backupId});
-  assert.equal(bad.status, 400); assert.equal(bad.body.error?.code, 'VALIDATION_ERROR');
+  assert.equal(bad.status, 404); assert.equal(bad.body.error?.code, 'UNKNOWN_OPERATION');
   const download = await request(`/api/workspace-backups/${backupId}/download`);
-  assert.equal(download.status, 409); assert.equal((await download.json()).error.code, 'RESTORE_OPERATION_UNAVAILABLE');
+  assert.equal(download.status, 404); assert.equal((await download.json()).error.code, 'NOT_FOUND');
   const imported = await request(`/api/workspace-backups/import?requestId=${randomUUID()}`, {method: 'POST', headers: {'Content-Type': 'application/vnd.mioon.workspace-backup'}, body: new Uint8Array([1, 2, 3])});
-  assert.equal(imported.status, 409); assert.equal((await imported.json()).error.code, 'RESTORE_OPERATION_UNAVAILABLE');
+  assert.equal(imported.status, 404); assert.equal((await imported.json()).error.code, 'NOT_FOUND');
   assert.deepEqual(await rpc('workspace.settings.get'), disabled); assert.equal((await rpc('project.list') as {id: string}[])[0]!.id, project.id);
   await client.close(); await server.close();
   assert.deepEqual(closedFiles(base), before, 'rejected maintenance leaves every application/project database byte, companion and file unchanged');
 });
 
-test('explicit legacy fixture preserves online backup receipts, bundle import and guarded restart activation', {timeout: 90000}, async t => {
-  const base = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-legacy-workspace-backup-'))), root = path.join(base, 'workspace');
-  let quiescent=false;
-  let legacy = openLegacyWorkspaceConfiguration(root,{backupQuiescent:()=>quiescent});
-  t.after(async () => {await legacy.close(); await rm(base, {recursive: true, force: true});});
-  const project = await legacy.services.call('project.create', {name: 'Backup transport project'}) as {id: string};
-  // Preserve the legacy model/runtime admission fence separately from the
-  // new host's unconditional S7 refusal, including success after settlement.
-  const key = randomUUID();
-  await assert.rejects(legacy.services.call('workspace.backup.create',{requestId:key}),error=>(error as {code?:string}).code==='WORKSPACE_BACKUP_BUSY');
-  assert.deepEqual(await legacy.services.call('workspace.backup.list',{}),[]);
-  quiescent=true;
-  const backup = await legacy.services.call('workspace.backup.create', {requestId: key}) as {id: string};
-  assert.deepEqual(await legacy.services.call('workspace.backup.create', {requestId: key}), backup);
-  assert.deepEqual(await legacy.services.call('workspace.backup.list', {}), [backup]);
-  const chunks: Uint8Array[] = [];
-  for await (const chunk of legacy.services.backups.exportBundle(backup.id)) chunks.push(chunk);
-  const bytes = Buffer.concat(chunks); assert.ok(bytes.length > 100); assert.match(bytes.toString('ascii', 0, 22), /^MIOON-BACKUP-BUNDLE-1\n/);
-  async function* upload() {for(let offset=0;offset<bytes.length;offset+=64*1024)yield bytes.subarray(offset,offset+64*1024);}
-  const importKey = {requestId: randomUUID()}, imported = await legacy.services.backups.importBundle(upload(), importKey);
-  assert.equal(imported.trigger, 'import'); assert.deepEqual(await legacy.services.backups.importBundle(upload(), importKey), imported);
-  await assert.rejects(legacy.services.call('workspace.backup.restore.stage', {requestId: randomUUID(), backupId: backup.id}), error => (error as {code?: string}).code === 'VALIDATION_ERROR');
-  const intent = {requestId: randomUUID(), backupId: backup.id, confirmation: 'RESTORE_BACKUP'}, pending = await legacy.services.call('workspace.backup.restore.stage', intent) as {restartRequired: boolean};
-  assert.equal(pending.restartRequired, true); assert.deepEqual(await legacy.services.call('workspace.backup.restore.stage', intent), pending);
-  await legacy.close();
-  const activation = await resolveWorkspaceActivation(root); assert.notEqual(activation.root, root); assert.equal(activation.restored, true);
-  legacy = openLegacyWorkspaceConfiguration(activation.root);
-  const restored = await legacy.services.call('workspace.restore.inspect', {}) as {restored: boolean; schemaVersion: number};
-  assert.equal(restored.restored, true); assert.equal(restored.schemaVersion, CURRENT_RESTORED_SCHEMA);
-  assert.equal((await legacy.services.call('project.list', {}) as {id: string}[])[0]!.id, project.id);
-});
+

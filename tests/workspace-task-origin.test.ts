@@ -1,61 +1,37 @@
 import { LOCALES, renderMessage } from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { taskWorkspaceBinding, taskListWorkspaceBindings, requireTaskWorkspace } from '../apps/web/src/workspace-task-origin.ts';
-const a = '11111111-1111-4111-8111-111111111111', b = '22222222-2222-4222-8222-222222222222';
-const taskId = '33333333-3333-4333-8333-333333333333', otherTask = '44444444-4444-4444-8444-444444444444';
-const workspace = { restored: true, workspaceOrigin: a };
-const current = { workspaceOrigin: a, executionEpoch: a, held: false };
-const captured = { workspaceOrigin: a, executionEpoch: 'captured', held: true };
+import { validateTaskEnvelope, validateTaskList } from '../apps/web/src/edit-task-client.ts';
+const id = (n: number) => `93000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+const input = { projectId: id(1), expectedRevision: 1, requestId: 'original', trackId: id(2), patch: { muted: true } };
+const task = { id: id(3), projectId: id(1), operation: 'timeline.track.update', input, requestId: input.requestId, digest: 'a'.repeat(64), lane: 'timeline:mutation', status: 'prepared', revision: 1, createdAt: '2026-10-12T00:00:00.000Z', updatedAt: '2026-10-12T00:00:00.000Z', acknowledged: false, origin: 'new' };
+const envelope = { task, instanceId: id(4) };
 
-test('restore context remains outside original task and domain receipt', () => {
-  const task = { id: taskId, origin: 'new', input: { requestId: 'original' }, status: 'applied' };
-  const receipt = { id: otherTask }, envelope = { task, result: receipt, restore: captured };
-  const before = JSON.stringify(envelope), binding = taskWorkspaceBinding(envelope, workspace);
-  assert.deepEqual(binding, captured); assert.ok(Object.isFrozen(binding));
-  assert.equal(JSON.stringify(envelope), before);
-  assert.equal(envelope.task, task); assert.equal(envelope.result, receipt);
-  assert.throws(() => requireTaskWorkspace(binding, workspace), { code: 'RESTORED_RECORD_HELD' });
+test('task domain origin and original input remain exact without outer workspace metadata', () => {
+  const before = structuredClone(envelope), checked = validateTaskEnvelope(envelope, { projectId: id(1), taskId: id(3), input, origin: 'new' });
+  assert.equal(checked, envelope); assert.equal(checked.task, task);
+  assert.equal(checked.task.input, input); assert.deepEqual(envelope, before);
+  assert.equal(validateTaskEnvelope({ ...envelope, task: { ...task, origin: 'legacy_session' } }, { origin: 'legacy_session' }).task.origin, 'legacy_session');
+  assert.throws(() => validateTaskEnvelope(envelope, { origin: 'legacy_session' }), { code: 'BACKEND_PROTOCOL_ERROR' });
 });
-
-test('held and mismatched task epochs never borrow a current inspection origin', () => {
-  assert.deepEqual(requireTaskWorkspace(current, workspace), { expectedWorkspaceOrigin: a });
-  for (const binding of [null, {}, captured, { workspaceOrigin: a, executionEpoch: b, held: true },
-    { workspaceOrigin: a, executionEpoch: 'captured', held: false }, { ...current, workspaceOrigin: b }] as const)
-    assert.throws(() => requireTaskWorkspace(binding, workspace), { code: 'RESTORED_RECORD_HELD' });
-  assert.throws(() => requireTaskWorkspace(current, { restored: true, workspaceOrigin: b }), { code: 'RESTORED_RECORD_HELD' });
-  assert.throws(() => requireTaskWorkspace(current, { restored: false }), { code: 'RESTORED_RECORD_HELD' });
-  assert.deepEqual(requireTaskWorkspace(null, { restored: false }), {});
+test('ordinary task envelopes and lists reject unexpected metadata and foreign project identity', () => {
+  assert.equal(validateTaskEnvelope(envelope), envelope);
+  const page = { items: [task], instanceId: id(4), nextCursor: null };
+  assert.equal(validateTaskList(page, id(1)), page);
+  assert.throws(() => validateTaskEnvelope({ ...envelope, extra: {} }), { code: 'BACKEND_PROTOCOL_ERROR' });
+  assert.throws(() => validateTaskEnvelope(envelope, { projectId: id(9) }), { code: 'BACKEND_PROTOCOL_ERROR' });
+  assert.throws(() => validateTaskList(page, id(9)), { code: 'BACKEND_PROTOCOL_ERROR' });
+  assert.throws(() => validateTaskList({ ...page, extra: {} }, id(1)), { code: 'BACKEND_PROTOCOL_ERROR' });
 });
-
-test('task list restore metadata requires exactly one matching ordered context per row', () => {
-  const items = [{ id: taskId }, { id: otherTask }];
-  const restore = { workspaceOrigin: a, tasks: [{ taskId, executionEpoch: 'captured', held: true }, { taskId: otherTask, executionEpoch: a, held: false }] };
-  const contexts = taskListWorkspaceBindings({ items, restore }, workspace);
-  assert.deepEqual(contexts.get(taskId), captured); assert.deepEqual(contexts.get(otherTask), current);
-  for (const broken of [undefined, { ...restore, workspaceOrigin: b }, { ...restore, tasks: restore.tasks.slice(0, 1) },
-    { ...restore, tasks: [...restore.tasks].reverse() }, { ...restore, tasks: [restore.tasks[0], restore.tasks[0]] }] as const)
-    assert.throws(() => taskListWorkspaceBindings({ items, restore: broken }, workspace), { code: 'BACKEND_PROTOCOL_ERROR' });
-});
-
-test('ordinary task envelopes cannot silently become restored, and missing restored metadata fails closed', () => {
-  assert.equal(taskWorkspaceBinding({ task: {} }, { restored: false }), null);
-  assert.equal(taskListWorkspaceBindings({ items: [] }, { restored: false }).size, 0);
-  assert.throws(() => taskWorkspaceBinding({ task: {}, restore: current }, { restored: false }), { code: 'BACKEND_PROTOCOL_ERROR' });
-  assert.throws(() => taskWorkspaceBinding({ task: {} }, workspace), { code: 'BACKEND_PROTOCOL_ERROR' });
-  assert.throws(() => taskWorkspaceBinding({ task: {}, restore: current }, null), { code: 'WORKSPACE_ORIGIN_UNVERIFIED' });
-  assert.throws(() => taskListWorkspaceBindings({ items: [], restore: { workspaceOrigin: a, tasks: [] } }, null), { code: 'WORKSPACE_ORIGIN_UNVERIFIED' });
-});
-
-
-test('invalid task workspace identity preserves exact diagnostic and localizes retained-request guidance without changing envelope', () => {
-  const envelope = { task: { id: taskId, input: { requestId: 'original', title: '日本語 繁體 <literal>' } } }, before = structuredClone(envelope);
-  let failure!:Error&{code:string;displayMessage:import('../packages/i18n/src/index.ts').DisplayMessage}; try { taskWorkspaceBinding(envelope, workspace); } catch (error) { failure = error as typeof failure; }
+test('invalid task response preserves diagnostic and localized retained-request guidance without changing input', () => {
+  const broken = { ...envelope, task: { ...task, input: { ...input, requestId: '日本語 繁體 <literal>' } } }, before = structuredClone(broken);
+  let failure!: Error & {code: string; displayMessage: import('../packages/i18n/src/index.ts').DisplayMessage};
+  try { validateTaskEnvelope(broken); } catch (error) { failure = error as typeof failure; }
   assert.equal(failure.code, 'BACKEND_PROTOCOL_ERROR');
-  assert.equal(failure.message, '任务工作区身份确认无效，原编号和参数仍保留。');
-  assert.equal(failure.displayMessage.key, 'recovery.workspace.taskProtocol');
+  assert.equal(failure.message, '任务确认无效。原请求仍保留，请重新核对任务；不会自动重试。');
+  assert.equal(failure.displayMessage.key, 'tasks.localError.taskProtocol');
   assert.equal(new Set(LOCALES.map(locale => renderMessage(locale, failure.displayMessage))).size, 4);
-  assert.match(renderMessage('en', failure.displayMessage), /original ID and parameters are retained/);
-  assert.match(renderMessage('en', failure.displayMessage), /do not create a replacement request/);
-  assert.deepEqual(envelope, before);
+  assert.match(renderMessage('en', failure.displayMessage), /original request/);
+  assert.match(renderMessage('en', failure.displayMessage), /not|never/i);
+  assert.deepEqual(broken, before);
 });

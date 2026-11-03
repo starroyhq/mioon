@@ -16,7 +16,6 @@ import * as settings from '../apps/web/src/generation-settings.ts';
 import * as subjectVideo from '../apps/web/src/subject-video.ts';
 import * as subjectState from '../apps/web/src/subject-state.ts';
 import * as submissions from '../apps/web/src/submissions.ts';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
 import * as api from '../apps/web/src/api.ts';
 import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
 import { referenceForShot } from '../apps/web/src/reference-connections.ts';
@@ -77,8 +76,8 @@ const slots: HookSlot[] = [], modules = new Map<string,{default:(props:Record<st
       if (['./AssetAnnotations.tsx', './CanvasOverview.tsx', './BoardInspectorGroup.tsx', './VersionCardPreview.tsx', './TaskRenderList.tsx'].includes(name)) return { default: name, __esModule: true };
       if (name === './image-generation.ts') return { imageEditSourceIssueDescriptor };
       if (name === './TaskWorkspace.tsx') return load('TaskWorkspace.tsx');
-      if (name === './local-shot-text-state.ts') return { useLocalShotText: ({context}:{context:{restored:boolean}}) => {
-        assert.equal(context.restored, true, 'This legacy Inspector fixture has no shot-text context');
+      if (name === './local-shot-text-state.ts') return { useLocalShotText: ({context}:{context:{connected:boolean}}) => {
+        assert.equal(context.connected, false, 'An Inspector without shot-text context cannot claim a connected persistence owner');
         return { state: {}, controller: { setContext() {} } };
       }, mergeFreshShotTextAck: () => { assert.fail('No shot-text acknowledgement is expected in this fixture'); } };
       if (name === './ShotTextDraftRecovery.tsx') return { default: 'ShotTextDraftRecovery', __esModule: true };
@@ -92,7 +91,7 @@ const slots: HookSlot[] = [], modules = new Map<string,{default:(props:Record<st
       if (name === './use-subjects.ts') return load('use-subjects.ts');
       if (name === './api.ts') return api;
       if (name === './submissions.ts') return submissions;
-      if (name === './workspace-origin.ts') return workspaceOrigin;
+
       if (name === './reference-connections.ts') return { referenceForShot };
       if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => h.visible };
       if (name === '@mioon/ui/components/workbench-confirm') return { useConfirmation: () => async () => true };

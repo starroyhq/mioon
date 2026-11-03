@@ -300,7 +300,7 @@ for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name ch
     const deliveryNameRef = { current: { controller: delivery } }, confirmation = deferred(), checks: (unknown)[] = [];
     let epoch = 1;
     const getLocalContext = () => ({ scope: `${projectId}:${epoch}`, projectId, timelineId, timelineRevision: 1,
-      restored: false, connected: true, visible: true, busy: false,
+       connected: true, visible: true, busy: false,
       deliveryName: deliveryNameRef.current.controller.getName(context().scope),
       nameVersion: deliveryNameRef.current.controller.getVersion(context().scope), dirty: deliveryNameRef.current.controller.hasUnsaved() });
     const makeLocalController = () => {
@@ -370,7 +370,7 @@ test('newer delivery title during joint confirmation preserves dirty inspector, 
   const f = fixture(); await f.ready(); assert.equal(f.controller.choose('landscape_1080'), true);
   const delivery = deliveryNameController(); assert.equal(delivery.choose('First delivery', context().scope), true);
   const getLocalContext = () => ({ scope: context().scope, projectId, timelineId, timelineRevision: 1,
-    restored: false, connected: true, visible: true, busy: false, deliveryName: delivery.getName(context().scope),
+     connected: true, visible: true, busy: false, deliveryName: delivery.getName(context().scope),
     nameVersion: delivery.getVersion(context().scope), dirty: delivery.hasUnsaved() });
   const local = createLocalDeliveryController({ context: getLocalContext(), getContext: getLocalContext,
     isRenderInput: value => contracts.schemas['timeline.render'].safeParse(value).success,

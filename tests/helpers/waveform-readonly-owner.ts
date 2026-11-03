@@ -1,4 +1,4 @@
-import {openStore} from '../../packages/business/src/db.ts';
+import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 import {onMediaProcess} from '../../packages/business/src/media-processes.ts';
 
 const [root,serialized]=process.argv.slice(2);

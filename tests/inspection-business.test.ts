@@ -1,9 +1,11 @@
+
+
 import type {SQLInputValue} from 'node:sqlite';
 import type {TypedInspection} from './helpers/strict-service-responses.ts';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
-import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
+
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp, rm} from 'node:fs/promises';
@@ -13,7 +15,7 @@ import {parse} from '@mioon/contracts';
 import {openStore, createServices, createInspectionServices, INSPECTION_OPERATIONS, INSPECTION_LIMITS} from '@mioon/business';
 import type { FixtureProject } from './helpers/strict-timeline-core-types.ts';
 import {schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
-import {openLegacyWorkspaceStore as openHistoricalWorkspaceStore} from '../packages/business/src/db.ts';
+
 
 const at = '2026-10-09T00:00:00.000Z';
 const unsafe = {relativePath: '/private/secret', path: '/private/path', url: 'https://unsafe.invalid/media', dataBase64: 'PRIVATE_BYTES',
@@ -282,25 +284,7 @@ test('indexed reverse ownership and scoped pagination avoid unrelated-project sc
   assert.equal(result.items[0].id, a.id); assert.equal(materialized, 2);
 });
 
-test('additive inspection index migration tolerates malformed and huge legacy version JSON without rewriting records', async t => {
-  const root = await mkdtemp(path.join(tmpdir(), 'mioon-inspection-migration-'));
-  let store = openLegacyWorkspaceStore(root);
-  t.after(async () => {store.close(); await rm(root, {recursive: true, force: true});});
-  const projectId = randomUUID(); store.put('projects', {id: projectId, name: 'Legacy', description: '', revision: 1});
-  for (const data of ['{invalid', JSON.stringify({padding: 'x'.repeat(70000)}), ...[{private: 'object'}, ['array'], 'x'.repeat(60000), `${randomUUID()}\u0000${'x'.repeat(50000)}`, 123].map(assetId => JSON.stringify({assetId}))]) {
-    const jobId = randomUUID(); store.put('jobs', {id: jobId, projectId});
-    store.db.prepare('INSERT INTO versions(id,projectId,jobId,data) VALUES(?,?,?,?)').run(randomUUID(), projectId, jobId, data);
-  }
-  const before = store.db.prepare('SELECT * FROM versions ORDER BY id').all();
-  for (const row of store.db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'inspection_%'").all()) store.db.exec(`DROP INDEX ${row.name}`);
-  store.db.exec('DELETE FROM schema_version WHERE version=7');
-  store.close(); store = openHistoricalWorkspaceStore(root);
-  assert.deepEqual(store.db.prepare('SELECT * FROM versions ORDER BY id').all(), before);
-  const {INSPECTION_VERSION_ASSET_EXPRESSION} = await import('../packages/business/src/inspection-query.ts');
-  assert.ok(store.db.prepare(`SELECT ${INSPECTION_VERSION_ASSET_EXPRESSION} AS assetKey FROM versions`).all().every(row => row.assetKey === null));
-  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM schema_version WHERE version=7').get()!.n, 1);
-  assert.equal(store.db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='index' AND name LIKE 'inspection_%'").get()!.n, 9);
-});
+
 
 test('historical connection and optional clip relation IDs are deeply checked without requiring deleted edges', async t => {
   for (const scenario of ['sourceAssetId', 'sourceNodeId', 'foreign-edge', 'edge-foreign-asset', 'edge-foreign-node', 'edge-mismatched-asset', 'deleted-edge', 'clip-aliased-job', 'clip-wrong-shot']) await t.test(scenario, async t => {

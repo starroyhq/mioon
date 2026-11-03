@@ -12,8 +12,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import type {WorkspaceSettings} from '../packages/contracts/src/workspace-configuration.ts';
 
 function patch(settings: WorkspaceSettings) {
-  return {expectedRevision: settings.revision, liveGeneration: !settings.liveGeneration, automaticBackup: settings.automaticBackup,
-    backupIntervalHours: settings.backupIntervalHours, backupLocation: settings.backupLocation};
+  return {expectedRevision: settings.revision, liveGeneration: !settings.liveGeneration};
 }
 function fixture(t: TestContext) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-app-write-'));
@@ -37,8 +36,7 @@ function fixture(t: TestContext) {
 
 test('project and configuration writes use application admission independently of the legacy backup port', async t => {
   const f = fixture(t), before = f.ports.configuration.get();
-  let backupGuardCalls = 0;
-  f.ports.backups.assertMutationAllowed = () => {backupGuardCalls++; throw new Error('Legacy backup admission must not own application writes');};
+  assert.equal(Object.hasOwn(f.ports, 'backups'), false, 'application admission exposes no retired backup port');
   assert.doesNotThrow(() => f.services.assertMutationAllowed());
   const shot = await f.services.call('shot.create', f.shot()) as {id: string};
   assert.ok(f.store.get('shots', shot.id));
@@ -46,8 +44,8 @@ test('project and configuration writes use application admission independently o
   assert.equal(settings.revision, before.revision + 1);
   assert.equal(settings.liveGeneration, !before.liveGeneration);
   assert.ok(f.library.documents.read('workspace-settings-v1.json'));
-  assert.equal(backupGuardCalls, 0);
-  await assert.rejects(f.services.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
+  assert.equal(Object.hasOwn(f.services, 'backups'), false);
+  await assert.rejects(f.services.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'UNKNOWN_OPERATION'});
 });
 
 test('a kernel cannot substitute a backup port for missing application write admission', t => {

@@ -2,7 +2,7 @@
 import {open} from 'node:fs/promises';
 import type {FileHandle} from 'node:fs/promises';
 import path from 'node:path';
-import {createClient, workspaceOriginOptions, discoverSchema, schemas, splitProjectAddress, ClientError, errorEnvelope, errorExitCode, successEnvelope, VERSION, EXIT_CODES} from '@mioon/client';
+import {createClient, discoverSchema, schemas, splitProjectAddress, ClientError, errorEnvelope, errorExitCode, successEnvelope, VERSION, EXIT_CODES} from '@mioon/client';
 import {downloadAsset} from '@mioon/client/download';
 import {exportProjectPackage,importProjectPackage,duplicateProject} from '@mioon/client/project-package';
 import {importLutFile, LutImportFileError} from './lut-import-file.ts';
@@ -87,11 +87,14 @@ try {
   const agent=isAgentCommand(words),agentSchema=words[0]==='schema'&&(words[1]==='agent'&&words[2]!=='authorization'||words[1]?.startsWith('agent.')&&!words[1].startsWith('agent.authorization.'));
   if(agent)validateAgentOptions(operation,options);
   else if(['key-stdin','key-file','storage','live'].some(name=>Object.hasOwn(options,name)))fail('This option is only supported by Agent management commands.');
-  const invocation = Object.freeze(workspaceOriginOptions(optionText(options['workspace-origin'])));
   let data: unknown;
   if (options.version) data = {name: 'mioon', version: VERSION};
   else if (options.help || words.length === 0) data = agent?agentCommandHelp(operation):localizeHelp(help(Object.hasOwn(schemas, operation) ? operation : undefined, {VERSION, EXIT_CODES, discoverSchema, schemas}), locale);
   else {
+    // Reject unknown/retired operations before reading input or initializing storage.
+    if (!agent && !agentSchema && words[0] !== 'schema' && !Object.hasOwn(schemas, operation) &&
+      !['doctor', 'capabilities', 'job.watch', 'export.watch', 'asset.download', 'export.download', 'project.export', 'project.import', 'project.duplicate'].includes(operation))
+      throw new ClientError('UNKNOWN_OPERATION', 'Unknown command. Run --help or schema for available operations.');
     if(words[0]!=='schema'){const {initializeNodePrivateStorage}=await import('@mioon/node-host/private-storage-bootstrap');await initializeNodePrivateStorage();}
     let input = await inputFor(options);
     if(agent)data=await runAgentCommand(operation,input,options,{signal:abort.signal,redact:value=>{if(value)sensitive.push(value);}});
@@ -112,7 +115,7 @@ try {
       const selected = words.slice(1).join('.'); data = discoverSchema(selected ? {operation: selected} : {});
     } else if (operation === 'doctor' || operation === 'capabilities') {
       if (Object.keys(input).length) fail(`${operation} does not accept input fields.`);
-      data = await client[operation]({signal: abort.signal, ...invocation});
+      data = await client[operation]({signal: abort.signal});
     } else if (watch) {
       let previous: string | undefined;
       const kind = operation.split('.')[0] as 'job' | 'export', watched = splitProjectAddress(`${kind}.get`, input);
@@ -131,7 +134,7 @@ try {
       const projectId = input.projectId;
       if (operation === 'export.download') {
         const exported = splitProjectAddress('export.get', input);
-        const record = await client.rpc('export.get', exported.input, {signal: abort.signal, ...invocation, ...(exported.projectId === undefined ? {} : {projectId: exported.projectId})}) as {id?: unknown; status?: unknown; assetId?: unknown};
+        const record = await client.rpc('export.get', exported.input, {signal: abort.signal, ...(exported.projectId === undefined ? {} : {projectId: exported.projectId})}) as {id?: unknown; status?: unknown; assetId?: unknown};
         if (record.status !== 'succeeded' || !record.assetId) throw new ClientError('EXPORT_NOT_READY', 'Export is not ready. Use export watch before downloading.', {details: {exportId: record.id, status: record.status}});
         assetId = record.assetId;
       } else if (Object.keys(input).some(key => key !== 'assetId' && key !== 'projectId')) fail('asset download only accepts projectId and assetId.');
@@ -148,7 +151,7 @@ try {
         } else input = await importFile(input, file);
       }
       const addressed = splitProjectAddress(operation, input);
-      data = await client.rpc(operation, addressed.input, {signal: abort.signal, ...invocation, ...(addressed.projectId === undefined ? {} : {projectId: addressed.projectId})});
+      data = await client.rpc(operation, addressed.input, {signal: abort.signal, ...(addressed.projectId === undefined ? {} : {projectId: addressed.projectId})});
     }
     }
   }

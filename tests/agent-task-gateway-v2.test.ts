@@ -16,7 +16,7 @@ import {agentChatHttpStatus,agentChatStreamError,agentChatStreamReason,annotateA
 import {buildTaskModelRequest,createTaskGateway,parseTaskArguments,taskContinuation,taskResponseLanguageContext,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {AGENT_TASK_LOCALES} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {TaskModelOutput,TaskToolDefinition} from '../packages/business/src/agent/task-gateway-v2.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {schemas} from '../packages/contracts/src/index.ts';

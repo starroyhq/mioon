@@ -12,7 +12,7 @@ import {readdirSync,writeFileSync,renameSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {TIMELINE_EXPORT_DEFAULT_SETTINGS,isTimelineRenderRecord,isExportPreflightResponse,hasRequestNotAppliedProof} from '@mioon/contracts';
-import { openStore } from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
 import {createServices,hash, type OrdinaryServices} from '../packages/business/src/services.ts';
 import {createTimelinePreflightServices,timelineSnapshotHash} from '../packages/business/src/timeline-preflight.ts';

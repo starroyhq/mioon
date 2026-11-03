@@ -7,7 +7,6 @@ import { pathToFileURL } from 'node:url';
 import { transformSync } from 'esbuild';
 import { isTimelineMutationResponse } from '@mioon/contracts';
 import { createEditTaskClient, isDurableEditOperation } from '../apps/web/src/edit-task-client.ts';
-import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 import { createEditTaskController } from '../apps/web/src/edit-task-controller.ts';
 
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
@@ -115,7 +114,7 @@ async function harness(t: import('node:test').TestContext, { lose = 'execute' }:
   const env: Record<string, unknown> = {
     application: null, clipDraftRef: { current: null }, trackLocksRef: { current: {} }, touchesLockedTrack, setSubjectRefresh: () => undefined, msg: messageKey,
     localizedError: (value: never) => Object.assign(new Error(renderMessage('zh-Hans', value)), { displayMessage: value }),
-    workspaceOriginScope, workspaceRef: { current: { restored: false } }, preferenceScope: { current: 'a'.repeat(64) },
+    editorSession: {current: 'normal'}, workspaceRef: { current: {  } }, preferenceScope: { current: 'a'.repeat(64) },
     lastProjectRef: { current: { getState: () => ({ identityBlocked: false }) } }, timelineLoudnessApplyRecoveryScope: currentApplyState.timelineLoudnessApplyRecoveryScope, isDurableEditOperation, isTimelineMutationResponse, submitTimelineLoudnessApply, tasksRef: { current: tasks }, currentProject, dataRef,
     nativeCloseRegistry: { current: registry }, timelineLoudnessApplyRef: { current: null },
     timelineMixLoudness: { controller: observation.controller }, timelineMixLoudnessContext: () => { contextReads++; return observation.live(); }, timelineMixLoudnessViewState,
@@ -138,7 +137,7 @@ async function harness(t: import('node:test').TestContext, { lose = 'execute' }:
     holdAcknowledgement() { ackGate = { started: deferred(), wait: deferred() }; return ackGate; },
     reads: () => contextReads, confirms, requestKeys: () => requestKeys,
     holdConfirmation() { confirmGate = { started: deferred(), wait: deferred() }; return confirmGate; },
-    scope: () => currentApplyState.timelineLoudnessApplyRecoveryScope((env.preferenceScope as {current: string}).current, workspaceOriginScope((env.workspaceRef as {current: {restored: boolean}}).current)),
+    scope: () => currentApplyState.timelineLoudnessApplyRecoveryScope((env.preferenceScope as {current: string}).current),
     setStorage(scope: string | null, blocked = false) { (env.preferenceScope as {current: string | null}).current = scope; (env.lastProjectRef as {current: unknown}).current = { getState: () => ({ identityBlocked: blocked }) }; },
     async navigate(nextProject: string = id(90), scope: string = `${nextProject}:2:normal`) { currentProject.current = nextProject; epoch++; observation.set({ projectId: nextProject, scope, pending: false }); dataRef.current = { ...dataRef.current, project: { id: nextProject } }; await tasks.load(nextProject); return h.render(); },
     unload() { let prevented = false; const event = { preventDefault() { prevented = true; }, returnValue: undefined }; return { allowed: admission.beforeUnload(event), prevented }; },

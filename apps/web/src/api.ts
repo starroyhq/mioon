@@ -2,8 +2,6 @@ import { readTimelineClipLoudnessRpc } from './timeline-clip-loudness-rpc.ts';
 import type { TimelineClipLoudnessWireOptions } from './timeline-clip-loudness-rpc.ts';
 import { isTimelineClipLoudnessResponse } from '@mioon/contracts/timeline-clip-loudness';
 import { readLoudnessApplyRpc } from './timeline-loudness-apply-rpc.ts';
-import { isWorkspaceRestoreInspection } from '@mioon/contracts';
-import { workspaceOriginOptions } from './workspace-origin.ts';
 import { readTimelineMixLoudnessRpc } from './timeline-mix-loudness-rpc.ts';
 import type { TimelineMixLoudnessWireOptions } from './timeline-mix-loudness-rpc.ts';
 import { isTimelineMixLoudnessResponse } from '@mioon/contracts/timeline-mix-loudness';
@@ -13,7 +11,6 @@ import { rpcPathFor } from '../../../packages/contracts/src/project-addressing.t
 export type RpcFetcher = typeof fetch;
 export interface RpcOptions {
   readonly signal?: AbortSignal;
-  readonly expectedWorkspaceOrigin?: unknown;
   readonly fetcher?: RpcFetcher;
   /** Addresses the entity-addressed operations, whose input names no project. */
   readonly projectId?: string | null;
@@ -46,13 +43,12 @@ export class ApiError extends Error {
   }
 }
 
-export async function rpc<T = unknown>(operation: string, input: unknown = {}, { signal, expectedWorkspaceOrigin, fetcher = (...args: Parameters<RpcFetcher>): ReturnType<RpcFetcher> => fetch(...args), projectId }: RpcOptions = {}): Promise<T> {
-  const invocation = workspaceOriginOptions(expectedWorkspaceOrigin);
+export async function rpc<T = unknown>(operation: string, input: unknown = {}, { signal, fetcher = (...args: Parameters<RpcFetcher>): ReturnType<RpcFetcher> => fetch(...args), projectId }: RpcOptions = {}): Promise<T> {
   let path: string;
   try { path = rpcPathFor(operation, input, projectId ?? undefined); }
   catch { throw new ApiError('The request has no valid project address.', 'VALIDATION_ERROR', {}, true); }
-  const mix = (operation === 'timeline.clip.loudness' ? await readTimelineClipLoudnessRpc(input, { ...invocation, signal, fetch: fetcher } as TimelineClipLoudnessWireOptions) : operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc(path, { operation, input, ...invocation }, { signal, fetcher }) : operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessRpc(input, { ...invocation, signal, fetch: fetcher } as TimelineMixLoudnessWireOptions) : null) as LoudnessRpcResult | null;
-  const response = mix?.response ?? await fetcher(path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input, ...invocation }), ...(signal ? { signal } : {}) });
+  const mix = (operation === 'timeline.clip.loudness' ? await readTimelineClipLoudnessRpc(input, { signal, fetch: fetcher } as TimelineClipLoudnessWireOptions) : operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc(path, { operation, input }, { signal, fetcher }) : operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessRpc(input, { signal, fetch: fetcher } as TimelineMixLoudnessWireOptions) : null) as LoudnessRpcResult | null;
+  const response = mix?.response ?? await fetcher(path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input }), ...(signal ? { signal } : {}) });
   let body: unknown;
   try { body = mix ? mix.body : await response.json(); } catch { throw protocolError(); }
   if (!isRecord(body) || typeof body.ok !== 'boolean' ||
@@ -61,12 +57,8 @@ export async function rpc<T = unknown>(operation: string, input: unknown = {}, {
   if (!response.ok || !body.ok) {
     const errorBody: RpcErrorBody = isRecord(body.error) ? body.error : {};
     const code = typeof errorBody.code === 'string' ? errorBody.code : undefined;
-    const restricted = code !== undefined && ['RESTORE_OPERATION_UNAVAILABLE', 'RESTORED_RECORD_HELD', 'RESTORE_WORKSPACE_ORIGIN_REQUIRED', 'RESTORE_WORKSPACE_ORIGIN_MISMATCH', 'RESTORE_BACKUP_UNAVAILABLE'].includes(code);
-    const details = isRecord(errorBody.details) ? { ...errorBody.details } : restricted ? {} : errorBody.details;
-    if (restricted && isRecord(details)) { delete details.mutationOutcome; delete details.frameOutcome; delete details.observation; }
-    throw new ApiError(typeof errorBody.message === 'string' && errorBody.message ? errorBody.message : '请求未完成', response.status === 401 ? 'UNAUTHORIZED' : code, details, !restricted && response.status >= 400 && response.status < 500, response.status);
+    throw new ApiError(typeof errorBody.message === 'string' && errorBody.message ? errorBody.message : '请求未完成', response.status === 401 ? 'UNAUTHORIZED' : code, errorBody.details, response.status >= 400 && response.status < 500, response.status);
   }
-  if (operation === 'workspace.restore.inspect' && !isWorkspaceRestoreInspection(body.data)) throw new ApiError('工作区身份核对返回无效数据。', 'BACKEND_PROTOCOL_ERROR');
   if (operation === 'timeline.loudness.prepare' && !isTimelineMixLoudnessResponse(body.data, input)) throw new ApiError('整片混音测量响应与本次请求不匹配。', 'BACKEND_PROTOCOL_ERROR');
   if (operation === 'timeline.clip.loudness' && !isTimelineClipLoudnessResponse(body.data, input)) throw new ApiError('Invalid saved-clip loudness response.', 'BACKEND_PROTOCOL_ERROR');
   return body.data as T;

@@ -200,7 +200,7 @@ export function createTimelineColourSourceServices(store:{db:DatabaseSync;root:s
     catch(error){
       if(owner.shutdownFailure)throw owner.shutdownFailure;if(timedOut)throw fault('TIMELINE_COLOUR_SOURCE_TIMEOUT',503);
       const cause=fencedFailure??error,code=object(cause)&&typeof cause.code==='string'?cause.code:'';
-      if(code==='RESTORE_OPERATION_UNAVAILABLE'||code==='OPERATION_CANCELLED'||code.startsWith('TIMELINE_COLOUR_SOURCE_'))throw cause;
+      if(code==='PROJECT_STORE_UNVERIFIED'||code==='OPERATION_CANCELLED'||code.startsWith('TIMELINE_COLOUR_SOURCE_'))throw cause;
       if(code==='MEDIA_CANCELLED')throw fault('OPERATION_CANCELLED',503);if(code==='MEDIA_TIMEOUT')throw fault('TIMELINE_COLOUR_SOURCE_TIMEOUT',503);
       if(code.startsWith('MANAGED_'))throw fault('TIMELINE_COLOUR_SOURCE_STALE');throw fault('TIMELINE_COLOUR_SOURCE_INVALID_PROBE');
     }finally{controller.abort();}

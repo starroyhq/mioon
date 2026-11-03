@@ -1,3 +1,6 @@
+
+
+
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
@@ -6,14 +9,12 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {projectAgentTaskChangeDisplay} from '../packages/business/src/agent/task-display-v2.ts';
 import {taskRunRecordMessage,TASK_RUN_RECORD_BYTES,TASK_RUN_RECORD_KIND} from '../packages/business/src/agent/task-run-record-v2.ts';
 import type {TaskRunRecordInput} from '../packages/business/src/agent/task-run-record-v2.ts';
 import type {AgentTaskJson,AgentTaskLocale,AgentTaskStatus} from '../packages/contracts/src/agent-tasks-v2.ts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 
 const stamp='2026-10-28T00:00:00.000Z';
@@ -22,7 +23,7 @@ const marker='SYNTHETIC_PRIVATE_PAYLOAD_NOT_MODEL_CONTEXT';
 function object(value:unknown):Record<string,unknown>{assert.ok(value!==null&&typeof value==='object'&&!Array.isArray(value));return value as Record<string,unknown>;}
 function content(value:AgentTaskJson):Record<string,unknown>{const message=object(value);assert.equal(message.role,'user');assert.equal(typeof message.content,'string');const body=object(JSON.parse((message.content as string).split('\n').slice(1).join('\n')));assert.equal(body.kind,TASK_RUN_RECORD_KIND);return object(body.data);}
 function freeze<T>(value:T):T{if(value!==null&&typeof value==='object'){for(const item of Object.values(value))freeze(item);Object.freeze(value);}return value;}
-function fixture(t:TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){const base=mkdtempSync(join(realpathSync(tmpdir()),'mioon-h1d-record-')),root=join(base,'source'),store=opener(root),projectId=isProjectStore(store)?store.projectId:randomUUID();store.put('projects',{id:projectId,name:'Context records',revision:1,createdAt:stamp,updatedAt:stamp});t.after(()=>{store.close();rmSync(base,{recursive:true,force:true});});return {base,root,store,projectId,journal:createAgentTaskJournal(store)};}
+function fixture(t:TestContext,opener:typeof openStore=openStore){const base=mkdtempSync(join(realpathSync(tmpdir()),'mioon-h1d-record-')),root=join(base,'source'),store=opener(root),projectId=isProjectStore(store)?store.projectId:randomUUID();store.put('projects',{id:projectId,name:'Context records',revision:1,createdAt:stamp,updatedAt:stamp});t.after(()=>{store.close();rmSync(base,{recursive:true,force:true});});return {base,root,store,projectId,journal:createAgentTaskJournal(store)};}
 function createRun(f:ReturnType<typeof fixture>,text:string,conversationId?:string){return f.journal.create({projectId:f.projectId,requestId:randomUUID(),text,configuration:{protocol:'responses'},...(conversationId?{conversationId}:{}),context:[{role:'user',content:marker}]}).run;}
 function endRun(f:ReturnType<typeof fixture>,runId:string,status:AgentTaskStatus,reason?:string){return f.journal.transition(runId,f.journal.run(runId).revision,status,reason);}
 function model(f:ReturnType<typeof fixture>,runId:string,text:string){const history:AgentTaskJson[]=[{role:'user',content:f.journal.run(runId).text}],body=JSON.stringify({model:'synthetic',input:history,metadata:{privatePayload:marker.repeat(6000)}}),notes=f.journal.run(runId).notes?.filter(note=>!note.modelStepId).map(note=>note.requestId)??[];const step=f.journal.beginModelStep(runId,{request:{body,history}},notes);f.journal.markDispatch(runId,step.id);return f.journal.completeStep(runId,step.id,{result:{text,toolCalls:[],providerOutput:[{type:'message',role:'assistant',content:[{type:'output_text',text}],privatePayload:marker.repeat(6000)}]}});}
@@ -107,8 +108,15 @@ test('narrow JSON projections preserve exact UTF16 conversation text and A6 name
  assert.deepEqual({text:actual.text,notes:actual.notes,finalText:actual.finalText,targets:saved.map(change=>actual.record.changes.items.find(item=>item.id===change.id)!.targets)},{text:raw.text,notes:raw.notes!.map(note=>note.text),finalText:object(reply.result).text,targets:saved.map(change=>projectAgentTaskChangeDisplay(change).targets)});
 });
 
-test('a legacy nontext last completed model reply does not select an older text reply',t=>{
- const f=fixture(t,openLegacyWorkspaceStore),run=createRun(f,'Completed reply selection');model(f,run.id,'An older reply must stay absent');const last=f.journal.beginStep(run.id,{kind:'model'});f.journal.completeStep(run.id,last.id,{result:{text:7}});endRun(f,run.id,'completed');assert.equal(f.journal.modelContextRuns(f.projectId,run.conversationId!)[0]!.finalText,undefined);
+test('a malformed reply is refused atomically and a last completed reply without text never selects older text',t=>{
+ const f=fixture(t),run=createRun(f,'Completed reply selection');model(f,run.id,'An older reply must stay absent');
+ const history:AgentTaskJson[]=[{role:'user',content:run.text}],body=JSON.stringify({model:'synthetic',input:history});
+ const last=f.journal.beginModelStep(run.id,{request:{body,history}},[]);f.journal.markDispatch(run.id,last.id);
+ const before=f.journal.snapshot(run.id);
+ assert.throws(()=>f.journal.completeStep(run.id,last.id,{result:{text:7}}),{code:'AGENT_TASK_STORAGE_CORRUPT'});
+ assert.deepEqual(f.journal.snapshot(run.id),before);
+ f.journal.completeStep(run.id,last.id,{result:{text:'',toolCalls:[],providerOutput:[]}});endRun(f,run.id,'completed');
+ assert.equal(f.journal.modelContextRuns(f.projectId,run.conversationId!)[0]!.finalText,'');
 });
 
 test('late background states and Changes are read locally at send time while the earlier frozen record stays unchanged',t=>{
@@ -129,8 +137,8 @@ test('recent candidate limits keep honest omission counts and applied versus rev
  const result=f.journal.modelContextRuns(f.projectId,run.conversationId!)[0]!;assert.equal(result.record.changes.total,70);assert.equal(result.record.changes.items.length,64);assert.equal(result.record.changes.items[0]!.id,saved.at(-1)!.id);assert.equal(result.record.changes.items[0]!.status,'reverted');assert.equal(result.record.changes.items[1]!.status,'applied');assert.equal(result.record.skipped.total,70);assert.equal(result.record.skipped.items.length,64);assert.equal(result.record.skipped.items[0]!.id,id(3069));const data=content(taskRunRecordMessage(result.record,'en'));assert.equal(data.status,'reverted');assert.ok(Number(object(data.omitted).changes)>=6);assert.ok(Number(object(data.omitted).skippedTargets)>=6);
 });
 
-test('restored workspace can read cross-run context without writes or recovery',async t=>{
- const f=fixture(t,openLegacyWorkspaceStore),run=createRun(f,'A failed historical request');endRun(f,run.id,'failed','AGENT_CHAT_LIMIT');f.store.close();const backup=join(f.base,'backup'),restored=join(f.base,'restored');await createWorkspaceBackup({source:f.root,destination:backup});await restoreWorkspaceBackup({directory:backup,destination:restored});const store=openLegacyWorkspaceStore(restored);try{
+test('reopened kernel reads cross-run context without writes or recovery',async t=>{
+ const f=fixture(t),run=createRun(f,'A failed historical request');endRun(f,run.id,'failed','AGENT_CHAT_LIMIT');f.store.close();const store=openStore(f.root);try{
   const journal=createAgentTaskJournal(store),before=Number(store.db.prepare('SELECT total_changes() AS n').get()!.n),result=journal.modelContextRuns(f.projectId,run.conversationId!);assert.equal(result[0]!.status,'failed');assert.equal(result[0]!.record.failureCode,'AGENT_CHAT_LIMIT');assert.equal(Number(store.db.prepare('SELECT total_changes() AS n').get()!.n),before);
  }finally{store.close();}
 });

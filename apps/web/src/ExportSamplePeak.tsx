@@ -23,7 +23,7 @@ export default function ExportSamplePeak({ exportId, samplePeak }: ExportSampleP
   const status = selected ? exportSamplePeakStatusMessage(state, locale) : '';
   return <section className="export-sample-peak" data-testid="export-sample-peak" aria-label={t('audio.loudness.peak.label')}>
     <strong className="export-sample-peak-label">{t('audio.loudness.peak.label')}</strong>
-    {state.restored ? <p data-testid="export-sample-peak-unavailable">{t('audio.loudness.peak.restored')}</p> : <div className="export-sample-peak-actions">
+    {<div className="export-sample-peak-actions">
       <Button variant="ghost" type="button" className="button quiet small" data-testid="export-sample-peak-check" disabled={busy || !state.connected || !state.visible}
         aria-label={`${selected && state.phase !== 'idle' ? t('audio.loudness.peak.checkAgain') : t('audio.loudness.peak.check')}${t('audio.loudness.peak.label')}`} aria-describedby={statusId} onClick={() => { void controller.check(target, state.scope); }}>
         {selected && state.phase !== 'idle' ? t('audio.loudness.peak.checkAgain') : t('audio.loudness.peak.check')}
@@ -37,7 +37,7 @@ export default function ExportSamplePeak({ exportId, samplePeak }: ExportSampleP
         {ready.measurement.overFullScale && <p className="notice warning" data-testid="export-sample-peak-warning">{t('audio.loudness.peak.warning')}</p>}
         <p>{t('audio.loudness.peak.checked')}<time dateTime={ready.checkedAt}>{formatDate(ready.checkedAt, { dateStyle: 'medium', timeStyle: 'medium' })}</time></p>
         <details><summary>{t('audio.loudness.peak.details')}</summary><p>{t('audio.loudness.exportId')}{ready.exportId}<br />{t('audio.loudness.assetId')}{ready.artifact.assetId}<br />SHA-256：{ready.artifact.sha256}<br />{t('audio.loudness.frozenRevision', { revision: ready.artifact.timelineRevision })}<br />{t('audio.loudness.peak.linear', { overall: formatNumber(ready.measurement.peakLinear), left: formatNumber(ready.measurement.channelPeaks[0].peakLinear), right: formatNumber(ready.measurement.channelPeaks[1].peakLinear) })}<br />{t('audio.loudness.sampleFrames', { frames: formatNumber(ready.measurement.sampleFrames) })}</p></details>
-      </> : status ? <p data-testid="export-sample-peak-not-ready">{status}</p> : busy && !state.restored ? <p>{t('audio.loudness.peak.another')}</p> : !state.connected && !state.restored ? <p>{t('audio.loudness.peak.reconnect')}</p> : null}
+      </> : status ? <p data-testid="export-sample-peak-not-ready">{status}</p> : busy ? <p>{t('audio.loudness.peak.another')}</p> : !state.connected ? <p>{t('audio.loudness.peak.reconnect')}</p> : null}
     </div>
     <p className="export-sample-peak-limitation">{t('audio.loudness.peak.limitation')}</p>
   </section>;

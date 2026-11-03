@@ -47,7 +47,7 @@ async function errorCode(response: Response, signal: AbortSignal): Promise<never
       }
       const value: unknown = JSON.parse(new TextDecoder().decode(bytes.subarray(0, length)));
       if (value && typeof value === 'object' && 'error' in value && value.error && typeof value.error === 'object' &&
-        'code' in value.error && typeof value.error.code === 'string' && /^(?:AUDIO_PREVIEW_[A-Z_]{1,80}|RESTORE_OPERATION_UNAVAILABLE)$/u.test(value.error.code)) code = value.error.code;
+        'code' in value.error && typeof value.error.code === 'string' && /^(?:AUDIO_PREVIEW_[A-Z_]{1,80})$/u.test(value.error.code)) code = value.error.code;
     } finally { signal.removeEventListener('abort', abort); try { await cancel(); } finally { reader.releaseLock(); } }
   } else await cancelBody(response);
   return failure(code);
@@ -209,7 +209,7 @@ export function createContinuousAudioPreviewClient(options: {
     };
     const preparation = (async () => {
       check();
-      const rawPlan = await options.readPlan(input, {signal: lifetime.signal, ...(invocation.expectedWorkspaceOrigin ? {expectedWorkspaceOrigin: invocation.expectedWorkspaceOrigin} : {})});
+      const rawPlan = await options.readPlan(input, {signal: lifetime.signal});
       check(); if (!isContinuousAudioPlan(rawPlan, input)) protocol(); plan = Object.freeze(continuousAudioPlanSchema.parse(rawPlan));
       const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(continuousAudioPlanDigestMaterial(plan)));
       check(); if (Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('') !== plan.planHash) protocol();

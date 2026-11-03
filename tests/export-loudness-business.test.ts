@@ -1,3 +1,9 @@
+
+import {isTimelineRenderRecord} from '@mioon/contracts';
+
+import {boundedShutdown} from '../packages/business/src/operation-lifecycle.ts';
+
+
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,10 +15,12 @@ import childProcess from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
 import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
-import {DatabaseSync} from 'node:sqlite';
-import {isTimelineRenderRecord} from '@mioon/contracts';
+
+
 import {EXPORT_LOUDNESS_PROFILE, EXPORT_LOUDNESS_LIMITS, isExportLoudnessResponse} from '@mioon/contracts/export-loudness';
-import {installCurrentWorkspaceRestoreSchema, openLegacyWorkspaceStore, openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock, assertProjectStore} from '../packages/business/src/store-runtime.ts';
+
 import {createServices} from '../packages/business/src/services.ts';
 import {createExportLoudnessServices} from '../packages/business/src/export-loudness.ts';
 import {createExportLoudnessAccumulator} from '../packages/business/src/export-loudness-meter.ts';
@@ -20,10 +28,10 @@ import {createExportSamplePeakServices} from '../packages/business/src/export-sa
 import {createExportSamplePeakAccumulator} from '../packages/business/src/export-sample-peak-decoder.ts';
 import {readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.ts';
 import {validateManagedSource, verifiedManagedHash} from '../packages/business/src/managed-media.ts';
-import {boundedShutdown} from '../packages/business/src/operation-lifecycle.ts';
-import {workspaceRestoreError, RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
+
+
 import {floatSnapshotSha256} from '../packages/business/src/timeline-float-outcome.ts';
-import {onMediaProcess, spawnMedia, terminateMediaProcesses, waitForMediaProcesses, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
+import {spawnMedia, terminateMediaProcesses, waitForMediaProcesses, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
 import {runStreaming} from '../packages/business/src/media-runtime.ts';
 import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
@@ -86,7 +94,7 @@ async function fixture(t: TestContext, {named = false, range = false, retainTime
   if (!retainTimeline) {
     store.db.prepare('DELETE FROM timelines WHERE id=?').run(timeline.id); store.db.prepare('DELETE FROM assets WHERE id=?').run(sourceId);
   }
-  const runtime: RuntimeOverrides & {decode: (file: string, duration: number, options: {beforeEffect(): void; signal?: AbortSignal}) => Promise<unknown>; hash: (...args: never[]) => Promise<unknown>} = {assertOrdinaryWorkspace: () => {if (getWorkspaceRestoreContext(store)) throw workspaceRestoreError();}, ownsLock: () => ownsStoreLock(store),
+  const runtime: RuntimeOverrides & {decode: (file: string, duration: number, options: {beforeEffect(): void; signal?: AbortSignal}) => Promise<unknown>; hash: (...args: never[]) => Promise<unknown>} = {assertOrdinaryWorkspace: () => {assertProjectStore(store);}, ownsLock: () => ownsStoreLock(store),
     isTimelineRenderRecord, readOwnedAsset: (projectId: string, id: string) => readOwnedTimelineAsset(store.db, projectId, id),
     validateSource: validateManagedSource, hash: verifiedManagedHash as (...args: never[]) => Promise<unknown>, decode: async (_file: string, duration: number, options: {beforeEffect(): void; signal?: AbortSignal}) => {options.beforeEffect(); return measurement(duration);},
     terminate: async () => [], waitForClose: async () => [], boundedShutdown, ...overrides} as RuntimeOverrides & {decode: (file: string, duration: number, options: {beforeEffect(): void; signal?: AbortSignal}) => Promise<unknown>; hash: (...args: never[]) => Promise<unknown>};
@@ -199,7 +207,7 @@ test('metadata, same-size byte and path replacement discard measurement; owner r
       throw Object.assign(Error('PRIVATE decoder diagnostic'), {code: 'MEDIA_PROCESS_FAILED'});
     }}});
     if (kind === 'foreign') await assert.rejects(f.call(), {code: 'EXPORT_LOUDNESS_UNAVAILABLE'});
-    else if (kind === 'lock') await assert.rejects(f.call(), {code: 'RESTORE_STORE_UNVERIFIED'});
+    else if (kind === 'lock') await assert.rejects(f.call(), {code: 'PROJECT_STORE_UNVERIFIED'});
     else {const result = await f.call(); assert.equal((result as LoudnessServiceResult).reason.code, 'ARTIFACT_CHANGED'); assert.equal(result.measurement, null); assert.ok(!JSON.stringify(result).includes('PRIVATE'));}
   });
 });
@@ -234,38 +242,9 @@ test('no audio is distinct from silence and still needs the second successful by
   assert.equal(result.status, 'ready'); assert.equal(result.measurement.state, 'digital_silence'); assert.equal(result.measurement.integratedLufs, null); assert.equal(result.suggestion, null);
 });
 
-test('restored denial occurs before payload getters or any file/media adapter', async t => {
-  const f = await fixture(t); let getters = 0, effects = 0;
-  assert.ok(RESTORE_DENIED_OPERATIONS.includes('timeline.export.loudness'));
-  const restored = createExportLoudnessServices({...f.store} as never, {runtime: {...f.runtime, assertOrdinaryWorkspace() {throw workspaceRestoreError();},
-    validateSource() {effects++;}, decode() {effects++;}} as never}); f.extras.push(restored);
-  await assert.rejects(restored.handlers['timeline.export.loudness']({get projectId() {getters++; return f.project.id;}}), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-  assert.equal(getters, 0); assert.equal(effects, 0);
-});
 
-test('actual restored-v1 composition denies loudness before parsing valid or hostile payloads', async t => {
-  const root = await mkdtemp(path.join(tmpdir(), 'mioon-restored-loudness-'));
-  let store = openLegacyWorkspaceStore(root), services = createServices(store, new Map());
-  const project = await services.call('project.create', {name: 'Restored loudness owner'}) as {id: string};
-  await services.drain(); store.close();
-  const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
-  const metadata = {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(),
-    manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: new Date().toISOString()};
-  try {installCurrentWorkspaceRestoreSchema(db, metadata); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
-  store = openLegacyWorkspaceStore(root);
-  services = createServices(store, new Proxy(new Map(), {get() {throw Error('Must not inspect providers');}}));
-  let media = 0, getters = 0; const off = onMediaProcess(() => {media++;});
-  t.after(async () => {off(); await services.drain(); store.close(); await rm(root, {recursive: true, force: true});});
-  const beforeFiles = await files(root), beforeChanges = (store.db.prepare('SELECT total_changes() AS n').get() as {n: number}).n;
-  const hostile = {get projectId() {getters++; throw Error('Payload access');}, get target() {getters++; throw Error('Payload access');}};
-  const valid = {projectId: project.id, exportId: randomUUID(), expectedArtifactSha256: 'c'.repeat(64), measurementProfile: EXPORT_LOUDNESS_PROFILE};
-  for (const value of [hostile, valid, null]) {
-    await assert.rejects(async () => { await (services.call as unknown as (...args: unknown[]) => unknown)('timeline.export.loudness', value, {expectedWorkspaceOrigin: metadata.workspaceOrigin}); }, {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-    await assert.rejects((services.handlers['timeline.export.loudness'] as unknown as (...args: unknown[]) => Promise<unknown>)(value), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-  }
-  assert.equal(getters, 0); assert.equal(media, 0);
-  assert.equal((store.db.prepare('SELECT total_changes() AS n').get() as {n: number}).n, beforeChanges); assert.deepEqual(await files(root), beforeFiles);
-});
+
+
 
 test('service drain propagates an audioPreview owner rejection after the added loudness owner', async t => {
   const f = await fixture(t), expected = Object.assign(Error('Audio preview cleanup failed'), {code: 'AUDIO_PREVIEW_SHUTDOWN_FAILED'});

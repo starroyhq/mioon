@@ -1,81 +1,33 @@
+import {kernelFixture,snapshot} from './helpers/current-retained-fixture.ts';
+import {createTimelineServices} from '../packages/business/src/timeline.ts';
+import {hash} from '../packages/business/src/services.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
-import type {DatabaseSync} from 'node:sqlite';
 type StrictIntersection<T> = (T extends unknown ? (value: T)=>void : never) extends ((value: infer I)=>void) ? I : never;
 type TimelineServiceDeps = Parameters<typeof createTimelineServices>[1];
-import type {TypedStore as FixtureStore} from './helpers/strict-service-responses.ts';
 type TimelineMutationInput = Parameters<ReturnType<typeof createTimelineServices>['handlers'][string]>[0];
 type TimelineStore = Parameters<typeof createTimelineServices>[0];
-import test,{mock} from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync,rmSync} from 'node:fs';
-import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
-import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
-import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
-import {initializeWorkspaceSchema30} from '../packages/business/src/workspace-schema-v30.ts';
-import {initializeWorkspaceSchema32} from '../packages/business/src/workspace-schema-v32.ts';
-import {initializeWorkspaceSchema34} from '../packages/business/src/workspace-schema-v34.ts';
-import {initializeWorkspaceSchema36} from '../packages/business/src/workspace-schema-v36.ts';
-import {initializeWorkspaceSchema38} from '../packages/business/src/workspace-schema-v38.ts';
-import {validateWorkspaceSchema40,initializeWorkspaceSchema40} from '../packages/business/src/workspace-schema-v40.ts';
-import {createTimelineServices as realTimelineServices} from '../packages/business/src/timeline.ts';
-import * as realRestorePolicy from '../packages/business/src/workspace-restore-policy.ts';
-import {hash} from '../packages/business/src/services.ts';
+
 import {AppError,parse,hasRequestNotAppliedProof} from '../packages/contracts/src/index.ts';
 import {VOLUME_ENVELOPE_PROFILE,createVolumeEnvelopeEvaluator} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {admitTimelineVolumeEnvelopeWrite} from '../packages/business/src/timeline-volume-envelope-admission.ts';
 import {rejectTimelineMutation} from '../packages/business/src/timeline-recovery.ts';
-import {open,snapshot,insert} from './workspace-schema26-fixtures.mjs';
 import type { SQLInputValue } from 'node:sqlite';
-// Historical test-only seam retained for bounded synthetic transaction regressions.
-// Genuine activation evidence lives in timeline-volume-envelope-owned-startup.test.mjs.
-// No other permission check is mocked, and only full validated ordinary40
-// synthetic fixtures receive the exemption. Restored/forged profiles refuse.
-// Per-file runs must opt into Node's experimental module harness. Without it
-// mock.module throws before any mutation assertion is evaluated, which would
-// report a harness failure as a product failure. Re-exec exactly this file with
-// the supported flag so the canonical and per-file entry points agree.
-if (!process.execArgv.includes('--experimental-test-module-mocks')) {
-  const {spawnSync}=await import('node:child_process');
-  const {fileURLToPath}=await import('node:url');
-  const result=spawnSync(process.execPath,['--experimental-test-module-mocks','--test',fileURLToPath(import.meta.url)],
-    {encoding:'utf8',timeout:180000,maxBuffer:16*1024*1024,env:Object.fromEntries(Object.entries(process.env).filter(([key])=>key!=='NODE_TEST_CONTEXT'))});
-  if (result.stdout) process.stdout.write(result.stdout);
-  if (result.stderr) process.stderr.write(result.stderr);
-  process.exit(result.status??1);
-}
-const fixtures=new WeakSet();
-mock.module('../packages/business/src/workspace-restore-policy.ts',{namedExports:{...realRestorePolicy,
- refuseRestoredOperation(store: {db:DatabaseSync},operation: string,input?: Record<string,unknown>|undefined){
-  if(fixtures.has(store)){validateWorkspaceSchema40(store.db,{verifyBytes:false});return;}
-  return realRestorePolicy.refuseRestoredOperation(((store) as unknown as Parameters<typeof realRestorePolicy.refuseRestoredOperation>[0]),operation,input);
- }
-}});
-const {createTimelineServices}=await import('../packages/business/src/timeline.ts');
 const stamp='2026-10-15T00:00:00.000Z';
 const envelope=()=>({profileId:VOLUME_ENVELOPE_PROFILE,points:[{frame:0,multiplier:1},{frame:10,multiplier:.2},{frame:60,multiplier:.8}]});
-function fixture(t: test.TestContext,{version=40,missing=false,realPolicy=false,owned=false}={}){
- const root=owned?mkdtempSync(new URL('../.tmp-envelope-mutation-',import.meta.url).pathname):null,ownedStore=owned?(openStore(((root) as unknown as Parameters<typeof openStore>[0])) as FixtureStore):null;
- const db=ownedStore?.db??open(':memory:');t.after(()=>{if(ownedStore){ownedStore.close();rmSync(((root) as unknown as Parameters<typeof rmSync>[0]),{recursive:true,force:true});}else db.close();});
- if(!owned){for(const initialize of ([initializeWorkspaceSchemaThrough24,initializeWorkspaceSchema26,initializeWorkspaceSchema28,initializeWorkspaceSchema30,initializeWorkspaceSchema32,initializeWorkspaceSchema34,initializeWorkspaceSchema36,initializeWorkspaceSchema38] as const))initialize(db);
- if(version===40)initializeWorkspaceSchema40(db);}
- const projectId=randomUUID();insert(db,'projects',{id:projectId,data:JSON.stringify({id:projectId,name:'Synthetic',revision:1})});
- const store=ownedStore??{db,root:'/not-a-live-workspace',put(table,value){
-  db.prepare(`INSERT INTO ${table}(id,projectId,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run((value as {id:string}).id,(value as {projectId:string}).projectId,JSON.stringify(value));return value;
- },tx(fn){db.exec('BEGIN IMMEDIATE');try{const value=fn();db.exec('COMMIT');return value;}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}}};
- const required=(table: unknown,id: SQLInputValue)=>{const row=db.prepare(`SELECT data FROM ${table} WHERE id=?`).get(id);if(!row)throw new AppError('NOT_FOUND','missing',404);return JSON.parse(((row.data) as unknown as Parameters<typeof JSON.parse>[0]));};
- // Only synthetic in-memory stores need the bounded policy exemption; an owned
- // store is opened through the real dispatch/current schema and keeps the real policy.
- if(version===40&&!realPolicy&&!owned)fixtures.add(store);
- const services=(realPolicy?realTimelineServices:createTimelineServices)(((store) as unknown as TimelineStore),(({required,hash,now:()=>stamp,check(value: { revision: unknown; },expected?: unknown){if(value.revision!==expected)throw new AppError('REVISION_CONFLICT','revision',409);}}) as unknown as TimelineServiceDeps));
+function fixture(t: test.TestContext,{missing=false}={}){
+ const kernel=kernelFixture(t),store=kernel.store,db=store.db,projectId=kernel.projectId;
+ const required=(table:string,id:SQLInputValue)=>{const row=db.prepare(`SELECT data FROM ${table} WHERE id=?`).get(id);if(!row)throw new AppError('NOT_FOUND','missing',404);return JSON.parse(row.data as string);};
+ const services=createTimelineServices(((store) as unknown as TimelineStore),(({required,hash,now:()=>stamp,check(value: { revision: unknown; },expected?: unknown){if(value.revision!==expected)throw new AppError('REVISION_CONFLICT','revision',409);}}) as unknown as TimelineServiceDeps));
  const asset=(fields: Record<string, unknown>={})=>store.put('assets',{id:randomUUID(),projectId,name:'Synthetic',mimeType:'video/mp4',duration:20,width:720,height:1280,sha256:'a'.repeat(64),relativePath:'media/synthetic.mp4',hasAudio:true,hasVideo:true,...fields});
- let timeline=missing?null:services.ensure(projectId);
- const call=<P extends Record<string,unknown>=Record<never,never>>(operation: string|number,fields: P={} as P,request?: Record<string,unknown>)=>{const input={projectId,expectedRevision:timeline?.revision??1,requestId:randomUUID(),...fields,...(request as Record<string, unknown>)};const result=services.handlers[operation](((parse(((operation) as unknown as Parameters<NonNullable<typeof parse>>[0]),input)) as unknown as TimelineMutationInput));timeline=(result as {timeline?:FixtureTimeline}).timeline??result as FixtureTimeline;return {input,result:result as FixtureTimeline};};
- return {db,store,services,asset,call,projectId,get timeline(){return timeline;},state:()=>snapshot(db)};
+ let timeline=missing?null:services.ensure(projectId);let lastInput:Record<string,unknown>|undefined;
+ const call=<P extends Record<string,unknown>=Record<never,never>>(operation: string|number,fields: P={} as P,request?: Record<string,unknown>)=>{const input={projectId,expectedRevision:timeline?.revision??1,requestId:randomUUID(),...fields,...(request as Record<string, unknown>)};lastInput=input;const result=services.handlers[operation](((parse(((operation) as unknown as Parameters<NonNullable<typeof parse>>[0]),input)) as unknown as TimelineMutationInput));timeline=(result as {timeline?:FixtureTimeline}).timeline??result as FixtureTimeline;return {input,result:result as FixtureTimeline};};
+ return {db,store,services,asset,call,projectId,get timeline(){return timeline;},get lastInput(){return lastInput;},state:()=>snapshot(db)};
 }
-function rejected(f:Awaited<ReturnType<typeof fixture>>,operation: string,fields: { clipId?: unknown; patch?: { durationFrames: number; }; atFrame?: number; assetId?: `${string}-${string}-${string}-${string}-${string}`; trackId?: string; startFrame?: number; durationFrames?: number; volumeEnvelope?: null; },code: string){const before=f.state();assert.throws(()=>f.call(operation,fields),error=>{assert.equal((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code,code);if(code.startsWith('TIMELINE_VOLUME_ENVELOPE_'))assert.notEqual((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).details?.mutationOutcome,'not_applied','synthetic unowned store cannot create proof');return true;});assert.deepEqual(f.state(),before);}
-test('fresh synthetic40 add/update/shrink/clear/Undo/redo preserve exact envelope presence and original replay',t=>{
+function rejected(f:Awaited<ReturnType<typeof fixture>>,operation: string,fields: { clipId?: unknown; patch?: { durationFrames: number; }; atFrame?: number; assetId?: `${string}-${string}-${string}-${string}-${string}`; trackId?: string; startFrame?: number; durationFrames?: number; volumeEnvelope?: null; },code: string){const before=f.state();assert.throws(()=>f.call(operation,fields),error=>{assert.equal((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code,code);if(code.startsWith('TIMELINE_VOLUME_ENVELOPE_'))assert.equal(hasRequestNotAppliedProof(error,f.lastInput!,{operation}),true,'actual owner proves exact scoped rejection');return true;});assert.deepEqual(f.state(),before);}
+test('current kernel add/update/shrink/clear/Undo/redo preserve exact envelope presence and original replay',t=>{
  const f=fixture(t),source=f.asset(),trackId=(f.timeline)!.tracks[0].id;
  const added=f.call('timeline.clip.add',{assetId:source.id,trackId,startFrame:0,durationFrames:60,volumeEnvelope:envelope()});
  const clipId=added.result.clips[0].id;
@@ -114,10 +66,7 @@ test('replacement preserves envelope and rejects incompatible cached audio witho
  f.call('timeline.clip.replaceSource',{clipId,assetId:b.id});assert.deepEqual((f.timeline)!.clips[0].volumeEnvelope,envelope());
  rejected(f,'timeline.clip.replaceSource',{clipId,assetId:bad.id},'TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED');
 });
-test('old38 explicit null refuses while exact40 admits inherited audio roles',t=>{
- const old=fixture(t,{version:38}),a=old.asset();rejected(old,'timeline.clip.add',{assetId:a.id,trackId:(old.timeline)!.tracks[0].id,startFrame:0,durationFrames:60,volumeEnvelope:null},'TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED');
- const fresh=fixture(t),b=fresh.asset();fresh.call('timeline.clip.add',{assetId:b.id,trackId:(fresh.timeline)!.tracks[0].id,startFrame:0,durationFrames:60,volumeEnvelope:envelope(),audioRole:null});assert.equal(((fresh.timeline)!.clips[0].audioRole as unknown),null);
-});
+
 test('complete timeline/history/response budgets accept262143/262144 and reject262145 bytes independently',()=>{
  for(const field of (['timeline','before','after','response'] as const))for(const size of ([262143,262144,262145] as const)){
   const base={volumeEnvelope:null,padding:''};base.padding='x'.repeat(size-Buffer.byteLength(JSON.stringify(base)));
@@ -139,10 +88,7 @@ test('new rejection proof requires rollback, exact scope, receipt absence and ze
  assert.equal(hasRequestNotAppliedProof(error,{...input,projectId:randomUUID()},{operation}),false);
 });
 
-test('live dispatch recognizes synthetic40 profile without the historical policy seam',t=>{
- const f=fixture(t,{missing:true,realPolicy:true});
- assert.equal(f.services.ensure(f.projectId).projectId,f.projectId);
-});
+
 test('scalar loudness transaction preserves envelope and immutable replay after Undo/removal',async t=>{
  const {readyMixLoudness,mixLoudnessInput}=await import('./fixtures/timeline-mix-loudness-fixtures.ts');
  const f=fixture(t),source=f.asset(),volumeEnvelope={profileId:VOLUME_ENVELOPE_PROFILE,points:[{frame:0,multiplier:1},{frame:30,multiplier:.2}]};
@@ -180,8 +126,8 @@ test('lazy ensure writes never acquire definite rejection proof even after rollb
  });
  assert.deepEqual(f.state(),before);assert.equal(f.db.isTransaction,false);
 });
-test('authentic owned synthetic40 source rejection has exact no-write transaction proof',t=>{
- const f=fixture(t,{owned:true}),source=f.asset({hasAudio:false}),before=f.state(),input={projectId:f.projectId,requestId:randomUUID(),expectedRevision:(f.timeline)!.revision,assetId:source.id,trackId:(f.timeline)!.tracks[0].id,startFrame:0,durationFrames:60,volumeEnvelope:envelope()};
+test('authentic current kernel source rejection has exact no-write transaction proof',t=>{
+ const f=fixture(t),source=f.asset({hasAudio:false}),before=f.state(),input={projectId:f.projectId,requestId:randomUUID(),expectedRevision:(f.timeline)!.revision,assetId:source.id,trackId:(f.timeline)!.tracks[0].id,startFrame:0,durationFrames:60,volumeEnvelope:envelope()};
  assert.throws(()=>f.services.handlers['timeline.clip.add'](((parse('timeline.clip.add',input)) as unknown as Parameters<typeof f.services.handlers['timeline.clip.add']>[0])),error=>{
   assert.equal((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code,'TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED');assert.equal(hasRequestNotAppliedProof(error,input,{operation:'timeline.clip.add'}),true);
   assert.equal(hasRequestNotAppliedProof(error,{...input,requestId:randomUUID()},{operation:'timeline.clip.add'}),false);return true;

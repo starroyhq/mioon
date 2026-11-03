@@ -53,10 +53,7 @@ export function assertLastProjectBootIdentity(state: { identityBlocked: boolean;
 export interface PreferenceCacheIdentity { entryScope: string | null; cacheId: string | null }
 /** `undefined` is the compatibility path for older non-App consumers. The App
  * opts in with null before discovery, which disables unverified local imports. */
-export function preferenceCacheIdentity(originScope: string | null, projectId: string, verifiedScope: string | null | undefined): PreferenceCacheIdentity {
-  if (originScope === null) return { entryScope: null, cacheId: null };
-  if (originScope.startsWith('restored:')) return { entryScope: originScope, cacheId: `restore:${originScope.slice(9)}:${projectId}` };
-  if (originScope !== 'normal') return { entryScope: null, cacheId: null };
+export function preferenceCacheIdentity(projectId: string, verifiedScope: string | null | undefined): PreferenceCacheIdentity {
   if (verifiedScope === undefined) return { entryScope: 'normal', cacheId: projectId };
   if (verifiedScope === null) return { entryScope: 'normal:unverified', cacheId: null };
   if (!scope.test(verifiedScope)) return { entryScope: null, cacheId: null };

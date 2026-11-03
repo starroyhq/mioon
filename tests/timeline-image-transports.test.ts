@@ -1,7 +1,8 @@
+
 import {startLegacyRestoredDomainHttp} from './fixtures/legacy-restored-domain-http.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
-import type {TestCatalog as DiscoverySchemaResult} from './helpers/strict-timeline-transport-types.ts';
+
 import type {TestOperationDefinition as OperationDefinition} from './helpers/strict-timeline-transport-types.ts';
 type ImageNetworkSeam = NonNullable<NonNullable<Parameters<typeof startServer>[0]>['imageNetwork']>;
 import type {TypedClient as FixtureClient, TypedStore as FixtureStore} from './helpers/strict-service-responses.ts';

@@ -6,9 +6,8 @@ import {resolve, join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {parseArgs} from 'node:util';
 import {mock} from 'node:test';
-// Preserve the historical 13-table rewrite baseline. Native R1 storage is
-// measured separately by mio-storage-report.ts with the same workload.
-import {openLegacyWorkspaceStore as openStore} from '../../packages/business/src/db.ts';
+import {openStore} from '../../packages/business/src/project-file/test-store.ts';
+import {createMioRecords} from '../../packages/business/src/agent/mio-records.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
 import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../../packages/business/src/agent/presets.ts';
@@ -16,12 +15,12 @@ import {AGENT_TASK_TOOLS_LOAD_NAME, agentTaskToolNamesForGroup} from '../../pack
 import type {AgentTaskLoadableToolGroupId} from '../../packages/business/src/agent/task-tool-groups-v2.ts';
 import {createAgentTaskTools} from '../../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../../packages/business/src/agent/task-runtime-v2.ts';
-import {readAgentTaskStorage} from '../../packages/business/src/agent/task-storage-v2.ts';
+import {readMioStorage} from '../../packages/business/src/agent/mio-storage.ts';
 import {TASK_MODEL_LIMITS} from '../../packages/business/src/agent/task-gateway-v2.ts';
 import type {TaskGateway} from '../../packages/business/src/agent/task-gateway-v2.ts';
 import type {AgentProtocol} from '../../packages/contracts/src/agent-protocol.ts';
 import type {AgentTaskToolCall} from '../../packages/contracts/src/agent-tasks-v2.ts';
-import type {AgentTaskStorageSnapshot} from '../../packages/contracts/src/agent-task-storage.ts';
+import type {MioStorageSnapshot} from '../../packages/contracts/src/mio-storage.ts';
 import {createTestAuthorizations, authorizeTestScope} from './agent-authorizations.ts';
 import {reportAnthropicPrefixes} from './agent-task-prefix-report.ts';
 import type {AnthropicPrefixReport} from './agent-task-prefix-report.ts';
@@ -57,11 +56,11 @@ interface ModelStepMeasurement {
   requestBytes: number;
   historyBytes: number;
   textBytes: number;
-  textEvents: number;
+  checkpointEvents: number;
   usage?: ReportTokenUsage;
-  streaming?: {flushes: StreamingFlushMeasurement[]; rowRewriteBytes: number; textEventBytes: number; beforeDone: {textBytes: number; textEvents: number}};
+  streaming?: {flushes: StreamingFlushMeasurement[]; checkpointRewriteBytes: number; invalidationEventBytes: number; beforeDone: {textBytes: number; checkpointEvents: number}};
 }
-interface StreamingFlushMeasurement {atMs: number; deltaBytes: number; textBytes: number; rowRewriteBytes: number; textEventBytes: number}
+interface StreamingFlushMeasurement {atMs: number; deltaBytes: number; textBytes: number; checkpointRewriteBytes: number; invalidationEventBytes: number}
 interface TableMeasurement {
   name: string;
   rows: number;
@@ -72,13 +71,13 @@ interface TableMeasurement {
 interface ToolStepMeasurement {index: number; toolName: string; status: string; storedDataBytes: number; resultBytes: number}
 export interface ContextProtocolReport {
   protocol: AgentProtocol;
-  run: {status: string; reason: string | null; stepsUsed: number; budget: number; textEvents: number};
+  run: {status: string; reason: string | null; stepsUsed: number; budget: number; checkpointEvents: number};
   requests: RequestMeasurement[];
   modelSteps: ModelStepMeasurement[];
   retained: {quotaBytes: number; quotaRows: number; tables: TableMeasurement[]};
   capacity: {
-    limits: AgentTaskStorageSnapshot['limits'];
-    remaining: AgentTaskStorageSnapshot['remaining'];
+    limits: MioStorageSnapshot['limits'];
+    remaining: MioStorageSnapshot['remaining'];
     additionalEquivalentRunsByBytes: number | null;
     additionalEquivalentRunsByRows: number | null;
     additionalEquivalentRuns: number | null;
@@ -88,7 +87,7 @@ export interface ContextProtocolReport {
   usageCoverage: ReturnType<typeof summarizeReportUsage>['coverage'];
   cacheReadRate: number | null;
   toolSteps?: ToolStepMeasurement[];
-  streaming?: {clock: 'simulated'; deltaIntervalMs: number; tailPauseMs?: number; appendCalls: number; rowRewriteBytes: number; textEventBytes: number};
+  streaming?: {clock: 'simulated'; deltaIntervalMs: number; tailPauseMs?: number; appendCalls: number; checkpointRewriteBytes: number; invalidationEventBytes: number};
 }
 export interface ContextReport {
   version: 1;
@@ -102,7 +101,7 @@ function record(value: unknown): Record<string, unknown> {
   assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value));
   return value as Record<string, unknown>;
 }
-function tableGrowth(before: AgentTaskStorageSnapshot, after: AgentTaskStorageSnapshot): TableMeasurement[] {
+function tableGrowth(before: MioStorageSnapshot, after: MioStorageSnapshot): TableMeasurement[] {
   return after.tables.map(table => {
     const previous = before.tables.find(item => item.name === table.name);
     return {...table, rows: table.rows - (previous?.rows ?? 0), bytes: table.bytes - (previous?.bytes ?? 0)};
@@ -111,16 +110,17 @@ function tableGrowth(before: AgentTaskStorageSnapshot, after: AgentTaskStorageSn
 const equivalentRuns = (remaining: number, growth: number): number | null => growth > 0 ? Math.floor(remaining / growth) : null;
 
 
-/** Uses a fresh disposable workspace and the real execution/journal/tool paths.
+/** Uses a fresh disposable kernel and the real execution/journal/tool paths.
  * The only replacement is the model gateway, which never opens a socket. */
 async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport['scenario'], options: ContextReportOptions): Promise<ContextProtocolReport> {
   const root = mkdtempSync(join(realpathSync(tmpdir()), 'mioon-harness-context-report-'));
-  const store = openStore(root);
+  const store = openStore(root),records=createMioRecords(store);
   const settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  let services:ReturnType<typeof createServices>|undefined;
   let tools: ReturnType<typeof createAgentTaskTools> | undefined;
   let runtime: ReturnType<typeof createAgentTaskRuntime> | undefined;
   try {
-    const services = createServices(store, new Map());
+    services = createServices(store, new Map());
     const project = record(await services.call('project.create', {name: 'Synthetic harness measurement'}));
     assert.ok(typeof project.id === 'string');
     const projectId = project.id;
@@ -130,7 +130,7 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
     const sessionSecret = scenario.officialPresets ? randomUUID() : null;
     const noSecret = (value: string) => assert.ok(sessionSecret === null || !value.includes(sessionSecret), 'Session credentials must not enter measurement artifacts');
     await settings.put({expectedRevision: 0, configuration, secret: sessionSecret === null ? {action: 'remove'} : {action: 'replace', storage: 'session', value: sessionSecret}});
-    const authorizations = createTestAuthorizations(() => ({...store}), settings);
+    const authorizations = createTestAuthorizations(() => store, settings);
     await authorizeTestScope(authorizations, 'project_agent');
     const baseTools = createAgentTaskTools({store, services});
     tools = scenario.stress30Steps ? {
@@ -152,7 +152,7 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
     const requests: RequestMeasurement[] = [];
     const flushes = new Map<string, StreamingFlushMeasurement[]>();
     const requestStarts = new Map<number, number>();
-    const beforeDone = new Map<number, {textBytes: number; textEvents: number}>();
+    const beforeDone = new Map<number, {textBytes: number; checkpointEvents: number}>();
     let previousBody: string | undefined;
     const gateway: TaskGateway = async function* (request) {
       request.beforeSubmit?.();
@@ -170,9 +170,9 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
       }
       if (scenario.deltaIntervalMs !== undefined) {
         advanceStreamingClock(scenario.tailPauseMs ?? 0);
-        const model = store.db.prepare("SELECT id,data FROM agent_task_steps_v2 WHERE json_extract(data,'$.kind')='model' ORDER BY position DESC LIMIT 1").get()!;
-        const saved = record(JSON.parse(String(model.data)));
-        beforeDone.set(index, {textBytes: typeof saved.text === 'string' ? Buffer.byteLength(saved.text) : 0, textEvents: Number(store.db.prepare("SELECT count(*) AS n FROM agent_task_events_v2 WHERE type='text' AND json_extract(data,'$.data.stepId')=?").get(String(model.id))!.n)});
+        const model=store.db.prepare("SELECT id,partialText FROM mio_steps WHERE kind='model' ORDER BY position DESC LIMIT 1").get()!;
+        const text=model.partialText===null?'':JSON.parse(String(model.partialText));
+        beforeDone.set(index,{textBytes:Buffer.byteLength(text),checkpointEvents:(flushes.get(String(model.id))??[]).length});
       }
       const callCount = index <= scenario.toolRounds ? scenario.stress30Steps && index === 1 ? scenario.firstRoundToolCalls! : 1 : 0;
       const calls: AgentTaskToolCall[] = Array.from({length: callCount}, (_value, callIndex): AgentTaskToolCall => ({id: `synthetic_read_${String(index).padStart(3, '0')}${scenario.stress30Steps ? `_${callIndex + 1}` : ''}`, name: index === 1 && scenario.loadToolGroups ? AGENT_TASK_TOOLS_LOAD_NAME : 'mioon_project_inspect', arguments: index === 1 && scenario.loadToolGroups ? {names: scenario.loadToolGroups.flatMap(group=>agentTaskToolNamesForGroup(group))} : {}}));
@@ -181,58 +181,60 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
     runtime = createAgentTaskRuntime({store, agentSettings: settings, authorizations, tools, gateway, selfPort: () => 4318});
     if (scenario.deltaIntervalMs !== undefined) {
       const appendText = runtime.journal.appendText;
-      runtime.journal.appendText = (runId, stepId, text) => {
-        appendText(runId, stepId, text);
-        // Read the actual row immediately after the real append. This counts
-        // the complete data column rewritten by appendText, not only its delta.
-        const row = store.db.prepare('SELECT data,length(CAST(data AS BLOB)) AS bytes FROM agent_task_steps_v2 WHERE id=?').get(stepId)!;
-        const saved = record(JSON.parse(String(row.data)));
-        const event = store.db.prepare("SELECT length(CAST(data AS BLOB)) AS bytes FROM agent_task_events_v2 WHERE runId=? AND type='text' ORDER BY sequence DESC LIMIT 1").get(runId)!;
+      runtime.journal.appendText = (runId, stepId, textDelta) => {
+        const sequence=Number(store.db.prepare('SELECT coalesce(max(sequence),0) AS n FROM mio_events WHERE runId=?').get(runId)!.n);
+        appendText(runId, stepId, textDelta);
+        // Read actual mutable checkpoint columns; no complete wire request or
+        // stream-text event exists in the native journal.
+        const row=store.db.prepare('SELECT partialText,length(CAST(partialText AS BLOB))+length(CAST(data AS BLOB))+length(CAST(updatedAt AS BLOB))+length(CAST(status AS BLOB)) AS bytes FROM mio_steps WHERE id=?').get(stepId)!;
+        const text=row.partialText===null?'':JSON.parse(String(row.partialText));
+        const event=store.db.prepare("SELECT count(*) AS rows,coalesce(sum(length(CAST(runId AS BLOB))+length(CAST(sequence AS BLOB))+length(CAST(createdAt AS BLOB))),0) AS bytes FROM mio_events WHERE runId=? AND sequence>?").get(runId,sequence)!;
+        assert.equal(Number(event.rows),1,'Every real checkpoint commits exactly one new native invalidation');
         const values = flushes.get(stepId) ?? [];
-        values.push({atMs: Date.now() - requestStarts.get(requests.length)!, deltaBytes: Buffer.byteLength(text), textBytes: typeof saved.text === 'string' ? Buffer.byteLength(saved.text) : 0, rowRewriteBytes: Number(row.bytes), textEventBytes: Number(event.bytes)});
+        values.push({atMs:Date.now()-requestStarts.get(requests.length)!,deltaBytes:Buffer.byteLength(textDelta),textBytes:Buffer.byteLength(text),checkpointRewriteBytes:Number(row.bytes),invalidationEventBytes:Number(event.bytes)});
         flushes.set(stepId, values);
       };
     }
-    const before = readAgentTaskStorage(store.db);
+    const before = readMioStorage(store.db);
     const sent = await runtime.send(projectId, {requestId: randomUUID(), expectedSettingsRevision: (await settings.get()).revision, locale: 'en', text: 'Inspect the current project repeatedly, then report completion. Synthetic offline context measurement.'});
     await runtime.drain();
     const snapshot = runtime.journal.snapshot(sent.run.id);
     assert.ok(requests.length > 0, `Measurement did not reach the synthetic gateway: ${snapshot.run.pauseReason ?? snapshot.run.status}`);
-    const after = readAgentTaskStorage(store.db);
-    const modelSteps = store.db.prepare("SELECT id,status,data,length(CAST(data AS BLOB)) AS bytes FROM agent_task_steps_v2 WHERE runId=? AND json_extract(data,'$.kind')='model' ORDER BY position").all(sent.run.id).map((row, index): ModelStepMeasurement => {
-      const saved = record(JSON.parse(String(row.data)));
-      noSecret(String(row.data));
-      const request = record(saved.request);
-      assert.equal(typeof request.body, 'string');
-      const textEvents = Number(store.db.prepare("SELECT count(*) AS n FROM agent_task_events_v2 WHERE runId=? AND type='text' AND json_extract(data,'$.data.stepId')=?").get(sent.run.id, String(row.id))!.n);
-      const appended = flushes.get(String(row.id)) ?? [];
-      const result = saved.result === undefined ? undefined : record(saved.result);
-      const usage = result?.usage === undefined ? undefined : record(result.usage) as ReportTokenUsage;
-      return {index: index + 1, status: String(row.status), storedDataBytes: Number(row.bytes), requestBytes: Buffer.byteLength(request.body as string), historyBytes: Buffer.byteLength(JSON.stringify(request.history)), textBytes: typeof saved.text === 'string' ? Buffer.byteLength(saved.text) : 0, textEvents, ...(usage ? {usage} : {}), ...(scenario.deltaIntervalMs === undefined ? {} : {streaming: {flushes: appended, rowRewriteBytes: appended.reduce((sum, value) => sum + value.rowRewriteBytes, 0), textEventBytes: appended.reduce((sum, value) => sum + value.textEventBytes, 0), beforeDone: beforeDone.get(index + 1)!}})};
+    const after = readMioStorage(store.db);
+    const storedStepBytes=(stepId:string):number=>{
+      const row=store.db.prepare(`SELECT length(CAST(s.data AS BLOB))+coalesce(length(CAST(e.payloadJson AS BLOB)),b.bytes,0) AS bytes FROM mio_steps s LEFT JOIN mio_entries e ON e.id=s.resultEntryId LEFT JOIN mio_blobs b ON b.sha256=e.payloadBlobHash WHERE s.id=?`).get(stepId)!;
+      return Number(row.bytes);
+    };
+    const modelSteps=records.steps(sent.run.id).filter(step=>step.kind==='model').map((row,index):ModelStepMeasurement=>{
+      const saved=runtime!.journal.step(row.id),request=record(saved.request);
+      noSecret(JSON.stringify(saved));assert.equal(typeof request.body,'string');
+      const appended=flushes.get(row.id)??[],result=saved.result===undefined?undefined:record(saved.result),usage=result?.usage===undefined?undefined:record(result.usage) as ReportTokenUsage;
+      return {index:index+1,status:row.status,storedDataBytes:storedStepBytes(row.id),requestBytes:Buffer.byteLength(request.body as string),historyBytes:Buffer.byteLength(JSON.stringify(request.history)),textBytes:typeof saved.text==='string'?Buffer.byteLength(saved.text):0,checkpointEvents:appended.length,...(usage?{usage}:{}),...(scenario.deltaIntervalMs===undefined?{}:{streaming:{flushes:appended,checkpointRewriteBytes:appended.reduce((sum,value)=>sum+value.checkpointRewriteBytes,0),invalidationEventBytes:appended.reduce((sum,value)=>sum+value.invalidationEventBytes,0),beforeDone:beforeDone.get(index+1)!}})};
     });
     const quotaBytes = after.usage.bytes - before.usage.bytes;
     const quotaRows = after.usage.rows - before.usage.rows;
     const byBytes = equivalentRuns(after.remaining.bytes, quotaBytes), byRows = equivalentRuns(after.remaining.rows, quotaRows);
     const estimates = [byBytes, byRows].filter((value): value is number => value !== null);
-    const toolSteps: ToolStepMeasurement[] | undefined = scenario.stress30Steps ? store.db.prepare("SELECT status,data,length(CAST(data AS BLOB)) AS bytes FROM agent_task_steps_v2 WHERE runId=? AND json_extract(data,'$.kind')='tool' ORDER BY position").all(sent.run.id).map((row, index) => {
-      const saved = record(JSON.parse(String(row.data))), call = record(saved.toolCall);
-      assert.equal(typeof call.name, 'string');
-      return {index: index + 1, toolName: String(call.name), status: String(row.status), storedDataBytes: Number(row.bytes), resultBytes: saved.result === undefined ? 0 : Buffer.byteLength(JSON.stringify(saved.result))};
-    }) : undefined;
+    const toolSteps:ToolStepMeasurement[]|undefined=scenario.stress30Steps?records.steps(sent.run.id).filter(step=>step.kind==='tool').map((row,index)=>{
+      const saved=runtime!.journal.step(row.id),call=record(saved.toolCall);assert.equal(typeof call.name,'string');
+      return {index:index+1,toolName:String(call.name),status:row.status,storedDataBytes:storedStepBytes(row.id),resultBytes:saved.result===undefined?0:Buffer.byteLength(JSON.stringify(saved.result))};
+    }):undefined;
     const usage = summarizeReportUsage(modelSteps.map(step => step.usage ?? null));
     return {
       protocol,
-      run: {status: snapshot.run.status, reason: snapshot.run.pauseReason ?? null, stepsUsed: snapshot.run.stepsUsed, budget: snapshot.run.budget, textEvents: modelSteps.reduce((sum, step) => sum + step.textEvents, 0)},
+      run: {status: snapshot.run.status, reason: snapshot.run.pauseReason ?? null, stepsUsed: snapshot.run.stepsUsed, budget: snapshot.run.budget, checkpointEvents: modelSteps.reduce((sum, step) => sum + step.checkpointEvents, 0)},
       requests, modelSteps,
       retained: {quotaBytes, quotaRows, tables: tableGrowth(before, after)},
       capacity: {limits: after.limits, remaining: after.remaining, additionalEquivalentRunsByBytes: byBytes, additionalEquivalentRunsByRows: byRows, additionalEquivalentRuns: estimates.length ? Math.min(...estimates) : null},
       tokenUsage: usage.knownTotals, usageKnownTotals: usage.knownTotals, usageCoverage: usage.coverage, cacheReadRate: usage.cacheReadRate,
       ...(toolSteps ? {toolSteps} : {}),
-      ...(scenario.deltaIntervalMs === undefined ? {} : {streaming: {clock: 'simulated' as const, deltaIntervalMs: scenario.deltaIntervalMs, ...(scenario.tailPauseMs === undefined ? {} : {tailPauseMs: scenario.tailPauseMs}), appendCalls: modelSteps.reduce((sum, step) => sum + step.streaming!.flushes.length, 0), rowRewriteBytes: modelSteps.reduce((sum, step) => sum + step.streaming!.rowRewriteBytes, 0), textEventBytes: modelSteps.reduce((sum, step) => sum + step.streaming!.textEventBytes, 0)}}),
+      ...(scenario.deltaIntervalMs === undefined ? {} : {streaming: {clock: 'simulated' as const, deltaIntervalMs: scenario.deltaIntervalMs, ...(scenario.tailPauseMs === undefined ? {} : {tailPauseMs: scenario.tailPauseMs}), appendCalls: modelSteps.reduce((sum, step) => sum + step.streaming!.flushes.length, 0), checkpointRewriteBytes: modelSteps.reduce((sum, step) => sum + step.streaming!.checkpointRewriteBytes, 0), invalidationEventBytes: modelSteps.reduce((sum, step) => sum + step.streaming!.invalidationEventBytes, 0)}}),
     };
   } finally {
     runtime?.close();
+    await runtime?.drain();
     tools?.dispose();
+    await services?.drain();
     await settings.close();
     store.close();
     rmSync(root, {recursive: true, force: true});
@@ -253,9 +255,9 @@ export async function collectAgentTaskContextReport(options: ContextReportOption
   return {
     version: 1, scenario, modelLimits: TASK_MODEL_LIMITS,
     measurement: {
-      storage: 'Retained UTF-8 bytes in SQLite data columns, using the production quota inventory. Excludes SQLite page/WAL overhead and cumulative rewrites of the same row.',
+      storage: 'Retained native Mio UTF-8 scalar/blob bytes, using the production per-project quota inventory. Excludes SQLite page/WAL overhead and cumulative rewrites of the same row.',
       capacity: 'Additional equivalent runs estimated independently from remaining byte and row quotas; the lower bound wins. This is not a guarantee for different workloads.',
-      streaming: scenario.deltaIntervalMs === undefined ? 'Synthetic deltas are emitted without sleeps or a controlled clock; flushes follow the current runtime thresholds and host speed.' : 'Date and setTimeout are simulated at a fixed epoch; the clock advances in 1 ms ticks by deltaIntervalMs before each delta and by optional tailPauseMs before done, without real waiting, so deadline callbacks run at their actual fake time. beforeDone records persisted text and text-event counts before completion. Rewrite bytes sum the actual complete model-step data column after each successful appendText; text-event bytes count the inserted event data. Excludes other step updates, SQLite pages, indexes and WAL overhead. Retained quota bytes remain a separate measurement.',
+      streaming: scenario.deltaIntervalMs === undefined ? 'Synthetic deltas are emitted without sleeps or a controlled clock; flushes follow the current runtime thresholds and host speed.' : 'Date and setTimeout are simulated at a fixed epoch; the clock advances in 1 ms ticks by deltaIntervalMs before each delta and by optional tailPauseMs before done, without real waiting, so deadline callbacks run at their actual fake time. beforeDone records persisted partialText and checkpoint counts before completion. Checkpoint bytes sum actual partialText/data/status/updatedAt columns after each successful appendText; invalidation bytes count actual mio_events scalars, without duplicate stream text. Excludes other step updates, SQLite pages, indexes and WAL overhead. Retained quota bytes remain a separate measurement.',
       tokens: 'Reads normalized usage from actual private model-step results, once per completed model step. Missing fields stay unknown; known totals include only reported fields and coverage identifies incomplete totals. Default synthetic output has no usage or tokenizer, so tokenUsage remains null. Explicit syntheticUsage fixtures are marked in scenario; offline prefix bytes are not tokens or observed cache hits.',
     },
     protocols: reports,

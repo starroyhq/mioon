@@ -283,24 +283,7 @@ test('selection IDs can outlive entities, project preferences stay isolated, and
   await f.restart(); assert.deepEqual(capture(f.store), before); assert.deepEqual(f.preferences.get(projectId), saved);
 });
 
-test('additive v5 migration preserves legacy records, immutable requests, history and bytes', async t => {
-  const f = await fixture(t,{open:openLegacyWorkspaceStore}), projectId = f.projectId;
-  await f.call('shot.create', {projectId, title: 'Legacy shot'});
-  let timeline = await f.call('timeline.get', {projectId});
-  const input = {projectId, expectedRevision: timeline.revision, requestId: randomUUID(), kind: 'audio', name: 'Legacy edit'};
-  timeline = await f.call('timeline.track.add', input);
-  const before = capture(f.store);
-  f.store.db.exec('DROP TABLE workspace_preferences; DELETE FROM schema_version WHERE version=5;');
-  await f.restart();
-  assert.ok(f.store.db.prepare('SELECT version FROM schema_version WHERE version=5').get());
-  assert.deepEqual(capture(f.store), before);
-  assert.deepEqual(f.preferences.get(projectId), {projectId, revision: 0, state: null});
-  assert.deepEqual(await f.call('timeline.track.add', input), timeline);
-  f.preferences.put(projectId, {expectedRevision: 0, state: state()});
-  assert.deepEqual(capture(f.store), before);
-  assert.throws(() => f.store.db.prepare('UPDATE timeline_history SET operation=?').run('changed'), /immutable/);
-  assert.throws(() => f.store.db.prepare('UPDATE timeline_requests SET response=?').run('{}'), /immutable/);
-});
+
 
 async function race(_t:test.TestContext, f:Awaited<ReturnType<typeof fixture>>, states:WorkspaceState[], expectedRevision:number) {
   // One application connection owns preferences. Concurrent client requests

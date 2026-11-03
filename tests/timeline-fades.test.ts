@@ -6,7 +6,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import { openStore } from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {getTimelineFadeIssue, TIMELINE_FADE_MAX_FRAMES, parse, schemas} from '../packages/contracts/src/index.ts';

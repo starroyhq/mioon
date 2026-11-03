@@ -1,11 +1,7 @@
 import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
-import {requireWorkspaceEnvelopeRuntime} from './workspace-envelope-runtime.ts';
-import {readCurrentWorkspaceRole,isWorkspaceRoleSince} from './workspace-schema-dispatch.ts';
-import {validateFixedWorkspaceRole} from './workspace-role-validation.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {isProxy} from 'node:util/types';
 import {AppError} from '../../contracts/src/app-error.ts';
-import {validateWorkspaceSchema40} from './workspace-schema-v40.ts';
 import {validateVolumeEnvelope} from '../../contracts/src/timeline-volume-envelope.ts';
 
 export const TIMELINE_VOLUME_ENVELOPE_REJECTION_CODES=Object.freeze([
@@ -26,21 +22,9 @@ export function hasTimelineVolumeEnvelope(value:unknown):boolean{
  }
  return false;
 }
-/** Profile compatibility only, never execution authority. Reads and captured
- * evidence also use this guard. Restored mutations remain gated independently
- * by the existing owned-store, pinned invocation, origin and vacancy checks. */
+/** Volume envelopes require the live canonical project connection. */
 export function assertTimelineVolumeEnvelopeWorkspace(db:DatabaseSync,value:unknown):void{
- if(!hasTimelineVolumeEnvelope(value)||isProjectLayout(db))return;
- try{
-  const runtime=requireWorkspaceEnvelopeRuntime();
-  const role=readCurrentWorkspaceRole(db);
-  // Roles from schema44 on and the private restore59 evidence validate their
-  // complete fixed profile; restored41 uses the envelope runtime.
-  if(isWorkspaceRoleSince(role,44)||role==='storage-private-59-evidence')validateFixedWorkspaceRole(db,role);
-  else if(role==='restored-41-evidence')runtime.validateRestored41(db);
-  else validateWorkspaceSchema40(db,{verifyBytes:false});
- }
- catch{throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED');}
+ if(hasTimelineVolumeEnvelope(value)&&!isProjectLayout(db))throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED');
 }
 export function validateTimelineVolumeEnvelopeClip(clip:{durationFrames:number;volumeEnvelope?:unknown},source:{mimeType?:string;hasAudio?:boolean}):void{
  if(!Object.hasOwn(clip,'volumeEnvelope'))return;

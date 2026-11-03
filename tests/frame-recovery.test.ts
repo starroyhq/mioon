@@ -17,7 +17,7 @@ import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createFrameServices,safeFrameServiceError, type FrameStore} from '../packages/business/src/frames.ts';
 import {AppError} from '@mioon/contracts';
 import {spawnMedia,hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';

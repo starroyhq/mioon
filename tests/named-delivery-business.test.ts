@@ -1,11 +1,17 @@
+
+
+
+
+
+
 import type {ExportPreflightReport} from '../apps/web/src/export-preflight-state.ts';
-import type {PreparedSubjectTask} from './helpers/strict-timeline-audio-subject-recovery-types.ts';
+
 import type {FixtureProject,FixtureTimeline,FixtureAsset} from './helpers/strict-timeline-core-types.ts';
-import type {ServiceHandlerContext} from '../packages/business/src/services.ts';
+
 import type {LocalDeliveryRenderInput} from '@mioon/contracts/local-delivery';
 import type {SQLOutputValue} from 'node:sqlite';
 type ExportInspect=(...args:unknown[])=>Promise<{status:string;code:string}>;
-interface NamedFixture {root:string;store:TypedStore;services:TypedServices;probes:number;project:FixtureProject;timeline:FixtureTimeline;asset:Omit<FixtureAsset,"url"|"hasVideo">&Partial<Pick<FixtureAsset,"url"|"hasVideo">>;metadata?:Parameters<typeof installCurrentWorkspaceRestoreSchema>[1];context?:ServiceHandlerContext;setInspect(fn: ExportInspect):void;input():LocalDeliveryRenderInput;state():Record<string,Record<string,SQLOutputValue>[]>;restart(options?:{restore?:boolean}):Promise<void>}
+interface NamedFixture {root:string;store:TypedStore;services:TypedServices;probes:number;project:FixtureProject;timeline:FixtureTimeline;asset:Omit<FixtureAsset,"url"|"hasVideo">&Partial<Pick<FixtureAsset,"url"|"hasVideo">>;setInspect(fn: ExportInspect):void;input():LocalDeliveryRenderInput;state():Record<string,Record<string,SQLOutputValue>[]>;restart():Promise<void>}
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
@@ -14,22 +20,21 @@ import {randomUUID,createHash} from 'node:crypto';
 import {mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {DatabaseSync} from 'node:sqlite';
+
 import {TIMELINE_EXPORT_DEFAULT_SETTINGS,isTimelineRenderRecord,isExportPreflightResponse} from '@mioon/contracts';
-import {installCurrentWorkspaceRestoreSchema, openStore, openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
 import {createTimelinePreflightServices,timelineSnapshotHash} from '../packages/business/src/timeline-preflight.ts';
 import {readTimelinePreflightSnapshot} from '../packages/business/src/timeline-sources.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {matchesRestoredExport,restoreExportIdentity} from '../packages/business/src/workspace-restore-exports.ts';
-import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
+
 import {readProjectState} from './helpers/project-state.ts';
 
 const clone=<T>(value: T): T=>structuredClone(value),settings=()=>clone(TIMELINE_EXPORT_DEFAULT_SETTINGS);
-async function fixture(t: test.TestContext,{legacy=false}={}){
- const root=await mkdtemp(path.join(tmpdir(),'mioon-named-delivery-'));const open=legacy?openLegacyWorkspaceStore:openStore;let store=(open(root) as TypedStore),probes=0,inspect:ExportInspect=async()=>{probes++;return {status:'available',code:'EXPORT_CAPABILITY_AVAILABLE'};},services=(createServices(store,new Map(),{exportOptions:{inspect:(...args)=>inspect(...args)}}) as TypedServices);
- const f=({root,get store(){return store;},get services(){return services;},get probes(){return probes;},setInspect(fn: ExportInspect){inspect=fn;},input:()=>({projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),purpose:'export'}),state:()=>readProjectState(store.db).tables,async restart({restore=false}={}){await services.drain();store.close();if(restore){f.metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()};const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{installCurrentWorkspaceRestoreSchema(db,f.metadata);db.exec('PRAGMA wal_checkpoint(TRUNCATE)');}finally{db.close();}f.context={expectedWorkspaceOrigin:f.metadata.workspaceOrigin};}store=(open(root) as TypedStore);services=(createServices(store,new Map(),{exportOptions:{inspect:(...args)=>inspect(...args)}}) as TypedServices);}} as unknown as NamedFixture);
+async function fixture(t: test.TestContext){
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-named-delivery-'));const open=openStore;let store=(open(root) as TypedStore),probes=0,inspect:ExportInspect=async()=>{probes++;return {status:'available',code:'EXPORT_CAPABILITY_AVAILABLE'};},services=(createServices(store,new Map(),{exportOptions:{inspect:(...args)=>inspect(...args)}}) as TypedServices);
+ const f=({root,get store(){return store;},get services(){return services;},get probes(){return probes;},setInspect(fn: ExportInspect){inspect=fn;},input:()=>({projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),purpose:'export'}),state:()=>readProjectState(store.db).tables,async restart(){await services.drain();store.close();store=(open(root) as TypedStore);services=(createServices(store,new Map(),{exportOptions:{inspect:(...args)=>inspect(...args)}}) as TypedServices);}} as unknown as NamedFixture);
  f.project=await services.call('project.create',{name:'Original project'});f.timeline=await services.call('timeline.get',{projectId:f.project.id});
  const id=randomUUID(),bytes=Buffer.from('synthetic source bytes'),relativePath='media/source.mp4';await writeFile(path.join(root,relativePath),bytes);
  f.asset=store.put('assets',{id,projectId:f.project.id,name:'Video',mimeType:'video/mp4',sha256:createHash('sha256').update(bytes).digest('hex'),relativePath,width:720,height:1280,duration:1,hasAudio:false,sizeBytes:bytes.length,createdAt:new Date().toISOString()});
@@ -91,18 +96,12 @@ test('normal SQLite mutation fences title-only exports and original receipt',asy
  assert.throws(()=>f.store.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run('{}',input.requestId),/immutable/);assert.deepEqual(f.state(),before);
 });
 
-test('title-only render completes legacy encoding in normal and restored workspaces; held work stays held',async t=>{
- for(const restored of [false,true])await t.test(restored?'restored':'normal',async t=>{
-  const f=await fixture(t,{legacy:restored});await fakeMedia(t,f);let held,heldTask: PreparedSubjectTask|undefined;
-  if(restored){
-   held=await f.services.call('timeline.render',{...f.input(),deliveryName:'Captured delivery'});const tasks=createEditTasks({store:f.store,services:f.services});heldTask=(tasks.prepare({projectId:f.project.id,operation:'timeline.track.add',input:{projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),kind:'audio'},origin:'new'}) as PreparedSubjectTask);await tasks.drain();await f.restart({restore:true});
-  }
-  const heldRows=restored?JSON.stringify({export:f.store.db.prepare('SELECT * FROM exports WHERE id=?').get(held!.id),task:f.store.db.prepare('SELECT * FROM edit_tasks WHERE id=?').get(heldTask!.task.id)}):null;
-  const input={...f.input(),deliveryName:'Current frozen title'},accepted=await f.services.call('timeline.render',input,f.context),receipt=f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId)!.response;
-  if(restored){const origin=f.store.db.prepare('SELECT * FROM workspace_restore_export_origins WHERE exportId=?').get(accepted.id);assert.equal(origin!.requestHash,hash({operation:'timeline.render',input}));assert.equal(origin!.identityHash,restoreExportIdentity((f.store.get('exports',accepted.id) as import('./helpers/strict-timeline-core-types.ts').FixtureExport)));}
-  const worker=startWorker(f.store,f.services,new Map());try{await worker.tick();}finally{await worker.stop();}
-  const result=(f.store.get('exports',accepted.id) as import('./helpers/strict-timeline-core-types.ts').FixtureExport);assert.equal(result.status,'succeeded',JSON.stringify(result.error));assert.equal(result.snapshot.deliveryName,input.deliveryName);assert.equal(Object.hasOwn(result.snapshot,'delivery'),false);assert.equal(f.probes,0);assert.ok(result.assetId);assert.equal(f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId)!.response,receipt);assert.deepEqual(await f.services.call('timeline.render',input),accepted);
-  const rendered=f.store.get('assets',result.assetId)!;assert.deepEqual({width:rendered.width,height:rendered.height},{width:accepted.snapshot.timeline.width,height:accepted.snapshot.timeline.height});
-  if(restored){assert.ok(matchesRestoredExport(f.store,result));assert.equal(JSON.stringify({export:f.store.db.prepare('SELECT * FROM exports WHERE id=?').get(held!.id),task:f.store.db.prepare('SELECT * FROM edit_tasks WHERE id=?').get(heldTask!.task.id)}),heldRows);}
- });
+test('title-only render completes normal encoding with exact frozen delivery and receipt',async t=>{
+ const f=await fixture(t);await fakeMedia(t,f);
+ const input={...f.input(),deliveryName:'Current frozen title'},accepted=await f.services.call('timeline.render',input),receipt=f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId)!.response;
+ const worker=startWorker(f.store,f.services,new Map());try{await worker.tick();}finally{await worker.stop();}
+ const result=(f.store.get('exports',accepted.id) as import('./helpers/strict-timeline-core-types.ts').FixtureExport);
+ assert.equal(result.status,'succeeded',JSON.stringify(result.error));assert.equal(result.snapshot.deliveryName,input.deliveryName);assert.equal(Object.hasOwn(result.snapshot,'delivery'),false);assert.equal(f.probes,0);assert.ok(result.assetId);
+ assert.equal(f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId)!.response,receipt);assert.deepEqual(await f.services.call('timeline.render',input),accepted);
+ const rendered=f.store.get('assets',result.assetId)!;assert.deepEqual({width:rendered.width,height:rendered.height},{width:accepted.snapshot.timeline.width,height:accepted.snapshot.timeline.height});
 });

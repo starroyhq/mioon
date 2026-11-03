@@ -1,3 +1,6 @@
+
+import {boundedShutdown} from '../packages/business/src/operation-lifecycle.ts';
+
 import type {TypedServices, Failure, SavedAudioSnapshotReader, Asset, Project} from './helpers/strict-timeline-audio-types.ts';
 import type {TestContext} from 'node:test';
 import test from 'node:test';
@@ -8,14 +11,16 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {AUDIO_PREVIEW_LIMITS, isAudioPreviewPlan} from '@mioon/contracts/timeline-audio-preview';
-import {installCurrentWorkspaceRestoreSchema, openLegacyWorkspaceStore, openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock, assertProjectStore} from '../packages/business/src/store-runtime.ts';
+
 import {createServices} from '../packages/business/src/services.ts';
 import {createTimelineAudioPreviewServices} from '../packages/business/src/timeline-audio-preview.ts';
 import {readTimelinePreflightSnapshot, readTimelineSourceGraph} from '../packages/business/src/timeline-sources.ts';
 import {validateTimeline} from '../packages/business/src/timeline-inputs.ts';
 import {validateManagedSource, verifiedManagedHash} from '../packages/business/src/managed-media.ts';
-import {boundedShutdown} from '../packages/business/src/operation-lifecycle.ts';
-import {workspaceRestoreError} from '../packages/business/src/workspace-restore-policy.ts';
+
+
 
 import type {TimelineAudioPreviewRuntime as Runtime} from '../packages/business/src/timeline-audio-preview.ts';
 import type {TimelineAudioPreviewDecodeRequest, TimelineAudioPreviewDecodedPcm} from '../packages/business/src/timeline-audio-preview-decoder.ts';
@@ -86,7 +91,7 @@ async function fixture(t: TestContext, {durationFrames = 60, sourceInFrame = 17,
   timeline = await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
     trackId: timeline.tracks.find(track => track.kind === 'audio')!.id, assetId: id, startFrame: clipStartFrame, sourceInFrame,
     durationFrames, gain: 0.75, fadeInFrames: 10, fadeOutFrames: 10});
-  const runtime: Runtime = {assertOrdinaryWorkspace: () => {if (getWorkspaceRestoreContext(store)) throw workspaceRestoreError();}, ownsLock: () => ownsStoreLock(store),
+  const runtime: Runtime = {assertOrdinaryWorkspace: () => {assertProjectStore(store);}, ownsLock: () => ownsStoreLock(store),
     readSavedTimeline: projectId => readSaved(store, projectId), validateSource: validateManagedSource, hash: verifiedManagedHash,
     decode: async (_file, request, options) => {options.beforeEffect(); return decoded(request, bytes.length);},
     terminate: async () => [], waitForClose: async () => [], boundedShutdown, ...overrides} as Runtime;
@@ -237,7 +242,7 @@ test('same-revision metadata, revision, owned hash, bytes and owner revocation f
       return decoded(request, f.bytes.length);
     }}});
     const consume=f.consume({consume: async () => {consumed++;}});
-    if(phase==='lock')await assert.rejects(consume,{code:'RESTORE_STORE_UNVERIFIED'});
+    if(phase==='lock')await assert.rejects(consume,{code:'PROJECT_STORE_UNVERIFIED'});
     else await assert.rejects(consume, error => ['AUDIO_PREVIEW_STALE', 'AUDIO_PREVIEW_REVISION_CONFLICT', 'AUDIO_PREVIEW_UNAVAILABLE', 'AUDIO_PREVIEW_OWNER_REQUIRED'].includes((error as Failure).code));
     assert.equal(consumed, 0);
   });
@@ -298,31 +303,6 @@ test('all source memory/hash admissions are counted before any byte read, even w
   await assert.rejects(f.plan(), {code: 'AUDIO_PREVIEW_HASH_LIMIT'}); assert.equal(reads, 0);
 });
 
-test('restored workspace rejects hostile payload before getters, ownership readers or source effects', async t => {
-  const f = await fixture(t); let payload = 0, effects = 0;
-  const denied = createTimelineAudioPreviewServices(f.store, {runtime: {...f.runtime,
-    assertOrdinaryWorkspace: () => {throw workspaceRestoreError();}, ownsLock: () => {effects++; return true;},
-    readSavedTimeline: () => {effects++; return null;}, validateSource: () => {effects++; throw Error('no bytes');}}});
-  const hostile = {get projectId() {payload++; throw Error('payload getter');}};
-  await assert.rejects(denied.handlers['timeline.audioPreview.plan'](hostile), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-  await assert.rejects(denied.consumeSource(hostile, {consume: async () => {effects++;}}), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-  assert.equal(payload, 0); assert.equal(effects, 0);
-});
 
-test('real restored schema remains zero-write and denies source payload access', async t => {
-  const root = await mkdtemp(path.join(tmpdir(), 'mioon-restored-audio-')); let store = openLegacyWorkspaceStore(root);
-  store.close(); const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
-  try {installCurrentWorkspaceRestoreSchema(db, {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(),
-    manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: new Date().toISOString()}); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
-  store = openLegacyWorkspaceStore(root); let getters = 0, effects = 0;
-  const denied = () => {effects++; throw Error('Unexpected effect');};
-  const audio = createTimelineAudioPreviewServices(store, {runtime: {assertOrdinaryWorkspace: () => {if (getWorkspaceRestoreContext(store)) throw workspaceRestoreError();},
-    ownsLock: denied, readSavedTimeline: denied, validateSource: denied, hash: denied, decode: denied,
-    terminate: async () => [], waitForClose: async () => [], boundedShutdown}});
-  t.after(async () => {await audio.drain(); store.close(); await rm(root, {recursive: true, force: true});});
-  const beforeFiles = await files(root), writes = store.db.prepare('SELECT total_changes() AS n').get()!.n;
-  const hostile = {get projectId() {getters++; throw Error('must not inspect');}};
-  await assert.rejects(audio.handlers['timeline.audioPreview.plan'](hostile), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-  await assert.rejects(audio.consumeSource(hostile, {consume: denied}), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-  assert.equal(getters, 0); assert.equal(effects, 0); assert.equal(store.db.prepare('SELECT total_changes() AS n').get()!.n, writes); assert.deepEqual(await files(root), beforeFiles);
-});
+
+

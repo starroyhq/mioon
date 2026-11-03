@@ -4,8 +4,6 @@ import type {FixtureStore, FixtureCall, FixtureAsset, FixtureExportRecord, Fixtu
 import type {TypedStore, MediaJob} from './strict-service-responses.ts';
 import type {RootModule} from './strict-root-ui-types.ts';
 import type {RootFailure} from './strict-root-error-types.ts';
-import type {WorkspaceInspection} from './strict-workspace-boundary-types.ts';
-import type {WorkspaceRestoreInspection} from '../../packages/contracts/src/workspace-restore.ts';
 
 type Expect<T extends true> = T;
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
@@ -30,6 +28,5 @@ export type StrictFixtureChecks = [
   Expect<Equal<Extract<keyof FixtureSnapshotAsset, 'name' | 'url' | 'sizeBytes' | 'projectId'>, never>>,
   Expect<Equal<keyof MarkView, keyof MarkModule>>,
   Expect<null extends ReturnType<MarkView['default']> ? true : false>,
-  Expect<Equal<WorkspaceInspection, WorkspaceRestoreInspection>>,
   Expect<Equal<RootFailure['details'], Record<string, unknown> | undefined>>,
 ];

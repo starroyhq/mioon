@@ -1,4 +1,4 @@
-import {isProjectDatabase as isProjectLayout} from '../project-file/held-files.ts';
+import {assertProjectDatabase} from '../store-runtime.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import {throwIfMediaAborted} from '../media-processes.ts';
 import {run} from '../media-runtime.ts';
@@ -61,20 +61,7 @@ export function createMockProviderCapabilities() {
 /** A durable simulated provider ledger, intentionally independent of application jobs. */
 export function createMockProvider({ db, root, now = Date.now }: MockProviderFactoryOptions) {
   if (!db?.prepare || !root) throw new TypeError('Mock provider requires a SQLite database and managed root.');
-  if(!isProjectLayout(db))db.exec(`
-    CREATE TABLE IF NOT EXISTS mock_provider_tasks (
-      provider_job_id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE,
-      snapshot_json TEXT NOT NULL, snapshot_hash TEXT NOT NULL, scenario TEXT NOT NULL,
-      created_at_ms INTEGER NOT NULL, ready_at_ms INTEGER NOT NULL,
-      poll_count INTEGER NOT NULL DEFAULT 0, download_attempts INTEGER NOT NULL DEFAULT 0,
-      cancelled INTEGER NOT NULL DEFAULT 0
-    );
-    CREATE TABLE IF NOT EXISTS mock_provider_submissions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, request_id TEXT NOT NULL,
-      job_id TEXT, provider_job_id TEXT, created_at_ms INTEGER NOT NULL, outcome TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS mock_provider_submissions_request ON mock_provider_submissions(request_id);
-  `);
+  assertProjectDatabase(db);
   const get = (id: unknown): MockTaskRow => {
     const row = db.prepare('SELECT * FROM mock_provider_tasks WHERE provider_job_id = ?').get(id as SQLInputValue) as MockTaskRow | undefined;
     if (!row) throw error('PROVIDER_TASK_NOT_FOUND', 'Simulated provider task was not found.');

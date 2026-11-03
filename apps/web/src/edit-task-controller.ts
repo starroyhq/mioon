@@ -1,9 +1,5 @@
 import { message as localizedMessage } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
-import { workspaceOriginScope, workspaceOriginOptions, assertWorkspaceIntent } from './workspace-origin.ts';
-import type { WorkspaceIdentity, WorkspaceOriginOptions } from './workspace-origin.ts';
-import { taskWorkspaceBinding, taskListWorkspaceBindings, requireTaskWorkspace } from './workspace-task-origin.ts';
-import type { TaskWorkspace, TaskWorkspaceBinding, TaskEnvelope, TaskListEnvelope } from './workspace-task-origin.ts';
 import { EDIT_TASK_LIMITS, editTaskLane } from '@mioon/contracts';
 import { createEditTaskClient, isDurableEditOperation, taskInputKey, taskProtocolError, validateTaskEnvelope, validateTaskList } from './edit-task-client.ts';
 import type { EditTask, EditTaskClient, EditTaskEnvelope, EditTaskListEnvelope, EditTaskRequestOptions, TaskExpectation } from './edit-task-client.ts';
@@ -11,7 +7,6 @@ import type { EditTask, EditTaskClient, EditTaskEnvelope, EditTaskListEnvelope, 
 export interface EditTaskControllerOptions {
   client?: EditTaskClient;
   onChange?: (projectId: string,snapshot: EditTaskSnapshot)=>void;
-  getWorkspace?: ()=>TaskWorkspace;
 }
 export interface EditTaskSnapshot {
   phase: string;
@@ -19,23 +14,19 @@ export interface EditTaskSnapshot {
   items: EditTask[];
   uncertain: string[];
   busy: string[];
-  heldIds?: string[];
 }
 export interface EditTaskProjectState {
   phase: string;
   tasks: Map<string,EditTask>;
-  restore: Map<string,TaskWorkspaceBinding>;
   uncertain: Set<string>;
   busy: Set<string>;
   epoch: number;
   error: unknown;
-  workspace: TaskWorkspace|null;
 }
 export interface EditTaskSubmitInput {
   projectId: string;
   operation: string;
   input: Record<string, unknown> & {projectId?: unknown};
-  expectedWorkspaceOrigin?: unknown;
 }
 export interface EditTaskController {
   getState(projectId: string): EditTaskSnapshot;
@@ -68,25 +59,22 @@ function frozen<T>(value: T): Readonly<T> {
 
 // No renderer storage is the authority for these fifteen operations. Loading is
 // read-only, and the project remains fenced until every bounded page is known.
-export function createEditTaskController({ client = createEditTaskClient(), onChange = (): void => {}, getWorkspace = () => ({ restored: false }) }: EditTaskControllerOptions = {}): EditTaskController {
+export function createEditTaskController({ client = createEditTaskClient(), onChange = (): void => {} }: EditTaskControllerOptions = {}): EditTaskController {
   const projects = new Map<string,EditTaskProjectState>();
-  function state(projectId: string,workspace: TaskWorkspace = getWorkspace()): EditTaskProjectState {
-    const scope = workspaceOriginScope(workspace), key = JSON.stringify([scope, projectId]);
+  function state(projectId: string): EditTaskProjectState {
+    const key = projectId;
     let value=projects.get(key);
-    if (!value) { value={ phase: 'idle', tasks: new Map(), restore: new Map(), uncertain: new Set(), busy: new Set(), epoch: 0, error: null, workspace: workspace ? frozen(workspace) as TaskWorkspace : null }; projects.set(key, value); }
+    if (!value) { value={ phase: 'idle', tasks: new Map(), uncertain: new Set(), busy: new Set(), epoch: 0, error: null }; projects.set(key, value); }
     return value;
   }
   function snapshot(value: EditTaskProjectState): EditTaskSnapshot {
-    const heldIds = [...value.restore].filter(([, binding]) => Boolean(binding.held)).map(([id]) => id);
-    return { phase: value.phase, error: value.error, items: [...value.tasks.values()].filter(task => !task.acknowledged || heldIds.includes(task.id)),
-      uncertain: [...value.uncertain], busy: [...value.busy], ...(value.workspace?.restored === true ? { heldIds } : {}) };
+    return { phase: value.phase, error: value.error, items: [...value.tasks.values()].filter(task => !task.acknowledged),
+      uncertain: [...value.uncertain], busy: [...value.busy] };
   }
   function getState(projectId: string): EditTaskSnapshot { return snapshot(state(projectId)); }
   const publish = (projectId: string,value: EditTaskProjectState = state(projectId)): void => { if (value === state(projectId)) onChange(projectId, snapshot(value)); };
-  function merge(task: EditTask,value: EditTaskProjectState,binding: TaskWorkspaceBinding|null|undefined): EditTask {
-    const prior = value.tasks.get(task.id), priorBinding = value.restore.get(task.id);
-    if (prior && taskInputKey(priorBinding) !== taskInputKey(binding ?? undefined)) throw taskProtocolError();
-    if (binding) value.restore.set(task.id, binding);
+  function merge(task: EditTask,value: EditTaskProjectState): EditTask {
+    const prior = value.tasks.get(task.id);
     if (prior) {
       if (immutableFields.some(field => prior[field] !== task[field]) || taskInputKey(prior.input) !== taskInputKey(task.input)) throw taskProtocolError();
       if (task.revision < prior.revision) return prior;
@@ -103,11 +91,10 @@ export function createEditTaskController({ client = createEditTaskClient(), onCh
   }
   function receive(response: EditTaskEnvelope,expected: TaskExpectation,value: EditTaskProjectState = state(response.task.projectId)): EditTaskEnvelope {
     validateTaskEnvelope(response, expected);
-    const binding = taskWorkspaceBinding(response as TaskEnvelope, value.workspace);
-    const task = merge(response.task, value, binding);
+    const task = merge(response.task, value);
     publish(task.projectId, value);
     // An older response must not supply the outcome for a newer acknowledgment.
-    return task.revision === response.task.revision ? { ...response, task } : { task, instanceId: response.instanceId, ...(binding ? { restore: binding } : {}) };
+    return task.revision === response.task.revision ? { ...response, task } : { task, instanceId: response.instanceId };
   }
   function invalidate(projectId: string,error: unknown,value: EditTaskProjectState = state(projectId)): void {
     value.epoch++; value.phase = 'error'; value.error = error; publish(projectId, value);
@@ -116,12 +103,9 @@ export function createEditTaskController({ client = createEditTaskClient(), onCh
     const value = state(projectId), epoch = ++value.epoch;
     value.phase = 'loading'; value.error = null; publish(projectId, value);
     try {
-      const items: EditTask[] = [], contexts = new Map<string,TaskWorkspaceBinding>(), cursors = new Set<string>(); let cursor: string|null|undefined, instanceId: string|undefined;
-      const pendingOnly = value.workspace?.restored !== true;
+      const items: EditTask[] = [], cursors = new Set<string>(); let cursor: string|null|undefined, instanceId: string|undefined;
       do {
-        const page = validateTaskList(await client.list({ projectId, limit: 50, ...(pendingOnly ? {} : { pendingOnly: false }), ...(cursor ? { cursor } : {}) }), projectId, { pendingOnly });
-        const bindings = taskListWorkspaceBindings(page as unknown as TaskListEnvelope, value.workspace);
-        for (const [id, binding] of bindings) contexts.set(id, binding);
+        const page = validateTaskList(await client.list({ projectId, limit: 50, ...(cursor ? { cursor } : {}) }), projectId, { pendingOnly: true });
         if (epoch !== value.epoch) return getState(projectId);
         if (instanceId && instanceId !== page.instanceId) throw fail('TASK_SERVER_CHANGED', '服务已重启，请重新载入任务列表后再编辑。', localizedMessage('tasks.localError.serverChanged'));
         instanceId = page.instanceId; items.push(...page.items);
@@ -131,7 +115,7 @@ export function createEditTaskController({ client = createEditTaskClient(), onCh
         if (cursor) cursors.add(cursor);
       } while (cursor);
       if (new Set(items.map(task => task.id)).size !== items.length) throw taskProtocolError();
-      for (const task of items) merge(task, value, contexts.get(task.id));
+      for (const task of items) merge(task, value);
       // Absence from a pending-only page cannot prove that a local unknown was
       // rejected, nor may a reordered list resurrect an acknowledged task.
       value.phase = 'ready'; value.error = null; publish(projectId, value);
@@ -142,29 +126,28 @@ export function createEditTaskController({ client = createEditTaskClient(), onCh
   }
   function blocked(projectId: string,lane: string|null): boolean {
     const value = state(projectId);
-    return value.phase !== 'ready' || Boolean(lane && value.busy.has(lane)) || [...value.tasks.values()].some(task => !task.acknowledged && !value.restore.get(task.id)?.held && (!lane || task.lane === lane));
+    return value.phase !== 'ready' || Boolean(lane && value.busy.has(lane)) || [...value.tasks.values()].some(task => !task.acknowledged && (!lane || task.lane === lane));
   }
   function assertReady(projectId: string,lane: string|null): void {
     if (state(projectId).phase !== 'ready') throw fail('TASK_LIST_UNAVAILABLE', '任务恢复列表尚未核对完成。请先在任务中心重新载入，再继续编辑。', localizedMessage('tasks.localError.listUnverified'));
     if (blocked(projectId, lane)) throw fail('MUTATION_PENDING', '此类编辑有请求待确认。草稿仍保留，请先在任务中心恢复原请求。', localizedMessage('tasks.localError.lanePending'));
   }
   async function execute(response: EditTaskEnvelope,value: EditTaskProjectState = state(response.task.projectId)): Promise<EditTaskEnvelope> {
-    const task = response.task, invocation = requireTaskWorkspace(value.restore.get(task.id), value.workspace);
+    const task = response.task;
     value.uncertain.add(task.id); publish(task.projectId, value);
     try {
-      return receive(await client.execute({ projectId: task.projectId, taskId: task.id, digest: task.digest, instanceId: response.instanceId }, { ...invocation, ...(task.operation === 'timeline.loudness.apply' ? { operation: task.operation } : {}) }), taskIdentity(task), value);
+      return receive(await client.execute({ projectId: task.projectId, taskId: task.id, digest: task.digest, instanceId: response.instanceId }, { ...(task.operation === 'timeline.loudness.apply' ? { operation: task.operation } : {}) }), taskIdentity(task), value);
     } catch (error) { publish(task.projectId, value); throw error; }
   }
-  async function submit({ projectId, operation, input, expectedWorkspaceOrigin }: EditTaskSubmitInput,{ canExecute = () => true }: {canExecute?: (task?: EditTask)=>boolean} = {}): Promise<EditTaskEnvelope> {
+  async function submit({ projectId, operation, input }: EditTaskSubmitInput,{ canExecute = () => true }: {canExecute?: (task?: EditTask)=>boolean} = {}): Promise<EditTaskEnvelope> {
     if (!isDurableEditOperation(operation) || input.projectId !== projectId) throw fail('MUTATION_PROJECT_MISMATCH', '项目或请求已变化，已阻止提交。', localizedMessage('tasks.localError.requestChanged'));
     const lane = laneFor(operation), exact = frozen(input), value = state(projectId);
     if(!lane)throw taskProtocolError();
     assertReady(projectId, lane);
-    const invocation = assertWorkspaceIntent(workspaceOriginOptions(expectedWorkspaceOrigin), value.workspace);
     value.busy.add(lane); publish(projectId, value);
     let prepared: EditTaskEnvelope;
     try {
-      try { prepared = receive(await client.prepare({ projectId, operation, input: exact, origin: 'new' }, invocation as EditTaskRequestOptions), { projectId, operation, input: exact, origin: 'new' }, value); }
+      try { prepared = receive(await client.prepare({ projectId, operation, input: exact, origin: 'new' }), { projectId, operation, input: exact, origin: 'new' }, value); }
       catch (error) { invalidate(projectId, error, value); throw error; }
       // Navigating away during preparation leaves a recoverable prepared task.
       // It never authorizes a late callback to dispatch from another workspace.
@@ -174,7 +157,6 @@ export function createEditTaskController({ client = createEditTaskClient(), onCh
   }
   async function recover(expected: EditTask,{ canExecute = () => true }: {canExecute?: ()=>boolean} = {}): Promise<EditTaskEnvelope|null> {
     const value = state(expected.projectId);
-    const invocation = requireTaskWorkspace(value.restore.get(expected.id), value.workspace);
     if (value.busy.has(expected.id)) return null;
     value.busy.add(expected.id); publish(expected.projectId, value);
     try {
@@ -182,25 +164,25 @@ export function createEditTaskController({ client = createEditTaskClient(), onCh
       // may obtain its new nonce and execute the original persisted parameters.
       let response = receive(await client.get({ projectId: expected.projectId, taskId: expected.id, ...(expected.operation === 'timeline.loudness.apply' ? { operation: expected.operation } : {}) }), taskIdentity(expected), value);
       if (response.task.acknowledged || terminal(response.task)) return response;
-      if (response.task.status === 'dispatching') response = receive(await client.reconcile({ projectId: expected.projectId, taskId: expected.id, digest: expected.digest }, { ...invocation, ...(expected.operation === 'timeline.loudness.apply' ? { operation: expected.operation } : {}) } as EditTaskRequestOptions), taskIdentity(expected), value);
+      if (response.task.status === 'dispatching') response = receive(await client.reconcile({ projectId: expected.projectId, taskId: expected.id, digest: expected.digest }, { ...(expected.operation === 'timeline.loudness.apply' ? { operation: expected.operation } : {}) } as EditTaskRequestOptions), taskIdentity(expected), value);
       else if (canExecute()) response = await execute(response, value);
       return response;
     } finally { value.busy.delete(expected.id); publish(expected.projectId, value); }
   }
   async function acknowledge(expected: EditTask): Promise<EditTaskEnvelope> {
     if (!terminal(expected)) throw taskProtocolError();
-    const value = state(expected.projectId), invocation = requireTaskWorkspace(value.restore.get(expected.id), value.workspace);
+    const value = state(expected.projectId);
     const response = await client.acknowledge({ projectId: expected.projectId, taskId: expected.id, digest: expected.digest,
-      expectedRevision: expected.revision, status: expected.status }, { ...invocation, ...(expected.operation === 'timeline.loudness.apply' ? { operation: expected.operation } : {}) } as EditTaskRequestOptions);
+      expectedRevision: expected.revision, status: expected.status }, { ...(expected.operation === 'timeline.loudness.apply' ? { operation: expected.operation } : {}) } as EditTaskRequestOptions);
     validateTaskEnvelope(response, taskIdentity(expected));
     if (!response.task.acknowledged || response.task.status !== expected.status || response.task.revision <= expected.revision) throw taskProtocolError();
     return receive(response, taskIdentity(expected), value);
   }
   async function adopt(entry: EditTaskAdoption): Promise<EditTaskEnvelope> {
     if (!isDurableEditOperation(entry.operation) || entry.input.projectId !== entry.projectId) throw taskProtocolError();
-    const value = state(entry.projectId), invocation = assertWorkspaceIntent(entry, value.workspace);
+    const value = state(entry.projectId);
     // Adoption only writes recovery metadata. It never executes or reconciles.
-    return receive(await client.prepare({ projectId: entry.projectId, operation: entry.operation, input: frozen(entry.input), origin: 'legacy_session' }, invocation as EditTaskRequestOptions),
+    return receive(await client.prepare({ projectId: entry.projectId, operation: entry.operation, input: frozen(entry.input), origin: 'legacy_session' }),
       { projectId: entry.projectId, operation: entry.operation, input: entry.input, origin: 'legacy_session' }, value);
   }
   return { getState, load, blocked: (projectId: string,lane?: string|null): boolean => blocked(projectId, lane ?? null), assertReady, submit, recover, acknowledge, adopt };

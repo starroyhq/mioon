@@ -5,7 +5,7 @@ import {mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {TIMELINE_EXPORT_DEFAULT_SETTINGS,isTimelineExportCapabilitiesResponse,hasRequestNotAppliedProof,isExportPreflightResponse} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createTimelinePreflightServices,timelineSnapshotHash} from '../packages/business/src/timeline-preflight.ts';
 import type {TestContext} from 'node:test';

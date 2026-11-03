@@ -8,7 +8,7 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 
 const sourceURL=new URL('../packages/business/src/workspace-backup.ts',import.meta.url);
 const priorURL=new URL(`.backup-capture-prior-${randomUUID()}.ts`,sourceURL);

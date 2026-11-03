@@ -1,3 +1,5 @@
+
+
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -5,7 +7,8 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync,readFileSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
@@ -16,8 +19,8 @@ import {AGENT_TASK_SKILLS,AGENT_TASK_SKILL_READ_BYTES,agentTaskSkillInstructions
 import {AGENT_TASK_TOOL_GROUPS,AGENT_TASK_TOOL_GROUP_IDS,agentTaskToolNamesForGroup} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import {TASK_MODEL_LIMITS} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {collectProject,createProjectFromDocument} from '../packages/business/src/project-package/document.ts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+
+
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {schemaObjects} from './helpers/project-database.ts';
 import {renderAgentTaskSkillCatalog} from '../scripts/generate-agent-skills.ts';
@@ -227,31 +230,10 @@ test('project-layout notes stay unchanged when legacy import and workspace backu
  assert.throws(()=>createProjectFromDocument(f.store,{document:collected.document,files:new Map(),name:'Unavailable copy',move:false}),
   {name:'TypeError',message:'Legacy project package imports cannot run on project databases.'});
  for(const [operation,input] of [
-  ['workspace.backup.status',{}],['workspace.backup.list',{}],['workspace.backup.create',{requestId:randomUUID()}],
+  ['workspace.backup.status',{}],['workspace.backup.list',{}],['workspace.backup.inspect',{}],['workspace.restore.inspect',{}],['workspace.backup.create',{requestId:randomUUID()}],
   ['workspace.backup.restore.stage',{requestId:randomUUID(),backupId:randomUUID(),confirmation:'RESTORE_BACKUP'}],
- ] as const)await assert.rejects(f.services.call(operation,input),{code:'RESTORE_OPERATION_UNAVAILABLE',status:409});
+ ] as const)await assert.rejects(f.services.call(operation,input),{code:'UNKNOWN_OPERATION',status:404});
  assert.deepEqual(capture(),before,'unavailable operations change neither project nor application rows or change marks');
  assert.equal(f.project().notes,NOTES);
 });
-test('legacy project notes travel with project documents and backups; restored copies refuse edits', async t => {
- const f=await fixture(t,openLegacyWorkspaceStore);
- await f.setNotes(NOTES);
- const collected=collectProject(f.store,f.projectId,{media:'used'} as never);
- assert.equal(collected.document.project.notes,NOTES);
- const copy=createProjectFromDocument(f.store,{document:collected.document,files:new Map(),name:'Copy with notes',move:false});
- assert.equal(record(f.store.get('projects',copy.projectId)).notes,NOTES);
- const {notes:_omitted,...older}=collected.document.project;
- const plain=createProjectFromDocument(f.store,{document:{...collected.document,project:older},files:new Map(),name:'Copy without notes',move:false});
- assert.equal(Object.hasOwn(record(f.store.get('projects',plain.projectId)),'notes'),false,'a document from an older app imports without notes');
- await f.shutdown();
- const backup=f.root+'-backup',restored=f.root+'-restored';
- t.after(()=>{rmSync(backup,{recursive:true,force:true});rmSync(restored,{recursive:true,force:true});});
- await createWorkspaceBackup({source:f.root,destination:backup});
- await restoreWorkspaceBackup({directory:backup,destination:restored});
- const store=openLegacyWorkspaceStore(restored),services=createServices(store,new Map());
- try{
-  const project=record(store.get('projects',f.projectId));assert.equal(project.notes,NOTES);
-  await assert.rejects(services.call('project.notes.set',{requestId:randomUUID(),projectId:f.projectId,expectedRevision:Number(project.revision),notes:'edit in a restored copy'}));
-  assert.equal(record(store.get('projects',f.projectId)).notes,NOTES);
- }finally{await services.drain();store.close();}
-});
+

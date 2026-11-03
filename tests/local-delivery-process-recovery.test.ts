@@ -26,7 +26,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import type {DatabaseSync} from 'node:sqlite';
 import {publicValue} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
 import {openProjectDatabase} from './helpers/project-database.ts';
 import {readProjectState} from './helpers/project-state.ts';

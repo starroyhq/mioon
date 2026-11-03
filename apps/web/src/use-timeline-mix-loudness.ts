@@ -11,8 +11,7 @@ export function useTimelineMixLoudness(options: TimelineMixLoudnessControllerOpt
   const controller = useRef<TimelineMixLoudnessController | null>(null);
   if (!controller.current) controller.current = createTimelineMixLoudnessController({
     read: (input, invocation) => callbacks.current.read(input, invocation),
-    getContext: () => timelineMixLoudnessPageContext(callbacks.current.getContext?.() ?? callbacks.current.context),
-    getInvocation: () => callbacks.current.getInvocation?.() ?? {}, onUnauthorized: () => callbacks.current.onUnauthorized?.(), onChange: setState,
+    getContext: () => timelineMixLoudnessPageContext(callbacks.current.getContext?.() ?? callbacks.current.context), onUnauthorized: () => callbacks.current.onUnauthorized?.(), onChange: setState,
   });
   const owned = controller.current;
   useLayoutEffect(() => {

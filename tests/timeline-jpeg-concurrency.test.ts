@@ -18,7 +18,7 @@ import {probe} from '../packages/business/src/media.ts';
 import {mediaExecutable} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createTimelinePreflightServices} from '../packages/business/src/timeline-preflight.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {snapshot as schemaSnapshot} from './workspace-schema26-fixtures.mjs';
 import {png, sha, imageColour, stamp, timelineFixture} from './helpers/timeline-image-fixtures.ts';
 import {pillowJfifFixture} from './helpers/timeline-jpeg-fixtures.ts';

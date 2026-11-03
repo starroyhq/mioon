@@ -8,7 +8,7 @@ import {WORKSPACE_LUT_SCHEMA_SQL} from '../packages/business/src/workspace-schem
 import {createLutResourceServices} from '../packages/business/src/lut-resources.ts';
 import {validateLutResourceRows} from '../packages/business/src/lut-resource-validation.ts';
 import {LUT_RESOURCE_LIMITS} from '../packages/contracts/src/lut-resources.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 interface FixtureState { owned: boolean; restored: boolean; fault: ((point: string) => void) | null }
 interface LutHandlers { 'lut.import': (input: Record<string, unknown>) => { requestId: string; resource: { id: string; sha256: string; sizeBytes: number; name: string; metadata: { size: number }; colourCompatibility: string; renderBinding: string } }; 'lut.inspect': (input: Record<string, unknown>) => { resource: unknown; integrity: string }; 'lut.list': (input: Record<string, unknown>) => { projectId: string; items: { id: string }[]; nextAfter: string | null } }

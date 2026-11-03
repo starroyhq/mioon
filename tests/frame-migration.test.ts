@@ -1,18 +1,29 @@
+
+
+
+
+
+
+
+
+
+
+
 import {reviewedCatalogAt} from './helpers/reviewed-schema-layers.ts';
 import type {SQLInputValue} from 'node:sqlite';
 interface SchemaObject {type:string;name:string;tbl_name:string;sql:string|null}
-import type {TypedStore} from './helpers/strict-service-responses.ts';
+
 import test from 'node:test';
-import {currentMarkerChain} from './helpers/current-schema-delta.ts';
-import {currentOrdinary48Delta} from './helpers/current-schema-delta.ts';
+
+
 import assert from 'node:assert/strict';
-import {normalizeAgentEditProposalObject,legacyAgentEditProposalRows,assertAgentEditTargetTrigger} from './agent-edit-migration-preservation.mjs';
+
 import {DatabaseSync, type SQLOutputValue} from 'node:sqlite';
-import {normalizeImageReviewObject} from './image-edit-migration-preservation.mjs';
-import {readFileSync,writeFileSync,mkdtempSync,rmSync} from 'node:fs';
-import path from 'node:path';
-import {tmpdir} from 'node:os';
-import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
+
+import {readFileSync} from 'node:fs';
+
+
+
 import {randomUUID,createHash} from 'node:crypto';
 import {migrateComfyImageReviewSchema} from '../packages/business/src/images/review-schema.ts';
 import {migrateComfyImageSchema} from '../packages/business/src/comfy-image-schema.ts';
@@ -34,41 +45,8 @@ function capture(db: DatabaseSync){
  for(const {name} of objects.filter((value)=>value.type==='table'))rows[name as string]=db.prepare(`SELECT rowid AS retainedRowid,* FROM "${name}" ORDER BY rowid`).all();
  return {objects,rows,hashes:Object.fromEntries(Object.entries(rows).map(([name,values])=>[name,values.map(hash)]))};
 }
-function assertPreserved(db: DatabaseSync,before:ReturnType<typeof capture>,{startupMigrations=false}={}){
- const after=capture(db);if(startupMigrations)assertAgentEditTargetTrigger(after.objects);const current48=Boolean(db.prepare('SELECT 1 FROM schema_version WHERE version=48').get());const retained=after.objects.filter(value=>before.objects.some((old)=>old.name===value.name)).map(row=>{if(startupMigrations&&row.type==='table'&&row.name==='agent_edit_proposals')return normalizeAgentEditProposalObject(row);if(startupMigrations&&row.type==='table'&&row.name==='image_reviews')return normalizeImageReviewObject(row);if(!startupMigrations||row.type!=='table'||row.name!=='edit_tasks')return row;let sql=row.sql as string;for(const operation of ['timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','timeline.loudness.apply',...(current48?['timeline.clip.rippleRemove']:[])]){const token=`,'${operation}'`;assert.equal(sql!.split(token).length,2,`only the explicit later operation ${operation} changes historical SQL`);sql=sql!.replace(token,'');}return Object.assign(Object.create(Object.getPrototypeOf(row)),row,{sql});});const reviewedBefore=before.objects.map((row)=>!current48||row.name==='edit_tasks'||currentOrdinary48Delta.objectSql[row.name]===undefined?row:Object.assign(Object.create(Object.getPrototypeOf(row)),row,{sql:currentOrdinary48Delta.objectSql[row.name]}));assert.deepEqual(retained,reviewedBefore);
- for(const [name,rows] of Object.entries(before.rows)){
-  const values=name==='schema_version'?after.rows[name].filter((value)=>(value.version as number)<=19):startupMigrations&&name==='agent_edit_proposals'?legacyAgentEditProposalRows(after.rows[name]):after.rows[name];
-  assert.deepEqual(values,rows,name);assert.deepEqual(values.map(hash),before.hashes[name],`${name} raw row hashes`);
- }
-}
-function seedLegacy(db: DatabaseSync){
- const projectId=randomUUID(),sourceAssetId=randomUUID(),jobId=randomUUID(),versionId=randomUUID();
- insert(db,'projects',{id:projectId,data:`{ "id":"${projectId}", "name": "旧项目 🌱", "revision":1 }`});
- insert(db,'assets',{id:sourceAssetId,projectId,data:`{ "id":"${sourceAssetId}", "projectId":"${projectId}", "legacy" : [3, 2, 1] }`});
- insert(db,'jobs',{id:jobId,projectId,data:'{ "legacy":true }'});
- insert(db,'versions',{id:versionId,projectId,jobId,data:`{ "id":"${versionId}", "assetId":"${sourceAssetId}", "legacy": "exact 白" }`});
- for(const table of ['timeline_requests','reference_requests'])insert(db,table,{requestId:randomUUID(),requestHash:'retained hash',response:'{ "exact bytes" : [3, 2, 1] }'});
- insert(db,'mutation_requests',{requestId:randomUUID(),operation:'shot.create',projectId,canonicalInput:'{ "old":true }',response:'{ "frozen":true }'});
- insert(db,'idempotency',{scope:'legacy',requestId:randomUUID(),requestHash:'retained',resourceId:sourceAssetId});
- const groupId=randomUUID(),taskId=randomUUID(),imageRequestId=randomUUID(),imageAssetId=randomUUID(),imageVersionId=randomUUID();
- const options={size:'1024x1024',quality:'low',outputFormat:'png',background:'opaque',n:1};
- const imageInput={projectId,requestId:imageRequestId,name:'Preserved image',providerId:'mock',model:'mock-image-v1',prompt:'Exact prompt 白',options};
- const imageHash=hash(imageInput),imageSnapshot={schemaVersion:1,projectId,groupId,taskId,name:imageInput.name,providerId:imageInput.providerId,model:imageInput.model,prompt:imageInput.prompt,options};
- const imageReceipt={schemaVersion:1,projectId,groupId,taskId,inputHash:imageHash,assetId:imageAssetId,versionId:imageVersionId,sha256:'e'.repeat(64),mimeType:'image/png',width:1024,height:1024,byteLength:128,isMock:true};
- const imageTask={id:taskId,projectId,groupId,requestId:imageRequestId,name:imageInput.name,providerId:imageInput.providerId,model:imageInput.model,prompt:imageInput.prompt,options,state:'queued',revision:1,dispatched:false,versionId:null,errorCode:null,createdAt:at,updatedAt:at};
- transaction(db,()=>{
-  insert(db,'image_groups',{id:groupId,projectId,name:imageInput.name,revision:1,headVersionId:null,activeTaskId:taskId,createdAt:at,updatedAt:at});
-  insert(db,'image_tasks',{id:taskId,projectId,groupId,requestId:imageRequestId,inputHash:imageHash,input:canonical(imageInput),snapshot:canonical(imageSnapshot),state:'queued',revision:1,dispatched:0,stagedReceipt:null,versionId:null,errorCode:null,createdAt:at,updatedAt:at});
-  insert(db,'image_requests',{requestId:imageRequestId,operation:'image.generate',projectId,inputHash:imageHash,canonicalInput:canonical(imageInput),response:canonical(imageTask)});
-  db.prepare("UPDATE image_tasks SET state='dispatching',dispatched=1,revision=2 WHERE id=?").run(taskId);
-  db.prepare("UPDATE image_tasks SET state='persisting',stagedReceipt=?,revision=3 WHERE id=?").run(JSON.stringify(imageReceipt,null,1),taskId);
-  insert(db,'assets',{id:imageAssetId,projectId,data:canonical({id:imageAssetId,projectId,mimeType:'image/png',sha256:imageReceipt.sha256,width:1024,height:1024,sizeBytes:128,provenance:'synthetic-mock',relativePath:`media/${imageAssetId}.png`})});
-  insert(db,'image_versions',{id:imageVersionId,projectId,groupId,taskId,number:1,assetId:imageAssetId,data:canonical({id:imageVersionId,projectId,groupId,taskId,number:1,assetId:imageAssetId,sha256:imageReceipt.sha256,mimeType:'image/png',width:1024,height:1024,byteLength:128,isMock:true,providerId:imageInput.providerId,model:imageInput.model,options,createdAt:at})});
-  db.prepare("UPDATE image_tasks SET state='succeeded',versionId=?,revision=4 WHERE id=?").run(imageVersionId,taskId);
-  db.prepare('UPDATE image_groups SET revision=2,headVersionId=?,activeTaskId=NULL WHERE id=?').run(imageVersionId,groupId);
- });
- return {projectId,sourceAssetId,imageAssetId};
-}
+
+
 function accept(db: DatabaseSync,{projectId=randomUUID(),sourceAssetId=randomUUID()}={}){
  if(!db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId))insert(db,'projects',{id:projectId,data:canonical({id:projectId,name:'Frames'})});
  if(!db.prepare('SELECT 1 FROM assets WHERE id=?').get(sourceAssetId))insert(db,'assets',{id:sourceAssetId,projectId,data:canonical({id:sourceAssetId,projectId,mimeType:'video/mp4'})});
@@ -93,22 +71,9 @@ function fixture(t: test.TestContext){const db=database(t);migrate(db);return ac
 
 // Existing schema19 is established independently from frozen schema18 plus its
 // unchanged migrations. The tested schema20 never rewrites that baseline.
-test('schema20 adds exactly two tables and preserves every pre-existing row, rowid, receipt, index and trigger',t=>{
- const db=database(t);seedLegacy(db);const before=capture(db);migrate(db);assertPreserved(db,before);
- const added=capture(db).objects.filter(value=>!before.objects.some(old=>old.name===value.name));
- assert.deepEqual(added.filter((value)=>value.type==='table').map(value=>value.name),['frame_requests','frame_tasks']);
- assert.ok(added.every((value)=>value.tbl_name.startsWith('frame_')||['reject_legacy_frame_asset_owner','reject_image_frame_asset_owner'].includes(value.name)));
- assert.equal(db.prepare('SELECT MAX(version) AS v FROM schema_version').get()!.v,20);
- assert.deepEqual((db.prepare('PRAGMA foreign_key_check').all() as unknown),[]);
- const after=capture(db),changes=db.prepare('SELECT total_changes() AS n').get()!.n;
- migrate(db);migrate(db);assert.deepEqual(capture(db),after);assert.equal(db.prepare('SELECT total_changes() AS n').get()!.n,changes);
-});
 
-test('schema20 marker failure rolls back all added objects and keeps raw legacy content',t=>{
- const db=database(t);seedLegacy(db);db.exec("CREATE TRIGGER refuse_schema20 BEFORE INSERT ON schema_version WHEN NEW.version=20 BEGIN SELECT RAISE(ABORT,'injected20');END");
- const before=capture(db);assert.throws(()=>migrate(db),/injected20/);assert.deepEqual(capture(db),before);
- assert.throws(()=>migrateFrameSchema(db),/requires a transaction/);
-});
+
+
 
 test('frame task and original queued ACK commit together and resist mutation, replacement and deletion',t=>{
  const f=fixture(t),{db}=f;
@@ -208,25 +173,4 @@ test('retained task cap never evicts old acknowledgements or consumes another ta
 });
 
 
-test('real fresh and independently frozen schema19 workspace startup produce identical frame invariants',t=>{
- const roots=['fresh','upgraded'].map(name=>mkdtempSync(path.join(tmpdir(),`mioon-frame-${name}-`)));
- t.after(()=>{for(const root of roots)rmSync(root,{recursive:true,force:true});});
- const file=path.join(roots[1],'workbench.sqlite');writeFileSync(file,'',{mode:0o600});
- const legacy=database(null,file);seedLegacy(legacy);
- // The frozen SQL fixture stores schema only. A genuinely started schema19
- // workspace already has this unchanged journal-bootstrap singleton.
- legacy.exec('INSERT INTO agent_chat_quota(id,runs,bytes,reservedBytes) VALUES(1,0,0,0)');
- const before=capture(legacy);legacy.close();
- const fresh=(openStore(roots[0]) as TypedStore),upgraded=(openStore(roots[1]) as TypedStore);
- try{
-  assertPreserved(upgraded.db,before,{startupMigrations:true});
-  const frameObjects=(db: DatabaseSync)=>capture(db).objects.filter((value)=>value.tbl_name.startsWith('frame_')||['reject_legacy_frame_asset_owner','reject_image_frame_asset_owner'].includes(value.name));
-  assert.deepEqual(frameObjects(upgraded.db),frameObjects(fresh.db));
-  for(const store of [fresh,upgraded]){
-   assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...currentMarkerChain]);
-   assert.equal(store.db.prepare('SELECT count(*) AS n FROM frame_tasks').get()!.n,0);
-   assert.equal(store.db.prepare('SELECT count(*) AS n FROM frame_requests').get()!.n,0);
-   assert.deepEqual((store.db.prepare('PRAGMA foreign_key_check').all() as unknown),[]);
-  }
- }finally{fresh.close();upgraded.close();}
-});
+

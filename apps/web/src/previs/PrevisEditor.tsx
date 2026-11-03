@@ -128,7 +128,7 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
   const seenKeyframes = useRef(new Set<string>());
   for (const item of model.scene.keyframes) seenKeyframes.current.add(item.id);
   const recordKeyframe = useCallback(() => { const added = addPrevisKeyframe(modelRef.current.scene, undefined, [...seenKeyframes.current]); if (added.id) change(() => added.scene); }, [change]);
-  // Jumping only moves the camera, so a restored copy can still look through keyframes.
+  // Jumping only moves the camera and does not edit keyframe records.
   const jumpKeyframe = useCallback((id: string) => setModel(current => {
     const next = jumpToPrevisKeyframe(current.scene, id);
     return next === current.scene ? current : readOnly ? { ...current, scene: next } : editPrevisModel(current, next, { key: 'camera:jump' });

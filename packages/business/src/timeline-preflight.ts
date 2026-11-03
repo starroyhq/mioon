@@ -1,8 +1,7 @@
+import {assertProjectStore} from './store-runtime.ts';
 import {timelineExportRangeFields,isTimelineExportRangeWithinDuration} from '@mioon/contracts/timeline-export-range';
 import {timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import {timelineDeliveryNameFields} from '@mioon/contracts/timeline-delivery';
-import {restoreEffectFence} from './workspace-restore-invocation.ts';
-import {refuseRestoredOperation,safeWorkspaceRestoreError} from './workspace-restore-policy.ts';
 import {AppError,EXPORT_PREFLIGHT_LIMITS,timelineOutputPreset} from '@mioon/contracts';
 import {createHash} from 'node:crypto';
 import {readTimelinePreflightSnapshot,readOwnedTimelineAsset,prepareTimelineInputs,probeTimelineSource} from './timeline-sources.ts';
@@ -90,8 +89,8 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
  };
  const active=new Set<PreflightAttempt>();let stopped=false,shutdownFailure: unknown;
  async function preflight(input: PreflightInput,{signal:callSignal}: PreflightCallOptions={}): Promise<TimelinePreflightReport>{
-  refuseRestoredOperation(store,'timeline.export.preflight',input);
-  const workspaceBeforeEffect=restoreEffectFence(store);
+  assertProjectStore(store);
+  const workspaceBeforeEffect=()=>assertProjectStore(store);
   let hostEffectFailure:unknown;
   const beforeEffect=hostBeforeEffect?()=>{try{hostBeforeEffect();}catch(error){hostEffectFailure??=error;throw hostEffectFailure;}workspaceBeforeEffect?.();}:workspaceBeforeEffect;
   beforeEffect?.();
@@ -152,7 +151,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
     const error=rawError as {terminationUnconfirmed?: boolean;code?: string;timelineAssetId?: string};
     if(error.terminationUnconfirmed){shutdownFailure=rawError;throw rawError;}
     if(hostEffectFailure)throw hostEffectFailure;
-    if(safeWorkspaceRestoreError(rawError))throw rawError;
+    if((rawError as {code?:unknown})?.code==='PROJECT_STORE_UNVERIFIED')throw rawError;
     checkpoint(external);if(stopped)checkpoint(controller.signal);
     const [status,code]=timedOut?['incomplete','PREFLIGHT_TIMEOUT']:classify(rawError);
     report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];

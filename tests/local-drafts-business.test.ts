@@ -1,15 +1,19 @@
+
+import {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile} from '@mioon/contracts/private-storage';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtempSync,realpathSync,rmSync,existsSync,readFileSync,writeFileSync,statSync,copyFileSync,symlinkSync,linkSync,chmodSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {openStore,ownsStoreLock,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
+
 import {createServices} from '../packages/business/src/services.ts';
 import {createTimelineRecoveryBoundary} from '../packages/business/src/timeline-recovery.ts';
 import {createLocalDrafts,LOCAL_DRAFT_FILENAME} from '../packages/business/src/local-drafts.ts';
 import {LOCAL_DRAFT_LIMITS,clipDraftEnvelopeSchema,clipDraftListSchema} from '@mioon/contracts/local-drafts';
-import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
+
 import {type TestContext} from 'node:test';
 import {errorView} from './helpers/test-error.ts';
 import {schemaObjects,withoutForeignKeys} from './helpers/project-database.ts';
@@ -33,7 +37,7 @@ async function fixture(t: TestContext): Promise<DraftFixture> {
   timeline=await service.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:90}) as {id: string; revision: number; tracks: {id: string}[]; clips: {id: string; trackId: string}[]};
   const clip=timeline.clips[0],key={projectId:project.id,timelineId:timeline.id,clipId:clip.id};
   const raw={name:'Unsubmitted input',trackId:clip.trackId,startFrame:'',durationFrames:'9e',sourceInFrame:'0',rect:{x:'0',y:'',width:'-1',height:720},gain:'0.',fadeInFrames:''};
-  function start(channel: string='web',extra: Record<string, unknown>={}): DraftsHandle {drafts=createLocalDrafts({root,databaseFile:path.join(store.localDir,'history.db'),channel: channel as 'web',storage,guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),readTimeline:(id: string)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),readClipAsset:(id: string,c: unknown)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(c as never)},fault:(point: string)=>fault(point),...extra} as never) as unknown as DraftsHandle;return drafts;}
+  function start(channel: string='web',extra: Record<string, unknown>={}): DraftsHandle {drafts=createLocalDrafts({root,databaseFile:path.join(store.localDir,'history.db'),channel: channel as 'web',storage,guards:{ownsLock:()=>ownsStoreLock(store),readTimeline:(id: string)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),readClipAsset:(id: string,c: unknown)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(c as never)},fault:(point: string)=>fault(point),...extra} as never) as unknown as DraftsHandle;return drafts;}
   start();
   t.after(()=>{store!.close();rmSync(projectRoot,{recursive:true,force:true});});
   return {root,file:path.join(root,LOCAL_DRAFT_FILENAME),key,project,asset,timeline,clip,raw,get store(){return store!;},get drafts(){return drafts!;},start,setFault(fn: (point: string)=>void){fault=fn;},
@@ -140,11 +144,7 @@ test('malformed UTF-8 in an otherwise valid draft envelope is preserved as corru
   assert.throws(()=>f.drafts.get(f.key),code('LOCAL_DRAFT_STORAGE_UNAVAILABLE'));assert.throws(()=>f.drafts.put(f.input(saved)),code('LOCAL_DRAFT_STORAGE_UNAVAILABLE'));assert.deepEqual(readFileSync(f.file),corrupt);
 });
 
-test('restored profile is explicit unsupported without filesystem/project/provider access',()=>{
-  const never=()=>{throw Error('PRIVATE should not run');};
-  const drafts=createLocalDrafts({root:'/unread',storage:{validatePrivateDirectory:never,validateManagedFile:never,readPrivateFile:never,writePrivateFileAtomic:never},guards:{ownsLock:never,isRestored:()=>true,readTimeline:never,readClipAsset:never}});
-  for(const method of ['get','list','put','discard'])assert.deepEqual((drafts as unknown as Record<string, (value: unknown)=>unknown>)[method]({}),{supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'});
-});
+
 
 for(const point of ['beforePersist','afterPersist','afterDirectorySync'])test(`failure at ${point} preserves either old or exact newly-published bytes without domain work`,async t=>{
   const f=await fixture(t),input=f.input(),before=f.snapshot();f.setFault(label=>{if(label===point)throw Error('PRIVATE fault');});

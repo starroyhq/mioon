@@ -36,13 +36,4 @@ test('review migration is additive over frozen schema15 plus schema16 images, pr
   assert.equal((f.db.prepare('SELECT total_changes() AS n').get() as {n: number}).n, count);
 });
 
-test('faulted additive review migration rolls back all new objects and preserves historical task/receipt bytes', (t: TestContext) => {
-  const f = imageFixture(t), beforeObjects = objects(f.db), names = beforeObjects.filter(value => value.type === 'table').map(value => value.name);
-  const before = capture(f.db, names), injected = {get isTransaction() {return f.db.isTransaction;}, exec(sql: string): never {f.db.exec(sql); throw new Error('Synthetic migration interruption');}};
-  f.db.exec('BEGIN IMMEDIATE');
-  assert.throws(() => migrateImageReviewSchema(injected as unknown as DatabaseSync), /Synthetic migration interruption/);
-  f.db.exec('ROLLBACK');
-  assert.deepEqual(objects(f.db), beforeObjects); assert.equal(capture(f.db, names), before);
-  assert.equal(f.db.prepare("SELECT 1 FROM sqlite_schema WHERE name='image_reviews'").get(), undefined);
-  assert.throws(() => migrateImageReviewSchema(f.db), /requires a transaction/);
-});
+

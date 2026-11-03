@@ -1,3 +1,9 @@
+
+
+
+
+
+
 import type {LastProjectEnvelope} from '@mioon/contracts/last-project';
 import type {RootFailure} from './helpers/strict-root-error-types.ts';
 import type {FixtureProject} from './helpers/strict-timeline-core-types.ts';
@@ -6,9 +12,9 @@ type SupportedLocator=Extract<LastProjectEnvelope,{supported:true}>;
 type LocatorData<S extends string,R extends boolean>=S extends '/api/rpc'?FixtureProject:R extends true?Extract<LastProjectEnvelope,{supported:false}>:SupportedLocator;
 interface LocatorOptions {method?:string;input?:unknown;raw?:string|Buffer;authenticated?:boolean;headers?:http.OutgoingHttpHeaders;chunked?:boolean}
 interface LocatorHttpResponse<T=SupportedLocator> {status:number;headers:http.IncomingHttpHeaders;body:{ok:boolean;data:T;error:RootFailure}}
-import type {PipedProcess,SqlRows,ProcessOutcome,BackendReady,IpcMessage,WireMessage,WireData,WireEnvelope,WireCall} from './helpers/strict-timeline-wire-response-types.ts';
-import type {SchemaNode,TestTool,TestCatalog,TestOperationDefinition,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
-import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
+import type {ProcessOutcome, BackendReady, IpcMessage} from './helpers/strict-timeline-wire-response-types.ts';
+
+
 import type {ChildProcess as OwnedChild} from 'node:child_process';
 import type {TypedStore} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
@@ -16,15 +22,15 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {mkdtemp,readFile,realpath,rm,stat,writeFile,symlink,lstat} from 'node:fs/promises';
+import {mkdtemp, readFile, realpath, rm, stat, writeFile, symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {LAST_PROJECT_LIMITS,lastProjectEnvelopeSchema} from '@mioon/contracts/last-project';
 import {schemas} from '@mioon/contracts';
-import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
-import type { ChildProcess } from 'child_process';
+
 import {createServerProject} from './helpers/project-database.ts';
 import {createApplicationStorageReader} from './fixtures/project-server-process.ts';
 import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
@@ -225,19 +231,6 @@ test('route and storage failure are private, nonrepairing and absent from the op
   assert.deepEqual(await f.bytes(),bytes);assert.deepEqual(await f.snapshot(),before);await f.noEffects();
 });
 
-test('real cold backup excludes fixed locator sidecar and leaves source bytes and metadata intact',{timeout:30000},async t=>{
-  const f=await fixture(t,{legacy:true}),saved=await f.data(route,{method:'PUT',input:write(await f.get(),f.project.id)});assert.equal(saved.revision,1);await f.noEffects();await f.backend.close();
-  const bytes=await readFile(f.file),metadata=await stat(f.file),database=await readFile(path.join(f.root,'workbench.sqlite'));
-  const result=await createWorkspaceBackup({source:f.root,destination:f.backup}) as BackupResult;assert.equal(result.integrity,'verified');assert.deepEqual(await verifyWorkspaceBackup({directory:f.backup}),result);
-  const manifest=JSON.parse(await readFile(path.join(f.backup,'manifest.json'),'utf8'));assert.deepEqual(manifest.entries.map((entry:{path:string})=>entry.path),['payload/workbench.sqlite']);
-  await assert.rejects(stat(path.join(f.backup,'payload/last-project-v1.json')),{code:'ENOENT'});assert.deepEqual(await readFile(f.file),bytes);const after=await stat(f.file);assert.equal(after.ino,metadata.ino);assert.equal(after.mtimeMs,metadata.mtimeMs);assert.equal(after.mode,metadata.mode);
-  assert.deepEqual(await readFile(path.join(f.backup,'payload/workbench.sqlite')),database);assert.deepEqual(await readFile(path.join(f.root,'workbench.sqlite')),database);
-});
 
-test('restored server returns exact unsupported before unsafe locator access and still supports ordinary local editing',{timeout:30000},async t=>{
-  const f=await fixture(t,{restored:true}),before=await f.snapshot(),unsupported={supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'};
-  assert.deepEqual(await f.get(),unsupported);assert.deepEqual(await f.data(route,{method:'PUT',input:{}}),unsupported);assert.deepEqual(await f.snapshot(),before);
-  assert.equal((await lstat(f.file)).isSymbolicLink(),true);assert.equal(await readFile(f.unsafeTarget,'utf8'),'RESTORED_SIDECAR_MUST_NOT_BE_READ');
-  const project=await f.data('/api/rpc',{method:'POST',input:{operation:'project.create',input:{name:'Explicit restored edit'},expectedWorkspaceOrigin:f.workspaceOrigin}});assert.equal(project.name,'Explicit restored edit');
-  assert.deepEqual(await f.get(),unsupported);await f.noEffects();
-});
+
+

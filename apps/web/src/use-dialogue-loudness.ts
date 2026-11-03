@@ -12,8 +12,7 @@ export function useDialogueLoudness(options: DialogueLoudnessControllerOptions &
   if (!controller.current) controller.current = createDialogueLoudnessController({
     read: (input, invocation) => callbacks.current.read(input, invocation),
     apply: (gains, expectedRevision) => callbacks.current.apply(gains, expectedRevision),
-    getContext: () => dialogueLoudnessPageContext(callbacks.current.getContext?.() ?? callbacks.current.context),
-    getInvocation: () => callbacks.current.getInvocation?.() ?? {}, onUnauthorized: () => callbacks.current.onUnauthorized?.(),
+    getContext: () => dialogueLoudnessPageContext(callbacks.current.getContext?.() ?? callbacks.current.context), onUnauthorized: () => callbacks.current.onUnauthorized?.(),
     locale: () => callbacks.current.locale?.() ?? 'zh-Hans', onChange: setState,
   });
   const owned = controller.current;

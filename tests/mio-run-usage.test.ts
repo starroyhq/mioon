@@ -1,3 +1,6 @@
+
+
+
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,12 +12,12 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {openStore} from '../packages/business/src/project-file/index.ts';
-import {openLegacyWorkspaceStore as openWorkspaceStore} from '../packages/business/src/db.ts';
+
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {readMioStorage} from '../packages/business/src/agent/mio-storage.ts';
 import {createMioJournal} from '../packages/business/src/agent/mio-journal.ts';
-import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
-import {aggregateMioRunUsage, readMioRunUsage, readAgentTaskRunUsage} from '../packages/business/src/agent/mio-run-usage.ts';
+
+import {aggregateMioRunUsage, readMioRunUsage} from '../packages/business/src/agent/mio-run-usage.ts';
 import {createTaskUsageCollector} from '../packages/business/src/agent/task-usage-v2.ts';
 import {mioRunUsageSchema} from '../packages/contracts/src/mio-run-usage.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
@@ -200,20 +203,4 @@ test('canonical prevented dispatch is excluded until the same immutable request 
   assert.equal(records.request(requestId).dispatchStartedAt, dispatchedAt);
 });
 
-test('workspace compatibility reads genuine boundary events without changing legacy records', t => {
-  const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-legacy-usage-')), store = openWorkspaceStore(root);
-  t.after(() => {store.close(); rmSync(root, {force: true, recursive: true});});
-  const projectId = randomUUID(); store.put('projects', {id: projectId, name: 'Legacy usage synthetic'});
-  const journal = createAgentTaskJournal(store), run = journal.create({projectId, requestId: randomUUID(), text: 'PRIVATE_USER', configuration: {protocol: 'chat_completions', model: 'synthetic'}}).run;
-  const model = () => journal.beginModelStep(run.id, {request: {body: 'PRIVATE_BODY'}, data: {}}, []);
-  const one = model(); journal.markDispatch(run.id, one.id); journal.completeStep(run.id, one.id, {result: {providerOutput: {PRIVATE_PROVIDER: true}, usage: {inputTokens: 10, cacheReadTokens: 2, outputTokens: 0}}});
-  const failed = model(); journal.markDispatch(run.id, failed.id); journal.updateStep(run.id, failed.id, {status: 'failed'});
-  const unsent = model(); journal.updateStep(run.id, unsent.id, {status: 'failed'});
-  const blocked = model(); journal.markDispatch(run.id, blocked.id); journal.dispatchPrevented(run.id, blocked.id, 'awaiting_approval');
-  const before = Number(store.db.prepare('SELECT total_changes() AS n').get()!.n), value = readAgentTaskRunUsage(store, run.id);
-  assert.equal(value.dispatchedModelSteps, 2); assert.deepEqual(value.modelOutcomes, {completed: 1, failed: 1, unknown: 0, inflight: 0});
-  assert.equal(value.knownTotals.inputTokens, 10); assert.equal(value.knownTotals.outputTokens, 0); assert.equal(value.cacheReadRate, null);
-  assert.ok(!JSON.stringify(value).includes('PRIVATE')); assert.equal(Number(store.db.prepare('SELECT total_changes() AS n').get()!.n), before);
-  journal.updateStep(run.id, blocked.id, {status: 'intent'}); journal.markDispatch(run.id, blocked.id);
-  assert.equal(readAgentTaskRunUsage(store, run.id).modelOutcomes.inflight, 1);
-});
+

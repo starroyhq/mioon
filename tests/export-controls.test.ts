@@ -12,7 +12,7 @@ import type { Store as WorkspaceStore } from '../packages/business/src/store-con
 import type {OrdinaryServices} from '../packages/business/src/services.ts';
 import {exportActivitySchema,exportOutputSchema} from '../packages/contracts/src/export-controls.ts';
 import {publicValue} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import {run} from '../packages/business/src/media.ts';

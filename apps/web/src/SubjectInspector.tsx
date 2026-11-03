@@ -29,7 +29,7 @@ export interface SubjectInspectorProps {
   assets?: readonly SubjectAssetView[];
   shots?: readonly SubjectInspectorShot[];
   blocked?: boolean;
-  restored?: boolean;
+
   onShowTasks?: () => unknown;
   onInspectShot?: (shotId: string) => unknown;
 }
@@ -41,7 +41,7 @@ const VARIANT_KINDS = new Set(['character', 'product']);
 // creation, so nothing here is a form to save; a new version is appended
 // explicitly and becomes the default. Angle and lighting versions (09-10c) are
 // added to the grid in batches and never become the default.
-export default function SubjectInspector({ subjects, variants = null, subjectId, assets = [], shots = [], blocked = false, restored = false, onShowTasks, onInspectShot }: SubjectInspectorProps): ReactElement {
+export default function SubjectInspector({ subjects, variants = null, subjectId, assets = [], shots = [], blocked = false,  onShowTasks, onInspectShot }: SubjectInspectorProps): ReactElement {
   const { t, renderMessage, formatDate } = useI18n();
   const state = subjects?.state ?? null, controller = subjects?.controller ?? null;
   const subject = state?.subjects[subjectId];
@@ -61,7 +61,7 @@ export default function SubjectInspector({ subjects, variants = null, subjectId,
   if (!state || !controller) return frame(<p className="subject-inspector-status" role="status">{t('subjects.library.loading')}</p>);
   if (!subject) return frame(<p className="subject-inspector-status" role="status">{t('subjects.inspector.unavailable')}</p>);
   const view = state, control = controller, scope = state.scope, admit = interaction.admit;
-  const disabled = !interaction.visible || !scope || blocked || restored || Boolean(state.saving || state.uncertain);
+  const disabled = !interaction.visible || !scope || blocked || Boolean(state.saving || state.uncertain);
   const versions = view.versions[subjectId], uses = view.uses[subjectId];
   const known: Record<string, SubjectVersionResponse> = { ...(versions?.known || {}), [subject.headVersion.id]: subject.headVersion };
   const items = versions?.items ?? [];
@@ -101,11 +101,11 @@ export default function SubjectInspector({ subjects, variants = null, subjectId,
         <p className="subject-readonly-hint"><Lock size={11} aria-hidden="true" />{t('subjects.inspector.readOnly')}</p>
       </BoardInspectorGroup>
       <BoardInspectorGroup key={`versions:${subjectId}`} title={t('subjects.inspector.versions')} meta={complete ? items.length : undefined}
-        actions={<>{variantEntry}<WorkbenchTooltip content={t('subjects.version.addImage')}><Button variant="ghost" size="sm" className="icon-button" aria-label={t('subjects.version.addImage')} aria-expanded={formOpen} data-testid="subject-version-add-open" disabled={!interaction.visible || restored} onClick={() => admit(() => setAdding(formOpen && !versionDraft?.assetId ? null : subjectId))}><Upload size={14} /></Button></WorkbenchTooltip></>}>
+        actions={<>{variantEntry}<WorkbenchTooltip content={t('subjects.version.addImage')}><Button variant="ghost" size="sm" className="icon-button" aria-label={t('subjects.version.addImage')} aria-expanded={formOpen} data-testid="subject-version-add-open" disabled={!interaction.visible} onClick={() => admit(() => setAdding(formOpen && !versionDraft?.assetId ? null : subjectId))}><Upload size={14} /></Button></WorkbenchTooltip></>}>
         {variantState && variantControl && <SubjectVariantNotice state={variantState} controller={variantControl} disabled={disabled} admit={admit} />}
         {variantList?.phase === 'error' && variantList.error && <div className="subject-variant-notice"><p role="alert" className="subject-warning">{renderMessage(variantList.error)}</p><div className="subject-actions"><Button variant="ghost" size="sm" data-testid="subject-variant-list-reread" disabled={!interaction.visible} onClick={() => admit(() => variantControl?.readSubject(subjectId))}>{t('subjects.variants.reconcile')}</Button></div></div>}
         {variantState && variantControl && batches.map(batch => <SubjectVariantBatchRow key={batch.id} batch={batch} shots={shots} submitting={submittingBatch === batch.id} issues={variantState.issues} controller={variantControl} versions={known} disabled={variantDisabled} admit={admit} onShowTasks={onShowTasks} />)}
-        {formOpen && <AgentEditingBoundary disabled={restored} projectId={view.projectId} targets={[{ kind: 'subject', id: subject.id, revision: subject.revision }]} canRelease={() => { const current = control.getState(); return !current.versionDrafts[subject.id]?.assetId && !current.saving && !current.uncertain; }} onDiscard={() => { const current = control.getState(); if (current.scope === scope && !current.saving && !current.uncertain) control.updateVersion(subject.id, '', scope); }}>
+        {formOpen && <AgentEditingBoundary disabled={false} projectId={view.projectId} targets={[{ kind: 'subject', id: subject.id, revision: subject.revision }]} canRelease={() => { const current = control.getState(); return !current.versionDrafts[subject.id]?.assetId && !current.saving && !current.uncertain; }} onDiscard={() => { const current = control.getState(); if (current.scope === scope && !current.saving && !current.uncertain) control.updateVersion(subject.id, '', scope); }}>
           <div className="subject-form"><Label htmlFor="subject-version-image">{t('subjects.version.addImage')}</Label><ImageChoice id="subject-version-image" value={versionDraft?.assetId || ''} assets={images} disabled={disabled || view.list.phase !== 'ready'} onChange={assetId => admit(() => control.updateVersion(subject.id, assetId, scope))} />{versionDraft?.assetId && <SubjectImage version={{ assetId: versionDraft.assetId, projectId: view.projectId }} assets={assets} label={t('subjects.version.selectedImage')} />}{staleVersionDraft && <p className="subject-warning" role="alert">{t('subjects.version.staleDraft')}</p>}<div className="subject-actions"><Button size="sm" data-testid="subject-add-version" disabled={disabled || view.list.phase !== 'ready' || staleVersionDraft || !images.some(asset => asset.id === versionDraft?.assetId)} onClick={() => admit(() => control.addVersion(subject.id, scope))}>{t('subjects.version.add')}</Button>{versionDraft?.assetId && <Button variant="ghost" size="sm" disabled={disabled} onClick={() => admit(() => control.updateVersion(subject.id, '', scope))}>{t('subjects.version.discard')}</Button>}</div><p className="subject-helper">{t('subjects.version.retained')}</p></div>
         </AgentEditingBoundary>}
         {versions?.phase === 'loading' && <p role="status">{t('subjects.version.loading')}</p>}

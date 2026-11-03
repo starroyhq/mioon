@@ -41,7 +41,7 @@ test('real project notes survive reopening while legacy package imports and work
   assert.throws(() => createProjectFromDocument(reopened, {document: collected.document, files: new Map(), name: 'Refused copy', move: false}), {
     name: 'TypeError', message: 'Legacy project package imports cannot run on project databases.',
   });
-  await assert.rejects(current.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'RESTORE_OPERATION_UNAVAILABLE', status: 409});
+  await assert.rejects(current.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'UNKNOWN_OPERATION', status: 404});
   assert.equal(reopened.db.prepare('SELECT total_changes() AS n').get()!.n, before);
   assert.equal(reopened.db.prepare('SELECT count(*) AS n FROM projects').get()!.n, 1);
   assert.deepEqual(reopened.get('projects', projectId), project);

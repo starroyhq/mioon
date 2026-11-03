@@ -1,21 +1,32 @@
-import {startLegacyAgentTaskHttp} from './helpers/legacy-agent-task-http-fixture.ts';
+
+
+
+
+
+
+
+
+
+
+
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
-import {projectApiPath} from '../packages/contracts/src/project-file.ts';
-import {CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_SCHEMA} from './helpers/workspace-schema-current.ts';
+
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,realpathSync,rmSync,mkdirSync,writeFileSync,readFileSync} from 'node:fs';
+import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {randomUUID,createHash} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
-import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
-import {openStore,openLegacyWorkspaceStore,classifyCurrentWorkspaceSchema,installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
+import {randomUUID} from 'node:crypto';
+
+
+
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {beginFixtureModelStep,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
-import {classifyWorkspaceSchemaV48V49} from '../packages/business/src/workspace-restore-schema-v49.ts';
+
 function fixture(opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-v2-')),store=opener(root),projectId=isProjectStore(store)?store.projectId:randomUUID();store.put('projects',{id:projectId,name:'Task fixture',revision:1,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});return {root,store,projectId,journal:createAgentTaskJournal(store),close(){store.close();rmSync(root,{recursive:true,force:true});}};}
 function start(f:ReturnType<typeof fixture>,stepLimit=30){return f.journal.create({requestId:randomUUID(),projectId:f.projectId,text:'测试',configuration:{protocol:'responses'},policy:{...structuredClone(DEFAULT_AGENT_TASK_POLICY),stepLimit}});}
 function reversibleChange(f:ReturnType<typeof fixture>,runId:string){const step=isProjectStore(f.store)?beginFixtureToolStep(f.journal,runId,{}):f.journal.beginStep(runId,{kind:'tool'});f.journal.markDispatch(runId,step.id);f.journal.completeStep(runId,step.id,{change:{projectId:f.projectId,operation:'shot.update',targets:[],before:null,after:null,reversible:true}});return f.journal.snapshot(runId).changes[0]!;}
@@ -124,21 +135,9 @@ test('explicit same-owner restore retains claim identity, checks original target
  assert.throws(()=>f.journal.edit({...input,requestId:randomUUID(),generation:3,action:'restore',targets:[{...target,revision:f.journal.targetRevision(f.projectId,'shot',id)}]}),{code:'AGENT_TASK_TARGET_CHANGED'});assert.equal(f.journal.claims(f.projectId,ownerId)[0]?.state,'uncertain');
  f.journal.edit({...input,requestId:randomUUID(),generation:3,action:'resolve'});assert.equal(f.journal.claims(f.projectId,ownerId).length,0);
 }finally{f.close();}});
-test('the current schema is an exact new profile and its restored copy retains immutable v2 evidence',()=>{const f=fixture(openLegacyWorkspaceStore);try{const run=start(f).run;assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:CURRENT_ORDINARY_SCHEMA,profile:'ordinary'});assert.throws(()=>classifyWorkspaceSchemaV48V49(f.store.db),{code:'RESTORE_SCHEMA_UNSUPPORTED'});const info=installCurrentWorkspaceRestoreSchema(f.store.db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()});assert.equal(info.schemaVersion,CURRENT_RESTORED_SCHEMA);assert.equal(info.sourceSchema,CURRENT_ORDINARY_SCHEMA);assert.throws(()=>f.store.db.prepare("UPDATE agent_task_runs_v2 SET status='running' WHERE id=?").run(run.id),/RESTORED_RECORD_HELD/);assert.equal(f.journal.run(run.id).text,'测试');}finally{f.close();}});
 
-test('schema58 backup restores policy receipts and selected import bytes into the current restored profile',async()=>{
- const f=fixture(openLegacyWorkspaceStore),backup=`${f.root}-backup`,restored=`${f.root}-restored`;try{
-  const requestId=randomUUID(),selected=randomUUID(),bytes=Buffer.from('selected local file'),sha256=createHash('sha256').update(bytes).digest('hex');
-  const policy=f.journal.updatePolicy({...structuredClone(DEFAULT_AGENT_TASK_POLICY),modes:{...DEFAULT_AGENT_TASK_POLICY.modes,paid:'direct'}},requestId);
-  assert.equal(f.journal.lookupPolicy(requestId)?.revision,1);assert.deepEqual(f.journal.updatePolicy({...structuredClone(DEFAULT_AGENT_TASK_POLICY),modes:{...DEFAULT_AGENT_TASK_POLICY.modes,paid:'direct'}},requestId),policy);
-  mkdirSync(join(f.root,'agent-imports'),{mode:0o700});writeFileSync(join(f.root,'agent-imports',`${selected}.bin`),bytes,{mode:0o600});
-  f.store.db.prepare("INSERT INTO agent_task_imports_v2(id,projectId,requestId,name,mimeType,relativePath,sha256,status,createdAt) VALUES(?,?,?,?,?,?,?,'selected',?)").run(selected,f.projectId,randomUUID(),'chosen.png','image/png',`agent-imports/${selected}.bin`,sha256,new Date().toISOString());
-  const original=f.store.db.prepare('SELECT * FROM agent_task_imports_v2').all();f.store.close();
-  const created=await createWorkspaceBackup({source:f.root,destination:backup});assert.equal(created.databaseSchemaVersion,CURRENT_ORDINARY_SCHEMA);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
-  const result=await restoreWorkspaceBackup({directory:backup,destination:restored});assert.equal(result.databaseSchemaVersion,CURRENT_RESTORED_SCHEMA);
-  const copy=openLegacyWorkspaceStore(restored);try{assert.deepEqual(copy.db.prepare('SELECT * FROM agent_task_imports_v2').all(),original);assert.deepEqual(readFileSync(join(restored,'agent-imports',`${selected}.bin`)),bytes);assert.deepEqual(createAgentTaskJournal(copy).lookupPolicy(requestId),policy);}finally{copy.close();}
- }finally{f.close();rmSync(backup,{recursive:true,force:true});rmSync(restored,{recursive:true,force:true});}
-});
+
+
 
 test('pending undo control keeps immutable intent and exposes finished persisted progress',()=>{const f=fixture();try{const run=start(f).run,input={requestId:randomUUID(),runId:run.id,expectedRevision:run.revision,action:'undo_all'};assert.deepEqual(f.journal.beginControl(input).result,{state:'pending'});f.journal.finishControl(input.requestId,{state:'blocked',revertedIds:[],error:'target changed'});assert.deepEqual(f.journal.lookupControl(input.requestId)?.result,{state:'blocked',revertedIds:[],error:'target changed'});assert.deepEqual(f.journal.beginControl(input).result,{state:'blocked',revertedIds:[],error:'target changed'});assert.throws(()=>f.journal.beginControl({...input,action:'undo_change'}),{code:'AGENT_TASK_REQUEST_CONFLICT'});}finally{f.close();}});
 
@@ -151,25 +150,4 @@ test('history keyset pages discover every run without overlap and reject a forei
 
 test('stale control rejection has a retained receipt and exact replay never performs the action',()=>{const f=fixture();try{const run=start(f).run;f.journal.transition(run.id,run.revision,'paused');const input={requestId:randomUUID(),runId:run.id,expectedRevision:run.revision,action:'resume'};let calls=0;assert.throws(()=>f.journal.performControl(input,()=>{calls++;return null;}),{code:'AGENT_TASK_REVISION_CONFLICT'});const rejected=f.journal.rejectControl(input,'AGENT_TASK_REVISION_CONFLICT');assert.equal(rejected.revision,f.journal.run(run.id).revision);assert.deepEqual(rejected.result,{state:'rejected',code:'AGENT_TASK_REVISION_CONFLICT'});assert.deepEqual(f.journal.lookupControl(input.requestId),rejected);assert.deepEqual(f.journal.performControl(input,()=>{calls++;return null;}),rejected);assert.equal(calls,0);assert.throws(()=>f.journal.rejectControl({...input,action:'stop'},'AGENT_TASK_REVISION_CONFLICT'),{code:'AGENT_TASK_REQUEST_CONFLICT'});}finally{f.close();}});
 
-test('the current restored server reads v2 history without credentials or recovery and rejects every mutation without database changes',async()=>{
- const f=fixture(openLegacyWorkspaceStore),backup=`${f.root}-http-backup`,restored=`${f.root}-http-restored`;let server:Awaited<ReturnType<typeof startLegacyAgentTaskHttp>>|undefined;
- const dump=(root:string)=>{const db=new DatabaseSync(join(root,'workbench.sqlite'),{readOnly:true});try{return db.prepare("SELECT name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row=>({name:row.name,sql:row.sql,...(String(row.sql).startsWith('CREATE TABLE')?{rows:db.prepare(`SELECT * FROM "${String(row.name)}"`).all().map(item=>JSON.stringify(item)).sort()}: {})}));}finally{db.close();}};
- try{
-  const run=start(f).run,step=f.journal.beginStep(run.id,{kind:'model',request:{test:'never repeat'}});f.journal.markDispatch(run.id,step.id);const expected=f.journal.snapshot(run.id);f.store.close();
-  await createWorkspaceBackup({source:f.root,destination:backup});await restoreWorkspaceBackup({directory:backup,destination:restored});const before=dump(restored);
-  let models=0;server=await startLegacyAgentTaskHttp({dataDir:restored,taskGatewayV2:async function*(){models++;throw Error('Restored records must never execute');}});
-  const request=async(route:string,method='GET',input?:unknown)=>{const response=await fetch(server!.url+route,{method,headers:{Authorization:`Bearer ${server!.token}`,...(input!==undefined?{'Content-Type':'application/json'}:{})},...(input!==undefined?{body:JSON.stringify(input)}:{})});return {status:response.status,value:await response.json() as {ok?:boolean;data?:Record<string,unknown>;error?:{code:string}}};};
-  const prefix=projectApiPath(f.projectId,'agent','tasks','v2'),listed=await request(prefix);assert.equal(listed.status,200,JSON.stringify(listed.value));assert.equal(listed.value.data?.readOnly,true);assert.ok(listed.value.data?.settings);assert.equal((listed.value.data?.runs as {id:string}[])[0]?.id,run.id);
-  const history=await request(`${prefix}/history`);assert.equal(history.status,200);assert.equal((history.value.data?.conversations as {lastRunId:string}[])[0]?.lastRunId,run.id);
-  const detail=await request(`${prefix}/${run.id}`);assert.equal(detail.status,200);assert.equal((detail.value.data?.run as {status:string}).status,expected.run.status);assert.equal((detail.value.data?.steps as {status:string}[])[0]?.status,'dispatch_started');
-  const writes:[string,string,unknown][]=[
-   [prefix,'POST',{requestId:randomUUID(),text:'禁止发送',expectedSettingsRevision:0}],
-   [`${prefix}/${run.id}/actions`,'POST',{requestId:randomUUID(),expectedRevision:run.revision,action:'stop'}],
-   ['/api/agent/tasks/v2/policy','PUT',{requestId:randomUUID(),expectedRevision:0,stepLimit:30,modes:{...DEFAULT_AGENT_TASK_POLICY.modes}}],
-   [projectApiPath(f.projectId,'agent','tasks','v2','editing'),'POST',{requestId:randomUUID(),projectId:f.projectId,ownerId:randomUUID(),generation:1,sequence:1,action:'claim',targets:[]}],
-   [`${prefix}/uploads`,'POST',{requestId:randomUUID(),name:'local.txt',mimeType:'text/plain',dataBase64:'eA=='}],
-  ];
-  for(const [route,method,input]of writes){const response=await request(route,method,input);assert.equal(response.status,409);assert.ok(['AGENT_TASK_READ_ONLY','RESTORE_OPERATION_UNAVAILABLE'].includes(response.value.error?.code??''));}
-  assert.equal(models,0);await server.close();server=undefined;assert.deepEqual(dump(restored),before);
- }finally{await server?.close();f.close();rmSync(backup,{recursive:true,force:true});rmSync(restored,{recursive:true,force:true});}
-});
+

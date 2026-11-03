@@ -59,9 +59,9 @@ test('the real K2 server serves usage only at the authenticated read-only projec
  const forbidden=await fetch(f.server.url+url,{headers:{Authorization:`Bearer ${f.server.token}`,Origin:'http://foreign.invalid'}});assert.equal(forbidden.status,403);
  assert.equal(f.models,count);
 });
-async function cliSnapshot(url:string,token:string,projectId:string,runId:string):Promise<AgentTaskSnapshot>;
-async function cliSnapshot(url:string,token:string,projectId:string,conversationId:string,command:'history'):Promise<AgentTaskHistoryPage>;
-async function cliSnapshot(url:string,token:string,projectId:string,conversationId:string,command:'conversation'):Promise<AgentTaskConversationPage>;
+
+
+
 async function cliSnapshot(url:string,token:string,projectId:string,runId:string,command:'status'|'history'|'conversation'='status'):Promise<AgentTaskSnapshot|AgentTaskHistoryPage|AgentTaskConversationPage>{
  const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','task',command,'--input',JSON.stringify(command==='status'?{projectId,runId}:command==='history'?{projectId}:{projectId,conversationId:runId})],{env:{...process.env,MIOON_BASE_URL:url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(chunk:string)=>{stdout+=chunk;});child.stderr.setEncoding('utf8').on('data',(chunk:string)=>{stderr+=chunk;});

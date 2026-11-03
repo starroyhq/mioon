@@ -2,7 +2,7 @@ import path from 'node:path';
 import {isProjectDatabase as isProjectLayout} from '../project-file/held-files.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import {statSync,createReadStream,renameSync,copyFileSync,unlinkSync,readFileSync,constants} from 'node:fs';
-import type { Store as WorkspaceStore } from '../store-contract.ts';
+import type { Store } from '../store-contract.ts';
 import {createOwnedMediaGraphReader} from '../inspection.ts';
 import {createTimelineRecoveryBoundary} from '../timeline-recovery.ts';
 import {lutInputHash} from '../lut-resource-validation.ts';
@@ -47,11 +47,11 @@ export interface CollectedProject {
  totalBytes:number;
 }
 
-function relational(db:WorkspaceStore['db'],table:string,projectId:string):Row[]{return db.prepare(`SELECT * FROM ${table} WHERE projectId=? ORDER BY rowid`).all(projectId) as Row[];}
+function relational(db:Store['db'],table:string,projectId:string):Row[]{return db.prepare(`SELECT * FROM ${table} WHERE projectId=? ORDER BY rowid`).all(projectId) as Row[];}
 
 /** Reads one project's saved state in a single transaction. Media are only
  * stat-checked here; their bytes are re-hashed while the package is written. */
-export function collectProject(store:WorkspaceStore,projectId:string,options:ProjectPackageOptions):CollectedProject{
+export function collectProject(store:Store,projectId:string,options:ProjectPackageOptions):CollectedProject{
  return store.tx(()=>{
   const projectRow=parse(store.get('projects',projectId));
   if(!projectRow)throw projectPackageError('PROJECT_PACKAGE_NOT_FOUND');
@@ -125,13 +125,13 @@ export function buildManifest({collected,document,appVersion,options,name}:{coll
  * consume its private staging copies, while a duplicate always copies. */
 export interface ProjectPackageReceipt {scope:'project-import'|'project-duplicate';requestId:string;requestHash:string}
 /** Returns the project an earlier identical request created, if it still exists. */
-export function findProjectPackageReceipt(store:WorkspaceStore,receipt:ProjectPackageReceipt):{projectId:string}|null{
+export function findProjectPackageReceipt(store:Store,receipt:ProjectPackageReceipt):{projectId:string}|null{
  const row=store.db.prepare('SELECT requestHash,resourceId FROM idempotency WHERE scope=? AND requestId=?').get(receipt.scope,receipt.requestId) as {requestHash:string;resourceId:string}|undefined;
  if(!row)return null;
  if(row.requestHash!==receipt.requestHash)throw Object.assign(new Error('The request id was already used for different content.'),{code:'IDEMPOTENCY_CONFLICT',status:409});
  return store.get('projects',row.resourceId)?{projectId:row.resourceId}:null;
 }
-export function createProjectFromDocument(store:WorkspaceStore,{document,files,name,move,receipt}:{document:ProjectDocument;files:ReadonlyMap<string,string>;name:string;move:boolean;receipt?:ProjectPackageReceipt}):{projectId:string;jobIds:string[]}{
+export function createProjectFromDocument(store:Store,{document,files,name,move,receipt}:{document:ProjectDocument;files:ReadonlyMap<string,string>;name:string;move:boolean;receipt?:ProjectPackageReceipt}):{projectId:string;jobIds:string[]}{
   if(isProjectLayout(store.db))throw new TypeError('Legacy project package imports cannot run on project databases.');
  const ids=new Map<string,string>(),fresh=(id:string):string=>{const key=id.toLowerCase();let value=ids.get(key);if(!value){value=randomUUID();ids.set(key,value);}return value;};
  // Every UUID-shaped string is an id or embeds one (paths, URLs), so a single

@@ -1,11 +1,11 @@
+import {assertProjectStore} from './store-runtime.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError,PREVIS_LIMITS,PREVIS_THUMBNAIL_CARD,canonicalPrevisValue,defaultPrevisScene,isPrevisNodeRecord,previsSchemas,publicValue} from '@mioon/contracts';
 import type {PrevisNodeRecord,PrevisScene,PrevisThumbnailGetResponse,PrevisThumbnailSetResponse} from '@mioon/contracts';
-import {refuseRestoredOperation} from './workspace-restore-policy.ts';
-import {usesPrevisSchema} from './workspace-schema-dispatch.ts';
+import {usesPrevisSchema} from './store-capabilities.ts';
 import {validateImageConsumption} from './image-consumption.ts';
-import {ownsStoreLock} from './db.ts';
+import {ownsStoreLock} from './store-runtime.ts';
 
 // Camera previs nodes (schema64). A node's scene is saved whole under scene
 // revision CAS with an exact stable-key receipt. Autosave writes often, so only
@@ -149,7 +149,7 @@ export function createPrevisReaders(db: DatabaseSync) {
 export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toISOString()}: {now?: ()=>string}={}) {
  const {db,put,tx}=store,readers=createPrevisReaders(db);
  function writable(operation: PrevisOperation,input: Row): void {
-  refuseRestoredOperation(store,operation,input);
+  assertProjectStore(store);
   if(!ownsStoreLock(store))throw failure('PREVIS_STATE_CONFLICT',403);
  }
  function receipt(requestId: string): ReceiptRow|undefined {

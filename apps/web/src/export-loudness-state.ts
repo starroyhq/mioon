@@ -36,7 +36,7 @@ export interface ExportLoudnessState {
   readonly executionScope: string;
   readonly connected: boolean;
   readonly visible: boolean;
-  readonly restored: boolean;
+
   readonly targets: readonly ExportLoudnessFileTarget[];
   readonly targetId: string | null;
   readonly targetKey: string | null;
@@ -51,12 +51,11 @@ export interface ExportLoudnessControllerOptions {
   read: (input: ExportLoudnessInput, options: ExportSamplePeakReadOptions) => Promise<unknown>;
   isRenderRecord: (value: unknown, input: unknown) => boolean;
   getContext?: () => ExportLoudnessContext;
-  getInvocation?: () => Readonly<{ expectedWorkspaceOrigin?: string }>;
   onChange?: (state: ExportLoudnessState) => void;
   onUnauthorized?: () => void;
 }
 export const exportLoudnessTargets = exportSamplePeakTargets;
-const initial = (): ExportLoudnessState => ({ scope: null, projectId: null, executionScope: '', connected: false, visible: false, restored: false,
+const initial = (): ExportLoudnessState => ({ scope: null, projectId: null, executionScope: '', connected: false, visible: false,
   targets: [], targetId: null, targetKey: null, draft: blankDraft(), draftVersion: 0, phase: 'idle', report: null, error: '' });
 
 /** Project/file changes must not flash the previous report before layout effects. */
@@ -65,18 +64,17 @@ export function exportLoudnessViewState(state: ExportLoudnessState, context: Exp
   const sameOwner = state.scope === context.scope && state.projectId === context.projectId;
   const target = sameOwner ? targets.find(item => item.exportId === state.targetId) : undefined;
   const sameTarget = state.targetId === null || target?.key === state.targetKey;
-  const sameExecution = state.executionScope === context.executionScope && state.visible === context.visible && state.connected === context.connected && state.restored === context.restored;
+  const sameExecution = state.executionScope === context.executionScope && state.visible === context.visible && state.connected === context.connected;
   if (sameOwner && sameTarget && sameExecution && canonical(targets.map(item => item.key)) === canonical(state.targets.map(item => item.key))) return state;
-  const clear = !sameOwner || !sameTarget || !context.connected || context.restored;
+  const clear = !sameOwner || !sameTarget || !context.connected;
   return Object.freeze({ ...state, scope: context.scope, projectId: context.projectId, executionScope: context.executionScope,
-    connected: context.connected, visible: context.visible, restored: context.restored, targets,
+    connected: context.connected, visible: context.visible,  targets,
     ...(clear ? { draft: blankDraft(), draftVersion: state.draftVersion + 1, report: null, error: '', targetId: target?.exportId ?? null,
       targetKey: target?.key ?? null, phase: target ? 'stale' : 'idle' } : state.phase === 'measuring' && !sameExecution ? { report: null, error: '', phase: 'cancelled' } : {}) });
 }
 export function exportLoudnessErrorMessage(error: unknown, locale: Locale = 'zh-Hans'): string {
   const code = object(error) ? error.code : null;
   if (code === 'UNAUTHORIZED') return translate(locale, 'audio.loudness.export.unauthorized');
-  if (code === 'RESTORE_OPERATION_UNAVAILABLE') return translate(locale, 'audio.loudness.export.restored');
   if (code === 'BACKEND_PROTOCOL_ERROR') return translate(locale, 'audio.loudness.export.protocol');
   return translate(locale, 'audio.loudness.export.failed');
 }
@@ -94,7 +92,7 @@ function freezeObservation(value: unknown): void {
 const protocolError = () => Object.assign(new Error('Invalid export loudness response'), { code: 'BACKEND_PROTOCOL_ERROR' });
 
 /** Explicit read-only observation. No queue, automatic retry, persistence or gain mutation. */
-export function createExportLoudnessController({ read, isRenderRecord, getContext, getInvocation = () => ({}), onChange = () => {}, onUnauthorized = () => {} }: ExportLoudnessControllerOptions) {
+export function createExportLoudnessController({ read, isRenderRecord, getContext, onChange = () => {}, onUnauthorized = () => {} }: ExportLoudnessControllerOptions) {
   let state = initial(), generation = 0, disposed = false;
   let active: AbortController | null = null;
   const emit = (patch: Partial<ExportLoudnessState>) => { state = Object.freeze({ ...state, ...patch }); onChange(state); };
@@ -102,12 +100,12 @@ export function createExportLoudnessController({ read, isRenderRecord, getContex
   const sync = () => { if (!disposed && getContext) controller.setContext(getContext()); };
   const allowed = (requested: ExportLoudnessFileTarget, scope: string | null, version: number) => {
     sync();
-    if (disposed || !state.projectId || !state.scope || scope !== state.scope || version !== state.draftVersion || !state.connected || !state.visible || state.restored) return undefined;
+    if (disposed || !state.projectId || !state.scope || scope !== state.scope || version !== state.draftVersion || !state.connected || !state.visible) return undefined;
     return state.targets.find(item => item.exportId === requested.exportId && item.key === requested.key);
   };
   const current = (attempt: number, target: ExportLoudnessFileTarget, scope: string | null, version: number): boolean => {
     sync();
-    return !disposed && generation === attempt && state.scope === scope && state.draftVersion === version && state.connected && state.visible && !state.restored &&
+    return !disposed && generation === attempt && state.scope === scope && state.draftVersion === version && state.connected && state.visible &&
       state.targetId === target.exportId && state.targetKey === target.key && active !== null && !active.signal.aborted;
   };
   const controller = {
@@ -119,13 +117,13 @@ export function createExportLoudnessController({ read, isRenderRecord, getContex
       const ownerChanged = context.scope !== state.scope || context.projectId !== state.projectId;
       const target = targets.find(item => item.exportId === state.targetId);
       const targetChanged = state.targetId !== null && target?.key !== state.targetKey;
-      const executionChanged = context.executionScope !== state.executionScope || context.connected !== state.connected || context.visible !== state.visible || context.restored !== state.restored;
+      const executionChanged = context.executionScope !== state.executionScope || context.connected !== state.connected || context.visible !== state.visible;
       const targetsChanged = canonical(targets.map(item => item.key)) !== canonical(state.targets.map(item => item.key));
       if (!ownerChanged && !executionChanged && !targetsChanged) return;
       const wasMeasuring = state.phase === 'measuring';
       if (ownerChanged || targetChanged || executionChanged) invalidate();
-      const clear = ownerChanged || targetChanged || !context.connected || context.restored;
-      emit({ scope: context.scope, projectId: context.projectId, executionScope: context.executionScope, connected: context.connected, visible: context.visible, restored: context.restored, targets,
+      const clear = ownerChanged || targetChanged || !context.connected;
+      emit({ scope: context.scope, projectId: context.projectId, executionScope: context.executionScope, connected: context.connected, visible: context.visible,  targets,
         ...(clear ? { draft: blankDraft(), draftVersion: state.draftVersion + 1, report: null, error: '', targetId: ownerChanged || !target ? null : target.exportId,
           targetKey: ownerChanged || !target ? null : target.key, phase: !ownerChanged && target ? 'stale' : 'idle' }
           : wasMeasuring && executionChanged ? { phase: 'cancelled', report: null, error: '' } : {}) });
@@ -149,9 +147,8 @@ export function createExportLoudnessController({ read, isRenderRecord, getContex
       const attempt = ++generation, capturedVersion = state.draftVersion + 1, abort = new AbortController(); active = abort;
       emit({ targetId: target.exportId, targetKey: target.key, draft, draftVersion: capturedVersion, phase: 'measuring', report: null, error: '' });
       try {
-        const invocation = getInvocation();
         if (!current(attempt, target, scope, capturedVersion)) return null;
-        const result = await read(input, { ...invocation, signal: abort.signal });
+        const result = await read(input, { signal: abort.signal });
         if (!current(attempt, target, scope, capturedVersion)) return null;
         if (!isExportLoudnessResponse(result, input)) throw protocolError();
         if (result.status === 'ready') {

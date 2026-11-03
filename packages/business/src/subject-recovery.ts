@@ -1,5 +1,5 @@
 import type {DatabaseSync} from 'node:sqlite';
-import {usesAssetAnnotationSchema} from './workspace-schema-dispatch.ts';
+import {usesAssetAnnotationSchema} from './store-capabilities.ts';
 import {AppError, schemas, SUBJECT_MUTATION_OPERATIONS} from '@mioon/contracts';
 import {canonical, hash} from './services.ts';
 

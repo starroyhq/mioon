@@ -1,8 +1,8 @@
-import '../packages/business/src/db.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync, type SQLInputValue} from 'node:sqlite';
-import {validateWorkspaceVolumeEnvelopeRows as scan,hasWorkspaceVolumeEnvelopeEvidence as has} from '../packages/business/src/workspace-volume-envelope-validation.ts';
+import {validateTimelineVolumeEnvelopeRows as scan,hasTimelineVolumeEnvelopeEvidence as has} from '../packages/business/src/timeline-retained-volume-envelope.ts';
+import {assertProjectDatabase} from '../packages/business/src/store-runtime.ts';
 import {readyMixLoudness} from './fixtures/timeline-mix-loudness-fixtures.ts';
 import {readyClipLoudness} from './fixtures/timeline-clip-loudness-fixtures.ts';
 import {VOLUME_ENVELOPE_PROFILE as profile} from '../packages/contracts/src/timeline-volume-envelope.ts';
@@ -12,21 +12,21 @@ const clip=(value=envelope())=>({id:clipId,assetId:asset,trackId,durationFrames:
 const timeline=(value=envelope())=>({projectId:project,tracks:[],clips:[clip(value)],durationFrames:60});
 const history=(value=envelope())=>({tracks:[],clips:[clip(value)],durationFrames:60});
 const input=(value=envelope()):{projectId:string;requestId:string;expectedRevision:number;clipId:string;unknown?:number;patch:{durationFrames?:number;name?:string;extra?:unknown;volumeEnvelope:ReturnType<typeof envelope>&{extra?:boolean}}}=>({projectId:project,requestId:'request-envelope-1',expectedRevision:1,clipId,patch:{volumeEnvelope:value}});
-const families=[['timelines','data'],['timeline_history','beforeSnapshot'],['timeline_history','afterSnapshot'],['timeline_requests','response'],['edit_tasks','input'],['exports','data'],['workspace_restore_timeline_history','beforeSnapshot'],['workspace_restore_timeline_history','afterSnapshot'],['agent_edit_proposals','definition']];
+const families=[['timelines','data'],['timeline_history','beforeSnapshot'],['timeline_history','afterSnapshot'],['timeline_requests','response'],['edit_tasks','input'],['exports','data']];
 const quote=(s: string)=>'"'+s+'"';
 function fixture(t: test.TestContext,table='timelines',field='data'){
  const db=new DatabaseSync(':memory:');t.after(()=>db.close());db.exec(`PRAGMA trusted_schema=OFF; CREATE TABLE assets(id TEXT,projectId TEXT,data TEXT);CREATE TABLE ${quote(table)}(projectId TEXT,operation TEXT,errorCode TEXT,${quote(field)});`);
  db.prepare('INSERT INTO assets VALUES(?,?,?)').run(asset,project,JSON.stringify({id:asset,mimeType:'audio/wav',duration:2,hasAudio:true}));
  const put=(value: unknown,raw=false)=>db.prepare(`INSERT INTO ${quote(table)}(projectId,operation,${quote(field)}) VALUES(?,?,?)`).run(project,'timeline.clip.update',raw?(value as SQLInputValue):JSON.stringify(value));
- return {db,put,scan:(allow: boolean)=>scan(db,{allowVolumeEnvelopes:allow}),state:()=>db.prepare(`SELECT * FROM ${quote(table)}`).all()};
+ return {db,put,scan:(allow: boolean)=>{if(!allow)assertProjectDatabase(db);scan(db);},state:()=>db.prepare(`SELECT * FROM ${quote(table)}`).all()};
 }
-const bad=(fn: ()=>unknown,allowed=true)=>assert.throws(fn,{code:allowed?'WORKSPACE_VOLUME_ENVELOPE_INVALID':'RESTORE_SCHEMA_UNSUPPORTED'});
-test('all retained evidence families refuse old profiles including explicit null, without writes',t=>{
+const bad=(fn: ()=>unknown,allowed=true)=>assert.throws(fn,{code:allowed?'WORKSPACE_VOLUME_ENVELOPE_INVALID':'PROJECT_STORE_UNVERIFIED'});
+test('all current retained families reject foreign database authority including explicit null, without writes',t=>{
  for(const [table,field]of families){const f=fixture(t,table,field);f.put({retained:[{volumeEnvelope:null}]});const before=f.state();bad(()=>f.scan(false),false);assert.deepEqual(f.state(),before);}
 });
 test('complete current/history/receipt rows and exact partial intents admit in compatible profiles',t=>{
  for(const [table,field]of families){const f=fixture(t,table,field);
-  f.put(((table==='edit_tasks'?input():table==='agent_edit_proposals'?{operation:'timeline.clip.update',input:input(),patch:input().patch}:table.includes('history')?history():timeline() as unknown as Parameters<typeof f.put>[0]) as unknown as Parameters<typeof f.put>[0]));
+  f.put(((table==='edit_tasks'?input():table.includes('history')?history():timeline() as unknown as Parameters<typeof f.put>[0]) as unknown as Parameters<typeof f.put>[0]));
   const before=f.state();f.scan(true);assert.deepEqual(f.state(),before);
  }
 });
@@ -58,11 +58,11 @@ test('escaped and duplicate keys cannot hide evidence before parsing, including 
  for(const raw of raws)for(const allowed of [false,true] as const){const f=fixture(t);f.put(raw,true);bad(()=>f.scan(allowed),allowed);}
 });
 test('unrelated malformed legacy JSON stays with historical readers; positive malformed evidence refuses',t=>{
- const f=fixture(t);f.put('{"legacy":',true);f.scan(false);f.scan(true);f.put('{"volumeEnvelopeProfile":"unknown"',true);bad(()=>f.scan(true));
+ const f=fixture(t);f.put('{"legacy":',true);bad(()=>f.scan(false),false);f.scan(true);f.put('{"volumeEnvelopeProfile":"unknown"',true);bad(()=>f.scan(true));
 });
 test('oversized cells and non-text storage are never parsed, schema views reject',t=>{
  for(const value of [' '.repeat(4*1024*1024+1),Buffer.from('{"volumeEnvelope":null}'),17] as const){const f=fixture(t);f.put(value,true);bad(()=>f.scan(true));}
- const db=new DatabaseSync(':memory:');t.after(()=>db.close());db.exec('CREATE VIEW timelines AS SELECT 1 AS data');bad(()=>scan(db,{allowVolumeEnvelopes:true}));
+ const db=new DatabaseSync(':memory:');t.after(()=>db.close());db.exec('CREATE VIEW timelines AS SELECT 1 AS data');bad(()=>scan(db));
 });
 test('depth/node and complete snapshot byte guards remain bounded',t=>{
  const deep=timeline();(deep as unknown as {nested:unknown}).nested={};let node=(deep as unknown as {nested:{next?:unknown}}).nested as {next?:unknown};for(let i=0;i<130;i++)node=(node.next={} as {next?:unknown});const f=fixture(t);f.put((deep as unknown as Parameters<typeof f.put>[0]));bad(()=>f.scan(true));

@@ -1,10 +1,11 @@
+import {assertProjectStore} from './store-runtime.ts';
 import {mioTable} from './agent/mio-table-layout.ts';
 /** Shared managed byte import pipeline. The caller supplies its existing owner
  * fence; it never supplies a codec or filesystem adapter. */
 import {createRequire} from 'node:module';
 import {randomUUID, createHash} from 'node:crypto';
 import {lstatSync} from 'node:fs';
-import {writeFile, unlink, open, lstat} from 'node:fs/promises';
+import {unlink, open, lstat} from 'node:fs/promises';
 import type {FileHandle} from 'node:fs/promises';
 import type {Stats} from 'node:fs';
 import path from 'node:path';
@@ -30,19 +31,17 @@ export interface ManagedAssetImportOptions {
   signal?: AbortSignal;
   required(table: 'projects', id: string): unknown;
   now(): string;
-  guarded: boolean;
-  effectFence(): (() => void) | undefined;
-  unsafe(): Error;
-  safeError(error: unknown): boolean;
 }
 export function createManagedAssetImportHandler(store: ManagedAssetImportStore, options: ManagedAssetImportOptions) {
+  assertProjectStore(store);
+  const unsafe=()=>new AppError('INVALID_MEDIA','素材或项目身份已改变',409);
   const checkpoint = (signal?: AbortSignal): void => {invoke(lifecycle, 'checkpoint', [signal]);};
   return async (input: Value, context: {signal?: AbortSignal} = {}): Promise<unknown> => {
-    const signal = context.signal ?? options.signal, invocationFence = options.effectFence(),origin=taskEffectOrigin();
+    const signal = context.signal ?? options.signal, invocationFence = ()=>assertProjectStore(store),origin=taskEffectOrigin();
     checkpoint(signal); invocationFence?.();
     if (typeof input.projectId !== 'string' || typeof input.dataBase64 !== 'string' || typeof input.mimeType !== 'string') throw new AppError('INVALID_MEDIA', '无效的素材导入');
     const projectId = input.projectId, mimeType = input.mimeType, importProject = options.required('projects', projectId);
-    if (!object(importProject)) throw options.unsafe();
+    if (!object(importProject)) throw unsafe();
     if (!/^[A-Za-z0-9+/]*={0,2}$/.test(input.dataBase64) || input.dataBase64.length % 4) throw new AppError('INVALID_MEDIA', '无效的 base64');
     const bytes = Buffer.from(input.dataBase64, 'base64');
     if (bytes.length > 30 * 1024 * 1024 || bytes.length === 0) throw new AppError('INVALID_MEDIA', '素材大小须为 1 字节至 30 MiB');
@@ -56,28 +55,28 @@ export function createManagedAssetImportHandler(store: ManagedAssetImportStore, 
     const extensions: Readonly<Record<string, string>> = {'image/png':'png','image/jpeg':'jpg','image/webp':'webp','video/mp4':'mp4','video/webm':'webm','audio/wav':'wav','audio/mpeg':'mp3','audio/mp4':'m4a'};
     const id = randomUUID(), relativePath = `media/${id}.${extensions[mimeType]}`, file = path.join(store.root, relativePath);
     checkpoint(signal);
-    const expectedByteHash = options.guarded ? createHash('sha256').update(bytes).digest('hex') : null;
+    const expectedByteHash = createHash('sha256').update(bytes).digest('hex');
     let ownedHandle: FileHandle | undefined, ownedIdentity: Stats | undefined, writtenIdentity: Stats | undefined;
-    const beforeEffect = options.guarded ? (): void => {
+    const beforeEffect = (): void => {
       invocationFence?.();
       const row: unknown = store.db.prepare("SELECT id,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 16384 THEN data END AS data FROM projects WHERE id=?").get(projectId);
       let project: unknown;
-      try {project = object(row) && typeof row.data === 'string' ? JSON.parse(row.data) as unknown : undefined;} catch {throw options.unsafe();}
-      if (!object(row) || !object(project) || project.id !== row.id || row.id !== projectId || project.createdAt !== importProject.createdAt) throw options.unsafe();
+      try {project = object(row) && typeof row.data === 'string' ? JSON.parse(row.data) as unknown : undefined;} catch {throw unsafe();}
+      if (!object(row) || !object(project) || project.id !== row.id || row.id !== projectId || project.createdAt !== importProject.createdAt) throw unsafe();
       if (ownedIdentity) {
-        let actual: Stats; try {actual = lstatSync(file);} catch {throw options.unsafe();}
+        let actual: Stats; try {actual = lstatSync(file);} catch {throw unsafe();}
         if (!actual.isFile() || actual.nlink !== 1 || actual.dev !== ownedIdentity.dev || actual.ino !== ownedIdentity.ino || writtenIdentity &&
-            (actual.size !== writtenIdentity.size || actual.mtimeMs !== writtenIdentity.mtimeMs || actual.ctimeMs !== writtenIdentity.ctimeMs)) throw options.unsafe();
+            (actual.size !== writtenIdentity.size || actual.mtimeMs !== writtenIdentity.mtimeMs || actual.ctimeMs !== writtenIdentity.ctimeMs)) throw unsafe();
       }
-    } : undefined;
+    };
     origin?.beforeEffect();beforeEffect?.();
-    if (!options.guarded) await writeFile(file, bytes, {flag: 'wx'});
+    
     try {
-      if (options.guarded) {ownedHandle = await open(file, 'wx'); ownedIdentity = await ownedHandle.stat(); beforeEffect!(); await ownedHandle.writeFile(bytes); writtenIdentity = await ownedHandle.stat(); beforeEffect!();}
+      {ownedHandle = await open(file, 'wx'); ownedIdentity = await ownedHandle.stat(); beforeEffect!(); await ownedHandle.writeFile(bytes); writtenIdentity = await ownedHandle.stat(); beforeEffect!();}
       checkpoint(signal);
       const info: unknown = await invoke(media, 'fileInfo', [file, {signal, beforeEffect}]); checkpoint(signal); beforeEffect?.();
-      if (!object(info)) throw options.unsafe();
-      if (options.guarded && info.sha256 !== expectedByteHash) throw options.unsafe();
+      if (!object(info)) throw unsafe();
+      if ( info.sha256 !== expectedByteHash) throw unsafe();
       const hasVideo = info.hasVideo ?? (typeof info.width === 'number' && info.width > 0 && typeof info.height === 'number' && info.height > 0);
       if (mimeType.startsWith('audio/') ? (!info.hasAudio || hasVideo || !(typeof info.duration === 'number' && info.duration > 0)) : !hasVideo) throw new Error('Declared media kind does not match decoded streams');
       const publish=():unknown=>{origin?.beforeEffect();const result=store.put('assets', {id, projectId, name: input.name, mimeType, ...info, relativePath, url: `/media/${id}`, createdAt: options.now(), provenance: 'user-import'});
@@ -85,9 +84,8 @@ export function createManagedAssetImportHandler(store: ManagedAssetImportStore, 
         return result;};
       return store.tx?store.tx(publish):publish();
     } catch (error) {
-      if (!options.guarded) await unlink(file).catch(() => {});
-      else if (ownedIdentity) {const actual = await lstat(file).catch(() => null); if (actual?.isFile() && actual.dev === ownedIdentity.dev && actual.ino === ownedIdentity.ino) await unlink(file).catch(() => {});}
-      if (object(error) && (error.terminationUnconfirmed||typeof error.code==='string'&&error.code.startsWith('AGENT_TASK_')) || options.safeError(error)) throw error;
+      if (ownedIdentity) {const actual = await lstat(file).catch(() => null); if (actual?.isFile() && actual.dev === ownedIdentity.dev && actual.ino === ownedIdentity.ino) await unlink(file).catch(() => {});}
+      if (object(error) && (error.terminationUnconfirmed||typeof error.code==='string'&&error.code.startsWith('AGENT_TASK_')) || object(error)&&error.code==='PROJECT_STORE_UNVERIFIED') throw error;
       checkpoint(signal); throw new AppError('INVALID_MEDIA', '无法解码素材或媒体类型不符，请检查文件');
     } finally {if (ownedHandle) await ownedHandle.close();}
   };

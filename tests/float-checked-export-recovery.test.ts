@@ -1,3 +1,7 @@
+
+
+
+
 import {ORDINARY_SCHEMA_LINEAGE} from './helpers/workspace-schema-current.ts';
 import {reviewedCatalogAt} from './helpers/reviewed-schema-layers.ts';
 import type {FixtureStoryboardExport,FixtureExport, FixtureProject, FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
@@ -13,17 +17,18 @@ import {mkdtemp, mkdir, readFile, writeFile, readdir, rm} from 'node:fs/promises
 import {readdirSync, existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {DatabaseSync, type SQLOutputValue} from 'node:sqlite';
+import {DatabaseSync} from 'node:sqlite';
 import {isTimelineRenderRecord, publicValue} from '@mioon/contracts';
 import {isTimelineExportAudioOutcome} from '@mioon/contracts/timeline-export-float';
-import {installCurrentWorkspaceRestoreSchema, openStore, openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {installCurrentWorkspaceRestoreSchema, openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {isProjectDatabase} from '../packages/business/src/project-file/held-files.ts';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
-import {createServices, type OrdinaryServices} from '../packages/business/src/services.ts';
+import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import {onMediaProcess, type MediaProcessEvent} from '../packages/business/src/media-processes.ts';
-import {isRestoredRecordHeld} from '../packages/business/src/workspace-restore-schema.ts';
-import {matchesRestoredExport} from '../packages/business/src/workspace-restore-exports.ts';
+
+
 import {createTimelineFloatAudioAccumulator} from '../packages/business/src/timeline-float-audio-check.ts';
 import {claimFloatTimelineExport, bindFloatTimelineMeasurement, bindFloatTimelineFailure, ownedFloatTimelineMeasurement,
   floatSnapshotSha256} from '../packages/business/src/timeline-float-outcome.ts';
@@ -459,25 +464,7 @@ test('real overrange v2 fails with one stored report and no final asset; explici
   await f.restart(); assert.deepEqual(await f.services.call('export.get', {exportId: fresh.id}), publicValue(succeeded));
 });
 
-test('restored inherited v2 queued/failed/succeeded rows stay held byte-exact while a new origin-bound local v2 succeeds', {timeout: 60_000}, async t => {
-  const f = await fixture(t, {gain: 0.5, legacy: true}), held = [];
-  for (const status of (['queued', 'failed', 'succeeded'] as const)) {
-    const input = f.input(), accepted = await f.services.call('timeline.render', input);
-    if (status !== 'queued') terminal(f, accepted, status === 'failed' ? 1.4 : 0.5, {success: status === 'succeeded'});
-    held.push({input, id: accepted.id, raw: f.store.db.prepare('SELECT * FROM exports WHERE id=?').get(accepted.id), receipt: receipt(f, input)});
-  }
-  await f.restart({restore: true});
-  for (const value of held) assert.equal(isRestoredRecordHeld(f.store, 'exports', value.id), true);
-  const input = f.input(), accepted = await f.services.call('timeline.render', input, (f as typeof f & {context:({ expectedWorkspaceOrigin: `${string}-${string}-${string}-${string}-${string}`; })}).context);
-  assert.equal(matchesRestoredExport(f.store, (f.store.get('exports', accepted.id)! as FixtureExport)), true);
-  await tick(f); const succeeded = (f.store.get('exports', accepted.id)! as FixtureExport);
-  assert.equal(succeeded!.status, 'succeeded', JSON.stringify(succeeded!.error)); assert.equal((succeeded!.audioCheck)!.code, 'EXPORT_AUDIO_WITHIN_LIMIT');
-  assert.equal(matchesRestoredExport(f.store, succeeded!), true);
-  for (const value of held) {
-    assert.deepEqual(f.store.db.prepare('SELECT * FROM exports WHERE id=?').get(value.id), value.raw);
-    assert.deepEqual(receipt(f, value.input), value.receipt);
-  }
-});
+
 
 test('v2 read guards fail closed for malformed relational identities and corrupted immutable receipt fields', async t => {
   for (const target of (['row id', 'row project', 'foreign row project', 'row request', 'row request malformed', 'receipt status', 'receipt attempt', 'receipt hash', 'receipt JSON'] as const)) await t.test(target, async t => {

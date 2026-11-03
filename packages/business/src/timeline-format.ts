@@ -1,8 +1,7 @@
 import {timelineRenderDeliveryFields} from '@mioon/contracts/timeline-delivery';
-import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
 import {AppError,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET,isTimelineRecord,isTimelineRenderRecord,isEditTask,hasRequestNotAppliedProof,TIMELINE_MUTATION_OPERATIONS,TIMELINE_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
 import {createTimelineRecoveryBoundary,readTimelineReceipt,invalidTimeline,restoreTimelineEditableSnapshot} from './timeline-recovery.ts';
-import {TIMELINE_RECEIPT_PROJECT_EXPRESSION} from './timeline-format-schema.ts';
+import {TIMELINE_RECEIPT_PROJECT_EXPRESSION} from './timeline-receipt-project.ts';
 import {canonicalFormatValue,formatRequestHash,readTimelineFormatProvenance} from './timeline-format-receipts.ts';
 import {executingTimelineFormatTask} from './timeline-format-task-context.ts';
 import {createHash} from 'node:crypto';
@@ -102,8 +101,7 @@ export function readTimelineFormatState(db: DatabaseSync,input: TimelineRecovery
   }else if(Object.hasOwn(value,'mode')||!Array.isArray(value.snapshot)||!Array.isArray(value.orderedVersionIds))invalidTimeline();
  }
  if(exportHistory)reasons.push('EXPORT_HISTORY');
- const restored=store&&store.db===db?getWorkspaceRestoreContext(store):null;
- const tasks=rows(db,`SELECT position,revision,acknowledged,bytes,${restored?'executionEpoch,':''}${Object.entries({id:36,projectId:36,operation:80,input:8192,requestId:800,digest:64,lane:32,origin:32,status:32,claim:36,claimInstance:36,receiptDigest:64,errorCode:80,createdAt:40,updatedAt:40}).map(([column,bytes])=>bounded(column,bytes)+' AS '+column).join(',')} FROM edit_tasks WHERE projectId=? AND (lane='timeline:mutation' OR operation LIKE 'timeline.%') ORDER BY position`,input.projectId);
+ const tasks=rows(db,`SELECT position,revision,acknowledged,bytes,${''}${Object.entries({id:36,projectId:36,operation:80,input:8192,requestId:800,digest:64,lane:32,origin:32,status:32,claim:36,claimInstance:36,receiptDigest:64,errorCode:80,createdAt:40,updatedAt:40}).map(([column,bytes])=>bounded(column,bytes)+' AS '+column).join(',')} FROM edit_tasks WHERE projectId=? AND (lane='timeline:mutation' OR operation LIKE 'timeline.%') ORDER BY position`,input.projectId);
  let pendingCount=0;
  for(const row of tasks){
   const saved=parse(row.input),task={id:row.id,projectId:row.projectId,operation:row.operation,input:saved,requestId:row.requestId,digest:row.digest,lane:row.lane,status:row.status,revision:row.revision,createdAt:row.createdAt,updatedAt:row.updatedAt,acknowledged:row.acknowledged===1,origin:row.origin,...(row.errorCode===null?{}:{errorCode:row.errorCode})};
@@ -119,7 +117,7 @@ export function readTimelineFormatState(db: DatabaseSync,input: TimelineRecovery
    const response=createTimelineRecoveryBoundary(db,saved as TimelineRecoveryInput).replay(row.operation as string,retained.response as string);
    if(row.receiptDigest!==null&&row.receiptDigest!==hash(response))invalidTimeline();
   }
-  if(restored&&row.executionEpoch!==restored.workspaceOrigin){if(row.executionEpoch!=='captured')invalidTimeline();continue;}
+  
   if(row.acknowledged===1)continue;
   if(++pendingCount>1)invalidTimeline();
   const executing=admission&&executingTimelineFormatTask(db);

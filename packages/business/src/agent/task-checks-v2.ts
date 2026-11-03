@@ -6,7 +6,7 @@ import {isTimelineRecord,isTimelineRenderRecord,exportPreflightResponseSchema} f
 import {agentTaskChecksSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskCheck,AgentTaskChecks,AgentTaskCheckValues,AgentTaskCheckGroup,AgentTaskCheckReason} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot,AgentTaskStep} from '@mioon/contracts/agent-tasks-v2';
-import type { Store as WorkspaceStore } from '../store-contract.ts';
+import type { Store } from '../store-contract.ts';
 import {readMioTargetRevision} from './mio-target-revisions.ts';
 import {createOwnedMediaGraphReader} from '../inspection.ts';
 import {validateManagedSource} from '../managed-media.ts';
@@ -47,7 +47,7 @@ function safeName(value:unknown,filename=false):string|undefined {
  let result='';for(const character of text){if(result.length+character.length>80)break;result+=character;}return result||undefined;
 }
 function decode(value:unknown):Value|undefined {if(typeof value!=='string')return;try{const parsed:unknown=JSON.parse(value);return object(parsed)?parsed:undefined;}catch{return;}}
-function row(store:WorkspaceStore,table:'jobs'|'exports'|'assets'|'shots'|'versions'|'timelines',projectId:string,id:string):Value|undefined {
+function row(store:Store,table:'jobs'|'exports'|'assets'|'shots'|'versions'|'timelines',projectId:string,id:string):Value|undefined {
  const record=store.db.prepare(`SELECT data FROM ${table} WHERE ${table==='timelines'?'projectId':'id'}=? AND projectId=? AND length(CAST(data AS BLOB))<=4194304`).get(id,projectId);
  const value=decode(record?.data);return value&&value.projectId===projectId&&(table==='timelines'||value.id===id)?value:undefined;
 }
@@ -70,7 +70,7 @@ const canonical=(value:unknown):string=>JSON.stringify(value,(_key,child:unknown
 /** Read-time, local observations only. No result is retained or used as mutation,
  * provider-dispatch, approval or recovery authority. Full media preflight uses
  * the host's existing bounded read lifecycle, never an independently owned worker. */
-export async function readAgentTaskChecks(store:WorkspaceStore,snapshot:AgentTaskSnapshot,{preflight,includePreflight=false,signal}:{preflight?:AgentTaskChecksPreflight;includePreflight?:boolean;signal?:AbortSignal}={}):Promise<AgentTaskChecks> {
+export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot,{preflight,includePreflight=false,signal}:{preflight?:AgentTaskChecksPreflight;includePreflight?:boolean;signal?:AbortSignal}={}):Promise<AgentTaskChecks> {
  signal?.throwIfAborted();
  const {run}=snapshot,projectId=run.projectId,steps=new Map(snapshot.steps.map(step=>[step.id,step]));
  const goals=run.diagnostic?undefined:latestAgentTaskGoals(snapshot.steps),goalExportValues=new Map<string,AgentTaskCheckValues>();

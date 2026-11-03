@@ -117,9 +117,6 @@ test('native Windows export open and reveal hash managed bytes through the ACL h
   let current: Record<string, unknown> = output, checks = 0, retireAt = Infinity;
   const host = createWorkspaceNativeHost({
     ownerForEvent: () => ({projectId, isCurrent: () => ++checks < retireAt}),
-    chooseDirectory: async () => null,
-    setBackupDirectory: async () => { throw new Error('unused'); },
-    readSettings: async () => { throw new Error('unused'); },
     readWorkspaceRoot: async () => root,
     readExport: async value => { calls.push(['readExport', value]); return current; },
     openPath: async target => { calls.push(['open', target]); return ''; },

@@ -1,3 +1,7 @@
+
+
+import {canonical} from '../packages/business/src/services.ts';
+import {readPrivateFile, validatePrivateDirectory, validateManagedFile} from '@mioon/contracts/private-storage';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import type {LocalShotTextSupported} from '../apps/web/src/local-shot-text-state.ts';
 import type {MediaShot} from './helpers/strict-service-responses.ts';
@@ -7,18 +11,19 @@ import type {TypedStore, TypedServices} from './helpers/strict-service-responses
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync,rmSync,existsSync,readFileSync,writeFileSync,statSync,copyFileSync,chmodSync,symlinkSync,linkSync,unlinkSync} from 'node:fs';
+import {mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, statSync, copyFileSync, chmodSync, symlinkSync, linkSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {openStore,openLegacyWorkspaceStore,ownsStoreLock,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
-import {createServices,canonical} from '../packages/business/src/services.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
+import {createServices} from '../packages/business/src/services.ts';
 import {createLocalMutationServices} from '../packages/business/src/local-mutations.ts';
 import {validateImageConsumption} from '../packages/business/src/image-consumption.ts';
 import {createLocalShotText,LOCAL_SHOT_TEXT_FILENAME} from '@mioon/business/local-shot-text';
 import {createLocalShotTextDomain} from '@mioon/business/local-shot-text-domain';
 import {LOCAL_SHOT_TEXT_LIMITS,createLocalShotTextSchemas} from '@mioon/contracts/local-shot-text';
 import {schemas,AppError} from '@mioon/contracts';
-import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
+import {writePrivateFileAtomic} from '@mioon/contracts/private-storage';
 import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 const storage={readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile};
 const contract=createLocalShotTextSchemas(value=>schemas['shot.update'].safeParse(value).success);
@@ -34,7 +39,7 @@ async function foreignProject(t: test.TestContext,name: string){
   finally{await services.drain();store.close();}
 }
 async function fixture(t: test.TestContext,{legacy=false}={}){
-  const root=mkdtempSync(path.join(tmpdir(),'mioon-local-shot-text-'));const open=legacy?openLegacyWorkspaceStore:openStore;let store=(open(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices),shotText: OrdinaryShotText,fault: (point: string) => void=()=>{},update: (arg0: string,arg1: LocalShotTextUpdateInput) => Promise<unknown>,extraGuards={},calls: (LocalShotTextUpdateInput)[]=[];
+  const root=mkdtempSync(path.join(tmpdir(),'mioon-local-shot-text-'));const open=openStore;let store=(open(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices),shotText: OrdinaryShotText,fault: (point: string) => void=()=>{},update: (arg0: string,arg1: LocalShotTextUpdateInput) => Promise<unknown>,extraGuards={},calls: (LocalShotTextUpdateInput)[]=[];
   const project=await services.call('project.create',{name:'Local text'}),shot=await services.call('shot.create',{projectId:project.id,title:'Original title',prompt:'Original prompt'});
   const originalUpdate=(projectId: string,input: unknown)=>services.updateShotInProject(projectId,input);update=originalUpdate;
   const localRoot=()=>isProjectStore(store)?store.localDir:root;
@@ -45,14 +50,14 @@ async function fixture(t: test.TestContext,{legacy=false}={}){
     const domain=createLocalShotTextDomain({db:store.db,canonical,replay:(projectId,input)=>replay.updateShotInProject(projectId,input),
       validateAsset:(projectId,asset)=>validateImageConsumption(store.db,(asset as unknown as Parameters<typeof validateImageConsumption>[1]),projectId),isRevisionConflict:error=>error instanceof AppError&&error.code==='REVISION_CONFLICT',
       updateShotInProject:(projectId,input)=>{calls.push(structuredClone(input));return update(projectId,input);}});
-    shotText=(createLocalShotText({root:localRoot(),...scope(),storage,guards:{...domain,ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),isShotUpdateInput:value=>schemas['shot.update'].safeParse(value).success,...extraGuards},fault:point=>fault(point),...options}) as OrdinaryShotText);return shotText;
+    shotText=(createLocalShotText({root:localRoot(),...scope(),storage,guards:{...domain,ownsLock:()=>ownsStoreLock(store),isShotUpdateInput:value=>schemas['shot.update'].safeParse(value).success,...extraGuards},fault:point=>fault(point),...options}) as OrdinaryShotText);return shotText;
   };start();
   t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
   const get=(value=shot)=>shotText.get({projectId:value.projectId,shotId:value.id});
   const put=(value=get(),raw={title:'Changed title',prompt:shot.prompt})=>({...authority(value),expectedDraftRevision:value.draftRevision,draftId:value.draft?.draftId??randomUUID(),baseRevision:value.draft?.baseRevision??store.get('shots',value.shotId)!.revision,baseText:value.draft?.baseText??{title:store.get('shots',value.shotId)!.title,prompt:store.get('shots',value.shotId)!.prompt},raw});
   const prepare=(value=get(),patch={title:value.draft!.raw.title})=>({...authority(value),expectedIntentRevision:value.intentRevision,expectedIntentId:value.intent?.intentId??null,intentId:randomUUID(),baseRevision:value.draft!.baseRevision,baseText:value.draft!.baseText,draft:{draftId:value.draft!.draftId,revision:value.draftRevision,raw:value.draft!.raw},input:{requestId:randomUUID(),shotId:value.shotId,expectedRevision:value.draft!.baseRevision,patch}});
   return {root:localRoot(),file:path.join(localRoot(),LOCAL_SHOT_TEXT_FILENAME),project,shot,get,put,prepare,start,originalUpdate,get store(){return store;},get services(){return services;},get shotText(){return shotText;},get calls(){return calls;},
-    setFault(fn: (point: string) => void){fault=fn;},setUpdate(fn: (projectId: string, input: LocalShotTextUpdateInput) => Promise<unknown>){update=fn;},setGuards(value: { isRestored?: () => boolean; }){extraGuards=value;start();},
+    setFault(fn: (point: string) => void){fault=fn;},setUpdate(fn: (projectId: string, input: LocalShotTextUpdateInput) => Promise<unknown>){update=fn;},setGuards(value: {ownsLock?:()=>boolean}){extraGuards=value;start();},
     restart(){store.close();store=(open(root) as TypedStore);services=(createServices(store,new Map()) as TypedServices);start();},
     receipt(input: {requestId: string}){return store.db.prepare('SELECT * FROM mutation_requests WHERE requestId=?').get(input.requestId);},
     snapshot(){return JSON.stringify(schemaObjects(store.db).sort(byName).map(({name,sql})=>({name,sql})))+'\n'+JSON.stringify(['projects','shots','assets','versions','jobs','mutation_requests','asset_range_requests','asset_disposition_requests','subject_requests'].map(table=>store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));},
@@ -157,13 +162,13 @@ test('relational and JSON ownership checks cover current and historical referenc
   }
 });
 
-test('late owner reassignment, lease loss, abort and restored transition cannot persist a terminal result',async t=>{
-  for(const kind of ['owner','lease','abort','restored']){
-    const f=await fixture(t,{legacy:kind==='lease'}),controller=new AbortController();let restored=false;f.setGuards({isRestored:()=>restored});f.start({signal:controller.signal});const prepared=f.shotText.prepare(f.prepare(f.shotText.put(f.put()))),gate=Promise.withResolvers<void>(),entered=Promise.withResolvers<void>();
+test('late owner reassignment, real owner loss and abort cannot persist a terminal result',async t=>{
+  for(const kind of ['owner','lease','abort']){
+    const f=await fixture(t),controller=new AbortController();f.start({signal:controller.signal});const prepared=f.shotText.prepare(f.prepare(f.shotText.put(f.put()))),gate=Promise.withResolvers<void>(),entered=Promise.withResolvers<void>();
     f.setUpdate(async(projectId: string,input: unknown)=>{const result=await f.originalUpdate(projectId,input);entered.resolve();await gate.promise;return result;});const pending=f.shotText.execute(action(prepared));await entered.promise;
     if(kind==='owner'){const foreign=await foreignProject(t,'Foreign');withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(foreign.id,f.shot.id));}
-    if(kind==='lease'){unlinkSync(path.join(f.root,'server.lock'));writeFileSync(path.join(f.root,'server.lock'),'0',{mode:0o600});}
-    if(kind==='abort')controller.abort();if(kind==='restored')restored=true;gate.resolve();await assert.rejects(pending);assert.equal(JSON.parse(readFileSync(f.file) as unknown as string).entries[0].intent.outcome.status,'pending');
+    if(kind==='lease')f.store.close();
+    if(kind==='abort')controller.abort();gate.resolve();await assert.rejects(pending);assert.equal(JSON.parse(readFileSync(f.file) as unknown as string).entries[0].intent.outcome.status,'pending');
   }
 });
 
@@ -191,11 +196,7 @@ test('reentrant before-persist write trips full-file CAS while malformed inputs 
   let touched=0;const getter={...f.put()};Object.defineProperty(getter,'raw',{enumerable:true,get(){touched++;return outer.raw;}});assert.throws(()=>f.shotText.put(getter),code('LOCAL_SHOT_TEXT_VALIDATION'));assert.throws(()=>f.shotText.put(new Proxy(outer,{})),code('LOCAL_SHOT_TEXT_VALIDATION'));assert.equal(touched,0);
 });
 
-test('restored workspace is unsupported before sidecar, lock, ownership or mutation I/O',async()=>{
-  const never=()=>{throw Error('PRIVATE never');},shotText=(createLocalShotText({root:'/unread',storage:{validatePrivateDirectory:never,validateManagedFile:never,readPrivateFile:never,writePrivateFileAtomic:never},guards:{ownsLock:never,isRestored:()=>true,readShot:never,readReceipt:never,isShotUpdateInput:never,isNotApplied:never,update:never}}));
-  for(const method of ['get','put','discard','prepare'])assert.deepEqual(shotText[(method as 'get'|'put'|'discard'|'prepare')]({}),{supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'});
-  for(const method of ['execute','recover'])assert.deepEqual(await shotText[(method as 'execute'|'recover')]({}),{envelope:{supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'},response:null});
-});
+
 
 
 test('successful same-CAS retry checkpoints prepublication storage failure before prepare',async t=>{
