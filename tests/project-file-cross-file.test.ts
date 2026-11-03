@@ -280,7 +280,7 @@ test('installed connection-level triggers are exactly the generated statements',
     const statements = crossFileTriggerStatements();
     // 14 converted format-72 triggers + 4 per relation + the content-sequence copy.
     // scene_task_state_transitions reads no other database, so it is not among them.
-    assert.deepEqual([CONVERTED_TEMP_TRIGGERS.length, CROSS_FILE_RELATIONS.length, statements.length], [14, 57, 243]);
+    assert.deepEqual([CONVERTED_TEMP_TRIGGERS.length, CROSS_FILE_RELATIONS.length, statements.length], [14, 58, 247]);
     const stored = db.prepare("SELECT type,name,tbl_name,sql FROM temp.sqlite_master ORDER BY rowid").all();
     assert.ok(stored.every(row => row.type === 'trigger'));
     assert.deepEqual(stored.map(row => row.sql), statements.map(storedText));
@@ -342,7 +342,7 @@ test('with all three databases attached and the triggers installed, every write 
     db.close();
   }
   // main also holds the Mock provider's two ledger tables.
-  assert.equal(tables, 47 + 2 + 6 + 20 + 3);
+  assert.equal(tables, 47 + 2 + 7 + 20 + 3);
 });
 
 test('real tables: cross-file keys, process-entity revisions and the content sequence', () => {
@@ -416,7 +416,7 @@ test('foreignKeyCheck reports orphans written around the triggers; schemaObjects
     assert.deepEqual([...new Set(objects.map(object => object.schema))], ['main', 'temp', 'project', 'cache']);
     const of = (schema: string) => objects.filter(object => object.schema === schema);
     assert.deepEqual([of('main').length, of('project').length, of('cache').length, of('temp').length],
-      [SCHEMA_MANIFEST.history.entries.length, SCHEMA_MANIFEST.project.entries.length, SCHEMA_MANIFEST.cache.entries.length, 242]);
+      [SCHEMA_MANIFEST.history.entries.length, SCHEMA_MANIFEST.project.entries.length, SCHEMA_MANIFEST.cache.entries.length, 246]);
     for (const schema of ['main', 'temp', 'project', 'cache']) {
       const keys = of(schema).map(object => [object.type, object.name] as const);
       assert.deepEqual(keys, [...keys].sort((x, y) => x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : 0), `${schema} is sorted by type and name`);
@@ -435,9 +435,9 @@ test('installCrossFileTriggers is idempotent and refuses a connection it cannot 
   const db = kernelConnection();
   try {
     const count = () => Number(db.prepare("SELECT count(*) AS n FROM temp.sqlite_master WHERE type='trigger'").get()?.n);
-    assert.equal(count(), 243);
+    assert.equal(count(), 247);
     installCrossFileTriggers(db);
-    assert.equal(count(), 243);
+    assert.equal(count(), 247);
     db.exec('CREATE TEMP TRIGGER extra AFTER INSERT ON main.jobs BEGIN SELECT 1;END');
     assert.throws(() => installCrossFileTriggers(db), /partly installed: unexpected extra$/);
   } finally {

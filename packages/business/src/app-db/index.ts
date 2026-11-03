@@ -12,11 +12,11 @@ import {createProjectRegistry} from './registry.ts';
 import type {AppProjectRegistry} from './registry.ts';
 import {
   createAgentPolicyStore, createAppDocumentStore, createAppOperationReceiptStore, createBackgroundTaskIndexStore,
-  createOutsidePathConfirmationStore, createProjectInboxStore, createProjectRulesTrustStore,
+  createOutsidePathConfirmationStore, createProjectInboxStore, createProjectRulesTrustStore, createUserRulesStore,
 } from './stores.ts';
 import type {
   AgentPolicyStore, AppDocumentStore, AppOperationReceiptStore, BackgroundTaskIndexStore, OutsidePathConfirmationStore, ProjectInboxStore,
-  ProjectRulesTrustStore,
+  ProjectRulesTrustStore, UserRulesStore,
 } from './stores.ts';
 
 export {APP_LIBRARY_APPLICATION_ID, APP_LIBRARY_FILE, APP_LIBRARY_SCHEMA_VERSION, APP_DOCUMENT_LIMITS, APP_DOCUMENT_NAMES} from './schema.ts';
@@ -33,7 +33,7 @@ export {MAX_RECENT_PROJECTS} from './registry.ts';
 export type {AppProjectRegistry, ProjectFileCandidate} from './registry.ts';
 export type {
   AgentPolicyStore, AppDocumentStore, AppOperationReceipt, AppOperationReceiptStore, BackgroundTaskIndexStore, OutsidePathConfirmationStore,
-  ProjectInboxStore, ProjectRulesTrustStore,
+  ProjectInboxStore, ProjectRulesTrustStore, UserRules, UserRulesStore,
 } from './stores.ts';
 export {hasSuperJournalInUse} from './local-records.ts';
 export type {LocalRecordsItem, LocalRecordsStore} from './local-records.ts';
@@ -67,6 +67,7 @@ export interface AppLibrary {
   readonly agentPolicy: AgentPolicyStore;
   readonly documents: AppDocumentStore;
   readonly rulesTrust: ProjectRulesTrustStore;
+  readonly userRules: UserRulesStore;
   readonly outsidePaths: OutsidePathConfirmationStore;
   readonly taskIndex: BackgroundTaskIndexStore;
   readonly inbox: ProjectInboxStore;
@@ -99,6 +100,7 @@ export function openAppLibrary({dataDir, findMovedRoots = [], findMovedLimit, is
       agentPolicy: Object.freeze(createAgentPolicyStore(database)),
       documents: Object.freeze(createAppDocumentStore(database)),
       rulesTrust: Object.freeze(createProjectRulesTrustStore(database)),
+      userRules: Object.freeze(createUserRulesStore(database)),
       outsidePaths: Object.freeze(createOutsidePathConfirmationStore(database)),
       taskIndex: Object.freeze(createBackgroundTaskIndexStore(database)),
       inbox: Object.freeze(createProjectInboxStore(database)),

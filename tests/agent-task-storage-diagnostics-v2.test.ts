@@ -62,7 +62,7 @@ test('native storage diagnostics retain the complete nineteen-table inventory an
   f.store.db.prepare('INSERT INTO mio_imports(id,projectId,requestId,name,mimeType,relativePath,sha256,status,createdAt) VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(), f.projectId, randomUUID(), 'PRIVATE_FILE_NAME', 'image/png', 'agent-imports/PRIVATE_PATH.bin', 'b'.repeat(64), 'selected', new Date().toISOString());
   const actual = readMioStorage(f.store.db);
   assert.equal(actual.usage.rows - afterReceipt.usage.rows, 2); assert.ok(actual.usage.bytes > afterReceipt.usage.bytes);
-  assert.equal(actual.tables.length,19); assert.deepEqual(actual.tables.map(table => table.name), MIO_STORAGE_TABLES);
+  assert.equal(actual.tables.length,20); assert.deepEqual(actual.tables.map(table => table.name), MIO_STORAGE_TABLES);
   for (const table of actual.tables) {
     assert.equal(table.countedBytes, true); assert.equal(table.countedRows, table.name!=='mio_edit_receipts');
     assert.equal(table.rows, Number(f.store.db.prepare(`SELECT count(*) AS n FROM ${table.name}`).get()!.n));
@@ -113,7 +113,7 @@ test('real server and management client doctor return only safe aggregate storag
   }});
   const doctor = await client.doctor({projectId: f.projectId}), replay=await client.doctor({projectId:f.projectId}),second = await client.doctor();
   assert.ok(doctor.storage); assert.deepEqual(doctor.storage, inspect(f.projectId, db => readMioStorage(db))); assert.deepEqual(replay.storage, doctor.storage);assert.equal(second.storage,undefined);
-  assert.equal(doctor.storage.limits.bytes, 256 * 1024 * 1024); assert.equal(doctor.storage.limits.rows,65536);assert.equal(doctor.storage.version,2);assert.equal(doctor.storage.tables.length,19);assert.equal(doctor.storage.format, 'mio_records');
+  assert.equal(doctor.storage.limits.bytes, 256 * 1024 * 1024); assert.equal(doctor.storage.limits.rows,65536);assert.equal(doctor.storage.version,3);assert.equal(doctor.storage.tables.length,20);assert.equal(doctor.storage.format, 'mio_records');
   assert.equal(doctor.verification, 'not_tested'); assert.equal(doctor.projectId, f.projectId); assert.equal(second.projectId, undefined);
   assert.equal(doctor.settings.secret.configured, false); assert.equal(modelRequests, 0);
   assert.deepEqual(routes, ['/api/agent/diagnostics', '/api/agent/diagnostics', '/api/agent/diagnostics']); assert.deepEqual(inspect(f.projectId, db => retained(db)), before);

@@ -123,7 +123,7 @@ test('the same factory assembles a real kernel with independent app policy, docu
     const address=http.address();assert.ok(address&&typeof address!=='string');
     const client=createAgentClient({env:{MIOON_BASE_URL:`http://127.0.0.1:${address.port}`,MIOON_TOKEN:token}}),changes=f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
     const doctor=await client.doctor({projectId:project.id});assert.ok(doctor.storage);const storage=mioStorageSnapshotSchema.parse(doctor.storage);
-    assert.equal(storage.projectId,project.id);assert.equal(storage.tables.length,19);assert.equal((await client.doctor()).storage,undefined);
+    assert.equal(storage.projectId,project.id);assert.equal(storage.version,3);assert.equal(storage.tables.length,20);assert.equal((await client.doctor()).storage,undefined);
     assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n,changes);
   }finally{await new Promise<void>(resolve=>http.close(()=>resolve()));}
   const worker = f.startWorker(); assert.equal(runtime.startWorker(), worker);

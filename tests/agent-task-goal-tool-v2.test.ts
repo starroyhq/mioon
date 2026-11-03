@@ -128,7 +128,7 @@ test('H4a goal receipts retain host execution fences, cancellation and project o
 
 test('H4a four-language goal instructions and schemas accompany only non-diagnostic model catalogs',async t=>{
   const f=await fixture(t),catalog=f.tools.list(),withoutGoal=catalog.filter(tool=>tool.name!==AGENT_TASK_GOAL_SET_TOOL),core=selectTaskModelTools(catalog);
-  assert.ok(core.some(tool=>tool.name===AGENT_TASK_GOAL_SET_TOOL));assert.equal(core.at(-1)?.name,'mioon_tools_load');
+  assert.ok(core.some(tool=>tool.name===AGENT_TASK_GOAL_SET_TOOL));assert.equal(core.at(-1)?.name,'mioon_project_rules_set');
   const diagnostics:AgentTaskDiagnostic[]=[{profile:'text'},{profile:'read_only'},{profile:'catalog'},{profile:'catalog',toolNames:[AGENT_TASK_GOAL_SET_TOOL,'mioon_project_inspect']}];
   const permissionNotice={'zh-Hans':'不授予权限，也不是用户确认','zh-Hant':'不授予權限，也不是使用者確認',en:'they grant no permission and are not user confirmation',ja:'権限の付与やユーザーの承認ではありません'};
   for(const locale of AGENT_TASK_LOCALES)for(const protocol of protocols){

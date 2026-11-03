@@ -8,7 +8,7 @@ import {UI_PREFERENCES_LIMITS} from '../../../contracts/src/ui-preferences.ts';
 export const APP_LIBRARY_FILE = 'app-library.db';
 /** Raising it means changing the DDL below; the manifest digest in
  * tests/app-db-library.test.ts records the current structure. */
-export const APP_LIBRARY_SCHEMA_VERSION = 2;
+export const APP_LIBRARY_SCHEMA_VERSION = 3;
 /** SQLite header `application_id`: 'MioA', next to the kernel's 'MioP', 'MioH'
  * and 'MioC', so the app library is never taken for a project file. */
 export const APP_LIBRARY_APPLICATION_ID = 0x4d696f41;
@@ -57,6 +57,7 @@ function documentTable(limits: Readonly<Record<string, number>>): string {
 }
 const json = (column: string, bytes: number): string => `json_valid(${column}) AND length(CAST(${column} AS BLOB))<=${bytes}`;
 const projectIdColumn = 'projectId TEXT NOT NULL CHECK(length(CAST(projectId AS BLOB))=36)';
+export const USER_RULES_TABLE_SQL = "CREATE TABLE user_rules(singleton INTEGER PRIMARY KEY CHECK(singleton=1),text TEXT NOT NULL CHECK(typeof(text)='text' AND length(CAST(text AS BLOB))<=8192),revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision BETWEEN 1 AND 9007199254740991),updatedAt TEXT NOT NULL)";
 
 /** What the app library adds. Every record is the JSON of its
  * project-registry.ts schema, checked on every write and read; the key columns
@@ -73,12 +74,13 @@ export const APP_LIBRARY_STATEMENTS: readonly string[] = Object.freeze([
   // Replays of app-level operations such as creating, packing or copying a project.
   `CREATE TABLE app_operation_receipts(operation TEXT NOT NULL CHECK(length(operation) BETWEEN 1 AND 100),requestId TEXT NOT NULL CHECK(length(requestId) BETWEEN 1 AND 200),digest TEXT NOT NULL CHECK(length(digest)=64),response TEXT NOT NULL CHECK(${json('response', APP_RECORD_LIMITS.receiptResponse)}),createdAt TEXT NOT NULL,PRIMARY KEY(operation,requestId))`,
   "CREATE TRIGGER immutable_app_operation_receipts BEFORE UPDATE ON app_operation_receipts BEGIN SELECT RAISE(ABORT,'App operation receipts are immutable');END",
+  USER_RULES_TABLE_SQL,
 ]);
 
 /** The complete DDL in order: `schema_version`, the format-72 objects, then
  * the app library's own. */
-export const appLibraryStatements = (version: 1 | 2 = 2): readonly string[] =>
-  [APP_SCHEMA_VERSION_TABLE_SQL, ...FORMAT_72_APP_STATEMENTS, ...APP_LIBRARY_STATEMENTS.map(sql => version === 1 && sql.startsWith('CREATE TABLE app_documents(') ? documentTable(APP_DOCUMENT_LIMITS_V1) : sql)];
+export const appLibraryStatements = (version: 1 | 2 | 3 = 3): readonly string[] =>
+  [APP_SCHEMA_VERSION_TABLE_SQL, ...FORMAT_72_APP_STATEMENTS, ...APP_LIBRARY_STATEMENTS.filter(sql => version === 3 || sql !== USER_RULES_TABLE_SQL).map(sql => version === 1 && sql.startsWith('CREATE TABLE app_documents(') ? documentTable(APP_DOCUMENT_LIMITS_V1) : sql)];
 
 /** One `sqlite_master` row; `sql` is null for automatic indexes. */
 export interface AppSchemaObject {
@@ -97,7 +99,7 @@ export function readAppSchema(db: DatabaseSync): AppSchemaObject[] {
 const expected = new Map<number, readonly AppSchemaObject[]>();
 /** Every object the current DDL creates, as SQLite stores it, built once in a
  * memory database. */
-export function expectedAppSchema(version: 1 | 2 = 2): readonly AppSchemaObject[] {
+export function expectedAppSchema(version: 1 | 2 | 3 = 3): readonly AppSchemaObject[] {
   if (!expected.has(version)) {
     const db = new DatabaseSync(':memory:');
     try {
@@ -121,9 +123,22 @@ export function upgradeAppLibraryV1(db: DatabaseSync): void {
     db.exec(documentTable(APP_DOCUMENT_LIMITS));
     db.exec('INSERT INTO app_documents SELECT name,data FROM app_documents_v1');
     db.exec('DROP TABLE app_documents_v1');
-    db.prepare('UPDATE schema_version SET version=? WHERE version=1').run(APP_LIBRARY_SCHEMA_VERSION);
+    if (compareAppSchema(readAppSchema(db), expectedAppSchema(2)).length) throw new Error('The upgraded app library v2 schema does not match');
+    db.prepare('UPDATE schema_version SET version=2 WHERE version=1').run();
     db.exec('COMMIT');
   } catch (error) { if (db.isTransaction) db.exec('ROLLBACK'); throw error; }
+}
+
+/** Adds only the typed user-rules singleton to the exact P4 v2 profile. */
+export function upgradeAppLibraryV2(db: DatabaseSync): void {
+  if (compareAppSchema(readAppSchema(db), expectedAppSchema(2)).length) throw new Error('The app library v2 schema does not match');
+  db.exec('BEGIN');
+  try {
+    db.exec(USER_RULES_TABLE_SQL);
+    if (compareAppSchema(readAppSchema(db)).length) throw new Error('The upgraded app library v3 schema does not match');
+    db.prepare('UPDATE schema_version SET version=3 WHERE version=2').run();
+    db.exec('COMMIT');
+  } catch (error) {if (db.isTransaction) db.exec('ROLLBACK'); throw error;}
 }
 
 /** Differences as `missing type:name`, `unexpected type:name` and

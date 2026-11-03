@@ -83,7 +83,7 @@ test('H1e request builder freezes the official cache policy into the serialized 
   assert.equal(compatible.includes('cache_control'),false);
 });
 
-test('H1e merged C6 catalog keeps methods in the cached core and project notes after it',async t=>{
+test('H1e native R2 catalog keeps methods and approved rules in the cached core',async t=>{
   const directory=mkdtempSync(join(realpathSync(tmpdir()),'mioon-h1e-c6-cache-'));
   const store=openStore(directory),services=createServices(store,new Map()),tools=createAgentTaskTools({store,services});
   t.after(async()=>{tools.dispose();await services.drain();store.close();rmSync(directory,{recursive:true,force:true});});
@@ -92,10 +92,12 @@ test('H1e merged C6 catalog keeps methods in the cached core and project notes a
   for(const name of ['mioon_skill_read','mioon_continuity_report','mioon_goal_set']){
     assert.equal(agentTaskToolGroupForName(name),'core');assert.ok(core.some(item=>item.name===name));
   }
-  assert.equal(core.at(-1)?.name,'mioon_tools_load');
-  assert.equal(agentTaskToolGroupForName('mioon_project_notes_set'),'canvas');
+  assert.equal(core.at(-1)?.name,'mioon_project_rules_set');
+  assert.equal(agentTaskToolGroupForName('mioon_project_rules_set'),'core');
+  assert.equal(agentTaskToolGroupForName('mioon_project_notes_set'),undefined);
   assert.ok(!core.some(item=>item.name==='mioon_project_notes_set'));
-  assert.ok(loaded.some(item=>item.name==='mioon_project_notes_set'));
+  assert.ok(!loaded.some(item=>item.name==='mioon_project_notes_set'));
+  assert.ok(core.some(item=>item.name==='mioon_project_rules_set'&&item.risk==='local_irreversible'));
   const history=[{role:'user',content:'合并后的离线目录验证'}];
   const first=JSON.parse(buildTaskModelRequest(config,history,core,undefined,{toolLoading:true})) as ReturnType<typeof body>;
   const next=JSON.parse(buildTaskModelRequest(config,history,loaded,undefined,{toolLoading:true})) as ReturnType<typeof body>;

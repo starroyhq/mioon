@@ -8,6 +8,8 @@ import {mioTable} from './mio-table-layout.ts';
 import {readAgentTaskRunUsage,readMioRunUsage} from './mio-run-usage.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import {createMioProjectJournal} from './mio-journal-factory.ts';
+import {createMioProjectRules} from './mio-rules.ts';
+import type {MioProjectRules} from './mio-rules.ts';
 import type {AgentPolicyStore} from '../app-db/stores.ts';
 import {hasStoreTable} from '../store-layout.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
@@ -166,12 +168,18 @@ function safeSnapshot(value:AgentTaskSnapshot,store:WorkspaceStore):AgentTaskSna
   copy.changes=copy.changes.map(change=>{Object.assign(change,undoPreview.get(change.id));change.display=projectAgentTaskChangeDisplay(change);change.before=null;change.after=null;delete change.undo;return change;});return copy;
 }
 interface Active {controller:AbortController;promise:Promise<void>;restartRequested:boolean}
-export interface AgentTaskRuntimeOptions {store:WorkspaceStore;agentSettings:AgentSettingsService;authorizations:ChatAuthorizations;tools?:AgentTaskTools;selfPort:()=>number;gateway?:TaskGateway;journal?:AgentTaskJournal;policyStore?:AgentPolicyStore;readOnly?:boolean;assertMutationAllowed?:()=>void;checksPreflight?:AgentTaskChecksPreflight;onDiagnosticCompleted?:(summary:AgentDiagnosticSummary)=>void}
+export interface AgentTaskRuntimeOptions {store:WorkspaceStore;agentSettings:AgentSettingsService;authorizations:ChatAuthorizations;tools?:AgentTaskTools;selfPort:()=>number;gateway?:TaskGateway;journal?:AgentTaskJournal;policyStore?:AgentPolicyStore;rules?:MioProjectRules;readOnly?:boolean;assertMutationAllowed?:()=>void;checksPreflight?:AgentTaskChecksPreflight;onDiagnosticCompleted?:(summary:AgentDiagnosticSummary)=>void}
 /** SQLite owns progress. Process-local state is only cancellation and a single
  * current executor; opening this runtime never restarts an interrupted run. */
-export function createAgentTaskRuntime({store,agentSettings,authorizations,tools,selfPort,gateway=createTaskGateway(),policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:injectedJournal,readOnly=false,assertMutationAllowed,checksPreflight,onDiagnosticCompleted}:AgentTaskRuntimeOptions){
+export function createAgentTaskRuntime({store,agentSettings,authorizations,tools,selfPort,gateway=createTaskGateway(),policyStore=testProjectAppLibrary(store)?.agentPolicy,rules:injectedRules,journal:injectedJournal,readOnly=false,assertMutationAllowed,checksPreflight,onDiagnosticCompleted}:AgentTaskRuntimeOptions){
   const sourceJournal:AgentTaskJournal=injectedJournal??(isProjectStore(store)?createMioProjectJournal(store,policyStore):createAgentTaskJournal(store,{policyStore}));
   const instanceId=randomUUID(),active=new Map<string,Active>();let closed=false,storageFaulted=false,storageFailureCode='AGENT_TASK_STORAGE_UNAVAILABLE';
+  let rules=injectedRules;
+  function captureRules(){
+    if(!isProjectStore(store))return undefined;
+    if(!rules){const application=testProjectAppLibrary(store);if(!application)throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');rules=createMioProjectRules({store,application});}
+    return rules.capture();
+  }
   function failStorage(error:unknown):never {storageFaulted=true;storageFailureCode=storageFailure(error);for(const entry of active.values())entry.controller.abort();throw agentTaskFailure(storageFailureCode);}
   // A SQLite failure is an audit failure, including when it occurs in a domain
   // transaction callback. Never turn it into an ordinary failed tool result.
@@ -182,7 +190,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
   function mutable():void {checkOpen();if(readOnly)throw agentTaskFailure('AGENT_TASK_READ_ONLY');if(storageFaulted)throw agentTaskFailure(storageFailureCode);assertMutationAllowed?.();}
   function toolset():AgentTaskTools {mutable();if(!tools)throw agentTaskFailure('AGENT_TASK_CLOSED');return tools;}
   function runTools(run:AgentTaskRun){
-    return selectTaskModelTools(toolset().list(),run.diagnostic,run.diagnostic?{}:{steps:journal.snapshot(run.id).steps,attachments:run.attachments});
+    return selectTaskModelTools(run.diagnostic?toolset().diagnosticList():toolset().list(),run.diagnostic,run.diagnostic?{}:{steps:journal.snapshot(run.id).steps,attachments:run.attachments});
   }
   const configuration=(run:AgentTaskRun):AgentConfiguration=>parseAgentConfiguration(run.configuration,{selfPort:selfPort()});
   const owned=(projectId:string,id:string):AgentTaskRun=>{checkOpen();if(!hasTables)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');const run=journal.run(id);if(run.projectId!==projectId)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return run;};
@@ -213,7 +221,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const explicit=step.toolCall?agentTaskExplicitTargets(step.toolCall.name,step.toolCall.arguments,journal.run(step.runId).projectId).map(target=>({...target,revision:0})):[];
     return [...dispatchTargets(step),...references.map(value=>{const parsed=agentTaskTargetSchema.safeParse(value);if(!parsed.success)throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');return parsed.data;}),...explicit];
   }
-  const approvalDigest=(step:AgentTaskStep):string=>createHash('sha256').update(JSON.stringify({call:step.toolCall,targets:step.targets,tier:step.tier,...(record(step.data)&&Array.isArray(step.data.dispatchApprovalTargets)?{dispatchTargets:step.data.dispatchApprovalTargets}:{})})).digest('hex');
+  const approvalDigest=(step:AgentTaskStep):string=>createHash('sha256').update(JSON.stringify({call:step.toolCall,targets:step.targets,tier:step.tier,...(record(step.data)&&Array.isArray(step.data.dispatchApprovalTargets)?{dispatchTargets:step.data.dispatchApprovalTargets}:{}),...(record(step.data)&&step.data.rulesProposal!==undefined?{rulesProposal:step.data.rulesProposal}:{})})).digest('hex');
   const approved=(step:AgentTaskStep):boolean=>record(step.data)&&step.data.approvalDigest===approvalDigest(step);
   /** The user's answer becomes the question's tool result. It is input, never an approval. */
   function answerResult(step:AgentTaskStep,request:{choices:number[];text?:string}):AgentTaskJson{
@@ -293,7 +301,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const run=fence(runId),step=journal.step(stepId);
     if(step.runId!==run.id||step.status==='rejected'||step.status==='denied')throw agentTaskFailure('AGENT_TASK_PAUSED');
     assertNotSkipped(run,prepared.referencedTargets??prepared.targets);
-    if((journal.effectiveModes(run.projectId,run.conversationId)[prepared.risk]==='confirm'||step.status==='awaiting_approval')&&!approved(step))throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
+    if((prepared.forceApproval||journal.effectiveModes(run.projectId,run.conversationId)[prepared.risk]==='confirm'||step.status==='awaiting_approval')&&!approved(step))throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
     journal.assertTargets(run.projectId,prepared.targets);
   }
   function pause(runId:string,reason:string):void {const run=journal.run(runId);if(!terminal(run)||run.status==='completed'&&journal.hasPendingBackground(runId))changeStatus(runId,'paused',reason);}
@@ -329,10 +337,16 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       const result={error:{code:invalidatedReason==='user_rejected'?'USER_REJECTED':'USER_ANSWERED',message}};
       return step?journal.updateStep(runId,step.id,{status:'rejected',result}):{...source,kind:'tool',status:'rejected',toolCall:call,result};
     }
+    if(isProjectStore(store)&&!run.diagnostic&&call.name==='mioon_project_notes_set'){
+      if(!step)step=journal.beginStep(runId,{kind:'tool',toolCall:call,data:{sourceModelStepId:source.id,...repairStepData(source)}});
+      const message='This project-notes tool is retired. No operation was applied. Replan using the project rules tool; changing AGENTS.md always requires a new explicit user approval.';
+      const rejected=journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:'TOOL_RETIRED',message}},error:{code:'TOOL_RETIRED',message}});
+      invalidateRestOfBatch(runId,rejected);return rejected;
+    }
     if(!run.diagnostic){
       let visible:string[];try{visible=sourceTaskModelToolNames(configuration(run).protocol,source.request);}catch(error){if(storageError(error))failStorage(error);throw error;}
       if(!visible.includes(call.name)){
-        const group=agentTaskToolGroupForName(call.name);if(group===undefined)throw agentTaskFailure('AGENT_CHAT_TOOLS_UNSUPPORTED');
+        const group=agentTaskToolGroupForName(call.name,isProjectStore(store)?'native':'legacy');if(group===undefined)throw agentTaskFailure('AGENT_CHAT_TOOLS_UNSUPPORTED');
         if(!step){const explanation=taskToolExplanation(modelOutput(source.result),call.id);step=journal.beginStep(runId,{kind:'tool',toolCall:call,...(explanation?{text:explanation}:{}),data:{sourceModelStepId:source.id,...repairStepData(source)}});}
         const message=unloadedToolMessages[taskResponseLocale(run.context)];
         return journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:'TOOL_NOT_LOADED',message,group}},error:{code:'TOOL_NOT_LOADED',message}});
@@ -362,14 +376,14 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         conflicts=[...step.targets.filter(target=>!prepared!.targets.some(item=>item.kind===target.kind&&item.id===target.id&&item.revision===target.revision)),...prepared.targets.filter(target=>!step!.targets!.some(item=>item.kind===target.kind&&item.id===target.id))];
         throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       }
-      step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets)}});
+      step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets),...(prepared.proposal===undefined?{}:{rulesProposal:prepared.proposal})}});
       conflicts=modelConflictingTargets(prepared,source);if(conflicts.length)throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       journal.assertTargets(run.projectId,prepared.targets);
       // C3: a question waits for the user's answer; nothing is dispatched.
       if(prepared.operation===AGENT_TASK_ASK_OPERATION){journal.updateStep(runId,step.id,{status:'awaiting_answer'});changeStatus(runId,'awaiting_answer');return null;}
       // Loosening the modes later never approves a confirmation already shown.
-      if((journal.effectiveModes(run.projectId,run.conversationId)[prepared.risk]==='confirm'||step.status==='awaiting_approval')&&!approved(step)){
-        journal.updateStep(runId,step.id,{status:'awaiting_approval'});changeStatus(runId,'awaiting_approval');return null;
+      if((prepared.forceApproval||journal.effectiveModes(run.projectId,run.conversationId)[prepared.risk]==='confirm'||step.status==='awaiting_approval')&&!approved(step)){
+        journal.updateStep(runId,step.id,{status:'awaiting_approval',...(prepared.proposal===undefined?{}:{result:{rulesProposal:prepared.proposal}})});changeStatus(runId,'awaiting_approval');return null;
       }
       toolFence(runId,step.id,prepared);journal.markDispatch(runId,step.id);
       const stepId=step.id,accepted=prepared;
@@ -400,7 +414,11 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         if(failure==='AGENT_TASK_APPROVAL_REQUIRED'){journal.updateStep(runId,step.id,{status:'awaiting_approval'});changeStatus(runId,'awaiting_approval');}
         else pause(runId,failure==='AGENT_TASK_TARGET_CLAIMED'?'editing':failure==='AGENT_TASK_TARGET_CHANGED'?'conflict':'user');return null;
       }
-      if(failure==='AGENT_TASK_UNKNOWN_RESULT'){journal.updateStep(runId,step.id,{status:'unknown'});pause(runId,'unknown_outcome');return null;}
+      if(['AGENT_TASK_UNKNOWN_RESULT','MIO_RULES_WRITE_UNCERTAIN','MIO_RULES_PENDING'].includes(failure)){
+        const current=journal.step(step.id);if(current.status==='awaiting_approval')journal.updateStep(runId,step.id,{status:'intent'});
+        if(current.status==='intent'||current.status==='awaiting_approval')journal.markDispatch(runId,step.id);
+        journal.updateStep(runId,step.id,{status:'unknown'});pause(runId,'unknown_outcome');return null;
+      }
       if(failure==='AGENT_TASK_TARGET_SKIPPED'){
         if(journal.step(step.id).status==='dispatch_started')journal.dispatchPrevented(runId,step.id,'intent');
         return journal.updateStep(runId,step.id,{status:'denied',result:{error:{code:'TARGET_SKIPPED',message:skippedMessage(journal.run(runId))}},error:{code:'TARGET_SKIPPED',message:skippedMessage(journal.run(runId))}});
@@ -604,7 +622,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const parsedDiagnostic=input.diagnostic===undefined?undefined:agentTaskDiagnosticSchema.safeParse(input.diagnostic);
     if(parsedDiagnostic&&!parsedDiagnostic.success)throw agentTaskFailure('AGENT_TASK_INVALID');
     const diagnostic=parsedDiagnostic?.success?parsedDiagnostic.data:undefined;
-    if(diagnostic?.toolNames?.some(name=>!selectTaskModelTools(toolset().list(),{profile:'catalog'}).some(tool=>tool.name===name)))throw agentTaskFailure('AGENT_TASK_INVALID');
+    if(diagnostic?.toolNames?.some(name=>!selectTaskModelTools(toolset().diagnosticList(),{profile:'catalog'}).some(tool=>tool.name===name)))throw agentTaskFailure('AGENT_TASK_INVALID');
     const uploads=(input.uploads??[]) as string[];
     if(input.conversationId!==undefined&&(typeof input.conversationId!=='string'||!/^[-a-f0-9]{36}$/iu.test(input.conversationId)||diagnostic))throw agentTaskFailure('AGENT_TASK_INVALID');
     const conversationId=input.conversationId as string|undefined;
@@ -617,17 +635,18 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const dummy={configuration:json(settings.configuration)} as AgentTaskRun;authorize(dummy);
     if(conversationModes?.paid==='direct'&&journal.policy().modes.paid!=='direct'&&parsedPolicy?.success&&parsedPolicy.data?.acknowledgePaid!==true)throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
     const historyRuns=diagnostic||!conversationId?undefined:journal.modelContextRuns(projectId,conversationId).reverse();
-    const projectOverview=diagnostic?undefined:collectTaskProjectOverview(store,projectId),projectNotes=diagnostic?undefined:collectTaskProjectNotes(store,projectId);
+    const projectOverview=diagnostic?undefined:collectTaskProjectOverview(store,projectId),projectNotes=diagnostic||isProjectStore(store)?undefined:collectTaskProjectNotes(store,projectId);
+    const rulesSnapshot=diagnostic?undefined:captureRules();
     const attachments=uploads.map(id=>{const row=store.db.prepare(`SELECT id,name,mimeType FROM ${mioTable(store.db,'imports')} WHERE id=? AND projectId=?`).get(id,projectId);if(!row)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return {handle:String(row.id),name:String(row.name),mimeType:String(row.mimeType)};});
     // Earlier runs are trimmed to the first request's budget: core tools plus
     // attachment imports. That request still validates the profile and reports
     // its error, so an unsupported configuration keeps the byte budget here.
     let budget:Readonly<TaskHistoryBudget>|undefined;
     if(historyRuns?.length)try{budget=taskModelHistoryBudget(configuration(dummy),selectTaskModelTools(toolset().list(),undefined,{steps:[],attachments:uploads}),locale,selfPort(),{toolLoading:true});}catch(error){if(!code(error).startsWith('AGENT_CHAT_'))throw error;}
-    const {context}=assembleRunContext({locale,text:input.text,historyRuns,projectOverview,projectNotes,attachments,budget});
+    const {context}=assembleRunContext({locale,text:input.text,historyRuns,projectOverview,projectNotes,rulesSnapshot,attachments,budget});
     if(active.size>=4)throw agentTaskFailure('AGENT_TASK_BUSY');
     mutable();
-    const created=journal.create({projectId,...(conversationId?{conversationId}:{}),...(conversationModes?{conversationModes}:{}),requestId:input.requestId,text:input.text,configuration:json(settings.configuration),settingsRevision:settings.revision,context,attachments:uploads,...(diagnostic?{diagnostic}:{})});launch(created.run.id);return safeSnapshot(journal.snapshot(created.run.id),store);
+    const created=journal.create({projectId,...(conversationId?{conversationId}:{}),...(conversationModes?{conversationModes}:{}),requestId:input.requestId,text:input.text,configuration:json(settings.configuration),settingsRevision:settings.revision,context,attachments:uploads,...(rulesSnapshot?{rulesSnapshot}:{}),...(diagnostic?{diagnostic}:{})});launch(created.run.id);return safeSnapshot(journal.snapshot(created.run.id),store);
   }
   function assertNoteCapacity(runId:string):void {
     const snapshot=journal.snapshot(runId),run=snapshot.run,latest=snapshot.steps.filter(step=>step.kind==='model').at(-1);
@@ -719,9 +738,10 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         if(run.status!=='awaiting_approval'||!request.stepId)throw agentTaskFailure('AGENT_TASK_INVALID');const step=journal.step(request.stepId),background=step.status==='completed'&&record(step.data)&&step.data.backgroundApprovalRequired===true;if(step.runId!==runId||step.status!=='awaiting_approval'&&!background)throw agentTaskFailure('AGENT_TASK_INVALID');
         if(request.action==='approve'){authorize(run);assertNotSkipped(run,referencedTargets(step));journal.assertTargets(projectId,background?dispatchTargets(step):step.targets??[]);}
         if(background){journal.updateStep(runId,step.id,{data:{...(record(step.data)?step.data:{}),backgroundApprovalRequired:false,...(request.action==='approve'?{approvalDigest:approvalDigest(step)}:{backgroundDenied:true})}});if(request.action==='deny')cancelBackgroundSteps.push(step.id);}
-        else journal.updateStep(runId,step.id,{status:request.action==='approve'?'intent':'rejected',data:{...(record(step.data)?step.data:{}),...(request.action==='approve'?{approvalDigest:approvalDigest(step)}:{})},...(request.action==='deny'?{result:{error:{code:'USER_REJECTED',message:'用户拒绝了此操作。'}}}:{})});
+        else journal.updateStep(runId,step.id,{status:request.action==='approve'?'intent':'rejected',data:{...(record(step.data)?step.data:{}),...(request.action==='approve'?{approvalDigest:approvalDigest(step),...(isProjectStore(store)&&step.toolCall?.name==='mioon_project_rules_set'?{rulesApprovalReceiptId:request.requestId}:{})}:{})},...(request.action==='deny'?{result:{error:{code:'USER_REJECTED',message:'用户拒绝了此操作。'}}}:{})});
         if(request.action==='deny')invalidateRestOfBatch(runId,journal.step(step.id),'user_rejected');
         journal.resume(runId,journal.run(runId).revision,{extendBudget:false});
+        if(request.action==='approve'&&isProjectStore(store)&&step.toolCall?.name==='mioon_project_rules_set')return {state:'completed',approvedRules:{stepId:step.id,proposalDigest:approvalDigest(step)}};
       }else if(request.action==='resolve_unknown'){
         if(!request.stepId)throw agentTaskFailure('AGENT_TASK_INVALID');const step=journal.step(request.stepId);if(step.runId!==runId||step.status!=='unknown')throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
         if(step.kind==='model'&&request.resolution==='discard')journal.updateStep(runId,step.id,{status:'failed',result:{discarded:true},error:{code:'USER_DISCARDED_UNKNOWN',message:'用户已将未知模型请求标记为失败。'}});

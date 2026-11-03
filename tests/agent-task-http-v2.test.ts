@@ -63,7 +63,7 @@ async function fixture(t:TestContext,protocol:AgentConfiguration['protocol']='ch
   models++;
   const body=JSON.parse(request.body) as {tools?:Array<{name?:string;function?:{name?:string}}>},visible=new Set(body.tools?.map(tool=>tool.function?.name??tool.name));
   if(groups.some(group=>agentTaskToolNamesForGroup(group).some(name=>!visible.has(name)))){
-   loadRequests++;const call={id:`http_load_${loadRequests}`,name:'mioon_tools_load',arguments:{names:groups.flatMap(agentTaskToolNamesForGroup)}};
+   loadRequests++;const call={id:`http_load_${loadRequests}`,name:'mioon_tools_load',arguments:{names:groups.flatMap(group=>agentTaskToolNamesForGroup(group))}};
    const providerOutput:AgentTaskJson=protocol==='responses'?[{type:'function_call',call_id:call.id,name:call.name,arguments:JSON.stringify(call.arguments),status:'completed'}]:protocol==='anthropic_messages'?{role:'assistant',content:[{type:'tool_use',id:call.id,name:call.name,input:call.arguments}]}:{role:'assistant',content:null,tool_calls:[{id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}]};
    yield {type:'done',output:{text:'',toolCalls:[call],providerOutput}};return;
   }

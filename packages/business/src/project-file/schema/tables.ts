@@ -42,7 +42,7 @@ export const HISTORY_TABLES_BY_DOMAIN: Readonly<Record<HistoryDomain, readonly s
     'mio_changes','mio_controls','mio_control_states','mio_imports','mio_job_origins',
     'mio_edit_claims','mio_edit_owners','mio_edit_receipts','mio_conversation_policies',
     'mio_conversation_policy_requests','mio_events','mio_process_target_revisions',
-    'mio_storage_counters',
+    'mio_storage_counters','mio_rule_writes',
   ]),
 });
 
