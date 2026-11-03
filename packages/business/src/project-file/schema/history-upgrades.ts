@@ -4,6 +4,8 @@ import {MIO_SCHEMA,MIO_COUNTER_SCHEMA,MIO_COUNTER_TRIGGERS,initializeMioStorageC
 import {S0_HISTORY_V2_MANIFEST} from './history-v2-manifest.ts';
 import {R1_HISTORY_V3_MANIFEST} from './history-v3-manifest.ts';
 import {R1_HISTORY_V4_MANIFEST} from './history-v4-manifest.ts';
+import {R2_HISTORY_V5_MANIFEST} from './history-v5-manifest.ts';
+import {VERSION_SCHEMA} from './domains/versions.ts';
 import type {SchemaManifest} from './manifest-check.ts';
 import {LEGACY_MIO_TABLES} from './tables.ts';
 
@@ -50,10 +52,15 @@ function addMioRuleWrites(db:DatabaseSync,counters=true):void{
  // are unchanged; only later INSERT/UPDATE/DELETE apply a logical delta.
 }
 
+function addProjectVersions(db:DatabaseSync):void{
+ if(!db.isTransaction)throw new TypeError('A history upgrade requires the opening transaction');
+ for(const sql of VERSION_SCHEMA)db.exec(sql.replace(CREATE_PREFIX,'CREATE $1 main.'));
+}
 export const HISTORY_UPGRADES: readonly HistoryUpgrade[] = Object.freeze([
-  Object.freeze({from: S0_HISTORY_V2_MANIFEST, toVersion: 5, clearLegacyProcessRevisions:true, apply: resetDevelopmentMio}),
-  Object.freeze({from: R1_HISTORY_V3_MANIFEST, toVersion: 5, apply: (db:DatabaseSync)=>{addMioRuleWrites(db,false);addMioStorageCounters(db);}}),
-  Object.freeze({from: R1_HISTORY_V4_MANIFEST, toVersion: 5, apply: addMioRuleWrites}),
+  Object.freeze({from: S0_HISTORY_V2_MANIFEST, toVersion: 6, clearLegacyProcessRevisions:true, apply: (db:DatabaseSync)=>{resetDevelopmentMio(db);addProjectVersions(db);}}),
+  Object.freeze({from: R1_HISTORY_V3_MANIFEST, toVersion: 6, apply: (db:DatabaseSync)=>{addMioRuleWrites(db,false);addMioStorageCounters(db);addProjectVersions(db);}}),
+  Object.freeze({from: R1_HISTORY_V4_MANIFEST, toVersion: 6, apply: (db:DatabaseSync)=>{addMioRuleWrites(db);addProjectVersions(db);}}),
+  Object.freeze({from: R2_HISTORY_V5_MANIFEST, toVersion: 6, apply: addProjectVersions}),
 ]);
 
 /** Clears only the four local-process target kinds from an older project.
