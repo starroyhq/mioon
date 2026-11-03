@@ -4,9 +4,9 @@ import type {MediaPathForm, MediaReference} from '../../../contracts/src/media-r
 import {mediaReferenceError} from './errors.ts';
 
 // Paths of media references (docs/PROJECT-FILE.md, "素材引用"). Pure
-// functions: nothing here touches the file system. Names are compared in one
-// way only, after NFC normalization and, once either side is a Windows path,
-// without case; so a reference stored on Windows still maps on a Mac (12-05).
+// functions: nothing here touches the file system. Portable lookup helpers
+// fold NFC and Windows case so moved files can be found across platforms.
+// Real-path authorization helpers deliberately keep distinct names separate.
 
 /** `path.posix` or `path.win32`: the platform whose local paths are accepted. */
 export type PathApi = typeof nodePath.posix;
@@ -82,14 +82,38 @@ export function isInsideDirectory(directory: string, file: string, pathApi: Path
   return outer !== null && inner !== null && startsWithPath(outer, inner);
 }
 
-/** `isInsideDirectory` of any of `directories`, for example the folders the
- * user confirmed outside the project directory (`MediaAccess.mayReadOutside`). */
+/** Portable containment for lookup, not a grant of file-system access. Use
+ * inExactDirectories with realpath results for non-recursive confirmation. */
 export function insideAnyDirectory(directories: readonly string[], pathApi: PathApi = nodePath): (file: string) => boolean {
   const outers = directories.map(directory => parseLocalPath(directory, pathApi)).filter((parts): parts is AbsolutePathParts => parts !== null);
   return file => {
     const inner = parseLocalPath(file, pathApi);
     return inner !== null && outers.some(outer => startsWithPath(outer, inner));
   };
+}
+
+/** Actual file-system names, after realpath. Portable NFC/case matching is
+ * useful for finding a moved file, but cannot grant access: Linux and
+ * case-sensitive volumes can hold distinct names that fold alike. This is a
+ * conservative path boundary, not an ACL or file-identity proof. */
+export function isInsideRealDirectory(directory: string, file: string, pathApi: PathApi = nodePath): boolean {
+  const outer = parseLocalPath(directory, pathApi), inner = parseLocalPath(file, pathApi);
+  return outer !== null && inner !== null && outer.flavor === inner.flavor && outer.root === inner.root &&
+    outer.segments.length <= inner.segments.length && outer.segments.every((name, index) => name === inner.segments[index]);
+}
+
+/** A file directly in a confirmed real directory; descendants do not inherit
+ * confirmation. Both inputs must already have been resolved by realpath. */
+export function isFileInDirectory(directory: string, file: string, pathApi: PathApi = nodePath): boolean {
+  const outer = parseLocalPath(directory, pathApi), inner = parseLocalPath(file, pathApi);
+  return outer !== null && inner !== null && inner.segments.length === outer.segments.length + 1 &&
+    isInsideRealDirectory(directory, file, pathApi);
+}
+
+/** Exact, non-recursive confirmations for already resolved directory names. */
+export function inExactDirectories(directories: readonly string[], pathApi: PathApi = nodePath): (file: string) => boolean {
+  const confirmed = [...directories];
+  return file => confirmed.some(directory => isFileInDirectory(directory, file, pathApi));
 }
 
 /** The volume name a path shows: `<name>` of macOS `/Volumes/<name>/…`, or
@@ -132,6 +156,22 @@ export function referencePathFor(projectDir: string, file: string, sameVolume: b
   const absolute = formatAbsolutePath(target);
   if (target.segments.some(name => name.includes('\\')) || !isNormalizedAbsolutePath(absolute)) throw invalidPath();
   return {pathForm: 'absolute', path: absolute, volume: volumeNameOf(absolute)};
+}
+
+/** Stores a real file without collapsing distinct NFC/NFD or case-sensitive
+ * directory names. Only portable lookup/relink matching uses referencePathFor's
+ * folding; actual imports must keep the real path they inspected. */
+export function referencePathForRealFile(projectDir: string, file: string, sameVolume: boolean, pathApi: PathApi = nodePath): ReferencePath {
+  const directory = parseLocalPath(projectDir, pathApi), target = parseLocalPath(file, pathApi);
+  if (directory === null || target === null) throw invalidPath();
+  if (sameVolume && directory.flavor === target.flavor && directory.root === target.root) {
+    let common = 0;
+    while (common < directory.segments.length && common < target.segments.length && directory.segments[common] === target.segments[common]) common++;
+    const relative = [...new Array<string>(directory.segments.length - common).fill('..'), ...target.segments.slice(common)].join('/');
+    if (!isPortableRelativePath(relative)) throw invalidPath();
+    return {pathForm: 'relative', path: relative, volume: null};
+  }
+  return referencePathFor(projectDir, file, false, pathApi);
 }
 
 /** The local path a reference points at: a relative path resolved against
@@ -204,9 +244,9 @@ interface FolderGroup {
   readonly directory: string;
   count: number;
 }
-/** The folders of absolute file paths, of either platform, with the number of
- * files in each (12-06). A folder inside another one is counted with the
- * outer one; folders side by side stay apart. In code point order. */
+/** Portable folder grouping, not confirmation scopes. A folder inside another
+ * one is counted with the outer one; siblings stay apart. Real external
+ * confirmations instead use exactOutsideDirectoryGroups. In code point order. */
 export function outsideDirectoryGroups(files: readonly string[]): readonly {readonly directory: string; readonly count: number}[] {
   const folders = new Map<string, FolderGroup>();
   for (const file of files) {
@@ -225,4 +265,19 @@ export function outsideDirectoryGroups(files: readonly string[]): readonly {read
     else groups.push({...folder});
   }
   return groups.sort((a, b) => compareCodePoints(a.directory, b.directory)).map(({directory, count}) => ({directory, count}));
+}
+
+/** Real external parent directories, kept separate even when nested. A
+ * confirmation authorizes that directory only, never its descendants. */
+export function exactOutsideDirectoryGroups(files: readonly string[]): readonly {readonly directory: string; readonly count: number}[] {
+  const folders = new Map<string, {directory: string; count: number}>();
+  for (const file of files) {
+    const parsed = parseAbsolutePath(file);
+    if (parsed === null || parsed.segments.length === 0) continue;
+    const directory = formatAbsolutePath({...parsed, segments: parsed.segments.slice(0, -1)});
+    const key = `${parsed.flavor}\u0000${directory}`, known = folders.get(key);
+    if (known) known.count++;
+    else folders.set(key, {directory, count: 1});
+  }
+  return [...folders.values()].sort((a, b) => compareCodePoints(a.directory, b.directory));
 }

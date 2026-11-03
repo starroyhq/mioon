@@ -1,11 +1,11 @@
 import {mediaReferenceSchema, outsideProjectLocationSchema} from '../../../contracts/src/media-reference.ts';
 import type {MediaReference, OutsideProjectLocation} from '../../../contracts/src/media-reference.ts';
-import {freshMediaFile, inspectTarget, isFileReadError, parseReference, prepareAccess, quietly, readSampledSha256, withMediaFile} from './access.ts';
+import {freshMediaFile, hasMediaHeader, inspectTarget, isFileReadError, parseReference, prepareAccess, quietly, readSampledSha256, withMediaFile} from './access.ts';
 import type {MediaAccess, MediaTarget, PreparedAccess} from './access.ts';
 import {mediaReferenceError} from './errors.ts';
-import {mediaMtimeMs} from './fingerprint.ts';
+import {hashWhole, mediaMtimeMs} from './fingerprint.ts';
 import {
-  isInsideDirectory, outsideDirectoryGroups, parseLocalPath, referencePathFor, relinkBases, relinkTarget, resolveReferencePath, volumeNameOf,
+  exactOutsideDirectoryGroups, isInsideRealDirectory, parseLocalPath, referencePathForRealFile, relinkBases, relinkTarget, resolveReferencePath, volumeNameOf,
 } from './paths.ts';
 import type {RelinkBases} from './paths.ts';
 
@@ -23,8 +23,8 @@ export interface RelinkedMedia {
   readonly reference: MediaReference;
 }
 export interface RelinkResult {
-  /** The file the user chose. `matches`: its size and samples are the ones
-   * recorded; otherwise its reference carries its own new fingerprint. */
+  /** The file the user chose. `matches`: its size, samples and any recorded
+   * complete hash match; otherwise its reference has its own fingerprint. */
   readonly chosen: RelinkedMedia & {readonly matches: boolean};
   /** Other missing assets found at the same place below the new folder. */
   readonly found: readonly RelinkedMedia[];
@@ -40,29 +40,30 @@ export const MAX_RELINK_ASSETS = 20_000;
 const originalPath = (prepared: PreparedAccess, reference: MediaReference): string | null =>
   reference.pathForm === 'absolute' ? reference.path : resolveReferencePath(prepared.projectDir, reference);
 
-/** The recorded fingerprint at its new place: the new path form and
- * modification time, the full hash only while that time is unchanged. Null
- * when the path cannot be stored. */
-function relocated(prepared: PreparedAccess, target: MediaTarget, recorded: MediaReference): MediaReference | null {
+/** The recorded fingerprint at its real new place. A complete hash survives
+ * a changed mtime only when it was reverified. Null for an unstorable path. */
+function relocated(prepared: PreparedAccess, target: MediaTarget, recorded: MediaReference, verifiedFullHash?: string): MediaReference | null {
   const mtimeMs = mediaMtimeMs(target.stats);
   let location;
   try {
-    location = referencePathFor(prepared.projectDir, target.file, target.stats.dev === prepared.projectDev);
+    location = referencePathForRealFile(prepared.projectDir, target.file, target.stats.dev === prepared.projectDev);
   } catch {
     return null;
   }
   const parsed = mediaReferenceSchema.safeParse({...location, sizeBytes: recorded.sizeBytes, mtimeMs, sampledSha256: recorded.sampledSha256,
-    fullSha256: mtimeMs === recorded.mtimeMs ? recorded.fullSha256 : null});
+    fullSha256: verifiedFullHash ?? (mtimeMs === recorded.mtimeMs ? recorded.fullSha256 : null)});
   return parsed.success ? parsed.data : null;
 }
 
 /** The user chose `chosen.file` for a missing asset. The longest common tail
  * of the old and the new folder gives an old and a new base (relinkBases);
  * every other missing asset below the old base is looked for at the same
- * place below the new one. Matching size and modification time is enough,
- * and nothing is read; when only the time differs the samples are compared if
- * the file may be read, and it is `unverified` otherwise. A different size or
- * samples is `mismatched`. The chosen file itself must be readable: outside
+ * place below the new one. Without a stored complete hash, matching size and
+ * modification time needs no read; when only the time differs the samples
+ * are compared. A recorded full hash is always verified before a match is
+ * returned, even for identical stat fields. An unreadable candidate needing
+ * verification is `unverified`. A different size, sample or complete hash is
+ * `mismatched`. The chosen file itself must be readable: outside
  * the project directory the caller records the confirmation first. */
 export async function relinkMedia(access: MediaAccess, assets: readonly MediaAsset[], chosen: {readonly assetId: string; readonly file: string},
   {signal}: {signal?: AbortSignal} = {}): Promise<RelinkResult> {
@@ -73,9 +74,18 @@ export async function relinkMedia(access: MediaAccess, assets: readonly MediaAss
   if (parseLocalPath(chosen.file) === null) throw new TypeError('The chosen file must be an absolute path');
   signal?.throwIfAborted();
   const prepared = await prepareAccess(access);
-  const picked = await freshMediaFile(prepared, await inspectTarget(prepared, chosen.file), signal);
-  const matches = picked.reference.sizeBytes === old.reference.sizeBytes && picked.reference.sampledSha256 === old.reference.sampledSha256;
-  const reference = matches && picked.reference.mtimeMs === old.reference.mtimeMs ? {...picked.reference, fullSha256: old.reference.fullSha256} : picked.reference;
+  const pickedTarget = await inspectTarget(prepared, chosen.file);
+  const picked = await freshMediaFile(prepared, pickedTarget, signal);
+  let matches = picked.reference.sizeBytes === old.reference.sizeBytes && picked.reference.sampledSha256 === old.reference.sampledSha256;
+  let verifiedFullHash: string | undefined;
+  if (matches && old.reference.fullSha256 !== null) {
+    // freshMediaFile already proved the selected target is readable media.
+    if (pickedTarget.kind !== 'media') throw mediaReferenceError('MEDIA_CHANGED_DURING_READ');
+    verifiedFullHash = await fullHash(prepared, pickedTarget, signal);
+    matches = verifiedFullHash === old.reference.fullSha256;
+  }
+  const reference = matches && (verifiedFullHash !== undefined || picked.reference.mtimeMs === old.reference.mtimeMs)
+    ? {...picked.reference, fullSha256: old.reference.fullSha256} : picked.reference;
   const found: RelinkedMedia[] = [], mismatched: RelinkEntry[] = [], unverified: RelinkEntry[] = [];
   const from = originalPath(prepared, old.reference);
   const bases = from === null ? null : relinkBases(from, picked.file);
@@ -96,6 +106,14 @@ interface RelinkEntry {
   readonly file: string;
 }
 type Located = {readonly kind: 'found'; readonly media: RelinkedMedia} | {readonly kind: 'mismatched' | 'unverified'; readonly entry: RelinkEntry};
+async function fullHash(prepared: PreparedAccess, target: MediaTarget, signal?: AbortSignal): Promise<string> {
+  return withMediaFile(prepared, target, async session => {
+    if (!await hasMediaHeader(session, target, signal)) throw mediaReferenceError('MEDIA_CHANGED', {reason: 'not-media'});
+    const hash = await hashWhole(session.handle, Number(target.stats.size), {signal});
+    await session.verify();
+    return hash;
+  }, {signal});
+}
 /** Where another asset is after the move, if it is missing and a file is at its new place. */
 async function locate(prepared: PreparedAccess, bases: RelinkBases, asset: MediaAsset, signal?: AbortSignal): Promise<Located | null> {
   const local = resolveReferencePath(prepared.projectDir, asset.reference);
@@ -118,7 +136,19 @@ async function locate(prepared: PreparedAccess, bases: RelinkBases, asset: Media
     }
     if (sampled !== asset.reference.sampledSha256) return {kind: 'mismatched', entry};
   }
-  const reference = relocated(prepared, target, asset.reference);
+  let verifiedFullHash: string | undefined;
+  if (asset.reference.fullSha256 !== null) {
+    if (!target.readable) return {kind: 'unverified', entry};
+    try {
+      verifiedFullHash = await fullHash(prepared, target, signal);
+    } catch (error) {
+      if ((error as {code?: unknown})?.code === 'MEDIA_CHANGED') return {kind: 'mismatched', entry};
+      if (!isFileReadError(error)) throw error;
+      return {kind: 'unverified', entry};
+    }
+    if (verifiedFullHash !== asset.reference.fullSha256) return {kind: 'mismatched', entry};
+  }
+  const reference = relocated(prepared, target, asset.reference, verifiedFullHash);
   return reference === null ? null : {kind: 'found', media: {...entry, reference}};
 }
 
@@ -126,9 +156,10 @@ async function locate(prepared: PreparedAccess, bases: RelinkBases, asset: Media
  * for the confirmation of 12-06; nothing is opened. A file that exists is
  * placed where it really is, also when a link inside the project directory
  * points out of it, since that is where reading it is judged; a missing one
- * where its path says. Nested folders count with the outer one. `available`:
+ * where its path says. Nested folders remain separate: confirmation of one
+ * directory does not authorize its children. `available`:
  * the folder exists here, never for a path of the other platform. Confirming
- * a `directory` lets insideAnyDirectory read below it. */
+ * a `directory` permits only files directly within it. */
 export async function outsideProjectLocations(access: MediaAccess, assets: readonly MediaAsset[]): Promise<OutsideProjectLocation[]> {
   const prepared = await prepareAccess(access);
   const files: string[] = [];
@@ -140,10 +171,10 @@ export async function outsideProjectLocations(access: MediaAccess, assets: reado
       continue;
     }
     const location = await quietly(() => prepared.fileSystem.realpath(local)) ?? local;
-    if (!isInsideDirectory(prepared.projectDir, location)) files.push(location);
+    if (!isInsideRealDirectory(prepared.projectDir, location)) files.push(location);
   }
   const locations: OutsideProjectLocation[] = [];
-  for (const {directory, count} of outsideDirectoryGroups(files)) {
+  for (const {directory, count} of exactOutsideDirectoryGroups(files)) {
     const info = parseLocalPath(directory) === null ? null : await quietly(() => prepared.fileSystem.lstat(directory));
     const parsed = outsideProjectLocationSchema.safeParse({directory, volume: volumeNameOf(directory), assetCount: count, available: info?.isDirectory() ?? false});
     if (parsed.success) locations.push(parsed.data);

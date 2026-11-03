@@ -7,7 +7,7 @@ import {mediaReferenceError} from './errors.ts';
 import type {MediaDirectoryEntry} from './file-system.ts';
 import {isProtectedName, mediaTypeOfName} from './media-type.ts';
 import type {MediaKind} from './media-type.ts';
-import {compareCodePoints, isInsideDirectory} from './paths.ts';
+import {compareCodePoints, isInsideRealDirectory} from './paths.ts';
 
 // Listing the project directory for Mio (plan 10.3): Mio's working directory
 // is the project directory. One folder at a time, named by a relative path
@@ -76,7 +76,7 @@ async function realFolder(prepared: PreparedAccess, segments: readonly string[])
   if (segments.length === 0) return prepared.projectDir;
   const real = await quietly(() => prepared.fileSystem.realpath(nodePath.join(prepared.projectDir, ...segments)));
   if (real === null) throw invalidPath('missing');
-  if (!isInsideDirectory(prepared.projectDir, real)) throw invalidPath('outside');
+  if (!isInsideRealDirectory(prepared.projectDir, real)) throw invalidPath('outside');
   if (isHiddenInside(prepared, real)) throw invalidPath('path');
   const info = await quietly(() => prepared.fileSystem.lstat(real));
   if (info === null) throw invalidPath('missing');

@@ -128,6 +128,22 @@ test('a folder below, a link to one, and the paths that cannot be listed', async
   for (const limit of [0, 1.5, MAX_LIST_SCAN + 1]) await assert.rejects(listProjectMedia(access, '', {limit}), TypeError);
 });
 
+test('a folder resolving to a distinct NFC-equivalent external directory cannot be listed', async () => {
+  const {access, root} = fixture, base = NODE_MEDIA_FILE_SYSTEM;
+  const projectDir = path.join(root, 'Caf\u00e9'), external = path.join(root, 'Cafe\u0301'), projectFile = path.join(projectDir, 'Film.mioon');
+  let listed = false, opened = false;
+  const fileSystem: MediaFileSystem = {
+    ...base,
+    realpath: async file => file === projectDir || file === projectFile ? file : file === path.join(projectDir, 'alias') ? external : null,
+    lstat: file => file === projectDir || file === external ? base.lstat(root) : Promise.resolve(null),
+    readDirectory: async () => {listed = true; return [];},
+    open: async () => {opened = true; throw new Error('Must not open external directory contents');},
+  };
+  await assert.rejects(listProjectMedia({...access, projectDir, projectFile, fileSystem}, 'alias'), INVALID('outside'));
+  assert.equal(listed, false);
+  assert.equal(opened, false);
+});
+
 test('a limit cuts the listing short, a failing probe only drops durations, and a crowded folder is truncated', async () => {
   const {access} = fixture;
   const names = (listing: {readonly entries: readonly {readonly name: string}[]}): string[] => listing.entries.map(entry => entry.name);

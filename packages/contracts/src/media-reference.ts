@@ -9,6 +9,20 @@ export type MediaPathForm = typeof MEDIA_PATH_FORMS[number];
  * changed: a file is there but its fingerprint differs. */
 export const MEDIA_STATUSES = Object.freeze(['online', 'missing', 'changed'] as const);
 export type MediaStatus = typeof MEDIA_STATUSES[number];
+/** The reasons reported by L1. An outside file can be online but unreadable
+ * until its directory is confirmed on this computer. */
+export const MEDIA_STATUS_REASONS = Object.freeze([
+  'same-stats', 'same-content', 'not-found', 'no-access', 'not-downloaded', 'other-platform',
+  'not-a-file', 'size', 'content', 'not-media', 'unverified',
+] as const);
+export type MediaStatusReason = typeof MEDIA_STATUS_REASONS[number];
+export const mediaStatusReasonSchema = z.enum(MEDIA_STATUS_REASONS);
+/** Shared by the filesystem layer and the controlled project-file screens.
+ * This deliberately carries no resolved filesystem path. */
+export const mediaStatusViewSchema = z.object({
+  status: z.enum(MEDIA_STATUSES), reason: mediaStatusReasonSchema, outside: z.boolean(), readable: z.boolean(),
+}).strict();
+export type MediaStatusView = z.infer<typeof mediaStatusViewSchema>;
 export const MEDIA_PATH_MAX_LENGTH = 4096;
 
 /** Relative to the project directory, with `/` on every platform. Leading
