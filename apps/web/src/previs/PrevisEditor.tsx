@@ -43,7 +43,7 @@ export interface PrevisEditorProps {
   /** The project's shots and canvas links, for setting keyframes as shot frames. */
   shots: readonly PrevisShotView[];
   edges: readonly PrevisEdgeView[];
-  /** Adds an exported picture to the asset library (or finds the identical one). */
+  /** Publishes an exported picture for this exact saved node/keyframe/revision. */
   onImport: (request: PrevisImportRequest) => Promise<PrevisImportOutcome>;
   onSetFrame: (request: PrevisFrameRequest) => Promise<PrevisFrameOutcome>;
   /** Undoes a set frame; `scene` is the editor's scene, which knows every image exported so far. */
@@ -293,15 +293,23 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
     const view = viewport.current, scene = modelRef.current.scene, index = scene.keyframes.findIndex(item => item.id === id), keyframe = scene.keyframes[index];
     if (readOnly || !view || !keyframe || exporting.current) return;
     exporting.current = id; setBusyKeyframe(id);
-    const label = previsKeyframeLabel(index), saved = saver.current!.state().node;
+    const label = previsKeyframeLabel(index);
     showToast({ tone: 'progress', title: t('previs.export.running', { label }) });
     try {
+      // The render proof names a persisted scene, so flush pending edits before
+      // capturing its revision; changes during encoding must not borrow it.
+      saver.current!.schedule(scene);
+      const ready = await saver.current!.flush(), saved = ready.node;
+      const current = (): boolean => ready.status === 'saved' && saver.current!.state().node.sceneRevision === saved.sceneRevision &&
+        same(scene, saved.scene) && same(modelRef.current.scene, saved.scene);
+      if (!current()) { showToast({ tone: 'error', title: t('previs.export.failed', { label }) }); return; }
       const canvas = view.renderViews([{ camera: keyframe.camera, width: frame.width, height: frame.height }])?.[0];
       const blob = canvas ? await canvasBlob(canvas, 'image/png') : null;
       if (!blob) { showToast({ tone: 'error', title: t('previs.export.failed', { label }) }); return; }
       if (blob.size > IMPORT_LIMIT_BYTES) { showToast({ tone: 'error', title: t('previs.export.failed', { label }), detail: t('previs.export.tooLarge') }); return; }
       const encoded = await encodeBlob(blob);
-      const imported = await calls.current.onImport({ projectId: saved.projectId, name: exportName(saved.label || t('previs.node.defaultLabel'), label, previsKeyframeName(keyframe, translate)),
+      if (!current()) { showToast({ tone: 'error', title: t('previs.export.failed', { label }) }); return; }
+      const imported = await calls.current.onImport({ projectId: saved.projectId, nodeId: saved.id, keyframeId: id, sceneRevision: saved.sceneRevision, requestId: calls.current.requestId(), name: exportName(saved.label || t('previs.node.defaultLabel'), label, previsKeyframeName(keyframe, translate)),
         dataBase64: encoded.base64, sha256: encoded.sha256, width: frame.width, height: frame.height });
       if (imported.status !== 'imported') { showToast({ tone: imported.status === 'unknown' ? 'warning' : 'error', title: t(imported.status === 'unknown' ? 'previs.export.unknown' : 'previs.export.failed', { label }) }); return; }
       setModel(current => recordPrevisModelExport(current, id, imported.assetId));

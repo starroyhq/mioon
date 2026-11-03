@@ -81,7 +81,7 @@ async function fixture(t: test.TestContext){
   assert.equal(isFrameMutationResponse('frame.extract',input,ack),true);
   const task=await until(()=>f.call('frame.task.get',{projectId:f.project.id,taskId:ack.id}),(value)=>value.state==='succeeded','real frame extraction');
   assert.equal(isFrameTaskResponse(task),true);const asset=f.store.get('assets',task.result.assetId)!,file=mediaFixturePath(root,asset),png=await readFile(file);
-  assert.equal(asset.provenance,'extracted-frame');assert.equal(asset.mimeType,'image/png');assert.equal(mediaReferenceSchema.parse((asset as unknown as {reference:unknown}).reference).path,`media/${asset.id}.png`);assert.equal(Object.hasOwn(asset,'relativePath'),false);
+  assert.equal(asset.provenance,'extracted-frame');assert.equal(asset.mimeType,'image/png');assert.match(mediaReferenceSchema.parse((asset as unknown as {reference:unknown}).reference).path,/^生成\/[^/]+\.png$/);assert.equal(Object.hasOwn(asset,'relativePath'),false);
   assert.deepEqual(await validatePng(png,{width:64,height:48,opaque:true}),{mimeType:'image/png',width:64,height:48,byteLength:png.length,sha256:sha(png)});
   assert.equal(asset.sha256,sha(png));return {input,ack,task,asset,file,png};
  };

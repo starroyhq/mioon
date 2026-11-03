@@ -7,6 +7,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./public-operations": "./src/public-operations.ts",
+    "./project-entry": "./src/project-entry.ts",
+    "./project-entry-native": "./src/project-entry-native.ts",
+    "./project-name": "./src/project-name.ts",
     "./private-storage": "./src/private-storage.ts",
     "./asset-media": "./src/asset-media.ts",
     "./media-reference": "./src/media-reference.ts",

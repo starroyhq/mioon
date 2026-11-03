@@ -1133,6 +1133,8 @@ Discover `mioon schema timeline.loudness.apply`. After an explicitly reviewed cu
 
 ## 素材引用导入
 
+S2 的 `previs output publish` 和 `previs output lookup` 复用公共严格 schema；用 `mioon schema previs.output.publish` 查询当前完整参数。发布绑定已保存节点、关键帧、场景修订及稳定 requestId，目标由后端固定为 `生成/`。未知回复只以原完整身份查询，不换请求重发。成片由后端保存到项目的 `导出/`；CLI 显式下载到其他位置仍使用原来的排他创建规则。详见 [项目产物](PROJECT-OUTPUTS.md)。
+
 `mioon asset import --file /绝对路径/image.png --request-id <稳定ID> --input '{"projectId":"<项目ID>"}'` 只发送本机路径，后端加引用，不复制文件，也不受30 MiB上传限制。CLI和后端必须在同一台机器。
 
 项目外目录未确认时加 `--confirm-outside`：它明确确认当前项目读取文件所在目录本身，不含子目录，stderr逐项输出确认目录。没有这个参数的普通路径导入不授予许可。需传输字节时用显式 `--upload`，上限仍30 MiB，不能与目录确认一起使用。客户端现有连接策略仍只接受本机 HTTP origin；本机转发到另一机器时应使用上传模式，不能发送本机文件路径。LUT导入仍读取本地字节，限制不变。

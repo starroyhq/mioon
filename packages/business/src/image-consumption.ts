@@ -20,7 +20,11 @@ export function validateImageConsumption<T extends ConsumableImageAsset>(db: Dat
  const sceneTable=Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scene_tasks'").get());
  if(!sceneTable&&db.prepare('SELECT 1 FROM schema_version WHERE version=58').get())throw invalid();
  const sceneOwned=sceneTable&&db.prepare(`${SCENE_KEYFRAME_OWNER_SQL} LIMIT 1`).get(asset.id);
- if(!imageOwned&&!frameOwned&&!sceneOwned&&asset.provenance!=='extracted-frame'&&asset.provenance!==SCENE_KEYFRAME_PROVENANCE)return asset;
+ // A persisted previs marker must remain verifiable even if somebody changes
+ // its provenance label; never let damaged output facts become a plain import.
+ const stored=asset as T&{previsOutput?:unknown;publication?:{owner?:{kind?:unknown}}};
+ const previsOwned=Object.hasOwn(asset,'previsOutput')||stored.publication?.owner?.kind==='previs';
+ if(!imageOwned&&!frameOwned&&!sceneOwned&&!previsOwned&&asset.provenance!=='extracted-frame'&&asset.provenance!==SCENE_KEYFRAME_PROVENANCE)return asset;
  try{(createOwnedMediaGraphReader(db,projectId) as unknown as {asset(id: string): unknown}).asset(asset.id);}
  catch{throw invalid();}
  return asset;

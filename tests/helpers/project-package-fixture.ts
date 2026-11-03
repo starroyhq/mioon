@@ -8,8 +8,9 @@ import {createServices} from '../../packages/business/src/services.ts';
 import {isProjectStore} from '../../packages/business/src/project-file/store.ts';
 import type {ProjectStore} from '../../packages/business/src/project-file/store.ts';
 import type {Store} from '../../packages/business/src/store-contract.ts';
-import {prepareProjectAssetFullHash,referenceForPublishedMedia} from '../../packages/business/src/project-media-storage.ts';
+import {prepareProjectAssetFullHash} from '../../packages/business/src/project-media-storage.ts';
 import {mediaFixturePath} from './media-reference-fixtures.ts';
+import {publishOutputFixture,markProjectOutputRegistered} from './project-output-fixture.ts';
 
 type Row=Record<string,any>;
 const tools=process.env.MIOON_TEST_MEDIA_TOOLS??'/opt/homebrew/bin';
@@ -78,18 +79,19 @@ export async function buildSampleProject(root:string,{store:packageStore,service
  await call('asset.range.set',{projectId:project.id,assetId:video.id,expectedRevision:0,requestId:randomUUID(),inFrame:6,outFrame:48});
  const subject=await call('subject.create',{projectId:project.id,kind:'character',name:'主角',assetId:face.id,requestId:randomUUID()});
  // A finished mock version, published exactly as the job worker does.
- const jobId=randomUUID(),versionId=randomUUID(),assetId=randomUUID(),relativePath=`media/result-${jobId}.mp4`,now=new Date().toISOString();
+ const jobId=randomUUID(),versionId=randomUUID(),assetId=randomUUID(),requestId=randomUUID(),requestHash='a'.repeat(64),relativePath=`media/result-${jobId}.mp4`,now=new Date().toISOString();
  const outputFile=path.join(root,relativePath);
- copyFileSync(mediaFixturePath(root,video),outputFile);
+ if(!native)copyFileSync(mediaFixturePath(root,video),outputFile);
  const current=store.get('shots',shot.id),info={sizeBytes:video.sizeBytes,sha256:video.sha256,width:video.width,height:video.height,duration:video.duration,hasVideo:true,hasAudio:false};
- const published=native?await referenceForPublishedMedia(store,outputFile,{sha256:info.sha256}):null;
+ const published=native?await publishOutputFixture(store,{assetId,owner:{kind:'generation',id:jobId,requestId,inputHash:requestHash},bytes:readFileSync(mediaFixturePath(root,video)),mimeType:'video/mp4'}):null;
  const snapshot={shotId:shot.id,shotRevision:current.revision,title:current.title,prompt:current.prompt,referenceAssetIds:[ref.id],referenceAssets:[{id:ref.id,...(native?{projectId:ref.projectId,reference:ref.reference,referenceRevision:ref.referenceRevision,sizeBytes:ref.sizeBytes}:{relativePath:ref.relativePath}),mimeType:ref.mimeType,sha256:ref.sha256,width:ref.width,height:ref.height}],referenceConnections:[],aspectRatio:'9:16',duration:4,providerId:'mock',model:'mock-v1',parameters:{},capabilities:{}};
  store.tx(()=>{
-  store.put('jobs',{id:jobId,projectId:project.id,shotId:shot.id,requestId:randomUUID(),requestHash:'a'.repeat(64),providerId:'mock',model:'mock-v1',revision:3,status:'succeeded',phase:'complete',progress:100,snapshot,providerJobId:null,submissionCount:1,error:null,createdAt:now,updatedAt:now,versionId,cancelScope:null,retryOfJobId:null});
+  store.put('jobs',{id:jobId,projectId:project.id,shotId:shot.id,requestId,requestHash,providerId:'mock',model:'mock-v1',revision:3,status:'succeeded',phase:'complete',progress:100,snapshot,providerJobId:null,submissionCount:1,error:null,createdAt:now,updatedAt:now,versionId,cancelScope:null,retryOfJobId:null});
   store.put('assets',{id:assetId,projectId:project.id,name:'霓虹特写 模拟视频.mp4',mimeType:'video/mp4',...info,...(published?{...published,producer:{kind:'generation',id:jobId}}:{relativePath}),url:`/media/${assetId}`,provenance:'synthetic-mock',createdAt:now});
   store.put('versions',{id:versionId,projectId:project.id,shotId:shot.id,jobId,number:1,providerId:'mock',model:'mock-v1',isMock:true,snapshot,assetId,url:`/media/${assetId}`,sha256:info.sha256,createdAt:now});
   store.put('shots',{...current,selectedVersionId:versionId,revision:current.revision+1,updatedAt:now});
  });
+ if(native&&published)await markProjectOutputRegistered(store,published.publication);
  const shotNow=store.get('shots',shot.id);
  await call('subject.binding.set',{projectId:project.id,shotId:shot.id,subjectId:subject.id,role:'subject',subjectVersionId:null,expectedRevision:0,expectedSubjectRevision:subject.revision,requestId:randomUUID()});
  const lut=await call('lut.import',{projectId:project.id,requestId:randomUUID(),name:'look.cube',dataBase64:sampleCube.toString('base64')});

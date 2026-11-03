@@ -1,9 +1,11 @@
 import {createHash, randomUUID} from 'node:crypto';
-import {realpathSync, lstatSync} from 'node:fs';
-import {open, mkdir} from 'node:fs/promises';
+import {realpathSync} from 'node:fs';
 import path from 'node:path';
 import {AppError} from '../../contracts/src/app-error.ts';
-import {assetImportSchema, assetMediaRecordSchema, PROJECT_ASSETS_FOLDER, toAssetMediaDto} from '../../contracts/src/asset-media.ts';
+import {assetImportSchema, assetMediaRecordSchema, toAssetMediaDto} from '../../contracts/src/asset-media.ts';
+import {projectOutputPublicationProofSchema} from '../../contracts/src/project-output-publication.ts';
+import {publishProjectOutput,inspectProjectOutput,assertPublishedProjectOutput,markProjectOutputRegistered} from './project-output-publication.ts';
+import type {PublishedProjectOutput,ProjectOutputOwner} from './project-output-publication.ts';
 import {projectMediaPath} from '../../contracts/src/project-file.ts';
 import {ensurePrivateDirectory, readPrivateFile, writePrivateFileAtomic} from '../../contracts/src/private-storage.ts';
 import {createProjectAssetReferenceServices} from './project-asset-references.ts';
@@ -104,6 +106,7 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
         return existing;
       }
       let asset: Row;
+      let publication:PublishedProjectOutput|undefined;
       if (object(receipt.asset)) {
         asset = receipt.asset;
         const reference = assetMediaRecordSchema.parse(Object.fromEntries(Object.entries(asset).filter(([key]) => key !== 'url'))).reference;
@@ -127,24 +130,18 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
         else {
           declared = input.mimeType;
           const bytes = decodeMediaUpload(input.dataBase64, declared);
-          if(Number(receipt.attempt)>=16)throw new AppError('INVALID_MEDIA','导入重试已达上限，请检查项目目录后重新发起');
           const stage = path.join(receipts, `${assetId}.${extensions[declared]}`);
-          writePrivateFileAtomic(stage, bytes, {root: receipts, maxBytes: 30 * 1024 * 1024});
-          const decoded=await probe(stage,{signal,beforeEffect:fence});fence();
-          if(declared.startsWith('audio/')?(!decoded.hasAudio||decoded.hasVideo||!(decoded.duration>0)):!decoded.hasVideo)throw new AppError('INVALID_MEDIA','无法解码素材或媒体类型不符');
-          const directory = path.join(realpathSync(store.projectDir), PROJECT_ASSETS_FOLDER);
-          await mkdir(directory, {recursive: true}); fence();
-          const directoryInfo = lstatSync(directory);
-          if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink() || realpathSync(directory) !== directory) throw new AppError('INVALID_MEDIA', '素材目录不可用');
-          // Bind each attempt before exclusive creation. A partial target is
-          // retained and the next attempt uses another name, never overwrites it.
-          receipt.attempt = Number(receipt.attempt) + 1;
-          file = path.join(directory, `${assetId}-${receipt.attempt}.${extensions[declared]}`);
-          receipt.phase = 'unpublished'; receipt.file = file;
-          writePrivateFileAtomic(receiptFile, JSON.stringify(receipt), {root: receipts, maxBytes: 32 * 1024});
-          const target = await open(file, 'wx');
-          try {fence(); await target.writeFile(bytes); fence(); await target.sync(); fence();}
-          finally {await target.close();}
+          const owner:ProjectOutputOwner={kind:'import',id:assetId,requestId:replayKey??assetId,inputHash:digest};
+          const savedPublication=await inspectProjectOutput(store,{owner,assetId},{signal,beforeEffect:fence});fence();
+          if(!savedPublication){
+            const priorStage=readPrivateFile(stage,{root:receipts,maxBytes:30*1024*1024,allowMissing:true});
+            if(priorStage!==null&&(!Buffer.isBuffer(priorStage)||!priorStage.equals(bytes)))throw new AppError('INVALID_MEDIA','已接受上传的私有暂存已改变',409);
+            if(priorStage===null)writePrivateFileAtomic(stage,bytes,{root:receipts,maxBytes:30*1024*1024,replace:false});
+            const decoded=await probe(stage,{signal,beforeEffect:fence});fence();
+            if(declared.startsWith('audio/')?(!decoded.hasAudio||decoded.hasVideo||!(decoded.duration>0)):!decoded.hasVideo)throw new AppError('INVALID_MEDIA','无法解码素材或媒体类型不符');
+          }
+          publication=await publishProjectOutput(store,{owner,assetId,targetKind:'assets',stageFile:stage,mimeType:declared,sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,displayName:input.name},{signal,beforeEffect:fence});fence();
+          file=path.join(store.projectDir,publication.relativePath);
         }
         const prepared = await references.referenceForImport(file, {signal, beforeEffect: fence}); fence();
         if (declared && declared !== prepared.type.mimeType) throw new AppError('INVALID_MEDIA', '文件类型与实际内容不符');
@@ -160,6 +157,7 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
         if (prepared.type.kind === 'audio' ? (!metadata.hasAudio || metadata.hasVideo || !(metadata.duration > 0)) : !metadata.hasVideo) throw new AppError('INVALID_MEDIA', '无法解码素材或媒体类型不符');
         asset = {id: assetId, projectId: store.projectId, name: input.name ?? path.basename(file).slice(0,200).replace(/[\uD800-\uDBFF]$/u,''), mimeType: prepared.type.mimeType,
           reference: prepared.reference, referenceRevision: 1, sizeBytes: prepared.reference.sizeBytes, sha256: prepared.reference.fullSha256,
+          ...(publication?{publication:publication.publication}:{}),
           width: metadata.width, height: metadata.height, duration: metadata.duration, hasVideo: metadata.hasVideo, hasAudio: metadata.hasAudio,
           url: projectMediaPath(store.projectId, assetId), provenance: 'user-import', createdAt: options.now()};
         receipt.asset = asset; receipt.phase = 'prepared';
@@ -170,7 +168,7 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
       if (asset.id !== assetId || asset.projectId !== store.projectId) conflict();
       fence();
       const result = store.tx(() => {
-        fence(); const value = store.put('assets', asset);
+        fence();const proof=projectOutputPublicationProofSchema.safeParse(asset.publication);if(proof.success)assertPublishedProjectOutput(store,proof.data,{signal,beforeEffect:fence});const value = store.put('assets', asset);
         if (origin?.importHandle) {
           const changed = store.db.prepare(`UPDATE ${mioTable(store.db, 'imports')} SET status='imported',assetId=? WHERE id=? AND projectId=? AND status='importing'`).run(assetId, origin.importHandle, store.projectId);
           if (changed.changes !== 1) throw new AppError('AGENT_TASK_UNKNOWN_RESULT', '导入受理记录已改变', 409);
@@ -182,6 +180,8 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
       });
       fence(); receipt.phase = 'registered';
       writePrivateFileAtomic(receiptFile, JSON.stringify(receipt), {root: receipts, maxBytes: 32 * 1024});
+      const proof=projectOutputPublicationProofSchema.safeParse(asset.publication);
+      if(proof.success)await markProjectOutputRegistered(store,proof.data,{signal,beforeEffect:fence});
       return result;
     };
     const pending = running.get(key);

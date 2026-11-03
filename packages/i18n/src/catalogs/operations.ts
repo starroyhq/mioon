@@ -531,6 +531,18 @@ export const operationMessages = {
     "en": "Read the thumbnails of the card or keyframes of a previs node, read-only. Slots without a thumbnail are left out; nothing is rendered",
     "ja": "プレビズノードのカードまたはキーフレームのサムネイルを読み取り専用で取得します。サムネイルのないスロットは返さず、レンダリングも行いません"
   },
+  "operation.previs.output.publish": {
+    "zh-Hans": "将已保存预演节点的关键帧 PNG 发布为生成素材；绑定节点、关键帧、场景修订和稳定 requestId，不调用模型或付费",
+    "zh-Hant": "將已儲存預演節點的關鍵影格 PNG 發布為生成素材；綁定節點、關鍵影格、場景修訂與穩定 requestId，不呼叫模型或付費",
+    "en": "Publish a saved previs node's keyframe PNG as a generated asset, bound to its node, keyframe, scene revision and stable requestId; no model calls or charges",
+    "ja": "保存済みのプリビズノードのキーフレーム PNG をプロジェクトの生成素材として保存します。ノード、キーフレーム、シーンのリビジョン、安定した requestId に紐づけ、モデルの呼び出しや課金は行いません"
+  },
+  "operation.previs.output.lookup": {
+    "zh-Hans": "按原始输出身份和 requestId 只读查询预演发布回执；未登记返回 null，不按相同图片哈希认领其他素材，也不重新发布",
+    "zh-Hant": "依原始輸出身分與 requestId 唯讀查詢預演發布回執；未登記則傳回 null，不依相同圖片雜湊認領其他素材，也不重新發布",
+    "en": "Read a previs publication receipt using its exact original output identity and requestId; unregistered results return null, matching image hashes never claim another asset, and no publication is retried",
+    "ja": "元の出力の識別情報と requestId が完全に一致するプリビズの受領結果を読み取り専用で照会します。未登録なら null を返し、同じ画像ハッシュだけで別の素材を取得したり、再公開したりしません"
+  },
   "operation.subject.binding.list": {
     "zh-Hans": "按唯一镜头或主体过滤器分页只读列出绑定及保留的解绑版本，标记是否需复核",
     "zh-Hant": "按唯一鏡頭或主體篩選器分頁唯讀列出綁定及保留的解綁版本，標記是否需複核",

@@ -4,6 +4,7 @@ import {isReferenceEdge,referenceForShot} from '../reference-connections.ts';
 import {previsFigureName,previsPropName} from './previs-editor-state.ts';
 import {previsKeyframeLabel} from './previs-keyframes.ts';
 import type {PrevisTranslate} from './previs-keyframes.ts';
+import type {PrevisPublicationInput} from '../../../../packages/contracts/src/previs-publication.ts';
 
 // How a previs node feeds shots. A keyframe image becomes a shot's first
 // frame (`referenceAssetIds`) or last frame (`lastFrameAssetId`); a plain
@@ -87,7 +88,7 @@ export const PREVIS_FRAME_ISSUE_KEYS: Readonly<Record<PrevisFrameRefusal, string
   text: 'previs.frame.issueText', pending: 'previs.frame.issuePending', missing: 'previs.frame.issueMissing',
 });
 // ---- What the editor asks App to do ----
-export interface PrevisImportRequest {readonly projectId: string; readonly name: string; readonly dataBase64: string; readonly sha256: string; readonly width: number; readonly height: number}
+export type PrevisImportRequest = Readonly<PrevisPublicationInput>;
 export type PrevisImportOutcome = {readonly status: 'imported'; readonly assetId: string} | {readonly status: 'failed'; readonly code: string} | {readonly status: 'unknown'};
 export interface PrevisFrameRequest {readonly projectId: string; readonly nodeId: string; readonly shotId: string; readonly role: PrevisFrameRole; readonly assetId: string}
 /** What undoing a set frame restores: the shot's previous first-frame list or last frame, and the link it added. */

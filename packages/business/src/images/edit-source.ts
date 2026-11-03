@@ -10,6 +10,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {isProjectDatabase} from '../project-file/held-files.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import {admitProjectAssetSource, readProjectReferencedAssetBytes} from '../project-media-storage.ts';
+import {readPrevisOutputSource} from '../previs-output-ownership.ts';
 
 export type ImageEditSource = ReturnType<typeof imageEditSourceSchema.parse>;
 export interface InspectionAsset {
@@ -46,8 +47,11 @@ export function imageEditFields(snapshot: unknown): ImageEditFields {
 // A closed descriptor, never a path, URL, arbitrary provenance object or bytes.
 export function describeImageEditSource(asset: InspectionAsset, imageSource: unknown, frameSource: unknown, sceneKeyframeSource?: unknown): ImageEditSource {
   let origin: unknown;
+  const previsOutput = readPrevisOutputSource(asset, asset.projectId);
+  if (previsOutput && (imageSource || frameSource || sceneKeyframeSource)) fail();
   if (sceneKeyframeSource && (imageSource || frameSource)) fail();
-  if (imageSource && !frameSource && ['generated', 'synthetic-mock'].includes(asset.provenance)) origin = {kind: asset.provenance, imageSource};
+  if (previsOutput) origin = {kind: 'previs-output', previsOutput, publicationId: object(object(asset)?.publication)?.publicationId};
+  else if (imageSource && !frameSource && ['generated', 'synthetic-mock'].includes(asset.provenance)) origin = {kind: asset.provenance, imageSource};
   else if (frameSource && !imageSource && asset.provenance === 'extracted-frame') origin = {kind: 'extracted-frame', frameSource};
   else if (sceneKeyframeSource && asset.provenance === SCENE_KEYFRAME_PROVENANCE) origin = {kind: SCENE_KEYFRAME_PROVENANCE, sceneKeyframe: sceneKeyframeSource};
   else if (!imageSource && !frameSource && !sceneKeyframeSource && asset.provenance === 'user-import') origin = {kind: 'user-import'};

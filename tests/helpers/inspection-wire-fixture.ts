@@ -115,7 +115,9 @@ export async function seedInspectionStore(root: string): Promise<void> {
     const ids = IDS as unknown as Record<string, string>;
     const project = (id: string): Record<string, unknown> => ({id, name: id === IDS.project ? HOSTILE : `Synthetic project ${id.slice(-2)}`, description: HOSTILE,
       revision: 7, createdAt: NOW, updatedAt: NOW, ...secretFields()});
-    for(const id of INSPECTION_PROJECT_IDS){const created=createServerProject(root,{projectId:id,name:String(project(id).name)});stores.set(id,created.store);created.store.put('projects',project(id));}
+    // Create with a valid file name, then seed the hostile stored metadata;
+    // inspection must still return that metadata without acting on its text.
+    for(const id of INSPECTION_PROJECT_IDS){const created=createServerProject(root,{projectId:id,name:`Synthetic project ${id.slice(-2)}`});stores.set(id,created.store);created.store.put('projects',project(id));}
     const owner=(id:string)=>{const result=stores.get(id);if(!result)throw Error('Unknown exact inspection project');return result;};
     const {db}=owner(IDS.project);
     const put=(table:string,value:Record<string,unknown>)=>{

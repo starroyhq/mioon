@@ -11,6 +11,8 @@ import {CROSS_FILE_RELATIONS} from '../packages/business/src/project-file/cross-
 import {relationConstraintName} from '../packages/business/src/project-file/cross-file/install.ts';
 import {schemaObjects} from '../packages/business/src/project-file/cross-file/inspect.ts';
 import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '../packages/contracts/src/images.ts';
+import {publishOutputFixture,markProjectOutputRegistered} from './helpers/project-output-fixture.ts';
+import {assertPublishedProjectOutput} from '../packages/business/src/project-output-publication.ts';
 export const canonical=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b))):v);
 export function insert(db,table,value){const keys=Object.keys(value);return db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`).run(...keys.map(key=>value[key]));}
 /** Explicit damage on the actual held connection. Native same-file keys and
@@ -32,14 +34,14 @@ export function imageFixture(t){
  t.after(()=>{try{if(foreignBefore)assert.deepEqual(captureForeign(),foreignBefore,'foreign project keeps all three native catalogs and every row');}finally{foreignStore.close();store.close();rmSync(root,{recursive:true,force:true});}});
  for(const current of [store,foreignStore])insert(current.db,'projects',{id:current.projectId,data:JSON.stringify({id:current.projectId,name:'Image test',description:'',revision:1})});
  foreignBefore=captureForeign();
- return {...seedImageFixture(store.db,store.projectId,foreignStore.projectId,root),store,foreignStore};
+ return {...seedImageFixture(store.db,store.projectId,foreignStore.projectId,root,store),store,foreignStore};
 }
 /** @param {import('node:sqlite').DatabaseSync} db
  * @param {string} projectId
  * @param {string} otherProjectId
  * @param {string} [root] Real project only; the explicit historical fixture keeps its original bytes.
  */
-function seedImageFixture(db,projectId,otherProjectId,root){
+function seedImageFixture(db,projectId,otherProjectId,root,store){
  const groupId=randomUUID(),taskId=randomUUID(),versionId=randomUUID(),assetId=randomUUID(),requestId=randomUUID(),timestamp='2026-10-10T00:00:00.000Z';
  const input={projectId,name:'Image group',prompt:'Mock deterministic image',providerId:'mock',model:IMAGE_MODELS.mock,options:IMAGE_FIXED_OPTIONS,requestId},inputHash=createHash('sha256').update(canonical(input)).digest('hex');
  const snapshot={schemaVersion:1,projectId,groupId,taskId,name:input.name,prompt:input.prompt,providerId:input.providerId,model:input.model,options:input.options};
@@ -58,13 +60,19 @@ function seedImageFixture(db,projectId,otherProjectId,root){
  insert(db,'image_groups',{id:groupId,projectId,name:input.name,revision:1,headVersionId:null,activeTaskId:taskId,createdAt:timestamp,updatedAt:timestamp});
  insert(db,'image_tasks',{id:taskId,projectId,groupId,requestId,inputHash,input:canonical(input),snapshot:canonical(snapshot),state:'queued',revision:1,dispatched:0,stagedReceipt:null,versionId:null,errorCode:null,createdAt:timestamp,updatedAt:timestamp});
  insert(db,'image_requests',{requestId,operation:'image.generate',projectId,inputHash,canonicalInput:canonical(input),response:JSON.stringify(task)});db.exec('COMMIT');
- function succeed(){
+ function finish(){
   db.exec('BEGIN');
+  if(store)assertPublishedProjectOutput(store,asset.publication);
   db.prepare("UPDATE image_tasks SET state='dispatching',dispatched=1,revision=2 WHERE id=?").run(taskId);
   db.prepare("UPDATE image_tasks SET state='persisting',stagedReceipt=?,revision=3 WHERE id=?").run(JSON.stringify(receipt),taskId);
   insert(db,'assets',{id:assetId,projectId,data:JSON.stringify(asset)});insert(db,'image_versions',{id:versionId,projectId,groupId,taskId,number:1,assetId,data:JSON.stringify(version)});
   db.prepare("UPDATE image_tasks SET state='succeeded',versionId=?,revision=4 WHERE id=?").run(versionId,taskId);
   db.prepare('UPDATE image_groups SET revision=2,headVersionId=?,activeTaskId=NULL WHERE id=?').run(versionId,groupId);db.exec('COMMIT');
+ }
+ function succeed(){
+  if(!store)return finish();
+  return publishOutputFixture(store,{assetId,owner:{kind:'image',id:taskId,requestId,inputHash},bytes,mimeType:'image/png'})
+   .then(async published=>{Object.assign(asset,published);finish();await markProjectOutputRegistered(store,published.publication);});
  }
  return {db,projectId,otherProjectId,groupId,taskId,versionId,assetId,requestId,timestamp,input,inputHash,snapshot,receipt,task,asset,version,succeed};
 }

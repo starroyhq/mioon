@@ -9,7 +9,7 @@ import {createWorkspacePreferences as createClient,durableWorkspaceState} from '
 import {defaultWorkspaceState, type WorkspaceState} from '../apps/web/src/workspace-state.ts';
 const copy=<T>(value: T): T=>structuredClone(value);
 async function fixture(t: test.TestContext,{storageScope=undefined,loseFirstAck=false}:{storageScope?:string;loseFirstAck?:boolean}={}){
-  const root=await mkdtemp(path.join(await realpath(tmpdir()),'preferences-wire-')),{store,projectId}=createServerProject(root,{name:'Synthetic preference client/service'});
+  const root=await mkdtemp(path.join(await realpath(tmpdir()),'preferences-wire-')),{store,projectId}=createServerProject(root,{name:'Synthetic preference client service'});
   const project={id:projectId},service=(createService(store) as unknown as import('./helpers/strict-workspace-boundary-types.ts').PreferenceService),writes: Record<string,unknown>[]=[],accepted: ({ projectId: string; revision: number; state: Record<string, unknown> | null; })[]=[];let currentStorageScope=storageScope,lost=false;
   const client=(createClient({storage:{getItem:()=>null,setItem(){}},getStorageScope:()=>currentStorageScope,requestTimeoutMs:0,delayMs:60000,retryDelays:[],fetchImpl:async(_url,options)=>{
     if(options!.method==='GET')return Response.json({ok:true,data:service.get(project.id)});

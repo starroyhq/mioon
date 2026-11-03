@@ -4,12 +4,14 @@ import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {constants,lstatSync,openSync,fstatSync,fsyncSync,closeSync} from 'node:fs';
 import {IMAGE_LIMITS,imageReceiptSchema,imageResultGeometry} from '@mioon/contracts';
-import {ensurePrivateDirectory,validateManagedDirectory,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';
+import {ensurePrivateDirectory,validateManagedDirectory,readPrivateFile,writePrivateFileAtomic,removePrivateFile,getWindowsManagedFileIO} from '@mioon/contracts/private-storage';
 import {validatePng as validatePngBytes} from './images/png.ts';
 import type {PngMetadata} from './images/png.ts';
 import {storeDirectories} from './store-layout.ts';
 import {isProjectStore} from './project-file/store.ts';
 import {projectMediaDirectory,readProjectMediaFile,writeProjectMediaFileAtomic} from './project-media-storage.ts';
+import {publishProjectOutput,readPublishedProjectOutput} from './project-output-publication.ts';
+import type {ProjectOutputOwner,ProjectOutputPublicationProof} from './project-output-publication.ts';
 
 export interface ImageStorageSnapshot {
  readonly providerId?: string;
@@ -20,6 +22,7 @@ export interface ImageStorageTask {
  readonly projectId: string;
  readonly groupId: string;
  readonly inputHash: string;
+ readonly requestId?: string;
  readonly input: string;
  readonly snapshot: ImageStorageSnapshot;
 }
@@ -40,7 +43,7 @@ export interface ImageReceipt {
  readonly isMock: boolean;
 }
 export interface ImageStoredBytes {readonly bytes: Buffer; readonly final: string}
-export interface ImagePublishedResult {readonly relativePath: string; readonly sizeBytes: number}
+export interface ImagePublishedResult {readonly relativePath: string; readonly sizeBytes: number;readonly publication?:ProjectOutputPublicationProof}
 export interface ImageStorage {
  stage(task: ImageStorageTask,result: {readonly bytes?: unknown},check: ()=>void): Promise<ImageReceipt>;
  readReceipt(task: ImageStorageTask): ImageReceipt | null;
@@ -65,6 +68,7 @@ export function createImageStorage(store: {readonly root: string; readonly db: i
  const readMedia=(file:string,options:Omit<import('@mioon/contracts/private-storage').ReadPrivateFileOptions,'root'>)=>isProjectStore(store)?readProjectMediaFile(store,relative(file),options):readPrivateFile(file,{root,...options});
  const writeMedia=(file:string,bytes:Buffer,options:Omit<import('@mioon/contracts/private-storage').WritePrivateFileOptions,'root'>):void=>{if(isProjectStore(store))writeProjectMediaFileAtomic(store,relative(file),bytes,options);else writePrivateFileAtomic(file,bytes,{root,...options});};
  function syncDirectory(value: string,ownerRoot=mediaRoot): void {
+  if(process.platform==='win32'){getWindowsManagedFileIO().syncDirectory(value,{root:ownerRoot,private:!(isProjectStore(store)&&ownerRoot===mediaRoot)});return;}
   const ordinary=isProjectStore(store)&&ownerRoot===mediaRoot;const before=ordinary?lstatSync(value):validateManagedDirectory(value,{root:ownerRoot});let fd;
   try{
    if(!before)throw failure();
@@ -77,6 +81,7 @@ export function createImageStorage(store: {readonly root: string; readonly db: i
   if(!uuid(task.id))throw failure();
   return {png:path.join(directory,`${task.id}.png`),receipt:path.join(directory,`${task.id}.json`)};
  };
+ const publicationOwner=(task:ImageStorageTask):ProjectOutputOwner=>({kind:'image',id:task.id,requestId:task.requestId??task.id,inputHash:task.inputHash});
  function validateReceipt(task: ImageStorageTask,value: unknown): ImageReceipt {
   if(!imageReceiptSchema.safeParse(value).success)throw failure();
   const receipt=value as ImageReceipt;
@@ -96,7 +101,8 @@ export function createImageStorage(store: {readonly root: string; readonly db: i
  async function verifiedBytes(task: ImageStorageTask,receipt: ImageReceipt,check: ()=>void): Promise<ImageStoredBytes> {
   validateReceipt(task,receipt);check();
   const final=path.join(root,'media',`${receipt.assetId}.png`);
-  const staged=readPrivateFile(paths(task).png,{root:stagingRoot,allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes});
+  const published=isProjectStore(store)?await readPublishedProjectOutput(store,{owner:publicationOwner(task),assetId:receipt.assetId},{maxBytes:IMAGE_LIMITS.resultBytes,beforeEffect:check}):null;
+  const staged=published??readPrivateFile(paths(task).png,{root:stagingRoot,allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes});
   const bytes=staged??readMedia(final,{allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes});
   if(!bytes||typeof bytes==='string'||bytes.length!==receipt.byteLength||digest(bytes)!==receipt.sha256)throw failure();
   await validatePng(bytes,{...dimensions(task),opaque:true});check();
@@ -126,6 +132,7 @@ export function createImageStorage(store: {readonly root: string; readonly db: i
  }
  async function publish(task: ImageStorageTask,receipt: ImageReceipt,check: ()=>void): Promise<ImagePublishedResult> {
   const {bytes,final}=await verifiedBytes(task,receipt,check);
+  if(isProjectStore(store))return publishProjectOutput(store,{owner:publicationOwner(task),assetId:receipt.assetId,targetKind:'generated',stageFile:paths(task).png,mimeType:receipt.mimeType,sha256:receipt.sha256,sizeBytes:receipt.byteLength},{beforeEffect:check});
   const existing=readMedia(final,{allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes});
   if(existing){if(typeof existing==='string'||existing.length!==receipt.byteLength||digest(existing)!==receipt.sha256)throw failure();}
   else{check();writeMedia(final,bytes,{maxBytes:IMAGE_LIMITS.resultBytes,replace:false});}

@@ -245,6 +245,139 @@ test('acquire opens a registered project, records the open and composes the runt
   lease.release();
 });
 
+for (const previous of [null, '2026-10-01T12:00:00.000Z']) {
+  test(`the open time stays ${previous ?? 'null'} until the factory, hooks and summary finish`, async t => {
+    let afterOpen = Promise.resolve();
+    const f = await setup(t, {hooks: [{afterOpen: () => afterOpen}]});
+    const film = await f.manager.create({name: 'Film'});
+    f.registry.upsert({...film, lastOpenedAt: previous});
+    const writes: RecentProject[] = [];
+    const upsert = f.registry.upsert;
+    f.registry.upsert = entry => { upsert(entry); writes.push(entry); };
+    const factoryGate = f.gate(), hookGate = f.gate();
+    f.state.gate = factoryGate.promise;
+    afterOpen = hookGate.promise;
+    f.clock.advance(100);
+    const opening = f.manager.acquire(film.projectId, 'window');
+    assert.equal(f.registry.get(film.projectId)?.lastOpenedAt, previous);
+    f.clock.advance(200);
+    factoryGate.open();
+    await tick();
+    assert.equal(f.manager.status(film.projectId)?.state, 'opening');
+    assert.equal(f.registry.get(film.projectId)?.lastOpenedAt, previous);
+    const summary: NonNullable<RecentProject['summary']> = {
+      description: 'Opened film', revision: 1, createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString(),
+      fps: 30, width: 1920, height: 1080, presetId: 'landscape-1080p', shotCount: 0, durationFrames: 0, cover: null,
+    };
+    let summarized = false;
+    f.state.runtimes[0].summarize = () => {
+      if (!summarized) {
+        assert.equal(f.registry.get(film.projectId)?.lastOpenedAt, previous);
+        f.clock.advance(50);
+        summarized = true;
+      }
+      return {name: 'Opened film', summary};
+    };
+    f.clock.advance(400);
+    hookGate.open();
+    const lease = await opening;
+    const openedAt = new Date(750).toISOString();
+    assert.equal(f.registry.get(film.projectId)?.lastOpenedAt, openedAt);
+    assert.deepEqual(writes.map(entry => ({name: entry.name, summary: entry.summary, lastOpenedAt: entry.lastOpenedAt})), [
+      {name: 'Film', summary: null, lastOpenedAt: previous},
+      {name: 'Opened film', summary, lastOpenedAt: openedAt},
+    ]);
+    lease.release();
+  });
+}
+
+for (const phase of ['factory', 'afterOpen', 'summarize', 'registry'] as const) {
+  test(`a failed ${phase} never publishes a successful open time or retains the store lock`, async t => {
+    for (const previous of [null, '2026-10-01T12:00:00.000Z']) {
+      const failure = new Error(`${phase} failed`);
+      let afterOpen = Promise.resolve();
+      const f = await setup(t, {hooks: [{afterOpen: async () => {
+        await afterOpen;
+        if (phase === 'afterOpen') throw failure;
+      }}]});
+      const film = await f.manager.create({name: 'Film'});
+      f.registry.upsert({...film, lastOpenedAt: previous});
+      const upsert = f.registry.upsert;
+      f.registry.upsert = entry => {
+        if (phase === 'registry' && entry.lastOpenedAt !== previous) throw failure;
+        upsert(entry);
+      };
+      const factoryGate = f.gate(), hookGate = f.gate();
+      f.state.gate = factoryGate.promise;
+      afterOpen = hookGate.promise;
+      if (phase === 'factory') f.state.fail = failure;
+      const opening = f.manager.acquire(film.projectId, 'window');
+      const rejected = assert.rejects(opening, error => error === failure);
+      assert.equal(f.registry.get(film.projectId)?.lastOpenedAt, previous);
+      f.clock.advance(500);
+      factoryGate.open();
+      await tick();
+      if (phase === 'summarize') f.state.runtimes[0].summarize = () => { throw failure; };
+      hookGate.open();
+      await rejected;
+      assert.equal(f.registry.get(film.projectId)?.lastOpenedAt, previous);
+      assert.equal(f.manager.status(film.projectId), null);
+      assert.ok(f.log.includes('store.close'));
+      const reopened = openProjectStore({projectFile: film.projectFile, locate: id => projectLocation(f.directories, id)});
+      reopened.close();
+    }
+  });
+}
+
+test('a failed open never rolls back a registration changed while its factory was pending', async t => {
+  const f = await setup(t), film = await f.manager.create({name: 'Film'});
+  const factoryGate = f.gate();
+  f.state.gate = factoryGate.promise;
+  const failure = new Error('factory failed');
+  f.state.fail = failure;
+  const opening = f.manager.acquire(film.projectId, 'window');
+  const rejected = assert.rejects(opening, error => error === failure);
+  const concurrent: RecentProject = {...film, name: 'New registration', lastOpenedAt: '2026-11-01T12:00:00.000Z'};
+  f.registry.upsert(concurrent);
+  f.clock.advance(100);
+  factoryGate.open();
+  await rejected;
+  assert.deepEqual(f.registry.get(film.projectId), concurrent);
+});
+
+test('a first open by path registers the file with a null open time until composition succeeds', async t => {
+  const f = await setup(t), file = path.join(f.dataDir, 'Loose.mioon');
+  const projectId = createProjectFile(file);
+  const factoryGate = f.gate();
+  f.state.gate = factoryGate.promise;
+  const opening = f.manager.openPath(file, 'window');
+  assert.equal(f.registry.get(projectId)?.lastOpenedAt, null);
+  f.clock.advance(250);
+  factoryGate.open();
+  const lease = await opening;
+  assert.equal(f.registry.get(projectId)?.lastOpenedAt, new Date(250).toISOString());
+  lease.release();
+});
+
+test('invalid public project names are rejected before creating paths or consulting registration capacity', async t => {
+  let capacityChecks = 0;
+  const memory = createMemoryProjectRegistry();
+  const registry: ProjectRegistryPort = {...memory, assertCanRegister: () => { capacityChecks++; }};
+  const f = await setup(t, {registry});
+  const parentDir = path.join(f.dataDir, 'Must not be created', 'Nested');
+  const chosen = path.join(f.dataDir, 'Chosen.mioon');
+  for (const name of ['', ' ', '.', '..', '.hidden', 'trailing.', ' front', 'back ', 'a/b', 'a\\b', 'a:b', 'a\u0000b', 'a\u0085b', 'CON', 'nul.mp4', 'LPT9.wav', 'com¹', 'COM².txt', 'lpt³ .txt', 'a'.repeat(151)]) {
+    await assert.rejects(f.manager.create({name, parentDir}), {code: 'VALIDATION_ERROR', status: 400});
+    await assert.rejects(f.manager.create({name, projectFile: chosen}), {code: 'VALIDATION_ERROR', status: 400});
+    assert.equal(existsSync(parentDir), false);
+    assert.equal(existsSync(chosen), false);
+    assert.deepEqual(f.registry.list(), []);
+  }
+  assert.equal(capacityChecks, 0);
+  assert.equal((await f.manager.create({name: '访谈剪辑 第 2 版'})).name, '访谈剪辑 第 2 版');
+  assert.equal(capacityChecks, 1);
+});
+
 test('acquire maps every way a project cannot be opened', async t => {
   const {dataDir, directories, manager, memory, ev} = await setup(t);
   const unavailable = (projectId: string, reason: string, invalidReason?: ProjectInvalidReason) => (error: unknown): boolean => {

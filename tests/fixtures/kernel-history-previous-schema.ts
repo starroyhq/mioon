@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import type {DatabaseSync} from 'node:sqlite';
 
-export type PreviousHistoryVersion = 2 | 3 | 4 | 5;
+export type PreviousHistoryVersion = 2 | 3 | 4 | 5 | 6;
 
 /** Builds only a historical history database inside the caller's transaction.
  * Versions 2–4 were captured from main 9f5fd08b; version 5 from main 54bdda3a.

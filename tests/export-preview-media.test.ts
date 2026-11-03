@@ -26,6 +26,8 @@ import {createServerProject, openProjectDatabase, projectDirFor, schemaObjects, 
 import type { BinaryLike } from 'crypto';
 
 import {dataFileSnapshot,databaseFiles} from './helpers/data-file-snapshot.ts';
+import {publishProjectOutput} from '../packages/business/src/project-output-publication.ts';
+import {exportOutputArtifactIdentity} from '../packages/contracts/src/output-artifact.ts';
 
 const token = 'synthetic-named-delivery-download-token';
 const clone = <T>(value: T): T => structuredClone(value);
@@ -53,10 +55,11 @@ async function fixture(t: test.TestContext, {serve = true, named = false} = {}) 
     trackId: timeline.tracks[0].id, assetId: sourceId, startFrame: 0, durationFrames: 30});
   const input = {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'export', ...(named ? {deliveryName: '海边 交付 V1'} : {})};
   const queued = await services.call('timeline.render', input);
-  const assetId = randomUUID(), relativePath = `media/export-${queued.id}-${randomUUID()}.mp4`, bytes = mp4HeaderFixture('named-delivery-original-mp4-bytes');
-  await writeFile(path.join(projectDir, relativePath), bytes, {mode: 0o600});
-  const asset = referencedFixture(projectDir,{id: assetId, projectId: project.id, name: 'Managed output', mimeType: 'video/mp4', provenance: 'export', relativePath,
-    producer:{kind:'export' as const,id:queued.id},url: `/media/${assetId}`, sha256: hash(bytes), sizeBytes: bytes.length, createdAt: new Date().toISOString()});
+  const assetId = randomUUID(),bytes = mp4HeaderFixture('named-delivery-original-mp4-bytes'),stageFile=path.join(created.store.tempDir,`${assetId}.mp4`);
+  await writeFile(stageFile,bytes,{mode:0o600});
+  const {relativePath:_publishedPath,...published}=await publishProjectOutput(created.store,{owner:{kind:'export',id:queued.id,requestId:input.requestId,inputHash:hash(exportOutputArtifactIdentity(store.get('exports',queued.id) as unknown as Record<string,unknown>))},assetId,targetKind:'exports',stageFile,mimeType:'video/mp4',sha256:hash(bytes),sizeBytes:bytes.length});
+  const asset = {id: assetId, projectId: project.id, name: 'Published output', mimeType: 'video/mp4', provenance: 'export',...published,
+    producer:{kind:'export' as const,id:queued.id},url: `/media/${assetId}`, createdAt: new Date().toISOString()};
   store.put('assets', asset);
   const record = {...(store.get('exports', queued.id) as import('./helpers/strict-timeline-core-types.ts').FixtureExport), status: 'succeeded', assetId, url: asset.url, updatedAt: new Date().toISOString()};
   store.put('exports', record);
@@ -164,6 +167,9 @@ test('preview exact ownership requires matching export receipt and owned publish
     (db: DatabaseSync) => replace(db, 'assets', {...f.asset, projectId: f.foreign.id}),
     (db: DatabaseSync) => replace(db, 'assets', {...f.asset, mimeType: 'audio/wav'}),
     (db: DatabaseSync) => replace(db, 'assets', {...f.asset, provenance: 'user-import'}),
+    (db: DatabaseSync) => replace(db, 'assets', {...f.asset,publication:undefined}),
+    (db: DatabaseSync) => replace(db, 'assets', {...f.asset,publication:{...f.asset.publication,owner:{...f.asset.publication.owner,id:randomUUID()}}}),
+    (db: DatabaseSync) => replace(db, 'assets', {...f.asset,reference:{...f.asset.reference,path:`../${f.asset.id}.mp4`}}),
     (db: DatabaseSync) => replace(db, 'assets', {...f.asset, relativePath: `media/export-${randomUUID()}-${randomUUID()}.mp4`}),
   ];
   for (const mutate of changes) {
