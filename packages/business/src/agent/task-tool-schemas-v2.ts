@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="9fdcd536c8a89a84189d54d830b829e5290f2eb389df39ceb8b17e213ca56131";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="f069d668f461066e13df22d396acb5da3f0ca8f1f57c8434040b927b999fb076";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -6218,6 +6218,109 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "required": [
    "expectedRevision",
    "purpose"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "project.backup.list": {
+  "type": "object",
+  "properties": {},
+  "required": [],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "project.backup.inspect": {
+  "type": "object",
+  "properties": {
+   "backupId": {
+    "type": "string",
+    "format": "uuid"
+   }
+  },
+  "required": [
+   "backupId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "project.backup.restore": {
+  "type": "object",
+  "properties": {
+   "backupId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "projectFile": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 4096
+   }
+  },
+  "required": [
+   "backupId",
+   "projectFile"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "project.backup.status": {
+  "type": "object",
+  "properties": {},
+  "required": [],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "project.version.list": {
+  "type": "object",
+  "properties": {
+   "limit": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 100
+   },
+   "cursor": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 4096
+   }
+  },
+  "required": [],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "project.version.save": {
+  "type": "object",
+  "properties": {
+   "name": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 150
+   }
+  },
+  "required": [],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "project.version.preview": {
+  "type": "object",
+  "properties": {
+   "versionId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "limit": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 100
+   },
+   "cursor": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 4096
+   }
+  },
+  "required": [
+   "versionId"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"

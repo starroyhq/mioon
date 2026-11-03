@@ -30,6 +30,8 @@ export * from './timeline-delivery.ts';
 import {timelineExportSettingsSchema,timelineExportCapabilitySchemas} from './timeline-export-profile.ts';
 export * from './timeline-export-profile.ts';
 import {z} from 'zod';
+import {projectBackupSchemas,projectBackupDescriptions} from './project-backups.ts';
+import {projectVersionSchemas,projectVersionDescriptions} from './project-version-operations.ts';
 import {timelineSubtitleSchemas} from './timeline-subtitles.ts';
 export * from './timeline-subtitles.ts';
 import {timelineFormatSchemas} from './timeline-format.ts';
@@ -234,6 +236,7 @@ export const schemas={
 'timeline.clip.split':z.object({...timelineMutation,clipId:id,atFrame:frame}).strict(),
 'timeline.seed':z.object(timelineMutation).strict(),
 'timeline.render':z.object({...timelineMutation,purpose:z.enum(['preview','export']),exportRange:timelineExportRangeSchema.optional().describe('Optional export-only half-open [startFrame,endFrame) interval at the saved 30fps clock; at least one frame, bounded by the saved timeline. The full frozen snapshot remains unchanged. Omission preserves full export and historical bytes.'),deliveryName:timelineDeliveryNameSchema.optional(),exportSettings:timelineExportSettingsSchema.optional(),preflightSnapshotHash:z.string().regex(/^[a-f0-9]{64}$/).optional().describe('Optional exact snapshot digest returned by timeline.export.preflight. New renders verify it against current frozen content; exact replay still returns its original response first. Omission preserves the legacy input and response. A successful check does not guarantee future source availability or full decoding.')}).strict().refine(value=>value.exportSettings===undefined||value.purpose==='export',{message:'Export settings are available only for export renders',path:['exportSettings']}).refine(value=>isTimelineDeliveryNameInput(value,value.purpose),{message:'Delivery names are available only for export renders and must be explicitly valid',path:['deliveryName']}).refine(value=>isTimelineExportRangeInput(value,value.purpose),{message:'Export ranges are available only for export renders and must be explicitly valid',path:['exportRange']})
+,...projectBackupSchemas,...projectVersionSchemas
 };
 // A new operation must receive an audited effect descriptor before discovery
 // or dispatch can initialize; never infer safety from an operation-name suffix.
@@ -241,6 +244,7 @@ assertOperationEffectCoverage(schemas);
 export type OperationName = keyof typeof schemas;
 export type OperationInput<K extends OperationName> = z.infer<(typeof schemas)[K]>;
 export const descriptions: Record<string, string> = {
+ ...projectBackupDescriptions,...projectVersionDescriptions,
  ...exportControlDescriptions,
  'workspace.settings.get':'读取工作区设置',
  'workspace.settings.set':'按修订号保存真实生成与自动备份设置',
