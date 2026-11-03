@@ -11,7 +11,8 @@ import {mkdtempSync,rmSync,writeFileSync,readdirSync,unlinkSync,readFileSync} fr
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
-import {installCurrentWorkspaceRestoreSchema, openLegacyWorkspaceStore as openStore, type WorkspaceStore} from '../packages/business/src/db.ts';
+import { installCurrentWorkspaceRestoreSchema, openLegacyWorkspaceStore as openStore } from '../packages/business/src/db.ts';
+import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
 import {createServices,hash,canonical,now, type OrdinaryServices} from '../packages/business/src/services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {createTimelineServices} from '../packages/business/src/timeline.ts';

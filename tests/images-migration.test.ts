@@ -12,6 +12,7 @@ import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {legacyDatabase,migrate,insert,imageFixture} from './images-fixture.mjs';
+import {withoutForeignKeys} from './helpers/project-database.ts';
 import {migrateImageSchema} from '../packages/business/src/image-schema.ts';
 import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import type { DatabaseSync, SQLOutputValue } from 'node:sqlite';
@@ -69,10 +70,10 @@ test('schema16 failure rolls back every added object and preserves exact legacy 
 
 test('new image identities resist updates, delete and INSERT OR REPLACE and dispatch fence never resets',t=>{
  const f=imageFixture(t),{db}=f;f.succeed();
- for(const table of ['image_groups','image_tasks','image_versions','image_requests']){
+ withoutForeignKeys(db,()=>{for(const table of ['image_groups','image_tasks','image_versions','image_requests']){
   assert.throws(()=>db.exec(`DELETE FROM ${table}`),/retained/);
-  const columns=db.prepare(`PRAGMA table_info(${table})`).all().map(r=>r.name).join(',');assert.throws(()=>db.exec(`INSERT OR REPLACE INTO ${table}(${columns}) SELECT ${columns} FROM ${table}`),/immutable|replaced|number must advance/);
- }
+  const columns=db.prepare(`PRAGMA table_info(${table})`).all().map(row=>row.name).join(',');assert.throws(()=>db.exec(`INSERT OR REPLACE INTO ${table}(${columns}) SELECT ${columns} FROM ${table}`),/immutable|replaced|number must advance/);
+ }});
  assert.throws(()=>db.exec('UPDATE image_versions SET data=data'),/immutable/);assert.throws(()=>db.exec('UPDATE image_requests SET response=response'),/immutable/);
  assert.throws(()=>db.exec("UPDATE image_tasks SET state='queued',dispatched=0,revision=revision+1"),/immutable|transition/);
  assert.throws(()=>db.exec("UPDATE image_tasks SET snapshot='{}',revision=revision+1"),/immutable|transition/);

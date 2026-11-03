@@ -1,7 +1,7 @@
 import type {SceneDetectTaskResponse,SceneTaskResponse,SceneResultResponse} from '../../packages/contracts/src/scene-tasks.ts';
 import type {OpacityRenderCandidatePlan} from '../../packages/contracts/src/timeline-opacity-render-candidate.ts';
 import type {OrdinaryServices, ShotRecord} from '../../packages/business/src/services.ts';
-import type {WorkspaceStore} from '../../packages/business/src/db.ts';
+import type {Store as WorkspaceStore} from '../../packages/business/src/store-contract.ts';
 import type {TimelineRecord as TimelineBase, TimelineClipRecord as ClipBase} from '../../packages/business/src/timeline-inputs.ts';
 import type {TimelineClipColour, TimelineColourPlan, TimelineColourSourceInspection, TimelineImageSourceInspection, TimelineJpegSourceInspection} from '../../packages/contracts/src/timeline-colour.ts';
 import type {VolumeEnvelope} from '../../packages/contracts/src/timeline-volume-envelope.ts';

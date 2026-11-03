@@ -8,10 +8,10 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createAgentTaskHttp} from '../apps/server/src/agent-task-http-v2.ts';
 import {createAgentDiagnosticsHttp} from '../apps/server/src/agent-diagnostics-http.ts';
-import {projectRouteTarget} from '../apps/server/src/project-routes.ts';
+import {projectHandlerTarget} from '../apps/server/src/project-host/request.ts';
 import {createAgentClient} from '../packages/client/src/agent.ts';
 import {ClientError} from '../packages/client/src/index.ts';
-import {projectApiPath} from '../packages/contracts/src/project-file.ts';
+import {parseProjectApiPath,projectApiPath} from '../packages/contracts/src/project-file.ts';
 import {mioRunUsageSchema} from '../packages/contracts/src/mio-run-usage.ts';
 import {mioStorageSnapshotSchema} from '../packages/contracts/src/mio-storage.ts';
 import type {AgentProtocol} from '../packages/contracts/src/agent-protocol.ts';
@@ -50,7 +50,7 @@ async function fixture(t: TestContext, protocol: AgentProtocol, readOnly = false
   const token = randomUUID();
   const server = createServer((req, res) => {
     if (req.headers.authorization !== `Bearer ${token}`) {res.writeHead(401); res.end(); return;}
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1'), scoped = projectRouteTarget(url.pathname);
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1'), parsed = parseProjectApiPath(url.pathname), scoped = parsed ? projectHandlerTarget(parsed) : null;
     if (scoped) url.pathname = scoped.pathname;
     void (async () => {
       if (await doctor(req, res, url)) return;
@@ -89,7 +89,7 @@ for (const protocol of ['chat_completions', 'responses', 'anthropic_messages'] a
   assert.equal((await fetch(f.base + f.usagePath)).status, 401);
   assert.equal((await fetch(f.base + f.usagePath + '?unexpected=1', {headers: f.headers})).status, 400);
   const post = await fetch(f.base + f.usagePath, {method: 'POST', headers: f.headers}); assert.equal(post.status, 405); assert.equal(post.headers.get('Allow'), 'GET');
-  const unscoped = projectRouteTarget(f.usagePath); assert.ok(unscoped);
+  const parsed = parseProjectApiPath(f.usagePath), unscoped = parsed ? projectHandlerTarget(parsed) : null; assert.ok(unscoped);
   assert.equal((await fetch(f.base + unscoped.pathname, {headers: f.headers})).status, 404);
   const other = projectApiPath(randomUUID(), 'agent', 'tasks', 'v2', f.runId, 'usage');
   assert.equal((await fetch(f.base + other, {headers: f.headers})).status, 404);

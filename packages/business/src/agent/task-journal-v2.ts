@@ -1,6 +1,6 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
-import type {WorkspaceStore} from '../db.ts';
+import type { Store as WorkspaceStore } from '../store-contract.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import {createMioProjectJournal} from './mio-journal-factory.ts';
 import {readMioTargetRevision,readMioTargetRevisions} from './mio-target-revisions.ts';

@@ -1,24 +1,24 @@
-/** Read-only report for this disposable native fixture. Never prints secrets. */
-import {DatabaseSync} from 'node:sqlite';
-import {readFile,writeFile,readdir,stat} from 'node:fs/promises';
-import {createHash} from 'node:crypto';
+/** Physical live evidence; use --cold after Desktop exits for logical SQL.
+ * Settings bytes are never printed, and dummy credentials are boolean only. */
+import {readdir} from 'node:fs/promises';
 import path from 'node:path';
+import {auditColdNativeQa,nativeQaDomain,nativeQaFileFingerprint,nativeQaOwners,readNativeQaJson,snapshotNativeQaFiles,writeNativeQaJson} from './helpers/native-qa-audit.mjs';
+
 const root=path.resolve('evidence/agent-settings/native-runtime'),userData=path.join(root,'user-data');
-const db=new DatabaseSync(path.join(userData,'workspace/workbench.sqlite'),{readOnly:true});let domainHash;
-try{
- const tables=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name!='workspace_preferences' ORDER BY name").all().map(row=>row.name);
- const domain=Object.fromEntries(tables.map(name=>[name,db.prepare('SELECT * FROM "'+name+'" ORDER BY rowid').all()]));
- domainHash=createHash('sha256').update(JSON.stringify(domain)).digest('hex');
-}finally{db.close();}
-let connection=null;try{const descriptor=JSON.parse(await readFile(path.join(userData,'mcp-connection.json'),'utf8'));connection={utilityPid:descriptor.pid,origin:descriptor.url};}catch{}
+const cold=process.argv.includes('--cold'),name=process.argv.slice(2).find(value=>!value.startsWith('--'))||'snapshot';
+if(!/^[a-z0-9-]+$/.test(name))throw Error('Unsafe report name');
+const layout=readNativeQaJson(path.join(root,'native-audit-layout.json')),owners=nativeQaOwners(root,{cold});
 const settingsFiles=[];
 for(const directory of[userData,path.join(userData,'agent-settings')]){
- let entries=[];try{entries=await readdir(directory,{withFileTypes:true});}catch{}
- for(const entry of entries){if(!entry.isFile()||!(entry.name.includes('agent-settings')||directory.endsWith('/agent-settings')))continue;
-  const file=path.join(directory,entry.name),bytes=await readFile(file),metadata=await stat(file);
-  settingsFiles.push({name:path.relative(userData,file),bytes:bytes.length,mode:(metadata.mode&0o777).toString(8),plaintextDummyKeyPresent:bytes.includes(Buffer.from('mioon-qa-dummy-agent-key-'))});
+ let entries=[];try{entries=await readdir(directory,{withFileTypes:true});}catch(error){if(error.code!=='ENOENT')throw error;}
+ if(entries.length>128)throw Error('Native settings file inventory bound exceeded');
+ for(const entry of entries){if(!(entry.name.includes('agent-settings')||directory.endsWith('/agent-settings')))continue;
+  const file=path.join(directory,entry.name),evidence=nativeQaFileFingerprint(file,{ownerPids:owners.ownerPids,maxBytes:64*1024,dummyKeyMarker:true});
+  settingsFiles.push({name:path.relative(userData,file),bytes:evidence.bytes,mode:(Number(evidence.identity.mode)&0o777).toString(8),sha256:evidence.sha256,plaintextDummyKeyPresent:evidence.plaintextDummyKeyPresent});
  }
 }
-const report={at:new Date().toISOString(),connection,domainHash,settingsFiles};
-const name=process.argv[2]||'snapshot';if(!/^[a-z0-9-]+$/.test(name))throw Error('Unsafe report name');
-await writeFile(path.join(root,name+'.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
+const connection={utilityPid:owners.utilityPid,origin:owners.origin};
+const logical=cold?await auditColdNativeQa(layout,{ownerPids:owners.ownerPids}):null;
+const report={at:new Date().toISOString(),phase:cold?'cold-sql':'live-physical',connection,settingsFiles,
+ ...(logical?{...nativeQaDomain(logical),application:logical.application,preferences:logical.preferences,logical}:{physical:snapshotNativeQaFiles(layout,{ownerPids:owners.ownerPids}),domainHash:null,coldVerificationRequired:true})};
+writeNativeQaJson(path.join(root,name+(cold?'.cold':'')+'.json'),report);console.log(JSON.stringify(report,null,2));

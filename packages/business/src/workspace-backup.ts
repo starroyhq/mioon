@@ -6,8 +6,8 @@ import {validatePrivateDirectory,validateManagedDirectory} from '@mioon/contract
 import {WORKSPACE_BACKUP_FORMAT as format,WORKSPACE_BACKUP_FORMAT_VERSION as formatVersion,WORKSPACE_BACKUP_LIMITS as limits,
  workspaceBackupManifestSchema,workspaceBackupCompleteSchema,workspaceBackupResultSchema} from '../../contracts/src/workspace-backup.ts';
 import {acquireWorkspaceLock} from './workspace-lock.ts';
-import {fail,checkCancelled,safeBackupError,sameNode,sameFile,explicitPath,checkSeparate,createDestination,createNewDirectory,
- checkDirectoryIdentity,inspectFile,syncDirectory,syncDestinationParent,streamFile,readJsonFile,writeBoundedFile,publishMarker,scanDirectory,removeOwnedFile,removeOwnedDirectory} from './workspace-backup-storage.ts';
+import {fail,safeBackupError,explicitPath,createDestination,syncDestinationParent,publishMarker} from './workspace-backup-storage.ts';
+import {checkCancelled,sameNode,sameFile,checkSeparate,createNewDirectory,checkDirectoryIdentity,inspectFile,syncDirectory,streamFile,readJsonFile,writeBoundedFile,scanDirectory,removeOwnedFile,removeOwnedDirectory} from './managed-file-io.ts';
 import {createIssueCollector,buildWorkspaceInventory,inspectDatabase} from './workspace-backup-inventory.ts';
 import {detectCurrentWorkspaceRestoreEvidence as detectWorkspaceRestoreEvidence} from './db.ts';
 import {hasWorkspaceBackupRestoreEvidence} from './workspace-backup-schema-versions.ts';

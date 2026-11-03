@@ -1,17 +1,13 @@
 /** Disposable synthetic browser fixture, normal authenticated backend only. */
 import path from 'node:path';
 import {mkdir,writeFile,access} from 'node:fs/promises';
-import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
+import {ensureQaProject,closeQaProject} from './helpers/kernel-qa-fixture.mjs';
 import {startServer} from '../apps/server/src/index.ts';
-import {openStore} from '../packages/business/src/db.ts';
-import {createServices} from '../packages/business/src/services.ts';
-const runtime=path.resolve('evidence/split-clips/runtime'),dataDir=path.join(runtime,'workspace');
+const runtime=path.resolve('evidence/split-clips/runtime'),dataDir=path.join(runtime,'data');
 await mkdir(runtime,{recursive:true});
-try{await access(path.join(dataDir,'workbench.sqlite'));}catch{await migrateData(path.resolve('examples/multitrack-project'),dataDir);}
-const store=openStore(dataDir),services=createServices(store,new Map());
-const project=(await services.call('project.list',{}))[0];
-const fixture={projectId:project.id,dataDir,timeline:await services.call('timeline.get',{projectId:project.id})};
-store.close();
+const prepared=await ensureQaProject(dataDir,{name:'分割剪辑 · 合成验收'}),{store,services,project}=prepared;
+const fixture={kernel:true,projectId:project.id,dataDir,projectDir:store.projectDir,timeline:await services.call('timeline.get',{projectId:project.id})};
+await closeQaProject(prepared);
 await writeFile(path.join(runtime,'fixture.json'),JSON.stringify(fixture,null,2));
 process.env.MIOON_ENABLE_LIVE_PROVIDER='0';
 for(const key of Object.keys(process.env))if(/^(RUNWAY|RUNWAYML|ARK_|VEO_|GEMINI_|MINIMAX_|HAILUO_|VIDU_)/.test(key))delete process.env[key];

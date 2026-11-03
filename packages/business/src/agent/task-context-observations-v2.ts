@@ -1,6 +1,6 @@
 import {hasStoreTable} from '../store-layout.ts';
 import type {AgentTaskChange,AgentTaskJson,AgentTaskLocale,AgentTaskStep,AgentTaskTarget} from '@mioon/contracts/agent-tasks-v2';
-import type {WorkspaceStore} from '../db.ts';
+import type { Store as WorkspaceStore } from '../store-contract.ts';
 import {PROJECT_NOTES_MAX_BYTES,projectNotesValid} from '../../../contracts/src/project-lifecycle.ts';
 
 export const TASK_PROJECT_OVERVIEW_KIND='mio.project.overview';

@@ -11,8 +11,8 @@ import {workspaceRestoreOfflineResultSchema,workspaceRestorePublicationStatusSch
 import {withVerifiedWorkspaceBackup,withDisposableDatabase} from './workspace-backup.ts';
 import {classifyCurrentWorkspaceSchema as classifyWorkspaceSchema,installCurrentWorkspaceRestoreSchema as installWorkspaceRestoreSchema,validateCurrentWorkspaceRestoreSchema as validateWorkspaceRestoreSchema} from './db.ts';
 import {acquireWorkspaceLock} from './workspace-lock.ts';
-import {checkCancelled,sameNode,sameFile,explicitPath,checkSeparate,createDestination,createNewDirectory,checkDirectoryIdentity,
- inspectFile,streamFile,syncDirectory,syncDestinationParent,scanDirectory,removeOwnedDirectory} from './workspace-backup-storage.ts';
+import {explicitPath,createDestination,syncDestinationParent} from './workspace-backup-storage.ts';
+import {checkCancelled,sameNode,sameFile,checkSeparate,createNewDirectory,checkDirectoryIdentity,inspectFile,streamFile,syncDirectory,scanDirectory,removeOwnedDirectory} from './managed-file-io.ts';
 import type {Stats} from 'node:fs';
 import type {VerifiedWorkspaceBackupContext,WorkspaceBackupResult} from './workspace-backup.ts';
 

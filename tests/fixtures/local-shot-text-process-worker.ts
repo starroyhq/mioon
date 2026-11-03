@@ -6,7 +6,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {writeSync} from 'node:fs';
 import {openStore,ownsStoreLock,getWorkspaceRestoreContext} from '../../packages/business/src/db.ts';
-import type {WorkspaceStore} from '../../packages/business/src/db.ts';
+import type { Store as WorkspaceStore } from '../../packages/business/src/store-contract.ts';
 import {isProjectStore} from '../../packages/business/src/project-file/store.ts';
 import {createServices,canonical} from '../../packages/business/src/services.ts';
 import {createLocalMutationServices} from '../../packages/business/src/local-mutations.ts';

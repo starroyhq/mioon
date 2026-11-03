@@ -13,7 +13,7 @@ if (!runtime.endsWith('/evidence/timeline-snapping/runtime')) throw Error('Dispo
 process.env.MIOON_ENABLE_LIVE_PROVIDER = '0';
 for (const key of Object.keys(process.env)) if (/^(RUNWAY|RUNWAYML|ARK_|VEO_|GEMINI_|MINIMAX_|HAILUO_|VIDU_)/.test(key)) delete process.env[key];
 await import('./timeline-snapping-qa-seed.mjs');
-const backend = await startServer({ dataDir: path.join(runtime, 'workspace'), port: 0, token: 'timeline-snapping-local-synthetic-token', distDir: path.resolve('apps/web/dist') });
+const backend = await startServer({ dataDir: path.join(runtime, 'data'), port: 0, token: 'timeline-snapping-local-synthetic-token', distDir: path.resolve('apps/web/dist') });
 const port = Number(process.env.MIOON_QA_PORT || 4878), host = `127.0.0.1:${port}`, origin = `http://${host}`;
 const faultPath = path.join(runtime, 'fault.json'), releasePath = path.join(runtime, 'fault-release');
 let seq = 0;

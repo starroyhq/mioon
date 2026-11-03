@@ -14,7 +14,7 @@ import {mkdtemp, readFile, readdir, writeFile, rm, realpath, stat} from 'node:fs
 import {schemas, parse, isTimelineMutationResponse, hasRequestNotAppliedProof, publicValue, AppError} from '@mioon/contracts';
 import {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile} from '@mioon/contracts/private-storage';
 import {openStore, openLegacyWorkspaceStore, ownsStoreLock, getWorkspaceRestoreContext} from '../../packages/business/src/db.ts';
-import type {WorkspaceStore} from '../../packages/business/src/db.ts';
+import type { Store as WorkspaceStore } from '../../packages/business/src/store-contract.ts';
 import {isProjectStore, isProjectFileHeld} from '../../packages/business/src/project-file/index.ts';
 import {isAppLibraryHeld} from '../../packages/business/src/app-db/index.ts';
 import {testProjectAppLibrary} from '../../packages/business/src/project-service-application.ts';

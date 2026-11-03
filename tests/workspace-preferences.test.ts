@@ -14,7 +14,7 @@ import {projectFileIdentity} from '../packages/business/src/app-db/index.ts';
 import {parseWorkspacePreferencesState} from '../packages/business/src/workspace-preferences.ts';
 import {schemas} from '@mioon/contracts';
 import {defaultWorkspaceState, reconcileWorkspaceState, type WorkspaceState} from '../apps/web/src/workspace-state.ts';
-import type { WorkspaceStore } from '@mioon/business/db';
+import type { Store as WorkspaceStore } from '@mioon/business/store-contract';
 
 const copy = <T>(value: T): T => structuredClone(value);
 const state = () => {

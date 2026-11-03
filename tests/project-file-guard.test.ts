@@ -165,7 +165,7 @@ test('production code opens SQLite files only through the project-file kernel', 
   assert.deepEqual(offenders, [], `${MESSAGE}：\n${offenders.join('\n')}`);
 });
 
-test('the kernel imports db.ts and services.ts only as types', () => {
+test('the kernel has no db.ts or services.ts dependency, including type imports', () => {
   const kernel = path.join(REPOSITORY, 'packages', 'business', 'src', 'project-file');
   const forbidden = new Set(['db.ts', 'services.ts'].map(name => path.join(REPOSITORY, 'packages', 'business', 'src', name)));
   const statements = /^[ \t]*(?:import|export)[ \t]+(type[ \t]+)?(?:[^;'"`]*?\sfrom[ \t]*)?(['"])([^'"\n]+)\2|\bimport\s*\(\s*(['"])([^'"\n]+)\4\s*\)/gm;
@@ -180,7 +180,7 @@ test('the kernel imports db.ts and services.ts only as types', () => {
     }
   }
   assert.deepEqual(offenders, [], 'S0 makes db.ts open its stores through the kernel, so the kernel may not load db.ts or services.ts');
-  assert.ok(typeOnly > 0, 'store.ts takes WorkspaceStore from db.ts as a type');
+  assert.equal(typeOnly, 0, 'store.ts takes its pure Store contract from store-contract.ts');
 });
 
 test('only the kernel connection can import live-file registration, including aliases and re-exports', () => {
