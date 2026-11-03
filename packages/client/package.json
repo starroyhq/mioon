@@ -9,6 +9,7 @@
     "./connection": "./src/connection.ts",
     "./agent": "./src/agent.ts",
     "./project-rules": "./src/project-rules.ts",
+    "./project-entry": "./src/project-entry.ts",
     "./timeline-mix-loudness": "./src/timeline-mix-loudness.ts",
     "./download": "./src/download.ts",
     "./project-package": "./src/project-package.ts",

@@ -39,8 +39,20 @@ test('path preview and project name checks', () => {
   assert.equal(projectFilePathPreview('D:\\Videos', 'Demo', true), 'D:\\Videos\\Demo\\Demo.mioon');
   assert.equal(projectNameProblem(''), 'empty');
   assert.equal(projectNameProblem('   '), 'empty');
-  for (const name of ['a/b', 'a\\b', 'a:b', 'a*b', 'a?b', 'a"b', 'a<b', 'a>b', 'a|b', ' 前面', '后面 ']) assert.equal(projectNameProblem(name), 'invalid', name);
-  assert.equal(projectNameProblem('访谈剪辑 第 2 版'), null);
+  for (const name of ['a/b', 'a\\b', 'a:b', 'a*b', 'a?b', 'a"b', 'a<b', 'a>b', 'a|b', ' 前面', '后面 ', '.', '..', '.hidden', 'trailing.', '\u00a0name', 'name\u00a0', 'a'.repeat(151)]) {
+    assert.equal(projectNameProblem(name), 'invalid', name);
+  }
+  for (const code of [...Array.from({length: 32}, (_, index) => index), ...Array.from({length: 33}, (_, index) => index + 127)]) {
+    assert.equal(projectNameProblem(`before${String.fromCharCode(code)}after`), 'invalid', `control ${code}`);
+  }
+  const devices = ['con', 'prn', 'aux', 'nul', ...['com', 'lpt'].flatMap(prefix => [...'123456789¹²³'].map(number => `${prefix}${number}`))];
+  for (const device of devices) for (const name of [device, device.toUpperCase(), `${device}.mp4`, `${device.toUpperCase()} .one.two`]) {
+    assert.equal(projectNameProblem(name), 'invalid', name);
+  }
+  for (const name of ['访谈剪辑 第 2 版', 'a'.repeat(150), '🙂'.repeat(75), 'Cafe\u0301', 'COM0', 'COM10', 'LPT12', 'console.txt', 'my.con']) {
+    assert.equal(projectNameProblem(name), null, name);
+  }
+  assert.equal(projectNameProblem('🙂'.repeat(76)), 'invalid');
 });
 
 test('sizes use decimal units with one decimal place', () => {

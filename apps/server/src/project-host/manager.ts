@@ -8,6 +8,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {isAsyncFunction, isPromise} from 'node:util/types';
 import {AppError} from '../../../../packages/contracts/src/app-error.ts';
 import {isProjectId, PROJECT_FILE_EXISTS, PROJECT_FILE_EXTENSION} from '../../../../packages/contracts/src/project-file.ts';
+import {PROJECT_NAME_MAX_LENGTH, projectNameProblem} from '../../../../packages/contracts/src/project-name.ts';
 import type {ProjectFileIdentity, RecentProject} from '../../../../packages/contracts/src/project-registry.ts';
 import {createProjectFile, openProjectStore, recoverProjectFile, registerProjectTransactionFence} from '../../../../packages/business/src/project-file/index.ts';
 import type {OpenProjectConnectionOptions, ProjectCopyCheck, ProjectLocation, ProjectStore} from '../../../../packages/business/src/project-file/index.ts';
@@ -139,7 +140,6 @@ export interface ProjectHostManager<Runtime extends ProjectHostRuntime = Project
   status(projectId: string): ProjectHostStatus | null;
 }
 
-const MAX_PROJECT_NAME_LENGTH = 150;
 const invalid = (message: string): AppError => new AppError('VALIDATION_ERROR', message, 400);
 const errorCode = (error: unknown): unknown => (error as {code?: unknown} | null | undefined)?.code;
 const isThenable = (value: unknown): value is PromiseLike<unknown> =>
@@ -162,7 +162,7 @@ function removeEmptyFolder(folder: string): void {
 function registryName(name: string): string {
   let result = '';
   for (const character of name) {
-    if (result.length + character.length > MAX_PROJECT_NAME_LENGTH) break;
+    if (result.length + character.length > PROJECT_NAME_MAX_LENGTH) break;
     result += character;
   }
   return result;
@@ -180,7 +180,7 @@ function nameFromFile(projectFile: string): string {
  * Whatever this call created is removed again when a later step fails. */
 export function createProjectFiles(input: CreateProjectInput, {directories, registry, identity}: CreateProjectPorts): RecentProject {
   const {name, projectId} = input;
-  if (typeof name !== 'string' || name.length < 1 || name.length > MAX_PROJECT_NAME_LENGTH) throw invalid('项目名称无效');
+  if (typeof name !== 'string' || projectNameProblem(name) !== null) throw invalid('项目名称无效');
   if (projectId !== undefined && registry.get(projectId)) throw invalid('项目 ID 已登记');
   registry.assertCanRegister?.();
   const create = (file: string): string => createProjectFile(file, projectId === undefined ? {} : {projectId});
@@ -338,7 +338,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
         projectFile: store.projectFile,
         fileIdentity,
         name: registered?.name ?? nameFromFile(store.projectFile),
-        lastOpenedAt: timestamp(),
+        lastOpenedAt: registered?.lastOpenedAt ?? null,
         summary: registered?.summary ?? null,
       };
       registry.upsert(registration);
@@ -375,10 +375,13 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       });
       for (const hook of hooks) await hook.afterOpen?.(entry.context);
       const summary = runtime.summarize?.() ?? null;
-      if (summary) {
-        entry.registration = {...entry.registration, name: summary.name, summary: summary.summary};
-        registry.upsert(entry.registration);
-      }
+      // Identity registration is needed before composing, but a failed open
+      // must not become the most recently opened project.
+      const registration: RecentProject = {
+        ...entry.registration, ...(summary ? {name: summary.name, summary: summary.summary} : {}), lastOpenedAt: timestamp(),
+      };
+      registry.upsert(registration);
+      entry.registration = registration;
     } catch (error) {
       if (error instanceof ProjectHostCleanupError) {
         entry.closeFailure = error;
