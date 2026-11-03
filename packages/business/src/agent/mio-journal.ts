@@ -118,6 +118,9 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
   function run(id: string): AgentTaskRun {
     const value = records.run(id), first = content(id, 'user_message')[0]?.value;
     if (!first || typeof first.text !== 'string' || value.configurationBlobHash === null) return fail('AGENT_TASK_STORAGE_CORRUPT');
+    const rulesEntries = entries(id, 'rules_snapshot');
+    if (value.rulesSnapshotHash === null ? rulesEntries.length !== 0 : rulesEntries.length !== 1 || rulesEntries[0]!.payloadBlobHash !== value.rulesSnapshotHash) return fail('AGENT_TASK_STORAGE_CORRUPT');
+    if (value.rulesSnapshotHash !== null) payload(rulesEntries[0]!);
     const contextEntry = content(id, 'host_hint').find(item => item.value.type === 'run_context'), metadata = contextEntry?.value;
     const state = content(id, 'host_state').filter(item => item.value.type === 'run_state').at(-1)?.value;
     const bindings = new Map<string, string>();
@@ -214,20 +217,23 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
     return {run: value, steps: records.steps(id).map(item => step(item.id)), changes: records.changes(id), backgroundPending: hasPendingBackground(id), ...(ended && typeof execution.value.updatedAt === 'string' ? {executionEndedAt: execution.value.updatedAt} : {})};
   }
   function create(input: Parameters<AgentTaskJournal['create']>[0]): AgentTaskSnapshot { return transact(() => {
-    own(input.projectId); const digest = hash({projectId: input.projectId, conversationId: input.conversationId, text: input.text, configuration: input.configuration, settingsRevision: input.settingsRevision, context: input.context, attachments: input.attachments, ...(input.diagnostic ? {diagnostic: input.diagnostic} : {}), ...(input.conversationModes ? {conversationModes: input.conversationModes} : {})});
+    own(input.projectId); const digest = hash({projectId: input.projectId, conversationId: input.conversationId, text: input.text, configuration: input.configuration, settingsRevision: input.settingsRevision, context: input.context, attachments: input.attachments, ...(input.diagnostic ? {diagnostic: input.diagnostic} : {}), ...(input.conversationModes ? {conversationModes: input.conversationModes} : {}), ...(input.rulesSnapshot ? {rulesSnapshot: input.rulesSnapshot} : {})});
     const old = db.prepare('SELECT id,digest FROM mio_runs WHERE requestId=? AND projectId=?').get(input.requestId, projectId);
     if (old) { if (old.digest !== digest) fail('AGENT_TASK_REQUEST_CONFLICT'); return snapshot(String(old.id)); }
     if (!store.get('projects', projectId)) fail('PROJECT_NOT_FOUND');
     if (input.conversationId !== undefined) { if (input.diagnostic || input.conversationModes) fail('AGENT_TASK_INVALID'); conversationSummary(projectId, input.conversationId); }
     if (input.conversationModes && input.diagnostic) fail('AGENT_TASK_INVALID');
+    if (input.rulesSnapshot && input.diagnostic) fail('AGENT_TASK_INVALID');
     const conversationId = input.conversationId ?? randomUUID();
     const latest = allRuns().filter(item => item.conversationId === conversationId).reduce((previous, item) => Math.max(previous, Date.parse(item.createdAt), Date.parse(item.updatedAt)), -1);
     const timestamp = Math.max(Date.now(), latest + 1); if (!Number.isFinite(timestamp) || timestamp > 253402300799999) fail('AGENT_TASK_STORAGE_LIMIT');
     const at = new Date(timestamp).toISOString();
     if (!input.conversationId) records.createConversation({id: conversationId, createdAt: at, updatedAt: at});
     const configurationBlobHash = records.putBlob(encode(input.configuration), at), selected = input.policy ?? options.policy(), id = randomUUID();
-    records.createRun({id, conversationId, requestId: input.requestId, digest, stepLimit: selected.stepLimit, budget: selected.stepLimit, locale: taskResponseLocale(input.context ?? []), configurationBlobHash, settingsRevision: input.settingsRevision ?? null, rulesSnapshotHash: null, createdAt: at, updatedAt: at});
+    const rulesSnapshotHash = input.rulesSnapshot ? records.putBlob(encode(input.rulesSnapshot), at) : null;
+    records.createRun({id, conversationId, requestId: input.requestId, digest, stepLimit: selected.stepLimit, budget: selected.stepLimit, locale: taskResponseLocale(input.context ?? []), configurationBlobHash, settingsRevision: input.settingsRevision ?? null, rulesSnapshotHash, createdAt: at, updatedAt: at});
     append(id, 'user_message', {text: input.text}, at);
+    if (rulesSnapshotHash) records.appendEntry({id: randomUUID(), runId: id, kind: 'rules_snapshot', createdAt: at, payload: {blobHash: rulesSnapshotHash}});
     const sourceEntryIds = db.prepare('SELECT id FROM mio_entries WHERE conversationId=? AND projectId=? ORDER BY rowid').all(conversationId, projectId).map(row => String(row.id));
     append(id, 'host_hint', json({type: 'run_context', contextView: input.context === undefined ? undefined : contextAssembly.freezeContext(input.context, sourceEntryIds), attachments: input.attachments, diagnostic: input.diagnostic}), at);
     if (input.conversationModes) {

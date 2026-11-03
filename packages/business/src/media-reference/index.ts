@@ -7,7 +7,8 @@
 export {mediaReferenceError} from './errors.ts';
 export type {MediaReferenceErrorCode} from './errors.ts';
 export {
-  formatAbsolutePath, insideAnyDirectory, isInsideDirectory, outsideDirectoryGroups, parseAbsolutePath, referencePathFor, relinkBases,
+  exactOutsideDirectoryGroups, formatAbsolutePath, inExactDirectories, insideAnyDirectory, isFileInDirectory, isInsideDirectory, isInsideRealDirectory,
+  outsideDirectoryGroups, parseAbsolutePath, referencePathFor, referencePathForRealFile, relinkBases,
   relinkTarget, resolveReferencePath, volumeNameOf,
 } from './paths.ts';
 export type {AbsolutePathParts, PathApi, ReferencePath, RelinkBases} from './paths.ts';
@@ -18,8 +19,8 @@ export type {MediaDirectoryEntry, MediaFileHandle, MediaFileSystem} from './file
 export {
   isNotDownloaded, mediaMtimeMs, NOT_DOWNLOADED_MIN_BYTES, SAMPLE_RANGE_BYTES, SAMPLE_RANGE_COUNT, SAMPLE_WHOLE_FILE_BYTES, sampleRanges,
 } from './fingerprint.ts';
-export {admitMedia, checkMediaStatus, computeFullSha256, referenceForFile} from './access.ts';
-export type {MediaAccess, MediaFile, MediaStatusReason, MediaStatusResult} from './access.ts';
+export {admitMedia, checkMediaStatus, computeFullSha256, readMediaBytes, referenceForFile} from './access.ts';
+export type {MediaAccess, MediaBytes, MediaFile, MediaReadOptions, MediaStatusReason, MediaStatusResult} from './access.ts';
 export {MAX_RELINK_ASSETS, outsideProjectLocations, relinkMedia} from './relink.ts';
 export type {MediaAsset, RelinkedMedia, RelinkResult} from './relink.ts';
 export {

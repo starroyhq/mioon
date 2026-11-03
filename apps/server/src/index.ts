@@ -1,3 +1,5 @@
+import {createMioUserRules} from '@mioon/business/agent/mio-user-rules';
+import {handleUserRulesHttp} from './mio-rules-http.ts';
 import {MAX_WORKSPACE_PREFERENCES_BYTES} from '@mioon/business';
 import {MAX_AGENT_SETTINGS_BYTES} from '@mioon/business/agent/config';
 import type {PublicStorage, SecretCodec, SettingsContextOptions} from '@mioon/business/agent/settings';
@@ -100,6 +102,9 @@ export interface ServerOptions {
    * server's InspectProject once its store is open. */
   inspectProject?: (inspect: InspectProject) => void;
   inspectApplication?: (inspect: InspectApplication) => void;
+  /** Trusted in-process tests only; never HTTP/environment. Retains a real
+   * window lease so a read-only baseline excludes idle-close bookkeeping. */
+  retainProjectForTest?: (retain: (projectId: string) => Promise<() => void>) => void;
   localDraftChannel?: LocalDraftChannel;
   nativeAudioPreview?: NativeAudioPreviewAuthority;
 }
@@ -173,6 +178,11 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     const projects = manager;
     if (options.nativeAudioPreview) bindProjectNativeAudio(options.nativeAudioPreview, projects);
     options.inspectProject?.(manager.inspectProject);
+    options.retainProjectForTest?.(async projectId => {
+      shutdown.signal.throwIfAborted();
+      const lease = await projects.acquire(projectId, 'window');
+      return () => lease.release();
+    });
     options.inspectApplication?.(<T>(read: (db: DatabaseSync) => T): T => {
       shutdown.signal.throwIfAborted();
       if (typeof read !== 'function' || isAsyncFunction(read)) throw new TypeError('Application inspection requires a synchronous callback');
@@ -184,6 +194,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       return result;
     });
     if (token === undefined) { token = randomBytes(32).toString('hex'); writePrivateFileAtomic(tokenFile, token, {root, maxBytes: 4098, replace: false}); }
+    const userRules=createMioUserRules(library,{signal:shutdown.signal});
     const appAgentHttp = (await import('./application-agent-http.ts')).createApplicationAgentHttp(library, shutdown.signal);
     const rpc = createApplicationRpc({library, app, manager, directories, backups, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
       imageProfiles: input => listImageProfiles(app.profileDependencies, input as never), refreshSummaries: () => {
@@ -244,6 +255,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         if (url.pathname.startsWith('/api/projects/')) return notFound(res);
         if (await covers(req, res, url)) return;
         if (await appAgentHttp(req, res, url)) return;
+        if (await handleUserRulesHttp({req,res,url,rules:userRules,signal:shutdown.signal})) return;
         if (url.pathname === '/api/agent/diagnostics') {
           const id = url.searchParams.get('projectId');
           // The synchronous lease admission must not wait for an exclusive

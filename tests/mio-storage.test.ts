@@ -5,8 +5,8 @@ import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {MIO_STORAGE_TABLES, mioStorageSnapshotSchema} from '../packages/contracts/src/mio-storage.ts';
-import type {MioStorageSnapshot, MioStorageTable} from '../packages/contracts/src/mio-storage.ts';
+import {MIO_STORAGE_TABLES, mioStorageSnapshotSchema, mioStorageSnapshotV2Schema, mioStorageSnapshotV3Schema} from '../packages/contracts/src/mio-storage.ts';
+import type {MioStorageSnapshotV3 as MioStorageSnapshot, MioStorageTable} from '../packages/contracts/src/mio-storage.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {openStore} from '../packages/business/src/project-file/index.ts';
 import {HISTORY_TABLES_BY_DOMAIN} from '../packages/business/src/project-file/schema/tables.ts';
@@ -50,6 +50,7 @@ function seeded(t: TestContext) {
     records.saveEditReceipt({requestId: randomUUID(), ownerId: 'synthetic-owner', digest: hash('edit'), data: {private: 'PRIVATE_EDIT_RECEIPT'}});
     records.setConversationPolicy({requestId: randomUUID(), conversationId, expectedRevision: 0, modes: null, global: structuredClone(DEFAULT_AGENT_TASK_POLICY), at});
     db.prepare('INSERT INTO mio_process_target_revisions VALUES(?,?,?,?)').run(projectId, 'job', randomUUID(), 1);
+    db.prepare("INSERT INTO mio_rule_writes(requestId,projectId,actor,digest,expectedExists,afterHash,afterBlobHash,fixedRelativeName,state,createdAt,updatedAt) VALUES(?,?,'manual',?,0,?,?,'AGENTS.md','prepared',?,?)").run(randomUUID(),projectId,hash('rule-write'),shared,shared,at,at);
   });
   return {...f, conversationId, runId, stepId, requestId, body, shared};
 }
@@ -64,9 +65,9 @@ function totals(snapshot: MioStorageSnapshot): MioStorageSnapshot {
     status: bytes >= snapshot.limits.bytes || rows >= snapshot.limits.rows ? 'full' : bytes >= snapshot.limits.bytes * .9 || rows >= snapshot.limits.rows * .9 ? 'near_limit' : 'available'};
 }
 
-test('project storage counts nineteen real tables with the exact quota formula and one copy of each blob', t => {
+test('project storage counts twenty real tables with the exact quota formula and one copy of each blob', t => {
   const f = seeded(t), actual = readMioStorage(f.db);
-  assert.equal(actual.version, 2); assert.equal(actual.scope, 'project'); assert.equal(actual.projectId, f.store.projectId);
+  assert.equal(actual.version, 3); assert.equal(actual.scope, 'project'); assert.equal(actual.projectId, f.store.projectId);
   assert.equal(actual.format, 'mio_records'); assert.deepEqual(actual.limits, MIO_STORAGE_LIMITS);
   assert.equal(actual.limits.rows, 65536);
   assert.deepEqual(actual.tables.map(item => item.name), HISTORY_TABLES_BY_DOMAIN.mio);
@@ -217,7 +218,7 @@ test('incremental counters equal full inventory after updates, no-ops, exempt wr
   assert.deepEqual(equal(), removed);
 });
 
-test('the closed version 2 schema enforces complete inventory, exact equations, boundaries and overflow safety', t => {
+test('the closed version 3 schema enforces complete inventory, exact equations, boundaries and overflow safety', t => {
   const f = seeded(t), valid = readMioStorage(f.db);
   const invalid: unknown[] = [
     {...valid, version: 1}, {...valid, scope: 'workspace'}, {...valid, projectId: 'arbitrary'}, {...valid, format: 'inline'},
@@ -246,4 +247,13 @@ test('the closed version 2 schema enforces complete inventory, exact equations, 
   }
   const overflow = {...empty, tables: empty.tables.map((item, index) => ({...item, bytes: index < 2 ? Number.MAX_SAFE_INTEGER : 0}))};
   assert.equal(mioStorageSnapshotSchema.safeParse(overflow).success, false);
+});
+
+test('storage v2 remains a closed historical nineteen-table contract and v3 requires rule writes',t=>{
+ const current=readMioStorage(fixture(t).db),old={...current,version:2,tables:current.tables.filter(item=>item.name!=='mio_rule_writes')};
+ assert.equal(mioStorageSnapshotV2Schema.safeParse(old).success,true);
+ assert.equal(mioStorageSnapshotV3Schema.safeParse(old).success,false);
+ assert.equal(mioStorageSnapshotSchema.safeParse(old).success,true);
+ assert.equal(mioStorageSnapshotV2Schema.safeParse({...current,version:2}).success,false);
+ assert.equal(mioStorageSnapshotV3Schema.safeParse(current).success,true);
 });

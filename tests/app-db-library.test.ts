@@ -143,11 +143,13 @@ test('a new library is built from the current application-state SQL and the B1 t
   assert.deepEqual(library.db.prepare('PRAGMA main.foreign_key_list(workspace_preferences)').all(), []);
   assert.equal(APP_LIBRARY_STATEMENTS.some(sql => /REFERENCES/u.test(sql)), false);
 
-  // Keep the original v1 digest; only v2 adds the diagnostic document name.
+  // Retain both historical profile digests; v3 adds only typed user rules.
   assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema(1))).digest('hex'),
     'f7aa62f54c5e09ffb405b8efe8369f3445e32758526b5e30484ad542e58f7de9');
-  assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema())).digest('hex'),
+  assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema(2))).digest('hex'),
     '7c99f8946a65136c55068d877d91645be595280c5e2ec65ef0d47d5465b1c95d');
+  assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema())).digest('hex'),
+    '8a037a9700be47380961f35fa2fae5c3880766f6d8349d80888e169708c9433c');
 });
 
 test('the library is reopened with its records and checked again on every open', t => {
@@ -181,7 +183,7 @@ test('only an exact v1 library upgrades its document whitelist, preserving exist
   assert.deepEqual(readAppSchema(upgraded.db), expectedAppSchema());
   assert.equal(upgraded.documents.read('ui-preferences-v1.json'), text);
   assert.deepEqual(upgraded.registry.get(row.projectId), row);
-  assert.deepEqual(upgraded.db.prepare('SELECT version FROM schema_version').all().map(row => row.version), [2]);
+  assert.deepEqual(upgraded.db.prepare('SELECT version FROM schema_version').all().map(row => row.version), [3]);
   upgraded.close();
   const badDir = path.join(scratch(t), 'bad'); mkdirSync(badDir, {mode: 0o700});
   const badFile = path.join(badDir, APP_LIBRARY_FILE); writeFileSync(badFile, '', {mode: 0o600});
@@ -213,7 +215,7 @@ test('another structure, a newer version, another application or not a database 
   assert.deepEqual(error.details, {reason: 'schema', differences: ['changed trigger:immutable_app_operation_receipts']});
   tamper(file, db => {
     db.exec('DROP TRIGGER immutable_app_operation_receipts');
-    db.exec(APP_LIBRARY_STATEMENTS.at(-1)!);
+    db.exec(APP_LIBRARY_STATEMENTS.find(sql=>sql.startsWith('CREATE TRIGGER immutable_app_operation_receipts '))!);
   });
   openAppLibrary({dataDir}).close();
 

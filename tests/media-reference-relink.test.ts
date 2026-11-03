@@ -3,14 +3,14 @@
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {randomBytes} from 'node:crypto';
-import {mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync} from 'node:fs';
+import {createHash, randomBytes} from 'node:crypto';
+import {mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {mediaReferenceSchema, outsideProjectLocationSchema} from '../packages/contracts/src/media-reference.ts';
 import type {MediaReference, OutsideProjectLocation} from '../packages/contracts/src/media-reference.ts';
 import {
-  MAX_RELINK_ASSETS, NODE_MEDIA_FILE_SYSTEM, outsideProjectLocations, referenceForFile, relinkMedia,
+  computeFullSha256, MAX_RELINK_ASSETS, NODE_MEDIA_FILE_SYSTEM, outsideProjectLocations, referenceForFile, relinkMedia,
 } from '../packages/business/src/media-reference/index.ts';
 import type {MediaAccess, MediaAsset, MediaFileSystem} from '../packages/business/src/media-reference/index.ts';
 
@@ -112,7 +112,7 @@ test('relinking without reading: matching stats suffice, a new time alone is unv
   await assert.rejects(relinkMedia(access(), assets, {assetId: 'c', file: 'B/day/c.mp4'}), TypeError);
 });
 
-test('12-06: the folders outside the project directory, where the files really are, nested folders counted with the outer one', async t => {
+test('12-06: external folders keep their exact confirmation scope, including nested folders', async t => {
   const {root, project, access} = layout(t);
   const interview = path.join(root, '素材', '访谈', '0912');
   for (const file of [path.join(interview, 'a.mp4'), path.join(interview, 'b.mp4'), path.join(interview, 'sub', 'c.mp4'), path.join(root, 'other', 'd.mp4'),
@@ -136,9 +136,41 @@ test('12-06: the folders outside the project directory, where the files really a
     {directory: path.join(root, 'elsewhere'), volume: null, assetCount: 1, available: true},
     {directory: path.join(root, 'gone'), volume: null, assetCount: 1, available: false},
     {directory: path.join(root, 'other'), volume: null, assetCount: 1, available: true},
-    {directory: interview, volume: null, assetCount: 3, available: true},
+    {directory: interview, volume: null, assetCount: 2, available: true},
+    {directory: path.join(interview, 'sub'), volume: null, assetCount: 1, available: true},
   ];
   if (process.platform !== 'win32') expected.push({directory: 'D:\\素材', volume: null, assetCount: 1, available: false});
   assert.deepEqual(locations, expected);
   for (const location of locations) assert.ok(outsideProjectLocationSchema.safeParse(location).success, location.directory);
+});
+
+test('a recorded complete hash prevents same-stat unsampled changes from relinking as the original content', async t => {
+  const {root, access} = layout(t), file = (folder: string, name: string): string => path.join(root, folder, 'day', name);
+  const names = ['chosen', 'changed', 'same'];
+  const assets: MediaAsset[] = [];
+  for (const name of names) {
+    writeMp4(file('A', `${name}.mp4`), 2 * 1_048_576);
+    const reference = (await referenceForFile(access(), file('A', `${name}.mp4`))).reference;
+    assets.push({id: name, reference: (await computeFullSha256(access(), reference)).reference});
+  }
+  renameSync(path.join(root, 'A'), path.join(root, 'B'));
+  for (const name of ['chosen', 'changed']) {
+    const target = file('B', `${name}.mp4`), content = readFileSync(target);
+    content[100_000] = content[100_000]! ^ 255;
+    writeFileSync(target, content);
+    utimesSync(target, EARLIER, EARLIER);
+    assert.notEqual(createHash('sha256').update(content).digest('hex'), assets.find(asset => asset.id === name)!.reference.fullSha256);
+  }
+  utimesSync(file('B', 'same.mp4'), LATER, LATER);
+  const result = await relinkMedia(access(), assets, {assetId: 'chosen', file: file('B', 'chosen.mp4')});
+  assert.equal(result.chosen.matches, false);
+  assert.equal(result.chosen.reference.fullSha256, null);
+  assert.deepEqual(result.mismatched, [{assetId: 'changed', file: file('B', 'changed.mp4')}]);
+  assert.deepEqual(result.found.map(item => [item.assetId, item.reference.fullSha256]), [['same', assets[2]!.reference.fullSha256]]);
+  const unconfirmed = await relinkMedia(access({mayReadOutside: candidate => candidate === file('B', 'chosen.mp4')}), assets,
+    {assetId: 'chosen', file: file('B', 'chosen.mp4')});
+  assert.deepEqual(unconfirmed.found, []);
+  assert.deepEqual(unconfirmed.unverified, [
+    {assetId: 'changed', file: file('B', 'changed.mp4')}, {assetId: 'same', file: file('B', 'same.mp4')},
+  ]);
 });

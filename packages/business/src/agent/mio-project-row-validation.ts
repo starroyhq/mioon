@@ -6,6 +6,7 @@ import {
  mioIdentitySchemas,mioImportSchema,mioJsonSchema,mioModelOutputSchema,mioOriginSchema,mioRequestSchema,mioRunSchema,mioStepSchema,
 } from '../../../contracts/src/mio-records.ts';
 import type {MioEntry} from '../../../contracts/src/mio-records.ts';
+import {mioRuleWriteSchema} from '../../../contracts/src/mio-rule-writes.ts';
 import type {ProjectStore} from '../project-file/store.ts';
 import {readMioStorage} from './mio-storage.ts';
 
@@ -96,6 +97,12 @@ export function validateMioProjectRows(store:ProjectStore,application:DatabaseSy
   if(table==='mio_conversation_policy_requests'){parse(mioIdentitySchemas.requestId,row.requestId);parse(mioIdentitySchemas.hash,row.inputHash);}
  }
  for(const row of rows('mio_events'))parse(mioEventSchema,row);
+ for(const row of rows('mio_rule_writes')){
+  if(row.expectedExists!==0&&row.expectedExists!==1)invalid();
+  const value=parse(mioRuleWriteSchema,{...row,expectedExists:row.expectedExists===1,fileIdentity:row.fileIdentity===null?null:json(row.fileIdentity,16384)});
+  if(!blobs.has(value.afterBlobHash)||value.beforeBlobHash!==null&&!blobs.has(value.beforeBlobHash))invalid();
+  if(value.actor==='mio'&&!db.prepare("SELECT 1 FROM mio_steps WHERE id=? AND projectId=? AND runId=? AND kind='tool'").get(value.stepId,value.projectId,value.runId))invalid();
+ }
  for(const table of ['project.agent_task_target_revisions_v2','main.mio_process_target_revisions'])if(db.prepare(`SELECT 1 FROM ${table} WHERE typeof(revision)!='integer' OR revision NOT BETWEEN 1 AND 9007199254740991 LIMIT 1`).get())throw Object.assign(new Error('Invalid Agent target revision'),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
  if(db.prepare("SELECT 1 FROM mio_process_target_revisions WHERE kind NOT IN ('job','export','image_task','frame_task') LIMIT 1").get())invalid();
  for(const table of ['agent_task_policy_v2','agent_task_policy_requests_v2'])for(const row of application.prepare(`SELECT * FROM ${table}`).iterate()){

@@ -41,7 +41,7 @@ test('every actual model tool, including host tools and imports, has exactly one
   for(const tool of catalog){
     const group=agentTaskToolGroupForName(tool.name);assert.ok(group);
     assert.equal(agentTaskToolNamesForGroup(group).filter(name=>name===tool.name).length,1);
-    if(group==='core')assert.equal(tool.risk,'read_only');
+    if(group==='core')assert.equal(tool.risk,tool.operation==='project.rules.set'?'local_irreversible':'read_only');
   }
   assert.equal(AGENT_TASK_TOOL_GROUP_IDS.length,12);assert.equal(AGENT_TASK_LOADABLE_TOOL_GROUP_IDS.length,11);
   assert.equal(agentTaskToolGroupForName('mioon_asset_import_selected'),'assets');

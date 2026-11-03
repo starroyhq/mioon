@@ -5,6 +5,7 @@ import { Textarea } from '@mioon/ui/components/textarea';
 import { WorkbenchAlert, WorkbenchBadge, WorkbenchButton, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
 import { Check } from '@mioon/ui/components/workbench-icons';
 import { PROJECT_RULES_FILE } from '../../../../packages/contracts/src/project-file.ts';
+import { rulesTextProblem } from '../../../../packages/contracts/src/mio-rules.ts';
 import { useI18n } from '../i18n/I18nProvider.tsx';
 import Icon from '../icons.tsx';
 import { displayPath } from './format.ts';
@@ -15,13 +16,7 @@ import './project-file-rules.css';
 const encoder = new TextEncoder();
 /** UTF-8 bytes, as the size limit counts them. */
 export const rulesBytes = (text: string): number => encoder.encode(text).byteLength;
-/** Same characters as project notes refuse (projectNotesValid): controls other
- * than tab, line feed and carriage return, and lone surrogates. */
-const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\ud800-\udfff]/u;
-export function rulesProblem(text: string, maxBytes: number): 'tooLong' | 'invalid' | null {
-  if (rulesBytes(text) > maxBytes) return 'tooLong';
-  return CONTROL.test(text) ? 'invalid' : null;
-}
+export const rulesProblem = rulesTextProblem;
 
 export interface ProjectRulesDialogProps {
   readonly open: boolean;

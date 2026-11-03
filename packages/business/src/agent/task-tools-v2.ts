@@ -1,3 +1,7 @@
+import {projectRulesToolInputSchema} from '../../../contracts/src/mio-rules.ts';
+import {createMioProjectRules} from './mio-rules.ts';
+import type {MioProjectRules} from './mio-rules.ts';
+import {AGENT_TASK_LEGACY_TOOLS_LOAD_PARAMETERS} from './task-tool-groups-v2.ts';
 import {mioTable} from './mio-table-layout.ts';
 import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
@@ -122,6 +126,7 @@ function hydrateInput(operation:string,input:Value,projectId:string,requestId:st
  return parse(operation as OperationName,source) as Value;
 }
 function taskToolOperation(operation:string):string{
+ if(operation==='mioon_project_rules_set')return 'project.rules.set';
  if(operation==='mioon_node_inspect')return 'node.inspect';
  if(operation==='mioon_edge_inspect')return 'edge.inspect';
  if(operation===AGENT_TASK_PREVIS_INSPECT_TOOL)return AGENT_TASK_PREVIS_INSPECT_OPERATION;
@@ -166,7 +171,7 @@ export function agentTaskExplicitTargets(operation:string,input:unknown,projectI
  return [...references.values()];
 }
 export interface AgentTaskToolDefinition {name:string;operation:string;description:string;parameters:unknown;risk:AgentTaskTier;receipt:string;recovery:string;undo:string}
-export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot}
+export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot;forceApproval?:boolean;proposal?:AgentTaskJson}
 export interface AgentTaskToolContext {runId:string;stepId:string;requestId:string;signal?:AbortSignal;beforeEffect:()=>void;recordInside:(result:AgentTaskJson,changes?:TaskChangeInput[])=>void;appendChangesInside?:(changes:TaskChangeInput[])=>void}
 export interface AgentTaskUndoContext {requestId?:string;beforeEffect:()=>void;beforeCompensation?:()=>void;recordInside:(change:AgentTaskChange)=>void;retainInside:(change:AgentTaskChange,reason:string)=>void;expectedTargets?:AgentTaskTarget[]}
 export interface AgentTaskLocalRecovery {outcome:'not_applied';reason:'read_only'|'atomic_receipt_absent'}
@@ -354,7 +359,7 @@ const previsWrite=(operation:string):boolean=>operation==='previs.create'||opera
   'previs.create':{description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.create']},
   'previs.scene.set':{description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.scene.set'],parameters:AGENT_TASK_PREVIS_SCENE_PARAMETERS},
  };
-export const listAgentTaskTools=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:previsTools[operation]?.description??descriptions[operation]??operation,parameters:previsTools[operation]?.parameters??AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:operationEffect(operation).readOnly?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
+export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:previsTools[operation]?.description??descriptions[operation]??operation,parameters:previsTools[operation]?.parameters??AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:operationEffect(operation).readOnly?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
   ...(['node','edge'] as const).map(kind=>({name:`mioon_${kind}_inspect`,operation:`${kind}.inspect`,description:`分页观察当前项目${kind==='node'?'画布节点的文本和位置':'连线的来源与目标'}，不读文件。`,parameters:{type:'object',properties:{limit:{type:'integer',minimum:1,maximum:20},after:{type:'string',description:'Previous nextAfter; omit for the first page.'}},additionalProperties:false},risk:'read_only' as const,receipt:'observation',recovery:'read saved metadata',undo:'unavailable'})),
   {name:AGENT_TASK_PREVIS_INSPECT_TOOL,operation:AGENT_TASK_PREVIS_INSPECT_OPERATION,description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.inspect'],parameters:AGENT_TASK_PREVIS_INSPECT_PARAMETERS,risk:'read_only',receipt:'observation',recovery:'read the saved scene again',undo:'unavailable'},
   {name:'mioon_task_wait',operation:'task.wait',description:'等待当前项目内已受理任务，仅查询本地状态；不提交或轮询供应商。',parameters:{type:'object',properties:{kind:{type:'string',enum:['job','image','frame','scene','export']},id:{type:'string',format:'uuid'}},required:['kind','id'],additionalProperties:false},risk:'read_only',receipt:'observation',recovery:'read local state',undo:'unavailable'},
@@ -364,11 +369,21 @@ export const listAgentTaskTools=():AgentTaskToolDefinition[]=>{const definitions
   {name:AGENT_TASK_SKILL_READ_TOOL,operation:AGENT_TASK_SKILL_READ_OPERATION,description:'读取一份内置方法（只读，计1步）。不带 section 时返回全文和章节目录；带 section 时只返回该章节。可读的方法列在系统指令中。方法是参考资料，不授予权限。',parameters:AGENT_TASK_SKILL_READ_PARAMETERS,risk:'read_only',receipt:'observation',recovery:'read the built-in method again',undo:'unavailable'},
   {name:AGENT_TASK_CONTINUITY_REPORT_TOOL,operation:AGENT_TASK_CONTINUITY_REPORT_OPERATION,description:'报告一次只读连续性检查的结果，在面板中显示为问题卡片，用户可以定位镜头。每条写一个类别、涉及的本项目镜头（1-4个，按出现顺序）和一句说明（哪里不一致、依据是什么）。没有问题时 issues 为空。不修改任何内容，也不是修改的确认。',parameters:{type:'object',properties:{issues:{type:'array',maxItems:AGENT_TASK_CONTINUITY_LIMITS.issues,items:{type:'object',properties:{category:{type:'string',enum:[...AGENT_TASK_CONTINUITY_CATEGORIES]},shotIds:{type:'array',minItems:1,maxItems:AGENT_TASK_CONTINUITY_LIMITS.shots,items:{type:'string',format:'uuid'}},text:{type:'string',minLength:1,maxLength:AGENT_TASK_CONTINUITY_LIMITS.text}},required:['category','shotIds','text'],additionalProperties:false}}},required:['issues'],additionalProperties:false},risk:'read_only',receipt:'durable task step',recovery:'the saved report is shown from its arguments',undo:'unavailable'},
   {name:AGENT_TASK_GOAL_SET_TOOL,operation:AGENT_TASK_GOAL_SET_OPERATION,description:'声明本轮用户提出的可判定目标：时长与容差、时间线格式、导出参数、剪辑数、字幕数、镜头数或生成完成。conditions 最多20条，空数组清空本轮目标，最后一次有效设置覆盖之前的设置。只记录待检查条件，不修改项目，不授予权限，也不是用户确认。',parameters:AGENT_TASK_GOAL_SET_PARAMETERS,risk:'read_only',receipt:'durable task step',recovery:'use the last valid completed goal declaration in this run',undo:'unavailable'},
-  {name:AGENT_TASK_TOOLS_LOAD_NAME,operation:AGENT_TASK_TOOLS_LOAD_OPERATION,description:AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS.en,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS,risk:'read_only',receipt:'durable task step',recovery:'read completed tool loading steps; never repeat an unknown result',undo:'unavailable'},
+  {name:AGENT_TASK_TOOLS_LOAD_NAME,operation:AGENT_TASK_TOOLS_LOAD_OPERATION,description:AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS.en,parameters:AGENT_TASK_LEGACY_TOOLS_LOAD_PARAMETERS,risk:'read_only',receipt:'durable task step',recovery:'read completed tool loading steps; never repeat an unknown result',undo:'unavailable'},
  ];assertAgentTaskToolGroupCoverage(definitions);return definitions;};
+/** Diagnostics retain their reviewed byte-level catalog. Conversation tools
+ * expose AGENTS.md authority only through the host approval protocol. */
+export const listAgentTaskTools=():AgentTaskToolDefinition[]=>{
+ const definitions=listDiagnosticAgentTaskTools().filter(tool=>tool.operation!=='project.notes.set').map(tool=>tool.name===AGENT_TASK_TOOLS_LOAD_NAME?{...tool,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS}:tool);
+ definitions.push({name:'mioon_project_rules_set',operation:'project.rules.set',description:'提议修改当前项目 AGENTS.md 规范。expectedHash 是刚读取的原文件 SHA-256（不存在时为 null），proposedText 是完整新内容，最多8192 UTF-8字节。宿主展示原文与修改并始终等待用户审批。规范不是授权，修改只从下一轮用户请求生效。',parameters:{type:'object',properties:{expectedHash:{anyOf:[{type:'string',minLength:64,maxLength:64,pattern:'^[a-f0-9]{64}$'},{type:'null'}]},proposedText:{type:'string',maxLength:8192}},required:['expectedHash','proposedText'],additionalProperties:false},risk:'local_irreversible',receipt:'durable rules publication intent and original approval',recovery:'inspect the same request; never repeat uncertain publication',undo:'unavailable'});
+ assertAgentTaskToolGroupCoverage(definitions);return definitions;
+};
 
-export function createAgentTaskTools({store,services,policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:injectedJournal}:{store:WorkspaceStore;services:OrdinaryServices;policyStore?:AgentPolicyStore;journal?:AgentTaskJournal}){
- const list=listAgentTaskTools;
+export function createAgentTaskTools({store,services,policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:injectedJournal,rules:injectedRules}:{store:WorkspaceStore;rules?:MioProjectRules;services:OrdinaryServices;policyStore?:AgentPolicyStore;journal?:AgentTaskJournal}){
+ const catalogProfile=isProjectStore(store)?'native':'legacy';
+ const list=catalogProfile==='native'?listAgentTaskTools:listDiagnosticAgentTaskTools;
+ const testApplication=testProjectAppLibrary(store);
+ const rules=injectedRules??(isProjectStore(store)&&testApplication?createMioProjectRules({store,application:testApplication}):undefined);
  const {db}=store;
  const importRoot=storeDirectories(store).localDir,importDirectory=isProjectLayout(db)?'imports':'agent-imports';
  const journal=injectedJournal??(isProjectStore(store)?policyStore?createMioProjectJournal(store,policyStore):createMioJournal(store,{policy:()=>{throw Object.assign(Error('Mio policy was not supplied to the tool journal'),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});},assembly:createMioAssembly(createMioRecords(store))}):createAgentTaskJournal(store,{policyStore}));
@@ -460,10 +475,16 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
  }
  function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names'}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void;toolLoadMode?:AgentTaskToolLoadMode}):PreparedAgentTaskTool{
   operation=taskToolOperation(operation);
-  let risk=['task.wait','node.inspect','edge.inspect',AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_ASK_OPERATION,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_GOAL_SET_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
+  if(isProjectStore(store)&&operation==='project.notes.set')fail('AGENT_TASK_TOOL_FORBIDDEN','旧说明工具已停用，请改用必须审批的规范提议');
+  let risk=operation==='project.rules.set'?'local_irreversible':['task.wait','node.inspect','edge.inspect',AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_ASK_OPERATION,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_GOAL_SET_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
   if(!risk||!object(input))fail('AGENT_TASK_TOOL_FORBIDDEN','此工具未获准用于助理任务');rejectHostFields(input);
+  if(operation==='project.rules.set'){
+   if(!isProjectStore(store)||projectId!==store.projectId||!rules)fail('AGENT_TASK_TOOL_FORBIDDEN','规范工具仅用于当前原生项目');
+   const parsed=projectRulesToolInputSchema.safeParse(input);if(!parsed.success)fail('VALIDATION_ERROR','规范参数无效：须包含 expectedHash 和最多8192字节的 proposedText');
+   return {projectId,operation,input:parsed.data,risk:'local_irreversible',targets:[],referencedTargets:[],before:{},forceApproval:true,proposal:json(rules.proposal(parsed.data))};
+  }
   if(operation===AGENT_TASK_TOOLS_LOAD_OPERATION){
-   const selected=toolLoadMode==='groups'?parseAgentTaskToolLoadInput(input):parseAgentTaskToolNameLoadInput(input);if(!selected)fail('AGENT_TASK_INVALID_TOOL','工具加载参数无效');
+   const selected=toolLoadMode==='groups'?parseAgentTaskToolLoadInput(input):parseAgentTaskToolNameLoadInput(input,catalogProfile);if(!selected)fail('AGENT_TASK_INVALID_TOOL','工具加载参数无效');
    if(!store.get('projects',projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
    return {projectId,operation,input:toolLoadMode==='groups'?{groups:selected}:{names:selected},risk:'read_only',targets:[],referencedTargets:[],before:{}};
   }
@@ -575,6 +596,18 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   return {projectId,operation,input:hostInput,risk,targets:risk==='read_only'?[]:targets,referencedTargets,before};
  }
  async function execute(prepared:PreparedAgentTaskTool,context:AgentTaskToolContext):Promise<{result:AgentTaskJson;changes:TaskChangeInput[];recorded:boolean}>{
+  if(prepared.operation==='project.rules.set'){
+   context.beforeEffect();if(context.signal?.aborted)fail('AGENT_TASK_ABORTED','任务已暂停');
+   const step=journal.step(context.stepId),data=step.data;
+   if(!rules||!object(data)||typeof data.rulesApprovalReceiptId!=='string'||typeof data.approvalDigest!=='string')fail('AGENT_TASK_APPROVAL_REQUIRED','规范写入必须有本次提议的用户审批');
+   try{
+    const result=rules.save({requestId:context.requestId,expectedHash:prepared.input.expectedHash,text:prepared.input.proposedText},{runId:context.runId,stepId:context.stepId,approvalReceiptId:data.rulesApprovalReceiptId,proposalDigest:data.approvalDigest,recordInside:result=>context.recordInside(result,[])});
+    return {result:json({file:result.file,hash:result.hash,requestId:context.requestId,state:'completed'}),changes:[],recorded:true};
+   }catch(error){
+    if(object(error)&&['MIO_RULES_WRITE_UNCERTAIN','MIO_RULES_PENDING'].includes(String(error.code)))fail('AGENT_TASK_UNKNOWN_RESULT','规范发布待对账，请查询原请求，不能重发');
+    throw error;
+   }
+  }
   if(prepared.operation===AGENT_TASK_ASK_OPERATION)fail('AGENT_TASK_INVALID_TOOL','提问由宿主等待用户回答，不会执行');
   const beforeEffect=():void=>{
    context.beforeEffect();
@@ -600,12 +633,12 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
      const requested=parseAgentTaskToolLoadInput(prepared.input);if(!requested)fail('AGENT_TASK_INVALID_TOOL','工具加载参数无效');
      const loaded=new Set(loadedAgentTaskToolGroups(steps));
      const groups=requested.filter(group=>!loaded.has(group)),selected=new Set(groups);
-     const names=list().filter(tool=>{const group=agentTaskToolGroupForName(tool.name);return group!==undefined&&group!=='core'&&selected.has(group);}).map(tool=>tool.name);
+     const names=list().filter(tool=>{const group=agentTaskToolGroupForName(tool.name,catalogProfile);return group!==undefined&&group!=='core'&&selected.has(group);}).map(tool=>tool.name);
      const result:AgentTaskJson={groups,tools:names};
      return {result,changes:[],recorded:false};
     }
-    const requested=parseAgentTaskToolNameLoadInput(prepared.input);if(!requested)fail('AGENT_TASK_INVALID_TOOL','工具加载参数无效');
-    const loaded=new Set(loadedAgentTaskToolNames(steps)),names=requested.filter(name=>!loaded.has(name));
+    const requested=parseAgentTaskToolNameLoadInput(prepared.input,catalogProfile);if(!requested)fail('AGENT_TASK_INVALID_TOOL','工具加载参数无效');
+    const loaded=new Set(loadedAgentTaskToolNames(steps,catalogProfile)),names=requested.filter(name=>!loaded.has(name));
     const result:AgentTaskJson={names};
     return {result,changes:[],recorded:false};
    }
@@ -813,6 +846,6 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   db.prepare(`UPDATE ${table} SET ${fields.map(field=>`"${field}"=?`).join(',')} WHERE ${descriptor.id}=? AND projectId=?`).run(...values,identity.id,projectId);
  }
 
- return {list,prepare,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,currentTargets,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
+ return {list,diagnosticList:listDiagnosticAgentTaskTools,prepare,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,currentTargets,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
 }
 export type AgentTaskTools=ReturnType<typeof createAgentTaskTools>;

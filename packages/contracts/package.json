@@ -7,6 +7,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./private-storage": "./src/private-storage.ts",
+    "./asset-media": "./src/asset-media.ts",
+    "./media-reference": "./src/media-reference.ts",
+    "./media-reference-errors": "./src/media-reference-errors.ts",
     "./export-sample-peak": "./src/export-sample-peak.ts",
     "./timeline-export-float": "./src/timeline-export-float.ts",
     "./timeline-export-range": "./src/timeline-export-range.ts",
@@ -19,6 +22,7 @@
     "./agent-task-storage": "./src/agent-task-storage.ts",
     "./mio-run-usage": "./src/mio-run-usage.ts",
     "./mio-storage": "./src/mio-storage.ts",
+    "./mio-rules": "./src/mio-rules.ts",
     "./agent-timeline-gain": "./src/agent-timeline-gain.ts",
     "./timeline-audio-preview": "./src/timeline-audio-preview.ts",
     "./timeline-audio-continuous": "./src/timeline-audio-continuous.ts",

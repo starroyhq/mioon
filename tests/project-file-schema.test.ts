@@ -99,11 +99,11 @@ test('the fixed format-72 source does not load the public opener or project-file
 
 test('table placement lists every kept, application and removed table once', () => {
   // The task domain holds the Mock provider's two ledger tables as well.
-  assert.deepEqual([CONTENT_TABLES.length, HISTORY_TABLES.length, CACHE_TABLES.length, APP_DATABASE_TABLES.length, REMOVED_TABLES.length], [18, 45 + 2 + 6, 2, 3, 10]);
+  assert.deepEqual([CONTENT_TABLES.length, HISTORY_TABLES.length, CACHE_TABLES.length, APP_DATABASE_TABLES.length, REMOVED_TABLES.length], [18, 45 + 2 + 7, 2, 3, 10]);
   assert.deepEqual(Object.entries(HISTORY_TABLES_BY_DOMAIN).map(([domain, tables]) => [domain, tables.length]),
-    [['receipts', 17], ['tasks', 13 + 2], ['timelineHistory', 2], ['mio', 19]]);
+    [['receipts', 17], ['tasks', 13 + 2], ['timelineHistory', 2], ['mio', 20]]);
   const all = [...CONTENT_TABLES, ...HISTORY_TABLES, ...CACHE_TABLES, ...APP_DATABASE_TABLES, ...REMOVED_TABLES];
-  assert.equal(new Set(all).size, 78 + 2 + 6);
+  assert.equal(new Set(all).size, 78 + 2 + 7);
   assert.equal(databaseOf('jobs'), 'history');
   assert.deepEqual(['mock_provider_tasks', 'mock_provider_submissions'].map(table => [databaseOf(table), HISTORY_TABLES_BY_DOMAIN.tasks.includes(table)]), [['history', true], ['history', true]]);
   assert.equal(databaseOf('workspace_preferences'), 'app');
@@ -173,7 +173,7 @@ test('every format-72 object has exactly one destination and the planned counts'
   assert.deepEqual([droppedContentKeys.length, droppedContentKeys.reduce((sum, key) => sum + key.child.columns.length, 0)], [5, 10]);
   assert.deepEqual(droppedContentKeys.filter(key => key.originallyDeferred).map(key => `${key.child.table}(${key.child.columns.join(',')})`), ['image_groups(activeTaskId,id,projectId)', 'scene_results(requestId)']);
   assert.equal(columns((row, table) => databaseOf(table) === 'app' && databaseOf(String(row.table)) === 'project'), 1);
-  assert.equal(CROSS_FILE_RELATIONS.length, 57);
+  assert.equal(CROSS_FILE_RELATIONS.length, 58);
   assert.deepEqual(CROSS_FILE_RELATIONS, currentCrossFileRelations(derivation()));
   assert.equal(DROPPED_CONTENT_KEYS.length, 5);
   assert.deepEqual(convertedTriggers.filter(trigger => !/^agent_target_(jobs|exports|image_tasks|frame_tasks)_/.test(trigger.name)).map(trigger => trigger.name), CONVERTED_TEMP_TRIGGERS.map(trigger => trigger.name));
@@ -281,7 +281,7 @@ test('each database built alone compiles every insert, update and delete of ever
       db.close();
     }
   }
-  assert.equal(tables, 20 + 55 + 3);
+  assert.equal(tables, 20 + 56 + 3);
 });
 
 // Frozen per schema version: a DDL change that regenerates the manifest without
@@ -289,7 +289,7 @@ test('each database built alone compiles every insert, update and delete of ever
 const MANIFEST_DIGESTS: Readonly<Record<DatabaseKind, Readonly<Record<number, string>>>> = {
   project: {1: '6e96c3872a938817b65e71750d1e68bd8fa84c7f3f8d92490de22a0e34d649ce'},
   // 2: the Mock provider's ledger in the task domain.
-  history: {1: 'e0445f02d867f3aeedc283708f58d30efa7b0465e8987f7f739e8f5580791243', 2: '34ad833f0a676602490ce69b0f8804f79f1b30750b76a9f58d41abeb14dfd7a0', 3: 'b9487064fb0fa4447f3eb3896121d648184007a2b675927222beea3518c91a3a', 4: '047b9b4d7c2aa2376f2a97c2d4b042b326d730b5ad79504e77d3f8df1ca8dc82'},
+  history: {1: 'e0445f02d867f3aeedc283708f58d30efa7b0465e8987f7f739e8f5580791243', 2: '34ad833f0a676602490ce69b0f8804f79f1b30750b76a9f58d41abeb14dfd7a0', 3: 'b9487064fb0fa4447f3eb3896121d648184007a2b675927222beea3518c91a3a', 4: '047b9b4d7c2aa2376f2a97c2d4b042b326d730b5ad79504e77d3f8df1ca8dc82', 5: '6d2615d8d96d70d8d5926d387f1709e13d74dacf9d77414592750ec3ee3848de'},
   cache: {1: 'be43585ad9045d7ed844c609b9af13829372efb83741b55f4f4f8e7b2f2fd61c'},
 };
 test('building as main or as an attached schema gives the committed manifest', () => {

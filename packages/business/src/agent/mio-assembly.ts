@@ -84,6 +84,11 @@ function modelCallIds(value: AgentTaskJson): string[] {
   return Array.isArray(value.content) ? value.content.flatMap(modelCallIds) : [];
 }
 function describe(value: AgentTaskJson, sources: SourceIndex, cursors = new Map<string, number>(), role = '', preferredSource?: string): Descriptor {
+  if (object(value) && value.type === 'mio.context.rules-snapshot' && equalKeys(value, ['type', 'message'])) {
+    const rule = sources.values.get(encoded(value.message))?.filter(item => item.kind === 'rules_snapshot').at(-1);
+    if (!rule) return fail();
+    return {object: [['type', {value: 'mio.context.rules-snapshot'}], ['message', {source: rule.reference.source, path: [...rule.reference.path]}]]};
+  }
   const currentRole = object(value) ? typeof value.role === 'string' ? value.role : value.type === 'function_call_output' || value.type === 'tool_result' ? 'tool' : value.type === 'function_call' || value.type === 'tool_use' ? 'assistant' : role : role;
   const choose = (items: readonly Candidate[], key: string): Reference => {
     const kinds = currentRole === 'user' ? ['user_message', 'note'] : currentRole === 'assistant' ? ['model_output'] : currentRole === 'tool' ? ['tool_result', 'answer'] : [];
@@ -287,6 +292,7 @@ export function assembleRequest(assemblerVersion: number, snapshot: MioAssemblyS
     if (entry.id !== manifest.entryIds[index] || !object(expected) || expected.id !== entry.id || expected.sha256 !== entry.sha256 || hash(encoded(entry.payload)) !== entry.sha256 || sources.has(entry.id)) return fail();
     sources.set(entry.id, entry.payload);
   }
+  if (manifest.rulesBlobHash !== null && !snapshot.entries.some(entry => entry.kind === 'rules_snapshot' && entry.sha256 === manifest.rulesBlobHash)) return fail();
   if (hash(encoded(snapshot.configuration)) !== manifest.configurationBlobHash || hash(encoded(snapshot.tools)) !== manifest.toolsBlobHash || hash(encoded(snapshot.envelope)) !== manifest.systemBlobHash || hash(encoded(snapshot.baseline)) !== manifest.baselineBlobHash) return fail();
   const counter = {nodes: 0}, history = resolve(rawView.history, sources, counter), wireHistory = resolve(rawView.wireHistory, sources, counter);
   if (!Array.isArray(history) || !Array.isArray(wireHistory)) return fail();
@@ -414,7 +420,7 @@ export function createMioAssembly(records: MioRecords, options: {newId?: () => s
     for (const id of noteEntryIds) selected.add(id);
     // Preserve current user-action identity and the frozen host observation,
     // including empty/short messages that need no large-content reference.
-    for (const entry of entries) if (entry.runId === runId && (entry.kind === 'user_message' || entry.kind === 'host_hint' && object(entry.payload) && entry.payload.type === 'run_context')) selected.add(entry.id);
+    for (const entry of entries) if (entry.runId === runId && (entry.kind === 'user_message' || entry.kind === 'rules_snapshot' || entry.kind === 'host_hint' && object(entry.payload) && entry.payload.type === 'run_context')) selected.add(entry.id);
     const retainContext = (id: string): void => {
       const entry = entries.find(item => item.id === id); if (!entry || entry.kind !== 'host_hint' || !object(entry.payload) || entry.payload.type !== 'run_context' || entry.payload.contextView === undefined) return;
       for (const source of contextSources(entry.payload.contextView)) if (!selected.has(source.id)) { selected.add(source.id); retainContext(source.id); }

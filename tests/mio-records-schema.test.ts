@@ -21,15 +21,15 @@ function fixture(){
  return{store,db,projectId,conversationId,run,entry,step,close(){store.close();rmSync(root,{recursive:true,force:true});}};
 }
 
-test('K1 creates nineteen Mio tables including counters and ordinary process revision triggers',()=>{
+test('K1 creates twenty Mio tables including counters and ordinary process revision triggers',()=>{
  const f=fixture();try{
   const tables=f.db.prepare("SELECT name FROM main.sqlite_master WHERE type='table' AND name GLOB 'mio_*' ORDER BY name").all().map(r=>String(r.name));
-  assert.deepEqual(tables,[...HISTORY_TABLES_BY_DOMAIN.mio].sort());assert.equal(tables.length,19);
+  assert.deepEqual(tables,[...HISTORY_TABLES_BY_DOMAIN.mio].sort());assert.equal(tables.length,20);
   for(const name of LEGACY_MIO_TABLES)assert.equal(f.db.prepare('SELECT 1 FROM main.sqlite_master WHERE name=?').get(name),undefined);
   const process=f.db.prepare("SELECT name,sql FROM main.sqlite_master WHERE type='trigger' AND name GLOB 'agent_target_*_v2'").all();
   assert.equal(process.length,12);assert.ok(process.every(r=>String(r.sql).includes('mio_process_target_revisions')&&!String(r.sql).includes('project.')));
   assert.equal(f.db.prepare("SELECT count(*) AS n FROM temp.sqlite_master WHERE name GLOB 'agent_target_*_v2'").get()?.n,0);
-  assert.equal(f.db.prepare('SELECT version FROM main.schema_version').get()?.version,4);
+  assert.equal(f.db.prepare('SELECT version FROM main.schema_version').get()?.version,5);
  }finally{f.close();}
 });
 
