@@ -9,6 +9,9 @@ import {boundedShutdown} from '@mioon/business/operation-lifecycle';
 import type {AppLibrary} from '@mioon/business/app-db/index';
 import {createProjectHomeServices,readProjectCover} from '@mioon/business/project-home';
 import {createProjectServiceApplication} from '@mioon/business/project-service-application';
+import {createProjectVersions} from '@mioon/business/project-versions/service';
+import {isProjectVersionOperation, isProjectVersionResponse, projectVersionSchemas} from '../../../../packages/contracts/src/project-version-operations.ts';
+import type {ProjectVersionListInput, ProjectVersionSaveInput, ProjectVersionPreviewInput} from '../../../../packages/contracts/src/project-version-operations.ts';
 import type {IncomingMessage, ServerResponse} from 'node:http';
 import type {ServerOptions} from '../index.ts';
 import type {ApplicationRuntime} from '../application-runtime.ts';
@@ -65,6 +68,22 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     throw error;
   }
   const worker = project.startWorker();
+  const versions = createProjectVersions(store);
+  const serviceCall = async (operation: string, input: unknown, callContext?: Record<string, unknown>): Promise<unknown> => {
+    if (!isProjectVersionOperation(operation)) return project.serviceCall(operation, input, callContext);
+    const parsed = projectVersionSchemas[operation].safeParse(input);
+    if (!parsed.success) throw new AppError('VALIDATION_ERROR', '项目版本参数无效', 400, {issues: parsed.error.issues});
+    let result: unknown;
+    switch (operation) {
+      case 'project.version.list': result = await versions.list(parsed.data as ProjectVersionListInput); break;
+      case 'project.version.save':
+        project.services.assertMutationAllowed();
+        result = await versions.save(parsed.data as ProjectVersionSaveInput); break;
+      case 'project.version.preview': result = await versions.preview(parsed.data as ProjectVersionPreviewInput); break;
+    }
+    if (!isProjectVersionResponse(operation, parsed.data, result)) throw new AppError('INTERNAL_ERROR', '项目版本服务返回无效数据', 500);
+    return result;
+  };
   const summary = () => {
     const value = createProjectHomeServices(store, {readRecentOpened: () => {
       const openedAt = library.registry.get(projectId)?.lastOpenedAt;
@@ -119,7 +138,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
       if (!input || typeof input.operation !== 'string') throw new AppError('VALIDATION_ERROR', '缺少 operation', 400);
       assertProjectRpc(store.db, address, input.operation, input.input || {});
       deletionGate.rpc(res, input.operation, input.input);
-      const data = await callObservedRpc(req, res, {call: project.serviceCall}, input.operation, input.input || {});
+      const data = await callObservedRpc(req, res, {call: serviceCall}, input.operation, input.input || {});
       if (!res.destroyed && !res.writableEnded) json(res, 200, {ok: true, data});
       return true;
     }

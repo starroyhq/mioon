@@ -7,6 +7,7 @@ import {MIO_SCHEMA,initializeMioStorageCounters} from './domains/mio.ts';
 import {RECEIPT_SCHEMA} from './domains/receipts.ts';
 import {TASK_SCHEMA} from './domains/tasks.ts';
 import {TIMELINE_HISTORY_SCHEMA} from './domains/timeline-history.ts';
+import {VERSION_SCHEMA} from './domains/versions.ts';
 import {CONTENT_TABLES} from './tables.ts';
 
 /** The three SQLite databases of one project: the project file itself, the
@@ -19,8 +20,8 @@ export type DatabaseKind = keyof typeof PROJECT_DATABASE_NAMES;
  * schema/manifest.ts (`node tests/helpers/project-file-schema-derivation.ts --write`)
  * and recording the new manifest digest in tests/project-file-schema.test.ts. */
 export const PROJECT_FILE_SCHEMA_VERSION = 2;
-/** 3 replaced development task tables; 4 adds counters; 5 adds rule-write intents. */
-export const HISTORY_SCHEMA_VERSION = 5;
+/** 3 replaced development task tables; 4 adds counters; 5 adds rule-write intents; 6 adds local project versions. */
+export const HISTORY_SCHEMA_VERSION = 6;
 export const CACHE_SCHEMA_VERSION = 2;
 
 /** SQLite header `application_id` values: 'MioP', 'MioH' and 'MioC'. */
@@ -74,7 +75,7 @@ const HISTORY_STATE_METADATA: readonly string[] = Object.freeze([
 
 const DOMAIN_STATEMENTS: Readonly<Record<DatabaseKind, readonly string[]>> = {
   project: CONTENT_SCHEMA,
-  history: [...RECEIPT_SCHEMA, ...TASK_SCHEMA, ...TIMELINE_HISTORY_SCHEMA, ...MIO_SCHEMA],
+  history: [...RECEIPT_SCHEMA, ...TASK_SCHEMA, ...TIMELINE_HISTORY_SCHEMA, ...MIO_SCHEMA, ...VERSION_SCHEMA],
   cache: CACHE_SCHEMA,
 };
 

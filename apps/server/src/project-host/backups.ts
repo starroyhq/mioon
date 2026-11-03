@@ -40,15 +40,19 @@ export interface ProjectBackupsOptions {
   /** Trusted in-process tests only. Defaults to the real native copy; there
    * is no HTTP/environment option for choosing a copy implementation. */
   readonly copy?: typeof copyProjectBackup;
+  readonly openBackup?: typeof openProjectBackup;
   readonly slowMs?: number;
   readonly onWarning?: (projectId: string, code: string) => void;
 }
 
-export function createProjectBackups({directories, registry, identity, assertProjectFile, outsidePaths, backup = createProjectBackup, copy = copyProjectBackup, slowMs = 10_000,
+export function createProjectBackups({directories, registry, identity, assertProjectFile, outsidePaths, backup = createProjectBackup, copy = copyProjectBackup, openBackup = openProjectBackup, slowMs = 10_000,
   onWarning = (projectId, code) => console.warn('Project backup:', projectId, code)}: ProjectBackupsOptions) {
   const queues = new Map<string, Promise<unknown>>();
   const statuses = new Map<string, Status>();
   const targets = new Set<string>();
+  // Published backups are immutable. Cache successful validation only, never
+  // readers or failures; every hit still passes the private-file guard.
+  const validated = new Map<string, string>();
   const rootFor = (projectId: string): string => {
     if (!isProjectId(projectId)) throw failure('VALIDATION_ERROR', '项目 ID 无效。', 400);
     return path.join(projectLocation(directories, projectId).localDir, 'backups');
@@ -78,19 +82,40 @@ export function createProjectBackups({directories, registry, identity, assertPro
     validateManagedFile(fileFor(projectId, backupId), {root: rootFor(projectId), private: true});
     return found;
   };
-  const verify = (entry: Entry) => {
-    const reader = openProjectBackup(fileFor(entry.projectId, entry.backupId));
+  const validationKey = (entry: Entry): string => {
+    const file = fileFor(entry.projectId, entry.backupId);
+    validateManagedFile(file, {root: rootFor(entry.projectId), private: true});
+    const info = lstatSync(file, {bigint: true});
+    // ctime/birthtime distinguish an inode reused for a different generation,
+    // even when a replacement preserves its size and restores its mtime.
+    return [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs, info.birthtimeNs,
+      entry.projectId, entry.contentSequence, entry.sizeBytes].join(':');
+  };
+  const verify = (entry: Entry, before = validationKey(entry)) => {
+    const file = fileFor(entry.projectId, entry.backupId);
+    const reader = openBackup(file);
     if (reader.identity.projectId !== entry.projectId || reader.identity.contentSequence !== entry.contentSequence || reader.identity.sizeBytes !== entry.sizeBytes) {
       reader.close();
+      validated.delete(file);
       throw failure('PROJECT_BACKUP_CHANGED', '备份与索引不一致，未执行恢复。');
     }
+    try {
+      if (before !== validationKey(entry)) throw failure('PROJECT_BACKUP_CHANGED', '备份在校验期间改变，未执行恢复。');
+      validated.set(file, before);
+    } catch (error) {reader.close(); validated.delete(file); throw error;}
     return reader;
   };
-  const validEntries = (entries: Entry[]): Entry[] => entries.filter(entry => {
+  const confirm = (entry: Entry): void => {
+    const file = fileFor(entry.projectId, entry.backupId);
     try {
-      validateManagedFile(fileFor(entry.projectId, entry.backupId), {root: rootFor(entry.projectId), private: true});
-      const reader = verify(entry); reader.close(); return true;
-    } catch {return false;}
+      const key = validationKey(entry);
+      if (validated.get(file) === key) return;
+      validated.delete(file);
+      const reader = verify(entry, key); reader.close();
+    } catch (error) {validated.delete(file); throw error;}
+  };
+  const validEntries = (entries: Entry[]): Entry[] => entries.filter(entry => {
+    try {confirm(entry); return true;} catch {return false;}
   });
   const cleanup = (projectId: string, retained: Entry[]): void => {
     const root = rootFor(projectId), keep = new Set(retained.map(entry => entry.backupId));
@@ -103,7 +128,7 @@ export function createProjectBackups({directories, registry, identity, assertPro
         const child = path.join(directory, entry.name);
         if (entry.isDirectory() && /^copy-[A-Za-z0-9]+$/u.test(entry.name)) removeOwned(child);
         else if (entry.isFile() && /^(?:project\.mioon|[0-9a-f-]{36}\.sqlite)(?:-journal)?$/u.test(entry.name)) {
-          validateManagedFile(child, {root, private: true}); rmSync(child);
+          validateManagedFile(child, {root, private: true}); rmSync(child); validated.delete(child);
         } else throw failure('PROJECT_BACKUP_CLEANUP_FAILED', '备份暂存目录包含未知文件，已保留。');
       }
       rmdirSync(directory);
@@ -152,14 +177,21 @@ export function createProjectBackups({directories, registry, identity, assertPro
       current = {...readStatus(projectId), lastAttemptAt: current.lastAttemptAt, state: 'running', lastError: null};
       ensurePrivateDirectory(root, {create: true});
       saveStatus(current);
-      const indexed = index(projectId), previous = validEntries(indexed), latest = previous[0];
+      const indexed = index(projectId);
       const sequence = Number(host.store.db.prepare('SELECT contentSequence FROM project.project_file WHERE singleton=1').get()?.contentSequence);
+      // Unchanged opens need only the latest valid copy. Inspecting/listing or
+      // making a new copy checks the older entries when they are actually used.
+      let latestIndex = 0;
+      for (; latestIndex < indexed.length; latestIndex++) {
+        try {confirm(indexed[latestIndex]); break;} catch { /* A bad copy never suppresses a replacement. */ }
+      }
+      const latest = indexed[latestIndex];
       if (latest && latest.contentSequence === sequence) {
-        const reader = verify(latest); reader.close();
-        if (previous.length !== indexed.length) durableWrite(root, 'index.json', {version: 1, projectId, backups: previous});
+        const retained = indexed.slice(latestIndex);
+        if (latestIndex !== 0) durableWrite(root, 'index.json', {version: 1, projectId, backups: retained});
         // Confirm the committed index's directory before deleting any orphan.
         syncCopiedDirectory(root);
-        cleanup(projectId, previous);
+        cleanup(projectId, retained);
         saveStatus({...current, state: 'idle'});
         return;
       }
@@ -173,12 +205,15 @@ export function createProjectBackups({directories, registry, identity, assertPro
       const copied = await backup(host.store, path.join(pending, 'project.mioon'));
       if (copied.projectId !== projectId) throw failure('PROJECT_BACKUP_CHANGED', '备份项目身份不一致。');
       const entry: Entry = {...projectBackupSummarySchema.parse({backupId, projectId, contentSequence: copied.contentSequence, createdAt: new Date().toISOString(), reason, sizeBytes: copied.sizeBytes}), sourceProjectDir: host.store.projectDir};
+      const previous = validEntries(indexed.slice(latestIndex));
       const next = [entry, ...previous].slice(0, 3);
       // Publication of this index is the commit point. Never restore an older
       // index after removing its files, even when later cleanup fails.
       write(root, 'index.json', {version: 1, projectId, backups: next});
       published = true;
       syncCopiedDirectory(root);
+      // createProjectBackup has already validated this finished native copy.
+      validated.set(fileFor(projectId, backupId), validationKey(entry));
       current = {...current, state: 'idle', lastCompletedAt: entry.createdAt};
       saveStatus(current);
       cleanup(projectId, next);

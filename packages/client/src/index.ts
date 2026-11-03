@@ -1,5 +1,6 @@
-import {s1PublicOperationSchemas,s1PublicOperationDescriptions,isS1PublicOperation} from '../../contracts/src/asset-generation.ts';
-import {assetMediaPublicSchemas,assetMediaDescriptions,assetMediaEffects,isAssetMediaOperation,trustedAssetMediaSchemas,isTrustedAssetMediaOperation,assetMediaStatusListResponseSchema,assetMediaPrepareResponseSchema,nativeAssetImportResponseSchema} from '../../contracts/src/asset-media.ts';
+import {publicOperationSchemas as schemas, publicOperationDescriptions as descriptions} from '@mioon/contracts/public-operations';
+import {s1PublicOperationSchemas,isS1PublicOperation} from '../../contracts/src/asset-generation.ts';
+import {assetMediaPublicSchemas,assetMediaEffects,isAssetMediaOperation,trustedAssetMediaSchemas,isTrustedAssetMediaOperation,assetMediaStatusListResponseSchema,assetMediaPrepareResponseSchema,nativeAssetImportResponseSchema} from '../../contracts/src/asset-media.ts';
 import type {TrustedAssetMediaOperation} from '../../contracts/src/asset-media.ts';
 import {projectApiPath,projectRpcPath} from '../../contracts/src/project-file.ts';
 import {isTimelineClipLoudnessResponse, TIMELINE_CLIP_LOUDNESS_LIMITS} from '@mioon/contracts/timeline-clip-loudness';
@@ -43,13 +44,10 @@ export {prepareTimelineMixLoudness} from './timeline-mix-loudness.ts';
 import {isSubjectGenerationResponse,isSubjectGenerationRetryResponse} from '@mioon/contracts';
 import {isEntityAddressedOperation, rpcPathFor} from '../../contracts/src/project-addressing.ts';
 import {isProjectId} from '../../contracts/src/project-file.ts';
-import {projectBackupSchemas, projectBackupDescriptions, projectBackupEffects, isProjectBackupOperation, isProjectBackupResponse} from '../../contracts/src/project-backups.ts';
+import {isProjectBackupOperation, isProjectBackupResponse} from '../../contracts/src/project-backups.ts';
+import {isProjectVersionOperation, isProjectVersionResponse} from '../../contracts/src/project-version-operations.ts';
 
-// Application extensions stay in their own contracts leaves. CLI and MCP
-// discover this exact composition without extending Mio's model tool catalog.
-export const schemas = {...coreSchemas, ...projectBackupSchemas, ...assetMediaPublicSchemas, ...s1PublicOperationSchemas};
-export const descriptions = {...coreDescriptions, ...projectBackupDescriptions, ...assetMediaDescriptions, ...s1PublicOperationDescriptions};
-export {resolveConnection, effectAnnotations};
+export {schemas, descriptions, resolveConnection, effectAnnotations};
 export const VERSION = applicationPackage.version;
 export const EXIT_CODES = Object.freeze({success: 0, unexpected: 1, validation: 2, conflict: 3, unavailable: 4, timeout: 5, operationFailed: 6, interrupted: 130});
 export const discoverySchemas = {
@@ -161,7 +159,7 @@ export function operationDefinition(operation: string): OperationDefinition {
   if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
   const shared = jsonSchema(operationSchemas[operation]);
   const inputSchema = isEntityAddressedOperation(operation) ? withProjectAddress(shared) : shared;
-  return {operation, toolName: operation.replaceAll('.', '_'), command: operation.replaceAll('.', ' '), description: operationDescriptions[operation] || operation, inputSchema, requiresRequestId: requiresField(inputSchema,'requestId'), effects: isAssetMediaOperation(operation) ? assetMediaEffects[operation] : isProjectBackupOperation(operation) ? projectBackupEffects[operation] : operationEffect(operation)};
+  return {operation, toolName: operation.replaceAll('.', '_'), command: operation.replaceAll('.', ' '), description: operationDescriptions[operation] || operation, inputSchema, requiresRequestId: requiresField(inputSchema,'requestId'), effects: isAssetMediaOperation(operation) ? assetMediaEffects[operation] : operationEffect(operation)};
 }
 /** Definition for the fixed built-in model catalog. Public CLI/MCP schema
  * discovery can evolve without changing Mio's reviewed request fingerprints. */
@@ -188,6 +186,7 @@ const keyedMutationOperations = new Set<string>([
   ...LOCAL_MUTATION_OPERATIONS, ...TIMELINE_MUTATION_OPERATIONS, ...REFERENCE_MUTATION_OPERATIONS, ...IMAGE_MUTATION_OPERATIONS, ...FRAME_MUTATION_OPERATIONS, ...SCENE_MUTATION_OPERATIONS, ...PREVIS_MUTATION_OPERATIONS,
   'generation.submit', 'job.retry', 'export.create', 'image.task.observeRemote', 'image.review.prepare', 'lut.import',
   'project.backup.restore',
+  'project.version.save',
 ]);
 interface RpcBody {operation: string; input: Record<string, unknown>; expectedWorkspaceOrigin?: string}
 function uncertainRequestDetails(body: unknown): Record<string, unknown> {
@@ -391,10 +390,6 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       const result = assetMediaPublicSchemas[operation].safeParse(input);
       if (!result.success) throw new ClientError('VALIDATION_ERROR', 'Invalid asset media arguments.', {details:{issues:result.error.issues}});
       parsed = result.data;
-    } else if (isProjectBackupOperation(operation)) {
-      const result = projectBackupSchemas[operation].safeParse(input);
-      if (!result.success) throw new ClientError('VALIDATION_ERROR', 'Invalid project backup arguments.', {details: {issues: result.error.issues}});
-      parsed = result.data;
     } else parsed = parse(operation as OperationName, input) as Record<string, unknown>;
     const {expectedWorkspaceOrigin, projectId, ...transportOptions} = options ?? {};
     const body: RpcBody = {operation, input: parsed, ...workspaceOriginOptions(expectedWorkspaceOrigin)};
@@ -408,6 +403,8 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid asset media response.');
     if (isProjectBackupOperation(operation) && !isProjectBackupResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid project backup response.', {details: uncertainRequestDetails(body)});
+    if (isProjectVersionOperation(operation) && !isProjectVersionResponse(operation, parsed, result))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid project version response.', {details: uncertainRequestDetails(body)});
     if (operation === 'generation.submit' && Object.hasOwn(parsed, 'subjectVersionId') && !isSubjectGenerationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject-generation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     const retry = result as {snapshot?: {subjectReference?: unknown; subjectVersionId?: unknown; referenceBindings?: unknown; referenceAssets?: unknown}} | null | undefined;

@@ -2,6 +2,8 @@ import {lookPackInspectEffects} from './look-pack-inspection.ts';
 import {timelineColourEffects} from './timeline-colour.ts';
 import {lutResourceEffects} from './lut-resources.ts';
 import {previsEffects} from './previs.ts';
+import {projectBackupEffects} from './project-backups.ts';
+import {projectVersionEffects} from './project-version-operations.ts';
 // Audited against services.ts, local-mutations.mjs, references.ts, timeline.ts and jobs.ts.
 // Effects include work the call schedules/resumes, not just its synchronous RPC.
 // These are advisory descriptions, never permission checks or authorization.
@@ -31,6 +33,7 @@ const generation = {...localAdd,idempotent:true,openWorld:true,fileWrite:true,
 const render = {...localAdd,idempotent:true,fileWrite:true,localProcess:true};
 
 export const operationEffects = Object.freeze({
+  ...projectBackupEffects,...projectVersionEffects,
   'export.cancel':define({...localEdit,idempotent:true,fileWrite:true,localProcess:true,notes:'Cancels one local export and terminates only its owned media operation; source files and acceptance receipt remain.'}),
   'export.activity.get':define({...read,notes:'Reads only one owned export stage and elapsed time; unavailable encoding progress is null'}),
   'export.output.get':define({...read,notes:'Verifies and reads only an owned managed export file and location.'}),

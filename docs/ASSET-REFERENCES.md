@@ -1,6 +1,6 @@
 # 素材引用：S1
 
-项目资产只有引用一种定位方式。路径导入不复制；网页上传先暂存，再排他发布到固定的 `素材/`。项目格式为 2，旧格式明确拒绝打开、零写入；旧开发项目需要重建，不做转换。cache v2 不匹配时只重建缓存，history 保持原版本。Mio 工具目录、请求指纹和 agent 运行时不改。
+项目资产只有引用一种定位方式。路径导入不复制；网页上传先暂存，再排他发布到固定的 `素材/`。项目格式为 2，旧格式明确拒绝打开、零写入；旧开发项目需要重建，不做转换。cache v2 不匹配时只重建缓存，history 沿 V1-A 的 6。本卡不修改 Mio 工具目录、请求指纹和 agent 运行时。
 
 直接打开旧格式时，内核返回 `PROJECT_INVALID`（422），`details.reason` 为 `schema-version`。通过项目 ID 打开时，宿主返回 `PROJECT_UNAVAILABLE`（409），`details.reason` 为 `PROJECT_INVALID`、`invalidReason` 为 `schema-version`。
 
@@ -12,7 +12,8 @@
 |---|---|
 | `packages/contracts/src/media-reference.ts` | 原有引用/指纹，加统一的 `MediaStatusReason`、`MediaStatusView` 与校验 schema。网页和 L1 使用同一份定义。 |
 | `packages/contracts/src/media-reference-errors.ts` | 原 L1 错误定义及公开素材错误的窄投影。 |
-| `packages/contracts/src/asset-media.ts` | 引用资产记录、无路径的公共 DTO、状态/位置 DTO、导入 union、素材操作的独立 schema 与公开投影。普通素材操作只组合进客户端目录，不扩 Mio 工具目录。 |
+| `packages/contracts/src/asset-media.ts` | 引用资产记录、无路径的公共 DTO、状态/位置 DTO、导入 union、素材操作的独立 schema 与公开投影。不扩 Mio 工具目录。 |
+| `packages/contracts/src/public-operations.ts` | 公共操作与描述的单一权威目录。客户端直接导出同一对象，HTTP/CLI/MCP 共享公共输入，不在客户端另拼目录。 |
 
 `asset-generation.ts` 提供公共客户端的导入 union 和可选 `referenceRevisions`。固定 Mio 模型目录仍使用原有输入定义，模型不能传任意本机路径或目录确认；`modelOperationDefinition` 和生成器的只读 `--check` 核对其固定 schema。两套入口最终都经过业务层的引用、权限和完整哈希冻结。
 
@@ -29,6 +30,8 @@
 确认按项目和**实际文件所在目录本身**生效，不包括子目录。`isFileInDirectory` 等真实目录函数接收已经解析的实际路径；不能拿显示路径或可搬运路径的模糊匹配来做授权。应用库的许可在每次效果围栏重查，撤销后旧服务对象不能继续使用缓存许可。
 
 授权接线：桌面系统选择或 Finder/资源管理器真实拖入算主动确认，在同次导入登记目录；CLI 必须显式参数并逐项打印。MCP、Mio 和任何模型输入永远不能确认目录。外来项目的引用不携带本机许可。L1 引用服务只借用可信宿主注入的 B1 读取端口，不提供确认写入方法；确认写入由专用受信用户操作入口承担。
+
+普通素材写操作（包括只写私有预览 token 的操作）使用应用写入守卫。受信路径导入、目录确认和撤销在请求解析后调用同一 `project.services.assertMutationAllowed()`；所有者中止或原 B1 关闭后被新所有者重开，旧能力不能写入项目或应用库。位置列表读取不要求写入许可。
 
 ## L1 安全读取
 

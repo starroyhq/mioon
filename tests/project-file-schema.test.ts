@@ -101,13 +101,16 @@ const CURRENT_RELATION_CONTRACT: readonly string[] = [
   "69 main.mio_conversation_policy_requests(projectId!)->project.projects(id)",
   "70 main.mio_process_target_revisions(projectId!)->project.projects(id)",
   "71 main.mio_rule_writes(projectId!)->project.projects(id)",
-  "72 main.mio_imports(assetId?)->project.assets(id)"
+  "72 main.project_versions(projectId!)->project.projects(id)",
+  "73 main.project_version_requests(projectId!)->project.projects(id)",
+  "74 main.project_version_capture_marks(projectId!)->project.projects(id)",
+  "75 main.mio_imports(assetId?)->project.assets(id)"
 ];
 const relationKey = (relation: (typeof CROSS_FILE_RELATIONS)[number]): string => `${relation.index} ${relation.child.schema}.${relation.child.table}(${relation.child.columns.map((column,i)=>column+(relation.child.nullable[i]?'?':'!')).join(',')})->${relation.parent.schema}.${relation.parent.table}(${relation.parent.columns.join(',')})${relation.originallyDeferred?' deferred':''}`;
 
 test('the current manifest is generated from canonical declarations without rewriting its sources', () => {
   const inputs = [
-    ...['content', 'receipts', 'tasks', 'timeline-history', 'cache', 'mio'].map(name => `../packages/business/src/project-file/schema/domains/${name}.ts`),
+    ...['content', 'receipts', 'tasks', 'timeline-history', 'cache', 'mio', 'versions'].map(name => `../packages/business/src/project-file/schema/domains/${name}.ts`),
     '../packages/business/src/project-file/cross-file/relations.ts', '../packages/business/src/project-file/cross-file/converted-triggers.ts',
   ].map(file => new URL(file, import.meta.url));
   const before = inputs.map(file => readFileSync(file, 'utf8'));
@@ -160,6 +163,7 @@ test('table placement lists every current domain once and keeps compatibility na
   const all = [...CONTENT_TABLES, ...HISTORY_TABLES, ...CACHE_TABLES, ...APP_DATABASE_TABLES, ...REMOVED_TABLES];
   assert.equal(new Set(all).size, all.length);
   assert.equal(CONTENT_TABLES.length, 18);
+  assert.equal(HISTORY_TABLES.length, 58);
   assert.equal(CACHE_TABLES.length, 2);
   assert.equal(APP_DATABASE_TABLES.length, 3);
   assert.equal(REMOVED_TABLES.length, 10);
@@ -167,12 +171,16 @@ test('table placement lists every current domain once and keeps compatibility na
   assert.deepEqual(HISTORY_TABLES_BY_DOMAIN.receipts.length, 17);
   assert.deepEqual(HISTORY_TABLES_BY_DOMAIN.tasks.length, 15);
   assert.deepEqual(HISTORY_TABLES_BY_DOMAIN.timelineHistory.length, 2);
+  assert.equal(HISTORY_TABLES_BY_DOMAIN.mio.length, 20);
+  assert.equal(HISTORY_TABLES_BY_DOMAIN.versions.length, 4);
   assert.equal(HISTORY_TABLES_BY_DOMAIN.mio.includes('mio_process_target_revisions'), true);
   assert.equal(HISTORY_TABLES_BY_DOMAIN.mio.includes('mio_storage_counters'), true);
   assert.equal(HISTORY_TABLES.includes('mock_provider_tasks'), true);
   for (const table of CONTENT_TABLES) assert.equal(databaseOf(table), 'project', table);
   for (const table of HISTORY_TABLES) assert.equal(databaseOf(table), 'history', table);
   for (const table of CACHE_TABLES) assert.equal(databaseOf(table), 'cache', table);
+  for (const table of APP_DATABASE_TABLES) assert.equal(databaseOf(table), 'app', table);
+  assert.throws(() => databaseOf('schema_version'), /Unknown project-file table/);
   for (const table of LEGACY_MIO_TABLES) assert.equal(databaseOf(table), 'history', table);
   assert.throws(() => databaseOf('no_such_table'), /Unknown project-file table/);
 });
@@ -211,6 +219,35 @@ test('every native object belongs to its declared database and old workspace sta
   assert.equal(owners.get('mock_provider_submissions'), 'history');
 });
 
+test('the independent versions domain has four exact table shapes, indexes and native/cross-file ownership keys', () => {
+  const expected = {
+    project_version_blobs: {columns: ['hash','profile','codec','rawBytes','compressedBytes','payload'], primary: ['hash'], indexes: ['sqlite_autoindex_project_version_blobs_1']},
+    project_versions: {columns: ['id','projectId','trigger','name','mioRunId','contentSequence','createdAt','blobHash','mioChangeRowid'], primary: ['id'], indexes: ['project_versions_page','project_versions_run','sqlite_autoindex_project_versions_1','sqlite_autoindex_project_versions_2']},
+    project_version_requests: {columns: ['projectId','requestId','operation','inputDigest','response'], primary: ['projectId','requestId'], indexes: ['sqlite_autoindex_project_version_requests_1']},
+    project_version_capture_marks: {columns: ['projectId','kind','key','createdAt'], primary: ['projectId','kind','key'], indexes: ['sqlite_autoindex_project_version_capture_marks_1']},
+  };
+  const db = buildAlone('history');
+  try {
+    assert.deepEqual([...HISTORY_TABLES_BY_DOMAIN.versions], Object.keys(expected));
+    assert.equal(readSchemaManifest(db, 'main').length, 524);
+    for (const [table, shape] of Object.entries(expected)) {
+      const actual = readTableShape(db, table);
+      assert.deepEqual(actual.columns.map(column => column.name), shape.columns, `${table}: all columns independently listed`);
+      assert.deepEqual(actual.columns.filter(column => Number(column.pk) > 0).sort((a, b) => Number(a.pk) - Number(b.pk)).map(column => column.name), shape.primary, `${table}: exact primary key`);
+      assert.deepEqual(actual.indexes.map(index => String(index.name)).sort(), [...shape.indexes].sort(), `${table}: complete index set`);
+      assert.equal(databaseOf(table), 'history');
+      assert.ok(actual.indexes.every(index => Array.isArray(actual.indexColumns[String(index.name)])), `${table}: every index has readable column metadata`);
+    }
+    assert.deepEqual(readTableShape(db, 'project_versions').foreignKeys.map(row => `${String(row.from)}->${String(row.table)}.${String(row.to)}`).sort(),
+      ['blobHash->project_version_blobs.hash', 'mioRunId->mio_runs.id', 'projectId->mio_runs.projectId']);
+    for (const table of ['project_version_blobs','project_version_requests','project_version_capture_marks']) assert.deepEqual(readTableShape(db, table).foreignKeys, []);
+    assert.deepEqual(CROSS_FILE_RELATIONS.filter(relation => Object.hasOwn(expected, relation.child.table)).map(relation => ({
+      table: relation.child.table, childSchema: relation.child.schema, columns: relation.child.columns, nullable: relation.child.nullable,
+      parent: relation.parent.table, parentColumns: relation.parent.columns,
+    })), ['project_versions','project_version_requests','project_version_capture_marks'].map(table => ({table, childSchema: 'main', columns: ['projectId'], nullable: [false], parent: 'projects', parentColumns: ['id']})));
+  } finally {db.close();}
+});
+
 test('kernel metadata and immutable guards preserve project identity and monotonic sequences', () => {
   const db = buildAlone('project');
   const id = '00000000-0000-4000-8000-000000000001';
@@ -240,6 +277,7 @@ test('kernel metadata and immutable guards preserve project identity and monoton
 
 test('native columns and ordered unique keys independently validate declared cross-file relations', () => {
   const input = declaredSchema(), relation = input.relations.find(value => value.child.table === 'image_tasks' && value.parent.table === 'image_versions')!;
+  assert.equal(input.relations.length, 61);
   assert.deepEqual(input.relations.map(relationKey), CURRENT_RELATION_CONTRACT);
   assert.ok(relation);
   assert.deepEqual(relation.child.columns, ['versionId', 'id', 'groupId', 'projectId']);
@@ -288,13 +326,14 @@ test('each database built alone compiles every insert, update and delete of ever
       }
     } finally { db.close(); }
   }
+  assert.equal(tables, 83);
   assert.equal(tables, CONTENT_TABLES.length+HISTORY_TABLES.length+CACHE_TABLES.length+5);
 });
 
 const MANIFEST_DIGESTS: Readonly<Record<DatabaseKind, Readonly<Record<number, string>>>> = {
   project: {1: '6e96c3872a938817b65e71750d1e68bd8fa84c7f3f8d92490de22a0e34d649ce', 2: 'f86a2d31c85aa42896bd7d93e8ececa66c039942a0e32d36cb22b7483ea9929f'},
   // 2: the Mock provider's ledger in the task domain.
-  history: {1: 'e0445f02d867f3aeedc283708f58d30efa7b0465e8987f7f739e8f5580791243', 2: '34ad833f0a676602490ce69b0f8804f79f1b30750b76a9f58d41abeb14dfd7a0', 3: 'b9487064fb0fa4447f3eb3896121d648184007a2b675927222beea3518c91a3a', 4: '047b9b4d7c2aa2376f2a97c2d4b042b326d730b5ad79504e77d3f8df1ca8dc82', 5: '6d2615d8d96d70d8d5926d387f1709e13d74dacf9d77414592750ec3ee3848de'},
+  history: {1: 'e0445f02d867f3aeedc283708f58d30efa7b0465e8987f7f739e8f5580791243', 2: '34ad833f0a676602490ce69b0f8804f79f1b30750b76a9f58d41abeb14dfd7a0', 3: 'b9487064fb0fa4447f3eb3896121d648184007a2b675927222beea3518c91a3a', 4: '047b9b4d7c2aa2376f2a97c2d4b042b326d730b5ad79504e77d3f8df1ca8dc82', 5: '6d2615d8d96d70d8d5926d387f1709e13d74dacf9d77414592750ec3ee3848de', 6: '7c150a8de4736982f109c04f71d1965385fa9629bc1bd4f48ebeda141d48eeb9'},
   cache: {1: 'be43585ad9045d7ed844c609b9af13829372efb83741b55f4f4f8e7b2f2fd61c', 2: '21b8f4c33fcb2c2b20d87c8bfd8a51d15bb6fdef8a7ae081aba462a900048fa3'},
 };
 

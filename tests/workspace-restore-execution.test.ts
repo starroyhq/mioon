@@ -52,6 +52,17 @@ import {EventEmitter} from 'node:events';
 const isCode=(code: string|{ expectedWorkspaceOrigin?: undefined; }|{ expectedWorkspaceOrigin: `${string}-${string}-${string}-${string}-${string}`; })=>(error: { code: unknown; })=>(error as unknown as import('./helpers/strict-opacity-fixture-types.ts').OpacityFailure)?.code===code;
 const tables=['projects','jobs','exports','edit_tasks','timelines','timeline_requests','timeline_history','timeline_history_cursors','workspace_restore_holds'];
 const snapshot=(db: DatabaseSync)=>JSON.stringify(Object.fromEntries(tables.map(table=>[table,db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])));
+// Native project-host operations are explicitly denied by the restored domain
+// catalogue. They do not extend the finite historical HTTP fixture's routes.
+const deniedNativeProjectInputs=(projectId: string,projectFile=path.join(tmpdir(),'native-backup-must-not-be-created.mioon'))=>({
+ 'project.backup.list':{projectId},
+ 'project.backup.inspect':{projectId,backupId:randomUUID()},
+ 'project.backup.restore':{projectId,backupId:randomUUID(),requestId:randomUUID(),projectFile},
+ 'project.backup.status':{projectId},
+ 'project.version.list':{projectId,limit:1},
+ 'project.version.save':{projectId,requestId:randomUUID(),name:'Refused restored version'},
+ 'project.version.preview':{projectId,versionId:randomUUID(),limit:1},
+});
 const deniedRedesignInputs=(projectId: string)=>({
  'export.cancel':{projectId,exportId:randomUUID()},
  'export.activity.get':{projectId,exportId:randomUUID()},
@@ -98,7 +109,7 @@ test('restored profile has fixed catalogue coverage with no hint-based or suffix
  assert.deepEqual([...names].sort(),Object.keys(schemas).sort());
  assert.ok(RESTORE_READ_OPERATIONS.includes('project.summary.list'));
  assert.ok(RESTORE_LOCAL_OPERATIONS.includes('timeline.clip.rippleRemove'));
- for(const operation of Object.keys(deniedRedesignInputs(randomUUID()))){
+ for(const operation of Object.keys({...deniedRedesignInputs(randomUUID()),...deniedNativeProjectInputs(randomUUID())})){
   assert.ok(RESTORE_DENIED_OPERATIONS.includes(operation));
   assert.equal(RESTORE_READ_OPERATIONS.includes(operation)||RESTORE_LOCAL_OPERATIONS.includes(operation),false);
  }
@@ -121,7 +132,7 @@ test('restored catalogue reports exact disabled media and redesign operations an
    await assert.rejects(services.handlers[operation]({},context),isCode('RESTORE_OPERATION_UNAVAILABLE'));
   }
  }
- for(const [operation,input]of Object.entries(deniedRedesignInputs(randomUUID()))){
+ for(const [operation,input]of Object.entries({...deniedRedesignInputs(randomUUID()),...deniedNativeProjectInputs(randomUUID(),path.join(root,'native-backup-must-not-be-created.mioon'))})){
   assert.deepEqual(inspection.operationPolicy.filter((item)=>item.operation===operation),[{operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}]);
   for(const context of [{},{expectedWorkspaceOrigin:inspection.workspaceOrigin}] as const){
    await assert.rejects(services.call(operation,input,context),isCode('RESTORE_OPERATION_UNAVAILABLE'));

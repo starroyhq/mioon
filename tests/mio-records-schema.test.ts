@@ -5,6 +5,7 @@ import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {HISTORY_TABLES_BY_DOMAIN,LEGACY_MIO_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
 import {MIO_STORAGE_LIMITS,MIO_QUOTA_BYTES_SQL,MIO_QUOTA_ROWS_SQL} from '../packages/business/src/project-file/schema/domains/mio.ts';
 
@@ -29,7 +30,7 @@ test('K1 creates twenty Mio tables including counters and ordinary process revis
   const process=f.db.prepare("SELECT name,sql FROM main.sqlite_master WHERE type='trigger' AND name GLOB 'agent_target_*_v2'").all();
   assert.equal(process.length,12);assert.ok(process.every(r=>String(r.sql).includes('mio_process_target_revisions')&&!String(r.sql).includes('project.')));
   assert.equal(f.db.prepare("SELECT count(*) AS n FROM temp.sqlite_master WHERE name GLOB 'agent_target_*_v2'").get()?.n,0);
-  assert.equal(f.db.prepare('SELECT version FROM main.schema_version').get()?.version,5);
+  assert.equal(f.db.prepare('SELECT version FROM main.schema_version').get()?.version,HISTORY_SCHEMA_VERSION);
  }finally{f.close();}
 });
 

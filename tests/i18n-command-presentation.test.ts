@@ -82,6 +82,7 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   expectedOperations.splice(expectedOperations.indexOf('timeline.loudness.apply') + 1, 0, 'timeline.clip.refreshSources', 'timeline.shots.append', 'timeline.clip.splitAtScenes', 'timeline.clip.crossfade', 'timeline.clip.setGains', 'timeline.clip.setTransform', 'timeline.clip.setTransition');
   expectedOperations.splice(expectedOperations.indexOf('frame.task.recoverResult') + 1, 0, 'scene.detect', 'scene.request.get', 'scene.task.get', 'scene.task.list', 'scene.task.cancel', 'scene.result.get', 'scene.cuts.save', 'scene.shots.create', 'scene.shots.undo');
   expectedOperations.push('project.backup.list', 'project.backup.inspect', 'project.backup.restore', 'project.backup.status');
+  expectedOperations.push('project.version.list', 'project.version.save', 'project.version.preview');
   expectedOperations.push('asset.media.status.list','asset.media.prepare','asset.media.relink.preview','asset.media.relink.apply','asset.media.acceptChanged');
   const expectedUsage = [...snapshot.data.usage];
   expectedUsage.splice(expectedUsage.indexOf('mioon capabilities') + 1, 0, 'mioon agent --help');

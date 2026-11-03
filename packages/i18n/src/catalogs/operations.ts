@@ -33,6 +33,24 @@ export const operationMessages = {
     "ja": "変更後の内容に新しい素材IDを作成し、元の素材と履歴を保持します"
 },
 
+  "operation.project.version.list": {
+    "zh-Hans": "分页列出本机项目版本，不恢复内容或任务",
+    "zh-Hant": "分頁列出本機專案版本，不復原內容或任務",
+    "en": "List local project versions with bounded pages; never restore content or tasks",
+    "ja": "ローカルのプロジェクト版をページ単位で一覧表示します。内容やタスクは復元しません"
+  },
+  "operation.project.version.save": {
+    "zh-Hans": "使用稳定 requestId 手动保存完整内容快照，可选名称；只写本机记录，不读取媒体或修改项目内容",
+    "zh-Hant": "使用穩定 requestId 手動儲存完整內容快照，可選名稱；僅寫本機記錄，不讀取媒體或修改專案內容",
+    "en": "Manually save a full content snapshot with a stable requestId and optional name; write only local records without reading media or changing project content",
+    "ja": "固定 requestId と任意の名前で内容全体を手動保存します。ローカル記録のみを書き込み、メディアの読み取りや内容変更は行いません"
+  },
+  "operation.project.version.preview": {
+    "zh-Hans": "只读预览完整差异计数和分页、来源与保持当前的原因；本阶段尚不可恢复",
+    "zh-Hant": "唯讀預覽完整差異計數與分頁、來源及保持目前狀態的原因；此階段尚不可復原",
+    "en": "Preview complete difference counts and pages, attribution, and reasons to retain current objects; restoration is not available in this stage",
+    "ja": "差分の総数と各ページ、変更元、現在の状態を保持する理由を読み取り専用で確認します。この段階では復元できません"
+  },
   "operation.project.backup.list": {
     "zh-Hans": "只读列出项目最近三份自动备份，不打开项目或恢复任务；按内容序号去重，同序号分叉内容暂时无法识别",
     "zh-Hant": "唯讀列出專案最近三份自動備份，不開啟專案或復原任務；按內容序號去重，同序號分叉內容暫時無法識別",
