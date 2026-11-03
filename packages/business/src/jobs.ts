@@ -270,7 +270,9 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    if(j.status==='downloading') {
     checkpoint(signal);
     const projectOwner=registeredProjectStore(root),owner:ProjectOutputOwner={kind:'generation',id:j.id,requestId:j.requestId,inputHash:j.requestHash},sourceIdentity=outputArtifactDigest(JSON.stringify([j.projectId,j.id,j.requestId,j.requestHash,j.providerId,j.providerJobId,j.model,j.snapshot]));
-    const checkOutput=():void=>{checkpoint(signal);assertAgentTaskJobEffect(store.db,'job',j!.id);const latest=recordValue(get('jobs',j!.id));if(!latest||latest.status!=='downloading'||outputArtifactDigest(JSON.stringify([latest.projectId,latest.id,latest.requestId,latest.requestHash,latest.providerId,latest.providerJobId,latest.model,latest.snapshot]))!==sourceIdentity)throw Object.assign(Error('Generation output owner changed'),{code:'GENERATION_STATE_CHANGED'});if(projectOwner&&artifact&&lstatSync(outputArtifactStage(projectOwner,artifact),{throwIfNoEntry:false}))assertOutputArtifactStage(projectOwner,artifact);};
+    // Local completion retains an already accepted result; dispatch authorization
+    // remains at the queued/POST fences and selection has its own target gate.
+    const checkOutput=():void=>{checkpoint(signal);const latest=recordValue(get('jobs',j!.id));if(!latest||latest.status!=='downloading'||outputArtifactDigest(JSON.stringify([latest.projectId,latest.id,latest.requestId,latest.requestHash,latest.providerId,latest.providerJobId,latest.model,latest.snapshot]))!==sourceIdentity)throw Object.assign(Error('Generation output owner changed'),{code:'GENERATION_STATE_CHANGED'});if(projectOwner&&artifact&&lstatSync(outputArtifactStage(projectOwner,artifact),{throwIfNoEntry:false}))assertOutputArtifactStage(projectOwner,artifact);};
     let artifact=projectOwner?readOutputArtifact(projectOwner,owner,'generation',sourceIdentity):null;
     const relativePath=`media/result-${j.id}.mp4`,file=path.join(root,relativePath),part=projectOwner?(artifact?outputArtifactStage(projectOwner,artifact):createOutputArtifactStage(projectOwner,owner,'generation')):file+'.part.mp4';
     let info;
