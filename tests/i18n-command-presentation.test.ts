@@ -83,10 +83,11 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   expectedOperations.splice(expectedOperations.indexOf('frame.task.recoverResult') + 1, 0, 'scene.detect', 'scene.request.get', 'scene.task.get', 'scene.task.list', 'scene.task.cancel', 'scene.result.get', 'scene.cuts.save', 'scene.shots.create', 'scene.shots.undo');
   expectedOperations.push('project.backup.list', 'project.backup.inspect', 'project.backup.restore', 'project.backup.status');
   expectedOperations.push('project.version.list', 'project.version.save', 'project.version.preview');
+  expectedOperations.push('asset.media.status.list','asset.media.prepare','asset.media.relink.preview','asset.media.relink.apply','asset.media.acceptChanged');
   const expectedUsage = [...snapshot.data.usage];
   expectedUsage.splice(expectedUsage.indexOf('mioon capabilities') + 1, 0, 'mioon agent --help');
   expectedUsage.splice(expectedUsage.indexOf('mioon export download --input <JSON> --output <new-local-file>') + 1, 0, 'mioon project export --input <JSON> --output <new-local-file.mioon>', 'mioon project import --file <local-file.mioon> --request-id <id> [--input <JSON>]', 'mioon project duplicate --request-id <id> --input <JSON>');
-  assert.deepEqual(original.json,{...snapshot, data:{...snapshot.data, version:VERSION, usage:expectedUsage, operations:expectedOperations}});
+  assert.deepEqual(original.json,{...snapshot, data:{...snapshot.data, version:VERSION, usage:expectedUsage, operations:expectedOperations,options:{...snapshot.data.options,'--file':'asset import: sends a normalized local path with caller requestId; no copying or 30 MiB upload limit. LUT import still reads up to 7 MiB','--confirm-outside':'asset import --file only: explicitly confirms this project and the exact source directory, prints each confirmed directory; excludes descendants','--upload':'asset import --file only: explicitly upload bytes to a remote backend, at most 30 MiB; exclusive with --confirm-outside'}}});
   const schema=cli(['schema','project.create']).stdout;
   const version=cli(['--version']).stdout;
   const bad=cli(['--unknown']).stdout;

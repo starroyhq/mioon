@@ -49,7 +49,7 @@ async function fixture(t: test.TestContext, overrides:Partial<TimelineAudioPrevi
     clips: [{id: clipId, trackId, assetId, startFrame: 0, durationFrames: 2, sourceInFrame: 0, gain: 1},
       ...(twoSources ? [{id: randomUUID(), trackId, assetId, startFrame: 2, durationFrames: 2, sourceInFrame: 2, gain: 1}] : [])]},
   assets: [{id: assetId, projectId, sha256: sha('owned native source'), sizeBytes: 1024,
-    mimeType: 'audio/wav', duration: 1, hasAudio: true, relativePath: 'synthetic.wav'}]};
+    mimeType: 'audio/wav', duration: 1, hasAudio: true, relativePath: 'media/synthetic.wav'}]};
   const identity = {dev: 1, ino: 2, size: 1024, mtimeMs: 3, ctimeMs: 4}, effects: string[] = [], terminated: AbortSignal[] = [];
   const runtime = {assertOrdinaryWorkspace() {}, ownsLock: () => true, readSavedTimeline: () => snapshot,
     validateSource: () => {effects.push('validate'); return {file: '/owned/synthetic.wav', info: identity};},

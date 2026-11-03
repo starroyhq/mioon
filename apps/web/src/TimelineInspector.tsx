@@ -52,7 +52,7 @@ import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 
 const pass = <T,>(value: unknown): T => value as T;
 export interface TimelineInspectorClip { id: string; name?: string; trackId: string; startFrame: number; durationFrames: number; assetId: string; rect?: unknown; [key: string]: unknown }
-export interface TimelineInspectorAsset { id: string; name: string; mimeType: string; sizeBytes: number; hasAudio?: boolean; sha256?: string; duration?: unknown; width?: number; height?: number; projectId?: string; provenance?: unknown; [key: string]: unknown }
+export interface TimelineInspectorAsset { id: string; name: string; mimeType: string; sizeBytes: number; hasAudio?: boolean; sha256?: string | null; duration?: unknown; width?: number; height?: number; projectId?: string; provenance?: unknown; [key: string]: unknown }
 export interface TimelineInspectorTimeline { id: string; projectId: string; revision: number; fps: number; width: number; height: number; tracks: { id: string; kind?: string; name?: string; [key: string]: unknown }[]; [key: string]: unknown }
 export interface TimelineInspectorDraftContext { collaboration?: AgentEditingProof | null; scope?: string; projectId?: string; restored?: boolean; workspaceOrigin?: unknown; volumeEnvelopeEditable?: boolean; audioRoleEditable?: boolean; [key: string]: unknown }
 export interface TimelineInspectorStaleSource { code: string; message?: string; [key: string]: unknown }

@@ -1,3 +1,5 @@
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import type {ServiceResponse as FixtureServiceResult, TypedStore as FixtureStore, TypedServices as FixtureServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -30,7 +32,7 @@ async function fixture(t: test.TestContext,cuts: number[]|undefined=[45,100,230,
  const _strictFixtureBase={root,store,call:<O extends string>(op: O, input?: unknown) => services.call(op,input) as Promise<FixtureServiceResult<O>>,
   capture:()=>Object.fromEntries(writes.map(table=>[table,store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])),
   video(){
-   const bytes=Buffer.from(`Reference film ${randomUUID()}`),id=randomUUID(),relativePath=`media/${id}.mp4`;writeFileSync(path.join(root,relativePath),bytes,{mode:0o600});
+   const bytes=mp4HeaderFixture(`Reference film ${randomUUID()}`),id=randomUUID(),relativePath=`media/${id}.mp4`;writeFileSync(path.join(root,relativePath),bytes,{mode:0o600});
    return store.put('assets',{id,projectId:f.projectId,name:'Reference.mp4',mimeType:'video/mp4',sha256:digest(bytes),sizeBytes:bytes.length,relativePath,width:720,height:1280,duration:10,hasVideo:true,hasAudio:true,provenance:'user-import'});
   },
   async detect(asset: { id: unknown; projectId?: unknown; name?: string; mimeType?: string; sha256: unknown; sizeBytes?: number; relativePath?: string; width?: number; height?: number; duration?: number; hasVideo?: boolean; hasAudio?: boolean; provenance?: string; },next?: number[]|undefined){
@@ -96,7 +98,7 @@ test('nothing to split, a superseded result and a stale result write nothing', a
  await assert.rejects(f.call(SPLIT,inside),code('NOTHING_TO_SPLIT',(((error?: Error&{ code: string; status?: number; details?: { mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[];[key: string]: unknown; }; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; })=>(((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).details)!.skipped)!.length===1&&(((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).details)!.skipped)![0].reason==='NO_CUT_IN_RANGE') as unknown as Parameters<typeof code>[1])));
  const newer=await f.detect(film,[60]),afterAdd=f.capture(),old=f.request(current,{assetId:film.id,resultId});
  await assert.rejects(f.call(SPLIT,old),code('SCENE_RESULT_CONFLICT',(((error?: unknown)=>hasRequestNotAppliedProof(error,old,{operation:SPLIT})) as unknown as Parameters<typeof code>[1])));
- f.store.put('assets',{...f.store.get('assets',film.id),sha256:'d'.repeat(64)});
+ const changed=f.store.get('assets',film.id)!;f.store.put('assets',{...changed,sha256:'d'.repeat(64),reference:{...mediaReferenceSchema.parse((changed as unknown as {reference:unknown}).reference),fullSha256:'d'.repeat(64)}});
  const stale=f.request(current,{assetId:film.id,resultId:newer});
  await assert.rejects(f.call(SPLIT,stale),code('SCENE_RESULT_STALE'));
  assert.deepEqual(f.capture(),afterAdd);

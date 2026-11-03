@@ -6,6 +6,11 @@ import path from 'node:path';
 import {openLegacyWorkspaceStore} from '../../packages/business/src/db.ts';
 import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../../packages/business/src/services.ts';
+import {isProjectStore} from '../../packages/business/src/project-file/store.ts';
+import type {ProjectStore} from '../../packages/business/src/project-file/store.ts';
+import type {Store} from '../../packages/business/src/store-contract.ts';
+import {prepareProjectAssetFullHash,referenceForPublishedMedia} from '../../packages/business/src/project-media-storage.ts';
+import {mediaFixturePath} from './media-reference-fixtures.ts';
 
 type Row=Record<string,any>;
 const tools=process.env.MIOON_TEST_MEDIA_TOOLS??'/opt/homebrew/bin';
@@ -26,18 +31,45 @@ export function sampleMedia(dir:string){
 }
 export const sampleCube=Buffer.from('TITLE "look"\nLUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n');
 
-export function openWorkspace(root:string){const store=openStore(root);return {store,services:createServices(store,new Map(),{imageOptions:{autoRun:false}})};}
+const referencedPackageStores=new WeakMap<Store,ProjectStore>();
+function legacyPackageAssetView<T>(root:string,value:T):T{
+ if(!value||typeof value!=='object'||!('reference' in value))return value;
+ // The old serializer spreads imported records while relabeling provenance.
+ // Keep its read-only alias enumerable in this view, never in persisted rows.
+ return Object.defineProperty({...value},'relativePath',{value:path.relative(root,mediaFixturePath(root,value)),enumerable:true});
+}
+/** Keep real S1 records and services underneath the historical serializer.
+ * This fixture-only read view does not enable native packaging in production;
+ * its real SQLite identity still rejects legacy imports into a project file. */
+function legacyPackageViewForReferencedStore(store:ProjectStore):Store{
+ const view:Store={db:store.db,root:store.root,
+  get:(table,id)=>{const value=store.get(table,id);return table==='assets'?legacyPackageAssetView(store.projectDir,value):value;},
+  list:(table,projectId)=>store.list(table,projectId).map(value=>table==='assets'?legacyPackageAssetView(store.projectDir,value):value),
+  put:()=>{throw new TypeError('The historical package fixture view is read-only');},
+  tx:store.tx,close:store.close,
+ };
+ referencedPackageStores.set(view,store);return view;
+}
+export function openWorkspace(root:string){const store=openStore(root);return {store:legacyPackageViewForReferencedStore(store),services:createServices(store,new Map(),{imageOptions:{autoRun:false}})};}
 /** Only the explicit old package import/duplicate/backup positives use this.
  * Native projects cannot import a second project into their own SQLite file. */
 export function openLegacyWorkspace(root:string){const store=openLegacyWorkspaceStore(root);return {store,services:createServices(store,new Map(),{imageOptions:{autoRun:false}})};}
 export function tempRoot(label:string):string{return realpathSync(mkdtempSync(path.join(tmpdir(),`mioon-${label}-`)));}
 
 /** Builds a project that touches every entity a `.mioon` file carries. */
-export async function buildSampleProject(root:string,{store,services}:{store:any;services:any}){
- const media=sampleMedia(mkdtempSync(path.join(tmpdir(),'mioon-package-media-')));
+export async function buildSampleProject(root:string,{store:packageStore,services}:{store:any;services:any}){
+ const store=referencedPackageStores.get(packageStore)??packageStore;
+ const mediaDirectory=mkdtempSync(path.join(root,'.package-media-'));
+ let media:ReturnType<typeof sampleMedia>;
+ try{media=sampleMedia(mediaDirectory);}finally{rmSync(mediaDirectory,{recursive:true,force:true});}
+ const native=isProjectStore(store);
  const call=(op:string,input:Row)=>services.call(op,input);
  const project=await call('project.create',{name:'UI 走查项目',description:'第二幕：由街景过渡到霓虹特写',timelinePresetId:'portrait_1080'});
- const imp=async(name:string,mimeType:string,bytes:Buffer)=>store.get('assets',(await call('asset.import',{projectId:project.id,name,mimeType,dataBase64:bytes.toString('base64')})).id);
+ const imp=async(name:string,mimeType:string,bytes:Buffer)=>{
+  const {id}=await call('asset.import',{projectId:project.id,name,mimeType,dataBase64:bytes.toString('base64')});
+  if(native&&mimeType.startsWith('video/'))await prepareProjectAssetFullHash(root,id);
+  return store.get('assets',id);
+ };
  const ref=await imp('ref.png','image/png',media.png),face=await imp('subject.png','image/png',media.png2);
  const video=await imp('clip.mp4','video/mp4',media.mp4),music=await imp('music.wav','audio/wav',media.wav);
  const shot=await call('shot.create',{requestId:randomUUID(),projectId:project.id,title:'霓虹特写',prompt:'镜头缓慢推进',aspectRatio:'9:16',duration:4});
@@ -51,12 +83,14 @@ export async function buildSampleProject(root:string,{store,services}:{store:any
  const subject=await call('subject.create',{projectId:project.id,kind:'character',name:'主角',assetId:face.id,requestId:randomUUID()});
  // A finished mock version, published exactly as the job worker does.
  const jobId=randomUUID(),versionId=randomUUID(),assetId=randomUUID(),relativePath=`media/result-${jobId}.mp4`,now=new Date().toISOString();
- copyFileSync(path.join(root,video.relativePath),path.join(root,relativePath));
+ const outputFile=path.join(root,relativePath);
+ copyFileSync(mediaFixturePath(root,video),outputFile);
  const current=store.get('shots',shot.id),info={sizeBytes:video.sizeBytes,sha256:video.sha256,width:video.width,height:video.height,duration:video.duration,hasVideo:true,hasAudio:false};
- const snapshot={shotId:shot.id,shotRevision:current.revision,title:current.title,prompt:current.prompt,referenceAssetIds:[ref.id],referenceAssets:[{id:ref.id,relativePath:ref.relativePath,mimeType:ref.mimeType,sha256:ref.sha256,width:ref.width,height:ref.height}],referenceConnections:[],aspectRatio:'9:16',duration:4,providerId:'mock',model:'mock-v1',parameters:{},capabilities:{}};
+ const published=native?await referenceForPublishedMedia(store,outputFile,{sha256:info.sha256}):null;
+ const snapshot={shotId:shot.id,shotRevision:current.revision,title:current.title,prompt:current.prompt,referenceAssetIds:[ref.id],referenceAssets:[{id:ref.id,...(native?{projectId:ref.projectId,reference:ref.reference,referenceRevision:ref.referenceRevision,sizeBytes:ref.sizeBytes}:{relativePath:ref.relativePath}),mimeType:ref.mimeType,sha256:ref.sha256,width:ref.width,height:ref.height}],referenceConnections:[],aspectRatio:'9:16',duration:4,providerId:'mock',model:'mock-v1',parameters:{},capabilities:{}};
  store.tx(()=>{
   store.put('jobs',{id:jobId,projectId:project.id,shotId:shot.id,requestId:randomUUID(),requestHash:'a'.repeat(64),providerId:'mock',model:'mock-v1',revision:3,status:'succeeded',phase:'complete',progress:100,snapshot,providerJobId:null,submissionCount:1,error:null,createdAt:now,updatedAt:now,versionId,cancelScope:null,retryOfJobId:null});
-  store.put('assets',{id:assetId,projectId:project.id,name:'霓虹特写 模拟视频.mp4',mimeType:'video/mp4',...info,relativePath,url:`/media/${assetId}`,provenance:'synthetic-mock',createdAt:now});
+  store.put('assets',{id:assetId,projectId:project.id,name:'霓虹特写 模拟视频.mp4',mimeType:'video/mp4',...info,...(published?{...published,producer:{kind:'generation',id:jobId}}:{relativePath}),url:`/media/${assetId}`,provenance:'synthetic-mock',createdAt:now});
   store.put('versions',{id:versionId,projectId:project.id,shotId:shot.id,jobId,number:1,providerId:'mock',model:'mock-v1',isMock:true,snapshot,assetId,url:`/media/${assetId}`,sha256:info.sha256,createdAt:now});
   store.put('shots',{...current,selectedVersionId:versionId,revision:current.revision+1,updatedAt:now});
  });
@@ -70,7 +104,8 @@ export async function buildSampleProject(root:string,{store,services}:{store:any
  await add({assetId,trackId:videoTrack.id,startFrame:45,durationFrames:45});
  if(audioTrack)await add({assetId:music.id,trackId:audioTrack.id,startFrame:0,durationFrames:60});
  timeline=await call('timeline.subtitle.add',{requestId:randomUUID(),projectId:project.id,expectedRevision:timeline.revision,text:'雨后的城市街道',startFrame:0,durationFrames:30}).catch((error:unknown)=>{throw Object.assign(new Error('subtitle add failed'),{cause:error});});
- return {project,assets:{ref,face,video,music,generated:store.get('assets',assetId)},shot:shotNow,node,note,subject,lut,versionId,jobId,timeline:await call('timeline.get',{projectId:project.id})};
+ const assetHandle=(asset:Row)=>native?legacyPackageAssetView(root,asset):asset;
+ return {project,assets:{ref:assetHandle(ref),face:assetHandle(face),video:assetHandle(video),music:assetHandle(music),generated:assetHandle(store.get('assets',assetId))},shot:shotNow,node,note,subject,lut,versionId,jobId,timeline:await call('timeline.get',{projectId:project.id})};
 }
 
 export const sha256=(value:Buffer|string):string=>createHash('sha256').update(value).digest('hex');

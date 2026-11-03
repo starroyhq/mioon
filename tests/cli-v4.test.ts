@@ -185,12 +185,12 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
 
   const imagePath = path.join(root, 'reference.png');
   await exec(process.env.MIOON_FFMPEG_PATH || 'ffmpeg', ['-v','error','-y','-f','lavfi','-i','color=c=0x3566ab:s=16x16','-frames:v','1','-threads','1',imagePath]);
-  const image = await command('asset.import', {projectId:project.id}, ['--file',imagePath]);
+  const image = await command('asset.import', {projectId:project.id}, ['--file',imagePath,'--upload']);
   assert.equal(image.name, 'reference.png');
   assert.equal(image.mimeType, 'image/png');
   const importRequest = proxy.requests.find(item => item.operation === 'asset.import');
   assert.equal(typeof importRequest!.input.dataBase64, 'string');
-  assert.ok(!JSON.stringify(importRequest).includes(imagePath), 'explicit file import sends bytes, never local paths');
+  assert.ok(!JSON.stringify(importRequest).includes(imagePath), 'explicit --upload sends bytes, never local paths');
   assert.equal((await callMcp('asset_list', {projectId:project.id}))[0].id, image.id);
   const shot = await command('shot.create', {projectId:project.id, title:'Only a simulated shot', prompt:'Offline fixture', duration:2, referenceAssetIds:[image.id]});
   let finished!:CommandData<'job.watch'>;
@@ -329,4 +329,30 @@ test('CLI unexpected backend errors and unreadable responses keep structured, re
   assert.equal(error.details!.retained, true); assert.ok(!Object.hasOwn(error.details!, 'authorization'));
   malformed = true;
   failed(await cli(['project','list'], env), 4, 'BACKEND_PROTOCOL_ERROR');
+});
+
+
+test('CLI path imports send only the explicit path and require opt-in for directory confirmation',async t=>{
+ const projectId=randomUUID(),assetId=randomUUID(),requestId=randomUUID(),sourcePath=path.join(tmpdir(),'does-not-exist-s1-'+randomUUID()+'.mp4');
+ const requests:{url:string|undefined;headers:http.IncomingHttpHeaders;input:Record<string,unknown>;operation:string}[]=[];
+ const asset={id:assetId,projectId,name:path.basename(sourcePath),mimeType:'video/mp4',sizeBytes:64*1024*1024,sha256:null,referenceRevision:1,
+  fingerprint:{sizeBytes:64*1024*1024,mtimeMs:1,sampledSha256:'a'.repeat(64),fullSha256:null},hashState:'sampled',url:projectMediaPath(projectId,assetId)};
+ const backend=http.createServer(async(req,res)=>{
+  let raw='';for await(const chunk of req)raw+=chunk;
+  const body=JSON.parse(raw);requests.push({url:req.url,headers:req.headers,input:body.input,operation:body.operation});
+  res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,data:body.operation==='asset.import.path'?{asset,confirmedDirectories:[path.dirname(sourcePath)]}:asset}));
+ });
+ await new Promise<void>(resolve=>backend.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise<void>(resolve=>backend.close(()=>resolve())));
+ const env={MIOON_BASE_URL:`http://127.0.0.1:${(backend.address() as import('node:net').AddressInfo).port}`,MIOON_TOKEN:token};
+ const args=['asset','import','--file',sourcePath,'--request-id',requestId,'--input',JSON.stringify({projectId})];
+ const ordinary=succeeded(await cli(args,env));assert.ok(ordinary&&typeof ordinary==='object'&&'id' in ordinary);assert.equal(ordinary.id,assetId);
+ assert.deepEqual(requests[0].input,{projectId,requestId,sourcePath});assert.equal(requests[0].operation,'asset.import');
+ assert.equal(requests[0].headers['x-mioon-user-action'],undefined);assert.equal(requests[0].url,`/api/projects/${projectId}/rpc`);
+ const confirmed=await cli([...args,'--confirm-outside'],env),acknowledgement=succeeded(confirmed);assert.ok(acknowledgement&&typeof acknowledgement==='object'&&'id' in acknowledgement);assert.equal(acknowledgement.id,assetId);
+ assert.equal(requests[1].operation,'asset.import.path');assert.equal(requests[1].headers['x-mioon-user-action'],'asset-media');
+ assert.equal(requests[1].url,`/api/projects/${projectId}/asset-media/trusted`);
+ assert.match(confirmed.stderr,/confirmedDirectory/);assert.ok(confirmed.stderr.includes(path.dirname(sourcePath)));assert.ok(!confirmed.stdout.includes(sourcePath));
+ const before=requests.length;failed(await cli([...args,'--upload','--confirm-outside'],env),2);assert.equal(requests.length,before);
+ for(const url of ['http://remote.invalid:4318','http://localhost.evil.invalid:4318'])for(const confirmation of [[],['--confirm-outside']]){const rejected=failed(await cli([...args,...confirmation],{...env,MIOON_BASE_URL:url}),2,'VALIDATION_ERROR');assert.match(String(rejected.message),/--upload/);assert.equal(requests.length,before);}
+ failed(await cli(['asset','import','--file',sourcePath,'--input',JSON.stringify({projectId})],env),2,'VALIDATION_ERROR');assert.equal(requests.length,before);
 });

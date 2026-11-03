@@ -1,3 +1,5 @@
+import {mediaLocatorFields} from './asset-reference-record.ts';
+import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {EXPORT_LOUDNESS_LIMITS, exportLoudnessInputSchema,
   exportLoudnessMeasurementSchema, exportLoudnessReason, exportLoudnessSuggestion, isExportLoudnessResponse} from '@mioon/contracts/export-loudness';
@@ -31,7 +33,7 @@ export interface ExportLoudnessStore {readonly db: DatabaseSync; readonly root: 
 export interface ExportLoudnessFileIdentity {
   readonly dev: number; readonly ino: number; readonly size: number; readonly mtimeMs: number; readonly ctimeMs: number;
 }
-export interface ExportLoudnessManagedAsset {readonly relativePath: string; readonly sha256: string; readonly sizeBytes: number}
+export interface ExportLoudnessManagedAsset {readonly id?: string; readonly projectId?: string; readonly reference?: MediaReference; readonly referenceRevision?: number; readonly relativePath?: string; readonly sha256: string; readonly sizeBytes: number}
 export interface ExportLoudnessHashOptions {
   readonly signal: AbortSignal; readonly expected: ExportLoudnessFileIdentity; readonly maxBytes: number;
   readonly onBytes: (bytes: number) => void; readonly beforeEffect: () => void;
@@ -72,7 +74,7 @@ function descriptor(output: TimelineExportOutput): Descriptor {
   const artifact = {assetId: output.assetId, sha256: asset.sha256, sizeBytes: asset.sizeBytes, snapshotSha256: floatSnapshotSha256(output.snapshot),
     timelineRevision: record.timelineRevision, ...timelineDeliveryNameFields(output.snapshot), ...timelineExportRangeFields(output.snapshot)};
   const outputFrames = timelineExportOutputFrames(output.snapshot);
-  return freeze({identity: output, asset: {relativePath: output.relativePath, sha256: asset.sha256, sizeBytes: asset.sizeBytes},
+  return freeze({identity: output, asset: {id:output.assetId,projectId:output.projectId,...mediaLocatorFields(asset), sha256: asset.sha256, sizeBytes: asset.sizeBytes},
     artifact, outputFrames, durationSeconds: outputFrames / 30});
 }
 function observe<T>(task: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -96,7 +98,8 @@ function classify(error: unknown): {status: 'unsupported' | 'incomplete' | 'stal
     case 'MEDIA_SPAWN_FAILED': case 'MEDIA_INVALID_CONFIGURATION': return {status: 'incomplete', code: 'DECODER_UNAVAILABLE'};
     case 'MEDIA_TIMEOUT': return {status: 'incomplete', code: 'TIMEOUT'};
     case 'MEDIA_CANCELLED': case 'OPERATION_CANCELLED': return {status: 'incomplete', code: 'CANCELLED'};
-    case 'LOUDNESS_ARTIFACT_CHANGED': case 'MANAGED_SOURCE_CHANGED': case 'MANAGED_SOURCE_INVALID': return {status: 'stale', code: 'ARTIFACT_CHANGED'};
+    case 'LOUDNESS_ARTIFACT_CHANGED': case 'MANAGED_SOURCE_CHANGED': case 'MANAGED_SOURCE_INVALID':
+    case 'MEDIA_MISSING': case 'MEDIA_CHANGED': case 'MEDIA_NOT_MEDIA': case 'MEDIA_OUTSIDE_NOT_CONFIRMED': case 'MEDIA_CHANGED_DURING_READ': return {status: 'stale', code: 'ARTIFACT_CHANGED'};
     default: return {status: 'incomplete', code: 'DECODE_FAILED'};
   }
 }

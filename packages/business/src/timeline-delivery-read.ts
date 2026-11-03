@@ -1,3 +1,6 @@
+import {mediaLocatorFields, validAssetLocator} from './asset-reference-record.ts';
+import {isProjectDatabase} from './project-file/held-files.ts';
+import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {isTimelineExportAudioOutcome,isTimelineExportFloatSnapshot} from '@mioon/contracts/timeline-export-float';
 import {floatSnapshotSha256} from './timeline-float-outcome.ts';
 import {createHash} from 'node:crypto';
@@ -37,7 +40,9 @@ export interface TimelineDeliveryDownload {
   readonly exportId: string;
   readonly assetId: string;
   readonly projectId: string;
-  readonly relativePath: string;
+  readonly relativePath?: string;
+  readonly reference?: MediaReference;
+  readonly referenceRevision?: number;
   readonly mimeType: 'video/mp4';
   readonly contentDisposition: string;
   /** Backend-only change fence, never included in the HTTP response. */
@@ -63,7 +68,9 @@ export interface TimelineExportOutput {
   readonly exportId: string;
   readonly assetId: string;
   readonly projectId: string;
-  readonly relativePath: string;
+  readonly relativePath?: string;
+  readonly reference?: MediaReference;
+  readonly referenceRevision?: number;
   readonly record: Readonly<Record<string, unknown>>;
   readonly asset: Readonly<Record<string, unknown>>;
   readonly snapshot: Readonly<Record<string, unknown>>;
@@ -117,13 +124,13 @@ function readTimelineExportOutputCore(
     const asset = guards.readOwnedAsset(projectId, assetId);
     if (!object(asset) || asset.id !== assetId || asset.projectId !== projectId ||
         asset.mimeType !== 'video/mp4' || asset.provenance !== 'export' || asset.url !== record.url ||
-        !ownsPublishedOutputPath(asset.relativePath, requested.exportId)) return null;
+        !(isProjectDatabase(db)?validAssetLocator(db,asset)&&object(asset.producer)&&asset.producer.kind==='export'&&asset.producer.id===requested.exportId:ownsPublishedOutputPath(asset.relativePath,requested.exportId))) return null;
     if (isTimelineExportFloatSnapshot(record.snapshot) && (typeof asset.sha256 !== 'string' ||
         !isTimelineExportAudioOutcome(record, {snapshotSha256: floatSnapshotSha256(record.snapshot), assetSha256: asset.sha256}))) return null;
     // Keep this exact byte calculation for existing named-download fences.
     const identityDigest = createHash('sha256').update(JSON.stringify([row.data, receiptRow.requestHash, receiptRow.response, asset])).digest('hex');
     return Object.freeze({exportId: requested.exportId, assetId, projectId,
-      relativePath: asset.relativePath, record, asset, snapshot: record.snapshot, identityDigest});
+      ...mediaLocatorFields(asset), record, asset, snapshot: record.snapshot, identityDigest});
   } catch {
     return null;
   } finally {
@@ -156,7 +163,7 @@ export function readTimelineDeliveryDownload(
   const contentDisposition = timelineDeliveryContentDisposition(fields.deliveryName, requested.exportId) +
     `; mioon-export-id="${requested.exportId}"; mioon-asset-id="${requested.assetId}"`;
   return Object.freeze({exportId: requested.exportId, assetId: requested.assetId, projectId: output.projectId,
-    relativePath: output.relativePath, mimeType: 'video/mp4', contentDisposition, identityDigest: output.identityDigest});
+    ...mediaLocatorFields(output), mimeType: 'video/mp4', contentDisposition, identityDigest: output.identityDigest});
 }
 
 /** Revalidate after pathname/open/stat awaits, immediately before response
@@ -187,7 +194,7 @@ export function timelineExportPreviewIdentity(url: URL): {assetId: string; expor
   return {assetId, exportId};
 }
 
-export type TimelineExportPreviewMedia = Pick<TimelineExportOutput, 'exportId' | 'assetId' | 'projectId' | 'relativePath' | 'identityDigest'> & {readonly mimeType: 'video/mp4'};
+export type TimelineExportPreviewMedia = Pick<TimelineExportOutput, 'exportId' | 'assetId' | 'projectId' | 'relativePath' | 'reference' | 'referenceRevision' | 'identityDigest'> & {readonly mimeType: 'video/mp4'};
 
 /** Both named and unnamed exports require the same exact receipt/output proof. */
 export function readTimelineExportPreviewMedia(db: DatabaseSync, url: URL, guards: TimelineDeliveryReadGuards): TimelineExportPreviewMedia | null {
@@ -196,7 +203,7 @@ export function readTimelineExportPreviewMedia(db: DatabaseSync, url: URL, guard
   const output = readTimelineExportOutputCore(db, requested, guards, false);
   if (!output) return null;
   return Object.freeze({exportId: output.exportId, assetId: output.assetId, projectId: output.projectId,
-    relativePath: output.relativePath, mimeType: 'video/mp4' as const, identityDigest: output.identityDigest});
+    ...mediaLocatorFields(output), mimeType: 'video/mp4' as const, identityDigest: output.identityDigest});
 }
 
 /** Check the retained owner again after open/stat and before any output bytes. */

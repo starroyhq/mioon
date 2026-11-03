@@ -197,7 +197,7 @@ test('storyboard and float timeline request keys remain separate in both orders 
       owner.store.put = (table, value) => {if (table === 'exports' && (value as typeof value & {id:("malformed-id")}).id === legacy.id) writes.push((value as typeof value & {status:("failed")}).status); return put(table, value);};
       try {await tick(owner);} finally {owner.store.put = put;}
       assert.deepEqual(writes, ['queued', 'running', 'failed'], 'legacy worker recovery/dispatch remains eligible; deliberately missing source fails normally');
-      assert.equal((owner.store.get('exports', legacy.id)!.error)!.code, 'ENOENT');
+      assert.equal((owner.store.get('exports', legacy.id)!.error)!.code, 'MEDIA_MISSING');
       assert.deepEqual(receipt(f, input), saved);
       assert.equal(f.store.list('exports').length + (owner === f ? 0 : owner.store.list('exports').length), owner === f ? 2 : 3);
     });

@@ -1,3 +1,4 @@
+import {schemas as publicSchemas} from '../packages/client/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -119,8 +120,9 @@ test('bounded media preparation cannot duplicate assets, nominate stale revision
   assert.equal(Object.hasOwn(assetMediaSchemas, 'asset.media.outside.confirm'), false);
 });
 
-test('foundation definitions do not activate new imports or media operations in the current registry', () => {
-  assert.throws(() => parse('asset.import', {projectId, requestId, sourcePath: '/asset.wav'}), {code: 'VALIDATION_ERROR'});
+test('full S1 activates strict path imports while keeping media extensions out of the Mio registry', () => {
+  assert.deepEqual(publicSchemas['asset.import'].parse({projectId,requestId,sourcePath:'/asset.wav'}),{projectId,requestId,sourcePath:'/asset.wav'});
+  assert.throws(()=>parse('asset.import',{projectId,requestId,sourcePath:'/asset.wav'}),{code:'VALIDATION_ERROR'});
   assert.equal(Object.hasOwn(schemas, 'asset.media.prepare'), false);
   assert.deepEqual(parse('asset.import', {projectId, name: '声音.wav', mimeType: 'audio/wav', dataBase64: 'UklGRg=='}),
     {projectId, name: '声音.wav', mimeType: 'audio/wav', dataBase64: 'UklGRg=='});

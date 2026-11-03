@@ -133,7 +133,8 @@ test('actual backup38 restores role timelines, history and set/clear receipts ex
  let services=(createServices(store,new Map()) as unknown as FixtureServices);
  const project=await services.call('project.create',{name:'role capture'}),projectId=project.id;
  // Metadata only: editorial role edits never probe or require a media file.
- const asset=store.put('assets',{id:randomUUID(),projectId,name:'silent synthetic video',mimeType:'video/mp4',duration:600,width:720,height:1280,hasVideo:true,hasAudio:false});
+ const assetId=randomUUID();
+ const asset=store.put('assets',{id:assetId,projectId,name:'silent synthetic video',mimeType:'video/mp4',relativePath:`media/${assetId}.mp4`,duration:600,width:720,height:1280,hasVideo:true,hasAudio:false});
  let timeline=await services.call('timeline.get',{projectId});
  const request=(value: {revision:number},extra={})=>({projectId,expectedRevision:value.revision,requestId:randomUUID(),...extra});
  timeline=await services.call('timeline.clip.add',request(timeline,{trackId:timeline.tracks.find((track)=>track.kind==='video')!.id,assetId:asset.id,startFrame:0,durationFrames:60}));

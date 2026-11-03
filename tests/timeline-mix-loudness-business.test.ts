@@ -1,3 +1,4 @@
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import type {FixtureTimeline, FixtureSnapshot} from './helpers/strict-timeline-core-types.ts';
@@ -77,10 +78,11 @@ async function fixture(t: test.TestContext, {durationFrames = 60, runtime: overr
   const project = await services.call('project.create', {name: 'Owned full timeline loudness'}), foreign = await foreignProject(t, 'Other project');
   let timeline = await services.call('timeline.get', {projectId: project.id});
   const id = randomUUID(), bytes = Buffer.alloc(96 * 1024, 7);
+  bytes.write('RIFF'); bytes.writeUInt32LE(bytes.length-8,4); bytes.write('WAVE',8);
   const asset = {id, projectId: project.id, name: 'Owned sound.wav', mimeType: 'audio/wav', relativePath: `media/${id}.wav`,
     sha256: sha(bytes), sizeBytes: bytes.length, duration: 60, hasAudio: true, hasVideo: false, width: 0, height: 0,
     url: `/media/${id}`, createdAt: new Date().toISOString()};
-  await writeFile(path.join(root, asset.relativePath), bytes, {mode: 0o600}); store.put('assets', asset);
+  await writeFile(path.join(root, asset.relativePath), bytes, {mode: 0o600}); store.put('assets', asset); Object.assign(asset,store.get('assets',id));
   timeline = await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
     trackId: (timeline.tracks.find((track) => track.kind === 'audio'))!.id, assetId: id, startFrame: 0, sourceInFrame: 17,
     durationFrames, gain: .75});
@@ -98,7 +100,7 @@ async function fixture(t: test.TestContext, {durationFrames = 60, runtime: overr
     checkpoint: async () => ({rows: rows(), writes: (store.db.prepare('SELECT total_changes() AS n').get())!.n, files: await files(root)}),
     unchanged: async (before: { rows: unknown; writes: unknown; files: unknown; }) => {assert.deepEqual(rows(), before.rows); assert.equal((store.db.prepare('SELECT total_changes() AS n').get())!.n, before.writes); assert.deepEqual(await files(root), before.files);}};
 }
-const replace = (f:Awaited<ReturnType<typeof fixture>>, table: string, value?: FixtureTimeline) => f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(value), (value)!.id);
+const replace = (f:Awaited<ReturnType<typeof fixture>>, table: string, value?: FixtureTimeline) => {if(!value)throw Error('Missing fixture row');const saved={...value} as unknown as Record<string,unknown>;if(table==='assets'&&'reference' in saved)delete saved.relativePath;return f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(saved),value.id);};
 
 test('full saved original and separately rendered candidate are byte-pinned and have no durable effects', async t => {
   const requests: (FixtureTimeline)[] = []; let hashes = 0;
@@ -277,8 +279,8 @@ test('candidate uses audible clips only, preserving hidden video while excluding
     requests.push(timeline); return fakeDecode(timeline, assets, ((options) as unknown as Parameters<NonNullable<typeof fakeDecode>>[2]));
   }}});
   const videoTrack = f.timeline.tracks.find((track) => track.kind === 'video'), audioTrack = f.timeline.tracks.find((track) => track.kind === 'audio');
-  const embeddedId = randomUUID(), embedded = {...f.asset, id: embeddedId, relativePath: `media/${embeddedId}.mp4`, mimeType: 'video/mp4', hasVideo: true};
-  await writeFile(path.join(f.root, embedded.relativePath), f.bytes); f.store.put('assets', embedded);
+  const embeddedId = randomUUID(), embeddedBytes=mp4HeaderFixture('Synthetic embedded audio video'), embedded = {...f.asset, id: embeddedId, reference:undefined,referenceRevision:undefined,relativePath: `media/${embeddedId}.mp4`, mimeType: 'video/mp4', hasVideo: true,sha256:sha(embeddedBytes),sizeBytes:embeddedBytes.length};
+  await writeFile(path.join(f.root, embedded.relativePath), embeddedBytes); f.store.put('assets', embedded);
   const hiddenClip = {...f.timeline.clips[0], id: randomUUID(), trackId: (videoTrack)!.id, assetId: embeddedId, gain: .5};
   const zeroClip = {...f.timeline.clips[0], id: randomUUID(), startFrame: 60, gain: 0};
   const mutedTrack = {...audioTrack, id: randomUUID(), orderIndex: 2, muted: true};
@@ -314,7 +316,9 @@ test('potentially audible video with saved false audio metadata is still pinned 
       throw Object.assign(Error('Actual probe found audio on saved silent video'), {code: 'TIMELINE_MIX_LOUDNESS_SOURCE_METADATA_MISMATCH'});
     }}});
   const video = f.timeline.tracks.find((track) => track.kind === 'video');
-  replace(f, 'assets', (({...f.asset, mimeType: 'video/mp4', hasAudio: false, hasVideo: true}) as unknown as Parameters<NonNullable<typeof replace>>[2]));
+  const relativePath=`media/${f.asset.id}.mp4`,videoBytes=mp4HeaderFixture('Synthetic saved-silent video');await writeFile(path.join(f.root,relativePath),videoBytes);
+  f.store.put('assets',{...f.asset,reference:undefined,referenceRevision:undefined,relativePath,mimeType:'video/mp4',hasAudio:false,hasVideo:true,sha256:sha(videoBytes),sizeBytes:videoBytes.length});
+  Object.assign(f.asset,f.store.get('assets',f.asset.id),{relativePath});
   replace(f, 'timelines', {...f.timeline, clips: f.timeline.clips.map((clip) => ({...clip, trackId: (video)!.id}))});
   const before = await f.checkpoint(); await assert.rejects(f.call(), {code: 'TIMELINE_MIX_LOUDNESS_SOURCE_METADATA_MISMATCH'});
   assert.equal(calls, 1); assert.equal(hashes, 1); assert.ok(observedFile); await f.unchanged(before);

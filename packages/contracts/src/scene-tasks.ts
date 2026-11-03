@@ -1,3 +1,5 @@
+import {mediaReferenceSchema} from './media-reference.ts';
+import type {MediaReference} from './media-reference.ts';
 import {z} from 'zod';
 import {SOURCE_RANGE_FPS, sourceFrameCount} from './source-range.ts';
 import {FRAME_LIMITS, FRAME_PROFILE_ID, FRAME_SELECTION_RULE, frameProbeSchema} from './frame-extraction.ts';
@@ -113,10 +115,16 @@ export const sceneDescriptions = Object.freeze({
 
 const relativePath = z.string().min(1).max(1024);
 const sourceFields = {assetId: id, sha256: hash, mimeType: z.enum(['video/mp4', 'video/webm']), sizeBytes: z.number().int().min(1).max(SCENE_LIMITS.sourceBytes),
-  relativePath, duration: z.number().finite().positive().max(SCENE_LIMITS.sourceDuration)};
+  reference:mediaReferenceSchema,referenceRevision:revision, duration: z.number().finite().positive().max(SCENE_LIMITS.sourceDuration)};
 export const sceneSnapshotSchema = bounded(z.object({
   schemaVersion: z.literal(1), projectId: id, taskId: id, kind: z.literal('detect'),
   source: z.object(sourceFields).strict(),
+  options: sceneDetectionOptionsSchema, profileId: z.literal(SCENE_DETECTION_PROFILE_ID), fps: z.literal(SOURCE_RANGE_FPS),
+}).strict().refine(value => sourceFrameCount(value.source.duration) !== null, 'Source has no complete frame'), SCENE_LIMITS.snapshotBytes);
+const legacyWorkspaceSourceFields={assetId:id,sha256:hash,mimeType:z.enum(['video/mp4','video/webm']),sizeBytes:z.number().int().min(1).max(SCENE_LIMITS.sourceBytes),relativePath,duration:z.number().finite().positive().max(SCENE_LIMITS.sourceDuration)};
+export const legacyWorkspaceSceneSnapshotSchema = bounded(z.object({
+  schemaVersion: z.literal(1), projectId: id, taskId: id, kind: z.literal('detect'),
+  source: z.object(legacyWorkspaceSourceFields).strict(),
   options: sceneDetectionOptionsSchema, profileId: z.literal(SCENE_DETECTION_PROFILE_ID), fps: z.literal(SOURCE_RANGE_FPS),
 }).strict().refine(value => sourceFrameCount(value.source.duration) !== null, 'Source has no complete frame'), SCENE_LIMITS.snapshotBytes);
 const sourceDimension = z.number().int().min(1).max(FRAME_LIMITS.sourceMaxEdge);
@@ -126,6 +134,19 @@ const sourceDimension = z.number().int().min(1).max(FRAME_LIMITS.sourceMaxEdge);
 export const sceneShotsSnapshotSchema = bounded(z.object({
   schemaVersion: z.literal(1), projectId: id, taskId: id, kind: z.literal('shots'),
   source: z.object({...sourceFields, width: sourceDimension, height: sourceDimension}).strict(),
+  resultId: id, frameCount,
+  frame: z.object({profileId: z.literal(FRAME_PROFILE_ID), selectionRule: z.literal(FRAME_SELECTION_RULE), fps: z.literal(SOURCE_RANGE_FPS)}).strict(),
+  aspectRatio: z.enum(SCENE_SHOT_ASPECT_RATIOS), titlePrefix, origin: position,
+  segments: z.array(z.tuple([segmentNumber, editFrame, editFrame])).min(1).max(SCENE_LIMITS.shotsPerTask),
+}).strict()
+  .refine(value => increasing(value.segments.map(([segment]) => segment)), 'Segments must be strictly increasing')
+  .refine(value => value.segments.every(([, start, end], index, all) => start < end && end <= value.frameCount && (index === 0 || start >= all[index - 1]![2])),
+    'Segments must lie in order inside the source')
+  .refine(value => value.source.width * value.source.height <= FRAME_LIMITS.sourceMaxPixels, 'Source geometry exceeds the frame profile')
+  .refine(value => sourceFrameCount(value.source.duration) !== null, 'Source has no complete frame'), SCENE_LIMITS.snapshotBytes);
+export const legacyWorkspaceSceneShotsSnapshotSchema = bounded(z.object({
+  schemaVersion: z.literal(1), projectId: id, taskId: id, kind: z.literal('shots'),
+  source: z.object({...legacyWorkspaceSourceFields, width: sourceDimension, height: sourceDimension}).strict(),
   resultId: id, frameCount,
   frame: z.object({profileId: z.literal(FRAME_PROFILE_ID), selectionRule: z.literal(FRAME_SELECTION_RULE), fps: z.literal(SOURCE_RANGE_FPS)}).strict(),
   aspectRatio: z.enum(SCENE_SHOT_ASPECT_RATIOS), titlePrefix, origin: position,
@@ -210,7 +231,7 @@ export const sceneResultResponseSchema = z.object({projectId: id, assetId: id, r
 export interface SceneDetectionOptionsInput {mode: typeof SCENE_DETECTION_MODES[number]; sensitivity: number; minShotSeconds: number}
 export interface SceneTaskSnapshot {
   schemaVersion: 1; projectId: string; taskId: string; kind: 'detect';
-  source: {assetId: string; sha256: string; mimeType: 'video/mp4' | 'video/webm'; sizeBytes: number; relativePath: string; duration: number};
+  source: {assetId: string; sha256: string; mimeType: 'video/mp4' | 'video/webm'; sizeBytes: number; reference?: MediaReference; referenceRevision?: number; relativePath?: string; duration: number};
   options: SceneDetectionOptionsInput; profileId: typeof SCENE_DETECTION_PROFILE_ID; fps: typeof SOURCE_RANGE_FPS;
 }
 export type SceneShotAspectRatio = typeof SCENE_SHOT_ASPECT_RATIOS[number];

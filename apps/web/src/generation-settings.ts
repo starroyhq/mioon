@@ -1,6 +1,7 @@
+import {assetMediaStatusListResponseSchema} from '../../../packages/contracts/src/asset-media.ts';
 import { VIDEO_INPUT_PROFILE_VERSION, getVideoGenerationIssue, wanVideoInputSchema } from '../../../packages/contracts/src/video-providers.ts';
 import { resolveWanGenerationParameters } from '../../../packages/contracts/src/wan-video.ts';
-import { message } from '../../../packages/i18n/src/index.ts';
+import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage, MessageKey } from '../../../packages/i18n/src/index.ts';
 import { isSubjectReference, findModelCapabilities, getGenerationIssue, INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, SUBJECT_REFERENCE_PROFILE_VERSION, GENERATION_INPUT_ROLES, getShotGenerationReferenceSelection } from '@mioon/contracts';
 import type { GenerationIssue, SubjectReference } from '@mioon/contracts';
@@ -31,7 +32,9 @@ export interface GenerationAsset {
   id?: string;
   projectId?: string;
   name?: string;
-  sha256?: string;
+  sha256?: string | null;
+  referenceRevision?: number;
+  fingerprint?: unknown;
   mimeType?: string;
   width?: number;
   height?: number;
@@ -229,10 +232,29 @@ export function generationReferencePreview(shot: GenerationShot, assets: readonl
 
 // Bind paid confirmation to content identity, not a mutable count or thumbnail.
 export function generationReferenceIdentity(shot: GenerationShot, assets: readonly GenerationAsset[], options: GenerationReferenceOptions = {}): string {
-  return JSON.stringify(generationReferences(shot, options).references.map(({ assetId, role }) => {
+  return JSON.stringify(generationMediaReferences(shot, options).map(({ assetId, role }) => {
     const asset = assets.find(item => item.id === assetId);
-    return [assetId, role, ...['projectId', 'sha256', 'mimeType', 'width', 'height', 'sizeBytes', 'relativePath'].map(key => asset?.[key] ?? null)];
+    return [assetId, role, ...['projectId', 'sha256', 'referenceRevision', 'fingerprint', 'mimeType', 'width', 'height', 'sizeBytes'].map(key => asset?.[key] ?? null)];
   }));
+}
+export function generationMediaReferences(shot:GenerationShot,options:GenerationReferenceOptions={}):readonly GenerationReference[]{
+  return [...generationReferences(shot,options).references,...(shot.videoInput?.audios??[]).map(audio=>({assetId:audio.assetId,role:audio.role}))];
+}
+const generationReferenceError=(key:MessageKey):Error=>{const displayMessage=message(key);return Object.assign(new Error(renderMessage('zh-Hans',displayMessage)),{displayMessage});};
+/** A paid review is formed only from readable online image/audio references
+ * whose stored whole-file hash and captured revision are still current. */
+export async function checkGenerationMediaReferences(shot:GenerationShot,assets:readonly GenerationAsset[],options:GenerationReferenceOptions,
+  status:(input:{projectId:string;assetIds:string[]})=>Promise<unknown>):Promise<void>{
+  const refs=generationMediaReferences(shot,options),ids=[...new Set(refs.map(item=>item.assetId))];
+  if(!ids.length)return;
+  if(typeof shot.projectId!=='string'||ids.some(id=>typeof id!=='string'))throw generationReferenceError('connections.generation.referenceOwnerInvalid');
+  const selected=ids.map(id=>assets.find(asset=>asset.id===id));
+  if(selected.some(asset=>!asset||asset.projectId!==shot.projectId||!Number.isSafeInteger(asset.referenceRevision)||Number(asset.referenceRevision)<1||typeof asset.sha256!=='string'||!(/^[a-f0-9]{64}$/u).test(asset.sha256)))throw generationReferenceError('connections.generation.referenceHashMissing');
+  const result=assetMediaStatusListResponseSchema.parse(await status({projectId:shot.projectId,assetIds:ids as string[]}));
+  if(result.nextCursor!==null||result.items.length!==ids.length||selected.some(asset=>{
+    const state=result.items.find(item=>item.assetId===asset!.id);
+    return !state||state.status!=='online'||!state.readable||state.referenceRevision!==asset!.referenceRevision;
+  }))throw generationReferenceError('connections.generation.referenceUnavailable');
 }
 
 export function generationInputIssue(shot: GenerationShot, provider: GenerationProvider | null | undefined, model: string, assets: readonly GenerationAsset[], inputMode: string, { frozen = false, subjectReference, boundReference = false, savedShot }: GenerationInputIssueOptions = {}): string {
@@ -267,7 +289,7 @@ export function generationInputIssue(shot: GenerationShot, provider: GenerationP
   if (references.some(asset => !asset)) return '参考素材已不存在或冻结清单不完整，请重新核对原始素材。';
   if (frozen && references.some((asset, index) => {
     const current = assets.find(item => item.id === selection.references[index].assetId);
-    return Boolean(asset) && ['sha256', 'mimeType', 'width', 'height', 'relativePath', 'sizeBytes'].some(key => Object.hasOwn(asset as object, key) && asset?.[key] !== current?.[key]);
+    return Boolean(asset) && ['sha256', 'mimeType', 'width', 'height', 'referenceRevision', 'sizeBytes'].some(key => Object.hasOwn(asset as object, key) && asset?.[key] !== current?.[key]);
   })) return '参考素材与原任务的冻结内容不一致，不能替换后重试。';
   if (inputMode === 'image' && !references.length) return '图生视频需要选择一张首帧参考图。';
   if (inputMode === 'text' && references.length) return '切换文生视频前须明确清除首帧与尾帧选择，不会自动丢弃参考图。';
@@ -389,7 +411,7 @@ export function generationInputIssueDescriptor(shot: GenerationShot, provider: G
   if (references.some(asset => !asset)) return message('connections.generation.issue.referencesMissing');
   if (frozen && references.some((asset, index) => {
     const current = assets.find(item => item.id === selection.references[index].assetId);
-    return Boolean(asset) && ['sha256', 'mimeType', 'width', 'height', 'relativePath', 'sizeBytes'].some(key => Object.hasOwn(asset as object, key) && asset?.[key] !== current?.[key]);
+    return Boolean(asset) && ['sha256', 'mimeType', 'width', 'height', 'referenceRevision', 'sizeBytes'].some(key => Object.hasOwn(asset as object, key) && asset?.[key] !== current?.[key]);
   })) return message('connections.generation.issue.referencesChanged');
   if (inputMode === 'image' && !references.length) return message('connections.generation.issue.firstFrame');
   if (inputMode === 'text' && references.length) return message('connections.generation.issue.clearFrames');
@@ -513,7 +535,7 @@ export function generationVideoInputIssue(shot: GenerationShot, provider: Genera
     const asset = assets.find(item => item.id === assetId && (!shot.projectId || item.projectId === shot.projectId));
     if (!asset) return null;
     const pinned = frozen ? shot.referenceAssets?.[index] : asset;
-    if (!pinned || frozen && (pinned.id !== assetId || ['sha256', 'mimeType', 'width', 'height', 'relativePath', 'sizeBytes'].some(key => pinned[key] !== asset[key]))) return null;
+    if (!pinned || frozen && (pinned.id !== assetId || ['sha256', 'mimeType', 'width', 'height', 'referenceRevision', 'sizeBytes'].some(key => pinned[key] !== asset[key]))) return null;
     return { ...pinned, role };
   });
   if (references.some(item => !item)) return message('connections.generation.issue.referencesMissing');
@@ -524,8 +546,8 @@ export function generationVideoInputIssue(shot: GenerationShot, provider: Genera
     const asset = assets.find(item => item.id === assetId && (!shot.projectId || item.projectId === shot.projectId));
     if (!asset) return null;
     const pinned = frozen ? frozenAudios?.[index] : asset;
-    if (!pinned || frozen && (pinned.id !== assetId || ['sha256', 'mimeType', 'relativePath', 'sizeBytes', 'duration'].some(key => pinned[key] !== asset[key]))) return null;
-    return { id: assetId, relativePath: pinned.relativePath, mimeType: pinned.mimeType, sha256: pinned.sha256, sizeBytes: pinned.sizeBytes, duration: pinned.duration, role: 'reference_audio' };
+    if (!pinned || frozen && (pinned.id !== assetId || ['sha256', 'mimeType', 'referenceRevision', 'sizeBytes', 'duration'].some(key => pinned[key] !== asset[key]))) return null;
+    return { id: assetId, referenceRevision:pinned.referenceRevision, mimeType: pinned.mimeType, sha256: pinned.sha256, sizeBytes: pinned.sizeBytes, duration: pinned.duration, role: 'reference_audio' };
   });
   if (audios.some(item => !item)) return message('connections.generation.issue.referencesMissing');
   const snapshot = { ...shot, prompt, model: (provider.videoModel as { modelId?: string } | undefined)?.modelId, referenceAssetIds: input.images.map(image => image.assetId), referenceAssets: references, referenceBindings: input.images.map((image, index) => ({ ...image, sha256: references[index]?.sha256 })), ...(audios.length ? { referenceAudios: audios } : {}) };

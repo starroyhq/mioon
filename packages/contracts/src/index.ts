@@ -1,3 +1,4 @@
+import {toAssetMediaDto,publicMediaFingerprint} from './asset-media.ts';
 import {exportControlSchemas,exportControlDescriptions} from './export-controls.ts';
 export * from './export-controls.ts';
 import {workspaceConfigurationSchemas} from './workspace-configuration.ts';
@@ -362,6 +363,12 @@ export function parse<K extends OperationName>(op: K, input: unknown): Operation
 export function publicValue(value: unknown): unknown {
  if(Array.isArray(value))return (value as unknown[]).map((item: unknown)=>publicValue(item));
  if(value&&typeof value==='object'){
+  const asset=value as Record<string,unknown>;
+  if(asset.reference&&typeof asset.id==='string'&&typeof asset.mimeType==='string'){
+   if(typeof asset.projectId==='string'&&typeof asset.name==='string')return toAssetMediaDto(asset);
+   const {reference,...frozen}=asset;
+   return publicValue({...frozen,fingerprint:publicMediaFingerprint(reference)});
+  }
   const result: Record<string, unknown> = Object.fromEntries(Object.entries(value).filter(([k])=>!['path','relativePath','requestHash'].includes(k)).map(([k,x])=>[k,publicValue(x)]));
   const record = value as {shotId?: unknown; providerId?: unknown; status?: unknown; requestId?: unknown};
   if(record.shotId&&record.providerId&&record.status&&record.requestId)result.allowedActions=record.status==='failed'?['retry']:record.status==='submission_unknown'?['reconcile','cancel']:record.status==='cancelled'?['reconcile']:record.status==='succeeded'?[]:['cancel'];

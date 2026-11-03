@@ -1,3 +1,5 @@
+import type {MediaReference} from '../packages/contracts/src/media-reference.ts';
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {projectDirFor} from './helpers/project-database.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,7 +17,7 @@ import type {InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment,mediaExecutable} from '../packages/business/src/media-environment.ts';
 
 interface TimelineView {id: string; projectId: string; revision: number; durationFrames: number; clips: {id: string; trackId: string; assetId: string; gain: number; [key: string]: unknown}[]; tracks: {id: string; kind: string; [key: string]: unknown}[]; [key: string]: unknown}
-interface RenderOutput {input: Record<string, unknown>; queued: {id: string}; result: {id: string; status: string; assetId: string; error?: unknown}; saved: {snapshot: Record<string, unknown>}; output: {sha256: string; relativePath: string}; file: string; raw: Buffer}
+interface RenderOutput {input: Record<string, unknown>; queued: {id: string}; result: {id: string; status: string; assetId: string; error?: unknown}; saved: {snapshot: Record<string, unknown>}; output: {sha256: string; reference:MediaReference;referenceRevision:number}; file: string; raw: Buffer}
 const execute=promisify(execFile),sha=(bytes: Uint8Array | string): string =>createHash('sha256').update(bytes).digest('hex');
 const operation='timeline.loudness.apply',profile='bs1770-5-48k-stereo-fir4x-v1';
 const pause=(ms: number): Promise<void>=>new Promise<void>(resolve=>{setTimeout(resolve,ms);});
@@ -45,13 +47,13 @@ test('real apply undo redo and explicit float-v2 export remeasure the final AAC 
  assert.ok(inspect);
  const record=(id: string)=>inspect(project.id,db=>JSON.parse(String((db.prepare('SELECT data FROM exports WHERE id=?').get(id) as {data: string} | undefined)?.data)));
  const asset=(id: string)=>inspect(project.id,db=>JSON.parse(String((db.prepare('SELECT data FROM assets WHERE id=?').get(id) as {data: string} | undefined)?.data)));
- const originalSource=asset(source.id) as {relativePath: string},sourceFile=path.join(projectRoot,originalSource.relativePath);
+ const originalSource=asset(source.id) as {reference:MediaReference;referenceRevision:number},sourceFile=mediaFixturePath(projectRoot,originalSource);
  async function render(exportSettings?: Record<string, unknown>): Promise<RenderOutput> {
   const input={projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',...(exportSettings?{exportSettings}:{})};
   const queued=await client.rpc('timeline.render',input) as {id: string};let result: RenderOutput['result'] | undefined;
   for(const deadline=Date.now()+40000;Date.now()<deadline;){result=await client.rpc('export.get',{exportId:queued.id},{projectId:project.id}) as RenderOutput['result'];if(['succeeded','failed'].includes(result.status))break;await pause(25);}
   assert.ok(result);assert.equal(result.status,'succeeded',JSON.stringify(result.error));
-  const saved=record(result.id) as {snapshot: Record<string, unknown>},assetValue=asset(result.assetId) as {relativePath: string; sha256: string},file=path.join(projectRoot,assetValue.relativePath),raw=await readFile(file);
+  const saved=record(result.id) as {snapshot: Record<string, unknown>},assetValue=asset(result.assetId) as {reference:MediaReference;referenceRevision:number;sha256:string},file=mediaFixturePath(projectRoot,assetValue),raw=await readFile(file);
   const output={...assetValue};
   assert.equal(output.sha256,sha(raw));assert.deepEqual(await client.rpc('timeline.render',input),queued);
   return {input,queued,result,saved,output,file,raw};

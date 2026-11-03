@@ -1,3 +1,6 @@
+import {mediaFixturePath,mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
+import {referenceTestAsset} from '../packages/business/src/project-file/test-asset-fixture.ts';
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
@@ -28,6 +31,11 @@ const token = 'synthetic-named-delivery-download-token';
 const clone = <T>(value: T): T => structuredClone(value);
 const hash = (value: NonSharedBuffer|BinaryLike) => createHash('sha256').update(value).digest('hex');
 const manifest=(root:string,databases:readonly string[]=[])=>dataFileSnapshot(root,databases);
+function referencedFixture<T extends {relativePath:string}>(root:string,value:T) {
+  const converted=referenceTestAsset(root,value),{relativePath:_relativePath,...metadata}=value;
+  return {...metadata,reference:mediaReferenceSchema.parse(converted.reference),referenceRevision:1};
+}
+const sourcePng=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/m1cAAAAASUVORK5CYII=','base64');
 async function fixture(t: test.TestContext, {serve = true, named = false} = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-named-download-'));
   let store: TypedStore|undefined, services: TypedServices|undefined, server: Awaited<ReturnType<typeof startServer>> | undefined, db: DatabaseSync|undefined, inspect: InspectProject|undefined,inspectApp:InspectApplication|undefined;
@@ -38,16 +46,17 @@ async function fixture(t: test.TestContext, {serve = true, named = false} = {}) 
   const project = store.get('projects', created.projectId)!;
   let timeline = await services.call('timeline.get', {projectId: project.id});
   const sourceId = randomUUID();
-  store.put('assets', {id: sourceId, projectId: project.id, name: 'Frozen image', mimeType: 'image/png', sha256: 'a'.repeat(64),
-    relativePath: `media/${sourceId}.png`, width: 720, height: 1280, duration: 0, hasAudio: false, sizeBytes: 20, createdAt: new Date().toISOString()});
+  await writeFile(path.join(projectDir,`media/${sourceId}.png`),sourcePng);
+  store.put('assets', referencedFixture(projectDir,{id: sourceId, projectId: project.id, name: 'Frozen image', mimeType: 'image/png', sha256: hash(sourcePng),
+    relativePath: `media/${sourceId}.png`, width: 1, height: 1, duration: 0, hasAudio: false, sizeBytes: sourcePng.length, createdAt: new Date().toISOString()}));
   timeline = await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
     trackId: timeline.tracks[0].id, assetId: sourceId, startFrame: 0, durationFrames: 30});
   const input = {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'export', ...(named ? {deliveryName: '海边 交付 V1'} : {})};
   const queued = await services.call('timeline.render', input);
-  const assetId = randomUUID(), relativePath = `media/export-${queued.id}-${randomUUID()}.mp4`, bytes = Buffer.from('named-delivery-original-mp4-bytes');
+  const assetId = randomUUID(), relativePath = `media/export-${queued.id}-${randomUUID()}.mp4`, bytes = mp4HeaderFixture('named-delivery-original-mp4-bytes');
   await writeFile(path.join(projectDir, relativePath), bytes, {mode: 0o600});
-  const asset = {id: assetId, projectId: project.id, name: 'Managed output', mimeType: 'video/mp4', provenance: 'export', relativePath,
-    url: `/media/${assetId}`, sha256: hash(bytes), sizeBytes: bytes.length, createdAt: new Date().toISOString()};
+  const asset = referencedFixture(projectDir,{id: assetId, projectId: project.id, name: 'Managed output', mimeType: 'video/mp4', provenance: 'export', relativePath,
+    producer:{kind:'export' as const,id:queued.id},url: `/media/${assetId}`, sha256: hash(bytes), sizeBytes: bytes.length, createdAt: new Date().toISOString()});
   store.put('assets', asset);
   const record = {...(store.get('exports', queued.id) as import('./helpers/strict-timeline-core-types.ts').FixtureExport), status: 'succeeded', assetId, url: asset.url, updatedAt: new Date().toISOString()};
   store.put('exports', record);
@@ -184,7 +193,7 @@ test('preview revalidates after open and closes descriptor when ownership change
     return {stat: () => handle.stat(), close: async () => {closed++; await handle.close();}, createReadStream: options => {streamed++; return handle.createReadStream(options);}};
   }});
   const server = http.createServer(async (req, res) => {
-    try {await files.send(req, res, {file: path.join(f.projectDir, descriptor.relativePath), ranges: true,
+    try {await files.send(req, res, {file: mediaFixturePath(f.projectDir, f.asset), ranges: true,
       headers: () => timelineExportPreviewResponseHeaders(f.db, f.url, f.guards, descriptor)});}
     catch (error) {res.writeHead((error as Failure).status || 500); res.end((error as Failure).code);}
   });

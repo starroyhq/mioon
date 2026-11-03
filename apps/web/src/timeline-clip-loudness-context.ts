@@ -16,7 +16,7 @@ export function savedClipLoudnessFields(timeline: { id: string; revision: number
 }
 interface SavedClip { id: string; assetId: string; trackId: string; startFrame: number; sourceInFrame: number; durationFrames: number; gain: number; fadeInFrames?: number; fadeOutFrames?: number }
 interface SavedTrack { id: string; muted: boolean }
-interface SavedAsset { id: string; sha256?: string; mimeType?: string; hasAudio?: boolean }
+interface SavedAsset { id: string; sha256?: string | null; mimeType?: string; hasAudio?: boolean }
 export function clipLoudnessDraftContext(context: TimelineClipLoudnessContext, draft: { dirty: boolean; conflict: boolean; submitting: boolean; candidate: unknown; phase: string; businessPending: boolean; compositionPending?: boolean }, visible: boolean): TimelineClipLoudnessContext {
   return { ...context, visible: context.visible && visible,
     hasUnsavedDrafts: context.hasUnsavedDrafts || draft.dirty || draft.conflict || Boolean(draft.candidate), pending: context.pending || draft.submitting || draft.businessPending || draft.compositionPending === true || !['ready', 'saved'].includes(draft.phase) };

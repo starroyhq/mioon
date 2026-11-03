@@ -1,3 +1,6 @@
+import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
+import {assetMediaDtoSchema} from '../packages/contracts/src/asset-media.ts';
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {readProjectState,changeMarks as nativeChangeMarks} from './helpers/project-state.ts';
 import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import {projectDirFor} from './helpers/project-database.ts';
@@ -84,10 +87,10 @@ test('real succeeded named/ranged export has identical HTTP, CLI and MCP sample-
   const client=(createClient({env:environment(backend.url)}) as TypedClient);
   const project=await client.rpc('project.create',{name:'Synthetic final-export parity'});
   let timeline=await client.rpc('timeline.get',{projectId:project.id});
-  let coverSource:{assetId:string;mimeType:'image/png';sourceSha256:string}|undefined;
+  let coverSource:{assetId:string;mimeType:'image/png';sourceFingerprint:string}|undefined;
   for(const [name,mimeType,bytes,kind] of [['Synthetic pixels.png','image/png',png(),'video'],['Synthetic stereo.wav','audio/wav',stereoWav(),'audio']] as const){
     const asset=await client.rpc('asset.import',{projectId:project.id,name,mimeType,dataBase64:bytes.toString('base64')});
-    if(mimeType==='image/png')coverSource={assetId:asset.id,mimeType,sourceSha256:sha(bytes)};
+    if(mimeType==='image/png')coverSource={assetId:asset.id,mimeType,sourceFingerprint:mediaFingerprintToken(assetMediaDtoSchema.parse(asset).fingerprint)};
     timeline=await client.rpc('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),
       trackId:timeline.tracks.find((track: { kind: string|Buffer<ArrayBuffer>; })=>track.kind===kind)!.id,assetId:asset.id,startFrame:0,durationFrames:6});
   }
@@ -98,7 +101,7 @@ test('real succeeded named/ranged export has identical HTTP, CLI and MCP sample-
   assert.equal(record?.status,'succeeded',JSON.stringify(record?.error));
   // While the server runs, the database is read on its own connection.
   const asset=JSON.parse(inspect(project.id,db=>db.prepare('SELECT data FROM assets WHERE id=?').get(record.assetId)!.data as string));
-  const file=path.join(projectDirFor(root,project.id),asset.relativePath),bytes=await readFile(file),actualSha=sha(bytes),reference=await independentPcm(file);
+  const file=mediaFixturePath(projectDirFor(root,project.id),asset),bytes=await readFile(file),actualSha=sha(bytes),reference=await independentPcm(file);
   assert.equal(actualSha,asset.sha256);assert.equal(bytes.length,asset.sizeBytes);
   assert.ok(reference.peaks[0]>0&&reference.peaks[1]>reference.peaks[0]);
   const input={projectId:project.id,exportId:record.id},mcp=await official(t,backend.url);

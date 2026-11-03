@@ -1,3 +1,6 @@
+import {openServerProject} from './helpers/project-database.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectMediaPath,projectApiPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureExport, FixtureExportRecord, FixtureTimeline, FixtureAsset} from './helpers/strict-timeline-core-types.ts';
@@ -186,7 +189,7 @@ test('multitrack v2 real-media rendering acceptance', { timeout: 600_000 }, asyn
     const frozen = structuredClone(p.timeline), preview = await p.render('preview'), exported = await p.render('export');
     assert.equal(preview.mode, 'timeline'); assert.equal(preview.purpose, 'preview'); assert.equal(exported.purpose, 'export'); assert.equal(preview.timelineRevision, frozen.revision);
     assert.deepEqual(preview.snapshot.timeline, frozen); assert.deepEqual(exported.snapshot.timeline, frozen);
-    for (const asset of ([red, video, audio] as const)) assert.equal(preview.snapshot.assets.find((a) => a.id === asset.id)?.sha256, asset.sha256);
+    for (const [asset,name] of [[red,'red.png'],[video,'trim-source.mp4'],[audio,'trim-tone.wav']] as const) {const frozenAsset=preview.snapshot.assets.find(a=>a.id===asset.id);assert.ok(frozenAsset);assert.equal(frozenAsset.sha256,sha(await readFile(path.join(f.root,name))));assert.ok('referenceRevision' in frozenAsset&&'referenceRevision' in asset);assert.equal(frozenAsset.referenceRevision,asset.referenceRevision);assert.equal(Object.hasOwn(frozenAsset,'relativePath'),false);}
     // Change real visual content while the frozen jobs are queued/running. The
     // requested jobs must retain red frames 30..59 from their original snapshot.
     const originalLowerClip = p.timeline.clips.find((clip) => clip.assetId === red.id && clip.startFrame === 0);
@@ -310,12 +313,18 @@ test('multitrack v2 real-media rendering acceptance', { timeout: 600_000 }, asyn
   await check(t, 'worker verifies actual source bytes against frozen hashes before rendering', async () => {
     const p = await f.project('V2 source bytes tamper guard'), red = await f.importFile(p.id, 'red.png', 'image/png');
     await p.mutate('timeline.clip.add', { trackId: (p.timeline.tracks.find((track) => track.kind === 'video'))!.id, assetId: red.id, startFrame: 0, durationFrames: 30 });
-    const rawAsset = JSON.parse((await f.storage(p.id)).assets.find(row => row.id === red.id)!.data as string) as FixtureAsset;
-    await writeFile(path.join(await f.projectDirectory(p.id), rawAsset.relativePath), await readFile(path.join(f.root, 'blue.png')));
-    const job = await p.render(), failed = await f.exportUntil(p.id,job.id, (((j: { status: string; }) => ['succeeded', 'failed'].includes(j.status)) as unknown as Parameters<typeof f.exportUntil>[2])) as FixtureExport;
+    const rawAsset = JSON.parse((await f.storage(p.id)).assets.find(row => row.id === red.id)!.data as string) as FixtureAsset,projectDirectory=await f.projectDirectory(p.id);
+    // Accept through the real domain while the backend worker is stopped, then
+    // change bytes before restart. S1 also rejects drift before acceptance; this
+    // distinct boundary must still prove the worker checks the frozen source.
+    await f.stop();const store=openServerProject(f.root,p.id),services=createServices(store,new Map());let job:FixtureExport;
+    try {job=await services.call('timeline.render',{projectId:p.id,expectedRevision:p.timeline.revision,requestId:randomUUID(),purpose:'export'}) as FixtureExport;assert.equal(job.status,'queued');}
+    finally {await services.drain();store.close();}
+    await writeFile(mediaFixturePath(projectDirectory,rawAsset), await readFile(path.join(f.root, 'blue.png')));await f.start();
+    const failed = await f.exportUntil(p.id,job.id, (((j: { status: string; }) => ['succeeded', 'failed'].includes(j.status)) as unknown as Parameters<typeof f.exportUntil>[2])) as FixtureExport;
     assert.equal(failed.status, 'failed', JSON.stringify(failed)); assert.equal((failed.assetId as unknown), null); assert.equal((failed.url as unknown), null); assert.match((failed.error)!.message, /hash|bytes|snapshot|哈希|快照|校验/i);
     assert.equal((failed.snapshot.assets.find((a) => a.id === red.id))!.sha256, red.sha256);
-    return { exportId: failed.id, error: failed.error, expectedSha256: red.sha256, tamperedSha256: sha(await readFile(path.join(await f.projectDirectory(p.id), rawAsset.relativePath))) };
+    return { exportId: failed.id, error: failed.error, expectedSha256: red.sha256, tamperedSha256: sha(await readFile(mediaFixturePath(await f.projectDirectory(p.id),rawAsset))) };
   });
 
   await check(t, 'durable running timeline render recovers after actual backend SIGKILL', async () => {

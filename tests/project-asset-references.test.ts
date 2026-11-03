@@ -66,7 +66,7 @@ test('the bridge accepts only the exact live project owner and has no managed-pa
   const asset = await f.asset(source);
   assert.throws(() => createProjectAssetReferenceServices({...f.store}, {outsidePaths: f.app.outsidePaths}), TypeError);
   const old = {id: randomUUID(), projectId: f.store.projectId, name: 'managed', mimeType: 'video/mp4', relativePath: 'media/clip.mp4', sha256: 'a'.repeat(64)};
-  f.store.put('assets', old);
+  f.store.db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(old.id, old.projectId, JSON.stringify(old));
   await assert.rejects(f.service.resolve(old.id), {code: 'MEDIA_REFERENCE_INVALID', details: {assetId: old.id, reason: 'asset'}});
   f.store.close();
   await assert.rejects(f.service.inspect(asset.id), TypeError);

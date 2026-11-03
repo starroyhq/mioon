@@ -1,3 +1,4 @@
+import {mediaReferenceSchema} from './media-reference.ts';
 type Rec = Record<string, unknown>;
 import {z} from 'zod';
 import {SOURCE_RANGE_FPS,sourceFrameCount} from './source-range.ts';
@@ -46,10 +47,20 @@ const relativePath=z.string().min(1).max(FRAME_LIMITS.relativePathBytes).refine(
  'Source must have a bounded relative managed path');
 export const frameSnapshotSchema=bounded(z.object({
  schemaVersion:z.literal(1),projectId:id,taskId:id,
+ source:z.object({assetId:id,sha256:hash,mimeType:z.enum(['video/mp4','video/webm']),sizeBytes:z.number().int().min(1).max(FRAME_LIMITS.sourceBytes),reference:mediaReferenceSchema,referenceRevision:revision,
+  duration:z.number().finite().positive().max(FRAME_LIMITS.sourceDuration),width:sourceDimension,height:sourceDimension}).strict(),
+ requested:z.object({sourceFrame:frame,fps:z.literal(SOURCE_RANGE_FPS)}).strict(),profile:frameProfileSchema,
+}).strict().refine(value=>value.source.sha256===value.source.reference.fullSha256&&value.source.sizeBytes===value.source.reference.sizeBytes,'Strong source fingerprint must match its complete hash')
+ .refine(value=>value.source.width*value.source.height<=FRAME_LIMITS.sourceMaxPixels,'Source geometry exceeds profile')
+ .refine(value=>sourceFrameCount(value.source.duration)!==null&&value.requested.sourceFrame<(sourceFrameCount(value.source.duration) as number),'Requested mark is outside frozen source bounds'),FRAME_LIMITS.snapshotBytes);
+/** Existing isolated workspace records only; current project files never consume this shape. */
+export const legacyWorkspaceFrameSnapshotSchema=bounded(z.object({
+ schemaVersion:z.literal(1),projectId:id,taskId:id,
  source:z.object({assetId:id,sha256:hash,mimeType:z.enum(['video/mp4','video/webm']),sizeBytes:z.number().int().min(1).max(FRAME_LIMITS.sourceBytes),relativePath,
   duration:z.number().finite().positive().max(FRAME_LIMITS.sourceDuration),width:sourceDimension,height:sourceDimension}).strict(),
  requested:z.object({sourceFrame:frame,fps:z.literal(SOURCE_RANGE_FPS)}).strict(),profile:frameProfileSchema,
-}).strict().refine(value=>value.source.width*value.source.height<=FRAME_LIMITS.sourceMaxPixels,'Source geometry exceeds profile')
+}).strict()
+ .refine(value=>value.source.width*value.source.height<=FRAME_LIMITS.sourceMaxPixels,'Source geometry exceeds profile')
  .refine(value=>sourceFrameCount(value.source.duration)!==null&&value.requested.sourceFrame<(sourceFrameCount(value.source.duration) as number),'Requested mark is outside frozen source bounds'),FRAME_LIMITS.snapshotBytes);
 export const frameProbeSchema=z.object({streamIndex:z.number().int().min(0).max(255),timeBaseNumerator:z.literal(1),timeBaseDenominator:z.number().int().min(1).max(1_000_000_000),
  width:sourceDimension,height:sourceDimension,rotation:z.literal(0),sarNumerator:z.literal(1),sarDenominator:z.literal(1)}).strict()

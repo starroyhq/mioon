@@ -39,7 +39,7 @@ async function fixture(t: TestContext,{autoRun=true,opener=openStore}: {autoRun?
   // Metadata may claim a size the edit profile refuses; the bytes stay renderable.
   const bytes=await renderMockImagePng({width:Math.min(width,4096),height:Math.min(height,4096)}),id=randomUUID();
   const value={id,projectId,name:'Lin.png',mimeType:'image/png',provenance:'user-import',sha256:sha(bytes),width,height,sizeBytes:bytes.length,relativePath:`media/${id}.png`,url:`/media/${id}`,createdAt:new Date().toISOString(),...patch};
-  store.put('assets',value);writeFileSync(path.join(root,String(value.relativePath)),bytes,{mode:0o600});return value;
+  writeFileSync(path.join(root,String(value.relativePath)),bytes,{mode:0o600});store.put('assets',value);return value;
  }
  const source=await asset();
  const subject=await call<Subject>('subject.create',{projectId,kind:'character',name:'林夏',assetId:source.id,requestId:randomUUID()});

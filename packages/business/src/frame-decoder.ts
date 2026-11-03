@@ -1,3 +1,4 @@
+import {mediaLocatorFields} from './asset-reference-record.ts';
 import path from 'node:path';
 import { FRAME_LIMITS, FRAME_PROFILE, FRAME_PROFILE_ID } from '@mioon/contracts';
 import { mediaConfigurationError } from './media-environment.ts';
@@ -189,7 +190,7 @@ export async function decodeManagedFrame({ root, asset, file, info, requestedFra
   if (typeof asset.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(asset.sha256)) throw fault('MANAGED_SOURCE_CHANGED');
   // Hold immutable source identity across awaits even if a caller changes its
   // in-memory row object. The caller separately fences current persisted state.
-  const sourceAsset = { relativePath: asset.relativePath, sha256: asset.sha256, mimeType: asset.mimeType, sizeBytes: asset.sizeBytes };
+  const sourceAsset = { id: asset.assetId??asset.id, ...mediaLocatorFields(asset), sha256: asset.sha256, mimeType: asset.mimeType, sizeBytes: asset.sizeBytes };
   const expected = Object.fromEntries(['dev', 'ino', 'size', 'mtimeMs', 'ctimeMs'].map(key => [key, info[key]])) as unknown as import('./managed-media.ts').ManagedFileIdentity;
   const controller = new AbortController(), abort = () => controller.abort();
   let timedOut = false;

@@ -1,3 +1,6 @@
+import {isProjectDatabase} from '../../../packages/business/src/project-file/held-files.ts';
+import {validAssetLocator} from '../../../packages/business/src/asset-reference-record.ts';
+import {admitProjectAssetSource, registeredProjectStore, validatedProjectAssetSource} from '../../../packages/business/src/project-media-storage.ts';
 import path from 'node:path';
 import {constants} from 'node:fs';
 import {open} from 'node:fs/promises';
@@ -12,7 +15,7 @@ const route = '/api/version-comparison/media';
 const fields = ['projectId', 'shotId', 'versionId', 'assetId', 'sha256', 'workspaceOrigin'] as const;
 type Identity = Readonly<Record<typeof fields[number], string>>;
 export interface VersionComparisonMedia extends Identity {
-  readonly jobId: string; readonly relativePath: string; readonly mimeType: string; readonly sizeBytes: number; readonly identityDigest: string;
+  readonly jobId: string; readonly relativePath?: string; readonly referenceRevision?: number; readonly locatorDigest?: string; readonly mimeType: string; readonly sizeBytes: number; readonly identityDigest: string;
 }
 export interface VersionComparisonGraph {
   version(versionId: string, shotId: string, assetId: string): unknown;
@@ -21,7 +24,7 @@ export interface VersionComparisonGraph {
 type GraphReader = (projectId: string) => VersionComparisonGraph;
 type ReadHandle = Pick<FileHandle, 'close' | 'createReadStream'> & {stat(): Promise<Stats>};
 interface FileResponses {
-  send(req: IncomingMessage, res: ServerResponse, options: {file: string; ranges: boolean; headers: () => Record<string, string>}): Promise<void>;
+  send(req: IncomingMessage, res: ServerResponse, options: {file: string; ranges: boolean; headers: () => Record<string, string>; beforeEffect?: () => void}): Promise<void>;
   close(): Promise<void>;
 }
 export interface VersionComparisonMediaOptions {
@@ -33,6 +36,7 @@ export interface VersionComparisonMediaOptions {
   resolvePath(root: string, relativePath: string): Promise<string>;
   createFiles(options: {signal?: AbortSignal; openFile(file: string, flags: number): Promise<ReadHandle>}): FileResponses;
   openFile?(file: string, flags: number): Promise<ReadHandle>;
+  admitAsset?(assetId: string): Promise<{file: string; info: Stats}>;
 }
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -69,9 +73,9 @@ export function readVersionComparisonMedia(db: DatabaseSync, url: URL, readGraph
         version.projectId !== input.projectId || version.shotId !== input.shotId || version.assetId !== input.assetId || asset.id !== input.assetId || asset.projectId !== input.projectId ||
         version.sha256 !== input.sha256 || asset.sha256 !== input.sha256 || asset.mimeType !== 'video/mp4' ||
         typeof asset.sizeBytes !== 'number' || !Number.isSafeInteger(asset.sizeBytes) || asset.sizeBytes < 1 ||
-        (asset.provenance !== 'generated' && asset.provenance !== 'synthetic-mock') || asset.relativePath !== `media/result-${version.jobId}.mp4`) return null;
+        (asset.provenance !== 'generated' && asset.provenance !== 'synthetic-mock') || !(isProjectDatabase(db)?validAssetLocator(db,asset)&&object(asset.producer)&&asset.producer.kind==='generation'&&asset.producer.id===version.jobId:asset.relativePath===`media/result-${version.jobId}.mp4`)) return null;
     const identityDigest = createHash('sha256').update(JSON.stringify([version, asset])).digest('hex');
-    return Object.freeze({...input, jobId: version.jobId, relativePath: asset.relativePath, mimeType: asset.mimeType, sizeBytes: asset.sizeBytes, identityDigest});
+    return Object.freeze({...input, jobId: version.jobId, ...(isProjectDatabase(db)?{referenceRevision:Number(asset.referenceRevision),locatorDigest:createHash('sha256').update(JSON.stringify(asset.reference)).digest('hex')}:{relativePath:String(asset.relativePath)}), mimeType: asset.mimeType, sizeBytes: asset.sizeBytes, identityDigest});
   } catch { return null; }
   finally { if (!outer && db.isTransaction) db.exec('ROLLBACK'); }
 }
@@ -80,17 +84,17 @@ export function readVersionComparisonMedia(db: DatabaseSync, url: URL, readGraph
  * restored/held-record permission or native audio admission. Trusted I/O seams
  * are only for deterministic tests, never HTTP or environment configuration.
  */
-export function createVersionComparisonMediaHttp({db, root, signal, readGraph, assertAvailable, validateFile, createFiles, openFile = open, resolvePath}: VersionComparisonMediaOptions) {
+export function createVersionComparisonMediaHttp({db, root, signal, readGraph, assertAvailable, validateFile, createFiles, openFile = open, resolvePath, admitAsset}: VersionComparisonMediaOptions) {
   // Keep each bounded transfer's exact graph fence across async open/fstat.
   // This also fences 416 responses, which do not ask the file helper for headers.
-  const responseFence = new AsyncLocalStorage<() => void>();
+  const responseFence = new AsyncLocalStorage<{fence: () => void; validate: (file: string) => Stats}>();
   const checkResponse = (): void => {
     const fence = responseFence.getStore();
     if (!fence) throw unavailable();
-    fence();
+    fence.fence();
   };
   const managed = (file: string): Stats => {
-    try { return validateFile(file); } catch { throw unavailable(); }
+    try { return responseFence.getStore()?.validate(file) ?? validateFile(file); } catch { throw unavailable(); }
   };
   const available = () => {
     assertAvailable();
@@ -139,15 +143,26 @@ export function createVersionComparisonMediaHttp({db, root, signal, readGraph, a
       const current = readVersionComparisonMedia(db, url, readGraph);
       if (!current || (Object.keys(descriptor) as (keyof VersionComparisonMedia)[]).some(key => descriptor[key] !== current[key])) throw unavailable();
     };
-    const requestedFile = path.join(root, descriptor.relativePath), before = managed(requestedFile);
+    const store = registeredProjectStore(root);
+    let admitted: {file:string;info:Stats}|undefined;
+    try{admitted=store?await (admitAsset?admitAsset(descriptor.assetId):admitProjectAssetSource(root,descriptor.assetId,{signal})):undefined;}catch{throw unavailable();}
+    const requestedFile = admitted?.file ?? (typeof descriptor.relativePath === 'string' ? path.join(root, descriptor.relativePath) : (() => {throw unavailable();})());
+    const before = admitted?.info ?? managed(requestedFile);
     if (before.size !== descriptor.sizeBytes) throw unavailable();
-    let file;
-    try { file = await resolvePath(root, descriptor.relativePath); } catch { throw unavailable(); }
-    revalidate();
-    if (file !== requestedFile || !sameFile(before, managed(file))) throw unavailable();
-    await responseFence.run(revalidate, () => files.send(req, res, {file, ranges: true, headers: () => {
+    let file: string;
+    if (admitted) file = admitted.file;
+    else {try {file = await resolvePath(root, descriptor.relativePath!);} catch {throw unavailable();}}
+    const validate = (requested: string): Stats => {
       revalidate();
-      if (!sameFile(before, managed(file))) throw unavailable();
+      const current = store ? validatedProjectAssetSource(root, store.get('assets', descriptor.assetId) as Record<string, unknown>) : {file: requested, info: validateFile(requested)};
+      if (current.file !== requested || !sameFile(before, current.info)) throw unavailable();
+      return current.info;
+    };
+    revalidate();
+    if (file !== requestedFile || !sameFile(before, validate(file))) throw unavailable();
+    await responseFence.run({fence: revalidate, validate}, () => files.send(req, res, {file, ranges: true, beforeEffect: () => {validate(file);}, headers: () => {
+      revalidate();
+      if (!sameFile(before, validate(file))) throw unavailable();
       return {'Content-Type': descriptor.mimeType, 'Content-Disposition': 'inline', 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, no-store'};
     }}));
     return true;

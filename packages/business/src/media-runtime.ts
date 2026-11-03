@@ -28,6 +28,12 @@ export interface MediaStreamingRunResult { stdoutBytes: number }
 const mediaError = (code: string, message: string): MediaRuntimeError => Object.assign(new Error(message), { code });
 const isInterrupted = (error: unknown): boolean => typeof error === 'object' && error !== null && 'code' in error && error.code === 'MEDIA_CANCELLED';
 const isTerminationUnconfirmed = (error: unknown): error is MediaRuntimeError => typeof error === 'object' && error !== null && 'terminationUnconfirmed' in error;
+/** A tool failure may be caused by a concurrently changed source. Invocation
+ * sentinels, cancellation and an unconfirmed reap retain their causal priority. */
+export const isMediaToolFailure = (error: unknown): boolean => {
+  if (typeof error !== 'object' || error === null || isTerminationUnconfirmed(error) || !('code' in error) || typeof error.code !== 'string') return false;
+  return ['MEDIA_SPAWN_FAILED', 'MEDIA_PROCESS_FAILED', 'MEDIA_EXIT_FAILED', 'MEDIA_STREAM_FAILED', 'MEDIA_TIMEOUT', 'MEDIA_OUTPUT_LIMIT'].includes(error.code);
+};
 export const isMediaEffectRestriction = (error: unknown): boolean => {
   if (typeof error !== 'object' || error === null || !('code' in error) || typeof error.code !== 'string') return false;
   return ['RESTORE_OPERATION_UNAVAILABLE', 'RESTORED_RECORD_HELD', 'RESTORE_WORKSPACE_ORIGIN_REQUIRED', 'RESTORE_WORKSPACE_ORIGIN_MISMATCH'].includes(error.code);
@@ -102,7 +108,7 @@ function runMedia(command: string, args: readonly string[], { timeout, signal, b
       signal?.removeEventListener('abort', abort);
       removeInterruptionObserver?.();
       if (!failure && child && mediaInterrupted(child)) failure = { error: interruptedMediaError() };
-      if (!failure && beforeEffect !== undefined) {
+      if ((!failure || isMediaToolFailure(failure.error)) && beforeEffect !== undefined) {
         try { checkMediaEffect(beforeEffect, signal); } catch (error) { failure = { error }; }
       }
       if (failure) reject(failure.error);
@@ -132,7 +138,12 @@ function runMedia(command: string, args: readonly string[], { timeout, signal, b
     try { checkMediaEffect(beforeSpawn, signal); checkMediaEffect(beforeEffect, signal); }
     catch (error) { reject(error); return; }
     try { child = spawnMedia(executable, args, { stdio: ['ignore', 'pipe', 'pipe'] }, { kind: command, signal }); }
-    catch (error) { reject(isTerminationUnconfirmed(error) ? error : signal?.aborted ? interruptedMediaError() : mediaError('MEDIA_SPAWN_FAILED', 'Could not start the local media tool.')); return; }
+    catch (error) {
+      const failure = isTerminationUnconfirmed(error) ? error : signal?.aborted ? interruptedMediaError() : mediaError('MEDIA_SPAWN_FAILED', 'Could not start the local media tool.');
+      try { if (isMediaToolFailure(failure)) checkMediaEffect(beforeEffect, signal); }
+      catch (sourceError) { reject(sourceError); return; }
+      reject(failure); return;
+    }
     const activeChild: PipedMediaChild = child;
     activeChild.stdout.on('data', (chunk: Buffer) => {
       if (failure || settled) return;

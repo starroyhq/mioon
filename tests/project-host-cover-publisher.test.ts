@@ -1,3 +1,5 @@
+import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
@@ -55,8 +57,8 @@ async function fixture(t: TestContext) {
     assert.equal(value.mimeType, 'image/png'); assert.equal(value.sha256, hash(pixels));
     assert.equal(typeof value.id, 'string');
     const held = record(store.get('assets', String(value.id)));
-    assert.equal(typeof held.relativePath, 'string');
-    return {id: String(value.id), mimeType: 'image/png' as const, sha256: String(value.sha256), relativePath: String(held.relativePath)};
+    const reference=mediaReferenceSchema.parse(held.reference);assert.equal(held.relativePath,undefined);
+    return {id: String(value.id), mimeType: 'image/png' as const, sha256: String(value.sha256), reference, relativePath: reference.path};
   };
   const original = await addAsset(), timeline = record(await services.call('timeline.get', {projectId: store.projectId}));
   assert.ok(Array.isArray(timeline.tracks));
@@ -98,9 +100,9 @@ test('actual FFmpeg publishes a bounded JPEG/hash pair and reopening the same so
   const f = await fixture(t), before = readProjectState(f.store.db), cache = await f.renderActual(), size = previsJpegSize(cache.jpeg);
   assert.ok(size); assert.ok(size.width > 0 && size.height > 0);
   assert.ok(Math.max(size.width, size.height) <= PROJECT_COVER_LIMITS.maxEdge); assert.ok(cache.jpeg.length <= PROJECT_COVER_LIMITS.jpegBytes);
-  assert.deepEqual(cache.metadata, {version: 1, assetId: f.original.id, mimeType: 'image/png', sourceSha256: f.original.sha256, jpegSha256: hash(cache.jpeg)});
-  assert.deepEqual(readProjectCoverCache(f.store.cacheDir, {...f.original, assetId: f.original.id, sourceSha256: f.original.sha256}), cache.jpeg);
-  assert.equal(readProjectCoverCache(f.store.cacheDir, {assetId: f.original.id, mimeType: 'image/png', sourceSha256: 'f'.repeat(64)}), null);
+  assert.deepEqual(cache.metadata, {version: 2, assetId: f.original.id, mimeType: 'image/png', sourceFingerprint: mediaFingerprintToken(mediaReferenceSchema.parse(f.original.reference)), jpegSha256: hash(cache.jpeg)});
+  assert.deepEqual(readProjectCoverCache(f.store.cacheDir, {...f.original, assetId: f.original.id, sourceFingerprint: mediaFingerprintToken(mediaReferenceSchema.parse(f.original.reference))}), cache.jpeg);
+  assert.equal(readProjectCoverCache(f.store.cacheDir, {assetId: f.original.id, mimeType: 'image/png', sourceFingerprint: 'f'.repeat(64)}), null);
   assert.deepEqual(readProjectState(f.store.db), before, 'cover generation writes no project/history/cache SQL rows');
   await f.reopen();
   let renders = 0;
@@ -120,7 +122,7 @@ test('switching or deleting the actual source during an admitted render preserve
     const afterMutation = readProjectState(f.store.db);
     render.finish(); await render.publisher.drain();
     assert.equal(render.publisher.isBusy(), false); assert.deepEqual(pair(f.store), cache);
-    assert.equal(readProjectCoverCache(f.store.cacheDir, {assetId: next.id, mimeType: next.mimeType, sourceSha256: next.sha256}), null);
+    assert.equal(readProjectCoverCache(f.store.cacheDir, {assetId: next.id, mimeType: next.mimeType, sourceFingerprint: mediaFingerprintToken(mediaReferenceSchema.parse(next.reference))}), null);
     assert.deepEqual(readProjectState(f.store.db), afterMutation, 'the late render cannot repair or publish database records');
     if (mutation === 'switch') assert.deepEqual(readFileSync(sourceFile), source);
     else assert.throws(() => readFileSync(sourceFile), {code: 'ENOENT'}, 'late cover work cannot recreate a removed source');

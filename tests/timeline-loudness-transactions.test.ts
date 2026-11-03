@@ -57,7 +57,7 @@ async function syntheticDecode(timeline: TimelineView,assets: AssetView[],option
 async function fixture(t: import('node:test').TestContext,{group=false}: {group?: boolean} = {}): Promise<Fixture> {
   const root=await mkdtemp(path.join(tmpdir(),'mioon-atomic-gain-'));let store=openStore(root),services=createServices(store,new Map()),mix: ReturnType<typeof createTimelineMixLoudnessServices> | undefined;
   const f = {root,decodes:0,owner:true,onNow:null,get store(){return store;},get services(){return services;}} as Fixture;
-  const project=await services.call('project.create',{name:'Atomic gain'}) as {id: string},assetId=randomUUID(),bytes=Buffer.alloc(96*1024,7);
+  const project=await services.call('project.create',{name:'Atomic gain'}) as {id: string},assetId=randomUUID(),bytes=Buffer.alloc(96*1024,7);bytes.write('RIFF');bytes.writeUInt32LE(bytes.length-8,4);bytes.write('WAVE',8);
   const asset: AssetView={id:assetId,projectId:project.id,name:'Source.wav',mimeType:'audio/wav',relativePath:`media/${assetId}.wav`,sha256:sha(bytes),sizeBytes:bytes.length,
     duration:10,hasAudio:true,hasVideo:false,width:0,height:0,url:`/media/${assetId}`,createdAt:new Date().toISOString()};
   await writeFile(path.join(root,asset.relativePath),bytes,{mode:0o600});store.put('assets',asset as never);

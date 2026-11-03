@@ -1,3 +1,4 @@
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import {projectApiPath, projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {TestContext} from 'node:test';
@@ -147,7 +148,7 @@ async function fixture(t: TestContext) {
       assert.deepEqual(await fileManifest(root), before.files, 'No cache or sidefiles');
       assert.deepEqual(inspect(foreign.id,db=>({rows:rows(db),version:changeMarks(db)})),before.foreign,'independent project SQL is unchanged');
       assert.deepEqual(inspectApplication(db=>({rows:rows(db),schema:schemaObjects(db),version:changeMarks(db)})),before.application,'application SQL/schema/write marks are unchanged');
-      assert.equal(sha(await readFile(path.join(projectDirFor(root, project.id), savedAsset.relativePath))), sha(bytes), 'Original source bytes unchanged');
+      assert.equal(sha(await readFile(mediaFixturePath(projectDirFor(root, project.id), savedAsset))), sha(bytes), 'Original source bytes unchanged');
       assert.equal(savedAsset.sha256, sha(bytes));
     },
   };

@@ -1,3 +1,6 @@
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
+import {png} from './helpers/timeline-image-fixtures.ts';
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import type {ExportSamplePeakRuntime} from '../packages/business/src/export-sample-peak.ts';
 interface TestChild extends EventEmitter {pid:number;stdout:PassThrough;stderr:PassThrough;kills:unknown[];refs:number;unrefs:number;kill(signal:unknown):boolean;ref():TestChild;unref():TestChild}
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
@@ -59,19 +62,21 @@ async function fixture(t: test.TestContext, {named = false, range = false, durat
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-sample-peak-')), store = (openStore(root) as TypedStore), services = (createServices(store, new Map()) as TypedServices);
   const project = await services.call('project.create', {name: 'Synthetic owned output'}), foreign = await foreignProject(t);
   let timeline = await services.call('timeline.get', {projectId: project.id});
-  const sourceId = randomUUID();
-  store.put('assets', {id: sourceId, projectId: project.id, name: 'Original source', mimeType: 'image/png', sha256: 'a'.repeat(64),
-    relativePath: `media/${sourceId}.png`, width: 720, height: 1280, duration: 0, hasAudio: false, sizeBytes: 20, createdAt: new Date().toISOString()});
+  const sourceId = randomUUID(),sourceBytes=png({width:720,height:1280});
+  await writeFile(path.join(root,`media/${sourceId}.png`),sourceBytes);
+  store.put('assets', {id: sourceId, projectId: project.id, name: 'Original source', mimeType: 'image/png', sha256: sha(sourceBytes),
+    relativePath: `media/${sourceId}.png`, width: 720, height: 1280, duration: 0, hasAudio: false, sizeBytes: sourceBytes.length, createdAt: new Date().toISOString()});
   timeline = await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
     trackId: timeline.tracks[0].id, assetId: sourceId, startFrame: 0, durationFrames});
   const intent = {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'export',
     ...(named ? {deliveryName: '已导出文件'} : {}), ...(range ? {exportRange} : {})};
   const queued = await services.call('timeline.render', intent), assetId = randomUUID();
   const relativePath = `media/export-${queued.id}-${randomUUID()}.mp4`, bytes = Buffer.alloc(96 * 1024, 7);
+  mp4HeaderFixture('synthetic sampled output').copy(bytes);
   await writeFile(path.join(root, relativePath), bytes, {mode: 0o600});
-  const asset = {id: assetId, projectId: project.id, name: 'Historical output', mimeType: 'video/mp4', provenance: 'export', relativePath,
+  const asset = {id: assetId, projectId: project.id, name: 'Historical output', mimeType: 'video/mp4', provenance: 'export', producer:{kind:'export',id:queued.id}, relativePath,
     url: `/media/${assetId}`, sha256: sha(bytes), sizeBytes: bytes.length, createdAt: new Date().toISOString()};
-  store.put('assets', asset);
+  store.put('assets', asset);Object.assign(asset,store.get('assets',assetId));
   const record = {...(store.get('exports', queued.id) as import('./helpers/strict-timeline-core-types.ts').FixtureExport), status: 'succeeded', assetId, url: asset.url, updatedAt: new Date().toISOString()}; store.put('exports', record);
   // The operation is historical: no current timeline/source is required.
   store.db.prepare('DELETE FROM timelines WHERE id=?').run(timeline.id); store.db.prepare('DELETE FROM assets WHERE id=?').run(sourceId);
@@ -90,7 +95,7 @@ async function fixture(t: test.TestContext, {named = false, range = false, durat
     checkpoint: async () => ({rows: rows(), writes: store.db.prepare('SELECT total_changes() AS n').get()!.n, files: await files(root)})};
 }
 function corruptible(f: Awaited<ReturnType<typeof fixture>>) {f.store.db.exec('DROP TRIGGER immutable_timeline_render_snapshot; DROP TRIGGER immutable_timeline_responses;');}
-function replace<T extends {id:string}>(f: Awaited<ReturnType<typeof fixture>>, table: string, value:T) {f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(value), value.id);}
+function replace<T extends {id:string}>(f: Awaited<ReturnType<typeof fixture>>, table: string, value:T) {f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(table==='assets'&&'reference' in value&&typeof value.reference==='object'&&value.reference!==null&&'path' in value.reference&&'relativePath' in value&&value.relativePath===value.reference.path?Object.fromEntries(Object.entries(value).filter(([key])=>key!=='relativePath')):value), value.id);}
 
 test('named/unnamed and ranged historical outputs use two actual hashes, preserve optional identity and never write', async t => {
   for (const options of [{}, {named: true, range: true}]) await t.test(JSON.stringify(options), async t => {
@@ -196,7 +201,8 @@ test('bad bytes, symlinks and recorded input cap never become a decoded success'
   assert.equal((await f.call()).reason!.code, 'ARTIFACT_CHANGED');
   await unlink(file); await symlink(path.join(f.root, 'foreign-secret.mp4'), file);
   assert.equal((await f.call()).reason!.code, 'ARTIFACT_CHANGED');
-  replace(f, 'assets', {...f.asset, sizeBytes: EXPORT_SAMPLE_PEAK_LIMITS.inputBytes + 1});
+  const stored:unknown=f.store.get('assets',f.asset.id);assert.ok(stored&&typeof stored==='object'&&'reference' in stored);
+  replace(f, 'assets', {...f.asset, reference:{...mediaReferenceSchema.parse(stored.reference),sizeBytes:EXPORT_SAMPLE_PEAK_LIMITS.inputBytes+1},sizeBytes: EXPORT_SAMPLE_PEAK_LIMITS.inputBytes + 1});
   assert.equal((await f.call()).reason!.code, 'INPUT_TOO_LARGE');
 });
 

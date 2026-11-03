@@ -33,7 +33,7 @@ function testApplication(library: ReturnType<typeof openAppLibrary>): ServiceApp
   const unavailable = (): never => { throw new TypeError('Historical backup operations are unavailable in this kernel test'); };
   const configuration = createWorkspaceConfiguration({root: library.dataDir, documents: createAppCompanionDocuments(library)});
   const assertOwner = createProjectServiceApplication(library).assertMutationAllowed;
-  return {configuration, assertMutationAllowed() { assertOwner(); assert.equal(library.db.isOpen, true, 'the real application connection must still own admission'); }, backups: {
+  return {configuration, outsidePaths: library.outsidePaths, assertMutationAllowed() { assertOwner(); assert.equal(library.db.isOpen, true, 'the real application connection must still own admission'); }, backups: {
     getStatus: unavailable, list: unavailable, create: unavailable, stageRestore: unavailable,
     exportBundle: unavailable, importBundle: unavailable, importDirectory: unavailable,
     isBusy: () => false,

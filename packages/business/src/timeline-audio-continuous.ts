@@ -1,3 +1,6 @@
+import {hasSampledTimelineReferences, prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
+import {mediaLocatorFields, validAssetLocator} from './asset-reference-record.ts';
+import type {MediaLocator} from './asset-reference-record.ts';
 import {createHash} from 'node:crypto';
 import {volumeEnvelopeField, volumeEnvelopeSnapshotFields, volumeEnvelopeReadSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import {createVolumeEnvelopeEvaluator} from '../../contracts/src/timeline-volume-envelope.ts';
@@ -112,6 +115,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
   let state = admissions.get(store.db);
   if (!state) {state = {stopped: false, retired: new Set()}; admissions.set(store.db, state);}
   const admission = state;
+  let preparing: {controller: AbortController; task: Promise<ContinuousAudioPlan>} | undefined;
   const available = (): void => {
     runtime.assertOrdinaryWorkspace();
     if (!runtime.ownsLock()) throw fail('AUDIO_PREVIEW_OWNER_REQUIRED', 403);
@@ -143,9 +147,9 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
           ...(Object.hasOwn(clip, 'fadeInFrames') ? {fadeInFrames: clip.fadeInFrames} : {}),
           ...(Object.hasOwn(clip, 'fadeOutFrames') ? {fadeOutFrames: clip.fadeOutFrames} : {})};
       })}, assets: raw.assets.map((asset: unknown) => {
-      if (!object(asset) || typeof asset.id !== 'string' || typeof asset.relativePath !== 'string' || asset.relativePath.length > 4096 ||
+      if (!object(asset) || typeof asset.id !== 'string' || !validAssetLocator(store.db,asset) ||
           typeof asset.sha256 !== 'string' || typeof asset.sizeBytes !== 'number' || managed.has(asset.id)) throw fail('AUDIO_PREVIEW_UNAVAILABLE');
-      managed.set(asset.id, {relativePath: asset.relativePath, sha256: asset.sha256, sizeBytes: asset.sizeBytes});
+      managed.set(asset.id, {id:asset.id, projectId:typeof asset.projectId==='string'?asset.projectId:undefined, ...mediaLocatorFields(asset), sha256: asset.sha256, sizeBytes: asset.sizeBytes});
       return {id: asset.id, projectId: asset.projectId, sha256: asset.sha256, sizeBytes: asset.sizeBytes,
         mimeType: asset.mimeType, duration: asset.duration ?? null, ...(Object.hasOwn(asset, 'hasAudio') ? {hasAudio: asset.hasAudio} : {})};
     })};
@@ -248,6 +252,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
   }
   const stop = (): void => {
     admission.stopped = true;
+    preparing?.controller.abort();
     const session = admission.session;
     if (session) void retireSessionById(session.id).catch(error => {admission.failure = error;});
   };
@@ -257,8 +262,22 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     if (!plain(raw, 2048)) throw fail('VALIDATION_ERROR', 400);
     const parsed = continuousAudioPlanInputSchema.safeParse(raw);
     if (!parsed.success) throw fail('VALIDATION_ERROR', 400);
+    available();
     if (context.signal?.aborted) throw fail('OPERATION_CANCELLED', 503);
-    return current(parsed.data).plan;
+    if (preparing) throw fail('AUDIO_PREVIEW_BUSY', 429);
+    if(!hasSampledTimelineReferences(store,parsed.data.projectId))current(parsed.data);
+    const controller = new AbortController(), signal = AbortSignal.any([controller.signal, ownerSignal, context.signal].filter((value): value is AbortSignal => value !== undefined));
+    let timedOut = false;
+    const timer = setTimeout(() => {timedOut = true; controller.abort();}, LIMITS.prepareTimeoutMs);
+    const fence = (): void => {available(); if (signal.aborted) throw fail(timedOut ? 'AUDIO_PREVIEW_TIMEOUT' : 'OPERATION_CANCELLED', 503);};
+    const task = (async () => {
+      await prepareTimelineReferenceHashes(store, parsed.data.projectId, {signal, beforeEffect: fence, maxBytes: LIMITS.sourceBytes, totalBytes: LIMITS.hashReadBytes / 2,validateSelection:saved=>{if(saved.id!==parsed.data.timelineId||saved.revision!==parsed.data.expectedRevision)throw fail('AUDIO_PREVIEW_STALE');}});
+      fence(); return current(parsed.data).plan;
+    })();
+    const entry = {controller, task}; preparing = entry;
+    const joined = task.finally(() => {clearTimeout(timer); if (preparing === entry) preparing = undefined;}); entry.task = joined;
+    joined.catch(() => {});
+    try {return await joined;} finally {controller.abort();}
   }
   async function verifiedAsset(session: Session, assetId: string, signal: AbortSignal): Promise<Verified> {
     const existing = session.hashes.get(assetId);
@@ -521,7 +540,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
   async function drain(): Promise<void> {
     stop();
     const session = admission.session;
-    try {await runtime.boundedShutdown(session ? retireSessionById(session.id) : Promise.resolve(), 'AUDIO_PREVIEW_STOP_TIMEOUT');}
+    try {await runtime.boundedShutdown(Promise.allSettled([...(preparing ? [preparing.task] : []), ...(session ? [retireSessionById(session.id)] : [])]), 'AUDIO_PREVIEW_STOP_TIMEOUT');}
     finally {ownerSignal?.removeEventListener('abort', stop);}
     if (admission.failure) throw admission.failure;
   }

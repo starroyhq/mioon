@@ -1,3 +1,6 @@
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
+import {publicMediaFingerprint} from '../packages/contracts/src/asset-media.ts';
+import {resolveReferencePath} from '../packages/business/src/media-reference/paths.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -189,9 +192,9 @@ test('Seedance 2.5 freezes reference audio and sends it after the images, with t
  const videoInput=audioInput(group.images,[String(voice.asset.id)]),input={...f.input({durationSeconds:8,aspectRatio:'16:9',resolution:'720p'}),videoInput};
  const job=await f.services.call('generation.submit',input) as JobRecord;
  assert.deepEqual(job.snapshot.videoInput,videoInput);assert.equal(job.snapshot.prompt,f.shot.prompt);
- const frozen={id:voice.asset.id,mimeType:'audio/wav',sha256:voice.asset.sha256,sizeBytes:voice.bytes.length,duration:voice.asset.duration,role:'reference_audio'};
- assert.deepEqual(job.snapshot.referenceAudios,[frozen]);assert.ok(!JSON.stringify(job).includes('relativePath'),'The returned job keeps file paths private');
- assert.deepEqual(f.job(job.id).snapshot.referenceAudios,[{...frozen,relativePath:stored(f,voice.asset).relativePath}]);
+ const frozen={id:voice.asset.id,mimeType:'audio/wav',sha256:voice.asset.sha256,sizeBytes:voice.bytes.length,duration:voice.asset.duration,role:'reference_audio',referenceRevision:stored(f,voice.asset).referenceRevision};
+ assert.deepEqual(job.snapshot.referenceAudios,[{...frozen,fingerprint:publicMediaFingerprint(stored(f,voice.asset).reference)}]);assert.ok(!JSON.stringify(job).includes('relativePath'),'The returned job keeps file paths private');
+ assert.deepEqual(f.job(job.id).snapshot.referenceAudios,[{...frozen,reference:stored(f,voice.asset).reference}]);
  assert.equal((await f.services.call('generation.submit',input) as JobRecord).id,job.id,'Replaying the request returns the same job');
  await f.tick();await f.stop();assert.equal(f.posts().length,1);
  const sent=body(f.posts()[0]!),content=sent.content as Array<Record<string,unknown>>;
@@ -204,7 +207,7 @@ test('Seedance 2.5 may send reference audio alone, and refuses a clip that chang
  const f=await fixture(t),voice=await clip(f,2.5);
  const job=await f.services.call('generation.submit',{...f.input({resolution:'720p'}),videoInput:audioInput([],[String(voice.asset.id)])}) as JobRecord;
  assert.deepEqual(job.snapshot.referenceAssetIds,[]);assert.equal((job.snapshot.referenceAudios as unknown[]).length,1);
- await writeFile(path.join(f.root,String(stored(f,voice.asset).relativePath)),wav(2.5,660));
+ const file=resolveReferencePath(f.root,mediaReferenceSchema.parse(stored(f,voice.asset).reference));assert.ok(file);await writeFile(file,wav(2.5,660));
  await f.tick();await f.stop();
  assert.equal(f.job(job.id).status,'failed');assert.equal((f.job(job.id).error as {code?:string}).code,'REFERENCE_CHANGED');assert.equal(f.posts().length,0);
 });

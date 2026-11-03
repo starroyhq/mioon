@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import {writeFileSync} from 'node:fs';
+import {png} from './helpers/timeline-image-fixtures.ts';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProviderRegistry,normalizedCapabilities,providerEnvironmentKeys} from '../packages/business/src/provider-registry.ts';
@@ -47,8 +49,8 @@ test('unsupported duration, reference mode and parameters fail before any job ex
 
 test('Seedance first-frame ratio validation is shared and snapshots retain immutable dimensions',async t=>{
  const f=await fixture(t,env);
- const asset={id:randomUUID(),projectId:f.project.id,mimeType:'image/png',sha256:'a'.repeat(64),relativePath:'media/synthetic.png',sizeBytes:1024,width:360,height:640};
- f.store.put('assets',asset);
+ const bytes=png({width:360,height:640}),asset={id:randomUUID(),projectId:f.project.id,mimeType:'image/png',sha256:createHash('sha256').update(bytes).digest('hex'),relativePath:'media/synthetic.png',sizeBytes:bytes.length,width:360,height:640};
+ writeFileSync(path.join(f.store.root,asset.relativePath),bytes);f.store.put('assets',asset);
  let shot=await f.shot({duration:4,referenceAssetIds:[asset.id],aspectRatio:'16:9'});
  await assert.rejects(f.submit(shot),{code:'UNSUPPORTED_INPUT'});
  const c=normalizedCapabilities((f.providers.get('ark')! as unknown as Parameters<typeof normalizedCapabilities>[0]),env);

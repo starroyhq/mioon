@@ -5,6 +5,7 @@ import {createHash} from 'node:crypto';
 import {cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import ts from 'typescript';
 import {installedTypeScript, toolingEnvironment} from '../scripts/lib/local-tooling.ts';
 
 const repository = fileURLToPath(new URL('../', import.meta.url));
@@ -23,6 +24,31 @@ const sources = [
   'packages/contracts/src/timeline-audio-continuous.ts',
   'packages/contracts/src/timeline-segments.ts',
 ];
+
+/** Copy genuine relative dependencies, including the S1 owner/reference
+ * boundary. Missing modules must not be hidden by fixture stubs or ambient
+ * declarations; unrelated application entry points remain outside the roots. */
+async function copySourceClosure(directory: string, roots: readonly string[], options: ts.CompilerOptions): Promise<number> {
+  const copied = new Set<string>();
+  async function copy(name: string): Promise<void> {
+    const file = path.resolve(repository, name);
+    if (copied.has(file)) return;
+    const relative = path.relative(repository, file);
+    assert.ok(!relative.startsWith('..') && !path.isAbsolute(relative), 'Fixture source must belong to this repository');
+    copied.add(file);
+    const contents = await readFile(file, 'utf8'), destination = path.join(directory, relative);
+    await mkdir(path.dirname(destination), {recursive: true});
+    await writeFile(destination, contents);
+    for (const imported of ts.preProcessFile(contents, true, true).importedFiles) {
+      if (!imported.fileName.startsWith('.')) continue;
+      const resolved = ts.resolveModuleName(imported.fileName, file, options, ts.sys).resolvedModule;
+      assert.ok(resolved, `Real source dependency must resolve: ${relative} -> ${imported.fileName}`);
+      await copy(path.relative(repository, resolved.resolvedFileName));
+    }
+  }
+  for (const name of roots) await copy(name);
+  return copied.size;
+}
 
 async function snapshot(directory: string): Promise<Record<string, string>> {
   const files: Record<string, string> = {};
@@ -55,19 +81,24 @@ test('strict real compiler rejects unsuppressed runner and coordinator implement
   await mkdir(evidence, {recursive: true, mode: 0o700});
   const directory = await mkdtemp(path.join(evidence, 'continuous-audio-typecheck-'));
   t.after(() => rm(directory, {recursive: true, force: true}));
-  for (const name of [...sources, 'packages/contracts/src/timeline-volume-envelope.ts', ...consumers.map(name => `tests/typecheck/${name}`), 'package.json', 'packages/contracts/package.json']) {
+  const formal = JSON.parse(await readFile(path.join(repository, configurationName), 'utf8')) as {compilerOptions: Record<string, unknown>};
+  const options = ts.convertCompilerOptionsFromJson(formal.compilerOptions, path.join(repository, 'tests/typecheck'));
+  assert.deepEqual(options.errors, []);
+  const copied = await copySourceClosure(directory, [...sources, 'packages/contracts/src/timeline-volume-envelope.ts', ...consumers.map(name => `tests/typecheck/${name}`)], options.options);
+  t.diagnostic(`Isolated strict compiler copied ${copied} real source modules and the genuine contracts package`);
+  for (const name of ['package.json', 'packages/contracts/package.json']) {
     const destination = path.join(directory, name);
     await mkdir(path.dirname(destination), {recursive: true});
     await writeFile(destination, await readFile(path.join(repository, name)));
   }
   // Preserve the formal project's strict options and real declarations. Only
   // its root files are narrowed to this isolated copy and its genuine consumers.
-  const formal = JSON.parse(await readFile(path.join(repository, configurationName), 'utf8')) as {compilerOptions: Record<string, unknown>};
   await writeFile(path.join(directory, configurationName), JSON.stringify({compilerOptions: formal.compilerOptions,
     files: [...sources.map(name => `../../${name}`), ...consumers.map(name => `./${name}`)]}));
   // The public package route must resolve to copied source as well. Zod is its
   // real installed dependency; no ambient declarations or resolver aliases are
   // supplied to hide missing or incompatible types.
+  await cp(path.join(repository, 'packages/contracts/src'), path.join(directory, 'packages/contracts/src'), {recursive: true});
   await cp(path.join(directory, 'packages/contracts'), path.join(directory, 'node_modules/@mioon/contracts'), {recursive: true});
   await cp(await realpath(path.join(repository, 'packages/contracts/node_modules/zod')), path.join(directory, 'node_modules/zod'), {recursive: true});
   const initial = await compile(directory, compiler);
