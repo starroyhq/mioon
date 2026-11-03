@@ -37,7 +37,7 @@ export function projectEntryWithinRoot(root: string, file: string): boolean {
 
 /** A production capability owned by one server instance. Neither its window
  * bindings nor its path-taking methods are registered as HTTP operations. */
-export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject}: {
+export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries}: {
   readonly manager: ProjectHostManager<Runtime>;
   readonly registry: ProjectRegistryPort;
   readonly projectsDir: string;
@@ -45,6 +45,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   readonly signal: AbortSignal;
   readonly readScope: () => string;
   readonly createProject: (input: ProjectEntryCreateInput) => Promise<{readonly registration: RecentProject}>;
+  readonly refreshSummaries: () => void;
 }) {
   const instanceId = randomUUID();
   let establishedScope: string | undefined;
@@ -62,6 +63,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   };
   const list = (all: boolean): ProjectEntriesResponse => {
     const before = scope();
+    refreshSummaries();
     const registered = manager.list().filter(entry => all || projectEntryWithinRoot(projectsDir, entry.project.projectFile))
       .map(entry => ({...entry, coverUrl: entry.project.summary?.cover ? '/api/project-covers/' + entry.project.projectId : null}));
     if (before !== scope()) throw new AppError('PROJECT_ENTRY_SCOPE_MISMATCH', '应用库身份已变化，请重新打开', 409);

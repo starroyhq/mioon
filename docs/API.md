@@ -29,7 +29,7 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 
 ### S6-A 目录读取
 
-独立严格契约见 packages/contracts/src/project-entry.ts，成功数据为 version=1、appLibraryScope（与原 last-project 的 workspaceScope 同算法）、instanceId、registered；registered 的每条是 project（RecentProject，summary 可为空）、availability、coverUrl。封面有值时严格等于该项目的 /api/project-covers/<ID>，不读取关闭项目补摘要。
+独立严格契约见 packages/contracts/src/project-entry.ts，成功数据为 version=1、appLibraryScope（与原 last-project 的 workspaceScope 同算法）、instanceId、registered；registered 的每条是 project（RecentProject，summary 可为空）、availability、coverUrl。读取会刷新已打开宿主的登记摘要，不取得新租约；封面有值时严格等于该项目的 /api/project-covers/<ID>，不读取关闭项目补摘要。
 
 仅 GET，不接受查询参数、GET 请求体或原生路径控制；其它方法 405，未知子路径 404。路由沿用 Host/Origin 与令牌/会话认证，Cache-Control: no-store。网页不显示未登记文件，手工放入文件须先经明确打开流程登记；本轮未增加网页任意路径打开、目录扫描或 window-session。
 

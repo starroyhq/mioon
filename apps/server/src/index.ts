@@ -205,8 +205,17 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     if (token === undefined) { token = randomBytes(32).toString('hex'); writePrivateFileAtomic(tokenFile, token, {root, maxBytes: 4098, replace: false}); }
     const createProject = createInitializedProject({manager, registry: appLibrary.registry, directories,
       identity: appLibrary.projectFileIdentity, assertProjectFile});
+    const refreshSummaries = (): void => {
+      for (const [id, runtime] of opened) {
+        // A closing runtime can remain indexed while findMoved awaits I/O,
+        // after its native store has already closed. Keep its cached summary.
+        if (projects.status(id)?.state !== 'open') continue;
+        const entry = appLibrary.registry.get(id), summary = runtime.summarize?.();
+        if (entry && summary) appLibrary.registry.upsert({...entry, name: summary.name, summary: summary.summary});
+      }
+    };
     const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir,
-      channel, signal: shutdown.signal, createProject, readScope: () => {
+      channel, signal: shutdown.signal, createProject, refreshSummaries, readScope: () => {
         const directory = validatePrivateDirectory(root), db = validateManagedFile(appLibrary.databaseFile, {root});
         const identity = projectFileIdentity(appLibrary.databaseFile);
         if (!directory || !db || !identity || !appLibrary.db.isOpen || !isAppLibraryHeld(identity, appLibrary.db)) {
@@ -217,15 +226,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     const userRules=createMioUserRules(library,{signal:shutdown.signal});
     const appAgentHttp = (await import('./application-agent-http.ts')).createApplicationAgentHttp(library, shutdown.signal);
     const rpc = createApplicationRpc({library, app, manager, directories, backups, createProject, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
-      imageProfiles: input => listImageProfiles(app.profileDependencies, input as never), refreshSummaries: () => {
-        for (const [id, runtime] of opened) {
-          // A closing runtime can remain indexed while findMoved awaits I/O,
-          // after its native store has already closed. Keep its cached summary.
-          if (projects.status(id)?.state !== 'open') continue;
-          const entry = appLibrary.registry.get(id), summary = runtime.summarize?.();
-          if (entry && summary) appLibrary.registry.upsert({...entry, name: summary.name, summary: summary.summary});
-        }
-      }});
+      imageProfiles: input => listImageProfiles(app.profileDependencies, input as never), refreshSummaries});
     const covers = createProjectCoverHttp({directories, readProject: id => library!.registry.get(id), signal: shutdown.signal});
     const policy = createApplicationPolicy(library.agentPolicy);
     const {listAgentTaskTools} = await import('@mioon/business/agent/task-tools-v2');

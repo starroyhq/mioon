@@ -16,8 +16,10 @@ import {projectEntriesResponseSchema} from '../packages/contracts/src/project-en
 import type {ProjectEntriesResponse} from '../packages/contracts/src/project-entry.ts';
 import type {ProjectEntryWindowRevoked} from '../packages/contracts/src/project-entry-native.ts';
 import type {RecentProject} from '../packages/contracts/src/project-registry.ts';
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {timelineOutputPreset} from '../packages/contracts/src/timeline-output-geometry.ts';
 import {createServerProject, openServerProject} from './helpers/project-database.ts';
+import {png} from './helpers/timeline-image-fixtures.ts';
 
 const token = 'project-entry-server-synthetic-token';
 const jpeg = Buffer.from([0xff,0xd8,0xff,0xc0,0,17,8,0,1,0,1,3,1,0x22,0,2,0x11,1,3,0x11,1,0xff,0xda,0,12,3,1,0,2,0x11,3,0x11,0,0x3f,0,0x12,0x34,0xff,0xd9]);
@@ -143,6 +145,66 @@ test('application catalog retains legacy identity and reads registered metadata 
   assert.equal(cover.status, 200); assert.deepEqual(Buffer.from(await cover.arrayBuffer()), jpeg);
   assert.equal(a.db.isOpen, true); assert.equal(b.db.isOpen, true);
 });
+
+for (const firstRead of ['http', 'trusted'] as const) {
+  test(`${firstRead} catalog refreshes an open editor's summary without opening a closed project`, async t => {
+    t.mock.timers.enable({apis: ['Date'], now: Date.parse('2026-11-03T00:00:00.000Z')});
+    const f = await fixture(t, 'production'), windowId = randomUUID();
+    const opened = await f.server.projectEntries.acquire({projectId: f.a.projectId, windowId});
+    const editor = f.native(f.a.projectId), closed = f.hold(f.b.projectId);
+    const before = f.server.projectEntries.listRecent();
+    const previous = before.registered.find(entry => entry.project.projectId === f.a.projectId)!.project;
+    const closedBefore = before.registered.find(entry => entry.project.projectId === f.b.projectId)!;
+    assert.equal(closedBefore.project.lastOpenedAt, null);
+    // The kernel calls a same-process external holder "open-here". Inspection
+    // must still hit its lock: this server has no runtime to borrow for B.
+    const assertNotHosted = () => {
+      assert.throws(() => f.native(f.b.projectId), error =>
+        object(error).code === 'PROJECT_UNAVAILABLE' && object(object(error).details).reason === 'PROJECT_LOCKED');
+      assert.equal(closed.db.isOpen, true); assert.equal(closed.db.prepare('SELECT 1 AS value').get()!.value, 1);
+    };
+    assertNotHosted();
+    assert.deepEqual([previous.summary!.width, previous.summary!.height, previous.summary!.durationFrames, previous.summary!.cover], [1080, 1920, 0, null]);
+    const call = async (operation: string, input: unknown): Promise<Record<string, unknown>> => {
+      const response = await f.json(projectRpcPath(f.a.projectId), {method: 'POST', headers: {'content-type': 'application/json'},
+        body: JSON.stringify({operation, input})});
+      assert.equal(response.status, 200, JSON.stringify(response.body)); assert.equal(response.body.ok, true);
+      return object(response.body.data);
+    };
+    const format = await call('timeline.format.get', {projectId: f.a.projectId});
+    const updatedAt = '2026-11-03T00:00:10.000Z';
+    t.mock.timers.setTime(Date.parse(updatedAt));
+    await call('timeline.format.set', {projectId: f.a.projectId, expectedProjectRevision: format.projectRevision,
+      expectedRevision: format.timelineRevision, requestId: randomUUID(), presetId: 'landscape_720'});
+    const asset = await call('asset.import', {projectId: f.a.projectId, name: 'Catalog synthetic source.png', mimeType: 'image/png',
+      dataBase64: png({width: 16, height: 16, rgba: false, pixel: () => [255, 0, 0]}).toString('base64')});
+    const timeline = await call('timeline.get', {projectId: f.a.projectId});
+    assert.ok(Array.isArray(timeline.tracks));
+    const track = timeline.tracks.map(object).find(row => row.kind === 'video'); assert.ok(track);
+    await call('timeline.clip.add', {projectId: f.a.projectId, requestId: randomUUID(), expectedRevision: timeline.revision,
+      assetId: asset.id, trackId: track.id, startFrame: 15, durationFrames: 30});
+    // Each endpoint is the first summary read in its own case. Calling the old
+    // summary RPC (or the other catalog) first would hide a stale-cache bug.
+    const refreshed = firstRead === 'http' ? await f.catalog() : f.server.projectEntries.listRecent();
+    const other = firstRead === 'http' ? f.server.projectEntries.listRecent() : await f.catalog();
+    for (const entries of [refreshed, other]) {
+      const current = entries.registered.find(entry => entry.project.projectId === f.a.projectId)!;
+      assert.deepEqual(current.availability, {state: 'open'});
+      assert.deepEqual([current.project.summary!.width, current.project.summary!.height, current.project.summary!.fps,
+        current.project.summary!.presetId, current.project.summary!.durationFrames], [1280, 720, 30, 'landscape_720', 45]);
+      assert.equal(current.project.summary!.updatedAt, updatedAt);
+      assert.deepEqual(current.project.summary!.cover, {assetId: asset.id, mimeType: 'image/png'});
+      assert.equal(current.coverUrl, `/api/project-covers/${f.a.projectId}`);
+      assert.equal(current.project.lastOpenedAt, opened.project.lastOpenedAt, 'refreshing metadata is not another successful open');
+      const untouched = entries.registered.find(entry => entry.project.projectId === f.b.projectId)!;
+      assert.deepEqual(untouched, closedBefore);
+    }
+    assertNotHosted();
+    assert.equal(editor.isOpen, true); assert.equal(closed.db.isOpen, true);
+    assert.equal(closed.db.prepare('SELECT 1 AS value').get()!.value, 1);
+    f.server.projectEntries.release({windowId});
+  });
+}
 
 test('web catalog lists only registered files below its project root and never scans unregistered candidates', async t => {
   const f = await fixture(t, 'web', {externalProjectsRoot: true}), outside = path.join(f.root, 'outside'); mkdirSync(outside);

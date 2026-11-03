@@ -48,7 +48,7 @@
 应用级认证读取新增 GET /api/project-entries，严格契约在 packages/contracts/src/project-entry.ts。响应为版本 1、appLibraryScope、instanceId 和 registered；每条含完整 RecentProject（summary 可以为空）、availability 和 coverUrl。封面仍只读 GET /api/project-covers/<ID>，没有缓存就显示占位。
 
 - 网页渠道只列配置 projectsDir 内已登记的项目；生产/开发桌面渠道列全部最近登记。范围由启动时的受信渠道决定，HTTP 不接受目录、模式或分页参数，也不扫描未知文件。手工放进目录的文件，须经明确的打开流程登记一次后才出现；0.1.0 没有新增网页文件扫描或任意路径打开接口。
-- 读取经 manager.list()，保留热日志恢复及后台查找移动位置的规则，不为补摘要自动组装项目。availability 是提示，实际打开结果仍是权威。
+- 读取先刷新已打开宿主的登记摘要，再经 manager.list()，让画幅、时长和封面信息反映当前编辑；不取得新租约或为补摘要自动组装项目。保留热日志恢复及后台查找移动位置的规则。availability 是提示，实际打开结果仍是权威。
 - appLibraryScope 与原 last-project 的 workspaceScope 使用同一应用库身份算法；instanceId 仅表示这次服务实例，不能用来代替稳定缓存身份。读取前后检查身份，换库或失去应用库持有权时拒绝。旧 /api/last-project 和全部消费者在后续迁完前保留。
 - 目录最多 8192 条（沿用 B1），本新资源的完整 JSON 传输单独限 384 MiB，超过返回 PROJECT_ENTRY_LIMIT（413），不截断成假完整列表。这是读取资源的上限，不改变应用库容量或保证容纳其全部理论极限数据。
 
