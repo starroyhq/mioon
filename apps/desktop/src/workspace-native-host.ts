@@ -4,6 +4,7 @@ import {constants,openSync,closeSync,writeSync,fsyncSync,renameSync,unlinkSync,l
 import type {BigIntStats} from 'node:fs';
 import {workspaceNativeRequestSchema} from '../../../packages/contracts/src/workspace-native.ts';
 import {exportOutputSchema,type ExportOutput} from '../../../packages/contracts/src/export-controls.ts';
+import {PROJECT_OUTPUT_FOLDERS} from '../../../packages/contracts/src/project-output-publication.ts';
 import {parseProjectApiPath} from '../../../packages/contracts/src/project-file.ts';
 import {isProjectFileHeld} from '@mioon/business/project-file/held-files';
 import {isAppLibraryHeld} from '@mioon/business/app-db/connection';
@@ -32,7 +33,7 @@ async function verifyExport(root:string,output:ExportOutput,check:()=>void):Prom
   check();
   const proof=output.publication;
   if(!proof||proof.projectId!==output.projectId||proof.assetId!==output.assetId||proof.owner.kind!=='export'||proof.owner.id!==output.exportId||proof.targetKind!=='exports'||proof.sha256!==output.sha256||proof.sizeBytes!==output.sizeBytes||proof.mimeType!=='video/mp4'||!path.isAbsolute(root)||path.resolve(root)!==root||!path.isAbsolute(output.fileLocation)||path.resolve(output.fileLocation)!==output.fileLocation||output.producer.kind!=='export'||output.producer.id!==output.exportId)throw unavailable();
-  const realRoot=realpathSync(root),file=realpathSync(output.fileLocation),directory=path.join(realRoot,'导出');
+  const realRoot=realpathSync(root),file=realpathSync(output.fileLocation),directory=path.join(realRoot,PROJECT_OUTPUT_FOLDERS.exports);
   if(file!==output.fileLocation||path.dirname(file)!==directory||path.relative(realRoot,file).split(path.sep).join('/')!==proof.projectRelativePath||!isInsideRealDirectory(realRoot,file))throw unavailable();
   const projectIdentity=lstatSync(realRoot,{bigint:true}),directoryIdentity=lstatSync(directory,{bigint:true}),identity=lstatSync(file,{bigint:true});
   if(!projectIdentity.isDirectory()||!directoryIdentity.isDirectory()||directoryIdentity.isSymbolicLink()||realpathSync(directory)!==directory||!identity.isFile()||identity.isSymbolicLink()||identity.size!==BigInt(output.sizeBytes))throw unavailable();

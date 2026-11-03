@@ -21,7 +21,7 @@ test('pure help preserves independent frozen content and ordering after explicit
   const original=help(undefined,dependencies);
   const frozen = readFileSync(new URL('./fixtures/cli-help-legacy.json',import.meta.url),'utf8');
   // Application versions follow the root manifest; retain the historical fixture
-  // and independent prose/order except explicit S7 retirements and S1 path-import additions.
+  // and independent prose/order except explicit S7 retirements and S1/S2 public additions.
   assert.equal(frozen.split('"version":"0.4.1"').length,2);
   const expected = frozen
     .replace('"--file":"asset/lut import only: reads local bytes, never sends a path; LUT .cube files are limited to 7 MiB"', '"--file":"asset import: sends a normalized local path with caller requestId; no copying or 30 MiB upload limit. LUT import still reads up to 7 MiB","--confirm-outside":"asset import --file only: explicitly confirms this project and the exact source directory, prints each confirmed directory; excludes descendants","--upload":"asset import --file only: explicitly upload bytes to a remote backend, at most 30 MiB; exclusive with --confirm-outside"')
@@ -37,7 +37,8 @@ test('pure help preserves independent frozen content and ordering after explicit
     .replace('"timeline.clip.remove",', '"timeline.clip.remove","timeline.clip.rippleRemove",')
     .replace('"timeline.loudness.apply",', '"timeline.loudness.apply","timeline.clip.refreshSources","timeline.shots.append","timeline.clip.splitAtScenes","timeline.clip.crossfade","timeline.clip.setGains","timeline.clip.setTransform","timeline.clip.setTransition",')
     .replace('"frame.task.recoverResult",', '"frame.task.recoverResult","scene.detect","scene.request.get","scene.task.get","scene.task.list","scene.task.cancel","scene.result.get","scene.cuts.save","scene.shots.create","scene.shots.undo",')
-    .replace('"timeline.render"]', '"timeline.render","project.backup.list","project.backup.inspect","project.backup.restore","project.backup.status","project.version.list","project.version.save","project.version.preview","project.version.restore","asset.media.status.list","asset.media.prepare","asset.media.relink.preview","asset.media.relink.apply","asset.media.acceptChanged"]');
+    .replace('"timeline.render"]', '"timeline.render","project.backup.list","project.backup.inspect","project.backup.restore","project.backup.status","project.version.list","project.version.save","project.version.preview","project.version.restore","asset.media.status.list","asset.media.prepare","asset.media.relink.preview","asset.media.relink.apply","asset.media.acceptChanged"]')
+    .replace('"asset.media.acceptChanged"]', '"asset.media.acceptChanged","previs.output.publish","previs.output.lookup"]');
   const retired=new Set(['workspace.backup.status','workspace.backup.list','workspace.backup.create','workspace.backup.restore.stage','workspace.backup.inspect','workspace.restore.inspect']);
   const current=JSON.parse(expected) as {data:{options:Record<string,string>;operations:string[]}};
   delete current.data.options['--workspace-origin'];current.data.operations=current.data.operations.filter(operation=>!retired.has(operation));

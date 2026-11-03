@@ -9,17 +9,20 @@ import type {TypedStore} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
-import {mkdtempSync,realpathSync,rmSync,writeFileSync,existsSync,readdirSync,readFileSync,mkdirSync,unlinkSync} from 'node:fs';
+import {mkdtempSync,realpathSync,rmSync,writeFileSync,existsSync,readdirSync,readFileSync,mkdirSync,unlinkSync,lstatSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
-import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
+import {ownsStoreLock,assertProjectStore} from '../packages/business/src/store-runtime.ts';
 import {createSceneServices} from '../packages/business/src/scene-tasks.ts';
 import {setAgentTaskJobOriginRunner,setAgentTaskEffectGate,resumeAgentTaskJobs} from '../packages/business/src/agent/task-effects-v2.ts';
 import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';
 import {validateImageConsumption} from '../packages/business/src/image-consumption.ts';
+import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
+import {createProjectAssetReferenceServices} from '../packages/business/src/project-asset-references.ts';
+import {setProjectOutputPublicationTestHooks} from '../packages/business/src/project-output-publication.ts';
 import {createPngStreamSplitter,keyframeTargets,decodeSceneKeyframes, type DecodeSceneKeyframesOptions, type SceneKeyframe} from '../packages/business/src/scene-keyframe-decoder.ts';
 import {decodeManagedFrame} from '../packages/business/src/frame-decoder.ts';
 import {validateManagedSource} from '../packages/business/src/managed-media.ts';
@@ -201,6 +204,31 @@ test('a built storyboard saves its keyframe images and shots in one step', async
  assert.equal(validateImageConsumption(f.store.db,relinked,f.project.id).id,first!.id);f.store.put('assets',first!);
  const forged=f.store.put('assets',{...first,id:randomUUID(),relativePath:'media/forged.png'});
  assert.throws(()=>createOwnedMediaGraphReader(f.store.db,f.project.id).asset(forged.id),code('INSPECTION_UNAVAILABLE'));
+});
+
+test('every registered scene keyframe releases its private hard link before the first postcommit reader can pin its identity',async t=>{
+ const f=fixture(t),resultId=await f.detected(),store=f.store;assertProjectStore(store);
+ const library=testProjectAppLibrary(store);assert.ok(library);
+ const references=createProjectAssetReferenceServices(store,{outsidePaths:library.outsidePaths}),registered=deferred();
+ let observation:Promise<void>|undefined;
+ const remove=setProjectOutputPublicationTestHooks(store,{fault:(point,proof)=>{
+  if(point!=='after_registered'||proof.owner.kind!=='scene'||observation)return;
+  // A microtask runs as soon as the writer yields. Starting all markers in one
+  // turn is essential: an await between markers leaves later finals at nlink=2
+  // and their future unlink changes ctime beneath an ordinary L1 reader.
+  observation=Promise.resolve().then(async()=>{
+   const images=f.images();assert.equal(images.length,3);
+   const files=images.map(image=>mediaFixturePath(f.root,image)),before=files.map(file=>lstatSync(file,{bigint:true}));
+   for(const info of before)assert.equal(info.nlink,1n,'all visible batch outputs finish their private-link cleanup before any async marker verification');
+   const second=images[1]!,read=await references.read(second.id,{maxBytes:Number(second.sizeBytes),expectedSha256:String(second.sha256)});
+   assert.deepEqual(read.bytes,readFileSync(files[1]!));
+   await until(()=>!f.services.isBusy(),'all scene marker verification settled');
+   for(const [index,file] of files.entries())assert.equal(lstatSync(file,{bigint:true}).ctimeNs,before[index]!.ctimeNs,'later marker settlement cannot mutate a visible final identity');
+  });void observation.catch(()=>{});registered.resolve();
+ }});
+ t.after(remove);
+ const ack=await f.call('scene.shots.create',f.input(resultId));await f.state(ack.id,'succeeded');await registered.promise;assert.ok(observation);await observation;
+ assert.equal(f.shots().length,3);assert.equal(f.decodes,1);
 });
 
 test('without a position the batch goes below the canvas content and continues the order', async t=>{

@@ -17,6 +17,7 @@ import {projectApiPath,projectMediaPath,projectRpcPath} from '../packages/contra
 import {createWorkspaceNativeBridges} from '../apps/desktop/src/workspace-native-preload.ts';
 import {workspaceNativeRequestSchema} from '../packages/contracts/src/workspace-native.ts';
 import type {ExportOutput} from '../packages/contracts/src/export-controls.ts';
+import {PROJECT_OUTPUT_FOLDERS} from '../packages/contracts/src/project-output-publication.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 const code=(error:unknown)=>(error as {code?:string})?.code==='WORKSPACE_NATIVE_UNAVAILABLE';
 function fixture(t:TestContext) {
@@ -150,7 +151,7 @@ test('Windows native-export branch applies the same ordinary L1 hash and effect 
  const f=fixture(t);fs.chmodSync(path.dirname(f.file),0o755);fs.linkSync(f.file,path.join(f.root,'alias.mp4'));
  const source=fs.readFileSync(new URL('../apps/desktop/src/workspace-native-host.ts',import.meta.url),'utf8');
  const helper=source.slice(source.indexOf('const unavailable='),source.indexOf('/** Fixed authenticated'))+source.slice(source.indexOf('/** Native effects'),source.indexOf('/** Renderer input'));
- const scope={path,process:{platform:'win32'},lstatSync:fs.lstatSync,realpathSync:fs.realpathSync,isProjectFileHeld,isAppLibraryHeld,computeFullSha256,isInsideRealDirectory,referencePathForRealFile};
+ const scope={path,process:{platform:'win32'},lstatSync:fs.lstatSync,realpathSync:fs.realpathSync,isProjectFileHeld,isAppLibraryHeld,computeFullSha256,isInsideRealDirectory,referencePathForRealFile,PROJECT_OUTPUT_FOLDERS};
  const verify=lenientFunction(...Object.keys(scope),helper+';return verifyExport;')(...Object.values(scope)) as (root:string,output:typeof f.output,check:()=>void)=>Promise<()=>void>;
  const proof=await verify(f.root,f.output,()=>{});proof();
  await assert.rejects(verify(f.root,{...f.output,sha256:'f'.repeat(64),fingerprint:{...f.output.fingerprint,fullSha256:'f'.repeat(64)}},()=>{}),code);

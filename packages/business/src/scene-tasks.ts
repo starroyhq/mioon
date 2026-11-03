@@ -452,9 +452,13 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
    const done=change(value,{state:'succeeded',outcome:canonical(outcome),errorCode:null});
    fault('before_shots_commit',{taskId:original.row.id});return done;
   });
-  if(isProjectStore(store))for(const file of published)if('publication' in file)try{
-   await markProjectOutputRegistered(store,file.publication,{signal:attemptSignal,beforeEffect:()=>{owner();assertAgentTaskJobEffect(db,'scene',built.row.id);const value=task(built.row.projectId,built.row.id);if(value.row.state!=='succeeded'||value.row.revision!==built.row.revision)fail('SCENE_REVISION_CONFLICT');}});
-  }catch{/* The committed result remains valid; retain its private publication intent. */}
+  // Start every marker before yielding: its synchronous private-link cleanup
+  // must finish for the whole visible batch before any reader can pin a ctime.
+  const registrations:Promise<void>[]=[];
+  if(isProjectStore(store))for(const file of published)if('publication' in file)registrations.push(
+   markProjectOutputRegistered(store,file.publication,{signal:attemptSignal,beforeEffect:()=>{owner();assertAgentTaskJobEffect(db,'scene',built.row.id);const value=task(built.row.projectId,built.row.id);if(value.row.state!=='succeeded'||value.row.revision!==built.row.revision)fail('SCENE_REVISION_CONFLICT');}})
+    .catch(()=>{/* The committed result remains valid; retain its private publication intent. */}));
+  await Promise.all(registrations);
   discardShots(built);
  }
  // The origin runner can refuse before executeInside owns its error handling.

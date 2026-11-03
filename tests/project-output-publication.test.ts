@@ -6,7 +6,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {realpathSync} from 'node:fs';
 import {createProjectFile,openProjectStore} from '../packages/business/src/project-file/index.ts';
-import {registerProjectMediaStore} from '../packages/business/src/project-media-storage.ts';
+import {registerProjectMediaStore,registeredProjectAssetReferences} from '../packages/business/src/project-media-storage.ts';
 import {registerProjectOutputAdmission} from '../packages/business/src/project-output-owner.ts';
 import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
 import {publishProjectOutput,inspectProjectOutput,readPublishedProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,isPublishedProjectOutput,restorePublishedProjectOutput,setProjectOutputPublicationTestHooks} from '../packages/business/src/project-output-publication.ts';
@@ -131,4 +131,12 @@ test('version-canonicalized publication facts retain strict registration and mis
  assert.equal(restored.relativePath,output.relativePath);assert.deepEqual(readFileSync(file),bytes);assert.deepEqual(restored.publication,output.publication);
  const wrong={...canonical,publication:{...output.publication,owner:{...output.publication.owner,id:randomUUID()}}};
  await assert.rejects(markProjectOutputRegistered(f.store,wrong.publication),{code:'INVALID_MEDIA'});assert.deepEqual(readFileSync(file),bytes);
+});
+
+test('a registered output keeps its visible inode epoch stable while asynchronous registration work finishes',async t=>{
+ const f=fixture(t),output=await publishProjectOutput(f.store,f.input);f.register(output);
+ const final=path.join(f.projectDir,output.relativePath),registered=markProjectOutputRegistered(f.store,output.publication);
+ const ready=statSync(final,{bigint:true}),read=registeredProjectAssetReferences(f.projectDir)!.read(f.input.assetId,{maxBytes:bytes.length,expectedSha256:f.input.sha256,expectedReferenceRevision:1});
+ await registered;assert.deepEqual((await read).bytes,bytes);
+ const finished=statSync(final,{bigint:true});for(const key of ['dev','ino','size','mtimeNs','ctimeNs','nlink'] as const)assert.equal(finished[key],ready[key],`a ready result must not acquire a later ${key} change from private cleanup`);
 });

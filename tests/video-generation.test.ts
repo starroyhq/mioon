@@ -16,6 +16,7 @@ import {createVideoSettings} from '../packages/business/src/video/settings.ts';
 import {defaultVideoModels,resolveVideoEndpoint,videoBindingCapabilities,videoInputProfile} from '../packages/contracts/src/video-providers.ts';
 import type {VideoConnectionConfiguration,VideoExecutionBinding} from '../packages/contracts/src/video-providers.ts';
 import {parse} from '../packages/contracts/src/index.ts';
+import {projectOutputPublicationProofSchema} from '../packages/contracts/src/project-output-publication.ts';
 
 const json=(data:unknown)=>new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json'}});
 const frozenDate=()=>Date.UTC(2026,9,20);
@@ -59,7 +60,10 @@ async function fixture(t:TestContext,{persistent=false,providerId='minimax' as V
 // admission deliberately refuses these parameters, so historical rows are
 // fixtures rather than newly submitted paid work.
 async function historicalMinimaxJob(f:Awaited<ReturnType<typeof fixture>>,status:JobRecord['status'],parameters:Record<string,unknown>={},options:{modelId?:string;resolution?:'768P'|'2K'}={}){
- const current=await f.submit(),configuration=structuredClone(f.configuration);
+ const accepted=await f.submit(),current=f.job(accepted.id),configuration=structuredClone(f.configuration);
+ // The public acceptance DTO omits private owner fields such as requestHash.
+ // Historical settings fixtures must preserve the real persisted job identity.
+ assert.match(current.requestHash,/^[a-f0-9]{64}$/);
  const resolution=options.resolution??'768P';
  if(options.modelId)configuration.models[0]!.modelId=options.modelId;
  configuration.models[0]!.durationResolutionMap=[{duration:[4,8],resolution:[resolution]}];
@@ -90,8 +94,10 @@ for(const modelId of ['MiniMax-H3','historical-custom-h3'])test(`historical 768P
   return json({task:{id:'original-task',status:'succeeded',resolution:'768P',content:{url:'https://output.example/historical.mp4'}}});
  });
  f.ready(job.id);await f.tick();await f.stop();
- assert.equal(f.job(job.id).status,'succeeded');assert.equal(f.calls.length,2);assert.equal(f.calls.filter(call=>call.init.method==='POST').length,0);
+ assert.equal(f.job(job.id).status,'succeeded',JSON.stringify(f.job(job.id).error));assert.equal(f.calls.length,2);assert.equal(f.calls.filter(call=>call.init.method==='POST').length,0);
  assert.deepEqual(f.job(job.id).snapshot,snapshot);assert.equal(f.store.list('versions').length,1);
+ const proof=projectOutputPublicationProofSchema.parse((f.store.list('assets')[0] as ServiceRow).publication);
+ assert.deepEqual(proof.owner,{kind:'generation',id:job.id,requestId:job.requestId,inputHash:job.requestHash});
  assert.deepEqual((f.store.list('versions')[0] as ServiceRow).snapshot,snapshot);assert.equal(await f.settings.acquire(binding),'original-synthetic-key');
 });
 

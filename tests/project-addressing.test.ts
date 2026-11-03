@@ -14,6 +14,7 @@ import {startServer} from '../apps/server/src/index.ts';
 
 const TOKEN = 'synthetic-project-addressing-token';
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+const PREVIS_OUTPUT_OPERATIONS = ['previs.output.publish', 'previs.output.lookup'] as const;
 type Json = Record<string, unknown>;
 const sharedSchema = (operation: string): Parameters<typeof jsonSchema>[0] =>
   (schemas as unknown as Record<string, Parameters<typeof jsonSchema>[0]>)[operation];
@@ -28,7 +29,12 @@ const requires = (schema: unknown, field: string): boolean => {
 
 test('every operation has exactly one address: app-level, entity-addressed, or the project its input names', () => {
   const operations = Object.keys(schemas);
-  assert.equal(operations.length, 153);
+  assert.equal(operations.length, 155);
+  for (const operation of PREVIS_OUTPUT_OPERATIONS) {
+    assert.ok(Object.hasOwn(schemas, operation), operation);
+    assert.equal(isAppLevelOperation(operation), false, operation);
+    assert.equal(isEntityAddressedOperation(operation), false, operation);
+  }
   for (const operation of [...APP_LEVEL_OPERATIONS, ...ENTITY_ADDRESSED_OPERATIONS]) assert.ok(Object.hasOwn(schemas, operation), operation);
   assert.equal(APP_LEVEL_OPERATIONS.length, 17);
   assert.equal(ENTITY_ADDRESSED_OPERATIONS.length, 11);
@@ -65,6 +71,13 @@ test('rpcPathFor and the CLI/MCP project address', () => {
   assert.deepEqual(splitProjectAddress('job.get', {projectId, jobId}), {input: {jobId}, projectId});
   assert.deepEqual(splitProjectAddress('job.get', {jobId}), {input: {jobId}});
   assert.deepEqual(splitProjectAddress('project.get', {projectId}), {input: {projectId}}, 'an input that names its project is left whole');
+  for (const operation of PREVIS_OUTPUT_OPERATIONS) {
+    const input = {projectId};
+    assert.equal(inputProjectId(operation, input), projectId, operation);
+    assert.equal(rpcPathFor(operation, input, other), projectRpcPath(projectId), operation);
+    assert.deepEqual(splitProjectAddress(operation, input), {input}, operation);
+    assert.throws(() => rpcPathFor(operation, {}), TypeError, operation);
+  }
   assert.throws(() => splitProjectAddress('job.get', {projectId: 'x', jobId}), {code: 'VALIDATION_ERROR'});
 });
 
@@ -166,6 +179,10 @@ test('project addresses on the workspace server: registration, project checks, e
   assert.equal(data<{project: {id: string}}>(await rpc(projectRpcPath(first), 'project.get', {projectId: first})).project.id, first);
   failure(await rpc(projectRpcPath(first), 'project.get', {projectId: second}), 400, 'PROJECT_ID_MISMATCH', {projectId: first});
   failure(await rpc(projectRpcPath(first), 'image.review.prepare', {input: {projectId: second}}), 400, 'PROJECT_ID_MISMATCH', {projectId: first});
+  for (const operation of PREVIS_OUTPUT_OPERATIONS) {
+    failure(await rpc(projectRpcPath(first), operation, {projectId: second}), 400, 'PROJECT_ID_MISMATCH', {projectId: first});
+    failure(await rpc('/api/rpc', operation, {projectId: first}), 404, 'UNKNOWN_OPERATION');
+  }
   failure(await rpc(projectRpcPath(first), 'provider.list', {}), 400, 'VALIDATION_ERROR');
   failure(await rpc(projectRpcPath(first), 'project.rename', {projectId: first, name: 'renamed'}), 400, 'VALIDATION_ERROR');
   failure(await rpc(projectRpcPath(second), 'shot.update', {shotId: shot.id, expectedRevision: shot.revision, patch: {title: 'moved'}}), 404, 'NOT_FOUND', {id: shot.id});

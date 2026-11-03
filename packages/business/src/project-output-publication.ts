@@ -1,8 +1,8 @@
 import {createHash, randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
-import {constants, lstatSync, openSync, fstatSync, closeSync, fsyncSync, realpathSync, mkdirSync} from 'node:fs';
+import {constants, lstatSync, openSync, fstatSync, closeSync, fsyncSync, realpathSync, mkdirSync, unlinkSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
-import {open, link, unlink} from 'node:fs/promises';
+import {open, link} from 'node:fs/promises';
 import type {FileHandle} from 'node:fs/promises';
 import path from 'node:path';
 import {AppError} from '../../contracts/src/app-error.ts';
@@ -343,17 +343,27 @@ export async function markProjectOutputRegistered(store: ProjectStore, proof: Pr
   const asset: unknown = store.get('assets', proof.assetId);
   if (!isPublishedProjectOutput(asset, {projectId: store.projectId, assetId: proof.assetId, owner: proof.owner, targetKind: proof.targetKind, sha256: proof.sha256, sizeBytes: proof.sizeBytes, mimeType: proof.mimeType}) || !record(asset) || !isDeepStrictEqual(asset.publication,proof)) invalid();
   const receipt = readReceipt(store, proof.owner, proof.assetId, options); if (!receipt || !isDeepStrictEqual(receipt.proof,proof)) invalid();
-  await verifiedFinal(store, receipt, options); fence(store, options);
+  // Publication already hashed and synced the complete target before the DB
+  // transaction. Finish our private hard-link cleanup before yielding: once a
+  // committed result is observable, this writer must not change its inode epoch.
+  assertPublishedProjectOutput(store,proof,options);
   receipt.phase = 'registered'; writeReceipt(store, receipt, options); testHooks.get(store)?.fault?.('after_registered', proof); fence(store, options);
+  assertPublishedProjectOutput(store,proof,options);
   const stage = stagePath(store, receipt), info = lstatSync(stage, {throwIfNoEntry: false, bigint: true});
   if (info) {
+    const finalFile=path.join(store.projectDir,proof.relativePath),check=():void=>checkReceiptDirectories(store,receipt,options);
+    const before=fileMetadata(finalFile,check);
     const current = fileMetadata(stage, () => checkReceiptDirectories(store, receipt, options));
     if (!sameOutputIdentity(receipt.stageIdentity, outputFileIdentity(current)) || current.nlink < 1n || current.nlink > 2n) invalid();
-    await unlink(stage); fence(store, options); syncDirectory(path.dirname(stage));
-    // Removing our hard link changes the ordinary final inode's ctime. Pin a
-    // newly verified snapshot rather than persisting a known-stale fence.
-    await verifiedFinal(store,receipt,options);writeReceipt(store,receipt,options);
+    unlinkSync(stage); fence(store, options); syncDirectory(path.dirname(stage));
+    const after=fileMetadata(finalFile,check),linked=sameOutputIdentity(outputFileIdentity(before),outputFileIdentity(current));
+    if(!sameOutputIdentity(outputFileIdentity(before),outputFileIdentity(after))||before.size!==after.size||before.mtimeNs!==after.mtimeNs||
+      (linked?after.nlink!==before.nlink-1n:!unchanged(before,after)))invalid();
+    receipt.finalStats={mtimeNs:String(after.mtimeNs),ctimeNs:String(after.ctimeNs)};writeReceipt(store,receipt,options);
   }
+  // Keep the post-registration full-byte verification. Its remaining effects
+  // only update the private receipt, so concurrent readers retain a stable file.
+  await verifiedFinal(store,receipt,options);writeReceipt(store,receipt,options);
 }
 async function restoreProjectOutputInside(store: ProjectStore, input: {asset: Record<string, unknown>; stageFile: string}, options: ProjectOutputOptions): Promise<PublishedProjectOutput> {
   const proof = projectOutputPublicationProofSchema.parse(input.asset.publication);
