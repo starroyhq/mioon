@@ -1,268 +1,279 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {registerHooks} from 'node:module';
+import {spawnSync} from 'node:child_process';
+import {readFileSync} from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
-import type {SQLOutputValue} from 'node:sqlite';
-import {
-  buildManifest, currentCrossFileRelations, derivedDomainStatements, deriveFromFormat72, foreignKeyClauses, readFormat72, readTableShape, renderDerivedFiles, rewriteMioQuota,
-  staleDerivedFiles, stripCrossFileForeignKeys, stripDeletionExemption, toTempTrigger, POLICY_QUOTA_TERMS,
-} from './helpers/project-file-schema-derivation.ts';
-import type {Derivation, DerivedObject} from './helpers/project-file-schema-derivation.ts';
-import {
-  buildDatabase, schemaStatements, CACHE_APPLICATION_ID, CACHE_SCHEMA_VERSION, HISTORY_APPLICATION_ID, HISTORY_SCHEMA_VERSION,
-  PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION,
-} from '../packages/business/src/project-file/schema/databases.ts';
+import {buildManifest, declaredSchema, readTableShape, renderDerivedFiles, staleDerivedFiles, validateDeclaredSchema} from './helpers/project-file-schema-derivation.ts';
+import type {SchemaDeclarations} from './helpers/project-file-schema-derivation.ts';
+import {buildDatabase, schemaStatements, PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION, HISTORY_APPLICATION_ID, HISTORY_SCHEMA_VERSION, CACHE_APPLICATION_ID, CACHE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import type {DatabaseKind} from '../packages/business/src/project-file/schema/databases.ts';
-import {compareManifest, readSchemaManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
+import {readSchemaManifest, compareManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
 import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
-import {
-  APP_DATABASE_TABLES, CACHE_TABLES, CONTENT_TABLES, HISTORY_TABLES, HISTORY_TABLES_BY_DOMAIN, LEGACY_MIO_TABLES, REMOVED_TABLES, databaseOf,
-} from '../packages/business/src/project-file/schema/tables.ts';
+import {CONTENT_TABLES, HISTORY_TABLES, HISTORY_TABLES_BY_DOMAIN, CACHE_TABLES, APP_DATABASE_TABLES, REMOVED_TABLES, LEGACY_MIO_TABLES, databaseOf} from '../packages/business/src/project-file/schema/tables.ts';
 import {CROSS_FILE_RELATIONS, DROPPED_CONTENT_KEYS} from '../packages/business/src/project-file/cross-file/relations.ts';
 import {CONVERTED_TEMP_TRIGGERS} from '../packages/business/src/project-file/cross-file/converted-triggers.ts';
+import {installCrossFileTriggers} from '../packages/business/src/project-file/cross-file/install.ts';
 
-type Row = Record<string, SQLOutputValue>;
 const KINDS = ['project', 'history', 'cache'] as const;
-const IDENTITY: Readonly<Record<DatabaseKind, {version: number; applicationId: number}>> = {
+const MANIFEST_FILE = 'packages/business/src/project-file/schema/manifest.ts';
+const IDENTITY = {
   project: {version: PROJECT_FILE_SCHEMA_VERSION, applicationId: PROJECT_FILE_APPLICATION_ID},
   history: {version: HISTORY_SCHEMA_VERSION, applicationId: HISTORY_APPLICATION_ID},
   cache: {version: CACHE_SCHEMA_VERSION, applicationId: CACHE_APPLICATION_ID},
 };
-let derived: Derivation | undefined;
-const derivation = (): Derivation => derived ??= deriveFromFormat72(readFormat72());
-const quote = (name: string): string => `"${name.replaceAll('"', '""')}"`;
-
-function buildAlone(kind: DatabaseKind, schema = 'main'): DatabaseSync {
+const quote = (name: string): string => '"' + name.replaceAll('"', '""') + '"';
+const plain = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
+const sorted = (values: readonly string[]): string[] => [...values].sort();
+function buildAlone(kind: DatabaseKind, schema = 'main', statements = schemaStatements(kind)): DatabaseSync {
   const db = new DatabaseSync(':memory:');
-  if (schema !== 'main') db.exec(`ATTACH DATABASE ':memory:' AS ${schema}`);
-  db.exec('BEGIN');
-  buildDatabase(db, kind, schema);
-  db.exec('COMMIT');
+  if (schema !== 'main') db.exec(`ATTACH DATABASE ':memory:' AS ${quote(schema)}`);
+  db.exec('BEGIN'); buildDatabase(db, kind, schema, statements); db.exec('COMMIT');
   return db;
 }
-function buildHistoricalAlone(kind:DatabaseKind):DatabaseSync {
-  const db=new DatabaseSync(':memory:');
-  db.exec('BEGIN');
-  buildDatabase(db,kind,'main',schemaStatements(kind,derivedDomainStatements(derivation(),kind)));
-  if(kind==='history')db.exec('UPDATE schema_version SET version=2');
-  db.exec('COMMIT');
-  return db;
-}
-function masterNames(db: DatabaseSync, type: string): string[] {
+function names(db: DatabaseSync, type: string): string[] {
   return db.prepare('SELECT name FROM sqlite_master WHERE type=? ORDER BY name').all(type).map(row => String(row.name));
 }
-const count = (objects: readonly DerivedObject[], filter: (object: DerivedObject) => boolean): number => objects.filter(filter).length;
+function changedStatements(kind: DatabaseKind, change: (sql: string) => string): readonly string[] {
+  return schemaStatements(kind).map(change);
+}
+function cloneStatements(kind: DatabaseKind, statements: readonly string[]): SchemaDeclarations {
+  const input = declaredSchema(); return {...input, statements: {...input.statements, [kind]: statements}};
+}
 
-test('generated schema files equal a fresh derivation from the format-72 workspace', () => {
-  const files = renderDerivedFiles(derivation());
-  assert.deepEqual([...files.keys()].sort(), [
-    'packages/business/src/project-file/cross-file/converted-triggers.ts',
-    'packages/business/src/project-file/cross-file/relations.ts',
-    ...['cache', 'content', 'receipts', 'tasks', 'timeline-history'].map(file => `packages/business/src/project-file/schema/domains/${file}.ts`),
-    'packages/business/src/project-file/schema/manifest.ts',
-  ]);
-  assert.deepEqual(staleDerivedFiles(files), [], 'run `node tests/helpers/project-file-schema-derivation.ts --write`');
+// Independently reviewed current relationship obligations, not a generator
+// output. --write cannot update these expectations or renumber constraints.
+const CURRENT_RELATION_CONTRACT: readonly string[] = [
+  "15 main.asset_annotation_requests(projectId!)->project.projects(id)",
+  "16 main.asset_disposition_requests(projectId!)->project.projects(id)",
+  "17 main.asset_range_requests(projectId!)->project.projects(id)",
+  "18 main.edit_tasks(projectId!)->project.projects(id)",
+  "19 main.exports(projectId!)->project.projects(id)",
+  "20 main.frame_requests(projectId!)->project.projects(id)",
+  "21 main.frame_tasks(assetId?)->project.assets(id)",
+  "22 main.frame_tasks(projectId!)->project.projects(id)",
+  "23 main.image_remote_observations(projectId!)->project.projects(id)",
+  "24 main.image_remote_runs(projectId!)->project.projects(id)",
+  "25 main.image_requests(projectId!)->project.projects(id)",
+  "26 main.image_reviews(projectId!)->project.projects(id)",
+  "27 main.image_tasks(versionId?,id!,groupId!,projectId!)->project.image_versions(id,taskId,groupId,projectId) deferred",
+  "28 main.image_tasks(groupId!,projectId!)->project.image_groups(id,projectId)",
+  "29 main.image_tasks(projectId!)->project.projects(id)",
+  "30 main.jobs(projectId!)->project.projects(id)",
+  "31 main.lut_import_requests(resourceId!,projectId!)->project.project_lut_resources(id,projectId)",
+  "32 main.lut_import_requests(projectId!)->project.projects(id)",
+  "33 main.mutation_requests(projectId!)->project.projects(id)",
+  "34 main.previs_requests(nodeId!)->project.nodes(id)",
+  "35 main.previs_requests(projectId!)->project.projects(id)",
+  "36 cache.previs_thumbnails(projectId!)->project.projects(id)",
+  "37 cache.previs_thumbnails(nodeId!)->project.nodes(id)",
+  "38 main.project_mutation_requests(projectId!)->project.projects(id)",
+  "39 main.scene_requests(resultId?,projectId!)->project.scene_results(id,projectId)",
+  "40 main.scene_requests(projectId!)->project.projects(id)",
+  "41 main.scene_tasks(resultId?,projectId!)->project.scene_results(id,projectId) deferred",
+  "42 main.scene_tasks(sourceAssetId!)->project.assets(id)",
+  "43 main.scene_tasks(projectId!)->project.projects(id)",
+  "44 main.subject_requests(projectId!)->project.projects(id)",
+  "45 main.subject_variant_batches(sourceVersionId!,subjectId!,projectId!)->project.subject_versions(id,subjectId,projectId)",
+  "46 main.subject_variant_batches(subjectId!,projectId!)->project.subjects(id,projectId)",
+  "47 main.subject_variant_batches(projectId!)->project.projects(id)",
+  "48 main.subject_variant_items(versionId?)->project.subject_versions(id)",
+  "49 main.subject_variant_requests(projectId!)->project.projects(id)",
+  "50 main.task_disposition_requests(projectId!)->project.projects(id)",
+  "51 main.task_dispositions(projectId!)->project.projects(id)",
+  "52 main.timeline_format_requests(projectId!)->project.projects(id)",
+  "53 main.timeline_history(projectId!)->project.projects(id)",
+  "54 main.timeline_history_cursors(projectId!)->project.projects(id)",
+  "55 cache.waveform_cache(projectId!)->project.projects(id)",
+  "56 main.mio_conversations(projectId!)->project.projects(id)",
+  "57 main.mio_runs(projectId!)->project.projects(id)",
+  "58 main.mio_entries(projectId!)->project.projects(id)",
+  "59 main.mio_steps(projectId!)->project.projects(id)",
+  "60 main.mio_changes(projectId!)->project.projects(id)",
+  "61 main.mio_controls(projectId!)->project.projects(id)",
+  "62 main.mio_control_states(projectId!)->project.projects(id)",
+  "63 main.mio_imports(projectId!)->project.projects(id)",
+  "64 main.mio_job_origins(projectId!)->project.projects(id)",
+  "65 main.mio_edit_claims(projectId!)->project.projects(id)",
+  "66 main.mio_edit_owners(projectId!)->project.projects(id)",
+  "67 main.mio_edit_receipts(projectId!)->project.projects(id)",
+  "68 main.mio_conversation_policies(projectId!)->project.projects(id)",
+  "69 main.mio_conversation_policy_requests(projectId!)->project.projects(id)",
+  "70 main.mio_process_target_revisions(projectId!)->project.projects(id)",
+  "71 main.mio_rule_writes(projectId!)->project.projects(id)",
+  "72 main.mio_imports(assetId?)->project.assets(id)"
+];
+const relationKey = (relation: (typeof CROSS_FILE_RELATIONS)[number]): string => `${relation.index} ${relation.child.schema}.${relation.child.table}(${relation.child.columns.map((column,i)=>column+(relation.child.nullable[i]?'?':'!')).join(',')})->${relation.parent.schema}.${relation.parent.table}(${relation.parent.columns.join(',')})${relation.originallyDeferred?' deferred':''}`;
+
+test('the current manifest is generated from canonical declarations without rewriting its sources', () => {
+  const inputs = [
+    ...['content', 'receipts', 'tasks', 'timeline-history', 'cache', 'mio'].map(name => `../packages/business/src/project-file/schema/domains/${name}.ts`),
+    '../packages/business/src/project-file/cross-file/relations.ts', '../packages/business/src/project-file/cross-file/converted-triggers.ts',
+  ].map(file => new URL(file, import.meta.url));
+  const before = inputs.map(file => readFileSync(file, 'utf8'));
+  const files = renderDerivedFiles();
+  assert.deepEqual([...files.keys()], [MANIFEST_FILE]);
+  assert.deepEqual(staleDerivedFiles(files), []);
+  assert.deepEqual(inputs.map(file => readFileSync(file, 'utf8')), before);
+  assert.match(files.get(MANIFEST_FILE)!, /Generated by .*project-file-schema-derivation/);
+  assert.equal(files.get(MANIFEST_FILE), readFileSync(new URL('../' + MANIFEST_FILE, import.meta.url), 'utf8'));
+  assert.deepEqual(KINDS.map(kind => buildManifest(kind)), KINDS.map(kind => SCHEMA_MANIFEST[kind].entries));
 });
 
-test('the fixed format-72 source does not load the public opener or project-file connection', async () => {
-  const forbidden = new Set(['db.ts', 'project-file/store.ts', 'project-file/connection.ts'].map(file =>
-    new URL(`../packages/business/src/${file}`, import.meta.url).pathname));
-  let refused = 0;
-  const hooks = registerHooks({resolve(specifier, context, nextResolve) {
-    const resolved = nextResolve(specifier, context);
-    if (forbidden.has(new URL(resolved.url).pathname)) {
-      refused++;
-      throw Object.assign(new Error('Format-72 derivation must use fixed historical constructors'), {code: 'FORMAT72_OPENER_FORBIDDEN'});
-    }
-    return resolved;
-  }});
-  try {
-    // Prove the guard is active, then load a fresh reader rather than rely on
-    // the helper already imported above. Its output-side schema imports stay
-    // available; the historical source must never open those databases.
-    const openerUrl = new URL('../packages/business/src/db.ts?format72-guard', import.meta.url);
-    await assert.rejects(import(openerUrl.href), {code: 'FORMAT72_OPENER_FORBIDDEN'});
-    const readerUrl = new URL('./helpers/project-file-schema-derivation.ts?fixed-format72', import.meta.url);
-    const reader = await import(readerUrl.href) as {readFormat72: typeof readFormat72};
-    const source = reader.readFormat72();
-    assert.equal(refused, 1, 'only the explicit guard probe reached a forbidden opener');
-    assert.deepEqual(source, derivation().format72, 'creation order, SQL and table details remain the fixed source');
-    assert.equal(source.version, 72);
-    assert.equal(source.tables.has('schema_version'), true);
-    assert.equal(source.tables.has('project_file'), false);
-    assert.equal(source.tables.has('history_state'), false);
-  } finally {
-    hooks.deregister();
-  }
+test('schema generation in a fresh process cannot import legacy constructors, openers or its output manifest', () => {
+  const helper = new URL('./helpers/project-file-schema-derivation.ts', import.meta.url).href;
+  const probe = new URL('../packages/business/src/db.ts?schema-isolation-probe', import.meta.url).href;
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import {registerHooks} from 'node:module';
+    import {sep} from 'node:path';
+    import {fileURLToPath} from 'node:url';
+    let blocked = 0;
+    registerHooks({resolve(specifier, context, next) {
+      const result = next(specifier, context);
+      if (result.url.startsWith('file:')) {
+        const file = fileURLToPath(result.url).split(sep).join('/');
+        if (/\\/(?:workspace-[^/]*|db)\\.ts$/.test(file) || /\\/(?:legacy-workspace-store|historical-workspace)\\.ts$/.test(file) || /\\/project-file\\/(?:store|connection)\\.ts$/.test(file) || /\\/providers\\/mock\\.ts$/.test(file) || /\\/schema\\/manifest\\.ts$/.test(file)) {
+          blocked++; throw Object.assign(Error('Forbidden schema dependency'), {code:'SCHEMA_SOURCE_FORBIDDEN'});
+        }
+      }
+      return result;
+    }});
+    try { await import(${JSON.stringify(probe)}); throw Error('probe was not blocked'); }
+    catch (error) { if(error.code!=='SCHEMA_SOURCE_FORBIDDEN') throw error; }
+    const source = await import(${JSON.stringify(helper)});
+    const files = source.renderDerivedFiles();
+    console.log(JSON.stringify({blocked, files:[...files], roles:Object.keys(source.declaredSchema().tables), manifests:['project','history','cache'].map(kind=>source.buildManifest(kind))}));
+  `], {encoding: 'utf8', maxBuffer: 8 * 1024 * 1024});
+  assert.equal(child.error, undefined);
+  assert.equal(child.signal, null);
+  assert.equal(child.status, 0, child.stderr);
+  assert.doesNotMatch(child.stderr, /Forbidden schema dependency/);
+  const result = JSON.parse(child.stdout) as {blocked: number; files: [string, string][]; roles: string[]; manifests: unknown[]};
+  assert.equal(result.blocked, 1);
+  assert.deepEqual(result.files, [...renderDerivedFiles()]);
+  assert.deepEqual(result.roles, [...KINDS]);
+  assert.deepEqual(result.manifests, KINDS.map(kind => SCHEMA_MANIFEST[kind].entries));
+  assert.deepEqual(result.files.map(([file]) => file), [MANIFEST_FILE]);
 });
 
-test('table placement lists every kept, application and removed table once', () => {
-  // The task domain holds the Mock provider's two ledger tables as well.
-  assert.deepEqual([CONTENT_TABLES.length, HISTORY_TABLES.length, CACHE_TABLES.length, APP_DATABASE_TABLES.length, REMOVED_TABLES.length], [18, 45 + 2 + 7, 2, 3, 10]);
-  assert.deepEqual(Object.entries(HISTORY_TABLES_BY_DOMAIN).map(([domain, tables]) => [domain, tables.length]),
-    [['receipts', 17], ['tasks', 13 + 2], ['timelineHistory', 2], ['mio', 20]]);
+test('table placement lists every current domain once and keeps compatibility names separate', () => {
   const all = [...CONTENT_TABLES, ...HISTORY_TABLES, ...CACHE_TABLES, ...APP_DATABASE_TABLES, ...REMOVED_TABLES];
-  assert.equal(new Set(all).size, 78 + 2 + 7);
-  assert.equal(databaseOf('jobs'), 'history');
-  assert.deepEqual(['mock_provider_tasks', 'mock_provider_submissions'].map(table => [databaseOf(table), HISTORY_TABLES_BY_DOMAIN.tasks.includes(table)]), [['history', true], ['history', true]]);
-  assert.equal(databaseOf('workspace_preferences'), 'app');
-  assert.throws(() => databaseOf('schema_version'), /Unknown project-file table/);
+  assert.equal(new Set(all).size, all.length);
+  assert.equal(CONTENT_TABLES.length, 18);
+  assert.equal(CACHE_TABLES.length, 2);
+  assert.equal(APP_DATABASE_TABLES.length, 3);
+  assert.equal(REMOVED_TABLES.length, 10);
+  assert.deepEqual(HISTORY_TABLES, Object.values(HISTORY_TABLES_BY_DOMAIN).flat());
+  assert.deepEqual(HISTORY_TABLES_BY_DOMAIN.receipts.length, 17);
+  assert.deepEqual(HISTORY_TABLES_BY_DOMAIN.tasks.length, 15);
+  assert.deepEqual(HISTORY_TABLES_BY_DOMAIN.timelineHistory.length, 2);
+  assert.equal(HISTORY_TABLES_BY_DOMAIN.mio.includes('mio_process_target_revisions'), true);
+  assert.equal(HISTORY_TABLES_BY_DOMAIN.mio.includes('mio_storage_counters'), true);
+  assert.equal(HISTORY_TABLES.includes('mock_provider_tasks'), true);
+  for (const table of CONTENT_TABLES) assert.equal(databaseOf(table), 'project', table);
+  for (const table of HISTORY_TABLES) assert.equal(databaseOf(table), 'history', table);
+  for (const table of CACHE_TABLES) assert.equal(databaseOf(table), 'cache', table);
+  for (const table of LEGACY_MIO_TABLES) assert.equal(databaseOf(table), 'history', table);
   assert.throws(() => databaseOf('no_such_table'), /Unknown project-file table/);
 });
 
-test('every format-72 object has exactly one destination and the planned counts', () => {
-  const {format72, objects, relations, droppedContentKeys, convertedTriggers} = derivation();
-  assert.equal(format72.version, 72);
-  assert.equal(objects.length, format72.objects.length);
-  assert.equal(new Set(objects.map(object => `${object.type}:${object.name}`)).size, objects.length);
-  const of = (type: string) => objects.filter(object => object.type === type);
-  const fates = (type: string) => Object.fromEntries([...new Set(of(type).map(object => object.fate))].sort().map(fate => [fate, count(of(type), object => object.fate === fate)]));
-  // Format 72: 79 tables plus sqlite_sequence, 187 indexes (59 explicit), 302 triggers, no views. The
-  // Mock provider's ledger adds 2 tables and 3 indexes (1 explicit), all kept as they are in the local records.
-  assert.deepEqual([of('table').length, of('index').length, of('trigger').length, objects.length], [80 + 2, 187 + 3, 302, 569 + 5]);
-  assert.equal(count(of('index'), object => object.original !== null), 59 + 1);
-  assert.deepEqual(objects.filter(object => object.table.startsWith('mock_provider_')).map(object => `${object.type}:${object.name}:${object.fate}:${object.rules.join('+') || 'unchanged'}`).sort(), [
-    'index:mock_provider_submissions_request:history:unchanged', 'index:sqlite_autoindex_mock_provider_tasks_1:history:unchanged',
-    'index:sqlite_autoindex_mock_provider_tasks_2:history:unchanged', 'table:mock_provider_submissions:history:unchanged', 'table:mock_provider_tasks:history:unchanged']);
-  assert.deepEqual(fates('table'), {app: 3, automatic: 1, cache: 2, dropped: 10, 'every-database': 1, history: 45 + 2, project: 18});
-  assert.deepEqual(fates('index'), {app: 2, cache: 6, dropped: 19, history: 106 + 3, project: 54});
-  const explicit = (fate: string) => count(of('index'), object => object.fate === fate && object.original !== null);
-  assert.deepEqual(KINDS.map(explicit), [19, 33 + 1, 3]);
-  // scene_task_state_transitions names shots only in the string literal OLD.kind='shots' and
-  // reads no other table, so it stays a persistent history trigger.
-  assert.deepEqual(fates('trigger'), {app: 2, cache: 1, dropped: 20, history: 162, project: 91, temp: 26});
-  const triggers = of('trigger');
-  const rules = (object: DerivedObject) => object.rules.join('+') || 'unchanged';
-  const split = (fate: string) => Object.fromEntries([...new Set(triggers.filter(object => object.fate === fate).map(rules))].sort()
-    .map(rule => [rule, count(triggers, object => object.fate === fate && rules(object) === rule)]));
-  assert.deepEqual(split('project'), {exemption: 63, unchanged: 28});
-  assert.equal(count(triggers, object => object.fate === 'project' && object.rules.includes('exemption') && object.name.startsWith('agent_target_')), 56);
-  assert.deepEqual(split('history'), {exemption: 32, quota: 16, unchanged: 114});
-  assert.ok(triggers.find(object => object.name === 'agent_task_model_request_delete_v60')?.rules.includes('exemption'));
-  assert.ok(triggers.find(object => object.name === 'scene_task_state_transitions')?.fate === 'history');
-  assert.deepEqual(split('cache'), {unchanged: 1});
-  assert.deepEqual(split('temp'), {'exemption+temp': 12, temp: 14});
-  assert.ok(triggers.filter(object => object.rules.join('+') === 'exemption+temp').every(object => /^agent_target_(jobs|exports|image_tasks|frame_tasks)_/.test(object.name)));
-  const tempOn = (placement: string) => triggers.filter(object => object.fate === 'temp' && object.rules.length === 1 && databaseOf(object.table) === placement).map(object => object.name).sort();
-  assert.deepEqual(tempOn('project'), ['reject_image_frame_asset_owner', 'reject_legacy_frame_asset_owner', 'scene_result_identity', 'subject_variant_version_binding']);
-  assert.deepEqual(tempOn('history'), ['frame_asset_project', 'previs_request_identity', 'reject_frame_mixed_asset_owner', 'scene_request_identity',
-    'scene_task_insert_identity', 'scene_task_result_binding', 'subject_variant_batch_insert_identity', 'subject_variant_item_version']);
-  assert.deepEqual(tempOn('cache'), ['previs_thumbnail_insert_identity', 'previs_thumbnail_update_identity']);
-  assert.deepEqual(split('app'), {exemption: 1, unchanged: 1});
-  assert.deepEqual(triggers.filter(object => object.fate === 'app').map(object => object.name).sort(), ['immutable_agent_task_policy_requests_v2', 'retain_agent_task_policy_requests_v2']);
-  assert.equal(count(triggers, object => object.fate === 'dropped' && databaseOf(object.table) === 'removed'), 16);
-  assert.equal(count(triggers, object => object.fate === 'dropped' && databaseOf(object.table) === 'app' && object.name.startsWith('agent_quota_')), 4);
-  assert.equal(count(triggers, object => object.rules.includes('exemption')), 108);
-  assert.equal(count(triggers, object => object.original?.includes('project_deletion_scope') === true && databaseOf(object.table) !== 'removed'), 108);
-  assert.equal(count(triggers, object => object.name.startsWith('agent_quota_')), 20);
+test('every native object belongs to its declared database and old workspace state is absent', () => {
+  const input = declaredSchema();
+  assert.doesNotThrow(() => validateDeclaredSchema(input));
+  assert.deepEqual(input.tables.project, CONTENT_TABLES);
+  assert.deepEqual(input.tables.history, HISTORY_TABLES);
+  assert.deepEqual(input.tables.cache, CACHE_TABLES);
+  const owners = new Map<string, string>();
+  for (const kind of KINDS) {
+    const db = buildAlone(kind);
+    try {
+      const metadata = kind === 'project' ? ['project_file', 'schema_version'] : kind === 'history' ? ['history_state', 'schema_version'] : ['schema_version'];
+      const actual = names(db, 'table').filter(name => !name.startsWith('sqlite_'));
+      assert.deepEqual(actual, sorted([...input.tables[kind], ...metadata]));
+      assert.equal(new Set(names(db, 'index')).size, names(db, 'index').length);
+      assert.equal(new Set(names(db, 'trigger')).size, names(db, 'trigger').length);
+      assert.deepEqual(names(db, 'view'), []);
+      for (const table of input.tables[kind]) {
+        assert.equal(owners.has(table), false, table); owners.set(table, kind);
+        assert.equal(databaseOf(table), kind, table);
+      }
+      for (const table of [...APP_DATABASE_TABLES, ...REMOVED_TABLES, ...LEGACY_MIO_TABLES]) assert.equal(actual.includes(table), false, table);
+      const objects = db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_master').all();
+      for (const object of objects.filter(row => row.type === 'trigger' || row.type === 'index')) assert.equal(names(db, 'table').includes(String(object.tbl_name)), true, String(object.name));
+      assert.deepEqual(objects.filter(row => row.type === 'trigger' && String(row.sql).includes('project_deletion_')), []);
+      assert.deepEqual(db.prepare('PRAGMA integrity_check').all().map(row => row.integrity_check), ['ok']);
+      assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+    } finally { db.close(); }
+  }
+  assert.equal(owners.get('agent_task_target_revisions_v2'), 'project');
+  assert.equal(owners.get('mio_process_target_revisions'), 'history');
+  assert.equal(owners.get('mock_provider_tasks'), 'history');
+  assert.equal(owners.get('mock_provider_submissions'), 'history');
+});
 
-  // Cross-file foreign keys: 55 constraints over 65 columns, 7 nullable, 2 originally deferred.
-  const columns = (filter: (row: Row, table: string) => boolean) => [...format72.tables].reduce((sum, [table, shape]) => sum + shape.foreignKeys.filter(row => filter(row, table)).length, 0);
-  assert.equal(columns(() => true), 160);
-  assert.deepEqual([relations.length, relations.reduce((sum, relation) => sum + relation.child.columns.length, 0)], [55, 65]);
-  const inSchema = (schema: string) => relations.filter(relation => relation.child.schema === schema);
-  assert.deepEqual([inSchema('main').length, inSchema('main').reduce((sum, relation) => sum + relation.child.columns.length, 0)], [52, 62]);
-  assert.deepEqual([inSchema('cache').length, inSchema('cache').reduce((sum, relation) => sum + relation.child.columns.length, 0)], [3, 3]);
-  assert.deepEqual(relations.flatMap(relation => relation.child.columns.filter((_, i) => relation.child.nullable[i]).map(column => `${relation.child.table}.${column}`)).sort(), [
-    'agent_task_events_v2.projectId', 'agent_task_imports_v2.assetId', 'frame_tasks.assetId', 'image_tasks.versionId',
-    'scene_requests.resultId', 'scene_tasks.resultId', 'subject_variant_items.versionId']);
-  assert.deepEqual(relations.filter(relation => relation.originallyDeferred).map(relation => `${relation.child.table}->${relation.parent.table}`), ['image_tasks->image_versions', 'scene_tasks->scene_results']);
-  assert.deepEqual(relations.map(relation => relation.index), Array.from({length: 55}, (_, i) => i + 1));
-  assert.ok(relations.every(relation => databaseOf(relation.parent.table) === 'project'));
-  assert.deepEqual([droppedContentKeys.length, droppedContentKeys.reduce((sum, key) => sum + key.child.columns.length, 0)], [5, 10]);
-  assert.deepEqual(droppedContentKeys.filter(key => key.originallyDeferred).map(key => `${key.child.table}(${key.child.columns.join(',')})`), ['image_groups(activeTaskId,id,projectId)', 'scene_results(requestId)']);
-  assert.equal(columns((row, table) => databaseOf(table) === 'app' && databaseOf(String(row.table)) === 'project'), 1);
-  assert.equal(CROSS_FILE_RELATIONS.length, 58);
-  assert.deepEqual(CROSS_FILE_RELATIONS, currentCrossFileRelations(derivation()));
+test('kernel metadata and immutable guards preserve project identity and monotonic sequences', () => {
+  const db = buildAlone('project');
+  const id = '00000000-0000-4000-8000-000000000001';
+  try {
+    db.prepare('INSERT INTO project_file VALUES(1,?,7)').run(id);
+    assert.equal(db.prepare('SELECT projectId FROM project_file').get()?.projectId, id);
+    assert.throws(() => db.exec('DELETE FROM project_file'), /PROJECT_FILE_METADATA_REQUIRED/);
+    assert.throws(() => db.prepare('UPDATE project_file SET projectId=?').run('00000000-0000-4000-8000-000000000002'), /PROJECT_FILE_IDENTITY_IMMUTABLE/);
+    assert.throws(() => db.exec('UPDATE project_file SET contentSequence=6'), /PROJECT_FILE_SEQUENCE_DECREASED/);
+    assert.throws(() => db.prepare('INSERT OR REPLACE INTO project_file VALUES(1,?,9)').run(id), /PROJECT_FILE_METADATA_EXISTS/);
+    assert.equal(db.prepare('SELECT contentSequence FROM project_file').get()?.contentSequence, 7);
+    assert.throws(() => db.prepare('INSERT INTO projects(id,data) VALUES(?,?)').run('00000000-0000-4000-8000-000000000002', '{}'), /PROJECT_FILE_SINGLE_PROJECT/);
+    assert.equal(db.prepare('SELECT count(*) AS n FROM projects').get()?.n, 0);
+    db.prepare('INSERT INTO projects(id,data) VALUES(?,?)').run(id, '{}');
+    assert.equal(db.prepare('SELECT contentSequence FROM project_file').get()?.contentSequence, 9);
+    assert.equal(db.prepare('SELECT count(*) AS n FROM projects').get()?.n, 1);
+  } finally { db.close(); }
+  const history = buildAlone('history');
+  try {
+    history.prepare('INSERT INTO history_state VALUES(1,?,7)').run(id);
+    assert.throws(() => history.exec('DELETE FROM history_state'), /HISTORY_STATE_REQUIRED/);
+    assert.throws(() => history.prepare('UPDATE history_state SET projectId=?').run('00000000-0000-4000-8000-000000000002'), /HISTORY_STATE_IDENTITY_IMMUTABLE/);
+    assert.throws(() => history.prepare('INSERT OR REPLACE INTO history_state VALUES(1,?,9)').run(id), /HISTORY_STATE_EXISTS/);
+    assert.deepEqual(plain(history.prepare('SELECT * FROM history_state').get()), {singleton:1,projectId:id,seenContentSequence:7});
+  } finally { history.close(); }
+});
+
+test('native columns and ordered unique keys independently validate declared cross-file relations', () => {
+  const input = declaredSchema(), relation = input.relations.find(value => value.child.table === 'image_tasks' && value.parent.table === 'image_versions')!;
+  assert.deepEqual(input.relations.map(relationKey), CURRENT_RELATION_CONTRACT);
+  assert.ok(relation);
+  assert.deepEqual(relation.child.columns, ['versionId', 'id', 'groupId', 'projectId']);
+  assert.deepEqual(relation.parent.columns, ['id', 'taskId', 'groupId', 'projectId']);
+  assert.deepEqual(relation.child.nullable, [true,false,false,false]);
+  assert.equal(relation.originallyDeferred, true);
   assert.equal(DROPPED_CONTENT_KEYS.length, 5);
-  assert.deepEqual(convertedTriggers.filter(trigger => !/^agent_target_(jobs|exports|image_tasks|frame_tasks)_/.test(trigger.name)).map(trigger => trigger.name), CONVERTED_TEMP_TRIGGERS.map(trigger => trigger.name));
-  assert.ok(CONVERTED_TEMP_TRIGGERS.every(trigger => trigger.sql.startsWith(`CREATE TEMP TRIGGER ${trigger.name} `)));
+  assert.deepEqual(DROPPED_CONTENT_KEYS.filter(key => key.originallyDeferred).map(key => key.child.table), ['image_groups','scene_results']);
+  const replace = (patch: Partial<typeof relation>) => ({...input, relations:input.relations.map(value => value === relation ? {...relation,...patch} : value)});
+  assert.throws(() => validateDeclaredSchema(replace({index: input.relations[0]!.index})), /duplicate relation index/);
+  assert.throws(() => validateDeclaredSchema(replace({child:{...relation.child,columns:['missing',...relation.child.columns.slice(1)]}})), /no child column missing/);
+  assert.throws(() => validateDeclaredSchema(replace({child:{...relation.child,nullable:[false,false,false,false]}})), /incorrect nullability for versionId/);
+  assert.throws(() => validateDeclaredSchema(replace({parent:{...relation.parent,columns:['missing',...relation.parent.columns.slice(1)]}})), /missing parent column/);
+  assert.throws(() => validateDeclaredSchema(replace({parent:{...relation.parent,columns:['id','groupId','taskId','projectId']}})), /no ordered unique parent key/);
+  assert.throws(() => validateDeclaredSchema({...input, relations: input.relations.filter(value => value.child.table !== 'jobs')}), /Missing project relation for main.jobs/);
+  assert.throws(() => validateDeclaredSchema({...input, relations: [...input.relations, {...relation,index:1000}]}), /Duplicate cross-file relation/);
 });
 
-test('the frozen S0 profile holds its derived objects plus the kernel metadata', () => {
-  const {objects} = derivation();
-  const sequence = CONTENT_TABLES.flatMap(table => ['insert', 'update', 'delete'].map(operation => `project_file_sequence_${table}_${operation}`));
-  const added: Record<DatabaseKind, {tables: string[]; triggers: string[]}> = {
-    project: {tables: ['project_file', 'schema_version'], triggers: ['project_file_guard_delete', 'project_file_guard_identity', 'project_file_guard_insert',
-      'project_file_guard_sequence', 'project_file_single_project_insert', 'project_file_single_project_update', ...sequence]},
-    history: {tables: ['history_state', 'schema_version', 'sqlite_sequence'], triggers: ['history_state_guard_delete', 'history_state_guard_identity', 'history_state_guard_insert']},
-    cache: {tables: ['schema_version', 'sqlite_sequence'], triggers: []},
-  };
-  assert.equal(sequence.length, 54);
-  for (const kind of KINDS) {
-    const db = buildHistoricalAlone(kind);
-    try {
-      for (const type of ['table', 'index', 'trigger'] as const) {
-        const expected = objects.filter(object => object.type === type && object.fate === kind).map(object => object.name);
-        if (type !== 'index') expected.push(...added[kind][type === 'table' ? 'tables' : 'triggers']);
-        assert.deepEqual(masterNames(db, type), expected.sort(), `${kind} ${type}s`);
-      }
-      assert.deepEqual(db.prepare('SELECT version FROM schema_version').all().map(row => row.version), [kind==='history'?2:IDENTITY[kind].version]);
-      assert.equal(db.prepare('PRAGMA application_id').get()?.application_id, IDENTITY[kind].applicationId);
-    } finally {
-      db.close();
-    }
-  }
-  assert.deepEqual(KINDS.map(kind => {const db=buildHistoricalAlone(kind);try{return readSchemaManifest(db,'main').length;}finally{db.close();}}), [225,319+5,11]);
-});
-
-test('kept tables keep format-72 columns and indexes; only cross-file foreign keys are gone', () => {
-  const {format72, relations, droppedContentKeys} = derivation();
-  const removedKey = new Set([...relations.map(relation => `${relation.child.table}:${relation.child.columns.join(',')}->${relation.parent.table}`),
-    ...droppedContentKeys.map(key => `${key.child.table}:${key.child.columns.join(',')}->${key.parent.table}`)]);
-  const groups = (table: string, rows: readonly Row[]) => {
-    const byId = new Map<number, Row[]>();
-    for (const row of rows) byId.set(Number(row.id), [...byId.get(Number(row.id)) ?? [], row]);
-    return [...byId].sort((a, b) => a[0] - b[0]).map(([, list]) => list.sort((a, b) => Number(a.seq) - Number(b.seq)))
-      .map(list => ({key: `${table}:${list.map(row => row.from).join(',')}->${String(list[0]!.table)}`, rows: list.map(({id: _id, ...rest}) => rest)}));
-  };
-  let compared = 0;
-  for (const kind of KINDS) {
-    const db = buildHistoricalAlone(kind);
-    try {
-      for (const table of kind === 'project' ? CONTENT_TABLES : kind === 'history' ? [...HISTORY_TABLES.filter(table=>!table.startsWith('mio_')), ...LEGACY_MIO_TABLES] : CACHE_TABLES) {
-        const before = format72.tables.get(table)!, after = readTableShape(db, table);
-        assert.deepEqual(after.columns, before.columns, `${table} table_xinfo`);
-        assert.deepEqual(after.indexes, before.indexes, `${table} index_list`);
-        assert.deepEqual(after.indexColumns, before.indexColumns, `${table} index_xinfo`);
-        assert.deepEqual(groups(table, after.foreignKeys), groups(table, before.foreignKeys).filter(group => !removedKey.has(group.key)), `${table} foreign_key_list`);
-        compared++;
-      }
-    } finally {
-      db.close();
-    }
-  }
-  assert.equal(compared, 65 + 2);
-});
-
-/** True when removing the deletion exemption with exactly one connective
- * (`WHEN X`, `X AND` or `AND X`) from `original` gives `rewritten`. */
-function removesOneExemption(original: string, rewritten: string): boolean {
-  const term = String.raw`NOT EXISTS\(SELECT 1 FROM project_deletion_scope WHERE tableName='[^']*'(?: AND rowId=OLD\.rowid)?\)`;
-  return [String.raw`\s+WHEN\s+${term}`, String.raw`${term}\s+AND\s+`, String.raw`\s+AND\s+${term}`].some(piece =>
-    [...original.matchAll(new RegExp(piece, 'g'))].some(match => original.slice(0, match.index) + original.slice(match.index + match[0].length) === rewritten));
-}
-const undoTemp = (sql: string): string => sql.replace(/^CREATE TEMP TRIGGER /, 'CREATE TRIGGER ').replace(/\b(?:project|main|cache)\./g, '');
-
-test('kept triggers equal format 72 or its documented rewrite; no removed, application or deletion-scope names remain', () => {
-  const {objects} = derivation();
-  for (const object of objects.filter(item => item.type === 'trigger' && item.sql !== null)) {
-    const original = object.original!, rules = object.rules.join('+');
-    const sql = object.rules.includes('temp') ? undoTemp(object.sql!) : object.sql!;
-    if (object.rules.includes('temp')) assert.ok(object.sql!.startsWith(`CREATE TEMP TRIGGER ${object.name} `), object.name);
-    if (rules === '' || rules === 'temp') assert.equal(sql, original, object.name);
-    else if (rules === 'exemption' || rules === 'exemption+temp') assert.ok(removesOneExemption(original, sql), object.name);
-    else if (rules === 'quota') {
-      assert.equal(sql, POLICY_QUOTA_TERMS.reduce((text, term) => text.replace(term, ''), original), object.name);
-      assert.match(sql, />20000 OR /);
-      assert.match(sql, />268435456 THEN RAISE\(ABORT,'AGENT_TASK_STORAGE_LIMIT'\)/);
-    } else assert.fail(`${object.name}: unexpected rules ${rules}`);
-  }
-  const forbidden = new RegExp(`project_deletion_|\\b(?:${[...APP_DATABASE_TABLES, ...REMOVED_TABLES].join('|')})\\b`);
+test('persistent and TEMP triggers contain no retired app, deletion-scope or legacy Mio dependencies', () => {
+  const retired = [...APP_DATABASE_TABLES,...REMOVED_TABLES,...LEGACY_MIO_TABLES];
+  const forbidden = new RegExp(`project_deletion_|\\b(?:${retired.join('|')})\\b`);
   const ddl = [...KINDS.map(kind => schemaStatements(kind)), CONVERTED_TEMP_TRIGGERS.map(trigger => trigger.sql)];
-  assert.deepEqual(ddl.map(statements => statements.filter(sql => forbidden.test(sql))), [[], [], [], []]);
-  assert.deepEqual(ddl.map(statements => statements.length - new Set(statements).size), [0, 0, 0, 0]);
+  assert.deepEqual(ddl.map(statements => statements.filter(sql => forbidden.test(sql))), [[],[],[],[]]);
+  assert.deepEqual(ddl.map(statements => statements.length-new Set(statements).size), [0,0,0,0]);
+  assert.equal(CONVERTED_TEMP_TRIGGERS.length, 14);
+  assert.equal(CONVERTED_TEMP_TRIGGERS.some(trigger => /^agent_target_(jobs|exports|image_tasks|frame_tasks)_/.test(trigger.name)), false);
+  assert.equal(HISTORY_TABLES.includes('agent_task_target_revisions_v2'), false);
+  assert.equal(CONTENT_TABLES.includes('mio_process_target_revisions'), false);
+  assert.equal(CONTENT_TABLES.includes('agent_task_target_revisions_v2'), true);
+  assert.equal(HISTORY_TABLES.includes('mio_process_target_revisions'), true);
+  const histories = schemaStatements('history').join('\n');
+  assert.doesNotMatch(histories, /CREATE TRIGGER agent_quota_/);
+  assert.match(histories, /CREATE TABLE mio_storage_counters/);
+  assert.match(histories, /AGENT_TASK_STORAGE_LIMIT/);
 });
 
 test('each database built alone compiles every insert, update and delete of every table', () => {
@@ -270,151 +281,149 @@ test('each database built alone compiles every insert, update and delete of ever
   for (const kind of KINDS) {
     const db = buildAlone(kind);
     try {
-      for (const name of masterNames(db, 'table').filter(table => !table.startsWith('sqlite_'))) {
+      for (const name of names(db,'table').filter(table => !table.startsWith('sqlite_'))) {
         const columns = db.prepare('SELECT name FROM pragma_table_xinfo(?) WHERE hidden=0').all(name).map(row => quote(String(row.name)));
-        for (const sql of [`EXPLAIN INSERT INTO ${quote(name)} DEFAULT VALUES`, `EXPLAIN UPDATE ${quote(name)} SET ${columns.map(column => `${column}=${column}`).join(',')}`, `EXPLAIN DELETE FROM ${quote(name)}`]) {
-          assert.doesNotThrow(() => db.prepare(sql).all(), `${kind}: ${sql}`);
-        }
+        for (const sql of [`EXPLAIN INSERT INTO ${quote(name)} DEFAULT VALUES`,`EXPLAIN UPDATE ${quote(name)} SET ${columns.map(column => `${column}=${column}`).join(',')}`,`EXPLAIN DELETE FROM ${quote(name)}`]) assert.doesNotThrow(() => db.prepare(sql).all(), `${kind}: ${sql}`);
         tables++;
       }
-    } finally {
-      db.close();
-    }
+    } finally { db.close(); }
   }
-  assert.equal(tables, 20 + 56 + 3);
+  assert.equal(tables, CONTENT_TABLES.length+HISTORY_TABLES.length+CACHE_TABLES.length+5);
 });
 
-// Frozen per schema version: a DDL change that regenerates the manifest without
-// raising the database's version fails here.
 const MANIFEST_DIGESTS: Readonly<Record<DatabaseKind, Readonly<Record<number, string>>>> = {
   project: {1: '6e96c3872a938817b65e71750d1e68bd8fa84c7f3f8d92490de22a0e34d649ce'},
   // 2: the Mock provider's ledger in the task domain.
   history: {1: 'e0445f02d867f3aeedc283708f58d30efa7b0465e8987f7f739e8f5580791243', 2: '34ad833f0a676602490ce69b0f8804f79f1b30750b76a9f58d41abeb14dfd7a0', 3: 'b9487064fb0fa4447f3eb3896121d648184007a2b675927222beea3518c91a3a', 4: '047b9b4d7c2aa2376f2a97c2d4b042b326d730b5ad79504e77d3f8df1ca8dc82', 5: '6d2615d8d96d70d8d5926d387f1709e13d74dacf9d77414592750ec3ee3848de'},
   cache: {1: 'be43585ad9045d7ed844c609b9af13829372efb83741b55f4f4f8e7b2f2fd61c'},
 };
-test('building as main or as an attached schema gives the committed manifest', () => {
+
+test('building as main or attached schema gives the independent versioned manifest', () => {
   for (const kind of KINDS) {
-    // At run time history.db is main and the other two are attached; build each kind both ways.
-    const schema = kind, asMain = buildAlone(kind), attached = buildAlone(kind, schema);
+    const schema = kind, asMain = buildAlone(kind), attached = buildAlone(kind,schema);
     try {
-      const main = readSchemaManifest(asMain, 'main'), other = readSchemaManifest(attached, schema);
-      assert.deepEqual(other, main, kind);
-      assert.deepEqual(main, SCHEMA_MANIFEST[kind].entries, kind);
-      assert.deepEqual(compareManifest(main, SCHEMA_MANIFEST[kind].entries), {missing: [], unexpected: [], changed: []});
-      assert.deepEqual(main, buildManifest(kind));
-      assert.equal(SCHEMA_MANIFEST[kind].version, IDENTITY[kind].version);
-      assert.equal(attached.prepare(`PRAGMA ${schema}.application_id`).get()?.application_id, IDENTITY[kind].applicationId);
-      assert.deepEqual(attached.prepare(`SELECT version FROM ${schema}.schema_version`).all().map(row => row.version), [IDENTITY[kind].version]);
-      assert.equal(readSchemaManifest(attached, 'main').length, 0);
-      const digest = createHash('sha256').update(JSON.stringify(SCHEMA_MANIFEST[kind].entries)).digest('hex');
-      assert.equal(digest, MANIFEST_DIGESTS[kind][SCHEMA_MANIFEST[kind].version], `${kind} schema changed: raise its version and record the new digest`);
-    } finally {
-      asMain.close();
-      attached.close();
-    }
+      const main = readSchemaManifest(asMain,'main'), other=readSchemaManifest(attached,schema);
+      assert.deepEqual(other,main,kind);
+      assert.deepEqual(main,SCHEMA_MANIFEST[kind].entries,kind);
+      assert.deepEqual(compareManifest(main,SCHEMA_MANIFEST[kind].entries),{missing:[],unexpected:[],changed:[]});
+      assert.deepEqual(main,buildManifest(kind));
+      assert.equal(SCHEMA_MANIFEST[kind].version,IDENTITY[kind].version);
+      assert.equal(attached.prepare(`PRAGMA ${schema}.application_id`).get()?.application_id,IDENTITY[kind].applicationId);
+      assert.deepEqual(attached.prepare(`SELECT version FROM ${schema}.schema_version`).all().map(row=>row.version),[IDENTITY[kind].version]);
+      assert.equal(readSchemaManifest(attached,'main').length,0);
+      const digest=createHash('sha256').update(JSON.stringify(SCHEMA_MANIFEST[kind].entries)).digest('hex');
+      assert.equal(digest,MANIFEST_DIGESTS[kind][SCHEMA_MANIFEST[kind].version],`${kind} changed without a version bump`);
+    } finally {asMain.close();attached.close();}
   }
-  const sample = SCHEMA_MANIFEST.cache.entries, first = `${sample[0]!.type}:${sample[0]!.name}`;
-  const extra = {type: 'view', name: 'extra', tbl_name: 'extra', sha256: ''};
-  assert.deepEqual(compareManifest([...sample.slice(1), extra], sample), {missing: [first], unexpected: ['view:extra'], changed: []});
-  assert.deepEqual(compareManifest(sample.map((entry, i) => i === 0 ? {...entry, sha256: '0'.repeat(64)} : entry), sample), {missing: [], unexpected: [], changed: [first]});
-  assert.deepEqual(compareManifest(sample.map((entry, i) => i === 0 ? {...entry, tbl_name: 'other'} : entry), sample), {missing: [], unexpected: [], changed: [first]});
+  const sample=SCHEMA_MANIFEST.cache.entries,first=`${sample[0]!.type}:${sample[0]!.name}`,extra={type:'view',name:'extra',tbl_name:'extra',sha256:''};
+  assert.deepEqual(compareManifest([...sample.slice(1),extra],sample),{missing:[first],unexpected:['view:extra'],changed:[]});
+  assert.deepEqual(compareManifest(sample.map((entry,i)=>i===0?{...entry,sha256:'0'.repeat(64)}:entry),sample),{missing:[],unexpected:[],changed:[first]});
+  assert.deepEqual(compareManifest(sample.map((entry,i)=>i===0?{...entry,tbl_name:'other'}:entry),sample),{missing:[],unexpected:[],changed:[first]});
 });
 
-test('buildDatabase requires a transaction and a plain schema name', () => {
-  const db = new DatabaseSync(':memory:');
+test('buildDatabase requires a synchronous transaction and a plain schema name', () => {
+  const db=new DatabaseSync(':memory:');
   try {
-    assert.throws(() => buildDatabase(db, 'cache', 'main'), /open transaction/);
+    assert.throws(()=>buildDatabase(db,'cache','main'),/open transaction/);
     db.exec('BEGIN');
-    assert.throws(() => buildDatabase(db, 'cache', 'main; DROP'), /Invalid schema name/);
-    assert.throws(() => buildDatabase(db, 'cache', 'main', ['DROP TABLE x']), /cannot be qualified/);
+    assert.throws(()=>buildDatabase(db,'cache','main; DROP'),/Invalid schema name/);
+    assert.throws(()=>buildDatabase(db,'cache','main',['DROP TABLE x']),/cannot be qualified/);
     db.exec('ROLLBACK');
-  } finally {
-    db.close();
-  }
+    assert.equal(db.isTransaction,false);
+    assert.deepEqual(db.prepare('SELECT name FROM sqlite_master').all(),[]);
+  } finally {db.close();}
 });
 
-test('stripCrossFileForeignKeys removes only foreign parents, at column and table level', () => {
-  const plain = `CREATE TABLE child(
- id TEXT PRIMARY KEY,
- projectId TEXT NOT NULL REFERENCES projects(id) CHECK(length(projectId)=36),
- ownerId TEXT REFERENCES owners(id),
- versionId TEXT,
- UNIQUE(id,projectId),FOREIGN KEY(versionId,id) REFERENCES versions(id,taskId) DEFERRABLE INITIALLY DEFERRED,
- CHECK(versionId IS NULL OR versionId IN ('a,b','c)')))`;
-  const foreign = (parent: string) => parent === 'projects' || parent === 'versions' || parent === 'jobs';
-  const stripped = stripCrossFileForeignKeys(plain, foreign);
-  assert.equal(stripped, `CREATE TABLE child(
- id TEXT PRIMARY KEY,
- projectId TEXT NOT NULL CHECK(length(projectId)=36),
- ownerId TEXT REFERENCES owners(id),
- versionId TEXT,
- UNIQUE(id,projectId),
- CHECK(versionId IS NULL OR versionId IN ('a,b','c)')))`);
-  assert.deepEqual(foreignKeyClauses(plain).map(clause => [clause.form, clause.columns.join(','), clause.parent, clause.parentColumns.join(','), clause.deferred]), [
-    ['column', 'projectId', 'projects', 'id', false], ['column', 'ownerId', 'owners', 'id', false], ['table', 'versionId,id', 'versions', 'id,taskId', true]]);
-  const quoted = `CREATE TABLE "odd table"(
- "id, part" TEXT PRIMARY KEY, -- a comment, with REFERENCES projects(id)
- [bracket col] TEXT CONSTRAINT fk_project REFERENCES "projects"("id") ON DELETE CASCADE MATCH SIMPLE NOT DEFERRABLE NOT NULL,
- \`tick\` TEXT /* , REFERENCES jobs(id) */ REFERENCES local_parent(\`id\`) ON UPDATE SET NULL,
- CONSTRAINT fk_job FOREIGN KEY("id, part") REFERENCES jobs(id) DEFERRABLE INITIALLY IMMEDIATE
-)`;
-  const strippedQuoted = stripCrossFileForeignKeys(quoted, foreign);
-  assert.equal(strippedQuoted, `CREATE TABLE "odd table"(
- "id, part" TEXT PRIMARY KEY, -- a comment, with REFERENCES projects(id)
- [bracket col] TEXT NOT NULL,
- \`tick\` TEXT /* , REFERENCES jobs(id) */ REFERENCES local_parent(\`id\`) ON UPDATE SET NULL
-)`);
-  assert.deepEqual(foreignKeyClauses(quoted).map(clause => [clause.parent, clause.columns.join(','), clause.deferred]), [['projects', 'bracket col', false], ['local_parent', 'tick', false], ['jobs', 'id, part', false]]);
-  assert.equal(stripCrossFileForeignKeys(plain, () => false), plain);
-  const db = new DatabaseSync(':memory:');
+test('relation declarations reject wrong owners, keys and ambiguous numbering before installation', () => {
+  const input=declaredSchema(),relation=input.relations[0]!;
+  const change=(patch:Partial<typeof relation>)=>({...input,relations:[{...relation,...patch},...input.relations.slice(1)]});
+  assert.throws(()=>validateDeclaredSchema(change({index:0})),/Invalid or duplicate relation index/);
+  assert.throws(()=>validateDeclaredSchema(change({index:1.5})),/Invalid or duplicate relation index/);
+  assert.throws(()=>validateDeclaredSchema(change({child:{...relation.child,schema:'cache'}})),/invalid database owner/);
+  assert.throws(()=>validateDeclaredSchema(change({parent:{...relation.parent,table:'jobs'}})),/invalid database owner/);
+  assert.throws(()=>validateDeclaredSchema(change({child:{...relation.child,columns:[]}})),/mismatched key columns/);
+  assert.throws(()=>validateDeclaredSchema(change({child:{...relation.child,nullable:[]}})),/mismatched key columns/);
+  assert.throws(()=>validateDeclaredSchema({...input,tables:{...input.tables,history:[...input.tables.history,'bogus']}}),/Declared history tables do not match/);
+  assert.throws(()=>validateDeclaredSchema({...input,tables:{...input.tables,project:[...input.tables.project,input.tables.project[0]!]}}),/Duplicate project table/);
+  assert.throws(()=>validateDeclaredSchema({...input,tables:{...input.tables,cache:[]}}),/Declared cache tables do not match/);
+  assert.doesNotThrow(()=>validateDeclaredSchema(input));
+  assert.equal(new Set(CROSS_FILE_RELATIONS.map(value=>value.index)).size,CROSS_FILE_RELATIONS.length);
+});
+
+test('column, explicit-index and same-file-FK drift change the independent stored manifest', () => {
+  const column=changedStatements('project',sql=>sql.startsWith('CREATE TABLE project_file(')?sql.replace('projectId TEXT','projectId BLOB'):sql);
+  const columnDifference=compareManifest(buildManifest('project',column),SCHEMA_MANIFEST.project.entries);
+  assert.deepEqual(columnDifference.changed,['table:project_file']);
+  assert.deepEqual(columnDifference.missing,[]);
+  assert.deepEqual(columnDifference.unexpected,[]);
+  const index='mock_provider_submissions_request';
+  const withoutIndex=schemaStatements('history').filter(sql=>!sql.startsWith(`CREATE INDEX ${index} `));
+  assert.equal(withoutIndex.length,schemaStatements('history').length-1);
+  const indexDifference=compareManifest(buildManifest('history',withoutIndex),SCHEMA_MANIFEST.history.entries);
+  assert.deepEqual(indexDifference.missing,[`index:${index}`]);
+  assert.deepEqual(indexDifference.changed,[]);
+  const fk=changedStatements('history',sql=>sql.startsWith('CREATE TABLE timeline_format_requests(')?sql.replace(/ REFERENCES timeline_requests\(requestId\)/,''):sql);
+  assert.notDeepEqual(fk,schemaStatements('history'));
+  const fkDifference=compareManifest(buildManifest('history',fk),SCHEMA_MANIFEST.history.entries);
+  assert.deepEqual(fkDifference.changed,['table:timeline_format_requests']);
+  assert.deepEqual(fkDifference.missing,[]);
+  assert.deepEqual(fkDifference.unexpected,[]);
+  assert.notDeepEqual(renderDerivedFiles(cloneStatements('project',column)),renderDerivedFiles());
+  assert.deepEqual(staleDerivedFiles(renderDerivedFiles(cloneStatements('project',column))),[MANIFEST_FILE]);
+});
+
+test('persistent metadata and Mio quota guards cannot drift behind an unchanged version', () => {
+  const original=schemaStatements('project');
+  const changed=changedStatements('project',sql=>sql.startsWith('CREATE TRIGGER project_file_guard_sequence ')?sql.replace('NEW.contentSequence<OLD.contentSequence','0'):sql);
+  assert.notDeepEqual(changed,original);
+  const diff=compareManifest(buildManifest('project',changed),SCHEMA_MANIFEST.project.entries);
+  assert.deepEqual(diff.changed,['trigger:project_file_guard_sequence']);
+  assert.deepEqual(diff.missing,[]);
+  assert.deepEqual(diff.unexpected,[]);
+  const db=buildAlone('project','main',changed);
   try {
-    db.exec(stripped);
-    db.exec(strippedQuoted);
-    assert.deepEqual(db.prepare('SELECT "table" AS parent FROM pragma_foreign_key_list(?)').all('child').map(row => row.parent), ['owners']);
-    assert.deepEqual(db.prepare('SELECT "table" AS parent FROM pragma_foreign_key_list(?)').all('odd table').map(row => row.parent), ['local_parent']);
-    assert.equal(db.prepare('SELECT "notnull" AS required FROM pragma_table_xinfo(?) WHERE name=?').get('odd table', 'bracket col')?.required, 1);
-  } finally {
-    db.close();
+    db.prepare('INSERT INTO project_file VALUES(1,?,7)').run('00000000-0000-4000-8000-000000000001');
+    assert.doesNotThrow(()=>db.exec('UPDATE project_file SET contentSequence=6'));
+    assert.equal(db.prepare('SELECT contentSequence FROM project_file').get()?.contentSequence,6);
+    assert.throws(()=>db.exec('DELETE FROM project_file'),/PROJECT_FILE_METADATA_REQUIRED/);
+  } finally {db.close();}
+  const history=buildAlone('history');
+  try {
+    const quota=history.prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND name LIKE 'quota_%' ORDER BY name").all();
+    assert.ok(quota.length>0);
+    assert.equal(quota.some(row=>String(row.sql).includes('AGENT_TASK_STORAGE_LIMIT')),true);
+    assert.equal(quota.every(row=>String(row.sql).includes('mio_storage_counters')),true);
+    assert.equal(history.prepare('SELECT rows FROM mio_storage_counters').get()?.rows,1);
+    assert.equal(history.prepare('SELECT bytes FROM mio_storage_counters').get()?.bytes,0);
+    assert.equal(names(history,'table').includes('agent_chat_quota'),false);
+    assert.equal(names(history,'table').includes('agent_task_policy_v2'),false);
+    assert.equal(names(history,'trigger').some(name=>name.startsWith('agent_quota_')),false);
+  } finally {history.close();}
+});
+
+test('TEMP guards are compiled in their declared schemas and cannot silently disappear or change scope', () => {
+  const input=declaredSchema(),guard=input.tempTriggers[0]!;
+  assert.equal(guard.schema,'project');
+  assert.equal(guard.table,'versions');
+  assert.match(guard.sql,/^CREATE TEMP TRIGGER reject_legacy_frame_asset_owner /);
+  assert.throws(()=>validateDeclaredSchema({...input,tempTriggers:input.tempTriggers.slice(1)}),/Missing TEMP trigger reject_legacy_frame_asset_owner/);
+  assert.throws(()=>validateDeclaredSchema({...input,tempTriggers:[guard,...input.tempTriggers]}),/Duplicate TEMP trigger/);
+  assert.throws(()=>validateDeclaredSchema({...input,tempTriggers:[{...guard,name:'wrong'},...input.tempTriggers.slice(1)]}),/Unexpected TEMP trigger/);
+  assert.throws(()=>validateDeclaredSchema({...input,tempTriggers:[{...guard,schema:'main'},...input.tempTriggers.slice(1)]}),/mismatched target schema/);
+  assert.throws(()=>validateDeclaredSchema({...input,tempTriggers:[{...guard,table:'jobs'},...input.tempTriggers.slice(1)]}),/mismatched target table/);
+  assert.throws(()=>validateDeclaredSchema({...input,tempTriggers:[{...guard,sql:guard.sql.replace('CREATE TEMP TRIGGER','CREATE TRIGGER')},...input.tempTriggers.slice(1)]}),/CREATE TEMP TRIGGER/);
+  assert.throws(()=>validateDeclaredSchema({...input,tempTriggers:[{...guard,sql:guard.sql.replace(/ON project\.versions/,'ON cache.versions')},...input.tempTriggers.slice(1)]}),/mismatched target schema/);
+  for (const trigger of input.tempTriggers) {
+    const noop = trigger.sql.slice(0, trigger.sql.indexOf(' BEGIN ')) + ' BEGIN SELECT 1;END';
+    assert.throws(()=>validateDeclaredSchema({...input,tempTriggers:input.tempTriggers.map(value=>value===trigger?{...value,sql:noop}:value)}),
+      {message:`TEMP trigger ${trigger.name} accepted forbidden write`});
+    assert.deepEqual(renderDerivedFiles(),renderDerivedFiles(input),'probe mutations must not mutate source declarations');
   }
-});
-
-test('stripDeletionExemption handles each format-72 shape exactly once', () => {
-  const x = "NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects')";
-  const row = "NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='s' AND rowId=OLD.rowid)";
-  const body = 'BEGIN INSERT INTO r(a) VALUES(NEW.id);END';
-  assert.equal(stripDeletionExemption(`CREATE TRIGGER a AFTER INSERT ON shots WHEN ${x} ${body}`), `CREATE TRIGGER a AFTER INSERT ON shots ${body}`);
-  assert.equal(stripDeletionExemption(`CREATE TRIGGER b AFTER UPDATE ON shots WHEN ${x} AND (NEW."id" IS NOT OLD."id") ${body}`), `CREATE TRIGGER b AFTER UPDATE ON shots WHEN (NEW."id" IS NOT OLD."id") ${body}`);
-  assert.equal(stripDeletionExemption(`CREATE TRIGGER c AFTER UPDATE ON t WHEN ${x} AND json_array(NEW.w) IS NOT json_array(OLD.w) ${body}`), `CREATE TRIGGER c AFTER UPDATE ON t WHEN json_array(NEW.w) IS NOT json_array(OLD.w) ${body}`);
-  assert.equal(stripDeletionExemption(`CREATE TRIGGER d BEFORE DELETE ON s\n WHEN json_extract(OLD.data,'$.kind')='model' AND ${row}\n BEGIN SELECT RAISE(ABORT,'kept');END`),
-    "CREATE TRIGGER d BEFORE DELETE ON s\n WHEN json_extract(OLD.data,'$.kind')='model'\n BEGIN SELECT RAISE(ABORT,'kept');END");
-  assert.equal(stripDeletionExemption(`CREATE TRIGGER e BEFORE DELETE ON s\n WHEN ${row}\n AND NOT (OLD.op='x' AND (SELECT count(*) FROM s r)>=3)\n BEGIN SELECT RAISE(ABORT,'kept');END`),
-    "CREATE TRIGGER e BEFORE DELETE ON s\n WHEN NOT (OLD.op='x' AND (SELECT count(*) FROM s r)>=3)\n BEGIN SELECT RAISE(ABORT,'kept');END");
-  assert.throws(() => stripDeletionExemption(`CREATE TRIGGER f AFTER INSERT ON shots ${body}`), /exactly one deletion exemption, found 0/);
-  assert.throws(() => stripDeletionExemption(`CREATE TRIGGER g AFTER INSERT ON shots WHEN ${x} AND ${x} ${body}`), /found 2/);
-  assert.throws(() => stripDeletionExemption(`CREATE TRIGGER h AFTER INSERT ON shots WHEN NEW.a AND ${x} AND NEW.b ${body}`), /supported position/);
-  assert.throws(() => stripDeletionExemption(`CREATE TRIGGER i AFTER INSERT ON shots WHEN ${x} ${body.replace('r(a)', 'project_deletion_receipts(a)')}`), /still referenced/);
-});
-
-test('rewriteMioQuota removes exactly the four policy-table terms', () => {
-  const [countPolicy, countRequests, bytesPolicy, bytesRequests] = POLICY_QUOTA_TERMS as [string, string, string, string];
-  const quota = (rows: string, bytes: string) => `CREATE TRIGGER q AFTER INSERT ON a BEGIN SELECT CASE WHEN (SELECT count(*) FROM a)${rows}>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM a)${bytes}>268435456 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END`;
-  assert.equal(rewriteMioQuota(quota(`${countPolicy}${countRequests}+(SELECT count(*) FROM b)`, `${bytesPolicy}${bytesRequests}`)), quota('+(SELECT count(*) FROM b)', ''));
-  assert.throws(() => rewriteMioQuota(quota(countPolicy, `${bytesPolicy}${bytesRequests}`)), /exactly once, found 0/);
-  assert.throws(() => rewriteMioQuota(quota(`${countPolicy}${countPolicy}${countRequests}`, `${bytesPolicy}${bytesRequests}`)), /exactly once, found 2/);
-  assert.throws(() => rewriteMioQuota(quota(`${countPolicy}${countRequests}+(SELECT 1 FROM agent_task_policy_v2)`, `${bytesPolicy}${bytesRequests}`)), /still reads a policy table/);
-});
-
-test('toTempTrigger qualifies the trigger table and read tables but not write targets', () => {
-  const schemas: Record<string, string> = {items: 'main', versions: 'project', batches: 'main', revisions: 'project'};
-  const schemaOf = (table: string) => schemas[table];
-  const sql = `CREATE TRIGGER t BEFORE UPDATE OF versionId ON items
- WHEN NEW.versionId IS NOT NULL AND NOT EXISTS(SELECT 1 FROM versions v JOIN "batches" b ON b.id=NEW.batchId WHERE v.id=NEW.versionId AND v.note IS NOT 'FROM items')
- BEGIN INSERT INTO revisions(a) SELECT id FROM items WHERE items.id=NEW.id;UPDATE revisions SET a=1;DELETE FROM revisions WHERE a IN (SELECT value FROM json_each('[]'));SELECT RAISE(ABORT,'JOIN versions');END`;
-  assert.equal(toTempTrigger(sql, schemaOf), `CREATE TEMP TRIGGER t BEFORE UPDATE OF versionId ON main.items
- WHEN NEW.versionId IS NOT NULL AND NOT EXISTS(SELECT 1 FROM project.versions v JOIN main."batches" b ON b.id=NEW.batchId WHERE v.id=NEW.versionId AND v.note IS NOT 'FROM items')
- BEGIN INSERT INTO revisions(a) SELECT id FROM main.items WHERE items.id=NEW.id;UPDATE revisions SET a=1;DELETE FROM revisions WHERE a IN (SELECT value FROM json_each('[]'));SELECT RAISE(ABORT,'JOIN versions');END`);
-  assert.throws(() => toTempTrigger('CREATE TRIGGER t AFTER INSERT ON items BEGIN SELECT 1 FROM versions, batches;END', schemaOf), /Unsupported reference to table batches/);
-  assert.throws(() => toTempTrigger('CREATE TRIGGER t AFTER INSERT ON items BEGIN SELECT 1 FROM project.versions;END', schemaOf), /already qualified/);
-  assert.throws(() => toTempTrigger('CREATE TEMP TRIGGER t AFTER INSERT ON items BEGIN SELECT 1;END', schemaOf), /CREATE TRIGGER statement/);
-  assert.throws(() => toTempTrigger('CREATE TRIGGER t AFTER INSERT ON other BEGIN SELECT 1;END', schemaOf), /no schema/);
+  assert.doesNotThrow(()=>validateDeclaredSchema(input));
+  const db=new DatabaseSync(':memory:');
+  try {
+    db.exec("ATTACH DATABASE ':memory:' AS project");
+    assert.throws(()=>installCrossFileTriggers(db),/cache database attached/);
+    assert.deepEqual(db.prepare('SELECT name FROM temp.sqlite_master').all(),[]);
+  } finally {db.close();}
 });

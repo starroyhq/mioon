@@ -1,4 +1,4 @@
-// Derived from the format-72 workspace schema by `node tests/helpers/project-file-schema-derivation.ts --write`.
+// Canonical cross-file declarations. Edit directly and run the schema checker and behavioral tests.
 // Foreign keys from tables in the local history or cache database to content tables in the project file.
 // SQLite cannot enforce them across files; the kernel emulates each one with connection-level TEMP triggers.
 // Schemas are the names on the kernel connection: history.db is main, the project file is attached as

@@ -22,7 +22,6 @@ import type {AppLibrary} from '../packages/business/src/app-db/index.ts';
 import {APP_LIBRARY_STATEMENTS, appLibraryStatements, expectedAppSchema, FORMAT_72_APP_STATEMENTS, readAppSchema} from '../packages/business/src/app-db/schema.ts';
 import {isAppLibraryHeld} from '../packages/business/src/app-db/connection.ts';
 import {isProjectDatabase, isProjectFileHeld} from '../packages/business/src/project-file/connection.ts';
-import {deriveFromFormat72} from './helpers/project-file-schema-derivation.ts';
 
 const REPOSITORY = fileURLToPath(new URL('../', import.meta.url));
 const CHILD = fileURLToPath(new URL('./helpers/project-file-child.ts', import.meta.url));
@@ -109,7 +108,7 @@ const project = (overrides: Partial<RecentProject> = {}): RecentProject => ({
 const policy = (revision: number): AgentTaskPolicy => ({...structuredClone(DEFAULT_AGENT_TASK_POLICY), revision});
 const sha = (text: string): string => createHash('sha256').update(text).digest('hex');
 
-test('a new library is built from the format-72 SQL the derivation hands over and the B1 tables', t => {
+test('a new library is built from the current application-state SQL and the B1 tables', t => {
   const dataDir = path.join(scratch(t), 'data');
   const library = open(t, dataDir);
   assert.equal(library.databaseFile, path.join(dataDir, APP_LIBRARY_FILE));
@@ -125,17 +124,20 @@ test('a new library is built from the format-72 SQL the derivation hands over an
   assert.equal(pragma(library.db, 'trusted_schema'), 0);
   assert.deepEqual(readAppSchema(library.db), expectedAppSchema());
 
-  // `node tests/helpers/project-file-schema-derivation.ts --report`: 3 tables
-  // and 2 triggers, byte for byte, and their 2 automatic indexes.
-  const handed = deriveFromFormat72().objects.filter(object => object.fate === 'app');
-  const builtSql = new Set(readAppSchema(library.db).map(object => object.sql));
-  const handedSql = handed.filter(object => object.sql !== null).map(object => object.sql!);
-  assert.deepEqual([...handedSql].sort(), [...FORMAT_72_APP_STATEMENTS].sort());
-  for (const sql of handedSql) assert.ok(builtSql.has(sql), sql);
-  assert.deepEqual(handed.filter(object => object.type === 'table').map(object => object.name).sort(), ['agent_task_policy_requests_v2', 'agent_task_policy_v2', 'workspace_preferences']);
-  assert.equal(handed.filter(object => object.type === 'trigger').length, 2);
-  const indexes = new Set(readAppSchema(library.db).filter(object => object.type === 'index').map(object => object.name));
-  for (const object of handed.filter(item => item.type === 'index')) assert.ok(indexes.has(object.name), object.name);
+  // These application-owned records remain independent of project databases.
+  // Their native catalog and fixed digests protect the authoritative SQL without
+  // reconstructing an obsolete workspace to discover their ownership.
+  const stateTables = ['agent_task_policy_requests_v2', 'agent_task_policy_v2', 'workspace_preferences'];
+  const state = readAppSchema(library.db).filter(object => stateTables.includes(object.tbl_name));
+  const builtSql = new Set(state.map(object => object.sql));
+  assert.deepEqual(state.filter(object => object.sql !== null).map(object => object.sql).sort(), [...FORMAT_72_APP_STATEMENTS].sort());
+  for (const sql of FORMAT_72_APP_STATEMENTS) assert.ok(builtSql.has(sql), sql);
+  assert.deepEqual(state.filter(object => object.type === 'table').map(object => object.name).sort(), stateTables);
+  assert.deepEqual(state.filter(object => object.type === 'trigger').map(object => object.name).sort(), ['immutable_agent_task_policy_requests_v2', 'retain_agent_task_policy_requests_v2']);
+  const indexes = new Set(state.filter(object => object.type === 'index').map(object => object.name));
+  assert.deepEqual([...indexes].sort(), ['sqlite_autoindex_agent_task_policy_requests_v2_1', 'sqlite_autoindex_workspace_preferences_1']);
+  for (const name of ['sqlite_autoindex_agent_task_policy_requests_v2_1', 'sqlite_autoindex_workspace_preferences_1']) assert.ok(indexes.has(name), name);
+  for (const table of stateTables) assert.deepEqual(library.db.prepare('SELECT * FROM pragma_foreign_key_list(?)').all(table), [], table);
   // No quota trigger and no foreign key to a project table.
   assert.equal(readAppSchema(library.db).some(object => object.name.startsWith('agent_quota_')), false);
   assert.deepEqual(library.db.prepare('PRAGMA main.foreign_key_list(workspace_preferences)').all(), []);

@@ -15,9 +15,9 @@ export const APP_LIBRARY_APPLICATION_ID = 0x4d696f41;
 /** The same definition as the three project databases keep. */
 export const APP_SCHEMA_VERSION_TABLE_SQL = 'CREATE TABLE schema_version(version INTEGER PRIMARY KEY)';
 
-/** The three format-72 tables and two triggers the project-file layout hands
- * to the app library, exactly as `node tests/helpers/project-file-schema-derivation.ts --report`
- * prints them: `workspace_preferences` without its foreign key to `projects`
+/** Canonical application-owned policy and preference declarations. The legacy
+ * constant name records their origin; the project schema checker no longer
+ * reconstructs them from a workspace. `workspace_preferences` has no FK to `projects`
  * (the registry is checked in code instead), and the policy receipts retained
  * without the deletion-bookkeeping exemption. The four quota triggers on the
  * policy tables are not built: the app library has no Mio quota. */

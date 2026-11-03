@@ -28,7 +28,7 @@ export const PROJECT_FILE_APPLICATION_ID = 0x4d696f50;
 export const HISTORY_APPLICATION_ID = 0x4d696f48;
 export const CACHE_APPLICATION_ID = 0x4d696f43;
 
-/** The format-72 definition, kept by each of the three databases. */
+/** The version table shared by the three independently versioned databases. */
 export const SCHEMA_VERSION_TABLE_SQL = 'CREATE TABLE schema_version(version INTEGER PRIMARY KEY)';
 
 const SCHEMA_VERSIONS: Readonly<Record<DatabaseKind, number>> = {
@@ -58,7 +58,7 @@ const SINGLE_PROJECT_TRIGGERS: readonly string[] = Object.freeze([
 
 /** Persistent row triggers, so every writer (autocommit statements, other
  * connections) advances the sequence. Created last, so they fire before the
- * format-72 triggers of the same table. */
+ * existing domain triggers of the same table. */
 const CONTENT_SEQUENCE_TRIGGERS: readonly string[] = Object.freeze(CONTENT_TABLES.flatMap(table =>
   (['insert', 'update', 'delete'] as const).map(operation =>
     `CREATE TRIGGER project_file_sequence_${table}_${operation} AFTER ${operation.toUpperCase()} ON ${table} BEGIN UPDATE project_file SET contentSequence=contentSequence+1;END`)));
@@ -98,8 +98,8 @@ export function buildDatabase(db: DatabaseSync, kind: DatabaseKind, schema: stri
     if (!CREATE_PREFIX.test(sql)) throw new Error(`Schema statement cannot be qualified: ${sql.slice(0, 60)}`);
     db.exec(sql.replace(CREATE_PREFIX, `CREATE $1 ${schema}.`));
   }
-  // Historical format-72 derivation supplies its own domain statements and
-  // must keep that frozen profile, without adding current Mio metadata.
+  // Isolated schema tests may supply explicit statements; initialize the
+  // incremental counter only when that schema actually includes it.
   if(kind==='history'&&statements.some(sql=>sql.startsWith('CREATE TABLE mio_storage_counters(')))initializeMioStorageCounters(db,schema);
   db.exec(`PRAGMA ${schema}.application_id=${APPLICATION_IDS[kind]}`);
   db.prepare(`INSERT INTO ${schema}.schema_version VALUES(?)`).run(SCHEMA_VERSIONS[kind]);

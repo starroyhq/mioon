@@ -277,7 +277,24 @@ S1 基础接口已提供共享状态/错误契约、L1 真实目录授权和精�
 - **项目外路径确认：** 项目 ID、文件夹、确认时间。
 - **本机记录清单：** 项目 ID、大小，以及文件夹里有没有还用得着的超级日志（`hasSuperJournal`，按内核的 `isSuperJournalInUse` 算）。列清单时不打开 `history.db`；有还用得着的超级日志的不能删。
 
+## 内核结构的权威来源
+
+`project-file/schema/domains/` 的领域 DDL 是直接维护的源文件，不再从旧工作区的 1→72 迁移链推导。`schema/databases.ts` 组合领域声明和内核元数据；`schema/tables.ts` 记录表的归属。跨文件关系和 TEMP 业务守卫分别由 `cross-file/relations.ts`、`cross-file/converted-triggers.ts` 维护。
+
+修改持久结构时，改所属领域并提升相应数据库版本，补升级路径，并为新支持的旧版本保存白名单；已有历史白名单保持不变。然后运行：
+
+```sh
+node tests/helpers/project-file-schema-derivation.ts --write
+node tests/helpers/project-file-schema-derivation.ts --check
+```
+
+`--write` 只生成当前 `schema/manifest.ts`，不会重写领域、跨文件声明、历史白名单或测试 fixture。`--check` 从权威声明建真实 SQLite，核对表归属、列与有序唯一键、跨文件关系、TEMP 守卫的独立合法/违规写入，以及当前清单。`--report` 显示当前库、关系和 TEMP 目录。关系的编号、列顺序、空值语义和立即检查边界都需要对应的行为测试；清单通过不能代替它们。
+
+`tests/project-file-schema.test.ts` 另记每个数据库版本的独立摘要，重新生成不能替代升版本。`tests/fixtures/kernel-history-previous-schema/` 仅保存仍支持升级的旧内核 history SQL，逐版对原有白名单核对；它不依赖当前领域或旧工作区建库器，也不由 `--write` 更新。生成文件发生合并冲突时，同步 main 后重新生成，不手工拼接。
+
 ## 跨文件约束
+以下记录 K1 从旧工作区拆分时的约束去向；现行对象以权威声明及 `--report` 为准。
+
 160 列外键全是 `NO ACTION`，没有级联。清单第 5 节逐条列出；新内核（K1）按下面的规则实现，PR #104 附了逐条的对照表。
 
 按去掉豁免条件后的 SQL 算，跨文件的触发器共 46 个：读别的库的 14 个、建在过程表上写目标修订的 12 个、Mio 配额 20 个。`scene_task_state_transitions` 只在字符串 `'shots'` 里出现表名，不读别的库，不算在内。

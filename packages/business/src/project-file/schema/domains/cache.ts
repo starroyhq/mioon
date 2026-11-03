@@ -1,4 +1,4 @@
-// Derived from the format-72 workspace schema by `node tests/helpers/project-file-schema-derivation.ts --write`.
+// Canonical domain DDL. Edit this source directly; the schema checker generates only manifest.ts.
 // Owner: 丁 (rebuildable data in the cache database).
 // Changing this schema requires raising CACHE_SCHEMA_VERSION in ../databases.ts and regenerating ../manifest.ts.
 export const CACHE_SCHEMA: readonly string[] = Object.freeze([

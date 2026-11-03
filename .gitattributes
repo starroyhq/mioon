@@ -4,3 +4,7 @@ packages/business/resources/subtitles/SOURCE-COPYRIGHT.txt text eol=lf
 packages/business/resources/subtitles/README.md text eol=lf
 packages/business/resources/subtitles/extract-font.py text eol=lf
 packages/business/resources/subtitles/mioon-subtitle-cjk-sc-v1.otf -text
+
+# SQLite preserves DDL newlines in sqlite_master; historical upgrade SQL must
+# match its existing manifest on every platform, including autocrlf checkouts.
+tests/fixtures/kernel-history-previous-schema/*.sql text eol=lf
