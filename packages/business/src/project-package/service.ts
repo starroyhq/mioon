@@ -3,7 +3,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {mkdirSync,rmSync,createWriteStream,createReadStream,renameSync,statSync,existsSync,lstatSync} from 'node:fs';
 import {pipeline} from 'node:stream/promises';
 import {Readable} from 'node:stream';
-import type {WorkspaceStore} from '../db.ts';
+import type { Store as WorkspaceStore } from '../store-contract.ts';
 import {projectPackageOptionsSchema} from '../../../contracts/src/project-package.ts';
 import {projectNotesValid} from '../../../contracts/src/project-lifecycle.ts';
 import type {ProjectPackageOptions,ProjectPackageManifest,ProjectPackageCounts} from '../../../contracts/src/project-package.ts';

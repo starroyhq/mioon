@@ -11,7 +11,7 @@ import {setImmediate as yieldIO} from 'node:timers/promises';
 import {DatabaseSync} from 'node:sqlite';
 import {assertStoragePrivacyAvailable,createPrivateTemporaryDirectory,validatePrivateDirectory} from '@mioon/contracts/private-storage';
 import {detectCurrentWorkspaceRestoreEvidence,validateCurrentWorkspaceColourProfile} from '@mioon/business/db';
-import {sameFile,sameNode,inspectFile,removeOwnedFile,removeOwnedDirectory} from '@mioon/business/workspace-backup-storage';
+import {sameFile,sameNode,inspectFile,removeOwnedFile,removeOwnedDirectory} from '@mioon/business/managed-file-io';
 
 interface MigrationError extends Error { code: string }
 /** POSIX-only script: privacy checks below have already established this platform. */

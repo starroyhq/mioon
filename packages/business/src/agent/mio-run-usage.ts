@@ -3,7 +3,7 @@ import type {MioRunUsage} from '../../../contracts/src/mio-run-usage.ts';
 import {mioIdentitySchemas} from '../../../contracts/src/mio-records.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
-import type {WorkspaceStore} from '../db.ts';
+import type { Store as WorkspaceStore } from '../store-contract.ts';
 import {taskModelUsage} from './task-usage-v2.ts';
 
 export interface MioModelUsageObservation {

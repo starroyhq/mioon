@@ -14,7 +14,7 @@ import { createComfyConnector } from '@mioon/business/comfy/connector';
 import { createComfySettings } from '@mioon/business/comfy/settings';
 import { createAppCompanionDocuments } from '@mioon/business/companion-scope';
 import {resolveProjectMediaFile} from '@mioon/business/project-media-storage';
-import type { WorkspaceStore } from '@mioon/business/db';
+import type { Store as WorkspaceStore } from '@mioon/business/store-contract';
 import { ownsStoreLock } from '@mioon/business/db';
 import { createEditTasks } from '@mioon/business/edit-tasks';
 import { validateImageConsumption } from '@mioon/business/image-consumption';
@@ -284,14 +284,14 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     // The trusted desktop proxy validates and sanitizes these values itself; the
     // local engine exposes the same dependency. createAgentTaskRuntime re-sanitizes reads.
     const chatSettings = agentSettings as unknown as AgentSettingsService;
-    if(isProjectStore(store)&&application)projectRules=createMioProjectRules({store,application,signal:shutdown.signal,assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed()});
+    if(isProjectStore(store)&&application)projectRules=createMioProjectRules({store,application,signal:shutdown.signal,assertMutationAllowed:()=>ordinary.assertMutationAllowed()});
     taskToolsV2=createAgentTaskTools({store:ordinaryStore,services:ordinary,...(projectRules?{rules:projectRules}:{}),...(application?{policyStore:application.agentPolicy}:{})});
     taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,...(application?{policyStore:application.agentPolicy,onDiagnosticCompleted:summary=>application.tx(()=>{
       const raw=application.documents.read('agent-diagnostic-summary-v1.json');
       const previous=raw===null?null:agentDiagnosticSummarySchema.parse(JSON.parse(raw));
       if(previous===null||previous.completedAt<=summary.completedAt)application.documents.write('agent-diagnostic-summary-v1.json',JSON.stringify(summary));
-    })}:{}),agentSettings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,...(projectRules?{rules:projectRules}:{}),selfPort:()=>listeningPort(),assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed(),checksPreflight:(input,{signal}={})=>ordinary.call('timeline.export.preflight',input,{signal:signal?AbortSignal.any([shutdown.signal,signal]):shutdown.signal}),...(taskGatewayV2?{gateway:taskGatewayV2}:{})});
-    taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2,tools:taskToolsV2,assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed()});
+    })}:{}),agentSettings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,...(projectRules?{rules:projectRules}:{}),selfPort:()=>listeningPort(),assertMutationAllowed:()=>ordinary.assertMutationAllowed(),checksPreflight:(input,{signal}={})=>ordinary.call('timeline.export.preflight',input,{signal:signal?AbortSignal.any([shutdown.signal,signal]):shutdown.signal}),...(taskGatewayV2?{gateway:taskGatewayV2}:{})});
+    taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2,tools:taskToolsV2,assertMutationAllowed:()=>ordinary.assertMutationAllowed()});
     agentDiagnosticsHttp=createAgentDiagnosticsHttp({settings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,policy:()=>taskRuntimeV2!.policy(),selfPort:()=>listeningPort(),hasProject:id=>!!store.get('projects',id),storage:projectId=>isProjectStore(store)?projectId===store.projectId?readMioStorage(store.db):undefined:readAgentTaskStorage(store.db)});
     }
     // Restored task histories exist from source schema52 on.

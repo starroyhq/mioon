@@ -4,22 +4,17 @@ import {deriveAgentEndpoint} from '../../packages/contracts/src/agent-protocol.t
 import {isAppLibraryHeld, openAppLibrary, projectFileIdentity} from '../../packages/business/src/app-db/index.ts';
 import {createAgentAuthorizations} from '../../packages/business/src/agent/authorizations.ts';
 import type {AgentSettingsService} from '../../packages/business/src/agent/settings.ts';
-import type {WorkspaceStore} from '../../packages/business/src/db.ts';
+import type { Store as WorkspaceStore } from '../../packages/business/src/store-contract.ts';
 import {createServices} from '../../packages/business/src/services.ts';
-import {createWorkspaceConfiguration} from '../../packages/business/src/workspace-configuration.ts';
+import {createProjectServiceApplication} from '../../packages/business/src/project-service-application.ts';
 
 /** Project fixtures use the actual application library identity for grants and
  * application documents. No always-allow authorizer or project-file scope is
  * substituted for S0's composition boundary. */
 export function createMioTestAppPorts(store: WorkspaceStore) {
   const library = openAppLibrary({dataDir: path.join(store.root, 'app')});
-  const configuration = createWorkspaceConfiguration({root: library.dataDir, documents: library.documents});
-  const unused = (): never => {throw new Error('Mio runtime scenarios must not invoke application backups');};
   try {
-    const services = createServices(store, new Map(), {application: {configuration, backups: {
-      getStatus: unused, list: unused, create: unused, stageRestore: unused, exportBundle: unused, importBundle: unused, importDirectory: unused,
-      isBusy: () => false, assertMutationAllowed() {}, start() {}, stop() {}, drain: async () => {}, tick: async () => {},
-    }}});
+    const services = createServices(store, new Map(), {application: createProjectServiceApplication(library)});
     return {
       services,
       createAuthorizations(settings: AgentSettingsService) {

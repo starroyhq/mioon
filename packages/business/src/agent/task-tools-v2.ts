@@ -12,7 +12,7 @@ import {ensurePrivateDirectory,readPrivateFile,writePrivateFileAtomic} from '@mi
 import {isTimelineMixLoudnessResponse} from '@mioon/contracts/timeline-mix-loudness';
 import {isTimelineLoudnessApplicableReport,timelineLoudnessCandidateDigest} from '@mioon/contracts/timeline-loudness-apply';
 import type {OperationName} from '@mioon/contracts';
-import type {WorkspaceStore} from '../db.ts';
+import type { Store as WorkspaceStore } from '../store-contract.ts';
 import {readMioTargetRevision} from './mio-target-revisions.ts';
 import type {AgentPolicyStore} from '../app-db/stores.ts';
 import {testProjectAppLibrary} from '../project-service-application.ts';

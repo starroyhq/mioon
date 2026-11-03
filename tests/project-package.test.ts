@@ -7,7 +7,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {collectProject,packageDocumentBytes,buildManifest,createProjectFromDocument} from '../packages/business/src/project-package/document.ts';
 import {writeProjectPackage,readProjectPackage} from '../packages/business/src/project-package/container.ts';
-import {buildSampleProject,openWorkspace,tempRoot,cleanup,mediaToolsAvailable} from './helpers/project-package-fixture.ts';
+import {buildSampleProject,openWorkspace,openLegacyWorkspace,tempRoot,cleanup,mediaToolsAvailable} from './helpers/project-package-fixture.ts';
 
 const options={media:'all' as const,includeExports:false};
 async function exportTo(store:any,projectId:string,file:string){
@@ -28,11 +28,11 @@ test('a project round-trips through a .mioon file into another workspace and sur
  const staging=mkdtempSync(path.join(tmpdir(),'mioon-package-stage-'));t.after(()=>cleanup(staging));
  const read=await readProjectPackage({source:createReadStream(file),destination:staging});
  assert.equal(read.manifest.counts.versions,1);
- let target=openWorkspace(targetRoot);
+ let target=openLegacyWorkspace(targetRoot);
  const files=new Map([...read.media].map(([key,value])=>[key,value.file]));
  const {projectId}=createProjectFromDocument(target.store,{document:read.document as any,files,name:'UI 走查项目（2）',move:true});
  assert.deepEqual(projectRows(target.store,projectId),{assets:5,shots:1,nodes:2,edges:2,jobs:1,versions:1,timelines:1});
- target.store.close();target=openWorkspace(targetRoot);t.after(()=>target.store.close());
+ target.store.close();target=openLegacyWorkspace(targetRoot);t.after(()=>target.store.close());
  const project:any=await target.services.call('project.get',{projectId});
  assert.equal((project.project??project).name,'UI 走查项目（2）');
  const timeline:any=await target.services.call('timeline.get',{projectId});
@@ -49,7 +49,7 @@ test('a project round-trips through a .mioon file into another workspace and sur
 
 test('duplicating copies media files instead of sharing them',{skip:!mediaToolsAvailable&&'ffmpeg unavailable'},async t=>{
  const root=tempRoot('package-duplicate');t.after(()=>cleanup(root));
- const ws=openWorkspace(root);t.after(()=>ws.store.close());
+ const ws=openLegacyWorkspace(root);t.after(()=>ws.store.close());
  const sample=await buildSampleProject(root,ws);
  const collected=collectProject(ws.store,sample.project.id,options);
  const files=new Map(collected.media.map(entry=>[entry.path,path.join(root,'__unused__')]));
@@ -68,7 +68,7 @@ import {PROJECT_PACKAGE_MAGIC} from '../packages/business/src/project-package/co
 
 test('an imported project can be permanently deleted with its media',{skip:!mediaToolsAvailable&&'ffmpeg unavailable'},async t=>{
  const root=tempRoot('package-delete'),work=mkdtempSync(path.join(tmpdir(),'mioon-package-work-'));t.after(()=>cleanup(root,work));
- const ws=openWorkspace(root);t.after(()=>{if(ws.store.db.isOpen)ws.store.close();});
+ const ws=openLegacyWorkspace(root);t.after(()=>{if(ws.store.db.isOpen)ws.store.close();});
  const sample=await buildSampleProject(root,ws),file=path.join(work,'p.mioon');
  await exportTo(ws.store,sample.project.id,file);
  const staging=mkdtempSync(path.join(tmpdir(),'mioon-package-stage-'));t.after(()=>cleanup(staging));
@@ -110,7 +110,7 @@ import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 test('a workspace holding an imported project backs up, verifies and restores',{skip:!mediaToolsAvailable&&'ffmpeg unavailable'},async t=>{
  const root=tempRoot('package-backup'),work=mkdtempSync(path.join(tmpdir(),'mioon-package-work-'));t.after(()=>cleanup(root,work));
- const ws=openWorkspace(root),sample=await buildSampleProject(root,ws),file=path.join(work,'p.mioon');
+ const ws=openLegacyWorkspace(root),sample=await buildSampleProject(root,ws),file=path.join(work,'p.mioon');
  await exportTo(ws.store,sample.project.id,file);
  const staging=mkdtempSync(path.join(tmpdir(),'mioon-package-stage-'));t.after(()=>cleanup(staging));
  const read=await readProjectPackage({source:createReadStream(file),destination:staging});
@@ -121,6 +121,6 @@ test('a workspace holding an imported project backs up, verifies and restores',{
  assert.equal(result.integrity,'verified');
  assert.equal(((await verifyWorkspaceBackup({directory:backup})) as any).integrity,'verified');
  await restoreWorkspaceBackup({directory:backup,destination:restored});
- const reopened=openWorkspace(restored);t.after(()=>reopened.store.close());
+ const reopened=openLegacyWorkspace(restored);t.after(()=>reopened.store.close());
  assert.ok(reopened.store.get('projects',projectId));
 });

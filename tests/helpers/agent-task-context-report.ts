@@ -12,38 +12,27 @@ import {openLegacyWorkspaceStore as openStore} from '../../packages/business/src
 import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
 import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../../packages/business/src/agent/presets.ts';
-import {AGENT_TASK_LOADABLE_TOOL_GROUP_IDS, AGENT_TASK_TOOLS_LOAD_NAME, agentTaskToolNamesForGroup} from '../../packages/business/src/agent/task-tool-groups-v2.ts';
+import {AGENT_TASK_TOOLS_LOAD_NAME, agentTaskToolNamesForGroup} from '../../packages/business/src/agent/task-tool-groups-v2.ts';
 import type {AgentTaskLoadableToolGroupId} from '../../packages/business/src/agent/task-tool-groups-v2.ts';
 import {createAgentTaskTools} from '../../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../../packages/business/src/agent/task-runtime-v2.ts';
 import {readAgentTaskStorage} from '../../packages/business/src/agent/task-storage-v2.ts';
 import {TASK_MODEL_LIMITS} from '../../packages/business/src/agent/task-gateway-v2.ts';
-import type {TaskGateway, TaskModelOutput} from '../../packages/business/src/agent/task-gateway-v2.ts';
+import type {TaskGateway} from '../../packages/business/src/agent/task-gateway-v2.ts';
 import type {AgentProtocol} from '../../packages/contracts/src/agent-protocol.ts';
-import type {AgentTaskJson, AgentTaskToolCall} from '../../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskToolCall} from '../../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskStorageSnapshot} from '../../packages/contracts/src/agent-task-storage.ts';
 import {createTestAuthorizations, authorizeTestScope} from './agent-authorizations.ts';
 import {reportAnthropicPrefixes} from './agent-task-prefix-report.ts';
 import type {AnthropicPrefixReport} from './agent-task-prefix-report.ts';
 
+import {advanceStreamingClock, contextReportScenario, modelOutput} from './agent-task-report-shared.ts';
+import type {ContextReportOptions, ReportScenario, ReportTokenUsage} from './agent-task-report-shared.ts';
+export {advanceStreamingClock, contextReportScenario, modelOutput} from './agent-task-report-shared.ts';
+export type {ContextReportOptions, ReportTokenUsage} from './agent-task-report-shared.ts';
+
 const protocols = ['chat_completions', 'responses', 'anthropic_messages'] as const satisfies readonly AgentProtocol[];
-export interface ContextReportOptions {
-  protocols?: readonly AgentProtocol[];
-  toolRounds?: number;
-  replyBytes?: number;
-  deltaBytes?: number;
-  stress30Steps?: boolean;
-  deltaIntervalMs?: number;
-  tailPauseMs?: number;
-  officialPresets?: boolean;
-  cachePrefixReport?: boolean;
-  virtualCacheBoundaries?: boolean;
-  loadToolGroups?: readonly AgentTaskLoadableToolGroupId[];
-  /** Explicit fixture counters, never inferred tokenization or provider usage. */
-  syntheticUsage?: readonly (ReportTokenUsage | null)[];
-}
 const usageFields = ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens'] as const;
-export type ReportTokenUsage = Partial<Record<typeof usageFields[number], number>>;
 export function summarizeReportUsage(values: readonly (ReportTokenUsage | null)[]) {
   const knownTotals: ReportTokenUsage = {}, fields = Object.fromEntries(usageFields.map(field => [field, {reportedSteps: 0, missingSteps: values.length}])) as Record<typeof usageFields[number], {reportedSteps: number; missingSteps: number}>;
   for (const value of values) if (value) for (const field of usageFields) {
@@ -103,7 +92,7 @@ export interface ContextProtocolReport {
 }
 export interface ContextReport {
   version: 1;
-  scenario: {toolRounds: number; replyBytes: number; deltaBytes: number; stepLimit: number; stress30Steps?: true; toolResultBytes?: number; firstRoundToolCalls?: number; deltaIntervalMs?: number; tailPauseMs?: number; officialPresets?: true; cachePrefixReport?: true; virtualCacheBoundaries?: true; loadToolGroups?: readonly AgentTaskLoadableToolGroupId[]; syntheticUsage?: true};
+  scenario: ReportScenario;
   modelLimits: typeof TASK_MODEL_LIMITS;
   measurement: {storage: string; capacity: string; streaming: string; tokens: string};
   protocols: ContextProtocolReport[];
@@ -113,36 +102,6 @@ function record(value: unknown): Record<string, unknown> {
   assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value));
   return value as Record<string, unknown>;
 }
-function positiveInteger(value: number, label: string, maximum: number): number {
-  if (!Number.isSafeInteger(value) || value < 1 || value > maximum) throw new Error(`${label} must be an integer from 1 to ${maximum}`);
-  return value;
-}
-export function contextReportScenario(options: ContextReportOptions = {}): ContextReport['scenario'] {
-  if (options.deltaIntervalMs !== undefined && (!Number.isSafeInteger(options.deltaIntervalMs) || options.deltaIntervalMs < 0 || options.deltaIntervalMs > 60_000)) throw new Error('deltaIntervalMs must be an integer from 0 to 60000');
-  if (options.tailPauseMs !== undefined && (options.deltaIntervalMs === undefined || !Number.isSafeInteger(options.tailPauseMs) || options.tailPauseMs < 0 || options.tailPauseMs > 60_000)) throw new Error('tailPauseMs requires deltaIntervalMs and must be an integer from 0 to 60000');
-  if (options.loadToolGroups !== undefined && (!options.loadToolGroups.length || options.loadToolGroups.some(group => !AGENT_TASK_LOADABLE_TOOL_GROUP_IDS.includes(group)))) throw new Error('Select supported loadable tool groups');
-  const streaming = {...(options.deltaIntervalMs === undefined ? {} : {deltaIntervalMs: options.deltaIntervalMs, ...(options.tailPauseMs === undefined ? {} : {tailPauseMs: options.tailPauseMs})}), ...(options.officialPresets ? {officialPresets: true as const} : {}), ...(options.cachePrefixReport ? {cachePrefixReport: true as const} : {}), ...(options.virtualCacheBoundaries ? {virtualCacheBoundaries: true as const} : {}), ...(options.loadToolGroups ? {loadToolGroups: [...options.loadToolGroups]} : {}), ...(options.syntheticUsage ? {syntheticUsage: true as const} : {})};
-  if (options.stress30Steps) {
-    if (options.loadToolGroups) throw new Error('stress30Steps has a fixed workload without group loading');
-    if (options.toolRounds !== undefined || options.replyBytes !== undefined || options.deltaBytes !== undefined) throw new Error('stress30Steps has a fixed workload; do not combine it with toolRounds, replyBytes or deltaBytes');
-    return {toolRounds: 14, replyBytes: 30 * 1024, deltaBytes: 3 * 1024, stepLimit: 30, stress30Steps: true, toolResultBytes: 20 * 1024, firstRoundToolCalls: 2, ...streaming};
-  }
-  return {toolRounds: positiveInteger(options.toolRounds ?? 14, 'toolRounds', 14), replyBytes: positiveInteger(options.replyBytes ?? 30 * 1024, 'replyBytes', TASK_MODEL_LIMITS.outputBytes), deltaBytes: positiveInteger(options.deltaBytes ?? 3 * 1024, 'deltaBytes', TASK_MODEL_LIMITS.outputBytes), stepLimit: 30, ...streaming};
-}
-export function modelOutput(protocol: AgentProtocol, text: string, calls: AgentTaskToolCall[], index: number, usage?: ReportTokenUsage | null): TaskModelOutput {
-  let providerOutput: AgentTaskJson;
-  if (protocol === 'chat_completions') {
-    providerOutput = {role: 'assistant', content: text, ...(calls.length ? {tool_calls: calls.map(call => ({id: call.id, type: 'function', function: {name: call.name, arguments: JSON.stringify(call.arguments)}}))} : {})};
-  } else if (protocol === 'responses') {
-    providerOutput = [
-      {type: 'message', id: `synthetic_message_${String(index).padStart(3, '0')}`, status: 'completed', role: 'assistant', content: [{type: 'output_text', text, annotations: []}]},
-      ...calls.map(call => ({type: 'function_call', call_id: call.id, name: call.name, arguments: JSON.stringify(call.arguments), status: 'completed'})),
-    ];
-  } else {
-    providerOutput = {role: 'assistant', content: [{type: 'text', text}, ...calls.map(call => ({type: 'tool_use', id: call.id, name: call.name, input: call.arguments}))]};
-  }
-  return {text, toolCalls: calls, providerOutput, ...(usage ? {usage} : {})};
-}
 function tableGrowth(before: AgentTaskStorageSnapshot, after: AgentTaskStorageSnapshot): TableMeasurement[] {
   return after.tables.map(table => {
     const previous = before.tables.find(item => item.name === table.name);
@@ -150,11 +109,7 @@ function tableGrowth(before: AgentTaskStorageSnapshot, after: AgentTaskStorageSn
   });
 }
 const equivalentRuns = (remaining: number, growth: number): number | null => growth > 0 ? Math.floor(remaining / growth) : null;
-export function advanceStreamingClock(milliseconds: number): void {
-  // A single MockTimers.tick(400) invokes a 250 ms callback at Date.now()=400.
-  // Millisecond ticks let scheduled flushes run at their actual fake deadline.
-  for (let elapsed = 0; elapsed < milliseconds; elapsed++) mock.timers.tick(1);
-}
+
 
 /** Uses a fresh disposable workspace and the real execution/journal/tool paths.
  * The only replacement is the model gateway, which never opens a socket. */

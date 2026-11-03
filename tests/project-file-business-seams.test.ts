@@ -11,7 +11,8 @@ import {schemaObjects, foreignKeyCheck} from '../packages/business/src/project-f
 import {openLegacyWorkspaceStore as openWorkspaceStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import type {ServiceApplicationPorts} from '../packages/business/src/services.ts';
-import {createWorkspaceConfiguration} from '../packages/business/src/workspace-configuration.ts';
+import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
 import {hasStoreTable, isProjectLayout, storeDirectories, storeTableSchema} from '../packages/business/src/store-layout.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
@@ -42,7 +43,9 @@ function application(root: string) {
     stop: () => {calls.stop++;}, drain: async () => {calls.drain++;},
   };
   mkdirSync(root, {mode: 0o700});
-  return {ports: {configuration: createWorkspaceConfiguration({root, env: {}}), backups}, calls};
+  const library = openAppLibrary({dataDir: root});
+  const live = createProjectServiceApplication(library, undefined, {});
+  return {ports: {configuration: live.configuration, backups, assertMutationAllowed: live.assertMutationAllowed}, calls, close: () => library.close()};
 }
 async function fixture(t: TestContext) {
   const root = scratch(t), store = openProjectStore(path.join(root, 'project'));
@@ -53,7 +56,7 @@ async function fixture(t: TestContext) {
   const services = createServices(store, providers, {
     env: {}, application: app.ports, imageOptions: {autoRun: false}, frameOptions: {autoRun: false}, sceneOptions: {autoRun: false},
   });
-  t.after(() => services.drain());
+  t.after(async () => {try {await services.drain();} finally {app.close();}});
   assert.deepEqual(schemaObjects(store.db), structure, 'composition does not install workspace DDL');
   const project = await services.call('project.create', {name: 'Kernel business'}) as Row;
   return {store, services, project, app, structure};

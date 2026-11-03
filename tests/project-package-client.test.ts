@@ -6,12 +6,12 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {startLegacyProjectHttp} from './fixtures/legacy-project-package-http.ts';
 import {exportProjectPackage,importProjectPackage,duplicateProject} from '../packages/client/src/project-package.ts';
-import {buildSampleProject,openWorkspace,tempRoot,cleanup,mediaToolsAvailable} from './helpers/project-package-fixture.ts';
+import {buildSampleProject,openLegacyWorkspace,tempRoot,cleanup,mediaToolsAvailable} from './helpers/project-package-fixture.ts';
 
 const token='synthetic-project-package-client-token';
 test('the CLI client exports to a new file, imports it with a caller key and duplicates',{skip:!mediaToolsAvailable&&'ffmpeg unavailable'},async t=>{
  const root=tempRoot('package-client'),work=mkdtempSync(path.join(tmpdir(),'mioon-package-cli-'));t.after(()=>cleanup(root,work));
- const ws=openWorkspace(root),sample=await buildSampleProject(root,ws);ws.store.close();
+ const ws=openLegacyWorkspace(root),sample=await buildSampleProject(root,ws);ws.store.close();
  const server=await startLegacyProjectHttp({root,token,domain:'packages'});t.after(()=>server.close());
  const env={MIOON_BASE_URL:server.url,MIOON_TOKEN:token};
  const output=path.join(work,'out.mioon'),progress:unknown[]=[];

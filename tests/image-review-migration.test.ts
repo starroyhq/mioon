@@ -2,7 +2,7 @@ import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {imageFixture} from './images-fixture.mjs';
+import {legacyImageFixture as imageFixture} from './images-fixture.mjs';
 import {migrateImageReviewSchema} from '../packages/business/src/images/review-schema.ts';
 import {validateImageTaskReview} from '../packages/business/src/images/reviews.ts';
 

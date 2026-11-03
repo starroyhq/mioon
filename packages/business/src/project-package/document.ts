@@ -2,7 +2,7 @@ import path from 'node:path';
 import {isProjectDatabase as isProjectLayout} from '../project-file/held-files.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import {statSync,createReadStream,renameSync,copyFileSync,unlinkSync,readFileSync,constants} from 'node:fs';
-import type {WorkspaceStore} from '../db.ts';
+import type { Store as WorkspaceStore } from '../store-contract.ts';
 import {createOwnedMediaGraphReader} from '../inspection.ts';
 import {createTimelineRecoveryBoundary} from '../timeline-recovery.ts';
 import {lutInputHash} from '../lut-resource-validation.ts';

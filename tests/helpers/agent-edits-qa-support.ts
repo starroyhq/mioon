@@ -17,7 +17,7 @@ export function editQaPaths(mode: string = 'browser'): EditQaPaths {
   if (!['browser', 'native'].includes(mode)) throw Error('Unknown reviewed-edit QA fixture');
   const runtime = path.join(EDIT_QA_ROOT, `${mode}-runtime`);
   const userData = mode === 'native' ? path.join(runtime, 'user-data') : runtime;
-  return {root: EDIT_QA_ROOT, runtime, userData, workspace: path.join(userData, 'workspace'),
+  return {root: EDIT_QA_ROOT, runtime, userData, workspace: path.join(userData, 'data'),
     mailbox: path.join(runtime, 'mailbox'), mock: path.join(runtime, 'mock')};
 }
 export async function jsonFile(file: string, value: unknown): Promise<void> {
@@ -36,8 +36,8 @@ export async function prepareEditQaFixture(mode: string = 'browser'): Promise<Re
   const paths = editQaPaths(mode);
   await mkdir(paths.runtime, {recursive: true, mode: 0o700});
   const fixture = await prepareMutationQaFixture(paths.userData);
-  if (fixture.synthetic !== true || path.resolve(fixture.workspace) !== paths.workspace) throw Error('Not the dedicated synthetic reviewed-edit workspace');
-  const result = {...fixture, ...paths, mode, synthetic: true};
+  if (fixture.kernel !== true || fixture.synthetic !== true || path.resolve(fixture.workspace) !== paths.workspace) throw Error('Not the dedicated synthetic reviewed-edit kernel');
+  const result = {...fixture, ...paths, mode, synthetic: true, kernel: true};
   await jsonFile(path.join(paths.runtime, 'fixture.json'), result);
   return result;
 }
@@ -109,7 +109,7 @@ export async function startEditQaModel(paths: EditQaPaths, {label = 'runtime'}: 
 export interface EditQaFixtureContext {readonly workspace: string; readonly mode: string; readonly runtime: string; readonly mailbox: string; readonly mock: string; readonly [key: string]: unknown}
 export async function editQaAudit(fixture: EditQaFixtureContext, model: Awaited<ReturnType<typeof startEditQaModel>>, name?: string): Promise<Record<string, unknown>> {
   if (name !== undefined && !/^[a-z0-9-]{1,64}$/u.test(name)) throw Error('Invalid bounded audit name');
-  const result = {...(mutationQaAudit(fixture.workspace) as Record<string, unknown>), mode: fixture.mode, synthetic: true, model: await model.snapshot()};
+  const result = {...(await mutationQaAudit(fixture.workspace) as Record<string, unknown>), mode: fixture.mode, synthetic: true, kernel: true, model: await model.snapshot()};
   if (name) { const directory = path.join(fixture.runtime, 'snapshots'); await mkdir(directory, {recursive: true}); await jsonFile(path.join(directory, `${name}.json`), result); }
   return result;
 }

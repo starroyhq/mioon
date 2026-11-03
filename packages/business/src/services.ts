@@ -67,7 +67,7 @@ import {createTimelineClipLoudnessDecoder} from './timeline-clip-loudness-decode
 import {createTimelineMixLoudnessServices} from './timeline-mix-loudness.ts';
 import {createTimelineMixLoudnessDecoder} from './timeline-mix-loudness-decoder.ts';
 import {ownsStoreLock} from './db.ts';
-import type {WorkspaceStore} from './db.ts';
+import type {Store} from './store-contract.ts';
 import {isTimelineRenderRecord} from '@mioon/contracts';
 import {readOwnedTimelineAsset,readTimelinePreflightSnapshot,readTimelineSourceGraph} from './timeline-sources.ts';
 import {validateManagedSource,verifiedManagedHash} from './managed-media.ts';
@@ -93,7 +93,7 @@ import {awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts
 
 export type ServiceRow=Record<string, unknown>;
 /** Minimum store identity accepted by createServices and startWorker. */
-export interface ServiceStore { readonly db: DatabaseSync; readonly root: string }
+export interface ServiceStore extends Pick<Store, 'db' | 'root'> {}
 export interface HandlerCallContext { readonly signal?: AbortSignal; readonly expectedWorkspaceOrigin?: unknown; readonly [key: string]: unknown }
 export interface ServiceHandlerContext { readonly signal?: AbortSignal | null; readonly expectedWorkspaceOrigin?: unknown; readonly [key: string]: unknown }
 export type ServiceHandler=(input: never,context?: ServiceHandlerContext)=>unknown;
@@ -104,6 +104,7 @@ export type ServiceHandlers=Record<string,(input: never,context?: ServiceHandler
 export interface ServiceApplicationPorts {
  configuration: ReturnType<typeof createWorkspaceConfiguration>;
  backups: ReturnType<typeof createWorkspaceBackupRuntime>;
+ assertMutationAllowed(): void;
 }
 export interface CreateServicesOptions {
  application?: ServiceApplicationPorts;
@@ -134,6 +135,7 @@ export interface OrdinaryServices {
  isBusy: ()=>boolean;
  configuration: ReturnType<typeof createWorkspaceConfiguration>;
  backups: ReturnType<typeof createWorkspaceBackupRuntime>;
+ assertMutationAllowed(): void;
  audioPreview: AudioPreviewService;
  saveGenerationGuarded: (job: JobRecord,patch: ServiceRow)=>ServiceRow|null;
  validateGenerationDispatch: (job: JobRecord)=>unknown;
@@ -205,10 +207,10 @@ export function canonical(v: unknown): string {return JSON.stringify(v,(_key: st
 export const hash=(v: unknown): string=>createHash('sha256').update(canonical(v)).digest('hex');
 export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<string,Provider>,
  {application,env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,sceneOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,workspaceBaseRoot,backupQuiescent,videoSettings,videoFetch}: CreateServicesOptions={}): OrdinaryServices {
- const store: WorkspaceStore = inputStore as unknown as WorkspaceStore;
+ const store: Store = inputStore as unknown as Store;
  const kernelProjectId=isProjectStore(store)?store.projectId:null;
  application??=testProjectServiceApplication(store,env);
- if(kernelProjectId&&!application)throw new TypeError('Project services require explicit application configuration and backup ports.');
+ if(kernelProjectId&&(!application||typeof application.assertMutationAllowed!=='function'))throw new TypeError('Project services require explicit application configuration, write admission and backup ports.');
  const restored=getWorkspaceRestoreContext(store);
  const restoredReads=restored?createRestoredReadServices(store as unknown as Parameters<typeof createRestoredReadServices>[0],{signal:ownerSignal}):null;
  const disabled=(): never=>{throw workspaceRestoreError();};
@@ -218,9 +220,13 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const {db,root,get,list,put,tx}=store;
  const configuration=application?.configuration??createWorkspaceConfiguration({root:workspaceBaseRoot??root,env});
  const backups=application?.backups??createWorkspaceBackupRuntime({store,configuration,isQuiescent:()=>nonBackupActive.size===0&&(backupQuiescent?.()??true)});
+ // Application admission outlives any backup implementation. The explicit
+ // legacy default keeps its original backup/restore busy-state protection.
+ const applicationWriteGuard=application?.assertMutationAllowed;
+ const assertApplicationMutationAllowed=applicationWriteGuard?()=>applicationWriteGuard.call(application):()=>backups.assertMutationAllowed();
  const backupHandlers={
   'workspace.settings.get':()=>configuration.get(),
-  'workspace.settings.set':(input:never)=>{if(restored)disabled();backups.assertMutationAllowed();return configuration.set(input);},
+  'workspace.settings.set':(input:never)=>{if(restored)disabled();assertApplicationMutationAllowed();return configuration.set(input);},
   'workspace.backup.status':()=>backups.getStatus(),
   'workspace.backup.list':()=>backups.list(),
   'workspace.backup.create':(input:never)=>backups.create(input),
@@ -618,7 +624,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     });
    }
    if(Object.hasOwn(inspection.handlers,op))return inspection.handlers[op](input as never);
-   const parsed=parse(op as OperationName,input);const effect=operationEffect(op);if(!op.startsWith('workspace.backup.')&&op!=='workspace.settings.set'&&(effect.databaseWrite||effect.fileWrite||effect.localProcess)){backups.assertMutationAllowed();assertMutationAllowed?.();}const result=await domainHandlers[op](parsed as never,{signal});checkpoint(signal);
+   const parsed=parse(op as OperationName,input);const effect=operationEffect(op);if(!op.startsWith('workspace.backup.')&&op!=='workspace.settings.set'&&(effect.databaseWrite||effect.fileWrite||effect.localProcess)){assertApplicationMutationAllowed();assertMutationAllowed?.();}const result=await domainHandlers[op](parsed as never,{signal});checkpoint(signal);
    return publicValue(result);
   })();
   active.add(operation);if(!op.startsWith('workspace.backup.'))nonBackupActive.add(operation);
@@ -705,5 +711,5 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ['frame_tasks',"state IN ('queued','running','persisting')"],
   ['scene_tasks',"state IN ('queued','running','cancelling','persisting')"],
  ] as const).some(([table,condition])=>hasStoreTable(db,table)&&!!db.prepare(`SELECT 1 FROM ${table} WHERE ${condition} LIMIT 1`).get());
- return {compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,setProjectDeletionCompanions:projectLifecycle.setProjectDeletionCompanions,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,backups,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:restored?disabled:updateShotInProject,moveTimelineClipInProject:restored?disabled:moveTimelineClipInProject,setTimelineClipGainInProject:restored?disabled:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed as (input: unknown)=>unknown,imageRejection:images.rejectReview as (input: unknown)=>unknown} as OrdinaryServices;
+ return {compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,setProjectDeletionCompanions:projectLifecycle.setProjectDeletionCompanions,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,backups,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:restored?disabled:updateShotInProject,moveTimelineClipInProject:restored?disabled:moveTimelineClipInProject,setTimelineClipGainInProject:restored?disabled:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed as (input: unknown)=>unknown,imageRejection:images.rejectReview as (input: unknown)=>unknown} as OrdinaryServices;
 }

@@ -8,7 +8,7 @@ import {
  PROJECT_PACKAGE_COMPLETE_PATH,isProjectPackageMediaPath,projectPackageFormatProbeSchema,projectPackageManifestSchema,projectPackageCompleteSchema,
 } from '../../../contracts/src/project-package.ts';
 import type {ProjectPackageManifest,ProjectPackageComplete,ProjectPackageErrorCode} from '../../../contracts/src/project-package.ts';
-import {createNewDirectory,inspectFile,sameFile,syncDirectory} from '../workspace-backup-storage.ts';
+import {createNewDirectory,inspectFile,sameFile,syncDirectory} from '../managed-file-io.ts';
 
 // Same framing as the workspace backup bundle: a magic line, then per file a
 // 4-byte length, a JSON header {path,bytes} and the raw bytes; a zero length ends it.

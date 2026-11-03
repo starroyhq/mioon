@@ -9,22 +9,15 @@ import {initializeWorkspaceSchemaThrough24} from './workspace-fixed-schema.ts';
 import {validateWorkspaceRestoreSchema,detectWorkspaceRestoreEvidence,classifyWorkspaceSchema,installWorkspaceRestoreSchema} from './workspace-restore-schema.ts';
 import {createWorkspaceSchemaDispatch} from './workspace-schema-dispatch.ts';
 import type {WorkspaceSchemaReader} from './workspace-schema-profile.ts';
+import type {Store, StoreIdentity} from './store-contract.ts';
 import {isProjectDatabase} from './project-file/connection.ts';
 import {isProjectStore,registerProjectTransactionFence,registerProjectTransactionObserver} from './project-file/store.ts';
 export {openStore} from './project-file/test-store.ts';
 export {validateCurrentWorkspaceColourProfile} from './workspace-schema-dispatch.ts';
 
-/** Read contract of an opened workspace. Values cross this boundary as parsed
- * JSON (`unknown`); each domain validates its own record shape. */
-export interface WorkspaceStore {
-  readonly db: DatabaseSync;
-  readonly root: string;
-  get(table: string, id: string): unknown;
-  list(table: string, projectId?: string): unknown[];
-  put<T extends object>(table: string, value: T): T;
-  tx<T>(callback: () => T): T;
-  close(): void;
-}
+/** Compatibility name while explicit legacy consumers still use this opener. */
+export type WorkspaceStore = Store;
+export type {StoreIdentity} from './store-contract.ts';
 /** Backend-owned transaction observers run inside the domain transaction. An
  * observer failure rolls back both domain rows and its journal writes. */
 const transactionFences=new WeakMap<DatabaseSync,Set<()=>void>>();
@@ -37,11 +30,6 @@ export function registerWorkspaceTransactionObserver(db:DatabaseSync,observer:(r
  if(isProjectDatabase(db))return registerProjectTransactionObserver(db,observer);
  let observers=transactionObservers.get(db);if(!observers){observers=new Set();transactionObservers.set(db,observers);}observers.add(observer);
  return ()=>{observers?.delete(observer);};
-}
-/** The minimum identity used by lock/restore ownership proofs. */
-export interface StoreIdentity {
-  readonly db: DatabaseSync;
-  readonly root?: string;
 }
 /** Restored-workspace metadata returned only for verified restored stores. */
 export interface WorkspaceRestoreContext {

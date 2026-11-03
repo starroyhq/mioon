@@ -6,27 +6,23 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {mkdir,readFile,writeFile,appendFile,unlink,access,readdir} from 'node:fs/promises';
 import {startServer} from '../apps/server/src/index.ts';
-import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
-import {openStore} from '../packages/business/src/db.ts';
-import {createServices} from '../packages/business/src/services.ts';
+import {createQaProject,closeQaProject,readQaFixture} from './helpers/kernel-qa-fixture.mjs';
 export const qaRoot=path.resolve('evidence/dockable-panels');
 export const runtime=path.join(qaRoot,'browser-runtime');
 export async function prepareDockableFixture(){
- await mkdir(runtime,{recursive:true});const workspace=path.join(runtime,'workspace'),fixturePath=path.join(runtime,'fixture.json');
- try{return JSON.parse(await readFile(fixturePath,'utf8'));}catch{}
- await migrateData(path.resolve('examples/multitrack-project'),workspace);
- const store=openStore(workspace),s=createServices(store,new Map(),{env:{}});
+ await mkdir(runtime,{recursive:true});const workspace=path.join(runtime,'data'),fixturePath=path.join(runtime,'fixture.json');
+ const previous=readQaFixture(fixturePath,workspace);if(previous)return previous;
+ const first=await createQaProject(workspace,{name:'固定面板 · 合成项目'}),{store,services:s,project}=first;let other;
  try{
-  const project=(await s.call('project.list',{}))[0];
   const shot=await s.call('shot.create',{projectId:project.id,title:'固定面板 · 草稿保护',prompt:'Synthetic local dockable-panel QA only.',duration:2,aspectRatio:'9:16',position:{x:420,y:80}});
   const otherShot=await s.call('shot.create',{projectId:project.id,title:'第二镜头 · 切换保护',prompt:'Independent synthetic selection.',duration:2,aspectRatio:'9:16',position:{x:780,y:120}});
-  const second=await s.call('project.create',{name:'独立项目 · 固定面板',description:'Synthetic panel isolation acceptance only.'});
-  const node=await s.call('node.create',{projectId:second.id,type:'text',label:'第二项目节点',text:'Independent dock layout',position:{x:50,y:70}});
+  other=await createQaProject(workspace,{name:'独立项目 · 固定面板',media:false});const second=other.project;
+  const node=await other.services.call('node.create',{projectId:second.id,type:'text',label:'第二项目节点',text:'Independent dock layout',position:{x:50,y:70}});
   let data=await s.call('project.get',{projectId:project.id});
   while(data.timeline.tracks.length<6){await s.call('timeline.track.add',{projectId:project.id,expectedRevision:data.timeline.revision,requestId:randomUUID(),kind:'video',name:'QA scroll track '+data.timeline.tracks.length});data=await s.call('project.get',{projectId:project.id});}
-  const fixture={workspace,project,second,secondNode:node,shot,otherShot,clip:data.timeline.clips[0],audioClip:data.timeline.clips.find(c=>data.assets.find(a=>a.id===c.assetId)?.mimeType.startsWith('audio/')),otherClip:data.timeline.clips[1],asset:data.assets.find(a=>a.id===data.timeline.clips[0].assetId)};
+  const fixture={kernel:true,workspace,projectDir:store.projectDir,project,second,secondNode:node,shot,otherShot,clip:data.timeline.clips[0],audioClip:data.timeline.clips.find(c=>data.assets.find(a=>a.id===c.assetId)?.mimeType.startsWith('audio/')),otherClip:data.timeline.clips[1],asset:data.assets.find(a=>a.id===data.timeline.clips[0].assetId)};
   await writeFile(fixturePath,JSON.stringify(fixture,null,2));return fixture;
- }finally{store.close();}
+ }finally{if(other)await closeQaProject(other);await closeQaProject(first);}
 }
 if(process.argv.includes('--prepare')) console.log(JSON.stringify(await prepareDockableFixture(),null,2));
 if(process.argv.includes('--serve')){

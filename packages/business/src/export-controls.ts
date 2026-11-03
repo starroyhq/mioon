@@ -1,4 +1,4 @@
-import type {WorkspaceStore} from './db.ts';
+import type { Store as WorkspaceStore } from './store-contract.ts';
 import {ownsStoreLock} from './db.ts';
 import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
 import {isTimelineRenderRecord,AppError} from '@mioon/contracts';

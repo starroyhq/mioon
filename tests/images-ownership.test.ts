@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {imageFixture,insert} from './images-fixture.mjs';
+import {allowCorruptOwnerRows,imageFixture,insert} from './images-fixture.mjs';
+import {withoutProcessTargetRevisions} from './helpers/project-database.ts';
 import {createOwnedMediaGraphReader,createInspectionServices} from '../packages/business/src/inspection.ts';
 import {createImageOwnershipReader} from '../packages/business/src/image-ownership.ts';
 import {createSubjectRecoveryBoundary} from '../packages/business/src/subjects.ts';
@@ -14,8 +15,10 @@ const graph=(f: ImageFixture)=>createOwnedMediaGraphReader(f.db,f.projectId);
 const changeAsset=(f: ImageFixture,patch: Record<string, unknown>)=>f.db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify({...f.asset,...patch}),f.assetId);
 function legacyOwner(f: ImageFixture,{foreign=false,oversized=false}: {foreign?: boolean; oversized?: boolean}={}){
  const projectId=foreign?f.otherProjectId:f.projectId,jobId=randomUUID(),shotId=randomUUID(),id=randomUUID();
+ if(foreign)allowCorruptOwnerRows(f.db,['shots','jobs','versions']);
  insert(f.db,'shots',{id:shotId,projectId,data:JSON.stringify({id:shotId,projectId,referenceAssetIds:[]})});
- insert(f.db,'jobs',{id:jobId,projectId,data:JSON.stringify({id:jobId,projectId,shotId,assetId:f.assetId,versionId:id})});
+ const job=()=>insert(f.db,'jobs',{id:jobId,projectId,data:JSON.stringify({id:jobId,projectId,shotId,assetId:f.assetId,versionId:id})});
+ if(foreign)withoutProcessTargetRevisions(f.db,['jobs'],job);else job();
  insert(f.db,'versions',{id,projectId,jobId,data:JSON.stringify({id,projectId,jobId,shotId,assetId:f.assetId,...(oversized?{private:'private payload'.repeat(6000)}:{})})});return id;
 }
 
@@ -43,7 +46,7 @@ for(const patch of [{sha256:'b'.repeat(64)},{sizeBytes:127},{mimeType:'image/jpe
 });
 
 for(const variant of ['version-json','version-size','version-sql-project','task-snapshot','task-input','task-receipt','group-project','group-size'])test(`corrupt image ${variant} fails closed before disclosure`,(t: TestContext)=>{
- const f=(imageFixture as unknown as (context: TestContext) => ImageFixture)(t);f.succeed();f.db.exec('PRAGMA foreign_keys=OFF;PRAGMA ignore_check_constraints=ON;DROP TRIGGER immutable_image_versions;DROP TRIGGER immutable_image_task_identity;DROP TRIGGER image_task_state_transitions;DROP TRIGGER immutable_image_group_identity;');
+ const f=(imageFixture as unknown as (context: TestContext) => ImageFixture)(t);f.succeed();allowCorruptOwnerRows(f.db,['image_versions','image_tasks','image_groups']);f.db.exec('DROP TRIGGER immutable_image_versions;DROP TRIGGER immutable_image_task_identity;DROP TRIGGER image_task_state_transitions;DROP TRIGGER immutable_image_group_identity;');
  if(variant==='version-json')f.db.prepare('UPDATE image_versions SET data=?').run(JSON.stringify({...f.version,id:randomUUID(),private:'private payload'}));
  if(variant==='version-size')f.db.prepare('UPDATE image_versions SET data=?').run(JSON.stringify({...f.version,private:'private payload'.repeat(1000)}));
  if(variant==='version-sql-project')f.db.prepare('UPDATE image_versions SET projectId=?').run(f.otherProjectId);
@@ -69,7 +72,7 @@ test('oversized valid-JSON legacy owner cannot hide beside a typed image owner',
 });
 
 test('damaged duplicate image owners and missing generated owners fail uniformly',(t: TestContext)=>{
- const f=(imageFixture as unknown as (context: TestContext) => ImageFixture)(t);f.succeed();f.db.exec('PRAGMA foreign_keys=OFF;DROP TABLE image_versions;CREATE TABLE image_versions(id TEXT,projectId TEXT,groupId TEXT,taskId TEXT,number INTEGER,assetId TEXT,data TEXT)');
+ const f=(imageFixture as unknown as (context: TestContext) => ImageFixture)(t);f.succeed();f.db.exec('PRAGMA foreign_keys=OFF;DROP TABLE project.image_versions;CREATE TABLE project.image_versions(id TEXT,projectId TEXT,groupId TEXT,taskId TEXT,number INTEGER,assetId TEXT,data TEXT)');
  for(const id of [f.versionId,randomUUID()])insert(f.db,'image_versions',{id,projectId:f.projectId,groupId:f.groupId,taskId:f.taskId,number:1,assetId:f.assetId,data:JSON.stringify({...f.version,id})});
  assert.throws(()=>graph(f).asset(f.assetId),unavailable);f.db.exec('DELETE FROM image_versions');assert.throws(()=>graph(f).asset(f.assetId),unavailable);
 });
