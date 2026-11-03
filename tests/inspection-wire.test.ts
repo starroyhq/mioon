@@ -70,14 +70,8 @@ async function backendFixture(t: test.TestContext) {
   await writeFile(auditPath, '');
   let child: ReturnType<typeof spawn>, port = 0, url: string;
   let firstStart = true;
-  let keepWarm: ReturnType<typeof setInterval> | undefined;
-  let warming: Promise<void> | undefined;
-  let keepWarmFailure: unknown;
   const pending = new Map<string, PromiseWithResolvers<StorageSnapshot>>();
   async function stop() {
-    if (keepWarm) clearInterval(keepWarm);
-    keepWarm = undefined;
-    await warming;
     if (!child || child.exitCode !== null || child.signalCode) return;
     const exit = once(child, 'exit');
     child.kill('SIGTERM');
@@ -115,31 +109,13 @@ async function backendFixture(t: test.TestContext) {
         assert.equal((await fetch(url + '/health')).status, 200);
         // Complete ordinary host acquisition before the read-only operation
         // baseline. Each registered file remains a separate real connection.
-        const warmed: string[] = [];
         for(const projectId of INSPECTION_PROJECT_IDS){
           // After restart, corrupt cold files remain protected by the real
           // summary gate. Only their exact kernel inspectors read the snapshot;
           // the later cursor phase uses the unchanged clean projects.
           if(!firstStart&&[IDS.mismatchedAsset,IDS.mismatchedShot,IDS.mismatchedTimeline].includes(projectId))continue;
           const response=await fetch(url+projectRpcPath(projectId),{method:'POST',headers:{authorization:`Bearer ${TOKEN}`,'content-type':'application/json'},body:JSON.stringify({operation:'project.inspect',input:{projectId}})});assert.equal(response.status,200,projectId+' '+await response.text());
-          warmed.push(projectId);
         }
-        // This fixture compares read-only calls on already acquired hosts.
-        // Keep those real hosts warm on slower CI so the separate 60-second
-        // idle lifecycle cannot reopen one and update the registry baseline.
-        // Retain every row/data-version assertion, including lastOpenedAt.
-        keepWarmFailure = undefined;
-        keepWarm = setInterval(() => {
-          if (warming) return;
-          warming = Promise.all(warmed.map(async projectId => {
-            const response = await fetch(url + projectRpcPath(projectId), {method: 'POST',
-              headers: {authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json'},
-              body: JSON.stringify({operation: 'project.inspect', input: {projectId}}), signal: AbortSignal.timeout(10_000)});
-            assert.ok(response.status === 200 || response.status === 404, 'warm inspection is successful or rejects the deliberately corrupt fixture');
-            await response.arrayBuffer();
-          })).then(() => {}, error => {keepWarmFailure = error;}).finally(() => {warming = undefined;});
-        }, 20_000);
-        keepWarm.unref();
         if(firstStart){await read('corrupt-owner-json');firstStart=false;}
         return;
       }
@@ -149,7 +125,6 @@ async function backendFixture(t: test.TestContext) {
   }
   await start();
   async function read(type: 'storage'|'corrupt-owner-json' = 'storage'): Promise<StorageSnapshot> {
-    if (keepWarmFailure) throw keepWarmFailure;
     const current = child;
     if (!current || current.exitCode !== null || current.signalCode || !current.connected) throw Error('No running backend to inspect');
     const id = randomUUID(), reply = Promise.withResolvers<StorageSnapshot>(); pending.set(id, reply);
