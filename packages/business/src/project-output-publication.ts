@@ -1,4 +1,5 @@
 import {createHash, randomUUID} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import {constants, lstatSync, openSync, fstatSync, closeSync, fsyncSync, realpathSync, mkdirSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import {open, link, unlink} from 'node:fs/promises';
@@ -202,10 +203,12 @@ async function verifiedFinal(store: ProjectStore, receipt: Receipt, options: Pro
   return {...reference, referenceRevision: 1, relativePath: receipt.proof.relativePath, publication: receipt.proof};
 }
 /** Short-transaction fence over the exact fully checked final inode. No file
- * bytes are read while SQLite owns the result registration transaction. */
+ * bytes are read while SQLite owns the result registration transaction.
+ * Version restore canonicalizes JSON keys; proof identity binds all fields
+ * and values, independently of object property order. */
 export function assertPublishedProjectOutput(store:ProjectStore,proof:ProjectOutputPublicationProof,options:ProjectOutputOptions={}):void{
   const receipt=readReceipt(store,proof.owner,proof.assetId,options);
-  if(!receipt||!receipt.finalStats||!receipt.targetIdentity||!['prepared','registered'].includes(receipt.phase)||JSON.stringify(receipt.proof)!==JSON.stringify(proof))invalid();
+  if(!receipt||!receipt.finalStats||!receipt.targetIdentity||!['prepared','registered'].includes(receipt.phase)||!isDeepStrictEqual(receipt.proof,proof))invalid();
   checkReceiptDirectories(store,receipt,options);
   const info=fileMetadata(path.join(store.projectDir,proof.relativePath),()=>checkReceiptDirectories(store,receipt,options));
   if(!sameOutputIdentity(receipt.targetIdentity,outputFileIdentity(info))||Number(info.size)!==proof.sizeBytes||String(info.mtimeNs)!==receipt.finalStats.mtimeNs||String(info.ctimeNs)!==receipt.finalStats.ctimeNs)invalid();
@@ -338,8 +341,8 @@ export async function publishProjectOutput(store: ProjectStore, input: ProjectOu
 export async function markProjectOutputRegistered(store: ProjectStore, proof: ProjectOutputPublicationProof, options: ProjectOutputOptions = {}): Promise<void> {
   fence(store, options); projectOutputPublicationProofSchema.parse(proof);
   const asset: unknown = store.get('assets', proof.assetId);
-  if (!isPublishedProjectOutput(asset, {projectId: store.projectId, assetId: proof.assetId, owner: proof.owner, targetKind: proof.targetKind, sha256: proof.sha256, sizeBytes: proof.sizeBytes, mimeType: proof.mimeType}) || !record(asset) || JSON.stringify(asset.publication) !== JSON.stringify(proof)) invalid();
-  const receipt = readReceipt(store, proof.owner, proof.assetId, options); if (!receipt || JSON.stringify(receipt.proof) !== JSON.stringify(proof)) invalid();
+  if (!isPublishedProjectOutput(asset, {projectId: store.projectId, assetId: proof.assetId, owner: proof.owner, targetKind: proof.targetKind, sha256: proof.sha256, sizeBytes: proof.sizeBytes, mimeType: proof.mimeType}) || !record(asset) || !isDeepStrictEqual(asset.publication,proof)) invalid();
+  const receipt = readReceipt(store, proof.owner, proof.assetId, options); if (!receipt || !isDeepStrictEqual(receipt.proof,proof)) invalid();
   await verifiedFinal(store, receipt, options); fence(store, options);
   receipt.phase = 'registered'; writeReceipt(store, receipt, options); testHooks.get(store)?.fault?.('after_registered', proof); fence(store, options);
   const stage = stagePath(store, receipt), info = lstatSync(stage, {throwIfNoEntry: false, bigint: true});
@@ -357,7 +360,7 @@ async function restoreProjectOutputInside(store: ProjectStore, input: {asset: Re
   if (!isPublishedProjectOutput(input.asset, {projectId: store.projectId, assetId: proof.assetId, owner: proof.owner, targetKind: 'exports'})) invalid();
   const directory = ordinaryDirectory(store, 'exports', options, false), check = (): void => {
     fence(store, options); if (!sameOutputIdentity(directory.identity, ordinaryDirectory(store, 'exports', options, false).identity)) invalid();
-    const current: unknown = store.get('assets', proof.assetId); if (!record(current) || JSON.stringify(current.publication) !== JSON.stringify(proof)||!isPublishedProjectOutput(current,{projectId:store.projectId,assetId:proof.assetId,owner:proof.owner,targetKind:'exports'})) invalid();
+    const current: unknown = store.get('assets', proof.assetId); if (!record(current) || !isDeepStrictEqual(current.publication,proof)||!isPublishedProjectOutput(current,{projectId:store.projectId,assetId:proof.assetId,owner:proof.owner,targetKind:'exports'})) invalid();
   };
   const targetFile = path.join(store.projectDir, proof.relativePath); check();
   if (lstatSync(targetFile, {throwIfNoEntry: false})) throw new AppError('IDEMPOTENCY_CONFLICT', '导出文件已经存在，不能覆盖', 409);
@@ -366,7 +369,7 @@ async function restoreProjectOutputInside(store: ProjectStore, input: {asset: Re
   validateManagedFile(stage, {root: store.tempDir, private: true, maxBytes: proof.sizeBytes}); const stageInfo=await hashFile(stage, proof, check); check();
   const privateDirectory=roots(store,options,true).directory,restoreFile=path.join(privateDirectory,`restore-${proof.publicationId}.json`);
   const saved=readPrivateFile(restoreFile,{root:store.tempDir,maxBytes:32768,encoding:'utf8',allowMissing:true});
-  let previous:Receipt|null=null;if(saved!==null){try{previous=receiptSchema.parse(JSON.parse(String(saved)));}catch{invalid();}if(JSON.stringify(previous.proof)!==JSON.stringify(proof))conflict();}
+  let previous:Receipt|null=null;if(saved!==null){try{previous=receiptSchema.parse(JSON.parse(String(saved)));}catch{invalid();}if(!isDeepStrictEqual(previous.proof,proof))conflict();}
   if(previous&&previous.attempt>=16)throw new AppError('INVALID_MEDIA','本地恢复重试已达上限，请检查导出目录',409);
   const receipt:Receipt={version:1,proof,stageRelativePath:relative,stageIdentity:outputFileIdentity(stageInfo),rootIdentity:assertProjectOutputStore(store),directoryIdentity:directory.identity,
     mode:'copy',phase:'intent',targetIdentity:null,finalStats:null,attempt:(previous?.attempt??0)+1,abandoned:previous?[...previous.abandoned,previous.proof.relativePath]:[]};
@@ -400,7 +403,7 @@ async function restoreProjectOutputInside(store: ProjectStore, input: {asset: Re
   // The explicit missing-file restoration, unlike general publication, is
   // permitted to replace the old inode fact while retaining the frozen proof.
   const original=readReceipt(store,proof.owner,proof.assetId,options);
-  if(original&&JSON.stringify(original.proof)===JSON.stringify(proof)){receipt.phase='registered';writeReceipt(store,receipt,options);}
+  if(original&&isDeepStrictEqual(original.proof,proof)){receipt.phase='registered';writeReceipt(store,receipt,options);}
   writeRestore();
   return {...reference, referenceRevision: 1, relativePath: proof.relativePath, publication: proof};
 }

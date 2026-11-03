@@ -12,6 +12,7 @@ import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.
 import {publishProjectOutput,inspectProjectOutput,readPublishedProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,isPublishedProjectOutput,restorePublishedProjectOutput,setProjectOutputPublicationTestHooks} from '../packages/business/src/project-output-publication.ts';
 import type {ProjectOutputInput,PublishedProjectOutput} from '../packages/business/src/project-output-publication.ts';
 import {png,pngChunk} from './helpers/timeline-image-fixtures.ts';
+import {canonicalJson} from '../packages/business/src/project-versions/document.ts';
 
 const sha=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const bytes=png({rgba:false,extra:[pngChunk('tEXt',Buffer.from('comment\0'+'x'.repeat(150000)))]});
@@ -118,4 +119,16 @@ test('explicit export restoration binds a new target inode and preserves a late 
  const remove=setProjectOutputPublicationTestHooks(f.store,{fault:(point)=>{if(point==='after_final'){renameSync(file,file+'.replaced');writeFileSync(file,bytes,{mode:0o644});}}});
  await assert.rejects(restorePublishedProjectOutput(f.store,{asset,stageFile:stage}));remove();assert.deepEqual(readFileSync(file),bytes);assert.deepEqual(readFileSync(stage),bytes);
  await assert.rejects(restorePublishedProjectOutput(f.store,{asset,stageFile:stage}),{code:'IDEMPOTENCY_CONFLICT'});
+});
+
+test('version-canonicalized publication facts retain strict registration and missing-file restoration authority',async t=>{
+ const f=fixture(t,'exports'),output=await publishProjectOutput(f.store,f.input),asset=f.register(output);
+ const canonical=JSON.parse(canonicalJson(asset)) as Record<string,unknown>;f.store.put('assets',canonical);
+ await markProjectOutputRegistered(f.store,output.publication);
+ const file=path.join(f.projectDir,output.relativePath);unlinkSync(file);
+ const stage=path.join(path.dirname(f.input.stageFile),'canonical-restore.png');writeFileSync(stage,bytes,{mode:0o600});
+ const restored=await restorePublishedProjectOutput(f.store,{asset:canonical,stageFile:stage});
+ assert.equal(restored.relativePath,output.relativePath);assert.deepEqual(readFileSync(file),bytes);assert.deepEqual(restored.publication,output.publication);
+ const wrong={...canonical,publication:{...output.publication,owner:{...output.publication.owner,id:randomUUID()}}};
+ await assert.rejects(markProjectOutputRegistered(f.store,wrong.publication),{code:'INVALID_MEDIA'});assert.deepEqual(readFileSync(file),bytes);
 });
