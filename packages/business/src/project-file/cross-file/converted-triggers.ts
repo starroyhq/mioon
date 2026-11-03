@@ -1,5 +1,5 @@
-// Derived from the format-72 workspace schema by `node tests/helpers/project-file-schema-derivation.ts --write`.
-// Format-72 triggers that read or write a table in another database of the project, as connection-level
+// Canonical cross-file declarations. Edit directly and run the schema checker and behavioral tests.
+// Business guards that read or write another database of the project, as connection-level
 // TEMP triggers. The ON table and tables read after FROM/JOIN carry their schema on the kernel connection
 // (content tables project., history tables main., cache tables cache.); write targets stay unqualified.
 // Process target-revision triggers are ordinary history triggers in the C-owned Mio domain.

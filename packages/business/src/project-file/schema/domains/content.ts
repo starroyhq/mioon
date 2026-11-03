@@ -1,4 +1,4 @@
-// Derived from the format-72 workspace schema by `node tests/helpers/project-file-schema-derivation.ts --write`.
+// Canonical domain DDL. Edit this source directly; the schema checker generates only manifest.ts.
 // Owner: 丙 (content tables stored in the project file).
 // Changing this schema requires raising PROJECT_FILE_SCHEMA_VERSION in ../databases.ts and regenerating ../manifest.ts.
 export const CONTENT_SCHEMA: readonly string[] = Object.freeze([

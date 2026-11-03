@@ -1,902 +1,226 @@
-// Derives the static project-file schema from the fixed historical workspace
-// constructors, with the Mock provider's ledger, and writes or checks the generated files.
-//   node tests/helpers/project-file-schema-derivation.ts --write   regenerate the files
-//   node tests/helpers/project-file-schema-derivation.ts --check   exit 1 when a file differs
-//   node tests/helpers/project-file-schema-derivation.ts --report  print the PR's mapping table and the application-database SQL
-import {mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+// Current project-file schema declarations -> real SQLite -> manifest.
+//   node tests/helpers/project-file-schema-derivation.ts --write|--check|--report
+import {readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import type {SQLOutputValue} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
-import '../../packages/business/src/workspace-envelope-startup.ts';
-import {openLegacyWorkspaceStore} from './legacy-workspace-store.ts';
-import {initializeWorkspaceSchemaThrough24} from '../../packages/business/src/workspace-fixed-schema.ts';
-import {initializeWorkspaceSchema26} from '../../packages/business/src/workspace-schema-v26.ts';
-import {initializeWorkspaceSchema28} from '../../packages/business/src/workspace-schema-v28.ts';
-import {initializeWorkspaceSchema30} from '../../packages/business/src/workspace-schema-v30.ts';
-import {initializeWorkspaceSchema32} from '../../packages/business/src/workspace-schema-v32.ts';
-import {initializeWorkspaceSchema34} from '../../packages/business/src/workspace-schema-v34.ts';
-import {initializeWorkspaceSchema36} from '../../packages/business/src/workspace-schema-v36.ts';
-import {initializeWorkspaceSchema38} from '../../packages/business/src/workspace-schema-v38.ts';
-import {initializeWorkspaceSchema40} from '../../packages/business/src/workspace-schema-v40.ts';
-import {initializeWorkspaceSchema44} from '../../packages/business/src/workspace-schema-v44.ts';
-import {initializeWorkspaceSchema48} from '../../packages/business/src/workspace-schema-v48.ts';
-import {initializeWorkspaceSchema50} from '../../packages/business/src/workspace-schema-v50.ts';
-import {initializeWorkspaceSchema52} from '../../packages/business/src/workspace-schema-v52.ts';
-import {initializeWorkspaceSchema54} from '../../packages/business/src/workspace-schema-v54.ts';
-import {initializeWorkspaceSchema56} from '../../packages/business/src/workspace-schema-v56.ts';
-import {initializeWorkspaceSchema58} from '../../packages/business/src/workspace-schema-v58.ts';
-import {initializeWorkspaceSchema60} from '../../packages/business/src/workspace-schema-v60.ts';
-import {initializeWorkspaceSchema62} from '../../packages/business/src/workspace-schema-v62.ts';
-import {initializeWorkspaceSchema64} from '../../packages/business/src/workspace-schema-v64.ts';
-import {initializeWorkspaceSchema66} from '../../packages/business/src/workspace-schema-v66.ts';
-import {initializeWorkspaceSchema68} from '../../packages/business/src/workspace-schema-v68.ts';
-import {initializeWorkspaceSchema70} from '../../packages/business/src/workspace-schema-v70.ts';
-import {initializeWorkspaceSchema72} from '../../packages/business/src/workspace-schema-v72.ts';
-import {createMockProvider} from '../../packages/business/src/providers/mock.ts';
-import {PROJECT_DATABASE_NAMES} from '../../packages/contracts/src/project-file.ts';
-import {buildDatabase, schemaStatements, SCHEMA_VERSION_TABLE_SQL, CACHE_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../../packages/business/src/project-file/schema/databases.ts';
+import {buildDatabase, schemaStatements, PROJECT_FILE_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, CACHE_SCHEMA_VERSION} from '../../packages/business/src/project-file/schema/databases.ts';
 import type {DatabaseKind} from '../../packages/business/src/project-file/schema/databases.ts';
 import {readSchemaManifest} from '../../packages/business/src/project-file/schema/manifest-check.ts';
 import type {ManifestEntry} from '../../packages/business/src/project-file/schema/manifest-check.ts';
-import {APP_DATABASE_TABLES, CACHE_TABLES, CONTENT_TABLES, HISTORY_TABLES, HISTORY_TABLES_BY_DOMAIN, LEGACY_MIO_TABLES, databaseOf} from '../../packages/business/src/project-file/schema/tables.ts';
-import type {TablePlacement} from '../../packages/business/src/project-file/schema/tables.ts';
-import {currentCacheStatements} from '../../packages/business/src/project-file/schema/cache-v2.ts';
-import {currentContentStatements} from '../../packages/business/src/project-file/schema/content-v2.ts';
-import {MIO_SCHEMA} from '../../packages/business/src/project-file/schema/domains/mio.ts';
+import {CONTENT_TABLES, HISTORY_TABLES, CACHE_TABLES} from '../../packages/business/src/project-file/schema/tables.ts';
+import {CROSS_FILE_RELATIONS} from '../../packages/business/src/project-file/cross-file/relations.ts';
+import type {CrossFileRelation} from '../../packages/business/src/project-file/cross-file/relations.ts';
+import {CONVERTED_TEMP_TRIGGERS} from '../../packages/business/src/project-file/cross-file/converted-triggers.ts';
+import type {ConvertedTempTrigger} from '../../packages/business/src/project-file/cross-file/converted-triggers.ts';
+import {relationTriggerStatements, SEEN_SEQUENCE_TRIGGER} from '../../packages/business/src/project-file/cross-file/install.ts';
+import {tokenizeSql} from './sql-tokenizer.ts';
+import {verifyTempGuardBehavior} from './project-file-temp-probes.ts';
 
 export const REPOSITORY = fileURLToPath(new URL('../../', import.meta.url));
 const COMMAND = 'node tests/helpers/project-file-schema-derivation.ts';
+const KINDS = ['project', 'history', 'cache'] as const;
+const SCHEMAS = {project: 'project', history: 'main', cache: 'cache'} as const;
+const VERSIONS = {project: PROJECT_FILE_SCHEMA_VERSION, history: HISTORY_SCHEMA_VERSION, cache: CACHE_SCHEMA_VERSION};
+const METADATA = {project: ['schema_version', 'project_file'], history: ['schema_version', 'history_state'], cache: ['schema_version']} as const;
+const quote = (name: string): string => '"' + name.replaceAll('"', '""') + '"';
 type Row = Record<string, SQLOutputValue>;
 
-// ---------------------------------------------------------------------------
-// Reading format 72
-
-export interface Format72Object {
-  readonly rowid: number;
-  readonly type: string;
-  readonly name: string;
-  readonly tbl_name: string;
-  readonly sql: string | null;
-}
 export interface TableShape {
   readonly columns: readonly Row[];
   readonly foreignKeys: readonly Row[];
   readonly indexes: readonly Row[];
   readonly indexColumns: Readonly<Record<string, readonly Row[]>>;
 }
-export interface Format72 {
-  readonly version: number;
-  /** Every sqlite_master row, in rowid (creation) order; the Mock provider's
-   * ledger comes last. */
-  readonly objects: readonly Format72Object[];
-  readonly tables: ReadonlyMap<string, TableShape>;
-}
-
-/** PRAGMA table_xinfo, foreign_key_list, index_list and index_xinfo of one main-schema table. */
-export function readTableShape(db: DatabaseSync, table: string): TableShape {
-  const indexes = db.prepare('SELECT * FROM pragma_index_list(?)').all(table);
+export function readTableShape(db: DatabaseSync, table: string, schema = 'main'): TableShape {
+  const indexes = db.prepare(`PRAGMA ${quote(schema)}.index_list(${quote(table)})`).all();
   return {
-    columns: db.prepare('SELECT * FROM pragma_table_xinfo(?)').all(table),
-    foreignKeys: db.prepare('SELECT * FROM pragma_foreign_key_list(?)').all(table),
+    columns: db.prepare(`PRAGMA ${quote(schema)}.table_xinfo(${quote(table)})`).all(),
+    foreignKeys: db.prepare(`PRAGMA ${quote(schema)}.foreign_key_list(${quote(table)})`).all(),
     indexes,
-    indexColumns: Object.fromEntries(indexes.map(index => [String(index.name), db.prepare('SELECT * FROM pragma_index_xinfo(?)').all(String(index.name))])),
+    indexColumns: Object.fromEntries(indexes.map(index => [String(index.name), db.prepare(`PRAGMA ${quote(schema)}.index_xinfo(${quote(String(index.name))})`).all()])),
   };
 }
 
-/** Replays the original ordinary lineage in a scratch directory, independently
- * of the public opener and the schema being derived. The legacy adapter stays
- * fixed at 24; this reader alone advances it through the fixed format-72 chain. */
-export function readFormat72(): Format72 {
-  const scratch = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-k1-format72-'));
+/** Inputs are source declarations. The generated manifest is deliberately not
+ * imported here, and --write never rewrites a domain, relation or old version. */
+export interface SchemaDeclarations {
+  readonly statements: Readonly<Record<DatabaseKind, readonly string[]>>;
+  readonly tables: Readonly<Record<DatabaseKind, readonly string[]>>;
+  readonly relations: readonly CrossFileRelation[];
+  readonly tempTriggers: readonly ConvertedTempTrigger[];
+}
+export function declaredSchema(): SchemaDeclarations {
+  return {
+    statements: {project: schemaStatements('project'), history: schemaStatements('history'), cache: schemaStatements('cache')},
+    tables: {project: CONTENT_TABLES, history: HISTORY_TABLES, cache: CACHE_TABLES},
+    relations: CROSS_FILE_RELATIONS,
+    tempTriggers: CONVERTED_TEMP_TRIGGERS,
+  };
+}
+const same = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((v, i) => v === b[i]);
+const sorted = (names: readonly string[]): string[] => [...names].sort();
+const signature = (relation: CrossFileRelation): string => `${relation.child.schema}.${relation.child.table}(${relation.child.columns.join(',')})->${relation.parent.schema}.${relation.parent.table}(${relation.parent.columns.join(',')})`;
+
+function triggerTarget(sql: string): {schema: string; table: string; name: string} {
+  const tokens = tokenizeSql(sql);
+  if (tokens[0]?.value.toUpperCase() !== 'CREATE' || tokens[1]?.value.toUpperCase() !== 'TEMP' || tokens[2]?.value.toUpperCase() !== 'TRIGGER') throw new Error('Expected a CREATE TEMP TRIGGER declaration');
+  const on = tokens.findIndex(t => t.kind === 'word' && t.value.toUpperCase() === 'ON');
+  if (on < 0 || tokens[on + 2]?.text !== '.' || !tokens[on + 3]) throw new Error('TEMP trigger needs a qualified target table');
+  return {name: tokens[3]!.value, schema: tokens[on + 1]!.value, table: tokens[on + 3]!.value};
+}
+
+/** Validate logical declarations against native column/index/FK metadata and
+ * compile every DML with the actual attached databases and TEMP guards. These
+ * checks complement the versioned manifest and independent behavioral tests. */
+export function validateDeclaredSchema(input: SchemaDeclarations = declaredSchema()): void {
+  const db = new DatabaseSync(':memory:');
   try {
-    const store = openLegacyWorkspaceStore(path.join(scratch, 'workspace'));
-    try {
-      const db = store.db;
-      // Keep the exact historical order: 42 and 46 were candidate formats,
-      // never steps in the ordinary workspace lineage. No current dispatcher
-      // or project-file constructor may supply the source catalog.
-      initializeWorkspaceSchema26(db);
-      initializeWorkspaceSchema28(db);
-      initializeWorkspaceSchema30(db);
-      initializeWorkspaceSchema32(db);
-      initializeWorkspaceSchema34(db);
-      initializeWorkspaceSchema36(db);
-      initializeWorkspaceSchema38(db);
-      initializeWorkspaceSchema40(db);
-      initializeWorkspaceSchema44(db, initializeWorkspaceSchemaThrough24);
-      initializeWorkspaceSchema48(db, initializeWorkspaceSchemaThrough24);
-      initializeWorkspaceSchema50(db, initializeWorkspaceSchemaThrough24);
-      initializeWorkspaceSchema52(db, initializeWorkspaceSchemaThrough24);
-      initializeWorkspaceSchema54(db, initializeWorkspaceSchemaThrough24);
-      initializeWorkspaceSchema56(db, initializeWorkspaceSchemaThrough24);
-      initializeWorkspaceSchema58(db, initializeWorkspaceSchemaThrough24);
-      initializeWorkspaceSchema60(db, initializeWorkspaceSchemaThrough24);
-      initializeWorkspaceSchema62(db, initializeWorkspaceSchemaThrough24);
-      initializeWorkspaceSchema64(db, initializeWorkspaceSchemaThrough24);
-      initializeWorkspaceSchema66(db, initializeWorkspaceSchemaThrough24);
-      initializeWorkspaceSchema68(db, initializeWorkspaceSchemaThrough24);
-      initializeWorkspaceSchema70(db, initializeWorkspaceSchemaThrough24);
-      initializeWorkspaceSchema72(db, initializeWorkspaceSchemaThrough24);
-      // The server's provider registry creates the Mock provider on the store
-      // connection, and the provider creates its two ledger tables there.
-      createMockProvider({db, root: store.root});
-      const objects = db.prepare('SELECT rowid,type,name,tbl_name,sql FROM sqlite_master ORDER BY rowid').all().map(row => ({
-        rowid: Number(row.rowid), type: String(row.type), name: String(row.name), tbl_name: String(row.tbl_name),
-        sql: typeof row.sql === 'string' ? row.sql : null,
-      }));
-      const version = Number(db.prepare('SELECT max(version) AS version FROM schema_version').get()?.version);
-      if (version !== 72) throw new Error(`Expected fixed format 72, received ${version}`);
-      const tables = new Map(objects.filter(object => object.type === 'table').map(object => [object.name, readTableShape(db, object.name)]));
-      return {version, objects, tables};
-    } finally {
-      store.close();
-    }
-  } finally {
-    rmSync(scratch, {recursive: true, force: true});
-  }
-}
-
-// ---------------------------------------------------------------------------
-// A small SQL tokenizer: strings, quoted identifiers, comments, words, punctuation.
-
-export interface SqlToken {
-  readonly kind: 'word' | 'quoted' | 'string' | 'number' | 'punct';
-  readonly text: string;
-  /** Identifier or string content without quotes; equals `text` for other kinds. */
-  readonly value: string;
-  readonly start: number;
-  readonly end: number;
-}
-
-const WORD_START = /[A-Za-z_\u0080-\uffff]/;
-const WORD_PART = /[A-Za-z0-9_$\u0080-\uffff]/;
-
-export function tokenizeSql(sql: string): SqlToken[] {
-  const tokens: SqlToken[] = [];
-  let i = 0;
-  while (i < sql.length) {
-    const c = sql[i]!;
-    if (/\s/.test(c)) { i++; continue; }
-    if (sql.startsWith('--', i)) { const end = sql.indexOf('\n', i); i = end < 0 ? sql.length : end + 1; continue; }
-    if (sql.startsWith('/*', i)) { const end = sql.indexOf('*/', i + 2); i = end < 0 ? sql.length : end + 2; continue; }
-    if (c === "'" || c === '"' || c === '`' || c === '[') {
-      const close = c === '[' ? ']' : c;
-      let j = i + 1, value = '';
-      for (;;) {
-        const k = sql.indexOf(close, j);
-        if (k < 0) throw new Error(`Unterminated ${c} at offset ${i}`);
-        value += sql.slice(j, k);
-        if (close !== ']' && sql[k + 1] === close) { value += close; j = k + 2; continue; }
-        j = k + 1;
-        break;
+    db.exec("PRAGMA foreign_keys=ON; PRAGMA recursive_triggers=ON; ATTACH DATABASE ':memory:' AS project; ATTACH DATABASE ':memory:' AS cache; BEGIN");
+    for (const kind of KINDS) buildDatabase(db, kind, SCHEMAS[kind], input.statements[kind]);
+    db.exec('COMMIT');
+    const owners = new Map<string, string>();
+    for (const kind of KINDS) {
+      const schema = SCHEMAS[kind], listed = input.tables[kind];
+      if (new Set(listed).size !== listed.length) throw new Error(`Duplicate ${kind} table declaration`);
+      const actual = db.prepare(`SELECT name FROM ${quote(schema)}.sqlite_master WHERE type='table'`).all().map(row => String(row.name))
+        .filter(name => !name.startsWith('sqlite_') && !(METADATA[kind] as readonly string[]).includes(name));
+      if (!same(sorted(actual), sorted(listed))) throw new Error(`Declared ${kind} tables do not match SQLite: expected ${sorted(listed).join(',')}; found ${sorted(actual).join(',')}`);
+      for (const table of [...listed, ...METADATA[kind]]) {
+        if (table !== 'schema_version') {
+          if (owners.has(table)) throw new Error(`Table ${table} has multiple database owners`);
+          owners.set(table, schema);
+        }
       }
-      tokens.push({kind: c === "'" ? 'string' : 'quoted', text: sql.slice(i, j), value, start: i, end: j});
-      i = j;
-      continue;
-    }
-    if (WORD_START.test(c) || /[0-9]/.test(c)) {
-      const word = WORD_START.test(c);
-      let j = i + 1;
-      while (j < sql.length && (word ? WORD_PART : /[0-9A-Za-z_.]/).test(sql[j]!)) j++;
-      const text = sql.slice(i, j);
-      tokens.push({kind: word ? 'word' : 'number', text, value: text, start: i, end: j});
-      i = j;
-      continue;
-    }
-    tokens.push({kind: 'punct', text: c, value: c, start: i, end: i + 1});
-    i++;
-  }
-  return tokens;
-}
-
-const isWord = (token: SqlToken | undefined, word: string): boolean => token?.kind === 'word' && token.value.toUpperCase() === word;
-const isPunct = (token: SqlToken | undefined, text: string): boolean => token?.kind === 'punct' && token.text === text;
-function identifier(token: SqlToken | undefined): string {
-  if (token?.kind !== 'word' && token?.kind !== 'quoted') throw new Error(`Expected an identifier at offset ${token?.start ?? 'end'}`);
-  return token.value;
-}
-function nameList(tokens: readonly SqlToken[], open: number): {names: string[]; end: number} {
-  if (!isPunct(tokens[open], '(')) throw new Error('Expected a parenthesised column list');
-  const names: string[] = [];
-  let i = open + 1;
-  for (;;) {
-    names.push(identifier(tokens[i]));
-    i++;
-    if (isPunct(tokens[i], ')')) return {names, end: i + 1};
-    if (!isPunct(tokens[i], ',')) throw new Error('Unsupported column list');
-    i++;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Rewrite rule (a): cross-file foreign keys
-
-export interface ForeignKeyClause {
-  readonly form: 'column' | 'table';
-  readonly columns: readonly string[];
-  readonly parent: string;
-  /** Empty when the clause names only the parent table. */
-  readonly parentColumns: readonly string[];
-  /** `DEFERRABLE INITIALLY DEFERRED`. */
-  readonly deferred: boolean;
-  /** Source range removed when the clause is stripped. */
-  readonly removeStart: number;
-  readonly removeEnd: number;
-}
-
-/** ON DELETE|UPDATE action, MATCH name, [NOT] DEFERRABLE [INITIALLY DEFERRED|IMMEDIATE], in any order. */
-function foreignKeySuffix(tokens: readonly SqlToken[], start: number): {end: number; deferred: boolean} {
-  let i = start, deferred = false;
-  for (;;) {
-    if (isWord(tokens[i], 'ON') && (isWord(tokens[i + 1], 'DELETE') || isWord(tokens[i + 1], 'UPDATE'))) {
-      i += 2;
-      if (isWord(tokens[i], 'SET') && (isWord(tokens[i + 1], 'NULL') || isWord(tokens[i + 1], 'DEFAULT'))) i += 2;
-      else if (isWord(tokens[i], 'NO') && isWord(tokens[i + 1], 'ACTION')) i += 2;
-      else if (isWord(tokens[i], 'CASCADE') || isWord(tokens[i], 'RESTRICT')) i += 1;
-      else throw new Error('Unsupported foreign-key action');
-    } else if (isWord(tokens[i], 'MATCH')) {
-      identifier(tokens[i + 1]);
-      i += 2;
-    } else if (isWord(tokens[i], 'DEFERRABLE') || (isWord(tokens[i], 'NOT') && isWord(tokens[i + 1], 'DEFERRABLE'))) {
-      const negated = isWord(tokens[i], 'NOT');
-      i += negated ? 2 : 1;
-      let initiallyDeferred = false;
-      if (isWord(tokens[i], 'INITIALLY') && (isWord(tokens[i + 1], 'DEFERRED') || isWord(tokens[i + 1], 'IMMEDIATE'))) {
-        initiallyDeferred = isWord(tokens[i + 1], 'DEFERRED');
-        i += 2;
-      }
-      deferred = !negated && initiallyDeferred;
-    } else {
-      return {end: i, deferred};
-    }
-  }
-}
-
-/** Every column-level and table-level foreign-key clause of a CREATE TABLE statement. */
-export function foreignKeyClauses(createTableSql: string): ForeignKeyClause[] {
-  const tokens = tokenizeSql(createTableSql);
-  if (!isWord(tokens[0], 'CREATE')) throw new Error('Expected a CREATE TABLE statement');
-  const open = tokens.findIndex(token => isPunct(token, '('));
-  if (open < 0) throw new Error('CREATE TABLE has no column list');
-  let depth = 0, close = -1;
-  for (let i = open; i < tokens.length && close < 0; i++) {
-    if (isPunct(tokens[i], '(')) depth++;
-    else if (isPunct(tokens[i], ')') && --depth === 0) close = i;
-  }
-  if (close < 0) throw new Error('CREATE TABLE column list is not closed');
-  const items: {tokens: SqlToken[]; before?: SqlToken; after?: SqlToken}[] = [{tokens: []}];
-  depth = 0;
-  for (let i = open + 1; i < close; i++) {
-    const token = tokens[i]!;
-    if (isPunct(token, '(')) depth++;
-    else if (isPunct(token, ')')) depth--;
-    if (depth === 0 && isPunct(token, ',')) {
-      items[items.length - 1]!.after = token;
-      items.push({tokens: [], before: token});
-    } else {
-      items[items.length - 1]!.tokens.push(token);
-    }
-  }
-  const clauses: ForeignKeyClause[] = [];
-  for (const item of items) {
-    const t = item.tokens;
-    if (t.length === 0) throw new Error('Empty item in CREATE TABLE');
-    const k = isWord(t[0], 'CONSTRAINT') ? 2 : 0;
-    if (isWord(t[k], 'FOREIGN') && isWord(t[k + 1], 'KEY')) {
-      const child = nameList(t, k + 2);
-      if (!isWord(t[child.end], 'REFERENCES')) throw new Error('FOREIGN KEY without REFERENCES');
-      const parent = identifier(t[child.end + 1]);
-      let i = child.end + 2, parentColumns: string[] = [];
-      if (isPunct(t[i], '(')) ({names: parentColumns, end: i} = nameList(t, i));
-      const suffix = foreignKeySuffix(t, i);
-      if (suffix.end !== t.length) throw new Error('Unexpected text after a FOREIGN KEY clause');
-      if (!item.before && !item.after) throw new Error('A table cannot consist of a foreign key only');
-      clauses.push({form: 'table', columns: child.names, parent, parentColumns, deferred: suffix.deferred,
-        removeStart: item.before ? item.before.start : t[0]!.start,
-        removeEnd: item.before ? t[t.length - 1]!.end : item.after!.end});
-    } else if (!isWord(t[k], 'PRIMARY') && !isWord(t[k], 'UNIQUE') && !isWord(t[k], 'CHECK')) {
-      const column = identifier(t[0]);
-      let level = 0;
-      for (let i = 1; i < t.length; i++) {
-        if (isPunct(t[i], '(')) level++;
-        else if (isPunct(t[i], ')')) level--;
-        else if (level === 0 && isWord(t[i], 'REFERENCES')) {
-          const start = i >= 3 && isWord(t[i - 2], 'CONSTRAINT') ? i - 2 : i;
-          const parent = identifier(t[i + 1]);
-          let j = i + 2, parentColumns: string[] = [];
-          if (isPunct(t[j], '(')) ({names: parentColumns, end: j} = nameList(t, j));
-          const suffix = foreignKeySuffix(t, j);
-          clauses.push({form: 'column', columns: [column], parent, parentColumns, deferred: suffix.deferred,
-            removeStart: t[start - 1]!.end, removeEnd: t[suffix.end - 1]!.end});
-          i = suffix.end - 1;
+      for (const table of listed) {
+        const shape = readTableShape(db, table, schema);
+        for (const fk of shape.foreignKeys) {
+          if (![...listed, ...METADATA[kind]].includes(String(fk.table))) throw new Error(`Persistent foreign key ${schema}.${table} crosses databases`);
         }
       }
     }
-  }
-  return clauses;
-}
-
-/** Removes every foreign key whose parent table `isForeign` reports as living in
- * another database: a table constraint goes with its preceding comma, a column
- * constraint goes with its suffix clauses while the rest of the column stays. */
-export function stripCrossFileForeignKeys(createTableSql: string, isForeign: (parentTable: string) => boolean): string {
-  const ranges = foreignKeyClauses(createTableSql).filter(clause => isForeign(clause.parent))
-    .map(clause => [clause.removeStart, clause.removeEnd] as const).sort((a, b) => b[0] - a[0]);
-  let sql = createTableSql;
-  for (const [start, end] of ranges) sql = sql.slice(0, start) + sql.slice(end);
-  return sql;
-}
-
-// ---------------------------------------------------------------------------
-// Rewrite rule (b): the project-deletion exemption
-
-const EXEMPTION = String.raw`NOT EXISTS\(SELECT 1 FROM project_deletion_scope WHERE tableName='[^']*'(?: AND rowId=OLD\.rowid)?\)`;
-/** `WHEN X BEGIN`; `WHEN X AND <rest>` (covers `AND (`, `AND NOT (` and `AND json_array(`); `WHEN cond AND X BEGIN`. */
-const EXEMPTION_SHAPES: readonly {readonly pattern: RegExp; readonly replacement: string}[] = [
-  {pattern: new RegExp(String.raw`\s+WHEN\s+${EXEMPTION}(?=\s+BEGIN\b)`, 'g'), replacement: ''},
-  {pattern: new RegExp(String.raw`(\bWHEN\s+)${EXEMPTION}\s+AND\s+`, 'g'), replacement: '$1'},
-  {pattern: new RegExp(String.raw`\s+AND\s+${EXEMPTION}(?=\s+BEGIN\b)`, 'g'), replacement: ''},
-];
-
-/** Removes the `NOT EXISTS(SELECT 1 FROM project_deletion_scope …)` term and its connective. */
-export function stripDeletionExemption(triggerSql: string): string {
-  const found = triggerSql.match(new RegExp(EXEMPTION, 'g'))?.length ?? 0;
-  if (found !== 1) throw new Error(`Expected exactly one deletion exemption, found ${found}`);
-  const shapes = EXEMPTION_SHAPES.filter(shape => (triggerSql.match(shape.pattern)?.length ?? 0) > 0);
-  if (shapes.length !== 1) throw new Error('Deletion exemption is not in a supported position');
-  const sql = triggerSql.replace(shapes[0]!.pattern, shapes[0]!.replacement);
-  if (sql.includes('project_deletion_')) throw new Error('Deletion scope is still referenced');
-  return sql;
-}
-
-// ---------------------------------------------------------------------------
-// Rewrite rule (c): Mio storage quota without the application policy tables
-
-export const POLICY_QUOTA_TERMS: readonly string[] = Object.freeze([
-  '+(SELECT count(*) FROM agent_task_policy_v2)',
-  '+(SELECT count(*) FROM agent_task_policy_requests_v2)',
-  '+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)',
-  '+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)',
-]);
-
-/** Removes the two row-count and two byte-count terms of the policy tables; the limits stay. */
-export function rewriteMioQuota(triggerSql: string): string {
-  let sql = triggerSql;
-  for (const term of POLICY_QUOTA_TERMS) {
-    const found = sql.split(term).length - 1;
-    if (found !== 1) throw new Error(`Expected the quota term ${term} exactly once, found ${found}`);
-    sql = sql.replace(term, '');
-  }
-  if (/\bagent_task_policy(?:_requests)?_v2\b/.test(sql)) throw new Error('Quota trigger still reads a policy table');
-  return sql;
-}
-
-// ---------------------------------------------------------------------------
-// Rewrite rule (d): cross-file triggers become connection-level TEMP triggers
-
-/** `CREATE TRIGGER` becomes `CREATE TEMP TRIGGER`; the ON table and every table
- * read after FROM/JOIN get their schema; INSERT INTO, UPDATE and DELETE FROM
- * targets stay unqualified. Any other use of a known table name is rejected. */
-export function toTempTrigger(triggerSql: string, schemaOf: (table: string) => string | undefined): string {
-  if (!triggerSql.startsWith('CREATE TRIGGER ')) throw new Error('Expected a CREATE TRIGGER statement');
-  const tokens = tokenizeSql(triggerSql);
-  const on = tokens.findIndex((token, i) => i > 2 && isWord(token, 'ON'));
-  if (on < 0) throw new Error('Trigger has no ON clause');
-  if (schemaOf(identifier(tokens[on + 1])) === undefined) throw new Error('Trigger table has no schema');
-  const inserts: {at: number; text: string}[] = [];
-  tokens.forEach((token, i) => {
-    if (token.kind !== 'word' && token.kind !== 'quoted') return;
-    const schema = schemaOf(token.value);
-    if (schema === undefined) return;
-    const previous = tokens[i - 1], beforePrevious = tokens[i - 2];
-    if (isPunct(tokens[i + 1], '.')) return;
-    if (isPunct(previous, '.')) throw new Error(`Table ${token.value} is already qualified`);
-    if (i === on + 1 || ((isWord(previous, 'FROM') && !isWord(beforePrevious, 'DELETE')) || isWord(previous, 'JOIN'))) {
-      inserts.push({at: token.start, text: `${schema}.`});
-    } else if (!isWord(previous, 'INTO') && !isWord(previous, 'UPDATE') && !isWord(previous, 'FROM')) {
-      throw new Error(`Unsupported reference to table ${token.value}`);
-    }
-  });
-  let sql = triggerSql;
-  for (const insert of inserts.reverse()) sql = sql.slice(0, insert.at) + insert.text + sql.slice(insert.at);
-  return sql.replace(/^CREATE TRIGGER /, 'CREATE TEMP TRIGGER ');
-}
-
-/** Known tables a trigger reads or writes (table-qualified column names excluded). */
-export function referencedTables(sql: string, known: ReadonlySet<string>): Set<string> {
-  const tokens = tokenizeSql(sql), found = new Set<string>();
-  tokens.forEach((token, i) => {
-    if ((token.kind === 'word' || token.kind === 'quoted') && known.has(token.value.toLowerCase()) && !isPunct(tokens[i + 1], '.')) found.add(token.value.toLowerCase());
-  });
-  return found;
-}
-
-// ---------------------------------------------------------------------------
-// Derivation
-
-/** Where a format-72 object goes: built into one of the three databases, a TEMP
- * trigger, handed to the application database, dropped, present in every
- * database (`schema_version`) or created by SQLite (`sqlite_sequence`). */
-export type ObjectFate = 'project' | 'history' | 'cache' | 'temp' | 'app' | 'dropped' | 'every-database' | 'automatic';
-export type RewriteRule = 'foreign-keys' | 'exemption' | 'quota' | 'temp';
-
-export interface DerivedObject {
-  readonly type: string;
-  readonly name: string;
-  readonly table: string;
-  readonly fate: ObjectFate;
-  readonly rules: readonly RewriteRule[];
-  readonly original: string | null;
-  /** The DDL as built or handed over; null for dropped and automatic objects. */
-  readonly sql: string | null;
-}
-export interface RelationData {
-  readonly index: number;
-  readonly child: {readonly schema: 'main' | 'cache'; readonly table: string; readonly columns: readonly string[]; readonly nullable: readonly boolean[]};
-  readonly parent: {readonly schema: 'project'; readonly table: string; readonly columns: readonly string[]};
-  readonly originallyDeferred: boolean;
-}
-export interface DroppedKeyData {
-  readonly child: {readonly table: string; readonly columns: readonly string[]};
-  readonly parent: {readonly table: string; readonly columns: readonly string[]};
-  readonly originallyDeferred: boolean;
-}
-export interface ConvertedTriggerData {
-  readonly name: string;
-  readonly table: string;
-  readonly schema: SchemaName;
-  readonly sql: string;
-}
-export const DOMAIN_FILES = Object.freeze([
-  {file: 'content', constant: 'CONTENT_SCHEMA', database: 'project', owner: '丙', tables: CONTENT_TABLES, about: 'content tables stored in the project file'},
-  {file: 'receipts', constant: 'RECEIPT_SCHEMA', database: 'history', owner: '丙', tables: HISTORY_TABLES_BY_DOMAIN.receipts, about: 'request receipts in the local history database'},
-  {file: 'tasks', constant: 'TASK_SCHEMA', database: 'history', owner: '丙', tables: HISTORY_TABLES_BY_DOMAIN.tasks, about: 'jobs and tasks in the local history database'},
-  {file: 'timeline-history', constant: 'TIMELINE_HISTORY_SCHEMA', database: 'history', owner: '丙', tables: HISTORY_TABLES_BY_DOMAIN.timelineHistory, about: 'timeline undo history in the local history database'},
-  {file: 'mio', constant: 'MIO_SCHEMA', database: 'history', owner: '己', tables: LEGACY_MIO_TABLES, about: 'Mio task records in the local history database'},
-  {file: 'cache', constant: 'CACHE_SCHEMA', database: 'cache', owner: '丁', tables: CACHE_TABLES, about: 'rebuildable data in the cache database'},
-] as const);
-export type DomainFile = (typeof DOMAIN_FILES)[number]['file'];
-
-export interface Derivation {
-  readonly format72: Format72;
-  /** One entry per format-72 sqlite_master row, in rowid order. */
-  readonly objects: readonly DerivedObject[];
-  readonly domains: Readonly<Record<DomainFile, readonly string[]>>;
-  readonly relations: readonly RelationData[];
-  readonly droppedContentKeys: readonly DroppedKeyData[];
-  readonly convertedTriggers: readonly ConvertedTriggerData[];
-}
-
-/** Schema names on the kernel connection, the contract's PROJECT_DATABASE_NAMES:
- * history.db is `main` (SQLite puts the super-journal beside the main database,
- * and the records directory does not move), the project file is attached as
- * `project` and cache.db as `cache`. */
-export type SchemaName = (typeof PROJECT_DATABASE_NAMES)[DatabaseKind];
-export const SCHEMA_NAMES = PROJECT_DATABASE_NAMES;
-const SCHEMA_OF = SCHEMA_NAMES;
-const kept = (placement: TablePlacement): placement is 'project' | 'history' | 'cache' => placement === 'project' || placement === 'history' || placement === 'cache';
-
-/** Groups the format-72 schema by destination and applies rewrite rules (a)–(d). */
-export function deriveFromFormat72(format72: Format72 = readFormat72()): Derivation {
-  if (format72.version !== 72) throw new Error(`Expected the fixed format-72 workspace, received format ${format72.version}`);
-  const tableObjects = format72.objects.filter(object => object.type === 'table');
-  const known = new Set(tableObjects.map(object => object.name).filter(name => name !== 'schema_version' && name !== 'sqlite_sequence'));
-  for (const table of DOMAIN_FILES.flatMap(domain => [...domain.tables])) if (!known.has(table)) throw new Error(`Format 72 has no table ${table}`);
-  const placementOf = (table: string): TablePlacement => databaseOf(table);
-  const schemaOf = (table: string): string | undefined => {
-    const lower = table.toLowerCase();
-    if (!known.has(lower)) return undefined;
-    const placement = placementOf(lower);
-    if (!kept(placement)) throw new Error(`Rewritten trigger still uses ${placement} table ${lower}`);
-    return SCHEMA_OF[placement];
-  };
-  const objects = format72.objects.map((object): DerivedObject => {
-    const base = {type: object.type, name: object.name, table: object.tbl_name, original: object.sql};
-    if (object.type === 'table') {
-      if (object.name === 'sqlite_sequence') return {...base, fate: 'automatic', rules: [], sql: null};
-      if (object.name === 'schema_version') {
-        if (object.sql !== SCHEMA_VERSION_TABLE_SQL) throw new Error('schema_version no longer matches databases.ts');
-        return {...base, fate: 'every-database', rules: [], sql: object.sql};
+    const indexes = new Set<number>(), signatures = new Set<string>();
+    for (const relation of input.relations) {
+      const key = signature(relation);
+      if (!Number.isSafeInteger(relation.index) || relation.index < 1 || indexes.has(relation.index)) throw new Error(`Invalid or duplicate relation index ${relation.index}`);
+      indexes.add(relation.index);
+      if (signatures.has(key)) throw new Error(`Duplicate cross-file relation ${key}`);
+      signatures.add(key);
+      const child = relation.child, parent = relation.parent;
+      if (!['main', 'cache'].includes(child.schema) || parent.schema !== 'project' || owners.get(child.table) !== child.schema || owners.get(parent.table) !== parent.schema) throw new Error(`Cross-file relation ${key} has an invalid database owner`);
+      if (!child.columns.length || child.columns.length !== parent.columns.length || child.columns.length !== child.nullable.length) throw new Error(`Cross-file relation ${key} has mismatched key columns`);
+      const childShape = readTableShape(db, child.table, child.schema), parentShape = readTableShape(db, parent.table, parent.schema);
+      const childColumns = new Map(childShape.columns.map(column => [String(column.name), column]));
+      for (let i = 0; i < child.columns.length; i++) {
+        const name = child.columns[i]!, column = childColumns.get(name);
+        if (!column) throw new Error(`Cross-file relation ${key} has no child column ${name}`);
+        const nullable = Number(column.notnull) === 0 && Number(column.pk) === 0;
+        if (nullable !== child.nullable[i]) throw new Error(`Cross-file relation ${key} has incorrect nullability for ${name}`);
       }
-      const placement = placementOf(object.name);
-      if (placement === 'removed') return {...base, fate: 'dropped', rules: [], sql: null};
-      const sql = stripCrossFileForeignKeys(object.sql!, parent => placementOf(parent.toLowerCase()) !== placement);
-      return {...base, fate: placement, rules: sql === object.sql ? [] : ['foreign-keys'], sql};
+      if (parent.columns.some(name => !parentShape.columns.some(column => column.name === name))) throw new Error(`Cross-file relation ${key} has a missing parent column`);
+      const primary = parentShape.columns.filter(column => Number(column.pk) > 0).sort((a, b) => Number(a.pk) - Number(b.pk)).map(column => String(column.name));
+      const uniqueKeys = [primary, ...parentShape.indexes.filter(index => Number(index.unique) === 1 && Number(index.partial) === 0)
+        .map(index => parentShape.indexColumns[String(index.name)]!.filter(column => Number(column.key) === 1).map(column => String(column.name)))];
+      if (!uniqueKeys.some(columns => same(columns, parent.columns))) throw new Error(`Cross-file relation ${key} has no ordered unique parent key`);
     }
-    if (object.type === 'index') {
-      const placement = placementOf(object.tbl_name);
-      if (placement === 'removed') return {...base, fate: 'dropped', rules: [], sql: null};
-      return {...base, fate: placement, rules: [], sql: object.sql};
-    }
-    if (object.type !== 'trigger') throw new Error(`Unsupported format-72 object ${object.type} ${object.name}`);
-    const placement = placementOf(object.tbl_name);
-    if (placement === 'removed') return {...base, fate: 'dropped', rules: [], sql: null};
-    const rules: RewriteRule[] = [];
-    let sql = object.sql!;
-    if (sql.includes('project_deletion_')) { sql = stripDeletionExemption(sql); rules.push('exemption'); }
-    let references = referencedTables(sql, known);
-    if (placement === 'app') {
-      const appOnly = [...references].every(table => placementOf(table) === 'app');
-      return appOnly ? {...base, fate: 'app', rules, sql} : {...base, fate: 'dropped', rules: [], sql: null};
-    }
-    if ([...references].some(table => placementOf(table) === 'app')) {
-      sql = rewriteMioQuota(sql);
-      rules.push('quota');
-      references = referencedTables(sql, known);
-    }
-    if ([...references].every(table => placementOf(table) === placement)) return {...base, fate: placement, rules, sql};
-    rules.push('temp');
-    return {...base, fate: 'temp', rules, sql: toTempTrigger(sql, schemaOf)};
-  });
-
-  const byTable = new Map<string, DerivedObject[]>();
-  for (const object of objects) byTable.set(object.table, [...byTable.get(object.table) ?? [], object]);
-  const tableStatements = (table: string): string[] => {
-    const own = byTable.get(table) ?? [], placement = placementOf(table);
-    const create = own.find(object => object.type === 'table')!;
-    return [create.sql!,
-      ...own.filter(object => object.type === 'index' && object.sql !== null).map(object => object.sql!),
-      ...own.filter(object => object.type === 'trigger' && object.fate === placement).map(object => object.sql!)];
-  };
-  const domains = Object.fromEntries(DOMAIN_FILES.map(domain => [domain.file, domain.tables.flatMap(tableStatements)])) as Record<DomainFile, string[]>;
-
-  const relations: RelationData[] = [], droppedContentKeys: DroppedKeyData[] = [];
-  const keptTables = [...known].filter(table => kept(placementOf(table))).sort();
-  for (const table of keptTables) {
-    const placement = placementOf(table), shape = format72.tables.get(table)!;
-    const clauses = foreignKeyClauses(tableObjects.find(object => object.name === table)!.sql!);
-    const groups = new Map<number, Row[]>();
-    for (const row of shape.foreignKeys) groups.set(Number(row.id), [...groups.get(Number(row.id)) ?? [], row]);
-    for (const id of [...groups.keys()].sort((a, b) => a - b)) {
-      const rows = groups.get(id)!.sort((a, b) => Number(a.seq) - Number(b.seq));
-      const parent = String(rows[0]!.table).toLowerCase(), parentPlacement = placementOf(parent);
-      if (parentPlacement === placement) continue;
-      const columns = rows.map(row => String(row.from));
-      if (rows.some(row => row.to === null)) throw new Error(`Foreign key ${table}#${id} has no parent columns`);
-      const parentColumns = rows.map(row => String(row.to));
-      const same = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((value, i) => value.toLowerCase() === b[i]!.toLowerCase());
-      const matches = clauses.filter(clause => clause.parent.toLowerCase() === parent && same(clause.columns, columns) && same(clause.parentColumns, parentColumns));
-      if (matches.length !== 1) throw new Error(`Cannot match foreign key ${table}#${id} to its SQL`);
-      const originallyDeferred = matches[0]!.deferred;
-      if ((placement === 'history' || placement === 'cache') && parentPlacement === 'project') {
-        const info = new Map(shape.columns.map(column => [String(column.name), column]));
-        relations.push({index: 0, child: {schema: SCHEMA_OF[placement], table, columns,
-          nullable: columns.map(column => Number(info.get(column)!.notnull) === 0 && Number(info.get(column)!.pk) === 0)},
-        parent: {schema: SCHEMA_OF.project, table: parent, columns: parentColumns}, originallyDeferred});
-      } else if (placement === 'project' && parentPlacement === 'history') {
-        droppedContentKeys.push({child: {table, columns}, parent: {table: parent, columns: parentColumns}, originallyDeferred});
-      } else {
-        throw new Error(`Unplanned cross-file foreign key ${table}#${id} -> ${parent}`);
+    // A local projectId may bind directly or through an existing composite FK
+    // (for example subject_variant_items -> subject_variant_batches).
+    const projectBound = (schema: string, table: string, column: string, visited = new Set<string>()): boolean => {
+      if (schema === 'project' && table === 'projects' && column === 'id') return true;
+      const key = `${schema}.${table}.${column}`;
+      if (visited.has(key)) return false;
+      const next = new Set([...visited, key]);
+      for (const relation of input.relations) {
+        if (relation.child.schema !== schema || relation.child.table !== table) continue;
+        const at = relation.child.columns.indexOf(column);
+        if (at >= 0 && projectBound(relation.parent.schema, relation.parent.table, relation.parent.columns[at]!, next)) return true;
+      }
+      return readTableShape(db, table, schema).foreignKeys.some(fk => fk.from === column && typeof fk.to === 'string' && projectBound(schema, String(fk.table), fk.to, next));
+    };
+    for (const kind of ['history', 'cache'] as const) for (const table of input.tables[kind]) {
+      if (readTableShape(db, table, SCHEMAS[kind]).columns.some(column => column.name === 'projectId') &&
+          !projectBound(SCHEMAS[kind], table, 'projectId')) {
+        throw new Error(`Missing project relation for ${SCHEMAS[kind]}.${table}`);
       }
     }
-  }
-  const numbered = relations.map((relation, i) => ({...relation, index: i + 1}));
-
-  const order = [...CONTENT_TABLES, ...HISTORY_TABLES, ...CACHE_TABLES];
-  const convertedTriggers = order.flatMap(table => (byTable.get(table) ?? []).filter(object => object.fate === 'temp').map(object => {
-    const placement = placementOf(table) as 'project' | 'history' | 'cache';
-    return {name: object.name, table, schema: SCHEMA_OF[placement], sql: object.sql!};
-  }));
-  return {format72, objects, domains, relations: numbered, droppedContentKeys, convertedTriggers};
+    const required = new Set(CONVERTED_TEMP_TRIGGERS.map(trigger => trigger.name)), found = new Set<string>();
+    for (const trigger of input.tempTriggers) {
+      if (found.has(trigger.name)) throw new Error(`Duplicate TEMP trigger ${trigger.name}`);
+      found.add(trigger.name);
+      if (!required.has(trigger.name)) throw new Error(`Unexpected TEMP trigger ${trigger.name}`);
+      const target = triggerTarget(trigger.sql);
+      if (target.name !== trigger.name) throw new Error(`TEMP trigger ${trigger.name} has mismatched SQL name`);
+      if (target.schema !== trigger.schema) throw new Error(`TEMP trigger ${trigger.name} has mismatched target schema`);
+      if (target.table !== trigger.table || owners.get(trigger.table) !== trigger.schema) throw new Error(`TEMP trigger ${trigger.name} has mismatched target table`);
+    }
+    for (const name of required) if (!found.has(name)) throw new Error(`Missing TEMP trigger ${name}`);
+    for (const trigger of input.tempTriggers) db.exec(trigger.sql);
+    for (const relation of input.relations) for (const sql of relationTriggerStatements(relation)) db.exec(sql);
+    db.exec(SEEN_SEQUENCE_TRIGGER);
+    for (const kind of KINDS) for (const table of [...input.tables[kind], ...METADATA[kind]]) {
+      const schema = SCHEMAS[kind], target = `${quote(schema)}.${quote(table)}`;
+      const columns = readTableShape(db, table, schema).columns.filter(column => Number(column.hidden) === 0).map(column => quote(String(column.name)));
+      for (const sql of [`EXPLAIN INSERT INTO ${target} DEFAULT VALUES`, `EXPLAIN UPDATE ${target} SET ${columns.map(column => `${column}=${column}`).join(',')}`, `EXPLAIN DELETE FROM ${target}`]) db.prepare(sql).all();
+    }
+    verifyTempGuardBehavior(input.tempTriggers, KINDS.flatMap(kind => [...input.tables[kind], ...METADATA[kind]].map(name => ({
+      schema: SCHEMAS[kind], name,
+      columns: readTableShape(db, name, SCHEMAS[kind]).columns.map(column => ({name:String(column.name), type:String(column.type)})),
+    }))));
+  } finally { db.close(); }
 }
 
-/** The domain statements that make up each database's share of the derivation. */
-export function derivedDomainStatements(derivation: Derivation, kind: DatabaseKind): string[] {
-  return DOMAIN_FILES.filter(domain => domain.database === kind).flatMap(domain => derivation.domains[domain.file]);
-}
-
-/** Builds `kind` in a fresh in-memory database as `main` and reads its manifest. */
+/** Build an independent SQLite catalog, not the generated expected manifest. */
 export function buildManifest(kind: DatabaseKind, statements: readonly string[] = schemaStatements(kind)): ManifestEntry[] {
   const db = new DatabaseSync(':memory:');
   try {
-    db.exec('BEGIN');
-    buildDatabase(db, kind, 'main', statements);
-    db.exec('COMMIT');
+    db.exec('BEGIN'); buildDatabase(db, kind, 'main', statements); db.exec('COMMIT');
     return readSchemaManifest(db, 'main');
-  } finally {
-    db.close();
-  }
+  } finally { db.close(); }
 }
-
-// ---------------------------------------------------------------------------
-// Rendering
-
-const VERSION_CONSTANTS: Readonly<Record<DatabaseKind, string>> = {project: 'PROJECT_FILE_SCHEMA_VERSION', history: 'HISTORY_SCHEMA_VERSION', cache: 'CACHE_SCHEMA_VERSION'};
-const VERSIONS: Readonly<Record<DatabaseKind, number>> = {project: PROJECT_FILE_SCHEMA_VERSION, history: HISTORY_SCHEMA_VERSION, cache: CACHE_SCHEMA_VERSION};
-const DERIVED = `// Derived from the format-72 workspace schema by \`${COMMAND} --write\`.`;
-const json = (value: unknown): string => JSON.stringify(value);
-
-function renderDomain(domain: (typeof DOMAIN_FILES)[number], statements: readonly string[], derivation: Derivation): string {
-  const lines = [DERIVED, `// Owner: ${domain.owner} (${domain.about}).`,
-    `// Changing this schema requires raising ${VERSION_CONSTANTS[domain.database]} in ../databases.ts and regenerating ../manifest.ts.`,
-    `export const ${domain.constant}: readonly string[] = Object.freeze([`];
-  let at = 0;
-  for (const table of domain.tables) {
-    const count = 1 + (derivation.objects.filter(object => object.table === table && object.type !== 'table' && object.fate === databaseOf(table) && object.sql !== null).length);
-    lines.push(`  // ${table}`, ...statements.slice(at, at + count).map(sql => `  ${json(sql)},`));
-    at += count;
-  }
-  if (at !== statements.length) throw new Error(`Domain ${domain.file} statements do not match its tables`);
-  lines.push(']);', '');
-  return lines.join('\n');
-}
-
-function renderRelations(derivation: Derivation): string {
-  return [DERIVED,
-    '// Foreign keys from tables in the local history or cache database to content tables in the project file.',
-    '// SQLite cannot enforce them across files; the kernel emulates each one with connection-level TEMP triggers.',
-    '// Schemas are the names on the kernel connection: history.db is main, the project file is attached as',
-    '// project and cache.db as cache. Columns are in key order; `nullable` is per child column (PRIMARY KEY',
-    '// columns count as NOT NULL).',
-    'export interface CrossFileRelation {',
-    '  readonly index: number;',
-    "  readonly child: {readonly schema: 'main' | 'cache'; readonly table: string; readonly columns: readonly string[]; readonly nullable: readonly boolean[]};",
-    "  readonly parent: {readonly schema: 'project'; readonly table: string; readonly columns: readonly string[]};",
-    '  /** Declared DEFERRABLE INITIALLY DEFERRED in format 72; the emulation checks immediately. */',
-    '  readonly originallyDeferred: boolean;',
-    '}',
-    '/** A format-72 foreign key from a content table to a process table in the local history database. Not enforced. */',
-    'export interface DroppedContentKey {',
-    '  readonly child: {readonly table: string; readonly columns: readonly string[]};',
-    '  readonly parent: {readonly table: string; readonly columns: readonly string[]};',
-    '  readonly originallyDeferred: boolean;',
-    '}',
-    'export const CROSS_FILE_RELATIONS: readonly CrossFileRelation[] = Object.freeze([',
-    ...derivation.relations.map(relation => `  {index: ${relation.index}, child: {schema: ${json(relation.child.schema)}, table: ${json(relation.child.table)}, columns: ${json(relation.child.columns)}, nullable: ${json(relation.child.nullable)}}, parent: {schema: ${json(relation.parent.schema)}, table: ${json(relation.parent.table)}, columns: ${json(relation.parent.columns)}}, originallyDeferred: ${relation.originallyDeferred}},`),
-    ']);',
-    'export const DROPPED_CONTENT_KEYS: readonly DroppedContentKey[] = Object.freeze([',
-    ...derivation.droppedContentKeys.map(key => `  {child: {table: ${json(key.child.table)}, columns: ${json(key.child.columns)}}, parent: {table: ${json(key.parent.table)}, columns: ${json(key.parent.columns)}}, originallyDeferred: ${key.originallyDeferred}},`),
-    ']);',
-    ''].join('\n');
-}
-
-function renderConvertedTriggers(derivation: Derivation): string {
-  return [DERIVED,
-    '// Format-72 triggers that read or write a table in another database of the project, as connection-level',
-    '// TEMP triggers. The ON table and tables read after FROM/JOIN carry their schema on the kernel connection',
-    '// (content tables project., history tables main., cache tables cache.); write targets stay unqualified.',
-    '// Process target-revision triggers are ordinary history triggers in the C-owned Mio domain.',
-    'export interface ConvertedTempTrigger {',
-    '  readonly name: string;',
-    '  readonly table: string;',
-    "  readonly schema: 'project' | 'main' | 'cache';",
-    '  readonly sql: string;',
-    '}',
-    'export const CONVERTED_TEMP_TRIGGERS: readonly ConvertedTempTrigger[] = Object.freeze([',
-    ...derivation.convertedTriggers.map(trigger => `  {name: ${json(trigger.name)}, table: ${json(trigger.table)}, schema: ${json(trigger.schema)}, sql: ${json(trigger.sql)}},`),
-    ']);',
-    ''].join('\n');
-}
-
-function renderManifest(derivation: Derivation): string {
+const MANIFEST = 'packages/business/src/project-file/schema/manifest.ts';
+export function renderDerivedFiles(input: SchemaDeclarations = declaredSchema()): Map<string, string> {
+  validateDeclaredSchema(input);
   const lines = [`// Generated by \`${COMMAND} --write\`: every sqlite_master row of each database`,
     '// as built by buildDatabase(), with the SHA-256 of its stored SQL.',
-    "import type {DatabaseKind} from './databases.ts';",
-    "import type {SchemaManifest} from './manifest-check.ts';",
+    "import type {DatabaseKind} from './databases.ts';", "import type {SchemaManifest} from './manifest-check.ts';",
     'export const SCHEMA_MANIFEST: Readonly<Record<DatabaseKind, SchemaManifest>> = Object.freeze({'];
-  for (const kind of ['project', 'history', 'cache'] as const) {
-    const statements = DOMAIN_FILES.filter(domain => domain.database === kind).flatMap(domain => domain.file === 'mio' ? MIO_SCHEMA : domain.file === 'cache' ? currentCacheStatements(derivation.domains.cache) : domain.file === 'content' ? currentContentStatements(derivation.domains.content) : derivation.domains[domain.file]);
-    const entries = buildManifest(kind, schemaStatements(kind, statements));
+  for (const kind of KINDS) {
     lines.push(`  ${kind}: {version: ${VERSIONS[kind]}, entries: Object.freeze([`,
-      ...entries.map(entry => `    {type: ${json(entry.type)}, name: ${json(entry.name)}, tbl_name: ${json(entry.tbl_name)}, sha256: ${json(entry.sha256)}},`),
+      ...buildManifest(kind, input.statements[kind]).map(entry => `    {type: ${JSON.stringify(entry.type)}, name: ${JSON.stringify(entry.name)}, tbl_name: ${JSON.stringify(entry.tbl_name)}, sha256: ${JSON.stringify(entry.sha256)}},`),
       '  ])},');
   }
   lines.push('});', '');
-  return lines.join('\n');
+  return new Map([[MANIFEST, lines.join('\n')]]);
 }
-
-const PROCESS_REVISION_TRIGGER = /^agent_target_(?:jobs|exports|image_tasks|frame_tasks)_(?:insert|update|delete)_v2$/;
-/** The format-72 derivation remains a frozen S0 profile. Only generated current
- * constraints and manifests overlay the R1 Mio and S1 cache/content domains. */
-export function currentCrossFileRelations(derivation: Derivation): readonly RelationData[] {
-  const legacy = new Set(LEGACY_MIO_TABLES);
-  const relations = derivation.relations.filter(relation => !legacy.has(relation.child.table)).map(relation => ({...relation}));
-  const mioTables = HISTORY_TABLES_BY_DOMAIN.mio.filter(table => !['mio_blobs','mio_requests','mio_events','mio_storage_counters'].includes(table));
-  for (const table of mioTables) relations.push({index: 0, child: {schema: 'main', table, columns: ['projectId'], nullable: [false]}, parent: {schema: 'project', table: 'projects', columns: ['id']}, originallyDeferred: false});
-  relations.push({index:0,child:{schema:'main',table:'mio_imports',columns:['assetId'],nullable:[true]},parent:{schema:'project',table:'assets',columns:['id']},originallyDeferred:false});
-  let nextIndex=Math.max(...derivation.relations.map(relation=>relation.index));
-  return relations.map(relation=>relation.index===0?{...relation,index:++nextIndex}:relation);
-}
-
-const KERNEL = 'packages/business/src/project-file';
-/** Repository-relative path -> exact file text of every generated file. */
-export function renderDerivedFiles(derivation: Derivation = deriveFromFormat72()): Map<string, string> {
-  const files = new Map<string, string>();
-  for (const domain of DOMAIN_FILES.filter(domain => domain.file !== 'mio')) files.set(`${KERNEL}/schema/domains/${domain.file}.ts`, renderDomain(domain, domain.file === 'cache' ? currentCacheStatements(derivation.domains.cache) : domain.file === 'content' ? currentContentStatements(derivation.domains.content) : derivation.domains[domain.file], derivation));
-  const current = {...derivation, relations: currentCrossFileRelations(derivation), convertedTriggers: derivation.convertedTriggers.filter(trigger => !PROCESS_REVISION_TRIGGER.test(trigger.name))};
-  files.set(`${KERNEL}/cross-file/relations.ts`, renderRelations(current));
-  files.set(`${KERNEL}/cross-file/converted-triggers.ts`, renderConvertedTriggers(current));
-  files.set(`${KERNEL}/schema/manifest.ts`, renderManifest(derivation));
-  return files;
-}
-
-/** Generated files whose committed text differs from `files`. */
 export function staleDerivedFiles(files: ReadonlyMap<string, string>): string[] {
-  const read = (file: string): string | null => { try { return readFileSync(path.join(REPOSITORY, file), 'utf8'); } catch { return null; } };
-  return [...files].filter(([file, text]) => read(file) !== text).map(([file]) => file);
+  return [...files].filter(([file, contents]) => {
+    try { return readFileSync(path.join(REPOSITORY, file), 'utf8') !== contents; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true; throw error; }
+  }).map(([file]) => file);
 }
-
-// ---------------------------------------------------------------------------
-// Report: the PR's cross-file mapping table and the application-database SQL
-
-export interface DerivationReport {
-  /** Markdown for the PR section on cross-file constraints. */
-  readonly mapping: string;
-  /** Markdown with the application-database DDL handed to B1. */
-  readonly appDatabase: string;
+export function renderReport(): string {
+  const input = declaredSchema(); validateDeclaredSchema(input);
+  return ['# Current project-file schema', '',
+    ...KINDS.map(kind => `- ${kind}: version ${VERSIONS[kind]}, ${input.tables[kind].length} business tables, ${buildManifest(kind).length} manifest entries`),
+    '', '## Cross-file NO ACTION relations', '', '| Index | Child | Parent |', '|---|---|---|',
+    ...input.relations.map(relation => `| ${relation.index} | ${relation.child.schema}.${relation.child.table}(${relation.child.columns.join(',')}) | ${relation.parent.schema}.${relation.parent.table}(${relation.parent.columns.join(',')}) |`),
+    '', '## Connection TEMP triggers', '', ...input.tempTriggers.map(trigger => `- ${trigger.name}: ${trigger.schema}.${trigger.table}`), ''].join('\n');
 }
-
-const PLACE_NAMES: Readonly<Record<TablePlacement, string>> = {project: '项目文件', history: '本机记录', cache: '缓存库', app: '应用库', removed: '要删除的表'};
-const code = (text: string): string => `\`${text}\``;
-const codes = (texts: readonly string[]): string => texts.map(code).join('、');
-const keyOf = (table: string, columns: readonly string[]): string => `${table}(${columns.join(',')})`;
-// Same numbering as relationConstraintName() in cross-file/install.ts.
-const fkName = (index: number): string => `project_file_fk_${String(index).padStart(2, '0')}`;
-
-/** Markdown for the PR: every cross-file foreign key and trigger with what it was
- * in format 72 and what implements it now, and the application-database SQL. */
-export function renderReport(derivation: Derivation = deriveFromFormat72()): DerivationReport {
-  const {format72, objects, relations, droppedContentKeys, convertedTriggers} = derivation;
-  const known = new Set(format72.objects.filter(object => object.type === 'table').map(object => object.name).filter(name => name !== 'schema_version' && name !== 'sqlite_sequence'));
-  const triggers = objects.filter(object => object.type === 'trigger');
-  const deferred = relations.filter(relation => relation.originallyDeferred).map(relation => String(relation.index)).join('、');
-  const columnCount = (list: readonly {readonly child: {readonly columns: readonly string[]}}[]): number => list.reduce((sum, item) => sum + item.child.columns.length, 0);
-  const inSchema = (schema: string) => relations.filter(relation => relation.child.schema === schema);
-  const relationRows = relations.map(relation => {
-    const nullable = relation.child.columns.filter((_, i) => relation.child.nullable[i]);
-    const before = `NO ACTION${relation.originallyDeferred ? '，DEFERRABLE INITIALLY DEFERRED' : ''}${nullable.length ? `；可空列 ${codes(nullable)}` : ''}`;
-    const after = `${code(`${fkName(relation.index)}_*`)}${relation.originallyDeferred ? '，改为立即检查' : ''}`;
-    return `| ${relation.index} | ${code(`${relation.child.schema}.${keyOf(relation.child.table, relation.child.columns)}`)} → ${code(`${relation.parent.schema}.${keyOf(relation.parent.table, relation.parent.columns)}`)} | ${before} | ${after} |`;
-  });
-  const droppedRows = droppedContentKeys.map(key => `| ${code(keyOf(key.child.table, key.child.columns))} → ${code(keyOf(key.parent.table, key.parent.columns))} | 项目文件→本机记录，外键 NO ACTION${key.originallyDeferred ? '，延迟' : ''} | 去掉约束，列和其余约束保留；本机没有对应的过程记录时，代码按“来自别处”处理 |`);
-  const appKeyRows = APP_DATABASE_TABLES.flatMap(table => (format72.tables.get(table)?.foreignKeys ?? []).filter(row => databaseOf(String(row.table)) === 'project')
-    .map(row => `| ${code(`${table}(${String(row.from)})`)} → ${code(`${String(row.table)}(${String(row.to)})`)} | 应用库→项目文件，外键 NO ACTION | 应用库（B1）不建这个外键，改由代码检查 |`));
-  const convertedRows = convertedTriggers.map(trigger => {
-    const object = triggers.find(item => item.name === trigger.name)!, own = databaseOf(trigger.table);
-    const others = [...referencedTables(object.sql!, known)].filter(table => table !== trigger.table && databaseOf(table) !== own).sort();
-    const reads = others.map(table => `${code(table)}（${PLACE_NAMES[databaseOf(table)]}）`).join('、') || '—';
-    return `| ${code(trigger.name)} | ${code(`${trigger.schema}.${trigger.table}`)} | ${reads} | 同名临时触发器${object.rules.includes('exemption') ? '，去掉豁免条件' : ''} |`;
-  });
-  const exempted = triggers.filter(object => object.rules.includes('exemption'));
-  const contentTargets = exempted.filter(object => object.fate === 'project' && object.name.startsWith('agent_target_'));
-  const processTargets = exempted.filter(object => object.fate === 'temp');
-  const retained = exempted.filter(object => !object.name.startsWith('agent_target_'));
-  const retainedIn = (fate: ObjectFate) => retained.filter(object => object.fate === fate).map(object => object.name);
-  const quotas = triggers.filter(object => object.name.startsWith('agent_quota_'));
-  const rewrittenQuotas = quotas.filter(object => object.rules.includes('quota')), droppedQuotas = quotas.filter(object => object.fate === 'dropped');
-  const onRemoved = triggers.filter(object => object.fate === 'dropped' && databaseOf(object.table) === 'removed');
-  // Statements the kernel adds to a database: everything but schema_version and the domain files.
-  const added = (kind: DatabaseKind) => {
-    const statements = derivedDomainStatements(derivation, kind), domain = new Set(statements);
-    return schemaStatements(kind, statements).filter(sql => sql !== SCHEMA_VERSION_TABLE_SQL && !domain.has(sql)).map(sql => /^CREATE (?:TABLE|TRIGGER) (\w+)/.exec(sql)![1]!);
-  };
-  const projectAdded = added('project'), historyAdded = added('history');
-  const guards = (list: readonly string[]) => list.filter(name => name.includes('_guard_'));
-  const sequence = projectAdded.filter(name => name.startsWith('project_file_sequence_'));
-  const temporary = convertedTriggers.length + relations.length * 4 + 1;
-  const mapping = [
-    `连接上的库名：本机记录 \`main\`，项目文件 \`project\`，缓存库 \`cache\`。下面的表由 \`${COMMAND} --report\` 从格式 72 生成。`,
-    '',
-    `### 跨文件外键：${relations.length} 个约束、${columnCount(relations)} 列`,
-    '',
-    `- 本机记录→项目文件 ${inSchema('main').length} 个约束 ${columnCount(inSchema('main'))} 列，缓存库→项目文件 ${inSchema('cache').length} 个约束 ${columnCount(inSchema('cache'))} 列。原来都是 \`NO ACTION\`，没有级联。`,
-    '- 现在每个关系 4 个连接级临时触发器：`project_file_fk_NN_child_insert`（插入子行时父行必须存在）、`_child_update`（`UPDATE OF` 外键列时同样检查）、`_parent_delete`（父行被引用时不能删）、`_parent_update`（`UPDATE OF` 被引用的键且键值变了时报错，改成同值不报错）。外键列有一列为 NULL 就不检查（MATCH SIMPLE）。报错消息仍是 `FOREIGN KEY constraint failed`，错误码由 787 变为 1811。',
-    `- 原为 \`DEFERRABLE INITIALLY DEFERRED\` 的 2 个关系（${deferred}）改为立即检查。插入路径：现有代码先插结果行，再回填任务的 \`versionId\`、\`resultId\`（\`images.ts:258-260\`、\`scene-tasks.ts:329-332\`），立即检查能过。删除和改父键的路径：同一事务里先删父行（或先改父键）、后清子行的写法，现在在删父行（改父键）的那条语句上就失败，要先清子行。测试对这几种顺序都和同形状的引用库对照过。真实表上走不到这两条路径：\`image_versions\`、\`scene_results\` 在格式 72 里就由 \`retain_*\`、\`immutable_*\` 无条件拒绝删除和修改。`,
-    '- `PRAGMA defer_foreign_keys` 对模拟的外键无效；父键在同一条语句里互换这类 NO ACTION 允许的写法会被拒（键都是不可变的 UUID，没有这样的写法）。',
-    '',
-    `<details><summary>${relations.length} 个关系逐个（每行 4 个临时触发器）</summary>`,
-    '',
-    '| # | 子表(列) → 父表(列) | 原来 | 现在 |',
-    '|---|---|---|---|',
-    ...relationRows,
-    '',
-    '</details>',
-    '',
-    `### 去掉的外键：项目文件→本机记录 ${droppedContentKeys.length} 个约束 ${columnCount(droppedContentKeys)} 列，应用库→项目文件 ${appKeyRows.length} 列`,
-    '',
-    '| 子表(列) → 父表(列) | 原来 | 现在 |',
-    '|---|---|---|',
-    ...droppedRows,
-    ...appKeyRows,
-    '',
-    '`versions.jobId` 仍是 `NOT NULL UNIQUE`，可以指向本机没有的任务（有意的差别）；`image_groups.activeTaskId` 在本机找不到任务时当作空闲（交给 S0）。',
-    '',
-    `### 跨文件触发器：${convertedTriggers.length} 个改为同名临时触发器`,
-    '',
-    `其中读别库的 ${convertedTriggers.length - processTargets.length} 个、过程表上写项目文件目标修订表的 ${processTargets.length} 个。读表全部写库名（\`project.\`、\`main.\`、\`cache.\`），写入目标不写库名（三个库的表名不重复，\`installCrossFileTriggers\` 拒绝 temp 里同名的表和视图）。计划算的是 15 + 12 = 27 个：\`scene_task_state_transitions\` 只在字符串 \`OLD.kind='shots'\` 里出现 \`shots\`，不读别的库，照建在本机记录。`,
-    '',
-    '| 触发器 | 所在表 | 引用的别库表 | 现在 |',
-    '|---|---|---|---|',
-    ...convertedRows,
-    '',
-    '临时触发器先于同表的持久触发器触发，模拟外键又在 BEFORE 触发器里，先于 NOT NULL、UNIQUE、CHECK 检查；同一行同时违反多条时，报的消息可能和格式 72 不同。',
-    '',
-    '### 去掉删除记账豁免、改写配额和不建的触发器',
-    '',
-    `<details><summary>内容表上的目标修订 ${contentTargets.length} 个：去掉豁免条件，照建在项目文件</summary>`,
-    '',
-    codes(contentTargets.map(object => object.name)),
-    '',
-    '</details>',
-    '',
-    `<details><summary>保留类 ${retained.length} 个：去掉豁免条件以后，这些行一律不能删</summary>`,
-    '',
-    'V1 恢复版本时不删受保护的行，只恢复可变的状态。',
-    '',
-    `- 项目文件 ${retainedIn('project').length} 个：${codes(retainedIn('project'))}`,
-    `- 本机记录 ${retainedIn('history').length} 个：${codes(retainedIn('history'))}`,
-    `- 应用库 ${retainedIn('app').length} 个（交给 B1）：${codes(retainedIn('app'))}`,
-    '',
-    '</details>',
-    '',
-    `<details><summary>Mio 配额 ${quotas.length} 个：改写 ${rewrittenQuotas.length} 个，不建 ${droppedQuotas.length} 个</summary>`,
-    '',
-    `- Mio 表上的 ${rewrittenQuotas.length} 个：去掉 \`agent_task_policy_v2\`、\`agent_task_policy_requests_v2\` 的行数和字节数共 4 段，只统计本机记录里的 Mio 表；上限不变（20000 行、268435456 字节，R1 再定）。${codes(rewrittenQuotas.map(object => object.name))}`,
-    `- 放行表上的 ${droppedQuotas.length} 个：不建。${codes(droppedQuotas.map(object => object.name))}`,
-    '',
-    '</details>',
-    '',
-    `<details><summary>建在要删除的表上的 ${onRemoved.length} 个：不建</summary>`,
-    '',
-    codes(onRemoved.map(object => object.name)),
-    '',
-    '</details>',
-    '',
-    '### K1 新加的对象',
-    '',
-    '| 库 | 对象 |',
-    '|---|---|',
-    `| 项目文件 | \`project_file\` 表；守卫 ${guards(projectAdded).length} 个（${codes(guards(projectAdded))}）；单项目 ${projectAdded.filter(name => name.includes('_single_project_')).length} 个（${codes(projectAdded.filter(name => name.includes('_single_project_')))}）；内容序号 ${sequence.length} 个 \`project_file_sequence_<表>_<insert/update/delete>\`（${CONTENT_TABLES.length} 张内容表各 3 个） |`,
-    `| 本机记录 | \`history_state\` 表；守卫 ${guards(historyAdded).length} 个（${codes(guards(historyAdded))}） |`,
-    `| 临时（连接级） | \`project_file_seen_sequence\`（把新的内容序号写进 \`history_state.seenContentSequence\`）；外键模拟 ${relations.length * 4} 个；连同 ${convertedTriggers.length} 个转换触发器共 ${temporary} 个 |`,
-  ].join('\n');
-
-  const appObjects = objects.filter(object => object.fate === 'app');
-  const appTables = APP_DATABASE_TABLES.map(table => appObjects.find(object => object.type === 'table' && object.name === table)!);
-  const appTriggers = appObjects.filter(object => object.type === 'trigger');
-  const appIndexes = appObjects.filter(object => object.type === 'index').map(object => object.name);
-  const appDatabase = [
-    `应用库的 ${appTables.length} 张表和 ${appTriggers.length} 个触发器，由 \`${COMMAND} --report\` 从格式 72 生成：`,
-    '',
-    '```sql',
-    ...appTables.map(object => `${object.sql};`),
-    ...appTriggers.map(object => `-- ${object.rules.includes('exemption') ? '去掉了删除记账的豁免条件' : '与格式 72 相同'}\n${object.sql};`),
-    '```',
-    '',
-    `- 自动索引 ${appIndexes.length} 个随建表产生：${codes(appIndexes)}。`,
-    `- ${appKeyRows.length === 1 ? '`workspace_preferences.projectId` 原来引用 `projects(id)`' : '应用库指向项目文件的外键'}：应用库里没有项目表，上面的 SQL 已去掉这个外键，改由代码检查。`,
-    `- 放行表上的 ${droppedQuotas.length} 个配额触发器不建（${codes(droppedQuotas.map(object => object.name))}）：它们把放行表算进 Mio 的存储上限，本机记录里的 ${rewrittenQuotas.length} 个配额触发器已经不再统计这两张表。应用库要不要单独限额由 B1 定。`,
-    '- `retain_agent_task_policy_requests_v2` 去掉豁免条件以后，放行回执一律不能删。',
-  ].join('\n');
-  return {mapping, appDatabase};
-}
-
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
-  if (args.length === 1 && args[0] === '--report') {
-    const report = renderReport();
-    process.stdout.write(`## 跨文件约束对照表\n\n${report.mapping}\n\n## 交给 B1 的应用库 SQL\n\n${report.appDatabase}\n`);
-  } else if (args.length !== 1 || (args[0] !== '--write' && args[0] !== '--check')) {
-    process.stderr.write(`Usage: ${COMMAND} --write|--check|--report\n`);
-    process.exitCode = 2;
-  } else {
+  if (args.length !== 1 || !['--write', '--check', '--report'].includes(args[0]!)) {
+    process.stderr.write(`Usage: ${COMMAND} --write|--check|--report\n`); process.exitCode = 2;
+  } else if (args[0] === '--report') process.stdout.write(renderReport());
+  else {
     const files = renderDerivedFiles();
     if (args[0] === '--write') {
-      for (const [file, text] of files) {
-        mkdirSync(path.dirname(path.join(REPOSITORY, file)), {recursive: true});
-        writeFileSync(path.join(REPOSITORY, file), text);
-      }
-      process.stdout.write(`Wrote ${files.size} generated files from fixed format-72 domains and the current Mio schema.\n`);
+      for (const [file, contents] of files) writeFileSync(path.join(REPOSITORY, file), contents);
+      process.stdout.write('Wrote the current schema manifest from canonical declarations and real SQLite.\n');
     } else {
       const stale = staleDerivedFiles(files);
-      if (stale.length) {
-        process.stderr.write(`Generated project-file schema files differ from fixed format-72 domains and the current Mio schema:\n${stale.map(file => `  ${file}\n`).join('')}Run \`${COMMAND} --write\`.\n`);
-        process.exitCode = 1;
-      } else {
-        process.stdout.write(`All ${files.size} generated files match fixed format-72 domains and the current Mio schema.\n`);
-      }
+      if (stale.length) { process.stderr.write(`Generated schema manifest differs from canonical declarations:\n${stale.map(file => `  ${file}\n`).join('')}Run \`${COMMAND} --write\`.\n`); process.exitCode = 1; }
+      else process.stdout.write('Current schema manifest matches canonical declarations and real SQLite.\n');
     }
   }
 }
