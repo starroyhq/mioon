@@ -93,7 +93,7 @@ node apps/cli/src/index.ts project version list --input '{"projectId":"11111111-
 node apps/cli/src/index.ts project version preview --input '{"projectId":"11111111-aaaa-4111-8111-111111111111","versionId":"33333333-cccc-4333-8333-333333333333"}'
 ```
 
-MCP 名称为 `project_version_list/save/preview`，参数和结果与表格一致。客户端严格校验项目、请求、版本、名称和分页边界；丢 ACK 不自动换 requestId 或重发保存。版本三个操作及备份四个操作最终统一到契约根注册表与 effect 表；Mio 禁用列表显式归类，重新生成模型 schema 不代表把这些操作开放给内置 Mio，99 条模型请求指纹必须不变。
+MCP 名称为 `project_version_list/save/preview`，参数和结果与表格一致。客户端严格校验项目、请求、版本、名称和分页边界；丢 ACK 不自动换 requestId 或重发保存。版本三个操作及备份四个操作统一到契约根注册表与 effect 表；客户端不再保留一份备份操作组合。Mio 禁用列表显式归类，重新生成模型 schema 不代表把这些操作开放给内置 Mio，99 条模型请求指纹必须不变。
 
 ## 主要错误
 

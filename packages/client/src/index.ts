@@ -22,7 +22,7 @@ import {z} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
 import applicationPackage from '../../../package.json' with {type: 'json'};
 import type {OperationName} from '@mioon/contracts';
-import {schemas as coreSchemas, descriptions as coreDescriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse, isTimelineFormatReadResponse, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse, hasRequestNotAppliedProof} from '@mioon/contracts';
+import {schemas, descriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse, isTimelineFormatReadResponse, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse, hasRequestNotAppliedProof} from '@mioon/contracts';
 import {resolveConnection, connectionSource, ConnectionError, type ConnectionSource, type LocalConnection} from './connection.ts';
 import {IMAGE_MUTATION_OPERATIONS,isImageMutationResponse,isImageTaskResponse,isImageGroupResponse,isImageRequestResponse,isImageProfilesResponse,isImageListResponse} from '@mioon/contracts';
 import {canonicalImageInput,isComfyObserveResponse,isComfyRemoteResponse} from '@mioon/contracts';
@@ -39,14 +39,12 @@ export {prepareTimelineMixLoudness} from './timeline-mix-loudness.ts';
 import {isSubjectGenerationResponse,isSubjectGenerationRetryResponse} from '@mioon/contracts';
 import {isEntityAddressedOperation, rpcPathFor} from '../../contracts/src/project-addressing.ts';
 import {isProjectId} from '../../contracts/src/project-file.ts';
-import {projectBackupSchemas, projectBackupDescriptions, projectBackupEffects, isProjectBackupOperation, isProjectBackupResponse} from '../../contracts/src/project-backups.ts';
+import {isProjectBackupOperation, isProjectBackupResponse} from '../../contracts/src/project-backups.ts';
 import {isProjectVersionOperation, isProjectVersionResponse} from '../../contracts/src/project-version-operations.ts';
 
-// Application extensions stay in their own contracts leaves. CLI and MCP
-// discover this exact composition without extending Mio's model tool catalog.
-export const schemas = {...coreSchemas, ...projectBackupSchemas};
-export const descriptions = {...coreDescriptions, ...projectBackupDescriptions};
-export {resolveConnection, effectAnnotations};
+// CLI, MCP and the server share the contracts registry. Mio classifies its
+// unavailable operations independently; client discovery never extends it.
+export {schemas, descriptions, resolveConnection, effectAnnotations};
 export const VERSION = applicationPackage.version;
 export const EXIT_CODES = Object.freeze({success: 0, unexpected: 1, validation: 2, conflict: 3, unavailable: 4, timeout: 5, operationFailed: 6, interrupted: 130});
 export const discoverySchemas = {
@@ -158,7 +156,7 @@ export function operationDefinition(operation: string): OperationDefinition {
   if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
   const shared = jsonSchema(operationSchemas[operation]);
   const inputSchema = isEntityAddressedOperation(operation) ? withProjectAddress(shared) : shared;
-  return {operation, toolName: operation.replaceAll('.', '_'), command: operation.replaceAll('.', ' '), description: operationDescriptions[operation] || operation, inputSchema, requiresRequestId: requiresField(inputSchema,'requestId'), effects: isProjectBackupOperation(operation) ? projectBackupEffects[operation] : operationEffect(operation)};
+  return {operation, toolName: operation.replaceAll('.', '_'), command: operation.replaceAll('.', ' '), description: operationDescriptions[operation] || operation, inputSchema, requiresRequestId: requiresField(inputSchema,'requestId'), effects: operationEffect(operation)};
 }
 export interface DiscoverySchemaResult {version: string; operations: OperationDefinition[]; validation: string}
 export function discoverSchema(input: unknown = {}): OperationDefinition | DiscoverySchemaResult {
@@ -371,12 +369,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     // IDs stay caller-owned; this client never creates them and never resubmits.
     if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
     if(operation==='lut.look.inspect'&&(isProxy(input)||!isLookPackInspectInput(input)))throw new ClientError('VALIDATION_ERROR','Expected only a project ID and LUT resource ID.');
-    let parsed: Record<string, unknown>;
-    if (isProjectBackupOperation(operation)) {
-      const result = projectBackupSchemas[operation].safeParse(input);
-      if (!result.success) throw new ClientError('VALIDATION_ERROR', 'Invalid project backup arguments.', {details: {issues: result.error.issues}});
-      parsed = result.data;
-    } else parsed = parse(operation as OperationName, input) as Record<string, unknown>;
+    const parsed = parse(operation as OperationName, input) as Record<string, unknown>;
     const {expectedWorkspaceOrigin, projectId, ...transportOptions} = options ?? {};
     const body: RpcBody = {operation, input: parsed, ...workspaceOriginOptions(expectedWorkspaceOrigin)};
     let resource: string;

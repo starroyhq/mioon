@@ -10,7 +10,9 @@ import {promisify} from 'node:util';
 import {Client as McpClient} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
-import {createClient, operationDefinition, schemas} from '@mioon/client';
+import {createClient, operationDefinition, schemas, descriptions} from '@mioon/client';
+import {schemas as registeredSchemas, descriptions as registeredDescriptions, operationEffect} from '@mioon/contracts';
+import {projectBackupSchemas} from '../packages/contracts/src/project-backups.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectVersionSchemas, projectVersionEffects, isProjectVersionResponse} from '../packages/contracts/src/project-version-operations.ts';
@@ -29,6 +31,12 @@ const preview: ProjectVersionPreviewResponse = {projectId, version: summary, con
   nextCursor: null, restoreAvailable: false};
 
 test('version contracts expose only strict manual save and bounded read-only preview data', () => {
+  assert.equal(schemas, registeredSchemas, 'client discovery uses the authoritative contracts registry without a private composition');
+  assert.equal(descriptions, registeredDescriptions);
+  for (const [operation, schema] of Object.entries({...projectBackupSchemas, ...projectVersionSchemas})) {
+    assert.equal((registeredSchemas as Record<string, unknown>)[operation], schema);
+    assert.equal(operationDefinition(operation).effects, operationEffect(operation));
+  }
   for (const operation of Object.keys(projectVersionSchemas) as ProjectVersionOperation[]) {
     assert.equal(rpcPathFor(operation, {projectId}), projectRpcPath(projectId));
     assert.equal(projectVersionEffects[operation].readOnly, operation !== 'project.version.save');
