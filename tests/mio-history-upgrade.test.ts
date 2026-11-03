@@ -12,31 +12,39 @@ import {DatabaseSync} from 'node:sqlite';
 import {AppError} from '../packages/contracts/src/app-error.ts';
 import {createProjectFile, openProjectConnection} from '../packages/business/src/project-file/connection.ts';
 import type {ProjectConnection, ProjectLocation} from '../packages/business/src/project-file/connection.ts';
-import {buildDatabase, HISTORY_SCHEMA_VERSION, schemaStatements} from '../packages/business/src/project-file/schema/databases.ts';
+import {HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {S0_HISTORY_V2_MANIFEST} from '../packages/business/src/project-file/schema/history-v2-manifest.ts';
 import {R1_HISTORY_V3_MANIFEST} from '../packages/business/src/project-file/schema/history-v3-manifest.ts';
 import {R1_HISTORY_V4_MANIFEST} from '../packages/business/src/project-file/schema/history-v4-manifest.ts';
 import {R2_HISTORY_V5_MANIFEST} from '../packages/business/src/project-file/schema/history-v5-manifest.ts';
 import {MIO_QUOTA_BYTES_SQL,MIO_QUOTA_ROWS_SQL} from '../packages/business/src/project-file/schema/domains/mio.ts';
-import {RECEIPT_SCHEMA} from '../packages/business/src/project-file/schema/domains/receipts.ts';
-import {TASK_SCHEMA} from '../packages/business/src/project-file/schema/domains/tasks.ts';
-import {TIMELINE_HISTORY_SCHEMA} from '../packages/business/src/project-file/schema/domains/timeline-history.ts';
-import {R1_MIO_V3_SCHEMA} from './fixtures/mio-history-v3-schema.ts';
-import {R1_MIO_V4_SCHEMA} from './fixtures/mio-history-v4-schema.ts';
-import {R2_MIO_V5_SCHEMA} from './fixtures/mio-history-v5-schema.ts';
+import {buildPreviousHistoryDatabase} from './fixtures/kernel-history-previous-schema.ts';
 import {readSchemaManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
 import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
 import {LEGACY_MIO_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
-import {deriveFromFormat72, derivedDomainStatements} from './helpers/project-file-schema-derivation.ts';
 
 const PROCESS_KINDS = ['job', 'export', 'image_task', 'frame_task'] as const;
 const WORKER = fileURLToPath(new URL('./fixtures/mio-history-upgrade-worker.ts', import.meta.url));
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const CURRENT_VERSION_WRITE = `UPDATE main.schema_version SET version=${HISTORY_SCHEMA_VERSION}`;
 const VERSION_TABLES = ['project_version_blobs','project_versions','project_version_requests','project_version_capture_marks'] as const;
-let oldStatements: readonly string[] | undefined;
-const legacyHistory = (): readonly string[] => oldStatements ??= schemaStatements('history', derivedDomainStatements(deriveFromFormat72(), 'history'));
-const r1History=():readonly string[]=>schemaStatements('history',[...RECEIPT_SCHEMA,...TASK_SCHEMA,...TIMELINE_HISTORY_SCHEMA,...R1_MIO_V3_SCHEMA]);
+
+for (const [version, manifest] of [
+  [2, S0_HISTORY_V2_MANIFEST],
+  [3, R1_HISTORY_V3_MANIFEST],
+  [4, R1_HISTORY_V4_MANIFEST],
+  [5, R2_HISTORY_V5_MANIFEST],
+] as const) test(`frozen history${version} fixture matches every whitelisted schema object`, () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec('BEGIN');
+    buildPreviousHistoryDatabase(db, version);
+    db.exec('COMMIT');
+    assert.deepEqual(readSchemaManifest(db, 'main'), manifest.entries);
+    assert.equal(db.prepare('SELECT version FROM schema_version').get()!.version, version);
+    assert.equal(db.prepare('PRAGMA application_id').get()!.application_id, 0x4d696f48);
+  } finally { db.close(); }
+});
 
 interface Fixture extends ProjectLocation {
   readonly root: string;
@@ -68,8 +76,7 @@ function fixture(t: TestContext, {fresh = false, processes = true}: {fresh?: boo
   const db = new DatabaseSync(value.historyFile);
   try {
     db.exec('PRAGMA journal_mode=DELETE; BEGIN');
-    buildDatabase(db, 'history', 'main', legacyHistory());
-    db.exec('UPDATE schema_version SET version=2');
+    buildPreviousHistoryDatabase(db, 2);
     db.prepare('INSERT INTO history_state VALUES(1,?,?)').run(projectId, sequence);
     const runId = randomUUID(), stepId = randomUUID();
     db.prepare('INSERT INTO agent_task_runs_v2 VALUES(?,?,?,?,?,?,?)').run(runId, projectId, randomUUID(), '0'.repeat(64), 'completed', 1,
@@ -80,7 +87,7 @@ function fixture(t: TestContext, {fresh = false, processes = true}: {fresh?: boo
     db.prepare('INSERT INTO timeline_history_cursors VALUES(?,?)').run(projectId, 7);
     db.prepare('INSERT INTO jobs(id,projectId,data) VALUES(?,?,?)').run('existing-job', projectId, '{"status":"running"}');
     db.exec('COMMIT');
-    assert.deepEqual(readSchemaManifest(db, 'main'), S0_HISTORY_V2_MANIFEST.entries, 'fixture is the exact S0 profile, independently derived from frozen format 72');
+    assert.deepEqual(readSchemaManifest(db, 'main'), S0_HISTORY_V2_MANIFEST.entries, 'fixture is the exact frozen S0 history profile');
   } finally {
     db.close();
   }
@@ -124,13 +131,11 @@ function assertOld(value: Fixture): void {
   });
 }
 
-function r1Fixture(t:TestContext,version:3|5=3):Fixture{
+function r1Fixture(t:TestContext,version:3|4|5=3):Fixture{
  const value=fixture(t,{fresh:true,processes:false}),db=new DatabaseSync(value.historyFile);
  try{
   const at='2026-11-02T00:00:00.000Z',conversationId=randomUUID(),runId=randomUUID(),stepId=randomUUID(),requestId=randomUUID(),body=JSON.stringify({text:'原件🙂'.repeat(20000)}),shared=createHash('sha256').update('{}').digest('hex');
-  db.exec('PRAGMA journal_mode=DELETE; BEGIN');
-  buildDatabase(db,'history','main',version===3?r1History():schemaStatements('history',[...RECEIPT_SCHEMA,...TASK_SCHEMA,...TIMELINE_HISTORY_SCHEMA,...R2_MIO_V5_SCHEMA]));
-  db.exec(`UPDATE schema_version SET version=${version}`);
+  db.exec('PRAGMA journal_mode=DELETE; BEGIN');buildPreviousHistoryDatabase(db,version);
   db.prepare('INSERT INTO history_state VALUES(1,?,?)').run(value.projectId,value.sequence);
   db.prepare('INSERT INTO mio_blobs VALUES(?,?,?,?)').run(shared,2,'{}',at);
   db.prepare('INSERT INTO mio_conversations VALUES(?,?,?,?)').run(conversationId,value.projectId,at,at);
@@ -143,7 +148,7 @@ function r1Fixture(t:TestContext,version:3|5=3):Fixture{
   db.prepare("UPDATE mio_steps SET status='unknown',currentRequestId=? WHERE id=?").run(requestId,stepId);
   for(const kind of PROCESS_KINDS)db.prepare('INSERT INTO mio_process_target_revisions VALUES(?,?,?,?)').run(value.projectId,kind,randomUUID(),9);
   db.prepare("INSERT INTO idempotency VALUES('outside-mio','stable','request-hash','resource-id')").run();
-  db.exec('COMMIT');assert.deepEqual(readSchemaManifest(db,'main'),version===3?R1_HISTORY_V3_MANIFEST.entries:R2_HISTORY_V5_MANIFEST.entries);
+  db.exec('COMMIT');assert.deepEqual(readSchemaManifest(db,'main'),version===3?R1_HISTORY_V3_MANIFEST.entries:version===4?R1_HISTORY_V4_MANIFEST.entries:R2_HISTORY_V5_MANIFEST.entries);
  }finally{db.close();}
  return value;
 }
@@ -152,17 +157,18 @@ function r1Data(db:DatabaseSync):unknown{
 }
 
 function v4Fixture(t:TestContext):Fixture{
- const value=r1Fixture(t);
+ // Seed the fixed history4 directly. Its original counter triggers account
+ // for every retained row, without borrowing any current-schema constructor.
+ const value=r1Fixture(t,4);
  inspect(value,db=>{
-  db.exec('BEGIN');
-  for(const entry of R1_HISTORY_V3_MANIFEST.entries)if(entry.type==='trigger'&&entry.name.startsWith('quota_mio_'))db.exec(`DROP TRIGGER main.${entry.name}`);
-  for(const sql of R1_MIO_V4_SCHEMA)if(sql.startsWith('CREATE TABLE mio_storage_counters(')||sql.startsWith('CREATE TRIGGER mio_storage_counters_')||sql.startsWith('CREATE TRIGGER quota_mio_'))db.exec(sql);
   let bytes=0,rows=1;
   for(const entry of R1_HISTORY_V3_MANIFEST.entries)if(entry.type==='table'&&entry.name.startsWith('mio_'))for(const row of db.prepare(`SELECT * FROM ${entry.name}`).all()){
    for(const value of Object.values(row))if(typeof value==='string')bytes+=Buffer.byteLength(value);
    if(entry.name!=='mio_edit_receipts')rows++;
   }
-  db.prepare('INSERT INTO mio_storage_counters VALUES(1,?,?)').run(bytes,rows);db.exec('UPDATE schema_version SET version=4; COMMIT');
+  const counter=db.prepare('SELECT bytes,rows FROM mio_storage_counters').get();
+  assert.equal(counter?.bytes,bytes,'the frozen v4 triggers counted every retained text byte');
+  assert.equal(counter?.rows,rows,'the frozen v4 triggers counted the retained rows and counter singleton');
   assert.deepEqual(readSchemaManifest(db,'main'),R1_HISTORY_V4_MANIFEST.entries,'v4 fixture uses frozen DDL, not current Mio schema');
  });return value;
 }
