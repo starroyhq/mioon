@@ -1,19 +1,5 @@
-import type { MediaStatus } from '../../../../packages/contracts/src/media-reference.ts';
-
-/** Why a media status is what it is: L1's `MediaStatusReason`
- * (packages/business/src/media-reference/access.ts). The web app cannot import
- * the business package, so the 11 reasons are copied here. */
-export type MediaStatusReason = 'same-stats' | 'same-content' | 'not-found' | 'no-access' | 'not-downloaded' | 'other-platform'
-  | 'not-a-file' | 'size' | 'content' | 'not-media' | 'unverified';
-/** The fields of L1's `MediaStatusResult` that the screens show. */
-export interface MediaStatusView {
-  readonly status: MediaStatus;
-  readonly reason: MediaStatusReason;
-  /** Outside the project directory. */
-  readonly outside: boolean;
-  /** Whether the file may be read: inside the project directory or in a confirmed folder. */
-  readonly readable: boolean;
-}
+import type { MediaStatusReason, MediaStatusView } from '../../../../packages/contracts/src/media-reference.ts';
+export type { MediaStatusReason, MediaStatusView } from '../../../../packages/contracts/src/media-reference.ts';
 export const MEDIA_MISSING_REASONS = Object.freeze(['not-found', 'no-access', 'not-downloaded', 'other-platform', 'not-a-file'] as const);
 export type MediaMissingReason = typeof MEDIA_MISSING_REASONS[number];
 export type MediaStatusDisplay =
