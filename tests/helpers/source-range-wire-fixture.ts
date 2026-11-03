@@ -1,4 +1,5 @@
-import {mediaReferenceFixture} from './media-reference-fixtures.ts';
+import {mediaReferenceFixture,mp4HeaderFixture} from './media-reference-fixtures.ts';
+import {createHash} from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -31,7 +32,23 @@ async function seed(root: string): Promise<void> {
     store.db.prepare('DELETE FROM versions WHERE id=?').run(IDS.secondVersion);
     store.db.prepare('DELETE FROM jobs WHERE id=?').run(IDS.secondJob);
     const generated=store.get('assets',IDS.asset) as Record<string,unknown>;
-    store.put('assets',{...generated,sizeBytes:1,referenceRevision:1,reference:mediaReferenceFixture(`media/${IDS.asset}.mp4`,1,'1'.repeat(64)),producer:{kind:'generation',id:IDS.job}});
+    // This metadata-only decoder fixture still needs a genuine completed
+    // publication. No decoder runs; the bytes deliberately promise only an MP4 header.
+    const {publishOutputFixture,markProjectOutputRegistered}=await import('./project-output-fixture.ts');
+    const job=store.get('jobs',IDS.job) as Record<string,unknown>,version=store.get('versions',IDS.version) as Record<string,unknown>;
+    const requestId=typeof job.requestId==='string'?job.requestId:IDS.job;
+    const requestHash=typeof job.requestHash==='string'?job.requestHash:createHash('sha256').update(JSON.stringify({projectId:IDS.project,jobId:IDS.job,shotId:job.shotId,model:job.model})).digest('hex');
+    const published=await publishOutputFixture(store,{assetId:IDS.asset,owner:{kind:'generation',id:IDS.job,requestId,inputHash:requestHash},
+      bytes:mp4HeaderFixture('Metadata-only source range lineage; no decoder runs'),mimeType:'video/mp4'});
+    store.tx(()=>{
+      store.put('jobs',{...job,requestId,requestHash});
+      store.put('assets',{...generated,...published,producer:{kind:'generation',id:IDS.job}});
+      // The shared seed is not exposed yet. Replace its immutable synthetic
+      // version explicitly instead of disabling the production update trigger.
+      store.db.prepare('DELETE FROM versions WHERE id=?').run(IDS.version);
+      store.put('versions',{...version,sha256:published.sha256});
+    });
+    await markProjectOutputRegistered(store,published.publication);
     store.put('assets', asset(RANGE_IDS.audio, {mimeType: 'audio/wav', duration: 2.019, hasVideo: false, hasAudio: true}));
     store.put('assets', asset(RANGE_IDS.long, {duration: 1200}));
     store.put('assets', asset(RANGE_IDS.boundary, {duration: (61 - 1e-10) / 30}));

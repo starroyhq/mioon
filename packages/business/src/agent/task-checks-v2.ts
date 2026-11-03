@@ -16,6 +16,10 @@ import {createImageHistoryReaders} from '../images/history.ts';
 import {createFrameHistoryReaders} from '../frames-history.ts';
 import {createSceneHistoryReaders} from '../scene-history.ts';
 import {timelineExportOutputFrames} from '@mioon/contracts/timeline-export-range';
+import {isProjectStore} from '../project-file/store.ts';
+import {isProjectExportObservation} from '../project-export-observation.ts';
+import {lstatSync} from 'node:fs';
+import {sameManagedFile} from '../managed-media.ts';
 
 type Value=Record<string,unknown>;
 type Target=AgentTaskCheck['target'];
@@ -116,7 +120,17 @@ export async function readAgentTaskChecks(store:WorkspaceStore,snapshot:AgentTas
   if(!uuid(id))return;
   try{
    const value=graph.asset(id);if(value.projectId!==projectId||value.id!==id||!integer(value.sizeBytes)||typeof value.sha256!=='string')return;
-   if(exportId&&(value.provenance!=='export'||value.mimeType!=='video/mp4'||typeof value.relativePath!=='string'||!new RegExp(`^media/export-${exportId}-[a-f\\d-]{36}\\.mp4$`,'iu').test(value.relativePath)))return;
+   if(exportId){
+    if(isProjectStore(store)){
+     if(!isProjectExportObservation(store.db,projectId,exportId,value)||!object(value.reference)||typeof value.reference.path!=='string')return;
+     const source=validateManagedSource(store.projectDir,value),target=path.join(store.projectDir,value.reference.path),directory=lstatSync(path.dirname(target),{throwIfNoEntry:false});
+     if(!directory?.isDirectory()||directory.isSymbolicLink())return;
+     const file=lstatSync(target,{throwIfNoEntry:false});
+     if(!file?.isFile()||file.isSymbolicLink()||!sameManagedFile(source.info,file))return;
+     return source.info.size===value.sizeBytes?value:undefined;
+    }
+    else if(value.provenance!=='export'||value.mimeType!=='video/mp4'||typeof value.relativePath!=='string'||!new RegExp(`^media/export-${exportId}-[a-f\\d-]{36}\\.mp4$`,'iu').test(value.relativePath))return;
+   }
    const source=validateManagedSource(storeDirectories(store).projectDir,value);return source.info.size===value.sizeBytes?value:undefined;
   }catch(error){if(!knownObservationFailure(error))throw error;return;}
  };

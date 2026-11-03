@@ -105,17 +105,19 @@ test('native Windows LUT recovery records replace by rename, keep their full ide
   assert.ok(dacls([file]).entries[0]!.sids.includes(EVERYONE), 'the foreign grant is not repaired');
 });
 
-test('native Windows export open and reveal hash ordinary project media through L1 descriptors', {skip: !windows}, async t => {
-  const root = await fixture(t), media = path.join(root, 'media');
+test('native Windows export open and reveal hash published project outputs through L1 descriptors', {skip: !windows}, async t => {
+  const root = await fixture(t), media = path.join(root, '导出');
   storage.ensurePrivateDirectory(media, {create: true});
   const projectId = randomUUID(), exportId = randomUUID(), assetId = randomUUID(), file = path.join(media, `${assetId}.mp4`);
-  // Larger than one 1 MiB chunk, so the read yields between chunks. Written
-  // like backend media: it inherits the closed workspace ACL.
+  // Larger than one 1 MiB chunk, so the read yields between chunks. Ordinary
+  // outputs may be readable by other users; private-storage ACLs do not apply.
   const bytes = Buffer.alloc(2.5 * 1024 * 1024, 0x6d);
   bytes.set([0,0,0,24],0);bytes.write('ftypisom',4);bytes.fill(0,12,16);bytes.write('isommp42',16);
   writeFileSync(file, bytes);
-  const sha256=createHash('sha256').update(bytes).digest('hex'),source=referenceTestAsset(root,{relativePath:`media/${assetId}.mp4`,sha256,sizeBytes:bytes.length});
-  const output = {projectId, exportId, assetId, fileLocation: file, sizeBytes: bytes.length, sha256, referenceRevision:1,fingerprint:publicMediaFingerprint(source.reference),producer:{kind:'export',id:exportId},url: `/media/${assetId}`};
+  grantEveryoneRead(media);grantEveryoneRead(file);
+  const sha256=createHash('sha256').update(bytes).digest('hex'),source=referenceTestAsset(root,{relativePath:`导出/${assetId}.mp4`,sha256,sizeBytes:bytes.length});
+  const publication={version:1,publicationId:randomUUID(),projectId,assetId,owner:{kind:'export',id:exportId,requestId:exportId,inputHash:sha256},targetKind:'exports',projectRelativePath:`导出/${assetId}.mp4`,sha256,sizeBytes:bytes.length,mimeType:'video/mp4'};
+  const output = {projectId, exportId, assetId, fileLocation: file, sizeBytes: bytes.length, sha256, referenceRevision:1,fingerprint:publicMediaFingerprint(source.reference),producer:{kind:'export',id:exportId},publication,url: `/media/${assetId}`};
   const identity = {projectId, exportId}, calls: unknown[][] = [];
   let current: Record<string, unknown> = output, checks = 0, retireAt = Infinity;
   const host = createWorkspaceNativeHost({
@@ -133,7 +135,7 @@ test('native Windows export open and reveal hash ordinary project media through 
   assert.equal(await host.dispatch({}, {action: 'revealExport', identity}), true);
   assert.deepEqual(calls, [['readExport', identity], ['readExport', identity], ['open', file], ['readExport', identity], ['readExport', identity], ['reveal', file]]);
   const unavailable = (error: unknown) => (error as {code?: string}).code === 'WORKSPACE_NATIVE_UNAVAILABLE';
-  for (const change of [{sha256: 'f'.repeat(64)}, {sizeBytes: bytes.length - 1}]) {
+  for (const change of [{sha256: 'f'.repeat(64)}, {sizeBytes: bytes.length - 1}, {publication:undefined}, {publication:{...publication,assetId:randomUUID()}}, {publication:{...publication,projectRelativePath:`导出/${randomUUID()}.mp4`}}]) {
     current = {...output, ...change};
     await assert.rejects(host.dispatch({}, {action: 'openExport', identity}), unavailable);
   }

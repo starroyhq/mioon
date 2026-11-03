@@ -1795,3 +1795,11 @@ Exact retained ACK replay precedes media or current-revision admission, includin
 公共目录由 `@mioon/contracts/public-operations` 的 publicOperationSchemas/publicOperationDescriptions 统一提供，客户端直接导出同一对象。HTTP/CLI/MCP使用上述路径/上传导入和可选referenceRevisions；Mio的固定模型目录保留原上传输入和原generation.submit输入，不接受路径或网页确认版本字段。模型冻结schema可用 `node scripts/generate-agent-task-schemas.ts --check` 只读核对。
 
 普通Asset DTO不含reference或relativePath；sha256仅表示完整哈希，可以为null，fingerprint中的sampledSha256不能替代它。状态和位置是本机观测，分别获取，媒体URL存在不代表素材当前在线。付费网页确认绑定有序referenceRevisions（assetId、referenceRevision、完整sha256），派发前仍须完整复核字节。
+
+## S2 项目产物和预演发布
+
+生成、抽帧、拆解及预演 PNG 写固定 `生成/`，成片写固定 `导出/`，上传素材写 `素材/`。目录不随界面语言变化；后端排他创建，失败、取消和本地恢复均不自动删除项目文件。普通资产响应仍不返回内部 publication 或引用路径。详细的中断、跨机来源和命名规则见 [PROJECT-OUTPUTS.md](PROJECT-OUTPUTS.md)。
+
+公共项目 RPC 新增 `previs.output.publish` 与只读 `previs.output.lookup`，HTTP、CLI 和 MCP 使用同一公共目录，内置 Mio 模型目录不增加这两个工具。身份字段为 `{projectId,nodeId,keyframeId,sceneRevision,requestId,name,sha256,width,height}`，publish 另需 `dataBase64`；仅接受有界完整 PNG。新发布必须指向项目中已保存的当前节点、关键帧和修订。响应为完整身份加无路径 `asset` DTO；lookup 未登记返回 `null`。未知 ACK 只按原完整身份查询，不凭同 SHA 认领其他请求，不自动换 requestId 重发。已登记结果可在原节点后来删除后精确查询和重放。
+
+`export.output.get` 的专用原生描述增加 `publication`：绑定项目、export owner、assetId、完整哈希、大小及固定目录的 `projectRelativePath`。真实项目必须提供它；桌面 POSIX/Windows 先验来源再以真实句柄核验字节，成功后才能打开或显示文件。普通资产接口的递归路径过滤不变；同字节但不同 export、外部重新指向和缺证明均不能通过成片核验。

@@ -219,6 +219,7 @@ import { previsThumbnailOutdated } from './previs/previs-thumbnails.ts';
 import { previsEdgeLabel, previsFrameIssue, previsKeyframeOfAsset } from './previs/previs-output.ts';
 import type { PrevisFrameOutcome, PrevisFrameRequest, PrevisFrameUndo, PrevisImportOutcome, PrevisImportRequest, PrevisUndoOutcome } from './previs/previs-output.ts';
 import { createPrevisNode } from './previs/previs-create.ts';
+import { publishPrevisOutput } from './previs/previs-publication.ts';
 import { previsFrame } from './previs/previs-camera.ts';
 import { rpc as productionRpc, requestId, activeJob, assetUrl, versionUrl } from './api.ts';
 import { importAcknowledged, importBusyFeedback, importFeedback, renderImportFeedback } from './import-feedback.ts';
@@ -1594,32 +1595,21 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (currentProject.current === projectId) void refresh(projectId);
     requestAnimationFrame(() => { if (opener?.isConnected && !opener.matches(':disabled') && !opener.closest('[inert], [hidden]')) opener.focus({ preventScroll: true }); });
   }
-  // An exported keyframe picture enters the library through asset.import. The
-  // same picture is never imported twice; an uncertain answer is resolved by
-  // reading the library again and looking for its hash.
+  // An exported keyframe picture belongs to its exact saved scene and request.
+  // Reconcile a lost acknowledgement through that publication's own lookup.
   async function importPrevisImage(request: PrevisImportRequest): Promise<PrevisImportOutcome> {
     const captured = context(), projectId = captured.projectId as string | null;
     if (restored || !projectId || request.projectId !== projectId) return { status: 'failed', code: 'PREVIS_PROJECT_CHANGED' };
-    const find = () => dataRef.current!.assets.find(asset => asset.projectId === projectId && asset.mimeType === 'image/png' && typeof asset.sha256 === 'string' && asset.sha256 === request.sha256);
-    const existing = find();
-    if (existing) return { status: 'imported', assetId: existing.id };
-    const input = { projectId, name: request.name, mimeType: 'image/png', dataBase64: request.dataBase64 };
     let nativeImport: object | null = null, outcome: PrevisImportOutcome;
     try {
       const invocation = captured.workspace ? pinNewWorkspaceIntent({}, captured.workspace) : {};
-      if (captured.workspace) assertWorkspaceOperation(captured.workspace, 'asset.import');
+      if (captured.workspace) assertWorkspaceOperation(captured.workspace, 'previs.output.publish');
       if (nativeWindow) nativeImport = editorInputs.current!.beginImport(projectId);
-      const asset = await rpc('asset.import', input, invocation as never);
-      if (!importAcknowledged(asset, input)) throw Object.assign(new Error('Invalid import acknowledgement'), { code: 'BACKEND_PROTOCOL_ERROR' });
-      outcome = { status: 'imported', assetId: (asset as { id: string }).id };
+      outcome = await publishPrevisOutput(request, (operation, input) => rpc(operation, input, invocation as never));
     } catch (error) {
       const failure = error as { definitive?: boolean; status?: number; code?: string };
       if (failure.definitive === true && (failure.status ?? 0) >= 400 && (failure.status ?? 0) < 500) outcome = { status: 'failed', code: typeof failure.code === 'string' ? failure.code : 'IMPORT_REJECTED' };
-      else {
-        if (currentProject.current === projectId) await refresh(projectId);
-        const found = find();
-        outcome = found ? { status: 'imported', assetId: found.id } : { status: 'unknown' };
-      }
+      else outcome = { status: 'unknown' };
     }
     editorInputs.current!.finishImport(nativeImport, outcome.status === 'unknown');
     if (outcome.status === 'imported' && currentProject.current === projectId) await refresh(projectId);

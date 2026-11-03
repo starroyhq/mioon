@@ -1,4 +1,4 @@
-import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
+import {mediaFixturePath,mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import type {FrameFault} from '../packages/business/src/frames.ts';
 interface RecoveryDecodeInput{beforeSpawn(signal:AbortSignal):unknown;signal:AbortSignal;asset:{sha256:string};requestedFrame:number}
 type RecoveryDecoder=(input:RecoveryDecodeInput)=>Promise<{bytes:Buffer;provenance:ReturnType<typeof provenance>}>;
@@ -76,7 +76,7 @@ for(const phase of ['after_result_manifest','after_result_receipt','after_media_
  const initialReceipt=readFileSync(path.join(f.stagingRoot,'frame-staging',`${ack.id}.json`),'utf8');assert.ok(!JSON.stringify(failed).includes('PRIVATE_SENTINEL'));f.setFault(()=>{});await f.restart();
  const current=await f.get(ack.id),control=f.control(current),recovery=await f.call('frame.task.recoverResult',control);assert.equal(recovery.state,'persisting');assert.equal(recovery.revision,current.revision+1);
  assert.deepEqual(await f.call('frame.task.recoverResult',control),recovery);const result=await state(f,ack.id,'succeeded');assert.equal(f.calls,1);assert.equal(count(f.store.db,'assets'),2);assert.equal(result.result.assetId,JSON.parse(initialReceipt).assetId);
- assert.deepEqual(readFileSync(path.join(f.root,'media',`${result.result.assetId}.png`)),bytes);assert.equal(readFileSync(path.join(f.stagingRoot,'frame-staging',`${ack.id}.json`),'utf8'),initialReceipt);
+ assert.deepEqual(readFileSync(mediaFixturePath(f.root,f.store.get('assets',result.result.assetId))),bytes);assert.equal(readFileSync(path.join(f.stagingRoot,'frame-staging',`${ack.id}.json`),'utf8'),initialReceipt);
  assert.deepEqual(await f.call('frame.extract',input),ack);assert.deepEqual(await f.call('frame.task.recoverResult',control),recovery);await f.restart();assert.equal((await f.get(ack.id)).state,'succeeded');assert.equal(f.calls,1);
 });
 
@@ -91,6 +91,22 @@ for(const damage of ['missing-manifest','partial-png','wrong-png','wrong-manifes
  if(damage==='symlink-png'){unlinkSync(pngFile);symlinkSync(path.join(f.root,f.asset.relativePath),pngFile);}
  if(damage==='unsafe-directory')chmodSync(path.dirname(pngFile),0o755);
  const before=rows(f.store.db);await assert.rejects(f.call('frame.task.recoverResult',f.control(failed)),error('FRAME_RESULT_INVALID'));assert.equal(rows(f.store.db),before);assert.equal(f.calls,1);assert.equal(count(f.store.db,'assets'),1);
+});
+
+test('a replaced published frame cannot be recovered from matching bytes or its retained stage',async t=>{
+ const f=fixture(t);f.setFault(label=>{if(label==='after_media_publication')throw Error('synthetic unregistered result');});
+ const ack=await f.call('frame.extract',f.input()),failed=await state(f,ack.id,'local_result_error');f.setFault(()=>{});
+ const directory=path.join(f.root,'生成'),names=readdirSync(directory);assert.equal(names.length,1);
+ const final=path.join(directory,names[0]!);unlinkSync(final);writeFileSync(final,bytes,{mode:0o600});
+ const before=rows(f.store.db);await assert.rejects(f.call('frame.task.recoverResult',f.control(failed)),error('FRAME_RESULT_INVALID'));
+ assert.equal(rows(f.store.db),before);assert.equal(f.calls,1);assert.deepEqual(readFileSync(final),bytes);assert.deepEqual(readdirSync(directory),names);
+});
+
+test('the registration transaction rejects a same-byte replacement after publication returned',async t=>{
+ const f=fixture(t);let final='';
+ f.setFault(label=>{if(label==='after_media_publication'){final=path.join(f.root,'生成',readdirSync(path.join(f.root,'生成'))[0]!);unlinkSync(final);writeFileSync(final,bytes,{mode:0o600});}});
+ const ack=await f.call('frame.extract',f.input());await state(f,ack.id,'local_result_error');
+ assert.equal(count(f.store.db,'assets'),1);assert.equal(f.calls,1);assert.deepEqual(readFileSync(final),bytes);assert.equal(readdirSync(path.join(f.root,'生成')).length,1);
 });
 
 test('result receipt budget retains all sixteen ACKs and fails closed on the next recovery',async t=>{

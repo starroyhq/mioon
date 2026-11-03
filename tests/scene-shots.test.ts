@@ -1,5 +1,6 @@
 import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import {mediaFixturePath, mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
+import {referenceTestAsset} from '../packages/business/src/project-file/test-asset-fixture.ts';
 import type {SceneCall, SceneServices, SceneHandlerService} from './helpers/strict-scene-types.ts';
 import type {SceneServicesOptions} from '../packages/business/src/scene-tasks.ts';
 import type {SceneDetectTaskResponse} from '@mioon/contracts';
@@ -8,7 +9,7 @@ import type {TypedStore} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
-import {mkdtempSync,realpathSync,rmSync,writeFileSync,existsSync,readdirSync,readFileSync,mkdirSync} from 'node:fs';
+import {mkdtempSync,realpathSync,rmSync,writeFileSync,existsSync,readdirSync,readFileSync,mkdirSync,unlinkSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -49,7 +50,7 @@ function keyframes(input: DecodeSceneKeyframesOptions,{groups=(input.marks)!.map
  return {profileId:'local-png-1024-v1',selectionRule:'first-pts-at-or-after-v1',sourceHash:(input.asset as {sha256: string}).sha256,width:W,height:H,probe,frameOf:groups.flatMap((marks,index)=>marks.map(()=>index))};
 }
 const rows=(db: DatabaseSync)=>JSON.stringify(['scene_tasks','scene_requests','scene_results','shots','assets'].map(table=>db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));
-const staging=(root: string)=>existsSync(path.join(root,'.mioon-store','tmp','scene-staging'))?readdirSync(path.join(root,'.mioon-store','tmp','scene-staging')):[];
+const staging=(root: string)=>existsSync(path.join(root,'.mioon-store','tmp','scene-staging'))?readdirSync(path.join(root,'.mioon-store','tmp','scene-staging')).filter(name=>name.endsWith('.png')):[];
 
 function open(root: string,{decode,detect,fault,cuts=[30,900],frameCount=1800,autoRun=true,real=false}: {decode?: (input: DecodeSceneKeyframesOptions) => unknown; detect?: SceneServicesOptions['detect']; fault?: SceneServicesOptions['fault']; cuts?: number[]; frameCount?: number; autoRun?: boolean; real?: boolean}={}){
  const store=(openStore(root) as unknown as TypedStore);let decodes=0;
@@ -172,15 +173,15 @@ test('a built storyboard saves its keyframe images and shots in one step', async
  assert.equal(images.length,3);
  for(const [index,item] of (done.shots)!.entries()){
   const image=f.store.get('assets',item.assetId),bytes=readFileSync(mediaFixturePath(f.root,image));
-  assert.deepEqual([(image)!.name,(image)!.mimeType,(image)!.width,(image)!.height,(image)!.sizeBytes,mediaReferenceSchema.parse((image as unknown as Record<string,unknown>).reference).path,(image)!.provenance],
-   [`Ref 0${index+1}.png`,'image/png',W,H,bytes.length,`media/${item.assetId}.png`,'scene-keyframe']);
+  assert.deepEqual([(image)!.name,(image)!.mimeType,(image)!.width,(image)!.height,(image)!.sizeBytes,mediaReferenceSchema.parse((image as unknown as Record<string,unknown>).reference).path.startsWith('生成/'),(image)!.provenance],
+   [`Ref 0${index+1}.png`,'image/png',W,H,bytes.length,true,'scene-keyframe']);
   assert.equal((image)!.sha256,digest(bytes));assert.deepEqual(bytes,still(index));
   // Keyframes are owned images: the media graph and image consumers accept them.
   assert.equal(createOwnedMediaGraphReader(f.store.db,f.project.id).asset(item.assetId).id,item.assetId);
   assert.equal(validateImageConsumption(f.store.db,image!,f.project.id).id,item.assetId);
  }
  assert.equal((f.store.get('projects',f.project.id))!.revision,projectRevision+1);
- assert.deepEqual((staging(f.root) as unknown),[],'staged keyframes are removed');
+ await until(()=>staging(f.root).length===0,'registered private staging cleanup');
  assert.equal(f.decodes,1,'one decode for every segment');
  const page=await f.call('scene.task.list',{projectId:f.project.id,sourceAssetId:f.asset.id});
  assert.ok(isSceneListResponse('scene.task.list',{projectId:f.project.id,sourceAssetId:f.asset.id},page));
@@ -193,6 +194,10 @@ test('a built storyboard saves its keyframe images and shots in one step', async
  assert.throws(()=>createOwnedMediaGraphReader(f.store.db,f.project.id).asset((first)!.id),code('INSPECTION_UNAVAILABLE'));
  assert.throws(()=>validateImageConsumption(f.store.db,f.store.get('assets',(first)!.id)!,f.project.id),code('IMAGE_SOURCE_INVALID'));
  f.store.put('assets',first!);
+ const relocated=`素材/relinked-${first!.id}.png`;mkdirSync(path.join(f.root,'素材'),{recursive:true});writeFileSync(path.join(f.root,relocated),readFileSync(mediaFixturePath(f.root,first)));
+ const relinked={...first!,...referenceTestAsset(f.root,{relativePath:relocated,sha256:first!.sha256,sizeBytes:first!.sizeBytes}),referenceRevision:2};f.store.put('assets',relinked);
+ assert.equal(createOwnedMediaGraphReader(f.store.db,f.project.id).asset(first!.id).id,first!.id,'same-content relinks keep the local storyboard owner');
+ assert.equal(validateImageConsumption(f.store.db,relinked,f.project.id).id,first!.id);f.store.put('assets',first!);
  const forged=f.store.put('assets',{...first,id:randomUUID(),relativePath:'media/forged.png'});
  assert.throws(()=>createOwnedMediaGraphReader(f.store.db,f.project.id).asset(forged.id),code('INSPECTION_UNAVAILABLE'));
 });
@@ -230,7 +235,7 @@ test('cancelling a storyboard leaves no shots, images or staged files', async t=
  assert.deepEqual((f.shots() as unknown),[]);assert.deepEqual((f.images() as unknown),[]);assert.deepEqual((staging(f.root) as unknown),[]);
 });
 
-test('failures leave no shots, images or files, and keep a safe code', async t=>{
+test('failures keep complete local artifacts and published files without partial asset or shot rows', async t=>{
  const outcomes: [NonNullable<Parameters<typeof open>[1]>, string, string][]=[
   [{decode:async input=>{input.beforeSpawn!(input.signal!);throw Object.assign(new Error('PRIVATE_SENTINEL none'),{code:'FRAME_NO_FRAME'});}},'failed','SCENE_KEYFRAME_UNAVAILABLE'],
   [{decode:async (input: DecodeSceneKeyframesOptions)=>keyframes(input,{image:index=>still(index,{width:W-2})})},'failed','SCENE_SHOTS_FAILED'],
@@ -242,15 +247,16 @@ test('failures leave no shots, images or files, and keep a safe code', async t=>
   const f=fixture(t,options),resultId=await f.detected(),before=(f.store.get('projects',f.project.id))!.revision;
   const ack=await f.call('scene.shots.create',f.input(resultId)),ended=await f.state(ack.id,expected);
   assert.equal(ended.errorCode,errorCode);assert.equal(ended.shots,null);assert.doesNotMatch(JSON.stringify(ended),/PRIVATE_SENTINEL/);
-  assert.deepEqual((f.shots() as unknown),[]);assert.deepEqual((f.images() as unknown),[]);assert.deepEqual((staging(f.root) as unknown),[]);
-  assert.deepEqual((readdirSync(path.join(f.root,'media')).filter(name=>name.endsWith('.png')) as unknown),[],'published keyframes are withdrawn');
+  assert.deepEqual((f.shots() as unknown),[]);assert.deepEqual((f.images() as unknown),[]);
+  assert.equal(staging(f.root).length,expected==='local_result_error'?3:0);
+  const output=path.join(f.root,'生成');assert.equal(existsSync(output)?readdirSync(output).length:0,expected==='local_result_error'?3:0,'unclaimed published keyframes remain');
   assert.equal((f.store.get('projects',f.project.id))!.revision,before);
   // A failed storyboard frees the video for a retry.
   assert.equal((await f.call('scene.shots.create',f.input(resultId))).state,'queued');
  }
 });
 
-test('restart turns active storyboards into interrupted ones and removes their files', async t=>{
+test('restart without a complete durable manifest stays interrupted and retains project files', async t=>{
  const f=fixture(t),resultId=await f.detected();await f.close();
  const reopened=f.reopen({autoRun:false}),queued=await reopened.call('scene.shots.create',f.input(resultId,{segments:[1]}));
  const second=(()=>{const bytes=mp4HeaderFixture('Second synthetic reference'),id=randomUUID();writeFileSync(path.join(f.root,`media/${id}.mp4`),bytes,{mode:0o600});
@@ -279,12 +285,51 @@ test('restart turns active storyboards into interrupted ones and removes their f
  const read=(id: string)=>restarted.services.handlers['scene.task.get']({projectId:f.project.id,taskId:id});
  assert.deepEqual([read(queued.id).state,read(queued.id).revision,read(queued.id).errorCode],['interrupted',2,'SCENE_INTERRUPTED']);
  assert.deepEqual([read(saving.id).state,read(saving.id).revision,read(saving.id).errorCode],['interrupted',4,'SCENE_INTERRUPTED']);
- assert.deepEqual((staging(f.root) as unknown),[]);assert.equal(existsSync(path.join(f.root,'media',`${keyframesSaved[0].assetId}.png`)),false);
+ assert.deepEqual(staging(f.root),[`${saving.id}-0.png`,`${saving.id}-1.png`]);assert.equal(existsSync(path.join(f.root,'media',`${keyframesSaved[0].assetId}.png`)),true);
  assert.deepEqual((restarted.store.list('shots',f.project.id) as unknown),[]);
  await pause(20);assert.equal(decodes,0);
  // Only the never-started one can still be cancelled.
  assert.equal(restarted.services.handlers['scene.task.cancel']({projectId:f.project.id,taskId:queued.id,expectedRevision:2,requestId:randomUUID()}).state,'cancelled_before_start');
  assert.throws(()=>restarted.services.handlers['scene.task.cancel']({projectId:f.project.id,taskId:saving.id,expectedRevision:4,requestId:randomUUID()}),code('SCENE_STATE_CONFLICT'));
+});
+
+for(const phase of ['after_shots_manifest','after_shots_receipt','after_keyframe_publication','before_shots_commit'])test(`complete durable batch recovers locally after ${phase} with one atomic outcome`,async t=>{
+ const f=fixture(t,{fault:(stage,details)=>{if(stage===phase&&(stage!=='after_keyframe_publication'||details?.index===0))throw Error('PRIVATE_SENTINEL interrupted local publication');}}),resultId=await f.detected();
+ const input=f.input(resultId),ack=await f.call('scene.shots.create',input),expected=phase==='after_shots_manifest'?'interrupted':'local_result_error';
+ await f.state(ack.id,expected);
+ const manifest=readFileSync(path.join(f.root,'.mioon-store','tmp','scene-staging',`${ack.id}.json`),'utf8');
+ const saved=JSON.parse(manifest) as {keyframes:{assetId:string}[]};
+ assert.equal(f.shots().length,0);assert.equal(f.images().length,0);assert.equal(f.decodes,1);
+ const output=path.join(f.root,'生成'),beforeFiles=existsSync(output)?readdirSync(output):[];
+ assert.equal(beforeFiles.length,phase==='after_keyframe_publication'?1:phase==='before_shots_commit'?3:0);
+ await f.close();
+ const recovered=f.reopen({decode:async()=>assert.fail('local reconciliation decoded the source')});
+ const done=await until(async()=>{const value=await recovered.call('scene.task.get',{projectId:f.project.id,taskId:ack.id});return value.state==='succeeded'&&value;},'local storyboard publication');
+ assert.equal(recovered.decodes,0);assert.deepEqual(done.shots!.map(item=>item.assetId),saved.keyframes.map(item=>item.assetId));
+ assert.equal(recovered.store.list('shots',f.project.id).length,3);assert.equal(recovered.store.list('assets',f.project.id).filter(item=>item.provenance==='scene-keyframe').length,3);
+ assert.equal(readdirSync(output).length,3);for(const name of beforeFiles)assert.ok(readdirSync(output).includes(name));
+ assert.equal(readFileSync(path.join(f.root,'.mioon-store','tmp','scene-staging',`${ack.id}.json`),'utf8'),manifest);
+ assert.deepEqual(await recovered.call('scene.shots.create',input),ack,'exact original acceptance remains immutable');
+ for(const keyframe of saved.keyframes)assert.equal(createOwnedMediaGraphReader(recovered.store.db,f.project.id).asset(keyframe.assetId).id,keyframe.assetId);
+});
+
+test('a same-byte final replacement before the batch transaction keeps every asset and shot unregistered',async t=>{
+ let changed:string|undefined,saved:Buffer|undefined;
+ const f=fixture(t,{fault:phase=>{if(phase==='after_media_publication'){const directory=path.join(f.root,'生成');changed=path.join(directory,readdirSync(directory)[0]!);saved=readFileSync(changed);unlinkSync(changed);writeFileSync(changed,saved,{mode:0o600});}}}),resultId=await f.detected();
+ const ack=await f.call('scene.shots.create',f.input(resultId));await f.state(ack.id,'local_result_error');
+ assert.equal(f.shots().length,0);assert.equal(f.images().length,0);assert.equal(readdirSync(path.join(f.root,'生成')).length,3);
+ assert.ok(changed&&saved);assert.deepEqual(readFileSync(changed),saved);
+});
+
+test('local batch reconciliation keeps published bytes when its frozen source changed',async t=>{
+ const f=fixture(t,{fault:stage=>{if(stage==='after_keyframe_publication')throw Error('synthetic local interruption');}}),resultId=await f.detected();
+ const ack=await f.call('scene.shots.create',f.input(resultId));await f.state(ack.id,'local_result_error');
+ const output=path.join(f.root,'生成'),files=readdirSync(output),snapshots=files.map(name=>readFileSync(path.join(output,name)));
+ writeFileSync(mediaFixturePath(f.root,f.store.get('assets',f.asset.id)),mp4HeaderFixture('Changed reference film'));
+ await f.close();const reopened=f.reopen({decode:async()=>assert.fail('source change must not trigger decoding')});
+ await until(async()=>{const task=await reopened.call('scene.task.get',{projectId:f.project.id,taskId:ack.id});return task.state==='local_result_error'&&task;},'source-fenced local failure');
+ assert.equal(reopened.store.list('shots',f.project.id).length,0);assert.equal(reopened.store.list('assets',f.project.id).filter(item=>item.provenance==='scene-keyframe').length,0);
+ assert.deepEqual(readdirSync(output),files);for(const [index,name] of files.entries())assert.deepEqual(readFileSync(path.join(output,name)),snapshots[index]);assert.equal(reopened.decodes,0);
 });
 
 test('undo removes the untouched shots and keeps the keyframes; any real change blocks it', async t=>{

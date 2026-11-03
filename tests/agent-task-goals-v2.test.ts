@@ -17,6 +17,9 @@ import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2
 import {readAgentTaskChecks} from '../packages/business/src/agent/task-checks-v2.ts';
 import {setAgentTaskEffectGate} from '../packages/business/src/agent/task-effects-v2.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
+import {publishOutputFixture,markProjectOutputRegistered} from './helpers/project-output-fixture.ts';
+import {exportOutputArtifactIdentity} from '../packages/contracts/src/output-artifact.ts';
 
 const record=(value:unknown):Record<string,unknown>=>{assert.ok(value!==null&&typeof value==='object'&&!Array.isArray(value));return value as Record<string,unknown>;};
 const json=(value:unknown):AgentTaskJson=>JSON.parse(JSON.stringify(value));
@@ -181,9 +184,9 @@ for(const ranged of [false,true])test(`H4a actual ${ranged?'ranged profile':'ful
  const timeline=record(await f.services.call('timeline.get',{projectId:f.projectId}));assert.ok(Array.isArray(timeline.tracks));await f.execute('mioon_timeline_clip_add',{expectedRevision:Number(timeline.revision),assetId:sourceId,trackId:String(record(timeline.tracks[0]).id),startFrame:0,durationFrames:60});
  const saved=record(await f.services.call('timeline.get',{projectId:f.projectId})),renderInput={expectedRevision:Number(saved.revision),purpose:'export',...(ranged?{exportRange:{startFrame:10,endFrame:40},exportSettings:{profileId:'mp4_h264_v1',resolution:'native',rateControl:{mode:'crf',quality:'standard'}}}:{})},render=await f.execute('mioon_timeline_render',renderInput),id=String(record(render.result).id);
  f.declare([{type:'export_parameters',width:Number(saved.width),height:Number(saved.height),fps:30,durationFrames:ranged?30:60}]);assert.equal((await f.read()).requirements?.[0]?.status,'pending');
- const assetId=randomUUID(),output=Buffer.from('SYNTHETIC_EXPORT_ONLY'),relativePath=`media/export-${id}-${randomUUID()}.mp4`;writeFileSync(join(f.root,relativePath),output);
- f.store.put('assets',{id:assetId,projectId:f.projectId,name:'Export',mimeType:'video/mp4',relativePath,sizeBytes:output.length,sha256:createHash('sha256').update(output).digest('hex'),width:saved.width,height:saved.height,duration:1,provenance:'export',producer:{kind:'export',id},createdAt:new Date().toISOString()});
- f.store.put('exports',{...record(f.store.get('exports',id)),status:'succeeded',assetId,url:`/media/${assetId}`,updatedAt:new Date().toISOString()});
+ const assetId=randomUUID(),output=mp4HeaderFixture('SYNTHETIC_EXPORT_ONLY'),accepted=record(f.store.get('exports',id)),published=await publishOutputFixture(f.store,{assetId,owner:{kind:'export',id,requestId:String(accepted.requestId),inputHash:createHash('sha256').update(exportOutputArtifactIdentity(accepted)).digest('hex')},targetKind:'exports',bytes:output,mimeType:'video/mp4'}),relativePath=published.reference.path;
+ f.store.tx(()=>{f.store.put('assets',{id:assetId,projectId:f.projectId,name:'Export',mimeType:'video/mp4',...published,width:saved.width,height:saved.height,duration:1,provenance:'export',producer:{kind:'export',id},createdAt:new Date().toISOString()});
+ f.store.put('exports',{...accepted,status:'succeeded',assetId,url:`/media/${assetId}`,updatedAt:new Date().toISOString()});});await markProjectOutputRegistered(f.store,published.publication);
  const actual=await f.read();assert.equal(actual.requirements?.[0]?.status,'passed');assert.equal(actual.requirements?.[0]?.current.durationFrames,ranged?30:60);assert.equal(actual.requirements?.[0]?.current.status,'accepted_parameters');
  const snapshot=f.journal.snapshot(f.runId),legacy=await readAgentTaskChecks(f.store,{...snapshot,steps:snapshot.steps.filter(item=>item.toolCall?.name!=='mioon_goal_set')});assert.deepEqual(actual.groups,legacy.groups);
  unlinkSync(join(f.root,relativePath));assert.equal((await f.read()).requirements?.[0]?.status,'failed');writeFileSync(join(f.root,relativePath),output);

@@ -25,6 +25,9 @@ import type { BinaryLike } from 'crypto';
 import type { FixtureSnapshot } from './helpers/strict-timeline-core-types.ts';
 
 import {dataFileSnapshot,databaseFiles} from './helpers/data-file-snapshot.ts';
+import {publishProjectOutput} from '../packages/business/src/project-output-publication.ts';
+import {registeredProjectStoreForDatabase} from '../packages/business/src/project-media-storage.ts';
+import {exportOutputArtifactIdentity} from '../packages/contracts/src/output-artifact.ts';
 
 const token = 'synthetic-named-delivery-download-token';
 const clone = <T>(value: T): T => structuredClone(value);
@@ -52,10 +55,11 @@ async function fixture(t: test.TestContext, {serve = true} = {}) {
     trackId: timeline.tracks[0].id, assetId: sourceId, startFrame: 0, durationFrames: 30});
   const input = {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'export', deliveryName: '海边 交付 V1'};
   const queued = await services.call('timeline.render', input);
-  const assetId = randomUUID(), relativePath = `media/export-${queued.id}-${randomUUID()}.mp4`, bytes = mp4HeaderFixture('named-delivery-original-mp4-bytes');
-  await writeFile(path.join(projectDir, relativePath), bytes, {mode: 0o600});
-  const asset = referencedFixture(projectDir,{id: assetId, projectId: project.id, name: 'Managed output', mimeType: 'video/mp4', provenance: 'export', relativePath,
-    producer:{kind:'export' as const,id:queued.id},url: `/media/${assetId}`, sha256: hash(bytes), sizeBytes: bytes.length, createdAt: new Date().toISOString()});
+  const assetId = randomUUID(), bytes = mp4HeaderFixture('named-delivery-original-mp4-bytes'),stageFile=path.join(created.store.tempDir,`${assetId}.mp4`);
+  await writeFile(stageFile, bytes, {mode: 0o600});
+  const {relativePath:_publishedPath,...published}=await publishProjectOutput(created.store,{owner:{kind:'export',id:queued.id,requestId:input.requestId,inputHash:hash(exportOutputArtifactIdentity(store.get('exports',queued.id) as unknown as Record<string,unknown>))},assetId,targetKind:'exports',stageFile,mimeType:'video/mp4',sha256:hash(bytes),sizeBytes:bytes.length});
+  const asset = {id: assetId, projectId: project.id, name: 'Published output', mimeType: 'video/mp4', provenance: 'export',...published,
+    producer:{kind:'export' as const,id:queued.id},url: `/media/${assetId}`, createdAt: new Date().toISOString()};
   store.put('assets', asset);
   const record = {...(store.get('exports', queued.id) as import('./helpers/strict-timeline-core-types.ts').FixtureExport), status: 'succeeded', assetId, url: asset.url, updatedAt: new Date().toISOString()};
   store.put('exports', record);
@@ -157,6 +161,9 @@ test('foreign or corrupt export, receipt, project and output rows are opaque and
     ['asset wrong MIME', db => replace(db, 'assets', {...f.asset, mimeType: 'image/png'})],
     ['asset wrong URL', db => replace(db, 'assets', {...f.asset, url: '/media/' + randomUUID()})],
     ['asset wrong provenance', db => replace(db, 'assets', {...f.asset, provenance: 'user-import'})],
+    ['missing publication', db => replace(db, 'assets', {...f.asset,publication:undefined})],
+    ['foreign publication owner', db => replace(db, 'assets', {...f.asset,publication:{...f.asset.publication,owner:{...f.asset.publication.owner,id:randomUUID()}}})],
+    ['relinked external output', db => replace(db, 'assets', {...f.asset,reference:{...f.asset.reference,path:`../${f.asset.id}.mp4`}})],
     ['oversized export', db => db.prepare('UPDATE exports SET data=? WHERE id=?').run(' '.repeat(4 * 1024 * 1024 + 1), f.record.id)],
     ['oversized receipt', db => db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(' '.repeat(4 * 1024 * 1024 + 1), f.input.requestId)],
     ['oversized output', db => db.prepare('UPDATE assets SET data=? WHERE id=?').run(' '.repeat(16 * 1024 + 1), f.asset.id)],
@@ -226,15 +233,17 @@ test('pre-header change fence includes frozen receipt and snapshot even when saf
   const original = clone(f.record), receipt = JSON.parse((f.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(f.input.requestId)!.response as string));
   original.snapshot.deliveryName = 'A/B'; receipt.snapshot.deliveryName = 'A/B';
   replace(f.db, 'exports', original); f.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(JSON.stringify(receipt), f.input.requestId);
+  const originalAsset=clone(f.asset);originalAsset.publication.owner.inputHash=hash(exportOutputArtifactIdentity(original));replace(f.db,'assets',originalAsset);
   const expected = f.read(); assert.ok(expected);
   const originalHash = f.db.prepare('SELECT requestHash FROM timeline_requests WHERE requestId=?').get(f.input.requestId)!.requestHash;
   for (const change of ['name', 'snapshot', 'receipt', 'path']) {
     f.db.prepare('UPDATE timeline_requests SET requestHash=? WHERE requestId=?').run(originalHash, f.input.requestId);
-    const record = clone(original), accepted = clone(receipt), asset = clone(f.asset);
+    const record = clone(original), accepted = clone(receipt), asset = clone(originalAsset);
     if (change === 'name') {record.snapshot.deliveryName = 'A\\B'; accepted.snapshot.deliveryName = 'A\\B';}
     if (change === 'snapshot') {record.snapshot.timeline.clips[0].name = 'Changed frozen clip'; accepted.snapshot.timeline.clips[0].name = 'Changed frozen clip';}
     if (change === 'receipt') f.db.prepare('UPDATE timeline_requests SET requestHash=? WHERE requestId=?').run('c'.repeat(64), f.input.requestId);
-    if (change === 'path') asset.reference = {...asset.reference,path:`media/export-${f.record.id}-${randomUUID()}.mp4`};
+    if (change === 'path') {const relativePath=`导出/export-${f.record.id}-${randomUUID()}.mp4`;asset.reference={...asset.reference,path:relativePath};asset.publication={...asset.publication,relativePath};}
+    asset.publication.owner.inputHash=hash(exportOutputArtifactIdentity(record));
     replace(f.db, 'exports', record); replace(f.db, 'assets', asset);
     f.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(JSON.stringify(accepted), f.input.requestId);
     assert.ok(f.read(), change + ' is independently valid');
@@ -250,11 +259,12 @@ test('named download binds the exact worker output path and rejects swapped same
   const firstReceipt = JSON.parse((f.use(db => db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(f.input.requestId)!.response) as string));
   const secondReceipt = {...clone(firstReceipt), id: secondId, requestId: secondRequestId};
   secondReceipt.snapshot.deliveryName = 'Second owned delivery';
-  const secondPath=`media/export-${secondId}-${randomUUID()}.mp4`,secondBytes=mp4HeaderFixture('second owned output');
-  await writeFile(path.join(f.projectDir,secondPath),secondBytes,{mode:0o600});
-  const secondAsset=referencedFixture(f.projectDir,{id:secondAssetId,projectId:f.project.id,name:'Second managed output',mimeType:'video/mp4',provenance:'export',
-    producer:{kind:'export' as const,id:secondId},relativePath:secondPath,url:`/media/${secondAssetId}`,sha256:hash(secondBytes),sizeBytes:secondBytes.length,createdAt:new Date().toISOString()});
-  const second = {...clone(f.record), id: secondId, requestId: secondRequestId, snapshot: clone(secondReceipt.snapshot), assetId: secondAssetId, url: secondAsset.url};
+  const owner=f.use(db=>registeredProjectStoreForDatabase(db));assert.ok(owner);
+  const secondBytes=mp4HeaderFixture('second owned output'),stageFile=path.join(owner.tempDir,`${secondAssetId}.mp4`);await writeFile(stageFile,secondBytes,{mode:0o600});
+  const second = {...clone(f.record), id: secondId, requestId: secondRequestId, snapshot: clone(secondReceipt.snapshot), assetId: secondAssetId, url:`/media/${secondAssetId}`};
+  const {relativePath:_secondPath,...published}=await publishProjectOutput(owner,{owner:{kind:'export',id:secondId,requestId:secondRequestId,inputHash:hash(exportOutputArtifactIdentity(second))},assetId:secondAssetId,targetKind:'exports',stageFile,mimeType:'video/mp4',sha256:hash(secondBytes),sizeBytes:secondBytes.length});
+  const secondAsset={id:secondAssetId,projectId:f.project.id,name:'Second published output',mimeType:'video/mp4',provenance:'export',...published,
+    producer:{kind:'export' as const,id:secondId},url:`/media/${secondAssetId}`,createdAt:new Date().toISOString()};
   f.use(db => {
     db.prepare('INSERT INTO exports(id,projectId,data) VALUES(?,?,?)').run(secondId, f.project.id, JSON.stringify(second));
     db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(secondAssetId, f.project.id, JSON.stringify(secondAsset));

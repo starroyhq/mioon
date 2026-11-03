@@ -19,6 +19,7 @@ import {createComfySettings} from '../packages/business/src/comfy/settings.ts';
 import {DEFAULT_COMFY_IMAGE_CONFIGURATION,COMFY_IMAGE_OPTIONS} from '../packages/contracts/src/comfy-images.ts';
 import {imageProfilesResponseSchema} from '../packages/contracts/src/images.ts';
 import {deflateSync} from 'node:zlib';
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 
 function syntheticPng(edge=512,color=0){
   const crc=(data: Buffer<ArrayBuffer>)=>{let c=0xffffffff;for(const b of data){c^=b;for(let i=0;i<8;i++)c=c&1?0xedb88320^(c>>>1):c>>>1;}return(c^0xffffffff)>>>0;};
@@ -63,7 +64,7 @@ test('Comfy profile discovery and review pin the exact fixed graph before one ex
  const query=await f.query(ack.id);await waitFor(()=>f.task(ack.id),(v: { state: string; })=>v.state==='succeeded');const remote=await f.remote(ack.id);assert.equal(remote.remote.contentVerified,true);assert.equal(remote.observation!.state,'finished');
  const inputQuery={projectId:f.project.id,taskId:ack.id,requestId:query.requestId,expectedRevision:query.remoteRevision-1};assert.deepEqual(await f.call('image.task.observeRemote',inputQuery),query);assert.equal(f.calls.get,1);
  const versions=await f.call('image.version.list',{projectId:f.project.id,groupId:ack.groupId});assert.equal(versions.items[0].width,512);assert.equal(versions.items[0].sha256,remote.remote.resultSha256);
- const bytes=readFileSync(path.join(f.root,'media',versions.items[0].assetId+'.png'));assert.equal(createHash('sha256').update(bytes).digest('hex'),remote.remote.resultSha256);
+ const bytes=readFileSync(mediaFixturePath(f.root,f.store.get('assets',versions.items[0].assetId)));assert.equal(createHash('sha256').update(bytes).digest('hex'),remote.remote.resultSha256);
  await f.restart();assert.equal((await f.settings.get()).readiness.checked,false);assert.deepEqual(await f.call('image.generate',input),ack);assert.equal(f.calls.post,1);assert.equal(f.calls.get,1);
 });
 

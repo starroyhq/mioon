@@ -7,11 +7,16 @@ import type {ProviderContext} from '../../packages/business/src/providers/live-c
 import type {SubjectResponse} from '../../packages/contracts/src/subjects.ts';
 import type {FixtureProject} from './strict-timeline-core-types.ts';
 import type {TypedStore, TypedServices, TypedCall, MediaShot, MediaJob} from './strict-service-responses.ts';
+import type {MediaReference} from '../../packages/contracts/src/media-reference.ts';
+import type {ProjectOutputPublicationProof} from '../../packages/contracts/src/project-output-publication.ts';
 
-export interface SubjectAsset {
-  id: string; projectId: string; name: string; mimeType: string; relativePath: string; sha256: string; sizeBytes: number;
+interface SubjectAssetMetadata {
+  id: string; projectId: string; name: string; mimeType: string; sha256: string; sizeBytes: number;
   width: number; height: number; provenance: string; createdAt: string; duration?: number; hasVideo?: boolean; hasAudio?: boolean;
 }
+export type SubjectAsset = SubjectAssetMetadata & ({relativePath: string; reference?: never; referenceRevision?: never; publication?: never} |
+  {relativePath?: never; reference: MediaReference; referenceRevision: number; publication?: ProjectOutputPublicationProof});
+export type PublishedSubjectAsset = SubjectAssetMetadata & {relativePath?: never; reference: MediaReference; referenceRevision: number; publication: ProjectOutputPublicationProof};
 export interface SubjectGenerationInput {
   shotId: string; expectedRevision: number; providerId: string; requestId: string; subjectVersionId?: string;
   [key: string]: unknown;
@@ -32,8 +37,8 @@ export interface SubjectVideoFixture {
   ark(options?: {hook?: (provider: ReturnType<typeof createArkProvider>, snapshot: unknown, context: WorkerProviderContext) => unknown; reply?: typeof fetch}): ReturnType<typeof createArkProvider>;
   posts(): number; setDate(value: string): void; tick(): Promise<void>; stop(): Promise<void>;
 }
-export interface TypedFrameFixture {asset: SubjectAsset; source: SubjectAsset; taskId: string; groupId?: undefined; versionId?: undefined}
-export interface TypedImageFixture {asset: SubjectAsset; groupId: string; taskId: string; versionId: string; source?: undefined}
+export interface TypedFrameFixture {asset: PublishedSubjectAsset; source: SubjectAsset; taskId: string; groupId?: undefined; versionId?: undefined}
+export interface TypedImageFixture {asset: PublishedSubjectAsset; groupId: string; taskId: string; versionId: string; source?: undefined}
 
 // The aliases expose the existing fixture functions without replacing their data or execution.
 export const fixture = originalFixture as unknown as (t: TestContext) => Promise<SubjectVideoFixture>;

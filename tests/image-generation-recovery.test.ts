@@ -14,6 +14,7 @@ import {openStore, ownsStoreLock} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import {errorView} from './helpers/test-error.ts';
 import {schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 
@@ -147,7 +148,9 @@ for (const phase of ['after_dispatch_fence', 'after_result_manifest', 'after_res
     assert.deepEqual(await f.call('image.task.recoverResult', recoveryInput), recoveryAck, 'historical local-recovery response retained');
     const version = ((await f.call('image.version.list', {projectId: f.project.id, groupId: ack.groupId})).items)![0];
     assert.equal(version.id, result.versionId); assert.equal(version.number, 1);
-    assert.deepEqual(readFileSync(path.join(f.root, 'media', `${version.assetId}.png`)), await png());
+    const asset = JSON.parse(String(f.store.db.prepare('SELECT data FROM assets WHERE id=?').get(version.assetId)!.data)) as Record<string, unknown>;
+    const reference = mediaReferenceSchema.parse(asset.reference);assert.equal(reference.pathForm,'relative');assert.match(reference.path,/^生成\//u);
+    assert.deepEqual(readFileSync(path.join(f.root, reference.path)), await png());
     await f.restart(); assert.equal((await f.get(ack.id)).versionId, result.versionId); assert.equal(f.calls, 1);
     assert.equal(count(f.store.db, 'image_versions'), 1);
   });
@@ -226,7 +229,7 @@ test('cancellation while another task owns the worker removes only the undispatc
 for (const variant of ['staged-symlink', 'directory-symlink', 'final-conflict', 'receipt-identity', 'receipt-path', 'oversized-receipt'])
   test(`local recovery rejects ${variant}, retains evidence and does not delete foreign bytes`, async t => {
     const f = await fixture(t);
-    f.setFault(label => {if (label === 'after_result_receipt') throw Error('synthetic result pause');});
+    f.setFault(label => {if (label === (variant === 'final-conflict' ? 'after_media_publication' : 'after_result_receipt')) throw Error('synthetic result pause');});
     const ack = await f.call('image.generate', f.input()), local = await state(f, ack.id, 'local_result_error'); f.setFault(() => {});
     const row = f.row(ack.id), receipt = JSON.parse((row)!.stagedReceipt as string), directory = path.join(f.root,'.mioon-store','tmp','image-staging');
     const external = mkdtempSync(path.join(tmpdir(), 'mioon-image-foreign-')); t.after(() => rmSync(external, {recursive: true, force: true}));
@@ -234,7 +237,8 @@ for (const variant of ['staged-symlink', 'directory-symlink', 'final-conflict', 
     writeFileSync(foreign, foreignBytes, {mode: 0o600});
     if (variant === 'staged-symlink') {unlinkSync(path.join(directory, `${ack.id}.png`)); symlinkSync(foreign, path.join(directory, `${ack.id}.png`));}
     if (variant === 'directory-symlink') {renameSync(directory, path.join(f.root, 'original-image-staging')); symlinkSync(external, directory);}
-    if (variant === 'final-conflict') writeFileSync(path.join(f.root, 'media', `${receipt.assetId}.png`), foreignBytes, {mode: 0o600});
+    let finalFile: string | undefined;
+    if (variant === 'final-conflict') {const names=readdirSync(path.join(f.root,'生成'));assert.equal(names.length,1);finalFile=path.join(f.root,'生成',names[0]!);renameSync(finalFile,finalFile+'.original');writeFileSync(finalFile,foreignBytes,{mode:0o600});}
     if (variant.startsWith('receipt-') || variant === 'oversized-receipt') {
       f.store.db.exec('PRAGMA ignore_check_constraints=ON; DROP TRIGGER immutable_image_task_identity; DROP TRIGGER image_task_state_transitions;');
       const bad = variant === 'receipt-identity' ? {...receipt, projectId: f.other.id} : variant === 'receipt-path' ? {...receipt, assetId: '../foreign'} : {...receipt, private: 'PRIVATE_SENTINEL'.repeat(400)};
@@ -250,7 +254,7 @@ for (const variant of ['staged-symlink', 'directory-symlink', 'final-conflict', 
     assert.equal(count(f.store.db, 'assets'), 0); assert.equal(count(f.store.db, 'image_versions'), 0);
     if (variant === 'staged-symlink') assert.equal(lstatSync(path.join(directory, `${ack.id}.png`)).isSymbolicLink(), true);
     if (variant === 'directory-symlink') assert.equal(lstatSync(directory).isSymbolicLink(), true);
-    if (variant === 'final-conflict') assert.deepEqual(readFileSync(path.join(f.root, 'media', `${receipt.assetId}.png`)), foreignBytes);
+    if (variant === 'final-conflict') assert.deepEqual(readFileSync(finalFile!), foreignBytes);
   });
 
 function childEnvironment() {

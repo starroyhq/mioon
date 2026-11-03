@@ -31,6 +31,9 @@ import {workspaceRestoreError, RESTORE_DENIED_OPERATIONS} from '../packages/busi
 import type { BinaryLike } from 'crypto';
 import type { PathLike } from 'fs';
 import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {isProjectStore} from '../packages/business/src/project-file/store.ts';
+import {publishOutputFixture,markProjectOutputRegistered} from './helpers/project-output-fixture.ts';
+import {exportOutputArtifactIdentity} from '../packages/contracts/src/output-artifact.ts';
 
 const sha = (bytes: NonSharedBuffer|BinaryLike) => createHash('sha256').update(bytes).digest('hex');
 const byName = (a: {name: string}, b: {name: string}) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
@@ -71,13 +74,14 @@ async function fixture(t: test.TestContext, {named = false, range = false, durat
   const intent = {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'export',
     ...(named ? {deliveryName: '已导出文件'} : {}), ...(range ? {exportRange} : {})};
   const queued = await services.call('timeline.render', intent), assetId = randomUUID();
-  const relativePath = `media/export-${queued.id}-${randomUUID()}.mp4`, bytes = Buffer.alloc(96 * 1024, 7);
+  const bytes = Buffer.alloc(96 * 1024, 7);
   mp4HeaderFixture('synthetic sampled output').copy(bytes);
-  await writeFile(path.join(root, relativePath), bytes, {mode: 0o600});
-  const asset = {id: assetId, projectId: project.id, name: 'Historical output', mimeType: 'video/mp4', provenance: 'export', producer:{kind:'export',id:queued.id}, relativePath,
-    url: `/media/${assetId}`, sha256: sha(bytes), sizeBytes: bytes.length, createdAt: new Date().toISOString()};
-  store.put('assets', asset);Object.assign(asset,store.get('assets',assetId));
-  const record = {...(store.get('exports', queued.id) as import('./helpers/strict-timeline-core-types.ts').FixtureExport), status: 'succeeded', assetId, url: asset.url, updatedAt: new Date().toISOString()}; store.put('exports', record);
+  assert.ok(isProjectStore(store));const accepted=store.get('exports',queued.id) as import('./helpers/strict-timeline-core-types.ts').FixtureExport;
+  const published=await publishOutputFixture(store,{assetId,owner:{kind:'export',id:queued.id,requestId:accepted.requestId,inputHash:sha(exportOutputArtifactIdentity(accepted))},targetKind:'exports',bytes,mimeType:'video/mp4'});
+  const output = {id: assetId, projectId: project.id, name: 'Historical output', mimeType: 'video/mp4', provenance: 'export', producer:{kind:'export',id:queued.id},...published,
+    url: `/media/${assetId}`, createdAt: new Date().toISOString()};
+  const record = {...accepted, status: 'succeeded', assetId, url: output.url, updatedAt: new Date().toISOString()};store.tx(()=>{store.put('assets',output);store.put('exports',record);});await markProjectOutputRegistered(store,published.publication);
+  const asset={...output,relativePath:published.reference.path};
   // The operation is historical: no current timeline/source is required.
   store.db.prepare('DELETE FROM timelines WHERE id=?').run(timeline.id); store.db.prepare('DELETE FROM assets WHERE id=?').run(sourceId);
   const runtime:ExportSamplePeakRuntime = {assertOrdinaryWorkspace: () => {if (getWorkspaceRestoreContext(store)) throw workspaceRestoreError();}, ownsLock: () => ownsStoreLock(store),
@@ -202,7 +206,7 @@ test('bad bytes, symlinks and recorded input cap never become a decoded success'
   await unlink(file); await symlink(path.join(f.root, 'foreign-secret.mp4'), file);
   assert.equal((await f.call()).reason!.code, 'ARTIFACT_CHANGED');
   const stored:unknown=f.store.get('assets',f.asset.id);assert.ok(stored&&typeof stored==='object'&&'reference' in stored);
-  replace(f, 'assets', {...f.asset, reference:{...mediaReferenceSchema.parse(stored.reference),sizeBytes:EXPORT_SAMPLE_PEAK_LIMITS.inputBytes+1},sizeBytes: EXPORT_SAMPLE_PEAK_LIMITS.inputBytes + 1});
+  replace(f, 'assets', {...f.asset, reference:{...mediaReferenceSchema.parse(stored.reference),sizeBytes:EXPORT_SAMPLE_PEAK_LIMITS.inputBytes+1},publication:{...f.asset.publication,sizeBytes:EXPORT_SAMPLE_PEAK_LIMITS.inputBytes+1},sizeBytes: EXPORT_SAMPLE_PEAK_LIMITS.inputBytes + 1});
   assert.equal((await f.call()).reason!.code, 'INPUT_TOO_LARGE');
 });
 

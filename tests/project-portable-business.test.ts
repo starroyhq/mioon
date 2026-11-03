@@ -10,15 +10,18 @@ import {testStoreApplicationDirectory, testStoreForConnection} from '../packages
 import {createServices} from '../packages/business/src/services.ts';
 import {createImageHistoryReaders} from '../packages/business/src/images/history.ts';
 import {createSceneHistoryReaders} from '../packages/business/src/scene-history.ts';
-import {createSceneShotsStorage} from '../packages/business/src/scene-shots-storage.ts';
+import {createSceneShotsStorage,type SceneShotsStorageTask} from '../packages/business/src/scene-shots-storage.ts';
 import {resolveProjectMediaFile, projectMediaDirectory} from '../packages/business/src/project-media-storage.ts';
 import {validateManagedSource} from '../packages/business/src/managed-media.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
 import {sceneDetectionOptionsSchema} from '../packages/contracts/src/scene-tasks.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {collectProject, createProjectFromDocument} from '../packages/business/src/project-package/document.ts';
-import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
+import {mp4HeaderFixture,mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
+import type {SceneShotsReceipt} from '../packages/contracts/src/scene-tasks.ts';
+import {FRAME_PROFILE_ID,FRAME_SELECTION_RULE} from '../packages/contracts/src/frame-extraction.ts';
+import {markProjectOutputRegistered} from '../packages/business/src/project-output-publication.ts';
 
 function scratch(t: TestContext): string {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-portable-business-'));
@@ -120,16 +123,21 @@ test('0755 project media writes retain private app roots, link rejection and hel
   t.after(async () => {await services.drain(); store.close();});
   chmodSync(store.projectDir, 0o755);
   store.put('projects',{id:store.projectId,name:'Ordinary project output'});
-  const bytes=png(),storage = createSceneShotsStorage(store), id = randomUUID(), relative = storage.publish(id, bytes);
-  store.put('assets',{id,projectId:store.projectId,name:'Published.png',mimeType:'image/png',relativePath:relative,sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,width:16,height:16,provenance:'generated'});
-  assert.deepEqual(readFileSync(resolveProjectMediaFile(store, relative).file), bytes);
+  const bytes=png({width:16,height:16,rgba:false,tagged:false}),storage=createSceneShotsStorage(store),id=randomUUID(),taskId=randomUUID(),sourceAssetId=randomUUID(),sourceHash='a'.repeat(64);
+  const task:SceneShotsStorageTask={id:taskId,projectId:store.projectId,requestId:taskId,inputHash:'b'.repeat(64),snapshot:{schemaVersion:1,projectId:store.projectId,taskId,kind:'shots',source:{assetId:sourceAssetId,sha256:sourceHash,mimeType:'video/mp4',sizeBytes:100,relativePath:`media/${sourceAssetId}.mp4`,duration:1,width:16,height:16},resultId:randomUUID(),frameCount:30,frame:{profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE,fps:30},aspectRatio:'1:1',titlePrefix:'Local',origin:{x:0,y:0},segments:[[1,0,30]]}};
+  const receipt:SceneShotsReceipt={schemaVersion:1,projectId:store.projectId,taskId,inputHash:task.inputHash,sourceAssetId,sourceHash,profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE,fps:30,probe:{streamIndex:0,timeBaseNumerator:1,timeBaseDenominator:15360,width:16,height:16,rotation:0,sarNumerator:1,sarDenominator:1},keyframes:[{segment:1,sourceFrame:15,assetId:id,sha256:createHash('sha256').update(bytes).digest('hex'),width:16,height:16,byteLength:bytes.length}]};
+  storage.stage(taskId,0,bytes);storage.complete(task,receipt,()=>{});const file=await storage.publish(task,receipt,0,()=>{});assert.ok('publication' in file);
+  const relative=file.relativePath,final=path.join(store.projectDir,relative);assert.match(relative,/^生成\/[^/]+\.png$/);
+  store.put('assets',{id,projectId:store.projectId,name:'Published.png',mimeType:'image/png',reference:file.reference,referenceRevision:file.referenceRevision,publication:file.publication,sha256:file.sha256,sizeBytes:file.sizeBytes,width:16,height:16,provenance:'generated'});
+  await markProjectOutputRegistered(store,file.publication);assert.equal(existsSync(path.join(store.tempDir,'scene-staging',`${taskId}-0.png`)),false);assert.deepEqual(storage.readReceipt(task),receipt);
+  assert.deepEqual(readFileSync(final),bytes);
   assert.equal(validateManagedSource(store.projectDir, store.get('assets',id)!).info.size, bytes.length);
   assert.equal(statSync(store.projectDir).mode & 0o777, 0o755);
   assert.equal(statSync(projectMediaDirectory(store)).mode & 0o777, 0o700);
   assert.equal(statSync(testStoreApplicationDirectory(store)!).mode & 0o777, 0o700);
   assert.throws(() => resolveProjectMediaFile({...store}, relative), TypeError);
   assert.throws(() => resolveProjectMediaFile(store, '../app-library.db'), {reason: 'OUTSIDE_ROOT'});
-  const linked = path.join(projectMediaDirectory(store), 'linked.bin'); symlinkSync(resolveProjectMediaFile(store, relative).file, linked);
+  const linked = path.join(projectMediaDirectory(store), 'linked.bin'); symlinkSync(final, linked);
   assert.throws(() => resolveProjectMediaFile(store, 'media/linked.bin'), {reason: 'SYMBOLIC_LINK'});
   const held = path.join(projectMediaDirectory(store), 'held.db'); renameSync(store.projectFile, held);
   assert.throws(() => resolveProjectMediaFile(store, 'media/held.db'), {reason: 'HELD_DATABASE'});
@@ -156,6 +164,6 @@ test('0755 image publication recovers only from its retained private manifest an
   for (let n = 0; n < 200; n++) {current = await services.call('image.task.get', {projectId: store.projectId, taskId: ack.id}); if (object(current) && current.state === 'succeeded') break; await pause(10);}
   assert.ok(object(current)); assert.equal(current.state, 'succeeded'); assert.ok(existsSync(manifest));
   const receipt: unknown = JSON.parse(readFileSync(manifest, 'utf8')); assert.ok(object(receipt));
-  assert.ok(resolveProjectMediaFile(store, `media/${receipt.assetId}.png`).info);
-  await pause(0); assert.equal(services.isBusy(), false);
+  const asset=store.get('assets',String(receipt.assetId));assert.ok(object(asset)&&object(asset.reference));assert.match(String(asset.reference.path),/^生成\/[^/]+\.png$/);assert.ok(existsSync(mediaFixturePath(store.projectDir,asset)));
+  for(let n=0;n<100&&services.isBusy();n++)await pause(5);assert.equal(services.isBusy(),false);assert.equal(existsSync(path.join(store.tempDir,'image-staging',`${ack.id}.png`)),false);
 });

@@ -9,6 +9,7 @@ import type {DatabaseSync, SQLInputValue} from 'node:sqlite';
 import { SUBJECT_REFERENCE_PROFILE_VERSION, getSubjectGenerationSnapshotIssue } from '@mioon/contracts';
 import { providerError } from './live-common.ts';
 import type { ProviderContext, ProviderSnapshotView, ProviderReferenceAsset } from './live-common.ts';
+import {resolveJobOutputDestination} from '../output-artifact-storage.ts';
 
 const ALIASES: Readonly<Record<string, string>> = { rejected_before_accept: 'reject', terminal_failure: 'failure', poll_timeout_then_recover: 'timeout' };
 const SCENARIOS = new Set(['success', 'failure', 'delay', 'timeout', 'unknown', 'reject', 'download_fail_once', 'accepted_then_response_lost', ...Object.keys(ALIASES)]);
@@ -21,6 +22,7 @@ type MockTaskRow = Record<string, unknown> & {provider_job_id: string; request_i
 
 async function managedDestination(root: string, destination: string, signal?: AbortSignal): Promise<string> {
   throwIfMediaAborted(signal);
+  const staged=resolveJobOutputDestination(root,destination);if(staged)return staged;
   const base = await realpath(root);
   throwIfMediaAborted(signal);
   const absolute = path.resolve(destination);

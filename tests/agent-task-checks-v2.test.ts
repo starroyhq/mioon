@@ -3,13 +3,13 @@ import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,realpathSync,rmSync,writeFileSync,symlinkSync,unlinkSync} from 'node:fs';
+import {linkSync,mkdtempSync,realpathSync,renameSync,rmSync,writeFileSync,symlinkSync,unlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 import {setImmediate} from 'node:timers/promises';
 import {openStore} from '../packages/business/src/db.ts';
-import {createServices} from '../packages/business/src/services.ts';
+import {createServices,hash} from '../packages/business/src/services.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {setAgentTaskEffectGate} from '../packages/business/src/agent/task-effects-v2.ts';
@@ -19,6 +19,12 @@ import type {AgentTaskJson,AgentTaskCheck} from '../packages/contracts/src/agent
 import {agentTaskChecksSchema} from '../packages/contracts/src/agent-task-checks-v2.ts';
 import {isTimelineRenderRecord} from '../packages/contracts/src/index.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
+import {publishOutputFixture,markProjectOutputRegistered} from './helpers/project-output-fixture.ts';
+import {exportOutputArtifactIdentity} from '../packages/contracts/src/output-artifact.ts';
+import {referenceForPublishedMedia} from '../packages/business/src/project-media-storage.ts';
+import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';
+import {computeFullSha256,referenceForFile} from '../packages/business/src/media-reference/index.ts';
+import {isProjectExportObservation} from '../packages/business/src/project-export-observation.ts';
 
 function object(value:unknown):Record<string,unknown>{assert.ok(value!==null&&typeof value==='object'&&!Array.isArray(value));return value as Record<string,unknown>;}
 const sha=(value:Buffer)=>createHash('sha256').update(value).digest('hex');
@@ -48,6 +54,15 @@ async function fixture(t:TestContext,{imageAutoRun=false}:{imageAutoRun?:boolean
  return {root,store,services,journal,tools,projectId,runId,source,step,tool,origin,snapshotNow,read};
 }
 type Fixture=Awaited<ReturnType<typeof fixture>>;
+async function publishExport(f:Fixture,saved:Record<string,unknown>,exportId:string,bytes:Buffer,name='Output'){
+ const assetId=randomUUID(),current=object(f.store.get('exports',exportId));
+ const published=await publishOutputFixture(f.store,{assetId,owner:{kind:'export',id:exportId,requestId:String(current.requestId),
+  inputHash:createHash('sha256').update(exportOutputArtifactIdentity(current)).digest('hex')},targetKind:'exports',bytes,mimeType:'video/mp4'});
+ const output={id:assetId,projectId:f.projectId,name,mimeType:'video/mp4',...published,width:saved.width,height:saved.height,duration:1,
+  provenance:'export',producer:{kind:'export',id:exportId},createdAt:new Date().toISOString(),url:`/media/${assetId}`};
+ f.store.tx(()=>{f.store.put('assets',output);f.store.put('exports',{...current,status:'succeeded',assetId,url:`/media/${assetId}`,updatedAt:new Date().toISOString()});});
+ await markProjectOutputRegistered(f.store,published.publication);return output;
+}
 async function timeline(f:Fixture){
  const source=f.source('Still.png',png({width:64,height:64}),'image/png');
  let saved=object(await f.services.call('timeline.get',{projectId:f.projectId}));const tracks=saved.tracks;assert.ok(Array.isArray(tracks));
@@ -75,9 +90,7 @@ test('unaccepted failures, approval waits and unknown outcomes have typed step c
 test('render checks bind accepted parameters and output geometry to the original request',async t=>{
  const f=await fixture(t),setup=await timeline(f),render=await f.tool('mioon_timeline_render',{expectedRevision:Number(setup.saved.revision),purpose:'export'}),result=object(render.result),exportId=String(result.id);
  let checks=await f.read(async()=>ready(f,setup.saved));assert.equal(item(checks,'export_status',exportId).status,'pending');assert.equal(item(checks,'export_parameters',exportId).status,'pending');
- const bytes=mp4HeaderFixture('SYNTHETIC_EXPORT_BYTES'),assetId=randomUUID(),relativePath=`media/export-${exportId}-${randomUUID()}.mp4`;writeFileSync(join(f.root,relativePath),bytes,{mode:0o600});
- f.store.put('assets',{id:assetId,projectId:f.projectId,name:'/PRIVATE/export.mp4',mimeType:'video/mp4',relativePath,sizeBytes:bytes.length,sha256:sha(bytes),width:setup.saved.width,height:setup.saved.height,duration:1,provenance:'export',producer:{kind:'export',id:exportId},createdAt:new Date().toISOString(),url:`/media/${assetId}`});
- const current=object(f.store.get('exports',exportId));f.store.put('exports',{...current,status:'succeeded',assetId,url:`/media/${assetId}`,updatedAt:new Date().toISOString()});
+ const bytes=mp4HeaderFixture('SYNTHETIC_EXPORT_BYTES'),published=await publishExport(f,setup.saved,exportId,bytes,'/PRIVATE/export.mp4'),assetId=published.id;
  checks=await f.read(async()=>ready(f,setup.saved));assert.equal(item(checks,'export_status',exportId).status,'passed');assert.equal(item(checks,'export_artifact',exportId).status,'passed');assert.equal(item(checks,'export_parameters',exportId).status,'passed');
  const output=object(f.store.get('assets',assetId));f.store.put('assets',{...output,width:2});checks=await f.read();assert.equal(item(checks,'export_parameters',exportId).reason?.code,'PARAMETERS_MISMATCH');assert.equal(item(checks,'export_parameters',exportId).expected?.width,setup.saved.width);assert.equal(item(checks,'export_parameters',exportId).current?.width,2);
  f.store.put('assets',output);const modified=f.snapshotNow();const savedStep=modified.steps.find(value=>value.id===render.id)!;assert.ok(savedStep.toolCall);savedStep.toolCall.arguments={expectedRevision:Number(setup.saved.revision)+1,purpose:'export'};
@@ -87,24 +100,79 @@ test('render checks bind accepted parameters and output geometry to the original
 });
 
 test('export existence rejects missing, swapped and symlinked managed files without changing the saved task',async t=>{
- const f=await fixture(t),setup=await timeline(f),render=await f.tool('mioon_timeline_render',{expectedRevision:Number(setup.saved.revision),purpose:'preview'}),exportId=String(object(render.result).id),assetId=randomUUID(),bytes=mp4HeaderFixture('SYNTHETIC_OUTPUT'),relativePath=`media/export-${exportId}-${randomUUID()}.mp4`;
- const output={id:assetId,projectId:f.projectId,name:'Output',mimeType:'video/mp4',relativePath,sizeBytes:bytes.length,sha256:sha(bytes),width:setup.saved.width,height:setup.saved.height,duration:1,provenance:'export',producer:{kind:'export',id:exportId},createdAt:new Date().toISOString()};
- writeFileSync(join(f.root,relativePath),bytes,{mode:0o600});f.store.put('assets',output);unlinkSync(join(f.root,relativePath));
- f.store.put('exports',{...object(f.store.get('exports',exportId)),status:'succeeded',assetId,url:`/media/${assetId}`,updatedAt:new Date().toISOString()});
- assert.equal(item(await f.read(),'export_artifact',exportId).status,'failed');writeFileSync(join(f.root,relativePath),bytes,{mode:0o600});f.store.put('assets',output);assert.equal(item(await f.read(),'export_artifact',exportId).status,'passed');
+ const f=await fixture(t),setup=await timeline(f),render=await f.tool('mioon_timeline_render',{expectedRevision:Number(setup.saved.revision),purpose:'preview'}),exportId=String(object(render.result).id),bytes=mp4HeaderFixture('SYNTHETIC_OUTPUT');
+ const output=await publishExport(f,setup.saved,exportId,bytes),assetId=output.id,relativePath=output.reference.path;
+ unlinkSync(join(f.root,relativePath));
+ assert.equal(item(await f.read(),'export_artifact',exportId).status,'failed');writeFileSync(join(f.root,relativePath),bytes,{mode:0o600});
+ // Explicit same-byte restoration refreshes the real reference, retaining the
+ // original immutable publication proof and frozen export identity.
+ f.store.put('assets',{...output,...await referenceForPublishedMedia(f.store,join(f.root,relativePath),{sha256:output.sha256})});assert.equal(item(await f.read(),'export_artifact',exportId).status,'passed');
  const outside=join(f.root,'outside.mp4');writeFileSync(outside,bytes,{mode:0o600});unlinkSync(join(f.root,relativePath));symlinkSync(outside,join(f.root,relativePath));const before=JSON.stringify(f.store.get('exports',exportId));assert.equal(item(await f.read(),'export_artifact',exportId).status,'failed');assert.equal(JSON.stringify(f.store.get('exports',exportId)),before);
  f.store.put('assets',{...output,relativePath:`media/export-${randomUUID()}-${randomUUID()}.mp4`});assert.equal(item(await f.read(),'export_artifact',exportId).status,'failed');
 });
 
+async function s2Export(t:TestContext){
+ const f=await fixture(t),setup=await timeline(f),render=await f.tool('mioon_timeline_render',{expectedRevision:Number(setup.saved.revision),purpose:'export'});
+ const exportId=String(object(render.result).id),bytes=mp4HeaderFixture('S2_H3_PUBLICATION_OBSERVATION'),output=await publishExport(f,setup.saved,exportId,bytes);
+ return{...f,saved:setup.saved,exportId,bytes,output,file:mediaFixturePath(f.root,output)};
+}
+test('H3 observes a real S2 published export without a legacy path alias or writes',async t=>{
+ const f=await s2Export(t),view=createOwnedMediaGraphReader(f.store.db,f.projectId).asset(f.output.id);
+ assert.match(f.output.reference.path,/^导出\//u);assert.equal('relativePath' in view,false);
+ const before=f.store.db.prepare('SELECT total_changes() AS n').get()!.n,checks=await f.read();
+ for(const type of ['export_status','export_artifact','export_parameters'] as const)assert.equal(item(checks,type,f.exportId).status,'passed');
+ assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n,before);
+});
+for(const variant of ['cancelled','owner','frozen-source','full-hash','held','replaced-path','same-bytes-other-export','outside-relink','missing-proof'] as const)
+test(`S2 H3 export rejects ${variant} without repair or additional writes`,async t=>{
+ const f=await s2Export(t);let cleanup=()=>{};
+ if(variant==='cancelled')f.store.put('exports',{...object(f.store.get('exports',f.exportId)),status:'failed',error:{code:'EXPORT_CANCELLED',message:'cancelled',retryable:false},updatedAt:new Date().toISOString()});
+ if(variant==='owner')f.store.put('assets',{...f.output,publication:{...f.output.publication,owner:{...f.output.publication.owner,id:randomUUID()}}});
+ if(variant==='frozen-source'){
+  f.store.db.exec(`CREATE TEMP VIEW exports AS SELECT id,projectId,json_set(data,'$.snapshot.assets[0].sha256','${'e'.repeat(64)}') AS data FROM main.exports`);
+  cleanup=()=>{f.store.db.exec('DROP VIEW temp.exports');};
+ }
+ if(variant==='full-hash')f.store.put('assets',{...f.output,publication:{...f.output.publication,sha256:'f'.repeat(64)}});
+ if(variant==='held'){
+  const other=openStore(join(f.root,'held-project'));renameSync(f.file,f.file+'.original');linkSync(other.projectFile,f.file);
+  cleanup=()=>{unlinkSync(f.file);other.close();};
+ }
+ if(variant==='replaced-path'){
+  const preserved=join(f.root,'preserved-output.mp4');renameSync(f.file,preserved);symlinkSync(preserved,f.file);
+ }
+ if(variant==='same-bytes-other-export'){
+  const second=await f.tool('mioon_timeline_render',{expectedRevision:Number(f.saved.revision),purpose:'export'}),secondId=String(object(second.result).id);
+  const output=await publishExport(f,f.saved,secondId,f.bytes);assert.equal(output.sha256,f.output.sha256);
+  f.store.put('exports',{...object(f.store.get('exports',f.exportId)),assetId:output.id,url:`/media/${output.id}`});
+ }
+ if(variant==='outside-relink'){
+  const outside=mkdtempSync(join(realpathSync(tmpdir()),'mioon-h3-relink-'));t.after(()=>rmSync(outside,{recursive:true,force:true}));
+  const file=join(outside,'same.mp4');writeFileSync(file,f.bytes);
+  const access={projectDir:f.root,projectFile:f.store.projectFile,mayReadOutside:()=>true,isHeld:()=>false};
+  const admitted=await referenceForFile(access,file),full=await computeFullSha256(access,admitted.reference);
+  const asset={...f.output,reference:full.reference,referenceRevision:2};assert.equal(full.sha256,f.output.sha256);
+  assert.equal(isProjectExportObservation(f.store.db,f.projectId,f.exportId,asset),false);f.store.put('assets',asset);
+ }
+ if(variant==='missing-proof'){const{publication:_publication,...asset}=f.output;f.store.put('assets',asset);}
+ try{
+  const before=f.store.db.prepare('SELECT total_changes() AS n').get()!.n,checks=await f.read(),check=item(checks,'export_artifact',f.exportId);
+  assert.notEqual(check.status,'passed');assert.equal(check.current?.available,false);
+  assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n,before);
+ }finally{cleanup();}
+});
+
 test('video generation observes current local progress, publication and cost without provider calls',async t=>{
  const f=await fixture(t),shot=object(await f.services.call('shot.create',{projectId:f.projectId,title:'Shot\nName',prompt:'PRIVATE_PROMPT'})),jobId=randomUUID(),versionId=randomUUID(),assetId=randomUUID();
- const step=f.step('mioon_generation_submit',{shotId:String(shot.id),expectedRevision:Number(shot.revision),providerId:'mock'},{id:jobId});f.origin('job',jobId,step.id,'generation.submit');
+ const acceptedInput={shotId:String(shot.id),expectedRevision:Number(shot.revision),providerId:'mock'};
+ const step=f.step('mioon_generation_submit',acceptedInput,{id:jobId});f.origin('job',jobId,step.id,'generation.submit');
  const snapshot={...shot,projectId:f.projectId,shotId:shot.id,providerId:'mock',model:'mock-v1',referenceAssets:[]},createdAt=new Date().toISOString();
- const job={id:jobId,projectId:f.projectId,shotId:shot.id,requestId:step.id,status:'running',phase:'rendering',progress:62,providerId:'mock',model:'mock-v1',snapshot,revision:2,versionId:null,createdAt,updatedAt:createdAt};f.store.put('jobs',job);
+ const job={id:jobId,projectId:f.projectId,shotId:shot.id,requestId:step.id,requestHash:hash({...acceptedInput,requestId:step.id}),status:'running',phase:'rendering',progress:62,providerId:'mock',model:'mock-v1',snapshot,revision:2,versionId:null,createdAt,updatedAt:createdAt};f.store.put('jobs',job);
  let checks=await f.read();assert.equal(item(checks,'generation_status',jobId).status,'pending');assert.equal(item(checks,'generation_status',jobId).progress,62);assert.equal(item(checks,'generation_status',jobId).target.name,'Shot Name');assert.equal(item(checks,'generation_publication',jobId).status,'pending');
- const bytes=mp4HeaderFixture('SYNTHETIC_GENERATED_VIDEO'),relativePath=`media/${assetId}.mp4`;writeFileSync(join(f.root,relativePath),bytes,{mode:0o600});
- f.store.put('assets',{id:assetId,projectId:f.projectId,name:'Generated video',mimeType:'video/mp4',sha256:sha(bytes),sizeBytes:bytes.length,relativePath,width:64,height:64,duration:2,provenance:'generated',producer:{kind:'generation',id:jobId},createdAt});
+ const bytes=mp4HeaderFixture('SYNTHETIC_GENERATED_VIDEO'),published=await publishOutputFixture(f.store,{assetId,
+  owner:{kind:'generation',id:jobId,requestId:job.requestId,inputHash:job.requestHash},bytes,mimeType:'video/mp4'});
+ f.store.put('assets',{id:assetId,projectId:f.projectId,name:'Generated video',mimeType:'video/mp4',...published,width:64,height:64,duration:2,provenance:'generated',producer:{kind:'generation',id:jobId},createdAt});
  f.store.put('versions',{id:versionId,projectId:f.projectId,shotId:shot.id,jobId,number:1,providerId:'mock',model:'mock-v1',isMock:true,snapshot,assetId,sha256:sha(bytes),url:`/media/${assetId}`,createdAt});f.store.put('jobs',{...job,status:'succeeded',progress:100,versionId});
+ await markProjectOutputRegistered(f.store,published.publication);
  checks=await f.read();assert.equal(item(checks,'generation_status',jobId).status,'passed');assert.equal(item(checks,'generation_publication',jobId).status,'passed');assert.equal(item(checks,'generation_cost',jobId).status,'not_applicable');
  f.store.put('jobs',{...job,providerId:'runway',status:'submission_unknown'});f.journal.updateStep(f.runId,step.id,{cost:'unknown'});checks=await f.read();assert.equal(item(checks,'generation_status',jobId).reason?.code,'RESULT_UNKNOWN');assert.equal(item(checks,'generation_cost',jobId).reason?.code,'COST_UNKNOWN');
  f.store.put('jobs',{...job,providerId:'runway'});f.journal.updateStep(f.runId,step.id,{cost:'submitted'});assert.equal(item(await f.read(),'generation_cost',jobId).reason?.code,'COST_SUBMITTED');

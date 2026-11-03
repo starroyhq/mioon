@@ -14,6 +14,8 @@ import {createHash, randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {createClient, operationDefinition} from '../packages/client/src/index.ts';
 import {COMFY_IMAGE_OPTIONS, DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../packages/contracts/src/comfy-images.ts';
 import {COMFY_NODE_CLASSES} from '../packages/business/src/comfy/profile.ts';
@@ -58,10 +60,10 @@ async function withMcp(f: {root: string; env: NodeJS.ProcessEnv},run: (call: (op
 }
 async function fixture(t: TestContext,options: {dropAck?: boolean; hold?: boolean; onCall?: unknown} = {}){
   const root=await mkdtemp(path.join(tmpdir(),'mioon-comfy-wire-')),comfy=await startComfyFixture({hold:true,...options} as never);
-  let server!: Awaited<ReturnType<typeof startServer>>;
+  let server!: Awaited<ReturnType<typeof startServer>>,inspect:InspectProject|undefined;
   t.after(async()=>{await server?.close();await comfy.close();await rm(root,{recursive:true,force:true});});
   // Production transport: no fake connector, httpRequest, settings or service.
-  server=await startServer({dataDir:root,port:0,token});
+  server=await startServer({dataDir:root,port:0,token,inspectProject:received=>{inspect=received;}});
   // Explicit workspace opt-in; all generation still targets the owned loopback fixture.
   await createClient({env:{MIOON_BASE_URL:server.url,MIOON_TOKEN:token}}).rpc('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
   const f={root,comfy,get server(){return server;},get env(){return{MIOON_BASE_URL:server.url,MIOON_TOKEN:token};},get client(){return createClient({env:f.env});},
@@ -82,8 +84,9 @@ async function fixture(t: TestContext,options: {dropAck?: boolean; hold?: boolea
     async asset(task: {projectId: string; groupId: string}){const versions=await f.rpc('image.version.list',{projectId:task.projectId,groupId:task.groupId});assert.equal(versions.items.length,1);const version=versions.items[0];
       const response=await fetch(server.url+projectMediaPath(task.projectId,version.assetId),{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(10000)});assert.equal(response.status,200);const bytes=Buffer.from(await response.arrayBuffer());
       assert.deepEqual(bytes,comfy.png);assert.equal(version.sha256,sha(bytes));assert.equal(version.width,512);assert.equal(version.height,512);assert.equal(version.providerId,'comfy-local');assert.equal(version.isMock,false);
-      assert.deepEqual(await readFile(path.join(projectDirFor(root,task.projectId),'media',`${version.assetId}.png`)),bytes);return version;},
-    async restart(){await server.close();server=await startServer({dataDir:root,port:0,token});},
+      assert.ok(inspect);const asset=inspect(task.projectId,db=>{const saved=db.prepare('SELECT data FROM assets WHERE id=? AND projectId=?').get(version.assetId,task.projectId);assert.ok(saved&&typeof saved.data==='string');return JSON.parse(saved.data) as unknown;});
+      assert.deepEqual(await readFile(mediaFixturePath(projectDirFor(root,task.projectId),asset)),bytes);return version;},
+    async restart(){await server.close();server=await startServer({dataDir:root,port:0,token,inspectProject:received=>{inspect=received;}});},
   };
   return f;
 }

@@ -1,7 +1,6 @@
 import {legacyWorkspaceSceneSnapshotSchema,legacyWorkspaceSceneShotsSnapshotSchema} from '../../contracts/src/scene-tasks.ts';
-import path from 'node:path';
 import {isProjectStore} from './project-file/store.ts';
-import {prepareProjectAssetFullHash, referenceForPublishedMedia, registerProjectMediaStore} from './project-media-storage.ts';
+import {prepareProjectAssetFullHash, registerProjectMediaStore} from './project-media-storage.ts';
 import {mediaLocatorFields, sameMediaLocator, hasAssetReference, validAssetLocator} from './asset-reference-record.ts';
 import {mioTable} from './agent/mio-table-layout.ts';
 import {taskEffectOrigin,bindAgentTaskJobInside,assertAgentTaskJobEffect,withAgentTaskJobOrigin,isAgentTaskEffectBlocked,setAgentTaskJobResumer,setAgentTaskJobStopper,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
@@ -21,8 +20,10 @@ import type {DetectManagedScenesOptions,ManagedSceneDetection} from './scene-det
 import {decodeSceneKeyframes} from './scene-keyframe-decoder.ts';
 import type {DecodeSceneKeyframesOptions,DecodedSceneKeyframes} from './scene-keyframe-decoder.ts';
 import {createSceneShotsStorage} from './scene-shots-storage.ts';
+import type {SceneShotsStorageTask,ScenePublishedResult} from './scene-shots-storage.ts';
+import {markProjectOutputRegistered,assertPublishedProjectOutput} from './project-output-publication.ts';
 import {validatePng} from './images/png.ts';
-import {validateManagedSource,sameManagedFile} from './managed-media.ts';
+import {validateManagedSource,sameManagedFile,verifiedManagedHash} from './managed-media.ts';
 import type {ManagedFileIdentity,ManagedSource} from './managed-media.ts';
 import {ownsStoreLock} from './db.ts';
 import {boundedShutdown,assertMediaTerminated} from './operation-lifecycle.ts';
@@ -57,6 +58,8 @@ const owners=new WeakMap<DatabaseSync,SceneOwnerRecord>(),verifiedRefusals=new W
 const hash=(value: unknown): string=>createHash('sha256').update(canonical(value)).digest('hex');
 const digest=(bytes: Buffer): string=>createHash('sha256').update(bytes).digest('hex');
 const ACTIVE_STATES="('queued','running','cancelling','persisting')";
+const stageTask=(value: SceneShotsView): SceneShotsStorageTask=>({...value.row,snapshot:value.snapshot});
+interface SceneAttempt {readonly id: string; readonly projectId: string; readonly local?: boolean}
 function fail(code: string,status?: number): never {throw failure(code,status);}
 function invalid(): never {return fail('SCENE_RECORD_INVALID');}
 export function safeSceneServiceError(cause: unknown): {code: string; message: string; status: number; details?: Record<string,unknown>} {
@@ -77,8 +80,8 @@ const internalCodes=new Set(['SCENE_RECORD_INVALID','SCENE_REVISION_CONFLICT','S
 const stopCodes=new Set(['MEDIA_CANCELLED','SCENE_INTERRUPTED','SCENE_SERVICE_STOPPED']);
 
 /** Local-only, single-owner scene detection and storyboarding. The immutable
- * acknowledgement is committed before work is queued; startup and replay never
- * enter the queue. One task decodes at a time. A running task can be cancelled:
+ * acknowledgement is committed before work is queued; startup only reconciles
+ * complete local artifacts and replay never starts a decoder. One task decodes at a time. A running task can be cancelled:
  * it becomes cancelling, its decoder is stopped, and it ends cancelled with no
  * result. A storyboard stages one keyframe per segment, publishes them, then
  * creates every image asset and shot in one transaction. */
@@ -86,7 +89,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
  if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
  const old=owners.get(store.db);
  if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.detect!==detect||old.decodeKeyframes!==decodeKeyframes||old.autoRun!==autoRun||old.fault!==fault)fail('SCENE_SERVICE_ACTIVE');return old.service;}
- const {db,root,tx}=store,queue: {id: string; projectId: string}[]=[],pending=new Set<string>(),active=new Set<Promise<unknown>>(),attemptSignals=new Set<AbortSignal>();
+ const {db,root,tx}=store,queue: SceneAttempt[]=[],pending=new Set<string>(),active=new Set<Promise<unknown>>(),attemptSignals=new Set<AbortSignal>();
  const releaseProjectMedia=registerProjectMediaStore(store);
  const attempts=new Map<string,AbortController>(),progress=new Map<string,Record<string,number>>(),resumeRequested=new Set<string>();
  const controller=new AbortController(),signal: AbortSignal=ownerSignal?AbortSignal.any([ownerSignal,controller.signal]):controller.signal;
@@ -261,12 +264,13 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
   }
   return result.value;
  }
- /** Staged keyframes, and any published file no asset row claimed, never outlive their task. */
+ /** A complete batch survives interruption for local reconciliation. Published
+  * project files always remain, including cancelled and unclaimed outputs. */
  function discardShots(view: SceneTaskView): void {
   if(view.kind!=='shots')return;
   try{
+   if(!view.outcome&&!['cancelled','cancelled_before_start'].includes(view.row.state)&&(view.receipt||storage.readReceipt(stageTask(view))))return;
    storage.discard(view.row.id,view.snapshot.segments.length);
-   if(view.receipt&&!view.outcome)storage.withdraw(view.receipt.keyframes.map(keyframe=>keyframe.assetId),assetId=>Boolean(db.prepare('SELECT 1 FROM assets WHERE id=? LIMIT 1').get(assetId)));
   }catch{diagnose();}
  }
  /** A cancelling task with no live attempt in this process has no decoder to wait for. */
@@ -318,10 +322,13 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
  function diagnose(): void {if(!reported){reported=true;console.error('Skipped invalid local scene record.');}}
  /** Moves a task that stopped early to its end state; failures keep their code. */
  function settle(view: SceneTaskView,cause: unknown,fallback: string): SceneTaskView|null {
+  let complete: SceneShotsReceipt|null=null;
+  if(view.kind==='shots'&&view.row.started&&!view.receipt)try{complete=storage.readReceipt(stageTask(view));}catch{/* An incomplete batch remains a decoder failure. */}
   return tx(()=>{
    const checked=task(view.row.projectId,view.row.id);
    if(checked.row.state==='cancelling')return change(checked,{state:'cancelled'},{allowStopped:true});
    if(!['queued','running','persisting'].includes(checked.row.state))return checked;
+   if(complete&&checked.kind==='shots'&&checked.row.state==='running')return change(checked,{state:'interrupted',stagedReceipt:canonical(complete),errorCode:'SCENE_INTERRUPTED'},{allowStopped:true});
    const code=property(cause,'code'),mapped=typeof code==='string'?decoderCodes[code]??code:'';
    if(stopped||signal.aborted||property(cause,'terminationUnconfirmed')||stopCodes.has(mapped))return change(checked,{state:'interrupted',errorCode:'SCENE_INTERRUPTED'},{allowStopped:true});
    const errorCode=Object.hasOwn(messages,mapped)&&!internalCodes.has(mapped)?mapped:fallback;
@@ -383,6 +390,9 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
   const receipt={schemaVersion:1,projectId:entry.projectId,taskId:entry.id,inputHash:queued.row.inputHash,sourceAssetId:queued.input.sourceAssetId,sourceHash:queued.input.sourceHash,
    profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE,fps:SOURCE_RANGE_FPS,probe:decoded.probe,keyframes};
   if(!sceneShotsReceiptSchema.safeParse(receipt).success)fail('SCENE_SHOTS_FAILED');
+  const complete=task(entry.projectId,entry.id);if(complete.kind!=='shots')invalid();
+  const completeCheck=(): void=>{owner();assertAgentTaskJobEffect(db,'scene',entry.id);attemptSignal.throwIfAborted();const value=task(entry.projectId,entry.id);if(value.row.state!=='running'||value.row.revision!==state.original.row.revision)fail('SCENE_REVISION_CONFLICT');sourceFence(value,before.info);};
+  storage.complete(stageTask(complete),receipt as SceneShotsReceipt,completeCheck);fault('after_shots_manifest',{taskId:entry.id});
   const staged=tx(()=>{
    const value=task(entry.projectId,entry.id);
    if(value.row.state==='cancelling')return change(value,{state:'cancelled'},{allowStopped:true});
@@ -392,46 +402,75 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
   });
   state.original=staged;fault('after_shots_receipt',{taskId:entry.id});
   if(staged.row.state!=='persisting'){discardShots(staged);return;}
-  const saved=receipt as SceneShotsReceipt;
-  for(const [index,keyframe] of saved.keyframes.entries()){if(attemptSignal.aborted)fail('SCENE_INTERRUPTED');storage.publish(keyframe.assetId,storage.staged(entry.id,index));}
-  fault('after_media_publication',{taskId:entry.id});
-  const referenceFields=new Map<string,Awaited<ReturnType<typeof referenceForPublishedMedia>>>();
-  if(isProjectStore(store))for(const keyframe of saved.keyframes){const value=await referenceForPublishedMedia(store,path.join(root,'media',`${keyframe.assetId}.png`),{sha256:keyframe.sha256,signal:attemptSignal,beforeEffect:()=>{sourceFence(staged,before.info);}});referenceFields.set(keyframe.assetId,value);}
-  const built=tx(()=>{
-   const value=task(entry.projectId,entry.id);
-   if(value.kind!=='shots'||value.row.state!=='persisting'||value.row.revision!==staged.row.revision)fail('SCENE_REVISION_CONFLICT');
+  await finalizeShots(staged as SceneShotsView,before.info,attemptSignal);
+ }
+
+ /** Recovery consumes only a complete durable batch. It never calls the
+  * decoder, reopens a cancelled task, or submits remote work. Every file effect
+  * and the single assets/shots/outcome transaction retain the same owner,
+  * effect, task revision and frozen-source fences. */
+ async function finalizeShots(original: SceneShotsView,expected?: ManagedFileIdentity,attemptSignal: AbortSignal=signal): Promise<void> {
+  const before=sourceFence(original,expected),saved=storage.readReceipt(stageTask(original));
+  if(!saved||!original.receipt||canonical(saved)!==canonical(original.receipt))fail('SCENE_STORAGE_FAILED');
+  const check=(): void=>{
+   owner();assertAgentTaskJobEffect(db,'scene',original.row.id);attemptSignal.throwIfAborted();
+   const value=task(original.row.projectId,original.row.id);
+   if(value.kind!=='shots'||value.row.state!=='persisting'||value.row.revision!==original.row.revision||value.row.stagedReceipt!==original.row.stagedReceipt)fail('SCENE_REVISION_CONFLICT');
    sourceFence(value,before.info);
-   const timestamp=now(),projectId=entry.projectId,snapshot=value.snapshot;
+   if(saved.keyframes.some(entry=>db.prepare('SELECT 1 FROM assets WHERE id=? LIMIT 1').get(entry.assetId)))fail('SCENE_STORAGE_FAILED');
+  };
+  check();
+  const verified=await verifiedManagedHash(root,before.source,{signal:attemptSignal,expected:before.info,maxBytes:SCENE_LIMITS.sourceBytes,beforeEffect:check});check();
+  if(verified.sha256!==original.input.sourceHash)fail('SCENE_SOURCE_CHANGED');
+  // Verify the whole batch before publishing its first remaining item.
+  for(const [index,keyframe] of saved.keyframes.entries()){
+   const bytes=await storage.artifact(stageTask(original),saved,index,check,{signal:attemptSignal});
+   await validatePng(bytes,{width:keyframe.width,height:keyframe.height,opaque:true,signal:attemptSignal});check();
+  }
+  const published: ScenePublishedResult[]=[];
+  for(const [index] of saved.keyframes.entries()){
+   published.push(await storage.publish(stageTask(original),saved,index,check,{signal:attemptSignal}));check();
+   fault('after_keyframe_publication',{taskId:original.row.id,index});
+  }
+  fault('after_media_publication',{taskId:original.row.id});
+  const plan=sceneShotPlan(original.snapshot);
+  const built=tx(()=>{
+   check();if(isProjectStore(store))for(const file of published)if('publication' in file)assertPublishedProjectOutput(store,file.publication,{signal:attemptSignal,beforeEffect:check});
+   const value=task(original.row.projectId,original.row.id);if(value.kind!=='shots')invalid();
+   const timestamp=now(),projectId=original.row.projectId,snapshot=value.snapshot;
    const order=Number(db.prepare("SELECT COALESCE(MAX(CASE WHEN json_valid(data) AND json_type(data,'$.orderIndex')='integer' THEN json_extract(data,'$.orderIndex') END),-1)+1 AS n FROM shots WHERE projectId=?").get(projectId)!.n);
    const shotIds=plan.map(()=>randomUUID());
    for(const [index,item] of plan.entries()){
-    const keyframe=saved.keyframes[index]!;
+    const keyframe=saved.keyframes[index]!,file=published[index]!;
     const image={id:keyframe.assetId,projectId,name:`${item.title}.png`,mimeType:'image/png',sha256:keyframe.sha256,width:keyframe.width,height:keyframe.height,sizeBytes:keyframe.byteLength,
-     ...(referenceFields.get(keyframe.assetId)??{relativePath:`media/${keyframe.assetId}.png`}),url:`/media/${keyframe.assetId}`,provenance:SCENE_KEYFRAME_PROVENANCE,createdAt:timestamp};
+     ...('publication' in file?{reference:file.reference,referenceRevision:file.referenceRevision,publication:file.publication}:{relativePath:file.relativePath}),url:`/media/${keyframe.assetId}`,provenance:SCENE_KEYFRAME_PROVENANCE,...(isProjectStore(store)?{sceneResult:{requestId:original.row.requestId,input:original.input,segment:original.snapshot.segments[index],receipt:{...saved,keyframes:[keyframe]}}}:{}),createdAt:timestamp};
     db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(image.id,projectId,JSON.stringify(image));
     const shot={id:shotIds[index]!,projectId,title:item.title,prompt:'',referenceAssetIds:[keyframe.assetId],aspectRatio:snapshot.aspectRatio,duration:item.duration,parameters:{},
      position:item.position,orderIndex:order+index,revision:1,selectedVersionId:null,createdAt:timestamp,updatedAt:timestamp};
     db.prepare('INSERT INTO shots(id,projectId,data) VALUES(?,?,?)').run(shot.id,projectId,JSON.stringify(shot));
    }
    touchProject(projectId);
-   const outcome={schemaVersion:1,shotIds,createdAt:timestamp};
-   if(!sceneShotsOutcomeSchema.safeParse(outcome).success)invalid();
+   const outcome={schemaVersion:1,shotIds,createdAt:timestamp};if(!sceneShotsOutcomeSchema.safeParse(outcome).success)invalid();
    const done=change(value,{state:'succeeded',outcome:canonical(outcome),errorCode:null});
-   fault('before_shots_commit',{taskId:entry.id});return done;
+   fault('before_shots_commit',{taskId:original.row.id});return done;
   });
+  if(isProjectStore(store))for(const file of published)if('publication' in file)try{
+   await markProjectOutputRegistered(store,file.publication,{signal:attemptSignal,beforeEffect:()=>{owner();assertAgentTaskJobEffect(db,'scene',built.row.id);const value=task(built.row.projectId,built.row.id);if(value.row.state!=='succeeded'||value.row.revision!==built.row.revision)fail('SCENE_REVISION_CONFLICT');}});
+  }catch{/* The committed result remains valid; retain its private publication intent. */}
   discardShots(built);
  }
  // An Assistant-bound task whose run journal is not ready yet stays queued.
- function execute(entry: {id: string; projectId: string}): Promise<void> {
+ function execute(entry: SceneAttempt): Promise<void> {
   try{return withAgentTaskJobOrigin(db,'scene',entry.id,()=>executeInside(entry));}catch(cause){return Promise.reject(cause);}
  }
- async function executeInside(entry: {id: string; projectId: string}): Promise<void> {
+ async function executeInside(entry: SceneAttempt): Promise<void> {
   let queued: SceneTaskView|undefined,blockedGate=false;
   const attempt=new AbortController();
   const state: {original: SceneTaskView; registered?: AbortSignal; gate: ()=>void}={original:undefined as unknown as SceneTaskView,
    gate:()=>{try{assertAgentTaskJobEffect(db,'scene',entry.id);}catch(error){if(isAgentTaskEffectBlocked(error))blockedGate=true;throw error;}}};
   try{
    owner();queued=task(entry.projectId,entry.id);state.original=queued;
+   if(entry.local){if(queued.kind!=='shots'||queued.row.state!=='persisting')return;state.gate();attempts.set(entry.id,attempt);await finalizeShots(queued,undefined,AbortSignal.any([signal,attempt.signal]));return;}
    if(queued.row.state!=='queued')return;
    state.gate();
    attempts.set(entry.id,attempt);
@@ -455,28 +494,40 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
    if(state.registered){await waitForMediaProcesses({signal:state.registered});attemptSignals.delete(state.registered);}
   }
  }
- function enqueue(id: string,projectId: string): void {
+ function enqueue(id: string,projectId: string,local=false): void {
   if(!autoRun||stopped||signal.aborted||pending.has(id))return;
   if(queue.length>=SCENE_LIMITS.queuedGlobal+SCENE_LIMITS.activeGlobal)fail('SCENE_QUEUE_FULL');
-  pending.add(id);queue.push({id,projectId});queueMicrotask(pump);
+  pending.add(id);if(local)queue.unshift({id,projectId,local});else queue.push({id,projectId});queueMicrotask(pump);
  }
  function pump(): void {
   if(running||stopped||signal.aborted)return;const entry=queue[0];if(!entry)return;
   // A durable active row whose attempt was lost must stay visible for
   // restart reconciliation; it cannot cause unrelated queued tasks to fail.
-  try{owner();if(db.prepare(`SELECT 1 FROM scene_tasks WHERE state IN ('running','cancelling','persisting') LIMIT 1`).get())return;}catch{diagnose();return;}
+  try{owner();if(!entry.local&&db.prepare(`SELECT 1 FROM scene_tasks WHERE state IN ('running','cancelling','persisting') LIMIT 1`).get())return;}catch{diagnose();return;}
   queue.shift();running=true;
   const promise=execute(entry).finally(()=>{active.delete(promise);pending.delete(entry.id);running=false;if(resumeRequested.delete(entry.id))enqueue(entry.id,entry.projectId);pump();});active.add(promise);void promise.catch(diagnose);
  }
  function reconcile(): void {
   if(!ownsStoreLock(store)||!schemaPresent())return;
-  const rows=db.prepare(`SELECT CASE WHEN length(CAST(id AS BLOB))=36 THEN id END AS id,CASE WHEN length(CAST(projectId AS BLOB))=36 THEN projectId END AS projectId FROM scene_tasks WHERE state IN ${ACTIVE_STATES} ORDER BY id LIMIT ?`)
-   .all(SCENE_LIMITS.queuedGlobal+SCENE_LIMITS.activeGlobal+1);
-  if(rows.length>SCENE_LIMITS.queuedGlobal+SCENE_LIMITS.activeGlobal){diagnose();return;}
+  const limit=SCENE_LIMITS.queuedGlobal+SCENE_LIMITS.activeGlobal;
+  const select="SELECT CASE WHEN length(CAST(id AS BLOB))=36 THEN id END AS id,CASE WHEN length(CAST(projectId AS BLOB))=36 THEN projectId END AS projectId FROM scene_tasks";
+  const rows=db.prepare(`${select} WHERE state IN ${ACTIVE_STATES} ORDER BY id LIMIT ?`).all(limit+1);
+  if(rows.length>limit){diagnose();return;}
+  if(rows.length<limit)rows.push(...db.prepare(`${select} WHERE kind='shots' AND started=1 AND state IN ('local_result_error','interrupted') ORDER BY id LIMIT ?`).all(limit-rows.length));
   for(const row of rows)try{
    const target=task(String(row.projectId),String(row.id));
    // An Assistant's accepted storyboard waits for its run to resume or stop.
    if(target.row.state==='queued'&&!target.row.started&&agentTaskJobBinding(db,'scene',target.row.id))continue;
+   // Startup recovery is bounded local artifact reconciliation only. A missing
+   // or invalid complete manifest cannot turn an interrupted task into success.
+   // Cancellation and expired effect/source ownership still win over publication.
+   let complete: SceneShotsReceipt|null=null;
+   if(target.kind==='shots'&&target.row.started&&target.row.state!=='cancelling')try{complete=storage.readReceipt(stageTask(target));}catch{diagnose();}
+   if(complete&&target.kind==='shots'){
+    const ready=target.row.state==='persisting'?target:tx(()=>change(target,{state:'persisting',stagedReceipt:canonical(complete),errorCode:null}));
+    enqueue(ready.row.id,ready.row.projectId,true);continue;
+   }
+   if(!['queued','running','cancelling','persisting'].includes(target.row.state))continue;
    const ended=tx(()=>change(target,target.row.state==='cancelling'?{state:'cancelled'}:{state:'interrupted',errorCode:'SCENE_INTERRUPTED'}));
    discardShots(ended);
   }catch{diagnose();}

@@ -92,6 +92,9 @@ import {createFrameServices} from './frames.ts';
 import {createSceneServices} from './scene-tasks.ts';
 import {createSubjectVariantServices} from './subject-variants.ts';
 import {createPrevisServices} from './previs.ts';
+import {createPrevisPublicationServices} from './previs-publication.ts';
+import {registerProjectOutputAdmission} from './project-output-owner.ts';
+import {isPrevisPublicationOperation,previsPublicationSchemas,previsPublicationEffects} from '../../contracts/src/previs-publication.ts';
 import {isSubjectVersionHidden} from './subject-variant-visibility.ts';
 import {validateImageConsumption} from './image-consumption.ts';
 import {awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
@@ -659,6 +662,14 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     const effect=assetMediaEffects[op];if(effect.databaseWrite||effect.fileWrite||effect.localProcess){assertApplicationMutationAllowed();assertMutationAllowed?.();}
     return isProjectStore(store)&&application?createAssetMediaServices(store,{outsidePaths:application.outsidePaths,signal}).call(op,input):assetMedia.call(op,input);
    }
+   if(isPrevisPublicationOperation(op)){
+    if(!isProjectStore(store))throw new AppError('NOT_FOUND','找不到项目',404);
+    const parsed=previsPublicationSchemas[op].safeParse(input);if(!parsed.success)throw new AppError('VALIDATION_ERROR','预演发布参数无效');
+    const effect=previsPublicationEffects[op];
+    const beforeEffect=():void=>{checkpoint(signal);if(effect.databaseWrite||effect.fileWrite){assertApplicationMutationAllowed();assertMutationAllowed?.();}};
+    beforeEffect();const publication=createPrevisPublicationServices(store,{now,signal,beforeEffect});
+    return publicValue(await publication.handlers[op](parsed.data));
+   }
    if(Object.hasOwn(inspection.handlers,op))return inspection.handlers[op](input as never);
    const schemaResult=isS1PublicOperation(op)?s1PublicOperationSchemas[op].safeParse(input):null;if(schemaResult&&!schemaResult.success)throw new AppError('VALIDATION_ERROR','操作参数无效');const parsed=schemaResult?.success?schemaResult.data:parse(op as OperationName,input);const effect=operationEffect(op);if(!op.startsWith('workspace.backup.')&&op!=='workspace.settings.set'&&(effect.databaseWrite||effect.fileWrite||effect.localProcess)){assertApplicationMutationAllowed();assertMutationAllowed?.();}const result=await domainHandlers[op](parsed as never,{signal});checkpoint(signal);
    return publicValue(result);
@@ -669,6 +680,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // Drain async RPC work before closing SQLite. Rejection is a settled operation;
  // an unbounded filesystem operation is a shutdown failure, never a safe close.
  const removeProjectMedia=registerProjectMediaStore(store,application?{outsidePaths:application.outsidePaths}:{});
+ const removeOutputAdmission=isProjectStore(store)?registerProjectOutputAdmission(store,()=>{checkpoint(ownerSignal);assertApplicationMutationAllowed();assertMutationAllowed?.();}):()=>{};
  const drain=async(): Promise<void>=>{
   removeJobStopper();removeExportStopper();
   // Injected application ports outlive this project runtime. Only the legacy
@@ -681,6 +693,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(shutdownFailure)throw shutdownFailure;
   for(const result of results.slice(0,ownerDrains.length))if(result.status==='rejected')throw result.reason;
   removeProjectMedia();
+  removeOutputAdmission();
  };
  // Backend-only scoped entry, deliberately absent from handlers/RPC discovery.
  // It shares the same parsed input, handler, transaction and response journal.

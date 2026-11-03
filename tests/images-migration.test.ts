@@ -68,8 +68,8 @@ test('schema16 failure rolls back every added object and preserves exact legacy 
  const db=legacyDatabase();try{seed(db);db.exec("CREATE TRIGGER reject_image_migration_marker BEFORE INSERT ON schema_version WHEN NEW.version=16 BEGIN SELECT RAISE(ABORT,'injected16');END");const before=capture(db);assert.throws(()=>migrate(db),/injected16/);assert.deepEqual(capture(db),before);assert.throws(()=>migrateImageSchema(db),/requires a transaction/);}finally{db.close();}
 });
 
-test('new image identities resist updates, delete and INSERT OR REPLACE and dispatch fence never resets',t=>{
- const f=imageFixture(t),{db}=f;f.succeed();
+test('new image identities resist updates, delete and INSERT OR REPLACE and dispatch fence never resets',async t=>{
+ const f=imageFixture(t),{db}=f;await f.succeed();
  withoutForeignKeys(db,()=>{for(const table of ['image_groups','image_tasks','image_versions','image_requests']){
   assert.throws(()=>db.exec(`DELETE FROM ${table}`),/retained/);
   const columns=db.prepare(`PRAGMA table_info(${table})`).all().map(row=>row.name).join(',');assert.throws(()=>db.exec(`INSERT OR REPLACE INTO ${table}(${columns}) SELECT ${columns} FROM ${table}`),/immutable|replaced|number must advance/);
@@ -103,8 +103,8 @@ test('interruption and unknown results keep fences and permit only explicit loca
  d.prepare("UPDATE image_tasks SET state='persisting',revision=6 WHERE id=?").run(g.taskId);
 });
 
-test('one unresolved task occupies its group and published head cannot be erased',t=>{
+test('one unresolved task occupies its group and published head cannot be erased',async t=>{
  const f=imageFixture(t),{db}=f,row=db.prepare('SELECT * FROM image_tasks').get(),id=randomUUID(),requestId=randomUUID();
  assert.throws(()=>insert(db,'image_tasks',{...row,id,requestId,input:JSON.stringify({...f.input,requestId}),snapshot:JSON.stringify({...f.snapshot,taskId:id})}),/UNIQUE constraint/);
- f.succeed();assert.throws(()=>db.exec('UPDATE image_groups SET headVersionId=NULL,revision=revision+1'),/head must advance/);
+ await f.succeed();assert.throws(()=>db.exec('UPDATE image_groups SET headVersionId=NULL,revision=revision+1'),/head must advance/);
 });

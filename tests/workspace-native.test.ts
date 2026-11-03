@@ -6,6 +6,7 @@ import {mediaMtimeMs} from '../packages/business/src/media-reference/fingerprint
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
@@ -16,15 +17,17 @@ import {projectApiPath,projectMediaPath,projectRpcPath} from '../packages/contra
 import {createWorkspaceNativeBridges} from '../apps/desktop/src/workspace-native-preload.ts';
 import {createWorkspaceNativeBroker} from '../apps/desktop/src/workspace-native-broker.ts';
 import {workspaceNativeRequestSchema} from '../packages/contracts/src/workspace-native.ts';
+import type {ExportOutput} from '../packages/contracts/src/export-controls.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 const code=(error:unknown)=>(error as {code?:string})?.code==='WORKSPACE_NATIVE_UNAVAILABLE';
 const settings=(directory:string)=>({formatVersion:1 as const,revision:1,liveGeneration:false,automaticBackup:false,backupIntervalHours:24 as const,backupLocation:'selected' as const,backupDirectory:directory});
 function fixture(t:TestContext) {
- const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-native-workspace-')),root=path.join(base,'workspace'),media=path.join(root,'media'),chosen=path.join(base,'chosen');
+ const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-native-workspace-')),root=path.join(base,'workspace'),media=path.join(root,'导出'),chosen=path.join(base,'chosen');
  fs.mkdirSync(root,{mode:0o700});fs.mkdirSync(media,{mode:0o700});fs.mkdirSync(chosen,{mode:0o755});t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
  const projectId=randomUUID(),exportId=randomUUID(),assetId=randomUUID(),bytes=Buffer.concat([Buffer.from([0,0,0,24]),Buffer.from('ftypisom'),Buffer.from([0,0,0,0]),Buffer.from('isommp42')]),file=path.join(media,`${assetId}.mp4`);fs.writeFileSync(file,bytes,{mode:0o600});
  const sha256=createHash('sha256').update(bytes).digest('hex'),fingerprint={sizeBytes:bytes.length,mtimeMs:mediaMtimeMs(fs.lstatSync(file,{bigint:true})),sampledSha256:sha256,fullSha256:sha256};
- const output={projectId,exportId,assetId,fileLocation:file,sizeBytes:bytes.length,sha256,url:`/media/${assetId}`,referenceRevision:1,fingerprint,producer:{kind:'export' as const,id:exportId}};
+ const publication:NonNullable<ExportOutput['publication']>={version:1,publicationId:randomUUID(),projectId,assetId,owner:{kind:'export',id:exportId,requestId:exportId,inputHash:sha256},targetKind:'exports',projectRelativePath:`导出/${assetId}.mp4`,sha256,sizeBytes:bytes.length,mimeType:'video/mp4'};
+ const output={projectId,exportId,assetId,fileLocation:file,sizeBytes:bytes.length,sha256,url:`/media/${assetId}`,referenceRevision:1,fingerprint,producer:{kind:'export' as const,id:exportId},publication};
  let current=true;const calls:unknown[][]=[];
  const options={ownerForEvent:()=>({projectId,isCurrent:()=>current}),chooseDirectory:async()=>chosen,setBackupDirectory:async(directory:string)=>{calls.push(['setDirectory',directory]);return settings(directory);},readSettings:async()=>settings(chosen),readWorkspaceRoot:async(id:string)=>{assert.equal(id,projectId);return root;},readExport:async(identity:unknown)=>{calls.push(['readExport',identity]);return output;},openPath:async(file:string)=>{calls.push(['open',file]);return '';},revealPath:(file:string)=>{calls.push(['reveal',file]);return;},restart:async()=>{calls.push(['restart']);return true;}};
  return {base,root,chosen,file,output,options,calls,identity:{projectId,exportId},retire:()=>{current=false;}};
@@ -40,7 +43,7 @@ test('a retired picker owner cannot create a directory or dispatch a private bac
  const pending=createWorkspaceNativeHost(f.options).dispatch({}, {action:'chooseBackupLocation'});f.retire();finish(f.chosen);await assert.rejects(pending,code);
  assert.deepEqual(f.calls,[]);assert.equal(fs.existsSync(path.join(f.chosen,'Mioon Backups')),false);
 });
-test('native export open and reveal re-read exact backend identities and verify managed bytes before shell effects',async t=>{
+test('native export open and reveal re-read exact backend identities and verify published bytes before shell effects',async t=>{
  const f=fixture(t),host=createWorkspaceNativeHost(f.options);
   fs.chmodSync(f.root,0o755);
  assert.equal(await host.dispatch({}, {action:'openExport',identity:f.identity}),true);assert.equal(await host.dispatch({}, {action:'revealExport',identity:f.identity}),true);
@@ -48,7 +51,7 @@ test('native export open and reveal re-read exact backend identities and verify 
  await assert.rejects(host.dispatch({}, {action:'openExport',identity:{...f.identity,path:'/arbitrary'}}));
  await assert.rejects(host.dispatch({}, {action:'openExport',identity:{...f.identity,projectId:randomUUID()}}),code);assert.equal(f.calls.length,6);
 });
-test('modified bytes, symlinks and backend-returned paths outside managed media cannot be opened',async t=>{
+test('modified bytes, symlinks and backend-returned paths outside published exports cannot be opened',async t=>{
  const f=fixture(t),host=createWorkspaceNativeHost(f.options);fs.writeFileSync(f.file,'modified media');
  await assert.rejects(host.dispatch({}, {action:'openExport',identity:f.identity}),code);assert.equal(f.calls.some(call=>call[0]==='open'),false);
  fs.unlinkSync(f.file);const target=path.join(f.base,'external.mp4');fs.writeFileSync(target,'verified synthetic mp4',{mode:0o600});fs.symlinkSync(target,f.file);
@@ -94,13 +97,15 @@ test('native export accepts an ordinary media directory and rejects a different 
  await assert.rejects(host.dispatch({}, {action:'openExport',identity:f.identity}),code);assert.equal(f.calls.some(call=>call[0]==='open'),false);
 });
 
-test('native export cannot open a held application database renamed into managed media',async t=>{
+test('native export cannot open a held application database renamed into published exports',async t=>{
  const f=fixture(t),library=openAppLibrary({dataDir:path.join(f.base,'application')});
  try {
   fs.unlinkSync(f.file);fs.renameSync(library.databaseFile,f.file);
-  f.options.readExport=async()=>({...f.output,sizeBytes:fs.lstatSync(f.file).size,sha256:'a'.repeat(64),fingerprint:{...f.output.fingerprint,sizeBytes:fs.lstatSync(f.file).size,mtimeMs:mediaMtimeMs(fs.lstatSync(f.file,{bigint:true})),fullSha256:'a'.repeat(64)}});
+  let opens=0;const original=fs.promises.open;t.mock.method(fs.promises,'open',(...args:Parameters<typeof original>)=>{if(String(args[0])===f.file)opens++;return original(...args);});syncBuiltinESMExports();
+  t.after(()=>{t.mock.restoreAll();syncBuiltinESMExports();});
+  f.options.readExport=async()=>({...f.output,sizeBytes:fs.lstatSync(f.file).size,sha256:'a'.repeat(64),fingerprint:{...f.output.fingerprint,sizeBytes:fs.lstatSync(f.file).size,mtimeMs:mediaMtimeMs(fs.lstatSync(f.file,{bigint:true})),fullSha256:'a'.repeat(64)},publication:{...f.output.publication,sizeBytes:fs.lstatSync(f.file).size,sha256:'a'.repeat(64)}});
   await assert.rejects(createWorkspaceNativeHost(f.options).dispatch({}, {action:'openExport',identity:f.identity}),code);
-  assert.equal(f.calls.some(call=>call[0]==='open'),false);
+  assert.equal(opens,0,'held database identity is rejected before descriptor open');assert.equal(f.calls.some(call=>call[0]==='open'),false);
  } finally {library.close();}
 });
 
@@ -128,9 +133,22 @@ test('shell effects reject producer, reference revision and same-byte owner chan
  }
 });
 
+test('native export rejects missing or mismatched portable publication facts before shell effects',async t=>{
+ const f=fixture(t),changes=[undefined,{...f.output.publication,publicationId:randomUUID(),assetId:randomUUID()},{...f.output.publication,owner:{...f.output.publication.owner,id:randomUUID()}},{...f.output.publication,projectRelativePath:`导出/${randomUUID()}.mp4`},{...f.output.publication,targetKind:'generated' as const,projectRelativePath:`生成/${path.basename(f.file)}`}];
+ for(const publication of changes){f.options.readExport=async()=>({...f.output,publication} as typeof f.output);await assert.rejects(createWorkspaceNativeHost(f.options).dispatch({}, {action:'openExport',identity:f.identity}),code);}
+ assert.equal(f.calls.some(call=>call[0]==='open'),false);
+});
+
 test('a source replaced during the final backend acknowledgement cannot reach the shell',async t=>{
  const f=fixture(t);let reads=0;
  f.options.readExport=async()=>{if(++reads===2){const original=fs.readFileSync(f.file);fs.unlinkSync(f.file);fs.writeFileSync(f.file,original);}return f.output;};
+ await assert.rejects(createWorkspaceNativeHost(f.options).dispatch({}, {action:'revealExport',identity:f.identity}),code);
+ assert.equal(f.calls.some(call=>call[0]==='reveal'),false);
+});
+
+test('a replaced output directory cannot authorize the same inode before the shell effect',async t=>{
+ const f=fixture(t),directory=path.dirname(f.file),replacement=directory+'-replacement';fs.mkdirSync(replacement,{mode:0o755});fs.linkSync(f.file,path.join(replacement,path.basename(f.file)));const before=fs.lstatSync(f.file,{bigint:true});let reads=0;
+ f.options.readExport=async()=>{if(++reads===2){fs.renameSync(directory,directory+'-previous');fs.renameSync(replacement,directory);const after=fs.lstatSync(f.file,{bigint:true});for(const key of ['dev','ino','size','mtimeNs','ctimeNs'] as const)assert.equal(after[key],before[key],'the file identity itself stayed exact');}return f.output;};
  await assert.rejects(createWorkspaceNativeHost(f.options).dispatch({}, {action:'revealExport',identity:f.identity}),code);
  assert.equal(f.calls.some(call=>call[0]==='reveal'),false);
 });

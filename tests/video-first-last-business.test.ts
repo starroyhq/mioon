@@ -20,6 +20,8 @@ import {startWorker, type Worker} from '../packages/business/src/jobs.ts';
 import {getLegacyCapabilityProfile,isReferenceMutationResponse} from '@mioon/contracts';
 import type { BinaryLike } from 'crypto';
 import {withoutForeignKeys} from './helpers/project-database.ts';
+import {publishOutputFixture,markProjectOutputRegistered} from './helpers/project-output-fixture.ts';
+import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 
 const sha=(value: Buffer<ArrayBuffer>|BinaryLike)=>createHash('sha256').update(value).digest('hex');
 function png(fill: string|number|Uint8Array<ArrayBufferLike>|undefined){
@@ -175,14 +177,16 @@ async function typedFrame(f: Awaited<ReturnType<typeof fixture>>){
  const input={projectId,sourceAssetId:source.id,sourceHash:source.sha256,sourceFrame:56,requestId},inputHash=sha(canonicalFrameInput(input));
  const currentSource:unknown=f.store.get('assets',source.id);assert.ok(currentSource&&typeof currentSource==='object'&&'reference' in currentSource&&'referenceRevision' in currentSource);
  const snapshot={schemaVersion:1,projectId,taskId,source:{assetId:source.id,sha256:source.sha256,mimeType:source.mimeType,sizeBytes:source.sizeBytes,reference:currentSource.reference,referenceRevision:currentSource.referenceRevision,duration:source.duration,width:source.width,height:source.height},requested:{sourceFrame:56,fps:30},profile:FRAME_PROFILE};
- const asset={...f.last,id:assetId,relativePath:`media/${assetId}.png`,provenance:'extracted-frame',createdAt:at};
- const receipt={schemaVersion:1,projectId,taskId,inputHash,sourceAssetId:source.id,sourceHash:source.sha256,sourceFrame:56,fps:30,profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE,assetId,sha256:asset.sha256,mimeType:asset.mimeType,width:360,height:640,byteLength:asset.sizeBytes,probe:{streamIndex:0,timeBaseNumerator:1,timeBaseDenominator:15360,width:360,height:640,rotation:0,sarNumerator:1,sarDenominator:1}};
+ assert.ok(isProjectStore(f.store));const published=await publishOutputFixture(f.store,{assetId,owner:{kind:'frame',id:taskId,requestId,inputHash},bytes:png(1),mimeType:'image/png'});
+ const {relativePath:_originalPath,...metadata}=f.last,base={...metadata,id:assetId,...published,provenance:'extracted-frame',createdAt:at};
+ const receipt={schemaVersion:1,projectId,taskId,inputHash,sourceAssetId:source.id,sourceHash:source.sha256,sourceFrame:56,fps:30,profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE,assetId,sha256:base.sha256,mimeType:base.mimeType,width:360,height:640,byteLength:base.sizeBytes,probe:{streamIndex:0,timeBaseNumerator:1,timeBaseDenominator:15360,width:360,height:640,rotation:0,sarNumerator:1,sarDenominator:1}};
+ const asset={...base,frameResult:{requestId,receipt}};
  const ack={id:taskId,projectId,requestId,sourceAssetId:source.id,sourceHash:source.sha256,sourceFrame:56,fps:30,profileId:FRAME_PROFILE_ID,state:'queued',revision:1,started:false,result:null,errorCode:null,createdAt:at,updatedAt:at};
  const insert=(table: string,value: { [s: string]: unknown; }|ArrayLike<unknown>)=>{const keys=Object.keys(value);db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`).run(...Object.values(value) as SQLInputValue[]);};
  f.store.tx(()=>{insert('frame_tasks',{id:taskId,projectId,requestId,inputHash,input:canonicalFrameInput(input),snapshot:canonicalFrameInput(snapshot),state:'queued',revision:1,started:0,stagedReceipt:null,assetId:null,errorCode:null,createdAt:at,updatedAt:at});insert('frame_requests',{requestId,operation:'frame.extract',projectId,taskId,inputHash,canonicalInput:canonicalFrameInput(input),response:canonicalFrameInput(ack)});});
  db.prepare("UPDATE frame_tasks SET state='running',started=1,revision=2 WHERE id=?").run(taskId);
  db.prepare("UPDATE frame_tasks SET state='persisting',revision=3,stagedReceipt=? WHERE id=?").run(canonicalFrameInput(receipt),taskId);
- await writeFile(path.join(f.root,asset.relativePath),png(1));f.store.tx(()=>{f.store.put('assets',asset);db.prepare("UPDATE frame_tasks SET state='succeeded',revision=4,assetId=? WHERE id=?").run(assetId,taskId);});
+ f.store.tx(()=>{f.store.put('assets',asset);db.prepare("UPDATE frame_tasks SET state='succeeded',revision=4,assetId=? WHERE id=?").run(assetId,taskId);});await markProjectOutputRegistered(f.store,published.publication);
  return {asset,source,taskId};
 }
 

@@ -17,6 +17,9 @@ import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import {run} from '../packages/business/src/media.ts';
+import {isProjectStore} from '../packages/business/src/project-file/store.ts';
+import {publishProjectOutput} from '../packages/business/src/project-output-publication.ts';
+import {exportOutputArtifactIdentity} from '../packages/contracts/src/output-artifact.ts';
 interface Fixture {project:{id:string};timeline:{revision:number};root:string;store:WorkspaceStore;services:OrdinaryServices;restart():Promise<void>}
 interface ExportRecord extends Record<string,unknown>{id:string;requestId:string;snapshot:unknown}
 const fixture=async(t:Parameters<typeof selectedRangeFixture>[0]):Promise<Fixture>=>await selectedRangeFixture(t) as unknown as Fixture;
@@ -42,17 +45,22 @@ test('running cancellation aborts only its owned operation and terminal publicat
   await assert.rejects(f.services.call('export.cancel',{projectId:randomUUID(),exportId:one.id}),{code:'NOT_FOUND'});
 });
 test('output location is bound to the accepted export and rejects changed bytes, foreign owners and injected paths',async t=>{
-  const f=await fixture(t),record=await queued(f),assetId=randomUUID(),relativePath=`media/export-${record.id}-${randomUUID()}.mp4`;
+  const f=await fixture(t),record=await queued(f),assetId=randomUUID();assert.ok(isProjectStore(f.store));
   const bytes=mp4HeaderFixture('Owned synthetic output bytes; file validation is independent of media decoding');
-  const asset={id:assetId,projectId:f.project.id,name:'Owned output.mp4',mimeType:'video/mp4',relativePath,sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,width:1080,height:1920,duration:10,hasVideo:true,hasAudio:true,provenance:'export',producer:{kind:'export',id:record.id},createdAt:new Date().toISOString(),url:`/media/${assetId}`};
-  await writeFile(path.join(f.root,relativePath),bytes,{mode:0o600,flag:'wx'});f.store.put('assets',asset);f.store.put('exports',{...record,status:'succeeded',assetId,url:asset.url,error:null});
-  const identity={projectId:f.project.id,exportId:record.id},output=exportOutputSchema.parse(await f.services.call('export.output.get',identity));assert.equal(output.fileLocation,path.join(f.root,relativePath));assert.equal(output.sha256,asset.sha256);assert.equal(output.sizeBytes,bytes.length);
+  const sha256=createHash('sha256').update(bytes).digest('hex'),stageFile=path.join(f.store.tempDir,`${assetId}.mp4`);await writeFile(stageFile,bytes,{mode:0o600,flag:'wx'});
+  const published=await publishProjectOutput(f.store,{owner:{kind:'export',id:record.id,requestId:record.requestId,inputHash:createHash('sha256').update(exportOutputArtifactIdentity(record)).digest('hex')},assetId,targetKind:'exports',stageFile,mimeType:'video/mp4',sha256,sizeBytes:bytes.length});
+  const {relativePath,...locator}=published,asset={id:assetId,projectId:f.project.id,name:'Owned output.mp4',mimeType:'video/mp4',...locator,width:1080,height:1920,duration:10,hasVideo:true,hasAudio:true,provenance:'export',producer:{kind:'export',id:record.id},createdAt:new Date().toISOString(),url:`/media/${assetId}`};
+  f.store.put('assets',asset);f.store.put('exports',{...record,status:'succeeded',assetId,url:asset.url,error:null});
+  const identity={projectId:f.project.id,exportId:record.id},output=exportOutputSchema.parse(await f.services.call('export.output.get',identity));assert.equal(output.fileLocation,path.join(f.root,relativePath));assert.equal(output.sha256,asset.sha256);assert.equal(output.sizeBytes,bytes.length);const {relativePath:publishedPath,...proof}=asset.publication;assert.deepEqual(output.publication,{...proof,projectRelativePath:publishedPath});
   await assert.rejects(f.services.call('export.output.get',{...identity,path:'/tmp/foreign.mp4'}));await assert.rejects(f.services.call('export.output.get',{...identity,projectId:randomUUID()}),{code:'NOT_FOUND'});
+  for(const patch of [{publication:undefined},{publication:{...asset.publication,owner:{...asset.publication.owner,id:randomUUID()}}},{reference:{...asset.reference,path:`../${path.basename(relativePath)}`}}]){
+   f.store.put('assets',{...asset,...patch});await assert.rejects(f.services.call('export.output.get',identity),{code:'EXPORT_FILE_UNAVAILABLE'});
+  }f.store.put('assets',asset);
   const changed=Buffer.from(bytes);changed[changed.length-1]^=1;await writeFile(output.fileLocation,changed);await assert.rejects(f.services.call('export.output.get',identity),{code:'MEDIA_CHANGED'});
   const before=f.store.get('exports',String(record.id));assert.equal(object(await f.services.call('export.cancel',identity)).status,object(before).status);
 });
 
-test('real legacy worker cleans only its owned unpublished inode after link cancellation', {timeout:120_000}, async t=>{
+test('real project worker retains published files after cancellation and never deletes replacements', {timeout:120_000}, async t=>{
   const base=await mkdtemp(path.join(tmpdir(),'mioon-export-cancel-worker-')),source=path.join(base,'source.mp4');
   t.after(()=>rm(base,{recursive:true,force:true}));
   await run('ffmpeg',['-hide_banner','-loglevel','error','-n','-f','lavfi','-i','color=c=blue:s=1080x1920:r=30:d=0.2','-an','-c:v','libx264','-preset','ultrafast','-threads','1','-pix_fmt','yuv420p',source],{timeout:30_000});
@@ -70,7 +78,7 @@ test('real legacy worker cleans only its owned unpublished inode after link canc
       const accepted=object(await services.call('timeline.render',{projectId,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export'})),exportId=String(accepted.id);
       const receipt=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(String(accepted.requestId));
       child.mock.method(fs.promises,'link',async(...args:Parameters<typeof originalLink>)=>{
-        await originalLink(...args);if(!path.basename(String(args[1])).startsWith(`export-${exportId}-`))return;
+        await originalLink(...args);if(path.dirname(String(args[1]))!==path.join(root,'导出'))return;
         reached=true;linkedFile=String(args[1]);linkedPart=String(args[0]);
         if(mode==='replace-output'){await unlink(linkedFile);await writeFile(linkedFile,replacement,{flag:'wx',mode:0o600});}
         if(mode==='replace-part'){await unlink(linkedPart);await writeFile(linkedPart,replacement,{flag:'wx',mode:0o600});}
@@ -78,7 +86,7 @@ test('real legacy worker cleans only its owned unpublished inode after link canc
       });syncBuiltinESMExports();
       worker=startWorker(store,services,new Map());await worker.tick();await worker.stop();worker=undefined;
       assert.equal(reached,true,'the real worker reached non-overwriting publication');
-      const final=object(store.get('exports',exportId)),files=await readdir(path.join(root,'media'));
+      const final=object(store.get('exports',exportId)),files=await readdir(path.join(root,'导出'));
       assert.deepEqual(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(String(accepted.requestId)),receipt,'immutable acceptance remains exact');
       const storedAsset=object(store.get('assets',String(asset.id)));
       assert.deepEqual(await readFile(mediaFixturePath(root,storedAsset)),bytes,'source media remains exact');
@@ -86,7 +94,7 @@ test('real legacy worker cleans only its owned unpublished inode after link canc
         assert.equal(final.status,'succeeded');assert.deepEqual(await services.call('export.cancel',{projectId,exportId}),publicValue(final));assert.deepEqual(store.get('exports',exportId),final);assert.ok((await readFile(linkedFile)).length>0);
       }else{
         assert.equal(final.status,'failed');assert.equal(object(final.error).code,'EXPORT_CANCELLED');assert.equal(final.assetId,null);
-        assert.equal(files.includes(path.basename(linkedFile)),mode==='replace-output');assert.equal(files.includes(path.basename(linkedPart)),mode==='replace-part');
+        assert.equal(files.includes(path.basename(linkedFile)),true,'ordinary project outputs are retained after cancellation');
         if(mode==='replace-output')assert.deepEqual(await readFile(linkedFile),replacement);
         if(mode==='replace-part')assert.deepEqual(await readFile(linkedPart),replacement);
       }

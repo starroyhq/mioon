@@ -19,6 +19,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import type {MediaUnavailableReason} from '../../contracts/src/media-reference-errors.ts';
 import {computeFullSha256, isFileInDirectory, isInsideRealDirectory, isNotDownloaded, isProtectedName, mediaMtimeMs, mediaTypeOfName, referenceForFile, resolveReferencePath} from './media-reference/index.ts';
 import type {MediaAccess} from './media-reference/index.ts';
+import {registerProjectOutputStore} from './project-output-owner.ts';
 
 export interface ProjectMediaRegistrationOptions {readonly outsidePaths?: Pick<OutsidePathConfirmationStore, 'list'>}
 interface ProjectMediaRegistration {readonly owner: WeakRef<ProjectStore>; count: number; outsidePaths: Pick<OutsidePathConfirmationStore, 'list'>; references: ProjectAssetReferenceServices}
@@ -30,6 +31,7 @@ const projects = new Map<string, ProjectMediaRegistration>();
 /** A root string only selects an already proven, still-live kernel owner. */
 export function registerProjectMediaStore(store: unknown, {outsidePaths = noOutsidePaths}: ProjectMediaRegistrationOptions = {}): () => void {
   if (!isProjectStore(store)) return () => {};
+  registerProjectOutputStore(store);
   const root = store.projectDir, prior = projects.get(root);
   const registration = prior?.owner.deref() === store ? prior : {owner: new WeakRef(store), count: 0, outsidePaths, references: createProjectAssetReferenceServices(store, {outsidePaths})};
   if (outsidePaths !== noOutsidePaths && registration.outsidePaths !== outsidePaths) {registration.outsidePaths = outsidePaths; registration.references = createProjectAssetReferenceServices(store, {outsidePaths});}

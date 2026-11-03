@@ -1,4 +1,8 @@
 import {mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
+import {isPublishedProjectOutput} from './project-output-publication.ts';
+import {projectOutputPublicationProofSchema} from '../../contracts/src/project-output-publication.ts';
+import {exportOutputArtifactIdentity} from '../../contracts/src/output-artifact.ts';
+import {createHash} from 'node:crypto';
 import {validAssetLocator} from './asset-reference-record.ts';
 import {isProjectDatabase} from './project-file/held-files.ts';
 import type { Store as WorkspaceStore } from './store-contract.ts';
@@ -66,11 +70,13 @@ export function createExportControlServices(store:WorkspaceStore,{signal}:{signa
       const output=readTimelineExportOutput(store.db,input,{isTimelineRenderRecord,readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(store.db,projectId,assetId)});
       if(record.mode==='timeline'&&!output)throw new AppError('EXPORT_FILE_UNAVAILABLE','导出回执无法核对',409);
       const asset=output?.asset??(typeof record.assetId==='string'?readOwnedTimelineAsset(store.db,input.projectId,record.assetId):null);
-      if(!row(asset)||!(isProjectDatabase(store.db)?validAssetLocator(store.db,asset)&&row(asset.producer)&&asset.producer.kind==='export'&&asset.producer.id===input.exportId:typeof asset.relativePath==='string'&&new RegExp(`^media/export-${input.exportId}-[a-f0-9-]{36}\\.mp4$`,'u').test(asset.relativePath))||asset.mimeType!=='video/mp4'||asset.provenance!=='export'||typeof asset.sha256!=='string')throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件无法核对',409);
+      if(!row(asset)||!(isProjectDatabase(store.db)?validAssetLocator(store.db,asset)&&row(asset.producer)&&asset.producer.kind==='export'&&asset.producer.id===input.exportId&&isPublishedProjectOutput(asset,{projectId:input.projectId,owner:{kind:'export',id:input.exportId,requestId:typeof record.requestId==='string'?record.requestId:record.id as string,inputHash:createHash('sha256').update(exportOutputArtifactIdentity(record)).digest('hex')},targetKind:'exports',mimeType:'video/mp4'}):typeof asset.relativePath==='string'&&new RegExp(`^media/export-${input.exportId}-[a-f0-9-]{36}\\.mp4$`,'u').test(asset.relativePath))||asset.mimeType!=='video/mp4'||asset.provenance!=='export'||typeof asset.sha256!=='string')throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件无法核对',409);
       const verified=await verifiedManagedHash(store.root,asset,{signal,maxBytes:8*1024**3,beforeEffect:checkpoint});
-      if(asset.sizeBytes!==verified.sizeBytes||!isProjectDatabase(store.db)&&store.db.prepare("SELECT 1 FROM assets WHERE id<>? AND json_extract(data,'$.relativePath')=? LIMIT 1").get(String(asset.id),String(asset.relativePath))||read(input.projectId,input.exportId).assetId!==asset.id)throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件已变化',409);
+      if(asset.sizeBytes!==verified.sizeBytes||!isProjectDatabase(store.db)&&store.db.prepare("SELECT 1 FROM assets WHERE id<>? AND json_extract(data,'$.relativePath')=? LIMIT 1").get(String(asset.id),String(asset.relativePath))||JSON.stringify(read(input.projectId,input.exportId))!==JSON.stringify(record)||JSON.stringify(readOwnedTimelineAsset(store.db,input.projectId,asset.id))!==JSON.stringify(asset))throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件已变化',409);
       const reference=mediaReferenceSchema.parse(asset.reference);
-      return exportOutputSchema.parse({...input,assetId:asset.id,fileLocation:verified.file,sizeBytes:verified.sizeBytes,sha256:verified.sha256,url:record.url,referenceRevision:Number(asset.referenceRevision),fingerprint:{sizeBytes:reference.sizeBytes,mtimeMs:reference.mtimeMs,sampledSha256:reference.sampledSha256,fullSha256:reference.fullSha256},producer:{kind:'export',id:input.exportId}});
+      const publication=asset.publication?projectOutputPublicationProofSchema.parse(asset.publication):null;
+      const descriptor=publication?(({relativePath,...proof})=>({...proof,projectRelativePath:relativePath}))(publication):undefined;
+      return exportOutputSchema.parse({...input,assetId:asset.id,fileLocation:verified.file,sizeBytes:verified.sizeBytes,sha256:verified.sha256,url:record.url,referenceRevision:Number(asset.referenceRevision),fingerprint:{sizeBytes:reference.sizeBytes,mtimeMs:reference.mtimeMs,sampledSha256:reference.sampledSha256,fullSha256:reference.fullSha256},producer:{kind:'export',id:input.exportId},...(descriptor?{publication:descriptor}:{})});
     },
   }};
 }

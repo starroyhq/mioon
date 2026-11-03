@@ -1,5 +1,8 @@
 import {z} from 'zod';
 import {projectIdSchema, projectMediaPath} from './project-file.ts';
+import {projectOutputPublicationProofSchema} from './project-output-publication.ts';
+import {frameOutputResultSchema,sceneOutputResultSchema} from './project-output-sources.ts';
+import {previsOutputIdentitySchema} from './previs-output.ts';
 import {
   isNormalizedAbsolutePath, MEDIA_PATH_FORMS, MEDIA_PATH_MAX_LENGTH, mediaFingerprintSchema, mediaReferenceSchema, mediaStatusViewSchema,
 } from './media-reference.ts';
@@ -45,7 +48,7 @@ const metadata = {
 /** Internal persisted record: reference is the only location source. The
  * optional full hash can never be replaced by a sampled hash. */
 export const assetMediaRecordSchema = z.object({
-  ...metadata, producer:z.object({kind:z.enum(['generation','export']),id}).strict().optional(), reference: mediaReferenceSchema, referenceRevision: revision, sha256: hash.nullable(),
+  ...metadata, producer:z.object({kind:z.enum(['generation','export']),id}).strict().optional(), publication:projectOutputPublicationProofSchema.optional(),frameResult:frameOutputResultSchema.optional(),sceneResult:sceneOutputResultSchema.optional(),previsOutput:previsOutputIdentitySchema.optional(), reference: mediaReferenceSchema, referenceRevision: revision, sha256: hash.nullable(),
 }).strict().refine(value => value.sha256 === value.reference.fullSha256 && value.sizeBytes === value.reference.sizeBytes,
   'Asset size and full hash must match its reference.');
 export type AssetMediaRecord = z.infer<typeof assetMediaRecordSchema>;

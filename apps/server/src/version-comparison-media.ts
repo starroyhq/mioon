@@ -1,5 +1,6 @@
 import {isProjectDatabase} from '../../../packages/business/src/project-file/held-files.ts';
 import {validAssetLocator} from '../../../packages/business/src/asset-reference-record.ts';
+import {isPublishedProjectOutput} from '../../../packages/business/src/project-output-publication.ts';
 import {admitProjectAssetSource, registeredProjectStore, validatedProjectAssetSource} from '../../../packages/business/src/project-media-storage.ts';
 import path from 'node:path';
 import {constants} from 'node:fs';
@@ -58,8 +59,8 @@ export function versionComparisonMediaIdentity(url: URL): Identity | null {
 /** The graph validates SQL/JSON ownership, reverse owners and snapshot links.
  * The digest is recorded provenance, not a claim that file bytes were hashed.
  * Caller authentication and the live ordinary-workspace gate belong to HTTP.
- * This first slice accepts only the existing job publisher's managed MP4 path,
- * not arbitrary legacy paths, imports, export outputs or restored versions.
+ * Current project results require the generation publisher's portable proof.
+ * Imports or files without that complete generation proof cannot claim it.
  */
 export function readVersionComparisonMedia(db: DatabaseSync, url: URL, readGraph: GraphReader): VersionComparisonMedia | null {
   const input = versionComparisonMediaIdentity(url);
@@ -69,11 +70,14 @@ export function readVersionComparisonMedia(db: DatabaseSync, url: URL, readGraph
     if (!outer) db.exec('BEGIN DEFERRED');
     const graph = readGraph(input.projectId);
     const version = graph.version(input.versionId, input.shotId, input.assetId), asset = graph.asset(input.assetId);
+    // The graph admits a portable version only when its local job and all
+    // execution residues are absent. A present damaged job never falls back.
+    const job=object(version)&&typeof version.jobId==='string'&&isProjectDatabase(db)?db.prepare(`SELECT CASE WHEN json_valid(data) AND length(CAST(data AS BLOB))<=4194304 THEN json_extract(data,'$.requestId') END AS requestId,CASE WHEN json_valid(data) AND length(CAST(data AS BLOB))<=4194304 THEN json_extract(data,'$.requestHash') END AS requestHash FROM jobs WHERE id=? AND projectId=?`).get(version.jobId,input.projectId):undefined;
     if (!object(version) || !object(asset) || typeof version.jobId !== 'string' || !uuid.test(version.jobId) || version.id !== input.versionId ||
         version.projectId !== input.projectId || version.shotId !== input.shotId || version.assetId !== input.assetId || asset.id !== input.assetId || asset.projectId !== input.projectId ||
         version.sha256 !== input.sha256 || asset.sha256 !== input.sha256 || asset.mimeType !== 'video/mp4' ||
         typeof asset.sizeBytes !== 'number' || !Number.isSafeInteger(asset.sizeBytes) || asset.sizeBytes < 1 ||
-        (asset.provenance !== 'generated' && asset.provenance !== 'synthetic-mock') || !(isProjectDatabase(db)?validAssetLocator(db,asset)&&object(asset.producer)&&asset.producer.kind==='generation'&&asset.producer.id===version.jobId:asset.relativePath===`media/result-${version.jobId}.mp4`)) return null;
+        (asset.provenance !== 'generated' && asset.provenance !== 'synthetic-mock') || !(isProjectDatabase(db)?validAssetLocator(db,asset)&&object(asset.producer)&&asset.producer.kind==='generation'&&asset.producer.id===version.jobId&&(job===undefined||typeof job.requestId==='string'&&typeof job.requestHash==='string'&&digest.test(job.requestHash))&&isPublishedProjectOutput(asset,{projectId:input.projectId,assetId:input.assetId,owner:{kind:'generation',id:version.jobId,...(job?{requestId:String(job.requestId),inputHash:String(job.requestHash)}:{})},targetKind:'generated',sha256:input.sha256,mimeType:'video/mp4'}):asset.relativePath===`media/result-${version.jobId}.mp4`)) return null;
     const identityDigest = createHash('sha256').update(JSON.stringify([version, asset])).digest('hex');
     return Object.freeze({...input, jobId: version.jobId, ...(isProjectDatabase(db)?{referenceRevision:Number(asset.referenceRevision),locatorDigest:createHash('sha256').update(JSON.stringify(asset.reference)).digest('hex')}:{relativePath:String(asset.relativePath)}), mimeType: asset.mimeType, sizeBytes: asset.sizeBytes, identityDigest});
   } catch { return null; }
