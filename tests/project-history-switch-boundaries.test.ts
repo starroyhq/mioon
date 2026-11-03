@@ -34,7 +34,7 @@ async function fixture(t:TestContext,seed?:(store:ProjectStore)=>void){
  const root=mkdtempSync(path.join(tmpdir(),'history-switch-boundary-')),directories=serverAppDirectories(root),registry=createMemoryProjectRegistry();
  const counts={factory:0},injection:{point:HistorySwitchBoundary|null}={point:null};
  const manager=createProjectHostManager({directories,registry,assertMutationAllowed:()=>{},historySwitchBoundary:point=>{if(injection.point===point)throw Error(`stop at ${point}`);},
-  factory:context=>{counts.factory++;ensureProjectRow(context.store,{name:'Original'});return {handle:async()=>false,isBusy:()=>false,interrupt(){},drain:async()=>{},dispose(){}};}});
+  factory:async context=>{counts.factory++;ensureProjectRow(context.store,{name:'Original'});return {handle:async()=>false,isBusy:()=>false,interrupt(){},drain:async()=>{},dispose(){}};}});
  t.after(async()=>{await manager.closeAll();rmSync(root,{recursive:true,force:true});});
  const registration=await manager.create({name:'Original'}),projectId=registration.projectId,lease=await manager.acquire(projectId,'window');
  const version=createProjectVersions(lease.host.store).save({projectId,requestId:randomUUID(),name:'before external edit'}).version;

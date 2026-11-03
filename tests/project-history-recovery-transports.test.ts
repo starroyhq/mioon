@@ -63,6 +63,9 @@ test('real HTTP recovery gates CLI/MCP and daily/old tasks, then activates only 
   const mismatch = await request('history/resolve', {...input, projectId: randomUUID()});
   assert.equal(mismatch.response.status, 400); assert.equal(mismatch.body.error.code, 'PROJECT_ID_MISMATCH');
   assert.deepEqual(snapshot(), before);
+  const uppercase = await request('history/resolve', {...input, requestId: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA'});
+  assert.equal(uppercase.response.status, 400); assert.equal(uppercase.body.error.code, 'VALIDATION_ERROR');
+  assert.deepEqual(snapshot(), before, 'noncanonical file-name identity is refused before any intent is written');
   const resolved = await request<ProjectHistoryResolveResult>('history/resolve', input);
   assert.equal(resolved.response.status, 200, JSON.stringify(resolved.body));
   const normal = await request<ProjectVersionListResponse>('rpc', {operation: 'project.version.list', input: {projectId}});

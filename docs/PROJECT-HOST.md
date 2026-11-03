@@ -16,7 +16,7 @@ manager 在 factory、`ensureProjectRow`、业务服务/Mio 构造、worker 和�
 | GET `status` | 状态、差异原因、文件/seen pair、history 身份、版本数、已提交且结果未知任务数、确认摘要 |
 | GET `versions?limit=&cursor=` | 只读版本分页 |
 | GET `preview?versionId=&limit=&cursor=` | 空执行域的 V1 版本预览，不把待归档旧任务或缓存引用当作新执行域的保留依赖 |
-| POST `resolve` | 稳定 UUID requestId、continue/restore-version、完整 expected pair、historyIdentity、confirmationDigest；恢复另带 versionId/previewDigest |
+| POST `resolve` | 稳定小写 UUID requestId、continue/restore-version、完整 expected pair、historyIdentity、confirmationDigest；恢复另带 versionId/previewDigest |
 
 状态提示为“这份项目与本机记录不一致”；原因仅区分文件序号较小/较大、同序号内容不同、旧 history 没有令牌，不称其为可靠的旧版本或后继。确认页须说明：旧对话、任务回执、Mio/时间线撤销将整份归档，不再执行；已经交给服务商而结果未知的任务不续跑；本机版本会保留为恢复来源。可确认“以当前文件继续”或“恢复某个本机版本”，也可关闭会话。
 

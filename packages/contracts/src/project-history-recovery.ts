@@ -21,7 +21,7 @@ export const projectHistoryStatusSchema = z.object({
 }).strict().refine(value => value.recoverableVersionCount <= value.versionCount, 'Recoverable versions are a subset of all carried versions.');
 export type ProjectHistoryStatus = z.infer<typeof projectHistoryStatusSchema>;
 const confirmation = {
-  projectId: projectIdSchema, requestId: z.string().uuid(), expected: contentStampSchema,
+  projectId: projectIdSchema, requestId: z.string().uuid().regex(/^[a-f0-9-]{36}$/u), expected: contentStampSchema,
   historyIdentity: historyFileIdentitySchema, confirmationDigest: digest,
 };
 export const projectHistoryResolveSchema = z.discriminatedUnion('action', [
