@@ -125,12 +125,13 @@ test('schema generation in a fresh process cannot import legacy constructors, op
   const probe = new URL('../packages/business/src/db.ts?schema-isolation-probe', import.meta.url).href;
   const child = spawnSync(process.execPath, ['--input-type=module', '-e', `
     import {registerHooks} from 'node:module';
+    import {sep} from 'node:path';
     import {fileURLToPath} from 'node:url';
     let blocked = 0;
     registerHooks({resolve(specifier, context, next) {
       const result = next(specifier, context);
       if (result.url.startsWith('file:')) {
-        const file = fileURLToPath(result.url);
+        const file = fileURLToPath(result.url).split(sep).join('/');
         if (/\\/(?:workspace-[^/]*|db)\\.ts$/.test(file) || /\\/(?:legacy-workspace-store|historical-workspace)\\.ts$/.test(file) || /\\/project-file\\/(?:store|connection)\\.ts$/.test(file) || /\\/providers\\/mock\\.ts$/.test(file) || /\\/schema\\/manifest\\.ts$/.test(file)) {
           blocked++; throw Object.assign(Error('Forbidden schema dependency'), {code:'SCHEMA_SOURCE_FORBIDDEN'});
         }
