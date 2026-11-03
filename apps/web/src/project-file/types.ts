@@ -1,4 +1,4 @@
-import type { ProjectInvalidReason } from '../../../../packages/contracts/src/project-file.ts';
+import type { ProjectEntryAvailability } from '../../../../packages/contracts/src/project-entry.ts';
 
 /** Project file screens (U1) are controlled views: data and state arrive as
  * props and every action is a callback. Requests, storage and timers stay with
@@ -17,9 +17,5 @@ export type ActionState<A extends string> =
 /** Picks platform wording such as "Show in Finder" and shortcut symbols. */
 export type HostPlatform = 'mac' | 'windows' | 'linux' | 'web';
 
-/** Whether a recent project can be opened now. Follows `ProjectAvailability`
- * of the host's `list()` in the project host draft (#107). The host reports the
- * invalid reason as a string; S6 maps it onto `ProjectInvalidReason`. */
-export type ProjectAvailabilityView =
-  | { readonly state: 'open' | 'busy' | 'available' | 'locked' | 'missing' }
-  | { readonly state: 'invalid'; readonly reason: ProjectInvalidReason };
+/** Controlled views and the host use the same strict directory contract. */
+export type ProjectAvailabilityView = ProjectEntryAvailability;
