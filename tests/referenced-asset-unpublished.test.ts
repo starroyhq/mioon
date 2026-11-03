@@ -3,16 +3,23 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {chmodSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
-  realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync} from 'node:fs';
+  realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {PROJECT_ASSETS_FOLDER} from '../packages/contracts/src/asset-media.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {createMioProjectMedia} from '../packages/business/src/agent/mio-project-media.ts';
+import {createAssetMediaServices} from '../packages/business/src/asset-media-services.ts';
+import {createManagedAssetImportHandler} from '../packages/business/src/managed-asset-import.ts';
+import {run} from '../packages/business/src/media.ts';
 import {mediaMtimeMs} from '../packages/business/src/media-reference/fingerprint.ts';
+import {registerProjectMediaStore} from '../packages/business/src/project-media-storage.ts';
+import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import {PROJECT_UNPUBLISHED_MEDIA_LIMITS as LIMITS, readProjectUnpublishedMediaSnapshot} from '../packages/business/src/referenced-asset-unpublished.ts';
+import {png} from './helpers/timeline-image-fixtures.ts';
 
 const options = {beforeEffect() {}};
 const invalid = {code: 'MEDIA_LIST_PATH_INVALID', status: 400, message: '无法安全读取项目素材列表', details: {}};
@@ -43,8 +50,31 @@ function fixture(t: TestContext) {
     const saved = {...value, phase, attempt, file, asset};
     return {file, asset, value: saved, receipt: receipt(saved)};
   };
-  t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
-  return {root, store, projectDir, receipts, media, receipt, intent, published};
+  const finalizers: (() => void)[] = [];
+  t.after(() => {for (const close of finalizers) close(); store.close(); rmSync(root, {recursive: true, force: true});});
+  return {root, store, projectDir, receipts, media, receipt, intent, published, onClose(close: () => void) {finalizers.push(close);}};
+}
+
+/** The real import/prepare/relink services and host fence exercise terminal
+ * receipts produced by S1, not a hand-built approximation of its record. */
+function runtime(f: ReturnType<typeof fixture>) {
+  const app = openAppLibrary({dataDir: path.join(f.root, 'application')}), owner = new AbortController();
+  const ports = createProjectServiceApplication(app, owner.signal, {});
+  const beforeEffect = (): void => {owner.signal.throwIfAborted(); ports.assertMutationAllowed();};
+  const release = registerProjectMediaStore(f.store, {outsidePaths: app.outsidePaths});
+  f.onClose(() => {owner.abort(); release(); app.close();});
+  const importer = createManagedAssetImportHandler(f.store, {outsidePaths: app.outsidePaths, signal: owner.signal, beforeEffect,
+    now: () => '2026-11-04T00:00:00.000Z', required: (_table, id) => {const value = f.store.get('projects', id); assert.ok(value); return value;}});
+  const services = createAssetMediaServices(f.store, {outsidePaths: app.outsidePaths, signal: owner.signal, beforeEffect});
+  const host = createMioProjectMedia({store: f.store, signal: owner.signal, privateDirectories: [app.dataDir, f.store.cacheDir, f.store.tempDir]});
+  const totals = () => ({project: f.store.db.prepare('SELECT total_changes() AS n').get()!.n,
+    application: app.db.prepare('SELECT total_changes() AS n').get()!.n});
+  const list = async (directory: string) => {
+    const before = totals();
+    const page = await host.list(f.store.projectId, {directory}, {beforeEffect, signal: owner.signal});
+    assert.deepEqual(totals(), before, 'listing cannot write either real owner connection'); return page;
+  };
+  return {list, importer, services, beforeEffect};
 }
 
 test('a missing receipt directory is an empty stable read-only view and is never created', async t => {
@@ -73,15 +103,20 @@ test('intent without a target and a private staged upload do not block or create
   assert.throws(() => snapshot.assertCurrent(), changed);
 });
 
-for (const phase of ['prepared', 'registered']) test(`${phase} with an identical committed asset is published, without excluding by name`, async t => {
+for (const phase of ['prepared', 'registered']) test(`${phase} preserves its distinct current-versus-historical publication evidence`, async t => {
   const f = fixture(t), publication = f.published(1, phase), before = readFileSync(publication.receipt);
   const snapshot = await readProjectUnpublishedMediaSnapshot(f.store, options);
   assert.equal(snapshot.isExcluded(publication.file, lstatSync(publication.file, {bigint: true})), false);
   assert.deepEqual(readFileSync(publication.receipt), before);
   const second = await readProjectUnpublishedMediaSnapshot(f.store, options); assert.equal(snapshot.version, second.version);
   f.store.put('assets', {...publication.asset, name: 'Edited'});
-  assert.throws(() => snapshot.assertCurrent(), changed);
-  await assert.rejects(readProjectUnpublishedMediaSnapshot(f.store, options), invalid);
+  if (phase === 'prepared') {
+    assert.throws(() => snapshot.assertCurrent(), changed);
+    await assert.rejects(readProjectUnpublishedMediaSnapshot(f.store, options), invalid);
+  } else {
+    snapshot.assertCurrent();
+    assert.equal((await readProjectUnpublishedMediaSnapshot(f.store, options)).version, snapshot.version);
+  }
 });
 
 test('prepared native-path receipt with no upload attempt only passes after its exact asset is registered', async t => {
@@ -113,7 +148,57 @@ test('registered latest attempt does not make a surviving historical attempt saf
   await assert.rejects(readProjectUnpublishedMediaSnapshot(f.store, options), invalid);
   assert.equal(readFileSync(old, 'utf8'), 'old partial');
   unlinkSync(old); writeFileSync(publication.file, 'changed');
-  await assert.rejects(readProjectUnpublishedMediaSnapshot(f.store, options), invalid);
+  await readProjectUnpublishedMediaSnapshot(f.store, options);
+});
+
+test('real S1 terminal upload remains listable after legal relink changes its current asset row', async t => {
+  const f = fixture(t), live = runtime(f), bytes = png();
+  const imported = await live.importer({projectId: f.store.projectId, requestId: randomUUID(), name: 'Relink source', mimeType: 'image/png', dataBase64: bytes.toString('base64')}) as {id: string; reference: {path: string}};
+  const before = readdirSync(f.receipts).filter(name => name.endsWith('.json')).map(name => readFileSync(path.join(f.receipts, name)));
+  assert.equal((await live.list(PROJECT_ASSETS_FOLDER)).entries.length, 1);
+  const selected = path.join(f.media, 'same-content.png'); writeFileSync(selected, bytes);
+  const preview = await live.services.call('asset.media.relink.preview', {projectId: f.store.projectId, assetId: imported.id,
+    expectedReferenceRevision: 1, sourcePath: selected}) as {previewToken: string; chosen: {matches: boolean}};
+  assert.equal(preview.chosen.matches, true);
+  await live.services.call('asset.media.relink.apply', {projectId: f.store.projectId, requestId: randomUUID(), previewToken: preview.previewToken});
+  const current = f.store.get('assets', imported.id) as {referenceRevision: number; reference: {path: string}};
+  assert.equal(current.referenceRevision, 2); assert.notEqual(current.reference.path, imported.reference.path);
+  assert.equal((await live.list(PROJECT_ASSETS_FOLDER)).entries.length, 2);
+  assert.deepEqual(readdirSync(f.receipts).filter(name => name.endsWith('.json')).map(name => readFileSync(path.join(f.receipts, name))), before);
+});
+
+test('real video lazy full-hash preparation does not turn its terminal import receipt into a bad receipt', async t => {
+  const f = fixture(t), live = runtime(f), directory = path.join(f.projectDir, 'inbox'); mkdirSync(directory);
+  const file = path.join(directory, 'clip.mp4');
+  await run('ffmpeg', ['-f', 'lavfi', '-i', 'color=c=red:s=32x32:d=0.1', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', file]);
+  const imported = await live.importer({projectId: f.store.projectId, requestId: randomUUID(), name: 'Sampled video', sourcePath: file}) as {id: string; sha256: string | null};
+  assert.equal(imported.sha256, null); assert.equal((await live.list('inbox')).entries.length, 1);
+  const before = readdirSync(f.receipts).filter(name => name.endsWith('.json')).map(name => readFileSync(path.join(f.receipts, name)));
+  await live.services.call('asset.media.prepare', {projectId: f.store.projectId, assets: [{assetId: imported.id, referenceRevision: 1}], purpose: 'generation'});
+  const current = f.store.get('assets', imported.id) as {sha256: string; referenceRevision: number};
+  assert.match(current.sha256, /^[a-f0-9]{64}$/u); assert.equal(current.referenceRevision, 1);
+  assert.equal((await live.list('inbox')).entries.length, 1);
+  assert.deepEqual(readdirSync(f.receipts).filter(name => name.endsWith('.json')).map(name => readFileSync(path.join(f.receipts, name))), before);
+});
+
+test('a completed target with new size and mtime uses ordinary current media admission', async t => {
+  const f = fixture(t), live = runtime(f), publication = f.published(), bytes = png({width: 32, height: 24});
+  writeFileSync(publication.file, bytes); const future = new Date(Date.now() + 1000); utimesSync(publication.file, future, future);
+  const page = await live.list(PROJECT_ASSETS_FOLDER);
+  assert.deepEqual(page.entries, [{name: path.basename(publication.file), kind: 'image', mimeType: 'image/png', sizeBytes: bytes.length, durationSeconds: null}]);
+  writeFileSync(publication.file, 'no media header');
+  assert.deepEqual((await live.list(PROJECT_ASSETS_FOLDER)).entries, [], 'a bad current header is filtered by L1, not treated as an unpublished receipt');
+});
+
+test('removing a terminally registered row leaves its original file as an unregistered listing candidate', async t => {
+  const f = fixture(t), live = runtime(f), bytes = png();
+  const imported = await live.importer({projectId: f.store.projectId, requestId: randomUUID(), name: 'Removed row', mimeType: 'image/png', dataBase64: bytes.toString('base64')}) as {id: string};
+  const before = readdirSync(f.receipts).filter(name => name.endsWith('.json')).map(name => readFileSync(path.join(f.receipts, name)));
+  f.store.tx(() => f.store.db.prepare('DELETE FROM assets WHERE id=?').run(imported.id));
+  assert.equal(f.store.get('assets', imported.id), null);
+  const page = await live.list(PROJECT_ASSETS_FOLDER);
+  assert.equal(page.entries.length, 1); assert.equal(page.entries[0]!.sizeBytes, bytes.length);
+  assert.deepEqual(readdirSync(f.receipts).filter(name => name.endsWith('.json')).map(name => readFileSync(path.join(f.receipts, name))), before);
 });
 
 test('unregistered prepared receipts are not treated as complete even when their target is gone', async t => {

@@ -191,8 +191,12 @@ export async function readProjectUnpublishedMediaSnapshot(store: ProjectStore,
       } else {
         if (value.phase === 'unpublished' ? attempt === 0 || Object.hasOwn(value, 'asset') : !Object.hasOwn(value, 'asset')) invalid();
         const record = value.phase === 'unpublished' ? null : assetRecord(value.asset, id);
-        const registered = currentAsset(id);
-        const published = record !== null && registered !== null && canonical(record) === canonical(assetRecord(registered, id));
+        // A terminal receipt records an already completed publication, not a
+        // promise that its asset row or file can never be edited/relinked (or
+        // removed by a later undo). Only prepared still needs current DB proof.
+        const registered = value.phase === 'registered' ? null : currentAsset(id);
+        const published = value.phase === 'registered' ||
+          record !== null && registered !== null && canonical(record) === canonical(assetRecord(registered, id));
         if (value.phase !== 'unpublished' && !published) invalid();
         if (attempt === 0) {
           if (Object.hasOwn(value, 'file')) invalid();
@@ -206,6 +210,9 @@ export async function readProjectUnpublishedMediaSnapshot(store: ProjectStore,
           // v1 retained no identity for any prior attempt. A same-name user
           // replacement is equally unprovable: never treat it as an exclusion.
           for (let index = 1; index <= attempt; index++) {
+            // The completed target is an ordinary candidate now. L1 owns its
+            // current header, identity, held-file and private-directory checks.
+            if (index === attempt && value.phase === 'registered') continue;
             const candidate = path.join(assetsDirectory, `${id}-${index}.${extension}`), info = watch(candidate);
             if (!info) continue;
             if (!published || index !== attempt || !record || !info.isFile() || info.isSymbolicLink()) invalid();
