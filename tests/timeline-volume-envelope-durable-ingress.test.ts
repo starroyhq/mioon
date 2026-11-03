@@ -1,12 +1,13 @@
-import {assertCurrentOrdinaryWorkspace} from './helpers/workspace-schema-current.ts';
 import type {StrictTimelineTasks} from './helpers/strict-timeline-handler-types.ts';
 import type {TypedStore as FixtureStore} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
-import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {createProjectFile,isProjectDatabase} from '../packages/business/src/project-file/connection.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {assertTimelineVolumeEnvelopeWorkspace} from '../packages/business/src/timeline-volume-envelope-admission.ts';
 import {initializeFrozenUpgradeFixtureSchema} from './helpers/opacity-upgrade-fixture.ts';
@@ -18,13 +19,16 @@ const add=()=>({projectId:id,expectedRevision:1,requestId:'live-envelope-request
 const update=()=>({projectId:id,expectedRevision:1,requestId:'live-envelope-request',clipId:id,patch:{volumeEnvelope:{profileId,points:points()}}});
 function fixture(t: test.TestContext,{seedProject=false}={}){
  // Approved disposable synthetic fixture, confined to this isolated checkout.
- const root=mkdtempSync(path.join(process.cwd(),'.tmp-envelope-ingress-')),store=((seedProject?openLegacyWorkspaceStore:openStore)(root) as FixtureStore);
+ const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-envelope-ingress-'));
+ createProjectFile(path.join(root,'project.mioon'),{projectId:id});
+ const opened=openStore(root),store=opened as FixtureStore;
  t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
  const tasks=(createEditTasks({store,services:{call(){throw Error('Preparation must never dispatch.');}}}) as StrictTimelineTasks);
  if(seedProject){
   store.put('projects',{id,name:'Synthetic ingress',description:'',revision:1});
   store.put('assets',{id,projectId:id,name:'Synthetic audio',mimeType:'audio/wav',duration:2,hasAudio:true,provenance:'user-import',sha256:'a'.repeat(64),relativePath:'media/synthetic.wav',createdAt:'2026-10-15T00:00:00.000Z'});
-  assertCurrentOrdinaryWorkspace(store.db);
+  assert.equal(isProjectDatabase(store.db),true);
+  assert.equal(opened.projectId,id);
  }
  const prepare=(operation?: unknown,input?: unknown)=>tasks.prepare({projectId:id,operation,input,origin:'new'});
  const state=()=>({changes:(store.db.prepare('SELECT total_changes() AS n').get())!.n,rows:(store.db.prepare('SELECT count(*) AS n FROM edit_tasks').get())!.n});
@@ -69,7 +73,7 @@ test('typed arrays do not relax unrelated paths, malformed Unicode or the 128-no
  assert.equal(f.state().rows,0);
 });
 
-test('owned ordinary58 coordinator captures both exact points paths and production hashes without dispatch',t=>{
+test('owned project coordinator captures both exact points paths and production hashes without dispatch',t=>{
  for(const operation of (['timeline.clip.add','timeline.clip.update'] as const)){
   const f=fixture(t,{seedProject:true}),input=operation.endsWith('.add')?add():update(),original=JSON.parse(JSON.stringify(input));
   const saved=f.prepare(operation,input);assert.deepEqual(saved.task.input,original);
@@ -84,7 +88,7 @@ test('owned ordinary58 coordinator captures both exact points paths and producti
   assert.equal(f.state().rows,1);
  }
 });
-test('real live coordinator construction admits validated58 without insertion or dispatch',t=>{
+test('real live project coordinator construction admits validated input without insertion or dispatch',t=>{
  const f=fixture(t,{seedProject:true}),before=f.state();
  assert.doesNotThrow(()=>(createEditTasks({store:f.store,services:{call(){throw Error('Must not dispatch.');}}}) as StrictTimelineTasks));
  assert.deepEqual(f.state(),before);

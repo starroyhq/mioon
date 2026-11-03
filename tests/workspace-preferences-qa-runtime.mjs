@@ -6,30 +6,26 @@ import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile, unlink, access } from 'node:fs/promises';
 import { startServer } from '../apps/server/src/index.ts';
-import { migrateData } from '../apps/desktop/scripts/migrate-data.ts';
-import { openStore } from '../packages/business/src/db.ts';
-import { createServices } from '../packages/business/src/services.ts';
+import {createQaProject,closeQaProject,readQaFixture} from './helpers/kernel-qa-fixture.mjs';
 export const qaRoot=path.resolve('evidence/workspace-preferences');
 function assertDisposable(workspace){if(!workspace.startsWith(qaRoot+path.sep))throw Error('QA workspace must be disposable');}
 export async function prepareWorkspace(workspace,fixturePath){
- try{await access(fixturePath);return JSON.parse(await readFile(fixturePath,'utf8'));}catch{}
+ const previous=readQaFixture(fixturePath,workspace);if(previous)return previous;
  assertDisposable(workspace);
- try{await access(path.join(workspace,'workbench.sqlite'));}catch{await migrateData(path.resolve('examples/multitrack-project'),workspace);}
- const store=openStore(workspace),s=createServices(store,new Map(),{env:{}});
+ const first=await createQaProject(workspace,{name:'持久视图 · 合成项目'}),{store,services:s,project}=first;let other;
  try{
-  const project=(await s.call('project.list',{}))[0];
   const shot=await s.call('shot.create',{projectId:project.id,title:'持久视图 · 原生重启',prompt:'Synthetic local persistence acceptance only.',duration:2,aspectRatio:'9:16',position:{x:420,y:80}});
-  const second=await s.call('project.create',{name:'独立项目 · 持久偏好',description:'Synthetic persistence QA only.'});
-  const node=await s.call('node.create',{projectId:second.id,type:'text',label:'第二项目节点',text:'Independent view preferences',position:{x:50,y:70}});
+  other=await createQaProject(workspace,{name:'独立项目 · 持久偏好',media:false});const second=other.project;
+  const node=await other.services.call('node.create',{projectId:second.id,type:'text',label:'第二项目节点',text:'Independent view preferences',position:{x:50,y:70}});
   let data=await s.call('project.get',{projectId:project.id});
   while(data.timeline.tracks.length<6){await s.call('timeline.track.add',{projectId:project.id,expectedRevision:data.timeline.revision,requestId:randomUUID(),kind:'video',name:'QA scroll track '+data.timeline.tracks.length});data=await s.call('project.get',{projectId:project.id});}
-  const fixture={workspace,project,second,secondNode:node,shot,clip:data.timeline.clips[0],asset:data.assets.find(a=>a.id===data.timeline.clips[0].assetId)};
+  const fixture={kernel:true,workspace,projectDir:store.projectDir,project,second,secondNode:node,shot,clip:data.timeline.clips[0],asset:data.assets.find(a=>a.id===data.timeline.clips[0].assetId)};
   await writeFile(fixturePath,JSON.stringify(fixture,null,2));return fixture;
- }finally{store.close();}
+ }finally{if(other)await closeQaProject(other);await closeQaProject(first);}
 }
 if(process.argv.includes('--serve')){
  const runtime=path.join(qaRoot,'browser-runtime');await mkdir(runtime,{recursive:true});
- const fixture=await prepareWorkspace(path.join(runtime,'workspace'),path.join(runtime,'fixture.json'));
+ const fixture=await prepareWorkspace(path.join(runtime,'data'),path.join(runtime,'fixture.json'));
  let token;try{token=(await readFile(path.join(runtime,'token'),'utf8')).trim();}catch{token=randomBytes(32).toString('hex');await writeFile(path.join(runtime,'token'),token,{mode:0o600});}
  const backend=await startServer({dataDir:fixture.workspace,port:0,token,distDir:path.resolve('apps/web/dist')});
  const port=4876,host='127.0.0.1:'+port,origin='http://'+host;

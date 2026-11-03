@@ -12,7 +12,7 @@ import {schemas} from '@mioon/contracts';
 import {writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {uploadProjectFile} from '../apps/desktop/src/project-file-open.ts';
-import {buildSampleProject,openWorkspace,tempRoot,cleanup,mediaToolsAvailable} from './helpers/project-package-fixture.ts';
+import {buildSampleProject,openLegacyWorkspace,tempRoot,cleanup,mediaToolsAvailable} from './helpers/project-package-fixture.ts';
 
 const token='synthetic-project-package-http-token';
 async function call(base:string,route:string,init:RequestInit={}){
@@ -23,7 +23,7 @@ async function call(base:string,route:string,init:RequestInit={}){
 test('project files work over HTTP and stay out of the RPC and MCP catalog',{skip:!mediaToolsAvailable&&'ffmpeg unavailable'},async t=>{
  for(const name of ['project.export','project.import','project.duplicate'])assert.equal(Object.hasOwn(schemas,name),false);
  const root=tempRoot('package-http');t.after(()=>cleanup(root));
- const ws=openWorkspace(root),sample=await buildSampleProject(root,ws);ws.store.close();
+ const ws=openLegacyWorkspace(root),sample=await buildSampleProject(root,ws);ws.store.close();
  const server=await startLegacyProjectHttp({root,token,domain:'packages'});t.after(()=>server.close());
  const base=server.url;
  assert.equal((await fetch(`${base}/api/projects/${sample.project.id}/package-preview`)).status,401);

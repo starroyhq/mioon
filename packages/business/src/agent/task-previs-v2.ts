@@ -1,7 +1,7 @@
 import {PREVIS_HANDS,PREVIS_LIMITS,PREVIS_POSES,PREVIS_PROP_KINDS,PREVIS_SCENE_SCHEMA_VERSION,previsFrame,previsFramedElements,previsLookAt,previsSchemas,roundPrevisNumber} from '@mioon/contracts';
 import type {PrevisCamera,PrevisNodeRecord,PrevisScene} from '@mioon/contracts';
 import type {AgentTaskJson} from '../../../contracts/src/agent-tasks-v2.ts';
-import type {WorkspaceStore} from '../db.ts';
+import type { Store as WorkspaceStore } from '../store-contract.ts';
 import type {AgentTaskParameterFeedback} from './task-tool-errors-v2.ts';
 
 // C8 v2: Mio reads and edits camera previs scenes. Mio sees a scene in the

@@ -24,6 +24,7 @@ export function createProjectServiceApplication(library: AppLibrary, signal?: Ab
   const unavailable = (): never => {assertOwner(); throw new AppError('RESTORE_OPERATION_UNAVAILABLE', 'This project host does not yet support workspace backup or restoration.', 409);};
   return {
     configuration: createWorkspaceConfiguration({root: library.dataDir, documents: createAppCompanionDocuments(library), env}),
+    assertMutationAllowed: assertOwner,
     backups: {
       getStatus: unavailable, list: unavailable, create: unavailable, stageRestore: unavailable,
       exportBundle: unavailable, importBundle: unavailable, importDirectory: unavailable,

@@ -13,7 +13,8 @@ import {mkdtempSync,rmSync,existsSync,readdirSync,mkdirSync,writeFileSync,readFi
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {schemas,isWorkspaceRestoreInspection,isEditTaskEnvelope,isEditTaskListEnvelope} from '@mioon/contracts';
-import {installCurrentWorkspaceRestoreSchema, openLegacyWorkspaceStore as openStore, type StoreIdentity} from '../packages/business/src/db.ts';
+import { installCurrentWorkspaceRestoreSchema, openLegacyWorkspaceStore as openStore } from '../packages/business/src/db.ts';
+import type { StoreIdentity } from '../packages/business/src/store-contract.ts';
 import {getWorkspaceRestoreContext} from '../packages/business/src/workspace-restore-schema.ts';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';

@@ -9,7 +9,7 @@ import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import type {TestContext} from 'node:test';
-import type {WorkspaceStore} from '../packages/business/src/db.ts';
+import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {schemaObjects} from './helpers/project-database.ts';
 

@@ -3,33 +3,39 @@
 import http from 'node:http';
 import path from 'node:path';
 import {mkdir,readFile,writeFile,appendFile,unlink,access,readdir} from 'node:fs/promises';
-import {createHash} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
 import {startServer} from '../apps/server/src/index.ts';
-import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
+import {fileURLToPath} from 'node:url';
+import {createQaProject,closeQaProject,hashQaSnapshot} from './helpers/kernel-qa-fixture.mjs';
+import {mutationQaAudit} from './mutation-qa-runtime.mjs';
 export const qaRoot=path.resolve('evidence/agent-settings');
 export const runtime=path.join(qaRoot,'browser-runtime');
-export async function prepareAgentSettingsFixture(){
- await mkdir(runtime,{recursive:true});const workspace=path.join(runtime,'workspace'),fixturePath=path.join(runtime,'fixture.json');
- try{return JSON.parse(await readFile(fixturePath,'utf8'));}catch{}
- await migrateData(path.resolve('examples/multitrack-project'),workspace);
- const db=new DatabaseSync(path.join(workspace,'workbench.sqlite'),{readOnly:true});
- let project;try{project=JSON.parse(db.prepare('SELECT data FROM projects ORDER BY rowid LIMIT 1').get().data);}finally{db.close();}
- const fixture={workspace,project};await writeFile(fixturePath,JSON.stringify(fixture,null,2));return fixture;
+export async function prepareAgentSettingsFixture(directory=runtime){
+ await mkdir(directory,{recursive:true});const workspace=path.resolve(directory,'data'),fixturePath=path.join(directory,'fixture.json');
+ try{const cached=JSON.parse(await readFile(fixturePath,'utf8'));if(cached.kernel!==true||cached.synthetic!==true||cached.workspace!==workspace)throw Error('Historical QA fixture must be preserved; choose a fresh kernel fixture directory');return cached;}catch(error){if(error.code!=='ENOENT')throw error;}
+ const seeded=await createQaProject(workspace,{name:'Agent settings QA · synthetic project'});
+ let fixture;try{fixture={workspace,project:seeded.project,kernel:true,synthetic:true};}finally{await closeQaProject(seeded);}
+ await writeFile(fixturePath,JSON.stringify(fixture,null,2));return fixture;
 }
-if(process.argv.includes('--prepare'))console.log(JSON.stringify(await prepareAgentSettingsFixture(),null,2));
-if(process.argv.includes('--serve')){
+export async function agentSettingsQaAudit(workspace,inspectors){
+ const snapshot=await mutationQaAudit(workspace,inspectors),main=snapshot.application.databases.main;
+ // Preferences/settings are allowed UI effects, but retain their schemas and
+ // the full B1 evidence separately. Every other application row is protected.
+ const mutableDocuments=new Set(['ui-preferences-v1.json','last-project-v1.json','workspace-settings-v1.json']);
+ const applicationDomain={databases:{...snapshot.application.databases,main:{...main,rows:{...main.rows,workspace_preferences:[],app_documents:main.rows.app_documents.filter(row=>!mutableDocuments.has(row.name))}}}};
+ const domains={projects:snapshot.projects,application:applicationDomain};
+ let settingsText='';try{settingsText=await readFile(path.join(workspace,'agent-settings/settings.json'),'utf8');}catch(error){if(error.code!=='ENOENT')throw error;}
+ return{domainHash:hashQaSnapshot(domains),domains,application:snapshot.application,applicationSettings:main.rows.app_documents.filter(row=>row.name==='workspace-settings-v1.json'),settingsFilePresent:Boolean(settingsText),plaintextDummyKeyPresent:settingsText.includes('mioon-qa-dummy-agent-key-'),at:new Date().toISOString()};
+}
+const invokedDirectly=process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url);
+if(invokedDirectly&&process.argv.includes('--prepare'))console.log(JSON.stringify(await prepareAgentSettingsFixture(),null,2));
+if(invokedDirectly&&process.argv.includes('--serve')){
  process.env.MIOON_ENABLE_LIVE_PROVIDER='0';for(const key of Object.keys(process.env))if(/^(RUNWAY|RUNWAYML|ARK_|VEO_|GEMINI_|MINIMAX_|HAILUO_|VIDU_|OPENAI_|DEEPSEEK_|DASHSCOPE_|MOONSHOT_)/.test(key))delete process.env[key];
  const fixture=await prepareAgentSettingsFixture();
  const token='agent-settings-synthetic-local-qa-token';
- const backend=await startServer({dataDir:fixture.workspace,port:0,token,distDir:path.resolve('apps/web/dist')});
+ let inspectProject,inspectApplication;
+ const backend=await startServer({dataDir:fixture.workspace,port:0,token,distDir:path.resolve('apps/web/dist'),inspectProject:value=>{inspectProject=value;},inspectApplication:value=>{inspectApplication=value;}});
  const port=4884,host='127.0.0.1:'+port,origin='http://'+host;let closing=false,seq=0;
- const audit=async()=>{
-  const db=new DatabaseSync(path.join(fixture.workspace,'workbench.sqlite'),{readOnly:true});let domain;
-  try{const names=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name!='workspace_preferences' ORDER BY name").all().map(row=>row.name);domain=Object.fromEntries(names.map(name=>[name,db.prepare('SELECT * FROM "'+name+'" ORDER BY rowid').all()]));}finally{db.close();}
-  const settingsFile=path.join(fixture.workspace,'agent-settings/settings.json');let settingsText='';try{settingsText=await readFile(settingsFile,'utf8');}catch{}
-  return{domainHash:createHash('sha256').update(JSON.stringify(domain)).digest('hex'),settingsFilePresent:Boolean(settingsText),plaintextDummyKeyPresent:settingsText.includes('mioon-qa-dummy-agent-key-'),at:new Date().toISOString()};
- };
+ const audit=()=>agentSettingsQaAudit(fixture.workspace,{inspectProject,inspectApplication});
  const server=http.createServer(async(req,res)=>{
   if(req.headers.host!==host||(req.headers.origin&&req.headers.origin!==origin))return res.writeHead(403).end();
   const chunks=[];let size=0;for await(const part of req){size+=part.length;if(size>2*1024*1024)return res.writeHead(413).end();chunks.push(part);}const bytes=Buffer.concat(chunks);

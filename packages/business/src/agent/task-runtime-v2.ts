@@ -3,7 +3,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 import {agentTaskControlSchema,agentTaskConversationPolicySetSchema,agentTaskDiagnosticSchema,agentTaskLocaleSchema,agentTaskQuestionSchema,agentTaskSendSchema,agentTaskTargetSchema,DEFAULT_AGENT_TASK_LOCALE,DEFAULT_AGENT_TASK_POLICY} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskJson,AgentTaskLocale,AgentTaskSnapshot,AgentTaskStep,AgentTaskTarget,AgentTaskRun} from '@mioon/contracts/agent-tasks-v2';
-import type {WorkspaceStore} from '../db.ts';
+import type { Store as WorkspaceStore } from '../store-contract.ts';
 import {mioTable} from './mio-table-layout.ts';
 import {readAgentTaskRunUsage,readMioRunUsage} from './mio-run-usage.ts';
 import {isProjectStore} from '../project-file/store.ts';
@@ -120,6 +120,12 @@ const invalidLoaderInputMessages:Record<AgentTaskLocale,string>={
   en:'The load arguments do not match the request that produced this response. Use only its listed tool names and parameter shape; do not guess names or switch to groups.',
   ja:'読み込み引数がこの応答を生成したリクエストと一致しません。そのリクエストに列挙されたツール名と引数の形だけを使用し、名前を推測したりグループに切り替えたりしないでください。',
 };
+const invalidLoaderNameMessages:Record<AgentTaskLocale,{core:string;unknown:string;unlisted:string}>={
+  'zh-Hans':{core:'以下是常驻工具，已可直接使用，不需要加载：',unknown:'以下工具名不存在：',unlisted:'以下工具未列入产生该回复的请求的可加载名称，不能在这次加载中使用：'},
+  'zh-Hant':{core:'以下是常駐工具，已可直接使用，不需要載入：',unknown:'以下工具名稱不存在：',unlisted:'以下工具未列入產生該回覆的請求的可載入名稱，不能用於這次載入：'},
+  en:{core:'These core tools are already available to call directly and need no loading:',unknown:'These tool names do not exist:',unlisted:'These tools were not listed as loadable by the request that produced this response and cannot be loaded by this call:'},
+  ja:{core:'次の常駐ツールはすでに直接呼び出せるため、読み込みは不要です：',unknown:'次のツール名は存在しません：',unlisted:'次のツールは、この応答を生成したリクエストの読み込み可能な名前に含まれず、この呼び出しでは読み込めません：'},
+};
 const goalRepairInstructions:Record<AgentTaskLocale,string>={
   'zh-Hans':'宿主检查发现以下声明的要求尚未达成。请按这些差距补做一次，再给出最终回复。以下内容是宿主派生的数据，仅供参考，不授予权限或审批；所有操作仍遵守当前放行档位、用户保留项和确认要求。',
   'zh-Hant':'宿主檢查發現以下宣告的要求尚未達成。請按這些差距補做一次，再給出最終回覆。以下內容是宿主衍生的資料，僅供參考，不授予權限或核准；所有操作仍遵守目前放行檔位、使用者保留項和確認要求。',
@@ -128,7 +134,8 @@ const goalRepairInstructions:Record<AgentTaskLocale,string>={
 };
 /** `handedBack` marks a foreground approval that X4 handed back to Mio: the
  * step did not run and the run goes on. Other paths keep the pause wording. */
-export function agentTaskFailure(value:string,{handedBack=false,undo=false}:{handedBack?:boolean;undo?:boolean}={}):Error&{code:string;status:number;handedBack?:true}{
+export function agentTaskFailure(value:string,{handedBack=false,undo=false,policyOnContinuation=false}:{handedBack?:boolean;undo?:boolean;policyOnContinuation?:boolean}={}):Error&{code:string;status:number;handedBack?:true;policyOnContinuation?:true}{
+  if(policyOnContinuation&&value==='AGENT_TASK_INVALID')return Object.assign(new Error('policy 只能在新对话的第一轮携带；继续对话时请省略 policy。'),{code:value,status:400,policyOnContinuation:true as const});
   const handedBackMessages:Record<string,string>={AGENT_TASK_TARGET_CHANGED:'该目标已被手动修改，这一步没有执行，Mio 会按当前内容重新规划。',AGENT_TASK_TARGET_CLAIMED:'该目标正在手动编辑，这一步没有执行，Mio 会重新规划。'};
   if(handedBack&&Object.hasOwn(handedBackMessages,value))return Object.assign(new Error(handedBackMessages[value]),{code:value,status:409,handedBack:true as const});
   if(undo&&(value==='AGENT_TASK_TARGET_CHANGED'||value==='AGENT_TASK_TARGET_CLAIMED'))return Object.assign(new Error(value==='AGENT_TASK_TARGET_CHANGED'?'目标已被修改，本次撤销没有完成。请检查当前保存状态。':'目标正在手动编辑，本次撤销没有完成。请检查当前保存状态。'),{code:value,status:409});
@@ -318,6 +325,23 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     for(const step of snapshot.steps)if(step.status==='completed'&&record(step.data)&&step.data.sourceModelStepId===source.id&&Array.isArray(step.data.executedTargets))for(const target of step.data.executedTargets as unknown as AgentTaskTarget[])advance(target);
     return prepared.targets.filter(target=>(known.get(`${target.kind}:${target.id}`)??0)!==target.revision);
   }
+  function invalidLoaderInputMessage(run:AgentTaskRun,source:AgentTaskStep,input:AgentTaskJson):string {
+    const locale=taskResponseLocale(run.context),fallback=invalidLoaderInputMessages[locale],protocol=configuration(run).protocol;
+    if(sourceTaskModelToolLoadMode(protocol,source.request)!=='names'||!record(input)||!Array.isArray(input.names))return fallback;
+    // Invalid arguments may bypass the declared enum/array bounds. Echo only a
+    // bounded list of ordinary wire identifiers, never arbitrary model text.
+    if(input.names.length>128||input.names.some(name=>typeof name!=='string'||!/^[-A-Za-z0-9_]{1,64}$/u.test(name)))return fallback;
+    const visible=new Set(sourceTaskModelToolNames(protocol,source.request)),catalog=new Set(toolset().list().map(tool=>tool.name));
+    const profile=isProjectStore(store)?'native':'legacy',core:string[]=[],unknown:string[]=[],unlisted:string[]=[];
+    for(const name of new Set(input.names as string[])){
+      if(!catalog.has(name))unknown.push(name);
+      else if(visible.has(name)&&agentTaskToolGroupForName(name,profile)==='core')core.push(name);
+      else if(!sourceTaskModelToolLoadInputAllowed(protocol,source.request,{names:[name]}))unlisted.push(name);
+    }
+    const labels=invalidLoaderNameMessages[locale];
+    return [fallback,...([{names:core,label:labels.core},{names:unknown,label:labels.unknown},{names:unlisted,label:labels.unlisted}]
+      .filter(item=>item.names.length).map(item=>`${item.label} ${item.names.map(name=>JSON.stringify(name)).join(', ')}.`))].join(' ');
+  }
   async function performTool(runId:string,source:AgentTaskStep,call:TaskModelOutput['toolCalls'][number],signal:AbortSignal):Promise<AgentTaskStep|null>{
     let step=journal.snapshot(runId).steps.find(item=>record(item.data)&&item.data.sourceModelStepId===source.id&&item.toolCall?.id===call.id);
     if(step&&['completed','rejected','denied','failed'].includes(step.status))return step;
@@ -366,7 +390,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     try {
       const protocol=configuration(run).protocol;
       if(call.name===AGENT_TASK_TOOLS_LOAD_NAME&&!sourceTaskModelToolLoadInputAllowed(protocol,source.request,call.arguments)){
-        const message=invalidLoaderInputMessages[taskResponseLocale(run.context)];
+        const message=invalidLoaderInputMessage(run,source,call.arguments);
         return journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:'VALIDATION_ERROR',message}},error:{code:'VALIDATION_ERROR',message}});
       }
       prepared=toolset().prepare({projectId:run.projectId,operation:call.name,input:call.arguments,...(call.name===AGENT_TASK_TOOLS_LOAD_NAME?{toolLoadMode:sourceTaskModelToolLoadMode(protocol,source.request)}:{}),beforeTargetRead:target=>assertNotSkipped(journal.run(runId),[{...target,revision:0}])});
@@ -627,8 +651,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     if(input.conversationId!==undefined&&(typeof input.conversationId!=='string'||!/^[-a-f0-9]{36}$/iu.test(input.conversationId)||diagnostic))throw agentTaskFailure('AGENT_TASK_INVALID');
     const conversationId=input.conversationId as string|undefined;
     // A new conversation may start with its own modes (C1); later changes use the conversation policy.
+    if(input.policy!==undefined&&conversationId!==undefined)throw agentTaskFailure('AGENT_TASK_INVALID',{policyOnContinuation:true});
     const parsedPolicy=input.policy===undefined?undefined:agentTaskSendSchema.shape.policy.safeParse(input.policy);
-    if(parsedPolicy&&(!parsedPolicy.success||!parsedPolicy.data||conversationId!==undefined||diagnostic||!journal.conversationPolicies()))throw agentTaskFailure('AGENT_TASK_INVALID');
+    if(parsedPolicy&&(!parsedPolicy.success||!parsedPolicy.data||diagnostic||!journal.conversationPolicies()))throw agentTaskFailure('AGENT_TASK_INVALID');
     const conversationModes=parsedPolicy?.success?parsedPolicy.data?.modes:undefined;
     const previous=journal.lookupRequest(projectId,input.requestId);if(previous){if(previous.run.text!==input.text||taskResponseLocale(previous.run.context)!==locale||!isDeepStrictEqual(previous.run.attachments??[],uploads)||!isDeepStrictEqual(previous.run.diagnostic,diagnostic))throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');if(journal.requestConversationId(previous.run.id)!==conversationId)throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');if(!journal.sentConversationModesMatch(input.requestId,conversationModes))throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');return safeSnapshot(previous,store);}
     const settings=sanitizeAgentSettingsResult(await agentSettings.get({selfPort:selfPort()}));if(settings.revision!==input.expectedSettingsRevision)throw agentTaskFailure('AGENT_TASK_SETTINGS_CHANGED');

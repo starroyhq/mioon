@@ -4,8 +4,9 @@ import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
-import {imageFixture,insert} from './images-fixture.mjs';
-import {migrateFrameSchema} from '../packages/business/src/frame-schema.ts';
+import {allowCorruptOwnerRows,imageFixture,insert} from './images-fixture.mjs';
+import {schemaObjects} from '../packages/business/src/project-file/cross-file/inspect.ts';
+import {withoutProcessTargetRevisions} from './helpers/project-database.ts';
 import {createFrameOwnershipReader,FRAME_OWNERSHIP_LIMITS} from '../packages/business/src/frame-ownership.ts';
 import {createOwnedMediaGraphReader,createInspectionServices,INSPECTION_OPERATIONS} from '../packages/business/src/inspection.ts';
 import {createSubjectRecoveryBoundary,createSubjectServices} from '../packages/business/src/subjects.ts';
@@ -21,8 +22,8 @@ const hash=(value: unknown)=>createHash('sha256').update(canonical(value)).diges
 function tx<T>(db:DatabaseSync,fn:()=>T){db.exec('BEGIN IMMEDIATE');try{const value=fn();db.exec('COMMIT');return value;}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}}
 function changeAsset(f: ReturnType<typeof accept>,asset:{id:string;[key:string]:unknown},patch:Record<string,unknown>){f.db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify({...asset,...patch}),asset.id);}
 function corrupt(f: ReturnType<typeof accept>){
- f.db.exec('PRAGMA foreign_keys=OFF;PRAGMA ignore_check_constraints=ON');
- for(const {name} of f.db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND (tbl_name LIKE 'frame_%' OR name LIKE '%frame_asset_owner')").all())f.db.exec(`DROP TRIGGER ${name}`);
+ allowCorruptOwnerRows(f.db,['frame_tasks','frame_requests','assets']);
+ for(const {schema,name} of schemaObjects(f.db).filter(row=>row.type==='trigger'&&(row.tbl_name.startsWith('frame_')||row.name.endsWith('frame_asset_owner'))))f.db.exec(`DROP TRIGGER ${schema}."${name.replaceAll('"','""')}"`);
 }
 function sourceAsset(f: Pick<ReturnType<typeof imageFixture>,"db"|"projectId"|"otherProjectId">,patch={}){
  const id=randomUUID(),source={id,projectId:f.projectId,name:'Source.mp4',mimeType:'video/mp4',sha256:'a'.repeat(64),relativePath:`media/${id}.mp4`,sizeBytes:128,duration:3,width:1920,height:1080,hasVideo:true,hasAudio:true,provenance:'user-import',createdAt:at,...patch};
@@ -45,14 +46,16 @@ function accept(f: Pick<ReturnType<typeof imageFixture>,"db"|"projectId"|"otherP
  const succeed=()=>{start();stage();publish();};
  return {db,projectId,otherProjectId:f.otherProjectId,source,taskId,requestId,assetId,input,inputHash,snapshot,receipt,ack,row,request,asset,start,stage,publish,succeed};
 }
-function fixture(t: test.TestContext){const base=imageFixture(t);tx(base.db,()=>{migrateFrameSchema(base.db);base.db.exec('INSERT INTO schema_version VALUES(20)');});return {...accept(base),image:base};}
+function fixture(t: test.TestContext){const base=imageFixture(t);return {...accept(base),image:base};}
 function legacyOwner(f: ReturnType<typeof accept>,asset=f.asset,{projectId=f.projectId,oversized=false,references=[]}:{projectId?:string;oversized?:boolean;references?:string[]}={}){
  const id=randomUUID(),jobId=randomUUID(),shotId=randomUUID();
+ if(projectId!==f.projectId)allowCorruptOwnerRows(f.db,['shots','jobs','versions']);
  insert(f.db,'shots',{id:shotId,projectId,data:JSON.stringify({id:shotId,projectId,referenceAssetIds:references,title:'Shot',prompt:'Saved',aspectRatio:'16:9',duration:3,orderIndex:0,revision:1,selectedVersionId:id})});
- insert(f.db,'jobs',{id:jobId,projectId,data:JSON.stringify({id:jobId,projectId,shotId,assetId:asset.id,versionId:id})});
+ const job=()=>insert(f.db,'jobs',{id:jobId,projectId,data:JSON.stringify({id:jobId,projectId,shotId,assetId:asset.id,versionId:id})});
+ if(projectId!==f.projectId)withoutProcessTargetRevisions(f.db,['jobs'],job);else job();
  insert(f.db,'versions',{id,projectId,jobId,data:JSON.stringify({id,projectId,jobId,shotId,assetId:asset.id,number:1,...(oversized?{private:'private payload'.repeat(6000)}:{})})});return {id,jobId,shotId};
 }
-function capture(db: DatabaseSync){return Object.fromEntries(db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(({name})=>[name,db.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()]));}
+function capture(db: DatabaseSync){return Object.fromEntries(schemaObjects(db).filter(row=>row.type==='table').map(({schema,name})=>[`${schema}.${name}`,db.prepare(`SELECT * FROM ${schema}."${name.replaceAll('"','""')}" ORDER BY rowid`).all()]));}
 
 test('frame result is an owned PNG for clips, references and typed subjects; read APIs do zero writes',t=>{
  const f=fixture(t);f.succeed();const read=graph(f),before=capture(f.db),changes=f.db.prepare('SELECT total_changes() AS n').get()!.n;
@@ -213,7 +216,7 @@ test('frame metadata has an independent 1 MiB shared budget below the 4 MiB grap
 });
 
 test('subject versions freeze explicit frameSource and preserve old provenance bytes',t=>{
- const f=fixture(t);f.succeed();const services=(createSubjectServices({db:f.db,tx:callback=>tx(f.db,callback)},{canonical,now:()=>at}) as TypedSubjectServices);
+ const f=fixture(t);f.succeed();const services=(createSubjectServices(f.image.store,{canonical,now:()=>at}) as TypedSubjectServices);
  const input={projectId:f.projectId,kind:'look',name:'Frame look',assetId:f.assetId,requestId:randomUUID()},subject=services.handlers['subject.create'](input);
  assert.equal(subjectVersionResponseSchema.safeParse(subject.headVersion).success,true);
  const row=f.db.prepare('SELECT data FROM subject_versions WHERE id=?').get(subject.headVersionId),frozen=JSON.parse(row!.data as string);
@@ -241,7 +244,7 @@ test('oversized frame JSON and owner lists are bounded in SQL before crossing th
 });
 
 test('tampered frozen frameSource is rejected without rewriting a subject version',t=>{
- const f=fixture(t);f.succeed();const services=(createSubjectServices({db:f.db,tx:callback=>tx(f.db,callback)},{canonical,now:()=>at}) as TypedSubjectServices);
+ const f=fixture(t);f.succeed();const services=(createSubjectServices(f.image.store,{canonical,now:()=>at}) as TypedSubjectServices);
  const subject=services.handlers['subject.create']({projectId:f.projectId,kind:'product',name:'Product',assetId:f.assetId,requestId:randomUUID()});
  f.db.exec('DROP TRIGGER immutable_subject_versions');
  const data=JSON.stringify({...subject.headVersion,provenance:{...subject.headVersion.provenance,frameSource:{...subject.headVersion.provenance.frameSource,sourceHash:'c'.repeat(64)}}});

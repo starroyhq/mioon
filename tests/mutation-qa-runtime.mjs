@@ -4,47 +4,64 @@ import {parseProjectApiPath} from '../packages/contracts/src/project-file.ts';
 import http from 'node:http';
 import path from 'node:path';
 import {mkdir, readFile, writeFile, appendFile, unlink, readdir, access} from 'node:fs/promises';
-import {createHash, randomUUID} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
+import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {migrateData} from '../apps/desktop/scripts/migrate-data.ts';
-import {openStore} from '../packages/business/src/db.ts';
-import {createServices} from '../packages/business/src/services.ts';
 import {startServer} from '../apps/server/src/index.ts';
+import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {openServerProject} from './helpers/project-database.ts';
+import {createQaProject, closeQaProject, auditQaDatabases, hashQaSnapshot} from './helpers/kernel-qa-fixture.mjs';
 
 export const mutationQaRoot = path.resolve('evidence/mutation-replay');
 export const mutationRuntime = path.join(mutationQaRoot, 'browser-runtime');
 export const mutationQaToken = 'mutation-replay-synthetic-local-token';
 export async function prepareMutationQaFixture(directory = mutationRuntime) {
   await mkdir(directory, {recursive:true});
-  const file = path.join(directory,'fixture.json'), workspace = path.join(directory,'workspace');
-  try {return JSON.parse(await readFile(file,'utf8'));} catch(error) {if(error.code!=='ENOENT')throw error;}
-  await migrateData(path.resolve('examples/multitrack-project'),workspace);
-  const store = openStore(workspace);
+  const file = path.join(directory,'fixture.json'), workspace = path.resolve(directory,'data');
+  try {
+    const cached=JSON.parse(await readFile(file,'utf8'));
+    if(cached.kernel!==true||cached.synthetic!==true||cached.workspace!==workspace)throw Error('Historical QA fixture must be preserved; choose a fresh kernel fixture directory');
+    return cached;
+  } catch(error) {if(error.code!=='ENOENT')throw error;}
+  const primary=await createQaProject(workspace,{name:'Mutation QA · synthetic primary project'}),{store,services,project}=primary;
   let fixture;
   try {
-    const services = createServices(store,new Map()), project = store.list('projects')[0];
-    const secondProject = await services.call('project.create',{name:'Mutation QA · independent empty project'});
     const shot = await services.call('shot.create',{projectId:project.id,title:'Replay QA · original shot',prompt:'Synthetic original saved prompt',duration:2});
     const secondShot = await services.call('shot.create',{projectId:project.id,title:'Replay QA · second shot',duration:2});
     const asset = store.list('assets',project.id).find(value=>value.mimeType==='video/mp4');
     if(!asset)throw Error('Synthetic copied video fixture missing');
     const jobId=randomUUID(),versionId=randomUUID(),at=new Date().toISOString();
-    store.put('jobs',{id:jobId,projectId:project.id,shotId:shot.id,requestId:randomUUID(),providerId:'mock',model:'fixture-existing-video',status:'succeeded',phase:'complete',progress:100,revision:1,submissionCount:0,versionId,createdAt:at,updatedAt:at,snapshot:{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[],duration:2,aspectRatio:'9:16'}});
-    store.put('versions',{id:versionId,projectId:project.id,jobId,shotId:shot.id,assetId:asset.id,number:1,providerId:'mock',model:'fixture-existing-video',isMock:true,sha256:asset.sha256,url:asset.url,createdAt:at});
-    await services.call('project.get',{projectId:secondProject.id});
-    fixture={workspace,project,secondProject,shot,secondShot,versionId,synthetic:true};
-  } finally {store.close();}
+    store.tx(()=>{
+      store.put('jobs',{id:jobId,projectId:project.id,shotId:shot.id,requestId:randomUUID(),providerId:'mock',model:'fixture-existing-video',status:'succeeded',phase:'complete',progress:100,revision:1,submissionCount:0,versionId,createdAt:at,updatedAt:at,snapshot:{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[],duration:2,aspectRatio:'9:16'}});
+      store.put('versions',{id:versionId,projectId:project.id,jobId,shotId:shot.id,assetId:asset.id,number:1,providerId:'mock',model:'fixture-existing-video',isMock:true,sha256:asset.sha256,url:asset.url,createdAt:at});
+    });
+    fixture={workspace,project,shot,secondShot,versionId,synthetic:true,kernel:true};
+  } finally {await closeQaProject(primary);}
+  const second=await createQaProject(workspace,{name:'Mutation QA · independent empty project',media:false});
+  try{fixture.secondProject=second.project;}finally{await closeQaProject(second);}
   await writeFile(file,JSON.stringify(fixture,null,2));return fixture;
 }
-export function mutationQaAudit(workspace) {
-  const db=new DatabaseSync(path.join(workspace,'workbench.sqlite'),{readOnly:true});
-  try {
-    const tables=db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row=>row.name);
-    const data=Object.fromEntries(tables.map(table=>[table,db.prepare(`SELECT * FROM "${table}" ORDER BY rowid LIMIT 1001`).all()]));
-    if(Object.values(data).some(rows=>rows.length>1000))throw Error('QA audit bound exceeded');
-    return {at:new Date().toISOString(),data,hash:createHash('sha256').update(JSON.stringify(data)).digest('hex')};
-  } finally {db.close();}
+export async function mutationQaAudit(workspace,{inspectProject,inspectApplication}={}) {
+  if(Boolean(inspectProject)!==Boolean(inspectApplication))throw Error('Live QA audit requires both trusted project and application inspectors');
+  const projects={};let application,ids;
+  if(inspectApplication){
+    application=inspectApplication(auditQaDatabases);
+    ids=application.databases.main.rows.recent_projects.map(row=>row.projectId).sort();
+    for(const id of ids)projects[id]=await inspectProject(id,auditQaDatabases);
+    application=inspectApplication(auditQaDatabases);
+  }else{
+    // Cold-only: these real openers reject an already-held app/project. Never
+    // open a raw SQLite reader beside a native backend's live connection.
+    const library=openAppLibrary({dataDir:workspace});
+    try{ids=library.registry.list().map(row=>row.projectId).sort();application=auditQaDatabases(library.db);}finally{library.close();}
+    for(const id of ids){const store=openServerProject(workspace,id);try{projects[id]=auditQaDatabases(store.db);}finally{store.close();}}
+  }
+  // Preserve the old read-only data projection for graphical consumers, with
+  // every real host included. Full schemas/rows/changeMarks remain alongside it.
+  const data={};
+  for(const snapshot of Object.values(projects))for(const database of Object.values(snapshot.databases))for(const [table,rows] of Object.entries(database.rows)){
+    (data[table]??=[]).push(...rows);
+  }
+  return {at:new Date().toISOString(),data,projects,application,hash:hashQaSnapshot({projects,application})};
 }
 const invokedDirectly=process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url);
 if(invokedDirectly&&process.argv.includes('--prepare'))console.log(JSON.stringify(await prepareMutationQaFixture(process.argv.includes('--native')?path.join(mutationQaRoot,'native-runtime'):mutationRuntime),null,2));
@@ -52,7 +69,9 @@ if(invokedDirectly&&process.argv.includes('--serve')) {
   process.env.MIOON_ENABLE_LIVE_PROVIDER='0';
   for(const key of Object.keys(process.env))if(/^(RUNWAY|RUNWAYML|ARK_|VEO_|GEMINI_|MINIMAX_|HAILUO_|VIDU_|OPENAI_|DEEPSEEK_|DASHSCOPE_|MOONSHOT_)/.test(key))delete process.env[key];
   const fixture=await prepareMutationQaFixture();
-  let backend=await startServer({dataDir:fixture.workspace,port:0,token:mutationQaToken,distDir:path.resolve('apps/web/dist')}),closing=false,seq=0;
+  let inspectProject,inspectApplication;
+  const startBackend=()=>startServer({dataDir:fixture.workspace,port:0,token:mutationQaToken,distDir:path.resolve('apps/web/dist'),inspectProject:value=>{inspectProject=value;},inspectApplication:value=>{inspectApplication=value;}});
+  let backend=await startBackend(),closing=false,seq=0;
   const port=4894,host=`127.0.0.1:${port}`,origin=`http://${host}`;
   const server=http.createServer(async(req,res)=>{
     try {
@@ -85,8 +104,8 @@ if(invokedDirectly&&process.argv.includes('--serve')) {
   const descriptor=()=>writeFile(path.join(mutationRuntime,'server.json'),JSON.stringify({url:origin,pid:process.pid,workspace:fixture.workspace,synthetic:true}));await descriptor();
   const box=path.join(mutationQaRoot,'api-mailbox');await mkdir(box,{recursive:true});let busy=false;
   const timer=setInterval(async()=>{if(busy||closing)return;busy=true;try{for(const name of(await readdir(box)).filter(name=>name.endsWith('.request.json'))){const file=path.join(box,name),item=JSON.parse(await readFile(file,'utf8'));await unlink(file);let result;try{
-    if(item.action==='audit')result=mutationQaAudit(fixture.workspace);
-    else if(item.action==='restart'){await backend.close();backend=await startServer({dataDir:fixture.workspace,port:0,token:mutationQaToken,distDir:path.resolve('apps/web/dist')});await descriptor();result={restarted:true};}
+    if(item.action==='audit')result=await mutationQaAudit(fixture.workspace,{inspectProject,inspectApplication});
+    else if(item.action==='restart'){await backend.close();inspectProject=undefined;inspectApplication=undefined;backend=await startBackend();await descriptor();result={restarted:true};}
     else throw Error('Unknown bounded QA action');
   }catch(error){result={probeError:error.message};}await writeFile(path.join(box,name.replace('.request.json','.result.json')),JSON.stringify(result));}}finally{busy=false;}},40);timer.unref();
   console.log(`MUTATION_SYNTHETIC_QA_READY ${origin}`);

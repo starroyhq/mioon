@@ -7,7 +7,7 @@ import {mock} from 'node:test';
 import {fileURLToPath} from 'node:url';
 import {ensurePrivateDirectory, writePrivateFileAtomic} from '@mioon/contracts/private-storage';
 import {openStore} from '../../packages/business/src/db.ts';
-import type {WorkspaceStore} from '../../packages/business/src/db.ts';
+import type { Store as WorkspaceStore } from '../../packages/business/src/store-contract.ts';
 import {createProjectFile} from '../../packages/business/src/project-file/connection.ts';
 import {isProjectStore} from '../../packages/business/src/project-file/store.ts';
 import {createMioRecords} from '../../packages/business/src/agent/mio-records.ts';

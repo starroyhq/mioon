@@ -3,7 +3,7 @@ import type {TimelineFormatResponse} from '../../packages/contracts/src/timeline
 import type {WorkspaceSettings} from '../../packages/contracts/src/workspace-configuration.ts';
 import type {ProviderCapabilities, normalizedCapabilities} from '../../packages/business/src/provider-registry.ts';
 import type {OrdinaryServices, ServiceHandlerContext, JobRecord} from '../../packages/business/src/services.ts';
-import type {WorkspaceStore} from '../../packages/business/src/db.ts';
+import type { Store as WorkspaceStore } from '../../packages/business/src/store-contract.ts';
 import type {createClient} from '../../packages/client/src/index.ts';
 import type {FixtureServiceResult, FixtureProject, FixtureAsset, FixtureTimeline, FixtureExport, FixtureExportRecord, FixtureHistory, FixtureVersion} from './strict-timeline-core-types.ts';
 import type {ReferenceShotRecord, ReferenceEdgeRecord, ReferenceMutationResponse, ReferenceAttachResponse, ReferenceDetachResponse} from '../../packages/contracts/src/reference-acknowledgement.ts';
