@@ -1,3 +1,4 @@
+import type {ProjectVersionListResponse} from '../packages/contracts/src/project-version-operations.ts';
 import {writeProjectCover} from '../apps/server/src/project-host/covers.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
@@ -175,7 +176,7 @@ async function fixture(t: test.TestContext) {
   const foreign = createServerProject(root, {name: 'FOREIGN_DRAFT_PROJECT_MUST_NOT_LEAK'}), other = (foreign.store as unknown as TypedStore).get('projects', foreign.projectId)!;
   foreign.store.close();
   const key = {projectId: project.id, timelineId: timeline.id, clipId: timeline.clips[0].id};
-  const start = async () => {
+  const start = async (): Promise<string> => {
     backend = startProcess(root, auditPath); processes.push(backend);
     let ready;
     try { ready = await deadline(backend.ready, 'owned backend readiness'); }
@@ -184,8 +185,18 @@ async function fixture(t: test.TestContext) {
     assert.equal(new URL(ready.url).hostname, '127.0.0.1');
     url = ready.url;
     assert.equal((await request(url, '/health')).status, 200);
+    return ready.url;
   };
-  await start();
+  const initialUrl = await start();
+  // A cold project open saves its daily version before read-only draft work.
+  // Open each real host explicitly, then keep every original full-row baseline.
+  for (const projectId of [project.id, other.id]) {
+    const opened: WireResponse<ProjectVersionListResponse> = await request<ProjectVersionListResponse>(initialUrl,
+      rpcPathFor('project.version.list', {projectId}, projectId), {method: 'POST', input: {operation: 'project.version.list', input: {projectId}}});
+    assert.equal(opened.status, 200); assert.equal(opened.body.ok, true);
+    assert.equal(opened.body.data?.projectId, projectId);
+    assert.equal(opened.body.data?.versions.filter(version => version.projectId === projectId && version.trigger === 'daily-open').length, 1);
+  }
   proxy = http.createServer(async (req, res) => {
     try {
       req.setEncoding('utf8');

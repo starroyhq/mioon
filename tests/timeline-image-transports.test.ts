@@ -331,7 +331,13 @@ async function fixture(t: test.TestContext) {
 
 test('actual authenticated HTTP, CLI and official MCP preserve image inspection scope; restored33 refuses even an explicit origin',
   {timeout: 60_000}, async t => {
-    const f = await fixture(t), before = f.snapshot();
+    const f = await fixture(t);
+    // The host's first open owns a daily capture; keep all inspection comparisons after that write.
+    const opened = await f.rpc('project.inspect', {projectId: f.input.projectId});
+    assert.equal(opened.status, 200); assert.equal(opened.envelope.ok, true);
+    const before = f.snapshot(), tables = Object.fromEntries(before.rows) as Record<string, Record<string, unknown>[]>;
+    assert.equal(tables.project_versions.filter(row => row.projectId === f.input.projectId && row.trigger === 'daily-open').length, 1);
+    assert.equal(tables.project_version_capture_marks.filter(row => row.projectId === f.input.projectId && row.kind === 'daily-open').length, 1);
     // The project ID comes from createServerProject: the requests and the expected response use it.
     const {input, response} = f;
     const direct = await f.rpc(operation, input);
