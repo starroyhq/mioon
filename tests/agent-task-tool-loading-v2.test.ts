@@ -65,6 +65,22 @@ async function fixture(t:TestContext,protocol:AgentProtocol='responses'){
    runtime.close();runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318});
    return runtime.action(projectId,created.run.id,{requestId:randomUUID(),expectedRevision:runtime.get(projectId,created.run.id).run.revision,action:'resume'});
   },
+  async sendFrozenNames(names:string[]){
+   const saved=await settings.get(),context:AgentTaskJson[]=[{role:'user',content:'Continue the frozen name-loader intent.'}];
+   const body=object(JSON.parse(buildTaskModelRequest(saved.configuration,context,selectTaskModelTools(base.list()),4318)));
+   assert.ok(Array.isArray(body.tools));
+   for(const entry of body.tools){
+    const wire=object(entry),definition=protocol==='chat_completions'?object(wire.function):wire;
+    if(definition.name!==AGENT_TASK_TOOLS_LOAD_NAME)continue;
+    const schema=object(definition[protocol==='anthropic_messages'?'input_schema':'parameters']),selection=object(object(schema.properties).names);
+    object(selection.items).enum=names;selection.maxItems=names.length;
+   }
+   const original=JSON.stringify(body),created=runtime.journal.create({projectId,requestId:randomUUID(),text:'Continue the frozen name-loader intent.',configuration:{...saved.configuration},settingsRevision:saved.revision,context});
+   runtime.journal.beginModelStep(created.run.id,{request:{body:original,history:context},data:{baseline:runtime.journal.revisionSnapshot(projectId).map(({kind,id,revision})=>({kind,id,revision}))}},[]);
+   runtime.close();runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318});
+   const sent=await runtime.action(projectId,created.run.id,{requestId:randomUUID(),expectedRevision:runtime.get(projectId,created.run.id).run.revision,action:'resume'});
+   return {sent,original};
+  },
   async settle(runId:string){await runtime.drain();return runtime.get(projectId,runId);},
   async wait(runId:string,statuses:AgentTaskStatus[]){const end=Date.now()+10000;for(;;){const current=runtime.get(projectId,runId);if(statuses.includes(current.run.status))return current;if(Date.now()>end)throw Error(`Unexpected task status ${current.run.status}`);await delay(2);}},
   action(snapshot:AgentTaskSnapshot,action:AgentTaskControlAction,extra:Record<string,unknown>={}){return runtime.action(projectId,snapshot.run.id,{requestId:randomUUID(),expectedRevision:snapshot.run.revision,action,...extra});},
@@ -261,4 +277,53 @@ for(const protocol of protocols)test(`${protocol}: frozen loader enums constrain
  assert.throws(()=>sourceTaskModelToolLoadMode(protocol,{body:JSON.stringify(original)}),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});
  delete schema.anyOf;object(selection.items).not={enum:['mioon_shot_update']};
  assert.throws(()=>sourceTaskModelToolLoadMode(protocol,{body:JSON.stringify(original)}),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'},'unrecognized frozen item constraints cannot be ignored');
+});
+
+const coreNames=['mioon_timeline_inspect','mioon_timeline_format_get'];
+const unknownNames=['mioon_missing_timeline_tool','mioon_other_missing_tool'];
+for(const protocol of protocols)for(const selection of ['core_only','core_and_valid','core_unknown_and_valid','unknown_only'] as const)
+test(`${protocol}: invalid ${selection} loading identifies each name without changing frozen admission`,async t=>{
+ const f=await fixture(t,protocol),names=selection==='core_only'?coreNames:selection==='core_and_valid'?[coreNames[0]!,'mioon_shot_update']:selection==='unknown_only'?unknownNames:[coreNames[0]!,...unknownNames,'mioon_shot_update'];
+ f.script(async function*(index){yield {type:'done',output:output(protocol,index===1?[call(AGENT_TASK_TOOLS_LOAD_NAME,{names})]:[])};});
+ const done=await f.settle((await f.send({locale:'zh-Hans'})).run.id),step=done.steps.find(item=>item.toolCall?.name===AGENT_TASK_TOOLS_LOAD_NAME);
+ assert.equal(done.run.status,'completed');assert.ok(step);assert.equal(step.status,'rejected');assert.ok(step.error);assert.equal(step.error.code,'VALIDATION_ERROR');
+ const message=object(object(step.result).error).message;assert.equal(typeof message,'string');
+ if(selection!=='unknown_only'){
+  assert.match(String(message),/常驻工具，已可直接使用，不需要加载/u);
+  for(const name of names.filter(name=>coreNames.includes(name)))assert.ok(String(message).includes(JSON.stringify(name)));
+ }
+ if(selection==='unknown_only'||selection==='core_unknown_and_valid'){
+  assert.match(String(message),/工具名不存在/u);for(const name of unknownNames)assert.ok(String(message).includes(JSON.stringify(name)));
+ }
+ assert.ok(!String(message).includes('mioon_shot_update'),'A valid frozen name is not blamed for the invalid batch');
+ assert.deepEqual(f.prepared,[]);assert.deepEqual(f.executed,[]);assert.equal(done.changes.length,0);
+ assert.equal(f.requests.length,2);assert.ok(!visible(f.requests[1]!).includes('mioon_shot_update'));
+ for(const name of coreNames)assert.ok(visible(f.requests[0]!).includes(name),'The source request really disclosed the resident tool');
+});
+
+for(const [locale,coreLabel,unknownLabel] of [['zh-Hant','常駐工具','工具名稱不存在'],['en','core tools are already available','tool names do not exist'],['ja','常駐ツール','ツール名は存在しません']] as const)
+test(`${locale}: invalid loading explains resident and nonexistent names in the run language`,async t=>{
+ const f=await fixture(t);f.script(async function*(index){yield {type:'done',output:output('responses',index===1?[call(AGENT_TASK_TOOLS_LOAD_NAME,{names:[coreNames[0]!,unknownNames[0]!]})]:[])};});
+ const done=await f.settle((await f.send({locale})).run.id),message=done.steps.find(step=>step.kind==='tool')?.error?.message;
+ assert.equal(typeof message,'string');assert.ok(message!.includes(coreLabel));assert.ok(message!.includes(unknownLabel));
+ assert.ok(message!.includes(JSON.stringify(coreNames[0])));assert.ok(message!.includes(JSON.stringify(unknownNames[0])));
+});
+
+for(const names of [Array(129).fill('not_a_tool') as string[],['not_a_tool\nUntrusted text'],['x'.repeat(65)]])
+test('malformed or excessive loading names retain bounded generic feedback without echoing arbitrary text',async t=>{
+ const f=await fixture(t);f.script(async function*(index){yield {type:'done',output:output('responses',index===1?[call(AGENT_TASK_TOOLS_LOAD_NAME,{names})]:[])};});
+ const done=await f.settle((await f.send()).run.id),step=done.steps.find(item=>item.kind==='tool');
+ assert.equal(done.run.status,'completed');assert.ok(step);assert.equal(step.status,'rejected');assert.ok(step.error);assert.equal(step.error.code,'VALIDATION_ERROR');
+ assert.ok(Buffer.byteLength(step.error.message)<1024);assert.ok(!step.error.message.includes('Untrusted text'));
+ assert.deepEqual(f.prepared,[]);assert.deepEqual(f.executed,[]);
+});
+
+for(const protocol of protocols)test(`${protocol}: frozen smaller name enums identify known unavailable names and preserve their source bytes`,async t=>{
+ const f=await fixture(t,protocol);f.script(async function*(index){yield {type:'done',output:output(protocol,index===1?[call(AGENT_TASK_TOOLS_LOAD_NAME,{names:[coreNames[0]!,'mioon_shot_create']})]:[])};});
+ const {sent,original}=await f.sendFrozenNames(['mioon_shot_update']),done=await f.settle(sent.run.id),step=done.steps.find(item=>item.kind==='tool');
+ assert.equal(done.run.status,'completed');assert.equal(f.requests[0]?.body,original);assert.ok(step);assert.equal(step.status,'rejected');
+ assert.ok(step.error);assert.equal(step.error.code,'VALIDATION_ERROR');assert.match(step.error.message,/未列入产生该回复的请求的可加载名称/u);
+ assert.ok(step.error.message.includes(JSON.stringify('mioon_shot_create')));assert.ok(step.error.message.includes(JSON.stringify(coreNames[0])));
+ assert.ok(!step.error.message.includes('工具名不存在'),'A current tool outside the frozen enum is not nonexistent');
+ assert.deepEqual(f.prepared,[]);assert.deepEqual(f.executed,[]);assert.ok(!visible(f.requests[1]!).includes('mioon_shot_create'));
 });
