@@ -28,20 +28,11 @@ export function projectResponseMatches(value: unknown, expectedProjectId: string
     validProjectId(value.project.id) && value.project.id === expectedProjectId;
 }
 
-/** Identifies an explicit foreign restore origin only. Missing or malformed
- * response structure remains the existing workspace validator's responsibility. */
-export function hasProjectResponseOriginMismatch(value: unknown, expectedOrigin: string): boolean {
-  return validProjectId(expectedOrigin) && record(value) && record(value.restore) &&
-    typeof value.restore.workspaceOrigin === 'string' && value.restore.workspaceOrigin !== expectedOrigin;
-}
-
 /** Routes existing failure codes without changing their recovery or authority. */
 export function projectOpenFailureKind(error: unknown): 'auth' | 'identity' | 'project' {
   if (!record(error)) return 'project';
   switch (error.code) {
     case 'UNAUTHORIZED': return 'auth';
-    case 'WORKSPACE_ORIGIN_UNVERIFIED':
-    case 'RESTORE_WORKSPACE_ORIGIN_MISMATCH':
     case 'LAST_PROJECT_SCOPE_MISMATCH':
     case 'LAST_PROJECT_STALE_INSTANCE': return 'identity';
     default: return 'project';

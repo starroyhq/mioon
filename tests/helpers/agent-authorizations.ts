@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {ownsStoreLock,getWorkspaceRestoreContext} from '../../packages/business/src/db.ts';
+import {ownsStoreLock} from '../../packages/business/src/store-runtime.ts';
 import {deriveAgentEndpoint} from '../../packages/contracts/src/agent-protocol.ts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
 import {createAgentAuthorizations} from '../../packages/business/src/agent/authorizations.ts';
@@ -27,7 +27,7 @@ export function createTestAuthorizations(storeOrRead: StoreOrRead, settings: Set
       if(!app||app.databaseFile!==databaseFile||app.dataDir!==root)return false;
       const info=lstatSync(databaseFile,{bigint:true});
       return isAppLibraryHeld({dev:String(info.dev),ino:String(info.ino)},app.db);
-    },isRestored:()=>databaseFile?false:Boolean(getWorkspaceRestoreContext(read() as never))},
+    }},
     readCurrentTarget:async()=>{const current=await settings.get();return {
       destination:deriveAgentEndpoint(current.configuration as never),model:(current.configuration as {model: string}).model,settingsRevision:current.revision,
     };},

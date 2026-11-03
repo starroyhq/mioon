@@ -1,14 +1,13 @@
+import {assertProjectStore} from './store-runtime.ts';
 import {registeredProjectStoreForDatabase} from './project-media-storage.ts';
 import {prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
 import {bindAgentTaskJobInside} from './agent/task-effects-v2.ts';
 import {assertTimelineVolumeEnvelopeWorkspace as legacyAssertVolumeWorkspace,admitTimelineVolumeEnvelopeWrite,volumeEnvelopeMutationError} from './timeline-volume-envelope-admission.ts';
 import {volumeEnvelopeFieldsAfterEdit,splitVolumeEnvelopeFields} from '../../contracts/src/timeline-volume-envelope.ts';
-import {ownsStoreLock} from './db.ts';
-import {assertTimelineAudioRoleWorkspace as legacyAssertAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
+import {ownsStoreLock} from './store-runtime.ts';
+import {assertTimelineAudioRoleWorkspace as legacyAssertAudioRoleWorkspace} from './store-capabilities.ts';
 import {createTimelineLoudnessTransactions} from './timeline-loudness-transactions.ts';
 import {hasSelectedTimelineExportRange,timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
-import {bindRestoredExport} from './workspace-restore-exports.ts';
-import {refuseRestoredOperation as legacyRefuseRestoredOperation} from './workspace-restore-policy.ts';
 import {createAgentTimelineMoveBoundary, createAgentTimelineGainBoundary} from './agent/timeline-edit-domain.ts';
 import {createSubtitleMutations} from './timeline-subtitles.ts';
 import {randomUUID} from 'node:crypto';
@@ -62,6 +61,7 @@ interface TimelinePreset {id: string;fps: number;width: number;height: number}
 interface TimelineStore {db: DatabaseSync;put: (table: string,value: unknown)=>unknown;tx: <T>(callback: ()=>T)=>T}
 interface TimelineTransactionContext {boundary: TimelineRecoveryBoundary;requestHash: string;write: ()=>void}
 interface TimelineServiceDeps {
+ beforeEffect?: ()=>void;
  required: (table: string,id: string)=>void;
  check: (timeline: {revision?: number},expectedRevision: number)=>void;
  hash: (value: unknown)=>string;
@@ -153,12 +153,9 @@ const clone=(value: unknown)=>JSON.parse(JSON.stringify(value));
 
 // The timeline is its own aggregate: revision checks and idempotent responses
 // must be committed in the same SQLite transaction as every mutation.
-export function createTimelineServices(store: TimelineStore,{required,check,hash,now,exportAdmission}: TimelineServiceDeps){
+export function createTimelineServices(store: TimelineStore,{required,check,hash,now,exportAdmission,beforeEffect}: TimelineServiceDeps){
  const assertTimelineAudioRoleWorkspace=legacyAssertAudioRoleWorkspace;
  const assertTimelineVolumeEnvelopeWorkspace=legacyAssertVolumeWorkspace;
- const refuseRestoredOperation=(target: unknown,operation: string,input?: Record<string, unknown>): void=>{
-  legacyRefuseRestoredOperation(target as never,operation,input);
- };
  const createTimelineRecoveryBoundary: (db: DatabaseSync,input: TimelineMutationInput)=>TimelineRecoveryBoundary=legacyRecoveryBoundary as never;
  const isTimelineMutationResponse: (operation: string,input: unknown,response: unknown)=>boolean=legacyMutationResponse;
  const admitTimelineImageResponse=(value: unknown): void=>{legacyAdmitImageResponse(value as TimelineRecord);};
@@ -172,7 +169,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   required('projects',projectId);
   const existing=find(projectId);
   if(existing)return existing;
-  refuseRestoredOperation(store,'timeline.get',{projectId});
+  assertProjectStore(store);
   return put('timelines',newTimeline(projectId)) as TimelineRecord;
  }
  function newTimeline(projectId: string,preset: TimelinePreset=timelineOutputPreset(DEFAULT_TIMELINE_OUTPUT_PRESET) as TimelinePreset): TimelineRecord{
@@ -191,7 +188,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
  function transaction<T>(operation: string,input: TimelineRecoveryInput,apply: (context: TimelineTransactionContext)=>T,boundary: TimelineRecoveryBoundary=createTimelineRecoveryBoundary(db,input as TimelineMutationInput)): T{
   assertTimelineAudioRoleWorkspace(db,input);
   assertTimelineVolumeEnvelopeWorkspace(db,input);
-  refuseRestoredOperation(store,operation,input);
+  assertProjectStore(store);
   const state: TimelineRejectionState={operation,receiptAbsent:false,writesStarted:false,transactionEntered:false,callbackFailed:false,ownedScope:()=>ownsStoreLock(store)};
   const write=()=>{state.writesStarted=true;};
   try{return tx(()=>{
@@ -202,7 +199,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
      throw new AppError('IDEMPOTENCY_CONFLICT','同一时间线请求 ID 已用于不同内容',409,{requestId:input.requestId});
     if(previous)return boundary.replay(operation,previous.response as string) as T;
     state.receiptAbsent=true;
-    refuseRestoredOperation(store,operation,input);
+    assertProjectStore(store);
     return apply({boundary,requestHash,write});
    }catch(error){state.callbackFailed=true;throw error;}
   });}catch(error){rejectTimelineMutation(db,input,error,state);throw error;}
@@ -366,7 +363,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    write();put('exports',result);
    bindAgentTaskJobInside(db,'export',result.id);
    const response=saveResponse('timeline.render',input,requestHash,result,boundary);
-   bindRestoredExport(store,'timeline.render',input,result,requestHash);
+
    return response;
   });
  }
@@ -483,14 +480,14 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
     timeline=>({operation:'timeline.shots.append',requestId:input.requestId,timeline,...plan}));
   },
   'timeline.render':(input: TimelineMutationInput,options: unknown={})=>{
-   refuseRestoredOperation(store,'timeline.render',input);
-   const invoke=()=>input.exportSettings===undefined?render(input):exportAdmission.render(input,options,{
+   assertProjectStore(store);
+   const invoke=()=>{assertProjectStore(store);beforeEffect?.();return input.exportSettings===undefined?render(input):exportAdmission.render(input,options,{
    prepare:()=>{
     const result=transaction<{snapshot: unknown;mode?: string;replayed?: boolean;response?: unknown}>('timeline.render',input,({boundary,write})=>({snapshot:renderSnapshot(input,boundary,write)}));
     return result.mode==='timeline'?{replayed:true,response:result}:result;
    },
    accept:(admission: RenderAdmission)=>render(input,admission),
-  });
+  });};
    // Exact accepted requests retain their original immutable ACK even after a
    // source disappears. The existing transaction verifies hash/scope/response.
    const owner=registeredProjectStoreForDatabase(db);
@@ -509,7 +506,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    }
    const context=options!==null&&typeof options==='object'?options as {signal?:unknown}:{};
    const signal=context.signal instanceof AbortSignal?context.signal:undefined;
-   return prepareTimelineReferenceHashes({db,root:owner.projectDir},input.projectId,{signal,maxBytes:Number.MAX_SAFE_INTEGER,totalBytes:Number.MAX_SAFE_INTEGER}).then(()=>invoke());
+   return prepareTimelineReferenceHashes({db,root:owner.projectDir},input.projectId,{signal,beforeEffect,maxBytes:Number.MAX_SAFE_INTEGER,totalBytes:Number.MAX_SAFE_INTEGER}).then(()=>invoke());
   }
  };
  // Fixed backend-only Agent scope. It uses precisely the existing update,

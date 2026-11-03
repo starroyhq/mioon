@@ -148,10 +148,13 @@ export async function seedInspectionStore(root: string): Promise<void> {
     put('versions', version(IDS.version, IDS.project, IDS.shot, IDS.job, IDS.asset));
     put('versions', version(IDS.otherVersion, IDS.other, IDS.otherShot, IDS.otherJob, IDS.otherAsset));
     const timeline = (id: string, projectId: string, assetId: string): Record<string, unknown> => ({id, projectId, revision: 4, fps: 30, width: 720, height: 1280, durationFrames: 60,
-      tracks: [{id: IDS.track, name: HOSTILE, kind: 'video', orderIndex: 0, hidden: false, muted: false, ...secretFields()}],
+      // Canonical timeline records reject unknown fields at host admission.
+      // Private sentinels remain in the actual raw journals, B1 and other
+      // persisted records below; they cannot turn this positive seed invalid.
+      tracks: [{id: IDS.track, name: HOSTILE, kind: 'video', orderIndex: 0, hidden: false, muted: false}],
       clips: [{id: IDS.clip, trackId: IDS.track, assetId, name: HOSTILE, startFrame: 0, durationFrames: 60,
-        sourceInFrame: 0, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, ...secretFields()}],
-      createdAt: NOW, updatedAt: NOW, ...secretFields()});
+        sourceInFrame: 0, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1}],
+      createdAt: NOW, updatedAt: NOW});
     put('timelines', timeline(IDS.timeline, IDS.project, IDS.asset));
     put('nodes', {id: uuid(710), projectId: IDS.project, type: 'text', text: PRIVATE, label: HOSTILE, revision: 1, position: {x: 0, y: 0}});
     put('edges', {id: uuid(711), projectId: IDS.project, source: uuid(710), target: IDS.shot, kind: 'decorative', ...secretFields()});

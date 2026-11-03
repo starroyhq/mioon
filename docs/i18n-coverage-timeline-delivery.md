@@ -51,7 +51,7 @@ Language is not a controller lifecycle dependency, business request field or com
 
 ## Offline backup documentation
 
-`WorkspaceBackupPanel.jsx` selects the bundled guide for the active locale. The timeline owner authored `docs/WORKSPACE-BACKUP-GUIDE.zh-Hant.md`, `.en.md`, and `.ja.md` against the unchanged Chinese guide. The original CLI commands, paths and recovery/security constraints were preserved. Downloaded guide filenames are not localized protocol identifiers.
+`WorkspaceBackupPanel.jsx` selects the bundled guide for the active locale. The timeline owner authored `docs/WORKSPACE-BACKUP.md`, `.en.md`, and `.ja.md` against the unchanged Chinese guide. The original CLI commands, paths and recovery/security constraints were preserved. Downloaded guide filenames are not localized protocol identifiers.
 
 ## Regression and new language tests
 

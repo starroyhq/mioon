@@ -1,11 +1,24 @@
+
+
+
+import {hash} from '../packages/business/src/services.ts';
+
+
+
+
+
+
+
+
+
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
-import type {BackupResult,RestoreResult} from './helpers/strict-timeline-backup-types.ts';
+
 import type {StrictTimelineService, StrictTimelineTasks} from './helpers/strict-timeline-handler-types.ts';
 import type {ServiceResponse as FixtureServiceResult, TypedStore as FixtureStore, TypedServices as FixtureServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
@@ -13,27 +26,23 @@ import {
   TIMELINE_RESPONSE_BYTES, TIMELINE_SUBTITLE_PROFILE_ID,
   hasRequestNotAppliedProof, isTimelineMutationResponse, isTimelineRecord,
 } from '@mioon/contracts';
-import {
-  openStore, openLegacyWorkspaceStore, installCurrentWorkspaceRestoreSchema, validateCurrentWorkspaceRestoreSchema,
-  getWorkspaceRestoreContext,
-  classifyCurrentWorkspaceSchema,
-} from '../packages/business/src/db.ts';
-import {createServices, hash, type ServiceHandlerContext} from '../packages/business/src/services.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {createServices, type ServiceHandlerContext} from '../packages/business/src/services.ts';
 import {createTimelineServices} from '../packages/business/src/timeline.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
-import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
-import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
-import {initializeWorkspaceSchema30} from '../packages/business/src/workspace-schema-v30.ts';
-import {initializeWorkspaceSchema32} from '../packages/business/src/workspace-schema-v32.ts';
+
+
+
+
+
 import {timelineImageResponseBudgetIssue} from '../packages/business/src/timeline-image-budget.ts';
-import {createWorkspaceBackup, verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
-import {materializeHistoricalWorkspace} from './helpers/historical-workspace.ts';
+
+
+
 import {parseCube3D} from '../packages/business/src/cube-lut.ts';
 import {lutInputHash} from '../packages/business/src/lut-resource-validation.ts';
 import {png, imageColour, sha, stamp} from './helpers/timeline-image-fixtures.ts';
-import {snapshot, facade, open} from './workspace-schema26-fixtures.mjs';
+
 
 const limit = 262144;
 const budgetCode = 'TIMELINE_IMAGE_AGGREGATE_BUDGET';
@@ -49,11 +58,6 @@ const editableSnapshot = (timeline: FixtureTimeline) => ({
   tracks: timeline.tracks, clips: timeline.clips, durationFrames: timeline.durationFrames,
   subtitles: timeline.subtitles,
 });
-const restoreMetadata = () => ({
-  restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(),
-  manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: stamp,
-});
-
 function corruptStoredText(db: DatabaseSync, table: string, sql: string, ...values: string[]) {
   const guards = db.prepare("SELECT name, sql FROM sqlite_schema WHERE type='trigger' AND tbl_name=? AND sql LIKE '%BEFORE UPDATE%'").all(table);
   for (const guard of guards) db.exec(`DROP TRIGGER "${guard.name}"`);
@@ -106,9 +110,9 @@ function tuneBytes(timeline: FixtureTimeline, target: number) {
   return timeline;
 }
 
-async function fixture(t: test.TestContext, {bytes = limit, revision = 1, updatedAt = stamp, legacy = false} = {}) {
+async function fixture(t: test.TestContext, {bytes = limit, revision = 1, updatedAt = stamp} = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-image-budget-'));
-  const opener = legacy ? openLegacyWorkspaceStore : openStore;
+  const opener = openStore;
   let store = (opener(root) as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
   const projectId = (await services.call('project.create', {name: 'Image aggregate budget'})).id;
   const assetId = randomUUID();
@@ -373,111 +377,3 @@ for (const location of (['receipt', 'history'] as const)) test(`oversized persis
     await assertNoWrites(f, 'timeline.undo', f.params(changed), {code: 'INVALID_TIMELINE_SNAPSHOT', proof: false});
   }
 });
-
-test('cold backup32 and restored33 preserve exact-limit evidence, receipts and history across reopen', async t => {
-  const f = await fixture(t, {bytes: limit - 1, legacy: true});
-  const track = f.timeline.tracks.at(-1);
-  const changed = await f.call('timeline.track.update', f.params(f.timeline, {trackId: (track)!.id, patch: {name: (track)!.name + 'x'}}));
-  assert.equal(encodedBytes(changed), limit);
-  const before = captureEdits(f.store.db);
-  await f.close();// Reviewed historical PNG-only fixture; never relabel or downgrade the current workspace.
-  const frozenBase = mkdtempSync(path.join(tmpdir(), 'mioon-image-budget-source32-'));
-  t.after(() => rmSync(frozenBase, {recursive: true, force: true}));
-  const frozen = materializeHistoricalWorkspace({root: f.root}, frozenBase, {version: 32});
-  const dbBytes = readFileSync(frozen.dbPath);
-  const base = mkdtempSync(path.join(tmpdir(), 'mioon-image-budget-restore-'));
-  t.after(() => rmSync(base, {recursive: true, force: true}));
-  const backup = path.join(base, 'backup'), destination = path.join(base, 'restored');
-  assert.equal((await (createWorkspaceBackup({source: frozen.root, destination: backup}) as Promise<BackupResult>)).databaseSchemaVersion, 32);
-  assert.equal((await (verifyWorkspaceBackup({directory: backup}) as Promise<BackupResult>)).databaseSchemaVersion, 32);
-  const restored = await (restoreWorkspaceBackup({directory: backup, destination}) as Promise<RestoreResult>);
-  assert.equal(restored.databaseSchemaVersion, 33);
-  assert.equal(restored.profile, 'restored-local-v5');
-  assert.equal(restored.sourceSchema, 32);
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const store = (openLegacyWorkspaceStore(destination) as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
-    try {
-      assert.equal((getWorkspaceRestoreContext(store))!.schemaVersion, 33);
-      assert.equal(validateCurrentWorkspaceRestoreSchema(store.db).schemaVersion, 33);
-      assert.deepEqual(captureEdits(store.db), before);
-      assert.deepEqual(await services.call('timeline.get', {projectId: f.projectId}), changed);
-      assert.deepEqual(store.db.prepare('SELECT id, projectId, position, operation, createdAt, beforeSnapshot, afterSnapshot FROM workspace_restore_timeline_history ORDER BY capturedRowid').all(), before.timeline_history);
-      assert.deepEqual(readFileSync(path.join(destination, f.asset.relativePath)), sourceBytes);
-    } finally { await services.drain(); store.close(); }
-  }
-  assert.deepEqual(readFileSync(frozen.dbPath), dbBytes);
-});
-
-test('restored33 install rolls back exact-limit timeline, receipt and history bytes on commit failure', async t => {
-  const f = await fixture(t, {legacy: true});
-  await f.call('timeline.clip.update', f.params(f.timeline, {clipId: f.timeline.clips[0].id, patch: {gain: 0}}));
-  await f.close();
-  const frozenBase = mkdtempSync(path.join(tmpdir(), 'mioon-image-budget-source32-'));
-  t.after(() => rmSync(frozenBase, {recursive: true, force: true}));
-  const frozen = materializeHistoricalWorkspace({root: f.root}, frozenBase, {version: 32});
-  const db = new DatabaseSync(frozen.dbPath);
-  try {
-    const before = snapshot(db);
-    let reached = false;
-    const interrupted = facade(db, (event: { phase: string; sql: string; }) => {
-      if (event.phase === 'before' && event.sql === 'COMMIT') {
-        reached = true;
-        throw Object.assign(new Error('Injected restore commit failure'), {code: 'INJECTED_BUDGET_RESTORE'});
-      }
-    });
-    assert.throws(() => installCurrentWorkspaceRestoreSchema(((interrupted) as unknown as Parameters<typeof installCurrentWorkspaceRestoreSchema>[0]), restoreMetadata()), {code: 'INJECTED_BUDGET_RESTORE'});
-    assert.equal(reached, true);
-    assert.equal(db.isTransaction, false);
-    assert.deepEqual(snapshot(db), before);
-    assert.equal(installCurrentWorkspaceRestoreSchema(db, restoreMetadata()).schemaVersion, 33);
-  } finally { db.close(); }
-});
-
-for (const sourceVersion of ([24, 26, 28, 30, 32] as const)) for (const restored of ([false, true] as const)) {
-  const role = sourceVersion + Number(restored);
-  test(`raw not-applied image-budget error cannot expand historical role ${role}`, () => {
-    const db = open(':memory:');
-    try {
-      initializeWorkspaceSchemaThrough24(db);
-      if (sourceVersion >= 26) initializeWorkspaceSchema26(db);
-      if (sourceVersion >= 28) initializeWorkspaceSchema28(db);
-      if (sourceVersion >= 30) initializeWorkspaceSchema30(db);
-      if (sourceVersion >= 32) initializeWorkspaceSchema32(db);
-      const projectId = randomUUID(), taskId = randomUUID(), operation = 'timeline.track.update';
-      const input = {projectId, requestId: randomUUID(), expectedRevision: 1,
-        trackId: randomUUID(), patch: {name: 'Ordinary retained name'}};
-      db.prepare('INSERT INTO projects VALUES(?,?)').run(projectId,
-        JSON.stringify({id: projectId, name: 'Historical role', createdAt: stamp, updatedAt: stamp}));
-      db.prepare(`INSERT INTO edit_tasks(id, projectId, operation, input, requestId, digest,
-        lane, origin, status, revision, acknowledged, errorCode, createdAt, updatedAt, bytes)
-        VALUES(?,?,?,?,?,?,'timeline:mutation','new','not_applied',3,0,'SOURCE_BOUNDS',?,?,16384)`).run(
-        taskId, projectId, operation, JSON.stringify(input), input.requestId, hash({operation, input}), stamp, stamp,
-      );
-      if (restored) assert.equal(installCurrentWorkspaceRestoreSchema(db, restoreMetadata()).schemaVersion, role);
-      assert.equal(classifyCurrentWorkspaceSchema(db).schemaVersion, role);
-      // No new profile string or image evidence appears in the intent. The
-      // error code alone must not make a previously invalid task definite.
-      corruptStoredText(db, 'edit_tasks', 'UPDATE edit_tasks SET errorCode=? WHERE id=?', budgetCode, taskId);
-      const before = snapshot(db), changes = totalChanges(db);
-      if (sourceVersion < 32) {
-        assert.throws(() => classifyCurrentWorkspaceSchema(db));
-        if (restored) assert.throws(() => validateCurrentWorkspaceRestoreSchema(db));
-        else assert.throws(() => initializeWorkspaceSchema32(db));
-      } else if (restored) {
-        // Fail-closed capture integrity: a live edit_task mutated after capture
-        // must never be accepted as the captured historical evidence. Accepting it
-        // could broaden restored33 authority from the planted errorCode alone, so
-        // the validator must reject the changed live row. The classification still
-        // names only the historical role: the mutation expands no capability.
-        assert.equal(classifyCurrentWorkspaceSchema(db).schemaVersion, 33,
-          'historical role 33 is not broadened to a current role');
-        assert.throws(() => validateCurrentWorkspaceRestoreSchema(db), {code: 'RESTORE_CAPTURE_CHANGED'},
-          'mutated live capture must fail closed');
-      } else {
-        assert.equal(classifyCurrentWorkspaceSchema(db).schemaVersion, role);
-      }
-      assert.equal(totalChanges(db), changes);
-      assert.deepEqual(snapshot(db), before);
-    } finally { db.close(); }
-  });
-}

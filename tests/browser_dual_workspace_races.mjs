@@ -4,7 +4,7 @@ import { clickWorkbenchAction } from './browser-workbench-actions.mjs';
 import assert from 'node:assert/strict';
 import {readFile,writeFile,mkdir,unlink} from 'node:fs/promises';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 const equal=(a,b,message)=>assert.equal(JSON.stringify(a),JSON.stringify(b),message);
 export async function runDualWorkspaceRaceAcceptance({tab,fixture,outDir}){

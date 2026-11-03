@@ -13,6 +13,7 @@ import path from 'node:path';
 import desktopIdentity from '../identity.ts';
 import type {DesktopIdentity} from '../identity.ts';
 import { providerEnvironmentKeys } from '@mioon/business';
+import {openAppLibrary} from '../../../packages/business/src/app-db/index.ts';
 
 interface Discovery {
   readonly appId: string;
@@ -39,6 +40,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.
 const output = path.join(root, 'evidence/v4.1-app-id');
 const directory = await mkdtemp(path.join(tmpdir(), 'wb-packaged-identity-'));
 const configHome = path.join(directory, 'config');
+const qaHome=path.join(directory,'home'),videosDir=path.join(qaHome,'Videos');
 const require = createRequire(import.meta.url);
 const builderRequire = createRequire(require.resolve('electron-builder'));
 const dependencies = createRequire(builderRequire.resolve('app-builder-lib'));
@@ -65,6 +67,9 @@ async function rpc<T = unknown>(descriptor: Discovery, operation: string, input:
 }
 try {
   await mkdir(output, { recursive: true });
+  await mkdir(videosDir,{recursive:true,mode:0o700});
+  await mkdir(configHome,{recursive:true,mode:0o700});
+  await writeFile(path.join(configHome,'user-dirs.dirs'),`XDG_VIDEOS_DIR="${videosDir}"\n`,{mode:0o600});
   await mkdir(path.join(configHome, 'video-workbench'), { recursive: true });
   await writeFile(path.join(configHome, 'video-workbench', 'legacy-preserved.txt'), 'Existing legacy data is not touched.');
   for (const channel of ['production', 'development'] as const) {
@@ -81,7 +86,7 @@ try {
     for (const name of ['RunAsNode', 'EnableNodeOptionsEnvironmentVariable', 'EnableNodeCliInspectArguments', 'GrantFileProtocolExtraPrivileges']) assert.equal(wire[FuseV1Options[name]], 48);
     for (const name of ['EnableCookieEncryption', 'EnableEmbeddedAsarIntegrityValidation', 'OnlyLoadAppFromAsar']) assert.equal(wire[FuseV1Options[name]], 49);
     record('packaged-identity-and-security-fuses', { channel, appId: identity.appId });
-    const env: NodeJS.ProcessEnv = { ...process.env, XDG_CONFIG_HOME: configHome, MIOON_FFMPEG_PATH: '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: '/usr/bin/ffprobe', MIOON_ENABLE_LIVE_PROVIDER: '0',
+    const env: NodeJS.ProcessEnv = { ...process.env, HOME:qaHome, XDG_CONFIG_HOME: configHome, XDG_CACHE_HOME:path.join(directory,'cache'), MIOON_FFMPEG_PATH: '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: '/usr/bin/ffprobe', MIOON_ENABLE_LIVE_PROVIDER: '0',
       // Deliberately conflicting runtime values must not change the embedded channel.
       NODE_ENV: channel === 'production' ? 'development' : 'production', MIOON_DESKTOP_CHANNEL: channel === 'production' ? 'development' : 'production' };
     for (const key of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'MIOON_DESKTOP_USER_DATA', 'MIOON_DESKTOP_SMOKE_OUTPUT', ...providerEnvironmentKeys.filter(key => key !== 'MIOON_ENABLE_LIVE_PROVIDER')]) delete env[key];
@@ -124,8 +129,19 @@ try {
     const [code] = await closed; assert.equal(code, 0);
     await assert.rejects(access(item.descriptorFile), { code: 'ENOENT' });
     await assert.rejects(access(path.join(item.userData, 'mcp-token')), { code: 'ENOENT' });
-    await assert.rejects(access(path.join(item.userData, 'workspace/server.lock')), { code: 'ENOENT' });
-    await access(path.join(item.userData, 'workspace/workbench.sqlite'));
+    const dataDir=path.join(item.userData,'data');
+    await assert.rejects(access(path.join(dataDir, 'server.lock')), { code: 'ENOENT' });
+    await access(path.join(dataDir,'app-library.db'));
+    // Cold audit through the real B1 opener; project IDs and chosen file names
+    // are independent. No second SQLite connection observes a live backend.
+    const library=openAppLibrary({dataDir});
+    try {
+      const entries=library.registry.list();assert.deepEqual(entries.map(entry=>entry.projectId),[item.project.id]);
+      const projectFile=entries[0].projectFile,relative=path.relative(videosDir,projectFile);
+      assert.ok(relative&&!relative.startsWith('..')&&!path.isAbsolute(relative),'default projects stay in the disposable Videos directory');
+      await access(projectFile);
+    } finally {library.close();}
+    await assert.rejects(access(path.join(item.userData,'workspace')), {code:'ENOENT'});
     record('normal-exit-cleans-own-discovery-and-preserves-project-data', { channel: item.channel });
   }
   const report = { ok: true, platform: 'linux-x64', version: '0.4.1', checks, packageHashes: await Promise.all(packages.map(async item => ({ channel: item.channel, appId: item.identity.appId, asarSha256: createHash('sha256').update(await readFile(item.archive)).digest('hex') }))), macOSNativeVerified: false, liveProviderVerified: false };

@@ -10,7 +10,7 @@ import {transformSync} from 'esbuild';
 import * as contracts from '@mioon/contracts';
 import {PREVIS_LIMITS, canonicalPrevisValue, defaultPrevisScene, isPrevisNodeRecord, isPrevisScene} from '@mioon/contracts';
 import type {PrevisNodeRecord, PrevisScene} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {ApiError} from '../apps/web/src/api.ts';
 import * as camera from '../apps/web/src/previs/previs-camera.ts';

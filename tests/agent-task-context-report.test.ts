@@ -16,7 +16,7 @@ test('workload options select a fixed thirty-step observation stress case', () =
   for (const options of [{toolRounds: 14}, {replyBytes: 30 * 1024}, {deltaBytes: 3 * 1024}]) assert.throws(() => contextReportScenario({stress30Steps: true, ...options}), /fixed workload/u);
 });
 
-test('a small legacy context measurement keeps the old result shape and records actual retained rows', async () => {
+test('a small current Mio context measurement keeps the report shape and records actual retained rows', async () => {
   const report = await collectAgentTaskContextReport({protocols: ['responses'], toolRounds: 1, replyBytes: 16, deltaBytes: 8});
   assert.deepEqual(report.scenario, {toolRounds: 1, replyBytes: 16, deltaBytes: 8, stepLimit: 30});
   const measured = report.protocols[0]!;

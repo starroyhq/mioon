@@ -6,13 +6,12 @@ import type { ProjectHomeProject } from './ProjectHome.tsx';
 import type { SettingsNavigationCapture, SettingsNavigationRegistry } from './settings-navigation-state.ts';
 import { TIMELINE_CURRENT_OUTPUT_PRESETS } from '../../../packages/contracts/src/timeline-output-geometry.ts';
 
-export type LauncherOperation = 'workspace.restore.inspect' | 'project.list' | 'project.create';
-export type LauncherRpc = (operation: LauncherOperation, input?: Readonly<Record<string, unknown>>, options?: { readonly expectedWorkspaceOrigin?: string }) => Promise<unknown>;
+export type LauncherOperation = 'project.list' | 'project.create';
+export type LauncherRpc = (operation: LauncherOperation, input?: Readonly<Record<string, unknown>>) => Promise<unknown>;
 /** These callbacks are the actual existing canonical schemas, passed by the
- * legacy composition root. Their result is still unknown until narrowed here. */
+ * composition root. Their result is still unknown until narrowed here. */
 export interface LauncherContractChecks {
   readonly parseCreateInput: (value: unknown) => unknown;
-  readonly parseWorkspaceInspection: (value: unknown) => unknown;
   readonly isDefinitiveCreateRejection?: (error: unknown) => boolean;
 }
 /** Only this client can classify a create at its actual dispatch boundary.
@@ -26,7 +25,6 @@ export class LauncherCreateError extends Error {
     this.outcome = outcome;
   }
 }
-export interface LauncherWorkspace { readonly restored: boolean; readonly workspaceOrigin: string | null }
 export interface LauncherProject extends ProjectHomeProject {
   readonly description: string;
   readonly revision: number;
@@ -50,13 +48,8 @@ export function parseLauncherProjects(value: unknown): readonly LauncherProject[
 }
 export function createLauncherClient(rpc: LauncherRpc, checks: LauncherContractChecks) {
   return {
-    async inspect(): Promise<LauncherWorkspace> {
-      const value: unknown = checks.parseWorkspaceInspection(await rpc('workspace.restore.inspect'));
-      if (!record(value) || typeof value.restored !== 'boolean' || value.restored && !isProjectWindowId(value.workspaceOrigin)) throw protocol();
-      return Object.freeze({ restored: value.restored, workspaceOrigin: value.restored && typeof value.workspaceOrigin === 'string' ? value.workspaceOrigin : null });
-    },
-    async list(workspace: LauncherWorkspace): Promise<readonly LauncherProject[]> {
-      return parseLauncherProjects(await rpc('project.list', {}, workspace.workspaceOrigin ? { expectedWorkspaceOrigin: workspace.workspaceOrigin } : {}));
+    async list(): Promise<readonly LauncherProject[]> {
+      return parseLauncherProjects(await rpc('project.list', {}));
     },
     async create(name: string, description: string, timelinePresetId?: string): Promise<LauncherProject> {
       let input: { name: string; description: string; timelinePresetId?: string };
@@ -85,7 +78,7 @@ export interface LauncherCreateMetadata { readonly dirty: boolean; readonly busy
 export interface LauncherCloseMetadata extends LauncherCreateMetadata { readonly blocked: boolean }
 export interface LauncherState {
   readonly projects: readonly LauncherProject[];
-  readonly workspace: LauncherWorkspace | null;
+  readonly catalogReady: boolean;
   readonly listBusy: boolean;
   readonly listError: string | DisplayMessage;
   readonly phase: 'home' | 'opening' | 'error';
@@ -96,13 +89,12 @@ export interface LauncherState {
   readonly createUnknown: boolean;
   readonly version: number;
 }
-const initialState = (): LauncherState => ({ projects: [], workspace: null, listBusy: true, listError: '', phase: 'home', openingProjectId: null, error: '', notice: '', creating: false, createUnknown: false, version: 0 });
+const initialState = (): LauncherState => ({ projects: [], catalogReady: false, listBusy: true, listError: '', phase: 'home', openingProjectId: null, error: '', notice: '', creating: false, createUnknown: false, version: 0 });
 export function launcherCreateDisabledReason(context: ProjectWindowContext, state: LauncherState): string | DisplayMessage {
   if (context.quitting) return msg('projects.quittingCreate');
   if (state.phase === 'opening') return msg('projects.checkingEditorCreateBlocked');
   if (state.createUnknown) return msg('projects.createUnknownRestart');
-  if (!state.workspace) return msg('projects.workspaceNotChecked');
-  if (state.workspace.restored) return msg('projects.restoredCreateUnavailable');
+  if (!state.catalogReady) return msg('projects.listUnavailable');
   return '';
 }
 

@@ -23,12 +23,12 @@ test('full-mix default is125s; explicit timeouts and unrelated30s defaults stay 
   const client=(createClient({env,fetchImpl:async()=>success([])}) as FixtureClient);
   await client.rpc('project.list',{});assert.equal(deadlines.at(-1),30000);
 });
-test('typed helper and shared RPC preserve explicit target and transport-only workspace/cancellation',async()=>{
+test('typed helper and shared RPC preserve explicit target and caller cancellation',async()=>{
   const controller=new AbortController(),origin='55555555-5555-4555-8555-555555555555';let seen!:RequestInit;
   const client=(createClient({env,fetchImpl:async(_url,request)=>{seen=request!;return success(readyMixLoudness());}}) as FixtureClient);
-  const report=await prepareTimelineMixLoudness(client,((input) as unknown as Parameters<typeof prepareTimelineMixLoudness>[1]),{signal:controller.signal,expectedWorkspaceOrigin:origin});
+  const report=await prepareTimelineMixLoudness(client,((input) as unknown as Parameters<typeof prepareTimelineMixLoudness>[1]),{signal:controller.signal});
   assert.deepEqual(report,readyMixLoudness());assert.equal(isTimelineMixLoudnessResponse(report,input),true);
-  assert.deepEqual(JSON.parse((seen.body as string)),{operation,input,expectedWorkspaceOrigin:origin});
+  assert.deepEqual(JSON.parse((seen.body as string)),{operation,input});
   assert.equal(seen.signal!.aborted,false);controller.abort();assert.equal(seen.signal!.aborted,true);
   await assert.rejects(prepareTimelineMixLoudness({rpc:async()=>({...report,applyAllowed:true})},((input) as unknown as Parameters<typeof prepareTimelineMixLoudness>[1])),{code:'BACKEND_PROTOCOL_ERROR'});
 });

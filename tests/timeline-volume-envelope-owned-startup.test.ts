@@ -1,4 +1,5 @@
-import {CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_SCHEMA,assertCurrentOrdinaryWorkspace} from './helpers/workspace-schema-current.ts';
+import {kernelFixture,snapshot} from './helpers/current-retained-fixture.ts';
+import {validateProjectRetainedRows} from '../packages/business/src/project-retained-validation.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 import type {VolumeEnvelope} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import type {StrictTimelineTasks} from './helpers/strict-timeline-handler-types.ts';
@@ -7,71 +8,48 @@ import type {SQLInputValue} from 'node:sqlite';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync,rmSync} from 'node:fs';
-import {DatabaseSync} from 'node:sqlite';
-import path from 'node:path';
-import {tmpdir} from 'node:os';
-import {openLegacyWorkspaceStore as openStore,installCurrentWorkspaceRestoreSchema,classifyCurrentWorkspaceSchema,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
-import {createServices,hash, type OrdinaryServices, type ServiceStore} from '../packages/business/src/services.ts';
+import {rmSync} from 'node:fs';
+import {createServices, hash} from '../packages/business/src/services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {VOLUME_ENVELOPE_PROFILE,VOLUME_ENVELOPE_LIMITS,createVolumeEnvelopeEvaluator} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {hasRequestNotAppliedProof} from '../packages/contracts/src/index.ts';
-import {readTimelineVolumeEnvelopeCapability} from '../packages/business/src/timeline-volume-envelope-capability.ts';
-import {readTimelineAudioRoleCapability} from '../packages/business/src/timeline-audio-role-business.ts';
-import {TIMELINE_AUDIO_ROLE_PROFILE} from '../packages/contracts/src/timeline-audio-role.ts';
 import {clipDraftRaw,clipDraftPatch} from '../apps/web/src/clip-draft-state.ts';
 import {createVolumeEnvelopeFadePreset,createManualDuckingEnvelope,manualDuckingEnvelopeFromRaw} from '../apps/web/src/clip-volume-envelope-state.ts';
-import {snapshot} from './workspace-schema26-fixtures.mjs';
 
 // Genuine owned startup only: no restore-policy mock, facade, manual ordinary
 // migration, private ownership token, media file, provider or transport.
 const envelope=(): VolumeEnvelope=>({profileId:VOLUME_ENVELOPE_PROFILE,points:[{frame:0,multiplier:1},{frame:10,multiplier:.2},{frame:60,multiplier:.8}]});
 const code=(value: string)=>(error?: { code?: unknown; }|null|undefined)=>(error as {code?: unknown}|null|undefined)?.code===value;
 async function fixture(t: test.TestContext){
- const root=mkdtempSync(path.join(tmpdir(),'mioon-envelope-owned-'));
+ const kernel=kernelFixture(t,'Owned envelope fixture'),root=kernel.dataDir;
  let store!: FixtureStore,services!: FixtureServices,tasks!: StrictTimelineTasks,fault: (label: string)=>void=()=>{};
- const start=()=>{store=(openStore(root) as FixtureStore);services=(createServices(store,new Map()) as FixtureServices);tasks=(createEditTasks({store,services,fault:label=>fault(label)}) as StrictTimelineTasks);};start();
+ const start=()=>{store=(kernel.store as unknown as FixtureStore);services=(createServices(store,new Map()) as FixtureServices);tasks=(createEditTasks({store,services,fault:label=>fault(label)}) as StrictTimelineTasks);};start();
  const close=async()=>{await tasks.drain();await services.drain();store.close();};
  t.after(async()=>{if(store.db.isOpen)await close();rmSync(root,{recursive:true,force:true});});
- assert.deepEqual(classifyCurrentWorkspaceSchema(store.db),{schemaVersion:CURRENT_ORDINARY_SCHEMA,profile:'ordinary'});
- const project=await services.call('project.create',{name:'Owned envelope fixture'});
+ assert.doesNotThrow(()=>validateProjectRetainedRows(kernel.store));
+ const project=(await services.call('project.get',{projectId:kernel.projectId})).project;
  let timeline=await services.call('timeline.get',{projectId:project.id});
- const f={root,project,get store(){return store;},get services(){return services;},get tasks(){return tasks;},get timeline(){return timeline;},
+ const f={root,project,get store(){return kernel.store;},get services(){return services;},get tasks(){return tasks;},get timeline(){return timeline;},
   asset(fields: {provenance?: string; hasAudio?: boolean;}={}){return store.put('assets',{id:randomUUID(),projectId:project.id,name:'Metadata-only source',mimeType:'video/mp4',duration:20,width:720,height:1280,hasAudio:true,hasVideo:true,provenance:'user-import',sha256:'a'.repeat(64),relativePath:'media/not-created.mp4',createdAt:'2026-10-15T00:00:00.000Z',...fields});},
   input(fields: { clipId?: string; patch?: Record<string,unknown>|{ volumeEnvelope: null; gain?: undefined; }|{ volumeEnvelope: { profileId: string; points: { frame: number; multiplier: number; }[]; }; gain?: undefined; }|{ gain: number; volumeEnvelope?: undefined; }|{ volumeEnvelope: null; }|{ volumeEnvelope: null; }|{ volumeEnvelope: { profileId: string; points: { frame: number; multiplier: number; }[]; }|null; audioRole: string; colour: null; }|{ gain: number; }|{ volumeEnvelope: null; }|{ muted: boolean; }; requestId?: unknown; kind?: string; expectedRevision?: number; trackId?: string; }={}){return {projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),...fields};},
   async call(operation: 'timeline.clip.add'|'timeline.clip.update'|'timeline.clip.remove'|'timeline.clip.replaceSource'|'timeline.clip.split'|'timeline.undo'|'timeline.redo',fields: Record<string, unknown>={},context?: Parameters<FixtureServices['call']>[2]){const input=f.input(fields),result=await services.call(operation,input,context);timeline=((result as {timeline?:FixtureTimeline}).timeline??result) as FixtureTimeline;return {input,result};},
-  prepare(operation: string,input: { projectId: unknown; expectedRevision?: unknown; requestId?: `${string}-${string}-${string}-${string}-${string}`; },context?: string|{ expectedWorkspaceOrigin: `${string}-${string}-${string}-${string}-${string}`; }|{ expectedWorkspaceOrigin?: undefined; }|undefined){return tasks.prepare({projectId:input.projectId,operation,input,origin:'new'},((context) as unknown as Parameters<typeof tasks.prepare>[1]));},
+  prepare(operation: string,input: { projectId: unknown; expectedRevision?: unknown; requestId?: unknown; },context?: Parameters<typeof tasks.prepare>[1]){return tasks.prepare({projectId:input.projectId,operation,input,origin:'new'},((context) as unknown as Parameters<typeof tasks.prepare>[1]));},
   request(saved: { task: { projectId: unknown; id: unknown; digest: unknown; }; }){return {projectId:saved.task.projectId,taskId:saved.task.id,digest:saved.task.digest};},
-  execute(saved: { instanceId: unknown; },context?: string|{ expectedWorkspaceOrigin: `${string}-${string}-${string}-${string}-${string}`; }|{ expectedWorkspaceOrigin?: undefined; }|undefined){return tasks.execute({...f.request(((saved) as unknown as Parameters<typeof f.request>[0])),instanceId:saved.instanceId},((context) as unknown as Parameters<typeof tasks.execute>[1]));},
-  ack(saved: { task: { revision: unknown; status: unknown; }; },context?: { expectedWorkspaceOrigin: `${string}-${string}-${string}-${string}-${string}`; }|undefined){return tasks.acknowledge({...f.request(((saved) as unknown as Parameters<typeof f.request>[0])),expectedRevision:saved.task.revision,status:saved.task.status},context);},
+  execute(saved: { instanceId: unknown; },context?: Parameters<typeof tasks.prepare>[1]){return tasks.execute({...f.request(((saved) as unknown as Parameters<typeof f.request>[0])),instanceId:saved.instanceId},((context) as unknown as Parameters<typeof tasks.execute>[1]));},
+  ack(saved: { task: { revision: unknown; status: unknown; }; },context?: Parameters<typeof tasks.acknowledge>[1]){return tasks.acknowledge({...f.request(((saved) as unknown as Parameters<typeof f.request>[0])),expectedRevision:saved.task.revision,status:saved.task.status},context);},
   setFault(value: { (label?: unknown): void; (): void; (label?: unknown): void; (): void; (): void; }){fault=value;},
-  async reopen(install?: (db: DatabaseSync)=>void){await close();if(install){const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{install(db);}finally{db.close();}}start();timeline=await services.call('timeline.get',{projectId:project.id});},
+  async reopen(){await close();kernel.reopen();start();timeline=await services.call('timeline.get',{projectId:project.id});},
   state(){return snapshot(store.db);},
  };
  return f;
 }
 const addInput=(f: Awaited<ReturnType<typeof fixture>>,asset: {id?: unknown;}=f.asset(),fields: {gain?: number; fadeInFrames?: number; fadeOutFrames?: number; durationFrames?: number; startFrame?: number; sourceInFrame?: number; rect?: { x: number; y: number; width: number; height: number; }; audioRole?: string; colour?: null; volumeEnvelope?: { profileId: string; points: { frame: number; multiplier: number; }[]; };}={})=>f.input((({assetId:asset.id,trackId:f.timeline.tracks[0].id,startFrame:0,durationFrames:60,volumeEnvelope:envelope(),...fields}) as unknown as Parameters<NonNullable<(typeof f)["input"]>>[0]));
 
-for(const restored of ([false,true] as const))test(`current ${restored?'restored':'ordinary'} capability queries validate exact profiles and durable ripple removal stays available`,async t=>{
- const f=await fixture(t);
- await f.call('timeline.clip.add',((addInput(f)) as unknown as Parameters<typeof f.call>[1]));
- let context;
- if(restored){
-  const metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-15T00:00:00.000Z'};
-  await f.reopen((db: DatabaseSync)=>installCurrentWorkspaceRestoreSchema(db,metadata));context={expectedWorkspaceOrigin:metadata.workspaceOrigin};
- }
- const before=f.state(),volume={profileId:VOLUME_ENVELOPE_PROFILE,editable:true},audio={profileId:TIMELINE_AUDIO_ROLE_PROFILE,editable:true};
- assert.deepEqual(readTimelineVolumeEnvelopeCapability(f.store.db),volume);
- assert.deepEqual(readTimelineAudioRoleCapability(f.store.db),audio);
- const disclosed=await f.services.call('workspace.restore.inspect',{includeVolumeEnvelopeCapability:true,includeAudioRoleCapability:true});
- assert.deepEqual(disclosed.volumeEnvelopeCapability,volume);assert.deepEqual(disclosed.audioRoleCapability,audio);
- assert.deepEqual(f.state(),before,'capability queries preserve all stored evidence');
- const saved=f.prepare('timeline.clip.rippleRemove',((f.input({clipId:f.timeline.clips[0].id})) as unknown as Parameters<typeof f.prepare>[1]),context),done=await f.execute(((saved) as unknown as Parameters<typeof f.execute>[0]),context);
+test('current kernel durable ripple removal stays available without capability probes',async t=>{
+ const f=await fixture(t);await f.call('timeline.clip.add',addInput(f));
+ const saved=f.prepare('timeline.clip.rippleRemove',f.input({clipId:f.timeline.clips[0].id})),done=await f.execute(saved);
  assert.equal(done.task.status,'applied');
- const timeline=await f.services.call('timeline.get',{projectId:f.project.id});assert.deepEqual((timeline.clips as unknown),[]);
- f.store.db.exec('CREATE TABLE unrelated_capability_object(value TEXT)');
- assert.deepEqual(readTimelineVolumeEnvelopeCapability(f.store.db),{...volume,editable:false});
- assert.throws(()=>readTimelineAudioRoleCapability(f.store.db),'a marker chain alone never enables the current audio capability');
+ const timeline=await f.services.call('timeline.get',{projectId:f.project.id});assert.deepEqual(timeline.clips,[]);
 });
 
 for(const kind of (['in','out'] as const))for(const fadeFrames of ([15,60] as const))test(`owned ordinary ${kind} preset ${fadeFrames}/60 replaces the curve through durable Save, history and reopen`,async t=>{
@@ -95,7 +73,7 @@ for(const kind of (['in','out'] as const))for(const fadeFrames of ([15,60] as co
   else assert.ok(Math.abs(evaluate.atSample(end-1)-(fadeFrames===durationFrames?1-1/end:1))<1e-14);
  };
  assertSaved((done.result)!.clips[0]);await f.reopen();assertSaved(f.timeline.clips[0]);
- assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:CURRENT_ORDINARY_SCHEMA,profile:'ordinary'});
+ assert.doesNotThrow(()=>validateProjectRetainedRows(f.store));
  const retained=f.tasks.get({projectId:f.project.id,taskId:saved.task.id});assert.equal(retained.task.acknowledged,true);assert.deepEqual((await f.execute(((retained) as unknown as Parameters<typeof f.execute>[0]))).result,done.result);
  await f.call('timeline.undo');assert.deepEqual(f.timeline.clips[0],original);
  await f.reopen();assert.deepEqual(f.timeline.clips[0],original);await f.call('timeline.redo');assertSaved(f.timeline.clips[0]);
@@ -118,7 +96,7 @@ for(const spec of ([
   rect:{x:40,y:80,width:360,height:640},audioRole:'human',colour:null,volumeEnvelope:{profileId:VOLUME_ENVELOPE_PROFILE,points:[{frame:0,multiplier:.9},{frame:durationFrames,multiplier:.8}]}})) as unknown as Parameters<typeof f.call>[1]));
  // A complete synthetic generated-reference record exercises all optional
  // source pins; ordinary validation precedes genuine owned Save dispatch.
- Object.assign(f.timeline.clips[0],{versionId,shotId:shot.id,jobId});f.store.put('timelines',f.timeline);assertCurrentOrdinaryWorkspace(f.store.db);
+ Object.assign(f.timeline.clips[0],{versionId,shotId:shot.id,jobId});f.store.put('timelines',f.timeline);validateProjectRetainedRows(f.store);
  const original=structuredClone(f.timeline.clips[0]),clipId=original.id,outside=f.state().tables;
  const preset=createManualDuckingEnvelope(durationFrames,spec.input),rawInput=Object.fromEntries(Object.entries(spec.input).map(([key,value])=>[key,String(value)]));
  const fromRaw=manualDuckingEnvelopeFromRaw(durationFrames,((rawInput) as unknown as Parameters<typeof manualDuckingEnvelopeFromRaw>[1])),expected={profileId:VOLUME_ENVELOPE_PROFILE,points:spec.points};
@@ -138,7 +116,7 @@ for(const spec of ([
  const retained=f.tasks.get({projectId:f.project.id,taskId:prepared.task.id});assert.equal(retained.task.acknowledged,true);assert.deepEqual((await f.execute(((retained) as unknown as Parameters<typeof f.execute>[0]))).result,done.result);
  await f.call('timeline.undo');assert.deepEqual(f.timeline.clips[0],original);await f.reopen();assert.deepEqual(f.timeline.clips[0],original);
  await f.call('timeline.redo');assertSaved(f.timeline.clips[0]);await f.reopen();assertSaved(f.timeline.clips[0]);
- assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:CURRENT_ORDINARY_SCHEMA,profile:'ordinary'});
+ assert.doesNotThrow(()=>validateProjectRetainedRows(f.store));
  for(const name of (['projects','assets','shots','jobs','versions'] as const))assert.deepEqual(f.state().tables[name],outside[name],`${name} identity and metadata bytes remain unchanged`);
  assert.equal((f.store.db.prepare('SELECT count(*) AS n FROM timeline_requests WHERE requestId=?').get(((((input.requestId) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as Parameters<NonNullable<(ReturnType<(((typeof f)["store"])["db"])["prepare"]>)["get"]>>[0])))!.n,1);
 });
@@ -199,41 +177,7 @@ for(const phase of (['afterClaim','afterBusinessCommit'] as const))test(`owned o
  assert.equal((f.store.db.prepare('SELECT count(*) AS n FROM timeline_requests WHERE requestId=?').get(((((input.requestId) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as Parameters<NonNullable<(ReturnType<(((typeof f)["store"])["db"])["prepare"]>)["get"]>>[0])))!.n,1);
 });
 
-test('owned restored keeps captured evidence immutable and admits envelope writes only in the current origin/epoch',async t=>{
- const f=await fixture(t),asset=f.asset(),added=await f.call('timeline.clip.add',((addInput(f,asset)) as unknown as Parameters<typeof f.call>[1]));
- const clipId=f.timeline.clips[0].id,pending=f.prepare('timeline.clip.update',((f.input({clipId,patch:{volumeEnvelope:null}})) as unknown as Parameters<typeof f.prepare>[1]));
- const metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-15T00:00:00.000Z'};
- await f.reopen((db: DatabaseSync)=>{assert.equal(installCurrentWorkspaceRestoreSchema(db,metadata).schemaVersion,CURRENT_RESTORED_SCHEMA);});
- assert.equal((getWorkspaceRestoreContext(f.store))!.schemaVersion,CURRENT_RESTORED_SCHEMA);const context={expectedWorkspaceOrigin:metadata.workspaceOrigin},before=f.state();
- assert.deepEqual(await f.services.call('timeline.clip.add',added.input),added.result);assert.deepEqual(f.state(),before);
- const heldRow=f.store.db.prepare('SELECT * FROM edit_tasks WHERE id=?').get(pending.task.id);
- assert.equal((heldRow)!.executionEpoch,'captured');
- await assert.rejects(f.execute(((pending) as unknown as Parameters<typeof f.execute>[0]),context),code('RESTORED_RECORD_HELD'));
- await assert.rejects(f.services.call('timeline.clip.update',pending.task.input,context),code('RESTORED_RECORD_HELD'));assert.deepEqual(f.state(),before);
- await assert.rejects(f.services.call('timeline.track.add',f.input({requestId:pending.task.requestId,kind:'audio'}),context),code('RESTORED_RECORD_HELD'));assert.deepEqual(f.state(),before);
- const updates=[{volumeEnvelope:null},{volumeEnvelope:envelope()},{gain:.5}];
- for(const [badContext,expected]of ([[{},'RESTORE_WORKSPACE_ORIGIN_REQUIRED'],[{expectedWorkspaceOrigin:randomUUID()},'RESTORE_WORKSPACE_ORIGIN_MISMATCH']] as const)){
-  for(const patch of updates){const input=f.input({clipId,patch});
-   await assert.rejects(f.services.call('timeline.clip.update',input,badContext),code(expected));
-   assert.throws(()=>f.prepare('timeline.clip.update',((input) as unknown as Parameters<typeof f.prepare>[1]),badContext),code(expected));assert.deepEqual(f.state(),before);
-  }
-  await assert.rejects(f.services.call('timeline.clip.add',addInput(f,asset,{startFrame:60}),badContext),code(expected));assert.deepEqual(f.state(),before);
- }
- await f.call('timeline.clip.update',(({clipId,patch:{gain:.5}}) as unknown as Parameters<NonNullable<(typeof f)["call"]>>[1]),context);assert.deepEqual(f.timeline.clips[0].volumeEnvelope,envelope());
- await f.call('timeline.clip.update',(({clipId,patch:{volumeEnvelope:null}}) as unknown as Parameters<NonNullable<(typeof f)["call"]>>[1]),context);assert.equal((f.timeline.clips[0].volumeEnvelope as unknown),null);
- await f.call('timeline.clip.update',(({clipId,patch:{volumeEnvelope:envelope()}}) as unknown as Parameters<NonNullable<(typeof f)["call"]>>[1]),context);
- await f.call('timeline.clip.add',((addInput(f,asset,{startFrame:60})) as unknown as Parameters<typeof f.call>[1]),context);assert.deepEqual(f.timeline.clips[1].volumeEnvelope,envelope());
- const input=f.input({clipId,patch:{volumeEnvelope:null}}),fresh=f.prepare('timeline.clip.update',((input) as unknown as Parameters<typeof f.prepare>[1]),context);
- assert.equal((fresh.restore)!.executionEpoch,metadata.workspaceOrigin);assert.equal((fresh.restore)!.held,false);
- for(const [badContext,expected]of ([[{},'RESTORE_WORKSPACE_ORIGIN_REQUIRED'],[{expectedWorkspaceOrigin:randomUUID()},'RESTORE_WORKSPACE_ORIGIN_MISMATCH']] as const)){
-  const state=f.state();await assert.rejects(f.execute(((fresh) as unknown as Parameters<typeof f.execute>[0]),badContext),code(expected));assert.deepEqual(f.state(),state);
- }
- const done=await f.execute(((fresh) as unknown as Parameters<typeof f.execute>[0]),context);assert.equal(done.task.status,'applied');assert.equal(((done.result)!.clips[0].volumeEnvelope as unknown),null);f.ack(((done) as unknown as Parameters<typeof f.ack>[0]),context);
- assert.deepEqual(f.state().tables.workspace_restore_holds,before.tables.workspace_restore_holds);
- assert.deepEqual(f.store.db.prepare('SELECT * FROM edit_tasks WHERE id=?').get(pending.task.id),heldRow);
- await f.reopen();assert.equal((getWorkspaceRestoreContext(f.store))!.workspaceOrigin,metadata.workspaceOrigin);assert.equal((f.timeline.clips[0].volumeEnvelope as unknown),null);
- assert.deepEqual(await f.services.call('timeline.clip.update',input),done.result,'retained receipt replays read-only without origin');
-});
+
 
 test('owned ordinary durable updates distinguish absent/null/value and retain inherited role/colour fields',async t=>{
  const f=await fixture(t),source=f.asset();
@@ -249,25 +193,9 @@ test('owned ordinary durable updates distinguish absent/null/value and retain in
  await f.call('timeline.undo');assert.equal(Object.hasOwn(f.timeline.clips[0],'volumeEnvelope'),false);
 });
 
-for(const phase of (['afterClaim','afterBusinessCommit'] as const))test(`owned restored current-epoch ${phase} recovery preserves captured holds and rejects stale instances`,async t=>{
- const f=await fixture(t);await f.call('timeline.clip.add',((addInput(f)) as unknown as Parameters<typeof f.call>[1]));const clipId=f.timeline.clips[0].id;
- const captured=f.prepare('timeline.clip.update',((f.input({clipId,patch:{gain:.75}})) as unknown as Parameters<typeof f.prepare>[1]));
- const metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-15T00:00:00.000Z'};
- await f.reopen((db: DatabaseSync)=>installCurrentWorkspaceRestoreSchema(db,metadata));const context={expectedWorkspaceOrigin:metadata.workspaceOrigin};
- const heldRow=f.store.db.prepare('SELECT * FROM edit_tasks WHERE id=?').get(captured.task.id),holds=f.state().tables.workspace_restore_holds;
- const input=f.input({clipId,patch:{volumeEnvelope:null}}),saved=f.prepare('timeline.clip.update',((input) as unknown as Parameters<typeof f.prepare>[1]),context);
- f.setFault((((label: string)=>{if(label===phase)throw Error('Synthetic restored coordinator interruption');}) as unknown as Parameters<typeof f.setFault>[0]));
- await assert.rejects(f.execute(((saved) as unknown as Parameters<typeof f.execute>[0]),context),code('EDIT_TASK_STORAGE_UNAVAILABLE'));f.setFault(()=>{});await f.reopen();
- const before=f.state();await assert.rejects(f.execute(((saved) as unknown as Parameters<typeof f.execute>[0]),context),code('EDIT_TASK_STALE_INSTANCE'));assert.deepEqual(f.state(),before);
- assert.equal(f.tasks.reconcileStartup().unavailable,0);const current=f.tasks.get({projectId:f.project.id,taskId:saved.task.id});
- assert.equal(current.task.status,phase==='afterClaim'?'unknown':'applied');assert.equal((current.restore)!.executionEpoch,metadata.workspaceOrigin);assert.deepEqual(current.task.input,input);
- assert.equal((f.store.db.prepare('SELECT count(*) AS n FROM timeline_requests WHERE requestId=?').get(((((input.requestId) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as Parameters<NonNullable<(ReturnType<(((typeof f)["store"])["db"])["prepare"]>)["get"]>>[0])))!.n,phase==='afterClaim'?0:1);
- const done=await f.execute(((current) as unknown as Parameters<typeof f.execute>[0]),context);assert.equal(done.task.status,'applied');assert.equal(((done.result)!.clips[0].volumeEnvelope as unknown),null);
- assert.equal((f.store.db.prepare('SELECT count(*) AS n FROM timeline_requests WHERE requestId=?').get(((((input.requestId) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as Parameters<NonNullable<(ReturnType<(((typeof f)["store"])["db"])["prepare"]>)["get"]>>[0])))!.n,1);
- assert.deepEqual(f.store.db.prepare('SELECT * FROM edit_tasks WHERE id=?').get(captured.task.id),heldRow);assert.deepEqual(f.state().tables.workspace_restore_holds,holds);
-});
 
-for(const restored of ([false,true] as const))test(`owned ${restored?'restored':'ordinary'} complete envelope budget fails atomically before history/redo/receipt/task writes`,async t=>{
+
+test('owned current complete envelope budget fails atomically before history/redo/receipt/task writes',async t=>{
  const f=await fixture(t),source=f.asset();await f.call('timeline.clip.add',((addInput(f,source)) as unknown as Parameters<typeof f.call>[1]));
  await f.call('timeline.clip.update',(({clipId:f.timeline.clips[0].id,patch:{gain:.5}}) as unknown as Parameters<NonNullable<(typeof f)["call"]>>[1]));await f.call('timeline.undo');
  // Seed a complete valid boundary-sized synthetic record, not an admission or
@@ -279,16 +207,14 @@ for(const restored of ([false,true] as const))test(`owned ${restored?'restored':
  let excess=Buffer.byteLength(JSON.stringify(timeline))-262144;assert.ok(excess>20);
  for(const clip of timeline.clips){while(excess>=6&&(clip.name)!.length>1){clip.name=(clip.name)!.slice(1);excess-=6;}if(excess<6)break;}
  if(excess)timeline.tracks[0].name=(timeline.tracks[0].name)!.slice(1)+'a'.repeat(6-excess);
- assert.equal(Buffer.byteLength(JSON.stringify(timeline)),262144);f.store.put('timelines',timeline);assertCurrentOrdinaryWorkspace(f.store.db);
- let context;
- if(restored){const metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-15T00:00:00.000Z'};await f.reopen((db: DatabaseSync)=>installCurrentWorkspaceRestoreSchema(db,metadata));context={expectedWorkspaceOrigin:metadata.workspaceOrigin};}
+ assert.equal(Buffer.byteLength(JSON.stringify(timeline)),262144);f.store.put('timelines',timeline);validateProjectRetainedRows(f.store);
  const input=f.input({expectedRevision:9,trackId:timeline.tracks[0].id,patch:{muted:false}}),before=f.state();
- await assert.rejects(f.services.call('timeline.track.update',input,context),error=>{
+ await assert.rejects(f.services.call('timeline.track.update',input),error=>{
   assert.equal((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code,'TIMELINE_VOLUME_ENVELOPE_LIMIT');assert.equal(hasRequestNotAppliedProof(error,input,{operation:'timeline.track.update'}),true);
   assert.equal(hasRequestNotAppliedProof(error,{...input,requestId:randomUUID()},{operation:'timeline.track.update'}),false);return true;
  });
  assert.deepEqual(f.state(),before,'all tables, raw storage, history cursor, redo and tasks remain identical');assert.equal(f.store.db.isTransaction,false);
- const saved=f.prepare('timeline.track.update',((input) as unknown as Parameters<typeof f.prepare>[1]),context),prepared=f.state(),done=await f.execute(((saved) as unknown as Parameters<typeof f.execute>[0]),context);
+ const saved=f.prepare('timeline.track.update',((input) as unknown as Parameters<typeof f.prepare>[1])),prepared=f.state(),done=await f.execute(((saved) as unknown as Parameters<typeof f.execute>[0]));
  assert.equal(done.task.status,'not_applied');assert.equal(done.task.errorCode,'TIMELINE_VOLUME_ENVELOPE_LIMIT');
  const after=f.state();assert.deepEqual(after.objects,prepared.objects);for(const name of Object.keys(prepared.tables))if(name!=='edit_tasks')assert.deepEqual(after.tables[name],prepared.tables[name],name);
 });

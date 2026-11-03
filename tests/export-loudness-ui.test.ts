@@ -8,7 +8,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import { isTimelineRenderRecord } from '@mioon/contracts';
-import { pinNewWorkspaceIntent, workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 import * as loudnessState from '../apps/web/src/export-loudness-state.ts';
 import { context, fixture, report, unready, row, asset, projectId } from './helpers/export-loudness-ui-fixture.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -16,9 +15,9 @@ const source = (name: string): string => readFileSync(new URL(`../apps/web/src/$
 let rendered: Record<string, string>;
 before(async () => {
   const values: Record<string, {exportId: string; state: unknown}> = {};
-  for (const name of ['idle','ready','range','custom','noConflict','silent','belowGate','tooShort','checking','busy','invalid','unsupported','incomplete','stale','cancelled','restored','offline']) {
+  for (const name of ['idle','ready','range','custom','noConflict','silent','belowGate','tooShort','checking','busy','invalid','unsupported','incomplete','stale','cancelled','offline']) {
     const short = row() as {snapshot: {timeline: {durationFrames: number; clips: Array<{durationFrames: number}>}}}; short.snapshot.timeline.durationFrames = 9; short.snapshot.timeline.clips[0].durationFrames = 9;
-    const f = fixture(name === 'restored' ? { restored: true } : name === 'offline' ? { connected: false } : name === 'tooShort' ? { exports: [short], assets: [asset(short)] } : {});
+    const f = fixture(name === 'restored' ? {  } : name === 'offline' ? { connected: false } : name === 'tooShort' ? { exports: [short], assets: [asset(short)] } : {});
     if (name === 'ready' || name === 'tooShort') await f.ready(undefined);
     if (name === 'range') await f.ready(undefined, 1);
     if (name === 'custom' || name === 'noConflict') { f.edit({ integratedLufs: name === 'custom' ? '-14' : '-24', truePeakCeilingDbtp: '-1' }); await f.ready(undefined); }
@@ -81,12 +80,6 @@ test('pending makes all explicit actions busy, cancel is observer-only on owned 
   assert.match(rendered.checking, /取消本次观察/); assert.doesNotMatch(rendered.busy, /取消本次观察/); assert.match(rendered.busy, /另一文件正在测量/);
   assert.doesNotMatch(rendered.checking.match(/<input[^>]*data-testid="export-loudness-target-lufs"[^>]*>/)?.[0] || '', /\sdisabled(?:=|\s|>)/);
 });
-test('invalid draft, cancelled, nonready, restored and disconnected states remain explicit', () => {
-  assert.match(rendered.invalid, /请同时填写/); assert.match(rendered.invalid, /aria-invalid="true"/);
-  assert.match(rendered.invalid.match(/<button[^>]*data-testid="export-loudness-measure"[^>]*>/)?.[0] || '', /disabled/);
-  for (const name of ['unsupported','incomplete','stale','cancelled']) { assert.match(rendered[name], /data-testid="export-loudness-not-ready"/); assert.match(rendered[name], />重新测量<\/button>/); }
-  assert.match(rendered.restored, /恢复分支暂不支持/); assert.doesNotMatch(rendered.restored, /<button|<input/); assert.match(rendered.offline, /连接恢复后可明确发起测量/);
-});
 test('named and unnamed frozen exports share row control, other render kinds do not; download links stay unchanged', () => {
   assert.equal((rendered.history.match(/data-testid="export-loudness-measure"/g) || []).length, 2);
   assert.match(rendered.history, /冻结的成片 &lt;v1&gt;/); assert.match(rendered.history, /修订版 4 · 旧快照/);
@@ -125,14 +118,14 @@ test('actual cancel callback is bound to its row/attempt and cannot cancel newer
   assert.equal((f.calls[0]!.options as {signal: AbortSignal}).signal.aborted, true); (byTest(render(1),'export-loudness-measure').props.onClick as () => void)(); oldCancel(); assert.equal((f.calls[1]!.options as {signal: AbortSignal}).signal.aborted, false);
   f.reads[1]!.resolve(report(f.target(1) as never, undefined)); f.reads[0]!.resolve(report(f.target() as never, undefined)); await Promise.resolve(); await Promise.resolve(); assert.equal((f.state().report as {exportId: string}).exportId, (f.target(1) as {exportId: string}).exportId);
 });
-test('actual App hook wiring uses accepted live ownership, pinned invocation and exact read-only operation', async () => {
+test('actual App hook wiring uses accepted live ownership, abort signal and exact read-only operation', async () => {
   const app = source('App.tsx'), start = app.indexOf('  function exportSamplePeakContext()'), contextEnd = app.indexOf('  const exportSamplePeak =',start);
   const hookStart = app.indexOf('  const exportLoudness ='), hookEnd = app.indexOf('  function openTimelineExport()',hookStart);
   const block = app.slice(start,contextEnd) + app.slice(hookStart,hookEnd); assert.doesNotMatch(block, /timeline\?\.revision|refresh\(|setShowExports|setRightDockTab/); assert.match(app,/loudness=\{exportLoudness(?: as never)?\}/);
   const live = context() as {exports: Array<Record<string, unknown>>; assets: Array<Record<string, unknown>>}, calls: Array<{operation: string; input: Record<string, unknown>; options: unknown}> = [], dataRef = { current: { project: { id: projectId }, exports: live.exports, assets: live.assets } }, currentProject = { current: projectId };
-  const workspaceRef = { current: { restored: false } }, projectEpoch = { current: 1 }, navigationEpoch = { current: 0 }, panelIntent = { current: 0 }, viewRef = { current: { activeMode: 'editing' } };
+  const workspaceRef = { current: {  } }, projectEpoch = { current: 1 }, navigationEpoch = { current: 0 }, panelIntent = { current: 0 }, viewRef = { current: { activeMode: 'editing' } };
   let controller!: ReturnType<typeof loudnessState.createExportLoudnessController>;
-  const env = { workspaceOriginScope,pinNewWorkspaceIntent,workspaceRef,currentProject,projectEpoch,navigationEpoch,panelIntent,viewRef,dataRef,
+  const env = {editorSession: {current:'normal'}, workspaceRef,currentProject,projectEpoch,navigationEpoch,panelIntent,viewRef,dataRef,
     projectSessionReady: () => true,workbenchReady: true, online: true,auth: true,loading: false,rightDockTab: 'delivery',showDelivery: true,showExports: true,panelVisible: () => true,isTimelineRenderRecord,
     setAuth() { assert.fail('unexpected auth change'); }, async rpc(operation: string,input: {exportId: string; target?: unknown},options: unknown) { calls.push({operation,input,options}); return report(controller.getState().targets.find(t => t.exportId === input.exportId) as never,(input.target ?? undefined) as never); },
     useExportLoudness(options: never) { controller = loudnessState.createExportLoudnessController(options); controller.setContext((options as {context?: unknown}).context as never); return { state: controller.getState(),controller }; } };
@@ -142,4 +135,10 @@ test('actual App hook wiring uses accepted live ownership, pinned invocation and
   projectEpoch.current++; controller.setContext(actual.exportSamplePeakContext() as never); assert.equal(controller.getState().report,null);
   const closed = { ...env, projectSessionReady: () => false, workbenchReady: false };
   const unopened = Function(...Object.keys(closed),`${stripSourceTypes(app.slice(start,contextEnd),{loader:'tsx'})};return exportSamplePeakContext();`)(...Object.values(closed)) as {projectId: unknown; connected: boolean; visible: boolean}; assert.equal(unopened.projectId,null); assert.equal(unopened.connected,false); assert.equal(unopened.visible,false);
+});
+
+test('invalid draft, cancelled, nonready and disconnected states remain explicit', () => {
+  assert.match(rendered.invalid, /请同时填写/); assert.match(rendered.invalid, /aria-invalid="true"/);
+  assert.match(rendered.invalid.match(/<button[^>]*data-testid="export-loudness-measure"[^>]*>/)?.[0] || '', /disabled/);
+  for (const name of ['unsupported','incomplete','stale','cancelled']) { assert.match(rendered[name], /data-testid="export-loudness-not-ready"/); assert.match(rendered[name], />重新测量<\/button>/); } assert.match(rendered.offline, /连接恢复后可明确发起测量/);
 });

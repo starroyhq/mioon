@@ -1,39 +1,13 @@
-# 工作区开关、应用内备份与恢复
+# 工作区真实生成开关
 
-这些设置属于整个本机工作区，与当前打开的项目无关。界面、HTTP、CLI 和官方 MCP 使用同一组能力与校验
+这些设置属于本机应用，与当前打开的项目无关。界面、HTTP、CLI 和官方 MCP 共享同一严格契约。
 
-## 真实生成
+在“设置 → 模型与服务”切换“真实生成”，更改立即保存。开关关闭时，已配置服务也不能接受新的真实生成；实际外发前仍会再次检查。开关不配置密钥，也不代替图像逐次付费确认、Mio 的目标与范围授权。关闭它不能撤回已发出的请求，未知结果仍须核对原请求。
 
-在“设置 → 模型与服务”切换“真实生成”，更改立即保存，无需重启。开关关闭时，已配置服务也不能接受新的真实生成；后续实际外发前仍会再次检查开关
+`workspace.settings.get` 只返回 `formatVersion`、`revision`、`liveGeneration`。`workspace.settings.set` 按 `expectedRevision` 保存 `liveGeneration`，保留修订冲突、订阅通知和应用库真实事务；不接受路径、密钥或备份字段。
 
-开关不配置密钥，也不代替图像逐次付费确认、Mio的目标与范围授权。关闭开关不能撤回已经发出的请求，未知结果仍须核对原请求
+读取旧设置文档时，仅放过并丢弃 `automaticBackup`、`backupIntervalHours`、`backupLocation`、`backupDirectory`、`selectedDirectory` 五个退役键名，不解释其值。其它未知键仍报 `WORKSPACE_SETTINGS_INVALID`。下次保存只写现行字段。
 
-## 备份
+旧工作区备份面板、原生目录选择器、离线备份 CLI 和整个工作区恢复分支已退役。五个 `workspace.backup.*` 操作和 `workspace.restore.inspect` 均为 404 `UNKNOWN_OPERATION`；旧 `/api/workspace-backups/…` 为 404 `NOT_FOUND`。CLI 退出 2，MCP 返回 `isError:true`，发现列表不再列出这些入口。
 
-在“设置 → 工作区”点击“立即备份”，或开启自动备份并选择间隔。自动备份只在应用运行且工作区空闲时执行；存在运行任务、未确认请求或待对账结果时会拒绝创建，并保留可查看的状态。旧备份不会自动删除
-
-备份覆盖所有项目及已登记的托管素材，包含聊天、提示词、任务与历史，因此应按私密文件保存。服务密钥、访问令牌和连接设置不在备份内
-
-桌面应用通过系统目录选择器设置位置，只在所选目录下创建专用的 `Mioon Backups` 子目录。浏览器显示服务器路径并支持复制，也可以下载或导入备份文件；公共 RPC 不接受任意文件路径
-
-## 恢复
-
-选择已有备份或导入备份文件，点击“恢复所选备份”并明确确认。恢复会建立独立的受保护工作区，不覆盖原工作区；准备完成后暂停原工作区的新修改，重启应用或本机服务后切换
-
-桌面应用提供“重新启动应用”。浏览器需要重启本机服务。恢复分支保留原任务、审批和未知结果，但不会自动续接或重新发送；可用的本地编辑能力以应用中的恢复说明为准。恢复分支不能再次创建备份，须保留原备份
-
-手动冷备份与历史格式的精确支持范围见[离线备份指南](WORKSPACE-BACKUP-GUIDE.zh-CN.md)
-
-## 公共接口
-
-| 操作 | 行为 |
-| --- | --- |
-| `workspace.settings.get` | 读取开关、自动备份偏好和修订号 |
-| `workspace.settings.set` | 按修订号保存偏好，不接收路径或密钥 |
-| `workspace.backup.status` / `workspace.backup.list` | 只读状态和已登记备份，不开始工作 |
-| `workspace.backup.create` | 显式创建并验证备份；相同请求重放不重复创建 |
-| `workspace.backup.restore.stage` | 确认后建立独立恢复工作区，并准备重启切换 |
-
-使用 CLI 的 `schema` 或 MCP 的 `mioon_schema` 查询当前严格参数。创建和恢复须保留原 `requestId`；响应不确定时核对同一请求，不换新编号重试
-
-HTTP 文件通道为 `GET /api/workspace-backups/:id/download` 和 `POST /api/workspace-backups/import?requestId=<UUID>`，均使用现有认证与本机来源限制。下载只接受登记的备份 ID，导入验证受限文件流，不接受服务器路径
+当前自动备份以单个项目为单位，存于 `<dataDir>/records/<项目ID>/backups/`，不读取上述退役偏好。`project.backup.*` 的列表、检查、状态和恢复成新文件契约见 [项目备份](PROJECT-BACKUPS.md)。当前没有对应备份设置面板。

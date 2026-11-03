@@ -1,8 +1,13 @@
-import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
-import {isProjectDatabase} from '../packages/business/src/project-file/held-files.ts';
-import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
+
+
+
+
+
+
+
+
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
-import {downgradeReviewedWorkspace} from './helpers/reviewed-schema-layers.ts';
+
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
@@ -15,13 +20,13 @@ import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
-import {readAgentTaskStorage} from '../packages/business/src/agent/task-storage-v2.ts';
+
 import {readMioStorage} from '../packages/business/src/agent/mio-storage.ts';
 import {MIO_QUOTA_BYTES_SQL,MIO_QUOTA_ROWS_SQL} from '../packages/business/src/project-file/schema/domains/mio.ts';
 import {MIO_STORAGE_TABLES,mioStorageSnapshotSchema} from '../packages/contracts/src/mio-storage.ts';
 import type {MioStorageSnapshot} from '../packages/contracts/src/mio-storage.ts';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
-import {agentTaskStorageSnapshotSchema} from '../packages/contracts/src/agent-task-storage.ts';
+
+
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {startServer} from '../apps/server/src/index.ts';
@@ -30,20 +35,16 @@ import {createAgentClient} from '../packages/client/src/agent.ts';
 import {createTestAuthorizations, authorizeTestScope} from './helpers/agent-authorizations.ts';
 import {createServerProject} from './helpers/project-database.ts';
 
-// These lists independently pin the pre-existing SQL quota's two inventories.
-const legacyByteTables = ['agent_task_runs_v2', 'agent_task_steps_v2', 'agent_task_changes_v2', 'agent_task_events_v2',
-  'agent_task_controls_v2', 'agent_task_control_states_v2', 'agent_task_policy_v2', 'agent_task_policy_requests_v2', 'agent_task_edit_receipts_v2'];
 function record(value: unknown): Record<string, unknown> {
   assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value));
   return value as Record<string, unknown>;
 }
 function retained(db: DatabaseSync) {
-  return (isProjectDatabase(db)?MIO_STORAGE_TABLES:[...new Set([...legacyByteTables,'agent_task_job_origins_v2','agent_task_imports_v2'])].sort()).map(name => ({name, rows: db.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()}));
+  return MIO_STORAGE_TABLES.map(name => ({name, rows: db.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()}));
 }
-function temporary(t: TestContext,legacy=false) {
+function temporary(t: TestContext) {
   const root = mkdtempSync(join(realpathSync(tmpdir()), 'mioon-agent-storage-diagnostics-v2-'));
-  const created=legacy?null:createServerProject(root,{name:'Synthetic diagnostics'}),store=created?.store??openLegacyWorkspaceStore(root),projectId=created?.projectId??randomUUID();
-  if(legacy)store.put('projects',{id:projectId,name:'Legacy diagnostics',revision:1}); let cleanup = async () => {};
+  const created=createServerProject(root,{name:'Synthetic diagnostics'}), store=created.store, projectId=created.projectId; let cleanup = async () => {};
   t.after(async () => {await cleanup(); if (store.db.isOpen) store.close(); rmSync(root, {recursive: true, force: true});});
   return {root, store, projectId, journal: createAgentTaskJournal(store), beforeClose(value: () => Promise<void>) {cleanup = value;}};
 }
@@ -78,23 +79,7 @@ test('native storage diagnostics retain the complete nineteen-table inventory an
   assert.doesNotMatch(JSON.stringify(actual), /PRIVATE_PROMPT|PRIVATE_FILE_NAME|PRIVATE_PATH/u);
 });
 
-test('fresh60 reports256MiB, genuine inline58 reports64MiB, and pre-Agent databases are unavailable without mutation', t => {
-  const f = temporary(t,true), fresh = readAgentTaskStorage(f.store.db), before = retained(f.store.db);
-  assert.equal(fresh.version, 1); assert.equal(fresh.format, 'model_request_references'); assert.equal(fresh.limits.bytes, 256 * 1024 * 1024);
-  downgradeReviewedWorkspace(f.store.db,58);
-  const historical = readAgentTaskStorage(f.store.db);
-  assert.equal(historical.format, 'inline'); assert.equal(historical.limits.bytes, 64 * 1024 * 1024);
-  assert.deepEqual(historical.usage, fresh.usage); assert.deepEqual(retained(f.store.db), before);
-  const db = new DatabaseSync(':memory:');
-  try {
-    initializeWorkspaceSchemaThrough24(db);
-    const catalogue = db.prepare('SELECT type,name,sql FROM sqlite_schema ORDER BY type,name').all();
-    const unavailable = readAgentTaskStorage(db);
-    assert.equal(unavailable.format, 'unavailable'); assert.equal(unavailable.status, 'unavailable');
-    assert.deepEqual(unavailable.tables, []); assert.deepEqual(unavailable.usage, {bytes: 0, rows: 0});
-    assert.deepEqual(db.prepare('SELECT type,name,sql FROM sqlite_schema ORDER BY type,name').all(), catalogue);
-  } finally {db.close();}
-});
+
 
 test('real server and management client doctor return only safe aggregate storage without executing models or changing history', async t => {
   const f = temporary(t), marker = 'PRIVATE_PROMPT_4c689e0', privatePath = '/private/synthetic-source-never-opened.wav';

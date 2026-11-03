@@ -27,7 +27,7 @@ export interface TimelineClipLoudnessContext {
   readonly sourceIdentity: string;
   readonly connected: boolean;
   readonly visible: boolean;
-  readonly restored: boolean;
+
   readonly hasUnsavedDrafts: boolean;
   readonly pending: boolean;
 }
@@ -42,21 +42,20 @@ export interface TimelineClipLoudnessState extends TimelineClipLoudnessContext {
   readonly targetDraft: Readonly<{ integratedLufs: string; truePeakCeilingDbtp: string }> | null;
   readonly targetComposing: boolean;
 }
-export interface TimelineClipLoudnessReadOptions { readonly signal: AbortSignal; readonly expectedWorkspaceOrigin?: string }
+export interface TimelineClipLoudnessReadOptions { readonly signal: AbortSignal;  }
 export interface TimelineClipLoudnessControllerOptions {
   readonly read: (input: TimelineClipLoudnessInput, options: TimelineClipLoudnessReadOptions) => Promise<unknown>;
   readonly getContext?: () => TimelineClipLoudnessContext;
-  readonly getInvocation?: () => Readonly<{ expectedWorkspaceOrigin?: string }>;
   readonly onChange?: (state: TimelineClipLoudnessState) => void;
   readonly onUnauthorized?: () => void;
   /** Only stages a gain in the existing clip draft; it never saves the timeline. */
   readonly onMatchGain?: (gain: number) => boolean;
 }
 const initial = (): TimelineClipLoudnessState => ({ scope: null, executionScope: '', projectId: null, timelineId: null,
-  revision: null, clipId: null, assetId: null, assetSha256: '', trackId: null, startFrame: 0, sourceInFrame: 0, durationFrames: 0, gain: 0, fadeInFrames: 0, fadeOutFrames: 0, muted: true, audioSupported: false, sourceIdentity: '', connected: false, visible: false, restored: false, hasUnsavedDrafts: false,
+  revision: null, clipId: null, assetId: null, assetSha256: '', trackId: null, startFrame: 0, sourceInFrame: 0, durationFrames: 0, gain: 0, fadeInFrames: 0, fadeOutFrames: 0, muted: true, audioSupported: false, sourceIdentity: '', connected: false, visible: false,  hasUnsavedDrafts: false,
   pending: false, version: 0, phase: 'idle', report: null, error: '', targetDraft: null, targetComposing: false });
 const contextKeys = ['scope', 'executionScope', 'projectId', 'timelineId', 'revision', 'clipId', 'assetId', 'assetSha256', 'trackId', 'startFrame', 'sourceInFrame', 'durationFrames', 'gain', 'fadeInFrames', 'fadeOutFrames', 'muted', 'audioSupported', 'sourceIdentity',
-  'connected', 'visible', 'restored', 'hasUnsavedDrafts', 'pending'] as const;
+  'connected', 'visible', 'hasUnsavedDrafts', 'pending'] as const;
 const sameContext = (a: TimelineClipLoudnessContext, b: TimelineClipLoudnessContext): boolean => contextKeys.every(key => a[key] === b[key]);
 export function timelineClipLoudnessTarget(state: Pick<TimelineClipLoudnessState, 'targetDraft' | 'targetComposing'>): ExportLoudnessTarget | null {
   if (!state.targetDraft || state.targetComposing) return null;
@@ -79,7 +78,7 @@ export function timelineClipLoudnessAvailable(context: TimelineClipLoudnessConte
     Number.isSafeInteger(context.startFrame) && context.startFrame >= 0 && context.startFrame + context.durationFrames <= TIMELINE_CLIP_LOUDNESS_LIMITS.timelineFrames &&
     Number.isSafeInteger(context.sourceInFrame) && context.sourceInFrame >= 0 &&
     Number.isSafeInteger(context.fadeInFrames) && context.fadeInFrames >= 0 && Number.isSafeInteger(context.fadeOutFrames) && context.fadeOutFrames >= 0 && context.fadeInFrames + context.fadeOutFrames <= context.durationFrames &&
-    context.clipId && context.assetId && context.trackId && /^[a-f0-9]{64}$/u.test(context.assetSha256) && context.audioSupported && !context.muted && context.gain > 0 && context.gain <= 2 && context.sourceIdentity && context.connected && context.visible && !context.restored && !context.hasUnsavedDrafts && !context.pending);
+    context.clipId && context.assetId && context.trackId && /^[a-f0-9]{64}$/u.test(context.assetSha256) && context.audioSupported && !context.muted && context.gain > 0 && context.gain <= 2 && context.sourceIdentity && context.connected && context.visible && !context.hasUnsavedDrafts && !context.pending);
 }
 /** Suppress a prior report during the render before its context effect runs. */
 export function timelineClipLoudnessViewState(state: TimelineClipLoudnessState, context: TimelineClipLoudnessContext): TimelineClipLoudnessState {
@@ -95,7 +94,6 @@ export function timelineClipLoudnessErrorMessage(error: unknown, locale: Locale 
   if (['TIMELINE_CLIP_LOUDNESS_MUTED', 'TIMELINE_CLIP_LOUDNESS_ZERO_GAIN'].includes(code)) return translate(locale, 'audio.loudness.clip.inaudible');
   if (code === 'TIMELINE_CLIP_LOUDNESS_DURATION_LIMIT') return translate(locale, 'audio.loudness.clip.durationLimit', { seconds: TIMELINE_CLIP_LOUDNESS_LIMITS.clipSeconds });
   if (code === 'UNAUTHORIZED') return translate(locale, 'audio.loudness.clip.unauthorized');
-  if (code.startsWith('RESTORE_')) return translate(locale, 'audio.loudness.clip.restored');
   if (code === 'TIMELINE_CLIP_LOUDNESS_REVISION_CONFLICT' || code === 'TIMELINE_CLIP_LOUDNESS_STALE') return translate(locale, 'audio.loudness.clip.changed');
   if (code === 'TIMELINE_CLIP_LOUDNESS_BUSY') return translate(locale, 'audio.loudness.clip.busy');
   if (code === 'TIMELINE_CLIP_LOUDNESS_TIMEOUT') return translate(locale, 'audio.loudness.clip.timeout');
@@ -168,9 +166,8 @@ export function createTimelineClipLoudnessController(options: TimelineClipLoudne
       emit({ version: ++version, phase: 'preparing', report: null, error: '' });
       const captured = state;
       try {
-        const invocation = options.getInvocation?.() ?? {};
         if (!current(attempt, captured, abort)) return null;
-        const result = await options.read(input, { ...invocation, signal: abort.signal });
+        const result = await options.read(input, { signal: abort.signal });
         if (!current(attempt, captured, abort)) return null;
         if (!isTimelineClipLoudnessResponse(result, input) || !clipReportMatchesContext(result, captured)) throw protocolError();
         // Server verifies source bytes and the saved snapshot. The renderer binds

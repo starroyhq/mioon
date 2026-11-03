@@ -1,3 +1,5 @@
+
+
 import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {writeFileSync} from 'node:fs';
 import type {MediaShot} from './helpers/strict-service-responses.ts';
@@ -11,9 +13,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import { openStore, openLegacyWorkspaceStore } from '../packages/business/src/db.ts';
-import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
-import { createServices, type OrdinaryServices } from '../packages/business/src/services.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+
+
+import {createServices} from '../packages/business/src/services.ts';
 import { withoutForeignKeys } from './helpers/project-database.ts';
 
 // These deterministic service tests isolate schema/revision/state correctness from
@@ -23,15 +26,9 @@ const evidence = path.join(repo, 'evidence/v2-tests');
 const report = { startedAt: new Date().toISOString(), runtime: process.version, suite: 'timeline-contract', checks: [] };
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 const stamp = '2026-10-09T00:00:00.000Z';
-async function fixture(t: test.TestContext, { legacy = false } = {}) {
+async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'workbench-timeline-contract-'));
-  const oldProject = { id: randomUUID(), name: 'Original v1 project', description: '', revision: 9, createdAt: stamp, updatedAt: stamp };
-  if (legacy) {
-    const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
-    db.exec('CREATE TABLE schema_version(version INTEGER PRIMARY KEY); INSERT INTO schema_version VALUES(1); CREATE TABLE projects(id TEXT PRIMARY KEY,data TEXT NOT NULL);');
-    db.prepare('INSERT INTO projects VALUES(?,?)').run(oldProject.id, JSON.stringify(oldProject)); db.close();
-  }
-  const open=legacy?openLegacyWorkspaceStore:openStore;
+  const open=openStore;
   let store = (open(root) as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
   const _strictFixtureBase = {
     root, get store() { return store; }, get services() { return services; },
@@ -49,7 +46,7 @@ async function fixture(t: test.TestContext, { legacy = false } = {}) {
     },
   };
  const f = _strictFixtureBase as typeof _strictFixtureBase & {project: FixtureProject};
-  f.project = legacy ? oldProject : await f.call('project.create', { name: t.name });
+  f.project = await f.call('project.create', { name: t.name });
   t.after(async () => { store.close(); await rm(root, { recursive: true, force: true }); });
   return f;
 }
@@ -62,8 +59,8 @@ async function rejected(f: Awaited<ReturnType<typeof fixture>>, operation: strin
 function passed(name: string, details: Record<string, unknown> = {}) { report.checks.push((({ name, passed: true, ...details }) as unknown as Parameters<typeof report.checks.push>[0])); }
 test.after(async () => { (report as typeof report & {finishedAt:(string)}).finishedAt = new Date().toISOString(); (report as typeof report & {expectedGroups:(10)}).expectedGroups = 10; (report as typeof report & {result:("passed" | "failed_or_incomplete")}).result = report.checks.length === 10 ? 'passed' : 'failed_or_incomplete'; await mkdir(evidence, { recursive: true }); await writeFile(path.join(evidence, 'contract.json'), JSON.stringify(report, null, 2)); });
 
-test('timeline migration is additive, stable, empty, and does not change v1 project revision', async t => {
-  const f = await fixture(t, { legacy: true });
+test('current timeline initialization is additive, stable, empty, and preserves existing project values', async t => {
+  const f = await fixture(t);
   const asset = f.asset(f.project.id, 'video/mp4');
   const shot = await f.call('shot.create', { projectId: f.project.id, title: 'Existing selected shot' });
   const version = f.version(shot, ((asset) as unknown as Parameters<typeof f.version>[1]));
@@ -80,9 +77,9 @@ test('timeline migration is additive, stable, empty, and does not change v1 proj
   assert.equal(new Set(timeline.tracks.map((track) => track.id)).size, 3);
   for (const track of timeline.tracks) { assert.equal(track.hidden, false); assert.equal(track.muted, false); assert.ok(Number.isInteger(track.orderIndex)); }
   assert.deepEqual(await f.call('timeline.get', { projectId: f.project.id }), timeline);
-  assert.deepEqual(Object.fromEntries(legacyTables.map(name => [name, f.store.list(name)])), before, 'read migration must preserve all existing data byte values');
+  assert.deepEqual(Object.fromEntries(legacyTables.map(name => [name, f.store.list(name)])), before, 'timeline initialization must preserve all existing data byte values');
   f.restart();
-  assert.deepEqual(await f.call('timeline.get', { projectId: f.project.id }), timeline, 'migration survives process/store reopen without duplicate tracks');
+  assert.deepEqual(await f.call('timeline.get', { projectId: f.project.id }), timeline, 'initialization survives process/store reopen without duplicate tracks');
   assert.deepEqual((await f.call('project.get', { projectId: f.project.id })).timeline, timeline);
   passed(t.name, { timelineId: timeline.id, projectRevision: firstProject.project.revision });
 });

@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isExportPreflightResponse,TIMELINE_SUBTITLE_PROFILE_ID} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createTimelinePreflightServices} from '../packages/business/src/timeline-preflight.ts';
 import {initializeSubtitleResources,SUBTITLE_FONT_FILE} from '../packages/business/src/subtitle-resources.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';

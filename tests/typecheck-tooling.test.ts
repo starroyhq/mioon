@@ -182,12 +182,7 @@ test('fixed compiler projects cover all runtime TypeScript without legacy browse
   assert.deepEqual(browser.include, ['../../packages/ui/src/**/*.ts', '../../packages/ui/src/**/*.tsx', '../../apps/web/src/**/*.ts', '../../apps/web/src/**/*.tsx', 'browser.consumer.tsx', 'export-sample-peak.consumer.tsx', 'desktop-launcher.consumer.tsx', 'timeline-audio-preview.consumer.tsx', 'export-loudness.consumer.tsx', 'timeline-mix-loudness.consumer.tsx', 'timeline-clip-loudness.consumer.tsx', 'timeline-loudness-apply.consumer.tsx']);
   assert.deepEqual(browser.exclude, []);
   assert.deepEqual(testsProject.include, ['./**/*.ts', './**/*.tsx', '../apps/web/src/style-modules.d.ts']);
-  // Frozen historical evidence fixtures stay excluded; `.mjs`-sourced helper and
-  // fixture modules are removed from this list as their owning test waves add
-  // strict types.
-  assert.ok(testsProject.exclude.includes('./typecheck/**'));
-  assert.ok(testsProject.exclude.includes('./fixtures/workspace-restore-legacy/**'));
-  assert.ok(testsProject.exclude.includes('./fixtures/workspace-restore-v27/legacy-contracts/**'));
+  assert.deepEqual(testsProject.exclude, ['./helpers/timeline-mix-loudness-ui-fixture.ts', './typecheck/**', './fixtures/local-drafts-v1-contracts.ts', './fixtures/local-drafts-v1-reader.ts']);
   for (const config of [foundation, browser, testsProject]) {
     assert.equal(config.compilerOptions.strict, true); assert.equal(config.compilerOptions.noEmit, true);
     assert.equal(config.compilerOptions.erasableSyntaxOnly, true); assert.equal(config.compilerOptions.skipLibCheck, false);

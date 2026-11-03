@@ -15,7 +15,6 @@ import { createHash } from 'node:crypto';
 import { stripSourceTypes } from './helpers/eval-source.ts';
 import { transformSync } from 'esbuild';
 import { buildAudioPreviewPlan } from '../packages/contracts/src/timeline-audio-preview.ts';
-import { workspaceOriginScope, pinNewWorkspaceIntent } from '../apps/web/src/workspace-origin.ts';
 import { createTimelineAudioPreviewController, timelineAudioPreviewSourceIdentity, timelineAudioPreviewPosition, seekTimelineAudioPreview } from '../apps/web/src/use-timeline-audio-preview.ts';
 import * as i18n from '../packages/i18n/src/index.ts';
 import { lenientFunction } from './helpers/eval-source.ts';
@@ -50,8 +49,8 @@ function harness() {
   let controller: ReturnType<typeof createTimelineAudioPreviewController> | undefined, latestOptions!: HookOptions;
   const env = {
     application: null, nativeAudioAdmission: null,
-    workspaceOriginScope, pinNewWorkspaceIntent, timelineAudioPreviewSourceIdentity, timelineAudioPreviewPosition, seekTimelineAudioPreview,
-    workspaceRef: { current: { restored: false } as {restored: boolean; workspaceOrigin?: string} }, currentProject: { current: id(1) }, projectEpoch: { current: 1 }, navigationEpoch: { current: 0 },
+    timelineAudioPreviewSourceIdentity, timelineAudioPreviewPosition, seekTimelineAudioPreview,
+    editorSession: {current: 'normal'}, workspaceRef: { current: {  } as { } }, currentProject: { current: id(1) }, projectEpoch: { current: 1 }, navigationEpoch: { current: 0 },
     dataRef: { current: { project: { id: id(1) }, timeline, assets: [asset] as (Partial<typeof asset> & Pick<typeof asset, 'id' | 'sha256'>)[] } },
     viewRef: { current: { activeMode: 'editing', editing: { previewKind: 'timeline', selectedClipId: null as string | null, quickAssetId: null as string | null, playhead: 30 } } },
     projectSessionReady: () => true, workbenchReady: true, online: true, auth: true, loading: false,
@@ -69,7 +68,7 @@ function harness() {
       latestOptions = options;
       if (!controller) controller = createTimelineAudioPreviewController({
         readPlan: (input, invocation) => latestOptions.readPlan(input, invocation), getContext: () => latestOptions.getContext!(),
-        getInvocation: () => latestOptions.getInvocation!(), onExplicitPosition: frame => latestOptions.onExplicitPosition!(frame),
+         onExplicitPosition: frame => latestOptions.onExplicitPosition!(frame),
         onBeforePlay: () => latestOptions.onBeforePlay!(), onUnauthorized: () => latestOptions.onUnauthorized!(),
         createContext() { const context = { sampleRate: 48000, state: 'running', closeCalls: 0, createBuffer() { assert.fail('Muted fixture has no source allocation'); },
           close() { this.closeCalls++; this.state = 'closed'; return Promise.resolve(); } }; calls.contexts.push(context); return context as unknown as AudioContext; },
@@ -137,7 +136,7 @@ test('an unapplied clip recovery candidate warns even with clean inputs without 
 for (const [name, change] of Object.entries({ hidden: (f: ReturnType<typeof harness>) => { f.env.canvasVisible = false; }, sourceTab: (f: ReturnType<typeof harness>) => { f.env.viewRef.current.editing.previewKind = 'source'; },
   canvasMode: (f: ReturnType<typeof harness>) => { f.env.viewRef.current.activeMode = 'canvas'; }, modal: (f: ReturnType<typeof harness>) => { f.env.previewAsset = { id: id(4) }; }, comparison: (f: ReturnType<typeof harness>) => { f.env.comparisonIdRef.current = id(9); },
   clipSwitch: (f: ReturnType<typeof harness>) => { f.env.viewRef.current.editing.selectedClipId = id(5); }, sourceSwitch: (f: ReturnType<typeof harness>) => { f.env.viewRef.current.editing.quickAssetId = id(4); },
-  logout: (f: ReturnType<typeof harness>) => { f.env.auth = false; }, disconnected: (f: ReturnType<typeof harness>) => { f.env.online = false; }, restored: (f: ReturnType<typeof harness>) => { f.env.workspaceRef.current = { restored: true, workspaceOrigin: id(8) }; },
+  logout: (f: ReturnType<typeof harness>) => { f.env.auth = false; }, disconnected: (f: ReturnType<typeof harness>) => { f.env.online = false; },
   projectReopen: (f: ReturnType<typeof harness>) => { f.env.projectEpoch.current++; }, revision: (f: ReturnType<typeof harness>) => { f.env.dataRef.current.timeline = { ...f.env.dataRef.current.timeline, revision: 2 }; } })) {
   test(`actual App ${name} signal retires sound and never prepares/resumes from a rerender`, async () => {
     const f = harness(); await f.controller.prepare(30); await f.controller.play(); change(f); f.render();

@@ -68,8 +68,8 @@ test('refusal details are filtered before display and known codes get their own 
   assert.deepEqual((sourceRefreshSkips({ skipped: [] }) as unknown), []);
   assert.equal(sourceRefreshSkips(Array.from({ length: 150 }, (_, index) => ({ clipId: `c${index}`, reason: 'UP_TO_DATE' }))).length, 100);
   const key = (code: string) => shotSyncErrorMessage({ code })?.key ?? null;
-  assert.deepEqual(['NOTHING_TO_REFRESH', 'NOTHING_TO_APPEND', 'TIMELINE_LIMIT', 'TRACK_NOT_FOUND', 'CLIP_NOT_FOUND', 'ASSET_HASH_MISMATCH', 'RESTORE_OPERATION_UNAVAILABLE'].map(key),
-    ['timeline.sync.error.nothingToRefresh', 'timeline.sync.error.nothingToAppend', 'timeline.sync.error.limit', 'timeline.sync.error.noVideoTrack', 'timeline.sync.error.changed', 'timeline.sync.error.changed', 'timeline.sync.restoredUnavailable']);
+  assert.deepEqual(['NOTHING_TO_REFRESH', 'NOTHING_TO_APPEND', 'TIMELINE_LIMIT', 'TRACK_NOT_FOUND', 'CLIP_NOT_FOUND', 'ASSET_HASH_MISMATCH'].map(key),
+    ['timeline.sync.error.nothingToRefresh', 'timeline.sync.error.nothingToAppend', 'timeline.sync.error.limit', 'timeline.sync.error.noVideoTrack', 'timeline.sync.error.changed', 'timeline.sync.error.changed']);
   assert.equal(key('REVISION_CONFLICT'), null, 'shared codes keep the shell wording'); assert.equal(shotSyncErrorMessage(null), null);
   assert.equal(translate('en', 'timeline.sync.append.action', { count: 1 }), 'Append to timeline (1 shot)');
   assert.equal(translate('zh-Hant', 'timeline.sync.append.action', { count: 3 }), '附加到時間軸（3 個鏡頭）');
@@ -118,8 +118,8 @@ test('the stale banner selects each outdated clip in turn, updates them all and 
   (byTestId(render(props), 'timeline-source-dismiss'))!.props.onClick();
   assert.equal(render(props), null);
   assert.ok(byTestId(render({ ...props, staleClipIds: ['c1', 'c2', 'c3'] }), 'timeline-source-banner'), 'a newly outdated clip brings the banner back');
-  const blocked = render({ ...props, staleClipIds: ['c9'], disabledReason: translate('zh-Hans', 'timeline.sync.restoredUnavailable') });
-  assert.equal((byTestId(blocked, 'timeline-source-refresh-all'))!.props.disabled, true); assert.match(text(blocked), /恢复出的工作区暂不支持批量更新来源和追加镜头/);
+  const blocked = render({ ...props, staleClipIds: ['c9'], disabledReason: translate('zh-Hans','timeline.history.offline') });
+  assert.equal((byTestId(blocked, 'timeline-source-refresh-all'))!.props.disabled, true); assert.ok(text(blocked).includes(translate('zh-Hans','timeline.history.offline')));
   assert.equal((byTestId(render({ ...props, staleClipIds: ['c8'], busy: true }), 'timeline-source-refresh-all'))!.props.disabled, true);
   assert.equal(render({ ...props, staleClipIds: [] }), null);
 });
@@ -184,7 +184,7 @@ test('the storyboard strip renders the append action, its hint and each shot’s
     const statuses = new Map([['s1', { stale: true }], ['s2', { stale: false }]]);
     export const html = { ready: renderToStaticMarkup(<StoryboardStrip {...base} timelineStatuses={statuses} append={{ count: 1, onAppend() {} }} />),
       none: renderToStaticMarkup(<StoryboardStrip {...base} timelineStatuses={statuses} append={{ count: 0, onAppend() {} }} />),
-      restored: renderToStaticMarkup(<StoryboardStrip {...base} append={{ count: 1, disabledReason: 'restored-reason', onAppend() {} }} />),
+      offline: renderToStaticMarkup(<StoryboardStrip {...base} append={{ count: 1, disabledReason: 'offline-reason', onAppend() {} }} />),
       plain: renderToStaticMarkup(<StoryboardStrip {...base} />) };`;
   // The markup is large; write it synchronously so exiting cannot truncate the pipe.
   const script = `import {build} from 'esbuild'; const {outputFiles} = await build({stdin:{contents:${JSON.stringify(fixture)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'automatic',loader:{'.css':'empty'},define:{'process.env.NODE_ENV':'"production"'}}); const result = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64')); (await import('node:fs')).writeSync(1, JSON.stringify(result.html)); process.exit(0);`;
@@ -197,7 +197,7 @@ test('the storyboard strip renders the append action, its hint and each shot’s
   assert.match((button(html.ready, 'storyboard-timeline-s1'))![1], /在时间线 · 已过期/); assert.match((button(html.ready, 'storyboard-timeline-s2'))![1], /在时间线</);
   assert.equal(button(html.ready, 'storyboard-timeline-s3'), null, 'a shot that is not placed shows no status');
   assert.match((button(html.none, 'storyboard-append-timeline'))![0], disabled); assert.match((button(html.none, 'storyboard-append-timeline'))![0], /title="没有可追加的镜头/);
-  assert.match((button(html.restored, 'storyboard-append-timeline'))![0], /title="restored-reason"/);
+  assert.match((button(html.offline, 'storyboard-append-timeline'))![0], /title="offline-reason"/);
   assert.equal(button(html.plain, 'storyboard-append-timeline'), null); assert.doesNotMatch(html.plain, /storyboard-timeline-/);
 });
 
@@ -210,7 +210,7 @@ test('App, board and timeline wire the bridges through the ordinary timeline mut
   assert.match(app, /notice=\{sourceBanner\}/); assert.match(app, /timelineStatuses=\{shotStatuses\}/); assert.match(app, /timelineStatus=\{shotTimelineView\(chosenShot\?\.id\)\}/);
   assert.match(app, /timelineStatus: shotStatuses\.get\(record\.id\) \?\? null, onViewInEditing: viewShotInEditing,/);
   assert.match(app, /contentChoice=\{timeline\?\.clips\?\.length \? \{ value: exportContent,/);
-  assert.match(app, /const bridgeUnavailable = restored \? t\('timeline\.sync\.restoredUnavailable'\) : null;/);
+  assert.match(app,/disabledReason: !projectSessionReady\(\) \|\| !online \|\| auth !== true \|\| loading \? t\('timeline\.history\.offline'\) : null, busy: timelineBusy/);
   // Other tests evaluate App slices between neighbouring handlers; the bridge handlers stay outside all of them.
   const handlers = app.indexOf('  // Canvas → timeline bridges.');
   assert.ok(handlers > app.indexOf('  async function moveTimelineClip(') && handlers < app.indexOf('  function renderUncheckedTimeline('));

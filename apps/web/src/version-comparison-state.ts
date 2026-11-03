@@ -7,8 +7,8 @@ export interface ComparisonVersion {
 }
 export interface ComparisonAsset { id: string; projectId: string; sha256: string; mimeType: string }
 export interface ComparisonContext {
-  scope: string | null; projectId: string | null; workspaceOrigin: string | null;
-  connected: boolean; visible: boolean; restored: boolean;
+  scope: string | null; projectId: string | null;
+  connected: boolean; visible: boolean;
   shot: { id: string; projectId: string; title?: string; selectedVersionId?: string | null } | null;
   versions: readonly ComparisonVersion[]; assets: readonly ComparisonAsset[];
 }
@@ -23,7 +23,7 @@ const id = (value: unknown): value is string => typeof value === 'string' && /^[
 const hash = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
 const text = (value: unknown, max = 12000): string | null => typeof value === 'string' && value.length > 0 && value.length <= max ? value : null;
 export function comparisonAvailable(context: ComparisonContext): boolean {
-  return Boolean(context.connected && context.visible && !context.restored && context.workspaceOrigin === 'normal' && context.scope &&
+  return Boolean(context.connected && context.visible && context.scope &&
     id(context.projectId) && context.shot && id(context.shot.id) && context.shot.projectId === context.projectId);
 }
 export function captureComparison(context: ComparisonContext, versionId: string): ComparisonBinding | null {
@@ -42,7 +42,7 @@ export function captureComparison(context: ComparisonContext, versionId: string)
     createdAt: typeof version.createdAt === 'string' && Number.isFinite(Date.parse(version.createdAt)) ? version.createdAt : null, isMock: version.isMock === true,
     references: Array.isArray(version.snapshot?.referenceAssetIds) && version.snapshot.referenceAssetIds.length <= 100 && version.snapshot.referenceAssetIds.every(id) ? version.snapshot.referenceAssetIds.join(', ') : null,
     seed: Number.isSafeInteger(version.snapshot?.parameters?.seed) ? version.snapshot!.parameters!.seed! : null });
-  const identity = { projectId: context.projectId!, shotId: context.shot!.id, versionId, assetId: version.assetId, sha256: version.sha256, workspaceOrigin: 'normal' };
+  const identity = { projectId: context.projectId!, shotId: context.shot!.id, versionId, assetId: version.assetId, sha256: version.sha256 };
   let route: string;
   try { route = projectApiPath(identity.projectId, 'version-comparison', 'media'); } catch { return null; }
   return Object.freeze({ ...identity, scope: context.scope!, number: version.number, metadata,

@@ -1,6 +1,3 @@
-import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
-import {withRestoreInvocation,freezeRestoreInput} from './workspace-restore-invocation.ts';
-import {refuseRestoredOperation,assertWorkspaceRestoreOrigin} from './workspace-restore-policy.ts';
 import {AppError, schemas} from '@mioon/contracts';
 import type {DatabaseSync} from 'node:sqlite';
 import {isProjectStore} from './project-file/store.ts';
@@ -148,9 +145,7 @@ export function createWorkspacePreferences(store: PreferencesStore, {application
       const expectedRevision = numeric(payload.expectedRevision, 0, Number.MAX_SAFE_INTEGER, ['expectedRevision'], true);
       const state = JSON.stringify(parseWorkspacePreferencesState(payload.state));
       if (Buffer.byteLength(state) > MAX_WORKSPACE_PREFERENCES_BYTES) invalid(['state'], 'Preferences are too large');
-      const identity=freezeRestoreInput({projectId,expectedRevision,state});
       const apply=()=>tx(() => {
-        if(!application)refuseRestoredOperation(store as never,'workspace.preferences.put',identity);
         requireProject(projectId);
         const previous = current(projectId), revision = previous?.revision ?? 0;
         // Only an exact retry of the most recent accepted write is replayable.
@@ -164,9 +159,7 @@ export function createWorkspacePreferences(store: PreferencesStore, {application
         else db.prepare('INSERT INTO workspace_preferences(projectId,revision,state) VALUES(?,?,?)').run(projectId, next.revision, state);
         return result(projectId, next);
       });
-      if(application||!getWorkspaceRestoreContext(store))return apply();
-      assertWorkspaceRestoreOrigin(store as never,context as unknown as {expectedWorkspaceOrigin?: unknown});
-      return withRestoreInvocation(store as never,'workspace.preferences.put',identity,{signal:context.signal},apply);
+      return apply();
     },
   };
 }

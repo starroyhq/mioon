@@ -19,7 +19,6 @@ import {createServerProject,schemaObjects} from './helpers/project-database.ts';
 import {changeMarks} from './helpers/project-state.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {READ_TOOL_DEFINITIONS, READ_TOOL_OPERATIONS, parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.ts';
-import {RESTORE_READ_OPERATIONS, RESTORE_LOCAL_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {pillowJfifFixture} from './helpers/timeline-jpeg-fixtures.ts';
 import {sha, stamp} from './helpers/timeline-image-fixtures.ts';
 
@@ -73,8 +72,8 @@ test('JPEG discovery declares a local decoder but remains read-only, private and
   assert.deepEqual(Object.values(READ_TOOL_OPERATIONS), ['project.inspect', 'asset.inspect', 'shot.inspect', 'timeline.inspect']);
   for (const name of ['timeline_colour_jpeg_inspect', 'mioon_timeline_colour_jpeg_inspect'])
     assert.throws(() => parseReadToolArguments(name, JSON.stringify(input)), {code: 'AGENT_CHAT_TOOLS_UNSUPPORTED'});
-  assert.equal(RESTORE_READ_OPERATIONS.includes(operation), false);
-  assert.equal(RESTORE_LOCAL_OPERATIONS.includes(operation), false);
+
+
 });
 
 test('JPEG client accepts only exact SHA-bound untagged baseline decoder evidence', async () => {

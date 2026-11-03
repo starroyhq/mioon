@@ -4,7 +4,7 @@ import type {ClipDraftContext, ClipDraftEnvelope, ClipDraftRecord, ClipDraftClie
 import type {RawVolumeEnvelope, VolumeEnvelopeComposition} from '../apps/web/src/clip-volume-envelope-state.ts';
 import type {ClipDraftRequestError} from '../apps/web/src/clip-draft-client.ts';
 type ControlProps = Parameters<typeof import('../apps/web/src/ClipVolumeEnvelopeControls.tsx').default>[0];
-interface HarnessOptions {saved?:Partial<ClipDraftRaw>;candidate?:ClipDraftRecord|null;editable?:boolean;restored?:boolean;putHook?: (input:ClipDraftWrite,row:ClipDraftEnvelope)=>Promise<ClipDraftEnvelope>}
+interface HarnessOptions {saved?:Partial<ClipDraftRaw>;candidate?:ClipDraftRecord|null;editable?:boolean;putHook?: (input:ClipDraftWrite,row:ClipDraftEnvelope)=>Promise<ClipDraftEnvelope>}
 type VolumeCall = ['put', ClipDraftWrite] | ['remove', ClipDraftDelete];
 import type { TestNode, TestTree, TestElementProps, TestComponent, HookCell } from './helpers/strict-timeline-ui-types.ts';
 import test from 'node:test';
@@ -23,8 +23,8 @@ const base={name:'Clip',trackId:id(4),startFrame:0,durationFrames:120,sourceInFr
 const numeric: import('../packages/contracts/src/timeline-volume-envelope.ts').VolumeEnvelope={profileId,points:[{frame:0,multiplier:1},{frame:120,multiplier:0.5}]};
 const curve: RawVolumeEnvelope={profileId,points:[{frame:'0',multiplier:'1'},{frame:'120',multiplier:'0.5'}]};
 const deferred=(): Gate<unknown> & {resolve(): void;patch?:Record<string,unknown>}=>{let resolve!: Gate<unknown>['resolve'];const promise=new Promise<unknown>(r=>resolve=r);return {promise,resolve} as Gate<unknown> & {resolve():void;patch?:Record<string,unknown>};};
-function harness(t: TestContext,{saved={},candidate=null,editable=true,restored=false,putHook}: HarnessOptions={}) {
- const ctx: ClipDraftContext={...key,scope:'owner1',restored,connected:true,visible:true,busy:false,volumeEnvelopeEditable:editable,timelineRevision:7,source,saved:{...base,...saved}};
+function harness(t: TestContext,{saved={},candidate=null,editable=true,putHook}: HarnessOptions={}) {
+ const ctx: ClipDraftContext={...key,scope:'owner1',connected:true,visible:true,busy:false,volumeEnvelopeEditable:editable,timelineRevision:7,source,saved:{...base,...saved}};
  let row: ClipDraftEnvelope={supported:true,workspaceScope:'a'.repeat(64),instanceId:id(6),key,revision:candidate?1:0,targetStatus:'matching',draft:candidate}; const calls: VolumeCall[]=[];
  const client: ClipDraftClient={get:async()=>structuredClone(row),put:async input=>{calls.push(['put',input]);if(putHook)return putHook(input,row);row={...row,revision:input.expectedRevision+1,draft:{baseRevision:input.baseRevision,source:input.source,raw:input.raw,updatedAt:'2026-10-15T00:00:00.000Z'}};return structuredClone(row);},remove:async input=>{calls.push(['remove',input]);row={...row,revision:input.expectedRevision+1,draft:null};return structuredClone(row);}};
  const c=createClipDraftController({context:ctx,client,validateTimeline:()=>true,delay:100000});t.after(()=>c.dispose());
@@ -127,9 +127,7 @@ test('changed recovered unsupported curve remains visible and blocked',async t=>
 test('late business ACK cannot delete newer curve input',async t=>{
  const {c,calls,result}=harness(t);await c.load();c.editVolumeEnvelope(curve,c.capture());const pending=deferred();const save=c.save(async(_id,patch)=>{pending.patch=patch;return pending.promise;});await c.flush();await Promise.resolve();assert.ok(pending.patch);c.edit('name','Newer');pending.resolve!(result(pending.patch));await save;assert.equal(c.getState().raw.name,'Newer');assert.equal(calls.filter(x=>x[0]==='remove').length,0);
 });
-test('restored explicit capable business edits remain available without local companion IO',async t=>{
- const {c,calls,result}=harness(t,{restored:true});c.editVolumeEnvelope(curve,c.capture());assert.ok(await c.save(async(_id,patch)=>result(patch)));assert.equal(calls.length,0);assert.equal(c.getState().dirty,false);
-});
+
 test('capability loss during flush cancels business submission without stripping saved draft',async t=>{
  const pending=deferred();const {c,ctx}=harness(t,{putHook:async(input,row)=>{await pending.promise;return {...row,revision:1,draft:{baseRevision:7,source,raw:input.raw,updatedAt:'2026-10-15T00:00:00.000Z'}};}});await c.load();c.editVolumeEnvelope(curve,c.capture());const saving=c.save(()=>assert.fail('capability lost'));c.setContext({...ctx,volumeEnvelopeEditable:false});pending.resolve!();assert.equal(await saving,null);assert.deepEqual(c.getState().raw.volumeEnvelope,curve);assert.equal(c.getState().dirty,true);
 });

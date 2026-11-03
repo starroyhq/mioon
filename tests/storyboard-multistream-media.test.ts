@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { openStore } from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import { createServices } from '../packages/business/src/services.ts';
 import { createMockProvider } from '../packages/business/src/providers/mock.ts';
 import { startWorker } from '../packages/business/src/jobs.ts';

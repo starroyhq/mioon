@@ -12,14 +12,13 @@ export function context(patch: Record<string, unknown> = {}) {
     revision: 4, clipId: input().clipId, assetId: i.assetId, assetSha256: i.assetSha256, trackId: i.trackId,
     startFrame: i.startFrame, sourceInFrame: i.sourceInFrame, durationFrames: i.durationFrames, gain: i.gain,
     fadeInFrames: i.fadeInFrames, fadeOutFrames: i.fadeOutFrames, muted: false, audioSupported: true, sourceIdentity: 'saved-graph:1',
-    connected: true, visible: true, restored: false, hasUnsavedDrafts: false, pending: false, ...patch };
+    connected: true, visible: true, hasUnsavedDrafts: false, pending: false, ...patch };
 }
 type LoudnessController = ReturnType<typeof createTimelineClipLoudnessController>
 interface FixtureCall {input: unknown; options: unknown; context: unknown}
 export function fixture(patch: Record<string, unknown> = {}, overrides: Record<string, unknown> = {}) {
   let live = context(patch); const calls: FixtureCall[] = [], reads: Deferred<unknown>[] = [], changes: unknown[] = [], auth: boolean[] = [];
-  const controller = createTimelineClipLoudnessController({ getContext: () => live, getInvocation: () => ({ expectedWorkspaceOrigin: id(7) }),
-    onChange: (value: unknown) => changes.push(value), onUnauthorized: () => auth.push(false),
+  const controller = createTimelineClipLoudnessController({ getContext: () => live, onChange: (value: unknown) => changes.push(value), onUnauthorized: () => auth.push(false),
     read(value: unknown, options: unknown) { calls.push({ input: value, options, context: structuredClone(live) }); const wait = deferred(); reads.push(wait); return wait.promise; }, ...overrides } as never);
   controller.attach(live);
   const f = { controller, calls, reads, changes, auth, state: () => controller.getState(), live: () => live,

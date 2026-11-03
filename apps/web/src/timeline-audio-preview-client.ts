@@ -17,7 +17,7 @@ export const AUDIO_PREVIEW_PCM_HEADERS = Object.freeze({
   sourceHash: 'X-Mioon-Audio-Source-Hash', clipId: 'X-Mioon-Audio-Clip-Id',
   sampleFrames: 'X-Mioon-Audio-Sample-Frames',
 });
-export interface AudioPreviewReadOptions { signal: AbortSignal; expectedWorkspaceOrigin?: string }
+export interface AudioPreviewReadOptions { signal: AbortSignal }
 export interface AudioPreviewAllocation {
   retainedAudioBufferBytes: number;
   largestInFlightSourceBytes: number;
@@ -103,7 +103,7 @@ async function readSourceFailure(response: Response, signal: AbortSignal, checkC
       const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, count)));
       if (value !== null && typeof value === 'object' && 'ok' in value && value.ok === false && 'error' in value &&
           value.error !== null && typeof value.error === 'object' && 'code' in value.error && typeof value.error.code === 'string' &&
-          /^(?:AUDIO_PREVIEW_[A-Z_]{1,80}|RESTORE_OPERATION_UNAVAILABLE)$/u.test(value.error.code)) code = value.error.code;
+          /^(?:AUDIO_PREVIEW_[A-Z_]{1,80})$/u.test(value.error.code)) code = value.error.code;
     } catch { checkCurrent(); }
     finally { signal.removeEventListener('abort', onAbort); try { await cancel(); } finally { reader.releaseLock(); } }
   }
@@ -223,7 +223,7 @@ export function createTimelineAudioPreviewClient({ readPlan, fetcher = (...args)
       timer = setTimeout(() => { expired = true; interrupt(); }, deadlineMs);
       const work = async (): Promise<PreparedAudioPreview> => {
         check();
-        const raw = await readPlan(input, { signal: abort.signal, ...(options.expectedWorkspaceOrigin ? { expectedWorkspaceOrigin: options.expectedWorkspaceOrigin } : {}) });
+        const raw = await readPlan(input, { signal: abort.signal });
         check();
         if (!isAudioPreviewPlan(raw, input)) protocol();
         const checked = audioPreviewPlanSchema.safeParse(raw);

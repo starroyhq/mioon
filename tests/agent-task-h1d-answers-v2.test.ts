@@ -1,3 +1,6 @@
+
+
+
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
@@ -6,7 +9,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {assembleModelInput,assembleRunContext} from '../packages/business/src/agent/task-context-v2.ts';
 import type {TaskContextHistoryInput} from '../packages/business/src/agent/task-context-v2.ts';
@@ -17,8 +20,6 @@ import {buildTaskModelRequest,TASK_MODEL_LIMITS,taskResponseLanguageContext} fro
 import type {TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {AgentProtocol} from '../packages/contracts/src/agent-protocol.ts';
 import type {AgentTaskJson,AgentTaskLocale,AgentTaskRun,AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 
@@ -34,7 +35,7 @@ function freeze<T>(value:T):T{if(value!==null&&typeof value==='object'){for(cons
 function host(history:readonly AgentTaskJson[],kind:string):Record<string,unknown>[] {
  return history.flatMap(row=>{const message=object(row);if(typeof message.content!=='string'||!message.content.includes('\n'))return [];let parsed:unknown;try{parsed=JSON.parse(message.content.slice(message.content.indexOf('\n')+1));}catch{return [];}const value=object(parsed);return value.kind===kind?[value]:[];});
 }
-function fixture(t:TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){
+function fixture(t:TestContext,opener:typeof openStore=openStore){
  const base=mkdtempSync(join(realpathSync(tmpdir()),'mioon-h1d-answers-')),root=join(base,'source'),store=opener(root),projectId=isProjectStore(store)?store.projectId:randomUUID();let closed=false;
  const close=()=>{if(!closed){closed=true;store.close();}};t.after(()=>{close();rmSync(base,{recursive:true,force:true});});
  store.put('projects',{id:projectId,name:'Answered history',revision:1});return {base,root,store,projectId,close,journal:createAgentTaskJournal(store)};
@@ -132,7 +133,6 @@ for(const protocol of protocols)test(`${protocol}: compaction removes real journ
  const body=buildTaskModelRequest({presetId:'ollama',platformId:'local',protocol,model:'qwen3:8b',baseUrl:`http://127.0.0.1:11434${protocol==='anthropic_messages'?'':'/v1'}`},modelInput.history,[]);assert.ok(!body.includes('mio.context.history-round'));assert.ok(!body.includes('mio.context.answer'));
 });
 
-test('a restored current workspace reads answered history as exact immutable evidence',async t=>{
- const f=fixture(t,openLegacyWorkspaceStore),seed=answeredRun(f),expected=f.journal.modelContextRuns(f.projectId,seed.run.conversationId!);f.close();const backup=join(f.base,'backup'),restored=join(f.base,'restored');await createWorkspaceBackup({source:f.root,destination:backup});await restoreWorkspaceBackup({directory:backup,destination:restored});
- const store=openLegacyWorkspaceStore(restored);try{const journal=createAgentTaskJournal(store),before=Number(store.db.prepare('SELECT total_changes() n').get()!.n),actual=journal.modelContextRuns(f.projectId,seed.run.conversationId!);assert.deepEqual(actual,expected);const base=assembleRunContext({locale:'ja',text:'CURRENT',historyRuns:actual});assert.equal(host(assembleModelInput({context:base.context,text:'CURRENT'}).history,'mio.context.answer').length,2);assert.equal(Number(store.db.prepare('SELECT total_changes() n').get()!.n),before);}finally{store.close();}
+test('a reopened kernel reads answered history as exact immutable evidence',async t=>{
+ const f=fixture(t),seed=answeredRun(f),expected=f.journal.modelContextRuns(f.projectId,seed.run.conversationId!);f.close();const store=openStore(f.root);try{const journal=createAgentTaskJournal(store),before=Number(store.db.prepare('SELECT total_changes() n').get()!.n),actual=journal.modelContextRuns(f.projectId,seed.run.conversationId!);assert.deepEqual(actual,expected);const base=assembleRunContext({locale:'ja',text:'CURRENT',historyRuns:actual});assert.equal(host(assembleModelInput({context:base.context,text:'CURRENT'}).history,'mio.context.answer').length,2);assert.equal(Number(store.db.prepare('SELECT total_changes() n').get()!.n),before);}finally{store.close();}
 });

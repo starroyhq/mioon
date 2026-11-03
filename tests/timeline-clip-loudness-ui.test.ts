@@ -28,7 +28,7 @@ function component(locale: Locale = 'zh-Hans') {
 let rendered!: Record<string, string>;
 before(async () => {
   const values: Record<string, ReturnType<ReturnType<typeof fixture>['state']>> = {};
-  const patches: Record<string, Record<string, unknown>> = { hidden: { visible: false }, offline: { connected: false }, restored: { restored: true }, dirty: { hasUnsavedDrafts: true }, pending: { pending: true },
+  const patches: Record<string, Record<string, unknown>> = { hidden: { visible: false }, offline: { connected: false },  dirty: { hasUnsavedDrafts: true }, pending: { pending: true },
     muted: { muted: true }, zero: { gain: 0 }, noAudio: { audioSupported: false }, long: { durationFrames: contract.TIMELINE_CLIP_LOUDNESS_LIMITS.clipFrames + 1 } };
   for (const name of ['idle','ready','silent','tooShort','belowGate','preparing','cancelled','error',...Object.keys(patches)]) {
     const f = fixture(name === 'tooShort' ? { durationFrames: 9 } : patches[name]);
@@ -78,7 +78,7 @@ test('measured report displays existing units/status and exact saved ranges/gain
 });
 test('disabled saved-only cases explain why without reporting a fabricated silence; hidden unmounts UI', () => {
   assert.equal(rendered.hidden, '');
-  for (const name of ['offline','restored','dirty','pending','muted','zero','noAudio','long']) {
+  for (const name of ['offline','dirty','pending','muted','zero','noAudio','long']) {
     assert.match(rendered[name].match(/<button[^>]*data-testid="clip-loudness-analyze"[^>]*>/)![0], /\sdisabled(?:=|\s|>)/);
     assert.doesNotMatch(rendered[name], /data-testid="clip-loudness-measurement"/);
   }
@@ -108,11 +108,11 @@ test('actual host binds selected saved clip and shared RPC; comparison/source ov
   const app = source('App.tsx'), inspector = source('TimelineInspector.tsx'), api = source('api.ts');
   assert.match(app, /savedClipLoudnessFields\(saved, dataRef.current!.assets, editing.selectedClipId\)/);
   assert.match(app, /clipLoudnessEpoch.current\+\+/); assert.match(app, /!previewAssetRef.current && !comparisonIdRef.current && !webSettingsOpen/);
-  assert.match(app, /loudnessContext=\{clipLoudnessContext(?: as never)?\}/); assert.match(app, /loudnessInvocation=\{\(\) => pinNewWorkspaceIntent\(\{\}, workspaceRef.current\)\}/);
+  assert.match(app, /loudnessContext=\{clipLoudnessContext(?: as never)?\}/); assert.doesNotMatch(app, /loudnessInvocation|expectedWorkspaceOrigin/);
   assert.match(inspector, /<ClipAudioControls[^>]*\/>/); assert.match(inspector, /\{loudnessContext && <ClipLoudnessObservation/);
   assert.match(inspector, /clipLoudnessDraftContext\(pass\(scopedContext\(\)\) as never, draftController\.getState\(\), visible\)/);
   assert.match(inspector, /rpc\('timeline.clip.loudness', input, options\)/);
-  assert.match(api, /readTimelineClipLoudnessRpc\(input, \{ \.\.\.invocation, signal, fetch: fetcher \} as TimelineClipLoudnessWireOptions\)/);
+  assert.match(api, /readTimelineClipLoudnessRpc\(input, \{ signal, fetch: fetcher \} as TimelineClipLoudnessWireOptions\)/);
   assert.doesNotMatch(source('TimelineClipLoudness.tsx'), /localStorage|sessionStorage|timeline\.loudness\.apply|nativeAdmission|setDraft/);
 });
 

@@ -4,7 +4,6 @@ import type {DatabaseSync} from 'node:sqlite';
 interface Runtime {
  mutate(operation:string,input:any,callbacks:any):any;
  error(code:string,message:string,status?:number,details?:object):Error;
- restoredSchema():number|null;
 }
 const ROW_BYTES=16384;
 // User-authored project metadata only. Neither asset JSON nor media identity is changed.
@@ -14,11 +13,8 @@ export function createAssetAnnotationServices(store:{db:DatabaseSync},runtime:Ru
  const invalid=():never=>{throw runtime.error('INVALID_ASSET_ANNOTATION_RECORD','素材备注或关联状态不一致，请先检查项目',409);};
  const decode=(text:unknown):any=>{try{if(typeof text!=='string')return invalid();const value=JSON.parse(text);if(!value||typeof value!=='object')return invalid();return value;}catch{return invalid();}};
  function readBatch({projectId,assetIds}:any){
-  // Only a positively verified frozen restoration predating annotations can lack this table.
-  const restored=runtime.restoredSchema();
-  const historical=restored!==null&&[25,27,29,31,33,35].includes(restored);
-  const join=historical?'':`LEFT JOIN asset_annotations d ON d.assetId=a.id`;
-  const columns=historical?'NULL AS annotationAssetId,NULL AS annotationProjectId,NULL AS revision,NULL AS tags,NULL AS note':
+  const join=`LEFT JOIN asset_annotations d ON d.assetId=a.id`;
+  const columns=
    `CASE WHEN typeof(d.assetId)='text' AND length(CAST(d.assetId AS BLOB))=36 THEN d.assetId END AS annotationAssetId,CASE WHEN typeof(d.projectId)='text' AND length(CAST(d.projectId AS BLOB))=36 THEN d.projectId END AS annotationProjectId,
     CASE WHEN typeof(d.revision)='integer' AND d.revision BETWEEN 1 AND 9007199254740991 THEN d.revision END AS revision,
     CASE WHEN typeof(d.tags)='text' AND length(CAST(d.tags AS BLOB)) BETWEEN 2 AND 16384 THEN d.tags END AS tags,

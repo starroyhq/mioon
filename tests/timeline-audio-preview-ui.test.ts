@@ -21,7 +21,7 @@ const deferred = () => { let resolve!: () => void; const promise = new Promise<v
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function fixture({ pendingPrepare = null, pendingResume = null, pendingClose = null, pendingResources = null, failClose = false, includeSource = false, overrides = {} }: {pendingPrepare?: ReturnType<typeof deferred> | null; pendingResume?: ReturnType<typeof deferred> | null; pendingClose?: ReturnType<typeof deferred> | null; pendingResources?: ReturnType<typeof deferred> | null; failClose?: boolean; includeSource?: boolean; overrides?: Partial<TimelineAudioPreviewContext>} = {}) {
   let context: TimelineAudioPreviewContext = { scope: 'workspace-a:project-epoch-1', executionScope: 'editing:preview-1', projectId: id(1), timelineId: id(2), revision: 1,
-    durationFrames: 900, sourceIdentity: 'saved-clip-and-source-a', connected: true, visible: true, restored: false, hasUnsavedDrafts: false, ...overrides };
+    durationFrames: 900, sourceIdentity: 'saved-clip-and-source-a', connected: true, visible: true,  hasUnsavedDrafts: false, ...overrides };
   const calls: Calls = { prepares: [], contexts: [], transports: [], positions: [], beforePlay: 0, read: 0, changes: [], preparedBuffers: [] };
   const planFor = (input: AudioPreviewPlanInput) => buildAudioPreviewPlan(input, { timeline: { id: id(2), projectId: id(1), revision: 1, fps: 30, durationFrames: 900,
     tracks: [{ id: id(3), kind: 'audio', orderIndex: 0, muted: !includeSource, hidden: false }],
@@ -57,6 +57,24 @@ function fixture({ pendingPrepare = null, pendingResume = null, pendingClose = n
   return { controller, calls, get context() { return context; }, setContext(patch: Partial<TimelineAudioPreviewContext>) { context = { ...context, ...patch }; controller.setContext(context); },
     changeWithoutEffect(patch: Partial<TimelineAudioPreviewContext>) { context = { ...context, ...patch }; }, planFor };
 }
+
+before(async () => {
+  const f = fixture(), values: Record<string, TimelineAudioPreviewState> = { idle: f.controller.getState() };
+  await f.controller.prepare(300); values.ready = f.controller.getState(); await f.controller.play(); values.playing = f.controller.getState();
+  f.controller.pause(); values.paused = f.controller.getState(); f.controller.seek(900); values.ended = f.controller.getState();
+  values.draft = { ...values.ready, hasUnsavedDrafts: true };
+  values.closing = { ...values.idle, retirement: 'closing' }; values.closeFailed = { ...values.idle, retirement: 'failed' };
+  values.preparing = { ...values.idle, phase: 'preparing', requestedStartFrame: 0, totalSources: 3, preparedSources: 1 };
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const fixtures = `import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server.browser';
+    import TimelineAudioPreview from './src/TimelineAudioPreview.tsx';
+    const values=${JSON.stringify(values)}; const controller={prepare(){throw Error('render must not prepare')},play(){throw Error('render must not play')},pause(){},seek(){},stop(){},cancel(){}};
+    export const html=Object.fromEntries(Object.entries(values).map(([name,state])=>[name,renderToStaticMarkup(<TimelineAudioPreview audioPreview={{state,controller}} startFrame={0}/>)]));`;
+  const script = `import {build} from 'esbuild';globalThis.fetch=()=>{throw Error('render may not fetch')};
+    const {outputFiles}=await build({stdin:{contents:${JSON.stringify(fixtures)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'transform',define:{'process.env.NODE_ENV':'"production"'}});
+    const result=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));process.stdout.write(JSON.stringify(result.html));process.exit(0);`;
+  rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
+});
 
 test('mount and context refresh perform no preparation, RPC, context allocation or autoplay', () => {
   const f = fixture(); f.controller.setContext({ ...f.context }); f.setContext({ hasUnsavedDrafts: true });
@@ -97,7 +115,7 @@ test('unsaved draft warning never changes draft values, saved input, candidate o
 });
 
 for (const [name, patch] of Object.entries({ revision: { revision: 2 }, source: { sourceIdentity: 'source-replaced' }, project: { projectId: id(99) },
-  workspace: { scope: 'workspace-b' }, navigation: { executionScope: 'editing:preview-2' }, hidden: { visible: false }, logout: { connected: false }, restored: { restored: true } })) {
+  workspace: { scope: 'workspace-b' }, navigation: { executionScope: 'editing:preview-2' }, hidden: { visible: false }, logout: { connected: false } })) {
   test(`${name} revokes playback and late preparation without a persistence write or automatic resume`, async () => {
     const f = fixture(); await f.controller.prepare(0); await f.controller.play(); f.setContext(patch);
     assert.equal(f.calls.transports[0].disposed, true); assert.equal(f.calls.contexts[0].closes, 1); assert.equal(f.controller.getState().plan, null);
@@ -135,23 +153,6 @@ test('retained handlers and a render before layout cleanup cannot show or play s
 });
 
 let rendered!: Record<string, string>;
-before(async () => {
-  const f = fixture(), values: Record<string, TimelineAudioPreviewState> = { idle: f.controller.getState() };
-  await f.controller.prepare(300); values.ready = f.controller.getState(); await f.controller.play(); values.playing = f.controller.getState();
-  f.controller.pause(); values.paused = f.controller.getState(); f.controller.seek(900); values.ended = f.controller.getState();
-  values.draft = { ...values.ready, hasUnsavedDrafts: true };
-  values.closing = { ...values.idle, retirement: 'closing' }; values.closeFailed = { ...values.idle, retirement: 'failed' }; values.restored = { ...values.idle, restored: true };
-  values.preparing = { ...values.idle, phase: 'preparing', requestedStartFrame: 0, totalSources: 3, preparedSources: 1 };
-  const root = fileURLToPath(new URL('../', import.meta.url));
-  const fixtures = `import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server.browser';
-    import TimelineAudioPreview from './src/TimelineAudioPreview.tsx';
-    const values=${JSON.stringify(values)}; const controller={prepare(){throw Error('render must not prepare')},play(){throw Error('render must not play')},pause(){},seek(){},stop(){},cancel(){}};
-    export const html=Object.fromEntries(Object.entries(values).map(([name,state])=>[name,renderToStaticMarkup(<TimelineAudioPreview audioPreview={{state,controller}} startFrame={0}/>)]));`;
-  const script = `import {build} from 'esbuild';globalThis.fetch=()=>{throw Error('render may not fetch')};
-    const {outputFiles}=await build({stdin:{contents:${JSON.stringify(fixtures)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'transform',define:{'process.env.NODE_ENV':'"production"'}});
-    const result=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));process.stdout.write(JSON.stringify(result.html));process.exit(0);`;
-  rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
-});
 
 test('real shared controls render compact exact half-open window, saved revision, sound-only and separate-video labels', () => {
   assert.match(rendered.ready, /data-slot="button"/); assert.match(rendered.ready, /仅声音 · 已保存 修订版 1/);
@@ -160,15 +161,6 @@ test('real shared controls render compact exact half-open window, saved revision
   assert.match(rendered.ready, /role="status" aria-live="polite" aria-atomic="true"/);
   assert.match(rendered.ready, /aria-live="off"/); assert.match(rendered.ready, /flex-wrap:wrap/); assert.match(rendered.ready, /min-width:0/);
   assert.doesNotMatch(rendered.ready, /<video|<audio|role="dialog"/);
-});
-
-test('presentation covers explicit prepare/cancel/play/pause/end, warnings and restored failure without whole-timeline completion', () => {
-  assert.match(rendered.idle, /准备当前区间/); assert.match(rendered.preparing, /取消准备/); assert.match(rendered.preparing, /声音 1\/3/);
-  assert.match(rendered.paused, /继续播放/); assert.match(rendered.paused, /声音已暂停/);
-  assert.match(rendered.ended, /本区间已结束；这不代表整条时间线已播放完/);
-  assert.match(rendered.ended, /重播本区间/); assert.match(rendered.draft, /尚未保存的编辑不包含在试听中；草稿会保留/);
-  assert.match(rendered.restored, /恢复分支暂不支持/);
-  assert.match(rendered.restored.match(/<button[^>]*data-testid="timeline-audio-preview-prepare"[^>]*>/)?.[0] ?? '', /disabled/);
 });
 
 test('new TS/TSX owns no persistence, durable work, decoder shortcut or autoplay and listens to page hiding', () => {
@@ -298,4 +290,11 @@ test('out-of-editor bounds and stale owners still cannot change the saved playhe
   for (const frame of [-1, 18001, 1200.5, NaN]) assert.equal(f.controller.seek(frame), false);
   assert.equal(f.controller.getState().phase, 'playing'); assert.deepEqual(f.calls.positions, []);
   f.setContext({ scope: 'new-project-epoch' }); assert.equal(f.controller.seek(1200, old), false); assert.deepEqual(f.calls.positions, []);
+});
+
+test('presentation covers explicit prepare/cancel/play/pause/end, warnings and disconnected states without whole-timeline completion', () => {
+  assert.match(rendered.idle, /准备当前区间/); assert.match(rendered.preparing, /取消准备/); assert.match(rendered.preparing, /声音 1\/3/);
+  assert.match(rendered.paused, /继续播放/); assert.match(rendered.paused, /声音已暂停/);
+  assert.match(rendered.ended, /本区间已结束；这不代表整条时间线已播放完/);
+  assert.match(rendered.ended, /重播本区间/); assert.match(rendered.draft, /尚未保存的编辑不包含在试听中；草稿会保留/);
 });

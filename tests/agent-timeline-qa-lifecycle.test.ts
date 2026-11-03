@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {spawn} from 'node:child_process';
 import type {ChildProcess} from 'node:child_process';
-import {ownQaChild as rawOwnQaChild} from './agent-timeline-move-qa-native.mjs';
+import {ownQaChild as rawOwnQaChild} from './helpers/qa-owned-child.mjs';
 type OwnedChild = {readonly closed: boolean; readonly done: Promise<{code: number | null; signal: string | null; error?: {code?: string; message?: string}}>; stop(): Promise<{code: number | null; signal: string | null; error?: {code?: string; message?: string}}>};
 const ownQaChild = rawOwnQaChild as unknown as (child: ChildProcess) => OwnedChild;
 

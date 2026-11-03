@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import { schemas, workspaceRestoreInspectionSchema } from '../packages/contracts/src/index.ts';
+import { schemas } from '../packages/contracts/src/index.ts';
 import { createLauncherClient } from '../apps/web/src/launcher-state.ts';
 import { createProjectEntryController } from '../apps/web/src/project-entry-state.ts';
 
@@ -46,10 +46,9 @@ function fixture({ initialContext = context(), visible = true, list, open, creat
     assert.fail(`Unexpected hook dependency ${name}`);
   }, module, module.exports, window, document);
   controller = module.exports.useNativeProjectEntry(({ context: initialContext, bridge, locator,
-    contractChecks: { parseCreateInput: (value: unknown) => schemas['project.create'].parse(value), parseWorkspaceInspection: (value: unknown) => workspaceRestoreInspectionSchema.parse(value) },
+    contractChecks: { parseCreateInput: (value: unknown) => schemas['project.create'].parse(value) },
     rpc: async (operation: string|Error|undefined, input: unknown) => {
       calls.push(operation);
-      if (operation === 'workspace.restore.inspect') return { restored: false };
       if (operation === 'project.list') return list ? list() : catalog;
       if (operation === 'project.create') return create(input);
       assert.fail(operation);
@@ -72,10 +71,10 @@ test('returning native launcher refreshes A/B to A/B/C after the last editor clo
   f.catalog([project(10), project(11), project(12)]);
   f.receive({ editorCount: 0 }); f.visibility(true); await tick();
   assert.deepEqual(f.controller.getState().projects.map((row: { id: unknown; }) => row.id), [uuid(10), uuid(11), uuid(12)]);
-  assert.deepEqual(f.calls, ['workspace.restore.inspect', 'project.list', 'workspace.restore.inspect', 'project.list']);
+  assert.deepEqual(f.calls, ['project.list', 'project.list']);
   assert.deepEqual(f.controller.readCloseSnapshot(), before, 'Read-only refresh must preserve the exact dirty owner and close evidence');
   f.visibility(true); f.visibility(true); await tick();
-  assert.equal(f.calls.length, 4, 'Repeated visible events are not another reveal');
+  assert.equal(f.calls.length, 2, 'Repeated visible events are not another reveal');
   assert.deepEqual((f.opens as unknown), []); f.dispose();
 });
 

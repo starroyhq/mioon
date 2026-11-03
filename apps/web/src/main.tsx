@@ -10,7 +10,6 @@ import App, { SettingsConnectionForms } from './App.tsx';
 import DesktopRoot from './DesktopRoot.tsx';
 import { ApiError, rpc } from './api.ts';
 import { schemas } from '@mioon/contracts';
-import { workspaceRestoreInspectionSchema } from '../../../packages/contracts/src/workspace-restore.ts';
 import '@xyflow/react/dist/style.css';
 import '@mioon/ui/globals.css';
 import './styles.css';
@@ -34,7 +33,7 @@ const NativeApp = App as unknown as (props: NativeAppProps) => React.ReactElemen
 const frame = desktopFrame(navigator.userAgent);
 if (frame) document.documentElement.dataset.desktopFrame = frame;
 
-const launcherContracts: LauncherContractChecks = { parseCreateInput: (value: unknown) => schemas['project.create'].parse(value), parseWorkspaceInspection: (value: unknown) => workspaceRestoreInspectionSchema.parse(value), isDefinitiveCreateRejection: (error: unknown) => error instanceof ApiError && (error as ApiErrorWithDefinitive).definitive === true };
+const launcherContracts: LauncherContractChecks = { parseCreateInput: (value: unknown) => schemas['project.create'].parse(value), isDefinitiveCreateRejection: (error: unknown) => error instanceof ApiError && (error as ApiErrorWithDefinitive).definitive === true };
 const launcherRpc = rpc as unknown as LauncherRpc;
 const renderConnections = (props: LauncherSettingsProps) => <SettingsConnectionForms {...(props as unknown as React.ComponentProps<typeof SettingsConnectionForms>)} />;
 function LocalizedApplication() {

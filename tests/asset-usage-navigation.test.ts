@@ -85,7 +85,7 @@ function appHarness() {
     revealTimelineAssetUse: (...args: unknown[]) => calls.push(['scroll', ...args]),
     currentProject: { current: f.state.projectId }, dataRef: { current: { project: { id: f.state.projectId }, timeline: f.timeline, assets: f.assets } },
     importSession: { current: { active: true, selection: 0 } }, viewReady: { current: true }, projectEpoch: { current: 1 }, navigationEpoch: { current: 2 }, panelIntent: { current: 3 }, assetUsageAttempt: { current: 0 },
-    workspaceRef: { current: { restored: false } as {restored: boolean; workspaceOrigin?: string} }, workspaceOriginScope: (value: { restored: unknown; workspaceOrigin: string; }) => value.restored ? 'restored:' + value.workspaceOrigin : 'normal', assetUsageAvailability: { current: { ready: true } }, isBusy: () => false,
+    editorSession: {current: f.state.workspaceScope}, assetUsageAvailability: { current: { ready: true } }, isBusy: () => false,
     guardNavigation: (message: string|DisplayMessage|null|undefined, dirty: unknown, current: () => boolean) => { assert.match(renderCoreMessage('zh-Hans', message), /定位此素材/); assert.equal(dirty, false); predicate = current; return gate.promise; },
     setPropertiesPage: (value: unknown) => calls.push(['properties', value]), setRightDockTab: (value: unknown) => calls.push(['dock', value]),
     viewRef: { current: { activeMode: 'canvas', editing: {} as Partial<WorkspaceEditingState> } },

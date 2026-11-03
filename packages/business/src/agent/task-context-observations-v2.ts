@@ -1,6 +1,6 @@
 import {hasStoreTable} from '../store-layout.ts';
 import type {AgentTaskChange,AgentTaskJson,AgentTaskLocale,AgentTaskStep,AgentTaskTarget} from '@mioon/contracts/agent-tasks-v2';
-import type { Store as WorkspaceStore } from '../store-contract.ts';
+import type { Store } from '../store-contract.ts';
 import {PROJECT_NOTES_MAX_BYTES,projectNotesValid} from '../../../contracts/src/project-lifecycle.ts';
 
 export const TASK_PROJECT_OVERVIEW_KIND='mio.project.overview';
@@ -45,7 +45,7 @@ const backgroundTables=[
 /** Aggregate a single SQLite read snapshot; never call lazy timeline.get(),
  * load media, start workers, or decode full task/request rows. Table existence
  * only accommodates older restored formats whose scene table does not exist. */
-export function collectTaskProjectOverview(store:Pick<WorkspaceStore,'db'>,projectId:string):TaskProjectOverview{
+export function collectTaskProjectOverview(store:Pick<Store,'db'>,projectId:string):TaskProjectOverview{
   const tables=new Set(backgroundTables.filter(item=>hasStoreTable(store.db,item.table)).map(item=>item.table));
   const background=backgroundTables.filter(item=>tables.has(item.table)).map(item=>`(SELECT count(*) FROM ${item.table} b WHERE b.projectId=p.id AND ${item.state} NOT IN (${item.terminal}))`).join('+')||'0';
   const row=store.db.prepare(`WITH asset_counts AS (SELECT count(*) total,
@@ -76,7 +76,7 @@ export function taskProjectOverviewMessage(locale:AgentTaskLocale,input:TaskProj
 
 /** C6: the project's notes, read in the same send as its overview. Invalid or
  * oversized saved text is withheld rather than passed to the model. */
-export function collectTaskProjectNotes(store:Pick<WorkspaceStore,'db'>,projectId:string):string|undefined{
+export function collectTaskProjectNotes(store:Pick<Store,'db'>,projectId:string):string|undefined{
   const row=store.db.prepare("SELECT CASE WHEN json_type(data,'$.notes')='text' AND length(CAST(json_extract(data,'$.notes') AS BLOB))<=? THEN data -> '$.notes' END notes FROM projects WHERE id=?").get(PROJECT_NOTES_MAX_BYTES,projectId);
   if(!row)throw Object.assign(new Error('Project metadata is unavailable.'),{code:'AGENT_TASK_NOT_FOUND',status:404});
   // Parse the JSON form so escapes survive SQLite's UTF-8 boundary unchanged.

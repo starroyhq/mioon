@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';import {mkdtemp,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';import {createServices,canonical} from '../packages/business/src/services.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';import {createServices,canonical} from '../packages/business/src/services.ts';
 import {fork} from 'node:child_process';import {once} from 'node:events';
 import {assetAnnotationSchemas,isAssetAnnotationResponse,isAssetAnnotationListResponse} from '../packages/contracts/src/asset-annotations.ts';
 import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';

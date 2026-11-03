@@ -7,7 +7,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {TIMELINE_OUTPUT_PRESETS,hasRequestNotAppliedProof} from '@mioon/contracts';
 import type { FixtureProject, FixtureTimeline } from './helpers/strict-timeline-core-types.ts';

@@ -1,3 +1,4 @@
+import {assertProjectStore} from '../packages/business/src/store-runtime.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
@@ -6,7 +7,8 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {AppError,hasRequestNotAppliedProof,isTimelineMutationResponse} from '@mioon/contracts';
 import {timelineLoudnessCandidateDigest} from '../packages/contracts/src/timeline-loudness-apply.ts';
-import {openStore,ownsStoreLock,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {createTimelineServices} from '../packages/business/src/timeline.ts';
@@ -76,7 +78,7 @@ async function fixture(t: import('node:test').TestContext,{group=false}: {group?
   function connect(): void {
     const required=(table: string,id: string)=>{const value=store.get(table,id);if(!value)throw new AppError('NOT_FOUND','Missing',404);return value as Record<string, unknown> & {revision: number};};
     const check=(value: {revision: number},revision: number)=>{if(value.revision!==revision)throw new AppError('REVISION_CONFLICT','Changed',409);};
-    const assertAvailable=()=>{if(getWorkspaceRestoreContext(store))throw new AppError('RESTORE_OPERATION_UNAVAILABLE','Restored',409);
+    const assertAvailable=()=>{assertProjectStore(store);
       if(!f.owner||!ownsStoreLock(store))throw new AppError('TIMELINE_MIX_LOUDNESS_OWNER_REQUIRED','Owner required',403);};
     const shared=createTimelineServices(store as never,{required,check,hash,now:()=>{f.onNow?.();return new Date().toISOString();}} as never);
     const runtime={assertOrdinaryWorkspace:assertAvailable,ownsLock:()=>f.owner&&ownsStoreLock(store),readSavedTimeline:(projectId: string)=>readSaved(store,projectId),

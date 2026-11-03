@@ -38,7 +38,7 @@ export interface TimelineLoudnessApplyControllerOptions {
   readonly onChange?: (state: TimelineLoudnessApplyState) => void;
   readonly onCloseChange?: (state: NativeCloseState) => void;
 }
-const identityKeys = ['scope', 'executionScope', 'projectId', 'timelineId', 'revision', 'durationFrames', 'sourceIdentity', 'connected', 'visible', 'restored', 'hasUnsavedDrafts'] as const;
+const identityKeys = ['scope', 'executionScope', 'projectId', 'timelineId', 'revision', 'durationFrames', 'sourceIdentity', 'connected', 'visible', 'hasUnsavedDrafts'] as const;
 const sameOwner = (a: { readonly scope: string | null; readonly projectId: string | null }, b: TimelineMixLoudnessState): boolean => a.scope === b.scope && a.projectId === b.projectId;
 function sameBinding(a: TimelineMixLoudnessState, b: TimelineMixLoudnessState): boolean {
   return identityKeys.every(key => a[key] === b[key]) && a.draft.integratedLufs === b.draft.integratedLufs && a.draft.truePeakCeilingDbtp === b.draft.truePeakCeilingDbtp;
@@ -71,7 +71,6 @@ export function timelineLoudnessApplyErrorMessage(error: unknown, locale: Locale
   if (['TIMELINE_LOUDNESS_APPLY_STALE', 'TIMELINE_MIX_LOUDNESS_STALE', 'TIMELINE_MIX_LOUDNESS_REVISION_CONFLICT', 'TIMELINE_REVISION_CONFLICT'].includes(code)) return translate(locale, 'audio.loudness.apply.changed');
   if (code === 'TIMELINE_LOUDNESS_APPLY_UNSAFE') return translate(locale, 'audio.loudness.apply.unsafe');
   if (code === 'TIMELINE_LOUDNESS_APPLY_UNCHANGED') return translate(locale, 'audio.loudness.apply.unchanged');
-  if (code.startsWith('RESTORE_')) return translate(locale, 'audio.loudness.apply.restored');
   return translate(locale, 'audio.loudness.apply.failed');
 }
 interface PendingApply {
@@ -84,12 +83,9 @@ interface PendingApply {
   preparedIdentity: string | null;
   preparedRevision: number | null;
 }
-/** Existing verified storage identity plus workspace branch, never a UI epoch.
- * Missing/blocked identity cannot certify a copied task from another database. */
-export function timelineLoudnessApplyRecoveryScope(storageScope: unknown, originScope: unknown): string | null {
-  if (typeof storageScope !== 'string' || !/^[a-f0-9]{64}$/u.test(storageScope) || typeof originScope !== 'string' ||
-    !(originScope === 'normal' || /^restored:[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(originScope))) return null;
-  return JSON.stringify([storageScope, originScope]);
+/** Verified private application identity, independent of transient UI epochs. */
+export function timelineLoudnessApplyRecoveryScope(storageScope: unknown): string | null {
+  return typeof storageScope === 'string' && /^[a-f0-9]{64}$/u.test(storageScope) ? storageScope : null;
 }
 const recoveryIdentityUnavailable = '当前工作区身份尚未核验，未提交响度应用。请重新连接或重新载入当前工作区，完成身份核验后再重新准备并核对候选。';
 const recoveryIdentityChanged = '工作区身份已变化或无法核验，本次确认已失效，未继续提交。请核验当前工作区身份后重新准备并核对候选。';

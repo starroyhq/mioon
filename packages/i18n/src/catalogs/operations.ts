@@ -111,30 +111,6 @@ export const operationMessages = {
     "en": "Save live-generation and automatic-backup settings for the current local workspace against the settings revision",
     "ja": "設定のリビジョンを照合し、現在のローカルワークスペースの実生成と自動バックアップの設定を保存します"
   },
-  "operation.workspace.backup.status": {
-    "zh-Hans": "只读查询本地备份进度、计划与恢复暂存状态",
-    "zh-Hant": "唯讀查詢本機備份進度、排程與復原暫存狀態",
-    "en": "Read the local backup progress, schedule and staged-restore status",
-    "ja": "ローカルバックアップの進行状況、スケジュール、準備済み復元の状態を読み取り専用で確認します"
-  },
-  "operation.workspace.backup.list": {
-    "zh-Hans": "只读列出已验证的本地工作区备份",
-    "zh-Hant": "唯讀列出已驗證的本機工作區備份",
-    "en": "List verified local workspace backups without changing them",
-    "ja": "検証済みのローカルワークスペースのバックアップを読み取り専用で一覧表示します"
-  },
-  "operation.workspace.backup.create": {
-    "zh-Hans": "在空闲工作区创建一致的本地离线备份，使用稳定requestId保留原请求身份",
-    "zh-Hant": "在閒置工作區建立一致的本機離線備份，使用穩定requestId保留原請求身分",
-    "en": "Create a consistent local offline backup of an idle workspace using a stable requestId to preserve the original request identity",
-    "ja": "アイドル状態のワークスペースの整合性を保ったローカルオフラインバックアップを作成します。安定したrequestIdで元のリクエストの識別情報を保持します"
-  },
-  "operation.workspace.backup.restore.stage": {
-    "zh-Hans": "明确确认后将备份恢复到独立目录，下次启动切换到受限恢复工作区",
-    "zh-Hant": "明確確認後將備份復原至獨立目錄，下次啟動切換至受限復原工作區",
-    "en": "After explicit confirmation, restore a backup into a separate directory and switch to the restricted restored workspace on the next launch",
-    "ja": "明示的な確認後、バックアップを別のディレクトリに復元し、次回起動時に制限付きの復元ワークスペースへ切り替えます"
-  },
   "operation.task.disposition.list": {
     "zh-Hans": "只读查询明确项目任务的本地处置标记，不调度、对账或重试任务",
     "zh-Hant": "唯讀查詢明確專案任務的本機處置標記，不排程、核對或重試任務",
@@ -236,18 +212,6 @@ export const operationMessages = {
     "zh-Hant": "以唯讀方式進行有界嚴格JFIF基線JPEG檢查與本機解碼。JFIF不能證明sRGB，仍須使用者明確指定解讀方式。拒絕EXIF、ICC、HDR、漸進式與多影像來源。不寫入、不連網",
     "en": "Read-only bounded strict JFIF baseline JPEG inspection and local decode. JFIF does not prove sRGB: explicit user interpretation is still required. Rejects EXIF, ICC, HDR, progressive and multi-image sources. No writes or network",
     "ja": "読み取り専用で処理範囲を制限した厳密なJFIFベースラインJPEG検査とローカルデコードを行います。JFIFはsRGBの証明ではなく、ユーザーによる明示的な解釈の指定が引き続き必要です。EXIF、ICC、HDR、プログレッシブ、複数画像のソースは拒否します。書き込みやネットワーク通信は行いません"
-  },
-  "operation.workspace.backup.inspect": {
-    "zh-Hans": "只读检查整个工作区的有界数据库计数；不复制文件、不恢复任务、不读取密钥。冷备份前必须正常关闭应用和同工作区后端",
-    "zh-Hant": "唯讀檢查整個工作區的有界資料庫計數；不複製檔案、不復原任務、不讀取密鑰。冷備份前必須正常關閉應用程式和同工作區後端",
-    "en": "Read-only inspection of bounded database counts across the workspace; does not copy files, recover tasks, or read secrets. Before a cold backup, cleanly shut down the application and backends using the same workspace",
-    "ja": "ワークスペース全体のデータベース件数を、処理範囲を制限して読み取り専用で確認します。ファイルのコピー、タスクの復旧、シークレットの読み取りは行いません。コールドバックアップの前に、アプリと同じワークスペースを使用するバックエンドを正常に終了する必要があります"
-  },
-  "operation.workspace.restore.inspect": {
-    "zh-Hans": "只读查看工作区恢复分支身份、隔离计数与可用操作；不接收路径、不恢复或执行旧任务、不授予模型或付费权限。显式 includeAudioRoleCapability:true 可查询当前音频角色编辑能力",
-    "zh-Hant": "唯讀查看工作區復原分支身分、隔離計數與可用操作；不接收路徑、不復原或執行舊任務、不授予模型或付費權限。明確 includeAudioRoleCapability:true 可查詢目前音訊角色編輯能力",
-    "en": "Read-only inspection of the workspace restore-branch identity, isolation counts, and available operations; accepts no paths, does not recover or execute old tasks, and grants no model or paid-use permissions. Explicit includeAudioRoleCapability:true reports current audio-role editing capability",
-    "ja": "ワークスペースの復元ブランチの識別情報、隔離件数、利用可能な操作を読み取り専用で確認します。パスの受け取り、過去のタスクの復旧や実行、モデル利用権限や有料利用権限の付与は行いません。includeAudioRoleCapability:true を明示すると、現在の音声役割の編集可否を確認できます"
   },
   "operation.timeline.format.get": {
     "zh-Hans": "只读查询当前时间线输出规格、版本与初始设置资格；不创建时间线",

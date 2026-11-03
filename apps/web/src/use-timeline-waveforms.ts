@@ -12,8 +12,6 @@ export interface UseTimelineWaveformsOptions {
   viewport: WaveformViewportRef;
   pixelsPerFrame: number;
   active: boolean;
-  readOnly?: boolean;
-  workspaceOrigin?: unknown;
 }
 export interface TimelineWaveformState {enabled: boolean; entries: Map<string, WaveformEntry>; retryable: boolean; projectId: string|null; windows: WaveformWindow[]; setEnabled(value: boolean): void; retry(): void}
 interface LatestWaveformConfiguration {
@@ -21,16 +19,14 @@ interface LatestWaveformConfiguration {
   assets: readonly WaveformAsset[];
   pixelsPerFrame: number;
   active: boolean;
-  readOnly: boolean;
-  workspaceOrigin: unknown;
 }
 
-export function useTimelineWaveforms({ timeline, assets, viewport, pixelsPerFrame, active, readOnly = false, workspaceOrigin = null }: UseTimelineWaveformsOptions): TimelineWaveformState {
+export function useTimelineWaveforms({ timeline, assets, viewport, pixelsPerFrame, active }: UseTimelineWaveformsOptions): TimelineWaveformState {
   const [state, setState] = useState<WaveformSnapshot|null>(null);
   const [windows, setWindows] = useState<WaveformWindow[]>([]);
   const controller = useRef<WaveformController|null>(null), latest = useRef<LatestWaveformConfiguration|null>(null), measureRef = useRef<(()=>void)|null>(null);
   if (!controller.current) controller.current = createWaveformController({ api: rpc });
-  latest.current = { timeline, assets, pixelsPerFrame, active, readOnly, workspaceOrigin };
+  latest.current = { timeline, assets, pixelsPerFrame, active };
   useLayoutEffect(() => {
     const manager = controller.current as WaveformController;
     manager.connect(setState);
@@ -48,7 +44,7 @@ export function useTimelineWaveforms({ timeline, assets, viewport, pixelsPerFram
       }
       const next = shown && element ? visibleWaveformWindows({ ...current, visibleTrackIds, leftFrame: element.scrollLeft / current.pixelsPerFrame, rightFrame: (element.scrollLeft + Math.max(0, element.clientWidth - TIMELINE_TRACK_HEADER_PX)) / current.pixelsPerFrame }) : [];
       setWindows(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
-      manager.setView({ projectId: current.timeline?.projectId || null, active: shown, windows: next, readOnly: current.readOnly, workspaceOrigin: current.workspaceOrigin });
+      manager.setView({ projectId: current.timeline?.projectId || null, active: shown, windows: next });
     }
     measureRef.current = measure;
     const observer = new ResizeObserver(measure);
@@ -57,7 +53,7 @@ export function useTimelineWaveforms({ timeline, assets, viewport, pixelsPerFram
     measure();
     return () => { manager.disconnect(); observer.disconnect(); element?.removeEventListener('scroll', measure); document.removeEventListener('visibilitychange', measure); measureRef.current = null; };
   }, [viewport]);
-  useLayoutEffect(() => { measureRef.current?.(); }, [timeline, assets, pixelsPerFrame, active, readOnly, workspaceOrigin]);
+  useLayoutEffect(() => { measureRef.current?.(); }, [timeline, assets, pixelsPerFrame, active]);
   // Project check also makes the first render after navigation fail closed.
-  return { ...(state ?? { projectId: null, enabled: false, readOnly: false, active: false, entries: new Map<string,WaveformEntry>(), pending: 0, inFlight: false, autoLimitReached: false, retryable: false }), enabled: state?.projectId === timeline?.projectId && Boolean(state?.enabled), windows, setEnabled: value => controller.current?.setEnabled(value), retry: () => controller.current?.retryVisible() };
+  return { ...(state ?? { projectId: null, enabled: false, active: false, entries: new Map<string,WaveformEntry>(), pending: 0, inFlight: false, autoLimitReached: false, retryable: false }), enabled: state?.projectId === timeline?.projectId && Boolean(state?.enabled), windows, setEnabled: value => controller.current?.setEnabled(value), retry: () => controller.current?.retryVisible() };
 }

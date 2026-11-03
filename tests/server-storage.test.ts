@@ -1,4 +1,3 @@
-import {CURRENT_MARKER_CHAIN} from './helpers/workspace-schema-current.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -7,8 +6,8 @@ import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
 import {startServer} from '@mioon/server';
-import {openLegacyWorkspaceStore as openStore} from '@mioon/business/db';
-import {validateWorkspaceStorage} from '@mioon/business/db';
+import {validateWorkspaceStorage} from '@mioon/business/application-storage';
+import {DatabaseSync} from 'node:sqlite';
 
 const posix: {skip: boolean} = {skip: process.platform === 'win32'};
 const token = 'synthetic-server-storage-token';
@@ -102,21 +101,13 @@ test('invalid supplied tokens fail without creating even a missing root', posix,
   }
 });
 
-test('legacy media0755 and SQLite0644 survive restart with exact project values and stored token normalization', posix, async t => {
-  const f = fixture(t); let store = openStore(f.root);
-  const project = {id: 'synthetic-project', name: 'Legacy workspace', revision: 7}; store.put('projects', project); store.close();
-  fs.chmodSync(path.join(f.root, 'media'), 0o755); fs.chmodSync(path.join(f.root, 'workbench.sqlite'), 0o644);
-  fs.writeFileSync(path.join(f.root, 'access-token'), `  ${token}  \n`, {mode: 0o600});
-  const before = snapshot(f.base);
-  await assert.rejects(startServer({dataDir: f.root, port: 0}), {code: 'VALIDATION_ERROR', status: 400});
-  assert.deepEqual(snapshot(f.base), before, 'new production startup refuses an old workspace without migration');
-  store = openStore(f.root); try { assert.deepEqual(store.get('projects', project.id), project);
-    // A restart upgrades the legacy profile through every ordinary marker to
-    // the current ordinary-58 role; the exact lineage is asserted, not a superset.
-    assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row => row.version), [...CURRENT_MARKER_CHAIN]);
-  } finally { store.close(); }
-  assert.equal(fs.statSync(path.join(f.root, 'media')).mode & 0o777, 0o755);
-  assert.equal(fs.statSync(path.join(f.root, 'workbench.sqlite')).mode & 0o777, 0o644);
+test('an old workbench directory is rejected with its SQL values, permissions and bytes unchanged',posix,async t=>{
+ const f=fixture(t),file=path.join(f.root,'workbench.sqlite'),media=path.join(f.root,'media'),project={id:'synthetic-project',name:'Unsupported old data',revision:7};
+ fs.mkdirSync(media,{mode:0o755});const db=new DatabaseSync(file);try{db.exec('CREATE TABLE projects(id TEXT PRIMARY KEY,data TEXT)');db.prepare('INSERT INTO projects VALUES(?,?)').run(project.id,JSON.stringify(project));}finally{db.close();}
+ fs.chmodSync(file,0o644);fs.writeFileSync(path.join(f.root,'access-token'),`  ${token}  \n`,{mode:0o600});const before=snapshot(f.base);
+ await assert.rejects(startServer({dataDir:f.root,port:0}),{code:'VALIDATION_ERROR',status:400});assert.deepEqual(snapshot(f.base),before,'Production never migrates or repairs an unsupported workspace');
+ const cold=new DatabaseSync(file,{readOnly:true});try{assert.deepEqual(JSON.parse(String(cold.prepare('SELECT data FROM projects WHERE id=?').get(project.id)!.data)),project);assert.equal(cold.prepare('SELECT count(*) AS n FROM projects').get()!.n,1);}finally{cold.close();}
+ assert.equal(fs.statSync(media).mode&0o777,0o755);assert.equal(fs.statSync(file).mode&0o777,0o644);
 });
 
 test('token file accepts bounded maximum plus CRLF, and fresh token is private and durable', posix, async t => {
@@ -127,17 +118,14 @@ test('token file accepts bounded maximum plus CRLF, and fresh token is private a
   service = await startServer({dataDir: other.root, port: 0}); assert.equal(service.token, generated); await service.close();
 });
 
-test('lock ownership and failed SQLite initialization cleanup preserve unrelated entries', posix, async t => {
-  const f = fixture(t), file = path.join(f.root, 'workbench.sqlite'), lock = path.join(f.root, 'server.lock');
-  fs.writeFileSync(file, 'synthetic-not-a-database', {mode: 0o600});
-  assert.throws(() => openStore(f.root)); assert.equal(fs.existsSync(lock), false);
-  assert.equal(fs.readFileSync(file, 'utf8'), 'synthetic-not-a-database');
-  fs.unlinkSync(file); const store = openStore(f.root);
-  assert.throws(() => openStore(f.root), /running backend/);
-  assert.equal(fs.readFileSync(lock, 'utf8'), String(process.pid));
-  store.close(); store.close(); assert.equal(fs.existsSync(lock), false);
-  fs.writeFileSync(lock, 'not-a-pid', {mode: 0o644});
-  const restarted = openStore(f.root); restarted.close(); assert.equal(fs.existsSync(lock), false);
+test('application lock ownership and failed B1 initialization preserve unrelated entries',posix,async t=>{
+ const f=fixture(t),file=path.join(f.root,'app-library.db'),lock=path.join(f.root,'server.lock');fs.writeFileSync(file,'synthetic-not-a-database',{mode:0o600});
+ await assert.rejects(startServer({dataDir:f.root,port:0,token}),{code:'APP_LIBRARY_INVALID'});assert.equal(fs.existsSync(lock),false);assert.equal(fs.readFileSync(file,'utf8'),'synthetic-not-a-database');
+ fs.unlinkSync(file);const server=await startServer({dataDir:f.root,port:0,token});try{
+  await assert.rejects(startServer({dataDir:f.root,port:0,token}),/running backend/);assert.equal(fs.readFileSync(lock,'utf8'),String(process.pid));
+ }finally{await server.close();await server.close();}
+ assert.equal(fs.existsSync(lock),false);assert.equal(fs.readFileSync(path.join(f.outside,'sentinel'),'utf8'),'synthetic-outside-preserved');
+ const restarted=await startServer({dataDir:f.root,port:0,token});await restarted.close();assert.equal(fs.existsSync(lock),false);
 });
 
 test('existing writable media/database and unsafe settings metadata fail read-only preflight before stale-lock cleanup', posix, async t => {

@@ -25,8 +25,8 @@ const fixtures = {
   recoveryDisabled: { component: 'history', props: { fileRecoveryEnabled: false, orderedExports: [row(3)] } },
   missingProject: { component: 'history', props: { projectId: id(99), orderedExports: [row(3, {projectId: undefined})] } },
   twoExports: { component: 'history', props: { orderedExports: [row(3), row(4, { snapshot: { timeline, deliveryName: '第二份', delivery: resolveTimelineExportDelivery(timeline, TIMELINE_EXPORT_DEFAULT_SETTINGS) } })], projectName: 'current', timelineRevision: 4 } },
-  heldSuccess: { component: 'history', props: { orderedExports: [row(3)], heldExportIds: [id(3)], timelineRevision: 4 } },
-  heldFailure: { component: 'history', props: { orderedExports: [row(3, { status: 'failed', assetId: null, url: null, error: { message: '<unsafe failure>' } })], heldExportIds: [id(3)] } },
+  completed: { component: 'history', props: { orderedExports: [row(3)], timelineRevision: 4 } },
+  failure: { component: 'history', props: { orderedExports: [row(3, { status: 'failed', assetId: null, url: null, error: { message: '<unsafe failure>' } })] } },
   namedDefault: { component: 'history', props: { orderedExports: [row(3, { snapshot: { timeline, deliveryName: '仅命名，沿用原有编码' } })] } },
   legacy: { component: 'history', props: { projectName: '旧项目默认', timelineRevision: 4, orderedExports: [row(3, { url: '/media/original-file', snapshot: { timeline } })] } },
   legacyOtherProject: { component: 'history', props: { projectId: id(99), orderedExports: [row(3, { snapshot: { timeline } })] } },
@@ -120,15 +120,12 @@ test('named history delegates only immutable managed IDs and URL to the async ch
   assert.deepEqual(actions.twoExports, [expected, {projectId:id(1), exportId:id(4), downloadHref:`/api/projects/${id(1)}/media/${id(14)}?download=1&exportId=${id(4)}`, disabled:false}]);
 });
 
-test('held restored rows retain historical labels, successful managed downloads and blocked failed execution', () => {
-  assert.match(rendered.heldSuccess, /历史记录 · 暂停执行，原状态保留/);
-  assert.deepEqual(actions.heldSuccess, [{...actions.named[0], disabled:true}]);
-  assert.match(fileActions.heldSuccess[0], new RegExp(`href="/api/projects/${id(1)}/media/${id(13)}\\?download=1&amp;exportId=${id(3)}"`));
-  assert.match(fileActions.heldSuccess[0], /data-testid="download-export"/); assert.match(fileActions.heldSuccess[0], /download=""/);
-  assert.doesNotMatch(fileActions.heldSuccess[0], /export-file-check|download="[^"\n]+"|untrusted-row-url|filename=/);
-  assert.match(rendered.heldFailure, /历史记录 · 暂停执行，原状态保留/); assert.match(rendered.heldFailure, /已保留 · 暂停/);
-  assert.match(rendered.heldFailure, /此导出遇到问题，请核对原记录与当前状态/); assert.doesNotMatch(rendered.heldFailure, /unsafe failure/); assert.doesNotMatch(rendered.heldFailure, /download-export/);
-  assert.deepEqual((actions.heldFailure as unknown), []);
+test('completed and failed exports keep owned downloads, safe errors and disabled recovery authority', () => {
+  assert.deepEqual(actions.completed, [{...actions.named[0], disabled:false}]);
+  assert.match(fileActions.completed[0], /data-testid="export-file-check"/);
+  assert.doesNotMatch(fileActions.completed[0], /download-export|href=|download="[^"\n]+"|untrusted-row-url|filename=/, 'a completed row still requires its actual file inspection before download');
+  assert.match(rendered.failure, /此导出遇到问题，请核对原记录与当前状态/); assert.doesNotMatch(rendered.failure, /unsafe failure/); assert.doesNotMatch(rendered.failure, /download-export/);
+  assert.deepEqual((actions.failure as unknown), []);
   assert.equal(actions.recoveryDisabled[0].disabled, true);
   assert.equal(actions.recoveryDisabled[0].downloadHref, actions.named[0].downloadHref);
   assert.match(fileActions.recoveryDisabled[0], /data-testid="download-export"/);

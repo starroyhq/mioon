@@ -28,7 +28,7 @@ test('actual apply component only offers an explicit review for passing changed 
   const tree = Component({ apply, observation, onOpenTasks: () => { tasks.push(true); } }); assert.equal(reviews.length, 0);
   const button = byTest(tree, 'timeline-loudness-apply-review'); assert.ok(button?.props); assert.equal(button.props.disabled, false); (button.props.onClick as () => void)(); assert.equal(reviews[0], observation);
   const text = JSON.stringify(tree); assert.match(text, /不是默认 v1 导出结果/); assert.match(text, /不会自动选择 v2/); assert.match(text, /不保证输出响度或 AAC 真峰值/);
-  for (const patch of [{ restored: true }, { visible: false }, { projectId: null }]) assert.equal(Component({ apply, observation: { ...observation, ...patch }, onOpenTasks() {} }), null);
+  for (const patch of [{ visible: false }, { projectId: null }]) assert.equal(Component({ apply, observation: { ...observation, ...patch }, onOpenTasks() {} }), null);
   for (const value of [{ ...observation, hasUnsavedDrafts: true }, { ...observation, report: report(input({ integratedLufs: -14, truePeakCeilingDbtp: -1 })) }]) {
     const disabledButton = byTest(Component({ apply, observation: value, onOpenTasks() {} }), 'timeline-loudness-apply-review'); assert.ok(disabledButton?.props); assert.equal(disabledButton.props.disabled, true);
   }

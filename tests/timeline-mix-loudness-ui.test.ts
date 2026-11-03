@@ -12,7 +12,6 @@ import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import * as stateModule from '../apps/web/src/timeline-mix-loudness-state.ts';
 import { timelineAudioPreviewSourceIdentity } from '../apps/web/src/use-timeline-audio-preview.ts';
-import { workspaceOriginScope, pinNewWorkspaceIntent } from '../apps/web/src/workspace-origin.ts';
 import {  context, input, report, draft, id, projectId, timelineId, sourceId, type MixInput } from './helpers/timeline-mix-loudness-ui-fixture.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = (name: string) => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
@@ -28,8 +27,8 @@ function component() {
 let rendered!:Record<string,string>;
 before(async () => {
   const values:Record<string,ReturnType<ReturnType<typeof fixture>['state']>> = {};
-  for (const name of (['idle','ready','conflict','silent','tooShort','outOfRange','preparing','invalid','cancelled','error','hidden','offline','restored','dirty','pending'] as const)) {
-    const patches:Record<string,Parameters<typeof fixture>[0]> = { hidden: { visible: false }, offline: { connected: false }, restored: { restored: true }, dirty: { hasUnsavedDrafts: true }, pending: { pending: true }, tooShort: { durationFrames: 9 } };
+  for (const name of (['idle','ready','conflict','silent','tooShort','outOfRange','preparing','invalid','cancelled','error','hidden','offline','dirty','pending'] as const)) {
+    const patches:Record<string,Parameters<typeof fixture>[0]> = { hidden: { visible: false }, offline: { connected: false },  dirty: { hasUnsavedDrafts: true }, pending: { pending: true }, tooShort: { durationFrames: 9 } };
     const f = fixture(patches[name]);
     if (['ready','conflict','silent','tooShort','outOfRange','preparing','cancelled','error'].includes(name)) f.edit(name === 'outOfRange' ? { ...draft, integratedLufs: '-5' } : name === 'conflict' ? { ...draft, integratedLufs: '-14' } : draft);
     if (['ready','conflict','tooShort'].includes(name)) await f.ready();
@@ -73,7 +72,7 @@ test('unavailable, preparing, cancelled and failed observations never display a 
   assert.match(rendered.preparing, /取消本次观察/); assert.match(rendered.cancelled, /只读观察已取消/); assert.match(rendered.error, /本次未排队/);
   assert.match(rendered.invalid, /aria-invalid="true"/); assert.match(rendered.invalid, /role="alert"/);
   for (const name of (['silent','tooShort','outOfRange','preparing','cancelled','error'] as const)) assert.doesNotMatch(((rendered[name]) as unknown as Parameters<typeof assert.doesNotMatch>[0]), /data-testid="timeline-mix-loudness-candidate"|NaN|Infinity/);
-  for (const name of (['hidden','offline','restored','dirty','pending'] as const)) assert.equal(rendered[name], '');
+  for (const name of (['hidden','offline','dirty','pending'] as const)) assert.equal(rendered[name], '');
 });
 test('actual component callbacks capture targets/context/version and invalidate late results after target edits', async () => {
   const Component = component(), f = fixture(), render = () => Component({ loudness: { state: f.state(), controller: f.controller } });
@@ -115,8 +114,8 @@ test('actual App wiring reads saved snapshot, pinned workspace and live draft co
     clips: [{ id: id(4), trackId: id(7), assetId: sourceId, startFrame: 0, sourceInFrame: 0, durationFrames: 60, gain: .5 }] };
   const dataRef = { current: { project: { id: projectId }, timeline: saved, assets: [{ id: sourceId, projectId, sha256: 'a'.repeat(64), sizeBytes: 128, mimeType: 'audio/wav', hasAudio: true }] } };
   let dirty = false, controller!:ReturnType<typeof stateModule.createTimelineMixLoudnessController>; const calls: ({ operation: unknown; input: MixInput; options: unknown; })[] = [];
-  const env = { application: null, showDelivery: true, workspaceOriginScope, pinNewWorkspaceIntent, timelineAudioPreviewSourceIdentity, dataRef,
-    workspaceRef: { current: { restored: false, workspaceOrigin: '96000000-0000-4000-8000-000000000001' } }, currentProject: { current: projectId }, projectEpoch: { current: 1 }, navigationEpoch: { current: 0 }, panelIntent: { current: 0 }, viewRef: { current: { activeMode: 'editing' } },
+  const env = { application: null, showDelivery: true, timelineAudioPreviewSourceIdentity, dataRef,
+    editorSession: {current: 'normal'}, workspaceRef: { current: {  } }, currentProject: { current: projectId }, projectEpoch: { current: 1 }, navigationEpoch: { current: 0 }, panelIntent: { current: 0 }, viewRef: { current: { activeMode: 'editing' } },
     projectSessionReady: () => true, workbenchReady: true, online: true, auth: true, loading: false, rightDockTab: 'delivery', showExports: false, panelVisible: () => true,
     clipDirty: false, subtitleDirty: false, formatDirty: false, timelineBusy: false, isBusy: () => false,
     clipDraftRef: { current: { hasUnsaved: () => dirty, getState: () => ({ candidate: null }) } }, subtitlesRef: { current: null }, timelineFormatRef: { current: null }, setAuth() { assert.fail('Unexpected auth change'); },

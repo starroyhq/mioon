@@ -61,7 +61,7 @@ export function readLastProjectTarget(db:ProjectDatabase,projectId:string):{id:s
   if(!object(project)||project.id!==projectId)fail('LAST_PROJECT_STORAGE_UNAVAILABLE');
   return {id:projectId};
 }
-export interface LastProjectGuards{ownsLock():boolean;isRestored():boolean;readProject(projectId:string):unknown}
+export interface LastProjectGuards{ownsLock():boolean;readProject(projectId:string):unknown}
 export interface LastProjectOptions{
   root:string;channel?:'web'|'production'|'development';guards:LastProjectGuards;storage:LocalDraftStorage;signal?:AbortSignal;
   databaseFile?:string;documents?:Pick<AppDocumentStore,'read'|'write'>;
@@ -74,7 +74,7 @@ export function createLastProject({root,channel='web',guards,storage,signal,faul
   function guarded<T>(fn:()=>T):T{try{return fn();}catch(error){if(error instanceof LastProjectError)throw error;fail('LAST_PROJECT_STORAGE_UNAVAILABLE');}}
   function checkpoint():void{if(signal?.aborted)fail('LAST_PROJECT_STORAGE_UNAVAILABLE');}
   function active():boolean{
-    checkpoint();if(guards.isRestored())return false;
+    checkpoint();
     if(!guards.ownsLock())fail('LAST_PROJECT_OWNER_REQUIRED');return true;
   }
   function owned():void{checkpoint();if(!guards.ownsLock())fail('LAST_PROJECT_OWNER_REQUIRED');}

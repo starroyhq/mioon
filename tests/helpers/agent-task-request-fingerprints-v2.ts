@@ -6,10 +6,10 @@ import path from 'node:path';
 import {mock} from 'node:test';
 import {fileURLToPath} from 'node:url';
 import {ensurePrivateDirectory, writePrivateFileAtomic} from '@mioon/contracts/private-storage';
-import {openStore} from '../../packages/business/src/db.ts';
-import type { Store as WorkspaceStore } from '../../packages/business/src/store-contract.ts';
+import {openStore} from '../../packages/business/src/project-file/test-store.ts';
+import type {ProjectStore} from '../../packages/business/src/project-file/store.ts';
 import {createProjectFile} from '../../packages/business/src/project-file/connection.ts';
-import {isProjectStore} from '../../packages/business/src/project-file/store.ts';
+import {assertProjectStore} from '../../packages/business/src/store-runtime.ts';
 import {createMioRecords} from '../../packages/business/src/agent/mio-records.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
@@ -48,18 +48,18 @@ export interface TaskRequestFingerprintFile {
   note: string;
   requests: TaskRequestFingerprint[];
 }
-/** Alternate storage must run the same scenarios, real tools and exact gateway
- * boundary as the reviewed workspace path. The fixture never normalizes bytes. */
+/** Both real kernel assemblies run the same scenarios, tools and exact gateway
+ * boundary. The fixture never normalizes bytes or accepts a copied store. */
 export interface TaskRequestFingerprintHarness {
-  openStore?: (root: string) => WorkspaceStore;
-  createFixturePorts?: (store: WorkspaceStore) => {
+  openStore?: (root: string) => ProjectStore;
+  createFixturePorts?: (store: ProjectStore) => {
     services: ReturnType<typeof createServices>;
     createAuthorizations: (settings: Awaited<ReturnType<typeof createAgentSettings>>) => ReturnType<typeof createTestAuthorizations>;
     close: () => void;
   };
   createRuntime?: (options: AgentTaskRuntimeOptions) => ReturnType<typeof createAgentTaskRuntime>;
   createTools?: (options: Parameters<typeof createAgentTaskTools>[0]) => ReturnType<typeof createAgentTaskTools>;
-  stageAttachment?: (store: WorkspaceStore, input: {
+  stageAttachment?: (store: ProjectStore, input: {
     id: string; projectId: string; requestId: string; name: string; mimeType: string;
     relativePath: string; sha256: string; createdAt: string;
   }) => void;
@@ -171,7 +171,9 @@ async function fixture(protocol: AgentProtocol, official = false, harness: TaskR
   // second project inserted into a randomly identified project file.
   try {if (!harness.openStore) createProjectFile(path.join(root, 'project.mioon'), {projectId});}
   catch (error) {rmSync(root, {recursive: true, force: true}); throw error;}
-  const store = (harness.openStore ?? openStore)(root), ports = harness.createFixturePorts?.(store), services = ports?.services ?? createServices(store, new Map());
+  const store = (harness.openStore ?? openStore)(root);
+  assertProjectStore(store);
+  const ports = harness.createFixturePorts?.(store), services = ports?.services ?? createServices(store, new Map());
   // Seed complete, fixed domain rows. Runtime/journal/control UUIDs remain
   // genuine; they must never accidentally become part of these request bodies.
   store.put('projects', {id: projectId, name: 'Fingerprint project', description: '', revision: 1, createdAt: fixtureTime, updatedAt: fixtureTime});
@@ -239,9 +241,7 @@ async function fixture(protocol: AgentProtocol, official = false, harness: TaskR
       writePrivateFileAtomic(path.join(root, relativePath), bytes, {root, maxBytes: 30 * 1024 * 1024, replace: false});
       const input = {id: uploadId, projectId, requestId: 'fingerprint-selected-image', name: 'Selected image.png', mimeType: 'image/png', relativePath, sha256: createHash('sha256').update(bytes).digest('hex'), createdAt: fixtureTime};
       if (harness.stageAttachment) harness.stageAttachment(store, input);
-      else if (isProjectStore(store)) store.tx(() => createMioRecords(store).addImport({...input, status: 'selected', assetId: null, resourceId: null}));
-      else store.db.prepare("INSERT INTO agent_task_imports_v2(id,projectId,requestId,name,mimeType,relativePath,sha256,status,assetId,createdAt) VALUES(?,?,?,?,?,?,?,'selected',NULL,?)")
-        .run(input.id, input.projectId, input.requestId, input.name, input.mimeType, input.relativePath, input.sha256, input.createdAt);
+      else store.tx(() => createMioRecords(store).addImport({...input, status: 'selected', assetId: null, resourceId: null}));
       return uploadId;
     },
     async close(verify?: () => void | Promise<void>) {try {for (const value of runtimes) value.close(); await Promise.all(runtimes.map(value => value.drain())); tools.dispose(); await services.drain(); await settings.close(); ports?.close(); store.close(); await verify?.();} finally {rmSync(root, {recursive: true, force: true});}},

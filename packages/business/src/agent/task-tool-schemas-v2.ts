@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="8a80edef8de13414118d9c83df4336386fd2aa65718585796f71a3f91cda3d0e";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="c5a13ca31f47c4a14ddc3dce725523d731610f1d0b2f71b0c870090f504509e5";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -60,67 +60,11 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    },
    "liveGeneration": {
     "type": "boolean"
-   },
-   "automaticBackup": {
-    "type": "boolean"
-   },
-   "backupIntervalHours": {
-    "type": "number",
-    "enum": [
-     1,
-     6,
-     24,
-     168
-    ]
-   },
-   "backupLocation": {
-    "type": "string",
-    "enum": [
-     "default",
-     "selected"
-    ]
    }
   },
   "required": [
-   "expectedRevision"
-  ],
-  "additionalProperties": false,
-  "$schema": "http://json-schema.org/draft-07/schema#"
- },
- "workspace.backup.status": {
-  "type": "object",
-  "properties": {},
-  "additionalProperties": false,
-  "$schema": "http://json-schema.org/draft-07/schema#"
- },
- "workspace.backup.list": {
-  "type": "object",
-  "properties": {},
-  "additionalProperties": false,
-  "$schema": "http://json-schema.org/draft-07/schema#"
- },
- "workspace.backup.create": {
-  "type": "object",
-  "properties": {},
-  "required": [],
-  "additionalProperties": false,
-  "$schema": "http://json-schema.org/draft-07/schema#"
- },
- "workspace.backup.restore.stage": {
-  "type": "object",
-  "properties": {
-   "backupId": {
-    "type": "string",
-    "format": "uuid"
-   },
-   "confirmation": {
-    "type": "string",
-    "const": "RESTORE_BACKUP"
-   }
-  },
-  "required": [
-   "backupId",
-   "confirmation"
+   "expectedRevision",
+   "liveGeneration"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
@@ -495,28 +439,6 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "required": [
    "assetId"
   ],
-  "additionalProperties": false,
-  "$schema": "http://json-schema.org/draft-07/schema#"
- },
- "workspace.backup.inspect": {
-  "type": "object",
-  "properties": {},
-  "additionalProperties": false,
-  "description": "Reads bounded workspace database counts for an offline backup. No path input, file copying, task recovery, credentials or provider calls. The running backend must be closed before cold capture.",
-  "$schema": "http://json-schema.org/draft-07/schema#"
- },
- "workspace.restore.inspect": {
-  "type": "object",
-  "properties": {
-   "includeAudioRoleCapability": {
-    "type": "boolean",
-    "const": true
-   },
-   "includeVolumeEnvelopeCapability": {
-    "type": "boolean",
-    "const": true
-   }
-  },
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
  },

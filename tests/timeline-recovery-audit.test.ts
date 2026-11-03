@@ -222,7 +222,7 @@ for (const [name, resolver] of ([['@mioon/contracts', requireHere], ['zod', requ
 const businessOptions = {skip:missing.length ? `Not initialized: missing installed ${missing.join(', ')}; no installation performed` : false};
 async function businessFixture(t: test.TestContext, direction: string) {
   const [{openStore}, {createServices}, {createEditTasks}, {AppError}] = await Promise.all([
-    import('../packages/business/src/db.ts'), import('../packages/business/src/services.ts'),
+    import('../packages/business/src/project-file/test-store.ts'), import('../packages/business/src/services.ts'),
     import('../packages/business/src/edit-tasks.ts'), import('@mioon/contracts'),
   ]);
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-timeline-audit-'));

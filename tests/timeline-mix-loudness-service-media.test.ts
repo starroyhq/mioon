@@ -5,7 +5,7 @@ import {randomUUID, createHash} from 'node:crypto';
 import {mkdtemp, writeFile, readFile, readdir, rm} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {hasUnconfirmedMediaProcesses, onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {run} from '../packages/business/src/media-runtime.ts';

@@ -100,7 +100,7 @@ export function taskCheckMetadata(item:AgentTaskCheck,locale:Locale):string[] {
 }
 export type TaskCheckLocation={change:AgentTaskSnapshot['changes'][number]}|{request:string};
 /** Reuse existing destinations only. In particular storyboard exports are
- * absent from the render list, and restored image/frame inspectors cannot open. */
+ * absent from the render list when no current source can be inspected. */
 export function taskCheckLocation(item:AgentTaskCheck,snapshot:AgentTaskSnapshot,readOnly=false):TaskCheckLocation|undefined {
   const {kind,id}=item.target;
   if(kind==='shot'||kind==='timeline'){

@@ -67,7 +67,7 @@ test('actual App beforeunload reads synchronous shot state independently of lega
 test('actual App lifecycle drain waits on local shot persistence only, no business replay',async()=>{
   const from=app.indexOf('const drain = async () =>'),to=app.indexOf('\n    globalThis.__mioonFlushWorkspacePreferences = drain;',from);assert.ok(from>=0&&to>from);
   let saved=false,calls=0;
-  const drain=(lenientFunction('controller','workspaceRef','locator','localDeliveryRef','shotTextRef','clipDraftRef','nativeWindow',`return (${app.slice(from+'const drain = '.length,to).trim().replace(/;$/,'')});`)({flush:async()=>{},hasUnsaved:()=>false},{current:{restored:false}},{flush:async()=>true},{current:null},{current:{hasUnpersisted:()=>true,flush:async()=>{calls++;return saved;}}},{current:null},null) as ()=>Promise<boolean>);
+  const drain=(lenientFunction('controller','editorSession','locator','localDeliveryRef','shotTextRef','clipDraftRef','nativeWindow',`return (${app.slice(from+'const drain = '.length,to).trim().replace(/;$/,'')});`)({flush:async()=>{},hasUnsaved:()=>false},{current:'current-editor-session'},{flush:async()=>true},{current:null},{current:{hasUnpersisted:()=>true,flush:async()=>{calls++;return saved;}}},{current:null},null) as ()=>Promise<boolean>);
   assert.equal(await drain(),false);saved=true;assert.equal(await drain(),true);assert.equal(calls,2);
   assert.doesNotMatch(app.slice(from,to),/execute|recover|prepare|rpc\(/);
 });
@@ -95,10 +95,10 @@ test('actual Inspector stale baseline callback cannot mutate any local form iden
   const f=rebaseCallback(),before=structuredClone({baseline:f.baseline.current,draft:f.draftRef.current,revision:f.baseRevisionRef.current});f.stale();assert.equal(f.run(f.capture),false);assert.deepEqual({baseline:f.baseline.current,draft:f.draftRef.current,revision:f.baseRevisionRef.current},before);
 });
 
-function generationAdmission({restored=false,controller=true,target='shot-a',loading=false,pending=false}={}){
+function generationAdmission({controller=true,target='shot-a',loading=false,pending=false}={}){
   const notices: string[]=[],sideEffects: string[]=[];
   const guard=appFunction('function checkGeneration(', 'const submitGeneration =',{
-    msg:messageKey,generationUnavailableReason:'',workspaceRef:{current:{restored}},shotTextRef:{current:controller?{blocksLegacy:(id: string)=>loading||pending||Boolean(id&&id!==target)}:null},notify:(message: string|DisplayMessage|null|undefined)=>notices.push(typeof message === 'string' ? message : renderMessage('zh-Hans', message)),referenceWorkBlocked:()=>false,
+    msg:messageKey,generationUnavailableReason:'',shotTextRef:{current:controller?{blocksLegacy:(id: string)=>loading||pending||Boolean(id&&id!==target)}:null},notify:(message: string|DisplayMessage|null|undefined)=>notices.push(typeof message === 'string' ? message : renderMessage('zh-Hans', message)),referenceWorkBlocked:()=>false,
     generationInputIssue:()=>{sideEffects.push('input');return null;},providerAvailabilityIssue:()=>null,generationInputIssueDescriptor:()=>{sideEffects.push('input');return null;},providerAvailabilityDescriptor:()=>null,dataRef:{current:{assets:[],shots:[],jobs:[]}},referenceForShot:()=>null,openTasks:()=>{},
   });
   return{guard:(id='shot-b',frozen=false)=>guard({id}, {mock:true},'mock','text',frozen),notices,sideEffects};
@@ -106,8 +106,7 @@ function generationAdmission({restored=false,controller=true,target='shot-a',loa
 for(const options of [{target:'shot-a'},{controller:false},{target:'shot-b',loading:true},{target:'shot-b',pending:true}])test(`actual fresh generation waits for its selected target registration/GET: ${JSON.stringify(options)}`,()=>{
   const f=generationAdmission(options);assert.equal(f.guard(),false);assert.equal(f.sideEffects.length,0);assert.match(f.notices[0],/文字|核对/);
 });
-test('actual fresh generation succeeds only after matching loaded target; frozen retry and restored fallback retain old admission',()=>{
+test('actual fresh generation succeeds only after matching loaded target; frozen retry retains its original admission',()=>{
   assert.equal(generationAdmission({target:'shot-b'}).guard(),true);
   assert.equal(generationAdmission({controller:false}).guard('historical-shot',true),true);
-  assert.equal(generationAdmission({controller:false,restored:true}).guard(),true);
 });

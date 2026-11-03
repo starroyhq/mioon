@@ -57,10 +57,10 @@ test('old target, hidden/collapsed and unmounted handlers cannot mutate newer se
     save(); edit({ target: { value: 'obsolete' } }); assert.equal(h.saved(), 0, mode); assert.deepEqual(h.edited, [], mode);
   }
 });
-test('foreign-project asset never exposes note fields, uncertainty and restore disable writes', () => {
+test('foreign-project asset never exposes note fields, uncertainty disables writes', () => {
   const h = component(); h.render({ asset: { id: assetId, projectId: 'foreign', name: 'Foreign' } }); assert.equal(h.find('annotation-note'), undefined);
-  h.render({ asset: { id: assetId, projectId, name: 'Owned' }, restored: true }); assert.equal(propsOf(h.find('annotation-save')).disabled, true); assert.equal(propsOf(h.find('annotation-note')).disabled, true);
-  const entry = h.state.entries[assetId]; assert.ok(entry); entry.uncertain = true; h.render({ restored: false }); assert.equal(propsOf(h.find('annotation-discard')).disabled, true); assert.equal(propsOf(h.find('annotation-clear')).disabled, true); assert.ok(h.find('annotation-tasks'));
+  h.render({ asset: { id: assetId, projectId, name: 'Owned' } });
+  const entry = h.state.entries[assetId]; assert.ok(entry); entry.uncertain = true; h.render(); assert.equal(propsOf(h.find('annotation-discard')).disabled, true); assert.equal(propsOf(h.find('annotation-clear')).disabled, true); assert.ok(h.find('annotation-tasks'));
 });
 test('discard-all confirmation is snapshot-bound and does not act after navigation', async () => {
   const h = component(); let resolve: ((value: boolean) => void) | undefined; h.render({ confirm: () => new Promise<boolean>(r => { resolve = r; }) });

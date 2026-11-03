@@ -19,16 +19,16 @@ test('mount, polling, reconnect, navigation and restart are passive; explicit ta
   f.set({ executionScope: '1:2:editing' }); f.controller.dispose(); f.controller.attach(f.live());
   assert.deepEqual(f.state().draft, { integratedLufs: '', truePeakCeilingDbtp: '' }); assert.equal(f.calls.length, 0);
 });
-test('prepare captures full saved revision, both explicit profiles/targets and pinned read-only invocation', async () => {
-  const f = fixture({}, { getInvocation: () => ({ expectedWorkspaceOrigin: id(77) }) }); f.edit(); await f.ready();
-  assert.deepEqual(f.calls[0].input, input()); assert.equal(f.calls[0].options.expectedWorkspaceOrigin, id(77));
+test('prepare captures full saved revision, both explicit profiles/targets and an abort-bound read', async () => {
+  const f = fixture({}, {  }); f.edit(); await f.ready();
+  assert.deepEqual(f.calls[0].input, input()); assert.deepEqual(Object.keys(f.calls[0].options), ['signal']);
   assert.equal(f.calls[0].options.signal.aborted, false); assert.ok(isTimelineMixLoudnessResponse(f.state().report, input()));
   assert.equal((f.state().report)!.applyAllowed, false); assert.equal((f.state().report)!.identity.range.startFrame, 0);
   assert.equal((f.state().report)!.candidate.marginDb, .5); assert.equal((f.state().report)!.candidate.gains[0].afterGain, .5 * 10 ** (-4 / 20));
   assert.ok(Object.isFrozen((f.state().report)!.candidate.gains[0])); assert.ok(!('exportRange' in f.calls[0].input));
 });
 const changes = [ { projectId: id(11) }, { timelineId: id(12) }, { revision: 5 }, { durationFrames: 61 }, { sourceIdentity: 'source-bytes-or-metadata-changed' },
-  { scope: 'workspace-or-project-open-changed' }, { executionScope: 'new-navigation' }, { visible: false }, { connected: false }, { restored: true }, { hasUnsavedDrafts: true }, { pending: true } ];
+  { scope: 'workspace-or-project-open-changed' }, { executionScope: 'new-navigation' }, { visible: false }, { connected: false },  { hasUnsavedDrafts: true }, { pending: true } ];
 for (const patch of changes) test(`live ${Object.keys(patch)[0]} change cancels old response, masks ready result and never restarts`, async () => {
   const f = fixture(); f.edit(); const wait = f.prepare(), captured = f.calls[0], response = report(((captured.input) as unknown as Parameters<typeof report>[0]), ((captured.context) as unknown as Parameters<typeof report>[1]));
   f.set(patch, false); f.reads[0].resolve(response); assert.equal((await wait as unknown), null);
@@ -38,7 +38,7 @@ for (const patch of changes) test(`live ${Object.keys(patch)[0]} change cancels 
 });
 test('only saved, connected, visible, ordinary, clean, bounded workspaces admit controls or retained prepare handlers', async () => {
   for (const patch of ([{ scope: null }, { projectId: null }, { timelineId: null }, { revision: null }, { revision: 0 }, { revision: 1.5 }, { sourceIdentity: '' },
-    { durationFrames: 0 }, { durationFrames: 18001 }, { connected: false }, { visible: false }, { restored: true }, { hasUnsavedDrafts: true }, { pending: true }] as const)) {
+    { durationFrames: 0 }, { durationFrames: 18001 }, { connected: false }, { visible: false },  { hasUnsavedDrafts: true }, { pending: true }] as const)) {
     const f = fixture(); f.edit(); const old = f.state(); f.set(patch, false);
     assert.equal(timelineMixLoudnessAvailable(context(patch)), false); assert.equal((await f.controller.prepare(old) as unknown), null); assert.equal(f.calls.length, 0);
   }

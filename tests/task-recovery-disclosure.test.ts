@@ -12,7 +12,6 @@ import * as api from '../apps/web/src/api.ts';
 import * as submissions from '../apps/web/src/submissions.ts';
 import * as mutations from '../apps/web/src/mutation-submissions.ts';
 import * as editTasks from '../apps/web/src/edit-task-client.ts';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
 import * as references from '../apps/web/src/reference-connections.ts';
 
 const read = (file: string) => readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8');
@@ -61,7 +60,7 @@ function harness(operations: readonly string[]|undefined = contracts.DURABLE_EDI
       if (name === './submissions.ts') return submissions;
       if (name === './mutation-submissions.ts') return mutations;
       if (name === './edit-task-client.ts') return editTasks;
-      if (name === './workspace-origin.ts') return workspaceOrigin;
+
       if (name === './reference-connections.ts') return references;
       if (name === './icons.tsx' || name === './SubjectVideoSummary.tsx') return { __esModule: true, default: name };
       const primitives:Record<string,string[]> = { '@mioon/ui/components/workbench-controls': ['WorkbenchBadge', 'WorkbenchButton', 'WorkbenchProgress'], '@mioon/ui/components/badge': ['Badge'], '@mioon/ui/components/button': ['Button'], '@mioon/ui/components/input': ['Input'], '@mioon/ui/components/label': ['Label'], '@mioon/ui/components/dialog': ['Dialog', 'DialogContent', 'DialogTitle', 'DialogDescription'] };
@@ -137,16 +136,13 @@ test('selected TaskCenter recover, acknowledge, replay, reconcile and retry cont
   const count = h.calls.length; (retry)!.props.onClick(); assert.equal(h.calls.length, count);
 });
 
-test('restored and busy TaskCenter guards remain intact with the shared disclosure present', () => {
+test('busy TaskCenter guards remain intact with the shared disclosure present', () => {
   const h = harness(), unknown = task(1, 'unknown'), applied = task(2, 'applied'), failed = job(10, 'failed'), uncertain = job(11, 'submission_unknown'), running = job(12, 'running');
   const pending = [{ projectId: id(90), key: 'timeline:mutation', operation: unknown.operation, input: { requestId: unknown.requestId }, createdAt: stamp }];
-  const restored = h.render({ workspace: { restored: true, workspaceOrigin: id(99) }, pending, jobs: [failed, uncertain, running], tasks: { phase: 'error', items: [unknown, applied], uncertain: [], busy: [], heldIds: [unknown.id, applied.id] } });
-  const all = nodes(restored), find = (testId: string) => all.find((node) => node.props['data-testid'] === testId);
-  for (const testId of ['recover-durable-task', 'acknowledge-task', 'adopt-legacy-task', 'resume-pending', `retry-job-${failed.id}`, `reconcile-job-${uncertain.id}`]) assert.equal((find(testId))!.props.disabled, true, testId);
-  assert.equal((nodes(find(`job-${uncertain.id}`)).find((node) => node.type === 'Input'))!.props.disabled, true);
-  assert.equal(all.some((node) => node.type === 'Button' && text(node) === '停止等待'), false);
-  assert.ok(find('task-list-unavailable')); assert.equal(find('no-durable-tasks'), undefined);
-  assert.equal((find(`durable-task-${unknown.id}`))!.props['data-task-state'], 'unknown');
+  const unavailable=nodes(h.render({pending,jobs:[failed,uncertain,running],tasks:{phase:'error',items:[unknown,applied],uncertain:[],busy:[]}}));
+  const find=(testId:string)=>unavailable.find(node=>node.props['data-testid']===testId);
+  assert.ok(find('task-list-unavailable'));assert.equal(find('no-durable-tasks'),undefined);
+  assert.equal(find(`durable-task-${unknown.id}`)!.props['data-task-state'],'unknown');
   const busy = nodes(h.render({ busy: { [`task:${unknown.id}`]: true }, tasks: { phase: 'loading', items: [unknown, applied], uncertain: [], busy: [applied.lane] } }));
   for (const testId of ['recover-durable-task', 'acknowledge-task']) assert.equal((busy.find((node) => node.props['data-testid'] === testId))!.props.disabled, true);
   assert.equal((busy.find((node) => node.type === 'Button' && text(node) === '重新载入任务'))!.props.disabled, true);
