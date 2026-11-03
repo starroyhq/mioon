@@ -326,16 +326,17 @@ test('desktop wiring keeps renderer secret capabilities private and settings own
   }
   assert.doesNotMatch(main, /sandbox\s*:\s*false|nodeIntegration\s*:\s*true/);
   assert.deepEqual([...main.matchAll(/ipcMain\s*\.\s*handle\s*\(\s*([^,]+),/g)].map(match => match[1].trim()).sort(),
-    ['APP_LANGUAGE_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
+    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
   assert.doesNotMatch(main, /ipcMain\s*\[|ipcMain\s*\.\s*(?:on|once|handleOnce)\s*\(/);
   assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
   const preload = await readFile(new URL('../apps/desktop/src/preload.ts', import.meta.url), 'utf8');
   const bridge = await readFile(new URL('../apps/desktop/src/project-window-preload.ts', import.meta.url), 'utf8');
+  const assetImportBridge = await readFile(new URL('../apps/desktop/src/asset-import-preload.ts', import.meta.url), 'utf8');
   const audioBridge = await readFile(new URL('../apps/desktop/src/native-audio-preview-preload.ts', import.meta.url), 'utf8');
   const languageBridge = await readFile(new URL('../apps/desktop/src/app-language-preload.ts', import.meta.url), 'utf8');
   const menuBridge = await readFile(new URL('../apps/desktop/src/menu-command-preload.ts', import.meta.url), 'utf8');
   const menuProtocol = await readFile(new URL('../apps/desktop/src/menu-command-protocol.ts', import.meta.url), 'utf8');
-  assert.doesNotMatch(preload + bridge + audioBridge + languageBridge + menuBridge + menuProtocol + await readFile(new URL('../apps/desktop/src/workspace-native-preload.ts', import.meta.url), 'utf8'), /safeStorage|secretCodec|agentSettings|decrypt|process\.parentPort|imageSecret|\.env|access-token/);
+  assert.doesNotMatch(preload + bridge + assetImportBridge + audioBridge + languageBridge + menuBridge + menuProtocol + await readFile(new URL('../apps/desktop/src/workspace-native-preload.ts', import.meta.url), 'utf8'), /safeStorage|secretCodec|agentSettings|decrypt|process\.parentPort|imageSecret|\.env|access-token/);
   assert.deepEqual([...preload.matchAll(/exposeInMainWorld\('([^']+)'/g)].map(match => match[1]).sort(),
-    ['__mioonAppLanguage', '__mioonDesktop', '__mioonExportFiles', '__mioonLutRecovery', '__mioonMenuCommands', '__mioonNativeAudioPreview', '__mioonProjectPackages', '__mioonProjectWindow', '__mioonWorkspaceBackups', '__mioonWorkspaceTools']);
+    ['__mioonAppLanguage', '__mioonAssetImport', '__mioonDesktop', '__mioonExportFiles', '__mioonLutRecovery', '__mioonMenuCommands', '__mioonNativeAudioPreview', '__mioonProjectPackages', '__mioonProjectWindow', '__mioonWorkspaceBackups', '__mioonWorkspaceTools']);
 });

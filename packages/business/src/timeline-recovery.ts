@@ -1,3 +1,5 @@
+import {sameMediaLocator} from './asset-reference-record.ts';
+import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {assertTimelineVolumeEnvelopeWorkspace,hasTimelineVolumeEnvelope,admitTimelineVolumeEnvelopeWrite,TIMELINE_VOLUME_ENVELOPE_REJECTION_CODES} from './timeline-volume-envelope-admission.ts';
 import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
 import {timelineImageResponseBudgetIssue} from './timeline-image-budget.ts';
@@ -17,7 +19,7 @@ import type {ManagedAssetRecord,TimelineClipRecord,TimelineRecord,TimelineSubtit
 interface TimelineAssetRecord extends ManagedAssetRecord {path?: string;sizeBytes?: number;hasVideo?: boolean;videoStreamIndex?: number|string|null;audioStreamIndex?: number|string|null;colourProbe?: unknown;colourImageEvidence?: unknown;colourSourceIdentity?: unknown}
 interface TimelineVersionRecord {id: string;projectId: string;shotId: string;assetId: string;sha256: string}
 interface TimelineShotRecord {id: string;projectId: string;selectedVersionId: string|null;orderIndex: number;title?: string;timeLineTitle?: string}
-interface FrozenSnapshotAsset {id: string;sha256?: string;mimeType?: string;relativePath?: string;duration?: number|null;width?: number|null;height?: number|null;hasAudio?: boolean}
+interface FrozenSnapshotAsset {id: string;sha256?: string;mimeType?: string;reference?: MediaReference;referenceRevision?: number;relativePath?: string;duration?: number|null;width?: number|null;height?: number|null;hasAudio?: boolean}
 interface TimelineRenderResponseLike {
  id: string;projectId: string;requestId?: string;mode?: string;purpose?: string;timelineRevision?: number;assetId?: string|null;
  snapshot: {timeline: TimelineRecord;assets: FrozenSnapshotAsset[]};
@@ -266,7 +268,7 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
    for(const frozen of (record as TimelineRenderResponseLike).snapshot.assets){
     const source=asset(frozen.id);
     if(source.sha256!==frozen.sha256||source.mimeType!==frozen.mimeType||
-     (Object.hasOwn(frozen,'relativePath')&&source.relativePath!==frozen.relativePath)||
+     !historical&&!sameMediaLocator(source,frozen)||
      (!historical&&(['duration','width','height'].some(field=>Object.hasOwn(frozen,field)&&(source as unknown as Record<string, unknown>)[field]!==(frozen as unknown as Record<string, unknown>)[field])||
       typeof frozen.hasAudio==='boolean'&&frozen.hasAudio!==source.hasAudio)))unavailable();
    }

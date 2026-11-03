@@ -1,3 +1,5 @@
+import {registeredProjectStoreForDatabase} from './project-media-storage.ts';
+import {prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
 import {bindAgentTaskJobInside} from './agent/task-effects-v2.ts';
 import {assertTimelineVolumeEnvelopeWorkspace as legacyAssertVolumeWorkspace,admitTimelineVolumeEnvelopeWrite,volumeEnvelopeMutationError} from './timeline-volume-envelope-admission.ts';
 import {volumeEnvelopeFieldsAfterEdit,splitVolumeEnvelopeFields} from '../../contracts/src/timeline-volume-envelope.ts';
@@ -482,13 +484,33 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   },
   'timeline.render':(input: TimelineMutationInput,options: unknown={})=>{
    refuseRestoredOperation(store,'timeline.render',input);
-   return input.exportSettings===undefined?render(input):exportAdmission.render(input,options,{
+   const invoke=()=>input.exportSettings===undefined?render(input):exportAdmission.render(input,options,{
    prepare:()=>{
     const result=transaction<{snapshot: unknown;mode?: string;replayed?: boolean;response?: unknown}>('timeline.render',input,({boundary,write})=>({snapshot:renderSnapshot(input,boundary,write)}));
     return result.mode==='timeline'?{replayed:true,response:result}:result;
    },
    accept:(admission: RenderAdmission)=>render(input,admission),
-  });}
+  });
+   // Exact accepted requests retain their original immutable ACK even after a
+   // source disappears. The existing transaction verifies hash/scope/response.
+   const owner=registeredProjectStoreForDatabase(db);
+   if(!owner||db.prepare('SELECT 1 FROM timeline_requests WHERE requestId=? LIMIT 1').get(input.requestId))return invoke();
+   try{
+    const boundary=createTimelineRecoveryBoundary(db,input),timeline=boundary.read({legacyMissingProject:true,sourceSemantics:false});
+    if(!timeline)throw new AppError('EMPTY_TIMELINE','请先向时间线添加片段');
+    check(timeline,input.expectedRevision);boundary.validate(clone(timeline));
+    if(!timeline.clips.length)throw new AppError('EMPTY_TIMELINE','请先向时间线添加片段');
+    const rangeIssue=timelineExportRangeBoundsIssue(input,timeline.durationFrames);
+    if(rangeIssue)throw new AppError(rangeIssue.code as string,rangeIssue.message as string,rangeIssue.status as number);
+   }catch{
+    // A DB-only refusal must pass through the original transaction so its
+    // not-applied proof retains the same rollback/owner/receipt evidence.
+    return invoke();
+   }
+   const context=options!==null&&typeof options==='object'?options as {signal?:unknown}:{};
+   const signal=context.signal instanceof AbortSignal?context.signal:undefined;
+   return prepareTimelineReferenceHashes({db,root:owner.projectDir},input.projectId,{signal,maxBytes:Number.MAX_SAFE_INTEGER,totalBytes:Number.MAX_SAFE_INTEGER}).then(()=>invoke());
+  }
  };
  // Fixed backend-only Agent scope. It uses precisely the existing update,
  // history, revision and receipt transaction, with no second mutation engine.

@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {transformSync} from 'esbuild';
 import * as contracts from '../packages/contracts/src/export-controls.ts';
-const projectId=randomUUID(),exportId=randomUUID(),activity={projectId,exportId,status:'succeeded',stage:'complete',progress:100,elapsedSeconds:1,cancelled:false},output={projectId,exportId,assetId:randomUUID(),fileLocation:'/private/synthetic/media/output.mp4',sizeBytes:16,sha256:'a'.repeat(64),url:'/media/synthetic'};
+const projectId=randomUUID(),exportId=randomUUID(),activity={projectId,exportId,status:'succeeded',stage:'complete',progress:100,elapsedSeconds:1,cancelled:false},output={projectId,exportId,assetId:randomUUID(),fileLocation:'/private/synthetic/media/output.mp4',sizeBytes:16,sha256:'a'.repeat(64),referenceRevision:1,fingerprint:{sizeBytes:16,mtimeMs:1,sampledSha256:'b'.repeat(64),fullSha256:'a'.repeat(64)},producer:{kind:'export',id:exportId},url:'/media/synthetic'};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function harness(){let cursor=0,layout: number[]=[],passive: number[]=[];const slots: HookSlot[]=[],calls: { operation: unknown; input: unknown; options: unknown; }[]=[],pending: unknown[]=[];
  const changed=(old: HookSlot | undefined,deps: readonly unknown[])=>!old||deps.some((value: unknown,index: string|number)=>value!==old.deps![(index as number)]);

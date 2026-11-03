@@ -1,7 +1,7 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
+import {chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
@@ -98,15 +98,25 @@ test('publication collision preserves all staged PNGs and immutable receipts', a
   for (const file of paths) assert.deepEqual(readFileSync(file), other);
 });
 
-test('private media directory permissions stay rejected without losing kernel staging', async t => {
+test('ordinary kernel media permits 0755 while private staging permissions stay enforced without losing bytes', async t => {
   const f = fixture(t), s = await stagedResults(f);
   chmodSync(path.join(f.projectDir, 'media'), 0o755);
+  const image = await s.image.publish(s.imageTask, s.imageReceipt, check);
+  const frame = await s.frame.publish(s.frameTask, s.frameReceipt, check);
+  const scene = s.scene.publish(s.sceneAssetId, s.bytes);
+  for (const relative of [image.relativePath, frame.relativePath, scene]) assert.deepEqual(readFileSync(path.join(f.projectDir, relative)), s.bytes);
+  assert.equal(statSync(path.join(f.projectDir, 'media')).mode & 0o777, 0o755);
+  for (const family of ['image-staging', 'frame-staging', 'scene-staging']) {
+    assert.equal(statSync(path.join(f.tempDir, family)).mode & 0o777, 0o700);
+    chmodSync(path.join(f.tempDir, family), 0o755);
+  }
   const error = {code: 'STORAGE_PRIVATE_REQUIRED', reason: 'DIRECTORY_PERMISSIONS'};
-  await assert.rejects(s.image.publish(s.imageTask, s.imageReceipt, check), error);
-  await assert.rejects(s.frame.publish(s.frameTask, s.frameReceipt, check), error);
-  assert.throws(() => s.scene.publish(s.sceneAssetId, s.bytes), error);
+  assert.throws(() => s.image.readReceipt(s.imageTask), error);
+  assert.throws(() => s.frame.readReceipt(s.frameTask), error);
+  assert.throws(() => s.scene.stage(s.sceneTaskId, 1, s.bytes), error);
+  for (const family of ['image-staging', 'frame-staging', 'scene-staging']) chmodSync(path.join(f.tempDir, family), 0o700);
   s.assertStaged();
-  for (const id of [s.imageReceipt.assetId, s.frameReceipt.assetId, s.sceneAssetId]) assert.equal(existsSync(path.join(f.projectDir, 'media', `${id}.png`)), false);
+  for (const relative of [image.relativePath, frame.relativePath, scene]) assert.deepEqual(readFileSync(path.join(f.projectDir, relative)), s.bytes);
 });
 
 test('copied kernel fields cannot redirect staging outside the legacy root', async t => {

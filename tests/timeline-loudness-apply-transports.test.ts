@@ -1,3 +1,5 @@
+import type {MediaReference} from '../packages/contracts/src/media-reference.ts';
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {expectedContentMetadata} from './helpers/kernel-content-metadata.ts';
 import {projectRpcPath, parseProjectApiPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
@@ -39,7 +41,7 @@ interface ReportWire {applyAllowed: boolean; candidate: {applyAllowed: boolean; 
 interface MediaEvent {type?: string; kind?: string; pid?: number; [key: string]: unknown}
 interface DiscoveryWire {toolName: string; command: string; requiresRequestId: boolean; inputSchema: {required: string[]; properties: Record<string, Record<string, unknown> & {const?: unknown; minimum?: number; maximum?: number; pattern?: string; type?: string; minLength?: number; maxLength?: number}>; additionalProperties: boolean}; effects: {notes: string; [key: string]: unknown}}
 interface OfficialClient {client: Client; close(): Promise<void>; call(name: string, input: Record<string, unknown>, options?: Record<string, unknown>): Promise<WireEnvelope>}
-interface Fixture {root: string; backend: Awaited<ReturnType<typeof startServer>>; mcp: OfficialClient; client: ReturnType<typeof createClient>; requests: {request: http.IncomingMessage; response: http.ServerResponse; baseline: {request: number; response: number}}[]; cleanups: (() => void | Promise<void>)[]; project: {id: string}; source: {id: string}; before: TimelineWire; sourceRecord: {sha256: string; relativePath: string}; prepareInput: Record<string, unknown>; report: ReportWire; input: Record<string, unknown>; http(op: string, input: Record<string, unknown>, options?: {signal?: AbortSignal}): Promise<WireEnvelope>; call(channel: string, input: Record<string, unknown>): Promise<WireEnvelope>; rows(): Record<string, Record<string, unknown>[]>; receipt(requestId: string): ReceiptRow | undefined; timeline(): TimelineWire}
+interface Fixture {root: string; backend: Awaited<ReturnType<typeof startServer>>; mcp: OfficialClient; client: ReturnType<typeof createClient>; requests: {request: http.IncomingMessage; response: http.ServerResponse; baseline: {request: number; response: number}}[]; cleanups: (() => void | Promise<void>)[]; project: {id: string}; source: {id: string}; before: TimelineWire; sourceRecord: {sha256:string;reference:MediaReference;referenceRevision:number}; prepareInput: Record<string, unknown>; report: ReportWire; input: Record<string, unknown>; http(op: string, input: Record<string, unknown>, options?: {signal?: AbortSignal}): Promise<WireEnvelope>; call(channel: string, input: Record<string, unknown>): Promise<WireEnvelope>; rows(): Record<string, Record<string, unknown>[]>; receipt(requestId: string): ReceiptRow | undefined; timeline(): TimelineWire}
 const sha=(bytes: Uint8Array): string=>createHash('sha256').update(bytes).digest('hex');
 const pause=(ms: number): Promise<void>=>new Promise<void>(resolve=>{setTimeout(resolve,ms);});
 const environment=(url?: string): Record<string, string | undefined>=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',
@@ -145,8 +147,8 @@ async function fixture(t: import('node:test').TestContext,{saved=true}: {saved?:
   const audioTrack=timeline.tracks.find((track: {kind: string})=>track.kind==='audio');assert.ok(audioTrack);const trackId=audioTrack.id;
   timeline=await client.rpc('timeline.clip.add',{projectId:f.project.id,expectedRevision:timeline.revision,requestId:randomUUID(),
     trackId,assetId:f.source.id,name:'已保存片段 🎬',startFrame:0,durationFrames:60,gain:.75,fadeInFrames:0}) as TimelineWire;
-  f.before=timeline;f.sourceRecord=inspect(f.project.id,db=>JSON.parse(String((db.prepare('SELECT data FROM assets WHERE id=?').get(f.source.id) as {data: string}).data))) as {sha256: string; relativePath: string};
-  assert.equal(f.sourceRecord.sha256,sha(bytes));assert.equal(sha(await readFile(path.join(projectDirFor(root,f.project.id),f.sourceRecord.relativePath))),sha(bytes));
+  f.before=timeline;f.sourceRecord=inspect(f.project.id,db=>JSON.parse(String((db.prepare('SELECT data FROM assets WHERE id=?').get(f.source.id) as {data: string}).data))) as {sha256:string;reference:MediaReference;referenceRevision:number};
+  assert.equal(f.sourceRecord.sha256,sha(bytes));assert.equal(sha(await readFile(mediaFixturePath(projectDirFor(root,f.project.id),f.sourceRecord))),sha(bytes));
   f.prepareInput={projectId:f.project.id,expectedRevision:timeline.revision,mixProfile:TIMELINE_MIX_LOUDNESS_PROFILE,
     measurementProfile:EXPORT_LOUDNESS_PROFILE,target:{integratedLufs:-30,truePeakCeilingDbtp:-1}};
   const events: MediaEvent[]=[];const off=onMediaProcess(((event: MediaEvent)=>{events.push(event);}) as never);
@@ -258,12 +260,12 @@ for(const first of ['HTTP','CLI','MCP'])test(`real ${first}-first apply replays 
     const noMoreMedia=events.length;
     for(const channel of channels){const result=await f.call(channel,f.input);assert.deepEqual(result,original);assert.equal(JSON.stringify(result.data),raw);}
     assert.equal(events.length,noMoreMedia,'retained ACK survives actual decoder failure without another process');assert.deepEqual(f.rows(),undoRows);
-    await unlink(path.join(projectDirFor(f.root,f.project.id),f.sourceRecord.relativePath));
+    await unlink(mediaFixturePath(projectDirFor(f.root,f.project.id),f.sourceRecord));
     for(const channel of channels)assert.deepEqual(await f.call(channel,f.input),original);
     assert.equal(events.length,noMoreMedia,'receipt-first replay does not reopen deleted media');assert.deepEqual(f.rows(),undoRows);
     assert.deepEqual(f.timeline(),undone,'replay after undo must never reapply its old gain');
   }finally{if(previous===undefined)delete process.env.MIOON_FFMPEG_PATH;else process.env.MIOON_FFMPEG_PATH=previous;}
-  for(const value of [token,f.root,f.sourceRecord.relativePath])assert.ok(!JSON.stringify(original).includes(value));
+  for(const value of [token,f.root,f.sourceRecord.reference.path])assert.ok(!JSON.stringify(original).includes(value));
 });
 
 test('real HTTP rejects client gains, paths and authority; CLI and official MCP reject strict inputs before dispatch',{timeout:90000},async t=>{

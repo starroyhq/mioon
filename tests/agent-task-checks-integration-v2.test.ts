@@ -1,3 +1,4 @@
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import {startLegacyAgentTaskHttp} from './helpers/legacy-agent-task-http-fixture.ts';
 import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
@@ -30,7 +31,7 @@ async function savedTimeline(root:string,legacy=false){
  try{
   const projectId=created?.projectId??String(object(await services.call('project.create',{name:'Checks integration'})).id);
   const asset=object(await services.call('asset.import',{projectId,name:'checks.wav',mimeType:'audio/wav',dataBase64:wav().toString('base64')}));
-  const saved=object(store.get('assets',String(asset.id))),relativePath=String(saved.relativePath),timelineId=randomUUID(),trackId=randomUUID(),stamp='2026-10-28T00:00:00.000Z';
+  const saved=object(store.get('assets',String(asset.id))),timelineId=randomUUID(),trackId=randomUUID(),stamp='2026-10-28T00:00:00.000Z';
   store.put('timelines',{id:timelineId,projectId,revision:1,fps:30,width:720,height:1280,durationFrames:30,createdAt:stamp,updatedAt:stamp,
    tracks:[{id:trackId,kind:'audio',name:'Audio',orderIndex:0,hidden:false,muted:false}],
    clips:[{id:randomUUID(),trackId,assetId:asset.id,name:'checks.wav',startFrame:0,durationFrames:30,sourceInFrame:0,rect:{x:0,y:0,width:720,height:1280},gain:1}]});
@@ -38,7 +39,7 @@ async function savedTimeline(root:string,legacy=false){
   const step=beginFixtureToolStep(journal,run.id,{toolCall:{id:'saved_timeline',name:'mioon_timeline_clip_add',arguments:{}},targets:[{kind:'timeline',id:timelineId,revision:1}]});
   journal.markDispatch(run.id,step.id);journal.completeStep(run.id,step.id,{result:{id:timelineId,revision:1},change:{projectId,operation:'timeline.clip.add',targets:[{kind:'timeline',id:timelineId,revision:1}],before:null,after:null,reversible:false}});
   journal.transition(run.id,journal.run(run.id).revision,'completed');
-  return {projectId,runId:run.id,timelineId,relativePath,projectDir:created?.store.projectDir??root};
+  return {projectId,runId:run.id,timelineId,asset:saved,projectDir:created?.store.projectDir??root};
  }finally{await services.drain();store.close();}
 }
 
@@ -77,7 +78,7 @@ for(const restored of [false,true])test(`${restored?'restored':'ordinary'} check
   assert.equal(items.find(item=>item.type==='timeline_preflight')?.status,'passed');
   assert.ok(items.every(item=>item.basis.some(basis=>basis.kind==='timeline'&&basis.id===saved.timelineId&&basis.revision===1)));
   assert.deepEqual(inspect(saved.projectId,dumpDb),before);
-  unlinkSync(join(restored?root:saved.projectDir,saved.relativePath));
+  unlinkSync(mediaFixturePath(restored?root:saved.projectDir,saved.asset));
   const unchangedDefault=await read(),notRequested=unchangedDefault.groups.find(group=>group.id==='timeline')!.items.find(item=>item.type==='timeline_preflight');
   assert.equal(notRequested?.status,'pending');assert.equal(notRequested.reason?.code,'PREFLIGHT_NOT_REQUESTED');
   const changed=await read(true),preflight=changed.groups.find(group=>group.id==='timeline')!.items.find(item=>item.type==='timeline_preflight');

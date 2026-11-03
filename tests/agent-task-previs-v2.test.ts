@@ -43,8 +43,8 @@ async function fixture(t:TestContext){
  const undo=(change:AgentTaskChange)=>tools.undo(change,{beforeEffect:()=>{},recordInside:item=>{journal.markChangeRevertedInside(item.id);},retainInside:(item,reason)=>{journal.markChangeRetainedInside(item.id,reason);}});
  async function asset():Promise<string>{
   const bytes=await renderMockImagePng({width:64,height:96}),id=randomUUID(),relativePath=`media/${id}.png`;
-  store.put('assets',{id,projectId,name:'K1.png',mimeType:'image/png',provenance:'user-import',sha256:createHash('sha256').update(bytes).digest('hex'),width:64,height:96,sizeBytes:bytes.length,relativePath,url:`/media/${id}`,createdAt:new Date().toISOString()});
-  await writeFile(path.join(root,relativePath),bytes,{mode:0o600});return id;
+  await writeFile(path.join(root,relativePath),bytes,{mode:0o600});
+  store.put('assets',{id,projectId,name:'K1.png',mimeType:'image/png',provenance:'user-import',sha256:createHash('sha256').update(bytes).digest('hex'),width:64,height:96,sizeBytes:bytes.length,relativePath,url:`/media/${id}`,createdAt:new Date().toISOString()});return id;
  }
  const node=(id:string)=>store.get('nodes',id) as PrevisNodeRecord;
  const save=(current:PrevisNodeRecord,scene:PrevisScene)=>call<PrevisNodeRecord>('previs.scene.set',{projectId,nodeId:current.id,expectedSceneRevision:current.sceneRevision,scene,requestId:randomUUID()});

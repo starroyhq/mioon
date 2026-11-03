@@ -10,6 +10,7 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {isEditTaskEnvelope} from '@mioon/contracts';
 import {taskFixture,taskPath,listPath,database,snapshot,REPO,TASK_TOKEN} from './helpers/edit-tasks-http-fixture.ts';
 import {type TestContext} from 'node:test';
+import {mediaReferenceFixture} from './helpers/media-reference-fixtures.ts';
 type TaskFixture = Awaited<ReturnType<typeof taskFixture>>;
 type Prepared = {task: {id: string; digest: string; lane: string; status: string; revision: number}; instanceId?: string};
 type Applied = {result: {id: string; revision: number; headVersionId: string; [key: string]: unknown}; task: {id: string; digest: string; revision: number; status: string; [key: string]: unknown}};
@@ -18,6 +19,13 @@ const saved=(f: TaskFixture)=>snapshot(f.root,subjectTables);
 const inputFor=(f: TaskFixture)=>({projectId:f.project.id,kind:'character',name:'Synthetic subject',assetId:f.source.id,requestId:randomUUID()});
 const action=(f: TaskFixture,prepared: {task: {digest: string}; [key: string]: unknown})=>({projectId:f.project.id,digest:prepared.task.digest,instanceId:prepared.instanceId});
 const dispatched=(f: TaskFixture)=>f.phases.filter((phase)=>String(phase)==='beforeDispatch').length;
+// Closed metadata-only references: subject receipt recovery must never start
+// source I/O, and each inserted asset still obeys the current kernel shape.
+function sourceAsset(f: TaskFixture,id: string,path: string,sha256: string) {
+ const {relativePath: _relativePath,...source}=f.source;
+ assert.equal(typeof source.sizeBytes,'number');
+ return {...source,id,sha256,referenceRevision:1,reference:mediaReferenceFixture(path,Number(source.sizeBytes),sha256)};
+}
 
 test('real subject task HTTP prepare is bounded/authenticated/closed and rediscovery never dispatches',async (t: TestContext)=>{
  const f=await taskFixture(t),input=inputFor(f),body={projectId:f.project.id,operation:'subject.create',input,origin:'new'},before=await saved(f);
@@ -48,7 +56,7 @@ test('real dropped subject execute response commits once and recovery returns hi
  await assert.rejects(f.viaProxy(route,{method:'POST',input:action(f,prepared)}));
  const applied=(f.observed as {body: {data: unknown}}[])[0]!.body.data as Applied;assert.equal(applied.task.status,'applied');assert.ok(isEditTaskEnvelope(applied));
  // Add a second metadata-only fixture source. No media I/O or provider work.
- const assetId=randomUUID();database(f.root,db=>{const value={...f.source,id:assetId,sha256:'b'.repeat(64),relativePath:'media/second-synthetic.png'};db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(assetId,f.project.id,JSON.stringify(value));},true);
+ const assetId=randomUUID();database(f.root,db=>{const value=sourceAsset(f,assetId,'media/second-synthetic.png','b'.repeat(64));db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(assetId,f.project.id,JSON.stringify(value));},true);
  await f.rpc('subject.version.add',{projectId:f.project.id,subjectId:applied.result.id,expectedRevision:applied.result.revision,assetId,requestId:randomUUID()});
  const before=await saved(f),domain=await snapshot(f.root);await f.restart();const current=await f.get(applied.task.id) as {task: {id: string; digest: string; revision: number; status: string}};
  assert.deepEqual(((await f.reconcile(current.task)) as Applied).result,applied.result);assert.deepEqual(((await f.execute(current as never)) as Applied).result,applied.result);
@@ -72,7 +80,7 @@ test('official CLI and MCP replay all three exact subject receipts without expos
  for(const name of ['subject_create','subject_version_add','subject_binding_set'])assert.equal(tools.filter(tool=>tool.name===name).length,1);
  const records: [string, unknown, Applied][]=[];let subject: Applied['result'];
  const create=inputFor(f);const created=await f.execute(await f.prepare('subject.create',create) as never) as Applied;subject=created.result;records.push(['subject.create',create,created]);await f.acknowledge(created.task);
- const assetId=randomUUID();database(f.root,db=>{const value={...f.source,id:assetId,sha256:'c'.repeat(64),relativePath:'media/third-synthetic.png'};db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(assetId,f.project.id,JSON.stringify(value));},true);
+ const assetId=randomUUID();database(f.root,db=>{const value=sourceAsset(f,assetId,'media/third-synthetic.png','c'.repeat(64));db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(assetId,f.project.id,JSON.stringify(value));},true);
  const add={projectId:f.project.id,subjectId:subject!.id,expectedRevision:subject!.revision,assetId,requestId:randomUUID()},added=await f.execute(await f.prepare('subject.version.add',add) as never) as Applied;subject=added.result;records.push(['subject.version.add',add,added]);await f.acknowledge(added.task);
  const bind={projectId:f.project.id,shotId:f.shot.id,subjectId:subject!.id,role:'subject',subjectVersionId:subject!.headVersionId,expectedRevision:0,expectedSubjectRevision:subject!.revision,requestId:randomUUID()},bound=await f.execute(await f.prepare('subject.binding.set',bind) as never) as Applied;records.push(['subject.binding.set',bind,bound]);await f.acknowledge(bound.task);
  const before=await saved(f),legacy=await snapshot(f.root);

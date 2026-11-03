@@ -1,3 +1,5 @@
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {CURRENT_ORDINARY_ROLE,CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_ROLE} from './helpers/workspace-schema-current.ts';
 import type {SceneCall, SceneServices, SceneHandlerService} from './helpers/strict-scene-types.ts';
 import type {SceneServicesOptions} from '../packages/business/src/scene-tasks.ts';
@@ -45,7 +47,7 @@ function fixture(t: test.TestContext,{autoRun=false,detect,fault,real=false}: Pi
  const root=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-scene-tasks-'))),store=(openStore(root) as unknown as TypedStore);
  const project=store.put('projects',{id:String(store.db.prepare('SELECT projectId FROM project.project_file').get()!.projectId),name:'Scene source project'}),other={id:randomUUID(),name:'Other project'};
  const video=(patch: Record<string, unknown>={})=>{
-  const bytes=Buffer.from(`Synthetic reference film ${randomUUID()} PRIVATE_SENTINEL`),id=randomUUID(),relativePath=`media/${id}.mp4`;
+  const bytes=mp4HeaderFixture(`Synthetic reference film ${randomUUID()} PRIVATE_SENTINEL`),id=randomUUID(),relativePath=`media/${id}.mp4`;
   writeFileSync(path.join(root,relativePath),bytes,{mode:0o600});
   return store.put('assets',{id,projectId:project.id,name:'Reference.mp4',mimeType:'video/mp4',sha256:digest(bytes),sizeBytes:bytes.length,relativePath,width:320,height:180,duration:3,provenance:'user-import',...patch});
  };
@@ -199,7 +201,7 @@ test('manual cuts become a new result on top of the current one', async t=>{
 
 test('a changed source marks the result stale and blocks edits on it', async t=>{
  const f=fixture(t,{autoRun:true}),ack=await f.call('scene.detect',f.input()),done=await state(f,ack.id,'succeeded');
- f.store.put('assets',{...f.store.get('assets',f.asset.id),sha256:'c'.repeat(64)});
+ f.store.put('assets',{...f.store.get('assets',f.asset.id),sha256:'c'.repeat(64),reference:{...mediaReferenceSchema.parse((f.store.get('assets',f.asset.id) as unknown as {reference: unknown}).reference),fullSha256:'c'.repeat(64)}});
  const saved=await f.result();
  assert.deepEqual([saved.current,saved.staleReason,(saved.result)!.id],[false,'SOURCE_CHANGED',(done.result)!.id]);
  await assert.rejects(f.call('scene.cuts.save',{projectId:f.project.id,assetId:f.asset.id,sourceHash:'c'.repeat(64),expectedResultId:(done.result)!.id,cuts:[],requestId:randomUUID()}),code('SCENE_RESULT_STALE'));
@@ -241,13 +243,13 @@ test('a non-owner reads without writing and cannot mutate', async t=>{
  assert.equal(services.handlers['scene.task.list']({projectId:f.project.id}).items.length,1);
  assert.equal(services.handlers['scene.result.get']({projectId:f.project.id,assetId:f.asset.id}).result,null);
  for(const [op,input] of [['scene.detect',f.input()],['scene.task.cancel',f.control(ack)],['scene.cuts.save',{projectId:f.project.id,assetId:f.asset.id,sourceHash:f.asset.sha256,expectedResultId:randomUUID(),cuts:[],requestId:randomUUID()}]] as const)
-  assert.throws(()=>services.handlers[op](input),code('SCENE_OWNER_REQUIRED'));
+  await assert.rejects(async()=>services.handlers[op](input),code('SCENE_OWNER_REQUIRED'));
  assert.equal(rows(observer.db),before);
 });
 
 test('scene records survive backup and restore; the restored copy only reads them', async t=>{
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-scene-restore-')));t.after(()=>rm(root,{recursive:true,force:true}));
- const source=path.join(root,'source'),store=(openLegacyWorkspaceStore(source) as unknown as TypedStore),bytes=Buffer.from('Synthetic reference film for backup');
+ const source=path.join(root,'source'),store=(openLegacyWorkspaceStore(source) as unknown as TypedStore),bytes=mp4HeaderFixture('Synthetic reference film for backup');
  const services=(createServices(store,new Map(),{sceneOptions:{detect:async input=>{(input.beforeSpawn)!(input.signal!);return detection(input);}}}) as unknown as SceneServices);
  const project=await services.call('project.create',{name:'Scene backup'}),id=randomUUID();
  writeFileSync(path.join(source,`media/${id}.mp4`),bytes,{mode:0o600});

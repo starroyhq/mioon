@@ -1,3 +1,4 @@
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import type {FixtureProject,FixtureExport,FixtureTimeline,FixtureAsset} from './helpers/strict-timeline-core-types.ts';
 import type {SQLOutputValue} from 'node:sqlite';
 interface ProbeCheck {width:number;height:number;frames:number;seconds:number;video:string;audio:string|{beforeSwitch:ReturnType<typeof audioStats>;afterSwitch:ReturnType<typeof audioStats>;gap:ReturnType<typeof audioStats>;tail:ReturnType<typeof audioStats>;fadeIn:ReturnType<typeof audioStats>;fadeOut:ReturnType<typeof audioStats>};sampleRate:number;channels:number;fullDecode:boolean;name?:string;result:string;retainedPortraitSha256?:string;presetId?:string;pixels?:unknown[];previewExportDecodedEqual?:boolean;sourcesUnchanged?:boolean}
@@ -65,7 +66,7 @@ async function fixture(t: test.TestContext,sourceRoot?:string){
   do{job=await call('export.get',{exportId:id});if(['succeeded','failed'].includes(job.status))break;await pause(40);}while(Date.now()<deadline);
   assert.equal(job.status,'succeeded',JSON.stringify(job));
   const asset=store.get('assets',job.assetId!)!,file=path.join(evidence,name);
-  await copyFile(path.join(store.root,asset.relativePath),file);return {job,asset,file,bytes:await readFile(file)};
+  await copyFile(mediaFixturePath(store.root,asset),file);return {job,asset,file,bytes:await readFile(file)};
  }
  return {root,store,call,importFile,finish};
 }
@@ -125,7 +126,7 @@ test('three current and three legacy frozen timeline presets render exact real m
   const red=await f.importFile(project.id,`${preset.id}.png`,'image/png'),source24=await f.importFile(project.id,'source-24.mp4','video/mp4'),
    source60=await f.importFile(project.id,'source-60.mp4','video/mp4'),audio=await f.importFile(project.id,'tone.wav','audio/wav');
   const sources=[red,source24,source60,audio],sourceBytes=new Map();
-  for(const asset of sources){const stored=f.store.get('assets',asset.id)!;sourceBytes.set(asset.id,await readFile(path.join(f.store.root,stored.relativePath)));}
+  for(const asset of sources){const stored=f.store.get('assets',asset.id)!;sourceBytes.set(asset.id,await readFile(mediaFixturePath(f.store.root,stored)));}
   await mutate('timeline.track.add',{kind:'video',name:'60 fps source'});
   const videos=timeline.tracks.filter((track: { kind: string; })=>track.kind==='video').sort((a: { orderIndex: number; },b: { orderIndex: number; })=>a.orderIndex-b.orderIndex),audioTrack=timeline.tracks.find((track: { kind: string; })=>track.kind==='audio');
   await mutate('timeline.clip.add',{trackId:videos[0].id,assetId:red.id,startFrame:0,durationFrames:45});
@@ -167,10 +168,10 @@ test('three current and three legacy frozen timeline presets render exact real m
    gap=audioStats(decoded,1.62,1.88),tail=audioStats(decoded,2.1,frames/30-.04,[440,880]),fadeIn=audioStats(decoded,.02,.06),fadeOut=audioStats(decoded,1.44,1.48);
   tone(beforeSwitch,330,660);tone(afterSwitch,660,330);tone(tail,880,440);assert.ok(gap.rms<.002,JSON.stringify(gap));
   assert.ok(fadeIn.rms<beforeSwitch.rms*.4);assert.ok(fadeOut.rms<afterSwitch.rms*.4);
-  for(const asset of sources){const stored=f.store.get('assets',asset.id)!;assert.deepEqual(await readFile(path.join(f.store.root,stored.relativePath)),sourceBytes.get(asset.id));assert.equal(stored.sha256,asset.sha256);}
+  for(const asset of sources){const stored=f.store.get('assets',asset.id)!;assert.deepEqual(await readFile(mediaFixturePath(f.store.root,stored)),sourceBytes.get(asset.id));assert.equal(stored.sha256,sha(sourceBytes.get(asset.id)));}
   assert.equal(f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(request.requestId)!.response,receipt);
   assert.deepEqual(await f.call('timeline.render',request),queued,'Exact historical replay retains its own frozen format');
-  retained.push({f,project,request,receipt,queued,output,frozen,source24});
+  retained.push({f,project,request,receipt,queued,output,frozen,source24:f.store.get('assets',source24.id)!});
   records.checks.push({presetId:preset.id,result:'passed',...verified,pixels,audio:{beforeSwitch,afterSwitch,gap,tail,fadeIn,fadeOut},previewExportDecodedEqual:true,sourcesUnchanged:true});
  });
  await t.test('retained receipts/output stay unchanged while a new storyboard export freezes saved project geometry',async()=>{
@@ -178,7 +179,7 @@ test('three current and three legacy frozen timeline presets render exact real m
    const f=item.f;
    assert.deepEqual((await f.call('export.get',{exportId:item.queued.id}) as FixtureExport).snapshot.timeline,item.frozen);
    assert.equal(f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(item.request.requestId)!.response,item.receipt);
-   assert.deepEqual(await readFile(path.join(f.store.root,item.output.asset.relativePath)),item.output.bytes);
+   assert.deepEqual(await readFile(mediaFixturePath(f.store.root,item.output.asset)),item.output.bytes);
   }
   const landscape=retained.find(item=>item.frozen.width===1280),projectId=landscape!.project.id,f=landscape!.f;
   const before=f.store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId)!.data;

@@ -16,7 +16,7 @@ function jpeg(width=512, height=256): Buffer {
 }
 async function fixture(t: TestContext) {
   const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-project-covers-')),directories=serverAppDirectories(root),projectId=randomUUID();
-  const source={assetId:randomUUID(),mimeType:'video/mp4' as const,sourceSha256:'a'.repeat(64)},bytes=jpeg();
+  const source={assetId:randomUUID(),mimeType:'video/mp4' as const,sourceFingerprint:'a'.repeat(64)},bytes=jpeg();
   const summary:RecentProjectSummary={description:'',revision:1,createdAt:'2026-11-02T00:00:00.000Z',updatedAt:'2026-11-02T00:00:00.000Z',fps:30,width:720,height:1280,presetId:'portrait_720',shotCount:1,durationFrames:30,cover:{assetId:source.assetId,mimeType:source.mimeType}};
   let registry:RecentProjectSummary|null=summary,reads=0;
   const handler=createProjectCoverHttp({directories,readProject:id=>{reads++;return id===projectId?{summary:registry}:null;}});
@@ -35,7 +35,7 @@ test('closed-project covers read only cache and never create missing storage',as
   f.save();const response=await f.get();assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/jpeg');
   assert.deepEqual(Buffer.from(await response.arrayBuffer()),f.bytes);
   const metadata=JSON.parse(readFileSync(path.join(f.cacheDir,'cover.json'),'utf8'));
-  assert.equal(metadata.assetId,f.source.assetId);assert.equal(metadata.sourceSha256,f.source.sourceSha256);
+  assert.equal(metadata.assetId,f.source.assetId);assert.equal(metadata.sourceFingerprint,f.source.sourceFingerprint);
   assert.equal(existsSync(path.join(f.root,'app-library.db')),false);assert.equal(existsSync(path.join(f.root,'workbench.sqlite')),false);
 });
 

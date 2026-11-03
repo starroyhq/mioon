@@ -2,6 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, realpath, rename, rm, stat } from 'node:fs/promises';
 import type {FileHandle} from 'node:fs/promises';
 import path from 'node:path';
+import {registeredProjectAssetReferences, registeredProjectStore} from '../project-media-storage.ts';
+import {validateManagedSource, sameManagedFile} from '../managed-media.ts';
 import {awaitProvider,checkpoint,operationCancelled} from '../operation-lifecycle.ts';
 
 export interface ProviderError extends Error {
@@ -27,7 +29,7 @@ export interface ProviderContext {
   validateReferenceState?: () => unknown;
 }
 export interface ProviderReferenceAsset {
-  id?: unknown; role?: unknown; path?: unknown; sha256?: unknown; mimeType?: unknown; width?: unknown; height?: unknown;
+  id?: unknown; projectId?: unknown; reference?: unknown; referenceRevision?: unknown; role?: unknown; path?: unknown; sha256?: unknown; mimeType?: unknown; width?: unknown; height?: unknown;
 }
 export interface ProviderSnapshotView {
   model?: unknown; aspectRatio: unknown; duration: unknown; prompt: unknown; referenceAssets: ProviderReferenceAsset[];
@@ -212,6 +214,22 @@ export function imageDimensions(bytes: Buffer, mime: unknown): {width: number; h
   throw providerError('INVALID_REFERENCE_TYPE', 'Reference bytes do not match a supported PNG or JPEG image.');
 }
 
+/** Reads provider bytes through the current project reference capability. A
+ * frozen adapter path never grants access outside the project directory. */
+export async function readProviderReferenceBytes(root: string, asset: ProviderReferenceAsset, maxBytes: number,
+  {signal, beforeEffect}: {signal?: AbortSignal; beforeEffect?: () => void} = {}): Promise<Buffer | undefined> {
+  if (!registeredProjectStore(root) && !Object.hasOwn(asset, 'reference')) return undefined;
+  const references = registeredProjectAssetReferences(root);
+  if (!references || typeof asset.id !== 'string' || typeof asset.sha256 !== 'string') throw providerError('INVALID_REFERENCE', 'The reference owner is unavailable.');
+  const initial = validateManagedSource(root, asset, {maxBytes});
+  const read = await references.read(asset.id, {maxBytes, signal, beforeEffect, expectedSha256: asset.sha256,
+    expectedReferenceRevision: Number(asset.referenceRevision)});
+  beforeEffect?.();
+  const current = validateManagedSource(root, asset, {maxBytes});
+  if (initial.file !== current.file || !sameManagedFile(initial.info, current.info)) throw providerError('REFERENCE_CHANGED', 'Reference changed during input preparation.');
+  return read.bytes;
+}
+
 export async function managedImage({ root, asset, approvedHashes, maxBytes = 10 * 1024 * 1024, signal, validateCurrent }: ManagedImageOptions): Promise<ManagedImage> {
   let boundaryError: unknown;
   const check=(): void =>{if(signal?.aborted)throw operationCancelled({beforeDispatch:true});try{validateCurrent?.();}catch(error){boundaryError=error;throw error;}};
@@ -220,6 +238,9 @@ export async function managedImage({ root, asset, approvedHashes, maxBytes = 10 
   if (!approvedHashes.has((asset.sha256 as string).toLowerCase())) throw providerError('REFERENCE_NOT_APPROVED', 'This reference image is not in the server-side provider asset approval list.');
   let bytes: Buffer;
   try {
+    const referenced = await readProviderReferenceBytes(root, asset, maxBytes, {signal, beforeEffect: check});
+    if (referenced) bytes = referenced;
+    else {
     const base = await realpath(root);check();
     const file = await realpath(asset.path);check();
     if (!inside(base, file)) throw providerError('UNSAFE_REFERENCE_PATH', 'Reference image must remain inside managed storage.');
@@ -228,6 +249,7 @@ export async function managedImage({ root, asset, approvedHashes, maxBytes = 10 
     if (info.size > maxBytes) throw providerError('REFERENCE_TOO_LARGE', 'Reference image exceeds this adapter’s managed input limit.');
     bytes = await readFile(file);check();
     if (bytes.length > maxBytes) throw providerError('REFERENCE_TOO_LARGE', 'Reference image exceeds this adapter’s managed input limit.');
+    }
   } catch (cause) {
     if(cause===boundaryError)throw cause;
     check();
@@ -257,6 +279,9 @@ export async function managedAudio({ root, asset, approvedHashes, maxBytes, sign
   if (!approvedHashes.has((asset.sha256 as string).toLowerCase())) throw providerError('REFERENCE_NOT_APPROVED', 'This reference audio clip is not in the server-side provider asset approval list.');
   let bytes: Buffer;
   try {
+    const referenced = await readProviderReferenceBytes(root, asset, maxBytes, {signal, beforeEffect: check});
+    if (referenced) bytes = referenced;
+    else {
     const base = await realpath(root);check();
     const file = await realpath(asset.path);check();
     if (!inside(base, file)) throw providerError('UNSAFE_REFERENCE_PATH', 'Reference audio must remain inside managed storage.');
@@ -265,6 +290,7 @@ export async function managedAudio({ root, asset, approvedHashes, maxBytes, sign
     if (info.size > maxBytes) throw providerError('REFERENCE_TOO_LARGE', 'Reference audio exceeds this adapter’s managed input limit.');
     bytes = await readFile(file);check();
     if (bytes.length > maxBytes) throw providerError('REFERENCE_TOO_LARGE', 'Reference audio exceeds this adapter’s managed input limit.');
+    }
   } catch (cause) {
     if(cause===boundaryError)throw cause;
     check();

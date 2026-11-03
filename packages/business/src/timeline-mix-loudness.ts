@@ -1,3 +1,6 @@
+import {hasSampledTimelineReferences, prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
+import {mediaLocatorFields, validAssetLocator} from './asset-reference-record.ts';
+import type {MediaLocator} from './asset-reference-record.ts';
 import {volumeEnvelopeField, volumeEnvelopeProcessingProfile, volumeEnvelopeReadSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
@@ -61,7 +64,7 @@ export interface TimelineMixLoudnessStore {readonly db: DatabaseSync; readonly r
 export interface TimelineMixLoudnessFileIdentity {
   readonly dev: number; readonly ino: number; readonly size: number; readonly mtimeMs: number; readonly ctimeMs: number;
 }
-export interface TimelineMixLoudnessManagedAsset {readonly relativePath: string; readonly sha256: string; readonly sizeBytes: number}
+export interface TimelineMixLoudnessManagedAsset {readonly id?: string; readonly projectId?: string; readonly reference?: import('../../contracts/src/media-reference.ts').MediaReference; readonly referenceRevision?: number; readonly relativePath?: string; readonly sha256: string; readonly sizeBytes: number}
 export interface TimelineMixLoudnessHashOptions {
   readonly signal: AbortSignal; readonly expected: TimelineMixLoudnessFileIdentity; readonly maxBytes: number;
   readonly onBytes: (bytes: number) => void; readonly beforeEffect: () => void;
@@ -151,13 +154,13 @@ export function createTimelineMixLoudnessServices(store: TimelineMixLoudnessStor
     const uuid = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(value);
     for (const asset of raw.assets) {
       if (!object(asset) || !uuid(asset.id) || asset.projectId !== input.projectId || managed.has(asset.id) ||
-          typeof asset.relativePath !== 'string' || asset.relativePath.length > 4096 ||
+          !validAssetLocator(store.db,asset) ||
           typeof asset.sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(asset.sha256) ||
           typeof asset.sizeBytes !== 'number' || !Number.isSafeInteger(asset.sizeBytes) || asset.sizeBytes < 1 ||
           typeof asset.mimeType !== 'string' || (!asset.mimeType.startsWith('image/') && typeof asset.hasAudio !== 'boolean') ||
           (asset.mimeType.startsWith('image/') && asset.hasAudio === true) ||
           (asset.duration !== null && asset.duration !== undefined && (typeof asset.duration !== 'number' || !Number.isFinite(asset.duration) || asset.duration <= 0))) unavailable();
-      managed.set(asset.id, Object.freeze({id: asset.id, relativePath: asset.relativePath, sha256: asset.sha256, sizeBytes: asset.sizeBytes}));
+      managed.set(asset.id, Object.freeze({id: asset.id, ...mediaLocatorFields(asset), sha256: asset.sha256, sizeBytes: asset.sizeBytes}));
       assets.set(asset.id, Object.freeze({file: '', mimeType: asset.mimeType, duration: asset.duration ?? null, hasAudio: asset.hasAudio === true}));
     }
     // The decoder's pure planner independently validates every projected field,
@@ -196,10 +199,12 @@ export function createTimelineMixLoudnessServices(store: TimelineMixLoudnessStor
     const input = parsed.data;
     available(context.signal);
     if (state.active) throw fault('TIMELINE_MIX_LOUDNESS_BUSY', 429);
-    const started = performance.now(), initial = current(input);
+    const started = performance.now();
+    let initial!: ReturnType<typeof current>;
+    if(!hasSampledTimelineReferences(store,input.projectId))initial=current(input);
     const controller = new AbortController();
     const signal = AbortSignal.any([controller.signal, ownerSignal, context.signal].filter((value): value is AbortSignal => value !== undefined));
-    let timedOut = false, fencedFailure: unknown, bytesHashed = 0, pcmBytes = 0;
+    let timedOut = false, fencedFailure: unknown, bytesHashed = 0, preparedBytes = 0, pcmBytes = 0;
     const expected = new Map<string, {file: string; info: TimelineMixLoudnessFileIdentity}>();
     const remainingMs = (): number => Math.max(0, LIMITS.timeoutMs - (performance.now() - started));
     const timer = setTimeout(() => {timedOut = true; controller.abort();}, remainingMs());
@@ -209,11 +214,13 @@ export function createTimelineMixLoudnessServices(store: TimelineMixLoudnessStor
       try {
         // current checks ownership before and after the fresh saved snapshot.
         // Repeating that catalog scan immediately before it adds no boundary.
-        const latest = current(input);
-        if (latest.identity !== initial.identity) throw fault('TIMELINE_MIX_LOUDNESS_STALE');
+        if (initial) {
+          const latest = current(input);
+          if (latest.identity !== initial.identity) throw fault('TIMELINE_MIX_LOUDNESS_STALE');
+        }
         if (state.stopped || signal.aborted) throw fault(timedOut ? 'TIMELINE_MIX_LOUDNESS_TIMEOUT' : 'OPERATION_CANCELLED', 503);
         if (remainingMs() <= 0) {timedOut = true; controller.abort(); throw fault('TIMELINE_MIX_LOUDNESS_TIMEOUT', 503);}
-        for (const source of initial.sources) {
+        for (const source of initial?.sources ?? []) {
           const identity = expected.get(source.id);
           if (!identity) continue;
           const actual = runtime.validateSource(store.root, source, {maxBytes: LIMITS.sourceBytes});
@@ -261,6 +268,10 @@ export function createTimelineMixLoudnessServices(store: TimelineMixLoudnessStor
     }
     async function runPreparation() {
       fence();
+      await prepareTimelineReferenceHashes(store, input.projectId, {signal, beforeEffect: fence, maxBytes: LIMITS.sourceBytes, totalBytes: LIMITS.hashBytes / 2, onBytes,validateSelection:saved=>{if(!Number.isSafeInteger(saved.revision))unavailable();if(saved.revision!==input.expectedRevision)throw fault('TIMELINE_MIX_LOUDNESS_REVISION_CONFLICT');}});
+      preparedBytes = bytesHashed;
+      initial = current(input);
+      fence();
       const assets = new Map(initial.assets);
       for (const source of initial.sources) {
         fence();
@@ -276,7 +287,7 @@ export function createTimelineMixLoudnessServices(store: TimelineMixLoudnessStor
       // Both measurements concern exactly these same bytes. No partial result
       // survives a failed second hash, changed metadata, or ownership loss.
       for (const source of initial.sources) {await hash(source); fence();}
-      if (bytesHashed !== initial.sources.reduce((sum, source) => sum + source.sizeBytes * 2, 0)) throw fault('TIMELINE_MIX_LOUDNESS_STALE');
+      if (bytesHashed !== initial.sources.reduce((sum, source) => sum + source.sizeBytes * 2, preparedBytes)) throw fault('TIMELINE_MIX_LOUDNESS_STALE');
       return {original, candidate};
     }
     const work = runPreparation();
@@ -323,7 +334,7 @@ export function createTimelineMixLoudnessServices(store: TimelineMixLoudnessStor
         if (code === 'MEDIA_TIMEOUT') throw fault('TIMELINE_MIX_LOUDNESS_TIMEOUT', 503);
         if (code === 'MEDIA_CANCELLED') throw fault('OPERATION_CANCELLED', 503);
         if (code === 'LOUDNESS_INVALID_PCM' || code === 'LOUDNESS_DURATION_MISMATCH') throw fault('TIMELINE_MIX_LOUDNESS_INVALID_PCM');
-        if (code?.startsWith('MANAGED_')) throw fault('TIMELINE_MIX_LOUDNESS_STALE');
+        if (code?.startsWith('MANAGED_') || ['MEDIA_MISSING','MEDIA_CHANGED','MEDIA_CHANGED_DURING_READ','MEDIA_NOT_MEDIA','MEDIA_OUTSIDE_NOT_CONFIRMED'].includes(code??'')) throw fault('TIMELINE_MIX_LOUDNESS_STALE');
         throw fault('TIMELINE_MIX_LOUDNESS_DECODE_FAILED');
       }
       // All children have retired. Crucially, transaction/commit errors from

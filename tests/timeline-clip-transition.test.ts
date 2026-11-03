@@ -1,7 +1,8 @@
+import {writeStubMediaFixture} from './helpers/media-reference-fixtures.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
+import {mkdtempSync,realpathSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {
@@ -78,8 +79,8 @@ async function fixture(t: test.TestContext,opener:typeof openStore|typeof openLe
  let services=createServices(store as never,new Map()) as unknown as {call(operation: string,input: unknown): Promise<Rec>};
  t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
  const project=await services.call('project.create',{name:'Transitions'}),projectId=project.id as string;
- const asset=(mimeType: string)=>store.put('assets',{id:randomUUID(),projectId,name:mimeType,mimeType,duration:10,width:640,height:360,hasAudio:mimeType!=='image/png',hasVideo:mimeType!=='audio/wav',
-  provenance:'user-import',sha256:'a'.repeat(64),relativePath:`media/${randomUUID()}.fixture`,createdAt:new Date().toISOString()});
+ const asset=(mimeType: string)=>{const id=randomUUID();return store.put('assets',{id,projectId,name:mimeType,mimeType,duration:10,width:640,height:360,hasAudio:mimeType!=='image/png',hasVideo:mimeType!=='audio/wav',
+  provenance:'user-import',...writeStubMediaFixture(root,id,mimeType),createdAt:new Date().toISOString()});};
  let timeline=await services.call('timeline.get',{projectId});
  const f={root,projectId,asset,get timeline(){return timeline;},get store(){return store;},
   input:(fields: Rec)=>({projectId,expectedRevision:timeline.revision,requestId:randomUUID(),...fields}),
@@ -238,10 +239,10 @@ test('a transition between images counts both towards the managed image budget',
  assert.doesNotThrow(()=>assertTransitionImageBudget(freeze({...timeline,tracks:timeline.tracks.map((track: Rec)=>track.id===c!.trackId?{...track,hidden:true}:track)}) as never),'a hidden image is no input');
  // Export preflight and a render say so before probing or rendering anything.
  store.put('projects',{id:projectId,name:'Transition images',createdAt:stamp,updatedAt:stamp});
- for(const asset of assets)store.put('assets',asset);
+ for(const [index,asset] of assets.entries()){writeFileSync(path.join(root,asset.relativePath),bytes[index]!);store.put('assets',asset);}
  store.put('timelines',timeline);
  const foreignId=foreignStore.projectId;foreignStore.put('projects',{id:foreignId,name:'Isolated transition images',createdAt:stamp,updatedAt:stamp});
- for(const asset of assets)foreignStore.put('assets',{...asset,projectId:foreignId});
+ for(const [index,asset] of assets.entries()){writeFileSync(path.join(foreignStore.root,asset.relativePath),bytes[index]!);foreignStore.put('assets',{...asset,projectId:foreignId});}
  foreignStore.put('timelines',{...timeline,projectId:foreignId});assert.notEqual(store.db,foreignStore.db);
  const ownBefore=store.db.prepare('SELECT total_changes() AS n').get()!.n,foreignBefore=foreignStore.db.prepare('SELECT total_changes() AS n').get()!.n;
  const report=await preflight.handlers['timeline.export.preflight']!({projectId,expectedRevision:1});

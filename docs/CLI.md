@@ -1241,3 +1241,11 @@ Discover `mioon schema timeline.loudness.apply`. After an explicitly reviewed cu
 | `project duplicate` | `--request-id <id> --input '{"projectId":"…","name":"…"}'` |
 
 导入和复制要求调用方提供 requestId；用同一个 requestId 重试时，返回同一个项目。
+
+## 素材引用导入
+
+`mioon asset import --file /绝对路径/image.png --request-id <稳定ID> --input '{"projectId":"<项目ID>"}'` 只发送本机路径，后端加引用，不复制文件，也不受30 MiB上传限制。CLI和后端必须在同一台机器。
+
+项目外目录未确认时加 `--confirm-outside`：它明确确认当前项目读取文件所在目录本身，不含子目录，stderr逐项输出确认目录。没有这个参数的普通路径导入不授予许可。需传输字节时用显式 `--upload`，上限仍30 MiB，不能与目录确认一起使用。客户端现有连接策略仍只接受本机 HTTP origin；本机转发到另一机器时应使用上传模式，不能发送本机文件路径。LUT导入仍读取本地字节，限制不变。
+
+`asset media status list` 和 `asset media prepare` 提供状态及强快照准备；位置和目录确认由专用用户操作接口提供，不是模型工具。

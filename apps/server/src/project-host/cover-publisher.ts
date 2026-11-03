@@ -1,5 +1,7 @@
+import {sameManagedFile} from '@mioon/business/managed-media';
+import {mediaFingerprintToken} from '@mioon/business/project-asset-references';
 import {runStreaming} from '@mioon/business/media-runtime';
-import {resolveProjectMediaFile} from '@mioon/business/project-media-storage';
+import {admitProjectAssetSource, registeredProjectAssetReferences, validatedProjectAssetSource} from '@mioon/business/project-media-storage';
 import type {ProjectStore} from '@mioon/business/project-file/index';
 import type {ProjectSummary} from '../../../../packages/contracts/src/project-home.ts';
 import {PROJECT_COVER_LIMITS, writeProjectCover, readProjectCoverCache} from './covers.ts';
@@ -23,16 +25,19 @@ export function createProjectCoverPublisher({store, readCover, signal, render = 
           signal.throwIfAborted();
           const cover = readCover();
           if (!cover) return;
-          const asset = store.get('assets', cover.assetId) as {projectId?: unknown; relativePath?: unknown; sha256?: unknown; mimeType?: unknown} | undefined;
-          if (!asset || asset.projectId !== store.projectId || asset.mimeType !== cover.mimeType || typeof asset.relativePath !== 'string' || typeof asset.sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(asset.sha256)) return;
-          if (readProjectCoverCache(store.cacheDir, {...cover, sourceSha256: asset.sha256}) !== null) return;
-          const relativePath = asset.relativePath, sourceSha256 = asset.sha256;
-          const source = resolveProjectMediaFile(store, relativePath);
+          const asset = store.get('assets', cover.assetId) as {projectId?: unknown; referenceRevision?: unknown; reference?: unknown; sha256?: unknown; mimeType?: unknown} | undefined;
+          if (!asset || asset.projectId !== store.projectId || asset.mimeType !== cover.mimeType) return;
+          const references = registeredProjectAssetReferences(store.projectDir);
+          if (!references) return;
+          const status = await references.inspect(cover.assetId, {signal});
+          if (status.status !== 'online' || !status.readable) return;
+          const source = await admitProjectAssetSource(store.projectDir, cover.assetId, {signal});
+          const sourceFingerprint = mediaFingerprintToken(source.reference);
+          if (readProjectCoverCache(store.cacheDir, {...cover, sourceFingerprint}) !== null) return;
           const fence = (): void => {
             signal.throwIfAborted();
-            const latest = store.get('assets', cover.assetId) as typeof asset;
-            if (!latest || latest.projectId !== store.projectId || latest.relativePath !== relativePath || latest.sha256 !== sourceSha256 || latest.mimeType !== cover.mimeType) throw new Error('Project cover source changed');
-            resolveProjectMediaFile(store, relativePath);
+            const current = validatedProjectAssetSource(store.projectDir, asset);
+            if(current.file!==source.file||!sameManagedFile(current.info,source.info))throw new Error('Project cover source changed');
           };
           const chunks: Buffer[] = [];
           await render('ffmpeg', ['-v', 'error', '-nostdin', '-ss', '0', '-i', source.file, '-frames:v', '1',
@@ -41,7 +46,7 @@ export function createProjectCoverPublisher({store, readCover, signal, render = 
           fence();
           const current = readCover();
           if (!current || current.assetId !== cover.assetId || current.mimeType !== cover.mimeType) return;
-          writeProjectCover({cacheDir: store.cacheDir, source: {assetId:cover.assetId,mimeType:cover.mimeType,sourceSha256}, jpeg: Buffer.concat(chunks)});
+          writeProjectCover({cacheDir: store.cacheDir, source: {assetId:cover.assetId,mimeType:cover.mimeType,sourceFingerprint}, jpeg: Buffer.concat(chunks)});
           lastFailure = undefined;
         } catch (error) { lastFailure = error; }
     }).finally(() => {active = undefined; if (pending && !signal.aborted) schedule();});

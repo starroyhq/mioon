@@ -98,7 +98,7 @@ for (const [name, update] of [
   ['candidate name', (c: FixtureContext) => { c.assets[1].name = 'Renamed'; }], ['candidate duration', (c: FixtureContext) => { c.assets[1].duration = 9; }],
   ['candidate hash', (c: FixtureContext) => { c.assets[1].sha256 = 'different'; }], ['candidate audio', (c: FixtureContext) => { c.assets[1].hasAudio = false; }],
   ['candidate byte size', (c: FixtureContext) => { c.assets[1].sizeBytes = 200; }], ['candidate video stream', (c: FixtureContext) => { c.assets[1].hasVideo = false; }],
-  ['candidate managed path', (c: FixtureContext) => { c.assets[1].relativePath = 'media/changed.mp4'; }],
+  ['candidate reference revision', (c: FixtureContext) => { c.assets[1].referenceRevision = 2; }],
   ['old source', (c: FixtureContext) => { c.assets[0].duration = 7; }], ['version number', (c: FixtureContext) => { c.versions[0].number = 3; }],
   ['version hash', (c: FixtureContext) => { c.versions[0].sha256 = 'different'; }], ['version lineage', (c: FixtureContext) => { c.versions[0].jobId = id(99); }],
   ['version owner', (c: FixtureContext) => { c.versions[0].projectId = id(99); }], ['shot label', (c: FixtureContext) => { c.shots[0].title = 'Renamed shot'; }],

@@ -1,3 +1,4 @@
+import type {MediaReference} from '../../packages/contracts/src/media-reference.ts';
 import type {selectedRangeFixture as originalFixture} from '../fixtures/selected-range-http-fixture.ts';
 import type {createLocalDelivery} from '../../packages/business/src/local-delivery.ts';
 import type {LocalDeliveryEnvelope, LocalDeliveryExecution, LocalDeliveryPrepare} from '../../packages/contracts/src/local-delivery.ts';
@@ -12,7 +13,7 @@ interface FileEntry {directory?:string;name?:string;hash?:string}
 interface Checkpoint {rows:Record<string,unknown[]>;files:FileEntry[]}
 interface Observation {path:string;body:unknown;status:number|undefined}
 export interface SelectedRangeFixture {
- root:string;project:FixtureProject;timeline:FixtureTimeline;sources:FixtureAsset[];
+ root:string;project:FixtureProject;timeline:FixtureTimeline;sources:(Omit<FixtureAsset,'relativePath'>&({reference:MediaReference;referenceRevision:number}|{relativePath:string}))[];
  dispatches:LocalDeliveryPrepare['input'][];submissions:unknown[];observations:Observation[];media:MediaProcessEvent[];capabilityChecks:unknown[];
  file:string;store:TypedStore;services:TypedServices;delivery:ReturnType<typeof createLocalDelivery>;url:string;
  rows():Record<string,unknown[]>;receipt(requestId:string):Record<string,SQLOutputValue>|undefined;

@@ -1,3 +1,6 @@
+import {hasSampledTimelineReferences, prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
+import {mediaLocatorFields, validAssetLocator} from './asset-reference-record.ts';
+import type {MediaLocator} from './asset-reference-record.ts';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {AUDIO_PREVIEW_LIMITS, audioPreviewPlanInputSchema, audioPreviewSourceInputSchema,
@@ -50,7 +53,7 @@ export interface TimelineAudioPreviewStore {readonly db: DatabaseSync; readonly 
 export interface TimelineAudioPreviewFileIdentity {
   readonly dev: number; readonly ino: number; readonly size: number; readonly mtimeMs: number; readonly ctimeMs: number;
 }
-export interface TimelineAudioPreviewManagedAsset {readonly relativePath: string; readonly sha256: string; readonly sizeBytes: number}
+export interface TimelineAudioPreviewManagedAsset {readonly id?: string; readonly projectId?: string; readonly reference?: import('../../contracts/src/media-reference.ts').MediaReference; readonly referenceRevision?: number; readonly relativePath?: string; readonly sha256: string; readonly sizeBytes: number}
 export interface TimelineAudioPreviewHashOptions {
   readonly signal: AbortSignal; readonly expected: TimelineAudioPreviewFileIdentity; readonly maxBytes: number;
   readonly onBytes: (bytes: number) => void; readonly beforeEffect: () => void;
@@ -142,9 +145,9 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
     });
     const managed = new Map<string, TimelineAudioPreviewManagedAsset>();
     const assets = raw.assets.map((asset: unknown) => {
-      if (!object(asset) || typeof asset.id !== 'string' || typeof asset.relativePath !== 'string' || asset.relativePath.length > 4096 ||
+      if (!object(asset) || typeof asset.id !== 'string' || !validAssetLocator(store.db,asset) ||
           typeof asset.sha256 !== 'string' || typeof asset.sizeBytes !== 'number' || managed.has(asset.id)) return unavailable();
-      managed.set(asset.id, Object.freeze({relativePath: asset.relativePath, sha256: asset.sha256, sizeBytes: asset.sizeBytes}));
+      managed.set(asset.id, Object.freeze({id:asset.id, projectId:typeof asset.projectId==='string'?asset.projectId:undefined, ...mediaLocatorFields(asset), sha256: asset.sha256, sizeBytes: asset.sizeBytes}));
       return {id: asset.id, projectId: asset.projectId, sha256: asset.sha256, sizeBytes: asset.sizeBytes, mimeType: asset.mimeType,
         duration: asset.duration ?? null, ...(Object.hasOwn(asset, 'hasAudio') ? {hasAudio: asset.hasAudio} : {})};
     });
@@ -164,9 +167,23 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
     const parsed = audioPreviewPlanInputSchema.safeParse(rawInput);
     if (!parsed.success) throw fault('VALIDATION_ERROR', 400);
     available(context.signal);
-    const result = current(parsed.data).plan;
-    available(context.signal);
-    return result;
+    if (state.active) throw fault('AUDIO_PREVIEW_BUSY', 429);
+    if(!hasSampledTimelineReferences(store,parsed.data.projectId))current(parsed.data);
+    const controller = new AbortController(), signal = AbortSignal.any([controller.signal, ownerSignal, context.signal].filter((value): value is AbortSignal => value !== undefined));
+    let timedOut = false;
+    const timer = setTimeout(() => {timedOut = true; controller.abort();}, LIMITS.prepareTimeoutMs);
+    const entry: Entry = {controller, signal, task: Promise.resolve()}; state.active = entry;
+    const fence = (): void => {available(signal);};
+    const work = (async () => {
+      await prepareTimelineReferenceHashes(store, parsed.data.projectId, {signal, beforeEffect: fence, maxBytes: LIMITS.sourceBytes, totalBytes: LIMITS.hashReadBytes / 2,validateSelection:saved=>{if(saved.id!==parsed.data.timelineId||saved.revision!==parsed.data.expectedRevision)throw fault('AUDIO_PREVIEW_STALE');}});
+      fence(); return current(parsed.data).plan;
+    })();
+    entry.task = work.finally(() => {clearTimeout(timer); if (state.active === entry) state.active = null;});
+    // Cancellation retires the observer, while drain retains the exact read.
+    entry.task.catch(() => {});
+    try {return await observe(entry.task as Promise<AudioPreviewPlan>, signal);}
+    catch (error) {if (timedOut) throw fault('AUDIO_PREVIEW_TIMEOUT', 503); throw error;}
+    finally {controller.abort();}
   }
 
   async function consumeSource<T>(rawInput: unknown, context: {signal?: AbortSignal;
@@ -226,6 +243,8 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
       return {file: result.file, info: result.info, sha256: asset.sha256};
     }
     async function prepareAndConsume(): Promise<T> {
+      fence();
+      await prepareTimelineReferenceHashes(store, input.projectId, {signal, beforeEffect: fence, clipId: input.clipId, maxBytes: LIMITS.sourceBytes, totalBytes: LIMITS.hashReadBytes / 2});
       fence();
       const file = runtime.validateSource(store.root, asset, {maxBytes: LIMITS.sourceBytes});
       if (!fileIdentity(file.info) || file.info.size !== asset.sizeBytes) throw fault('AUDIO_PREVIEW_STALE');
@@ -298,7 +317,7 @@ export function createTimelineAudioPreviewServices(store: TimelineAudioPreviewSt
       if (timedOut) throw fault('AUDIO_PREVIEW_TIMEOUT', 503);
       // Keep public failures opaque; neither decoder stderr nor local paths leak.
       if (code?.startsWith('AUDIO_PREVIEW_') || code === 'OPERATION_CANCELLED' || code?.startsWith('WORKSPACE_') || code?.startsWith('RESTORE_')) throw fault(code, code === 'AUDIO_PREVIEW_OWNER_REQUIRED' ? 403 : 409);
-      if (code?.startsWith('MANAGED_')) throw fault('AUDIO_PREVIEW_STALE');
+      if (code?.startsWith('MANAGED_') || code?.startsWith('MEDIA_')) throw fault('AUDIO_PREVIEW_STALE');
       throw fault('AUDIO_PREVIEW_DECODE_FAILED');
     } finally {controller.abort();}
   }

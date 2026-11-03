@@ -1,3 +1,4 @@
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import type {FrameFault} from '../packages/business/src/frames.ts';
 interface RecoveryDecodeInput{beforeSpawn(signal:AbortSignal):unknown;signal:AbortSignal;asset:{sha256:string};requestedFrame:number}
 type RecoveryDecoder=(input:RecoveryDecodeInput)=>Promise<{bytes:Buffer;provenance:ReturnType<typeof provenance>}>;
@@ -42,7 +43,7 @@ function fixture(t:test.TestContext,{autoRun=true,decode}:{autoRun?:boolean;deco
  const root=mkdtempSync(path.join(tmpdir(),'mioon-frame-recovery-'));let exactStore:ReturnType<typeof openStore>,store:TypedStore,services: TypedFrameServices,calls=0,fault:FrameFault=()=>{};
  const decoder=async (input: RecoveryDecodeInput)=>{calls++;if(decode)return decode(input);input.beforeSpawn(input.signal);return {bytes,provenance:provenance(input.asset,input.requestedFrame)};};
  function start(){exactStore=openStore(root);store=(exactStore as TypedStore);services=(createFrameServices(store,({autoRun,decode:decoder,fault:(label:string,context?:Record<string,unknown>)=>fault(label,context)} as unknown as Parameters<typeof createFrameServices>[1])) as TypedFrameServices);}
- start();const project=store!.put('projects',{id:exactStore!.projectId,name:'Frame recovery project'}),sourceBytes=Buffer.from('synthetic private source'),id=randomUUID(),relativePath=`media/${id}.mp4`;
+ start();const project=store!.put('projects',{id:exactStore!.projectId,name:'Frame recovery project'}),sourceBytes=mp4HeaderFixture('synthetic private source'),id=randomUUID(),relativePath=`media/${id}.mp4`;
  writeFileSync(path.join(root,relativePath),sourceBytes,{mode:0o600});const asset=store!.put('assets',{id,projectId:project.id,name:'Original.mp4',mimeType:'video/mp4',sha256:digest(sourceBytes),sizeBytes:sourceBytes.length,relativePath,width:4,height:2,duration:1,provenance:'user-import'});
  t.after(async()=>{try{await services.drain();}finally{store.close();rmSync(root,{recursive:true,force:true});}});
  return {root,get stagingRoot(){return exactStore.tempDir;},project,asset,get store(){return store;},get services(){return services;},get calls(){return calls;},setFault(fn: FrameFault){fault=fn;},

@@ -1,3 +1,4 @@
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
@@ -158,7 +159,7 @@ test('real worker full/ranged AAC from 44.1k sources matches independent complet
   for (const record of f.records) {
     const saved = JSON.parse(f.use(db => db.prepare('SELECT data FROM exports WHERE id=?').get(record.id) as {data: string}).data) as {snapshot: {deliveryName: string; exportRange?: {startFrame: number; endFrame: number}}};
     const asset = JSON.parse(f.use(db => db.prepare('SELECT data FROM assets WHERE id=?').get(record.assetId) as {data: string}).data) as {relativePath: string};
-    const file = path.join(f.projectRoot, asset.relativePath), sourceBytes = await readFile(file), reference = await independentReference(file);
+    const file = mediaFixturePath(f.projectRoot,asset), sourceBytes = await readFile(file), reference = await independentReference(file);
     const input = {projectId: f.project.id, exportId: record.id, expectedArtifactSha256: hash(sourceBytes), measurementProfile: EXPORT_LOUDNESS_PROFILE,
       target: {integratedLufs: -23, truePeakCeilingDbtp: -1}};
     const before = {rows: f.rows(), version: f.use(changeMarks), files: await manifest(f.root)};

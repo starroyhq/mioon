@@ -1,3 +1,5 @@
+import {mediaFingerprintToken} from '../../packages/business/src/project-asset-references.ts';
+import {mediaReferenceSchema} from '../../packages/contracts/src/media-reference.ts';
 import {writeProjectCover} from '../../apps/server/src/project-host/covers.ts';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,6 +21,7 @@ async function seed(root: string): Promise<void> {
   await seedMutationStore(root);
   const {createServerProject, openServerProject, projectDirFor, withoutForeignKeys} = await import('./project-database.ts');
   const asset = (id: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({id, projectId: IDS.project, name: 'Disposition metadata fixture',
+    relativePath: `media/${id}.${extra.mimeType === 'image/png' ? 'png' : extra.mimeType === 'audio/wav' ? 'wav' : 'mp4'}`,
     mimeType: 'video/mp4', duration: 2, width: 720, height: 1280, hasVideo: true, hasAudio: false,
     provenance: 'user-import', sha256: '2'.repeat(64), createdAt: NOW, ...extra});
   const store = openServerProject(root, IDS.project);
@@ -30,13 +33,16 @@ async function seed(root: string): Promise<void> {
     store.put('assets', asset(DISPOSITION_IDS.image, {mimeType: 'image/png', duration: 0}));
     store.put('assets', asset(DISPOSITION_IDS.unknown, {duration: undefined}));
     const original = JSON.parse((store.db.prepare('SELECT data FROM assets WHERE id=?').get(IDS.asset) as {data: string}).data);
-    store.put('assets', {...original, relativePath: 'media/original.mp4'});
     fs.writeFileSync(path.join(projectDirFor(root, IDS.project), 'media/original.mp4'), ORIGINAL_BYTES);
+    // Explicit fixture conversion samples this actual sentinel. Persist only
+    // its current reference, never a second relativePath beside an old one.
+    const {reference: _reference, referenceRevision: _revision, relativePath: _relativePath, ...fields} = original;
+    store.put('assets', {...fields, relativePath: 'media/original.mp4'});
     // This metadata-only fixture never decodes its sentinel video. A valid
     // source-bound cache keeps cover preparation outside the guarded operation.
     const savedAsset=store.get('assets',IDS.asset);
     if(!savedAsset||typeof savedAsset!=='object'||!('sha256' in savedAsset)||typeof savedAsset.sha256!=='string')throw Error('The synthetic source has no saved hash');
-    writeProjectCover({cacheDir:store.cacheDir,source:{assetId:IDS.asset,mimeType:'video/mp4',sourceSha256:savedAsset.sha256},
+    writeProjectCover({cacheDir:store.cacheDir,source:{assetId:IDS.asset,mimeType:'video/mp4',sourceFingerprint:mediaFingerprintToken(mediaReferenceSchema.parse((savedAsset as unknown as {reference:unknown}).reference))},
       jpeg:Buffer.from([0xff,0xd8,0xff,0xc0,0,17,8,0,1,0,1,3,1,0x22,0,2,0x11,1,3,0x11,1,0xff,0xda,0,12,3,1,0,2,0x11,3,0x11,0,0x3f,0,0x12,0x34,0xff,0xd9])});
     // An existing in-use clip must remain byte-for-byte identical when rejected.
     const timeline = JSON.parse((store.db.prepare('SELECT data FROM timelines WHERE id=?').get(IDS.timeline) as {data: string}).data);

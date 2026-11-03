@@ -1,3 +1,4 @@
+import {mediaLocatorFields} from './asset-reference-record.ts';
 import path from 'node:path';
 import {FRAME_LIMITS, FRAME_PROFILE_ID, FRAME_SELECTION_RULE} from '@mioon/contracts';
 import {FRAME_DECODE_LIMITS, frameCaptureOutputFilter, frameDecodePlan} from './frame-decoder.ts';
@@ -158,7 +159,7 @@ export async function decodeSceneKeyframes({root, asset, file, info, marks, sign
     marks.some((mark, index) => !Number.isSafeInteger(mark) || mark < 0 || mark >= FRAME_DECODE_LIMITS.duration * 30 || index > 0 && mark <= marks[index - 1]!)) throw mediaConfigurationError();
   if (!['video/mp4', 'video/webm'].includes(String(asset.mimeType))) throw fault('FRAME_PROFILE_UNSUPPORTED');
   if (typeof asset.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(asset.sha256)) throw fault('MANAGED_SOURCE_CHANGED');
-  const sourceAsset = {relativePath: asset.relativePath, sha256: asset.sha256, mimeType: asset.mimeType, sizeBytes: asset.sizeBytes};
+  const sourceAsset = {id: asset.assetId??asset.id, ...mediaLocatorFields(asset), sha256: asset.sha256, mimeType: asset.mimeType, sizeBytes: asset.sizeBytes};
   const expected = Object.fromEntries(['dev', 'ino', 'size', 'mtimeMs', 'ctimeMs'].map(key => [key, info[key]])) as unknown as ManagedFileIdentity;
   const controller = new AbortController(), abort = (): void => controller.abort();
   let timedOut = false;

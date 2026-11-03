@@ -1,3 +1,5 @@
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
+import {png} from './helpers/timeline-image-fixtures.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -69,19 +71,20 @@ async function fixture(t: TestContext, {named = false, range = false, retainTime
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-loudness-')), store = openStore(root), services = createServices(store, new Map());
   const project = await services.call('project.create', {name: 'Owned loudness fixture'}) as {id: string}, foreign = await foreignProject(t);
   let timeline = await services.call('timeline.get', {projectId: project.id}) as TimelineFixture;
-  const sourceId = randomUUID();
-  store.put('assets', {id: sourceId, projectId: project.id, name: 'Original source', mimeType: 'image/png', sha256: 'a'.repeat(64),
-    relativePath: `media/${sourceId}.png`, width: 720, height: 1280, duration: 0, hasAudio: false, sizeBytes: 20, createdAt: new Date().toISOString()});
+  const sourceId = randomUUID(),sourceBytes=png({width:720,height:1280});
+  await writeFile(path.join(root,`media/${sourceId}.png`),sourceBytes);
+  store.put('assets', {id: sourceId, projectId: project.id, name: 'Original source', mimeType: 'image/png', sha256: sha(sourceBytes),
+    relativePath: `media/${sourceId}.png`, width: 720, height: 1280, duration: 0, hasAudio: false, sizeBytes: sourceBytes.length, createdAt: new Date().toISOString()});
   timeline = await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
     trackId: timeline.tracks[0]!.id, assetId: sourceId, startFrame: 0, durationFrames: range ? 90 : 30}) as TimelineFixture;
   const intent = {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'export',
     ...(named ? {deliveryName: '已导出响度文件'} : {}), ...(range ? {exportRange: {startFrame: 30, endFrame: 60}} : {})};
   const queued = await services.call('timeline.render', intent) as {id: string}, assetId = randomUUID();
-  const relativePath = `media/export-${queued.id}-${randomUUID()}.mp4`, bytes = Buffer.alloc(96 * 1024, 7);
+  const relativePath = `media/export-${queued.id}-${randomUUID()}.mp4`, bytes = Buffer.alloc(96 * 1024, 7);mp4HeaderFixture('Synthetic stub-decoded export').copy(bytes);
   await writeFile(path.join(root, relativePath), bytes, {mode: 0o600});
-  const asset = {id: assetId, projectId: project.id, name: 'Historical output', mimeType: 'video/mp4', provenance: 'export', relativePath,
+  const asset = {id: assetId, projectId: project.id, name: 'Historical output', mimeType: 'video/mp4', provenance: 'export', producer:{kind:'export',id:queued.id},relativePath,
     url: `/media/${assetId}`, sha256: sha(bytes), sizeBytes: bytes.length, createdAt: new Date().toISOString()};
-  store.put('assets', asset);
+  store.put('assets', asset);Object.assign(asset,store.get('assets',assetId));
   const record = {id: queued.id, ...(store.get('exports', queued.id) as Record<string, unknown>), status: 'succeeded', assetId, url: asset.url, updatedAt: new Date().toISOString()}; store.put('exports', record);
   if (!retainTimeline) {
     store.db.prepare('DELETE FROM timelines WHERE id=?').run(timeline.id); store.db.prepare('DELETE FROM assets WHERE id=?').run(sourceId);
@@ -99,7 +102,7 @@ async function fixture(t: TestContext, {named = false, range = false, retainTime
     unchanged: async (before: FixtureCheckpoint) => {assert.deepEqual(rows(), before.rows); assert.equal((store.db.prepare('SELECT total_changes() AS n').get() as {n: number}).n, before.writes); assert.deepEqual(await files(root), before.files);},
     checkpoint: async (): Promise<FixtureCheckpoint> => ({rows: rows(), writes: (store.db.prepare('SELECT total_changes() AS n').get() as {n: number}).n, files: await files(root)})};
 }
-function replace(f: BusinessFixture, table: string, value: Record<string, unknown>) {f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(value), value.id as string);}
+function replace(f: BusinessFixture, table: string, value: Record<string, unknown>) {const saved={...value};if(table==='assets'&&'reference' in saved)delete saved.relativePath;f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(saved), value.id as string);}
 function samplePeak(f: BusinessFixture, runtime: Record<string, unknown> = {}): (context?: {signal?: AbortSignal}) => Promise<LoudnessServiceResult> {
   const peak = createExportSamplePeakServices({...f.store} as never, {runtime: {...f.runtime, decode: async (_file: string, duration: number) => {
     const accumulator = createExportSamplePeakAccumulator(duration); accumulator.write(pcm(duration)); return accumulator.finish();
@@ -214,7 +217,7 @@ test('recorded input size and cumulative hash budgets fail before decode without
   let reads = 0, decodes = 0;
   const f = await fixture(t, {runtime: {validateSource: (...args: never[]) => {reads++; return (validateManagedSource as (...rest: never[]) => unknown)(...args);},
     decode: async () => {decodes++; return measurement();}}});
-  replace(f, 'assets', {...f.asset, sizeBytes: EXPORT_LOUDNESS_LIMITS.inputBytes + 1});
+  replace(f, 'assets', {...f.asset, sizeBytes: EXPORT_LOUDNESS_LIMITS.inputBytes + 1,reference:{...(f.asset.reference as object),sizeBytes:EXPORT_LOUDNESS_LIMITS.inputBytes+1}});
   const tooLarge = await f.call(); assert.equal((tooLarge as LoudnessServiceResult).reason.code, 'INPUT_TOO_LARGE'); assert.equal(reads, 0); assert.equal(decodes, 0);
   replace(f, 'assets', f.asset);
   f.runtime.hash = async (_root: unknown, asset: {sizeBytes: number}, options: {onBytes(bytes: number): void}) => {options.onBytes(asset.sizeBytes * 2 + 1); throw Error('Budget callback must throw');};

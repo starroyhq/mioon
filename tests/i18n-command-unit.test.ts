@@ -21,9 +21,10 @@ test('pure help retains exact legacy bytes and schema object content in every pr
   const original=help(undefined,dependencies);
   const frozen = readFileSync(new URL('./fixtures/cli-help-legacy.json',import.meta.url),'utf8');
   // Application versions follow the root manifest; retain the historical fixture
-  // and every other legacy byte, including prose and operation ordering.
+  // and every other legacy byte; S1 explicitly changes path-import help and adds its bounded operations.
   assert.equal(frozen.split('"version":"0.4.1"').length,2);
   const expected = frozen
+    .replace('"--file":"asset/lut import only: reads local bytes, never sends a path; LUT .cube files are limited to 7 MiB"', '"--file":"asset import: sends a normalized local path with caller requestId; no copying or 30 MiB upload limit. LUT import still reads up to 7 MiB","--confirm-outside":"asset import --file only: explicitly confirms this project and the exact source directory, prints each confirmed directory; excludes descendants","--upload":"asset import --file only: explicitly upload bytes to a remote backend, at most 30 MiB; exclusive with --confirm-outside"')
     .replace('"version":"0.4.1"', `"version":${JSON.stringify(VERSION)}`)
     .replace('"mioon capabilities",', '"mioon capabilities","mioon agent --help",')
     .replace('"mioon export download --input <JSON> --output <new-local-file>"', '"mioon export download --input <JSON> --output <new-local-file>","mioon project export --input <JSON> --output <new-local-file.mioon>","mioon project import --file <local-file.mioon> --request-id <id> [--input <JSON>]","mioon project duplicate --request-id <id> --input <JSON>"')
@@ -36,7 +37,7 @@ test('pure help retains exact legacy bytes and schema object content in every pr
     .replace('"timeline.clip.remove",', '"timeline.clip.remove","timeline.clip.rippleRemove",')
     .replace('"timeline.loudness.apply",', '"timeline.loudness.apply","timeline.clip.refreshSources","timeline.shots.append","timeline.clip.splitAtScenes","timeline.clip.crossfade","timeline.clip.setGains","timeline.clip.setTransform","timeline.clip.setTransition",')
     .replace('"frame.task.recoverResult",', '"frame.task.recoverResult","scene.detect","scene.request.get","scene.task.get","scene.task.list","scene.task.cancel","scene.result.get","scene.cuts.save","scene.shots.create","scene.shots.undo",')
-    .replace('"timeline.render"]', '"timeline.render","project.backup.list","project.backup.inspect","project.backup.restore","project.backup.status","project.version.list","project.version.save","project.version.preview","project.version.restore"]');
+    .replace('"timeline.render"]', '"timeline.render","project.backup.list","project.backup.inspect","project.backup.restore","project.backup.status","project.version.list","project.version.save","project.version.preview","project.version.restore","asset.media.status.list","asset.media.prepare","asset.media.relink.preview","asset.media.relink.apply","asset.media.acceptChanged"]');
   assert.notEqual(expected, frozen);
   assert.equal(JSON.stringify(successEnvelope(original))+'\n', expected);
   assert.equal(localizeHelp(original),original);

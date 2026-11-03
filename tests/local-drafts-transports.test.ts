@@ -1,4 +1,6 @@
 import type {ProjectVersionListResponse} from '../packages/contracts/src/project-version-operations.ts';
+import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import {writeProjectCover} from '../apps/server/src/project-host/covers.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
@@ -161,11 +163,11 @@ async function fixture(t: test.TestContext) {
       mimeType: 'image/png', dataBase64: syntheticPng.toString('base64')});
     // Public service results deliberately omit private managed paths; retain
     // only this fixture-owned row's actual path for exact backup verification.
-    sourceRelativePath = store.get('assets', source.id)!.relativePath;
+    sourceRelativePath = mediaReferenceSchema.parse((store.get('assets', source.id) as unknown as {reference:unknown}).reference).path;
     // Cover preparation is separate from draft work. Match the real imported
     // source so opening this project needs no background renderer; the worker's
     // full wire guard still forbids any media effect during draft requests.
-    writeProjectCover({cacheDir:created.store.cacheDir,source:{assetId:source.id,mimeType:'image/png',sourceSha256:store.get('assets',source.id)!.sha256},
+    writeProjectCover({cacheDir:created.store.cacheDir,source:{assetId:source.id,mimeType:'image/png',sourceFingerprint:mediaFingerprintToken(mediaReferenceSchema.parse((store.get('assets',source.id) as unknown as {reference:unknown}).reference))},
       jpeg:Buffer.from([0xff,0xd8,0xff,0xc0,0,17,8,0,1,0,1,3,1,0x22,0,2,0x11,1,3,0x11,1,0xff,0xda,0,12,3,1,0,2,0x11,3,0x11,0,0x3f,0,0x12,0x34,0xff,0xd9])});
     timeline = await services.call('timeline.get', {projectId: project.id});
     timeline = await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision,
@@ -400,6 +402,7 @@ test('a real cold schema-26 backup excludes populated local drafts and preserves
   // be copied into an old role, while the owned historical source still exists.
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-local-drafts-frozen26-')));
   t.after(() => rm(root, {recursive: true, force: true}));
+  const sourceRelativePath=`media/${seed.source.id}.png`;
   const database = path.join(root, 'workbench.sqlite'), frozen = new DatabaseSync(database);
   try {
     frozen.exec('PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON;');
@@ -407,7 +410,8 @@ test('a real cold schema-26 backup excludes populated local drafts and preserves
     for (const row of seed.read((db: DatabaseSync) => db.prepare('SELECT id,data FROM projects ORDER BY rowid').all()))
       frozen.prepare('INSERT INTO projects(id,data) VALUES(?,?)').run(row.id, row.data);
     const row = seed.read((db: DatabaseSync) => db.prepare('SELECT id,projectId,data FROM assets WHERE id=?').get(seed.source.id));
-    frozen.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(row!.id, row!.projectId, row!.data);
+    const {reference:_reference,referenceRevision:_revision,...asset}=JSON.parse(String(row!.data));
+    frozen.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(row!.id, row!.projectId, JSON.stringify({...asset,relativePath:sourceRelativePath}));
     assert.deepEqual(classifyCurrentWorkspaceSchema(frozen), {schemaVersion: 26, profile: 'ordinary'});
     assert.deepEqual(frozen.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row => row.version),
       [...Array.from({length: 24}, (_, index) => index + 1), 26]);
@@ -415,7 +419,7 @@ test('a real cold schema-26 backup excludes populated local drafts and preserves
     assert.equal(frozen.prepare('SELECT count(*) AS n FROM timeline_requests').get()!.n, 0);
   } finally { frozen.close(); }
   await chmod(database, 0o600);
-  const media = path.join(root, seed.sourceRelativePath);
+  const media = path.join(root, sourceRelativePath);
   await mkdir(path.dirname(media), {recursive: true, mode: 0o700});
   await copyFile(path.join(seed.projectRoot, seed.sourceRelativePath), media); await chmod(media, 0o600);
   const lease = acquireWorkspaceLock(root), reader = new DatabaseSync(database, {readOnly: true});
@@ -434,7 +438,7 @@ test('a real cold schema-26 backup excludes populated local drafts and preserves
     assert.equal(retained.targetStatus, 'missing'); assert.deepEqual(retained.draft, saved.draft); assert.equal(retained.revision, saved.revision);
     assert.deepEqual(classifyCurrentWorkspaceSchema(reader), {schemaVersion: 26, profile: 'ordinary'});
   } finally { reader.close(); assert.equal(lease.release(), true); }
-  const f = {root, sourceRelativePath: seed.sourceRelativePath};
+  const f = {root, sourceRelativePath};
   await assert.rejects(stat(path.join(f.root, 'server.lock')), {code: 'ENOENT'});
   const sidecar = path.join(f.root, 'local-drafts-v1.json');
   const before = {bytes: await readFile(sidecar), stat: await stat(sidecar), database: await readFile(path.join(f.root, 'workbench.sqlite'))};
@@ -443,7 +447,7 @@ test('a real cold schema-26 backup excludes populated local drafts and preserves
   const destination = path.join(backupRoot, 'capture');
   const result = await createWorkspaceBackup({source: f.root, destination});
   assert.equal(result.integrity, 'verified'); assert.equal(result.databaseSchemaVersion, 26);
-  assert.equal((result.inventory as {complete:boolean}).complete, true);
+  assert.equal((result.inventory as {complete:boolean}).complete, true, JSON.stringify(result.inventory));
   assert.deepEqual(await verifyWorkspaceBackup({directory: destination}), result);
   const manifestText = await readFile(path.join(destination, 'manifest.json'), 'utf8'), manifest = JSON.parse(manifestText);
   assert.equal(manifest.databaseSchemaVersion, 26);

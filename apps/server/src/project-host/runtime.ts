@@ -1,7 +1,7 @@
 import {handleMioRulesHttp} from '../mio-rules-http.ts';
 import {AppError, isTimelineRenderRecord} from '@mioon/contracts';
 import path from 'node:path';
-import {resolveProjectMediaFile} from '@mioon/business/project-media-storage';
+import {admitProjectAssetSource, registeredProjectAssetReferences, validatedProjectAssetSource, resolveProjectMediaFile} from '@mioon/business/project-media-storage';
 import {createOwnedMediaGraphReader} from '@mioon/business/inspection';
 import {readTimelineDeliveryDownload, readTimelineExportPreviewMedia, timelineDeliveryResponseHeaders, timelineExportPreviewResponseHeaders} from '@mioon/business/timeline-delivery-read';
 import {readOwnedTimelineAsset} from '@mioon/business/timeline-sources';
@@ -30,8 +30,10 @@ import {ensureProjectRow} from './project-initialization.ts';
 import {readWorkspaceInfo} from '../workspace-info.ts';
 import {mediaExecutable} from '@mioon/business/media-environment';
 import packageMetadata from '../../../../package.json' with {type: 'json'};
-import {ensurePrivateDirectory, PrivateStorageError} from '@mioon/contracts/private-storage';
 import {registerProjectTransactionObserver} from '@mioon/business/project-file/index';
+import {createAssetMediaHttp} from '../asset-media-http.ts';
+import {sameManagedFile} from '@mioon/business/managed-media';
+import {mediaUnavailableError} from '@mioon/contracts/media-reference-errors';
 import {createProjectCoverPublisher} from './cover-publisher.ts';
 
 export interface HostedProject extends ProjectHostRuntime {
@@ -44,7 +46,6 @@ export interface HostedProject extends ProjectHostRuntime {
 export async function composeHostedProject(context: ProjectHostContext, library: AppLibrary, app: ApplicationRuntime, options: ServerOptions,
   selfPort: () => number | undefined, listeningPort: () => number): Promise<HostedProject> {
   const {store, projectId} = context, root = store.projectDir;
-  ensurePrivateDirectory(path.join(root, 'media'), {create: true});
   ensureProjectRow(store, {name: library.registry.get(projectId)!.name});
   const releaseRowValidation = bindAgentTaskRowValidation(store, library);
   const shutdown = new AbortController();
@@ -116,6 +117,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     const {id: _id, name, lastOpenedAt: _opened, cover, ...rest} = value;
     return {name, summary: {...rest, cover: cover ? {assetId: cover.assetId, mimeType: cover.mimeType} : null}};
   };
+  const assetMediaHttp = createAssetMediaHttp({store, outsidePaths: library.outsidePaths, signal: shutdown.signal, assertMutationAllowed: () => project.services.assertMutationAllowed()});
   const cover = createProjectCoverPublisher({store, readCover:()=>readProjectCover(store,projectId), signal: shutdown.signal});
   const removeCoverObserver = registerProjectTransactionObserver(store.db, () => cover.refresh());
   cover.refresh();
@@ -131,6 +133,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     return result;
   };
   async function handle({req, res, url, route, signal}: ProjectRequest): Promise<boolean> {
+    if (await assetMediaHttp.handle(req, res, url, route)) return true;
     if (route.kind === 'other' && route.segments.join('/') === 'workspace-info' && req.method === 'GET') {
       json(res, 200, {ok: true, data: await readWorkspaceInfo({root, channel: options.localDraftChannel ?? 'web', version: packageMetadata.version,
         tools: {ffmpeg: mediaExecutable('ffmpeg'), ffprobe: mediaExecutable('ffprobe')}, signal})}); return true;
@@ -170,19 +173,22 @@ export async function composeHostedProject(context: ProjectHostContext, library:
       const delivery = named && !preview ? readTimelineDeliveryDownload(store.db, local, guards) : null;
       const asset = preview ? playback : named ? delivery : store.get('assets', route.assetId);
       if (!asset || field(asset, 'projectId') !== projectId) throw new AppError('NOT_FOUND', '素材不存在', 404);
-      const relativePath = field(asset, 'relativePath'), mimeType = field(asset, 'mimeType');
-      if (typeof relativePath !== 'string' || typeof mimeType !== 'string') throw new AppError('NOT_FOUND', '素材不存在', 404);
-      let resolved: ReturnType<typeof resolveProjectMediaFile>;
-      try {resolved = resolveProjectMediaFile(store, relativePath, {allowMissing: true});}
-      catch (error) {
-        if (error instanceof PrivateStorageError) throw new AppError('FILE_UNAVAILABLE', '本地文件不可用。', 404);
-        throw error;
-      }
-      if (!resolved.info) throw new AppError('FILE_UNAVAILABLE', '本地文件不可用。', 404);
-      const file = resolved.file;
-      const headers: Record<string, string> = {'Content-Type': mimeType, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=3600'};
+      const mimeType = field(asset, 'mimeType'), assetId = route.assetId;
+      if (typeof mimeType !== 'string') throw new AppError('NOT_FOUND', '素材不存在', 404);
+      const owned = store.get('assets', assetId);
+      if (!owned || typeof owned !== 'object') throw new AppError('NOT_FOUND', '素材不存在', 404);
+      const references = registeredProjectAssetReferences(root);
+      if (!references) throw new TypeError('The project media capability is unavailable');
+      const source = await admitProjectAssetSource(root, assetId, {signal});
+      const fence = (): void => {
+        signal.throwIfAborted();
+        const current = validatedProjectAssetSource(root, owned);
+        if (current.file !== source.file || !sameManagedFile(current.info, source.info)) throw mediaUnavailableError('MEDIA_CHANGED_DURING_READ', assetId);
+      };
+      const headers: Record<string, string> = {'Content-Type': mimeType, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, no-store'};
       if (!delivery && local.searchParams.has('download')) headers['Content-Disposition'] = `attachment; filename="mioon.${mimeType === 'video/mp4' ? 'mp4' : 'bin'}"`;
-      await files.send(req, res, {file, headers: playback ? () => timelineExportPreviewResponseHeaders(store.db, local, guards, playback) : delivery ? () => timelineDeliveryResponseHeaders(store.db, local, guards, delivery) : headers, ranges: true});
+      await files.send(req, res, {file: source.file, headers: playback ? () => timelineExportPreviewResponseHeaders(store.db, local, guards, playback) : delivery ? () => timelineDeliveryResponseHeaders(store.db, local, guards, delivery) : headers,
+        ranges: true, beforeEffect: fence, verifyMetadata: metadata => {if (!sameManagedFile(metadata, source.info)) throw mediaUnavailableError('MEDIA_CHANGED_DURING_READ', assetId);}});
       return true;
     }
     return false;

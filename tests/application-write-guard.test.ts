@@ -1,8 +1,9 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
-import {IncomingMessage, ServerResponse} from 'node:http';
+import {mkdtempSync, realpathSync, rmSync, mkdirSync, writeFileSync, readFileSync} from 'node:fs';
+import {createServer, IncomingMessage, ServerResponse} from 'node:http';
+import {once} from 'node:events';
 import {Socket} from 'node:net';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -22,6 +23,14 @@ import {saveBeforeBulkChangeInside} from '../packages/business/src/project-versi
 import {withTaskEffectOrigin} from '../packages/business/src/agent/task-effects-v2.ts';
 import {createMioProjectJournal} from '../packages/business/src/agent/mio-journal-factory.ts';
 import {mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
+import {createAssetMediaHttp} from '../apps/server/src/asset-media-http.ts';
+import {referenceForPublishedMedia} from '../packages/business/src/project-media-storage.ts';
+import {createProjectAssetReferenceServices} from '../packages/business/src/project-asset-references.ts';
+import {assetMediaPrepareResponseSchema} from '../packages/contracts/src/asset-media.ts';
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
+import {png} from './helpers/timeline-image-fixtures.ts';
+import {readProjectState, changeMarks} from './helpers/project-state.ts';
+import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 
 function patch(settings: WorkspaceSettings) {
   return {expectedRevision: settings.revision, liveGeneration: !settings.liveGeneration, automaticBackup: settings.automaticBackup,
@@ -91,6 +100,75 @@ async function versionFixture(t: TestContext) {
   return {root, library, libraries, store, owner, runtime, rpc, state, empty};
 }
 
+const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
+async function mediaFixture(t: TestContext) {
+  const f = fixture(t), projectId = f.store.projectId, assetId = randomUUID();
+  const bytes = mp4HeaderFixture('Write admission hashes bytes without running a decoder');
+  const source = path.join(f.root, 'source.mp4'), candidate = path.join(f.root, 'candidate.mp4');
+  writeFileSync(source, bytes); writeFileSync(candidate, bytes);
+  const prepared = await referenceForPublishedMedia(f.store, source);
+  f.store.tx(() => f.store.put('assets', {id: assetId, projectId, name: 'Sampled video', mimeType: 'video/mp4',
+    reference: {...prepared.reference, fullSha256: null}, referenceRevision: 1, sha256: null, sizeBytes: bytes.length}));
+  // Real external references make the two permission requests independently
+  // meaningful: confirm starts unconfirmed and revoke starts confirmed.
+  const external = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-app-write-external-'));
+  t.after(() => rmSync(external, {recursive: true, force: true}));
+  const directories = ['confirm', 'revoke', 'import'].map(name => path.join(external, name));
+  for (const directory of directories) {mkdirSync(directory); writeFileSync(path.join(directory, 'pixel.png'), png());}
+  const references = createProjectAssetReferenceServices(f.store, {outsidePaths: f.library.outsidePaths});
+  for (const directory of directories.slice(0, 2)) {
+    f.library.outsidePaths.confirm({projectId, directory, confirmedAt: '2026-11-03T00:00:00.000Z'});
+    const media = await references.referenceForImport(path.join(directory, 'pixel.png'));
+    f.store.tx(() => f.store.put('assets', {id: randomUUID(), projectId, name: 'External image', mimeType: 'image/png',
+      reference: media.reference, referenceRevision: 1, sha256: media.reference.fullSha256, sizeBytes: media.reference.sizeBytes}));
+  }
+  const adapter = createAssetMediaHttp({store: f.store, outsidePaths: f.library.outsidePaths,
+    assertMutationAllowed: () => f.services.assertMutationAllowed()});
+  const failures: unknown[] = [];
+  // Bearer/origin boundaries have their own HTTP tests. This loopback listener
+  // keeps real request/body/response handling while observing the exact guard error.
+  const server = createServer((req, res) => {
+    void (async () => {
+      try {assert.equal(await adapter.handle(req, res, new URL(req.url!, 'http://127.0.0.1'),
+        {kind: 'other', segments: ['asset-media', 'trusted']}), true);}
+      catch (error) {failures.push(error); res.writeHead(503, {'content-type': 'application/json'}); res.end('{"rejected":true}');}
+    })();
+  });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(async () => {server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));});
+  const address = server.address(); assert.ok(address && typeof address === 'object');
+  const trusted = async (operation: string, input: unknown) => {
+    const previous = failures.length;
+    const response = await fetch(`http://127.0.0.1:${address.port}/asset-media/trusted`, {method: 'POST',
+      headers: {'content-type': 'application/json', 'x-mioon-user-action': 'asset-media'}, body: JSON.stringify({operation, input}),
+      signal: AbortSignal.timeout(10_000)});
+    const body: unknown = await response.json();
+    return {status: response.status, body, error: failures.length > previous ? failures.at(-1) : undefined};
+  };
+  const locations = await trusted('asset.media.location.list', {projectId});
+  assert.equal(locations.status, 200); assert.ok(record(locations.body) && record(locations.body.data));
+  const entries: unknown = locations.body.data.locations; assert.ok(Array.isArray(entries));
+  const locationToken = (directory: string) => {
+    const entry: unknown = entries.find((value: unknown) => record(value) && value.directory === directory);
+    assert.ok(record(entry) && typeof entry.locationToken === 'string'); return entry.locationToken;
+  };
+  const confirmToken = locationToken(directories[0]!), revokeToken = locationToken(directories[1]!);
+  f.library.outsidePaths.revoke(projectId, directories[0]!);
+  const ordinary = [
+    {operation: 'asset.media.prepare', input: {projectId, assets: [{assetId, referenceRevision: 1}], purpose: 'timeline'}},
+    {operation: 'asset.media.relink.preview', input: {projectId, assetId, sourcePath: candidate, expectedReferenceRevision: 1}},
+  ];
+  const mutations = [
+    {operation: 'asset.import.path', input: {projectId, requestId: randomUUID(), sourcePath: path.join(directories[2]!, 'pixel.png')}},
+    {operation: 'asset.media.outside.confirm', input: {projectId, requestId: randomUUID(), locationToken: confirmToken}},
+    {operation: 'asset.media.outside.revoke', input: {projectId, requestId: randomUUID(), locationToken: revokeToken}},
+  ];
+  const databases = (library = f.library) => ({project: {state: readProjectState(f.store.db), marks: changeMarks(f.store.db)},
+    application: {state: readProjectState(library.db), marks: changeMarks(library.db)}});
+  const snapshot = async (library = f.library) => ({...databases(library), temp: await dataFileSnapshot(f.store.tempDir, [])});
+  return {...f, assetId, fullHash: prepared.sha256, ordinary, mutations, trusted, databases, snapshot};
+}
+
 test('project and configuration writes use application admission independently of the legacy backup port', async t => {
   const f = fixture(t), before = f.ports.configuration.get();
   let backupGuardCalls = 0;
@@ -141,6 +219,62 @@ test('a closed application capability cannot revive when a new owner opens the s
   assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n, before);
   assert.equal(replacement.documents.read('workspace-settings-v1.json'), null);
   assert.deepEqual(f.store.list('shots'), []);
+});
+
+test('ordinary media hash and file-only preview writes use application admission without the backup guard', async t => {
+  const f = await mediaFixture(t);
+  let backupGuardCalls = 0;
+  f.ports.backups.assertMutationAllowed = () => {backupGuardCalls++; throw new Error('Legacy backup admission must not own media writes');};
+  const prepare = f.ordinary[0]!;
+  const response = assetMediaPrepareResponseSchema.parse(await f.services.call(prepare.operation, prepare.input));
+  assert.equal(response.assets[0]!.sha256, f.fullHash);
+  assert.equal(response.assets[0]!.referenceRevision, 1);
+  const preview = f.ordinary[1]!, result = await f.services.call(preview.operation, preview.input);
+  assert.ok(record(result) && typeof result.previewToken === 'string' && record(result.chosen));
+  assert.equal(result.chosen.matches, true);
+  const token: unknown = JSON.parse(readFileSync(path.join(f.store.tempDir, 'asset-media', `${result.previewToken}.json`), 'utf8'));
+  assert.ok(record(token)); assert.equal(token.kind, 'relink');
+  assert.equal(backupGuardCalls, 0);
+});
+
+test('an aborted application owner refuses ordinary and trusted media writes without changing either library or temp files', async t => {
+  const f = await mediaFixture(t), before = await f.snapshot(), reason = new Error('application media owner stopped');
+  f.owner.abort(reason);
+  for (const {operation, input} of f.ordinary) {
+    await assert.rejects(f.services.call(operation, input), error => error === reason, operation);
+    assert.deepEqual(await f.snapshot(), before, `${operation} has no database or temp-file effect`);
+  }
+  for (const {operation, input} of f.mutations) {
+    const response = await f.trusted(operation, input);
+    assert.equal(response.status, 503, operation); assert.equal(response.error, reason, operation);
+    assert.deepEqual(await f.snapshot(), before, `${operation} has no database or temp-file effect`);
+  }
+  // The B1 connection is still live. Reading locations must not ask this
+  // stopped application owner for write admission; its display tokens are private.
+  const databases = f.databases(), response = await f.trusted('asset.media.location.list', {projectId: f.store.projectId});
+  assert.equal(response.status, 200); assert.equal(response.error, undefined);
+  assert.ok(record(response.body) && response.body.ok === true);
+  assert.deepEqual(f.databases(), databases, 'location observation changes neither project nor application rows or write marks');
+});
+
+test('a reopened B1 owner cannot authorize old ordinary or trusted media mutations', async t => {
+  const f = await mediaFixture(t);
+  f.library.close();
+  const replacement = openAppLibrary({dataDir: path.join(f.root, 'app')}); f.libraries.add(replacement);
+  assert.doesNotThrow(() => createProjectServiceApplication(replacement).assertMutationAllowed());
+  const invalid = {name: 'TypeError', message: 'Project services require a live application library owner'};
+  assert.throws(() => f.services.assertMutationAllowed(), invalid);
+  const before = await f.snapshot(replacement);
+  for (const {operation, input} of f.ordinary) {
+    await assert.rejects(f.services.call(operation, input), invalid, operation);
+    assert.deepEqual(await f.snapshot(replacement), before, `${operation} cannot borrow the new B1 owner`);
+  }
+  for (const {operation, input} of f.mutations) {
+    const response = await f.trusted(operation, input);
+    assert.equal(response.status, 503, operation); assert.ok(response.error instanceof TypeError, operation);
+    assert.equal(response.error.message, invalid.message, operation);
+    assert.deepEqual(await f.snapshot(replacement), before, `${operation} cannot write either real library or temp files`);
+  }
 });
 
 test('hosted manual versions use application admission while list and preview remain read-only', async t => {

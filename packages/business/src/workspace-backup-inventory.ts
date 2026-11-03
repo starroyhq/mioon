@@ -6,7 +6,7 @@ import path from 'node:path';
 import {lstatSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {imageSchemas,imageSnapshotSchema,imageReceiptSchema,canonicalImageInput,IMAGE_LIMITS,IMAGE_STATES} from '../../contracts/src/images.ts';
-import {frameSchemas,frameSnapshotSchema,frameReceiptSchema,FRAME_LIMITS,FRAME_STATES} from '../../contracts/src/frame-extraction.ts';
+import {frameSchemas,legacyWorkspaceFrameSnapshotSchema,frameReceiptSchema,FRAME_LIMITS,FRAME_STATES} from '../../contracts/src/frame-extraction.ts';
 import {isWorkspaceBackupPayloadPath} from '../../contracts/src/workspace-backup.ts';
 import {readPrivateFile,validateManagedDirectory} from '@mioon/contracts/private-storage';
 import {validateComfyReceiptOwnership} from './comfy/ownership.ts';
@@ -113,7 +113,9 @@ export async function buildWorkspaceInventory({db,source,signal,check,issues,dat
    const relative=`${family}-staging/${row.id}`,stage=add(`${relative}.png`,`${family}_stage`),manifest=add(`${relative}.json`,`${family}_stage`);
    if(row.state&&!['succeeded','failed','cancelled_before_dispatch','cancelled_before_start'].includes(row.state as string))issues.add('UNRESOLVED_TASK_RETAINED');
    const snapshot=decode(row.snapshot),input=decode(row.input),saved=decode(row.stagedReceipt);
-   const snapshotValid=(family==='image'?imageSnapshotSchema:frameSnapshotSchema).safeParse(snapshot).success;
+   // This inventory reads only the frozen workbench.sqlite layout. Current
+   // project-file snapshots are verified by their separate project kernel.
+   const snapshotValid=(family==='image'?imageSnapshotSchema:legacyWorkspaceFrameSnapshotSchema).safeParse(snapshot).success;
    const inputValid=(family==='image'?imageSchemas['image.generate']:frameSchemas['frame.extract']).safeParse(input).success;
    const generation=(value: GenerationInput)=>({name:value.name,prompt:value.prompt,providerId:value.providerId,model:value.model,options:value.options,...(value.purpose==='edit'?{purpose:value.purpose,inputImage:value.inputImage}:{})});
    const exactBinding=inputValid&&snapshotValid&&(family==='image'?canonicalImageInput(generation(input))===canonicalImageInput(generation(snapshot))&&(input.groupId===undefined||input.groupId===row.groupId):snapshot.source.assetId===input.sourceAssetId&&snapshot.source.sha256===input.sourceHash&&snapshot.requested.sourceFrame===input.sourceFrame);

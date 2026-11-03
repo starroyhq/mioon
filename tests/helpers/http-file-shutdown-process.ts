@@ -6,7 +6,7 @@ import type {Server as HttpServer, ServerResponse, ClientRequest, IncomingMessag
 import type {Socket} from 'node:net';
 import type {PathLike} from 'node:fs';
 import fs from 'node:fs';
-import {writeFile} from 'node:fs/promises';
+import {mkdir, writeFile} from 'node:fs/promises';
 import {syncBuiltinESMExports} from 'node:module';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -23,18 +23,27 @@ const token = 'synthetic-q4-shutdown-budget-token';
 const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 async function until(check: ()=>boolean, label: string): Promise<void> {
   const deadline = Date.now() + 3000;
-  while (!check()) {if (Date.now() >= deadline) throw Error(label); await delay(5);}
+  while (!check()) {if (Date.now() >= deadline) throw Error(`${label}: ${JSON.stringify(state)}`); await delay(5);}
 }
 let release!: ()=>void;
 const pending = new Promise<void>(resolve => {release = resolve;});
 const state = {intercepted: 0, opened: 0, closed: 0, streams: 0, endCalls: 0};
-interface FixtureTarget {readonly id: string; readonly file: string; readonly empty: boolean}
+interface FixtureTarget {readonly id: string; readonly file: string; readonly empty: boolean; readonly route: string}
 const {store, projectId} = createServerProject(dataRoot, {name: 'Synthetic nonsettling HTTP filesystem'}), targets: FixtureTarget[] = [];
+const distDir = path.join(dataRoot, 'synthetic-web');
+await mkdir(distDir, {mode: 0o700});
 for (const empty of [false, true]) {
-  const id = randomUUID(), file = path.join(store.root, 'media', `${id}.bin`);
-  await writeFile(file, empty ? '' : 'synthetic-local-bytes', {mode: 0o600});
-  store.put('assets', {id, projectId, name: 'Synthetic transport', mimeType: 'application/octet-stream', relativePath: `media/${id}.bin`});
-  targets.push({id, file, empty});
+  const id = randomUUID(), file = empty ? path.join(distDir, `${id}.bin`) : path.join(store.root, 'media', `${id}.wav`);
+  // The asset route admits real media before file-response owns a descriptor.
+  // An empty response remains a real static-file request: zero bytes cannot
+  // pass the asset route's mandatory media header admission.
+  const bytes = Buffer.alloc(46);
+  bytes.write('RIFF'); bytes.writeUInt32LE(38, 4); bytes.write('WAVEfmt ', 8); bytes.writeUInt32LE(16, 16);
+  bytes.writeUInt16LE(1, 20); bytes.writeUInt16LE(1, 22); bytes.writeUInt32LE(8000, 24); bytes.writeUInt32LE(16000, 28);
+  bytes.writeUInt16LE(2, 32); bytes.writeUInt16LE(16, 34); bytes.write('data', 36); bytes.writeUInt32LE(2, 40);
+  await writeFile(file, empty ? Buffer.alloc(0) : bytes, {mode: 0o600});
+  if (!empty) store.put('assets', {id, projectId, name: 'Synthetic transport', mimeType: 'audio/wav', relativePath: `media/${id}.wav`});
+  targets.push({id, file, empty, route: empty ? `/${id}.bin` : projectMediaPath(projectId, id)});
 }
 store.close();
 const names = new Set(targets.map((item: FixtureTarget) => item.file));
@@ -91,7 +100,7 @@ let tracing = false, activeTimerId: number|null = null;
 } as never;
 let service: Awaited<ReturnType<typeof startServer>>|undefined, closing: Promise<unknown>|undefined, report: Record<string, unknown>|undefined;
 (fs.promises as unknown as Record<string, unknown>).open = async function(this: unknown, file: PathLike, ...args: unknown[]) {
-  if (!names.has(String(file))) return (originalOpen as unknown as (...values: unknown[])=>Promise<unknown>).call(this, file, ...args);
+  if (!names.has(String(file)) || !/[\\/]apps[\\/]server[\\/]src[\\/]file-response\.ts:/.test(new Error().stack ?? '')) return (originalOpen as unknown as (...values: unknown[])=>Promise<unknown>).call(this, file, ...args);
   state.intercepted++;
   if (mode === 'open') await pending;
   const handle = await (originalOpen as unknown as (...values: unknown[])=>Promise<{stat(): Promise<Stats>; createReadStream(options?: unknown): unknown; close(): Promise<void>}>).call(this, file, ...args); state.opened++;
@@ -104,8 +113,10 @@ let service: Awaited<ReturnType<typeof startServer>>|undefined, closing: Promise
 syncBuiltinESMExports();
 if (headerMode) (http.ServerResponse.prototype as unknown as Record<string, unknown>).end = function(this: ServerResponse, ...args: unknown[]) {
   const requestUrl = this.req.url;
+  // The project host rewrites the authenticated media request to its local
+  // handler pathname; static requests keep their public path unchanged.
   if ((this.req.method === 'HEAD' && requestUrl === `/media/${targets[0]!.id}`) ||
-      (this.req.method === 'GET' && requestUrl === `/media/${targets[1]!.id}`)) {
+      (this.req.method === 'GET' && requestUrl === targets[1]!.route)) {
     // An actual ServerResponse that never flushes end(). File descriptors must
     // nevertheless close; the ordinary server socket drain owns these peers.
     state.endCalls++;
@@ -121,9 +132,9 @@ if (headerMode) (http.ServerResponse.prototype as unknown as Record<string, unkn
 } as never;
 const requests: ClientRequest[] = [];
 try {
-  service = await startServer({dataDir: dataRoot, port: 0, token});
+  service = await startServer({dataDir: dataRoot, distDir, port: 0, token});
   function request(target: FixtureTarget, method = 'GET'): ClientRequest {
-    const req = http.get(service!.url + projectMediaPath(projectId, target.id), {method, agent: false, headers: {authorization: `Bearer ${token}`}}, (res: IncomingMessage) => {
+    const req = http.get(service!.url + target.route, {method, agent: false, headers: {authorization: `Bearer ${token}`}}, (res: IncomingMessage) => {
       res.on('error', () => {}); res.resume();
     });
     req.on('error', () => {}); requests.push(req); return req;
@@ -143,7 +154,7 @@ try {
     for (let index = 0; index < FILE_RESPONSE_LIMITS.active; index++) request(targets[0]);
     await until(() => state.intercepted === FILE_RESPONSE_LIMITS.active, 'Synthetic open seam was not reached');
     requests[0]?.destroy(); await delay(30);
-    const busy = await fetch(service!.url + projectMediaPath(projectId, targets[0]!.id), {
+    const busy = await fetch(service!.url + targets[0]!.route, {
       headers: {authorization: `Bearer ${token}`, connection: 'close'}, signal: AbortSignal.timeout(1000)});
     const busyBody = await busy.json() as {error?: {code?: string}};
     if (busy.status !== 503 || busyBody.error?.code !== 'FILE_RESPONSE_BUSY') throw Error('Pending descriptor slot was released before observation');

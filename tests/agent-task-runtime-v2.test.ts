@@ -2,6 +2,7 @@ import {beginFixtureModelStep,beginFixtureToolStep} from './helpers/mio-model-fi
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import test from 'node:test';
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,realpathSync,rmSync,readFileSync} from 'node:fs';
@@ -416,10 +417,10 @@ test('whole undo retains the generated shot owner while reverting earlier edits 
   yield {type:'done',output:output('responses',next)};
  },{loadGroups:['canvas','editing','exports','video']});
  const sent=await f.send(),worker=startWorker(f.store,f.services,providers);let done:AgentTaskSnapshot;
- try{done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.backgroundPending,false);}finally{await worker.stop();}
+ try{done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed',JSON.stringify({error:done.run.error,steps:done.steps.filter(step=>step.error),jobs:f.store.list('jobs',f.projectId).map(value=>object(value).error)}));assert.equal(done.backgroundPending,false);}finally{await worker.stop();}
  const before=f.runtime.journal.snapshot(sent.run.id),creation=before.changes.find(change=>change.operation==='shot.create')!;assert.ok(creation);const shotId=String(created().id);
  const products=Object.fromEntries(['jobs','versions','assets','exports'].map(table=>[table,structuredClone(f.store.list(table,f.projectId))]));
- const hashes=()=>f.store.list('assets',f.projectId).map(value=>{const asset=object(value);return createHash('sha256').update(readFileSync(join(f.root,String(asset.relativePath)))).digest('hex');}),beforeHashes=hashes();
+ const hashes=()=>f.store.list('assets',f.projectId).map(value=>{const asset=object(value);return createHash('sha256').update(readFileSync(mediaFixturePath(f.root,asset))).digest('hex');}),beforeHashes=hashes();
  const control={requestId:randomUUID(),expectedRevision:done.run.revision,action:'undo_all'},undone=await f.runtime.action(f.projectId,sent.run.id,control),retained=f.runtime.journal.snapshot(sent.run.id).changes.find(change=>change.id===creation.id)!;
  assert.equal(undone.run.status,'reverted');assert.equal(object(f.store.get('projects',f.projectId)).name,'Runtime project');assert.equal(object(f.store.get('shots',shotId)).selectedVersionId,null);
  const savedTimeline=object(await f.services.call('timeline.inspect',{projectId:f.projectId}));assert.deepEqual(savedTimeline.clips,[]);

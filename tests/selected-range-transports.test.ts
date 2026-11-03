@@ -1,3 +1,4 @@
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {PipedProcess,SqlRows,ProcessOutcome,BackendReady,IpcMessage,WireMessage,WireData,WireEnvelope,WireCall} from './helpers/strict-timeline-wire-response-types.ts';
 import type {SchemaNode,TestTool,TestCatalog,TestOperationDefinition,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
@@ -229,7 +230,7 @@ test('actual CLI and official MCP reject removed or changed range acknowledgemen
 });
 
 test('selected-range preflight still checks a missing off-range source across actual HTTP, CLI and MCP', {timeout: 45_000}, async t => {
-  const f = (await selectedRangeFixture(t) as unknown as SelectedRangeFixture), wire = await transports(t, f), source = path.join(f.root, f.sources[1].relativePath), bytes = await readFile(source);
+  const f = (await selectedRangeFixture(t) as unknown as SelectedRangeFixture), wire = await transports(t, f), source = mediaFixturePath(f.root,f.sources[1]), bytes = await readFile(source);
   await unlink(source);
   try {
     const before = await f.checkpoint();

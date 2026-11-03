@@ -28,7 +28,7 @@ export function suggestedExportPreviewRange(durationFrames: number, playhead = 0
 // preferences or a mutable "latest export" selection. Reordering assets is inert.
 export function exportPreviewContextKey(context: Context, timeline: SavedTimeline | null, assets: Record<string, unknown>[] = []) {
   const wanted = new Set(timeline?.clips?.map(clip => clip.assetId) || []);
-  const sources = assets.filter(asset => typeof asset.id === 'string' && wanted.has(asset.id)).map(asset => [asset.id, asset.sha256, asset.sizeBytes, asset.mimeType, asset.duration, asset.width, asset.height, asset.hasAudio, asset.relativePath, asset.url, asset.provenance]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  const sources = assets.filter(asset => typeof asset.id === 'string' && wanted.has(asset.id)).map(asset => [asset.id, asset.sha256, asset.sizeBytes, asset.mimeType, asset.duration, asset.width, asset.height, asset.hasAudio, asset.referenceRevision, asset.fingerprint, asset.provenance]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
   return JSON.stringify([context.scope, context.projectId, context.timelineId, context.revision, context.exportSettings, context.settingsVersion, context.exportRange, context.rangeVersion, timeline, sources]);
 }
 export function exportPreviewResult(attempt: PreviewAttempt | null, exports: unknown[], { scope, contextKey, connected, heldExportIds = [], isRenderRecord }: { scope: string; contextKey: string; connected: boolean; heldExportIds?: string[]; isRenderRecord: (value: unknown, input: unknown) => boolean }): PreviewResult {

@@ -1,3 +1,4 @@
+import {writeStubMediaFixture} from './helpers/media-reference-fixtures.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 import type {ServiceResponse as FixtureServiceResult, TypedStore as FixtureStore, TypedServices as FixtureServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
@@ -30,7 +31,7 @@ async function fixture(t: test.TestContext) {
     asset(mimeType: string|undefined = 'audio/wav', extra: {hasAudio?: boolean|null|undefined;} = {}) {
       const id = randomUUID();
       return store.put('assets', {id, projectId: f.projectId, name: 'Synthetic source', mimeType, duration: 600,
-        width: 720, height: 1280, hasAudio: !mimeType.startsWith('image/'), sha256: 'a'.repeat(64), relativePath: `media/${id}.fixture`, ...extra});
+        width: 720, height: 1280, hasAudio: !mimeType.startsWith('image/'), ...writeStubMediaFixture(root,id,mimeType), ...extra});
     },
     state() { return Object.fromEntries(['timelines', 'timeline_history', 'timeline_history_cursors', 'timeline_requests'].map(table => [table, store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])); },
     outside() { return Object.fromEntries(outsideTables.map(table => [table, clone(store.list(table))])); },

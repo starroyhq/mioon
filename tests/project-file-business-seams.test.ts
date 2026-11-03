@@ -45,7 +45,7 @@ function application(root: string) {
   mkdirSync(root, {mode: 0o700});
   const library = openAppLibrary({dataDir: root});
   const live = createProjectServiceApplication(library, undefined, {});
-  return {ports: {configuration: live.configuration, backups, assertMutationAllowed: live.assertMutationAllowed}, calls, close: () => library.close()};
+  return {ports: {configuration: live.configuration, outsidePaths: live.outsidePaths, backups, assertMutationAllowed: live.assertMutationAllowed}, calls, close: () => library.close()};
 }
 async function fixture(t: TestContext) {
   const root = scratch(t), store = openProjectStore(path.join(root, 'project'));

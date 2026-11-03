@@ -1,7 +1,38 @@
-import type { MessageCatalog } from '../types.ts';
+import type {MessageCatalog } from '../types.ts';
 
 /** Localized operation prose only; operation names, schemas and effect contracts stay unchanged. */
 export const operationMessages = {
+  "operation.asset.media.status.list": {
+    "zh-Hans": "读取有界素材引用状态，不读取未确认位置的媒体内容",
+    "zh-Hant": "讀取有限素材引用狀態，不讀取未確認位置的媒體內容",
+    "en": "Read bounded asset reference status without reading media in unconfirmed locations",
+    "ja": "未確認の場所のメディアを読み取らず、素材参照の状態を上限付きで確認します"
+},
+  "operation.asset.media.prepare": {
+    "zh-Hans": "准备完整素材哈希并按引用修订保存，不执行生成",
+    "zh-Hant": "準備完整素材雜湊並依引用修訂儲存，不執行生成",
+    "en": "Prepare full media hashes and save under reference revision checks; never generate",
+    "ja": "参照リビジョンを確認して完全ハッシュを準備・保存します。生成は実行しません"
+},
+  "operation.asset.media.relink.preview": {
+    "zh-Hans": "检查重新指向候选，不修改素材或确认目录",
+    "zh-Hant": "檢查重新指向候選，不修改素材或確認目錄",
+    "en": "Inspect relink candidates without changing assets or confirming directories",
+    "ja": "素材の変更やディレクトリの確認を行わず、再リンク候補を検証します"
+},
+  "operation.asset.media.relink.apply": {
+    "zh-Hans": "按预览和引用修订重新指向同内容素材，不改不可变历史",
+    "zh-Hant": "依預覽和引用修訂重新指向同內容素材，不改不可變歷史",
+    "en": "Relink matching full content under the preview and reference revision; preserve immutable history",
+    "ja": "プレビューと参照リビジョンを確認し、同じ内容へ再リンクします。不変の履歴は保持します"
+},
+  "operation.asset.media.acceptChanged": {
+    "zh-Hans": "为已变化内容创建新素材身份，保留旧素材和历史",
+    "zh-Hant": "為已變更內容建立新素材身分，保留舊素材與歷史",
+    "en": "Create a new asset identity for changed content, preserving the old asset and history",
+    "ja": "変更後の内容に新しい素材IDを作成し、元の素材と履歴を保持します"
+},
+
   "operation.project.version.list": {
     "zh-Hans": "分页列出本机项目版本，不恢复内容或任务",
     "zh-Hant": "分頁列出本機專案版本，不復原內容或任務",
@@ -663,10 +694,10 @@ export const operationMessages = {
     "ja": "プロジェクト全体、キャンバス、タスクを読み取ります。旧プロジェクトの初回読み取りでは空のタイムラインが作成される場合があります"
   },
   "operation.asset.import": {
-    "zh-Hans": "导入授权的本地图片、视频或音频字节（base64，最大30MiB）",
-    "zh-Hant": "匯入授權的本機圖片、影片或音訊位元組（base64，最大30MiB）",
-    "en": "Import authorized local image, video, or audio bytes (base64, maximum 30MiB)",
-    "ja": "許可されたローカルの画像、動画、音声のバイト列をインポートします（base64、最大30MiB）"
+    "zh-Hans": "引用已授权的本机媒体路径，或上传最多30MiB媒体字节",
+    "zh-Hant": "引用已授權的本機媒體路徑，或上傳最多30MiB媒體位元組",
+    "en": "Reference an authorized local media path, or upload at most 30 MiB of media bytes",
+    "ja": "許可されたローカルメディアのパスを参照するか、最大30 MiBのメディアをアップロードします"
   },
   "operation.asset.list": {
     "zh-Hans": "读取项目素材",

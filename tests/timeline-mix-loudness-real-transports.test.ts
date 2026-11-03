@@ -1,3 +1,4 @@
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import {projectDirFor} from './helpers/project-database.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
@@ -98,7 +99,7 @@ test('real saved full mix matches across HTTP, CLI and official MCP without rows
   assert.ok(definition.description.includes('完整测量编码前浮点混音'));
   const savedSource=inspect(project.id,db=>JSON.parse((((db.prepare('SELECT data FROM assets WHERE id=?').get(source.id))!.data) as unknown as Parameters<NonNullable<(typeof JSON)["parse"]>>[0])));
   assert.equal(savedSource.sha256,sha(bytes));assert.equal(savedSource.sizeBytes,bytes.length);
-  assert.equal(sha(await readFile(path.join(projectDirFor(root,project.id),savedSource.relativePath))),sha(bytes));
+  assert.equal(sha(await readFile(mediaFixturePath(projectDirFor(root,project.id),savedSource))),sha(bytes));
   const rows=()=>inspect(project.id,db=>readProjectState(db).tables);
   const appState=()=>inspectApplication(db=>({state:readProjectState(db),version:changeMarks(db)}));
   const before={rows:rows(),version:inspect(project.id,changeMarks),application:appState(),files:await manifest(root)};

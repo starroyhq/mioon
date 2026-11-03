@@ -79,10 +79,11 @@ async function fixture(t: TestContext, {durationFrames = 60, sourceInFrame = 17,
   const project = await services.call('project.create', {name: 'Owned saved sound'}), foreign = await foreignProject(t, 'Other project');
   let timeline = await services.call('timeline.get', {projectId: project.id});
   const id = randomUUID(), bytes = Buffer.alloc(96 * 1024, 7);
+  bytes.write('RIFF'); bytes.writeUInt32LE(bytes.length-8,4); bytes.write('WAVE',8);
   const asset = {id, projectId: project.id, name: 'Owned sound.wav', mimeType: 'audio/wav', relativePath: `media/${id}.wav`,
     sha256: sha(bytes), sizeBytes: bytes.length, duration: 60, hasAudio: true, hasVideo: false, width: 0, height: 0,
     url: `/media/${id}`, createdAt: new Date().toISOString()};
-  await writeFile(path.join(root, asset.relativePath), bytes, {mode: 0o600}); store.put('assets', asset);
+  await writeFile(path.join(root, asset.relativePath), bytes, {mode: 0o600}); store.put('assets', asset); Object.assign(asset,store.get('assets',id));
   timeline = await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
     trackId: timeline.tracks.find(track => track.kind === 'audio')!.id, assetId: id, startFrame: clipStartFrame, sourceInFrame,
     durationFrames, gain: 0.75, fadeInFrames: 10, fadeOutFrames: 10});
@@ -103,7 +104,7 @@ async function fixture(t: TestContext, {durationFrames = 60, sourceInFrame = 17,
   f.consume = async (options = {}) => audio.consumeSource(f.sourceInput(await f.plan()), {consume: async value => value, ...options});
   return f;
 }
-const replace = (f: {store: ReturnType<typeof openStore>}, table: string, value: {id: string; [key: string]: unknown}) => f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(value), value.id);
+const replace = (f: {store: ReturnType<typeof openStore>}, table: string, value: {id: string; [key: string]: unknown}) => {const saved={...value};if(table==='assets'&&'reference' in saved)delete saved.relativePath;return f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(saved), value.id);};
 function replaceTimelineRawFixture(f: {store: ReturnType<typeof openStore>; timeline: {id: string}},raw: string){
   const db=f.store.db,names=['agent_target_timeline_update_v2','agent_target_timeline_timeline_clip_update_v2','agent_target_timeline_timeline_track_update_v2','agent_target_timeline_timeline_subtitle_update_v2'];
   const current=()=>schemaObjects(db).filter(({name})=>names.includes(name)).sort(byName).map(({schema,name,sql})=>({schema,name,sql}));
@@ -291,9 +292,9 @@ test('all source memory/hash admissions are counted before any byte read, even w
   // One exact source reused across voices has one retained AudioBuffer payload.
   replace(f, 'timelines', {...base, tracks, clips: clips.map(clip => ({...clip, sourceInFrame: 0}))});
   const deduped = await f.plan(); assert.equal(deduped.sources.length, 1); assert.equal(deduped.voices.length, 7); assert.equal(deduped.memory.retainedPcmBytes, 7_680_000);
-  replace(f, 'timelines', base); replace(f, 'assets', {...f.asset, sizeBytes: AUDIO_PREVIEW_LIMITS.sourceBytes + 1});
+  replace(f, 'timelines', base); replace(f, 'assets', {...f.asset, sizeBytes: AUDIO_PREVIEW_LIMITS.sourceBytes + 1,reference:{...(f.store.get('assets',f.asset.id) as unknown as {reference:object}).reference,sizeBytes:AUDIO_PREVIEW_LIMITS.sourceBytes+1}});
   await assert.rejects(f.plan(), {code: 'AUDIO_PREVIEW_SOURCE_LIMIT'}); assert.equal(reads, 0);
-  replace(f, 'assets', {...f.asset, sizeBytes: 300 * 1024 * 1024});
+  replace(f, 'assets', {...f.asset, sizeBytes: 300 * 1024 * 1024,reference:{...(f.store.get('assets',f.asset.id) as unknown as {reference:object}).reference,sizeBytes:300*1024*1024}});
   replace(f, 'timelines', {...base, tracks: tracks.slice(0, 2), clips: clips.slice(0, 2)});
   await assert.rejects(f.plan(), {code: 'AUDIO_PREVIEW_HASH_LIMIT'}); assert.equal(reads, 0);
 });

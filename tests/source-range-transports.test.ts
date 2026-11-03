@@ -282,7 +282,7 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
         assert.equal(definition.inputSchema.properties.requestId.maxLength, 200);
       }
     }
-    assert.deepEqual(optionalRequestIdOperations(catalog), oldMutations.sort());
+    assert.deepEqual(optionalRequestIdOperations(catalog), ['asset.import',...oldMutations].sort(),'only S1 public upload joins the six original optional mutation keys');
     assert.deepEqual(READ_TOOL_DEFINITIONS.map(tool => tool.name).sort(), ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect'].sort());
     assert.deepEqual(EDIT_TOOL_DEFINITIONS.map(tool => tool.name), ['mioon_propose_shot_update']);
     await backend.unchanged(before, 'discovery');

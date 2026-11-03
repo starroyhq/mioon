@@ -9,7 +9,7 @@ import type {TypedClient} from './strict-service-responses.ts';
  * baseline. Later refreshes of this unchanged source reuse the same cache pair. */
 export async function waitForProjectCover({client,url,token,projectId,cacheDir,source}: {
   client:TypedClient;url:string;token:string;projectId:string;cacheDir:string;
-  source:{assetId:string;mimeType:NonNullable<ProjectSummary['cover']>['mimeType'];sourceSha256:string};
+  source:{assetId:string;mimeType:NonNullable<ProjectSummary['cover']>['mimeType'];sourceFingerprint:string};
 }):Promise<void>{
   const summary=(await client.rpc('project.summary.list',{})).find(summary=>summary.id===projectId);
   assert.deepEqual(summary?.cover,{assetId:source.assetId,mimeType:source.mimeType,url:`/api/project-covers/${projectId}`});
@@ -24,5 +24,5 @@ export async function waitForProjectCover({client,url,token,projectId,cacheDir,s
   assert.equal(status,200,'fixture cover publication did not finish before the observation baseline');
   assert.ok(jpeg&&jpeg.length>0);
   assert.deepEqual(JSON.parse(await readFile(path.join(cacheDir,'cover.json'),'utf8')),
-    {version:1,...source,jpegSha256:createHash('sha256').update(jpeg).digest('hex')});
+    {version:2,...source,jpegSha256:createHash('sha256').update(jpeg).digest('hex')});
 }

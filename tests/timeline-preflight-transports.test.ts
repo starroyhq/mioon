@@ -1,3 +1,5 @@
+import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import {writeProjectCover} from '../apps/server/src/project-host/covers.ts';
 import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
@@ -134,7 +136,7 @@ async function fixture(t: test.TestContext) {
     seed.put('assets', source(audioId, wav, wavPath, {mimeType: 'audio/wav', duration: 2, width: 0, height: 0, hasVideo: false, hasAudio: true}));
     seed.put('assets', source(imageId, png, pngPath, {mimeType: 'image/png', duration: 0, width: 16, height: 16, hasVideo: true, hasAudio: false}));
     // Seed the source-bound cover independently; preflight's guard still forbids FFmpeg.
-    writeProjectCover({cacheDir:ownedSeed.cacheDir,source:{assetId:imageId,mimeType:'image/png',sourceSha256:sha256(png)},
+    writeProjectCover({cacheDir:ownedSeed.cacheDir,source:{assetId:imageId,mimeType:'image/png',sourceFingerprint:mediaFingerprintToken(mediaReferenceSchema.parse((seed.get('assets',imageId) as unknown as {reference:unknown}).reference))},
       jpeg:Buffer.from([0xff,0xd8,0xff,0xc0,0,17,8,0,1,0,1,3,1,0x22,0,2,0x11,1,3,0x11,1,0xff,0xda,0,12,3,1,0,2,0x11,3,0x11,0,0x3f,0,0x12,0x34,0xff,0xd9])});
     const clip = (id: string, trackId: string, assetId: string) => ({id, trackId, assetId, name: 'Synthetic fixture clip', startFrame: 0, durationFrames: 60,
       sourceInFrame: 0, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1});

@@ -1,4 +1,5 @@
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import {png} from './timeline-image-fixtures.ts';
 import {mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -42,8 +43,8 @@ export async function shutdownFixture(t: unknown,methods: Record<string, unknown
  const project=await services.call('project.create',{name:'Synthetic shutdown fixture'}) as {id: string};
  const assets: {id: string; projectId: string; mimeType: string; relativePath: string; sha256: string}[]=[];
  if(reference) {
-  const asset={id:randomUUID(),projectId:project.id,mimeType:'image/png',relativePath:'media/inert-reference.png',sha256:'a'.repeat(64)};
-  await writeFile(path.join(root,asset.relativePath),'Inert bytes; never decoded or transmitted.');store.put('assets',asset);assets.push(asset);
+  const bytes=png({width:360,height:640}),asset={id:randomUUID(),projectId:project.id,mimeType:'image/png',relativePath:'media/inert-reference.png',sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,width:360,height:640};
+  await writeFile(path.join(root,asset.relativePath),bytes);store.put('assets',asset);assets.push(asset);
  }
  const shot=await services.call('shot.create',{projectId:project.id,title:'Shutdown fixture',referenceAssetIds:assets.map(a=>a.id)}) as {id: string; revision: number};
  const job=await services.call('generation.submit',{shotId:shot.id,expectedRevision:shot.revision,providerId:'mock',requestId:randomUUID()}) as {id: string};

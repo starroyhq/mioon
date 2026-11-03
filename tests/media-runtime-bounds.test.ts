@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { execFile, ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, rm, stat, symlink } from 'node:fs/promises';
+import { mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -82,6 +83,34 @@ test('spawn and exit errors are safe and leave no active records', async () => {
     await assert.rejects(run(process.execPath, [fixture, 'fail']), rejected('MEDIA_EXIT_FAILED'));
     assert.deepEqual(events.map(event => event.type), ['started', 'exited']);
     assert.deepEqual((await terminateMediaProcesses() as unknown), []);
+  } finally { off(); }
+});
+
+test('nonzero tools recheck the source before classifying failure and preserve exact fence sentinels', async t => {
+  const root = await sandbox(t), file = path.join(root, 'source');
+  for (const mode of ['unchanged', 'changed', 'owner-sentinel'] as const) await t.test(mode, async () => {
+    await writeFile(file, 'original');
+    const sentinel = Object.assign(new Error('Source changed while reading.'), { code: mode === 'owner-sentinel' ? 'OWNER_FENCE_CLOSED' : 'MEDIA_CHANGED_DURING_READ' });
+    const body = `${mode === 'unchanged' ? '' : `require('node:fs').writeFileSync(${JSON.stringify(file)},'changed');`}process.stderr.write('synthetic-private-failure');process.exitCode=9;`;
+    let checks = 0;
+    await assert.rejects(run(process.execPath, ['--input-type=commonjs', '-e', body], { beforeEffect() {
+      checks++; if (readFileSync(file, 'utf8') !== 'original') throw sentinel;
+    } }), error => mode === 'unchanged' ? rejected('MEDIA_EXIT_FAILED')(error) : error === sentinel);
+    assert.equal(checks, 2, 'the real failed child is fenced before spawn and after close');
+    assert.equal(readFileSync(file, 'utf8'), mode === 'unchanged' ? 'original' : 'changed');
+    assert.deepEqual(await terminateMediaProcesses(), []);
+  });
+});
+
+test('cancellation retains priority over a late source fence after a nonzero tool exit', async t => {
+  const root = await sandbox(t), file = path.join(root, 'cancelled-source'); await writeFile(file, 'original');
+  const controller = new AbortController(), sentinel = Object.assign(new Error('Late source changed.'), { code: 'MEDIA_CHANGED_DURING_READ' });
+  const off = onMediaProcess(event => { if (event.type === 'exited') controller.abort(); });
+  try {
+    await assert.rejects(run(process.execPath, ['--input-type=commonjs', '-e', `require('node:fs').writeFileSync(${JSON.stringify(file)},'changed');process.exitCode=9;`], {
+      signal: controller.signal, beforeEffect() { if (readFileSync(file, 'utf8') !== 'original') throw sentinel; },
+    }), rejected('MEDIA_CANCELLED'));
+    assert.equal(controller.signal.aborted, true); assert.equal(readFileSync(file, 'utf8'), 'changed');
   } finally { off(); }
 });
 
@@ -174,11 +203,15 @@ test('legacy global shutdown reports unconfirmed reap to a running caller withou
   const events: (MediaProcessEvent)[] = [], off = onMediaProcess(event => events.push(event));
   const intercept = t.mock.method(ChildProcess.prototype, 'kill', function (this: ChildProcess) { owned = this; return false; });
   try {
-    const result = run(process.execPath, [fixture, 'wait', marker]);
+    let lateSourceChecks = 0;
+    const result = run(process.execPath, [fixture, 'wait', marker], {beforeEffect() {
+      if (existsSync(marker)) {lateSourceChecks++; throw Object.assign(new Error('Late source changed.'), {code: 'MEDIA_CHANGED_DURING_READ'});}
+    }});
     const rejected = assert.rejects(result, error => (error as Failure).code === 'MEDIA_CANCELLED' && (error as Failure).terminationUnconfirmed === true);
     await ready(marker);
     assert.deepEqual(await terminateMediaProcesses(), [{ status: 'unconfirmed', forced: true }]);
     await rejected;
+    assert.equal(lateSourceChecks, 0, 'an unconfirmed reap must retain its original error without invoking the source fence');
     assert.deepEqual(events.map(event => event.type), ['started']);
     intercept.mock.restore();
     const closed = once(owned, 'close'); originalKill.call(owned, 'SIGKILL'); await closed;

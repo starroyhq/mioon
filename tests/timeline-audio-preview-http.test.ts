@@ -46,7 +46,7 @@ async function fixture(t: TestContext) {
     tracks: [{id: trackId, kind: 'audio', orderIndex: 0, hidden: false, muted: false}],
     clips: [{id: clipId, trackId, assetId, startFrame: 0, durationFrames: 2, sourceInFrame: 0, gain: 1}]},
   assets: [{id: assetId, projectId, sha256: sha('synthetic source identity'), sizeBytes: 1024,
-    mimeType: 'audio/wav', duration: 1, hasAudio: true, relativePath: 'synthetic.wav'}]};
+    mimeType: 'audio/wav', duration: 1, hasAudio: true, relativePath: 'media/synthetic.wav'}]};
   const identity = {dev: 1, ino: 2, size: 1024, mtimeMs: 3, ctimeMs: 4}, pcm = Buffer.alloc(2 * 1600 * 8);
   for (let sample = 0; sample < 3200; sample++) {pcm.writeFloatLE(0.25, sample * 8); pcm.writeFloatLE(-0.5, sample * 8 + 4);}
   let decodes = 0;

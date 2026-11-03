@@ -1,3 +1,5 @@
+import {referenceTestAsset} from '../packages/business/src/project-file/test-asset-fixture.ts';
+import {publicMediaFingerprint} from '../packages/contracts/src/asset-media.ts';
 import * as storage from '@mioon/contracts/private-storage';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
@@ -103,16 +105,17 @@ test('native Windows LUT recovery records replace by rename, keep their full ide
   assert.ok(dacls([file]).entries[0]!.sids.includes(EVERYONE), 'the foreign grant is not repaired');
 });
 
-test('native Windows export open and reveal hash managed bytes through the ACL helper handle', {skip: !windows}, async t => {
+test('native Windows export open and reveal hash ordinary project media through L1 descriptors', {skip: !windows}, async t => {
   const root = await fixture(t), media = path.join(root, 'media');
   storage.ensurePrivateDirectory(media, {create: true});
   const projectId = randomUUID(), exportId = randomUUID(), assetId = randomUUID(), file = path.join(media, `${assetId}.mp4`);
   // Larger than one 1 MiB chunk, so the read yields between chunks. Written
   // like backend media: it inherits the closed workspace ACL.
   const bytes = Buffer.alloc(2.5 * 1024 * 1024, 0x6d);
-  bytes.write('synthetic export', 0);
+  bytes.set([0,0,0,24],0);bytes.write('ftypisom',4);bytes.fill(0,12,16);bytes.write('isommp42',16);
   writeFileSync(file, bytes);
-  const output = {projectId, exportId, assetId, fileLocation: file, sizeBytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), url: `/media/${assetId}`};
+  const sha256=createHash('sha256').update(bytes).digest('hex'),source=referenceTestAsset(root,{relativePath:`media/${assetId}.mp4`,sha256,sizeBytes:bytes.length});
+  const output = {projectId, exportId, assetId, fileLocation: file, sizeBytes: bytes.length, sha256, referenceRevision:1,fingerprint:publicMediaFingerprint(source.reference),producer:{kind:'export',id:exportId},url: `/media/${assetId}`};
   const identity = {projectId, exportId}, calls: unknown[][] = [];
   let current: Record<string, unknown> = output, checks = 0, retireAt = Infinity;
   const host = createWorkspaceNativeHost({
@@ -126,9 +129,9 @@ test('native Windows export open and reveal hash managed bytes through the ACL h
     revealPath: target => { calls.push(['reveal', target]); },
     restart: async () => false,
   });
-  assert.equal(await host.dispatch({}, {action: 'openExport', identity}), true);
+  assert.equal(await host.dispatch({}, {action: 'openExport', identity}), true);const checksPerOpen=checks;
   assert.equal(await host.dispatch({}, {action: 'revealExport', identity}), true);
-  assert.deepEqual(calls, [['readExport', identity], ['open', file], ['readExport', identity], ['reveal', file]]);
+  assert.deepEqual(calls, [['readExport', identity], ['readExport', identity], ['open', file], ['readExport', identity], ['readExport', identity], ['reveal', file]]);
   const unavailable = (error: unknown) => (error as {code?: string}).code === 'WORKSPACE_NATIVE_UNAVAILABLE';
   for (const change of [{sha256: 'f'.repeat(64)}, {sizeBytes: bytes.length - 1}]) {
     current = {...output, ...change};
@@ -137,12 +140,12 @@ test('native Windows export open and reveal hash managed bytes through the ACL h
   current = output;
   const alias = path.join(media, 'alias.mp4');
   linkSync(file, alias);
-  await assert.rejects(host.dispatch({}, {action: 'openExport', identity}), {reason: 'HARD_LINK'});
+  assert.equal(await host.dispatch({}, {action: 'openExport', identity}),true,'ordinary project media may have another link');
   rmSync(alias);
-  // Three checks precede the read, so the owner retires after two chunks.
-  checks = 0; retireAt = 6;
+  // Retire the owner during the same bounded L1 read path, before shell effects.
+  checks = 0; retireAt = Math.max(10,Math.floor(checksPerOpen/2));
   await assert.rejects(host.dispatch({}, {action: 'openExport', identity}), unavailable);
-  assert.equal(calls.filter(([kind]) => kind === 'open').length, 1, 'no shell effect after a failed verification');
-  // The helper opens without delete sharing, so this fails if the handle leaked.
+  assert.equal(calls.filter(([kind]) => kind === 'open').length, 2, 'no shell effect after a failed verification');
+  // The L1 descriptor is closed on retirement; deletion must be possible.
   rmSync(file);
 });
