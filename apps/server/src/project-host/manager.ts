@@ -28,6 +28,12 @@ import type {
 import {createMemoryBackgroundTaskIndex, sameProjectFileIdentity, statProjectFileIdentity} from './stand-ins.ts';
 import {DEFAULT_BUSY_RECHECK_MS, DEFAULT_IDLE_CLOSE_MS, DEFAULT_REQUEST_DRAIN_MS, PROJECT_LEASE_KINDS} from './types.ts';
 import type {ProjectAvailability, ProjectCloseReason, ProjectHostEvent, ProjectHostState, ProjectHostStatus, ProjectLeaseKind} from './types.ts';
+import {createProjectHistorySession, projectHistoryRequired} from './history-session.ts';
+import type {ProjectHistorySession} from './history-session.ts';
+import {completedHistoryResolution, prepareHistorySwitch, recoverHistorySwitch} from '../../../../packages/business/src/project-file/history-switch.ts';
+import type {HistorySwitchBoundary} from '../../../../packages/business/src/project-file/history-switch.ts';
+import {projectHistoryResolveSchema} from '../../../../packages/contracts/src/project-history-recovery.ts';
+import type {ProjectHistoryResolveInput, ProjectHistoryResolveResult} from '../../../../packages/contracts/src/project-history-recovery.ts';
 
 export interface ManagerClock {
   now(): number;
@@ -72,6 +78,10 @@ export interface ProjectHostManagerOptions<Runtime extends ProjectHostRuntime> {
   readonly openStore?: (options: OpenProjectConnectionOptions) => ProjectStore;
   /** Exceptions from it are ignored. */
   readonly onEvent?: (event: ProjectHostEvent) => void;
+  /** Captures the exact application owner and lifecycle signal. */
+  readonly assertMutationAllowed?: () => void;
+  /** Trusted crash injection, never configured from HTTP or environment. */
+  readonly historySwitchBoundary?: (boundary: HistorySwitchBoundary) => void;
 }
 
 export interface CreateProjectInput {
@@ -137,6 +147,9 @@ export interface ProjectHostManager<Runtime extends ProjectHostRuntime = Project
   restore(): Promise<RestoreResult<Runtime>>;
   readonly inspectProject: InspectProject;
   status(projectId: string): ProjectHostStatus | null;
+  /** No request lease may be held by the caller: it closes the recovery
+   * session under exclusivity before the staged history is attached. */
+  resolveHistory(input: ProjectHistoryResolveInput): Promise<ProjectHistoryResolveResult>;
 }
 
 const MAX_PROJECT_NAME_LENGTH = 150;
@@ -247,6 +260,7 @@ interface HostEntry<Runtime extends ProjectHostRuntime> {
   /** An exclusive operation is waiting for the requests in flight. */
   paused: boolean;
   runtime: Runtime | null;
+  recovery: ProjectHistorySession | null;
   host: ProjectHost<Runtime> | null;
   /** Settles when the runtime is composed; rejects with the open failure. */
   ready: Promise<void>;
@@ -319,8 +333,16 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     if (file.projectId !== projectId) throw projectUnavailable(projectId, 'PROJECT_MISSING');
     registry.checkCopy?.(file);
   };
-  const openRegistered = (registration: RecentProject): ProjectStore =>
-    openStore({projectFile: registration.projectFile, locate, checkCopy: registeredCopyCheck(registration.projectId)});
+  const writeAllowed = (): void => {
+    assertRunning();
+    if (!options.assertMutationAllowed) throw new TypeError('History resolution requires application write admission');
+    options.assertMutationAllowed();
+  };
+  const switchOptions = (projectFile: string, projectId: string) => ({projectFile, location: locate(projectId), assertMutationAllowed: writeAllowed, onBoundary: options.historySwitchBoundary});
+  const openRegistered = (registration: RecentProject): ProjectStore => {
+    recoverHistorySwitch(switchOptions(registration.projectFile, registration.projectId));
+    return openStore({projectFile: registration.projectFile, locate, checkCopy: registeredCopyCheck(registration.projectId)});
+  };
 
   // -------------------------------------------------------------------------
   // Opening
@@ -350,7 +372,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       });
       entry = {
         projectId: store.projectId, store, identity: fileIdentity, controller, leases: new Set(), registration, context,
-        state: 'opening', paused: false, runtime: null, host: null, ready: Promise.resolve(), closed: null,
+        state: 'opening', paused: false, runtime: null, recovery: null, host: null, ready: Promise.resolve(), closed: null,
         graceUntil: 0, graceResetSeq: 0, timer: null, drainWaiters: new Set(), relocating: false,
       };
       self = entry;
@@ -367,14 +389,18 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
 
   async function compose(entry: HostEntry<Runtime>): Promise<void> {
     try {
-      const runtime = await factory(entry.context);
-      entry.runtime = runtime;
+      // Admission precedes ensureProjectRow, service constructors, Mio
+      // recovery, worker startup and every afterOpen hook (including daily).
+      if (entry.store.historyState === 'diverged') entry.recovery = createProjectHistorySession(entry.context, options.assertMutationAllowed);
+      else entry.runtime = await factory(entry.context);
       entry.host = Object.freeze({
-        projectId: entry.projectId, projectFile: entry.store.projectFile, store: entry.store, runtime, signal: entry.controller.signal,
+        projectId: entry.projectId, projectFile: entry.store.projectFile, store: entry.store, signal: entry.controller.signal,
+        get runtime(): Runtime { if (!entry.runtime) throw projectHistoryRequired(); return entry.runtime; },
+        ...(entry.recovery ? {recovery: entry.recovery} : {}),
         relocate: entry.context.relocate,
       });
-      for (const hook of hooks) await hook.afterOpen?.(entry.context);
-      const summary = runtime.summarize?.() ?? null;
+      if (!entry.recovery) for (const hook of hooks) await hook.afterOpen?.(entry.context);
+      const summary = entry.runtime?.summarize?.() ?? null;
       if (summary) {
         entry.registration = {...entry.registration, name: summary.name, summary: summary.summary};
         registry.upsert(entry.registration);
@@ -522,25 +548,25 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
 
   async function finishClose(entry: HostEntry<Runtime>, reason: ProjectCloseReason, finish: () => void): Promise<readonly unknown[]> {
     const errors: unknown[] = [];
-    const runtime = entry.runtime!;
+    const runtime = entry.runtime;
     entry.controller.abort();
-    try { runtime.interrupt(); } catch (error) { errors.push(error); }
+    try { runtime?.interrupt(); } catch (error) { errors.push(error); }
     if (!(await waitForRequests(entry, drainTimeoutMs))) revoke(entry, 'request');
     revoke(entry);
-    try { await runtime.drain(); } catch (error) {
+    try { await runtime?.drain(); } catch (error) {
       // No verified drain means late publishers may still own this database.
       // Keep the closing slot and lock; subsequent work reports the failure.
       entry.closeFailure = error;
       errors.push(error); finish(); return errors;
     }
-    for (const hook of [...hooks].reverse()) {
+    for (const hook of entry.recovery ? [] : [...hooks].reverse()) {
       try { await hook.beforeClose?.(entry.context); } catch (error) { errors.push(error); }
     }
     let summary: ProjectHostSummary | null = null;
-    try { summary = runtime.summarize?.() ?? null; } catch (error) { errors.push(error); }
+    try { summary = runtime?.summarize?.() ?? null; } catch (error) { errors.push(error); }
     let unfinished: readonly UnfinishedTask[] | null = null;
-    try { unfinished = runtime.unfinishedTasks?.() ?? null; } catch (error) { errors.push(error); }
-    try { runtime.dispose(); } catch (error) { errors.push(error); }
+    try { unfinished = runtime?.unfinishedTasks?.() ?? null; } catch (error) { errors.push(error); }
+    try { runtime?.dispose(); } catch (error) { errors.push(error); }
     try { entry.store.close(); } catch (error) { errors.push(error); }
     let projectFile = entry.store.projectFile;
     try {
@@ -737,10 +763,16 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       const fileIdentity = identityOrNull(file);
       const held = fileIdentity ? [...entries.values()].find(entry => sameProjectFileIdentity(entry.identity, fileIdentity)) : undefined;
       if (held) return acquire(held.projectId, kind);
+      const registered = fileIdentity ? registry.list().find(entry => sameProjectFileIdentity(entry.fileIdentity, fileIdentity)) : undefined;
+      if (registered) recoverHistorySwitch(switchOptions(file, registered.projectId));
       let store: ProjectStore;
       try {
         store = openStore({
-          projectFile: file, locate,
+          projectFile: file, locate: projectId => {
+            const location = locate(projectId);
+            recoverHistorySwitch({...switchOptions(file, projectId), location});
+            return location;
+          },
           checkCopy: candidate => {
             const wait = transition(candidate.projectId);
             if (wait) throw new RetryOpen(wait);
@@ -840,7 +872,9 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     const failures: {readonly projectId: string; readonly error: unknown}[] = [];
     for (const projectId of new Set(taskIndex.list().map(entry => entry.projectId))) {
       try {
-        leases.push(await acquire(projectId, 'task'));
+        const lease = await acquire(projectId, 'task');
+        if (lease.host.recovery) lease.release();
+        else leases.push(lease);
       } catch (error) {
         failures.push({projectId, error});
       }
@@ -892,5 +926,36 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     return Object.freeze({projectId, state: entry.state, paused: entry.paused, leases: Object.freeze(leases)});
   }
 
-  return Object.freeze({list, create, openPath, acquire, tryAcquireOpen, close, closeAll, withExclusive, restore, inspectProject, status});
+  async function resolveHistory(raw: ProjectHistoryResolveInput): Promise<ProjectHistoryResolveResult> {
+    const input = projectHistoryResolveSchema.parse(raw);
+    writeAllowed();
+    const registered = registry.get(input.projectId);
+    if (!registered) throw projectNotFound(input.projectId);
+    const receipt = completedHistoryResolution(switchOptions(registered.projectFile, input.projectId), input);
+    if (receipt) return receipt;
+    return withExclusive(input.projectId, registration => {
+      writeAllowed();
+      const config = switchOptions(registration.projectFile, input.projectId);
+      const completed = completedHistoryResolution(config, input);
+      if (completed) return completed;
+      const resumed = recoverHistorySwitch(config);
+      if (resumed) {
+        const receipt = completedHistoryResolution(config, input);
+        if (receipt) return receipt;
+      }
+      const store = openStore({projectFile: registration.projectFile, locate, checkCopy: registeredCopyCheck(input.projectId)});
+      try {
+        const controller = new AbortController();
+        const session = createProjectHistorySession({projectId: input.projectId, store, directories, signal: controller.signal, relocate: () => {}}, writeAllowed);
+        if (session.status().confirmationDigest !== input.confirmationDigest) throw new AppError('PROJECT_HISTORY_BASELINE_CHANGED', '项目内容或本机记录已变化，请重新确认。', 409);
+        prepareHistorySwitch(store, input, config);
+      } finally {store.close();}
+      const result = recoverHistorySwitch(config);
+      if (!result) throw new AppError('PROJECT_HISTORY_SWITCH_PENDING', '本机记录处置尚未完成。', 409);
+      writeAllowed(); taskIndex.replace(input.projectId, []);
+      return result;
+    });
+  }
+
+  return Object.freeze({list, create, openPath, acquire, tryAcquireOpen, close, closeAll, withExclusive, restore, inspectProject, status, resolveHistory});
 }

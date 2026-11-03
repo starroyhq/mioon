@@ -6,6 +6,7 @@ import type {BackgroundTaskKind, RecentProjectSummary} from '../../../../package
 import type {ProjectStore} from '../../../../packages/business/src/project-file/index.ts';
 import type {AppDirectories} from './directories.ts';
 import type {ProjectLeaseKind} from './types.ts';
+import type {ProjectHistorySession} from './history-session.ts';
 
 /** A failed factory could not settle its admitted work. The manager must keep
  * its SQLite connection and lock instead of letting late effects use a closed DB. */
@@ -80,6 +81,8 @@ export interface ProjectHost<Runtime extends ProjectHostRuntime = ProjectHostRun
   readonly projectFile: string;
   readonly store: ProjectStore;
   readonly runtime: Runtime;
+  /** Present only before content admission; runtime access then refuses. */
+  readonly recovery?: ProjectHistorySession;
   /** Aborted when the host starts closing. */
   readonly signal: AbortSignal;
   /** ProjectHostContext.relocate, for the dispatcher's error path. */

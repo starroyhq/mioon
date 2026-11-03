@@ -5,6 +5,27 @@
 
 ## 0. P4 当前运行状态
 
+### V5 恢复会话
+
+manager 在 factory、`ensureProjectRow`、业务服务/Mio 构造、worker 和生命周期 hook 之前检查内核准入。`diverged` 只建立恢复会话，普通项目 RPC、REST、媒体及 CLI/MCP 的同一项目入口返回 `PROJECT_HISTORY_DIVERGED`（409）；没有 provider 请求、旧回执重放、daily 或打开/关闭备份。进程重启的后台任务索引不会启动这个会话的旧任务。
+
+宿主专用接口位于 `/api/projects/<ID>/history/`，沿用认证和项目寻址，不进入业务 RPC 注册表或模型工具目录：
+
+| 方法和路径 | 行为 |
+| --- | --- |
+| GET `status` | 状态、差异原因、文件/seen pair、history 身份、版本数、已提交且结果未知任务数、确认摘要 |
+| GET `versions?limit=&cursor=` | 只读版本分页 |
+| GET `preview?versionId=&limit=&cursor=` | 空执行域的 V1 版本预览，不把待归档旧任务或缓存引用当作新执行域的保留依赖 |
+| POST `resolve` | 稳定 UUID requestId、continue/restore-version、完整 expected pair、historyIdentity、confirmationDigest；恢复另带 versionId/previewDigest |
+
+状态提示为“这份项目与本机记录不一致”；原因仅区分文件序号较小/较大、同序号内容不同、旧 history 没有令牌，不称其为可靠的旧版本或后继。确认页须说明：旧对话、任务回执、Mio/时间线撤销将整份归档，不再执行；已经交给服务商而结果未知的任务不续跑；本机版本会保留为恢复来源。可确认“以当前文件继续”或“恢复某个本机版本”，也可关闭会话。
+
+确认经过真实应用库 owner/中止守卫和 manager 独占，普通请求 lease 排空后关闭旧连接；确认请求本身不持有该 lease，避免等待自己。旧 history 完整改名为 `history-<时间>-<requestId>.db`、设为 0400；新库只复制版本两表，保留原 ID/来源和 blob 字节，不复制请求/自动 mark。缓存为可重建的空执行视图，项目中的四种本机过程目标修订按内核 fresh 规则清理；内容目标修订、素材定位和权限不放宽。恢复操作在同一事务写 V1 回执与宿主提交证据。
+
+私有 `history-switch-<requestId>.json` 固定输入、文件身份、暂存/归档名、阶段和结果；active 指针先于切换发布。prepared/copy 中断仍可回到恢复会话；已提交的恢复不重做，归档和发布步骤可续完。每次文件发布及意图更新都 fsync，缺失 history 不能自动 fresh；异常状态保留全部证据。确认成功返回固定结果和 `activation:'pending'`，释放独占后由下一次普通项目请求照常激活，再做本日首次打开版本。重复确认直接返回原结果，即使项目后来已编辑或正在工作，也不关闭正常运行时。
+
+`PROJECT_HISTORY_BASELINE_CHANGED`（409）要求重新读取确认，`REQUEST_ID_REUSED`（409）拒绝不同输入重用 ID；`PROJECT_HISTORY_SWITCH_PENDING/INVALID`（409）保留切换证据；普通已准入宿主访问这些恢复会话读接口返回 `PROJECT_HISTORY_NOT_DIVERGED`（409）。非法参数返回 `VALIDATION_ERROR`（400），URL/input 项目不同为 `PROJECT_ID_MISMATCH`（400）。关闭仍使用 manager 的普通关闭能力，不新增通用 history RPC。
+
 `startServer` 在应用数据目录预检、取得 `server.lock` 后打开唯一的 B1 应用库，再组装应用设置和 `createProjectHostManager`；`manager.restore()` 完成后开始监听。项目请求经真实租约进入 `composeHostedProject` / `composeProjectRuntime`，一个项目只持有一个内核连接，应用库不挂到项目连接上。关闭项目不关闭借用的应用设置或应用库。普通测试通过 `project-file/test-store.ts` 的 `openStore(root)` 和七个数据库辅助函数使用真实内核；旧工作区 opener、迁移、备份和恢复实现已退役。
 
 `dataDir` 是应用数据目录，放应用库、设置、令牌、`records/`、`tmp/`；项目目录独立。服务端默认项目在 `<dataDir>/projects/`，缓存为 `<dataDir>/cache/projects/<ID>/`。桌面使用 `<userData>/data/`，旧 `<userData>/workspace/` 不迁移、不再读取；默认项目在 `<videos>/Mioon/`，缓存用系统缓存目录。设置 `MIOON_DESKTOP_USER_DATA` 时，项目和缓存均留在覆盖目录的 `data/` 内，具体布局见 2.1。应用目录含旧 `workbench.sqlite` 时，生产启动精确拒绝 `VALIDATION_ERROR`（400），不迁移旧树或旧库。
@@ -16,10 +37,10 @@
 - 全局 `GET /api/agent/tasks/v2/diagnostics/latest` 只读应用 documents 的 `agent-diagnostic-summary-v1.json`，返回 `{test: null | summary}`，summary 严格只有 `completedAt`、`status`、`protocol`、`model`、`errorCode`。项目诊断完成时更新，不复制对话、请求原文或密钥，不扫描或打开关闭的项目。应用库当前为 3：精确已知 v1 经 v2，再由 R2 的 v2→v3 升级增加用户规范；保留原三种文档字节及其它登记、策略回执。
 - 经过 HTTP 的 B1 错误仅列 `APP_LIBRARY_LIMIT`（507，登记容量上限）和 `APP_LIBRARY_INVALID`（422，无效诊断摘要，`details: {reason:'unusable'}`）。`APP_LIBRARY_LOCKED`、`APP_LIBRARY_FORMAT_NEWER` 是监听前的启动错误；`APP_LIBRARY_CLOSED` 是内部生命周期错误，不据此新增公开端点。
 - `inspectProject: receive => …` 是受信测试接收选项；真实服务端子进程可用固定测试 IPC 读取其 own connection。HTTP、CLI 和环境变量不接受 SQL、回调或 inspect 开关；活跃连接复用、关闭项目短开即关、同步回调和 transition 拒绝规则不变。
-- V2 的 `createProjectBackups` 已在生产注册第一个生命周期 hook。打开先复制项目文件，关闭在运行时排空后、store 关闭前复制；按内容序号去重、保留最近三份。`project.backup.list/inspect/restore/status` 走应用 RPC，不 acquire 原项目，恢复为新 ID、空本机记录的新文件。实现边界和契约见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)，本卡没有备份界面。
+- V2 的 `createProjectBackups` 已在生产注册第一个生命周期 hook。正常准入后打开复制项目文件，关闭在运行时排空后、store 关闭前复制；按项目 ID、内容序号和令牌去重、保留最近三份，登记实际完成副本的 pair。`project.backup.list/inspect/restore/status` 走应用 RPC，不 acquire 原项目，恢复为新 ID、新令牌、空本机记录的新文件。实现边界和契约见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)，本卡没有备份界面。
 - S1 素材媒体 GET/HEAD/Range 使用精确宿主 store 的 L1 引用服务，逐块重查权限与身份，响应 no-store；宿主不再预建私有 `media/`。受信用户路径导入/位置确认走固定 `asset-media/trusted` 项目路由，沿用认证与 origin 检查，普通 RPC/MCP 无确认入口。封面缓存绑定无路径内容指纹，首页仍不 acquire 项目。导入、复制恢复许可和格式拒旧见 [ASSET-REFERENCES.md](ASSET-REFERENCES.md)。
 - 备份完整校验成功后按文件身份和变动时间在同一服务实例内缓存；安全属性仍逐次检查，替换或变动即重验。打开去重只确认最近有效项，列表仍核对全部有效项，inspect/restore 仍完整只读校验。
-- 版本领域在真实项目服务中接入 `project.version.list/save/preview/restore`，走项目前缀 RPC；每日 hook 在 V2 打开备份校验后执行，Mio 首改与恢复前保存使用同一真实连接和事务。恢复同时核对完整摘要与内容序号，并在写入前检查应用能力和宿主在途工作。当前 history 6 新增四张版本领域表，精确已知 2–5 可升级；项目/cache 沿用 S1 的 2，详见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。备份四项与版本四项统一进契约根操作表及 effect 表，内置 Mio 均禁用。
+- 版本领域在真实项目服务中接入 `project.version.list/save/preview/restore`，走项目前缀 RPC；正常准入的每日 hook 在 V2 打开备份校验后执行，Mio 首改与恢复前保存使用同一真实连接和事务。恢复同时核对完整摘要与内容序号/令牌，并在写入前检查应用能力和宿主在途工作。当前 project/history/cache 为 3/7/2，精确已知 history 2–6 可升级到 7，旧 token 缺失时进入恢复会话；详见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。备份四项与版本四项统一进契约根操作表及 effect 表，内置 Mio 均禁用。
 
 ### 暂不可用的后续能力
 
