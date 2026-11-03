@@ -1,3 +1,9 @@
+> **历史文档 / Historical document（S7-C，2026-11-03）**
+>
+> 本页保留 ordinary26/restored27 配对、历史触发器修补与离线恢复边界。旧工作区迁移、profile 和启动修补链已随 S7-B1/B2 退役；原固定SQL、来源基线和验收结论保留，不作为当前升级或启动指引。
+>
+> 现行项目文件和升级约定见 [PROJECT-FILE.md](PROJECT-FILE.md)，当前宿主生命周期见 [PROJECT-HOST.md](PROJECT-HOST.md)。
+
 # Ordinary26 / restored27 paired compatibility
 
 This feature adds one ordinary profile and its corresponding restricted restored

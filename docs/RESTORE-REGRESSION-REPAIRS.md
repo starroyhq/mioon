@@ -1,3 +1,9 @@
+> **历史文档 / Historical document（S7-C，2026-11-03）**
+>
+> 本页保留旧恢复操作目录与 ordinary40 TEXT/BLOB 冷重开回归修复记录。旧恢复目录、工作区角色和 schema40 入口已随 S7-B1/B2 退役；原父提交、错误与验证结果保留，不代表当前公开接口或当前内核准入。
+>
+> 现行项目存储见 [PROJECT-FILE.md](PROJECT-FILE.md)，公开操作和错误边界见 [API.md](API.md)。
+
 # Restore catalogue and ordinary reopen regression repairs
 
 Parent: `c2000a1118c57585cc94a42f53ff6febf86bbec9`.

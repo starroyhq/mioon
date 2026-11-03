@@ -17,8 +17,6 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient,discoverSchema} from '@mioon/client';
 import {TIMELINE_SUBTITLE_OPERATIONS,isTimelineMutationResponse} from '@mioon/contracts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {taskFixture,database,snapshot,taskPath,REPO,TASK_TOKEN} from './helpers/edit-tasks-http-fixture.ts';
 
 const env=(url: string)=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_BASE_URL:url,MIOON_TOKEN:TASK_TOKEN});
@@ -57,7 +55,7 @@ async function wire(t: test.TestContext){
 const base=(projectId: string,timeline: {revision: number})=>({projectId,expectedRevision:timeline.revision,requestId:randomUUID()});
 async function seed(f: TaskHttpFixture){return f.rpc('timeline.clip.add',{...base(f.project.id,f.timeline),assetId:f.source.id,trackId:f.timeline.tracks.find((x: { kind: string; })=>x.kind==='video')!.id,startFrame:0,durationFrames:90});}
 
-test('subtitle schemas are strict in actual CLI and official MCP and do not grant Agent tool authority',{timeout:60000},async t=>{
+test('subtitle schemas are strict in actual CLI and official MCP',{timeout:60000},async t=>{
  const w=await wire(t),catalog=discoverSchema() as Extract<ReturnType<typeof discoverSchema>,{operations: unknown}>,before=await snapshot(w.f.root);
  assert.deepEqual((await cli(w.url,['schema'])).data,catalog);
  const tools=(await w.mcp.listTools()).tools;
@@ -73,7 +71,7 @@ test('subtitle schemas are strict in actual CLI and official MCP and do not gran
    const missing={...input};delete (missing as {requestId?: unknown}).requestId;const rejected=await transport.call(operation,missing);assert.equal(rejected.ok,false);assert.equal(rejected.error.code,'VALIDATION_ERROR');
   }
  }
- assert.ok(!JSON.stringify(READ_TOOL_DEFINITIONS).includes('subtitle'));assert.ok(!JSON.stringify(EDIT_TOOL_DEFINITIONS).includes('subtitle'));
+
  assert.deepEqual(await snapshot(w.f.root),before);
 });
 

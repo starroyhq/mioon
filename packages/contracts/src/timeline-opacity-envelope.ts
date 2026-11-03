@@ -1,4 +1,4 @@
-/** Pure clip-local opacity values and curve algebra. This module grants no
+/** Strict clip-local opacity envelope values. This module grants no
  * source eligibility, workspace compatibility or rendering capability. */
 export const OPACITY_ENVELOPE_PROFILE = 'mioon-clip-linear-opacity-v1';
 // Seven points add 24 nodes. The largest existing update is 99 nodes;
@@ -11,19 +11,8 @@ export interface OpacityEnvelope {
   readonly profileId: typeof OPACITY_ENVELOPE_PROFILE;
   readonly points: readonly OpacityEnvelopePoint[];
 }
-export interface OpacityEnvelopeClip {
-  readonly durationFrames: number;
-  readonly opacityEnvelope?: OpacityEnvelope | null;
-}
-export type OpacityEnvelopeFields = {readonly opacityEnvelope?: OpacityEnvelope | null};
-export interface OpacityEnvelopeEvaluator {
-  readonly limitAtFrame: (frame: number) => number;
-  readonly atFrame: (frame: number) => number;
-}
 
 type Value = Record<string, unknown>;
-type CapturedField = {readonly present: false} | {readonly present: true; readonly value: OpacityEnvelope | null};
-interface CapturedClip {readonly durationFrames: number; readonly field: CapturedField}
 const own = (value: object, key: PropertyKey): boolean => Object.hasOwn(value, key);
 const fail = (message: string): never => {
   throw Object.assign(new Error(message), {code: 'INVALID_OPACITY_ENVELOPE'});
@@ -84,72 +73,4 @@ function captureEnvelope(value: unknown, durationFrames: number): OpacityEnvelop
 export function validateOpacityEnvelope(value: unknown, durationFrames: number): OpacityEnvelope | null {
   captureEnvelope(value, duration(durationFrames));
   return value as OpacityEnvelope | null;
-}
-
-function captureClip(value: unknown): CapturedClip {
-  const clip = dataRecord(value);
-  if (!own(clip, 'durationFrames')) return fail('Missing clip duration.');
-  const durationFrames = duration(clip.durationFrames);
-  return {durationFrames, field: own(clip, 'opacityEnvelope')
-    ? {present: true, value: captureEnvelope(clip.opacityEnvelope, durationFrames)}
-    : {present: false}};
-}
-
-function opacity(points: readonly OpacityEnvelopePoint[], frame: number): number {
-  const first = points[0]!;
-  if (frame <= first.frame) return first.opacity;
-  for (let index = 1; index < points.length; index++) {
-    const left = points[index - 1]!, right = points[index]!;
-    if (frame === right.frame) return right.opacity;
-    if (frame < right.frame) return left.opacity + (right.opacity - left.opacity) * ((frame - left.frame) / (right.frame - left.frame));
-  }
-  return points[points.length - 1]!.opacity;
-}
-
-/** Evaluates integer clip-local frames from an immutable detached capture.
- * limitAtFrame includes durationFrames for boundary algebra; atFrame observes
- * half-open playback membership [0,durationFrames), returning zero outside it. */
-export function createOpacityEnvelopeEvaluator(clip: unknown): Readonly<OpacityEnvelopeEvaluator> {
-  const captured = captureClip(clip), end = captured.durationFrames;
-  const points = captured.field.present ? captured.field.value?.points : undefined;
-  return Object.freeze({
-    limitAtFrame(frame: number): number {
-      if (!integer(frame, 0, end)) return fail('Invalid endpoint frame.');
-      return points ? opacity(points, frame) : 1;
-    },
-    atFrame(frame: number): number {
-      if (!integer(frame, -Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER)) return fail('Invalid playback frame.');
-      return frame < 0 || frame >= end ? 0 : points ? opacity(points, frame) : 1;
-    },
-  });
-}
-
-/** Preserve clip-local anchors across start/source edits. Shrinking past an
- * anchor requires a replacement or explicit null in this same patch. Returned
- * fields are detached and preserve absent/null/value without adding defaults. */
-export function opacityEnvelopeFieldsAfterEdit(clip: unknown, patch: unknown): OpacityEnvelopeFields {
-  const captured = captureClip(clip), submitted = dataRecord(patch);
-  const durationFrames = own(submitted, 'durationFrames') ? duration(submitted.durationFrames) : captured.durationFrames;
-  if (own(submitted, 'opacityEnvelope')) return {opacityEnvelope: captureEnvelope(submitted.opacityEnvelope, durationFrames)};
-  return captured.field.present ? {opacityEnvelope: captureEnvelope(captured.field.value, durationFrames)} : {};
-}
-
-/** Split only this field. Interpolated inner endpoints join continuously;
- * held regions omit redundant anchors, so neither side exceeds the point cap. */
-export function splitOpacityEnvelopeFields(clip: unknown, cutFrame: number): readonly [OpacityEnvelopeFields, OpacityEnvelopeFields] {
-  const captured = captureClip(clip);
-  if (!integer(cutFrame, 1, captured.durationFrames - 1)) return fail('Split must be inside clip.');
-  if (!captured.field.present) return [{}, {}];
-  if (captured.field.value === null) return [{opacityEnvelope: null}, {opacityEnvelope: null}];
-  const points = captured.field.value.points, value = opacity(points, cutFrame);
-  const left = points.filter(point => point.frame <= cutFrame).map(point => ({...point}));
-  const right = points.filter(point => point.frame >= cutFrame).map(point => ({frame: point.frame - cutFrame, opacity: point.opacity}));
-  if (left.length === 0) left.push({frame: cutFrame, opacity: value});
-  else if (left[left.length - 1]!.frame < cutFrame && points[points.length - 1]!.frame > cutFrame) left.push({frame: cutFrame, opacity: value});
-  if (right.length === 0) right.push({frame: 0, opacity: value});
-  else if (right[0]!.frame > 0 && points[0]!.frame < cutFrame) right.unshift({frame: 0, opacity: value});
-  return [
-    {opacityEnvelope: captureEnvelope({profileId: OPACITY_ENVELOPE_PROFILE, points: left}, cutFrame)},
-    {opacityEnvelope: captureEnvelope({profileId: OPACITY_ENVELOPE_PROFILE, points: right}, captured.durationFrames - cutFrame)},
-  ];
 }

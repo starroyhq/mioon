@@ -34,8 +34,6 @@ import {openServerProject} from './helpers/project-database.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {changeMarks,readProjectState} from './helpers/project-state.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import type { BinaryLike } from 'crypto';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
@@ -285,8 +283,6 @@ test('named delivery discovery stays identical in offline CLI and official MCP a
     assert.equal(Object.hasOwn(definition.inputSchema.properties as object,'deliveryName'), acceptsName);
     assert.equal((definition.inputSchema.required as string[]|undefined)?.includes('deliveryName') ?? false, false);
   }
-  assert.ok(!JSON.stringify(READ_TOOL_DEFINITIONS).includes('deliveryName'));
-  assert.ok(!JSON.stringify(EDIT_TOOL_DEFINITIONS).includes('deliveryName'));
 });
 
 

@@ -1,3 +1,9 @@
+> **历史文档 / Historical document（S7-C，2026-11-03）**
+>
+> 本页保留 dormant40/restored41 固定角色、颜色证据及包装回执的历史兼容修补。旧工作区 profile 和其构造/分发路径已随 S7-B1/B2 退役；原日期、基线、哈希和安全结论保留，不作为当前内核入口或执行指引。
+>
+> 现行项目文件约定见 [PROJECT-FILE.md](PROJECT-FILE.md)，宿主与持有边界见 [PROJECT-HOST.md](PROJECT-HOST.md)。
+
 # Dormant40/41 frozen role and colour evidence
 
 Later backend activation is documented in [VOLUME-ENVELOPE-BACKEND-ACTIVATION.md](VOLUME-ENVELOPE-BACKEND-ACTIVATION.md). The dated slice evidence below is preserved.

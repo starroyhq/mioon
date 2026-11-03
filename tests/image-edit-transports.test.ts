@@ -26,8 +26,6 @@ import {createClient} from '../packages/client/src/index.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_LIMITS, IMAGE_MODELS, IMAGE_MUTATION_OPERATIONS, imageSchemas,
   isImageTaskResponse, isImageProfilesResponse, isImageRequestResponse,
   isImageListResponse} from '../packages/contracts/src/images.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {openServerProject,createServerProject, projectDirFor, schemaObjects} from './helpers/project-database.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -253,7 +251,7 @@ test('image edits preserve one durable contract across real HTTP, CLI and offici
     assert.deepEqual((await parity('image.generate', source.input)).data, source.ack, 'old T2I omission remains exact and replayable');
   }
 
-  await t.test('discovery exposes only paired strict Mock/official edit fields and leaves built-in Agent catalogs unchanged', async () => {
+  await t.test('discovery exposes only paired strict Mock/official edit fields', async () => {
     const before = f.checkpoint(), catalog = (await cli(['schema'], {})).data;
     const issue = (path: (string|number)[]) => ({ok: false, error: {code: 'VALIDATION_ERROR', details: {issues: [{path}]}}});
     noPrivate(issue(['inputImage', 'assetId', 0]), f.root);
@@ -269,8 +267,6 @@ test('image edits preserve one durable contract across real HTTP, CLI and offici
     assert.deepEqual(edits[0].properties.inputImage.required, ['assetId', 'sha256']);
     for (const field of ['sourceBytes', 'sourceImage', 'images', 'mask', 'input_fidelity', 'url', 'apiKey']) assert.equal(Object.hasOwn(edits[0].properties, field), false);
     assert.ok(!tools.some(value => /image_(?:review_(?:approve|reject)|(?:custom_?)?settings_)/i.test(value.name)));
-    assert.deepEqual(READ_TOOL_DEFINITIONS.map(value => value.name), ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect']);
-    assert.deepEqual(EDIT_TOOL_DEFINITIONS.map(value => value.name), ['mioon_propose_shot_update']);
     const profiles = (await parity('image.profile.list')).data; assert.equal(profiles.liveEnabled, false); assert.ok(isImageProfilesResponse(profiles));
     f.unchanged(before, 'edit schema and profile discovery');
   });

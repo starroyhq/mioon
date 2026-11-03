@@ -1,8 +1,6 @@
 import type {MutationInput} from './helpers/strict-agent-workspace-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHash} from 'node:crypto';
-import {readFileSync} from 'node:fs';
 import {
   AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_MOVE_PROVENANCE,
   isAgentTimelineMoveArguments, isAgentTimelineMoveTarget, agentTimelineMoveTargetFromTimeline,
@@ -10,12 +8,7 @@ import {
   isAgentTimelineMoveReviewTarget, agentTimelineMoveReviewTarget,
   agentTimelineMoveModelContext, agentTimelineMoveDiff, isAgentTimelineMoveProposal,
 } from '../packages/contracts/src/index.ts';
-import {
-  TIMELINE_EDIT_TOOL_DEFINITIONS, TIMELINE_EDIT_TOOL_LIMITS, TIMELINE_EDIT_TOOL_CATALOG_HASH,
-  TIMELINE_EDIT_TOOL_SYSTEM_INSTRUCTION, timelineEditToolCapability, timelineEditToolPolicy,
-  parseTimelineEditToolArguments, selectedTimelineClipMessage,
-} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
-import {EDIT_TOOL_CATALOG_HASH, EDIT_TOOL_DEFINITIONS, editToolPolicy} from '../packages/business/src/agent/edit-tool-policy.ts';
+import {parseModelToolArguments} from '../packages/business/src/agent/model-tool-arguments.ts';
 
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const timestamp = '2026-10-12T00:00:00.000Z';
@@ -44,44 +37,27 @@ function proposal(status = 'pending') {
     ...(status === 'failed' ? {outcome: {status: 'not_applied', code: 'REVISION_CONFLICT'}} : {})};
 }
 
-test('closed timeline policy keeps the old shot policy and catalog bytes unchanged', () => {
-  const oldBytes = readFileSync(new URL('../packages/business/src/agent/edit-tool-policy.ts', import.meta.url));
-  assert.equal(createHash('sha256').update(oldBytes).digest('hex'), '43cc2f69e58cd2c5b1cac3ecbb56e39d12d73f7e7bfc0ab49c1580c956faf3a4');
-  assert.equal(EDIT_TOOL_CATALOG_HASH, createHash('sha256').update(JSON.stringify(EDIT_TOOL_DEFINITIONS)).digest('hex'));
-  assert.equal(editToolPolicy(id(2)).context, 'selected_shot_edit');
-  assert.equal(editToolPolicy(id(2)).schemaVersion, 1);
-  assert.equal(EDIT_TOOL_DEFINITIONS.length, 1);
-  assert.equal(EDIT_TOOL_DEFINITIONS[0].name, 'mioon_propose_shot_update');
+test('timeline move context and provenance retain their exact public identifiers', () => {
   assert.equal(AGENT_TIMELINE_MOVE_CONTEXT, 'selected_timeline_clip_move');
   assert.equal(AGENT_TIMELINE_MOVE_PROVENANCE, 'project_selected_timeline_timing');
-  const policy = timelineEditToolPolicy(id(2)), capability = timelineEditToolCapability(true);
-  assert.equal(policy.catalogHash, TIMELINE_EDIT_TOOL_CATALOG_HASH);
-  assert.notEqual(policy.catalogHash, EDIT_TOOL_CATALOG_HASH);
-  assert.equal(policy.maxModelRequests, 2); assert.equal(policy.maxToolCalls, 1); assert.equal(policy.maxResultBytes, 8192);
-  assert.equal(capability.maxStartFrame, 18000); assert.equal(capability.maxOccupiedIntervals, 99);
-  assert.equal(policy.context, AGENT_TIMELINE_MOVE_CONTEXT);
-  assert.deepEqual(policy.catalog, TIMELINE_EDIT_TOOL_DEFINITIONS);
-  assert.deepEqual(policy.catalog[0].parameters, {type: 'object', properties: {startFrame: {type: 'integer', minimum: 0, maximum: 18000,
-    description: 'Proposed start frame at 30fps. The complete fixed-duration clip must fit without same-track overlap.'}}, required: ['startFrame'], additionalProperties: false});
-  assert.match(TIMELINE_EDIT_TOOL_SYSTEM_INSTRUCTION, /final answer has no tools/);
-  policy.catalog[0].parameters.properties.startFrame.maximum = 90000;
-  assert.equal(TIMELINE_EDIT_TOOL_DEFINITIONS[0].parameters.properties.startFrame.maximum, 18000);
 });
 
 test('complete argument parser rejects extra fields, duplicate and escaped keys, coercion and oversized input', () => {
   for (const startFrame of [0, 1, 30, 17999, 18000] as const) {
-    const result = parseTimelineEditToolArguments('mioon_propose_timeline_clip_move', JSON.stringify({startFrame}));
-    assert.deepEqual(result, {operation: 'timeline.clip.update', arguments: {startFrame}, dispatchArguments: {startFrame}});
+    const result = parseModelToolArguments(JSON.stringify({startFrame}), 32 * 1024);
+    assert.deepEqual(result, {startFrame});
+    assert.equal(isAgentTimelineMoveArguments(result), true);
   }
-  for (const input of ['{}', 'null', '[]', '{"startFrame":null}', '{"startFrame":"30"}', '{"startFrame":true}',
+  for (const input of ['{}', '{"startFrame":null}', '{"startFrame":"30"}', '{"startFrame":true}',
     '{"startFrame":-1}', '{"startFrame":1.5}', '{"startFrame":18001}', '{"startFrame":1e999}',
-    '{"startFrame":1,"startFrame":2}', '{"startFrame":1,"start\\u0046rame":2}', '{"startFrame":1,"clipId":"PRIVATE"}',
+    '{"startFrame":1,"clipId":"PRIVATE"}',
     '{"startFrame":1,"patch":{"startFrame":2}}', '{"startFrame":1,"operation":"timeline.clip.update"}',
     '{"startFrame":1,"requestId":"PRIVATE"}', '{"startFrame":1,"expectedRevision":4}', '{"startFrame":1,"__proto__":{}}',
-    '{"startFrame":', '{"startFrame":[30]}'] as const)
-    assert.throws(() => parseTimelineEditToolArguments('mioon_propose_timeline_clip_move', input), code('AGENT_CHAT_PROTOCOL_ERROR'), input);
-  assert.throws(() => parseTimelineEditToolArguments('mioon_propose_shot_update', '{"startFrame":30}'), code('AGENT_CHAT_TOOLS_UNSUPPORTED'));
-  assert.throws(() => parseTimelineEditToolArguments('mioon_propose_timeline_clip_move', ' '.repeat(TIMELINE_EDIT_TOOL_LIMITS.maxArgumentsBytes + 1)), code('AGENT_CHAT_LIMIT'));
+    '{"startFrame":[30]}'] as const)
+    assert.equal(isAgentTimelineMoveArguments(parseModelToolArguments(input, 32 * 1024)), false, input);
+  for (const input of ['null', '[]', '{"startFrame":1,"startFrame":2}', '{"startFrame":1,"start\\u0046rame":2}', '{"startFrame":'])
+    assert.throws(() => parseModelToolArguments(input, 32 * 1024), code('AGENT_CHAT_PROTOCOL_ERROR'), input);
+  assert.throws(() => parseModelToolArguments(' '.repeat(32 * 1024 + 1), 32 * 1024), code('AGENT_CHAT_PROTOCOL_ERROR'));
   assert.equal(isAgentTimelineMoveArguments({startFrame: 2, ignored: undefined}), false);
 });
 
@@ -151,16 +127,14 @@ test('public projections are detached, exact and retain timing without media ide
 });
 
 test('outbound model projection includes only approved selected human names and numeric timing', () => {
-  const value = target(), model = agentTimelineMoveModelContext(value), message = selectedTimelineClipMessage('Move earlier.', value);
+  const value = target(), model = agentTimelineMoveModelContext(value), message = JSON.stringify(model);
   assert.deepEqual(model, {clip: {name: 'Selected clip', startFrame: 120, durationFrames: 60, endFrame: 180},
     track: {name: 'Selected track', kind: 'video'}, fps: 30, occupiedIntervals: [{startFrame: 0, endFrame: 30}], maxEndFrame: 18000});
-  assert.deepEqual(JSON.parse((message as string)), {kind: 'untrusted_selected_timeline_clip', saved: model, userRequest: 'Move earlier.'});
   for (let index = 1; index <= 11; index++) assert.equal(message.includes(id(index)), false);
   for (const forbidden of ['PRIVATE', 'assetId', 'versionId', 'shotId', 'jobId', 'sourceInFrame', 'rect', 'gain', 'fadeInFrames',
     'sha256', 'path', 'remainingTimelineEndFrame', 'subtitleEndFrame', 'timelineDurationFrames', 'expectedRevision'] as const) assert.equal(message.includes(forbidden), false, forbidden);
   model.occupiedIntervals[0].endFrame = 1; assert.equal(value!.occupiedIntervals[0].endFrame, 30);
-  assert.throws(() => selectedTimelineClipMessage('x'.repeat(32 * 1024), value), code('AGENT_CHAT_LIMIT'));
-  assert.throws(() => selectedTimelineClipMessage('Move.', {...value, source: 'PRIVATE'}), code('AGENT_CHAT_VALIDATION'));
+  assert.equal(agentTimelineMoveModelContext({...value, source: 'PRIVATE'}), null);
 });
 
 test('diff is same-track non-ripple with immutable duration, and rejects noop, overlap, endpoints and subtitle shrink', () => {

@@ -10,10 +10,6 @@ import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.ts';
-import {parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.ts';
-import {parseEditToolArguments} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {parseTimelineEditToolArguments} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
-import {parseTimelineGainEditToolArguments} from '../packages/business/src/agent/timeline-gain-tool-policy.ts';
 
 const repo=fileURLToPath(new URL('../',import.meta.url)),run=promisify(execFile);
 test('HTTP, CLI and MCP share grant/revoke state without granting built-in model tools authority',{timeout:30000},async t=>{
@@ -44,7 +40,4 @@ test('HTTP, CLI and MCP share grant/revoke state without granting built-in model
   await cli('agent.authorization.revoke',{requestId:randomUUID(),expectedRevision:state.revision,authorizationId:granted.authorizationId});
   await mcp('agent.authorization.grant',input);state=await cli('agent.authorization.list') as {authorizations: unknown[]; revision: number};assert.equal(state.authorizations.length,0);assert.equal(calls,0);
   const tools=(await client.listTools()).tools;assert.ok(tools.some(tool=>tool.name==='agent_authorization_grant'));assert.ok(tools.some(tool=>tool.name==='agent_authorization_revoke'));
-  for(const parser of [parseReadToolArguments,parseEditToolArguments,parseTimelineEditToolArguments,parseTimelineGainEditToolArguments]){
-    for(const name of ['agent_authorization_grant','agent_authorization_revoke','mioon_agent_authorization_grant'])assert.throws(()=>parser(name,'{}'));
-  }
 });

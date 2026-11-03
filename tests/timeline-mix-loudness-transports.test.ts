@@ -14,7 +14,6 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {discoverSchema,createClient,schemas} from '@mioon/client';
 import {parse,isTimelineMixLoudnessResponse,effectAnnotations,operationEffect,EXPORT_LOUDNESS_PROFILE,TIMELINE_MIX_LOUDNESS_PROFILE} from '@mioon/contracts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
 import {mixLoudnessOperation as operation,mixLoudnessInput as input,mixLoudnessToken as token,readyMixLoudness,silentMixLoudness} from './fixtures/timeline-mix-loudness-fixtures.ts';
 import type { ChildProcess } from 'child_process';
@@ -110,7 +109,6 @@ test('actual CLI and official MCP discover the exact strict loudness input and u
   assert.deepEqual(effects,{readOnly:true,idempotent:true,destructive:false,openWorld:false,databaseWrite:false,fileWrite:false,externalIO:false,localProcess:true,paidGeneration:false});
   assert.ok((notes)!.includes('actually measured fixed-multiplier candidate'));
   assert.ok((notes)!.includes('applyAllowed always false'));
-  assert.deepEqual(READ_TOOL_DEFINITIONS.map(value=>value.name),['mioon_project_inspect','mioon_asset_inspect','mioon_shot_inspect','mioon_timeline_inspect']);
   const catalog=(discoverSchema() as DiscoverySchemaResult);
   assert.deepEqual((await cli(t,undefined,['schema']).result).body,{ok:true,data:catalog});
   assert.deepEqual(await mcp.call('mioon_schema',{}),{ok:true,data:catalog});
