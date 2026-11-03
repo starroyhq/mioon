@@ -1,4 +1,6 @@
 import {validAssetLocator} from './asset-reference-record.ts';
+import {isPublishedProjectOutput} from './project-output-publication.ts';
+import {frameOutputResultSchema} from '../../contracts/src/project-output-sources.ts';
 import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
@@ -79,6 +81,7 @@ export interface FrameOwnershipReader {
  task(taskId: string): FrameTaskView;
  owners(assetId: string): unknown[];
  source(taskId: string,asset: Record<string, unknown> | null): FrameSourceIdentity;
+ portableSource(asset: Record<string,unknown>): FrameSourceIdentity;
 }
 type ZodLike<T>={safeParse(value: unknown): {success: true; data: T} | {success: false; error: unknown}};
 
@@ -129,7 +132,7 @@ export function createFrameOwnershipReader(db: DatabaseSync,projectId: string,{c
   return asset;
  }
  function outputAsset(row: FrameTaskRow,receipt: FrameReceipt|null,asset: Record<string,unknown>|undefined): void {
-  if(row.state!=='succeeded'||!receipt||!asset||asset.id!==row.assetId||asset.projectId!==projectId||asset.sha256!==receipt.sha256||asset.mimeType!==receipt.mimeType||asset.width!==receipt.width||asset.height!==receipt.height||asset.sizeBytes!==receipt.byteLength||asset.provenance!=='extracted-frame'||!validAssetLocator(db,asset))reject();
+  if(row.state!=='succeeded'||!receipt||!asset||asset.id!==row.assetId||asset.projectId!==projectId||asset.sha256!==receipt.sha256||asset.mimeType!==receipt.mimeType||asset.width!==receipt.width||asset.height!==receipt.height||asset.sizeBytes!==receipt.byteLength||asset.provenance!=='extracted-frame'||!validAssetLocator(db,asset)||isProjectLayout(db)&&(!frameOutputResultSchema.safeParse(asset.frameResult).success||canonical(asset.frameResult)!==canonical({requestId:row.requestId,receipt})||!isPublishedProjectOutput(asset,{projectId,assetId:receipt.assetId,owner:{kind:'frame',id:row.id,requestId:row.requestId,inputHash:row.inputHash},targetKind:'generated',sha256:receipt.sha256,sizeBytes:receipt.byteLength,mimeType:receipt.mimeType})))reject();
  }
  function task(taskId: string): FrameTaskView {
   const cached=tasks.get(taskId);if(cached)return cached;
@@ -176,5 +179,18 @@ export function createFrameOwnershipReader(db: DatabaseSync,projectId: string,{c
   if(!receipt)reject();
   return {frameTaskId:taskId,sourceAssetId:receipt.sourceAssetId,sourceHash:receipt.sourceHash,sourceFrame:receipt.sourceFrame,fps:snapshot.requested.fps,profileId:snapshot.profile.id,selectionRule:snapshot.profile.selectionRule};
  }
- return {task,owners,source};
+ function portableSource(asset: Record<string,unknown>): FrameSourceIdentity {
+  if(!isProjectLayout(db))reject();
+  const parsed=frameOutputResultSchema.safeParse(asset.frameResult);if(!parsed.success)reject();
+  const {requestId,receipt}=parsed.data;
+  const input={projectId:receipt.projectId,sourceAssetId:receipt.sourceAssetId,sourceHash:receipt.sourceHash,sourceFrame:receipt.sourceFrame,requestId};
+  // A malformed, foreign or detached local row cannot hide by dropping its
+  // reverse asset relation. Portable evidence is used only without that task.
+  if(db.prepare('SELECT 1 FROM frame_tasks WHERE id=? LIMIT 1').get(receipt.taskId)||db.prepare('SELECT 1 FROM frame_requests WHERE taskId=? OR requestId=? LIMIT 1').get(receipt.taskId,requestId))reject();
+  if(receipt.projectId!==projectId||createHash('sha256').update(canonical(input)).digest('hex')!==receipt.inputHash||asset.provenance!=='extracted-frame'||asset.width!==receipt.width||asset.height!==receipt.height||!validAssetLocator(db,asset)||
+   !isPublishedProjectOutput(asset,{projectId,assetId:receipt.assetId,owner:{kind:'frame',id:receipt.taskId,requestId,inputHash:receipt.inputHash},targetKind:'generated',sha256:receipt.sha256,sizeBytes:receipt.byteLength,mimeType:receipt.mimeType}))reject();
+  if(++taskCount>FRAME_OWNERSHIP_LIMITS.maxOwners)exhausted();account(parsed.data);
+  return {frameTaskId:receipt.taskId,sourceAssetId:receipt.sourceAssetId,sourceHash:receipt.sourceHash,sourceFrame:receipt.sourceFrame,fps:receipt.fps,profileId:receipt.profileId,selectionRule:receipt.selectionRule};
+ }
+ return {task,owners,source,portableSource};
 }

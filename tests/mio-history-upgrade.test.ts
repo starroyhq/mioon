@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {createHash,randomUUID} from 'node:crypto';
-import {existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -17,7 +17,10 @@ import {S0_HISTORY_V2_MANIFEST} from '../packages/business/src/project-file/sche
 import {R1_HISTORY_V3_MANIFEST} from '../packages/business/src/project-file/schema/history-v3-manifest.ts';
 import {R1_HISTORY_V4_MANIFEST} from '../packages/business/src/project-file/schema/history-v4-manifest.ts';
 import {R2_HISTORY_V5_MANIFEST} from '../packages/business/src/project-file/schema/history-v5-manifest.ts';
-import {V1B_HISTORY_V6_MANIFEST} from '../packages/business/src/project-file/schema/history-v6-manifest.ts';
+import {V1_HISTORY_V6_MANIFEST} from '../packages/business/src/project-file/schema/history-v6-manifest.ts';
+import {S2_HISTORY_V7_MANIFEST} from '../packages/business/src/project-file/schema/history-v7-manifest.ts';
+import {canonicalImageInput, IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
+import {IMAGE_EDIT_REVIEW_DESTINATION, IMAGE_REVIEW_POLICY} from '../packages/contracts/src/image-reviews.ts';
 import {gzipSync} from 'node:zlib';
 import {MIO_QUOTA_BYTES_SQL,MIO_QUOTA_ROWS_SQL} from '../packages/business/src/project-file/schema/domains/mio.ts';
 import {buildPreviousHistoryDatabase} from './fixtures/kernel-history-previous-schema.ts';
@@ -36,7 +39,8 @@ for (const [version, manifest] of [
   [3, R1_HISTORY_V3_MANIFEST],
   [4, R1_HISTORY_V4_MANIFEST],
   [5, R2_HISTORY_V5_MANIFEST],
-  [6, V1B_HISTORY_V6_MANIFEST],
+  [6, V1_HISTORY_V6_MANIFEST],
+  [7, S2_HISTORY_V7_MANIFEST],
 ] as const) test(`frozen history${version} fixture matches every whitelisted schema object`, () => {
   const db = new DatabaseSync(':memory:');
   try {
@@ -134,11 +138,14 @@ function assertOld(value: Fixture): void {
   });
 }
 
-function r1Fixture(t:TestContext,version:3|4|5|6=3):Fixture{
+function r1Fixture(t:TestContext,version:3|4|5|6|7=3):Fixture{
  const value=fixture(t,{fresh:true,processes:false}),db=new DatabaseSync(value.historyFile);
  try{
   const at='2026-11-02T00:00:00.000Z',conversationId=randomUUID(),runId=randomUUID(),stepId=randomUUID(),requestId=randomUUID(),body=JSON.stringify({text:'原件🙂'.repeat(20000)}),shared=createHash('sha256').update('{}').digest('hex');
   db.exec('PRAGMA journal_mode=DELETE; BEGIN');buildPreviousHistoryDatabase(db,version);
+  // The S2-frozen v6/v7 inputs contain DDL only. Initialize their real empty
+  // counter before seeding retained Mio rows, without changing either input.
+  if(version>=6)db.exec('PRAGMA recursive_triggers=ON; INSERT INTO mio_storage_counters(singleton,bytes,rows) VALUES(1,0,1)');
   db.prepare('INSERT INTO history_state VALUES(1,?,?)').run(value.projectId,value.sequence);
   db.prepare('INSERT INTO mio_blobs VALUES(?,?,?,?)').run(shared,2,'{}',at);
   db.prepare('INSERT INTO mio_conversations VALUES(?,?,?,?)').run(conversationId,value.projectId,at,at);
@@ -151,7 +158,7 @@ function r1Fixture(t:TestContext,version:3|4|5|6=3):Fixture{
   db.prepare("UPDATE mio_steps SET status='unknown',currentRequestId=? WHERE id=?").run(requestId,stepId);
   for(const kind of PROCESS_KINDS)db.prepare('INSERT INTO mio_process_target_revisions VALUES(?,?,?,?)').run(value.projectId,kind,randomUUID(),9);
   db.prepare("INSERT INTO idempotency VALUES('outside-mio','stable','request-hash','resource-id')").run();
-  db.exec('COMMIT');assert.deepEqual(readSchemaManifest(db,'main'),version===3?R1_HISTORY_V3_MANIFEST.entries:version===4?R1_HISTORY_V4_MANIFEST.entries:version===5?R2_HISTORY_V5_MANIFEST.entries:V1B_HISTORY_V6_MANIFEST.entries);
+  db.exec('COMMIT');assert.deepEqual(readSchemaManifest(db,'main'),version===3?R1_HISTORY_V3_MANIFEST.entries:version===4?R1_HISTORY_V4_MANIFEST.entries:version===5?R2_HISTORY_V5_MANIFEST.entries:version===6?V1_HISTORY_V6_MANIFEST.entries:S2_HISTORY_V7_MANIFEST.entries);
  }finally{db.close();}
  return value;
 }
@@ -194,7 +201,7 @@ function v5Fixture(t: TestContext): Fixture {
 }
 function v5Data(db: DatabaseSync): unknown {
   return R2_HISTORY_V5_MANIFEST.entries.filter(entry => entry.type === 'table' && entry.name !== 'schema_version')
-    .map(entry => ({table: entry.name, rows: db.prepare(`SELECT ${entry.name==='history_state'?'singleton,projectId,seenContentSequence':'*'} FROM main."${entry.name.replaceAll('"', '""')}" ORDER BY rowid`).all()}));
+    .map(entry => ({table: entry.name, rows: db.prepare(`SELECT ${entry.name==='history_state'?'singleton,projectId,seenContentSequence':entry.name==='project_versions'||entry.name==='image_reviews'?'rowid AS retained_rowid,*':'*'} FROM main."${entry.name.replaceAll('"', '""')}" ORDER BY rowid`).all()}));
 }
 function assertV5(value: Fixture, before: unknown): void {
   inspect(value, db => {
@@ -545,25 +552,44 @@ test('another process holding the old history prevents any upgrade', {timeout: 6
   open(value).close();
 });
 
-function v6Fixture(t:TestContext):Fixture {
- const value=r1Fixture(t,6);
+/** A legitimate S2-only edit origin proves v7 is recognized directly; it
+ * cannot be routed through the frozen v6 image-review declaration. */
+function seedS2Review(value:Fixture):void {
+ inspect(value,db=>{
+  const projectId=value.projectId,sha256='a'.repeat(64),reviewId=randomUUID(),requestId=randomUUID(),at='2026-11-03T00:00:00.000Z';
+  const sourceImage={assetId:randomUUID(),sha256,mimeType:'image/png',byteLength:100,width:64,height:96,name:'K1.png',
+   origin:{kind:'previs-output',publicationId:randomUUID(),previsOutput:{projectId,nodeId:randomUUID(),keyframeId:'k1',sceneRevision:2,requestId:randomUUID(),name:'K1.png',sha256,width:64,height:96}}};
+  const input={projectId,requestId,name:'Retained S2 edit',prompt:'Preserve framing',providerId:'openai',model:IMAGE_MODELS.openai,
+   options:IMAGE_FIXED_OPTIONS,purpose:'edit',inputImage:{assetId:sourceImage.assetId,sha256}};
+  const intent={schemaVersion:5,reviewId,input,settingsRevision:1,destination:IMAGE_EDIT_REVIEW_DESTINATION,policy:IMAGE_REVIEW_POLICY,sourceImage};
+  const canonicalInput=canonicalImageInput(input),canonicalIntent=canonicalImageInput(intent);
+  db.prepare(`INSERT INTO image_reviews(rowid,id,projectId,requestId,inputHash,canonicalInput,intentHash,canonicalIntent,state,revision,taskId,postAttempts,createdAt,updatedAt,approvedAt,rejectedAt,dispatchedAt)
+   VALUES(29,?,?,?,?,?,?,?,'pending',1,NULL,0,?,?,NULL,NULL,NULL)`).run(reviewId,projectId,requestId,createHash('sha256').update(canonicalInput).digest('hex'),canonicalInput,createHash('sha256').update(canonicalIntent).digest('hex'),canonicalIntent,at,at);
+  assert.equal(db.prepare('PRAGMA foreign_keys').get()?.foreign_keys,1);
+  assert.deepEqual(db.prepare('PRAGMA main.foreign_key_check').all(),[]);
+ });
+}
+function v6Fixture(t:TestContext,version:6|7=6):Fixture {
+ const value=r1Fixture(t,version);
  inspect(value,db=>{
   const raw=Buffer.from('{"frozen":"opaque retained bytes"}'),payload=gzipSync(raw),hash=createHash('sha256').update(raw).digest('hex'),at='2026-11-02T00:00:00.000Z';
   const run=db.prepare('SELECT id FROM mio_runs LIMIT 1').get()!;
   db.exec('BEGIN');
   db.prepare("INSERT INTO project_version_blobs VALUES(?,1,'gzip',?,?,?)").run(hash,raw.length,payload.length,payload);
-  db.prepare("INSERT INTO project_versions VALUES(?,?,'manual','retained',NULL,?, ?,?,9)").run(randomUUID(),value.projectId,value.sequence,at,hash);
-  db.prepare("INSERT INTO project_versions VALUES(?,?,'mio-turn',NULL,?,?, ?,?,9)").run(randomUUID(),value.projectId,run.id,value.sequence,at,hash);
+  db.prepare("INSERT INTO project_versions(rowid,id,projectId,trigger,name,mioRunId,contentSequence,createdAt,blobHash,mioChangeRowid) VALUES(17,?,?,'manual','retained',NULL,?, ?,?,9)").run(randomUUID(),value.projectId,value.sequence,at,hash);
+  db.prepare("INSERT INTO project_versions(rowid,id,projectId,trigger,name,mioRunId,contentSequence,createdAt,blobHash,mioChangeRowid) VALUES(43,?,?,'mio-turn',NULL,?,?, ?,?,9)").run(randomUUID(),value.projectId,run.id,value.sequence,at,hash);
   db.prepare("INSERT INTO project_version_requests VALUES(?,?,'project.version.save',?,?)").run(value.projectId,randomUUID(),'a'.repeat(64),'{"ok":true,"retained":"原字节"}');
   db.prepare("INSERT INTO project_version_capture_marks VALUES(?,'daily-open','2026-11-02|UTC',?)").run(value.projectId,at);
-  db.exec('COMMIT');assert.deepEqual(readSchemaManifest(db,'main'),V1B_HISTORY_V6_MANIFEST.entries);
- });return value;
+  db.exec('COMMIT');assert.deepEqual(readSchemaManifest(db,'main'),version===6?V1_HISTORY_V6_MANIFEST.entries:S2_HISTORY_V7_MANIFEST.entries);
+ });
+ if(version===7)seedS2Review(value);
+ return value;
 }
 function v6Data(db:DatabaseSync):unknown {
- return V1B_HISTORY_V6_MANIFEST.entries.filter(entry=>entry.type==='table'&&entry.name!=='schema_version').map(entry=>({table:entry.name,rows:db.prepare(`SELECT ${entry.name==='history_state'?'singleton,projectId,seenContentSequence':'*'} FROM main."${entry.name}" ORDER BY rowid`).all()}));
+ return V1_HISTORY_V6_MANIFEST.entries.filter(entry=>entry.type==='table'&&entry.name!=='schema_version').map(entry=>({table:entry.name,rows:db.prepare(`SELECT ${entry.name==='history_state'?'singleton,projectId,seenContentSequence':entry.name==='project_versions'||entry.name==='image_reviews'?'rowid AS retained_rowid,*':'*'} FROM main."${entry.name}" ORDER BY rowid`).all()}));
 }
-test('history6 retains every Mio, blob, version, request and mark byte while detaching version provenance from execution rows',t=>{
- const value=v6Fixture(t),before=inspect(value,v6Data),connection=open(value);
+for(const version of [6,7] as const)test(`history${version} retains every Mio, blob, version, request and mark byte while detaching version provenance from execution rows`,t=>{
+ const value=v6Fixture(t,version),before=inspect(value,v6Data),connection=open(value);
  try {
   assert.equal(connection.historyState,'diverged');assert.equal(connection.historyAdmission.seen.contentToken,null);
   assert.deepEqual(v6Data(connection.db),before);assert.equal(sequence(connection.db),value.sequence);
@@ -572,19 +598,41 @@ test('history6 retains every Mio, blob, version, request and mark byte while det
   assert.equal(connection.db.prepare('SELECT count(*) AS n FROM main.project_history_resolution').get()?.n,0);
  } finally {connection.close();}
 });
-for(const point of ['after-metadata','before-version','after-version'] as const)test(`history6 failed ${point} upgrade restores its exact profile and all retained bytes`,t=>{
- const value=v6Fixture(t),before=inspect(value,v6Data),exec=DatabaseSync.prototype.exec;let hit=false;
+for(const version of [6,7] as const)for(const point of ['after-metadata','before-version','after-version'] as const)test(`history${version} failed ${point} upgrade restores its exact profile and all retained bytes`,t=>{
+ const value=v6Fixture(t,version),before=inspect(value,v6Data),exec=DatabaseSync.prototype.exec;let hit=false;
  const mock=t.mock.method(DatabaseSync.prototype,'exec',function(this:DatabaseSync,sql:string):void{
   if(point==='before-version'&&sql===CURRENT_VERSION_WRITE){hit=true;throw Error('injected v6 upgrade failure');}
   exec.call(this,sql);
   if(point==='after-metadata'&&sql.startsWith('CREATE TRIGGER main.history_state_guard_identity ')||point==='after-version'&&sql===CURRENT_VERSION_WRITE){hit=true;throw Error('injected v6 upgrade failure');}
  });
  assert.equal(errorOf(()=>open(value)).code,'PROJECT_INVALID');mock.mock.restore();assert.equal(hit,true);
- inspect(value,db=>{assert.deepEqual(readSchemaManifest(db,'main'),V1B_HISTORY_V6_MANIFEST.entries);assert.deepEqual(v6Data(db),before);assert.equal(sequence(db),value.sequence);});
+ inspect(value,db=>{assert.deepEqual(readSchemaManifest(db,'main'),version===6?V1_HISTORY_V6_MANIFEST.entries:S2_HISTORY_V7_MANIFEST.entries);assert.deepEqual(v6Data(db),before);assert.equal(sequence(db),value.sequence);});
  open(value).close();
 });
-for(const point of ['after-metadata','versions-before-version','versions-after-version','versions-after-commit'] as const)test(`SIGKILL history6 ${point} retains an entire exact old or committed profile`,{timeout:60000},async t=>{
- const value=v6Fixture(t),before=inspect(value,v6Data),kill=await atWorker(t,value,point);await kill();
- inspect(value,db=>{assert.deepEqual(readSchemaManifest(db,'main'),point==='versions-after-commit'?SCHEMA_MANIFEST.history.entries:V1B_HISTORY_V6_MANIFEST.entries);assert.deepEqual(v6Data(db),before);assert.equal(sequence(db),value.sequence);});
+for(const version of [6,7] as const)for(const point of ['after-metadata','versions-before-version','versions-after-version','versions-after-commit'] as const)test(`SIGKILL history${version} ${point} retains an entire exact old or committed profile`,{timeout:60000},async t=>{
+ const value=v6Fixture(t,version),before=inspect(value,v6Data),kill=await atWorker(t,value,point);await kill();
+ inspect(value,db=>{assert.deepEqual(readSchemaManifest(db,'main'),point==='versions-after-commit'?SCHEMA_MANIFEST.history.entries:version===6?V1_HISTORY_V6_MANIFEST.entries:S2_HISTORY_V7_MANIFEST.entries);assert.deepEqual(v6Data(db),before);assert.equal(sequence(db),value.sequence);});
  const connection=open(value);try{assert.equal(connection.historyState,'diverged');assert.deepEqual(v6Data(connection.db),before);}finally{connection.close();}
 });
+
+for(const damage of ['extra-object','modified-review-constraint','modified-version-constraint','invalid-seen','extra-version','v6-review-relabelled-as7'] as const)
+ test(`history7 refuses ${damage} without changing retained S2 rows or source bytes`,t=>{
+  const value=v6Fixture(t,damage==='v6-review-relabelled-as7'?6:7);
+  inspect(value,db=>{
+   if(damage==='extra-object')db.exec('CREATE TABLE unreviewed_v7_extension(value TEXT)');
+   else if(damage==='modified-review-constraint')db.exec('DROP TRIGGER retain_image_reviews;CREATE TRIGGER retain_image_reviews BEFORE DELETE ON image_reviews BEGIN SELECT 1;END');
+   else if(damage==='modified-version-constraint')db.exec('DROP TRIGGER immutable_project_versions;CREATE TRIGGER immutable_project_versions BEFORE UPDATE ON project_versions BEGIN SELECT 1;END');
+   else if(damage==='invalid-seen')db.exec('PRAGMA ignore_check_constraints=ON;UPDATE history_state SET seenContentSequence=-1');
+   else if(damage==='extra-version')db.exec('INSERT INTO schema_version VALUES(6)');
+   else db.exec('UPDATE schema_version SET version=7');
+  });
+  const before=inspect(value,v6Data),source=createHash('sha256').update(readFileSync(value.projectFile)).digest('hex'),history=createHash('sha256').update(readFileSync(value.historyFile)).digest('hex');
+  assert.equal(errorOf(()=>open(value)).code,'PROJECT_INVALID');
+  assert.deepEqual(inspect(value,v6Data),before);
+  assert.equal(createHash('sha256').update(readFileSync(value.projectFile)).digest('hex'),source);
+  assert.equal(createHash('sha256').update(readFileSync(value.historyFile)).digest('hex'),history);
+  inspect(value,db=>{
+   assert.equal(db.prepare("SELECT 1 FROM sqlite_master WHERE name='project_history_resolution'").get(),undefined);
+   assert.equal(db.prepare('PRAGMA table_info(history_state)').all().some(row=>row.name==='seenContentToken'),false);
+  });
+ });

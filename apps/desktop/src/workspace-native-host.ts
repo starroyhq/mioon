@@ -4,6 +4,7 @@ import {constants,openSync,closeSync,writeSync,fsyncSync,renameSync,unlinkSync,l
 import type {BigIntStats} from 'node:fs';
 import {workspaceNativeRequestSchema} from '../../../packages/contracts/src/workspace-native.ts';
 import {exportOutputSchema,type ExportOutput} from '../../../packages/contracts/src/export-controls.ts';
+import {PROJECT_OUTPUT_FOLDERS} from '../../../packages/contracts/src/project-output-publication.ts';
 import {parseProjectApiPath} from '../../../packages/contracts/src/project-file.ts';
 import {isProjectFileHeld} from '@mioon/business/project-file/held-files';
 import {isAppLibraryHeld} from '@mioon/business/app-db/connection';
@@ -30,17 +31,18 @@ export async function readNativeBackendMetadata({base,token,resource,input,signa
 async function verifyExport(root:string,output:ExportOutput,check:()=>void):Promise<()=>void> {
  try{
   check();
-  if(!path.isAbsolute(root)||path.resolve(root)!==root||!path.isAbsolute(output.fileLocation)||path.resolve(output.fileLocation)!==output.fileLocation||output.producer.kind!=='export'||output.producer.id!==output.exportId)throw unavailable();
-  const realRoot=realpathSync(root),file=realpathSync(output.fileLocation),directory=path.join(realRoot,'media');
-  if(file!==output.fileLocation||path.dirname(file)!==directory||!isInsideRealDirectory(realRoot,file))throw unavailable();
-  const projectIdentity=lstatSync(realRoot,{bigint:true}),identity=lstatSync(file,{bigint:true});
-  if(!identity.isFile()||identity.isSymbolicLink()||identity.size!==BigInt(output.sizeBytes))throw unavailable();
+  const proof=output.publication;
+  if(!proof||proof.projectId!==output.projectId||proof.assetId!==output.assetId||proof.owner.kind!=='export'||proof.owner.id!==output.exportId||proof.targetKind!=='exports'||proof.sha256!==output.sha256||proof.sizeBytes!==output.sizeBytes||proof.mimeType!=='video/mp4'||!path.isAbsolute(root)||path.resolve(root)!==root||!path.isAbsolute(output.fileLocation)||path.resolve(output.fileLocation)!==output.fileLocation||output.producer.kind!=='export'||output.producer.id!==output.exportId)throw unavailable();
+  const realRoot=realpathSync(root),file=realpathSync(output.fileLocation),directory=path.join(realRoot,PROJECT_OUTPUT_FOLDERS.exports);
+  if(file!==output.fileLocation||path.dirname(file)!==directory||path.relative(realRoot,file).split(path.sep).join('/')!==proof.projectRelativePath||!isInsideRealDirectory(realRoot,file))throw unavailable();
+  const projectIdentity=lstatSync(realRoot,{bigint:true}),directoryIdentity=lstatSync(directory,{bigint:true}),identity=lstatSync(file,{bigint:true});
+  if(!projectIdentity.isDirectory()||!directoryIdentity.isDirectory()||directoryIdentity.isSymbolicLink()||realpathSync(directory)!==directory||!identity.isFile()||identity.isSymbolicLink()||identity.size!==BigInt(output.sizeBytes))throw unavailable();
   const held=(info:BigIntStats):boolean=>{const id={dev:String(info.dev),ino:String(info.ino)};return isProjectFileHeld(id)||isAppLibraryHeld(id);};
   if(held(identity))throw unavailable();
   const current=():void=>{
    check();
-   const actual=lstatSync(file,{bigint:true}),parent=lstatSync(realRoot,{bigint:true});
-   if(realpathSync(root)!==realRoot||!parent.isDirectory()||parent.dev!==projectIdentity.dev||parent.ino!==projectIdentity.ino||realpathSync(file)!==file||!actual.isFile()||!same(identity,actual)||held(actual))throw unavailable();
+   const actual=lstatSync(file,{bigint:true}),parent=lstatSync(realRoot,{bigint:true}),outputDirectory=lstatSync(directory,{bigint:true});
+   if(realpathSync(root)!==realRoot||!parent.isDirectory()||parent.dev!==projectIdentity.dev||parent.ino!==projectIdentity.ino||!outputDirectory.isDirectory()||outputDirectory.isSymbolicLink()||outputDirectory.dev!==directoryIdentity.dev||outputDirectory.ino!==directoryIdentity.ino||realpathSync(directory)!==directory||realpathSync(file)!==file||!actual.isFile()||!same(identity,actual)||held(actual))throw unavailable();
   };
   if(process.platform==='win32')await verifyWindowsExport(realRoot,output,current);
   else await verifyOrdinaryExport(realRoot,output,current);

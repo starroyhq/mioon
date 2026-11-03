@@ -11,7 +11,7 @@ import {openProjectStore,openStagedProjectStore} from '../packages/business/src/
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {buildPreviousHistoryDatabase} from './fixtures/kernel-history-previous-schema.ts';
 import {readSchemaManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
-import {V1B_HISTORY_V6_MANIFEST} from '../packages/business/src/project-file/schema/history-v6-manifest.ts';
+import {V1_HISTORY_V6_MANIFEST} from '../packages/business/src/project-file/schema/history-v6-manifest.ts';
 import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
 import {AppError} from '../packages/contracts/src/app-error.ts';
 import {expectedContentMetadata} from './helpers/kernel-content-metadata.ts';
@@ -69,12 +69,12 @@ test('same token with a different sequence is invalid rather than a recoverable 
  const before=hash(f.projectFile);assert.throws(()=>f.open(),code('PROJECT_INVALID'));assert.equal(hash(f.projectFile),before);
 });
 
-for(const version of [2,3,4,5,6] as const)test(`exact frozen history ${version} upgrades to 7 with a missing token and no project cleanup`,t=>{
+for(const version of [2,3,4,5,6,7] as const)test(`exact frozen history ${version} upgrades to 8 with a missing token and no project cleanup`,t=>{
  const f=fixture(t);mkdirSync(f.location.localDir,{recursive:true,mode:0o700});const historyFile=path.join(f.location.localDir,'history.db');
  const db=new DatabaseSync(historyFile);db.exec('BEGIN');buildPreviousHistoryDatabase(db,version);db.prepare('INSERT INTO history_state VALUES(1,?,12)').run(f.projectId);db.exec('COMMIT');
- if(version===6)assert.deepEqual(readSchemaManifest(db,'main'),V1B_HISTORY_V6_MANIFEST.entries);db.close();
+ if(version===6)assert.deepEqual(readSchemaManifest(db,'main'),V1_HISTORY_V6_MANIFEST.entries);db.close();
  const before=hash(f.projectFile),s=f.open();assert.equal(s.historyState,'diverged');assert.equal(s.historyAdmission.reason,'legacy-token-missing');assert.equal(s.historyAdmission.seen.contentToken,null);assert.equal(s.historyAdmission.seen.contentSequence,12);
- assert.equal(s.db.prepare('SELECT version FROM main.schema_version').get()?.version,7);assert.deepEqual(readSchemaManifest(s.db,'main'),SCHEMA_MANIFEST.history.entries);assert.equal(hash(f.projectFile),before);s.close();
+ assert.equal(s.db.prepare('SELECT version FROM main.schema_version').get()?.version,8);assert.deepEqual(readSchemaManifest(s.db,'main'),SCHEMA_MANIFEST.history.entries);assert.equal(hash(f.projectFile),before);s.close();
 });
 
 for(const format of [0,1,2,4] as const)test(`header format ${format} refuses before locate and leaves every source/companion byte unchanged`,t=>{

@@ -47,6 +47,11 @@ import type {CreateReadStreamOptions} from 'fs/promises';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import {resolveProjectMediaFile} from '../packages/business/src/project-media-storage.ts';
 import {dataFileSnapshot,databaseFiles} from './helpers/data-file-snapshot.ts';
+import {publishProjectOutput} from '../packages/business/src/project-output-publication.ts';
+import type {ProjectOutputPublicationProof} from '../packages/contracts/src/project-output-publication.ts';
+import type {MediaReference} from '../packages/contracts/src/media-reference.ts';
+
+type ComparisonAsset=Omit<FixtureAsset,'relativePath'> & {relativePath?:string;reference?:MediaReference;referenceRevision?:number;publication?:ProjectOutputPublicationProof};
 
 const token = 'synthetic-version-comparison-media-token';
 const hash = (bytes: NonSharedBuffer|BinaryLike) => createHash('sha256').update(bytes).digest('hex');
@@ -69,7 +74,7 @@ async function fixture(t: test.TestContext, {serve = true, published = false} = 
   const otherShot = await services.call('shot.create', {projectId: project.id, title: 'Other shot'});
   const input = {shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'mock', parameters: {delayMs: 0}};
   const submitted = await services.call('generation.submit', input);
-  let job: MediaJob, version: FixtureVersion & {snapshot?: GenerationSnapshot;providerId?: string;model?: string;isMock?: boolean;createdAt?: string}, asset: FixtureAsset, bytes: Buffer;
+  let job: MediaJob, version: FixtureVersion & {snapshot?: GenerationSnapshot;providerId?: string;model?: string;isMock?: boolean;createdAt?: string}, asset: ComparisonAsset, bytes: Buffer;
   if (published) {
     worker = startWorker(store, services, providers);
     for (let count = 0; count < 10 && (store.get('jobs', submitted.id))!.status !== 'succeeded'; count++) await worker.tick();
@@ -85,7 +90,12 @@ async function fixture(t: test.TestContext, {serve = true, published = false} = 
       duration: 2, hasVideo: true, hasAudio: false, sha256: hash(bytes), sizeBytes: bytes.length, relativePath: `media/result-${job.id}.mp4`,
       provenance: 'synthetic-mock', producer:{kind:'generation',id:job.id}, createdAt: job.createdAt} as FixtureAsset;
     asset.url = `/media/${asset.id}`;
-    await writeFile(mediaFixturePath(projectDir, asset), bytes, {mode: 0o600}); store.put('assets',asset);asset=store.get('assets',asset.id)!
+    if(isProjectStore(store)){
+      const stageFile=path.join(store.tempDir,`${asset.id}.mp4`);await writeFile(stageFile,bytes,{mode:0o600});
+      const {relativePath:_path,...published}=await publishProjectOutput(store,{owner:{kind:'generation',id:job.id,requestId:job.requestId,inputHash:job.requestHash},assetId:asset.id,targetKind:'generated',stageFile,mimeType:'video/mp4',sha256:asset.sha256,sizeBytes:bytes.length});
+      const {relativePath:_legacy,...metadata}=asset;asset={...metadata,...published};
+    }else await writeFile(mediaFixturePath(projectDir, asset), bytes, {mode: 0o600});
+    store.put('assets',asset);asset=store.get('assets',asset.id)!
     version = {id: randomUUID(), projectId: project.id, shotId: shot.id, jobId: job.id, number: 1, providerId: job.providerId,
       model: job.model, isMock: true, snapshot: job.snapshot, assetId: asset.id, url: asset.url, sha256: asset.sha256, createdAt: job.createdAt};
     store.put('versions', version);
@@ -181,7 +191,7 @@ test('exact query shape, identity, method, authentication and browser-origin env
     const response = await f.request(route); assert.equal(response.status, mismatch ? 400 : 404, route);
     const text = await response.text();
     if (mismatch) {const error = JSON.parse(text).error; assert.equal(error.code, 'PROJECT_ID_MISMATCH'); assert.deepEqual(error.details, {projectId: f.project.id});}
-    assert.ok(!text.includes(f.root)); assert.ok(!text.includes(f.asset.relativePath));
+    assert.ok(!text.includes(f.root)); if(f.asset.relativePath)assert.ok(!text.includes(f.asset.relativePath));
   }
   assert.equal(versionComparisonMediaIdentity(new URL(f.url + '#fragment')), null);
   const unauthorized = await fetch(f.server.url + f.route); assert.equal(unauthorized.status, 401); await unauthorized.text();
@@ -211,7 +221,7 @@ test('SQL/JSON ownership, job/version/snapshot links, recorded hash and publishe
     ...['projectId', 'shotId', 'versionId', 'assetId'].map(key => (db: DatabaseSync) => replace(db, 'jobs', {...f.job, [key]: randomUUID()})),
     db => db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.foreign.id, f.asset.id),
     db => replace(db, 'assets', {...f.asset, projectId: f.foreign.id}),
-    ...[{sha256: 'b'.repeat(64)}, {sizeBytes: -1}, {sizeBytes: undefined}, {mimeType: 'image/png'}, {provenance: 'export'}, {producer:{kind:'export',id:randomUUID()}},{producer:{kind:'generation',id:randomUUID()}}, {relativePath: 'media/../access-token'}, {relativePath: `media/result-${randomUUID()}.mp4`}]
+    ...[{sha256: 'b'.repeat(64)}, {sizeBytes: -1}, {sizeBytes: undefined}, {mimeType: 'image/png'}, {provenance: 'export'}, {producer:{kind:'export',id:randomUUID()}},{producer:{kind:'generation',id:randomUUID()}}, {relativePath: 'media/../access-token'}, {relativePath: `media/result-${randomUUID()}.mp4`}, {publication:undefined}, {publication:{...f.asset.publication,assetId:randomUUID()}}, {publication:{...f.asset.publication,owner:{...f.asset.publication?.owner,id:randomUUID()}}}, {reference:{...f.asset.reference,path:`../${f.asset.id}.mp4`,fullSha256:'f'.repeat(64)}}]
       .map(patch => (db: DatabaseSync) => replace(db, 'assets', {...f.asset, ...patch})),
     db => db.prepare('UPDATE assets SET data=? WHERE id=?').run('{invalid', f.asset.id),
   ];

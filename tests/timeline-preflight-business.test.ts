@@ -15,7 +15,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
 import {mkdtemp,rm,writeFile,readFile,unlink,symlink,truncate,readdir} from 'node:fs/promises';
-import {lstatSync,readdirSync,readFileSync} from 'node:fs';
+import {lstatSync,readdirSync,readFileSync,existsSync} from 'node:fs';
+import {storeDirectories} from '../packages/business/src/store-layout.ts';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createServer} from 'node:http';
@@ -320,7 +321,7 @@ const exportRecord=(f:Awaited<ReturnType<typeof fixture>>,status: string|undefin
  timelineRevision:(f.timeline)!.revision,snapshot:(freezeTimelineSnapshot as (...args:Partial<Parameters<typeof freezeTimelineSnapshot>>)=>FixtureSnapshot)(f.timeline,((new Map([[(f.assetValue)!.id,f.assetValue]])) as unknown as Parameters<NonNullable<(...args:Partial<Parameters<typeof freezeTimelineSnapshot>>)=>FixtureSnapshot>>[1])),requestId:randomUUID(),assetId:null,url:null,error:null,createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z',...extra});
 const exportRows=(f:Awaited<ReturnType<typeof fixture>>)=>f.store.db.prepare('SELECT id,projectId,data FROM exports ORDER BY rowid').all();
 function captureOwnedExportPart(directory: PathLike,exportId: string){
- const parts=readdirSync(directory).filter(name=>new RegExp(`^export-${exportId}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.mp4\\.part\\.mp4$`).test(name));
+ const parts=readdirSync(directory).filter(name=>/^stage-[a-f0-9-]{36}\.mp4$/u.test(name)||new RegExp(`^export-${exportId}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.mp4\\.part\\.mp4$`).test(name));
  assert.equal(parts.length,1,'exactly one part must belong to this export attempt');
  const file=path.join(((directory) as unknown as Parameters<NonNullable<(typeof path)["join"]>>[0]),parts[0]),identity=lstatSync(file),bytes=readFileSync(file);
  assert.equal(identity.isFile(),true);assert.equal(identity.nlink,1);assert.equal(identity.size,0);assert.deepEqual(bytes,Buffer.alloc(0));
@@ -373,7 +374,7 @@ test('worker rechecks relational identity inside recovery and queued status tran
 
 test('worker rechecks the timeline export owner after preparation before renderer dispatch',async t=>{
  const f=await fixture(t);await f.seed();const record=exportRecord(f);f.store.put('exports',record);let moved=false,dataAtMove,ownedPart,observerFailure;const events: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[]=[];
- const directory=path.join(f.root,'media'),filesBefore=(await readdir(directory)).sort(),receipts=f.store.db.prepare('SELECT * FROM timeline_requests ORDER BY rowid').all();
+ const directory=path.join(storeDirectories(f.store).tempDir,'export-staging',record.id),filesBefore=existsSync(directory)?(await readdir(directory)).sort():[],receipts=f.store.db.prepare('SELECT * FROM timeline_requests ORDER BY rowid').all();
  const off=onMediaProcess(event=>{events.push(event);if(event.type==='started'&&event.kind==='ffprobe'&&!moved){moved=true;try{ownedPart=captureOwnedExportPart(directory,record.id);dataAtMove=exportRows(f)[0].data;withoutProcessTargetRevisions(f.store.db,['exports'],()=>withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.other.id,record.id)));}catch(error){observerFailure=error;}}}),mocked=t.mock.method(console,'error',()=>{});
  const worker=startWorker(f.store,f.services,new Map());
  try{await worker.tick();await worker.stop();assert.equal(observerFailure,undefined);assert.equal(moved,true);assert.equal(exportRows(f)[0].data,dataAtMove);assert.equal(exportRows(f)[0].projectId,f.other.id);assert.deepEqual(events.filter(e=>e.type==='started').map(e=>e.kind),['ffprobe']);assert.equal(f.store.list('assets').length,1);assert.deepEqual(f.store.db.prepare('SELECT * FROM timeline_requests ORDER BY rowid').all(),receipts);
@@ -385,7 +386,7 @@ test('worker rechecks the timeline export owner after preparation before rendere
 
 test('worker rechecks relational ownership after rendering and never publishes to a reassigned row',async t=>{
  const f=await fixture(t);await f.seed();(f.timeline)!.clips[0].durationFrames=1;(f.timeline)!.durationFrames=1;f.save(((f.timeline) as unknown as Parameters<typeof f.save>[0]));const record=exportRecord(f);f.store.put('exports',record);let moved=false,dataAtMove,ownedPart,observerFailure;
- const directory=path.join(f.root,'media'),filesBefore=(await readdir(directory)).sort(),receipts=f.store.db.prepare('SELECT * FROM timeline_requests ORDER BY rowid').all();
+ const directory=path.join(storeDirectories(f.store).tempDir,'export-staging',record.id),filesBefore=existsSync(directory)?(await readdir(directory)).sort():[],receipts=f.store.db.prepare('SELECT * FROM timeline_requests ORDER BY rowid').all();
  const off=onMediaProcess(event=>{if(event.type==='started'&&event.kind==='ffmpeg'&&!moved){moved=true;try{ownedPart=captureOwnedExportPart(directory,record.id);dataAtMove=exportRows(f)[0].data;withoutProcessTargetRevisions(f.store.db,['exports'],()=>withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.other.id,record.id)));}catch(error){observerFailure=error;}}}),mocked=t.mock.method(console,'error',()=>{});const worker=startWorker(f.store,f.services,new Map());
  try{await worker.tick();await worker.stop();assert.equal(observerFailure,undefined);assert.equal(moved,true);assert.equal(exportRows(f)[0].data,dataAtMove);assert.equal(exportRows(f)[0].projectId,f.other.id);assert.equal(f.store.list('assets').length,1);assert.deepEqual(f.store.db.prepare('SELECT * FROM timeline_requests ORDER BY rowid').all(),receipts);
   await assertPreservedExportPart(directory,filesBefore,ownedPart);}

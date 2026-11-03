@@ -5,6 +5,7 @@ import {comfyCheckpointSchema,comfyImageOptionsSchema} from './comfy-images.ts';
 import {frameSchemas,FRAME_PROFILE_ID,FRAME_SELECTION_RULE} from './frame-extraction.ts';
 import {SOURCE_RANGE_FPS} from './source-range.ts';
 import {SCENE_LIMITS} from './scene-tasks.ts';
+import {previsOutputIdentitySchema} from './previs-output.ts';
 import {IMAGE_EDIT_SOURCE_BOUNDS,IMAGE_EDIT_SOURCE_MIME_TYPES,IMAGE_EDIT_OUTPUT_BOUNDS,imageEditProfile,imageEditSourceIssue,isImageEditOutputSize,parseImageSize} from './image-edit-profiles.ts';
 
 // Fixed image profiles; a provider label or local enable flag is never approval
@@ -37,14 +38,17 @@ const editSceneKeyframe=z.object({sceneTaskId:id,sourceAssetId:id,sourceHash:has
 const editOrigin=z.union([z.object({kind:z.literal('user-import')}).strict(),
  z.object({kind:z.enum(['generated','synthetic-mock']),imageSource:imageSourceSchema}).strict(),
  z.object({kind:z.literal('extracted-frame'),frameSource:editFrameSource}).strict(),
- z.object({kind:z.literal('scene-keyframe'),sceneKeyframe:editSceneKeyframe}).strict()]);
+ z.object({kind:z.literal('scene-keyframe'),sceneKeyframe:editSceneKeyframe}).strict(),
+ z.object({kind:z.literal('previs-output'),previsOutput:previsOutputIdentitySchema,publicationId:id}).strict()]);
 // Backend-derived, safe provenance. Paths, bytes, URLs and credentials never
 // enter model/user arguments or retained public records.
 export const imageEditSourceSchema=z.object({assetId:id,sha256:hash,mimeType:z.enum(IMAGE_EDIT_SOURCE_MIME_TYPES),
  byteLength:z.number().int().min(1).max(IMAGE_EDIT_LIMITS.sourceBytes),
  width:z.number().int().min(1).max(IMAGE_EDIT_LIMITS.sourceMaxEdge),height:z.number().int().min(1).max(IMAGE_EDIT_LIMITS.sourceMaxEdge),
  name:z.string().min(1).max(IMAGE_EDIT_LIMITS.sourceNameCharacters).refine(value=>Boolean(value.trim())&&encoder.encode(value).length<=IMAGE_EDIT_LIMITS.sourceNameBytes,'Invalid source name'),origin:editOrigin}).strict()
- .refine(value=>value.width*value.height<=IMAGE_EDIT_LIMITS.sourceMaxPixels,'Source geometry exceeds edit profile');
+ .refine(value=>value.width*value.height<=IMAGE_EDIT_LIMITS.sourceMaxPixels,'Source geometry exceeds edit profile')
+ .refine(value=>value.origin.kind!=='previs-output'||value.origin.previsOutput.sha256===value.sha256&&value.origin.previsOutput.width===value.width&&
+  value.origin.previsOutput.height===value.height&&value.origin.previsOutput.name===value.name,'Previs render identity mismatch');
 const editFields={purpose:z.literal('edit'),inputImage:imageEditInputImageSchema};
 const editSourceFields={...editFields,sourceImage:imageEditSourceSchema};
 interface EditSourceValues {inputImage?: {assetId?: unknown; sha256?: unknown}; sourceImage?: {assetId?: unknown; sha256?: unknown}}

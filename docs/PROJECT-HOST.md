@@ -40,7 +40,7 @@ manager 在 factory、`ensureProjectRow`、业务服务/Mio 构造、worker 和�
 - V2 的 `createProjectBackups` 已在生产注册第一个生命周期 hook。正常准入后打开复制项目文件，关闭在运行时排空后、store 关闭前复制；按项目 ID、内容序号和令牌去重、保留最近三份，登记实际完成副本的 pair。`project.backup.list/inspect/restore/status` 走应用 RPC，不 acquire 原项目，恢复为新 ID、新令牌、空本机记录的新文件。实现边界和契约见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)，本卡没有备份界面。
 - S1 素材媒体 GET/HEAD/Range 使用精确宿主 store 的 L1 引用服务，逐块重查权限与身份，响应 no-store；宿主不再预建私有 `media/`。受信用户路径导入/位置确认走固定 `asset-media/trusted` 项目路由，沿用认证与 origin 检查，普通 RPC/MCP 无确认入口。封面缓存绑定无路径内容指纹，首页仍不 acquire 项目。导入、复制恢复许可和格式拒旧见 [ASSET-REFERENCES.md](ASSET-REFERENCES.md)。
 - 备份完整校验成功后按文件身份和变动时间在同一服务实例内缓存；安全属性仍逐次检查，替换或变动即重验。打开去重只确认最近有效项，列表仍核对全部有效项，inspect/restore 仍完整只读校验。
-- 版本领域在真实项目服务中接入 `project.version.list/save/preview/restore`，走项目前缀 RPC；正常准入的每日 hook 在 V2 打开备份校验后执行，Mio 首改与恢复前保存使用同一真实连接和事务。恢复同时核对完整摘要与内容序号/令牌，并在写入前检查应用能力和宿主在途工作。当前 project/history/cache 为 3/7/2，精确已知 history 2–6 可升级到 7，旧 token 缺失时进入恢复会话；详见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。备份四项与版本四项统一进契约根操作表及 effect 表，内置 Mio 均禁用。
+- 版本领域在真实项目服务中接入 `project.version.list/save/preview/restore`，走项目前缀 RPC；正常准入的每日 hook 在 V2 打开备份校验后执行，Mio 首改与恢复前保存使用同一真实连接和事务。恢复同时核对完整摘要与内容序号/令牌，并在写入前检查应用能力和宿主在途工作。当前 project/history/cache 为 3/8/2，精确已知 history 2–7 可直升到 8，旧 token 缺失时进入恢复会话；详见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。备份四项与版本四项统一进契约根操作表及 effect 表，内置 Mio 均禁用。
 
 ### 暂不可用的后续能力
 

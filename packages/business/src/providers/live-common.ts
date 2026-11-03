@@ -5,6 +5,7 @@ import path from 'node:path';
 import {registeredProjectAssetReferences, registeredProjectStore} from '../project-media-storage.ts';
 import {validateManagedSource, sameManagedFile} from '../managed-media.ts';
 import {awaitProvider,checkpoint,operationCancelled} from '../operation-lifecycle.ts';
+import {resolveJobOutputDestination} from '../output-artifact-storage.ts';
 
 export interface ProviderError extends Error {
   code: string;
@@ -320,6 +321,7 @@ export function outputUrl(value: unknown, hosts: ReadonlySet<string>): URL {
 
 async function managedDestination(root: string, destination: string, signal?: AbortSignal): Promise<string> {
   checkpoint(signal);
+  const staged=resolveJobOutputDestination(root,destination);if(staged)return staged;
   try {
     const base = await realpath(root), target = path.resolve(destination);
     checkpoint(signal);

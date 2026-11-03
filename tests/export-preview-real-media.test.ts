@@ -55,10 +55,10 @@ test('real checked sample and full export preserve timeline and exact receipt wh
     assert.deepEqual(await rpc('timeline.render', input), receipt, 'exact recovery is immutable and does not start another export');
     assert.deepEqual(await rpc('timeline.get', { projectId: project.id }), original, 'trial never edits saved timeline or final whole-range choice');
     const route = `${projectMediaPath(project.id, record!.assetId!)}?preview=1&exportId=${record!.id}`;
-    const response = await fetch(server.url + route, { headers: { authorization: `Bearer ${server.token}` }, signal: AbortSignal.timeout(30000) }); assert.equal(response.status, 200);
+    const response = await fetch(server.url + route, { headers: { authorization: `Bearer ${server.token}` }, signal: AbortSignal.timeout(30000) }); assert.equal(response.status, 200, response.status === 200 ? undefined : await response.text());
     const bytes = Buffer.from(await response.arrayBuffer()), file = path.join(root, `${name}.mp4`); await writeFile(file, bytes);
     const partial = await fetch(server.url + route, { headers: { authorization: `Bearer ${server.token}`, range: 'bytes=0-31' }, signal: AbortSignal.timeout(30000) });
-    assert.equal(partial.status, 206); assert.deepEqual(Buffer.from(await partial.arrayBuffer()), bytes.subarray(0, 32));
+    assert.equal(partial.status, 206, partial.status === 206 ? undefined : await partial.text()); assert.deepEqual(Buffer.from(await partial.arrayBuffer()), bytes.subarray(0, 32));
     interface ProbeStream {codec_type?: string; codec_name?: string; width?: number; height?: number; nb_read_frames?: string | number; avg_frame_rate?: string; sample_rate?: string; channels?: number}
     const info = JSON.parse(await run('ffprobe', ['-v', 'error', '-count_frames', '-show_streams', '-show_format', '-of', 'json', file], { timeout: 20000, maxStdoutBytes: 131072, maxStderrBytes: 65536 })) as {streams: ProbeStream[]};
     const video = info.streams.find(stream => stream.codec_type === 'video')!, sound = info.streams.find(stream => stream.codec_type === 'audio')!;

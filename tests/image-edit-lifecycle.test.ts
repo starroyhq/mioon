@@ -31,6 +31,7 @@ import {IMAGE_SETTINGS_READ_CURRENT,IMAGE_SETTINGS_ASSERT_CURRENT} from '../pack
 import {DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import {schemaObjects,withoutForeignKeys} from './helpers/project-database.ts';
+import {publishOutputFixture,markProjectOutputRegistered} from './helpers/project-output-fixture.ts';
 import type { BinaryLike } from 'crypto';
 
 const sha=(bytes: BinaryLike|Buffer<ArrayBuffer>)=>createHash('sha256').update(bytes).digest('hex');
@@ -178,12 +179,13 @@ test('resolver never runs asynchronous PNG work inside a SQLite transaction',asy
  f.store.tx(()=>{promise=resolver.verify(f.input());});await assert.rejects(promise as Promise<unknown>,/outside SQLite transactions/);
 });
 
-function injectEdit(f: Awaited<ReturnType<typeof fixture>>,sourceImage: EditSource){
+async function injectEdit(f: Awaited<ReturnType<typeof fixture>>,sourceImage: EditSource){
  const id=randomUUID(),groupId=randomUUID(),assetId=randomUUID(),versionId=randomUUID(),timestamp=new Date().toISOString();
  const input=f.input({inputImage:{assetId:sourceImage.assetId,sha256:sourceImage.sha256}}),inputHash=sha(canonical(input));
  const snapshot={schemaVersion:1,projectId:f.projectId,taskId:id,groupId,name:input.name,prompt:input.prompt,providerId:input.providerId,model:input.model,options:input.options,purpose:'edit',inputImage:input.inputImage,sourceImage};
  const receipt={schemaVersion:1,taskId:id,projectId:f.projectId,groupId,inputHash,assetId,versionId,sha256:f.asset.sha256,mimeType:'image/png' as const,width:1024,height:1024,byteLength:f.bytes.length,isMock:true};
- const asset={...f.asset,id:assetId,name:'Edited.png',provenance:'synthetic-mock',relativePath:`media/${assetId}.png`};
+ const published=await publishOutputFixture(f.native,{assetId,owner:{kind:'image',id,requestId:input.requestId,inputHash},bytes:f.bytes,mimeType:'image/png'});
+ const asset={id:assetId,projectId:f.projectId,name:'Edited.png',provenance:'synthetic-mock',mimeType:'image/png',width:1024,height:1024,createdAt:timestamp,...published};
  const version={id:versionId,projectId:f.projectId,groupId,taskId:id,number:1,assetId,sha256:receipt.sha256,mimeType:'image/png' as const,width:1024,height:1024,byteLength:receipt.byteLength,isMock:true,providerId:'mock',model:IMAGE_MODELS.mock,options:{...IMAGE_FIXED_OPTIONS},purpose:'edit',inputImage:input.inputImage,sourceImage,createdAt:timestamp};
  f.store.tx(()=>{
   // Cross-file references are checked immediately: construct the same retained
@@ -194,13 +196,14 @@ function injectEdit(f: Awaited<ReturnType<typeof fixture>>,sourceImage: EditSour
   f.store.db.prepare("UPDATE image_tasks SET state='succeeded',revision=4,versionId=? WHERE id=?").run(versionId,id);
   f.store.db.prepare('UPDATE image_groups SET revision=2,headVersionId=? WHERE id=?').run(versionId,groupId);
  });
+ await markProjectOutputRegistered(f.native,published.publication);
  return {id,groupId,assetId,versionId,input,snapshot,receipt,version,sourceImage:{assetId,sha256:asset.sha256,mimeType:'image/png' as const,byteLength:asset.sizeBytes,width:1024,height:1024,name:asset.name,origin:{kind:'synthetic-mock' as const,imageSource:{imageGroupId:groupId,imageTaskId:id,imageVersionId:versionId}}}};
 }
 const importedDescriptor=(f: Awaited<ReturnType<typeof fixture>>)=>({assetId:f.asset.id,sha256:f.asset.sha256,mimeType:'image/png' as const,byteLength:f.bytes.length,width:1024,height:1024,name:f.asset.name,origin:{kind:'user-import' as const}});
 function removeIdentityTriggers(db: DatabaseSync){for(const {name} of schemaObjects(db).filter(({type,tbl_name,name})=>type==='trigger'&&!String(name).startsWith('project_file_fk_')&&(tbl_name==='image_tasks'||tbl_name==='image_versions')))db.exec(`DROP TRIGGER "${name}"`);db.exec('PRAGMA ignore_check_constraints=ON');}
 
 test('actual edit-source cycle is rejected rather than hidden by pending caches',async t=>{
- const f=await fixture(t,{autoRun:false}),one=injectEdit(f,importedDescriptor(f)),two=injectEdit(f,one.sourceImage);
+ const f=await fixture(t,{autoRun:false}),one=await injectEdit(f,importedDescriptor(f)),two=await injectEdit(f,one.sourceImage);
  assert.equal(createOwnedMediaGraphReader(f.store.db,f.projectId).asset(two.assetId).id,two.assetId);
  removeIdentityTriggers(f.store.db);
  const input={...one.input,inputImage:{assetId:two.assetId,sha256:two.sourceImage.sha256}},inputHash=sha(canonical(input)),snapshot={...one.snapshot,inputImage:input.inputImage,sourceImage:two.sourceImage},receipt={...one.receipt,inputHash},version={...one.version,inputImage:input.inputImage,sourceImage:two.sourceImage};
@@ -211,21 +214,22 @@ test('actual edit-source cycle is rejected rather than hidden by pending caches'
 });
 
 test('edit source ancestry is bounded at 32 source tasks',async t=>{
- const f=await fixture(t,{autoRun:false});let source:EditSource=importedDescriptor(f),last: ReturnType<typeof injectEdit>;
- for(let depth=1;depth<=33;depth++){last=injectEdit(f,source);source=last.sourceImage;if(depth===32)assert.equal(createOwnedMediaGraphReader(f.store.db,f.projectId).asset(last.assetId).id,last.assetId);}
+ const f=await fixture(t,{autoRun:false});let source:EditSource=importedDescriptor(f),last!: Awaited<ReturnType<typeof injectEdit>>;
+ for(let depth=1;depth<=33;depth++){last=await injectEdit(f,source);source=last.sourceImage;if(depth===32)assert.equal(createOwnedMediaGraphReader(f.store.db,f.projectId).asset(last.assetId).id,last.assetId);}
  assert.throws(()=>createOwnedMediaGraphReader(f.store.db,f.projectId).asset(last.assetId));
 });
 
 for(const variant of ['sql-owner-reassigned','version-deleted','foreign-extra-receipt'])test(`reverse ${variant} cannot hide an edited output behind an import label`,async t=>{
  const {validateImageConsumption}=await import('../packages/business/src/image-consumption.ts');
- const f=await fixture(t,{autoRun:false}),edited=injectEdit(f,importedDescriptor(f));removeIdentityTriggers(f.store.db);
+ const f=await fixture(t,{autoRun:false}),edited=await injectEdit(f,importedDescriptor(f));removeIdentityTriggers(f.store.db);
+ const foreign=variant==='foreign-extra-receipt'?await injectEdit(f,importedDescriptor(f)):undefined;
  const asset={...f.store.get('assets',edited.assetId)!,provenance:'user-import'};
  withoutForeignKeys(f.store.db,()=>{
   f.store.put('assets',asset);
   if(variant==='sql-owner-reassigned')f.store.db.prepare('UPDATE image_versions SET assetId=? WHERE id=?').run(randomUUID(),edited.versionId);
   if(variant==='version-deleted')f.store.db.prepare('DELETE FROM image_versions WHERE id=?').run(edited.versionId);
-  if(variant==='foreign-extra-receipt'){
-   const foreign=injectEdit(f,importedDescriptor(f));f.store.db.prepare('UPDATE image_tasks SET projectId=?,stagedReceipt=? WHERE id=?').run(f.otherProjectId,canonical({...foreign.receipt,assetId:edited.assetId}),foreign.id);
+  if(foreign){
+   f.store.db.prepare('UPDATE image_tasks SET projectId=?,stagedReceipt=? WHERE id=?').run(f.otherProjectId,canonical({...foreign.receipt,assetId:edited.assetId}),foreign.id);
   }
  });
  assert.throws(()=>createOwnedMediaGraphReader(f.store.db,f.projectId).asset(edited.assetId));

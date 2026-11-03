@@ -20,8 +20,8 @@ export type DatabaseKind = keyof typeof PROJECT_DATABASE_NAMES;
  * schema/manifest.ts (`node tests/helpers/project-file-schema-derivation.ts --write`)
  * and recording the new manifest digest in tests/project-file-schema.test.ts. */
 export const PROJECT_FILE_SCHEMA_VERSION = 3;
-/** 3 replaced development task tables; 4 adds counters; 5 adds rule-write intents; 6 adds local project versions; 7 adds content tokens and recovery confirmation. */
-export const HISTORY_SCHEMA_VERSION = 7;
+/** 3 replaced development task tables; 4 adds counters; 5 adds rule-write intents; 6 adds local project versions; 7 adds proven previs image-edit origins; 8 adds content tokens and recovery confirmation. */
+export const HISTORY_SCHEMA_VERSION = 8;
 export const CACHE_SCHEMA_VERSION = 2;
 
 /** SQLite header `application_id` values: 'MioP', 'MioH' and 'MioC'. */

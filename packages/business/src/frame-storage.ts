@@ -2,13 +2,15 @@ import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {constants,lstatSync,openSync,fstatSync,fsyncSync,closeSync} from 'node:fs';
-import {ensurePrivateDirectory,validateManagedDirectory,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';
+import {ensurePrivateDirectory,validateManagedDirectory,readPrivateFile,writePrivateFileAtomic,removePrivateFile,getWindowsManagedFileIO} from '@mioon/contracts/private-storage';
 import {FRAME_LIMITS,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,frameReceiptSchema,canonicalFrameInput as canonical} from '../../contracts/src/frame-extraction.ts';
 import {validatePng as validatePngBytes} from './images/png.ts';
 import type {PngMetadata} from './images/png.ts';
 import {storeDirectories} from './store-layout.ts';
 import {isProjectStore} from './project-file/store.ts';
 import {projectMediaDirectory,readProjectMediaFile,writeProjectMediaFileAtomic} from './project-media-storage.ts';
+import {publishProjectOutput,readPublishedProjectOutput} from './project-output-publication.ts';
+import type {PublishedProjectOutput,ProjectOutputOwner} from './project-output-publication.ts';
 
 export interface FrameSourceSnapshot {
  readonly assetId: string;
@@ -32,6 +34,7 @@ export interface FrameStorageTask {
  readonly id: string;
  readonly projectId: string;
  readonly inputHash: string;
+ readonly requestId?: string;
  readonly snapshot: FrameStorageSnapshot;
  readonly stagedReceipt?: string | null;
 }
@@ -66,7 +69,7 @@ export interface FrameReceipt {
  readonly probe: Record<string, unknown>;
 }
 export interface FrameStoredPng {readonly bytes: Buffer; readonly final: string}
-export interface FramePublishedResult {readonly relativePath: string; readonly sizeBytes: number}
+export type FramePublishedResult=PublishedProjectOutput|{readonly relativePath: string; readonly sizeBytes: number};
 export interface FrameStorage {
  stage(task: FrameStorageTask,result: {readonly bytes?: unknown; readonly provenance?: unknown},check: ()=>void,options?: {readonly signal?: AbortSignal}): Promise<FrameReceipt>;
  readReceipt(task: FrameStorageTask): FrameReceipt | null;
@@ -80,6 +83,7 @@ const failure=(): Error=>Object.assign(new Error('The complete local frame resul
 const digest=(bytes: Buffer): string=>createHash('sha256').update(bytes).digest('hex');
 const uuid=(value: unknown): boolean=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 const isRecord=(value: unknown): value is Record<string, unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+export const framePublicationOwner=(task: FrameStorageTask): ProjectOutputOwner=>({kind:'frame',id:task.id,requestId:task.requestId??task.id,inputHash:task.inputHash});
 
 /** Complete, bounded PNG + immutable manifest checkpoints. Merely finding a
  * PNG never authorizes recovery. Reads do not repair storage or make directories.
@@ -91,6 +95,7 @@ export function createFrameStorage(store: {readonly root: string},{validatePng}:
  const readMedia=(file:string,options:Omit<import('@mioon/contracts/private-storage').ReadPrivateFileOptions,'root'>)=>isProjectStore(store)?readProjectMediaFile(store,relative(file),options):readPrivateFile(file,{root,...options});
  const writeMedia=(file:string,bytes:Buffer,options:Omit<import('@mioon/contracts/private-storage').WritePrivateFileOptions,'root'>):void=>{if(isProjectStore(store))writeProjectMediaFileAtomic(store,relative(file),bytes,options);else writePrivateFileAtomic(file,bytes,{root,...options});};
  function syncDirectory(value: string,ownerRoot=mediaRoot): void {
+  if(process.platform==='win32'){getWindowsManagedFileIO().syncDirectory(value,{root:ownerRoot,private:!(isProjectStore(store)&&ownerRoot===mediaRoot)});return;}
   const ordinary=isProjectStore(store)&&ownerRoot===mediaRoot;const before=ordinary?lstatSync(value):validateManagedDirectory(value,{root:ownerRoot});let fd;
   try{
    if(!before)throw failure();
@@ -122,8 +127,12 @@ export function createFrameStorage(store: {readonly root: string},{validatePng}:
   check();validateReceipt(task,receipt);
   // The complete manifest remains required even after final media publication.
   const manifest=readReceipt(task);if(!manifest||canonical(manifest)!==canonical(receipt))throw failure();
-  const final=path.join(root,'media',`${receipt.assetId}.png`),staged=readPrivateFile(paths(task).png,{root:stagingRoot,allowMissing:true,maxBytes:FRAME_LIMITS.resultBytes});
-  const bytes=staged??readMedia(final,{allowMissing:true,maxBytes:FRAME_LIMITS.resultBytes});
+  const final=path.join(root,'media',`${receipt.assetId}.png`);
+  // A published hard link has two links until registration. Only its durable
+  // intent can authorize reading that ordinary final instead of private stage.
+  const published=isProjectStore(store)?await readPublishedProjectOutput(store,{owner:framePublicationOwner(task),assetId:receipt.assetId},{maxBytes:FRAME_LIMITS.resultBytes,signal,beforeEffect:check}):null;check();
+  const staged=published??readPrivateFile(paths(task).png,{root:stagingRoot,allowMissing:true,maxBytes:FRAME_LIMITS.resultBytes});
+  const bytes=staged??(isProjectStore(store)?null:readMedia(final,{allowMissing:true,maxBytes:FRAME_LIMITS.resultBytes}));
   if(!bytes||typeof bytes==='string'||bytes.length!==receipt.byteLength||digest(bytes)!==receipt.sha256)throw failure();
   await validatePng(bytes,{width:receipt.width,height:receipt.height,opaque:true,signal});check();
   return {bytes,final};
@@ -146,6 +155,7 @@ export function createFrameStorage(store: {readonly root: string},{validatePng}:
  }
  async function publish(task: FrameStorageTask,receipt: FrameReceipt,check: ()=>void,{signal}: {readonly signal?: AbortSignal}={}): Promise<FramePublishedResult> {
   const {bytes,final}=await verify(task,receipt,check,{signal});check();
+  if(isProjectStore(store))return publishProjectOutput(store,{owner:framePublicationOwner(task),assetId:receipt.assetId,targetKind:'generated',stageFile:paths(task).png,mimeType:receipt.mimeType,sha256:receipt.sha256,sizeBytes:receipt.byteLength},{signal,beforeEffect:check});
   const existing=readMedia(final,{allowMissing:true,maxBytes:FRAME_LIMITS.resultBytes});
   if(existing){if(typeof existing==='string'||existing.length!==receipt.byteLength||digest(existing)!==receipt.sha256)throw failure();}
   else{check();writeMedia(final,bytes,{maxBytes:FRAME_LIMITS.resultBytes,replace:false});}

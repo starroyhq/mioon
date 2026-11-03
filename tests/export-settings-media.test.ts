@@ -3,7 +3,8 @@ import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,readFile,rm,readdir} from 'node:fs/promises';
-import {lstatSync,readdirSync,renameSync,writeFileSync} from 'node:fs';
+import {lstatSync,readdirSync,renameSync,writeFileSync,existsSync} from 'node:fs';
+import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
@@ -43,6 +44,8 @@ const selected=(resolution: string,rateControl: RateControl = {mode:'crf',qualit
 type ProcessEvent = Parameters<Parameters<typeof onMediaProcess>[0]>[0];
 type MediaEvent = ProcessEvent;
 const hash=(bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex');
+const workerStageDirectory=(store:unknown,workspace:string,exportId:string):string=>isProjectStore(store)?path.join(store.tempDir,'export-staging',exportId):path.join(workspace,'media');
+const workerOutputDirectory=(store:unknown,workspace:string):string=>path.join(workspace,isProjectStore(store)?'导出':'media');
 async function sandbox(t: {after(fn: () => unknown): void}): Promise<string> {const root=await mkdtemp(path.join(tmpdir(),'mioon-export-media-'));t.after(()=>rm(root,{recursive:true,force:true}));return root;}
 // Another project lives in a store of its own: a store holds one project.
 async function foreignProject(t: {after(fn: () => unknown): void}): Promise<ProjectShape & {store:ReturnType<typeof openStore>}> {
@@ -207,14 +210,14 @@ test('worker capability await cannot encode or overwrite a hostile replacement o
   // The production trigger prevents this write. Dropping only this trigger is
   // a hostile-corruption simulation to test the independent asynchronous fence.
   store.db.exec('DROP TRIGGER immutable_timeline_render_snapshot');
-  const mediaDirectory=path.join(workspace,'media'),filesBefore=(await readdir(mediaDirectory)).sort();
+  const mediaDirectory=path.join(workspace,'media'),stageDirectory=workerStageDirectory(store,workspace,accepted.id),filesBefore=(await readdir(mediaDirectory)).sort();
   let ffmpegStarts=0; let replacement: {snapshot: {delivery: unknown; timeline?: unknown}; [key: string]: unknown} | undefined; let ownedPart: {name: string; dev: number; ino: number} | undefined; let observerFailure: unknown; const events: ProcessEvent[]=[];
   const off=onMediaProcess((event: ProcessEvent)=>{
    events.push(event);
    if(event.type==='started'&&event.kind==='ffmpeg'&&++ffmpegStarts===2){
     try{
-     const parts=readdirSync(mediaDirectory).filter(name=>new RegExp(`^export-${accepted.id}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.mp4\\.part\\.mp4$`).test(name));
-     assert.equal(parts.length,1);const identity=lstatSync(path.join(mediaDirectory,parts[0]));assert.equal(identity.isFile(),true);assert.equal(identity.size,0);
+     const parts=readdirSync(stageDirectory).filter(name=>/^stage-[a-f0-9-]{36}\.mp4$/u.test(name));
+     assert.equal(parts.length,1);const identity=lstatSync(path.join(stageDirectory,parts[0]));assert.equal(identity.isFile(),true);assert.equal(identity.size,0);
      ownedPart={name:parts[0],dev:identity.dev,ino:identity.ino};
      replacement=store.get('exports',accepted.id) as unknown as {snapshot: {delivery: unknown; timeline?: unknown}; [key: string]: unknown};replacement.snapshot.delivery=deliveryFor(replacement.snapshot.timeline as unknown,selected('short_360'));store.put('exports',replacement as unknown as Parameters<typeof store.put>[1]);
     }
@@ -228,8 +231,8 @@ test('worker capability await cannot encode or overwrite a hostile replacement o
   assert.equal(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response,receipt);
   // 01a83cb acquires the part before capability checking and preserves it when
   // the accepted record's identity is lost; this never permits deleting a newer record's output.
-  assert.ok(ownedPart);assert.deepEqual((await readdir(mediaDirectory)).sort(),[...filesBefore,ownedPart.name].sort(),'only this attempt\'s known empty part may remain; no final output or render scratch');
-  const preservedPart=lstatSync(path.join(mediaDirectory,ownedPart.name));assert.equal(preservedPart.isFile(),true);assert.equal(preservedPart.size,0);assert.equal(preservedPart.nlink,1);
+  assert.ok(ownedPart);assert.deepEqual((await readdir(mediaDirectory)).sort(),filesBefore);assert.deepEqual((await readdir(stageDirectory)).sort(),[ownedPart.name],'only this attempt\'s known empty private part may remain; no final output or render scratch');
+  const preservedPart=lstatSync(path.join(stageDirectory,ownedPart.name));assert.equal(preservedPart.isFile(),true);assert.equal(preservedPart.size,0);assert.equal(preservedPart.nlink,1);
   assert.deepEqual({dev:preservedPart.dev,ino:preservedPart.ino},{dev:ownedPart.dev,ino:ownedPart.ino},'conservative cleanup preserves the exact original staging inode');
   assert.equal(events.filter(event=>event.type==='started').length,events.filter(event=>event.type==='exited').length);
  }finally{await worker?.stop();await services.drain();store.close();}
@@ -260,7 +263,8 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
   // The normal version trigger rejects this corruption; remove only that
   // fixture-local protection when testing the independent retained-graph fence.
   if(mutation==='version-sql-owner')store.db.exec('DROP TRIGGER immutable_versions');
-  let moved=false; let afterMutation: ReturnType<typeof state> | undefined; let observerFailure: unknown; let ffmpegStarts=0,probeExits=0; let publicationArmed=false,linkedBeforeTx=false; let replacementFile: string | undefined,preservedFile: string | undefined; let replacementIdentity: {dev: number; ino: number} | undefined; let readUncertain=false,readFailureObserved=false; const events: MediaEvent[]=[];
+  const outputDirectory=workerOutputDirectory(store,workspace);
+  let moved=false; let afterMutation: ReturnType<typeof state> | undefined; let observerFailure: unknown; let ffmpegStarts=0,probeExits=0; let publicationArmed=false,linkedBeforeTx=false; let replacementFile: string | undefined,preservedFile: string | undefined,publishedFile:string|undefined; let replacementIdentity: {dev: number; ino: number} | undefined; let readUncertain=false,readFailureObserved=false; const events: MediaEvent[]=[];
   const replacementBytes=Buffer.from('Different fixture-owned inode must be preserved.');
   const prepare=store.db.prepare;
   if(phase==='publication-read-unknown')t.mock.method(store.db,'prepare',(function(this: unknown, sql: string, ...args: unknown[]){
@@ -289,17 +293,18 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
   const publicationPhase=['publication-tx','publication-replacement','publication-read-unknown'].includes(phase);
   if(publicationPhase)store.tx=body=>{if(publicationArmed){
    publicationArmed=false;
-   const linked=readdirSync(path.join(workspace,'media')).find(name=>name.startsWith(`export-${accepted.id}-`)&&name.endsWith('.mp4')&&!name.endsWith('.part.mp4'));
+   const linked=readdirSync(outputDirectory).find(name=>name.startsWith(`export-${accepted.id}-`)&&name.endsWith('.mp4')&&!name.endsWith('.part.mp4'));
    linkedBeforeTx=Boolean(linked);
+   if(linked)publishedFile=path.join(outputDirectory,linked);
    if(linked&&phase==='publication-replacement'){
-    replacementFile=path.join(workspace,'media',linked);
+    replacementFile=path.join(outputDirectory,linked);
     const originalIdentity=lstatSync(replacementFile);
     // Create while the original inode is still live, then atomically replace
     // the name; this avoids accidental same-inode reuse in the fixture.
     const fresh=replacementFile+'.replacement';writeFileSync(fresh,replacementBytes,{flag:'wx',mode:0o600});renameSync(fresh,replacementFile);
     const replaced=lstatSync(replacementFile);replacementIdentity={dev:replaced.dev,ino:replaced.ino};assert.notDeepEqual(replacementIdentity,{dev:originalIdentity.dev,ino:originalIdentity.ino});
    }
-   if(linked&&phase==='publication-read-unknown')preservedFile=path.join(workspace,'media',linked);
+   if(linked&&phase==='publication-read-unknown')preservedFile=path.join(outputDirectory,linked);
    move();
    if(phase==='publication-read-unknown')readUncertain=true;
   }return originalTx(body);};
@@ -314,6 +319,7 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
    }
   });
   try{worker=startWorker(store as unknown as Parameters<typeof startWorker>[0],services as unknown as Parameters<typeof startWorker>[1],new Map());await worker.tick();}finally{off();}
+  if(phase==='publication-read-unknown'){assert.equal(readFailureObserved,false,'S2 has no project-output deletion or cleanup ownership read');readUncertain=false;}
   assert.equal(observerFailure,undefined);assert.equal(moved,true,`${mutation} raced at ${phase}`);
   if(publicationPhase)assert.equal(linkedBeforeTx,true,'ownership changed after this task linked its output and immediately before the real publication transaction');
   assert.ok(afterMutation);
@@ -337,12 +343,14 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
   if(phase==='publication-replacement'){
    assert.ok(replacementFile);assert.deepEqual(await readFile(replacementFile),replacementBytes,'cleanup must refuse a replacement inode after the output identity fence rejects publication');
    const preserved=lstatSync(replacementFile);assert.deepEqual({dev:preserved.dev,ino:preserved.ino},replacementIdentity,'cleanup must preserve the replacement inode itself');
-   assert.deepEqual((await readdir(path.join(workspace,'media'))).sort(),[...files,path.basename(replacementFile)].sort());
+   assert.deepEqual((await readdir(outputDirectory)).sort(),[path.basename(replacementFile)]);
   }else if(phase==='publication-read-unknown'){
-   assert.equal(readFailureObserved,true);assert.ok(preservedFile);
+   assert.ok(preservedFile);
    await verifyOutput(preservedFile,360,640,3);
-   assert.deepEqual((await readdir(path.join(workspace,'media'))).sort(),[...files,path.basename(preservedFile)].sort(),'uncertain publication ownership must preserve the linked output');
-  }else assert.deepEqual((await readdir(path.join(workspace,'media'))).sort(),files,'no render scratch, partial file, orphan publication, or output asset may remain');
+   assert.deepEqual((await readdir(outputDirectory)).sort(),[path.basename(preservedFile)],'uncertain publication ownership preserves the completed project file');
+  }else if(publicationPhase){assert.ok(publishedFile);await verifyOutput(publishedFile,360,640,3);assert.deepEqual((await readdir(outputDirectory)).sort(),[path.basename(publishedFile)],'a completed project file remains after its registration is refused');}
+  else assert.equal(existsSync(outputDirectory)&&readdirSync(outputDirectory).length>0,false,'no final output is created before publication');
+  assert.deepEqual((await readdir(path.join(workspace,'media'))).sort(),files,'project source files remain unchanged');
   assert.equal(hash(await readFile(sourceFile)),sourceHash);
   assert.equal(events.filter(event=>event.type==='started').length,events.filter(event=>event.type==='exited').length);
  }finally{await worker?.stop();await services.drain();store.close();}
@@ -353,7 +361,7 @@ test('worker rechecks frozen source ownership, retained lineage and identity aft
   await t.test(mutation,t=>sourceOwnershipRace(t,{mutation}));
 });
 
-test('worker publication guards remove only known unpublished output and preserve replaced or uncertain files',{timeout:20000},async t=>{
+test('worker publication guards refuse stale registration and preserve completed, replaced or uncertain files',{timeout:20000},async t=>{
  for(const phase of ['prepublication','publication-tx','publication-replacement','publication-read-unknown'])await t.test(phase,t=>sourceOwnershipRace(t,{mutation:'asset-sql-owner',phase}));
 });
 
@@ -380,6 +388,7 @@ test('postcommit publication exception preserves the successful custom export an
   assert.equal(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response,receipt);
   const file=mediaFixturePath(workspace,committedAsset);assert.equal(hash(await readFile(file)),committedAsset!.sha256);await verifyOutput(file,360,640,3);
   assert.equal((await readdir(path.join(workspace,'media'))).some(name=>name.startsWith('.timeline-render-')||name.endsWith('.part.mp4')),false);
+  const retained=await readdir(workerStageDirectory(store,workspace,accepted.id));assert.equal(retained.includes('complete.json'),true);assert.equal(retained.filter(name=>/^stage-[a-f0-9-]{36}\.mp4$/u.test(name)).length,1);assert.equal(retained.length,2,'acknowledgement loss preserves the complete private artifact for later reconciliation');
   assert.equal(events.filter(event=>event.type==='started').length,events.filter(event=>event.type==='exited').length);
  }finally{await worker?.stop();await services.drain();store.close();}
 });

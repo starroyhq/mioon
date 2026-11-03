@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {createModuleFixture, configuration, imageRows, until, sha256} from './helpers/comfy-module-fixture.ts';
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 
 type ModuleFixture = Awaited<ReturnType<typeof createModuleFixture>>;
 type ModuleOptions = Parameters<typeof createModuleFixture>[1];
@@ -43,7 +44,7 @@ test('completed Comfy receipts, reviews, remote journals and PNG bytes survive u
   const prepared = await f.prepare(input), remote = await f.remote(ack.id);
   const versions = await f.call('image.version.list', {projectId: f.project.id, groupId: ack.groupId});
   const group = await f.call('image.group.get', {projectId: f.project.id, groupId: ack.groupId});
-  const before = imageRows(f.store), asset = versions.items[0], bytes = readFileSync(path.join(f.root, 'media', `${asset.assetId}.png`));
+  const before = imageRows(f.store), asset = versions.items[0], bytes = readFileSync(mediaFixturePath(f.root,f.store.get('assets',asset.assetId)));
   assert.equal(sha256(bytes), asset.sha256);
   assert.equal(f.calls.post, 1);
   for (const state of ['not_provided', 'not_loaded']) {
@@ -61,7 +62,7 @@ test('completed Comfy receipts, reviews, remote journals and PNG bytes survive u
     assert.deepEqual(await f.call('image.group.get', {projectId: f.project.id, groupId: ack.groupId}), group);
     assert.deepEqual(await f.call('image.version.list', {projectId: f.project.id, groupId: ack.groupId}), versions);
     assert.equal((await f.call('image.task.list', {projectId: f.project.id})).items[0].id, ack.id);
-    assert.deepEqual(readFileSync(path.join(f.root, 'media', `${asset.assetId}.png`)), bytes);
+    assert.deepEqual(readFileSync(mediaFixturePath(f.root,f.store.get('assets',asset.assetId))), bytes);
     await assert.rejects(f.call('image.generate', {...input, prompt: 'Changed original request'}), {code: 'IMAGE_REQUEST_CONFLICT'});
     await assert.rejects(f.prepare({...input, prompt: 'Changed original review'}), {code: 'IMAGE_REVIEW_CONFLICT'});
     await assert.rejects(f.call('image.task.observeRemote', {...observation, expectedRevision: observation.expectedRevision + 1}), {code: 'COMFY_REMOTE_CONFLICT'});
@@ -117,7 +118,7 @@ test('local-result recovery remains explicitly usable without the Comfy network 
   await until(() => f.task(ack.id), (task: {state: string}) => task.state === 'succeeded');
   assert.deepEqual(await f.call('image.task.recoverResult', recovery), recovered);
   const version = (await f.call('image.version.list', {projectId: f.project.id, groupId: ack.groupId})).items[0];
-  assert.deepEqual(readFileSync(path.join(f.root, 'media', `${version.assetId}.png`)), f.png);
+  assert.deepEqual(readFileSync(mediaFixturePath(f.root,f.store.get('assets',version.assetId))), f.png);
   assert.deepEqual(f.calls, {post: 1, get: 1});
 });
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -103,4 +103,11 @@ test('native QA imports video with real prepare CAS and resolves current referen
  const proof=await nativeQaAssetFile(fixture.store,asset.id);assert.equal(proof.sha256,expected);assert.equal(proof.bytes,bytes.length);assert.ok(!proof.projectRelativeFile.startsWith('../')&&path.extname(proof.file)==='.mp4');
  const prior=JSON.stringify(fixture.store.get('assets',asset.id));await assert.rejects(fixture.services.call('asset.media.prepare',{projectId:fixture.project.id,assets:[{assetId:asset.id,referenceRevision:asset.referenceRevision+1}],purpose:'timeline'}),{code:'REVISION_CONFLICT'});assert.equal(JSON.stringify(fixture.store.get('assets',asset.id)),prior);
  await closeQaProject(fixture);const cold=await coldNativeQaAssetFile(root,fixture.project.id,asset.id);assert.deepEqual(cold,proof);const media=coldNativeQaMediaSnapshot(root,fixture.project.id);assert.deepEqual(media,[{name:proof.projectRelativeFile,bytes:bytes.length,sha256:expected}]);
+});
+
+test('cold media inventory includes ordinary generated and export files, including unregistered leftovers',async t=>{
+ const root=directory(t),fixture=await prepareNativeQaProject(root,'S2 media oracle'),projectDir=fixture.store.projectDir;
+ const expected=[];
+ for(const [folder,name] of [['生成','预演 🎬.png'],['导出','成片.mp4']] as const){const directory=path.join(projectDir,folder);mkdirSync(directory,{mode:0o755});const bytes=Buffer.from(`Unregistered S2 inventory sentinel ${folder}`);writeFileSync(path.join(directory,name),bytes,{mode:0o644});expected.push({name:folder+'/'+name,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')});}
+ await closeQaProject(fixture);assert.deepEqual(coldNativeQaMediaSnapshot(root,fixture.project.id),expected);
 });

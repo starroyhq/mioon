@@ -1,6 +1,6 @@
-// Frozen history 6 from main 49d74189, before V5 changes.
+// Frozen V1-A history6 profile from main 4fd0a188.
 import type {SchemaManifest} from './manifest-check.ts';
-export const V1B_HISTORY_V6_MANIFEST: SchemaManifest = Object.freeze({
+export const V1_HISTORY_V6_MANIFEST:SchemaManifest=Object.freeze({
   "version": 6,
   "entries": [
     {

@@ -3,7 +3,7 @@ import {png} from './helpers/timeline-image-fixtures.ts';
 import {referenceTestAsset} from '../packages/business/src/project-file/test-asset-fixture.ts';
 import {registeredProjectStoreForDatabase} from '../packages/business/src/project-media-storage.ts';
 import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
-import {writeFileSync} from 'node:fs';
+import {writeFileSync,mkdirSync} from 'node:fs';
 import path from 'node:path';
 import type {TypedSubjectServices,TypedSubjectBoundary,TypedOwnedGraph} from './helpers/strict-timeline-audio-factory-types.ts';
 import type {TypedInspection} from './helpers/strict-service-responses.ts';
@@ -35,9 +35,10 @@ function changeAsset(f: ReturnType<typeof accept>,asset:{id:string;[key:string]:
  if(typeof changed.relativePath==='string'){changed.reference={...(asset.reference as object),pathForm:'absolute',path:changed.relativePath};delete changed.relativePath;}
  f.db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify({...asset,...changed}),asset.id);
 }
-function fixtureMedia(db:DatabaseSync,id:string,extension:'mp4'|'png',bytes:Buffer){
+function fixtureMedia(db:DatabaseSync,id:string,extension:'mp4'|'png',bytes:Buffer,directory='media'){
  const owner=registeredProjectStoreForDatabase(db);if(!owner)throw new TypeError('Frame ownership fixture requires its real project owner');
- const relativePath=`media/${id}.${extension}`;writeFileSync(path.join(owner.projectDir,relativePath),bytes);
+ if(directory!=='media')mkdirSync(path.join(owner.projectDir,directory),{recursive:true});
+ const relativePath=`${directory}/${id}.${extension}`;writeFileSync(path.join(owner.projectDir,relativePath),bytes);
  const sha256=createHash('sha256').update(bytes).digest('hex'),sizeBytes=bytes.length;
  const converted=referenceTestAsset(owner.projectDir,{relativePath,sha256,sizeBytes});
  return {sha256,sizeBytes,reference:mediaReferenceSchema.parse(converted.reference),referenceRevision:1};
@@ -54,13 +55,14 @@ function accept(f: Pick<ReturnType<typeof imageFixture>,"db"|"projectId"|"otherP
  const {db,projectId}=f,taskId=randomUUID(),requestId=randomUUID(),assetId=randomUUID();
  const input={projectId,sourceAssetId:source.id,sourceHash:source.sha256,sourceFrame:56,requestId},inputHash=hash(input);
  const snapshot={schemaVersion:1,projectId,taskId,source:{assetId:source.id,sha256:source.sha256,mimeType:source.mimeType,sizeBytes:source.sizeBytes,reference:source.reference,referenceRevision:source.referenceRevision,duration:source.duration,width:source.width,height:source.height},requested:{sourceFrame:56,fps:30},profile:FRAME_PROFILE};
- const output=fixtureMedia(db,assetId,'png',png({width:1024,height:576}));
+ const output=fixtureMedia(db,assetId,'png',png({width:1024,height:576}),'生成');
  const receipt={schemaVersion:1,projectId,taskId,inputHash,sourceAssetId:source.id,sourceHash:source.sha256,sourceFrame:56,fps:30,profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE,
   assetId,sha256:output.sha256,mimeType:'image/png',width:1024,height:576,byteLength:output.sizeBytes,probe:{streamIndex:0,timeBaseNumerator:1,timeBaseDenominator:15360,width:1920,height:1080,rotation:0,sarNumerator:1,sarDenominator:1}};
  const ack={id:taskId,projectId,requestId,sourceAssetId:source.id,sourceHash:source.sha256,sourceFrame:56,fps:30,profileId:FRAME_PROFILE_ID,state:'queued',revision:1,started:false,result:null,errorCode:null,createdAt:at,updatedAt:at};
  const row={id:taskId,projectId,requestId,inputHash,input:canonical(input),snapshot:canonical(snapshot),state:'queued',revision:1,started:0,stagedReceipt:null,assetId:null,errorCode:null,createdAt:at,updatedAt:at};
  const request={requestId,operation:'frame.extract',projectId,taskId,inputHash,canonicalInput:canonical(input),response:canonical(ack)};
- const asset={id:assetId,projectId,name:'Frame.png',...output,mimeType:'image/png',provenance:'extracted-frame',width:1024,height:576,createdAt:at};
+ const publication={version:1,publicationId:randomUUID(),projectId,assetId,owner:{kind:'frame',id:taskId,requestId,inputHash},targetKind:'generated',relativePath:output.reference.path,sha256:output.sha256,sizeBytes:output.sizeBytes,mimeType:'image/png'};
+ const asset={id:assetId,projectId,name:'Frame.png',...output,publication,frameResult:{requestId,receipt},mimeType:'image/png',provenance:'extracted-frame',width:1024,height:576,createdAt:at};
  tx(db,()=>{insert(db,'frame_tasks',row);insert(db,'frame_requests',request);});
  const start=()=>db.prepare("UPDATE frame_tasks SET state='running',started=1,revision=2 WHERE id=?").run(taskId);
  const stage=()=>db.prepare("UPDATE frame_tasks SET state='persisting',revision=3,stagedReceipt=? WHERE id=?").run(canonical(receipt),taskId);
@@ -69,7 +71,7 @@ function accept(f: Pick<ReturnType<typeof imageFixture>,"db"|"projectId"|"otherP
  return {db,projectId,otherProjectId:f.otherProjectId,source,taskId,requestId,assetId,input,inputHash,snapshot,receipt,ack,row,request,asset,start,stage,publish,succeed};
 }
 function fixture(t: test.TestContext){const base=imageFixture(t);return {...accept(base),image:base};}
-function legacyOwner(f: ReturnType<typeof accept>,asset=f.asset,{projectId=f.projectId,oversized=false,references=[]}:{projectId?:string;oversized?:boolean;references?:string[]}={}){
+function legacyOwner(f: ReturnType<typeof accept>,asset: {id:string;[key:string]:unknown}=f.asset,{projectId=f.projectId,oversized=false,references=[]}:{projectId?:string;oversized?:boolean;references?:string[]}={}){
  const id=randomUUID(),jobId=randomUUID(),shotId=randomUUID();
  if(projectId!==f.projectId)allowCorruptOwnerRows(f.db,['shots','jobs','versions']);
  insert(f.db,'shots',{id:shotId,projectId,data:JSON.stringify({id:shotId,projectId,referenceAssetIds:references,title:'Shot',prompt:'Saved',aspectRatio:'16:9',duration:3,orderIndex:0,revision:1,selectedVersionId:id})});
@@ -112,6 +114,17 @@ for(const [label,patch] of Object.entries({hash:{sha256:'c'.repeat(64)},mime:{mi
 });
 for(const [label,patch] of Object.entries({hash:{sha256:'c'.repeat(64)},mime:{mimeType:'image/jpeg'},path:{relativePath:'media/other.png'},bytes:{sizeBytes:1},width:{width:1},height:{height:1},kind:{provenance:'user-import'},jsonProject:{projectId:randomUUID()}}))test(`changed result ${label} rejects both task and asset reads`,t=>{
  const f=fixture(t);f.succeed();changeAsset(f,f.asset,patch);assert.throws(()=>graph(f).asset(f.assetId),unavailable);assert.throws(()=>createFrameOwnershipReader(f.db,f.projectId).task(f.taskId),unavailable);
+});
+
+for(const kind of ['missing','owner','request','input','asset','hash'] as const)test(`frame publication ${kind} cannot impersonate its immutable owner`,t=>{
+ const f=fixture(t);f.succeed();const proof={...f.asset.publication,owner:{...f.asset.publication.owner}};
+ if(kind==='owner')proof.owner.id=randomUUID();
+ if(kind==='request')proof.owner.requestId=randomUUID();
+ if(kind==='input')proof.owner.inputHash='d'.repeat(64);
+ if(kind==='asset')proof.assetId=randomUUID();
+ if(kind==='hash')proof.sha256='e'.repeat(64);
+ changeAsset(f,f.asset,{publication:kind==='missing'?undefined:proof});
+ assert.throws(()=>graph(f).asset(f.assetId),unavailable);assert.throws(()=>createFrameOwnershipReader(f.db,f.projectId).task(f.taskId),unavailable);
 });
 
 for(const variant of ['input-hash','input-canonical','input-json','snapshot-task','snapshot-bounds','snapshot-profile','receipt-task','receipt-output','receipt-probe','receipt-null','row-asset','row-project','row-started','row-revision','ack-id','ack-project','ack-time','ack-state','ack-source','ack-extra','request-hash','request-input','request-task','oversized-input','oversized-receipt','oversized-ack'])test(`corrupt frame ${variant} fails closed`,t=>{
@@ -176,8 +189,8 @@ for(const oversized of [false,true])for(const disguised of [false,true])test(`le
  assert.throws(()=>graph(f).asset(f.assetId),unavailable);
 });
 
-test('image/frame mixed owners reject even when published frame relation was erased',t=>{
- const f=fixture(t);f.image.succeed();corrupt(f);
+test('image/frame mixed owners reject even when published frame relation was erased',async t=>{
+ const f=fixture(t);await f.image.succeed();corrupt(f);
  f.db.prepare("UPDATE frame_tasks SET state='persisting',started=1,revision=3,stagedReceipt=? WHERE id=?").run(canonical({...f.receipt,assetId:f.image.assetId}),f.taskId);
  assert.throws(()=>graph(f).asset(f.image.assetId),unavailable);
  changeAsset(f,f.image.asset,{provenance:'user-import'});assert.throws(()=>graph(f).asset(f.image.assetId),unavailable);
@@ -245,7 +258,8 @@ test('subject versions freeze explicit frameSource and preserve old provenance b
  assert.equal(frozen.provenance.frameSource.frameTaskId,f.taskId);assert.deepEqual([frozen.provenance.versionId,frozen.provenance.shotId,frozen.provenance.jobId],[null,null,null]);
  changeAsset(f,f.source,{duration:0.01,hasAudio:false});assert.deepEqual(services.handlers['subject.create'](input),subject);
  assert.equal(f.db.prepare('SELECT data FROM subject_versions WHERE id=?').get(subject.headVersionId)!.data,row!.data);
- const imported={...f.asset,id:randomUUID(),provenance:'user-import'};insert(f.db,'assets',{id:imported.id,projectId:f.projectId,data:JSON.stringify(imported)});
+ const {publication:_publication,frameResult:_frameResult,...importedFields}=f.asset;
+ const imported={...importedFields,id:randomUUID(),provenance:'user-import'};insert(f.db,'assets',{id:imported.id,projectId:f.projectId,data:JSON.stringify(imported)});
  const old=(createSubjectRecoveryBoundary(f.db,{projectId:f.projectId}) as TypedSubjectBoundary).asset(imported.id);
  assert.equal(JSON.stringify(old.provenance),'{"kind":"user-import","versionId":null,"shotId":null,"jobId":null}');
  for(const patch of [{frameSource:undefined},{imageSource:{imageGroupId:randomUUID(),imageTaskId:randomUUID(),imageVersionId:randomUUID()}},{versionId:randomUUID()}])assert.equal(subjectVersionResponseSchema.safeParse({...frozen,provenance:{...frozen.provenance,...patch}}).success,false);

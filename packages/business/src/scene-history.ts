@@ -219,7 +219,7 @@ export function createSceneHistoryReaders({db}: {db: DatabaseSync}): SceneHistor
   const source=asset(projectId,input.sourceAssetId,graph);
   if(source.sha256!==snapshot.source.sha256||source.mimeType!==snapshot.source.mimeType)invalid();
   // A built storyboard's images were saved with it and are never removed.
-  if(outcome&&receipt)for(const keyframe of receipt.keyframes){const saved=assetRow(projectId,keyframe.assetId);if(!saved||!sceneKeyframeAssetMatches(saved,keyframe,projectId))invalid();}
+  if(outcome&&receipt)for(const keyframe of receipt.keyframes){const saved=assetRow(projectId,keyframe.assetId);if(!saved||!sceneKeyframeAssetMatches(saved,keyframe,projectId,receipt,row.requestId,input,snapshot.segments.find(entry=>entry[0]===keyframe.segment)))invalid();}
   return {kind:'shots',row,input,snapshot,receipt,outcome,dto:dto as SceneShotsTaskResponse};
  }
  /** Whether a built storyboard can still be undone, and why not: one reason

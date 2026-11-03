@@ -1,5 +1,8 @@
 import {importNativeQaAsset,nativeQaAssetFile} from './helpers/native-local-qa-fixture.ts';
 import {assetMediaRecordSchema,type AssetMediaRecord} from '../packages/contracts/src/asset-media.ts';
+import {projectOutputPublicationProofSchema} from '../packages/contracts/src/project-output-publication.ts';
+import {exportOutputArtifactIdentity} from '../packages/contracts/src/output-artifact.ts';
+import {isPublishedProjectOutput} from '../packages/business/src/project-output-publication.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, readFile, readdir, rm} from 'node:fs/promises';
@@ -50,7 +53,11 @@ async function executeQueued(store: ReturnType<typeof openServerProject>, servic
     assert.equal(completed.status, 'succeeded', JSON.stringify(completed['error']));
     assert.deepEqual(completed.snapshot, accepted.snapshot);
     const rawAsset=store.get('assets',completed.assetId);assert.ok(rawAsset&&typeof rawAsset==='object'&&'url'in rawAsset);const {url:_url,...record}=rawAsset;const asset=assetMediaRecordSchema.parse(record);
-    assert.deepEqual(asset.producer,{kind:'export',id:completed.id});const resolved=await nativeQaAssetFile(store,asset.id),file=resolved.file;assert.match(resolved.projectRelativeFile,/^media\/[A-Za-z0-9._-]+\.mp4$/u);assert.equal(resolved.bytes,asset.sizeBytes);
+    const persisted=store.get('exports',completed.id) as ExportRowView,publication=projectOutputPublicationProofSchema.parse(asset.publication);
+    const owner={kind:'export' as const,id:completed.id,requestId:persisted.requestId,inputHash:sha(Buffer.from(exportOutputArtifactIdentity({...persisted})))};
+    assert.equal(completed.projectId,store.projectId);assert.deepEqual(asset.producer,{kind:'export',id:completed.id});assert.deepEqual(publication.owner,owner);
+    assert.ok(isPublishedProjectOutput(asset,{projectId:store.projectId,assetId:asset.id,owner,targetKind:'exports',sha256:asset.sha256!,sizeBytes:asset.sizeBytes,mimeType:'video/mp4'}));
+    const resolved=await nativeQaAssetFile(store,asset.id),file=resolved.file;assert.equal(path.dirname(resolved.projectRelativeFile),'导出');assert.equal(resolved.projectRelativeFile,publication.relativePath);assert.equal(resolved.bytes,asset.sizeBytes);
     assert.equal(sha(await readFile(file)), asset.sha256);
     return {completed, persisted: store.get('exports', completed.id), asset, file};
   } finally {

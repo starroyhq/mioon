@@ -8,6 +8,7 @@ import {createServices} from '../../packages/business/src/services.ts';
 import type {ProjectStore} from '../../packages/business/src/project-file/store.ts';
 import {testProjectAppLibrary} from '../../packages/business/src/project-service-application.ts';
 import {assetMediaPrepareResponseSchema,PROJECT_ASSETS_FOLDER,type AssetImportInput} from '../../packages/contracts/src/asset-media.ts';
+import {PROJECT_OUTPUT_FOLDERS} from '../../packages/contracts/src/project-output-publication.ts';
 import {createProjectAssetReferenceServices} from '../../packages/business/src/project-asset-references.ts';
 import {isProjectFileHeld} from '../../packages/business/src/project-file/held-files.ts';
 import {isAppLibraryHeld} from '../../packages/business/src/app-db/connection.ts';
@@ -225,12 +226,12 @@ export async function coldNativeQaAssetFile(dataDir:string,projectId:string,asse
 export function coldNativeQaMediaSnapshot(dataDir:string,projectId:string){
  const storage=captureNativeQa(dataDir),location=storage.locations[projectId];assert.ok(location);
  const files:{name:string;bytes:number;sha256:string}[]=[];
- for(const folder of ['media',PROJECT_ASSETS_FOLDER]){
+ for(const folder of ['media',PROJECT_ASSETS_FOLDER,PROJECT_OUTPUT_FOLDERS.generated,PROJECT_OUTPUT_FOLDERS.exports]){
   const directory=path.join(location.projectDir,folder);let names:string[];
   try{const info=lstatSync(directory);assert.ok(info.isDirectory()&&!info.isSymbolicLink());names=readdirSync(directory).sort();}catch(error){if(error&&typeof error==='object'&&'code'in error&&error.code==='ENOENT')continue;throw error;}
   assert.ok(names.length<=64,'bounded actual media inventory');
   for(const name of names){
-   assert.match(name,/^[a-zA-Z0-9._-]+$/);const file=path.join(directory,name),before=lstatSync(file,{bigint:true}),id={dev:String(before.dev),ino:String(before.ino)};
+   assert.ok(name.length>0);assert.doesNotMatch(name,/[<>:"/\\|?*\u0000-\u001f]/u);assert.notEqual(name,'.');assert.notEqual(name,'..');assert.equal(name,name.normalize('NFC'));assert.ok(Buffer.byteLength(name)<=255);const file=path.join(directory,name),before=lstatSync(file,{bigint:true}),id={dev:String(before.dev),ino:String(before.ino)};
    assert.ok(before.isFile()&&!before.isSymbolicLink()&&before.size<32n*1024n*1024n);assert.ok(!isProjectFileHeld(id)&&!isAppLibraryHeld(id),'no held SQLite identity may be read');
    const bytes=readFileSync(file),after=lstatSync(file,{bigint:true});for(const key of ['dev','ino','size','mtimeNs','ctimeNs']as const)assert.equal(after[key],before[key]);
    assert.equal(BigInt(bytes.length),before.size);files.push({name:folder==='media'?name:folder+'/'+name,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')});

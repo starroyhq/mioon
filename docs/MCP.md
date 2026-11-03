@@ -680,6 +680,8 @@ The four `previs_*` tools (schema 64) create camera previs nodes and save their
 whole scene under `expectedSceneRevision`; thumbnails are a JPEG cache that the
 editor writes. The scene format and rules are in [PREVIS.md](PREVIS.md).
 
+S2 另提供公共工具 `previs_output_publish`、`previs_output_lookup`，不进入内置 Mio 模型目录。发布输入绑定已保存节点、关键帧、场景修订、稳定 requestId 和 PNG 完整内容；查询使用同一完整身份，未登记返回 null。未知回复只查询原请求，不按相同图片认领别人的素材。参数与返回值见 [API 的 S2 项目产物和预演发布](API.md#s2-项目产物和预演发布)。
+
 ## Local frame extraction tools
 
 The existing official SDK bridge exposes exactly six strict frame tools from

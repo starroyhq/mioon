@@ -35,8 +35,8 @@ const rows=(db: DatabaseSync,table: SQLOutputValue)=>db.prepare(`SELECT * FROM "
 
 
 
-test('new image identities resist updates, delete and INSERT OR REPLACE and dispatch fence never resets',t=>{
- const f=imageFixture(t),{db}=f;f.succeed();
+test('new image identities resist updates, delete and INSERT OR REPLACE and dispatch fence never resets',async t=>{
+ const f=imageFixture(t),{db}=f;await f.succeed();
  withoutForeignKeys(db,()=>{for(const table of ['image_groups','image_tasks','image_versions','image_requests']){
   assert.throws(()=>db.exec(`DELETE FROM ${table}`),/retained/);
   const columns=db.prepare(`PRAGMA table_info(${table})`).all().map(row=>row.name).join(',');assert.throws(()=>db.exec(`INSERT OR REPLACE INTO ${table}(${columns}) SELECT ${columns} FROM ${table}`),/immutable|replaced|number must advance/);
@@ -67,8 +67,8 @@ test('interruption and unknown results keep fences and permit only explicit loca
  d.prepare("UPDATE image_tasks SET state='persisting',revision=6 WHERE id=?").run(g.taskId);
 });
 
-test('one unresolved task occupies its group and published head cannot be erased',t=>{
+test('one unresolved task occupies its group and published head cannot be erased',async t=>{
  const f=imageFixture(t),{db}=f,row=db.prepare('SELECT * FROM image_tasks').get(),id=randomUUID(),requestId=randomUUID();
  assert.throws(()=>insert(db,'image_tasks',{...row,id,requestId,input:JSON.stringify({...f.input,requestId}),snapshot:JSON.stringify({...f.snapshot,taskId:id})}),/UNIQUE constraint/);
- f.succeed();assert.throws(()=>db.exec('UPDATE image_groups SET headVersionId=NULL,revision=revision+1'),/head must advance/);
+ await f.succeed();assert.throws(()=>db.exec('UPDATE image_groups SET headVersionId=NULL,revision=revision+1'),/head must advance/);
 });

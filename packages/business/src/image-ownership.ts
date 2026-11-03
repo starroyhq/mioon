@@ -4,6 +4,7 @@ import {imageEditFields} from './images/edit-source.ts';
 import {validateComfyReceiptOwnership} from './comfy/ownership.ts';
 import {validateImageTaskReview} from './images/reviews.ts';
 import {createHash} from 'node:crypto';
+import {isPublishedProjectOutput} from './project-output-publication.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '@mioon/contracts';
 import {canonicalImageInput as canonical,IMAGE_LIMITS,IMAGE_UNRESOLVED_STATES,imageSchemas,imageSnapshotSchema,imageReceiptSchema,imageResultGeometry,imageTaskResponseSchema,imageGroupResponseSchema,imageVersionResponseSchema} from '../../contracts/src/images.ts';
@@ -130,7 +131,13 @@ export function createImageOwnershipReader(db: DatabaseSync,projectId: string,{c
   if(['id','projectId','groupId','taskId','assetId','number'].some(key=>property(value,key)!==raw[key]))reject();return value;
  }
  function assetMatches(value: ImageVersionResponse,asset: Json | null | undefined): void {
+  if(!asset&&isProjectLayout(db)){
+   const row=db.prepare("SELECT CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 16384 THEN data END AS data FROM assets WHERE id=? AND projectId=?").get(value.assetId,projectId);
+   if(!row||typeof row.data!=='string')reject();consume(row.data);try{asset=JSON.parse(row.data) as Json;}catch{reject();}
+  }
   if(asset&&(asset.id!==value.assetId||asset.projectId!==projectId||asset.sha256!==value.sha256||asset.mimeType!==value.mimeType||asset.width!==value.width||asset.height!==value.height||asset.sizeBytes!==value.byteLength||asset.provenance!==(value.isMock?'synthetic-mock':'generated')))reject();
+  const local=tasks.get(value.taskId)?.row;
+  if(asset&&isProjectLayout(db)&&!isPublishedProjectOutput(asset,{projectId,assetId:value.assetId,owner:{kind:'image',id:value.taskId,...(local?{requestId:local.requestId,inputHash:local.inputHash}:{})},targetKind:'generated',sha256:value.sha256,sizeBytes:value.byteLength,mimeType:value.mimeType}))reject();
  }
  function version(id: string,asset?: Json | null): ImageVersionResponse {
   const cached=versions.get(id);if(cached){assetMatches(cached,asset);return cached;}
