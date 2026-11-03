@@ -14,6 +14,7 @@ import {readSchemaManifest} from '../packages/business/src/project-file/schema/m
 import {V1B_HISTORY_V6_MANIFEST} from '../packages/business/src/project-file/schema/history-v6-manifest.ts';
 import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
 import {AppError} from '../packages/contracts/src/app-error.ts';
+import {expectedContentMetadata} from './helpers/kernel-content-metadata.ts';
 
 function fixture(t:TestContext){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-v5-stamp-'));
@@ -104,3 +105,46 @@ test('pending switch cannot become fresh; staged store requires exact pair, empt
  const reopened=openStagedProjectStore({...base,expectedStamp:{...stamp,contentSequence:999},resolution:{requestId,digest:'d'.repeat(64)}});assert.equal(reopened.historyState,'current');assert.deepEqual(readProjectContentStamp(reopened.db),stamp);reopened.close();
  const dirty=new DatabaseSync(historyFile);dirty.prepare("INSERT INTO idempotency VALUES('bad','key','hash','id')").run();dirty.close();assert.throws(()=>openStagedProjectStore({...base,resolution:{requestId,digest:'d'.repeat(64)}}),code('PROJECT_INVALID'));
 });
+
+function metadataOracleFixture(bigints=false,withLink=false){
+ const projectId=randomUUID(),native=(value:number)=>bigints?BigInt(value):value;
+ const row=(fields:Record<string,unknown>)=>Object.assign(Object.create(null),fields) as Record<string,unknown>;
+ const before:Record<string,Record<string,unknown>[]>={
+  project_file:[row({singleton:native(1),projectId,contentSequence:native(5),contentToken:'a'.repeat(32)})],
+  history_state:[row({singleton:native(1),projectId,seenContentSequence:native(5),seenContentToken:'a'.repeat(32)})],
+ };
+ if(withLink)before.local_project_link=[row({projectId,seenContentSequence:native(5),seenContentToken:'a'.repeat(32),retained:'exact'})];
+ const after=Object.fromEntries(Object.entries(before).map(([table,rows])=>[table,rows.map(value=>row({...value,
+  ...(table==='project_file'?{contentSequence:native(8),contentToken:'b'.repeat(32)}:{seenContentSequence:native(8),seenContentToken:'b'.repeat(32)})}))]));
+ return {before,after,native};
+}
+
+test('shared metadata oracle preserves native numbers/bigints, row prototypes and every non-pair field',()=>{
+ for(const bigints of [false,true])for(const withLink of [false,true]){
+  const {before,after}=metadataOracleFixture(bigints,withLink),expected=expectedContentMetadata(before,after);
+  assert.deepEqual(expected,after);assert.equal(typeof expected.project_file[0].contentSequence,bigints?'bigint':'number');
+  assert.equal(Object.getPrototypeOf(expected.history_state[0]),null);assert.equal(before.project_file[0].contentToken,'a'.repeat(32));
+  assert.equal(before.project_file[0].contentSequence,bigints?5n:5);
+ }
+});
+
+for(const damage of ['illegal-token','illegal-baseline-token','reused-token','wrong-seen-token','wrong-seen-sequence','wrong-baseline-seen',
+ 'no-advance','changed-identity','changed-companion-identity','new-unknown-field','changed-other-field','removed-other-field','new-companion','unsafe-bigint'] as const)
+ test(`shared metadata oracle rejects ${damage} rather than masking the discrepancy`,()=>{
+  const {before,after,native}=metadataOracleFixture(damage==='unsafe-bigint');
+  if(damage==='illegal-token'){after.project_file[0].contentToken='B'.repeat(32);after.history_state[0].seenContentToken='B'.repeat(32);}
+  if(damage==='illegal-baseline-token'){before.project_file[0].contentToken='bad';before.history_state[0].seenContentToken='bad';}
+  if(damage==='reused-token'){after.project_file[0].contentToken='a'.repeat(32);after.history_state[0].seenContentToken='a'.repeat(32);}
+  if(damage==='wrong-seen-token')after.history_state[0].seenContentToken='c'.repeat(32);
+  if(damage==='wrong-seen-sequence')after.history_state[0].seenContentSequence=native(9);
+  if(damage==='wrong-baseline-seen')before.history_state[0].seenContentToken='c'.repeat(32);
+  if(damage==='no-advance'){after.project_file[0].contentSequence=native(5);after.history_state[0].seenContentSequence=native(5);}
+  if(damage==='changed-identity'){after.project_file[0].projectId=randomUUID();after.history_state[0].projectId=after.project_file[0].projectId;}
+  if(damage==='changed-companion-identity')after.history_state[0].projectId=randomUUID();
+  if(damage==='new-unknown-field')after.history_state[0].surprise='must not disappear';
+  if(damage==='changed-other-field'){before.history_state[0].retained='exact';after.history_state[0].retained='changed';}
+  if(damage==='removed-other-field')before.history_state[0].retained='must not disappear';
+  if(damage==='new-companion')after.local_project_link=[];
+  if(damage==='unsafe-bigint'){after.project_file[0].contentSequence=9007199254740992n;after.history_state[0].seenContentSequence=9007199254740992n;}
+  assert.throws(()=>expectedContentMetadata(before,after),{code:'ERR_ASSERTION'});
+ });
