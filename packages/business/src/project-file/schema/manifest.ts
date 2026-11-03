@@ -230,7 +230,7 @@ export const SCHEMA_MANIFEST: Readonly<Record<DatabaseKind, SchemaManifest>> = O
     {type: "trigger", name: "retain_subject_versions", tbl_name: "subject_versions", sha256: "6b9640facbc8929a1af8bea91647610eae60cfbe438750da3cd3f1de7ff9bb97"},
     {type: "trigger", name: "scene_result_capacity", tbl_name: "scene_results", sha256: "515d86d08bc5b6cb336aa46f6a2925318a281dfa686de5089850b4db9e118f49"},
   ])},
-  history: {version: 6, entries: Object.freeze([
+  history: {version: 7, entries: Object.freeze([
     {type: "index", name: "edit_task_one_pending_lane", tbl_name: "edit_tasks", sha256: "02a2a19bda3ecd8a90bec37fc78bfd1487d55156f6dd9924f7174f273dfa001f"},
     {type: "index", name: "edit_tasks_project_page", tbl_name: "edit_tasks", sha256: "1e61f8ae88eb9fe88829ca9f21f577a1cd2e434b6c0d47b935b7b2f867708261"},
     {type: "index", name: "edit_tasks_project_pending_page", tbl_name: "edit_tasks", sha256: "2e2a87a29b281ac5663ef9d006a329dffb4793142707a95f6fd37bfd612b606f"},
@@ -381,7 +381,7 @@ export const SCHEMA_MANIFEST: Readonly<Record<DatabaseKind, SchemaManifest>> = O
     {type: "table", name: "image_remote_observations", tbl_name: "image_remote_observations", sha256: "b40143474b47e6e4c0c555332e6e5db0f8d4e58a8dbefbdde8f0a519c5a03eae"},
     {type: "table", name: "image_remote_runs", tbl_name: "image_remote_runs", sha256: "7681080118e06837cacc9cf2be16ce7d1d9fdbcf8fae74058ea6b8ee4b0ea51c"},
     {type: "table", name: "image_requests", tbl_name: "image_requests", sha256: "87ea85bdf80f81da1387a18151e832c982d1bcaafba949c83f83c37758ede56f"},
-    {type: "table", name: "image_reviews", tbl_name: "image_reviews", sha256: "3201d5920301dd4dab5bf9ac18ff22f3d3b52bccf45e953fa0a75b99dd20972f"},
+    {type: "table", name: "image_reviews", tbl_name: "image_reviews", sha256: "9df09357ce5ab8bd220a7914c194069aed62d76389ba78bb0ac645b06bbac912"},
     {type: "table", name: "image_tasks", tbl_name: "image_tasks", sha256: "8180d5120064193220e45e463b87b627f276555b43dfea0147a4b41ef898b9b3"},
     {type: "table", name: "job_events", tbl_name: "job_events", sha256: "39f64fbbcd33fac6d8eb9d32a582ba0931d27b4cf5c3695cf903395f9d429f7e"},
     {type: "table", name: "jobs", tbl_name: "jobs", sha256: "86fe1a3c61cc22647b12916efb9f31325cf9f93318b91285488c4135e89b3791"},

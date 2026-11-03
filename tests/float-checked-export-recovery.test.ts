@@ -29,7 +29,7 @@ import {claimFloatTimelineExport, bindFloatTimelineMeasurement, bindFloatTimelin
   floatSnapshotSha256} from '../packages/business/src/timeline-float-outcome.ts';
 import {schemaObjects,withoutForeignKeys,withoutProcessTargetRevisions,createServerProject,openServerProject,foreignKeyCheck} from './helpers/project-database.ts';
 import {withNativeTriggerFault} from './helpers/current-native-fault.ts';
-import {storeTableSchema} from '../packages/business/src/store-layout.ts';
+import {storeDirectories,storeTableSchema} from '../packages/business/src/store-layout.ts';
 import type { BinaryLike } from 'crypto';
 
 const PROFILE = 'mp4_h264_float_checked_v2';
@@ -487,16 +487,18 @@ test('v2 read guards fail closed for malformed relational identities and corrupt
   });
 });
 
-function renderConcatPhase(root: string) {
-  const directory = path.join(root, 'media');
-  return readdirSync(directory).some(name => name.startsWith('.timeline-render-') && existsSync(path.join(directory, name, 'segments.txt')));
+function renderConcatPhase(store:FixtureStore) {
+  const directory=isProjectDatabase(store.db)?path.join(storeDirectories(store).tempDir,'export-staging'):path.join(store.root,'media');
+  if(!existsSync(directory))return false;
+  const parents=isProjectDatabase(store.db)?readdirSync(directory).map(name=>path.join(directory,name)):[directory];
+  return parents.some(parent=>readdirSync(parent).some(name=>name.startsWith('.timeline-render-')&&existsSync(path.join(parent,name,'segments.txt'))));
 }
 
 test('late replacement after float measurement cannot publish the old attempt report or overwrite a newer failure', {timeout: 60_000}, async t => {
   const f = await fixture(t, {gain: 0.5}), input = f.input(), accepted = await f.services.call('timeline.render', input), saved = receipt(f, input);
   let concatStarts = 0, replacement;
   await tick(f, (((event: { type: string; kind: string; }) => {
-    if (event.type !== 'started' || event.kind !== 'ffmpeg' || !renderConcatPhase(f.root) || ++concatStarts !== 2) return;
+    if (event.type !== 'started' || event.kind !== 'ffmpeg' || !renderConcatPhase(f.store) || ++concatStarts !== 2) return;
     // The first render-owned concat process measures float PCM. The second
     // starts final AAC, so the entire sample check has already completed.
     const current = (f.store.get('exports', accepted.id)! as FixtureExport);
@@ -515,7 +517,7 @@ test('cancellation after a complete float check requeues without token/report an
   const f = await fixture(t, {gain: 0.5}), input = f.input(), accepted = await f.services.call('timeline.render', input), saved = receipt(f, input);
   const controller = new AbortController(); let concatStarts = 0, attempt;
   const off = onMediaProcess(event => {
-    if (event.type !== 'started' || event.kind !== 'ffmpeg' || !renderConcatPhase(f.root) || ++concatStarts !== 2) return;
+    if (event.type !== 'started' || event.kind !== 'ffmpeg' || !renderConcatPhase(f.store) || ++concatStarts !== 2) return;
     attempt = (f.store.get('exports', accepted.id)! as FixtureExport).renderAttemptId; controller.abort();
   }), worker = startWorker(f.store, f.services, new Map(), {signal: controller.signal});
   try {await worker.tick();} finally {off(); await worker.stop();}
@@ -524,6 +526,7 @@ test('cancellation after a complete float check requeues without token/report an
   assert.equal(Object.hasOwn(queued!, 'renderAttemptId'), false); assert.equal(Object.hasOwn(queued!, 'audioCheck'), false);
   assert.equal((queued!.assetId as unknown), null); assert.equal((queued!.url as unknown), null); assert.deepEqual(receipt(f, input), saved);
   assert.deepEqual((await readdir(path.join(f.root, 'media'))).sort(), [path.basename((f as typeof f & {asset:({ id: `${string}-${string}-${string}-${string}-${string}`; projectId: string; name: string; mimeType: string; sha256: string; relativePath: string; width: number; height: number; duration: number; hasAudio: boolean; sizeBytes: number; provenance: string; createdAt: string; })}).asset.relativePath)]);
+  assert.deepEqual(await readdir(path.join(storeDirectories(f.store).tempDir,'export-staging',accepted.id)),[],'cancelled incomplete private output and render scratch are removed');
   await tick(f); const succeeded = (f.store.get('exports', accepted.id)! as FixtureExport);
   assert.equal(succeeded!.status, 'succeeded', JSON.stringify(succeeded!.error)); assert.notEqual(succeeded!.renderAttemptId, attempt);
   assert.equal((succeeded!.audioCheck)!.attemptId, succeeded!.renderAttemptId); assert.deepEqual(receipt(f, input), saved);
@@ -534,7 +537,7 @@ test('final AAC spawn failure retains the complete same-attempt within-limit rep
   const prior = process.env.MIOON_FFMPEG_PATH; let decoder:unknown, changed = false;
   try {
     await tick(f, (((event: { type: string; kind: string; pid: unknown; }) => {
-      if (event.type === 'started' && event.kind === 'ffmpeg' && renderConcatPhase(f.root) && decoder === undefined) decoder = event.pid;
+      if (event.type === 'started' && event.kind === 'ffmpeg' && renderConcatPhase(f.store) && decoder === undefined) decoder = event.pid;
       if (event.type === 'exited' && event.pid === decoder && !changed) {changed = true; process.env.MIOON_FFMPEG_PATH = path.join(f.root, 'missing-owned-final-encoder');}
     }) as unknown as Parameters<NonNullable<typeof tick>>[1]));
   } finally {if (prior === undefined) delete process.env.MIOON_FFMPEG_PATH; else process.env.MIOON_FFMPEG_PATH = prior;}
@@ -545,4 +548,5 @@ test('final AAC spawn failure retains the complete same-attempt within-limit rep
   assert.equal(((failed!.audioCheck)!.output as unknown), null); assert.equal((failed!.assetId as unknown), null); assert.equal((failed!.url as unknown), null);
   assert.equal(f.store.list('assets').some(asset => asset.provenance === 'export'), false); assert.deepEqual(receipt(f, input), saved);
   assert.deepEqual((await readdir(path.join(f.root, 'media'))).sort(), [path.basename((f as typeof f & {asset:({ id: `${string}-${string}-${string}-${string}-${string}`; projectId: string; name: string; mimeType: string; sha256: string; relativePath: string; width: number; height: number; duration: number; hasAudio: boolean; sizeBytes: number; provenance: string; createdAt: string; })}).asset.relativePath)]);
+  assert.deepEqual(await readdir(path.join(storeDirectories(f.store).tempDir,'export-staging',accepted.id)),[],'failed incomplete private output and render scratch are removed');
 });

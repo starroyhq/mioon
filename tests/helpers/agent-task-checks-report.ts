@@ -12,6 +12,12 @@ import {readAgentTaskChecks} from '../../packages/business/src/agent/task-checks
 import type {AgentTaskChecksPreflight} from '../../packages/business/src/agent/task-checks-v2.ts';
 import type {AgentTaskJson} from '../../packages/contracts/src/agent-tasks-v2.ts';
 import {png} from './timeline-image-fixtures.ts';
+import {mp4HeaderFixture} from './media-reference-fixtures.ts';
+import {publishOutputFixture,markProjectOutputRegistered} from './project-output-fixture.ts';
+import {exportOutputArtifactIdentity} from '../../packages/contracts/src/output-artifact.ts';
+import {beginFixtureToolStep,mioFixtureConfiguration} from './mio-model-fixture.ts';
+import {setAgentTaskEffectGate} from '../../packages/business/src/agent/task-effects-v2.ts';
+import {mioTable} from '../../packages/business/src/agent/mio-table-layout.ts';
 
 const object=(value:unknown):Record<string,unknown>=>{assert.ok(value!==null&&typeof value==='object'&&!Array.isArray(value));return value as Record<string,unknown>;};
 const digest=(value:Buffer)=>createHash('sha256').update(value).digest('hex');
@@ -19,11 +25,11 @@ const digest=(value:Buffer)=>createHash('sha256').update(value).digest('hex');
 /** Real bounded local preflight through services.call. Synthetic model-free
  * setup is discarded after measurement; reported checks are never handwritten. */
 export async function agentTaskChecksReport(){
- const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-checks-report-')),store=openStore(root),services=createServices(store,new Map(),{imageOptions:{autoRun:false},frameOptions:{autoRun:false},sceneOptions:{autoRun:false}}),tools=createAgentTaskTools({store,services});
+ const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-checks-report-')),store=openStore(root),services=createServices(store,new Map(),{imageOptions:{autoRun:false},frameOptions:{autoRun:false},sceneOptions:{autoRun:false}}),tools=createAgentTaskTools({store,services}),removeGate=setAgentTaskEffectGate(store.db,()=>{});
  try{
-  const project=object(await services.call('project.create',{name:'Synthetic combined check report'})),projectId=String(project.id),journal=createAgentTaskJournal(store),run=journal.create({projectId,requestId:randomUUID(),text:'Synthetic export, generation and timeline observations',configuration:{}}).run;
+  const project=object(await services.call('project.create',{name:'Synthetic combined check report'})),projectId=String(project.id),journal=createAgentTaskJournal(store),run=journal.create({projectId,requestId:randomUUID(),text:'Synthetic export, generation and timeline observations',configuration:mioFixtureConfiguration}).run;
   const tool=async(name:string,args:AgentTaskJson)=>{
-   const step=journal.beginStep(run.id,{kind:'tool',toolCall:{id:randomUUID(),name,arguments:args}}),prepared=tools.prepare({projectId,operation:name,input:args});journal.markDispatch(run.id,step.id);
+   const step=beginFixtureToolStep(journal,run.id,{toolCall:{id:randomUUID(),name,arguments:args}}),prepared=tools.prepare({projectId,operation:name,input:args});journal.markDispatch(run.id,step.id);
    const result=await tools.execute(prepared,{runId:run.id,stepId:step.id,requestId:step.id,beforeEffect:()=>{},recordInside:(value,changes)=>{journal.completeStepInside(run.id,step.id,{result:value,changes});},appendChangesInside:changes=>{journal.appendChangesInside(run.id,step.id,changes);}});
    if(journal.step(step.id).status!=='completed')journal.completeStep(run.id,step.id,{result:result.result,changes:result.changes});return journal.step(step.id);
   };
@@ -33,10 +39,15 @@ export async function agentTaskChecksReport(){
   };
   const first=asset(0),initial=object(await services.call('timeline.get',{projectId})),tracks=initial.tracks;assert.ok(Array.isArray(tracks));
   await tool('mioon_timeline_clip_add',{assetId:first.id,trackId:String(object(tracks[0]).id),expectedRevision:Number(initial.revision),startFrame:0,durationFrames:30});
-  const saved=object(await services.call('timeline.get',{projectId})),render=await tool('mioon_timeline_render',{expectedRevision:Number(saved.revision),purpose:'export'}),exportId=String(object(render.result).id),outputBytes=Buffer.from('SYNTHETIC_EXPORT_EXISTENCE_OBSERVATION'),outputId=randomUUID(),relativePath=`media/export-${exportId}-${randomUUID()}.mp4`;writeFileSync(join(root,relativePath),outputBytes,{mode:0o600});
-  store.put('assets',{id:outputId,projectId,name:'Synthetic output.mp4',mimeType:'video/mp4',relativePath,sizeBytes:outputBytes.length,sha256:digest(outputBytes),width:saved.width,height:saved.height,duration:1,provenance:'export',url:`/media/${outputId}`,createdAt});store.put('exports',{...object(store.get('exports',exportId)),status:'succeeded',assetId:outputId,url:`/media/${outputId}`,updatedAt:new Date().toISOString()});
-  const shot=object(await services.call('shot.create',{projectId,title:'Synthetic generation shot'})),jobId=randomUUID(),step=journal.beginStep(run.id,{kind:'tool',toolCall:{id:randomUUID(),name:'mioon_generation_submit',arguments:{shotId:String(shot.id),expectedRevision:Number(shot.revision),providerId:'mock'}}});journal.updateStep(run.id,step.id,{status:'completed',result:{id:jobId}});
-  store.put('jobs',{id:jobId,projectId,shotId:shot.id,requestId:step.id,status:'running',phase:'rendering',progress:62,providerId:'mock',model:'mock-v1',revision:1,createdAt,updatedAt:createdAt});store.db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run('job',jobId,run.id,step.id,projectId,step.id,'generation.submit');
+  const saved=object(await services.call('timeline.get',{projectId})),render=await tool('mioon_timeline_render',{expectedRevision:Number(saved.revision),purpose:'export'}),exportId=String(object(render.result).id),outputBytes=mp4HeaderFixture('Synthetic export existence observation; no decoder runs'),outputId=randomUUID();
+  const accepted=object(store.get('exports',exportId)),published=await publishOutputFixture(store,{assetId:outputId,
+    owner:{kind:'export',id:exportId,requestId:String(accepted.requestId),inputHash:createHash('sha256').update(exportOutputArtifactIdentity(accepted)).digest('hex')},
+    targetKind:'exports',bytes:outputBytes,mimeType:'video/mp4'});
+  store.tx(()=>{store.put('assets',{id:outputId,projectId,name:'Synthetic output.mp4',mimeType:'video/mp4',...published,width:saved.width,height:saved.height,duration:1,
+    provenance:'export',producer:{kind:'export',id:exportId},url:`/media/${outputId}`,createdAt});store.put('exports',{...accepted,status:'succeeded',assetId:outputId,url:`/media/${outputId}`,updatedAt:new Date().toISOString()});});
+  await markProjectOutputRegistered(store,published.publication);
+  const shot=object(await services.call('shot.create',{projectId,title:'Synthetic generation shot'})),jobId=randomUUID(),step=beginFixtureToolStep(journal,run.id,{toolCall:{id:randomUUID(),name:'mioon_generation_submit',arguments:{shotId:String(shot.id),expectedRevision:Number(shot.revision),providerId:'mock'}}});journal.updateStep(run.id,step.id,{status:'completed',result:{id:jobId}});
+  store.put('jobs',{id:jobId,projectId,shotId:shot.id,requestId:step.id,status:'running',phase:'rendering',progress:62,providerId:'mock',model:'mock-v1',revision:1,createdAt,updatedAt:createdAt});store.db.prepare(`INSERT INTO ${mioTable(store.db,'origins')}(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)`).run('job',jobId,run.id,step.id,projectId,step.id,'generation.submit');
   let preflightCalls=0,preflightTimings:number[]|undefined,preflightResults:string[]|undefined;
   const preflight:AgentTaskChecksPreflight=async(input,options)=>{preflightCalls++;const started=performance.now();try{const result=await services.call('timeline.export.preflight',input,{signal:options?.signal});preflightResults?.push(String(object(result).status));return result;}finally{preflightTimings?.push(performance.now()-started);}};
   const before=store.db.prepare('SELECT total_changes() AS n').get()!.n;
@@ -56,6 +67,6 @@ export async function agentTaskChecksReport(){
    measurements.push({clips:count,uniqueAssets:count,sourceBytes:sourceBytes.length*count,milliseconds,medianMs:sorted[1],maxMs:sorted[2],preflightStatuses:statuses,noDatabaseWrites:store.db.prepare('SELECT total_changes() AS n').get()!.n===before,defaultReadMilliseconds,defaultReadMedianMs:defaultSorted[1],defaultPreflightCalls,defaultReadNoDatabaseWrites,fullReadMilliseconds,fullReadMedianMs:fullSorted[1],fullPreflightCalls,fullReadNoDatabaseWrites});
   }
   return {node:process.version,platform:process.platform,arch:process.arch,preflight:'services.call(timeline.export.preflight)',defaultRead:'readAgentTaskChecks without includePreflight',fullRead:'readAgentTaskChecks with includePreflight=true',combinedExampleMode:'explicit_preflight',combinedExample,combinedExamplePreflightCalls,combinedExampleNoDatabaseWrites:before===after,measurements};
- }finally{tools.dispose();await services.drain();store.close();rmSync(root,{recursive:true,force:true});}
+ }finally{removeGate();tools.dispose();await services.drain();store.close();rmSync(root,{recursive:true,force:true});}
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1])process.stdout.write(`${JSON.stringify(await agentTaskChecksReport(),null,2)}\n`);

@@ -5,6 +5,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import type {TimelineRecord} from '../packages/business/src/timeline-inputs.ts';
 import {existsSync,mkdtempSync,mkdirSync,readFileSync,readdirSync,realpathSync,renameSync,rmSync,unlinkSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
+import {setTimeout as pause} from 'node:timers/promises';
 import path from 'node:path';
 import {createServerProject} from './helpers/project-database.ts';
 import {captureProjectDocumentInside,canonicalJson,PROJECT_SNAPSHOT_TABLES,rowKey,tableColumns,snapshotCellValue,validateProjectDocument} from '../packages/business/src/project-versions/document.ts';
@@ -20,7 +21,7 @@ import {isSubjectListResponse,isSubjectResponse,isSubjectVersionResponse} from '
 import {readLutResource} from '../packages/business/src/project-lut-reader.ts';
 import {parseLutBytes,lutHash} from '../packages/business/src/lut-resource-validation.ts';
 import {LUT_RESOURCE_PROFILE} from '../packages/contracts/src/lut-resources.ts';
-import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '../packages/contracts/src/images.ts';
+import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS,imageTaskResponseSchema,imageGroupResponseSchema} from '../packages/contracts/src/images.ts';
 import {createImageOwnershipReader} from '../packages/business/src/image-ownership.ts';
 import {assetMediaRecordSchema} from '../packages/contracts/src/asset-media.ts';
 import type {RestorePlan} from '../packages/business/src/project-versions/preview.ts';
@@ -57,6 +58,26 @@ function insert(f:ReturnType<typeof fixture>,table:ProjectSnapshotTable,row:Snap
 }
 function scene(projectId:string,assetId:string,position=1):SnapshotRow{return{id:randomUUID(),projectId,assetId,position,sourceHash:'a'.repeat(64),origin:'detected',taskId:randomUUID(),basedOnResultId:null,requestId:null,profileId:'scene-cuts-v1',fps:30,frameCount:30,options:'{}',cuts:'[0]',createdAt:at};}
 
+/** Portable rows retain the real publisher proof and matching immutable result;
+ * only their originating machine keeps the task history. */
+async function generatedImages(f:ReturnType<typeof fixture>,count=1){
+ const services=createServices(f.store,new Map(),{imageOptions:{autoRun:true},frameOptions:{autoRun:false},sceneOptions:{autoRun:false}});
+ const results:Array<{asset:SnapshotRow;group:SnapshotRow;version:SnapshotRow}>=[];let groupId:string|undefined;
+ try{
+  for(let index=0;index<count;index++){
+   const group=groupId?imageGroupResponseSchema.parse(await services.call('image.group.get',{projectId:f.projectId,groupId})):undefined;
+   let task=imageTaskResponseSchema.parse(await services.call('image.generate',{projectId:f.projectId,name:'Portable images',prompt:'Real mock publication for a portable snapshot',providerId:'mock',model:IMAGE_MODELS.mock,options:IMAGE_FIXED_OPTIONS,requestId:randomUUID(),...(group?{groupId:group.id,expectedRevision:group.revision}:{})}));
+   const deadline=Date.now()+10000;
+   while(task.state!=='succeeded'&&Date.now()<deadline){await pause(5);task=imageTaskResponseSchema.parse(await services.call('image.task.get',{projectId:f.projectId,taskId:task.id}));}
+   assert.equal(task.state,'succeeded');groupId=task.groupId;
+   const captured=f.capture(),version=captured.tables.image_versions.find(row=>row.taskId===task.id),owner=captured.tables.image_groups.find(row=>row.id===groupId);
+   assert.ok(version);assert.ok(owner);const asset=captured.tables.assets.find(row=>row.id===version.assetId);assert.ok(asset);
+   results.push({asset,group:owner,version});
+  }
+  return results;
+ }finally{await services.drain();}
+}
+
 test('restore applies mutable fields, advances current revisions and removes new unreferenced rows',t=>{
  const f=fixture(t),shotId=randomUUID();f.store.put('shots',{id:shotId,projectId:f.projectId,title:'Before',revision:7,createdAt:at,updatedAt:at});
  const saved=f.capture();f.store.put('shots',{id:shotId,projectId:f.projectId,title:'After',revision:12,createdAt:at,updatedAt:later});
@@ -68,16 +89,16 @@ test('restore applies mutable fields, advances current revisions and removes new
  assert.ok(Number(f.store.db.prepare("SELECT revision FROM project.agent_task_target_revisions_v2 WHERE kind='shot' AND targetId=?").get(shotId)?.revision)>Number(before.evidence.targetRevisions.find(r=>r.kind==='shot'&&r.targetId===shotId)?.revision));
 });
 
-test('missing owners and all retained result kinds return with their real IDs and no synthetic jobs',t=>{
- const f=fixture(t),base=f.capture(),assetId=randomUUID(),imageAsset=randomUUID(),subjectAsset=randomUUID(),shotId=randomUUID(),subjectId=randomUUID(),subjectVersion=randomUUID(),groupId=randomUUID(),imageVersion=randomUUID(),versionId=randomUUID(),lutId=randomUUID(),detected=scene(f.projectId,assetId);
+test('missing owners and all retained result kinds return with their real IDs and no synthetic jobs',async t=>{
+ const f=fixture(t),[image]=await generatedImages(fixture(t,f.projectId));assert.ok(image);
+ const base=f.capture(),assetId=randomUUID(),imageAsset=String(image.asset.id),subjectAsset=randomUUID(),shotId=randomUUID(),subjectId=randomUUID(),subjectVersion=randomUUID(),groupId=String(image.group.id),imageVersion=String(image.version.id),versionId=randomUUID(),lutId=randomUUID(),detected=scene(f.projectId,assetId);
  const saved=revise(base,tables=>{
-  tables.assets=[assetId,imageAsset,subjectAsset].map(id=>({id,projectId:f.projectId,data:canonicalJson(referenceTestAsset(f.store.projectDir,{id,projectId:f.projectId,name:'Restored.png',mimeType:'image/png',sha256:'a'.repeat(64),sizeBytes:1,relativePath:`media/${id}.png`,provenance:id===imageAsset?'synthetic-mock':'user-import',width:id===imageAsset?1024:1080,height:id===imageAsset?1024:1920,duration:null,hasAudio:false,hasVideo:true}))}));
+  tables.assets=[assetId,imageAsset,subjectAsset].map(id=>id===imageAsset?image.asset:({id,projectId:f.projectId,data:canonicalJson(referenceTestAsset(f.store.projectDir,{id,projectId:f.projectId,name:'Restored.png',mimeType:'image/png',sha256:'a'.repeat(64),sizeBytes:1,relativePath:`media/${id}.png`,provenance:'user-import',width:1080,height:1920,duration:null,hasAudio:false,hasVideo:true}))}));
   tables.shots=[{id:shotId,projectId:f.projectId,data:canonicalJson({id:shotId,projectId:f.projectId,title:'Restored',revision:1,selectedVersionId:versionId,versionIds:[versionId]})}];
   const jobId=randomUUID();tables.versions=[{id:versionId,projectId:f.projectId,jobId,data:canonicalJson({id:versionId,projectId:f.projectId,jobId,shotId,assetId,sha256:'a'.repeat(64)})}];
   tables.subjects=[{id:subjectId,projectId:f.projectId,kind:'character',name:'Person',revision:1,headVersionId:subjectVersion,createdAt:at,updatedAt:at}];
   tables.subject_versions=[{id:subjectVersion,projectId:f.projectId,subjectId,number:1,assetId:subjectAsset,data:canonicalJson({id:subjectVersion,projectId:f.projectId,subjectId,number:1,assetId:subjectAsset,sha256:'a'.repeat(64),mimeType:'image/png',width:1080,height:1920,provenance:{kind:'user-import',versionId:null,shotId:null,jobId:null},createdAt:at})}];
-  const taskId=randomUUID();tables.image_groups=[{id:groupId,projectId:f.projectId,name:'Group',revision:1,headVersionId:imageVersion,activeTaskId:null,createdAt:at,updatedAt:at}];
-  tables.image_versions=[{id:imageVersion,projectId:f.projectId,groupId,taskId,number:1,assetId:imageAsset,data:canonicalJson({id:imageVersion,projectId:f.projectId,groupId,taskId,number:1,assetId:imageAsset,sha256:'a'.repeat(64),mimeType:'image/png',width:1024,height:1024,byteLength:1,isMock:true,providerId:'mock',model:IMAGE_MODELS.mock,options:IMAGE_FIXED_OPTIONS,createdAt:at})}];
+  tables.image_groups=[image.group];tables.image_versions=[image.version];
   tables.scene_results=[detected,{...scene(f.projectId,assetId,2),origin:'manual',taskId:null,basedOnResultId:detected.id,requestId:randomUUID(),options:null}];
   tables.project_lut_resources=[{id:lutId,projectId:f.projectId,name:'LUT',sha256:'b'.repeat(64),sizeBytes:1,profile:'mioon-cube3d-normalized-tetrahedral-v1',metadata:'{}',content:{type:'blob',base64:'eA=='},createdAt:at}];
  });
@@ -370,22 +391,20 @@ test('real head restoration followed by version.add leaves a legal numbering gap
  assert.equal(target.store.db.prepare('SELECT count(*) n FROM project.subject_versions WHERE subjectId=?').get(owner.id)?.n,3);
 });
 
-test('a valid newer portable image snapshot cannot add versions beyond a retained older current head',t=>{
- const f=fixture(t),asset=f.asset(),groupId=randomUUID(),versionId=randomUUID(),taskId=randomUUID();
- const image=(id:string,number:number,assetId:string,taskId:string)=>({id,projectId:f.projectId,groupId,taskId,number,assetId,sha256:'a'.repeat(64),mimeType:'image/png',width:1024,height:1024,byteLength:1,isMock:true,providerId:'mock',model:IMAGE_MODELS.mock,options:IMAGE_FIXED_OPTIONS,createdAt:at});
+test('a valid newer portable image snapshot cannot add versions beyond a retained older current head',async t=>{
+ const f=fixture(t),[first,second]=await generatedImages(fixture(t,f.projectId),2);assert.ok(first);assert.ok(second);
+ const versionId=String(first.version.id),secondId=String(second.version.id);
  const original=revise(f.capture(),tables=>{
-  tables.image_groups=[{id:groupId,projectId:f.projectId,name:'Images',revision:1,headVersionId:versionId,activeTaskId:null,createdAt:at,updatedAt:at}];
-  tables.image_versions=[{id:versionId,projectId:f.projectId,groupId,taskId,number:1,assetId:asset.id,data:canonicalJson(image(versionId,1,asset.id,taskId))}];
+  tables.assets=[first.asset];tables.image_groups=[first.group];tables.image_versions=[first.version];
  });
  f.restore(original);assert.equal(createImageOwnershipReader(f.store.db,f.projectId).version(versionId).number,1);
- const secondAsset=randomUUID(),secondId=randomUUID(),secondTask=randomUUID(),newer=revise(f.capture(),tables=>{
-  tables.assets.push({id:secondAsset,projectId:f.projectId,data:canonicalJson({id:secondAsset,projectId:f.projectId})});
-  tables.image_versions.push({id:secondId,projectId:f.projectId,groupId,taskId:secondTask,number:2,assetId:secondAsset,data:canonicalJson(image(secondId,2,secondAsset,secondTask))});
-  tables.image_groups[0]={...tables.image_groups[0],headVersionId:secondId,revision:2};
+ const newer=revise(f.capture(),tables=>{
+  tables.assets.push(second.asset);tables.image_versions.push(second.version);tables.image_groups[0]=second.group;
  });
  const source=fixture(t,f.projectId);source.restore(newer);assert.equal(createImageOwnershipReader(source.store.db,source.projectId).version(secondId).number,2);
  const saved=source.capture(),before=f.state();assert.throws(()=>f.restore(saved),{code:'PROJECT_VERSION_DEPENDENCY_CONFLICT'});assert.equal(f.state(),before);
  assert.equal(createImageOwnershipReader(f.store.db,f.projectId).version(versionId).number,1);
+ for(const current of [f,source])assert.equal(current.store.db.prepare('SELECT count(*) n FROM main.image_tasks').get()?.n,0);
 });
 
 for(const [label,count,number]of [['a tiny snapshot with a huge safe numbering gap',1,Number.MAX_SAFE_INTEGER],['two subjects whose cumulative advances exceed the limit',2,6001]] as const)test(`restore preview bounds ${label} before any writes`,t=>{

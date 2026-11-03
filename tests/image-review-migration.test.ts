@@ -6,8 +6,8 @@ import {foreignKeyCheck} from './helpers/project-database.ts';
 import {schemaObjects} from '../packages/business/src/project-file/cross-file/inspect.ts';
 import {validateImageTaskReview} from '../packages/business/src/images/reviews.ts';
 
-test('current Mock records need no manufactured review and validation preserves every native row and SQL object',t=>{
- const f=imageFixture(t);f.succeed();
+test('current Mock records need no manufactured review and validation preserves every native row and SQL object',async t=>{
+ const f=imageFixture(t);await f.succeed();
  const beforeObjects=schemaObjects(f.db),before=snapshot(f.db);
  validateImageTaskReview(f.db,f.projectId,f.taskId,f.input);
  assert.deepEqual(snapshot(f.db),before);

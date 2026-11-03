@@ -1,4 +1,9 @@
 import {projectExportObservation} from './project-export-observation.ts';
+import {readPrevisOutputSource} from './previs-output-ownership.ts';
+import {isPublishedProjectOutput} from './project-output-publication.ts';
+import {projectOutputPublicationProofSchema} from '../../contracts/src/project-output-publication.ts';
+import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
+import {mioTable} from './agent/mio-table-layout.ts';
 import {validAssetLocator} from './asset-reference-record.ts';
 import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
 import {types} from 'node:util';
@@ -228,16 +233,42 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
       const version = get('versions', versionId);
       if ((expectedShotId && version.shotId !== expectedShotId) || (expectedAssetId && version.assetId !== expectedAssetId)) unavailable();
       if (validatedVersions.has(versionId as string)) return version;
-      const shot = get('shots', id(version.shotId)), asset = get('assets', id(version.assetId)), job = get('jobs', id(version.jobId));
-      if (job.shotId !== shot.id || job.versionId !== version.id) unavailable();
+      const shot = get('shots', id(version.shotId)), asset = get('assets', id(version.assetId)),jobId=id(version.jobId);
+      let job:InspectionRecord|null=null;
+      if(db.prepare('SELECT 1 FROM jobs WHERE id=? LIMIT 1').get(jobId)||!isProjectLayout(db)){
+        job=get('jobs',jobId);if(job.shotId!==shot.id||job.versionId!==version.id)unavailable();
+        const publication=asset.publication&&typeof asset.publication==='object'?asset.publication as InspectionRecord:null,owner=publication?.owner&&typeof publication.owner==='object'?publication.owner as InspectionRecord:null;
+        const producer=asset.producer&&typeof asset.producer==='object'?asset.producer as InspectionRecord:null;
+        if(owner?.kind==='generation'||producer?.kind==='generation'){
+          if(typeof job.requestId!=='string'||typeof job.requestHash!=='string'||!/^[a-f0-9]{64}$/u.test(job.requestHash)||producer&&(producer.kind!=='generation'||producer.id!==jobId)||
+            !isPublishedProjectOutput(asset,{projectId,assetId:id(version.assetId),owner:{kind:'generation',id:jobId,requestId:job.requestId,inputHash:job.requestHash},targetKind:'generated',sha256:typeof version.sha256==='string'?version.sha256:undefined}))unavailable();
+        }
+      }else{
+        // A copied project may carry its immutable video version without local
+        // execution history. Any surviving local receipt still makes this a
+        // damaged local owner, never a portable fallback or a new job.
+        const proof=projectOutputPublicationProofSchema.safeParse(asset.publication);
+        const producer=asset.producer&&typeof asset.producer==='object'?asset.producer as InspectionRecord:null;
+        if(!proof.success||typeof version.sha256!=='string'||!['video/mp4','video/webm'].includes(asset.mimeType as string)||
+          producer&&(producer.kind!=='generation'||producer.id!==jobId)||
+          !isPublishedProjectOutput(asset,{projectId,assetId:id(version.assetId),owner:{kind:'generation',id:jobId},targetKind:'generated',sha256:version.sha256}))unavailable();
+        const requestId=proof.data.owner.requestId;
+        if(db.prepare('SELECT 1 FROM job_events WHERE jobId=? LIMIT 1').get(jobId)||
+          db.prepare("SELECT 1 FROM idempotency WHERE resourceId=? OR (scope='generation' AND requestId=?) LIMIT 1").get(jobId,requestId)||
+          db.prepare(`SELECT 1 FROM ${mioTable(db,'origins')} WHERE kind='job' AND (jobId=? OR requestId=?) LIMIT 1`).get(jobId,requestId)||
+          db.prepare("SELECT 1 FROM task_dispositions WHERE kind='generation' AND taskId=? LIMIT 1").get(jobId)||
+          db.prepare('SELECT 1 FROM mock_provider_submissions WHERE job_id=? OR request_id=? LIMIT 1').get(jobId,requestId)||
+          db.prepare('SELECT 1 FROM mock_provider_tasks WHERE request_id=? LIMIT 1').get(requestId))unavailable();
+        if(!object(version.snapshot)||version.snapshot.shotId!==shot.id||!Object.hasOwn(version.snapshot,'referenceAssetIds')||!Object.hasOwn(version.snapshot,'referenceAssets')||!Object.hasOwn(version.snapshot,'referenceConnections'))unavailable();
+      }
       if (Object.hasOwn(version, 'sha256') && (typeof version.sha256 !== 'string' || version.sha256 !== asset.sha256)) unavailable();
-      if (Object.hasOwn(job, 'assetId') && job.assetId !== asset.id) unavailable();
+      if (job&&Object.hasOwn(job, 'assetId') && job.assetId !== asset.id) unavailable();
       // Mark only after direct identity checks; this breaks legitimate graph
       // cycles while every encountered relation still receives validation.
       validatedVersions.add(versionId as string);
       try{
         validateAsset(asset); referenceAssets(shot);
-        snapshotLinks(version.snapshot, shot.id as string); snapshotLinks(job.snapshot, shot.id as string);
+        snapshotLinks(version.snapshot, shot.id as string); if(job)snapshotLinks(job.snapshot, shot.id as string);
         return version;
       }catch(error){validatedVersions.delete(versionId as string);throw error;}
     }
@@ -252,18 +283,33 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
       // duplicate owners are rejected, including mismatched SQL/JSON scope.
       const rows = db.prepare(`SELECT ${identity('id')} FROM versions WHERE ${INSPECTION_VERSION_ASSET_EXPRESSION}=? ORDER BY id LIMIT 2`).all(asset.id as string);
       const images=imageReader.owners(asset.id as string) as {id?: unknown}[],frames=frameReader.owners(asset.id as string) as {id?: unknown}[],scenes=sceneReader.owners(asset.id as string);
-      const total=rows.length+images.length+frames.length+scenes.length;
+      const publication=asset.publication&&typeof asset.publication==='object'&&!Array.isArray(asset.publication)?asset.publication as InspectionRecord:null;
+      const publicationOwner=publication?.owner&&typeof publication.owner==='object'&&!Array.isArray(publication.owner)?publication.owner as InspectionRecord:null;
+      const frameMarker=asset.provenance==='extracted-frame'||Object.hasOwn(asset,'frameResult')||publicationOwner?.kind==='frame';
+      const sceneMarker=asset.provenance===SCENE_KEYFRAME_PROVENANCE||Object.hasOwn(asset,'sceneResult')||publicationOwner?.kind==='scene';
+      let previs:ReturnType<typeof readPrevisOutputSource>;try{previs=readPrevisOutputSource(asset,projectId);}catch{unavailable();}
+      const total=rows.length+images.length+frames.length+scenes.length+(previs?1:0);
+      if(publicationOwner?.kind==='image'&&images.length!==1||publicationOwner?.kind==='generation'&&rows.length!==1)unavailable();
       // A damaged oversized legacy owner must never become an unowned import
       // or hide beside a typed owner, regardless of its provenance label.
       if(db.prepare(`SELECT 1 FROM versions WHERE length(CAST(data AS BLOB))>${(rowLimits as Record<string,number>).versions} AND CASE WHEN json_valid(data) THEN json_extract(data,'$.assetId') END=? LIMIT 1`).get(asset.id as string))unavailable();
-      if (total > 1 || (total === 0 && ['generated', 'synthetic-mock', 'extracted-frame', SCENE_KEYFRAME_PROVENANCE].includes(asset.provenance as string))) unavailable();
+      if (total > 1 || (total === 0 && ['generated', 'synthetic-mock'].includes(asset.provenance as string))) unavailable();
       if (rows.length) assetVersions.set(asset.id as string, validateVersion(rows[0].id, undefined, asset.id));
       if (images.length) imageSources.set(asset.id as string,imageReader.source(id(images[0].id),asset as never) as unknown);
       if (frames.length) {
         const source=frameReader.source(id(frames[0].id),asset as never) as {frameTaskId?: unknown};
         validateFrameTask(source.frameTaskId);frameSources.set(asset.id as string,source);
       }
-      if(asset.provenance==='extracted-frame'&&!frames.length)unavailable();
+      if(frameMarker&&!frames.length){
+        if(total!==0)unavailable();
+        const source=frameReader.portableSource(asset);
+        if(++frameDepth>FRAME_OWNERSHIP_LIMITS.maxAncestors){frameDepth--;exhausted();}
+        try{
+          const video=get('assets',id(source.sourceAssetId));
+          if(!['video/mp4','video/webm'].includes(video.mimeType as string)||video.provenance==='extracted-frame'||video.sha256!==source.sourceHash)unavailable();
+          validateAsset(video,{sourceEdge:true});frameSources.set(asset.id as string,source);
+        }finally{frameDepth--;}
+      }
       // A storyboard keyframe belongs to its finished task's receipt and to the
       // unchanged reference video that task decoded.
       if (scenes.length) {
@@ -271,7 +317,12 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
         if(!['video/mp4','video/webm'].includes(video.mimeType as string)||video.sha256!==source.sourceHash)unavailable();
         validateAsset(video);sceneSources.set(asset.id as string,source);
       }
-      if(asset.provenance===SCENE_KEYFRAME_PROVENANCE&&!scenes.length)unavailable();
+      if(sceneMarker&&!scenes.length){
+        if(total!==0)unavailable();
+        const source=sceneReader.portableSource(asset),video=get('assets',id(source.sourceAssetId));
+        if(!['video/mp4','video/webm'].includes(video.mimeType as string)||video.sha256!==source.sourceHash)unavailable();
+        validateAsset(video,{sourceEdge:true});sceneSources.set(asset.id as string,source);
+      }
       validatedAssets.add(asset.id as string);return asset;
       }catch(error){validatedAssets.delete(asset.id as string);assetVersions.delete(asset.id as string);imageSources.delete(asset.id as string);frameSources.delete(asset.id as string);sceneSources.delete(asset.id as string);throw error;}finally{pendingAssets.delete(asset.id as string);}
     }

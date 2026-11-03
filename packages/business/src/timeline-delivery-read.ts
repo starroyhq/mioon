@@ -1,5 +1,7 @@
 import {mediaLocatorFields, validAssetLocator} from './asset-reference-record.ts';
 import {isProjectDatabase} from './project-file/held-files.ts';
+import {isPublishedProjectOutput} from './project-output-publication.ts';
+import {exportOutputArtifactIdentity} from '../../contracts/src/output-artifact.ts';
 import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {isTimelineExportAudioOutcome,isTimelineExportFloatSnapshot} from '@mioon/contracts/timeline-export-float';
 import {floatSnapshotSha256} from './timeline-float-outcome.ts';
@@ -124,7 +126,7 @@ function readTimelineExportOutputCore(
     const asset = guards.readOwnedAsset(projectId, assetId);
     if (!object(asset) || asset.id !== assetId || asset.projectId !== projectId ||
         asset.mimeType !== 'video/mp4' || asset.provenance !== 'export' || asset.url !== record.url ||
-        !(isProjectDatabase(db)?validAssetLocator(db,asset)&&object(asset.producer)&&asset.producer.kind==='export'&&asset.producer.id===requested.exportId:ownsPublishedOutputPath(asset.relativePath,requested.exportId))) return null;
+        !(isProjectDatabase(db)?validAssetLocator(db,asset)&&object(asset.producer)&&asset.producer.kind==='export'&&asset.producer.id===requested.exportId&&isPublishedProjectOutput(asset,{projectId,assetId,owner:{kind:'export',id:requested.exportId,requestId:record.requestId,inputHash:createHash('sha256').update(exportOutputArtifactIdentity(record)).digest('hex')},targetKind:'exports',mimeType:'video/mp4'}):ownsPublishedOutputPath(asset.relativePath,requested.exportId))) return null;
     if (isTimelineExportFloatSnapshot(record.snapshot) && (typeof asset.sha256 !== 'string' ||
         !isTimelineExportAudioOutcome(record, {snapshotSha256: floatSnapshotSha256(record.snapshot), assetSha256: asset.sha256}))) return null;
     // Keep this exact byte calculation for existing named-download fences.

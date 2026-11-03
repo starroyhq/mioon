@@ -87,6 +87,7 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   expectedOperations.push('project.backup.list', 'project.backup.inspect', 'project.backup.restore', 'project.backup.status');
   expectedOperations.push('project.version.list', 'project.version.save', 'project.version.preview', 'project.version.restore');
   expectedOperations.push('asset.media.status.list','asset.media.prepare','asset.media.relink.preview','asset.media.relink.apply','asset.media.acceptChanged');
+  expectedOperations.push('previs.output.publish','previs.output.lookup');
   const expectedUsage = [...snapshot.data.usage];
   expectedUsage.splice(expectedUsage.indexOf('mioon capabilities') + 1, 0, 'mioon agent --help');
   expectedUsage.splice(expectedUsage.indexOf('mioon export download --input <JSON> --output <new-local-file>') + 1, 0, 'mioon project export --input <JSON> --output <new-local-file.mioon>', 'mioon project import --file <local-file.mioon> --request-id <id> [--input <JSON>]', 'mioon project duplicate --request-id <id> --input <JSON>');

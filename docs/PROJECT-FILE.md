@@ -11,7 +11,7 @@
 - 首页封面使用应用级 `GET /api/project-covers/<ID>`，只读缓存，缺失返回 404，不 acquire 项目；`projectSummaryCoverSchema` 已同步此 URL。应用 `/api/workspace-info` 返回应用根，新增项目 `/api/projects/<ID>/workspace-info` 在真实租约内返回项目根，复用原 schema，供可信桌面导出使用。
 - 全局 `diagnostics/latest` 从应用 documents 读取严格五字段摘要：`completedAt/status/protocol/model/errorCode`；无项目对话、请求或密钥，也不打开项目。应用库当前为 v3：精确已知 v1 经 v2，再以 R2 的 v2→v3 升级增加用户规范；保原三种文档及其它记录。HTTP B1 错误仅公开 `APP_LIBRARY_LIMIT`（507）与 `APP_LIBRARY_INVALID`（422）。
 - V2 已接入宿主打开/关闭的项目自动备份，最近三份按内容序号去重；`project.backup.list/inspect/restore/status` 是应用级操作，恢复使用新 ID 和空本机记录。专用 `MioB` 标记使备份不能作为普通项目打开或登记；接口、提交点和故障边界见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)。不启用旧工作区备份接口，也没有接入备份界面。
-- S1 已接通生产素材引用：项目格式为 2、cache 为 2，history 沿 V1-A 的 6。格式 1 的旧开发项目及备份明确拒绝、零写入，需重建。路径导入不复制，网页/Mio 上传写固定 `素材/`；生成和导出当前仍用原目录，S2 再切换。完整契约、强哈希与目录许可见 [素材引用](ASSET-REFERENCES.md)。
+- 生产素材以引用定位：项目格式为 2、cache 为 2，history 为 7。格式 1 的旧开发项目及备份明确拒绝、零写入，需重建。路径导入不复制，网页/Mio 上传写固定 `素材/`；生成写 `生成/`，成片写 `导出/`，排他发布、不自动删除项目文件。完整契约见 [素材引用](ASSET-REFERENCES.md)和[项目产物](PROJECT-OUTPUTS.md)。
 - `project.version.list/save/preview/restore` 是项目级操作，提供手动/自动保存、保留清理和确认恢复；正文仅存本机 history，界面另卡实现；见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。
 - S5 的删除、复制和另存为，V4 的打包导入导出，S7 的工作区备份/恢复仍未接入新布局；精确错误和按项目后的图片、帧、LUT 可达容量见 [宿主当前状态](PROJECT-HOST.md#0-p4-当前运行状态)。不调用旧生产生命周期链；全应用总量控制留 S3。
 
@@ -97,8 +97,8 @@
 依据是 10-30 的崩溃恢复实测：跨两个文件的大事务提交到一半时 `SIGKILL`，再看重开以后两个文件是否一致（Node 24.21.0，SQLite 3.53.4，回滚日志模式加独占锁）。
 
 - **主库是本机记录 `history.db`。** 项目文件以 `project` 的名字挂上去，缓存库以 `cache` 的名字挂上去（`PROJECT_DATABASE_NAMES`）。
-  - 当前 project/history/cache 格式为 **2/6/2**。history 6 在 R2 格式 5 上增加独立 `versions` 领域的 `project_versions`、`project_version_blobs`、`project_version_requests`、`project_version_capture_marks` 四表，不改变项目内容表 `versions`。
-  - 精确已知的 history 2–5 都可在打开事务内升级到 6，版本最后写入；2 保留既有开发期 Mio 重置，3–5 保留已有记录。未知或改动过的结构仍拒绝；详见 [MIO-RECORDS.md](MIO-RECORDS.md#发布前的开发数据重置)。
+  - 当前 project/history/cache 格式为 **2/7/2**。history 6 增加独立 `versions` 领域的四表；7 只重建 `image_reviews` 的精确 CHECK，允许绑定已发布预演图的图片编辑来源，不加表，不改模型输入。
+  - 精确已知的 history 2–6 可在打开事务内升级到 7，版本最后写入；2 保留既有开发期 Mio 重置，3–6 保留已有记录。6 的升级保留 rowid、审阅状态和原始 JSON 字节，外键始终开启，失败或中途退出整笔恢复。未知或改动过的结构仍拒绝；详见 [MIO-RECORDS.md](MIO-RECORDS.md#发布前的开发数据重置)。
   - 未加限定的表名，SQLite 依次到各个库里找，所以现有 SQL 大多不用改。
   - 建表、建触发器，以及 `PRAGMA user_version`、`PRAGMA application_id` 这类语句要带库名，不带时落到主库，也就是本机记录。`PRAGMA foreign_key_check` 不带库名时只查主库。
   - 日志模式和锁模式另有规则，见下面的“日志模式按库名设”。

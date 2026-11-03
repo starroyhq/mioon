@@ -193,6 +193,7 @@ async function fixture(t: test.TestContext) {
   // read-only checkpoints; the next test asserts both recovered states and no dispatch.
   await rpc('image.task.list',{projectId:project.id});
   return {root, project, other, queued, dispatched, source, rpc, succeeded, checkpoint, unchanged,
+    assetFile(assetId:string){return read(db=>{const saved=db.prepare('SELECT data FROM assets WHERE id=? AND projectId=?').get(assetId,project.id);assert.ok(saved&&typeof saved.data==='string');return mediaFixturePath(projectDirFor(root,project.id),JSON.parse(saved.data) as unknown);});},
     retainedSource() { return read(db => ({asset: db.prepare('SELECT * FROM assets WHERE id=?').get(source.asset.id),
       task: db.prepare('SELECT * FROM image_tasks WHERE id=?').get(source.ack.id),
       version: db.prepare('SELECT * FROM image_versions WHERE id=?').get(source.version.id),
@@ -363,7 +364,7 @@ test('image edits preserve one durable contract across real HTTP, CLI and offici
   await t.test('on-disk source hash changes reject admission without writes and restoring the exact bytes permits the original unaccepted key', async () => {
     const sourceInput = inputFor(f.project.id, {name: 'Separate source for local integrity test'}), ack = (await f.rpc('image.generate', sourceInput)).data;
     await f.succeeded(ack.id); const sourceVersion = (await f.rpc('image.version.list', {projectId: f.project.id, groupId: ack.groupId})).data.items[0];
-    const file = path.join(projectDirFor(f.root, f.project.id), 'media', `${sourceVersion.assetId}.png`), bytes = await readFile(file), changed = Buffer.from(bytes); changed[changed.length - 1] ^= 1;
+    const file = f.assetFile(sourceVersion.assetId), bytes = await readFile(file), changed = Buffer.from(bytes); changed[changed.length - 1] ^= 1;
     const input = editFor({name: 'Restored exact source', inputImage: {assetId: sourceVersion.assetId, sha256: sourceVersion.sha256}}), before = f.checkpoint();
     try { await writeFile(file, changed); await parity('image.generate', input, 'IMAGE_SOURCE_INVALID'); f.unchanged(before, 'on-disk hash mismatch rejects before acceptance'); }
     finally { await writeFile(file, bytes); }

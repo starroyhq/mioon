@@ -208,9 +208,9 @@ test('ordinary final-reap failure latches the worker before later timer ticks ca
  }
 });
 
-test('unconfirmed existing-result probe never falls back to provider download or advances queued work',{timeout:8000},async t=>{
- const f=await shutdownFixture(t);f.transition({status:'downloading',providerJobId:'original-provider-task',submissionCount:1});
- await writeFile(path.join(f.root,`media/result-${f.job.id}.mp4`),'Owned inert bytes for injected probe');
+test('unconfirmed downloaded-stage probe never repeats the download or advances queued work',{timeout:8000},async t=>{
+ const bytes='Owned inert bytes for injected probe',f=await shutdownFixture(t,{download:async(_id,destination)=>{await writeFile(destination,bytes);}});f.transition({status:'downloading',providerJobId:'original-provider-task',submissionCount:1});
+ const unreceipted=path.join(f.root,`media/result-${f.job.id}.mp4`);await writeFile(unreceipted,bytes);
  const assertQueued=queuedFollowers(f),originalSpawn=(ChildProcess.prototype as SpawnableChild).spawn,originalKill=ChildProcess.prototype.kill;
  let child!:ChildProcess|undefined;
  // Redirect only this test's ffprobe invocation to a real, exact-owned Node
@@ -226,9 +226,11 @@ test('unconfirmed existing-result probe never falls back to provider download or
  const killHook=t.mock.method(ChildProcess.prototype,'kill',function(this:ChildProcess,signal:Parameters<ChildProcess['kill']>[0]){return this===child?false:originalKill.call(this,signal);});
  try {
   const worker=f.start();await worker.tick();
-  assert.ok(child,'existing result probe must run');assert.equal(f.calls.download,0);
+  assert.ok(child,'downloaded private stage probe must run');assert.equal(f.calls.download,1);
   await remainsStopped(worker,assertQueued);assert.equal(f.calls.submit,0);assert.equal(f.read().status,'downloading');
   assert.equal(f.read().error.code,'MEDIA_TERMINATION_UNCONFIRMED');assert.equal(f.read().error.retryable,false);
+  assert.equal(await readFile(unreceipted,'utf8'),bytes,'an unreceipted project file is neither adopted nor removed');
+  assert.equal(f.calls.download,1);
  } finally {
   spawnHook.mock.restore();killHook.mock.restore();
   if(child&&child.exitCode===null&&child.signalCode===null){const closed=once(child,'close');originalKill.call(child,'SIGKILL');await closed;}
