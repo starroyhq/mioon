@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import {schemas} from '@mioon/contracts';
-import {jsonSchema} from '../../packages/client/src/index.ts';
+import {schemas, jsonSchema} from '../../packages/client/src/index.ts';
 import {isEntityAddressedOperation} from '../../packages/contracts/src/project-addressing.ts';
 
 const PROJECT_ADDRESS = {type: 'string', pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'};

@@ -5,7 +5,7 @@ import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {schemas} from '@mioon/contracts';
+import {schemas} from '@mioon/client';
 import {APP_LEVEL_OPERATIONS, ENTITY_ADDRESSED_OPERATIONS, inputProjectId, isAppLevelOperation, isEntityAddressedOperation, rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectApiPath, projectMediaPath, projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {jsonSchema, operationDefinition, splitProjectAddress} from '../packages/client/src/index.ts';
@@ -28,9 +28,9 @@ const requires = (schema: unknown, field: string): boolean => {
 
 test('every operation has exactly one address: app-level, entity-addressed, or the project its input names', () => {
   const operations = Object.keys(schemas);
-  assert.equal(operations.length, 146);
+  assert.equal(operations.length, 150);
   for (const operation of [...APP_LEVEL_OPERATIONS, ...ENTITY_ADDRESSED_OPERATIONS]) assert.ok(Object.hasOwn(schemas, operation), operation);
-  assert.equal(APP_LEVEL_OPERATIONS.length, 19);
+  assert.equal(APP_LEVEL_OPERATIONS.length, 23);
   assert.equal(ENTITY_ADDRESSED_OPERATIONS.length, 11);
   for (const operation of operations) {
     const shared = jsonSchema(sharedSchema(operation)) as Json & {properties?: Json};

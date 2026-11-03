@@ -20,3 +20,7 @@ export {
   PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION,
 } from './schema/databases.ts';
 export type {DatabaseKind} from './schema/databases.ts';
+export {createProjectBackup, inspectCopiedProjectFile, inspectProjectBackup, openProjectBackup, PROJECT_BACKUP_APPLICATION_ID} from './backup.ts';
+export type {ProjectBackupIdentity, ProjectBackupReader} from './backup.ts';
+export {copyProjectBackup, copyProjectToNewFile} from './copy.ts';
+export type {CopyProjectOptions, ProjectCopyResult} from './copy.ts';
