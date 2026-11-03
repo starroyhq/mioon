@@ -1,4 +1,4 @@
-import {constants} from 'node:fs';
+import {constants, lstatSync, realpathSync} from 'node:fs';
 import type {BigIntStats, Dirent} from 'node:fs';
 import {lstat, open, opendir, realpath} from 'node:fs/promises';
 import nodePath from 'node:path';
@@ -20,6 +20,10 @@ export interface MediaDirectoryEntry {
   readonly kind: 'file' | 'directory' | 'symlink' | 'other';
 }
 export interface MediaFileSystem {
+  /** Synchronous admission checks immediately before a pathname-only child
+   * process starts. Required by paged discovery, optional for older readers. */
+  lstatSync?(file: string): BigIntStats | null;
+  realpathSync?(file: string): string | null;
   /** bigint lstat; null when nothing is at the path or a parent is not a directory. Other errors are thrown. */
   lstat(file: string): Promise<BigIntStats | null>;
   /** fs.promises.realpath, which also gives the case the disk has on macOS;
@@ -52,6 +56,14 @@ async function kindOf(directory: string, entry: Dirent): Promise<MediaDirectoryE
 }
 
 export const NODE_MEDIA_FILE_SYSTEM: MediaFileSystem = Object.freeze({
+  lstatSync(file: string): BigIntStats | null {
+    try {return lstatSync(file, {bigint: true});}
+    catch (error) {if (NOT_THERE.has(errorCode(error) as string)) return null; throw error;}
+  },
+  realpathSync(file: string): string | null {
+    try {return realpathSync(file);}
+    catch (error) {if (NOT_THERE.has(errorCode(error) as string) || errorCode(error) === 'ELOOP') return null; throw error;}
+  },
   async lstat(file: string): Promise<BigIntStats | null> {
     try {
       return await lstat(file, {bigint: true});

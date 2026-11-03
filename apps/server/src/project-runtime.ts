@@ -8,6 +8,7 @@ import { createAgentSettingsFile } from '@mioon/business/agent/settings-file';
 import { createAgentTaskRuntime } from '@mioon/business/agent/task-runtime-v2';
 import { readMioStorage } from '@mioon/business/agent/mio-storage';
 import { createAgentTaskTools } from '@mioon/business/agent/task-tools-v2';
+import { createMioProjectMedia } from '@mioon/business/agent/mio-project-media';
 import type { AppLibrary } from '@mioon/business/app-db/index';
 import { isAppLibraryHeld, projectFileIdentity } from '@mioon/business/app-db/index';
 import { createComfyConnector } from '@mioon/business/comfy/connector';
@@ -263,7 +264,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     // local engine exposes the same dependency. createAgentTaskRuntime re-sanitizes reads.
     const chatSettings = agentSettings as unknown as AgentSettingsService;
     if(isProjectStore(store)&&application)projectRules=createMioProjectRules({store,application,signal:shutdown.signal,assertMutationAllowed:()=>ordinary.assertMutationAllowed()});
-    taskToolsV2=createAgentTaskTools({store:ordinaryStore,services:ordinary,...(projectRules?{rules:projectRules}:{}),...(application?{policyStore:application.agentPolicy}:{})});
+    taskToolsV2=createAgentTaskTools({store:ordinaryStore,services:ordinary,projectMedia:createMioProjectMedia({store,signal:shutdown.signal}),...(projectRules?{rules:projectRules}:{}),...(application?{policyStore:application.agentPolicy}:{})});
     taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,...(application?{policyStore:application.agentPolicy,onDiagnosticCompleted:summary=>application.tx(()=>{
       const raw=application.documents.read('agent-diagnostic-summary-v1.json');
       const previous=raw===null?null:agentDiagnosticSummarySchema.parse(JSON.parse(raw));

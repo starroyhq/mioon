@@ -24,6 +24,7 @@
     "./mio-run-usage": "./src/mio-run-usage.ts",
     "./mio-storage": "./src/mio-storage.ts",
     "./mio-rules": "./src/mio-rules.ts",
+    "./mio-project-media": "./src/mio-project-media.ts",
     "./agent-timeline-gain": "./src/agent-timeline-gain.ts",
     "./timeline-audio-preview": "./src/timeline-audio-preview.ts",
     "./timeline-audio-continuous": "./src/timeline-audio-continuous.ts",
