@@ -42,6 +42,8 @@ import {readSchemaManifest} from '../../packages/business/src/project-file/schem
 import type {ManifestEntry} from '../../packages/business/src/project-file/schema/manifest-check.ts';
 import {APP_DATABASE_TABLES, CACHE_TABLES, CONTENT_TABLES, HISTORY_TABLES, HISTORY_TABLES_BY_DOMAIN, LEGACY_MIO_TABLES, databaseOf} from '../../packages/business/src/project-file/schema/tables.ts';
 import type {TablePlacement} from '../../packages/business/src/project-file/schema/tables.ts';
+import {currentCacheStatements} from '../../packages/business/src/project-file/schema/cache-v2.ts';
+import {currentContentStatements} from '../../packages/business/src/project-file/schema/content-v2.ts';
 import {MIO_SCHEMA} from '../../packages/business/src/project-file/schema/domains/mio.ts';
 
 export const REPOSITORY = fileURLToPath(new URL('../../', import.meta.url));
@@ -675,7 +677,7 @@ function renderManifest(derivation: Derivation): string {
     "import type {SchemaManifest} from './manifest-check.ts';",
     'export const SCHEMA_MANIFEST: Readonly<Record<DatabaseKind, SchemaManifest>> = Object.freeze({'];
   for (const kind of ['project', 'history', 'cache'] as const) {
-    const statements = DOMAIN_FILES.filter(domain => domain.database === kind).flatMap(domain => domain.file === 'mio' ? MIO_SCHEMA : derivation.domains[domain.file]);
+    const statements = DOMAIN_FILES.filter(domain => domain.database === kind).flatMap(domain => domain.file === 'mio' ? MIO_SCHEMA : domain.file === 'cache' ? currentCacheStatements(derivation.domains.cache) : domain.file === 'content' ? currentContentStatements(derivation.domains.content) : derivation.domains[domain.file]);
     const entries = buildManifest(kind, schemaStatements(kind, statements));
     lines.push(`  ${kind}: {version: ${VERSIONS[kind]}, entries: Object.freeze([`,
       ...entries.map(entry => `    {type: ${json(entry.type)}, name: ${json(entry.name)}, tbl_name: ${json(entry.tbl_name)}, sha256: ${json(entry.sha256)}},`),
@@ -687,7 +689,7 @@ function renderManifest(derivation: Derivation): string {
 
 const PROCESS_REVISION_TRIGGER = /^agent_target_(?:jobs|exports|image_tasks|frame_tasks)_(?:insert|update|delete)_v2$/;
 /** The format-72 derivation remains a frozen S0 profile. Only generated current
- * constraints and manifests overlay the C-owned R1 domain. */
+ * constraints and manifests overlay the R1 Mio and S1 cache/content domains. */
 export function currentCrossFileRelations(derivation: Derivation): readonly RelationData[] {
   const legacy = new Set(LEGACY_MIO_TABLES);
   const relations = derivation.relations.filter(relation => !legacy.has(relation.child.table)).map(relation => ({...relation}));
@@ -702,7 +704,7 @@ const KERNEL = 'packages/business/src/project-file';
 /** Repository-relative path -> exact file text of every generated file. */
 export function renderDerivedFiles(derivation: Derivation = deriveFromFormat72()): Map<string, string> {
   const files = new Map<string, string>();
-  for (const domain of DOMAIN_FILES.filter(domain => domain.file !== 'mio')) files.set(`${KERNEL}/schema/domains/${domain.file}.ts`, renderDomain(domain, derivation.domains[domain.file], derivation));
+  for (const domain of DOMAIN_FILES.filter(domain => domain.file !== 'mio')) files.set(`${KERNEL}/schema/domains/${domain.file}.ts`, renderDomain(domain, domain.file === 'cache' ? currentCacheStatements(derivation.domains.cache) : domain.file === 'content' ? currentContentStatements(derivation.domains.content) : derivation.domains[domain.file], derivation));
   const current = {...derivation, relations: currentCrossFileRelations(derivation), convertedTriggers: derivation.convertedTriggers.filter(trigger => !PROCESS_REVISION_TRIGGER.test(trigger.name))};
   files.set(`${KERNEL}/cross-file/relations.ts`, renderRelations(current));
   files.set(`${KERNEL}/cross-file/converted-triggers.ts`, renderConvertedTriggers(current));

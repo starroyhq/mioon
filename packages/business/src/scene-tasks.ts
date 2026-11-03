@@ -1,3 +1,8 @@
+import {legacyWorkspaceSceneSnapshotSchema,legacyWorkspaceSceneShotsSnapshotSchema} from '../../contracts/src/scene-tasks.ts';
+import path from 'node:path';
+import {isProjectStore} from './project-file/store.ts';
+import {prepareProjectAssetFullHash, referenceForPublishedMedia, registerProjectMediaStore} from './project-media-storage.ts';
+import {mediaLocatorFields, sameMediaLocator, hasAssetReference, validAssetLocator} from './asset-reference-record.ts';
 import {mioTable} from './agent/mio-table-layout.ts';
 import {bindAgentTaskJobInside,assertAgentTaskJobEffect,withAgentTaskJobOrigin,isAgentTaskEffectBlocked,setAgentTaskJobResumer,setAgentTaskJobStopper,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
 import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
@@ -82,6 +87,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
  const old=owners.get(store.db);
  if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.detect!==detect||old.decodeKeyframes!==decodeKeyframes||old.autoRun!==autoRun||old.fault!==fault)fail('SCENE_SERVICE_ACTIVE');return old.service;}
  const {db,root,tx}=store,queue: {id: string; projectId: string}[]=[],pending=new Set<string>(),active=new Set<Promise<unknown>>(),attemptSignals=new Set<AbortSignal>();
+ const releaseProjectMedia=registerProjectMediaStore(store);
  const attempts=new Map<string,AbortController>(),progress=new Map<string,Record<string,number>>(),resumeRequested=new Set<string>();
  const controller=new AbortController(),signal: AbortSignal=ownerSignal?AbortSignal.any([ownerSignal,controller.signal]):controller.signal;
  let stopped=false,running=false,reported=false,draining: Promise<void>|undefined;
@@ -125,7 +131,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
  /** The task's frozen source must still be the owned asset and the same file. */
  function sourceFence(original: SceneTaskView,expected?: ManagedFileIdentity): {source: Record<string,unknown>; file: string; info: ManagedFileIdentity} {
   const value=task(original.row.projectId,original.row.id),source=asset(value.row.projectId,value.row.sourceAssetId),frozen=value.snapshot.source;
-  if(source.sha256!==frozen.sha256||source.sizeBytes!==frozen.sizeBytes||source.relativePath!==frozen.relativePath)fail('SCENE_SOURCE_CHANGED');
+  if(source.sha256!==frozen.sha256||source.sizeBytes!==frozen.sizeBytes||!sameMediaLocator(source,frozen))fail('SCENE_SOURCE_CHANGED');
   const file=sourceFile(source);if(expected&&!sameManagedFile(file.info,expected))fail('SCENE_SOURCE_CHANGED');
   return {source,...file};
  }
@@ -138,7 +144,14 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
   const value=project(projectId);maxRevision(value.revision);
   db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify({...value,revision:(value.revision as number)+1,updatedAt:now()}),projectId);
  }
- function accept(input: SceneDetectInput): SceneDetectTaskResponse {
+ async function accept(input: SceneDetectInput): Promise<SceneDetectTaskResponse> {
+  owner();project(input.projectId);const existing=prior('scene.detect',input as unknown as SceneMutationInput);if(existing)return existing as SceneDetectTaskResponse;
+  if(isProjectStore(store)){
+   const before=asset(input.projectId,input.sourceAssetId);if(before.sha256!==null&&before.sha256!==input.sourceHash)fail('SCENE_SOURCE_CHANGED');
+   idle(input.projectId,input.sourceAssetId);capacity(input.projectId,{accept:true});
+   try{await prepareProjectAssetFullHash(root,input.sourceAssetId,{signal,maxBytes:SCENE_LIMITS.sourceBytes});}
+   catch(error){const code=property(error,'code');if(typeof code==='string'&&code.startsWith('MEDIA_'))fail(code==='MEDIA_CHANGED'||code==='MEDIA_CHANGED_DURING_READ'?'SCENE_SOURCE_CHANGED':'SCENE_SOURCE_INVALID');throw error;}
+  }
   const result=tx(()=>{
    owner();project(input.projectId);const replay=prior('scene.detect',input as unknown as SceneMutationInput);if(replay)return {value:replay as SceneDetectTaskResponse,replayed:true};
    const source=asset(input.projectId,input.sourceAssetId);
@@ -147,9 +160,9 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
    capacity(input.projectId,{accept:true});
    const id=randomUUID(),options=normalizeSceneDetectionOptions(input.options as Parameters<typeof normalizeSceneDetectionOptions>[0]);
    const snapshot={schemaVersion:1,projectId:input.projectId,taskId:id,kind:'detect',
-    source:{assetId:source.id,sha256:source.sha256,mimeType:source.mimeType,sizeBytes:source.sizeBytes,relativePath:source.relativePath,duration:source.duration},
+    source:{assetId:source.id,sha256:source.sha256,mimeType:source.mimeType,sizeBytes:source.sizeBytes,...mediaLocatorFields(source),duration:source.duration},
     options,profileId:SCENE_DETECTION_PROFILE_ID,fps:SOURCE_RANGE_FPS};
-   if(!sceneSnapshotSchema.safeParse(snapshot).success)fail('SCENE_SOURCE_INVALID');
+   if(!(isProjectStore(store)?sceneSnapshotSchema:legacyWorkspaceSceneSnapshotSchema).safeParse(snapshot).success)fail('SCENE_SOURCE_INVALID');
    sourceFile(source);
    const timestamp=now(),value={id,projectId:input.projectId,kind:'detect',requestId:input.requestId,sourceAssetId:input.sourceAssetId,sourceHash:input.sourceHash,
     options,profileId:SCENE_DETECTION_PROFILE_ID,fps:SOURCE_RANGE_FPS,state:'queued',revision:1,started:false,result:null,progress:null,errorCode:null,createdAt:timestamp,updatedAt:timestamp};
@@ -178,7 +191,19 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
   const bottoms=[lowest('shots'),lowest('nodes')].filter((value): value is number=>value!==null);
   return {x:SCENE_SHOT_LAYOUT.left,y:bottoms.length?Math.max(...bottoms)+SCENE_SHOT_LAYOUT.gap:SCENE_SHOT_LAYOUT.top};
  }
- function acceptShots(input: SceneShotsInput): SceneShotsTaskResponse {
+ async function acceptShots(input: SceneShotsInput): Promise<SceneShotsTaskResponse> {
+  owner();project(input.projectId);const existing=prior('scene.shots.create',input as unknown as SceneMutationInput);if(existing)return existing as SceneShotsTaskResponse;
+  if(isProjectStore(store)){
+   const before=asset(input.projectId,input.sourceAssetId);if(before.sha256!==null&&before.sha256!==input.sourceHash)fail('SCENE_SOURCE_CHANGED');
+   idle(input.projectId,input.sourceAssetId);
+   if(latestResultId(input.projectId,input.sourceAssetId)!==input.resultId)fail('SCENE_RESULT_CONFLICT');
+   const base=history.result(input.projectId,input.resultId);
+   if(before.sha256!==null&&base.sourceHash!==before.sha256||base.profileId!==SCENE_DETECTION_PROFILE_ID)fail('SCENE_RESULT_STALE');
+   const cuts=base.cuts.map(cut=>cut.frame);for(const segment of input.segments)if(!sceneSegmentBounds(cuts,base.frameCount,segment))fail('SCENE_SEGMENTS_INVALID');
+   capacity(input.projectId,{accept:true});
+   try{await prepareProjectAssetFullHash(root,input.sourceAssetId,{signal,maxBytes:SCENE_LIMITS.sourceBytes});}
+   catch(error){const code=property(error,'code');if(typeof code==='string'&&code.startsWith('MEDIA_'))fail(code==='MEDIA_CHANGED'||code==='MEDIA_CHANGED_DURING_READ'?'SCENE_SOURCE_CHANGED':'SCENE_SOURCE_INVALID');throw error;}
+  }
   const result=tx(()=>{
    owner();project(input.projectId);const replay=prior('scene.shots.create',input as unknown as SceneMutationInput);if(replay)return {value:replay as SceneShotsTaskResponse,replayed:true};
    const source=asset(input.projectId,input.sourceAssetId);
@@ -193,9 +218,9 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
    const id=randomUUID(),titlePrefix=input.titlePrefix??SCENE_SHOT_TITLE_PREFIX,aspectRatio=projectAspectRatio(input.projectId);
    const origin=input.position?{x:input.position.x,y:input.position.y}:defaultOrigin(input.projectId);
    const snapshot={schemaVersion:1,projectId:input.projectId,taskId:id,kind:'shots',
-    source:{assetId:source.id,sha256:source.sha256,mimeType:source.mimeType,sizeBytes:source.sizeBytes,relativePath:source.relativePath,duration:source.duration,width:source.width,height:source.height},
+    source:{assetId:source.id,sha256:source.sha256,mimeType:source.mimeType,sizeBytes:source.sizeBytes,...mediaLocatorFields(source),duration:source.duration,width:source.width,height:source.height},
     resultId:base.id,frameCount:base.frameCount,frame:{profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE,fps:SOURCE_RANGE_FPS},aspectRatio,titlePrefix,origin,segments};
-   if(!sceneShotsSnapshotSchema.safeParse(snapshot).success)fail('SCENE_SOURCE_INVALID');
+   if(!(isProjectStore(store)?sceneShotsSnapshotSchema:legacyWorkspaceSceneShotsSnapshotSchema).safeParse(snapshot).success)fail('SCENE_SOURCE_INVALID');
    sourceFile(source);
    const timestamp=now(),value={id,projectId:input.projectId,kind:'shots',requestId:input.requestId,sourceAssetId:input.sourceAssetId,sourceHash:input.sourceHash,resultId:base.id,
     segments:[...input.segments],titlePrefix,aspectRatio,state:'queued',revision:1,started:false,shots:null,progress:null,undo:null,errorCode:null,createdAt:timestamp,updatedAt:timestamp};
@@ -363,6 +388,8 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
   const saved=receipt as SceneShotsReceipt;
   for(const [index,keyframe] of saved.keyframes.entries()){if(attemptSignal.aborted)fail('SCENE_INTERRUPTED');storage.publish(keyframe.assetId,storage.staged(entry.id,index));}
   fault('after_media_publication',{taskId:entry.id});
+  const referenceFields=new Map<string,Awaited<ReturnType<typeof referenceForPublishedMedia>>>();
+  if(isProjectStore(store))for(const keyframe of saved.keyframes){const value=await referenceForPublishedMedia(store,path.join(root,'media',`${keyframe.assetId}.png`),{sha256:keyframe.sha256,signal:attemptSignal,beforeEffect:()=>{sourceFence(staged,before.info);}});referenceFields.set(keyframe.assetId,value);}
   const built=tx(()=>{
    const value=task(entry.projectId,entry.id);
    if(value.kind!=='shots'||value.row.state!=='persisting'||value.row.revision!==staged.row.revision)fail('SCENE_REVISION_CONFLICT');
@@ -373,7 +400,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
    for(const [index,item] of plan.entries()){
     const keyframe=saved.keyframes[index]!;
     const image={id:keyframe.assetId,projectId,name:`${item.title}.png`,mimeType:'image/png',sha256:keyframe.sha256,width:keyframe.width,height:keyframe.height,sizeBytes:keyframe.byteLength,
-     relativePath:`media/${keyframe.assetId}.png`,url:`/media/${keyframe.assetId}`,provenance:SCENE_KEYFRAME_PROVENANCE,createdAt:timestamp};
+     ...(referenceFields.get(keyframe.assetId)??{relativePath:`media/${keyframe.assetId}.png`}),url:`/media/${keyframe.assetId}`,provenance:SCENE_KEYFRAME_PROVENANCE,createdAt:timestamp};
     db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(image.id,projectId,JSON.stringify(image));
     const shot={id:shotIds[index]!,projectId,title:item.title,prompt:'',referenceAssetIds:[keyframe.assetId],aspectRatio:snapshot.aspectRatio,duration:item.duration,parameters:{},
      position:item.position,orderIndex:order+index,revision:1,selectedVersionId:null,createdAt:timestamp,updatedAt:timestamp};
@@ -478,7 +505,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
    const parsed=sceneSchemas[operation].safeParse(input);if(!parsed.success)throw new AppError('VALIDATION_ERROR','Invalid scene operation input.',400);
    const data=parsed.data as unknown as SceneMutationInput;
    if(Buffer.byteLength(canonical(data))>SCENE_LIMITS.inputBytes)fail('SCENE_CAPACITY',507);
-   try{return mutations[operation]!(data as never);}catch(cause){proveRefusal(operation,data,cause);throw cause;}
+   try{const value=mutations[operation]!(data as never);if(value instanceof Promise)return value.catch(cause=>{proveRefusal(operation,data,cause);throw publicFailure(cause);});return value;}catch(cause){proveRefusal(operation,data,cause);throw cause;}
   }catch(cause){throw publicFailure(cause);}
  };
  // Live progress is advisory and never stored; saved reads stay unchanged.
@@ -504,8 +531,8 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
   const result=boundedShutdown((async()=>{
    const results=await Promise.all([...attemptSignals].map(attemptSignal=>terminateMediaProcesses({signal:attemptSignal})));assertMediaTerminated(results.flat());
    await Promise.allSettled([...active]);if([...attemptSignals].some(attemptSignal=>hasUnconfirmedMediaProcesses({signal:attemptSignal})))assertMediaTerminated([{status:'unconfirmed'}]);
-  })(),'SCENE_STOP_TIMEOUT');draining=result;void result.catch(()=>{if(draining===result)draining=undefined;});return result;
+  })(),'SCENE_STOP_TIMEOUT').then(()=>{releaseProjectMedia();});draining=result;void result.catch(()=>{if(draining===result)draining=undefined;});return result;
  }
  const service: SceneService={handlers,drain,isBusy:()=>active.size>0||pending.size>0};registration.service=service;owners.set(db,registration);
- try{reconcile();}catch(cause){owners.delete(db);removeResumer();removeStopper();throw cause;}return service;
+ try{reconcile();}catch(cause){releaseProjectMedia();owners.delete(db);removeResumer();removeStopper();throw cause;}return service;
 }

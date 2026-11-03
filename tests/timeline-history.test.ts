@@ -1,3 +1,6 @@
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
+import {writeFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 import type {ServiceResponse as FixtureServiceResult, TypedServices as FixtureServices, TypedStore as FixtureStore} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
@@ -20,7 +23,7 @@ async function fixture(t: test.TestContext,{open=openStore,reopen=openStore}: {o
  let store=open(root), services=(createServices(store,new Map()) as FixtureServices);
  const _strictFixtureBase={root,get store(){return store;}, call:<O extends string>(operation: O, input?: unknown) => services.call(operation,input) as Promise<FixtureServiceResult<O>>,
   restart(){store.close();store=reopen(root);services=(createServices(store,new Map()) as FixtureServices);},
-  asset(projectId?: string,mimeType: string='image/png') {const id=randomUUID();return store.put('assets',{id,projectId,name:'Local synthetic fixture',mimeType,duration:2,width:720,height:1280,sha256:'a'.repeat(64),relativePath:`media/${id}.fixture`});},
+  asset(projectId?: string,mimeType: string='image/png') {const id=randomUUID(),bytes=mimeType==='video/mp4'?mp4HeaderFixture(`Synthetic metadata-only timeline source ${id}`):Buffer.from([137,80,78,71,13,10,26,10]),relativePath=`media/${id}.${mimeType==='video/mp4'?'mp4':'png'}`;writeFileSync(path.join(root,relativePath),bytes);return store.put('assets',{id,projectId,name:'Local synthetic fixture',mimeType,duration:2,width:720,height:1280,sizeBytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),relativePath});},
   capture(){return Object.fromEntries(unrelated.map(table=>[table,clone(store.list(table))]));},
   state(projectId: SQLInputValue){return {timeline:store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId),history:store.db.prepare('SELECT * FROM timeline_history WHERE projectId=? ORDER BY position').all(projectId),cursor:store.db.prepare('SELECT * FROM timeline_history_cursors WHERE projectId=?').get(projectId),requests:store.db.prepare('SELECT * FROM timeline_requests ORDER BY requestId').all()};}
  };

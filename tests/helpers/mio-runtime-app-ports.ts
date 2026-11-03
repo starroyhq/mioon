@@ -16,7 +16,7 @@ export function createMioTestAppPorts(store: WorkspaceStore) {
   const configuration = createWorkspaceConfiguration({root: library.dataDir, documents: library.documents});
   const unused = (): never => {throw new Error('Mio runtime scenarios must not invoke application backups');};
   try {
-    const services = createServices(store, new Map(), {application: {configuration, backups: {
+    const services = createServices(store, new Map(), {application: {configuration,outsidePaths:library.outsidePaths, backups: {
       getStatus: unused, list: unused, create: unused, stageRestore: unused, exportBundle: unused, importBundle: unused, importDirectory: unused,
       isBusy: () => false, assertMutationAllowed() {}, start() {}, stop() {}, drain: async () => {}, tick: async () => {},
     }}});

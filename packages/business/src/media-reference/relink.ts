@@ -1,7 +1,7 @@
 import {mediaReferenceSchema, outsideProjectLocationSchema} from '../../../contracts/src/media-reference.ts';
 import type {MediaReference, OutsideProjectLocation} from '../../../contracts/src/media-reference.ts';
 import {freshMediaFile, hasMediaHeader, inspectTarget, isFileReadError, parseReference, prepareAccess, quietly, readSampledSha256, withMediaFile} from './access.ts';
-import type {MediaAccess, MediaTarget, PreparedAccess} from './access.ts';
+import type {MediaAccess, MediaTarget, PreparedAccess, MediaReadOptions} from './access.ts';
 import {mediaReferenceError} from './errors.ts';
 import {hashWhole, mediaMtimeMs} from './fingerprint.ts';
 import {
@@ -66,22 +66,22 @@ function relocated(prepared: PreparedAccess, target: MediaTarget, recorded: Medi
  * `mismatched`. The chosen file itself must be readable: outside
  * the project directory the caller records the confirmation first. */
 export async function relinkMedia(access: MediaAccess, assets: readonly MediaAsset[], chosen: {readonly assetId: string; readonly file: string},
-  {signal}: {signal?: AbortSignal} = {}): Promise<RelinkResult> {
+  {signal, beforeEffect}: MediaReadOptions = {}): Promise<RelinkResult> {
   if (!Array.isArray(assets) || assets.length > MAX_RELINK_ASSETS) throw mediaReferenceError('MEDIA_REFERENCE_INVALID', {reason: 'asset'});
   const recorded = assets.map(asset => ({id: asset.id, reference: parseReference(asset.reference)}));
   const old = recorded.find(asset => asset.id === chosen.assetId);
   if (old === undefined) throw mediaReferenceError('MEDIA_REFERENCE_INVALID', {reason: 'asset'});
   if (parseLocalPath(chosen.file) === null) throw new TypeError('The chosen file must be an absolute path');
-  signal?.throwIfAborted();
-  const prepared = await prepareAccess(access);
+  signal?.throwIfAborted(); beforeEffect?.();
+  const prepared = await prepareAccess(access); beforeEffect?.();
   const pickedTarget = await inspectTarget(prepared, chosen.file);
-  const picked = await freshMediaFile(prepared, pickedTarget, signal);
+  const picked = await freshMediaFile(prepared, pickedTarget, signal, beforeEffect);
   let matches = picked.reference.sizeBytes === old.reference.sizeBytes && picked.reference.sampledSha256 === old.reference.sampledSha256;
   let verifiedFullHash: string | undefined;
   if (matches && old.reference.fullSha256 !== null) {
     // freshMediaFile already proved the selected target is readable media.
     if (pickedTarget.kind !== 'media') throw mediaReferenceError('MEDIA_CHANGED_DURING_READ');
-    verifiedFullHash = await fullHash(prepared, pickedTarget, signal);
+    verifiedFullHash = await fullHash(prepared, pickedTarget, signal, beforeEffect);
     matches = verifiedFullHash === old.reference.fullSha256;
   }
   const reference = matches && (verifiedFullHash !== undefined || picked.reference.mtimeMs === old.reference.mtimeMs)
@@ -92,8 +92,8 @@ export async function relinkMedia(access: MediaAccess, assets: readonly MediaAss
   if (bases !== null) {
     for (const asset of recorded) {
       if (asset.id === old.id) continue;
-      signal?.throwIfAborted();
-      const located = await locate(prepared, bases, asset, signal);
+      signal?.throwIfAborted(); beforeEffect?.();
+      const located = await locate(prepared, bases, asset, signal, beforeEffect);
       if (located?.kind === 'found') found.push(located.media);
       else if (located) (located.kind === 'mismatched' ? mismatched : unverified).push(located.entry);
     }
@@ -106,16 +106,16 @@ interface RelinkEntry {
   readonly file: string;
 }
 type Located = {readonly kind: 'found'; readonly media: RelinkedMedia} | {readonly kind: 'mismatched' | 'unverified'; readonly entry: RelinkEntry};
-async function fullHash(prepared: PreparedAccess, target: MediaTarget, signal?: AbortSignal): Promise<string> {
+async function fullHash(prepared: PreparedAccess, target: MediaTarget, signal?: AbortSignal, beforeEffect?: () => void): Promise<string> {
   return withMediaFile(prepared, target, async session => {
     if (!await hasMediaHeader(session, target, signal)) throw mediaReferenceError('MEDIA_CHANGED', {reason: 'not-media'});
     const hash = await hashWhole(session.handle, Number(target.stats.size), {signal});
     await session.verify();
     return hash;
-  }, {signal});
+  }, {signal, beforeEffect});
 }
 /** Where another asset is after the move, if it is missing and a file is at its new place. */
-async function locate(prepared: PreparedAccess, bases: RelinkBases, asset: MediaAsset, signal?: AbortSignal): Promise<Located | null> {
+async function locate(prepared: PreparedAccess, bases: RelinkBases, asset: MediaAsset, signal?: AbortSignal, beforeEffect?: () => void): Promise<Located | null> {
   const local = resolveReferencePath(prepared.projectDir, asset.reference);
   if (local !== null && (await inspectTarget(prepared, local)).kind !== 'missing') return null;
   const before = originalPath(prepared, asset.reference);
@@ -129,7 +129,7 @@ async function locate(prepared: PreparedAccess, bases: RelinkBases, asset: Media
     if (!target.readable) return {kind: 'unverified', entry};
     let sampled: string | null;
     try {
-      sampled = await withMediaFile(prepared, target, session => readSampledSha256(session, target, signal));
+      sampled = await withMediaFile(prepared, target, session => readSampledSha256(session, target, signal), {signal, beforeEffect});
     } catch (error) {
       if (!isFileReadError(error)) throw error;
       return {kind: 'unverified', entry};
@@ -140,7 +140,7 @@ async function locate(prepared: PreparedAccess, bases: RelinkBases, asset: Media
   if (asset.reference.fullSha256 !== null) {
     if (!target.readable) return {kind: 'unverified', entry};
     try {
-      verifiedFullHash = await fullHash(prepared, target, signal);
+      verifiedFullHash = await fullHash(prepared, target, signal, beforeEffect);
     } catch (error) {
       if ((error as {code?: unknown})?.code === 'MEDIA_CHANGED') return {kind: 'mismatched', entry};
       if (!isFileReadError(error)) throw error;

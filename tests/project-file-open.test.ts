@@ -14,7 +14,7 @@ import {isProjectId, PROJECT_FILE_SINGLE_PROJECT, PROJECT_INVALID_REASONS, TEST_
 import {createProjectFile, isProjectDatabase, isProjectFileHeld, openProjectConnection, PROJECT_JOURNAL_SIZE_LIMIT} from '../packages/business/src/project-file/connection.ts';
 import type {ProjectConnection, ProjectCopyCheck, ProjectLocation} from '../packages/business/src/project-file/connection.ts';
 import {crossFileTriggerStatements} from '../packages/business/src/project-file/cross-file/install.ts';
-import {CACHE_APPLICATION_ID, HISTORY_APPLICATION_ID, HISTORY_SCHEMA_VERSION, PROJECT_FILE_APPLICATION_ID} from '../packages/business/src/project-file/schema/databases.ts';
+import {CACHE_APPLICATION_ID, CACHE_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION, HISTORY_APPLICATION_ID, HISTORY_SCHEMA_VERSION, PROJECT_FILE_APPLICATION_ID} from '../packages/business/src/project-file/schema/databases.ts';
 import {readSchemaManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
 import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
 
@@ -483,12 +483,12 @@ test('a changed project file is PROJECT_INVALID and leaves the local records alo
 
 test('a project file from a newer format is PROJECT_FORMAT_NEWER and stays byte for byte', t => {
   const {project} = newProject(t);
-  tamper(project, db => db.exec('INSERT INTO project.schema_version VALUES(2)'));
+  tamper(project, db => db.exec(`INSERT INTO project.schema_version VALUES(${PROJECT_FILE_SCHEMA_VERSION+1})`));
   const projectBytes = digest(project.projectFile), history = digest(project.historyFile);
   const error = appError(() => open(project));
   assert.equal(error.code, 'PROJECT_FORMAT_NEWER');
   assert.equal(error.status, 409);
-  assert.deepEqual(error.details, {database: 'project', reason: 'format-newer', formatVersion: 2, supportedFormatVersion: 1});
+  assert.deepEqual(error.details, {database: 'project', reason: 'format-newer', formatVersion: PROJECT_FILE_SCHEMA_VERSION+1, supportedFormatVersion: PROJECT_FILE_SCHEMA_VERSION});
   assert.equal(digest(project.projectFile), projectBytes);
   assert.equal(digest(project.historyFile), history);
   assert.equal(existsSync(`${project.projectFile}-journal`), false);
@@ -526,7 +526,7 @@ test('a cache that does not match is rebuilt and the open goes on', async t => {
       const index = SCHEMA_MANIFEST.cache.entries.find(entry => entry.type === 'index' && !entry.name.startsWith('sqlite_autoindex_'))!.name;
       db.exec(`DROP INDEX cache.${index}`);
     })],
-    ['newer format', project => tamper(project, db => db.exec('INSERT INTO cache.schema_version VALUES(2)'))],
+    ['newer format', project => tamper(project, db => db.exec(`INSERT INTO cache.schema_version VALUES(${CACHE_SCHEMA_VERSION+1})`))],
     ['other application_id', project => tamper(project, db => db.exec('PRAGMA cache.application_id=7'))],
     ['not a database', project => writeFileSync(project.cacheFile, 'not a database')],
   ];
@@ -538,7 +538,7 @@ test('a cache that does not match is rebuilt and the open goes on', async t => {
       try {
         assert.equal(connection.historyState, 'current');
         assert.deepEqual(readSchemaManifest(connection.db, 'cache'), SCHEMA_MANIFEST.cache.entries);
-        assert.deepEqual(connection.db.prepare('SELECT version FROM cache.schema_version').all().map(row => row.version), [1]);
+        assert.deepEqual(connection.db.prepare('SELECT version FROM cache.schema_version').all().map(row => row.version), [CACHE_SCHEMA_VERSION]);
         assert.equal(pragma(connection.db, 'cache.application_id'), CACHE_APPLICATION_ID);
       } finally {
         connection.close();
@@ -632,4 +632,35 @@ test('a project file holds only its own project', t => {
   assert.throws(() => upsert.run(randomUUID(), '{}'), {message: PROJECT_FILE_SINGLE_PROJECT});
   assert.throws(() => connection.db.prepare('UPDATE projects SET id=? WHERE id=?').run(randomUUID(), projectId), {message: PROJECT_FILE_SINGLE_PROJECT});
   assert.deepEqual(connection.db.prepare('SELECT id,data FROM projects').all().map(plain), [{id: projectId, data: '{"name":"two"}'}]);
+});
+
+
+test('S1 refuses project v1 before creating local records and preserves every existing database byte', t => {
+  const {project}=newProject(t);
+  tamper(project,db=>db.exec('UPDATE project.schema_version SET version=1'));
+  const files=[project.projectFile,project.historyFile,project.cacheFile];
+  const before=files.map(file=>digest(file));
+  const error=appError(()=>open(project));
+  assert.equal(error.code,'PROJECT_INVALID');
+  assert.equal((error.details as {reason:string}).reason,'schema-version');
+  assert.deepEqual(files.map(file=>digest(file)),before);
+  for(const file of files)assert.equal(existsSync(file+'-journal'),false);
+  const fresh=layout(scratch(t));createProjectFile(fresh.projectFile);
+  const db=new DatabaseSync(fresh.projectFile);db.exec('UPDATE schema_version SET version=1');db.close();
+  const original=digest(fresh.projectFile);let locates=0;
+  const denied=appError(()=>openProjectConnection({projectFile:fresh.projectFile,locate:()=>{locates++;return {localDir:fresh.localDir,cacheDir:fresh.cacheDir,tempDir:fresh.tempDir};}}));
+  assert.equal(denied.code,'PROJECT_INVALID');assert.equal(locates,0);
+  assert.equal(digest(fresh.projectFile),original);
+  assert.equal(existsSync(fresh.localDir),false);assert.equal(existsSync(fresh.cacheDir),false);
+});
+
+test('S1 cache v1 rebuild leaves project and history bytes unchanged', t => {
+ const {project}=newProject(t);
+ tamper(project,db=>db.exec('UPDATE cache.schema_version SET version=1;CREATE TABLE cache.old_cache_sentinel(value);INSERT INTO cache.old_cache_sentinel VALUES(7)'));
+ const before=[digest(project.projectFile),digest(project.historyFile)];
+ const connection=open(project);
+ assert.equal(connection.db.prepare('SELECT version FROM cache.schema_version').get()?.version,2);
+ assert.equal(connection.db.prepare("SELECT name FROM cache.sqlite_schema WHERE name='old_cache_sentinel'").get(),undefined);
+ assert.deepEqual(connection.db.prepare("SELECT name FROM pragma_table_info('waveform_cache') WHERE name='sourceFingerprint'").get()?.name,'sourceFingerprint');
+ connection.close();assert.deepEqual([digest(project.projectFile),digest(project.historyFile)],before);
 });

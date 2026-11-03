@@ -139,7 +139,7 @@ test('project tools snapshot all eight attached content families and stage attac
   const {root, library, first: store} = fixture(t), {db, projectId} = store;
   const unused = (): never => {throw Error('This read/import-staging test must not invoke application backups');};
   const configuration = createWorkspaceConfiguration({root: path.join(root, 'app'), documents: library.documents});
-  const services = createServices(store, new Map(), {application: {configuration, backups: {
+  const services = createServices(store, new Map(), {application: {configuration,outsidePaths:library.outsidePaths, backups: {
     getStatus: unused, list: unused, create: unused, stageRestore: unused, exportBundle: unused, importBundle: unused, importDirectory: unused,
     isBusy: () => false, assertMutationAllowed() {}, start() {}, stop() {}, drain: async () => {}, tick: async () => {},
   }}});

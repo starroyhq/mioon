@@ -1,3 +1,7 @@
+import {s1PublicOperationSchemas,s1PublicOperationDescriptions,isS1PublicOperation} from '../../contracts/src/asset-generation.ts';
+import {assetMediaPublicSchemas,assetMediaDescriptions,assetMediaEffects,isAssetMediaOperation,trustedAssetMediaSchemas,isTrustedAssetMediaOperation,assetMediaStatusListResponseSchema,assetMediaPrepareResponseSchema,nativeAssetImportResponseSchema} from '../../contracts/src/asset-media.ts';
+import type {TrustedAssetMediaOperation} from '../../contracts/src/asset-media.ts';
+import {projectApiPath,projectRpcPath} from '../../contracts/src/project-file.ts';
 import {isTimelineClipLoudnessResponse, TIMELINE_CLIP_LOUDNESS_LIMITS} from '@mioon/contracts/timeline-clip-loudness';
 import {readTimelineClipLoudnessEnvelope} from './timeline-clip-loudness.ts';
 export {measureTimelineClipLoudness} from './timeline-clip-loudness.ts';
@@ -41,8 +45,8 @@ import {projectBackupSchemas, projectBackupDescriptions, projectBackupEffects, i
 
 // Application extensions stay in their own contracts leaves. CLI and MCP
 // discover this exact composition without extending Mio's model tool catalog.
-export const schemas = {...coreSchemas, ...projectBackupSchemas};
-export const descriptions = {...coreDescriptions, ...projectBackupDescriptions};
+export const schemas = {...coreSchemas, ...projectBackupSchemas, ...assetMediaPublicSchemas, ...s1PublicOperationSchemas};
+export const descriptions = {...coreDescriptions, ...projectBackupDescriptions, ...assetMediaDescriptions, ...s1PublicOperationDescriptions};
 export {resolveConnection, effectAnnotations};
 export const VERSION = applicationPackage.version;
 export const EXIT_CODES = Object.freeze({success: 0, unexpected: 1, validation: 2, conflict: 3, unavailable: 4, timeout: 5, operationFailed: 6, interrupted: 130});
@@ -155,7 +159,15 @@ export function operationDefinition(operation: string): OperationDefinition {
   if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
   const shared = jsonSchema(operationSchemas[operation]);
   const inputSchema = isEntityAddressedOperation(operation) ? withProjectAddress(shared) : shared;
-  return {operation, toolName: operation.replaceAll('.', '_'), command: operation.replaceAll('.', ' '), description: operationDescriptions[operation] || operation, inputSchema, requiresRequestId: requiresField(inputSchema,'requestId'), effects: isProjectBackupOperation(operation) ? projectBackupEffects[operation] : operationEffect(operation)};
+  return {operation, toolName: operation.replaceAll('.', '_'), command: operation.replaceAll('.', ' '), description: operationDescriptions[operation] || operation, inputSchema, requiresRequestId: requiresField(inputSchema,'requestId'), effects: isAssetMediaOperation(operation) ? assetMediaEffects[operation] : isProjectBackupOperation(operation) ? projectBackupEffects[operation] : operationEffect(operation)};
+}
+/** Definition for the fixed built-in model catalog. Public CLI/MCP schema
+ * discovery can evolve without changing Mio's reviewed request fingerprints. */
+export function modelOperationDefinition(operation:string):OperationDefinition {
+  if(!Object.hasOwn(coreSchemas,operation))throw new ClientError('UNKNOWN_OPERATION','Unknown built-in model operation.');
+  const schema=(coreSchemas as Record<string,z.ZodTypeAny>)[operation],shared=jsonSchema(schema);
+  const inputSchema=isEntityAddressedOperation(operation)?withProjectAddress(shared):shared;
+  return {operation,toolName:operation.replaceAll('.','_'),command:operation.replaceAll('.',' '),description:(coreDescriptions as Record<string,string>)[operation]||operation,inputSchema,requiresRequestId:requiresField(inputSchema,'requestId'),effects:operationEffect(operation)};
 }
 export interface DiscoverySchemaResult {version: string; operations: OperationDefinition[]; validation: string}
 export function discoverSchema(input: unknown = {}): OperationDefinition | DiscoverySchemaResult {
@@ -250,7 +262,7 @@ function sceneNotAccepted(error: unknown, status: number, operation: string, inp
 }
 
 export interface ClientOptions {env?: NodeJS.ProcessEnv; fetchImpl?: typeof fetch; requestTimeoutMs?: number}
-export interface RequestOptions {body?: RpcBody; signal?: AbortSignal; timeoutMs?: number}
+export interface RequestOptions {body?: RpcBody; signal?: AbortSignal; timeoutMs?: number; userAction?: boolean}
 /** `projectId` addresses the entity-addressed operations, whose input names
  * no project; every other operation takes its project from its input. */
 export interface RpcOptions {signal?: AbortSignal; timeoutMs?: number; expectedWorkspaceOrigin?: string; projectId?: string}
@@ -273,6 +285,7 @@ export interface DoctorReport {
   providers: unknown;
 }
 export interface Client {
+  trustedAssetMedia<T = unknown>(operation: TrustedAssetMediaOperation, input: unknown, options?: RpcOptions): Promise<T>;
   rpc<T = unknown>(operation: string, input?: unknown, options?: RpcOptions): Promise<T>;
   capabilities<T = unknown>(options?: RpcOptions): Promise<T>;
   doctor(options?: RpcOptions): Promise<DoctorReport>;
@@ -288,7 +301,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
   const loudnessApplyTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : TIMELINE_LOUDNESS_APPLY_CLIENT_MS;
   const clipLoudnessTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : TIMELINE_CLIP_LOUDNESS_LIMITS.clientTimeoutMs;
   const mixLoudnessTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : TIMELINE_MIX_LOUDNESS_LIMITS.clientTimeoutMs;
-  async function request(resource: string, {body, signal, timeoutMs = requestTimeoutMs}: RequestOptions = {}): Promise<unknown> {
+  async function request(resource: string, {body, signal, timeoutMs = requestTimeoutMs, userAction = false}: RequestOptions = {}): Promise<unknown> {
     checkSignal(signal);
     if (!Number.isFinite(timeoutMs) || timeoutMs < 1) throw new ClientError('VALIDATION_ERROR', 'Request timeout must be positive.');
     const connection: LocalConnection = await resolveConnection(env);
@@ -299,7 +312,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     const recoveryDetails = uncertainRequestDetails(body);
     let response: Response | undefined;
     try {
-      response = await fetchImpl(base + resource, {method: body ? 'POST' : 'GET', headers: {authorization: `Bearer ${token}`, ...(body ? {'content-type': 'application/json'} : {})}, ...(body ? {body: JSON.stringify(body)} : {}), signal: combined, redirect: 'error'});
+      response = await fetchImpl(base + resource, {method: body ? 'POST' : 'GET', headers: {authorization: `Bearer ${token}`, ...(userAction ? {'x-mioon-user-action':'asset-media'} : {}), ...(body ? {'content-type': 'application/json'} : {})}, ...(body ? {body: JSON.stringify(body)} : {}), signal: combined, redirect: 'error'});
       const result = (body?.operation === 'timeline.clip.loudness' ? await readTimelineClipLoudnessEnvelope(response, combined) : body?.operation === 'timeline.loudness.apply' ? await readTimelineLoudnessApplyEnvelope(response, combined) : body?.operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessEnvelope(response, combined) : await response.json()) as unknown;
       const envelope = result as {ok?: unknown; data?: unknown; error?: {code?: unknown; message?: unknown; details?: unknown}} | null | undefined;
       if (!envelope || typeof envelope.ok !== 'boolean' ||
@@ -368,7 +381,15 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
     if(operation==='lut.look.inspect'&&(isProxy(input)||!isLookPackInspectInput(input)))throw new ClientError('VALIDATION_ERROR','Expected only a project ID and LUT resource ID.');
     let parsed: Record<string, unknown>;
-    if (isProjectBackupOperation(operation)) {
+    if(isS1PublicOperation(operation)){
+      const result=s1PublicOperationSchemas[operation].safeParse(input);
+      if(!result.success)throw new ClientError('VALIDATION_ERROR','Invalid public asset operation arguments.',{details:{issues:result.error.issues}});
+      parsed=result.data;
+    } else if (isAssetMediaOperation(operation)) {
+      const result = assetMediaPublicSchemas[operation].safeParse(input);
+      if (!result.success) throw new ClientError('VALIDATION_ERROR', 'Invalid asset media arguments.', {details:{issues:result.error.issues}});
+      parsed = result.data;
+    } else if (isProjectBackupOperation(operation)) {
       const result = projectBackupSchemas[operation].safeParse(input);
       if (!result.success) throw new ClientError('VALIDATION_ERROR', 'Invalid project backup arguments.', {details: {issues: result.error.issues}});
       parsed = result.data;
@@ -376,11 +397,13 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     const {expectedWorkspaceOrigin, projectId, ...transportOptions} = options ?? {};
     const body: RpcBody = {operation, input: parsed, ...workspaceOriginOptions(expectedWorkspaceOrigin)};
     let resource: string;
-    try { resource = rpcPathFor(operation, parsed, projectId); }
+    try { resource = isAssetMediaOperation(operation) ? projectRpcPath(String(parsed.projectId)) : rpcPathFor(operation, parsed, projectId); }
     catch { throw new ClientError('VALIDATION_ERROR', 'This operation is addressed by its project: give the lowercase UUID projectId of the project that owns the record.'); }
     const envelope = (await request(resource, {...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : operation === 'timeline.export.samplePeak' ? {timeoutMs: samplePeakTimeoutMs} : operation === 'timeline.export.loudness' ? {timeoutMs: loudnessTimeoutMs} : operation === 'timeline.clip.loudness' ? {timeoutMs: clipLoudnessTimeoutMs} : operation === 'timeline.loudness.prepare' ? {timeoutMs: mixLoudnessTimeoutMs} : operation === 'timeline.loudness.apply' ? {timeoutMs: loudnessApplyTimeoutMs} : {}), ...transportOptions, body})) as {data?: unknown};
     const result = envelope.data;
     const resultRecord = result as Record<string, unknown> | null | undefined;
+    if(operation==='asset.media.status.list'&&!assetMediaStatusListResponseSchema.safeParse(result).success || operation==='asset.media.prepare'&&!assetMediaPrepareResponseSchema.safeParse(result).success)
+      throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid asset media response.');
     if (isProjectBackupOperation(operation) && !isProjectBackupResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid project backup response.', {details: uncertainRequestDetails(body)});
     if (operation === 'generation.submit' && Object.hasOwn(parsed, 'subjectVersionId') && !isSubjectGenerationResponse(operation, parsed, result))
@@ -498,5 +521,16 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       catch { throw interrupted(); }
     }
   }
-  return {rpc, capabilities, doctor, watch};
+  async function trustedAssetMedia<T = unknown>(operation: TrustedAssetMediaOperation, input: unknown, options: RpcOptions = {}): Promise<T> {
+    if (!isTrustedAssetMediaOperation(operation)) throw new ClientError('UNKNOWN_OPERATION','Unknown trusted asset action.');
+    const parsed=trustedAssetMediaSchemas[operation].safeParse(input);
+    if(!parsed.success)throw new ClientError('VALIDATION_ERROR','Invalid trusted asset arguments.',{details:{issues:parsed.error.issues}});
+    const envelope=await request(projectApiPath(parsed.data.projectId,'asset-media','trusted'),{body:{operation,input:parsed.data},signal:options.signal,timeoutMs:options.timeoutMs,userAction:true}) as {data:T};
+    if(operation==='asset.import.path'){
+      const acknowledged=nativeAssetImportResponseSchema.safeParse(envelope.data);
+      if(!acknowledged.success||acknowledged.data.asset.projectId!==parsed.data.projectId)throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid path import acknowledgement.');
+    }
+    return envelope.data;
+  }
+  return {rpc, capabilities, doctor, watch, trustedAssetMedia};
 }

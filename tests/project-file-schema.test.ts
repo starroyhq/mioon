@@ -45,7 +45,7 @@ function buildHistoricalAlone(kind:DatabaseKind):DatabaseSync {
   const db=new DatabaseSync(':memory:');
   db.exec('BEGIN');
   buildDatabase(db,kind,'main',schemaStatements(kind,derivedDomainStatements(derivation(),kind)));
-  if(kind==='history')db.exec('UPDATE schema_version SET version=2');
+  db.exec(`UPDATE schema_version SET version=${kind==='history'?2:1}`);
   db.exec('COMMIT');
   return db;
 }
@@ -198,7 +198,7 @@ test('the frozen S0 profile holds its derived objects plus the kernel metadata',
         if (type !== 'index') expected.push(...added[kind][type === 'table' ? 'tables' : 'triggers']);
         assert.deepEqual(masterNames(db, type), expected.sort(), `${kind} ${type}s`);
       }
-      assert.deepEqual(db.prepare('SELECT version FROM schema_version').all().map(row => row.version), [kind==='history'?2:IDENTITY[kind].version]);
+      assert.deepEqual(db.prepare('SELECT version FROM schema_version').all().map(row => row.version), [kind==='history'?2:1]);
       assert.equal(db.prepare('PRAGMA application_id').get()?.application_id, IDENTITY[kind].applicationId);
     } finally {
       db.close();
@@ -287,10 +287,10 @@ test('each database built alone compiles every insert, update and delete of ever
 // Frozen per schema version: a DDL change that regenerates the manifest without
 // raising the database's version fails here.
 const MANIFEST_DIGESTS: Readonly<Record<DatabaseKind, Readonly<Record<number, string>>>> = {
-  project: {1: '6e96c3872a938817b65e71750d1e68bd8fa84c7f3f8d92490de22a0e34d649ce'},
+  project: {1: '6e96c3872a938817b65e71750d1e68bd8fa84c7f3f8d92490de22a0e34d649ce', 2: 'f86a2d31c85aa42896bd7d93e8ececa66c039942a0e32d36cb22b7483ea9929f'},
   // 2: the Mock provider's ledger in the task domain.
   history: {1: 'e0445f02d867f3aeedc283708f58d30efa7b0465e8987f7f739e8f5580791243', 2: '34ad833f0a676602490ce69b0f8804f79f1b30750b76a9f58d41abeb14dfd7a0', 3: 'b9487064fb0fa4447f3eb3896121d648184007a2b675927222beea3518c91a3a', 4: '047b9b4d7c2aa2376f2a97c2d4b042b326d730b5ad79504e77d3f8df1ca8dc82'},
-  cache: {1: 'be43585ad9045d7ed844c609b9af13829372efb83741b55f4f4f8e7b2f2fd61c'},
+  cache: {1: 'be43585ad9045d7ed844c609b9af13829372efb83741b55f4f4f8e7b2f2fd61c', 2: '21b8f4c33fcb2c2b20d87c8bfd8a51d15bb6fdef8a7ae081aba462a900048fa3'},
 };
 test('building as main or as an attached schema gives the committed manifest', () => {
   for (const kind of KINDS) {

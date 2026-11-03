@@ -17,18 +17,18 @@ import {PrivateStorageError} from '@mioon/contracts/private-storage';
 export const PROJECT_COVER_LIMITS = Object.freeze({jpegBytes: 1024 * 1024, metadataBytes: 4096, maxEdge: 512});
 const hash = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex');
 export interface ProjectCoverMetadata {
-  version: 1; assetId: string; mimeType: NonNullable<RecentProjectSummary['cover']>['mimeType'];
-  sourceSha256: string; jpegSha256: string;
+  version: 2; assetId: string; mimeType: NonNullable<RecentProjectSummary['cover']>['mimeType'];
+  sourceFingerprint: string; jpegSha256: string;
 }
 export function parseProjectCoverMetadata(value: unknown): ProjectCoverMetadata {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Invalid project cover metadata');
-  const entry = value as Record<string, unknown>, fields = ['version', 'assetId', 'mimeType', 'sourceSha256', 'jpegSha256'];
-  if (Object.keys(entry).length !== fields.length || Object.keys(entry).some(key => !fields.includes(key)) || entry.version !== 1 ||
-    typeof entry.sourceSha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(entry.sourceSha256) || typeof entry.jpegSha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(entry.jpegSha256)) throw new TypeError('Invalid project cover metadata');
+  const entry = value as Record<string, unknown>, fields = ['version', 'assetId', 'mimeType', 'sourceFingerprint', 'jpegSha256'];
+  if (Object.keys(entry).length !== fields.length || Object.keys(entry).some(key => !fields.includes(key)) || entry.version !== 2 ||
+    typeof entry.sourceFingerprint !== 'string' || !/^[a-f0-9]{64}$/u.test(entry.sourceFingerprint) || typeof entry.jpegSha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(entry.jpegSha256)) throw new TypeError('Invalid project cover metadata');
   const cover = recentProjectSummarySchema.shape.cover.unwrap().parse({assetId: entry.assetId, mimeType: entry.mimeType});
-  return {...cover, version: 1, sourceSha256: entry.sourceSha256, jpegSha256: entry.jpegSha256};
+  return {...cover, version: 2, sourceFingerprint: entry.sourceFingerprint, jpegSha256: entry.jpegSha256};
 }
-type CoverSource = Pick<ProjectCoverMetadata, 'assetId' | 'mimeType' | 'sourceSha256'>;
+type CoverSource = Pick<ProjectCoverMetadata, 'assetId' | 'mimeType' | 'sourceFingerprint'>;
 function validJpeg(bytes: Buffer): boolean {
   const size = previsJpegSize(bytes);
   return bytes.length <= PROJECT_COVER_LIMITS.jpegBytes && size !== null && Math.max(size.width, size.height) <= PROJECT_COVER_LIMITS.maxEdge;
@@ -41,14 +41,14 @@ function assertNotHeld(file: string): void {
 }
 /** Reuse only a complete, bounded pair with the exact source fingerprint. All
  * identity checks precede filesystem opens, including renamed database files. */
-export function readProjectCoverCache(cacheDir: string, source: Pick<ProjectCoverMetadata, 'assetId' | 'mimeType'> & {sourceSha256?: string}): Buffer | null {
+export function readProjectCoverCache(cacheDir: string, source: Pick<ProjectCoverMetadata, 'assetId' | 'mimeType'> & {sourceFingerprint?: string}): Buffer | null {
   try {
     const metadataFile = path.join(cacheDir, 'cover.json'), jpegFile = path.join(cacheDir, 'cover.jpg');
     assertNotHeld(metadataFile); assertNotHeld(jpegFile);
     const raw = readPrivateFile(metadataFile, {root: cacheDir, allowMissing: true, maxBytes: PROJECT_COVER_LIMITS.metadataBytes, encoding: 'utf8'});
     if (typeof raw !== 'string') return null;
     const metadata = parseProjectCoverMetadata(JSON.parse(raw));
-    if (metadata.assetId !== source.assetId || metadata.mimeType !== source.mimeType || source.sourceSha256 !== undefined && metadata.sourceSha256 !== source.sourceSha256) return null;
+    if (metadata.assetId !== source.assetId || metadata.mimeType !== source.mimeType || source.sourceFingerprint !== undefined && metadata.sourceFingerprint !== source.sourceFingerprint) return null;
     const bytes = readPrivateFile(jpegFile, {root: cacheDir, allowMissing: true, maxBytes: PROJECT_COVER_LIMITS.jpegBytes});
     return Buffer.isBuffer(bytes) && validJpeg(bytes) && hash(bytes) === metadata.jpegSha256 ? bytes : null;
   } catch {return null;}
@@ -59,7 +59,7 @@ export function readProjectCoverCache(cacheDir: string, source: Pick<ProjectCove
  * reader's hash check instead of serving a JPEG with another source's receipt. */
 export function writeProjectCover({cacheDir, source, jpeg}: {cacheDir: string; source: CoverSource; jpeg: Buffer}): void {
   if (!Buffer.isBuffer(jpeg) || !validJpeg(jpeg)) throw new TypeError('Invalid bounded project cover JPEG');
-  const metadata = parseProjectCoverMetadata({...source, version: 1, jpegSha256: hash(jpeg)});
+  const metadata = parseProjectCoverMetadata({...source, version: 2, jpegSha256: hash(jpeg)});
   ensurePrivateDirectory(cacheDir, {create: true});
   assertNotHeld(path.join(cacheDir, 'cover.jpg')); assertNotHeld(path.join(cacheDir, 'cover.json'));
   writePrivateFileAtomic(path.join(cacheDir, 'cover.jpg'), jpeg, {root: cacheDir, maxBytes: PROJECT_COVER_LIMITS.jpegBytes});

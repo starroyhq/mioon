@@ -10,6 +10,10 @@ import type {Stats} from 'node:fs';
 import path from 'node:path';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {taskEffectOrigin} from './agent/task-effects-v2.ts';
+import {isProjectStore} from './project-file/store.ts';
+import type {OutsidePathConfirmationStore} from './app-db/stores.ts';
+import {createReferencedAssetImportHandler} from './referenced-asset-import.ts';
+import {decodeMediaUpload} from './media-upload.ts';
 
 type Value = Record<string, unknown>;
 const object = (value: unknown): value is Value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -27,6 +31,7 @@ export interface ManagedAssetImportStore {
   tx?<T>(callback:()=>T):T;
 }
 export interface ManagedAssetImportOptions {
+  outsidePaths?: OutsidePathConfirmationStore;
   signal?: AbortSignal;
   required(table: 'projects', id: string): unknown;
   now(): string;
@@ -36,6 +41,10 @@ export interface ManagedAssetImportOptions {
   safeError(error: unknown): boolean;
 }
 export function createManagedAssetImportHandler(store: ManagedAssetImportStore, options: ManagedAssetImportOptions) {
+  if (isProjectStore(store)) {
+    if (!options.outsidePaths) throw new TypeError('Project imports require the application outside-path port');
+    return createReferencedAssetImportHandler(store, {...options, outsidePaths: options.outsidePaths});
+  }
   const checkpoint = (signal?: AbortSignal): void => {invoke(lifecycle, 'checkpoint', [signal]);};
   return async (input: Value, context: {signal?: AbortSignal} = {}): Promise<unknown> => {
     const signal = context.signal ?? options.signal, invocationFence = options.effectFence(),origin=taskEffectOrigin();
@@ -43,16 +52,7 @@ export function createManagedAssetImportHandler(store: ManagedAssetImportStore, 
     if (typeof input.projectId !== 'string' || typeof input.dataBase64 !== 'string' || typeof input.mimeType !== 'string') throw new AppError('INVALID_MEDIA', '无效的素材导入');
     const projectId = input.projectId, mimeType = input.mimeType, importProject = options.required('projects', projectId);
     if (!object(importProject)) throw options.unsafe();
-    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(input.dataBase64) || input.dataBase64.length % 4) throw new AppError('INVALID_MEDIA', '无效的 base64');
-    const bytes = Buffer.from(input.dataBase64, 'base64');
-    if (bytes.length > 30 * 1024 * 1024 || bytes.length === 0) throw new AppError('INVALID_MEDIA', '素材大小须为 1 字节至 30 MiB');
-    const four = (start: number, value: string): boolean => bytes.toString('ascii', start, start + 4) === value;
-    const mp3Frame = bytes.length >= 4 && bytes[0] === 255 && (bytes[1]! & 224) === 224 && (bytes[1]! & 24) !== 8 && (bytes[1]! & 6) !== 0 && (bytes[2]! & 240) !== 240 && (bytes[2]! & 12) !== 12;
-    const detected = bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) ? 'image/png' : bytes[0] === 255 && bytes[1] === 216 ? 'image/jpeg' :
-      four(0, 'RIFF') && four(8, 'WEBP') ? 'image/webp' : four(0, 'RIFF') && four(8, 'WAVE') ? 'audio/wav' :
-      bytes.toString('ascii', 0, 3) === 'ID3' || mp3Frame ? 'audio/mpeg' : four(4, 'ftyp') ? 'iso-bmff' :
-      bytes.subarray(0, 4).equals(Buffer.from([26,69,223,163])) ? 'video/webm' : null;
-    if (!(detected === 'iso-bmff' ? ['video/mp4', 'audio/mp4'].includes(mimeType) : detected === mimeType)) throw new AppError('INVALID_MEDIA', '文件类型与实际内容不符');
+    const bytes = decodeMediaUpload(input.dataBase64, mimeType);
     const extensions: Readonly<Record<string, string>> = {'image/png':'png','image/jpeg':'jpg','image/webp':'webp','video/mp4':'mp4','video/webm':'webm','audio/wav':'wav','audio/mpeg':'mp3','audio/mp4':'m4a'};
     const id = randomUUID(), relativePath = `media/${id}.${extensions[mimeType]}`, file = path.join(store.root, relativePath);
     checkpoint(signal);

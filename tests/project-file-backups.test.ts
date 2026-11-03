@@ -12,8 +12,12 @@ import {
   copyProjectBackup, copyProjectToNewFile, createProjectBackup, inspectCopiedProjectFile, inspectProjectBackup, openProjectBackup,
   openProjectStore, openStore, PROJECT_BACKUP_APPLICATION_ID, PROJECT_FILE_APPLICATION_ID,
 } from '../packages/business/src/project-file/index.ts';
+import {mediaMtimeMs} from '../packages/business/src/media-reference/fingerprint.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/index.ts';
 import {CONTENT_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
+
+const referenceFixture=(root: string, relativePath: string, sha256: string, sizeBytes: number)=>({pathForm:'relative' as const,path:relativePath,volume:null,sizeBytes,
+ mtimeMs:mediaMtimeMs(fs.statSync(path.join(root,relativePath),{bigint:true})),sampledSha256:sha256,fullSha256:sha256});
 
 function scratch(t: TestContext): string {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-v2-kernel-'));
@@ -183,35 +187,38 @@ test('restore refuses an existing target, a reused project ID and a copied reade
   await assert.rejects(copyProjectToNewFile(reader, {sourceProjectDir: store.projectDir, projectFile: fresh}), TypeError);
 });
 
-test('managed media is verified, copied without replacement and ready before the new project is published', async t => {
+test('reference copy does not copy media or replace a destination file', async t => {
   const {root, store, backupFile} = fixture(t), assetId = randomUUID(), bytes = Buffer.from('media bytes');
   const relativePath = `media/${assetId}.png`, sha256 = createHash('sha256').update(bytes).digest('hex');
   writeFileSync(path.join(store.projectDir, relativePath), bytes, {mode: 0o600});
-  store.put('assets', {id: assetId, projectId: store.projectId, kind: 'image', relativePath, sha256, sizeBytes: bytes.length});
+  store.put('assets', {id: assetId, projectId: store.projectId, kind: 'image', reference:referenceFixture(store.projectDir,relativePath,sha256,bytes.length),referenceRevision:1,sha256,sizeBytes:bytes.length});
   await createProjectBackup(store, backupFile);
   const projectFile = destination(root), result = await copyProjectBackup({backupFile, sourceProjectDir: store.projectDir, projectFile});
   assert.equal(inspectCopiedProjectFile(projectFile).projectId, result.projectId);
-  assert.deepEqual(readFileSync(path.join(path.dirname(projectFile), relativePath)), bytes);
+  assert.equal(existsSync(path.join(path.dirname(projectFile),relativePath)),false);
+  assert.deepEqual(readFileSync(path.join(store.projectDir,relativePath)),bytes);
   assert.deepEqual(readFileSync(path.join(store.projectDir, relativePath)), bytes);
   const blocked = destination(root, 'blocked'), blockedMedia = path.join(path.dirname(blocked), 'media'); mkdirSync(blockedMedia, {mode: 0o700});
   writeFileSync(path.join(blockedMedia, `${assetId}.png`), 'existing media', {mode: 0o600});
-  await assert.rejects(copyProjectBackup({backupFile, sourceProjectDir: store.projectDir, projectFile: blocked}), (error: unknown) => (error as {code: string}).code === 'EEXIST');
-  assert.equal(existsSync(blocked), false);
+  const independent=await copyProjectBackup({backupFile,sourceProjectDir:store.projectDir,projectFile:blocked});
+  assert.equal(inspectCopiedProjectFile(blocked).projectId,independent.projectId);
   assert.equal(readFileSync(path.join(blockedMedia, `${assetId}.png`), 'utf8'), 'existing media');
 });
 
-test('changed managed source media rejects recovery without publishing any project or media', async t => {
+test('copy preserves a changed reference without reading or accepting its new bytes', async t => {
   const {root, store, backupFile} = fixture(t), assetId = randomUUID(), bytes = Buffer.from('original');
   const relativePath = `media/${assetId}.png`, sha256 = createHash('sha256').update(bytes).digest('hex');
   writeFileSync(path.join(store.projectDir, relativePath), bytes, {mode: 0o600});
-  store.put('assets', {id: assetId, projectId: store.projectId, relativePath, sha256, sizeBytes: bytes.length});
+  store.put('assets', {id: assetId, projectId: store.projectId, reference:referenceFixture(store.projectDir,relativePath,sha256,bytes.length),referenceRevision:1,sha256,sizeBytes:bytes.length});
   await createProjectBackup(store, backupFile);
   writeFileSync(path.join(store.projectDir, relativePath), 'changed!', {mode: 0o600});
   const projectFile = destination(root);
-  await assert.rejects(copyProjectBackup({backupFile, sourceProjectDir: store.projectDir, projectFile}),
-    (error: unknown) => code('PROJECT_BACKUP_COPY_FAILED')(error) && (error as {details: {reason: string}}).details.reason === 'media-changed');
-  assert.equal(existsSync(projectFile), false);
-  assert.deepEqual(readdirSync(path.dirname(projectFile)), []);
+  const copied=await copyProjectBackup({backupFile,sourceProjectDir:store.projectDir,projectFile});
+  assert.equal(inspectCopiedProjectFile(projectFile).projectId,copied.projectId);
+  assert.deepEqual(readdirSync(path.dirname(projectFile)),['project.mioon']);
+  const recovered=openRecovered(projectFile);t.after(()=>recovered.close());
+  assert.equal((recovered.get('assets',assetId) as {sha256:string}).sha256,sha256);
+  assert.equal(readFileSync(path.join(store.projectDir,relativePath),'utf8'),'changed!');
   assert.equal(inspectProjectBackup(backupFile).projectId, store.projectId);
 });
 
@@ -227,28 +234,31 @@ test('the S5 copy primitive also accepts a live owner and produces a separately 
   assert.equal((store.get('projects', store.projectId) as {name: string}).name, '备份项目');
 });
 
-test('portable 0755 project folders and nested managed paths keep their ordinary project semantics', async t => {
+test('portable 0755 project folders preserve nested references without broadening their directory permission', async t => {
   const {root, store, backupFile} = fixture(t), assetId = randomUUID(), bytes = Buffer.from('nested media');
   const relativePath = `media/nested/${assetId}.png`, sha256 = createHash('sha256').update(bytes).digest('hex');
   chmodSync(store.projectDir, 0o755);
   mkdirSync(path.join(store.projectDir, 'media', 'nested'), {mode: 0o700});
   writeFileSync(path.join(store.projectDir, relativePath), bytes, {mode: 0o600});
-  store.put('assets', {id: assetId, projectId: store.projectId, relativePath, sha256, sizeBytes: bytes.length});
+  store.put('assets', {id: assetId, projectId: store.projectId, reference:referenceFixture(store.projectDir,relativePath,sha256,bytes.length),referenceRevision:1,sha256,sizeBytes:bytes.length});
   await createProjectBackup(store, backupFile);
   const projectFile = destination(root); chmodSync(path.dirname(projectFile), 0o755);
   const result = await copyProjectBackup({backupFile, sourceProjectDir: store.projectDir, projectFile});
   assert.equal(inspectCopiedProjectFile(projectFile).projectId, result.projectId);
-  assert.deepEqual(readFileSync(path.join(path.dirname(projectFile), relativePath)), bytes);
+  assert.equal(existsSync(path.join(path.dirname(projectFile),relativePath)),false);
+  assert.deepEqual(readFileSync(path.join(store.projectDir,relativePath)),bytes);
   const recovered = openRecovered(projectFile); t.after(() => recovered.close());
   assert.equal(recovered.projectId, result.projectId);
-  assert.equal((recovered.get('assets', assetId) as {relativePath: string}).relativePath, relativePath);
+  const asset=recovered.get('assets',assetId) as {reference:{path:string};relativePath?:unknown};
+  assert.equal(path.resolve(path.dirname(projectFile),asset.reference.path),path.join(store.projectDir,relativePath));
+  assert.equal(asset.relativePath,undefined);
 });
 
-test('a directory-sync failure after publication preserves the complete target and its copied media for intent recovery', async t => {
+test('a directory-sync failure after publication preserves the complete reference-only target for intent recovery', async t => {
   const {root, store, backupFile} = fixture(t), assetId = randomUUID(), bytes = Buffer.from('published media');
   const relativePath = `media/${assetId}.png`, sha256 = createHash('sha256').update(bytes).digest('hex');
   writeFileSync(path.join(store.projectDir, relativePath), bytes, {mode: 0o600});
-  store.put('assets', {id: assetId, projectId: store.projectId, relativePath, sha256, sizeBytes: bytes.length});
+  store.put('assets', {id: assetId, projectId: store.projectId, reference:referenceFixture(store.projectDir,relativePath,sha256,bytes.length),referenceRevision:1,sha256,sizeBytes:bytes.length});
   await createProjectBackup(store, backupFile);
   const projectFile = destination(root), projectId = randomUUID(), directory = fs.statSync(path.dirname(projectFile)), original = fs.fsyncSync;
   let injected = 0;
@@ -266,7 +276,8 @@ test('a directory-sync failure after publication preserves the complete target a
   } finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
   assert.equal(injected, 1);
   assert.equal(inspectCopiedProjectFile(projectFile).projectId, projectId);
-  assert.deepEqual(readFileSync(path.join(path.dirname(projectFile), relativePath)), bytes);
+  assert.equal(existsSync(path.join(path.dirname(projectFile),relativePath)),false);
+  assert.deepEqual(readFileSync(path.join(store.projectDir,relativePath)),bytes);
   assert.equal(existsSync(path.join(path.dirname(projectFile), 'local')), false);
   const recovered = openRecovered(projectFile); t.after(() => recovered.close());
   assert.equal((recovered.get('assets', assetId) as {projectId: string}).projectId, projectId);
@@ -276,7 +287,7 @@ test('a prepublication failure can retry the same new project ID with verified s
   const {root, store, backupFile} = fixture(t), assetId = randomUUID(), bytes = Buffer.from('media published before crash');
   const relativePath = `media/${assetId}.png`, sha256 = createHash('sha256').update(bytes).digest('hex');
   writeFileSync(path.join(store.projectDir, relativePath), bytes, {mode: 0o600});
-  store.put('assets', {id: assetId, projectId: store.projectId, relativePath, sha256, sizeBytes: bytes.length});
+  store.put('assets', {id: assetId, projectId: store.projectId, reference:referenceFixture(store.projectDir,relativePath,sha256,bytes.length),referenceRevision:1,sha256,sizeBytes:bytes.length});
   await createProjectBackup(store, backupFile);
   const projectFile = destination(root), projectId = randomUUID(), original = fs.linkSync;
   let injected = 0;
@@ -309,4 +320,17 @@ test('a prepublication failure can retry the same new project ID with verified s
   assert.equal(after.mtimeNs, before.mtimeNs);
   assert.deepEqual(readFileSync(survived), bytes);
   assert.equal(existsSync(path.join(path.dirname(projectFile), 'local')), false);
+});
+
+
+test('reference relocation preserves exact Unicode spelling and case even when the file is missing',async t=>{
+ const {root,store,backupFile}=fixture(t),id=randomUUID(),source='素材/Cafe\u0301.PNG';
+ store.put('assets',{id,projectId:store.projectId,sha256:null,sizeBytes:7,referenceRevision:1,reference:{pathForm:'relative',path:source,volume:null,sizeBytes:7,mtimeMs:0,sampledSha256:'0'.repeat(64),fullSha256:null}});
+ await createProjectBackup(store,backupFile);
+ const projectFile=destination(root),result=await copyProjectBackup({backupFile,sourceProjectDir:store.projectDir,projectFile});
+ const recovered=openRecovered(projectFile);t.after(()=>recovered.close());
+ const asset=recovered.get('assets',id) as {reference:{path:string};projectId:string};
+ assert.equal(asset.projectId,result.projectId);assert.ok(asset.reference.path.endsWith('/'+source));
+ assert.equal(asset.reference.path.includes('Café'),false);assert.equal(asset.reference.path.endsWith('.PNG'),true);
+ assert.equal(existsSync(path.join(path.dirname(projectFile),'素材')),false);
 });

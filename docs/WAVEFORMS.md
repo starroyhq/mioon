@@ -72,27 +72,15 @@ source hash, algorithm, executable, filter or authority. HTTP, CLI and official
 MCP use these same business services and explicit operation-effect descriptors.
 No provider submission, upload or paid generation is involved.
 
-Cache identity includes project scope, the managed source's stored SHA-256 and
-algorithm version. Relational and JSON ownership are validated before lookup,
-request and publication. Identical bytes in a foreign project reveal neither
-its cache status nor errors. GET deliberately does not rehash media bytes; it
-reads the derivation for the immutable managed-source record. External edits to
-managed files are outside that immutability assumption and are detected during
-a rebuild, rather than certified afresh by every cache read. File regularity, link/permission/ancestor policy,
-size and actual streamed hash are checked; source identity/hash and project
-binding are rechecked before publishing a completed result. Hash/FFmpeg work
-runs outside short synchronous SQLite transactions.
+S1 cache v2 的索引使用项目、素材指纹（大小、mtime、抽样 hash）和算法版本，不把抽样 hash 当成完整 hash。按完整字节相同但 mtime 不同的素材保守分开缓存；只补算完整 hash 不会改变 cache key。GET 在返回 ready 缓存前检查当前引用的真实文件元信息、修订和目录许可，缺失、变化或撤销许可时停用旧结果。
 
-The existing private workspace policy remains in force. FFmpeg is a local media
-decoder, not a sandbox for hostile codecs. The same-user/root adversary limitation
-of pathname-based probing/decoding remains; pre/post checks do not certify that
-an attacker with equivalent OS authority can never race file access. Windows
-storage is still fail-closed pending a real ACL/reparse-safe backend and native
-QA. Linux verification does not certify macOS/Windows readiness.
+解码前后仍完整算实际字节 hash，预算、owner 和效果围栏保持；后台解码完成后再次检查引用/许可，短事务内校验当前源身份，迟到结果不能覆盖新请求或在撤销后发布。GET 不创建记录、不读取整份媒体、不探测或解码。纯历史 reader 只读数据库，不触碰文件系统。
+
+项目媒体引用遵守 L1 规则，允许普通项目目录和多硬链接媒体；项目/history/cache/App 数据库及其别名仍在打开文件之前拒绝。FFmpeg 的路径打开不是对同 UID/root 对手的解码沙箱。
 
 ## Cache lifecycle and recovery
 
-An additive schema migration stores disposable cache state separately from
+Cache v1 is discarded and rebuilt as v2; project and history bytes remain unchanged. The cache stores disposable state separately from
 business objects and permanent replay journals. A new attempt gets an internal
 identity; late callbacks cannot publish over a later attempt. Completed peak
 payloads have bounded structure/digest validation. Corrupt results are shown as

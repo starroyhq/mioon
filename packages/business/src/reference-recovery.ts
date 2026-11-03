@@ -1,3 +1,4 @@
+import {validAssetLocator} from './asset-reference-record.ts';
 import {AppError,schemas,isReferenceMutationResponse,isReferenceShotRecord,isReferenceEdgeRecord,REFERENCE_RESPONSE_BYTES} from '@mioon/contracts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
@@ -89,8 +90,7 @@ export function createReferenceRecoveryBoundary(db: DatabaseSync,input: RefInput
  function managed(source: RefRecord): RefRecord{
   const value=asset(source.assetId);
   if(!['image/png','image/jpeg','image/webp'].includes(value.mimeType as string)||typeof value.sha256!=='string'||!/^[a-f0-9]{64}$/.test(value.sha256)||
-     typeof value.relativePath!=='string'||value.relativePath.length>4096||!value.relativePath.startsWith('media/')||
-     /[\\\0]/.test(value.relativePath)||value.relativePath.split('/').some(part=>!part||part==='.'||part==='..'))
+     !validAssetLocator(db,value))
    throw new AppError('INVALID_REFERENCE_SOURCE','首帧必须为已导入的托管 PNG、JPEG 或 WebP 图片');
   return value;
  }

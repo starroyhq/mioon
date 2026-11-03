@@ -1,3 +1,5 @@
+import {mediaLocatorFields, sameMediaLocator} from './asset-reference-record.ts';
+import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {assertVolumeEnvelopeSource} from './timeline-volume-envelope-source.ts';
 import {parseTimelineAudioPreviewProbe} from './timeline-audio-preview-decoder.ts';
 import {readManagedTimelineImage,validateTimelineImageSourceInterpretation} from './timeline-image-source.ts';
@@ -15,8 +17,8 @@ import {createTimelineColourLutReader,verifyTimelineColourLuts} from './timeline
 import type {DatabaseSync} from 'node:sqlite';
 import type {ManagedAssetRecord,TimelineClipRecord,TimelineRecord} from './timeline-inputs.ts';
 
-interface FrozenSourceAsset {id: string;projectId?: string;sha256: string;mimeType: string;relativePath?: string;duration?: number|null;width?: number|null;height?: number|null;hasAudio?: boolean;hasVideo?: boolean}
-export interface TimelinePreflightSnapshotAsset {id: string;sha256: string;mimeType: string;relativePath?: string;duration?: number|null;width?: number|null;height?: number|null;hasAudio?: boolean;hasVideo?: boolean}
+interface FrozenSourceAsset {id: string;projectId?: string;sha256: string;mimeType: string;reference?: MediaReference;referenceRevision?: number;relativePath?: string;duration?: number|null;width?: number|null;height?: number|null;hasAudio?: boolean;hasVideo?: boolean}
+export interface TimelinePreflightSnapshotAsset {id: string;sha256: string;mimeType: string;reference?: MediaReference;referenceRevision?: number;relativePath?: string;duration?: number|null;width?: number|null;height?: number|null;hasAudio?: boolean;hasVideo?: boolean}
 export interface TimelinePreflightSnapshot {
  timeline: TimelineRecord;assets: TimelinePreflightSnapshotAsset[];
  subtitleProfile?: {profileId: string;fontSha256?: string};
@@ -31,7 +33,7 @@ interface TimelineSnapshotLike {
  delivery?: unknown;
 }
 interface PreparedSource {
- id: string;sha256: string;mimeType: string;relativePath: string;path: string;
+ id: string;sha256: string;mimeType: string;reference?: MediaReference;referenceRevision?: number;relativePath?: string;path: string;
  sizeBytes: number;width: number;height: number;duration: number|null;
  hasVideo: boolean;hasAudio: boolean;videoStreamIndex: number|string|null;audioStreamIndex: number|string|null;
  colourSourceIdentity?: unknown;opacitySourceIdentity?: unknown;colourProbe?: unknown;colourImageEvidence?: unknown;
@@ -97,8 +99,8 @@ export function validatePreparedTimelineSources(db: DatabaseSync,projectId: stri
   for(const frozen of snapshot.assets){
    const current=readOwnedTimelineAsset(db,projectId,frozen.id),verified: PreparedSource|undefined=prepared.get(frozen.id);
    if(!current||!verified||current.id!==frozen.id||(current as {projectId?: string}).projectId!==projectId||verified.id!==frozen.id||
-    ['sha256','mimeType','relativePath'].some(key=>typeof (frozen as unknown as Record<string, unknown>)[key]!=='string'||(current as unknown as Record<string, unknown>)[key]!==(frozen as unknown as Record<string, unknown>)[key]||(verified as unknown as Record<string, unknown>)[key]!==(frozen as unknown as Record<string, unknown>)[key])||
-    verified.path!==path.resolve(root,current.relativePath as string))throw invalid();
+    ['sha256','mimeType'].some(key=>typeof (frozen as unknown as Record<string, unknown>)[key]!=='string'||(current as unknown as Record<string, unknown>)[key]!==(frozen as unknown as Record<string, unknown>)[key]||(verified as unknown as Record<string, unknown>)[key]!==(frozen as unknown as Record<string, unknown>)[key])||
+    !sameMediaLocator(current,frozen)||!sameMediaLocator(verified,frozen)||verified.path!==validateManagedSource(root,current).file)throw invalid();
    if(snapshot.colourPlan&&(!verified.colourSourceIdentity||!sameManagedFile(verified.colourSourceIdentity as never,validateManagedSource(root,current).info as never)))throw invalid();
   }
   if(snapshot.colourPlan){
@@ -164,7 +166,7 @@ export async function prepareTimelineInputs(snapshot: TimelineSnapshotLike,{root
   const a=readAsset(frozen.id);
   if(!a||a.projectId!==projectId||a.sha256!==frozen.sha256||a.mimeType!==frozen.mimeType||assets.has(a.id))throw fault('TIMELINE_SOURCE_UNAVAILABLE','Timeline snapshot does not match managed asset');
   try{
-  if(frozen.relativePath!==undefined&&frozen.relativePath!==a.relativePath)throw fault('TIMELINE_SOURCE_UNAVAILABLE','Timeline snapshot path no longer matches managed asset');
+  if(!sameMediaLocator(frozen,a))throw fault('TIMELINE_SOURCE_UNAVAILABLE','Timeline snapshot path no longer matches managed asset');
   const maxBytes=budget?.sourceBytes??Infinity;
   checkMediaEffect(beforeEffect,signal);const source=validateManagedSource(root,a,{maxBytes});
   if(budget&&source.info.size>budget.totalBytes-budget.bytesHashed)throw fault('PREFLIGHT_BUDGET','Preflight byte budget was reached');
@@ -179,7 +181,7 @@ export async function prepareTimelineInputs(snapshot: TimelineSnapshotLike,{root
    }});
   }catch(error){throw hashEffectFailure??error;}
   checkMediaEffect(beforeEffect,signal);
-  const checkSource=()=>{checkMediaEffect(beforeEffect,signal);const latest=readAsset(frozen.id);if(!latest||latest.projectId!==projectId||latest.sha256!==a.sha256||latest.mimeType!==a.mimeType||latest.relativePath!==a.relativePath||!sameManagedFile(hashed.info,validateManagedSource(root,a,{maxBytes}).info))throw fault('MANAGED_SOURCE_CHANGED','Timeline input bytes differ from frozen asset hash');};
+  const checkSource=()=>{checkMediaEffect(beforeEffect,signal);const latest=readAsset(frozen.id);if(!latest||latest.projectId!==projectId||latest.sha256!==a.sha256||latest.mimeType!==a.mimeType||!sameMediaLocator(latest,a)||!sameManagedFile(hashed.info,validateManagedSource(root,a,{maxBytes}).info))throw fault('MANAGED_SOURCE_CHANGED','Timeline input bytes differ from frozen asset hash');};
   checkSource();
   const imageColour: {evidence: {profileId?: string;width: number;height: number}}|null=snapshot.colourPlan?.clips.some(item=>item.assetId===a.id&&item.kind==='image')?await readManagedTimelineImage(root,a as never,{signal,beforeEffect:checkSource,expected:hashed.info},{validateSource:validateManagedSource as never,runStreaming}) as unknown as {evidence: {profileId?: string;width: number;height: number}}:null;
   checkSource();
@@ -199,13 +201,13 @@ export async function prepareTimelineInputs(snapshot: TimelineSnapshotLike,{root
   assets.set(a.id,{...frozen,sizeBytes:hashed.sizeBytes,sha256:hashed.sha256,width:media.width,height:media.height,duration:media.duration as number|null,
    hasVideo:media.hasVideo,hasAudio:media.hasAudio,videoStreamIndex:media.videoStreamIndex,audioStreamIndex:media.audioStreamIndex,path:hashed.file,...(retainOpacitySourceIdentity?{opacitySourceIdentity:hashed.info}:{}),...(snapshot.colourPlan?{colourProbe:media.probe,colourSourceIdentity:hashed.info,...(imageColour?{colourImageEvidence:imageColour.evidence}:{})}:{})} as PreparedSource);
   onChecked?.(a.id);
-  }catch(error){const failure=error as {timelineAssetId?: string;code?: string;message?: string};if(error&&typeof error==='object'){failure.timelineAssetId=a.id;if(failure.code==='MANAGED_SOURCE_CHANGED')failure.message='Export input bytes differ from frozen version hash';}throw error;}
+  }catch(error){const failure=error as {timelineAssetId?: string;code?: string;message?: string};if(error&&typeof error==='object'){failure.timelineAssetId=a.id;if(['MEDIA_CHANGED','MEDIA_CHANGED_DURING_READ'].includes(failure.code as string))failure.code='MANAGED_SOURCE_CHANGED';else if(['MEDIA_MISSING','MEDIA_NOT_MEDIA','MEDIA_OUTSIDE_NOT_CONFIRMED'].includes(failure.code as string))failure.code='MANAGED_SOURCE_INVALID';if(failure.code==='MANAGED_SOURCE_CHANGED')failure.message='Export input bytes differ from frozen version hash';}throw error;}
  }
  checkMediaEffect(beforeEffect,signal);validateTimeline(snapshot.timeline,assets);
  if(snapshot.colourPlan||retainOpacitySourceIdentity){
   for(const verified of assets.values()){
    checkMediaEffect(beforeEffect,signal);const current=readAsset(verified.id);
-   if(!current||current.sha256!==verified.sha256||current.mimeType!==verified.mimeType||current.relativePath!==verified.relativePath||!sameManagedFile((retainOpacitySourceIdentity?verified.opacitySourceIdentity:verified.colourSourceIdentity) as never,validateManagedSource(root,current).info as never))throw fault('MANAGED_SOURCE_CHANGED',retainOpacitySourceIdentity?'A verified source changed during preparation.':'A colour-managed source changed during preparation.');
+   if(!current||current.sha256!==verified.sha256||current.mimeType!==verified.mimeType||!sameMediaLocator(current,verified)||!sameManagedFile((retainOpacitySourceIdentity?verified.opacitySourceIdentity:verified.colourSourceIdentity) as never,validateManagedSource(root,current).info as never))throw fault('MANAGED_SOURCE_CHANGED',retainOpacitySourceIdentity?'A verified source changed during preparation.':'A colour-managed source changed during preparation.');
   }
   if(snapshot.colourPlan)verifyTimelineColourLuts(snapshot.colourPlan as never,readLut as never,true);
  }

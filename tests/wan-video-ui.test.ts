@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { defaultVideoModels, resolveVideoEndpoint, videoBindingCapabilities } from '../packages/contracts/src/video-providers.ts';
 import type { VideoExecutionBinding } from '../packages/contracts/src/video-providers.ts';
-import { generationSelection, generationParameters, generationVideoInput, generationInputIssueDescriptor, generationReferenceIdentity, generationReferences, videoConnectionProviders, wanGenerationCapabilities } from '../apps/web/src/generation-settings.ts';
+import { generationSelection, generationParameters, generationVideoInput, generationInputIssueDescriptor, generationReferenceIdentity, generationReferences, generationMediaReferences, checkGenerationMediaReferences, videoConnectionProviders, wanGenerationCapabilities } from '../apps/web/src/generation-settings.ts';
 import type { GenerationVideoInput, GenerationAsset, GenerationProvider } from '../apps/web/src/generation-settings.ts';
 import { newVideoConnection } from '../apps/web/src/video-settings.ts';
 import { lenientFunction } from './helpers/eval-source.ts';
@@ -16,7 +16,7 @@ function provider(narrow = false): GenerationProvider {
   return videoConnectionProviders([{ connectionId, configurationRevision: 3, providerId: 'wan', name: 'Wan account', enabled: true, configured: true, archived: false, models: [{ entry: model, capabilities: videoBindingCapabilities(binding) }] }])[0]!;
 }
 const shot = { id: id(4), projectId, prompt: 'A quiet scene', duration: 4, aspectRatio: '9:16', revision: 1, referenceAssetIds: [], parameters: {} };
-const assets: GenerationAsset[] = Array.from({ length: 11 }, (_, index) => ({ id: id(10 + index), projectId, name: `Image ${index + 1}`, sha256: index.toString(16).repeat(64), mimeType: 'image/png', width: 640, height: 640, relativePath: `assets/${id(10 + index)}.png`, sizeBytes: 100 }));
+const assets: GenerationAsset[] = Array.from({ length: 11 }, (_, index) => ({ id: id(10 + index), projectId, name: `Image ${index + 1}`, sha256: index.toString(16).repeat(64), mimeType: 'image/png', referenceRevision:1, width: 640, height: 640, relativePath: `assets/${id(10 + index)}.png`, sizeBytes: 100 }));
 const input = (count = 10): GenerationVideoInput => ({ version: 1, mode: 'reference_images', images: assets.slice(0, count).map(asset => ({ role: 'reference_image', assetId: asset.id! })), prompt: '图1 is the landscape' });
 
 test('new Wan connections use only both Wan 3.0 models and narrowed catalogs control defaults', () => {
@@ -47,19 +47,22 @@ test('actual App freezes all Wan input, sends it once and rejects review changes
   const p = provider(), selected = generationSelection([p], { connectionId }, shot), videoInput = input(2), options = { connectionId, modelEntryId: selected.modelEntryId, videoInput, parameters: { durationSeconds: -1, aspectRatio: 'adaptive' } };
   const current = { ...shot, parameters: generationParameters(shot, selected.provider, options), videoInput };
   const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
-  for (const change of ['none', 'prompt', 'order', 'parameters', 'asset']) {
+  for (const change of ['none', 'prompt', 'order', 'parameters', 'asset','reference revision']) {
     const state = { review: null as Record<string, unknown> | null, sent: [] as unknown[] };
-    const scope = { generationSelection, generationParameters, generationVideoInput, generationReferences, generationReferenceIdentity, generationProviderIdentity: (provider: GenerationProvider) => provider.connectionId || provider.id, generationProviderForModel: (provider: GenerationProvider) => provider, findGenerationProvider: () => selected.provider,
-      providers: [p], dataRef: { current: { shots: [shot], assets: structuredClone(assets), jobs: [] } }, generationOptionsRef: { current: { [shot.id]: structuredClone(options) } }, realConfirmRef: { current: null }, generationReviewScope: { current: {} }, context: () => ({}), isCurrent: () => true,
-      setRealConfirm: (value: Record<string, unknown>) => { state.review = value; }, notify() {}, msg: () => '', submitGeneration: (value: unknown) => state.sent.push(value) };
-    const funcs = source.slice(source.indexOf('  function reviewGeneration('), source.indexOf('  async function createProject('));
-    const api = lenientFunction(...Object.keys(scope), `${funcs}; return { reviewGeneration, confirmGeneration };`)(...Object.values(scope)) as { reviewGeneration(value: unknown): void; confirmGeneration(value: unknown): void };
-    api.reviewGeneration({ shot: current, providerId: 'wan', connectionId, configurationRevision: 3, modelEntryId: selected.modelEntryId, model: selected.model, inputMode: 'reference' });
+    const scope = { generationSelection, generationParameters, generationVideoInput, generationReferences, generationMediaReferences, checkGenerationMediaReferences, generationReferenceIdentity, generationProviderIdentity: (provider: GenerationProvider) => provider.connectionId || provider.id, generationProviderForModel: (provider: GenerationProvider) => provider, findGenerationProvider: () => selected.provider,
+      providers: [p], dataRef: { current: { shots: [shot], assets: structuredClone(assets), jobs: [] } }, generationOptionsRef: { current: { [shot.id]: structuredClone(options) } }, realConfirmRef: { current: null }, currentProject:{current:projectId}, rpc:async(_operation:string,input:{assetIds:string[]})=>({items:input.assetIds.map(assetId=>({assetId,referenceRevision:1,status:'online',reason:'same-stats',outside:false,readable:true,fingerprintToken:'a'.repeat(64)})),nextCursor:null}), generationReviewScope: { current: {} }, context: () => ({projectId}), isCurrent: () => true,
+      setRealConfirm: (value: Record<string, unknown>) => { state.review = value; }, readableError:(error:unknown)=>String(error),notify() {}, msg: () => '', submitGeneration: (value: unknown) => state.sent.push(value) };
+    const funcs = source.slice(source.indexOf('  async function reviewGeneration('), source.indexOf('  async function createProject('));
+    const api = lenientFunction(...Object.keys(scope), `${funcs}; return { reviewGeneration, confirmGeneration };`)(...Object.values(scope)) as { reviewGeneration(value: unknown): Promise<void>; confirmGeneration(value: unknown): Promise<void> };
+    await api.reviewGeneration({ shot: current, providerId: 'wan', connectionId, configurationRevision: 3, modelEntryId: selected.modelEntryId, model: selected.model, inputMode: 'reference' });
+    assert.ok(state.review);
+    assert.deepEqual(state.review.referenceRevisions,videoInput.images.map(image=>{const asset=scope.dataRef.current.assets.find(item=>item.id===image.assetId)!;return {assetId:asset.id,referenceRevision:asset.referenceRevision,sha256:asset.sha256};}));
+    if(change==='reference revision')scope.dataRef.current.assets[0]!.referenceRevision=2;
     if (change === 'prompt') scope.generationOptionsRef.current[shot.id]!.videoInput.prompt = 'Changed prompt';
     if (change === 'order') scope.generationOptionsRef.current[shot.id]!.videoInput.images.reverse();
     if (change === 'parameters') scope.generationOptionsRef.current[shot.id]!.parameters.durationSeconds = 5;
     if (change === 'asset') scope.dataRef.current.assets[0]!.sha256 = 'f'.repeat(64);
-    const review = state.review; api.confirmGeneration(review); api.confirmGeneration(review);
+    const review = state.review; await Promise.all([api.confirmGeneration(review),api.confirmGeneration(review)]);
     assert.equal(state.sent.length, change === 'none' ? 1 : 0, change);
   }
   const wires: Record<string, unknown>[] = [];

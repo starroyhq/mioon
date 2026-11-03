@@ -13,6 +13,8 @@ import {projectBackupIndexSchema, projectBackupIntentSchema} from '../../../../p
 import type {ProjectBackupEntry} from '../../../../packages/contracts/src/project-backup-records.ts';
 import {createProjectBackup, openProjectBackup, inspectCopiedProjectFile, syncCopiedDirectory} from '../../../../packages/business/src/project-file/backup.ts';
 import {copyProjectBackup} from '../../../../packages/business/src/project-file/copy.ts';
+import {transferCopiedProjectConfirmations} from './copy-outside-confirmations.ts';
+import type {CopyOutsidePaths} from './copy-outside-confirmations.ts';
 import type {RecentProject} from '../../../../packages/contracts/src/project-registry.ts';
 import {projectLocation} from './directories.ts';
 import type {AppDirectories} from './directories.ts';
@@ -28,17 +30,21 @@ const exists = (file: string) => lstatSync(file, {throwIfNoEntry: false}) !== un
 const sameIdentity = (a: {dev: string; ino: string}, b: {dev: string; ino: string} | null) => b !== null && a.dev === b.dev && a.ino === b.ino;
 
 export interface ProjectBackupsOptions {
+  readonly outsidePaths?: CopyOutsidePaths;
   readonly directories: AppDirectories;
   readonly registry: ProjectRegistryPort;
   readonly identity: ProjectFileIdentityPort;
   readonly assertProjectFile: (file: string) => void;
   /** Trusted injection for failure/slow-I/O tests, never HTTP options. */
   readonly backup?: typeof createProjectBackup;
+  /** Trusted in-process tests only. Defaults to the real native copy; there
+   * is no HTTP/environment option for choosing a copy implementation. */
+  readonly copy?: typeof copyProjectBackup;
   readonly slowMs?: number;
   readonly onWarning?: (projectId: string, code: string) => void;
 }
 
-export function createProjectBackups({directories, registry, identity, assertProjectFile, backup = createProjectBackup, slowMs = 10_000,
+export function createProjectBackups({directories, registry, identity, assertProjectFile, outsidePaths, backup = createProjectBackup, copy = copyProjectBackup, slowMs = 10_000,
   onWarning = (projectId, code) => console.warn('Project backup:', projectId, code)}: ProjectBackupsOptions) {
   const queues = new Map<string, Promise<unknown>>();
   const statuses = new Map<string, Status>();
@@ -239,7 +245,7 @@ export function createProjectBackups({directories, registry, identity, assertPro
       if (!exists(projectFile)) {
         if (intent.phase !== 'prepared') throw failure('PROJECT_BACKUP_RESTORE_CHANGED', '已恢复的目标被移动或删除，未重新创建。');
         const entry = find(sourceProjectId, backupId), reader = verify(entry); reader.close();
-        await copyProjectBackup({backupFile: fileFor(sourceProjectId, backupId), sourceProjectDir: entry.sourceProjectDir, projectFile, projectId: intent.projectId});
+        await copy({backupFile: fileFor(sourceProjectId, backupId), sourceProjectDir: entry.sourceProjectDir, projectFile, projectId: intent.projectId});
       }
       const copied = inspectCopiedProjectFile(projectFile);
       const fileIdentity = identity(projectFile);
@@ -249,6 +255,28 @@ export function createProjectBackups({directories, registry, identity, assertPro
       const existing = registry.get(intent.projectId);
       if (existing && (existing.projectFile !== projectFile || !sameIdentity(fileIdentity, existing.fileIdentity))) throw failure('PROJECT_BACKUP_RESTORE_CHANGED', '恢复项目的登记已改变。');
       const project: RecentProject = existing ?? {projectId: intent.projectId, projectFile, fileIdentity, name: copied.name ?? '恢复的项目', lastOpenedAt: null, summary: null};
+      const confirmationReceipt = `${requestId}-confirmations.json`;
+      const confirmation = read(requests, confirmationReceipt);
+      if (confirmation !== null) {
+        const receipt = typeof confirmation === 'object' && !Array.isArray(confirmation) ? confirmation as Record<string, unknown> : null;
+        const boundIdentity = receipt?.fileIdentity;
+        if (!receipt || Object.keys(receipt).length !== 8 || receipt.version !== 1 || receipt.sourceProjectId !== sourceProjectId ||
+          receipt.projectId !== intent.projectId || receipt.requestId !== requestId || receipt.digest !== digest || receipt.consumed !== true ||
+          !boundIdentity || typeof boundIdentity !== 'object' || !('dev' in boundIdentity) || !('ino' in boundIdentity) ||
+          boundIdentity.dev !== fileIdentity.dev || boundIdentity.ino !== fileIdentity.ino ||
+          !Array.isArray(receipt.directories) || receipt.directories.length > 20_000 ||
+          receipt.directories.some(directory => typeof directory !== 'string' || directory.length > 4096 || !path.isAbsolute(directory)) ||
+          new Set(receipt.directories).size !== receipt.directories.length) {
+          throw failure('PROJECT_BACKUP_INDEX_INVALID', '素材位置确认回执无效，未重新授予权限。');
+        }
+      }
+      if (outsidePaths && confirmation === null) {
+        const entry = find(sourceProjectId, backupId);
+        transferCopiedProjectConfirmations(outsidePaths, sourceProjectId, intent.projectId, entry.sourceProjectDir, directories => {
+          durableWrite(requests, confirmationReceipt, {version: 1, sourceProjectId, projectId: intent!.projectId,
+            requestId, digest, fileIdentity, directories, consumed: true});
+        });
+      }
       registry.upsert(project);
       durableWrite(requests, `${requestId}.json`, {...intent, phase: 'registered', project});
       return {requestId, sourceProjectId, backupId, project};

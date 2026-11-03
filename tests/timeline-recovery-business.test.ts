@@ -1,3 +1,4 @@
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import type {FixtureExport} from './helpers/strict-timeline-core-types.ts';
 type RecoveryReceipt={operation:string;input:{projectId:string;expectedRevision:number;requestId:string}&Record<string,unknown>;response:FixtureTimeline|FixtureExport|{timeline:FixtureTimeline}};
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
@@ -47,8 +48,8 @@ async function fixture(t: test.TestContext){
   liveCall:<O extends string>(op: O, input?: unknown) => services.call(op,input) as Promise<FixtureServiceResult<O>>,
   restart(){store.close();store=(openStore(root) as FixtureStore);services=(createServices(store,new Map(),(({sceneOptions}) as unknown as Parameters<typeof createServices>[2])) as FixtureServices);connectApply();},
   capture(){return Object.fromEntries(tables.map(table=>[table,store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));},
-  asset(patch: {provenance?: string; id?: unknown; relativePath?: string; sha256?: string; sizeBytes?: number; projectId?: unknown; name?: string; mimeType?: string;}={}){const id=patch.id??randomUUID();return store.put('assets',{id,projectId:f.projectId,name:'Recovery fixture',mimeType:'video/mp4',
-   duration:10,width:720,height:1280,hasAudio:true,hasVideo:true,provenance:'user-import',sha256:'a'.repeat(64),relativePath:`media/${id}.fixture`,createdAt:at,...patch});},
+  asset(patch: {provenance?: string; id?: unknown; relativePath?: string; sha256?: string; sizeBytes?: number; projectId?: unknown; name?: string; mimeType?: string;}={}){const id=patch.id??randomUUID(),bytes=Buffer.alloc(1024),relativePath=patch.relativePath??`media/${id}.mp4`;mp4HeaderFixture(`Synthetic recovery source ${id}`).copy(bytes);if(!patch.relativePath)writeFileSync(path.join(root,relativePath),bytes,{mode:0o600});return store.put('assets',{id,projectId:f.projectId,name:'Recovery fixture',mimeType:'video/mp4',
+   duration:10,width:720,height:1280,hasAudio:true,hasVideo:true,provenance:'user-import',sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,relativePath,createdAt:at,...patch});},
   async generated(patch: { padding?: string; }={}){
    const asset=f.asset({provenance:'generated'}),shot=await f.call('shot.create',{projectId:f.projectId,title:'Recovery shot'}),jobId=randomUUID(),versionId=randomUUID();
    const job=store.put('jobs',{id:jobId,projectId:f.projectId,shotId:shot.id,versionId,assetId:asset.id,status:'succeeded',snapshot:{projectId:f.projectId,shotId:shot.id},...patch});
@@ -57,7 +58,7 @@ async function fixture(t: test.TestContext){
   },
   // A reference video with real managed bytes and a finished scene result (cuts 20 and 40).
   async film(){
-   const id=randomUUID(),bytes=Buffer.from(`Recovery reference film ${id}`),relativePath=`media/${id}.mp4`;writeFileSync(path.join(root,relativePath),bytes,{mode:0o600});
+   const id=randomUUID(),bytes=mp4HeaderFixture(`Recovery reference film ${id}`),relativePath=`media/${id}.mp4`;writeFileSync(path.join(root,relativePath),bytes,{mode:0o600});
    const asset=f.asset({id,relativePath,sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length});
    const ack=await f.call('scene.detect',{projectId:f.projectId,sourceAssetId:asset.id,sourceHash:asset.sha256,requestId:randomUUID()});
    for(let tries=0;tries<2000;tries++){const task=await f.call('scene.task.get',{projectId:f.projectId,taskId:ack.id});if(task.state==='succeeded')return {asset,resultId:(task as Extract<typeof task,{result:unknown}>).result!.id};await new Promise(resolve=>setTimeout(resolve,5));}

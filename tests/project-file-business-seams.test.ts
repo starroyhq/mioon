@@ -42,7 +42,7 @@ function application(root: string) {
     stop: () => {calls.stop++;}, drain: async () => {calls.drain++;},
   };
   mkdirSync(root, {mode: 0o700});
-  return {ports: {configuration: createWorkspaceConfiguration({root, env: {}}), backups}, calls};
+  return {ports: {configuration: createWorkspaceConfiguration({root, env: {}}), outsidePaths:{list:()=>[],confirm:()=>{throw Error('This standalone app fixture cannot grant outside media');},revoke:()=>{throw Error('This standalone app fixture cannot revoke outside media');}},backups}, calls};
 }
 async function fixture(t: TestContext) {
   const root = scratch(t), store = openProjectStore(path.join(root, 'project'));

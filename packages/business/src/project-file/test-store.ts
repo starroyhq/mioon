@@ -7,6 +7,8 @@ import {createProjectFile} from './connection.ts';
 import type {OpenProjectConnectionOptions, ProjectLocation} from './connection.ts';
 import {isProjectStore, openProjectStore} from './store.ts';
 import type {ProjectStore} from './store.ts';
+import {registerProjectMediaStore} from '../project-media-storage.ts';
+import {referenceTestAsset} from './test-asset-fixture.ts';
 
 const testStores = new WeakMap<ProjectStore, {readonly applicationDir: string; readonly closeCompanions: Set<() => void>}>();
 const testConnections = new WeakMap<DatabaseSync, ProjectStore>();
@@ -67,7 +69,19 @@ export function openServerTestStore(options: OpenProjectConnectionOptions, appli
 }
 
 function ownTestStore(store: ProjectStore, applicationDir: string): ProjectStore {
+  const put = store.put;
+  store.put = <T extends object>(table: string, value: T): T => {
+    if (table !== 'assets') return put(table, value);
+    const fixture = value as Readonly<Record<string, unknown>>;
+    if (fixture.reference !== undefined || typeof fixture.relativePath !== 'string') return put(table, value);
+    const converted = referenceTestAsset(store.projectDir, fixture);
+    put(table, converted);
+    // The fixture's old location remains available to test assertions only;
+    // persisted records have reference as their single location source.
+    return {...converted, ...('relativePath' in fixture ? {relativePath: fixture.relativePath} : {})} as T;
+  };
   const held = {applicationDir, closeCompanions: new Set<() => void>()};
+  held.closeCompanions.add(registerProjectMediaStore(store));
   testStores.set(store, held);
   testConnections.set(store.db, store);
   const close = store.close;

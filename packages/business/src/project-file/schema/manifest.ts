@@ -3,7 +3,7 @@
 import type {DatabaseKind} from './databases.ts';
 import type {SchemaManifest} from './manifest-check.ts';
 export const SCHEMA_MANIFEST: Readonly<Record<DatabaseKind, SchemaManifest>> = Object.freeze({
-  project: {version: 1, entries: Object.freeze([
+  project: {version: 2, entries: Object.freeze([
     {type: "index", name: "asset_annotations_project", tbl_name: "asset_annotations", sha256: "69f1f906f378b6f80fc603e8b3ab2190f86f406a4311e4de331eb15aeca1bc10"},
     {type: "index", name: "asset_dispositions_project", tbl_name: "asset_dispositions", sha256: "5350e6434c2fa49fdbfdb53242e2d333c65013e48c4dfa41b46a1d651c5392cf"},
     {type: "index", name: "asset_ranges_project", tbl_name: "asset_ranges", sha256: "722a4b01f07f1e7de2fd0bafe5e209eba7eb8d9cda76d4279ece60b761305381"},
@@ -90,7 +90,7 @@ export const SCHEMA_MANIFEST: Readonly<Record<DatabaseKind, SchemaManifest>> = O
     {type: "trigger", name: "agent_target_asset_ranges_update_v2", tbl_name: "asset_ranges", sha256: "35aa458a9c31f25c2ca1ac7ee4ad0a6546453eb7039a27346c463eed3d4fdd24"},
     {type: "trigger", name: "agent_target_assets_delete_v2", tbl_name: "assets", sha256: "11bec538c994d9d05be2cd2354bdc6507b8eb2fd5ec0e2de5bbf00d765029bff"},
     {type: "trigger", name: "agent_target_assets_insert_v2", tbl_name: "assets", sha256: "9017308ac8ab5e16ddab69879db179a1222515ccafddad5380c51ab76693d5fa"},
-    {type: "trigger", name: "agent_target_assets_update_v2", tbl_name: "assets", sha256: "0c8fccc830cc6f5c50f405c5050c523c93f03b9006b57b8d74e319b4ef590690"},
+    {type: "trigger", name: "agent_target_assets_update_v2", tbl_name: "assets", sha256: "53ee682875a7de2b2eaddbfe765569718c9058b2a5b2a823007a150fe02afa5c"},
     {type: "trigger", name: "agent_target_edges_delete_v2", tbl_name: "edges", sha256: "6af2bb856aa4cc7b5787036638f9e8908d774cdb8edc395c6536a70a822ce31c"},
     {type: "trigger", name: "agent_target_edges_insert_v2", tbl_name: "edges", sha256: "a0c4d9a79394b2356affeb1ef68e24c15ec846af7bcd8949fd3d304aff99405b"},
     {type: "trigger", name: "agent_target_edges_update_v2", tbl_name: "edges", sha256: "0087fb8e58518062ec4bc9c86994a415ab05aa146b4424fa75a8174908c7032b"},
@@ -719,17 +719,17 @@ export const SCHEMA_MANIFEST: Readonly<Record<DatabaseKind, SchemaManifest>> = O
     {type: "trigger", name: "subject_variant_request_capacity", tbl_name: "subject_variant_requests", sha256: "8b2db6bec90a9b5dbac3950bb2856af446045f2a83647b3535dd4d30da4bb992"},
     {type: "trigger", name: "subject_variant_request_identity", tbl_name: "subject_variant_requests", sha256: "68bb260ada18d4461ea0ad80ab33d859ebf41848b1fc2c65a789de4226c77a99"},
   ])},
-  cache: {version: 1, entries: Object.freeze([
+  cache: {version: 2, entries: Object.freeze([
     {type: "index", name: "previs_thumbnails_age", tbl_name: "previs_thumbnails", sha256: "96bef93ae3f1e58ab3c997aba1cd98daade87fdda7b370a59d6b6fb9ae1666a0"},
     {type: "index", name: "previs_thumbnails_project_age", tbl_name: "previs_thumbnails", sha256: "cca002930b673c7a1e778a58ef75df343dfaff09e206697c923a584c71bd8b81"},
     {type: "index", name: "sqlite_autoindex_previs_thumbnails_1", tbl_name: "previs_thumbnails", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
     {type: "index", name: "sqlite_autoindex_waveform_cache_1", tbl_name: "waveform_cache", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
     {type: "index", name: "sqlite_autoindex_waveform_cache_2", tbl_name: "waveform_cache", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
     {type: "index", name: "waveform_cache_terminal", tbl_name: "waveform_cache", sha256: "d4ddf40a0cee52791804154d98c379d40d0079204235654349f8fae8eda18eda"},
-    {type: "table", name: "previs_thumbnails", tbl_name: "previs_thumbnails", sha256: "7fe5188dfec808d4a8ff61ef1deb89827c41566a8227e4d7f9e017a7f39cd453"},
+    {type: "table", name: "previs_thumbnails", tbl_name: "previs_thumbnails", sha256: "218eac166015f0cc4b213155e0d0d193ae090af112affaa0bdfa3357cf23f7b9"},
     {type: "table", name: "schema_version", tbl_name: "schema_version", sha256: "63beefb7f332ee32a5a2fae79e0920689694f1bcb0b97bb244bb31aecbcdeb5e"},
     {type: "table", name: "sqlite_sequence", tbl_name: "sqlite_sequence", sha256: "4cb1eaf14467f226196148cb5688569660cb290d414bae4c1c450b149b62befd"},
-    {type: "table", name: "waveform_cache", tbl_name: "waveform_cache", sha256: "0b93ba81d409d847a6fcf087ccaffc850782a038d9310af065f0aa3a00a28a71"},
+    {type: "table", name: "waveform_cache", tbl_name: "waveform_cache", sha256: "439eaac0b3a44543542895caeb7f3dfbc17b7f667192b8685106c025b68ad2c1"},
     {type: "trigger", name: "previs_thumbnail_capacity", tbl_name: "previs_thumbnails", sha256: "7268e75c514503dfad5caac4449986f639f47dbb50a5c9e05c45faecbe5c23f4"},
   ])},
 });

@@ -1,3 +1,6 @@
+import {mediaFixturePath,mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
+import {referenceTestAsset} from '../packages/business/src/project-file/test-asset-fixture.ts';
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import {projectRpcPath,projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
@@ -27,6 +30,11 @@ const token = 'synthetic-named-delivery-download-token';
 const clone = <T>(value: T): T => structuredClone(value);
 const hash = (value: NonSharedBuffer|BinaryLike) => createHash('sha256').update(value).digest('hex');
 const manifest=(root:string,databases:readonly string[]=[])=>dataFileSnapshot(root,databases);
+function referencedFixture<T extends {relativePath:string}>(root:string,value:T) {
+  const converted=referenceTestAsset(root,value),{relativePath:_relativePath,...metadata}=value;
+  return {...metadata,reference:mediaReferenceSchema.parse(converted.reference),referenceRevision:1};
+}
+const sourcePng=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/m1cAAAAASUVORK5CYII=','base64');
 async function fixture(t: test.TestContext, {serve = true} = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-named-download-'));
   let store: TypedStore|undefined, services: TypedServices|undefined, server: Awaited<ReturnType<typeof startServer>> | undefined, db: DatabaseSync|undefined, inspect: InspectProject|undefined,inspectApp:InspectApplication|undefined;
@@ -37,16 +45,17 @@ async function fixture(t: test.TestContext, {serve = true} = {}) {
   const project = store.get('projects', created.projectId)!;
   let timeline = await services.call('timeline.get', {projectId: project.id});
   const sourceId = randomUUID();
-  store.put('assets', {id: sourceId, projectId: project.id, name: 'Frozen image', mimeType: 'image/png', sha256: 'a'.repeat(64),
-    relativePath: `media/${sourceId}.png`, width: 720, height: 1280, duration: 0, hasAudio: false, sizeBytes: 20, createdAt: new Date().toISOString()});
+  await writeFile(path.join(projectDir,`media/${sourceId}.png`),sourcePng);
+  store.put('assets', referencedFixture(projectDir,{id: sourceId, projectId: project.id, name: 'Frozen image', mimeType: 'image/png', sha256: hash(sourcePng),
+    relativePath: `media/${sourceId}.png`, width: 1, height: 1, duration: 0, hasAudio: false, sizeBytes: sourcePng.length, createdAt: new Date().toISOString()}));
   timeline = await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
     trackId: timeline.tracks[0].id, assetId: sourceId, startFrame: 0, durationFrames: 30});
   const input = {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'export', deliveryName: '海边 交付 V1'};
   const queued = await services.call('timeline.render', input);
-  const assetId = randomUUID(), relativePath = `media/export-${queued.id}-${randomUUID()}.mp4`, bytes = Buffer.from('named-delivery-original-mp4-bytes');
+  const assetId = randomUUID(), relativePath = `media/export-${queued.id}-${randomUUID()}.mp4`, bytes = mp4HeaderFixture('named-delivery-original-mp4-bytes');
   await writeFile(path.join(projectDir, relativePath), bytes, {mode: 0o600});
-  const asset = {id: assetId, projectId: project.id, name: 'Managed output', mimeType: 'video/mp4', provenance: 'export', relativePath,
-    url: `/media/${assetId}`, sha256: hash(bytes), sizeBytes: bytes.length, createdAt: new Date().toISOString()};
+  const asset = referencedFixture(projectDir,{id: assetId, projectId: project.id, name: 'Managed output', mimeType: 'video/mp4', provenance: 'export', relativePath,
+    producer:{kind:'export' as const,id:queued.id},url: `/media/${assetId}`, sha256: hash(bytes), sizeBytes: bytes.length, createdAt: new Date().toISOString()});
   store.put('assets', asset);
   const record = {...(store.get('exports', queued.id) as import('./helpers/strict-timeline-core-types.ts').FixtureExport), status: 'succeeded', assetId, url: asset.url, updatedAt: new Date().toISOString()};
   store.put('exports', record);
@@ -100,7 +109,7 @@ test('real named media GET HEAD ranges and later historical edits retain immutab
     const response = await f.request(undefined, {headers: {range}}); assert.equal(response.status, 416); assert.equal(await response.text(), '');
     assert.equal(response.headers.get('content-disposition'), null);
   }
-  assert.equal(f.timeline.clips.length, 0); assert.equal(f.read()!.relativePath, f.asset.relativePath);
+  assert.equal(f.timeline.clips.length, 0); assert.deepEqual(f.read()!.reference, f.asset.reference); assert.equal(f.read()!.referenceRevision,f.asset.referenceRevision);
   await f.unchanged(before);
   // The download proof does not require a current timeline or source bytes.
   f.use(db => {db.prepare('DELETE FROM timelines WHERE id=?').run(f.timeline.id); db.prepare('DELETE FROM assets WHERE id=?').run(f.sourceId);});
@@ -185,9 +194,9 @@ test('unnamed/storyboard URL compatibility retains mioon default, while named mi
     const response = await f.request(route); assert.equal(response.status, 200);
     assert.equal(response.headers.get('content-disposition'), route.includes('?') ? 'attachment; filename="mioon.mp4"' : null); await response.arrayBuffer();
   }
-  await unlink(path.join(f.projectDir, f.asset.relativePath)); const before = await f.checkpoint();
+  await unlink(mediaFixturePath(f.projectDir,f.asset)); const before = await f.checkpoint();
   const response = await f.request(); assert.equal(response.status, 404); assert.equal(response.headers.get('content-disposition'), null);
-  const text = await response.text(); assert.match(text, /FILE_UNAVAILABLE/); assert.ok(!text.includes(f.root)); assert.ok(!text.includes(f.input.deliveryName)); await f.unchanged(before);
+  const text = await response.text(); assert.match(text, /MEDIA_MISSING/); assert.deepEqual(JSON.parse(text).error.details,{assetId:f.asset.id,reason:'not-found'}); assert.ok(!text.includes(f.root)); assert.ok(!text.includes(f.input.deliveryName)); await f.unchanged(before);
 });
 
 test('bounded descriptor proof is repeated after file open and releases the fd on changed ownership', async t => {
@@ -199,7 +208,7 @@ test('bounded descriptor proof is repeated after file open and releases the fd o
     return {stat: () => handle.stat(), close: async () => {closed++; await handle.close();}, createReadStream: options => {streamed++; return handle.createReadStream(options);}};
   }});
   const server = http.createServer(async (req, res) => {
-    try {await files.send(req, res, {file: path.join(f.projectDir, descriptor.relativePath), ranges: true,
+    try {await files.send(req, res, {file: mediaFixturePath(f.projectDir, f.asset), ranges: true,
       headers: () => timelineDeliveryResponseHeaders(f.db, f.url, f.guards, descriptor)});}
     catch (error) {res.writeHead((error as Failure).status || 500); res.end((error as Failure).code);}
   });
@@ -225,7 +234,7 @@ test('pre-header change fence includes frozen receipt and snapshot even when saf
     if (change === 'name') {record.snapshot.deliveryName = 'A\\B'; accepted.snapshot.deliveryName = 'A\\B';}
     if (change === 'snapshot') {record.snapshot.timeline.clips[0].name = 'Changed frozen clip'; accepted.snapshot.timeline.clips[0].name = 'Changed frozen clip';}
     if (change === 'receipt') f.db.prepare('UPDATE timeline_requests SET requestHash=? WHERE requestId=?').run('c'.repeat(64), f.input.requestId);
-    if (change === 'path') asset.relativePath = `media/export-${f.record.id}-${randomUUID()}.mp4`;
+    if (change === 'path') asset.reference = {...asset.reference,path:`media/export-${f.record.id}-${randomUUID()}.mp4`};
     replace(f.db, 'exports', record); replace(f.db, 'assets', asset);
     f.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(JSON.stringify(accepted), f.input.requestId);
     assert.ok(f.read(), change + ' is independently valid');
@@ -241,8 +250,10 @@ test('named download binds the exact worker output path and rejects swapped same
   const firstReceipt = JSON.parse((f.use(db => db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(f.input.requestId)!.response) as string));
   const secondReceipt = {...clone(firstReceipt), id: secondId, requestId: secondRequestId};
   secondReceipt.snapshot.deliveryName = 'Second owned delivery';
-  const secondAsset = {...f.asset, id: secondAssetId, relativePath: `media/export-${secondId}-${randomUUID()}.mp4`, url: `/media/${secondAssetId}`};
-  await writeFile(path.join(f.projectDir, secondAsset.relativePath), Buffer.from('second owned output'), {mode: 0o600});
+  const secondPath=`media/export-${secondId}-${randomUUID()}.mp4`,secondBytes=mp4HeaderFixture('second owned output');
+  await writeFile(path.join(f.projectDir,secondPath),secondBytes,{mode:0o600});
+  const secondAsset=referencedFixture(f.projectDir,{id:secondAssetId,projectId:f.project.id,name:'Second managed output',mimeType:'video/mp4',provenance:'export',
+    producer:{kind:'export' as const,id:secondId},relativePath:secondPath,url:`/media/${secondAssetId}`,sha256:hash(secondBytes),sizeBytes:secondBytes.length,createdAt:new Date().toISOString()});
   const second = {...clone(f.record), id: secondId, requestId: secondRequestId, snapshot: clone(secondReceipt.snapshot), assetId: secondAssetId, url: secondAsset.url};
   f.use(db => {
     db.prepare('INSERT INTO exports(id,projectId,data) VALUES(?,?,?)').run(secondId, f.project.id, JSON.stringify(second));

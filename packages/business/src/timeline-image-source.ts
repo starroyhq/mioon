@@ -1,3 +1,6 @@
+import {registeredProjectStore} from './project-media-storage.ts';
+import {mediaLocatorFields, validAssetLocator} from './asset-reference-record.ts';
+import type {MediaLocator} from './asset-reference-record.ts';
 import {constants} from 'node:fs';
 import {open} from 'node:fs/promises';
 import {types} from 'node:util';
@@ -15,7 +18,7 @@ const fault=(code:string,status=409):Error&{code:string;status:number}=>Object.a
  code==='TIMELINE_COLOUR_SOURCE_MISMATCH'?'The saved image interpretation no longer matches the verified image bytes. Inspect and confirm the source again.':
  code==='TIMELINE_COLOUR_SOURCE_BUSY'?'Another image colour inspection is still running.':
  'The owned image source cannot be verified safely.'),{code,status});
-interface Asset {id:string;projectId:string;sha256:string;sizeBytes:number;mimeType:string;relativePath:string}
+interface Asset {id:string;projectId:string;sha256:string;sizeBytes:number;mimeType:string;reference?:import('../../contracts/src/media-reference.ts').MediaReference;referenceRevision?:number;relativePath?:string}
 interface Identity {dev:number;ino:number;size:number;mtimeMs:number;ctimeMs:number}
 export interface TimelineImageFileRuntime extends Partial<JfifDecoderRuntime> {validateSource(root:string,asset:Asset,options:{maxBytes:number}):{file:string;info:Identity}}
 const sameManagedFile=(left:Identity,right:Identity):boolean=>['dev','ino','size','mtimeMs','ctimeMs'].every(key=>left[key as keyof Identity]===right[key as keyof Identity]);
@@ -34,7 +37,7 @@ export async function readManagedTimelineImage(root:string,asset:Asset,options:R
  const handle=await open(source.file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
  try{
   fence();const initial=await handle.stat();fence();
-  if(!initial.isFile()||initial.nlink!==1||initial.size!==asset.sizeBytes||!sameManagedFile(source.info,initial))throw fault('TIMELINE_COLOUR_SOURCE_MISMATCH');
+  if(!initial.isFile()||(!registeredProjectStore(root)&&initial.nlink!==1)||initial.size!==asset.sizeBytes||!sameManagedFile(source.info,initial))throw fault('TIMELINE_COLOUR_SOURCE_MISMATCH');
   const bytes=Buffer.alloc(initial.size);let position=0;
   while(position<bytes.length){
    fence();const read=await handle.read(bytes,position,Math.min(65536,bytes.length-position),position);fence();
@@ -76,9 +79,9 @@ export function createTimelineImageSourceServices(store:{db:DatabaseSync;root:st
  const stop=()=>{owner.stopped=true;owner.active?.controller.abort();};ownerSignal?.addEventListener('abort',stop,{once:true});if(ownerSignal?.aborted)stop();
  function current(projectId:string,assetId:string,mime?:string):Asset {
   available();const asset=runtime.readOwnedAsset(projectId,assetId) as Asset|undefined;
-  if(!asset||mime!==undefined&&asset.mimeType!==mime||asset.projectId!==projectId||asset.id!==assetId||!['image/png','image/jpeg'].includes(asset.mimeType)||typeof asset.relativePath!=='string'||
+  if(!asset||mime!==undefined&&asset.mimeType!==mime||asset.projectId!==projectId||asset.id!==assetId||!['image/png','image/jpeg'].includes(asset.mimeType)||!validAssetLocator(store.db,asset)||
    !/^[a-f0-9]{64}$/u.test(asset.sha256)||!Number.isSafeInteger(asset.sizeBytes))throw fault('TIMELINE_COLOUR_SOURCE_UNSUPPORTED');
-  return {id:asset.id,projectId:asset.projectId,sha256:asset.sha256,sizeBytes:asset.sizeBytes,mimeType:asset.mimeType,relativePath:asset.relativePath};
+  return {id:asset.id,projectId:asset.projectId,sha256:asset.sha256,sizeBytes:asset.sizeBytes,mimeType:asset.mimeType,...mediaLocatorFields(asset)};
  }
  async function inspect(raw:unknown,context:{signal?:AbortSignal}={},jpeg=false):Promise<TimelineImageSourceInspection|TimelineJpegSourceInspection> {
   available(context.signal);

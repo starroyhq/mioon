@@ -1,3 +1,5 @@
+import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import {projectRpcPath,isProjectId} from '../packages/contracts/src/project-file.ts';
 import type {WireResult} from './helpers/strict-timeline-transport-types.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
@@ -120,10 +122,12 @@ async function fixture(t: test.TestContext) {
   const relativePath = `media/${PRIVATE}.wav`,projectRoot=projectDirFor(dataDir,IDS.project),otherRoot=projectDirFor(dataDir,IDS.other);
   const audio = (id: string, projectId: string) => ({id, projectId, name: 'Synthetic source waveform', mimeType: 'audio/wav',
     relativePath, sha256, sizeBytes: wav.length, duration: 2, hasVideo: false, hasAudio: true, provenance: 'user-import', createdAt: NOW});
+  let sourceFingerprint='';
   const seed = (openServerProject(dataDir, IDS.project) as FixtureStore);
   try {
     await writeFile(path.join(projectDirFor(dataDir, IDS.project), relativePath), wav, {mode: 0o600});
     seed.put('assets', audio(IDS.asset, IDS.project)); seed.put('assets', audio(alias, IDS.project));
+    const held=seed.get('assets',IDS.asset);assert.ok(held&&'reference' in held);sourceFingerprint=mediaFingerprintToken(mediaReferenceSchema.parse(held.reference));
     seed.put('assets', {...audio(imageId, IDS.project), mimeType: 'image/png', hasVideo: true, hasAudio: false, duration: 0, sha256: '9'.repeat(64)});
   } finally { seed.close(); }
   // The shared seed already registered this project; fill it only after the
@@ -249,7 +253,7 @@ if(serverMode){
       await stopOwned(((run.child) as unknown as Parameters<typeof stopOwned>[0]));
       if (crashRow) {
         const writer = openProjectDatabase(projectDirFor(dataDir,IDS.project));
-        try { assert.equal(writer.prepare("UPDATE waveform_cache SET status='running',data='{}',reservedBytes=393216 WHERE projectId=? AND sourceSha256=?").run(IDS.project, sha256).changes, 1); }
+        try { assert.equal(writer.prepare("UPDATE waveform_cache SET status='running',data='{}',reservedBytes=393216 WHERE projectId=? AND sourceFingerprint=?").run(IDS.project, sourceFingerprint).changes, 1); }
         finally { writer.close(); }
       }
       return start();
@@ -304,7 +308,7 @@ async function lossProxy(t: test.TestContext, backend: Awaited<ReturnType<typeof
 test('waveform contracts are strict, bounded and validate only safe public responses', () => {
   assert.deepEqual(parse('asset.waveform.request', target), {...target, retry: false});
   assert.deepEqual(parse('asset.waveform.get', target), {...target, sourceStartFrame: 0, points: 512});
-  for (const operation of operations) for (const key of (['sourceSha256', 'path', 'command', 'url', 'requestId', 'token'] as const))
+  for (const operation of operations) for (const key of (['sourceSha256', 'sourceFingerprint', 'path', 'command', 'url', 'requestId', 'token'] as const))
     assert.throws(() => parse(operation, {...target, [key]: 'not-authorized'}), {code: 'VALIDATION_ERROR'});
   for (const patch of ([{sourceStartFrame: -1}, {sourceStartFrame: 18000}, {sourceStartFrame: 0.1}, {sourceEndFrame: 0},
     {sourceEndFrame: 18001}, {sourceStartFrame: 20, sourceEndFrame: 20}, {sourceStartFrame: 20, sourceEndFrame: 19},
@@ -377,7 +381,7 @@ test('waveforms have project-scoped HTTP, real CLI and official MCP parity acros
     for (const operation of operations) {
       for (const input of ([{...target, assetId: missingId}, {...target, assetId: IDS.otherAsset}, {...target, projectId: IDS.other}] as const))
         await all(operation, input, 'NOT_FOUND');
-      for (const key of (['path', 'sourceSha256', 'command', 'requestId'] as const)) await all(operation, {...target, [key]: PRIVATE}, 'VALIDATION_ERROR');
+      for (const key of (['path', 'sourceSha256', 'sourceFingerprint', 'command', 'requestId'] as const)) await all(operation, {...target, [key]: PRIVATE}, 'VALIDATION_ERROR');
       await backend.request(operation, ((target) as unknown as Parameters<typeof backend.request>[1]), 'UNAUTHORIZED', undefined, ((null) as unknown as Parameters<typeof backend.request>[4]));
     }
     for (const patch of ([{points: 2049}, {points: 0}, {sourceStartFrame: 5, sourceEndFrame: 5}, {sourceEndFrame: 18001}] as const))

@@ -1,3 +1,5 @@
+import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import {writeProjectCover} from '../apps/server/src/project-host/covers.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
@@ -160,11 +162,11 @@ async function fixture(t: test.TestContext) {
       mimeType: 'image/png', dataBase64: syntheticPng.toString('base64')});
     // Public service results deliberately omit private managed paths; retain
     // only this fixture-owned row's actual path for exact backup verification.
-    sourceRelativePath = store.get('assets', source.id)!.relativePath;
+    sourceRelativePath = mediaReferenceSchema.parse((store.get('assets', source.id) as unknown as {reference:unknown}).reference).path;
     // Cover preparation is separate from draft work. Match the real imported
     // source so opening this project needs no background renderer; the worker's
     // full wire guard still forbids any media effect during draft requests.
-    writeProjectCover({cacheDir:created.store.cacheDir,source:{assetId:source.id,mimeType:'image/png',sourceSha256:store.get('assets',source.id)!.sha256},
+    writeProjectCover({cacheDir:created.store.cacheDir,source:{assetId:source.id,mimeType:'image/png',sourceFingerprint:mediaFingerprintToken(mediaReferenceSchema.parse((store.get('assets',source.id) as unknown as {reference:unknown}).reference))},
       jpeg:Buffer.from([0xff,0xd8,0xff,0xc0,0,17,8,0,1,0,1,3,1,0x22,0,2,0x11,1,3,0x11,1,0xff,0xda,0,12,3,1,0,2,0x11,3,0x11,0,0x3f,0,0x12,0x34,0xff,0xd9])});
     timeline = await services.call('timeline.get', {projectId: project.id});
     timeline = await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision,

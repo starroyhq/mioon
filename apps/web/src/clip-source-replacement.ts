@@ -111,7 +111,7 @@ function freezeCopy<T>(value: T): T {
   const freeze = (item: unknown): unknown => { if (item && typeof item === 'object') { Object.values(item as Record<string, unknown>).forEach(freeze); Object.freeze(item); } return item; };
   return freeze(copy) as T;
 }
-const metadataKeys = ['id', 'projectId', 'name', 'mimeType', 'duration', 'hasAudio', 'hasVideo', 'width', 'height', 'sha256', 'sizeBytes', 'relativePath', 'url', 'provenance', 'revision', 'createdAt', 'updatedAt'];
+const metadataKeys = ['id', 'projectId', 'name', 'mimeType', 'duration', 'hasAudio', 'hasVideo', 'width', 'height', 'sha256', 'sizeBytes', 'referenceRevision', 'fingerprint', 'provenance', 'revision', 'createdAt', 'updatedAt'];
 const versionKeys = ['id', 'projectId', 'assetId', 'shotId', 'number', 'jobId', 'sha256', 'providerId', 'model', 'createdAt'];
 const sourceSnapshot = (asset: ReplacementAsset): Record<string, unknown> => Object.fromEntries(metadataKeys.filter(key => Object.hasOwn(asset, key)).map(key => [key, asset[key]]));
 const selectedClip = (context: ReplacementContext | null | undefined): ReplacementTimelineClip | undefined => {

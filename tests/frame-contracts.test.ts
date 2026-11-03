@@ -1,10 +1,11 @@
+import {mediaReferenceFixture} from './helpers/media-reference-fixtures.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {FRAME_PROFILE_ID,FRAME_SELECTION_RULE,FRAME_PROFILE,FRAME_LIMITS,FRAME_STATES,FRAME_MUTATION_OPERATIONS,frameSchemas,frameSnapshotSchema,frameReceiptSchema,frameTaskResponseSchema,isFrameTaskResponse,isFrameRequestResponse,isFrameMutationResponse,isFrameListResponse,canonicalFrameInput} from '../packages/contracts/src/frame-extraction.ts';
 const projectId=randomUUID(),taskId=randomUUID(),sourceAssetId=randomUUID(),assetId=randomUUID(),requestId='frame-request-one',sourceHash='a'.repeat(64),at='2026-10-11T00:00:00.000Z';
 const input={projectId,sourceAssetId,sourceHash,sourceFrame:56,requestId};
-const snapshot={schemaVersion:1,projectId,taskId,source:{assetId:sourceAssetId,sha256:sourceHash,mimeType:'video/mp4',sizeBytes:12345,relativePath:`media/${sourceAssetId}.mp4`,duration:3,width:1920,height:1080},requested:{sourceFrame:56,fps:30},profile:FRAME_PROFILE};
+const snapshot={schemaVersion:1,projectId,taskId,source:{assetId:sourceAssetId,sha256:sourceHash,mimeType:'video/mp4',sizeBytes:12345,reference:mediaReferenceFixture(`media/${sourceAssetId}.mp4`,12345,sourceHash),referenceRevision:1,duration:3,width:1920,height:1080},requested:{sourceFrame:56,fps:30},profile:FRAME_PROFILE};
 const task={id:taskId,projectId,requestId,sourceAssetId,sourceHash,sourceFrame:56,fps:30,profileId:FRAME_PROFILE_ID,state:'queued',revision:1,started:false,result:null,errorCode:null,createdAt:at,updatedAt:at};
 const receipt={schemaVersion:1,projectId,taskId,inputHash:'b'.repeat(64),sourceAssetId,sourceHash,sourceFrame:56,fps:30,profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE,assetId,sha256:'c'.repeat(64),mimeType:'image/png',width:1024,height:576,byteLength:100,
  probe:{streamIndex:0,timeBaseNumerator:1,timeBaseDenominator:15360,width:1920,height:1080,rotation:0,sarNumerator:1,sarDenominator:1}};

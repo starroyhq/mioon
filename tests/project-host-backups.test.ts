@@ -13,7 +13,7 @@ import {createProjectBackup} from '../packages/business/src/project-file/backup.
 import type {ProjectHostRuntime} from '../apps/server/src/project-host/host.ts';
 import type {ProjectBackupsOptions} from '../apps/server/src/project-host/backups.ts';
 
-async function setup(t: TestContext, options: Partial<Pick<ProjectBackupsOptions, 'backup' | 'slowMs'>> = {}) {
+async function setup(t: TestContext, options: Partial<Pick<ProjectBackupsOptions, 'backup' | 'slowMs' | 'outsidePaths'>> = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'project-backups-'));
   const directories = serverAppDirectories(root), registry = createMemoryProjectRegistry();
   const warnings: string[] = [];
@@ -175,4 +175,36 @@ test('malformed index and wrong owner backup refuse disclosure/restore and do no
   writeFileSync(file, '{}', {mode: 0o600});
   await assert.rejects(f.backups.list({projectId: id}), {code: 'PROJECT_BACKUP_INDEX_INVALID'});
   assert.equal(f.registry.list().length, 1); assert.equal(existsSync(f.project.projectFile), true);
+});
+
+
+test('restored new project inherits only exact existing directory consent; replay does not regrant revocations',async t=>{
+ const granted=new Map<string,{projectId:string;directory:string;confirmedAt:string}>();
+ const outsidePaths={list:(id:string)=>[...granted.values()].filter(row=>row.projectId===id),confirm:(row:{projectId:string;directory:string;confirmedAt:string})=>{granted.set(row.projectId+'|'+row.directory,row);}};
+ const f=await setup(t,{outsidePaths}),lease=await f.manager.acquire(f.project.projectId,'window');
+ const sourceDir=lease.host.store.projectDir,external=mkdtempSync(path.join(tmpdir(),'old-consent-'));t.after(()=>rmSync(external,{recursive:true,force:true}));
+ outsidePaths.confirm({projectId:f.project.projectId,directory:external,confirmedAt:new Date().toISOString()});
+ lease.release();await f.manager.close(f.project.projectId);
+ const backup=(await f.backups.list({projectId:f.project.projectId})).backups[0]!;
+ const targetDir=mkdtempSync(path.join(tmpdir(),'restored-consent-'));t.after(()=>rmSync(targetDir,{recursive:true,force:true}));
+ const input={projectId:f.project.projectId,backupId:backup.backupId,requestId:randomUUID(),projectFile:path.join(targetDir,'project.mioon')};
+ const restored=await f.backups.restore(input),id=restored.project.projectId;
+ assert.deepEqual(outsidePaths.list(id).map(row=>row.directory).sort(),[sourceDir,external].sort());
+ assert.equal(outsidePaths.list(id).some(row=>row.directory===path.join(sourceDir,'nested')),false);
+ for(const row of outsidePaths.list(id))granted.delete(id+'|'+row.directory);
+ const replay=await f.backups.restore(input);assert.equal(replay.project.projectId,id);assert.deepEqual(outsidePaths.list(id),[]);
+});
+
+
+test('a crash during one-shot consent transfer may omit grants but cannot regrant on retry',async t=>{
+ const grants=new Map<string,{projectId:string;directory:string;confirmedAt:string}>();let source='',attempts=0;
+ const outsidePaths={list:(id:string)=>[...grants.values()].filter(row=>row.projectId===id),confirm:(row:{projectId:string;directory:string;confirmedAt:string})=>{if(row.projectId!==source){attempts++;throw Error('simulated app interruption');}grants.set(row.projectId+'|'+row.directory,row);}};
+ const f=await setup(t,{outsidePaths});source=f.project.projectId;
+ const lease=await f.manager.acquire(source,'window');lease.release();await f.manager.close(source);
+ const saved=(await f.backups.list({projectId:source})).backups[0]!;
+ const target=mkdtempSync(path.join(tmpdir(),'restore-consent-crash-'));t.after(()=>rmSync(target,{recursive:true,force:true}));
+ const input={projectId:source,backupId:saved.backupId,requestId:randomUUID(),projectFile:path.join(target,'project.mioon')};
+ await assert.rejects(f.backups.restore(input),/simulated app interruption/);assert.equal(attempts,1);
+ const restored=await f.backups.restore(input);assert.notEqual(restored.project.projectId,source);
+ assert.equal(attempts,1);assert.deepEqual(outsidePaths.list(restored.project.projectId),[]);
 });

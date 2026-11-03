@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import promises from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID, createHash} from 'node:crypto';
@@ -11,7 +10,7 @@ import {startServer} from '../apps/server/src/index.ts';
 import {createServerProject} from './helpers/project-database.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {serverAppDirectories, projectLocation} from '../apps/server/src/project-host/directories.ts';
-import {openProjectStore} from '../packages/business/src/project-file/index.ts';
+import {openProjectStore,copyProjectBackup} from '../packages/business/src/project-file/index.ts';
 import {openAppDatabase, isAppLibraryHeld} from '../packages/business/src/app-db/connection.ts';
 import {acquireWorkspaceLock} from '../packages/business/src/workspace-lock.ts';
 import type {ProjectBackupRestoreResponse, ProjectBackupSummary} from '../packages/contracts/src/project-backups.ts';
@@ -30,7 +29,8 @@ test('HTTP force-close keeps application library and lock until an accepted back
 
   let appDb!: DatabaseSync;
   let server = await startServer({dataDir: root, port: 0, token});
-  const gate = Promise.withResolvers<void>();
+  const gate = Promise.withResolvers<void>(),entered=Promise.withResolvers<void>();
+  let blocked=false;
   let close: Promise<void> | undefined;
   t.after(async () => {
     gate.resolve(); t.mock.restoreAll(); syncBuiltinESMExports();
@@ -43,24 +43,17 @@ test('HTTP force-close keeps application library and lock until an accepted back
     assert.equal(response.status, 200, JSON.stringify(result)); assert.equal(result.ok, true);
     return result.data;
   };
-  // The normal host hooks make a real private backup containing the managed
+  // The normal host hooks make a real private backup containing the referenced
   // asset. Restart with every project closed before starting app-level recovery.
   await rpc('project.get', {projectId: seed.projectId}, projectRpcPath(seed.projectId));
   await server.close();
-  server = await startServer({dataDir: root, port: 0, token, inspectApplication: inspect => {appDb = inspect(db => db);}});
+  server = await startServer({dataDir: root, port: 0, token, inspectApplication: inspect => {appDb = inspect(db => db);},projectBackupCopyForTest:async options=>{blocked=true;entered.resolve();await gate.promise;return copyProjectBackup(options);}});
   const list = await rpc<{backups: ProjectBackupSummary[]}>('project.backup.list', {projectId: seed.projectId});
   assert.ok(list.backups.length > 0);
   const targetDir = path.join(root, 'projects', 'Restored'); fs.mkdirSync(targetDir, {mode: 0o755});
   const input = {projectId: seed.projectId, backupId: list.backups[0]!.backupId, requestId: randomUUID(), projectFile: path.join(targetDir, 'Restored.mioon')};
-  const entered = Promise.withResolvers<void>(), socketClosed = Promise.withResolvers<void>();
-  const originalOpen = promises.open, originalTimer = globalThis.setTimeout;
-  let blocked = false, forceCalls = 0, closeFinished = false;
-  const serverBudgets: number[] = [];
-  t.mock.method(promises, 'open', async (...args: Parameters<typeof originalOpen>) => {
-    if (String(args[0]) === source && !blocked) {blocked = true; entered.resolve(); await gate.promise;}
-    return originalOpen(...args);
-  });
-  syncBuiltinESMExports();
+  const socketClosed=Promise.withResolvers<void>(),originalTimer=globalThis.setTimeout;
+  let forceCalls=0,closeFinished=false;const serverBudgets:number[]=[];
   t.mock.method(globalThis, 'setTimeout', (...args: Parameters<typeof originalTimer>) => {
     const stack = new Error().stack?.replaceAll('\\', '/') ?? '';
     if (stack.includes('/apps/server/src/index.ts') && args[1] === 3000) {
@@ -70,7 +63,7 @@ test('HTTP force-close keeps application library and lock until an accepted back
     return originalTimer(...args);
   });
   const request = fetch(server.url + '/api/rpc', {method: 'POST', headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'}, body: JSON.stringify({operation: 'project.backup.restore', input})})
-    .then(async response => {await response.arrayBuffer(); throw new Error('The blocked restore must lose its HTTP observer during force-close');}, error => {socketClosed.resolve(); return error as unknown;});
+    .then(async response => {await response.arrayBuffer();throw new Error('The blocked restore must lose its HTTP observer during force-close');}, error => {socketClosed.resolve(); return error as unknown;});
   await entered.promise;
   assert.equal(blocked, true);
   assert.equal(fs.existsSync(input.projectFile), false, 'copy is paused before target publication');
@@ -104,9 +97,9 @@ test('HTTP force-close keeps application library and lock until an accepted back
   const directories = serverAppDirectories(root), store = openProjectStore({projectFile: input.projectFile, locate: id => projectLocation(directories, id)});
   try {
     assert.equal(store.projectId, restored.project.projectId);
-    const asset = store.get('assets', assetId) as {projectId: string; relativePath: string};
+    const asset = store.get('assets', assetId) as {projectId: string; reference:{path:string}};
     assert.equal(asset.projectId, restored.project.projectId);
-    assert.deepEqual(fs.readFileSync(path.join(targetDir, asset.relativePath)), png);
+    assert.deepEqual(fs.readFileSync(path.resolve(targetDir, asset.reference.path)),png);assert.equal(fs.existsSync(path.join(targetDir,'media')),false);
     assert.equal(Number(store.db.prepare('SELECT count(*) AS n FROM main.mio_runs').get()?.n), 0);
   } finally {store.close();}
 });

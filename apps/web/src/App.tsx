@@ -1,3 +1,5 @@
+import {assetMediaPrepareResponseSchema} from '../../../packages/contracts/src/asset-media.ts';
+import type {AssetImportBridge,NativeAssetSelection} from '../../desktop/src/asset-import-preload.ts';
 import { videoBindingCapabilities, parseVideoBinding } from '../../../packages/contracts/src/video-providers.ts';
 import { isRestoredWorkspaceSchemaSince } from '../../../packages/contracts/src/workspace-schema-lineage.ts';
 import VideoProviderSettings from './VideoProviderSettings.tsx';
@@ -220,7 +222,7 @@ import { createPrevisNode } from './previs/previs-create.ts';
 import { previsFrame } from './previs/previs-camera.ts';
 import { rpc as productionRpc, requestId, activeJob, assetUrl, versionUrl } from './api.ts';
 import { importAcknowledged, importBusyFeedback, importFeedback, renderImportFeedback } from './import-feedback.ts';
-import { generationSelection, generationParameters, generationVideoInput, generationProviderForModel, findGenerationProvider, generationProviderIdentity, generationInputIssue, providerAvailabilityIssue, inputModeLabel, inputModeDescriptor, generationInputIssueDescriptor, providerAvailabilityDescriptor, generationReferences, generationReferenceIdentity } from './generation-settings.ts';
+import { generationSelection, generationParameters, generationVideoInput, generationProviderForModel, findGenerationProvider, generationProviderIdentity, generationInputIssue, providerAvailabilityIssue, inputModeLabel, inputModeDescriptor, generationInputIssueDescriptor, providerAvailabilityDescriptor, generationReferences, generationReferenceIdentity, generationMediaReferences, checkGenerationMediaReferences } from './generation-settings.ts';
 import { readGenerationProviderDirectory } from './video-provider-directory.ts';
 import { pendingForProject, prepareSubmission, prepareRequestReplay, readPending, clearPending, reconcilePending, isSubjectRetryPending } from './submissions.ts';
 import { isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse } from './mutation-submissions.ts';
@@ -401,6 +403,7 @@ export interface SettingsConnectionFormsProps {
 }
 declare global {
   interface Window {
+    __mioonAssetImport?:AssetImportBridge;
     __mioonNativeAudioPreview?: unknown;
     __mioonUiPreferences?: {reload?: () => Promise<void> | void; markOpened?: (projectId: string) => Promise<void> | void; [key: string]: unknown};
     __mioonNativeCloseAdmission?: {suppressLifecycleFlush?: (event: Event) => boolean; [key: string]: unknown};
@@ -1401,7 +1404,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (dataRef.current!.jobs.some(j => j.shotId === shot.id && j.status === 'submission_unknown')) { notify(msg('shell.generationBillingUnknown'), 'error'); openTasks(); return false; }
     return true;
   }
-  const submitGeneration = async ({ shot, providerId, model, scenario, inputMode, retryJobId, subjectReference, expectedRetrySnapshot, connectionId, configurationRevision, modelEntryId }: GenerationReviewArgs): Promise<unknown> => {
+  const submitGeneration = async ({ shot, providerId, model, scenario, inputMode, retryJobId, subjectReference, expectedRetrySnapshot, connectionId, configurationRevision, modelEntryId, referenceRevisions }: GenerationReviewArgs): Promise<unknown> => {
     const canRevealTasks = captureTaskWorkspaceIntent(readTaskRevealContext) || (() => false);
     let provider = generationProviderForModel(findGenerationProvider(providers, providerId, connectionId), model || '', modelEntryId);
     if (retryJobId && shot.executionBinding) { try { provider = videoBindingCapabilities(parseVideoBinding(shot.executionBinding)); } catch { notify(msg('shell.error.retrySnapshotChanged'), 'warning'); return; } }
@@ -1413,7 +1416,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       return run(`retry:${retryJobId}`, 'job.retry', { jobId: retryJobId, requestId: requestId() }, msg('shell.retryCreated'), { subjectRetry: true, expectedSubjectReference: retrySnapshot.subjectReference, expectedRetrySnapshot });
     }
     if (retryJobId) return run(`retry:${retryJobId}`, 'job.retry', { jobId: retryJobId, requestId: requestId() }, msg('shell.retryCreated'));
-    const result = await run(`generate:${shot.id}`, 'generation.submit', { shotId: shot.id, expectedRevision: shot.revision, requestId: requestId(), providerId, ...(connectionId ? { connectionId, configurationRevision, modelEntryId, parameters: shot.parameters } : {}), ...(model ? { model } : {}), ...(providerId === 'mock' ? { parameters: { scenario } } : {}), ...(shot.videoInput ? { videoInput: shot.videoInput } : {}), ...(subjectReference ? { subjectVersionId: subjectReference.subjectVersionId } : {}) }, undefined, subjectReference ? { expectedSubjectReference: subjectReference } : {});
+    const result = await run(`generate:${shot.id}`, 'generation.submit', { ...(referenceRevisions?{referenceRevisions}:{}),shotId: shot.id, expectedRevision: shot.revision, requestId: requestId(), providerId, ...(connectionId ? { connectionId, configurationRevision, modelEntryId, parameters: shot.parameters } : {}), ...(model ? { model } : {}), ...(providerId === 'mock' ? { parameters: { scenario } } : {}), ...(shot.videoInput ? { videoInput: shot.videoInput } : {}), ...(subjectReference ? { subjectVersionId: subjectReference.subjectVersionId } : {}) }, undefined, subjectReference ? { expectedSubjectReference: subjectReference } : {});
     if (result) { const submitted = result as {status?: string}; notify(submitted.status === 'submission_unknown' ? msg('shell.generationUnconfirmed') : msg('shell.generationSubmitted'), submitted.status === 'submission_unknown' ? 'warning' : 'success'); openTasks(canRevealTasks); }
   };
   function generate(shot: AppShot, options: GenerationOptionState = generationOptionsRef.current[shot.id] || {}): void {
@@ -1441,17 +1444,28 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const args = { shot, providerId: job.providerId, ...retryConnection, model: job.model, inputMode, retryJobId: job.id, ...(job.snapshot!.subjectReference ? { expectedRetrySnapshot: structuredClone(job.snapshot) } : {}) };
     if (!provider!.mock) reviewGeneration(args as unknown as GenerationReviewArgs, stillCurrent); else submitGeneration(args as unknown as GenerationReviewArgs);
   }
-  function reviewGeneration(args: GenerationReviewArgs, taskViewGuard?: () => boolean): void {
+  async function reviewGeneration(args: GenerationReviewArgs, taskViewGuard?: () => boolean): Promise<void> {
     const frozen = Boolean(args.retryJobId);
     const referenceOptions = { frozen, subjectReference: args.subjectReference };
+    const captured=context(),view=generationReviewScope.current,identity=generationReferenceIdentity(args.shot,dataRef.current!.assets,referenceOptions);
+    try { await checkGenerationMediaReferences({...args.shot,projectId:args.shot.projectId??captured.projectId??undefined},dataRef.current!.assets,referenceOptions,input=>rpc('asset.media.status.list',input)); }
+    catch(error){if(isCurrent(captured))notify(readableError(error),'error');return;}
+    if(!isCurrent(captured)||generationReviewScope.current!==view||taskViewGuard&&!taskViewGuard()||identity!==generationReferenceIdentity(args.shot,dataRef.current!.assets,referenceOptions))return;
     const review = { ...structuredClone(args), ...(taskViewGuard ? { taskViewGuard } : {}), ...(args.subjectReference || args.shot.subjectReference ? { subjectProviderIdentity: (subjectVideoProfileIdentity as unknown as (provider: unknown, model: unknown) => unknown)(generationProviderForModel(findGenerationProvider(providers, args.providerId, args.connectionId), args.model || '', args.modelEntryId), args.model) } : {}), approvalContext: context(), approvalView: generationReviewScope.current,
       referenceIdentity: generationReferenceIdentity(args.shot, dataRef.current!.assets, referenceOptions),
+      referenceRevisions:generationMediaReferences(args.shot,referenceOptions).map(reference=>{
+        const asset=dataRef.current!.assets.find(asset=>asset.id===reference.assetId)!;
+        return {assetId:asset.id,referenceRevision:asset.referenceRevision,sha256:asset.sha256};
+      }),
       // Keep reviewed thumbnail labels/metadata stable while the modal is open.
       referenceAssets: structuredClone(dataRef.current!.assets.filter(asset => generationReferences(args.shot, referenceOptions).references.some(reference => reference.assetId === asset.id) || args.shot.videoInput?.audios?.some(audio => audio.assetId === asset.id))) };
     realConfirmRef.current = review; setRealConfirm(review);
   }
-  function confirmGeneration(args: GenerationReviewArgs): void {
+  async function confirmGeneration(args: GenerationReviewArgs): Promise<void> {
     if (realConfirmRef.current !== args) return;
+    try {await checkGenerationMediaReferences({...args.shot,projectId:args.shot.projectId??currentProject.current??undefined},dataRef.current!.assets,{frozen:Boolean(args.retryJobId),subjectReference:args.subjectReference},input=>rpc('asset.media.status.list',input));}
+    catch(error){notify(readableError(error),'error');return;}
+    if(realConfirmRef.current!==args)return;
     realConfirmRef.current = null; setRealConfirm(null);
     const frozen = Boolean(args.retryJobId);
     const currentShot = dataRef.current!.shots.find(shot => shot.id === args.shot.id);
@@ -1660,13 +1674,20 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return { status: 'undone' };
   }
   async function importFiles(files?: FileList | File[]): Promise<void> {
-    if (!importSession.current.active || !files?.length) return;
+    if (!importSession.current.active || (!files?.length && !window.__mioonAssetImport)) return;
     const selection = ++importSession.current.selection;
     ++requestCounter.current; // Invalidate an older batch's pending refresh.
     if (!data.project) return setShowCreate(true);
     const projectId = data.project.id;
     if (projectId !== currentProject.current || dataRef.current!.project?.id !== projectId) return;
-    const batch = Array.from(files), inputElement = fileInput.current;
+    const nativeBridge=nativeWindow?window.__mioonAssetImport:undefined;
+    let nativeSelections:NativeAssetSelection[]|undefined;
+    if(nativeBridge){
+      try {nativeSelections=files?.length?await nativeBridge.files(Array.from(files)):await nativeBridge.choose();}
+      catch(error){notify(readableError(error),'error');return;}
+      if(!nativeSelections.length||projectId!==currentProject.current||selection!==importSession.current.selection)return;
+    }
+    const batch = nativeSelections??Array.from(files??[]), inputElement = fileInput.current;
     if (isBusy('import')) {
       notify(importBusyFeedback(batch), 'warning');
       if (inputElement === fileInput.current && inputElement) inputElement.value = '';
@@ -1681,6 +1702,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       for (const file of batch) {
         if (!ownsSelection()) return;
         dispatched = false;
+        if(nativeBridge && 'token' in file){
+          if(nativeWindow)nativeImport=editorInputs.current!.beginImport(projectId);
+          const key=requestId();dispatched=true;
+          const asset=await nativeBridge.import(file.token,key);
+          if(!importAcknowledged(asset,{projectId,name:file.name}))throw localizedError(msg('shell.error.importAcknowledgement'));
+          editorInputs.current!.finishImport(nativeImport,false);nativeImport=null;done++;continue;
+        }
+        if(!('type' in file))throw localizedError(msg('shell.error.fileAccess'));
         if (!['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/webm', 'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a'].includes(file.type)) throw localizedError(msg('assets.unsupportedImport'));
         if (file.size > 30 * 1024 * 1024) throw localizedError(msg('assets.importTooLarge'));
         const base64 = await new Promise((resolve, reject) => {
@@ -1692,7 +1721,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
           };
           reader.onerror = () => reject(localizedError(msg('shell.error.fileAccess')));
           reader.onabort = () => reject(localizedError(msg('shell.error.fileAborted')));
-          reader.readAsDataURL(file);
+          reader.readAsDataURL(file as File);
         });
         if (!ownsSelection()) return;
         const input = { projectId, name: file.name, mimeType: ({ 'audio/x-wav': 'audio/wav', 'audio/x-m4a': 'audio/mp4' }[file.type] || file.type), dataBase64: base64 };
@@ -2280,7 +2309,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const panelChoice = panelIntent.current;
     if (dropSnapshot && dropSnapshot.projectId !== currentProject.current) return;
     if (!await guardNavigation(msg('shell.confirm.addTimeline'))) return;
-    const state = dataRef.current, asset = state.assets.find(a => a.id === assetId), tl = state.timeline;
+    let asset=dataRef.current.assets.find(a=>a.id===assetId);
+    if(asset?.sha256===null){asset=await prepareStrongAsset(asset,'timeline')??undefined;if(!asset)return;}
+    const state=dataRef.current,tl=state.timeline;
     if (!asset || !tl) return;
     const kind = assetKind(asset) === 'audio' ? 'audio' : 'video';
     const track = tl.tracks.find(t => t.id === trackId) || (!trackId && tl.tracks.find(t => t.kind === kind));
@@ -2347,7 +2378,23 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (viewRef.current?.editing.selectedClipId === clipId) updateView('editing', { timelineCollapsed: false });
   }
   // Shot detection. The dialog belongs to one project and video; splitting uses the ordinary timeline mutation path.
-  function openSceneDetection(asset: AppAsset, autoStart: boolean): void {
+  async function prepareStrongAsset(asset:AppAsset,purpose:'frame'|'scene'|'timeline'):Promise<AppAsset|null> {
+    if(typeof asset.sha256==='string'&&(/^[a-f0-9]{64}$/u).test(asset.sha256))return asset;
+    const captured=context(),revision=asset.referenceRevision;
+    if(asset.sha256!==null||!Number.isSafeInteger(revision)||Number(revision)<1||asset.projectId!==captured.projectId)return null;
+    try{
+      const response=assetMediaPrepareResponseSchema.parse(await rpc('asset.media.prepare',{projectId:asset.projectId,assets:[{assetId:asset.id,referenceRevision:revision}],purpose}));
+      if(!isCurrent(captured)||response.assets.length!==1)return null;
+      const prepared=response.assets[0];
+      if(prepared.id!==asset.id||prepared.projectId!==asset.projectId||typeof prepared.sha256!=='string')return null;
+      await refresh(asset.projectId);
+      if(!isCurrent(captured))return null;
+      const fresh=dataRef.current!.assets.find(item=>item.id===prepared.id&&item.projectId===prepared.projectId);
+      return fresh&&fresh.sha256===prepared.sha256&&fresh.referenceRevision===prepared.referenceRevision?fresh:null;
+    }catch(error){if(isCurrent(captured))notify(readableError(error),'error');return null;}
+  }
+  async function openSceneDetection(asset: AppAsset, autoStart: boolean): Promise<void> {
+    if(asset.sha256===null){const prepared=await prepareStrongAsset(asset,'scene');if(!prepared)return;asset=prepared;}
     const projectId = currentProject.current;
     if (!scenesSupported || !projectId || asset.projectId !== projectId) return;
     setShowTasks(false);
@@ -2520,6 +2567,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (result) { const matchingDelivery = !deliveryCapture || deliveryNameRef.current?.controller.acknowledge(deliveryCapture, result); if (purpose === 'preview') { updateView('activeMode', 'editing'); setPreviewKind('timeline'); } else if (!sample && matchingDelivery && deliveryPanelChoice === panelIntent.current && deliveryProjectId === currentProject.current && deliveryRangeVersion === exportCheckContext().rangeVersion) { setDeliveryAttempt({ projectId: deliveryProjectId as string, id: result.id as string }); setShowExports(false); return; } if (purpose !== 'preview' && !sample) notify(msg('shell.timelineExportStarted')); }
   }
   async function previewSource(asset: AppAsset): Promise<void> {
+    if(asset.sha256===null&&['video/mp4','video/webm'].includes(asset.mimeType)){const prepared=await prepareStrongAsset(asset,'frame');if(!prepared)return;asset=prepared;}
     const owner = context();
     if (viewRef.current!.activeMode === 'canvas') {
       const choice = panelIntent.current;
@@ -2639,6 +2687,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     visible: workbenchReady && workspaceMode === 'editing' && Boolean(quickAssetId && rangeAsset) && (panelVisible('canvas') || panelVisible('inspector') && rightDockTab === 'properties'),
     blocked: restored || sourceRangeBlocked || Object.values(busy).some(Boolean), rpc: rpc as never, createRequestId: requestId,
     onResult: (projectId: string) => { if (currentProject.current === projectId) void refresh(projectId); }, revealAsset: revealImageAsset });
+
+  // A sampled video stays a normal preview source; only the active frame
+  // workspace asks for its strong snapshot, then refreshes the public DTO.
+  useEffect(()=>{
+    if(!workbenchReady||workspaceMode!=='editing'||!quickAssetId||!rangeAsset||rangeAsset.sha256!==null||restored)return;
+    void prepareStrongAsset(rangeAsset,'frame');
+  },[workbenchReady,workspaceMode,quickAssetId,rangeAsset?.id,rangeAsset?.sha256,rangeAsset?.referenceRevision,restored]);
 
   // Shot detection: one controller for the dialog, the inspector summaries and the task views. A detection that
   // ends while its own dialog is closed is announced; an open dialog shows the outcome itself.
@@ -2956,7 +3011,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       { id: 'subjects', label: t('subjects.subjects'), icon: 'subjects', selected: libraryTab === 'subjects', onClick: () => showCompactLibrary('subjects'), focusSelector: '[data-testid=library-subjects-tab]' },
     ]} bottomAction={{ id: 'import', label: t('assets.importLocal'), icon: 'import', disabled: Boolean(busy.import), onClick: () => { if (!clipDraftRef.current?.hasPendingComposition() && !busy.import) fileInput.current?.click(); } }} />)}
     <PanelBoundary name="assets" className={panelOverlay === 'assets' ? 'panel-overlay' : ''} visible={panelVisible('assets')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('assets')}>
-    <AssetLibrary activeTab={libraryTab} onTabChange={setLibraryTab} annotations={annotations} annotationBlocked={annotationBlocked} restored={restored} confirm={confirm} timelineUsage={timelineUsage as never} onLocateTimelineUse={locateAssetUse} subjects={subjects as never} subjectBlocked={subjectBlocked} onInspectShot={id => inspect(id, 'settings', null, { reveal: true })} onInspectSubject={id => { void inspectSubject(id); }} inspectedSubjectId={subjectFocusActive && subjectFocus ? subjectFocus.subjectId : null} onShowTasks={() => openTasks()} dispositions={dispositions as never} dispositionBlocked={dispositionBlocked} selectedAsset={librarySource} inUseAssetIds={inUseAssetIds as Set<string>} mode={workspaceMode} versions={data.versions} shots={data.shots} assets={data.assets} filter={assetFilter} onFilter={setAssetFilter} search={assetSearch} onSearch={setAssetSearch} onImport={() => data.project ? fileInput.current?.click() : setShowCreate(true)} onFiles={importFiles} onPreview={previewSource} onCanvas={addNode} onTimeline={addTimelineAsset} onDetectScenes={scenesSupported ? asset => openSceneDetection(asset, true) : undefined} busy={{ ...busy, timeline: timelineBusy }} collapsed={assetsCollapsed && panelOverlay !== 'assets'} onCollapse={() => panelOverlay === 'assets' ? setPanelOverlay(null) : setAssetsCollapsed(true)} project={data.project} />
+    <AssetLibrary activeTab={libraryTab} onTabChange={setLibraryTab} annotations={annotations} annotationBlocked={annotationBlocked} restored={restored} confirm={confirm} timelineUsage={timelineUsage as never} onLocateTimelineUse={locateAssetUse} subjects={subjects as never} subjectBlocked={subjectBlocked} onInspectShot={id => inspect(id, 'settings', null, { reveal: true })} onInspectSubject={id => { void inspectSubject(id); }} inspectedSubjectId={subjectFocusActive && subjectFocus ? subjectFocus.subjectId : null} onShowTasks={() => openTasks()} dispositions={dispositions as never} dispositionBlocked={dispositionBlocked} selectedAsset={librarySource} inUseAssetIds={inUseAssetIds as Set<string>} mode={workspaceMode} versions={data.versions} shots={data.shots} assets={data.assets} filter={assetFilter} onFilter={setAssetFilter} search={assetSearch} onSearch={setAssetSearch} onImport={() => data.project ? nativeWindow&&window.__mioonAssetImport ? void importFiles() : fileInput.current?.click() : setShowCreate(true)} onFiles={importFiles} onPreview={previewSource} onCanvas={addNode} onTimeline={addTimelineAsset} onDetectScenes={scenesSupported ? asset => openSceneDetection(asset, true) : undefined} busy={{ ...busy, timeline: timelineBusy }} collapsed={assetsCollapsed && panelOverlay !== 'assets'} onCollapse={() => panelOverlay === 'assets' ? setPanelOverlay(null) : setAssetsCollapsed(true)} project={data.project} />
     {panelOverlay === 'assets' && <div className="panel-overlay-tools"><Button variant="ghost" className="icon-button" data-testid="pin-assets" aria-label={t('redesign.shell.pin')} title={t('redesign.shell.pin')} onClick={() => setPanelOpen('assets', true)}><Icon name="lock" size={15} /></Button><Button variant="ghost" className="icon-button" aria-label={t('common.close')} onClick={() => setPanelOverlay(null)}><Icon name="close" size={15} /></Button></div>}
     {resizeHandle('assets', 'assetsWidth')}</PanelBoundary>
     <PanelBoundary name="canvas" visible={panelVisible('canvas')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus="[data-testid=mobile-panel-canvas]">
@@ -2966,7 +3021,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       {(!data.project || !nodes.length) && !loading && <CanvasEmptyState hasProject={Boolean(data.project)} onAddShot={addShot} onCreateProject={() => setShowCreate(true)} onCreateStructure={addStructure} structureBusy={Boolean(busy.structure)} onImportReference={() => fileInput.current?.click()} onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }} />}
       {loading && <div className="canvas-loading"><span className="spinner" />{t('projects.opening')}</div>}
       <div className="canvas-controls"><WorkbenchTooltip content={t('shell.zoomOutCanvas')}><Button variant="ghost" className="icon-button" aria-label={t('shell.zoomOut')} onClick={() => flow.zoomOut({ duration: 150 })}><Icon name="minus" size={16} /></Button></WorkbenchTooltip><span>{zoom}%</span><WorkbenchTooltip content={t('shell.zoomInCanvas')}><Button variant="ghost" className="icon-button" aria-label={t('shell.zoomIn')} onClick={() => flow.zoomIn({ duration: 150 })}><Icon name="plus" size={16} /></Button></WorkbenchTooltip><i /><WorkbenchTooltip content={t('shell.fitCanvasHint')}><Button variant="ghost" className="icon-button" aria-label={t('shell.fitCanvas')} data-testid="fit-canvas" onClick={() => flow.fitView({ padding: flowFitPadding(canvasFitPadding(0.18)), duration: 350, maxZoom: 1 })}><Icon name="zoom" size={16} /></Button></WorkbenchTooltip><Button variant="ghost" className={`icon-button ${miniMap ? 'active' : ''}`} aria-label={t('shell.showMinimap')} aria-pressed={miniMap} onClick={() => setMiniMap(!miniMap)}><Icon name="grid" size={16} /></Button></div><div className="canvas-hint"><Icon name="link" size={12} />{t('shell.canvasInteractionHint')}</div>
-      </div> : <div className="preview-tab-panel">{restored && <p className="helper muted" role="status">{t('shell.restoredFrameUnavailable')}</p>}<Preview onRegisterMenuPlayback={registerMenuPlayback} onMenuStateChange={refreshMenuState} onBeforePlay={beforeMainPreviewPlay} audioPreview={audioPreview} onRegisterMediaPause={registerNativePreviewPause} key={data.project?.id || 'empty'} visible={panelVisible('canvas')} kind={previewKind} onKind={(kind: string) => { navigationEpoch.current++; setPreviewKind(kind); }} asset={sourceAsset} clip={quickAssetId ? null : chosenClip} timeline={timeline} job={previewJob as never} pendingJob={latestRender as never} playhead={playhead} onSeek={setPlayhead} sourceScope={sourceRangeScope} sourcePosition={sourceRanges.state?.position ?? 0} sourceSeek={sourceRanges.state?.seek} onSourcePosition={(frame: number, scope?: string | null) => (sourceRanges.controller as unknown as {position(frame: number, scope?: string | null): void}).position(frame, scope)} onCaptureFrame={((() => (frameExtraction.controller as unknown as {capture(): unknown}).capture()) as never)} captureBusy={frameCaptureBusy(frameExtraction.state)} onDetectScenes={!scenesSupported || !sourceAsset ? undefined : () => { if (sourceAsset) openSceneDetection(sourceAsset as AppAsset, true); }} sceneDetectIssue={sourceAsset ? sceneSourceIssueMessage(sourceAsset as never) : null} onRender={renderTimeline} busy={Boolean(busy['timeline:render:preview'])} onCanvas={() => changeMode('canvas')} onImport={() => data.project ? fileInput.current?.click() : setShowCreate(true)} canSeed={Boolean(sortedShots.length && selectedCount === sortedShots.length)} seedBusy={timelineBusy} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} transformBox={clipTransformBox()} /></div>}</div>
+      </div> : <div className="preview-tab-panel">{restored && <p className="helper muted" role="status">{t('shell.restoredFrameUnavailable')}</p>}<Preview onRegisterMenuPlayback={registerMenuPlayback} onMenuStateChange={refreshMenuState} onBeforePlay={beforeMainPreviewPlay} audioPreview={audioPreview} onRegisterMediaPause={registerNativePreviewPause} key={data.project?.id || 'empty'} visible={panelVisible('canvas')} kind={previewKind} onKind={(kind: string) => { navigationEpoch.current++; setPreviewKind(kind); }} asset={sourceAsset} clip={quickAssetId ? null : chosenClip} timeline={timeline} job={previewJob as never} pendingJob={latestRender as never} playhead={playhead} onSeek={setPlayhead} sourceScope={sourceRangeScope} sourcePosition={sourceRanges.state?.position ?? 0} sourceSeek={sourceRanges.state?.seek} onSourcePosition={(frame: number, scope?: string | null) => (sourceRanges.controller as unknown as {position(frame: number, scope?: string | null): void}).position(frame, scope)} onCaptureFrame={((() => (frameExtraction.controller as unknown as {capture(): unknown}).capture()) as never)} captureBusy={frameCaptureBusy(frameExtraction.state)} onDetectScenes={!scenesSupported || !sourceAsset ? undefined : () => { if (sourceAsset) openSceneDetection(sourceAsset as AppAsset, true); }} sceneDetectIssue={sourceAsset ? sceneSourceIssueMessage(sourceAsset as never) : null} onRender={renderTimeline} busy={Boolean(busy['timeline:render:preview'])} onCanvas={() => changeMode('canvas')} onImport={() => data.project ? nativeWindow&&window.__mioonAssetImport ? void importFiles() : fileInput.current?.click() : setShowCreate(true)} canSeed={Boolean(sortedShots.length && selectedCount === sortedShots.length)} seedBusy={timelineBusy} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} transformBox={clipTransformBox()} /></div>}</div>
     {workspaceMode === 'canvas' && <StoryboardStrip scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} open={sequenceOpen} onOpenChange={setSequenceOpen} shots={sortedShots as never[]} versions={data.versions} selectedId={selectedId || null} reordering={Boolean(busy.reorder)} assetDragType={ASSET_DRAG} onSelect={async shotId => { if (!await inspect(shotId)) return; flow.fitView({ nodes: [{ id: shotId }], padding: flowFitPadding(canvasFitPadding(.1)), duration: 250, maxZoom: 1 }); }} onReorder={reorder} onAddShot={addShot} timelineStatuses={shotStatuses} append={timeline ? { count: appendCandidates.length, disabledReason: bridgeUnavailable, busy: timelineBusy, onAppend: () => { void appendShotsToTimeline(); } } : undefined} onViewInEditing={shotId => { void viewShotInEditing(shotId); }} renderThumbnail={shot => <Media version={data.versions.find(version => version.id === shot.selectedVersionId)} asset={data.assets.find(asset => asset.id === (shot as {referenceAssetIds?: string[]}).referenceAssetIds?.[0])} />} />}
     {storyboardToast && storyboardToast.projectId === data.project?.id && <StoryboardToast key={storyboardToast.taskId} count={storyboardToast.count} placement={workspaceMode} canView={!storyboardSummary || storyboardBatch?.taskId !== storyboardToast.taskId} undoDisabled={toastBlocked}
       onView={() => { void showStoryboard(storyboardToast.taskId); }} onUndo={() => { void undoStoryboard(storyboardToast.taskId); }} onClose={() => setStoryboardToast(null)} />}

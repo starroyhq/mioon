@@ -1,3 +1,4 @@
+import {mediaReferenceFixture} from './helpers/media-reference-fixtures.ts';
 import type {TypedSubjectServices,TypedSubjectBoundary,TypedOwnedGraph} from './helpers/strict-timeline-audio-factory-types.ts';
 import type {TypedInspection} from './helpers/strict-service-responses.ts';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
@@ -19,25 +20,25 @@ const budget=(error: unknown)=>(error as Failure).code==='INSPECTION_BUDGET_EXCE
 const graph=(f: ReturnType<typeof accept>)=>(createOwnedMediaGraphReader(f.db,f.projectId) as TypedOwnedGraph);
 const hash=(value: unknown)=>createHash('sha256').update(canonical(value)).digest('hex');
 function tx<T>(db:DatabaseSync,fn:()=>T){db.exec('BEGIN IMMEDIATE');try{const value=fn();db.exec('COMMIT');return value;}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}}
-function changeAsset(f: ReturnType<typeof accept>,asset:{id:string;[key:string]:unknown},patch:Record<string,unknown>){f.db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify({...asset,...patch}),asset.id);}
+function changeAsset(f: ReturnType<typeof accept>,asset:{id:string;[key:string]:unknown},patch:Record<string,unknown>){const changed={...patch};if(typeof changed.relativePath==='string'){changed.reference={...(asset.reference as object),pathForm:'absolute',path:changed.relativePath};delete changed.relativePath;}f.db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify({...asset,...changed}),asset.id);}
 function corrupt(f: ReturnType<typeof accept>){
  f.db.exec('PRAGMA foreign_keys=OFF;PRAGMA ignore_check_constraints=ON');
  for(const {name} of f.db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND (tbl_name LIKE 'frame_%' OR name LIKE '%frame_asset_owner')").all())f.db.exec(`DROP TRIGGER ${name}`);
 }
 function sourceAsset(f: Pick<ReturnType<typeof imageFixture>,"db"|"projectId"|"otherProjectId">,patch={}){
- const id=randomUUID(),source={id,projectId:f.projectId,name:'Source.mp4',mimeType:'video/mp4',sha256:'a'.repeat(64),relativePath:`media/${id}.mp4`,sizeBytes:128,duration:3,width:1920,height:1080,hasVideo:true,hasAudio:true,provenance:'user-import',createdAt:at,...patch};
+ const id=randomUUID(),source={id,projectId:f.projectId,name:'Source.mp4',mimeType:'video/mp4',sha256:'a'.repeat(64),reference:mediaReferenceFixture(`media/${id}.mp4`,128,'a'.repeat(64)),referenceRevision:1,sizeBytes:128,duration:3,width:1920,height:1080,hasVideo:true,hasAudio:true,provenance:'user-import',createdAt:at,...patch};
  insert(f.db,'assets',{id,projectId:f.projectId,data:JSON.stringify(source)});return source;
 }
 function accept(f: Pick<ReturnType<typeof imageFixture>,"db"|"projectId"|"otherProjectId">,source=sourceAsset(f)){
  const {db,projectId}=f,taskId=randomUUID(),requestId=randomUUID(),assetId=randomUUID();
  const input={projectId,sourceAssetId:source.id,sourceHash:source.sha256,sourceFrame:56,requestId},inputHash=hash(input);
- const snapshot={schemaVersion:1,projectId,taskId,source:{assetId:source.id,sha256:source.sha256,mimeType:source.mimeType,sizeBytes:source.sizeBytes,relativePath:source.relativePath,duration:source.duration,width:source.width,height:source.height},requested:{sourceFrame:56,fps:30},profile:FRAME_PROFILE};
+ const snapshot={schemaVersion:1,projectId,taskId,source:{assetId:source.id,sha256:source.sha256,mimeType:source.mimeType,sizeBytes:source.sizeBytes,reference:source.reference,referenceRevision:source.referenceRevision,duration:source.duration,width:source.width,height:source.height},requested:{sourceFrame:56,fps:30},profile:FRAME_PROFILE};
  const receipt={schemaVersion:1,projectId,taskId,inputHash,sourceAssetId:source.id,sourceHash:source.sha256,sourceFrame:56,fps:30,profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE,
   assetId,sha256:'b'.repeat(64),mimeType:'image/png',width:1024,height:576,byteLength:100,probe:{streamIndex:0,timeBaseNumerator:1,timeBaseDenominator:15360,width:1920,height:1080,rotation:0,sarNumerator:1,sarDenominator:1}};
  const ack={id:taskId,projectId,requestId,sourceAssetId:source.id,sourceHash:source.sha256,sourceFrame:56,fps:30,profileId:FRAME_PROFILE_ID,state:'queued',revision:1,started:false,result:null,errorCode:null,createdAt:at,updatedAt:at};
  const row={id:taskId,projectId,requestId,inputHash,input:canonical(input),snapshot:canonical(snapshot),state:'queued',revision:1,started:0,stagedReceipt:null,assetId:null,errorCode:null,createdAt:at,updatedAt:at};
  const request={requestId,operation:'frame.extract',projectId,taskId,inputHash,canonicalInput:canonical(input),response:canonical(ack)};
- const asset={id:assetId,projectId,name:'Frame.png',sha256:receipt.sha256,mimeType:'image/png',provenance:'extracted-frame',relativePath:`media/${assetId}.png`,width:1024,height:576,sizeBytes:100,createdAt:at};
+ const asset={id:assetId,projectId,name:'Frame.png',sha256:receipt.sha256,mimeType:'image/png',provenance:'extracted-frame',reference:mediaReferenceFixture(`media/${assetId}.png`,100,receipt.sha256),referenceRevision:1,width:1024,height:576,sizeBytes:100,createdAt:at};
  tx(db,()=>{insert(db,'frame_tasks',row);insert(db,'frame_requests',request);});
  const start=()=>db.prepare("UPDATE frame_tasks SET state='running',started=1,revision=2 WHERE id=?").run(taskId);
  const stage=()=>db.prepare("UPDATE frame_tasks SET state='persisting',revision=3,stagedReceipt=? WHERE id=?").run(canonical(receipt),taskId);
@@ -183,7 +184,7 @@ test('legacy valid shot-reference cycles and frame-source shot cycles remain sup
 
 test('a frame PNG cannot become a video source by corrupting its metadata or task snapshot',t=>{
  const f=fixture(t);f.succeed();const other=accept(f);other.succeed();corrupt(f);
- const input={...other.input,sourceAssetId:f.assetId,sourceHash:f.asset.sha256},inputHash=hash(input),snapshot={...other.snapshot,source:{...other.snapshot.source,assetId:f.assetId,sha256:f.asset.sha256,relativePath:f.asset.relativePath}};
+ const input={...other.input,sourceAssetId:f.assetId,sourceHash:f.asset.sha256},inputHash=hash(input),snapshot={...other.snapshot,source:{...other.snapshot.source,assetId:f.assetId,sha256:f.asset.sha256,reference:f.asset.reference,referenceRevision:f.asset.referenceRevision}};
  f.db.prepare('UPDATE frame_tasks SET input=?,inputHash=?,snapshot=?,stagedReceipt=? WHERE id=?').run(canonical(input),inputHash,canonical(snapshot),canonical({...other.receipt,inputHash,sourceAssetId:f.assetId,sourceHash:f.asset.sha256}),other.taskId);
  f.db.prepare('UPDATE frame_requests SET canonicalInput=?,inputHash=?,response=? WHERE requestId=?').run(canonical(input),inputHash,canonical({...other.ack,sourceAssetId:f.assetId,sourceHash:f.asset.sha256}),other.requestId);
  changeAsset(f,f.asset,{mimeType:'video/mp4',provenance:'user-import'});assert.throws(()=>graph(f).asset(other.assetId),unavailable);

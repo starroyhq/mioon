@@ -1,6 +1,6 @@
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {constants,openSync,fstatSync,fsyncSync,closeSync} from 'node:fs';
+import {constants,lstatSync,openSync,fstatSync,fsyncSync,closeSync} from 'node:fs';
 import {ensurePrivateDirectory,validateManagedDirectory,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';
 import {FRAME_LIMITS,SCENE_LIMITS} from '@mioon/contracts';
 import {storeDirectories} from './store-layout.ts';
@@ -33,12 +33,12 @@ export function createSceneShotsStorage(store: {readonly root: string}): SceneSh
  const writeMedia=(file:string,bytes:Buffer,options:Omit<import('@mioon/contracts/private-storage').WritePrivateFileOptions,'root'>):void=>{if(isProjectStore(store))writeProjectMediaFileAtomic(store,relative(file),bytes,options);else writePrivateFileAtomic(file,bytes,{root,...options});};
  const removeMedia=(file:string,options:Omit<import('@mioon/contracts/private-storage').RemovePrivateFileOptions,'root'>):void=>{if(isProjectStore(store))removeProjectMediaFile(store,relative(file),options);else removePrivateFile(file,{root,...options});};
  function syncDirectory(value: string,ownerRoot=mediaRoot): void {
-  const before=validateManagedDirectory(value,{root:ownerRoot});let fd;
+  const ordinary=isProjectStore(store)&&ownerRoot===mediaRoot;const before=ordinary?lstatSync(value):validateManagedDirectory(value,{root:ownerRoot});let fd;
   try{
    if(!before)throw failure();
    fd=openSync(value,constants.O_RDONLY|constants.O_NOFOLLOW);const opened=fstatSync(fd);
    if(!opened.isDirectory()||before.dev!==opened.dev||before.ino!==opened.ino)throw failure();
-   fsyncSync(fd);const after=validateManagedDirectory(value,{root:ownerRoot});if(!after||after.dev!==opened.dev||after.ino!==opened.ino)throw failure();
+   fsyncSync(fd);const after=ordinary?lstatSync(value):validateManagedDirectory(value,{root:ownerRoot});if(!after||after.dev!==opened.dev||after.ino!==opened.ino)throw failure();
   }finally{if(fd!==undefined)closeSync(fd);}
  }
  function stagePath(taskId: string,index: number): string {

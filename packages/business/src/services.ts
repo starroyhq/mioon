@@ -3,7 +3,12 @@ import {createWorkspaceConfiguration} from './workspace-configuration.ts';
 import {isProjectStore} from './project-file/store.ts';
 import {mutateProjectRecord} from './project-record-mutations.ts';
 import {testProjectServiceApplication} from './project-service-application.ts';
-import {registerProjectMediaStore} from './project-media-storage.ts';
+import {registerProjectMediaStore, registeredProjectAssetReferences} from './project-media-storage.ts';
+import {createAssetMediaServices} from './asset-media-services.ts';
+import {isS1PublicOperation,s1PublicOperationSchemas} from '../../contracts/src/asset-generation.ts';
+import {mediaUnavailableError} from '../../contracts/src/media-reference-errors.ts';
+import {isAssetMediaOperation, assetMediaEffects} from '../../contracts/src/asset-media.ts';
+import type {OutsidePathConfirmationStore} from './app-db/stores.ts';
 import {hasStoreTable} from './store-layout.ts';
 import {createWorkspaceBackupRuntime} from './workspace-backup-runtime.ts';
 import {createExportControlServices} from './export-controls.ts';
@@ -102,6 +107,7 @@ export type ServiceHandlers=Record<string,(input: never,context?: ServiceHandler
  * A project file must never construct a legacy workspace backup/configuration
  * lifecycle under its content directory. */
 export interface ServiceApplicationPorts {
+ outsidePaths: OutsidePathConfirmationStore;
  configuration: ReturnType<typeof createWorkspaceConfiguration>;
  backups: ReturnType<typeof createWorkspaceBackupRuntime>;
 }
@@ -216,6 +222,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const nonBackupActive=new Set<Promise<unknown>>();
  const active=new Set<Promise<unknown>>(),restoredLifetime=restored?new AbortController():null;let shutdownFailure: unknown;
  const {db,root,get,list,put,tx}=store;
+ const assetMedia=isProjectStore(store)&&application?createAssetMediaServices(store,{outsidePaths:application.outsidePaths,signal:ownerSignal}):null;
  const configuration=application?.configuration??createWorkspaceConfiguration({root:workspaceBaseRoot??root,env});
  const backups=application?.backups??createWorkspaceBackupRuntime({store,configuration,isQuiescent:()=>nonBackupActive.size===0&&(backupQuiescent?.()??true)});
  const backupHandlers={
@@ -321,11 +328,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   validateSubjectGenerationOwnership(db,job);
   return job;
  }
- const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null): JobRecord=>tx(()=>{
-  if(restored)disabled();
-  const requestHash=hash(input),prior=dedupe('generation',input.requestId,requestHash,'jobs');
-  if(prior){const priorJob=prior as JobRecord;return input.subjectVersionId!==undefined||hasSubjectGeneration(priorJob.snapshot)?replaySubjectJob(priorJob,input,retryOfJobId):priorJob;}
-  assertSubjectGenerationRequestVacant(db,input);
+ const prepareJobDraft=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null)=>{
   const shot=required('shots',input.shotId) as ShotRecord;
   if(!isRecord(shot))throw new AppError('NOT_FOUND','找不到记录',404);
   if(!retrySnapshot)check(shot,input.expectedRevision);
@@ -358,7 +361,16 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   // Missing historical parameters must not borrow the current shot's preferences during retry validation.
   if(wanCapability&&executionBinding)parameters=retrySnapshot?property(retrySnapshot,'parameters'):resolveWanGenerationParameters(executionBinding.model,wanCapability.defaults,{aspectRatio:shot.aspectRatio,parameters});
   const {model,assets,referenceAssetIds,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,isRecord(parameters)?parameters:undefined,shot.projectId,Boolean(retrySnapshot),subjectGraph);
-  const snapshot: ServiceRow=retrySnapshot??{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...referenceAssetIds],...(shot.lastFrameAssetId!=null?{lastFrameAssetId:shot.lastFrameAssetId}:{}),referenceAssets:(assets as GenerationAsset[]).map(a=>({id:a.id,relativePath:a.relativePath,mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(Object.hasOwn(a,'role')?{role:a.role}:{}),...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{}),...(subjectMode?{subjectReference:property(source,'subjectReference')}:{})};
+  return {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters};
+ };
+ const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null): JobRecord=>tx(()=>{
+  if(restored)disabled();
+  const requestHash=hash(input),prior=dedupe('generation',input.requestId,requestHash,'jobs');
+  if(prior){const priorJob=prior as JobRecord;return input.subjectVersionId!==undefined||hasSubjectGeneration(priorJob.snapshot)?replaySubjectJob(priorJob,input,retryOfJobId):priorJob;}
+  if(referenceBasis)for(const [id,raw] of referenceBasis)if(JSON.stringify(required('assets',id))!==raw)throw new AppError('REFERENCE_CHANGED','确认后的素材引用已改变，请重新确认',409);
+  assertSubjectGenerationRequestVacant(db,input);
+  const {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters}=prepareJobDraft(input,retrySnapshot);
+  const snapshot: ServiceRow=retrySnapshot??{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...referenceAssetIds],...(shot.lastFrameAssetId!=null?{lastFrameAssetId:shot.lastFrameAssetId}:{}),referenceAssets:(assets as GenerationAsset[]).map(a=>({id:a.id,...(kernelProjectId?{projectId:a.projectId,reference:a.reference,referenceRevision:a.referenceRevision}:{relativePath:a.relativePath}),mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(Object.hasOwn(a,'role')?{role:a.role}:{}),...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{}),...(subjectMode?{subjectReference:property(source,'subjectReference')}:{})};
   const job: JobRecord={id:randomUUID(),projectId:shot.projectId,shotId:shot.id,requestId:input.requestId,requestHash,providerId:input.providerId,model,revision:1,status:'queued',phase:'waiting',progress:0,snapshot,providerJobId:null,submissionCount:0,error:null,createdAt:now(),updatedAt:now(),versionId:null,cancelScope:null,retryOfJobId};
   put('jobs',job);idem('generation',input.requestId,requestHash,job.id);event(job,{status:'queued'});bindAgentTaskJobInside(db,'job',job.id);
   if(subjectMode)replaySubjectJob(job,input,retryOfJobId);
@@ -515,13 +527,33 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'project.create':(input: ServiceRow)=>tx(()=>{if(kernelProjectId&&get('projects',kernelProjectId))throw new AppError('PROJECT_FILE_SINGLE_PROJECT','一个项目文件只能保存一个项目',409);const project=put('projects',{id:kernelProjectId??randomUUID(),name:input.name,description:input.description||'',revision:1,createdAt:now(),updatedAt:now()});if(input.timelinePresetId!==undefined)timeline.initializeProjectFormat(project.id,stringValue(input.timelinePresetId) as never);return project;}),
   'project.list':()=>list('projects').sort((a,b)=>stringValue(property(b,'updatedAt'))?.localeCompare(stringValue(property(a,'updatedAt'))||'')||0),
   'project.get':(input: ServiceRow)=>tx(()=>{const project=required('projects',stringValue(input.projectId) as string);return {project,timeline:timeline.ensure(stringValue(input.projectId) as string),timelineHistory:timeline.history(stringValue(input.projectId) as string),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,(t==='exports'?exportValues(stringValue(input.projectId) as string):list(t,stringValue(input.projectId)).map(value=>subjectDisclosure(t,value as ServiceRow,stringValue(input.projectId)))).sort(t==='shots'?(a: ServiceRow,b: ServiceRow)=>(Number(a.orderIndex)||0)-(Number(b.orderIndex)||0):(a: ServiceRow,b: ServiceRow)=>String(a.createdAt??'').localeCompare(String(b.createdAt??'')))]))};}),
-  'asset.import':createManagedAssetImportHandler(store,{required,now,signal:ownerSignal,guarded:Boolean(restored),effectFence:()=>restoreEffectFence(store),unsafe:workspaceRestoreError,safeError:(error: unknown)=>Boolean(safeWorkspaceRestoreError(error))}) as ServiceHandler,
+  'asset.import':createManagedAssetImportHandler(store,{required,now,signal:ownerSignal,...(application?{outsidePaths:application.outsidePaths}:{}),guarded:Boolean(restored),effectFence:()=>restoreEffectFence(store),unsafe:workspaceRestoreError,safeError:(error: unknown)=>Boolean(safeWorkspaceRestoreError(error))}) as ServiceHandler,
   'asset.list':(input: ServiceRow)=>{required('projects',stringValue(input.projectId) as string);return list('assets',stringValue(input.projectId));},
   'edge.create':(input: ServiceRow)=>tx(()=>{required('projects',stringValue(input.projectId) as string);for(const id of [input.source,input.target]){const n=(get('shots',String(id))||get('nodes',String(id))) as ServiceRow|null;if(!n||n.projectId!==input.projectId)throw new AppError('INVALID_EDGE','只能连接同项目的节点');}if(input.source===input.target)throw new AppError('INVALID_EDGE','不能连接到自身');const existing=list('edges',stringValue(input.projectId)).find(edge=>property(edge,'kind')!=='reference'&&property(edge,'source')===input.source&&property(edge,'target')===input.target) as ServiceRow|undefined;return existing||put('edges',{id:randomUUID(),...input,kind:'decorative'});}),
   'edge.delete':(input: ServiceRow)=>tx(()=>{const edge=required('edges',stringValue(input.edgeId) as string);if(edge.kind==='reference')throw new AppError('REFERENCE_CONNECTED','首帧参考连线会影响生成输入；请使用 reference.detach 按镜头版本断开',409,{edgeId:edge.id});db.prepare('DELETE FROM edges WHERE id=?').run(stringValue(input.edgeId) as string);return {deleted:true};}),
   'provider.list':()=>{const asOf=currentProfileDate();return [...providers.values()].map(provider=>capabilitiesFor(provider,asOf));},
   'video.connection.list':()=>{if(restored)disabled();return listVideoConnections(videoSettings,currentProfileDate());},
-  'generation.submit':(input: GenerationSubmitInput)=>createJob(input),
+  'generation.submit':async(input: GenerationSubmitInput)=>{
+   if(!kernelProjectId)return createJob(input);
+   // Exact replay needs no fresh filesystem admission and never creates a
+   // second provider job after an acknowledgement was lost.
+   const prior=dedupe('generation',input.requestId,hash(input),'jobs');if(prior)return input.subjectVersionId!==undefined||hasSubjectGeneration(prior.snapshot)?replaySubjectJob(prior as JobRecord,input):prior;
+   // Preserve existing pure metadata/ownership/profile error precedence before
+   // observing disk state. The same rules are rechecked inside the short tx.
+   const draft=prepareJobDraft(input),shot=draft.shot,ids=(draft.assets as GenerationAsset[]).map(asset=>asset.id);
+   for(const audio of arrayValue(property(draft.inputFields,'referenceAudios'))){const id=stringValue(property(audio,'id'));if(id)ids.push(id);}
+   const references=registeredProjectAssetReferences(root);if(!references)throw new TypeError('Reference admission requires the exact project owner');
+   const basis=new Map<string,string>(),confirmed=[];
+   for(const id of ids){
+    const asset=required('assets',id);if(asset.projectId!==shot.projectId||typeof asset.sha256!=='string'||!/^[a-f0-9]{64}$/u.test(asset.sha256))throw new AppError('REFERENCE_CHANGED','参考素材缺少已登记的完整哈希',409);
+    const state=await references.inspect(id,{signal:ownerSignal});checkpoint(ownerSignal);
+    if(state.status!=='online'||!state.readable){const code=state.status==='missing'?'MEDIA_MISSING':!state.readable?'MEDIA_OUTSIDE_NOT_CONFIRMED':'MEDIA_CHANGED';throw mediaUnavailableError(code,id,code==='MEDIA_OUTSIDE_NOT_CONFIRMED'?null:state.status==='missing'?'not-found':'content');}
+    await references.resolve(id,{signal:ownerSignal,expectedReferenceRevision:Number(asset.referenceRevision)});checkpoint(ownerSignal);
+    basis.set(id,JSON.stringify(asset));confirmed.push({assetId:id,referenceRevision:asset.referenceRevision,sha256:asset.sha256});
+   }
+   if(input.referenceRevisions&&canonical(input.referenceRevisions)!==canonical(confirmed))throw new AppError('REFERENCE_CHANGED','确认中的素材引用修订已改变，请重新确认',409);
+   return createJob(input,null,null,basis);
+  },
   'job.get':(input: ServiceRow)=>subjectDisclosure('jobs',required('jobs',stringValue(input.jobId) as string)),
   'job.list':(input: ServiceRow)=>{required('projects',stringValue(input.projectId) as string);return list('jobs',stringValue(input.projectId)).map(value=>subjectDisclosure('jobs',value as ServiceRow,stringValue(input.projectId)));},
   'job.retry':(input: ServiceRow)=>{
@@ -617,8 +649,12 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
      restoreEffectFence(store)?.();checkpoint(signal);return publicValue(result);
     });
    }
+   if(assetMedia&&isAssetMediaOperation(op)){
+    if(assetMediaEffects[op].databaseWrite){backups.assertMutationAllowed();assertMutationAllowed?.();}
+    return isProjectStore(store)&&application?createAssetMediaServices(store,{outsidePaths:application.outsidePaths,signal}).call(op,input):assetMedia.call(op,input);
+   }
    if(Object.hasOwn(inspection.handlers,op))return inspection.handlers[op](input as never);
-   const parsed=parse(op as OperationName,input);const effect=operationEffect(op);if(!op.startsWith('workspace.backup.')&&op!=='workspace.settings.set'&&(effect.databaseWrite||effect.fileWrite||effect.localProcess)){backups.assertMutationAllowed();assertMutationAllowed?.();}const result=await domainHandlers[op](parsed as never,{signal});checkpoint(signal);
+   const schemaResult=isS1PublicOperation(op)?s1PublicOperationSchemas[op].safeParse(input):null;if(schemaResult&&!schemaResult.success)throw new AppError('VALIDATION_ERROR','操作参数无效');const parsed=schemaResult?.success?schemaResult.data:parse(op as OperationName,input);const effect=operationEffect(op);if(!op.startsWith('workspace.backup.')&&op!=='workspace.settings.set'&&(effect.databaseWrite||effect.fileWrite||effect.localProcess)){backups.assertMutationAllowed();assertMutationAllowed?.();}const result=await domainHandlers[op](parsed as never,{signal});checkpoint(signal);
    return publicValue(result);
   })();
   active.add(operation);if(!op.startsWith('workspace.backup.'))nonBackupActive.add(operation);
@@ -626,7 +662,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  }
  // Drain async RPC work before closing SQLite. Rejection is a settled operation;
  // an unbounded filesystem operation is a shutdown failure, never a safe close.
- const removeProjectMedia=registerProjectMediaStore(store);
+ const removeProjectMedia=registerProjectMediaStore(store,application?{outsidePaths:application.outsidePaths}:{});
  const drain=async(): Promise<void>=>{
   removeJobStopper();removeExportStopper();
   // Injected application ports outlive this project runtime. Only the legacy
@@ -663,6 +699,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // polling, download and reconciliation deliberately never call this boundary.
  function validateGenerationDispatch(job: JobRecord): unknown {
   if(restored)disabled();
+  if(kernelProjectId)for(const frozen of [...(Array.isArray(job.snapshot.referenceAssets)?job.snapshot.referenceAssets:[]),...(Array.isArray(job.snapshot.referenceAudios)?job.snapshot.referenceAudios:[])]){if(!isRecord(frozen))throw new AppError('REFERENCE_CHANGED','参考素材冻结无效',409);const asset=required('assets',String(frozen.id));if(asset.projectId!==job.projectId||asset.referenceRevision!==frozen.referenceRevision||asset.sha256!==frozen.sha256||canonical(asset.reference)!==canonical(frozen.reference))throw new AppError('REFERENCE_CHANGED','参考素材引用与冻结任务不一致',409);}
   assertAgentTaskJobEffect(db,'job',job.id);
   const binding=readVideoBinding(job.snapshot);
   if(binding){

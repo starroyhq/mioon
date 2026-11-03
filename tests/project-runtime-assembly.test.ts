@@ -31,7 +31,7 @@ function temporary(): string {
 function testApplication(library: ReturnType<typeof openAppLibrary>): ServiceApplicationPorts {
   const unavailable = (): never => { throw new TypeError('Historical backup operations are unavailable in this kernel test'); };
   const configuration = createWorkspaceConfiguration({root: library.dataDir, documents: createAppCompanionDocuments(library)});
-  return {configuration, backups: {
+  return {configuration,outsidePaths:library.outsidePaths, backups: {
     getStatus: unavailable, list: unavailable, create: unavailable, stageRestore: unavailable,
     exportBundle: unavailable, importBundle: unavailable, importDirectory: unavailable,
     isBusy: () => false,

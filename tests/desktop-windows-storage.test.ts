@@ -134,6 +134,6 @@ test('every desktop storage path dispatches to the Windows backend, never to POS
   const lut = read('apps/desktop/src/lut-recovery-store.ts');
   assert.match(lut, /samePrivateStorageIdentity\(a, b\)/u);
   assert.match(lut, /if \(process\.platform === 'win32'\) \{ getWindowsManagedFileIO\(\)\.syncDirectory\(userData, \{ private: true \}\); boundary\(\); \}/u);
-  assert.match(read('apps/desktop/src/workspace-native-host.ts'), /if\(process\.platform==='win32'\)\{await verifyWindowsExport\(media,output,identity,check\);return;\}/u);
+  assert.match(read('apps/desktop/src/workspace-native-host.ts'), /if\(process\.platform==='win32'\)await verifyWindowsExport\(realRoot,output,current\)/u);
   assert.match(read('apps/desktop/src/smoke-checks.ts'), /if \(process\.platform === 'win32'\) assert\.ok\(validateManagedFile\(file, \{ root: paths\.userData, private: true \}\)/u);
 });

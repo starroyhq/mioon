@@ -1,3 +1,5 @@
+import {mediaLocatorFields} from './asset-reference-record.ts';
+import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {validateTimelineVolumeEnvelopeClip} from './timeline-volume-envelope-admission.ts';
 import {volumeEnvelopeField,volumeEnvelopeSnapshotFields,isVolumeEnvelopeProcessingSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import {getTimelineAudioRoleIssue,timelineAudioRoleSnapshotFields} from '../../contracts/src/timeline-audio-role.ts';
@@ -23,7 +25,7 @@ export interface TimelineRecord {
 }
 export interface ManagedAssetRecord {
  id: string;projectId?: string;sha256?: string;mimeType: string;duration: number|null;
- width?: number|null;height?: number|null;hasAudio?: boolean;hasVideo?: boolean;relativePath?: string;name?: string;
+ width?: number|null;height?: number|null;hasAudio?: boolean;hasVideo?: boolean;reference?: MediaReference;referenceRevision?: number;relativePath?: string;name?: string;
 }
 
 const integer=(value: unknown,min: number,max: number): boolean=>Number.isInteger(value)&&(value as number)>=min&&(value as number)<=max;
@@ -71,7 +73,7 @@ export function freezeTimelineSnapshot(timeline: TimelineRecord,assets: Readonly
   const source=assets.get(id);
   if(!source)throw Object.assign(Error('Timeline snapshot does not match managed asset'),{code:'TIMELINE_SOURCE_UNAVAILABLE'});
   return {id:source.id,sha256:source.sha256,mimeType:source.mimeType,duration:source.duration,width:source.width,height:source.height,
-   hasAudio:typeof source.hasAudio==='boolean'?source.hasAudio:null,relativePath:source.relativePath};
+   hasAudio:typeof source.hasAudio==='boolean'?source.hasAudio:null,...mediaLocatorFields(source)};
  })}));
  const colourPlan=projectTimelineColourPlan(snapshot);
  if(colourPlan!==undefined)snapshot.colourPlan=colourPlan;

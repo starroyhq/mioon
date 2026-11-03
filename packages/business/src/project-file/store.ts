@@ -5,6 +5,9 @@ import type {ProjectStore as ProjectStoreContract} from '../../../contracts/src/
 import type {WorkspaceStore} from '../db.ts';
 import {createProjectFile, isProjectDatabase, openProjectConnection} from './connection.ts';
 import type {CreateProjectFileOptions, OpenProjectConnectionOptions} from './connection.ts';
+import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
+import type {MediaReference} from '../../../contracts/src/media-reference.ts';
+import {mediaUnavailableError} from '../../../contracts/src/media-reference-errors.ts';
 
 /** The contract's project store with the read and write surface of today's
  * WorkspaceStore (same tables, columns, errors and transaction rules; tx
@@ -49,6 +52,74 @@ export function registerProjectTransactionObserver(db: DatabaseSync, observer: (
   }
   observers.add(observer);
   return () => { observers?.delete(observer); };
+}
+
+export interface CommitProjectAssetHashOptions {
+  readonly assetId: string;
+  /** Exact persisted JSON captured before asynchronous full-file hashing. */
+  readonly expectedRaw: string;
+  readonly reference: MediaReference;
+  readonly sha256: string;
+  readonly beforeEffect?: () => void;
+  readonly signal?: AbortSignal;
+}
+
+/** Commit only derived full-hash/observed-mtime metadata. This is deliberately
+ * separate from domain transactions: it must retain every ownership/effect
+ * fence without manufacturing a domain mutation receipt for hash preparation.
+ * There is no general observer bypass or caller-supplied mutation callback. */
+export function commitProjectAssetHash(store: ProjectStore, options: CommitProjectAssetHashOptions): Record<string, unknown> {
+  const verified = verifiedStores.get(store);
+  if (!verified || !isProjectStore(store)) throw new TypeError('Hash metadata requires the exact live project owner');
+  if (typeof options.expectedRaw !== 'string' || typeof options.assetId !== 'string' || !/^[a-f0-9-]{36}$/u.test(options.assetId)) throw new TypeError('An exact asset JSON identity is required');
+  function changed(): never {throw mediaUnavailableError('MEDIA_CHANGED', options.assetId, 'content');}
+  const reference = mediaReferenceSchema.safeParse(options.reference);
+  if (!reference.success || !/^[a-f0-9]{64}$/u.test(options.sha256) || reference.data.fullSha256 !== options.sha256) changed();
+  const db = store.db, connection = verified.connection;
+  if (db.isTransaction) throw new Error('Nested transactions are not supported');
+  const fence = (): void => {
+    options.signal?.throwIfAborted();
+    options.beforeEffect?.();
+    options.signal?.throwIfAborted();
+    if (!isProjectStore(store)) throw new TypeError('The project owner is no longer live');
+    connection.throwIfMoved();
+  };
+  fence();
+  db.exec('BEGIN');
+  try {
+    for (const transactionFence of transactionFences.get(db) ?? []) transactionFence();
+    fence();
+    const persisted = db.prepare('SELECT id,projectId,data FROM project.assets WHERE id=?').get(options.assetId);
+    if (!persisted || persisted.id !== options.assetId || persisted.projectId !== store.projectId || persisted.data !== options.expectedRaw) changed();
+    const current: unknown = JSON.parse(options.expectedRaw);
+    if (current === null || typeof current !== 'object' || Array.isArray(current)) changed();
+    const row = current as Record<string, unknown>;
+    const oldReference = mediaReferenceSchema.safeParse(row.reference);
+    if (row.id !== options.assetId || row.projectId !== store.projectId || !Number.isSafeInteger(row.referenceRevision) || Number(row.referenceRevision) < 1 ||
+      Object.hasOwn(row, 'relativePath') || !oldReference.success || row.sizeBytes !== oldReference.data.sizeBytes || row.sha256 !== oldReference.data.fullSha256 ||
+      row.sha256 !== null && row.sha256 !== options.sha256) changed();
+    const old = oldReference.data, next = reference.data;
+    if (old.pathForm !== next.pathForm || old.path !== next.path || old.volume !== next.volume || old.sizeBytes !== next.sizeBytes || old.sampledSha256 !== next.sampledSha256) changed();
+    // Preserve every original field and its ordering, including unknown domain
+    // metadata. The validated candidate can change only these three leaves.
+    const metadataChanged = row.sha256 !== options.sha256 || old.mtimeMs !== next.mtimeMs;
+    const result = metadataChanged ? {...row, sha256: options.sha256, reference: {...row.reference as Record<string, unknown>, fullSha256: options.sha256, mtimeMs: next.mtimeMs}} : row;
+    const resultRaw = metadataChanged ? JSON.stringify(result) : options.expectedRaw;
+    if (resultRaw !== options.expectedRaw) {
+      connection.throwIfMoved();
+      const update = db.prepare('UPDATE project.assets SET data=? WHERE id=? AND projectId=? AND data=?').run(resultRaw, options.assetId, store.projectId, options.expectedRaw);
+      if (Number(update.changes) !== 1) changed();
+    }
+    fence();
+    // A backend fence may observe current metadata but may never replace the
+    // asset that this hash was prepared for, even immediately before COMMIT.
+    if (db.prepare('SELECT data FROM project.assets WHERE id=? AND projectId=?').get(options.assetId, store.projectId)?.data !== resultRaw) changed();
+    db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    if (db.isTransaction) db.exec('ROLLBACK');
+    throw error;
+  }
 }
 
 const TABLES = new Set(['projects', 'assets', 'shots', 'nodes', 'edges', 'jobs', 'versions', 'exports', 'timelines']);

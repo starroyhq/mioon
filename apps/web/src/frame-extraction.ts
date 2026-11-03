@@ -39,7 +39,7 @@ export interface FrameAsset {
   id?: string;
   projectId?: string;
   name?: string;
-  sha256?: string;
+  sha256?: string | null;
   mimeType?: string;
   duration?: unknown;
   [key: string]: unknown;

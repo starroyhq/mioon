@@ -1,3 +1,4 @@
+import {validAssetLocator} from './asset-reference-record.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError,isSubjectVersionResponse,isSubjectReference,SUBJECT_KINDS} from '@mioon/contracts';
 
@@ -41,8 +42,7 @@ export function createSubjectOwnershipReader(db: DatabaseSync,projectId: string,
   if(!uuid(id))fail();
   const {asset:value,legacySource:source=null,imageSource,frameSource}=resolveAsset(id);
   if(value.id!==id||value.projectId!==projectId)fail();
-  const relative=value.relativePath;
-  if(typeof relative!=='string'||relative.length>4096||!relative.startsWith('media/')||relative.includes('\\')||relative.includes('\0')||relative.split('/').some(part=>!part||part==='.'||part==='..'))fail();
+  if(!validAssetLocator(db,value))fail();
   if(!['image/png','image/jpeg','image/webp'].includes(value.mimeType))throw new AppError('SUBJECT_ASSET_UNSUPPORTED','主体版本需要托管 PNG、JPEG 或 WebP 图片',400);
   if(!/^[a-f0-9]{64}$/.test(value.sha256??'')||![value.width,value.height].every(n=>Number.isSafeInteger(n)&&n>0&&n<=100000)||!['user-import','generated','synthetic-mock','export','extracted-frame'].includes(value.provenance))fail();
   return {assetId:value.id,sha256:value.sha256,mimeType:value.mimeType,width:value.width,height:value.height,provenance:{kind:value.provenance,versionId:source?.id??null,shotId:source?.shotId??null,jobId:source?.jobId??null,...(imageSource?{imageSource}:{}),...(frameSource?{frameSource}:{})}};
