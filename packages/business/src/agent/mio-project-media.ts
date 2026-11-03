@@ -11,6 +11,7 @@ import type {ProjectStore} from '../project-file/store.ts';
 import {listProjectMediaPage} from '../media-reference/listing.ts';
 import {isInsideRealDirectory} from '../media-reference/paths.ts';
 import {readProjectUnpublishedMediaSnapshot} from '../referenced-asset-unpublished.ts';
+import {readProjectOutputUnpublishedSnapshot} from '../project-output-unpublished.ts';
 
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const sameIdentity = (a: BigIntStats, b: BigIntStats): boolean => a.dev === b.dev && a.ino === b.ino;
@@ -76,8 +77,9 @@ export function createMioProjectMedia({store, privateDirectories, signal}: {
         if (isPrivate(requested)) throw mediaReferenceError('MEDIA_LIST_PATH_INVALID', {reason: 'path'});
       };
       fence();
-      const publications = await readProjectUnpublishedMediaSnapshot(store, {signal: combined, beforeEffect: fence});
-      const beforeEffect = (): void => {fence(); publications.assertCurrent(); fence();};
+      const imports = await readProjectUnpublishedMediaSnapshot(store, {signal: combined, beforeEffect: fence});
+      const publications = await readProjectOutputUnpublishedSnapshot(store, {signal: combined, beforeEffect: fence});
+      const beforeEffect = (): void => {fence(); imports.assertCurrent(); publications.assertCurrent(); fence();};
       beforeEffect();
       // Persisted S1 references have size/mtime but no registration-time dev/ino.
       // Without all three proofs they are ineligible for duration reuse; L1's
@@ -85,8 +87,8 @@ export function createMioProjectMedia({store, privateDirectories, signal}: {
       const result = await listProjectMediaPage({projectDir: directory, projectFile: file, mayReadOutside: () => false,
         isHeld: identity => isProjectFileHeld(identity) || isAppLibraryHeld(identity)}, parsed.data.directory ?? '', {
         projectId, ...parsed.data, signal: combined, beforeEffect,
-        scopeVersion: JSON.stringify([publications.version, blocked.map(root => root.real)]),
-        isExcluded: (file, stats) => isPrivate(file) || publications.isExcluded(file, stats),
+        scopeVersion: JSON.stringify([imports.version, publications.version, blocked.map(root => root.real)]),
+        isExcluded: (file, stats) => isPrivate(file) || imports.isExcluded(file, stats) || publications.isExcluded(file, stats),
       });
       beforeEffect();
       return mioProjectMediaListingSchema.parse(result);
