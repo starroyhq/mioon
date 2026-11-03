@@ -11,16 +11,10 @@ const SKIPPED = new Set(['node_modules', 'dist', 'dist-opacity-candidate', 'buil
 const EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.mjs', '.cjs']);
 const MESSAGE = '项目文件只能经 packages/business/src/project-file/ 的内核打开';
 
-/** Production files that may open an SQLite file: the kernel (including its one
- * open of the project file alone before the local records), today's workspace
- * store with its migration, backup and restore code until S0 and S7 remove
- * them, the desktop migration guard, and the app database B1 adds (a connection
- * of its own, not a project file). Entries need not exist. */
+/** Only the project kernel and the separate application library may open
+ * persistent SQLite files. Retired workspace openers have no exemption. */
 const ALLOWED_OPENERS = [
   'packages/business/src/project-file/**',
-  'packages/business/src/db.ts',
-  'packages/business/src/workspace-*.ts',
-  'apps/desktop/scripts/migration-restore-guard.ts',
   'packages/business/src/app-db/**',
 ];
 
@@ -141,11 +135,10 @@ test('detectOpeners finds every construction of DatabaseSync, also through alias
 
 test('the allow-list matches by prefix and wildcard, whether or not the entries exist', () => {
   for (const allowed of ['packages/business/src/project-file/connection.ts', 'packages/business/src/project-file/cross-file/install.ts',
-    'packages/business/src/db.ts', 'packages/business/src/workspace-restore.ts',
-    'apps/desktop/scripts/migration-restore-guard.ts', 'packages/business/src/app-db/connection.ts']) {
+    'packages/business/src/app-db/connection.ts']) {
     assert.ok(isAllowed(allowed), allowed);
   }
-  for (const refused of ['apps/server/src/zz-guard-probe.ts', 'packages/business/src/db.tsx', 'packages/business/src/workspaces/restore.ts',
+  for (const refused of ['packages/business/src/db.ts', 'packages/business/src/workspace-restore.ts', 'apps/desktop/scripts/migration-restore-guard.ts', 'apps/server/src/zz-guard-probe.ts', 'packages/business/src/db.tsx', 'packages/business/src/workspaces/restore.ts',
     'packages/business/src/services.ts', 'packages/business/src/project-file.ts', 'packages/contracts/src/project-file.ts']) {
     assert.ok(!isAllowed(refused), refused);
   }

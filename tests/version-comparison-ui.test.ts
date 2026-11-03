@@ -16,7 +16,7 @@ import { createComparisonPlayback } from '../apps/web/src/comparison-playback.ts
 import { comparisonDetailRows } from '../apps/web/src/comparison-details.ts';
 const code = transformSync(readFileSync(new URL('../apps/web/src/VersionComparison.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-function context() { return { scope: 'same-project:epoch', projectId: id(1), workspaceOrigin: 'normal', connected: true, visible: true, restored: false,
+function context() { return { scope: 'same-project:epoch', projectId: id(1), connected: true, visible: true,
   shot: { id: id(2), projectId: id(1), selectedVersionId: null as string | null } as {id: string; projectId: string; selectedVersionId: string | null} | null,
   versions: [3, 4, 5].map(n => ({ id: id(n), projectId: id(1), shotId: id(2), assetId: id(n + 10), sha256: 'a'.repeat(64), number: n, snapshot: { prompt: `Prompt ${n}`, duration: n, aspectRatio: '16:9' } })),
   assets: [13, 14, 15].map(n => ({ id: id(n), projectId: id(1), sha256: 'a'.repeat(64), mimeType: 'video/mp4' })) }; }
@@ -74,7 +74,7 @@ test('retained use/play callbacks cannot select or play a newly substituted side
   h.find('comparison-use-A').props.onClick(); assert.equal(h.used[0].versionId, id(5)); h.unmount(); old.props.onPlay({ currentTarget: element }); assert.equal(h.ownerCalls(), 0);
 });
 test('same-ID mutated source, project scope, and hidden dialog suppress actual players', () => {
-  for (const mutate of [(c: { versions: { sha256: string; }[]; }) => c.versions[0].sha256 = 'b'.repeat(64), (c: { scope: string; }) => c.scope = 'other', (c: { visible: boolean; }) => c.visible = false, (c: { restored: boolean; }) => c.restored = true]) {
+  for (const mutate of [(c: { versions: { sha256: string; }[]; }) => c.versions[0].sha256 = 'b'.repeat(64), (c: { scope: string; }) => c.scope = 'other', (c: { visible: boolean; }) => c.visible = false]) {
     const h = harness(); h.render(); h.choose('A', 3); h.choose('B', 4); mutate(h.props.context); h.render(); assert.equal(h.videos().length, 0); h.unmount();
   }
 });

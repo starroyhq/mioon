@@ -1,4 +1,4 @@
-import {usesAssetAnnotationSchema} from './workspace-schema-dispatch.ts';
+import {usesAssetAnnotationSchema} from './store-capabilities.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {LocalShotTextUpdateInput} from '@mioon/contracts/local-shot-text';
 import {LOCAL_SHOT_TEXT_LIMITS} from '@mioon/contracts/local-shot-text';

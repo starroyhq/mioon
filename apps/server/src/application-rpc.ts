@@ -12,8 +12,6 @@ import type {ApplicationRuntime} from './application-runtime.ts';
 import {projectNotFound} from './project-host/errors.ts';
 import type {createInitializedProject} from './project-host/create-project.ts';
 import type {ProjectEntryCreateInput} from '../../../packages/contracts/src/project-entry-native.ts';
-import {VOLUME_ENVELOPE_PROFILE} from '../../../packages/contracts/src/timeline-volume-envelope.ts';
-import {TIMELINE_AUDIO_ROLE_PROFILE} from '../../../packages/contracts/src/timeline-audio-role.ts';
 import {isProjectBackupOperation} from '../../../packages/contracts/src/project-backups.ts';
 import {callProjectBackupOperation} from './project-backup-operations.ts';
 import type {ProjectBackupOperations} from './project-backup-operations.ts';
@@ -84,9 +82,6 @@ export function createApplicationRpc({library, app, manager, directories, signal
         ports.assertMutationAllowed();
         return ports.configuration.set(input as Parameters<typeof ports.configuration.set>[0]);
       }
-      case 'workspace.restore.inspect': return {restored: false,
-        ...(input.includeVolumeEnvelopeCapability === true ? {volumeEnvelopeCapability: {profileId: VOLUME_ENVELOPE_PROFILE, editable: true}} : {}),
-        ...(input.includeAudioRoleCapability === true ? {audioRoleCapability: {profileId: TIMELINE_AUDIO_ROLE_PROFILE, editable: true}} : {})};
       case 'provider.list': return providerList();
       case 'image.profile.list': return imageProfiles(input);
       case 'video.connection.list': {

@@ -4,8 +4,8 @@ import {createContinuousAudioPreviewController} from '../apps/web/src/timeline-a
 
 type Controller = ReturnType<typeof createContinuousAudioPreviewController>;
 interface Deferred<T = void> {promise: Promise<T>; resolve: (value?: T) => void; reject: (error: unknown) => void}
-interface FixtureContext {scope: string; executionScope: string; projectId: string; timelineId: string; revision: number; durationFrames: number; sourceIdentity: string; connected: boolean; visible: boolean; restored: boolean; hasUnsavedDrafts: boolean; [key: string]: unknown}
-interface PrepareCall {input: {projectId: string; timelineId: string; expectedRevision: number; startFrame: number}; options: {signal: AbortSignal; expectedWorkspaceOrigin?: string; onResourceSettlement?(value: Promise<unknown>): void}}
+interface FixtureContext {scope: string; executionScope: string; projectId: string; timelineId: string; revision: number; durationFrames: number; sourceIdentity: string; connected: boolean; visible: boolean; hasUnsavedDrafts: boolean; [key: string]: unknown}
+interface PrepareCall {input: {projectId: string; timelineId: string; expectedRevision: number; startFrame: number}; options: {signal: AbortSignal; onResourceSettlement?(value: Promise<unknown>): void}}
 interface FixtureAudioContext {sampleRate: number; state: string; closes: number; resumes: number; resume(): Promise<void>; close(): Promise<void>}
 interface FixtureSession {plan: Record<string, unknown>; closes: number; takes: number; takeInitialBlock(): {startFrame: number; endFrame: number; buffer: unknown}; loadBlock(...args: never[]): Promise<never>; reset(...args: never[]): Promise<void>; dispose(): Promise<void> | undefined}
 interface TransportState {status: string; frame: number; sample: number; reason: string | null; errorCode: string; underruns: number; heldBytes: number; peakHeldBytes: number}
@@ -18,12 +18,11 @@ const tick = (): Promise<void> => new Promise<void>(resolve => setImmediate(reso
 const deferred = <T = void>(): Deferred<T> => { let resolve!: (value: T | PromiseLike<T>) => void, reject!: (error: unknown) => void; const promise = new Promise<T>((a, b) => { resolve = a; reject = b; }); return {promise, resolve: (value?: T) => resolve(value as T), reject}; };
 function fixture({pendingPrepare, pendingResume, pendingClose, pendingResources, pendingSessionClose, failClose = false, overrides = {}, onChange}: FixtureOptions = {}): Fixture {
   let context: FixtureContext = {scope: 'project:workspace:epoch-1', executionScope: 'editing:timeline', projectId: id(1), timelineId: id(2), revision: 1,
-    durationFrames: 18000, sourceIdentity: 'saved-source-identity', connected: true, visible: true, restored: false, hasUnsavedDrafts: false, ...overrides};
+    durationFrames: 18000, sourceIdentity: 'saved-source-identity', connected: true, visible: true, hasUnsavedDrafts: false, ...overrides};
   const calls: FixtureCalls = {prepare: [], contexts: [], transports: [], sessions: [], positions: [], beforePlay: 0, unauthorized: 0, changes: []};
   const controller = createContinuousAudioPreviewController({getContext: () => context,
     readPlan: async () => { throw Error('Legacy twenty-second plan must not be invoked'); },
     readContinuousPlan: async () => { throw Error('Injected preparation owns plan requests'); },
-    getInvocation: () => ({expectedWorkspaceOrigin: 'pinned-workspace-origin'}),
     createContext: () => {
       const audio = {sampleRate: 48000, state: 'running', closes: 0, resumes: 0,
         resume() { this.resumes++; return Promise.resolve(); },
@@ -78,7 +77,6 @@ test('mount and draft or locale presentation refresh never allocate, fetch or au
   await f.controller.prepare(234); assert.equal(f.controller.getState().phase, 'ready'); assert.equal(f.calls.transports[0].plays, 0);
   assert.equal(f.calls.contexts[0].resumes, 1); assert.equal(f.calls.sessions[0].takes, 1);
   assert.deepEqual(f.calls.prepare[0].input, {projectId: id(1), timelineId: id(2), expectedRevision: 1, startFrame: 234});
-  assert.equal(f.calls.prepare[0].options.expectedWorkspaceOrigin, 'pinned-workspace-origin');
   f.setContext({hasUnsavedDrafts: false}); f.setContext({hasUnsavedDrafts: true}); f.controller.setContext({...f.context});
   assert.equal(f.calls.prepare.length, 1); assert.equal(f.calls.contexts.length, 1); assert.deepEqual(unsaved, before);
   f.controller.dispose(); await tick();
@@ -104,7 +102,7 @@ test('play pauses the separate media player and pause does not persist a tick or
 
 for (const [name, patch] of Object.entries({revision: {revision: 2}, source: {sourceIdentity: 'replacement'}, workspace: {scope: 'other-workspace'},
   project: {projectId: id(8)}, timeline: {timelineId: id(9)}, navigation: {executionScope: 'source'}, hidden: {visible: false},
-  disconnect: {connected: false}, restored: {restored: true}})) {
+  disconnect: {connected: false}})) {
   test(`${name} change synchronously revokes the saved snapshot and rejects late preparation`, async () => {
     const f = fixture(); await f.controller.prepare(0); await f.controller.play(); f.setContext(patch);
     assert.equal(f.calls.transports[0].disposed, true); assert.equal(f.controller.getState().continuousPlan, null);

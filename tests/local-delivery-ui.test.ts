@@ -29,7 +29,7 @@ function receipt(input: LocalDeliveryRenderInput) {
     status: 'queued', assetId: null, url: null, error: null, createdAt: stamp, updatedAt: stamp };
 }
 function fixture(t: test.TestContext, options: {context?: Partial<ReadyDeliveryContext>; stored?: LocalDeliverySupported} = {}) {
-  let context: ReadyDeliveryContext = { scope: 'project:1', projectId, timelineId, timelineRevision: 4, restored: false, connected: true, visible: true, busy: false, deliveryName: '', nameVersion: 1, dirty: false, ...options.context };
+  let context: ReadyDeliveryContext = { scope: 'project:1', projectId, timelineId, timelineRevision: 4, connected: true, visible: true, busy: false, deliveryName: '', nameVersion: 1, dirty: false, ...options.context };
   let stored: LocalDeliverySupported = copy(options.stored ?? empty()), nextId = 100;
   const calls: DeliveryCall[] = [], accepted: (LocalDeliveryAccepted)[] = [], overrides: DeliveryOverrides = {};
   const client = {
@@ -154,10 +154,6 @@ test('discard stored title neither resets newer text nor mutates pending intent'
 test('navigation abandonment suppresses autosaving the parent reset', async t => {
   const f = fixture(t); await f.controller.load(); f.edit('Title'); const captured = f.controller.capture(); assert.equal(f.controller.abandonCurrentInput(captured), true); f.edit('');
   assert.equal(f.state().dirty, false); assert.equal(f.state().autosavePaused, true); assert.equal(f.calls.some(c => c.method === 'put'), false);
-});
-
-test('restored branch stays unsupported while controller makes no sidecar writes or execute calls', async t => {
-  const f = fixture(t, { context: { restored: true } }); await f.controller.load(); assert.equal(f.state().phase, 'unsupported'); assert.equal(await f.controller.submit(f.input()), null); assert.equal(await f.controller.recover(), null); assert.equal(f.calls.length, 0);
 });
 
 test('client uses fixed same-origin endpoints and classifies only exact refusal code/status pairs', async () => {
@@ -363,7 +359,7 @@ function realNameLifecycle(t: test.TestContext, saved = empty()) {
   const name = createTimelineDeliveryNameController();
   let nameContext = { scope: 'real-name:1', projectId, enabled: true }, revision = 4, stored: LocalDeliverySupported = copy(saved), counter = 200;
   const writes: { draftId: string; timelineId: string; baseRevision: number; raw: { deliveryName: string; }; projectId: string; expectedDraftRevision: number; workspaceScope: string; instanceId: string; }[] = [], reads: string[] = [];
-  const context = () => ({ scope: nameContext.scope, projectId, timelineId, timelineRevision: revision, restored: false, connected: true, visible: true, busy: false,
+  const context = () => ({ scope: nameContext.scope, projectId, timelineId, timelineRevision: revision, connected: true, visible: true, busy: false,
     deliveryName: name.getName(nameContext.scope), nameVersion: name.getVersion(nameContext.scope), dirty: name.hasUnsaved(nameContext.scope) });
   const local = createLocalDeliveryController({ context: context(), getContext: context, delay: 0, createId: () => id(counter++), isRenderInput: inputValid,
     validateResponse: (input, response) => isTimelineMutationResponse('timeline.render', input, response),

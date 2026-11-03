@@ -1,5 +1,4 @@
-import {restoreEffectFence as legacyRestoreEffectFence} from './workspace-restore-invocation.ts';
-import {refuseRestoredOperation as legacyRefuseRestoredOperation,safeWorkspaceRestoreError} from './workspace-restore-policy.ts';
+import {assertProjectStore} from './store-runtime.ts';
 import {AppError,timelineExportCapabilityResultSchema,resolveTimelineExportDelivery,timelineExportCapabilitySchemas} from '@mioon/contracts';
 import {createTimelineRecoveryBoundary} from './timeline-recovery.ts';
 import {inspectTimelineExportCapability} from './timeline-export-capabilities.ts';
@@ -19,7 +18,6 @@ interface AdmissionInspectOptions {signal: AbortSignal;beforeEffect: (()=>void)|
 interface AdmissionOptions {signal?: AbortSignal}
 interface InspectResult {status?: string;code?: string;terminationUnconfirmed?: boolean}
 interface ActiveCheck {controller: AbortController;task: Promise<unknown>|null}
-type RefuseRestoredOperation=(target: unknown,operation: string,input?: Record<string, unknown>)=>void;
 interface RenderPrepared {replayed?: boolean;response?: unknown;snapshot?: {delivery: unknown;timeline: {id: string}}}
 interface RenderHooks {prepare: ()=>RenderPrepared;accept: (value: {timelineId: string;snapshotHash: string;failure: AppError|null})=>unknown}
 
@@ -45,20 +43,21 @@ export function timelineExportCapabilityError(code: string): AppError{return new
 // Own every underlying check, including a non-cooperative injected helper. No
 // asynchronous media work ever runs while an admission SQLite transaction is open.
 export function createTimelineExportAdmissionServices(store: ExportAdmissionStore,{signal:ownerSignal,inspect=inspectTimelineExportCapability,hash}: {signal?: AbortSignal;inspect?: (delivery: unknown,options: AdmissionInspectOptions)=>Promise<InspectResult|null>;hash?: (value: unknown)=>string}={}){
- const refuseRestoredOperation: RefuseRestoredOperation=(target,operation,input)=>{
-  legacyRefuseRestoredOperation(target as never,operation,input);
- };
- const restoreEffectFence=(): ((()=>void)|undefined)=>legacyRestoreEffectFence(store);
+ assertProjectStore(store);
  const active=new Set<ActiveCheck>();let stopped=false,shutdownFailure: unknown;
  async function inspectOwned(delivery: unknown,{signal:callSignal}: AdmissionOptions={}): Promise<unknown>{
-  refuseRestoredOperation(store,'timeline.export.capabilities');
-  const beforeEffect=restoreEffectFence();
+  assertProjectStore(store);
+  let settled=false;
+  const beforeEffect=()=>{
+   if(settled||stopped)throw new AppError('OPERATION_CANCELLED','Export capability observation has ended',503);
+   checkpoint(signal);assertProjectStore(store);
+  };
   const external=ownerSignal&&callSignal&&ownerSignal!==callSignal?AbortSignal.any([ownerSignal,callSignal]):ownerSignal||callSignal;
   checkpoint(external);if(shutdownFailure)throw shutdownFailure;if(stopped)throw new AppError('OPERATION_CANCELLED','Operation interrupted by shutdown',503);
   if(store.db.isTransaction)throw new AppError('EXPORT_CAPABILITY_CONFIGURATION',messages.EXPORT_CAPABILITY_CONFIGURATION,409);
   const controller=new AbortController(),signal=external?AbortSignal.any([external,controller.signal]):controller.signal;
   const entry: ActiveCheck={controller,task:null};active.add(entry);
-  const task=Promise.resolve().then(()=>{beforeEffect?.();return inspect(delivery,{signal,beforeEffect,capabilityWorkRoot:isProjectStore(store)?store.tempDir:store.root});});
+  const task=Promise.resolve().then(()=>{beforeEffect?.();return inspect(delivery,{signal,beforeEffect,capabilityWorkRoot:store.tempDir});});
   entry.task=task.catch((error: {terminationUnconfirmed?: boolean})=>{if(error.terminationUnconfirmed)shutdownFailure=error;}).finally(()=>active.delete(entry));
   try{
    const value=await awaitProvider(()=>task,signal);checkpoint(signal);beforeEffect?.();
@@ -67,17 +66,17 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
   }catch(error){
    const failure=error as {terminationUnconfirmed?: boolean;code?: string};
    if(failure.terminationUnconfirmed){shutdownFailure=error;throw error;}
-   if(safeWorkspaceRestoreError(error))throw error;
+   if((error as {code?:unknown})?.code==='PROJECT_STORE_UNVERIFIED')throw error;
    checkpoint(signal);if(['OPERATION_CANCELLED','MEDIA_CANCELLED'].includes(failure.code as string))throw error;
    return {status:'incomplete',code:'EXPORT_CAPABILITY_FAILED'};
-  }
+  }finally{settled=true;}
  }
  function read(input: TimelineRecoveryInput): {timeline: TimelineRecord;delivery: unknown}|null{
   const timeline=createTimelineRecoveryBoundary(store.db,input).read();
   return timeline?{timeline:timeline as unknown as TimelineRecord,delivery:resolveTimelineExportDelivery(timeline as never,input.exportSettings) as unknown}:null;
  }
  async function capabilities(input: TimelineRecoveryInput,options: AdmissionOptions={}): Promise<TimelineExportCapabilityReport>{
-  refuseRestoredOperation(store,'timeline.export.capabilities',input);
+  assertProjectStore(store);
   // Direct service users get the same strict syntax boundary as RPC callers.
   input=timelineExportCapabilitySchemas['timeline.export.capabilities'].parse(input) as unknown as TimelineRecoveryInput;
   checkpoint(options.signal);checkpoint(ownerSignal);
@@ -101,7 +100,7 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
   report.status=result.status as string;report.issues=result.status==='available'?[]:[issue(result.code as string)];return report;
  }
  async function render(input: TimelineRecoveryInput,options: AdmissionOptions,{prepare,accept}: RenderHooks): Promise<unknown>{
-  refuseRestoredOperation(store,'timeline.render',input);
+  assertProjectStore(store);
   // prepare replays immutable historical ACKs before current revision, any
   // local compute, or capability availability can affect their result.
   const before=prepare();if(before.replayed)return before.response;

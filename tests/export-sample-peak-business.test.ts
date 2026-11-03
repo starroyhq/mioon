@@ -1,3 +1,10 @@
+
+
+import {isTimelineRenderRecord} from '@mioon/contracts';
+
+import {boundedShutdown} from '../packages/business/src/operation-lifecycle.ts';
+
+
 import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
@@ -11,25 +18,27 @@ import {createHash, randomUUID} from 'node:crypto';
 import {mkdtemp, rm, writeFile, readFile, readdir, unlink, symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {DatabaseSync} from 'node:sqlite';
-import {onMediaProcess, spawnMedia, terminateMediaProcesses, waitForMediaProcesses, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
+
+import {spawnMedia, terminateMediaProcesses, waitForMediaProcesses, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
 import {runStreaming} from '../packages/business/src/media-runtime.ts';
 import childProcess from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
 import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
-import {isTimelineRenderRecord} from '@mioon/contracts';
+
 import {EXPORT_SAMPLE_PEAK_LIMITS, isExportSamplePeakResponse} from '@mioon/contracts/export-sample-peak';
-import {installCurrentWorkspaceRestoreSchema, openLegacyWorkspaceStore, openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock, assertProjectStore} from '../packages/business/src/store-runtime.ts';
+
 import {createServices} from '../packages/business/src/services.ts';
 import {createExportSamplePeakServices} from '../packages/business/src/export-sample-peak.ts';
 import {readTimelineDeliveryDownload} from '../packages/business/src/timeline-delivery-read.ts';
 import {readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.ts';
 import {validateManagedSource, verifiedManagedHash} from '../packages/business/src/managed-media.ts';
-import {boundedShutdown} from '../packages/business/src/operation-lifecycle.ts';
-import {workspaceRestoreError, RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
+
+
 import type { BinaryLike } from 'crypto';
-import type { PathLike } from 'fs';
+
 import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 const sha = (bytes: NonSharedBuffer|BinaryLike) => createHash('sha256').update(bytes).digest('hex');
@@ -80,7 +89,7 @@ async function fixture(t: test.TestContext, {named = false, range = false, durat
   const record = {...(store.get('exports', queued.id) as import('./helpers/strict-timeline-core-types.ts').FixtureExport), status: 'succeeded', assetId, url: asset.url, updatedAt: new Date().toISOString()}; store.put('exports', record);
   // The operation is historical: no current timeline/source is required.
   store.db.prepare('DELETE FROM timelines WHERE id=?').run(timeline.id); store.db.prepare('DELETE FROM assets WHERE id=?').run(sourceId);
-  const runtime:ExportSamplePeakRuntime = {assertOrdinaryWorkspace: () => {if (getWorkspaceRestoreContext(store)) throw workspaceRestoreError();}, ownsLock: () => ownsStoreLock(store),
+  const runtime:ExportSamplePeakRuntime = {assertOrdinaryWorkspace: () => {assertProjectStore(store);}, ownsLock: () => ownsStoreLock(store),
     isTimelineRenderRecord, readOwnedAsset: (projectId: string, id: unknown) => readOwnedTimelineAsset(store.db, projectId, id),
     validateSource: validateManagedSource, hash: verifiedManagedHash, decode: async (_file: unknown, duration: number|undefined, options: { beforeEffect: () => void; }) => {options.beforeEffect(); return measurement(duration);},
     terminate: async () => [], waitForClose: async () => [], boundedShutdown, ...overrides};
@@ -184,7 +193,7 @@ test('same-owned metadata/bytes drift discards measurement; foreign owner revoca
       throw Object.assign(Error('SECRET stderr /private/path'), {code: 'MEDIA_PROCESS_FAILED'});
     }}});
     if (kind === 'foreign') await assert.rejects(f.call(), {code: 'EXPORT_SAMPLE_PEAK_UNAVAILABLE'});
-    else if (kind === 'lock') await assert.rejects(f.call(), {code: 'RESTORE_STORE_UNVERIFIED'});
+    else if (kind === 'lock') await assert.rejects(f.call(), {code: 'PROJECT_STORE_UNVERIFIED'});
     else {const result = await f.call(); assert.equal(result.status, 'stale'); assert.equal(result.reason.code, 'ARTIFACT_CHANGED'); assert.equal(result.measurement, null); assert.ok(!JSON.stringify(result).includes('SECRET'));}
   });
 });
@@ -217,37 +226,9 @@ test('unconfirmed exact-child cleanup retains admission until actual close and p
   closing.resolve!(); await tick(); await tick(); await assert.rejects(f.peak.drain(), {code: 'MEDIA_TERMINATION_UNCONFIRMED'}); t.mock.timers.reset();
 });
 
-test('restored denial catalogue and service boundary reject before touching payload', async t => {
-  const f = await fixture(t); let touched = 0, effects = 0;
-  const denied = createExportSamplePeakServices(f.store, {runtime: {...f.runtime, assertOrdinaryWorkspace: () => {throw workspaceRestoreError();},
-    ownsLock: () => {effects++; return true;}, decode: async () => {effects++; return measurement();}}});
-  assert.ok(RESTORE_DENIED_OPERATIONS.includes('timeline.export.samplePeak'));
-  await assert.rejects(denied.handlers['timeline.export.samplePeak']({get projectId() {touched++; return f.project.id;}}), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-  assert.equal(touched, 0); assert.equal(effects, 0);
-});
 
-test('actual restored-v1 shared service denies valid and hostile payloads before getters, bytes, or local processes', async t => {
-  const root = await mkdtemp(path.join(tmpdir(), 'mioon-restored-peak-'));
-  let store = (openLegacyWorkspaceStore(root) as TypedStore), services = (createServices(store, new Map()) as TypedServices);
-  const project = await services.call('project.create', {name: 'Restored output owner'});
-  await services.drain(); store.close();
-  const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
-  const metadata = {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(),
-    manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: new Date().toISOString()};
-  try {installCurrentWorkspaceRestoreSchema(db, metadata); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
-  store = (openLegacyWorkspaceStore(root) as TypedStore);
-  services = (createServices(store, new Proxy(new Map(), {get() {throw Error('Must not inspect a provider');}})) as TypedServices);
-  let media = 0, getters = 0; const off = onMediaProcess(() => {media++;});
-  t.after(async () => {off(); await services.drain(); store.close(); await rm(root, {recursive: true, force: true});});
-  const beforeFiles = await files(root), beforeChanges = store.db.prepare('SELECT total_changes() AS n').get()!.n;
-  const hostile = {get projectId() {getters++; throw Error('payload access');}, get exportId() {getters++; throw Error('payload access');}};
-  for (const value of [hostile, {projectId: project.id, exportId: randomUUID()}, null]) {
-    await assert.rejects(services.call('timeline.export.samplePeak', value, {expectedWorkspaceOrigin: metadata.workspaceOrigin}), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-    await assert.rejects((services.handlers['timeline.export.samplePeak'] as (value:unknown)=>Promise<unknown>)(value), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-  }
-  assert.equal(getters, 0); assert.equal(media, 0);
-  assert.equal(store.db.prepare('SELECT total_changes() AS n').get()!.n, beforeChanges); assert.deepEqual(await files(root), beforeFiles);
-});
+
+
 
 test('actual runner registry retains exact advisory handle until late close and never kills unrelated render handle', async t => {
   const spawned = deferred<TestChild>(), waiting = deferred(), controller = new AbortController();

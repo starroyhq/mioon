@@ -33,7 +33,7 @@ export function readTimelineFloatAudioCheckFailure(value: unknown): Readonly<{co
 export function rememberTimelineFloatAudioFailure(error: unknown, measurement: TimelineExportAudioMeasurement | null,
   incompleteCode: 'EXPORT_AUDIO_STAGING_CHANGED' = 'EXPORT_AUDIO_STAGING_CHANGED'): void {
   if (!object(error) || error.terminationUnconfirmed === true ||
-      ['MEDIA_CANCELLED', 'RESTORE_OPERATION_UNAVAILABLE', 'RESTORED_RECORD_HELD', 'RESTORE_WORKSPACE_ORIGIN_REQUIRED', 'RESTORE_WORKSPACE_ORIGIN_MISMATCH', 'INVALID_TIMELINE_SNAPSHOT'].includes(String(error.code))) return;
+      ['MEDIA_CANCELLED', 'PROJECT_STORE_UNVERIFIED', 'INVALID_TIMELINE_SNAPSHOT'].includes(String(error.code))) return;
   if (measurement !== null && !isOwnedTimelineFloatAudioMeasurement(measurement)) throw configuration();
   if (measurement === null && incompleteCode !== 'EXPORT_AUDIO_STAGING_CHANGED') throw configuration();
   ownedFailures.set(error, Object.freeze({code: measurement ? measurement.peakLinear > 1 ? 'EXPORT_AUDIO_OVER_RANGE' : 'EXPORT_AUDIO_WITHIN_LIMIT' : incompleteCode, measurement}));
@@ -208,7 +208,7 @@ export function createTimelineFloatAudioChecker(runtime: TimelineFloatAudioRunti
       // coincident budget/cancellation classification. Never discard its flag.
       if (object(source) && source.terminationUnconfirmed === true) throw source;
       if (object(source) && (options.signal?.aborted ||
-          ['MEDIA_CANCELLED', 'RESTORE_OPERATION_UNAVAILABLE', 'RESTORED_RECORD_HELD', 'RESTORE_WORKSPACE_ORIGIN_REQUIRED', 'RESTORE_WORKSPACE_ORIGIN_MISMATCH', 'INVALID_TIMELINE_SNAPSHOT'].includes(String(source.code)))) {
+          ['MEDIA_CANCELLED', 'PROJECT_STORE_UNVERIFIED', 'INVALID_TIMELINE_SNAPSHOT'].includes(String(source.code)))) {
         if (!(budgetController.signal.aborted && !options.signal?.aborted && source.code === 'MEDIA_CANCELLED')) throw source;
       }
       if (budgetController.signal.aborted && !options.signal?.aborted || object(source) && source.code === 'MEDIA_TIMEOUT') source = timeout();

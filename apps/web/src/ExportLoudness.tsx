@@ -23,10 +23,10 @@ export default function ExportLoudness({ exportId, loudness }: ExportLoudnessPro
   const report = selected ? state.report : null, ready = report?.status === 'ready' ? report : null;
   const statusId = `export-loudness-status-${exportId}`, targetId = `export-loudness-target-${exportId}`, targetErrorId = `${targetId}-error`;
   const status = selected ? exportLoudnessStatusMessage(state, locale) : '';
-  const disabled = !state.connected || !state.visible || state.restored;
+  const disabled = !state.connected || !state.visible;
   return <section className="export-sample-peak export-loudness" data-testid="export-loudness" aria-label={t('audio.loudness.export.label')}>
     <strong className="export-sample-peak-label">{t('audio.loudness.export.label')}</strong>
-    {state.restored ? <p data-testid="export-loudness-unavailable">{t('audio.loudness.export.restored')}</p> : <>
+    {<>
       <details className="export-loudness-target" style={{ minWidth: 0, maxWidth: '100%' }}>
         <summary>{t('audio.loudness.target.optional')}</summary>
         <p>{t('audio.loudness.target.optionalHelp')}</p>
@@ -72,7 +72,7 @@ export default function ExportLoudness({ exportId, loudness }: ExportLoudnessPro
             <br />{t('audio.loudness.measuredAt')}<time dateTime={ready.checkedAt}>{formatDate(ready.checkedAt, { dateStyle: 'medium', timeStyle: 'medium' })}</time></p>
           {ready.suggestion && <p>{t('audio.loudness.projection', { multiplier: ready.suggestion.gainMultiplier.toFixed(4), peak: fixed(ready.suggestion.projectedTruePeakDbtp), margin: ready.suggestion.marginDb })}</p>}
         </details>
-      </> : status ? <p data-testid="export-loudness-not-ready">{status}</p> : busy && !state.restored ? <p>{t('audio.loudness.another')}</p> : !state.connected && !state.restored ? <p>{t('audio.loudness.reconnect')}</p> : null}
+      </> : status ? <p data-testid="export-loudness-not-ready">{status}</p> : busy ? <p>{t('audio.loudness.another')}</p> : !state.connected ? <p>{t('audio.loudness.reconnect')}</p> : null}
     </div>
     <p className="export-sample-peak-limitation">{t('audio.loudness.export.limitation')}</p>
   </section>;

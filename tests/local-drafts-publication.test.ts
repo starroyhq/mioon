@@ -8,7 +8,8 @@ import fs from 'node:fs';
 import {syncBuiltinESMExports} from 'node:module';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {openStore,ownsStoreLock,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createTimelineRecoveryBoundary} from '../packages/business/src/timeline-recovery.ts';
 import {createLocalDrafts,LOCAL_DRAFT_FILENAME} from '../packages/business/src/local-drafts.ts';
@@ -37,7 +38,7 @@ async function fixture(t: test.TestContext){
     validateManagedFile(target:Parameters<typeof validateManagedFile>[0],options:Parameters<typeof validateManagedFile>[1]){const info=validateManagedFile(target,options);identityHook(target);return foreignScope&&target===dbFile?{...info,ino:info!.ino+1}:info;},
     writePrivateFileAtomic(target:Parameters<typeof writePrivateFileAtomic>[0],contents:Parameters<typeof writePrivateFileAtomic>[1],options:Parameters<typeof writePrivateFileAtomic>[2]){const result=writePrivateFileAtomic(target,contents,options);writes++;published=Buffer.from(contents);return result;},
   };
-  const guards={ownsLock:()=>owned&&ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),
+  const guards={ownsLock:()=>owned&&ownsStoreLock(store),
     readTimeline:(id:string)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),
     readClipAsset:(id:string,value:Parameters<ReturnType<typeof createTimelineRecoveryBoundary>["clipSource"]>[0])=>{sourceHook();return createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(value);},
   };

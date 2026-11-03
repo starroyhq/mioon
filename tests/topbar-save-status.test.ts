@@ -14,7 +14,6 @@ import { createWorkspacePreferences, durableWorkspaceState } from '../apps/web/s
 import { defaultWorkspaceState, type WorkspaceState } from '../apps/web/src/workspace-state.ts';
 import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from '../apps/web/src/project-open-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
-import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 import { stripSourceTypes } from './helpers/eval-source.ts';
 import type { DisplayMessage } from '../packages/i18n/src/types.ts';
 
@@ -151,7 +150,7 @@ const contextSource = section('  const context = (): CapturedContext =>', '  tas
 const settingsDepartureSource = section('  async function prepareSettingsDeparture()', '  async function changeHomePage(');
 const sessionReadySource = section('  function projectSessionReady()', '  const workbenchReady =');
 const selectSource = section('  async function selectProject(', '  async function reloadPreferences(');
-const reloadSource = section('  async function reloadPreferences(', '\n  // Optional feature discovery has its own connection epoch.');
+const reloadSource = section('  async function reloadPreferences(', '\n  async function boot()');
 const callsites = [...app.matchAll(/<TopbarSaveStatus\b[\s\S]*?\/>/g)];
 assert.equal(callsites.length, 1, 'the actual status component has one unambiguous callsite');
 const callsite = callsites[0][0];
@@ -234,7 +233,7 @@ test('App owns one busy projection, annotation-aware dirty status, late-bound Re
   assert.match(callsite, /onReload=\{reloadPreferences\}/);
   assert.equal(statusSource, '((projectId: string, status: PreferenceStatus) => { if (currentProject.current === projectId) setPreferenceStatus(status); }) as unknown as () => void');
   assert.match(app, /const busy = busyByProject\[currentProject\.current \|\| 'none'\] \|\| emptyBusy;/);
-  assert.match(contextSource, /captured\.projectId === currentProject\.current && captured\.epoch === navigationEpoch\.current && workspaceOriginScope\(captured\.workspace\) === workspaceOriginScope\(workspaceRef\.current\)/);
+  assert.match(contextSource, /captured\.projectId === currentProject\.current && captured\.epoch === navigationEpoch\.current && captured\.session === editorSession\.current/);
   assert.deepEqual(stripSourceTypes(reloadSource, {loader: 'ts'}).split('\n').map(line => line.trim()).filter(Boolean), [
     'async function reloadPreferences() {',
     'const captured = context();',
@@ -243,8 +242,8 @@ test('App owns one busy projection, annotation-aware dirty status, late-bound Re
     '}',
   ]);
   assert.equal(renderCoreMessage('zh-Hans', msg('shell.confirm.loadSavedView')), '载入已保存视图会替换当前的工作区、选择和位置。继续？');
-  assert.match(selectSource, /if \(!importSession\.current\.active \|\| currentProject\.current !== id \|\| projectEpoch\.current !== epoch \|\| workspaceOriginScope\(workspaceRef\.current\) !== attempt\.workspaceScope\) return false;/);
-  assert.match(selectSource, /if \(!restored\) throw Object\.assign\(localizedError\([^;]+PROJECT_VIEW_UNAVAILABLE/);
+  assert.match(selectSource, /if \(!importSession\.current\.active \|\| currentProject\.current !== id \|\| projectEpoch\.current !== epoch \|\| editorSession\.current !== attempt\.workspaceScope\) return false;/);
+  assert.match(selectSource, /if \(!loadedView\) throw Object\.assign\(localizedError\([^;]+PROJECT_VIEW_UNAVAILABLE/);
   const source = readFileSync(componentPath, 'utf8');
   assert.doesNotMatch(source, /useState|useEffect|useLayoutEffect|useRef|useMemo|\bmemo\s*\(|\bfetch\s*\(|\brpc\s*\(|setTimeout|setInterval|localStorage|sessionStorage|preferencesRef|currentProject|navigationEpoch|realConfirm|generationReview|Agent/);
   assert.doesNotMatch(source, /:\s*any\b|as\s+any\b|@ts-ignore|@ts-nocheck|\.jsx['"]/);
@@ -287,7 +286,7 @@ function harness(t: test.TestContext) {
     inspectorDirty: false, formatDirty: false, inspectorDraft: { title: 'retained inspector draft' }, formatDraft: { width: 1920 },
     paidReview: { token: 'unchanged paid review' }, mobilePanel: 'canvas', rightDockTab: 'properties' };
   const calls: unknown[][] = [], currentProject = { current: null as string|null }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 };
-  const env = { msg, application: null, ...createI18nTestContext(), localizedError: (value?: string|DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), nativeWindow: null, nativeProjectEntry: null, currentProject, navigationEpoch, projectEpoch, workspaceRef: { current: { restored: false } as {restored:boolean;workspaceOrigin?:string} }, workspaceOriginScope,
+  const env = { msg, application: null, ...createI18nTestContext(), localizedError: (value?: string|DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), nativeWindow: null, nativeProjectEntry: null, currentProject, navigationEpoch, projectEpoch, editorSession: {current: 'normal'}, workspaceRef: { current: {  } as {} },
     projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind,
     openedProject: { current: null }, settingsNavigation: { current: createSettingsNavigationRegistry() },
     loading: false, importSession: { current: { active: true, selection: 0 } }, agentDraft: { current: false }, imageDraft: { current: false },
@@ -355,7 +354,7 @@ test('actual Reload waits for confirmation and rejects newer project, navigation
     assert.deepEqual(prompts.map(value => renderCoreMessage('zh-Hans', value)), ['载入已保存视图会替换当前的工作区、选择和位置。继续？']);
     if (supersede === 'project') await actions.selectProject(B);
     if (supersede === 'navigation') { h.env.navigationEpoch.current++; h.state.view.canvas.selectedId = SELECTED; }
-    if (supersede === 'workspace') h.env.workspaceRef.current = { restored: true, workspaceOrigin: B };
+    if (supersede === 'workspace') h.env.editorSession.current = 'another-renderer-session';
     const before = copy(h.state), requests = h.server.calls.length;
     (confirmation.resolve)!(supersede !== 'cancel'); await pending;
     if (supersede === 'accept') {

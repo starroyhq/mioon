@@ -13,16 +13,16 @@ export interface ContinuousAudioControllerOptions extends TimelineAudioPreviewCo
   createContinuousTransport?: typeof createContinuousTimelineAudioTransport;
 }
 const blank = (): TimelineAudioPreviewState => ({scope: null, executionScope: '', projectId: null, timelineId: null, revision: null,
-  durationFrames: 0, sourceIdentity: '', connected: false, visible: false, restored: false, hasUnsavedDrafts: false,
+  durationFrames: 0, sourceIdentity: '', connected: false, visible: false,  hasUnsavedDrafts: false,
   phase: 'idle', retirement: 'none', nativeAdmission: 'none', plan: null, continuousPlan: null, continuous: true, positionFrame: null,
   requestedStartFrame: null, preparedSources: 0, totalSources: 0, error: ''});
 const same = (a: TimelineAudioPreviewContext, b: TimelineAudioPreviewContext): boolean =>
   a.scope === b.scope && a.executionScope === b.executionScope && a.projectId === b.projectId && a.timelineId === b.timelineId &&
   a.revision === b.revision && a.durationFrames === b.durationFrames && a.sourceIdentity === b.sourceIdentity &&
-  a.connected === b.connected && a.visible === b.visible && a.restored === b.restored;
+  a.connected === b.connected && a.visible === b.visible;
 const allowed = (state: TimelineAudioPreviewContext): boolean => Boolean(state.scope && state.projectId && state.timelineId &&
   Number.isSafeInteger(state.revision) && (state.revision ?? 0) > 0 && Number.isSafeInteger(state.durationFrames) &&
-  state.durationFrames > 0 && state.durationFrames <= 18000 && state.sourceIdentity && state.connected && state.visible && !state.restored);
+  state.durationFrames > 0 && state.durationFrames <= 18000 && state.sourceIdentity && state.connected && state.visible);
 
 /** The continuous owner retains the existing saved-only binding. Language and
  * drafts are presentation state; neither becomes an audio session identity. */
@@ -104,7 +104,7 @@ export function createContinuousAudioPreviewController(options: ContinuousAudioC
         // audible transport; all actual scheduling remains engine-owned.
         const resumed = context.resume(); void resumed.catch(() => {});
         const session = await prepare({projectId: state.projectId!, timelineId: state.timelineId!, expectedRevision: state.revision!, startFrame}, {
-          context, signal: abort.signal, ...options.getInvocation?.(),
+          context, signal: abort.signal,
           ...(own.native ? {reserveNative: (plan, sessionId, signal) => own.native!.acquireContinuous(plan, sessionId, signal)} : {}),
           onResourceSettlement: resources => { own.resources = resources; void resources.catch(() => {}); },
         });

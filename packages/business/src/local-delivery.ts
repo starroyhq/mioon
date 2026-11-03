@@ -53,7 +53,7 @@ function parse<T>(schema:{safeParse(input:unknown):{success:true;data:T}|{succes
   const result=schema.safeParse(value);if(!result.success)fail('LOCAL_DELIVERY_VALIDATION');return result.data;
 }
 export interface LocalDeliveryGuards{
-  ownsLock():boolean;isRestored():boolean;
+  ownsLock():boolean;
   /** Existing bounded ownership reader, never timeline.get's initializing path. */
   readTimeline(projectId:string):unknown;
   /** Original hash checked, ownership-validated shared receipt, publicValue only. */
@@ -82,8 +82,8 @@ export function createLocalDelivery({root,channel='web',guards,storage,signal,fa
   const readDigests=new WeakMap<LocalDeliveryDisk,string>(),uncertain=new Map<string,string>();
   let scope:string|undefined;
   function guarded<T>(fn:()=>T):T{try{return fn();}catch(error){if(error instanceof LocalDeliveryError)throw error;fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');}}
-  function owned():void{if(guards.isRestored())fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');if(signal?.aborted)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');if(guards.ownsLock()!==true)fail('LOCAL_DELIVERY_OWNER_REQUIRED');}
-  function active():boolean{if(guards.isRestored())return false;owned();return true;}
+  function owned():void{if(signal?.aborted)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');if(guards.ownsLock()!==true)fail('LOCAL_DELIVERY_OWNER_REQUIRED');}
+  function active():boolean{owned();return true;}
   function identity():string{
     const {directory,db}=validateCompanionScope(root,storage,databaseFile);
     if(!directory||!db)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');

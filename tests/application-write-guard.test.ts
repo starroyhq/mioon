@@ -29,8 +29,7 @@ import {readProjectState, changeMarks} from './helpers/project-state.ts';
 import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 
 function patch(settings: WorkspaceSettings) {
-  return {expectedRevision: settings.revision, liveGeneration: !settings.liveGeneration, automaticBackup: settings.automaticBackup,
-    backupIntervalHours: settings.backupIntervalHours, backupLocation: settings.backupLocation};
+  return {expectedRevision: settings.revision, liveGeneration: !settings.liveGeneration};
 }
 function fixture(t: TestContext) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-app-write-'));
@@ -167,8 +166,7 @@ async function mediaFixture(t: TestContext) {
 
 test('project and configuration writes use application admission independently of the legacy backup port', async t => {
   const f = fixture(t), before = f.ports.configuration.get();
-  let backupGuardCalls = 0;
-  f.ports.backups.assertMutationAllowed = () => {backupGuardCalls++; throw new Error('Legacy backup admission must not own application writes');};
+  assert.equal(Object.hasOwn(f.ports, 'backups'), false, 'application admission exposes no retired backup port');
   assert.doesNotThrow(() => f.services.assertMutationAllowed());
   const shot = await f.services.call('shot.create', f.shot()) as {id: string};
   assert.ok(f.store.get('shots', shot.id));
@@ -176,14 +174,14 @@ test('project and configuration writes use application admission independently o
   assert.equal(settings.revision, before.revision + 1);
   assert.equal(settings.liveGeneration, !before.liveGeneration);
   assert.ok(f.library.documents.read('workspace-settings-v1.json'));
-  assert.equal(backupGuardCalls, 0);
-  await assert.rejects(f.services.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
+  assert.equal(Object.hasOwn(f.services, 'backups'), false);
+  await assert.rejects(f.services.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'UNKNOWN_OPERATION'});
 });
 
 test('a kernel cannot substitute a backup port for missing application write admission', t => {
   const f = fixture(t), before = f.changes();
   assert.equal(Reflect.deleteProperty(f.ports, 'assertMutationAllowed'), true);
-  assert.throws(() => createServices(f.store, new Map(), {application: f.ports}), /explicit application configuration, write admission/u);
+  assert.throws(() => createServices(f.store, new Map(), {application: f.ports}), /explicit application configuration and write admission/u);
   assert.deepEqual(f.changes(), before);
   assert.equal(f.library.documents.read('workspace-settings-v1.json'), null);
   assert.deepEqual(f.store.list('shots'), []);
@@ -217,10 +215,8 @@ test('a closed application capability cannot revive when a new owner opens the s
   assert.deepEqual(f.store.list('shots'), []);
 });
 
-test('ordinary media hash and file-only preview writes use application admission without the backup guard', async t => {
+test('ordinary media hash and file-only preview writes use application admission without a backup port', async t => {
   const f = await mediaFixture(t);
-  let backupGuardCalls = 0;
-  f.ports.backups.assertMutationAllowed = () => {backupGuardCalls++; throw new Error('Legacy backup admission must not own media writes');};
   const prepare = f.ordinary[0]!;
   const response = assetMediaPrepareResponseSchema.parse(await f.services.call(prepare.operation, prepare.input));
   assert.equal(response.assets[0]!.sha256, f.fullHash);
@@ -230,7 +226,7 @@ test('ordinary media hash and file-only preview writes use application admission
   assert.equal(result.chosen.matches, true);
   const token: unknown = JSON.parse(readFileSync(path.join(f.store.tempDir, 'asset-media', `${result.previewToken}.json`), 'utf8'));
   assert.ok(record(token)); assert.equal(token.kind, 'relink');
-  assert.equal(backupGuardCalls, 0);
+  assert.equal(Object.hasOwn(f.ports,'backups'), false);
 });
 
 test('an aborted application owner refuses ordinary and trusted media writes without changing either library or temp files', async t => {

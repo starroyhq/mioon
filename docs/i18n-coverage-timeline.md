@@ -28,8 +28,8 @@ Core messages are in `packages/i18n/src/catalogs/timeline.ts`; every entry has e
 
 ## Offline backup guide
 
-- The existing `docs/WORKSPACE-BACKUP-GUIDE.zh-CN.md` remains the Simplified Chinese source.
-- Added `docs/WORKSPACE-BACKUP-GUIDE.zh-Hant.md`, `.en.md`, and `.ja.md`.
+- The existing `docs/WORKSPACE-BACKUP.md` remains the Simplified Chinese source.
+- Added `docs/WORKSPACE-BACKUP.md`, `.en.md`, and `.ja.md`.
 - Exact CLI commands, example paths, codes, file names, capacity limits, permission modes, restoration scope, fsync limitations, uncertain cleanup, no-overwrite, and no-provider/no-replay warnings are preserved.
 - Commands and numerical/security tokens are checked across all three translations. These files are documentation only; no commands were executed.
 

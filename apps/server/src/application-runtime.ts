@@ -48,7 +48,7 @@ export async function composeApplicationRuntime(library: AppLibrary, options: Se
       ownsSettings = true;
       closers.push(() => agentSettings!.close());
     }
-    const authorizations = createAgentAuthorizations({...scope, guards: {ownsLock, isRestored: () => false}, readCurrentTarget: async () => {
+    const authorizations = createAgentAuthorizations({...scope, guards: {ownsLock}, readCurrentTarget: async () => {
       const settings = sanitizeAgentSettingsResult(await agentSettings!.get({selfPort: selfPort()}));
       return {destination: deriveAgentEndpoint(settings.configuration), model: settings.configuration.model, settingsRevision: settings.revision};
     }});
@@ -67,7 +67,7 @@ export async function composeApplicationRuntime(library: AppLibrary, options: Se
     const {connector, availability} = composeOfficialComfyModule(options.comfyModule ?? 'load', () => createComfyConnector({reservedPorts,
       ...(options.comfyNetwork ? {networkDeps: {httpRequest: options.comfyNetwork.httpRequest}} : {})}));
     const ui = createUiPreferences({...scope, documents, guards: {ownsLock, isReadOnly: () => false, hasProject}});
-    const lastProject = createLastProject({...scope, documents, guards: {ownsLock, isRestored: () => false, readProject: id => hasProject(id) ? {id} : null}});
+    const lastProject = createLastProject({...scope, documents, guards: {ownsLock, readProject: id => hasProject(id) ? {id} : null}});
     // The application port selects db/tx/registration; no project is needed.
     const preferences = createWorkspacePreferences({db: library.db, tx: library.tx, get: () => undefined}, {application: {db: library.db, tx: library.tx, hasProject}});
     const close = async (): Promise<void> => {

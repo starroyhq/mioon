@@ -1,13 +1,13 @@
 import type {WorkspaceServices as FixtureServices} from './helpers/strict-workspace-boundary-types.ts';
 import test from 'node:test';
-import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
+
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore, createServices, createWorkspacePreferences} from '@mioon/business';
+import {createServices, createWorkspacePreferences} from '@mioon/business';
 import {testProjectAppLibrary,createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import {projectFileIdentity} from '../packages/business/src/app-db/index.ts';
@@ -26,7 +26,8 @@ const at = (value: unknown, path: readonly (string|number)[]) => path.reduce<unk
 const set = (value:unknown,path:readonly (string|number)[],replacement?:unknown)=>{at(value,path.slice(0,-1))[path.at(-1)!]=replacement;return value;};
 const protectedTables = ['projects', 'assets', 'shots', 'nodes', 'edges', 'jobs', 'versions', 'exports', 'timelines', 'timeline_requests', 'timeline_history', 'timeline_history_cursors', 'reference_requests', 'idempotency', 'job_events'];
 const capture = (store: Pick<WorkspaceStore,'db'>) => Object.fromEntries(protectedTables.map(table => [table, store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
-type PreferenceStore = WorkspaceStore | ReturnType<typeof openLegacyWorkspaceStore>;
+type PreferenceStore = WorkspaceStore;
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 async function fixture(t: test.TestContext,{open=openStore}: {open?:(root:string)=>PreferenceStore}={}) {
   const root = await mkdtemp(path.join(realpathSync(tmpdir()), 'wb-preferences-'));
   let store = open(root), services = (createServices(store, new Map()) as unknown as FixtureServices), preferences = (createWorkspacePreferences(store) as unknown as import('./helpers/strict-workspace-boundary-types.ts').PreferenceService);
@@ -283,24 +284,7 @@ test('selection IDs can outlive entities, project preferences stay isolated, and
   await f.restart(); assert.deepEqual(capture(f.store), before); assert.deepEqual(f.preferences.get(projectId), saved);
 });
 
-test('additive v5 migration preserves legacy records, immutable requests, history and bytes', async t => {
-  const f = await fixture(t,{open:openLegacyWorkspaceStore}), projectId = f.projectId;
-  await f.call('shot.create', {projectId, title: 'Legacy shot'});
-  let timeline = await f.call('timeline.get', {projectId});
-  const input = {projectId, expectedRevision: timeline.revision, requestId: randomUUID(), kind: 'audio', name: 'Legacy edit'};
-  timeline = await f.call('timeline.track.add', input);
-  const before = capture(f.store);
-  f.store.db.exec('DROP TABLE workspace_preferences; DELETE FROM schema_version WHERE version=5;');
-  await f.restart();
-  assert.ok(f.store.db.prepare('SELECT version FROM schema_version WHERE version=5').get());
-  assert.deepEqual(capture(f.store), before);
-  assert.deepEqual(f.preferences.get(projectId), {projectId, revision: 0, state: null});
-  assert.deepEqual(await f.call('timeline.track.add', input), timeline);
-  f.preferences.put(projectId, {expectedRevision: 0, state: state()});
-  assert.deepEqual(capture(f.store), before);
-  assert.throws(() => f.store.db.prepare('UPDATE timeline_history SET operation=?').run('changed'), /immutable/);
-  assert.throws(() => f.store.db.prepare('UPDATE timeline_requests SET response=?').run('{}'), /immutable/);
-});
+
 
 async function race(_t:test.TestContext, f:Awaited<ReturnType<typeof fixture>>, states:WorkspaceState[], expectedRevision:number) {
   // One application connection owns preferences. Concurrent client requests

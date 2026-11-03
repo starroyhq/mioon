@@ -1,8 +1,7 @@
 /** Synthetic restricted-JFIF native QA. Do not prepare or launch merely to inspect this helper.
- * Preparation is the only direct fixture mutation (later cold restore uses the public CLI).
+ * Preparation is the only direct fixture mutation.
  * All later product changes must come from ordinary supported native UI input.
  * Current audits acquire a cold real kernel; live native audits refuse without trusted IPC.
- * --legacy-only preserves only historical offline backup/restore evidence until B2.
  * Never launches a browser driver, injects RPCs, changes fuses, disables sandbox,
  * removes a backend lock, or accesses a provider/network/deployment service. */
 import assert from 'node:assert/strict';
@@ -13,16 +12,11 @@ import {spawn} from 'node:child_process';
 import {createHash, randomUUID} from 'node:crypto';
 import {constants} from 'node:fs';
 import {readFile, writeFile, readdir, lstat, open, mkdir} from 'node:fs/promises';
-import {DatabaseSync} from 'node:sqlite';
 import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
-import {createServices} from '../packages/business/src/index.ts';
-import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createQaProject, closeQaProject, auditQaDatabases} from './helpers/kernel-qa-fixture.mjs';
 import {openServerProject} from './helpers/project-database.ts';
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
-import {materializeHistoricalWorkspace} from './helpers/historical-workspace.ts';
-import {databaseFiles, dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import {createWorkspacePreferences} from '../packages/business/src/workspace-preferences.ts';
 import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
 import {inspectStaticSrgbPng} from '../packages/business/src/timeline-image-admission.ts';
@@ -31,15 +25,11 @@ import {JFIF_INPUT_ARGS, JFIF_RGB24_FILTER} from '../packages/business/src/timel
 import {timelineColourInputFilter} from '../packages/business/src/timeline-colour-lut.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 
-const legacyOnly = process.argv.includes('--legacy-only');
 const NATIVE_PHASES = ['first', 'inspect', 'save', 'undo', 'redo', 'render', 'replace', 'replacement-undo', 'reopen'];
 const repo = fileURLToPath(new URL('../', import.meta.url));
-const root = path.join(repo, 'evidence/jfif-images', legacyOnly ? 'legacy-only' : 'native-kernel');
+const root = path.join(repo, 'evidence/jfif-images', 'native-kernel');
 const runtime = path.join(root, 'private-runtime'), report = path.join(root, 'report');
-const userData = path.join(runtime, 'user-data'), workspace = path.join(userData, legacyOnly ? 'workspace' : 'data');
-const legacySeed = path.join(runtime, 'legacy-seed');
-const restoredUserData = path.join(runtime, 'restored-user-data'), restoredWorkspace = path.join(restoredUserData, 'workspace');
-const backup = path.join(runtime, 'verified-schema34-backup');
+const userData = path.join(runtime, 'user-data'), workspace = path.join(userData, 'data');
 const fixtureFile = path.join(runtime, 'fixture.json');
 const executable = path.join(repo, 'release/desktop/production/linux-unpacked/mioon');
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -92,16 +82,10 @@ async function command(binary, args, label) {
   } catch (e) { await owned.stop(); throw e; } finally { clearTimeout(timer); await stdout.close(); await stderr.close(); }
 }
 async function cold(directory, f) {
-  if (f?.kernel) {
-    // No IPC is injected into the native application. The kernel/app locks must
-    // allow a cold owner; an active application is refused before a raw open.
-    const store = openServerProject(workspace, f.projectId);
-    try { assert.equal(store.projectDir, f.projectDir); assert.equal(store.localDir, f.localDir); }
-    finally { store.close(); }
-    return;
-  }
-  assert.equal(await exists(path.join(directory, 'server.lock')), false, 'Close the exact owned backend normally; never remove its lock');
-  for (const suffix of ['-wal', '-journal']) { const file = path.join(directory, 'workbench.sqlite' + suffix); if (await exists(file)) assert.equal((await lstat(file)).size, 0, 'Checkpointed cold SQLite required'); }
+  assert.equal(f.kernel, true);
+  const store = openServerProject(workspace, f.projectId);
+  try { assert.equal(directory, f.projectDir); assert.equal(store.projectDir, f.projectDir); assert.equal(store.localDir, f.localDir); }
+  finally { store.close(); }
 }
 async function waitForCold(directory, f) {
   const until = Date.now() + 45000;
@@ -123,20 +107,14 @@ function rawTable(db, name, columns, schema = 'main') {
 function cell(row, table, column) { const c = row.values[table.columns.indexOf(column)]; assert.ok(c); return c.type === 'null' ? null : Buffer.from(c.hex, 'hex').toString('utf8'); }
 function decode(table, column = 'data') { return table.rows.map(r => JSON.parse(cell(r, table, column))); }
 function readDb(directory, callback, f) {
-  if (f?.kernel) {
-    assert.equal(directory, f.projectDir);
-    const store = openServerProject(workspace, f.projectId);
-    try {
-      assert.equal(store.projectDir, f.projectDir); assert.equal(store.localDir, f.localDir);
-      return callback(store.db, store);
-    } finally { store.close(); }
-  }
-  assert.equal(legacyOnly, true, 'Raw legacy SQLite is available only in the explicit historical fixture mode');
-  const db = new DatabaseSync(path.join(directory, 'workbench.sqlite'), {readOnly: true});
-  try { db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF; BEGIN'); const value = callback(db); db.exec('COMMIT'); return value; }
-  finally { if (db.isTransaction) db.exec('ROLLBACK'); db.close(); }
+  assert.equal(directory, f.projectDir);
+  const store = openServerProject(workspace, f.projectId);
+  try {
+    assert.equal(store.projectDir, f.projectDir); assert.equal(store.localDir, f.localDir);
+    return callback(store.db, store);
+  } finally { store.close(); }
 }
-async function fixture() { const f = await readJson(fixtureFile); assert.equal(f.synthetic, true); assert.equal(f.workspace, workspace); assert.equal(f.kernel, !legacyOnly); return f; }
+async function fixture() { const f = await readJson(fixtureFile); assert.equal(f.synthetic, true); assert.equal(f.workspace, workspace); assert.equal(f.kernel, true); return f; }
 async function writeLauncher(label) {
   await writeFile(path.join(runtime, 'launch-' + label + '.sh'), `#!/bin/bash\nset -e\ncd ${JSON.stringify(repo)}\nexec ${JSON.stringify(process.execPath)} tests/timeline-jpeg-qa-native.mjs launch ${label}\n`, {mode: 0o700, flag: 'wx'});
 }
@@ -181,12 +159,10 @@ print('Synthetic baseline JFIF; installed Pillow ' + __version__)
   if (includePng) await writeFile(overlay, png({width: 320, height: 160, tagged: true, pixel: x => x < 96 ? [255, 0, 255, 0] : [192, 192, 192, 128]}), {mode: 0o600, flag: 'wx'});
   const originalEnvironment = {MIOON_FFMPEG_PATH: process.env.MIOON_FFMPEG_PATH, MIOON_FFPROBE_PATH: process.env.MIOON_FFPROBE_PATH};
   process.env.MIOON_FFMPEG_PATH = '/usr/bin/ffmpeg'; process.env.MIOON_FFPROBE_PATH = '/usr/bin/ffprobe';
-  const owner = legacyOnly
-    ? (() => { const store = openLegacyWorkspaceStore(legacySeed); return {store, services: createServices(store, new Map())}; })()
-    : await createQaProject(workspace, {name: 'JFIF JPEG · PNG · 视频混合 SDR 合成验收', media: false});
+  const owner = await createQaProject(workspace, {name: 'JFIF JPEG · PNG · 视频混合 SDR 合成验收', media: false});
   const {store, services} = owner; let f;
   try {
-    const project = legacyOnly ? await services.call('project.create', {name: 'JFIF JPEG · PNG · 视频混合 SDR 合成验收'}) : owner.project, assets = {};
+    const project = owner.project, assets = {};
     const imports = [['video', source, 'video/mp4'], ['image', image, 'image/jpeg'], ['replacement', replacement, 'image/jpeg'], ...(includePng ? [['overlay', overlay, 'image/png']] : [])];
     for (const [key, file, mimeType] of imports) {
       const imported = await services.call('asset.import', {projectId: project.id, name: path.basename(file), mimeType, dataBase64: (await readFile(file)).toString('base64')});
@@ -214,40 +190,32 @@ print('Synthetic baseline JFIF; installed Pillow ' + __version__)
     }
     await mutate('timeline.subtitle.add', {text: 'JFIF SDR subtitle', startFrame: 30, durationFrames: 30});
     assert.equal(Object.hasOwn(timeline.clips.find(c => c.id === imageClipId), 'colour'), false);
-    if (!legacyOnly) assert.equal(store.db.prepare('SELECT max(version) AS n FROM project.schema_version').get().n, PROJECT_FILE_SCHEMA_VERSION);
+    assert.equal(store.db.prepare('SELECT max(version) AS n FROM project.schema_version').get().n, PROJECT_FILE_SCHEMA_VERSION);
     const state = defaultWorkspaceState(); state.activeMode = 'editing'; state.editing.selectedClipId = imageClipId; state.editing.previewKind = 'source'; state.shared.inspectorCollapsed = false; delete state.shared.assetSearch;
-    const library = legacyOnly ? null : testProjectAppLibrary(store);
-    if (!legacyOnly) assert.ok(library, 'Preferences must use the exact lazy B1 application owner');
-    createWorkspacePreferences(store, library ? {application: {db: library.db, tx: library.tx, hasProject: id => library.registry.get(id) !== null}} : {}).put(project.id, {expectedRevision: 0, state});
-    f = {synthetic: true, kernel: !legacyOnly, legacyOnly, projectDir: legacyOnly ? workspace : store.projectDir, localDir: legacyOnly ? workspace : store.localDir, id: randomUUID(), at: stamp(), userData, workspace, restoredUserData, restoredWorkspace, backup, projectId: project.id, timelineId: timeline.id, videoClipId, imageClipId, imageTrackId: imageTrack.id, overlayClipId, includePng, baseRevision: timeline.revision, initialTimeline: timeline, assets, videoInspection,
+    const library = testProjectAppLibrary(store);
+    assert.ok(library, 'Preferences must use the exact lazy B1 application owner');
+    createWorkspacePreferences(store, {application: {db: library.db, tx: library.tx, hasProject: id => library.registry.get(id) !== null}}).put(project.id, {expectedRevision: 0, state});
+    f = {synthetic: true, kernel: true, projectDir: store.projectDir, localDir: store.localDir, id: randomUUID(), at: stamp(), userData, workspace, projectId: project.id, timelineId: timeline.id, videoClipId, imageClipId, imageTrackId: imageTrack.id, overlayClipId, includePng, baseRevision: timeline.revision, initialTimeline: timeline, assets, videoInspection,
       expectedImageEvidence, replacementEvidence, decodedSources, setupOnly: 'Imports, video interpretation, and optional PNG interpretation were seeded. JFIF parser/decode above only validate the synthetic fixture. JPEG inspection/interpretation/save/undo/redo/replacement/export must be performed through native UI after preparation; no JPEG declaration has been saved.'};
   } finally { await closeQaProject(owner); for (const [key, value] of Object.entries(originalEnvironment)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } }
-  if (legacyOnly) {
-    materializeHistoricalWorkspace({root: legacySeed}, workspace, {version: 34});
-    assert.equal(readDb(workspace, db => db.prepare('SELECT max(version) AS n FROM schema_version').get().n), 34);
-  }
   await writeFile(fixtureFile, json(f), {mode: 0o600, flag: 'wx'}); await save('fixture.json', f); await audit('prepared');
-  if (!legacyOnly) for (const label of NATIVE_PHASES) await writeLauncher(label);
-  return {synthetic: true, projectId: f.projectId, imageClipId: f.imageClipId, includePng, baseRevision: f.baseRevision, userData, commands: (legacyOnly ? [] : NATIVE_PHASES.map(label => 'launch-' + label + '.sh')).map(name => path.join(runtime, name))};
+  for (const label of NATIVE_PHASES) await writeLauncher(label);
+  return {synthetic: true, projectId: f.projectId, imageClipId: f.imageClipId, includePng, baseRevision: f.baseRevision, userData, commands: NATIVE_PHASES.map(label => 'launch-' + label + '.sh').map(name => path.join(runtime, name))};
 }
 async function audit(label, branch = 'original') {
-  assert.match(label, /^[a-z0-9-]{1,45}$/u); assert.ok(['original', 'restored'].includes(branch)); const f = await fixture();
-  assert.ok(!f.kernel || branch === 'original', 'New kernel QA cannot be audited as an old restored workspace');
-  const directory = branch === 'restored' ? restoredWorkspace : f.projectDir;
+  assert.match(label, /^[a-z0-9-]{1,45}$/u); const f = await fixture();
+  assert.equal(branch, 'original');
+  const directory = f.projectDir;
   await cold(directory, f);
   let databases;
   const raw = readDb(directory, db => {
-    if (f.kernel) {
-      databases = auditQaDatabases(db);
-      const result = {};
-      for (const [schema, catalog] of Object.entries(databases.databases)) for (const name of Object.keys(catalog.rows)) {
-        const key = Object.hasOwn(result, name) ? schema + '.' + name : name;
-        result[key] = rawTable(db, name, undefined, schema);
-      }
-      return result;
+    databases = auditQaDatabases(db);
+    const result = {};
+    for (const [schema, catalog] of Object.entries(databases.databases)) for (const name of Object.keys(catalog.rows)) {
+      const key = Object.hasOwn(result, name) ? schema + '.' + name : name;
+      result[key] = rawTable(db, name, undefined, schema);
     }
-    const names = db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name LIMIT 129").all(); assert.ok(names.length <= 128);
-    return Object.fromEntries(names.map(({name}) => [name, rawTable(db, name)]));
+    return result;
   }, f);
   assert.ok(Buffer.byteLength(json(raw)) < 24 * 1024 * 1024);
   const assets = decode(raw.assets), originals = {};
@@ -255,11 +223,11 @@ async function audit(label, branch = 'original') {
     assert.match(asset.relativePath, /^media\/[a-zA-Z0-9._-]+$/u); originals[name] = {managed: await fileHash(path.join(directory, asset.relativePath)), fixture: await fileHash(asset.fixtureFile)};
     assert.equal(originals[name].managed.sha256, asset.sha256); assert.deepEqual(originals[name].fixture, asset.fixtureHash);
   }
-  const draftFile = path.join(f.kernel ? f.localDir : directory, 'local-drafts-v1.json'), timeline = decode(raw.timelines).find(t => t.id === f.timelineId);
-  const result = {synthetic: true, at: stamp(), branch, kernel: f.kernel, databases, schemaVersion: readDb(directory, db => db.prepare(`SELECT max(version) AS n FROM ${f.kernel ? 'project.' : ''}schema_version`).get().n, f),
+  const draftFile = path.join(f.localDir, 'local-drafts-v1.json'), timeline = decode(raw.timelines).find(t => t.id === f.timelineId);
+  const result = {synthetic: true, at: stamp(), branch, kernel: f.kernel, databases, schemaVersion: readDb(directory, db => db.prepare('SELECT max(version) AS n FROM project.schema_version').get().n, f),
     tables: Object.fromEntries(Object.entries(raw).map(([name, value]) => [name, {count: value.rows.length, sha256: sha(json(value))}])), raw, timeline, assets, exports: decode(raw.exports),
     draft: await exists(draftFile) ? await readJson(draftFile) : null, media: await tree(path.join(directory, 'media')), originals};
-  assert.equal(result.schemaVersion, f.kernel ? PROJECT_FILE_SCHEMA_VERSION : branch === 'restored' ? 35 : 34);
+  assert.equal(result.schemaVersion, PROJECT_FILE_SCHEMA_VERSION);
   await save(label + '-audit.json', result);
   return {label, branch, schemaVersion: result.schemaVersion, revision: timeline.revision, imageClip: timeline.clips.find(c => c.id === f.imageClipId), exports: result.exports.map(e => ({id: e.id, status: e.status, purpose: e.purpose}))};
 }
@@ -276,7 +244,6 @@ async function artifacts() {
 async function launch(label) {
   assert.ok(NATIVE_PHASES.includes(label)); const f = await fixture();
   assert.equal(f.kernel, true, 'The current native application cannot launch an old-format fixture');
-  assert.notEqual(label, 'restored', 'Historical restoration is legacyOnly evidence, never a current native launch');
   const directory = f.projectDir;
   await cold(directory, f); const frozenArtifacts = await artifacts();
   if (label !== 'first') { const first = await readJson(path.join(report, 'first-launch.json')); assert.deepEqual(frozenArtifacts, first.artifacts, 'Native reopen must use the exact unchanged production package and helper'); }
@@ -292,71 +259,10 @@ async function launch(label) {
     result = await Promise.race([owned.done, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Native observation budget ended')), 45 * 60 * 1000); })]);
   } catch (error) { failure = error.message; result = await owned.stop(); }
   finally { clearTimeout(timer); process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop); await log.close(); }
-  const until = Date.now() + 45000; while (await exists(path.join(directory, 'server.lock')) && Date.now() < until) await pause(250);
-  const backendLockReleased = f.kernel ? await waitForCold(directory, f).then(() => true) : !await exists(path.join(directory, 'server.lock'));
+  const backendLockReleased = await waitForCold(directory, f).then(() => true);
   await save(label + '-exit.json', {...initial, endedAt: stamp(), result, backendLockReleased, normal: !failure && result.code === 0 && result.signal === null && !result.error, ...(failure ? {failure} : {})});
   assert.equal(failure, undefined); assert.deepEqual(result, {code: 0, signal: null}); assert.ok(backendLockReleased); await cold(directory, f);
   assert.deepEqual(await artifacts(), frozenArtifacts); await audit(label + '-exit', 'original');
-}
-async function offline(commandName) {
-  assert.equal(legacyOnly, true, 'Offline workspace CLI accepts only the explicit historical fixture');
-  const args = ['apps/cli/src/backup.ts', commandName, ...(commandName === 'create' ? ['--source', workspace, '--destination', backup] : commandName === 'restore' ? ['--directory', backup, '--destination', restoredWorkspace] : ['--directory', backup])];
-  await command(process.execPath, args, 'offline-' + commandName); const value = await readJson(path.join(runtime, 'offline-' + commandName + '.stdout')); assert.equal(value.ok, true); assert.equal(value.data.warnings, undefined);
-  if (commandName === 'restore') { assert.equal(value.data.publication, 'confirmed'); assert.equal(value.data.databaseSchemaVersion, 35); assert.equal(value.data.sourceSchema, 34); assert.equal(value.data.profile, 'restored-local-v6'); }
-  else { assert.equal(value.data.integrity, 'verified'); assert.equal(value.data.databaseSchemaVersion, 34); }
-  return value.data;
-}
-function assertRestoreRaw(before, directory) {
-  return readDb(directory, db => {
-    for (const [name, original] of Object.entries(before)) { if (name === 'schema_version') continue; assert.deepEqual(rawTable(db, name, original.columns), original, 'Immediate restore exact original cells: ' + name); }
-    for (const [name, target] of [['timeline_history', 'workspace_restore_timeline_history'], ['timeline_history_cursors', 'workspace_restore_timeline_cursors']]) assert.deepEqual(rawTable(db, target, before[name].columns), before[name], 'Exact history archive: ' + name);
-    return {holds: rawTable(db, 'workspace_restore_holds'), history: rawTable(db, 'workspace_restore_timeline_history'), cursors: rawTable(db, 'workspace_restore_timeline_cursors'), metadata: rawTable(db, 'workspace_restoration'), evidence: rawTable(db, 'workspace_restore_evidence')};
-  });
-}
-async function coldRestore() {
-  const f = await fixture();
-  if (f.kernel) return kernelBackupUnavailable(f);
-  assert.equal(legacyOnly, true);
-  if (await exists(path.join(report, 'first-exit.json'))) {
-    const exited = await readJson(path.join(report, 'first-exit.json')); assert.equal(exited.normal, true); assert.equal(exited.backendLockReleased, true);
-  }
-  await cold(workspace);
-  await audit('legacy-before-backup');
-  assert.equal(await exists(backup), false); assert.equal(await exists(restoredUserData), false); ensurePrivateDirectory(restoredUserData, {create: true});
-  const sourceAudit = await readJson(path.join(report, 'legacy-before-backup-audit.json')); assert.equal(sourceAudit.schemaVersion, 34);
-  const sourceDatabase = await fileHash(path.join(workspace, 'workbench.sqlite')), sourceMedia = await tree(path.join(workspace, 'media'));
-  const created = await offline('create'), verified = await offline('verify'), backupFiles = await tree(backup), restored = await offline('restore'); await cold(restoredWorkspace);
-  assert.deepEqual(await fileHash(path.join(workspace, 'workbench.sqlite')), sourceDatabase); assert.deepEqual(await tree(path.join(workspace, 'media')), sourceMedia); assert.deepEqual(await tree(backup), backupFiles);
-  assert.deepEqual(await fileHash(path.join(backup, 'payload/workbench.sqlite')), sourceDatabase); assert.deepEqual(await tree(path.join(restoredWorkspace, 'media')), sourceMedia);
-  const exact = assertRestoreRaw(sourceAudit.raw, restoredWorkspace);
-  await save('cold-restore.json', {synthetic: true, at: stamp(), sourceSchema: 34, restoredSchema: 35, sourceDatabase, sourceMedia, backupFiles, created, verified, restored, exact});
-  await audit('restored-before-launch', 'restored');
-  return {synthetic: true, sourceSchema: 34, restoredSchema: 35, originalUnchanged: true, restoredOriginalCellsExact: true, legacyOnly: true, launch: null};
-}
-async function kernelBackupUnavailable(f) {
-  const store = openServerProject(workspace, f.projectId), services = createServices(store, new Map());
-  try {
-    const library = testProjectAppLibrary(store); assert.ok(library);
-    const snapshot = async () => ({project: auditQaDatabases(store.db), application: auditQaDatabases(library.db),
-      files: await dataFileSnapshot(workspace, [...databaseFiles(store.db), library.databaseFile])});
-    const before = await snapshot();
-    await assert.rejects(services.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-    assert.deepEqual(await snapshot(), before, 'Unsupported old backup must not change SQL, metadata or ordinary files');
-    assert.equal(await exists(backup), false); assert.equal(await exists(restoredWorkspace), false);
-    const result = {synthetic: true, kernel: true, code: 'RESTORE_OPERATION_UNAVAILABLE', zeroWrites: true, legacyRestoreVerified: false};
-    await save('cold-restore-unavailable.json', result); return result;
-  } finally { await closeQaProject({store, services}); }
-}
-async function legacyFinal() {
-  const f = await fixture(); assert.equal(f.legacyOnly, true);
-  const sourceAudit = await readJson(path.join(report, 'legacy-before-backup-audit.json'));
-  const restoredAudit = await readJson(path.join(report, 'restored-before-launch-audit.json'));
-  const restore = await readJson(path.join(report, 'cold-restore.json')); assert.deepEqual(await tree(backup), restore.backupFiles); assert.equal(restoredAudit.schemaVersion, 35);
-  for (const [name, expected] of [['workspace_restore_holds', restore.exact.holds], ['workspace_restore_timeline_history', restore.exact.history], ['workspace_restore_timeline_cursors', restore.exact.cursors], ['workspace_restoration', restore.exact.metadata], ['workspace_restore_evidence', restore.exact.evidence]]) assert.deepEqual(restoredAudit.raw[name], expected, 'Captured restore evidence remained exact');
-  const held = restore.exact.holds;
-  for (const row of held.rows) { const name = cell(row, held, 'kind'), rowid = cell(row, held, 'capturedRowid'), original = sourceAudit.raw[name], current = restoredAudit.raw[name]; const before = original.rows.find(r => r.rowid === rowid), after = current.rows.find(r => r.rowid === rowid); assert.ok(before && after); assert.deepEqual(original.columns.map((c, i) => after.values[current.columns.indexOf(c)]), before.values, 'Held original row changed: ' + name); }
-  await cold(workspace); await cold(restoredWorkspace);
-  return {synthetic: true, legacyOnly: true, sourceSchema: 34, restoredSchema: 35, restoredCapturedRowsAndEvidenceExact: true, currentNativeVerified: false};
 }
 const imageClip = (audit, f) => audit.timeline.clips.find(c => c.id === f.imageClipId);
 const cleanDraft = audit => audit.draft === null || audit.draft.entries.every(e => e.draft === null);
@@ -405,7 +311,6 @@ async function verifyOutput(audit, purpose, f) {
   return {purpose, id: record.id, fileHash: await fileHash(file), sampledDecodedHash: await fileHash(rgbFile), video, colourPlan: record.snapshot.colourPlan, pixels: {background, paddingTop, paddingBottom, gray, expectedGray, pngSamples, subtitleWhitePixels: whites}, fullDecodeExit: 0};
 }
 async function final() {
-  if (legacyOnly) return legacyFinal();
   const f = await fixture(), labels = ['prepared', 'inspected', 'saved', 'undo', 'redo', 'rendered', 'replaced', 'replacement-undo', 'first-exit', 'reopen-exit'];
   const a = Object.fromEntries(await Promise.all(labels.map(async label => [label, await readJson(path.join(report, label + '-audit.json'))])));
   assert.deepEqual(a.inspected.timeline, a.prepared.timeline, 'Inspecting the image must not save a declaration');
@@ -429,7 +334,7 @@ async function final() {
   for (const action of required) { const entry = observations.actions.find(e => e.action === action); assert.ok(entry && entry.observed === true && typeof entry.notes === 'string' && entry.notes.length > 0, 'Missing actual native observation: ' + action); assert.match(entry.screenshot, /^[a-z0-9-]+\.png$/u); uiEvidence.push({...entry, file: await fileHash(path.join(report, entry.screenshot), 20 * 1024 * 1024)}); }
   const output = []; for (const purpose of ['preview', 'export']) output.push(await verifyOutput(a['reopen-exit'], purpose, f));
   assert.deepEqual(output[0].sampledDecodedHash, output[1].sampledDecodedHash, 'Preview/export must share decoded pixels');
-  const summary = {synthetic: true, at: stamp(), platform: 'linux-x64', packagedProduction: true, jpegWorkflowVerified: true, mixedVideoJpegPngVerified: f.includePng, jpegDecoded128To135Verified: true, transparentContainPaddingVerified: true, sourceOriginalHashesUnchanged: true, explicitUntaggedSrgbSaved: true, undoRedoExact: true, replacementInvalidatedAndUndoExact: true, reopenedTimelineExact: true, kernelWorkflow: true, coldBackupSchema: null, restoredSchema: null, legacyRestoreVerified: false, savedImageColour: saved.colour, output, launches, uiEvidence, macOSVerified: false, hdrLogSupported: false,
+  const summary = {synthetic: true, at: stamp(), platform: 'linux-x64', packagedProduction: true, jpegWorkflowVerified: true, mixedVideoJpegPngVerified: f.includePng, jpegDecoded128To135Verified: true, transparentContainPaddingVerified: true, sourceOriginalHashesUnchanged: true, explicitUntaggedSrgbSaved: true, undoRedoExact: true, replacementInvalidatedAndUndoExact: true, reopenedTimelineExact: true, kernelWorkflow: true, savedImageColour: saved.colour, output, launches, uiEvidence, macOSVerified: false, hdrLogSupported: false,
     scope: 'Synthetic Linux production native UI observations plus read-only durable-state/output verification. No claim of OS-wide network tracing, macOS verification, or live provider validation.'};
   await save('summary.json', summary); return summary;
 }
@@ -441,18 +346,16 @@ async function final() {
 // 3. Replace with the imported lighter/cyan JPEG (replaced), verify source is
 //    unconfirmed, then Undo replacement (replacement-undo).
 // 4. Each named UI phase closes normally before its cold audit. Launch reopen
-//    without edits. Historical cold-restore is a separate --legacy-only run.
+//    without edits.
 // Record actual supported-native-cua screenshots and notes in ui-observations.json
 // under the action names required by final(). The helper never fabricates them.
 // No live native IPC is installed. Start first and close without edits; for
 // each fixed phase perform only its ordinary UI action, close normally, then
 // run audit inspected/saved/undo/redo/rendered/replaced/replacement-undo.
 // The final reopen closes without edits. No phase may audit a live backend.
-// --legacy-only is offline historical evidence only; it cannot launch native.
-const [action, label, branch] = process.argv.slice(2).filter(value => value !== '--legacy-only');
+const [action, label, branch] = process.argv.slice(2);
 if (action === 'prepare') { assert.ok(label === undefined || label === 'without-png'); assert.equal(branch, undefined); console.log(json(await prepare(label !== 'without-png'))); }
 else if (action === 'audit') console.log(json(await audit(label, branch)));
 else if (action === 'launch') await launch(label);
-else if (action === 'cold-restore') console.log(json(await coldRestore()));
 else if (action === 'final') console.log(json(await final()));
-else throw Error('Expected prepare [without-png], audit LABEL [original|restored], launch PHASE (first/inspect/save/undo/redo/render/replace/replacement-undo/reopen), cold-restore, or final');
+else throw Error('Expected prepare [without-png], audit LABEL [original], launch PHASE (first/inspect/save/undo/redo/render/replace/replacement-undo/reopen), or final');

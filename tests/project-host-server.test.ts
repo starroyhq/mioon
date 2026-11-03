@@ -1,3 +1,4 @@
+
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
@@ -9,7 +10,7 @@ import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
 import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
 import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
-import {startServer, type InspectProject, type ServerOptions} from '../apps/server/src/index.ts';
+import {startServer, type InspectProject, type InspectApplication, type ServerOptions} from '../apps/server/src/index.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {DEFAULT_REQUEST_DRAIN_MS} from '../apps/server/src/project-host/types.ts';
 import {setTimeout as pause} from 'node:timers/promises';
@@ -19,12 +20,13 @@ import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProjectHomeServices} from '../packages/business/src/project-home.ts';
-import {projectApiPath, projectMediaPath, projectRpcPath} from '../packages/contracts/src/project-file.ts';
+import {projectMediaPath, projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {agentDiagnosticSummarySchema} from '../packages/contracts/src/agent-diagnostic-summary.ts';
 import type {AgentDiagnosticSummary} from '../packages/contracts/src/agent-diagnostic-summary.ts';
 import type {AgentTaskPolicy} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {ProjectSummary} from '../packages/contracts/src/project-home.ts';
 import {syntheticPng} from './helpers/runway-unknown-fixture.ts';
+import {readProjectState, changeMarks} from './helpers/project-state.ts';
 
 const token = 'project-host-server-synthetic-token';
 const jpeg = Buffer.from([0xff,0xd8,0xff,0xc0,0,17,8,0,1,0,1,3,1,0x22,0,2,0x11,1,3,0x11,1,0xff,0xda,0,12,3,1,0,2,0x11,3,0x11,0,0x3f,0,0x12,0x34,0xff,0xd9]);
@@ -64,8 +66,8 @@ async function fixture(t: TestContext, options: Pick<ServerOptions, 'agentSettin
   const library = openAppLibrary({dataDir: root});
   try {library.tx(() => library.documents.write('agent-diagnostic-summary-v1.json', JSON.stringify(latest)));}
   finally {library.close();}
-  let inspect!: InspectProject;
-  server = await startServer({...options, dataDir: root, port: 0, token, inspectProject: received => {inspect = received;}});
+  let inspect!: InspectProject, application!: InspectApplication;
+  server = await startServer({...options, dataDir: root, port: 0, token, inspectProject: received => {inspect = received;}, inspectApplication: received => {application = received;}});
   const fetchOwned = (route: string, options: RequestInit = {}) => fetch(server!.url + route, {...options, headers: {authorization: `Bearer ${token}`, ...options.headers}});
   const json = async <T = unknown>(route: string, options: {method?: string; input?: unknown} = {}) => {
     const response = await fetchOwned(route, {method: options.method ?? 'GET', ...(options.input === undefined ? {} :
@@ -77,7 +79,7 @@ async function fixture(t: TestContext, options: Pick<ServerOptions, 'agentSettin
     assert.equal(result.status, 200, JSON.stringify(result.body)); assert.equal(result.body.ok, true); return result.body.data!;
   };
   const holdClosed = (project: Seed): DatabaseSync => {const db = openProjectDatabase(project.root); outside.push(db); return db;};
-  return {root, a, b, json, rpc, fetch: fetchOwned, native: (projectId: string) => inspect(projectId, db => db), holdClosed};
+  return {root, a, b, json, rpc, fetch: fetchOwned, application, native: (projectId: string) => inspect(projectId, db => db), holdClosed};
 }
 
 function managerTimers(t: TestContext) {
@@ -147,6 +149,15 @@ test('real server serves global settings, policy, five-field diagnostics and cov
       assert.equal(denied.status, 400); assert.equal((await denied.json() as WireBody<never>).error!.code, 'AGENT_TASK_INVALID');
     }
     assert.deepEqual((await f.json('/api/agent/tasks/v2/policy')).body.data, saved.body.data, 'invalid requests change neither policy nor its receipts');
+    const snapshot = (db: DatabaseSync) => ({...readProjectState(db), marks:changeMarks(db)});
+    const baseline = {projects:holders.map(snapshot), application:f.application(snapshot)};
+    for (const operation of ['workspace.backup.status','workspace.backup.list','workspace.backup.create','workspace.backup.restore.stage','workspace.backup.inspect','workspace.restore.inspect']) {
+      const denied = await f.json('/api/rpc', {method:'POST', input:{operation,input:{}}});
+      assert.equal(denied.status,404); assert.equal(denied.body.error!.code,'UNKNOWN_OPERATION');
+    }
+    const oldDownload = await f.json(`/api/workspace-backups/${randomUUID()}/download`);
+    assert.equal(oldDownload.status,404);assert.equal(oldDownload.body.error!.code,'NOT_FOUND');
+    assert.deepEqual({projects:holders.map(snapshot),application:f.application(snapshot)},baseline,'retired entries acquire no closed project and change no rows, schema or change marks');
     assert.ok(holders.every(db => db.isOpen));
   } finally {for (const db of holders) db.close();}
 });

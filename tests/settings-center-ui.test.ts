@@ -324,7 +324,7 @@ test('web open request reports guarded acceptance to its caller rather than trea
   h.unmount();
 });
 
-test('restored web requests normalize to General and cannot activate model pages through stale form callbacks', async () => {
+test('unavailable connection requests normalize to General and cannot activate model pages through stale form callbacks', async () => {
   const h = webHarness(), results: unknown[] = [];
   h.render({ request: { page: 'custom', resolve: value => results.push(value) }, connectionsAvailable: false });
   await new Promise(setImmediate); const tree = h.render(), forms = nodes(tree).find((node) => node.type === 'SettingsConnectionForms');
@@ -332,7 +332,7 @@ test('restored web requests normalize to General and cannot activate model pages
   assert.equal((forms)!.props.connectionsAvailable, false); assert.equal((forms)!.props.registry, h.registry);
   (forms)!.props.onSelect('custom'); (forms)!.props.onPage('comfy');
   assert.equal(h.controllers[0].page, 'general'); assert.deepEqual((h.registry.capture() as unknown), []);
-  const app = source('App.tsx'); assert.match(app, /connectionsAvailable=\{!restored\}/u);
+  const app = source('App.tsx'); assert.doesNotMatch(app, /connectionsAvailable=\{!restored\}/u);
   h.unmount();
 });
 

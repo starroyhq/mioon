@@ -7,8 +7,6 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import desktopIdentity from '../apps/desktop/identity.ts';
 import { dataPaths, ensureDataIdentity, writeConnection, removeConnection } from '../apps/desktop/src/config.ts';
-import { migrateData } from '../apps/desktop/scripts/migrate-data.ts';
-import { openLegacyWorkspaceStore } from '../packages/business/src/db.ts';
 const { identityForChannel, buildChannel } = desktopIdentity;
 const require = createRequire(import.meta.url);
 const production = identityForChannel('production'), development = identityForChannel('development');
@@ -131,22 +129,20 @@ test('channel discovery rotates and cleans up independently with additive identi
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test('new identity never moves legacy data; explicit migration copies into a fresh channel workspace', async () => {
+test('new identity leaves unrelated historical bytes untouched and never creates a migrated workspace', async () => {
   const root = await temp(), legacy = path.join(root, 'video-workbench');
   const source = path.join(legacy, 'workspace'), prod = dataPaths(root, undefined, 'production');
   try {
-    const store = openLegacyWorkspaceStore(source); store.put('projects', { id: '12345678-1234-4234-8234-123456789abc', name: 'Legacy', revision: 1 }); store.close();
+    await mkdir(path.join(source, 'media'), {recursive: true});
+    await writeFile(path.join(source, 'workbench.sqlite'), 'opaque historical bytes: never inspected by new identity');
     await writeFile(path.join(source, 'media/legacy.txt'), 'unchanged original');
     const hash = async (file: string): Promise<string> => createHash('sha256').update(await readFile(file)).digest('hex');
     const before = await hash(path.join(source, 'workbench.sqlite'));
     await ensureDataIdentity(prod, production);
     assert.deepEqual(await readdir(prod.userData), ['desktop-identity.json']);
     assert.equal(await hash(path.join(source, 'workbench.sqlite')), before);
-    const result = await migrateData(source, prod.dataDir);
-    assert.equal(result.projects, 1); assert.equal(result.sourceUnchanged, true);
-    assert.equal(await hash(path.join(source, 'workbench.sqlite')), before);
     assert.equal(await readFile(path.join(source, 'media/legacy.txt'), 'utf8'), 'unchanged original');
-    assert.equal(await readFile(path.join(prod.dataDir, 'media/legacy.txt'), 'utf8'), 'unchanged original');
-    await assert.rejects(migrateData(source, prod.dataDir), /already exists/);
+    await assert.rejects(stat(prod.dataDir), {code: 'ENOENT'}, 'identity creation does not clone or migrate a legacy directory');
+    assert.deepEqual((await readdir(source)).sort(), ['media', 'workbench.sqlite']);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

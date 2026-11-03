@@ -8,20 +8,20 @@ import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import type { AnnotationState, AssetAnnotationController } from './asset-annotation-state.ts';
 interface Props {
   asset?: { id: string; projectId: string; name: string } | null; state: AnnotationState | null;
-  controller: AssetAnnotationController; blocked: boolean; restored?: boolean; onShowTasks?(): void;
+  controller: AssetAnnotationController; blocked: boolean;  onShowTasks?(): void;
   visible?: boolean;
   confirm(message: unknown): Promise<boolean>;
 }
-export default function AssetAnnotations({ asset, state, controller, blocked, restored = false, onShowTasks, confirm, visible: panelVisible = true }: Props) {
+export default function AssetAnnotations({ asset, state, controller, blocked,  onShowTasks, confirm, visible: panelVisible = true }: Props) {
   const { t, renderMessage, formatNumber } = useI18n(), workspaceVisible = useWorkspaceVisibility(), visible = workspaceVisible && panelVisible;
   const token = useMemo(() => ({ scope: state?.scope, assetId: asset?.id, visible }), [state?.scope, asset?.id, visible]), live = useRef<typeof token | null>(null);
   useLayoutEffect(() => { live.current = token; return () => { live.current = null; }; }, [token]);
   const admit = (action: () => unknown) => { if (live.current === token && visible && state?.scope && controller.getState().scope === state.scope) return action(); };
   const owned = asset && asset.projectId === state?.projectId && state.assetIds.includes(asset.id) ? asset : null;
   const entry = owned ? state?.entries[owned.id] : null, draft = entry?.draft;
-  const disabled = !visible || !entry?.row || entry.loading || entry.saving || entry.uncertain || restored || blocked;
+  const disabled = !visible || !entry?.row || entry.loading || entry.saving || entry.uncertain || blocked;
   const status = entry?.uncertain ? t('annotations.unconfirmed') : entry?.saving ? t('annotations.saving') : entry?.loading ? t('annotations.loading') : entry?.conflict ? t('annotations.conflict') : entry?.dirty ? t('annotations.dirty') : entry?.row ? t('annotations.saved', { revision: entry.row.revision }) : t('annotations.select');
-  return <AgentEditingBoundary disabled={restored} projectId={owned?.projectId} targets={owned ? [{ kind: 'asset_annotation', id: owned.id, revision: entry?.row?.revision ?? 0 }] : []} canRelease={() => { const current = owned ? controller.getState().entries[owned.id] : null; return !current?.dirty && !current?.saving && !current?.uncertain; }} onDiscard={()=>{if(owned)controller.discard(owned.id,state?.scope);}}><section className="asset-annotations" data-testid="asset-annotations" aria-label={t('annotations.title')} data-no-asset-drag>
+  return <AgentEditingBoundary disabled={false} projectId={owned?.projectId} targets={owned ? [{ kind: 'asset_annotation', id: owned.id, revision: entry?.row?.revision ?? 0 }] : []} canRelease={() => { const current = owned ? controller.getState().entries[owned.id] : null; return !current?.dirty && !current?.saving && !current?.uncertain; }} onDiscard={()=>{if(owned)controller.discard(owned.id,state?.scope);}}><section className="asset-annotations" data-testid="asset-annotations" aria-label={t('annotations.title')} data-no-asset-drag>
     <h3>{t('annotations.title')}</h3>
     {Boolean(state?.dirtyCount) && <div className="annotation-retained"><p role="status">{t('annotations.retained', { count: state!.dirtyCount })}</p><Button type="button" variant="ghost" size="sm" data-testid="annotation-discard-all" disabled={!visible} onClick={() => admit(async () => { const version = controller.getState().version; if (await confirm(t('annotations.discardConfirm')) && live.current === token) controller.discardRetained(version); })}>{t('annotations.discardAll')}</Button></div>}
     {Boolean(state?.uncertainCount) && !entry?.uncertain && <><p role="alert">{t('annotations.unconfirmed')}</p><Button type="button" variant="ghost" size="sm" disabled={!visible} onClick={() => admit(() => onShowTasks?.())}>{t('annotations.viewTasks')}</Button></>}
@@ -29,7 +29,7 @@ export default function AssetAnnotations({ asset, state, controller, blocked, re
     {!owned ? <p>{t('annotations.select')}</p> : <>
       <strong className="annotation-asset-name" title={owned.name}>{owned.name}</strong>
       <p className="annotation-status" role="status" data-testid="annotation-status">{status}</p>
-      {restored && <p>{t('annotations.readOnly')}</p>}
+      {false}
       {entry?.error && <p role="alert" data-testid="annotation-error">{renderMessage(entry.error)}</p>}
       {entry?.row && !entry.dirty && !entry.row.tags.length && !entry.row.note && <p>{t('annotations.empty')}</p>}
       <label htmlFor="asset-annotation-tag">{t('annotations.tags')}</label>

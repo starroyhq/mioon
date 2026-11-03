@@ -13,7 +13,7 @@ import {once} from 'node:events';
 import type {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createImageSettings, createCustomImageSettings, IMAGE_SETTINGS_READ_CURRENT,
   IMAGE_SETTINGS_ASSERT_CURRENT, IMAGE_CREDENTIAL_ACQUIRE} from '../packages/business/src/images/settings.ts';

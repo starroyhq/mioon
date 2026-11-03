@@ -1,7 +1,6 @@
 import {TIMELINE_LOUDNESS_APPLY_CLIENT_MS, readTimelineLoudnessApplyEnvelope} from '@mioon/client/timeline-loudness-apply';
 
 export interface LoudnessApplyWireOptions {
-  readonly expectedWorkspaceOrigin?:string;
   readonly signal?:AbortSignal;
   readonly fetcher?:typeof fetch;
   /** Test seam may only shorten the normal end-to-end deadline. */

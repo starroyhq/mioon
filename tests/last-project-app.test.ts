@@ -6,11 +6,7 @@ import {readFileSync} from 'node:fs';
 import {chooseInitialProject,retainLastProjectScope,createProjectBootGuard,preferenceCacheIdentity,assertLastProjectBootIdentity} from '../apps/web/src/last-project-navigation.ts';
 import {createWorkspacePreferences} from '../apps/web/src/workspace-preferences.ts';
 import {defaultWorkspaceState,writeWorkspaceState,reconcileWorkspaceState} from '../apps/web/src/workspace-state.ts';
-import {validateProjectWorkspace} from '../apps/web/src/restored-workspace.ts';
-import {workspaceOriginScope, type WorkspaceIdentity} from '../apps/web/src/workspace-origin.ts';
-import {projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,hasProjectResponseOriginMismatch,projectOpenFailureKind} from '../apps/web/src/project-open-state.ts';
-import {observeClipAudioRoleCapability} from '../apps/web/src/clip-audio-role-state.ts';
-import {isWorkspaceRestoreInspection,canEditTimelineAudioRole} from '@mioon/contracts';
+import {projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,projectOpenFailureKind} from '../apps/web/src/project-open-state.ts';
 import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigation-state.ts';
 import {createLastProjectController} from '../apps/web/src/last-project-state.ts';
 import {editorInitialSelection} from '../apps/web/src/editor-native-window.ts';
@@ -61,11 +57,11 @@ test('boot tickets reject later boots, project changes and StrictMode disposed l
 function selectionHarness({refresh,confirm=true,videoDirectory}: {refresh?(projectId: string): unknown; confirm?: boolean; videoDirectory?(): unknown}={}){
  const calls: [string, ...unknown[]][]=[],currentProject={current:id(1) as string | null},projectEpoch={current:0},navigationEpoch={current:0};
  const view=defaultWorkspaceState();
- const env={msg,...createI18nTestContext(),localizedError:(value?: string|DisplayMessage|null|undefined)=>Object.assign(new Error(renderCoreMessage('zh-Hans',value)),{displayMessage:value}),nativeWindow:null,editorInitialSelection,notify:(...args: unknown[])=>calls.push(['notice',...args]),readableError:(e: Error)=>e.message,workspaceRef:{current:{restored:false}},loading:false,importSession:{current:{active:true,selection:0}},currentProject,projectEpoch,navigationEpoch,
+ const env={msg,...createI18nTestContext(),localizedError:(value?: string|DisplayMessage|null|undefined)=>Object.assign(new Error(renderCoreMessage('zh-Hans',value)),{displayMessage:value}),nativeWindow:null,editorInitialSelection,notify:(...args: unknown[])=>calls.push(['notice',...args]),readableError:(e: Error)=>e.message,editorSession: {current: 'normal'}, workspaceRef:{current:{}},loading:false,importSession:{current:{active:true,selection:0}},currentProject,projectEpoch,navigationEpoch,
   agentDraft:{current:false},imageDraft:{current:false},confirm:async()=>confirm,
   dirtyRef:{current:!confirm},subtitlesRef:{current:null},clipDraftRef:{current:null},shotTextRef:{current:null},subjectsRef:{current:null},
   timelineFormatRef:{current:null},deliveryNameRef:{current:null},localDeliveryRef:{current:null},
-  application:null,workspaceOriginScope,validateProjectWorkspace,reconcileWorkspaceState,reconcilePending(){},useCallback:<T>(fn: T): T =>fn,projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,hasProjectResponseOriginMismatch,projectOpenFailureKind,videoConnectionProviders,readGenerationProviderDirectory,videoDirectoryUnavailable:false,
+  application:null,reconcileWorkspaceState,reconcilePending(){},useCallback:<T>(fn: T): T =>fn,projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,projectOpenFailureKind,videoConnectionProviders,readGenerationProviderDirectory,videoDirectoryUnavailable:false,
   // This fixture owns no editing claims; match the empty-owner refresh wait.
   refreshAgentEditingTargets:async()=>{await Promise.allSettled([]);},
   openedProject:{current:projectOpenAttempt(id(1),0,'normal')},settingsNavigation:{current:createSettingsNavigationRegistry()},
@@ -78,8 +74,8 @@ function selectionHarness({refresh,confirm=true,videoDirectory}: {refresh?(proje
   window:{location:{href:'http://127.0.0.1:4318/'},history:{pushState(){},replaceState(){}},__mioonUiPreferences:{markOpened:(projectId: string)=>calls.push(['markOpened',projectId])}},
   ...Object.fromEntries(['setLastSync','setProviders','setOnline','setPropertiesPage','setTaskState','setPreferenceStatus','setPending','setShowProjects','setData','setNodes','setLoading','setShotDirty','setClipDirty','setSourceDirty','setSubjectDirty','setSubtitleDirty','setInspectorEpoch','setRightDockTab','setPanelOverlay','setSelectedTaskId','setShowTasks','setShowDelivery','setShowImage','setShowProjectChooser','setShowExports','setComparisonId','setPreviewAsset','setRealConfirm','setToast','setMobilePanel','setView','setZoom'].map(name=>[name,(value: unknown)=>calls.push([name,value])])),
  } as unknown as SelectionEnvironment;
- env.context=()=>({projectId:currentProject.current,epoch:navigationEpoch.current,workspace:env.workspaceRef.current});
- env.isCurrent=(captured: { projectId: string | null; epoch: number; workspace?: WorkspaceIdentity|null|undefined; })=>captured.projectId===currentProject.current&&captured.epoch===navigationEpoch.current&&workspaceOriginScope(captured.workspace)===workspaceOriginScope(env.workspaceRef.current);
+ env.context=()=>({projectId:currentProject.current,epoch:navigationEpoch.current,session:env.editorSession.current});
+ env.isCurrent=(captured: { projectId: string | null; epoch: number; session: string; })=>captured.projectId===currentProject.current&&captured.epoch===navigationEpoch.current&&captured.session===env.editorSession.current;
  env.projectSessionReady=()=>compile(readySource,'projectSessionReady',env)();
  env.prepareSettingsDeparture=()=>compile(settingsSource,'prepareSettingsDeparture',env)();
  env.guardNavigation=(...args: unknown[])=>compile(guardSource,'guardNavigation',env)(...args);
@@ -93,7 +89,6 @@ function selectionHarness({refresh,confirm=true,videoDirectory}: {refresh?(proje
  // publishes data, then actual selection plus the H1 gate admits the workbench.
  env.rpc=async(operation: string,input?: {projectId: string})=>operation==='project.get'?(refresh?refresh(input!.projectId):{
   project:{id:input!.projectId},shots:[],nodes:[],edges:[],assets:[],versions:[],jobs:[],exports:[],
-  ...(env.workspaceRef.current!.restored?{restore:{workspaceOrigin:env.workspaceRef.current!.workspaceOrigin,heldExportIds:[]}}:{}),
  }):operation==='video.connection.list'&&videoDirectory?videoDirectory():[];
  env.refresh=(...args: unknown[])=>{const scope={...env};delete (scope as {refresh?: unknown}).refresh;return compile(refreshSource,'refresh',scope)(...args);};
  return {env,calls,select:(...args: unknown[])=>compile(selectSource,'selectProject',env)(...args)};
@@ -125,14 +120,14 @@ test('actual preference-load setup rejection releases only its current loading o
  assert.equal(await pending,false);assert.equal(g.calls.some(x=>x[0]==='notice'||x[0]==='remember'||x[0]==='markOpened'||x[0]==='setLoading'&&x[1]===false||x[0]==='setProjectOpening'&&(x[1] as {phase: string}).phase==='error'),false);
 });
 
-function bootHarness({discovery=Promise.resolve({envelope,workspaceScope:scope}),restored=false,explicit=null,videoDirectory}: {discovery?: Promise<unknown>; restored?: boolean; explicit?: string | null; videoDirectory?(): unknown}={}){
+function bootHarness({discovery=Promise.resolve({envelope,workspaceScope:scope}),explicit=null,videoDirectory}: {discovery?: Promise<unknown>;  explicit?: string | null; videoDirectory?(): unknown}={}){
  const selection=selectionHarness({videoDirectory}),{env,calls}=selection,epoch=env.projectEpoch;
  const guard=createProjectBootGuard(()=>epoch.current);guard.activate();const readRpc=env.rpc;
  env.currentProject.current=null;env.openedProject.current=null;env.dataRef.current={};env.viewReady.current=false;
- Object.assign(env,{bootGuard:{current:guard},migrateBrowserStorage:()=>{},workspaceRef:{current:null},preferenceScope:{current:null},locatorIdentity:{current:null},
-  audioRoleProbe:{current:null},audioRoleProbeEpoch:{current:0},setAudioRoleCapability:(value: unknown)=>calls.push(['audioRoleCapability',value]),observeClipAudioRoleCapability,isWorkspaceInspection:isWorkspaceRestoreInspection,canEditTimelineAudioRole,
-  rpc:async(op: string,input?: {projectId: string})=>op==='workspace.restore.inspect'?{restored,...(restored?{workspaceOrigin:id(10)}:{})}:op==='project.list'?projects:readRpc(op,input),
-  retainWorkspaceIdentity:(_current: unknown,observed: unknown)=>observed,setWorkspace:(x: unknown)=>calls.push(['workspace',x]),
+ Object.assign(env,{bootGuard:{current:guard},migrateBrowserStorage:()=>{},editorSession: {current: 'normal'}, workspaceRef:{current:null},preferenceScope:{current:null},locatorIdentity:{current:null},
+
+  rpc:async(op: string,input?: {projectId: string})=>op==='project.list'?projects:readRpc(op,input),
+  setWorkspace:(x: unknown)=>calls.push(['workspace',x]),
   lastProjectRef:{current:{...env.lastProjectRef.current,getState:()=>({identityBlocked:false,revision:null}),discover:()=>{calls.push(['discover']);return discovery;}}},
   setProjects:(x: unknown)=>calls.push(['projects',x]),setProviders:(x: unknown[])=>{env.providers=x;calls.push(['providers',x]);},setAuth:(x: boolean | string)=>{env.auth=x;calls.push(['auth',x]);},setOnline:()=>{},
   retainLastProjectScope,chooseInitialProject,assertLastProjectBootIdentity,URLSearchParams,
@@ -166,10 +161,9 @@ test('optional video directory 401 remains an authentication failure during reme
   const f=bootHarness({videoDirectory:async()=>{throw error;}});await f.boot();assert.equal(f.env.auth,false);assert.equal(f.calls.some(x=>x[0]==='select'),false);assert.equal(f.env.projectSessionReady(),false);
  }
 });
-test('actual App stale startup cannot replace newer selection, publish data after unmount or inspect restored locator',async()=>{
+test('actual App stale startup cannot replace newer selection, publish data after unmount',async()=>{
  const gate=deferred(),f=bootHarness({discovery:gate.promise}),old=f.boot();await new Promise(setImmediate);f.epoch.current++;(gate.resolve)!({envelope,workspaceScope:scope});await old;assert.equal(f.calls.some(x=>x[0]==='select'||x[0]==='projects'),false);
  const held=deferred(),g=bootHarness({discovery:held.promise}),pending=g.boot();await new Promise(setImmediate);g.guard.deactivate();(held.resolve)!({envelope,workspaceScope:scope});await pending;assert.equal(g.calls.some(x=>x[0]==='select'||x[0]==='projects'),false);
- const restored=bootHarness({restored:true});await restored.boot();assert.equal(restored.calls.some(x=>x[0]==='discover'||x[0]==='markOpened'),false);assert.deepEqual(restored.calls.filter(x=>x[0]==='select'),[['select',id(1),true]]);
 });
 test('initial foreign locator permits uncached manual project fallback; changed established identity blocks startup',async()=>{
  const first=bootHarness({discovery:Promise.resolve(null)});first.env.lastProjectRef.current.getState=()=>({identityBlocked:true,revision:null});await first.boot();
@@ -188,7 +182,7 @@ test('App verified preference scope excludes foreign same-UUID and legacy bare-c
   const writes: unknown[]=[];const prefs=createWorkspacePreferences({storage:local,getStorageScope:()=>verified,fetchImpl:async(_url,init)=>{writes.push((init)!.method);return response({projectId:id(1),revision:0,state:null});}});t.after(()=>prefs.dispose({flush:false}));
   const loaded=await prefs.load(id(1));assert.equal((loaded)!.activeMode,'canvas');assert.equal((loaded)!.editing.playhead,0);await prefs.flush();assert.deepEqual(writes,['GET']);
  }
- assert.equal(preferenceCacheIdentity('normal',id(1),null).cacheId,null);assert.notEqual(preferenceCacheIdentity('normal',id(1),scope).entryScope,preferenceCacheIdentity('normal',id(1),otherScope).entryScope);
+ assert.equal(preferenceCacheIdentity(id(1),null).cacheId,null);assert.notEqual(preferenceCacheIdentity(id(1),scope).entryScope,preferenceCacheIdentity(id(1),otherScope).entryScope);
 });
 test('same verified workspace can reuse its bounded cache, while unverified offline fallback cannot',async t=>{
  const local=storage(),saved=defaultWorkspaceState();saved.activeMode='editing';saved.editing.playhead=57;writeWorkspaceState(`normal:${scope}:${id(1)}`,saved,local);

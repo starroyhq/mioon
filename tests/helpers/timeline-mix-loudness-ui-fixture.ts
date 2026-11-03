@@ -47,8 +47,7 @@ export const deferred = <T = unknown>(): Deferred<T> => { let resolve!: (value: 
 type MixController = ReturnType<typeof createTimelineMixLoudnessController>
 export function fixture(patch: Record<string, unknown> = {}, overrides: Record<string, unknown> = {}) {
   let live = context(patch); const calls: {input: Record<string, unknown>; options: unknown; context: unknown}[] = [], reads: Deferred<unknown>[] = [], changes: unknown[] = [], auth: boolean[] = [];
-  const controller: MixController = createTimelineMixLoudnessController({ getContext: () => live as never, getInvocation: () => ({}),
-    onChange: (value: unknown) => changes.push(value), onUnauthorized: () => auth.push(false),
+  const controller: MixController = createTimelineMixLoudnessController({ getContext: () => live as never, onChange: (value: unknown) => changes.push(value), onUnauthorized: () => auth.push(false),
     read(value: Record<string, unknown>, options: unknown) { calls.push({ input: value, options, context: structuredClone(live) }); const wait = deferred(); reads.push(wait); return wait.promise; }, ...overrides } as never);
   controller.attach(live as never);
   const f = { controller, calls, reads, changes, auth, state: () => controller.getState(), live: () => live,

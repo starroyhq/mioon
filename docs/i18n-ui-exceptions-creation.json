@@ -382,13 +382,6 @@
     {
       "file": "apps/web/src/api.ts",
       "category": "cjk-source",
-      "hash": "aebc05118ea129403b200a7a6903bcd47d7eab4c547302e0b66aaa42005bc7ce",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ApiError preserves original message/code/details for protocol diagnostics. App.readableError maps stable codes to safe localized descriptors; TaskCenter uses taskErrorDescriptor plus a validated, explicitly labelled original code. Unknown diagnostic bodies are not primary UI."
-    },
-    {
-      "file": "apps/web/src/api.ts",
-      "category": "cjk-source",
       "hash": "1c149a968f9fffd82e6152b68469a009701c1c0d628ef5074f107f95da87f12d",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ApiError preserves original message/code/details for protocol diagnostics. App.readableError maps stable codes to safe localized descriptors; TaskCenter uses taskErrorDescriptor plus a validated, explicitly labelled original code. Unknown diagnostic bodies are not primary UI."
@@ -1841,13 +1834,6 @@
       "hash": "7b49e0e96057395d1148ef2f923cf5e0d758f2e3f62f6c701f634936f5c93e7b",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. This local error carries error.displayMessage to App.readableError, then the live-locale toast renderer. The original pending input, request ID and storage bytes remain unchanged. Four-locale counterpart: tasks.localError.pendingStorage."
-    },
-    {
-      "file": "apps/web/src/submissions.ts",
-      "category": "cjk-source",
-      "hash": "cae7040d8c5c07ccaea9f6d863be17f535258f4a7ce76a5b016e8025f200b833",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. This local error carries error.displayMessage to App.readableError, then the live-locale toast renderer. The original pending input, request ID and storage bytes remain unchanged. Four-locale counterpart: tasks.localError.restoredPending."
     },
     {
       "file": "apps/web/src/submissions.ts",

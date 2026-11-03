@@ -13,7 +13,7 @@ import './project-notes.css';
 export interface ProjectNotesDialogProps {
   open: boolean;
   project: { id: string; revision: number; notes?: unknown } | null;
-  /** A restored copy shows its notes without saving. */
+  /** A read-only view shows its notes without saving. */
   readOnly: boolean;
   call: ProjectNotesCall;
   /** `saved` after a confirmed save; `unknown` when a save may have landed without a confirmed answer. */

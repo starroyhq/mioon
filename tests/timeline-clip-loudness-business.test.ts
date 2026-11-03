@@ -1,3 +1,9 @@
+
+
+
+import {boundedShutdown} from '../packages/business/src/operation-lifecycle.ts';
+
+
 import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import type {TypedServices, Failure, SavedAudioSnapshotReader} from './helpers/strict-timeline-audio-types.ts';
@@ -5,20 +11,22 @@ import type {TestContext} from 'node:test';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
-import {mkdtemp, writeFile, readFile, readdir, rm, unlink} from 'node:fs/promises';
+import {mkdtemp, writeFile, rm, unlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {DatabaseSync} from 'node:sqlite';
-import {openStore, openLegacyWorkspaceStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock, assertProjectStore} from '../packages/business/src/store-runtime.ts';
+
 import {createServices} from '../packages/business/src/services.ts';
 import {createTimelineClipLoudnessServices} from '../packages/business/src/timeline-clip-loudness.ts';
 import {planTimelineClipLoudnessDecode} from '../packages/business/src/timeline-clip-loudness-decoder.ts';
 import {readTimelinePreflightSnapshot, readTimelineSourceGraph} from '../packages/business/src/timeline-sources.ts';
 import {validateTimeline} from '../packages/business/src/timeline-inputs.ts';
 import {validateManagedSource, verifiedManagedHash} from '../packages/business/src/managed-media.ts';
-import {boundedShutdown} from '../packages/business/src/operation-lifecycle.ts';
-import {workspaceRestoreError, RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
-import {installCurrentWorkspaceRestoreSchema as installWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
+
+
+
 import {exportAudioObservationAdmission} from '../packages/business/src/export-audio-observation.ts';
 
 import type {TimelineRecord} from '../packages/contracts/src/timeline-replacement.ts';
@@ -84,7 +92,7 @@ async function fixture(t: TestContext, {durationFrames = 60, runtime: overrides 
   timeline = await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
     trackId: timeline.tracks.find(track => track.kind === 'audio')!.id, assetId: id, startFrame: 0, sourceInFrame: 17,
     durationFrames, gain: .75});
-  const runtime: TimelineClipLoudnessRuntime = {assertOrdinaryWorkspace: () => {if (getWorkspaceRestoreContext(store)) throw workspaceRestoreError();}, ownsLock: () => ownsStoreLock(store),
+  const runtime: TimelineClipLoudnessRuntime = {assertOrdinaryWorkspace: () => {assertProjectStore(store);}, ownsLock: () => ownsStoreLock(store),
     readSavedTimeline: (projectId: string) => readSaved(store, projectId), validateSource: validateManagedSource, hash: verifiedManagedHash,
     decode: fakeDecode, terminate: async () => [], waitForClose: async () => [], boundedShutdown, ...overrides} as TimelineClipLoudnessRuntime;
   const mix = createTimelineClipLoudnessServices(store, {runtime}), extras: ReturnType<typeof createTimelineClipLoudnessServices>[] = [];
@@ -166,26 +174,7 @@ test('unconfirmed exact child cleanup keeps shared admission sticky even after l
   close.resolve(); await tick(); await tick(); await assert.rejects(f.mix.drain(), {code: 'MEDIA_TERMINATION_UNCONFIRMED'});
 });
 
-test('restored direct and composed boundaries refuse before any payload getters or media', async t => {
-  const f = await fixture(t); let getters = 0;
-  assert.ok(RESTORE_DENIED_OPERATIONS.includes('timeline.clip.loudness'));
-  const restored = createTimelineClipLoudnessServices({...f.store}, {runtime: {...f.runtime, assertOrdinaryWorkspace() {throw workspaceRestoreError();}}}); f.extras.push(restored);
-  await assert.rejects(restored.handlers['timeline.clip.loudness']({get projectId() {getters++; return f.project.id;}}), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-  assert.equal(getters, 0);
-  const root = await mkdtemp(path.join(tmpdir(), 'mioon-restored-mix-loudness-')); let store = openLegacyWorkspaceStore(root), services = (createServices(store, new Map()) as TypedServices);
-  await services.call('project.create', {name: 'Restore fixture'}); await services.drain(); store.close();
-  const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
-  try {installWorkspaceRestoreSchema(db, {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(),
-    manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: new Date().toISOString()}); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
-  store = openLegacyWorkspaceStore(root); services = (createServices(store, new Map()) as TypedServices);
-  t.after(async () => {await services.drain(); store.close(); await rm(root, {recursive: true, force: true});});
-  const hostile = {get projectId() {getters++; throw Error('no payload');}};
-  for (const value of [hostile, f.input, null]) {
-    await assert.rejects(services.call('timeline.clip.loudness', value), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-    await assert.rejects((services.handlers['timeline.clip.loudness'] as (input: unknown) => Promise<unknown>)(value), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-  }
-  assert.equal(getters, 0);
-});
+
 
 test('a second source hash failure discards the measured clip', async t => {
   let hashes = 0, decodes = 0;

@@ -3,7 +3,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {mkdirSync,rmSync,createWriteStream,createReadStream,renameSync,statSync,existsSync,lstatSync} from 'node:fs';
 import {pipeline} from 'node:stream/promises';
 import {Readable} from 'node:stream';
-import type { Store as WorkspaceStore } from '../store-contract.ts';
+import type { Store } from '../store-contract.ts';
 import {projectPackageOptionsSchema} from '../../../contracts/src/project-package.ts';
 import {projectNotesValid} from '../../../contracts/src/project-lifecycle.ts';
 import type {ProjectPackageOptions,ProjectPackageManifest,ProjectPackageCounts} from '../../../contracts/src/project-package.ts';
@@ -29,7 +29,7 @@ const errorOf=(error:unknown):ProjectPackageError=>{const value=error as {code?:
 
 /** Local, in-memory sessions: a restart cancels them and the next start clears
  * the private staging directory. Nothing here enters the task center. */
-export function createProjectPackageService({store,appVersion,afterCreate=async()=>{}}:{store:WorkspaceStore;appVersion:string;afterCreate?:(result:{projectId:string;jobIds:string[]})=>Promise<void>}){
+export function createProjectPackageService({store,appVersion,afterCreate=async()=>{}}:{store:Store;appVersion:string;afterCreate?:(result:{projectId:string;jobIds:string[]})=>Promise<void>}){
  const base=path.join(store.root,PROJECT_PACKAGE_DIRECTORY);
  const exports=new Map<string,ExportSession>(),imports=new Map<string,ImportSession>();
  let closed=false;

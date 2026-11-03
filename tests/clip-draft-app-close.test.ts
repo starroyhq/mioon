@@ -1,7 +1,7 @@
 import type { Gate } from './helpers/strict-timeline-ui-types.ts';
 import type { MessageKey } from '../packages/i18n/src/index.ts';
 interface CloseEvent { type?: string; returnValue?: string; preventDefault(): void }
-interface FixtureOptions {native?: boolean; restored?: boolean; pending?: boolean; result?: boolean; held?: Gate<unknown> | null; viewHeld?: Gate<unknown> | null; composing?: boolean}
+interface FixtureOptions {native?: boolean; pending?: boolean; result?: boolean; held?: Gate<unknown> | null; viewHeld?: Gate<unknown> | null; composing?: boolean}
 interface DialogOptions {title: string; message: string; detail: string; buttons: string[]; defaultId: number; cancelId: number}
 import { translate } from '../packages/i18n/src/index.ts';
 import test from 'node:test';
@@ -18,9 +18,8 @@ assert.equal(app.indexOf('  useEffect(() => {\n    const controller = preference
 const effect = app.slice(start, end + '\n  }, []);'.length);
 const deferred = () => Promise.withResolvers<unknown>() as Omit<PromiseWithResolvers<unknown>, 'resolve'> & {resolve(value?: unknown): void};
 
-function fixture({ native = false, restored = false, pending = true, result = true, held = null, viewHeld = null, composing = false }: FixtureOptions = {}) {
-  const origin = 'bc000000-0000-4000-8000-000000000001';
-  const calls: string[] = [], listeners = new Map<string, (event?: CloseEvent) => unknown>(), global = {} as {__mioonFlushWorkspacePreferences: () => Promise<boolean>}, workspaceRef: {current: {restored: boolean; workspaceOrigin?: string}} = { current: { restored, ...(restored ? {workspaceOrigin: origin} : {}) } };
+function fixture({ native = false, pending = true, result = true, held = null, viewHeld = null, composing = false }: FixtureOptions = {}) {
+  const calls: string[] = [], listeners = new Map<string, (event?: CloseEvent) => unknown>(), global = {} as {__mioonFlushWorkspacePreferences: () => Promise<boolean>}, editorSession = {current: 'current-editor-session'};
   let serial = 1, cleanup!: () => void;
   const clip = {
     hasUnpersisted: () => pending,
@@ -41,10 +40,10 @@ function fixture({ native = false, restored = false, pending = true, result = tr
     useEffect: (callback: () => () => void) => { cleanup = callback(); }, globalThis: global, document, window: events('window:'),
     preferencesRef: { current: { flush: async () => { calls.push('view'); if (viewHeld) await viewHeld.promise; }, hasUnsaved: () => false } },
     lastProjectRef: { current: { flush: async () => { calls.push('locator'); return true; } } },
-    localDeliveryRef: { current: null }, shotTextRef: { current: null }, clipDraftRef, workspaceRef,
+    localDeliveryRef: { current: null }, shotTextRef: { current: null }, clipDraftRef, editorSession,
   };
   Function(...Object.keys(scope), effect)(...Object.values(scope));
-  return { calls, global, listeners, document, workspaceRef, clipDraftRef, clip, cleanup,
+  return { calls, global, listeners, document, editorSession, clipDraftRef, clip, cleanup,
     changed: () => { serial++; }, setComposing: (value: boolean) => { composing = value; serial++; }, setUnpersisted: (value: boolean) => { pending = value; }, drain: () => global.__mioonFlushWorkspacePreferences() };
 }
 
@@ -63,22 +62,17 @@ test('actual App close refusal remains false without retry, deletion or business
   assert.equal(f.calls.filter(value => value === 'clip').length, 1);
 });
 
-for (const change of ['replacement owner', 'new input', 'restored scope'] as const) {
+for (const change of ['replacement owner', 'new input', 'editor session'] as const) {
   test(`actual App late close ACK cannot approve ${change}`, async () => {
     const gate = deferred(), f = fixture({ held: gate }), closing = f.drain();
     await new Promise(setImmediate);
     if (change === 'replacement owner') f.clipDraftRef.current = { ...f.clip };
     if (change === 'new input') f.changed();
-    if (change === 'restored scope') f.workspaceRef.current = { restored: true };
+    if (change === 'editor session') f.editorSession.current = 'replacement-editor-session';
     gate.resolve(true); assert.equal(await closing, false);
     assert.equal(f.calls.filter(value => value === 'clip').length, 1);
   });
 }
-
-test('actual App restored branch skips local draft I/O and preserves the original view drain', async () => {
-  const f = fixture({ restored: true });
-  assert.equal(await f.drain(), true); assert.deepEqual(f.calls, ['view']);
-});
 
 test('actual App rechecks clip input after the slower unrelated view drain settles', async () => {
   const gate = deferred(), f = fixture({ viewHeld: gate, pending: false });
@@ -163,8 +157,8 @@ test('native editor close drains its own clip and view while the launcher exclus
   f.calls.length=0;await f.listeners.get('window:pagehide')!();assert.equal(f.calls.includes('locator'),false);assert.equal(f.calls.includes('view'),true);
 });
 
-for (const restored of [false, true] as const) test(`actual App composition blocks close drain and beforeunload for restored=${restored}`, async () => {
- const f=fixture({restored,composing:true});
+test('actual App composition blocks close drain and beforeunload', async () => {
+ const f=fixture({composing:true});
  assert.equal(await f.drain(),false);assert.deepEqual(f.calls,[]);
  let prevented=false;const event: CloseEvent={type:'beforeunload',preventDefault(){prevented=true;}};
  f.listeners.get('window:beforeunload')!(event);assert.equal(prevented,true);assert.equal(event.returnValue,'');assert.deepEqual(f.calls,[]);

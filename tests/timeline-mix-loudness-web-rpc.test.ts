@@ -9,9 +9,9 @@ const response = (body: { ok: boolean; data?: { status: string; checkedAt: strin
 const tick = () => new Promise(resolve => setImmediate(resolve));
 test('bounded browser read sends exact explicit readonly request with workspace pin and no browser credentials expansion', async () => {
   const calls: ([URL | RequestInfo, (RequestInit | undefined)?])[] = [], value = { ok: true, data: report(input()) };
-  const result = await readTimelineMixLoudnessRpc(input(), { expectedWorkspaceOrigin: id(7), fetch: async (...args) => { calls.push(((args) as unknown as Parameters<typeof calls.push>[0])); return response(value); } });
+  const result = await readTimelineMixLoudnessRpc(input(), { fetch: async (...args) => { calls.push(((args) as unknown as Parameters<typeof calls.push>[0])); return response(value); } });
   assert.deepEqual(result.body, value); assert.equal(calls[0][0], `/api/projects/${input().projectId}/rpc`); assert.equal((calls[0][1])!.credentials, 'same-origin');
-  assert.deepEqual(JSON.parse((((calls[0][1])!.body) as unknown as Parameters<typeof JSON.parse>[0])), { operation: 'timeline.loudness.prepare', input: input(), expectedWorkspaceOrigin: id(7) });
+  assert.deepEqual(JSON.parse((((calls[0][1])!.body) as unknown as Parameters<typeof JSON.parse>[0])), { operation: 'timeline.loudness.prepare', input: input() });
   assert.equal(calls.length, 1);
 });
 test('complete success and error envelopes enforce declared and streamed 64KiB bounds before JSON parsing', async () => {

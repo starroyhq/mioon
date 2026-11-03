@@ -9,9 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
 import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.ts';
 import type { WorkspaceState } from '../apps/web/src/workspace-state.ts';
-import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from '../apps/web/src/project-open-state.ts';
-import { validateProjectWorkspace } from '../apps/web/src/restored-workspace.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { editorInitialSelection } from '../apps/web/src/editor-native-window.ts';
 import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard, assertLastProjectBootIdentity } from '../apps/web/src/last-project-navigation.ts';
@@ -58,7 +56,6 @@ const fixture = `
   import { Tabs, TabsList, TabsTrigger } from '@mioon/ui/components/tabs';
   import { Button } from '@mioon/ui/components/button';
   import ProjectHome from './src/ProjectHome.tsx';
-  import { workspaceOriginScope } from './src/workspace-origin.ts';
   import LastProjectStatus from './src/LastProjectStatus.tsx';
   import { useButton } from ${JSON.stringify(join(baseRoot, 'internals/use-button/useButton.js'))};
   import { createChangeEventDetails } from ${JSON.stringify(join(baseRoot, 'internals/createBaseUIEventDetails.js'))};
@@ -71,8 +68,8 @@ const fixture = `
   const AgentSettings = () => null, ImageSettings = () => null, ComfyImageSettings = () => null;
   const RestoredUnavailable = ({title}) => <span>{title}</span>;
   export function Surface({ data, loading, workspaceMode, changeMode, workbenchReady, projects, projectOpening, toast, busy,
-    projectListStatus, homePage, changeHomePage, selectProject, refreshHomeProjects, createProject, retainWorkbenchForClip = false, webSettingsCenter = null, videoDirectoryUnavailable = false, preferenceScope = { current: null }, workspace = { restored: false },
-    lastProjectStatus, lastProjectRef, restored = false, homeConnection, setHomeConnection, settingsNavigation, prepareSettingsDeparture, setHomePage, locale = 'zh-Hans' }) {
+    projectListStatus, homePage, changeHomePage, selectProject, refreshHomeProjects, createProject, retainWorkbenchForClip = false, webSettingsCenter = null, videoDirectoryUnavailable = false, preferenceScope = { current: null }, editorSession = {current:'normal'}, workspace = {},
+    lastProjectStatus, lastProjectRef, homeConnection, setHomeConnection, settingsNavigation, prepareSettingsDeparture, setHomePage, locale = 'zh-Hans' }) {
     const { t } = createI18nTestContext(locale);
     ${videoDirectoryNoticeSource}
     ${homeBoundary}
@@ -115,7 +112,7 @@ interface EnvAccess extends Record<string, unknown> {
   preferencesRef: {current: {load: ()=>Promise<WorkspaceState>; update: (...args: unknown[])=>void; flush: ()=>Promise<unknown>; getStatus: ()=>({phase: string})}};
   viewRef: {current: {activeMode: string}};
   navigationEpoch: {current: number};
-  workspaceRef: {current: {restored: boolean; workspaceOrigin?: string}};
+  editorSession: {current: string}, workspaceRef: {current: { }};
   projectOpening: {phase: string; projectId?: string|null; error?: string};
   projectSessionReady: ()=>boolean;
   selectProject: (...args: unknown[])=>Promise<boolean>;
@@ -130,9 +127,9 @@ interface EnvAccess extends Record<string, unknown> {
   projects: unknown[];
 }
 interface HarnessResult {env: EnvAccess; calls: unknown[][]; change: (...args: unknown[])=>Promise<unknown>; boot: ()=>Promise<unknown>; create: (...args: unknown[])=>Promise<boolean>}
-interface HarnessOptions {projectId?: string|null; mode?: string; loading?: boolean; ready?: boolean; restored?: boolean}
+interface HarnessOptions {projectId?: string|null; mode?: string; loading?: boolean; ready?: boolean; }
 const modeProps = (f: HarnessResult): Record<string, unknown> => ({ ...f.env, data: f.env.dataRef.current, loading: f.env.loading, workspaceMode: f.env.viewRef.current.activeMode,
-  workbenchReady: f.env.projectSessionReady() && !f.env.loading, changeMode: f.change as never, createProject: f.create, restored: f.env.workspaceRef.current.restored, retainWorkbenchForClip: false, webSettingsCenter: null, preferenceScope: f.env.preferenceScope, workspace: f.env.workspaceRef.current });
+  workbenchReady: f.env.projectSessionReady() && !f.env.loading, changeMode: f.change as never, createProject: f.create,  retainWorkbenchForClip: false, webSettingsCenter: null, preferenceScope: f.env.preferenceScope, workspace: f.env.workspaceRef.current });
 function assertHome(html: unknown): void {
   assert.match(String(html), /data-testid="project-home"/);
   assert.doesNotMatch(String(html), /data-testid="workbench"|workspace-canvas|workspace-editing|workspace-mode-help|empty-create-project|react-flow|timeline-panel|inspector-region/);
@@ -142,14 +139,14 @@ function assertDisabled(html: unknown, expected: boolean): void {
   for (const id of ['workspace-canvas', 'workspace-editing']) assert.equal(/aria-disabled="true"|\sdisabled(?:="")?[\s>]/.test(openingTag(html, id)), expected, id);
 }
 
-function harness({ projectId = null, mode = 'canvas', loading = false, ready = Boolean(projectId), restored = false }: HarnessOptions = {}): HarnessResult {
+function harness({ projectId = null, mode = 'canvas', loading = false, ready = Boolean(projectId) }: HarnessOptions = {}): HarnessResult {
   const calls: unknown[][] = [], view = defaultWorkspaceState(); view.activeMode = mode as never;
   const env: EnvAccess = { msg, ...createI18nTestContext(), localizedError: (value: unknown) => Object.assign(new Error(renderCoreMessage('zh-Hans', value as string)), { displayMessage: value }), clipLoudnessEpoch: { current: 0 }, nativeWindow: null, editorInitialSelection, emptyData, loading, currentProject: { current: projectId }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 }, requestCounter: { current: 0 }, projectSessionReady: () => false, selectProject: async () => false, refresh: async () => undefined,
     viewRef: { current: view }, viewReady: { current: ready }, dataRef: { current: projectId ? { ...emptyData, project: { id: projectId } } : emptyData },
-    workspaceRef: { current: { restored, ...(restored ? { workspaceOrigin: B } : {}) } }, importSession: { current: { active: true, selection: 0 } }, dragging: { current: false },
-    audioRoleProbe: { current: null }, audioRoleProbeEpoch: { current: 0 }, observeClipAudioRoleCapability: () => () => {}, isWorkspaceInspection: () => true, canEditTimelineAudioRole: () => true, setAudioRoleCapability: (...args: unknown[]) => calls.push(['setAudioRoleCapability', ...args]),
+    editorSession: {current: 'normal'}, workspaceRef: { current: {} }, importSession: { current: { active: true, selection: 0 } }, dragging: { current: false },
+
     dirtyRef: { current: false }, subtitlesRef: { current: null }, clipDraftRef: { current: null }, shotTextRef: { current: null }, subjectsRef: { current: null }, agentDraft: { current: false }, imageDraft: { current: false },
-    useCallback: <T>(fn: T): T => fn, workspaceOriginScope, validateProjectWorkspace, reconcileWorkspaceState, readGenerationProviderDirectory, reconcilePending() {}, pinNewWorkspaceIntent: (value: Record<string, unknown>, workspace: {workspaceOrigin?: unknown}) => ({ ...value, workspaceOrigin: workspace.workspaceOrigin }),
+    useCallback: <T>(fn: T): T => fn, reconcileWorkspaceState, readGenerationProviderDirectory, reconcilePending() {},
     // No editing owner is mounted on the project home; preserve its refresh wait.
     refreshAgentEditingTargets: async () => { await Promise.allSettled([]); },
     confirm: async () => true, readableError: (e: Error) => e.message, pendingForProject: () => [], URL, URLSearchParams,
@@ -157,7 +154,7 @@ function harness({ projectId = null, mode = 'canvas', loading = false, ready = B
     tasksRef: { current: { getState: () => ({ phase: 'idle' }), load: async () => {} } },
     preferencesRef: { current: { update: (...args: unknown[]) => calls.push(['preferences', ...args]), flush: async () => {}, load: async () => defaultWorkspaceState(), getStatus: () => ({ phase: 'saved' }) } },
     lastProjectRef: { current: { getState: () => ({ identityBlocked: false, revision: null }), invalidateNavigation: () => {}, rememberOpened: (...args: unknown[]) => calls.push(['remember', ...args]), discover: async () => null } },
-    preferenceScope: { current: null }, locatorIdentity: { current: null }, migrateBrowserStorage() {}, retainWorkspaceIdentity: (_current: unknown, observed: unknown) => observed,
+    preferenceScope: { current: null }, locatorIdentity: { current: null }, migrateBrowserStorage() {},
     retainLastProjectScope, chooseInitialProject, assertLastProjectBootIdentity, projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind,
     openedProject: { current: null }, projectCreateFlight: { current: null }, settingsNavigation: { current: createSettingsNavigationRegistry() },
     timelineFormatRef: { current: null }, deliveryNameRef: { current: null }, localDeliveryRef: { current: null },
@@ -166,7 +163,7 @@ function harness({ projectId = null, mode = 'canvas', loading = false, ready = B
     markBusy: (...args: unknown[]) => calls.push(['markBusy', ...args]), setHomeConnection() {}, changeHomePage() {}, refreshHomeProjects() {},
     ...Object.fromEntries(['setLastSync', 'setView', 'setMobilePanel', 'setPreviewAsset', 'setComparisonId', 'setShowCreate', 'setProjects', 'setWorkspace', 'setAuth', 'setOnline', 'setProviders', 'setVideoDirectoryUnavailable', 'setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setNodes', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setRealConfirm', 'setToast', 'setZoom', 'setPanelOverlay', 'setHomePage', 'setHomeConnection', 'setPanelOpen', 'setSettingsOpen', 'setAgentPage', 'setWorkspaceMode', 'setShowTasks', 'setSelectedTaskId', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setTaskState', 'setShowSettings', 'setWebSettingsOpen', 'setCanvasToolbar', 'notify'].map((name: string) => [name, (...args: unknown[]) => calls.push([name, ...args])])),
   };
-  if (projectId && ready) env.openedProject.current = projectOpenAttempt(projectId as string, 0, workspaceOriginScope(env.workspaceRef.current as never) as string) as unknown as {projectId?: unknown};
+  if (projectId && ready) env.openedProject.current = projectOpenAttempt(projectId as string, 0, 'normal' as string) as unknown as {projectId?: unknown};
   env.setProjectOpening = (value: unknown) => { env.projectOpening = value as EnvAccess['projectOpening']; calls.push(['setProjectOpening', value]); };
   env.setProjectListStatus = (value: unknown) => { env.projectListStatus = value as EnvAccess['projectListStatus']; calls.push(['setProjectListStatus', value]); };
   env.setHomePage = (value: unknown) => { env.homePage = value as unknown as string; calls.push(['setHomePage', value]); };
@@ -175,8 +172,8 @@ function harness({ projectId = null, mode = 'canvas', loading = false, ready = B
   env.setData = (data: unknown) => { env.dataRef.current = data as Record<string, unknown>; calls.push(['data', data]); };
   env.setLoading = (value: unknown) => { env.loading = Boolean(value); calls.push(['loading', value]); };
   env.refresh = async (...args: unknown[]) => { const scope = { ...env } as Record<string, unknown>; delete scope.refresh; return compile(refreshSource, 'refresh', scope)(...args); };
-  env.context = () => ({ projectId: env.currentProject.current, epoch: env.navigationEpoch.current, workspace: env.workspaceRef.current });
-  env.isCurrent = (captured: unknown) => { const value = captured as {projectId?: unknown; epoch?: unknown; workspace?: unknown}; return value.projectId === env.currentProject.current && value.epoch === env.navigationEpoch.current && workspaceOriginScope(value.workspace as never) === workspaceOriginScope(env.workspaceRef.current as never); };
+  env.context = () => ({ projectId: env.currentProject.current, epoch: env.navigationEpoch.current, session: env.editorSession.current });
+  env.isCurrent = (captured: unknown) => { const value = captured as {projectId?: unknown; epoch?: unknown; session?: unknown}; return value.projectId === env.currentProject.current && value.epoch === env.navigationEpoch.current && value.session === env.editorSession.current; };
   env.updateView = compile(updateSource, 'updateView', env);
   env.projectSessionReady = () => compile(readySource, 'projectSessionReady', env)() as boolean;
   env.prepareSettingsDeparture = () => compile(settingsSource, 'prepareSettingsDeparture', env)();
@@ -186,8 +183,7 @@ function harness({ projectId = null, mode = 'canvas', loading = false, ready = B
   const bootGuard = createProjectBootGuard(() => env.projectEpoch.current); bootGuard.activate();
   env.bootGuard = { current: bootGuard };
   env.rpc = async (operation: string, input: {projectId?: unknown}) => { calls.push(['rpc', operation]);
-    if (operation === 'workspace.restore.inspect') return { restored: false };
-    if (operation === 'project.get') return { ...emptyData, project: { id: input.projectId }, ...(env.workspaceRef.current.restored ? { exports: [], restore: { workspaceOrigin: env.workspaceRef.current.workspaceOrigin, heldExportIds: [] } } : {}) };
+    if (operation === 'project.get') return { ...emptyData, project: { id: input.projectId } };
     if (operation === 'video.connection.list') return [];
     return [];
   };
@@ -222,7 +218,6 @@ test('actual home status shows the localized optional video directory failure an
     const html = ui.render({ ...modeProps(f), locale }); assertHome(html);
     assert.match(html, /<p[^>]*role="status"[^>]*data-testid="video-directory-unavailable">/);
     assert.ok(html.includes(createI18nTestContext(locale).t('video.providers.directoryUnavailableHint')), locale);
-    assert.doesNotMatch(ui.render({ ...modeProps(f), locale, restored: true }), /data-testid="video-directory-unavailable"/);
   }
   unavailable = false; await f.boot();
   assert.equal(f.env.videoDirectoryUnavailable, false);
@@ -242,9 +237,9 @@ test('unmounted shared mode controls retain defensive click and Enter/Space guar
   assert.equal(f.env.navigationEpoch.current, 0);
 });
 
-test('actual loaded normal/restored project switches through the shared component callback and guarded preferences', async () => {
-  for (const restored of [false, true]) {
-    const f = harness({ projectId: A, restored }), props = modeProps(f); assertDisabled(ui.render(props), false);
+test('actual loaded project switches through the shared component callback and guarded preferences', async () => {
+  {
+    const f = harness({ projectId: A }), props = modeProps(f); assertDisabled(ui.render(props), false);
     assert.doesNotMatch(ui.render(props), /workspace-mode-help/);
     const tree = ui.Modes(props); assert.equal(tree.props.onValueChange, f.change);
     ui.nativeProps(props, 'editing').onClick(event()); await new Promise(setImmediate);
@@ -297,7 +292,7 @@ test('late project preference replies cannot enable a superseded or disposed own
 });
 
 test('a late discard confirmation cannot switch a replacement project or persist its mode', async () => {
-  for (const changeOwner of [(f: HarnessResult) => { f.env.currentProject.current = B; f.env.navigationEpoch.current++; }, (f: HarnessResult) => { f.env.workspaceRef.current = { restored: true, workspaceOrigin: B }; }]) {
+  for (const changeOwner of [(f: HarnessResult) => { f.env.currentProject.current = B; f.env.navigationEpoch.current++; }, (f: HarnessResult) => { f.env.editorSession.current = 'another-renderer-session'; }]) {
     const f = harness({ projectId: A }), gate = deferred(); f.env.dirtyRef.current = true; f.env.confirm = () => gate.promise as Promise<boolean>;
     const changing = f.change('editing'); await new Promise(setImmediate); changeOwner(f); gate.resolve(true); await changing;
     assert.deepEqual(f.calls, []); assert.equal(f.env.viewRef.current.activeMode, 'canvas');

@@ -10,8 +10,6 @@ import { transformSync } from 'esbuild';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, isTimelineRenderRecord, hasRequestNotAppliedProof, timelineOutputPreset } from '@mioon/contracts';
 import * as submissions from '../apps/web/src/submissions.ts';
 import * as mutations from '../apps/web/src/mutation-submissions.ts';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
-import * as restoredWorkspace from '../apps/web/src/restored-workspace.ts';
 import * as projectOpening from '../apps/web/src/project-open-state.ts';
 import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.ts';
 import { readGenerationProviderDirectory } from '../apps/web/src/video-provider-directory.ts';
@@ -128,18 +126,19 @@ function acknowledgedValue(operation: string, input: { projectId: string|undefin
 }
 const acknowledged = acknowledgedValue as <O extends string>(operation:O,input:Record<string,unknown>)=>ServiceResponse<O>;
 
-function harness(dispatch:(operation:string,input:Record<string,unknown>)=>unknown, {projectSnapshot,workspace={restored:false}}:{projectSnapshot?:(projectId?:unknown)=>unknown;workspace?:workspaceOrigin.WorkspaceIdentity}={}) {
+function harness(dispatch:(operation:string,input:Record<string,unknown>)=>unknown, {projectSnapshot,workspace={}}:{projectSnapshot?:(projectId?:unknown)=>unknown;workspace?:Record<string, unknown>}={}) {
   const state: {projectReady:boolean;epoch:number;calls:{operation:string;input:Record<string,unknown>}[];reads:{operation:string;input?:unknown}[];notices:{message:string;type:unknown}[];refreshes:unknown[];pending:submissions.PendingEntry[];jobs:boolean;auth:boolean;online:unknown;providers:unknown} = { projectReady: true, epoch: 0, calls: [], reads: [], notices: [], refreshes: [], pending: submissions.pendingForProject(projectId), jobs: false, auth: true, online: null, providers: null };
   const currentProject = { current: projectId }, workspaceRef = { current: workspace }, busy = new Set();
   const dataRef: {current:{project:{id:string};timeline:ReturnType<typeof timeline>;timelineHistory?:{revision:number}}} = { current: { project: { id: projectId }, timeline: timeline(7), timelineHistory: { revision: 7 } } };
-  const scope = { ...submissions, ...mutations, ...workspaceOrigin, ...restoredWorkspace, msg: messageKey, localizedError: (value?: string|DisplayMessage|null|undefined) => Object.assign(new Error(renderMessage('zh-Hans', value)), {displayMessage: value}), TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isReferenceOperation,
-    shotTextRef: { current: null }, currentProject, workspaceRef, dataRef, context: () => ({ projectId: currentProject.current, epoch: state.epoch, workspace: workspaceRef.current }),
-    isCurrent: (owner: { projectId: string; epoch: number; workspace: workspaceOrigin.WorkspaceIdentity|null|undefined; }) => owner.projectId === currentProject.current && owner.epoch === state.epoch && workspaceOrigin.workspaceOriginScope(owner.workspace) === workspaceOrigin.workspaceOriginScope(workspaceRef.current),
+  const editorSession={current:'normal'};
+  const scope = {editorSession,  ...submissions, ...mutations, msg: messageKey, localizedError: (value?: string|DisplayMessage|null|undefined) => Object.assign(new Error(renderMessage('zh-Hans', value)), {displayMessage: value}), TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isReferenceOperation,
+    shotTextRef: { current: null }, currentProject, workspaceRef, dataRef, context: () => ({ projectId: currentProject.current, epoch: state.epoch, session: editorSession.current }),
+    isCurrent: (owner: { projectId: string; epoch: number; session: string; }) => owner.projectId === currentProject.current && owner.epoch === state.epoch && owner.session === editorSession.current,
     isBusy: (key?: unknown, owner?: unknown) => busy.has(`${owner}:${key}`), markBusy: (owner?: unknown, key?: unknown, value?: unknown) => value ? busy.add(`${owner}:${key}`) : busy.delete(`${owner}:${key}`),
     requestCounter: { current: 0 }, clipConnectionBlocked: { current: false }, setData: (update: typeof dataRef.current|((value:typeof dataRef.current)=>typeof dataRef.current)) => { dataRef.current = typeof update === 'function' ? update(dataRef.current) : update; },
     setPending: (entries: submissions.PendingEntry[]) => { state.pending = entries; }, openTasks: (canReveal: () => unknown = () => true) => { if (canReveal()) state.jobs = true; }, setAuth: (value: boolean) => { state.auth = value; },
     readableError: (error?: Error&{ code: string; status?: number; details?: { mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[];[key: string]: unknown; }; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; }) => (error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).message, clipReplacementErrorDescriptor: (error?: Error&{ code: string; status?: number; details?: { mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[];[key: string]: unknown; }; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; }) => (error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).message,
-    notify: (message?: string|DisplayMessage|null|undefined, type?: unknown) => state.notices.push((({ message: typeof message === 'string' ? message : renderMessage('zh-Hans', message), type }) as unknown as Parameters<typeof state.notices.push>[0])), refresh: async (owner?: unknown) => { state.refreshes.push(((owner) as unknown as Parameters<typeof state.refreshes.push>[0])); },
+    notify: (message?: string|DisplayMessage|null|undefined, type?: unknown) => state.notices.push((({ message: typeof message === 'string' ? message : renderMessage('zh-Hans', message), type }) as unknown as Parameters<typeof state.notices.push>[0])), refresh: async (owner?: unknown, _quiet?: boolean) => { state.refreshes.push(((owner) as unknown as Parameters<typeof state.refreshes.push>[0])); },
     rpc: async (operation: string, input: { projectId: unknown; }) => {
       if (projectSnapshot && operation === 'project.get') { state.reads.push((({ operation, input: clone(input) }) as unknown as Parameters<typeof state.reads.push>[0])); return projectSnapshot(input.projectId); }
       if (projectSnapshot && operation === 'provider.list') { state.reads.push((({ operation }) as unknown as Parameters<typeof state.reads.push>[0])); return []; }
@@ -148,14 +147,14 @@ function harness(dispatch:(operation:string,input:Record<string,unknown>)=>unkno
     },
   };
   if (projectSnapshot) {
-    const refreshScope = { ...scope, ...projectOpening, application: null, clipDraftRef: { current: null }, projectSessionReady: () => state.projectReady, importSession: { current: { active: true } }, useCallback: (callback?: unknown) => callback, emptyData: {}, projectEpoch: { current: 1 },
+    const refreshScope = { ...scope, ...projectOpening, application: null, refreshAgentEditingTargets: async () => { await Promise.allSettled([]); }, clipDraftRef: { current: null }, projectSessionReady: () => state.projectReady, importSession: { current: { active: true } }, useCallback: (callback?: unknown) => callback, emptyData: {}, projectEpoch: { current: 1 },
       setProviders: (value: null) => { state.providers = value; }, setVideoDirectoryUnavailable() {}, setLastSync() {}, setOnline: (value: null) => { state.online = value; }, reconcileWorkspaceState, readGenerationProviderDirectory,
       viewRef: { current: defaultWorkspaceState() }, viewReady: { current: false }, setView() {}, preferencesRef: { current: {} } };
     delete (refreshScope as {refresh?: unknown}).refresh;
     scope.refresh = Function(...Object.keys(refreshScope), `${refreshSource}; return refresh;`)(...Object.values(refreshScope)) as typeof scope.refresh;
   }
-  Object.assign(scope, { captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = scope.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: JSON.stringify(captured.workspace || 'test-workspace') }; } });
-  return { state, currentProject, workspaceRef, dataRef, busy, refresh: scope.refresh, run: Function(...Object.keys(scope), `${runSource}; return run;`)(...Object.values(scope)) as (key: string, operation: string, input?: unknown, after?: (value?: unknown)=>void, options?: {replay?: boolean})=>Promise<unknown> };
+  Object.assign(scope, { captureTaskWorkspaceIntent, readTaskRevealContext: () => { const captured = scope.context(); return { active: true, projectId: captured.projectId, projectEpoch: 0, navigationEpoch: captured.epoch || 0, panelIntent: 0, workspaceScope: captured.session }; } });
+  return {editorSession,  state, currentProject, workspaceRef, dataRef, busy, refresh: scope.refresh, run: Function(...Object.keys(scope), `${runSource}; return run;`)(...Object.values(scope)) as (key: string, operation: string, input?: unknown, after?: (value?: unknown)=>void, options?: {replay?: boolean})=>Promise<unknown> };
 }
 const keyFor = (operation: string) => operation === 'timeline.render' ? 'timeline:render:preview' : 'timeline:mutation';
 const error = (code: string, details: {requestId?: unknown; operation?: unknown; projectId?: unknown; mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[];} = {}, definitive: boolean|undefined = true) => Object.assign(Error('Synthetic failure'), { code, details, definitive });
@@ -444,55 +443,38 @@ test('actual App catch and project refresh cannot erase a render receipt after s
   }
 });
 
-test('actual App refresh validates restored identity and held exports before changing data or reconciling receipts', async t => {
-  const values = storage(t), workspace = { restored: true, workspaceOrigin: id(40) };
-  const operation = 'timeline.render', input = inputFor(operation, { purpose: 'export' }), record = acknowledged(operation, input);
-  const original = submissions.prepareSubmission({ projectId, key: 'timeline:render:export', operation, input });
-  const current = submissions.prepareSubmission(((workspaceOrigin.pinNewWorkspaceIntent({ projectId, key: 'timeline:render:current', operation,
-    input: { ...input, requestId: 'current-restored-export' } }, workspace)) as unknown as Parameters<typeof submissions.prepareSubmission>[0]));
-  const historicalGeneration = submissions.prepareSubmission({ projectId, key: 'generate:historical', operation: 'generation.submit', input: { requestId: 'captured-generation-request' } });
-  const originalBytes = [...values.entries()], restore = { workspaceOrigin: workspace.workspaceOrigin, heldExportIds: [record.id] };
-  for (const [name, activeWorkspace, metadata, valid] of ([
-    ['matching branch', workspace, restore, true],
-    ['missing metadata', workspace, undefined, false],
-    ['different origin', workspace, { ...restore, workspaceOrigin: id(41) }, false],
-    ['unknown held export', workspace, { ...restore, heldExportIds: [id(42)] }, false],
-    ['duplicate held export', workspace, { ...restore, heldExportIds: [record.id, record.id] }, false],
-    ['extra metadata field', workspace, { ...restore, accepted: true }, false],
-    ['restored reply to normal workspace', { restored: false }, restore, false],
-  ] as const)) {
-    const next = { project: { id: projectId }, timeline: timeline(99), exports: [record], jobs: [{ requestId: historicalGeneration.input.requestId }],
-      ...(metadata === undefined ? {} : { restore: metadata }) };
-    const h = harness(() => assert.fail('refresh must not dispatch a write'), (({ workspace: ((activeWorkspace) as unknown as { restored: boolean; } | undefined), projectSnapshot: () => next }) as unknown as Parameters<NonNullable<typeof harness>>[1]));
-    const before = h.dataRef.current;
-    assert.equal(await (h.refresh as (owner:unknown,options?:unknown)=>Promise<unknown>)(projectId, false), valid ? next : null, name);
-    assert.equal(h.dataRef.current === before, !valid, name);
-    assert.equal(h.state.online, valid, name); assert.deepEqual(h.state.providers, valid ? [] : null, name);
-    assert.deepEqual(h.state.reads.map(call => call.operation), (activeWorkspace)!.restored ? ['project.get'] : ['project.get', 'provider.list', 'video.connection.list'], name);
-    assert.deepEqual((h.state.calls as unknown), [], name);
-    assert.equal(h.state.notices.length, valid ? 0 : 1, name);
-    if (!valid) assert.equal(h.state.notices[0].type, 'error', name);
-    assert.deepEqual([...values.entries()], originalBytes, `${name}: refresh cannot rewrite or acknowledge retained requests`);
-    assert.deepEqual(submissions.readPending(projectId, original.key), original);
-    assert.deepEqual(submissions.readPending(projectId, current.key, current), current);
-    assert.deepEqual(submissions.readPending(projectId, historicalGeneration.key), historicalGeneration);
+test('actual App refresh preserves exact render requests and reconciles only matching ordinary job receipts', async t => {
+  const values=storage(t), operation='timeline.render', input=inputFor(operation,{purpose:'export'}), record=acknowledged(operation,input);
+  const original=submissions.prepareSubmission({projectId,key:'timeline:render:export',operation,input});
+  const preview=submissions.prepareSubmission({projectId,key:'timeline:render:preview',operation,input:{...input,requestId:'original-preview-request',purpose:'preview'}});
+  const generation=submissions.prepareSubmission({projectId,key:'generate:ordinary',operation:'generation.submit',input:{requestId:'original-generation-request'}});
+  const beforeBytes=[...values.entries()];
+  for(const valid of [true,false]){
+    for(const [key,value]of beforeBytes)values.set(key,value);
+    const next={project:{id:valid?projectId:id(99)},timeline:timeline(99),exports:[record],jobs:[{requestId:generation.input.requestId}]};
+    const h=harness(()=>assert.fail('refresh must not dispatch a write'),{projectSnapshot:()=>next}),before=h.dataRef.current;
+    assert.equal(await h.refresh(projectId,false),valid?next:null);
+    assert.equal(h.dataRef.current===before,!valid);assert.equal(h.state.online,valid);assert.deepEqual(h.state.providers,valid?[]:null);
+    assert.deepEqual(h.state.reads.map(call=>call.operation),['project.get','provider.list','video.connection.list']);
+    assert.deepEqual(h.state.calls,[]);assert.equal(h.state.notices.length,valid?0:1);
+    if(!valid)assert.equal(h.state.notices[0].type,'error');
+    assert.deepEqual([...values.entries()],valid?beforeBytes.filter(([key])=>!key.endsWith(':generate:ordinary')):beforeBytes);
+    assert.deepEqual(submissions.readPending(projectId,original.key),original);
+    assert.deepEqual(submissions.readPending(projectId,preview.key),preview);
+    assert.deepEqual(submissions.readPending(projectId,generation.key),valid?null:generation);
   }
 });
-
-test('actual App refresh discards a late same-project snapshot after restored origin changes', ((async (t: test.TestContext) => {
-  const values = storage(t), workspace = { restored: true, workspaceOrigin: id(40) };
-  const original = submissions.prepareSubmission(((workspaceOrigin.pinNewWorkspaceIntent({ projectId, key: 'timeline:render:export', operation: 'timeline.render', input: inputFor('timeline.render') }, workspace)) as unknown as Parameters<typeof submissions.prepareSubmission>[0]));
-  const originalBytes = [...values.entries()]; let release!: (value?:unknown)=>void;
-  const held = new Promise(resolve => { release = resolve; });
-  const h = harness(() => assert.fail('refresh must not dispatch a write'), (({ workspace, projectSnapshot: () => held }) as unknown as Parameters<NonNullable<typeof harness>>[1]));
-  const before = h.dataRef.current, pending = (h.refresh as (owner:unknown,options?:unknown)=>Promise<unknown>)(projectId, false);
-  h.workspaceRef.current = { ...workspace, workspaceOrigin: id(41) };
-  (release)!({ project: { id: projectId }, timeline: timeline(99), exports: [], restore: { workspaceOrigin: workspace.workspaceOrigin, heldExportIds: [] } });
-  assert.equal((await pending as unknown), null); assert.equal(h.dataRef.current, before);
-  assert.equal((h.state.online as unknown), null); assert.equal((h.state.providers as unknown), null); assert.deepEqual((h.state.notices as unknown), []);
-  assert.deepEqual(h.state.reads, [{ operation: 'project.get', input: { projectId } }]); assert.deepEqual((h.state.calls as unknown), []);
-  assert.deepEqual([...values.entries()], originalBytes); assert.deepEqual(submissions.readPending(projectId, original.key, original), original);
-}) as unknown as test.TestFn));
+test('actual App refresh discards a late same-project snapshot after renderer session changes',async t=>{
+  const values=storage(t),original=submissions.prepareSubmission({projectId,key:'timeline:render:export',operation:'timeline.render',input:inputFor('timeline.render',{purpose:'export'})});
+  const originalBytes=[...values.entries()];let release!:(value:unknown)=>void;
+  const wait=new Promise(resolve=>{release=resolve;}),h=harness(()=>assert.fail('refresh must not dispatch a write'),{projectSnapshot:()=>wait});
+  const before=h.dataRef.current,reading=h.refresh(projectId,false);h.editorSession.current='another-renderer-session';
+  release({project:{id:projectId},timeline:timeline(99),exports:[]});
+  assert.equal(await reading,null);assert.equal(h.dataRef.current,before);
+  assert.equal(h.state.online,null);assert.equal(h.state.providers,null);assert.deepEqual(h.state.notices,[]);
+  assert.deepEqual(h.state.reads.map(call=>call.operation),['project.get','provider.list','video.connection.list']);assert.deepEqual(h.state.calls,[]);
+  assert.deepEqual([...values.entries()],originalBytes);assert.deepEqual(submissions.readPending(projectId,original.key),original);
+});
 
 test('pending timeline and reference cards disclose session-only recovery without broadening generation copy', () => {
   const cardSource = readFileSync(new URL('../apps/web/src/PendingSubmission.tsx', import.meta.url), 'utf8');

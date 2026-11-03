@@ -1,7 +1,7 @@
-import {workspaceSettingsSchema,workspaceBackupStatusSchema,workspaceBackupRecordSchema} from '../../../packages/contracts/src/workspace-configuration.ts';
+import {workspaceSettingsSchema} from '../../../packages/contracts/src/workspace-configuration.ts';
 import type {WorkspaceSettings,WorkspaceSettingsUpdate} from '../../../packages/contracts/src/workspace-configuration.ts';
 
-type Operation='workspace.settings.get'|'workspace.settings.set'|'workspace.backup.status'|'workspace.backup.create'|'workspace.backup.restore.stage';
+type Operation='workspace.settings.get'|'workspace.settings.set';
 export class WorkspaceSettingsError extends Error {readonly code:string;constructor(code:string){super('The workspace operation could not be confirmed.');this.code=code;}}
 async function envelope(response:Response):Promise<unknown>{
   const reader=response.body?.getReader();if(!reader)throw new WorkspaceSettingsError('BACKEND_PROTOCOL_ERROR');
@@ -21,13 +21,3 @@ async function call(operation:Operation,input:object={},signal?:AbortSignal):Pro
 }
 export const readWorkspaceSettings=async(signal?:AbortSignal)=>workspaceSettingsSchema.parse(await call('workspace.settings.get',{},signal));
 export const saveWorkspaceSettings=async(input:WorkspaceSettingsUpdate)=>workspaceSettingsSchema.parse(await call('workspace.settings.set',input));
-export const readWorkspaceBackupStatus=async(signal?:AbortSignal)=>workspaceBackupStatusSchema.parse(await call('workspace.backup.status',{},signal));
-export const createLocalWorkspaceBackup=async(requestId:string)=>workspaceBackupRecordSchema.parse(await call('workspace.backup.create',{requestId}));
-export const stageLocalWorkspaceRestore=async(backupId:string,requestId:string)=>call('workspace.backup.restore.stage',{backupId,requestId,confirmation:'RESTORE_BACKUP'});
-export const workspaceBackupDownloadUrl=(id:string)=>`/api/workspace-backups/${encodeURIComponent(id)}/download`;
-export async function importLocalWorkspaceBackup(file:File,requestId:string){
-  try{return workspaceBackupRecordSchema.parse(await envelope(await fetch(`/api/workspace-backups/import?requestId=${encodeURIComponent(requestId)}`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/vnd.mioon.workspace-backup'},body:file})));}
-  catch(error){throw error instanceof WorkspaceSettingsError?error:new WorkspaceSettingsError('NETWORK');}
-}
-export interface WorkspaceBackupBridge {chooseLocation():Promise<WorkspaceSettings|null>;revealLocation():Promise<boolean>;restart?():Promise<void>}
-export const workspaceBackupBridge=():WorkspaceBackupBridge|undefined=>(window as Window&{__mioonWorkspaceBackups?:WorkspaceBackupBridge}).__mioonWorkspaceBackups;

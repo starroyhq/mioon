@@ -1,12 +1,12 @@
 # HTTP API
 
-HTTP、CLI 和官方 MCP 共享相同的严格参数、权限与副作用描述。本文 2026-11-02 的 P4 状态如下；工作区备份、恢复等历史协议说明仍保留，不能据此启用旧生产入口。
+HTTP、CLI 和官方 MCP 共享相同的严格参数、权限与副作用描述。本文包含 S7 的公开入口退役状态。项目备份采用独立的 `project.backup.*` 契约。
 
 Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted. All `/api/*` except login, including project-scoped media, require `Authorization: Bearer <local token>` or the HttpOnly SameSite=Strict login cookie. `/health` is public. The token is server-side configuration; do not place it in URLs.
 
 ## P4 当前状态与应用接口
 
-`startServer({dataDir})` 现在以 B1 应用库和真实项目宿主管理器运行，每个项目使用独立内核连接；`dataDir` 是应用根，不是素材根。服务端默认项目位于 `<dataDir>/projects/`，桌面使用 `<userData>/data/` 并默认将项目放在 `<videos>/Mioon/`。覆盖 `MIOON_DESKTOP_USER_DATA` 时，项目和缓存留在该覆盖目录的 `data/` 内。旧 `workbench.sqlite` 目录启动返回 `VALIDATION_ERROR`（400），不迁移；历史旧格式测试必须显式使用 legacy 领域入口。目录与生命周期详见 [PROJECT-HOST.md](PROJECT-HOST.md#0-p4-当前运行状态)。
+`startServer({dataDir})` 现在以 B1 应用库和真实项目宿主管理器运行，每个项目使用独立内核连接；`dataDir` 是应用根，不是素材根。服务端默认项目位于 `<dataDir>/projects/`，桌面使用 `<userData>/data/` 并默认将项目放在 `<videos>/Mioon/`。覆盖 `MIOON_DESKTOP_USER_DATA` 时，项目和缓存留在该覆盖目录的 `data/` 内。旧 `workbench.sqlite` 目录启动返回 `VALIDATION_ERROR`（400），不迁移；旧工作区 opener、迁移与恢复实现已随 S7 退役。目录与生命周期详见 [PROJECT-HOST.md](PROJECT-HOST.md#0-p4-当前运行状态)。
 
 | 应用/项目接口 | 当前行为 |
 | --- | --- |
@@ -45,9 +45,9 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 | --- | --- | --- |
 | S5 | 应用 RPC `project.delete` | 409 `PROJECT_DELETE_UNAVAILABLE`，复用原生命周期错误码 |
 | S5、V4 | 复制、另存为、打包导入导出；旧 `/api/project-packages/…` 和项目 `package-preview` | 未注册生产接口，旧地址为 404 `NOT_FOUND` |
-| S7 | `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（bundle 下载/导入、directory 导入） | 409 `RESTORE_OPERATION_UNAVAILABLE` |
+| S7 | `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（bundle 下载/导入、directory 导入） | 404 `UNKNOWN_OPERATION`（旧文件地址为 `NOT_FOUND`） |
 
-`workspace.restore.inspect` 在新布局返回 `{restored:false}`，可附明确请求的能力字段，不授予恢复权限。设置中的备份字段不启动旧备份任务。普通项目不进入旧删除、包导入或恢复链。
+`workspace.restore.inspect` 已完全退役，返回 404 `UNKNOWN_OPERATION`。音频角色和音量包络直接按普通编辑条件使用，不再发能力探测。工作区设置仅保留真实生成开关和修订号，详见 [工作区设置](WORKSPACE-SETTINGS.md)。
 
 项目隔离也作用于幂等与容量：相同 `requestId` 在不同项目各自保存回执，不能跨项目重放。原 `Global/workspace` 配额现在只在当前项目库计算；N 个项目的图片排队/任务/请求可达 `8N/1000N/3000N`（旧总量 `32/10000/30000`），帧排队/活跃/任务/请求可达 `2N/1N/256N/4096N`（旧 `8/1/2048/32768`），LUT 可达 `128N` 个及 `64 MiB × N`（旧 `512` 个及 `128 MiB`）。每项目约束不变，跨应用总量调度留 S3。
 
@@ -62,7 +62,6 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 应用级 RPC 继续使用 `POST /api/rpc`：`project.create/list/summary.list/rename/delete`、
 `provider.list`、`video.connection.list`、`image.profile.list`、
 `agent.authorization.grant/list/revoke`、`workspace.settings.get/set`、
-`workspace.backup.create/inspect/list/restore.stage/status` 和 `workspace.restore.inspect`，
 共 19 个。登录、应用设置、全局 Agent 策略/诊断等应用级 HTTP 接口保留原地址；
 把应用级操作发到项目 RPC 地址返回 HTTP 400 `VALIDATION_ERROR`。
 
@@ -119,8 +118,7 @@ not an RPC/CLI/MCP/Agent operation. Reads are noncreating; writes require the
 verified workspace scope, current service instance, original expected revision,
 and existing project ID. Exact schemas and capacity/CAS/recovery limits are in
 [`last-project.ts`](../packages/contracts/src/last-project.ts) and
-[LAST-PROJECT.md](LAST-PROJECT.md). Restored workspaces return unsupported before
-accessing the companion file. Reopening a project never grants task execution.
+[LAST-PROJECT.md](LAST-PROJECT.md). Reopening a project never grants task execution.
 
 ### Private clip-property drafts
 
@@ -131,8 +129,6 @@ They cannot execute timeline edits or model tasks. Exact fields, limits,
 workspace/instance binding and CAS are specified in
 [`local-drafts.ts`](../packages/contracts/src/local-drafts.ts) and
 [the first-slice scope](LOCAL-CLIP-DRAFTS.md). Reads do not create or reset files.
-Restored workspaces return an explicit unsupported result without reading or
-writing a companion file; their existing local editing remains available.
 Unconfirmed writes require read-only reconciliation before any new write.
 
 ### Private delivery-name drafts and export intents
@@ -220,9 +216,7 @@ retained project slots, 8192 serialized bytes/slot and 2 MiB/file, independent
 logical limits rather than disk quota. Tombstones count and are not evicted.
 There are no credential/path/media fields, but user-entered name text and its
 captured intent copy remain private user data. Existing backups exclude this
-companion. Restored workspaces return exactly
-`{supported:false,reason:"RESTORED_WORKSPACE_UNSUPPORTED"}` before touching it;
-their existing explicit local export route remains available.
+companion.
 
 URLs are bounded to 2048 bytes, JSON request bodies to 12 KiB and ordinary data
 envelopes to 12 KiB. Original render responses retain their 4 MiB limit; execution
@@ -432,8 +426,7 @@ for HTTP 507 `SCENE_CAPACITY`, or HTTP 409 with `SCENE_QUEUE_FULL`,
 `SCENE_TASK_ACTIVE`, `SCENE_REVISION_CONFLICT`, `SCENE_STATE_CONFLICT`,
 `SCENE_SOURCE_INVALID`, `SCENE_SOURCE_CHANGED`, `SCENE_RESULT_CONFLICT`,
 `SCENE_RESULT_STALE`, `SCENE_CUTS_INVALID`, `SCENE_SEGMENTS_INVALID` or
-`SCENE_UNDO_BLOCKED`. Restored workspaces read retained tasks and results; the
-five writes are unavailable there. Mio may run `scene.detect` and the four reads
+`SCENE_UNDO_BLOCKED`. Mio may run `scene.detect` and the four reads
 as read-only tools (detection changes no project content) and wait for a task
 with `task.wait` kind `scene`. `scene.shots.create` is a local irreversible Mio
 tool: its images and shots appear after the call returns, so they are recorded
@@ -924,8 +917,7 @@ carries a not-applied proof that always binds `operation`, `projectId` and
 
 Exact replay returns the original wrapped acknowledgement. Both are local
 reversible Mio tools. They are not part of the durable local edit-task ledger,
-whose table checks its fixed operation list, and restored workspaces only replay
-their retained acknowledgements.
+whose table checks its fixed operation list.
 
 ### Split at scene cuts (2026-10-24)
 
@@ -951,8 +943,7 @@ their retained acknowledgements.
   and `requestId`.
 
 Exact replay returns the original acknowledgement. It is a local reversible Mio
-tool, outside the durable edit-task ledger and unavailable in restored
-workspaces.
+tool, outside the durable edit-task ledger.
 
 ### Crossfade (2026-10-28)
 
@@ -983,7 +974,7 @@ workspaces.
   volume-envelope workspace and size rejections keep their own proofs.
 
 Exact replay returns the original acknowledgement. It is outside the durable
-edit-task ledger and unavailable in restored workspaces.
+edit-task ledger.
 Mio uses it as the local reversible tool `mioon_timeline_clip_crossfade` in the
 `editing` group: both clips are the step's targets, the step records one change,
 and undoing that change restores both clips.
@@ -1009,7 +1000,7 @@ one `{clipId,previousGain,gain}` change per item, in request order.
   not-applied proofs binding `operation`, `projectId` and `requestId`.
 
 Exact replay returns the original acknowledgement. It is outside the durable
-edit-task ledger and unavailable in restored workspaces.
+edit-task ledger.
 Mio uses it as the local reversible tool `mioon_timeline_clip_setGains` in the
 `audio` group, after measuring the clips with `timeline.clip.loudness`: every
 listed clip is a target of the step, the step records one change, and undoing
@@ -1049,12 +1040,9 @@ returns `{operation,requestId,timeline,clipId,previousTransform,transform}`.
 - Preview and export render it through the shared renderer. Animated
   transforms need FFmpeg 5 or later; the render first runs a small probe and
   fails with `TIMELINE_TRANSFORM_UNSUPPORTED` on an older tool.
-- Storage: schema 70 is a marker-only layer that admits persisted transforms;
-  its backups restore as read-only schema 71 copies (`restored-local-v24`).
-  Older ordinary and restored roles refuse any persisted transform.
 
 Exact replay returns the original acknowledgement. It is outside the durable
-edit-task ledger, unavailable in restored workspaces, and
+edit-task ledger, and
 not a Mio tool in this version. `timeline.inspect` lists each clip's transform
 (keyframes, rotation and crop), so Mio reads it.
 The model, rendering and editor are described in
@@ -1097,12 +1085,9 @@ removes the cut's transition.
   With managed colour, both images of a transition count towards the two
   visible images at a time (`TIMELINE_IMAGE_COMPOSITOR_BUDGET` in preflight
   and render).
-- Storage: schema 72 is a marker-only layer that admits persisted transitions;
-  its backups restore as read-only schema 73 copies (`restored-local-v25`).
-  Older ordinary and restored roles refuse any persisted transition.
 
 Exact replay returns the original acknowledgement. It is outside the durable
-edit-task ledger, unavailable in restored workspaces, and
+edit-task ledger, and
 not a Mio tool in this version. `timeline.inspect` lists each clip's
 `transitionIn` (kind and frames), so Mio reads it.
 The model, rendering and editor are described in
@@ -1545,9 +1530,7 @@ the derived `batchId`).
 The three writes require a stable `requestId` and replay their original
 acknowledgement exactly; `retry` and `undo` check the batch `revision`. A
 refusal carries `details.subjectVariantOutcome` with a `not_accepted` proof
-only when a fresh transaction finds no receipt for that key. Restored copies
-(schema 63, `restored-local-v20`) keep every batch, item and receipt read-only
-and refuse all five operations with `RESTORE_OPERATION_UNAVAILABLE`. These
+only when a fresh transaction finds no receipt for that key. These
 operations are not built-in Mio tools.
 
 ### Camera previs (schema 64)
@@ -1569,10 +1552,7 @@ label and position. `node.update` changes only a previs node's label and
 position. Both writes require a stable `requestId`; only the newest four scene
 saves of a node keep receipts, and an older retry fails the revision check
 instead of applying again. Thumbnails are a bounded JPEG cache per card or
-keyframe, outside receipts and packages. Restored copies (schema 65,
-`restored-local-v21`, schema 67, `restored-local-v22`, schema 69,
-`restored-local-v23`, schema 71, `restored-local-v24`, and schema 73,
-`restored-local-v25`) allow only `previs.thumbnail.get`. These operations are
+keyframe, outside receipts and packages. These operations are
 not built-in Mio tools. There is no separate export operation: the editor
 imports a keyframe image with `asset.import`, records its asset ID in the
 keyframe's `exports` with `scene.set`, and sets a shot's first or last frame
@@ -1672,52 +1652,6 @@ intent ledger. No operation, migration or Agent authority is added. See
 [SUBJECT-VIDEO-INPUTS.md](SUBJECT-VIDEO-INPUTS.md) for implementation status, exact
 wire mapping, real-face restrictions, immutable provenance and acceptance.
 
-## Offline workspace backup readiness
-
-本节保留旧格式领域协议。P4 生产 `workspace.backup.inspect` 与其它工作区备份操作统一返回 409 `RESTORE_OPERATION_UNAVAILABLE`，不再提供下述旧库统计；S7 将删除旧的工作区备份和恢复，项目备份由 V2 实现，复制、另存为和打包由 S5、V4 实现。
-
-`workspace.backup.inspect` accepts only `{}` and returns bounded workspace-wide
-DB counts with `captureReady:false`, `reason:"BACKEND_RUNNING"`, nullable unknown
-counts and fixed capacity limits. It requires the existing local authentication.
-It reads no media, paths or credentials and creates no task, directory, receipt,
-or project. A completed count inspection is not file validation or a cold backup.
-The built-in Agent tool allowlist is unchanged.
-
-Actual create/verify are explicit offline local CLI actions backed by shared Node
-business services. No HTTP RPC accepts backup paths or grants restore authority.
-See [scope and safeguards](WORKSPACE-BACKUP.md) and the
-[offline user guide](WORKSPACE-BACKUP-GUIDE.zh-CN.md).
-
-
-## Restored workspace profile
-
-本节描述显式旧格式恢复领域及其历史数据合同，不是 P4 生产旧工作区入口。生产 `startServer` 拒绝旧 `workbench.sqlite` 目录；新布局的 `workspace.restore.inspect` 返回 `{restored:false}` 及明确请求的能力字段。旧格式成功/安全用例只通过测试专用显式领域适配验证。
-
-`workspace.restore.inspect` accepts exactly `{}` under normal local authentication.
-An ordinary workspace returns exactly `{restored:false}`. A restored workspace
-returns fixed `restored-local-v1` schema25 identity, source backup/hash binding,
-creation time, bounded held counts and explicit operation availability. It returns
-no filesystem paths, prompts, credentials or generic execution capability.
-Built-in Agent tools stay unchanged.
-
-For explicitly fresh allowed effects on a restored branch, the RPC outer body
-adds `expectedWorkspaceOrigin: UUID` alongside `operation` and `input`. It is not
-a domain field, request hash change, bearer credential or permission to resume
-captured work. Missing/mismatched origin refuses; old valid receipt reads remain
-exact and cannot enqueue work. Special edit-task/preference routes enforce the
-same backend profile. Captured identities, even terminal ones, are held.
-
-Local metadata/timeline editing and fresh local export share existing validators,
-CAS, history and request journals. New generation/Agent/Comfy/frame/waveform
-execution is unavailable. Fixed saved history/media readers do not construct
-recovery runtimes. `RESTORED_RECORD_HELD` and `RESTORE_*` refusals are not proof that
-an earlier unknown write failed. Never discard its original key on that basis.
-
-Restore and status discovery are explicit offline Node/CLI actions only. No
-HTTP endpoint receives restore filesystem paths. See [WORKSPACE-RESTORE.md](WORKSPACE-RESTORE.md)
-for fixed schema gates, limits, recursive-backup restriction and current evidence.
-
-
 ## Named timeline deliveries
 
 `timeline.render` with `purpose:'export'` and `timeline.export.preflight` accept optional `deliveryName`: exact nonblank1–120 UTF-16 units, valid Unicode without control/line characters. Omission remains absent in historical requests and receipts. The preflight digest and original render key bind the name together with the frozen timeline/settings; changed or removed names cannot reuse that key. The encoding-capability request does not accept a name. `export.get` returns the immutable `snapshot.deliveryName` when supplied.
@@ -1726,7 +1660,7 @@ Named download links bind `/api/projects/{projectId}/media/{assetId}?download=1&
 
 ### 私有镜头文字草稿与保存恢复
 
-普通工作区的右侧镜头表单使用 authenticated `/api/local-shot-text` 私有接口保存 title/prompt 草稿及原 `shot.update` 精确意图；不是公共 RPC/CLI/MCP/Agent 操作。GET 必须携带 projectId 与 shotId，只读且不创建记录；草稿与意图使用独立 CAS、后端工作区/实例身份。公开 shot.update 输入与响应仍兼容。文字请求的 prepare/execute/recover、容量/隐私/备份排除及 restored unsupported 合同见 [SHOT-TEXT-DRAFTS.md](SHOT-TEXT-DRAFTS.md)。读取或恢复表单不自动执行业务。
+普通工作区的右侧镜头表单使用 authenticated `/api/local-shot-text` 私有接口保存 title/prompt 草稿及原 `shot.update` 精确意图；不是公共 RPC/CLI/MCP/Agent 操作。GET 必须携带 projectId 与 shotId，只读且不创建记录；草稿与意图使用独立 CAS、后端工作区/实例身份。公开 shot.update 输入与响应仍兼容。文字请求的 prepare/execute/recover、容量/隐私/备份排除合同见 [SHOT-TEXT-DRAFTS.md](SHOT-TEXT-DRAFTS.md)。读取或恢复表单不自动执行业务。
 
 
 ## Selected-range timeline exports
@@ -1740,7 +1674,7 @@ No new operation or schema migration. Historical exact replay precedes current r
 
 ## 已导出文件解码样本峰值
 
-`timeline.export.samplePeak` accepts exactly `{projectId,exportId}` for one owned succeeded timeline export. It explicitly reads, hashes and decodes the existing delivered MP4; it does not render, create a task/report/cache, edit state or call providers. It is read-only and resource-intensive (`localProcess:true`), with cancellation scoped only to the check. It is unavailable in restored-v1 workspaces and absent from the built-in Agent tool catalog.
+`timeline.export.samplePeak` accepts exactly `{projectId,exportId}` for one owned succeeded timeline export. It explicitly reads, hashes and decodes the existing delivered MP4; it does not render, create a task/report/cache, edit state or call providers. It is read-only and resource-intensive (`localProcess:true`), with cancellation scoped only to the check. It is absent from the built-in Agent tool catalog.
 
 The strict report binds original export/output/hash/revision and optional frozen name/range. `ready` includes finite stereo sample peaks, full decoded duration/count and both hash passes; `unsupported`, `incomplete` and `stale` contain no measurement. A value at or below 0 dBFS does not establish no earlier clipping, true peak or loudness compliance. Explicit user recheck is allowed; no automatic retry or exact-receipt promise applies. See [scope, budgets and acceptance](EXPORT-SAMPLE-PEAK.md).
 
@@ -1760,7 +1694,7 @@ bind the output asset/hash. None of these fields are accepted as operation input
 frozen snapshot metadata or immutable queued-ACK additions. Same-key exact replay
 remains the original queued response, including after a failed worker attempt.
 Cancellation/restart remeasure under a fresh attempt; stale callbacks cannot
-attach old evidence. Inherited restored records remain held.
+attach old evidence.
 
 This increment is backend/HTTP/CLI/MCP opt-in only. It does not add a UI selector
 or change existing UI defaults. See [FLOAT-CHECKED-EXPORT.md](FLOAT-CHECKED-EXPORT.md)
@@ -1768,7 +1702,7 @@ for report identity, caps, temporary-file ownership and acceptance status.
 
 ## Saved timeline sound audition
 
-`timeline.audioPreview.plan` accepts exactly `{projectId,timelineId,expectedRevision,startFrame}`. It reads an existing saved timeline without creating one, returns its strict revision/hash-bound plan for `[startFrame,min(startFrame+600,durationFrames))` at 30fps, and does not read media payloads or launch a decoder. CLI discovery is `timeline audioPreview plan`; MCP discovery is `timeline_audioPreview_plan`. No built-in Agent tool is added. The operation refuses restored-v1 workspaces.
+`timeline.audioPreview.plan` accepts exactly `{projectId,timelineId,expectedRevision,startFrame}`. It reads an existing saved timeline without creating one, returns its strict revision/hash-bound plan for `[startFrame,min(startFrame+600,durationFrames))` at 30fps, and does not read media payloads or launch a decoder. CLI discovery is `timeline audioPreview plan`; MCP discovery is `timeline_audioPreview_plan`. No built-in Agent tool is added.
 
 An explicit browser preparation consumes fixed authenticated `GET /api/timeline-audio-preview/pcm` resources with those four fields plus `clipId`, `sourceHash`, and `planHash`. The resource accepts no path, URL, codec, stream index or filter. It validates owned managed sources, both source hashes and current saved identity, then decodes the fixed probed audio stream to exact 48kHz stereo f32le. This resource-intensive local read has one active decoder and no queue; cancellation retains ownership until child and response cleanup are confirmed. Partial data is never playable. No task, cache file, media asset or database state is created.
 
@@ -1777,7 +1711,7 @@ Preparation is bounded to 20 seconds, a 120-second total browser budget and a co
 
 ## Complete exported-file loudness observation
 
-`timeline.export.loudness` is a separate explicit bounded local read. It requires `{projectId,exportId,expectedArtifactSha256,measurementProfile:"bs1770-5-48k-stereo-fir4x-v1"}` and optionally the user's custom `{target:{integratedLufs,truePeakCeilingDbtp}}`. It accepts no path/requestId/permission flag. It completely decodes the owned succeeded delivery file, validates its actual hash twice, and returns integrated LUFS, decoded sample peak and estimated true peak bound to the frozen artifact/profile/target. Selected-range files remain selected-range observations. Silence, under-400ms, below-gate, no-audio and incomplete decode are distinct; no unqualified finite LUFS or gain advice is invented. Target is never defaulted. Advice is arithmetic only, with explicit peak-room conflicts, and never edits, limits, normalizes or authorizes application to today's timeline. Single exported-audio observation permit is shared with samplePeak; no cache/task/file write/provider call. Restored workspaces reject before parsing. See [full limits, standard sources and phase boundary](EXPORT-LOUDNESS.md).
+`timeline.export.loudness` is a separate explicit bounded local read. It requires `{projectId,exportId,expectedArtifactSha256,measurementProfile:"bs1770-5-48k-stereo-fir4x-v1"}` and optionally the user's custom `{target:{integratedLufs,truePeakCeilingDbtp}}`. It accepts no path/requestId/permission flag. It completely decodes the owned succeeded delivery file, validates its actual hash twice, and returns integrated LUFS, decoded sample peak and estimated true peak bound to the frozen artifact/profile/target. Selected-range files remain selected-range observations. Silence, under-400ms, below-gate, no-audio and incomplete decode are distinct; no unqualified finite LUFS or gain advice is invented. Target is never defaulted. Advice is arithmetic only, with explicit peak-room conflicts, and never edits, limits, normalizes or authorizes application to today's timeline. Single exported-audio observation permit is shared with samplePeak; no cache/task/file write/provider call. See [full limits, standard sources and phase boundary](EXPORT-LOUDNESS.md).
 
 ## Saved-timeline full-mix loudness preparation
 
@@ -1785,17 +1719,17 @@ Preparation is bounded to 20 seconds, a 120-second total browser budget and a co
 
 A ready report binds the request, saved revision, timeline/snapshot identity and sorted twice-hashed audible sources. `original` measures the complete pre-encode float mix. A representable candidate applies one fixed multiplier to every audible clip gain without clamping and completes another full measurement; `candidate.measurement`, `meetsTarget` and `meetsTruePeak` describe that actual second pass. Silence, too-short/below-gate measurements and gains outside `(0,2]` do not invent a usable candidate. `applyAllowed` is always false at both report and candidate levels, even when both comparisons pass. This observation cannot edit the timeline, authorize an Agent proposal, render, limit, upload or promise AAC/final-file loudness safety.
 
-The shared client uses125s transport grace over the server's120s work budget; explicit caller timeouts remain respected. The response is stream-bounded to64KiB before JSON parsing and validated against the exact request. Disconnect, CLI Ctrl+C and MCP cancellation retire only this observation's owned local work. Busy/stale/cancelled/unsupported/over-budget failures do not return partial measurements or authorize retries. No queue, report persistence, cache/database/file writes, network, model or paid operation is added. Restored-v1 refuses the operation; the internal Agent still exposes only its four existing metadata tools.
+The shared client uses125s transport grace over the server's120s work budget; explicit caller timeouts remain respected. The response is stream-bounded to64KiB before JSON parsing and validated against the exact request. Disconnect, CLI Ctrl+C and MCP cancellation retire only this observation's owned local work. Busy/stale/cancelled/unsupported/over-budget failures do not return partial measurements or authorize retries. No queue, report persistence, cache/database/file writes, network, model or paid operation is added. The internal Agent still exposes only its four existing metadata tools.
 
 ## Atomic fixed-gain application
 
 `timeline.loudness.apply` is a separate explicit durable mutation. Its strict scalar input adds the caller-owned `requestId`, exact `snapshotSha256`, and versioned `candidateDigest` to the prepare request. No gains, paths, report payload, or approval flag is accepted. Shared `timelineLoudnessCandidateDigest` hashes the complete validated report except its wall clock; the server independently remeasures both complete mixes and both source hashes before one atomic gain/history/receipt commit. Read-only reports keep `applyAllowed:false`.
 
-Exact retained ACK replay precedes media or current-revision admission, including after undo/restart. Disconnect is unknown, never cancellation or permission to use a new key. The UI uses the existing durable task API. New apply is denied in restored profiles; captured ACKs remain strictly readable. Original exports stay v1 unless the user explicitly chooses `mp4_h264_float_checked_v2`; successful application does not certify the encoded file. See [full contract, migration and verification boundary](TIMELINE-LOUDNESS-APPLY.md).
+Exact retained ACK replay precedes media or current-revision admission, including after undo/restart. Disconnect is unknown, never cancellation or permission to use a new key. The UI uses the existing durable task API. Original exports stay v1 unless the user explicitly chooses `mp4_h264_float_checked_v2`; successful application does not certify the encoded file. See [full contract, migration and verification boundary](TIMELINE-LOUDNESS-APPLY.md).
 
 ## Project-owned LUT resources (candidate foundation)
 
-`lut.import`, `lut.list` and `lut.inspect` share the typed resource service. Import accepts `{projectId, requestId, name, dataBase64}` with a7MiB exact-byte cap and stable-request replay; list and inspect return metadata/hash only. This is not grading or applied LUT support. Ordinary28/restored29 and backup boundaries are documented in [LUT resource foundation](LUT-RESOURCES.md); historical schemas remain fixed.
+`lut.import`, `lut.list` and `lut.inspect` share the typed resource service. Import accepts `{projectId, requestId, name, dataBase64}` with a7MiB exact-byte cap and stable-request replay; list and inspect return metadata/hash only. This is not grading or applied LUT support. Project-owned storage and quotas are documented in [LUT resource foundation](LUT-RESOURCES.md).
 
 ## 素材引用接口
 

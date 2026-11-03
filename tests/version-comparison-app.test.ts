@@ -7,7 +7,7 @@ import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 test('exact comparison route inherits native same-origin media permission, not download/navigation/audio grants', () => {
-  const binding = captureComparison({ scope: 'project:epoch', projectId: id(1), workspaceOrigin: 'normal', connected: true, visible: true, restored: false,
+  const binding = captureComparison({ scope: 'project:epoch', projectId: id(1), connected: true, visible: true,
     shot: { id: id(2), projectId: id(1) }, versions: [{ id: id(3), projectId: id(1), shotId: id(2), assetId: id(4), sha256: 'a'.repeat(64), number: 1 }],
     assets: [{ id: id(4), projectId: id(1), sha256: 'a'.repeat(64), mimeType: 'video/mp4' }] }, id(3));
   const origin = 'http://127.0.0.1:43210', url = origin + (binding)!.url;
@@ -36,12 +36,12 @@ test('actual App comparison opening and close synchronously fence context and pa
   calls.length = 0; set(null); assert.equal(clipLoudnessEpoch.current, 2); assert.equal(comparisonIdRef.current, null); assert.deepEqual(calls, ['comparison', null]);
 });
 test('actual App context binds live project/epoch/workspace and synchronous comparison identity', () => {
-  const currentProject = { current: id(1) }, comparisonIdRef:{current:string|null} = {current:id(2)}, projectEpoch = { current: 1 }, workspaceRef = { current: { restored: false } };
+  const currentProject = { current: id(1) }, comparisonIdRef:{current:string|null} = {current:id(2)}, projectEpoch = { current: 1 }, editorSession = { current: 'editor-session' };
   const dataRef = { current: { project: { id: id(1) }, shots: [{ id: id(2), projectId: id(1) }], versions: [], assets: [] } };
-  const get = execute('  function comparisonContext(', '  function useComparedVersion(', { currentProject, comparisonIdRef, projectEpoch, workspaceRef, dataRef, workspaceOriginScope: (w:{restored:boolean}) => w.restored ? 'restored:foreign' : 'normal', projectSessionReady: () => true, online: true, auth: true, loading: false, workbenchReady: true, webSettingsOpen: false });
-  assert.equal(get().scope, `${id(1)}:1:normal`); assert.equal(get().shot!.id, id(2)); assert.equal(get().visible, true);
+  const get = execute('  function comparisonContext(', '  function useComparedVersion(', { currentProject, comparisonIdRef, projectEpoch, editorSession, dataRef, projectSessionReady: () => true, online: true, auth: true, loading: false, workbenchReady: true, webSettingsOpen: false });
+  assert.equal(get().scope, `${id(1)}:1:editor-session`); assert.equal(get().shot!.id, id(2)); assert.equal(get().visible, true);
   comparisonIdRef.current = null; assert.equal(get().visible, false); assert.equal(get().shot, null);
-  currentProject.current = id(99); projectEpoch.current++; assert.equal(get().connected, false); assert.equal(get().scope, `${id(99)}:2:normal`);
+  currentProject.current = id(99); projectEpoch.current++; assert.equal(get().connected, false); assert.equal(get().scope, `${id(99)}:2:editor-session`);
 });
 test('actual App before-play callbacks deny background playback while comparison owns the surface', () => {
   const calls: unknown[] = [], comparisonIdRef:{current:string|null} = {current:id(2)}, env = { comparisonIdRef, comparisonPreviewPause: { current: () => calls.push('comparison') }, nativePreviewPause: { current: () => calls.push('main') }, exportPreviewPause: { current: () => calls.push('export') }, audioPreview: { controller: { revoke: () => calls.push('audio') } } };
@@ -50,7 +50,7 @@ test('actual App before-play callbacks deny background playback while comparison
   calls.length = 0; comparisonIdRef.current = null; main(); exp(); audio(); assert.deepEqual(calls, ['comparison', 'export', 'comparison', 'audio', 'main', 'comparison', 'export', 'main']);
 });
 test('actual explicit Use revalidates binding before existing revision-aware selection, never timeline replacement', () => {
-  const context = { scope: 'scope', projectId: id(1), workspaceOrigin: 'normal', connected: true, visible: true, restored: false,
+  const context = { scope: 'scope', projectId: id(1), connected: true, visible: true,
     shot: { id: id(2), projectId: id(1), revision: 7 }, versions: [{ id: id(3), projectId: id(1), shotId: id(2), assetId: id(4), sha256: 'a'.repeat(64), number: 1 }], assets: [{ id: id(4), projectId: id(1), sha256: 'a'.repeat(64), mimeType: 'video/mp4' }] };
   const binding = captureComparison(context, id(3)), calls: unknown[] = [];
   const use = execute('  function useComparedVersion(', '  function beforeMainPreviewPlay(', { comparisonContext: () => context, comparisonCurrent, isBusy: () => false, selectVersion: (...args:unknown[]) => calls.push(args) });

@@ -54,7 +54,6 @@ export interface ExportPreflightControllerOptions {
   read: (input: Record<string, unknown>, options: ExportPreflightReadOptions)=>Promise<unknown>;
   readCapabilities?: (input: Record<string, unknown>, options: ExportPreflightReadOptions)=>Promise<unknown>;
   getContext?: ()=>ExportPreflightContext|null|undefined;
-  getInvocation?: ()=>ExportPreflightInvocation;
   onChange?: (state: ExportPreflightState)=>void;
   onUnauthorized?: ()=>void;
 }
@@ -131,7 +130,7 @@ function canOfferUnchecked(report: ExportPreflightReport|null|undefined,context:
 
 // One in-memory report for the current project. Reads are explicit and never
 // mutate a project, create a render, or reuse a report as a request receipt.
-export function createExportPreflightController({ read, readCapabilities, getContext, getInvocation = () => ({}), onChange = () => {}, onUnauthorized = () => {} }: ExportPreflightControllerOptions): ExportPreflightController {
+export function createExportPreflightController({ read, readCapabilities, getContext, onChange = () => {}, onUnauthorized = () => {} }: ExportPreflightControllerOptions): ExportPreflightController {
   let state = initialState(), generation = 0, activeRead: AbortController|null = null, visible = false;
   const invalidate = (): void => { generation++; activeRead?.abort(); activeRead = null; };
   const emit = (patch: Partial<ExportPreflightState>): void => { state = { ...state, ...patch }; onChange(state); };
@@ -166,7 +165,6 @@ export function createExportPreflightController({ read, readCapabilities, getCon
       if (state.exportRangeKey === null || state.deliveryNameKey === null || state.settingsKey === null || !state.projectId || !state.timelineId || !hasRevision(state.revision) || !state.connected) return null;
       invalidate();
       const captured: CapturedContext = { ...exportRangeContextFields(state), ...deliveryNameContextFields(state), scope: state.scope, projectId: state.projectId, timelineId: state.timelineId, revision: state.revision, settingsKey: state.settingsKey, settingsVersion: state.settingsVersion, exportSettings: state.exportSettings, generation };
-      const invocation = Object.freeze({ ...getInvocation() });
       const abort = new AbortController(); activeRead = abort;
       const capabilityInput = { projectId: captured.projectId, expectedRevision: captured.revision, ...(captured.exportSettings === undefined ? {} : { exportSettings: captured.exportSettings }) };
       const input = { ...capabilityInput, ...deliveryNameRequestFields(captured), ...rangeFields(captured) };
@@ -176,7 +174,7 @@ export function createExportPreflightController({ read, readCapabilities, getCon
         // encode. Media preflight remains a separate read-only operation.
         if (captured.exportSettings !== undefined) {
           if (!readCapabilities) throw protocolError();
-          const capability = await readCapabilities(capabilityInput, { ...invocation, signal: abort.signal });
+          const capability = await readCapabilities(capabilityInput, { signal: abort.signal });
           if (!current(captured)) return null;
           if (!isTimelineExportCapabilitiesResponse(capability, capabilityInput)) throw protocolError();
           const typedCapability=capability as ExportCapability;
@@ -190,7 +188,7 @@ export function createExportPreflightController({ read, readCapabilities, getCon
           }
           emit({ checkingStep: 'media' });
         }
-        const result = await read(input, { ...invocation, signal: abort.signal });
+        const result = await read(input, { signal: abort.signal });
         if (!current(captured)) return null;
         if (!isExportPreflightResponse(result, input)) throw protocolError();
         const typedResult=result as ExportPreflightReport;

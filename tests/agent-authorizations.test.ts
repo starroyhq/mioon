@@ -4,7 +4,7 @@ import {mkdtemp,rm,readFile,writeFile,symlink,stat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {AGENT_AUTHORIZATION_FILENAME} from '../packages/business/src/agent/authorizations.ts';

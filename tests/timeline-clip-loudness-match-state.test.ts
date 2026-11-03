@@ -53,8 +53,8 @@ test('changing target aborts late measurement and A→B→A does not revive an o
   assert.equal(f.controller.match(oldMatch), false); assert.equal(f.gains.length, 0);
 });
 
-test('hidden, switched, restored, composed and conflicted draft contexts reject retained Match callbacks before effects', async () => {
-  for (const patch of [{ visible: false }, { executionScope: 'new-owner' }, { restored: true }, { hasUnsavedDrafts: true }, { pending: true }, { connected: false }]) {
+test('hidden, switched, composed and conflicted draft contexts reject retained Match callbacks before effects', async () => {
+  for (const patch of [{ visible: false }, { executionScope: 'new-owner' },  { hasUnsavedDrafts: true }, { pending: true }, { connected: false }]) {
     const f = matching(); await f.readyMatch(); const old = f.state(); f.set(patch, false);
     assert.equal(f.controller.match(old), false); assert.equal(f.gains.length, 0); assert.equal(f.state().report, null);
   }
@@ -101,7 +101,7 @@ test('the actual clip draft receives exact gain only; no implicit Save, new muta
   const key = { projectId: base.projectId, timelineId: base.timelineId, clipId: base.clipId }, saved = { supported: true as const, workspaceScope: 'a'.repeat(64),
     instanceId: 'ca000000-0000-4000-8000-000000000099', key, revision: 0, targetStatus: 'matching' as const, draft: null };
   let writes = 0, saves = 0;
-  const controller = createClipDraftController({ context: { ...key, scope: base.scope, connected: true, visible: true, busy: false, restored: false,
+  const controller = createClipDraftController({ context: { ...key, scope: base.scope, connected: true, visible: true, busy: false,
     timelineRevision: base.revision, source: { assetId: base.assetId, assetSha256: base.assetSha256 }, saved: raw }, delay: 100000,
     client: { async get() { return saved; }, async put(input) { writes++; return { ...saved, revision: input.expectedRevision + 1, draft: { baseRevision: input.baseRevision, source: input.source, raw: input.raw, updatedAt: '2026-10-20T00:00:00.000Z' } }; }, async remove() { throw Error('No deletion before Save'); } } });
   t.after(() => controller.dispose()); await controller.load();

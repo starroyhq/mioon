@@ -22,11 +22,11 @@ test('only sample peak defaults to 125 seconds; explicit client and call deadlin
   await client.rpc('project.list',{});assert.equal(deadlines.at(-1),30000);
   await client.rpc('timeline.export.preflight',{projectId:input.projectId,expectedRevision:1});assert.equal(deadlines.at(-1),35000);
 });
-test('client carries workspace and caller cancellation outside strict input without new request ID',async()=>{
+test('client carries caller cancellation outside strict input without new request ID',async()=>{
   const controller=new AbortController(),origin='44444444-4444-4444-8444-444444444444';let seen!: RequestInit;
   const client=(createClient({env,fetchImpl:(async(_url: string,request: RequestInit | undefined)=>{seen=request!;return success(readySamplePeak());}) as unknown as typeof fetch}) as TypedClient);
-  await client.rpc(operation,input,{signal:controller.signal,expectedWorkspaceOrigin:origin});
-  assert.deepEqual(JSON.parse(seen.body as string),{operation,input,expectedWorkspaceOrigin:origin});
+  await client.rpc(operation,input,{signal:controller.signal});
+  assert.deepEqual(JSON.parse(seen.body as string),{operation,input});
   assert.equal(seen.signal!.aborted,false);controller.abort();assert.equal(seen.signal!.aborted,true);
 });
 test('strict invalid inputs and unknown operation reject before connection or dispatch',async()=>{

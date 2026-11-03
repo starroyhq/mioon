@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {agentTaskDisplaySchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskChange,AgentTaskJson,AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {agentTaskDisplayTargetReader,projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from '../packages/business/src/agent/task-display-v2.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {taskOperationTitle,taskStepTitle} from '../apps/web/src/agent-task-presentation.ts';
 
 const now='2026-10-21T00:00:00.000Z';

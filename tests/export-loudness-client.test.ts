@@ -28,11 +28,11 @@ test('loudness defaults to 125 seconds; other defaults and explicit caller deadl
   await client.rpc('project.list',{});assert.equal(deadlines.at(-1),30000);
   await client.rpc('timeline.export.preflight',{projectId:input.projectId,expectedRevision:1});assert.equal(deadlines.at(-1),35000);
 });
-test('client carries workspace and caller cancellation outside strict input without new request ID',async()=>{
+test('client carries caller cancellation outside strict input without new request ID',async()=>{
   const controller=new AbortController(),origin='44444444-4444-4444-8444-444444444444';let seen: {body: string; signal: AbortSignal} | undefined;
   const client=createClient({env,fetchImpl:asFetch(async (_url: string, request?: {body?: string; signal?: AbortSignal})=>{seen=request as {body: string; signal: AbortSignal};return success(readyLoudness(input));})});
-  await client.rpc(operation,input,{signal:controller.signal,expectedWorkspaceOrigin:origin});
-  assert.deepEqual(JSON.parse(seen!.body),{operation,input,expectedWorkspaceOrigin:origin});
+  await client.rpc(operation,input,{signal:controller.signal});
+  assert.deepEqual(JSON.parse(seen!.body),{operation,input});
   assert.equal(seen!.signal.aborted,false);controller.abort();assert.equal(seen!.signal.aborted,true);
 });
 test('strict invalid inputs and unknown operation reject before connection or dispatch',async()=>{

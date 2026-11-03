@@ -15,7 +15,7 @@ import {inspectTimelineExportCapability,assertTimelineExportCapability} from '..
 import {verifySubtitleFontResource} from '../packages/business/src/subtitle-resources.ts';
 import {probeTimelineSource,prepareTimelineInputs} from '../packages/business/src/timeline-sources.ts';
 
-const codes=['RESTORE_OPERATION_UNAVAILABLE','RESTORED_RECORD_HELD','RESTORE_WORKSPACE_ORIGIN_REQUIRED','RESTORE_WORKSPACE_ORIGIN_MISMATCH'];
+const codes=['PROJECT_STORE_UNVERIFIED'];
 const restriction=(code=codes[0])=>Object.assign(Error('Synthetic revoked media owner.'),{code});
 const delivery=resolveTimelineExportDelivery(TIMELINE_OUTPUT_PRESETS[0],{profileId:'mp4_h264_v1',resolution:'native',rateControl:{mode:'crf',quality:'standard'}});
 const metadata={streams:[{index:0,codec_type:'video',codec_name:'h264',width:720,height:1280,r_frame_rate:'30/1',avg_frame_rate:'30/1',nb_frames:'2'},
@@ -81,7 +81,7 @@ test('runtime supports synchronous beforeSpawn plus beforeEffect and rejects asy
  for(const options of [{beforeEffect:async()=>{}},{beforeSpawn:async()=>{}},{beforeEffect:1},{beforeSpawn:1}] as const)
   await assert.rejects(run(process.execPath,['-e','process.stdout.write("never")'],(options as unknown as Parameters<typeof run>[2])),{code:'MEDIA_INVALID_CONFIGURATION'});
  assert.equal(started(events).length,1);
- const expected=restriction(codes[1]);
+ const expected=restriction();
  await assert.rejects(runStreaming(process.execPath,['-e','process.stdout.write("chunk")'],{onStdout(){throw expected;}}),error=>error===expected);
  assert.deepEqual(await terminateMediaProcesses(),[]);
 });

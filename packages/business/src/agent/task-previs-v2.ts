@@ -1,7 +1,7 @@
 import {PREVIS_HANDS,PREVIS_LIMITS,PREVIS_POSES,PREVIS_PROP_KINDS,PREVIS_SCENE_SCHEMA_VERSION,previsFrame,previsFramedElements,previsLookAt,previsSchemas,roundPrevisNumber} from '@mioon/contracts';
 import type {PrevisCamera,PrevisNodeRecord,PrevisScene} from '@mioon/contracts';
 import type {AgentTaskJson} from '../../../contracts/src/agent-tasks-v2.ts';
-import type { Store as WorkspaceStore } from '../store-contract.ts';
+import type { Store } from '../store-contract.ts';
 import type {AgentTaskParameterFeedback} from './task-tool-errors-v2.ts';
 
 // C8 v2: Mio reads and edits camera previs scenes. Mio sees a scene in the
@@ -107,13 +107,13 @@ export function previsSceneForNode(candidate:PrevisScene,current:PrevisScene,req
 export const previsRequestedKeyframe=(input:unknown):unknown=>object(input)&&object(input.scene)&&Object.hasOwn(input.scene,'activeKeyframeId')?input.scene.activeKeyframeId:undefined;
 
 // ---- What Mio reads back ----
-function timelineFormat(store:WorkspaceStore,projectId:string):Value|null{
+function timelineFormat(store:Store,projectId:string):Value|null{
  const row=store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);
  if(typeof row?.data!=='string')return null;
  try{const value:unknown=JSON.parse(row.data);return object(value)&&value.projectId===projectId?value:null;}catch{return null;}
 }
 /** A previs node as Mio reads it, also returned after Mio creates or saves one. */
-export function previsTaskView(store:WorkspaceStore,projectId:string,node:PrevisNodeRecord):AgentTaskJson{
+export function previsTaskView(store:Store,projectId:string,node:PrevisNodeRecord):AgentTaskJson{
  const frame=previsFrame(timelineFormat(store,projectId)),scene=node.scene;
  const shots=store.list('shots',projectId).flatMap(value=>object(value)&&typeof value.id==='string'?[{id:value.id,orderIndex:typeof value.orderIndex==='number'?value.orderIndex:0,
   first:Array.isArray(value.referenceAssetIds)&&typeof value.referenceAssetIds[0]==='string'?value.referenceAssetIds[0].toLowerCase():null,

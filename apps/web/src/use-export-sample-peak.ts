@@ -10,7 +10,6 @@ export function useExportSamplePeak(options: ExportSamplePeakControllerOptions &
     read: (input, invocation) => callbacks.current.read(input, invocation),
     isRenderRecord: (value, input) => callbacks.current.isRenderRecord(value, input),
     getContext: () => callbacks.current.getContext?.() ?? callbacks.current.context,
-    getInvocation: () => callbacks.current.getInvocation?.() ?? {},
     onUnauthorized: () => callbacks.current.onUnauthorized?.(), onChange: setState,
   });
   const owned = controller.current;

@@ -13,10 +13,8 @@ import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
 import * as mixLoudnessRpc from '../apps/web/src/timeline-mix-loudness-rpc.ts';
 import * as mixLoudnessContracts from '@mioon/contracts/timeline-mix-loudness';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
 import * as projectFile from '../packages/contracts/src/project-file.ts';
 import * as projectAddressing from '../packages/contracts/src/project-addressing.ts';
-import * as restoredWorkspace from '../apps/web/src/restored-workspace.ts';
 import * as projectOpening from '../apps/web/src/project-open-state.ts';
 import { rpc as realRpc } from '../apps/web/src/api.ts';
 import * as feedback from '../apps/web/src/import-feedback.ts';
@@ -28,12 +26,12 @@ const Function = lenientFunction;
 
 interface SelectedFile {name: string; type: string; size: number}
 interface ImportInput {projectId: string; name: string; mimeType: string; [key: string]: unknown}
-interface ImportRequest {operation: string; input: ImportInput; expectedWorkspaceOrigin?: string}
+interface ImportRequest {operation: string; input: ImportInput; }
 interface ReaderPeer {result: string | null; onload(): void; onerror(event: {type: string}): void; onabort(event: {type: string}): void}
 interface ImportOptions {
  fetchImpl?(url: RequestInfo | URL, options: RequestInit, body: ImportRequest, index: number): Response | Promise<Response>;
  readerImpl?(reader: ReaderPeer, file: SelectedFile): unknown; refreshImpl?(owner: string): unknown;
- rpcImpl?: typeof realRpc; actualRefresh?: boolean; workspace?: workspaceOrigin.WorkspaceIdentity; projectReady?: boolean;
+ rpcImpl?: typeof realRpc; actualRefresh?: boolean; workspace?: Record<string, unknown>; projectReady?: boolean;
 }
 
 const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
@@ -50,7 +48,7 @@ const lifecycleSource = appSource.slice(appSource.indexOf('  const importSession
 const refreshSource = appSource.slice(appSource.indexOf('  const refresh = useCallback('), appSource.indexOf('  async function revealImageAsset('));
 function actualApiDependency(name: string) {
   if (name === '@mioon/contracts') return contracts;
-  if (name === './workspace-origin.ts') return workspaceOrigin;
+
   if (name === './timeline-loudness-apply-rpc.ts') return loudnessApplyRpc;
   if (name === './timeline-clip-loudness-rpc.ts') return clipLoudnessRpc;
   if (name === '@mioon/contracts/timeline-clip-loudness') return clipLoudnessContracts;
@@ -60,7 +58,7 @@ function actualApiDependency(name: string) {
   if (name === '../../../packages/contracts/src/project-addressing.ts') return projectAddressing;
   throw new Error(`Unexpected API dependency ${name}`);
 }
-function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = false, workspace = { restored: false }, projectReady = true }: ImportOptions = {}) {
+function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = false, workspace = {  }, projectReady = true }: ImportOptions = {}) {
   const notifications: { message: string; descriptor: (string&{ detail?: unknown; })|(i18nCore.DisplayMessage&{ detail?: unknown; })|null|undefined; type: string; }[] = [], requests: ImportRequest[] = [], refreshes: string[] = [], busyWrites: {owner: string; key: string; value: boolean}[] = [], stateWrites: [string, unknown][] = [], busy = new Set<string>(), input = { value: 'selected-files' };
   const currentProject = { current: projectId }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 }, requestCounter = { current: 0 };
   const data = { project: { id: projectId }, assets: [] as ReturnType<typeof ack>[] }, dataRef = { current: data };
@@ -80,9 +78,10 @@ function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = 
   let effect!: () => () => void, cleanup!: () => void;
   const importSession = Function('useRef', 'useEffect', 'requestCounter', `${lifecycleSource}\nreturn importSession;`)(
     (value: unknown) => ({ current: value }), (fn: () => () => void) => { effect = fn; cleanup = fn(); }, requestCounter);
-  const scope = { application: null, msg, renderCoreMessage, nativeWindow: null, editorInputs: { current: createEditorWindowInputs() }, ...workspaceOrigin, ...restoredWorkspace, ...projectOpening, projectSessionReady: () => projectReady, workspaceRef, data, dataRef, currentProject, navigationEpoch, projectEpoch, requestCounter, importSession, busyRef: { current: busy }, ...feedback,
-    setShowCreate: (value: unknown) => stateWrites.push(['create', value]), context: () => ({ projectId: currentProject.current, epoch: navigationEpoch.current, workspace: workspaceRef.current }),
-    isCurrent: (captured: { projectId: string; epoch: number; workspace: workspaceOrigin.WorkspaceIdentity|null|undefined; }) => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current && workspaceOrigin.workspaceOriginScope(captured.workspace) === workspaceOrigin.workspaceOriginScope(workspaceRef.current),
+  const editorSession={current:'normal'};
+  const scope = {editorSession,  application: null, msg, renderCoreMessage, nativeWindow: null, editorInputs: { current: createEditorWindowInputs() }, ...projectOpening, projectSessionReady: () => projectReady, workspaceRef, data, dataRef, currentProject, navigationEpoch, projectEpoch, requestCounter, importSession, busyRef: { current: busy }, ...feedback,
+    setShowCreate: (value: unknown) => stateWrites.push(['create', value]), context: () => ({ projectId: currentProject.current, epoch: navigationEpoch.current, session: editorSession.current }),
+    isCurrent: (captured: { projectId: string; epoch: number; session: string; }) => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current && captured.session === editorSession.current,
     isBusy: (key: string) => busy.has(`${currentProject.current}:${key}`), markBusy: (owner: string, key: string, value: boolean) => { busyWrites.push({ owner, key, value }); if (value) busy.add(`${owner}:${key}`); else busy.delete(`${owner}:${key}`); },
     notify: (message?: (string&{ detail?: unknown; })|(i18nCore.DisplayMessage&{ detail?: unknown; })|null|undefined, type: string = 'success') => notifications.push({ message: feedback.renderImportFeedback('zh-Hans', message), descriptor: message, type }),
     fileInput: { current: input }, FileReader, rpc: (operation: string, input: ImportInput, options: Parameters<typeof realRpc>[2]) => { requests.push({ operation, input }); return (rpcImpl || api.rpc)(operation, input, options); },
@@ -411,26 +410,6 @@ test('actual App polling honors hidden/dragging guards and removes its timer and
 });
 
 
-test('restored import pins the first gesture and treats origin refusal as unknown without rekeying or batch replay', async () => {
-  const origin = '96000000-0000-4000-8000-000000000001';
-  const workspace = { restored: true, workspaceOrigin: origin, operationPolicy: [{ operation: 'asset.import', available: true }] };
-  const bodies: ImportRequest[] = [], h = harness({ workspace, fetchImpl: async (_url, _options, body) => {
-    bodies.push(body);
-    return Response.json({ ok: false, error: { code: 'RESTORE_WORKSPACE_ORIGIN_MISMATCH', message: 'Workspace changed', details: { mutationOutcome: 'not_applied' } } }, { status: 409 });
-  } });
-  await h.importFiles([file('原始素材.png'), file('后续素材.png')]);
-  assert.equal(bodies.length, 1); assert.equal(bodies[0].expectedWorkspaceOrigin, origin);
-  assert.deepEqual(bodies[0].input, { projectId, name: '原始素材.png', mimeType: 'image/png', dataBase64: 'YWJjZA==' });
-  assertUnknown(h); assert.equal(h.busy.size, 0);
-  let reader: ReaderPeer | undefined;
-  const delayed = harness({ workspace, readerImpl: current => { reader = current; } });
-  const running = delayed.importFiles([file('delayed.png')]);
-  delayed.scope.workspaceRef.current = { ...workspace, workspaceOrigin: '96000000-0000-4000-8000-000000000002' };
-  (reader)!.result = 'data:image/png;base64,YWJjZA=='; (reader)!.onload(); await running;
-  assert.equal(delayed.requests.length, 0, 'A changed origin after file reading cannot submit using a newly adopted pin');
-});
-
-
 test('home presentation never starts project polling or performs the loaded-project refresh', async () => {
   const h = harness({ actualRefresh: true, projectReady: false });
   const poll = mountActualPolling(h, false); await poll.tick(); await poll.visibility('visible');
@@ -440,7 +419,7 @@ test('home presentation never starts project polling or performs the loaded-proj
 
 test('actual API harness loads the exact current real dependencies and rejects any unlisted module', () => {
   const names = [...new Set([...apiSource.matchAll(/^import .+ from ['"]([^'"]+)['"];$/gm)].map(match => match[1]))];
-  const expected = [['./timeline-clip-loudness-rpc.ts', clipLoudnessRpc], ['@mioon/contracts/timeline-clip-loudness', clipLoudnessContracts], ['./timeline-loudness-apply-rpc.ts', loudnessApplyRpc], ['@mioon/contracts', contracts], ['./workspace-origin.ts', workspaceOrigin], ['./timeline-mix-loudness-rpc.ts', mixLoudnessRpc], ['@mioon/contracts/timeline-mix-loudness', mixLoudnessContracts], ['../../../packages/contracts/src/project-file.ts', projectFile], ['../../../packages/contracts/src/project-addressing.ts', projectAddressing]] as const;
+  const expected = [['./timeline-clip-loudness-rpc.ts', clipLoudnessRpc], ['@mioon/contracts/timeline-clip-loudness', clipLoudnessContracts], ['./timeline-loudness-apply-rpc.ts', loudnessApplyRpc], ['./timeline-mix-loudness-rpc.ts', mixLoudnessRpc], ['@mioon/contracts/timeline-mix-loudness', mixLoudnessContracts], ['../../../packages/contracts/src/project-file.ts', projectFile], ['../../../packages/contracts/src/project-addressing.ts', projectAddressing]] as const;
   assert.deepEqual(names, expected.map(([name]) => name));
   for (const [name, module] of expected) assert.equal(actualApiDependency(name), module);
   for (const name of ['./timeline-loudness-apply-rpc.js', './timeline-mix-loudness-rpc.js', './arbitrary.ts', '@mioon/contracts/arbitrary', 'node:fs']) {

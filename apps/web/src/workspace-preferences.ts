@@ -1,11 +1,9 @@
 import { preferenceCacheIdentity } from './last-project-navigation.ts';
-import { workspaceOriginScope, assertWorkspaceIntent } from './workspace-origin.ts';
 import { defaultWorkspaceState, normalizeWorkspaceState, readStoredWorkspaceState, writeWorkspaceState } from './workspace-state.ts';
 import type { WorkspaceState, WorkspaceStorage } from './workspace-state.ts';
 
 export type WorkspacePreferencesError=Error&{code: string; transient?: boolean}
 export interface WorkspaceServerState {projectId: string; revision: number; state: WorkspaceState|null}
-export interface WorkspacePreferencesWorkspace {readonly restored?: unknown; readonly workspaceOrigin?: unknown; readonly [key: string]: unknown}
 export interface WorkspacePreferencesStatus {
   readonly phase: string;
   readonly revision: number|null;
@@ -17,7 +15,6 @@ export interface WorkspacePreferencesErrorInfo {readonly code: string; readonly 
 export interface WorkspacePreferencesOptions {
   fetchImpl?: typeof fetch;
   storage?: WorkspaceStorage;
-  getWorkspace?: ()=>WorkspacePreferencesWorkspace;
   getStorageScope?: ()=>string|null|undefined;
   onState?: (projectId: string,state: WorkspaceState)=>void;
   onStatus?: (projectId: string,status: WorkspacePreferencesStatus)=>void;
@@ -29,12 +26,11 @@ export interface WorkspacePreferencesOptions {
   setTimeout?: typeof globalThis.setTimeout;
   clearTimeout?: typeof globalThis.clearTimeout;
 }
-export interface WorkspacePreferencesUpdateOptions {immediate?: boolean; expectedWorkspaceOrigin?: unknown; workspaceOrigin?: unknown; [key: string]: unknown}
+export interface WorkspacePreferencesUpdateOptions {immediate?: boolean}
 export interface WorkspacePreferencesFlushOptions {projectId?: string; keepalive?: boolean}
 export interface WorkspacePreferencesLoadOptions {reload?: boolean}
 export interface WorkspacePreferencesEntry {
   projectId: string;
-  workspace: WorkspacePreferencesWorkspace;
   key: string;
   cacheId: string|null;
   state: WorkspaceState;
@@ -43,7 +39,6 @@ export interface WorkspacePreferencesEntry {
   retired: boolean;
   desired: WorkspaceState|null;
   desiredKey: string|null;
-  desiredInvocation?: Readonly<Record<string, unknown>>;
   savedKey: string|null;
   request: WorkspacePreferencesRequest|null;
   inFlight: Promise<WorkspacePreferencesStatus>|null;
@@ -57,7 +52,7 @@ export interface WorkspacePreferencesEntry {
   phase: string;
   error: WorkspacePreferencesErrorInfo|null;
 }
-interface WorkspacePreferencesRequest {expectedRevision: number; state: WorkspaceState; key: string; invocation: Readonly<Record<string, unknown>>}
+interface WorkspacePreferencesRequest {expectedRevision: number; state: WorkspaceState; key: string}
 export interface WorkspacePreferences {
   load(projectId: string, options?: WorkspacePreferencesLoadOptions): Promise<WorkspaceState|null>;
   update(projectId: string, state: unknown, options?: WorkspacePreferencesUpdateOptions): boolean;
@@ -121,7 +116,7 @@ const failure=(message: string,code = 'NETWORK',transient = true): WorkspacePref
  * callbacks immediately while allowing that same final keepalive chain to finish.
  */
 export function createWorkspacePreferences({
-  fetchImpl = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => globalThis.fetch(...args), storage, getWorkspace = () => ({ restored: false }), getStorageScope = () => undefined,
+  fetchImpl = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => globalThis.fetch(...args), storage, getStorageScope = () => undefined,
   onState = () => {}, onStatus = () => {},
   delayMs = 250, maxWaitMs = 1000, retryDelays = [500, 1500, 4000],
   requestTimeoutMs = 8000, now = () => Date.now(),
@@ -130,7 +125,7 @@ export function createWorkspacePreferences({
   const entries = new Map<string,WorkspacePreferencesEntry>();
   let activeId: string|null = null, activation = 0, disposed = false, disposePromise: Promise<unknown[]>|undefined;
 
-  const cacheIdentity = (projectId: string) => preferenceCacheIdentity(workspaceOriginScope(getWorkspace()), projectId, getStorageScope());
+  const cacheIdentity = (projectId: string) => preferenceCacheIdentity(projectId, getStorageScope());
   const entryKey = (projectId: string): string => JSON.stringify([cacheIdentity(projectId).entryScope, projectId]);
   function live(entry: WorkspacePreferencesEntry): boolean { return entries.get(entry.key) === entry && !entry.retired && entry.key === entryKey(entry.projectId); }
   function pending(entry: WorkspacePreferencesEntry): boolean { return Boolean(entry.request) || entry.desiredKey !== entry.savedKey; }
@@ -168,14 +163,14 @@ export function createWorkspacePreferences({
       void drain(entry);
     }, Math.max(0, delay));
   }
-  async function request(entry: WorkspacePreferencesEntry,method: string,body?: WorkspacePreferencesRequest,invocation: Readonly<Record<string, unknown>> = {}): Promise<WorkspaceServerState> {
+  async function request(entry: WorkspacePreferencesEntry,method: string,body?: WorkspacePreferencesRequest): Promise<WorkspaceServerState> {
     const controller = new AbortController();
     let timeout: ReturnType<typeof setTimeout>|undefined;
     try {
       const transport = (async () => {
         const response = await fetchImpl(`/api/workspace-preferences/${encodeURIComponent(entry.projectId)}`, {
           method, credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
-          ...(method === 'PUT' ? { keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedRevision: body?.expectedRevision, state: body?.state, ...(Object.hasOwn(invocation, 'expectedWorkspaceOrigin') ? { expectedWorkspaceOrigin: invocation.expectedWorkspaceOrigin } : {}) }) } : {}),
+          ...(method === 'PUT' ? { keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedRevision: body?.expectedRevision, state: body?.state }) } : {}),
         });
         let envelope: unknown;
         try { envelope = await response.json(); } catch { throw failure('Workspace preferences returned invalid data.'); }
@@ -216,12 +211,12 @@ export function createWorkspacePreferences({
         entry.due = false; entry.burstStart = null;
         // Preserve this exact revision/body after ambiguous failures, even if the UI
         // has changed again. The server can acknowledge an exact replay safely.
-        if(!entry.request&&entry.desired&&entry.desiredKey!==null&&entry.revision!==null)entry.request = { expectedRevision: entry.revision, state: entry.desired, key: entry.desiredKey, invocation: entry.desiredInvocation ?? {} };
+        if(!entry.request&&entry.desired&&entry.desiredKey!==null&&entry.revision!==null)entry.request = { expectedRevision: entry.revision, state: entry.desired, key: entry.desiredKey };
         const sent = entry.request;
         if(!sent)break;
         emit(entry, 'saving', null);
         try {
-          const data = await request(entry, 'PUT', sent, assertWorkspaceIntent(sent.invocation, entry.workspace) as unknown as Readonly<Record<string, unknown>>);
+          const data = await request(entry, 'PUT', sent);
           if (!live(entry)) break;
           entry.revision = data.revision; entry.savedKey = sent.key; entry.request = null; entry.failures = 0;
           if (!pending(entry)) { clearTimer(entry); entry.force = false; emit(entry, 'saved', null); }
@@ -258,9 +253,9 @@ export function createWorkspacePreferences({
     return drain(entry);
   }
   function makeEntry(projectId: string): WorkspacePreferencesEntry {
-    const workspace = structuredClone(getWorkspace()), key = entryKey(projectId);
-    if (cacheIdentity(projectId).entryScope === null) throw failure('Workspace identity has not been verified.', 'WORKSPACE_ORIGIN_UNVERIFIED', false);
-    return { projectId, workspace, key, cacheId: cacheIdentity(projectId).cacheId ?? null, state: defaultWorkspaceState(), revision: null, ready: false, retired: false,
+    const key = entryKey(projectId);
+    if (cacheIdentity(projectId).entryScope === null) throw failure('Workspace identity has not been verified.', 'PREFERENCES_SCOPE_UNVERIFIED', false);
+    return { projectId, key, cacheId: cacheIdentity(projectId).cacheId ?? null, state: defaultWorkspaceState(), revision: null, ready: false, retired: false,
       desired: null, desiredKey: null, savedKey: null, request: null, inFlight: null,
       loadPromise: null, timer: null, burstStart: null, due: false, force: false,
       failures: 0, blocked: false, phase: 'loading', error: null };
@@ -294,7 +289,7 @@ export function createWorkspacePreferences({
           activeEntry.desired = durableWorkspaceState(activeEntry.state); activeEntry.desiredKey = keyOf(activeEntry.desired);
           // Existing server preferences always win. Legacy import is allowed only
           // after an authenticated GET positively establishes absence.
-          activeEntry.savedKey = data.state ? keyOf(durableWorkspaceState(data.state)) : (legacy && !property(activeEntry.workspace,'restored') ? null : activeEntry.desiredKey);
+          activeEntry.savedKey = data.state ? keyOf(durableWorkspaceState(data.state)) : (legacy ? null : activeEntry.desiredKey);
           activeEntry.ready = true; cache(activeEntry);
           emit(activeEntry, pending(activeEntry) ? 'pending' : 'saved', null);
           if (pending(activeEntry)) { activeEntry.burstStart = now(); plan(activeEntry, delayMs); }
@@ -319,13 +314,9 @@ export function createWorkspacePreferences({
     const entry = entries.get(entryKey(projectId));
     if (disposed || !entry?.ready || !live(entry)) return false;
     entry.state = normalizeWorkspaceState(state); cache(entry);
-    // Passive reconciliation can adjust this window's view, but only a fresh
-    // explicit update supplies the origin used by the deferred PUT/retry chain.
-    if (property(entry.workspace,'restored') && options.expectedWorkspaceOrigin === undefined) return true;
-    const invocation = Object.freeze(assertWorkspaceIntent(options, entry.workspace) as unknown as Readonly<Record<string, unknown>>);
     const desired = durableWorkspaceState(entry.state), desiredKey = keyOf(desired);
     if (desiredKey === entry.desiredKey) return true;
-    entry.desired = desired; entry.desiredKey = desiredKey; entry.desiredInvocation = invocation;
+    entry.desired = desired; entry.desiredKey = desiredKey;
     if (entry.revision === null || entry.blocked) { emit(entry); return true; }
     if (!pending(entry)) { clearTimer(entry); entry.burstStart = null; emit(entry, 'saved', null); return true; }
     emit(entry, 'pending');

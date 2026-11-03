@@ -14,7 +14,6 @@ import * as api from '../apps/web/src/api.ts';
 import * as submissions from '../apps/web/src/submissions.ts';
 import * as mutations from '../apps/web/src/mutation-submissions.ts';
 import * as editTasks from '../apps/web/src/edit-task-client.ts';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
 import * as references from '../apps/web/src/reference-connections.ts';
 import type { Locale } from '../packages/i18n/src/types.ts';
 
@@ -100,7 +99,7 @@ function harness(languageStore?: Parameters<typeof creationTestDependency>[1]) {
       if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => h.visible };
       if (name === './TaskWorkspace.css') return {};
       if (['./TaskWorkspace.tsx', './PendingSubmission.tsx', './RecoveryStorageDetails.tsx', './TaskRenderList.tsx'].includes(name)) return load(name.slice(2));
-      const business = { '@mioon/contracts': contracts, './api.ts': api, './submissions.ts': submissions, './mutation-submissions.ts': mutations, './edit-task-client.ts': editTasks, './workspace-origin.ts': workspaceOrigin, './reference-connections.ts': references };
+      const business = { '@mioon/contracts': contracts, './api.ts': api, './submissions.ts': submissions, './mutation-submissions.ts': mutations, './edit-task-client.ts': editTasks, './reference-connections.ts': references };
       if (business[name as keyof typeof business]) return business[name as keyof typeof business];
       if (['./icons.tsx', './SubjectVideoSummary.tsx'].includes(name)) return { __esModule: true, default: name };
       const primitives = { '@mioon/ui/components/workbench-controls': ['WorkbenchBadge', 'WorkbenchButton', 'WorkbenchProgress'], '@mioon/ui/components/badge': ['Badge'], '@mioon/ui/components/button': ['Button'], '@mioon/ui/components/input': ['Input'], '@mioon/ui/components/label': ['Label'] };

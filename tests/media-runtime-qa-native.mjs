@@ -1,3 +1,4 @@
+import {importNativeQaAsset,coldNativeQaAssetFile} from './helpers/native-local-qa-fixture.ts';
 /** Ordinary sandboxed native Q3 fixture. All media/data are synthetic. The
  * launcher observes only children of its own Electron/backend processes; it
  * never drives the renderer or uses the app's authentication token. */
@@ -7,62 +8,66 @@ import {createRequire} from 'node:module';
 import {randomUUID, createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {readFile, writeFile, appendFile, readdir} from 'node:fs/promises';
-import {DatabaseSync} from 'node:sqlite';
-import {openStore, createServices} from '@mioon/business';
+import {existsSync} from 'node:fs';
+import {prepareNativeQaProject, closeQaProject, captureNativeQa} from './helpers/native-local-qa-fixture.ts';
+import {readQaFixture} from './helpers/kernel-qa-fixture.mjs';
+import {ownQaChild} from './helpers/qa-owned-child.mjs';
 import {fileInfo, probe, safePath} from '@mioon/business/media';
 import {ensurePrivateDirectory} from '@mioon/contracts/private-storage';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
-const runtime = path.join(repo, 'evidence/q3-media-runtime/native');
+const runtime = path.resolve(process.env.MIOON_QA_FIXTURE_ROOT || path.join(repo, 'evidence/q3-media-runtime/native-kernel'));
 const userData = path.join(runtime, 'user-data');
-const workspace = path.join(userData, 'workspace');
+const workspace = path.join(userData, 'data');
 const json = (file, value) => writeFile(file, JSON.stringify(value, null, 2) + '\n', {mode: 0o600});
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function prepareMediaNativeFixture() {
   ensurePrivateDirectory(runtime, {create: true});
-  try {
-    const previous = JSON.parse(await readFile(path.join(runtime, 'fixture.json'), 'utf8'));
-    if (previous.synthetic !== true || previous.workspace !== workspace) throw Error('Unexpected Q3 fixture');
-    return previous;
-  } catch (error) {if (error.code !== 'ENOENT') throw error;}
+  const previous = readQaFixture(path.join(runtime, 'fixture.json'), workspace);
+  if(previous&&previous.assetReferenceFixture!==1)throw Error('Historical pre-reference fixture must be preserved; choose a fresh MIOON_QA_FIXTURE_ROOT');
+  if (previous) return previous;
+  if (existsSync(path.join(workspace, 'app-library.db'))) throw Error('Partial QA data must be preserved; choose a fresh MIOON_QA_FIXTURE_ROOT');
   ensurePrivateDirectory(userData, {create: true});
-  const store = openStore(workspace), projects = [];
-  try {
-    const services = createServices(store, new Map());
-    const bytes = await readFile(path.join(repo, 'examples/synthetic/reference.png'));
-    for (const [name, frames] of [['Q3 · 实际媒体导出', 60], ['Q3 · 长导出退出恢复', 18000]]) {
-      const project = await services.call('project.create', {name});
-      const asset = await services.call('asset.import', {projectId: project.id, name: 'synthetic-reference.png', mimeType: 'image/png', dataBase64: bytes.toString('base64')});
+  const projects = [], bytes = await readFile(path.join(repo, 'examples/synthetic/reference.png'));
+  for (const [name, frames] of [['Q3 · 实际媒体导出', 60], ['Q3 · 长导出退出恢复', 18000]]) {
+    const prepared = await prepareNativeQaProject(workspace, name), {store, services, project} = prepared;
+    try {
+      const asset = await importNativeQaAsset(prepared, {projectId: project.id, name: 'synthetic-reference.png', mimeType: 'image/png', dataBase64: bytes.toString('base64')});
       const timeline = await services.call('timeline.get', {projectId: project.id});
       await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision,
         requestId: randomUUID(), assetId: asset.id, trackId: timeline.tracks.find(track => track.kind === 'video').id, startFrame: 0, durationFrames: frames});
-      projects.push({id: project.id, name, assetId: asset.id, frames});
-    }
-  } finally {store.close();}
-  const fixture = {synthetic: true, runtime, userData, workspace, projects};
+      projects.push({id: project.id, name, assetId: asset.id, frames, projectDir: store.projectDir, localDir: store.localDir, projectFile: store.projectFile});
+    } finally {await closeQaProject(prepared);}
+  }
+  const fixture = {synthetic: true, kernel: true, assetReferenceFixture:1, runtime, userData, workspace, projects};
   await json(path.join(runtime, 'fixture.json'), fixture);
   return fixture;
 }
 
 export async function auditMediaNativeFixture() {
-  const db = new DatabaseSync(path.join(workspace, 'workbench.sqlite'), {readOnly: true});
-  let report, published;
-  try {
-    const rows = table => db.prepare(`SELECT data FROM ${table} ORDER BY id`).all().map(row => JSON.parse(row.data));
-    const assets = rows('assets'), exports = rows('exports');
-    published = exports.filter(row => row.status === 'succeeded').map(row => assets.find(asset => asset.id === row.assetId));
-    report = {synthetic: true, projects: rows('projects').map(({id, name}) => ({id, name})),
-      exports: rows('exports').map(({id, projectId, status, error, assetId, snapshot}) => ({id, projectId, status, error, assetId,
-        frames: snapshot?.timeline?.clips?.map(clip => clip.durationFrames)})),
-      assets: rows('assets').map(({id, projectId, kind, sha256, sizeBytes, width, height, duration}) => ({id, projectId, kind, sha256, sizeBytes, width, height, duration})),
-      generationJobs: db.prepare('SELECT count(*) AS n FROM jobs').get().n,
-      agentRuns: db.prepare('SELECT count(*) AS n FROM agent_chat_runs').get().n};
-  } finally {db.close();}
+  // Cold only: the real B1 opener rejects any live native owner before project SQL.
+  const fixture=readQaFixture(path.join(runtime,'fixture.json'),workspace);
+  if(!fixture||fixture.assetReferenceFixture!==1)throw Error('Historical pre-reference fixture must be preserved; choose a fresh MIOON_QA_FIXTURE_ROOT');
+  const snapshot = captureNativeQa(workspace), rows = table => snapshot.rows[table].map(row => JSON.parse(row.data));
+  const assets = rows('assets'), exports = rows('exports');
+  const published = exports.filter(row => row.status === 'succeeded').map(row => assets.find(asset => asset.id === row.assetId));
+  const report = {synthetic: true, kernel: true, assetReferenceFixture:1, projects: rows('projects').map(({id, name}) => ({id, name})),
+    exports: exports.map(({id, projectId, status, error, assetId, snapshot}) => ({id, projectId, status, error, assetId,
+      frames: snapshot?.timeline?.clips?.map(clip => clip.durationFrames)})),
+    assets: assets.map(({id, projectId, kind, sha256, sizeBytes, width, height, duration}) => ({id, projectId, kind, sha256, sizeBytes, width, height, duration})),
+    generationJobs: snapshot.rows.jobs.length, agentRuns: snapshot.rows.mio_runs.length, agentCounter: 'mio_runs',
+    storage: snapshot};
   report.verifiedOutputs = [];
   for (const asset of published) {
     if (!asset) throw Error('Synthetic export asset missing');
-    const file = await safePath(workspace, asset.relativePath), actual = await fileInfo(file), metadata = await probe(file);
+    const location = snapshot.locations[asset.projectId];
+    if (!location) throw Error('Synthetic export belongs to an unregistered project');
+    const producer=exports.find(item=>item.status==='succeeded'&&item.assetId===asset.id);
+    if(asset.producer?.kind!=='export'||asset.producer?.id!==producer?.id)throw Error('Synthetic export producer differs');
+    const resolved=await coldNativeQaAssetFile(workspace,asset.projectId,asset.id);
+    if(!/^media\/[A-Za-z0-9._-]+\.mp4$/u.test(resolved.projectRelativeFile))throw Error('Export must remain in the actual project media directory');
+    const file = resolved.file, actual = await fileInfo(file), metadata = await probe(file);
     if (actual.sha256 !== asset.sha256 || actual.sizeBytes !== asset.sizeBytes) throw Error('Synthetic export bytes differ from publication');
     report.verifiedOutputs.push({assetId: asset.id, ...actual, codec: metadata.codec, matchesPublishedBytes: true});
   }
@@ -105,10 +110,11 @@ function nativeEnvironment() {
     if (typeof process.env[key] === 'string') env[key] = process.env[key];
   }
   return {...env, MIOON_DESKTOP_USER_DATA: userData, MIOON_ENABLE_LIVE_PROVIDER: '0',
-    MIOON_FFMPEG_PATH: '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: '/usr/bin/ffprobe'};
+    MIOON_FFMPEG_PATH: process.env.MIOON_FFMPEG_PATH || '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: process.env.MIOON_FFPROBE_PATH || '/usr/bin/ffprobe'};
 }
 
 async function launch() {
+  if (process.platform !== 'linux') throw Error('Native process observation requires Linux; prepare/audit are headless');
   await prepareMediaNativeFixture();
   try {
     const previous = JSON.parse(await readFile(path.join(runtime, 'launch.json'), 'utf8'));
@@ -117,19 +123,21 @@ async function launch() {
     if (previous.launchId !== exited?.launchId && await identity(previous.pid)) throw Error('Previous synthetic native launch is still running');
   } catch (error) {if (error.code !== 'ENOENT') throw error;}
   const binary = createRequire(import.meta.url)('electron'), launchId = randomUUID();
+  const mainSha256 = createHash('sha256').update(await readFile(path.join(repo, 'apps/desktop/build/main.cjs'))).digest('hex');
+  const backendSha256 = createHash('sha256').update(await readFile(path.join(repo, 'apps/desktop/build/backend.cjs'))).digest('hex');
   const child = spawn(binary, [path.join(repo, 'apps/desktop/build')], {cwd: repo, env: nativeEnvironment(), stdio: ['ignore', 'pipe', 'pipe']});
   let logTail = Promise.resolve(), ended = false, backend, observerBusy = false;
+  const owned = ownQaChild(child), outcome = owned.done.then(result => {ended = true; return result;});
   const seen = new Map();
   for (const [kind, stream] of [['stdout', child.stdout], ['stderr', child.stderr]]) stream.on('data', bytes => {
     logTail = logTail.then(() => appendFile(path.join(runtime, `${launchId}.${kind}.log`), bytes, {mode: 0o600}));
   });
   const launchRecord = {launchId, pid: child.pid, fixturePid: process.pid, startedAt: new Date().toISOString(), synthetic: true,
     sandboxUnchanged: true, remoteDebugging: false, smokeHooks: false,
-    mainSha256: createHash('sha256').update(await readFile(path.join(repo, 'apps/desktop/build/main.cjs'))).digest('hex'),
-    backendSha256: createHash('sha256').update(await readFile(path.join(repo, 'apps/desktop/build/backend.cjs'))).digest('hex')};
-  await json(path.join(runtime, 'launch.json'), launchRecord);
-  await appendFile(path.join(runtime, 'launches.jsonl'), JSON.stringify(launchRecord) + '\n', {mode: 0o600});
-  const outcome = new Promise((resolve, reject) => {child.once('error', reject); child.once('exit', (code, signal) => {ended = true; resolve({code, signal});});});
+    mainSha256, backendSha256};
+  try {await json(path.join(runtime, 'launch.json'), launchRecord);
+    await appendFile(path.join(runtime, 'launches.jsonl'), JSON.stringify(launchRecord) + '\n', {mode: 0o600});
+  } catch (error) {await owned.stop();throw error;}
   const observe = async () => {
     if (observerBusy || ended) return;
     observerBusy = true;
@@ -157,14 +165,20 @@ async function launch() {
     clearInterval(timer);
     while (observerBusy) await pause(10);
     await logTail;
-    const remaining = [];
-    for (const record of [...seen.values(), ...(backend ? [backend] : [])]) {
-      const current = await identity(record.pid);
-      if (current?.startTicks === record.startTicks) remaining.push(record);
+    let remaining = [];
+    for (const deadline = Date.now() + 45000;;) {
+      remaining = [];
+      for (const record of [...seen.values(), ...(backend ? [backend] : [])]) {
+        const current = await identity(record.pid);
+        if (current?.startTicks === record.startTicks) remaining.push(record);
+      }
+      if (!remaining.length || Date.now() >= deadline) break;
+      await pause(100);
     }
+    if (!backend) observationFailure ||= 'BACKEND_NOT_OBSERVED';
     const exit = {...result, launchId, pid: child.pid, endedAt: new Date().toISOString(), synthetic: true,
       backend, observedMedia: [...seen.values()], remainingOwnedProcesses: remaining, observationFailure,
-      audit: await auditMediaNativeFixture()};
+      audit: !backend || remaining.length ? null : await auditMediaNativeFixture()};
     await json(path.join(runtime, 'exit.json'), exit);
     await appendFile(path.join(runtime, 'exits.jsonl'), JSON.stringify(exit) + '\n', {mode: 0o600});
     process.exitCode = result.code || (result.signal || remaining.length || observationFailure ? 1 : 0);
@@ -172,7 +186,8 @@ async function launch() {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  if (process.argv.includes('--prepare')) console.log(JSON.stringify(await prepareMediaNativeFixture(), null, 2));
+  if (process.argv.includes('--help')) console.log('Synthetic Q3: --prepare seeds two real kernel projects; launch observes owned Linux native/media processes; --audit is cold only after normal quit/backend exit. Use a fresh MIOON_QA_FIXTURE_ROOT; no GUI verification is implied by prepare.');
+  else if (process.argv.includes('--prepare')) console.log(JSON.stringify(await prepareMediaNativeFixture(), null, 2));
   else if (process.argv.includes('--audit')) console.log(JSON.stringify(await auditMediaNativeFixture(), null, 2));
   else await launch();
 }

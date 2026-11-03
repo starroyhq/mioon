@@ -23,12 +23,12 @@ test('selected clip default is125s; explicit timeouts and unrelated30s defaults 
   const client=createClient({env,fetchImpl:async()=>success([])});
   await client.rpc('project.list',{});assert.equal(deadlines.at(-1),30000);
 });
-test('typed helper and shared RPC preserve explicit selection and transport-only workspace/cancellation',async()=>{
+test('typed helper and shared RPC preserve explicit selection and caller cancellation',async()=>{
   const controller=new AbortController(),origin='55555555-5555-4555-8555-555555555555';let seen!: RequestInit;
   const client=createClient({env,fetchImpl:async(_url,request)=>{seen=request!;return success(readyClipLoudness());}});
-  const report=await measureTimelineClipLoudness(client,input as Parameters<typeof measureTimelineClipLoudness>[1],{signal:controller.signal,expectedWorkspaceOrigin:origin});
+  const report=await measureTimelineClipLoudness(client,input as Parameters<typeof measureTimelineClipLoudness>[1],{signal:controller.signal});
   assert.deepEqual(report,readyClipLoudness());assert.equal(isTimelineClipLoudnessResponse(report,input),true);
-  assert.deepEqual(JSON.parse(seen.body as string),{operation,input,expectedWorkspaceOrigin:origin});
+  assert.deepEqual(JSON.parse(seen.body as string),{operation,input});
   assert.equal(seen.signal!.aborted,false);controller.abort();assert.equal(seen.signal!.aborted,true);
   await assert.rejects(measureTimelineClipLoudness({rpc:async()=>({...report,applyAllowed:true})},input as Parameters<typeof measureTimelineClipLoudness>[1]),{code:'BACKEND_PROTOCOL_ERROR'});
 });

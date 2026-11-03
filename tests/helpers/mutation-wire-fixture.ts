@@ -46,7 +46,7 @@ export async function seedMutationStore(root: string): Promise<Map<string,string
       }
       if (projectId === IDS.project) {
         put('timelines', {id: IDS.timeline, projectId: IDS.project, revision: 4, fps: 30, width: 720, height: 1280,
-          durationFrames: 0, tracks: [], clips: [], createdAt: NOW, updatedAt: NOW});
+          durationFrames: 0, tracks: [{id:uuid(62),name:'Saved video track',kind:'video',orderIndex:0,hidden:false,muted:false}], clips: [], createdAt: NOW, updatedAt: NOW});
         // Nonempty older journals establish that this additive feature does not
         // rewrite previous responses or invent timeline/history activity.
         db.prepare('INSERT INTO timeline_requests VALUES(?,?,?)').run('mutation-preserved-timeline', 'preserved-hash', '{"preserved":"timeline"}');

@@ -1,6 +1,5 @@
+import {assertProjectStore} from '../store-runtime.ts';
 import {isProjectDatabase as isProjectLayout} from '../project-file/held-files.ts';
-import {getWorkspaceRestoreContext} from '../workspace-restore-schema.ts';
-import {workspaceRestoreError} from '../workspace-restore-policy.ts';
 import {randomUUID, randomInt, randomBytes, createHash, createHmac, timingSafeEqual} from 'node:crypto';
 import {isAsyncFunction, isPromise} from 'node:util/types';
 import {AppError} from '@mioon/contracts';
@@ -10,7 +9,7 @@ import {IMAGE_EDIT_REVIEW_DESTINATION, IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_PO
 import {createImageEditSourceResolver} from './edit-source.ts';
 import {createImageOwnershipReader} from '../image-ownership.ts';
 import {customImageConfigurationSchema, isCompleteCustomImageConfiguration, getCustomImageDestination} from '../../../contracts/src/image-settings.ts';
-import {ownsStoreLock} from '../db.ts';
+import {ownsStoreLock} from '../store-runtime.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {COMFY_IMAGE_POLICY, COMFY_IMAGE_PROFILE_ID, COMFY_IMAGE_VERSION, comfyImageConfigurationSchema, isCompleteComfyImageConfiguration, getComfyImageDestination} from '../../../contracts/src/comfy-images.ts';
 import {buildComfyWorkflow, hashComfyWorkflow, validateComfyExecution} from '../comfy/workflow.ts';
@@ -131,7 +130,7 @@ export function validateImageTaskReview(db: DatabaseSync, projectId: string, tas
  * hooks performs I/O, queues work, opens a transaction, or approves a later
  * changed request. The image lifecycle owns task acceptance and dispatch txs. */
 export function createImageReviewServices(store: ImageStore, {getSettings, assertSettings, signal, fault = (): void => {}}: ImageReviewHooks = {}) {
-  if (getWorkspaceRestoreContext(store)) throw workspaceRestoreError();
+  assertProjectStore(store);
   const {db, tx} = store, cursorSecret = randomBytes(32);
   const editSources = createImageEditSourceResolver(store, {signal}) as EditSourceResolver;
   let stopped = false;

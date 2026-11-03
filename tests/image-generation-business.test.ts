@@ -7,7 +7,8 @@ import {mkdtempSync, rmSync, readdirSync, readFileSync, statSync} from 'node:fs'
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore, ownsStoreLock} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {readMioStorage} from '../packages/business/src/agent/mio-storage.ts';
 import {renderMockImagePng, validatePng} from '../packages/business/src/images/png.ts';
@@ -198,7 +199,7 @@ test('one unresolved task locks its group while different groups remain independ
 test('an exact owner capability cannot be copied or lost; image reads remain zero-write without reopening', async t => {
   const f = await fixture(t), ack = await f.call('image.generate', f.input()) as unknown as TaskView;
   assert.throws(() => openStore(f.root), {code: 'PROJECT_LOCKED'});
-  assert.throws(() => createServices({...f.store}, new Map()), {code: 'RESTORE_STORE_UNVERIFIED'});
+  assert.throws(() => createServices({...f.store}, new Map()), {code: 'PROJECT_STORE_UNVERIFIED'});
   const observer = f.store, services = f.services;
   Object.defineProperty(observer, 'root', {value: `${f.root}/lost-owner`});
   t.after(() => Object.defineProperty(observer, 'root', {value: f.root}));

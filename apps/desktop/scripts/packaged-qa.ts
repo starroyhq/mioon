@@ -8,8 +8,9 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { migrateData } from './migrate-data.ts';
-import type {MigratedWorkspace} from './migrate-data.ts';
+import {seedDesktopQaProject,assertDesktopQaCold} from './synthetic-qa-project.ts';
+import type {DesktopQaFixture} from './synthetic-qa-project.ts';
+import {projectRpcPath} from '../../../packages/contracts/src/project-file.ts';
 import { trustedOrigin } from '../src/security.ts';
 import desktopIdentity from '../identity.ts';
 import type {DesktopIdentity} from '../identity.ts';
@@ -25,7 +26,7 @@ interface Discovery {
 interface Check { readonly name: string; readonly ok: true }
 interface ExitOutcome { readonly code: number | null; readonly signal: NodeJS.Signals | null }
 interface PackagedReport {
-  ok: boolean; readonly identity: DesktopIdentity; readonly binary: string; readonly migration: MigratedWorkspace;
+  ok: boolean; readonly identity: DesktopIdentity; readonly binary: string; readonly fixture: DesktopQaFixture;
   readonly noHostNodeInChildPath: boolean; readonly packagedSmokeHooks: boolean; readonly remoteDebugging: boolean;
   readonly checks: Check[]; health?: unknown; utilityExecutable?: string;
   project?: {name: string; clipCount: number}; render?: {status: string; bytes: number; timelineRevision: unknown};
@@ -52,7 +53,7 @@ const output = process.env.MIOON_PACKAGED_QA_OUTPUT || path.join(root, `evidence
 await mkdir(path.dirname(output), { recursive: true });
 const emptyPath = path.join(directory, 'path-without-node');
 await mkdir(emptyPath);
-const migration = await migrateData(path.join(root, 'examples/multitrack-project'), path.join(userData, 'workspace'));
+const fixture = await seedDesktopQaProject(path.join(userData, 'data'));
 if (!path.isAbsolute(process.env.MIOON_FFMPEG_PATH || '') || !path.isAbsolute(process.env.MIOON_FFPROBE_PATH || '')) {
   throw new Error('Set explicit absolute MIOON_FFMPEG_PATH and MIOON_FFPROBE_PATH for packaged QA');
 }
@@ -66,7 +67,7 @@ const exit = new Promise<ExitOutcome>((resolve, reject) => {
   child.once('error', reject);
   child.once('exit', (code, signal) => { ended = true; resolve({ code, signal }); });
 });
-const report: PackagedReport = { ok: false, identity, binary, migration, noHostNodeInChildPath: true, packagedSmokeHooks: false, remoteDebugging: false, checks: [] };
+const report: PackagedReport = { ok: false, identity, binary, fixture, noHostNodeInChildPath: true, packagedSmokeHooks: false, remoteDebugging: false, checks: [] };
 const check = (name: string): void => { report.checks.push({ name, ok: true }); };
 async function poll<T>(fn: () => T | false | Promise<T | false>, title: string, timeout = 90000): Promise<T> {
   const deadline = Date.now() + timeout;
@@ -98,7 +99,7 @@ try {
   report.utilityExecutable = utilityExecutable;
   check('backend-is-bundled-electron-node-utility-not-host-node');
   const rpc = async <T>(operation: string, input: unknown = {}): Promise<T> => {
-    const response = await fetch(`${origin}/api/rpc`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ operation, input }) });
+    const response = await fetch(`${origin}${operation === 'project.list' ? '/api/rpc' : projectRpcPath(fixture.projectId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ operation, input }) });
     const body = await response.json() as {ok: boolean; data: T; error?: unknown};
     assert.equal(response.status, 200); assert.equal(body.ok, true, JSON.stringify(body.error));
     return body.data;
@@ -108,7 +109,7 @@ try {
   const project = projects[0], timeline = await rpc<PackagedTimeline>('timeline.get', { projectId: project.id });
   assert.ok(timeline.clips.length >= 4);
   report.project = { name: project.name, clipCount: timeline.clips.length };
-  check('migrated-synthetic-project-loaded-through-shared-http');
+  check('registered-kernel-synthetic-project-loaded-through-shared-http');
   const render = await rpc<ExportJob>('timeline.render', { projectId: project.id, expectedRevision: timeline.revision, purpose: 'preview', requestId: randomUUID() });
   const completed = await poll<ExportJob>(async () => {
     const job = await rpc<ExportJob>('export.get', { exportId: render.id });
@@ -129,9 +130,10 @@ try {
   console.log(`PACKAGED_QA_READY ${output}\nThe real native window is open. Select preview → timeline composition for visual inspection, then quit the app normally.`);
   const outcome = await exit;
   assert.equal(outcome.code, 0);
-  for (const name of ['mcp-connection.json', 'mcp-token', 'workspace/server.lock']) {
+  for (const name of ['mcp-connection.json', 'mcp-token']) {
     await assert.rejects(access(path.join(userData, name)), { code: 'ENOENT' });
   }
+  assertDesktopQaCold(fixture);
   check('native-quit-cleans-descriptor-token-and-database-lock');
   report.ok = true; report.gracefulExit = outcome; report.readyForNativeInspection = false;
   await writeFile(output, JSON.stringify(report, null, 2) + '\n');

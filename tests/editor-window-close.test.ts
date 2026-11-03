@@ -47,7 +47,7 @@ function receipt(input: LocalDeliveryRenderInput) {
     status: 'queued', assetId: null, url: null, error: null, createdAt: stamp, updatedAt: stamp };
 }
 function fixture(t: test.TestContext, options: {context?: Partial<ReadyDeliveryContext>; stored?: LocalDeliverySupported} = {}) {
-  let context: ReadyDeliveryContext = { scope: 'project:1', projectId, timelineId, timelineRevision: 4, restored: false, connected: true, visible: true, busy: false, deliveryName: '', nameVersion: 1, dirty: false, ...options.context };
+  let context: ReadyDeliveryContext = { scope: 'project:1', projectId, timelineId, timelineRevision: 4, connected: true, visible: true, busy: false, deliveryName: '', nameVersion: 1, dirty: false, ...options.context };
   let stored: LocalDeliverySupported = copy(options.stored ?? empty()), nextId = 100;
   const calls: DeliveryCall[] = [], accepted: (LocalDeliveryAccepted)[] = [], overrides: DeliveryOverrides = {};
   const client = {
@@ -89,7 +89,7 @@ const storedDraft = (raw: unknown = { title: 'Draft title', prompt: '' }, patch:
 function receipt(intent: LocalShotTextResponseTarget) { return { id: shotId, projectId, revision: intent.baseRevision + 1, ...intent.baseText, ...intent.input.patch, duration: 7, aspectRatio: '16:9', parameters: { seed: 42 }, referenceAssetIds: [] }; }
 const until = async (predicate: { (): boolean; (): boolean; (): boolean; (): unknown; }) => { for (let i = 0; i < 40 && !predicate(); i++) await Promise.resolve(); assert.ok(predicate()); };
 function fixture(t: test.TestContext, options: {context?:Partial<LocalShotTextContext>;stored?:unknown;retention?:ReturnType<typeof createLocalShotTextRetention>;acknowledge?:boolean} = {}) {
-  let context: LocalShotTextContext = { scope: 'project:1', projectId, shotId, revision: 4, baseRevision: 4, baseText, savedText: baseText, restored: false, connected: true, visible: true, busy: false,
+  let context: LocalShotTextContext = { scope: 'project:1', projectId, shotId, revision: 4, baseRevision: 4, baseText, savedText: baseText, connected: true, visible: true, busy: false,
     raw: copy(baseText), textVersion: 1, formSerial: 0, textDirty: false, formDirty: false, executionEpoch: 'owner-action', ...options.context };
   let stored: LocalShotTextSupported = copy(options.stored ?? empty()) as LocalShotTextSupported, nextId = 100;
   const calls: TextCall[] = [], accepted: (LocalShotTextAccepted)[] = [], overrides: TextOverrides = {};
@@ -131,7 +131,7 @@ const key = { projectId: id(1), timelineId: id(2), clipId: id(3) };
 const source = { assetId: id(5), assetSha256: 'b'.repeat(64), versionId: id(8) };
 const raw = { name: 'Saved clip', trackId: id(4), startFrame: 0, durationFrames: 120, sourceInFrame: 0,
   rect: { x: 0, y: 0, width: 720, height: 1280 }, gain: 1 };
-const context = () => ({ ...key, scope: 'project:1:inspector:1', restored: false, connected: true, visible: true,
+const context = () => ({ ...key, scope: 'project:1:inspector:1', connected: true, visible: true,
   busy: false, timelineRevision: 7, source: structuredClone(source), saved: structuredClone(raw) });
 const record = (patch: Partial<ClipDraftRecord> = {}): ClipDraftRecord => ({ baseRevision: 7, source: structuredClone(source), raw: { ...structuredClone(raw), name: 'Recovered' }, updatedAt: stamp, ...patch });
 const row = (draft: ClipDraftRecord | null = null): ClipDraftEnvelope => ({ supported: true, workspaceScope: 'a'.repeat(64), instanceId: id(6), key,

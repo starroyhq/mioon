@@ -1,6 +1,6 @@
 // Synthetic child process for the retained-task exclusive-owner regression.
 // It never signals another process or changes lock/security settings.
-import {openStore} from '../../packages/business/src/db.ts';
+import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 interface OwnerRequest {projectId: string; taskId: string; digest: string; [key: string]: unknown}
 const [root,text]=process.argv.slice(2);
 if(!root||!text)throw Error('Usage: edit-tasks-owner-process <root> <requestJson>');

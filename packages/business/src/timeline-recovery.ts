@@ -1,7 +1,7 @@
 import {sameMediaLocator} from './asset-reference-record.ts';
 import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {assertTimelineVolumeEnvelopeWorkspace,hasTimelineVolumeEnvelope,admitTimelineVolumeEnvelopeWrite,TIMELINE_VOLUME_ENVELOPE_REJECTION_CODES} from './timeline-volume-envelope-admission.ts';
-import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
+import {assertTimelineAudioRoleWorkspace} from './store-capabilities.ts';
 import {timelineImageResponseBudgetIssue} from './timeline-image-budget.ts';
 import {validateTimelineColourBindings} from './timeline-colour-business.ts';
 import {createTimelineLoudnessRecovery} from './timeline-loudness-recovery.ts';

@@ -20,7 +20,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createServer} from 'node:http';
 import {isExportPreflightResponse,EXPORT_PREFLIGHT_LIMITS} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createProjectFile} from '../packages/business/src/project-file/index.ts';
 import {withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';

@@ -1,221 +1,72 @@
-import {CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_SCHEMA,CURRENT_RESTORE_PROFILE,assertCurrentOrdinaryWorkspace} from './helpers/workspace-schema-current.ts';
-import test, {type TestContext} from 'node:test';
+import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {createHash, randomUUID} from 'node:crypto';
-import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
+import {createHash,randomUUID} from 'node:crypto';
+import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {DatabaseSync} from 'node:sqlite';
-import { openLegacyWorkspaceStore as openStore, classifyCurrentWorkspaceSchema } from '../packages/business/src/db.ts';
-import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
+import type {DatabaseSync} from 'node:sqlite';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
-import {AGENT_TASK_TABLES} from '../packages/business/src/agent/task-schema-v2.ts';
-import {AGENT_TASK_STORAGE_BYTES_V60, validateAgentTaskStorageRowsV2} from '../packages/business/src/agent/task-storage-schema-v2.ts';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
-import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
-import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
-import {initializeWorkspaceSchema30} from '../packages/business/src/workspace-schema-v30.ts';
-import {initializeWorkspaceSchema32} from '../packages/business/src/workspace-schema-v32.ts';
-import {initializeWorkspaceSchema34} from '../packages/business/src/workspace-schema-v34.ts';
-import {initializeWorkspaceSchema36} from '../packages/business/src/workspace-schema-v36.ts';
-import {initializeWorkspaceSchema38} from '../packages/business/src/workspace-schema-v38.ts';
-import {initializeWorkspaceSchema40} from '../packages/business/src/workspace-schema-v40.ts';
-import {initializeWorkspaceSchema44} from '../packages/business/src/workspace-schema-v44.ts';
-import {initializeWorkspaceSchema48} from '../packages/business/src/workspace-schema-v48.ts';
-import {initializeWorkspaceSchema50} from '../packages/business/src/workspace-schema-v50.ts';
-import {initializeWorkspaceSchema52} from '../packages/business/src/workspace-schema-v52.ts';
-import {initializeWorkspaceSchema54} from '../packages/business/src/workspace-schema-v54.ts';
-import {initializeWorkspaceSchema56} from '../packages/business/src/workspace-schema-v56.ts';
-import {initializeWorkspaceSchema58} from '../packages/business/src/workspace-schema-v58.ts';
-import {classifyWorkspaceSchemaV58V59} from '../packages/business/src/workspace-restore-schema-v59.ts';
-import {initializeWorkspaceSchema60, validateWorkspaceSchema60} from '../packages/business/src/workspace-schema-v60.ts';
-import {classifyWorkspaceSchemaV56V57} from '../packages/business/src/workspace-restore-schema-v57.ts';
-import {createWorkspaceBackup, verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
-import {createServices} from '../packages/business/src/services.ts';
-import type {AgentTaskJson, AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
-
-function temporary(t: TestContext) {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), 'mioon-storage-schema60-'));
-  t.after(() => {for (const suffix of ['', '-backup', '-restored']) rmSync(root + suffix, {recursive: true, force: true});});
-  return root;
+import {readMioStorage} from '../packages/business/src/agent/mio-storage.ts';
+import {validateAgentTaskRowsV2} from '../packages/business/src/agent/task-schema-v2.ts';
+import {startServer,type InspectProject,type InspectApplication} from '../apps/server/src/index.ts';
+import {createServerProject} from './helpers/project-database.ts';
+import {snapshot} from './helpers/current-retained-fixture.ts';
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
+const limit=256*1024*1024;
+const sha=(text:string)=>createHash('sha256').update(text).digest('hex');
+function temporary(t:TestContext){const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-native-quota-'));t.after(()=>rmSync(root,{recursive:true,force:true}));return root;}
+function current(t:TestContext){
+ const root=temporary(t),store=openStore(root),journal=createAgentTaskJournal(store),projectId=store.projectId;
+ t.after(()=>store.close());store.put('projects',{id:projectId,name:'Current journal quota',revision:1});
+ const run=journal.create({projectId,requestId:randomUUID(),text:'Storage integrity',configuration:{protocol:'chat_completions',model:'synthetic'}}).run;
+ return {root,store,journal,run,projectId};
 }
-function legacy56(t: TestContext) {
-  const root = temporary(t), db = new DatabaseSync(join(root, 'workbench.sqlite'));
-  t.after(() => {if (db.isOpen) db.close();});
-  db.exec('PRAGMA foreign_keys=ON;PRAGMA trusted_schema=OFF');
-  initializeWorkspaceSchemaThrough24(db);
-  for (const initialize of [initializeWorkspaceSchema26, initializeWorkspaceSchema28, initializeWorkspaceSchema30,
-    initializeWorkspaceSchema32, initializeWorkspaceSchema34, initializeWorkspaceSchema36, initializeWorkspaceSchema38,
-    initializeWorkspaceSchema40]) initialize(db);
-  for (const initialize of [initializeWorkspaceSchema44, initializeWorkspaceSchema48, initializeWorkspaceSchema50,
-    initializeWorkspaceSchema52, initializeWorkspaceSchema54, initializeWorkspaceSchema56]) initialize(db, initializeWorkspaceSchemaThrough24);
-  const projectId = randomUUID(), project = {id: projectId, name: 'Historical synthetic journal', revision: 1};
-  db.prepare('INSERT INTO projects(id,data) VALUES(?,?)').run(projectId, JSON.stringify(project));
-  // The journal only needs the existing store's transaction and owner lookup.
-  // Keeping this constructor at56 lets migration tests write genuine old bytes.
-  const store = {db, root,
-    get(table: string, id: string) {assert.equal(table, 'projects'); return id === projectId ? project : null;},
-    tx<T>(consume: () => T): T {db.exec('BEGIN IMMEDIATE'); try {const value = consume(); db.exec('COMMIT'); return value;} catch (error) {if (db.isTransaction) db.exec('ROLLBACK'); throw error;}},
-  } as unknown as WorkspaceStore;
-  const journal = createAgentTaskJournal(store), run = journal.create({projectId, requestId: randomUUID(), text: 'Retain all history', configuration: {}}).run;
-  return {root, db, store, journal, run, projectId};
-}
-function current(t: TestContext) {
-  const root = temporary(t), store = openStore(root);
-  t.after(() => {if (store.db.isOpen) store.close();});
-  const projectId = randomUUID();store.put('projects', {id: projectId, name: 'Current synthetic journal', revision: 1});
-  const journal = createAgentTaskJournal(store), run = journal.create({projectId, requestId: randomUUID(), text: 'Storage integrity', configuration: {}}).run;
-  return {root, store, journal, run, projectId};
-}
-function evidence(db: DatabaseSync) {
-  return AGENT_TASK_TABLES.map(table => ({table, rows: db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()}));
-}
-function insertCompleteModel(db: DatabaseSync, runId: string, projectId: string, position: number, body: string) {
-  const date = '2026-10-24T00:00:00.000Z', step: AgentTaskStep = {id: randomUUID(), runId, position, kind: 'model', status: 'completed',
-    request: {body, history: []}, createdAt: date, updatedAt: date};
-  const data = JSON.stringify(step);
-  db.prepare('INSERT INTO agent_task_steps_v2(id,runId,projectId,position,status,data) VALUES(?,?,?,?,?,?)').run(step.id, runId, projectId, position, step.status, data);
-  return {step, bytes: Buffer.byteLength(data)};
-}
-
-test('schema60 migration preserves every old raw row and frozen56 catalogue semantics', t => {
-  const f = legacy56(t), model = f.journal.beginStep(f.run.id, {kind: 'model', request: {body: '{"messages":[]}', history: []}});
-  f.journal.markDispatch(f.run.id, model.id);f.journal.completeStep(f.run.id, model.id, {result: {text: 'Retained result'}});
-  const before = evidence(f.db), oldEvents = f.journal.events(f.run.id);
-  assert.deepEqual(classifyWorkspaceSchemaV56V57(f.db), {schemaVersion: 56, profile: 'ordinary'});
-  initializeWorkspaceSchema58(f.db, initializeWorkspaceSchemaThrough24);
-  assert.deepEqual(evidence(f.db), before);
-  initializeWorkspaceSchema60(f.db, initializeWorkspaceSchemaThrough24);
-  assert.deepEqual(evidence(f.db), before);
-  assert.deepEqual(classifyCurrentWorkspaceSchema(f.db), {schemaVersion: 60, profile: 'ordinary'});
-  assert.deepEqual(createAgentTaskJournal(f.store).events(f.run.id), oldEvents);
-  assert.throws(() => classifyWorkspaceSchemaV56V57(f.db), {code: 'RESTORE_SCHEMA_UNSUPPORTED'});
-  assert.equal(f.db.prepare('SELECT count(*) AS n FROM schema_version WHERE version=60').get()!.n, 1);
+test('native Mio admits history above64MiB, atomically rejects above256MiB and retains its 65536-row limit',t=>{
+ const f=current(t),db=f.store.db,at='2026-10-24T00:00:00.000Z';
+ const insert=(body:string)=>db.prepare('INSERT INTO mio_blobs(sha256,bytes,content,createdAt) VALUES(?,?,?,?)').run(sha(body),Buffer.byteLength(body),body,at);
+ f.store.tx(()=>{for(let index=0;index<128;index++)insert(String(index).padStart(4,'0')+'x'.repeat(2*1024*1024-4100));});
+ // Leave one KiB below the exact native quota, including scalar identities.
+ const beforeTail=readMioStorage(db),tailBytes=beforeTail.remaining.bytes-88-1024;
+ assert.ok(tailBytes>0&&tailBytes<2*1024*1024);f.store.tx(()=>insert('t'.repeat(tailBytes)));
+ const before=readMioStorage(db);assert.ok(before.usage.bytes>64*1024*1024&&before.usage.bytes<limit);validateAgentTaskRowsV2(db);
+ const count=db.prepare('SELECT count(*) AS n FROM mio_blobs').get()!.n,revision=f.journal.run(f.run.id).revision;
+ assert.throws(()=>f.store.tx(()=>{db.prepare('UPDATE mio_runs SET revision=revision+1 WHERE id=?').run(f.run.id);insert('overflow'+'x'.repeat(2*1024*1024-4104));}),/AGENT_TASK_STORAGE_LIMIT/u);
+ assert.equal(db.prepare('SELECT count(*) AS n FROM mio_blobs').get()!.n,count);assert.equal(f.journal.run(f.run.id).revision,revision);assert.equal(f.journal.run(f.run.id).text,'Storage integrity');assert.deepEqual(readMioStorage(db),before);
+ const triggers=db.prepare("SELECT sql FROM main.sqlite_schema WHERE type='trigger' AND name GLOB 'quota_mio_*'").all();
+ assert.ok(triggers.length>20);assert.ok(triggers.some(row=>String(row.sql).includes('268435456')&&String(row.sql).includes('65536')));
+ const ownerId=randomUUID(),targets=Array.from({length:100},()=>({kind:'shot',id:randomUUID(),revision:0}));
+ for(let sequence=1;sequence<=24;sequence++)f.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence,action:sequence===1?'claim':'heartbeat',targets});
+ const manual=readMioStorage(db),manualBytes=Number(db.prepare('SELECT sum(length(CAST(data AS BLOB))) AS bytes FROM mio_edit_receipts').get()!.bytes);
+ assert.ok(before.usage.bytes+manualBytes>limit);assert.equal(manual.retained.rows-manual.usage.rows,24);validateAgentTaskRowsV2(db);
+ // Row-only bookkeeping remains admitted when byte quota is full, while the
+ // next execution row is rejected at the exact current row boundary.
+ f.store.tx(()=>{const write=db.prepare('INSERT INTO mio_process_target_revisions VALUES(?,?,?,1)');for(let index=manual.usage.rows;index<65536;index++)write.run(f.projectId,'job',String(index));});
+ const full=readMioStorage(db);assert.equal(full.usage.rows,65536);assert.equal(full.status,'full');assert.equal(full.remaining.rows,0);
+ assert.throws(()=>f.store.tx(()=>db.prepare('INSERT INTO mio_conversations VALUES(?,?,?,?)').run(randomUUID(),f.projectId,at,at)),/AGENT_TASK_STORAGE_LIMIT/u);assert.deepEqual(readMioStorage(db),full);
+ f.store.close();const reopened=openStore(f.root);try{createAgentTaskJournal(reopened);validateAgentTaskRowsV2(reopened.db);assert.deepEqual(readMioStorage(reopened.db),full);}finally{reopened.close();}
 });
-
-test('schema60 freezes model request originals against update, deletion and replacement without blocking normal state', t => {
-  const f = current(t), model = f.journal.beginStep(f.run.id, {kind: 'model', request: {body: 'unchanged raw body', history: []}}), db = f.store.db;
-  const before = evidence(db), original = db.prepare('SELECT rowid,* FROM agent_task_steps_v2 WHERE id=?').get(model.id)!;
-  db.exec('PRAGMA recursive_triggers=OFF');
-  for (const sql of [
-    "UPDATE agent_task_steps_v2 SET data=json_set(data,'$.request.body','changed') WHERE id=?",
-    "UPDATE agent_task_steps_v2 SET data=json_set(data,'$.kind','tool') WHERE id=?",
-    "UPDATE agent_task_steps_v2 SET data=json_remove(data,'$.request') WHERE id=?",
-    "UPDATE agent_task_steps_v2 SET data=json_set(data,'$.id','00000000-0000-4000-8000-000000000001') WHERE id=?",
-    "UPDATE agent_task_steps_v2 SET data=json_set(data,'$.runId','00000000-0000-4000-8000-000000000001') WHERE id=?",
-    "UPDATE agent_task_steps_v2 SET id='00000000-0000-4000-8000-000000000001' WHERE id=?",
-    'DELETE FROM agent_task_steps_v2 WHERE id=?',
-  ]) assert.throws(() => db.prepare(sql).run(model.id), /model request evidence/u);
-  const values = [model.id, f.run.id, f.projectId, model.position, model.status, JSON.stringify({...model, request: {body: 'replaced', history: []}})] as const;
-  assert.throws(() => db.prepare('INSERT OR REPLACE INTO agent_task_steps_v2(id,runId,projectId,position,status,data) VALUES(?,?,?,?,?,?)').run(...values), /must not be replaced/u);
-  assert.throws(() => db.prepare('INSERT OR REPLACE INTO agent_task_steps_v2(rowid,id,runId,projectId,position,status,data) VALUES(?,?,?,?,?,?,?)').run(original.rowid!, randomUUID(), f.run.id, f.projectId, model.position + 1, model.status, original.data!), /must not be replaced/u);
-  assert.deepEqual(evidence(db), before);
-  db.prepare('UPDATE agent_task_steps_v2 SET data=data WHERE id=?').run(model.id);
-  f.journal.markDispatch(f.run.id, model.id);f.journal.completeStep(f.run.id, model.id, {result: {text: 'Normal finish'}});
-  assert.deepEqual(f.journal.step(model.id).request, model.request);assertCurrentOrdinaryWorkspace(db);
-});
-
-test('old56 rejects a new reference representation even when its source, hash and old catalogue are valid', t => {
-  const f = legacy56(t), model = f.journal.beginStep(f.run.id, {kind: 'model', request: {body: 'legacy inline', history: []}}), request = JSON.stringify(model.request);
-  const sequence = Number(f.db.prepare('SELECT max(sequence)+1 AS n FROM agent_task_events_v2 WHERE runId=?').get(f.run.id)!.n);
-  const event = {runId: f.run.id, sequence, type: 'step', data: {...model, request: {format: 'mioon-model-request-ref/1', stepId: model.id,
-    sha256: createHash('sha256').update(request).digest('hex'), bytes: Buffer.byteLength(request)}}, createdAt: model.createdAt};
-  f.db.prepare('INSERT INTO agent_task_events_v2(runId,projectId,sequence,type,data) VALUES(?,?,?,?,?)').run(f.run.id, f.projectId, sequence, 'step', JSON.stringify(event));
-  const before = evidence(f.db);
-  assert.throws(() => classifyWorkspaceSchemaV56V57(f.db), {code: 'RESTORE_SCHEMA_UNSUPPORTED'});
-  assert.throws(() => initializeWorkspaceSchema60(f.db, initializeWorkspaceSchemaThrough24), {code: 'RESTORE_SCHEMA_UNSUPPORTED'});
-  assert.deepEqual(evidence(f.db), before);assert.equal(f.db.prepare('SELECT 1 FROM schema_version WHERE version=60').get(), undefined);
-});
-
-test('schema60 migration DDL failure rolls back quota replacement, guards and marker without touching history', t => {
-  const f = legacy56(t);initializeWorkspaceSchema58(f.db, initializeWorkspaceSchemaThrough24);
-  const before = evidence(f.db), catalogue = f.db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(), exec = f.db.exec.bind(f.db);
-  f.db.exec = (sql: string) => {if (sql.includes('CREATE TRIGGER agent_task_model_request_update_v60')) throw Error('synthetic migration failure'); return exec(sql);};
-  assert.throws(() => initializeWorkspaceSchema60(f.db, initializeWorkspaceSchemaThrough24), /synthetic migration failure/u);
-  f.db.exec = exec;assert.deepEqual(evidence(f.db), before);
-  assert.deepEqual(f.db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(), catalogue);
-  assert.deepEqual(classifyWorkspaceSchemaV58V59(f.db), {schemaVersion: 58, profile: 'ordinary'});
-});
-
-test('schema60 admits history above64MiB, atomically rejects above256MiB and retains the row count limit', t => {
-  const f = current(t), db = f.store.db, body = 'x'.repeat(2 * 1024 * 1024 - 4096);
-  let inserted = 0, rowBytes = 0;
-  for (; inserted < 128; inserted++) rowBytes += insertCompleteModel(db, f.run.id, f.projectId, inserted + 1, body).bytes;
-  assert.ok(rowBytes > 64 * 1024 * 1024 && rowBytes < AGENT_TASK_STORAGE_BYTES_V60);
-  validateAgentTaskStorageRowsV2(db);
-  const count = db.prepare('SELECT count(*) AS n FROM agent_task_steps_v2').get()!.n;
-  assert.throws(() => f.store.tx(() => {
-    insertCompleteModel(db, f.run.id, f.projectId, inserted + 1, body);
-    db.prepare("UPDATE agent_task_runs_v2 SET data=json_set(data,'$.text','must roll back') WHERE id=?").run(f.run.id);
-  }), /AGENT_TASK_STORAGE_LIMIT/u);
-  assert.equal(db.prepare('SELECT count(*) AS n FROM agent_task_steps_v2').get()!.n, count);
-  assert.equal(f.journal.run(f.run.id).text, 'Storage integrity');
-  const triggers = db.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name GLOB 'agent_quota_*'").all();
-  assert.equal(triggers.length, 20);
-  assert.ok(triggers.every(row => String(row.sql).includes('>20000') && String(row.sql).includes('>268435456')));
-  // Existing manual editing remains usable when execution history is full.
-  // Its legitimate heartbeat receipts must not make the next startup fail.
-  const ownerId = randomUUID(), targets = Array.from({length: 100}, () => ({kind: 'shot', id: randomUUID(), revision: 0}));
-  for (let sequence = 1; sequence <= 24; sequence++) f.journal.edit({requestId: randomUUID(), projectId: f.projectId,
-    ownerId, generation: 1, sequence, action: sequence === 1 ? 'claim' : 'heartbeat', targets});
-  const manualBytes = Number(db.prepare('SELECT sum(length(CAST(data AS BLOB))) AS bytes FROM agent_task_edit_receipts_v2').get()!.bytes);
-  assert.ok(rowBytes + manualBytes > AGENT_TASK_STORAGE_BYTES_V60);
-  assertCurrentOrdinaryWorkspace(db);f.store.close();
-  const reopened = openStore(f.root);try {assertCurrentOrdinaryWorkspace(reopened.db);} finally {reopened.close();}
-});
-
-test('schema60 cold backup restores61 with exact event requests, immutable source rows and disabled execution', async t => {
-  const f = current(t), original: AgentTaskJson = {body: '{"messages":[{"role":"user","content":"中文 raw body"}]}', history: [{role: 'user', content: '中文 raw body'}]}, model = f.journal.beginStep(f.run.id, {kind: 'model', request: original});
-  f.journal.markDispatch(f.run.id, model.id);f.journal.completeStep(f.run.id, model.id, {result: {text: 'Synthetic final result'}});
-  f.journal.transition(f.run.id, f.journal.run(f.run.id).revision, 'completed');
-  const before = evidence(f.store.db), events = f.journal.events(f.run.id), snapshot = f.journal.snapshot(f.run.id);
-  f.store.close();
-  const backup = await createWorkspaceBackup({source: f.root, destination: f.root + '-backup'});
-  assert.equal(backup.databaseSchemaVersion, CURRENT_ORDINARY_SCHEMA);assert.deepEqual(await verifyWorkspaceBackup({directory: f.root + '-backup'}), backup);
-  const restored = await restoreWorkspaceBackup({directory: f.root + '-backup', destination: f.root + '-restored'});
-  assert.equal(restored.sourceSchema, CURRENT_ORDINARY_SCHEMA);assert.equal(restored.databaseSchemaVersion, CURRENT_RESTORED_SCHEMA);assert.equal(restored.profile, CURRENT_RESTORE_PROFILE);
-  const copy = openStore(f.root + '-restored');
-  try {
-    assert.deepEqual(evidence(copy.db), before);assert.deepEqual(classifyCurrentWorkspaceSchema(copy.db), {schemaVersion: CURRENT_RESTORED_SCHEMA, profile: CURRENT_RESTORE_PROFILE});
-    const journal = createAgentTaskJournal(copy);assert.deepEqual(journal.events(f.run.id), events);assert.deepEqual(journal.snapshot(f.run.id), snapshot);
-    assert.deepEqual(journal.step(model.id).request, original);
-    assert.throws(() => journal.beginStep(f.run.id, {kind: 'model', request: original}), /AGENT_TASK_STATE_CONFLICT|RESTORE_OPERATION_UNAVAILABLE|RESTORED_RECORD_HELD/u);
-    assert.throws(() => copy.db.prepare('DELETE FROM agent_task_steps_v2 WHERE id=?').run(model.id), /model request evidence|RESTORED_RECORD_HELD/u);
-    assert.equal(copy.list('jobs', f.projectId).length, 0);
-  } finally {copy.close();}
-});
-
-test('a terminal project with retained model originals is deleted only through its scoped transaction', async t => {
-  const f = current(t), model = f.journal.beginStep(f.run.id, {kind: 'model', request: {body: '{}', history: []}});
-  f.journal.completeStep(f.run.id, model.id, {result: {text: 'Local finish'}});f.journal.transition(f.run.id, f.journal.run(f.run.id).revision, 'completed');
-  const services = createServices(f.store, new Map());
-  try {
-    services.setProjectDeletionCompanions({assertDeletable() {}, removeProject() {}});
-    const result = await services.call('project.delete', {requestId: randomUUID(), projectId: f.projectId, expectedRevision: 1, confirmPermanentDeletion: true});
-    assert.equal((result as {deleted?: unknown}).deleted, true);assert.equal(f.store.get('projects', f.projectId), null);
-    assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM agent_task_steps_v2').get()!.n, 0);
-    assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM project_deletion_scope').get()!.n, 0);
-    assert.equal(f.store.db.prepare('PRAGMA foreign_key_check').get(), undefined);
-  } finally {await services.drain();}
-});
-
-test('more than64MiB of complete originals survives cold backup, restore and the original project deletion', async t => {
-  const f = current(t), body = 'x'.repeat(1024 * 1024);
-  for (let position = 1; position <= 65; position++) insertCompleteModel(f.store.db, f.run.id, f.projectId, position, body);
-  assert.ok(Number(f.store.db.prepare('SELECT sum(length(CAST(data AS BLOB))) AS bytes FROM agent_task_steps_v2').get()!.bytes) > 64 * 1024 * 1024);
-  f.journal.transition(f.run.id, f.journal.run(f.run.id).revision, 'completed');
-  assertCurrentOrdinaryWorkspace(f.store.db);f.store.close();
-  const backup = await createWorkspaceBackup({source: f.root, destination: f.root + '-backup'});
-  assert.equal(backup.databaseSchemaVersion, CURRENT_ORDINARY_SCHEMA);
-  const result = await restoreWorkspaceBackup({directory: f.root + '-backup', destination: f.root + '-restored'});
-  assert.equal(result.databaseSchemaVersion, CURRENT_RESTORED_SCHEMA);
-  const copy = openStore(f.root + '-restored');
-  try {assert.equal(copy.db.prepare('SELECT count(*) AS n FROM agent_task_steps_v2').get()!.n, 65);assert.equal(classifyCurrentWorkspaceSchema(copy.db).schemaVersion, CURRENT_RESTORED_SCHEMA);} finally {copy.close();}
-  const source = openStore(f.root), services = createServices(source, new Map());
-  try {
-    services.setProjectDeletionCompanions({assertDeletable() {}, removeProject() {}});
-    await services.call('project.delete', {requestId: randomUUID(), projectId: f.projectId, expectedRevision: 1, confirmPermanentDeletion: true});
-    assert.equal(source.get('projects', f.projectId), null);assert.equal(source.db.prepare('SELECT count(*) AS n FROM agent_task_steps_v2').get()!.n, 0);
-  } finally {await services.drain();source.close();}
+function audit(db:DatabaseSync){return {state:snapshot(db),marks:db.prepare('SELECT total_changes() AS changes').get(),versions:db.prepare('PRAGMA database_list').all().filter(row=>row.name!=='temp').map(row=>({name:row.name,version:db.prepare(`PRAGMA "${String(row.name)}".data_version`).get()}))};}
+test('terminal native Mio data stays isolated when application project deletion is unavailable',async t=>{
+ const root=temporary(t),projects=[] as {projectId:string;runId:string}[];
+ for(const name of ['Retained A','Retained B']){
+  const f=createServerProject(root,{name}),journal=createAgentTaskJournal(f.store);
+  try{
+   const run=journal.create({projectId:f.projectId,requestId:randomUUID(),text:name,configuration:{protocol:'chat_completions',model:'synthetic'}}).run;
+   const model=journal.beginModelStep(run.id,{request:{body:JSON.stringify({model:'synthetic',stream:true,messages:[]}),history:[]}},[]);journal.markDispatch(run.id,model.id);journal.completeStep(run.id,model.id,{result:{text:'Local finish',toolCalls:[],providerOutput:{role:'assistant',content:'Local finish'}}});journal.transition(run.id,journal.run(run.id).revision,'completed');projects.push({projectId:f.projectId,runId:run.id});
+  }finally{f.store.close();}
+ }
+ let inspect!:InspectProject,application!:InspectApplication;
+ const token='native-quota-retirement-test',server=await startServer({dataDir:root,port:0,token,inspectProject:value=>{inspect=value;},inspectApplication:value=>{application=value;}});t.after(()=>server.close());
+ const rpc=(url:string,operation:string,input:unknown)=>fetch(server.url+url,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({operation,input})});
+ for(const item of projects){const response=await rpc(projectRpcPath(item.projectId),'project.inspect',{projectId:item.projectId});assert.equal(response.status,200);await response.arrayBuffer();}
+ const before=await Promise.all(projects.map(item=>inspect(item.projectId,audit))),appBefore=application(audit);
+ assert.notDeepEqual(before[0]!.state.tables.mio_entries,before[1]!.state.tables.mio_entries);
+ const response=await rpc('/api/rpc','project.delete',{requestId:randomUUID(),projectId:projects[0]!.projectId,expectedRevision:1,confirmPermanentDeletion:true}),body=await response.json() as {error?:{code?:string}};
+ assert.equal(response.status,409);assert.equal(body.error?.code,'PROJECT_DELETE_UNAVAILABLE');
+ for(const [index,item]of projects.entries()){
+  assert.deepEqual(await inspect(item.projectId,audit),before[index]);
+  assert.equal(await inspect(item.projectId,db=>Number(db.prepare('SELECT count(*) AS n FROM mio_runs WHERE id=?').get(item.runId)!.n)),1);
+ }
+ assert.deepEqual(application(audit),appBefore);
 });
