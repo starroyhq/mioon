@@ -16,7 +16,7 @@ import {projectBackupSchemas} from '../packages/contracts/src/project-backups.ts
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectVersionSchemas, projectVersionEffects, isProjectVersionResponse} from '../packages/contracts/src/project-version-operations.ts';
-import type {ProjectVersionOperation, ProjectVersionListResponse, ProjectVersionSaveResponse, ProjectVersionPreviewResponse} from '../packages/contracts/src/project-version-operations.ts';
+import type {ProjectVersionOperation, ProjectVersionListResponse, ProjectVersionSaveResponse, ProjectVersionPreviewResponse, ProjectVersionRestoreResponse} from '../packages/contracts/src/project-version-operations.ts';
 import type {ProjectVersionSummary} from '../packages/contracts/src/project-versions.ts';
 import {readProjectState, changeMarks} from './helpers/project-state.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
@@ -30,7 +30,7 @@ const preview: ProjectVersionPreviewResponse = {projectId, version: summary, con
   totalChanges: 1, keptCurrentCount: 0, changes: [{table: 'projects', key: projectId, action: 'change', source: 'user-or-other', fields: ['data'], reason: null}],
   nextCursor: null, restoreAvailable: false};
 
-test('version contracts expose only strict manual save and bounded read-only preview data', () => {
+test('version contracts expose strict manual save, confirmed restoration and bounded read-only preview data', () => {
   assert.equal(schemas, registeredSchemas, 'client discovery uses the authoritative contracts registry without a private composition');
   assert.equal(descriptions, registeredDescriptions);
   for (const [operation, schema] of Object.entries({...projectBackupSchemas, ...projectVersionSchemas})) {
@@ -39,7 +39,7 @@ test('version contracts expose only strict manual save and bounded read-only pre
   }
   for (const operation of Object.keys(projectVersionSchemas) as ProjectVersionOperation[]) {
     assert.equal(rpcPathFor(operation, {projectId}), projectRpcPath(projectId));
-    assert.equal(projectVersionEffects[operation].readOnly, operation !== 'project.version.save');
+    assert.equal(projectVersionEffects[operation].readOnly, operation === 'project.version.list' || operation === 'project.version.preview');
     assert.equal(projectVersionEffects[operation].paidGeneration, false);
     assert.equal(projectVersionEffects[operation].externalIO, false);
     assert.equal(projectVersionEffects[operation].localProcess, false);
@@ -51,6 +51,18 @@ test('version contracts expose only strict manual save and bounded read-only pre
     assert.equal(projectVersionSchemas['project.version.list'].safeParse({projectId, limit}).success, false);
   assert.equal(projectVersionSchemas['project.version.preview'].safeParse({projectId, versionId, requestId}).success, false);
   assert.equal(projectVersionSchemas['project.version.preview'].safeParse({projectId, versionId, cursor: 'x'.repeat(4097)}).success, false);
+  const restoring = {projectId, versionId, requestId, expectedContentSequence: 8, previewDigest: preview.previewDigest};
+  assert.equal(projectVersionSchemas['project.version.restore'].safeParse(restoring).success, true);
+  for (const patch of [{expectedContentSequence: -1}, {expectedContentSequence: 1.5}, {previewDigest: 'a'},
+    {requestId: 'unstable'}, {snapshot: {}}, {trigger: 'restore'}])
+    assert.equal(projectVersionSchemas['project.version.restore'].safeParse({...restoring, ...patch}).success, false);
+  const restored = {projectId, versionId, requestId, beforeVersionId: randomUUID(), contentSequence: 9,
+    totalChanges: 1, appliedChanges: preview.changes, keptCurrent: []};
+  assert.equal(isProjectVersionResponse('project.version.restore', restoring, restored), true);
+  for (const patch of [{requestId: randomUUID()}, {versionId: randomUUID()}, {projectId: randomUUID()},
+    {beforeVersionId: versionId}, {contentSequence: 7}, {totalChanges: 0},
+    {keptCurrent: preview.changes, appliedChanges: []}])
+    assert.equal(isProjectVersionResponse('project.version.restore', restoring, {...restored, ...patch}), false);
   assert.equal(isProjectVersionResponse('project.version.list', {projectId}, {projectId, versions: [summary], nextCursor: null}), true);
   assert.equal(isProjectVersionResponse('project.version.list', {projectId}, {projectId, versions: [summary, summary], nextCursor: null}), false);
   assert.equal(isProjectVersionResponse('project.version.list', {projectId}, {projectId, versions: [{...summary, projectId: randomUUID()}], nextCursor: null}), false);
@@ -59,7 +71,8 @@ test('version contracts expose only strict manual save and bounded read-only pre
   assert.equal(isProjectVersionResponse('project.version.save', {projectId, requestId, name: 'Named'}, {projectId, requestId, version: summary}), false);
   assert.equal(isProjectVersionResponse('project.version.save', {projectId, requestId}, {projectId, requestId, version: {...summary, trigger: 'daily-open'}}), false);
   assert.equal(isProjectVersionResponse('project.version.preview', {projectId, versionId}, preview), true);
-  for (const patch of [{restoreAvailable: true}, {totalChanges: 0}, {version: {...summary, id: randomUUID()}},
+  assert.equal(isProjectVersionResponse('project.version.preview', {projectId, versionId}, {...preview, restoreAvailable: true}), true);
+  for (const patch of [{totalChanges: 0}, {version: {...summary, id: randomUUID()}},
     {changes: [{...preview.changes[0], table: 'mio_entries'}]}, {changes: [{...preview.changes[0], action: 'keep-current'}]},
     {changes: [{...preview.changes[0]}, {...preview.changes[0]}], totalChanges: 2}])
     assert.equal(isProjectVersionResponse('project.version.preview', {projectId, versionId}, {...preview, ...patch}), false);
@@ -71,7 +84,7 @@ test('client binds version replies and retains save identity after an uncertain 
     const definition = operationDefinition(operation);
     assert.equal(definition.command, operation.replaceAll('.', ' '));
     assert.equal(definition.toolName, operation.replaceAll('.', '_'));
-    assert.equal(definition.requiresRequestId, operation === 'project.version.save');
+    assert.equal(definition.requiresRequestId, operation === 'project.version.save' || operation === 'project.version.restore');
   }
   const requests: string[] = [];
   const client = createClient({env: {MIOON_BASE_URL: 'http://127.0.0.1:4318', MIOON_TOKEN: token}, fetchImpl: async (url) => {
@@ -91,9 +104,16 @@ test('client binds version replies and retains save identity after an uncertain 
     assert.equal(failure.details.submissionMayHaveSucceeded, true); return true;
   });
   assert.equal(sends, 1);
+  await assert.rejects(disconnected.rpc('project.version.restore', {projectId, versionId, requestId,
+    expectedContentSequence: 8, previewDigest: preview.previewDigest}), (error: unknown) => {
+    const failure = error as {code: string; details: {requestId: string; submissionMayHaveSucceeded: boolean}};
+    assert.equal(failure.code, 'BACKEND_UNAVAILABLE'); assert.equal(failure.details.requestId, requestId);
+    assert.equal(failure.details.submissionMayHaveSucceeded, true); return true;
+  });
+  assert.equal(sends, 2);
 });
 
-test('HTTP CLI and official MCP agree on local version save/list/preview without restoration or automatic capture', {timeout: 120_000}, async t => {
+test('HTTP CLI and official MCP agree on local version save/list/preview/restore and daily capture', {timeout: 120_000}, async t => {
   const {startServer} = await import('../apps/server/src/index.ts');
   const root = await mkdtemp(path.join(tmpdir(), 'project-version-wire-'));
   let inspect!: InspectProject;
@@ -127,7 +147,8 @@ test('HTTP CLI and official MCP agree on local version save/list/preview without
     assert.equal(result.isError, false, text.text); assert.equal(envelope.ok, true); return envelope.data;
   };
   const initial = await rpc<ProjectVersionListResponse>('project.version.list', {projectId: id}, id);
-  assert.deepEqual(initial.versions, [], 'V1-A does not activate daily-open capture');
+  assert.equal(initial.versions.length, 1);
+  assert.equal(initial.versions[0]!.trigger, 'daily-open');
   const contentSequence = inspect(id, db => Number(db.prepare('SELECT contentSequence FROM project.project_file').get()?.contentSequence));
   const saving = {projectId: id, requestId: randomUUID(), name: 'Before notes 🎬'};
   const saved = await rpc<ProjectVersionSaveResponse>('project.version.save', saving, id);
@@ -140,12 +161,17 @@ test('HTTP CLI and official MCP agree on local version save/list/preview without
   const latest = await rpc<ProjectVersionListResponse>('project.version.list', {projectId: id, limit: 1}, id);
   assert.equal(latest.versions.length, 1); assert.ok(latest.nextCursor);
   const rest = await rpc<ProjectVersionListResponse>('project.version.list', {projectId: id, limit: 1, cursor: latest.nextCursor}, id);
-  assert.equal(rest.versions.length, 1); assert.equal(rest.nextCursor, null);
+  assert.equal(rest.versions.length, 1); assert.ok(rest.nextCursor);
+  const daily = await rpc<ProjectVersionListResponse>('project.version.list', {projectId: id, limit: 1, cursor: rest.nextCursor}, id);
+  assert.deepEqual(daily.versions, initial.versions); assert.equal(daily.nextCursor, null);
   assert.equal(new Set([...latest.versions, ...rest.versions].map(version => version.id)).size, 2);
   const changed = await raw('project.version.save', {...saving, name: 'Different'}, id);
   assert.equal(changed.response.status, 409); assert.equal(changed.body.error.code, 'REQUEST_ID_REUSED');
   const foreign = await raw('project.version.preview', {projectId: other.id, versionId: saved.version.id}, other.id);
   assert.equal(foreign.response.status, 404);
+  const foreignRestore = await raw('project.version.restore', {projectId: other.id, versionId: saved.version.id,
+    requestId: randomUUID(), expectedContentSequence: 0, previewDigest: 'a'.repeat(64)}, other.id);
+  assert.equal(foreignRestore.response.status, 404); assert.equal(foreignRestore.body.error.code, 'PROJECT_VERSION_NOT_FOUND');
   const mismatch = await raw('project.version.list', {projectId: other.id}, id);
   assert.equal(mismatch.response.status, 400); assert.equal(mismatch.body.error.code, 'PROJECT_ID_MISMATCH');
   const app = await raw('project.version.list', {projectId: id}, null);
@@ -155,15 +181,39 @@ test('HTTP CLI and official MCP agree on local version save/list/preview without
   const before = inspect(id, db => ({state: readProjectState(db), marks: changeMarks(db)}));
   const selection = {projectId: id, versionId: saved.version.id};
   const diff = await rpc<ProjectVersionPreviewResponse>('project.version.preview', selection, id);
-  assert.equal(diff.restoreAvailable, false); assert.ok(diff.totalChanges > 0);
+  assert.equal(diff.restoreAvailable, true); assert.ok(diff.totalChanges > 0);
   assert.ok(diff.changes.some(change => change.table === 'projects' && change.source === 'user-or-other'));
   assert.deepEqual(await cli('project.version.preview', selection), diff); assert.deepEqual(await tool('project.version.preview', selection), diff);
   const listed = await rpc<ProjectVersionListResponse>('project.version.list', {projectId: id}, id);
   assert.deepEqual(await cli('project.version.list', {projectId: id}), listed); assert.deepEqual(await tool('project.version.list', {projectId: id}), listed);
   assert.deepEqual(inspect(id, db => ({state: readProjectState(db), marks: changeMarks(db)})), before, 'list and preview across all transports leave every row and change mark identical');
-  assert.equal(listed.versions.length, 2);
+  assert.equal(listed.versions.length, 3);
   await mcp.close(); await server.close();
   server = await startServer({dataDir: root, port: 0, token, inspectProject: received => {inspect = received;}});
-  assert.deepEqual(await rpc('project.version.list', {projectId: id}, id), listed, 'saved versions persist without adding an automatic version on restart');
+  assert.deepEqual(await rpc('project.version.list', {projectId: id}, id), listed, 'same local day restart does not duplicate daily capture');
   assert.equal((await rpc<ProjectVersionPreviewResponse>('project.version.preview', selection, id)).previewDigest, diff.previewDigest);
+  env.MIOON_BASE_URL = server.url;
+  const restoring = {...selection, requestId: randomUUID(), expectedContentSequence: diff.contentSequence, previewDigest: diff.previewDigest};
+  const restored = await rpc<ProjectVersionRestoreResponse>('project.version.restore', restoring, id);
+  assert.equal(restored.versionId, saved.version.id); assert.equal(restored.requestId, restoring.requestId);
+  assert.equal(restored.totalChanges, diff.totalChanges); assert.deepEqual(restored.keptCurrent, []);
+  assert.ok(restored.appliedChanges.some(change => change.table === 'projects'));
+  assert.ok(restored.contentSequence > diff.contentSequence);
+  const after = inspect(id, db => ({state: readProjectState(db), marks: changeMarks(db)}));
+  assert.deepEqual(await cli('project.version.restore', restoring), restored);
+  // The original MCP process was closed for the restart; use a new official client.
+  const reopened = new McpClient({name: 'version-restore-retry', version: '1.0.0'}, {capabilities: {}});
+  t.after(() => reopened.close());
+  await reopened.connect(new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')], cwd: repo,
+    env: {...env, MIOON_BASE_URL: server.url}, stderr: 'ignore'}));
+  const retry = await reopened.callTool({name: 'project_version_restore', arguments: restoring}) as CallToolResult;
+  assert.equal(retry.isError, false); assert.deepEqual(retry.structuredContent, {ok: true, data: restored});
+  assert.deepEqual(inspect(id, db => ({state: readProjectState(db), marks: changeMarks(db)})), after);
+  const stale = await raw('project.version.restore', {...restoring, requestId: randomUUID()}, id);
+  assert.equal(stale.response.status, 409); assert.equal(stale.body.error.code, 'PROJECT_VERSION_BASELINE_CHANGED');
+  const reused = await raw('project.version.restore', {...restoring, previewDigest: 'b'.repeat(64)}, id);
+  assert.equal(reused.response.status, 409); assert.equal(reused.body.error.code, 'REQUEST_ID_REUSED');
+  const legacy = await raw('project.version.restore', restoring, null);
+  assert.equal(legacy.response.status, 400); assert.equal(legacy.body.error.code, 'VALIDATION_ERROR');
+
 });

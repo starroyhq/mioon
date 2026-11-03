@@ -176,6 +176,7 @@ const keyedMutationOperations = new Set<string>([
   'generation.submit', 'job.retry', 'export.create', 'image.task.observeRemote', 'image.review.prepare', 'lut.import',
   'project.backup.restore',
   'project.version.save',
+  'project.version.restore',
 ]);
 interface RpcBody {operation: string; input: Record<string, unknown>; expectedWorkspaceOrigin?: string}
 function uncertainRequestDetails(body: unknown): Record<string, unknown> {

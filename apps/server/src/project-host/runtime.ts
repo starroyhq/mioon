@@ -10,8 +10,10 @@ import type {AppLibrary} from '@mioon/business/app-db/index';
 import {createProjectHomeServices,readProjectCover} from '@mioon/business/project-home';
 import {createProjectServiceApplication} from '@mioon/business/project-service-application';
 import {createProjectVersions} from '@mioon/business/project-versions/service';
+import {installProjectVersionCapture} from '@mioon/business/project-versions/capture';
+import {captureDailyProjectVersion} from '@mioon/business/project-versions/daily';
 import {isProjectVersionOperation, isProjectVersionResponse, projectVersionSchemas} from '../../../../packages/contracts/src/project-version-operations.ts';
-import type {ProjectVersionListInput, ProjectVersionSaveInput, ProjectVersionPreviewInput} from '../../../../packages/contracts/src/project-version-operations.ts';
+import type {ProjectVersionListInput, ProjectVersionSaveInput, ProjectVersionPreviewInput, ProjectVersionRestoreInput} from '../../../../packages/contracts/src/project-version-operations.ts';
 import type {IncomingMessage, ServerResponse} from 'node:http';
 import type {ServerOptions} from '../index.ts';
 import type {ApplicationRuntime} from '../application-runtime.ts';
@@ -34,6 +36,8 @@ import {createProjectCoverPublisher} from './cover-publisher.ts';
 
 export interface HostedProject extends ProjectHostRuntime {
   readonly project: Awaited<ReturnType<typeof composeProjectRuntime>>;
+  /** Trusted lifecycle entry, not an RPC-controlled automatic trigger. */
+  captureDailyVersion(): void;
 }
 
 /** Production assembly over the exact kernel connection owned by the manager. */
@@ -54,11 +58,16 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     readGraph: id => createOwnedMediaGraphReader(store.db, id), resolvePath: async (_root, relative) => resolveProjectMediaFile(store, relative).file, createFiles: createFileResponses,
     validateFile: file => resolveProjectMediaFile(store, path.relative(root, file)).info!, assertAvailable: () => { if (!store.db.isOpen) throw new AppError('FILE_UNAVAILABLE', '本地文件不可用。', 404); }});
   let project: HostedProject['project'];
+  const assertVersionWrite = () => project.services.assertMutationAllowed();
+  // Register before Mio's own observers, so a failed before-version cannot
+  // leave its in-memory acceptance marker ahead of the rolled-back SQL.
+  const removeVersionCapture = installProjectVersionCapture(store, {assertMutationAllowed: assertVersionWrite});
   try {
     project = await composeProjectRuntime({...options, store, shutdown, deletionGate, port: options.port ?? 4318, serverPort: selfPort, listeningPort,
       baseRoot: library.dataDir, application: library, serviceApplication: createProjectServiceApplication(library, shutdown.signal),
       agentSettings: app.agentSettings, settings: app.settings});
   } catch (error) {
+    removeVersionCapture();
     shutdown.abort();
     await Promise.all([files.close(), comparisons.close()]);
     deletionGate.close();
@@ -67,7 +76,16 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     throw error;
   }
   const worker = project.startWorker();
-  const versions = createProjectVersions(store);
+  let restoring = false;
+  const versions = createProjectVersions(store, {assertMutationAllowed: assertVersionWrite,
+    assertRestoreAllowed: () => {
+      if (restoring || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy()
+        || Boolean(project.projectRules?.isBusy()) || files.isBusy() || cover.isRendering()
+        || !deletionGate.isQuiescent(['project.version.restore']) || unfinishedTasks().length > 0) {
+        throw new AppError('PROJECT_HOST_BUSY', '项目仍有未结束的内容操作，请稍后恢复。', 409);
+      }
+      restoring = true;
+    }});
   const serviceCall = async (operation: string, input: unknown, callContext?: Record<string, unknown>): Promise<unknown> => {
     if (!isProjectVersionOperation(operation)) return project.serviceCall(operation, input, callContext);
     const parsed = projectVersionSchemas[operation].safeParse(input);
@@ -79,6 +97,12 @@ export async function composeHostedProject(context: ProjectHostContext, library:
         project.services.assertMutationAllowed();
         result = await versions.save(parsed.data as ProjectVersionSaveInput); break;
       case 'project.version.preview': result = await versions.preview(parsed.data as ProjectVersionPreviewInput); break;
+      case 'project.version.restore':
+        // The entire core operation is synchronous. It holds the existing
+        // connection and rechecks the complete baseline in its transaction.
+        try { result = versions.restore(parsed.data as ProjectVersionRestoreInput); }
+        finally { restoring = false; }
+        break;
     }
     if (!isProjectVersionResponse(operation, parsed.data, result)) throw new AppError('INTERNAL_ERROR', '项目版本服务返回无效数据', 500);
     return result;
@@ -101,7 +125,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     for (const [table, kind, status] of tables) {
       // Fixed kernel tables, never supplied by HTTP or inferred from filenames.
       for (const row of store.db.prepare(`SELECT id,${status} AS status FROM ${table}`).all()) {
-        if (['queued', 'running', 'pending', 'prepared', 'dispatching', 'receiving', 'persisting', 'polling', 'submitting', 'downloading', 'cancelling', 'recovering', 'uncertain', 'accepted'].includes(String(row.status))) result.push({kind, taskId: String(row.id)});
+        if (['queued', 'running', 'pending', 'prepared', 'dispatching', 'receiving', 'persisting', 'polling', 'submitting', 'downloading', 'cancelling', 'recovering', 'uncertain', 'unknown', 'outcome_unknown', 'submission_unknown', 'accepted'].includes(String(row.status))) result.push({kind, taskId: String(row.id)});
       }
     }
     return result;
@@ -164,9 +188,10 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     return false;
   }
   return {project, handle, summarize: summary, unfinishedTasks,
-    isBusy: () => files.isBusy() || cover.isRendering() || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy() || Boolean(project.projectRules?.isBusy()) || !deletionGate.isQuiescent(),
+    captureDailyVersion: () => { captureDailyProjectVersion(store, {assertMutationAllowed: assertVersionWrite}); },
+    isBusy: () => restoring || files.isBusy() || cover.isRendering() || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy() || Boolean(project.projectRules?.isBusy()) || !deletionGate.isQuiescent(),
     interrupt: () => { shutdown.abort(); project.projectRules?.close(); project.taskRuntimeV2?.close(); project.taskHttpV2?.close(); },
     drain: async () => { await boundedShutdown(Promise.all([worker.stop(), project.taskRuntimeV2?.drain(), project.projectRules?.drain(), project.serviceDrain(), project.editTasks.drain(), cover.drain(), files.close(), comparisons.close(), project.closeSettings()]), 'SERVER_STOP_TIMEOUT'); },
-    dispose: () => { project.projectRules?.close(); removeCoverObserver(); project.taskToolsV2?.dispose(); deletionGate.close(); releaseRowValidation(); context.signal.removeEventListener('abort', abort); },
+    dispose: () => { project.projectRules?.close(); removeVersionCapture(); removeCoverObserver(); project.taskToolsV2?.dispose(); deletionGate.close(); releaseRowValidation(); context.signal.removeEventListener('abort', abort); },
   };
 }

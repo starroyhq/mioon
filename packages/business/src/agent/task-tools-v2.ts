@@ -83,7 +83,7 @@ const irreversibleOperations=[
 const paidOperations=['generation.submit','image.generate'] as const;
 const forbiddenOperations=[
  'project.backup.list','project.backup.inspect','project.backup.restore','project.backup.status',
- 'project.version.list','project.version.save','project.version.preview',
+ 'project.version.list','project.version.save','project.version.preview','project.version.restore',
  'export.cancel','export.output.get','task.disposition.markFailed','task.disposition.archiveCompleted',
  'workspace.settings.get','workspace.settings.set','workspace.backup.status','workspace.backup.list','workspace.backup.create','workspace.backup.restore.stage',
  'project.delete','project.summary.list','agent.authorization.list','agent.authorization.grant','agent.authorization.revoke','lut.import','workspace.backup.inspect','workspace.restore.inspect','project.create','project.list','project.get','asset.import',

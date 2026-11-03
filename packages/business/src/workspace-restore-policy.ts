@@ -33,7 +33,7 @@ export const RESTORE_DENIED_OPERATIONS = Object.freeze([
  // Native project backups and local versions require a real project host;
  // the retained legacy workspace profile cannot acquire that authority.
  'project.backup.list','project.backup.inspect','project.backup.restore','project.backup.status',
- 'project.version.list','project.version.save','project.version.preview',
+ 'project.version.list','project.version.save','project.version.preview','project.version.restore',
  'export.cancel','export.activity.get','export.output.get',
  'workspace.settings.get','workspace.settings.set','workspace.backup.status','workspace.backup.list','workspace.backup.create','workspace.backup.restore.stage',
  'task.disposition.list','task.disposition.markFailed','task.disposition.archiveCompleted',

@@ -1,5 +1,6 @@
 import {DatabaseSync} from 'node:sqlite';
 import type {ConvertedTempTrigger} from '../../packages/business/src/project-file/cross-file/converted-triggers.ts';
+import {installRestoreScopeFunction} from '../../packages/business/src/project-file/cross-file/restore-admission.ts';
 
 interface TempGuardProbe {
   readonly name: string;
@@ -168,6 +169,7 @@ export function verifyTempGuardBehavior(triggers: readonly ConvertedTempTrigger[
     if (!trigger) throw new Error(`Missing TEMP trigger ${probe.name}`);
     const db = new DatabaseSync(':memory:');
     try {
+      installRestoreScopeFunction(db);
       db.exec("ATTACH DATABASE ':memory:' AS project; ATTACH DATABASE ':memory:' AS cache");
       for (const table of tables) db.exec(`CREATE TABLE ${quote(table.schema)}.${quote(table.name)}(${table.columns.map(column => `${quote(column.name)} ${column.type}`).join(',')})`);
       for (const sql of probe.setup) db.exec(sql);

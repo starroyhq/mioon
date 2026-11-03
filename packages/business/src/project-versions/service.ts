@@ -1,18 +1,27 @@
 import {createHash} from 'node:crypto';
 import {isProjectStore} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
-import {projectVersionSchemas,projectVersionSaveResponseSchema} from '../../../contracts/src/project-version-operations.ts';
-import type {ProjectVersionListInput,ProjectVersionSaveInput,ProjectVersionPreviewInput} from '../../../contracts/src/project-version-operations.ts';
+import {projectVersionSchemas,projectVersionSaveResponseSchema,projectVersionRestoreResponseSchema} from '../../../contracts/src/project-version-operations.ts';
+import type {ProjectVersionListInput,ProjectVersionSaveInput,ProjectVersionPreviewInput,ProjectVersionRestoreInput} from '../../../contracts/src/project-version-operations.ts';
 import {captureProjectDocumentInside,canonicalJson} from './document.ts';
 import {encodeProjectDocument,decodeProjectDocument} from './codec.ts';
 import type {EncodedProjectDocument} from './codec.ts';
 import {readVersion,storeManualVersionInside,versionError,versionSummary} from './repository.ts';
+import {pinProjectVersion} from './retention.ts';
 import {encodeCursor,decodeCursor} from './pagination.ts';
-import {previewDifferences} from './preview.ts';
+import {buildRestorePlan} from './preview.ts';
+import {applyRestorePlanInside} from './restore.ts';
+import {saveBeforeBulkChangeInside} from './capture.ts';
+
+export interface ProjectVersionsOptions {
+  readonly assertMutationAllowed?: () => void;
+  /** Synchronous host admission; it must not wait for its own RPC lease. */
+  readonly assertRestoreAllowed?: () => void;
+}
 
 /** All writes stay on the real owner's attached history connection. Preview
  * and list never restore content, replay effects, or read media files. */
-export function createProjectVersions(store:ProjectStore){
+export function createProjectVersions(store:ProjectStore,options:ProjectVersionsOptions={}){
   const assertProject=(projectId:string):void=>{
     if(!isProjectStore(store))throw new TypeError('Versions require a live project store');
     if(projectId!==store.projectId)throw versionError('PROJECT_ID_MISMATCH','版本请求与项目宿主不一致。',400);
@@ -55,12 +64,14 @@ export function createProjectVersions(store:ProjectStore){
     const input=projectVersionSchemas['project.version.preview'].parse(raw);assertProject(input.projectId);
     return store.tx(()=>{
       const row=readVersion(store.db,input.projectId,input.versionId),version=versionSummary(row);
+      const release=pinProjectVersion(store.db,input.versionId);
+      try{
       const blob=store.db.prepare('SELECT * FROM main.project_version_blobs WHERE hash=?').get(String(row.blobHash));
       if(!blob)throw versionError('PROJECT_VERSION_RECORD_INVALID','版本正文缺失。',422);
       const document=decodeProjectDocument(blob as unknown as EncodedProjectDocument);
       if(document.projectId!==input.projectId||document.evidence.contentSequence!==version.contentSequence)throw versionError('PROJECT_VERSION_RECORD_INVALID','版本正文与摘要不一致。',422);
       const current=captureProjectDocumentInside(store);
-      const changes=previewDifferences(store,document,current,Number(row.mioChangeRowid),version.createdAt);
+      const {changes}=buildRestorePlan(store,document,current,Number(row.mioChangeRowid),version.createdAt);
       const previewDigest=createHash('sha256').update(canonicalJson({versionId:version.id,blobHash:row.blobHash,current,changes})).digest('hex');
       const limit=input.limit??100;
       let offset=0;
@@ -72,8 +83,52 @@ export function createProjectVersions(store:ProjectStore){
       const page=changes.slice(offset,offset+limit),next=offset+page.length;
       return {projectId:input.projectId,version,contentSequence:current.evidence.contentSequence,previewDigest,totalChanges:changes.length,
         keptCurrentCount:changes.filter(change=>change.action==='keep-current').length,changes:page,
-        nextCursor:next<changes.length?encodeCursor({operation:'preview',projectId:input.projectId,versionId:input.versionId,limit,digest:previewDigest,offset:next}):null,restoreAvailable:false as const};
+        nextCursor:next<changes.length?encodeCursor({operation:'preview',projectId:input.projectId,versionId:input.versionId,limit,digest:previewDigest,offset:next}):null,restoreAvailable:typeof options.assertMutationAllowed==='function'};
+      }finally{release();}
     });
   };
-  return {list,save,preview};
+  const restore=(raw:ProjectVersionRestoreInput)=>{
+    const input=projectVersionSchemas['project.version.restore'].parse(raw);assertProject(input.projectId);
+    const assertMutationAllowed=options.assertMutationAllowed;
+    if(!assertMutationAllowed)throw new TypeError('Version restoration requires application write admission');
+    assertMutationAllowed();
+    const inputDigest=createHash('sha256').update(canonicalJson({operation:'project.version.restore',...input})).digest('hex');
+    let release:(()=>void)|undefined;
+    try{return store.tx(()=>{
+      const old=store.db.prepare('SELECT operation,inputDigest,response FROM main.project_version_requests WHERE projectId=? AND requestId=?').get(input.projectId,input.requestId);
+      if(old){
+        if(old.operation!=='project.version.restore'||old.inputDigest!==inputDigest)throw versionError('REQUEST_ID_REUSED','请求 ID 已用于不同的版本操作。');
+        let response:unknown;
+        try{response=JSON.parse(String(old.response));}catch{throw versionError('PROJECT_VERSION_RECORD_INVALID','版本恢复回执损坏。',422);}
+        const result=projectVersionRestoreResponseSchema.safeParse(response);
+        if(!result.success||result.data.projectId!==input.projectId||result.data.requestId!==input.requestId||result.data.versionId!==input.versionId)
+          throw versionError('PROJECT_VERSION_RECORD_INVALID','版本恢复回执损坏。',422);
+        return result.data;
+      }
+      options.assertRestoreAllowed?.();
+      release=pinProjectVersion(store.db,input.versionId);
+      const row=readVersion(store.db,input.projectId,input.versionId),version=versionSummary(row);
+      const blob=store.db.prepare('SELECT * FROM main.project_version_blobs WHERE hash=?').get(String(row.blobHash));
+      if(!blob)throw versionError('PROJECT_VERSION_RECORD_INVALID','版本正文缺失。',422);
+      const document=decodeProjectDocument(blob as unknown as EncodedProjectDocument);
+      if(document.projectId!==input.projectId||document.evidence.contentSequence!==version.contentSequence)throw versionError('PROJECT_VERSION_RECORD_INVALID','版本正文与摘要不一致。',422);
+      const current=captureProjectDocumentInside(store);
+      if(current.evidence.contentSequence!==input.expectedContentSequence)throw versionError('PROJECT_VERSION_BASELINE_CHANGED','项目内容已变化，请重新预览。');
+      const plan=buildRestorePlan(store,document,current,Number(row.mioChangeRowid),version.createdAt);
+      const digest=createHash('sha256').update(canonicalJson({versionId:version.id,blobHash:row.blobHash,current,changes:plan.changes})).digest('hex');
+      if(digest!==input.previewDigest)throw versionError('PROJECT_VERSION_PREVIEW_CHANGED','恢复计划已变化，请重新预览。');
+      const before=saveBeforeBulkChangeInside(store,{trigger:'restore',requestId:input.requestId,document:current,assertMutationAllowed});
+      applyRestorePlanInside(store,plan,{requestId:input.requestId});
+      const contentSequence=Number(store.db.prepare('SELECT contentSequence FROM project.project_file WHERE singleton=1').get()?.contentSequence);
+      const result=projectVersionRestoreResponseSchema.parse({projectId:input.projectId,requestId:input.requestId,versionId:input.versionId,beforeVersionId:before.id,
+        contentSequence,totalChanges:plan.changes.length,appliedChanges:plan.changes.filter(change=>change.action!=='keep-current'),keptCurrent:plan.changes.filter(change=>change.action==='keep-current')});
+      const response=JSON.stringify(result);
+      if(Buffer.byteLength(response)>65536)throw versionError('PROJECT_VERSION_RECEIPT_LIMIT','完整恢复回执超过容量上限，未应用恢复。',413);
+      assertMutationAllowed();
+      store.db.prepare('INSERT INTO main.project_version_requests(projectId,requestId,operation,inputDigest,response) VALUES(?,?,?,?,?)')
+        .run(input.projectId,input.requestId,'project.version.restore',inputDigest,response);
+      return result;
+    });}finally{release?.();}
+  };
+  return {list,save,preview,restore};
 }

@@ -62,6 +62,7 @@ const deniedNativeProjectInputs=(projectId: string,projectFile=path.join(tmpdir(
  'project.version.list':{projectId,limit:1},
  'project.version.save':{projectId,requestId:randomUUID(),name:'Refused restored version'},
  'project.version.preview':{projectId,versionId:randomUUID(),limit:1},
+ 'project.version.restore':{projectId,versionId:randomUUID(),requestId:randomUUID(),expectedContentSequence:0,previewDigest:'a'.repeat(64)},
 });
 const deniedRedesignInputs=(projectId: string)=>({
  'export.cancel':{projectId,exportId:randomUUID()},

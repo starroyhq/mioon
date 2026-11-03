@@ -10,6 +10,7 @@ export {TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_REN
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
 import {validateSavedTimeline} from './timeline-inputs.ts';
+import {timelineOutputPreset} from '../../contracts/src/timeline-output-geometry.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {ManagedAssetRecord,TimelineClipRecord,TimelineRecord,TimelineSubtitleCueRecord} from './timeline-inputs.ts';
 
@@ -75,9 +76,14 @@ export function admitTimelineImageResponse(timeline: TimelineRecord): void{
 // read-only eligibility inspection so an omitted historical subtitle field
 // removes current cues rather than leaking them into an earlier snapshot.
 export function restoreTimelineEditableSnapshot(timeline: TimelineRecord,saved: unknown): TimelineRecord{
- const record=asRecord<{tracks: TimelineRecord['tracks'];clips: TimelineRecord['clips'];durationFrames: number;subtitles?: TimelineRecord['subtitles']}>(saved);
- if(!object(saved)||!['tracks','clips','durationFrames'].every(key=>Object.hasOwn(saved as object,key))||Object.keys(record).some(key=>!['tracks','clips','durationFrames','subtitles'].includes(key)))invalidTimeline();
+ const record=asRecord<{tracks: TimelineRecord['tracks'];clips: TimelineRecord['clips'];durationFrames: number;subtitles?: TimelineRecord['subtitles'];format?: {fps:number;width:number;height:number}}>(saved);
+ if(!object(saved)||!['tracks','clips','durationFrames'].every(key=>Object.hasOwn(saved as object,key))||Object.keys(record).some(key=>!['tracks','clips','durationFrames','subtitles','format'].includes(key)))invalidTimeline();
  const result={...timeline,tracks:record.tracks,clips:record.clips,durationFrames:record.durationFrames};
+ if(Object.hasOwn(record,'format')){
+  const format=record.format;
+  if(!format||!object(format)||Object.keys(format).length!==3||!timelineOutputPreset(format))invalidTimeline();
+  Object.assign(result,format);
+ }
  delete result.subtitles;
  if(Object.hasOwn(record,'subtitles'))result.subtitles=record.subtitles;
  return result;

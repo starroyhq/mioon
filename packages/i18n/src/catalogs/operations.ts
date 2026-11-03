@@ -15,10 +15,16 @@ export const operationMessages = {
     "ja": "固定 requestId と任意の名前で内容全体を手動保存します。ローカル記録のみを書き込み、メディアの読み取りや内容変更は行いません"
   },
   "operation.project.version.preview": {
-    "zh-Hans": "只读预览完整差异计数和分页、来源与保持当前的原因；本阶段尚不可恢复",
-    "zh-Hant": "唯讀預覽完整差異計數與分頁、來源及保持目前狀態的原因；此階段尚不可復原",
-    "en": "Preview complete difference counts and pages, attribution, and reasons to retain current objects; restoration is not available in this stage",
-    "ja": "差分の総数と各ページ、変更元、現在の状態を保持する理由を読み取り専用で確認します。この段階では復元できません"
+    "zh-Hans": "只读预览完整差异、来源与保持当前的原因；摘要绑定恢复确认",
+    "zh-Hant": "唯讀預覽完整差異、來源與保持目前狀態的原因；摘要綁定復原確認",
+    "en": "Preview complete differences, attribution and reasons to retain current objects; the digest binds restore confirmation",
+    "ja": "差分全体、変更元、現在の状態を保持する理由を読み取り専用で確認します。ダイジェストを復元の確認に使用します"
+  },
+  "operation.project.version.restore": {
+    "zh-Hans": "按完整预览摘要和内容序号恢复版本，先保存恢复前版本；稳定请求重放原回执，不重发任务或媒体效果",
+    "zh-Hant": "依完整預覽摘要與內容序號復原版本，先儲存復原前版本；穩定請求重播原回執，不重送任務或媒體效果",
+    "en": "Restore a version against its complete preview digest and content sequence, saving the prior state first; stable requests replay the original receipt without replaying tasks or media effects",
+    "ja": "プレビュー全体のダイジェストと内容の連番を確認し、復元前の版を保存してから復元します。安定したリクエストは元の受領結果を再現し、タスクやメディア処理は再実行しません"
   },
   "operation.project.backup.list": {
     "zh-Hans": "只读列出项目最近三份自动备份，不打开项目或恢复任务；按内容序号去重，同序号分叉内容暂时无法识别",

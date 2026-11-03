@@ -37,6 +37,9 @@ import type {DatabaseSync} from 'node:sqlite';
 import type {TimelineClipRecord,TimelineRecord,TimelineSubtitlesRecord,TimelineTrackRecord,TimelineSubtitleCueRecord} from './timeline-inputs.ts';
 import type {TimelineRecoveryBoundary,TimelineRecoveryInput,TimelineRejectionState} from './timeline-recovery.ts';
 import type {ReplacementInput} from './timeline-replacement.ts';
+import {isProjectStore} from './project-file/store.ts';
+import type {ProjectStore} from './project-file/store.ts';
+import {canonicalJson} from './project-versions/document.ts';
 
 interface TimelineRectInput {x: number;y: number;width: number;height: number}
 interface TimelineClipPatch {
@@ -73,6 +76,70 @@ interface TimelineWriteOptions {sourceSemantics?: boolean}
 export interface AgentTimelineCompensation {kind:string;id:string;before:Record<string,unknown>|null;after:Record<string,unknown>|null}
 
 const defaultRect=(timeline: {width: number;height: number}): TimelineRectInput=>({x:0,y:0,width:timeline.width,height:timeline.height});
+const editableTimelineSnapshot=(timeline: TimelineRecord)=>clone({tracks:timeline.tracks,clips:timeline.clips,durationFrames:timeline.durationFrames,...(Object.hasOwn(timeline,'subtitles')?{subtitles:timeline.subtitles}:{})});
+function recordTimelineEditInside(db: DatabaseSync, operation: string, timeline: TimelineRecord, before: unknown, after: unknown = editableTimelineSnapshot(timeline)): void {
+ if(!db.isTransaction)throw new TypeError('Timeline history requires its content transaction');
+ const position=Number(db.prepare('SELECT position FROM timeline_history_cursors WHERE projectId=?').get(timeline.projectId)?.position??0)+1;
+ db.prepare('DELETE FROM timeline_history WHERE projectId=? AND position>=?').run(timeline.projectId,position);
+ db.prepare('INSERT INTO timeline_history(id,projectId,position,operation,createdAt,beforeSnapshot,afterSnapshot) VALUES(?,?,?,?,?,?,?)')
+  .run(randomUUID(),timeline.projectId,position,operation,timeline.updatedAt,JSON.stringify(before),JSON.stringify(after));
+ db.prepare('INSERT INTO timeline_history_cursors(projectId,position) VALUES(?,?) ON CONFLICT(projectId) DO UPDATE SET position=excluded.position').run(timeline.projectId,position);
+}
+
+/** Rebuild an edited array with the original JSON for every unchanged target.
+ * Native revision triggers compare json_each().value, including key order and
+ * escape spelling; canonicalizing the whole aggregate would invalidate other
+ * Mio targets which this restoration did not change. */
+function restoredTimelineJson(db: DatabaseSync, raw: string, value: TimelineRecord): string {
+ const current=JSON.parse(raw) as Record<string,unknown>, desired=value as unknown as Record<string,unknown>;
+ const set=(text:string,path:string,item:unknown):string=>String(db.prepare('SELECT json_set(?,?,json(?)) value').get(text,path,JSON.stringify(item))!.value);
+ const array=(path:string,items:readonly {id:string}[]):string=>{
+  const old=new Map(db.prepare('SELECT value FROM json_each(?,?)').all(raw,path).map(row=>{const text=String(row.value);return [(JSON.parse(text) as {id:string}).id,text] as const;}));
+  return '['+items.map(item=>{const text=old.get(item.id);return text&&canonicalJson(JSON.parse(text))===canonicalJson(item)?text:JSON.stringify(item);}).join(',')+']';
+ };
+ for(const key of new Set([...Object.keys(current),...Object.keys(desired)])){
+  if(key==='tracks'||key==='clips'){
+   const text=array(`$.${key}`,value[key]);
+   raw=String(db.prepare('SELECT json_set(?,?,json(?)) value').get(raw,`$.${key}`,text)!.value);continue;
+  }
+  if(key==='subtitles'&&value.subtitles){
+   let subtitle=String(db.prepare("SELECT COALESCE(json_extract(?,'$.subtitles'),'{}') value").get(raw)!.value);
+   subtitle=set(subtitle,'$.profileId',value.subtitles.profileId);
+   subtitle=String(db.prepare("SELECT json_set(?,'$.cues',json(?)) value").get(subtitle,array('$.subtitles.cues',value.subtitles.cues))!.value);
+   raw=String(db.prepare("SELECT json_set(?,'$.subtitles',json(?)) value").get(raw,subtitle)!.value);continue;
+  }
+  if(!Object.hasOwn(desired,key))raw=String(db.prepare('SELECT json_remove(?,?) value').get(raw,`$.${key}`)!.value);
+  else if(canonicalJson(current[key]??null)!==canonicalJson(desired[key]??null))raw=set(raw,`$.${key}`,desired[key]);
+ }
+ return raw;
+}
+
+/** Version restore owns the existing transaction; it shares the same source,
+ * LUT, subtitle, geometry, byte-budget and history boundaries as normal edits. */
+export function restoreProjectTimelineInside(store: ProjectStore, desired: TimelineRecord | null, {requestId,now}: {requestId:string;now:string}): void {
+ if(!isProjectStore(store)||!store.db.isTransaction)throw new TypeError('Timeline restoration requires the real project transaction');
+ const row=store.db.prepare('SELECT id,data FROM project.timelines WHERE projectId=?').get(store.projectId);
+ const current=row?JSON.parse(String(row.data)) as TimelineRecord:null;
+ if(!desired){
+  if(current)store.db.prepare('DELETE FROM project.timelines WHERE id=?').run(current.id);
+  return;
+ }
+ if(desired.projectId!==store.projectId)throw new AppError('PROJECT_ID_MISMATCH','时间线不属于此项目',400);
+ const ledger=current?0:Number(store.db.prepare("SELECT revision FROM project.agent_task_target_revisions_v2 WHERE projectId=? AND kind='timeline' AND targetId=?").get(store.projectId,store.projectId)?.revision??0);
+ const revision=Math.max(current?.revision??0,current?0:desired.revision,ledger);
+ if(!Number.isSafeInteger(revision)||revision>=Number.MAX_SAFE_INTEGER)throw new AppError('TIMELINE_REVISION_LIMIT','时间线版本已达到安全上限',409);
+ const timeline={...desired,revision:revision+1,updatedAt:now,...(current?{createdAt:current.createdAt}:{})};
+ const boundary=legacyRecoveryBoundary(store.db,{projectId:store.projectId,requestId});
+ boundary.validate(timeline);legacyAdmitImageResponse(timeline);
+ const format=(value:TimelineRecord)=>({fps:value.fps,width:value.width,height:value.height});
+ const before=current?{...editableTimelineSnapshot(current),format:format(current)}:{tracks:[],clips:[],durationFrames:0,format:format(timeline)};
+ const after={...editableTimelineSnapshot(timeline),format:format(timeline)};
+ admitTimelineVolumeEnvelopeWrite(timeline,{before,after,related:{projectId:store.projectId,requestId}});
+ const raw=current?restoredTimelineJson(store.db,String(row!.data),timeline):canonicalJson(timeline);
+ if(current&&current.id!==timeline.id)store.db.prepare('DELETE FROM project.timelines WHERE id=?').run(current.id);
+ store.db.prepare('INSERT INTO project.timelines(id,projectId,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(timeline.id,store.projectId,raw);
+ recordTimelineEditInside(store.db,'project.version.restore',timeline,before,after);
+}
 // The shared wire schema admits every preset's envelope. Submitted rectangles
 // still receive the legacy input-validation error against this saved pair;
 // persisted corruption continues through the separate aggregate boundary.
@@ -161,7 +228,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
  }
  // History owns only editable timeline state. Revisions, IDs/timestamps of the
  // aggregate, media, selected versions, jobs and exports are never restored.
- const snapshot=(timeline: TimelineRecord)=>clone({tracks:timeline.tracks,clips:timeline.clips,durationFrames:timeline.durationFrames,...(Object.hasOwn(timeline,'subtitles')?{subtitles:timeline.subtitles}:{})});
+ const snapshot=editableTimelineSnapshot;
  const cursor=(projectId: string): number=>(db.prepare('SELECT position FROM timeline_history_cursors WHERE projectId=?').get(projectId)?.position as number|undefined)??0;
  const setCursor=(projectId: string,position: number): void=>{db.prepare('INSERT INTO timeline_history_cursors(projectId,position) VALUES(?,?) ON CONFLICT(projectId) DO UPDATE SET position=excluded.position').run(projectId,position);};
  function history(projectId: string): TimelineHistoryResult{
@@ -178,13 +245,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    undoEntry:row.undoEntry?JSON.parse(row.undoEntry as string):null,redoEntry:row.redoEntry?JSON.parse(row.redoEntry as string):null};
  }
  function recordEdit(operation: string,timeline: TimelineRecord,before: unknown): void{
-  const position=cursor(timeline.projectId)+1;
-  // Branch replacement shares the edit transaction, so rejected edits cannot
-  // erase redo. Exact old request responses remain independently durable.
-  db.prepare('DELETE FROM timeline_history WHERE projectId=? AND position>=?').run(timeline.projectId,position);
-  db.prepare('INSERT INTO timeline_history(id,projectId,position,operation,createdAt,beforeSnapshot,afterSnapshot) VALUES(?,?,?,?,?,?,?)')
-   .run(randomUUID(),timeline.projectId,position,operation,timeline.updatedAt,JSON.stringify(before),JSON.stringify(snapshot(timeline)));
-  setCursor(timeline.projectId,position);
+  recordTimelineEditInside(db,operation,timeline,before);
  }
  function travel(operation: string,input: TimelineMutationInput,direction: number): unknown{
   return transaction(operation,input,({boundary,requestHash,write})=>{

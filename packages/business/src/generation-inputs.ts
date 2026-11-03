@@ -1,5 +1,6 @@
 import {AppError,getCapabilityProfile,getLegacyCapabilityProfile,getGenerationProfileRegion,buildAdapterPlan,getShotGenerationReferenceSelection,isSubjectReference,getSubjectGenerationSnapshotIssue,SUBJECT_REFERENCE_PROFILE_VERSION} from '@mioon/contracts';
 import type {DatabaseSync} from 'node:sqlite';
+import {isDeepStrictEqual} from 'node:util';
 import {validateImageConsumption} from './image-consumption.ts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
@@ -259,7 +260,7 @@ export function prepareGenerationInputs({source,projectId,providerId,model,capab
  const bindings: {role: string; assetId: string; sha256: unknown}[]=hasPin?source.referenceBindings as {role: string; assetId: string; sha256: unknown}[]:assets.map((asset,index)=>({
   role:ownerRole(pinned?.[index])??ownerRole(asset)??(typeof selection?.[index]?.role==='string'?selection[index]?.role:undefined)??'first_frame',
   assetId:asset.id,sha256:asset.sha256}));
- if(!hasPin&&Object.hasOwn(source,'referenceBindings')&&JSON.stringify(source.referenceBindings)!==JSON.stringify(bindings))manifestError();
+ if(!hasPin&&Object.hasOwn(source,'referenceBindings')&&!isDeepStrictEqual(source.referenceBindings,bindings))manifestError();
  if(!dense(bindings)||bindings.length!==ids.length||bindings.some((binding,index)=>!isRecord(binding)||Object.keys(binding).some(key=>!['role','assetId','sha256'].includes(key))||binding.assetId!==ids[index]||binding.sha256!==assets[index]?.sha256))manifestError();
  // A pair needs an explicit, complete role manifest. The tail selection is
  // provenance, never a license to reinterpret the second array entry.
