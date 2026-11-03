@@ -8,7 +8,6 @@ import {ClientError,EXIT_CODES,safeValue} from './index.ts';
 import type {ClientOptions} from './index.ts';
 import {agentTaskAnswerControlObjectSchema,agentTaskConversationPolicySchema,agentTaskConversationPolicySetSchema,agentTaskSendSchema,agentTaskDiagnosticSchema,agentTaskControlSchema,agentTaskControlBaseSchema,agentTaskUndoAllControlSchema,agentTaskNoteControlSchema,agentTaskPolicySchema,agentTaskSnapshotSchema,agentTaskRunSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskReceiptSchema,agentTaskConnectionTestResponseSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot} from '@mioon/contracts/agent-tasks-v2';
-import {agentTaskStorageSnapshotSchema} from '@mioon/contracts/agent-task-storage';
 import {mioRunUsageSchema} from '@mioon/contracts/mio-run-usage';
 import {mioStorageSnapshotSchema} from '@mioon/contracts/mio-storage';
 import {agentTaskChecksSchema,agentTaskChecksInputSchema} from '@mioon/contracts/agent-tasks-v2';
@@ -56,7 +55,7 @@ const uploadSchema=z.object({id,name:text,mimeType:text,status:z.string().max(80
 const projectSchema=z.object({version:z.literal(2),instanceId:z.string().min(1).max(200),projectId:id,runs:z.array(agentTaskRunSchema).max(100),policy:agentTaskPolicySchema,settings:agentSettingsSnapshotSchema,authorization:agentAuthorizationSnapshotSchema,readOnly:z.boolean().optional()});
 const policyView=z.object({policy:agentTaskPolicySchema,readOnly:z.boolean()});
 const conversationPolicyView=z.object({policy:agentTaskConversationPolicySchema,readOnly:z.boolean()});
-const doctorSchema=z.object({version:z.literal(1),settings:agentSettingsSnapshotSchema,policy:agentTaskPolicySchema,authorization:agentAuthorizationSnapshotSchema,catalog:z.object({count:revision,valid:z.boolean(),issues:z.array(z.object({code,tool:z.string().max(100).optional(),path:z.string().max(512).optional()})).max(500)}),storage:z.union([agentTaskStorageSnapshotSchema,mioStorageSnapshotSchema]).optional(),projectId:id.optional(),verification:z.literal('not_tested')});
+const doctorSchema=z.object({version:z.literal(1),settings:agentSettingsSnapshotSchema,policy:agentTaskPolicySchema,authorization:agentAuthorizationSnapshotSchema,catalog:z.object({count:revision,valid:z.boolean(),issues:z.array(z.object({code,tool:z.string().max(100).optional(),path:z.string().max(512).optional()})).max(500)}),storage:mioStorageSnapshotSchema.optional(),projectId:id.optional(),verification:z.literal('not_tested')});
 type Json=Record<string,unknown>;
 type Recovery={operation:string;projectId?:string;runId?:string;requestId?:string;lookup:string};
 export interface AgentRequestOptions {signal?:AbortSignal;timeoutMs?:number}
@@ -138,7 +137,7 @@ export function createAgentClient({env=process.env,fetchImpl=fetch,requestTimeou
     throw new ClientError(interrupted?'INTERRUPTED':error.code,interrupted?'Stopped observing locally; the settings write outcome remains unknown. Read the original settings; do not resubmit.':error.message,{status:error.status,exitCode:interrupted?EXIT_CODES.interrupted:error.exitCode,details:{...recoveryDetails,observation}});
    }
   },
-  async doctor(value:unknown={},options:AgentRequestOptions={}){const input=parseAgentInput(AGENT_COMMAND_SCHEMAS['agent.doctor'],value);const result=parsed(doctorSchema,await request(`/api/agent/diagnostics${input.projectId?`?projectId=${encodeURIComponent(input.projectId)}`:''}`,options));if(result.projectId!==input.projectId||(result.storage?.version===2||result.storage?.version===3)&&result.storage.projectId!==input.projectId)throw new ClientError('BACKEND_PROTOCOL_ERROR','Agent diagnostic project mismatch.');return result;},
+  async doctor(value:unknown={},options:AgentRequestOptions={}){const input=parseAgentInput(AGENT_COMMAND_SCHEMAS['agent.doctor'],value);const result=parsed(doctorSchema,await request(`/api/agent/diagnostics${input.projectId?`?projectId=${encodeURIComponent(input.projectId)}`:''}`,options));if(result.projectId!==input.projectId||result.storage!==undefined&&result.storage.projectId!==input.projectId)throw new ClientError('BACKEND_PROTOCOL_ERROR','Agent diagnostic project mismatch.');return result;},
   async diagnoseLatest(options:AgentRequestOptions={}){return parsed(agentTaskConnectionTestResponseSchema,await request(`${api}/diagnostics/latest`,options));},
   async policyGet(options:AgentRequestOptions={}){return parsed(policyView,await request(`${api}/policy`,options));},
   async policySet(value:unknown,options:AgentRequestOptions={}){const input=parseAgentInput(policyInput,value);return parsed(policyView,await request(`${api}/policy`,{...options,method:'PUT',body:input,validate:value=>parsed(policyView,value),recovery:{operation:'policy.set',requestId:input.requestId,lookup:'agent policy lookup'}}));},

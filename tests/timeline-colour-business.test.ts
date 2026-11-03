@@ -10,7 +10,7 @@ import {readFile} from 'node:fs/promises';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {schemaObjects} from './helpers/project-database.ts';
 const stamp='2026-10-14T00:00:00.000Z';

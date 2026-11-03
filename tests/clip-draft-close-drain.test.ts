@@ -11,7 +11,7 @@ const key = { projectId: id(1), timelineId: id(2), clipId: id(3) };
 const source = { assetId: id(5), assetSha256: 'b'.repeat(64), versionId: id(8) };
 const raw = { name: 'Saved clip', trackId: id(4), startFrame: 0, durationFrames: 120, sourceInFrame: 0,
   rect: { x: 0, y: 0, width: 720, height: 1280 }, gain: 1 };
-const context = (): ClipDraftContext => ({ ...key, scope: 'project:1:inspector:1', restored: false, connected: true, visible: true,
+const context = (): ClipDraftContext => ({ ...key, scope: 'project:1:inspector:1', connected: true, visible: true,
   busy: false, timelineRevision: 7, source: structuredClone(source), saved: structuredClone(raw) });
 const record = (patch: Partial<ClipDraftRecord> = {}): ClipDraftRecord => ({ baseRevision: 7, source: structuredClone(source), raw: { ...structuredClone(raw), name: 'Recovered' }, updatedAt: stamp, ...patch });
 const row = (draft: ClipDraftRecord | null = null): ClipDraftEnvelope => ({ supported: true, workspaceScope: 'a'.repeat(64), instanceId: id(6), key,
@@ -94,13 +94,6 @@ test('dirty input before GET finishes returns false without implicit reads, writ
   assert.equal(h.controller.hasUnpersisted(), true); assert.equal(h.controller.getState().raw.name, 'Not loaded');
   reading.resolve(row()); await loading; assert.equal(await h.controller.flushForClose(), true);
   assert.deepEqual(h.calls.map(([method]: DraftCall) => method), ['get', 'put']);
-});
-
-test('restored workspaces keep manual editing and close false for dirty raw with no sidecar I/O', async t => {
-  const h = harness(t, { ctx: { ...context(), restored: true } }); await h.controller.load();
-  assert.equal(await h.controller.flushForClose(), true); assert.equal(h.controller.edit('name', 'Restored manual edit'), true);
-  assert.equal(h.controller.hasUnpersisted(), true); assert.equal(await h.controller.flushForClose(), false);
-  assert.equal(h.controller.getState().raw.name, 'Restored manual edit'); assert.equal(h.controller.getDirty(), true); assert.deepEqual(h.calls, []);
 });
 
 test('offline dirty input and an unresolved different candidate cannot be acknowledged on close', async t => {

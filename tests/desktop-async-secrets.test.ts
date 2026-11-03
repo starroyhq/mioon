@@ -59,7 +59,7 @@ const projectAddressParserUrl = data('export let calls = 0; export function pars
 const projectAddressParser = await import(projectAddressParserUrl);
 const nativeAudioContractsUrl = data('export let calls = 0; const forbidden = () => { calls++; throw Error("Native audition schemas are outside this secrets fixture"); }; export const nativeAudioConfigSchema = {parse: forbidden}; export const nativeAudioCommandSchema = {safeParse: forbidden}; export const nativeAudioReplySchema = {safeParse: forbidden};');
 const nativeAudioContracts = await import(nativeAudioContractsUrl);
-const workspaceNativeContractsUrl = data('export let calls = 0; const forbidden = () => { calls++; throw Error("Workspace native schemas are outside this secrets fixture"); }; export const workspaceNativeUtilityReplySchema = {safeParse: forbidden}; export const workspaceNativeUtilityRequestSchema = {parse: forbidden};');
+const workspaceNativeContractsUrl = data('export let calls = 0; const forbidden = () => { calls++; throw Error("Workspace native schemas are outside this secrets fixture"); }; export const workspaceNativeRequestSchema = {parse: forbidden};');
 const workspaceNativeContracts = await import(workspaceNativeContractsUrl);
 after(() => assert.equal(nativeAudioContracts.calls, 0, 'Secrets fixtures must never execute native audition schemas'));
 after(() => assert.equal(workspaceNativeContracts.calls, 0, 'Secrets fixtures must never execute workspace native schemas'));
@@ -82,7 +82,7 @@ const overrides = new Map([
     + ' export const validateManagedFile = validatePrivateDirectory, readPrivateFile = validatePrivateDirectory, writePrivateFileAtomic = validatePrivateDirectory, removePrivateFile = validatePrivateDirectory')],
 ]);
 const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18n/src/catalogs/native.ts', 'apps/desktop/src/secret-store-linux.ts', 'apps/desktop/src/secret-store.ts', 'apps/desktop/src/image-secret-store.ts',
-  'apps/desktop/src/image-secret-broker.ts', 'apps/desktop/src/video-secret-broker.ts', 'apps/desktop/src/secret-broker.ts', 'apps/desktop/src/supervisor.ts', 'apps/desktop/src/workspace-native-broker.ts',
+  'apps/desktop/src/image-secret-broker.ts', 'apps/desktop/src/video-secret-broker.ts', 'apps/desktop/src/secret-broker.ts', 'apps/desktop/src/supervisor.ts',
   'apps/desktop/src/security.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'apps/desktop/src/exit-diagnostics.ts', 'apps/desktop/src/diagnostic-append-windows.ts',
   'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/shutdown.ts', 'packages/business/src/agent/settings.ts', 'packages/business/src/agent/config.ts',
   'packages/business/src/agent/presets.ts', 'packages/contracts/src/agent-protocol.ts']);

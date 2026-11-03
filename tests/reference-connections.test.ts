@@ -1,20 +1,22 @@
+
+
+
 import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import type {Provider, ProviderContext} from '../packages/business/src/provider-registry.ts';
 import type {GenerationSnapshot, GenerationReferenceAsset} from './helpers/strict-service-responses.ts';
 type ProviderSnapshot = Omit<GenerationSnapshot, 'referenceAssets'> & {referenceAssets: (GenerationReferenceAsset & {path: string})[]};
 interface WorkerResult {error?: string; result?: import('../packages/contracts/src/reference-acknowledgement.ts').ReferenceAttachResponse}
-import type {FixtureAsset, FixtureProject, FixtureTimeline, FixtureExport, FixtureVersion} from './helpers/strict-timeline-core-types.ts';
+import type {FixtureAsset, FixtureProject, FixtureExport, FixtureVersion} from './helpers/strict-timeline-core-types.ts';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedServices, TypedStore, TypedCall, MediaNode, MediaShot} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
-import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
 import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
 import {mkdtemp, rm, readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {crc32, deflateSync} from 'node:zlib';
-import {openLegacyWorkspaceStore as openHistoricalWorkspaceStore,openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
@@ -36,11 +38,11 @@ function png(width=36,height=64,color=85) {
  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(pixels)),chunk('IEND',Buffer.alloc(0))]);
 }
 const clone=<T>(value: T): T=>JSON.parse(JSON.stringify(value));
-async function fixture(t: test.TestContext,env={},{open=openStore}: {open?: typeof openStore | typeof openLegacyWorkspaceStore | typeof openHistoricalWorkspaceStore}={}) {
+async function fixture(t: test.TestContext,env={}) {
  const root=await mkdtemp(path.join(tmpdir(),'wb-reference-'));
  let store!: TypedStore,services!: TypedServices,providers!: ReturnType<typeof createProviderRegistry>;
- const start=(openStoreForStart: typeof openStore | typeof openLegacyWorkspaceStore | typeof openHistoricalWorkspaceStore=openStore)=>{store=openStoreForStart(root) as TypedStore;providers=createProviderRegistry({db:store.db,root,env});services=(createServices(store,providers,{env}) as TypedServices);};start(open);
- const f={root,get store(){return store;},get services(){return services;},get providers(){return providers;},call:<O extends string>(op: O,input: unknown)=>services.call(op,input),restart(){store.close();start(open===openStore?openStore:openHistoricalWorkspaceStore);},
+ const start=()=>{store=openStore(root) as TypedStore;providers=createProviderRegistry({db:store.db,root,env});services=(createServices(store,providers,{env}) as TypedServices);};start();
+ const f={root,get store(){return store;},get services(){return services;},get providers(){return providers;},call:<O extends string>(op: O,input: unknown)=>services.call(op,input),restart(){store.close();start();},
   state(){return Object.fromEntries(['projects','assets','shots','nodes','edges','jobs','versions','exports'].map(table=>[table,clone(store.list(table))])) as ReturnType<ReferenceFixture['state']>;},
   async image(this: ReferenceFixture,projectId=this.projectId,color=85,width=36,height=64){const asset=await this.call('asset.import',{projectId,name:'Synthetic local reference.png',mimeType:'image/png',dataBase64:png(width,height,color).toString('base64')});const node=await this.call('node.create',{projectId,type:'image',assetId:asset.id,label:'Synthetic reference',position:{x:100,y:100}});return {asset,node};},
   shot(this: ReferenceFixture,projectId=this.projectId,extra={}){return this.call('shot.create',{projectId,title:'Reference target',prompt:'Synthetic shapes move gently',...extra});}
@@ -199,12 +201,7 @@ test('inconsistent stored bindings fail closed without erasing manual data or qu
  await rejectsUnchanged(f,'generation.submit',{shotId:shot.id,expectedRevision:bound.shot.revision,requestId:randomUUID(),providerId:'mock'},'REFERENCE_STATE_CONFLICT');
 });
 
-test('additive reference migration does not rewrite legacy decorative edges or manual selections',async t=>{
- const f=await fixture(t,{},{open:openLegacyWorkspaceStore}),{asset,node}=await f.image(),shot=await f.shot(f.projectId,{referenceAssetIds:[asset.id]});
- f.store.put('edges',{id:randomUUID(),projectId:f.projectId,source:node.id,target:shot.id});
- const before=f.state();f.store.db.exec('DROP TABLE reference_requests; DELETE FROM schema_version WHERE version=4;');f.restart();assert.deepEqual(f.state(),before);
- assert.equal(f.store.db.prepare('SELECT version FROM schema_version WHERE version=4').get()!.version,4);assert.deepEqual((f.store.db.prepare('SELECT * FROM reference_requests').all() as unknown),[]);
-});
+
 
 test('bound image reaches the real Ark adapter first-frame payload through an injected HTTP transport only',async t=>{
  const env={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'synthetic-never-transmitted-credential'};

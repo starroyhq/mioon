@@ -5,7 +5,8 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync,rmSync,existsSync,readFileSync,writeFileSync,statSync,copyFileSync,symlinkSync,linkSync,chmodSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {openStore,ownsStoreLock,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createLastProject,readLastProjectTarget,LAST_PROJECT_FILENAME, type LastProjectOptions} from '@mioon/business/last-project';
 import {LAST_PROJECT_LIMITS,lastProjectEnvelopeSchema} from '@mioon/contracts/last-project';
@@ -22,7 +23,7 @@ async function fixture(t: test.TestContext){
   const services=(createServices(store,new Map()) as unknown as TypedServices),project=await services.call('project.create',{name:'Existing project'});
   const otherStore=openStore(path.join(projectRoot,'other-project')),otherServices=createServices(otherStore,new Map()),other=await otherServices.call('project.create',{name:'Other existing project'}) as {id:string};
   const missingTargets=new Set<string>();
-  const options=()=>({root,databaseFile:path.join(root,'app-library.db'),storage,guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>store.db.isOpen&&Boolean(getWorkspaceRestoreContext(store)),readProject:(id: string)=>missingTargets.has(id)?null:readLastProjectTarget(id===other.id?otherStore.db:store.db,id)},fault:(point: string)=>fault(point)});
+  const options=()=>({root,databaseFile:path.join(root,'app-library.db'),storage,guards:{ownsLock:()=>ownsStoreLock(store),readProject:(id: string)=>missingTargets.has(id)?null:readLastProjectTarget(id===other.id?otherStore.db:store.db,id)},fault:(point: string)=>fault(point)});
   const start=(extra: Partial<LastProjectOptions>={})=>locator=createLastProject({...options(),...extra}) as FixtureLocator;start();
   t.after(()=>{store.close();otherStore.close();rmSync(projectRoot,{recursive:true,force:true});});
   return {root,projectRoot,file:path.join(root,LAST_PROJECT_FILENAME),project,other,get store(){return store;},get locator(){return locator;},start,options,setMissingTarget:(id:string)=>{missingTargets.add(id);},
@@ -63,7 +64,7 @@ test('missing remembered project is discoverable without reset; PUT missing targ
   // Availability comes from the app's registry port; project deletion is a
   // separate, temporarily unavailable lifecycle operation during the switch.
   const service=createServices(f.store,new Map());
-  assert.throws(()=>service.setProjectDeletionCompanions({assertDeletable:()=>assert.fail('legacy deletion admission must not run'),removeProject:()=>assert.fail('legacy deletion cleanup must not run')}),/application project host/);
+  assert.equal(Object.hasOwn(service,'setProjectDeletionCompanions'),false,'retired deletion companions cannot be installed');
   f.setMissingTarget(f.project.id);
   assert.equal(f.snapshot(),protectedState,'changing registry availability never deletes project rows');
   const before=f.snapshot(),found=f.locator.get();
@@ -132,12 +133,6 @@ test('actual exclusive lock ownership is required, including before exact replay
   assert.throws(()=>unowned.get(),code('LAST_PROJECT_OWNER_REQUIRED'));assert.throws(()=>unowned.put(input),code('LAST_PROJECT_OWNER_REQUIRED'));assert.equal(existsSync(f.file),false);
   f.restart();const freshInput=f.input();f.locator.put(freshInput);const before=readFileSync(f.file);f.store.close();
   assert.throws(()=>f.locator.get(),code('LAST_PROJECT_OWNER_REQUIRED'));assert.throws(()=>f.locator.put(freshInput),code('LAST_PROJECT_OWNER_REQUIRED'));assert.deepEqual(readFileSync(f.file),before);
-});
-
-test('restored profile returns exact unsupported before all storage, ownership and target access',()=>{
-  const never=()=>{throw Error('PRIVATE access forbidden');};
-  const locator=createLastProject({root:'/unread',storage:{validatePrivateDirectory:never,validateManagedFile:never,readPrivateFile:never,writePrivateFileAtomic:never},guards:{ownsLock:never,isRestored:()=>true,readProject:never}});
-  assert.deepEqual(locator.get(),{supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'});assert.deepEqual(locator.put(new Proxy({},{})),{supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'});
 });
 
 for(const point of ['beforePersist','afterPersist','beforeDirectorySync','afterDirectorySync'])test(`fault at ${point} preserves old or exact published bytes and never changes the database`,async t=>{

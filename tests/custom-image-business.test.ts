@@ -7,7 +7,7 @@ import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createImageSettings,createCustomImageSettings,IMAGE_SETTINGS_READ_CURRENT} from '../packages/business/src/images/settings.ts';
 import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION,DEFAULT_IMAGE_CONFIGURATION,getCustomImageDestination} from '../packages/contracts/src/image-settings.ts';

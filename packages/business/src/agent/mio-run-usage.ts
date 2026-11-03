@@ -3,7 +3,7 @@ import type {MioRunUsage} from '../../../contracts/src/mio-run-usage.ts';
 import {mioIdentitySchemas} from '../../../contracts/src/mio-records.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
-import type { Store as WorkspaceStore } from '../store-contract.ts';
+import type { Store } from '../store-contract.ts';
 import {taskModelUsage} from './task-usage-v2.ts';
 
 export interface MioModelUsageObservation {
@@ -81,26 +81,6 @@ export function readMioRunUsage(store: ProjectStore, runId: string): MioRunUsage
 /** Transitional workspace profile: event sequence supplies the durable send
  * boundary that predates mio_requests. Only scalar identity/state/usage paths
  * are selected, so private request/provider payloads are never hydrated. */
-export function readAgentTaskRunUsage(store: WorkspaceStore, runId: string): MioRunUsage {
-  if (!mioIdentitySchemas.id.safeParse(runId).success) fail('AGENT_TASK_INVALID');
-  const owner = store.db.prepare('SELECT projectId,revision FROM agent_task_runs_v2 WHERE id=?').get(runId);
-  if (!owner) fail('AGENT_TASK_NOT_FOUND');
-  if (!mioIdentitySchemas.count.safeParse(owner.revision).success || owner.revision === 0) fail('AGENT_TASK_STORAGE_CORRUPT');
-  const rows = store.db.prepare(`SELECT s.id,s.status,json_extract(s.data,'$.result.usage') AS usage,
-    (SELECT max(e.sequence) FROM agent_task_events_v2 e WHERE e.runId=s.runId AND e.projectId=s.projectId AND e.type='step'
-      AND json_extract(e.data,'$.data.id')=s.id AND json_extract(e.data,'$.data.status')='dispatch_started') AS dispatched,
-    (SELECT max(e.sequence) FROM agent_task_events_v2 e WHERE e.runId=s.runId AND e.projectId=s.projectId AND e.type='dispatch_prevented'
-      AND json_extract(e.data,'$.data.stepId')=s.id) AS prevented
-    FROM agent_task_steps_v2 s WHERE s.runId=? AND s.projectId=? AND json_extract(s.data,'$.kind')='model' ORDER BY s.position`).all(runId, String(owner.projectId));
-  return aggregateMioRunUsage(runId, Number(owner.revision), rows.map(row => {
-    let usage: unknown;
-    if (typeof row.usage === 'string') { try { usage = JSON.parse(row.usage); } catch { /* Invalid passive metadata is unknown. */ } }
-    const dispatched = typeof row.dispatched === 'number' && (row.prevented === null || Number(row.dispatched) > Number(row.prevented));
-    const outcome = row.status === 'completed' || row.status === 'failed' || row.status === 'unknown' ? row.status : 'inflight';
-    return {requestId: String(row.id), dispatched, outcome, usage};
-  }));
-}
-
 /** A bounded replaceable projection, updated by the lifecycle's transaction.
  * No revision/event is added: only the canonical state change owns those. */
 export function updateMioRunUsageSummary(store: ProjectStore, runId: string): void {

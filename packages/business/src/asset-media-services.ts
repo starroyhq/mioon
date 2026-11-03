@@ -32,13 +32,13 @@ const requestLocks = new WeakMap<ProjectStore, Map<string, Promise<unknown>>>();
 
 /** Ordinary operations never grant permission. The separate trusted entry is
  * only called by the authenticated user-action HTTP adapter, never RPC/MCP. */
-export function createAssetMediaServices(store: ProjectStore, {outsidePaths, signal}: {outsidePaths: OutsidePathConfirmationStore; signal?: AbortSignal}) {
+export function createAssetMediaServices(store: ProjectStore, {outsidePaths, signal, beforeEffect}: {outsidePaths: OutsidePathConfirmationStore; signal?: AbortSignal; beforeEffect?: () => void}) {
   const references = createProjectAssetReferenceServices(store, {outsidePaths});
   const locks = requestLocks.get(store) ?? new Map<string, Promise<unknown>>();
   requestLocks.set(store, locks);
   const directory = path.join(store.tempDir, 'asset-media');
   ensurePrivateDirectory(directory, {create: true});
-  const fence = (): void => {checkpoint(signal); if (!isProjectStore(store)) throw new AppError('PROJECT_UNAVAILABLE', '项目已关闭', 409);};
+  const fence = (): void => {checkpoint(signal); beforeEffect?.(); if (!isProjectStore(store)) throw new AppError('PROJECT_UNAVAILABLE', '项目已关闭', 409);};
   const access = () => ({projectDir: store.projectDir, projectFile: store.projectFile,
     mayReadOutside: (file: string) => outsidePaths.list(store.projectId).some(grant => isFileInDirectory(grant.directory, file)),
     isHeld: (identity: {dev: string; ino: string}) => isProjectFileHeld(identity) || isAppLibraryHeld(identity)});
@@ -72,7 +72,7 @@ export function createAssetMediaServices(store: ProjectStore, {outsidePaths, sig
   const importer = createReferencedAssetImportHandler(store, {outsidePaths, signal, required: (_table, id) => {
     if (id !== store.projectId) throw new AppError('NOT_FOUND', '找不到项目', 404);
     return store.get('projects', id);
-  }, now: () => new Date().toISOString(), guarded: true, effectFence: () => fence, unsafe: () => new AppError('MEDIA_CHANGED_DURING_READ', '素材已变化', 409), safeError: () => false});
+  }, now: () => new Date().toISOString(), beforeEffect: fence});
 
   async function perform(op: string, input: Row, allowGrant = true): Promise<unknown> {
     fence(); if (input.projectId !== store.projectId) throw new AppError('NOT_FOUND', '找不到项目', 404);

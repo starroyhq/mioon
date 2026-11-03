@@ -1,3 +1,4 @@
+import * as currentTaskSchema from '../packages/business/src/agent/task-schema-v2.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -19,7 +20,7 @@ import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {collectTaskProjectOverview} from '../packages/business/src/agent/task-context-observations-v2.ts';
 import {agentTaskJobBinding} from '../packages/business/src/agent/task-effects-v2.ts';
 import {readMioStorage} from '../packages/business/src/agent/mio-storage.ts';
-import {installAgentTaskDefinitionsV2, validateAgentTaskRowsV2, dropAgentTaskTargetTriggersV2} from '../packages/business/src/agent/task-schema-v2.ts';
+import {validateAgentTaskRowsV2} from '../packages/business/src/agent/task-schema-v2.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskToolCall, AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {createTestAuthorizations} from './helpers/agent-authorizations.ts';
@@ -206,7 +207,7 @@ test('project tools snapshot all eight attached content families and stage attac
   assert.deepEqual(foreignKeyCheck(db), []);
 });
 
-test('legacy workspace schema entry points leave content TEMP and history process target triggers intact', t => {
+test('current row validation leaves content TEMP and history process target triggers intact', t => {
   const {first} = fixture(t), before = schemaObjects(first.db);
   assert.ok(before.some(row => row.schema === 'project' && row.name.startsWith('agent_target_')));
   assert.ok(before.some(row => row.schema === 'temp' && row.name === 'subject_variant_version_binding'));
@@ -219,8 +220,8 @@ test('legacy workspace schema entry points leave content TEMP and history proces
   }
   assert.ok(before.some(row => row.schema === 'project' && row.name === 'agent_target_shots_update_v2'));
   assert.ok(before.some(row => row.schema === 'project' && row.name === 'agent_target_subjects_update_v2'));
-  for (const legacy of [installAgentTaskDefinitionsV2, dropAgentTaskTargetTriggersV2]) {
-    assert.throws(() => legacy(first.db), {name: 'TypeError', message: 'Agent task workspace schema operations do not accept project databases'});
+  for (const retired of ['installAgentTaskDefinitionsV2','dropAgentTaskTargetTriggersV2']) {
+    assert.equal(Object.hasOwn(currentTaskSchema,retired),false,'Legacy schema mutation capability is absent');
   }
   assert.throws(() => validateAgentTaskRowsV2(first.db), {name: 'TypeError', message: 'Project Agent task row validation requires a live application context'});
   assert.ok(testProjectAppLibrary(first));

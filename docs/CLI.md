@@ -1,6 +1,6 @@
 # Mioon CLI (V4)
 
-工作区开关、应用内备份、任务处置和导出控制也通过同一后端提供。具体范围见[工作区设置](WORKSPACE-SETTINGS.md)、[任务处置](TASK-DISPOSITIONS.md)和[导出控制](EXPORT-CONTROLS.md)，使用 `schema` 查询当前参数，避免拼接服务器文件路径
+工作区开关、项目备份、任务处置和导出控制也通过同一后端提供。具体范围见[工作区设置](WORKSPACE-SETTINGS.md)、[任务处置](TASK-DISPOSITIONS.md)和[导出控制](EXPORT-CONTROLS.md)，使用 `schema` 查询当前参数，避免拼接服务器文件路径
 
 The CLI is a local HTTP client for the **same running backend and database** used by the browser, Electron, and MCP. It never starts a second service or reads backend database/media paths. Node.js 24+ and the source workspace dependencies are required; this is not a bundled standalone executable.
 
@@ -23,7 +23,7 @@ The CLI is a local HTTP client for the **same running backend and database** use
 | `agent task list/history` | `{projectId}`；history 按对话返回 `conversations`，另接受原样返回的 `cursor`，不含诊断运行 |
 | `agent task conversation` | `{projectId, conversationId, cursor?}`；升序分页读取本对话轮次摘要，逐轮详情使用 status |
 | `agent task status` | `{projectId, runId}`；读取持久快照 |
-| `agent task checks` | `{projectId, runId, preflight?}`；`preflight` 为可选布尔值，默认不跑完整预检，`true` 才运行；只读计算本轮检查，恢复副本可用，不调用模型或查询供应商 |
+| `agent task checks` | `{projectId, runId, preflight?}`；`preflight` 为可选布尔值，默认不跑完整预检，`true` 才运行；只读计算本轮检查，不调用模型或查询供应商 |
 | `agent task send/lookup` | send 为 `{projectId, requestId, expectedSettingsRevision, text, conversationId?, locale?, uploads?, policy?}`；`policy` 为 `{modes, acknowledgePaid?}`，只用于新对话，与第一轮一起保存；lookup 为 `{projectId, requestId}` |
 | `agent task upload/upload-lookup` | upload 为 `{projectId, requestId, name?, mimeType?}` 加 `--file`；返回托管句柄。lookup 为 `{projectId, requestId}` |
 | `agent task pause/resume/retry/stop/approve/deny/skip` | `{projectId, runId, requestId, expectedRevision, stepId?}`；approve/deny 使用快照中的精确 stepId；retry 可携带最后失败步骤的 stepId |
@@ -86,7 +86,7 @@ mioon agent settings secret set --input-file ./metadata.json --key-stdin --stora
 
 每轮执行、上传、策略和控制写入必须保留调用者自己的 requestId；CLI 不生成它，也不自动提交第二次。响应丢失或无法验证时返回 UNKNOWN 与对应 GET lookup；只查原操作，不换 ID、不自动重发。settings PUT 没有 requestId/持久回执，因此未知时在同一个已绑定本地连接上只追加一次有界 GET，错误仍报告未知，并附 revision、配置是否匹配、configured/storage 的公开观察值；不能把 configured=true 当作新密钥已经保存的证明。读回失败也只报告观察不可用，不重发 PUT；Ctrl+C 不再发起读回。后续可手动 `agent settings get` 核对。
 
-所有 Agent 命令仍只向 stdout 输出一个 JSON envelope；watch/events 的持久快照进度写到 stderr。SSE `after` 是序列游标，流中只有 changed 通知，CLI 会重新读取持久快照；断线也只 GET 恢复。events 是同一观察方式，不声称导出完整原始事件日志。等待审批、预算暂停、中断或未知时退出 3 并返回 `action_needed`；失败/停止退出 6，成功退出 0，期限退出 5，Ctrl+C 退出 130 且仅停止本地观察，不停止 Run。继续、批准、停止和未知处置均需要新的明确控制命令。`--workspace-origin` 不适用于这些管理 REST，明确拒绝，不能被当作 HTTP Origin 或静默丢弃。
+所有 Agent 命令仍只向 stdout 输出一个 JSON envelope；watch/events 的持久快照进度写到 stderr。SSE `after` 是序列游标，流中只有 changed 通知，CLI 会重新读取持久快照；断线也只 GET 恢复。events 是同一观察方式，不声称导出完整原始事件日志。等待审批、预算暂停、中断或未知时退出 3 并返回 `action_needed`；失败/停止退出 6，成功退出 0，期限退出 5，Ctrl+C 退出 130 且仅停止本地观察，不停止 Run。继续、批准、停止和未知处置均需要新的明确控制命令。CLI 不接受已退役的 `--workspace-origin`，也不会将它当作 HTTP Origin。
 
 From the source checkout:
 
@@ -100,120 +100,9 @@ node apps/cli/src/index.ts --help
 
 `mioon` is the bin of `@mioon/cli`. These instructions do not install globally, edit your agent configuration, open accounts, or enable paid generation.
 
-## Offline whole-workspace backup
+## 已退役的工作区入口
 
-`node apps/cli/src/backup.ts` (also `pnpm backup`) is a separate local filesystem
-command. It never starts the
-backend, resolves a connection descriptor, reads token configuration, contacts a
-provider, or resumes a task. Node.js 24+ and the source workspace dependencies
-are required. Stop every backend/desktop instance using the selected workspace
-before capture, then use explicit canonical absolute paths:
-
-Windows source CLI supports this flow on fixed local NTFS after explicitly
-building the complete [Node-API helper](../packages/node-host/README.md). Offline
-commands initialize the same verified backend and require its managed streaming
-capability; a missing or incomplete helper refuses before locks or destination
-creation. Copies use bounded chunks and opaque verified handle leases, with full
-file identities, directory flushes and no-clobber publication. Native Windows 11
-ARM64 create/verify/restore/status and bundle evidence is recorded in
-[CLI acceptance](verification/ai-workflows-acceptance/CLI-SDK-ACCEPTANCE.md).
-
-The legacy manual-draft store remains unavailable on Windows; its draft-protected
-`project.delete` flow consequently refuses too. The separate v2 SQLite editing
-claims and CLI task controls remain available. Windows desktop packaging and
-native x64 certification are outside this delivery.
-
-```sh
-node apps/cli/src/backup.ts --help
-node apps/cli/src/backup.ts --version
-node apps/cli/src/backup.ts create --source /absolute/workspace --destination /absolute/new-backup
-node apps/cli/src/backup.ts verify --directory /absolute/backup
-# Equivalent source-checkout launcher:
-pnpm backup --help
-```
-
-The destination must not exist, its direct parent must already exist, and source
-and destination must not overlap. Existing locks, uncheckpointed SQLite WAL or
-journal contents, unsafe permissions/links and unsupported storage privacy are
-refused without repair. Creation uses only its own temporary workspace lock and
-does not migrate or initialize the database. SIGINT/SIGTERM request cancellation
-and wait for local cleanup attempts; unconfirmed source lock release is reported
-explicitly. Incomplete files may remain in the new destination. There is no
-overwrite, automatic retry or destination deletion.
-
-This captures the whole workspace across all projects, including the database
-and supported managed media/staging payloads. The database includes chats,
-prompts, request/replay caches and other user text that may contain secrets.
-App credential, settings and connection files are excluded, but this is not a
-secret-redacted export. Backups are private plaintext, not encrypted. Keep them
-private, and do not upload or share one without reviewing its contents.
-
-Every invocation produces one JSON envelope on stdout, including offline help,
-version and errors. Successful capture/verification returns the shared backup
-result with `integrity:"verified"`, `restoration:"not_tested"`, payload counts and
-bounded inventory issues. Inspect `inventory.complete` and `inventory.issues`:
-verified bytes do not imply every referenced media item was present or that
-pending work is resolved. Verification does not repair, import or resume work.
-Verification alone does not restore data or grant execution. The separate guarded restore workflow below supports fixed schema24 original backups.
-
-Errors contain only a safe code/message, allowlisted details and `retryable:false`;
-concise diagnostics go to stderr. Exit codes are 0 for success, 2 for invalid
-arguments/paths, 1 for operational refusal/failure, 130 for SIGINT cancellation,
-and 143 for SIGTERM cancellation. Flags must be exact and unique; no stdin,
-credential, destination-reuse or server options are accepted. Each offline command accepts only its own strict options. The
-ordinary authenticated `mioon workspace backup inspect` operation is a separate
-bounded read of running-backend metadata; it cannot select filesystem paths or
-create a backup.
-
-If source lock cleanup cannot be confirmed, a successfully published backup
-remains successful with `warnings:["SOURCE_LOCK_RELEASE_UNCONFIRMED"]`. A failed
-or cancelled operation keeps its original error code and adds only
-`details.sourceLockRelease:"unconfirmed"`. Preserve the reported outcome and
-inspect the source lock before starting another capture; release is not
-silently assumed, and no existing lock is automatically reclaimed. Always
-inspect result warnings and inventory alongside the exit status; exit 0 alone
-does not establish source lock cleanup or inventory completeness.
-
-`WORKSPACE_BACKUP_PUBLICATION_UNCONFIRMED` means final publication durability or
-rollback could not be confirmed: a complete marker may already exist. Preserve
-that destination and run the separate `verify` command. Marker presence alone
-is not proof of a complete backup;
-do not assume capture failed without publishing or overwrite/retry in place.
-
-## Guarded offline restoration
-
-From a verified original schema24 backup, use a new independent destination:
-
-```sh
-node apps/cli/src/backup.ts restore --directory /absolute/original-backup --destination /absolute/new-workspace
-# Read-only discovery when the original restore stdout was completely lost:
-node apps/cli/src/backup.ts restore-status --directory /absolute/original-backup --destination /absolute/new-workspace
-```
-
-The target's parent must exist. Existing targets, locks, partial publication and
-unsupported privacy/schema are never repaired or overwritten. For the exact-ID
-status mode, use all four returned `--restoration-id`, `--backup-id`,
-`--manifest-hash`, `--source-db-hash` flags with `--destination`; do not mix that
-mode with `--directory`. Status returns only `observed_guarded` and
-`durability:"not_reconfirmed"`, not proof of the previous command's successful
-completion or crash durability. Preserve uncertain targets and original backups.
-
-A restored branch permits explicit fresh local imports/edits/previews/exports.
-Captured tasks, approvals, unknown outcomes and requests remain held, unchanged.
-New provider/image/Agent/Comfy/frame/waveform execution and recursive backup
-creation are unavailable in this first profile. Keep the original backup. No
-backend starts automatically. Web can explicitly select `MIOON_DATA_DIR`; for
-Desktop restore into a new root's `workspace` child and select that root with
-`MIOON_DESKTOP_USER_DATA`. Never copy old credentials/session files into it.
-See [the exact restore contract and validation status](WORKSPACE-RESTORE.md).
-
-For a running restored backend, `mioon workspace restore inspect` takes `{}` and
-reads the safe origin/restriction summary. Explicit fresh local effects require
-`--workspace-origin UUID`; omission or another origin refuses. Pin the value once
-for that intended branch; do not automatically adopt a different origin on
-reconnect. Original domain inputs/keys/CAS and exact old receipts stay unchanged.
-This origin is a mismatch guard, not paid-generation permission. Ordinary
-workspaces retain their existing commands and default wire shape.
+五个 `workspace.backup.*` 操作和 `workspace.restore.inspect` 已从 schema、CLI 和 MCP 发现列表删除。直接调用返回 `UNKNOWN_OPERATION`；CLI 退出 2，MCP 返回 `isError:true`。`--workspace-origin` 已删除，离线 `backup.ts` / `pnpm backup` 入口不再提供。当前单项目备份使用 `project.backup.*`，见 [项目备份](PROJECT-BACKUPS.md)。
 
 ## Connect securely
 
@@ -1208,7 +1097,7 @@ On a lost response, retain the original complete JSON and key; do not rebuild it
 
 Discover `mioon schema timeline.export.samplePeak`, then explicitly call `mioon timeline export samplePeak --input '{"projectId":"11111111-1111-4111-8111-111111111111","exportId":"22222222-2222-4222-8222-222222222222"}'`. This checks an existing succeeded timeline MP4; no request ID, file path or caller hash is accepted. It can consume local CPU/file reads for a bounded 120-second attempt (shared-client default125s unless explicitly overridden). Ctrl+C cancels this observation, not the original export. Output loss does not trigger an automatic retry.
 
-This is decoded sample peak of the final artifact, not loudness or true peak. Reports are ephemeral; unsupported/incomplete/stale checks leave existing downloads usable. Restored-v1 branches explicitly refuse the new analysis. See [contract and limits](EXPORT-SAMPLE-PEAK.md).
+This is decoded sample peak of the final artifact, not loudness or true peak. Reports are ephemeral; unsupported/incomplete/stale checks leave existing downloads usable. See [contract and limits](EXPORT-SAMPLE-PEAK.md).
 
 
 ## Explicit exported-file loudness check
@@ -1219,7 +1108,7 @@ Discover `mioon schema timeline.export.loudness`, then use `mioon timeline expor
 
 Discover `mioon schema timeline.loudness.prepare`, then use `mioon timeline loudness prepare --input '<JSON>'` (or `mioon rpc timeline.loudness.prepare`). Supply the owned `projectId`, saved `expectedRevision`, fixed `mixProfile:"timeline-float-mix-v1"`, fixed `measurementProfile:"bs1770-5-48k-stereo-fir4x-v1"` and explicit user-selected `target:{integratedLufs,truePeakCeilingDbtp}`. No target/profile is defaulted; no request ID, path, URL, export ID, arbitrary file flag or permission flag is accepted.
 
-This complete pre-encode float-mix observation returns the original measurement and, if every resulting gain is representable, a separately measured fixed-multiplier candidate. Passing target/true-peak checks leaves `applyAllowed:false`; nothing is edited, queued or exported. The bounded local work uses120s with125s shared-client grace and a64KiB response reader. Ctrl+C retires only its owned observation; response loss never triggers an automatic retry. Restored-v1 refuses it. See [exact report boundary](API.md#saved-timeline-full-mix-loudness-preparation).
+This complete pre-encode float-mix observation returns the original measurement and, if every resulting gain is representable, a separately measured fixed-multiplier candidate. Passing target/true-peak checks leaves `applyAllowed:false`; nothing is edited, queued or exported. The bounded local work uses120s with125s shared-client grace and a64KiB response reader. Ctrl+C retires only its owned observation; response loss never triggers an automatic retry. See [exact report boundary](API.md#saved-timeline-full-mix-loudness-preparation).
 
 ## Explicit atomic fixed-gain application
 

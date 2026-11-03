@@ -6,7 +6,7 @@ import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';

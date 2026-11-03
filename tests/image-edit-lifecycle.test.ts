@@ -21,7 +21,7 @@ import {FRAME_PROFILE_ID,FRAME_SELECTION_RULE} from '../packages/contracts/src/f
 import {createComfySettings} from '../packages/business/src/comfy/settings.ts';
 import {DEFAULT_COMFY_IMAGE_CONFIGURATION,COMFY_IMAGE_OPTIONS} from '../packages/contracts/src/comfy-images.ts';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {validateImageTaskReview} from '../packages/business/src/images/reviews.ts';
 import {createImageServices} from '../packages/business/src/images.ts';
 import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';

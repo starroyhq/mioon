@@ -4,7 +4,6 @@ import { projectRpcPath } from '../../../packages/contracts/src/project-file.ts'
 
 export interface TimelineClipLoudnessWireOptions {
   readonly signal?: AbortSignal;
-  readonly expectedWorkspaceOrigin?: string;
   readonly fetch?: typeof fetch;
   /** Tests may shorten the fixed deadline; it can never be extended. */
   readonly timeoutMs?: number;
@@ -39,8 +38,7 @@ export async function readTimelineClipLoudnessRpc(rawInput: unknown, options: Ti
     let response: Response;
     try {
       response = await observe((options.fetch ?? fetch)(projectRpcPath(parsed.data.projectId), { method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'timeline.clip.loudness', input: parsed.data,
-          ...(options.expectedWorkspaceOrigin ? { expectedWorkspaceOrigin: options.expectedWorkspaceOrigin } : {}) }), signal: controller.signal }).then(value => {
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'timeline.clip.loudness', input: parsed.data }), signal: controller.signal }).then(value => {
           if (controller.signal.aborted) { void value.body?.cancel().catch(() => {}); throw cancelled(); }
           return value;
         }), controller.signal, cancelled);

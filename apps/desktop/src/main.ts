@@ -18,7 +18,6 @@ import {createMediaToolsInstaller} from './media-tools.ts';
 import type {MediaToolsInstaller, MediaToolsInstallOutcome} from './media-tools.ts';
 import {MEDIA_TOOLS_CANCEL_TITLE, mediaToolsProgressScript, mediaToolsProgressUrl, megabytes} from './media-tools-window.ts';
 import {WORKSPACE_TOOLS_CHANNEL,workspaceInfoSchema} from '../../../packages/contracts/src/workspace-info.ts';
-import {workspaceSettingsSchema} from '../../../packages/contracts/src/workspace-configuration.ts';
 import {WORKSPACE_NATIVE_CHANNEL} from '../../../packages/contracts/src/workspace-native.ts';
 import {createWorkspaceNativeHost,readNativeBackendMetadata} from './workspace-native-host.ts';
 import {createProjectFileOpener,uploadProjectFile,projectFileArguments} from './project-file-open.ts';
@@ -540,9 +539,6 @@ async function start(): Promise<DesktopStartReport> {
         if(!window||!owner||!owner.isCurrent()||!ownsWindow(window,context)||event.senderFrame!==window.webContents.mainFrame||event.senderFrame!==owner.frame||event.senderFrame?.url!==owner.url)return null;
         return {projectId:owner.role==='editor'?(owner.projectId??undefined):undefined,isCurrent:()=>{try{nativeBackendCurrent();return !restarting&&owner.isCurrent()&&ownsWindow(window,context)&&event.senderFrame===window.webContents.mainFrame&&event.senderFrame===owner.frame&&event.senderFrame?.url===owner.url;}catch{return false;}}};
       },
-      chooseDirectory:async()=>{const result=await dialog.showOpenDialog({title:nt('native.chooseBackupLocation'),properties:['openDirectory','createDirectory']});return result.canceled||result.filePaths.length!==1?null:result.filePaths[0];},
-      setBackupDirectory:directory=>{nativeBackendCurrent();return ownedBackend.setBackupDirectory(directory);},
-      readSettings:async()=>workspaceSettingsSchema.parse(await nativeRead('/api/rpc',{operation:'workspace.settings.get',input:{}})),
       readWorkspaceRoot:async projectId=>workspaceInfoSchema.parse(await nativeRead(projectApiPath(projectId,'workspace-info'))).dataDirectory,
       readExport:identity=>nativeRead(projectRpcPath(identity.projectId),{operation:'export.output.get',input:identity}),
       openPath:file=>shell.openPath(file),revealPath:file=>shell.showItemInFolder(file),restart,

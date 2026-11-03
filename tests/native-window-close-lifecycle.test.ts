@@ -66,7 +66,7 @@ function fixture({ native = true, unknown = true, writesChangeState = false } = 
     clipDraftRef: { current: clip }, shotCloseRef: { current: null }, timelineFormatRef: { current: null }, deliveryNameRef: { current: null },
     subtitlesRef: { current: null }, subjectsRef: { current: null }, dirtyRef: { current: false },
     importSession: { current: { active: true } }, currentProject: { current: 'a' }, projectEpoch: { current: 1 }, navigationEpoch: { current: 1 },
-    workspaceRef: { current: { restored: false } }, workspaceOriginScope: () => 'normal',
+    editorSession: {current: 'current-editor-session'},
   };
   Function('env', `with (env) { ${flushEffect}\n${admissionEffect} }`)(env);
   const admission = window.__mioonNativeCloseAdmission;

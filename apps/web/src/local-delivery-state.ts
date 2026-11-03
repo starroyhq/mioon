@@ -11,7 +11,7 @@ import { readEditorRetentionIdentity } from './editor-window-close.ts';
 
 export interface LocalDeliveryContext {
   scope: string; projectId: string | null; timelineId: string | null; timelineRevision: number | null;
-  restored: boolean; connected: boolean; visible: boolean; busy: boolean;
+   connected: boolean; visible: boolean; busy: boolean;
   deliveryName: string; nameVersion: number; dirty: boolean; executionEpoch?: string | number;
 }
 export interface LocalDeliveryCapture {
@@ -57,7 +57,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
   // Only an unresolved title PUT is retained, with its original CAS and owner.
   const uncertainDraftWrites = new Map<string, LocalDeliveryDraftPut>();
   const captures = new WeakSet<LocalDeliveryCapture>();
-  const initialState = (): LocalDeliveryState => ({ scope: context.scope, projectId: context.projectId, phase: context.restored ? 'unsupported' : 'loading',
+  const initialState = (): LocalDeliveryState => ({ scope: context.scope, projectId: context.projectId, phase: 'loading',
     deliveryName: context.deliveryName, dirty: context.dirty, baseline: context.dirty && context.timelineId && context.timelineRevision ? { timelineId: context.timelineId, baseRevision: context.timelineRevision } : null,
     baselineConflict: false, candidate: null, savedAt: null, draftFailure: null, draftError: '', draftErrorDisplay: undefined, autosavePaused: Boolean(context.projectId && uncertainDraftWrites.has(context.projectId)), leaveWithoutSaving: false,
     draftRetry: context.projectId && uncertainDraftWrites.has(context.projectId) ? 'same' : null, retainedDraftWrite: context.projectId ? copy(uncertainDraftWrites.get(context.projectId) ?? null) : null,
@@ -103,7 +103,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
     const retained = context.projectId ? uncertain.get(context.projectId) : null;
     return Boolean(retained && (!envelope?.intent || envelope.intent.intentId !== retained.intentId || !sameLocalDeliveryValue(envelope.intent.input, retained.input)));
   };
-  const readyToSave = () => active && loaded && envelope && context.connected && !context.restored && context.projectId && state.dirty && !state.candidate && !state.autosavePaused && !operation && !preparationUnconfirmed();
+  const readyToSave = () => active && loaded && envelope && context.connected && context.projectId && state.dirty && !state.candidate && !state.autosavePaused && !operation && !preparationUnconfirmed();
   function schedule() { if (timer) clearTimeout(timer); timer = undefined; if (readyToSave() && !saving) timer = setTimeout(() => { timer = undefined; void flush(); }, delay); }
   function capture(): LocalDeliveryCapture {
     sync(); const token = Object.freeze({ scope: context.scope, projectId: context.projectId, timelineId: context.timelineId, baseRevision: context.timelineRevision, deliveryName: context.deliveryName, nameVersion: context.nameVersion, serial, generation, executionEpoch: context.executionEpoch });
@@ -113,7 +113,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
     sync(); return captures.has(token) && belongs(token.generation) && token.serial === serial && token.scope === context.scope && token.projectId === context.projectId && token.nameVersion === context.nameVersion && token.deliveryName === context.deliveryName && token.executionEpoch === context.executionEpoch;
   }
   async function load(): Promise<void> {
-    sync(); if (!active || !context.projectId || context.restored || saving || operation) return;
+    sync(); if (!active || !context.projectId || saving || operation) return;
     const owner = generation, reading = ++readSerial, projectId = context.projectId, previous = envelope;
     emit({ phase: 'loading' });
     try {
@@ -133,7 +133,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
   async function flush(force = false, explicitRetry = false): Promise<boolean> {
     sync(); if (timer) clearTimeout(timer); timer = undefined;
     if (saving) { const owner = generation; await saving; sync(); if (!belongs(owner)) return false; }
-    if (!loaded || !envelope || !context.projectId || context.restored || !context.connected || state.candidate || state.autosavePaused || operation || preparationUnconfirmed()) return false;
+    if (!loaded || !envelope || !context.projectId || !context.connected || state.candidate || state.autosavePaused || operation || preparationUnconfirmed()) return false;
     if (!state.dirty && !force) return true;
     const baseline = state.baseline ?? (context.timelineId && context.timelineRevision ? { timelineId: context.timelineId, baseRevision: context.timelineRevision } : null);
     if (!baseline) return false;
@@ -163,7 +163,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
     saving = work; try { return await work; } finally { if (saving === work) saving = null; if (belongs(owner) && serial !== savedSerial && !explicitRetry) schedule(); }
   }
   function canPrepare(): boolean {
-    sync(); return Boolean(active && loaded && envelope && context.projectId && context.timelineId && context.timelineRevision && context.connected && context.visible && !context.busy && !context.restored && !operation && !saving && !draftRetryFlight && !state.candidate && !state.autosavePaused && !state.baselineConflict && !state.pending);
+    sync(); return Boolean(active && loaded && envelope && context.projectId && context.timelineId && context.timelineRevision && context.connected && context.visible && !context.busy && !operation && !saving && !draftRetryFlight && !state.candidate && !state.autosavePaused && !state.baselineConflict && !state.pending);
   }
   async function executeOriginal(next: LocalDeliverySupported, token: LocalDeliveryCapture, recovered: boolean, nameCapture: unknown): Promise<unknown | null> {
     const intent = next.intent; if (!intent) throw localDeliveryProtocolError();
@@ -229,7 +229,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
       serial++; emit({ deliveryName: candidate.raw.deliveryName, dirty: true, candidate: null, baseline: { timelineId: candidate.timelineId, baseRevision: candidate.baseRevision }, phase: 'saved', savedAt: candidate.updatedAt }); return true;
     },
     async retryDraftSave(token = capture()): Promise<boolean> {
-      if (!isCurrent(token) || !context.visible || !context.connected || context.restored || operation || saving || draftRetryFlight || !state.autosavePaused || !state.draftRetry || preparationUnconfirmed()) return false;
+      if (!isCurrent(token) || !context.visible || !context.connected || operation || saving || draftRetryFlight || !state.autosavePaused || !state.draftRetry || preparationUnconfirmed()) return false;
       const owner = generation, mode = state.draftRetry, beforeRead = envelope ? copy(envelope) : null, previousCandidate = state.candidate, retryLock = {};
       draftRetryFlight = retryLock; emit({ busy: true });
       try {
@@ -334,7 +334,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
       finally { if (operation === lock) operation = null; if (belongs(owner)) { emit({ busy: false }); schedule(); } }
     },
     async recover(token = capture()): Promise<unknown | null> {
-      if (!isCurrent(token) || !context.visible || !context.connected || context.restored || context.busy || !loaded || !envelope || operation || saving || draftRetryFlight) return null;
+      if (!isCurrent(token) || !context.visible || !context.connected || context.busy || !loaded || !envelope || operation || saving || draftRetryFlight) return null;
       let previous = copy(envelope);
       const retained = uncertain.get(previous.projectId);
       if (!previous.intent && !retained) return null;

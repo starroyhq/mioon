@@ -75,10 +75,10 @@ export interface AssetLibraryProps {
   onLocateTimelineUse?: ((use: TimelineAssetUse, isStillCurrent: () => boolean) => void) | undefined;
   annotations?: Annotations;
   annotationBlocked?: unknown;
-  restored?: unknown;
+
   confirm?: unknown;
 }
-export default function AssetLibrary({ activeTab, onTabChange, assets, filter, onFilter, search, onSearch, onImport, onFiles, onPreview, onCanvas, onTimeline, onDetectScenes, busy, collapsed, onCollapse, project, mode = 'canvas', versions = [], shots = [], dispositions, dispositionBlocked, selectedAsset, inUseAssetIds = new Set<string>(), onShowTasks, subjects, subjectBlocked, onInspectShot, onInspectSubject, inspectedSubjectId, timelineUsage, onLocateTimelineUse, annotations, annotationBlocked, restored, confirm }: AssetLibraryProps) {
+export default function AssetLibrary({ activeTab, onTabChange, assets, filter, onFilter, search, onSearch, onImport, onFiles, onPreview, onCanvas, onTimeline, onDetectScenes, busy, collapsed, onCollapse, project, mode = 'canvas', versions = [], shots = [], dispositions, dispositionBlocked, selectedAsset, inUseAssetIds = new Set<string>(), onShowTasks, subjects, subjectBlocked, onInspectShot, onInspectSubject, inspectedSubjectId, timelineUsage, onLocateTimelineUse, annotations, annotationBlocked,  confirm }: AssetLibraryProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const editing = mode === 'editing';
   const [libraryTab, setLibraryTab] = useState<{scope: string | undefined; value: AssetLibraryTab}>({ scope: undefined, value: 'assets' });
@@ -172,7 +172,7 @@ export default function AssetLibrary({ activeTab, onTabChange, assets, filter, o
         onDetectScenes={onDetectScenes ? () => onDetectScenes(menuAsset) : undefined} />}
       <div className="asset-bottom"><Icon name="lock" size={12} /><span>{t('assets.localOnly')}</span></div>
       </div></WorkspaceVisibilityProvider>
-      {subjects && <WorkspaceVisibilityProvider visible={libraryView === 'subjects'}><div className="library-view-pane" id="library-subjects-pane" role="tabpanel" aria-labelledby="library-subjects-tab" hidden={libraryView !== 'subjects'} inert={libraryView !== 'subjects'}><SubjectLibrary restored={Boolean(restored)} subjects={subjects} assets={assets} shots={shots} blocked={subjectBlocked} onShowTasks={onShowTasks} onInspectShot={onInspectShot} onInspectSubject={onInspectSubject} inspectedSubjectId={inspectedSubjectId} /></div></WorkspaceVisibilityProvider>}
+      {subjects && <WorkspaceVisibilityProvider visible={libraryView === 'subjects'}><div className="library-view-pane" id="library-subjects-pane" role="tabpanel" aria-labelledby="library-subjects-tab" hidden={libraryView !== 'subjects'} inert={libraryView !== 'subjects'}><SubjectLibrary  subjects={subjects} assets={assets} shots={shots} blocked={subjectBlocked} onShowTasks={onShowTasks} onInspectShot={onInspectShot} onInspectSubject={onInspectSubject} inspectedSubjectId={inspectedSubjectId} /></div></WorkspaceVisibilityProvider>}
     </CollapsibleContent>
   </Collapsible>;
 }

@@ -1,12 +1,10 @@
-import {legacyWorkspaceSceneSnapshotSchema,legacyWorkspaceSceneShotsSnapshotSchema} from '../../contracts/src/scene-tasks.ts';
+import {assertProjectStore} from './store-runtime.ts';
 import path from 'node:path';
 import {isProjectStore} from './project-file/store.ts';
 import {prepareProjectAssetFullHash, referenceForPublishedMedia, registerProjectMediaStore} from './project-media-storage.ts';
 import {mediaLocatorFields, sameMediaLocator, hasAssetReference, validAssetLocator} from './asset-reference-record.ts';
 import {mioTable} from './agent/mio-table-layout.ts';
 import {taskEffectOrigin,bindAgentTaskJobInside,assertAgentTaskJobEffect,withAgentTaskJobOrigin,isAgentTaskEffectBlocked,setAgentTaskJobResumer,setAgentTaskJobStopper,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
-import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
-import {workspaceRestoreError} from './workspace-restore-policy.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import type {DatabaseSync,SQLInputValue} from 'node:sqlite';
 import {AppError,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,SCENE_DETECTION_PROFILE_ID,SCENE_KEYFRAME_PROVENANCE,SCENE_LIMITS,SCENE_MUTATION_OPERATIONS,SCENE_REFUSAL_CODES,
@@ -24,7 +22,7 @@ import {createSceneShotsStorage} from './scene-shots-storage.ts';
 import {validatePng} from './images/png.ts';
 import {validateManagedSource,sameManagedFile} from './managed-media.ts';
 import type {ManagedFileIdentity,ManagedSource} from './managed-media.ts';
-import {ownsStoreLock} from './db.ts';
+import {ownsStoreLock} from './store-runtime.ts';
 import {boundedShutdown,assertMediaTerminated} from './operation-lifecycle.ts';
 import {hasUnconfirmedMediaProcesses,terminateMediaProcesses,waitForMediaProcesses} from './media-processes.ts';
 
@@ -83,7 +81,7 @@ const stopCodes=new Set(['MEDIA_CANCELLED','SCENE_INTERRUPTED','SCENE_SERVICE_ST
  * result. A storyboard stages one keyframe per segment, publishes them, then
  * creates every image asset and shot in one transaction. */
 export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect=detectManagedScenes,decodeKeyframes=decodeSceneKeyframes,autoRun=true,fault=noop}: SceneServicesOptions={}): SceneService {
- if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
+ assertProjectStore(store);
  const old=owners.get(store.db);
  if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.detect!==detect||old.decodeKeyframes!==decodeKeyframes||old.autoRun!==autoRun||old.fault!==fault)fail('SCENE_SERVICE_ACTIVE');return old.service;}
  const {db,root,tx}=store,queue: {id: string; projectId: string}[]=[],pending=new Set<string>(),active=new Set<Promise<unknown>>(),attemptSignals=new Set<AbortSignal>();
@@ -162,7 +160,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
    const snapshot={schemaVersion:1,projectId:input.projectId,taskId:id,kind:'detect',
     source:{assetId:source.id,sha256:source.sha256,mimeType:source.mimeType,sizeBytes:source.sizeBytes,...mediaLocatorFields(source),duration:source.duration},
     options,profileId:SCENE_DETECTION_PROFILE_ID,fps:SOURCE_RANGE_FPS};
-   if(!(isProjectStore(store)?sceneSnapshotSchema:legacyWorkspaceSceneSnapshotSchema).safeParse(snapshot).success)fail('SCENE_SOURCE_INVALID');
+   if(!sceneSnapshotSchema.safeParse(snapshot).success)fail('SCENE_SOURCE_INVALID');
    sourceFile(source);
    const timestamp=now(),value={id,projectId:input.projectId,kind:'detect',requestId:input.requestId,sourceAssetId:input.sourceAssetId,sourceHash:input.sourceHash,
     options,profileId:SCENE_DETECTION_PROFILE_ID,fps:SOURCE_RANGE_FPS,state:'queued',revision:1,started:false,result:null,progress:null,errorCode:null,createdAt:timestamp,updatedAt:timestamp};
@@ -227,7 +225,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
    const snapshot={schemaVersion:1,projectId:input.projectId,taskId:id,kind:'shots',
     source:{assetId:source.id,sha256:source.sha256,mimeType:source.mimeType,sizeBytes:source.sizeBytes,...mediaLocatorFields(source),duration:source.duration,width:source.width,height:source.height},
     resultId:base.id,frameCount:base.frameCount,frame:{profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE,fps:SOURCE_RANGE_FPS},aspectRatio,titlePrefix,origin,segments};
-   if(!(isProjectStore(store)?sceneShotsSnapshotSchema:legacyWorkspaceSceneShotsSnapshotSchema).safeParse(snapshot).success)fail('SCENE_SOURCE_INVALID');
+   if(!sceneShotsSnapshotSchema.safeParse(snapshot).success)fail('SCENE_SOURCE_INVALID');
    sourceFile(source);
    const timestamp=now(),value={id,projectId:input.projectId,kind:'shots',requestId:input.requestId,sourceAssetId:input.sourceAssetId,sourceHash:input.sourceHash,resultId:base.id,
     segments:[...input.segments],titlePrefix,aspectRatio,state:'queued',revision:1,started:false,shots:null,progress:null,undo:null,errorCode:null,createdAt:timestamp,updatedAt:timestamp};

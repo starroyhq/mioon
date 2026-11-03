@@ -1,3 +1,5 @@
+
+import {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile} from '@mioon/contracts/private-storage';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import type {OrdinaryLocalDelivery,OrdinaryDeliveryEnvelope} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {LocalDeliveryOptions,LocalDeliveryGuards} from '../packages/business/src/local-delivery.ts';
@@ -9,13 +11,14 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync,rmSync,existsSync,readFileSync,writeFileSync,statSync,copyFileSync,symlinkSync,linkSync,chmodSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {openStore,openLegacyWorkspaceStore,ownsStoreLock,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
 import {createTimelineRecoveryBoundary,readTimelineReceipt, type TimelineRecoveryInput} from '../packages/business/src/timeline-recovery.ts';
 import {createLocalDelivery,LOCAL_DELIVERY_FILENAME} from '@mioon/business/local-delivery';
 import {LOCAL_DELIVERY_LIMITS,createLocalDeliverySchemas} from '@mioon/contracts/local-delivery';
 import {schemas,isTimelineMutationResponse,hasRequestNotAppliedProof,publicValue,AppError} from '@mioon/contracts';
-import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
+
 import {schemaObjects,withoutForeignKeys} from './helpers/project-database.ts';
 import {writeStubMediaFixture} from './helpers/media-reference-fixtures.ts';
 const storage={readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile};
@@ -24,8 +27,8 @@ const code=(value: string)=>(error: { code: string; message: string|string[]; })
 const authority=(value: Pick<OrdinaryDeliveryEnvelope, 'workspaceScope'|'instanceId'|'projectId'>)=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId});
 const action=(value:OrdinaryDeliveryEnvelope)=>({...authority(value),intentId:value.intent!.intentId,expectedIntentRevision:value.intentRevision});
 const deferred=<T=void>()=>Promise.withResolvers<T>();
-async function fixture(t: test.TestContext,{legacy=false,mimeType='image/png'}={}){
-  const root=mkdtempSync(path.join(tmpdir(),'mioon-local-delivery-'));const open=legacy?openLegacyWorkspaceStore:openStore;let store=(open(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices),delivery:OrdinaryLocalDelivery,fault:(point:string)=>void=()=>{},render:(input:LocalDeliveryRenderInput)=>Promise<unknown>,extraGuards:Partial<LocalDeliveryGuards>={};let calls: (unknown)[]=[];
+async function fixture(t: test.TestContext,{mimeType='image/png'}={}){
+  const root=mkdtempSync(path.join(tmpdir(),'mioon-local-delivery-'));const open=openStore;let store=(open(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices),delivery:OrdinaryLocalDelivery,fault:(point:string)=>void=()=>{},render:(input:LocalDeliveryRenderInput)=>Promise<unknown>,extraGuards:Partial<LocalDeliveryGuards>={};let calls: (unknown)[]=[];
   const project=await services.call('project.create',{name:'Local delivery'}),assetId=randomUUID();
   const media=writeStubMediaFixture(root,assetId,mimeType);
   store.put('assets',{id:assetId,projectId:project.id,name:'Synthetic',mimeType,duration:mimeType.startsWith('video/')?3:0,width:2,height:2,hasVideo:true,hasAudio:false,provenance:'user-import',...media,createdAt:new Date().toISOString()});
@@ -33,7 +36,7 @@ async function fixture(t: test.TestContext,{legacy=false,mimeType='image/png'}={
   let timeline=await services.call('timeline.get',{projectId:project.id});
   timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:90});
   const originalRender=(input: unknown)=>services.call('timeline.render',input);render=originalRender;
-  const guards=()=>({ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),
+  const guards=()=>({ownsLock:()=>ownsStoreLock(store),
     readTimeline:(id: unknown)=>createTimelineRecoveryBoundary(store.db,({projectId:id} as unknown as Parameters<typeof createTimelineRecoveryBoundary>[1])).read({sourceSemantics:false}),
     isRenderInput:(value: unknown)=>schemas['timeline.render'].safeParse(value).success,
     isRenderResponse:(input: unknown,value: unknown)=>isTimelineMutationResponse('timeline.render',input,value),
@@ -50,7 +53,7 @@ async function fixture(t: test.TestContext,{legacy=false,mimeType='image/png'}={
     draft:value.draft?{draftId:value.draft.draftId,revision:value.draftRevision,raw:value.draft.raw}:null,
     input:{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',...(value.draft?.raw.deliveryName?{deliveryName:value.draft.raw.deliveryName}:{})},...patch});
   return {root:localRoot(),file:path.join(localRoot(),LOCAL_DELIVERY_FILENAME),project,asset,timeline,get,put,prepare,start,originalRender,get store(){return store;},get services(){return services;},get delivery(){return delivery;},get calls(){return calls;},
-    setFault(fn: (point:string)=>void){fault=fn;},setRender(fn: (input:LocalDeliveryRenderInput)=>Promise<unknown>){render=fn;},setExportInspect(inspect: { (): Promise<{ status: string; code: string; }>; (): Promise<{ status: string; code: string; }>; (): Promise<{ status: string; code: string; }>; }){services=(createServices(store,new Map(),{exportOptions:{inspect}}) as TypedServices);},setGuards(value: { isRestored?: () => boolean; }){extraGuards=value;start();},
+    setFault(fn: (point:string)=>void){fault=fn;},setRender(fn: (input:LocalDeliveryRenderInput)=>Promise<unknown>){render=fn;},setExportInspect(inspect: { (): Promise<{ status: string; code: string; }>; (): Promise<{ status: string; code: string; }>; (): Promise<{ status: string; code: string; }>; }){services=(createServices(store,new Map(),{exportOptions:{inspect}}) as TypedServices);},setGuards(value: Partial<Pick<import('../packages/business/src/local-delivery.ts').LocalDeliveryGuards,'ownsLock'>>){extraGuards=value;start();},
     restart(){store.close();store=(open(root) as TypedStore);services=(createServices(store,new Map()) as TypedServices);start();},
     snapshot(){return JSON.stringify(schemaObjects(store.db).map(({name,sql})=>({name,sql})))+'\n'+JSON.stringify(['projects','assets','timelines','timeline_requests','timeline_history','edit_tasks','exports'].map(table=>store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));},
     counts():number[]{return ['exports','timeline_requests','edit_tasks'].map(table=>store.db.prepare(`SELECT count(*) n FROM ${table}`).get()!.n as number);},
@@ -134,11 +137,11 @@ test('foreign or malformed proof and forged acknowledgement cannot release pendi
 
 test('late original timeline replacement, source-owner transfer and lease loss cannot save terminal outcome',async t=>{
   for(const mode of ['timeline','source','lease']){
-    const f=await fixture(t,{legacy:mode==='lease'}),prepared=f.delivery.prepare(f.prepare()),gate=deferred(),entered=deferred();f.setRender(async (input: unknown)=>{const accepted=await f.originalRender(input);entered.resolve();await gate.promise;return accepted;});
+    const f=await fixture(t),prepared=f.delivery.prepare(f.prepare()),gate=deferred(),entered=deferred();f.setRender(async (input: unknown)=>{const accepted=await f.originalRender(input);entered.resolve();await gate.promise;return accepted;});
     const pending=f.delivery.execute(action(prepared));await entered.promise;
     if(mode==='timeline'){const changed={...f.timeline,id:randomUUID()};f.store.db.prepare('UPDATE timelines SET id=?,data=? WHERE id=?').run(changed.id,JSON.stringify(changed),f.timeline.id);}
     if(mode==='source')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(randomUUID(),f.asset.id));
-    if(mode==='lease'){unlinkSync(path.join(f.root,'server.lock'));writeFileSync(path.join(f.root,'server.lock'),'0',{mode:0o600});}
+    if(mode==='lease')f.store.close();
     gate.resolve();await assert.rejects(pending);assert.equal(JSON.parse((readFileSync(f.file) as unknown as string)).entries[0].intent.outcome.status,'pending');
   }
 });
@@ -159,11 +162,7 @@ test('restart, copied scope, other build channel, strict input and unsafe files 
   rmSync(f.file);const target=path.join(f.root,'private-target');writeFileSync(target,'PRIVATE',{mode:0o600});symlinkSync(target,f.file);assert.throws(f.get,code('LOCAL_DELIVERY_STORAGE_UNAVAILABLE'));rmSync(f.file);linkSync(target,f.file);assert.throws(f.get,code('LOCAL_DELIVERY_STORAGE_UNAVAILABLE'));rmSync(f.file);writeFileSync(f.file,bytes,{mode:0o644});assert.throws(f.get,code('LOCAL_DELIVERY_STORAGE_UNAVAILABLE'));assert.equal(statSync(f.file).mode&0o777,0o644);
 });
 
-test('restored mode returns unsupported before touching sidecar, lock, timeline or render',async()=>{
-  const never=()=>{throw Error('PRIVATE should never run');},delivery=createLocalDelivery({root:'/unread',storage:{validatePrivateDirectory:never,validateManagedFile:never,readPrivateFile:never,writePrivateFileAtomic:never},guards:{ownsLock:never,isRestored:()=>true,readTimeline:never,readReceipt:never,isRenderInput:never,isRenderResponse:never,isNotApplied:never,render:never}});
-  for(const method of ['get','put','discard','prepare'])assert.deepEqual(delivery[(method as 'get'|'put'|'discard'|'prepare')]({}),{supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'});
-  for(const method of ['execute','recover'] as const)assert.deepEqual(await delivery[method]({}),{envelope:{supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'},response:null});
-});
+
 
 test('historical receipt recovery survives later source duration metadata without changing the original receipt',async t=>{
   const f=await fixture(t,{mimeType:'video/mp4'});f.store.put('assets',{...f.asset,mimeType:'video/mp4',duration:3,hasAudio:true});
@@ -179,13 +178,13 @@ test('a failed pre-dispatch fence makes zero service calls and keeps the reserva
   await assert.rejects(f.delivery.execute(action(prepared)));f.setFault(()=>{});assert.equal(f.calls.length,0);assert.equal(f.get().intent!.outcome.status,'pending');
 });
 
-test('late abort or restored-profile transition cannot publish an ordinary terminal sidecar',async t=>{
-  for(const mode of ['abort','restored']){
-    const f=await fixture(t),controller=new AbortController();let restored=false;
-    f.setGuards({isRestored:()=>restored});if(mode==='abort')f.start({signal:controller.signal});
+test('late abort cannot publish a terminal sidecar',async t=>{
+  for(const mode of ['abort']){
+    const f=await fixture(t),controller=new AbortController();
+    f.start({signal:controller.signal});
     const prepared=f.delivery.prepare(f.prepare()),gate=deferred(),entered=deferred();f.setRender(async (input: unknown)=>{const result=await f.originalRender(input);entered.resolve();await gate.promise;return result;});
-    const pending=f.delivery.execute(action(prepared));await entered.promise;if(mode==='abort')controller.abort();else restored=true;gate.resolve();await assert.rejects(pending);
-    assert.equal(JSON.parse((readFileSync(f.file) as unknown as string)).entries[0].intent.outcome.status,'pending');if(mode==='restored')assert.equal(f.get().supported,false);
+    const pending=f.delivery.execute(action(prepared));await entered.promise;controller.abort();gate.resolve();await assert.rejects(pending);
+    assert.equal(JSON.parse((readFileSync(f.file) as unknown as string)).entries[0].intent.outcome.status,'pending');
   }
 });
 

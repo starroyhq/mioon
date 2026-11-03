@@ -88,7 +88,7 @@ test('root mounts all three verified native roles without project-role URL autho
 
 test('empty native home moves only a settled locator summary into Help and retains every recovery state', () => {
   function render(entryPatch: Record<string, unknown> = {}, locatorPatch: Record<string, unknown> = {}): FakeNode {
-    const entry = {projects: [], workspace: {restored: false}, listBusy: false, listError: '', phase: 'home', ...entryPatch};
+    const entry = {projects: [], catalogReady: true, listBusy: false, listError: '', phase: 'home', ...entryPatch};
     const locatorState = {phase: 'idle', targetStatus: 'unset', uncertain: false, identityBlocked: false, ...locatorPatch};
     const locator = {getState: () => locatorState}, controller = {getState: () => entry};
     const react = {
@@ -118,7 +118,7 @@ test('empty native home moves only a settled locator summary into Help and retai
     const tree = render({}, {phase}); assert.equal(tree.props.status, undefined); assert.ok(tree.props.help);
   }
   const retained = [
-    render({projects: [{id: 'project'}]}), render({workspace: {restored: true}}), render({listBusy: true}), render({listError: 'Read failed'}), render({phase: 'error'}),
+    render({projects: [{id: 'project'}]}), render({catalogReady: false}), render({listBusy: true}), render({listError: 'Read failed'}), render({phase: 'error'}),
     ...['loading', 'pending', 'error', 'conflict', 'unavailable'].map(phase => render({}, {phase})),
     render({}, {uncertain: true}), render({}, {identityBlocked: true}), render({}, {targetStatus: 'missing'}),
   ];

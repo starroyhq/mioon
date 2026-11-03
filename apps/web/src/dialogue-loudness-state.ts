@@ -30,7 +30,7 @@ export interface DialogueLoudnessContext {
   readonly assetHashes: Readonly<Record<string, string>>;
   readonly connected: boolean;
   readonly visible: boolean;
-  readonly restored: boolean;
+
   readonly hasUnsavedDrafts: boolean;
   readonly pending: boolean;
 }
@@ -63,13 +63,12 @@ export interface DialogueLoudnessState extends DialogueLoudnessContext {
   readonly applied: number;
   readonly error: string;
 }
-export interface DialogueLoudnessReadOptions { readonly signal: AbortSignal; readonly expectedWorkspaceOrigin?: string }
+export interface DialogueLoudnessReadOptions { readonly signal: AbortSignal;  }
 export interface DialogueLoudnessControllerOptions {
   readonly read: (input: TimelineClipLoudnessInput, options: DialogueLoudnessReadOptions) => Promise<unknown>;
   /** Applies the kept gains at the measured revision; resolves true once the edit is saved. */
   readonly apply: (gains: readonly { clipId: string; gain: number }[], expectedRevision: number) => Promise<boolean>;
   readonly getContext?: () => DialogueLoudnessContext;
-  readonly getInvocation?: () => Readonly<{ expectedWorkspaceOrigin?: string }>;
   readonly onChange?: (state: DialogueLoudnessState) => void;
   readonly onUnauthorized?: () => void;
   readonly locale?: () => Locale;
@@ -79,21 +78,21 @@ export interface DialogueLoudnessControllerOptions {
 // nothing is sent until the user measures.
 export const DIALOGUE_LOUDNESS_DEFAULT_DRAFT: ExportLoudnessDraft = Object.freeze({ integratedLufs: '-14', truePeakCeilingDbtp: '-1' });
 const initial = (): DialogueLoudnessState => ({ scope: null, executionScope: '', projectId: null, timelineId: null, revision: null,
-  sourceIdentity: '', clips: [], tracks: [], assetHashes: {}, connected: false, visible: false, restored: false, hasUnsavedDrafts: false,
+  sourceIdentity: '', clips: [], tracks: [], assetHashes: {}, connected: false, visible: false,  hasUnsavedDrafts: false,
   pending: false, draft: DIALOGUE_LOUDNESS_DEFAULT_DRAFT, version: 0, phase: 'idle', rows: [], target: null, progress: { done: 0, total: 0 }, applied: 0, error: '' });
 // The clip, track and hash lists derive from the saved timeline that the
 // revision and source identity already name, so they are not compared.
 const contextKeys = ['scope', 'executionScope', 'projectId', 'timelineId', 'revision', 'sourceIdentity',
-  'connected', 'visible', 'restored', 'hasUnsavedDrafts', 'pending'] as const;
+  'connected', 'visible', 'hasUnsavedDrafts', 'pending'] as const;
 const sameContext = (a: DialogueLoudnessContext, b: DialogueLoudnessContext): boolean => contextKeys.every(key => a[key] === b[key]);
 const codeOf = (error: unknown): string => error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : '';
 // Failures that make every later reading meaningless stop the whole pass.
-const fatal = (code: string): boolean => code === 'UNAUTHORIZED' || code === 'OPERATION_CANCELLED' || code.startsWith('RESTORE_') ||
+const fatal = (code: string): boolean => code === 'UNAUTHORIZED' || code === 'OPERATION_CANCELLED' ||
   code === 'TIMELINE_CLIP_LOUDNESS_REVISION_CONFLICT' || code === 'TIMELINE_CLIP_LOUDNESS_STALE';
 
 export function dialogueLoudnessAvailable(context: DialogueLoudnessContext): boolean {
   return Boolean(context.scope && context.projectId && context.timelineId && Number.isSafeInteger(context.revision) && (context.revision ?? 0) > 0 &&
-    context.sourceIdentity && context.connected && context.visible && !context.restored && !context.hasUnsavedDrafts && !context.pending);
+    context.sourceIdentity && context.connected && context.visible && !context.hasUnsavedDrafts && !context.pending);
 }
 /** Both targets are required, as for the whole-timeline candidate. */
 export function parseDialogueLoudnessTarget(draft: ExportLoudnessDraft, locale: Locale = 'zh-Hans'): Readonly<{ target?: ExportLoudnessTarget; error: string }> {
@@ -206,8 +205,7 @@ export function createDialogueLoudnessController(options: DialogueLoudnessContro
           const input: TimelineClipLoudnessInput = Object.freeze({ ...base, clipId: clip.id, expectedAssetSha256: state.assetHashes[clip.assetId] });
           emit({ rows: patchRow(row.clipId, { status: 'measuring' }), progress: { done: index, total: queue.length } });
           try {
-            const invocation = options.getInvocation?.() ?? {};
-            const result = await options.read(input, { ...invocation, signal: abort.signal });
+            const result = await options.read(input, { signal: abort.signal });
             if (!current(attempt, captured, abort)) return false;
             if (!isTimelineClipLoudnessResponse(result, input) || !result.candidate) throw protocolError();
             const candidate = result.candidate, measured = candidate.status === 'measured';

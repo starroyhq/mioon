@@ -22,7 +22,7 @@ export const projectPackageMessages = {
   'projectNotes.unknown': { 'zh-Hans': '无法确认是否已经保存。重试会核对同一次保存，不会重复保存。', 'zh-Hant': '無法確認是否已經儲存。重試會核對同一次儲存，不會重複儲存。', en: 'Could not confirm whether the notes were saved. Retrying checks the same save and never saves twice.', ja: '保存されたか確認できませんでした。やり直すと同じ保存を確認し、二重に保存することはありません。' },
   'projectNotes.conflict': { 'zh-Hans': '项目说明已在别处更新（例如 Mio 刚修改过）。你的内容还没有保存，再次保存会替换最新的说明。', 'zh-Hant': '專案說明已在別處更新（例如 Mio 剛修改過）。你的內容還沒有儲存，再次儲存會取代最新的說明。', en: 'The notes were updated elsewhere, for example by Mio. Yours are not saved yet; saving again replaces the latest notes.', ja: 'メモが別の場所で更新されました（Mio による変更など）。入力内容はまだ保存されていません。もう一度保存すると最新のメモを置き換えます。' },
   'projectNotes.rejected': { 'zh-Hans': '没有保存。请检查内容后重试。', 'zh-Hant': '沒有儲存。請檢查內容後重試。', en: 'Not saved. Check the notes and try again.', ja: '保存されませんでした。内容を確認してもう一度お試しください。' },
-  'projectNotes.readOnly': { 'zh-Hans': '恢复副本只读，不能修改项目说明。', 'zh-Hant': '還原副本為唯讀，不能修改專案說明。', en: 'A restored copy is read-only, so its notes cannot be changed.', ja: '復元コピーは読み取り専用のため、メモは変更できません。' },
+  'projectNotes.readOnly': {"zh-Hans":"项目说明当前为只读，不能修改。","zh-Hant":"專案說明目前為唯讀，無法修改。","en":"Project notes are currently read only.","ja":"プロジェクトメモは現在読み取り専用です。"},
   'projectPackage.home.importLink': { 'zh-Hans': '或导入项目文件', 'zh-Hant': '或匯入專案檔案', en: 'or import a project file', ja: 'またはプロジェクトファイルを読み込む' },
   'projectPackage.home.justImported': { 'zh-Hans': '刚导入', 'zh-Hant': '剛匯入', en: 'Just imported', ja: '読み込んだばかり' },
   'projectPackage.home.filePicker': { 'zh-Hans': '选择 .mioon 项目文件', 'zh-Hant': '選擇 .mioon 專案檔案', en: 'Choose a .mioon project file', ja: '.mioon プロジェクトファイルを選択' },

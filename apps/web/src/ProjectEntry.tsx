@@ -20,14 +20,13 @@ export default function ProjectEntry({ controller, status, help, onSettings, edi
   const disabled = context.quitting ? t('projects.quittingCreate')
     : state.createUnknown ? t('projects.previousCreateUnknown')
       : state.openUnknown ? t('projects.checkOpenResult')
-        : !state.workspace ? t('projects.workspaceNotChecked')
-          : state.workspace.restored ? t('projects.restoredCreateUnavailable') : '';
+        : !state.catalogReady ? t('projects.listUnavailable') : '';
   const contents = <>
     {editor && <div className="project-entry-dialog-heading"><DialogTitle id="native-project-entry-heading">{state.mode === 'new' ? t('projects.createNew') : t('projects.openWorkspace')}</DialogTitle>
       <DialogDescription>{t('projects.separateWindow')}</DialogDescription>
       <Button type="button" variant="ghost" disabled={state.creating || state.sealed || state.createUnknown || state.openUnknown} onClick={() => { void controller.dismiss(); }}>{t('projects.closeSelection')}</Button></div>}
     {state.openUnknown && <div className="project-home-notice" role="status"><p>{t('projects.checkOriginalOpen')}</p><Button type="button" variant="outline" onClick={() => { void controller.reconcileOpen(); }}>{t('projects.checkWindow')}</Button></div>}
-    <ProjectHome onRegisterMenuHelp={onRegisterMenuHelp} onMenuHelpStateChange={onMenuHelpStateChange} presentation={editor ? 'embedded' : 'page'} summaryEnabled={Boolean(state.workspace && !state.workspace.restored)} active={state.shown && !context.quitting} summaryScope={context.backendId} projects={state.projects} phase={state.phase} openingName={state.projects.find(project => project.id === state.openingProjectId)?.name}
+    <ProjectHome onRegisterMenuHelp={onRegisterMenuHelp} onMenuHelpStateChange={onMenuHelpStateChange} presentation={editor ? 'embedded' : 'page'} summaryEnabled={state.catalogReady} active={state.shown && !context.quitting} summaryScope={context.backendId} projects={state.projects} phase={state.phase} openingName={state.projects.find(project => project.id === state.openingProjectId)?.name}
       error={state.error} notice={state.notice} busy={state.creating || state.sealed || context.quitting} listBusy={state.listBusy} listError={state.listError}
       page="projects" onPage={page => { if (page === 'settings') onSettings('agent'); }} onOpen={id => { void controller.open(id); }}
       onRetry={() => { if (state.openUnknown) void controller.reconcileOpen(); else if (state.openingProjectId) void controller.open(state.openingProjectId); }}

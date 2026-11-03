@@ -1,3 +1,4 @@
+import {validateMioInteractionRows} from './mio-interaction-validation.ts';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {agentTaskChangeSchema,agentTaskConversationPolicySchema,agentTaskPolicyModesSchema,agentTaskPolicySchema} from '../../../contracts/src/agent-tasks-v2.ts';
@@ -58,6 +59,7 @@ export function validateMioProjectRows(store:ProjectStore,application:DatabaseSy
     s.kind='model' AND e.kind IS NOT 'model_output' OR s.kind='tool' AND e.kind NOT IN ('tool_result','answer')) LIMIT 1`).get())invalid();
  if(db.prepare(`SELECT 1 FROM mio_steps s LEFT JOIN mio_entries e ON e.id=s.sourceEntryId
    WHERE s.sourceEntryId IS NOT NULL AND (s.kind IS NOT 'tool' OR e.kind IS NOT 'model_output' OR e.runId IS NOT s.runId) LIMIT 1`).get())invalid();
+ validateMioInteractionRows(db);
  for(const row of rows('mio_requests')){
   const value=parse(mioRequestSchema,{...row,inputManifest:json(row.inputManifest)});
   if(value.firstEntry!==(value.inputManifest.entryIds[0]??null)||value.lastEntry!==(value.inputManifest.entryIds.at(-1)??null))invalid();

@@ -35,10 +35,9 @@ test('task popover is passive and retained commands lose authority on scope or v
  tree=h.render({visible:false});assert.equal(tree.props.open,false);assert.equal((nodes(tree).find((node: RootNode)=>node.type==='Popup'))!.props.inert,true);
  (retained)!.props.onClick();assert.deepEqual((calls as unknown),[]);(find(h.render({visible:true}),'task-overview-all'))!.props.onClick();assert.deepEqual(calls,['all']);
 });
-test('render tasks show only current-project timeline records and held results never claim live progress',()=>{
+test('render tasks show only current-project timeline records and bound invalid progress to zero',()=>{
  const item={id:'export-a',projectId:'project-a',mode:'timeline',purpose:'export',status:'running',progress:NaN,snapshot:{deliveryName:'My delivery'}};
  const h=harness('TaskRenderList.tsx',{items:[item,{...item,id:'other',projectId:'project-b'},{...item,id:'story',mode:'storyboard'}],projectId:'project-a'});let tree=h.render();assert.match(text(tree),/My delivery/);assert.equal(nodes(tree).filter((node: RootNode)=>node.type==='article').length,1);assert.equal((nodes(tree).find((node: RootNode)=>node.type==='Progress'))!.props.value,0);
- assert.equal(nodes(h.render({heldIds:['export-a']})).some((node: RootNode)=>node.type==='Progress'),false);assert.equal(nodes(h.render({heldIds:[],restored:true})).some((node: RootNode)=>node.type==='Progress'),false);
 });
 test('task popover preserves warning tone for an unconfirmed result without dispatching actions',()=>{
  const h=harness('TaskPopover.tsx',{scope:'project-a:1',visible:true,count:1,uncertain:false,items:[{id:'unknown-a',label:'Unconfirmed generation',status:'提交状态待确认',tone:'warning'}],onOpenTasks:()=>assert.fail('Rendering must not dispatch')});

@@ -18,8 +18,6 @@ import {isAudioPreviewPlan} from '@mioon/contracts/timeline-audio-preview';
 import {isContinuousAudioPlan} from '@mioon/contracts/timeline-audio-continuous';
 import {isTimelineExportFloatReadResponse} from '@mioon/contracts/timeline-export-float';
 import {isTimelineRenderRecord} from '@mioon/contracts';
-import {parseExpectedWorkspaceOrigin, isWorkspaceRestoreInspection} from '@mioon/contracts';
-import {isWorkspaceBackupInspection} from '@mioon/contracts';
 import {isImageReviewResponse,isImageReviewPreparationResponse,isImageReviewListResponse} from '@mioon/contracts';
 import {setTimeout as pause} from 'node:timers/promises';
 import {createHash} from 'node:crypto';
@@ -44,7 +42,7 @@ export {prepareTimelineMixLoudness} from './timeline-mix-loudness.ts';
 import {isSubjectGenerationResponse,isSubjectGenerationRetryResponse} from '@mioon/contracts';
 import {isEntityAddressedOperation, rpcPathFor} from '../../contracts/src/project-addressing.ts';
 import {isProjectId} from '../../contracts/src/project-file.ts';
-import {isProjectBackupOperation, isProjectBackupResponse} from '../../contracts/src/project-backups.ts';
+import {projectBackupSchemas,isProjectBackupOperation, isProjectBackupResponse} from '../../contracts/src/project-backups.ts';
 import {isProjectVersionOperation, isProjectVersionResponse} from '../../contracts/src/project-version-operations.ts';
 
 export {schemas, descriptions, resolveConnection, effectAnnotations};
@@ -70,15 +68,6 @@ export class ClientError extends Error {
     super(message); this.name = 'ClientError'; this.code = code; this.status = status; this.details = details;
     this.exitCode = exitCode ?? errorExitCode(this);
   }
-}
-// Explicit invocation-only identity. Undefined preserves the v24 wire shape;
-// there is no backend discovery, client default, credential-file or reconnect
-// fallback. CLI/MCP also use this parser before dispatching any request.
-export function workspaceOriginOptions(value: unknown): {expectedWorkspaceOrigin?: string} {
-  let origin: string | undefined;
-  try { origin = parseExpectedWorkspaceOrigin(value); }
-  catch { throw new ClientError('VALIDATION_ERROR', 'Workspace origin must be an explicit UUID. Preserve the origin saved with an existing request.'); }
-  return origin === undefined ? {} : {expectedWorkspaceOrigin: origin};
 }
 export function errorExitCode(error: unknown): number {
   const failure = error as {exitCode?: unknown; code?: unknown; name?: unknown; status?: unknown};
@@ -188,14 +177,14 @@ const keyedMutationOperations = new Set<string>([
   'project.backup.restore',
   'project.version.save',
 ]);
-interface RpcBody {operation: string; input: Record<string, unknown>; expectedWorkspaceOrigin?: string}
+interface RpcBody {operation: string; input: Record<string, unknown>}
 function uncertainRequestDetails(body: unknown): Record<string, unknown> {
   if (!body) return {};
   const request = body as {operation?: unknown; input?: {requestId?: unknown; input?: {requestId?: unknown}}};
   // Receipt reads also carry requestId. Only a known keyed write can have an
   // uncertain submission; review preparation keeps its key in the exact intent.
   const requestId = request.operation === 'image.review.prepare' ? request.input?.input?.requestId : request.input?.requestId;
-  return {operation: request.operation, ...(Object.hasOwn(request, 'expectedWorkspaceOrigin') ? {expectedWorkspaceOrigin: (request as {expectedWorkspaceOrigin?: unknown}).expectedWorkspaceOrigin} : {}), ...(typeof request.operation === 'string' && keyedMutationOperations.has(request.operation) && requestId ? {requestId, submissionMayHaveSucceeded: true, recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'} : {})};
+  return {operation: request.operation, ...(typeof request.operation === 'string' && keyedMutationOperations.has(request.operation) && requestId ? {requestId, submissionMayHaveSucceeded: true, recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'} : {})};
 }
 function comfyObservationNotAccepted(error: unknown, status: number, input: unknown): boolean {
   const statuses: Record<string, number> = {COMFY_MODULE_UNAVAILABLE:503,COMFY_REMOTE_STATE:409,COMFY_REMOTE_REVISION_CONFLICT:409,COMFY_REMOTE_BUSY:409,COMFY_REMOTE_CAPACITY:507};
@@ -266,7 +255,7 @@ export interface ClientOptions {env?: NodeJS.ProcessEnv; fetchImpl?: typeof fetc
 export interface RequestOptions {body?: RpcBody; signal?: AbortSignal; timeoutMs?: number; userAction?: boolean}
 /** `projectId` addresses the entity-addressed operations, whose input names
  * no project; every other operation takes its project from its input. */
-export interface RpcOptions {signal?: AbortSignal; timeoutMs?: number; expectedWorkspaceOrigin?: string; projectId?: string}
+export interface RpcOptions {signal?: AbortSignal; timeoutMs?: number; projectId?: string}
 export interface WatchOptions {timeoutMs?: number; intervalMs?: number; signal?: AbortSignal; onProgress?: (progress: WatchProgress) => void; projectId?: string}
 /** Separates the `projectId` that CLI and MCP give beside an entity-addressed
  * operation's own fields. Any other input is returned unchanged. */
@@ -390,9 +379,13 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       const result = assetMediaPublicSchemas[operation].safeParse(input);
       if (!result.success) throw new ClientError('VALIDATION_ERROR', 'Invalid asset media arguments.', {details:{issues:result.error.issues}});
       parsed = result.data;
+    } else if (isProjectBackupOperation(operation)) {
+      const result = projectBackupSchemas[operation].safeParse(input);
+      if (!result.success) throw new ClientError('VALIDATION_ERROR', 'Invalid project backup arguments.', {details: {issues: result.error.issues}});
+      parsed = result.data;
     } else parsed = parse(operation as OperationName, input) as Record<string, unknown>;
-    const {expectedWorkspaceOrigin, projectId, ...transportOptions} = options ?? {};
-    const body: RpcBody = {operation, input: parsed, ...workspaceOriginOptions(expectedWorkspaceOrigin)};
+    const {projectId, ...transportOptions} = options ?? {};
+    const body: RpcBody = {operation, input: parsed};
     let resource: string;
     try { resource = isAssetMediaOperation(operation) ? projectRpcPath(String(parsed.projectId)) : rpcPathFor(operation, parsed, projectId); }
     catch { throw new ClientError('VALIDATION_ERROR', 'This operation is addressed by its project: give the lowercase UUID projectId of the project that owns the record.'); }
@@ -471,10 +464,6 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid Look Pack inspection.',{details:{operation}});
     if (['lut.import','lut.list','lut.inspect'].includes(operation) && !isLutRpcResponse(operation,parsed,result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid LUT resource response.',{details:operation==='lut.import'?uncertainRequestDetails(body):{operation}});
-    if (operation === 'workspace.restore.inspect' && !isWorkspaceRestoreInspection(result))
-      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid restored workspace summary.');
-    if (operation === 'workspace.backup.inspect' && !isWorkspaceBackupInspection(result))
-      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid workspace backup summary.');
     if (operation === 'timeline.export.capabilities' && !isTimelineExportCapabilitiesResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export capability report.');
     if (operation === 'timeline.audioPreview.plan' && !isAudioPreviewPlan(result, parsed as unknown as Parameters<typeof isAudioPreviewPlan>[1]))

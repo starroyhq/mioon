@@ -1,3 +1,8 @@
+
+
+
+
+
 import type {FixtureSnapshot} from './helpers/strict-timeline-core-types.ts';
 import type {StrictPreflightService} from './helpers/strict-timeline-handler-types.ts';
 import type {TypedStore as FixtureStore} from './helpers/strict-service-responses.ts';
@@ -16,25 +21,22 @@ import {
 } from '../packages/contracts/src/timeline-colour.ts';
 import {timelineCompositionSegments} from '../packages/contracts/src/timeline-segments.ts';
 import {freezeTimelineSnapshot, validateTimeline} from '../packages/business/src/timeline-inputs.ts';
-import {planTimelineExportRange, type TimelineExportRangeSegment} from '../packages/business/src/timeline-export-range-plan.ts';
+import {planTimelineExportRange} from '../packages/business/src/timeline-export-range-plan.ts';
 import {renderTimeline} from '../packages/business/src/timeline-media.ts';
 import {probe} from '../packages/business/src/media.ts';
 import {mediaExecutable} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createTimelinePreflightServices} from '../packages/business/src/timeline-preflight.ts';
-import {
-  openStore, openLegacyWorkspaceStore, classifyCurrentWorkspaceSchema, installCurrentWorkspaceRestoreSchema,
-  validateCurrentWorkspaceRestoreSchema, validateCurrentWorkspaceColourProfile,
-} from '../packages/business/src/db.ts';
-import {validateWorkspaceColourRows} from '../packages/business/src/workspace-colour-validation.ts';
-import {snapshot as schemaSnapshot} from './workspace-schema26-fixtures.mjs';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+
+import {snapshot as schemaSnapshot} from './helpers/current-retained-fixture.ts';
 import {png, sha, imageColour, stamp, timelineFixture} from './helpers/timeline-image-fixtures.ts';
-import {materializeHistoricalWorkspace} from './helpers/historical-workspace.ts';
+
 
 import {isProjectDatabase} from '../packages/business/src/project-file/held-files.ts';
 
 function databaseSnapshot(db: DatabaseSync) {
-  return Object.fromEntries((isProjectDatabase(db) ? ['main', 'project', 'cache'] : ['main']).map(schema => [schema, schemaSnapshot(db, schema)]));
+  return schemaSnapshot(db);
 }
 
 const code = 'TIMELINE_IMAGE_COMPOSITOR_BUDGET';
@@ -254,51 +256,3 @@ test('a safe export range cannot bypass an over-budget whole frozen mixed plan',
   assert.deepEqual((events as unknown), [], 'whole-plan admission precedes decoding, deriving and compositor spawn');
   assert.deepEqual((await readdir(root) as unknown), [], 'no render staging or output is created');
 });
-
-function rewrite(db: DatabaseSync, table: string, column: string, value: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: string; requestId: `${string}-${string}-${string}-${string}-${string}`; mode: string; purpose: string; timelineRevision: number; snapshot: unknown; status: string; assetId: null; url: null; error: null; createdAt: string; updatedAt: string; }) {
-  const guards = db.prepare("SELECT name, sql FROM sqlite_schema WHERE type='trigger' AND tbl_name=? AND sql LIKE '%BEFORE UPDATE%'").all(table);
-  for (const guard of guards) db.exec(`DROP TRIGGER "${guard.name}"`);
-  try { db.prepare(`UPDATE ${table} SET ${column}=?`).run(JSON.stringify(value)); }
-  finally { for (const guard of guards) db.exec(((guard.sql) as unknown as Parameters<NonNullable<(typeof db)["exec"]>>[0])); }
-}
-
-for (const location of (['export', 'receipt'] as const)) {
-  test(`restored33 rejects an over-budget frozen ${location} consistently without changing retained evidence`, async t => {
-    const root = await directory(t), frozenRoot = await directory(t), store = (openLegacyWorkspaceStore(root) as FixtureStore);
-    t.after(() => { if (store.db.isOpen) store.close(); });
-    const f = fixture(intervals(4));
-    store.put('projects', {id: f.projectId, name: 'Restored PNG concurrency', createdAt: stamp, updatedAt: stamp});
-    f.assets.forEach((asset?) => store.put('assets', ((asset) as unknown as Parameters<NonNullable<(typeof store)["put"]>>[1])));
-    store.put('timelines', f.timeline);
-    const rendered = {id: randomUUID(), projectId: f.projectId, requestId: randomUUID(),
-      mode: 'timeline', purpose: 'export', timelineRevision: 1,
-      snapshot: f.freeze({exportRange: {startFrame: 9, endFrame: 12}}),
-      status: 'queued', assetId: null, url: null, error: null, createdAt: stamp, updatedAt: stamp};
-    store.put('exports', rendered);
-    store.db.prepare('INSERT INTO timeline_requests VALUES(?,?,?)').run(rendered.requestId, 'a'.repeat(64), JSON.stringify(rendered));
-    await store.close();// Reviewed historical PNG-only fixture; never relabel or downgrade the current workspace.
-    const frozen = materializeHistoricalWorkspace({root}, frozenRoot, {version: 32, media: false});
-    const db = new DatabaseSync(frozen.dbPath);
-    t.after(() => { if (db.isOpen) db.close(); });
-    assert.equal(classifyCurrentWorkspaceSchema(db).schemaVersion, 32);
-    assert.equal(installCurrentWorkspaceRestoreSchema(db, {restorationId: randomUUID(),
-      workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(), manifestHash: 'a'.repeat(64),
-      sourceDbHash: 'b'.repeat(64), createdAt: stamp}).schemaVersion, 33);
-    assert.equal(validateCurrentWorkspaceRestoreSchema(db).schemaVersion, 33);
-
-    const corrupt = structuredClone(rendered);
-    corrupt.snapshot.timeline.clips.slice(0, 3).forEach((clip: { startFrame: number; }) => { clip.startFrame = 0; });
-    assert.equal(timelineMixedColourPlanSchema.safeParse(corrupt.snapshot.colourPlan).success, true);
-    assert.equal(isTimelineColourSnapshot(corrupt.snapshot), false);
-    rewrite(db, location === 'export' ? 'exports' : 'timeline_requests', location === 'export' ? 'data' : 'response', corrupt);
-    const before = databaseSnapshot(db), changes = (db.prepare('SELECT total_changes() AS n').get())!.n;
-    for (const validate of ([
-      () => validateWorkspaceColourRows(db, {allowColour: true, allowMixedImages: true}),
-      () => validateCurrentWorkspaceColourProfile(db),
-      () => classifyCurrentWorkspaceSchema(db),
-      () => validateCurrentWorkspaceRestoreSchema(db),
-    ] as const)) assert.throws(validate, {code: 'WORKSPACE_COLOUR_INVALID'});
-    assert.equal((db.prepare('SELECT total_changes() AS n').get())!.n, changes);
-    assert.deepEqual(databaseSnapshot(db), before);
-  });
-}

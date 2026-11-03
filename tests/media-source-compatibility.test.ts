@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { openStore } from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import { run } from '../packages/business/src/media.ts';
 import { mediaExecutable, mediaEnvironment } from '../packages/business/src/media-environment.ts';
 import { createTimelinePreflightServices } from '../packages/business/src/timeline-preflight.ts';

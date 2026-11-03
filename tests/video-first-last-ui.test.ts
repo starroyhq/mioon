@@ -43,7 +43,6 @@ import * as settings from '../apps/web/src/generation-settings.ts';
 import * as api from '../apps/web/src/api.ts';
 import * as submissions from '../apps/web/src/submissions.ts';
 import * as mutations from '../apps/web/src/mutation-submissions.ts';
-import { RESTORE_DISABLED_REASON } from '../apps/web/src/restored-workspace.ts';
 import { referenceForShot } from '../apps/web/src/reference-connections.ts';
 import { imageEditSourceIssueDescriptor } from '../apps/web/src/image-generation.ts';
 
@@ -98,8 +97,8 @@ function harness(patch: Partial<VideoProps> = {}) {
       if (name === './i18n/I18nProvider.tsx') return { useI18n: () => createI18nTestContext(locale) };
       if (name === './creation-i18n.ts') return creationI18n;
       if (name.includes('packages/i18n/src/index.ts')) return i18nCore;
-      if (name === './local-shot-text-state.ts') return { useLocalShotText: ({ context }: {context: {restored: boolean}}) => {
-        assert.equal(context.restored, true, 'This legacy Inspector fixture has no shot-text context');
+      if (name === './local-shot-text-state.ts') return { useLocalShotText: ({ context }: {context: {connected:boolean}}) => {
+        assert.equal(context.connected, false, 'An Inspector without shot-text context cannot claim a connected persistence owner');
         return { state: {}, controller: { setContext() {} } };
       }, mergeFreshShotTextAck: () => { assert.fail('No shot-text acknowledgement is expected in this fixture'); } };
       if (name === './ShotTextDraftRecovery.tsx') return { default: 'ShotTextDraftRecovery', __esModule: true };
@@ -158,7 +157,7 @@ function appGenerationFlow({ providers, options, currentShot }: {providers: Gene
   const functions = source.slice(source.indexOf('  function checkGeneration('), source.indexOf('  function retryGeneration(')) + source.slice(source.indexOf('  async function reviewGeneration('), source.indexOf('  async function createProject('));
   const state: {calls: [string, string, GenerationSubmitInput][]; notices: unknown[][]; review: GenerationReviewArgs | null} = { calls: [], notices: [], review: null }, scope = { ...settings, ...subjectVideo, ...contracts, msg,
     providers, generationOptionsRef: { current: { [shotId]: structuredClone(options) } }, currentProject: { current: projectId },
-    readableError:(error:unknown)=>String(error),rpc:async(_operation:string,input:{assetIds:string[]})=>({items:input.assetIds.map(assetId=>({assetId,referenceRevision:1,status:'online',reason:'same-stats',outside:false,readable:true,fingerprintToken:'a'.repeat(64)})),nextCursor:null}),generationUnavailableReason: '', workspaceRef: { current: { restored: false } }, shotTextRef: { current: { blocksLegacy: () => false } }, referenceWorkBlocked: () => false,
+    readableError:(error:unknown)=>String(error),rpc:async(_operation:string,input:{assetIds:string[]})=>({items:input.assetIds.map(assetId=>({assetId,referenceRevision:1,status:'online',reason:'same-stats',outside:false,readable:true,fingerprintToken:'a'.repeat(64)})),nextCursor:null}),generationUnavailableReason: '', editorSession: {current: 'normal'}, shotTextRef: { current: { blocksLegacy: () => false } }, referenceWorkBlocked: () => false,
     dataRef: { current: { shots: [currentShot], assets: structuredClone<LibraryAsset[]>(assets), edges: [], jobs: [] } },
     realConfirmRef: { current: null }, generationReviewScope: { current: { key: 'configured-connection' } }, context: () => ({ epoch: 1 }), isCurrent: (value: { epoch: number; }) => value.epoch === 1,
     setRealConfirm: (value: GenerationReviewArgs | null) => { state.review = value; }, notify: (...values: unknown[]) => state.notices.push(values),
@@ -232,18 +231,14 @@ test('tail picker persists through normal save/reload, reset restores omission, 
   assert.equal(reopened.saves[0].draft.lastFrameAssetId, null); assert.deepEqual(reopened.saves[0].draft.referenceAssetIds, [firstId]);
 });
 
-test('restored Inspector retains frame history and local tail edits while blocking save-and-generate', async () => {
+test('Inspector keeps frozen frame history while saving a changed current tail selection', async () => {
   const frozen = { ...shot(), referenceAssetIds: [firstId, tailId], referenceAssets: assets.slice(0, 2), referenceBindings: [{ role: 'first_frame', assetId: firstId, sha256: assets[0].sha256 }, { role: 'last_frame', assetId: tailId, sha256: assets[1].sha256 }] };
-  const h = harness({ generationUnavailableReason: RESTORE_DISABLED_REASON, shot: shot({ lastFrameAssetId: tailId }),
+  const h = harness({ shot: shot({ lastFrameAssetId: tailId }),
     versions: [{ id: id(8), shotId, number: 1, snapshot: frozen, createdAt: '2026-10-10T00:00:00Z' }],
     jobs: [{ id: id(9), shotId, status: 'running', progress: 35, createdAt: '2026-10-10T00:00:00Z' }] });
-  assert.equal(text(h.find('generation-issue')), RESTORE_DISABLED_REASON);
   assert.equal(h.find('generate-shot')!.props.disabled, true);
-  assert.equal(h.find('generate-shot')!.props.title, RESTORE_DISABLED_REASON);
-  assert.equal(h.all().some((node: ElementNode) => node.props?.className === 'progress-track'), false, 'captured running history must not appear to be executing');
   h.click(`last-frame-choice-${otherId}`); h.render();
   assert.equal(Boolean(h.find('save-shot')!.props.disabled), false);
-  await h.click('generate-shot'); assert.equal(h.saves.length, 0); assert.equal(h.generated.length, 0, 'even a direct disabled callback cannot submit');
   await h.click('save-shot'); h.render();
   assert.equal(h.saves.length, 1); assert.equal(h.saves[0].draft.lastFrameAssetId, otherId);
   assert.deepEqual(h.saves[0].draft.referenceAssetIds, [firstId]); assert.equal(h.generated.length, 0);
@@ -384,7 +379,7 @@ test('App paid review wires complete frames and count, frozen retries, asset-use
   assert.ok(inspectorStart >= 0 && inspectorEnd > inspectorStart);
   const inspectorTag = app.slice(inspectorStart, inspectorEnd);
   assert.match(inspectorTag, /\bactionScopeKey=\{`\$\{rightDockTab\}:\$\{propertiesPage\}`\}/);
-  assert.match(inspectorTag, /\bgenerationUnavailableReason=\{generationUnavailableReason(?: as never)?\}/);
+  assert.doesNotMatch(inspectorTag, /generationUnavailableReason/);
   assert.match(app, /generationReferenceIdentity\(args.shot, dataRef.current!\.assets, \{ frozen, subjectReference: args.subjectReference \}\) !== args.referenceIdentity/);
   assert.match(app, /currentShot.revision !== args.shot.revision/);
   const submit = app.slice(app.indexOf('const submitGeneration ='), app.indexOf('function generate('));

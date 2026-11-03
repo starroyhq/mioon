@@ -5,7 +5,6 @@ import { readFileSync } from 'node:fs';
 import { savedClipLoudnessFields } from '../apps/web/src/timeline-clip-loudness-context.ts';
 import { createTimelineClipLoudnessController, timelineClipLoudnessAvailable } from '../apps/web/src/timeline-clip-loudness-state.ts';
 import { timelineAudioPreviewSourceIdentity } from '../apps/web/src/use-timeline-audio-preview.ts';
-import { workspaceOriginScope } from '../apps/web/src/workspace-origin.ts';
 import { input, report, id, deferred } from './helpers/timeline-clip-loudness-ui-fixture.ts';
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
@@ -16,11 +15,11 @@ function harness() {
   const refs = { dataRef: { current: { project: { id: input().projectId }, timeline: { id: input().timelineId, projectId: input().projectId, revision: 4, fps: 30, durationFrames: 47,
     clips: [clip], tracks: [{ id: i.trackId, kind: 'audio', orderIndex: 0, muted: false, hidden: false }] },
     assets: [{ id: i.assetId, projectId: input().projectId, sha256: i.assetSha256, mimeType: 'audio/wav', hasAudio: true, sizeBytes: i.sourceBytes, duration: 10 }] } },
-    currentProject: { current: input().projectId }, projectEpoch: { current: 1 }, workspaceRef: { current: { restored: false } },
+    currentProject: { current: input().projectId }, projectEpoch: { current: 1 }, editorSession: {current: 'normal'}, workspaceRef: { current: {  } },
     viewRef: { current: { activeMode: 'editing', editing: { selectedClipId: clip.id as string | null, quickAssetId: null } } },
     navigationEpoch: { current: 1 }, panelIntent: { current: 1 }, clipLoudnessEpoch: { current: 1 },
     previewAssetRef: { current: null as string | null }, comparisonIdRef: { current: null as string | null }, clipDraftRef: { current: null }, subtitlesRef: { current: null }, timelineFormatRef: { current: null } };
-  const env = { ...refs, savedClipLoudnessFields, workspaceOriginScope, timelineAudioPreviewSourceIdentity,
+  const env = { ...refs, savedClipLoudnessFields, timelineAudioPreviewSourceIdentity,
     projectSessionReady: () => true, inspectorEpoch: 1, online: true, auth: true, loading: false, workbenchReady: true,
     rightDockTab: 'properties', propertiesPage: 'inspector', panelVisible: () => true, webSettingsOpen: false,
     inspectorDirty: false, formatDirty: false, timelineBusy: false, isBusy: () => false };
@@ -32,7 +31,7 @@ test('actual App getter binds saved selection/graph and masks comparison/source-
     const old = (h.env as Record<string, unknown>)[key]; (h.env as Record<string, unknown>)[key] = val; assert.equal(timelineClipLoudnessAvailable(h.read()), false, key); (h.env as Record<string, unknown>)[key] = old;
   }
   for (const ref of [h.refs.previewAssetRef, h.refs.comparisonIdRef]) { ref.current = id(8); assert.equal(h.read().visible, false); ref.current = null; }
-  h.refs.workspaceRef.current = { restored: true }; assert.equal(timelineClipLoudnessAvailable(h.read()), false);
+  h.refs.currentProject.current = id(99); assert.equal(timelineClipLoudnessAvailable(h.read()), false);
 });
 test('actual App getter and controller fence batched A→B→A and same-id source replacement before any render', async () => {
   const h = harness(), wait = deferred(); let signal: AbortSignal | undefined;

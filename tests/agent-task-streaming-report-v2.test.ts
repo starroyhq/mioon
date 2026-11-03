@@ -12,7 +12,7 @@ test('streaming measurements opt into an explicit simulated delta interval', () 
   for (const tailPauseMs of [-1, 0.5, 60_001, Number.NaN]) assert.throws(() => contextReportScenario({deltaIntervalMs: 80, tailPauseMs}), /tailPauseMs/u);
 });
 
-test('paced streaming reports record complete row rewrites and event inserts in three protocols', {timeout: 120_000}, async () => {
+test('paced streaming reports record native checkpoint rewrites and invalidations in three protocols', {timeout: 120_000}, async () => {
   const report = await collectAgentTaskContextReport({toolRounds: 1, replyBytes: 30 * 1024, deltaBytes: 3 * 1024, deltaIntervalMs: 80});
   for (const measured of report.protocols) {
     assert.equal(measured.run.status, 'completed');
@@ -20,25 +20,25 @@ test('paced streaming reports record complete row rewrites and event inserts in 
     assert.equal(measured.streaming!.clock, 'simulated');
     assert.equal(measured.streaming!.deltaIntervalMs, 80);
     assert.equal(measured.streaming!.appendCalls, 8);
-    assert.equal(measured.run.textEvents, measured.streaming!.appendCalls);
-    assert.equal(measured.streaming!.rowRewriteBytes, measured.modelSteps.reduce((sum, step) => sum + step.streaming!.rowRewriteBytes, 0));
-    assert.equal(measured.streaming!.textEventBytes, measured.modelSteps.reduce((sum, step) => sum + step.streaming!.textEventBytes, 0));
+    assert.equal(measured.run.checkpointEvents, measured.streaming!.appendCalls);
+    assert.equal(measured.streaming!.checkpointRewriteBytes, measured.modelSteps.reduce((sum, step) => sum + step.streaming!.checkpointRewriteBytes, 0));
+    assert.equal(measured.streaming!.invalidationEventBytes, measured.modelSteps.reduce((sum, step) => sum + step.streaming!.invalidationEventBytes, 0));
     for (const step of measured.modelSteps) {
       const streaming = step.streaming!;
       assert.deepEqual(streaming.flushes.map(flush => flush.atMs), [240, 480, 720, 800]);
       assert.deepEqual(streaming.flushes.map(flush => flush.deltaBytes), [9 * 1024, 9 * 1024, 9 * 1024, 3 * 1024]);
       assert.deepEqual(streaming.flushes.map(flush => flush.textBytes), [9 * 1024, 18 * 1024, 27 * 1024, 30 * 1024]);
-      assert.equal(step.textEvents, streaming.flushes.length);
+      assert.equal(step.checkpointEvents, streaming.flushes.length);
       assert.equal(step.textBytes, 30 * 1024);
-      assert.equal(streaming.rowRewriteBytes, streaming.flushes.reduce((sum, flush) => sum + flush.rowRewriteBytes, 0));
+      assert.equal(streaming.checkpointRewriteBytes, streaming.flushes.reduce((sum, flush) => sum + flush.checkpointRewriteBytes, 0));
       for (const [index, flush] of streaming.flushes.entries()) {
-        assert.ok(flush.rowRewriteBytes > flush.textBytes, 'Each measured rewrite includes the complete saved request and step, beyond only the streamed text');
-        assert.ok(flush.textEventBytes > flush.deltaBytes, 'Each inserted event includes its envelope');
-        if (index) assert.equal(flush.rowRewriteBytes - streaming.flushes[index - 1]!.rowRewriteBytes, flush.deltaBytes, 'Appending ASCII text enlarges the actual full data row by exactly that delta');
+        assert.ok(flush.checkpointRewriteBytes > flush.textBytes, 'Each measured rewrite includes actual checkpoint JSON, metadata, status and timestamp columns');
+        assert.ok(flush.invalidationEventBytes > 0 && flush.invalidationEventBytes < flush.deltaBytes, 'A native invalidation stores only bounded scalar identity, without a duplicate text delta');
+        if (index) assert.equal(flush.checkpointRewriteBytes - streaming.flushes[index - 1]!.checkpointRewriteBytes, flush.deltaBytes, 'Appending ASCII text enlarges the actual mutable checkpoint columns by exactly that delta');
       }
     }
-    const textTable = measured.retained.tables.find(table => table.name === 'agent_task_events_v2')!;
-    assert.ok(textTable.bytes > measured.streaming!.textEventBytes, 'The event table also retains non-text events');
+    const textTable = measured.retained.tables.find(table => table.name === 'mio_events')!;
+    assert.ok(textTable.bytes > measured.streaming!.invalidationEventBytes, 'The event table also retains non-text events');
     assert.ok(measured.retained.quotaBytes > 0);
     assert.ok(measured.capacity.additionalEquivalentRuns !== null);
   }
@@ -74,10 +74,10 @@ test('streaming measurements observe small pending text during a tail pause befo
   for (const measured of report.protocols) {
     assert.equal(measured.run.status, 'completed');
     for (const step of measured.modelSteps) {
-      assert.deepEqual(step.streaming!.beforeDone, {textBytes: 2700, textEvents: 3}, 'The idle tail is persisted by the scheduled deadline while the gateway is still open');
+      assert.deepEqual(step.streaming!.beforeDone, {textBytes: 2700, checkpointEvents: 3}, 'The idle tail is persisted by the scheduled deadline while the gateway is still open');
       assert.deepEqual(step.streaming!.flushes.map(flush => flush.atMs), [250, 500, 750]);
       assert.deepEqual(step.streaming!.flushes.map(flush => flush.deltaBytes), [900, 900, 900]);
-      assert.equal(step.streaming!.flushes.length, step.textEvents, 'Finishing after a timed flush cannot append an empty text event');
+      assert.equal(step.streaming!.flushes.length, step.checkpointEvents, 'Finishing after a timed flush cannot append an empty text event');
       assert.equal(step.textBytes, 2700);
     }
     assert.equal(measured.streaming!.appendCalls, 6);

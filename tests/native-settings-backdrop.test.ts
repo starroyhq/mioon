@@ -173,7 +173,7 @@ async function settingsPanel(onClose: (page: { __mioonNativeCloseAdmission?: Ret
     './i18n/I18nProvider.tsx': i18nTestModule(), '@mioon/ui/components/workbench-confirm': { useConfirmation: () => async () => false },
     './UiPreferencesProvider.tsx': { useUiPreferences: () => ({ pauseObservation }) },
     './settings-navigation-state.ts': { createSettingsNavigationRegistry }, './native-close-state.ts': { createNativeCloseRegistry, installNativeCloseAdmission },
-    './settings-window-state.ts': { createSettingsWindowNavigation }, './launcher-state.ts': { createLauncherClient: () => ({ inspect: async () => ({ restored: false }) }) },
+    './settings-window-state.ts': { createSettingsWindowNavigation }, './launcher-state.ts': { createLauncherClient: () => ({list: async () => []}) },
     './ProjectHomeConnections.tsx': { __esModule: true, default: 'connection-shell' }, './NativeLocatorStatus.tsx': { __esModule: true, default: 'locator-status' },
     '@mioon/ui/components/button': { Button: 'Button' }, '@mioon/ui/components/workbench-icons': { WorkbenchIcon: 'WorkbenchIcon' },
   }, { window: page, document });

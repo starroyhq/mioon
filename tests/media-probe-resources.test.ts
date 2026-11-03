@@ -6,7 +6,7 @@ import { mkdtemp, writeFile, readdir, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { parseProbeOutput, withProbePermit, MEDIA_PROBE_LIMITS } from '../packages/business/src/media-probe.ts';
@@ -21,6 +21,7 @@ const audio = (extra?: { duration?: string; index?: number; codec_name?: string|
 const document = (streams: unknown[]) => ({ streams, format: { duration: '2.5' } });
 const parse = (value: unknown) => parseProbeOutput(JSON.stringify(value));
 async function sandbox(t: test.TestContext) { const root = await mkdtemp(path.join(tmpdir(), 'media-resources-')); t.after(() => rm(root, { recursive: true, force: true })); return root; }
+async function mockStore(t:test.TestContext){const root=await mkdtemp(path.join(tmpdir(),'media-mock-ledger-')),store=openStore(root);t.after(async()=>{store.close();await rm(root,{recursive:true,force:true});});return store;}
 
 test('metadata accepts portrait/landscape 4K and 8K plus audio/image inputs without a codec or duration upper ban', () => {
   for (const [width, height] of [[360, 640], [1920, 1080], [3840, 2160], [2160, 3840], [7680, 4320], [4320, 7680], [8192, 8192]] as const) {
@@ -150,7 +151,7 @@ test('mixed settled media failures preserve the exact unconfirmed error before o
 });
 
 test('mock abort checkpoints preserve ledger counts and prevent any later DB use', async t => {
-  const root = await sandbox(t), db = new DatabaseSync(':memory:');
+  const root = await sandbox(t), store = await mockStore(t), db = store.db;
   const provider = createMockProvider({ root, db });
   const snapshot = { duration: 2, aspectRatio: '9:16', parameters: { scenario: 'success', delayMs: 0 } };
   const { providerJobId } = await provider.submit(snapshot, { requestId: 'mock-abort-test' });
@@ -158,7 +159,7 @@ test('mock abort checkpoints preserve ledger counts and prevent any later DB use
   const context = { requestId: 'never-submit', signal: controller.signal };
   for (const call of [() => provider.submit(snapshot, context), () => provider.poll(providerJobId, context), () => provider.reconcile('mock-abort-test', context), () => provider.cancel(providerJobId, context), () => provider.download(providerJobId, path.join(root, 'never.mp4'), context)]) await assert.rejects(call(), { code: 'MEDIA_CANCELLED' });
   assert.deepEqual(provider.stats(), { submissionCount: 1, taskCount: 1, downloadAttempts: 0, pollCount: 0 });
-  db.close();
+  store.close();
   await assert.rejects(provider.poll(providerJobId, context), { code: 'MEDIA_CANCELLED' });
   assert.deepEqual((await readdir(root) as unknown), []);
 });
@@ -179,7 +180,7 @@ test('real synthetic portrait, landscape, 4K and audio-only files retain probe/h
 });
 
 test('mock cancellation at renderer completion never renames or publishes a partial output', async t => {
-  const root = await sandbox(t), db = new DatabaseSync(':memory:'); t.after(() => db.close());
+  const root = await sandbox(t), db = (await mockStore(t)).db;
   const provider = createMockProvider({ root, db }), controller = new AbortController();
   const { providerJobId } = await provider.submit({ duration: 2, aspectRatio: '9:16', parameters: { scenario: 'success', delayMs: 0 } }, { requestId: 'mock-completion-abort' });
   const events: (MediaProcessEvent)[] = [], off = onMediaProcess(event => { events.push(event); if (event.kind === 'ffmpeg' && event.type === 'exited') controller.abort(); });

@@ -30,7 +30,6 @@ const fixtures = {
   snapshots: {timelineRevision: 7, orderedExports: [row('preview', {mode: 'timeline', purpose: 'preview', timelineRevision: 7}), row('export', {mode: 'timeline', purpose: 'export', timelineRevision: 6}), row('strict', {mode: 'timeline', timelineRevision: '7'}), row('story', {orderedVersionIds: ['version-a', 'version-b']}), row('empty-story')]},
   fallbacks: {orderedExports: [row('fallback')]},
   recoveryDisabled: {fileRecoveryEnabled: false, orderedExports: [row('fallback')]},
-  held: {heldExportIds: ['held'], orderedExports: [row('held')]},
   escaped: {projectName: '片名 <script> " & 单引号\'', orderedExports: [row('escaped', {url: '/media/synthetic?download=1&label=%22%E4%B8%AD%22', error: '<img src=x onerror=alert(1)>'})]},
   escapedDownload: {fileRecoveryEnabled: false, orderedExports: [row('escaped', {url: '/media/synthetic?download=1&label=%22%E4%B8%AD%22&quoted="<&name=片名'})]},
   order: {orderedExports: [row('first', {url: '/media/order-first', createdAt: '2020-01-01'}), row('second', {url: '/media/order-second', createdAt: '2030-01-01'})]},
@@ -116,8 +115,6 @@ test('fallback display name stays local while download filenames remain server-o
   assert.ok(fileActions.recoveryDisabled[0].includes(`href="${media(ORIGINAL, 'fallback')}"`));
   assert.match(fileActions.recoveryDisabled[0], /download=""/);
   assert.doesNotMatch(fileActions.recoveryDisabled[0], /download="[^"\n]+"|film\.mp4|成片\.mp4|export-file-check/);
-  assert.deepEqual(actions.held, [{projectId:ORIGINAL, exportId:'held', downloadHref:media(ORIGINAL, 'held'), disabled:true}]);
-  assert.match(fileActions.held[0], /data-testid="download-export"/);
 });
 test('project/error text stays React-escaped and a stored url never becomes the download address', () => {
   assert.match(rendered.escaped, /&lt;script&gt;/); assert.match(rendered.escaped, /&quot; &amp; 单引号&#x27;/);
@@ -151,9 +148,9 @@ test('App keeps history in the controlled export dialog with visibility, recover
   const history = app.match(/<ExportHistoryList\s[\s\S]*?\/>/)?.[0];
   assert.ok(history);
   for (const expected of [
-    'fileRecoveryEnabled={!restored}', 'projectId={data.project?.id}',
+    'projectId={data.project?.id}',
     'samplePeak={exportSamplePeak as never}', 'loudness={exportLoudness as never}',
-    'heldExportIds={data.restore?.heldExportIds}', 'orderedExports={orderedExports}', 'outputAssets={data.assets}',
+'orderedExports={orderedExports}', 'outputAssets={data.assets}',
     'projectName={data.project?.name}', 'timelineRevision={timeline?.revision}',
   ]) assert.ok(history.includes(expected), expected);
   assert.match(history, /onReexport=\{\(\) => \{ if \(clipDraftRef\.current\?\.hasPendingComposition\(\) \|\| !canOpenExport\) return; setDeliveryAttempt\(null\); setDeliveryReviewVersion\(value => value \+ 1\); openTimelineExport\(\); \}\}/);

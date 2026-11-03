@@ -1,3 +1,5 @@
+
+
 import type {TypedCall,MediaNode,MediaShot,MediaJob} from './helpers/strict-service-responses.ts';
 import type {FixtureAsset,FixtureVersion} from './helpers/strict-timeline-core-types.ts';
 interface RecoveryFixture {root:string;readonly store:TypedStore;call:TypedCall;projectId:string;otherId:string;restart():void;capture():Record<string,Record<string,SQLOutputValue>[]>;changes():SQLOutputValue;
@@ -13,13 +15,12 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {AppError,REFERENCE_RESPONSE_BYTES,hasRequestNotAppliedProof} from '@mioon/contracts';
-import { openStore, openLegacyWorkspaceStore as openHistoricalWorkspaceStore } from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {DatabaseSync, type SQLOutputValue} from 'node:sqlite';
-import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
-import {snapshot as rawSnapshot} from './workspace-schema26-fixtures.mjs';
+import {snapshot as rawSnapshot} from './helpers/current-retained-fixture.ts';
 import {withoutForeignKeys,withoutProcessTargetRevisions} from './helpers/project-database.ts';
 
 const at='2026-10-10T00:00:00.000Z',clone=<T>(value: T): T=>JSON.parse(JSON.stringify(value));
@@ -31,11 +32,11 @@ async function foreignProject(t: test.TestContext,name='Foreign project'){
  try{return await services.call('project.create',{name});}
  finally{await services.drain();store.close();}
 }
-async function fixture(t: test.TestContext,{open=openStore}:{open?:(root:string)=>WorkspaceStore|ReturnType<typeof openLegacyWorkspaceStore>}={}){
+async function fixture(t: test.TestContext){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-reference-recovery-'));
- let store=open(root) as TypedStore,services=(createServices(store,new Map()) as TypedServices);
+ let store=openStore(root) as TypedStore,services=(createServices(store,new Map()) as TypedServices);
  const f={root,get store(){return store;},call:<O extends string>(operation: O,input: unknown)=>services.call(operation,input),
-  restart(){store.close();store=open(root) as TypedStore;services=(createServices(store,new Map()) as TypedServices);},
+  restart(){store.close();store=openStore(root) as TypedStore;services=(createServices(store,new Map()) as TypedServices);},
   capture(){return Object.fromEntries(tables.map(table=>[table,store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));},
   changes(){return store.db.prepare('SELECT total_changes() AS n').get()!.n;},
   asset(patch={}){const id=randomUUID();return store.put('assets',{id,projectId:f.projectId,name:'Reference fixture',mimeType:'image/png',
@@ -287,31 +288,18 @@ test('commit uncertainty, failed transaction entry and incomplete rollback never
  await rejected(f,'reference.attach',stale,{code:'REVISION_CONFLICT',call:(operation: string,input: unknown)=>replacedError.call(operation,input)});
 });
 
-test('fixed through24 retention triggers bootstrap additively, preserve legacy bytes and block delete or replacement',async t=>{
- const f=await fixture(t,{open:openLegacyWorkspaceStore}),{input}=await prepared(f,'reference.attach'),response=await f.call('reference.attach',input);
- const legacy=['legacy-preserved-key','old-hash',' { "legacy": true, "spacing": "preserve" } '];
- f.store.db.prepare('INSERT INTO reference_requests VALUES(?,?,?)').run(...legacy);
- const schema=f.store.db.prepare('SELECT * FROM schema_version ORDER BY version').all(),saved=f.capture();
- f.store.db.exec('DROP TRIGGER reject_reference_request_replacement; DROP TRIGGER retain_reference_requests;');f.restart();
- assert.deepEqual(f.capture(),saved);assert.deepEqual(f.store.db.prepare('SELECT * FROM schema_version ORDER BY version').all(),schema);
- assert.equal(f.store.db.prepare('SELECT response FROM reference_requests WHERE requestId=?').get(legacy[0])!.response,legacy[2]);
- assert.deepEqual(await f.call('reference.attach',input),response);
- for(const sql of ['DELETE FROM reference_requests WHERE requestId=?','INSERT OR REPLACE INTO reference_requests VALUES(?,?,?)','INSERT INTO reference_requests VALUES(?,?,?) ON CONFLICT(requestId) DO NOTHING']){
-  assert.throws(()=>f.store.db.prepare(sql).run(...(sql.startsWith('DELETE')?[input.requestId]:[input.requestId,'changed-hash','{}'])),/immutable|retained/);
-  assert.deepEqual(f.capture(),saved);
- }
- const removed=await f.call('reference.detach',detach(f,response.edge,response.shot));assert.equal(removed.detached,true);
- const project=await f.call('project.create',{name:'Ordinary lifecycle'});assert.ok(project.id);
- assert.equal(f.store.db.prepare('SELECT COUNT(*) AS n FROM reference_requests').get()!.n,3);
-});
 
-test('current52 startup refuses missing reference retention guards without repairing or rewriting retained evidence',async t=>{
- const f=await fixture(t,{open:openHistoricalWorkspaceStore}),{input}=await prepared(f,'reference.attach');await f.call('reference.attach',input);
+
+test('current kernel startup refuses missing reference retention guards without repairing or rewriting retained evidence',async t=>{
+ const f=await fixture(t),{input}=await prepared(f,'reference.attach');await f.call('reference.attach',input);
  f.store.db.prepare('INSERT INTO reference_requests VALUES(?,?,?)').run('legacy-preserved-key','old-hash',' { "legacy": true, "spacing": "preserve" } ');
  f.store.db.exec('DROP TRIGGER reject_reference_request_replacement; DROP TRIGGER retain_reference_requests;');
+ const databases=f.store.db.prepare('PRAGMA database_list').all().filter(row=>row.name!=='temp');
  const before=rawSnapshot(f.store.db);
- assert.throws(()=>f.restart(),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
- const db=new DatabaseSync(path.join(f.root,'workbench.sqlite'),{readOnly:true});
+ assert.throws(()=>f.restart(),{code:'PROJECT_INVALID'});
+ // Explicit forensic reads are not a store or an ownership capability.
+ const db=new DatabaseSync(String(databases.find(row=>row.name==='main')!.file),{readOnly:true});
+ for(const row of databases.filter(row=>row.name!=='main'))db.prepare(`ATTACH DATABASE ? AS ${String(row.name)}`).run(row.file);
  try{assert.deepEqual(rawSnapshot(db),before,'all SQL, SQLite types, raw bytes, rowids, receipts and sequence survive strict refusal');}
  finally{db.close();}
 });

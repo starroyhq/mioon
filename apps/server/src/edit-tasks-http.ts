@@ -90,8 +90,8 @@ export function createEditTasksHttp({tasks, signal}: EditTasksHttpOptions) {
         query(url, []);
         const envelope = await readBody(req, res, preparing ? EDIT_TASK_HTTP_LIMITS.prepareBytes : EDIT_TASK_HTTP_LIMITS.actionBytes);
         if (rejectProjectMismatch(res, address, envelope)) return true;
-        const {expectedWorkspaceOrigin, ...input} = envelope;
-        const context = Object.hasOwn(envelope, 'expectedWorkspaceOrigin') ? {expectedWorkspaceOrigin} : {};
+        const input = envelope;
+        const context = {};
         // The backend checks every fixed action's complete closed schema. Never
         // overwrite a supplied taskId and thereby hide a conflicting field.
         if (Object.hasOwn(input, 'taskId')) throw validation();

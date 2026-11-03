@@ -157,10 +157,10 @@ function appFunction(begin: string, end: string, scope: Record<string, unknown> 
   const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start);
   return ((Function as (...args: string[]) => (...values: unknown[]) => unknown)(...Object.keys({ msg: message, ...scope }), `return (${appSource.slice(start, stop).trim()});`)(...Object.values({ msg: message, ...scope }))) as (...args: unknown[]) => unknown;
 }
-function appHarness(f: ReturnType<typeof fixture>, { restored = false, localState = { baselineConflict: false, candidate: null as unknown } }: {restored?: boolean; localState?: Record<string, unknown>} = {}) {
+function appHarness(f: ReturnType<typeof fixture>, { localState = { baselineConflict: false, candidate: null as unknown } }: {localState?: Record<string, unknown>} = {}) {
   const calls: unknown[] = [], notices: unknown[] = [], views: unknown[] = [], panels: unknown[] = [], pending: unknown[] = [], jobs: unknown[] = [], exports: unknown[] = [], submitOptions: unknown[] = [];
   const owner = context(), currentProject = { current: projectId }, dataRef = { current: { project: { id: projectId }, timeline: { id: timelineId, revision: 4, clips: [{ id: id(20) }] } } };
-  const env: Record<string, unknown> = { clipDraftRef: { current: null }, markPanelIntent: () => {}, setShowTasks: (value: unknown) => panels.push(['tasks', value]), setShowImage: (value: unknown) => panels.push(['image', value]), setShowDelivery: (value: unknown) => panels.push(['delivery', value]), panelIntent: { current: 0 }, setDeliveryAttempt: (value: unknown) => exports.push(['attempt', value]), openExportHistory: () => exports.push(true), workspaceRef: { current: { restored } }, deliveryNameRef: { current: null }, dataRef, currentProject, exportPreflight: { controller: f.controller }, exportCheckContext: () => ({ ...owner, projectId: currentProject.current, timelineId: dataRef.current.timeline.id, revision: dataRef.current.timeline.revision }),
+  const env: Record<string, unknown> = { clipDraftRef: { current: null }, markPanelIntent: () => {}, setShowTasks: (value: unknown) => panels.push(['tasks', value]), setShowImage: (value: unknown) => panels.push(['image', value]), setShowDelivery: (value: unknown) => panels.push(['delivery', value]), panelIntent: { current: 0 }, setDeliveryAttempt: (value: unknown) => exports.push(['attempt', value]), openExportHistory: () => exports.push(true), deliveryNameRef: { current: null }, dataRef, currentProject, exportPreflight: { controller: f.controller }, exportCheckContext: () => ({ ...owner, projectId: currentProject.current, timelineId: dataRef.current.timeline.id, revision: dataRef.current.timeline.revision }),
     isBusy: () => false, pendingForProject: () => pending, notify: (...args: unknown[]) => notices.push(args), openTasks: (canReveal: () => boolean = () => true) => { if (canReveal()) jobs.push(true); }, setShowExports: (value: unknown) => exports.push(value),
     context: () => ({ projectId: currentProject.current, scope: owner.scope }), isCurrent: (captured: {projectId?: string; scope?: unknown}) => captured.projectId === currentProject.current && captured.scope === owner.scope,
     localDeliveryRef: { current: { controller: { getState: () => localState, canPrepare: () => true, submit: async (input: unknown, options: unknown) => { calls.push(['local-delivery.submit', input]); submitOptions.push(options); return { id: id(30), status: 'queued' }; } } } },
@@ -199,13 +199,6 @@ test('actual Check rejects unresolved local candidate and saved-baseline conflic
     assert.equal(f.calls.length, 0); assert.equal(h.calls.length, 0); assert.equal(f.state(), before);
     assert.equal(h.submitOptions.length, 0);
   }
-});
-
-test('restored export retains the original preflight-bound session runner', async () => {
-  const f = fixture(), binding = (await f.ready()).binding, h = appHarness(f, { restored: true });
-  await h.render('export', binding);
-  assert.deepEqual(h.calls, [['timeline:render:export', 'timeline.render', { projectId, expectedRevision: 4, preflightSnapshotHash: hash, requestId: 'stable-test-request', purpose: 'export' }]]);
-  assert.equal(h.submitOptions.length, 0); assert.deepEqual(h.exports, [['attempt', { projectId, id: id(30) }], false]);
 });
 
 test('actual export never auto-replays an unknown receipt or replaces an old binding with current revision', async () => {
@@ -250,7 +243,7 @@ test('accessible topbar export action opens recovery even when a candidate, base
   assert.ok(buttonSource); assert.match(buttonSource, /disabled=\{!canOpenExport\}/); assert.match(buttonSource, /onClick=\{openTimelineExport\}/);
   const gate = (patch: Record<string, unknown> = {}): {canOpenExport: boolean; canCheckExport: boolean} => {
     const env = { data: { project: { id: projectId } }, timeline: { id: timelineId, revision: 4 }, loading: false,
-      online: true, auth: true, deliveryName: { error: '' }, exportRange: { error: '' }, restored: false, localDelivery: { state: { candidate: null, baselineConflict: false } }, ...patch };
+      online: true, auth: true, deliveryName: { error: '' }, exportRange: { error: '' }, localDelivery: { state: { candidate: null, baselineConflict: false } }, ...patch };
     return ((Function as (...args: string[]) => (...values: unknown[]) => unknown)(...Object.keys(env), `${appSource.slice(first, last)};return { canOpenExport, canCheckExport };`)(...Object.values(env))) as {canOpenExport: boolean; canCheckExport: boolean};
   };
   for (const patch of [{ localDelivery: { state: { candidate: { raw: { deliveryName: 'Saved draft' } }, baselineConflict: false } } },

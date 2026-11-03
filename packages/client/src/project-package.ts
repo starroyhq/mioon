@@ -35,8 +35,9 @@ export async function exportProjectPackage(input:Json,output:unknown,options:Pro
  let handle:FileHandle|undefined,completed=false;
  try{handle=await open(destination,'wx',0o600);}
  catch(error){throw new ClientError(errorCode(error)==='EEXIST'?'OUTPUT_EXISTS':'FILE_WRITE_ERROR',errorCode(error)==='EEXIST'?'Output already exists. Choose a new filename; no file was overwritten.':'Cannot create the requested output file.');}
- let status=await call('/api/project-packages/exports',{method:'POST',json:{projectId:projectId(input),media:input.media??'all'}},options);
+ let status:Json|undefined;
  try{
+  status=await call('/api/project-packages/exports',{method:'POST',json:{projectId:projectId(input),media:input.media??'all'}},options);
   while(status.phase==='running'){
    options.onProgress?.({files:status.files,totalFiles:status.totalFiles,bytes:status.bytes,totalBytes:status.totalBytes});
    await pause(options.intervalMs??250,undefined,{signal:options.signal});
@@ -54,7 +55,7 @@ export async function exportProjectPackage(input:Json,output:unknown,options:Pro
  }finally{
   await handle.close();
   if(!completed)await unlink(destination).catch(()=>{});
-  await call(`/api/project-packages/exports/${status.id}`,{method:'DELETE'},{...options,signal:undefined}).catch(()=>{});
+  if(status)await call(`/api/project-packages/exports/${status.id}`,{method:'DELETE'},{...options,signal:undefined}).catch(()=>{});
  }
 }
 
@@ -62,6 +63,7 @@ export async function exportProjectPackage(input:Json,output:unknown,options:Pro
 export async function importProjectPackage(input:Json,file:unknown,options:ProjectPackageClientOptions={}):Promise<Json>{
  if(typeof file!=='string'||!file)throw new ClientError('VALIDATION_ERROR','Project import requires --file.');
  if(Object.keys(input).some(key=>!['name','requestId'].includes(key)))throw new ClientError('VALIDATION_ERROR','project import accepts name and requestId.');
+ const requestId=requestIdOf(input);
  const source=path.resolve(file);
  try{if(!(await stat(source)).isFile())throw new Error('not a file');}catch{throw new ClientError('FILE_READ_ERROR','Cannot read the requested project file.');}
  const body=Readable.toWeb(createReadStream(source,{highWaterMark:1024*1024})) as unknown as BodyInit;
@@ -69,7 +71,7 @@ export async function importProjectPackage(input:Json,file:unknown,options:Proje
  options.onProgress?.(preview);
  const name=typeof input.name==='string'?input.name:String(preview.suggestedName);
  try{
-  const result=await call(`/api/project-packages/imports/${preview.id}/commit`,{method:'POST',json:{requestId:requestIdOf(input),name}},options);
+  const result=await call(`/api/project-packages/imports/${preview.id}/commit`,{method:'POST',json:{requestId,name}},options);
   return {...result,name,counts:preview.counts};
  }catch(error){await call(`/api/project-packages/imports/${preview.id}`,{method:'DELETE'},{...options,signal:undefined}).catch(()=>{});throw error;}
 }

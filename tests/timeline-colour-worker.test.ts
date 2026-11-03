@@ -1,6 +1,5 @@
 import {registeredProjectStore,referenceForPublishedMedia} from '../packages/business/src/project-media-storage.ts';
 import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
-import type {BackupResult,RestoreResult} from './helpers/strict-timeline-backup-types.ts';
 import type {TypedStore as FixtureStore, TypedServices as FixtureServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,22 +8,22 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {writeFileSync,renameSync,statSync,utimesSync,openSync,writeSync,closeSync} from 'node:fs';
-import {openStore,openLegacyWorkspaceStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker, type Worker} from '../packages/business/src/jobs.ts';
 import {run} from '../packages/business/src/media-runtime.ts';
 import {probe} from '../packages/business/src/media.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+
+
 import {prepareTimelineInputs,probeTimelineSource,readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.ts';
 import {createTimelineColourLutReader} from '../packages/business/src/timeline-colour-lut.ts';
-import {materializeHistoricalWorkspace} from './helpers/historical-workspace.ts';
+
 const text='LUT_3D_SIZE 2\n0 0 0\n0 1 0\n1 0 0\n1 1 0\n0 0 1\n0 1 1\n1 0 1\n1 1 1\n';
-async function fixture(t: test.TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){
+async function fixture(t: test.TestContext){
  const base=await mkdtemp(path.join(tmpdir(),'mioon-colour-worker-')),root=path.join(base,'workspace'),source=path.join(base,'source.mp4');
  await run('ffmpeg',['-hide_banner','-loglevel','error','-n','-f','lavfi','-i','color=c=red:s=64x48:r=30:d=1','-an','-c:v','libx264','-preset','ultrafast','-threads','1','-pix_fmt','yuv420p','-color_primaries','bt709','-color_trc','bt709','-colorspace','bt709','-color_range','tv','-x264-params','colorprim=bt709:transfer=bt709:colormatrix=bt709',source],{timeout:30000,maxStdoutBytes:0});
- const store=(opener(root) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices);let worker!: Worker,closed=false;
+ const store=(openStore(root) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices);let worker!: Worker,closed=false;
  const close=async()=>{if(closed)return;await worker?.stop();await services.drain();store.close();closed=true;};
  t.after(async()=>{await close();await rm(base,{recursive:true,force:true});});
  const project=await services.call('project.create',{name:'SDR worker'}),asset=await services.call('asset.import',{projectId:project.id,name:'SDR source.mp4',mimeType:'video/mp4',dataBase64:(await readFile(source)).toString('base64')});
@@ -80,29 +79,7 @@ for(const phase of (['capability','prepublication'] as const))test(`physical sou
  if(phase==='capability')assert.deepEqual(await readFile(source),original,'fixture replacement is preserved, never repaired/deleted');
  else{assert.equal((after as unknown as import('node:fs').Stats).ino,before.ino);assert.equal((after as unknown as import('node:fs').Stats).size,before.size);assert.equal((after as unknown as import('node:fs').Stats).mtimeMs,before.mtimeMs);assert.notEqual((after as unknown as import('node:fs').Stats).ctimeMs,before.ctimeMs);assert.equal((await readFile(source))[0],original[0]^1,'changed source is preserved, never repaired');}
 });
-test('cold backup32 restore33 retains exact LUT and source interpretation and explicitly rerenders',{timeout:120000},async t=>{
- const f=await fixture(t,openLegacyWorkspaceStore);
- await f.close();// Reviewed historical PNG-generation fixture; never relabel or downgrade the current workspace.
- const frozen=materializeHistoricalWorkspace({root:f.root},path.join(f.base,'source32'),{version:32});
- const backup=path.join(f.base,'backup'),restored=path.join(f.base,'restored');
- await (createWorkspaceBackup({source:frozen.root,destination:backup}) as Promise<BackupResult>);const installed=await (restoreWorkspaceBackup({directory:backup,destination:restored}) as Promise<RestoreResult>);assert.equal(installed.databaseSchemaVersion,33);
- const store=(openLegacyWorkspaceStore(restored) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices),context={expectedWorkspaceOrigin:(getWorkspaceRestoreContext(store))!.workspaceOrigin};let worker;
- try{
-  const timeline=await services.call('timeline.get',{projectId:f.project.id});assert.deepEqual(timeline.clips[0].colour,f.timeline.clips[0].colour);
-  const lut=await services.call('lut.inspect',{projectId:f.project.id,lutId:f.imported.resource.id});assert.deepEqual(lut.resource,f.imported.resource);
-  await assert.rejects(services.call('timeline.colour.source.inspect',{projectId:f.project.id,assetId:f.asset.id},context),{code:'RESTORE_OPERATION_UNAVAILABLE'});
-  const accepted=await services.call('timeline.render',{projectId:f.project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export'},context);
-  worker=startWorker(store,services,new Map());await worker.tick();const final=await services.call('export.get',{exportId:accepted.id});assert.equal(final.status,'succeeded',JSON.stringify(final.error));
-  const output=store.get('assets',((final.assetId) as unknown as Parameters<NonNullable<(typeof store)["get"]>>[1])),media=await probe(path.join(restored,output!.relativePath));assert.equal((media.probe.streams.find(s=>s.codec_type==='video'))!.color_range,'tv');
-  const replacement=await services.call('asset.import',{projectId:f.project.id,name:'Replacement.mp4',mimeType:'video/mp4',dataBase64:(await readFile(path.join(restored,store.get('assets',f.asset.id)!.relativePath))).toString('base64')},context);
-  const changed=await services.call('timeline.clip.replaceSource',{projectId:f.project.id,expectedRevision:timeline.revision,requestId:randomUUID(),clipId:timeline.clips[0].id,assetId:replacement.id},context);
-  assert.deepEqual(changed.clips[0].colour,{...timeline.clips[0].colour,source:null});
-  let processCount=0;const off=onMediaProcess(event=>{if(event.type==='started')processCount++;});
-  try{await assert.rejects(services.call('timeline.render',{projectId:f.project.id,expectedRevision:changed.revision,requestId:randomUUID(),purpose:'export'},context),{code:'INVALID_TIMELINE_COLOUR'});}finally{off();}
-  assert.equal(processCount,0,'invalidated interpretation cannot initiate implicit inspection');
-  const undone=await services.call('timeline.undo',{projectId:f.project.id,expectedRevision:changed.revision,requestId:randomUUID()},context);assert.deepEqual(undone.clips[0],timeline.clips[0]);
- }finally{await worker?.stop();await services.drain();store.close();}
-});
+
 test('an earlier source changing during later-source preparation is rejected before rendering',{timeout:90000},async t=>{
  const f=await fixture(t),first=mediaFixturePath(f.root,f.store.get('assets',f.asset.id)),bytes=await readFile(first);
  const second=await f.services.call('asset.import',{projectId:f.project.id,name:'Second.mp4',mimeType:'video/mp4',dataBase64:bytes.toString('base64')});

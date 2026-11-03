@@ -72,7 +72,7 @@ export interface LocalDraftStorage {
 }
 export interface LocalDraftGuards {
   ownsLock():boolean;
-  isRestored():boolean;
+
   /** Existing bounded owned graph, never timeline.get's initializing path. */
   readTimeline(projectId:string):unknown;
   readClipAsset(projectId:string,clip:Record<string,unknown>):unknown;
@@ -97,7 +97,7 @@ export function createLocalDrafts({root,channel='web',guards,storage,signal,faul
     // Refuse before reads/persistence; v2 SQLite editing leases are separate.
     if(process.platform==='win32')fail('LOCAL_DRAFT_STORAGE_UNAVAILABLE');
     if(signal?.aborted)fail('LOCAL_DRAFT_STORAGE_UNAVAILABLE');
-    if(guards.isRestored())return false;
+
     if(!guards.ownsLock())fail('LOCAL_DRAFT_OWNER_REQUIRED');
     return true;
   }

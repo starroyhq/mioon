@@ -21,7 +21,7 @@ export interface PrevisKeyframesProps {
   connected: readonly PrevisShotView[];
   others: readonly PrevisShotView[];
   readOnly: boolean;
-  /** Why nothing can be exported now (no 3D view, a restored copy), or null. */
+  /** Why nothing can be exported now (no active 3D view), or null. */
   exportIssue: string | null;
   busy: boolean;
   frameIssue: (shot: PrevisShotView, role: PrevisFrameRole) => PrevisFrameRefusal | null;

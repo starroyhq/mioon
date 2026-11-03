@@ -8,7 +8,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {crc32,deflateSync} from 'node:zlib';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {run as runMedia} from '../packages/business/src/media-runtime.ts';
 import {projectAgentTaskUndo,createAgentTaskTools,agentTaskExplicitTargets,AGENT_TASK_OPERATION_ADMISSION,assertAgentTaskOperationCoverage} from '../packages/business/src/agent/task-tools-v2.ts';

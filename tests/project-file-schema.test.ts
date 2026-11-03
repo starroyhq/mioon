@@ -125,7 +125,7 @@ test('the current manifest is generated from canonical declarations without rewr
 
 test('schema generation in a fresh process cannot import legacy constructors, openers or its output manifest', () => {
   const helper = new URL('./helpers/project-file-schema-derivation.ts', import.meta.url).href;
-  const probe = new URL('../packages/business/src/db.ts?schema-isolation-probe', import.meta.url).href;
+  const probe = new URL('../packages/business/src/project-file/connection.ts?schema-isolation-probe', import.meta.url).href;
   const child = spawnSync(process.execPath, ['--input-type=module', '-e', `
     import {registerHooks} from 'node:module';
     import {sep} from 'node:path';

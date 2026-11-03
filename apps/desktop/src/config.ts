@@ -6,7 +6,7 @@ import desktopIdentity from '../identity.ts';
 import {providerEnvironmentKeys} from '@mioon/business';
 import { run as runMedia } from '@mioon/business/media-runtime';
 import { throwIfMediaAborted } from '@mioon/business/media-processes';
-import {validateWorkspaceStorage} from '@mioon/business/db';
+import {validateWorkspaceStorage} from '@mioon/business/application-storage';
 import { stat, access, realpath } from 'node:fs/promises';
 import { constants, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

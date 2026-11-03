@@ -1,4 +1,9 @@
-import {CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_ROLE,CURRENT_RESTORED_SCHEMA,CURRENT_RESTORE_PROFILE} from './helpers/workspace-schema-current.ts';
+
+
+
+
+
+
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,14 +14,17 @@ import {Readable} from 'node:stream';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import type {DatabaseSync} from 'node:sqlite';
-import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
-import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
-import {collectProject,packageDocumentBytes,buildManifest,createProjectFromDocument} from '../packages/business/src/project-package/document.ts';
+
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+
+
+
+
+import {collectProject,packageDocumentBytes,buildManifest,createProjectFromDocument,type ProjectDocument} from '../packages/business/src/project-package/document.ts';
 import {writeProjectPackage,readProjectPackage} from '../packages/business/src/project-package/container.ts';
 import {createServices} from '../packages/business/src/services.ts';
+import {readProjectState,changeMarks} from './helpers/project-state.ts';
+import {legacyPackageViewForReferencedStore} from './helpers/project-package-fixture.ts';
 import {setImageResultListener} from '../packages/business/src/images.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import {subjectVariantPrompt,subjectVariantImageName} from '../packages/business/src/subject-variant-prompts.ts';
@@ -30,9 +38,9 @@ interface Failure {code?: string; status?: number; details?: Row}
 const angle=(position: string,focal='standard'): SubjectVariantSpec=>({kind:'angle',position,focal} as SubjectVariantSpec);
 const sha=(bytes: Buffer): string=>createHash('sha256').update(bytes).digest('hex');
 
-async function fixture(t: TestContext,{autoRun=true,opener=openStore}: {autoRun?: boolean;opener?:typeof openStore|typeof openLegacyWorkspaceStore}={}){
+async function fixture(t: TestContext,{autoRun=true}: {autoRun?: boolean}={}){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-subject-variants-'));
- let store=opener(root),services=createServices(store,new Map(),{imageOptions:{autoRun}}),closed=false;
+ let store=openStore(root),services=createServices(store,new Map(),{imageOptions:{autoRun}}),closed=false;
  const call=<T=Row>(operation: string,input: unknown): Promise<T>=>services.call(operation,input) as Promise<T>;
  const project=await call<{id: string}>('project.create',{name:'Subject variants'}),projectId=project.id;
  async function asset(patch: Row={},{width=768,height=1024}: {width?: number; height?: number}={}): Promise<{id: string}> {
@@ -54,7 +62,7 @@ async function fixture(t: TestContext,{autoRun=true,opener=openStore}: {autoRun?
   },
   subjectNow:async()=>(await call<{items: Subject[]}>('subject.list',{projectId})).items.find(item=>item.id===subject.id)!,
   versions:async()=>(await call<{items: Version[]}>('subject.version.list',{projectId,subjectId:subject.id})).items,
-  async restart(){await services.drain?.();store.close();store=opener(root);services=createServices(store,new Map(),{imageOptions:{autoRun}});},
+  async restart(){await services.drain?.();store.close();store=openStore(root);services=createServices(store,new Map(),{imageOptions:{autoRun}});},
   async stop(){await services.drain?.();store.close();closed=true;},
  };
  t.after(async()=>{if(!closed){await services.drain?.();store.close();}rmSync(root,{recursive:true,force:true});});
@@ -195,61 +203,29 @@ test('storage guards keep variants out of the head and bound to an active batch'
  assert.throws(()=>f.store.db.prepare('DELETE FROM subject_variant_items WHERE batchId=?').run(batch.id),/must be retained/);
 });
 
-test('a current backup restores as a copy that holds every variant row and refuses variant operations',async t=>{
- const f=await fixture(t,{opener:openLegacyWorkspaceStore}),kept=await f.create([angle('front'),angle('left')]);await f.submit(kept);await f.settled(kept);
- const hidden=await f.create([angle('right')]);await f.submit(hidden);const done=await f.settled(hidden);
- await f.call('subject.variants.undo',{projectId:f.projectId,batchId:hidden.id,expectedRevision:done.revision,requestId:randomUUID()});
- const visible=(await f.versions()).map(version=>version.id);assert.equal(visible.length,3);
- const tables=['subjects','subject_versions','subject_variant_batches','subject_variant_items','subject_variant_requests'];
- const rows=(db: DatabaseSync)=>Object.fromEntries(tables.map(table=>{const query=db.prepare(`SELECT rowid AS retainedRowid,* FROM ${table} ORDER BY rowid`);query.setReadBigInts(true);return [table,query.all().map(row=>({...row}))];}));
- const before=rows(f.store.db);await f.stop();
- const base=mkdtempSync(path.join(tmpdir(),'mioon-subject-variant-backup-')),backup=path.join(base,'backup'),restored=path.join(base,'restored');
- t.after(()=>rmSync(base,{recursive:true,force:true}));
- assert.equal((await createWorkspaceBackup({source:f.root,destination:backup})).databaseSchemaVersion,CURRENT_ORDINARY_SCHEMA);
- const result=await restoreWorkspaceBackup({directory:backup,destination:restored});
- assert.deepEqual([result.sourceSchema,result.databaseSchemaVersion,result.profile],[CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_SCHEMA,CURRENT_RESTORE_PROFILE]);
- const store=openLegacyWorkspaceStore(restored),services=createServices(store,new Map());
- t.after(async()=>{await services.drain?.();store.close();});
- assert.equal(readCurrentWorkspaceRole(store.db),CURRENT_RESTORED_ROLE);
- assert.deepEqual(rows(store.db),before,'every subject, version, batch, item and receipt is kept byte for byte');
- assert.deepEqual(store.db.prepare("SELECT kind,count(*) AS n FROM workspace_restore_holds WHERE kind LIKE 'subject_variant_%' GROUP BY kind ORDER BY kind").all().map(row=>[row.kind,row.n]),
-  [['subject_variant_batches',2],['subject_variant_items',3],['subject_variant_requests',3]]);
- // The undone batch stays hidden in the restored copy's version list.
- assert.deepEqual((await services.call('subject.version.list',{projectId:f.projectId,subjectId:f.subject.id}) as {items: Version[]}).items.map(version=>version.id),visible);
- const refused: Record<string,Row>={
-  'subject.variants.create':{projectId:f.projectId,subjectId:f.subject.id,sourceVersionId:f.subject.headVersionId,kind:'angle',items:[angle('back')],providerId:'mock',model:IMAGE_MODELS.mock,requestId:randomUUID()},
-  'subject.variants.retry':{projectId:f.projectId,batchId:kept.id,position:1,expectedRevision:1,requestId:randomUUID()},
-  'subject.variants.undo':{projectId:f.projectId,batchId:kept.id,expectedRevision:1,requestId:randomUUID()},
-  'subject.variants.get':{projectId:f.projectId,batchId:kept.id},
-  'subject.variants.list':{projectId:f.projectId,subjectId:f.subject.id},
- };
- for(const [operation,input] of Object.entries(refused))await assert.rejects(services.call(operation,input),{code:'RESTORE_OPERATION_UNAVAILABLE'},operation);
- assert.throws(()=>store.db.prepare("UPDATE subject_variant_batches SET state='undone',revision=revision+1 WHERE id=?").run(kept.id),/RESTORED_RECORD_HELD/);
- assert.deepEqual(rows(store.db),before);
-});
 
-test('a project package leaves hidden variant versions behind and imports the rest with their labels',async t=>{
- const f=await fixture(t,{opener:openLegacyWorkspaceStore}),kept=await f.create([angle('front')]);await f.submit(kept);await f.settled(kept);
+
+test('a project container leaves hidden variant versions behind and preserves visible labels; current imports reject atomically',async t=>{
+ const f=await fixture(t),kept=await f.create([angle('front')]);await f.submit(kept);await f.settled(kept);
  const hidden=await f.create([angle('left'),angle('right')]);await f.submit(hidden);const done=await f.settled(hidden);
  await f.call('subject.variants.undo',{projectId:f.projectId,batchId:hidden.id,expectedRevision:done.revision,requestId:randomUUID()});
  const visible=await f.versions();assert.deepEqual(visible.map(version=>version.number),[1,2]);
- const options={media:'all' as const,includeExports:false},collected=collectProject(f.store as never,f.projectId,options);
+ const options={media:'all' as const,includeExports:false},collected=collectProject(legacyPackageViewForReferencedStore(f.store),f.projectId,options);
  assert.deepEqual(collected.missing,[]);
  assert.deepEqual(collected.document.subjectVersions.map(row=>row.id),visible.map(version=>version.id),'versions of the undone batch stay behind');
  const work=mkdtempSync(path.join(tmpdir(),'mioon-subject-variant-package-')),targetRoot=mkdtempSync(path.join(tmpdir(),'mioon-subject-variant-target-')),staging=mkdtempSync(path.join(tmpdir(),'mioon-subject-variant-stage-')),file=path.join(work,'variants.mioon');
  t.after(()=>{for(const directory of [work,targetRoot,staging])rmSync(directory,{recursive:true,force:true});});
  const document=packageDocumentBytes(collected.document),manifest=buildManifest({collected,document,appVersion:'test',options,name:'Subject variants'});
  await pipeline(Readable.from(writeProjectPackage({manifest,document,media:collected.media.map(entry=>entry.source)})),createWriteStream(file));
- const read=await readProjectPackage({source:createReadStream(file),destination:staging});
- const target=openLegacyWorkspaceStore(targetRoot),services=createServices(target,new Map());t.after(async()=>{await services.drain?.();target.close();});
- const {projectId}=createProjectFromDocument(target as never,{document:read.document as never,files:new Map([...read.media].map(([key,value])=>[key,value.file])),name:'Imported variants',move:true});
- const subject=(await services.call('subject.list',{projectId}) as {items: Subject[]}).items[0]!;
- // The revision still counts the hidden numbers; the head stays the original version.
- assert.deepEqual([subject.revision,subject.headVersion.number],[4,1]);
- const imported=(await services.call('subject.version.list',{projectId,subjectId:subject.id}) as {items: Version[]}).items;
- assert.deepEqual(imported.map(version=>[version.number,version.variant?.kind??null,version.variant?.position??null]),[[1,null,null],[2,'angle','front']]);
- // The label survives without a local batch, so the imported version is an ordinary choice.
- assert.equal(target.db.prepare('SELECT count(*) AS n FROM subject_variant_batches').get()!.n,0);
- const added=await services.call('subject.version.add',{projectId,subjectId:subject.id,expectedRevision:subject.revision,assetId:(imported[1] as Version&{assetId: string}).assetId,requestId:randomUUID()}) as Subject;
- assert.deepEqual([added.revision,added.headVersion.number],[5,5]);
+ const result=await readProjectPackage({source:createReadStream(file),destination:staging});
+ const read={...result,document:result.document as ProjectDocument};
+ assert.deepEqual(read.document.subjectVersions,collected.document.subjectVersions);
+ assert.deepEqual(read.document.subjectVersions.map(row=>[row.number,row.data.variant?.kind??null,row.data.variant?.position??null]),[[1,null,null],[2,'angle','front']]);
+ assert.deepEqual(read.document.subjects,collected.document.subjects);
+ const target=openStore(targetRoot);t.after(()=>target.close());
+ const before={state:readProjectState(target.db),marks:changeMarks(target.db)};
+ assert.throws(()=>createProjectFromDocument(target,{document:read.document,files:new Map([...read.media].map(([key,value])=>[key,value.file])),name:'Unavailable import',move:true}),{name:'TypeError',message:'Legacy project package imports cannot run on project databases.'});
+ assert.deepEqual({state:readProjectState(target.db),marks:changeMarks(target.db)},before);
+ // Imported head/revision remapping and the next appended version move to V4.
+
 });

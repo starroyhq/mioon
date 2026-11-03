@@ -17,7 +17,7 @@ function harness() {
   const env = { nativeWindow: null, window, installNativeCloseAdmission, readNativeLegacyClose, subtitlesRef: { current: null }, subjectsRef: { current: null }, nativeCloseRegistry: { current: registry }, settingsNavigation: { current: settings },
     dirtyRef: { current: false }, shotTextRef: { current: null as FakeControllerRef['current'] }, shotCloseRef: { current: null }, clipDraftRef: { current: null as FakeControllerRef['current'] }, timelineFormatRef: { current: null as FakeControllerRef['current'] }, deliveryNameRef: { current: null as FakeControllerRef['current'] },
     agentDraft: { current: false }, imageDraft: { current: false }, importSession: { current: { active: true } },
-    currentProject: { current: 'project-a' }, projectEpoch: { current: 1 }, navigationEpoch: { current: 1 }, workspaceRef: { current: { restored: false } }, workspaceOriginScope: () => 'normal',
+    currentProject: { current: 'project-a' }, projectEpoch: { current: 1 }, navigationEpoch: { current: 1 }, editorSession: {current: 'current-editor-session'},
   };
   const marker = app.includes('  useEffect(() => installNativeCloseAdmission(') ? '  useEffect(() => installNativeCloseAdmission(' : '  useEffect(() => { const warn = e =>';
   const first = app.indexOf(marker), end = app.indexOf("  useEffect(() => { if (showProjects)", first);
@@ -53,8 +53,8 @@ test('actual App preserves each existing synchronous draft predicate', () => {
   }
   f.env.dirtyRef.current = true; assert.equal(f.unload(), true); f.cleanup!();
 });
-test('actual App project epoch and workspace replacement invalidate the exact native permission', () => {
-  for (const change of [(f: { env: { projectEpoch: { current: number; }; }; }) => f.env.projectEpoch.current++, (f: { env: { currentProject: { current: string; }; }; }) => f.env.currentProject.current = 'project-b', (f: { env: { workspaceOriginScope: () => string; }; }) => f.env.workspaceOriginScope = () => 'restored:other']) {
+test('actual App project epoch and editor session replacement invalidate the exact native permission', () => {
+  for (const change of [(f: { env: { projectEpoch: { current: number; }; }; }) => f.env.projectEpoch.current++, (f: { env: { currentProject: { current: string; }; }; }) => f.env.currentProject.current = 'project-b', (f: {env:{editorSession:{current:string}}}) => f.env.editorSession.current='replacement-editor-session']) {
     const f = harness(), source = f.registry.register('agent-chat'); source.update(state(1, { dirty: true }));
     const captured = f.window.__mioonNativeCloseAdmission.inspect();
     assert.equal(f.window.__mioonNativeCloseAdmission.commit(captured.token, { discardDirty: true, allowDrainFailure: false, expiresAt: Date.now() + 1000 }), true);

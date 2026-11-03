@@ -11,8 +11,7 @@ export function useTimelineClipLoudness(options: TimelineClipLoudnessControllerO
   const controller = useRef<TimelineClipLoudnessController | null>(null);
   if (!controller.current) controller.current = createTimelineClipLoudnessController({
     read: (input, invocation) => callbacks.current.read(input, invocation),
-    getContext: () => timelineClipLoudnessPageContext(callbacks.current.getContext?.() ?? callbacks.current.context),
-    getInvocation: () => callbacks.current.getInvocation?.() ?? {}, onUnauthorized: () => callbacks.current.onUnauthorized?.(), onChange: setState,
+    getContext: () => timelineClipLoudnessPageContext(callbacks.current.getContext?.() ?? callbacks.current.context), onUnauthorized: () => callbacks.current.onUnauthorized?.(), onChange: setState,
     ...(options.onMatchGain ? { onMatchGain: (gain: number) => callbacks.current.onMatchGain?.(gain) === true } : {}),
   });
   const owned = controller.current;

@@ -1,9 +1,8 @@
+import {assertProjectStore} from './store-runtime.ts';
 import {lstatSync} from 'node:fs';
 import {mediaMtimeMs} from './media-reference/fingerprint.ts';
 import {mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
 import {registeredProjectAssetReferences} from './project-media-storage.ts';
-import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
-import {workspaceRestoreError} from './workspace-restore-policy.ts';
 import {randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError,parse,WAVEFORM_ALGORITHM,sourceFrameCount} from '@mioon/contracts';
@@ -14,7 +13,7 @@ import {parseProbeOutput,withProbePermit} from './media-probe.ts';
 import type {ProbeResult} from './media-probe.ts';
 import {decodeWaveform} from './waveform-decoder.ts';
 import {boundedShutdown} from './operation-lifecycle.ts';
-import {ownsStoreLock} from './db.ts';
+import {ownsStoreLock} from './store-runtime.ts';
 import {createWaveformHistoryReaders,WAVEFORM_CACHE_LIMITS,waveformMessages as messages,waveformReason as reason,waveformFault as fault,isWaveformMediaType,waveformSourceMetadata as sourceMetadata,waveformDigest as digest,waveformRowBytes as rowBytes,waveformInput as asInput} from './waveforms-history.ts';
 import type {WaveformAsset,WaveformCacheRow,WaveformFault,WaveformGetInput,WaveformMessageCode,WaveformResponse,WaveformStatus,WaveformStoredData} from './waveforms-history.ts';
 
@@ -68,7 +67,7 @@ export async function probeWaveform(file: string,{signal,beforeSpawn}: {signal?:
  * still race FFmpeg's pathname-only open; this is not a hostile-decoder sandbox.
  */
 export function createWaveformServices(store: WaveformStore,{signal:ownerSignal,decode=decodeWaveform,probe=probeWaveform}: {signal?: AbortSignal; decode?: WaveformDecoder; probe?: WaveformProbe}={}): WaveformService {
- if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
+ assertProjectStore(store);
  const existingOwner=owners.get(store.db);
  if(existingOwner){
   if(existingOwner.signal===ownerSignal&&existingOwner.decode===decode&&existingOwner.probe===probe&&existingOwner.root===store.root)return existingOwner.service;
@@ -263,6 +262,8 @@ export function createWaveformServices(store: WaveformStore,{signal:ownerSignal,
  }
  function unavailable(input: WaveformGetInput,error: unknown): WaveformResponse {if(!isFault(error))throw error;return response(input,error.waveformStatus as WaveformStatus,{reason:reason(messageCode(error.waveformCode))});}
  function request(input: WaveformGetInput): WaveformResponse {
+  // A revoked native connection cannot be inspected, even for a refusal.
+  if(!db.isOpen)return response(input,'error',{reason:reason('WAVEFORM_OWNER_REQUIRED')});
   const asset=owned(input);
   if(!isWaveformMediaType(asset.mimeType)||asset.hasAudio===false)return response(input,'unsupported',{reason:reason('WAVEFORM_NO_AUDIO')});
   if(sourceColumn==='sourceFingerprint')try{validatedSource(asset);}catch(error){return unavailable(input,error);}

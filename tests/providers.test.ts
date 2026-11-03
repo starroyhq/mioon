@@ -9,6 +9,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createMockProvider } from '../packages/business/src/providers/mock.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import { createRunwayProvider } from '../packages/business/src/providers/runway.ts';
 const exec = promisify(execFile);
 const ID = '12345678-1234-4123-8123-123456789abc';
@@ -20,9 +21,9 @@ async function sandbox(t: test.TestContext) {
   return root;
 }
 async function mock(t: test.TestContext, options = {}) {
-  const root = await sandbox(t), db = new DatabaseSync(path.join(root, 'test.sqlite'));
-  t.after(() => db.close());
-  return { root, db, provider: createMockProvider({ root, db, ...options }) };
+  const root = await mkdtemp(path.join(tmpdir(), 'mock-provider-')), store = openStore(root), db = store.db;
+  t.after(async () => {store.close();await rm(root, {recursive:true,force:true});});
+  return { root, store, db, provider: createMockProvider({ root, db, ...options }) };
 }
 async function runway(t: test.TestContext, responses: unknown[] = [], options: {env?: NodeJS.ProcessEnv; now?: () => number} = {}) {
   const root = await sandbox(t);
@@ -51,19 +52,39 @@ test('mock advertises simulated portrait 2/4/8 second outputs', async t => {
   assert.equal(provider.capabilities.enabled, true);
 });
 
+test('mock discovery and validation need no ledger, while every ledger method rejects an unheld database', async t => {
+  const root=await sandbox(t),db=new DatabaseSync(':memory:');t.after(()=>db.close());
+  const schema=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(),changes=db.prepare('SELECT total_changes() AS n').get();
+  const provider=createMockProvider({root,db});assert.equal(provider.validate(snapshot()),true);assert.equal(provider.capabilities.mock,true);
+  for(const call of [()=>provider.submit(snapshot(),{requestId:'unheld'}),()=>provider.poll('unheld'),()=>provider.reconcile('unheld'),()=>provider.cancel('unheld'),()=>provider.download('unheld',path.join(root,'never.mp4'))])await assert.rejects(call(),{code:'PROJECT_STORE_UNVERIFIED'});
+  assert.throws(()=>provider.stats(),{code:'PROJECT_STORE_UNVERIFIED'});
+  assert.deepEqual(db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(),schema);assert.deepEqual(db.prepare('SELECT total_changes() AS n').get(),changes);assert.deepEqual(await readdir(root),[]);
+});
+
+test('mock rechecks the real owner after beforeSubmit and old handles cannot use a reopened kernel',async t=>{
+  const {root,store,provider}=await mock(t);
+  await assert.rejects(provider.submit(snapshot(),{requestId:'closed-before-write',beforeSubmit:()=>store.close()}),{code:'PROJECT_STORE_UNVERIFIED'});
+  const reopened=openStore(root);try{
+    const current=createMockProvider({root,db:reopened.db});
+    for(const call of [()=>provider.submit(snapshot(),{requestId:'old-owner'}),()=>provider.poll('old-owner'),()=>provider.reconcile('old-owner'),()=>provider.cancel('old-owner'),()=>provider.download('old-owner',path.join(root,'never.mp4'))])await assert.rejects(call(),{code:'PROJECT_STORE_UNVERIFIED'});
+    assert.throws(()=>provider.stats(),{code:'PROJECT_STORE_UNVERIFIED'});assert.deepEqual(current.stats(),{submissionCount:0,taskCount:0,downloadAttempts:0,pollCount:0});
+  }finally{reopened.close();}
+});
+
 test('accepted then response lost persists the remote record before throwing and reconciles after restart', async t => {
-  const root = await sandbox(t), dbPath = path.join(root, 'durable.sqlite');
-  let db = new DatabaseSync(dbPath);
+  const root = await mkdtemp(path.join(tmpdir(), 'durable-mock-provider-'));
+  let store = openStore(root), db = store.db;
+  t.after(async () => {store.close();await rm(root, {recursive:true,force:true});});
   let provider = createMockProvider({ root, db });
   const context = { requestId: 'response-lost-1', jobId: randomUUID() };
   await assert.rejects(provider.submit(snapshot('accepted_then_response_lost'), context), e => (e as RootFailure).uncertain === true);
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM mock_provider_tasks').get())!.n, 1);
-  db.close();
-  db = new DatabaseSync(dbPath); t.after(() => db.close());
+  store.close();
+  store = openStore(root); db = store.db;
   provider = createMockProvider({ root, db });
   const recovered = await provider.reconcile(context.requestId);
   assert.ok((recovered)!.providerJobId);
-  assert.equal((await provider.poll((recovered)!.providerJobId)).status, 'succeeded');
+  const polled=await provider.poll((recovered)!.providerJobId);assert.equal(polled.status, 'succeeded',JSON.stringify(polled));
   assert.deepEqual(provider.stats(context.requestId), { submissionCount: 1, taskCount: 1, downloadAttempts: 0, pollCount: 1 });
 });
 
@@ -92,7 +113,7 @@ test('mock delay, failure, timeout and remote cancellation are deterministic', a
   const delayed = await provider.submit(snapshot('delay', { parameters: { scenario: 'delay', delayMs: 1000 } }), { requestId: 'delay' });
   assert.equal((await provider.poll(delayed.providerJobId)).status, 'running');
   clock = 1500; assert.equal((await provider.poll(delayed.providerJobId)).progress, 0.5);
-  clock = 2000; assert.equal((await provider.poll(delayed.providerJobId)).status, 'succeeded');
+  clock = 2000; const ready=await provider.poll(delayed.providerJobId);assert.equal(ready.status, 'succeeded',JSON.stringify(ready));
   const failed = await provider.submit(snapshot('failure'), { requestId: 'failure' });
   assert.equal((await provider.poll(failed.providerJobId)).status, 'failed');
   const timeout = await provider.submit(snapshot('timeout'), { requestId: 'timeout' });
@@ -281,7 +302,7 @@ test('mock recoverable timeout and rejection/failure aliases use the same durabl
   // A recreated provider sees persisted attempts rather than resetting the scenario.
   const resumed = createMockProvider({ db, root });
   await assert.rejects(resumed.poll(providerJobId), { code: 'PROVIDER_POLL_TIMEOUT' });
-  assert.equal((await resumed.poll(providerJobId)).status, 'succeeded');
+  const recovered=await resumed.poll(providerJobId);assert.equal(recovered.status, 'succeeded',JSON.stringify(recovered));
   assert.equal(resumed.stats('recover-timeout').submissionCount, 1);
   assert.equal(resumed.stats('recover-timeout').pollCount, 3);
   await assert.rejects(resumed.submit(snapshot('rejected_before_accept'), { requestId: 'alias-reject' }), { code: 'MOCK_SUBMISSION_REJECTED' });

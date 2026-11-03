@@ -1,54 +1,33 @@
+
+
+
+
+
+
+
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {spawn} from 'node:child_process';
+
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
+
+
 import {startServer} from '../apps/server/src/index.ts';
 import type {InspectApplication} from '../apps/server/src/index.ts';
-import {startLegacyProjectHttp} from './fixtures/legacy-project-package-http.ts';
+
 import {schemaObjects} from './helpers/project-database.ts';
-import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
-import {createClient,operationDefinition,effectAnnotations} from '@mioon/client';
-import type {TestContext} from 'node:test';
+
+import {createClient} from '@mioon/client';
+
 type Loose = Record<string, unknown>;
 interface CliEnvelope {code: number|null; signal: string|null; envelope: Loose}
 const root=fileURLToPath(new URL('..',import.meta.url)),token='synthetic-backup-inspection-token-only';
 const bounded=async<T>(promise: Promise<T>,label: string,ms=10000): Promise<T>=>{let timer: ReturnType<typeof setTimeout>|undefined;try{return await Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' timed out')),ms);})]);}finally{if(timer)clearTimeout(timer);}};
-async function cli(args: string[],env: NodeJS.ProcessEnv): Promise<CliEnvelope> {
- const child=spawn(process.execPath,['apps/cli/src/index.ts',...args],{cwd:root,env:{...mediaEnvironment(),...env} as Record<string,string>,stdio:['ignore','pipe','pipe']});
- let stdout='',stderr='',error: Error|undefined;child.on('error',(value: Error)=>{error=value;});
- const closed=new Promise<{code: number|null; signal: string|null}>(resolve=>child.once('close',(code,signal)=>resolve({code,signal})));
- child.stdout.setEncoding('utf8').on('data',(text: string)=>{stdout+=text;if(Buffer.byteLength(stdout)>256*1024){error=Error('CLI stdout bound');if(child.exitCode===null&&!child.signalCode)child.kill('SIGKILL');}});
- child.stderr.setEncoding('utf8').on('data',(text: string)=>{stderr+=text;if(Buffer.byteLength(stderr)>64*1024){error=Error('CLI stderr bound');if(child.exitCode===null&&!child.signalCode)child.kill('SIGKILL');}});
- try{const end=await bounded(closed,'inspection CLI');if(error)throw error;assert.equal(end.signal,null);assert.equal(stdout.includes(token)||stderr.includes(token),false);return {...end,envelope:JSON.parse(stdout) as Loose};}
- finally{if(child.exitCode===null&&!child.signalCode){child.kill('SIGTERM');const timer=setTimeout(()=>{if(child.exitCode===null&&!child.signalCode)child.kill('SIGKILL');},1000);try{await bounded(closed,'owned CLI cleanup',3000);}finally{clearTimeout(timer);}}}
-}
-test('legacy authenticated HTTP, CLI and official MCP share exact non-path inspection and perform no DB writes',async()=>{
- const directory=mkdtempSync(path.join(tmpdir(),'mioon-backup-inspect-wire-'));let server: Awaited<ReturnType<typeof startLegacyProjectHttp>>|undefined,client: Client|undefined,transport: StdioClientTransport|undefined;
- try{
-  server=await startLegacyProjectHttp({root:directory,token,domain:'inspection'});
-  const capture=()=>server!.inspect(db=>db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map((value: unknown)=>{const name=(value as {name: string}).name;return [name,db.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all()];}));
-  const before=capture();
-  const rpc=async(input: Loose,authenticated=true)=>{const response=await fetch(server!.url+'/api/rpc',{method:'POST',headers:{'content-type':'application/json',...(authenticated?{authorization:`Bearer ${token}`}:{})},body:JSON.stringify({operation:'workspace.backup.inspect',input})});return {status:response.status,envelope:await response.json() as Loose};};
-  const result=await rpc({});assert.equal(result.status,200);assert.equal(result.envelope.ok,true);assert.equal((result.envelope.data as Loose).captureReady,false);
-  assert.equal((await rpc({},false)).status,401);assert.equal((await rpc({source:'SYNTHETIC_PRIVATE_PATH'})).status,400);
-  const env={MIOON_BASE_URL:server!.url,MIOON_TOKEN:token};const output=await cli(['workspace','backup','inspect'],env);assert.equal(output.code,0);assert.deepEqual(output.envelope,result.envelope);
-  const schema=await cli(['schema','workspace.backup.inspect'],{});assert.equal(schema.code,0);assert.deepEqual(schema.envelope.data,operationDefinition('workspace.backup.inspect'));
-  const invalid=await cli(['workspace','backup','inspect','--input','{"directory":"SYNTHETIC_PRIVATE_PATH"}'],env);assert.equal(invalid.code,2);assert.equal(invalid.envelope.ok,false);
-  client=new Client({name:'backup-inspection-test',version:'1.0.0'},{capabilities:{}});
-  transport=new StdioClientTransport({command:process.execPath,args:['apps/mcp/src/index.ts'],cwd:root,env:{...mediaEnvironment(),...env},stderr:'pipe'});let stderr='';
-  (transport.stderr as unknown as NodeJS.ReadableStream|undefined)?.setEncoding('utf8').on('data',(text: string)=>{stderr=(stderr+text).slice(-65536);});
-  await bounded(client.connect(transport),'MCP connect');const listed=await client.listTools();const tool=listed.tools.find((value: {name: string})=>value.name==='workspace_backup_inspect') as {annotations?: {readOnlyHint?: boolean}; inputSchema: {additionalProperties?: boolean}}|undefined;assert.ok(tool);assert.equal(tool.annotations?.readOnlyHint,true);assert.equal(tool.inputSchema.additionalProperties,false);
-  assert.equal(listed.tools.some((value: {name: string})=>/^workspace_backup_(verify|restore)$/.test(value.name)),false,'arbitrary-path cold verification and restore stay private');
-  for(const operation of ['workspace.backup.create','workspace.backup.restore.stage']){const definition=operationDefinition(operation),managed=listed.tools.find(value=>value.name===operation.replaceAll('.','_'));assert.ok(managed);assert.deepEqual(managed.inputSchema,definition.inputSchema);assert.deepEqual(managed.annotations,effectAnnotations(definition.effects));assert.equal(managed.annotations?.readOnlyHint,false);assert.equal(managed.inputSchema.additionalProperties,false);for(const key of ['source','destination','path','directory'])assert.equal(Object.hasOwn(managed.inputSchema.properties??{},key),false);}
-  const called=await client.callTool({name:'workspace_backup_inspect',arguments:{}},undefined,{timeout:10000});assert.deepEqual(called.structuredContent,result.envelope);assert.equal(stderr.includes(token),false);
-  assert.deepEqual(capture(),before,'no schema, journal, task, counter, receipt or project writes');
- }finally{if(client)await bounded(client.close(),'MCP close');if(transport)await transport.close();await server?.close();rmSync(directory,{recursive:true,force:true});}
-});
+
+
 
 test('new application HTTP refuses historical workspace inspection without application writes',async t=>{
  const directory=mkdtempSync(path.join(tmpdir(),'mioon-backup-inspect-unavailable-'));let inspect!:InspectApplication;
@@ -56,10 +35,17 @@ test('new application HTTP refuses historical workspace inspection without appli
  t.after(async()=>{await server.close();rmSync(directory,{recursive:true,force:true});});
  const capture=()=>inspect(db=>({objects:schemaObjects(db),rows:schemaObjects(db).filter(row=>row.type==='table').map(({name})=>[name,db.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all()]),changes:db.prepare('SELECT total_changes() AS n').get()!.n}));
  const before=capture(),response=await fetch(server.url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({operation:'workspace.backup.inspect',input:{}})});
- assert.equal(response.status,409);assert.equal((await response.json()).error.code,'RESTORE_OPERATION_UNAVAILABLE');
+ assert.equal(response.status,404);assert.equal((await response.json()).error.code,'UNKNOWN_OPERATION');
  assert.deepEqual(capture(),before,'rejected inspection creates no app row, task, receipt, schema or change mark');
 });
-test('shared client refuses malformed inspection ACK without implying an uncertain mutation',async()=>{
- const client=createClient({env:{MIOON_BASE_URL:'http://127.0.0.1:4318',MIOON_TOKEN:token},fetchImpl:async()=>new Response(JSON.stringify({ok:true,data:{captureReady:true,source:'/private'}}),{status:200,headers:{'content-type':'application/json'}})});
- await assert.rejects(client.rpc('workspace.backup.inspect',{}),(error: unknown)=>{const view=error as {code?: string; details?: {submissionMayHaveSucceeded?: boolean}};return view.code==='BACKEND_PROTOCOL_ERROR'&&!view.details?.submissionMayHaveSucceeded;});
+test('shared client rejects retired inspection before any fetch or discovery', async () => {
+ let calls = 0;
+ const client = createClient({env:{MIOON_BASE_URL:'http://127.0.0.1:4318',MIOON_TOKEN:token}, fetchImpl:async()=>{calls++;return new Response('{}');}});
+ for (const operation of ['workspace.backup.status','workspace.backup.list','workspace.backup.create','workspace.backup.restore.stage','workspace.backup.inspect','workspace.restore.inspect']) {
+  await assert.rejects(client.rpc(operation, {}), (error: unknown) => {
+   const view = error as {code?: string; details?: {submissionMayHaveSucceeded?: boolean}};
+   assert.equal(view.code, 'UNKNOWN_OPERATION'); assert.equal(view.details?.submissionMayHaveSucceeded, undefined); return true;
+  });
+ }
+ assert.equal(calls, 0);
 });

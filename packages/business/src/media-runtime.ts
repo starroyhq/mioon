@@ -36,7 +36,7 @@ export const isMediaToolFailure = (error: unknown): boolean => {
 };
 export const isMediaEffectRestriction = (error: unknown): boolean => {
   if (typeof error !== 'object' || error === null || !('code' in error) || typeof error.code !== 'string') return false;
-  return ['RESTORE_OPERATION_UNAVAILABLE', 'RESTORED_RECORD_HELD', 'RESTORE_WORKSPACE_ORIGIN_REQUIRED', 'RESTORE_WORKSPACE_ORIGIN_MISMATCH'].includes(error.code);
+  return error.code==='PROJECT_STORE_UNVERIFIED';
 };
 // Backend-owned invocation/claim fences are synchronous. A Promise is not an
 // admission token: do not let an expired caller schedule an effect after await.

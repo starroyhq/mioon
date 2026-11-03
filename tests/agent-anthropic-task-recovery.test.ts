@@ -8,7 +8,7 @@ import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import type {Provider} from '../packages/business/src/provider-registry.ts';

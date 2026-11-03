@@ -4,7 +4,6 @@ import type {freezeTimelineSnapshot} from '../../packages/business/src/timeline-
 import type {OrdinaryServices} from '../../packages/business/src/services.ts';
 import type {TimelineRecord} from '../../packages/contracts/src/timeline-replacement.ts';
 import type {TimelineClipLoudnessInput, TimelineClipLoudnessResponse} from '../../packages/contracts/src/timeline-clip-loudness.ts';
-import type {WorkspaceRestoreInspection} from '../../packages/contracts/src/workspace-restore.ts';
 import type {AudioPreviewPlan} from '../../packages/contracts/src/timeline-audio-preview.ts';
 import type {TimelineClipLoudnessControllerOptions, TimelineClipLoudnessReadOptions, TimelineClipLoudnessView} from '../../apps/web/src/timeline-clip-loudness-state.ts';
 import {fixture as originalFixture} from './timeline-clip-loudness-ui-fixture.ts';
@@ -13,7 +12,7 @@ export type Mutable<T> = {-readonly [K in keyof T]: T[K] extends readonly (infer
 export interface Failure extends Error {code: string; status?: number; details: Record<string, unknown>; terminationUnconfirmed?: boolean}
 export interface Project {id: string; revision: number; name: string; [key: string]: unknown}
 export interface Asset {id: string; projectId: string; relativePath: string; sha256: string; sizeBytes: number; mimeType: string; duration: number | null; hasAudio: boolean; [key: string]: unknown}
-type ServiceResult<O extends string> = O extends 'project.create' ? Project : O extends 'asset.import' ? Asset : O extends 'timeline.clip.loudness' ? TimelineClipLoudnessResponse : O extends 'workspace.restore.inspect' ? WorkspaceRestoreInspection : O extends 'timeline.audioPreview.plan' ? AudioPreviewPlan : O extends 'timeline.get' | 'timeline.clip.add' | 'timeline.clip.update' | 'timeline.clip.remove' | 'timeline.clip.replaceSource' | 'timeline.clip.split' | 'timeline.track.add' | 'timeline.track.update' | 'timeline.undo' | 'timeline.redo' ? TimelineRecord : unknown;
+type ServiceResult<O extends string> = O extends 'project.create' ? Project : O extends 'asset.import' ? Asset : O extends 'timeline.clip.loudness' ? TimelineClipLoudnessResponse : O extends 'timeline.audioPreview.plan' ? AudioPreviewPlan : O extends 'timeline.get' | 'timeline.clip.add' | 'timeline.clip.update' | 'timeline.clip.remove' | 'timeline.clip.replaceSource' | 'timeline.clip.split' | 'timeline.track.add' | 'timeline.track.update' | 'timeline.undo' | 'timeline.redo' ? TimelineRecord : unknown;
 export type TypedServices = Omit<OrdinaryServices, 'call'> & {call<O extends string>(operation: O, input: unknown, context?: Parameters<OrdinaryServices['call']>[2]): Promise<ServiceResult<O>>};
 type OriginalFixture = ReturnType<typeof originalFixture>;
 export type LoudnessFixture = Omit<OriginalFixture, 'calls'> & {calls: {input: TimelineClipLoudnessInput; options: TimelineClipLoudnessReadOptions; context: unknown}[]};

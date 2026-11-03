@@ -11,8 +11,6 @@ import { readFileSync } from 'node:fs';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
 import * as submissions from '../apps/web/src/submissions.ts';
 import * as mutations from '../apps/web/src/mutation-submissions.ts';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
-import * as restoredWorkspace from '../apps/web/src/restored-workspace.ts';
 import * as projectOpening from '../apps/web/src/project-open-state.ts';
 import { defaultWorkspaceState, reconcileWorkspaceState, type WorkspaceState } from '../apps/web/src/workspace-state.ts';
 import { readGenerationProviderDirectory } from '../apps/web/src/video-provider-directory.ts';
@@ -66,7 +64,7 @@ function harness(dispatch: (operation:string,input:ReferenceInput)=>unknown, { p
   const currentProject = { current: projectId }, projectEpoch = { current: 1 }, busy = new Set();
   const dataRef = { current: snapshot() }, viewRef = { current: defaultWorkspaceState() };
   viewRef.current.canvas.selectedId = id(7);
-  const scope = { msg, localizedError: (value: string|DisplayMessage|null|undefined) => Object.assign(new Error(renderMessage('zh-Hans', value)), { displayMessage: value }), ...submissions, ...mutations, ...workspaceOrigin, ...restoredWorkspace, workspaceRef: { current: { restored: false } }, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse,
+  const scope = { msg, localizedError: (value: string|DisplayMessage|null|undefined) => Object.assign(new Error(renderMessage('zh-Hans', value)), { displayMessage: value }), ...submissions, ...mutations, editorSession: {current: 'normal'}, workspaceRef: { current: {  } }, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse,
     REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, shotTextRef: { current: null }, currentProject, dataRef,
     context: () => ({ projectId: currentProject.current, epoch: state.epoch }),
     isCurrent: (captured: { projectId: string; epoch: number; }) => captured.projectId === currentProject.current && captured.epoch === state.epoch,

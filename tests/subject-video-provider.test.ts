@@ -1,7 +1,7 @@
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DatabaseSync} from 'node:sqlite';
+import type {DatabaseSync} from 'node:sqlite';
 import {createHash,randomUUID} from 'node:crypto';
 import {mkdtemp,writeFile,rm,symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -10,6 +10,7 @@ import {crc32,deflateSync} from 'node:zlib';
 import {SUBJECT_REFERENCE_PROFILE_VERSION} from '@mioon/contracts';
 import {createArkProvider} from '../packages/business/src/providers/ark.ts';
 import {createMockProvider} from '../packages/business/src/providers/mock.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import type { BinaryLike } from 'crypto';
 
 // Entirely synthetic parser/byte fixtures. No renderer, credentials, or live HTTP.
@@ -26,7 +27,7 @@ function jpeg(width=480,height=480){
 const sha=(bytes: Buffer<ArrayBuffer>|BinaryLike)=>createHash('sha256').update(bytes).digest('hex');
 const json=(body: { id?: string; message?: string; accepted?: boolean; },status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json'}});
 async function fixture(t: test.TestContext,{providerId='ark',mimeType='image/png',width=480,height=480,approved=true,reply,parameters={}}:{providerId?:string;mimeType?:string;width?:number;height?:number;approved?:boolean;reply?:(url:string,options?:RequestInit)=>Response|Promise<Response>;parameters?:Record<string,unknown>}={}){
- const root=await mkdtemp(path.join(tmpdir(),'mioon-subject-provider-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-subject-provider-'));let store:ReturnType<typeof openStore>|undefined;t.after(async()=>{store?.close();await rm(root,{recursive:true,force:true});});
  const bytes=mimeType==='image/jpeg'?jpeg(width,height):png(width,height),file=path.join(root,'synthetic-image');await writeFile(file,bytes);
  const projectId=randomUUID(),asset={id:randomUUID(),projectId,path:file,mimeType,sha256:sha(bytes),sizeBytes:bytes.length,width,height,role:'subject_reference'};
  const subjectVersion={id:randomUUID(),projectId,subjectId:randomUUID(),number:1,assetId:asset.id,sha256:asset.sha256,mimeType,width,height,provenance:{kind:'synthetic-mock',versionId:null,shotId:null,jobId:null},createdAt:'2026-10-11T00:00:00.000Z'};
@@ -37,7 +38,7 @@ async function fixture(t: test.TestContext,{providerId='ark',mimeType='image/png
   subjectReference:{subjectVersionId:subjectVersion.id,subjectName:'Synthetic object',subjectKind:'product',subjectVersion}};
  const calls: { url: RequestInfo|URL; options: RequestInit|undefined; }[]=[],env={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'INERT-SUBJECT-FIXTURE',ARK_APPROVED_ASSET_SHA256:approved?asset.sha256:''};
  let db!:DatabaseSync,provider;
- if(providerId==='mock'){db=new DatabaseSync(':memory:');t.after(()=>db.close());provider=createMockProvider({root,db,now:()=>0});}
+ if(providerId==='mock'){store=openStore(root);db=store.db;provider=createMockProvider({root,db,now:()=>0});}
  else provider=createArkProvider({root,env,fetchImpl:(async(url: string,options: RequestInit | undefined)=>{calls.push({url,options});return reply?reply(url,options):json({id:'offline-subject-task'});}) as unknown as typeof fetch});
  return {root,bytes,file,asset,subjectVersion,snapshot,calls,provider,db};
 }
@@ -173,7 +174,7 @@ test('Mock persists the full subject snapshot and advertises a metadata-only tes
  const f=await fixture(t,{providerId:'mock',parameters:{delayMs:0}});f.asset.path=path.join(f.root,'does-not-exist');
  const receipt=await f.provider.submit(f.snapshot,{requestId:'mock-subject-ledger'});const saved=f.db.prepare('SELECT snapshot_json FROM mock_provider_tasks WHERE provider_job_id=?').get(receipt.providerJobId);
  assert.deepEqual(JSON.parse((saved!.snapshot_json as string)),f.snapshot);assert.equal((f.provider.capabilities as ReturnType<typeof createMockProvider>['capabilities']).referenceSimulation,'metadata-only');assert.equal((f.provider.capabilities as ReturnType<typeof createMockProvider>['capabilities']).depictsPromptOrReferences,false);
- assert.equal((await f.provider.poll(receipt.providerJobId)).status,'succeeded');assert.deepEqual(await f.provider.reconcile('mock-subject-ledger'),receipt);assert.equal((f.provider as ReturnType<typeof createMockProvider>).stats().submissionCount,1);assert.equal(f.calls.length,0);
+ const polled=await f.provider.poll(receipt.providerJobId);assert.equal(polled.status,'succeeded',JSON.stringify(polled));assert.deepEqual(await f.provider.reconcile('mock-subject-ledger'),receipt);assert.equal((f.provider as ReturnType<typeof createMockProvider>).stats().submissionCount,1);assert.equal(f.calls.length,0);
 });
 test('Mock subject metadata permits positive dimensions and enforces PNG/JPEG with a 10 MiB limit',async t=>{
  const f=await fixture(t,{providerId:'mock'});f.asset.width=f.subjectVersion.width=1;f.asset.height=f.subjectVersion.height=10000;

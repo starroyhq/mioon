@@ -18,19 +18,17 @@ export interface UseExportPreflightOptions {
   read: (input: Record<string, unknown>,options: ExportPreflightInvocation & {signal?: AbortSignal})=>Promise<unknown>;
   readCapabilities: (input: Record<string, unknown>,options: ExportPreflightInvocation & {signal?: AbortSignal})=>Promise<unknown>;
   getContext?: ()=>ExportPreflightContext|null|undefined;
-  getInvocation?: ()=>ExportPreflightInvocation;
   onUnauthorized?: ()=>void;
 }
 export interface UseExportPreflightResult {state: ExportPreflightState|null; controller: ExportPreflightController}
 
-export function useExportPreflight({ scope, projectId, timelineId, revision, exportSettings, settingsVersion, deliveryName, deliveryNameVersion, exportRange, rangeVersion, connected, visible, read, readCapabilities, getContext, getInvocation, onUnauthorized }: UseExportPreflightOptions): UseExportPreflightResult {
+export function useExportPreflight({ scope, projectId, timelineId, revision, exportSettings, settingsVersion, deliveryName, deliveryNameVersion, exportRange, rangeVersion, connected, visible, read, readCapabilities, getContext, onUnauthorized }: UseExportPreflightOptions): UseExportPreflightResult {
   const callbacks = useRef<UseExportPreflightOptions|null>(null);
-  callbacks.current = { scope, projectId, timelineId, revision, exportSettings, settingsVersion, deliveryName, deliveryNameVersion, exportRange, rangeVersion, connected, visible, read, readCapabilities, getContext, getInvocation, onUnauthorized };
+  callbacks.current = { scope, projectId, timelineId, revision, exportSettings, settingsVersion, deliveryName, deliveryNameVersion, exportRange, rangeVersion, connected, visible, read, readCapabilities, getContext, onUnauthorized };
   const [state, setState] = useState<ExportPreflightState|null>(null), controller = useRef<ExportPreflightController|null>(null);
   if (!controller.current) controller.current = createExportPreflightController({
     read: (input: Record<string, unknown>,options: ExportPreflightInvocation & {signal?: AbortSignal}) => callbacks.current!.read(input, options),
     readCapabilities: (input: Record<string, unknown>,options: ExportPreflightInvocation & {signal?: AbortSignal}) => callbacks.current!.readCapabilities(input, options), onChange: setState,
-    getInvocation: () => callbacks.current?.getInvocation?.() ?? {},
     getContext: getContext ? () => callbacks.current?.getContext?.() : undefined,
     onUnauthorized: () => callbacks.current?.onUnauthorized?.(),
   });

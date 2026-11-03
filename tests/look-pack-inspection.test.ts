@@ -2,7 +2,11 @@ import type {RootFailure} from './helpers/strict-root-error-types.ts';
 import type {TypedClient, TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DatabaseSync} from 'node:sqlite';
+import {DatabaseSync,constants} from 'node:sqlite';
+import {kernelFixture} from './helpers/current-retained-fixture.ts';
+import {withNativeTriggerFault} from './helpers/current-native-fault.ts';
+import {ownsStoreLock,assertProjectDatabase} from '../packages/business/src/store-runtime.ts';
+import {openServerProject} from './helpers/project-database.ts';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
@@ -12,19 +16,14 @@ import {createHash,randomUUID} from 'node:crypto';
 import {mkdtempSync,rmSync,readdirSync,readFileSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {WORKSPACE_LUT_SCHEMA_SQL} from '../packages/business/src/workspace-schema-v28.ts';
-import {createLutResourceServices,assertLutReadProfile} from '../packages/business/src/lut-resources.ts';
+import {createLutResourceServices} from '../packages/business/src/lut-resources.ts';
 import {createLookPackInspectionServices} from '../packages/business/src/look-pack-inspection.ts';
 import {LOOK_PACK_START,LOOK_PACK_END} from '../packages/contracts/src/look-pack.ts';
 import {lookPackInspectInputSchema,lookPackInspectResponseSchema,isLookPackInspectResponse} from '../packages/contracts/src/look-pack-inspection.ts';
-import {LUT_RESOURCE_PROFILE,lutRestorePolicy} from '../packages/contracts/src/lut-resources.ts';
+import {LUT_RESOURCE_PROFILE} from '../packages/contracts/src/lut-resources.ts';
 import {schemas,operationEffect,effectAnnotations} from '../packages/contracts/src/index.ts';
 import {createClient,discoverSchema} from '../packages/client/src/index.ts';
-import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
-import {RESTORE_READ_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import type { BinaryLike } from 'crypto';
 
 const body=Buffer.from('# Original lexical Cube\r\nTITLE "Look original"\r\nLUT_3D_SIZE 2\r\n0 0 0\r\n1 0 0\r\n0 1 0\r\n1 1 0\r\n0 0 1\r\n1 0 1\r\n0 1 1\r\n1 1 1');
@@ -38,15 +37,14 @@ function packBytes(patch: { asset?: { id: string; purpose: string; profile: stri
  return Buffer.concat([Buffer.from([LOOK_PACK_START,...lines,LOOK_PACK_END,''].join('\r\n')),body]);
 }
 function fixture(t: test.TestContext,source: Buffer<ArrayBuffer>|undefined=packBytes()){
- const db=new DatabaseSync(':memory:');db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON;CREATE TABLE projects(id TEXT PRIMARY KEY,data TEXT NOT NULL);'+WORKSPACE_LUT_SCHEMA_SQL);
- const projectId=randomUUID(),foreignId=randomUUID();for(const id of [projectId,foreignId])db.prepare('INSERT INTO projects VALUES(?,?)').run(id,JSON.stringify({id}));
- const state: {owned: boolean; version: number | null}={owned:true,version:null};const controller=new AbortController();
- const runtime={ownsLock:()=>state.owned,assertReadable(){if(state.version!==null)assertLutReadProfile(state.version);},assertImportAllowed(){}};
+ const kernel=kernelFixture(t,'Look pack'),foreign=kernelFixture(t,'Foreign look pack'),store=kernel.store,db=store.db,projectId=kernel.projectId,foreignId=foreign.projectId;
+ const state={owned:true};const controller=new AbortController();
+ const runtime={ownsLock:()=>ownsStoreLock(store)&&state.owned,assertReadable(){assertProjectDatabase(db);},assertImportAllowed(){assertProjectDatabase(db);}};
  const imports=createLutResourceServices({db},{runtime}).handlers;
  const handlers=createLookPackInspectionServices({db},{runtime,signal:controller.signal}).handlers;
  const importInput={projectId,requestId:'exact-original-look-pack',name:'original.look.cube',dataBase64:source.toString('base64')};
  const imported=imports['lut.import'](importInput);const input={projectId,lutId:imported.resource.id};
- t.after(()=>db.close());return {db,state,controller,projectId,foreignId,imports,handlers,input,importInput,imported,source};
+ return {store,kernel,db,state,controller,projectId,foreignId,imports,handlers,input,importInput,imported,source};
 }
 const totalChanges=(db: DatabaseSync)=>(db.prepare('SELECT total_changes() AS n').get())!.n;
 const snapshot=(db: DatabaseSync)=>({schema:db.prepare("SELECT type,name,sql FROM sqlite_schema ORDER BY type,name").all(),projects:db.prepare('SELECT * FROM projects ORDER BY id').all(),resources:db.prepare('SELECT * FROM project_lut_resources ORDER BY id').all(),receipts:db.prepare('SELECT * FROM lut_import_requests ORDER BY requestId').all(),changes:totalChanges(db)});
@@ -89,20 +87,23 @@ test('foreign and absent resources disclose nothing; invalid storage hash or par
  const f=fixture(t),before=snapshot(f.db);
  for(const input of [{...f.input,projectId:f.foreignId},{...f.input,projectId:randomUUID()},{...f.input,lutId:randomUUID()}])await assert.rejects(f.handlers['lut.look.inspect'](input),{code:'LUT_NOT_FOUND'});
  assert.deepEqual(snapshot(f.db),before);
- f.db.exec('DROP TRIGGER immutable_project_lut_resources');f.db.prepare('UPDATE project_lut_resources SET content=?').run(Buffer.from(f.source.toString('utf8').replace('Look original','Look modified')));
+ withNativeTriggerFault(f.db,'project',['immutable_project_lut_resources'],()=>f.db.prepare('UPDATE project_lut_resources SET content=?').run(Buffer.from(f.source.toString('utf8').replace('Look original','Look modified'))));
  await assert.rejects(f.handlers['lut.look.inspect'](f.input),{code:'LUT_RESOURCE_INVALID'});
- const other=fixture(t);other.db.exec('DROP TRIGGER immutable_project_lut_resources');const metadata={...other.imported.resource.metadata,title:'Forged title'};
- other.db.prepare('UPDATE project_lut_resources SET metadata=?').run(JSON.stringify(metadata));await assert.rejects(other.handlers['lut.look.inspect'](other.input),{code:'LUT_RESOURCE_INVALID'});
+ const other=fixture(t);const metadata={...other.imported.resource.metadata,title:'Forged title'};
+ withNativeTriggerFault(other.db,'project',['immutable_project_lut_resources'],()=>other.db.prepare('UPDATE project_lut_resources SET metadata=?').run(JSON.stringify(metadata)));await assert.rejects(other.handlers['lut.look.inspect'](other.input),{code:'LUT_RESOURCE_INVALID'});
 });
 
-test('bounded SQL refuses over-limit blobs before materialization',async t=>{
- const f=fixture(t),queries: string[]=[];
- const facade={prepare(sql: string){queries.push(sql);return f.db.prepare(sql);}};
- const inspect=createLookPackInspectionServices({db:facade as DatabaseSync},{runtime:{ownsLock:()=>true,assertReadable(){}}}).handlers['lut.look.inspect'];
- await inspect(f.input);
- for(const sql of queries)assert.doesNotMatch(sql,/SELECT\s+\*/iu);
- const blobs=queries.filter(sql=>sql.includes(' AS content'));
- assert.ok(blobs.length>=1);assert.ok(blobs.every(sql=>sql.includes("typeof(content)='blob'")&&sql.includes('length(content) BETWEEN 1 AND 7340032')&&sql.includes('WHERE projectId=? AND id=?')));
+test('bounded SQL reads only the real owned resource columns and uses a bounded BLOB expression',async t=>{
+ const f=fixture(t),reads:{table:string;column:string;database:string}[]=[],before=snapshot(f.db);
+ f.db.setAuthorizer((action,table,column,database)=>{if(action===constants.SQLITE_READ&&table&&column&&database)reads.push({table,column,database});return constants.SQLITE_OK;});
+ try{assert.equal((await f.handlers['lut.look.inspect'](f.input)).status,'verified');}
+ finally{f.db.setAuthorizer(null);}
+ assert.ok(reads.length>0);assert.ok(reads.some(row=>row.table==='project_lut_resources'&&row.column==='content'&&row.database==='project'));
+ for(const row of reads)assert.ok(['projects','project_lut_resources'].includes(row.table),`bounded reader never reads unrelated table ${row.table}`);
+ const implementation=readFileSync(new URL('../packages/business/src/look-pack-inspection.ts',import.meta.url),'utf8');
+ assert.doesNotMatch(implementation,/SELECT\s+\*/iu);
+ assert.match(implementation,/typeof\(content\)='blob'/u);assert.match(implementation,/length\(content\) BETWEEN 1 AND/u);assert.match(implementation,/WHERE projectId=\? AND id=\?/u);
+ assert.deepEqual(snapshot(f.db),before,'actual inspection keeps rows and total_changes exact');
 });
 
 test('plain input guard rejects getters, symbols, proxies, inherited and extra fields without invoking them',async t=>{
@@ -118,16 +119,7 @@ test('plain input guard rejects getters, symbols, proxies, inherited and extra f
 test('lease, cancellation and resource identity are rechecked after asynchronous verification',async t=>{
  const lost=fixture(t),pending=lost.handlers['lut.look.inspect'](lost.input);lost.state.owned=false;await assert.rejects(pending,{code:'LUT_OWNER_REQUIRED'});
  const aborted=fixture(t),waiting=aborted.handlers['lut.look.inspect'](aborted.input);aborted.controller.abort();await assert.rejects(waiting,{code:'LUT_OWNER_REQUIRED'});
- const changed=fixture(t),reading=changed.handlers['lut.look.inspect'](changed.input);changed.db.exec('DROP TRIGGER immutable_project_lut_resources');changed.db.prepare("UPDATE project_lut_resources SET name='changed'").run();await assert.rejects(reading,{code:'LUT_RESOURCE_INVALID'});
-});
-
-test('read availability includes exact restored51; unsupported profiles refuse before resource disclosure',async t=>{
- const f=fixture(t);assert.ok(RESTORE_READ_OPERATIONS.includes('lut.look.inspect'));
- for(const version of [25,27,29,31,50,51,52]){
-  f.state.version=version;assert.equal(lutRestorePolicy('lut.look.inspect',version).available,[29,31,51].includes(version));
-  if([29,31,51].includes(version))assert.equal((await f.handlers['lut.look.inspect'](f.input)).status,'verified');
-  else await assert.rejects(f.handlers['lut.look.inspect'](f.input),{code:'RESTORE_OPERATION_UNAVAILABLE'});
- }
+ const changed=fixture(t),reading=changed.handlers['lut.look.inspect'](changed.input);withNativeTriggerFault(changed.db,'project',['immutable_project_lut_resources'],()=>changed.db.prepare("UPDATE project_lut_resources SET name='changed'").run());await assert.rejects(reading,{code:'LUT_RESOURCE_INVALID'});
 });
 
 test('client validates input scope, strict response shape, claims and pack-to-resource binding without retry',async t=>{
@@ -158,23 +150,20 @@ test('API CLI MCP share discovery and read-only effects; built-in Agent tool aut
  for(const forbidden of ['node:fs','node:child_process','node:http','node:https','fetch(','INSERT INTO','UPDATE main.','DELETE FROM'])assert.equal(implementation.includes(forbidden),false,forbidden);
 });
 
-test('real shared service and cold restore31 return awaited metadata and preserve exact bytes without file or timeline mutations',async t=>{
- const base=mkdtempSync(path.join(os.tmpdir(),'mioon-look-inspect-'));t.after(()=>rmSync(base,{recursive:true,force:true}));
- const root=path.join(base,'source'),source=packBytes();let store=(openStore(root) as unknown as TypedStore),services=(createServices(store,new Map()) as unknown as TypedServices);
- const project=await services.call('project.create',{name:'Look Pack inspection'}),input={projectId:project.id,requestId:'shared-look-original',name:'look.cube',dataBase64:source.toString('base64')};
- const imported=await services.call('lut.import',input),inspectInput={projectId:project.id,lutId:imported.resource.id};
- const before=totalChanges(store.db),result=await services.call('lut.look.inspect',inspectInput) as {status: string};assert.equal(result.status,'verified');assert.equal(totalChanges(store.db),before);
+test('real shared service and cold kernel reopen return awaited metadata and preserve exact bytes without file or timeline mutations',async t=>{
+ const f=fixture(t),root=f.store.root,source=f.source,input=f.importInput,inspectInput=f.input;
+ let store=f.store,services=createServices(store,new Map());
+ const imported=f.imported;
+ const before=totalChanges(store.db),result=await services.call('lut.look.inspect',inspectInput);assert.ok(isLookPackInspectResponse(result,inspectInput));assert.equal(result.status,'verified');assert.equal(totalChanges(store.db),before);
  let touched=0;const malicious={...inspectInput};Object.defineProperty(malicious,'lutId',{enumerable:true,get(){touched++;return inspectInput.lutId;}});
  await assert.rejects(services.call('lut.look.inspect',malicious),{code:'VALIDATION_ERROR'});assert.equal(touched,0);
- assert.deepEqual((readdirSync(path.join(root,'media')) as unknown),[]);await services.drain();store.close();
- store=(openStore(root) as unknown as TypedStore);services=(createServices(store,new Map()) as unknown as TypedServices);assert.deepEqual(await services.call('lut.import',input),imported);assert.deepEqual(await services.call('lut.look.inspect',inspectInput),result);await services.drain();store.close();
- const backup=path.join(base,'backup'),destination=path.join(base,'restored');await createWorkspaceBackup({source:root,destination:backup});await restoreWorkspaceBackup({directory:backup,destination});
- store=(openStore(destination) as unknown as TypedStore);services=(createServices(store,new Map()) as unknown as TypedServices);
+ assert.deepEqual(readdirSync(path.join(root,'media')),[]);await services.drain();store.close();
+ store=f.kernel.reopen();services=createServices(store,new Map());
  try{
+  assert.deepEqual(await services.call('lut.import',input),imported);assert.deepEqual(await services.call('lut.look.inspect',inspectInput),result);
   const changes=totalChanges(store.db);assert.deepEqual(await services.call('lut.look.inspect',inspectInput),result);assert.equal(totalChanges(store.db),changes);
-  const policy=await services.call('workspace.restore.inspect',{});assert.equal((policy as Extract<typeof policy,{restored: true}>).operationPolicy.find((row: { operation: string; })=>row.operation==='lut.look.inspect')!.available,true);
-  assert.deepEqual(Buffer.from((store.db.prepare('SELECT content FROM project_lut_resources WHERE id=?').get(imported.resource.id))!.content as Uint8Array),source);
-  assert.deepEqual((readdirSync(path.join(destination,'media')) as unknown),[]);await assert.rejects(services.call('lut.import',input),{code:'RESTORE_OPERATION_UNAVAILABLE'});
+  assert.deepEqual(Buffer.from(store.db.prepare('SELECT content FROM project_lut_resources WHERE id=?').get(imported.resource.id)!.content as Uint8Array),source);
+  assert.deepEqual(readdirSync(path.join(root,'media')),[]);
  }finally{await services.drain();store.close();}
 });
 

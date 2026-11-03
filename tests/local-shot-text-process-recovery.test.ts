@@ -23,7 +23,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices,canonical} from '../packages/business/src/services.ts';
 import {openProjectDatabase} from './helpers/project-database.ts';
 import {readShotTextState} from './fixtures/local-shot-text-process-worker.ts';

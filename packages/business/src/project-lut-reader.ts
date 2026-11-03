@@ -1,14 +1,12 @@
 import type {DatabaseSync} from 'node:sqlite';
 import type {LutResource} from '../../contracts/src/lut-resources.ts';
 import {LUT_RESOURCE_LIMITS} from '../../contracts/src/lut-resources.ts';
-import {isProjectDatabase} from './project-file/held-files.ts';
-import {LUT_RESOURCE_COLUMNS, lutResourceError, lutResourceFromRow, lutHash, parseLutBytes, readLutResource as readLegacyLutResource} from './lut-resource-validation.ts';
+import {assertProjectDatabase} from './store-runtime.ts';
+import {LUT_RESOURCE_COLUMNS, lutResourceError, lutResourceFromRow, lutHash, parseLutBytes} from './lut-resource-validation.ts';
 
-/** Runtime adapter only. Historical whole-workspace validation retains its
- * fixed reader; a live project reads bounded cells from the content database
- * using the same strict metadata, hash and Cube validators. */
+/** Live project reader using the same strict metadata, hash and Cube validators. */
 export function readLutResource(db: DatabaseSync, projectId: string, lutId: string, verifyBytes = false): LutResource {
-  if (!isProjectDatabase(db)) return readLegacyLutResource(db, projectId, lutId, verifyBytes);
+  assertProjectDatabase(db);
   const row = db.prepare(`SELECT ${LUT_RESOURCE_COLUMNS} FROM project.project_lut_resources WHERE projectId=? AND id=?`).get(projectId, lutId);
   if (!row) throw lutResourceError('LUT_NOT_FOUND', 404);
   const resource = lutResourceFromRow(row);

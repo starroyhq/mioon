@@ -20,7 +20,7 @@ export function createMioTestAppPorts(store: WorkspaceStore) {
       createAuthorizations(settings: AgentSettingsService) {
         return createAgentAuthorizations({root: library.dataDir, databaseFile: library.databaseFile,
           storage: {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile},
-          guards: {ownsLock: () => {const identity = projectFileIdentity(library.databaseFile); return identity !== null && isAppLibraryHeld(identity);}, isRestored: () => false},
+          guards: {ownsLock: () => {const identity = projectFileIdentity(library.databaseFile); return identity !== null && isAppLibraryHeld(identity);}},
           readCurrentTarget: async () => {const current = await settings.get(); return {destination: deriveAgentEndpoint(current.configuration), model: current.configuration.model, settingsRevision: current.revision};},
         });
       },

@@ -1,3 +1,4 @@
+
 import {beginFixtureModelStep,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
@@ -13,7 +14,7 @@ import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
 import type {IncomingMessage} from 'node:http';
 import {setTimeout as delay} from 'node:timers/promises';
-import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import type {JobRecord} from '../packages/business/src/services.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
@@ -27,7 +28,7 @@ import {withAgentTaskJobOrigin,allowAgentTaskJobTargetMutation,setAgentTaskEffec
 import type {Provider,ProviderContext} from '../packages/business/src/provider-registry.ts';
 import type {TaskModelItem,TaskModelRequest,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskResponseLanguageContext,taskResponseLocale,TASK_MODEL_LIMITS} from '../packages/business/src/agent/task-gateway-v2.ts';
-import {sourceTaskModelToolNames,selectTaskModelTools} from '../packages/business/src/agent/task-context-v2.ts';
+import {sourceTaskModelToolNames} from '../packages/business/src/agent/task-context-v2.ts';
 import {taskBaseModelHistory} from '../packages/business/src/agent/task-context-base-v2.ts';
 import {AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolNamesForGroup} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import type {AgentTaskLoadableToolGroupId} from '../packages/business/src/agent/task-tool-groups-v2.ts';
@@ -66,13 +67,13 @@ function syntheticDeniedTransport(address:string,statusCode=401,errorBody='',rea
  }} as unknown as AgentTransportDependencies;
  return {counts,gateway:createTaskGateway(dependencies)};
 }
-async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='responses',providers:ReadonlyMap<string,Provider>=new Map(),{desktopBridge=false,legacy=false}:{desktopBridge?:boolean;legacy?:boolean}={}){
- const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-runtime-v2-')),store=(legacy?openLegacyWorkspaceStore:openStore)(root),services=createServices(store,providers);
+async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='responses',providers:ReadonlyMap<string,Provider>=new Map(),{desktopBridge=false}:{desktopBridge?:boolean}={}){
+ const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-runtime-v2-')),store=openStore(root),services=createServices(store,providers);
  const project=object(await services.call('project.create',{name:'Runtime project'})),projectId=String(project.id);
  const first=shot(await services.call('shot.create',{projectId,title:'First',prompt:'saved first'})),other=shot(await services.call('shot.create',{projectId,title:'Other',prompt:'saved other'}));
  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await settings.put({expectedRevision:0,configuration:{...initial.configuration,protocol},secret:{action:'replace',storage:'session',value:'SYNTHETIC_LOCAL_TEST_ONLY'}});
  const bridge=desktopBridge?desktopSettingsBridge(settings,4318):null,runtimeSettings=bridge?.settings??settings;
- const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
+ const authorizations=createTestAuthorizations(()=>store,settings);await authorizeTestScope(authorizations,'project_agent');
  const requests:TaskModelRequest[]=[],scriptRequestIndexes:number[]=[],effects=new Map<string,string>(),baseTools=createAgentTaskTools({store,services});let beforeTool:((prepared:PreparedAgentTaskTool)=>Promise<void>)|undefined,script:Script=async function*(){yield {type:'done',output:output(protocol)};},loadGroups:readonly AgentTaskLoadableToolGroupId[]=[],loadingRequests=0;
  const tools={...baseTools,async execute(prepared:PreparedAgentTaskTool,context:AgentTaskToolContext){await beforeTool?.(prepared);return baseTools.execute(prepared,{...context,beforeEffect(){context.beforeEffect();effects.set(context.stepId,prepared.operation);}});}};
  // Opt-in scripts explicitly perform a real loading round before their domain
@@ -212,11 +213,11 @@ test('omitted locale and explicit Simplified Chinese replay the same run; invali
   assert.equal(f.requests.length,1);assert.equal(f.runtime.journal.list(f.projectId).length,1);
 });
 test('a legacy locale receipt survives an old retained context without the host marker',async t=>{
-  const f=await fixture(t,'responses',new Map(),{legacy:true}),input={requestId:randomUUID(),text:'Legacy retained context',expectedSettingsRevision:(await f.settings.get()).revision};
-  const sent=await f.runtime.send(f.projectId,input);await f.settle(sent.run.id);
-  // An old retained context has no host marker; the original request remains
-  // addressable with the compatible omitted/default locale after restart.
-  const old=f.runtime.journal.run(sent.run.id);old.context=old.context!.slice(1);f.store.db.prepare('UPDATE agent_task_runs_v2 SET data=? WHERE id=?').run(JSON.stringify(old),old.id);
+  const f=await fixture(t,'responses',new Map()),input={requestId:randomUUID(),text:'Legacy retained context',expectedSettingsRevision:(await f.settings.get()).revision};
+  // A real native v1 request can retain context without the later host marker.
+  const settings=await f.settings.get(),context:AgentTaskJson[]=[{role:'user',content:input.text}],created=f.runtime.journal.create({projectId:f.projectId,requestId:input.requestId,text:input.text,settingsRevision:settings.revision,configuration:settings.configuration as unknown as AgentTaskJson,context});
+  f.runtime.journal.beginModelStep(created.run.id,{request:{body:buildTaskModelRequest(settings.configuration,context,[],4318),history:context},data:{baseline:[]}},[]);
+  f.restart();await f.action(f.runtime.get(f.projectId,created.run.id),'resume');const sent=await f.settle(created.run.id);
   f.restart();assert.equal((await f.runtime.send(f.projectId,input)).run.id,sent.run.id);assert.equal((await f.runtime.send(f.projectId,{...input,locale:'zh-Hans'})).run.id,sent.run.id);assert.equal(f.requests.length,1);
 });
 test('history byte trimming keeps the exact host language and final user message without inheriting an earlier locale',async t=>{
@@ -244,16 +245,25 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
   assert.equal(done.run.stepsUsed,1);assert.deepEqual(done.run.notes,[]);assert.equal(f.effects.size,0);
 });
 test('retained continuation is validated before a later historical model can execute its tool batch',async t=>{
- const f=await fixture(t,'responses',new Map(),{legacy:true}),settings=await f.settings.get(),context=[taskResponseLanguageContext('en'),{role:'user',content:'Resume recorded work.'}],body=buildTaskModelRequest(settings.configuration,context,f.tools.list(),4318);
+ const f=await fixture(t,'responses',new Map()),settings=await f.settings.get(),context=[taskResponseLanguageContext('en'),{role:'user',content:'Resume recorded work.'}],body=buildTaskModelRequest(settings.configuration,context,f.tools.list(),4318);
  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Resume recorded work.',configuration:{...settings.configuration},settingsRevision:settings.revision,context});
- const first=f.runtime.journal.beginStep(created.run.id,{kind:'model',request:{body,history:context},data:{baseline:[],noteContinuationRequested:true}});
- f.runtime.journal.completeStep(created.run.id,first.id,{result:{text:'Earlier observed output',toolCalls:[],providerOutput:{invalidRetainedResponse:true}}});
- const baseline=f.runtime.journal.revisionSnapshot(f.projectId).map(({kind,id,revision})=>({kind,id,revision}));
- const second=f.runtime.journal.beginStep(created.run.id,{kind:'model',request:{body,history:context},data:{baseline}}),edit=call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'Must not execute after invalid history'}});
- f.runtime.journal.completeStep(created.run.id,second.id,{result:output('responses',[edit]) as unknown as AgentTaskJson});
- f.restart();await f.action(f.runtime.get(f.projectId,created.run.id),'resume');const done=await f.settle(created.run.id);
- assert.equal(done.run.status,'failed');assert.equal(f.requests.length,0);assert.equal(f.effects.size,0);assert.equal(done.changes.length,0);
- assert.equal(object(f.store.get('shots',f.first.id)).prompt,'saved first');assert.equal(done.steps.filter(step=>step.kind==='tool').length,0);
+ const first=beginFixtureModelStep(f.runtime.journal,created.run.id);first.complete('Earlier observed output');
+ f.runtime.journal.updateStep(created.run.id,first.step.id,{data:{baseline:[],noteContinuationRequested:true}});
+ const edit=call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'Must not execute after invalid history'}}),second=beginFixtureModelStep(f.runtime.journal,created.run.id,[edit]);second.complete();
+ const records=createMioRecords(f.store),entryId=records.step(first.step.id).resultEntryId;assert.ok(entryId);
+ const trigger=f.store.db.prepare("SELECT sql FROM main.sqlite_schema WHERE name='immutable_mio_entries'").get()!.sql;assert.equal(typeof trigger,'string');
+ const original=f.store.db.prepare('SELECT payloadJson FROM mio_entries WHERE id=?').get(entryId)!.payloadJson;assert.equal(typeof original,'string');
+ f.store.db.exec('DROP TRIGGER main.immutable_mio_entries');
+ try{f.store.db.prepare('UPDATE mio_entries SET payloadJson=? WHERE id=?').run('{"invalidRetainedResponse":true}',entryId);}finally{f.store.db.exec(String(trigger));}
+ try{
+  f.restart();assert.throws(()=>f.runtime.get(f.projectId,created.run.id),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});
+  assert.equal(f.requests.length,0);assert.equal(f.effects.size,0);assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM mio_changes WHERE runId=?').get(created.run.id)!.n,0);
+  assert.equal(object(f.store.get('shots',f.first.id)).prompt,'saved first');assert.equal(f.store.db.prepare("SELECT count(*) AS n FROM mio_steps WHERE runId=? AND kind='tool'").get(created.run.id)!.n,0);
+ }finally{
+  // Restore only this explicit fault so fixture shutdown never leaves a guard
+  // removed or a bad immutable source available to another test.
+  f.store.db.exec('DROP TRIGGER main.immutable_mio_entries');try{f.store.db.prepare('UPDATE mio_entries SET payloadJson=? WHERE id=?').run(String(original),entryId);}finally{f.store.db.exec(String(trigger));}
+ }
 });
 for(const protocol of ['chat_completions','responses'] as const){
  test(`${protocol}: a trusted DNS denial records prevented dispatch and never becomes an unknown model result`,async t=>{
@@ -417,7 +427,7 @@ test('whole undo retains the generated shot owner while reverting earlier edits 
   yield {type:'done',output:output('responses',next)};
  },{loadGroups:['canvas','editing','exports','video']});
  const sent=await f.send(),worker=startWorker(f.store,f.services,providers);let done:AgentTaskSnapshot;
- try{done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed',JSON.stringify({error:done.run.error,steps:done.steps.filter(step=>step.error),jobs:f.store.list('jobs',f.projectId).map(value=>object(value).error)}));assert.equal(done.backgroundPending,false);}finally{await worker.stop();}
+ try{done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed',JSON.stringify({error:done.run.error,pauseReason:done.run.pauseReason,errors:done.steps.flatMap(step=>step.error?[step.error]:[]),jobs:f.store.list('jobs',f.projectId).map(value=>({status:object(value).status,error:object(value).error}))}));assert.equal(done.backgroundPending,false);}finally{await worker.stop();}
  const before=f.runtime.journal.snapshot(sent.run.id),creation=before.changes.find(change=>change.operation==='shot.create')!;assert.ok(creation);const shotId=String(created().id);
  const products=Object.fromEntries(['jobs','versions','assets','exports'].map(table=>[table,structuredClone(f.store.list(table,f.projectId))]));
  const hashes=()=>f.store.list('assets',f.projectId).map(value=>{const asset=object(value);return createHash('sha256').update(readFileSync(mediaFixturePath(f.root,asset))).digest('hex');}),beforeHashes=hashes();
@@ -439,7 +449,7 @@ for(const started of [false,true])test(`retained shot ${started?'keeps a late pr
  const sent=await f.send(),completed=await f.settle(sent.run.id);assert.equal(completed.run.status,'completed');assert.equal(completed.backgroundPending,true);
  let worker:ReturnType<typeof startWorker>|undefined;
  try{
-  if(started){worker=startWorker(f.store,f.services,providers);await Promise.race([entered.promise,delay(10000,undefined,{ref:false}).then(()=>{throw Error('Synthetic download barrier not reached');})]);}
+  if(started){worker=startWorker(f.store,f.services,providers);await Promise.race([entered.promise,delay(10000,undefined,{ref:false}).then(()=>{throw Error(`Synthetic download barrier not reached: ${JSON.stringify(f.store.list('jobs',f.projectId).map(value=>({status:object(value).status,error:object(value).error})))}`);})]);}
   const current=f.runtime.get(f.projectId,sent.run.id),creation=current.changes.find(change=>change.operation==='shot.create')!;
   const single={requestId:randomUUID(),expectedRevision:current.run.revision,action:'undo_change',changeId:creation.id};await f.runtime.action(f.projectId,sent.run.id,single);
   const retained=f.runtime.get(f.projectId,sent.run.id);assert.equal(retained.run.status,'completed');assert.equal(retained.changes.find(change=>change.id===creation.id)?.reversible,false);assert.deepEqual(f.runtime.journal.lookupControl(single.requestId)?.result,{state:'completed',retainedChangeIds:[creation.id]});

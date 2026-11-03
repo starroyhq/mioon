@@ -7,7 +7,7 @@ import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../../packages/business/src/db.ts';
+import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createComfySettings} from '../../packages/business/src/comfy/settings.ts';
 import {COMFY_IMAGE_OPTIONS, DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../../packages/contracts/src/comfy-images.ts';
