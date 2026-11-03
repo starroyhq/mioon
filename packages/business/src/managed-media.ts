@@ -8,7 +8,7 @@ import {validateManagedFile} from '@mioon/contracts/private-storage';
 import {throwIfMediaAborted} from './media-processes.ts';
 import {checkMediaEffect} from './media-runtime.ts';
 import type {MediaEffectFence} from './media-runtime.ts';
-import {registeredProjectMediaFile} from './project-media-storage.ts';
+import {admitProjectAssetSource, registeredProjectAssetReferences, registeredProjectStore, validatedProjectAssetSource, registeredProjectMediaFile} from './project-media-storage.ts';
 
 export interface ManagedMediaError extends Error { code: string }
 /** The subset of stat identity used for exact descriptor/pathname comparison. */
@@ -20,6 +20,11 @@ export interface ManagedFileIdentity {
   readonly ctimeMs: number;
 }
 export interface ManagedAssetReference {
+  readonly id?: unknown;
+  readonly assetId?: unknown;
+  readonly projectId?: unknown;
+  readonly reference?: unknown;
+  readonly referenceRevision?: unknown;
   readonly relativePath?: unknown;
   readonly sha256?: unknown;
 }
@@ -37,6 +42,7 @@ export const sameManagedFile = (a: ManagedFileIdentity | null | undefined, b: Ma
 // Validate every ancestor and the exact regular, single-link owner-controlled
 // leaf. This never repairs permissions or follows a symlink into managed media.
 export function validateManagedSource(root: string, asset: ManagedAssetReference | null | undefined, {maxBytes=Infinity}: {maxBytes?: number} = {}): ManagedSource {
+ if (asset && (Object.hasOwn(asset, 'reference') || registeredProjectStore(root))) return validatedProjectAssetSource(root, asset, {maxBytes});
  const relative=asset?.relativePath;
  if(typeof relative!=='string'||relative.length>4096||relative.includes('\0')||relative.includes('\\')||path.isAbsolute(relative)||
   relative.split('/').some(part=>!part||part==='.'||part==='..')||!relative.startsWith('media/'))throw fault('MANAGED_SOURCE_INVALID');
@@ -58,6 +64,20 @@ export async function verifiedManagedHash(root: string, asset: ManagedAssetRefer
  let effectFailure: unknown;
  const effect=(): void=>{if(beforeEffect===undefined)return;try{checkMediaEffect(beforeEffect,signal);}catch(error){if(effectFailure===undefined||effectFailure===null)effectFailure=error;throw effectFailure;}};
  effect();throwIfMediaAborted(signal);
+ if (Object.hasOwn(asset, 'reference') || registeredProjectStore(root)) {
+  const references = registeredProjectAssetReferences(root);
+  if (!references) throw new TypeError('Reference reads require the exact live project owner');
+  const assetId = typeof asset.id === 'string' ? asset.id : typeof asset.assetId === 'string' ? asset.assetId : '';
+  await admitProjectAssetSource(root, assetId, {signal: signal ?? undefined, beforeEffect: effect});
+  const source = validateManagedSource(root, asset, {maxBytes});
+  if (expected && !sameManagedFile(source.info, expected)) throw fault('MANAGED_SOURCE_CHANGED');
+  const prepared = await references.prepareFullHash(assetId, {signal: signal ?? undefined, beforeEffect: effect,
+    ...(Number.isFinite(maxBytes) ? {maxBytes} : {}), onBytes, expectedReferenceRevision: Number(asset.referenceRevision)});
+  effect();throwIfMediaAborted(signal);
+  const current = validateManagedSource(root, asset, {maxBytes});
+  if (!sameManagedFile(source.info, current.info) || typeof asset.sha256 === 'string' && prepared.sha256 !== asset.sha256) throw fault('MANAGED_SOURCE_CHANGED');
+  return {file: prepared.file, info: current.info, sha256: prepared.sha256, sizeBytes: prepared.reference.sizeBytes};
+ }
  const source=validateManagedSource(root,asset,{maxBytes});
  if(expected&&!sameManagedFile(source.info,expected))throw fault('MANAGED_SOURCE_CHANGED');
  let file: FileHandle | undefined;

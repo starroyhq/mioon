@@ -1,6 +1,10 @@
+
+
+
+
+
 import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
-import {startLegacyAgentTaskHttp} from './helpers/legacy-agent-task-http-fixture.ts';
-import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+
 import {openServerTestStore} from '../packages/business/src/project-file/test-store.ts';
 import {serverAppDirectories,projectLocation} from '../apps/server/src/project-host/directories.ts';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
@@ -18,17 +22,17 @@ import {agentTaskCheckSchema,agentTaskChecksSchema,agentTaskChecksInputSchema,AG
 import type {AgentTaskChecks} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {createAgentClient,AGENT_COMMAND_SCHEMAS,agentInputSchema} from '../packages/client/src/agent.ts';
-import {openStore} from '../packages/business/src/db.ts';
+
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentTaskHttp} from '../apps/server/src/agent-task-http-v2.ts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+
+
 import {startServer} from '../apps/server/src/index.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {visibleAgentTaskChecks} from '../apps/web/src/agent-task-checks-state.ts';
-import {createServerProject,openProjectDatabase,projectDirFor,schemaObjects} from './helpers/project-database.ts';
+import {createServerProject, schemaObjects} from './helpers/project-database.ts';
 
 const root=fileURLToPath(new URL('..',import.meta.url)),entry=join(root,'apps/cli/src/index.ts');
 const projectId=randomUUID(),runId=randomUUID(),exportId=randomUUID();
@@ -160,17 +164,14 @@ test('H4b clients and CLI retain optional requirements while host check groups s
  assert.deepEqual(report.requirements?.[0]?.expected,{min:3,max:3},'presentation does not remove or mutate the backend requirement');
 });
 
-async function workspace(legacy=false){
+async function workspace(){
  const directory=await mkdtemp(join(await realpath(tmpdir()),'mioon-checks-transport-'));
- const source=join(directory,'source'),created=legacy?null:createServerProject(source,{name:'Synthetic checks project'}),store=created?.store??openLegacyWorkspaceStore(source),projectId=created?.projectId??randomUUID();
- if(legacy)store.put('projects',{id:projectId,name:'Legacy checks fixture',revision:1});
+ const source=join(directory,'source'),created=createServerProject(source,{name:'Synthetic checks project'}),store=created.store,projectId=created.projectId;
  const journal=createAgentTaskJournal(store),createdRun=journal.create({requestId:randomUUID(),projectId,text:'Synthetic checks',configuration:{protocol:'responses'},policy:structuredClone(DEFAULT_AGENT_TASK_POLICY)}).run;
  const run=journal.transition(createdRun.id,createdRun.revision,'completed');
- const foreignProjectId=legacy?randomUUID():undefined;
- if(foreignProjectId)store.put('projects',{id:foreignProjectId,name:'Legacy foreign checks fixture',revision:1});
  store.close();
- const foreign=legacy?null:createServerProject(source,{name:'Synthetic checks project'});foreign?.store.close();
- return {directory,source,projectId,foreignProjectId:foreignProjectId??foreign!.projectId,run,projectFile:created?.store.projectFile??join(source,'workbench.sqlite')};
+ const foreign=createServerProject(source,{name:'Foreign checks project'});foreign.store.close();
+ return {directory,source,projectId,foreignProjectId:foreign.projectId,run,projectFile:created.store.projectFile};
 }
 function dumpDb(db:DatabaseSync):unknown{
  return schemaObjects(db).filter(({name})=>!name.startsWith('sqlite_')).map(({name,sql})=>({name,sql,...(String(sql).startsWith('CREATE TABLE')?{rows:db.prepare(`SELECT * FROM "${name}"`).all().map(item=>JSON.stringify(item)).sort()}:{})}));
@@ -179,10 +180,24 @@ test('checks HTTP is authenticated, rejects unknown ownership and parameters, an
  const f=await workspace();let models=0,server:Awaited<ReturnType<typeof startServer>>|undefined,inspect!:InspectProject;
  t.after(async()=>{await server?.close();await rm(f.directory,{recursive:true,force:true});});
  server=await startServer({dataDir:f.source,port:0,taskGatewayV2:async function*(){models++;throw Error('Checks cannot request a model');},inspectProject:received=>{inspect=received;}});
- // While the server runs, the database is read on its own connection.
- const prefix=projectApiPath(f.projectId,'agent','tasks','v2',f.run.id),before=inspect(f.projectId,dumpDb);
+ const prefix=projectApiPath(f.projectId,'agent','tasks','v2',f.run.id);
+ const dailyState=()=>inspect(f.projectId,db=>({
+  versions:Number(db.prepare('SELECT count(*) n FROM main.project_versions').get()!.n),
+  dailyVersions:Number(db.prepare("SELECT count(*) n FROM main.project_versions WHERE trigger='daily-open'").get()!.n),
+  blobs:Number(db.prepare('SELECT count(*) n FROM main.project_version_blobs').get()!.n),
+  marks:Number(db.prepare('SELECT count(*) n FROM main.project_version_capture_marks').get()!.n),
+  dailyMarks:Number(db.prepare("SELECT count(*) n FROM main.project_version_capture_marks WHERE kind='daily-open'").get()!.n),
+ }));
+ const unopened={versions:0,dailyVersions:0,blobs:0,marks:0,dailyMarks:0};
+ assert.deepEqual(dailyState(),unopened);
  const request=(suffix='',method='GET',authenticated=true)=>fetch(server!.url+prefix+suffix,{method,headers:authenticated?{authorization:`Bearer ${server!.token}`}:{}});
  assert.equal((await request('/checks','GET',false)).status,401);
+ assert.deepEqual(dailyState(),unopened,'an unauthenticated request must not open the host or save a daily version');
+ // First authenticated host opening owns the daily capture. Take the complete
+ // read-only checks baseline only after that real lifecycle work has finished.
+ const opened=await request();assert.equal(opened.status,200);await opened.arrayBuffer();
+ assert.deepEqual(dailyState(),{versions:1,dailyVersions:1,blobs:1,marks:1,dailyMarks:1});
+ const before=inspect(f.projectId,dumpDb);
  const response=await request('/checks');assert.equal(response.status,200);const body:unknown=await response.json();
  assert.ok(body&&typeof body==='object'&&'data'in body);const result=agentTaskChecksSchema.parse(body.data);
  assert.equal(result.projectId,f.projectId);assert.equal(result.runId,f.run.id);assert.equal(result.runRevision,f.run.revision);
@@ -196,19 +211,7 @@ test('checks HTTP is authenticated, rejects unknown ownership and parameters, an
  const snapshot=await request();const snapshotBody:unknown=await snapshot.json();assert.ok(snapshotBody&&typeof snapshotBody==='object'&&'data'in snapshotBody);assert.equal(snapshotBody.data!==null&&typeof snapshotBody.data==='object'&&Object.hasOwn(snapshotBody.data,'checks'),false);
  assert.equal(models,0);assert.deepEqual(inspect(f.projectId,dumpDb),before);
 });
-test('checks remain available in a restored read-only server without credentials, recovery or database writes',async t=>{
- const f=await workspace(true),backup=join(f.directory,'backup'),restored=join(f.directory,'restored');let server:Awaited<ReturnType<typeof startLegacyAgentTaskHttp>>|undefined;
- t.after(async()=>{await server?.close();await rm(f.directory,{recursive:true,force:true});});
- await createWorkspaceBackup({source:f.source,destination:backup});await restoreWorkspaceBackup({directory:backup,destination:restored});
- // Nobody holds the restored project yet: read it on the test's own connection.
- const restoredStore=openLegacyWorkspaceStore(restored),reopened=restoredStore.db;let before:unknown;
- try{before=dumpDb(reopened);}finally{restoredStore.close();}
- let models=0,inspect!:InspectProject;
- server=await startLegacyAgentTaskHttp({dataDir:restored,taskGatewayV2:async function*(){models++;throw Error('Restored checks cannot request a model');}});inspect=server.inspectProject;
- const client=createAgentClient({env:{MIOON_BASE_URL:server.url,MIOON_TOKEN:server.token}}),result=await client.checks({projectId:f.projectId,runId:f.run.id});
- assert.equal(result.runId,f.run.id);assert.equal(result.runRevision,f.run.revision);assert.deepEqual(result.groups.map(group=>group.id),AGENT_TASK_CHECK_GROUPS);
- assert.equal(models,0);assert.deepEqual(inspect(f.projectId,dumpDb),before);
-});
+
 
 test('disconnecting a checks observer cancels its local preflight and releases it before the next read',{timeout:10000},async t=>{
  const f=await workspace(),store=openServerTestStore({projectFile:f.projectFile,locate:id=>projectLocation(serverAppDirectories(f.source),id)},f.source),journal=createAgentTaskJournal(store),timelineId=randomUUID();

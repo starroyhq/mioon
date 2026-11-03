@@ -1,3 +1,4 @@
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,7 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { openStore } from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import { createServices } from '../packages/business/src/services.ts';
 import { createMockProvider } from '../packages/business/src/providers/mock.ts';
 import { startWorker } from '../packages/business/src/jobs.ts';
@@ -104,7 +105,7 @@ test('provider output passes real version publication but storyboard must use th
   const version = f.store.get('versions', completed.versionId!), asset = f.store.get('assets', (version)!.assetId);
   assert.equal((f.store.get('shots', shot.id))!.selectedVersionId, (version)!.id);
   assert.equal((version)!.sha256, hash); assert.equal((asset)!.sha256, hash);
-  const published = path.join(f.root, (asset)!.relativePath); assert.equal(await fileHash(published), hash);
+  const published = mediaFixturePath(f.root,asset); assert.equal(await fileHash(published), hash);
   assert.equal((await probe(published)).probe.streams.length, 4);
   const frozenVersion = structuredClone(version), frozenAsset = structuredClone(asset);
   const queued = await f.services.call('export.create', { projectId: project.id, requestId: randomUUID() });
@@ -113,7 +114,7 @@ test('provider output passes real version publication but storyboard must use th
   const exported = await f.services.call('export.get', { exportId: queued.id });
   assert.equal(exported.status, 'succeeded', JSON.stringify(exported));
   const output = f.store.get('assets', exported.assetId!);
-  await checkOutput(path.join(f.root, (output)!.relativePath), 2, [0, 0, 255], 880);
+  await checkOutput(mediaFixturePath(f.root,output), 2, [0, 0, 255], 880);
   assert.deepEqual(f.store.get('versions', (version)!.id), frozenVersion); assert.deepEqual(f.store.get('assets', (asset)!.id), frozenAsset);
   assert.equal(await fileHash(published), hash); assert.equal(await fileHash(source), hash);
   assert.equal(polls, 1); assert.equal(downloads, 1); assert.equal(mock.stats().submissionCount, 1); assert.equal(mock.stats().taskCount, 1);

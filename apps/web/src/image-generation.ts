@@ -24,13 +24,13 @@ export type ImageProviderId = 'mock' | 'openai' | 'openai-compatible' | 'comfy-l
 export type ImageMode = 'text' | 'edit';
 export interface ImageDraft { name: string; prompt: string }
 export interface ImageInputImage { assetId: string; sha256: string }
-export interface ImageSourcePreview { assetId: string; sha256?: string; name?: string; mimeType?: string; width?: number; height?: number; byteLength?: number }
+export interface ImageSourcePreview { assetId: string; sha256?: string | null; name?: string; mimeType?: string; width?: number; height?: number; byteLength?: number }
 export interface ImageTarget { groupId: string; expectedRevision: number }
 export interface ImageTargetRequest { reviewId?: string; groupId?: string | null }
 export interface ImageEditAsset {
   id?: string;
   projectId?: string;
-  sha256?: string;
+  sha256?: string | null;
   mimeType?: string;
   provenance?: unknown;
   sizeBytes?: number;

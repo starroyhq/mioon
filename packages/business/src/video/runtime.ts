@@ -5,7 +5,7 @@ import {parseVideoBinding,videoConnectionEndpoint,validateVideoSnapshot,videoBin
 import type {VideoExecutionBinding} from '../../../contracts/src/video-providers.ts';
 import type {Provider,ProviderContext as RegisteredContext} from '../provider-registry.ts';
 import {awaitProvider,checkpoint,operationCancelled} from '../operation-lifecycle.ts';
-import {createJsonRequest,createPollCache,downloadMp4,managedAudio,managedImage,outputUrl,providerError} from '../providers/live-common.ts';
+import {createJsonRequest,createPollCache,downloadMp4,readProviderReferenceBytes,managedAudio,managedImage,outputUrl,providerError} from '../providers/live-common.ts';
 import {SEEDANCE25_CAPABILITIES} from '../../../contracts/src/seedance-video.ts';
 import type {ProviderContext,ProviderReferenceAsset,ManagedImage} from '../providers/live-common.ts';
 import {assertConfiguredTaskId,configuredKlingTask,configuredSubmission,configuredSubmissionId,configuredTask,configuredTaskPath} from './adapters.ts';
@@ -48,6 +48,8 @@ function webpDimensions(bytes: Buffer): {width:number;height:number} {
 async function managedWebp(root: string,asset: ProviderReferenceAsset,maximum: number,context: ProviderContext): Promise<ManagedImage> {
   const check=()=>{checkpoint(context.signal);context.validateReferenceState?.();};check();
   if(typeof asset.path!=='string'||typeof asset.sha256!=='string')throw unsafeImage();
+  const referenced=await readProviderReferenceBytes(root,asset,maximum,{signal:context.signal,beforeEffect:check});
+  if(referenced)return {...webpDimensions(referenced),bytes:referenced,mimeType:'image/webp',base64:referenced.toString('base64')};
   const base=await realpath(root);check();const file=await realpath(asset.path);check();
   if(file===base||!file.startsWith(base+path.sep))throw providerError('UNSAFE_REFERENCE_PATH','Reference image must remain inside managed storage.');
   const info=await stat(file);check();if(!info.isFile()||info.size>maximum)throw providerError('REFERENCE_TOO_LARGE','The reference image exceeds the implemented input limit.');

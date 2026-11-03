@@ -30,7 +30,7 @@ test('every operation has exactly one address: app-level, entity-addressed, or t
   const operations = Object.keys(schemas);
   assert.equal(operations.length, 153);
   for (const operation of [...APP_LEVEL_OPERATIONS, ...ENTITY_ADDRESSED_OPERATIONS]) assert.ok(Object.hasOwn(schemas, operation), operation);
-  assert.equal(APP_LEVEL_OPERATIONS.length, 23);
+  assert.equal(APP_LEVEL_OPERATIONS.length, 17);
   assert.equal(ENTITY_ADDRESSED_OPERATIONS.length, 11);
   for (const operation of operations) {
     const shared = jsonSchema(sharedSchema(operation)) as Json & {properties?: Json};

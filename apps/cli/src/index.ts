@@ -1,8 +1,9 @@
 #!/usr/bin/env node
+import {assertLocalAssetImportOrigin} from './asset-import-path.ts';
 import {open} from 'node:fs/promises';
 import type {FileHandle} from 'node:fs/promises';
 import path from 'node:path';
-import {createClient, workspaceOriginOptions, discoverSchema, schemas, splitProjectAddress, ClientError, errorEnvelope, errorExitCode, successEnvelope, VERSION, EXIT_CODES} from '@mioon/client';
+import {createClient, discoverSchema, schemas, splitProjectAddress, ClientError, errorEnvelope, errorExitCode, successEnvelope, VERSION, EXIT_CODES} from '@mioon/client';
 import {downloadAsset} from '@mioon/client/download';
 import {exportProjectPackage,importProjectPackage,duplicateProject} from '@mioon/client/project-package';
 import {importLutFile, LutImportFileError} from './lut-import-file.ts';
@@ -61,7 +62,7 @@ function numberOption(options: Record<string, OptionValue>, key: string, fallbac
   if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) fail(`--${key} must be a positive integer.`);
   return Number(value);
 }
-async function importFile(input: CliInput, file: string): Promise<CliInput> {
+async function uploadFile(input: CliInput, file: string): Promise<CliInput> {
   if (input.dataBase64 !== undefined) fail('Use --file or dataBase64, not both.');
   let handle: FileHandle | undefined;
   try {
@@ -87,11 +88,14 @@ try {
   const agent=isAgentCommand(words),agentSchema=words[0]==='schema'&&(words[1]==='agent'&&words[2]!=='authorization'||words[1]?.startsWith('agent.')&&!words[1].startsWith('agent.authorization.'));
   if(agent)validateAgentOptions(operation,options);
   else if(['key-stdin','key-file','storage','live'].some(name=>Object.hasOwn(options,name)))fail('This option is only supported by Agent management commands.');
-  const invocation = Object.freeze(workspaceOriginOptions(optionText(options['workspace-origin'])));
   let data: unknown;
   if (options.version) data = {name: 'mioon', version: VERSION};
   else if (options.help || words.length === 0) data = agent?agentCommandHelp(operation):localizeHelp(help(Object.hasOwn(schemas, operation) ? operation : undefined, {VERSION, EXIT_CODES, discoverSchema, schemas}), locale);
   else {
+    // Reject unknown/retired operations before reading input or initializing storage.
+    if (!agent && !agentSchema && words[0] !== 'schema' && !Object.hasOwn(schemas, operation) &&
+      !['doctor', 'capabilities', 'job.watch', 'export.watch', 'asset.download', 'export.download', 'project.export', 'project.import', 'project.duplicate'].includes(operation))
+      throw new ClientError('UNKNOWN_OPERATION', 'Unknown command. Run --help or schema for available operations.');
     if(words[0]!=='schema'){const {initializeNodePrivateStorage}=await import('@mioon/node-host/private-storage-bootstrap');await initializeNodePrivateStorage();}
     let input = await inputFor(options);
     if(agent)data=await runAgentCommand(operation,input,options,{signal:abort.signal,redact:value=>{if(value)sensitive.push(value);}});
@@ -102,6 +106,8 @@ try {
     // Project files use dedicated management routes, not the RPC/MCP catalog.
     const projectPackage = ['project.export', 'project.import', 'project.duplicate'].includes(operation);
     const file = optionText(options.file), output = optionText(options.output);
+    if ((options['confirm-outside'] || options.upload) && (operation !== 'asset.import' || file === undefined)) fail('--confirm-outside and --upload are only valid with asset import --file.');
+    if (options['confirm-outside'] && options.upload) fail('--confirm-outside cannot be combined with --upload.');
     if (file !== undefined && !['asset.import', 'lut.import', 'project.import'].includes(operation)) fail('--file is only valid for asset, LUT or project import.');
     if (output !== undefined && !download && operation !== 'project.export') fail('--output is only valid for downloads and project export.');
     if (options['max-bytes'] !== undefined && !download) fail('--max-bytes is only valid for download.');
@@ -112,7 +118,7 @@ try {
       const selected = words.slice(1).join('.'); data = discoverSchema(selected ? {operation: selected} : {});
     } else if (operation === 'doctor' || operation === 'capabilities') {
       if (Object.keys(input).length) fail(`${operation} does not accept input fields.`);
-      data = await client[operation]({signal: abort.signal, ...invocation});
+      data = await client[operation]({signal: abort.signal});
     } else if (watch) {
       let previous: string | undefined;
       const kind = operation.split('.')[0] as 'job' | 'export', watched = splitProjectAddress(`${kind}.get`, input);
@@ -131,7 +137,7 @@ try {
       const projectId = input.projectId;
       if (operation === 'export.download') {
         const exported = splitProjectAddress('export.get', input);
-        const record = await client.rpc('export.get', exported.input, {signal: abort.signal, ...invocation, ...(exported.projectId === undefined ? {} : {projectId: exported.projectId})}) as {id?: unknown; status?: unknown; assetId?: unknown};
+        const record = await client.rpc('export.get', exported.input, {signal: abort.signal, ...(exported.projectId === undefined ? {} : {projectId: exported.projectId})}) as {id?: unknown; status?: unknown; assetId?: unknown};
         if (record.status !== 'succeeded' || !record.assetId) throw new ClientError('EXPORT_NOT_READY', 'Export is not ready. Use export watch before downloading.', {details: {exportId: record.id, status: record.status}});
         assetId = record.assetId;
       } else if (Object.keys(input).some(key => key !== 'assetId' && key !== 'projectId')) fail('asset download only accepts projectId and assetId.');
@@ -145,10 +151,21 @@ try {
             if (error instanceof LutImportFileError) throw new ClientError(error.code, error.message);
             throw error;
           }
-        } else input = await importFile(input, file);
+        } else if (operation === 'asset.import' && !options.upload) {
+          if (['dataBase64','mimeType','sourcePath'].some(key=>Object.hasOwn(input,key))) fail('--file path import cannot contain dataBase64, mimeType or sourcePath.');
+          input={...input,sourcePath:path.resolve(file)};
+        } else input = await uploadFile(input, file);
       }
+      if(operation==='asset.import' && typeof input.sourcePath==='string')assertLocalAssetImportOrigin(process.env.MIOON_BASE_URL);
+      if(operation==='asset.import' && file!==undefined && options['confirm-outside']) {
+        const result=await client.trustedAssetMedia<{asset:unknown;confirmedDirectories:string[]}>('asset.import.path',input,{signal:abort.signal});
+        if(!result || !Array.isArray(result.confirmedDirectories) || result.confirmedDirectories.some(value=>typeof value!=='string')) throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid directory confirmation acknowledgement.');
+        for(const directory of result.confirmedDirectories) process.stderr.write(JSON.stringify({confirmedDirectory:directory})+'\n');
+        data=result.asset;
+      } else {
       const addressed = splitProjectAddress(operation, input);
-      data = await client.rpc(operation, addressed.input, {signal: abort.signal, ...invocation, ...(addressed.projectId === undefined ? {} : {projectId: addressed.projectId})});
+      data = await client.rpc(operation, addressed.input, {signal: abort.signal, ...(addressed.projectId === undefined ? {} : {projectId: addressed.projectId})});
+      }
     }
     }
   }

@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, chmod, mkdir } from 'node:fs/promises';
+import { mkdtemp, writeFile, chmod, mkdir, rm } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import { createMockProvider } from '../packages/business/src/providers/mock.ts';
 
 const input = { prompt: 'Synthetic capability check', duration: 2, aspectRatio: '9:16', parameters: { scenario: 'success', delayMs: 0 }, referenceAssets: [] };
@@ -19,7 +19,8 @@ async function renderFailure(t: test.TestContext, output: string) {
   await chmod(script, 0o700);
   const previous = process.env.MIOON_FFMPEG_PATH; process.env.MIOON_FFMPEG_PATH = script;
   t.after(() => { if (previous === undefined) delete process.env.MIOON_FFMPEG_PATH; else process.env.MIOON_FFMPEG_PATH = previous; });
-  const db = new DatabaseSync(':memory:'); t.after(() => db.close());
+  const store = openStore(path.join(root, 'kernel')), db = store.db;
+  t.after(async () => {store.close();await rm(root, {recursive:true,force:true});});
   const provider = createMockProvider({ db, root });
   const accepted = await provider.submit(input, { requestId: `capability-${Math.random().toString(36).slice(2)}` });
   const id = accepted.providerJobId ?? (accepted as unknown as {id: string}).id;

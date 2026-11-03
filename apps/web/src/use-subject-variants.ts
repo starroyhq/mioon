@@ -4,7 +4,7 @@ import type { SubjectVariantController, SubjectVariantOptions, SubjectVariantSta
 
 export interface UseSubjectVariantsOptions extends Omit<SubjectVariantOptions, 'onChange'> {
   scope: string | null;
-  /** Null while no ordinary project is open; a restored workspace has no batches. */
+  /** Null while no accepted project is open. */
   projectId: string | null | undefined;
 }
 export interface UseSubjectVariantsResult { state: SubjectVariantState | null; controller: SubjectVariantController }

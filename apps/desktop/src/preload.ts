@@ -1,9 +1,9 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 // Marker remains available if any later bridge setup fails.
 contextBridge.exposeInMainWorld('__mioonDesktop', true);
 import {createWorkspaceNativeBridges} from './workspace-native-preload.ts';
 const workspaceNative=createWorkspaceNativeBridges((channel,request)=>ipcRenderer.invoke(channel,request));
-contextBridge.exposeInMainWorld('__mioonWorkspaceBackups',workspaceNative.backups);
+contextBridge.exposeInMainWorld('__mioonWorkspaceNative',workspaceNative.native);
 contextBridge.exposeInMainWorld('__mioonExportFiles',workspaceNative.exports);
 contextBridge.exposeInMainWorld('__mioonProjectPackages',workspaceNative.projectPackages);
 import {createWorkspaceToolsBridge} from './workspace-tools-preload.ts';
@@ -41,3 +41,6 @@ contextBridge.exposeInMainWorld('__mioonAppLanguage', createAppLanguageBridge({
   on: (channel, listener) => { ipcRenderer.on(channel, listener); },
   removeListener: (channel, listener) => { ipcRenderer.removeListener(channel, listener); },
 }));
+
+import {createAssetImportBridge} from './asset-import-preload.ts';
+contextBridge.exposeInMainWorld('__mioonAssetImport',createAssetImportBridge({invoke:(channel,input)=>ipcRenderer.invoke(channel,input),pathForFile:file=>webUtils.getPathForFile(file)}));

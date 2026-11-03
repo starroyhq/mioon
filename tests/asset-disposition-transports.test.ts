@@ -344,7 +344,7 @@ test('asset dispositions share exact HTTP, real CLI and official MCP semantics w
         assert.equal(resolved.format, 'uuid', 'shared UUID references retain their discovery constraint');
       }
     }
-    assert.deepEqual(optionalRequestIdOperations(catalog), [...oldMutations].sort());
+    assert.deepEqual(optionalRequestIdOperations(catalog), [...oldMutations, 'asset.import'].sort());
     assert.deepEqual(READ_TOOL_DEFINITIONS.map(value => value.name).sort(),
       ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect'].sort());
     assert.deepEqual(EDIT_TOOL_DEFINITIONS.map(value => value.name), ['mioon_propose_shot_update']);
@@ -352,7 +352,11 @@ test('asset dispositions share exact HTTP, real CLI and official MCP semantics w
   });
 
   await t.test('neutral defaults, requested order, all asset types and 100-item boundary are non-creating reads', async () => {
+    // Take the complete read-only baseline after the host's first daily capture.
+    await backend.http('project.inspect', {projectId: IDS.project});
     const before = await backend.checkpoint();
+    assert.equal(before.rows.project_versions.filter(row => row.projectId === IDS.project && row.trigger === 'daily-open').length, 1);
+    assert.equal(before.rows.project_version_capture_marks.filter(row => row.projectId === IDS.project && row.kind === 'daily-open').length, 1);
     assert.equal(before.rows.asset_dispositions.length, 0); assert.equal(before.rows.asset_disposition_requests.length, 0);
     const ids = [DISPOSITION_IDS.unknown, IDS.asset, DISPOSITION_IDS.image, DISPOSITION_IDS.audio];
     assert.deepEqual(await all('asset.disposition.list', batch(ids)),

@@ -53,7 +53,7 @@ function parse<T>(schema:{safeParse(input:unknown):{success:true;data:T}|{succes
   const result=schema.safeParse(value);if(!result.success)fail('LOCAL_SHOT_TEXT_VALIDATION');return result.data;
 }
 export interface LocalShotTextGuards{
-  ownsLock():boolean;isRestored():boolean;
+  ownsLock():boolean;
   readShot(projectId:string,shotId:string):unknown|null;
   readReceipt(projectId:string,input:LocalShotTextUpdateInput):unknown|null;
   isShotUpdateInput(value:unknown):boolean;
@@ -80,8 +80,8 @@ export function createLocalShotText({root,channel='web',guards,storage,signal,fa
   let scope:string|undefined;
   let saveUncertain=false;
   function guarded<T>(fn:()=>T):T{try{return fn();}catch(error){if(error instanceof LocalShotTextError)throw error;fail('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE');}}
-  function owned():void{if(guards.isRestored())fail('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE');if(signal?.aborted)fail('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE');if(guards.ownsLock()!==true)fail('LOCAL_SHOT_TEXT_OWNER_REQUIRED');}
-  function active():boolean{if(guards.isRestored())return false;owned();return true;}
+  function owned():void{if(signal?.aborted)fail('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE');if(guards.ownsLock()!==true)fail('LOCAL_SHOT_TEXT_OWNER_REQUIRED');}
+  function active():boolean{owned();return true;}
   function identity():string{
     const {directory,db}=validateCompanionScope(root,storage,databaseFile);
     if(!directory||!db)fail('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE');

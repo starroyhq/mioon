@@ -1,3 +1,5 @@
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import type {ServiceResponse as FixtureServiceResult, TypedStore as FixtureStore, TypedServices as FixtureServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,11 +9,8 @@ import {mkdtemp,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {schemas,descriptions,operationEffect,isTimelineMutationResponse,hasRequestNotAppliedProof,TIMELINE_MUTATION_OPERATIONS,DURABLE_EDIT_OPERATIONS,
  TIMELINE_SCENE_SPLIT_OPERATION,TIMELINE_SCENE_SPLIT_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES} from '@mioon/contracts';
 import {translate} from '../packages/i18n/src/index.ts';
@@ -22,7 +21,7 @@ const digest=(bytes: BinaryLike|Buffer<ArrayBuffer>)=>createHash('sha256').updat
 const code=(expected: string,check: ((arg0?: unknown) => unknown)|undefined=()=>true)=>(error?: Error&{ code: string; status?: number; details?: { mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[];[key: string]: unknown; }; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; })=>(error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code===expected&&check(error);
 const writes=['timelines','timeline_history','timeline_history_cursors','timeline_requests'];
 
-async function fixture(t: test.TestContext,cuts: number[]|undefined=[45,100,230,280],opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){
+async function fixture(t: test.TestContext,cuts: number[]|undefined=[45,100,230,280],opener:typeof openStore=openStore){
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-scene-split-')));
  let detected=cuts;
  const store=(opener(root) as FixtureStore),services=(createServices(store,new Map(),{sceneOptions:{detect:((async (input: { beforeSpawn:(signal?:unknown)=>void; signal: unknown; options: unknown; asset: { sha256: unknown; }; })=>{(input.beforeSpawn)!(((input.signal) as unknown as Parameters<typeof input.beforeSpawn>[0]));
@@ -30,7 +29,7 @@ async function fixture(t: test.TestContext,cuts: number[]|undefined=[45,100,230,
  const _strictFixtureBase={root,store,call:<O extends string>(op: O, input?: unknown) => services.call(op,input) as Promise<FixtureServiceResult<O>>,
   capture:()=>Object.fromEntries(writes.map(table=>[table,store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])),
   video(){
-   const bytes=Buffer.from(`Reference film ${randomUUID()}`),id=randomUUID(),relativePath=`media/${id}.mp4`;writeFileSync(path.join(root,relativePath),bytes,{mode:0o600});
+   const bytes=mp4HeaderFixture(`Reference film ${randomUUID()}`),id=randomUUID(),relativePath=`media/${id}.mp4`;writeFileSync(path.join(root,relativePath),bytes,{mode:0o600});
    return store.put('assets',{id,projectId:f.projectId,name:'Reference.mp4',mimeType:'video/mp4',sha256:digest(bytes),sizeBytes:bytes.length,relativePath,width:720,height:1280,duration:10,hasVideo:true,hasAudio:true,provenance:'user-import'});
   },
   async detect(asset: { id: unknown; projectId?: unknown; name?: string; mimeType?: string; sha256: unknown; sizeBytes?: number; relativePath?: string; width?: number; height?: number; duration?: number; hasVideo?: boolean; hasAudio?: boolean; provenance?: string; },next?: number[]|undefined){
@@ -58,7 +57,7 @@ async function fixture(t: test.TestContext,cuts: number[]|undefined=[45,100,230,
 test('the split is registered, described, effect-annotated, restore-denied and localized', ()=>{
  assert.ok(schemas[SPLIT]&&descriptions[SPLIT].length>40);
  assert.ok(TIMELINE_MUTATION_OPERATIONS.includes(SPLIT));assert.ok(!DURABLE_EDIT_OPERATIONS.includes(SPLIT));
- assert.ok(RESTORE_DENIED_OPERATIONS.includes(SPLIT));assert.equal(TIMELINE_SCENE_SPLIT_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES+64*1024);
+ assert.equal(TIMELINE_SCENE_SPLIT_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES+64*1024);
  const effect=operationEffect(SPLIT);
  assert.deepEqual([effect.readOnly,effect.idempotent,effect.destructive,effect.paidGeneration,effect.externalIO],[false,true,true,false,false]);
  assert.equal(translate('zh-Hans',`operation.${SPLIT}`),descriptions[SPLIT]);
@@ -96,7 +95,7 @@ test('nothing to split, a superseded result and a stale result write nothing', a
  await assert.rejects(f.call(SPLIT,inside),code('NOTHING_TO_SPLIT',(((error?: Error&{ code: string; status?: number; details?: { mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[];[key: string]: unknown; }; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; })=>(((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).details)!.skipped)!.length===1&&(((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).details)!.skipped)![0].reason==='NO_CUT_IN_RANGE') as unknown as Parameters<typeof code>[1])));
  const newer=await f.detect(film,[60]),afterAdd=f.capture(),old=f.request(current,{assetId:film.id,resultId});
  await assert.rejects(f.call(SPLIT,old),code('SCENE_RESULT_CONFLICT',(((error?: unknown)=>hasRequestNotAppliedProof(error,old,{operation:SPLIT})) as unknown as Parameters<typeof code>[1])));
- f.store.put('assets',{...f.store.get('assets',film.id),sha256:'d'.repeat(64)});
+ const changed=f.store.get('assets',film.id)!;f.store.put('assets',{...changed,sha256:'d'.repeat(64),reference:{...mediaReferenceSchema.parse((changed as unknown as {reference:unknown}).reference),fullSha256:'d'.repeat(64)}});
  const stale=f.request(current,{assetId:film.id,resultId:newer});
  await assert.rejects(f.call(SPLIT,stale),code('SCENE_RESULT_STALE'));
  assert.deepEqual(f.capture(),afterAdd);
@@ -130,27 +129,19 @@ test('a timeline whose clips carry volume envelopes still splits, and its receip
  assert.deepEqual(await f.call(SPLIT,input),response,'exact replay');
 });
 
-test('a split beside a dialogue clip keeps the audio-role and envelope capabilities, and the workspace restores', async t=>{
- const f=await fixture(t,undefined,openLegacyWorkspaceStore),film=await f.video();
+test('a split beside a dialogue clip retains audio role, envelope and exact receipt across kernel reopen', async t=>{
+ const f=await fixture(t,undefined),film=await f.video();
  const bytes=Buffer.from(`Dialogue ${randomUUID()}`),relativePath=`media/${randomUUID()}.wav`;writeFileSync(path.join(f.root,relativePath),bytes,{mode:0o600});
  const voice=f.store.put('assets',{id:randomUUID(),projectId:f.projectId,name:'Dialogue.wav',mimeType:'audio/wav',sha256:digest(bytes),sizeBytes:bytes.length,relativePath,duration:10,hasAudio:true,provenance:'user-import'});
  const line=await f.add(voice,{trackId:(await f.timeline()).tracks.find((track)=>track.kind==='audio')!.id,startFrame:0,durationFrames:90,sourceInFrame:0,audioRole:'human'});
  await f.add(film,{startFrame:0,durationFrames:120,sourceInFrame:0});
  const resultId=await f.detect(film),response=await f.call(SPLIT,f.request(await f.timeline(),{assetId:film.id,resultId}));
  assert.equal(response.split.length,1);
- // The receipt wraps a timeline with an audio role; the workspace validators
- // behind both capabilities, envelope edits and restore must still accept it.
- const inspected=await f.call('workspace.restore.inspect',{includeAudioRoleCapability:true,includeVolumeEnvelopeCapability:true}) as {audioRoleCapability?: {editable: boolean};volumeEnvelopeCapability?: {editable: boolean}};
- assert.deepEqual([inspected.audioRoleCapability?.editable,inspected.volumeEnvelopeCapability?.editable],[true,true]);
  const envelope={profileId:'mioon-clip-linear-attenuation-v1',points:[{frame:0,multiplier:0.5},{frame:90,multiplier:1}]};
  const edited=await f.call('timeline.clip.update',{...f.request(await f.timeline()),clipId:line!.id,patch:{volumeEnvelope:envelope}});
  assert.deepEqual(edited.clips.find((clip)=>clip.id===line!.id)!.volumeEnvelope,envelope);
  await f.close();
- const backup=`${f.root}-backup`,destination=`${f.root}-restored`;
- t.after(async()=>{await rm(backup,{recursive:true,force:true});await rm(destination,{recursive:true,force:true});});
- assert.equal((await createWorkspaceBackup({source:f.root,destination:backup}) as {integrity: string}).integrity,'verified');
- await restoreWorkspaceBackup({directory:backup,destination});
- const store=openLegacyWorkspaceStore(destination),services=createServices(store,new Map());
+ const store=openStore(f.root),services=createServices(store,new Map());
  try{assert.deepEqual((await services.call('timeline.get',{projectId:f.projectId}) as {clips: unknown[]}).clips,edited.clips);}
  finally{await services.drain();store.close();}
 });

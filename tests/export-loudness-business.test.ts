@@ -1,3 +1,11 @@
+
+import {isTimelineRenderRecord} from '@mioon/contracts';
+
+import {boundedShutdown} from '../packages/business/src/operation-lifecycle.ts';
+
+
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
+import {png} from './helpers/timeline-image-fixtures.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,10 +17,12 @@ import childProcess from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
 import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
-import {DatabaseSync} from 'node:sqlite';
-import {isTimelineRenderRecord} from '@mioon/contracts';
+
+
 import {EXPORT_LOUDNESS_PROFILE, EXPORT_LOUDNESS_LIMITS, isExportLoudnessResponse} from '@mioon/contracts/export-loudness';
-import {installCurrentWorkspaceRestoreSchema, openLegacyWorkspaceStore, openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock, assertProjectStore} from '../packages/business/src/store-runtime.ts';
+
 import {createServices} from '../packages/business/src/services.ts';
 import {createExportLoudnessServices} from '../packages/business/src/export-loudness.ts';
 import {createExportLoudnessAccumulator} from '../packages/business/src/export-loudness-meter.ts';
@@ -20,10 +30,10 @@ import {createExportSamplePeakServices} from '../packages/business/src/export-sa
 import {createExportSamplePeakAccumulator} from '../packages/business/src/export-sample-peak-decoder.ts';
 import {readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.ts';
 import {validateManagedSource, verifiedManagedHash} from '../packages/business/src/managed-media.ts';
-import {boundedShutdown} from '../packages/business/src/operation-lifecycle.ts';
-import {workspaceRestoreError, RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
+
+
 import {floatSnapshotSha256} from '../packages/business/src/timeline-float-outcome.ts';
-import {onMediaProcess, spawnMedia, terminateMediaProcesses, waitForMediaProcesses, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
+import {spawnMedia, terminateMediaProcesses, waitForMediaProcesses, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
 import {runStreaming} from '../packages/business/src/media-runtime.ts';
 import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
@@ -69,24 +79,25 @@ async function fixture(t: TestContext, {named = false, range = false, retainTime
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-loudness-')), store = openStore(root), services = createServices(store, new Map());
   const project = await services.call('project.create', {name: 'Owned loudness fixture'}) as {id: string}, foreign = await foreignProject(t);
   let timeline = await services.call('timeline.get', {projectId: project.id}) as TimelineFixture;
-  const sourceId = randomUUID();
-  store.put('assets', {id: sourceId, projectId: project.id, name: 'Original source', mimeType: 'image/png', sha256: 'a'.repeat(64),
-    relativePath: `media/${sourceId}.png`, width: 720, height: 1280, duration: 0, hasAudio: false, sizeBytes: 20, createdAt: new Date().toISOString()});
+  const sourceId = randomUUID(),sourceBytes=png({width:720,height:1280});
+  await writeFile(path.join(root,`media/${sourceId}.png`),sourceBytes);
+  store.put('assets', {id: sourceId, projectId: project.id, name: 'Original source', mimeType: 'image/png', sha256: sha(sourceBytes),
+    relativePath: `media/${sourceId}.png`, width: 720, height: 1280, duration: 0, hasAudio: false, sizeBytes: sourceBytes.length, createdAt: new Date().toISOString()});
   timeline = await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
     trackId: timeline.tracks[0]!.id, assetId: sourceId, startFrame: 0, durationFrames: range ? 90 : 30}) as TimelineFixture;
   const intent = {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'export',
     ...(named ? {deliveryName: '已导出响度文件'} : {}), ...(range ? {exportRange: {startFrame: 30, endFrame: 60}} : {})};
   const queued = await services.call('timeline.render', intent) as {id: string}, assetId = randomUUID();
-  const relativePath = `media/export-${queued.id}-${randomUUID()}.mp4`, bytes = Buffer.alloc(96 * 1024, 7);
+  const relativePath = `media/export-${queued.id}-${randomUUID()}.mp4`, bytes = Buffer.alloc(96 * 1024, 7);mp4HeaderFixture('Synthetic stub-decoded export').copy(bytes);
   await writeFile(path.join(root, relativePath), bytes, {mode: 0o600});
-  const asset = {id: assetId, projectId: project.id, name: 'Historical output', mimeType: 'video/mp4', provenance: 'export', relativePath,
+  const asset = {id: assetId, projectId: project.id, name: 'Historical output', mimeType: 'video/mp4', provenance: 'export', producer:{kind:'export',id:queued.id},relativePath,
     url: `/media/${assetId}`, sha256: sha(bytes), sizeBytes: bytes.length, createdAt: new Date().toISOString()};
-  store.put('assets', asset);
+  store.put('assets', asset);Object.assign(asset,store.get('assets',assetId));
   const record = {id: queued.id, ...(store.get('exports', queued.id) as Record<string, unknown>), status: 'succeeded', assetId, url: asset.url, updatedAt: new Date().toISOString()}; store.put('exports', record);
   if (!retainTimeline) {
     store.db.prepare('DELETE FROM timelines WHERE id=?').run(timeline.id); store.db.prepare('DELETE FROM assets WHERE id=?').run(sourceId);
   }
-  const runtime: RuntimeOverrides & {decode: (file: string, duration: number, options: {beforeEffect(): void; signal?: AbortSignal}) => Promise<unknown>; hash: (...args: never[]) => Promise<unknown>} = {assertOrdinaryWorkspace: () => {if (getWorkspaceRestoreContext(store)) throw workspaceRestoreError();}, ownsLock: () => ownsStoreLock(store),
+  const runtime: RuntimeOverrides & {decode: (file: string, duration: number, options: {beforeEffect(): void; signal?: AbortSignal}) => Promise<unknown>; hash: (...args: never[]) => Promise<unknown>} = {assertOrdinaryWorkspace: () => {assertProjectStore(store);}, ownsLock: () => ownsStoreLock(store),
     isTimelineRenderRecord, readOwnedAsset: (projectId: string, id: string) => readOwnedTimelineAsset(store.db, projectId, id),
     validateSource: validateManagedSource, hash: verifiedManagedHash as (...args: never[]) => Promise<unknown>, decode: async (_file: string, duration: number, options: {beforeEffect(): void; signal?: AbortSignal}) => {options.beforeEffect(); return measurement(duration);},
     terminate: async () => [], waitForClose: async () => [], boundedShutdown, ...overrides} as RuntimeOverrides & {decode: (file: string, duration: number, options: {beforeEffect(): void; signal?: AbortSignal}) => Promise<unknown>; hash: (...args: never[]) => Promise<unknown>};
@@ -99,7 +110,7 @@ async function fixture(t: TestContext, {named = false, range = false, retainTime
     unchanged: async (before: FixtureCheckpoint) => {assert.deepEqual(rows(), before.rows); assert.equal((store.db.prepare('SELECT total_changes() AS n').get() as {n: number}).n, before.writes); assert.deepEqual(await files(root), before.files);},
     checkpoint: async (): Promise<FixtureCheckpoint> => ({rows: rows(), writes: (store.db.prepare('SELECT total_changes() AS n').get() as {n: number}).n, files: await files(root)})};
 }
-function replace(f: BusinessFixture, table: string, value: Record<string, unknown>) {f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(value), value.id as string);}
+function replace(f: BusinessFixture, table: string, value: Record<string, unknown>) {const saved={...value};if(table==='assets'&&'reference' in saved)delete saved.relativePath;f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(saved), value.id as string);}
 function samplePeak(f: BusinessFixture, runtime: Record<string, unknown> = {}): (context?: {signal?: AbortSignal}) => Promise<LoudnessServiceResult> {
   const peak = createExportSamplePeakServices({...f.store} as never, {runtime: {...f.runtime, decode: async (_file: string, duration: number) => {
     const accumulator = createExportSamplePeakAccumulator(duration); accumulator.write(pcm(duration)); return accumulator.finish();
@@ -199,7 +210,7 @@ test('metadata, same-size byte and path replacement discard measurement; owner r
       throw Object.assign(Error('PRIVATE decoder diagnostic'), {code: 'MEDIA_PROCESS_FAILED'});
     }}});
     if (kind === 'foreign') await assert.rejects(f.call(), {code: 'EXPORT_LOUDNESS_UNAVAILABLE'});
-    else if (kind === 'lock') await assert.rejects(f.call(), {code: 'RESTORE_STORE_UNVERIFIED'});
+    else if (kind === 'lock') await assert.rejects(f.call(), {code: 'PROJECT_STORE_UNVERIFIED'});
     else {const result = await f.call(); assert.equal((result as LoudnessServiceResult).reason.code, 'ARTIFACT_CHANGED'); assert.equal(result.measurement, null); assert.ok(!JSON.stringify(result).includes('PRIVATE'));}
   });
 });
@@ -214,7 +225,7 @@ test('recorded input size and cumulative hash budgets fail before decode without
   let reads = 0, decodes = 0;
   const f = await fixture(t, {runtime: {validateSource: (...args: never[]) => {reads++; return (validateManagedSource as (...rest: never[]) => unknown)(...args);},
     decode: async () => {decodes++; return measurement();}}});
-  replace(f, 'assets', {...f.asset, sizeBytes: EXPORT_LOUDNESS_LIMITS.inputBytes + 1});
+  replace(f, 'assets', {...f.asset, sizeBytes: EXPORT_LOUDNESS_LIMITS.inputBytes + 1,reference:{...(f.asset.reference as object),sizeBytes:EXPORT_LOUDNESS_LIMITS.inputBytes+1}});
   const tooLarge = await f.call(); assert.equal((tooLarge as LoudnessServiceResult).reason.code, 'INPUT_TOO_LARGE'); assert.equal(reads, 0); assert.equal(decodes, 0);
   replace(f, 'assets', f.asset);
   f.runtime.hash = async (_root: unknown, asset: {sizeBytes: number}, options: {onBytes(bytes: number): void}) => {options.onBytes(asset.sizeBytes * 2 + 1); throw Error('Budget callback must throw');};
@@ -234,38 +245,9 @@ test('no audio is distinct from silence and still needs the second successful by
   assert.equal(result.status, 'ready'); assert.equal(result.measurement.state, 'digital_silence'); assert.equal(result.measurement.integratedLufs, null); assert.equal(result.suggestion, null);
 });
 
-test('restored denial occurs before payload getters or any file/media adapter', async t => {
-  const f = await fixture(t); let getters = 0, effects = 0;
-  assert.ok(RESTORE_DENIED_OPERATIONS.includes('timeline.export.loudness'));
-  const restored = createExportLoudnessServices({...f.store} as never, {runtime: {...f.runtime, assertOrdinaryWorkspace() {throw workspaceRestoreError();},
-    validateSource() {effects++;}, decode() {effects++;}} as never}); f.extras.push(restored);
-  await assert.rejects(restored.handlers['timeline.export.loudness']({get projectId() {getters++; return f.project.id;}}), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-  assert.equal(getters, 0); assert.equal(effects, 0);
-});
 
-test('actual restored-v1 composition denies loudness before parsing valid or hostile payloads', async t => {
-  const root = await mkdtemp(path.join(tmpdir(), 'mioon-restored-loudness-'));
-  let store = openLegacyWorkspaceStore(root), services = createServices(store, new Map());
-  const project = await services.call('project.create', {name: 'Restored loudness owner'}) as {id: string};
-  await services.drain(); store.close();
-  const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
-  const metadata = {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(),
-    manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: new Date().toISOString()};
-  try {installCurrentWorkspaceRestoreSchema(db, metadata); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
-  store = openLegacyWorkspaceStore(root);
-  services = createServices(store, new Proxy(new Map(), {get() {throw Error('Must not inspect providers');}}));
-  let media = 0, getters = 0; const off = onMediaProcess(() => {media++;});
-  t.after(async () => {off(); await services.drain(); store.close(); await rm(root, {recursive: true, force: true});});
-  const beforeFiles = await files(root), beforeChanges = (store.db.prepare('SELECT total_changes() AS n').get() as {n: number}).n;
-  const hostile = {get projectId() {getters++; throw Error('Payload access');}, get target() {getters++; throw Error('Payload access');}};
-  const valid = {projectId: project.id, exportId: randomUUID(), expectedArtifactSha256: 'c'.repeat(64), measurementProfile: EXPORT_LOUDNESS_PROFILE};
-  for (const value of [hostile, valid, null]) {
-    await assert.rejects(async () => { await (services.call as unknown as (...args: unknown[]) => unknown)('timeline.export.loudness', value, {expectedWorkspaceOrigin: metadata.workspaceOrigin}); }, {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-    await assert.rejects((services.handlers['timeline.export.loudness'] as unknown as (...args: unknown[]) => Promise<unknown>)(value), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-  }
-  assert.equal(getters, 0); assert.equal(media, 0);
-  assert.equal((store.db.prepare('SELECT total_changes() AS n').get() as {n: number}).n, beforeChanges); assert.deepEqual(await files(root), beforeFiles);
-});
+
+
 
 test('service drain propagates an audioPreview owner rejection after the added loudness owner', async t => {
   const f = await fixture(t), expected = Object.assign(Error('Audio preview cleanup failed'), {code: 'AUDIO_PREVIEW_SHUTDOWN_FAILED'});

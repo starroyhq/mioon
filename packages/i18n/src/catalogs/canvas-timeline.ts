@@ -34,7 +34,7 @@ export const canvasTimelineMessages = {
   'timeline.transition.mark': { 'zh-Hans': '转场：{kind}，{frames} 帧', 'zh-Hant': '轉場：{kind}，{frames} 幀', en: 'Transition: {kind}, {frames} frames', ja: 'トランジション：{kind}、{frames} フレーム' },
   'timeline.transition.add': { 'zh-Hans': '在这里加 {frames} 帧溶解', 'zh-Hant': '在這裡加 {frames} 幀溶解', en: 'Add a {frames}-frame dissolve here', ja: 'ここに {frames} フレームのディゾルブを追加' },
   'timeline.sync.clipBadge': { 'zh-Hans': '已过期', 'zh-Hant': '已過期', en: 'Outdated', ja: '古い' },
-  'timeline.sync.restoredUnavailable': { 'zh-Hans': '恢复出的工作区暂不支持批量更新来源和追加镜头', 'zh-Hant': '還原出的工作區暫不支援批次更新來源與附加鏡頭', en: 'Restored workspaces can’t update sources in bulk or append shots yet', ja: '復元したワークスペースでは、ソースの一括更新とショットの追加はまだ使えません' },
+
   'timeline.sync.error.nothingToRefresh': { 'zh-Hans': '没有片段被更新，原因见时间线上方的说明', 'zh-Hant': '沒有片段被更新，原因見時間軸上方的說明', en: 'No clips were updated. The note above the timeline lists why', ja: '更新されたクリップはありません。理由はタイムライン上部に表示しています' },
   'timeline.sync.error.nothingToAppend': { 'zh-Hans': '没有可追加的镜头：镜头都已在时间线上，或还没有选中版本', 'zh-Hant': '沒有可附加的鏡頭：鏡頭都已在時間軸上，或還沒有選定版本', en: 'No shots to append: every shot is already on the timeline or has no selected version', ja: '追加できるショットがありません。すべてタイムライン上にあるか、バージョンが選択されていません' },
   'timeline.sync.error.limit': { 'zh-Hans': '超出时间线上限：最多 100 个片段、总长 10 分钟', 'zh-Hant': '超出時間軸上限：最多 100 個片段、總長 10 分鐘', en: 'This would exceed the timeline limit of 100 clips and 10 minutes', ja: 'タイムラインの上限（100 クリップ、10 分）を超えます' },

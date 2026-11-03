@@ -41,12 +41,12 @@ export function lutResourceFromRow(row:unknown):LutResource {
   if(!parsed.success)invalid();return parsed.data;
 }
 export function readLutResource(db:DatabaseSync,projectId:string,lutId:string,verifyBytes=false):LutResource {
-  const row=db.prepare(`SELECT ${LUT_RESOURCE_COLUMNS} FROM main.project_lut_resources WHERE projectId=? AND id=?`).get(projectId,lutId);
+  const row=db.prepare(`SELECT ${LUT_RESOURCE_COLUMNS} FROM project_lut_resources WHERE projectId=? AND id=?`).get(projectId,lutId);
   if(!row)throw lutResourceError('LUT_NOT_FOUND',404);
   const resource=lutResourceFromRow(row);
   if(resource.projectId!==projectId||resource.id!==lutId)invalid();
   if(verifyBytes){
-    const cell=db.prepare(`SELECT CASE WHEN typeof(content)='blob' AND length(content) BETWEEN 1 AND ${LUT_RESOURCE_LIMITS.sourceBytes} THEN content END AS content FROM main.project_lut_resources WHERE projectId=? AND id=?`).get(projectId,lutId);
+    const cell=db.prepare(`SELECT CASE WHEN typeof(content)='blob' AND length(content) BETWEEN 1 AND ${LUT_RESOURCE_LIMITS.sourceBytes} THEN content END AS content FROM project_lut_resources WHERE projectId=? AND id=?`).get(projectId,lutId);
     const content=cell?.content;
     if(!(content instanceof Uint8Array)||content.length!==resource.sizeBytes||lutHash(content)!==resource.sha256)invalid();
     const parsed=parseLutBytes(content);
@@ -58,16 +58,16 @@ export function readLutResource(db:DatabaseSync,projectId:string,lutId:string,ve
 /** Ordinary startup and offline backup/restore gate. No writes or file I/O.
  * Count/size checks precede bounded BLOB reads, one resource at a time. */
 export function validateLutResourceRows(db:DatabaseSync,{verifyBytes=true}:{verifyBytes?:boolean}={}):void {
-  const rows=db.prepare(`SELECT ${LUT_RESOURCE_COLUMNS} FROM main.project_lut_resources LIMIT ${LUT_RESOURCE_LIMITS.workspaceResources+1}`).all();
+  const rows=db.prepare(`SELECT ${LUT_RESOURCE_COLUMNS} FROM project_lut_resources LIMIT ${LUT_RESOURCE_LIMITS.workspaceResources+1}`).all();
   if(rows.length>LUT_RESOURCE_LIMITS.workspaceResources)invalid();
   let total=0;const projects=new Map<string,{count:number;bytes:number}>(),resources=new Map<string,LutResource>();
   for(const row of rows){
     const value=lutResourceFromRow(row);resources.set(value.id,value);total+=value.sizeBytes;
     const p=projects.get(value.projectId)??{count:0,bytes:0};p.count++;p.bytes+=value.sizeBytes;projects.set(value.projectId,p);
     if(total>LUT_RESOURCE_LIMITS.workspaceBytes||p.count>LUT_RESOURCE_LIMITS.projectResources||p.bytes>LUT_RESOURCE_LIMITS.projectBytes)invalid();
-    if(!db.prepare('SELECT 1 FROM main.projects WHERE id=?').get(value.projectId))invalid();
+    if(!db.prepare('SELECT 1 FROM projects WHERE id=?').get(value.projectId))invalid();
   }
-  const receipts=db.prepare(`SELECT ${text('requestId',800)},${text('projectId',36)},${text('inputHash',64)},${text('resourceId',36)} FROM main.lut_import_requests LIMIT ${LUT_RESOURCE_LIMITS.receipts+1}`).all();
+  const receipts=db.prepare(`SELECT ${text('requestId',800)},${text('projectId',36)},${text('inputHash',64)},${text('resourceId',36)} FROM lut_import_requests LIMIT ${LUT_RESOURCE_LIMITS.receipts+1}`).all();
   if(receipts.length>LUT_RESOURCE_LIMITS.receipts||receipts.length!==rows.length)invalid();
   const seen=new Set<string>();
   for(const receipt of receipts){

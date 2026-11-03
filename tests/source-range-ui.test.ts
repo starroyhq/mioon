@@ -164,8 +164,8 @@ test('App guards dirty clip before source selection, clears clip selection, and 
   const renderCode=transformSync(`function render(){return ${app.slice(branchStart,branchEnd)} : null;}`,{loader:'tsx',format:'cjs',jsx:'transform'}).code;
   let discards=0,ownerScope='source:1';
   const environment={React:{createElement:(type: string,props: Record<string, unknown> | null,...children: RootTree[])=>({type,props:{...props,children}})},
-    quickAssetId:'asset-a',sourceAsset:asset(),AgentEditingBoundary:'AgentEditingBoundary',SourceRangeInspector:'SourceRangeInspector',
-    workspaceOriginScope:()=> 'normal',workspace:{restored:false},restored:false,data:{project:{id:'project-a'}},sourceDirty:true,
+    editorSession:{current:'normal'},quickAssetId:'asset-a',sourceAsset:asset(),AgentEditingBoundary:'AgentEditingBoundary',SourceRangeInspector:'SourceRangeInspector',
+    workspace:{},data:{project:{id:'project-a'}},sourceDirty:true,
     sourceRanges:{state:{scope:'source:1'},controller:{getState:()=>({scope:ownerScope}),discard:()=>{discards++;}}},
     timeline:timeline(),sourceRangeBlocked:false,addSavedSourceRange:()=>{},FrameExtractionPanel:'FrameExtractionPanel',frameExtraction:{controller:{}},agentRecovery:null as {kind: string; projectId: string; taskId: string; key: string; current(): boolean} | null,sceneSummary:()=>null,
   };

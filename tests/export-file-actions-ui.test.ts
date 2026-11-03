@@ -107,7 +107,7 @@ test('size and immutable response mismatches retain the original record and rele
   const next=h.choose();next.send();await h.settle(h.calls.at(-1),status(initial,{status:'present'}));assert.equal(h.nodes().find((node: ElementNode)=>node.props?.render)?.props.render!.props.href,initial.downloadHref);
 });
 
-const output=(patch={})=>({projectId:initial.projectId,exportId:initial.exportId,assetId:id(3),fileLocation:'/private/local/output.mp4',sizeBytes:4,sha256:'a'.repeat(64),url:initial.downloadHref,...patch});
+const output=(patch={})=>({projectId:initial.projectId,exportId:initial.exportId,assetId:id(3),fileLocation:'/private/local/output.mp4',sizeBytes:4,sha256:'a'.repeat(64),referenceRevision:1,fingerprint:{sizeBytes:4,mtimeMs:1,sampledSha256:'b'.repeat(64),fullSha256:'a'.repeat(64)},producer:{kind:'export',id:initial.exportId},url:initial.downloadHref,...patch});
 test('completed output shows the exact managed location, copies it explicitly and invokes native identity actions',async()=>{
  const native: (unknown[])[]=[],h=harness({output:output(),detailed:true});h.setNative({async open(identity: unknown){native.push(['open',identity]);},async reveal(identity: unknown){native.push(['reveal',identity]);}});h.render();
  assert.ok(h.find('export-output-location'));h.find('export-file-copy')!.props.onClick();await tick();h.render();assert.deepEqual(h.copied,[output().fileLocation]);

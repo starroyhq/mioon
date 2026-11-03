@@ -1,3 +1,7 @@
+
+
+
+
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +12,7 @@ import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import {createProjectStore, openStore as openProjectStore} from '../packages/business/src/project-file/index.ts';
 import {schemaObjects, foreignKeyCheck} from '../packages/business/src/project-file/cross-file/inspect.ts';
-import {openLegacyWorkspaceStore as openWorkspaceStore} from '../packages/business/src/db.ts';
+
 import {createServices} from '../packages/business/src/services.ts';
 import type {ServiceApplicationPorts} from '../packages/business/src/services.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
@@ -16,12 +20,9 @@ import {createProjectServiceApplication} from '../packages/business/src/project-
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
 import {hasStoreTable, isProjectLayout, storeDirectories, storeTableSchema} from '../packages/business/src/store-layout.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
-import {usesAssetAnnotationSchema, usesPrevisSchema, usesAgentPolicyAnswerSchema} from '../packages/business/src/workspace-schema-dispatch.ts';
-import {readTimelineAudioRoleCapability} from '../packages/business/src/timeline-audio-role-business.ts';
-import {readTimelineVolumeEnvelopeCapability} from '../packages/business/src/timeline-volume-envelope-capability.ts';
-import {migrateSizedImageEditReviewSchema} from '../packages/business/src/images/review-schema-v62.ts';
-import {migrateSceneKeyframeEditReviewSchema} from '../packages/business/src/images/review-schema-v68.ts';
-import {installProjectLifecycleDefinitions, migrateProjectLifecycleSchema} from '../packages/business/src/project-lifecycle-schema.ts';
+
+
+
 import {readLutResource} from '../packages/business/src/project-lut-reader.ts';
 import type {LutResource} from '../packages/contracts/src/lut-resources.ts';
 
@@ -32,20 +33,10 @@ function scratch(t: TestContext): string {
   return root;
 }
 function application(root: string) {
-  const calls = {stop: 0, drain: 0};
-  const unavailable = (): never => {throw new TypeError('Test application refuses legacy workspace backup operations.');};
-  // A test-owned application port, not another workspace database. Business
-  // edits are admitted, but no backup/import/restore can execute the old chain.
-  const backups: ServiceApplicationPorts['backups'] = {
-    getStatus: unavailable, list: unavailable, create: unavailable, stageRestore: unavailable,
-    exportBundle: unavailable, importBundle: unavailable, importDirectory: unavailable,
-    isBusy: () => false, assertMutationAllowed: () => {}, start: unavailable, tick: unavailable,
-    stop: () => {calls.stop++;}, drain: async () => {calls.drain++;},
-  };
   mkdirSync(root, {mode: 0o700});
   const library = openAppLibrary({dataDir: root});
   const live = createProjectServiceApplication(library, undefined, {});
-  return {ports: {configuration: live.configuration, backups, assertMutationAllowed: live.assertMutationAllowed}, calls, close: () => library.close()};
+  return {ports: live, library, close: () => library.close()};
 }
 async function fixture(t: TestContext) {
   const root = scratch(t), store = openProjectStore(path.join(root, 'project'));
@@ -90,13 +81,12 @@ test('kernel services require explicit application ports and borrow their lifecy
   assert.throws(() => createServices(store, new Map()), /explicit application/u);
   assert.deepEqual(schemaObjects(store.db), structure);
   const f = await fixture(t);
-  assert.throws(() => f.services.setProjectDeletionCompanions({
-    assertDeletable: () => assert.fail('legacy deletion must not inspect project companions'),
-    removeProject: () => assert.fail('legacy deletion must not remove project companions'),
-  }), /application project host/u);
-  await assert.rejects(f.services.call('workspace.backup.create', {requestId: randomUUID()}), /refuses legacy workspace backup/u);
+  assert.equal(Object.hasOwn(f.services, 'setProjectDeletionCompanions'), false);
+  await assert.rejects(f.services.call('workspace.backup.create', {requestId: randomUUID()}), {code:'UNKNOWN_OPERATION', status:404});
+  const settings = f.app.ports.configuration.get();
   await f.services.drain();
-  assert.deepEqual(f.app.calls, {stop: 0, drain: 0});
+  assert.equal(f.app.library.db.isOpen, true);
+  assert.deepEqual(f.app.ports.configuration.get(), settings);
 });
 
 test('real project services create their own project and retain shot, timeline and generation receipts across the three databases', async t => {
@@ -106,11 +96,9 @@ test('real project services create their own project and retain shot, timeline a
   const shot = await f.services.call('shot.create', {projectId, title: 'Opening', prompt: 'Offline receipt', requestId: randomUUID()}) as Row;
   const timeline = await f.services.call('timeline.get', {projectId}) as Row;
   assert.equal(timeline.projectId, projectId);
-  assert.equal(usesAssetAnnotationSchema(f.store.db), true);
-  assert.equal(usesPrevisSchema(f.store.db), true);
-  assert.equal(usesAgentPolicyAnswerSchema(f.store.db), true);
-  assert.equal(readTimelineAudioRoleCapability(f.store.db).editable, true);
-  assert.equal(readTimelineVolumeEnvelopeCapability(f.store.db).editable, true);
+  assert.equal(hasStoreTable(f.store.db, 'asset_annotations'), true);
+  assert.equal(hasStoreTable(f.store.db, 'previs_requests'), true);
+  assert.equal(hasStoreTable(f.store.db, 'mio_conversation_policies'), true);
   const input = {shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'mock'};
   const job = await f.services.call('generation.submit', input) as Row;
   assert.equal(job.status, 'queued');
@@ -170,19 +158,7 @@ test('a missing active ID does not disguise an unfinished local group task as fo
   assert.equal(f.store.db.prepare('SELECT activeTaskId FROM image_groups WHERE id=?').get(String(first.groupId))?.activeTaskId, missing);
 });
 
-test('runtime lifecycle and later migration seams refuse a kernel without touching persistent or TEMP objects', t => {
-  const store = openProjectStore(scratch(t));
-  t.after(() => store.close());
-  const before = schemaObjects(store.db), changes = store.db.prepare('SELECT total_changes() AS n').get()?.n;
-  // Frozen historical constructors remain byte-exact and are not runtime
-  // entrypoints for a project. Composition above proves none of them runs.
-  for (const migrate of [migrateSizedImageEditReviewSchema, migrateSceneKeyframeEditReviewSchema, installProjectLifecycleDefinitions]) {
-    assert.throws(() => migrate(store.db), /Legacy workspace schema installers/u);
-  }
-  assert.throws(() => migrateProjectLifecycleSchema(store.db, () => assert.fail('legacy classifier must not run')), /Legacy workspace schema installers/u);
-  assert.deepEqual(schemaObjects(store.db), before);
-  assert.equal(store.db.prepare('SELECT total_changes() AS n').get()?.n, changes);
-});
+
 
 test('the kernel LUT reader uses project content and the existing strict Cube, ownership and hash validators', async t => {
   const f = await fixture(t), projectId = f.store.projectId;
@@ -195,16 +171,4 @@ test('the kernel LUT reader uses project content and the existing strict Cube, o
     .run(invalidId, projectId, 'Invalid hash', '0'.repeat(64), bytes.length, resource.profile, JSON.stringify(resource.metadata), bytes, resource.createdAt));
   assert.throws(() => readLutResource(f.store.db, projectId, invalidId, true), {code: 'LUT_RESOURCE_INVALID'});
   assert.deepEqual(schemaObjects(f.store.db), f.structure);
-});
-
-test('default legacy services still create independent random project IDs in the same workspace', async t => {
-  const store = openWorkspaceStore(scratch(t));
-  t.after(() => store.close());
-  const services = createServices(store, new Map(), {env: {}});
-  t.after(() => services.drain());
-  const a = await services.call('project.create', {name: 'A'}) as Row, b = await services.call('project.create', {name: 'B'}) as Row;
-  assert.notEqual(a.id, b.id);
-  assert.equal(isProjectLayout(store.db), false);
-  assert.equal(usesAssetAnnotationSchema(store.db), true);
-  assert.equal(storeTableSchema(store.db, 'image_groups'), 'main');
 });

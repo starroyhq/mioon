@@ -1,12 +1,13 @@
+import {writeStubMediaFixture} from './helpers/media-reference-fixtures.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHash,randomUUID} from 'node:crypto';
-import {mkdtemp,rm,cp,writeFile,readdir,unlink,chmod} from 'node:fs/promises';
+import {randomUUID} from 'node:crypto';
+import {mkdtemp,rm,cp,writeFile,readFile,readdir,unlink,chmod} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isExportPreflightResponse,TIMELINE_SUBTITLE_PROFILE_ID} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createTimelinePreflightServices} from '../packages/business/src/timeline-preflight.ts';
 import {initializeSubtitleResources,SUBTITLE_FONT_FILE} from '../packages/business/src/subtitle-resources.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
@@ -19,7 +20,7 @@ test('subtitle preflight verifies font and renderer read-only without measuring 
  await setHelp(help);await chmod(executable,0o700);const previous=process.env.MIOON_FFMPEG_PATH;process.env.MIOON_FFMPEG_PATH=executable;
  t.after(()=>{if(previous===undefined)delete process.env.MIOON_FFMPEG_PATH;else process.env.MIOON_FFMPEG_PATH=previous;});
  const store=openStore(path.join(root,'data')),project={id:store.projectId,name:'Caption preflight'};store.put('projects',project);
- const bytes=Buffer.from('owned synthetic metadata source'),asset={id:randomUUID(),projectId:project.id,name:'audio',mimeType:'audio/wav',relativePath:'media/source.wav',sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,duration:1,width:0,height:0,hasAudio:true};
+ const id=randomUUID(),source=writeStubMediaFixture(store.root,id,'audio/wav'),bytes=await readFile(path.join(store.root,source.relativePath)),asset={id,projectId:project.id,name:'audio',mimeType:'audio/wav',...source,duration:1,width:0,height:0,hasAudio:true};
  await writeFile(path.join(store.root,asset.relativePath),bytes);store.put('assets',asset);
  const track={id:randomUUID(),kind:'audio',name:'Audio',orderIndex:0,muted:false,hidden:false};
  const timeline={id:randomUUID(),projectId:project.id,revision:1,fps:30,width:720,height:1280,durationFrames:30,tracks:[track],clips:[{id:randomUUID(),trackId:track.id,assetId:asset.id,name:'Audio',startFrame:0,durationFrames:30,sourceInFrame:0,rect:{x:0,y:0,width:720,height:1280},gain:1}],createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z',subtitles:{profileId:TIMELINE_SUBTITLE_PROFILE_ID,cues:[{id:randomUUID(),text:'字幕，测试\nHello world!',startFrame:1,durationFrames:20}]}};

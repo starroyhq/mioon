@@ -3,13 +3,14 @@ import type {createMockProvider} from '../packages/business/src/providers/mock.t
 import type {SQLInputValue} from 'node:sqlite';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {crc32,deflateSync} from 'node:zlib';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
 import {createArkProvider} from '../packages/business/src/providers/ark.ts';
@@ -37,7 +38,7 @@ async function fixture(t: test.TestContext){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-frame-pair-')),store=(openStore(root) as TypedStore),env:NodeJS.ProcessEnv={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'inert',GEMINI_API_KEY:'inert',RUNWAYML_API_SECRET:'inert',MINIMAX_API_KEY:'inert',VIDU_API_KEY:'inert',VIDU_OUTPUT_HOSTS:'offline.invalid'};
  const providers=createProviderRegistry({db:store.db,root,env}),services=(createServices(store,providers,{env,profileNow:()=>Date.parse('2026-10-11T12:00:00Z')}) as TypedServices);let worker: Worker,posts=0;
  const call=<O extends string>(op: O,input: unknown)=>services.call(op,input),project=await call('project.create',{name:'Offline frame pair'}),other=await foreignProject(t,'Other owner');
- async function asset<P extends Record<string,unknown> = Record<string,never>>(patch:P={} as P){const bytes=png(store.list('assets').length),id=randomUUID(),record={id,projectId:project.id,name:'Synthetic frame',mimeType:'image/png',relativePath:`media/${id}.png`,sha256:sha(bytes),sizeBytes:bytes.length,width:360,height:640,provenance:'user-import',createdAt:new Date().toISOString(),...patch};store.put('assets',record);await writeFile(path.join(root,record.relativePath),bytes);return record;}
+ async function asset<P extends Record<string,unknown> = Record<string,never>>(patch:P={} as P){const mimeType=patch.mimeType??'image/png',bytes=mimeType==='video/mp4'?mp4HeaderFixture('Synthetic frozen lineage; no decoder runs'):png(store.list('assets').length),id=randomUUID(),record={id,projectId:project.id,name:'Synthetic frame',mimeType:'image/png',relativePath:`media/${id}.${mimeType==='video/mp4'?'mp4':'png'}`,sha256:sha(bytes),sizeBytes:bytes.length,width:360,height:640,provenance:'user-import',createdAt:new Date().toISOString(),...patch};await writeFile(path.join(root,record.relativePath),bytes);store.put('assets',record);return record;}
  const first=await asset(),last=await asset(),replacement=await asset();env.ARK_APPROVED_ASSET_SHA256=[first,last,replacement].map(a=>a.sha256).join(',');
  const ark=createArkProvider({root,env,fetchImpl:(async()=>{posts++;return new Response(JSON.stringify({id:'offline-frame-pair'}));}) as unknown as typeof fetch});providers.set('ark',ark as unknown as Provider);
  t.after(async()=>{await worker?.stop();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
@@ -172,7 +173,8 @@ test('historical version tail without legacy reference array is ownership checke
 async function typedFrame(f: Awaited<ReturnType<typeof fixture>>){
  const db=f.store.db,projectId=f.project.id,source=await f.asset({mimeType:'video/mp4',duration:3,hasVideo:true,hasAudio:false}),taskId=randomUUID(),requestId=randomUUID(),assetId=randomUUID(),at='2026-10-11T00:00:00.000Z';
  const input={projectId,sourceAssetId:source.id,sourceHash:source.sha256,sourceFrame:56,requestId},inputHash=sha(canonicalFrameInput(input));
- const snapshot={schemaVersion:1,projectId,taskId,source:{assetId:source.id,sha256:source.sha256,mimeType:source.mimeType,sizeBytes:source.sizeBytes,relativePath:source.relativePath,duration:source.duration,width:source.width,height:source.height},requested:{sourceFrame:56,fps:30},profile:FRAME_PROFILE};
+ const currentSource:unknown=f.store.get('assets',source.id);assert.ok(currentSource&&typeof currentSource==='object'&&'reference' in currentSource&&'referenceRevision' in currentSource);
+ const snapshot={schemaVersion:1,projectId,taskId,source:{assetId:source.id,sha256:source.sha256,mimeType:source.mimeType,sizeBytes:source.sizeBytes,reference:currentSource.reference,referenceRevision:currentSource.referenceRevision,duration:source.duration,width:source.width,height:source.height},requested:{sourceFrame:56,fps:30},profile:FRAME_PROFILE};
  const asset={...f.last,id:assetId,relativePath:`media/${assetId}.png`,provenance:'extracted-frame',createdAt:at};
  const receipt={schemaVersion:1,projectId,taskId,inputHash,sourceAssetId:source.id,sourceHash:source.sha256,sourceFrame:56,fps:30,profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE,assetId,sha256:asset.sha256,mimeType:asset.mimeType,width:360,height:640,byteLength:asset.sizeBytes,probe:{streamIndex:0,timeBaseNumerator:1,timeBaseDenominator:15360,width:360,height:640,rotation:0,sarNumerator:1,sarDenominator:1}};
  const ack={id:taskId,projectId,requestId,sourceAssetId:source.id,sourceHash:source.sha256,sourceFrame:56,fps:30,profileId:FRAME_PROFILE_ID,state:'queued',revision:1,started:false,result:null,errorCode:null,createdAt:at,updatedAt:at};
@@ -180,8 +182,8 @@ async function typedFrame(f: Awaited<ReturnType<typeof fixture>>){
  f.store.tx(()=>{insert('frame_tasks',{id:taskId,projectId,requestId,inputHash,input:canonicalFrameInput(input),snapshot:canonicalFrameInput(snapshot),state:'queued',revision:1,started:0,stagedReceipt:null,assetId:null,errorCode:null,createdAt:at,updatedAt:at});insert('frame_requests',{requestId,operation:'frame.extract',projectId,taskId,inputHash,canonicalInput:canonicalFrameInput(input),response:canonicalFrameInput(ack)});});
  db.prepare("UPDATE frame_tasks SET state='running',started=1,revision=2 WHERE id=?").run(taskId);
  db.prepare("UPDATE frame_tasks SET state='persisting',revision=3,stagedReceipt=? WHERE id=?").run(canonicalFrameInput(receipt),taskId);
- f.store.tx(()=>{f.store.put('assets',asset);db.prepare("UPDATE frame_tasks SET state='succeeded',revision=4,assetId=? WHERE id=?").run(assetId,taskId);});
- await writeFile(path.join(f.root,asset.relativePath),png(1));return {asset,source,taskId};
+ await writeFile(path.join(f.root,asset.relativePath),png(1));f.store.tx(()=>{f.store.put('assets',asset);db.prepare("UPDATE frame_tasks SET state='succeeded',revision=4,assetId=? WHERE id=?").run(assetId,taskId);});
+ return {asset,source,taskId};
 }
 
 for(const relation of ['source-owner','source-hash'])test(`typed extracted tail validates full ${relation} lineage on save, replay and queued dispatch`,async t=>{

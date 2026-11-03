@@ -2,8 +2,8 @@
  * records (history.db) and its cache (cache.db). Runtime code here never
  * imports db.ts or services.ts. */
 export {openStore} from './test-store.ts';
-export {createProjectStore, isProjectStore, openProjectStore, registerProjectTransactionFence, registerProjectTransactionObserver} from './store.ts';
-export type {ProjectStore} from './store.ts';
+export {commitProjectAssetHash, createProjectStore, isProjectStore, openProjectStore, registerProjectTransactionFence, registerProjectTransactionObserver} from './store.ts';
+export type {CommitProjectAssetHashOptions, ProjectStore} from './store.ts';
 export {createProjectFile, isProjectDatabase, isProjectFileHeld, openProjectConnection, PROJECT_JOURNAL_SIZE_LIMIT, recoverProjectFile} from './connection.ts';
 export type {
   CreateProjectFileOptions, OpenProjectConnectionOptions, ProjectConnection, ProjectCopyCheck, ProjectFileRecovery, ProjectLocation,

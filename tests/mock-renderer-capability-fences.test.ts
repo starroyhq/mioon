@@ -9,7 +9,7 @@ import {mkdtemp,writeFile,readFile,chmod,rename,rm,mkdir} from 'node:fs/promises
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createMockProvider} from '../packages/business/src/providers/mock.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices, type JobRecord, type ServiceRow, type ServiceStore} from '../packages/business/src/services.ts';
 import {startWorker, type Worker} from '../packages/business/src/jobs.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';

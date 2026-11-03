@@ -248,3 +248,7 @@ thumbnails; `previs.thumbnail.*` stay unavailable to it.
   mark like other canvas targets.
 
 Mio can still see, rename and move previs nodes through the other canvas tools.
+
+### S1 素材引用缓存
+
+cache v2 的缩略图另存服务端计算的 `sourceFingerprintDigest`，绑定场景依赖素材的有序 ID 和指纹。renderer 不能自报摘要；场景修订、依赖指纹或读取许可变化时旧图停用。没有素材依赖时使用确定的空摘要。缩略图写入前后检查当前场景和依赖，不能在源被替换或撤销后发布迟到结果。

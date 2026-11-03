@@ -9,11 +9,11 @@ import {imageEditProfile, imageEditSourceIssue} from '../../../contracts/src/ima
 import type {DatabaseSync} from 'node:sqlite';
 import {isProjectDatabase} from '../project-file/held-files.ts';
 import {isProjectStore} from '../project-file/store.ts';
-import {readProjectMediaFile} from '../project-media-storage.ts';
+import {admitProjectAssetSource, readProjectReferencedAssetBytes} from '../project-media-storage.ts';
 
 export type ImageEditSource = ReturnType<typeof imageEditSourceSchema.parse>;
 export interface InspectionAsset {
-  readonly id: string; readonly projectId: string; readonly relativePath: string; readonly sha256: string; readonly mimeType: string;
+  readonly id: string; readonly projectId: string; readonly reference?: import('../../../contracts/src/media-reference.ts').MediaReference; readonly referenceRevision?: number; readonly relativePath?: string; readonly sha256: string; readonly mimeType: string;
   readonly width: number; readonly height: number; readonly sizeBytes: number; readonly name: string; readonly provenance: string;
 }
 interface OwnedMediaGraph {
@@ -79,7 +79,7 @@ export function createImageEditSourceResolver(store: EditSourceStore, {signal}: 
   function bytesFor(asset: InspectionAsset, descriptor: ImageEditSource): Buffer {
     try {
       const raw = isProjectStore(store)
-        ? readProjectMediaFile(store, asset.relativePath, {private: false, maxBytes: IMAGE_EDIT_LIMITS.sourceBytes})
+        ? readProjectReferencedAssetBytes(store, asset, {maxBytes: IMAGE_EDIT_LIMITS.sourceBytes})
         : readPrivateFile(validateManagedSource(store.root, asset, {maxBytes: IMAGE_EDIT_LIMITS.sourceBytes}).file,
           {root: store.root, private: false, maxBytes: IMAGE_EDIT_LIMITS.sourceBytes});
       if (!Buffer.isBuffer(raw)) fail();
@@ -101,7 +101,10 @@ export function createImageEditSourceResolver(store: EditSourceStore, {signal}: 
     if (admission.count >= IMAGE_EDIT_VERIFICATION_LIMITS.perDatabase || count >= IMAGE_EDIT_VERIFICATION_LIMITS.perProject) throw new AppError('IMAGE_QUEUE_FULL', 'Too many source images are being verified. Retain this request and try again explicitly.', 409);
     admission.count++; admission.projects.set(projectId, count + 1);
     try {
-      const current = owned(input, expected), bytes = bytesFor(current.asset, current.descriptor);
+      const current = owned(input, expected);
+      if(isProjectStore(store))try{await admitProjectAssetSource(store.projectDir,current.asset.id,{signal});}
+      catch(error){if(error!==null&&typeof error==='object'&&'code' in error&&typeof error.code==='string'&&error.code.startsWith('MEDIA_'))fail();throw error;}
+      const bytes = bytesFor(current.asset, current.descriptor);
       try {await validateImageEditSourceBytes(bytes, {mimeType: current.descriptor.mimeType, width: current.descriptor.width, height: current.descriptor.height, signal});} catch {fail();}
       const verified: VerifiedEditSource = {descriptor: structuredClone(current.descriptor), bytes};
       assertCurrent(input, verified); return verified;

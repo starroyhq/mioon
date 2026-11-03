@@ -1,11 +1,16 @@
+import {assertProjectStore} from './store-runtime.ts';
+import {lstatSync} from 'node:fs';
+import {mediaMtimeMs} from './media-reference/fingerprint.ts';
+import {mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
+import {mediaFingerprintToken} from './project-asset-references.ts';
+import {validatedProjectAssetSource} from './project-media-storage.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError,PREVIS_LIMITS,PREVIS_THUMBNAIL_CARD,canonicalPrevisValue,defaultPrevisScene,isPrevisNodeRecord,previsSchemas,publicValue} from '@mioon/contracts';
 import type {PrevisNodeRecord,PrevisScene,PrevisThumbnailGetResponse,PrevisThumbnailSetResponse} from '@mioon/contracts';
-import {refuseRestoredOperation} from './workspace-restore-policy.ts';
-import {usesPrevisSchema} from './workspace-schema-dispatch.ts';
+import {usesPrevisSchema} from './store-capabilities.ts';
 import {validateImageConsumption} from './image-consumption.ts';
-import {ownsStoreLock} from './db.ts';
+import {ownsStoreLock} from './store-runtime.ts';
 
 // Camera previs nodes (schema64). A node's scene is saved whole under scene
 // revision CAS with an exact stable-key receipt. Autosave writes often, so only
@@ -14,6 +19,7 @@ import {ownsStoreLock} from './db.ts';
 // are a disposable cache: overwritten per slot, evicted oldest first.
 type Row=Record<string, unknown>;
 export interface PrevisStore {
+ readonly root?: string;
  readonly db: DatabaseSync;
  put<T extends object>(table: string,value: T): T;
  tx<T>(callback: ()=>T): T;
@@ -108,6 +114,24 @@ function exportAsset(db: DatabaseSync,projectId: string,assetId: string): void {
  try{validateImageConsumption(db,record as {id: string; provenance?: unknown},projectId);}catch{reject();}
 }
 
+/** A digest is derived only from bounded, owned scene dependencies, never a
+ * renderer-supplied token. Pure history reads do not inspect local files. */
+function thumbnailDependencies(db: DatabaseSync, node: PrevisNodeRecord, root?: string): string {
+ const ids=[...new Set(node.scene.keyframes.flatMap(keyframe=>keyframe.exports))].sort();
+ const fingerprints=ids.map(assetId=>{
+  exportAsset(db,node.projectId,assetId);
+  const raw=db.prepare("SELECT CASE WHEN length(CAST(data AS BLOB))<=65536 THEN data END AS data FROM assets WHERE id=? AND projectId=?").get(assetId,node.projectId);
+  const asset=decode(raw?.data) as Row;
+  const parsed=mediaReferenceSchema.safeParse(asset.reference);
+  if(root&&fingerprintedThumbnails(db)){const source=validatedProjectAssetSource(root,asset);if(parsed.success&&mediaMtimeMs(lstatSync(source.file,{bigint:true}))!==parsed.data.mtimeMs)throw failure('PREVIS_THUMBNAIL_STALE');}
+  const token=parsed.success?mediaFingerprintToken(parsed.data):!fingerprintedThumbnails(db)&&typeof asset.sha256==='string'&&/^[a-f0-9]{64}$/u.test(asset.sha256)?asset.sha256:null;
+  if(!token)invalid();
+  return [assetId,token];
+ });
+ return sha(canonicalPrevisValue(fingerprints));
+}
+const fingerprintedThumbnails=(db: DatabaseSync): boolean=>db.prepare('SELECT name FROM pragma_table_info(?)').all('previs_thumbnails').some(row=>row.name==='sourceFingerprintDigest');
+
 /** Read-only previs node and thumbnail access, shared with restored workspaces. */
 export function createPrevisReaders(db: DatabaseSync) {
  function project(projectId: string): void {
@@ -129,12 +153,12 @@ export function createPrevisReaders(db: DatabaseSync) {
  }
  function thumbnails(raw: unknown): PrevisThumbnailGetResponse {
   const input=parse<ThumbnailGetInput>('previs.thumbnail.get',raw);
-  node(input.projectId,input.nodeId);
+  const current=node(input.projectId,input.nodeId),fingerprinted=fingerprintedThumbnails(db),fingerprint=thumbnailDependencies(db,current);
   // Workspaces before schema64 hold no thumbnails.
   if(!usesPrevisSchema(db))return {projectId:input.projectId,nodeId:input.nodeId,items:[]};
-  const rows=db.prepare(`SELECT slot,sceneRevision,width,height,bytes,updatedAt FROM previs_thumbnails
+  const rows=db.prepare(`SELECT slot,sceneRevision,width,height,bytes,updatedAt${fingerprinted?',sourceFingerprintDigest':''} FROM previs_thumbnails
    WHERE nodeId=? AND projectId=? AND slot IN (SELECT value FROM json_each(?))`).all(input.nodeId,input.projectId,JSON.stringify(input.slots));
-  const bySlot=new Map(rows.map(row=>[row.slot,row]));
+  const bySlot=new Map(rows.filter(row=>!fingerprinted||row.sourceFingerprintDigest===fingerprint).map(row=>[row.slot,row]));
   const items=input.slots.filter(slot=>bySlot.has(slot)).map(slot=>{
    const row=bySlot.get(slot)!;
    if(!(row.bytes instanceof Uint8Array)||typeof row.sceneRevision!=='number'||typeof row.width!=='number'||typeof row.height!=='number'||typeof row.updatedAt!=='string')invalid();
@@ -149,7 +173,7 @@ export function createPrevisReaders(db: DatabaseSync) {
 export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toISOString()}: {now?: ()=>string}={}) {
  const {db,put,tx}=store,readers=createPrevisReaders(db);
  function writable(operation: PrevisOperation,input: Row): void {
-  refuseRestoredOperation(store,operation,input);
+  assertProjectStore(store);
   if(!ownsStoreLock(store))throw failure('PREVIS_STATE_CONFLICT',403);
  }
  function receipt(requestId: string): ReceiptRow|undefined {
@@ -239,8 +263,8 @@ export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toIS
    const current=readers.node(input.projectId,input.nodeId);
    if(input.sceneRevision!==current.sceneRevision)throw failure('PREVIS_THUMBNAIL_STALE',409,{currentSceneRevision:current.sceneRevision});
    if(input.slot!==PREVIS_THUMBNAIL_CARD&&!current.scene.keyframes.some(keyframe=>keyframe.id===input.slot))throw failure('PREVIS_THUMBNAIL_SLOT',409,{slot:input.slot});
-   const updatedAt=now(),values=[input.sceneRevision,size.width,size.height,bytes,updatedAt] as const;
-   const updated=db.prepare('UPDATE previs_thumbnails SET sceneRevision=?,width=?,height=?,bytes=?,updatedAt=? WHERE nodeId=? AND slot=?').run(...values,input.nodeId,input.slot);
+   const updatedAt=now(),fingerprinted=fingerprintedThumbnails(db),sourceFingerprintDigest=thumbnailDependencies(db,current,store.root),values=[input.sceneRevision,size.width,size.height,bytes,updatedAt] as const;
+   const updated=db.prepare(`UPDATE previs_thumbnails SET sceneRevision=?,width=?,height=?,bytes=?,updatedAt=?${fingerprinted?',sourceFingerprintDigest=?':''} WHERE nodeId=? AND slot=?`).run(...values,...(fingerprinted?[sourceFingerprintDigest]:[]),input.nodeId,input.slot);
    if(!updated.changes){
     // Evict the least recently written thumbnails of the project, then of the workspace.
     const inProject=count('SELECT count(*) AS n FROM previs_thumbnails WHERE projectId=?',input.projectId);
@@ -249,9 +273,10 @@ export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toIS
     const total=count('SELECT count(*) AS n FROM previs_thumbnails');
     if(total>=PREVIS_LIMITS.thumbnailsGlobal)db.prepare('DELETE FROM previs_thumbnails WHERE rowid IN (SELECT rowid FROM previs_thumbnails ORDER BY updatedAt,rowid LIMIT ?)')
      .run(total-PREVIS_LIMITS.thumbnailsGlobal+1);
-    db.prepare('INSERT INTO previs_thumbnails(nodeId,slot,projectId,sceneRevision,width,height,bytes,updatedAt) VALUES(?,?,?,?,?,?,?,?)')
-     .run(input.nodeId,input.slot,input.projectId,...values);
+    db.prepare(`INSERT INTO previs_thumbnails(nodeId,slot,projectId,sceneRevision,width,height,bytes,updatedAt${fingerprinted?',sourceFingerprintDigest':''}) VALUES(?,?,?,?,?,?,?,?${fingerprinted?',?':''})`)
+     .run(input.nodeId,input.slot,input.projectId,...values,...(fingerprinted?[sourceFingerprintDigest]:[]));
    }
+   if(fingerprinted&&(thumbnailDependencies(db,readers.node(input.projectId,input.nodeId),store.root)!==sourceFingerprintDigest||readers.node(input.projectId,input.nodeId).sceneRevision!==input.sceneRevision))throw failure('PREVIS_THUMBNAIL_STALE');
    return {projectId:input.projectId,nodeId:input.nodeId,slot:input.slot,sceneRevision:input.sceneRevision,width:size.width,height:size.height,byteLength:bytes.length,updatedAt};
   });
  }
@@ -259,7 +284,7 @@ export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toIS
   'previs.create':(input: never)=>create(input),
   'previs.scene.set':(input: never)=>setScene(input),
   'previs.thumbnail.set':(input: never)=>setThumbnail(input),
-  'previs.thumbnail.get':(input: never)=>readers.thumbnails(input),
+  'previs.thumbnail.get':(input: never)=>{const value=parse<ThumbnailGetInput>('previs.thumbnail.get',input);thumbnailDependencies(db,readers.node(value.projectId,value.nodeId),store.root);return readers.thumbnails(input);},
  };
  return {handlers};
 }

@@ -1,3 +1,4 @@
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -6,7 +7,7 @@ import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createImageSettings,createCustomImageSettings,IMAGE_SETTINGS_READ_CURRENT} from '../packages/business/src/images/settings.ts';
 import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION,DEFAULT_IMAGE_CONFIGURATION,getCustomImageDestination} from '../packages/contracts/src/image-settings.ts';
@@ -81,10 +82,10 @@ test('new custom source version reuses managed image lineage without changing of
  const f=await fixture(t,{autoRun:true});await f.settings.put({expectedRevision:0,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled:true},secret:{action:'replace',storage:'session',value:'official-synthetic-secret'}});
  const official=f.input({providerId:'openai',model:IMAGE_MODELS.openai}),firstReview=await f.prepare(official,1),firstAck=await f.approve(firstReview),first=await f.settled(firstAck.id);
  const originalVersion=f.store.db.prepare('SELECT data FROM image_versions WHERE id=?').get(first.versionId)!.data,originalReceipt=f.store.db.prepare('SELECT response FROM image_requests WHERE requestId=?').get(official.requestId)!.response;
- const asset=JSON.parse(f.store.db.prepare('SELECT data FROM assets WHERE id=?').get(JSON.parse(originalVersion as string).assetId)!.data as string),bytes=readFileSync(path.join(f.root,asset.relativePath));
+ const asset=JSON.parse(f.store.db.prepare('SELECT data FROM assets WHERE id=?').get(JSON.parse(originalVersion as string).assetId)!.data as string),bytes=readFileSync(mediaFixturePath(f.root,asset));
  const group=await f.call('image.group.get',{projectId:f.project.id,groupId:first.groupId});const custom=f.input({groupId:group.id,expectedRevision:group.revision});const secondReview=await f.prepare(custom),secondAck=await f.approve(secondReview),second=await f.settled(secondAck.id);
  const versions=await f.call('image.version.list',{projectId:f.project.id,groupId:group.id});assert.equal(versions.items.length,2);assert.equal(versions.items[0].providerId,'openai-compatible');assert.equal(versions.items[1].providerId,'openai');assert.notEqual(second.versionId,first.versionId);
- assert.equal(f.calls.length,2);assert.deepEqual(f.calls[1].configuration,config());assert.equal(f.store.db.prepare('SELECT data FROM image_versions WHERE id=?').get(first.versionId)!.data,originalVersion);assert.equal(f.store.db.prepare('SELECT response FROM image_requests WHERE requestId=?').get(official.requestId)!.response,originalReceipt);assert.deepEqual(readFileSync(path.join(f.root,asset.relativePath)),bytes);
+ assert.equal(f.calls.length,2);assert.deepEqual(f.calls[1].configuration,config());assert.equal(f.store.db.prepare('SELECT data FROM image_versions WHERE id=?').get(first.versionId)!.data,originalVersion);assert.equal(f.store.db.prepare('SELECT response FROM image_requests WHERE requestId=?').get(official.requestId)!.response,originalReceipt);assert.deepEqual(readFileSync(mediaFixturePath(f.root,asset)),bytes);
  await f.configure(config({baseUrl:'https://later.example.com/v1'}));assert.deepEqual(await f.call('image.generate',official),firstAck);assert.equal(f.calls.length,2);
 });
 

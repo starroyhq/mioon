@@ -21,7 +21,7 @@ const storedDraft = (raw = { title: 'Draft title', prompt: '' }, patch = {}) => 
 function receipt(intent: LocalShotTextResponseTarget) { return { id: shotId, projectId, revision: intent.baseRevision + 1, ...intent.baseText, ...intent.input.patch, duration: 7, aspectRatio: '16:9', parameters: { seed: 42 }, referenceAssetIds: [] }; }
 const until = async (predicate: { (): boolean; (): boolean; (): boolean; (): unknown; }) => { for (let i = 0; i < 40 && !predicate(); i++) await Promise.resolve(); assert.ok(predicate()); };
 function fixture(t: test.TestContext, options: {context?:Partial<LocalShotTextContext>;stored?:unknown;retention?:ReturnType<typeof createLocalShotTextRetention>;acknowledge?:boolean} = {}) {
-  let context:LocalShotTextContext = { scope: 'project:1', projectId, shotId, revision: 4, baseRevision: 4, baseText, savedText: baseText, restored: false, connected: true, visible: true, busy: false,
+  let context:LocalShotTextContext = { scope: 'project:1', projectId, shotId, revision: 4, baseRevision: 4, baseText, savedText: baseText, connected: true, visible: true, busy: false,
     raw: copy(baseText), textVersion: 1, formSerial: 0, textDirty: false, formDirty: false, executionEpoch: 'owner-action', ...options.context };
   let stored = copy(options.stored ?? empty()) as LocalShotTextSupported, nextId = 100;
   const calls: TextCall[] = [], accepted: (LocalShotTextAccepted)[] = [], overrides:TextOverrides = {};
@@ -82,9 +82,8 @@ test('full form capture fences same-tick nontext edits independently of text ser
   assert.equal(f.controller.isCurrent(capture), false); assert.equal(f.controller.hasUnsaved(), true); assert.equal(f.controller.blocksLegacy(), false);
 });
 
-test('loaded selected target required for legacy admission; restored fallback remains available', async t => {
+test('loaded selected target required for legacy admission', async t => {
   const f = fixture(t); assert.equal(f.controller.blocksLegacy(shotId), true); await f.controller.load(); assert.equal(f.controller.blocksLegacy(shotId), false); assert.equal(f.controller.blocksLegacy(id(20)), true);
-  const restored = fixture(t, { context: { restored: true } }); await restored.controller.load(); assert.equal(restored.controller.blocksLegacy(shotId), false); assert.equal(restored.calls.length, 0);
 });
 
 test('fresh submit durably saves raw then prepares immutable text-only intent before execute', async t => {
@@ -230,7 +229,7 @@ test('session retention reveals private raw only after matching verified workspa
   for (const method of ['put', 'prepare'] as const) {
     const retention = createLocalShotTextRetention(), first = fixture(t, { retention }); await first.controller.load(); first.edit({ title: 'Private title', prompt: 'PRIVATE RECOVERY TEXT' }); first.overrides[method] = () => { throw Error('lost'); };
     if (method === 'put') await first.controller.flush(); else await first.controller.submit(); first.controller.dispose();
-    for (const options of [{}, { context: { restored: true } }]) {
+    for (const options of [{}]) {
       const other = fixture(t, { retention, ...options, stored: { ...empty(), workspaceScope: 'b'.repeat(64) } });
       assert.equal(JSON.stringify(other.state()).includes('PRIVATE RECOVERY TEXT'), false); await other.controller.load(); assert.equal(JSON.stringify(other.state()).includes('PRIVATE RECOVERY TEXT'), false); assert.equal(other.calls.some(c => c.method !== 'get'), false);
     }

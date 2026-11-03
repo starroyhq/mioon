@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {parseArgs} from 'node:util';
-import {openStore} from '../../packages/business/src/db.ts';
+import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentTaskTools} from '../../packages/business/src/agent/task-tools-v2.ts';
 import {AGENT_TASK_TOOL_GROUP_IDS, agentTaskToolGroupForName, assertAgentTaskToolGroupCoverage} from '../../packages/business/src/agent/task-tool-groups-v2.ts';

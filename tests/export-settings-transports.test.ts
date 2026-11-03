@@ -1,3 +1,5 @@
+import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
+import {assetMediaDtoSchema} from '../packages/contracts/src/asset-media.ts';
 import {readProjectState} from './helpers/project-state.ts';
 import {databaseFiles,dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import {waitForProjectCover} from './helpers/project-cover-ready.ts';
@@ -136,7 +138,7 @@ async function wire(t: Pick<TestContext,'after'>,{media=false}: {media?: boolean
   assert.equal(source.sha256,sha(bytes));assert.equal(source.sizeBytes,bytes.length);
   timeline=await direct.rpc<WireTimeline>('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:source.id,trackId:timeline.tracks.find(track=>track.kind==='video')!.id,startFrame:0,durationFrames:3});
   await waitForProjectCover({client:createClient({env:environment(backend.url)}) as TypedClient,url:backend.url,token:TOKEN,
-    projectId:project.id,cacheDir:path.join(root,'cache','projects',project.id),source:{assetId:source.id,mimeType:'image/png',sourceSha256:source.sha256}});
+    projectId:project.id,cacheDir:path.join(root,'cache','projects',project.id),source:{assetId:source.id,mimeType:'image/png',sourceFingerprint:mediaFingerprintToken(assetMediaDtoSchema.parse(source).fingerprint)}});
  }
  // The server holds the project while it runs: read on its own connection.
  const use=<T>(read: (db: DatabaseSync)=>T): T=>inspect(project.id,read);

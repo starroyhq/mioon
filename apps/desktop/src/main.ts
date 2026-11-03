@@ -1,3 +1,4 @@
+import {ASSET_IMPORT_CHANNEL,createAssetImportHost,importNativeAssetPath} from './asset-import-host.ts';
 import { createDesktopLutRecoveryHost } from './lut-recovery-host.ts';
 import { createDesktopLutRecoveryStore } from './lut-recovery-store.ts';
 import { CLIP_LUT_RECOVERY_CHANNEL } from '../../../packages/contracts/src/clip-lut-recovery.ts';
@@ -17,7 +18,6 @@ import {createMediaToolsInstaller} from './media-tools.ts';
 import type {MediaToolsInstaller, MediaToolsInstallOutcome} from './media-tools.ts';
 import {MEDIA_TOOLS_CANCEL_TITLE, mediaToolsProgressScript, mediaToolsProgressUrl, megabytes} from './media-tools-window.ts';
 import {WORKSPACE_TOOLS_CHANNEL,workspaceInfoSchema} from '../../../packages/contracts/src/workspace-info.ts';
-import {workspaceSettingsSchema} from '../../../packages/contracts/src/workspace-configuration.ts';
 import {WORKSPACE_NATIVE_CHANNEL} from '../../../packages/contracts/src/workspace-native.ts';
 import {createWorkspaceNativeHost,readNativeBackendMetadata} from './workspace-native-host.ts';
 import {createProjectFileOpener,uploadProjectFile,projectFileArguments} from './project-file-open.ts';
@@ -154,6 +154,7 @@ let startupOperation: DesktopStartup | null = null;
 let windowContext: DesktopWindowContext | null | undefined, windowHost: ProjectWindowHost | null | undefined, nativeAudioHost: NativeAudioHost | null | undefined, lutRecoveryHost: LutRecoveryHost | null | undefined;
 let workspaceToolsHost: WorkspaceToolsHost | null = null;
 let workspaceNativeHost:WorkspaceNativeHost|null=null;
+let assetImportHost:ReturnType<typeof createAssetImportHost<IpcMainInvokeEvent>>|null=null;
 let trayHost: ReturnType<typeof createDesktopTray> | null = null;
 let trayOperation: {action: TrayAction; settingsSlot: ProjectWindowSettingsSlot; intent: number; promise: Promise<void>} | null = null, trayIntent = 0;
 const nativeDialogs = new Set<{window: BrowserWindow}>();
@@ -523,15 +524,21 @@ async function start(): Promise<DesktopStartReport> {
 
     const nativeBackendCurrent=()=>{if(!ownsWindowContext(context)||backend!==ownedBackend||ownedBackend.state!=='running'||!quitRouter.allowsWindows||context.incident.failed||backendExitObserved)throw new Error('Native workspace action is unavailable.');};
     const nativeRead=(resource:string,input?:object)=>readNativeBackendMetadata({base:started.url,token,resource,input,signal:context.startup.signal,check:nativeBackendCurrent});
+    assetImportHost=createAssetImportHost<IpcMainInvokeEvent>({
+      ownerForEvent:event=>{
+        const owner=windowHost?.ownerForContents(event.sender),window=windowHost?.windowForContents(event.sender);
+        if(!window||!owner||owner.role!=='editor'||!owner.projectId||!owner.isCurrent()||!ownsWindow(window,context)||event.senderFrame!==window.webContents.mainFrame||event.senderFrame!==owner.frame||event.senderFrame?.url!==owner.url)return null;
+        return {projectId:owner.projectId,key:owner.frame,isCurrent:()=>{try{nativeBackendCurrent();return !restarting&&owner.isCurrent()&&ownsWindow(window,context)&&event.senderFrame===window.webContents.mainFrame&&event.senderFrame===owner.frame&&event.senderFrame?.url===owner.url;}catch{return false;}}};
+      },
+      chooseFiles:async()=>{const result=await dialog.showOpenDialog({properties:['openFile','multiSelections'],filters:[{name:'Media',extensions:['png','jpg','jpeg','webp','mp4','webm','wav','mp3','m4a']}]});return result.canceled?[]:result.filePaths;},
+      importPath:input=>importNativeAssetPath({base:started.url,token,input,signal:context.startup.signal,check:nativeBackendCurrent}),
+    });
     workspaceNativeHost=createWorkspaceNativeHost<IpcMainInvokeEvent>({
       ownerForEvent:event=>{
         const owner=windowHost?.ownerForContents(event.sender),window=windowHost?.windowForContents(event.sender);
         if(!window||!owner||!owner.isCurrent()||!ownsWindow(window,context)||event.senderFrame!==window.webContents.mainFrame||event.senderFrame!==owner.frame||event.senderFrame?.url!==owner.url)return null;
         return {projectId:owner.role==='editor'?(owner.projectId??undefined):undefined,isCurrent:()=>{try{nativeBackendCurrent();return !restarting&&owner.isCurrent()&&ownsWindow(window,context)&&event.senderFrame===window.webContents.mainFrame&&event.senderFrame===owner.frame&&event.senderFrame?.url===owner.url;}catch{return false;}}};
       },
-      chooseDirectory:async()=>{const result=await dialog.showOpenDialog({title:nt('native.chooseBackupLocation'),properties:['openDirectory','createDirectory']});return result.canceled||result.filePaths.length!==1?null:result.filePaths[0];},
-      setBackupDirectory:directory=>{nativeBackendCurrent();return ownedBackend.setBackupDirectory(directory);},
-      readSettings:async()=>workspaceSettingsSchema.parse(await nativeRead('/api/rpc',{operation:'workspace.settings.get',input:{}})),
       readWorkspaceRoot:async projectId=>workspaceInfoSchema.parse(await nativeRead(projectApiPath(projectId,'workspace-info'))).dataDirectory,
       readExport:identity=>nativeRead(projectRpcPath(identity.projectId),{operation:'export.output.get',input:identity}),
       openPath:file=>shell.openPath(file),revealPath:file=>shell.showItemInFolder(file),restart,
@@ -906,6 +913,7 @@ ipcMain.handle(WORKSPACE_TOOLS_CHANNEL,(event,request)=>{
   if(!workspaceToolsHost)throw new Error('Workspace tools are unavailable.');
   return workspaceToolsHost.dispatch(event,request);
 });
+ipcMain.handle(ASSET_IMPORT_CHANNEL,(event,request)=>{if(!assetImportHost)throw new Error('Asset import is unavailable.');return assetImportHost.dispatch(event,request);});
 ipcMain.handle(WORKSPACE_NATIVE_CHANNEL,(event,request)=>{
   if(!workspaceNativeHost)throw new Error('Native workspace action is unavailable.');
   return workspaceNativeHost.dispatch(event,request);

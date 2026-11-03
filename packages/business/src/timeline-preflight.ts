@@ -1,8 +1,8 @@
+import {assertProjectStore} from './store-runtime.ts';
+import {hasSampledTimelineReferences, prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
 import {timelineExportRangeFields,isTimelineExportRangeWithinDuration} from '@mioon/contracts/timeline-export-range';
 import {timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import {timelineDeliveryNameFields} from '@mioon/contracts/timeline-delivery';
-import {restoreEffectFence} from './workspace-restore-invocation.ts';
-import {refuseRestoredOperation,safeWorkspaceRestoreError} from './workspace-restore-policy.ts';
 import {AppError,EXPORT_PREFLIGHT_LIMITS,timelineOutputPreset} from '@mioon/contracts';
 import {createHash} from 'node:crypto';
 import {readTimelinePreflightSnapshot,readOwnedTimelineAsset,prepareTimelineInputs,probeTimelineSource} from './timeline-sources.ts';
@@ -69,8 +69,11 @@ function classify(error: unknown): [string,string]{
  if(failure.code==='INSPECTION_BUDGET_EXCEEDED')return ['incomplete','PREFLIGHT_SNAPSHOT_BUDGET'];
  if(failure.code==='MANAGED_SOURCE_LIMIT'||failure.code==='PREFLIGHT_BUDGET')return ['incomplete','PREFLIGHT_BUDGET'];
  if(['MEDIA_TIMEOUT','MEDIA_OUTPUT_LIMIT','MEDIA_SPAWN_FAILED','MEDIA_INVALID_CONFIGURATION','MEDIA_CANCELLED','MEDIA_PROCESS_FAILED'].includes(failure.code as string))return ['incomplete','PREFLIGHT_INCOMPLETE'];
+ if(['MEDIA_MISSING','MEDIA_NOT_MEDIA','MEDIA_OUTSIDE_NOT_CONFIRMED'].includes(failure.code as string))return ['blocked','PREFLIGHT_SOURCE_INVALID'];
+ if(['MEDIA_CHANGED','MEDIA_CHANGED_DURING_READ'].includes(failure.code as string))return ['blocked','PREFLIGHT_SOURCE_CHANGED'];
  if(failure.code==='MANAGED_SOURCE_INVALID')return ['blocked','PREFLIGHT_SOURCE_INVALID'];
  if(failure.code==='MANAGED_SOURCE_CHANGED')return ['blocked','PREFLIGHT_SOURCE_CHANGED'];
+ if(failure.code==='PREFLIGHT_STALE')return ['stale','PREFLIGHT_STALE'];
  if(failure.code==='TIMELINE_SOURCE_UNAVAILABLE')return ['blocked','TIMELINE_SOURCE_UNAVAILABLE'];
  if(failure.code==='INVALID_TIMELINE_SNAPSHOT')return ['blocked','INVALID_TIMELINE_SNAPSHOT'];
  return ['blocked','PREFLIGHT_MEDIA_INVALID'];
@@ -90,8 +93,8 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
  };
  const active=new Set<PreflightAttempt>();let stopped=false,shutdownFailure: unknown;
  async function preflight(input: PreflightInput,{signal:callSignal}: PreflightCallOptions={}): Promise<TimelinePreflightReport>{
-  refuseRestoredOperation(store,'timeline.export.preflight',input);
-  const workspaceBeforeEffect=restoreEffectFence(store);
+  assertProjectStore(store);
+  const workspaceBeforeEffect=()=>assertProjectStore(store);
   let hostEffectFailure:unknown;
   const beforeEffect=hostBeforeEffect?()=>{try{hostBeforeEffect();}catch(error){hostEffectFailure??=error;throw hostEffectFailure;}workspaceBeforeEffect?.();}:workspaceBeforeEffect;
   beforeEffect?.();
@@ -100,9 +103,31 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   checkpoint(external);if(shutdownFailure)throw shutdownFailure;if(stopped)throw new AppError('OPERATION_CANCELLED','Operation interrupted by shutdown',503);
   const report: TimelinePreflightReport={projectId:input.projectId,timelineId:null,timelineRevision:null,expectedRevision:input.expectedRevision,snapshotHash:null,
    checkedAt:new Date().toISOString(),status:'blocked',summary:null,checks:{totalAssets:0,checkedAssets:0,bytesHashed:0,fullDecode:false},issues:[]};
-  let initial;
-  try{initial=readSnapshot(input);}
-  catch(error){const failure=error as {code?: string};if(failure.code==='NOT_FOUND')throw error;if(failure.code==='INSPECTION_BUDGET_EXCEEDED'){report.status='incomplete';report.issues=[issue('PREFLIGHT_SNAPSHOT_BUDGET','warning')];return report;}report.issues=[issue(Object.hasOwn(TIMELINE_COLOUR_PREFLIGHT_MESSAGES,failure.code as string)?failure.code as string:failure.code==='TIMELINE_SOURCE_UNAVAILABLE'?'TIMELINE_SOURCE_UNAVAILABLE':'INVALID_TIMELINE_SNAPSHOT')];return report;}
+  if(active.size){report.status='incomplete';report.issues=[issue('PREFLIGHT_BUSY','warning')];return report;}
+  let initial,referencePreparedBytes=0;
+  try{if(!hasSampledTimelineReferences(store,input.projectId))initial=readSnapshot(input);}
+  catch(error){const failure=error as {code?:string};if(failure.code==='NOT_FOUND')throw error;const [status,code]=classify(error);report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];return report;}
+  if(initial?.timeline){report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;}
+  const referenceController=new AbortController(),referenceSignal=external?AbortSignal.any([external,referenceController.signal]):referenceController.signal;
+  const referenceEntry: PreflightAttempt={controller:referenceController,task:null};active.add(referenceEntry);
+  let referenceTimedOut=false;
+  const referenceTimer=setTimeout(()=>{referenceTimedOut=true;referenceController.abort();},limits.timeoutMs);
+  const referenceFence=():void=>{checkpoint(referenceSignal);beforeEffect?.();};
+  const referenceWork=prepareTimelineReferenceHashes(store,input.projectId,{signal:referenceSignal,beforeEffect:referenceFence,maxBytes:limits.sourceBytes,totalBytes:limits.totalBytes,validateSelection:saved=>{report.timelineId=typeof saved.id==='string'?saved.id:null;report.timelineRevision=typeof saved.revision==='number'?saved.revision:null;if(saved.revision!==input.expectedRevision)throw new AppError('PREFLIGHT_STALE','时间线版本已变化',409);}});
+  referenceEntry.task=referenceWork.finally(()=>{clearTimeout(referenceTimer);active.delete(referenceEntry);});
+  referenceEntry.task.catch(()=>{});
+  try{await awaitProvider(()=>referenceEntry.task!,referenceSignal);referenceFence();referencePreparedBytes=(await referenceWork).preparedBytes;initial=readSnapshot(input);}
+  catch(error){
+   checkpoint(external);if(stopped)checkpoint(referenceController.signal);if(hostEffectFailure)throw hostEffectFailure;
+   const failure=error as {code?: string};if(failure.code==='NOT_FOUND')throw error;
+   const [status,code]=referenceTimedOut?['incomplete','PREFLIGHT_TIMEOUT']:classify(error);
+   report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];
+   if(failure.code?.startsWith('MEDIA_')&&initial?.snapshot){report.snapshotHash=timelineSnapshotHash(initial.snapshot);report.summary=summary(initial.snapshot);report.checks.totalAssets=initial.snapshot.assets.length;}
+   const unavailable=error as {details?:{assetId?:unknown}};
+   const assetId=unavailable.details?.assetId;
+   if(typeof assetId==='string'&&initial?.snapshot?.assets.some(asset=>asset.id===assetId))report.issues[0].assetId=assetId;
+   return report;
+  }finally{referenceController.abort();}
   if(!initial.timeline){report.issues=[issue('TIMELINE_MISSING')];return report;}
   report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;
   report.snapshotHash=timelineSnapshotHash(initial.snapshot);report.summary=summary(initial.snapshot!);report.checks.totalAssets=initial.snapshot!.assets.length;
@@ -128,7 +153,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   if(active.size){report.status='incomplete';report.issues=[issue('PREFLIGHT_BUSY','warning')];return report;}
   const controller=new AbortController(),signal=external?AbortSignal.any([external,controller.signal]):controller.signal;
   const entry: PreflightAttempt={controller,task:null};active.add(entry);let timedOut=false;
-  const budget={sourceBytes:limits.sourceBytes,totalBytes:limits.totalBytes,bytesHashed:0};
+  const budget={sourceBytes:limits.sourceBytes,totalBytes:limits.totalBytes,bytesHashed:referencePreparedBytes};
   const timer=setTimeout(()=>{timedOut=true;controller.abort();},remaining);
   const preparation=(async()=>{
    if(report.checks.subtitles){await verifySubtitleFontResource({signal,beforeEffect});checkpoint(signal);report.checks.subtitles.fontVerified=true;await inspectSubtitleRenderer({signal,beforeEffect});checkpoint(signal);}
@@ -152,7 +177,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
     const error=rawError as {terminationUnconfirmed?: boolean;code?: string;timelineAssetId?: string};
     if(error.terminationUnconfirmed){shutdownFailure=rawError;throw rawError;}
     if(hostEffectFailure)throw hostEffectFailure;
-    if(safeWorkspaceRestoreError(rawError))throw rawError;
+    if((rawError as {code?:unknown})?.code==='PROJECT_STORE_UNVERIFIED')throw rawError;
     checkpoint(external);if(stopped)checkpoint(controller.signal);
     const [status,code]=timedOut?['incomplete','PREFLIGHT_TIMEOUT']:classify(rawError);
     report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];

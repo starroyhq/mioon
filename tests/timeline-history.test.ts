@@ -1,13 +1,19 @@
+
+
+
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
+import {writeFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
-import type {ServiceResponse as FixtureServiceResult, TypedServices as FixtureServices, TypedStore as FixtureStore} from './helpers/strict-service-responses.ts';
+import type {ServiceResponse as FixtureServiceResult, TypedServices as FixtureServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
-import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
+
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import { openStore, openLegacyWorkspaceStore as openHistoricalWorkspaceStore } from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {openProjectDatabase} from './helpers/project-database.ts';
@@ -21,7 +27,7 @@ async function fixture(t: test.TestContext,{open=openStore,reopen=openStore}: {o
  let store=open(root), services=(createServices(store,new Map()) as FixtureServices);
  const _strictFixtureBase={root,get store(){return store;}, call:<O extends string>(operation: O, input?: unknown) => services.call(operation,input) as Promise<FixtureServiceResult<O>>,
   restart(){store.close();store=reopen(root);services=(createServices(store,new Map()) as FixtureServices);},
-  asset(projectId?: string,mimeType: string='image/png') {const id=randomUUID();return store.put('assets',{id,projectId,name:'Local synthetic fixture',mimeType,duration:2,width:720,height:1280,sha256:'a'.repeat(64),relativePath:`media/${id}.fixture`});},
+  asset(projectId?: string,mimeType: string='image/png') {const id=randomUUID(),bytes=mimeType==='video/mp4'?mp4HeaderFixture(`Synthetic metadata-only timeline source ${id}`):Buffer.from([137,80,78,71,13,10,26,10]),relativePath=`media/${id}.${mimeType==='video/mp4'?'mp4':'png'}`;writeFileSync(path.join(root,relativePath),bytes);return store.put('assets',{id,projectId,name:'Local synthetic fixture',mimeType,duration:2,width:720,height:1280,sizeBytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),relativePath});},
   capture(){return Object.fromEntries(unrelated.map(table=>[table,clone(store.list(table))]));},
   state(projectId: SQLInputValue){return {timeline:store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId),history:store.db.prepare('SELECT * FROM timeline_history WHERE projectId=? ORDER BY position').all(projectId),cursor:store.db.prepare('SELECT * FROM timeline_history_cursors WHERE projectId=?').get(projectId),requests:store.db.prepare('SELECT * FROM timeline_requests ORDER BY requestId').all()};}
  };
@@ -163,18 +169,7 @@ test('failed durable-response commit rolls back snapshots, branch removal, curso
  timeline=await f.call('timeline.redo',input(projectId,timeline));assert.equal(timeline.tracks.length,4);
 });
 
-test('additive migration preserves legacy timeline and response bytes, using legacy state as first undo baseline',async t=>{
- const f=await fixture(t,{open:openLegacyWorkspaceStore as unknown as (root:string)=>WorkspaceStore,reopen:openHistoricalWorkspaceStore}),projectId=f.projectId;let timeline=await f.call('timeline.get',{projectId});
- const params=input(projectId,timeline,{kind:'audio',name:'Legacy audio'});timeline=await f.call('timeline.track.add',params);
- const before=(f.store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId))!.data;
- const responses=f.store.db.prepare('SELECT * FROM timeline_requests').all(),outside=f.capture();
- f.store.db.exec('DROP TABLE timeline_history; DROP TABLE timeline_history_cursors; DELETE FROM schema_version WHERE version=3;');f.restart();
- assert.equal((f.store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId))!.data,before);assert.deepEqual(f.store.db.prepare('SELECT * FROM timeline_requests').all(),responses);assert.deepEqual(f.capture(),outside);
- assert.equal((await f.call('timeline.history.get',{projectId})).length,0);assert.deepEqual(await f.call('timeline.track.add',params),timeline);
- const baseline=domain(timeline);timeline=await f.call('timeline.track.update',input(projectId,timeline,{trackId:timeline.tracks[0].id,patch:{name:'After migration'}}));
- f.restart();timeline=await f.call('timeline.undo',input(projectId,timeline));assert.deepEqual(domain(timeline),baseline);assert.deepEqual(f.capture(),outside);
- assert.equal((f.store.db.prepare('SELECT version FROM schema_version WHERE version=3').get())!.version,3);
-});
+
 
 test('project history, cursor, request identities and state remain isolated',async t=>{
  const f=await fixture(t),other=await fixture(t),first=f.projectId,second=other.projectId;

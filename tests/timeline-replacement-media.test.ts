@@ -1,3 +1,4 @@
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {projectDirFor} from './helpers/project-database.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
@@ -66,7 +67,7 @@ test('explicit replacement keeps timing/fades and old exports while new media, p
  for(const [color,frequency] of ([['red',440],['blue',880]] as const)){
   const file=path.join(root,color+'.mp4');
   await run('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','lavfi','-i',`color=c=${color}:s=160x90:r=30:d=3`,'-f','lavfi','-i',`sine=frequency=${frequency}:sample_rate=48000:duration=3`,'-c:v','libx264','-preset','ultrafast','-threads','1','-pix_fmt','yuv420p','-c:a','aac','-ac','2','-t','3',file],{timeout:20000});
-  assets.push(await rpc('asset.import',{projectId:project.id,name:color+'.mp4',mimeType:'video/mp4',dataBase64:(await readFile(file)).toString('base64')}));
+  const bytes=await readFile(file),imported=await rpc('asset.import',{projectId:project.id,name:color+'.mp4',mimeType:'video/mp4',dataBase64:bytes.toString('base64')});assert.equal(imported.sha256,null,'ordinary video import remains sampled');assets.push({...imported,originalSha256:hash(bytes)});
  }
  const mutate=async(operation: string,input: { assetId?: unknown; trackId?: unknown; name?: string; startFrame?: number; durationFrames?: number; sourceInFrame?: number; rect?: { x: number; y: number; width: number; height: number; }; gain?: number; fadeInFrames?: number; fadeOutFrames?: number; })=>timeline=await rpc(operation,{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),...input});
  await mutate('timeline.clip.add',{assetId:assets[0].id,trackId:timeline.tracks.find((s: { kind: string; })=>s.kind==='video').id,name:'Keep my clip name',startFrame:15,durationFrames:60,sourceInFrame:15,rect:{x:180,y:320,width:360,height:640},gain:.5,fadeInFrames:15,fadeOutFrames:15});
@@ -102,7 +103,7 @@ test('explicit replacement keeps timing/fades and old exports while new media, p
  assert.deepEqual((await rpc('timeline.get',{projectId:project.id})).clips,changed.clips);
  const originalAgain=await fetch((server as unknown as Awaited<ReturnType<typeof startServer>>).url+projectMediaPath(before.job.projectId,before.job.assetId),{headers:{authorization:`Bearer ${token}`}});assert.equal(hash(Buffer.from(await originalAgain.arrayBuffer())),before.sha256);
  assert.deepEqual((await rpc('export.get',{exportId:before.job.id},200,project.id)).snapshot,before.job.snapshot);
- for(const a of assets){const stored=inspect(project.id,db=>JSON.parse((((db.prepare('SELECT data FROM assets WHERE id=?').get(a.id))!.data) as unknown as Parameters<typeof JSON.parse>[0])));assert.equal(hash(await readFile(path.join(projectDirFor(workspace,project.id),stored.relativePath))),a.sha256);}
+ for(const a of assets){const stored=inspect(project.id,db=>JSON.parse((((db.prepare('SELECT data FROM assets WHERE id=?').get(a.id))!.data) as unknown as Parameters<typeof JSON.parse>[0])));assert.equal(hash(await readFile(mediaFixturePath(projectDirFor(workspace,project.id),stored))),a.originalSha256);}
  assert.equal(inspect(project.id,db=>(db.prepare('SELECT COUNT(*) AS n FROM exports').get())!.n),2);assert.equal(inspect(project.id,db=>(db.prepare('SELECT COUNT(*) AS n FROM jobs').get())!.n),0);
  assert.equal(inspect(project.id,db=>(db.prepare('SELECT COUNT(*) AS n FROM waveform_cache').get())!.n),2);
  await writeFile(path.join(evidence,'acceptance.json'),JSON.stringify({status:'passed',synthetic:true,projectId:project.id,before,after,originalBytesUnchanged:true,oldExportUnchanged:true,exactRestartReplay:true,preflightHashes:[beforeCheck.snapshotHash,afterCheck.snapshotHash],waveformAttempts:[beforeWave.attemptId,afterWave.attemptId]},null,2)+'\n');

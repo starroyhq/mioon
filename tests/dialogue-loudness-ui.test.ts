@@ -17,7 +17,7 @@ test('the dialogue loudness card renders its target, each kind of row and the ap
     const controller = { setDraft: () => true, analyze: async () => true, cancel: () => {}, toggle: () => true, apply: async () => true, revoke: () => {} };
     const clips = [{ id: 'a', name: 'Opening', trackId: 'voice', assetId: 'x', startFrame: 0, durationFrames: 60, gain: 1, audioRole: 'human' }];
     const base = { scope: 'p:1:w', executionScope: '1', projectId: 'p', timelineId: 't', revision: 4, sourceIdentity: 's', clips,
-      tracks: [{ id: 'voice', name: 'Voice', orderIndex: 0, muted: false }], assetHashes: { x: 'h' }, connected: true, visible: true, restored: false,
+      tracks: [{ id: 'voice', name: 'Voice', orderIndex: 0, muted: false }], assetHashes: { x: 'h' }, connected: true, visible: true,
       hasUnsavedDrafts: false, pending: false, draft: { integratedLufs: '-14', truePeakCeilingDbtp: '-1' }, version: 1, phase: 'idle', rows: [],
       target: null, progress: { done: 0, total: 0 }, applied: 0, error: '' };
     const row = (clipId, patch) => ({ clipId, name: 'Line ' + clipId, trackName: 'Voice', startFrame: 0, gain: 1, selected: false, ...patch });
@@ -37,7 +37,6 @@ test('the dialogue loudness card renders its target, each kind of row and the ap
       measuring: render({ phase: 'measuring', rows: rows.map((item, index) => index === 1 ? { ...item, status: 'measuring' } : item), progress: { done: 1, total: 3 } }),
       applied: render({ phase: 'applied', applied: 2 }),
       none: render({ clips: [{ ...clips[0], audioRole: 'music' }] }),
-      restored: render({ restored: true }),
       dirty: render({ hasUnsavedDrafts: true }),
       applying: render({ phase: 'applying', pending: true, rows }),
       skippedOnly: render({ tracks: [{ id: 'voice', name: 'Voice', orderIndex: 0, muted: true }] }),
@@ -88,7 +87,6 @@ test('the dialogue loudness card renders its target, each kind of row and the ap
   assert.match(markup.applied, /已调整 2 段对白的增益/);
   assert.match(markup.none, /data-testid="dialogue-loudness-none"/);
   assert.doesNotMatch(markup.none, /dialogue-loudness-analyze/);
-  assert.equal(markup.restored, '', 'restored workspaces cannot measure or apply');
   assert.equal(markup.dirty, '', 'unsaved drafts hide the card, as for the whole-timeline candidate');
   assert.match(markup.applying, /正在保存增益…/, 'the card stays while its own edit is pending');
   assert.match(tag(markup.skippedOnly, 'dialogue-loudness-analyze'), /\sdisabled=""/, 'nothing to measure, nothing to start');

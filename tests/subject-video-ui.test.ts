@@ -16,7 +16,6 @@ import * as settings from '../apps/web/src/generation-settings.ts';
 import * as subjectVideo from '../apps/web/src/subject-video.ts';
 import * as subjectState from '../apps/web/src/subject-state.ts';
 import * as submissions from '../apps/web/src/submissions.ts';
-import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
 import * as api from '../apps/web/src/api.ts';
 import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
 import { referenceForShot } from '../apps/web/src/reference-connections.ts';
@@ -28,7 +27,7 @@ Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/sr
 const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
 const id = (n: number) => `74000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), shotId = id(2), subjectId = id(3), date = '2026-10-11T08:00:00.000Z';
-const asset = (n = 1, patch = {}) => ({ id: id(10 + n), projectId, name: `主体原图 ${n}`, mimeType: 'image/png', sha256: String(n).repeat(64), width: 1024, height: 1024, sizeBytes: 1000, relativePath: `assets/subject-${n}.png`, ...patch });
+const asset = (n = 1, patch = {}) => ({ id: id(10 + n), projectId, name: `主体原图 ${n}`, mimeType: 'image/png', sha256: String(n).repeat(64), width: 1024, height: 1024, sizeBytes: 1000, referenceRevision:1,fingerprint:{sizeBytes:1000,mtimeMs:0,sampledSha256:String(n).repeat(64),fullSha256:String(n).repeat(64)}, ...patch });
 const version = (number = 1, patch = {}) => ({ id: id(20 + number), projectId, subjectId, number, assetId: asset(number).id, sha256: asset(number).sha256, mimeType: 'image/png', width: 1024, height: 1024, provenance: { kind: 'user-import', versionId: null, shotId: null, jobId: null }, createdAt: date, ...patch });
 const subject = (number = 1, patch = {}) => ({ id: subjectId, projectId, kind: 'product', name: '方形产品', revision: number, headVersionId: version(number).id, headVersion: version(number), createdAt: date, updatedAt: date, ...patch });
 const shot = (patch = {}) => ({ id: shotId, projectId, revision: 1, title: '产品镜头', prompt: 'The product turns slowly.', referenceAssetIds: [], aspectRatio: '9:16', duration: 4, parameters: {}, orderIndex: 0, ...patch });
@@ -77,8 +76,8 @@ const slots: HookSlot[] = [], modules = new Map<string,{default:(props:Record<st
       if (['./AssetAnnotations.tsx', './CanvasOverview.tsx', './BoardInspectorGroup.tsx', './VersionCardPreview.tsx', './TaskRenderList.tsx'].includes(name)) return { default: name, __esModule: true };
       if (name === './image-generation.ts') return { imageEditSourceIssueDescriptor };
       if (name === './TaskWorkspace.tsx') return load('TaskWorkspace.tsx');
-      if (name === './local-shot-text-state.ts') return { useLocalShotText: ({context}:{context:{restored:boolean}}) => {
-        assert.equal(context.restored, true, 'This legacy Inspector fixture has no shot-text context');
+      if (name === './local-shot-text-state.ts') return { useLocalShotText: ({context}:{context:{connected:boolean}}) => {
+        assert.equal(context.connected, false, 'An Inspector without shot-text context cannot claim a connected persistence owner');
         return { state: {}, controller: { setContext() {} } };
       }, mergeFreshShotTextAck: () => { assert.fail('No shot-text acknowledgement is expected in this fixture'); } };
       if (name === './ShotTextDraftRecovery.tsx') return { default: 'ShotTextDraftRecovery', __esModule: true };
@@ -92,7 +91,7 @@ const slots: HookSlot[] = [], modules = new Map<string,{default:(props:Record<st
       if (name === './use-subjects.ts') return load('use-subjects.ts');
       if (name === './api.ts') return api;
       if (name === './submissions.ts') return submissions;
-      if (name === './workspace-origin.ts') return workspaceOrigin;
+
       if (name === './reference-connections.ts') return { referenceForShot };
       if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => h.visible };
       if (name === '@mioon/ui/components/workbench-confirm') return { useConfirmation: () => async () => true };
@@ -215,27 +214,27 @@ test('subject provenance summary shows human labels, pinned old/current versions
   h.render({ assets: [asset(1, { sha256: 'f'.repeat(64) })] }); assert.equal(h.nodes().filter((node: ElementNode) => node.type === 'img').length, 0); assert.match(h.text(), /原图暂不可用/);
 });
 
-function reviewHarness({ retry = false } = {}) {
+async function reviewHarness({ retry = false } = {}) {
   const p = provider(), original = reference();
   const snapshot = { ...(subjectVideo.subjectVideoSnapshot(shot(), (original as unknown as Parameters<typeof subjectVideo.subjectVideoSnapshot>[1]), assets) as unknown as SubjectSnapshot), providerId: p.id, model: p.models[0], inputProfileId: p.inputProfiles[0]!.profileId, inputProfileVersion: p.inputProfiles[0]!.profileVersion, providerRegion: p.providerRegion };
   delete snapshot.id;
   const job = { id: id(66), snapshot }, state = { epoch: 1, review:null as SubjectReview|null,sent:[] as {shot:SubjectSnapshot}[],notices:[] as unknown[] };
-  const scope = { ...settings, ...subjectVideo, msg: i18n.message, ...createI18nTestContext(), providers: [p], dataRef: { current: { shots: [shot()], jobs: [job], assets: structuredClone(assets) } },
+  const scope = { ...settings, ...subjectVideo,currentProject:{current:projectId},rpc:async(_operation:string,input:{assetIds:string[]})=>({items:input.assetIds.map(assetId=>({assetId,referenceRevision:1,status:'online',reason:'same-stats',outside:false,readable:true,fingerprintToken:'a'.repeat(64)})),nextCursor:null}),readableError:(error:unknown)=>String(error), msg: i18n.message, ...createI18nTestContext(), providers: [p], dataRef: { current: { shots: [shot()], jobs: [job], assets: structuredClone(assets) } },
     generationOptionsRef: { current: { [shotId]: { providerId: p.id, model: p.models[0], inputMode: 'subject', subjectReference: original } } },
     realConfirmRef: { current: null }, generationReviewScope: { current: { key: 'view' } },
-    context: () => ({ epoch: state.epoch }), isCurrent: (value: { epoch: number; }) => value.epoch === state.epoch,
+    context: () => ({projectId,epoch: state.epoch}), isCurrent: (value: { epoch: number; }) => value.epoch === state.epoch,
     setRealConfirm:(value:SubjectReview|null) => { state.review = value; }, notify: (message: unknown) => state.notices.push(message), submitGeneration:(args:{shot:SubjectSnapshot}) => state.sent.push(args),
   };
   const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
-  const code = source.slice(source.indexOf('  function reviewGeneration('), source.indexOf('  async function createProject('));
-  const app = (Function(...Object.keys(scope), `${code}; return { reviewGeneration, confirmGeneration };`)(...Object.values(scope)) as {reviewGeneration(args:Record<string,unknown>):void;confirmGeneration(args:SubjectReview):void});
-  app.reviewGeneration({ shot: retry ? { ...snapshot, id: shotId } : shot(), providerId: p.id, model: p.models[0], inputMode: 'subject', ...(retry ? { retryJobId: job.id, expectedRetrySnapshot: snapshot } : { subjectReference: original }) });
+  const code = source.slice(source.indexOf('  async function reviewGeneration('), source.indexOf('  async function createProject('));
+  const app = (Function(...Object.keys(scope), `${code}; return { reviewGeneration, confirmGeneration };`)(...Object.values(scope)) as {reviewGeneration(args:Record<string,unknown>):Promise<void>;confirmGeneration(args:SubjectReview):Promise<void>});
+  await app.reviewGeneration({ shot: retry ? { ...snapshot, id: shotId } : shot(), providerId: p.id, model: p.models[0], inputMode: 'subject', ...(retry ? { retryJobId: job.id, expectedRetrySnapshot: snapshot } : { subjectReference: original }) });
   return {...app,scope,state,original:state.review!};
 }
 
-test('actual paid review fixes version and source content; stale owner/view/choice/provider/model/profile/asset changes cannot submit', () => {
-  for (const change of ['none', 'owner', 'view', 'shot', 'revision', 'version', 'provider', 'model', 'profile', 'assetHash', 'assetSize', 'assetPath', 'cancel']) {
-    const h = reviewHarness(), { scope, state, original } = h;
+test('actual paid review fixes version and source content; stale owner/view/choice/provider/model/profile/asset changes cannot submit', async () => {
+  for (const change of ['none', 'owner', 'view', 'shot', 'revision', 'version', 'provider', 'model', 'profile', 'assetHash', 'assetSize', 'assetReferenceRevision', 'assetFingerprint', 'cancel']) {
+    const h = await reviewHarness(), { scope, state, original } = h;
     if (change === 'owner') state.epoch++;
     if (change === 'view') scope.generationReviewScope.current = { key: 'view' };
     if (change === 'shot') scope.dataRef.current.shots = [shot({ id: id(99) })];
@@ -246,24 +245,25 @@ test('actual paid review fixes version and source content; stale owner/view/choi
     if (change === 'profile') scope.providers[0].inputProfiles[0]!.inputs.roles.subject_reference.maxBytes!--;
     if (change === 'assetHash') scope.dataRef.current.assets[0].sha256 = 'f'.repeat(64);
     if (change === 'assetSize') scope.dataRef.current.assets[0].sizeBytes++;
-    if (change === 'assetPath') scope.dataRef.current.assets[0].relativePath = 'assets/other.png';
+    if (change === 'assetReferenceRevision') scope.dataRef.current.assets[0].referenceRevision++;
+    if (change === 'assetFingerprint') scope.dataRef.current.assets[0].fingerprint.mtimeMs++;
     if (change === 'cancel') scope.realConfirmRef.current = null;
     assert.equal(original.subjectReference.subjectVersionId, version().id);
     assert.equal(original.referenceAssets[0].sha256, version().sha256);
-    h.confirmGeneration(original); h.confirmGeneration(original);
+    await Promise.all([h.confirmGeneration(original),h.confirmGeneration(original)]);
     assert.equal(state.sent.length, change === 'none' ? 1 : 0, change);
   }
 });
 
-test('frozen retry ignores newer subject head/planning choice and uses original version; current source substitution blocks', () => {
-  const h = reviewHarness({ retry: true });
+test('frozen retry ignores newer subject head/planning choice and uses original version; current source substitution blocks', async () => {
+  const h = await reviewHarness({ retry: true });
   h.scope.generationOptionsRef.current[shotId].subjectReference = reference(2);
   h.scope.dataRef.current.shots[0] = shot({ revision: 7, referenceAssetIds: [asset(2).id], lastFrameAssetId: asset().id });
-  h.confirmGeneration(h.original); assert.equal(h.state.sent.length, 1);
+  await h.confirmGeneration(h.original); assert.equal(h.state.sent.length, 1);
   assert.equal(h.state.sent[0].shot.subjectReference.subjectVersionId, version().id);
   assert.deepEqual(h.state.sent[0].shot.referenceAssetIds, [asset().id]);
-  const changed = reviewHarness({ retry: true }); changed.scope.dataRef.current.assets[0].sha256 = 'f'.repeat(64);
-  changed.confirmGeneration(changed.original); assert.equal(changed.state.sent.length, 0);
+  const changed = await reviewHarness({ retry: true }); changed.scope.dataRef.current.assets[0].sha256 = 'f'.repeat(64);
+  await changed.confirmGeneration(changed.original); assert.equal(changed.state.sent.length, 0);
   const p = provider(), frozen = h.original.shot;
   assert.equal(settings.generationInputIssue(frozen, p, p.models[0], assets, 'subject', { frozen: true }), '');
 });
@@ -312,7 +312,7 @@ test('App uses subjectVersionId only on wire, exact expected reference beside pe
 
 test('actual App subject retry captures original public snapshot beside unchanged wire input; legacy retries remain unchanged', async () => {
   const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
-  const code = source.slice(source.indexOf('  const submitGeneration ='), source.indexOf('  function reviewGeneration('));
+  const code = source.slice(source.indexOf('  const submitGeneration ='), source.indexOf('  async function reviewGeneration('));
   const p = provider('mock'), calls:SubjectCall[] = [], notices: (string|i18n.DisplayMessage|null|undefined)[] = [];
   const original = { ...(subjectVideo.subjectVideoSnapshot(shot(), (reference() as unknown as Parameters<typeof subjectVideo.subjectVideoSnapshot>[1]), assets) as unknown as SubjectSnapshot), providerId: p.id, model: p.models[0], shotId, shotRevision: 1 }; delete original.id;
   const job = { id: id(88), shotId, providerId: p.id, model: p.models[0], snapshot: structuredClone(original) };

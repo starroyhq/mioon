@@ -1,3 +1,4 @@
+import {mediaFixturePath,mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
@@ -7,7 +8,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 import {setImmediate} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
@@ -28,7 +29,7 @@ async function fixture(t:TestContext,{imageAutoRun=false}:{imageAutoRun?:boolean
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-checks-')),store=openStore(root),services=createServices(store,new Map(),{imageOptions:{autoRun:imageAutoRun},frameOptions:{autoRun:false},sceneOptions:{autoRun:false}}),removeGate=setAgentTaskEffectGate(store.db,()=>{});
  const project=object(await services.call('project.create',{name:'Checks project'})),projectId=String(project.id),journal=createAgentTaskJournal(store),tools=createAgentTaskTools({store,services});
  const snapshot=journal.create({projectId,requestId:randomUUID(),text:'Checks only',configuration:mioFixtureConfiguration}),runId=snapshot.run.id;
- const source=(name='Source.mp4',bytes:Buffer=Buffer.from('SYNTHETIC_MANAGED_SOURCE'),mimeType='video/mp4')=>{
+ const source=(name='Source.mp4',bytes:Buffer=mp4HeaderFixture('SYNTHETIC_MANAGED_SOURCE'),mimeType='video/mp4')=>{
   const id=randomUUID(),relativePath=`media/${id}.${mimeType==='image/png'?'png':'mp4'}`;writeFileSync(join(root,relativePath),bytes,{mode:0o600});
   return store.put('assets',{id,projectId,name,mimeType,relativePath,sizeBytes:bytes.length,sha256:sha(bytes),width:64,height:64,duration:2,provenance:'user-import',createdAt:new Date().toISOString(),url:`/media/${id}`});
  };
@@ -74,8 +75,8 @@ test('unaccepted failures, approval waits and unknown outcomes have typed step c
 test('render checks bind accepted parameters and output geometry to the original request',async t=>{
  const f=await fixture(t),setup=await timeline(f),render=await f.tool('mioon_timeline_render',{expectedRevision:Number(setup.saved.revision),purpose:'export'}),result=object(render.result),exportId=String(result.id);
  let checks=await f.read(async()=>ready(f,setup.saved));assert.equal(item(checks,'export_status',exportId).status,'pending');assert.equal(item(checks,'export_parameters',exportId).status,'pending');
- const bytes=Buffer.from('SYNTHETIC_EXPORT_BYTES'),assetId=randomUUID(),relativePath=`media/export-${exportId}-${randomUUID()}.mp4`;writeFileSync(join(f.root,relativePath),bytes,{mode:0o600});
- f.store.put('assets',{id:assetId,projectId:f.projectId,name:'/PRIVATE/export.mp4',mimeType:'video/mp4',relativePath,sizeBytes:bytes.length,sha256:sha(bytes),width:setup.saved.width,height:setup.saved.height,duration:1,provenance:'export',createdAt:new Date().toISOString(),url:`/media/${assetId}`});
+ const bytes=mp4HeaderFixture('SYNTHETIC_EXPORT_BYTES'),assetId=randomUUID(),relativePath=`media/export-${exportId}-${randomUUID()}.mp4`;writeFileSync(join(f.root,relativePath),bytes,{mode:0o600});
+ f.store.put('assets',{id:assetId,projectId:f.projectId,name:'/PRIVATE/export.mp4',mimeType:'video/mp4',relativePath,sizeBytes:bytes.length,sha256:sha(bytes),width:setup.saved.width,height:setup.saved.height,duration:1,provenance:'export',producer:{kind:'export',id:exportId},createdAt:new Date().toISOString(),url:`/media/${assetId}`});
  const current=object(f.store.get('exports',exportId));f.store.put('exports',{...current,status:'succeeded',assetId,url:`/media/${assetId}`,updatedAt:new Date().toISOString()});
  checks=await f.read(async()=>ready(f,setup.saved));assert.equal(item(checks,'export_status',exportId).status,'passed');assert.equal(item(checks,'export_artifact',exportId).status,'passed');assert.equal(item(checks,'export_parameters',exportId).status,'passed');
  const output=object(f.store.get('assets',assetId));f.store.put('assets',{...output,width:2});checks=await f.read();assert.equal(item(checks,'export_parameters',exportId).reason?.code,'PARAMETERS_MISMATCH');assert.equal(item(checks,'export_parameters',exportId).expected?.width,setup.saved.width);assert.equal(item(checks,'export_parameters',exportId).current?.width,2);
@@ -86,10 +87,11 @@ test('render checks bind accepted parameters and output geometry to the original
 });
 
 test('export existence rejects missing, swapped and symlinked managed files without changing the saved task',async t=>{
- const f=await fixture(t),setup=await timeline(f),render=await f.tool('mioon_timeline_render',{expectedRevision:Number(setup.saved.revision),purpose:'preview'}),exportId=String(object(render.result).id),assetId=randomUUID(),bytes=Buffer.from('SYNTHETIC_OUTPUT'),relativePath=`media/export-${exportId}-${randomUUID()}.mp4`;
- const output={id:assetId,projectId:f.projectId,name:'Output',mimeType:'video/mp4',relativePath,sizeBytes:bytes.length,sha256:sha(bytes),width:setup.saved.width,height:setup.saved.height,duration:1,provenance:'export',createdAt:new Date().toISOString()};f.store.put('assets',output);
+ const f=await fixture(t),setup=await timeline(f),render=await f.tool('mioon_timeline_render',{expectedRevision:Number(setup.saved.revision),purpose:'preview'}),exportId=String(object(render.result).id),assetId=randomUUID(),bytes=mp4HeaderFixture('SYNTHETIC_OUTPUT'),relativePath=`media/export-${exportId}-${randomUUID()}.mp4`;
+ const output={id:assetId,projectId:f.projectId,name:'Output',mimeType:'video/mp4',relativePath,sizeBytes:bytes.length,sha256:sha(bytes),width:setup.saved.width,height:setup.saved.height,duration:1,provenance:'export',producer:{kind:'export',id:exportId},createdAt:new Date().toISOString()};
+ writeFileSync(join(f.root,relativePath),bytes,{mode:0o600});f.store.put('assets',output);unlinkSync(join(f.root,relativePath));
  f.store.put('exports',{...object(f.store.get('exports',exportId)),status:'succeeded',assetId,url:`/media/${assetId}`,updatedAt:new Date().toISOString()});
- assert.equal(item(await f.read(),'export_artifact',exportId).status,'failed');writeFileSync(join(f.root,relativePath),bytes,{mode:0o600});assert.equal(item(await f.read(),'export_artifact',exportId).status,'passed');
+ assert.equal(item(await f.read(),'export_artifact',exportId).status,'failed');writeFileSync(join(f.root,relativePath),bytes,{mode:0o600});f.store.put('assets',output);assert.equal(item(await f.read(),'export_artifact',exportId).status,'passed');
  const outside=join(f.root,'outside.mp4');writeFileSync(outside,bytes,{mode:0o600});unlinkSync(join(f.root,relativePath));symlinkSync(outside,join(f.root,relativePath));const before=JSON.stringify(f.store.get('exports',exportId));assert.equal(item(await f.read(),'export_artifact',exportId).status,'failed');assert.equal(JSON.stringify(f.store.get('exports',exportId)),before);
  f.store.put('assets',{...output,relativePath:`media/export-${randomUUID()}-${randomUUID()}.mp4`});assert.equal(item(await f.read(),'export_artifact',exportId).status,'failed');
 });
@@ -100,8 +102,8 @@ test('video generation observes current local progress, publication and cost wit
  const snapshot={...shot,projectId:f.projectId,shotId:shot.id,providerId:'mock',model:'mock-v1',referenceAssets:[]},createdAt=new Date().toISOString();
  const job={id:jobId,projectId:f.projectId,shotId:shot.id,requestId:step.id,status:'running',phase:'rendering',progress:62,providerId:'mock',model:'mock-v1',snapshot,revision:2,versionId:null,createdAt,updatedAt:createdAt};f.store.put('jobs',job);
  let checks=await f.read();assert.equal(item(checks,'generation_status',jobId).status,'pending');assert.equal(item(checks,'generation_status',jobId).progress,62);assert.equal(item(checks,'generation_status',jobId).target.name,'Shot Name');assert.equal(item(checks,'generation_publication',jobId).status,'pending');
- const bytes=Buffer.from('SYNTHETIC_GENERATED_VIDEO'),relativePath=`media/${assetId}.mp4`;writeFileSync(join(f.root,relativePath),bytes,{mode:0o600});
- f.store.put('assets',{id:assetId,projectId:f.projectId,name:'Generated video',mimeType:'video/mp4',sha256:sha(bytes),sizeBytes:bytes.length,relativePath,width:64,height:64,duration:2,provenance:'generation',createdAt});
+ const bytes=mp4HeaderFixture('SYNTHETIC_GENERATED_VIDEO'),relativePath=`media/${assetId}.mp4`;writeFileSync(join(f.root,relativePath),bytes,{mode:0o600});
+ f.store.put('assets',{id:assetId,projectId:f.projectId,name:'Generated video',mimeType:'video/mp4',sha256:sha(bytes),sizeBytes:bytes.length,relativePath,width:64,height:64,duration:2,provenance:'generated',producer:{kind:'generation',id:jobId},createdAt});
  f.store.put('versions',{id:versionId,projectId:f.projectId,shotId:shot.id,jobId,number:1,providerId:'mock',model:'mock-v1',isMock:true,snapshot,assetId,sha256:sha(bytes),url:`/media/${assetId}`,createdAt});f.store.put('jobs',{...job,status:'succeeded',progress:100,versionId});
  checks=await f.read();assert.equal(item(checks,'generation_status',jobId).status,'passed');assert.equal(item(checks,'generation_publication',jobId).status,'passed');assert.equal(item(checks,'generation_cost',jobId).status,'not_applicable');
  f.store.put('jobs',{...job,providerId:'runway',status:'submission_unknown'});f.journal.updateStep(f.runId,step.id,{cost:'unknown'});checks=await f.read();assert.equal(item(checks,'generation_status',jobId).reason?.code,'RESULT_UNKNOWN');assert.equal(item(checks,'generation_cost',jobId).reason?.code,'COST_UNKNOWN');
@@ -132,7 +134,7 @@ test('a completed mock image publishes an owned version and checks never restart
  let saved:Record<string,unknown>|undefined;
  for(let attempt=0;attempt<1000;attempt++){const current=object(await f.services.call('image.task.get',{projectId:f.projectId,taskId:id}));if(current.state==='succeeded'){saved=current;break;}await setImmediate();}
  assert.ok(saved,'The local mock worker completes without provider network');const before=f.store.db.prepare('SELECT total_changes() AS n').get()!.n,checks=await f.read();assert.equal(item(checks,'generation_status',id).status,'passed');assert.equal(item(checks,'generation_publication',id).status,'passed');assert.equal(item(checks,'generation_publication',id).current?.versionId,saved.versionId);assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n,before);
- const publication=item(checks,'generation_publication',id),assetId=publication.current?.assetId;assert.ok(assetId);const output=object(f.store.get('assets',assetId));unlinkSync(join(f.root,String(output.relativePath)));assert.equal(item(await f.read(),'generation_publication',id).status,'failed');assert.equal(object(await f.services.call('image.task.get',{projectId:f.projectId,taskId:id})).state,'succeeded');
+ const publication=item(checks,'generation_publication',id),assetId=publication.current?.assetId;assert.ok(assetId);const output=object(f.store.get('assets',assetId));unlinkSync(mediaFixturePath(f.root,output));assert.equal(item(await f.read(),'generation_publication',id).status,'failed');assert.equal(object(await f.services.call('image.task.get',{projectId:f.projectId,taskId:id})).state,'succeeded');
 });
 
 test('frame and decomposition checks follow terminal local records without decoder or model work',async t=>{

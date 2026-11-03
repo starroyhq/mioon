@@ -1,3 +1,4 @@
+import {writeStubMediaFixture} from './helpers/media-reference-fixtures.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 type StrictIntersection<T> = (T extends unknown ? (value: T)=>void : never) extends ((value: infer I)=>void) ? I : never;
 import type {ServiceResponse as FixtureServiceResult, TypedStore as FixtureStore, TypedServices as FixtureServices} from './helpers/strict-service-responses.ts';
@@ -7,7 +8,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import type { SQLInputValue } from 'node:sqlite';
 import {schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
@@ -36,7 +37,7 @@ async function fixture(t: test.TestContext){
   },
   asset(mimeType: string|undefined='video/mp4',patch: {duration?: number|undefined; hasAudio?: boolean; projectId?: unknown; name?: string;}={}){const id=randomUUID();return store.put('assets',{id,projectId:f.projectId,name:'Synthetic source',mimeType,
    duration:10,width:720,height:1280,hasVideo:!mimeType.startsWith('audio/'),hasAudio:!mimeType.startsWith('image/'),provenance:'user-import',
-   sha256:'a'.repeat(64),relativePath:`media/${id}.fixture`,createdAt:at,...patch});},
+   ...writeStubMediaFixture(root,id,mimeType),createdAt:at,...patch});},
   async generated(patch: {projectId?: unknown;}={}){
    const asset=f.asset('video/mp4',(({provenance:'generated',...patch}) as unknown as Parameters<NonNullable<(typeof f)["asset"]>>[1])),projectId=asset.projectId;
    const shot=await f.call('shot.create',{projectId,title:'Synthetic shot'}),jobId=randomUUID(),versionId=randomUUID();

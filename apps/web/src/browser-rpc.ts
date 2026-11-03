@@ -25,8 +25,7 @@ export async function browserRpc(operation: BrowserOperation, input: Readonly<Re
     if (response.status === 200 && value.ok === true && 'data' in value && Object.keys(value).every(key => key === 'ok' || key === 'data')) return value.data;
     if (value.ok === false && 'error' in value && value.error && typeof value.error === 'object' && 'code' in value.error && typeof value.error.code === 'string' && /^[A-Z][A-Z0-9_]{0,95}$/.test(value.error.code)) {
       const code = response.status === 401 ? 'UNAUTHORIZED' : value.error.code;
-      const restricted = code.startsWith('RESTORE_') || code === 'RESTORED_RECORD_HELD';
-      throw new BrowserRpcError(code, !restricted && response.status >= 400 && response.status < 500);
+      throw new BrowserRpcError(code, response.status >= 400 && response.status < 500);
     }
     throw new BrowserRpcError();
   } catch (error) { throw error instanceof BrowserRpcError ? error : new BrowserRpcError('NETWORK'); }

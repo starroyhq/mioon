@@ -1,7 +1,38 @@
-import type { MessageCatalog } from '../types.ts';
+import type {MessageCatalog } from '../types.ts';
 
 /** Localized operation prose only; operation names, schemas and effect contracts stay unchanged. */
 export const operationMessages = {
+  "operation.asset.media.status.list": {
+    "zh-Hans": "读取有界素材引用状态，不读取未确认位置的媒体内容",
+    "zh-Hant": "讀取有限素材引用狀態，不讀取未確認位置的媒體內容",
+    "en": "Read bounded asset reference status without reading media in unconfirmed locations",
+    "ja": "未確認の場所のメディアを読み取らず、素材参照の状態を上限付きで確認します"
+},
+  "operation.asset.media.prepare": {
+    "zh-Hans": "准备完整素材哈希并按引用修订保存，不执行生成",
+    "zh-Hant": "準備完整素材雜湊並依引用修訂儲存，不執行生成",
+    "en": "Prepare full media hashes and save under reference revision checks; never generate",
+    "ja": "参照リビジョンを確認して完全ハッシュを準備・保存します。生成は実行しません"
+},
+  "operation.asset.media.relink.preview": {
+    "zh-Hans": "检查重新指向候选，不修改素材或确认目录",
+    "zh-Hant": "檢查重新指向候選，不修改素材或確認目錄",
+    "en": "Inspect relink candidates without changing assets or confirming directories",
+    "ja": "素材の変更やディレクトリの確認を行わず、再リンク候補を検証します"
+},
+  "operation.asset.media.relink.apply": {
+    "zh-Hans": "按预览和引用修订重新指向同内容素材，不改不可变历史",
+    "zh-Hant": "依預覽和引用修訂重新指向同內容素材，不改不可變歷史",
+    "en": "Relink matching full content under the preview and reference revision; preserve immutable history",
+    "ja": "プレビューと参照リビジョンを確認し、同じ内容へ再リンクします。不変の履歴は保持します"
+},
+  "operation.asset.media.acceptChanged": {
+    "zh-Hans": "为已变化内容创建新素材身份，保留旧素材和历史",
+    "zh-Hant": "為已變更內容建立新素材身分，保留舊素材與歷史",
+    "en": "Create a new asset identity for changed content, preserving the old asset and history",
+    "ja": "変更後の内容に新しい素材IDを作成し、元の素材と履歴を保持します"
+},
+
   "operation.project.version.list": {
     "zh-Hans": "分页列出本机项目版本，不恢复内容或任务",
     "zh-Hant": "分頁列出本機專案版本，不復原內容或任務",
@@ -15,10 +46,16 @@ export const operationMessages = {
     "ja": "固定 requestId と任意の名前で内容全体を手動保存します。ローカル記録のみを書き込み、メディアの読み取りや内容変更は行いません"
   },
   "operation.project.version.preview": {
-    "zh-Hans": "只读预览完整差异计数和分页、来源与保持当前的原因；本阶段尚不可恢复",
-    "zh-Hant": "唯讀預覽完整差異計數與分頁、來源及保持目前狀態的原因；此階段尚不可復原",
-    "en": "Preview complete difference counts and pages, attribution, and reasons to retain current objects; restoration is not available in this stage",
-    "ja": "差分の総数と各ページ、変更元、現在の状態を保持する理由を読み取り専用で確認します。この段階では復元できません"
+    "zh-Hans": "只读预览完整差异、来源与保持当前的原因；摘要绑定恢复确认",
+    "zh-Hant": "唯讀預覽完整差異、來源與保持目前狀態的原因；摘要綁定復原確認",
+    "en": "Preview complete differences, attribution and reasons to retain current objects; the digest binds restore confirmation",
+    "ja": "差分全体、変更元、現在の状態を保持する理由を読み取り専用で確認します。ダイジェストを復元の確認に使用します"
+  },
+  "operation.project.version.restore": {
+    "zh-Hans": "按完整预览摘要和内容序号恢复版本，先保存恢复前版本；稳定请求重放原回执，不重发任务或媒体效果",
+    "zh-Hant": "依完整預覽摘要與內容序號復原版本，先儲存復原前版本；穩定請求重播原回執，不重送任務或媒體效果",
+    "en": "Restore a version against its complete preview digest and content sequence, saving the prior state first; stable requests replay the original receipt without replaying tasks or media effects",
+    "ja": "プレビュー全体のダイジェストと内容の連番を確認し、復元前の版を保存してから復元します。安定したリクエストは元の受領結果を再現し、タスクやメディア処理は再実行しません"
   },
   "operation.project.backup.list": {
     "zh-Hans": "只读列出项目最近三份自动备份，不打开项目或恢复任务；按内容序号去重，同序号分叉内容暂时无法识别",
@@ -73,30 +110,6 @@ export const operationMessages = {
     "zh-Hant": "按設定修訂版號儲存目前本機工作區的真實生成與自動備份設定",
     "en": "Save live-generation and automatic-backup settings for the current local workspace against the settings revision",
     "ja": "設定のリビジョンを照合し、現在のローカルワークスペースの実生成と自動バックアップの設定を保存します"
-  },
-  "operation.workspace.backup.status": {
-    "zh-Hans": "只读查询本地备份进度、计划与恢复暂存状态",
-    "zh-Hant": "唯讀查詢本機備份進度、排程與復原暫存狀態",
-    "en": "Read the local backup progress, schedule and staged-restore status",
-    "ja": "ローカルバックアップの進行状況、スケジュール、準備済み復元の状態を読み取り専用で確認します"
-  },
-  "operation.workspace.backup.list": {
-    "zh-Hans": "只读列出已验证的本地工作区备份",
-    "zh-Hant": "唯讀列出已驗證的本機工作區備份",
-    "en": "List verified local workspace backups without changing them",
-    "ja": "検証済みのローカルワークスペースのバックアップを読み取り専用で一覧表示します"
-  },
-  "operation.workspace.backup.create": {
-    "zh-Hans": "在空闲工作区创建一致的本地离线备份，使用稳定requestId保留原请求身份",
-    "zh-Hant": "在閒置工作區建立一致的本機離線備份，使用穩定requestId保留原請求身分",
-    "en": "Create a consistent local offline backup of an idle workspace using a stable requestId to preserve the original request identity",
-    "ja": "アイドル状態のワークスペースの整合性を保ったローカルオフラインバックアップを作成します。安定したrequestIdで元のリクエストの識別情報を保持します"
-  },
-  "operation.workspace.backup.restore.stage": {
-    "zh-Hans": "明确确认后将备份恢复到独立目录，下次启动切换到受限恢复工作区",
-    "zh-Hant": "明確確認後將備份復原至獨立目錄，下次啟動切換至受限復原工作區",
-    "en": "After explicit confirmation, restore a backup into a separate directory and switch to the restricted restored workspace on the next launch",
-    "ja": "明示的な確認後、バックアップを別のディレクトリに復元し、次回起動時に制限付きの復元ワークスペースへ切り替えます"
   },
   "operation.task.disposition.list": {
     "zh-Hans": "只读查询明确项目任务的本地处置标记，不调度、对账或重试任务",
@@ -199,18 +212,6 @@ export const operationMessages = {
     "zh-Hant": "以唯讀方式進行有界嚴格JFIF基線JPEG檢查與本機解碼。JFIF不能證明sRGB，仍須使用者明確指定解讀方式。拒絕EXIF、ICC、HDR、漸進式與多影像來源。不寫入、不連網",
     "en": "Read-only bounded strict JFIF baseline JPEG inspection and local decode. JFIF does not prove sRGB: explicit user interpretation is still required. Rejects EXIF, ICC, HDR, progressive and multi-image sources. No writes or network",
     "ja": "読み取り専用で処理範囲を制限した厳密なJFIFベースラインJPEG検査とローカルデコードを行います。JFIFはsRGBの証明ではなく、ユーザーによる明示的な解釈の指定が引き続き必要です。EXIF、ICC、HDR、プログレッシブ、複数画像のソースは拒否します。書き込みやネットワーク通信は行いません"
-  },
-  "operation.workspace.backup.inspect": {
-    "zh-Hans": "只读检查整个工作区的有界数据库计数；不复制文件、不恢复任务、不读取密钥。冷备份前必须正常关闭应用和同工作区后端",
-    "zh-Hant": "唯讀檢查整個工作區的有界資料庫計數；不複製檔案、不復原任務、不讀取密鑰。冷備份前必須正常關閉應用程式和同工作區後端",
-    "en": "Read-only inspection of bounded database counts across the workspace; does not copy files, recover tasks, or read secrets. Before a cold backup, cleanly shut down the application and backends using the same workspace",
-    "ja": "ワークスペース全体のデータベース件数を、処理範囲を制限して読み取り専用で確認します。ファイルのコピー、タスクの復旧、シークレットの読み取りは行いません。コールドバックアップの前に、アプリと同じワークスペースを使用するバックエンドを正常に終了する必要があります"
-  },
-  "operation.workspace.restore.inspect": {
-    "zh-Hans": "只读查看工作区恢复分支身份、隔离计数与可用操作；不接收路径、不恢复或执行旧任务、不授予模型或付费权限。显式 includeAudioRoleCapability:true 可查询当前音频角色编辑能力",
-    "zh-Hant": "唯讀查看工作區復原分支身分、隔離計數與可用操作；不接收路徑、不復原或執行舊任務、不授予模型或付費權限。明確 includeAudioRoleCapability:true 可查詢目前音訊角色編輯能力",
-    "en": "Read-only inspection of the workspace restore-branch identity, isolation counts, and available operations; accepts no paths, does not recover or execute old tasks, and grants no model or paid-use permissions. Explicit includeAudioRoleCapability:true reports current audio-role editing capability",
-    "ja": "ワークスペースの復元ブランチの識別情報、隔離件数、利用可能な操作を読み取り専用で確認します。パスの受け取り、過去のタスクの復旧や実行、モデル利用権限や有料利用権限の付与は行いません。includeAudioRoleCapability:true を明示すると、現在の音声役割の編集可否を確認できます"
   },
   "operation.timeline.format.get": {
     "zh-Hans": "只读查询当前时间线输出规格、版本与初始设置资格；不创建时间线",
@@ -657,10 +658,10 @@ export const operationMessages = {
     "ja": "プロジェクト全体、キャンバス、タスクを読み取ります。旧プロジェクトの初回読み取りでは空のタイムラインが作成される場合があります"
   },
   "operation.asset.import": {
-    "zh-Hans": "导入授权的本地图片、视频或音频字节（base64，最大30MiB）",
-    "zh-Hant": "匯入授權的本機圖片、影片或音訊位元組（base64，最大30MiB）",
-    "en": "Import authorized local image, video, or audio bytes (base64, maximum 30MiB)",
-    "ja": "許可されたローカルの画像、動画、音声のバイト列をインポートします（base64、最大30MiB）"
+    "zh-Hans": "引用已授权的本机媒体路径，或上传最多30MiB媒体字节",
+    "zh-Hant": "引用已授權的本機媒體路徑，或上傳最多30MiB媒體位元組",
+    "en": "Reference an authorized local media path, or upload at most 30 MiB of media bytes",
+    "ja": "許可されたローカルメディアのパスを参照するか、最大30 MiBのメディアをアップロードします"
   },
   "operation.asset.list": {
     "zh-Hans": "读取项目素材",

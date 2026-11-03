@@ -15,18 +15,21 @@ export const PROJECT_VERSION_CONTENT_TABLES = Object.freeze([
   'timelines', 'subjects', 'subject_versions', 'subject_bindings', 'image_groups', 'image_versions', 'scene_results', 'project_lut_resources',
 ] as const);
 
-/** These are project-level operations. Only a manual save is public; callers
+/** These are project-level operations. Automatic capture stays internal; callers
  * cannot supply an automatic trigger, a Mio run or a snapshot document. */
 export const projectVersionSchemas = {
   'project.version.list': z.object({projectId: projectIdSchema, ...page}).strict(),
   'project.version.save': z.object({projectId: projectIdSchema, requestId: id, name: z.string().min(1).max(150).optional()}).strict(),
   'project.version.preview': z.object({projectId: projectIdSchema, versionId: id, ...page}).strict(),
+  'project.version.restore': z.object({projectId: projectIdSchema, versionId: id, requestId: id,
+    expectedContentSequence: count, previewDigest: digest}).strict(),
 };
 export type ProjectVersionOperation = keyof typeof projectVersionSchemas;
 export const isProjectVersionOperation = (operation: string): operation is ProjectVersionOperation => Object.hasOwn(projectVersionSchemas, operation);
 export type ProjectVersionListInput = z.infer<typeof projectVersionSchemas['project.version.list']>;
 export type ProjectVersionSaveInput = z.infer<typeof projectVersionSchemas['project.version.save']>;
 export type ProjectVersionPreviewInput = z.infer<typeof projectVersionSchemas['project.version.preview']>;
+export type ProjectVersionRestoreInput = z.infer<typeof projectVersionSchemas['project.version.restore']>;
 
 export const projectVersionListResponseSchema = z.object({
   projectId: projectIdSchema, versions: z.array(projectVersionSummarySchema).max(100), nextCursor: cursor.nullable(),
@@ -48,24 +51,36 @@ export const projectVersionPreviewResponseSchema = z.object({
   projectId: projectIdSchema, version: projectVersionSummarySchema, contentSequence: count, previewDigest: digest,
   totalChanges: count, keptCurrentCount: count,
   changes: z.array(projectVersionDifferenceSchema).max(100), nextCursor: cursor.nullable(),
-  /** V1-A supplies preview data. Executable restoration belongs to V1-B. */
-  restoreAvailable: z.literal(false),
+  restoreAvailable: z.boolean(),
 }).strict().refine(value => value.totalChanges >= value.changes.length && value.keptCurrentCount <= value.totalChanges
   && (value.nextCursor === null || value.changes.length > 0),
   'Preview totals must cover the page and retained-current subset.');
 export type ProjectVersionListResponse = z.infer<typeof projectVersionListResponseSchema>;
 export type ProjectVersionSaveResponse = z.infer<typeof projectVersionSaveResponseSchema>;
 export type ProjectVersionPreviewResponse = z.infer<typeof projectVersionPreviewResponseSchema>;
+export const projectVersionRestoreResponseSchema = z.object({
+  projectId: projectIdSchema, requestId: id, versionId: id, beforeVersionId: id,
+  contentSequence: count, totalChanges: count,
+  appliedChanges: z.array(projectVersionDifferenceSchema),
+  keptCurrent: z.array(projectVersionDifferenceSchema),
+}).strict().refine(value => value.totalChanges === value.appliedChanges.length + value.keptCurrent.length
+  && value.appliedChanges.every(change => change.action !== 'keep-current')
+  && value.keptCurrent.every(change => change.action === 'keep-current')
+  && new Set([...value.appliedChanges, ...value.keptCurrent].map(change => `${change.table}:${change.key}`)).size === value.totalChanges,
+  'A restore receipt contains the complete, disjoint applied and retained plan.');
+export type ProjectVersionRestoreResponse = z.infer<typeof projectVersionRestoreResponseSchema>;
 export const projectVersionResponseSchemas = {
   'project.version.list': projectVersionListResponseSchema,
   'project.version.save': projectVersionSaveResponseSchema,
   'project.version.preview': projectVersionPreviewResponseSchema,
+  'project.version.restore': projectVersionRestoreResponseSchema,
 };
 
 export const projectVersionDescriptions = {
   'project.version.list': '分页列出本机保存的项目版本，不读取媒体、不恢复内容或任务。',
   'project.version.save': '以稳定 requestId 手动保存当前项目完整内容快照，可选名称；只写本机记录，不改变项目内容。重复输入返回原始回执。',
-  'project.version.preview': '只读预览当前内容与所选版本的完整差异计数和分页，列明 Mio 或你/其他来源、保持当前及原因。摘要绑定整份差异；本阶段尚不提供恢复。',
+  'project.version.preview': '只读预览当前内容与所选版本的完整差异计数和分页，列明 Mio 或你/其他来源、保持当前及原因；摘要绑定整份差异和恢复确认。',
+  'project.version.restore': '按完整预览摘要和当前内容序号恢复所选项目版本，先保存恢复前版本；保持当前项属于成功回执，稳定请求重放原结果，不重发任务或媒体效果。',
 };
 const read: Readonly<OperationEffect> = Object.freeze({readOnly: true, idempotent: true, destructive: false, openWorld: false,
   databaseWrite: false, fileWrite: false, externalIO: false, localProcess: false, paidGeneration: false,
@@ -75,6 +90,8 @@ export const projectVersionEffects: Readonly<Record<ProjectVersionOperation, Rea
   'project.version.preview': read,
   'project.version.save': Object.freeze({...read, readOnly: false, databaseWrite: true,
     notes: 'Saves an immutable local content snapshot and exact request receipt; no content mutation, provider, media process or task replay.'}),
+  'project.version.restore': Object.freeze({...read, readOnly: false, databaseWrite: true, destructive: true,
+    notes: 'Restores confirmed project content in one transaction with a before-version and exact receipt, while retaining protected results and current media locations; never replays providers or source media effects.'}),
 });
 
 /** Strict response validation includes request identity, cross-project
@@ -92,6 +109,11 @@ export function isProjectVersionResponse(operation: ProjectVersionOperation, inp
     const wanted = request.data as ProjectVersionSaveInput, actual = response.data as ProjectVersionSaveResponse;
     return actual.requestId === wanted.requestId && actual.version.projectId === wanted.projectId
       && actual.version.trigger === 'manual' && actual.version.name === (wanted.name ?? null);
+  }
+  if (operation === 'project.version.restore') {
+    const wanted = request.data as ProjectVersionRestoreInput, actual = response.data as ProjectVersionRestoreResponse;
+    return actual.requestId === wanted.requestId && actual.versionId === wanted.versionId
+      && actual.beforeVersionId !== wanted.versionId && actual.contentSequence >= wanted.expectedContentSequence;
   }
   const wanted = request.data as ProjectVersionPreviewInput, actual = response.data as ProjectVersionPreviewResponse;
   return actual.version.projectId === wanted.projectId && actual.version.id === wanted.versionId

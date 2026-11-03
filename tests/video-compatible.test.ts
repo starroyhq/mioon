@@ -17,7 +17,7 @@ import {createVideoHttp} from '../apps/server/src/video-http.ts';
 import {safeCompatibleCheck} from '../apps/web/src/video-settings.ts';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import type {JobRecord,ServiceRow} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';

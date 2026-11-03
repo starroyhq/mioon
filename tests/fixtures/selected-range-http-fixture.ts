@@ -1,3 +1,5 @@
+import {mediaFixturePath} from '../helpers/media-reference-fixtures.ts';
+import type {MediaReference} from '../../packages/contracts/src/media-reference.ts';
 import {projectApiPath, parseProjectApiPath} from '../../packages/contracts/src/project-file.ts';
 import {rpcPathFor} from '../../packages/contracts/src/project-addressing.ts';
 /** Synthetic loopback listener, not the full desktop server. It uses the real
@@ -13,7 +15,9 @@ import {deflateSync} from 'node:zlib';
 import {mkdtemp, readFile, readdir, writeFile, rm, realpath, stat} from 'node:fs/promises';
 import {schemas, parse, isTimelineMutationResponse, hasRequestNotAppliedProof, publicValue, AppError} from '@mioon/contracts';
 import {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile} from '@mioon/contracts/private-storage';
-import {openStore, openLegacyWorkspaceStore, ownsStoreLock, getWorkspaceRestoreContext} from '../../packages/business/src/db.ts';
+import {openStore} from '../../packages/business/src/project-file/test-store.ts';
+
+import {ownsStoreLock} from '../../packages/business/src/store-runtime.ts';
 import type { Store as WorkspaceStore } from '../../packages/business/src/store-contract.ts';
 import {isProjectStore, isProjectFileHeld} from '../../packages/business/src/project-file/index.ts';
 import {isAppLibraryHeld} from '../../packages/business/src/app-db/index.ts';
@@ -81,7 +85,7 @@ type DeliveryHttp = ReturnType<typeof createLocalDeliveryHttp>;
 interface ObservationRecord {path: string; body: unknown; status: number|undefined}
 interface CancellationState {service: ReturnType<typeof createTimelinePreflightServices>; entered: PromiseWithResolvers<void>; aborted: PromiseWithResolvers<void>; settled: PromiseWithResolvers<void>}
 export interface SelectedRangeFixtureOptions {[key: string]: unknown}
-export async function selectedRangeFixture(t: unknown, {legacy = false}: {legacy?: boolean} = {}): Promise<Record<string, unknown>> {
+export async function selectedRangeFixture(t: unknown): Promise<Record<string, unknown>> {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-selected-range-wire-')));
   const dispatches: unknown[] = [], submissions: unknown[] = [], observations: ObservationRecord[] = [], media: unknown[] = [], faults: string[] = [], capabilityChecks: unknown[] = [];
   let store: Store|null = null, services: Services|null = null, delivery: Delivery|null = null, deliveryHttp: DeliveryHttp|null = null;
@@ -90,7 +94,7 @@ export async function selectedRangeFixture(t: unknown, {legacy = false}: {legacy
   let fault: (point: string)=>void = () => {};
   const off = onMediaProcess((event: unknown) => media.push(event));
   const reopen = (): void => {
-    store = legacy ? openLegacyWorkspaceStore(root) : openStore(root);
+    store = openStore(root);
     services = createServices(store!, new Map(), {env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}, exportOptions: {
       // Admission-only deterministic proof; encoding correctness has separate
       // real-media gates. No renderer, model or provider is started here.
@@ -99,7 +103,7 @@ export async function selectedRangeFixture(t: unknown, {legacy = false}: {legacy
     const localRoot = isProjectStore(store) ? store.localDir : root;
     delivery = createLocalDelivery({root: localRoot, ...(isProjectStore(store) ? {databaseFile: path.join(localRoot, 'history.db')} : {}), storage: {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile},
       fault: (point: string) => fault(point), guards: {
-        ownsLock: () => ownsStoreLock(store!), isRestored: () => Boolean(getWorkspaceRestoreContext(store!)),
+        ownsLock: () => ownsStoreLock(store!),
         readTimeline: (projectId: string) => createTimelineRecoveryBoundary(store!.db, {projectId}).read({sourceSemantics: false}),
         isRenderInput: (value: unknown) => schemas['timeline.render'].safeParse(value).success,
         isRenderResponse: (input: unknown, value: unknown) => isTimelineMutationResponse('timeline.render', input, value),
@@ -126,17 +130,17 @@ export async function selectedRangeFixture(t: unknown, {legacy = false}: {legacy
   reopen();
   interface FixtureProject {id: string}
   interface FixtureTimeline {id: string; revision: number; tracks: {id: string}[]; [key: string]: unknown}
-  interface FixtureSource {id: string; relativePath: string}
+  type FixtureSource={id:string}&({reference:MediaReference;referenceRevision:number}|{relativePath:string});
   const project = await services!.call('project.create', {name: 'Selected range synthetic transport 🎬'}) as unknown as FixtureProject;
   let timeline = await services!.call('timeline.get', {projectId: project.id}) as unknown as FixtureTimeline;
   const sources: FixtureSource[] = [];
   for (const index of [0, 1]) {
     const id = randomUUID(), bytes = syntheticPng(), relativePath = `media/${id}.png`;
     await writeFile(path.join(root, relativePath), bytes, {mode: 0o600, flag: 'wx'});
-    const asset = store!.put('assets', {id, projectId: project.id, name: `Synthetic ${index}.png`, mimeType: 'image/png', relativePath,
+    store!.put('assets', {id, projectId: project.id, name: `Synthetic ${index}.png`, mimeType: 'image/png', relativePath,
       sha256: sha(bytes), sizeBytes: bytes.length, width: 16, height: 16, duration: 0, hasVideo: true, hasAudio: false,
       provenance: 'user-import', createdAt: new Date().toISOString()});
-    sources.push(asset as unknown as FixtureSource);
+    sources.push(store!.get('assets',id) as FixtureSource);
     timeline = await services!.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
       assetId: id, trackId: timeline.tracks[0]!.id, startFrame: index * 90, durationFrames: index ? 30 : 90}) as unknown as FixtureTimeline;
   }
@@ -230,7 +234,7 @@ export async function selectedRangeFixture(t: unknown, {legacy = false}: {legacy
         events.filter(event => event.type === 'exited').map(event => event.pid).sort(), 'every bounded source probe has confirmed close');
       assert.equal(store!.list('exports').some((value: unknown) => {const row=value as Record<string, unknown>;return row.status !== 'queued' || row.assetId !== null || row.url !== null;}), false);
       assert.equal(store!.list('assets').some((value: unknown) => (value as Record<string, unknown>).provenance === 'export'), false, 'no output asset exists');
-      assert.deepEqual((await readdir(path.join(root, 'media'))).sort(), sources.map((value: FixtureSource) => path.basename(value.relativePath)).sort(), 'only the two managed source files exist');
+      assert.deepEqual((await readdir(path.join(root, 'media'))).sort(), sources.map((value: FixtureSource) => path.basename(mediaFixturePath(root,value))).sort(), 'only the two managed source files exist');
     },
     async armCancellation() {
       assert.ok(cancellation == null);

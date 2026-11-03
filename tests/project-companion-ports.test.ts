@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openAppLibrary, isAppLibraryHeld, projectFileIdentity} from '../packages/business/src/app-db/index.ts';
 import {createProjectFile, openProjectStore} from '../packages/business/src/project-file/index.ts';
-import {ownsStoreLock} from '../packages/business/src/db.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createUiPreferences, UI_PREFERENCES_FILENAME} from '../packages/business/src/ui-preferences.ts';
 import {createLastProject, LAST_PROJECT_FILENAME} from '../packages/business/src/last-project.ts';
 import {createWorkspaceConfiguration} from '../packages/business/src/workspace-configuration.ts';
@@ -61,7 +61,7 @@ test('app companions use B1 documents and app identity without creating legacy J
   assert.equal(ui.get().preferences.theme, 'light');
   assert.ok(f.library.documents.read(UI_PREFERENCES_FILENAME));
 
-  const last = createLastProject({...common, guards: {ownsLock: f.ownsApp, isRestored: () => false, readProject: id => f.library.registry.get(id) ? {id} : null}});
+  const last = createLastProject({...common, guards: {ownsLock: f.ownsApp, readProject: id => f.library.registry.get(id) ? {id} : null}});
   const initial = last.get(); assert.equal(initial.supported, true); if (!initial.supported) return;
   const lastInput = {workspaceScope: initial.workspaceScope, instanceId: initial.instanceId, expectedRevision: initial.revision, projectId: f.projectId};
   assert.throws(() => f.library.tx(() => last.put(lastInput)), {code: 'LAST_PROJECT_STORAGE_UNAVAILABLE'}, 'A companion cannot ACK a write held by an outer app transaction');
@@ -73,7 +73,7 @@ test('app companions use B1 documents and app identity without creating legacy J
 
   const configuration = createWorkspaceConfiguration({root: f.dataDir, documents: common.documents, env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}});
   const before = configuration.get();
-  configuration.set({expectedRevision: before.revision, liveGeneration: true, automaticBackup: before.automaticBackup, backupIntervalHours: before.backupIntervalHours, backupLocation: before.backupLocation});
+  configuration.set({expectedRevision: before.revision, liveGeneration: true});
   assert.equal(configuration.environment().MIOON_ENABLE_LIVE_PROVIDER, '1');
   assert.ok(f.library.documents.read('workspace-settings-v1.json'));
   for (const name of [UI_PREFERENCES_FILENAME, LAST_PROJECT_FILENAME, 'workspace-settings-v1.json', 'workbench.sqlite']) assert.equal(existsSync(path.join(f.dataDir, name)), false);

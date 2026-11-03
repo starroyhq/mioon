@@ -40,7 +40,7 @@ export default function SettingsRoot({ context, bridge, rpc, contractChecks, ren
   const registry = useRef(createSettingsNavigationRegistry()).current, native = useRef(createNativeCloseRegistry()).current;
   const [, rerender] = useState(0);
   const [navigation] = useState(() => createSettingsWindowNavigation({ context, registry, confirm, onChange: () => rerender(value => value + 1) }));
-  const [workspace, setWorkspace] = useState<'pending' | 'ready' | 'restored' | 'failed'>('pending');
+  const [workspace, setWorkspace] = useState<'pending' | 'ready' | 'failed'>('pending');
   const [visible, setVisible] = useState(() => document.visibilityState !== 'hidden');
   const [closeFailed, setCloseFailed] = useState(false);
   const active = useRef(true), closeRequest = useRef<Promise<void> | null>(null);
@@ -68,13 +68,13 @@ export default function SettingsRoot({ context, bridge, rpc, contractChecks, ren
       readScope: () => `${context.backendId}:${context.contextId}:${navigation.version}`, readDocumentURL: () => window.location.href });
     const drain = async () => registry.canLeave(registry.capture());
     win.__mioonFlushWorkspacePreferences = drain;
-    void createLauncherClient(rpc, contractChecks).inspect().then(value => { if (current) setWorkspace(value.restored ? 'restored' : 'ready'); }, () => { if (current) setWorkspace('failed'); });
+    void createLauncherClient(rpc, contractChecks).list().then(() => { if (current) setWorkspace('ready'); }, () => { if (current) setWorkspace('failed'); });
     return () => { current = false; active.current = false; release(); navigation.dispose(); cleanup(); pauseObservation(false); document.removeEventListener('visibilitychange', visibility);
       if (win.__mioonFlushWorkspacePreferences === drain) delete win.__mioonFlushWorkspacePreferences; };
   }, [bridge, navigation, native, registry, pauseObservation]);
   useEffect(() => navigation.receive(context), [navigation, context]);
   return <main className="project-home project-home-settings-window native-settings-panel"><header className="native-settings-panel-header"><span className="native-settings-panel-title">{t('settings.title')}</span>
-      <details className="settings-workspace-status settings-workspace-status-global" open={workspace === 'failed' || workspace === 'restored'}><summary>{t('settings.workspaceStatus')}</summary><div><NativeLocatorStatus context={context} bridge={bridge} recovery /></div></details>
+      <details className="settings-workspace-status settings-workspace-status-global" open={workspace === 'failed'}><summary>{t('settings.workspaceStatus')}</summary><div><NativeLocatorStatus context={context} bridge={bridge} recovery /></div></details>
       <Button type="button" variant="ghost" className="native-settings-panel-close" data-testid="native-settings-panel-close" aria-label={t('common.closeSettings')} title={t('common.closeSettings')} onClick={() => { void requestClose(); }}><WorkbenchIcon name="close" /></Button>
     </header>
     <section className="project-home-settings" aria-label={t('settings.title')}>
@@ -86,7 +86,7 @@ export default function SettingsRoot({ context, bridge, rpc, contractChecks, ren
         // Only native P0 decides actual closure. Returning false prevents the
         // form from clearing secrets before the native dialog has decided.
         beforeClose: async () => { await requestClose(); return false; }, onClose: () => {} })
-        : <><p role="status" className="native-settings-unavailable">{workspace === 'pending' ? t('shell.checkingWorkspace') : workspace === 'restored' ? t('shell.restoredConnectionsUnavailable') : t('shell.workspaceUnconfirmed')}</p><ProjectHomeConnections selected="agent" page="general" connectionsAvailable={false} onSelect={() => {}} onPage={() => {}} panes={{ agent: null, official: null, custom: null, comfy: null }} /></>}
+        : <><p role="status" className="native-settings-unavailable">{workspace === 'pending' ? t('shell.checkingWorkspace') : t('shell.workspaceUnconfirmed')}</p><ProjectHomeConnections selected="agent" page="general" connectionsAvailable={false} onSelect={() => {}} onPage={() => {}} panes={{ agent: null, official: null, custom: null, comfy: null }} /></>}
       </div>
     </section></main>;
 }

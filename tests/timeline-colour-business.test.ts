@@ -1,14 +1,16 @@
+import {assetMediaDtoSchema} from '../packages/contracts/src/asset-media.ts';
+import {writeStubMediaFixture,mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 import type {ServiceResponse as FixtureServiceResult, TypedStore as FixtureStore, TypedServices as FixtureServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {readFile} from 'node:fs/promises';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {schemaObjects} from './helpers/project-database.ts';
 const stamp='2026-10-14T00:00:00.000Z';
@@ -20,7 +22,7 @@ async function fixture(t: test.TestContext){
  t.after(async()=>{await services.drain();store.close();await rm(root,{recursive:true,force:true});});
  const call=<O extends string>(operation: O, input?: unknown) => services.call(operation,input) as Promise<FixtureServiceResult<O>>,projectId=(await call('project.create',{name:'Colour fixture'})).id;
  const asset=(patch: Record<string, unknown>={})=>{const id=randomUUID();return store.put('assets',{id,projectId,name:'Owned source',mimeType:'video/mp4',duration:10,width:720,height:1280,hasVideo:true,hasAudio:true,
-   provenance:'user-import',sha256:'a'.repeat(64),relativePath:`media/${id}.fixture`,createdAt:stamp,...patch});};
+   provenance:'user-import',...writeStubMediaFixture(root,id,typeof patch.mimeType==='string'?patch.mimeType:'video/mp4'),createdAt:stamp,...patch});};
  const lut=(owner: unknown=projectId)=>call('lut.import',{projectId:owner,requestId:randomUUID(),name:'Creative.cube',dataBase64:Buffer.from(cube).toString('base64')});
  const colour=(source: { sha256: unknown; },resource?: { id: unknown; sha256: unknown; profile: unknown; })=>({profileId:'mioon-rec709-sdr-clip-v1',source:{assetSha256:source.sha256,streamIndex:0,profileId:'rec709-yuv-sdr-v1',range:'limited',declaredBy:'user',declaredAt:stamp},
   look:resource?{resourceId:resource.id,resourceSha256:resource.sha256,resourceProfile:resource.profile,purpose:'rec709-sdr-creative',declaredBy:'user',enabled:true,strength:.35}:null});
@@ -40,7 +42,7 @@ test('add/update persist exact colour, replay preserves it and ordinary edits do
  await f.restart();assert.deepEqual((await f.call('timeline.get',{projectId:f.projectId})).clips[0].colour,colour);assert.deepEqual(await f.call('timeline.clip.update',request),updated);
 });
 test('replacement invalidates source only, undo restores exact source and redo retains independent creative look',async t=>{
- const f=await fixture(t),old=f.asset(),next=f.asset({sha256:'b'.repeat(64)}),colour=f.colour(old,(await f.lut()).resource);
+ const f=await fixture(t),old=f.asset(),next=f.asset(),colour=f.colour(old,(await f.lut()).resource);
  let timeline=await f.add(f.timeline,old,{colour});const before=clone(timeline),input=f.params(timeline,{clipId:timeline.clips[0].id,assetId:next.id});
  timeline=await f.call('timeline.clip.replaceSource',input);const replacement=clone(timeline);
  assert.deepEqual(timeline.clips[0].colour,{...colour,source:null});assert.equal(timeline.clips[0].assetId,next.id);
@@ -93,10 +95,11 @@ test('real service inspection observes tagged SDR and refuses HDR without changi
   const file=path.join(f.root,transfer+'.mp4');
   execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','lavfi','-i','color=c=red:s=64x64:r=30','-t','0.1','-threads','1','-c:v','libx264','-pix_fmt','yuv420p',
    '-color_primaries','bt709','-color_trc',transfer,'-colorspace','bt709','-color_range','tv','-x264-params',`colorprim=bt709:transfer=${transfer}:colormatrix=bt709`,file],{timeout:15000,stdio:'pipe'});
-  const asset=await f.call('asset.import',{projectId:f.projectId,name:transfer+'.mp4',mimeType:'video/mp4',dataBase64:(await readFile(file)).toString('base64')});
-  const source=path.join(f.root,f.store.get('assets',asset.id)!.relativePath),bytes=await readFile(source),before=f.capture(),changes=(f.store.db.prepare('SELECT total_changes() AS n').get())!.n;
+  const asset=assetMediaDtoSchema.parse(await f.call('asset.import',{projectId:f.projectId,name:transfer+'.mp4',mimeType:'video/mp4',dataBase64:(await readFile(file)).toString('base64')}));
+  assert.equal(asset.sha256,null);await f.call('asset.media.prepare',{projectId:f.projectId,assets:[{assetId:asset.id,referenceRevision:asset.referenceRevision}],purpose:'timeline'});
+  const source=mediaFixturePath(f.root,f.store.get('assets',asset.id)),bytes=await readFile(source),before=f.capture(),changes=(f.store.db.prepare('SELECT total_changes() AS n').get())!.n;
   const result=await f.call('timeline.colour.source.inspect',{projectId:f.projectId,assetId:asset.id});
-  assert.equal(result.status,status,JSON.stringify(result));assert.equal(result.assetSha256,asset.sha256);assert.equal(result.evidence.transfer,transfer);assert.equal(result.evidence.pixelFormat,'yuv420p');
+  assert.equal(result.status,status,JSON.stringify(result));assert.equal(asset.sha256,null);assert.equal(result.assetSha256,createHash('sha256').update(bytes).digest('hex'));assert.equal(result.evidence.transfer,transfer);assert.equal(result.evidence.pixelFormat,'yuv420p');
   assert.deepEqual(await readFile(source),bytes);assert.deepEqual(f.capture(),before);assert.equal((f.store.db.prepare('SELECT total_changes() AS n').get())!.n,changes);
  }
 });

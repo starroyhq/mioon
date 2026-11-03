@@ -1,3 +1,5 @@
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import type {FixtureAsset,FixtureProject,FixtureTimeline,FixtureExport} from './helpers/strict-timeline-core-types.ts';
 import type {TypedCall, MediaShot} from './helpers/strict-service-responses.ts';
 import type {FrameTaskResponse} from '../packages/contracts/src/frame-extraction.ts';
@@ -22,7 +24,7 @@ import {mkdtemp,readFile,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import {run,runStreaming} from '../packages/business/src/media-runtime.ts';
@@ -70,14 +72,16 @@ async function fixture(t: test.TestContext){
  await f.call('timeline.format.set',{projectId:f.project.id,expectedProjectRevision:f.project.revision,expectedRevision:0,requestId:randomUUID(),presetId:'portrait_720'});
  f.other=await foreignProject(t);
  const bytes=await readFile(original),imported=await f.call('asset.import',{projectId:f.project.id,name:'One-second synthetic.mp4',mimeType:'video/mp4',dataBase64:bytes.toString('base64')});
- f.source=f.store.get('assets',imported.id)!;f.sourceFile=path.join(root,f.source.relativePath);f.sourceBytes=bytes;
+ assert.equal(f.store.get('assets',imported.id)!.sha256,null,'video import remains sampled until a strong operation prepares it');
+ await f.call('asset.media.prepare',{projectId:f.project.id,assets:[{assetId:imported.id,referenceRevision:1}],purpose:'frame'});
+ f.source=f.store.get('assets',imported.id)!;f.sourceFile=mediaFixturePath(root,f.source);f.sourceBytes=bytes;
  assert.equal(f.source.sha256,sha(bytes));assert.deepEqual([f.source.width,f.source.height],[64,48]);assert.ok(Math.abs(f.source.duration-1)<0.04);
  f.extract=async (sourceFrame: unknown)=>{
   const input={projectId:f.project.id,sourceAssetId:f.source.id,sourceHash:f.source.sha256,sourceFrame,requestId:randomUUID()},ack=await f.call('frame.extract',input);
   assert.equal(isFrameMutationResponse('frame.extract',input,ack),true);
   const task=await until(()=>f.call('frame.task.get',{projectId:f.project.id,taskId:ack.id}),(value)=>value.state==='succeeded','real frame extraction');
-  assert.equal(isFrameTaskResponse(task),true);const asset=f.store.get('assets',task.result.assetId)!,file=path.join(root,asset.relativePath),png=await readFile(file);
-  assert.equal(asset.provenance,'extracted-frame');assert.equal(asset.mimeType,'image/png');assert.equal(asset.relativePath,`media/${asset.id}.png`);
+  assert.equal(isFrameTaskResponse(task),true);const asset=f.store.get('assets',task.result.assetId)!,file=mediaFixturePath(root,asset),png=await readFile(file);
+  assert.equal(asset.provenance,'extracted-frame');assert.equal(asset.mimeType,'image/png');assert.equal(mediaReferenceSchema.parse((asset as unknown as {reference:unknown}).reference).path,`media/${asset.id}.png`);assert.equal(Object.hasOwn(asset,'relativePath'),false);
   assert.deepEqual(await validatePng(png,{width:64,height:48,opaque:true}),{mimeType:'image/png',width:64,height:48,byteLength:png.length,sha256:sha(png)});
   assert.equal(asset.sha256,sha(png));return {input,ack,task,asset,file,png};
  };
@@ -88,7 +92,7 @@ async function fixture(t: test.TestContext){
  f.render=async (timeline: FixtureTimeline)=>{
   const input=f.timelineInput(timeline,{purpose:'export'}),ack=await f.call('timeline.render',input);assert.equal(isTimelineMutationResponse('timeline.render',input,ack),true);
   f.worker??=startWorker(f.store,f.services,providers);await f.worker.tick();
-  const result=await until(()=>f.call('export.get',{exportId:ack.id}),(value)=>value.status==='succeeded','real timeline render') as FixtureExport,asset=f.store.get('assets',result.assetId!)!,file=path.join(root,asset.relativePath);
+  const result=await until(()=>f.call('export.get',{exportId:ack.id}),(value)=>value.status==='succeeded','real timeline render') as FixtureExport,asset=f.store.get('assets',result.assetId!)!,file=mediaFixturePath(root,asset);
   const metadata=await probe(file),video=metadata.probe.streams.find(stream=>stream.codec_type==='video');
   assert.deepEqual([metadata.width,metadata.height],[720,1280]);assert.ok(Math.abs(metadata.duration-1)<0.04);assert.equal(Number(video!.nb_frames),30);
   // Decode all video and audio to EOF with errors fatal; then count real decoded

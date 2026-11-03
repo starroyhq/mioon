@@ -2,7 +2,6 @@ import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError,TIMELINE_RESPONSE_BYTES} from '@mioon/contracts';
 import {canonicalClipTransform,validateClipTransform,type ClipTransform} from '../../contracts/src/timeline-clip-transform.ts';
-import {readCurrentWorkspaceRole,isWorkspaceRoleSince} from './workspace-schema-dispatch.ts';
 import type {TimelineRecord} from './timeline-inputs.ts';
 import type {TimelineRecoveryBoundary} from './timeline-recovery.ts';
 
@@ -11,9 +10,8 @@ import type {TimelineRecoveryBoundary} from './timeline-recovery.ts';
  * whose policy did not already refuse the write) fails before the first write. */
 export function assertClipTransformWorkspace(db: DatabaseSync): void {
  if(isProjectLayout(db))return;
- let allowed=false;
- try{allowed=isWorkspaceRoleSince(readCurrentWorkspaceRole(db),70,'ordinary');}catch{allowed=false;}
- if(!allowed)throw new AppError('CLIP_TRANSFORM_WORKSPACE_REQUIRED','当前工作区不支持片段变换',409);
+ if(!isProjectLayout(db))throw new AppError('CLIP_TRANSFORM_WORKSPACE_REQUIRED','当前工作区不支持片段变换',409);
+
 }
 // Runs inside the ordinary timeline edit transaction, on the copy it validates
 // and saves; every rejection happens before the first write, so its rollback

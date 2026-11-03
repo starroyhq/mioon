@@ -1,10 +1,9 @@
+import {assertProjectStore} from '../store-runtime.ts';
 import {isProjectDatabase as isProjectLayout} from '../project-file/held-files.ts';
 import {createComfyAdmission} from './admission.ts';
-import {getWorkspaceRestoreContext} from '../workspace-restore-schema.ts';
-import {workspaceRestoreError} from '../workspace-restore-policy.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import {AppError} from '@mioon/contracts';
-import {ownsStoreLock} from '../db.ts';
+import {ownsStoreLock} from '../store-runtime.ts';
 import {boundedShutdown} from '../operation-lifecycle.ts';
 import {canonicalImageInput as canonical,IMAGE_LIMITS} from '../../../contracts/src/images.ts';
 import {COMFY_IMAGE_LIMITS,comfyRemoteSchemas,comfyRemoteRunResponseSchema,comfyObservationResponseSchema,isComfyObserveResponse} from '../../../contracts/src/comfy-images.ts';
@@ -80,7 +79,7 @@ function dtoObs(row: ObsRow) {
  * network capability is the reviewed connector's single-job read/result fetch.
  * A retained generation UUID is correlation, never permission to repeat POST. */
 export function createComfyRemoteServices(store: ComfyRemoteStore, {signal: parentSignal, owner, readTask, readReview, connector, admission = createComfyAdmission(connector), stageResult, failTask, fault = (): void => {}}: ComfyRemoteHooks) {
-  if (getWorkspaceRestoreContext(store)) throw workspaceRestoreError();
+  assertProjectStore(store);
   const {db, tx} = store, controller = new AbortController(), signal = parentSignal ? AbortSignal.any([parentSignal, controller.signal]) : controller.signal;
   let closed = false; const active = new Set<Promise<unknown>>();
   const present = (): boolean => isProjectLayout(db)||Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_remote_runs'").get());

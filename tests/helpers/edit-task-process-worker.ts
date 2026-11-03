@@ -1,6 +1,6 @@
 // Disposable IPC worker: real store ownership and services, synthetic metadata only.
 // Faults kill this worker before its reply, without closing SQLite or removing its lock.
-import {openStore} from '../../packages/business/src/db.ts';
+import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createEditTasks} from '../../packages/business/src/edit-tasks.ts';
 

@@ -1,3 +1,4 @@
+import {writeStubMediaFixture} from './helpers/media-reference-fixtures.ts';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
@@ -6,7 +7,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {TIMELINE_OUTPUT_PRESETS,hasRequestNotAppliedProof} from '@mioon/contracts';
 import type { FixtureProject, FixtureTimeline } from './helpers/strict-timeline-core-types.ts';
@@ -16,7 +17,7 @@ async function fixture(t: test.TestContext){
  const project=await services.call('project.create',{name:'Output fixture'});
  const f={project,root,get store(){return store;},call:<O extends string>(op: O,input: unknown)=>services.call(op,input),
   spec:(presetId='landscape_720',expectedRevision=0,extra={})=>({projectId:project.id,expectedProjectRevision:project.revision,expectedRevision,requestId:randomUUID(),presetId,...extra}),
-  asset(){const id=randomUUID();return store.put('assets',{id,projectId:project.id,name:'Fixture',mimeType:'image/png',width:720,height:1280,sha256:'a'.repeat(64),relativePath:`media/${id}.png`});},
+  asset(){const id=randomUUID();return store.put('assets',{id,projectId:project.id,name:'Fixture',mimeType:'image/png',width:720,height:1280,...writeStubMediaFixture(root,id,'image/png')});},
   capture(){return Object.fromEntries(['projects','timelines','timeline_requests','timeline_format_requests','timeline_history','timeline_history_cursors','exports','edit_tasks'].map(table=>[table,store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));},
   restart(){store.close();store=(openStore(root) as TypedStore);services=(createServices(store,new Map()) as TypedServices);}
  };t.after(async()=>{store.close();await rm(root,{recursive:true,force:true});});return f;
@@ -124,7 +125,7 @@ test('submitted rectangles retain VALIDATION_ERROR against all six saved pairs w
 
 test('seed uses each saved output pair without changing shot generation aspect ratios',async t=>{
  for(const preset of TIMELINE_OUTPUT_PRESETS){const f=await fixture(t);let timeline=await f.call('timeline.format.set',f.spec(preset.id));
-  const asset=f.asset();f.store.put('assets',{...asset,mimeType:'video/mp4',duration:1});
+  const id=randomUUID(),asset=f.store.put('assets',{id,projectId:f.project.id,name:'Seed video',mimeType:'video/mp4',duration:1,width:720,height:1280,hasAudio:false,createdAt:new Date().toISOString(),...writeStubMediaFixture(f.root,id,'video/mp4')});
   const shot=await f.call('shot.create',{projectId:f.project.id,title:'Seed fixture'}),jobId=randomUUID(),versionId=randomUUID();
   f.store.put('jobs',{id:jobId,projectId:f.project.id,shotId:shot.id,status:'succeeded',providerId:'mock',requestId:randomUUID(),submissionCount:1,versionId});
   f.store.put('versions',{id:versionId,projectId:f.project.id,shotId:shot.id,jobId,assetId:asset.id,sha256:asset.sha256,number:1});

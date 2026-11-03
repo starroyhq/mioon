@@ -6,12 +6,9 @@ import {fileURLToPath} from 'node:url';
 import ts from 'typescript';
 
 const root = fileURLToPath(new URL('./', import.meta.url));
-const frozen = ['fixtures/workspace-restore-legacy/', 'fixtures/workspace-restore-v27/legacy-contracts/'];
 function currentTests(directory = root): string[] {
   return readdirSync(directory, {withFileTypes: true}).flatMap(entry => {
     const file = path.join(directory, entry.name);
-    const relative = path.relative(root, file).split(path.sep).join('/');
-    if (frozen.some(prefix => `${relative}/`.startsWith(prefix))) return [];
     return entry.isDirectory() ? currentTests(file) : entry.isFile() && /\.test\.(?:mjs|ts)$/.test(entry.name) ? [file] : [];
   });
 }

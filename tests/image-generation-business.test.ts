@@ -1,12 +1,14 @@
 import type {TypedStore, TypedServices, TypedCall} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
 import {mkdtempSync, rmSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore, ownsStoreLock} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {readMioStorage} from '../packages/business/src/agent/mio-storage.ts';
 import {renderMockImagePng, validatePng} from '../packages/business/src/images/png.ts';
@@ -152,7 +154,7 @@ test('V1 and V2 retain their original receipt and name without rewriting project
   assert.deepEqual(f.store.get('jobs', job.id), job); assert.equal(f.calls, 2);
   for (const projection of f.projections) assert.deepEqual(Object.keys(projection).sort(), ['model', 'options', 'prompt', 'providerId']);
   for (const version of versions.items) {
-    const generated = f.store.get('assets', version.assetId) as unknown as GeneratedAssetView, file = path.join(f.root, generated.relativePath), bytes = readFileSync(file);
+    const generated = f.store.get('assets', version.assetId) as unknown as GeneratedAssetView, file = mediaFixturePath(f.root, generated), bytes = readFileSync(file);
     assert.equal(digest(bytes), version.sha256); assert.equal(bytes.length, version.byteLength);
     assert.equal(statSync(file).mode & 0o777, 0o600);
     assert.deepEqual(await validatePng(bytes), {mimeType: 'image/png', width: 1024, height: 1024, byteLength: bytes.length, sha256: digest(bytes)});
@@ -197,7 +199,7 @@ test('one unresolved task locks its group while different groups remain independ
 test('an exact owner capability cannot be copied or lost; image reads remain zero-write without reopening', async t => {
   const f = await fixture(t), ack = await f.call('image.generate', f.input()) as unknown as TaskView;
   assert.throws(() => openStore(f.root), {code: 'PROJECT_LOCKED'});
-  assert.throws(() => createServices({...f.store}, new Map()), {code: 'RESTORE_STORE_UNVERIFIED'});
+  assert.throws(() => createServices({...f.store}, new Map()), {code: 'PROJECT_STORE_UNVERIFIED'});
   const observer = f.store, services = f.services;
   Object.defineProperty(observer, 'root', {value: `${f.root}/lost-owner`});
   t.after(() => Object.defineProperty(observer, 'root', {value: f.root}));

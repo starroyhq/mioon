@@ -1,3 +1,5 @@
+import {mediaLocatorFields, sameMediaLocator} from '../asset-reference-record.ts';
+import {isDeepStrictEqual} from 'node:util';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {parseVideoBinding,videoConnectionEndpoint,validateVideoSnapshot,videoBindingCapabilities,videoInputProfile} from '../../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding,VideoConnectionDescriptor} from '../../../contracts/src/video-providers.ts';
@@ -43,7 +45,7 @@ export function prepareConfiguredVideoInputs({source,binding,projectId,readAsset
  const assets=ids.map((id,index)=>{
   const asset=readAsset(id);if(asset.id!==id||asset.projectId!==projectId)fail('INVALID_REFERENCE_OWNERSHIP','参考素材必须属于当前项目。');
   const previous=frozen?(saved as Record<string,unknown>[])[index]:null,bound=frozen?(bindings as Record<string,unknown>[])[index]:null;
-  if(frozen&&(!previous||!bound||previous.id!==id||bound.assetId!==id||bound.sha256!==asset.sha256||bound.role!==previous.role||videoInput&&bound.role!==videoInput.images[index]?.role||Object.keys(bound).some(key=>!['role','assetId','sha256'].includes(key))||['mimeType','sha256','relativePath','width','height','sizeBytes'].some(key=>previous[key]!==asset[key])))fail('REFERENCE_CHANGED','参考素材与冻结任务不一致。');
+  if(frozen&&(!previous||!bound||previous.id!==id||bound.assetId!==id||bound.sha256!==asset.sha256||bound.role!==previous.role||videoInput&&bound.role!==videoInput.images[index]?.role||Object.keys(bound).some(key=>!['role','assetId','sha256'].includes(key))||(!sameMediaLocator(previous,asset)||['mimeType','sha256','width','height','sizeBytes'].some(key=>previous[key]!==asset[key]))))fail('REFERENCE_CHANGED','参考素材与冻结任务不一致。');
   return {...asset,role:frozen?String(bound!.role):references?.[index]?.role??'first_frame'};
  });
  const referenceBindings=assets.map(asset=>({role:asset.role,assetId:asset.id,sha256:asset.sha256}));
@@ -53,9 +55,9 @@ export function prepareConfiguredVideoInputs({source,binding,projectId,readAsset
  if(frozen&&(audioIds.length||savedAudios!==undefined)&&(!Array.isArray(savedAudios)||savedAudios.length!==audioIds.length))fail('INVALID_REFERENCE_MANIFEST','冻结参考音频清单不完整。');
  const referenceAudios=audioIds.map((id,index)=>{
   const asset=readAsset(id);if(asset.id!==id||asset.projectId!==projectId)fail('INVALID_REFERENCE_OWNERSHIP','参考音频必须属于当前项目。');
-  const record={id,relativePath:asset.relativePath,mimeType:asset.mimeType,sha256:asset.sha256,sizeBytes:asset.sizeBytes,duration:asset.duration,role:'reference_audio'};
+  const record={id,...mediaLocatorFields(asset),mimeType:asset.mimeType,sha256:asset.sha256,sizeBytes:asset.sizeBytes,duration:asset.duration,role:'reference_audio'};
   const previous=frozen?(savedAudios as Record<string,unknown>[])[index]:null;
-  if(frozen&&(!previous||typeof previous!=='object'||Object.keys(previous).length!==Object.keys(record).length||Object.entries(record).some(([key,item])=>previous[key]!==item)))fail('REFERENCE_CHANGED','参考音频与冻结任务不一致。');
+  if(frozen&&(!previous||typeof previous!=='object'||Object.keys(previous).length!==Object.keys(record).length||Object.entries(record).some(([key,item])=>key==='reference'?!isDeepStrictEqual(previous[key],item):previous[key]!==item)))fail('REFERENCE_CHANGED','参考音频与冻结任务不一致。');
   return record;
  });
  const audioFields=referenceAudios.length?{referenceAudios}:{};

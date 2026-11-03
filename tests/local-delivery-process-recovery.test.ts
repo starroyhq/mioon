@@ -26,11 +26,12 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import type {DatabaseSync} from 'node:sqlite';
 import {publicValue} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
 import {openProjectDatabase} from './helpers/project-database.ts';
 import {readProjectState} from './helpers/project-state.ts';
 import type {ProjectState} from './helpers/project-state.ts';
+import {png} from './helpers/timeline-image-fixtures.ts';
 
 const repo=fileURLToPath(new URL('../',import.meta.url)),workerPath=fileURLToPath(new URL('./fixtures/local-delivery-process-worker.ts',import.meta.url));
 const authority=(value: WorkerEnvelope)=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId});
@@ -76,7 +77,7 @@ async function fixture(t: test.TestContext){
  try{
   project=await services.call('project.create',{name:'Synthetic export delivery crash'});
   timeline=await services.call('timeline.get',{projectId:project.id});
-  const id=randomUUID(),source=Buffer.from('synthetic business-only source bytes'),relativePath=`media/${id}.png`;
+  const id=randomUUID(),source=png({width:2,height:2,rgba:false}),relativePath=`media/${id}.png`;
   await writeFile(path.join(root,relativePath),source,{mode:0o600,flag:'wx'});
   store.put('assets',{id,projectId:project.id,name:'Synthetic metadata source',mimeType:'image/png',relativePath,
    sha256:createHash('sha256').update(source).digest('hex'),width:2,height:2,hasVideo:true,hasAudio:false,sizeBytes:source.length,provenance:'user-import',createdAt:new Date().toISOString()});

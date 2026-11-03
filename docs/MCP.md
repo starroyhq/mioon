@@ -35,6 +35,10 @@ Do not mix a desktop descriptor with `MIOON_BASE_URL`/`MIOON_TOKEN_FILE`. Explic
 
 源码默认构建开发版。两个渠道独立运行、轮换令牌；客户端只连明确配置的那一个，不自动猜测或回退。旧 `video-workbench/` 数据及历史连接配置保留；迁移项目后需手动把客户端连接路径改为目标渠道，详见 [数据迁移](DESKTOP.md#数据位置与单实例)。descriptor 的 `appId` / `channel` 是附加非敏感元数据，协议版本仍为 1。
 
+## 已退役的工作区入口
+
+五个 `workspace.backup.*` 操作和 `workspace.restore.inspect` 已从 schema、CLI 和 MCP 发现列表删除。直接调用返回 `UNKNOWN_OPERATION`；CLI 退出 2，MCP 返回 `isError:true`。`--workspace-origin` 已删除，离线 `backup.ts` / `pnpm backup` 入口不再提供。当前单项目备份使用 `project.backup.*`，见 [项目备份](PROJECT-BACKUPS.md)。
+
 ## Standalone Codex configuration
 
 This is a configuration example for the user's review, not an installer. No files under `~/.codex` are modified by this repository. In a trusted project, the user may place this block in a project-scoped `.codex/config.toml`. Replace the absolute paths:
@@ -834,42 +838,6 @@ Only a validated original acknowledgement/read settles the request. Mock proves
 workflow only; Ark real-face direct uploads are unsupported and no live call is
 approved by schema discovery. See [SUBJECT-VIDEO-INPUTS.md](SUBJECT-VIDEO-INPUTS.md).
 
-## Workspace backup status and offline boundary
-
-`workspace_backup_inspect` is an authenticated, strict-empty-input, read-only
-workspace DB summary. Null counts mean unknown or bounded inspection incomplete,
-not zero. It never checks/copies media, stops the backend, reads credentials or
-resumes work. The result always explains that a running backend must close
-before cold capture. This is an external discovery tool, not an added built-in
-Agent capability.
-
-There is no MCP backup create/verify/restore tool or filesystem-path executor.
-For explicitly requested local backup creation, use the documented offline CLI
-in [the guide](WORKSPACE-BACKUP-GUIDE.zh-CN.md) after normal backend shutdown.
-A verified package is not evidence that restoring or repeating old tasks is safe.
-
-
-## Restored-branch discovery and origin pin
-
-`workspace_restore_inspect` is an authenticated strict-empty read-only tool. It
-returns `{restored:false}` for ordinary workspaces; restored ones disclose safe
-origin/profile, source hashes, bounded held counts and explicit restrictions.
-There are no filesystem paths or added built-in Agent capabilities.
-
-For an explicitly chosen restored branch, launch MCP with `--workspace-origin`
-and its exact inspected UUID. The bridge pins this outer invocation context;
-ordinary tool input schemas and replay keys are unchanged. It never updates the
-pin on backend reconnect. Missing/foreign origins refuse fresh effects. Discovery
-does not approve execution, restore old tasks or give a model paid authority.
-
-Captured tasks/approvals/unknown requests remain held, including when callers
-supply a new outer origin or another key. Only supported new local edits/imports
-and previews/exports are enabled in restored v1; disabled calls return the same
-structured business refusal as UI/CLI. Do not interpret it as confirmed rollback.
-Offline restore/status has no MCP filesystem executor; use the explicitly
-requested local CLI described in [CLI.md](CLI.md#guarded-offline-restoration).
-
-
 ## Named timeline deliveries
 
 `timeline_render` (export only) and `timeline_export_preflight` expose optional `deliveryName` through shared strict discovery. Preserve its exact presence/value and all quality settings when replaying an unknown original request. `timeline_export_capabilities` still excludes display names. Read `export_get` for accepted historical metadata. This adds no built-in Agent tool or generation permission.
@@ -883,25 +851,33 @@ See [scope and acceptance](NAMED-DELIVERIES.md).
 
 ### 已导出文件解码样本峰值
 
-`timeline_export_samplePeak` exposes shared `timeline.export.samplePeak` with strict `{projectId,exportId}`. Discover through `mioon_schema` first. The explicit read-only operation hashes and decodes one owned succeeded timeline MP4, so `localProcess:true` honestly signals CPU/file work; it creates no render, task, cache or stored report. SDK cancellation stops only that observation. Do not automatically check on listing or repeat a lost response. No caller path/hash/request ID or permission flag is accepted. Restored-v1 explicitly denies it before media access.
+`timeline_export_samplePeak` exposes shared `timeline.export.samplePeak` with strict `{projectId,exportId}`. Discover through `mioon_schema` first. The explicit read-only operation hashes and decodes one owned succeeded timeline MP4, so `localProcess:true` honestly signals CPU/file work; it creates no render, task, cache or stored report. SDK cancellation stops only that observation. Do not automatically check on listing or repeat a lost response. No caller path/hash/request ID or permission flag is accepted.
 
 Ready measurements refer to the immutable export/output identity and actual verified bytes at check time. They are decoded sample peaks, not true peak/LUFS or proof that earlier mixing did not clip. This external tool does not enter the built-in Agent catalog or grant generation permissions. See [contract and limits](EXPORT-SAMPLE-PEAK.md).
 
 
 ## Exported-file loudness observation
 
-`timeline_export_loudness` exposes the strict shared `timeline.export.loudness` schema; discover it first with `mioon_schema`. The expected hash fixes the selected artifact but is independently verified by the server. `readOnly:true/localProcess:true/fileWrite:false` describes full bounded local decoding, not an authorization to run automatically. The custom LUFS/dBTP target is optional and has no platform default. Reports bind actual hash, profile, original range/revision and target; invalid/short/silent/below-gate signals never receive a usable gain instruction. Suggestions cannot approve mutations, replace source audio or add a limiter. SDK cancellation stops only this measurement. Restored-v1 rejects it and the built-in Agent tool list is unchanged. See [precise measurement and resource boundary](EXPORT-LOUDNESS.md).
+`timeline_export_loudness` exposes the strict shared `timeline.export.loudness` schema; discover it first with `mioon_schema`. The expected hash fixes the selected artifact but is independently verified by the server. `readOnly:true/localProcess:true/fileWrite:false` describes full bounded local decoding, not an authorization to run automatically. The custom LUFS/dBTP target is optional and has no platform default. Reports bind actual hash, profile, original range/revision and target; invalid/short/silent/below-gate signals never receive a usable gain instruction. Suggestions cannot approve mutations, replace source audio or add a limiter. SDK cancellation stops only this measurement. The built-in Agent tool list is unchanged. See [precise measurement and resource boundary](EXPORT-LOUDNESS.md).
 
 ## Explicit saved-timeline full-mix candidate
 
 `timeline_loudness_prepare` exposes `timeline.loudness.prepare` through the existing schema-driven catalog. Discover with `mioon_schema`. Require the owned project, saved `expectedRevision`, explicit fixed mix/measurement profiles and user-selected LUFS/dBTP target. No request ID, arbitrary path/URL, selected range or approval flag is accepted, and discovery alone never starts decoding.
 
-Effects are `readOnly:true`, `localProcess:true`, `fileWrite:false`, with no database writes, network or paid work. This is resource-intensive local computation:120s server budget,125s default shared-client deadline,64KiB streaming response cap. The original full float mix and actual fixed-multiplier candidate are measured independently; returned comparisons and gains never grant application authority (`applyAllowed:false`). Do not treat an exported-file arithmetic suggestion as this current-timeline measurement, infer a target, apply edits, call a model or retry lost output automatically. SDK cancellation retires only this observation's owned work. Restored-v1 denies it, and the internal Agent's four metadata tools and permission defaults remain unchanged. See [exact report boundary](API.md#saved-timeline-full-mix-loudness-preparation).
+Effects are `readOnly:true`, `localProcess:true`, `fileWrite:false`, with no database writes, network or paid work. This is resource-intensive local computation:120s server budget,125s default shared-client deadline,64KiB streaming response cap. The original full float mix and actual fixed-multiplier candidate are measured independently; returned comparisons and gains never grant application authority (`applyAllowed:false`). Do not treat an exported-file arithmetic suggestion as this current-timeline measurement, infer a target, apply edits, call a model or retry lost output automatically. SDK cancellation retires only this observation's owned work. The internal Agent's four metadata tools and permission defaults remain unchanged. See [exact report boundary](API.md#saved-timeline-full-mix-loudness-preparation).
 
 ## Explicit atomic fixed-gain application
 
-`timeline_loudness_apply` exposes the same strict `timeline.loudness.apply` contract. It is `readOnly:false`, `databaseWrite:true`, `localProcess:true`, `idempotent:true`, with no file/network/model/payment effects. Discovery is not authorization to apply. Require the user-selected target and explicit action, retain the original requestId and exact scalar binding, and never treat `applyAllowed:false` from prepare as an application token. The server remeasures before a single atomic edit; same-key historical replay does not rerun media. Local cancellation/output loss remains unknown. No internal Agent catalog expansion is included. See [contract and restored restrictions](TIMELINE-LOUDNESS-APPLY.md).
+`timeline_loudness_apply` exposes the same strict `timeline.loudness.apply` contract. It is `readOnly:false`, `databaseWrite:true`, `localProcess:true`, `idempotent:true`, with no file/network/model/payment effects. Discovery is not authorization to apply. Require the user-selected target and explicit action, retain the original requestId and exact scalar binding, and never treat `applyAllowed:false` from prepare as an application token. The server remeasures before a single atomic edit; same-key historical replay does not rerun media. Local cancellation/output loss remains unknown. No internal Agent catalog expansion is included. See [contract and limits](TIMELINE-LOUDNESS-APPLY.md).
 
 ## LUT resource foundation
 
 Discovery now includes `lut_import`, `lut_list` and `lut_inspect`. Import requires an explicit project, stable request ID, name and canonical base64 source bytes (maximum7MiB); no local path or URL parameter is accepted. Metadata includes explicit unverified-colour/not-implemented-rendering status. The current SDK's10MiB stdio limit is unchanged, and a maximum complete LUT message is checked against its actual ReadBuffer. A new bounded LUT-only lane also exercises actual official MCP stdio import/replay/list/inspect and lost/tampered ACK recovery. It does not rerun issue #1 or change built-in Agent authority. See [LUT resources](LUT-RESOURCES.md).
+
+## 素材引用
+
+`asset_import` 接受严格互斥的路径分支（projectId、requestId、sourcePath、可选name）或原上传分支（上传上限30 MiB，可选requestId）。路径分支只能读取后端本机上已经确认的位置。MCP和Mio不能确认目录，也没有位置路径、outside confirm/revoke或桌面导入权限。
+
+MCP的独立客户端目录提供 `asset_media_status_list`、`asset_media_prepare` 和重新指向/使用新内容操作；prepare只准备完整哈希并核对引用修订，不是付费生成授权。普通素材结果只有按ID媒体URL、内容指纹、完整哈希状态和referenceRevision，不返回引用路径、卷名或本机可用状态。
+
+公共MCP发现使用S1输入扩展；内置Mio模型工具另用固定目录，保留原上传和生成输入，不接受sourcePath或referenceRevisions。固定模型schema不随公共客户端目录更新。

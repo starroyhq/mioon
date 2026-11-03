@@ -1,5 +1,11 @@
-import {CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_ROLE,CURRENT_RESTORED_SCHEMA,CURRENT_RESTORE_PROFILE} from './helpers/workspace-schema-current.ts';
-import {downgradeReviewedWorkspace} from './helpers/reviewed-schema-layers.ts';
+
+
+
+
+
+
+
+
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,14 +15,17 @@ import {pipeline} from 'node:stream/promises';
 import {Readable} from 'node:stream';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {DatabaseSync} from 'node:sqlite';
-import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+
 import {createServices} from '../packages/business/src/services.ts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
-import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
-import {collectProject,packageDocumentBytes,buildManifest,createProjectFromDocument} from '../packages/business/src/project-package/document.ts';
-import type {ProjectDocument} from '../packages/business/src/project-package/document.ts';
+import {readProjectState,changeMarks} from './helpers/project-state.ts';
+import {legacyPackageViewForReferencedStore} from './helpers/project-package-fixture.ts';
+
+
+
+import {collectProject,packageDocumentBytes,buildManifest,createProjectFromDocument,type ProjectDocument} from '../packages/business/src/project-package/document.ts';
+
 import {writeProjectPackage,readProjectPackage} from '../packages/business/src/project-package/container.ts';
 import {AGENT_TASK_OPERATION_ADMISSION} from '../packages/business/src/agent/task-tools-v2.ts';
 import {previsJpegSize} from '../packages/business/src/previs.ts';
@@ -52,16 +61,16 @@ function largestScene(): PrevisScene {
   keyframes:Array.from({length:PREVIS_LIMITS.keyframes},(_,index)=>({id:`k${9970+index}`,name,camera:wide,exports:Array.from({length:PREVIS_LIMITS.exportsPerKeyframe},()=>randomUUID())})),
   activeKeyframeId:'k9993'};
 }
-async function fixture(t: TestContext,{legacy=false}={}){
+async function fixture(t: TestContext){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-previs-'));
- const open=legacy?openLegacyWorkspaceStore:openStore;
+ const open=openStore;
  let store=open(root),services=createServices(store,new Map()),closed=false;
  const call=<T=Row>(operation: string,input: unknown): Promise<T>=>services.call(operation,input) as Promise<T>;
  const projectId=(await call<{id: string}>('project.create',{name:'Previs'})).id;
  async function asset(patch: Row={}): Promise<{id: string}> {
   const bytes=await renderMockImagePng({width:64,height:96}),id=randomUUID();
   const value={id,projectId,name:'K1.png',mimeType:'image/png',provenance:'user-import',sha256:sha(bytes),width:64,height:96,sizeBytes:bytes.length,relativePath:`media/${id}.png`,url:`/media/${id}`,createdAt:new Date().toISOString(),...patch};
-  store.put('assets',value);writeFileSync(path.join(root,String(value.relativePath)),bytes,{mode:0o600});return value;
+  writeFileSync(path.join(root,String(value.relativePath)),bytes,{mode:0o600});store.put('assets',value);return value;
  }
  const f={root,projectId,asset,call,
   get store(){return store;},
@@ -242,105 +251,39 @@ test('previs node rows stay bounded and keep their type',async t=>{
  write(text.id,{...data(text.id),text:'y'.repeat(5000)});
 });
 
-test('a current backup restores previs nodes read-only: thumbnails can be read, nothing can be saved',async t=>{
- const f=await fixture(t,{legacy:true}),node=await f.save(await f.create(),scene({keyframes:[keyframe('k1')]}));
- await f.thumbnail(node,'card');await f.thumbnail(node,'k1');
- const tables=['nodes','previs_requests','previs_thumbnails'];
- const rows=(db: DatabaseSync)=>Object.fromEntries(tables.map(table=>{const query=db.prepare(`SELECT rowid AS retainedRowid,* FROM ${table} ORDER BY rowid`);query.setReadBigInts(true);return [table,query.all().map(row=>({...row}))];}));
- const before=rows(f.store.db);await f.stop();
- const base=mkdtempSync(path.join(tmpdir(),'mioon-previs-backup-')),backup=path.join(base,'backup'),restored=path.join(base,'restored');
- t.after(()=>rmSync(base,{recursive:true,force:true}));
- assert.equal((await createWorkspaceBackup({source:f.root,destination:backup})).databaseSchemaVersion,CURRENT_ORDINARY_SCHEMA);
- const result=await restoreWorkspaceBackup({directory:backup,destination:restored});
- assert.deepEqual([result.sourceSchema,result.databaseSchemaVersion,result.profile],[CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_SCHEMA,CURRENT_RESTORE_PROFILE]);
- const store=openLegacyWorkspaceStore(restored),services=createServices(store,new Map());
- t.after(async()=>{await services.drain?.();store.close();});
- assert.equal(readCurrentWorkspaceRole(store.db),CURRENT_RESTORED_ROLE);
- assert.deepEqual(rows(store.db),before,'previs nodes, receipts and thumbnails are kept byte for byte');
- assert.equal(store.db.prepare("SELECT count(*) AS n FROM workspace_restore_holds WHERE kind='previs_requests'").get()!.n,2);
- const read=await services.call('previs.thumbnail.get',{projectId:f.projectId,nodeId:node.id,slots:['card','k1']}) as PrevisThumbnailGetResponse;
- assert.deepEqual(read.items.map(item=>item.slot),['card','k1']);
- const refused: Record<string,Row>={
-  'previs.create':{projectId:f.projectId,position:{x:0,y:0},requestId:randomUUID()},
-  'previs.scene.set':{projectId:f.projectId,nodeId:node.id,expectedSceneRevision:node.sceneRevision,scene:scene(),requestId:randomUUID()},
-  'previs.thumbnail.set':{projectId:f.projectId,nodeId:node.id,slot:'card',sceneRevision:node.sceneRevision,dataBase64:jpeg(8,8).toString('base64')},
- };
- for(const [operation,input] of Object.entries(refused))await assert.rejects(services.call(operation,input),{code:'RESTORE_OPERATION_UNAVAILABLE'},operation);
- const policy=(await services.call('workspace.restore.inspect',{}) as {operationPolicy: {operation: string; available: boolean}[]}).operationPolicy;
- assert.deepEqual(operations.map(operation=>policy.find(item=>item.operation===operation)?.available),[false,false,false,true]);
- assert.throws(()=>store.db.prepare("UPDATE previs_thumbnails SET updatedAt='x' WHERE nodeId=?").run(node.id),/RESTORE_OPERATION_UNAVAILABLE/);
- assert.throws(()=>store.db.prepare('DELETE FROM previs_thumbnails WHERE nodeId=?').run(node.id),/RESTORE_OPERATION_UNAVAILABLE/);
- assert.throws(()=>store.db.prepare('DELETE FROM previs_requests WHERE nodeId=?').run(node.id),/RESTORED_RECORD_HELD|must be retained/);
- assert.deepEqual(rows(store.db),before);
-});
 
-test('an ordinary62 workspace upgrades to previs storage, and its backup restores without it',async t=>{
- const f=await fixture(t,{legacy:true});
- const text=await f.call<{id: string}>('node.create',{projectId:f.projectId,type:'text',text:'雨夜',position:{x:0,y:0}});
- await f.stop();
- const db=new DatabaseSync(path.join(f.root,'workbench.sqlite'));
- try{db.exec('PRAGMA foreign_keys=ON');downgradeReviewedWorkspace(db,62);}finally{db.close();}
- const base=mkdtempSync(path.join(tmpdir(),'mioon-previs-62-')),backup=path.join(base,'backup'),restored=path.join(base,'restored');
- t.after(()=>rmSync(base,{recursive:true,force:true}));
- assert.equal((await createWorkspaceBackup({source:f.root,destination:backup})).databaseSchemaVersion,62);
- const result=await restoreWorkspaceBackup({directory:backup,destination:restored});
- assert.deepEqual([result.sourceSchema,result.databaseSchemaVersion],[62,63]);
- const store=openLegacyWorkspaceStore(restored),services=createServices(store,new Map());
- t.after(async()=>{await services.drain?.();store.close();});
- assert.equal(readCurrentWorkspaceRole(store.db),'restored-63-evidence');
- assert.equal(store.db.prepare("SELECT 1 FROM sqlite_schema WHERE name LIKE '%previs%'").get(),undefined);
- await assert.rejects(services.call('previs.create',{projectId:f.projectId,position:{x:0,y:0},requestId:randomUUID()}),{code:'RESTORE_OPERATION_UNAVAILABLE'});
- await assert.rejects(services.call('previs.thumbnail.get',{projectId:f.projectId,nodeId:text.id,slots:['card']}),{code:'PREVIS_NODE_REQUIRED'});
- await assert.rejects(services.call('previs.thumbnail.get',{projectId:f.projectId,nodeId:randomUUID(),slots:['card']}),{code:'NOT_FOUND'});
- // Opening the ordinary62 workspace itself upgrades it in place.
- await f.reopen();
- assert.equal(readCurrentWorkspaceRole(f.store.db),`ordinary-${CURRENT_ORDINARY_SCHEMA}`);
- const node=await f.create();
- assert.equal((await f.save(node,scene({keyframes:[keyframe('k1')]}))).sceneRevision,2);
-});
 
-test('project packages carry the scene with remapped exports and leave receipts and thumbnails behind',async t=>{
- const f=await fixture(t,{legacy:true}),image=await f.asset(),spare=await f.asset({name:'unused.png'});
+
+
+test('project containers carry previs scenes without receipts or thumbnails; current imports reject without writes',async t=>{
+ const f=await fixture(t),image=await f.asset(),spare=await f.asset({name:'unused.png'});
  const node=await f.save(await f.create({label:'雨夜街口'}),scene({keyframes:[keyframe('k1',[image.id]),keyframe('k2')],activeKeyframeId:'k1'}));
  await f.thumbnail(node,'card');
- const options={media:'used' as const,includeExports:false},collected=collectProject(f.store as never,f.projectId,options);
+ const options={media:'used' as const,includeExports:false},collected=collectProject(legacyPackageViewForReferencedStore(f.store),f.projectId,options);
  assert.deepEqual(collected.document.assets.map(asset=>asset.id),[image.id],'an exported keyframe image counts as used');
  assert.notEqual(spare.id,image.id);
  const work=mkdtempSync(path.join(tmpdir(),'mioon-previs-package-')),targetRoot=mkdtempSync(path.join(tmpdir(),'mioon-previs-target-')),staging=mkdtempSync(path.join(tmpdir(),'mioon-previs-stage-')),file=path.join(work,'previs.mioon');
  t.after(()=>{for(const directory of [work,targetRoot,staging])rmSync(directory,{recursive:true,force:true});});
  const document=packageDocumentBytes(collected.document),manifest=buildManifest({collected,document,appVersion:'test',options,name:'Previs'});
  await pipeline(Readable.from(writeProjectPackage({manifest,document,media:collected.media.map(entry=>entry.source)})),createWriteStream(file));
- const read=await readProjectPackage({source:createReadStream(file),destination:staging});
- const target=openLegacyWorkspaceStore(targetRoot),services=createServices(target,new Map());t.after(async()=>{await services.drain?.();target.close();});
- const files=new Map([...read.media].map(([key,value])=>[key,value.file]));
- const {projectId}=createProjectFromDocument(target as never,{document:read.document as never,files,name:'Imported previs',move:false});
- const imported=(await services.call('project.get',{projectId}) as {nodes: PrevisNodeRecord[]; assets: {id: string}[]});
- const copy=imported.nodes.find(item=>item.type==='previs')!;
- assert.notEqual(copy.id,node.id);
- assert.deepEqual([copy.label,copy.revision,copy.sceneRevision],['雨夜街口',node.revision,node.sceneRevision]);
- assert.deepEqual(copy.scene.keyframes[0]!.exports,[imported.assets[0]!.id],'the export follows its remapped asset');
- assert.notEqual(imported.assets[0]!.id,image.id);
- assert.deepEqual({...copy.scene,keyframes:copy.scene.keyframes.map(item=>({...item,exports:[]}))},{...node.scene,keyframes:node.scene.keyframes.map(item=>({...item,exports:[]}))});
- assert.equal(target.db.prepare('SELECT count(*) AS n FROM previs_requests').get()!.n,0);
- assert.equal(target.db.prepare('SELECT count(*) AS n FROM previs_thumbnails').get()!.n,0);
- const saved=await services.call('previs.scene.set',{projectId,nodeId:copy.id,expectedSceneRevision:copy.sceneRevision,scene:copy.scene,requestId:randomUUID()}) as PrevisNodeRecord;
- assert.equal(saved.sceneRevision,copy.sceneRevision+1);
- // A package whose previs node breaks the scene rules, or names a missing export, is refused whole.
- const packaged=read.document as ProjectDocument;
- const broken=(change: (row: Row)=>Row)=>({...packaged,nodes:packaged.nodes.map(row=>row.type==='previs'?change(row):row)}) as never;
- for(const document of [broken(row=>({...row,scene:{...(row.scene as Row),schemaVersion:2}})),broken(row=>({...row,scene:{...(row.scene as Row),keyframes:[keyframe('k1',[randomUUID()])],activeKeyframeId:null}}))])
-  assert.throws(()=>createProjectFromDocument(target as never,{document,files,name:'Broken',move:false}),{code:'PROJECT_PACKAGE_INVALID_CONTENT'});
- assert.equal((await services.call('project.list',{}) as unknown[]).length,1);
+ const result=await readProjectPackage({source:createReadStream(file),destination:staging});
+ const read={...result,document:result.document as ProjectDocument};
+ assert.deepEqual(read.document.nodes,collected.document.nodes);
+ assert.deepEqual(read.document.assets,collected.document.assets);
+ const packaged=read.document.nodes.find(item=>item.type==='previs')!;
+ assert.deepEqual(packaged.scene,node.scene);
+ assert.equal(Object.hasOwn(read.document,'previs_requests'),false);
+ assert.equal(Object.hasOwn(read.document,'previs_thumbnails'),false);
+ const target=openStore(targetRoot);t.after(()=>target.close());
+ const before={state:readProjectState(target.db),marks:changeMarks(target.db)};
+ assert.throws(()=>createProjectFromDocument(target,{document:read.document,files:new Map([...read.media].map(([key,value])=>[key,value.file])),name:'Unavailable import',move:false}),{name:'TypeError',message:'Legacy project package imports cannot run on project databases.'});
+ assert.deepEqual({state:readProjectState(target.db),marks:changeMarks(target.db)},before);
+ // Remapping, imported scene edits and invalid-import atomicity move to V4;
+ // S7 never creates an old workspace to exercise that retired implementation.
+
 });
 
-test('deleting a project removes its previs nodes, receipts and thumbnails',async t=>{
- const f=await fixture(t,{legacy:true}),node=await f.save(await f.create(),scene({keyframes:[keyframe('k1')]}));
- await f.thumbnail(node,'card');await f.thumbnail(node,'k1');
- (f.services as unknown as {setProjectDeletionCompanions: (value: {assertDeletable(id: string): void; removeProject(id: string): void})=>unknown}).setProjectDeletionCompanions({assertDeletable(){},removeProject(){}});
- const project=await f.call<{project: {revision: number}}>('project.get',{projectId:f.projectId});
- await f.call('project.delete',{projectId:f.projectId,expectedRevision:project.project.revision,requestId:randomUUID(),confirmPermanentDeletion:true});
- for(const table of ['nodes','previs_requests','previs_thumbnails'])assert.equal(f.store.db.prepare(`SELECT count(*) AS n FROM ${table}`).get()!.n,0,table);
-});
+
 
 test('Mio creates and saves previs scenes but never thumbnails, and each operation declares its effects',()=>{
  const admission=AGENT_TASK_OPERATION_ADMISSION as Record<string,{allowed: boolean; tier?: string}>;
@@ -357,4 +300,26 @@ test('the thumbnail reader accepts canvas JPEG containers and refuses everything
  const twoFrames=Buffer.concat([jpeg(8,8).subarray(0,39),jpeg(8,8).subarray(20)]);
  for(const bytes of [jpeg(8,8,{frame:0xc3}),jpeg(8,8).subarray(0,30),twoFrames,await renderMockImagePng({width:8,height:8}),Buffer.from([0xff,0xd8,0xff,0xd9])])
   assert.equal(previsJpegSize(bytes),null);
+});
+
+
+test('S1 thumbnails bind service-derived fingerprints and stop returning bytes after source or consent changes',async t=>{
+ const f=await fixture(t),image=await f.asset(),created=await f.create(),node=await f.save(created,scene({keyframes:[keyframe('k1',[image.id])]}));
+ await f.thumbnail(node,'k1');assert.equal((await f.thumbnails(node,['k1'])).items.length,1);
+ const cache=()=>f.store.db.prepare('SELECT * FROM previs_thumbnails WHERE nodeId=?').all(node.id);
+ const original=cache(),digest=original[0]!.sourceFingerprintDigest;assert.match(String(digest),/^[a-f0-9]{64}$/);
+ const {mediaReferenceSchema}=await import('../packages/contracts/src/media-reference.ts');
+ const {referenceTestAsset}=await import('../packages/business/src/project-file/test-asset-fixture.ts');
+ const fs=await import('node:fs/promises'),saved=f.store.get('assets',image.id) as Row,reference=mediaReferenceSchema.parse(saved.reference),file=path.resolve(f.root,reference.path),info=await fs.stat(file);
+ await fs.utimes(file,info.atime,new Date(info.mtimeMs+2000));
+ await assert.rejects(f.thumbnails(node,['k1']),{code:'MEDIA_CHANGED'});assert.deepEqual(cache(),original);
+ const refreshed=referenceTestAsset(f.root,{...saved,relativePath:reference.path,reference:undefined,referenceRevision:2});f.store.put('assets',refreshed);
+ assert.deepEqual((await f.thumbnails(node,['k1'])).items,[],'accepted fingerprint changes invalidate prior cache');
+ await f.thumbnail(node,'k1');assert.notEqual(cache()[0]!.sourceFingerprintDigest,digest);
+ const outside=await fs.mkdtemp(path.join(tmpdir(),'previs-consent-'));t.after(()=>fs.rm(outside,{recursive:true,force:true}));
+ const destination=path.join(outside,'source.png');await fs.rename(file,destination);
+ const relinked=referenceTestAsset(f.root,{...refreshed,relativePath:path.relative(f.root,destination),reference:undefined,referenceRevision:3});f.store.put('assets',relinked);
+ let confirmed=true;const {registerProjectMediaStore}=await import('../packages/business/src/project-media-storage.ts');const release=registerProjectMediaStore(f.store,{outsidePaths:{list:()=>confirmed?[{projectId:f.projectId,directory:outside,confirmedAt:new Date().toISOString()}]:[]}});t.after(release);
+ assert.equal((await f.thumbnails(node,['k1'])).items.length,1);confirmed=false;
+ await assert.rejects(f.thumbnails(node,['k1']),{code:'MEDIA_OUTSIDE_NOT_CONFIRMED'});
 });

@@ -4,7 +4,6 @@ import type {TimelineClipLoudnessInput, TimelineClipLoudnessResponse} from '@mio
 export interface TimelineClipLoudnessClientOptions {
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
-  readonly expectedWorkspaceOrigin?: string;
 }
 export interface TimelineClipLoudnessRpcClient {
   rpc(operation: 'timeline.clip.loudness', input: TimelineClipLoudnessInput,

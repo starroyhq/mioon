@@ -27,8 +27,7 @@ interface Deferred<T> {readonly promise: Promise<T>; resolve(value: T): void; re
 const deferred = <T = unknown>(): Deferred<T> => { let resolve!: (value: T)=>void, reject!: (error: unknown)=>void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 export function fixture(patch: Record<string, unknown> = {}) {
   let live = context(patch); const calls: {input: unknown; options: unknown; }[] = [], reads: Deferred<unknown>[] = [], auth: boolean[] = [], changes: unknown[] = [];
-  const controller = createExportLoudnessController({ isRenderRecord: isTimelineRenderRecord, getContext: () => live as never, getInvocation: () => ({}),
-    onChange: (state: unknown) => changes.push(state), onUnauthorized: () => auth.push(false), read(input: unknown, options: unknown) { calls.push({ input, options }); const pending = deferred(); reads.push(pending); return pending.promise; } } as never);
+  const controller = createExportLoudnessController({ isRenderRecord: isTimelineRenderRecord, getContext: () => live as never, onChange: (state: unknown) => changes.push(state), onUnauthorized: () => auth.push(false), read(input: unknown, options: unknown) { calls.push({ input, options }); const pending = deferred(); reads.push(pending); return pending.promise; } } as never);
   controller.setContext(live as never);
   const stateOf=(): {targets: Record<string, unknown>[]; scope?: unknown; draftVersion?: unknown; targetKey?: unknown}=>controller.getState() as never;
   const f = { controller, calls, reads, auth, changes, state: () => controller.getState(), target: (index = 0) => stateOf().targets[index],

@@ -1,3 +1,5 @@
+import {png} from './helpers/timeline-image-fixtures.ts';
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
@@ -5,7 +7,7 @@ import {mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {TIMELINE_EXPORT_DEFAULT_SETTINGS,isTimelineExportCapabilitiesResponse,hasRequestNotAppliedProof,isExportPreflightResponse} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createTimelinePreflightServices,timelineSnapshotHash} from '../packages/business/src/timeline-preflight.ts';
 import type {TestContext} from 'node:test';
@@ -17,7 +19,7 @@ type PreparedSourceValue = Parameters<typeof validatePreparedTimelineSources>[3]
 interface ServiceError {code?: string; message?: string; details?: {mutationOutcome?: boolean; [key: string]: unknown}}
 const serviceError = (value: unknown): ServiceError => value as ServiceError;
 interface FixtureTimeline {id: string; revision: number; width: number; height: number; tracks: Array<{id: string}>}
-interface FixtureAsset {id: string; projectId: string; width: number; height: number; duration: number; hasAudio: boolean; sha256: string; mimeType: string; relativePath: string}
+interface FixtureAsset {id: string; projectId: string; width: number; height: number; duration: number; hasAudio: boolean; sha256: string; mimeType: string; relativePath?: string}
 interface Fixture {
   root: string; store: WorkspaceStore; services: ReturnType<typeof createServices>;
   project: {id: string}; other: {id: string}; probes: number;
@@ -45,8 +47,9 @@ async function fixture(t: Pick<TestContext,'after'>,{inspect=async()=>available(
  const f: Fixture={root,store,services,project,other,get probes(){return probes;},input:(): Record<string, unknown>=>({projectId:project.id,expectedRevision:f.timeline?.revision??1,requestId:randomUUID(),purpose:'export',exportSettings:settings()}),state:(): Record<string, unknown>=>Object.fromEntries(schemaObjects(store.db).filter(({type})=>type==='table').sort(byName).map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]))};
  if(!empty){
   f.timeline=await services.call('timeline.get',{projectId:project.id}) as FixtureTimeline;
-  const id=randomUUID(),bytes=Buffer.from('managed image fixture'),relativePath=`media/${id}.png`;await writeFile(path.join(root,relativePath),bytes);
+  const id=randomUUID(),bytes=png(),relativePath=`media/${id}.png`;await writeFile(path.join(root,relativePath),bytes);
   f.asset=store.put('assets',{id,projectId:project.id,name:'Image',mimeType:'image/png',sha256:createHash('sha256').update(bytes).digest('hex'),relativePath,width:720,height:1280,duration:0,hasAudio:false,sizeBytes:bytes.length,createdAt:new Date().toISOString()});
+  f.asset=store.get('assets',id) as FixtureAsset;
   f.timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:f.timeline!.revision,requestId:randomUUID(),trackId:f.timeline!.tracks[0]!.id,assetId:id,startFrame:0,durationFrames:30}) as FixtureTimeline;
  }
  t.after(async()=>{await services.drain();store.close();await rm(root,{recursive:true,force:true});});return f;
@@ -118,7 +121,7 @@ test('settings-aware source preflight hashes and summarizes delivery without cap
 test('post-capability source guard retains discovered metadata flexibility but fences exact immutable source identity',async t=>{
  const f=await fixture(t) as Fixture,snapshot=readTimelinePreflightSnapshot(f.store,f.project.id,settings()).snapshot;if(!snapshot)throw Error('missing snapshot');
  const snapshotArg=snapshot as unknown as Parameters<typeof validatePreparedTimelineSources>[2];
- const prepared=new Map(snapshot.assets.map(asset=>[asset.id,{...asset,width:111,height:222,duration:9,hasAudio:true,path:path.resolve(f.root,asset.relativePath as string)} as unknown as PreparedSourceValue]));
+ const prepared=new Map(snapshot.assets.map(asset=>[asset.id,{...asset,width:111,height:222,duration:9,hasAudio:true,path:mediaFixturePath(f.root,asset)} as unknown as PreparedSourceValue]));
  f.store.put('assets',{...f.asset!,width:333,height:444,duration:8,hasAudio:true});const before=f.state();
  assert.doesNotThrow(()=>validatePreparedTimelineSources(f.store.db,f.project.id,snapshotArg,prepared,{root:f.root}));assert.deepEqual(f.state(),before);
  for(const patch of [{sha256:'b'.repeat(64)},{mimeType:'image/jpeg'},{relativePath:'media/private.png'},{projectId:f.other.id}]){

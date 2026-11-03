@@ -1,5 +1,6 @@
 import {AppError,getCapabilityProfile,getLegacyCapabilityProfile,getGenerationProfileRegion,buildAdapterPlan,getShotGenerationReferenceSelection,isSubjectReference,getSubjectGenerationSnapshotIssue,SUBJECT_REFERENCE_PROFILE_VERSION} from '@mioon/contracts';
 import type {DatabaseSync} from 'node:sqlite';
+import {isDeepStrictEqual} from 'node:util';
 import {validateImageConsumption} from './image-consumption.ts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
@@ -10,6 +11,8 @@ export interface GenerationAsset {
  readonly projectId: string;
  readonly sha256?: unknown;
  readonly relativePath?: unknown;
+ readonly reference?: unknown;
+ readonly referenceRevision?: unknown;
  readonly mimeType?: unknown;
  readonly width?: unknown;
  readonly height?: unknown;
@@ -88,7 +91,7 @@ function manifestError(): never{return fail('INVALID_REFERENCE_MANIFEST','参考
 const isRecord=(value: unknown): value is GenerationRecord=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const dense=(value: unknown): value is unknown[]=>Array.isArray(value)&&value.length<=8&&Object.keys(value).length===value.length;
 export function assertGenerationReferenceIds(ids: unknown): void {if(!dense(ids)||ids.some(id=>typeof id!=='string')||new Set(ids).size!==ids.length)manifestError();}
-const metadataKeys=['mimeType','sha256','relativePath','width','height','sizeBytes'] as const;
+const metadataKeys=['mimeType','sha256','relativePath','reference','referenceRevision','width','height','sizeBytes'] as const;
 const failures=new WeakSet<object>();
 export const markGenerationPreflightFailure=<T extends object>(error: T): T=>{failures.add(error);return error;};
 export const isGenerationPreflightFailure=(error: unknown): boolean=>typeof error==='object'&&error!==null&&failures.has(error);
@@ -233,7 +236,7 @@ export function prepareGenerationInputs({source,projectId,providerId,model,capab
    const ref=pinned?.[index];
    // Missing historical size is resolved only from the same managed identity.
    // Other frozen metadata is never substituted with a newer asset record.
-   if(isRecord(ref)&&metadataKeys.some(key=>Object.hasOwn(ref,key)&&ref[key]!==asset[key]))
+   if(isRecord(ref)&&metadataKeys.some(key=>Object.hasOwn(ref,key)&&!isDeepStrictEqual(ref[key],asset[key])))
     fail('REFERENCE_CHANGED','参考图元数据已与冻结快照不同，请检查原始素材',{assetId:id});
   }
   return asset;
@@ -259,7 +262,7 @@ export function prepareGenerationInputs({source,projectId,providerId,model,capab
  const bindings: {role: string; assetId: string; sha256: unknown}[]=hasPin?source.referenceBindings as {role: string; assetId: string; sha256: unknown}[]:assets.map((asset,index)=>({
   role:ownerRole(pinned?.[index])??ownerRole(asset)??(typeof selection?.[index]?.role==='string'?selection[index]?.role:undefined)??'first_frame',
   assetId:asset.id,sha256:asset.sha256}));
- if(!hasPin&&Object.hasOwn(source,'referenceBindings')&&JSON.stringify(source.referenceBindings)!==JSON.stringify(bindings))manifestError();
+ if(!hasPin&&Object.hasOwn(source,'referenceBindings')&&!isDeepStrictEqual(source.referenceBindings,bindings))manifestError();
  if(!dense(bindings)||bindings.length!==ids.length||bindings.some((binding,index)=>!isRecord(binding)||Object.keys(binding).some(key=>!['role','assetId','sha256'].includes(key))||binding.assetId!==ids[index]||binding.sha256!==assets[index]?.sha256))manifestError();
  // A pair needs an explicit, complete role manifest. The tail selection is
  // provenance, never a license to reinterpret the second array entry.

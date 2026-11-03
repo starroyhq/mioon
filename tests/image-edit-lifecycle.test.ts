@@ -9,6 +9,7 @@ import type {TypedImageServices, TypedImageCall, TypedFrameServices} from './hel
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedStore} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
 import {mkdtempSync,rmSync,writeFileSync,readFileSync,unlinkSync,symlinkSync} from 'node:fs';
@@ -20,7 +21,7 @@ import {FRAME_PROFILE_ID,FRAME_SELECTION_RULE} from '../packages/contracts/src/f
 import {createComfySettings} from '../packages/business/src/comfy/settings.ts';
 import {DEFAULT_COMFY_IMAGE_CONFIGURATION,COMFY_IMAGE_OPTIONS} from '../packages/contracts/src/comfy-images.ts';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {validateImageTaskReview} from '../packages/business/src/images/reviews.ts';
 import {createImageServices} from '../packages/business/src/images.ts';
 import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';
@@ -48,7 +49,7 @@ async function fixture(t: test.TestContext,{autoRun=true,generate,liveGenerate,f
  const liveGateway={generate:async(input: unknown,options: { beforeDispatch: () => void; })=>{calls++;if(liveGenerate)return liveGenerate(input as Parameters<FixtureGenerate>[0],options as Parameters<FixtureGenerate>[1]);options.beforeDispatch();posts++;return {bytes:await png()};}};
  const images=(createImageServices(store,{autoRun,generate:adapter,settings,liveGateway,fault,comfySettings,comfyConnector} as unknown as ImageServicesOptions) as TypedImageServices);
  const bytes=await png(),assetId=randomUUID(),asset={id:assetId,projectId,name:'Source.png',mimeType:'image/png' as const,provenance:'user-import',sha256:sha(bytes),width:1024,height:1024,sizeBytes:bytes.length,relativePath:`media/${assetId}.png`,createdAt:new Date().toISOString()};
- store.put('assets',asset);writeFileSync(path.join(root,asset.relativePath),bytes,{mode:0o600});
+ writeFileSync(path.join(root,asset.relativePath),bytes,{mode:0o600});store.put('assets',asset);
  const f={root,store,native,foreignStore,projectId,otherProjectId,images,asset,bytes,get calls(){return calls;},get posts(){return posts;},
   call:(((operation: string|number,input: unknown)=>images.handlers[operation](input)) as unknown as TypedImageCall),
   input:(patch?: Record<string, unknown>)=>({projectId,requestId:randomUUID(),name:'Image group',providerId:'mock',model:IMAGE_MODELS.mock,prompt:'Use the selected source to make a variation.',options:{...IMAGE_FIXED_OPTIONS},purpose:'edit',inputImage:{assetId,sha256:asset.sha256},...patch}),
@@ -252,7 +253,9 @@ test('source damage cannot prevent rejection of pending review or pre-dispatch c
 
 for(const reviewMode of [false,true])test(`two-window ${reviewMode?'preparation':'generation'} source rejection cannot claim an in-flight same key was not accepted`,async t=>{
  const f=await fixture(t,{autoRun:false}),input=reviewMode?liveInput(f):f.input(),invoke=()=>reviewMode?f.prepare(input):f.call('image.generate',input);
- f.alter();const rejected=invoke();f.restore();const accepted=invoke();
+ // Bind the first refusal synchronously to damaged metadata before the second
+ // window restores it; asynchronous L1 admission may otherwise see restored bytes.
+ f.store.put('assets',{...f.asset,sha256:'f'.repeat(64)});const rejected=invoke();f.store.put('assets',f.asset);const accepted=invoke();
  await assert.rejects(rejected as Promise<unknown>,(error: { code: string; details: { imageOutcome: unknown; }; })=>error.code==='IMAGE_SOURCE_INVALID'&&!error.details?.imageOutcome);
  const value=await accepted;assert.deepEqual(await invoke(),value);assert.equal(f.store.db.prepare(`SELECT count(*) n FROM ${reviewMode?'image_reviews':'image_tasks'}`).get()!.n,1);
  withoutForeignKeys(f.store.db,()=>f.store.put('assets',{...f.asset,projectId:f.otherProjectId}));
@@ -268,15 +271,15 @@ function solidPng(width: number,height=width,{alpha=255}={}){
 
 test('opaque 8-bit sources support nonsquare dimensions but reject real alpha without conversion',async t=>{
  const f=await fixture(t,{autoRun:false});
- for(const alpha of [255,0]){const bytes=solidPng(4,2,{alpha}),asset={...f.asset,width:4,height:2,sizeBytes:bytes.length,sha256:sha(bytes)};f.store.put('assets',asset);writeFileSync(path.join(f.root,asset.relativePath),bytes);const input=f.input({inputImage:{assetId:asset.id,sha256:asset.sha256}});
+ for(const alpha of [255,0]){const bytes=solidPng(4,2,{alpha}),asset={...f.asset,width:4,height:2,sizeBytes:bytes.length,sha256:sha(bytes)};writeFileSync(path.join(f.root,asset.relativePath),bytes);f.store.put('assets',asset);const input=f.input({inputImage:{assetId:asset.id,sha256:asset.sha256}});
   if(alpha===255){const value=await f.call('image.generate',input);assert.equal(value.sourceImage!.width,4);assert.equal(value.sourceImage!.height,2);f.call('image.task.cancelQueued',{...taskInput(f,value.id),expectedRevision:1,requestId:randomUUID()});}
   else await assert.rejects(Promise.resolve().then(()=>f.call('image.generate',input)),code('IMAGE_SOURCE_INVALID'));
  }
 });
 
 test('a fully owned extracted frame is admitted with bounded typed frame provenance',async t=>{
- const f=await fixture(t),sourceId=randomUUID(),sourceBytes=Buffer.from('Synthetic video source, no decoder network'),source={id:sourceId,projectId:f.projectId,name:'Video.mp4',mimeType:'video/mp4',sha256:sha(sourceBytes),sizeBytes:sourceBytes.length,relativePath:`media/${sourceId}.mp4`,width:4,height:2,duration:1,provenance:'user-import'};
- f.store.put('assets',source);writeFileSync(path.join(f.root,source.relativePath),sourceBytes,{mode:0o600});const bytes=solidPng(4,2);
+ const f=await fixture(t),sourceId=randomUUID(),sourceBytes=mp4HeaderFixture('Synthetic video source, decoder is injected'),source={id:sourceId,projectId:f.projectId,name:'Video.mp4',mimeType:'video/mp4',sha256:sha(sourceBytes),sizeBytes:sourceBytes.length,relativePath:`media/${sourceId}.mp4`,width:4,height:2,duration:1,provenance:'user-import'};
+ writeFileSync(path.join(f.root,source.relativePath),sourceBytes,{mode:0o600});f.store.put('assets',source);const bytes=solidPng(4,2);
  const frames=(createFrameServices(f.store,{decode:async (input:import('../packages/business/src/frame-decoder.ts').DecodeManagedFrameOptions)=>{input!.beforeSpawn!(input!.signal!);return {bytes,provenance:{profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE,sourceFrame:input!.requestedFrame as number,fps:30,sourceHash:(input!.asset as {sha256:string}).sha256,probe:{streamIndex:0,timeBaseNumerator:1,timeBaseDenominator:15360,width:4,height:2,rotation:0,sarNumerator:1,sarDenominator:1}}};}} as unknown as Parameters<typeof createFrameServices>[1]) as TypedFrameServices);t.after(()=>frames.drain());
  const frame=await frames.handlers['frame.extract']({projectId:f.projectId,sourceAssetId:source.id,sourceHash:source.sha256,sourceFrame:0,requestId:randomUUID()});let ready;
  for(let i=0;i<500;i++){ready=frames.handlers['frame.task.get']({projectId:f.projectId,taskId:frame.id});if(ready.state==='succeeded')break;await pause(5);}assert.equal(ready.state,'succeeded');
@@ -297,8 +300,8 @@ test('a completed Comfy image is a valid edit source only through its full remot
  assert.equal(edited.sourceImage!.width,512);assert.equal(edited.sourceImage!.origin.kind,'generated');assert.equal(edited.sourceImage!.origin.imageSource.imageTaskId,ack.id);noPrivate(edited);
 });
 
-test('source verification memory admission is shared across wrappers and released only after verification settles',async t=>{
- const f=await fixture(t,{autoRun:false}),one=createImageEditSourceResolver(f.store),two=createImageEditSourceResolver({...f.store});
+test('source verification memory admission is shared across resolvers and released only after verification settles',async t=>{
+ const f=await fixture(t,{autoRun:false}),one=createImageEditSourceResolver(f.store),two=createImageEditSourceResolver(f.store);
  const input=f.input(),a=one.verify(input),b=two.verify(input);
  await assert.rejects(two.verify(input),code('IMAGE_QUEUE_FULL'));
  await Promise.all([a,b]);assert.equal((await two.verify(input)).descriptor.assetId,f.asset.id);

@@ -1,3 +1,5 @@
+import {mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
+import {mediaFingerprintToken} from './project-asset-references.ts';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import type {SQLOutputValue} from 'node:sqlite';
@@ -51,7 +53,7 @@ export interface WaveformAsset {
 export interface WaveformCacheRow {
  cacheKey: string;
  projectId: string;
- sourceSha256: string;
+ sourceFingerprint: string;
  algorithm: string;
  status: string;
  attemptId: string;
@@ -103,6 +105,8 @@ export interface WaveformFault extends Error {
 }
 export interface WaveformHistoryReaders {
  readonly handlers: Readonly<Record<string, (input: unknown) => unknown>>;
+ readonly sourceColumn: 'sourceFingerprint' | 'sourceSha256';
+ fingerprint(asset: WaveformAsset): string | null;
  cacheBounded(): boolean;
  owned(input: WaveformGetInput): WaveformAsset;
  sourceKey(asset: WaveformAsset): string | null;
@@ -124,9 +128,9 @@ export const waveformDigest=(peaks: Uint16Array | readonly number[]): string=>{
  for(let i=0;i<peaks.length;i++)bytes.writeUInt16LE(peaks[i] as number,i*2);
  return createHash('sha256').update(bytes).digest('hex');
 };
-const keyFor=(projectId: string,sourceSha256: string): string=>createHash('sha256').update(JSON.stringify([projectId,sourceSha256,WAVEFORM_ALGORITHM])).digest('hex');
-export const waveformRowBytes=(row: {cacheKey: unknown; projectId: unknown; sourceSha256: unknown; algorithm: unknown; status: unknown; attemptId: unknown; data: unknown}): number=>Buffer.byteLength(JSON.stringify({cacheKey:row.cacheKey,projectId:row.projectId,
- sourceSha256:row.sourceSha256,algorithm:row.algorithm,status:row.status,attemptId:row.attemptId,data:row.data}));
+const keyFor=(projectId: string,sourceFingerprint: string): string=>createHash('sha256').update(JSON.stringify([projectId,sourceFingerprint,WAVEFORM_ALGORITHM])).digest('hex');
+export const waveformRowBytes=(row: {cacheKey: unknown; projectId: unknown; sourceFingerprint: unknown; algorithm: unknown; status: unknown; attemptId: unknown; data: unknown},sourceColumn:'sourceFingerprint'|'sourceSha256'='sourceFingerprint'): number=>Buffer.byteLength(JSON.stringify({cacheKey:row.cacheKey,projectId:row.projectId,
+ [sourceColumn]:row.sourceFingerprint,algorithm:row.algorithm,status:row.status,attemptId:row.attemptId,data:row.data}));
 
 const messages=waveformMessages,reason=waveformReason,sourceMetadata=waveformSourceMetadata,digest=waveformDigest,rowBytes=waveformRowBytes;
 export const waveformInput=(input: unknown): WaveformGetInput=>input as WaveformGetInput;
@@ -135,6 +139,8 @@ export const waveformInput=(input: unknown): WaveformGetInput=>input as Waveform
  * admission/eviction, probe, decode, file access, queue or polling is created.
  * The normal waveform service reuses these exact readers and validators. */
 export function createWaveformHistoryReaders({db}: {db: DatabaseSync}): WaveformHistoryReaders {
+ const sourceColumn=db.prepare('SELECT name FROM pragma_table_info(?)').all('waveform_cache').some(row=>row.name==='sourceFingerprint')?'sourceFingerprint':'sourceSha256';
+ const fingerprint=(asset: WaveformAsset): string | null=>{const parsed=mediaReferenceSchema.safeParse(asset.reference);return parsed.success?mediaFingerprintToken(parsed.data):sourceColumn==='sourceSha256'&&typeof asset.sha256==='string'&&sha.test(asset.sha256)?asset.sha256:null;};
  const cacheBounded=()=>Number(db.prepare('SELECT count(*) AS n FROM (SELECT 1 FROM waveform_cache LIMIT 65)').get()?.n)<=WAVEFORM_CACHE_LIMITS.entries;
  function owned(input: WaveformGetInput): WaveformAsset {
   // Bind both relational owners before parsing JSON, inspecting cache state or
@@ -148,12 +154,12 @@ export function createWaveformHistoryReaders({db}: {db: DatabaseSync}): Waveform
   if(!object(asset)||!object(project)||project.id!==input.projectId||asset.id!==input.assetId||asset.projectId!==input.projectId)missing();
   return asset as WaveformAsset;
  }
- function sourceKey(asset: WaveformAsset): string | null {return typeof asset.sha256==='string'&&sha.test(asset.sha256)?keyFor(asset.projectId,asset.sha256):null;}
+ function sourceKey(asset: WaveformAsset): string | null {const token=fingerprint(asset);return token?keyFor(asset.projectId,token):null;}
  function load(cacheKey: string): WaveformCacheRow | null {
   const row=db.prepare(`SELECT position,
    CASE WHEN length(CAST(cacheKey AS BLOB))=64 THEN cacheKey END AS cacheKey,
    CASE WHEN length(CAST(projectId AS BLOB))=36 THEN projectId END AS projectId,
-   CASE WHEN length(CAST(sourceSha256 AS BLOB))=64 THEN sourceSha256 END AS sourceSha256,
+   CASE WHEN length(CAST(${sourceColumn} AS BLOB))=64 THEN ${sourceColumn} END AS sourceFingerprint,
    CASE WHEN length(CAST(algorithm AS BLOB)) BETWEEN 1 AND 100 THEN algorithm END AS algorithm,
    CASE WHEN length(CAST(status AS BLOB)) BETWEEN 1 AND 16 THEN status END AS status,
    CASE WHEN length(CAST(attemptId AS BLOB))=36 THEN attemptId END AS attemptId,bytes,reservedBytes,
@@ -162,12 +168,12 @@ export function createWaveformHistoryReaders({db}: {db: DatabaseSync}): Waveform
   return row?row as unknown as WaveformCacheRow:null;
  }
  function valid(row: WaveformCacheRow, asset: WaveformAsset): WaveformStoredData | null {
-  if(!row||row.cacheKey!==sourceKey(asset)||row.projectId!==asset.projectId||row.sourceSha256!==asset.sha256||
+  if(!row||row.cacheKey!==sourceKey(asset)||row.projectId!==asset.projectId||row.sourceFingerprint!==fingerprint(asset)||
    row.algorithm!==WAVEFORM_ALGORITHM||!uuid.test(row.attemptId)||!['queued','running',...terminal].includes(row.status)||
    !Number.isSafeInteger(row.bytes)||row.bytes<1||row.bytes>WAVEFORM_CACHE_LIMITS.recordBytes||
    !Number.isSafeInteger(row.reservedBytes)||row.reservedBytes<0||row.reservedBytes>WAVEFORM_CACHE_LIMITS.recordBytes||typeof row.data!=='string')return null;
   let data: unknown;try{data=JSON.parse(row.data);}catch{return null;}
-  if(!object(data)||rowBytes({...row,data})!==row.bytes)return null;
+  if(!object(data)||rowBytes({...row,data},sourceColumn)!==row.bytes)return null;
   const keys=Object.keys(data);
   if(row.status==='ready'){
    if(keys.length!==8||!['duration','sourceFrames','sampleFrames','peaks','peakDigest','clipped','channels','source'].every(key=>Object.hasOwn(data,key))||
@@ -222,5 +228,5 @@ export function createWaveformHistoryReaders({db}: {db: DatabaseSync}): Waveform
   return {...out,sourceStartFrame:start,sourceEndFrame:end,peaks};
  }
  const handlers=Object.freeze({'asset.waveform.get':(input: unknown)=>get(parse('asset.waveform.get',input) as WaveformGetInput)});
- return Object.freeze({handlers,cacheBounded,owned,sourceKey,load,valid,response,state});
+ return Object.freeze({handlers,sourceColumn,fingerprint,cacheBounded,owned,sourceKey,load,valid,response,state});
 }

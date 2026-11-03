@@ -55,10 +55,10 @@ test('actual project guard rejects new typing and replacement controller during 
  }
 });
 
-function renderHarness(f: ReturnType<typeof nameFixture>,{pending=false,submit,run,restored=false,canPrepare=true}:{pending?:boolean;submit?:(...args:unknown[])=>unknown;run?:(...args:unknown[])=>unknown;restored?:boolean;canPrepare?:boolean}={}){
+function renderHarness(f: ReturnType<typeof nameFixture>,{pending=false,submit,run,canPrepare=true}:{pending?:boolean;submit?:(...args:unknown[])=>unknown;run?:(...args:unknown[])=>unknown;canPrepare?:boolean}={}){
  const calls: unknown[][]=[],dataRef:{current:{project?:{id:string};timeline:{id:string;revision:number;clips:{id:string}[]}}}={current:{timeline:{id:'timeline',revision:7,clips:[{id:'clip'}]}}};
  const binding={projectId:id,expectedRevision:7,preflightSnapshotHash:'a'.repeat(64),deliveryName:'版本 A'};
- const environment={msg,panelIntent:{current:0},openExportHistory:()=>calls.push(['history',true]),deliveryNameRef:{current:{controller:f.controller}},workspaceRef:{current:{restored}},dataRef,currentProject:{current:id},
+ const environment={msg,panelIntent:{current:0},openExportHistory:()=>calls.push(['history',true]),deliveryNameRef:{current:{controller:f.controller}},dataRef,currentProject:{current:id},
   exportCheckContext:()=>({scope:f.live.scope,projectId:id}),exportPreflight:{controller:{setContext(){},takeExportBinding(value: { projectId: string; expectedRevision: number; preflightSnapshotHash: string; deliveryName: string; }){return value===binding?binding:null;},takeUncheckedExportIntent(){return null;}}},
   isBusy:()=>false,pendingForProject:()=>pending?[{key:'timeline:render:export'}]:[],notify:(...args: unknown[])=>calls.push(['notify',...args]),openTasks:(canReveal=()=>true)=>{if(canReveal())calls.push(['jobs',true]);},
   localDeliveryRef:{current:{controller:{canPrepare:()=>canPrepare,submit:async(...args: Parameters<ReturnType<typeof createLocalDeliveryController>["submit"]>)=>{calls.push(['submit',...args]);return submit?.(...args);}}}},
@@ -182,13 +182,6 @@ test('actual normal export uses coordinator with exact captured input and marks 
  assert.equal((request![2] as {canExecute:()=>boolean}).canExecute(),true);assert.equal((request![2] as {nameCapture:{value:string}}).nameCapture.value,'版本 A');
  assert.equal(h.calls.filter(row=>row[0]==='run').length,0);
  assert.equal(f.controller.getName(f.live.scope),'版本 A');assert.equal(f.controller.hasUnsaved(),false);
-});
-
-test('restored export preserves the legacy runner and exact named input without consulting the coordinator',async()=>{
- const f=nameFixture();f.choose('版本 A');const h=renderHarness(f,{restored:true,canPrepare:false,run:async()=>accepted()});
- await h.render('export',h.binding);
- assert.deepEqual(h.calls.find(row=>row[0]==='run')!.slice(1),['timeline:render:export','timeline.render',{...h.binding,requestId:'named-app-key-0001',purpose:'export'}]);
- assert.equal(h.calls.filter(row=>row[0]==='submit').length,0);assert.equal(f.controller.hasUnsaved(),false);
 });
 
 test('timeline preview remains on the legacy runner and never submits or acknowledges a delivery draft',async()=>{

@@ -1,6 +1,5 @@
 import { message as localizedMessage } from '../../../packages/i18n/src/index.ts';
 import { readLoudnessApplyRpc } from './timeline-loudness-apply-rpc.ts';
-import { workspaceOriginOptions } from './workspace-origin.ts';
 import { ApiError } from './api.ts';
 import { DURABLE_EDIT_OPERATIONS, isEditTaskEnvelope, isEditTaskListEnvelope } from '@mioon/contracts';
 import { projectApiPath } from '../../../packages/contracts/src/project-file.ts';
@@ -9,12 +8,12 @@ export interface EditTask {
   lane: string; status: 'prepared'|'dispatching'|'unknown'|'applied'|'not_applied'; revision: number; createdAt: string; updatedAt: string;
   acknowledged: boolean; origin: 'new'|'legacy_session'; errorCode?: string;
 }
-export interface EditTaskEnvelope {readonly task: EditTask; readonly instanceId: string; readonly result?: unknown; readonly restore?: unknown}
-export interface EditTaskListEnvelope {readonly items: EditTask[]; readonly nextCursor: string|null; readonly instanceId: string; readonly restore?: unknown}
+export interface EditTaskEnvelope {readonly task: EditTask; readonly instanceId: string; readonly result?: unknown}
+export interface EditTaskListEnvelope {readonly items: EditTask[]; readonly nextCursor: string|null; readonly instanceId: string}
 export interface TaskExpectation {readonly projectId?: unknown; readonly taskId?: unknown; readonly operation?: unknown; readonly digest?: unknown; readonly origin?: unknown; readonly input?: Record<string, unknown>}
 export interface TaskListOptions {pendingOnly?: boolean}
 export interface EditTaskProtocolError extends ApiError {displayMessage: ReturnType<typeof localizedMessage>}
-export interface EditTaskRequestOptions {expectedWorkspaceOrigin?: unknown; operation?: string; signal?: AbortSignal}
+export interface EditTaskRequestOptions {operation?: string; signal?: AbortSignal}
 export interface EditTaskPrepareInput extends Record<string, unknown> {projectId?: unknown; requestId?: unknown; operation: string}
 export interface EditTaskListInput {projectId: string; limit?: number; cursor?: string; pendingOnly?: boolean}
 export interface EditTaskGetInput {projectId: string; taskId: string; operation?: string}
@@ -64,10 +63,9 @@ export function createEditTaskClient({ fetcher = (...args: Parameters<typeof fet
   const validateEnvelope = (value: unknown, expected: TaskExpectation = {}): EditTaskEnvelope => checkTaskEnvelope(value, expected, isEditTaskEnvelope);
   const validateList = (value: unknown, projectId: string, options: TaskListOptions = {}): EditTaskListEnvelope => checkTaskList(value, projectId, {pendingOnly: options.pendingOnly ?? true}, isEditTaskListEnvelope);
   async function request(path: string,body: Record<string,unknown>|undefined,options: EditTaskRequestOptions = {}): Promise<unknown> {
-    const invocation = workspaceOriginOptions(options.expectedWorkspaceOrigin);
-    const loudness = options.operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc(path, body ? { ...body, ...invocation } : undefined, { fetcher }) : null;
+    const loudness = options.operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc(path, body, { fetcher }) : null;
     const response = loudness?.response ?? await fetcher(path, { method: body ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store',
-      ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...invocation }) } : {}) });
+      ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}) });
     let payload: unknown;
     try { payload = loudness ? loudness.body : await response.json(); } catch { throw taskProtocolError(); }
     if (!isRecord(payload) || typeof payload.ok !== 'boolean' || (payload.ok ? !response.ok || !Object.hasOwn(payload, 'data')

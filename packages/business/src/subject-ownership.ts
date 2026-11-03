@@ -1,4 +1,6 @@
+import {validAssetLocator} from './asset-reference-record.ts';
 import type {DatabaseSync} from 'node:sqlite';
+import {isDeepStrictEqual} from 'node:util';
 import {AppError,isSubjectVersionResponse,isSubjectReference,SUBJECT_KINDS} from '@mioon/contracts';
 
 interface SubjectOwnerRow {id: string;projectId: string;kind: string;name: string;revision: number;headVersionId: string;createdAt: string;updatedAt: string}
@@ -18,7 +20,7 @@ interface SubjectOwnershipOptions {
 const invalid: ()=>never=()=>{throw new AppError('INVALID_SUBJECT_RECORD','主体或关联状态不一致，请先检查项目',409);};
 const missing: ()=>never=()=>{throw new AppError('NOT_FOUND','找不到记录',404);};
 const uuid=(value: unknown): value is string=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
-const equal=(a: unknown,b: unknown): boolean=>JSON.stringify(a)===JSON.stringify(b);
+const equal=(a: unknown,b: unknown): boolean=>isDeepStrictEqual(a,b);
 const bounded=(names: string): string=>names.split(',').map(name=>['revision','number'].includes(name)?`CASE WHEN typeof(${name})='integer' AND ${name} BETWEEN 1 AND 9007199254740991 THEN ${name} END AS ${name}`:`CASE WHEN typeof(${name})='text' AND length(CAST(${name} AS BLOB)) BETWEEN 1 AND ${name==='name'?480:name==='data'?4096:64} THEN ${name} END AS ${name}`).join(',');
 export const SUBJECT_OWNER_COLUMNS=bounded('id,projectId,kind,name,revision,headVersionId,createdAt,updatedAt');
 export const SUBJECT_VERSION_COLUMNS=bounded('id,projectId,subjectId,number,assetId,data');
@@ -41,8 +43,7 @@ export function createSubjectOwnershipReader(db: DatabaseSync,projectId: string,
   if(!uuid(id))fail();
   const {asset:value,legacySource:source=null,imageSource,frameSource}=resolveAsset(id);
   if(value.id!==id||value.projectId!==projectId)fail();
-  const relative=value.relativePath;
-  if(typeof relative!=='string'||relative.length>4096||!relative.startsWith('media/')||relative.includes('\\')||relative.includes('\0')||relative.split('/').some(part=>!part||part==='.'||part==='..'))fail();
+  if(!validAssetLocator(db,value))fail();
   if(!['image/png','image/jpeg','image/webp'].includes(value.mimeType))throw new AppError('SUBJECT_ASSET_UNSUPPORTED','主体版本需要托管 PNG、JPEG 或 WebP 图片',400);
   if(!/^[a-f0-9]{64}$/.test(value.sha256??'')||![value.width,value.height].every(n=>Number.isSafeInteger(n)&&n>0&&n<=100000)||!['user-import','generated','synthetic-mock','export','extracted-frame'].includes(value.provenance))fail();
   return {assetId:value.id,sha256:value.sha256,mimeType:value.mimeType,width:value.width,height:value.height,provenance:{kind:value.provenance,versionId:source?.id??null,shotId:source?.shotId??null,jobId:source?.jobId??null,...(imageSource?{imageSource}:{}),...(frameSource?{frameSource}:{})}};

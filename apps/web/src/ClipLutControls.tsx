@@ -13,10 +13,10 @@ import type { ClipLutContext, ClipLutController, ClipLutRpc, ClipLutState } from
 
 type SelectProps = { id: string; 'data-testid': string; value: string; disabled?: boolean; children: ReactNode; onChange: (event: { target: { value: string } }) => void };
 export interface ClipLutControlsProps {
-  context: ClipLutContext; kind: string; restored?: boolean;
+  context: ClipLutContext; kind: string;
   onEdit: (key: 'colour', value: ClipColour | null) => void; rpc: ClipLutRpc; Select: ComponentType<SelectProps>;
 }
-export default function ClipLutControls({ context, kind, restored = false, onEdit, rpc, Select }: ClipLutControlsProps) {
+export default function ClipLutControls({ context, kind,  onEdit, rpc, Select }: ClipLutControlsProps) {
   const { t, renderMessage } = useI18n();
   const latest = useRef({ context, onEdit, rpc }); latest.current = { context, onEdit, rpc };
   const [observed, setObserved] = useState<ClipLutState | null>(null), ref = useRef<ClipLutController | null>(null);
@@ -46,7 +46,7 @@ export default function ClipLutControls({ context, kind, restored = false, onEdi
     {colour && !source && <p className="notice warning" role="alert" data-testid="clip-lut-reconfirm-source">{t('colour.lut.reconfirmSource')}</p>}
     {source && <p className="input-hint" data-testid="clip-lut-source-confirmed">{'evidence' in source ? t('colour.lut.sourceImage', { format: source.evidence.profileId === 'jfif-ycbcr8-srgb-v1' ? 'JFIF JPEG' : 'PNG', width: source.evidence.width, height: source.evidence.height, alpha: source.evidence.alphaMode === 'straight' ? t('colour.lut.alphaPreserved') : t('colour.lut.opaque') }) : t('colour.lut.sourceVideo', { range: source.range === 'limited' ? 'Limited' : 'Full', stream: source.streamIndex })}</p>}
     {image && <p className="input-hint" data-testid="clip-image-colour-disclosure">{t('colour.lut.imageDisclosure')}</p>}
-    {restored && <p className="notice warning" role="status">{t('colour.lut.restoredReadOnly')}</p>}
+    {false}
     {!state.opened ? <Button variant="outline" size="sm" type="button" data-testid="open-clip-lut" disabled={blocked} onClick={() => controller.open()}>{colour ? t('colour.lut.inspectAdjust') : t('colour.lut.inspectEnable')}</Button> : <>
       <fieldset disabled={blocked} style={{ border: 0, padding: 0, margin: 0 }}>
         <legend className="field-label">{t('colour.lut.sourceLegend')}</legend>

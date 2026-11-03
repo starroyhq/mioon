@@ -1,13 +1,13 @@
 import type {TypedServices, Failure, Asset, AudioSnapshotFreezer} from './helpers/strict-timeline-audio-types.ts';
 import type {TestContext} from 'node:test';
-import {canEditTimelineAudioRole,isWorkspaceRestoreInspection} from '../packages/contracts/src/workspace-restore.ts';
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {parse,isTimelineRecord,isTimelineMutationResponse,hasRequestNotAppliedProof} from '../packages/contracts/src/index.ts';
 import {getTimelineAudioRoleIssue,isTimelineAudioRoleSnapshot,TIMELINE_AUDIO_ROLE_PROFILE} from '../packages/contracts/src/timeline-audio-role.ts';
@@ -106,12 +106,4 @@ test('image role rejection proof is bound to exact operation, project and reques
  for(const field of ['operation','projectId','requestId']){const forged={...(error as Failure),details:{...(error as Failure).details}};delete forged.details[field];assert.equal(hasRequestNotAppliedProof(forged,input,{operation:'timeline.clip.update'}),false);}
  assert.equal(hasRequestNotAppliedProof(error,input,{operation:'timeline.clip.add'}),false);
  assert.equal(hasRequestNotAppliedProof(error,{...input,projectId:randomUUID()},{operation:'timeline.clip.update'}),false);
-});
-
-
-test('role write capability is opt-in and missing capability fails closed',async t=>{
- const f=await fixture(t);const legacy=await f.call('workspace.restore.inspect',{});assert.deepEqual(legacy,{restored:false});assert.equal(canEditTimelineAudioRole(legacy),false);
- const current=await f.call('workspace.restore.inspect',{includeAudioRoleCapability:true});assert.equal(isWorkspaceRestoreInspection(current),true);assert.equal(canEditTimelineAudioRole(current),true);assert.equal(current.audioRoleCapability!.profileId,TIMELINE_AUDIO_ROLE_PROFILE);
- assert.equal(canEditTimelineAudioRole({restored:false,audioRoleCapability:{profileId:'unknown',editable:true}}),false);
- assert.throws(()=>parse('workspace.restore.inspect',{includeAudioRoleCapability:false}),{code:'VALIDATION_ERROR'});
 });

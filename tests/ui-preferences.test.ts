@@ -1,3 +1,4 @@
+import {readPrivateFile, validatePrivateDirectory, validateManagedFile} from '../packages/contracts/src/private-storage.ts';
 import type {RootFailure} from './helpers/strict-root-error-types.ts';
 import type {TypedStore} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
@@ -6,15 +7,18 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm,readFile,readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openLegacyWorkspaceStore as openStore,ownsStoreLock} from '../packages/business/src/db.ts';
+import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createUiPreferences,UI_PREFERENCES_FILENAME} from '../packages/business/src/ui-preferences.ts';
 import {DEFAULT_UI_PREFERENCES,uiPreferencesResponseSchema} from '../packages/contracts/src/ui-preferences.ts';
-import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '../packages/contracts/src/private-storage.ts';
+import {writePrivateFileAtomic} from '../packages/contracts/src/private-storage.ts';
 
 async function fixture(t: test.TestContext){
-  const root=await mkdtemp(path.join(tmpdir(),'mioon-ui-preferences-')),store=(openStore(root) as unknown as TypedStore),projectId=randomUUID();let readOnly=false;
-  const options={root,storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
-    guards:{ownsLock:()=>ownsStoreLock(store),isReadOnly:()=>readOnly,hasProject:(id: string)=>id===projectId},now:()=> '2026-10-19T01:00:00.000Z'};
+  const root=await mkdtemp(path.join(tmpdir(),'mioon-ui-preferences-')),store=openAppLibrary({dataDir:root}),projectId=randomUUID();let readOnly=false;
+  const owner=createProjectServiceApplication(store);
+  const options={root,databaseFile:store.databaseFile,storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
+    guards:{ownsLock:()=>{try{owner.assertMutationAllowed();return true;}catch{return false;}},isReadOnly:()=>readOnly,hasProject:(id: string)=>id===projectId},now:()=> '2026-10-19T01:00:00.000Z'};
   t.after(async()=>{store.close();await rm(root,{recursive:true,force:true});});
   return {root,store,projectId,options,service:createUiPreferences(options),file:path.join(root,UI_PREFERENCES_FILENAME),readOnly:(value: boolean)=>{readOnly=value;}};
 }

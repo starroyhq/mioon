@@ -1,3 +1,8 @@
+import {publicOperationSchemas as schemas, publicOperationDescriptions as descriptions} from '@mioon/contracts/public-operations';
+import {s1PublicOperationSchemas,isS1PublicOperation} from '../../contracts/src/asset-generation.ts';
+import {assetMediaPublicSchemas,assetMediaEffects,isAssetMediaOperation,trustedAssetMediaSchemas,isTrustedAssetMediaOperation,assetMediaStatusListResponseSchema,assetMediaPrepareResponseSchema,nativeAssetImportResponseSchema} from '../../contracts/src/asset-media.ts';
+import type {TrustedAssetMediaOperation} from '../../contracts/src/asset-media.ts';
+import {projectApiPath,projectRpcPath} from '../../contracts/src/project-file.ts';
 import {isTimelineClipLoudnessResponse, TIMELINE_CLIP_LOUDNESS_LIMITS} from '@mioon/contracts/timeline-clip-loudness';
 import {readTimelineClipLoudnessEnvelope} from './timeline-clip-loudness.ts';
 export {measureTimelineClipLoudness} from './timeline-clip-loudness.ts';
@@ -13,8 +18,6 @@ import {isAudioPreviewPlan} from '@mioon/contracts/timeline-audio-preview';
 import {isContinuousAudioPlan} from '@mioon/contracts/timeline-audio-continuous';
 import {isTimelineExportFloatReadResponse} from '@mioon/contracts/timeline-export-float';
 import {isTimelineRenderRecord} from '@mioon/contracts';
-import {parseExpectedWorkspaceOrigin, isWorkspaceRestoreInspection} from '@mioon/contracts';
-import {isWorkspaceBackupInspection} from '@mioon/contracts';
 import {isImageReviewResponse,isImageReviewPreparationResponse,isImageReviewListResponse} from '@mioon/contracts';
 import {setTimeout as pause} from 'node:timers/promises';
 import {createHash} from 'node:crypto';
@@ -22,7 +25,7 @@ import {z} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
 import applicationPackage from '../../../package.json' with {type: 'json'};
 import type {OperationName} from '@mioon/contracts';
-import {schemas, descriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse, isTimelineFormatReadResponse, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse, hasRequestNotAppliedProof} from '@mioon/contracts';
+import {schemas as coreSchemas, descriptions as coreDescriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse, isTimelineFormatReadResponse, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse, hasRequestNotAppliedProof} from '@mioon/contracts';
 import {resolveConnection, connectionSource, ConnectionError, type ConnectionSource, type LocalConnection} from './connection.ts';
 import {IMAGE_MUTATION_OPERATIONS,isImageMutationResponse,isImageTaskResponse,isImageGroupResponse,isImageRequestResponse,isImageProfilesResponse,isImageListResponse} from '@mioon/contracts';
 import {canonicalImageInput,isComfyObserveResponse,isComfyRemoteResponse} from '@mioon/contracts';
@@ -39,11 +42,9 @@ export {prepareTimelineMixLoudness} from './timeline-mix-loudness.ts';
 import {isSubjectGenerationResponse,isSubjectGenerationRetryResponse} from '@mioon/contracts';
 import {isEntityAddressedOperation, rpcPathFor} from '../../contracts/src/project-addressing.ts';
 import {isProjectId} from '../../contracts/src/project-file.ts';
-import {isProjectBackupOperation, isProjectBackupResponse} from '../../contracts/src/project-backups.ts';
+import {projectBackupSchemas,isProjectBackupOperation, isProjectBackupResponse} from '../../contracts/src/project-backups.ts';
 import {isProjectVersionOperation, isProjectVersionResponse} from '../../contracts/src/project-version-operations.ts';
 
-// CLI, MCP and the server share the contracts registry. Mio classifies its
-// unavailable operations independently; client discovery never extends it.
 export {schemas, descriptions, resolveConnection, effectAnnotations};
 export const VERSION = applicationPackage.version;
 export const EXIT_CODES = Object.freeze({success: 0, unexpected: 1, validation: 2, conflict: 3, unavailable: 4, timeout: 5, operationFailed: 6, interrupted: 130});
@@ -67,15 +68,6 @@ export class ClientError extends Error {
     super(message); this.name = 'ClientError'; this.code = code; this.status = status; this.details = details;
     this.exitCode = exitCode ?? errorExitCode(this);
   }
-}
-// Explicit invocation-only identity. Undefined preserves the v24 wire shape;
-// there is no backend discovery, client default, credential-file or reconnect
-// fallback. CLI/MCP also use this parser before dispatching any request.
-export function workspaceOriginOptions(value: unknown): {expectedWorkspaceOrigin?: string} {
-  let origin: string | undefined;
-  try { origin = parseExpectedWorkspaceOrigin(value); }
-  catch { throw new ClientError('VALIDATION_ERROR', 'Workspace origin must be an explicit UUID. Preserve the origin saved with an existing request.'); }
-  return origin === undefined ? {} : {expectedWorkspaceOrigin: origin};
 }
 export function errorExitCode(error: unknown): number {
   const failure = error as {exitCode?: unknown; code?: unknown; name?: unknown; status?: unknown};
@@ -156,7 +148,15 @@ export function operationDefinition(operation: string): OperationDefinition {
   if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
   const shared = jsonSchema(operationSchemas[operation]);
   const inputSchema = isEntityAddressedOperation(operation) ? withProjectAddress(shared) : shared;
-  return {operation, toolName: operation.replaceAll('.', '_'), command: operation.replaceAll('.', ' '), description: operationDescriptions[operation] || operation, inputSchema, requiresRequestId: requiresField(inputSchema,'requestId'), effects: operationEffect(operation)};
+  return {operation, toolName: operation.replaceAll('.', '_'), command: operation.replaceAll('.', ' '), description: operationDescriptions[operation] || operation, inputSchema, requiresRequestId: requiresField(inputSchema,'requestId'), effects: isAssetMediaOperation(operation) ? assetMediaEffects[operation] : operationEffect(operation)};
+}
+/** Definition for the fixed built-in model catalog. Public CLI/MCP schema
+ * discovery can evolve without changing Mio's reviewed request fingerprints. */
+export function modelOperationDefinition(operation:string):OperationDefinition {
+  if(!Object.hasOwn(coreSchemas,operation))throw new ClientError('UNKNOWN_OPERATION','Unknown built-in model operation.');
+  const schema=(coreSchemas as Record<string,z.ZodTypeAny>)[operation],shared=jsonSchema(schema);
+  const inputSchema=isEntityAddressedOperation(operation)?withProjectAddress(shared):shared;
+  return {operation,toolName:operation.replaceAll('.','_'),command:operation.replaceAll('.',' '),description:(coreDescriptions as Record<string,string>)[operation]||operation,inputSchema,requiresRequestId:requiresField(inputSchema,'requestId'),effects:operationEffect(operation)};
 }
 export interface DiscoverySchemaResult {version: string; operations: OperationDefinition[]; validation: string}
 export function discoverSchema(input: unknown = {}): OperationDefinition | DiscoverySchemaResult {
@@ -176,15 +176,16 @@ const keyedMutationOperations = new Set<string>([
   'generation.submit', 'job.retry', 'export.create', 'image.task.observeRemote', 'image.review.prepare', 'lut.import',
   'project.backup.restore',
   'project.version.save',
+  'project.version.restore',
 ]);
-interface RpcBody {operation: string; input: Record<string, unknown>; expectedWorkspaceOrigin?: string}
+interface RpcBody {operation: string; input: Record<string, unknown>}
 function uncertainRequestDetails(body: unknown): Record<string, unknown> {
   if (!body) return {};
   const request = body as {operation?: unknown; input?: {requestId?: unknown; input?: {requestId?: unknown}}};
   // Receipt reads also carry requestId. Only a known keyed write can have an
   // uncertain submission; review preparation keeps its key in the exact intent.
   const requestId = request.operation === 'image.review.prepare' ? request.input?.input?.requestId : request.input?.requestId;
-  return {operation: request.operation, ...(Object.hasOwn(request, 'expectedWorkspaceOrigin') ? {expectedWorkspaceOrigin: (request as {expectedWorkspaceOrigin?: unknown}).expectedWorkspaceOrigin} : {}), ...(typeof request.operation === 'string' && keyedMutationOperations.has(request.operation) && requestId ? {requestId, submissionMayHaveSucceeded: true, recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'} : {})};
+  return {operation: request.operation, ...(typeof request.operation === 'string' && keyedMutationOperations.has(request.operation) && requestId ? {requestId, submissionMayHaveSucceeded: true, recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'} : {})};
 }
 function comfyObservationNotAccepted(error: unknown, status: number, input: unknown): boolean {
   const statuses: Record<string, number> = {COMFY_MODULE_UNAVAILABLE:503,COMFY_REMOTE_STATE:409,COMFY_REMOTE_REVISION_CONFLICT:409,COMFY_REMOTE_BUSY:409,COMFY_REMOTE_CAPACITY:507};
@@ -252,10 +253,10 @@ function sceneNotAccepted(error: unknown, status: number, operation: string, inp
 }
 
 export interface ClientOptions {env?: NodeJS.ProcessEnv; fetchImpl?: typeof fetch; requestTimeoutMs?: number}
-export interface RequestOptions {body?: RpcBody; signal?: AbortSignal; timeoutMs?: number}
+export interface RequestOptions {body?: RpcBody; signal?: AbortSignal; timeoutMs?: number; userAction?: boolean}
 /** `projectId` addresses the entity-addressed operations, whose input names
  * no project; every other operation takes its project from its input. */
-export interface RpcOptions {signal?: AbortSignal; timeoutMs?: number; expectedWorkspaceOrigin?: string; projectId?: string}
+export interface RpcOptions {signal?: AbortSignal; timeoutMs?: number; projectId?: string}
 export interface WatchOptions {timeoutMs?: number; intervalMs?: number; signal?: AbortSignal; onProgress?: (progress: WatchProgress) => void; projectId?: string}
 /** Separates the `projectId` that CLI and MCP give beside an entity-addressed
  * operation's own fields. Any other input is returned unchanged. */
@@ -275,6 +276,7 @@ export interface DoctorReport {
   providers: unknown;
 }
 export interface Client {
+  trustedAssetMedia<T = unknown>(operation: TrustedAssetMediaOperation, input: unknown, options?: RpcOptions): Promise<T>;
   rpc<T = unknown>(operation: string, input?: unknown, options?: RpcOptions): Promise<T>;
   capabilities<T = unknown>(options?: RpcOptions): Promise<T>;
   doctor(options?: RpcOptions): Promise<DoctorReport>;
@@ -290,7 +292,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
   const loudnessApplyTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : TIMELINE_LOUDNESS_APPLY_CLIENT_MS;
   const clipLoudnessTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : TIMELINE_CLIP_LOUDNESS_LIMITS.clientTimeoutMs;
   const mixLoudnessTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : TIMELINE_MIX_LOUDNESS_LIMITS.clientTimeoutMs;
-  async function request(resource: string, {body, signal, timeoutMs = requestTimeoutMs}: RequestOptions = {}): Promise<unknown> {
+  async function request(resource: string, {body, signal, timeoutMs = requestTimeoutMs, userAction = false}: RequestOptions = {}): Promise<unknown> {
     checkSignal(signal);
     if (!Number.isFinite(timeoutMs) || timeoutMs < 1) throw new ClientError('VALIDATION_ERROR', 'Request timeout must be positive.');
     const connection: LocalConnection = await resolveConnection(env);
@@ -301,7 +303,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     const recoveryDetails = uncertainRequestDetails(body);
     let response: Response | undefined;
     try {
-      response = await fetchImpl(base + resource, {method: body ? 'POST' : 'GET', headers: {authorization: `Bearer ${token}`, ...(body ? {'content-type': 'application/json'} : {})}, ...(body ? {body: JSON.stringify(body)} : {}), signal: combined, redirect: 'error'});
+      response = await fetchImpl(base + resource, {method: body ? 'POST' : 'GET', headers: {authorization: `Bearer ${token}`, ...(userAction ? {'x-mioon-user-action':'asset-media'} : {}), ...(body ? {'content-type': 'application/json'} : {})}, ...(body ? {body: JSON.stringify(body)} : {}), signal: combined, redirect: 'error'});
       const result = (body?.operation === 'timeline.clip.loudness' ? await readTimelineClipLoudnessEnvelope(response, combined) : body?.operation === 'timeline.loudness.apply' ? await readTimelineLoudnessApplyEnvelope(response, combined) : body?.operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessEnvelope(response, combined) : await response.json()) as unknown;
       const envelope = result as {ok?: unknown; data?: unknown; error?: {code?: unknown; message?: unknown; details?: unknown}} | null | undefined;
       if (!envelope || typeof envelope.ok !== 'boolean' ||
@@ -369,15 +371,30 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     // IDs stay caller-owned; this client never creates them and never resubmits.
     if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
     if(operation==='lut.look.inspect'&&(isProxy(input)||!isLookPackInspectInput(input)))throw new ClientError('VALIDATION_ERROR','Expected only a project ID and LUT resource ID.');
-    const parsed = parse(operation as OperationName, input) as Record<string, unknown>;
-    const {expectedWorkspaceOrigin, projectId, ...transportOptions} = options ?? {};
-    const body: RpcBody = {operation, input: parsed, ...workspaceOriginOptions(expectedWorkspaceOrigin)};
+    let parsed: Record<string, unknown>;
+    if(isS1PublicOperation(operation)){
+      const result=s1PublicOperationSchemas[operation].safeParse(input);
+      if(!result.success)throw new ClientError('VALIDATION_ERROR','Invalid public asset operation arguments.',{details:{issues:result.error.issues}});
+      parsed=result.data;
+    } else if (isAssetMediaOperation(operation)) {
+      const result = assetMediaPublicSchemas[operation].safeParse(input);
+      if (!result.success) throw new ClientError('VALIDATION_ERROR', 'Invalid asset media arguments.', {details:{issues:result.error.issues}});
+      parsed = result.data;
+    } else if (isProjectBackupOperation(operation)) {
+      const result = projectBackupSchemas[operation].safeParse(input);
+      if (!result.success) throw new ClientError('VALIDATION_ERROR', 'Invalid project backup arguments.', {details: {issues: result.error.issues}});
+      parsed = result.data;
+    } else parsed = parse(operation as OperationName, input) as Record<string, unknown>;
+    const {projectId, ...transportOptions} = options ?? {};
+    const body: RpcBody = {operation, input: parsed};
     let resource: string;
-    try { resource = rpcPathFor(operation, parsed, projectId); }
+    try { resource = isAssetMediaOperation(operation) ? projectRpcPath(String(parsed.projectId)) : rpcPathFor(operation, parsed, projectId); }
     catch { throw new ClientError('VALIDATION_ERROR', 'This operation is addressed by its project: give the lowercase UUID projectId of the project that owns the record.'); }
     const envelope = (await request(resource, {...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : operation === 'timeline.export.samplePeak' ? {timeoutMs: samplePeakTimeoutMs} : operation === 'timeline.export.loudness' ? {timeoutMs: loudnessTimeoutMs} : operation === 'timeline.clip.loudness' ? {timeoutMs: clipLoudnessTimeoutMs} : operation === 'timeline.loudness.prepare' ? {timeoutMs: mixLoudnessTimeoutMs} : operation === 'timeline.loudness.apply' ? {timeoutMs: loudnessApplyTimeoutMs} : {}), ...transportOptions, body})) as {data?: unknown};
     const result = envelope.data;
     const resultRecord = result as Record<string, unknown> | null | undefined;
+    if(operation==='asset.media.status.list'&&!assetMediaStatusListResponseSchema.safeParse(result).success || operation==='asset.media.prepare'&&!assetMediaPrepareResponseSchema.safeParse(result).success)
+      throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid asset media response.');
     if (isProjectBackupOperation(operation) && !isProjectBackupResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid project backup response.', {details: uncertainRequestDetails(body)});
     if (isProjectVersionOperation(operation) && !isProjectVersionResponse(operation, parsed, result))
@@ -448,10 +465,6 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid Look Pack inspection.',{details:{operation}});
     if (['lut.import','lut.list','lut.inspect'].includes(operation) && !isLutRpcResponse(operation,parsed,result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid LUT resource response.',{details:operation==='lut.import'?uncertainRequestDetails(body):{operation}});
-    if (operation === 'workspace.restore.inspect' && !isWorkspaceRestoreInspection(result))
-      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid restored workspace summary.');
-    if (operation === 'workspace.backup.inspect' && !isWorkspaceBackupInspection(result))
-      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid workspace backup summary.');
     if (operation === 'timeline.export.capabilities' && !isTimelineExportCapabilitiesResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export capability report.');
     if (operation === 'timeline.audioPreview.plan' && !isAudioPreviewPlan(result, parsed as unknown as Parameters<typeof isAudioPreviewPlan>[1]))
@@ -497,5 +510,16 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       catch { throw interrupted(); }
     }
   }
-  return {rpc, capabilities, doctor, watch};
+  async function trustedAssetMedia<T = unknown>(operation: TrustedAssetMediaOperation, input: unknown, options: RpcOptions = {}): Promise<T> {
+    if (!isTrustedAssetMediaOperation(operation)) throw new ClientError('UNKNOWN_OPERATION','Unknown trusted asset action.');
+    const parsed=trustedAssetMediaSchemas[operation].safeParse(input);
+    if(!parsed.success)throw new ClientError('VALIDATION_ERROR','Invalid trusted asset arguments.',{details:{issues:parsed.error.issues}});
+    const envelope=await request(projectApiPath(parsed.data.projectId,'asset-media','trusted'),{body:{operation,input:parsed.data},signal:options.signal,timeoutMs:options.timeoutMs,userAction:true}) as {data:T};
+    if(operation==='asset.import.path'){
+      const acknowledged=nativeAssetImportResponseSchema.safeParse(envelope.data);
+      if(!acknowledged.success||acknowledged.data.asset.projectId!==parsed.data.projectId)throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid path import acknowledgement.');
+    }
+    return envelope.data;
+  }
+  return {rpc, capabilities, doctor, watch, trustedAssetMedia};
 }

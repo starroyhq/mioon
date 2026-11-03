@@ -1,3 +1,4 @@
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import type {FrameFault} from '../packages/business/src/frames.ts';
 interface RecoveryDecodeInput{beforeSpawn(signal:AbortSignal):unknown;signal:AbortSignal;asset:{sha256:string};requestedFrame:number}
 type RecoveryDecoder=(input:RecoveryDecodeInput)=>Promise<{bytes:Buffer;provenance:ReturnType<typeof provenance>}>;
@@ -17,7 +18,7 @@ import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createFrameServices,safeFrameServiceError, type FrameStore} from '../packages/business/src/frames.ts';
 import {AppError} from '@mioon/contracts';
 import {spawnMedia,hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
@@ -42,7 +43,7 @@ function fixture(t:test.TestContext,{autoRun=true,decode}:{autoRun?:boolean;deco
  const root=mkdtempSync(path.join(tmpdir(),'mioon-frame-recovery-'));let exactStore:ReturnType<typeof openStore>,store:TypedStore,services: TypedFrameServices,calls=0,fault:FrameFault=()=>{};
  const decoder=async (input: RecoveryDecodeInput)=>{calls++;if(decode)return decode(input);input.beforeSpawn(input.signal);return {bytes,provenance:provenance(input.asset,input.requestedFrame)};};
  function start(){exactStore=openStore(root);store=(exactStore as TypedStore);services=(createFrameServices(store,({autoRun,decode:decoder,fault:(label:string,context?:Record<string,unknown>)=>fault(label,context)} as unknown as Parameters<typeof createFrameServices>[1])) as TypedFrameServices);}
- start();const project=store!.put('projects',{id:exactStore!.projectId,name:'Frame recovery project'}),sourceBytes=Buffer.from('synthetic private source'),id=randomUUID(),relativePath=`media/${id}.mp4`;
+ start();const project=store!.put('projects',{id:exactStore!.projectId,name:'Frame recovery project'}),sourceBytes=mp4HeaderFixture('synthetic private source'),id=randomUUID(),relativePath=`media/${id}.mp4`;
  writeFileSync(path.join(root,relativePath),sourceBytes,{mode:0o600});const asset=store!.put('assets',{id,projectId:project.id,name:'Original.mp4',mimeType:'video/mp4',sha256:digest(sourceBytes),sizeBytes:sourceBytes.length,relativePath,width:4,height:2,duration:1,provenance:'user-import'});
  t.after(async()=>{try{await services.drain();}finally{store.close();rmSync(root,{recursive:true,force:true});}});
  return {root,get stagingRoot(){return exactStore.tempDir;},project,asset,get store(){return store;},get services(){return services;},get calls(){return calls;},setFault(fn: FrameFault){fault=fn;},
@@ -110,7 +111,7 @@ test('stopping aborts and fences a late decoder result; reopening never resumes 
 for(const phase of ['after_acceptance','after_start_fence','after_result_manifest','after_result_receipt','after_media_publication','before_result_commit'])test(`actual process crash at ${phase} is reconciled without startup decode`,async t=>{
  const f=fixture(t),input=f.input();await f.close();
  const business=fileURLToPath(new URL('../packages/business/src/',import.meta.url));
- const script=`import {openStore} from ${JSON.stringify(path.join(business,'db.ts'))};import {createFrameServices} from ${JSON.stringify(path.join(business,'frames.ts'))};
+ const script=`import {openStore} from ${JSON.stringify(path.join(business,'project-file/test-store.ts'))};import {createFrameServices} from ${JSON.stringify(path.join(business,'frames.ts'))};
  const store=openStore(${JSON.stringify(f.root)});const service=createFrameServices(store,{decode:async input=>{input.beforeSpawn(input.signal);return {bytes:Buffer.from(${JSON.stringify(bytes.toString('base64'))},'base64'),provenance:${JSON.stringify(provenance(f.asset,0))}};},fault:label=>{if(label===${JSON.stringify(phase)})process.exit(86);}});await service.handlers['frame.extract'](${JSON.stringify(input)});`;
  const child=spawn(process.execPath,['--input-type=module','-e',script],{stdio:['ignore','pipe','pipe']});let stderr='';child.stderr.setEncoding('utf8').on('data',value=>{stderr+=value;});const [exitCode]=await once(child,'close');assert.equal(exitCode,86,stderr);f.start();
  const receipt=await f.call('frame.request.get',{projectId:f.project.id,requestId:input.requestId}),current=await f.get(receipt!.response.id);assert.equal(current.state,'interrupted');assert.equal(current.started,phase!=='after_acceptance');assert.equal(f.calls,0);assert.equal(count(f.store.db,'assets'),1);

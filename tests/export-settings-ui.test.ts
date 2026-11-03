@@ -183,9 +183,9 @@ const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.ur
 function appFunction(begin: string, end: string, scope: Loose): (...args: unknown[])=>unknown { const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start); const factory=Function(...Object.keys(scope), `return (${appSource.slice(start, stop).trim()});`) as (...args: unknown[])=>unknown; return factory(...Object.values(scope)) as (...args: unknown[])=>unknown; }
 interface Element {type: unknown; props: Loose}
 interface Harness {calls: Array<[string, ...Loose[]]>; panels: unknown[]; pending: Loose[]; submitOptions: Array<{canExecute: ()=>boolean; nameCapture?: unknown; [key: string]: unknown}>; ids: ()=>number; open: ()=>unknown; check: (viewed?: Loose)=>Promise<unknown>; render: (mode: string, binding?: Loose)=>Promise<unknown>; [key: string]: unknown}
-function appHarness(f: Fixture, { restored = false, localState = { baselineConflict: false, candidate: null } }: {restored?: boolean; localState?: Loose} = {}): Harness {
+function appHarness(f: Fixture, { localState = { baselineConflict: false, candidate: null } }: { localState?: Loose} = {}): Harness {
   const calls: Array<[string, ...Loose[]]> = [], panels: unknown[] = [], notices: unknown[] = [], pending: Loose[] = [], submitOptions: Array<{canExecute: ()=>boolean; nameCapture?: unknown; [key: string]: unknown}> = []; let ids = 0;
-  const environment = { clipDraftRef:{current:null}, markPanelIntent(){}, setShowTasks:(value: unknown)=>panels.push(['tasks',value]), setShowImage:(value: unknown)=>panels.push(['image',value]), setShowDelivery:(value: unknown)=>panels.push(['delivery',value]), msg: i18n.message, t: i18n.i18nTestModule().useI18n().t, panelIntent: { current: 0 }, setDeliveryAttempt() {}, setShowExports() {}, openExportHistory() {}, workspaceRef: { current: { restored } }, deliveryNameRef: { current: null }, exportPreflight: { controller: f.controller }, exportCheckContext: () => f.live, dataRef: { current: { project: { id: projectId }, timeline } }, currentProject: { current: projectId },
+  const environment = { clipDraftRef:{current:null}, markPanelIntent(){}, setShowTasks:(value: unknown)=>panels.push(['tasks',value]), setShowImage:(value: unknown)=>panels.push(['image',value]), setShowDelivery:(value: unknown)=>panels.push(['delivery',value]), msg: i18n.message, t: i18n.i18nTestModule().useI18n().t, panelIntent: { current: 0 }, setDeliveryAttempt() {}, setShowExports() {}, openExportHistory() {}, editorSession: {current: 'normal'}, deliveryNameRef: { current: null }, exportPreflight: { controller: f.controller }, exportCheckContext: () => f.live, dataRef: { current: { project: { id: projectId }, timeline } }, currentProject: { current: projectId },
     setRightDockTab: (value: unknown) => panels.push(value), setPanelOpen: (...args: unknown[]) => panels.push(args), isBusy: () => false, pendingForProject: () => pending,
     notify: (...args: unknown[]) => notices.push(args), openTasks() {}, updateView() {}, setPreviewKind() {},
     context: () => ({ scope: f.live.scope, projectId: environment.currentProject.current }), isCurrent: (captured: Loose) => captured.scope === f.live.scope && captured.projectId === environment.currentProject.current,
@@ -216,13 +216,6 @@ test('actual Check rejects unresolved local candidate and saved-baseline conflic
     assert.equal(f.calls.length, 0); assert.equal(h.calls.length, 0); assert.equal(f.state(), before);
     assert.equal(h.submitOptions.length, 0);
   }
-});
-
-test('restored export retains exact checked settings on the original session runner', async () => {
-  const f = fixture(), h = appHarness(f, { restored: true }); await f.ready(); const binding = f.state().binding as Loose;
-  await h.render('export', binding);
-  assert.deepEqual(h.calls, [['timeline:render:export', 'timeline.render', { ...binding, requestId: 'frozen-render-id', purpose: 'export' }]]);
-  assert.equal(h.submitOptions.length, 0); assert.equal(h.ids(), 1);
 });
 
 test('actual App pending export cannot be replaced by settings or another confirmation; preview retains omission', async () => {

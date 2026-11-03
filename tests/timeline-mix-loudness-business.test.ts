@@ -1,3 +1,10 @@
+
+
+
+import {boundedShutdown} from '../packages/business/src/operation-lifecycle.ts';
+
+
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import type {FixtureTimeline, FixtureSnapshot} from './helpers/strict-timeline-core-types.ts';
@@ -6,11 +13,13 @@ import type {TypedStore as FixtureStore, TypedServices as FixtureServices} from 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
-import {mkdtemp, writeFile, readFile, readdir, rm, unlink} from 'node:fs/promises';
+import {mkdtemp, writeFile, rm, unlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {DatabaseSync} from 'node:sqlite';
-import { openStore, openLegacyWorkspaceStore, ownsStoreLock, getWorkspaceRestoreContext } from '../packages/business/src/db.ts';
+
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock, assertProjectStore} from '../packages/business/src/store-runtime.ts';
+
 import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createTimelineMixLoudnessServices} from '../packages/business/src/timeline-mix-loudness.ts';
@@ -18,9 +27,9 @@ import {planTimelineMixLoudnessDecode} from '../packages/business/src/timeline-m
 import {readTimelinePreflightSnapshot, readTimelineSourceGraph} from '../packages/business/src/timeline-sources.ts';
 import {validateTimeline} from '../packages/business/src/timeline-inputs.ts';
 import {validateManagedSource, verifiedManagedHash} from '../packages/business/src/managed-media.ts';
-import {boundedShutdown} from '../packages/business/src/operation-lifecycle.ts';
-import {workspaceRestoreError, RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
-import {installCurrentWorkspaceRestoreSchema as installWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
+
+
+
 import {exportAudioObservationAdmission} from '../packages/business/src/export-audio-observation.ts';
 import type { BinaryLike } from 'crypto';
 import type { PathLike } from 'fs';
@@ -77,14 +86,15 @@ async function fixture(t: test.TestContext, {durationFrames = 60, runtime: overr
   const project = await services.call('project.create', {name: 'Owned full timeline loudness'}), foreign = await foreignProject(t, 'Other project');
   let timeline = await services.call('timeline.get', {projectId: project.id});
   const id = randomUUID(), bytes = Buffer.alloc(96 * 1024, 7);
+  bytes.write('RIFF'); bytes.writeUInt32LE(bytes.length-8,4); bytes.write('WAVE',8);
   const asset = {id, projectId: project.id, name: 'Owned sound.wav', mimeType: 'audio/wav', relativePath: `media/${id}.wav`,
     sha256: sha(bytes), sizeBytes: bytes.length, duration: 60, hasAudio: true, hasVideo: false, width: 0, height: 0,
     url: `/media/${id}`, createdAt: new Date().toISOString()};
-  await writeFile(path.join(root, asset.relativePath), bytes, {mode: 0o600}); store.put('assets', asset);
+  await writeFile(path.join(root, asset.relativePath), bytes, {mode: 0o600}); store.put('assets', asset); Object.assign(asset,store.get('assets',id));
   timeline = await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
     trackId: (timeline.tracks.find((track) => track.kind === 'audio'))!.id, assetId: id, startFrame: 0, sourceInFrame: 17,
     durationFrames, gain: .75});
-  const runtime = {assertOrdinaryWorkspace: () => {if (getWorkspaceRestoreContext(store)) throw workspaceRestoreError();}, ownsLock: () => ownsStoreLock(store),
+  const runtime = {assertOrdinaryWorkspace: () => {assertProjectStore(store);}, ownsLock: () => ownsStoreLock(store),
     readSavedTimeline: (projectId?: unknown) => readSaved(store, projectId), validateSource: validateManagedSource, hash: verifiedManagedHash,
     decode: fakeDecode, terminate: async () => [], waitForClose: async () => [], boundedShutdown, ...overrides};
   const mix = (createTimelineMixLoudnessServices(store, (({runtime}) as unknown as Parameters<typeof createTimelineMixLoudnessServices>[1])) as StrictMixService), extras: {drain():Promise<void>}[] = [];
@@ -98,7 +108,7 @@ async function fixture(t: test.TestContext, {durationFrames = 60, runtime: overr
     checkpoint: async () => ({rows: rows(), writes: (store.db.prepare('SELECT total_changes() AS n').get())!.n, files: await files(root)}),
     unchanged: async (before: { rows: unknown; writes: unknown; files: unknown; }) => {assert.deepEqual(rows(), before.rows); assert.equal((store.db.prepare('SELECT total_changes() AS n').get())!.n, before.writes); assert.deepEqual(await files(root), before.files);}};
 }
-const replace = (f:Awaited<ReturnType<typeof fixture>>, table: string, value?: FixtureTimeline) => f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(value), (value)!.id);
+const replace = (f:Awaited<ReturnType<typeof fixture>>, table: string, value?: FixtureTimeline) => {if(!value)throw Error('Missing fixture row');const saved={...value} as unknown as Record<string,unknown>;if(table==='assets'&&'reference' in saved)delete saved.relativePath;return f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(saved),value.id);};
 
 test('full saved original and separately rendered candidate are byte-pinned and have no durable effects', async t => {
   const requests: (FixtureTimeline)[] = []; let hashes = 0;
@@ -113,12 +123,11 @@ test('full saved original and separately rendered candidate are byte-pinned and 
   assert.ok(!JSON.stringify(result).includes('candidateId')); await f.unchanged(before);
 });
 
-test('fresh snapshot rechecks ownership and restore state before any subsequent source read', async t => {
-  for (const drift of (['owner', 'restored'] as const)) for (const stage of (['initial', 'decode'] as const)) await t.test(`${drift} during ${stage} snapshot`, async t => {
+test('fresh snapshot rechecks ownership before any subsequent source read', async t => {
+  for (const drift of (['owner'] as const)) for (const stage of (['initial', 'decode'] as const)) await t.test(`${drift} during ${stage} snapshot`, async t => {
     let f!: Awaited<ReturnType<typeof fixture>>, armed = stage === 'initial', changed = false, validated = 0, validationsAtDrift = null, decodes = 0;
     f = await fixture(t, {runtime: {
-      assertOrdinaryWorkspace() {if (changed && drift === 'restored') throw workspaceRestoreError();},
-      ownsLock: () => !(changed && drift === 'owner'),
+      ownsLock: () => ownsStoreLock(f.store) && !changed,
       readSavedTimeline(projectId?: unknown) {
         const saved = readSaved(f.store, projectId);
         if (armed) {changed = true; validationsAtDrift ??= validated;}
@@ -128,7 +137,7 @@ test('fresh snapshot rechecks ownership and restore state before any subsequent 
       decode(timeline: FixtureTimeline, assets?: unknown, options?: unknown) {decodes++; armed = true; return fakeDecode(timeline, assets, ((options) as unknown as Parameters<NonNullable<typeof fakeDecode>>[2]));},
     }});
     const before = await f.checkpoint();
-    await assert.rejects(f.call(), {code: drift === 'owner' ? 'TIMELINE_MIX_LOUDNESS_OWNER_REQUIRED' : 'RESTORE_OPERATION_UNAVAILABLE'});
+    await assert.rejects(f.call(), {code: 'TIMELINE_MIX_LOUDNESS_OWNER_REQUIRED'});
     assert.equal(changed, true); assert.equal(validated, validationsAtDrift);
     assert.equal(decodes, stage === 'initial' ? 0 : 1); await f.unchanged(before);
   });
@@ -225,26 +234,7 @@ test('unconfirmed exact child cleanup keeps shared admission sticky even after l
   (close.resolve)!(); await tick(); await tick(); await assert.rejects(f.mix.drain(), {code: 'MEDIA_TERMINATION_UNCONFIRMED'});
 });
 
-test('restored direct and composed boundaries refuse before any payload getters or media', async t => {
-  const f = await fixture(t); let getters = 0;
-  assert.ok(RESTORE_DENIED_OPERATIONS.includes('timeline.loudness.prepare'));
-  const restored = (createTimelineMixLoudnessServices({...f.store}, {runtime: (({...f.runtime, assertOrdinaryWorkspace() {throw workspaceRestoreError();}}) as unknown as import("../packages/business/src/timeline-mix-loudness.ts").TimelineMixLoudnessRuntime)}) as StrictMixService); f.extras.push(((restored) as unknown as Parameters<typeof f.extras.push>[0]));
-  await assert.rejects(restored.handlers['timeline.loudness.prepare']({get projectId() {getters++; return f.project.id;}}), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-  assert.equal(getters, 0);
-  const root = await mkdtemp(path.join(tmpdir(), 'mioon-restored-mix-loudness-')); let store = (openLegacyWorkspaceStore(root) as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
-  await services.call('project.create', {name: 'Restore fixture'}); await services.drain(); store.close();
-  const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
-  try {installWorkspaceRestoreSchema(db, {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(),
-    manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: new Date().toISOString()}); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
-  store = (openLegacyWorkspaceStore(root) as FixtureStore); services = (createServices(store, new Map()) as FixtureServices);
-  t.after(async () => {await services.drain(); store.close(); await rm(root, {recursive: true, force: true});});
-  const hostile = {get projectId() {getters++; throw Error('no payload');}};
-  for (const value of ([hostile, f.input, null] as const)) {
-    await assert.rejects(services.call('timeline.loudness.prepare', value), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-    await assert.rejects(((services.handlers['timeline.loudness.prepare'](((value) as unknown as Parameters<typeof services.handlers['timeline.loudness.prepare']>[0]))) as unknown as Parameters<typeof assert.rejects>[0]), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-  }
-  assert.equal(getters, 0);
-});
+
 
 test('source and scheduled two-pass work budgets reject before file or child work', async t => {
   for (const mode of (['source_bytes', 'decode_work'] as const)) await t.test(mode, async t => {
@@ -277,8 +267,8 @@ test('candidate uses audible clips only, preserving hidden video while excluding
     requests.push(timeline); return fakeDecode(timeline, assets, ((options) as unknown as Parameters<NonNullable<typeof fakeDecode>>[2]));
   }}});
   const videoTrack = f.timeline.tracks.find((track) => track.kind === 'video'), audioTrack = f.timeline.tracks.find((track) => track.kind === 'audio');
-  const embeddedId = randomUUID(), embedded = {...f.asset, id: embeddedId, relativePath: `media/${embeddedId}.mp4`, mimeType: 'video/mp4', hasVideo: true};
-  await writeFile(path.join(f.root, embedded.relativePath), f.bytes); f.store.put('assets', embedded);
+  const embeddedId = randomUUID(), embeddedBytes=mp4HeaderFixture('Synthetic embedded audio video'), embedded = {...f.asset, id: embeddedId, reference:undefined,referenceRevision:undefined,relativePath: `media/${embeddedId}.mp4`, mimeType: 'video/mp4', hasVideo: true,sha256:sha(embeddedBytes),sizeBytes:embeddedBytes.length};
+  await writeFile(path.join(f.root, embedded.relativePath), embeddedBytes); f.store.put('assets', embedded);
   const hiddenClip = {...f.timeline.clips[0], id: randomUUID(), trackId: (videoTrack)!.id, assetId: embeddedId, gain: .5};
   const zeroClip = {...f.timeline.clips[0], id: randomUUID(), startFrame: 60, gain: 0};
   const mutedTrack = {...audioTrack, id: randomUUID(), orderIndex: 2, muted: true};
@@ -314,7 +304,9 @@ test('potentially audible video with saved false audio metadata is still pinned 
       throw Object.assign(Error('Actual probe found audio on saved silent video'), {code: 'TIMELINE_MIX_LOUDNESS_SOURCE_METADATA_MISMATCH'});
     }}});
   const video = f.timeline.tracks.find((track) => track.kind === 'video');
-  replace(f, 'assets', (({...f.asset, mimeType: 'video/mp4', hasAudio: false, hasVideo: true}) as unknown as Parameters<NonNullable<typeof replace>>[2]));
+  const relativePath=`media/${f.asset.id}.mp4`,videoBytes=mp4HeaderFixture('Synthetic saved-silent video');await writeFile(path.join(f.root,relativePath),videoBytes);
+  f.store.put('assets',{...f.asset,reference:undefined,referenceRevision:undefined,relativePath,mimeType:'video/mp4',hasAudio:false,hasVideo:true,sha256:sha(videoBytes),sizeBytes:videoBytes.length});
+  Object.assign(f.asset,f.store.get('assets',f.asset.id),{relativePath});
   replace(f, 'timelines', {...f.timeline, clips: f.timeline.clips.map((clip) => ({...clip, trackId: (video)!.id}))});
   const before = await f.checkpoint(); await assert.rejects(f.call(), {code: 'TIMELINE_MIX_LOUDNESS_SOURCE_METADATA_MISMATCH'});
   assert.equal(calls, 1); assert.equal(hashes, 1); assert.ok(observedFile); await f.unchanged(before);

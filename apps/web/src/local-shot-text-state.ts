@@ -12,7 +12,7 @@ import { readEditorRetentionIdentity } from './editor-window-close.ts';
 export interface LocalShotTextContext {
   scope: string; projectId: string | null; shotId: string | null; revision: number | null;
   baseRevision: number | null; baseText: LocalShotTextDraftRaw; savedText: LocalShotTextDraftRaw;
-  restored: boolean; connected: boolean; visible: boolean; busy: boolean;
+   connected: boolean; visible: boolean; busy: boolean;
   raw: LocalShotTextDraftRaw; textVersion: number; formSerial: number; textDirty: boolean; formDirty: boolean;
   executionEpoch?: string | number;
 }
@@ -73,7 +73,7 @@ export function createLocalShotTextController({ context: initial, getContext, cl
   const captures = new WeakSet<LocalShotTextCapture>();
   const baselineOf = () => context.baseRevision ? { baseRevision: context.baseRevision, baseText: copy(context.baseText) } : null;
   const initialState = (): LocalShotTextState => ({ scope: context.scope, projectId: context.projectId, shotId: context.shotId,
-    phase: context.restored ? 'unsupported' : 'loading', raw: copy(context.raw), dirty: context.textDirty, baseline: context.textDirty ? baselineOf() : null,
+    phase: 'loading', raw: copy(context.raw), dirty: context.textDirty, baseline: context.textDirty ? baselineOf() : null,
     baselineConflict: false, candidate: null, savedAt: null, draftFailure: null, draftError: '', draftErrorDisplay: undefined, autosavePaused: uncertainWrites.has(keyOf(envelope ?? context)) || uncertainDeletions.has(keyOf(envelope ?? context)), leaveWithoutSaving: false,
     draftRetry: uncertainWrites.has(keyOf(envelope ?? context)) ? 'same' : null, retainedDeletion: copy(uncertainDeletions.get(keyOf(envelope ?? context)) ?? null), retainedDraftWrite: copy(uncertainWrites.get(keyOf(envelope ?? context)) ?? null), retainedPreparation: copy(uncertain.get(keyOf(envelope ?? context)) ?? null),
     intent: null, intentPhase: 'idle', intentUncertain: uncertain.has(keyOf(envelope ?? context)), intentFailure: null, intentError: '', intentErrorDisplay: undefined, busy: false, pending: uncertain.has(keyOf(envelope ?? context)), projectPendingIntent: null });
@@ -116,7 +116,7 @@ export function createLocalShotTextController({ context: initial, getContext, cl
   const draftMatches = (draft: LocalShotTextDraftValue | null, raw = state.raw, baseline = state.baseline) => Boolean(draft && baseline && draft.baseRevision === baseline.baseRevision && sameLocalShotTextValue(draft.baseText, baseline.baseText) && sameLocalShotTextValue(draft.raw, raw));
   const hasUnsavedInput = () => !abandoned && context.formDirty || state.retainedDeletion !== null || ((state.dirty || state.retainedDraftWrite !== null || state.retainedDeletion !== null) && !state.leaveWithoutSaving && (state.retainedDraftWrite !== null || state.retainedDeletion !== null || !draftMatches(envelope?.draft ?? null))) || retrying !== null || state.phase === 'saving' || state.intentPhase === 'preparing' || state.intentPhase === 'executing';
   const preparationUnconfirmed = () => { const retained = uncertain.get(keyOf(envelope ?? context)); return Boolean(retained && (!envelope?.intent || envelope.intent.intentId !== retained.intentId || !sameLocalShotTextValue(envelope.intent.input, retained.input))); };
-  const readyToSave = () => active && loaded && envelope && context.connected && context.visible && !context.restored && context.projectId && context.shotId && state.dirty && !state.candidate && !state.autosavePaused && !operation && !preparationUnconfirmed();
+  const readyToSave = () => active && loaded && envelope && context.connected && context.visible && context.projectId && context.shotId && state.dirty && !state.candidate && !state.autosavePaused && !operation && !preparationUnconfirmed();
   function schedule() { if (timer) clearTimeout(timer); timer = undefined; if (readyToSave() && !saving) timer = setTimeout(() => { timer = undefined; void flush(); }, delay); }
   function capture(): LocalShotTextCapture {
     sync(); const token = Object.freeze({ scope: context.scope, projectId: context.projectId, shotId: context.shotId, revision: context.revision, baseRevision: context.baseRevision,
@@ -128,7 +128,7 @@ export function createLocalShotTextController({ context: initial, getContext, cl
       sameLocalShotTextValue(token.baseText, context.baseText) && sameLocalShotTextValue(token.raw, context.raw) && token.executionEpoch === context.executionEpoch;
   }
   async function load(): Promise<void> {
-    sync(); if (!active || !context.projectId || !context.shotId || context.restored || saving || operation) return;
+    sync(); if (!active || !context.projectId || !context.shotId || saving || operation) return;
     const owner = generation, reading = ++readSerial, projectId = context.projectId, shotId = context.shotId, previous = envelope;
     emit({ phase: 'loading' });
     try {
@@ -147,7 +147,7 @@ export function createLocalShotTextController({ context: initial, getContext, cl
   async function flush(force = false, explicitRetry = false): Promise<boolean> {
     sync(); if (timer) clearTimeout(timer); timer = undefined;
     if (saving) { const owner = generation; await saving; sync(); if (!belongs(owner)) return false; }
-    if (context.restored || state.phase === 'unsupported') return true;
+    if (state.phase === 'unsupported') return true;
     if (!state.dirty && !force && !uncertainWrites.has(keyOf(envelope ?? context))) return true;
     if (!loaded || !envelope || !context.projectId || !context.shotId || !context.connected || !context.visible || state.candidate || state.autosavePaused || operation || preparationUnconfirmed()) return false;
     const baseline = state.baseline ?? baselineOf(); if (!baseline) return false;
@@ -173,7 +173,7 @@ export function createLocalShotTextController({ context: initial, getContext, cl
     sync();
     const base = state.baseline, patch = base ? { ...(state.raw.title !== base.baseText.title ? { title: state.raw.title } : {}), ...(state.raw.prompt !== base.baseText.prompt ? { prompt: state.raw.prompt } : {}) } : {};
     const validInput = Boolean(base && context.shotId && Object.keys(patch).length && isShotUpdateInput({ requestId: 'shot-text-input-validation', shotId: context.shotId, expectedRevision: base.baseRevision, patch }));
-    return Boolean(validInput && active && loaded && envelope && context.projectId && context.shotId && context.revision && context.connected && context.visible && !context.busy && !context.restored && !operation && !saving && !retrying && state.dirty && !state.candidate && !state.autosavePaused && !state.baselineConflict && !state.pending);
+    return Boolean(validInput && active && loaded && envelope && context.projectId && context.shotId && context.revision && context.connected && context.visible && !context.busy && !operation && !saving && !retrying && state.dirty && !state.candidate && !state.autosavePaused && !state.baselineConflict && !state.pending);
   }
   async function executeOriginal(next: LocalShotTextSupported, token: LocalShotTextCapture, recovered: boolean): Promise<unknown | null> {
     const intent = next.intent; if (!intent) throw localShotTextProtocolError();
@@ -205,15 +205,15 @@ export function createLocalShotTextController({ context: initial, getContext, cl
         context.baseRevision, context.formSerial, context.textVersion, context.executionEpoch, abandoned,
         ...readEditorRetentionIdentity(uncertain, uncertainWrites, uncertainDeletions)]),
     }),
-    blocksLegacy: (targetShotId?: string) => { sync(); return !context.restored && state.phase !== 'unsupported' && Boolean(!loaded || targetShotId && targetShotId !== context.shotId || state.dirty || state.candidate || state.baselineConflict || state.pending || state.retainedDraftWrite || state.retainedDeletion || state.busy); },
+    blocksLegacy: (targetShotId?: string) => { sync(); return state.phase !== 'unsupported' && Boolean(!loaded || targetShotId && targetShotId !== context.shotId || state.dirty || state.candidate || state.baselineConflict || state.pending || state.retainedDraftWrite || state.retainedDeletion || state.busy); },
     hasUnsaved: () => { sync(); return hasUnsavedInput(); },
     getNativeCloseSnapshot: (): LocalShotTextCloseSnapshot => Object.freeze({ dirty: hasUnsavedInput(), serial, generation,
       formSerial: context.formSerial, textVersion: context.textVersion, scope: context.scope, projectId: context.projectId, shotId: context.shotId,
       revision: context.revision, baseRevision: context.baseRevision, executionEpoch: context.executionEpoch }),
-    hasUnpersisted: () => { sync(); return !context.restored && state.phase !== 'unsupported' && ((state.dirty || state.retainedDraftWrite !== null || state.retainedDeletion !== null) && !state.leaveWithoutSaving && (state.retainedDraftWrite !== null || state.retainedDeletion !== null || !draftMatches(envelope?.draft ?? null)) || state.phase === 'saving' || state.busy); },
+    hasUnpersisted: () => { sync(); return state.phase !== 'unsupported' && ((state.dirty || state.retainedDraftWrite !== null || state.retainedDeletion !== null) && !state.leaveWithoutSaving && (state.retainedDraftWrite !== null || state.retainedDeletion !== null || !draftMatches(envelope?.draft ?? null)) || state.phase === 'saving' || state.busy); },
     setContext(next: LocalShotTextContext) {
       if (!active || sameLocalShotTextValue(context, next)) return;
-      if (next.scope !== context.scope || next.projectId !== context.projectId || next.shotId !== context.shotId || next.restored !== context.restored) {
+      if (next.scope !== context.scope || next.projectId !== context.projectId || next.shotId !== context.shotId) {
         if (timer) clearTimeout(timer); timer = undefined; generation++; serial++; readSerial++; context = copy(next); envelope = null; loaded = false; saving = null; operation = null; retrying = null;
         abandoned = false; state = initialState(); emit({}); return;
       }
@@ -236,7 +236,7 @@ export function createLocalShotTextController({ context: initial, getContext, cl
       serial++; emit({ raw: copy(candidate.raw), dirty: true, candidate: null, baseline: { baseRevision: candidate.baseRevision, baseText: copy(candidate.baseText) }, phase: 'saved', savedAt: candidate.updatedAt }); return true;
     },
     async retryDraftSave(token = capture()): Promise<boolean> {
-      if (!isCurrent(token) || !context.visible || !context.connected || context.restored || context.busy || operation || saving || retrying || !state.autosavePaused || !state.draftRetry || preparationUnconfirmed()) return false;
+      if (!isCurrent(token) || !context.visible || !context.connected || context.busy || operation || saving || retrying || !state.autosavePaused || !state.draftRetry || preparationUnconfirmed()) return false;
       const owner = generation, mode = state.draftRetry, beforeRead = envelope ? copy(envelope) : null, previousCandidate = state.candidate, lock = {}; retrying = lock; emit({ busy: true });
       try {
         await load(); if (!isCurrent(token) || !loaded || !envelope || !context.visible || !context.connected || context.busy || operation || saving || preparationUnconfirmed()) return false;
@@ -343,7 +343,7 @@ export function createLocalShotTextController({ context: initial, getContext, cl
       finally { if (operation === lock) operation = null; if (belongs(owner)) { emit({ busy: false }); schedule(); } }
     },
     async recover(token = capture()): Promise<unknown | null> {
-      if (!isCurrent(token) || !context.visible || !context.connected || context.restored || context.busy || !loaded || !envelope || operation || saving || retrying) return null;
+      if (!isCurrent(token) || !context.visible || !context.connected || context.busy || !loaded || !envelope || operation || saving || retrying) return null;
       let previous = copy(envelope); const retained = uncertain.get(keyOf(previous));
       if (!previous.intent && !retained || previous.intent && !pendingIntent(previous.intent) && !retained) return null;
       if (state.projectPendingIntent && state.projectPendingIntent.shotId !== context.shotId) return null;

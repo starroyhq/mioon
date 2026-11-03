@@ -33,7 +33,7 @@ interface Options{
   root:string;channel?:'web'|'production'|'development';storage:LocalDraftStorage;
   /** App library identity when composed by the project host; legacy default is workbench.sqlite. */
   databaseFile?:string;
-  guards:{ownsLock():boolean;isRestored():boolean};readCurrentTarget():Promise<unknown>;
+  guards:{ownsLock():boolean};readCurrentTarget():Promise<unknown>;
   signal?:AbortSignal;
 }
 export interface AgentAuthorizations{
@@ -62,7 +62,6 @@ export function createAgentAuthorizations({root,channel='web',storage,guards,rea
   const file=path.join(root,AGENT_AUTHORIZATION_FILENAME);let scope:string|undefined,tail:Promise<unknown>=Promise.resolve();
   function owned():void{
     if(signal?.aborted||!guards.ownsLock())fail('AGENT_AUTHORIZATION_UNAVAILABLE');
-    if(guards.isRestored())fail('AGENT_AUTHORIZATION_RESTORED');
   }
   function boundary():string{
     owned();

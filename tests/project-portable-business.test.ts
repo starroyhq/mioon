@@ -17,6 +17,8 @@ import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/image
 import {sceneDetectionOptionsSchema} from '../packages/contracts/src/scene-tasks.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {collectProject, createProjectFromDocument} from '../packages/business/src/project-package/document.ts';
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
+import {png} from './helpers/timeline-image-fixtures.ts';
 
 function scratch(t: TestContext): string {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-portable-business-'));
@@ -41,7 +43,7 @@ test('real project notes survive reopening while legacy package imports and work
   assert.throws(() => createProjectFromDocument(reopened, {document: collected.document, files: new Map(), name: 'Refused copy', move: false}), {
     name: 'TypeError', message: 'Legacy project package imports cannot run on project databases.',
   });
-  await assert.rejects(current.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'RESTORE_OPERATION_UNAVAILABLE', status: 409});
+  await assert.rejects(current.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'UNKNOWN_OPERATION', status: 404});
   assert.equal(reopened.db.prepare('SELECT total_changes() AS n').get()!.n, before);
   assert.equal(reopened.db.prepare('SELECT count(*) AS n FROM projects').get()!.n, 1);
   assert.deepEqual(reopened.get('projects', projectId), project);
@@ -57,7 +59,7 @@ test('the exact test opener owns one real B1 application and releases it with it
   assert.equal(one.configuration.root, app); assert.equal(two.configuration.root, app);
   assert.ok(existsSync(path.join(app, 'app-library.db')));
   assert.equal(existsSync(path.join(root, 'workbench.sqlite')), false);
-  await assert.rejects(one.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
+  await assert.rejects(one.call('workspace.backup.create', {requestId: randomUUID()}), {code:'UNKNOWN_OPERATION'});
   await one.drain(); await two.drain(); store.close();
   assert.equal(testStoreForConnection(store.db, root), null);
   const reopened = openAppLibrary({dataDir: app}); reopened.close();
@@ -93,7 +95,7 @@ test('portable detected and manually refined scene results do not require local 
       sourceHash: String((input.asset as {sha256: string}).sha256), analysis: {width: 256, height: 144, decodedFrames: 90}};
   }}});
   await services.call('project.create', {name: 'Portable cuts'});
-  const projectId = store.projectId, assetId = randomUUID(), bytes = Buffer.from('local synthetic source');
+  const projectId = store.projectId, assetId = randomUUID(), bytes = mp4HeaderFixture('local synthetic source; detector is explicitly injected');
   const hash = createHash('sha256').update(bytes).digest('hex'), relativePath = `media/${assetId}.mp4`;
   writeFileSync(path.join(store.projectDir, relativePath), bytes, {mode: 0o600});
   store.put('assets', {id: assetId, projectId, name: 'Synthetic.mp4', mimeType: 'video/mp4', sha256: hash, sizeBytes: bytes.length, relativePath, width: 320, height: 180, duration: 3, provenance: 'user-import'});
@@ -117,9 +119,11 @@ test('0755 project media writes retain private app roots, link rejection and hel
   const store = openStore(scratch(t)), services = createServices(store, new Map(), {env: {}});
   t.after(async () => {await services.drain(); store.close();});
   chmodSync(store.projectDir, 0o755);
-  const storage = createSceneShotsStorage(store), id = randomUUID(), relative = storage.publish(id, Buffer.from('managed content'));
-  assert.equal(readFileSync(resolveProjectMediaFile(store, relative).file, 'utf8'), 'managed content');
-  assert.equal(validateManagedSource(store.projectDir, {relativePath: relative}).info.size, 15);
+  store.put('projects',{id:store.projectId,name:'Ordinary project output'});
+  const bytes=png(),storage = createSceneShotsStorage(store), id = randomUUID(), relative = storage.publish(id, bytes);
+  store.put('assets',{id,projectId:store.projectId,name:'Published.png',mimeType:'image/png',relativePath:relative,sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,width:16,height:16,provenance:'generated'});
+  assert.deepEqual(readFileSync(resolveProjectMediaFile(store, relative).file), bytes);
+  assert.equal(validateManagedSource(store.projectDir, store.get('assets',id)!).info.size, bytes.length);
   assert.equal(statSync(store.projectDir).mode & 0o777, 0o755);
   assert.equal(statSync(projectMediaDirectory(store)).mode & 0o777, 0o700);
   assert.equal(statSync(testStoreApplicationDirectory(store)!).mode & 0o777, 0o700);

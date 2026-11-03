@@ -1,3 +1,5 @@
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
+import {mediaFixturePath, mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import type {SceneCall, SceneServices, SceneHandlerService} from './helpers/strict-scene-types.ts';
 import type {SceneServicesOptions} from '../packages/business/src/scene-tasks.ts';
 import type {SceneDetectTaskResponse} from '@mioon/contracts';
@@ -11,14 +13,14 @@ import {readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore,ownsStoreLock} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createSceneServices} from '../packages/business/src/scene-tasks.ts';
 import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';
 import {validateImageConsumption} from '../packages/business/src/image-consumption.ts';
 import {createPngStreamSplitter,keyframeTargets,decodeSceneKeyframes, type DecodeSceneKeyframesOptions, type SceneKeyframe} from '../packages/business/src/scene-keyframe-decoder.ts';
 import {decodeManagedFrame} from '../packages/business/src/frame-decoder.ts';
 import {validateManagedSource} from '../packages/business/src/managed-media.ts';
-import {RESTORE_DENIED_OPERATIONS,RESTORE_READ_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {AGENT_TASK_OPERATION_ADMISSION} from '../packages/business/src/agent/task-tools-v2.ts';
 import {run} from '../packages/business/src/media-runtime.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
@@ -73,7 +75,7 @@ function fixture(t: test.TestContext,options: NonNullable<Parameters<typeof open
  const opened=reopen(options),{store,call}=opened;
  const project=store.put('projects',{id:String(store.db.prepare('SELECT projectId FROM project.project_file').get()!.projectId),name:'Storyboard project',revision:1}),other={id:randomUUID(),name:'Other project',revision:1};
  const video=(patch: Record<string, unknown>={})=>{
-  const bytes=Buffer.from(`Synthetic reference film ${randomUUID()} PRIVATE_SENTINEL`),id=randomUUID(),relativePath=`media/${id}.mp4`;
+  const bytes=mp4HeaderFixture(`Synthetic reference film ${randomUUID()} PRIVATE_SENTINEL`),id=randomUUID(),relativePath=`media/${id}.mp4`;
   writeFileSync(path.join(root,relativePath),bytes,{mode:0o600});
   return store.put('assets',{id,projectId:project.id,name:'Reference.mp4',mimeType:'video/mp4',sha256:digest(bytes),sizeBytes:bytes.length,relativePath,width:W,height:H,duration:60,provenance:'user-import',...patch});
  };
@@ -98,7 +100,7 @@ test('storyboard operations are registered, described, effect-annotated, restore
   for(const locale of ['zh-Hant','en','ja'] as const)assert.ok(translate(locale,`operation.${operation}`).length>30,`${operation} ${locale}`);
   const effect=operationEffect(operation);
   assert.equal(effect.readOnly,false);assert.equal(effect.paidGeneration,false);assert.equal(effect.externalIO,false);assert.equal(effect.idempotent,true);
-  assert.ok(RESTORE_DENIED_OPERATIONS.includes(operation)&&!RESTORE_READ_OPERATIONS.includes(operation),operation);
+
  }
  for(const operation of ['scene.task.get','scene.task.list','scene.task.cancel'] as const)assert.equal(translate('zh-Hans',`operation.${operation}`),descriptions[operation]);
  assert.equal(operationEffect('scene.shots.create').localProcess,true);
@@ -146,7 +148,7 @@ test('acceptance freezes the plan, replays exactly and refuses with proofs', asy
  await assert.rejects(f.call('scene.shots.create',beyond),refused('SCENE_SEGMENTS_INVALID','scene.shots.create',beyond),'the newer result has two segments');
  const changed=f.input(newer.id,{sourceHash:'b'.repeat(64),segments:[1]});
  await assert.rejects(f.call('scene.shots.create',changed),refused('SCENE_SOURCE_CHANGED','scene.shots.create',changed));
- f.store.put('assets',{...f.store.get('assets',f.asset.id),sha256:'c'.repeat(64)});
+ f.store.put('assets',{...f.store.get('assets',f.asset.id),sha256:'c'.repeat(64),reference:{...mediaReferenceSchema.parse((f.store.get('assets',f.asset.id) as unknown as {reference: unknown}).reference),fullSha256:'c'.repeat(64)}});
  const outdated=f.input(newer.id,{sourceHash:'c'.repeat(64),segments:[1]});
  await assert.rejects(f.call('scene.shots.create',outdated),refused('SCENE_RESULT_STALE','scene.shots.create',outdated));
  await assert.rejects(f.call('scene.shots.create',f.input(newer.id,{projectId:f.other.id})),code('SCENE_NOT_FOUND'));
@@ -169,8 +171,8 @@ test('a built storyboard saves its keyframe images and shots in one step', async
    position:{x:500+index*340,y:700},orderIndex:index,revision:1,selectedVersionId:null})));
  assert.equal(images.length,3);
  for(const [index,item] of (done.shots)!.entries()){
-  const image=f.store.get('assets',item.assetId),bytes=readFileSync(path.join(f.root,(image)!.relativePath));
-  assert.deepEqual([(image)!.name,(image)!.mimeType,(image)!.width,(image)!.height,(image)!.sizeBytes,(image)!.relativePath,(image)!.provenance],
+  const image=f.store.get('assets',item.assetId),bytes=readFileSync(mediaFixturePath(f.root,image));
+  assert.deepEqual([(image)!.name,(image)!.mimeType,(image)!.width,(image)!.height,(image)!.sizeBytes,mediaReferenceSchema.parse((image as unknown as Record<string,unknown>).reference).path,(image)!.provenance],
    [`Ref 0${index+1}.png`,'image/png',W,H,bytes.length,`media/${item.assetId}.png`,'scene-keyframe']);
   assert.equal((image)!.sha256,digest(bytes));assert.deepEqual(bytes,still(index));
   // Keyframes are owned images: the media graph and image consumers accept them.
@@ -251,7 +253,7 @@ test('failures leave no shots, images or files, and keep a safe code', async t=>
 test('restart turns active storyboards into interrupted ones and removes their files', async t=>{
  const f=fixture(t),resultId=await f.detected();await f.close();
  const reopened=f.reopen({autoRun:false}),queued=await reopened.call('scene.shots.create',f.input(resultId,{segments:[1]}));
- const second=(()=>{const bytes=Buffer.from('Second synthetic reference'),id=randomUUID();writeFileSync(path.join(f.root,`media/${id}.mp4`),bytes,{mode:0o600});
+ const second=(()=>{const bytes=mp4HeaderFixture('Second synthetic reference'),id=randomUUID();writeFileSync(path.join(f.root,`media/${id}.mp4`),bytes,{mode:0o600});
   return reopened.store.put('assets',{id,projectId:f.project.id,name:'Second.mp4',mimeType:'video/mp4',sha256:digest(bytes),sizeBytes:bytes.length,relativePath:`media/${id}.mp4`,width:W,height:H,duration:60,provenance:'user-import'});})();
  await reopened.close();
  // A detection result for the second video, then a storyboard left saving.
@@ -308,7 +310,7 @@ test('undo removes the untouched shots and keeps the keyframes; any real change 
  Object.defineProperty(observer,'root',{value:`${f.root}/lost-owner`});assert.equal(ownsStoreLock(observer),false);
  const ownerRows=rows(f.store.db);
  assert.throws(()=>reader.handlers['scene.shots.undo'](f.control(done)),code('SCENE_OWNER_REQUIRED'));
- assert.throws(()=>reader.handlers['scene.shots.create'](f.input(resultId)),code('SCENE_OWNER_REQUIRED'));
+ await assert.rejects(async()=>reader.handlers['scene.shots.create'](f.input(resultId)),code('SCENE_OWNER_REQUIRED'));
  assert.equal(rows(f.store.db),ownerRows);Object.defineProperty(observer,'root',{value:f.root});
  const projectRevision=(f.store.get('projects',f.project.id))!.revision,undoInput=f.control(done),undone=await f.call('scene.shots.undo',undoInput);
  assert.ok(isSceneMutationResponse('scene.shots.undo',undoInput,undone));

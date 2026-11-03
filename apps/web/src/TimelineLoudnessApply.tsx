@@ -8,7 +8,7 @@ export interface TimelineLoudnessApplyProps { readonly apply: TimelineLoudnessAp
 export default function TimelineLoudnessApply({ apply, observation, onOpenTasks }: TimelineLoudnessApplyProps) {
   const { t, locale, formatDate, formatNumber, renderMessage } = useI18n();
   const { state, controller } = apply, pending = state.phase === 'submitting' || state.phase === 'unknown';
-  if (!observation.scope || !observation.projectId || observation.restored || !observation.visible) return null;
+  if (!observation.scope || !observation.projectId || !observation.visible) return null;
   const owned = state.scope === observation.scope && state.projectId === observation.projectId;
   const canReview = timelineLoudnessCanReview(observation) && (!owned || !['digesting', 'confirming', 'submitting', 'unknown'].includes(state.phase) && (!['error', 'applied'].includes(state.phase) || state.observationVersion !== observation.version));
   if (!observation.report && !owned) return null;

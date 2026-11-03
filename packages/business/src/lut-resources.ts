@@ -2,6 +2,7 @@ import {mioTable} from './agent/mio-table-layout.ts';
 import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import {randomUUID} from 'node:crypto';
 import {taskEffectOrigin} from './agent/task-effects-v2.ts';
+import {beginProjectVersionCaptureInside} from './project-versions/capture-port.ts';
 import type {AgentTaskJson} from '../../contracts/src/agent-tasks-v2.ts';
 import {isProxy} from 'node:util/types';
 import type {DatabaseSync} from 'node:sqlite';
@@ -9,7 +10,6 @@ import {LUT_RESOURCE_LIMITS,LUT_RESOURCE_PROFILE,lutImportInputSchema,lutListInp
 import type {LutImportInput,LutImportResponse,LutListResponse,LutInspectResponse} from '../../contracts/src/lut-resources.ts';
 import {lutResourceError,lutHash,lutInputHash,parseLutBytes,LUT_RESOURCE_COLUMNS,lutResourceFromRow} from './lut-resource-validation.ts';
 import {readLutResource} from './project-lut-reader.ts';
-import {isRestoredWorkspaceSchemaSince} from '../../contracts/src/workspace-schema-lineage.ts';
 
 export interface LutResourceRuntime {
   ownsLock():boolean;
@@ -22,16 +22,6 @@ export interface LutResourceOptions {
   signal?:AbortSignal;
   /** Trusted test-only interruption seam, never part of an RPC input. */
   fault?:(point:LutImportFaultPoint)=>void;
-}
-export function assertLutReadProfile(schemaVersion:number):void {
-  if(schemaVersion!==29&&schemaVersion!==31&&schemaVersion!==33&&schemaVersion!==35&&schemaVersion!==37&&schemaVersion!==39&&schemaVersion!==41&&schemaVersion!==45&&schemaVersion!==49&&schemaVersion!==51)throw lutResourceError('RESTORE_OPERATION_UNAVAILABLE',409);
-}
-/** The verified restore-53 assembly is a separate generation, shared by every
- * restored profile from source schema52 on. Preserve the historical read gate
- * above for callers bound to frozen restore profiles. */
-export function assertAgentTaskLutReadProfile(schemaVersion:number):void {
-  if(isRestoredWorkspaceSchemaSince(52,schemaVersion))return;
-  assertLutReadProfile(schemaVersion);
 }
 function input<T>(schema:{safeParse(value:unknown):{success:true;data:T}|{success:false}},value:unknown):T {
   if(!value||typeof value!=='object'||Array.isArray(value)||isProxy(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw lutResourceError('VALIDATION_ERROR',400);
@@ -105,6 +95,7 @@ export function createLutResourceServices(store:{db:DatabaseSync},{runtime,signa
     const origin=taskEffectOrigin();origin?.beforeEffect();
     db.exec('BEGIN IMMEDIATE');let committed=false,commitAttempted=false;
     try{
+      const commitVersionCapture=beginProjectVersionCaptureInside(db);
       owned();runtime.assertImportAllowed();project(i.projectId);
       const concurrent=replay(i,digest);
       if(concurrent){commitAttempted=true;db.exec('COMMIT');committed=true;return concurrent;}
@@ -128,6 +119,7 @@ export function createLutResourceServices(store:{db:DatabaseSync},{runtime,signa
       const response={requestId:i.requestId,resource:readLutResource(db,i.projectId,id,true)};
       if(databaseBytes(db)>LUT_RESOURCE_LIMITS.databaseBytes)throw lutResourceError('LUT_CAPACITY',507);
       fault('beforeCommit');owned();runtime.assertImportAllowed();
+      commitVersionCapture();
       if(origin){
         origin.beforeEffect();
         if(origin.importHandle){const updated=db.prepare(`UPDATE ${mioTable(db,'imports')} SET status='imported',resourceId=? WHERE id=? AND projectId=? AND status='importing'`).run(id,origin.importHandle,i.projectId);if(updated.changes!==1)throw Object.assign(Error('Agent import identity changed'),{code:'AGENT_TASK_UNKNOWN_RESULT'});}

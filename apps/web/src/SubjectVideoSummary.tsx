@@ -5,7 +5,7 @@ import { subjectKindDescriptor } from './subject-state.ts';
 import { subjectVideoSourceDescriptor } from './subject-video.ts';
 import './subject-video-controls.css';
 
-export interface SubjectAssetView {id?: string; projectId?: string; name?: string; sha256?: string}
+export interface SubjectAssetView {id?: string; projectId?: string; name?: string; sha256?: string | null}
 export interface SubjectVersionView {
   id: string; subjectId: string; assetId: string; projectId: string; sha256: string; number: number;
   width: number; height: number; mimeType: string; provenance?: Record<string, unknown> | null;

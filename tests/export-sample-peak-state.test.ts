@@ -41,7 +41,7 @@ test('all row checks are globally busy; same/different repeated click cannot que
   const f = fixture(), wait = f.check(); await f.check(); await f.check(1); assert.equal(f.calls.length, 1);
   f.reads[0].resolve(report(f.target())); await wait; assert.equal(f.state().phase, 'ready');
 });
-for (const patch of [{ scope: 'other:2:normal', projectId: id(99) }, { scope: `${projectId}:2:normal` }, { scope: `${projectId}:1:restored:branch`, restored: true }, { executionScope: '1:9:canvas' }, { visible: false }, { connected: false }]) test(`live pre-layout result fence ${JSON.stringify(patch)}`, async () => {
+for (const patch of [{ scope: 'other:2:normal', projectId: id(99) }, { scope: `${projectId}:2:normal` }, { scope: `${projectId}:1:restored:branch` }, { executionScope: '1:9:canvas' }, { visible: false }, { connected: false }]) test(`live pre-layout result fence ${JSON.stringify(patch)}`, async () => {
   const f = fixture(), target = f.target(), wait = f.check(); f.set(patch, false); f.reads[0].resolve(report(target)); await wait;
   assert.equal(f.calls[0].options.signal.aborted, true); assert.equal(f.state().report, null); assert.notEqual(f.state().phase, 'ready');
 });
@@ -80,8 +80,8 @@ for (const [status, code] of [['unsupported', 'UNSUPPORTED_FORMAT'], ['incomplet
   assert.equal(f.state().phase, status); assert.equal(f.state().report!.measurement, null); assert.equal(f.calls.length, 2);
   await f.ready(); assert.equal(f.calls.length, 3); assert.equal(f.state().phase, 'ready');
 });
-test('restored/hidden/disconnected views cannot start any check; stale row click is rejected', async () => {
-  for (const patch of [{ restored: true }, { visible: false }, { connected: false }]) { const f = fixture(patch); await f.check(); assert.equal(f.calls.length, 0); }
+test('hidden/disconnected views cannot start any check; stale row click is rejected', async () => {
+  for (const patch of [ { visible: false }, { connected: false }]) { const f = fixture(patch); await f.check(); assert.equal(f.calls.length, 0); }
   const f = fixture(), target = f.target(), scope = f.state().scope; f.set({ scope: `${projectId}:2:normal` }); await f.controller.check(target, scope); assert.equal(f.calls.length, 0);
 });
 test('only current auth failure reaches owner; arbitrary server messages are never surfaced', async () => {
@@ -93,7 +93,7 @@ test('only current auth failure reaches owner; arbitrary server messages are nev
 test('pre-layout render projection cannot flash checked or busy state for a replaced identity', async () => {
   const f = fixture(); await f.ready(); const stored = f.state(), changedAssets = context().assets;
   changedAssets[0].sha256 = 'b'.repeat(64);
-  for (const patch of [{ assets: changedAssets }, { scope: `${projectId}:99:normal` }, { connected: false }, { restored: true }]) {
+  for (const patch of [{ assets: changedAssets }, { scope: `${projectId}:99:normal` }, { connected: false }]) {
     const view = exportSamplePeakViewState(stored, context(patch), isTimelineRenderRecord);
     assert.equal(view.report, null); assert.notEqual(view.phase, 'ready');
   }

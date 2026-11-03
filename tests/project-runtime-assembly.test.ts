@@ -1,3 +1,7 @@
+
+
+
+
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -10,7 +14,7 @@ import path from 'node:path';
 import {composeProjectRuntime, ProjectRuntimeCleanupError, type ProjectRuntime, type ProjectRuntimeOptions} from '../apps/server/src/project-runtime.ts';
 import {createProjectDeletionGate} from '../apps/server/src/project-deletion-gate.ts';
 import {startServer} from '../apps/server/src/index.ts';
-import {openStore, openLegacyWorkspaceStore, ownsStoreLock} from '../packages/business/src/db.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createProjectStore, openProjectStore, isProjectStore, schemaObjects, foreignKeyCheck} from '../packages/business/src/project-file/index.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createWorkspaceConfiguration} from '../packages/business/src/workspace-configuration.ts';
@@ -18,9 +22,9 @@ import {createAppCompanionDocuments} from '../packages/business/src/companion-sc
 import type {ServiceApplicationPorts} from '../packages/business/src/services.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {createServices} from '../packages/business/src/services.ts';
-import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
-import type {DatabaseSync} from 'node:sqlite';
+
+
+
 import {createImageSettings} from '../packages/business/src/images/settings.ts';
 
 function temporary(): string {
@@ -30,28 +34,18 @@ function temporary(): string {
 /** Deliberately unavailable historical operations: this is a test app port,
  * not a shadow workspace or a production replacement for the S7 runtime. */
 function testApplication(library: ReturnType<typeof openAppLibrary>): ServiceApplicationPorts {
-  const unavailable = (): never => { throw new TypeError('Historical backup operations are unavailable in this kernel test'); };
   const configuration = createWorkspaceConfiguration({root: library.dataDir, documents: createAppCompanionDocuments(library)});
   const assertOwner = createProjectServiceApplication(library).assertMutationAllowed;
-  return {configuration, assertMutationAllowed() { assertOwner(); assert.equal(library.db.isOpen, true, 'the real application connection must still own admission'); }, backups: {
-    getStatus: unavailable, list: unavailable, create: unavailable, stageRestore: unavailable,
-    exportBundle: unavailable, importBundle: unavailable, importDirectory: unavailable,
-    isBusy: () => false,
-    assertMutationAllowed() { assert.equal(library.db.isOpen, true, 'the real application connection must still own admission'); },
-    start: unavailable,
-    stop: () => assert.fail('a project cannot stop a borrowed app runtime'),
-    drain: async () => assert.fail('a project cannot drain a borrowed app runtime'),
-    tick: unavailable,
-  }};
+  return {configuration, outsidePaths: library.outsidePaths, assertMutationAllowed() { assertOwner(); assert.equal(library.db.isOpen, true, 'the real application connection must still own admission'); }};
 }
 
-function fixture(t: TestContext, kernel: boolean) {
+function fixture(t: TestContext) {
   const root = temporary(), shutdown = new AbortController();
-  const library = kernel ? openAppLibrary({dataDir: path.join(root, 'app')}) : undefined;
+  const library = openAppLibrary({dataDir:path.join(root, 'app')});
   const projectDir = path.join(root, 'Film');
-  if (kernel) mkdirSync(projectDir, {mode: 0o700});
-  const store = kernel ? createProjectStore({projectFile: path.join(projectDir, 'Film.mioon'), projectId: randomUUID(),
-    locate: id => ({localDir: path.join(root, 'app', 'records', id), cacheDir: path.join(root, 'cache', id), tempDir: path.join(root, 'tmp', id)})}) : openLegacyWorkspaceStore(projectDir);
+  mkdirSync(projectDir, {mode: 0o700});
+  const store = createProjectStore({projectFile: path.join(projectDir, 'Film.mioon'), projectId: randomUUID(),
+    locate: id => ({localDir: path.join(root, 'app', 'records', id), cacheDir: path.join(root, 'cache', id), tempDir: path.join(root, 'tmp', id)})});
   const deletionGate = createProjectDeletionGate({signal: shutdown.signal, subscribeMedia: onMediaProcess, busy: () => { throw new Error('project busy'); }});
   let runtime: ProjectRuntime | undefined, worker: ReturnType<ProjectRuntime['startWorker']> | undefined;
   let closed = false;
@@ -70,23 +64,10 @@ function fixture(t: TestContext, kernel: boolean) {
   };
 }
 
-test('the shared factory keeps legacy layout, random multi-project creation and worker ownership', async t => {
-  const f = fixture(t, false), runtime = await f.compose();
-  const first = await runtime.serviceCall('project.create', {name: 'First'}) as {id: string};
-  const second = await runtime.serviceCall('project.create', {name: 'Second'}) as {id: string};
-  assert.notEqual(first.id, second.id);
-  assert.equal(existsSync(path.join(f.store.root, 'workbench.sqlite')), true);
-  assert.equal(existsSync(path.join(f.store.root, 'project.mioon')), false);
-  assert.equal(existsSync(path.join(f.store.root, 'app-library.db')), false);
-  const worker = f.startWorker();
-  assert.equal(runtime.startWorker(), worker, 'one factory cannot dispatch two workers');
-  assert.equal(ownsStoreLock(f.store), true);
-  await f.close();
-  assert.equal(f.store.db.isOpen, false);
-});
+
 
 test('kernel assembly is opt-in and requires explicit app dependencies', async t => {
-  const f = fixture(t, true);
+  const f = fixture(t);
   await assert.rejects(composeProjectRuntime(f.options), /requires application ports/);
   assert.equal(f.shutdown.signal.aborted, false);
   assert.equal(ownsStoreLock(f.store), true, 'the factory never takes ownership of opening or closing the store');
@@ -94,7 +75,7 @@ test('kernel assembly is opt-in and requires explicit app dependencies', async t
 });
 
 test('the same factory assembles a real kernel with independent app policy, documents and project records', async t => {
-  const f = fixture(t, true), library = f.library!;
+  const f = fixture(t), library = f.library!;
   const before = schemaObjects(f.store.db), runtime = await f.compose();
   const project = await runtime.serviceCall('project.create', {name: 'Film'}) as {id: string};
   assert.equal(project.id, 'projectId' in f.store ? f.store.projectId : undefined);
@@ -141,7 +122,7 @@ test('application startup failure preserves its error and releases the server lo
 });
 
 test('a held library file cannot grant app scope to another live database connection', async t => {
-  const f = fixture(t, true), other = openAppLibrary({dataDir: path.join(f.root, 'other-app')});
+  const f = fixture(t), other = openAppLibrary({dataDir: path.join(f.root, 'other-app')});
   try {
     const runtime = await f.compose({application: {...other, db: f.library!.db}, serviceApplication: testApplication(other)});
     await assert.rejects(runtime.agentAuthorizations!.list(), {code: 'AGENT_AUTHORIZATION_UNAVAILABLE'});
@@ -151,7 +132,7 @@ test('a held library file cannot grant app scope to another live database connec
 });
 
 test('project cleanup leaves borrowed settings owned and usable by the application', async t => {
-  const f = fixture(t, false), image = await createImageSettings({persistence: {load: async () => null, save: async () => {}}});
+  const f = fixture(t), image = await createImageSettings({persistence: {load: async () => null, save: async () => {}}});
   let closed = 0;
   try {
     await f.compose({settings: {image: {...image, async close() { closed++; await image.close(); }}}});
@@ -162,7 +143,7 @@ test('project cleanup leaves borrowed settings owned and usable by the applicati
 });
 
 test('failed private kernel cleanup preserves both failures and cannot authorize closing its owned SQLite connection', async t => {
-  const f=fixture(t,true),store=f.store,startupError=new Error('synthetic late settings failure'),cleanupError=new Error('synthetic codec close failure');
+  const f=fixture(t),store=f.store,startupError=new Error('synthetic late settings failure'),cleanupError=new Error('synthetic codec close failure');
   assert.ok(isProjectStore(store));
   const settings:NonNullable<ProjectRuntimeOptions['settings']>={get image():never{throw startupError;}};
   const failure:unknown=await composeProjectRuntime({...f.options,application:f.library!,serviceApplication:testApplication(f.library!),settings,

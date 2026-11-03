@@ -10,7 +10,7 @@ import type {AgentTaskGoalCondition,AgentTaskJson,AgentTaskStep} from '../packag
 import {AGENT_TASK_GOAL_SET_PARAMETERS,evaluateAgentTaskGoals,latestAgentTaskGoals,normalizeAgentTaskGoals} from '../packages/business/src/agent/task-goals-v2.ts';
 import type {TaskGoalObservation,TaskSavedGoals} from '../packages/business/src/agent/task-goals-v2.ts';
 import {readAgentTaskChecks} from '../packages/business/src/agent/task-checks-v2.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createServices} from '../packages/business/src/services.ts';

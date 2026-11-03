@@ -1,11 +1,11 @@
 # 项目宿主
-日期：2026-10-31 起草，2026-11-02 补充 P4 实现状态，2026-11-03 补充 V2 自动备份与 V1-A 手动版本。当前代码已切换到真实项目内核；本轮整体验收和发布状态以 PR 为准。
+日期：2026-10-31 起草，2026-11-02 补充 P4 实现状态，2026-11-03 补充 V2 自动备份与 V1-B 版本恢复及自动保存。当前代码已切换到真实项目内核；本轮整体验收和发布状态以 PR 为准。
 
 项目文件 v1 以后，后端同时开着多个项目：每个打开的项目有一个“项目宿主”，里面是这个项目的 store、服务、后台任务循环和 Mio 运行时；应用级的“宿主管理器”负责列出、新建、打开、关闭项目，按 URL 里的项目 ID 把请求交给对应的宿主。
 
 ## 0. P4 当前运行状态
 
-`startServer` 在应用数据目录预检、取得 `server.lock` 后打开唯一的 B1 应用库，再组装应用设置和 `createProjectHostManager`；`manager.restore()` 完成后开始监听。项目请求经真实租约进入 `composeHostedProject` / `composeProjectRuntime`，一个项目只持有一个内核连接，应用库不挂到项目连接上。关闭项目不关闭借用的应用设置或应用库。普通 `db.ts.openStore(root)` 和七个数据库测试辅助函数已切换为真实内核；历史 schema、备份和恢复测试显式用 `openLegacyWorkspaceStore`，没有生产旧工作区开关。
+`startServer` 在应用数据目录预检、取得 `server.lock` 后打开唯一的 B1 应用库，再组装应用设置和 `createProjectHostManager`；`manager.restore()` 完成后开始监听。项目请求经真实租约进入 `composeHostedProject` / `composeProjectRuntime`，一个项目只持有一个内核连接，应用库不挂到项目连接上。关闭项目不关闭借用的应用设置或应用库。普通测试通过 `project-file/test-store.ts` 的 `openStore(root)` 和七个数据库辅助函数使用真实内核；旧工作区 opener、迁移、备份和恢复实现已退役。
 
 `dataDir` 是应用数据目录，放应用库、设置、令牌、`records/`、`tmp/`；项目目录独立。服务端默认项目在 `<dataDir>/projects/`，缓存为 `<dataDir>/cache/projects/<ID>/`。桌面使用 `<userData>/data/`，旧 `<userData>/workspace/` 不迁移、不再读取；默认项目在 `<videos>/Mioon/`，缓存用系统缓存目录。设置 `MIOON_DESKTOP_USER_DATA` 时，项目和缓存均留在覆盖目录的 `data/` 内，具体布局见 2.1。应用目录含旧 `workbench.sqlite` 时，生产启动精确拒绝 `VALIDATION_ERROR`（400），不迁移旧树或旧库。
 
@@ -17,8 +17,9 @@
 - 经过 HTTP 的 B1 错误仅列 `APP_LIBRARY_LIMIT`（507，登记容量上限）和 `APP_LIBRARY_INVALID`（422，无效诊断摘要，`details: {reason:'unusable'}`）。`APP_LIBRARY_LOCKED`、`APP_LIBRARY_FORMAT_NEWER` 是监听前的启动错误；`APP_LIBRARY_CLOSED` 是内部生命周期错误，不据此新增公开端点。
 - `inspectProject: receive => …` 是受信测试接收选项；真实服务端子进程可用固定测试 IPC 读取其 own connection。HTTP、CLI 和环境变量不接受 SQL、回调或 inspect 开关；活跃连接复用、关闭项目短开即关、同步回调和 transition 拒绝规则不变。
 - V2 的 `createProjectBackups` 已在生产注册第一个生命周期 hook。打开先复制项目文件，关闭在运行时排空后、store 关闭前复制；按内容序号去重、保留最近三份。`project.backup.list/inspect/restore/status` 走应用 RPC，不 acquire 原项目，恢复为新 ID、空本机记录的新文件。实现边界和契约见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)，本卡没有备份界面。
+- S1 素材媒体 GET/HEAD/Range 使用精确宿主 store 的 L1 引用服务，逐块重查权限与身份，响应 no-store；宿主不再预建私有 `media/`。受信用户路径导入/位置确认走固定 `asset-media/trusted` 项目路由，沿用认证与 origin 检查，普通 RPC/MCP 无确认入口。封面缓存绑定无路径内容指纹，首页仍不 acquire 项目。导入、复制恢复许可和格式拒旧见 [ASSET-REFERENCES.md](ASSET-REFERENCES.md)。
 - 备份完整校验成功后按文件身份和变动时间在同一服务实例内缓存；安全属性仍逐次检查，替换或变动即重验。打开去重只确认最近有效项，列表仍核对全部有效项，inspect/restore 仍完整只读校验。
-- V1-A 在真实项目服务中接入 `project.version.list/save/preview`，走项目前缀 RPC；只提供手动版本和只读预览，不注册每日或 Mio 自动拍摄 hook，也不提供版本恢复。当前 history 6 新增四张版本领域表，精确已知 2–5 可升级；项目/cache 仍为 1，详见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。备份四项与版本三项统一进契约根操作表及 effect 表，内置 Mio 均禁用。
+- 版本领域在真实项目服务中接入 `project.version.list/save/preview/restore`，走项目前缀 RPC；每日 hook 在 V2 打开备份校验后执行，Mio 首改与恢复前保存使用同一真实连接和事务。恢复同时核对完整摘要与内容序号，并在写入前检查应用能力和宿主在途工作。当前 history 6 新增四张版本领域表，精确已知 2–5 可升级；项目/cache 沿用 S1 的 2，详见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。备份四项与版本四项统一进契约根操作表及 effect 表，内置 Mio 均禁用。
 
 ### 暂不可用的后续能力
 
@@ -26,9 +27,11 @@
 |---|---|---|
 | S5 | 应用 RPC `project.delete` | 409 `PROJECT_DELETE_UNAVAILABLE`，复用原生命周期错误码 |
 | S5、V4 | 复制、另存为、打包导入导出尚无新生产接口；旧 `/api/project-packages/…`、项目 `package-preview` | 404 `NOT_FOUND`；不进入旧复制、删除或导入链 |
-| S7 | 应用 RPC `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（含 bundle 下载/导入、directory 导入） | 409 `RESTORE_OPERATION_UNAVAILABLE` |
+| S7 | 应用 RPC `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（含 bundle 下载/导入、directory 导入） | 404 `UNKNOWN_OPERATION`（旧文件地址为 `NOT_FOUND`） |
 
-`workspace.restore.inspect` 仍可返回 `{restored:false}` 和明确请求的能力字段；它不启用旧恢复服务。工作区设置中的既有备份字段不控制 V2；新项目自动备份由宿主 hooks 提供，与旧工作区备份链分开。历史旧格式领域的正例只在显式 legacy 测试入口验证，不恢复生产旧路由。S5、V4、S7 接入时恢复对应业务正例。
+`workspace.restore.inspect` 已退役并返回 404 `UNKNOWN_OPERATION`；不再有旧恢复来源或能力探测协议。工作区设置去掉五个退役备份键；项目自动备份仍由 V2 宿主 hooks 提供。S5、V4 的未接入边界保持不变。
+
+数据库内的队列、保留容量与配额按各项目宿主的实际三库计算。Mio 的 256 MiB / 65536 行及回执豁免仍由当前 history 计量和触发器保护；各项目的 LUT 保留和任务队列彼此独立。明确的应用级资源预算（例如连续音频会话内存和媒体进程 admission）保持各自契约。
 
 ### 配额口径
 

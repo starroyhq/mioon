@@ -1,3 +1,9 @@
+
+
+
+
+
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +14,8 @@ import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import type {BinaryLike} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
-import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+
 import {createSceneServices} from '../packages/business/src/scene-tasks.ts';
 import type {SceneServicesOptions} from '../packages/business/src/scene-tasks.ts';
 import type {DecodeSceneKeyframesOptions} from '../packages/business/src/scene-keyframe-decoder.ts';
@@ -21,11 +28,11 @@ import {imageEditOutputSize,imageEditProfile} from '../packages/contracts/src/im
 import {IMAGE_SETTINGS_READ_CURRENT,IMAGE_SETTINGS_ASSERT_CURRENT} from '../packages/business/src/images/settings.ts';
 import {DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
-import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
-import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
-import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
-import {downgradeReviewedWorkspace} from './helpers/reviewed-schema-layers.ts';
-import {CURRENT_ORDINARY_ROLE,CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_ROLE,CURRENT_RESTORED_SCHEMA,CURRENT_RESTORE_PROFILE} from './helpers/workspace-schema-current.ts';
+
+
+
+
+
 import {png} from './helpers/timeline-image-fixtures.ts';
 
 type Rec = Record<string, unknown>;
@@ -55,7 +62,7 @@ async function until<T>(read: () => T | false | Promise<T | false>, label: strin
   return assert.fail(`Timed out waiting for ${label}`);
 }
 
-function open(root: string,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore) {
+function open(root: string,opener:typeof openStore=openStore) {
   const native=opener(root),store = native as unknown as Store;
   const scenes = createSceneServices(store as never, {autoRun: true,
     detect: async input => {
@@ -79,12 +86,12 @@ function open(root: string,opener:typeof openStore|typeof openLegacyWorkspaceSto
   return {store, projectId: isProjectStore(native) ? native.projectId : randomUUID(), scenes, images, async close() { if (closed) return; closed = true; try { await scenes.drain(); await images.drain(); } finally { store.close(); } }};
 }
 
-async function fixture(t: test.TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore) {
+async function fixture(t: test.TestContext,opener:typeof openStore=openStore) {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'mioon-keyframe-edit-')));
   let opened = open(root,opener);
   t.after(async () => { try { await opened.close(); } finally { rmSync(root, {recursive: true, force: true}); } });
   const projectId = opened.store.put('projects', {id: opened.projectId, name: 'Keyframe edits', revision: 1}).id as string;
-  const film = Buffer.from(`Synthetic reference film ${randomUUID()}`), videoId = randomUUID(), relativePath = `media/${videoId}.mp4`;
+  const film = mp4HeaderFixture(`Synthetic reference film ${randomUUID()}`), videoId = randomUUID(), relativePath = `media/${videoId}.mp4`;
   writeFileSync(path.join(root, relativePath), film, {mode: 0o600});
   const video = opened.store.put('assets', {id: videoId, projectId, name: 'Reference.mp4', mimeType: 'video/mp4', sha256: sha(film), sizeBytes: film.length, relativePath,
     width: W, height: H, duration: 60, provenance: 'user-import'});
@@ -167,37 +174,4 @@ test('an image only labelled as a keyframe, without its storyboard receipt, is r
   await assert.rejects(f.resolve(forged), refused('IMAGE_SOURCE_INVALID'));
   await assert.rejects(f.prepare(f.input(forged)), refused('IMAGE_SOURCE_INVALID'));
   assert.equal(reviewRows(f.store.db).length, 0);
-});
-
-test('a schema66 workspace refuses keyframe sources, then upgrades keeping its edit reviews', async t => {
-  const f = await fixture(t,openLegacyWorkspaceStore), {shots} = await f.storyboard(), keyframe = f.asset(shots[0]!.assetId);
-  // An ordinary edit review of an imported image exists before the upgrade.
-  await f.prepare(f.input(f.put('Imported.png', await result(), {width: 1024, height: 1024, provenance: 'user-import'}), {options: IMAGE_FIXED_OPTIONS}));
-  const before = reviewRows(f.store.db);
-  assert.equal(before.length, 1);
-  downgradeReviewedWorkspace(f.store.db, 66);
-  assert.equal(readCurrentWorkspaceRole(f.store.db), 'ordinary-66');
-  await assert.rejects(f.resolve(keyframe), refused('IMAGE_SOURCE_INVALID'), 'schema66 reviews cannot hold a keyframe source');
-  await f.reopen();
-  assert.equal(readCurrentWorkspaceRole(f.store.db), CURRENT_ORDINARY_ROLE, 'opening the workspace upgrades it');
-  assert.deepEqual(reviewRows(f.store.db), before, 'retained reviews keep their rowids and values');
-  assert.equal((await f.resolve(keyframe)).descriptor.origin.kind, 'scene-keyframe');
-});
-
-test('keyframe edit reviews survive backup and restore', async t => {
-  const f = await fixture(t,openLegacyWorkspaceStore), {shots} = await f.storyboard(), keyframe = f.asset(shots[0]!.assetId);
-  const review = await f.prepare(f.input(keyframe)), before = reviewRows(f.store.db);
-  await f.stop();
-  const base = realpathSync(mkdtempSync(path.join(tmpdir(), 'mioon-keyframe-edit-backup-'))), backup = path.join(base, 'backup'), restored = path.join(base, 'restored');
-  t.after(() => rmSync(base, {recursive: true, force: true}));
-  assert.equal((await createWorkspaceBackup({source: f.root, destination: backup})).databaseSchemaVersion, CURRENT_ORDINARY_SCHEMA);
-  const restoreResult = await restoreWorkspaceBackup({directory: backup, destination: restored});
-  assert.deepEqual([restoreResult.sourceSchema, restoreResult.databaseSchemaVersion, restoreResult.profile], [CURRENT_ORDINARY_SCHEMA, CURRENT_RESTORED_SCHEMA, CURRENT_RESTORE_PROFILE]);
-  const store = openLegacyWorkspaceStore(restored) as unknown as Store;
-  try {
-    assert.equal(readCurrentWorkspaceRole(store.db), CURRENT_RESTORED_ROLE);
-    assert.deepEqual(reviewRows(store.db), before, 'every review row is kept as it was');
-    const intent = JSON.parse((store.db.prepare('SELECT canonicalIntent FROM image_reviews WHERE id=?').get(review.id as string) as {canonicalIntent: string}).canonicalIntent);
-    assert.equal(intent.sourceImage.origin.kind, 'scene-keyframe');
-  } finally { store.close(); }
 });

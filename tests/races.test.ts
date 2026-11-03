@@ -2,11 +2,12 @@ import type {RootFailure} from './helpers/strict-root-error-types.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import {png} from './helpers/timeline-image-fixtures.ts';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { openStore } from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import { createServices, type ServiceRow } from '../packages/business/src/services.ts';
 import { startWorker, type Worker } from '../packages/business/src/jobs.ts';
 
@@ -44,8 +45,9 @@ async function fixture(t: test.TestContext, methods: { reconcile?: (() => Promis
   const services = (createServices(store, providers) as unknown as TypedServices);
   t.after(async () => { if (worker) await worker.stop(); store.close(); await rm(root, { recursive: true, force: true }); });
   const project = await services.call('project.create', { name: 'Isolated race fixture' });
-  const asset = { id: randomUUID(), projectId: project.id, mimeType: 'image/png', relativePath: 'media/unused-fixture.png', sha256: 'a'.repeat(64) };
-  await writeFile(path.join(root, asset.relativePath), 'Inert reference for the injected adapter; never decoded or transmitted.');
+  const bytes=png({width:360,height:640});
+  const asset = { id: randomUUID(), projectId: project.id, mimeType: 'image/png', relativePath: 'media/unused-fixture.png', sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,width:360,height:640 };
+  await writeFile(path.join(root, asset.relativePath), bytes);
   store.put('assets', asset);
   const shot = await services.call('shot.create', { projectId: project.id, title: 'Race fixture', referenceAssetIds: [asset.id] });
   const job = await services.call('generation.submit', { shotId: shot.id, expectedRevision: shot.revision, providerId: 'mock', requestId: randomUUID() });

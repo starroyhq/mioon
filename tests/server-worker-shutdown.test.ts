@@ -37,7 +37,13 @@ test('server close aborts an active RPC media import, reaps its probe, and relau
   assert.ok(closing,'stop must start while the import probe is active');await closing;
   assert.equal(result.status,503);assert.equal(result.error?.code,'OPERATION_CANCELLED');assert.ok(performance.now()-began<5000);
   const started=events.filter(e=>e.type==='started').map(e=>e.pid),exited=events.filter(e=>e.type==='exited').map(e=>e.pid);
-  assert.equal(started.length,1);assert.deepEqual(exited,started);assert.deepEqual(await readdir(path.join(projectDirFor(root,project.id),'media')),[]);
+  assert.equal(started.length,1);assert.deepEqual(exited,started);
+  for(const name of ['素材','media']){
+   let files:string[]=[];
+   try{files=await readdir(path.join(projectDirFor(root,project.id),name));}
+   catch(error){if(!error||typeof error!=='object'||!('code'in error)||error.code!=='ENOENT')throw error;}
+   assert.deepEqual(files,[],`cancelled import must not publish into ${name}`);
+  }
  } finally {detach();}
  server=await startServer({dataDir:root,port:0,token});
  assert.deepEqual((await rpc(server,'asset.list',{projectId:project.id})).data,[]);

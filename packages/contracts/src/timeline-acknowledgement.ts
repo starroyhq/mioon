@@ -1,3 +1,4 @@
+import {mediaFingerprintSchema, mediaReferenceSchema} from './media-reference.ts';
 import {createVolumeEnvelopeEvaluator, type VolumeEnvelope, type VolumeEnvelopeClip} from './timeline-volume-envelope.ts';
 import {isVolumeEnvelope,isVolumeEnvelopeProcessingSnapshot} from './timeline-volume-envelope-processing.ts';
 import {isClipAudioRole} from './timeline-audio-role.ts';
@@ -184,11 +185,15 @@ export function isTimelineRenderRecord(value: unknown, input: unknown): boolean 
   } else if (render.assetId !== null || render.url !== null || render.status === 'failed' && render.error === null) return false;
   const assets = new Map<string, Rec>();
   for (const asset of snapshotRecord.assets as unknown[]) {
-    if (!fields(asset, ['id', 'sha256', 'mimeType'], ['duration', 'width', 'height', 'hasAudio', 'relativePath']) ||
+    if (!fields(asset, ['id', 'sha256', 'mimeType'], ['duration', 'width', 'height', 'hasAudio', 'reference', 'referenceRevision', 'fingerprint', 'relativePath']) ||
         !uuid(asset.id) || assets.has(asset.id) || !digest(asset.sha256) || ![...visualTypes, ...audioTypes].includes(asset.mimeType as string) ||
         (Object.hasOwn(asset, 'duration') && (!Number.isFinite(asset.duration) || (asset.duration as number) < 0)) ||
         ['width', 'height'].some(key => Object.hasOwn(asset, key) && !integer(asset[key], 0)) ||
         (Object.hasOwn(asset, 'hasAudio') && asset.hasAudio !== null && typeof asset.hasAudio !== 'boolean') ||
+        (Object.hasOwn(asset, 'reference') && (!mediaReferenceSchema.safeParse(asset.reference).success || !integer(asset.referenceRevision,1) || (asset.reference as {fullSha256?:unknown}).fullSha256!==asset.sha256)) ||
+        (Object.hasOwn(asset, 'fingerprint') && (!mediaFingerprintSchema.safeParse(asset.fingerprint).success || !integer(asset.referenceRevision,1) || (asset.fingerprint as {fullSha256?:unknown}).fullSha256!==asset.sha256)) ||
+        (Object.hasOwn(asset, 'referenceRevision') && !Object.hasOwn(asset,'reference') && !Object.hasOwn(asset,'fingerprint')) ||
+        (Object.hasOwn(asset,'relativePath') && (Object.hasOwn(asset,'reference') || Object.hasOwn(asset,'fingerprint'))) ||
         (Object.hasOwn(asset, 'relativePath') && (!text(asset.relativePath, 1, 4096) || (asset.relativePath as string).includes('\0')))) return false;
     assets.set(asset.id, asset);
   }

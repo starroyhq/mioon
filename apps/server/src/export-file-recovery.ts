@@ -1,3 +1,7 @@
+import {isProjectDatabase} from '../../../packages/business/src/project-file/held-files.ts';
+import {validAssetLocator} from '../../../packages/business/src/asset-reference-record.ts';
+import {resolveReferencePath} from '../../../packages/business/src/media-reference/index.ts';
+import {mediaReferenceSchema} from '../../../packages/contracts/src/media-reference.ts';
 import path from 'node:path';
 import {constants} from 'node:fs';
 import {open,link,unlink,lstat} from 'node:fs/promises';
@@ -28,10 +32,10 @@ export function createExportFileRecovery(options:Options){
    if(!object(receipt)||receipt.resourceId!==exportId)throw fail();
    asset=options.guards.readOwnedAsset(projectId,record.assetId);
   }
-  if(!object(asset)||!object(record)||typeof asset.id!=='string'||asset.projectId!==projectId||asset.id!==record.assetId||asset.mimeType!=='video/mp4'||asset.provenance!=='export'||typeof asset.relativePath!=='string'||
-   !new RegExp(`^media/export-${exportId}-[a-f0-9-]{36}\\.mp4$`,'u').test(asset.relativePath)||typeof asset.sha256!=='string'||!/^[a-f0-9]{64}$/u.test(asset.sha256)||typeof asset.sizeBytes!=='number'||!Number.isSafeInteger(asset.sizeBytes)||asset.sizeBytes<1||asset.sizeBytes>8*1024**3)throw fail();
-  if(options.db.prepare("SELECT 1 FROM assets WHERE id<>? AND json_extract(data,'$.relativePath')=? LIMIT 1").get(asset.id,asset.relativePath))throw fail();
-  const file=path.join(options.root,asset.relativePath),digest=createHash('sha256').update(JSON.stringify([timeline?.identityDigest??record,asset])).digest('hex');
+  if(!object(asset)||!object(record)||typeof asset.id!=='string'||asset.projectId!==projectId||asset.id!==record.assetId||asset.mimeType!=='video/mp4'||asset.provenance!=='export'||!(isProjectDatabase(options.db)?validAssetLocator(options.db,asset)&&object(asset.producer)&&asset.producer.kind==='export'&&asset.producer.id===exportId:typeof asset.relativePath==='string'&&new RegExp(`^media/export-${exportId}-[a-f0-9-]{36}\\.mp4$`,'u').test(asset.relativePath))||typeof asset.sha256!=='string'||!/^[a-f0-9]{64}$/u.test(asset.sha256)||typeof asset.sizeBytes!=='number'||!Number.isSafeInteger(asset.sizeBytes)||asset.sizeBytes<1||asset.sizeBytes>8*1024**3)throw fail();
+  if(!isProjectDatabase(options.db)&&options.db.prepare("SELECT 1 FROM assets WHERE id<>? AND json_extract(data,'$.relativePath')=? LIMIT 1").get(asset.id,String(asset.relativePath)))throw fail();
+  const file=isProjectDatabase(options.db)?resolveReferencePath(options.root,mediaReferenceSchema.parse(asset.reference)):path.join(options.root,String(asset.relativePath)),digest=createHash('sha256').update(JSON.stringify([timeline?.identityDigest??record,asset])).digest('hex');
+  if(!file)throw fail();
   return {file,digest,status:{projectId,exportId,assetId:asset.id,sizeBytes:asset.sizeBytes,sha256:asset.sha256,status:'missing'} satisfies ExportFileStatus};
  }
  const exists=async(file:string)=>{options.validateFile(file,true);try{await lstat(file);return true;}catch(error){if(object(error)&&error.code==='ENOENT')return false;throw error;}};

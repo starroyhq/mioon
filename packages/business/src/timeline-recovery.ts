@@ -1,5 +1,7 @@
+import {sameMediaLocator} from './asset-reference-record.ts';
+import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {assertTimelineVolumeEnvelopeWorkspace,hasTimelineVolumeEnvelope,admitTimelineVolumeEnvelopeWrite,TIMELINE_VOLUME_ENVELOPE_REJECTION_CODES} from './timeline-volume-envelope-admission.ts';
-import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
+import {assertTimelineAudioRoleWorkspace} from './store-capabilities.ts';
 import {timelineImageResponseBudgetIssue} from './timeline-image-budget.ts';
 import {validateTimelineColourBindings} from './timeline-colour-business.ts';
 import {createTimelineLoudnessRecovery} from './timeline-loudness-recovery.ts';
@@ -10,13 +12,14 @@ export {TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_REN
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
 import {validateSavedTimeline} from './timeline-inputs.ts';
+import {timelineOutputPreset} from '../../contracts/src/timeline-output-geometry.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {ManagedAssetRecord,TimelineClipRecord,TimelineRecord,TimelineSubtitleCueRecord} from './timeline-inputs.ts';
 
 interface TimelineAssetRecord extends ManagedAssetRecord {path?: string;sizeBytes?: number;hasVideo?: boolean;videoStreamIndex?: number|string|null;audioStreamIndex?: number|string|null;colourProbe?: unknown;colourImageEvidence?: unknown;colourSourceIdentity?: unknown}
 interface TimelineVersionRecord {id: string;projectId: string;shotId: string;assetId: string;sha256: string}
 interface TimelineShotRecord {id: string;projectId: string;selectedVersionId: string|null;orderIndex: number;title?: string;timeLineTitle?: string}
-interface FrozenSnapshotAsset {id: string;sha256?: string;mimeType?: string;relativePath?: string;duration?: number|null;width?: number|null;height?: number|null;hasAudio?: boolean}
+interface FrozenSnapshotAsset {id: string;sha256?: string;mimeType?: string;reference?: MediaReference;referenceRevision?: number;relativePath?: string;duration?: number|null;width?: number|null;height?: number|null;hasAudio?: boolean}
 interface TimelineRenderResponseLike {
  id: string;projectId: string;requestId?: string;mode?: string;purpose?: string;timelineRevision?: number;assetId?: string|null;
  snapshot: {timeline: TimelineRecord;assets: FrozenSnapshotAsset[]};
@@ -75,9 +78,14 @@ export function admitTimelineImageResponse(timeline: TimelineRecord): void{
 // read-only eligibility inspection so an omitted historical subtitle field
 // removes current cues rather than leaking them into an earlier snapshot.
 export function restoreTimelineEditableSnapshot(timeline: TimelineRecord,saved: unknown): TimelineRecord{
- const record=asRecord<{tracks: TimelineRecord['tracks'];clips: TimelineRecord['clips'];durationFrames: number;subtitles?: TimelineRecord['subtitles']}>(saved);
- if(!object(saved)||!['tracks','clips','durationFrames'].every(key=>Object.hasOwn(saved as object,key))||Object.keys(record).some(key=>!['tracks','clips','durationFrames','subtitles'].includes(key)))invalidTimeline();
+ const record=asRecord<{tracks: TimelineRecord['tracks'];clips: TimelineRecord['clips'];durationFrames: number;subtitles?: TimelineRecord['subtitles'];format?: {fps:number;width:number;height:number}}>(saved);
+ if(!object(saved)||!['tracks','clips','durationFrames'].every(key=>Object.hasOwn(saved as object,key))||Object.keys(record).some(key=>!['tracks','clips','durationFrames','subtitles','format'].includes(key)))invalidTimeline();
  const result={...timeline,tracks:record.tracks,clips:record.clips,durationFrames:record.durationFrames};
+ if(Object.hasOwn(record,'format')){
+  const format=record.format;
+  if(!format||!object(format)||Object.keys(format).length!==3||!timelineOutputPreset(format))invalidTimeline();
+  Object.assign(result,format);
+ }
  delete result.subtitles;
  if(Object.hasOwn(record,'subtitles'))result.subtitles=record.subtitles;
  return result;
@@ -260,7 +268,7 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
    for(const frozen of (record as TimelineRenderResponseLike).snapshot.assets){
     const source=asset(frozen.id);
     if(source.sha256!==frozen.sha256||source.mimeType!==frozen.mimeType||
-     (Object.hasOwn(frozen,'relativePath')&&source.relativePath!==frozen.relativePath)||
+     !historical&&!sameMediaLocator(source,frozen)||
      (!historical&&(['duration','width','height'].some(field=>Object.hasOwn(frozen,field)&&(source as unknown as Record<string, unknown>)[field]!==(frozen as unknown as Record<string, unknown>)[field])||
       typeof frozen.hasAudio==='boolean'&&frozen.hasAudio!==source.hasAudio)))unavailable();
    }

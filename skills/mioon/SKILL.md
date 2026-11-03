@@ -546,40 +546,6 @@ the local library does not establish platform portrait authorization. Mock only
 tests workflow, never subject likeness. This adds no paid permission or built-in
 Agent tool. Scope and status: ../../docs/SUBJECT-VIDEO-INPUTS.md.
 
-### Whole-workspace offline backup
-
-Use `workspace.backup.inspect` with exactly `{}` only for bounded current database
-counts. It is not project-scoped: the backup covers every project and the entire
-plain SQLite database, including chat/prompts and cache rows. Application
-credential/settings files are excluded, but user-entered text may contain
-secrets. Do not send the backup to a third party without the user's sharing intent.
-
-Actual creation requires normal shutdown of all backends using that workspace
-and the explicit local CLI in ../../docs/WORKSPACE-BACKUP-GUIDE.zh-CN.md. No MCP
-or HTTP operation accepts arbitrary backup paths or restores data. Do not delete
-locks/WAL/journals, retry an unknown paid task, erase old request keys, or open a
-backup as an executable workspace. Successful verify checks the declared cold
-snapshot; guarded restore is a separate explicit offline workflow and does not restore inherited execution authority.
-
-
-### Restored branch safety
-
-Read `workspace.restore.inspect` with exactly `{}` before intentionally operating
-on a restored branch. Pin the disclosed origin once at CLI/MCP launch with
-`--workspace-origin`; never infer or silently replace it after reconnect. The
-origin is not authorization to generate, approve or release old work. Preserve
-original pending keys and all historical outcomes on a restore refusal.
-
-Restored v1 allows fresh supported local imports/edits/previews/exports. Captured
-tasks and approvals remain held, even terminal or unknown ones. New supplier,
-image, Agent, Comfy, extraction and waveform decoding are unavailable. Recursive
-backup creation is also unavailable: preserve the verified original backup.
-Only explicit offline `backup.ts restore` writes a new destination; no model
-RPC accepts restore paths. `restore-status` with the original backup and target
-can discover a guarded branch after total stdout loss, but never repairs,
-reexecutes or proves an earlier fsync. See ../../docs/WORKSPACE-RESTORE.md.
-
-
 ## Named timeline deliveries
 
 When the user wants a named timeline export, discover the shared render/preflight schemas and use the same optional `deliveryName` in both. A blank UI draft means omitted name; API text must be nonblank. Preserve the exact original request/name/settings/key after ambiguity. Renaming the project does not rename a named historical export. Capabilities and previews do not accept a name. Download filenames are server-derived; any local destination still needs the existing explicit user-selected path.
@@ -595,13 +561,13 @@ Do not edit, trim or rebase timeline clips/cues to export an interval. Fade and 
 
 ## Explicit final-file sample-peak check
 
-When the user requests an audio peak check of an existing final timeline export, discover `timeline export samplePeak` / `timeline_export_samplePeak` and supply only its owned project and succeeded export IDs. Use this resource-intensive local read explicitly; never run it automatically while listing, after rendering, at startup or after response loss. It does not create or retry a render. Cancellation ends only the check. Restored-v1 workspaces refuse it.
+When the user requests an audio peak check of an existing final timeline export, discover `timeline export samplePeak` / `timeline_export_samplePeak` and supply only its owned project and succeeded export IDs. Use this resource-intensive local read explicitly; never run it automatically while listing, after rendering, at startup or after response loss. It does not create or retry a render. Cancellation ends only the check.
 
 Present it as **已导出文件解码样本峰值** with the returned artifact hash, checked time and frozen revision/name/range. Ready includes actual complete supported stereo decode and two hash passes; non-ready has no measurement. Explain that sample peak is not true peak/LUFS and cannot certify the original mix avoided clipping. Do not normalize, rerender, or send the audio/report to a model unless separately authorized. Existing export/download remains available after an incomplete check. See [limits and acceptance](../../docs/EXPORT-SAMPLE-PEAK.md).
 
 ## Saved timeline sound audition plan
 
-Discover `timeline audioPreview plan` / `timeline_audioPreview_plan` when asked about an existing saved sound-audition interval. Supply exactly the owned project/timeline IDs, saved `expectedRevision`, and inclusive `startFrame`. The returned plan binds a half-open window of at most 600 composition frames (20 seconds), source hashes and a bounded memory budget. This metadata read does not decode media, save edits, create jobs or prove playback succeeded. Restored-v1 refuses it; the built-in Agent catalog is unchanged.
+Discover `timeline audioPreview plan` / `timeline_audioPreview_plan` when asked about an existing saved sound-audition interval. Supply exactly the owned project/timeline IDs, saved `expectedRevision`, and inclusive `startFrame`. The returned plan binds a half-open window of at most 600 composition frames (20 seconds), source hashes and a bounded memory budget. This metadata read does not decode media, save edits, create jobs or prove playback succeeded. The built-in Agent catalog is unchanged.
 
 The UI prepares fixed authenticated PCM resources only on explicit action, then plays sound separately from rendered video. Do not turn a metadata plan into an automatic decode, render or model upload. A stale/unsupported/over-budget result is not permission to replace sources or silently omit audio. Saved mute/gain/fades apply; unsaved drafts do not. Float audition can differ from legacy s16 clipping and does not promise true-peak or loudness safety. See [sound audition scope](../../docs/TIMELINE-AUDIO-PREVIEW.md).
 
@@ -609,7 +575,7 @@ The UI prepares fixed authenticated PCM resources only on explicit action, then 
 
 Discover `timeline audioPreview continuousPlan` / `timeline_audioPreview_continuousPlan` for the V2 metadata-only plan. Use the same exact owned project/timeline IDs, saved `expectedRevision`, and `startFrame`; inspect its strict schema first. Unlike the unchanged V1 20-second window, this manifest binds the complete saved revision and source identities through the saved end, with fixed 60-frame (2-second) mixed blocks and one 96 MiB application reservation for the entire session. Existing limits remain 30 fps, 48 kHz stereo, 18,000 frames (10 minutes), 12 tracks and 100 clips. The reservation is not an Electron/FFmpeg RSS limit.
 
-Planning reads metadata only: no media bytes, decoding, playback, timeline initialization, file/database writes, network, model or paid-provider calls. Explicit UI playback uses a separate fixed authenticated local pull resource, with bounded buffering, pause/resume, seek and confirmed resource retirement. The metadata plan alone authorizes none of those effects. Saved mute/gain/fades apply; drafts stay excluded. Restore copies reject this operation, the built-in Agent catalog remains unchanged, and sound is not synchronized composed-video preview or a loudness/true-peak check. V1 `plan` and its PCM resource retain their original semantics.
+Planning reads metadata only: no media bytes, decoding, playback, timeline initialization, file/database writes, network, model or paid-provider calls. Explicit UI playback uses a separate fixed authenticated local pull resource, with bounded buffering, pause/resume, seek and confirmed resource retirement. The metadata plan alone authorizes none of those effects. Saved mute/gain/fades apply; drafts stay excluded. The built-in Agent catalog remains unchanged, and sound is not synchronized composed-video preview or a loudness/true-peak check. V1 `plan` and its PCM resource retain their original semantics.
 
 See [V2 protocol and limits](../../docs/TIMELINE-AUDIO-CONTINUOUS.md) and [acceptance evidence](../../docs/TIMELINE-AUDIO-CONTINUOUS-ACCEPTANCE.md). The verified 25-second real audio-clock run and accelerated 2/10-minute PCM comparisons are distinct evidence. They do not establish physical audible output, a full 10-minute wall-clock playback run, or the complete final product lifecycle matrix.
 
@@ -639,18 +605,18 @@ See [profile, report and limits](../../docs/FLOAT-CHECKED-EXPORT.md).
 
 ## Explicit final-file loudness check
 
-When asked to check an existing delivered file's loudness, discover `timeline export loudness` / `timeline_export_loudness`. Bind the owned succeeded export ID, expected actual output SHA-256 and fixed measurement profile; never supply paths or trust a hash as verification. Only supply custom LUFS/dBTP targets the user chose, with no inferred platform default. The explicit complete-file check returns integrated LUFS, decoded sample peak and estimated true peak; selected-range exports measure that selected file, not the whole current timeline. Distinguish digital silence, too short, below gate, missing audio and incomplete results. Arithmetic gain advice is not edit authority or a promise of hitting a target after AAC encoding; do not automatically normalize, limit, render, call a model or retry a lost observation. Existing samplePeak stays a different metric. Restored workspaces deny loudness before media access. See [measurement contract and limits](../../docs/EXPORT-LOUDNESS.md).
+When asked to check an existing delivered file's loudness, discover `timeline export loudness` / `timeline_export_loudness`. Bind the owned succeeded export ID, expected actual output SHA-256 and fixed measurement profile; never supply paths or trust a hash as verification. Only supply custom LUFS/dBTP targets the user chose, with no inferred platform default. The explicit complete-file check returns integrated LUFS, decoded sample peak and estimated true peak; selected-range exports measure that selected file, not the whole current timeline. Distinguish digital silence, too short, below gate, missing audio and incomplete results. Arithmetic gain advice is not edit authority or a promise of hitting a target after AAC encoding; do not automatically normalize, limit, render, call a model or retry a lost observation. Existing samplePeak stays a different metric. See [measurement contract and limits](../../docs/EXPORT-LOUDNESS.md).
 
 ## Explicit saved-timeline full-mix candidate
 
 When asked to measure the complete current saved mix against a chosen target, discover `timeline loudness prepare` / `timeline_loudness_prepare`. Require the saved revision, fixed `timeline-float-mix-v1` mix profile, fixed `bs1770-5-48k-stereo-fir4x-v1` measurement profile and the user's explicit LUFS/dBTP target. Ask for an unspecified target; never infer a platform default or repurpose an exported-file arithmetic suggestion. Do not send paths, URLs, request IDs, ranges, hashes or authority flags.
 
-This resource-intensive read measures the full original pre-encode float mix and, when representable, actually measures a second mix using one unchanged multiplier across audible clip gains. Present the two measurements, validity and target/true-peak comparisons accurately. `applyAllowed` always remains false, including successful candidates; no edit, render, limiter, upload, model call or automatic retry is authorized. Unsaved drafts are not included. Cancellation retires only this observation's owned work; missing results require a new explicit request. No persistent report/cache/task/file write or new Agent permission is created; restored-v1 denies the operation. See [exact report boundary](../../docs/API.md#saved-timeline-full-mix-loudness-preparation).
+This resource-intensive read measures the full original pre-encode float mix and, when representable, actually measures a second mix using one unchanged multiplier across audible clip gains. Present the two measurements, validity and target/true-peak comparisons accurately. `applyAllowed` always remains false, including successful candidates; no edit, render, limiter, upload, model call or automatic retry is authorized. Unsaved drafts are not included. Cancellation retires only this observation's owned work; missing results require a new explicit request. No persistent report/cache/task/file write or new Agent permission is created. See [exact report boundary](../../docs/API.md#saved-timeline-full-mix-loudness-preparation).
 
 ## Explicit atomic loudness application
 
 For an explicitly requested ripple delete, discover `timeline clip rippleRemove` / `timeline_clip_rippleRemove`. Supply the selected clip, current saved timeline revision and a stable requestId. Only later clips on that track move; ordinary `timeline clip remove` leaves a gap. Retain the exact input after an uncertain response and reconcile rather than issuing a fresh key. See [ripple deletion](../../docs/TIMELINE-RIPPLE-DELETE.md).
 
-Only when the user requests applying a reviewed current full-mix candidate, discover `timeline loudness apply` / `timeline_loudness_apply`. Bind the same project, saved revision, explicit profiles/target, snapshot hash, versioned candidate digest and one stable requestId. Use the shared digest helper; never send client gains or infer authorization from a report. The server independently remeasures and commits one atomic gain group and undo entry. Persist the exact request identity for reconciliation. Lost output/timeout/Ctrl+C does not authorize a fresh key or prove cancellation. A same-key retained receipt survives undo and tool loss. Restore profiles prohibit new applications.
+Only when the user requests applying a reviewed current full-mix candidate, discover `timeline loudness apply` / `timeline_loudness_apply`. Bind the same project, saved revision, explicit profiles/target, snapshot hash, versioned candidate digest and one stable requestId. Use the shared digest helper; never send client gains or infer authorization from a report. The server independently remeasures and commits one atomic gain group and undo entry. Persist the exact request identity for reconciliation. Lost output/timeout/Ctrl+C does not authorize a fresh key or prove cancellation. A same-key retained receipt survives undo and tool loss.
 
 The UI now exposes an explicit float-checked export profile, while omitted/v1 requests remain default-compatible; applying gains never selects it automatically. Export then remeasure the actual output to verify the chosen target. See [application boundary](../../docs/TIMELINE-LOUDNESS-APPLY.md).

@@ -12,12 +12,12 @@ import {ensurePrivateDirectory,readPrivateFile,writePrivateFileAtomic} from '@mi
 import {isTimelineMixLoudnessResponse} from '@mioon/contracts/timeline-mix-loudness';
 import {isTimelineLoudnessApplicableReport,timelineLoudnessCandidateDigest} from '@mioon/contracts/timeline-loudness-apply';
 import type {OperationName} from '@mioon/contracts';
-import type { Store as WorkspaceStore } from '../store-contract.ts';
+import type { Store } from '../store-contract.ts';
 import {readMioTargetRevision} from './mio-target-revisions.ts';
 import type {AgentPolicyStore} from '../app-db/stores.ts';
 import {testProjectAppLibrary} from '../project-service-application.ts';
 import {hasStoreTable,isProjectLayout,storeDirectories} from '../store-layout.ts';
-import {registerWorkspaceTransactionObserver,registerWorkspaceTransactionFence} from '../db.ts';
+import {registerStoreTransactionObserver,registerStoreTransactionFence} from '../store-runtime.ts';
 import type {OrdinaryServices} from '../services.ts';
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
 import {agentTaskQuestionSchema,agentTaskTargetSchema,AGENT_TASK_QUESTION_LIMITS,agentTaskContinuityReportSchema,AGENT_TASK_CONTINUITY_CATEGORIES,AGENT_TASK_CONTINUITY_LIMITS} from '../../../contracts/src/agent-tasks-v2.ts';
@@ -32,13 +32,14 @@ import {taskEffectOrigin,withTaskEffectOrigin,setAgentTaskJobOriginRunner,setAge
 import {createAgentTaskJournal} from './task-journal-v2.ts';
 import type {AgentTaskJournal} from './task-journal-v2.ts';
 import {isProjectStore} from '../project-file/store.ts';
+import {assertProjectStore} from '../store-runtime.ts';
 import {createMioRecords} from './mio-records.ts';
 import {createMioJournal} from './mio-journal.ts';
 import {createMioProjectJournal} from './mio-journal-factory.ts';
 import {createMioAssembly} from './mio-assembly.ts';
 import {createTimelineRecoveryBoundary} from '../timeline-recovery.ts';
 import {createPrevisReaders,prunePrevisThumbnails} from '../previs.ts';
-import {usesPrevisSchema} from '../workspace-schema-dispatch.ts';
+import {usesPrevisSchema} from '../store-capabilities.ts';
 import {AGENT_TASK_PREVIS_DESCRIPTIONS,AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_PREVIS_INSPECT_PARAMETERS,AGENT_TASK_PREVIS_INSPECT_TOOL,AGENT_TASK_PREVIS_SCENE_PARAMETERS,agentTaskPrevisSceneFeedback,previsRequestedKeyframe,previsSceneCandidate,previsSceneForNode,previsTaskView} from './task-previs-v2.ts';
 import type {TimelineRecord,TimelineClipRecord,TimelineTrackRecord,TimelineSubtitleCueRecord} from '../timeline-inputs.ts';
 import type {AgentTaskEffectOrigin,TaskChangeInput} from './task-effects-v2.ts';
@@ -82,11 +83,11 @@ const irreversibleOperations=[
 ] as const;
 const paidOperations=['generation.submit','image.generate'] as const;
 const forbiddenOperations=[
+ 'workspace.settings.get','workspace.settings.set',
+ 'project.delete','project.summary.list','agent.authorization.list','agent.authorization.grant','agent.authorization.revoke','lut.import','project.create','project.list','project.get','asset.import',
  'project.backup.list','project.backup.inspect','project.backup.restore','project.backup.status',
- 'project.version.list','project.version.save','project.version.preview',
+ 'project.version.list','project.version.save','project.version.preview','project.version.restore',
  'export.cancel','export.output.get','task.disposition.markFailed','task.disposition.archiveCompleted',
- 'workspace.settings.get','workspace.settings.set','workspace.backup.status','workspace.backup.list','workspace.backup.create','workspace.backup.restore.stage',
- 'project.delete','project.summary.list','agent.authorization.list','agent.authorization.grant','agent.authorization.revoke','lut.import','workspace.backup.inspect','workspace.restore.inspect','project.create','project.list','project.get','asset.import',
  'job.retry','job.cancel','job.reconcile','frame.task.cancelQueued','frame.task.recoverResult','scene.task.cancel','scene.cuts.save','scene.shots.undo','image.task.cancelQueued','image.task.recoverResult','image.task.observeRemote','image.review.prepare','image.review.get','image.review.list','timeline.get','timeline.undo','timeline.redo',
  // Angle and lighting batches are user-driven for now; Mio can still read the
  // resulting subject versions. Tools for them belong to the harness tool groups.
@@ -182,10 +183,10 @@ type Snapshot=Record<string,SnapshotEntry>;
 const rowTables:Readonly<Record<string,string>>={shots:'shot',nodes:'node',edges:'edge',jobs:'job',assets:'asset',versions:'version',exports:'export'};
 const extraTables:Readonly<Record<string,{kind:string;id:string}>>={asset_ranges:{kind:'asset_range',id:'assetId'},asset_dispositions:{kind:'asset_disposition',id:'assetId'},asset_annotations:{kind:'asset_annotation',id:'assetId'},subjects:{kind:'subject',id:'id'},subject_versions:{kind:'subject_version',id:'id'},subject_bindings:{kind:'subject_binding',id:'id'},image_tasks:{kind:'image_task',id:'id'},image_groups:{kind:'image_group',id:'id'},image_versions:{kind:'image_version',id:'id'},frame_tasks:{kind:'frame_task',id:'id'}};
 const key=(kind:string,id:string):string=>`${kind}:${id}`;
-function readRevision(store:WorkspaceStore,projectId:string,kind:string,id:string):number{
+function readRevision(store:Store,projectId:string,kind:string,id:string):number{
  return readMioTargetRevision(store.db,projectId,kind,id)??0;
 }
-function snapshot(store:WorkspaceStore,projectId:string):Snapshot{
+function snapshot(store:Store,projectId:string):Snapshot{
  const result:Snapshot={};
  const insert=(kind:string,id:string,table:string,value:Value):void=>{result[key(kind,id)]={kind,id,table,value:structuredClone(value),revision:readRevision(store,projectId,kind,id)};};
  const project=store.get('projects',projectId);if(object(project))insert('project',projectId,'projects',project);
@@ -235,7 +236,7 @@ function undoDisposition(change:AgentTaskChange,current:Snapshot,expected:AgentT
  const target=expected.length===1?expected[0]:undefined;
  return target&&entries.length===1&&target.revisionAfter!==undefined&&revision(target)>target.revision&&!unchanged?'retain':'blocked';
 }
-function undoDependencies(store:WorkspaceStore,change:AgentTaskChange,current:Snapshot,entries:Array<{before?:SnapshotEntry;after?:SnapshotEntry}>):UndoDisposition{
+function undoDependencies(store:Store,change:AgentTaskChange,current:Snapshot,entries:Array<{before?:SnapshotEntry;after?:SnapshotEntry}>):UndoDisposition{
  const {db}=store,removedEdges=new Set(entries.filter(entry=>!entry.before&&entry.after?.kind==='edge').map(entry=>entry.after!.id));
  const timelineEntries=entries.filter(entry=>(entry.after??entry.before)!.kind.startsWith('timeline'));
  if(timelineEntries.length){
@@ -262,7 +263,8 @@ function undoDependencies(store:WorkspaceStore,change:AgentTaskChange,current:Sn
   const jobs=Object.values(current).filter(item=>item.kind==='job'&&item.value.shotId===identity.id);if(!jobs.length)continue;
   const target=change.targets.length===1?change.targets[0]:undefined,shotId=identity.id;
   if(change.operation!=='shot.create'||entries.length!==1||target?.kind!=='shot'||target.id!==shotId)return 'blocked';
-  if(isProjectStore(store)){
+  assertProjectStore(store);
+  {
    const records=createMioRecords(store);
    const owned=db.prepare(`SELECT b.stepId FROM mio_job_origins b JOIN jobs j ON j.id=b.jobId AND j.projectId=b.projectId
     JOIN mio_steps s ON s.id=b.stepId AND s.runId=b.runId AND s.projectId=b.projectId
@@ -277,24 +279,17 @@ function undoDependencies(store:WorkspaceStore,change:AgentTaskChange,current:Sn
     return call.name==='mioon_generation_submit'&&object(call.arguments)&&call.arguments.shotId===shotId;
    })?'retain':'blocked';
   }
-    const ownedJob=db.prepare(`SELECT 1 FROM agent_task_job_origins_v2 b JOIN jobs j ON j.id=b.jobId AND j.projectId=b.projectId
-     JOIN agent_task_steps_v2 s ON s.id=b.stepId AND s.runId=b.runId AND s.projectId=b.projectId
-     WHERE b.kind='job' AND b.jobId=? AND b.projectId=? AND b.runId=? AND b.operation='generation.submit'
-     AND b.requestId=json_extract(j.data,'$.requestId') AND s.status='completed' AND json_extract(s.data,'$.kind')='tool'
-     AND json_extract(s.data,'$.toolCall.name')='mioon_generation_submit' AND json_extract(s.data,'$.toolCall.arguments.shotId')=?
-     AND EXISTS(SELECT 1 FROM agent_task_changes_v2 c,json_each(c.data,'$.targets') t WHERE c.runId=b.runId AND c.stepId=b.stepId AND c.projectId=b.projectId
-      AND json_extract(c.data,'$.operation')='generation.submit' AND json_extract(c.data,'$.reversible')=0 AND json_extract(c.data,'$.status')='applied'
-      AND json_extract(t.value,'$.kind')='job' AND json_extract(t.value,'$.id')=j.id)`);
-  return jobs.every(job=>ownedJob.get(job.id,change.projectId,change.runId,shotId))?'retain':'blocked';
+
  }
  return 'undo';
 }
 /** Read-only whole-run preview. The actual compensation validates again inside
  * its transaction; this projection never grants permission to undo. */
-export function projectAgentTaskUndo(store:WorkspaceStore,projectId:string,changes:AgentTaskChange[]):Map<string,Pick<AgentTaskChange,'modifiedAfter'|'undoDisposition'>>{
+export function projectAgentTaskUndo(store:Store,projectId:string,changes:AgentTaskChange[]):Map<string,Pick<AgentTaskChange,'modifiedAfter'|'undoDisposition'>>{
  if(!changes.length)return new Map();
  const current=snapshot(store,projectId),revisions=new Map<string,number>(),chain=new Map<string,AgentTaskTarget>(),result=new Map<string,Pick<AgentTaskChange,'modifiedAfter'|'undoDisposition'>>();let blocked=false;
  const revision=(target:AgentTaskTarget):number=>revisions.get(key(target.kind,target.id))??readRevision(store,projectId,target.kind,target.id);
+ assertProjectStore(store);
  const claimed=(target:AgentTaskTarget):boolean=>!!store.db.prepare(`SELECT 1 FROM ${mioTable(store.db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(projectId,target.kind,target.id);
  for(const change of [...changes].reverse()){
   const modifiedAfter=change.targets.some(target=>target.revisionAfter!==undefined&&readRevision(store,projectId,target.kind,target.id)>target.revisionAfter);
@@ -310,7 +305,8 @@ export function projectAgentTaskUndo(store:WorkspaceStore,projectId:string,chang
  return result;
 }
 /** Recheck supersession within the same transaction as its journal record. */
-export function agentTaskChangeWasModified(store:WorkspaceStore,change:AgentTaskChange,expected:AgentTaskTarget[]):boolean{
+export function agentTaskChangeWasModified(store:Store,change:AgentTaskChange,expected:AgentTaskTarget[]):boolean{
+ assertProjectStore(store);
  return undoDisposition(change,snapshot(store,change.projectId),expected,target=>readRevision(store,change.projectId,target.kind,target.id),target=>!!store.db.prepare(`SELECT 1 FROM ${mioTable(store.db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(change.projectId,target.kind,target.id))==='retain';
 }
 function differences(before:Snapshot,after:Snapshot):Array<{before?:SnapshotEntry;after?:SnapshotEntry}>{
@@ -381,22 +377,23 @@ export const listAgentTaskTools=():AgentTaskToolDefinition[]=>{
  assertAgentTaskToolGroupCoverage(definitions);return definitions;
 };
 
-export function createAgentTaskTools({store,services,policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:injectedJournal,rules:injectedRules}:{store:WorkspaceStore;rules?:MioProjectRules;services:OrdinaryServices;policyStore?:AgentPolicyStore;journal?:AgentTaskJournal}){
- const catalogProfile=isProjectStore(store)?'native':'legacy';
+export function createAgentTaskTools({store,services,policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:injectedJournal,rules:injectedRules}:{store:Store;rules?:MioProjectRules;services:OrdinaryServices;policyStore?:AgentPolicyStore;journal?:AgentTaskJournal}){
+ assertProjectStore(store);
+ const catalogProfile='native';
  const list=catalogProfile==='native'?listAgentTaskTools:listDiagnosticAgentTaskTools;
  const testApplication=testProjectAppLibrary(store);
  const rules=injectedRules??(isProjectStore(store)&&testApplication?createMioProjectRules({store,application:testApplication}):undefined);
  const {db}=store;
- const importRoot=storeDirectories(store).localDir,importDirectory=isProjectLayout(db)?'imports':'agent-imports';
- const journal=injectedJournal??(isProjectStore(store)?policyStore?createMioProjectJournal(store,policyStore):createMioJournal(store,{policy:()=>{throw Object.assign(Error('Mio policy was not supplied to the tool journal'),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});},assembly:createMioAssembly(createMioRecords(store))}):createAgentTaskJournal(store,{policyStore}));
+ const importRoot=storeDirectories(store).localDir,importDirectory='imports';
+ const journal=injectedJournal??(policyStore?createMioProjectJournal(store,policyStore):createMioJournal(store,{policy:()=>{throw Object.assign(Error('Mio policy was not supplied to the tool journal'),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});},assembly:createMioAssembly(createMioRecords(store))}));
  // Mio reads back a previs node it created or saved the way it reads one, with framing.
  const taskResult=(operation:string,projectId:string,value:unknown):AgentTaskJson=>previsWrite(operation)&&isPrevisNodeRecord(value)&&value.projectId===projectId?previsTaskView(store,projectId,value):transactionResult(operation,projectId,value);
  const preparedOrigins=new WeakMap<AgentTaskEffectOrigin,PreparedAgentTaskTool>();
  const backgroundOrigins=new WeakSet<AgentTaskEffectOrigin>();
  const transactionSnapshots=new WeakMap<AgentTaskEffectOrigin,Snapshot>();
  const transactionCounts=new WeakMap<AgentTaskEffectOrigin,number>();
- const removeFence=registerWorkspaceTransactionFence(db,()=>{const origin=taskEffectOrigin();if(!origin)return;if(!origin.recorded)origin.beforeEffect();transactionSnapshots.set(origin,snapshot(store,origin.projectId));transactionCounts.set(origin,Number(db.prepare('SELECT total_changes() AS n').get()!.n));});
- const removeObserver=registerWorkspaceTransactionObserver(db,result=>{
+ const removeFence=registerStoreTransactionFence(db,()=>{const origin=taskEffectOrigin();if(!origin)return;if(!origin.recorded)origin.beforeEffect();transactionSnapshots.set(origin,snapshot(store,origin.projectId));transactionCounts.set(origin,Number(db.prepare('SELECT total_changes() AS n').get()!.n));});
+ const removeObserver=registerStoreTransactionObserver(db,result=>{
   const origin=taskEffectOrigin(),active=origin?preparedOrigins.get(origin):undefined,before=origin?transactionSnapshots.get(origin):undefined;if(!origin||!active||!before||origin.projectId!==active.projectId)return;
   const after=snapshot(store,active.projectId),backgroundGeneration=backgroundOrigins.has(origin)&&active.operation==='generation.submit',captured=changes({...active,before},after,{backgroundGeneration});
   // Cost uncertainty is audit evidence even when only a scheduling field was

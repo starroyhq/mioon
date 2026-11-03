@@ -78,12 +78,7 @@ export const clipLoudnessMessages = {
     "en": "Requires an audio/video clip, an unmuted track and positive saved gain. The backend verifies the audio stream; it will not unmute or measure the raw source instead",
     "ja": "音声・動画クリップ、ミュートされていないトラック、正の保存済みゲインが必要です。音声ストリームはバックエンドで確認します。ミュート解除や元ソースへの測定変更は行いません"
   },
-  "audio.loudness.clip.restored": {
-    "zh-Hans": "恢复分支不支持此片段测量",
-    "zh-Hant": "還原分支不支援此片段測量",
-    "en": "Clip measurement is unavailable in restored branches",
-    "ja": "復元ブランチではクリップ測定を利用できません"
-  },
+
   "audio.loudness.clip.timeout": {
     "zh-Hans": "片段分析或响应等待已超时（处理预算 120 秒），未保留部分结果",
     "zh-Hant": "片段分析或回應等待已逾時（處理預算 120 秒），未保留部分結果",

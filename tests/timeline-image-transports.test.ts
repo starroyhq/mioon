@@ -1,7 +1,8 @@
-import {startLegacyRestoredDomainHttp} from './fixtures/legacy-restored-domain-http.ts';
+import {snapshot as currentSnapshot} from './helpers/current-retained-fixture.ts';
+
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
-import type {TestCatalog as DiscoverySchemaResult} from './helpers/strict-timeline-transport-types.ts';
+
 import type {TestOperationDefinition as OperationDefinition} from './helpers/strict-timeline-transport-types.ts';
 type ImageNetworkSeam = NonNullable<NonNullable<Parameters<typeof startServer>[0]>['imageNetwork']>;
 import type {TypedClient as FixtureClient, TypedStore as FixtureStore} from './helpers/strict-service-responses.ts';
@@ -20,15 +21,8 @@ import {startServer} from '../apps/server/src/index.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {createClient, discoverSchema, effectAnnotations} from '../packages/client/src/index.ts';
 import {operationEffect} from '../packages/contracts/src/index.ts';
-import {classifyCurrentWorkspaceSchema, installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
-import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
-import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
-import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
-import {initializeWorkspaceSchema30} from '../packages/business/src/workspace-schema-v30.ts';
-import {initializeWorkspaceSchema32} from '../packages/business/src/workspace-schema-v32.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {READ_TOOL_DEFINITIONS, READ_TOOL_OPERATIONS, parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.ts';
-import {RESTORE_READ_OPERATIONS, RESTORE_LOCAL_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {png, sha, stamp} from './helpers/timeline-image-fixtures.ts';
 import {createServerProject, schemaObjects} from './helpers/project-database.ts';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport';
@@ -80,8 +74,6 @@ test('image inspection shares exact bounded effects and does not widen the gener
   assert.deepEqual(Object.values(READ_TOOL_OPERATIONS), ['project.inspect', 'asset.inspect', 'shot.inspect', 'timeline.inspect']);
   for (const name of (['timeline_colour_image_inspect', 'mioon_timeline_colour_image_inspect'] as const))
     assert.throws(() => parseReadToolArguments(name, JSON.stringify(input)), {code: 'AGENT_CHAT_TOOLS_UNSUPPORTED'});
-  assert.equal(RESTORE_READ_OPERATIONS.includes(operation), false);
-  assert.equal(RESTORE_LOCAL_OPERATIONS.includes(operation), false);
 });
 
 test('shared image client preserves SHA-bound image evidence and the historical video DTO unchanged', async () => {
@@ -184,16 +176,12 @@ async function cli(args: string[], env: { PATH: string; HOME: unknown; TMPDIR: u
 
 // Read on the server's own connection. data_version counts other connections'
 // commits only; total_changes() adds this connection's own writes.
-function databaseSnapshot(db: DatabaseSync) {
-  const rows = schemaObjects(db).filter(({type, name}) => type === 'table' && !name.startsWith('sqlite_'))
-    .map(({name}) => [name, db.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`).all()]);
-  return {rows, version: [db.prepare('PRAGMA data_version').get()!.data_version, db.prepare('SELECT total_changes() AS n').get()!.n]};
-}
+function databaseSnapshot(db:DatabaseSync){return {all:currentSnapshot(db),changes:db.prepare('SELECT total_changes() AS n').get()!.n};}
 
 async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-image-transports-'));
   const audit = path.join(root, 'forbidden-effects.jsonl');
-  let dataDir = path.join(root, 'data'), source32!: { database: unknown; sha256: unknown; directory: unknown; }, server!:{url:string;close():Promise<void>}|undefined, inspect!: InspectProject, mcp!: Client<{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }>|undefined, transport!: Transport|StdioClientTransport|undefined, off!: () => void;
+  let dataDir = path.join(root, 'data'), server!:{url:string;close():Promise<void>}|undefined, inspect!: InspectProject, mcp!: Client<{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }>|undefined, transport!: Transport|StdioClientTransport|undefined, off!: () => void;
   t.after(async () => {
     try { if (mcp) await bounded(mcp.close(), 'Owned image MCP cleanup', 7_000); }
     finally {
@@ -235,10 +223,10 @@ async function fixture(t: test.TestContext) {
   // The server holds the project while it runs: read on its own connection.
   const use = <T>(read: (db: DatabaseSync) => T): T => inspect(projectId, read);
   await open();
-  const rpc = async (name?: string, value?: unknown, {authenticated = true, expectedWorkspaceOrigin}:{authenticated?:boolean;expectedWorkspaceOrigin?:string} = {}) => {
+  const rpc = async (name?: string, value?: unknown, {authenticated = true}:{authenticated?:boolean} = {}) => {
     const result = await fetch((server)!.url + projectRpcPath(projectId), {method: 'POST', signal: AbortSignal.timeout(5_000),
       headers: {'content-type': 'application/json', ...(authenticated ? {authorization: `Bearer ${token}`} : {})},
-      body: JSON.stringify({operation: name, input: value, ...(expectedWorkspaceOrigin ? {expectedWorkspaceOrigin} : {})})});
+      body: JSON.stringify({operation: name, input: value})});
     return {status: result.status, envelope: await result.json()};
   };
   return {root, dataDir, assets, otherProjectId, rpc, mediaProcesses,
@@ -246,23 +234,24 @@ async function fixture(t: test.TestContext) {
     get client() { return (createClient({env: {MIOON_BASE_URL: (server)!.url, MIOON_TOKEN: token}}) as FixtureClient); },
     get env() { return childEnvironment(root, (server)!.url, audit); },
     snapshot: () => use(databaseSnapshot),
+    dailyState: () => use(db => ({
+      versions: db.prepare("SELECT count(*) n FROM main.project_versions WHERE projectId=? AND trigger='daily-open'").get(projectId)!.n,
+      marks: db.prepare("SELECT count(*) n FROM main.project_version_capture_marks WHERE projectId=? AND kind='daily-open'").get(projectId)!.n,
+    })),
     async verifyFiles() {
-      assert.deepEqual((await readdir(path.join(source32?dataDir:created.store.root, 'media'))).sort(), assets.map(asset => path.basename(asset.relativePath)).sort());
-      for (const [index, asset] of assets.entries()) assert.deepEqual(await readFile(path.join(source32?dataDir:created.store.root, asset.relativePath)), fixtures[index]);
+      assert.deepEqual((await readdir(path.join(created.store.root, 'media'))).sort(), assets.map(asset => path.basename(asset.relativePath)).sort());
+      for (const [index, asset] of assets.entries()) assert.deepEqual(await readFile(path.join(created.store.root, asset.relativePath)), fixtures[index]);
       assert.equal(await readFile(audit, 'utf8'), '', 'CLI/MCP attempt no non-owned network or media subprocess');
       assert.deepEqual((mediaProcesses as unknown), [], 'image inspection never invokes a media process');
       assert.deepEqual((backendEffects as unknown), [], 'inspection never attempts provider or model work, even if errors are caught');
-      if (source32) {
-        assert.equal(sha(await readFile(((source32.database) as unknown as Parameters<NonNullable<typeof readFile>>[0]))), source32.sha256, 'Installing and serving restored33 cannot change its historical source32 database');
-        for (const [index, asset] of assets.entries()) assert.deepEqual(await readFile(path.join(((source32.directory) as unknown as Parameters<typeof path.join>[0]), asset.relativePath)), fixtures[index]);
-      }
+
     },
-    async connectMcp(expectedWorkspaceOrigin?: string|undefined) {
+    async connectMcp() {
       if (mcp) { await bounded(mcp.close(), 'Owned image MCP reconnect cleanup'); mcp = undefined; }
       await transport?.close(); transport = undefined;
       mcp = new Client({name: 'timeline-image-inspection-test', version: '1.0.0'}, {capabilities: {}});
       transport = new StdioClientTransport({command: process.execPath, cwd: repo, stderr: 'pipe',
-        args: ['--import', wireGuard, 'apps/mcp/src/index.ts', ...(expectedWorkspaceOrigin ? ['--workspace-origin', expectedWorkspaceOrigin] : [])], env: ((childEnvironment(root, (server)!.url, audit)) as unknown as Record<string, string> | undefined)});
+        args: ['--import', wireGuard, 'apps/mcp/src/index.ts'], env: ((childEnvironment(root, (server)!.url, audit)) as unknown as Record<string, string> | undefined)});
       let stderr = '';
       (((transport as StdioClientTransport).stderr as import('node:stream').Readable|null))!.setEncoding('utf8').on('data', (value: string) => { stderr = (stderr + value).slice(-65_536); });
       await bounded(mcp.connect(transport), 'Owned image MCP connect');
@@ -275,63 +264,23 @@ async function fixture(t: test.TestContext) {
         return result.structuredContent;
       }};
     },
-    async restore33() {
-      if (mcp) { await bounded(mcp.close(), 'Owned image MCP close before restore'); mcp = undefined; }
-      await transport?.close(); transport = undefined;
-      const {projectRows, assetRows} = use(db => ({projectRows: db.prepare('SELECT id,data FROM projects ORDER BY id').all(),
-        assetRows: db.prepare('SELECT id,projectId,data FROM assets ORDER BY id').all()}));
-      await server!.close(); server = undefined;
-      // Construct the fixed historical schema, never relabel a current database
-      // by deleting markers while its newer tables and protections remain.
-      const sourceDirectory = path.join(root, 'source32'), sourceDatabase = path.join(sourceDirectory, 'workbench.sqlite');
-      await mkdir(path.join(sourceDirectory, 'media'), {recursive:true, mode:0o700});
-      await writeFile(sourceDatabase, '', {flag:'wx', mode:0o600});
-      const source = new DatabaseSync(sourceDatabase);
-      try {
-        source.exec('PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL');
-        initializeWorkspaceSchemaThrough24(source);
-        initializeWorkspaceSchema26(source); initializeWorkspaceSchema28(source);
-        initializeWorkspaceSchema30(source); initializeWorkspaceSchema32(source);
-        for (const row of projectRows) source.prepare('INSERT INTO projects(id,data) VALUES(?,?)').run(row.id, row.data);
-        for (const row of assetRows) source.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(row.id, row.projectId, row.data);
-        assert.deepEqual(classifyCurrentWorkspaceSchema(source), {schemaVersion:32, profile:'ordinary'});
-        assert.deepEqual(source.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row => row.version), [...Array.from({length:24}, (_, index) => index + 1),26,28,30,32]);
-      } finally { source.close(); }
-      for (const [index, asset] of assets.entries()) await writeFile(path.join(sourceDirectory, asset.relativePath), fixtures[index], {mode:0o600});
-      source32 = {directory:sourceDirectory, database:sourceDatabase, sha256:sha(await readFile(sourceDatabase))};
-      // Installation acts on a separate fixture-owned copy. Retain the exact
-      // source database and PNG bytes to verify no historical repair occurs.
-      dataDir = path.join(root, 'restored33');
-      await mkdir(path.join(dataDir, 'media'), {recursive:true, mode:0o700});
-      await copyFile(sourceDatabase, path.join(dataDir, 'workbench.sqlite'));
-      for (const asset of assets) await copyFile(path.join(sourceDirectory, asset.relativePath), path.join(dataDir, asset.relativePath));
-      const database = new DatabaseSync(path.join(dataDir, 'workbench.sqlite'));
-      let restored;
-      try {
-        database.exec('PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL');
-        assert.deepEqual(classifyCurrentWorkspaceSchema(database), {schemaVersion:32, profile:'ordinary'});
-        restored = installCurrentWorkspaceRestoreSchema(database, {restorationId: randomUUID(), workspaceOrigin: randomUUID(),
-          sourceBackupId: randomUUID(), manifestHash: 'a'.repeat(64), sourceDbHash: ((source32.sha256) as unknown as string), createdAt: stamp});
-        assert.equal(restored.sourceSchema, 32);
-        assert.deepEqual(classifyCurrentWorkspaceSchema(database), {schemaVersion:33, profile:restored.profile});
-        assert.deepEqual(database.prepare('SELECT id,data FROM projects ORDER BY id').all(), projectRows);
-        assert.deepEqual(database.prepare('SELECT id,projectId,data FROM assets ORDER BY id').all(), assetRows);
-      }
-      finally { database.close(); }
-      assert.equal(restored.schemaVersion, 33);
-      assert.equal(sha(await readFile(sourceDatabase)), source32.sha256);
-      const beforeRefusal=await readFile(path.join(dataDir,'workbench.sqlite'));
-      await assert.rejects(startServer({dataDir,port:0,token}),{code:'VALIDATION_ERROR',status:400});
-      assert.deepEqual(await readFile(path.join(dataDir,'workbench.sqlite')),beforeRefusal,'production refusal preserves the exact legacy database');
-      server=await startLegacyRestoredDomainHttp({root:dataDir,token,inspectStore:received=>{inspect=(_projectId,read)=>received(read);}});
-      return restored;
+    async reopen(){
+      if(mcp){await bounded(mcp.close(),'Owned image MCP close before cold reopen');mcp=undefined;}
+      await transport?.close();transport=undefined;
+      await server!.close();server=undefined;await open();
     },
   };
 }
 
-test('actual authenticated HTTP, CLI and official MCP preserve image inspection scope; restored33 refuses even an explicit origin',
+test('actual authenticated HTTP, CLI and official MCP preserve image inspection scope across a cold kernel reopen',
   {timeout: 60_000}, async t => {
-    const f = await fixture(t), before = f.snapshot();
+    const f = await fixture(t);
+    // The host's first open owns a daily capture; keep all inspection comparisons after that write.
+    const opened = await f.rpc('project.inspect', {projectId: f.input.projectId});
+    assert.equal(opened.status, 200); assert.equal(opened.envelope.ok, true);
+    const before = f.snapshot(), daily = f.dailyState();
+    assert.equal(daily.versions, 1);
+    assert.equal(daily.marks, 1);
     // The project ID comes from createServerProject: the requests and the expected response use it.
     const {input, response} = f;
     const direct = await f.rpc(operation, input);
@@ -367,22 +316,12 @@ test('actual authenticated HTTP, CLI and official MCP preserve image inspection 
     assert.deepEqual(f.snapshot(), before, 'all inspections and rejections preserve every row and the SQLite commit version');
     await f.verifyFiles();
 
-    const restored = await f.restore33(), restoredBefore = f.snapshot();
-    const inspection = await f.client.rpc('workspace.restore.inspect', {});
-    assert.equal((inspection as {schemaVersion:number}).schemaVersion, 33); assert.equal((inspection as {source:{schemaVersion:number}}).source.schemaVersion, 32);
-    for (const expectedWorkspaceOrigin of ([undefined, restored.workspaceOrigin] as const)) {
-      const rejected = await f.rpc(operation, input, (({expectedWorkspaceOrigin}) as unknown as Parameters<typeof f.rpc>[2]));
-      assert.equal(rejected.status, 409); assert.equal(rejected.envelope.error.code, 'RESTORE_OPERATION_UNAVAILABLE');
-      await assert.rejects(f.client.rpc(operation, input, expectedWorkspaceOrigin ? {expectedWorkspaceOrigin} : {}),
-        {code: 'RESTORE_OPERATION_UNAVAILABLE'});
-      const command = await cli(['timeline', 'colour', 'image', 'inspect', '--input', JSON.stringify(input),
-        ...(expectedWorkspaceOrigin ? ['--workspace-origin', expectedWorkspaceOrigin] : [])], f.env);
-      assert.equal(command.code, 3); assert.equal(command.envelope.ok, false);
-      assert.equal(command.envelope.error.code, 'RESTORE_OPERATION_UNAVAILABLE');
-      const restoredMcp = await f.connectMcp(expectedWorkspaceOrigin);
-      const rejectedMcp = await restoredMcp.call('timeline_colour_image_inspect', input);
-      assert.equal((rejectedMcp)!.ok, false); assert.equal((rejectedMcp as unknown as import('./helpers/strict-timeline-transport-types.ts').RpcEnvelope<unknown>).error.code, 'RESTORE_OPERATION_UNAVAILABLE');
-    }
-    assert.deepEqual(f.snapshot(), restoredBefore, 'denial does not mutate captured evidence or restoration state');
+    await f.reopen();const coldBefore=f.snapshot();
+    assert.deepEqual((await f.rpc(operation,input)).envelope,direct.envelope);
+    assert.deepEqual(await f.client.rpc(operation,input),response);
+    const coldCommand=await cli(['timeline','colour','image','inspect','--input',JSON.stringify(input)],f.env);
+    assert.equal(coldCommand.code,0);assert.deepEqual(coldCommand.envelope,direct.envelope);
+    const coldMcp=await f.connectMcp();assert.deepEqual(await coldMcp.call('timeline_colour_image_inspect',input),direct.envelope);
+    assert.deepEqual(f.snapshot(),coldBefore,'all three real databases remain unchanged after cold-reopen reads');
     await f.verifyFiles();
   });

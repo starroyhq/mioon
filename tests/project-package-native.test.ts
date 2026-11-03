@@ -9,7 +9,7 @@ import {createWorkspaceNativeHost} from '../apps/desktop/src/workspace-native-ho
 function host(dir:string,{body=Buffer.from('package-bytes'),length=13}:{body?:Buffer;length?:number}={}){
  const revealed:string[]=[];
  const value=createWorkspaceNativeHost<object>({
-  ownerForEvent:()=>({isCurrent:()=>true}),chooseDirectory:async()=>null,setBackupDirectory:async()=>({}),readSettings:async()=>({}) as never,readWorkspaceRoot:async()=>dir,
+  ownerForEvent:()=>({isCurrent:()=>true}),readWorkspaceRoot:async()=>dir,
   readExport:async()=>({}),openPath:async()=>'',revealPath:file=>{revealed.push(file);},restart:async()=>true,
   chooseSaveFile:async name=>path.join(dir,name.replace(/\.mioon$/u,'')),
   fetchProjectPackage:async()=>new Response(new Uint8Array(body),{headers:{'content-length':String(length)}}),
@@ -38,6 +38,6 @@ test('a truncated download leaves no file behind',async t=>{
 });
 test('a cancelled save dialog returns null',async t=>{
  const dir=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-native-package-')));t.after(()=>rmSync(dir,{recursive:true,force:true}));
- const native=createWorkspaceNativeHost<object>({ownerForEvent:()=>({isCurrent:()=>true}),chooseDirectory:async()=>null,setBackupDirectory:async()=>({}),readSettings:async()=>({}) as never,readWorkspaceRoot:async()=>dir,readExport:async()=>({}),openPath:async()=>'',revealPath:()=>{},restart:async()=>true,chooseSaveFile:async()=>null});
+ const native=createWorkspaceNativeHost<object>({ownerForEvent:()=>({isCurrent:()=>true}),readWorkspaceRoot:async()=>dir,readExport:async()=>({}),openPath:async()=>'',revealPath:()=>{},restart:async()=>true,chooseSaveFile:async()=>null});
  assert.equal(await native.dispatch({},{action:'chooseProjectPackageDestination',suggestedName:'p'}),null);
 });

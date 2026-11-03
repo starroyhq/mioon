@@ -1,3 +1,6 @@
+import {registeredProjectStore, prepareProjectAssetFullHash} from './project-media-storage.ts';
+import {mediaLocatorFields, validAssetLocator} from './asset-reference-record.ts';
+import type {MediaLocator} from './asset-reference-record.ts';
 import {types} from 'node:util';
 import type {DatabaseSync} from 'node:sqlite';
 import {timelineClipColourSchema, timelineColourSourceInspectInputSchema, timelineColourSourceInspectResponseSchema,timelineColourPixelBitDepth,timelineColourSourceEvidenceStatus} from '../../contracts/src/timeline-colour.ts';
@@ -102,7 +105,7 @@ export function validateTimelineColourSourceInterpretation({source,probe,assetSh
 }
 
 interface FileIdentity {readonly dev:number;readonly ino:number;readonly size:number;readonly mtimeMs:number;readonly ctimeMs:number}
-interface ManagedAsset {readonly id:string;readonly projectId:string;readonly relativePath:string;readonly sha256:string;readonly sizeBytes:number;readonly mimeType:string}
+interface ManagedAsset {readonly id:string;readonly projectId:string;readonly reference?: import('../../contracts/src/media-reference.ts').MediaReference;readonly referenceRevision?:number;readonly relativePath?:string;readonly sha256:string;readonly sizeBytes:number;readonly mimeType:string}
 interface HashOptions {signal:AbortSignal;expected:FileIdentity;maxBytes:number;onBytes:(bytes:number)=>void;beforeEffect:()=>void}
 export interface TimelineColourSourceRuntime {
   assertOrdinaryWorkspace():void;ownsLock():boolean;
@@ -141,17 +144,19 @@ export function createTimelineColourSourceServices(store:{db:DatabaseSync;root:s
   ownerSignal?.addEventListener('abort',stop,{once:true});if(ownerSignal?.aborted)stop();
   function current(projectId:string,assetId:string):ManagedAsset {
     assertOwner();const value=runtime.readOwnedAsset(projectId,assetId);assertOwner();
-    if(!object(value)||value.id!==assetId||value.projectId!==projectId||typeof value.relativePath!=='string'||value.relativePath.length>4096||
+    if(!object(value)||value.id!==assetId||value.projectId!==projectId||!validAssetLocator(store.db,value)||
       typeof value.sha256!=='string'||!/^[a-f0-9]{64}$/u.test(value.sha256)||!Number.isSafeInteger(value.sizeBytes)||typeof value.sizeBytes!=='number'||value.sizeBytes<1||
       typeof value.mimeType!=='string'||!value.mimeType.startsWith('video/'))unavailable();
     if(value.sizeBytes>LIMITS.sourceBytes)throw fault('TIMELINE_COLOUR_SOURCE_LIMIT',413);
-    return Object.freeze({id:assetId,projectId,relativePath:value.relativePath,sha256:value.sha256,sizeBytes:value.sizeBytes,mimeType:value.mimeType});
+    return Object.freeze({id:assetId,projectId,...mediaLocatorFields(value),sha256:value.sha256,sizeBytes:value.sizeBytes,mimeType:value.mimeType});
   }
   async function inspect(rawInput:unknown,context:{signal?:AbortSignal}={}):Promise<TimelineColourSourceInspection> {
     available(context.signal);plainInput(rawInput);const parsed=timelineColourSourceInspectInputSchema.safeParse(rawInput);if(!parsed.success)throw fault('VALIDATION_ERROR',400);
     if(store.db.isTransaction)throw fault('TIMELINE_COLOUR_SOURCE_UNAVAILABLE');
     if(owner.active)throw fault('TIMELINE_COLOUR_SOURCE_BUSY',429);
-    const input=parsed.data,initial=current(input.projectId,input.assetId),identity=JSON.stringify(initial),started=performance.now();
+    const input=parsed.data;
+    if(registeredProjectStore(store.root))await prepareProjectAssetFullHash(store.root,input.assetId,{signal:context.signal,maxBytes:LIMITS.sourceBytes});
+    const initial=current(input.projectId,input.assetId),identity=JSON.stringify(initial),started=performance.now();
     const controller=new AbortController(),signal=AbortSignal.any([controller.signal,ownerSignal,context.signal].filter((s):s is AbortSignal=>s!==undefined));
     let expected:{file:string;info:FileIdentity}|undefined,timedOut=false,bytesHashed=0,fencedFailure:unknown;
     const remainingMs=():number=>Math.max(0,LIMITS.timeoutMs-(performance.now()-started));
@@ -200,7 +205,7 @@ export function createTimelineColourSourceServices(store:{db:DatabaseSync;root:s
     catch(error){
       if(owner.shutdownFailure)throw owner.shutdownFailure;if(timedOut)throw fault('TIMELINE_COLOUR_SOURCE_TIMEOUT',503);
       const cause=fencedFailure??error,code=object(cause)&&typeof cause.code==='string'?cause.code:'';
-      if(code==='RESTORE_OPERATION_UNAVAILABLE'||code==='OPERATION_CANCELLED'||code.startsWith('TIMELINE_COLOUR_SOURCE_'))throw cause;
+      if(code==='PROJECT_STORE_UNVERIFIED'||code==='OPERATION_CANCELLED'||code.startsWith('TIMELINE_COLOUR_SOURCE_'))throw cause;
       if(code==='MEDIA_CANCELLED')throw fault('OPERATION_CANCELLED',503);if(code==='MEDIA_TIMEOUT')throw fault('TIMELINE_COLOUR_SOURCE_TIMEOUT',503);
       if(code.startsWith('MANAGED_'))throw fault('TIMELINE_COLOUR_SOURCE_STALE');throw fault('TIMELINE_COLOUR_SOURCE_INVALID_PROBE');
     }finally{controller.abort();}

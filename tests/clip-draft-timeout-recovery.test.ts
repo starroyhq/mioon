@@ -35,7 +35,7 @@ test('real bounded client timeout keeps controller unknown through empty GET and
     return response(stored);
   }) as unknown as typeof fetch, { timeoutMs: 25 });
   const controller = createClipDraftController({ client, delay: 250, context: { ...key, scope: 'same-owner',
-    restored: false, connected: true, busy: false, visible: true, timelineRevision: 7, source, saved: raw } });
+    connected: true, busy: false, visible: true, timelineRevision: 7, source, saved: raw } });
   t.after(() => controller.dispose());
   await controller.load(); controller.edit('name', 'Original uncertain input');
   const writing = controller.flushForClose(); await turn();

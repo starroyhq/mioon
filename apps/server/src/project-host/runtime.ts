@@ -1,7 +1,7 @@
 import {handleMioRulesHttp} from '../mio-rules-http.ts';
 import {AppError, isTimelineRenderRecord} from '@mioon/contracts';
 import path from 'node:path';
-import {resolveProjectMediaFile} from '@mioon/business/project-media-storage';
+import {admitProjectAssetSource, registeredProjectAssetReferences, validatedProjectAssetSource, resolveProjectMediaFile} from '@mioon/business/project-media-storage';
 import {createOwnedMediaGraphReader} from '@mioon/business/inspection';
 import {readTimelineDeliveryDownload, readTimelineExportPreviewMedia, timelineDeliveryResponseHeaders, timelineExportPreviewResponseHeaders} from '@mioon/business/timeline-delivery-read';
 import {readOwnedTimelineAsset} from '@mioon/business/timeline-sources';
@@ -10,8 +10,10 @@ import type {AppLibrary} from '@mioon/business/app-db/index';
 import {createProjectHomeServices,readProjectCover} from '@mioon/business/project-home';
 import {createProjectServiceApplication} from '@mioon/business/project-service-application';
 import {createProjectVersions} from '@mioon/business/project-versions/service';
+import {installProjectVersionCapture} from '@mioon/business/project-versions/capture';
+import {captureDailyProjectVersion} from '@mioon/business/project-versions/daily';
 import {isProjectVersionOperation, isProjectVersionResponse, projectVersionSchemas} from '../../../../packages/contracts/src/project-version-operations.ts';
-import type {ProjectVersionListInput, ProjectVersionSaveInput, ProjectVersionPreviewInput} from '../../../../packages/contracts/src/project-version-operations.ts';
+import type {ProjectVersionListInput, ProjectVersionSaveInput, ProjectVersionPreviewInput, ProjectVersionRestoreInput} from '../../../../packages/contracts/src/project-version-operations.ts';
 import type {IncomingMessage, ServerResponse} from 'node:http';
 import type {ServerOptions} from '../index.ts';
 import type {ApplicationRuntime} from '../application-runtime.ts';
@@ -28,19 +30,22 @@ import {ensureProjectRow} from './project-initialization.ts';
 import {readWorkspaceInfo} from '../workspace-info.ts';
 import {mediaExecutable} from '@mioon/business/media-environment';
 import packageMetadata from '../../../../package.json' with {type: 'json'};
-import {ensurePrivateDirectory, PrivateStorageError} from '@mioon/contracts/private-storage';
 import {registerProjectTransactionObserver} from '@mioon/business/project-file/index';
+import {createAssetMediaHttp} from '../asset-media-http.ts';
+import {sameManagedFile} from '@mioon/business/managed-media';
+import {mediaUnavailableError} from '@mioon/contracts/media-reference-errors';
 import {createProjectCoverPublisher} from './cover-publisher.ts';
 
 export interface HostedProject extends ProjectHostRuntime {
   readonly project: Awaited<ReturnType<typeof composeProjectRuntime>>;
+  /** Trusted lifecycle entry, not an RPC-controlled automatic trigger. */
+  captureDailyVersion(): void;
 }
 
 /** Production assembly over the exact kernel connection owned by the manager. */
 export async function composeHostedProject(context: ProjectHostContext, library: AppLibrary, app: ApplicationRuntime, options: ServerOptions,
   selfPort: () => number | undefined, listeningPort: () => number): Promise<HostedProject> {
   const {store, projectId} = context, root = store.projectDir;
-  ensurePrivateDirectory(path.join(root, 'media'), {create: true});
   ensureProjectRow(store, {name: library.registry.get(projectId)!.name});
   const releaseRowValidation = bindAgentTaskRowValidation(store, library);
   const shutdown = new AbortController();
@@ -54,11 +59,16 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     readGraph: id => createOwnedMediaGraphReader(store.db, id), resolvePath: async (_root, relative) => resolveProjectMediaFile(store, relative).file, createFiles: createFileResponses,
     validateFile: file => resolveProjectMediaFile(store, path.relative(root, file)).info!, assertAvailable: () => { if (!store.db.isOpen) throw new AppError('FILE_UNAVAILABLE', '本地文件不可用。', 404); }});
   let project: HostedProject['project'];
+  const assertVersionWrite = () => project.services.assertMutationAllowed();
+  // Register before Mio's own observers, so a failed before-version cannot
+  // leave its in-memory acceptance marker ahead of the rolled-back SQL.
+  const removeVersionCapture = installProjectVersionCapture(store, {assertMutationAllowed: assertVersionWrite});
   try {
     project = await composeProjectRuntime({...options, store, shutdown, deletionGate, port: options.port ?? 4318, serverPort: selfPort, listeningPort,
       baseRoot: library.dataDir, application: library, serviceApplication: createProjectServiceApplication(library, shutdown.signal),
       agentSettings: app.agentSettings, settings: app.settings});
   } catch (error) {
+    removeVersionCapture();
     shutdown.abort();
     await Promise.all([files.close(), comparisons.close()]);
     deletionGate.close();
@@ -67,7 +77,16 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     throw error;
   }
   const worker = project.startWorker();
-  const versions = createProjectVersions(store);
+  let restoring = false;
+  const versions = createProjectVersions(store, {assertMutationAllowed: assertVersionWrite,
+    assertRestoreAllowed: () => {
+      if (restoring || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy()
+        || Boolean(project.projectRules?.isBusy()) || files.isBusy() || cover.isRendering()
+        || !deletionGate.isQuiescent(['project.version.restore']) || unfinishedTasks().length > 0) {
+        throw new AppError('PROJECT_HOST_BUSY', '项目仍有未结束的内容操作，请稍后恢复。', 409);
+      }
+      restoring = true;
+    }});
   const serviceCall = async (operation: string, input: unknown, callContext?: Record<string, unknown>): Promise<unknown> => {
     if (!isProjectVersionOperation(operation)) return project.serviceCall(operation, input, callContext);
     const parsed = projectVersionSchemas[operation].safeParse(input);
@@ -79,6 +98,12 @@ export async function composeHostedProject(context: ProjectHostContext, library:
         project.services.assertMutationAllowed();
         result = await versions.save(parsed.data as ProjectVersionSaveInput); break;
       case 'project.version.preview': result = await versions.preview(parsed.data as ProjectVersionPreviewInput); break;
+      case 'project.version.restore':
+        // The entire core operation is synchronous. It holds the existing
+        // connection and rechecks the complete baseline in its transaction.
+        try { result = versions.restore(parsed.data as ProjectVersionRestoreInput); }
+        finally { restoring = false; }
+        break;
     }
     if (!isProjectVersionResponse(operation, parsed.data, result)) throw new AppError('INTERNAL_ERROR', '项目版本服务返回无效数据', 500);
     return result;
@@ -92,6 +117,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     const {id: _id, name, lastOpenedAt: _opened, cover, ...rest} = value;
     return {name, summary: {...rest, cover: cover ? {assetId: cover.assetId, mimeType: cover.mimeType} : null}};
   };
+  const assetMediaHttp = createAssetMediaHttp({store, outsidePaths: library.outsidePaths, signal: shutdown.signal, assertMutationAllowed: () => project.services.assertMutationAllowed()});
   const cover = createProjectCoverPublisher({store, readCover:()=>readProjectCover(store,projectId), signal: shutdown.signal});
   const removeCoverObserver = registerProjectTransactionObserver(store.db, () => cover.refresh());
   cover.refresh();
@@ -101,12 +127,13 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     for (const [table, kind, status] of tables) {
       // Fixed kernel tables, never supplied by HTTP or inferred from filenames.
       for (const row of store.db.prepare(`SELECT id,${status} AS status FROM ${table}`).all()) {
-        if (['queued', 'running', 'pending', 'prepared', 'dispatching', 'receiving', 'persisting', 'polling', 'submitting', 'downloading', 'cancelling', 'recovering', 'uncertain', 'accepted'].includes(String(row.status))) result.push({kind, taskId: String(row.id)});
+        if (['queued', 'running', 'pending', 'prepared', 'dispatching', 'receiving', 'persisting', 'polling', 'submitting', 'downloading', 'cancelling', 'recovering', 'uncertain', 'unknown', 'outcome_unknown', 'submission_unknown', 'accepted'].includes(String(row.status))) result.push({kind, taskId: String(row.id)});
       }
     }
     return result;
   };
   async function handle({req, res, url, route, signal}: ProjectRequest): Promise<boolean> {
+    if (await assetMediaHttp.handle(req, res, url, route)) return true;
     if (route.kind === 'other' && route.segments.join('/') === 'workspace-info' && req.method === 'GET') {
       json(res, 200, {ok: true, data: await readWorkspaceInfo({root, channel: options.localDraftChannel ?? 'web', version: packageMetadata.version,
         tools: {ffmpeg: mediaExecutable('ffmpeg'), ffprobe: mediaExecutable('ffprobe')}, signal})}); return true;
@@ -146,27 +173,31 @@ export async function composeHostedProject(context: ProjectHostContext, library:
       const delivery = named && !preview ? readTimelineDeliveryDownload(store.db, local, guards) : null;
       const asset = preview ? playback : named ? delivery : store.get('assets', route.assetId);
       if (!asset || field(asset, 'projectId') !== projectId) throw new AppError('NOT_FOUND', '素材不存在', 404);
-      const relativePath = field(asset, 'relativePath'), mimeType = field(asset, 'mimeType');
-      if (typeof relativePath !== 'string' || typeof mimeType !== 'string') throw new AppError('NOT_FOUND', '素材不存在', 404);
-      let resolved: ReturnType<typeof resolveProjectMediaFile>;
-      try {resolved = resolveProjectMediaFile(store, relativePath, {allowMissing: true});}
-      catch (error) {
-        if (error instanceof PrivateStorageError) throw new AppError('FILE_UNAVAILABLE', '本地文件不可用。', 404);
-        throw error;
-      }
-      if (!resolved.info) throw new AppError('FILE_UNAVAILABLE', '本地文件不可用。', 404);
-      const file = resolved.file;
-      const headers: Record<string, string> = {'Content-Type': mimeType, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=3600'};
+      const mimeType = field(asset, 'mimeType'), assetId = route.assetId;
+      if (typeof mimeType !== 'string') throw new AppError('NOT_FOUND', '素材不存在', 404);
+      const owned = store.get('assets', assetId);
+      if (!owned || typeof owned !== 'object') throw new AppError('NOT_FOUND', '素材不存在', 404);
+      const references = registeredProjectAssetReferences(root);
+      if (!references) throw new TypeError('The project media capability is unavailable');
+      const source = await admitProjectAssetSource(root, assetId, {signal});
+      const fence = (): void => {
+        signal.throwIfAborted();
+        const current = validatedProjectAssetSource(root, owned);
+        if (current.file !== source.file || !sameManagedFile(current.info, source.info)) throw mediaUnavailableError('MEDIA_CHANGED_DURING_READ', assetId);
+      };
+      const headers: Record<string, string> = {'Content-Type': mimeType, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, no-store'};
       if (!delivery && local.searchParams.has('download')) headers['Content-Disposition'] = `attachment; filename="mioon.${mimeType === 'video/mp4' ? 'mp4' : 'bin'}"`;
-      await files.send(req, res, {file, headers: playback ? () => timelineExportPreviewResponseHeaders(store.db, local, guards, playback) : delivery ? () => timelineDeliveryResponseHeaders(store.db, local, guards, delivery) : headers, ranges: true});
+      await files.send(req, res, {file: source.file, headers: playback ? () => timelineExportPreviewResponseHeaders(store.db, local, guards, playback) : delivery ? () => timelineDeliveryResponseHeaders(store.db, local, guards, delivery) : headers,
+        ranges: true, beforeEffect: fence, verifyMetadata: metadata => {if (!sameManagedFile(metadata, source.info)) throw mediaUnavailableError('MEDIA_CHANGED_DURING_READ', assetId);}});
       return true;
     }
     return false;
   }
   return {project, handle, summarize: summary, unfinishedTasks,
-    isBusy: () => files.isBusy() || cover.isRendering() || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy() || Boolean(project.projectRules?.isBusy()) || !deletionGate.isQuiescent(),
+    captureDailyVersion: () => { captureDailyProjectVersion(store, {assertMutationAllowed: assertVersionWrite}); },
+    isBusy: () => restoring || files.isBusy() || cover.isRendering() || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy() || Boolean(project.projectRules?.isBusy()) || !deletionGate.isQuiescent(),
     interrupt: () => { shutdown.abort(); project.projectRules?.close(); project.taskRuntimeV2?.close(); project.taskHttpV2?.close(); },
     drain: async () => { await boundedShutdown(Promise.all([worker.stop(), project.taskRuntimeV2?.drain(), project.projectRules?.drain(), project.serviceDrain(), project.editTasks.drain(), cover.drain(), files.close(), comparisons.close(), project.closeSettings()]), 'SERVER_STOP_TIMEOUT'); },
-    dispose: () => { project.projectRules?.close(); removeCoverObserver(); project.taskToolsV2?.dispose(); deletionGate.close(); releaseRowValidation(); context.signal.removeEventListener('abort', abort); },
+    dispose: () => { project.projectRules?.close(); removeVersionCapture(); removeCoverObserver(); project.taskToolsV2?.dispose(); deletionGate.close(); releaseRowValidation(); context.signal.removeEventListener('abort', abort); },
   };
 }

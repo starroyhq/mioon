@@ -19,8 +19,10 @@ import {randomUUID,createHash} from 'node:crypto';
 import {createReadStream} from 'node:fs';
 import {readFile,writeFile,mkdir,lstat,readdir,realpath,open,rename,link,unlink} from 'node:fs/promises';
 import path from 'node:path';
-import {DatabaseSync} from 'node:sqlite';
-import {openStore,ownsStoreLock} from '../packages/business/src/db.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
+import {createQaProject,closeQaProject,auditQaDatabases} from './helpers/kernel-qa-fixture.mjs';
+import {openServerProject} from './helpers/project-database.ts';
+import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
 import {createLocalDrafts} from '../packages/business/src/local-drafts.ts';
@@ -53,9 +55,9 @@ function environment(userData){return {...Object.fromEntries(['PATH','HOME','LAN
 async function context(){
   assert.equal(process.platform,'darwin','The native controller is macOS-only');
   assert.ok(options.root,'--root is required');const root=path.resolve(options.root);
-  assert.match(root,/^\/private\/tmp\/mioon-exit-native-[0-9a-f-]{36}$/);assert.equal(await realpath(root),root);
+  assert.match(root,/^\/private\/tmp\/mioon-exit-native-[0-9a-f-]{36}[A-Za-z0-9]{6}$/);assert.equal(await realpath(root),root);
   const info=await lstat(root);assert.ok(info.isDirectory()&&!info.isSymbolicLink()&&(info.mode&0o777)===0o700&&info.uid===process.getuid());
-  const runtime=path.join(root,'private-runtime'),report=path.join(root,'report'),userData=path.join(runtime,'user-data'),workspace=path.join(userData,'workspace');
+  const runtime=path.join(root,'private-runtime'),report=path.join(root,'report'),userData=path.join(runtime,'user-data'),workspace=path.join(userData,'data');
   const fixture=await readJson(path.join(runtime,'fixture.json'));assert.equal(fixture.synthetic,true);assert.equal(fixture.root,root);
   return {root,runtime,report,userData,workspace,fixture};
 }
@@ -63,31 +65,37 @@ async function mediaHashes(workspace){return Promise.all((await readdir(path.joi
   assert.match(name,/^[a-zA-Z0-9._-]+$/);const file=path.join(workspace,'media',name),info=await lstat(file);
   assert.ok(info.isFile()&&!info.isSymbolicLink()&&info.nlink===1&&info.size<4*1024*1024);return {name,bytes:info.size,sha256:sha(await readFile(file))};
 }));}
-function databaseSnapshot(workspace){
-  const db=new DatabaseSync(path.join(workspace,'workbench.sqlite'),{readOnly:true});
-  try{db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF; BEGIN');
+async function databaseSnapshot(workspace,fixture){
+  const store=openServerProject(workspace,fixture.projectId),services=createServices(store,new Map());
+  try{
+    assert.equal(store.projectDir,fixture.projectDir);assert.equal(store.localDir,fixture.localDir);
+    const db=store.db,application=testProjectAppLibrary(store);assert.ok(application);
     const tables=Object.fromEntries(fixedTables.map(table=>[table,db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
     const jobs=db.prepare('SELECT data FROM jobs ORDER BY rowid').all().map(row=>JSON.parse(row.data));
     const submissions=db.prepare('SELECT request_id,job_id,provider_job_id,outcome FROM mock_provider_submissions ORDER BY id').all();
     const providerTasks=db.prepare('SELECT count(*) AS n FROM mock_provider_tasks').get().n;
-    // SQLite rows use null prototypes; persisted baseline JSON uses ordinary
-    // objects. Normalize both representations without changing any field.
-    db.exec('COMMIT');return JSON.parse(JSON.stringify({tables,jobs,submissions,providerTasks}));
-  }finally{if(db.isTransaction)db.exec('ROLLBACK');db.close();}
+    return JSON.parse(JSON.stringify({tables,jobs,submissions,providerTasks,databases:auditQaDatabases(db),application:auditQaDatabases(application.db)}));
+  }finally{await services.drain();store.close();}
 }
+async function assertCold(c){
+  const store=openServerProject(c.workspace,c.fixture.projectId);
+  try{assert.equal(store.projectDir,c.fixture.projectDir);assert.equal(store.localDir,c.fixture.localDir);}
+  finally{store.close();}
+}
+
 async function prepare(){
   assert.equal(process.platform,'darwin');assert.equal(options.root,undefined,'Preparation always creates a fresh private root');
-  const root=mkdtempPortable('mioon-exit-native-'+randomUUID());await privateDirectory(root);
-  const runtime=path.join(root,'private-runtime'),report=path.join(root,'report'),userData=path.join(runtime,'user-data'),workspace=path.join(userData,'workspace');
+  const root=mkdtempPortable('mioon-exit-native-'+randomUUID());validatePrivateDirectory(root);
+  const runtime=path.join(root,'private-runtime'),report=path.join(root,'report'),userData=path.join(runtime,'user-data'),workspace=path.join(userData,'data');
   for(const directory of [runtime,report,userData])await privateDirectory(directory);
   const source=path.join(runtime,'synthetic-green-880hz.mp4'),image=path.join(runtime,'synthetic-purple.png');
   await executeFile(ffmpeg,['-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=0x18bf57:s=320x180:r=30:d=2',
     '-f','lavfi','-i','sine=frequency=880:sample_rate=48000:duration=2','-c:v','libx264','-threads','1','-pix_fmt','yuv420p','-c:a','aac','-shortest','-n',source],{env:environment(userData),timeout:30000,maxBuffer:65536});
   await executeFile(ffmpeg,['-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=0x8138a8:s=320x180','-frames:v','1','-threads','1','-n',image],{env:environment(userData),timeout:30000,maxBuffer:65536});
   process.env.MIOON_FFMPEG_PATH=ffmpeg;process.env.MIOON_FFPROBE_PATH=ffprobe;
-  const store=openStore(workspace),env={MIOON_ENABLE_LIVE_PROVIDER:'0'},providers=createProviderRegistry({db:store.db,root:workspace,env}),services=createServices(store,providers,{env});let fixture;
+  const owner=await createQaProject(workspace,{name:'退出诊断 · 原生合成验收',media:false}),store=owner.store,env={MIOON_ENABLE_LIVE_PROVIDER:'0'},providers=createProviderRegistry({db:store.db,root:store.root,env}),services=createServices(store,providers,{env});let fixture;
   try{
-    const project=await services.call('project.create',{name:'退出诊断 · 原生合成验收'});
+    const project=owner.project;
     const asset=await services.call('asset.import',{projectId:project.id,name:'合成绿色画面与 880Hz.mp4',mimeType:'video/mp4',dataBase64:(await readFile(source)).toString('base64')});
     const imageAsset=await services.call('asset.import',{projectId:project.id,name:'合成紫色色块.png',mimeType:'image/png',dataBase64:(await readFile(image)).toString('base64')});
     const shot=await services.call('shot.create',{projectId:project.id,requestId:randomUUID(),title:'未知提交结果 · 不可重发',prompt:'Synthetic native exit QA',aspectRatio:'9:16',duration:2});
@@ -99,18 +107,18 @@ async function prepare(){
       trackId:timeline.tracks.find(track=>track.kind==='video').id,startFrame:0,durationFrames:60,name:'已保存的合成时间线片段'});
     const subjectRequestId=randomUUID(),subject=await services.call('subject.create',{projectId:project.id,kind:'product',name:'已保存合成主体',assetId:imageAsset.id,requestId:subjectRequestId});
     const requestId=randomUUID(),job=await services.call('generation.submit',{shotId:shot.id,expectedRevision:shot.revision,providerId:'mock',requestId,parameters:{scenario:'unknown'}});
-    const clip=timeline.clips[0],drafts=createLocalDrafts({root:workspace,channel:'production',storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
-      guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>false,readTimeline:id=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),readClipAsset:(id,value)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(value)}});
+    const clip=timeline.clips[0],drafts=createLocalDrafts({root:store.localDir,databaseFile:path.join(store.localDir,'history.db'),channel:'production',storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
+      guards:{ownsLock:()=>ownsStoreLock(store),readTimeline:id=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),readClipAsset:(id,value)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(value)}});
     const key={projectId:project.id,timelineId:timeline.id,clipId:clip.id},current=drafts.get(key);
     drafts.put({...key,workspaceScope:current.workspaceScope,instanceId:current.instanceId,expectedRevision:current.revision,baseRevision:timeline.revision,
       source:{assetId:asset.id,assetSha256:asset.sha256},raw:{name:'尚未应用的合成草稿',trackId:clip.trackId,startFrame:clip.startFrame,durationFrames:clip.durationFrames,sourceInFrame:clip.sourceInFrame,rect:clip.rect,gain:clip.gain}});
     const state=defaultWorkspaceState();state.activeMode='editing';state.editing.selectedClipId=clip.id;state.editing.previewKind='source';delete state.shared.assetSearch;
     createWorkspacePreferences(store).put(project.id,{expectedRevision:0,state});
-    fixture={synthetic:true,root,projectId:project.id,projectName:project.name,assetId:asset.id,imageAssetId:imageAsset.id,shotId:shot.id,
+    fixture={synthetic:true,kernel:true,root,projectDir:store.projectDir,localDir:store.localDir,projectId:project.id,projectName:project.name,assetId:asset.id,imageAssetId:imageAsset.id,shotId:shot.id,
       timelineId:timeline.id,clipId:clip.id,subjectId:subject.id,subjectRequestId,jobId:job.id,requestId};
-  }finally{await services.drain();store.close();}
+  }finally{await services.drain();await closeQaProject(owner);}
   await writeNew(path.join(runtime,'fixture.json'),fixture);
-  await writeNew(path.join(runtime,'baseline.json'),{...databaseSnapshot(workspace),media:await mediaHashes(workspace),draftSha256:sha(await readFile(path.join(workspace,'local-drafts-v1.json')))});
+  await writeNew(path.join(runtime,'baseline.json'),{...await databaseSnapshot(workspace,fixture),media:await mediaHashes(fixture.projectDir),draftSha256:sha(await readFile(path.join(fixture.localDir,'local-drafts-v1.json')))});
   await writeNew(path.join(report,'fixture-summary.json'),{synthetic:true,platform:process.platform,arch:process.arch,appVersion:'0.4.1',channel:'production',
     assets:2,shots:1,timelineClips:1,existingSubjects:1,existingSubjectReceipts:1,localDrafts:1,generationScenario:'mock:unknown',realProvidersEnabled:false});
   return {root,report,projectName:fixture.projectName,projectId:fixture.projectId,clipId:fixture.clipId,jobId:fixture.jobId};
@@ -167,7 +175,8 @@ async function launch(){
       await Promise.race([pause(150),exited.promise]);
     }
   }finally{await stdout.close();await stderr.close();}
-  const final={synthetic:true,label:name,result:exitResult,backendLockReleased:!await exists(path.join(c.workspace,'server.lock'))};
+  await assertCold(c);
+  const final={synthetic:true,label:name,result:exitResult,backendLockReleased:true};
   await writeNew(path.join(c.report,name+'-exit.json'),final);return final;
 }
 async function diagnostics(c){
@@ -181,9 +190,9 @@ async function diagnostics(c){
   }return {files:names.length,totalBytes,records:records.sort((a,b)=>a.time.localeCompare(b.time))};
 }
 async function audit(nameOverride){
-  const c=await context(),name=label(typeof nameOverride==='string'?nameOverride:options.label||'audit'),baseline=await readJson(path.join(c.runtime,'baseline.json')),current=databaseSnapshot(c.workspace);
+  const c=await context(),name=label(typeof nameOverride==='string'?nameOverride:options.label||'audit'),baseline=await readJson(path.join(c.runtime,'baseline.json')),current=await databaseSnapshot(c.workspace,c.fixture);
   for(const table of fixedTables)assert.deepEqual(current.tables[table],baseline.tables[table],`${table} changed across native lifecycle`);
-  assert.deepEqual(await mediaHashes(c.workspace),baseline.media);assert.equal(sha(await readFile(path.join(c.workspace,'local-drafts-v1.json'))),baseline.draftSha256);
+  assert.deepEqual(await mediaHashes(c.fixture.projectDir),baseline.media);assert.equal(sha(await readFile(path.join(c.fixture.localDir,'local-drafts-v1.json'))),baseline.draftSha256);
   assert.equal(current.jobs.length,1);const job=current.jobs[0],original=baseline.jobs[0];
   for(const key of ['id','projectId','shotId','requestId','snapshot','createdAt'])assert.deepEqual(job[key],original[key]);
   assert.equal(job.id,c.fixture.jobId);assert.equal(job.status,'submission_unknown');assert.equal(job.submissionCount,1);
@@ -228,7 +237,7 @@ async function finalize(){
   assert.ok(exits.some(record=>record.classification==='normal'&&record.code===0&&record.expected===true&&record.exitConfirmed===true));
   assert.ok(exits.some(record=>record.classification==='abnormal'&&record.expected===false&&record.exitConfirmed===true));
   assert.ok(new Set(logs.records.filter(record=>record.event==='start').map(record=>record.runId)).size>=2);
-  assert.equal(await exists(path.join(c.workspace,'server.lock')),false,'Normal native Quit has not released backend lock');
+  await assertCold(c); // The real app and project locks must both be released.
   const launches=(await readdir(c.runtime)).filter(name=>/^launch-[a-z0-9-]+\.json$/.test(name));
   for(const file of launches){const owned=await readJson(path.join(c.runtime,file)),exit=await readJson(path.join(c.report,owned.label+'-exit.json'));
     assert.deepEqual(exit.result,{code:0,signal:null});assert.equal(exit.backendLockReleased,true);assert.equal(await processInfo(owned.mainPid),null,'Owned Electron is still present');}

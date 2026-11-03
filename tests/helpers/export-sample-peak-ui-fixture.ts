@@ -14,7 +14,7 @@ export function row(n = 10, fields: Record<string, unknown> = {}): Record<string
     snapshot: { timeline, assets: [{ id: id(5), sha256: hash, mimeType: 'image/png' }], ...fields } };
 }
 export function asset(item: Record<string, unknown>): Record<string, unknown> { return { id: item.assetId, projectId, url: item.url, mimeType: 'video/mp4', provenance: 'export', sha256: hash, sizeBytes: 128 }; }
-export function context(patch: Record<string, unknown> = {}): Record<string, unknown> { const items = [row(), row(11, { deliveryName: '冻结的成片 <v1>', exportRange: { startFrame: 15, endFrame: 45 } })]; return { scope: `${projectId}:1:normal`, projectId, executionScope: '0:0:editing', connected: true, visible: true, restored: false, exports: items, assets: items.map(asset), ...patch }; }
+export function context(patch: Record<string, unknown> = {}): Record<string, unknown> { const items = [row(), row(11, { deliveryName: '冻结的成片 <v1>', exportRange: { startFrame: 15, endFrame: 45 } })]; return { scope: `${projectId}:1:normal`, projectId, executionScope: '0:0:editing', connected: true, visible: true, exports: items, assets: items.map(asset), ...patch }; }
 export type ExportSamplePeakReasonCode = Parameters<typeof exportSamplePeakReason>[0];
 export function report(target: {readonly exportId: string; readonly artifact: unknown; readonly outputFrames: number}, peak = 0.5, right = 0.25): Record<string, unknown> {
   const amplitude = (value: number): Record<string, unknown> => ({ peakLinear: value, peakDbfs: value === 0 ? null : 20 * Math.log10(value), silent: value === 0 });
@@ -28,8 +28,7 @@ interface Deferred<T> {readonly promise: Promise<T>; resolve(value: T): void; re
 const deferred = <T = unknown>(): Deferred<T> => { let resolve!: (value: T)=>void, reject!: (error: unknown)=>void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 export function fixture(patch: Record<string, unknown> = {}) {
   let live = context(patch); const calls: {input: unknown; options: unknown}[] = [], reads: Deferred<unknown>[] = [], auth: boolean[] = [], changes: unknown[] = [];
-  const controller = createExportSamplePeakController({ isRenderRecord: isTimelineRenderRecord, getContext: () => live as never, getInvocation: () => ({}),
-    onChange: (state: unknown) => changes.push(state), onUnauthorized: () => auth.push(false), read(input: unknown, options: unknown) { calls.push({ input, options }); const pending = deferred(); reads.push(pending); return pending.promise; } } as never);
+  const controller = createExportSamplePeakController({ isRenderRecord: isTimelineRenderRecord, getContext: () => live as never, onChange: (state: unknown) => changes.push(state), onUnauthorized: () => auth.push(false), read(input: unknown, options: unknown) { calls.push({ input, options }); const pending = deferred(); reads.push(pending); return pending.promise; } } as never);
   controller.setContext(live as never);
   const f = { controller, calls, reads, auth, changes, state: () => controller.getState(), target: (index = 0) => (controller.getState() as unknown as {targets: Record<string, unknown>[]}).targets[index],
     set(patch: Record<string, unknown>, notify = true) { live = { ...live, ...patch }; if (notify) controller.setContext(live as never); },

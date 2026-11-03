@@ -1,6 +1,6 @@
 type HomeSnapshot=Omit<ReturnType<typeof snapshot>,'project'>&{project:ReturnType<typeof snapshot>['project']|null};
 interface HomeOptions {nativeWindow?:ReturnType<typeof nativeEditor>|null;confirm?:()=>unknown;guard?:(current:()=>unknown)=>unknown;preferences?:(...args:unknown[])=>unknown;preferenceStatus?:{phase:string;error?:Error};discovery?:Promise<unknown>;videoDirectory?:()=>unknown;rpc?:(operation:string,input:{projectId:string})=>unknown;get?:(projectId:string)=>unknown;create?:(...args:unknown[])=>unknown}
-interface HomeEnvironment extends Record<string,unknown> {auth:boolean|'error'|null;bootGuard:{current:ReturnType<typeof createProjectBootGuard>};busy:Record<string,unknown>;currentProject:{current:string|null};data:HomeSnapshot;dataRef:{current:HomeSnapshot};homePage:string;importSession:{current:{active:boolean;selection:number}};loading:boolean;nativeWindow:ReturnType<typeof nativeEditor>|null;navigationEpoch:{current:number};openedProject:{current:opening.ProjectOpenAttempt|null};projectCreateFlight:{current:unknown};projectEpoch:{current:number};projectListStatus:{busy:boolean;error:string|i18nCore.DisplayMessage};projectOpening:{phase:string;projectId:string|null;error:string};requestCounter:{current:number};toast:unknown;videoDirectoryUnavailable:boolean;viewReady:{current:boolean};viewRef:{current:ReturnType<typeof defaultWorkspaceState>};webSettingsRequest:{page:string;resolve?:(accepted:boolean)=>void}|null;window:{location:{href:string;search:string;pathname:string};history:{pushState:(...args:unknown[])=>number;replaceState:(...args:unknown[])=>number}};workspaceRef:{current:{restored:boolean;workspaceOrigin?:string}}}
+interface HomeEnvironment extends Record<string,unknown> {auth:boolean|'error'|null;bootGuard:{current:ReturnType<typeof createProjectBootGuard>};busy:Record<string,unknown>;currentProject:{current:string|null};data:HomeSnapshot;dataRef:{current:HomeSnapshot};homePage:string;importSession:{current:{active:boolean;selection:number}};loading:boolean;nativeWindow:ReturnType<typeof nativeEditor>|null;navigationEpoch:{current:number};openedProject:{current:opening.ProjectOpenAttempt|null};projectCreateFlight:{current:unknown};projectEpoch:{current:number};projectListStatus:{busy:boolean;error:string|i18nCore.DisplayMessage};projectOpening:{phase:string;projectId:string|null;error:string};requestCounter:{current:number};toast:unknown;videoDirectoryUnavailable:boolean;viewReady:{current:boolean};viewRef:{current:ReturnType<typeof defaultWorkspaceState>};webSettingsRequest:{page:string;resolve?:(accepted:boolean)=>void}|null;window:{location:{href:string;search:string;pathname:string};history:{pushState:(...args:unknown[])=>number;replaceState:(...args:unknown[])=>number}};editorSession: {current: string}, workspaceRef:{current:{}}}
 interface HomeApi {projectSessionReady():boolean;selectProject(projectId:string,remember?:boolean):Promise<boolean>;refresh(projectId:string,silent?:boolean,options?:{opening?:boolean}):Promise<ReturnType<typeof snapshot>|null>;prepareSettingsDeparture():Promise<unknown>;openGlobalSettings(page?:string):unknown;changeHomePage(page:string):Promise<unknown>;refreshHomeProjects():Promise<unknown>;createProject(name:string,description:string):Promise<boolean>;showProjectHome():Promise<boolean>;boot():Promise<void>}
 type HomeHarness=ReturnType<typeof harness>;
 type HomeUi={React:typeof import('react');renderToStaticMarkup:typeof import('react-dom/server').renderToStaticMarkup;ConfirmationProvider:typeof import('../packages/ui/src/components/workbench-confirm.tsx').ConfirmationProvider}&Record<string,unknown>;
@@ -16,12 +16,8 @@ import { buildSync, transformSync } from 'esbuild';
 import * as opening from '../apps/web/src/project-open-state.ts';
 import { editorInitialSelection, revealNativeProjects } from '../apps/web/src/editor-native-window.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
-import { workspaceOriginScope, retainWorkspaceIdentity } from '../apps/web/src/workspace-origin.ts';
-import { validateProjectWorkspace } from '../apps/web/src/restored-workspace.ts';
 import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
 import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard, assertLastProjectBootIdentity } from '../apps/web/src/last-project-navigation.ts';
-import {observeClipAudioRoleCapability} from '../apps/web/src/clip-audio-role-state.ts';
-import {canEditTimelineAudioRole, isWorkspaceRestoreInspection} from '@mioon/contracts';
 import {videoConnectionProviders} from '../apps/web/src/generation-settings.ts';
 import {readGenerationProviderDirectory} from '../apps/web/src/video-provider-directory.ts';
 
@@ -46,11 +42,11 @@ function section(start: string, end: string) {
 function environment(options:HomeOptions = {}) {
   const calls: unknown[][] = [], registry = createSettingsNavigationRegistry();
   const env = { LanguageControl: () => null, renderImportFeedback: (locale: string, value: string|i18nCore.DisplayMessage|null|undefined) => renderCoreMessage((locale as unknown as Parameters<typeof renderCoreMessage>[0]), value), msg, ...createI18nTestContext(), localizedError: (displayMessage: string|i18nCore.DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }),
-    ...opening, workspaceOriginScope, retainWorkspaceIdentity, validateProjectWorkspace, videoConnectionProviders, readGenerationProviderDirectory,
+    ...opening, videoConnectionProviders, readGenerationProviderDirectory,
     editorInitialSelection, revealNativeProjects, nativeWindow: options.nativeWindow ?? null,
     clipDraftRef: {current: null}, retainWorkbenchForClip: false, guardRetainedInputInteraction() {},
-    audioRoleProbe: {current: null}, audioRoleProbeEpoch: {current: 0}, observeClipAudioRoleCapability,
-    isWorkspaceInspection: isWorkspaceRestoreInspection, canEditTimelineAudioRole,
+
+
     nativeProjectEntry: { open: async (projectId: unknown) => { calls.push(['nativeEntry.open', projectId]); return true; },
       show: async (mode: unknown) => { calls.push(['nativeEntry.show', mode]); return true; },
       readCloseSnapshot: () => ({ dirty: false, busy: false, unknown: false, identity: [] }) },
@@ -65,7 +61,7 @@ function environment(options:HomeOptions = {}) {
     currentProject: { current: null }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 },
     webSettingsRequestRef: { current: null },
     requestCounter: { current: 0 }, projectListSerial: { current: 0 }, openedProject: { current: null }, projectCreateFlight: { current: null },
-    importSession: { current: { active: true, selection: 0 } }, workspaceRef: { current: { restored: false } },
+    importSession: { current: { active: true, selection: 0 } }, editorSession: {current: 'normal'}, workspaceRef: { current: {  } },
     dataRef: { current: emptyData }, viewRef: { current: defaultWorkspaceState() }, viewReady: { current: false },
     settingsNavigation: { current: registry }, agentDraft: { current: false }, imageDraft: { current: false }, dragging: { current: false },
     preferenceScope: { current: null }, locatorIdentity: { current: null },
@@ -95,7 +91,6 @@ function environment(options:HomeOptions = {}) {
       if (operation === 'video.connection.list') return options.videoDirectory ? options.videoDirectory() : [];
       if (options.rpc) return options.rpc(operation, input);
       if (operation === 'project.get') return options.get ? options.get(input.projectId) : snapshot(input.projectId);
-      if (operation === 'workspace.restore.inspect') return { restored: false };
       if (operation === 'project.list') return projects;
       if (operation === 'provider.list') return [];
       assert.fail(`Unexpected RPC: ${operation}`);
@@ -112,7 +107,6 @@ function environment(options:HomeOptions = {}) {
     const key = name[0].toLowerCase() + name.slice(1);
     env[`set${name}`] = (value:unknown|((old:unknown)=>unknown)) => { env[key] = typeof value === 'function' ? (value as (old:unknown)=>unknown)(env[key]) : value; calls.push([`set${name}`, env[key]]); };
   }
-  Object.defineProperty(env, 'restored', { get: () => env.workspaceRef.current.restored });
   env.bootGuard = { current: createProjectBootGuard(() => env.projectEpoch.current) }; env.bootGuard.current.activate();
   return { env, calls, registry };
 }
@@ -130,7 +124,7 @@ function harness(options:HomeOptions = {}) {
   const api = Function('env', `with (env) { ${source}\nreturn { projectSessionReady, selectProject, refresh, prepareSettingsDeparture, openGlobalSettings, changeHomePage, refreshHomeProjects, createProject, showProjectHome, boot }; }`)(env);
   return { env, calls, registry, ...(api as HomeApi),
     eligible: () => opening.canPublishProjectOpen(env.openedProject.current, { active: env.importSession.current.active,
-      currentProjectId: env.currentProject.current, epoch: env.projectEpoch.current, workspaceScope: workspaceOriginScope(env.workspaceRef.current) || '',
+      currentProjectId: env.currentProject.current, epoch: env.projectEpoch.current, workspaceScope: env.editorSession.current,
       preferencesReady: env.viewReady.current, dataProjectId: env.data.project?.id || null, loading: env.loading }),
     unmount() { env.importSession.current.active = false; env.importSession.current.selection++; env.requestCounter.current++; env.bootGuard.current.deactivate(); },
   };
@@ -230,7 +224,7 @@ test('same-project data without an accepted opening ticket must take the real lo
   assert.deepEqual(callsOf(h, 'remember'), [['remember', id(1), 1]]);
 });
 
-for (const code of ['UNAUTHORIZED', 'WORKSPACE_ORIGIN_UNVERIFIED', 'RESTORE_WORKSPACE_ORIGIN_MISMATCH', 'LAST_PROJECT_SCOPE_MISMATCH', 'LAST_PROJECT_STALE_INSTANCE']) {
+for (const code of ['UNAUTHORIZED', 'LAST_PROJECT_SCOPE_MISMATCH', 'LAST_PROJECT_STALE_INSTANCE']) {
   test(`actual selection preserves ${code} routing from project load and preference fallback`, async () => {
     for (const options of [{ get: async () => { throw failure(code); } }, { preferenceStatus: { phase: 'local', error: failure(code) } }]) {
       const h = harness(options); assert.equal(await h.selectProject(id(1)), false);
@@ -273,19 +267,9 @@ test('unmount rejects late successful and failed project loads without publishin
 test('workspace replacement prevents a delayed response from reconciling or exposing the workbench', async () => {
   for (const reject of [false, true]) {
     const held = deferred(), h = harness({ get: () => held.promise }), pending = h.selectProject(id(1)); await tick();
-    h.env.workspaceRef.current = { restored: true, workspaceOrigin: id(8) }; const count = h.calls.length;
+    h.env.editorSession.current = 'another-renderer-session'; const count = h.calls.length;
     if (reject) held.reject!(failure('UNAUTHORIZED')); else held.resolve!(snapshot(id(1)));
     assert.equal(await pending, false); assert.equal(h.eligible(), false); assert.equal(h.calls.length, count);
-    assert.deepEqual((callsOf(h, 'reconcile') as unknown), []); assert.deepEqual((callsOf(h, 'remember') as unknown), []); assert.equal(h.env.data.project, null);
-  }
-});
-
-test('restored project origin mismatch blocks workspace identity while malformed restore data stays a project error', async () => {
-  for (const foreign of [false, true]) {
-    const h = harness({ get: async (projectId: string) => ({ ...snapshot(projectId), ...(foreign ? { restore: { workspaceOrigin: id(9), heldExportIds: [] } } : {}) }) });
-    h.env.workspaceRef.current = { restored: true, workspaceOrigin: id(8) };
-    assert.equal(await h.selectProject(id(1)), false); assert.equal(h.env.auth, foreign ? 'error' : true);
-    assert.equal(h.env.projectOpening.phase, 'error'); assert.equal(h.eligible(), false);
     assert.deepEqual((callsOf(h, 'reconcile') as unknown), []); assert.deepEqual((callsOf(h, 'remember') as unknown), []); assert.equal(h.env.data.project, null);
   }
 });
@@ -364,7 +348,7 @@ test('create holds its synchronous latch through the post-acknowledgement projec
 });
 
 test('actual empty startup chooses home while explicit startup succeeds without rewriting the locator', async () => {
-  const h = harness({ rpc: async (operation: string) => operation === 'workspace.restore.inspect' ? { restored: false } : [] });
+  const h = harness({ rpc: async (operation: string) => [] });
   await h.boot(); assert.equal(h.env.auth, true); assert.equal(h.env.projectOpening.phase, 'home'); assert.equal(h.eligible(), false);
   assert.deepEqual((callsOf(h, 'preferences') as unknown), []); assert.deepEqual((callsOf(h, 'remember') as unknown), []);
   const selected = harness(); selected.env.window.location.search = `?project=${id(2)}`; await selected.boot();
@@ -451,7 +435,7 @@ function boundaryRenderer() {
   presentation = (h:HomeHarness) => {
     const mounted: string[] = [];
     const stub = (name: string) => () => { mounted.push(name); return ui.React.createElement('section', { 'data-stub': name }); };
-    const env = { LanguageControl: () => null, renderImportFeedback: (locale: string, value: string|i18nCore.DisplayMessage|null|undefined) => renderCoreMessage((locale as unknown as Parameters<typeof renderCoreMessage>[0]), value), msg, ...createI18nTestContext(), localizedError: (displayMessage: string|i18nCore.DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }), ...h.env, ...h, ...ui, restored: h.env.workspaceRef.current.restored, workspace: h.env.workspaceRef.current,
+    const env = { LanguageControl: () => null, renderImportFeedback: (locale: string, value: string|i18nCore.DisplayMessage|null|undefined) => renderCoreMessage((locale as unknown as Parameters<typeof renderCoreMessage>[0]), value), msg, ...createI18nTestContext(), localizedError: (displayMessage: string|i18nCore.DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }), ...h.env, ...h, ...ui,  workspace: h.env.workspaceRef.current,
       lastProjectStatus: null, setHomeConnection() {}, geometry: { narrow: false, style: {} }, workspaceMode: 'canvas', mobilePanel: 'canvas',
       assetsCollapsed: false, inspectorCollapsed: false, timelineCollapsed: false,
       Icon: () => null, BrandMark: () => null, Login: stub('Login'), RestoredUnavailable: stub('RestoredUnavailable'),
@@ -482,21 +466,16 @@ test('actual App renders standalone home, routes settings to the retained center
   const ready = render(h); assert.match(ready.html, /<main[^>]+data-testid="workbench"/); assert.doesNotMatch(ready.html, /data-testid="project-home"/);
 });
 
-test('actual auth and restored-home branches retain their existing protections', () => {
+test('actual auth branches retain their existing protections', () => {
   const render = boundaryRenderer(), h = harness(); h.env.auth = false;
   assert.deepEqual(render(h).mounted, ['Login']); assert.doesNotMatch(render(h).html, /data-testid="project-home"|data-testid="workbench"/);
   h.env.auth = 'error'; const failed = render(h); assert.match(failed.html, /暂时无法连接工作台/); assert.doesNotMatch(failed.html, /data-testid="workbench"/);
-  h.env.auth = true; h.env.homePage = 'projects'; h.env.workspaceRef.current = { restored: true, workspaceOrigin: id(8) };
-  h.openGlobalSettings('custom'); assert.equal(h.env.webSettingsRequest, null);
-  h.openGlobalSettings(); assert.equal(h.env.webSettingsRequest!.page, 'general');
-  const restored = render(h); assert.match(restored.html, /data-testid="project-home"/);
-  assert.ok(restored.mounted.includes('RestoredUnavailable')); assert.equal(restored.mounted.includes('AgentSettings'), false);
-  assert.equal(restored.mounted.includes('ImageSettings'), false); assert.equal(restored.mounted.includes('ComfyImageSettings'), false);
+
 });
 
 test('actual home keeps optional video directory failure visible across toast changes and clears it on recovery', async () => {
   let unavailable = true;
-  const h = harness({ videoDirectory: async () => { if (unavailable) throw failure('VIDEO_SETTINGS_CORRUPT'); return []; }, rpc: async (operation: string) => operation === 'workspace.restore.inspect' ? { restored: false } : [] });
+  const h = harness({ videoDirectory: async () => { if (unavailable) throw failure('VIDEO_SETTINGS_CORRUPT'); return []; }, rpc: async (operation: string) => [] });
   await h.boot(); assert.equal(h.env.auth, true); assert.equal(h.env.videoDirectoryUnavailable, true);
   const render = boundaryRenderer();
   for (const locale of i18nCore.LOCALES) {
@@ -519,7 +498,7 @@ test('actual App shares authenticated settled project readiness between workbenc
     ['project data missing', (env: HomeEnvironment) => { env.data = env.dataRef.current = emptyData; }, false],
     ['different loaded project', (env: HomeEnvironment) => { env.data = env.dataRef.current = snapshot(id(2)); }, false],
     ['new selection epoch', (env: HomeEnvironment) => { env.projectEpoch.current++; }, false],
-    ['changed workspace', (env: HomeEnvironment) => { env.workspaceRef.current = { restored: true, workspaceOrigin: id(8) }; }, false],
+    ['changed workspace', (env: HomeEnvironment) => { env.editorSession.current = 'another-renderer-session'; }, false],
     ['inactive renderer', (env: HomeEnvironment) => { env.importSession.current.active = false; }, false],
     ['load still active', (env: HomeEnvironment) => { env.loading = true; }, false],
     ['logged out', (env: HomeEnvironment) => { env.auth = false; }, false],

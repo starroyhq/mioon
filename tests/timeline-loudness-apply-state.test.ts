@@ -46,7 +46,7 @@ const changes: [string, (h: ApplyHarness) => unknown][] = [ ['project', h => h.o
   ['source', h => h.observation.set({ sourceIdentity: 'new-source-bytes' }, false)], ['panel intent', h => h.observation.set({ executionScope: '0:1:editing' }, false)],
   ['tab', h => h.observation.set({ visible: false }, false)], ['offline', h => h.observation.set({ connected: false }, false)],
   ['draft', h => h.observation.set({ hasUnsavedDrafts: true }, false)], ['pending', h => h.observation.set({ pending: true }, false)],
-  ['restore', h => h.observation.set({ restored: true }, false)], ['target', h => h.observation.edit({ ...draft, integratedLufs: '-18' })],
+  ['target', h => h.observation.edit({ ...draft, integratedLufs: '-18' })],
   ['window close', h => h.controller.revoke()], ['dispose', h => h.controller.dispose()] ];
 for (const [name, change] of changes) for (const phase of ['digest','confirm']) test(`late ${phase} after ${name} cannot dispatch or recreate an apply`, async () => {
   const h = await harness(), pending = h.review();
@@ -91,10 +91,10 @@ test('definitive stale or unsafe rejection requires explicit new prepare, with n
     assert.equal(h.hashes.length, 2);
   }
 });
-test('failed, unchanged, restored and unsafe observations cannot become apply authority', async () => {
+test('failed, unchanged and unsafe observations cannot become apply authority', async () => {
   const h = await harness(), good = h.getObservation();
   assert.ok(good.report);
-  for (const value of [{ ...good, restored: true }, { ...good, pending: true }, { ...good, hasUnsavedDrafts: true }, { ...good, phase: 'stale' },
+  for (const value of [{ ...good, pending: true }, { ...good, hasUnsavedDrafts: true }, { ...good, phase: 'stale' },
     { ...good, report: null }, { ...good, report: { ...(good.report as Record<string, unknown>), applyAllowed: true } }, { ...good, report: report(input({ integratedLufs: -20, truePeakCeilingDbtp: -1 })) },
     { ...good, report: report(input({ integratedLufs: -14, truePeakCeilingDbtp: -1 })) }]) assert.equal(timelineLoudnessCanReview(value as never), false);
 });

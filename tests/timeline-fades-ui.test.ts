@@ -340,12 +340,10 @@ test('role eligibility includes silent video, zero gain and muted timeline witho
   assert.equal((h.saves[0].patch)!.audioRole, 'sfx'); assert.equal((h.saves[0].patch)!.gain, 0);
 });
 
-test('image inspector excludes audio role; restored supported editor can save without sidecar support', async () => {
+test('image inspector excludes audio role', async () => {
   const image = await inspectorHarness({ asset: asset({ mimeType: 'image/png', hasAudio: false }), draftContext: { audioRoleEditable: true } });
   assert.equal(image.find('clip-audio-role'), undefined);
-  const restored = await inspectorHarness({ draftContext: { restored: true, audioRoleEditable: true } });
-  restored.edit('clip-audio-role', 'human'); await restored.submit(); restored.render();
-  assert.equal(restored.saves.length, 1); assert.equal((restored.saves[0].patch)!.audioRole, 'human');
+
 });
 
 

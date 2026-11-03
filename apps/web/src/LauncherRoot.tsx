@@ -67,8 +67,8 @@ export default function LauncherRoot({ context, bridge, rpc, contractChecks }: L
   }, [menuBridge, controller, context.windowId, context.contextId]);
   useEffect(() => {refreshMenu();});
   const entryState = controller.getState(), locatorState = locator.getState();
-  const locatorStatus = <LastProjectStatus state={locatorState} controller={locator} restored={entryState.workspace?.restored} />;
-  const quietEmpty = entryState.projects.length === 0 && !entryState.workspace?.restored && !entryState.listBusy && !entryState.listError && entryState.phase === 'home'
+  const locatorStatus = <LastProjectStatus state={locatorState} controller={locator} />;
+  const quietEmpty = entryState.projects.length === 0 && entryState.catalogReady && !entryState.listBusy && !entryState.listError && entryState.phase === 'home'
     && (locatorState.phase === 'idle' || locatorState.phase === 'saved') && !locatorState.uncertain && !locatorState.identityBlocked && locatorState.targetStatus !== 'missing';
   return <ProjectEntry controller={controller} onSettings={slot => { void bridge.showSettings(slot); }} onRegisterMenuHelp={registerMenuHelp} onMenuHelpStateChange={refreshMenu}
     status={quietEmpty ? undefined : locatorStatus} help={locatorStatus} />;

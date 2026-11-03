@@ -1,3 +1,4 @@
+import {writeStubMediaFixture} from './helpers/media-reference-fixtures.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 import type {ServiceResponse as FixtureServiceResult, TypedStore as FixtureStore, TypedServices as FixtureServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
@@ -6,7 +7,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import { openStore } from '../packages/business/src/db.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {getTimelineFadeIssue, TIMELINE_FADE_MAX_FRAMES, parse, schemas} from '../packages/contracts/src/index.ts';
@@ -30,7 +31,7 @@ async function fixture(t: test.TestContext) {
     asset(mimeType: string|undefined = 'audio/wav', extra: {hasAudio?: boolean|null|undefined;} = {}) {
       const id = randomUUID();
       return store.put('assets', {id, projectId: f.projectId, name: 'Synthetic source', mimeType, duration: 600,
-        width: 720, height: 1280, hasAudio: !mimeType.startsWith('image/'), sha256: 'a'.repeat(64), relativePath: `media/${id}.fixture`, ...extra});
+        width: 720, height: 1280, hasAudio: !mimeType.startsWith('image/'), ...writeStubMediaFixture(root,id,mimeType), ...extra});
     },
     state() { return Object.fromEntries(['timelines', 'timeline_history', 'timeline_history_cursors', 'timeline_requests'].map(table => [table, store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])); },
     outside() { return Object.fromEntries(outsideTables.map(table => [table, clone(store.list(table))])); },

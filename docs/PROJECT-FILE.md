@@ -1,5 +1,5 @@
 # 项目文件 v1：约定
-日期：2026-10-30 起草，2026-11-02 按 S0 P4 实现补充，2026-11-03 补充 V2 项目自动备份与 V1-A 手动版本。当前代码已切换真实项目存储，验收和发布状态以对应 PR 为准；后续约定变更仍提给协调人。
+日期：2026-10-30 起草，2026-11-02 按 S0 P4 实现补充，2026-11-03 补充 V2 项目自动备份与 V1-B 版本恢复及自动保存。当前代码已切换真实项目存储，验收和发布状态以对应 PR 为准；后续约定变更仍提给协调人。
 
 项目文件 v1 让 `.mioon` 成为项目本身：一个 SQLite 文件只存一个项目的当前内容；Mio 记录、撤销、版本、任务、回执和草稿按项目 ID 存在本机。这份文档记下各张任务卡共同遵守的约定，名字以契约代码为准：
 
@@ -11,7 +11,8 @@
 - 首页封面使用应用级 `GET /api/project-covers/<ID>`，只读缓存，缺失返回 404，不 acquire 项目；`projectSummaryCoverSchema` 已同步此 URL。应用 `/api/workspace-info` 返回应用根，新增项目 `/api/projects/<ID>/workspace-info` 在真实租约内返回项目根，复用原 schema，供可信桌面导出使用。
 - 全局 `diagnostics/latest` 从应用 documents 读取严格五字段摘要：`completedAt/status/protocol/model/errorCode`；无项目对话、请求或密钥，也不打开项目。应用库当前为 v3：精确已知 v1 经 v2，再以 R2 的 v2→v3 升级增加用户规范；保原三种文档及其它记录。HTTP B1 错误仅公开 `APP_LIBRARY_LIMIT`（507）与 `APP_LIBRARY_INVALID`（422）。
 - V2 已接入宿主打开/关闭的项目自动备份，最近三份按内容序号去重；`project.backup.list/inspect/restore/status` 是应用级操作，恢复使用新 ID 和空本机记录。专用 `MioB` 标记使备份不能作为普通项目打开或登记；接口、提交点和故障边界见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)。不启用旧工作区备份接口，也没有接入备份界面。
-- V1-A 的 `project.version.list/save/preview` 是项目级操作，提供手动保存、分页列表和只读差异预览；正文仅存本机 history。未提供版本恢复、自动拍摄、清理或界面，预览固定 `restoreAvailable:false`；见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。
+- S1 已接通生产素材引用：项目格式为 2、cache 为 2，history 沿 V1-A 的 6。格式 1 的旧开发项目及备份明确拒绝、零写入，需重建。路径导入不复制，网页/Mio 上传写固定 `素材/`；生成和导出当前仍用原目录，S2 再切换。完整契约、强哈希与目录许可见 [素材引用](ASSET-REFERENCES.md)。
+- `project.version.list/save/preview/restore` 是项目级操作，提供手动/自动保存、保留清理和确认恢复；正文仅存本机 history，界面另卡实现；见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。
 - S5 的删除、复制和另存为，V4 的打包导入导出，S7 的工作区备份/恢复仍未接入新布局；精确错误和按项目后的图片、帧、LUT 可达容量见 [宿主当前状态](PROJECT-HOST.md#0-p4-当前运行状态)。不调用旧生产生命周期链；全应用总量控制留 S3。
 
 下文保留内核约定和 P1/P2 阶段记录；注明阶段的历史说明不代表 P4 仍在使用旧默认入口。
@@ -22,7 +23,7 @@
 | `packages/contracts/src/media-reference.ts` | 素材引用、指纹、素材状态、项目外位置 |
 | `packages/contracts/src/project-registry.ts` | 最近项目及摘要缓存、后台任务索引、收件箱、规范信任、项目外路径确认、本机记录清单 |
 | `packages/contracts/src/project-versions.ts` | 版本摘要、恢复预览、打包结果 |
-| `packages/contracts/src/project-version-operations.ts` | V1-A 手动版本保存、分页列表和完整只读预览契约 |
+| `packages/contracts/src/project-version-operations.ts` | 版本保存、分页列表、完整预览和确认恢复契约 |
 | `packages/contracts/src/project-backups.ts` | V2 应用级备份操作、响应、描述和效果声明 |
 | `packages/contracts/src/project-backup-records.ts` | V2 私有 JSON 索引和恢复意图，不是 history 表 |
 
@@ -96,7 +97,7 @@
 依据是 10-30 的崩溃恢复实测：跨两个文件的大事务提交到一半时 `SIGKILL`，再看重开以后两个文件是否一致（Node 24.21.0，SQLite 3.53.4，回滚日志模式加独占锁）。
 
 - **主库是本机记录 `history.db`。** 项目文件以 `project` 的名字挂上去，缓存库以 `cache` 的名字挂上去（`PROJECT_DATABASE_NAMES`）。
-  - 当前 project/history/cache 格式为 **1/6/1**。history 6 在 R2 格式 5 上增加独立 `versions` 领域的 `project_versions`、`project_version_blobs`、`project_version_requests`、`project_version_capture_marks` 四表，不改变项目内容表 `versions`。
+  - 当前 project/history/cache 格式为 **2/6/2**。history 6 在 R2 格式 5 上增加独立 `versions` 领域的 `project_versions`、`project_version_blobs`、`project_version_requests`、`project_version_capture_marks` 四表，不改变项目内容表 `versions`。
   - 精确已知的 history 2–5 都可在打开事务内升级到 6，版本最后写入；2 保留既有开发期 Mio 重置，3–5 保留已有记录。未知或改动过的结构仍拒绝；详见 [MIO-RECORDS.md](MIO-RECORDS.md#发布前的开发数据重置)。
   - 未加限定的表名，SQLite 依次到各个库里找，所以现有 SQL 大多不用改。
   - 建表、建触发器，以及 `PRAGMA user_version`、`PRAGMA application_id` 这类语句要带库名，不带时落到主库，也就是本机记录。`PRAGMA foreign_key_check` 不带库名时只查主库。
@@ -257,10 +258,10 @@ P2 当时不改变公开地址、落盘格式、Mio 请求字节、生产入口�
 - 恢复到明确的新文件，目标存在报 `PROJECT_FILE_EXISTS`；新 projectId、空本机记录，实体 ID 保留。V2 的共享复制能力供 S5 复用，当前托管媒体校验后复制，正式引用按原来源目录重定位，不改源项目或源备份。
 - 新增的四个 `project.backup.*` 操作走应用 `/api/rpc`，列表/查看/状态和从备份恢复不 acquire 原项目。原生备份完整 await，超过阈值可见 slow，不做硬超时；失败不挡开关，但不承诺慢 I/O 的关闭时限。
 
-完整接口、JSON 发布/恢复重试、媒体和停机边界见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)。V2 本身不改 history 结构；V1-A 的本机逻辑版本见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。备份/版本界面和版本恢复仍由后续卡交付，请求指纹保持不变。
+完整接口、JSON 发布/恢复重试、媒体和停机边界见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)。V2 本身不改 history 结构；V1-A 的本机逻辑版本见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。备份/版本界面仍由后续卡交付，请求指纹保持不变。
 
 ## 素材引用
-S1 基础接口已提供共享状态/错误契约、L1 真实目录授权和精确 store 的引用服务；尚未切换生产导入或项目/cache 格式。已审定的后续导入、目录确认和格式拒旧规则见 [素材引用基础接口](ASSET-REFERENCES.md)。下文的 S0 托管素材说明仍描述本次未切换的生产入口。
+S1 已切换生产导入和全部素材读端。资产只以 `reference` 定位，普通结果返回无路径指纹与 `referenceRevision`；图片/音频导入即完整哈希，视频强执行前 prepare→CAS。目录许可按项目和实际目录本身确认，不含子目录；普通 MCP/Mio 不能确认。完整导入、状态、重连和格式拒旧规则见 [素材引用](ASSET-REFERENCES.md)。注明 S0 的托管素材说明仅为阶段记录。
 
 引用的字段一次定全（`mediaReferenceSchema`）：
 
@@ -275,7 +276,7 @@ S1 基础接口已提供共享状态/错误契约、L1 真实目录授权和精�
 
 - 后四个字段合称指纹（`mediaFingerprintSchema`）。
 - 素材状态：`online`（指纹一致）、`missing`（路径上没有文件）、`changed`（文件在，但指纹对不上）。
-- 素材和项目文件在同一个盘上时存相对路径，跨盘时存绝对路径和卷名。S0 先把托管副本记成相对路径 `media/<ID>.<扩展名>`，S1 再改成引用原文件。
+- 素材和项目文件在同一个盘上时存相对路径，跨盘时存绝对路径和卷名。路径导入引用原文件；上传在 `素材/` 创建副本后引用。没有旧 `relativePath` 资产定位回退。
 - 项目外位置（`outsideProjectLocationSchema`）：引用落在项目目录以外的文件夹，带素材数，以及这台电脑上有没有这个文件夹（12-06）。别人发来的项目，用户确认后才读取这些位置；确认记录在应用库，见下一节。
 
 ## 登记与记录

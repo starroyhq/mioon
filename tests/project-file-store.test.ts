@@ -1,23 +1,25 @@
+
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {randomUUID} from 'node:crypto';
-import {existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync} from 'node:fs';
+import {createHash, randomUUID} from 'node:crypto';
+import fs, {existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync} from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import type {DatabaseSync} from 'node:sqlite';
-import {
-  getWorkspaceRestoreContext, openLegacyWorkspaceStore as openWorkspaceStore, ownsStoreLock,
-  registerWorkspaceTransactionFence, registerWorkspaceTransactionObserver,
-} from '../packages/business/src/db.ts';
+import {ownsStoreLock, assertProjectStore, registerStoreTransactionFence, registerStoreTransactionObserver} from '../packages/business/src/store-runtime.ts';
 import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
 import {
   createProjectStore, isProjectStore, openProjectStore, openStore, registerProjectTransactionFence, registerProjectTransactionObserver,
 } from '../packages/business/src/project-file/index.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/index.ts';
 import {isProjectId, TEST_STORE_LAYOUT} from '../packages/contracts/src/project-file.ts';
+
+import {sampleRanges} from '../packages/business/src/media-reference/fingerprint.ts';
+import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 
 const CHILD = fileURLToPath(new URL('./helpers/project-file-child.ts', import.meta.url));
 const REPOSITORY = fileURLToPath(new URL('../', import.meta.url));
@@ -153,9 +155,7 @@ test('a transaction commits and rolls back the project file and the local record
 // it begins with a plain (deferred) BEGIN, not BEGIN IMMEDIATE. The connection
 // already holds every file's lock, so IMMEDIATE would only put all three
 // databases in each write transaction; see the next test.
-test('misuse fails with the same errors as the workspace store', t => {
-  const workspace = openWorkspaceStore(path.join(scratch(t), 'workspace'), {lock: false});
-  t.after(() => workspace.close());
+test('kernel misuse preserves the synchronous transaction and primitive-value errors', t => {
   const store = openedStore(t);
   const misuse = (target: WorkspaceStore): string[] => [
     () => target.tx(async () => 1),
@@ -175,8 +175,7 @@ test('misuse fails with the same errors as the workspace store', t => {
       return `${(error as Error).constructor.name}: ${(error as Error).message}`;
     }
   });
-  const expected = misuse(workspace);
-  assert.deepEqual(expected, [
+  const expected = [
     'TypeError: Transactions require a synchronous callback',
     'TypeError: Transactions require a synchronous callback',
     'Error: Nested transactions are not supported',
@@ -186,7 +185,7 @@ test('misuse fails with the same errors as the workspace store', t => {
     'Error: Unknown table',
     'Error: Unknown table',
     'TypeError: Workspace row values must be SQLite primitives',
-  ]);
+  ];
   assert.deepEqual(misuse(store), expected);
   assert.equal(store.db.isTransaction, false);
 });
@@ -303,7 +302,7 @@ test('createProjectStore creates a project file with the given ID and never over
   reopened.close();
 });
 
-test('workspace ownership and restore checks require the exact live kernel store, not copied fields', t => {
+test('store ownership checks require the exact live kernel store, not copied fields', t => {
   const root = scratch(t), store = openedStore(t, root);
   assert.equal(isProjectStore(store), true);
   assert.equal(ownsStoreLock(store), true);
@@ -311,50 +310,50 @@ test('workspace ownership and restore checks require the exact live kernel store
   const prepare = store.db.prepare;
   store.db.prepare = () => { throw new Error('unexpected legacy schema scan'); };
   try {
-    assert.equal(getWorkspaceRestoreContext(store), null);
+    assert.doesNotThrow(() => assertProjectStore(store));
   } finally {
     store.db.prepare = prepare;
   }
   for (const copy of [{...store}, {db: store.db, root: store.root}]) {
     assert.equal(isProjectStore(copy), false);
     assert.equal(ownsStoreLock(copy), false);
-    assert.throws(() => getWorkspaceRestoreContext(copy), {code: 'RESTORE_STORE_UNVERIFIED'});
+    assert.throws(() => assertProjectStore(copy), {code: 'PROJECT_STORE_UNVERIFIED'});
   }
   const rootDescriptor = Object.getOwnPropertyDescriptor(store, 'root')!;
   Object.defineProperty(store, 'root', {value: path.join(root, 'other')});
   assert.equal(isProjectStore(store), false);
   assert.equal(ownsStoreLock(store), false);
-  assert.throws(() => getWorkspaceRestoreContext(store), {code: 'RESTORE_STORE_UNVERIFIED'});
+  assert.throws(() => assertProjectStore(store), {code: 'PROJECT_STORE_UNVERIFIED'});
   Object.defineProperty(store, 'root', rootDescriptor);
   assert.equal(isProjectStore(store), true);
   store.close();
   assert.equal(isProjectStore(store), false);
   assert.equal(ownsStoreLock(store), false);
-  assert.throws(() => getWorkspaceRestoreContext(store), {code: 'RESTORE_STORE_UNVERIFIED'});
+  assert.throws(() => assertProjectStore(store), {code: 'PROJECT_STORE_UNVERIFIED'});
   const reopened = openedStore(t, root);
   assert.equal(isProjectStore(reopened), true);
   assert.equal(ownsStoreLock(reopened), true);
-  assert.equal(getWorkspaceRestoreContext(reopened), null);
+  assert.doesNotThrow(() => assertProjectStore(reopened));
   assert.equal(ownsStoreLock(store), false);
   reopened.db.close();
   assert.throws(() => reopened.db.open(), {name: 'TypeError'});
   assert.equal(isProjectStore(reopened), false);
   assert.equal(ownsStoreLock(reopened), false);
-  assert.throws(() => getWorkspaceRestoreContext(reopened), {code: 'RESTORE_STORE_UNVERIFIED'});
+  assert.throws(() => assertProjectStore(reopened), {code: 'PROJECT_STORE_UNVERIFIED'});
   assert.throws(() => reopened.close(), {code: 'ERR_INVALID_STATE'});
 });
 
-test('workspace transaction registrations join the real kernel transaction and preserve ordering, rollback and removal', t => {
+test('store transaction registrations join the real kernel transaction and preserve ordering, rollback and removal', t => {
   const store = openedStore(t), other = openedStore(t);
   store.put('projects', {id: store.projectId});
   const events: string[] = [];
-  const removeFence = registerWorkspaceTransactionFence(store.db, () => {
+  const removeFence = registerStoreTransactionFence(store.db, () => {
     assert.equal(store.db.isTransaction, true);
     events.push('workspace fence');
     addReceipt(store.db, 's0-workspace-fence');
   });
   const removeKernelFence = registerProjectTransactionFence(store.db, () => events.push('kernel fence'));
-  const removeObserver = registerWorkspaceTransactionObserver(store.db, result => {
+  const removeObserver = registerStoreTransactionObserver(store.db, result => {
     assert.equal(store.db.isTransaction, true);
     events.push(`workspace observer: ${String(result)}`);
     addReceipt(store.db, 's0-workspace-observer');
@@ -375,7 +374,7 @@ test('workspace transaction registrations join the real kernel transaction and p
   for (const remove of [removeFence, removeKernelFence, removeObserver, removeKernelObserver]) remove();
   store.tx(() => 'unregistered');
   assert.deepEqual(events, before);
-  const stop = registerWorkspaceTransactionFence(store.db, () => {
+  const stop = registerStoreTransactionFence(store.db, () => {
     addReceipt(store.db, 's0-refused-fence');
     throw new Error('fence failed');
   });
@@ -383,4 +382,41 @@ test('workspace transaction registrations join the real kernel transaction and p
   assert.equal(receipts(store.db, 's0-refused-fence'), 0);
   assert.equal(store.db.isTransaction, false);
   stop();
+});
+
+test('explicit test fixture stores only a reference, samples the fixed ranges, and preserves a declared wrong full hash', t => {
+  const root = mkdtempSync(path.join(tmpdir(), 'reference-fixture-'));
+  const store = openStore(root); t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
+  store.put('projects', {id: store.projectId});
+  const bytes = Buffer.alloc(2 * 1024 * 1024, 43), id = randomUUID(), relativePath = `media/${id}.mp4`;
+  writeFileSync(path.join(root, relativePath), bytes);
+  const sha256 = 'a'.repeat(64), fixture = store.put('assets', {id, projectId: store.projectId, relativePath, sizeBytes: bytes.length, sha256});
+  assert.equal(fixture.relativePath, relativePath);
+  const record = store.get('assets', id) as Record<string, unknown>;
+  assert.equal(record.relativePath, undefined); assert.equal(record.sha256, sha256);
+  const reference = mediaReferenceSchema.parse(record.reference);
+  const sample = createHash('sha256');for (const range of sampleRanges(bytes.length)) sample.update(bytes.subarray(range.start, range.start + range.length));
+  assert.equal(reference.sampledSha256, sample.digest('hex')); assert.equal(reference.fullSha256, sha256);
+  assert.notEqual(createHash('sha256').update(bytes).digest('hex'), sha256);
+});
+
+test('test fixture never opens a held project database and keeps missing fixtures unavailable', t => {
+  const root = mkdtempSync(path.join(tmpdir(), 'reference-fixture-held-'));
+  const store = openStore(root); t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
+  store.put('projects', {id: store.projectId});
+  const original = fs.openSync; let heldOpens = 0;
+  t.mock.method(fs, 'openSync', (...args: Parameters<typeof fs.openSync>) => {
+    if (String(args[0]) === store.projectFile) {heldOpens++; throw new Error('Held database opened');}
+    return original(...args);
+  });
+  syncBuiltinESMExports();
+  try {
+    const id = randomUUID(); store.put('assets', {id, projectId: store.projectId, relativePath: 'project.mioon', sha256: null});
+    const missing = randomUUID(); store.put('assets', {id: missing, projectId: store.projectId, relativePath: `media/${missing}.wav`, sha256: null});
+    assert.equal(heldOpens, 0);
+    for (const key of [id, missing]) {
+      const asset = store.get('assets', key) as Record<string, unknown>, reference = mediaReferenceSchema.parse(asset.reference);
+      assert.equal(reference.sampledSha256, '0'.repeat(64)); assert.equal(reference.fullSha256, null); assert.equal(reference.mtimeMs, 0);
+    }
+  } finally {t.mock.restoreAll(); syncBuiltinESMExports();}
 });
