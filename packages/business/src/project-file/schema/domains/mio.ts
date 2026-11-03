@@ -3,6 +3,7 @@
 import {HISTORY_TABLES_BY_DOMAIN} from '../tables.ts';
 import {AGENT_TASK_STATUSES,AGENT_TASK_STEP_STATUSES} from '../../../../../contracts/src/agent-tasks-v2.ts';
 import {MIO_ENTRY_KINDS} from '../../../../../contracts/src/mio-records.ts';
+import {MIO_RULE_WRITE_STATES} from '../../../../../contracts/src/mio-rule-writes.ts';
 import type {DatabaseSync} from 'node:sqlite';
 
 export const MIO_PROCESS_TARGET_KINDS=Object.freeze(['job','export','image_task','frame_task'] as const);
@@ -43,13 +44,14 @@ const byteColumns:Readonly<Record<string,readonly string[]>>={
  mio_conversation_policies:['conversationId','projectId','data'],mio_conversation_policy_requests:['requestId','projectId','conversationId','inputHash','response'],
  mio_events:['runId','createdAt'],mio_process_target_revisions:['projectId','kind','targetId'],
  mio_storage_counters:[],
+ mio_rule_writes:['requestId','projectId','actor','runId','stepId','digest','approvalReceiptId','beforeHash','afterHash','beforeBlobHash','afterBlobHash','fixedRelativeName','fileIdentity','state','createdAt','updatedAt'],
 };
 const rowBytes=(table:string,prefix=''):string=>byteColumns[table]!.map(c=>`COALESCE(length(CAST(${prefix}${c} AS BLOB)),0)`).join('+')||'0';
 export const MIO_QUOTA_BYTES_SQL=HISTORY_TABLES_BY_DOMAIN.mio.map(table=>`(SELECT COALESCE(sum(${rowBytes(table)}),0) FROM ${table})`).join('+');
 export const MIO_QUOTA_ROWS_SQL=HISTORY_TABLES_BY_DOMAIN.mio.filter(table=>table!=='mio_edit_receipts').map(table=>`(SELECT count(*) FROM ${table})`).join('+');
 const recordTables=HISTORY_TABLES_BY_DOMAIN.mio.filter(table=>table!=='mio_storage_counters');
 const rowTriggers=recordTables.flatMap(table=>['INSERT','UPDATE'].map(operation=>`CREATE TRIGGER row_${table}_${operation.toLowerCase()} BEFORE ${operation} ON ${table} WHEN ${rowBytes(table,'NEW.')}>${MIO_STORAGE_LIMITS.rowBytes} BEGIN SELECT RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT');END`));
-const quotaTables=recordTables.filter(table=>!['mio_edit_claims','mio_edit_owners','mio_edit_receipts','mio_process_target_revisions'].includes(table));
+const quotaTables=recordTables.filter(table=>!['mio_edit_claims','mio_edit_owners','mio_edit_receipts','mio_process_target_revisions','mio_rule_writes'].includes(table));
 /** Count and check in the same trigger: correctness cannot depend on the
  * order SQLite chooses for multiple AFTER triggers. No retained-table scan. */
 export const MIO_COUNTER_TRIGGERS:readonly string[]=Object.freeze(recordTables.flatMap(table=>['INSERT','UPDATE','DELETE'].map(operation=>{
@@ -93,6 +95,18 @@ const processTriggers=processTables.flatMap(({table,kind,columns})=>['insert','u
  return `CREATE TRIGGER agent_target_${table}_${operation}_v2 AFTER ${operation.toUpperCase()} ON ${table}${when} BEGIN INSERT INTO mio_process_target_revisions(projectId,kind,targetId,revision) VALUES(${row}.projectId,'${kind}',${row}.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END`;
 }));
 
+/** Durable file/history/application reconciliation. The receipt FK proves its
+ * run; the service additionally verifies the approved step and exact hashes. */
+export const MIO_RULE_WRITES_SCHEMA:readonly string[]=Object.freeze([
+ `CREATE TABLE mio_rule_writes(requestId TEXT PRIMARY KEY NOT NULL CHECK(length(requestId) BETWEEN 8 AND 200),${projectId},actor TEXT NOT NULL CHECK(actor IN ('manual','mio')),runId TEXT,stepId TEXT,${hash('digest')},approvalReceiptId TEXT,expectedExists INTEGER NOT NULL CHECK(typeof(expectedExists)='integer' AND expectedExists IN (0,1)),${hash('beforeHash',true)},${hash('afterHash')},${hash('beforeBlobHash',true)} REFERENCES mio_blobs(sha256),${hash('afterBlobHash')} REFERENCES mio_blobs(sha256),fixedRelativeName TEXT NOT NULL CHECK(fixedRelativeName='AGENTS.md'),fileIdentity TEXT CHECK(fileIdentity IS NULL OR (json_valid(fileIdentity) AND length(CAST(fileIdentity AS BLOB))<=16384)),state TEXT NOT NULL CHECK(state IN (${oneOf(MIO_RULE_WRITE_STATES)})),${timestamps},${runFk},${stepFk},FOREIGN KEY(projectId,runId,approvalReceiptId) REFERENCES mio_controls(projectId,runId,requestId),CHECK((actor='manual' AND runId IS NULL AND stepId IS NULL AND approvalReceiptId IS NULL) OR (actor='mio' AND runId IS NOT NULL AND stepId IS NOT NULL AND approvalReceiptId IS NOT NULL)),CHECK((expectedExists=1 AND beforeHash IS NOT NULL AND beforeBlobHash IS beforeHash) OR (expectedExists=0 AND beforeHash IS NULL AND beforeBlobHash IS NULL)),CHECK(afterBlobHash IS afterHash),CHECK(fileIdentity IS NULL OR (json_extract(fileIdentity,'$.version') IS 1 AND json_extract(fileIdentity,'$.fixedRelativeName') IS fixedRelativeName AND json_extract(fileIdentity,'$.expectedExists') IS expectedExists AND json_extract(fileIdentity,'$.beforeHash') IS beforeHash AND json_extract(fileIdentity,'$.afterHash') IS afterHash)),CHECK(state NOT IN ('published','trust_pending','completed') OR (fileIdentity IS NOT NULL AND json_type(fileIdentity,'$.candidateIdentity') IS 'object' AND json_type(fileIdentity,'$.publishedIdentity') IS 'object' AND json_extract(fileIdentity,'$.phase') IN ('published','before_cleanup','completed'))))`,
+ 'CREATE INDEX mio_rule_writes_pending ON mio_rule_writes(projectId,state,createdAt,requestId)',
+ keep('mio_rule_writes'),
+ identity('mio_rule_writes',['requestId','projectId','actor','runId','stepId','digest','approvalReceiptId','expectedExists','beforeHash','afterHash','beforeBlobHash','afterBlobHash','fixedRelativeName','createdAt']),
+ "CREATE TRIGGER mio_rule_write_insert BEFORE INSERT ON mio_rule_writes WHEN NEW.state!='prepared' OR (NEW.actor='mio' AND NOT EXISTS(SELECT 1 FROM mio_steps WHERE projectId=NEW.projectId AND runId=NEW.runId AND id=NEW.stepId AND kind='tool')) BEGIN SELECT RAISE(ABORT,'Mio rule write must start with a bound prepared intent');END",
+ "CREATE TRIGGER mio_rule_write_terminal BEFORE UPDATE ON mio_rule_writes WHEN OLD.state IN ('completed','not_applied') BEGIN SELECT RAISE(ABORT,'Mio rule write receipt is immutable');END",
+ "CREATE TRIGGER mio_rule_write_state BEFORE UPDATE ON mio_rule_writes WHEN NEW.state IS NOT OLD.state AND NOT ((OLD.state='prepared' AND NEW.state IN ('publication_unknown','published','not_applied')) OR (OLD.state='publication_unknown' AND NEW.state IN ('published','not_applied')) OR (OLD.state='published' AND NEW.state IN ('trust_pending','completed')) OR (OLD.state='trust_pending' AND NEW.state='completed')) BEGIN SELECT RAISE(ABORT,'Mio rule write state cannot be replayed');END",
+]);
+
 export const MIO_SCHEMA:readonly string[]=Object.freeze([
  ...MIO_COUNTER_SCHEMA,
  `CREATE TABLE mio_blobs(${hash('sha256')},${integer('bytes')},content TEXT NOT NULL,createdAt TEXT NOT NULL,PRIMARY KEY(sha256),CHECK(bytes=length(CAST(content AS BLOB)) AND bytes<=2097152))`,
@@ -122,6 +136,7 @@ export const MIO_SCHEMA:readonly string[]=Object.freeze([
  `CREATE INDEX mio_policy_requests_project ON mio_conversation_policy_requests(projectId,conversationId)`,
  `CREATE TABLE mio_events(runId TEXT NOT NULL REFERENCES mio_runs(id),${integer('sequence',1)},createdAt TEXT NOT NULL,PRIMARY KEY(runId,sequence))`,
  `CREATE TABLE mio_process_target_revisions(${projectId},kind TEXT NOT NULL CHECK(kind IN ('job','export','image_task','frame_task')),targetId TEXT NOT NULL,${integer('revision',1)},PRIMARY KEY(projectId,kind,targetId))`,
+ ...MIO_RULE_WRITES_SCHEMA,
  ...['mio_blobs','mio_entries','mio_controls','mio_job_origins','mio_edit_receipts','mio_conversation_policy_requests','mio_events'].flatMap(immutable),
  ...['mio_conversations','mio_runs','mio_steps','mio_requests','mio_changes','mio_control_states','mio_imports','mio_conversation_policies','mio_process_target_revisions'].map(keep),
  identity('mio_conversations',['id','projectId','createdAt']),

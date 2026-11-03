@@ -3,6 +3,7 @@ import {projectFileError} from '../errors.ts';
 import {MIO_SCHEMA,MIO_COUNTER_SCHEMA,MIO_COUNTER_TRIGGERS,initializeMioStorageCounters} from './domains/mio.ts';
 import {S0_HISTORY_V2_MANIFEST} from './history-v2-manifest.ts';
 import {R1_HISTORY_V3_MANIFEST} from './history-v3-manifest.ts';
+import {R1_HISTORY_V4_MANIFEST} from './history-v4-manifest.ts';
 import type {SchemaManifest} from './manifest-check.ts';
 import {LEGACY_MIO_TABLES} from './tables.ts';
 
@@ -41,9 +42,18 @@ function addMioStorageCounters(db:DatabaseSync):void{
  initializeMioStorageCounters(db,'main');
 }
 
+function addMioRuleWrites(db:DatabaseSync,counters=true):void{
+ if(!db.isTransaction)throw new TypeError('A history upgrade requires the opening transaction');
+ const target=/^CREATE (?:TABLE mio_rule_writes\b|INDEX mio_rule_writes_\w+\b|TRIGGER \w+ (?:BEFORE|AFTER) (?:INSERT|UPDATE|DELETE) ON mio_rule_writes\b)/u;
+ for(const sql of MIO_SCHEMA)if(target.test(sql)&&(counters||!sql.startsWith('CREATE TRIGGER quota_')))db.exec(sql.replace(CREATE_PREFIX,'CREATE $1 main.'));
+ // The newly added table is empty. Existing retained data and its counters
+ // are unchanged; only later INSERT/UPDATE/DELETE apply a logical delta.
+}
+
 export const HISTORY_UPGRADES: readonly HistoryUpgrade[] = Object.freeze([
-  Object.freeze({from: S0_HISTORY_V2_MANIFEST, toVersion: 4, clearLegacyProcessRevisions:true, apply: resetDevelopmentMio}),
-  Object.freeze({from: R1_HISTORY_V3_MANIFEST, toVersion: 4, apply: addMioStorageCounters}),
+  Object.freeze({from: S0_HISTORY_V2_MANIFEST, toVersion: 5, clearLegacyProcessRevisions:true, apply: resetDevelopmentMio}),
+  Object.freeze({from: R1_HISTORY_V3_MANIFEST, toVersion: 5, apply: (db:DatabaseSync)=>{addMioRuleWrites(db,false);addMioStorageCounters(db);}}),
+  Object.freeze({from: R1_HISTORY_V4_MANIFEST, toVersion: 5, apply: addMioRuleWrites}),
 ]);
 
 /** Clears only the four local-process target kinds from an older project.

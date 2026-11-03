@@ -101,9 +101,9 @@ test('read-only runtime permits usage and doctor returns only the requested proj
   const before = f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
   f.store.db.exec('PRAGMA query_only=ON');
   assert.deepEqual((await f.client.usage({projectId: f.projectId, runId: f.runId})).knownTotals, measured);
-  const doctor = await f.client.doctor({projectId: f.projectId}); assert.ok(doctor.storage?.version === 2);
+  const doctor = await f.client.doctor({projectId: f.projectId}); assert.ok(doctor.storage?.version === 3);
   assert.deepEqual(mioStorageSnapshotSchema.parse(doctor.storage), readMioStorage(f.store.db));
-  assert.equal(doctor.storage.projectId, f.projectId); assert.equal(doctor.storage.tables.length, 19);
+  assert.equal(doctor.storage.projectId, f.projectId); assert.equal(doctor.storage.tables.length, 20);
   assert.equal((await f.client.doctor()).storage, undefined);
   assert.equal((await fetch(f.base + `/api/agent/diagnostics?projectId=${randomUUID()}`, {headers: f.headers})).status, 404);
   assert.doesNotMatch(JSON.stringify(doctor.storage), /PRIVATE_|providerOutput|originalBody|relativePath/u);

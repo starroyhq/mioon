@@ -9,6 +9,7 @@ import {openAppLibrary, projectFileIdentity} from '../packages/business/src/app-
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {readMioStorage} from '../packages/business/src/agent/mio-storage.ts';
+import {createMioRuleWriteRepository} from '../packages/business/src/agent/mio-rule-write-repository.ts';
 import {validateAgentTaskRowsV2} from '../packages/business/src/agent/task-schema-v2.ts';
 import {bindAgentTaskRowValidation} from '../packages/business/src/agent/task-project-row-validation-v2.ts';
 import {withoutForeignKeys} from './helpers/project-database.ts';
@@ -37,6 +38,16 @@ function fixture(t: TestContext) {
   return {store, library, records, run:records.run(runId), step:records.step(stepId), requestId};
 }
 const changes = (db: {prepare(sql: string): {get(): unknown}}): unknown => db.prepare('SELECT total_changes() AS n').get();
+
+test('native rule-write rows are validated without writes and cannot hide malformed file evidence',t=>{
+ const f=fixture(t),repository=createMioRuleWriteRepository(f.store),requestId=randomUUID(),at=new Date().toISOString(),blob=f.run.configurationBlobHash!;
+ f.store.tx(()=>repository.prepare({requestId,projectId:f.store.projectId,actor:'manual',runId:null,stepId:null,approvalReceiptId:null,digest:'a'.repeat(64),expectedExists:false,beforeHash:null,afterHash:blob,beforeBlobHash:null,afterBlobHash:blob,fixedRelativeName:'AGENTS.md',fileIdentity:null,state:'prepared',createdAt:at,updatedAt:at}));
+ const before=[changes(f.store.db),changes(f.library.db)];validateAgentTaskRowsV2(f.store.db,options);assert.deepEqual([changes(f.store.db),changes(f.library.db)],before);
+ f.store.db.exec('PRAGMA ignore_check_constraints=ON');f.store.db.prepare('UPDATE mio_rule_writes SET fileIdentity=? WHERE requestId=?').run('{"unsupported":"file evidence"}',requestId);f.store.db.exec('PRAGMA ignore_check_constraints=OFF');
+ const damagedBefore=[changes(f.store.db),changes(f.library.db)];assert.throws(()=>validateAgentTaskRowsV2(f.store.db,options),invalid);assert.deepEqual([changes(f.store.db),changes(f.library.db)],damagedBefore);
+ f.store.db.prepare('UPDATE mio_rule_writes SET fileIdentity=NULL WHERE requestId=?').run(requestId);validateAgentTaskRowsV2(f.store.db,options);
+ assert.throws(()=>f.store.db.prepare("UPDATE mio_rule_writes SET state='published' WHERE requestId=?").run(requestId),/CHECK/u);
+});
 
 test('the TEST validator reads the actual app policy and project rows without writing either connection', t => {
   const f = fixture(t);

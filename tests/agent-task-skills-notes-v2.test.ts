@@ -50,7 +50,7 @@ async function fixture(t:TestContext,opener:typeof openStore|typeof openLegacyWo
  let open=true;
  const shutdown=async()=>{if(!open)return;open=false;runtime.close();await runtime.drain();tools.dispose();await services.drain();await settings.close();store.close();};
  t.after(async()=>{await shutdown();rmSync(root,{recursive:true,force:true});});
- return {root,store,services,runtime,projectId,shotId,bodies,shutdown,
+ return {root,store,services,runtime,tools,projectId,shotId,bodies,shutdown,
   queue(...batches:AgentTaskToolCall[][]){queue.push(...batches);},
   async send(text:string,extra:Record<string,unknown>={}):Promise<AgentTaskSnapshot>{const sent=await runtime.send(projectId,{requestId:randomUUID(),text,expectedSettingsRevision:(await settings.get()).revision,...extra});await runtime.drain();return runtime.get(projectId,sent.run.id);},
   project(){return record(store.get('projects',projectId));},
@@ -118,7 +118,8 @@ test('the system instruction lists methods only alongside the tool that reads th
   assert.ok(!line.includes(AGENT_TASK_SKILLS[0]!.sections[0]!.text),'bodies stay out of the instruction');
  }
  assert.ok(AGENT_TASK_TOOL_GROUPS.core.includes('skill.read')&&AGENT_TASK_TOOL_GROUPS.core.includes('continuity.report'));
- assert.ok(AGENT_TASK_TOOL_GROUPS.canvas.includes('project.notes.set'));
+ assert.ok(AGENT_TASK_TOOL_GROUPS.core.includes('project.rules.set'));
+ assert.equal(AGENT_TASK_TOOL_GROUPS.canvas.some(operation=>String(operation)==='project.notes.set'),false);
 });
 test('diagnostics never receive the conversation-only method and review tools', t => {
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-skills-diagnostic-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
@@ -180,8 +181,8 @@ test('project notes save under project CAS, replay exactly, refuse invalid text 
  const exact='一'.repeat(Math.floor(PROJECT_NOTES_MAX_BYTES/3))+'\t';assert.equal((await f.setNotes(exact)).notes,exact);
  const cleared=await f.setNotes('  \n ');assert.equal(Object.hasOwn(cleared,'notes'),false);assert.equal(Object.hasOwn(f.project(),'notes'),false);
 });
-test('each run carries the notes frozen at send time as reference data; diagnostics carry none', async t => {
- const f=await fixture(t);
+test('legacy runs retain their frozen notes until the legacy path is retired; diagnostics carry none', async t => {
+ const f=await fixture(t,openLegacyWorkspaceStore);
  const empty=await f.send('No notes yet');
  assert.ok(!JSON.stringify(f.context(empty.run.id)).includes('mio.project.notes'));
  await f.setNotes(NOTES);
@@ -201,21 +202,17 @@ test('each run carries the notes frozen at send time as reference data; diagnost
  const diagnostic=await f.send('Connection check',{diagnostic:{profile:'text'}});
  assert.ok(!JSON.stringify(f.context(diagnostic.run.id)).includes('mio.project.notes'),'diagnostics carry no notes');
 });
-test('Mio updates notes as a reversible change, and undo restores the earlier text', async t => {
- const f=await fixture(t);
- await f.setNotes(NOTES);
+test('native Mio rejects the retired notes tool and preserves the old manual notes API', async t => {
+ const f=await fixture(t);await f.setNotes(NOTES);
  const revision=Number(f.project().revision);
- f.queue([call('mioon_tools_load',{names:['mioon_project_notes_set']})],[call('mioon_project_notes_set',{expectedRevision:revision,notes:`${NOTES}\n周屿的伞是黑色的。`})]);
+ assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'project.notes.set',input:{expectedRevision:revision,notes:'forbidden'}}),{code:'AGENT_TASK_TOOL_FORBIDDEN'});
+ f.queue([call('mioon_project_notes_set',{expectedRevision:revision,notes:`${NOTES}\n周屿的伞是黑色的。`})]);
  const done=await f.send('把伞的颜色写进项目说明');
  assert.equal(done.run.status,'completed');
  const [step]=tool(done,'mioon_project_notes_set');
- assert.equal(step!.status,'completed');assert.equal(step!.tier,'local_reversible');
- assert.equal(f.project().notes,`${NOTES}\n周屿的伞是黑色的。`);
- assert.equal(done.changes.length,1);assert.equal(done.changes[0]!.reversible,true);
- assert.deepEqual(done.changes[0]!.targets.map(target=>target.kind),['project']);
- const undone=await f.runtime.action(f.projectId,done.run.id,{requestId:randomUUID(),expectedRevision:done.run.revision,action:'undo_change',changeId:done.changes[0]!.id});
- await f.runtime.drain();
- assert.ok(undone);assert.equal(f.project().notes,NOTES);
+ assert.equal(step!.status,'rejected');assert.equal(step!.error?.code,'TOOL_RETIRED');
+ assert.equal(f.project().notes,NOTES);assert.equal(done.changes.length,0);
+ assert.ok(!JSON.stringify(f.context(done.run.id)).includes(NOTES));
 });
 test('project-layout notes stay unchanged when legacy import and workspace backup operations are unavailable', async t => {
  const f=await fixture(t);await f.setNotes(NOTES);

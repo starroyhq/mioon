@@ -12,7 +12,7 @@ import type {ProjectFileIdentity} from '../../../contracts/src/project-registry.
 import {appLibraryError, appLibraryInvalid, isSqliteBusy, isSqliteCorrupt, isSqliteReadOnly} from './errors.ts';
 import {
   APP_LIBRARY_APPLICATION_ID, APP_LIBRARY_FILE, APP_LIBRARY_SCHEMA_VERSION, APP_SCHEMA_VERSION_TABLE_SQL, buildAppLibrary, compareAppSchema,
-  readAppSchema, expectedAppSchema, upgradeAppLibraryV1,
+  readAppSchema, expectedAppSchema, upgradeAppLibraryV1, upgradeAppLibraryV2,
 } from './schema.ts';
 
 /** As the project-file kernel opens its files: a busy timeout of 0 makes an
@@ -114,7 +114,12 @@ function checkStructure(db: DatabaseSync): void {
     const differences = compareAppSchema(readAppSchema(db), expectedAppSchema(1));
     if (differences.length) throw appLibraryInvalid('schema', differences);
     upgradeAppLibraryV1(db);
-  } else if (versions?.count !== 1 || versions.version !== APP_LIBRARY_SCHEMA_VERSION) throw appLibraryInvalid('schema-version');
+  } else if (versions?.count !== 1 || (versions.version !== 2 && versions.version !== APP_LIBRARY_SCHEMA_VERSION)) throw appLibraryInvalid('schema-version');
+  if (db.prepare('SELECT version FROM main.schema_version').get()?.version === 2) {
+    const differences = compareAppSchema(readAppSchema(db), expectedAppSchema(2));
+    if (differences.length) throw appLibraryInvalid('schema', differences);
+    upgradeAppLibraryV2(db);
+  }
   const differences = compareAppSchema(readAppSchema(db));
   if (differences.length > 0) throw appLibraryInvalid('schema', differences);
 }

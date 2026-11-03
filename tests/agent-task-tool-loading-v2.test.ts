@@ -1,7 +1,7 @@
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -204,7 +204,15 @@ for(const protocol of protocols)test(`${protocol}: a real zero-tool legacy inten
 test('diagnostics retain their old catalog and cannot select or execute the new loader',async t=>{
  // No conversation-only host tool joins a diagnostic: the loader is new, a diagnostic has no conversation to
  // answer a question in, and it neither reads methods nor reports a review (C6).
- const f=await fixture(t),oldCatalog=f.tools.list().filter(tool=>!AGENT_TASK_CONVERSATION_TOOLS.includes(tool.name));
+ const f=await fixture(t),oldCatalog=f.tools.diagnosticList().filter(tool=>!AGENT_TASK_CONVERSATION_TOOLS.includes(tool.name));
+ // Frozen from main 9f5fd08b: preserve every diagnostic name, its order and risk
+ // independently of the native conversation catalog introduced by R2.
+ assert.equal(oldCatalog.length,104);
+ assert.equal(createHash('sha256').update(JSON.stringify(oldCatalog.map(({name,risk})=>({name,risk})))).digest('hex'),'966a29331ba3b88284cbc08346c75a5620faf2ff6f502a397567cfa3dfe3906c');
+ assert.ok(oldCatalog.some(tool=>tool.name==='mioon_project_notes_set'));
+ assert.ok(!oldCatalog.some(tool=>tool.name==='mioon_project_rules_set'));
+ assert.ok(f.tools.list().some(tool=>tool.name==='mioon_project_rules_set'));
+ assert.ok(!f.tools.list().some(tool=>tool.name==='mioon_project_notes_set'));
  for(const profile of ['text','read_only','catalog'] as const){
   const before=f.requests.length,sent=await f.send({diagnostic:{profile}});assert.equal((await f.settle(sent.run.id)).run.status,'completed');
   const body=object(JSON.parse(f.requests[before]!.body));
@@ -214,6 +222,7 @@ test('diagnostics retain their old catalog and cannot select or execute the new 
  }
  await assert.rejects(f.send({diagnostic:{profile:'catalog',toolNames:[AGENT_TASK_TOOLS_LOAD_NAME]}}),{code:'AGENT_TASK_INVALID'});
  await assert.rejects(f.send({diagnostic:{profile:'catalog',toolNames:[AGENT_TASK_ASK_TOOL]}}),{code:'AGENT_TASK_INVALID'});
+ await assert.rejects(f.send({diagnostic:{profile:'catalog',toolNames:['mioon_project_rules_set']}}),{code:'AGENT_TASK_INVALID'});
  assert.deepEqual(f.prepared,[]);assert.deepEqual(f.executed,[]);
 });
 

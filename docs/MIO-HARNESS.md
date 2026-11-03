@@ -1,6 +1,6 @@
 # Mio harness：当前执行、记录和计量
 
-更新：2026-11-02。H1–H4、流式检查点和 X 线能力已实施；本分支包含 R1 的记录、运行时及用量/存储计量，已合进 S0 P4 的项目宿主接线，三张 R1 卡由 R1-C PR 一起合入。规范文件与界面不属于本轮实现。
+更新：2026-11-03。H1–H4、流式检查点和 X 线能力已实施；R1 的记录、运行时及用量/存储计量已接 S0 P4 项目宿主。R2 增加规范文件、应用级用户规范、信任、每轮冻结与强制批准；真实界面接线归 U2。
 
 执行与恢复约定见 [AGENT-TASKS-V2](AGENT-TASKS-V2.md)，记录格式见 [MIO-RECORDS](MIO-RECORDS.md)。本文描述当前代码，历史的 2026-10-26 全目录请求、逐 delta 复制事件和容量基线不再作为现状。
 
@@ -81,9 +81,9 @@ client 提供 `usage({projectId,runId})`，校验 DTO 和运行身份。GET 不�
 
 ## 项目存储计量与配额
 
-新 v2 storage 契约以 `scope: project` 和可信 projectId 标识范围，枚举原 18 张记录表及单行 `mio_storage_counters`，共 19 张 Mio 表。计数表只有整数列，自身占 0 个逻辑字节、1 行；唯一 blob 只计一次，失败/unknown 原件、partial、对话 policy 及请求回执都不能漏计。全局 policy 属于应用库，不回算项目。
+当前 v3 storage 契约以 `scope: project` 和可信 projectId 标识范围，枚举原 18 张记录表、单行 `mio_storage_counters` 和 R2 的 `mio_rule_writes`，共 20 张 Mio 表。历史 v2 保留精确 19 表校验。计数表只有整数列，自身占 0 个逻辑字节、1 行；唯一 blob 只计一次，失败/unknown 原件、partial、对话 policy 及请求回执都不能漏计。全局 policy 属于应用库，不回算项目。
 
-`usage.bytes` 对齐内核的 `MIO_QUOTA_BYTES_SQL` 文本/JSON 字段计量；`usage.rows` 对齐执行配额行式。原 18 表的 INSERT/UPDATE/DELETE 触发器按 NEW/OLD 差额更新单行计数，并在同一触发器内只查询计数检查执行配额，不扫描已有记录。回执等豁免表只计数，不增加执行拦截。计数与领域写入共用事务/savepoint，回滚及强杀恢复也一起生效。
+`usage.bytes` 对齐内核的 `MIO_QUOTA_BYTES_SQL` 文本/JSON 字段计量；`usage.rows` 对齐执行配额行式。19 个记录表的 INSERT/UPDATE/DELETE 触发器按 NEW/OLD 差额更新单行计数，并在同一触发器内只查询计数检查执行配额，不扫描已有记录。规则写入证据和回执等豁免表只计数，不增加执行拦截。计数与领域写入共用事务/savepoint，回滚及强杀恢复也一起生效。
 
 `retained.rows` 另外披露被执行行配额豁免的编辑回执。逻辑计量不是 SQLite 物理文件大小。doctor 在同一条 SQL 快照中全量枚举清单并核对计数，缺失、非法或不一致报 `AGENT_TASK_STORAGE_CORRUPT`，读取不修复。client 校验项目身份与计量等式；旧工作区只读诊断继续使用 v1 profile。
 
@@ -100,11 +100,23 @@ C 是冷启动共享成本及计数表自身 1 行，B/R 取完整轮和 H2 对�
 
 测量数据、四种量的区分、原始 artifact/source/lock/helper hash、命令、异常保留上界及候选数字见 [R1-C 存储测量](verification/mio-harness/R1-C-STORAGE.md) 和 [机器数据](verification/mio-harness/R1-C-STORAGE.json)。不在项目打开期间用 fs 打开/关闭数据库文件描述符。
 
+## R2 规范边界
+
+新项目从固定 `AGENTS.md` 和 B1 用户规范收集规则，各限 8192 个 UTF-8 字节。共享校验允许 tab、LF、CR/CRLF，保留原字节，不做换行或 Unicode 归一化；非法文本和不安全文件不能进入模型。手工保存自动信任精确 hash，外改停用，用户查看后显式启用。
+
+接受新轮次时冻结规范，后续调用和重放不再读取实时文件。宿主规则高于本次明确请求，本次请求高于项目规范，项目规范高于用户通用规范；规则不能绕过授权或批准。诊断继续使用原目录快照，不读取或注入规范。新 Mio 不再注入旧 notes；旧写说明调用不能转用旧批准修改 `AGENTS.md`。
+
+`mioon_project_rules_set` 始终进入批准，不受放行档位豁免，只接受 expectedHash 和 proposedText。文件发布使用同目录候选、rename 原文备份核 hash、link 不覆盖发布；history 的 `mio_rule_writes` 与 B1 信任/回执按原 requestId 对账。重启先挂起 pending；GET 只读，未决保存不自动重发，显式 POST 对账才可完成已证明的发布。
+
+history 4→5 无损增加规则写入证据，应用库 2→3 增加 typed 用户规范。项目存储清单是 20 表，规则证据计入同一增量计数；规则 blob 仍受原执行配额保护。R1 的容量/性能报告保留为原负载基准，不代表新增规则负载已经重测。
+
+U2 的严格快照、保存/启用/CAS/查证/对账地址与 client 方法见 [规范接口](MIO-RECORDS.md#交给-u2-的接口)。只替换 U1 的共享校验以允许 CR；本卡不接 App/ProjectHome，也不删除旧 notes 界面与接口。
+
 ## 验证与后续
 
-- 既有 99 条请求指纹及 12 条诊断保持逐字节不变；新公开 DTO 不改变模型请求。
+- R2 的普通请求按新工具目录和冻结规范合同审阅指纹差异；12 条诊断必须保持原字节，不读取规则。
 - 清原件后关闭重开，仅用记录重建原发送字节，重建零写入；来源 schema、隐藏工具和未知结果围栏另有测试。
 - SIGKILL、归档中途失败、近满、控制回执与宿主排空均验证事务边界。
 - 每个项目与应用库都有独立身份/租约。内容与过程修订各在所属领域维护，不因轮询过程进度改写项目内容文件。
 - R1 的发布前开发数据重置不是通用迁移/修复工具；发布后的格式变化必须无损迁移，不能自动删除失败原件或审计记录腾空间。
-- R2 才实施 AGENTS.md、应用库用户规范与信任、每轮规则冻结；不自动迁移旧 project.notes。新界面等设计稿。模型摘要、审计历史清理及更大的模型/流限制仍需独立决定。
+- U2 负责规范页面、提示和批准卡，并删除旧 project.notes 的字段/API/UI；R2 不自动迁移旧说明。模型摘要、审计历史清理及更大的模型/流限制仍需独立决定。

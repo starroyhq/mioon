@@ -5,7 +5,8 @@ import type {TaskHistoryBudget,TaskModelOutput,TaskToolDefinition} from './task-
 import {AGENT_TASK_CONVERSATION_TOOLS,AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolGroupForName,loadedAgentTaskToolNames} from './task-tool-groups-v2.ts';
 import type {AgentTaskToolLoadMode} from './task-tool-groups-v2.ts';
 import {compactTaskModelHistory} from './task-context-compaction-v2.ts';
-import {taskBaseModelHistory,taskContextHistoryRound,taskContextProjectNotes,taskContextProjectOverview} from './task-context-base-v2.ts';
+import {taskBaseModelHistory,taskContextHistoryRound,taskContextProjectNotes,taskContextProjectOverview,taskContextRulesSnapshot} from './task-context-base-v2.ts';
+import type {FrozenMioRules} from './mio-rules.ts';
 import {taskRunRecordMessage} from './task-run-record-v2.ts';
 import type {TaskHistoricalContextRun} from './task-run-record-v2.ts';
 import {taskProjectNotesMessage,taskProjectOverviewMessage} from './task-context-observations-v2.ts';
@@ -43,6 +44,7 @@ export interface TaskRunContextInput {
   projectOverview?:TaskProjectOverview;
   /** C6: the project's notes, frozen with this send; omitted when empty. */
   projectNotes?:string;
+  rulesSnapshot?:FrozenMioRules;
   attachments?:readonly TaskContextAttachment[];
   /** The first request's history budget; bytes only when omitted. */
   budget?:Readonly<TaskHistoryBudget>;
@@ -64,7 +66,7 @@ function historyInputMessage(input:TaskContextHistoryInput,locale:AgentTaskLocal
 
 /** Assemble only the host's supplied observations. Project/conversation
  * ownership and terminal-run selection remain journal responsibilities. */
-export function assembleRunContext({locale,text,previousRuns=[],historyRuns,projectOverview,projectNotes,attachments=[],budget=TASK_DEFAULT_HISTORY_BUDGET}:TaskRunContextInput):TaskRunContext {
+export function assembleRunContext({locale,text,previousRuns=[],historyRuns,projectOverview,projectNotes,rulesSnapshot,attachments=[],budget=TASK_DEFAULT_HISTORY_BUDGET}:TaskRunContextInput):TaskRunContext {
   const groups:AgentTaskJson[][]=[];
   if(historyRuns!==undefined)for(const previous of historyRuns){
     const messages:AgentTaskJson[]=[{role:'user',content:previous.text},...(previous.historyInputs===undefined?previous.notes.map(content=>({role:'user',content})):previous.historyInputs.map(input=>historyInputMessage(input,locale)))];
@@ -80,14 +82,15 @@ export function assembleRunContext({locale,text,previousRuns=[],historyRuns,proj
       {role:'assistant',content:final.result.text},
       ];
       // Structured host items (overview, notes) require structured history rounds.
-      groups.push(projectOverview===undefined&&projectNotes===undefined?messages:[taskContextHistoryRound(messages)]);
+      groups.push(projectOverview===undefined&&projectNotes===undefined&&!rulesSnapshot?.message?messages:[taskContextHistoryRound(messages)]);
     }
   }
   const previousCount=groups.length;
   const currentMessage:AgentTaskJson={role:'user',content:text+(attachments.length?`\n${attachmentInstructions[locale]}${JSON.stringify(attachments)}`:'')};
   const overview=projectOverview===undefined?[]:[taskContextProjectOverview(taskProjectOverviewMessage(locale,projectOverview))];
   const notes=projectNotes===undefined?[]:[taskContextProjectNotes(taskProjectNotesMessage(locale,projectNotes))];
-  const render=():AgentTaskJson[]=>[taskResponseLanguageContext(locale),...groups.flat(),...overview,...notes,currentMessage];
+  const rules=rulesSnapshot?.message?[taskContextRulesSnapshot(rulesSnapshot.message)]:[];
+  const render=():AgentTaskJson[]=>[taskResponseLanguageContext(locale),...groups.flat(),...overview,...notes,...rules,currentMessage];
   let context=render();
   while(groups.length&&!taskHistoryFits(bytes(taskBaseModelHistory(context)),budget)){groups.shift();context=render();}
   return {context,metrics:{historyBytes:bytes(taskBaseModelHistory(context)),retainedRuns:groups.length,trimmedRuns:previousCount-groups.length}};
@@ -103,8 +106,9 @@ export function selectTaskModelTools<T extends TaskToolDefinition&{risk:AgentTas
     if(diagnostic.profile==='read_only')return original.filter(tool=>tool.risk==='read_only');
     return diagnostic.toolNames?original.filter(tool=>diagnostic.toolNames!.includes(tool.name)):original;
   }
-  const names=new Set(loadedAgentTaskToolNames(steps));
-  return definitions.filter(tool=>agentTaskToolGroupForName(tool.name)==='core'||names.has(tool.name)||attachments.length>0&&['mioon_asset_import_selected','mioon_lut_import_selected'].includes(tool.name));
+  const catalogProfile=definitions.some(tool=>tool.name==='mioon_project_notes_set')?'legacy':'native';
+  const names=new Set(loadedAgentTaskToolNames(steps,catalogProfile));
+  return definitions.filter(tool=>agentTaskToolGroupForName(tool.name,catalogProfile)==='core'||names.has(tool.name)||attachments.length>0&&['mioon_asset_import_selected','mioon_lut_import_selected'].includes(tool.name));
 }
 
 /** Visibility belongs to the exact request that produced the response. A load
