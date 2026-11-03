@@ -8,6 +8,10 @@ import {createServerProject} from './helpers/project-database.ts';
 import {prepareGenerationInputs, readGenerationAsset} from '../packages/business/src/generation-inputs.ts';
 import type {GenerationSource} from '../packages/business/src/generation-inputs.ts';
 import {createProviderRegistry, normalizedCapabilities} from '../packages/business/src/provider-registry.ts';
+import {prepareConfiguredVideoInputs} from '../packages/business/src/video/generation.ts';
+import {defaultVideoModels} from '../packages/contracts/src/video-providers.ts';
+import type {VideoExecutionBinding} from '../packages/contracts/src/video-providers.ts';
+import type {MediaReference} from '../packages/contracts/src/media-reference.ts';
 import {canonicalJson, captureProjectDocumentInside} from '../packages/business/src/project-versions/document.ts';
 import type {ProjectDocument} from '../packages/business/src/project-versions/document.ts';
 import {buildRestorePlan} from '../packages/business/src/project-versions/preview.ts';
@@ -41,7 +45,7 @@ function fixture(t: TestContext) {
     target.store.tx(() => {const plan = buildRestorePlan(target.store, document, captureProjectDocumentInside(target.store), 0, at); applyRestorePlanInside(target.store, plan, {requestId: randomUUID()});});
     return target;
   };
-  return {source, projectId, shotId, saved, bindings, read, restore};
+  return {source, projectId, shotId, saved, bindings, read, restore, original, capabilities};
 }
 
 test('a previously valid unpinned generation selection remains readable after canonical missing-row restoration', t => {
@@ -72,3 +76,73 @@ for (const drift of ['role', 'assetId', 'sha256', 'array-order', 'extra-field', 
     assert.equal(target.store.db.prepare('SELECT total_changes() n').get()!.n, changes);
     assert.equal(target.store.db.prepare('SELECT count(*) n FROM main.jobs').get()!.n, 0);
   });
+
+type FrozenMode = 'profile' | 'configured-frames' | 'configured-audio';
+function frozenFixture(t: TestContext, mode: FrozenMode) {
+  const f = fixture(t), {store} = f.source;
+  const shot = store.get('shots', f.shotId) as GenerationSource;
+  const binding: VideoExecutionBinding = {version: 1, connectionId: randomUUID(), configurationRevision: 1, providerId: 'ark',
+    region: 'cn-beijing', workspaceId: '', endpoint: 'https://ark.cn-beijing.volces.com/api/v3', credentialRef: randomUUID(),
+    model: defaultVideoModels('ark')[0]!, outputHosts: []};
+  const audioIds: string[] = [];
+  if (mode === 'configured-audio') for (const [index, digit] of ['c', 'd'].entries()) {
+    const id = randomUUID(), sha256 = digit.repeat(64); audioIds.push(id);
+    store.put('assets', {id, projectId: f.projectId, name: `Audio ${index}.wav`, mimeType: 'audio/wav', sha256, sizeBytes: 1024,
+      duration: 4, hasAudio: true, hasVideo: false, provenance: 'user-import', createdAt: at, referenceRevision: 1,
+      reference: {pathForm: 'relative', path: `audio-${index}.wav`, volume: null, sizeBytes: 1024, mtimeMs: 1, sampledSha256: sha256, fullSha256: sha256}});
+  }
+  const planning: GenerationSource = mode === 'profile' ? {...shot, providerId: 'mock', model: 'mock-motion-v1'} : {
+    ...shot, providerId: binding.providerId, model: binding.model.modelId, referenceConnections: [], parameters: {resolution: '720p'},
+    ...(mode === 'configured-audio' ? {referenceAssetIds: [f.bindings[0].assetId], lastFrameAssetId: null,
+      videoInput: {version: 1, mode: 'reference_images', images: [{role: 'reference_image', assetId: f.bindings[0].assetId}],
+        audios: audioIds.map(assetId => ({role: 'reference_audio', assetId}))}} : {}),
+  };
+  const readAsset = (id: string) => readGenerationAsset(store.db, id, f.projectId);
+  const prepared = mode === 'profile' ? f.original : prepareConfiguredVideoInputs({source: planning, binding,
+    projectId: f.projectId, readAsset, asOf: '2026-10-10'});
+  const frozen: GenerationSource = {...planning, ...prepared.fields, referenceAssetIds: prepared.assets.map(asset => asset.id), referenceAssets: prepared.assets};
+  const read = () => mode === 'profile' ? prepareGenerationInputs({source: frozen, projectId: f.projectId, providerId: 'mock',
+    model: 'mock-motion-v1', capabilities: f.capabilities, readAsset, frozen: true, asOf: '2026-10-10'}) :
+    prepareConfiguredVideoInputs({source: frozen, binding, projectId: f.projectId, readAsset, frozen: true, asOf: '2026-10-10'});
+  const before = read(), frozenBytes = JSON.stringify(frozen);
+  const targetId = mode === 'configured-audio' ? audioIds[0] : f.bindings[0].assetId;
+  const originalAsset = readAsset(targetId), reference = originalAsset.reference as MediaReference;
+  const saved = store.tx(() => captureProjectDocumentInside(store));
+  store.put('assets', {...originalAsset, name: 'Changed name before restore'});
+  const plan = store.tx(() => {
+    const plan = buildRestorePlan(store, saved, captureProjectDocumentInside(store), 0, at);
+    applyRestorePlanInside(store, plan, {requestId: randomUUID()}); return plan;
+  });
+  const restored = readAsset(targetId);
+  assert.equal(restored.name, originalAsset.name);
+  assert.deepEqual(restored.reference, reference);
+  assert.equal(restored.referenceRevision, originalAsset.referenceRevision);
+  assert.notDeepEqual(Object.keys(restored.reference as MediaReference), Object.keys(reference), 'real restore normalizes nested reference key order');
+  assert.ok(plan.changes.some(change => change.table === 'assets' && change.action !== 'keep-current'));
+  const rows = () => store.db.prepare('SELECT id,data FROM project.assets ORDER BY id').all();
+  const state = rows(), writes = store.db.prepare('SELECT total_changes() n').get()!.n;
+  assert.deepEqual(read(), before);
+  assert.deepEqual(rows(), state); assert.equal(store.db.prepare('SELECT total_changes() n').get()!.n, writes);
+  assert.equal(JSON.stringify(frozen), frozenBytes, 'the frozen input is neither refreshed nor rewritten');
+  assert.equal(store.db.prepare('SELECT count(*) n FROM main.jobs').get()!.n, 0);
+  return {store, read, rows, targetId, frozen, frozenBytes};
+}
+
+for (const mode of ['profile', 'configured-frames', 'configured-audio'] as const) {
+  test(`${mode} frozen references remain readable after real canonical asset restoration`, t => {
+    frozenFixture(t, mode);
+  });
+  for (const drift of ['path', 'revision', 'hash'] as const)
+    test(`${mode} frozen references still reject ${drift} drift after canonical restoration`, t => {
+      const f = frozenFixture(t, mode), asset = readGenerationAsset(f.store.db, f.targetId, f.store.projectId), reference = asset.reference as MediaReference;
+      const sha256 = 'f'.repeat(64);
+      f.store.put('assets', {...asset, ...(drift === 'revision' ? {referenceRevision: Number(asset.referenceRevision) + 1} : {}),
+        ...(drift === 'path' ? {reference: {...reference, path: 'different-source.png'}} : {}),
+        ...(drift === 'hash' ? {sha256, reference: {...reference, fullSha256: sha256}} : {})});
+      const rows = f.rows(), writes = f.store.db.prepare('SELECT total_changes() n').get()!.n;
+      assert.throws(f.read, {code: 'REFERENCE_CHANGED', status: 400});
+      assert.deepEqual(f.rows(), rows); assert.equal(f.store.db.prepare('SELECT total_changes() n').get()!.n, writes);
+      assert.equal(JSON.stringify(f.frozen), f.frozenBytes);
+      assert.equal(f.store.db.prepare('SELECT count(*) n FROM main.jobs').get()!.n, 0);
+    });
+}

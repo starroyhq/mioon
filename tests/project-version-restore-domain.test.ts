@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import type {TimelineRecord} from '../packages/business/src/timeline-inputs.ts';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {existsSync,mkdtempSync,mkdirSync,readFileSync,readdirSync,realpathSync,renameSync,rmSync,unlinkSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createServerProject} from './helpers/project-database.ts';
@@ -24,6 +24,14 @@ import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '../packages/contracts/src/images
 import {createImageOwnershipReader} from '../packages/business/src/image-ownership.ts';
 import {assetMediaRecordSchema} from '../packages/contracts/src/asset-media.ts';
 import type {RestorePlan} from '../packages/business/src/project-versions/preview.ts';
+import {referenceTestAsset} from '../packages/business/src/project-file/test-asset-fixture.ts';
+import {createProjectServiceApplication,testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createAssetMediaServices} from '../packages/business/src/asset-media-services.ts';
+import {createProjectAssetReferenceServices} from '../packages/business/src/project-asset-references.ts';
+import {resolveReferencePath} from '../packages/business/src/media-reference/paths.ts';
+import {run} from '../packages/business/src/media.ts';
+import {png} from './helpers/timeline-image-fixtures.ts';
 
 const at='2026-11-03T01:00:00.000Z',later='2026-11-03T02:00:00.000Z';
 type Tables=Record<ProjectSnapshotTable,SnapshotRow[]>;
@@ -63,7 +71,7 @@ test('restore applies mutable fields, advances current revisions and removes new
 test('missing owners and all retained result kinds return with their real IDs and no synthetic jobs',t=>{
  const f=fixture(t),base=f.capture(),assetId=randomUUID(),imageAsset=randomUUID(),subjectAsset=randomUUID(),shotId=randomUUID(),subjectId=randomUUID(),subjectVersion=randomUUID(),groupId=randomUUID(),imageVersion=randomUUID(),versionId=randomUUID(),lutId=randomUUID(),detected=scene(f.projectId,assetId);
  const saved=revise(base,tables=>{
-  tables.assets=[assetId,imageAsset,subjectAsset].map(id=>({id,projectId:f.projectId,data:canonicalJson({id,projectId:f.projectId,name:'Restored.png',mimeType:'image/png',sha256:'a'.repeat(64),sizeBytes:1,relativePath:`media/${id}.png`,provenance:id===imageAsset?'synthetic-mock':'user-import',width:id===imageAsset?1024:1080,height:id===imageAsset?1024:1920,duration:null,hasAudio:false,hasVideo:true})}));
+  tables.assets=[assetId,imageAsset,subjectAsset].map(id=>({id,projectId:f.projectId,data:canonicalJson(referenceTestAsset(f.store.projectDir,{id,projectId:f.projectId,name:'Restored.png',mimeType:'image/png',sha256:'a'.repeat(64),sizeBytes:1,relativePath:`media/${id}.png`,provenance:id===imageAsset?'synthetic-mock':'user-import',width:id===imageAsset?1024:1080,height:id===imageAsset?1024:1920,duration:null,hasAudio:false,hasVideo:true}))}));
   tables.shots=[{id:shotId,projectId:f.projectId,data:canonicalJson({id:shotId,projectId:f.projectId,title:'Restored',revision:1,selectedVersionId:versionId,versionIds:[versionId]})}];
   const jobId=randomUUID();tables.versions=[{id:versionId,projectId:f.projectId,jobId,data:canonicalJson({id:versionId,projectId:f.projectId,jobId,shotId,assetId,sha256:'a'.repeat(64)})}];
   tables.subjects=[{id:subjectId,projectId:f.projectId,kind:'character',name:'Person',revision:1,headVersionId:subjectVersion,createdAt:at,updatedAt:at}];
@@ -149,6 +157,89 @@ test('existing legal media references stay current as a coherent identity while 
  const plan=f.restore(saved),asset=f.record('assets',id)!;
  assert.equal(asset.name,'Saved name');assert.deepEqual(asset.reference,reference);assert.equal(asset.referenceRevision,3);assert.equal(assetMediaRecordSchema.safeParse(asset).success,true);
  assert.match(plan.changes.find(c=>c.table==='assets')!.reason!,/定位.*保持当前/);assert.equal(JSON.stringify(plan.changes).includes('fixed.png'),false);
+});
+
+function realMediaFixture(t:TestContext){
+ const root=mkdtempSync(path.join(realpathSync(tmpdir()),'version-real-reference-')),{store,projectId}=createServerProject(root,{name:'Real references'});
+ const library=testProjectAppLibrary(store)!;assert.ok(library);
+ const services=createServices(store,new Map(),{application:createProjectServiceApplication(library,undefined,{}),env:{},imageOptions:{autoRun:false},frameOptions:{autoRun:false},sceneOptions:{autoRun:false}});
+ const media=createAssetMediaServices(store,{outsidePaths:library.outsidePaths}),references=createProjectAssetReferenceServices(store,{outsidePaths:library.outsidePaths});
+ const external=path.join(root,'external');mkdirSync(external);
+ t.after(async()=>{await services.drain();store.close();rmSync(root,{recursive:true,force:true});});
+ const asset=(id:string)=>{const row=store.db.prepare('SELECT data FROM project.assets WHERE id=?').get(id);assert.ok(row);const{url:_url,...record}=JSON.parse(String(row.data)) as Record<string,unknown>;return assetMediaRecordSchema.parse(record);};
+ const capture=()=>store.tx(()=>captureProjectDocumentInside(store));
+ const restore=(saved:ProjectDocument)=>store.tx(()=>{const plan=buildRestorePlan(store,saved,captureProjectDocumentInside(store),0,at);applyRestorePlanInside(store,plan,{requestId:randomUUID(),now:later});return plan;});
+ const importPath=async(file:string)=>{const result=await media.trustedCall('asset.import.path',{projectId,sourcePath:file,requestId:randomUUID()}) as {asset:{id:string}};return asset(result.asset.id);};
+ return{root,store,projectId,library,services,media,references,external,asset,capture,restore,importPath};
+}
+// Compare names, not database bytes: opening another file descriptor for a
+// held SQLite file would itself interfere with the kernel's native locks.
+function directoryEntries(root:string):string[]{
+ const result:string[]=[];
+ const visit=(directory:string):void=>{for(const entry of readdirSync(directory,{withFileTypes:true})){const file=path.join(directory,entry.name);result.push(path.relative(root,file));if(entry.isDirectory())visit(file);}};
+ visit(root);return result.sort();
+}
+
+test('real sampled-video import keeps the prepared full-hash identity while mutable metadata restores',async t=>{
+ const f=realMediaFixture(t),file=path.join(f.store.projectDir,'sampled.mp4');
+ await run('ffmpeg',['-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=red:s=32x32:d=0.1','-c:v','libx264','-pix_fmt','yuv420p','-y',file]);
+ const imported=await f.importPath(file),saved=f.capture(),bytes=readFileSync(file);
+ assert.equal(imported.sha256,null);assert.equal(imported.reference.fullSha256,null);assert.equal(imported.referenceRevision,1);
+ await f.media.call('asset.media.prepare',{projectId:f.projectId,assets:[{assetId:imported.id,referenceRevision:1}],purpose:'frame'});
+ const current=f.asset(imported.id);assert.equal(current.sha256,createHash('sha256').update(bytes).digest('hex'));assert.equal(current.reference.fullSha256,current.sha256);
+ f.store.put('assets',{...current,name:'Changed after version'});
+ const grants=f.library.outsidePaths.list(f.projectId),files=directoryEntries(f.store.projectDir),plan=f.restore(saved),restored=f.asset(imported.id);
+ assert.deepEqual(restored,{...imported,reference:current.reference,referenceRevision:current.referenceRevision,sha256:current.sha256,sizeBytes:current.sizeBytes});
+ assert.equal(restored.name,imported.name);assert.notEqual(restored.name,'Changed after version');
+ assert.match(plan.changes.find(change=>change.table==='assets')!.reason!,/定位.*保持当前/);
+ assert.equal((await f.references.inspect(imported.id)).readable,true);
+ assert.deepEqual((await f.references.read(imported.id,{maxBytes:bytes.length,expectedSha256:current.sha256!})).bytes,bytes);
+ assert.deepEqual(readFileSync(file),bytes);assert.deepEqual(directoryEntries(f.store.projectDir),files);assert.deepEqual(f.library.outsidePaths.list(f.projectId),grants);
+});
+
+for(const deleteMedia of [false,true])test(`real deleted imported assets restore only references with ${deleteMedia?'removed':'retained'} media and never regrant outside access`,async t=>{
+ const f=realMediaFixture(t),bytes=png(),outside=path.join(f.external,'outside.png');writeFileSync(outside,bytes);
+ const upload=await f.services.call('asset.import',{projectId:f.projectId,name:'Uploaded.png',mimeType:'image/png',dataBase64:bytes.toString('base64'),requestId:randomUUID()}) as {id:string};
+ const managed=f.asset(upload.id),external=await f.importPath(outside),managedFile=resolveReferencePath(f.store.projectDir,managed.reference)!;
+ assert.ok(managedFile);assert.equal(managed.reference.path.startsWith('素材/'),true);assert.equal(resolveReferencePath(f.store.projectDir,external.reference),outside);
+ assert.equal((await f.references.inspect(managed.id)).readable,true);assert.equal((await f.references.inspect(external.id)).readable,true);
+ assert.deepEqual(f.library.outsidePaths.list(f.projectId).map(grant=>grant.directory),[f.external]);
+ const saved=f.capture();
+ f.store.tx(()=>{for(const id of [managed.id,external.id])assert.equal(f.store.db.prepare('DELETE FROM project.assets WHERE id=?').run(id).changes,1);});
+ if(deleteMedia){unlinkSync(managedFile);unlinkSync(outside);}
+ f.library.outsidePaths.revoke(f.projectId,f.external);
+ const grants=f.library.outsidePaths.list(f.projectId),projectFiles=directoryEntries(f.store.projectDir),outsideFiles=directoryEntries(f.external);
+ assert.deepEqual(grants,[]);assert.equal(f.store.get('assets',managed.id),null);assert.equal(f.store.get('assets',external.id),null);
+ const plan=f.restore(saved);
+ for(const original of [managed,external]){assert.deepEqual(f.asset(original.id),original);assert.equal(plan.changes.find(change=>change.table==='assets'&&change.key===rowKey('assets',{id:original.id,projectId:f.projectId}))?.action,'add');}
+ assert.equal(f.store.list('assets',f.projectId).length,2);assert.deepEqual(f.library.outsidePaths.list(f.projectId),grants);
+ assert.deepEqual(directoryEntries(f.store.projectDir),projectFiles);assert.deepEqual(directoryEntries(f.external),outsideFiles);
+ const localState=await f.references.inspect(managed.id),outsideState=await f.references.inspect(external.id);
+ assert.equal(localState.status,deleteMedia?'missing':'online');assert.equal(localState.readable,!deleteMedia);
+ assert.equal(outsideState.status,deleteMedia?'missing':'online');assert.equal(outsideState.outside,true);assert.equal(outsideState.readable,false);
+ if(deleteMedia){assert.equal(existsSync(managedFile),false);assert.equal(existsSync(outside),false);await assert.rejects(f.references.read(managed.id,{maxBytes:bytes.length}),{code:'MEDIA_MISSING'});}
+ else{assert.deepEqual(readFileSync(managedFile),bytes);assert.deepEqual(readFileSync(outside),bytes);assert.deepEqual((await f.references.read(managed.id,{maxBytes:bytes.length})).bytes,bytes);await assert.rejects(f.references.read(external.id,{maxBytes:bytes.length}),{code:'MEDIA_OUTSIDE_NOT_CONFIRMED'});}
+ assert.deepEqual(f.library.outsidePaths.list(f.projectId),[]);
+});
+
+test('a real cross-directory relink stays readable after restore without reinstating the old directory grant',async t=>{
+ const f=realMediaFixture(t),oldDirectory=path.join(f.external,'old'),newDirectory=path.join(f.external,'new'),bytes=png();mkdirSync(oldDirectory);mkdirSync(newDirectory);
+ const originalFile=path.join(oldDirectory,'original.png'),permissionFile=path.join(newDirectory,'another.png'),movedFile=path.join(newDirectory,'moved.png');
+ writeFileSync(originalFile,bytes);writeFileSync(permissionFile,png({width:32}));
+ const imported=await f.importPath(originalFile);await f.importPath(permissionFile);
+ assert.equal(imported.referenceRevision,1);const saved=f.capture();
+ renameSync(originalFile,movedFile);
+ const preview=await f.media.call('asset.media.relink.preview',{projectId:f.projectId,assetId:imported.id,sourcePath:movedFile,expectedReferenceRevision:1}) as {previewToken:string;chosen:{matches:boolean}};
+ assert.equal(preview.chosen.matches,true);
+ await f.media.call('asset.media.relink.apply',{projectId:f.projectId,requestId:randomUUID(),previewToken:preview.previewToken});
+ const linked=f.asset(imported.id);assert.equal(linked.referenceRevision,2);assert.equal(resolveReferencePath(f.store.projectDir,linked.reference),movedFile);assert.notDeepEqual(linked.reference,imported.reference);
+ f.store.put('assets',{...linked,name:'Relinked current name'});f.library.outsidePaths.revoke(f.projectId,oldDirectory);
+ const grants=f.library.outsidePaths.list(f.projectId),files=directoryEntries(f.external);assert.deepEqual(grants.map(grant=>grant.directory),[newDirectory]);
+ f.restore(saved);const restored=f.asset(imported.id),state=await f.references.inspect(imported.id);
+ assert.deepEqual(restored,{...imported,reference:linked.reference,referenceRevision:2,sha256:linked.sha256,sizeBytes:linked.sizeBytes});
+ assert.equal(state.status,'online');assert.equal(state.outside,true);assert.equal(state.readable,true);assert.equal(state.referenceRevision,2);
+ assert.deepEqual((await f.references.read(imported.id,{maxBytes:bytes.length,expectedReferenceRevision:2,expectedSha256:linked.sha256!})).bytes,bytes);
+ assert.equal(existsSync(originalFile),false);assert.deepEqual(readFileSync(movedFile),bytes);assert.deepEqual(directoryEntries(f.external),files);assert.deepEqual(f.library.outsidePaths.list(f.projectId),grants);
 });
 
 function timelineDomain(f:ReturnType<typeof fixture>){return createTimelineServices(f.store as unknown as Parameters<typeof createTimelineServices>[0],{

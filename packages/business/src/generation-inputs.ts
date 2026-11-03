@@ -236,7 +236,7 @@ export function prepareGenerationInputs({source,projectId,providerId,model,capab
    const ref=pinned?.[index];
    // Missing historical size is resolved only from the same managed identity.
    // Other frozen metadata is never substituted with a newer asset record.
-   if(isRecord(ref)&&metadataKeys.some(key=>Object.hasOwn(ref,key)&&JSON.stringify(ref[key])!==JSON.stringify(asset[key])))
+   if(isRecord(ref)&&metadataKeys.some(key=>Object.hasOwn(ref,key)&&!isDeepStrictEqual(ref[key],asset[key])))
     fail('REFERENCE_CHANGED','参考图元数据已与冻结快照不同，请检查原始素材',{assetId:id});
   }
   return asset;
