@@ -1,9 +1,9 @@
-# Mio 项目工作目录：只读列表（R3-A）
+# Mio 项目工作目录：列表与引用导入（R3-A/B）
 
-Mio 的工作目录固定为当前原生宿主的 `store.projectDir`。本阶段只交付
-`mioon_project_media_list`（内部 `project.media.list`），位于 `assets` 非核心组，
-风险为 `read_only`。先按确切名称加载，后续模型回复才能使用；不发布导入工具。
-没有新增 HTTP、RPC、CLI、外部目录批准或文件写入入口。
+Mio 的工作目录固定为当前原生宿主的 `store.projectDir`。提供 `mioon_project_media_list`（内部 `project.media.list`，`read_only`）和
+`mioon_asset_import_project_file`（内部 `asset.importProjectFile`，`local_reversible`），
+均位于 `assets` 非核心组。先按确切名称加载，后续模型回复才能使用。
+没有新增 HTTP、RPC、CLI 或外部目录批准；不提供源文件修改或通用文件管理入口。
 
 ## 参数和结果
 
@@ -66,7 +66,7 @@ S1 v1 回执只保存最后一次尝试路径，没有目标 dev/ino。对于仍
 未发布尝试，整次列表拒绝；不会仅凭同名把用户文件藏起来，也不会把 partial 当候选。
 `registered` 终态保留已完成的历史事实，不钉住当前资产行或旧文件元信息。合法重链接、
 懒补完整哈希、文件变化或登记行移除后，当前文件仍交 L1 按普通候选重新检查；
-`prepared` 尚缺完成证据时仍要求精确的当前登记证明。较早遗留尝试仍须保守核对。损坏、未知、超预算
+可能拥有发布目标的 `prepared` 尚缺完成证据时仍要求精确的当前登记证明；纯路径引用准备的例外见下文。较早遗留尝试仍须保守核对。损坏、未知、超预算
 或无法可信定位的回执同样拒绝列表。该策略没有改写 S1 回执格式或新增持久化状态。
 无本机回执的跨机副本仍可能把 partial 当作普通未引用候选；列表不声称它已发布。
 
@@ -97,7 +97,7 @@ partial；完成的 prepared 恢复与普通 DB 已提交、registered 确认前
 ## 来源准入和记录重拼
 
 旧 `groups` 加载收据继续恢复原工具，但不会获得本次新增的文件系统工具。
-只有已完成、输入与结果匹配的 `names` 收据能加载列表；旧冻结 schema、同一回复内
+只有已完成、输入与结果匹配的 `names` 收据能加载这两个工具；旧冻结 schema、同一回复内
 加载后立即调用、未知或伪造回执都不能绕过来源门槛。诊断目录保持不变。
 
 列表结果作为普通 tool-result 记录冻结。纯装配器只读记录；清成功请求原件、关库再开、
@@ -122,4 +122,51 @@ partial；完成的 prepared 恢复与普通 DB 已提交、registered 确认前
 R3-A 分阶段只公布列表名，loader 的 names 数从 91→92、maxItems 同步 +1。
 99 条旧场景中，三协议各 29 条普通请求仅这两个位置变化，每条 +27 字节；各 4 条诊断
 逐字节不变。逐条字节数、SHA256、JSON 路径见
-[指纹核对记录](verification/mio-harness/R3-A-FINGERPRINTS.md)。R3-B 将另行公布导入名。
+[指纹核对记录](verification/mio-harness/R3-A-FINGERPRINTS.md)。R3-B 新增导入名的 99 条逐项核对见 [R3-B 指纹记录](verification/mio-harness/R3-B-FINGERPRINTS.md)。
+
+
+## 项目内文件引用导入（R3-B）
+
+严格叶契约为 `@mioon/contracts/mio-project-import`：输入 `{path, name?}`，只接可见项目内
+相对文件，名称沿用 S1 校验；不接项目、请求、资产 ID、绝对路径、字节或批准标志。
+结果 `{registration: 'created'|'reused', assetId, asset}` 使用 S1 脱敏素材 DTO，不含私有证明。
+该工具按既有本地可撤销 direct/ask 策略执行；旧 group、旧冻结 schema 和同批调用不增权。
+
+路径和列表共用 exact native project、应用与项目私有根围栏；效果前仍重新校验词法、
+真实路径、四库 held 和已知未发布 inode，项目外即使另有目录确认也拒绝。
+S1 路径分支负责文件头、解码流有效性、图像/音频全哈希、视频采样及素材行登记；
+本工具不另写 importer，不复制源文件，也不运行自动确认项目外路径的 trusted chooser。
+
+审批前使用 S1 共用准备流程冻结当前项目与源文件身份、大小、纳秒时间、引用指纹和
+解码元信息，私有证明存入 step.data 并纳入审批摘要。批准、恢复时不能覆盖原证明；
+文件被替换、同 inode 改内容后还原 mtime 也拒绝。它不是模型参数，也不进入公开快照或请求正文。
+耗时准备在登记事务外，登记前及每个异步效果都重验生命周期和源证明。
+
+S1 事务内的 created-only 回调只产生一条 asset Change，和素材行、工具完成记录同连接
+同事务提交。复用原请求只返回 `reused`，不补造新增或撤销权。同一个文件用不同 requestId
+仍沿 S1 创建不同登记；不按路径或相同内容另造去重规则。请求键固定为原 stepId，模型不能改键。
+
+S1 原请求 lookup 只读私有回执和现有行/修订证据，不重读源媒体，不创建 writer。
+UNKNOWN 只有查证 `not_applied` 才能按既有控制丢弃旧参数；`applied` 接受结果只授予
+reused、零 Change；`retired` 保留原请求已被移除的历史，不能复活；坏、缺失关联或未知状态继续 UNKNOWN。
+ACK 在数据库提交后失败时，只用已经持久完成的工具结果证明成功，不能把曾调用过内存回调当成功。
+
+撤销在专用分支再次核对原 step/key、S1 创建证明、原始行摘要与创建修订及 claims。
+改后还原、删除重建、任何版本推进都不再满足“未改过”。只删除那一行 assets，
+不把 assets 加进通用补偿删除白名单，不删除源文件、回执、Mio 审计、缓存或修订 tombstone。
+原路径请求在 registered 或目标修订证明曾提交后，若行已移除，公共 S1 原键重放同样拒绝重建。
+
+零消费者证明同时检查真实本库/跨库 FK、当前内容、时间线前后历史和可恢复回执、
+冻结生成/图像/抽帧/场景/导出来源、portable 派生素材、项目版本和仍可恢复的其他 Mio undo-before。
+本次导入的 Change/step/result 与 S1 回执是审计，不自拦；真正可恢复的版本仍然检查。
+坏、未知、缺少字段分类或超预算都不能当成“没有引用”。
+
+依赖扫描预算：8192 行、32768 单元、单 JSON 4 MiB、累计 16 MiB、深度 64、节点 200000；
+最多 64 个去重项目版本 blob、压缩累计 8 MiB，解压长度按已核验 raw 大小限制。
+预览使用只读一致快照，实际删除在同一事务重验；围栏回调后再次查 claims/消费者。
+单项 DELETE、Change reverted 和控制完成一起提交。整轮撤销仍逆序逐项提交，
+每项保留控制进度；中断保留已撤项并将 pending 控制标 blocked，不声称整轮全批原子。
+
+路径准备回滚可能保留 `prepared/attempt=0/无file/无publication` 的 S1 引用回执。
+这种回执没有拥有任何项目内发布目标，不能永久阻断普通列表；仍不称登记已完成。
+旧上传尝试与 S2 发布回执保留原身份、完成状态和保守拒绝规则。
