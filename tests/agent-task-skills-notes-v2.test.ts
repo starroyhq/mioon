@@ -1,3 +1,5 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
+import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 
 
 import test from 'node:test';
@@ -43,7 +45,7 @@ async function fixture(t:TestContext){
  const projectId=String(record(await services.call('project.create',{name:'Skills and notes test'})).id);
  const shotId=String(record(await services.call('shot.create',{projectId,title:'03 雨夜街口'})).id);
  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();
- await settings.put({expectedRevision:0,configuration:{...initial.configuration,protocol:'chat_completions'},secret:{action:'replace',storage:'session',value:'SYNTHETIC_SKILLS_NOTES_TEST_ONLY'}});
+ await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'session',value:'SYNTHETIC_SKILLS_NOTES_TEST_ONLY'}});
  const authorizations=createTestAuthorizations(()=>store,settings);await authorizeTestScope(authorizations,'project_agent');
  const tools=createAgentTaskTools({store,services}),bodies:string[]=[],queue:AgentTaskToolCall[][]=[];
  const gateway:TaskGateway=async function*(request){
@@ -56,7 +58,7 @@ async function fixture(t:TestContext){
  t.after(async()=>{await shutdown();rmSync(root,{recursive:true,force:true});});
  return {root,store,services,runtime,tools,settings,projectId,shotId,bodies,shutdown,
   queue(...batches:AgentTaskToolCall[][]){queue.push(...batches);},
-  async send(text:string,extra:Record<string,unknown>={}):Promise<AgentTaskSnapshot>{const sent=await runtime.send(projectId,{requestId:randomUUID(),text,expectedSettingsRevision:(await settings.get()).revision,...extra});await runtime.drain();return runtime.get(projectId,sent.run.id);},
+  async send(text:string,extra:Record<string,unknown>={}):Promise<AgentTaskSnapshot>{const sent=await runtime.send(projectId,{requestId:randomUUID(),text,expectedSettingsRevision:testAgentExecution(await settings.get()).revision,...extra});await runtime.drain();return runtime.get(projectId,sent.run.id);},
   project(){return record(store.get('projects',projectId));},
   /** The journal keeps the frozen model context; public snapshots never expose it. */
   context(runId:string){return (createAgentTaskJournal(store).run(runId).context??[]) as AgentTaskJson[];},
@@ -193,8 +195,8 @@ test('native retained requests preserve their explicitly frozen notes wrapper; n
  // The native producer no longer gathers the retired manual notes tool's
  // context. A retained accepted request still replays its frozen typed wrapper.
  const settings=await f.settings.get(),contextInput=assembleRunContext({locale:'en',text:'Plan episode one',projectOverview:collectTaskProjectOverview(f.store,f.projectId),projectNotes:NOTES}).context;
- const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Plan episode one',configuration:settings.configuration as unknown as AgentTaskJson,settingsRevision:settings.revision,context:contextInput});
- const history=taskBaseModelHistory(contextInput),body=buildTaskModelRequest(settings.configuration,history,[],4318);
+ const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Plan episode one',configuration:testAgentExecution(settings).configuration as unknown as AgentTaskJson,settingsRevision:testAgentExecution(settings).revision,settingsBinding:testAgentExecution(settings).binding,context:contextInput});
+ const history=taskBaseModelHistory(contextInput),body=buildTaskModelRequest(testAgentExecution(settings).configuration,history,[],4318);
  f.runtime.journal.beginModelStep(created.run.id,{request:{body,history},data:{baseline:[]}},[]);f.runtime.journal.recover();
  const interrupted=f.runtime.get(f.projectId,created.run.id);await f.runtime.action(f.projectId,created.run.id,{requestId:randomUUID(),expectedRevision:interrupted.run.revision,action:'resume'});await f.runtime.drain();const sent=f.runtime.get(f.projectId,created.run.id);
  const context=f.context(sent.run.id);

@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {AGENT_PROTOCOLS, deriveAgentEndpoint} from '@mioon/contracts';
 import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 import {parseAgentConfiguration, parseAgentSettingsUpdate} from '../packages/business/src/agent/config.ts';
+import {resolveAgentPresetBaseUrl} from '../packages/contracts/src/agent-provider-catalog.ts';
 
 test('shared protocol labels and fixed suffixes are pure, closed and deeply frozen', async () => {
   assert.deepEqual(AGENT_PROTOCOLS, {
@@ -36,23 +37,27 @@ test('endpoint derivation preserves complete canonical base path and accepts onl
   }
 });
 
-test('presets retain their original defaults while protocol selection is independent for every platform', () => {
+test('presets retain their original defaults and independently describe each runnable protocol endpoint', () => {
   const candidates = ['openai', 'deepseek', 'qwen', 'custom', 'ollama'];
   assert.equal(DEFAULT_AGENT_CONFIGURATION.protocol, 'chat_completions');
   for (const preset of AGENT_PRESETS) {
     const expectedDefault = preset.id === 'anthropic' ? 'anthropic_messages' : 'chat_completions';
     assert.equal(preset.defaultProtocol, expectedDefault);
-    assert.deepEqual(preset.availableProtocols, Object.keys(AGENT_PROTOCOLS));
+    assert.deepEqual(preset.availableProtocols, Object.keys(AGENT_PROTOCOLS).filter(protocol => preset.platforms.some(platform => platform.availableProtocols.includes(protocol as typeof platform.defaultProtocol))));
     for (const platform of preset.platforms) {
       assert.equal(platform.defaultProtocol, expectedDefault);
-      assert.deepEqual(platform.availableProtocols, preset.availableProtocols);
+      assert.deepEqual(platform.availableProtocols, Object.keys(AGENT_PROTOCOLS).filter(protocol => {
+        const endpoint = platform.protocols[protocol as typeof platform.defaultProtocol]; return endpoint && !endpoint.blockedReason;
+      }));
       assert.ok(Object.isFrozen(platform.availableProtocols));
-      const configuration = {presetId: preset.id, platformId: platform.id, baseUrl: platform.baseUrl || 'https://api.example.com/v1', model: platform.model || 'user-model', protocol: expectedDefault};
+      const addressInput = platform.addressMode === 'workspace' ? 'synthetic-workspace' : platform.addressMode === 'local' ? 'http://127.0.0.1:11434' : platform.addressMode === 'custom' ? 'https://api.example.com/v1' : undefined;
+      const configuration = {presetId: preset.id, platformId: platform.id, baseUrl: resolveAgentPresetBaseUrl(AGENT_PRESETS, preset.id, platform.id, platform.defaultProtocol, addressInput), model: platform.model || 'user-model', protocol: expectedDefault};
       assert.deepEqual(parseAgentConfiguration(configuration), configuration);
-      for (const protocol of Object.keys(AGENT_PROTOCOLS)) {
-        const selected = {...configuration, protocol, ...(preset.id === 'ollama' && protocol === 'anthropic_messages' ? {baseUrl: new URL(configuration.baseUrl).origin} : {})};
+      for (const protocol of platform.availableProtocols) {
+        const selected = {...configuration, protocol, baseUrl: resolveAgentPresetBaseUrl(AGENT_PRESETS, preset.id, platform.id, protocol, addressInput)};
         assert.deepEqual(parseAgentConfiguration(selected), selected, `${preset.id}/${platform.id}/${protocol}`);
       }
+      for (const protocol of Object.keys(AGENT_PROTOCOLS).filter(protocol => !platform.availableProtocols.includes(protocol as typeof platform.defaultProtocol))) assert.throws(() => parseAgentConfiguration({...configuration, protocol}), {code: 'AGENT_SETTINGS_VALIDATION'});
       if (candidates.includes(preset.id)) {
         const hints = (preset as {supportedModelHints?: {responses: string[]}}).supportedModelHints; assert.ok(hints); assert.ok(Object.isFrozen(hints.responses));
       }

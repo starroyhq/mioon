@@ -1,3 +1,4 @@
+import {putTestAgentConfiguration,testAgentExecution} from './agent-settings-fixture.ts';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createHash, randomUUID} from 'node:crypto';
@@ -121,7 +122,7 @@ async function projectReport(protocol: AgentProtocol, options: MioStorageReportO
     if (options.officialPresets !== false) {
       const anthropic = AGENT_PRESETS.find(preset => preset.id === 'anthropic')!.platforms.find(platform => platform.id === 'global')!;
       const configuration = protocol === 'anthropic_messages' ? {presetId: 'anthropic', platformId: anthropic.id, baseUrl: anthropic.baseUrl, model: anthropic.model, protocol} : {...DEFAULT_AGENT_CONFIGURATION, protocol};
-      await f.settings.put({expectedRevision: (await f.settings.get()).revision, configuration, secret: {action: 'replace', storage: 'session', value: randomUUID()}});
+      await putTestAgentConfiguration(f.settings,{expectedRevision: (await f.settings.get()).revision, configuration, secret: {action: 'replace', storage: 'session', value: randomUUID()}});
       await authorizeTestScope(f.authorizations, 'project_agent');
     }
     const execute = f.tools.execute;
@@ -141,7 +142,7 @@ async function projectReport(protocol: AgentProtocol, options: MioStorageReportO
     for (round = 1; round <= (options.rounds ?? 2); round++) {
       roundStart = requests.length;
       const before = readMioStorage(f.store.db), physicalBefore = physical.sample();
-      const sent = await f.runtime.send(f.store.projectId, {requestId: randomUUID(), ...(conversationId ? {conversationId} : {}), expectedSettingsRevision: (await f.settings.get()).revision, locale: 'en', text: 'Inspect the current project repeatedly, then report completion. Synthetic offline context measurement.'});
+      const sent = await f.runtime.send(f.store.projectId, {requestId: randomUUID(), ...(conversationId ? {conversationId} : {}), expectedSettingsRevision: testAgentExecution(await f.settings.get()).revision, locale: 'en', text: 'Inspect the current project repeatedly, then report completion. Synthetic offline context measurement.'});
       conversationId = sent.run.conversationId;
       await f.runtime.drain(); sample();
       completedRunIds.push(sent.run.id);

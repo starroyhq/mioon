@@ -10,6 +10,7 @@ import desktopIdentity from '../apps/desktop/identity.ts';
 import {dataPaths, prepareDesktopStorage, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity,
   readToolConfig, saveToolConfig, writeConnection, removeConnection, removeConnectionOnShutdown} from '../apps/desktop/src/config.ts';
 import {createDesktopAgentSettings} from '../apps/desktop/src/secret-store.ts';
+import {adapterMetadata} from './helpers/agent-adapter-fixture.ts';
 import {QuitCoordinator} from '../apps/desktop/src/lifecycle.ts';
 
 const identity = desktopIdentity.identityForChannel('development');
@@ -178,7 +179,7 @@ test('desktop settings recheck the userData privacy boundary on each save', posi
   t.after(() => settings.close());
   const initial = await settings.get();
   await chmod(f.userData, 0o755);
-  await assert.rejects(settings.put({expectedRevision: initial.revision, configuration: initial.configuration, secret: {action: 'remove'}}), {code: 'AGENT_SETTINGS_SAVE_FAILED'});
+  await assert.rejects(settings.put({...adapterMetadata(initial), secretActions:[{serviceKey:'openai',action:'remove'}]}), {code: 'AGENT_SETTINGS_SAVE_FAILED'});
   assert.deepEqual(await readdir(f.userData), []);
   assert.equal((await stat(f.userData)).mode & 0o777, 0o755);
 });

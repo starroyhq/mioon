@@ -5,9 +5,10 @@ import {tmpdir} from 'node:os';
 import {mkdtemp, mkdir, readFile, writeFile, readdir, rm, chmod, stat, symlink, link} from 'node:fs/promises';
 import {createAgentSettingsFile} from '../packages/business/src/agent/settings-file.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
-import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {emptyEnvelope} from '../packages/business/src/agent/settings-envelope.ts';
+import {adapterMetadata} from './helpers/agent-adapter-fixture.ts';
 
-const envelope = (revision = 1) => ({version: 2, revision, configuration: {...DEFAULT_AGENT_CONFIGURATION}, secret: null});
+const envelope = (revision = 1) => ({...emptyEnvelope(), revision});
 async function fixture(t: TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-agent-file-'));
   t.after(() => rm(root, {recursive: true, force: true}));
@@ -37,8 +38,9 @@ test('corrupt and oversized envelopes fail closed without overwrite or raw conte
     await writeFile(f.file, content, {mode: 0o600});
     await assert.rejects(f.persistence.load(), (error: unknown) => {const failure = error as {code?: string; message?: string}; return failure.code === 'AGENT_SETTINGS_CORRUPT' && !String(failure.message).includes('synthetic-corrupt');});
     const settings = await createAgentSettings({persistence: f.persistence});
-    await assert.rejects(settings.put({expectedRevision: 0, configuration: {...DEFAULT_AGENT_CONFIGURATION}, secret: {action: 'remove'}}), {code: 'AGENT_SETTINGS_CORRUPT'});
+    await assert.rejects(settings.put({...adapterMetadata(), expectedRevision:0, secretActions:[{serviceKey:'openai',action:'remove'}]}), {code: 'AGENT_SETTINGS_CORRUPT'});
     assert.equal(await readFile(f.file, 'utf8'), content);
+    await settings.close();
   }
 });
 

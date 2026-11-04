@@ -10,7 +10,7 @@ import {mkdtemp,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
-import {AGENT_PRESETS,DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 import type {AgentTransportDependencies} from '../packages/business/src/agent/network-policy.ts';
 import {agentChatHttpStatus,agentChatStreamError,agentChatStreamReason,annotateAgentChatStreamError,safeAgentChatError} from '../packages/business/src/agent/chat-errors.ts';
 import {buildTaskModelRequest,createTaskGateway,parseTaskArguments,taskContinuation,taskResponseLanguageContext,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from '../packages/business/src/agent/task-gateway-v2.ts';
@@ -24,17 +24,16 @@ import {taskToolWireSchema} from '../packages/business/src/agent/task-tool-wire-
 import {AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import {agentChatAllowsNaturalEof,agentReadToolProfile} from '../packages/business/src/agent/model-profiles.ts';
 import {nativeAnthropicEvents,nativeAnthropicSse} from './helpers/anthropic-native-events.ts';
+import {presetConfigurations} from './helpers/agent-preset-configurations.ts';
 
 const definitions=[{name:'mioon_shot_create',description:'Create a saved shot',parameters:{type:'object',properties:{title:{type:'string'}},required:['title'],additionalProperties:false}}];
 test('ordinary requests allow multiple calls only through documented protocol controls; diagnostics keep their original controls',()=>{
-  for(const preset of AGENT_PRESETS)for(const protocol of preset.availableProtocols){
-    const platform=preset.platforms.find(item=>item.baseUrl)??preset.platforms[0]!;
-    const configuration:AgentConfiguration={presetId:preset.id,platformId:platform.id,protocol,
-      baseUrl:protocol==='anthropic_messages'&&preset.id==='ollama'?new URL(platform.baseUrl).origin:platform.baseUrl||'https://example.com/v1',
-      model:(protocol==='responses'?preset.supportedModelHints?.responses?.[0]:undefined)||platform.model||'synthetic-mio'};
+  let combinations=0;
+  for(const configuration of presetConfigurations()){
+    const {presetId,platformId,protocol}=configuration;
     const regular=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'Only independent short tool calls'}],definitions,4318,{toolLoading:true})) as Record<string,unknown>;
     const diagnostic=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'Only independent short tool calls'}],definitions,4318)) as Record<string,unknown>;
-    const label=`${preset.id}/${protocol}`;
+    const label=`${presetId}/${platformId}/${protocol}`;
     if(protocol==='anthropic_messages'){
       assert.deepEqual(regular.tool_choice,{type:'auto',disable_parallel_tool_use:false},label);
       assert.deepEqual(diagnostic.tool_choice,{type:'auto',disable_parallel_tool_use:true},label);
@@ -43,7 +42,9 @@ test('ordinary requests allow multiple calls only through documented protocol co
       assert.equal(regular.parallel_tool_calls,supported?true:undefined,label);
       assert.equal(diagnostic.parallel_tool_calls,supported?false:undefined,label);
     }
+    combinations++;
   }
+  assert.equal(combinations,51);
 });
 test('stream diagnostics retain only trusted closed reasons and bounded state, never copied properties or causes',()=>{
   const failure=agentChatStreamError('missing_done',{finishReason:'tool_calls',done:false,frameCount:3,toolCount:2,outputBytes:6});
@@ -169,7 +170,7 @@ for(const protocol of ['chat_completions','responses','anthropic_messages'] as c
       ja:['正確な名前','互いに依存せず引数が短い','前の結果や新しい ID','次の応答','引数が長い呼び出しは単独','質問は応答の最後'],
     };
     for(const locale of AGENT_TASK_LOCALES){
-      const configuration={...DEFAULT_AGENT_CONFIGURATION,protocol},history=[taskResponseLanguageContext(locale),{role:'user',content:'Synthetic request'}];
+      const configuration=presetConfigurations().find(item=>item.presetId===(protocol==='anthropic_messages'?'ollama':'openai')&&item.protocol===protocol)!;const history=[taskResponseLanguageContext(locale),{role:'user',content:'Synthetic request'}];
       const previous=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>;
       const normal=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318,{toolLoading:true})) as Record<string,unknown>;
       const instruction=(body:Record<string,unknown>)=>protocol==='chat_completions'?(body.messages as {content:string}[])[0]!.content:String(protocol==='responses'?body.instructions:body.system);
@@ -217,9 +218,8 @@ function syntheticNetwork({peer='8.8.8.8',authorized=true,status=200,body='',con
 
 const crossPresetConfigurations:AgentConfiguration[]=[
   {presetId:'minimax',platformId:'china',protocol:'responses',model:'MiniMax-M3',baseUrl:'https://api.minimax.cn/v1'},
-  {presetId:'anthropic',platformId:'global',protocol:'chat_completions',model:'claude-haiku-4-5',baseUrl:'https://api.anthropic.com/v1'},
-  {presetId:'zhipu',platformId:'china',protocol:'responses',model:'glm-4.7',baseUrl:'https://open.bigmodel.cn/api/paas/v4'},
-  {presetId:'minimax',platformId:'china',protocol:'anthropic_messages',model:'MiniMax-M3',baseUrl:'https://minimax-compatible.example.com/anthropic'},
+  {presetId:'zhipu',platformId:'china',protocol:'responses',model:'glm-4.7',baseUrl:'https://open.bigmodel.cn/api/v1'},
+  {presetId:'minimax',platformId:'china',protocol:'anthropic_messages',model:'MiniMax-M3',baseUrl:'https://api.minimax.cn/anthropic'},
 ];
 for(const configuration of crossPresetConfigurations)test(`${configuration.presetId}/${configuration.protocol}: selected protocol compiles once and survives exact SDK tool continuation`,async()=>{
   const argumentsJson=JSON.stringify({title:'Cross-protocol shot',_mio_step:'Create a saved test shot'}),body=buildTaskModelRequest(configuration,[{role:'user',content:'Only an offline protocol test'}],definitions),parsed=JSON.parse(body) as Record<string,unknown>;
@@ -227,7 +227,7 @@ for(const configuration of crossPresetConfigurations)test(`${configuration.prese
   if(configuration.protocol==='anthropic_messages'){
     assert.equal(parsed.max_tokens,4096);assert.deepEqual(parsed.thinking,{type:'disabled'});assert.equal(Object.hasOwn(parsed,'parallel_tool_calls'),false);assert.equal(Object.hasOwn(parsed,'max_completion_tokens'),false);
   }else if(configuration.protocol==='responses'){
-    assert.equal(parsed.max_output_tokens,4096);assert.equal(parsed.truncation,'disabled');assert.equal(Object.hasOwn(parsed,'thinking'),false);assert.equal(parsed.parallel_tool_calls,false);
+    assert.equal(parsed.max_output_tokens,4096);assert.deepEqual(parsed.reasoning,{effort:'none'});assert.equal(Object.hasOwn(parsed,'truncation'),false);assert.equal(Object.hasOwn(parsed,'thinking'),false);assert.equal(Object.hasOwn(parsed,'parallel_tool_calls'),false);
   }else{
     assert.equal(parsed.max_tokens,4096);assert.equal(Object.hasOwn(parsed,'max_completion_tokens'),false);assert.equal(Object.hasOwn(parsed,'thinking'),false);assert.equal(parsed.parallel_tool_calls,false);
   }
@@ -251,6 +251,14 @@ for(const configuration of crossPresetConfigurations)test(`${configuration.prese
   else if(configuration.protocol==='anthropic_messages'){historical.system='Frozen original task instruction';historical.max_tokens=3072;}
   else{(historical.messages as {content:string}[])[0]!.content='Frozen original task instruction';historical.max_tokens=3072;}
   const frozenBody=JSON.stringify(historical);await send(frozenBody,frames);assert.equal(records.at(-1)!.body,frozenBody,'reading an old intent never recompiles it with the current template');
+});
+test('blocked official Anthropic compatibility protocol fails before DNS or request construction',async()=>{
+  const configuration:AgentConfiguration={presetId:'anthropic',platformId:'global',protocol:'chat_completions',model:'claude-haiku-4-5',baseUrl:'https://api.anthropic.com/v1'};
+  assert.throws(()=>buildTaskModelRequest(configuration,[],definitions),{code:'AGENT_CHAT_PROFILE_UNSUPPORTED'});
+  let lookups=0;const network=syntheticNetwork({body:chatFrames()});
+  const gateway=createTaskGateway({lookup:async()=>{lookups++;return [{address:'8.8.8.8',family:4}];},httpsRequest:network.request} as unknown as AgentTransportDependencies);
+  await assert.rejects(async()=>{for await(const _item of gateway({configuration,body:'{}',apiKey:'SYNTHETIC_BLOCKED_ONLY'})){}},{code:'AGENT_SETTINGS_VALIDATION'});
+  assert.equal(lookups,0);assert.equal(network.calls,0);assert.equal(network.ends,0);
 });
 test('Ollama Messages uses its explicitly selected loopback root and keyless SDK tools without leaking a placeholder',async t=>{
   const first=nativeAnthropicSse(nativeAnthropicEvents({model:'qwen3:8b',toolName:'mioon_shot_create',argumentsJson:'{"title":"Local native shot","_mio_step":"Create a local test shot"}'}));
@@ -285,9 +293,10 @@ test('official MiniMax natural EOF accepts complete text and tools through the a
   for(const configuration of [miniMaxChina,{...miniMaxChina,platformId:'international',baseUrl:'https://api.minimax.io/v1'}]){
     for(const frames of [text,tools]){const result=await exchange(configuration,frames);assert.equal(result.failure,undefined);const terminal=result.items.at(-1) as {type:string;output:TaskModelOutput};assert.equal(terminal.type,'done');assert.equal(terminal.output.toolCalls.length,frames===tools?2:0);}
   }
-  for(const configuration of [{...DEFAULT_AGENT_CONFIGURATION},{...miniMaxChina,presetId:'custom',platformId:'custom'},{...miniMaxChina,baseUrl:'https://gateway.example.com/v1'},{...miniMaxChina,baseUrl:'https://api.minimax.io/v1'}]){
+  for(const configuration of [{...DEFAULT_AGENT_CONFIGURATION},{...miniMaxChina,presetId:'custom',platformId:'custom'},{...miniMaxChina,model:'synthetic-unverified-model'}]){
     const result=await exchange(configuration,tools);assert.equal(safeAgentChatError(result.failure).code,'AGENT_CHAT_TRUNCATED');assert.equal(result.items.some(item=>(item as {type:string}).type==='done'),false);
   }
+  for(const baseUrl of ['https://gateway.example.com/v1','https://api.minimax.io/v1'])assert.throws(()=>buildTaskModelRequest({...miniMaxChina,baseUrl},[],definitions),{code:'AGENT_CHAT_VALIDATION'});
   for(const bodyChange of [(body:Record<string,unknown>)=>{body.model='other';},(body:Record<string,unknown>)=>{delete body.thinking;}]){
     const result=await exchange(miniMaxChina,tools,{bodyChange});assert.equal(safeAgentChatError(result.failure).code,'AGENT_CHAT_TRUNCATED');
   }
@@ -551,23 +560,23 @@ test('the complete production tool catalog builds in every supported preset/prot
   const catalog=tools.list(),original=structuredClone(catalog);assert.ok(catalog.some(tool=>tool.operation==='image.generate'));assert.ok(catalog.length>80);
   const catalogByName=new Map(catalog.map(tool=>[tool.name,tool])),catalogNames=catalog.map(tool=>tool.name);
   let combinations=0;const compiled=new Set<string>();
-  for(const preset of AGENT_PRESETS)for(const protocol of preset.availableProtocols){
-    const platform=preset.platforms.find(item=>item.baseUrl)||preset.platforms[0]!,configuration:AgentConfiguration={presetId:preset.id as AgentConfiguration['presetId'],platformId:platform.id,baseUrl:protocol==='anthropic_messages'&&preset.id==='ollama'?new URL(platform.baseUrl).origin:platform.baseUrl||'https://example.com/v1',model:(protocol==='responses'?preset.supportedModelHints?.responses?.[0]:undefined)||platform.model||'synthetic-mio',protocol};
+  for(const configuration of presetConfigurations()){
+    const {presetId,platformId,protocol}=configuration;
     const body=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'Complete production catalog only'}],catalog,4318)) as {tools:{name?:string;parameters?:unknown;input_schema?:unknown;function?:{name:string;parameters:unknown}}[]};
-    assert.equal(body.tools.length,catalog.length);combinations++;compiled.add(`${preset.id}/${protocol}`);
+    assert.equal(body.tools.length,catalog.length);combinations++;compiled.add(`${presetId}/${platformId}/${protocol}`);
     const names=body.tools.map(item=>protocol==='chat_completions'?item.function!.name:item.name);
     assert.equal(new Set(names).size,catalog.length);assert.deepEqual([...names].sort(),[...catalogNames].sort());
     // Official Anthropic groups the wire tools to preserve cache prefixes;
     // every other preset/protocol retains the original catalog order.
-    if(!(preset.id==='anthropic'&&protocol==='anthropic_messages'&&configuration.baseUrl==='https://api.anthropic.com'))assert.deepEqual(names,catalogNames);
+    if(!(presetId==='anthropic'&&protocol==='anthropic_messages'&&configuration.baseUrl==='https://api.anthropic.com'))assert.deepEqual(names,catalogNames);
     for(const item of body.tools){
       const definition=protocol==='chat_completions'?item.function!:item;assert.ok(typeof definition.name==='string');
       const tool=catalogByName.get(definition.name);assert.ok(tool);
-      assert.deepEqual(removeCaptionSchema(protocol==='anthropic_messages'?item.input_schema:definition.parameters),taskToolWireSchema(configuration,tool.name,tool.parameters),`${preset.id}/${protocol}/${tool.operation}`);
+      assert.deepEqual(removeCaptionSchema(protocol==='anthropic_messages'?item.input_schema:definition.parameters),taskToolWireSchema(configuration,tool.name,tool.parameters),`${presetId}/${platformId}/${protocol}/${tool.operation}`);
     }
   }
-  for(const combination of ['minimax/anthropic_messages','minimax/responses','anthropic/chat_completions','ollama/anthropic_messages'])assert.ok(compiled.has(combination),combination);
-  assert.ok(combinations>=30);assert.deepEqual(catalog,original,'no public/domain tool schema is changed, including image.generate anyOf');
+  for(const combination of ['minimax/china/anthropic_messages','minimax/china/responses','anthropic/global/anthropic_messages','ollama/local/anthropic_messages'])assert.ok(compiled.has(combination),combination);
+  assert.equal(combinations,51);assert.deepEqual(catalog,original,'no public/domain tool schema is changed, including image.generate anyOf');
 });
 for(const protocol of ['chat_completions','responses'] as const){
   test(`${protocol}: complete catalog image.generate union captions survive a real local two-round tool exchange`,async t=>{

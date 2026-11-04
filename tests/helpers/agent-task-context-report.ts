@@ -1,3 +1,4 @@
+import {putTestAgentConfiguration,testAgentExecution} from './agent-settings-fixture.ts';
 import {strict as assert} from 'node:assert';
 import {randomUUID} from 'node:crypto';
 import {mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
@@ -129,7 +130,7 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
     const configuration = scenario.officialPresets ? protocol === 'anthropic_messages' ? {presetId: 'anthropic', platformId: anthropic.id, baseUrl: anthropic.baseUrl, model: anthropic.model, protocol} : {...DEFAULT_AGENT_CONFIGURATION, protocol} : {presetId: 'ollama', platformId: 'local', protocol, model: 'qwen3:8b', baseUrl: `http://127.0.0.1:11434${protocol === 'anthropic_messages' ? '' : '/v1'}`};
     const sessionSecret = scenario.officialPresets ? randomUUID() : null;
     const noSecret = (value: string) => assert.ok(sessionSecret === null || !value.includes(sessionSecret), 'Session credentials must not enter measurement artifacts');
-    await settings.put({expectedRevision: 0, configuration, secret: sessionSecret === null ? {action: 'remove'} : {action: 'replace', storage: 'session', value: sessionSecret}});
+    await putTestAgentConfiguration(settings,{expectedRevision: 0, configuration, secret: sessionSecret === null ? {action: 'remove'} : {action: 'replace', storage: 'session', value: sessionSecret}});
     const authorizations = createTestAuthorizations(() => store, settings);
     await authorizeTestScope(authorizations, 'project_agent');
     const baseTools = createAgentTaskTools({store, services});
@@ -196,7 +197,7 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
       };
     }
     const before = readMioStorage(store.db);
-    const sent = await runtime.send(projectId, {requestId: randomUUID(), expectedSettingsRevision: (await settings.get()).revision, locale: 'en', text: 'Inspect the current project repeatedly, then report completion. Synthetic offline context measurement.'});
+    const sent = await runtime.send(projectId, {requestId: randomUUID(), expectedSettingsRevision: testAgentExecution(await settings.get()).revision, locale: 'en', text: 'Inspect the current project repeatedly, then report completion. Synthetic offline context measurement.'});
     await runtime.drain();
     const snapshot = runtime.journal.snapshot(sent.run.id);
     assert.ok(requests.length > 0, `Measurement did not reach the synthetic gateway: ${snapshot.run.pauseReason ?? snapshot.run.status}`);

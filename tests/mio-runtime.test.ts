@@ -1,3 +1,4 @@
+import {testAgentExecution} from './helpers/agent-settings-fixture.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -132,7 +133,7 @@ for (const protocol of protocols) for (const accepted of [true, false]) test(`${
   }, undefined, protocol);
   try {
     const settings = await f.settings.get(), history: AgentTaskJson[] = [{role: 'user', content: 'Continue the frozen group-loader intent.'}];
-    const body = object(JSON.parse(buildTaskModelRequest(settings.configuration, history, selectTaskModelTools(f.tools.list()), 4318)));
+    const body = object(JSON.parse(buildTaskModelRequest(testAgentExecution(settings).configuration, history, selectTaskModelTools(f.tools.list()), 4318)));
     assert.ok(Array.isArray(body.tools));
     for (const value of body.tools) {
       const wire = object(value), tool = protocol === 'chat_completions' ? object(wire.function) : wire;
@@ -142,7 +143,7 @@ for (const protocol of protocols) for (const accepted of [true, false]) test(`${
       schema.required = ['groups'];
     }
     const original = JSON.stringify(body);
-    const created = f.runtime.journal.create({projectId: f.store.projectId, requestId: randomUUID(), text: 'Continue the frozen group-loader intent.', configuration: {...settings.configuration}, settingsRevision: settings.revision, context: history});
+    const created = f.runtime.journal.create({projectId: f.store.projectId, requestId: randomUUID(), text: 'Continue the frozen group-loader intent.', configuration: {...testAgentExecution(settings).configuration}, settingsRevision: testAgentExecution(settings).revision, settingsBinding:testAgentExecution(settings).binding, context: history});
     const source = f.runtime.journal.beginModelStep(created.run.id, {request: {body: original, history}, data: {baseline: f.runtime.journal.revisionSnapshot(f.store.projectId).map(({kind, id, revision}) => ({kind, id, revision}))}}, []);
     f.restart();
     await f.runtime.action(f.store.projectId, created.run.id, {requestId: randomUUID(), expectedRevision: f.runtime.get(f.store.projectId, created.run.id).run.revision, action: 'resume'});

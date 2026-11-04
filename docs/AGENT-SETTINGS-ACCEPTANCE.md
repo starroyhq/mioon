@@ -1,3 +1,37 @@
+# Mio 连接设置（X6a）
+
+当前实现使用严格 v3 集合，公共契约见 `packages/contracts/src/agent-connection-settings.ts`。九家内置服务各自保存配置与密钥，自定义服务最多十个；Mio 单独保存 `{serviceKey, modelId}` 选择，无选择时不自动选默认模型。设置属于应用/服务实例，不属于项目。
+
+## 保存与修订
+
+`GET /api/agent/settings` 只返回无密钥的条目、条目修订、Mio 选择、执行投影、目录、存储状态和迁移通知。`PUT` 接受 `{expectedRevision, services, mioSelection, secretActions}`，其中 secretActions 按 serviceKey 提交 keep/remove/replace；不接受旧 configuration/secret 单槽写法。九家内置项不可删除或改成另一家，自定义项使用 UUID，改名不换身份；当前已保存的 Mio 项须先改选并保存才能删除。
+
+整页只有一个 CAS 和一次原子文件保存，全局 revision 每次成功加一。每条内容或密钥实际改变才递增自己的 revision；Mio 二元选择改变递增选择修订。执行投影的 revision 是只随当前连接变化的单调 token，配合 `{serviceKey, entryRevision, selectionRevision}` 及完整五字段配置冻结到 run_context；不是整页 revision。每次模型派发前通过可信 acquire 精确核对：改 B 不影响使用 A，改 A（包括仅换密钥）、A→B→A 或配置改后还原拒绝旧见证。恢复旧记录不得从今天的快照补签见证。
+
+先校验全体，暂存加密结果和 session Map，最终完整公私投影均通过后只写一次 envelope，成功才发布 RAM。任何项校验/加密/文件保存失败整批不提交；丢 ACK 仍为 unknown，只读核对，不重发。`settings_only`/`not_tested` 表示保存本身没有做网络验证。
+
+## 地址与密钥
+
+固定平台按服务、平台、协议精确查目录，地址只读；工作空间只输入受限 DNS label 的 ID，区域及协议路径由目录拼出；本机只输入回环 origin，再按协议推导路径；自定义保留完整远程 HTTPS base，并继续执行已有 SSRF/DNS/连接钉住规则。目录的 blockedReason 不可运行，出现官方文档不等于当前 wire 已支持。
+
+密钥先按 serviceKey 隔离，再绑定固定平台、workspace ID、本机 origin 或自定义完整 base。工作空间同 ID、本机同 origin 切协议可保留密钥；换区域、ID、origin、自定义路径只清本条。两个相同 URL 的自定义项也不共用密钥。目的地授权仍按最终推理 URL 和模型确认。
+
+v1/v2 只适用于发布前开发数据：只在内存投影合法元信息，旧密钥全部作废且从不解密；GET 保持原文件逐字节不变，首次显式保存才写 v3。不安全、损坏或未知版本保持原件并拒绝设置操作。持久密文使用 v3 的命名空间、serviceKey、接收者绑定包装，可信取钥时再解密并校验；不可用的系统密钥库不降级明文。
+
+设置请求、公开回包（含 IPC 包装）、最终加密文件均独立检查完整 UTF-8 序列化大小，保持 64 KiB。DTO 预算 62 KiB 给包装留余量；单 key 8192 字节、每家手填型号最多50个且每个200字符、最多19个条目，维度上限不能同时填满。broker 仍32 pending、7秒；不新增 renderer 取钥能力、CLI/MCP 模型工具或任意 headers。
+
+## 页面和验证
+
+左栏沿用当前分类；中栏为常规、九家服务、自定义；详情和保存底栏复用 `SettingsServicesLayout`。各详情稳定挂载、hidden/inert，单条 password DOM/ref 保留本条输入，切中栏不清其他密码。共享草稿和 React 状态不存密码；提交第一次 await 前同步清所有密码，放弃、整页隐藏和关闭清空，失败或 unknown 不回填。密钥检查、获取列表及缓存属于 X6b，本卡仅显式禁用这些入口。已保存且无草稿的当前 Mio 选择可走现有连接测试；旧诊断无条目见证时只能标历史结果。
+
+聚焦验收覆盖：多项原子保存/回滚/CAS、A/B 隔离与 ABA、条目/包/UTF-8 边界、旧文件不写、broker 取消/迟到隔离、三栏回调/密码生命周期、CLI/client/HTTP。两套既有99条请求指纹保持原 fixture 逐字节不变；新增通用模板独立204条原始请求夹具，不改旧99预期。不使用真实密钥或供应商流量。
+
+共用外壳只接受分组、稳定 panels、选择、整页可见性及统一 footer；`useSettingsServicesPanel()` 返回 selected/pageVisible/active。业务、密钥、CAS 和多文件部分成功由使用方管理，G1b 直接复用，不形成另一套保存状态。
+
+---
+
+## 以下为早期单槽版本的历史验收记录（不代表当前契约）
+
 # Agent settings increment: implementation and acceptance
 
 Acceptance results and original file ownership below retain their historical names. Current `.test.ts` execution is documented in [TYPESCRIPT.md](TYPESCRIPT.md#current-test-migration-2026-10-26) and the reproduction command below.

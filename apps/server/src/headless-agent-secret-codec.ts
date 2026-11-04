@@ -1,7 +1,9 @@
 import path from 'node:path';
 import {realpathSync} from 'node:fs';
 import {createCipheriv,createDecipheriv,createHash,randomBytes,randomUUID} from 'node:crypto';
-import {agentSettingsError,exactObject,MAX_AGENT_SECRET_BYTES} from '@mioon/business/agent/config';
+import {agentSettingsError,exactObject} from '@mioon/business/agent/config';
+import {loadSettingsEnvelope} from '@mioon/business/agent/settings-envelope';
+import {agentSecretActionSchema} from '@mioon/contracts/agent-connection-settings';
 import type {PublicStorage,SecretCodec,SettingsContextOptions} from '@mioon/business/agent/settings';
 import {ensurePrivateDirectory,validatePrivateDirectory,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';
 import {createHeadlessSecretHelperClient} from './headless-agent-secret-client.ts';
@@ -25,12 +27,15 @@ function decode(value:unknown,max:number):Buffer {
   if(bytes.length>max||bytes.toString('base64')!==value)throw corrupt();
   return bytes;
 }
-function payload(value:string):{version:1;binding:string;value:string} {
+function payload(value:string):{version:2;serviceKey:string;binding:string;value:string} {
   if(typeof value!=='string'||Buffer.byteLength(value)>MAX_PLAINTEXT_BYTES)throw corrupt();
   let parsed:unknown;try{parsed=JSON.parse(value);}catch{throw corrupt();}
-  if(!exactObject(parsed,['version','binding','value'])||parsed.version!==1||typeof parsed.binding!=='string'||!parsed.binding||
-    typeof parsed.value!=='string'||!parsed.value.trim()||Buffer.byteLength(parsed.value)>MAX_AGENT_SECRET_BYTES)throw corrupt();
-  return {version:1,binding:parsed.binding,value:parsed.value};
+  if(!exactObject(parsed,['version','serviceKey','binding','value'])||parsed.version!==2||typeof parsed.binding!=='string'||!parsed.binding||parsed.binding.length>8192)throw corrupt();
+  const action=agentSecretActionSchema.safeParse({serviceKey:parsed.serviceKey,action:'replace',storage:'persistent',value:parsed.value});
+  if(!action.success||action.data.action!=='replace')throw corrupt();
+  let binding:unknown;try{binding=JSON.parse(parsed.binding);}catch{throw corrupt();}
+  if(!Array.isArray(binding)||binding.length!==3||binding[0]!=='mioon.agent.credentials.v3'||binding[1]!==action.data.serviceKey||typeof binding[2]!=='string'||!binding[2]||JSON.stringify(binding)!==parsed.binding)throw corrupt();
+  return {version:2,serviceKey:action.data.serviceKey,binding:parsed.binding,value:action.data.value};
 }
 
 /** directory is the Agent settings directory, never a model-supplied path.
@@ -56,8 +61,11 @@ export async function createHeadlessAgentSecretCodec({directory,channel,timeoutM
     if(saved!==null){
       if(!(saved instanceof Uint8Array))throw corrupt();
       let parsed:unknown;try{parsed=JSON.parse(Buffer.from(saved).toString('utf8'));}catch{throw corrupt();}
-      if(!exactObject(parsed,['version','revision','configuration','secret'])||parsed.version!==1&&parsed.version!==2)throw corrupt();
-      cipher=parsed.secret!==null;
+      // Legal v1/v2 metadata is projected without adopting its retired key.
+      // Only current v3 materials forbid a fresh DEK; an existing durable
+      // creation fence below remains authoritative even after legacy reset.
+      const loaded=loadSettingsEnvelope(parsed);
+      cipher=loaded.state.services.some(entry=>entry.secret!==null);
     }
     const bytes=readPrivateFile(fenceFile,{root,allowMissing:true,maxBytes:1024});
     if(bytes!==null){

@@ -1,3 +1,5 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
+import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 
 
 
@@ -100,7 +102,7 @@ test('real server and management client doctor return only safe aggregate storag
   assert.ok(doctor.storage); assert.deepEqual(doctor.storage, inspect(f.projectId, db => readMioStorage(db))); assert.deepEqual(replay.storage, doctor.storage);assert.equal(second.storage,undefined);
   assert.equal(doctor.storage.limits.bytes, 256 * 1024 * 1024); assert.equal(doctor.storage.limits.rows,65536);assert.equal(doctor.storage.version,3);assert.equal(doctor.storage.tables.length,20);assert.equal(doctor.storage.format, 'mio_records');
   assert.equal(doctor.verification, 'not_tested'); assert.equal(doctor.projectId, f.projectId); assert.equal(second.projectId, undefined);
-  assert.equal(doctor.settings.secret.configured, false); assert.equal(modelRequests, 0);
+  assert.equal(doctor.settings.execution, null); assert.ok(doctor.settings.services.every(entry=>!entry.secret.configured)); assert.equal(modelRequests, 0);
   assert.deepEqual(routes, ['/api/agent/diagnostics', '/api/agent/diagnostics', '/api/agent/diagnostics']); assert.deepEqual(inspect(f.projectId, db => retained(db)), before);
   const serialized = JSON.stringify(doctor);
   for (const denied of [marker, privatePath, f.root, server.token]) assert.equal(serialized.includes(denied), false);
@@ -140,7 +142,7 @@ test('storage and client schemas reject inconsistent counters, inventories, perm
 async function runtimeFixture(t: TestContext, injected?: {code: string; message: string}) {
   const f = temporary(t), services = createServices(f.store, new Map()), settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
   const initial = await settings.get();
-  await settings.put({expectedRevision: initial.revision, configuration: initial.configuration, secret: {action: 'replace', storage: 'session', value: 'SYNTHETIC_STORAGE_FIXTURE_ONLY'}});
+  await putTestAgentConfiguration(settings,{expectedRevision: initial.revision, configuration: defaultTestAgentConfiguration('chat_completions'), secret: {action: 'replace', storage: 'session', value: 'SYNTHETIC_STORAGE_FIXTURE_ONLY'}});
   const authorizations = createTestAuthorizations(() => ({...f.store}), settings); await authorizeTestScope(authorizations, 'project_agent');
   const tools = createAgentTaskTools({store: f.store, services}), source = createAgentTaskJournal(f.store);
   const journal = injected ? {...source, performControl(input: Parameters<typeof source.performControl>[0], apply: Parameters<typeof source.performControl>[1]) {
@@ -163,13 +165,13 @@ test('quota and ordinary SQLite write failures roll back note and receipt togeth
   ];
   for (const item of cases) await t.test(item.label, async t => {
     const f = await runtimeFixture(t, item.code ? {code: item.code, message: item.message} : undefined), current = await f.settings.get();
-    const run = f.source.create({projectId: f.projectId, requestId: randomUUID(), text: 'Saved original request', configuration: {...current.configuration}, settingsRevision: current.revision}).run;
+    const run = f.source.create({projectId: f.projectId, requestId: randomUUID(), text: 'Saved original request', configuration: {...testAgentExecution(current).configuration}, settingsRevision: testAgentExecution(current).revision,settingsBinding:testAgentExecution(current).binding}).run;
     const requestId = randomUUID();
     if (!item.code) f.store.db.exec(`CREATE TEMP TRIGGER synthetic_diagnostic_control_failure BEFORE INSERT ON mio_controls WHEN NEW.requestId='${requestId}' BEGIN SELECT RAISE(ABORT,'${item.message}');END;`);
     const before = retained(f.store.db), action = {requestId, expectedRevision: run.revision, action: 'note', text: 'MUST_ROLL_BACK_PRIVATE_NOTE'};
     await assert.rejects(f.runtime.action(f.projectId, run.id, action), {code: item.expected});
     assert.deepEqual(retained(f.store.db), before); assert.equal(f.source.lookupControl(requestId), null); assert.equal(f.requests, 0);
-    await assert.rejects(f.runtime.send(f.projectId, {requestId: randomUUID(), expectedSettingsRevision: current.revision, text: 'No retry after storage fault'}), {code: item.expected});
+    await assert.rejects(f.runtime.send(f.projectId, {requestId: randomUUID(), expectedSettingsRevision: testAgentExecution(current).revision, text: 'No retry after storage fault'}), {code: item.expected});
     assert.equal(f.requests, 0); assert.deepEqual(retained(f.store.db), before);
   });
 });
@@ -177,7 +179,7 @@ test('quota and ordinary SQLite write failures roll back note and receipt togeth
 test('a quota failure after the single model dispatch cannot publish its result or trigger a replacement request', async t => {
   const f = await runtimeFixture(t), current = await f.settings.get();
   f.store.db.exec("CREATE TEMP TRIGGER synthetic_model_completion_quota BEFORE INSERT ON mio_entries WHEN NEW.kind='model_output' BEGIN SELECT RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT');END;");
-  const sent = await f.runtime.send(f.projectId, {requestId: randomUUID(), expectedSettingsRevision: current.revision, text: 'One synthetic model request'});
+  const sent = await f.runtime.send(f.projectId, {requestId: randomUUID(), expectedSettingsRevision: testAgentExecution(current).revision, text: 'One synthetic model request'});
   await f.runtime.drain();
   const snapshot = f.source.snapshot(sent.run.id);
   assert.equal(f.requests, 1); assert.equal(snapshot.steps.length, 1);
@@ -190,6 +192,6 @@ test('a quota failure after the single model dispatch cannot publish its result 
   const observed = f.runtime.events(f.projectId, sent.run.id, 0);
   assert.equal(expandedReads, 0); assert.equal(observed.sequence, f.source.eventSequence(sent.run.id, 0));
   assert.ok(observed.snapshot.steps.every(step => step.request === undefined && step.data === undefined));
-  await assert.rejects(f.runtime.send(f.projectId, {requestId: sent.run.requestId, expectedSettingsRevision: current.revision, text: 'One synthetic model request'}), {code: 'AGENT_TASK_STORAGE_LIMIT'});
+  await assert.rejects(f.runtime.send(f.projectId, {requestId: sent.run.requestId, expectedSettingsRevision: testAgentExecution(current).revision, text: 'One synthetic model request'}), {code: 'AGENT_TASK_STORAGE_LIMIT'});
   await f.runtime.drain(); assert.equal(f.requests, 1); assert.equal(f.source.snapshot(sent.run.id).steps.length, 1);
 });

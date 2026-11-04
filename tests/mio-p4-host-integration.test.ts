@@ -1,3 +1,5 @@
+import {testAgentExecution} from './helpers/agent-settings-fixture.ts';
+import {agentServiceInput} from '../packages/contracts/src/agent-connection-settings.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -45,7 +47,7 @@ async function fixture(t: TestContext) {
   }
   await start();
   const initial = await client.settingsGet();
-  await client.settingsPut({expectedRevision: initial.revision, configuration: {presetId: 'ollama', platformId: 'local', protocol: 'chat_completions', model: 'qwen3:8b', baseUrl: 'http://127.0.0.1:11434/v1'}}, {action: 'remove'});
+  await client.settingsPut({expectedRevision:initial.revision,services:initial.services.map(agentServiceInput),mioSelection:{serviceKey:'ollama',modelId:'qwen3:8b'}}, [{serviceKey:'ollama',action:'remove'}]);
   const request = async (route: string, options: {method?: string; input?: unknown} = {}) => {
     const response = await fetch(server!.url + route, {method: options.method ?? 'GET', headers: {authorization: `Bearer ${token}`, ...(options.input === undefined ? {} : {'content-type': 'application/json'})}, ...(options.input === undefined ? {} : {body: JSON.stringify(options.input)})});
     return {status: response.status, body: await response.json() as unknown};
@@ -94,7 +96,7 @@ test('production P4 hosts run R1 canonical records and keep global CAS policy/re
   assert.deepEqual(agentTaskPolicySchema.parse(JSON.parse(String(appPolicy.receipts[0]!.data))), saved.policy);
 
   const projectId = await f.createProject(), settings = await f.client.settingsGet();
-  const accepted = await f.client.send({projectId, requestId: randomUUID(), text: 'PRIVATE_P4_USER_PROMPT', expectedSettingsRevision: settings.revision, locale: 'en'});
+  const accepted = await f.client.send({projectId, requestId: randomUUID(), text: 'PRIVATE_P4_USER_PROMPT', expectedSettingsRevision: testAgentExecution(settings).revision, locale: 'en'});
   const done = agentTaskSnapshotSchema.parse(await f.completed(projectId, accepted.run.id));
   assert.equal(done.run.stepLimit, saved.policy.stepLimit, 'The hosted R1 journal reads the real B1 policy port');
   assert.equal(done.run.budget, saved.policy.stepLimit); assert.equal(f.calls, 1);
@@ -125,21 +127,22 @@ test('production P4 hosts run R1 canonical records and keep global CAS policy/re
   assert.equal((await f.client.doctor()).storage, undefined);
 });
 
-test('a real text diagnostic persists only the five-field B1 summary, readable with its project closed and externally locked', {timeout: 60_000}, async t => {
+test('a real text diagnostic persists only the safe B1 summary and selected-entry witness, readable with its project closed and externally locked', {timeout: 60_000}, async t => {
   const f = await fixture(t), projectId = await f.createProject(), settings = await f.client.settingsGet();
   assert.deepEqual(await f.client.diagnoseLatest(), {test: null});
   assert.equal(f.application(db => db.prepare('SELECT data FROM app_documents WHERE name=?').get(diagnosticDocument)), undefined);
-  const sent = await f.client.send({projectId, requestId: randomUUID(), text: 'PRIVATE_P4_DIAGNOSTIC_PROMPT', expectedSettingsRevision: settings.revision, locale: 'en', diagnostic: {profile: 'text'}});
+  const sent = await f.client.send({projectId, requestId: randomUUID(), text: 'PRIVATE_P4_DIAGNOSTIC_PROMPT', expectedSettingsRevision: testAgentExecution(settings).revision, locale: 'en', diagnostic: {profile: 'text'}});
   await f.completed(projectId, sent.run.id);
   const deadline = Date.now() + 30_000;
   let latest = await f.client.diagnoseLatest();
   while (latest.test === null) {assert.ok(Date.now() < deadline, 'The terminal diagnostic did not publish its application summary'); await new Promise(resolve => setTimeout(resolve, 5)); latest = await f.client.diagnoseLatest();}
   const summary = agentDiagnosticSummarySchema.parse(latest.test);
-  assert.deepEqual(Object.keys(summary).sort(), ['completedAt', 'errorCode', 'model', 'protocol', 'status']);
-  assert.equal(summary.status, 'completed'); assert.equal(summary.protocol, settings.configuration.protocol); assert.equal(summary.model, settings.configuration.model); assert.equal(summary.errorCode, null);
+  assert.deepEqual(Object.keys(summary).sort(), ['completedAt', 'errorCode', 'model', 'protocol', 'settingsBinding', 'settingsRevision', 'status']);
+  assert.deepEqual(summary.settingsBinding,testAgentExecution(settings).binding);assert.equal(summary.settingsRevision,testAgentExecution(settings).revision);
+  assert.equal(summary.status, 'completed'); assert.equal(summary.protocol, testAgentExecution(settings).configuration.protocol); assert.equal(summary.model, testAgentExecution(settings).configuration.model); assert.equal(summary.errorCode, null);
   const raw = f.application(db => String(db.prepare('SELECT data FROM app_documents WHERE name=?').get(diagnosticDocument)!.data));
   assert.deepEqual(agentDiagnosticSummarySchema.parse(JSON.parse(raw)), summary);
-  for (const privateValue of ['PRIVATE_P4_DIAGNOSTIC_PROMPT', reply, sent.run.id, projectId, settings.configuration.baseUrl]) assert.equal(raw.includes(privateValue), false);
+  for (const privateValue of ['PRIVATE_P4_DIAGNOSTIC_PROMPT', reply, sent.run.id, projectId, testAgentExecution(settings).configuration.baseUrl]) assert.equal(raw.includes(privateValue), false);
   const projectRoot = projectDirFor(f.root, projectId), owner = f.project(projectId, db => db);
   await f.restart(); assert.equal(owner.isOpen, false, 'Restart closes the original project and application owners');
   // The external real-kernel owner makes any hidden acquire fail. Only the

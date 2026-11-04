@@ -77,7 +77,7 @@ function errorResponse(requestId: string, error: unknown) {
 
 // Main-only endpoint. The trusted utility can read safe settings or submit one
 // validated replacement. Only the trusted utility's inference capability may
-// acquire one revision/configuration-bound credential. No arbitrary dispatch,
+// acquire one Mio-selection/entry-revision/configuration-bound credential. No arbitrary dispatch,
 // renderer IPC handler, public key serializer, or transferable native port.
 export function createAgentSettingsBroker({ agentSettings, send, isActive = () => true, getSelfPort = () => undefined as number | null | undefined }: {
   agentSettings: AgentSettingsService | null | undefined;

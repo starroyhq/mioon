@@ -176,7 +176,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
       guards:{ownsLock:ownsAppLock},readCurrentTarget:async()=>{
         const settings=sanitizeAgentSettingsResult(await agentSettings!.get({selfPort:serverPort()}));
-        return {destination:deriveAgentEndpoint(settings.configuration),model:settings.configuration.model,settingsRevision:settings.revision};
+        const active=settings.execution;return active?{destination:deriveAgentEndpoint(active.configuration),model:active.configuration.model,settingsRevision:active.revision}:null;
       }});
     imageSettings = settings?.image ?? await createImageSettings({persistence:createImageSettingsFile({directory:path.join(appRoot,'image-settings'),privateRoot:appRoot}),
       ...(imageSecretCodec?{secretCodec:imageSecretCodec,storage:()=>imageSecretCodec.storage()}: {})});

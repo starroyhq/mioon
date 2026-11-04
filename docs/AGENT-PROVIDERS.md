@@ -1,3 +1,20 @@
+# 当前协议目录与通用模板（X6a）
+
+当前权威目录为 `packages/business/src/agent/presets.ts`，严格浏览器叶契约为 `agent-provider-catalog.ts`。每个平台按协议记录 base/template、来源、核对日和可运行限制；availableProtocols 仅从未阻断项推导。以下旧验收记录中的地址和模型限制是历史事实，实际保存和发请求均以当前目录及 profile 为准。
+
+- OpenAI：Chat Completions/Responses；Anthropic 仅原生 Messages，测试/比较用途的兼容层不开放。
+- DeepSeek、Qwen、Zhipu/Z.ai、Kimi、MiniMax、OpenRouter：按各平台的协议条目精确查表，区域和套餐不互换。Qwen 六个 workspace 模板只填 ID，不接受任意子域或完整 URL。MiniMax Messages 使用各自 `/anthropic` 路径。Kimi/OpenRouter Messages 的 Bearer 适配尚未完成，目录虽记录来源仍阻断，不能拿现有 x-api-key 发送。
+- Ollama：回环 origin；C/R 使用 `/v1`，Messages 使用根路径。不放宽 selfPort、非回环或远端云路由约束。
+- custom：明确选择协议和完整 HTTPS base，保留路径及既有网络校验，不猜测/自动修正。
+
+精确匹配已有适配模型优先，保留其历史 wire 和能力。其余合法型号可使用同协议通用模板，均标“未验证”，未知上下文为 null，输出保守为4096；不继承另一个模型的上下文、推理或供应商托管工具权限。OpenAI 通用写法不发送 reasoning_effort，未知 C/R 不开放 thinkingTier；供应商明确有关闭思考要求时必须有对应策略，否则拒绝。OpenRouter Responses 的关闭思考使用公开 schema 的 `reasoning.enabled:false`。具体字段、关闭策略及204条逐字节夹具见 `agent-generic-profiles.test.ts` / `fixtures/agent-generic-request-fingerprints.json`。
+
+保存、官方目录、手填型号和通用请求模板均不证明账号权限或真实模型可用性。本卡未调用供应商、不使用真实密钥；模型清单、检查及缓存留给 X6b。运行时的流/事件/时间、工具和记录预算保持既有规则，两套原有99条指纹不变。
+
+---
+
+## 历史协议验收及限制记录
+
 # Agent provider presets: research and test contract
 
 Research date: 2026-10-09 (UTC)
