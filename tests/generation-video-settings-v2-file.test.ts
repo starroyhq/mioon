@@ -4,6 +4,8 @@ import {chmod, link, mkdtemp, readFile, realpath, rename, rm, stat, symlink, unl
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
+import fs from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
 import {VIDEO_PROVIDER_NAMES, VIDEO_SETTINGS_LIMITS, defaultVideoModels} from '../packages/contracts/src/video-providers.ts';
 import type {VideoConnectionConfiguration} from '../packages/contracts/src/video-providers.ts';
 import {VIDEO_SETTINGS_V1_RESET_NOTICE} from '../packages/contracts/src/generation-video-settings.ts';
@@ -190,4 +192,28 @@ test('equal bytes on the same inode cannot bypass the save fence after a metadat
   assert.notEqual(after.mtimeMs, before.mtimeMs);
   await assert.rejects(settings.put({action: 'save', expectedRevision: 0, configuration: current(), secret: {action: 'keep'}}), {code: 'VIDEO_SETTINGS_SAVE_FAILED'});
   await assert.rejects(settings.get(), {code: 'VIDEO_SETTINGS_SAVE_FAILED'}); assert.deepEqual(await readFile(f.file), bytes);
+});
+
+test('first publication never clobbers a file appearing at the atomic no-replace commit', {skip: process.platform === 'win32'}, async t => {
+  const f = await fixture(t, false), settings = await createVideoSettingsV2(f.options); t.after(() => settings.close());
+  const external = Buffer.from('{"external":"another owner"}'), originalLink = fs.linkSync; let inserted = false;
+  t.mock.method(fs, 'linkSync', (source: fs.PathLike, destination: fs.PathLike) => {
+    if (String(destination) === f.file && !inserted) {inserted = true; fs.writeFileSync(f.file, external, {mode: 0o600, flag: 'wx'});}
+    return originalLink(source, destination);
+  });
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(settings.put({action: 'save', expectedRevision: 0, configuration: current(), secret: {action: 'keep'}}), {code: 'VIDEO_SETTINGS_SAVE_FAILED'});
+    assert.equal(inserted, true); assert.deepEqual(await readFile(f.file), external);
+    await assert.rejects(settings.get(), {code: 'VIDEO_SETTINGS_SAVE_FAILED'});
+  } finally {t.mock.restoreAll(); syncBuiltinESMExports();}
+});
+
+test('recognized v1 retains its original uppercase UUID compatibility before resetting to empty v2', async t => {
+  const f = await fixture(t), value = JSON.parse(await readFile(f.file, 'utf8'));
+  const original = value.connections[0].configuration.id;
+  const bytes = Buffer.from(JSON.stringify(value).replaceAll(original, 'ABCDEF12-0000-4000-8000-000000000001'));
+  await writeFile(f.file, bytes, {mode: 0o600});
+  const settings = await createVideoSettingsV2(f.options); t.after(() => settings.close());
+  const snapshot = await settings.get(); assert.equal(snapshot.notice, VIDEO_SETTINGS_V1_RESET_NOTICE); assert.deepEqual(snapshot.connections, []); assert.deepEqual(await readFile(f.file), bytes);
 });

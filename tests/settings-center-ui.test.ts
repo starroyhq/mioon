@@ -50,10 +50,11 @@ function shellHarness() {
     './i18n/I18nProvider.tsx': { useI18n: () => createI18nTestContext(locale) },
     '@mioon/ui/components/button': { Button: 'Button' },
     '@mioon/ui/components/workbench-icons': {WorkbenchIcon:'WorkbenchIcon'},
+    './GenerationLiveGateNotice.tsx': {__esModule: true, default: 'GenerationLiveGateNotice'},
     './LanguageControl.tsx': { __esModule: true, default: 'LanguageControl' },
     './icons.tsx': { __esModule: true, default: 'Icon' },
     './workspace-visibility.tsx': { WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider' },
-    './settings-window-state.ts': { isSettingsConnectionPage: (page: string) => slots.includes(page) },
+    './settings-window-state.ts': { isSettingsConnectionPage: (page: string) => slots.includes(page), normalizeSettingsPage: (page: string) => page === 'extensions' ? 'models' : page },
     './SettingsExtraPages.tsx': { SettingsAbout:'SettingsAbout', SettingsShortcuts:'SettingsShortcuts', SettingsModelServices:'SettingsModelServices' },
   }).default;
   const panes = Object.fromEntries(slots.map(slot => [slot, { type: `form:${slot}`, props: { 'data-testid': `owner-${slot}`, value: `retained-${slot}` } }]));
@@ -61,15 +62,15 @@ function shellHarness() {
   return { calls, panes, render(patch: { page?: string|undefined; onPage?: undefined; selected?: string; active?: boolean; connectionsAvailable?: boolean; }|undefined = {}, nextLocale: import('../packages/i18n/src/index.ts').Locale|undefined = locale) { Object.assign(props, patch); locale = nextLocale; cursor = 0; return Component(props as unknown as Parameters<typeof Component>[0]); } };
 }
 
-test('settings shell has eight stable categories while connection owners retain four form identities', () => {
-  const h = shellHarness(), categories = ['general','workspace','video-tools','models','agent','extensions','shortcuts','about'];
-  for (const [page, category] of [['general','general'],['workspace','workspace'],['video-tools','video-tools'],['models','models'],['agent','agent'],['official','models'],['custom','extensions'],['comfy','extensions'],['shortcuts','shortcuts'],['about','about']]) {
+test('settings shell has seven categories with generation services while connection owners retain four form identities', () => {
+  const h = shellHarness(), categories = ['general','workspace','video-tools','models','agent','shortcuts','about'];
+  for (const [page, category] of [['general','general'],['workspace','workspace'],['video-tools','video-tools'],['models','models'],['agent','agent'],['official','models'],['custom','models'],['comfy','models'],['extensions','models'],['shortcuts','shortcuts'],['about','about']]) {
     const tree = h.render({page});
-    assert.equal(find(tree,'settings-center').props['data-page'],page);
+    assert.equal(find(tree,'settings-center').props['data-page'],page==='extensions'?'models':page);
     for(const id of categories) assert.equal(find(tree,`settings-category-${id}`).props['aria-current'],category===id?'page':undefined);
     for(const id of categories) assert.ok(find(tree,`settings-category-icon-${id}`));
     const nav=nodes(tree).find((node)=>node.props?.className==='settings-service-nav');
-    const expected=category==='extensions'?['settings-service-custom','settings-service-comfy']:[];
+    const expected=category==='models'?['settings-service-official','settings-service-custom','settings-service-comfy']:[];
     assert.equal((nav)!.props.hidden,!expected.length);assert.equal((nav)!.props.inert,!expected.length);
     assert.deepEqual(nodes(nav).filter((node)=>node.type==='Button').map(node=>node.props['data-testid']),expected);
   }
@@ -88,14 +89,14 @@ test('General derives its read-only number-format example from the current langu
 });
 test('category and connection navigation delegates once without selecting a page locally',()=>{
  const h=shellHarness();let tree=h.render({page:'general'});find(tree,'settings-category-models').props.onClick();
- tree=h.render({page:'models'});(nodes(tree).find((node)=>node.type==='SettingsModelServices'))!.props.onOpenOfficial();find(tree,'settings-category-extensions').props.onClick();
+ tree=h.render({page:'models'});(nodes(tree).find((node)=>node.type==='SettingsModelServices'))!.props.onOpenOfficial();
  tree=h.render({page:'extensions'});find(tree,'settings-service-custom').props.onClick();find(tree,'settings-category-agent').props.onClick();
- assert.deepEqual(h.calls,[['page','models'],['page','official'],['page','extensions'],['page','custom'],['page','agent']]);assert.equal(find(tree,'settings-center').props['data-page'],'extensions');
+ assert.deepEqual(h.calls,[['page','models'],['page','official'],['page','custom'],['page','agent']]);assert.equal(find(tree,'settings-center').props['data-page'],'models');
 });
 test('legacy consumers can select connection slots but internal categories never become IPC slots',()=>{
  const h=shellHarness();let tree=h.render({page:undefined,onPage:undefined,selected:'official'});
  (nodes(tree).find((node)=>node.type==='SettingsModelServices'))!.props.onOpenOfficial();
- for(const id of ['general','workspace','models','extensions','shortcuts','about'])find(tree,`settings-category-${id}`).props.onClick();
+ for(const id of ['general','workspace','models','shortcuts','about'])find(tree,`settings-category-${id}`).props.onClick();
  assert.deepEqual(h.calls,[['slot','official']]);
 });
 
@@ -142,7 +143,7 @@ test('General language controls and category copy change in four locales without
     assert.ok(text(general).includes(translate(locale, 'language.label')));
     assert.ok(text(general).includes(translate(locale, 'settings.languageHint')));
     assert.equal(nodes(general).filter((node) => node.type === 'LanguageControl').length, 1);
-    for (const category of ['general','workspace','video-tools','models','agent','extensions','shortcuts','about']) assert.equal(text(find(tree, `settings-category-${category}`)), translate(locale, ((category === 'general' ? 'settings.general' : `redesign.settings.${category}`) as unknown as Parameters<typeof translate>[1])));
+    for (const category of ['general','workspace','video-tools','models','agent','shortcuts','about']) assert.equal(text(find(tree, `settings-category-${category}`)), translate(locale, ((category === 'general' ? 'settings.general' : `redesign.settings.${category}`) as unknown as Parameters<typeof translate>[1])));
     headings.add(text(find(tree, 'settings-category-models')));
     assert.equal(find(tree, 'owner-custom'), h.panes.custom); assert.equal(find(tree, 'settings-center').props['data-page'], 'general');
     find(tree, 'settings-category-models').props.onClick();
@@ -184,7 +185,7 @@ test('actual shared controls render accessible four-language settings and one co
   for (const locale of LOCALES) {
     const html = renderPresentation(locale, 'general');
     assert.ok(html.includes(`aria-label="${htmlText(translate(locale, 'settings.categories'))}"`));
-    for (const key of ['settings.general', 'redesign.settings.models', 'redesign.settings.extensions', 'settings.languageHint']) assert.ok(html.includes(htmlText(translate(locale, ((key) as unknown as Parameters<typeof translate>[1])))), `${locale}/${key}`);
+    for (const key of ['settings.general', 'redesign.settings.models', 'settings.languageHint']) assert.ok(html.includes(htmlText(translate(locale, ((key) as unknown as Parameters<typeof translate>[1])))), `${locale}/${key}`);
     assert.equal((html.match(/data-testid="language-select"/gu) || []).length, 1);
     assert.match(html, /role="combobox"/u);
     assert.ok(html.includes(`aria-label="${htmlText(translate(locale, 'language.label'))}"`));
@@ -239,7 +240,7 @@ test('unavailable connections leave General usable while disabled categories and
     const tree = h.render({ page: 'general', connectionsAvailable: false }, locale);
     assert.notEqual(find(tree, 'settings-category-general').props.disabled, true);
     assert.equal(find(tree, 'settings-general').props.hidden, false);
-    for (const category of ['models', 'agent', 'extensions']) {
+    for (const category of ['models', 'agent']) {
       const button = find(tree, `settings-category-${category}`); assert.equal(button.props.disabled, true); button.props.onClick();
     }
     for (const page of ['models','extensions']) { const pane=h.render({page,connectionsAvailable:false},locale); for(const node of nodes(pane).filter((node)=>node.props?.['data-testid']?.startsWith('settings-service-'))) { assert.equal(node.props.disabled,true);node.props.onClick(); } }

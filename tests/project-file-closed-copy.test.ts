@@ -96,7 +96,7 @@ for(const version of [2,3,4,5,6,7,8] as const)test(`exact old history ${version}
  unchanged(f.history,before);unchanged(f.projectFile,source);
 });
 
-test('current history9 with real S8 repository rows is captured read-only without dropping or rewriting drafts',async t=>{
+test('current history with real S8 repository rows is captured read-only without dropping or rewriting drafts',async t=>{
  const f=fixture(t),store=f.open();
  let drafts:unknown;
  try{

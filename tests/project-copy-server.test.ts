@@ -184,7 +184,7 @@ async function seedS8Drafts(f: CopyFixture, keepWindow = false) {
 }
 
 for (const operation of ['project.duplicate', 'project.save-as'] as const)
-  test(`history9 ${operation} carries versions without any of the source's nonempty S8 draft tables`, async t => {
+  test(`current history ${operation} carries versions without any of the source's nonempty S8 draft tables`, async t => {
     const f = await fixture(t), seeded = await seedS8Drafts(f), before = f.sourceFiles(), input = f.input('S8 copy');
     const result = await f.rpc<ProjectCopyResponse>(operation, input); assert.equal(result.status, 200, JSON.stringify(result.body));
     const copy = projectCopyResponseSchema.parse(result.body.data); assert.equal(copy.versions, seeded.versions.length);

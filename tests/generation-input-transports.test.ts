@@ -16,7 +16,8 @@ import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
-import {defaultVideoModels} from '../packages/contracts/src/video-providers.ts';
+import {defaultVideoModels,VIDEO_PROVIDER_NAMES} from '../packages/contracts/src/video-providers.ts';
+import type {VideoConnectionConfigurationV2} from '../packages/contracts/src/generation-video-settings.ts';
 const repo=fileURLToPath(new URL('..',import.meta.url)),token='profile-parity-local-synthetic-token';
 const pause=(ms: number): Promise<void>=>new Promise(resolve=>setTimeout(resolve,ms));
 type EnvMap = Record<string, string|undefined>;
@@ -51,7 +52,7 @@ test('actual HTTP, CLI and official MCP expose identical dated profiles and reje
  assert.ok(!JSON.stringify(discovery).includes(token)&&!JSON.stringify(failure).includes('relativePath'));
  // A configured Wan model is discoverable through every transport, while the
  // persisted live switch prevents this parity test from dispatching any media.
- const connection={id:randomUUID(),providerId:'wan',name:'Offline Wan SDK parity',region:'cn-beijing',workspaceId:'test-workspace',enabled:true,archived:false,outputHosts:['output.example'],models:defaultVideoModels('wan').filter(model=>model.templateId==='wan30-v1')};
+ const connection:VideoConnectionConfigurationV2={id:randomUUID(),providerId:'wan',name:VIDEO_PROVIDER_NAMES.wan,region:'cn-beijing',workspaceId:'test-workspace',enabled:true,outputHosts:['output.example'],models:defaultVideoModels('wan').filter(model=>model.templateId==='wan30-v1')};
  const saved=await fetch(url!+'/api/video-providers/settings',{method:'PUT',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({action:'save',expectedRevision:0,configuration:connection,secret:{action:'replace',value:'synthetic-wan-parity-key',storage:'session'}})});
  assert.equal(saved.status,200);
  const directory=await http('video.connection.list',{});

@@ -12,14 +12,15 @@ export type {AgentSettingsSnapshot} from '../../../contracts/src/agent-connectio
 export const sanitizeAgentSettingsError=safeAgentSettingsError;
 // Trusted only: never exposed as a string HTTP/RPC/renderer operation.
 export const AGENT_CREDENTIAL_ACQUIRE=Symbol('trusted Agent inference credential');
-export interface AgentCredentialRequest{expectedRevision:number;configuration:AgentConfiguration;binding:AgentSettingsBinding}
+export interface AgentCredentialRequest{expectedRevision:number;configuration:AgentConfiguration;binding:AgentSettingsBinding;purpose?:'model_list'}
 export interface AgentCredentialResult{revision:number;configuration:AgentConfiguration;binding:AgentSettingsBinding;apiKey:string|null}
 export type PublicStorage=AgentSettingsSnapshot['storage'];
 export function parseAgentCredentialRequest(value:unknown,options:{selfPort?:number}={}):AgentCredentialRequest{
- if(!exactObject(value,['expectedRevision','configuration','binding'])||!Number.isSafeInteger(value.expectedRevision)||Number(value.expectedRevision)<0)throw agentSettingsError('AGENT_SETTINGS_VALIDATION');
+ const listing=Boolean(value&&typeof value==='object'&&'purpose'in value&&value.purpose==='model_list');
+ if(!exactObject(value,listing?['expectedRevision','configuration','binding','purpose']:['expectedRevision','configuration','binding'])||!Number.isSafeInteger(value.expectedRevision)||Number(value.expectedRevision)<0)throw agentSettingsError('AGENT_SETTINGS_VALIDATION');
  const configuration=parseAgentConfiguration(value.configuration,options),binding=agentSettingsBindingSchema.safeParse(value.binding);
  if(!binding.success||JSON.stringify(configuration)!==JSON.stringify(value.configuration))throw agentSettingsError('AGENT_SETTINGS_VALIDATION');
- return {expectedRevision:Number(value.expectedRevision),configuration,binding:binding.data};
+ return {expectedRevision:Number(value.expectedRevision),configuration,binding:binding.data,...(listing?{purpose:'model_list' as const}:{})};
 }
 export function sanitizeAgentCredentialResult(value:unknown,expected:AgentCredentialRequest):AgentCredentialResult{
  if(!exactObject(value,['revision','configuration','binding','apiKey'])||value.revision!==expected.expectedRevision||JSON.stringify(value.configuration)!==JSON.stringify(expected.configuration)||JSON.stringify(value.binding)!==JSON.stringify(expected.binding))throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
@@ -87,6 +88,15 @@ export async function createAgentSettings({persistence,secretCodec,storage={pers
   const result=tail.then(()=>{checkpoint();if(fault)throw fault;return operation();});tail=result.catch(()=>{});return result;
  }
  function match(expected:AgentCredentialRequest):{entry:ServiceState;binding:string}{
+  if(expected.purpose==='model_list'){
+   const entry=state.services.find(s=>s.serviceKey===expected.binding.serviceKey);
+   // Discovery is not inference: it may read any one saved service, but may
+   // never substitute the draft receiver or manufacture an execution witness.
+   const selection=state.mioSelection;
+   const model=selection&&selection.serviceKey===entry?.serviceKey?selection.modelId:'connection-validation';
+   if(!entry||state.revision!==expected.expectedRevision||entry.revision!==expected.binding.entryRevision||state.mioSelectionRevision!==expected.binding.selectionRevision||!equal(connectionFor(entry,model),expected.configuration))throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
+   return {entry,binding:serviceBinding(entry)};
+  }
   const active=execution(state,session);
   if(!active||active.revision!==expected.expectedRevision||!equal(active.binding,expected.binding)||!equal(active.configuration,expected.configuration))throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
   const entry=state.services.find(s=>s.serviceKey===expected.binding.serviceKey);if(!entry)throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
@@ -112,7 +122,7 @@ export async function createAgentSettings({persistence,secretCodec,storage={pers
      const held=session.get(entry.serviceKey);if(held){if(held.binding!==binding)throw agentSettingsError('AGENT_SETTINGS_CONFLICT');apiKey=held.value;}
     }
     credentialCheckpoint();match(expected);
-    return sanitizeAgentCredentialResult({revision:state.mioRevision,configuration:expected.configuration,binding:expected.binding,apiKey},expected);
+    return sanitizeAgentCredentialResult({revision:expected.purpose==='model_list'?state.revision:state.mioRevision,configuration:expected.configuration,binding:expected.binding,apiKey},expected);
    });
   },
   put(input,options={}){

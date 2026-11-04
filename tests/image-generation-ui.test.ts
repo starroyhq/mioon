@@ -308,6 +308,8 @@ function renderer(f: Fixture, options: RenderOptions = {}): Harness {
     if (name === './ComfyImageDetails.tsx') return {ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails'};
     if (name === './comfy-image-settings.ts') return {comfyConnectorAvailabilityDescriptor, createComfyImageSettingsClient: () => ({read: async () => null})};
     if (name === './SettingsNavigationSlot.tsx') return {__esModule: true, default: 'SettingsNavigationSlot'};
+    if (name === './CustomImageServicesSettings.tsx') return {__esModule: true, default: 'CustomImageServicesSettings'};
+    if (name === './generation-image-services.ts') return {createGenerationImageServicesClient: () => ({list: async () => []})};
     if (name === './ImageSettings.tsx') return {__esModule: true, default: 'ImageSettings'};
     if (name === './image-settings.ts') return {createImageSettingsClient: (value: {slot?: string}) => value?.slot === 'custom' ? f.customSettingsClient : f.settingsClient};
     if (name === './icons.tsx') return {default: 'Icon'};
@@ -331,7 +333,7 @@ function renderer(f: Fixture, options: RenderOptions = {}): Harness {
     form(): UiNode { const value = nodes(tree).find(node => node.type === 'form'); assert.ok(value, 'form'); return value; },
     change(idValue: string, value: unknown): void {(harness.find(idValue).props.onChange as EventHandler)({target: {value}}); harness.render();},
     click(idValue: string): void {(harness.find(idValue).props.onClick as EventHandler)(); harness.render();},
-    settings(slot: unknown = 'official'): UiNode | undefined { return nodes(tree).find(node => node.type === 'ImageSettings' && node.props.slot === slot); },
+    settings(slot: unknown = 'official'): UiNode | undefined { return nodes(tree).find(node => slot === 'custom' ? node.type === 'CustomImageServicesSettings' : node.type === 'ImageSettings' && node.props.slot === slot); },
     show(value: boolean): void {visible = value; harness.render();},
     get dirty(): boolean {return dirty;},
     unmount(): void {for (const slot of slots) if (typeof slot.cleanup === 'function') (slot.cleanup as () => void)();},
@@ -810,4 +812,48 @@ test('image edit intent capture rejects foreign, duplicate and unsupported sourc
   const intent = capture(source); assert.ok(Object.isFrozen(intent));
   assert.equal(imageEditIntents.imageEditIntentSource(intent!, { scope: 'scope', projectId, assets: [source, source] }), null);
   assert.equal(imageEditIntents.imageEditIntentSource(intent!, { scope: 'other', projectId, assets: [source] }), null);
+});
+
+import type {CustomImageConnectionV2} from '../packages/contracts/src/generation-image-settings.ts';
+import type {GenerationImageServicesClient} from '../apps/web/src/generation-image-services.ts';
+import {imageReviewIdentity} from '../apps/web/src/image-review.ts';
+const serviceConfig = () => {const {connectionId: _legacy, ...configuration} = customConfig(); return configuration;};
+const servicesFixture = (): CustomImageConnectionV2[] => [201,202].map(n => ({connectionId: id(n), name: 'Same name', configurationRevision: 1, configuration: serviceConfig(), secret: {configured: true, storage: 'session'}}));
+
+test('multiple custom services require explicit identity and use only the dedicated preparation endpoint', async () => {
+  const services = servicesFixture(), requests: unknown[] = [];
+  const serviceClient: GenerationImageServicesClient = {list: async () => services, prepare: async input => {
+    requests.push(structuredClone(input)); const prepared = customReview(input.input as unknown as Obj, {configuration: serviceConfig(), connectionId: input.connectionId, configurationRevision: input.configurationRevision, settingsRevision: input.configurationRevision});
+    f.data.reviews.unshift(prepared); return prepared as unknown as Awaited<ReturnType<GenerationImageServicesClient['prepare']>>;
+  }};
+  const f = fixture({session: {generationServices: serviceClient}}); await ready(f); f.session.selectProvider('openai-compatible');
+  assert.equal(f.session.getState().customSettings, null); assert.equal(imageCanGenerate(f.session.getState()), false);
+  assert.equal(f.session.selectCustomService(services[0]!.connectionId), true); assert.equal(imageCanGenerate(f.session.getState()), true);
+  assert.equal(await f.session.generatePaid(), true); assert.equal(requests.length, 1); assert.equal(f.privateCalls.length, 1);
+  assert.equal(f.privateCalls[0]!.review.connectionId, services[0]!.connectionId); assert.equal(f.calls.some(call => call.operation === 'image.review.prepare'), false);
+  f.session.dispose();
+});
+
+test('same model and revision from another custom service cannot replace a prepared request', async () => {
+  const services = servicesFixture();
+  const serviceClient: GenerationImageServicesClient = {list: async () => services, prepare: async input => customReview(input.input as unknown as Obj,
+    {configuration: serviceConfig(), connectionId: services[1]!.connectionId, configurationRevision: input.configurationRevision, settingsRevision: input.configurationRevision}) as unknown as Awaited<ReturnType<GenerationImageServicesClient['prepare']>>};
+  const f = fixture({session: {generationServices: serviceClient}}); await ready(f); f.session.selectCustomService(services[0]!.connectionId);
+  assert.equal(await f.session.generatePaid(), false); assert.equal(f.privateCalls.length, 0);
+  assert.equal(f.session.getState().pending!.connectionId, services[0]!.connectionId); assert.equal(f.session.getState().pending!.version, 4);
+  const a = customReview(undefined, {configuration: serviceConfig(), connectionId: services[0]!.connectionId, configurationRevision: 1});
+  const b = {...a, connectionId: services[1]!.connectionId}; assert.notEqual(imageReviewIdentity(a), imageReviewIdentity(b));
+  f.session.dispose();
+});
+
+test('switching custom services while preparation is pending cannot authorize the late receipt', async () => {
+  const services = servicesFixture(), held = deferred(); let prepared: Obj | null = null;
+  const serviceClient: GenerationImageServicesClient = {list: async () => services, prepare: async input => {
+    prepared = customReview(input.input as unknown as Obj, {configuration: serviceConfig(), connectionId: input.connectionId, configurationRevision: 1});
+    return await held.promise as unknown as Awaited<ReturnType<GenerationImageServicesClient['prepare']>>;
+  }};
+  const f = fixture({session: {generationServices: serviceClient}}); await ready(f); f.session.selectCustomService(services[0]!.connectionId); const pending = f.session.generatePaid(); await flush();
+  assert.equal(f.session.selectCustomService(services[1]!.connectionId), false, 'A retained generation intent blocks changing its service');
+  f.session.setVisible(false); held.resolve(prepared!); assert.equal(await pending, false); assert.equal(f.privateCalls.length, 0);
+  f.session.setVisible(true); await flush(); assert.equal(f.privateCalls.length, 0); f.session.dispose();
 });

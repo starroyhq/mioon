@@ -54,9 +54,9 @@ export function createWanSdkClient({binding,acquireCredential,fetchImpl=globalTh
     if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});
     let secret:unknown;
     try{secret=await awaitProvider(acquireCredential,context.signal);}
-    catch{if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});throw providerError('VIDEO_CREDENTIAL_UNAVAILABLE','The credential bound to this video task is unavailable. Restore it before continuing.',{beforeDispatch:true});}
+    catch{if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});throw providerError('VIDEO_CREDENTIAL_UNAVAILABLE','The credential bound to this video task is unavailable. Re-entering a key only configures new tasks.',{beforeDispatch:true});}
     if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});
-    if(typeof secret!=='string'||!secret||secret!==secret.trim()||secret.length>8192||/[\u0000-\u0020\u007f]/.test(secret))throw providerError('VIDEO_CREDENTIAL_UNAVAILABLE','The credential bound to this video task is unavailable. Restore it before continuing.',{beforeDispatch:true});
+    if(typeof secret!=='string'||!secret||secret!==secret.trim()||secret.length>8192||/[\u0000-\u0020\u007f]/.test(secret))throw providerError('VIDEO_CREDENTIAL_UNAVAILABLE','The credential bound to this video task is unavailable. Re-entering a key only configures new tasks.',{beforeDispatch:true});
     return secret;
   }
   function sdk(context: ProviderContext) {

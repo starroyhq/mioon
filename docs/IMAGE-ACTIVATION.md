@@ -1,8 +1,20 @@
 # Images activation: settings and reviewed dispatch
 
-## Current custom increment: 2026-10-10
+## Current generation-service settings
 
-The separate [custom Images slot](IMAGE-COMPATIBLE.md) is implemented. Its focused
+Image settings now live in [Settings → Generation services](GENERATION-SERVICES.md).
+Official OpenAI and local ComfyUI each retain one service and their existing v1
+settings/profile/wire contracts. Custom images use a separate v2 collection of
+up to ten services, each with a page-created lowercase UUID and independent key.
+The [custom settings and preparation guide](IMAGE-COMPATIBLE.md) specifies its
+128-KiB update and 640-KiB collection bounds and explicit web/client service
+selection. New UUID-bound reviews freeze the selected service identity and full
+configuration; they do not change the provider request body or one-POST policy.
+The dated acceptance records below do not establish native acceptance of G1a.
+
+## Historical custom increment: 2026-10-10
+
+The original separate custom Images slot was implemented. Its focused
 affected gate passed 584/584 tests (0 failed/skipped), and fresh web/desktop builds
 passed. Final Linux synthetic-network native acceptance and the independent full
 suite passed (2857 total, 2855 passed, 0 failed, 2 skipped).
@@ -81,28 +93,29 @@ both increments. Agent/video settings and credentials cannot enable Images.
 ## Dedicated settings and secret boundary
 
 The settings engine is the backend/desktop utility's owner of the Images
-configuration, revision and session credential for each explicit slot. It does
-not reuse an Agent/video key or discover an environment key. The official slot
-remains fixed; only the custom slot accepts its strictly validated base URL.
+configuration, revision and session credentials. It does not reuse a Mio/video
+key or discover an environment key. The official service remains fixed; the
+custom v2 collection accepts a separately validated base URL for each UUID.
 
 - Web mode supports only explicit session storage. Here a session is one backend
   process lifetime, not one browser tab or login: browser reload does not clear
   the key, but backend shutdown/restart does. The nonsecret settings survive.
 - Electron main supplies a narrow OS codec over the owned utility channel. Only
-  fixed `status`, `encrypt` and `decrypt` messages for the two explicit Images
-  namespaces and exact slot bindings are accepted. Main does not own another
+  fixed `status`, `encrypt` and `decrypt` messages for official Images v1 and
+  custom Images v2 namespaces and their exact bindings are accepted. Old custom
+  v1 settings recognition grants no old-key encryption or decryption capability.
+  Main does not own another
   Images settings engine. The renderer/preload has no decryption API or arbitrary secret proxy.
 - Persistent storage requires the user's explicit choice and available secure
   OS storage. Unavailable storage and Linux `basic_text` fail closed; there is
   no plaintext-file fallback. Session-only storage must be selected explicitly.
-- Inherited desktop limitation: `safeStorage` runs synchronously in main while
-  the utility codec has a default two-second timeout. A slow/denied startup
-  decrypt latches storage unavailable; ordinary GET does not clear it. Explicit
-  restart after OS unlock/permission, or explicit key replacement/removal, is
-  required. A main-process block beyond the 30-second heartbeat lease can shut
-  down the utility. No automatic key fallback or POST follows. Four independent
-  fake-broker checks passed; macOS Keychain/native behavior is still unverified.
-  See [the exact limit](IMAGE-COMPATIBLE.md#inherited-desktop-keychain-limitation).
+- Current macOS storage uses asynchronous `safeStorage` methods; Linux keeps
+  its strong-keyring branch. Neither can turn a failed credential operation into
+  another service's key or an automatic POST. The historical synchronous-codec
+  limitation, default two-second request timeout, 30-second heartbeat lease and
+  four independent fake-broker checks are recorded
+  [separately](IMAGE-COMPATIBLE.md#inherited-desktop-keychain-limitation); those
+  results are not native acceptance of this codec or the v2 settings change.
 - The dedicated private settings envelope contains nonsecret configuration and,
   only for persistent storage, OS-encrypted credential bytes. It uses the existing
   ownership, symlink, bounded-file and atomic-publication protections. Plaintext
@@ -114,19 +127,22 @@ remains fixed; only the custom slot accepts its strictly validated base URL.
   After uncertain saves the UI rereads redacted settings; it does not replay the
   secret update automatically. Replacing a key again requires fresh input.
 
-Every successful settings save advances its revision, including an enable toggle
-or a keep-secret save. A review binds that exact revision. Disabling Images,
-removing/replacing the key, saving settings, or an admitted but unfinished
-settings write invalidates stale dispatch authority. Acquiring a credential is
-not itself authorization to send.
+Official saves advance the official revision. For custom v2, collection revision
+protects an atomic save, while each entry's `configurationRevision` protects its
+review and dispatch. Updating B does not revoke A's review. An entry's enable,
+model, address or key change invalidates its old review; the final fence still
+compares its complete configuration. Model changes at the same address preserve
+the key. Address changes with `secret.action:"keep"` save successfully with no
+key, rather than forwarding the old credential or requiring a preceding remove.
+Acquiring a credential is not itself authorization to send.
 
 ### Private authenticated HTTP settings contract
 
 These routes use the existing loopback Host/Origin checks and local bearer token
 or HttpOnly session-cookie authentication. They are absent from RPC, CLI, MCP and
 model-tool catalogs. Responses use the normal `{ok:true,data}` envelope, no-store
-caching and fixed redacted errors. Settings input must be JSON without compressed
-content and is limited to 16 KiB; credential input is 1–4096 non-whitespace ASCII
+caching and fixed redacted errors. Official settings input must be JSON without
+compressed content and is limited to 16 KiB; credential input is 1–4096 non-whitespace ASCII
 bytes. URLs accept no query arguments.
 
 - `GET /api/images/settings` returns
@@ -143,13 +159,28 @@ bytes. URLs accept no query arguments.
   `reasonCode` is `null` when persistent storage is available, otherwise
   `WEB_SESSION_ONLY`, `OS_SECRET_STORE_UNAVAILABLE` or `LINUX_BASIC_TEXT`.
 
-Schemas: `packages/contracts/src/image-settings.mjs`. Implementation:
-`packages/business/src/images/settings.mjs`, `settings-file.mjs`,
-`apps/server/src/image-http.mjs` and the desktop `image-secret-*` modules.
+Custom `GET /api/images/custom-settings` instead returns
+`{revision,connections,storage,notice}`. Its PUT requires an explicit `create`,
+`put`, `remove` or atomic `batch` action; entries have their own lowercase UUID,
+name and configuration revision. The collection uses 128 KiB for updates and
+640 KiB for its private envelope; the official envelope remains 64 KiB.
+The exact shapes and a keyless example are in
+[custom settings](IMAGE-COMPATIBLE.md#exact-private-settings-contract).
+Strictly valid legacy custom v1 files read as empty v2 plus a reset notice,
+without writing or decrypting old keys. Explicit saving replaces that file;
+unsafe, corrupt and unknown versions are refused. Session-only storage warns
+that exiting the application prevents continued result queries. No historical
+key restoration API is provided.
+
+Schemas: `packages/contracts/src/image-settings.ts` and
+`generation-image-settings.ts`. Implementation:
+`packages/business/src/images/settings.ts`, `settings-file.ts`,
+`custom-settings-v2.ts`, `custom-settings-v2-file.ts`,
+`apps/server/src/image-http.ts` and the desktop `image-secret-*` modules.
 
 ## Shared public review operations
 
-Exactly three review operations join the existing shared business/API/CLI/MCP
+The existing three review operations remain in the shared business/API/CLI/MCP
 catalog. Strict schemas reject extra fields, including approval flags, secrets,
 URLs and execution instructions. The complete nested generation input retains
 its strict field shape and required stable `requestId`, with additive custom
@@ -157,7 +188,7 @@ provider/model values; there is no second, top-level request ID.
 
 | Operation | Exact input | Result and effect |
 | --- | --- | --- |
-| `image.review.prepare` | `{input:<complete official/custom image.generate input>,settingsRevision:<positive safe integer>}` | Retains a pending review of that exact request/configuration; local database write only, no approval, task, provider call or charge |
+| `image.review.prepare` | `{input:<complete official/custom image.generate input>,settingsRevision:<positive safe integer>}` | Retains a pending review; custom resolves exactly one entry or rejects multiple entries; no approval, task, provider call or charge |
 | `image.review.get` | `{projectId,reviewId}` | Existing owned review DTO; read-only, missing/foreign reviews fail closed |
 | `image.review.list` | `{projectId,limit?,cursor?}` | `{projectId,items,nextCursor}`; bounded, read-only project page |
 
@@ -168,6 +199,17 @@ request, project or settings revision under its key conflicts. A request key
 already used by the image mutation journal cannot prepare a new review.
 Preparation and reading do not approve or queue generation.
 
+For explicit custom selection, web callers and `client.generationImages()` use
+`POST /api/projects/{projectId}/images/services`. `image.service.list` takes
+`{projectId}`; `image.service.review.prepare` takes
+`{input:<original custom image.generate input>,connectionId,configurationRevision}`.
+These two operations are outside fixed RPC/CLI/MCP/Mio tool catalogs. The
+old no-ID custom prepare resolves only when the collection has exactly one entry;
+multiple entries produce “有多个自定义图片服务，请在生成面板里选择。” without
+selecting by model, enabled state or order. Explicit CLI/MCP/Mio selection is a
+0.1.x follow-up. See the
+[complete custom example](IMAGE-COMPATIBLE.md#public-request-preparation-private-paid-approval).
+
 The official v1 review DTO has exactly:
 
 ```text
@@ -176,10 +218,12 @@ The official v1 review DTO has exactly:
  approvedAt, rejectedAt, dispatchedAt}
 ```
 
-Custom review DTOs add exactly `configuration`, retaining the full immutable
-custom configuration with its actual `destination`; public DTOs do not add a
-`schemaVersion` field. Backend custom intents are v2 while official intents stay
-v1. See [custom provenance](IMAGE-COMPATIBLE.md#historical-provenance-and-schema-18).
+New UUID-bound custom DTOs add `connectionId`, `configurationRevision` and
+`configuration`, retaining the full immutable configuration and actual
+`destination`. `settingsRevision` equals the selected service's configuration
+revision. Their backend intents are v6; public DTOs have no `schemaVersion`.
+Official v1 and historical custom v2 intents retain their original shapes. See
+[custom provenance](IMAGE-COMPATIBLE.md#historical-provenance-and-schema-18).
 
 `input` is the complete original generation request; `inputHash` is its canonical
 SHA-256. `policy` is exactly
@@ -212,20 +256,22 @@ approved worker activity. Direct new official/custom `image.generate` remains
 blocked without the private review approval; old accepted exact replay never reschedules.
 No effect annotation grants permission to act.
 
-Schemas: `packages/contracts/src/image-reviews.mjs`; authoritative effect map:
-`packages/contracts/src/operation-effects.mjs`.
+Schemas: `packages/contracts/src/image-reviews.ts` and
+`generation-image-services.ts`; authoritative effect map:
+`packages/contracts/src/operation-effects.ts`.
 
 ## Private approval, dispatch and recovery
 
-`POST /api/images/reviews/approve` and `/reject` take exactly
+`POST /api/projects/{projectId}/images/reviews/approve` and the corresponding
+`/reject` path take exactly
 `{projectId,reviewId,expectedRevision}`, with a positive review revision, as
 JSON up to 1024 bytes. Approval returns the existing generation contract's
 original queued task receipt; rejection returns the retained rejected review.
 These are authenticated application actions, not public RPC/CLI/MCP/model tools.
 Authentication is not cryptographic proof of a physical human click: a holder of
 the local token/session must still respect the user's authority and cannot treat
-route access as permission to approve. There is no arbitrary executor, approval
-flag on `image.generate`, or paid Agent authority.
+route access as permission to approve. There is no arbitrary executor or approval
+flag on `image.generate`; permission must cover the user's exact paid action.
 
 Approval reserves the exact request and task together in the existing SQLite
 acceptance transaction. The request's prompt is sent unchanged; configuration,
@@ -238,7 +284,7 @@ that old request before transmission. DNS/TLS setup precedes this final fence;
 the credential and prompt do not.
 
 The official gateway permits only its fixed HTTPS destination; the custom gateway
-permits only the exact reviewed canonical destination from its own slot. All DNS
+permits only the exact reviewed canonical destination from its frozen service UUID. All DNS
 answers must be public, the TLS peer must match the pinned address/hostname, and
 the transport does not
 follow redirects, proxy/environment settings or retries. At most one POST
@@ -264,10 +310,13 @@ semantics are unchanged. Unknown work without a valid local result stays blocked
 ## Migration and validation boundary
 
 The following schema-17 and acceptance record is the historical `4e66a96`
-checkpoint. The current custom increment's schema 18 rebuilds only
+checkpoint. The later historical custom increment's schema 18 rebuilt only
 `image_reviews`, preserving/checking raw rowids and all 16 columns plus retained
 index/trigger SQL. Its separate final gate passed; see
 [custom migration](IMAGE-COMPATIBLE.md#historical-provenance-and-schema-18).
+Neither record establishes the current UUID collection's history 10 upgrade or
+native acceptance; that gate follows S8 history 9 as described in
+[Generation services](GENERATION-SERVICES.md#文件与旧版本).
 
 Schema 17 adds only `image_reviews`, its page index and identity/state/task-binding/
 retention triggers, in one migration transaction. It does not rebuild old tables,

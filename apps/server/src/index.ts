@@ -3,7 +3,7 @@ import {handleUserRulesHttp} from './mio-rules-http.ts';
 import {MAX_WORKSPACE_PREFERENCES_BYTES} from '@mioon/business';
 import {MAX_AGENT_SETTINGS_BYTES} from '@mioon/business/agent/config';
 import type {PublicStorage, SecretCodec, SettingsContextOptions} from '@mioon/business/agent/settings';
-import {sanitizeAgentSettingsError, sanitizeAgentSettingsResult} from '@mioon/business/agent/settings';
+import {AGENT_CREDENTIAL_ACQUIRE, sanitizeAgentSettingsError, sanitizeAgentSettingsResult} from '@mioon/business/agent/settings';
 import type {TaskGateway} from '@mioon/business/agent/task-gateway-v2';
 import {agentTaskFailure} from '@mioon/business/agent/task-runtime-v2';
 import {listAgentTaskTools} from '@mioon/business/agent/task-tools-v2';
@@ -85,6 +85,7 @@ interface ImageSecretCodecPort {
 interface AgentSettingsPort {
   get(options?: SettingsContextOptions & {selfPort?: number | undefined}): Promise<unknown>;
   put(input: unknown, options?: SettingsContextOptions & {selfPort?: number | undefined}): Promise<unknown>;
+  [AGENT_CREDENTIAL_ACQUIRE]?(input: unknown, options?: SettingsContextOptions): Promise<unknown>;
   close(): unknown;
 }
 interface ImageNetworkSeam {lookup?: ReviewedImageGatewayOptions['lookup']; httpsRequest?: ReviewedImageGatewayOptions['httpsRequest']}
@@ -314,6 +315,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
           finally { lease?.release(); }
           return;
         }
+        if (await app.modelListHttp(req, res, url)) return;
         if (url.pathname === '/api/agent/settings') {
           try {
             const context = {selfPort: listeningPort()};

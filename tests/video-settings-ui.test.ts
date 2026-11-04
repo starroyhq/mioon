@@ -2,19 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createVideoSettingsClient, createVideoSettingsSession, newVideoConnection, safeVideoSettings, videoSettingsCanSave, videoSettingsDirty, videoModelPairMap } from '../apps/web/src/video-settings.ts';
 import type { VideoSettingsClient } from '../apps/web/src/video-settings.ts';
-import { VIDEO_TEMPLATES, VIDEO_CATALOG_PROVIDER_IDS, defaultVideoModels, videoConnectionConfigurationSchema } from '../packages/contracts/src/video-providers.ts';
-import type { VideoSettingsSnapshot, VideoSettingsUpdate } from '../packages/contracts/src/video-providers.ts';
+import { VIDEO_TEMPLATES, VIDEO_CATALOG_PROVIDER_IDS, defaultVideoModels } from '../packages/contracts/src/video-providers.ts';
+import {videoConnectionConfigurationV2Schema} from '../packages/contracts/src/generation-video-settings.ts';
+import type {VideoSettingsSnapshotV2, VideoSettingsUpdateV2} from '../packages/contracts/src/generation-video-settings.ts';
 import { validateCatalogs, catalogs } from '../packages/i18n/src/index.ts';
 
-const initial = (): VideoSettingsSnapshot => ({ revision: 0, connections: [], storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' } });
+const initial = (): VideoSettingsSnapshotV2 => ({ revision: 0, connections: [], storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, notice: null });
 function fixture(overrides: Partial<VideoSettingsClient> = {}) {
-  let snapshot = initial(); const writes: VideoSettingsUpdate[] = [], states: unknown[] = []; let reads = 0;
+  let snapshot = initial(); const writes: VideoSettingsUpdateV2[] = [], states: unknown[] = []; let reads = 0;
   const client: VideoSettingsClient = {
     read: async () => { reads++; return overrides.read ? overrides.read() : structuredClone(snapshot); },
     write: async input => {
       writes.push(input); if (overrides.write) return overrides.write(input);
       assert.equal(input.action, 'save'); if (input.action !== 'save') throw Error('Unexpected action');
-      snapshot = { ...snapshot, revision: input.expectedRevision + 1, connections: [{ configuration: structuredClone(input.configuration), revision: 1, credentialRef: '00000000-0000-4000-8000-000000000001', secret: input.secret.action === 'replace' ? { configured: true, storage: input.secret.storage } : { configured: false, storage: 'none' }, credentials: [] }] };
+      snapshot = { ...snapshot, revision: input.expectedRevision + 1, connections: [{ configuration: structuredClone(input.configuration), revision: 1, secret: input.secret.action === 'replace' ? { configured: true, storage: input.secret.storage } : { configured: false, storage: 'none' } }] };
       return structuredClone(snapshot);
     },
   };
@@ -23,16 +24,17 @@ function fixture(overrides: Partial<VideoSettingsClient> = {}) {
 }
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; };
 
-test('settings exclude Runway from new choices and default drafts without removing stored history', async () => {
+test('settings exclude Runway from new choices and reject retired entries at the v2 response boundary', async () => {
   assert.deepEqual(VIDEO_CATALOG_PROVIDER_IDS, ['ark', 'veo', 'minimax', 'vidu', 'kling', 'wan', 'compatible']);
   const current = newVideoConnection('ark');
   const retired = { ...newVideoConnection('ark'), providerId: 'runway' as const, name: 'Previous Runway connection', region: 'global', models: defaultVideoModels('runway') };
-  const row = (configuration: typeof current) => ({ configuration, revision: 1, credentialRef: null, secret: { configured: false, storage: 'none' as const }, credentials: [] });
-  const snapshot: VideoSettingsSnapshot = { ...initial(), revision: 2, connections: [row(retired), row(current)] };
+  const row = (configuration: typeof current) => ({ configuration, revision: 1, secret: { configured: false, storage: 'none' as const } });
+  const snapshot: VideoSettingsSnapshotV2 = { ...initial(), revision: 2, connections: [row(current)] };
   const f = fixture({ read: async () => structuredClone(snapshot) });
   await f.session.load();
   assert.equal(f.session.getState().draft?.id, current.id);
-  assert.equal(f.session.getState().snapshot?.connections.length, 2);
+  assert.equal(f.session.getState().snapshot?.connections.length, 1);
+  assert.throws(() => safeVideoSettings({...snapshot, connections: [retired]}), {code: 'INVALID_RESPONSE'});
   assert.equal(f.session.select(retired.id), false); assert.equal(f.session.add('runway'), false);
   assert.throws(() => newVideoConnection('runway'), { code: 'VIDEO_SETTINGS_VALIDATION' });
   assert.equal(f.writes.length, 0);
@@ -45,7 +47,7 @@ test('video settings transport uses private no-store GET/PUT and rejects secret 
   await client.write({ action: 'save', expectedRevision: 0, configuration: newVideoConnection('wan'), secret: { action: 'replace', value: 'synthetic-video-key', storage: 'session' } });
   assert.deepEqual(calls.map(call => [call.method, call.cache, call.credentials]), [['GET', 'no-store', 'same-origin'], ['PUT', 'no-store', 'same-origin']]);
   assert.throws(() => safeVideoSettings({ ...initial(), apiKey: 'synthetic-video-key' }));
-  const connection = { configuration: newVideoConnection('wan'), revision: 1, credentialRef: null, secret: { configured: true, storage: 'session', value: 'synthetic-video-key' }, credentials: [] };
+  const connection = { configuration: newVideoConnection('wan'), revision: 1, secret: { configured: true, storage: 'session', value: 'synthetic-video-key' } };
   assert.throws(() => safeVideoSettings({ ...initial(), connections: [connection] }));
 });
 
@@ -77,9 +79,9 @@ test('dirty connection switching, hidden saves and template mismatches fail clos
 test('CAS conflicts and ambiguous saves reconcile once, retain drafts and never retry', async () => {
   for (const code of ['VIDEO_SETTINGS_CONFLICT', 'NETWORK']) {
     const f = fixture({ write: async () => { throw Object.assign(Error('never-reflect-raw-error'), { code }); } });
-    await f.session.load(); f.session.add('wan'); f.session.update({ name: 'Retained draft' }); f.session.setStorage('session');
+    await f.session.load(); f.session.add('wan'); f.session.update({ enabled: true }); f.session.setStorage('session');
     assert.equal(await f.session.save('synthetic-video-key'), false);
-    const state = f.session.getState(); assert.equal(state.phase, 'review'); assert.equal(state.draft?.name, 'Retained draft');
+    const state = f.session.getState(); assert.equal(state.phase, 'review'); assert.equal(state.draft?.enabled, true);
     assert.equal(state.recovery, code === 'NETWORK' ? 'unknown' : 'conflict'); assert.equal(videoSettingsCanSave(state), false);
     assert.equal(f.reads, 2); assert.equal(f.writes.length, 1); assert.equal(await f.session.save('no-repeat'), false);
     assert.doesNotMatch(JSON.stringify(f.states), /synthetic-video-key|never-reflect/);
@@ -88,7 +90,7 @@ test('CAS conflicts and ambiguous saves reconcile once, retain drafts and never 
 });
 
 test('duplicate writes and disposed late responses cannot publish', async () => {
-  const held = deferred<VideoSettingsSnapshot>(); const f = fixture({ write: () => held.promise });
+  const held = deferred<VideoSettingsSnapshotV2>(); const f = fixture({ write: () => held.promise });
   await f.session.load(); f.session.add('wan'); const saving = f.session.save();
   assert.equal(await f.session.save(), false); assert.equal(f.session.update({ enabled: true }), false);
   const count = f.states.length; f.session.dispose(); held.resolve({ ...initial(), revision: 1 });
@@ -110,6 +112,6 @@ test('editing every supported Kling and Wan pair keeps bounded configuration gro
       model.durationResolutionMap = videoModelPairMap(all);
       assert.ok(model.durationResolutionMap.length <= 3);
     }
-    assert.equal(videoConnectionConfigurationSchema.safeParse(configuration).success, true);
+    assert.equal(videoConnectionConfigurationV2Schema.safeParse(configuration).success, true);
   }
 });

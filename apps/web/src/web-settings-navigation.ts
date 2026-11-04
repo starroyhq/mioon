@@ -1,6 +1,6 @@
 import { message as msg } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
-import { isSettingsConnectionPage } from './settings-window-state.ts';
+import { isSettingsConnectionPage, normalizeSettingsPage } from './settings-window-state.ts';
 import type { SettingsConnectionPage, SettingsPage } from './settings-window-state.ts';
 import type { SettingsNavigationRegistry } from './settings-navigation-state.ts';
 /** Web presentation state only. No project ownership or native bridge is invented.
@@ -11,6 +11,7 @@ export function createWebSettingsNavigation({ registry, confirm, onChange = () =
   let active = true, opened = false, page: SettingsPage = 'general', selected: SettingsConnectionPage = 'agent', intent = 0;
   let notice: DisplayMessage | '' = '';
   async function navigate(next: SettingsPage, show: boolean) {
+    next = normalizeSettingsPage(next);
     const serial = ++intent;
     if (!active) return false;
     if (page === next && opened === show) return true;
