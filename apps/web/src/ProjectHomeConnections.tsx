@@ -4,17 +4,12 @@ import type { ReactNode } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import Icon from './icons.tsx';
 import LanguageControl from './LanguageControl.tsx';
-import GenerationLiveGateNotice from './GenerationLiveGateNotice.tsx';
 import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
 import { isSettingsConnectionPage, normalizeSettingsPage } from './settings-window-state.ts';
 import type { SettingsConnectionPage, SettingsPage } from './settings-window-state.ts';
-import { SettingsAbout, SettingsModelServices, SettingsShortcuts } from './SettingsExtraPages.tsx';
+import { SettingsAbout, SettingsShortcuts } from './SettingsExtraPages.tsx';
 
 export type HomeConnectionSlot = SettingsConnectionPage;
-const slots: readonly { id: HomeConnectionSlot; label: 'shell.agentLabel' | 'shell.openaiImage' | 'shell.compatibleImage' | 'shell.localComfy' }[] = [
-  { id: 'agent', label: 'shell.agentLabel' }, { id: 'official', label: 'shell.openaiImage' },
-  { id: 'custom', label: 'shell.compatibleImage' }, { id: 'comfy', label: 'shell.localComfy' },
-];
 const categories = ['general', 'workspace', 'video-tools', 'models', 'agent', 'shortcuts', 'about'] as const;
 type Category = typeof categories[number];
 const categoryIconNames: Partial<Record<Category, string>> = { general: 'settings', workspace: 'folder', 'video-tools': 'film', models: 'sparkle', about: 'info' };
@@ -31,20 +26,20 @@ const connectionCategory = (page: SettingsPage) => ['agent', 'models', 'extensio
 
 /** Retained form owners keep their original identity and admission. Fixed
  * native page intentions never grant a category its own connection identity. */
-export default function ProjectHomeConnections({ selected, page: requestedPage = selected, onSelect, onPage, panes, general, connectionsAvailable = true, active = true, workspace, videoTools, videoModels }: {
+export default function ProjectHomeConnections({ selected, page: requestedPage = selected, onSelect, onPage, panes, general, connectionsAvailable = true, active = true, workspace, videoTools, generationServices }: {
   selected: HomeConnectionSlot; page?: SettingsPage; onSelect: (slot: HomeConnectionSlot) => void; onPage?: (page: SettingsPage) => void;
-  panes: Readonly<Record<HomeConnectionSlot, ReactNode>>; general?: ReactNode; connectionsAvailable?: boolean; active?: boolean;
-  workspace?: ReactNode; videoTools?: ReactNode; videoModels?: ReactNode;
+  panes: Readonly<Partial<Record<HomeConnectionSlot, ReactNode>>>; general?: ReactNode; connectionsAvailable?: boolean; active?: boolean;
+  workspace?: ReactNode; videoTools?: ReactNode; generationServices?: ReactNode;
 }) {
   const { t, formatNumber } = useI18n();
   const page = normalizeSettingsPage(requestedPage);
-  const heading = useId(), opened = useRef(new Set<HomeConnectionSlot>());
-  if (isSettingsConnectionPage(page)) opened.current.add(page);
+  const heading = useId(), opened = useRef({ agent: false, generation: false });
   const category = categoryFor(page);
+  if (connectionsAvailable && page === 'agent') opened.current.agent = true;
+  if (connectionsAvailable && category === 'models') opened.current.generation = true;
   const selectPage = (next: SettingsPage) => { next = normalizeSettingsPage(next); if (connectionCategory(next) && !connectionsAvailable) return; if (onPage) onPage(next); else if (isSettingsConnectionPage(next)) onSelect(next); };
   const categoryLabel = (id: Category) => t(id === 'general' ? 'settings.general' : `redesign.settings.${id}`);
   const hints = { general: 'settings.generalHint', workspace: 'redesign.settings.workspaceHint', 'video-tools': 'redesign.settings.videoHint', models: 'redesign.settings.modelsHint', agent: 'redesign.settings.agentHint', shortcuts: 'redesign.settings.shortcutsHint', about: 'redesign.settings.aboutHint' } as const;
-  const modelSlots = category === 'models' ? slots.filter(slot => slot.id !== 'agent') : [];
   return <section className="settings-center" data-testid="settings-center" data-page={page} aria-label={t('settings.title')}>
     <nav className="settings-center-nav" aria-label={t('settings.categories')}>
       <span className="settings-center-nav-label">{t('settings.title')}</span>
@@ -52,7 +47,6 @@ export default function ProjectHomeConnections({ selected, page: requestedPage =
       <p className="settings-local-status"><Icon name="lock" size={12} />{t('redesign.settings.localPreferences')}</p>
     </nav>
     <div className="settings-center-content" aria-labelledby={heading}>
-      <GenerationLiveGateNotice active={active && connectionsAvailable && category === 'models'} pageKey={page} onOpen={() => {if (page !== 'models') selectPage('models'); else if (typeof document !== 'undefined') {const control = document.getElementById('settings-live-generation'); control?.scrollIntoView?.({block: 'nearest'}); control?.focus();}}} />
       <header className="settings-center-heading"><h1 id={heading}>{categoryLabel(category)}</h1><p>{t(hints[category])}</p></header>
       <section hidden={page !== 'general'} inert={page !== 'general'} className="settings-general" data-testid="settings-general">
         <h2 className="settings-section-title">{t('redesign.settings.languageSection')}</h2>
@@ -61,16 +55,14 @@ export default function ProjectHomeConnections({ selected, page: requestedPage =
       </section>
       <section hidden={page !== 'workspace'} inert={page !== 'workspace'}>{workspace}</section>
       <section hidden={page !== 'video-tools'} inert={page !== 'video-tools'}>{videoTools}</section>
-      <section hidden={page !== 'models'} inert={page !== 'models'}>{videoModels}<SettingsModelServices active={active && page === 'models' && connectionsAvailable} onOpenOfficial={()=>selectPage('official')} /></section>
-      {page==='official'&&<Button className="settings-service-back" type="button" variant="ghost" onClick={()=>selectPage('models')}>{t('redesign.settings.models')}</Button>}
       <section hidden={page !== 'shortcuts'} inert={page !== 'shortcuts'}><SettingsShortcuts /></section>
       <section hidden={page !== 'about'} inert={page !== 'about'}><SettingsAbout active={active && page === 'about'} /></section>
-      <nav hidden={!modelSlots.length} inert={!modelSlots.length} className="settings-service-nav" aria-label={t('shell.connectionType')}>
-        {modelSlots.map(slot => <Button key={slot.id} type="button" variant="ghost" disabled={!connectionsAvailable} aria-current={page === slot.id ? 'page' : undefined} data-testid={`settings-service-${slot.id}`} onClick={() => selectPage(slot.id)}>{t(slot.label)}</Button>)}
-      </nav>
-      <div className="settings-connection-panes" hidden={!isSettingsConnectionPage(page)} inert={!isSettingsConnectionPage(page)}>
-        <WorkspaceVisibilityProvider visible={active && isSettingsConnectionPage(page)}>
-          {slots.filter(slot => opened.current.has(slot.id)).map(slot => <React.Fragment key={slot.id}>{panes[slot.id]}</React.Fragment>)}
+      <div className="settings-connection-panes" hidden={!connectionCategory(page)} inert={!connectionCategory(page)}>
+        <WorkspaceVisibilityProvider visible={active && connectionsAvailable && category === 'models'}>
+          {opened.current.generation && generationServices}
+        </WorkspaceVisibilityProvider>
+        <WorkspaceVisibilityProvider visible={active && connectionsAvailable && page === 'agent'}>
+          {opened.current.agent && panes.agent}
         </WorkspaceVisibilityProvider>
       </div>
     </div>

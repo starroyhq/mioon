@@ -333,3 +333,26 @@ test('retired extension intentions normalize on initial native context, later re
   assert.equal(await web.selectPage('extensions'), true); assert.equal(web.page, 'models'); assert.equal(web.selected, 'comfy');
   native.navigation.dispose(); web.dispose();
 });
+
+test('native receive returns its existing admission decision without reviving a rejected or consumed entry', async () => {
+  let allow = false;
+  const f = fixture({initial: {settingsSlot: 'official'}, confirm: async () => allow});
+  f.owners.get('official')!.update(state(2, {dirty: true})); const retained = f.registry.capture();
+  const rejected = f.navigation.receive(context({settingsSlot: 'custom', settingsVersion: 2}));
+  assert.ok(rejected instanceof Promise); assert.equal(await rejected, false); assert.equal(f.navigation.page, 'official');
+  allow = true; assert.equal(await f.navigation.selectPage('custom'), true);
+  assert.equal(f.navigation.receive(context({settingsSlot: 'custom', settingsVersion: 2})), undefined);
+  const repeated = f.navigation.receive(context({settingsSlot: 'custom', settingsVersion: 3}));
+  assert.ok(repeated instanceof Promise); assert.equal(await repeated, true); assert.deepEqual(f.registry.capture(), retained);
+  assert.equal(f.navigation.receive(context({settingsSlot: 'custom', settingsVersion: 3, contextId: uuid(99)})), undefined);
+});
+
+test('native receive promises preserve the old newer-intent and disposed-owner denial', async () => {
+  for (const transition of ['newer', 'disposed'] as const) {
+    const answer = Promise.withResolvers<boolean>(), f = fixture({initial: {settingsSlot: 'official'}, confirm: () => answer.promise});
+    f.owners.get('official')!.update(state(2, {dirty: true})); const retained = f.registry.capture();
+    const earlier = f.navigation.receive(context({settingsSlot: 'custom', settingsVersion: 2})); assert.ok(earlier instanceof Promise);
+    if (transition === 'newer') assert.equal(await f.navigation.receive(context({settingsSlot: 'official', settingsVersion: 3})), true); else f.navigation.dispose();
+    answer.resolve(true); assert.equal(await earlier, false); assert.equal(f.navigation.page, 'official'); assert.deepEqual(f.registry.capture(), retained);
+  }
+});

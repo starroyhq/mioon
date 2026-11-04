@@ -32,3 +32,11 @@
 .video-provider-settings .video-compatible-check-result { margin: 4px 0 0; padding: 8px 10px; border-radius: 6px; font-size: 12px; overflow-wrap: anywhere; }
 .video-provider-settings .video-compatible-check-result.ok { background: var(--wb-success-subtle); color: var(--wb-success); }
 .video-provider-settings .video-compatible-check-result.failed { background: var(--wb-danger-subtle); color: var(--wb-danger); }
+.generation-video-detail { padding: 0; max-width: 720px; }
+.generation-video-detail > fieldset > label { margin: 16px 0 8px; }
+.generation-video-detail .generation-video-models { border-top: 1px solid var(--border); padding-top: 12px; }
+.generation-video-detail .generation-video-models > summary { font-weight: 600; cursor: pointer; }
+.generation-video-detail .video-model-editor header { gap: 4px; }
+.generation-video-detail .video-model-actions { position: relative; margin: 0; }
+.generation-video-detail .video-model-actions summary { cursor: pointer; padding: 3px 8px; list-style: none; }
+.generation-video-detail .video-model-actions > div { position: absolute; z-index: 2; right: 0; display: grid; min-width: 130px; padding: 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); box-shadow: 0 4px 16px #0002; }
