@@ -18,6 +18,8 @@ Explicit true may add only `settingsRevision` to an already-listed official Open
 
 With exactly one custom v2 entry, the legacy profile can expose that entry's configuration revision. With multiple entries, discovery groups complete entries by model, marks those groups disabled and may expose the collection revision as advisory metadata. That value does not identify a service or authorize preparation. Two services may share a model and address; callers must not infer a selected UUID from this grouping. Settings owners with pending or failed writes can reject a read rather than supply stale authorization.
 
+The response allows up to ten distinct custom model groups beside the three singleton providers (Mock, official Images and Comfy). Multiple custom groups must all be disabled and share the same optional advisory revision. Duplicate models, additional singleton entries, an eleventh custom group, or an enabled ambiguous group are invalid. Older response decoders enforcing one row per provider need updating for this metadata output; the request and fixed tool input schema are unchanged. Status labels remain bounded to 120 UTF-16 units without splitting a valid surrogate pair; the full service name stays unchanged in its settings.
+
 The client binds revision-bearing responses to an explicitly opted-in request. Unknown fields, invalid values and revisions on Mock remain invalid. No destination, credentials, secret storage metadata or settings object is exposed. No acquisition/decryption, network check, workflow inspection, task creation, database/file write or preparation occurs.
 
 ## Review flow and limits

@@ -100,7 +100,9 @@ export function listImageProfiles({settings,customSettings,customSettingsV2,comf
    const models=new Set<string>();
    for(const item of state.connections){if(!isCompleteCustomImageConfigurationV2(item.configuration)||models.has(item.configuration.model))continue;models.add(item.configuration.model);
     const enabled=!ambiguous&&item.configuration.enabled&&item.secret.configured;
-    value.items.push(withRevision({providerId:'openai-compatible',model:item.configuration.model,name:ambiguous?'有多个自定义图片服务，请在生成面板里选择。':enabled?item.name+' · 需逐次确认':item.name+' · 未启用',enabled,isMock:false,evidence:'offline-tested-not-live',options:item.configuration.options},{revision:ambiguous?state.revision:item.configurationRevision}));value.liveEnabled||=enabled;
+    const suffix=enabled?' · 需逐次确认':' · 未启用';
+    const label=item.name.slice(0,120-suffix.length).replace(/[\uD800-\uDBFF]$/u,'')+suffix;
+    value.items.push(withRevision({providerId:'openai-compatible',model:item.configuration.model,name:ambiguous?'有多个自定义图片服务，请在生成面板里选择。':label,enabled,isMock:false,evidence:'offline-tested-not-live',options:item.configuration.options},{revision:ambiguous?state.revision:item.configurationRevision}));value.liveEnabled||=enabled;
    }
   }
   try{const state=comfySettings?.[COMFY_SETTINGS_READ_CURRENT]();if(state&&isCompleteComfyImageConfiguration(state.configuration)){const enabled=Boolean(comfyConnector&&state.configuration.enabled&&state.readiness.checked);value.items.push(withRevision({providerId:'comfy-local',model:state.configuration.model,name:enabled?'ComfyUI 本机 · 逐次确认':'ComfyUI 本机 · 尚未检查',enabled,isMock:false,evidence:'offline-tested-not-live',options:state.configuration.options},state));value.liveEnabled||=enabled;}}catch{/* settings absence is not readiness */}

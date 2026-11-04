@@ -7,7 +7,8 @@ import {randomUUID, createCipheriv, createDecipheriv} from 'node:crypto';
 
 const APP_ID = 'app.starroy.mioon.dev';
 const SENTINEL = 'synthetic-async-vault-only';
-const imagePlaintexts = ['official', 'custom'].map(profile => JSON.stringify({auditProfile: profile, value: SENTINEL}));
+const imageNamespaces = {official: 'mioon.images.openai.v1', custom: 'mioon.images.openai-compatible.v2'};
+const imagePlaintexts = (['official', 'custom'] as const).map(profile => JSON.stringify({namespace: imageNamespaces[profile], auditProfile: profile, value: SENTINEL}));
 const turn = (): Promise<void> => new Promise(resolve => { setImmediate(resolve); });
 function deferred<T = unknown>(): Pending<T> {
   let resolve!: (value?: T | PromiseLike<T>) => void;
@@ -38,7 +39,7 @@ const data = (source: string): string => 'data:text/javascript;base64,' + Buffer
 // their type-only imports must never become runtime imports. Native audition
 // schemas are a counted rejecting double: this secrets-only fixture supplies no
 // audio configuration and must never execute an audio admission or proof.
-// The Images validator is explicitly a two-string test double: these tests do
+// The Images validators each accept one namespace-specific test string: these tests do
 // NOT claim Zod/profile schema or filesystem acceptance. Existing suites cover it.
 // Download parsing is outside this fixture. Its exact contract double counts
 // calls as well as throwing, because the production download guard catches errors.
@@ -71,8 +72,11 @@ const overrides = new Map([
   ['../../../packages/contracts/src/project-file.ts', projectAddressParserUrl],
   ['@mioon/contracts/native-audio-preview', nativeAudioContractsUrl],
   ['../../../packages/contracts/src/workspace-native.ts', workspaceNativeContractsUrl],
-  ['@mioon/contracts', data('export {AGENT_PROTOCOLS} from ' + JSON.stringify(new URL('packages/contracts/src/agent-protocol.ts', root).href) + '; export const IMAGE_SETTINGS_LIMITS = {ciphertextCharacters: 49152};')],
-  ['@mioon/business/images/settings', data('const accepted = ' + JSON.stringify(imagePlaintexts) + '; export function validateImageSecretPlaintext(value) { if (!accepted.includes(value)) throw Object.assign(new Error("Synthetic Images validation"), {code: "IMAGE_SETTINGS_VALIDATION"}); } export const imageSettingsError = code => Object.assign(new Error("Synthetic Images error"), {code});')],
+  ['@mioon/contracts', data('export {AGENT_PROTOCOLS} from ' + JSON.stringify(new URL('packages/contracts/src/agent-protocol.ts', root).href) + '; export const IMAGE_SETTINGS_LIMITS = {updateBytes: 16384, ciphertextCharacters: 49152};')],
+  ['../../../packages/contracts/src/image-settings.ts', data('export const IMAGE_SETTINGS_NAMESPACE = ' + JSON.stringify(imageNamespaces.official) + ';')],
+  ['../../../packages/contracts/src/generation-image-settings.ts', data('export const CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE = ' + JSON.stringify(imageNamespaces.custom) + ';')],
+  ['@mioon/business/images/settings', data('const accepted = ' + JSON.stringify(imagePlaintexts[0]) + '; export function validateImageSecretPlaintext(value) { if (value !== accepted) throw Object.assign(new Error("Synthetic Images validation"), {code: "IMAGE_SETTINGS_VALIDATION"}); } export const imageSettingsError = code => Object.assign(new Error("Synthetic Images error"), {code});')],
+  ['@mioon/business/images/custom-settings-v2', data('const accepted = ' + JSON.stringify(imagePlaintexts[1]) + '; export function validateCustomImageSecretPlaintextV2(value) { if (value !== accepted) throw Object.assign(new Error("Synthetic Images validation"), {code: "IMAGE_SETTINGS_VALIDATION"}); }')],
   // Video crypto is outside this Agent/Images vault fixture; its fixed namespace
   // has an independent real-code suite. Importing the new broker grants no crypto.
   ['../../../packages/business/src/video/settings.ts', data('export function validateVideoSecretPlaintext() { throw Object.assign(new Error("Video credentials are outside this fixture"), {code: "VIDEO_SETTINGS_VALIDATION"}); }')],

@@ -185,6 +185,8 @@ function componentHarness(filename: string, resolve: (name:string)=>unknown, pro
     if (name === './i18n/I18nProvider.tsx') return { useI18n: () => localeDisplay(locale) };
     if (name === '../../../packages/i18n/src/index.ts') return i18n; if (name === './creation-i18n.ts') return creationI18n;
     if (name === './image-edit-intent.ts') return imageEditIntent;
+    if (name === './CustomImageServicesSettings.tsx') return {__esModule: true, default: 'CustomImageServicesSettings'};
+    if (name === './generation-image-services.ts') return {createGenerationImageServicesClient: () => ({list: async () => []})};
     if (name === './editor-settings-scope.ts') {
       const settingsModule = { exports: {} };
       const code = transformSync(readFileSync(new URL('../apps/web/src/editor-settings-scope.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code;
