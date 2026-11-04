@@ -39,4 +39,4 @@
 .generation-video-detail .video-model-editor header { gap: 4px; }
 .generation-video-detail .video-model-actions { position: relative; margin: 0; }
 .generation-video-detail .video-model-actions summary { cursor: pointer; padding: 3px 8px; list-style: none; }
-.generation-video-detail .video-model-actions > div { position: absolute; z-index: 2; right: 0; display: grid; min-width: 130px; padding: 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); box-shadow: 0 4px 16px #0002; }
+.generation-video-detail .video-model-actions > div { position: absolute; z-index: 2; right: 0; display: grid; min-width: 130px; padding: 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); box-shadow: var(--wb-shadow); }
