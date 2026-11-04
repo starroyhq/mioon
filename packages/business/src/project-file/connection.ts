@@ -68,6 +68,32 @@ export interface OpenProjectConnectionOptions {
   readonly checkCopy?: ProjectCopyCheck;
 }
 
+/** Internal S5 reader capability. The caller validates both closed sources
+ * before this call and performs all reads in one transaction. Registering
+ * these native handles also blocks fs-based preflights during backup awaits:
+ * closing an unrelated descriptor would otherwise release POSIX locks. */
+export function openClosedProjectSnapshotConnection(options:{readonly projectFile:string;readonly historyFile?:string}):{readonly db:DatabaseSync;close():void} {
+ const inputs:readonly (readonly [string,DatabaseKind])[]=[
+  [path.resolve(options.projectFile),'project'],...(options.historyFile?[[path.resolve(options.historyFile),'history'] as const]:[]),
+ ];
+ const files:HeldFile[]=inputs.map(([file,kind])=>{
+  const info=lstatSync(file,{bigint:true}),key=identityOf(info,file);
+  if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1n)throw invalid(kind,'not-a-regular-file');
+  if(projectFileOwnerKind(key)!==undefined)throw projectFileError('PROJECT_LOCKED',describe(kind,'locked'));
+  return [key,kind];
+ });
+ if(new Set(files.map(([key])=>key)).size!==files.length)throw invalid('history','project-mismatch');
+ const db=new DatabaseSync(inputs[0]![0],{...DATABASE_OPTIONS,readOnly:true});
+ try{
+  db.exec('PRAGMA trusted_schema=OFF; PRAGMA query_only=ON; PRAGMA cell_size_check=ON');
+  if(inputs[1])db.prepare('ATTACH DATABASE ? AS history').run(pathToFileURL(inputs[1][0]).href+'?mode=ro');
+  for(let i=0;i<inputs.length;i++)if(identityOf(lstatSync(inputs[i]![0],{bigint:true}),inputs[i]![0])!==files[i]![0])throw invalid(inputs[i]![1],'unusable');
+  registerProjectFiles(db,files);
+  let closed=false;
+  return {db,close():void{if(closed)return;closed=true;try{db.close();}finally{releaseProjectFiles(db,files);}}};
+ }catch(error){db.close();throw error;}
+}
+
 /** One connection with the local records as `main` and the project file and
  * the cache attached, all three locked until close(). */
 export interface ProjectConnection extends Omit<ProjectStoreContract<DatabaseSync>, 'root'> {

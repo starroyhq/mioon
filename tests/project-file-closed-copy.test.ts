@@ -1,0 +1,142 @@
+import test from 'node:test';
+import type {TestContext} from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import fs from 'node:fs';
+import {chmodSync,existsSync,linkSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,rmSync,writeFileSync} from 'node:fs';
+import path from 'node:path';
+import {tmpdir} from 'node:os';
+import {syncBuiltinESMExports} from 'node:module';
+import {DatabaseSync} from 'node:sqlite';
+import {execFileSync,spawn} from 'node:child_process';
+import {once} from 'node:events';
+import {captureClosedProjectSnapshot} from '../packages/business/src/project-file/closed-copy.ts';
+import {createProjectFile,inspectProjectFileReadOnly} from '../packages/business/src/project-file/connection.ts';
+import {openProjectStore} from '../packages/business/src/project-file/store.ts';
+import {openProjectBackup,inspectCopiedProjectFile,publishProjectCopyFile} from '../packages/business/src/project-file/backup.ts';
+import {copyProjectToNewFile} from '../packages/business/src/project-file/copy.ts';
+import {buildPreviousHistoryDatabase} from './fixtures/kernel-history-previous-schema.ts';
+import {HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+
+const code=(expected:string)=>(error:unknown):boolean=>Boolean(error&&typeof error==='object'&&'code' in error&&error.code===expected);
+function fixture(t:TestContext){
+ const root=mkdtempSync(path.join(tmpdir(),'mioon-s5-closed-')),projectDir=path.join(root,'project');mkdirSync(projectDir,{mode:0o700});
+ const projectFile=path.join(projectDir,'film.mioon'),projectId=createProjectFile(projectFile),location={localDir:path.join(root,'records'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'tmp')};
+ const store=openProjectStore({projectFile,locate:()=>location});store.put('projects',{id:projectId,name:'source',revision:1,note:projectId});store.close();
+ const history=path.join(location.localDir,'history.db'),directory=path.join(root,'snapshot');
+ t.after(()=>{chmodSync(projectDir,0o700);chmodSync(projectFile,0o600);rmSync(root,{recursive:true,force:true});});
+ const options={projectFile,historyFile:()=>history,directory};
+ return{root,projectDir,projectFile,projectId,location,history,directory,options,open:()=>openProjectStore({projectFile,locate:()=>location})};
+}
+const evidence=(file:string)=>({bytes:readFileSync(file),stat:fs.statSync(file,{bigint:true})});
+const unchanged=(file:string,before:ReturnType<typeof evidence>)=>{
+ assert.deepEqual(readFileSync(file),before.bytes);const current=fs.statSync(file,{bigint:true});
+ for(const key of ['dev','ino','size','mtimeNs','ctimeNs'] as const)assert.equal(current[key],before.stat[key],key);
+};
+
+test('a read-only closed project and mismatched history are snapshotted together without source writes',async t=>{
+ const f=fixture(t),history=new DatabaseSync(f.history);history.exec("UPDATE history_state SET seenContentSequence=seenContentSequence+9,seenContentToken='ffffffffffffffffffffffffffffffff'");history.close();
+ chmodSync(f.projectFile,0o444);chmodSync(f.projectDir,0o555);
+ const projectBefore=evidence(f.projectFile),historyBefore=evidence(f.history),entries=readdirSync(f.projectDir);
+ const captured=await captureClosedProjectSnapshot(f.options);
+ assert.equal(captured.identity.projectId,f.projectId);assert.equal(captured.identity.name,'source');assert.equal(captured.historyFile,path.join(f.directory,'history.source.sqlite'));
+ const reader=openProjectBackup(captured.projectFile);assert.deepEqual(reader.identity,captured.identity);reader.close();
+ const old=new DatabaseSync(captured.historyFile!,{readOnly:true});
+ try{assert.equal(old.prepare('SELECT seenContentToken FROM history_state').get()!.seenContentToken,'f'.repeat(32));assert.equal(old.prepare('SELECT version FROM schema_version').get()!.version,HISTORY_SCHEMA_VERSION);}
+ finally{old.close();}
+ unchanged(f.projectFile,projectBefore);unchanged(f.history,historyBefore);assert.deepEqual(readdirSync(f.projectDir),entries);assert.equal(existsSync(f.projectFile+'-journal'),false);
+});
+
+test('no history means no source records or shadow cache are created',async t=>{
+ const f=fixture(t);rmSync(f.location.localDir,{recursive:true});rmSync(f.location.cacheDir,{recursive:true});
+ const before=evidence(f.projectFile),captured=await captureClosedProjectSnapshot(f.options);
+ assert.equal(captured.historyFile,null);assert.equal(existsSync(f.location.localDir),false);assert.equal(existsSync(f.location.cacheDir),false);
+ unchanged(f.projectFile,before);assert.deepEqual(readdirSync(f.directory),['project.source.sqlite']);
+});
+
+for(const version of [2,3,4,5,6,7] as const)test(`exact old history ${version} is copied without migration or requiring matching seen`,async t=>{
+ const f=fixture(t);rmSync(f.history);const db=new DatabaseSync(f.history);
+ try{db.exec('BEGIN');buildPreviousHistoryDatabase(db,version);db.prepare('INSERT INTO history_state VALUES(1,?,91)').run(f.projectId);db.prepare("INSERT INTO idempotency VALUES('kept','request','digest','resource')").run();db.exec('COMMIT');}finally{db.close();}
+ const before=evidence(f.history),source=evidence(f.projectFile),captured=await captureClosedProjectSnapshot(f.options);
+ const copied=new DatabaseSync(captured.historyFile!,{readOnly:true});
+ try{assert.equal(copied.prepare('SELECT version FROM schema_version').get()!.version,version);assert.equal(copied.prepare('SELECT seenContentSequence FROM history_state').get()!.seenContentSequence,91);assert.equal(copied.prepare("SELECT resourceId FROM idempotency WHERE scope='kept'").get()!.resourceId,'resource');}
+ finally{copied.close();}
+ unchanged(f.history,before);unchanged(f.projectFile,source);
+});
+
+for(const damage of ['unknown-object','wrong-project','future','old-unknown','malformed','switch-pending'] as const)test(`unreadable history ${damage} refuses the entire capture without staging`,async t=>{
+ const f=fixture(t),db=new DatabaseSync(f.history);
+ try{
+  if(damage==='unknown-object')db.exec('CREATE TABLE unreviewed_extra(value)');
+  if(damage==='wrong-project'){db.exec('DROP TRIGGER history_state_guard_identity');db.prepare('UPDATE history_state SET projectId=?').run(randomUUID());}
+  if(damage==='future'||damage==='old-unknown')db.prepare('UPDATE schema_version SET version=?').run(damage==='future'?HISTORY_SCHEMA_VERSION+1:1);
+ }finally{db.close();}
+ if(damage==='malformed')writeFileSync(f.history,'not sqlite');
+ if(damage==='switch-pending')writeFileSync(path.join(f.location.localDir,'history-switch-active.json'),'{}');
+ const before=evidence(f.history),source=evidence(f.projectFile);
+ await assert.rejects(captureClosedProjectSnapshot(f.options),code(damage==='future'?'PROJECT_FORMAT_NEWER':damage==='switch-pending'?'PROJECT_HISTORY_SWITCH_PENDING':'PROJECT_INVALID'));
+ unchanged(f.history,before);unchanged(f.projectFile,source);assert.equal(existsSync(f.directory),false);
+});
+
+test('held project or history is refused before opening fs descriptors',async t=>{
+ const f=fixture(t),store=f.open(),open=fs.openSync;let attempts=0;
+ t.mock.method(fs,'openSync',(...args:Parameters<typeof fs.openSync>)=>{if([f.projectFile,f.history].includes(String(args[0])))attempts++;return open(...args);});syncBuiltinESMExports();
+ try{await assert.rejects(captureClosedProjectSnapshot(f.options),code('PROJECT_LOCKED'));assert.equal(attempts,0);}
+ finally{t.mock.restoreAll();syncBuiltinESMExports();store.close();}
+ assert.equal(existsSync(f.directory),false);
+});
+
+test('backup awaits retain held-file admission and real cross-process read locks; exceptional cleanup releases them',async t=>{
+ const f=fixture(t),before=evidence(f.projectFile),historyBefore=evidence(f.history),open=fs.openSync,alias=path.join(f.root,'alias.mioon'),sentinel=Error('stop after lock proof');
+ let hit=false,attempts=0;
+ const onBoundary=async(phase:string)=>{
+  if(phase!=='project-copied')return;
+  hit=true;linkSync(f.projectFile,alias);
+  t.mock.method(fs,'openSync',(...params:Parameters<typeof fs.openSync>)=>{if([f.projectFile,f.history,alias].includes(String(params[0])))attempts++;return open(...params);});syncBuiltinESMExports();
+  assert.throws(()=>f.open(),code('PROJECT_LOCKED'));assert.throws(()=>inspectProjectFileReadOnly(alias),code('PROJECT_LOCKED'));
+  assert.throws(()=>inspectCopiedProjectFile(alias),code('PROJECT_BACKUP_INVALID'));assert.equal(attempts,0);
+  for(const file of [f.projectFile,f.history]){
+   const program=`import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync(${JSON.stringify(file)},{timeout:0});try{db.exec('BEGIN EXCLUSIVE');throw Error('lock lost');}catch(e){if(e.errcode!==5)throw e;}finally{db.close();}`;
+   execFileSync(process.execPath,['--input-type=module','-e',program],{stdio:'pipe'});
+  }
+  t.mock.restoreAll();syncBuiltinESMExports();rmSync(alias);await Promise.resolve();throw sentinel;
+ };
+ try{await assert.rejects(captureClosedProjectSnapshot({...f.options,onBoundary}),error=>error===sentinel);assert.equal(hit,true);}
+ finally{t.mock.restoreAll();syncBuiltinESMExports();rmSync(alias,{force:true});}
+ assert.deepEqual(readFileSync(f.projectFile),before.bytes);unchanged(f.history,historyBefore);assert.deepEqual(readdirSync(f.directory),[]);
+ const reopened=f.open();assert.equal(reopened.projectId,f.projectId);reopened.close();
+});
+
+test('a real hot project journal is refused without recovering source or companion bytes',async t=>{
+ const f=fixture(t),program=`import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync(${JSON.stringify(f.projectFile)});db.exec('PRAGMA cache_size=1; PRAGMA cache_spill=ON;BEGIN IMMEDIATE');db.prepare("UPDATE projects SET data=json_set(data,'$.note',?)").run('x'.repeat(2097152));process.kill(process.pid,'SIGKILL');`;
+ assert.throws(()=>execFileSync(process.execPath,['--input-type=module','-e',program],{stdio:'ignore'}),error=>Boolean(error&&typeof error==='object'&&'signal' in error&&error.signal==='SIGKILL'));
+ const journal=f.projectFile+'-journal';assert.equal(readFileSync(journal).subarray(0,8).toString('hex'),'d9d505f920a163d7');
+ const project=evidence(f.projectFile),hot=evidence(journal),history=evidence(f.history);
+ await assert.rejects(captureClosedProjectSnapshot(f.options),code('PROJECT_INVALID'));unchanged(f.projectFile,project);unchanged(journal,hot);unchanged(f.history,history);assert.equal(existsSync(f.directory),false);
+});
+
+test('S5 target identity, final reference directory, name and process cleanup do not alter the source or V2 defaults',async t=>{
+ const f=fixture(t),store=f.open(),assetId=randomUUID(),sha256='a'.repeat(64);
+ store.put('assets',{id:assetId,projectId:f.projectId,reference:{pathForm:'relative',path:'missing.png',volume:null,sizeBytes:1,mtimeMs:0,sampledSha256:sha256,fullSha256:sha256},referenceRevision:1,sha256,sizeBytes:1});
+ store.db.prepare("INSERT INTO project.agent_task_target_revisions_v2 VALUES(?,'job',?,9)").run(f.projectId,randomUUID());store.close();
+ const before=evidence(f.projectFile),captured=await captureClosedProjectSnapshot(f.options),reader=openProjectBackup(captured.projectFile),stage=path.join(f.root,'out');mkdirSync(stage,{mode:0o755});
+ const projectId=randomUUID(),token='b'.repeat(32),finalDir=path.join(f.root,'final');mkdirSync(finalDir,{mode:0o755});
+ const result=await copyProjectToNewFile(reader,{projectFile:path.join(stage,'staged.mioon'),sourceProjectDir:f.projectDir,targetProjectDir:finalDir,projectId,contentToken:token,projectName:'new name',clearProcessRevisions:true,publish:publishProjectCopyFile});reader.close();
+ assert.equal(result.contentToken,token);assert.equal(result.contentSequence,captured.identity.contentSequence+1);
+ const db=new DatabaseSync(result.projectFile,{readOnly:true});try{
+  const project=JSON.parse(String(db.prepare('SELECT data FROM projects').get()!.data));assert.equal(project.name,'new name');assert.equal(project.note,f.projectId);assert.equal(project.revision,1);
+  assert.equal(db.prepare("SELECT count(*) n FROM agent_task_target_revisions_v2 WHERE kind='job'").get()!.n,0);
+  const data=JSON.parse(String(db.prepare('SELECT data FROM assets').get()!.data));assert.equal(data.projectId,projectId);assert.equal(path.resolve(finalDir,data.reference.path),path.join(f.projectDir,'missing.png'));
+ }finally{db.close();}
+ unchanged(f.projectFile,before);
+});
+
+test('SIGKILL during the read transaction leaves source unchanged and releases both locks',async t=>{
+ const f=fixture(t),source=evidence(f.projectFile),history=evidence(f.history),marker=path.join(f.root,'locked');
+ const module=new URL('../packages/business/src/project-file/closed-copy.ts',import.meta.url).href;
+ const program=`import{writeFileSync}from'node:fs';const{captureClosedProjectSnapshot}=await import(${JSON.stringify(module)});await captureClosedProjectSnapshot({projectFile:${JSON.stringify(f.projectFile)},historyFile:()=>${JSON.stringify(f.history)},directory:${JSON.stringify(f.directory)},onBoundary:phase=>{if(phase==='project-copied'){writeFileSync(${JSON.stringify(marker)},'ready');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0);}}});`;
+ const child=spawn(process.execPath,['--input-type=module','-e',program],{stdio:['ignore','ignore','inherit']}),closed=once(child,'close');t.after(()=>{if(child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');});
+ const deadline=Date.now()+15000;while(!existsSync(marker)){assert.equal(child.exitCode,null);assert.equal(child.signalCode,null);assert.ok(Date.now()<deadline);await new Promise(resolve=>setTimeout(resolve,5));}
+ child.kill('SIGKILL');const [status,signal]=await closed;assert.equal(status,null);assert.equal(signal,'SIGKILL');unchanged(f.projectFile,source);unchanged(f.history,history);
+ const reopened=f.open();assert.equal(reopened.projectId,f.projectId);reopened.close();
+});
