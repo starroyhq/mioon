@@ -6,10 +6,9 @@ import type {SQLInputValue} from 'node:sqlite';
 import {createPrivateTemporaryDirectory} from '@mioon/contracts/private-storage';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {isProjectId, PROJECT_DATABASE_NAMES} from '../../../contracts/src/project-file.ts';
-import {referencePathForRealFile, resolveReferencePath} from '../media-reference/paths.ts';
-import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
+import {rewriteProjectCopyRow,relocateProjectCopyReference} from './copy-values.ts';
 import {
-  isProjectBackupReader, openProjectBackup, PROJECT_BACKUP_APPLICATION_ID, publishCopiedFile, readCopiedProjectIdentity, syncCopiedFile,
+  createProjectCopyStagingDirectory, isProjectBackupReader, openProjectBackup, PROJECT_BACKUP_APPLICATION_ID, publishCopiedFile, readCopiedProjectIdentity, syncCopiedFile,
 } from './backup.ts';
 import type {ProjectBackupIdentity, ProjectBackupReader} from './backup.ts';
 import {projectFileError} from './errors.ts';
@@ -22,6 +21,13 @@ export interface CopyProjectOptions {
   readonly projectFile: string;
   /** Trusted source directory recorded when the backup was made. */
   readonly sourceProjectDir: string;
+  /** S5 stage references are relative to the final public folder. */
+  readonly targetProjectDir?: string;
+  readonly projectName?: string;
+  /** Only isolated S5 targets clear local-process revision evidence. */
+  readonly clearProcessRevisions?: true;
+  /** Trusted S5 publication; omitted V2 callers retain their existing contract. */
+  readonly publish?: (temporary:string,destination:string)=>void;
   /** Trusted recovery-intent ID, or a fresh UUID when S5 copies directly. */
   readonly projectId?: string;
   /** Durable restore intents allocate this once; direct copies allocate fresh. */
@@ -32,38 +38,6 @@ export interface CopyProjectOptions {
 export interface ProjectCopyResult extends ProjectBackupIdentity {readonly projectFile: string}
 type Row = Record<string, SQLInputValue>;
 const failed = (reason: string): AppError => new AppError('PROJECT_BACKUP_COPY_FAILED', '无法安全地复制项目内容', 409, {reason});
-
-/** Only project ownership fields are rewritten; entity IDs and provenance
- * IDs remain real. A string equal to an ID in a user's note stays untouched. */
-function rewriteJson(value: unknown, oldId: string, newId: string, projectRow: boolean): unknown {
-  if (Array.isArray(value)) return value.map(item => rewriteJson(item, oldId, newId, false));
-  if (value === null || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
-    (key === 'projectId' || projectRow && key === 'id') && item === oldId ? newId : rewriteJson(item, oldId, newId, false)]));
-}
-
-function rewriteRow(table: string, input: Row, oldId: string, newId: string): Row {
-  const row = {...input};
-  if (row.projectId === oldId) row.projectId = newId;
-  if (table === 'projects' && row.id === oldId) row.id = newId;
-  if (table === 'agent_task_target_revisions_v2' && (row.kind === 'project' || row.kind === 'timeline') && row.targetId === oldId) row.targetId = newId;
-  if (typeof row.data === 'string') row.data = JSON.stringify(rewriteJson(JSON.parse(row.data), oldId, newId, table === 'projects'));
-  return row;
-}
-
-/** Keep reference assets at the same real location after a copy. No media is
- * read merely to rewrite a reference; missing assets stay missing. */
-function relocateReference(data: Record<string, unknown>, from: string, to: string): void {
-  const parsed = mediaReferenceSchema.safeParse(data.reference);
-  if (!parsed.success || parsed.data.pathForm === 'absolute') return;
-  const file = resolveReferencePath(from, parsed.data);
-  if (file === null) throw failed('media-reference');
-  // A missing referenced file is still a valid reference. Use volume metadata
-  // of its directories when available, otherwise an absolute path is safe.
-  let sameVolume = false;
-  try { sameVolume = lstatSync(from).dev === lstatSync(to).dev; } catch {}
-  data.reference = {...parsed.data, ...referencePathForRealFile(to, file, sameVolume)};
-}
 
 /** Creates the immutable owner-change copy in isolation. Existing target
  * content is never rewritten and source triggers/metadata are never changed.
@@ -82,7 +56,7 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
   if (lstatSync(target, {throwIfNoEntry: false})) throw projectFileError('PROJECT_FILE_EXISTS', {database: 'project', reason: 'exists'});
   // This validates ordinary portable project-folder ancestors (0755 is fine)
   // before creating our own private staging directory below the target.
-  const temporaryDir = createPrivateTemporaryDirectory(parent, 'project-copy-'), temporary = path.join(temporaryDir, 'project.mioon');
+  const temporaryDir = (options.publish ? createProjectCopyStagingDirectory : createPrivateTemporaryDirectory)(parent, 'project-copy-'), temporary = path.join(temporaryDir, 'project.mioon');
   try {
     closeSync(openSync(temporary, 'wx', 0o600));
     await backup(source.db, temporary, {source: live ? PROJECT_DATABASE_NAMES.project : 'main'});
@@ -95,8 +69,15 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
       if(options.expectedSource && (actual.projectId!==options.expectedSource.projectId || actual.contentSequence!==options.expectedSource.contentSequence || actual.contentToken!==options.expectedSource.contentToken))throw failed('source-changed');
       const triggers = db.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' ORDER BY rowid").all();
       const rows = new Map(CONTENT_TABLES.map(table => [table, db.prepare(`SELECT * FROM "${table}"`).all() as Row[]]));
-      const sequence = db.prepare('SELECT contentSequence FROM project_file').get()?.contentSequence;
-      if (typeof sequence !== 'number') throw failed('metadata');
+      let sequence = db.prepare('SELECT contentSequence FROM project_file').get()?.contentSequence;
+      if (typeof sequence !== 'number' || !Number.isSafeInteger(sequence)) throw failed('metadata');
+      if(options.clearProcessRevisions){
+        const kept=(rows.get('agent_task_target_revisions_v2')??[]).filter(row=>!['job','export','image_task','frame_task'].includes(String(row.kind)));
+        if(kept.length!==(rows.get('agent_task_target_revisions_v2')??[]).length){
+          if(sequence>=Number.MAX_SAFE_INTEGER)throw failed('metadata');
+          sequence++;rows.set('agent_task_target_revisions_v2',kept);
+        }
+      }
       // Only the isolated destination loses its triggers, inside this atomic
       // transaction. Reinsert rather than UPDATE immutable retained rows.
       db.exec('PRAGMA foreign_keys=OFF; BEGIN');
@@ -106,10 +87,11 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
         db.prepare('UPDATE project_file SET projectId=?,contentSequence=?,contentToken=?').run(projectId, sequence,contentToken);
         for (const table of CONTENT_TABLES) {
           for (const original of rows.get(table) ?? []) {
-            const row = rewriteRow(table, original, oldId, projectId);
+            const row = rewriteProjectCopyRow(table, original, oldId, projectId) as Row;
+            if(table==='projects'&&options.projectName!==undefined&&typeof row.data==='string'){const data=JSON.parse(row.data) as Record<string,unknown>;data.name=options.projectName;row.data=JSON.stringify(data);}
             if (table === 'assets' && typeof row.data === 'string') {
               const data = JSON.parse(row.data) as Record<string, unknown>;
-              relocateReference(data, sourceProjectDir, parent);
+              relocateProjectCopyReference(data, sourceProjectDir, path.resolve(options.targetProjectDir ?? parent));
               row.data = JSON.stringify(data);
             }
             const columns = Object.keys(row);
@@ -129,7 +111,7 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
       identity = readCopiedProjectIdentity(db, PROJECT_FILE_APPLICATION_ID, Number(lstatSync(temporary).size));
     } finally { db.close(); }
     syncCopiedFile(temporary);
-    publishCopiedFile(temporary, target);
+    (options.publish ?? publishCopiedFile)(temporary, target);
     return {...identity, projectFile: target};
   } finally {
     rmSync(temporaryDir, {recursive: true, force: true});

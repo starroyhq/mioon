@@ -1,5 +1,5 @@
 import type {RootFailure} from './helpers/strict-root-error-types.ts';
-interface ManagementBody {secret:{value:string;storage:string};requestId:string;projectId?:string;diagnostic:{profile:string};locale:string;action:string;expectedRevision:number;name:string;mimeType:string;dataBase64:string;filePath?:string;conversationId:string}
+interface ManagementBody {secretActions:AgentSecretAction[];services:AgentServiceInput[];mioSelection:AgentMioSelection|null;requestId:string;projectId?:string;diagnostic:{profile:string};locale:string;action:string;expectedRevision:number;name:string;mimeType:string;dataBase64:string;filePath?:string;conversationId:string}
 interface ManagementCall {method:string|undefined;url:string|undefined;body:ManagementBody}
 interface ManagementResult {code:number|null;stdout:string;stderr:string;body:{ok:boolean;data:unknown;error:RootFailure}}
 import test from 'node:test';
@@ -11,11 +11,13 @@ import {mkdtemp,writeFile,chmod,rm,realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import type {AgentSecretAction,AgentServiceInput,AgentMioSelection} from '../packages/contracts/src/agent-connection-settings.ts';
+import {ADAPTER_CONFIGURATION,ADAPTER_CUSTOM_SERVICE_KEY,adapterSettings,adapterMetadata} from './helpers/agent-adapter-fixture.ts';
 const root=fileURLToPath(new URL('..',import.meta.url)),entry=path.join(root,'apps/cli/src/index.ts');
 const projectId=randomUUID(),runId=randomUUID(),stepId=randomUUID(),changeId=randomUUID(),requestId=randomUUID();
-const configuration={presetId:'custom',platformId:'custom',baseUrl:'https://synthetic.example',model:'synthetic-model',protocol:'chat_completions'};
+const configuration=ADAPTER_CONFIGURATION;
 const policy={revision:0,stepLimit:30,modes:{read_only:'direct',local_reversible:'direct',local_irreversible:'direct',paid:'confirm'}};
-const settings={revision:4,configuration,secret:{configured:false,storage:'none'},storage:{persistentAvailable:true,sessionScope:'server',reasonCode:null},presets:[],scope:'settings_only',verification:'not_tested'};
+const settings=adapterSettings(),secretMetadata={expectedRevision:4,serviceKey:ADAPTER_CUSTOM_SERVICE_KEY};
 const token='SYNTHETIC_CLI_AGENT_TOKEN_1234567890';
 const snapshot=(status: string|undefined='completed',revision: number|undefined=1)=>({run:{id:runId,projectId,requestId,text:'synthetic',status,revision,stepLimit:30,budget:30,stepsUsed:1,configuration,createdAt:'2026-10-21T00:00:00Z',updatedAt:'2026-10-21T00:00:00Z'},steps:[],changes:[]});
 function command(args: string[],{base,stdin=''}:{base?:string;stdin?:string}={}){
@@ -50,31 +52,52 @@ test('send accepts JSON stdin/input-file and stable caller identity, while misma
 });
 
 test('secret defaults to persistent, is write-only and exactly redacted even from successful metadata',async t=>{
- const key='SYNTHETIC_PRIVATE_KEY_1234567890';const f=await fixture(t,(req,res,input)=>{if(req.method==='GET')reply(res,settings);else{assert.equal(input.secret.value,key);assert.equal(input.secret.storage,'persistent');reply(res,{...settings,revision:5,configuration:{...configuration,model:key},secret:{configured:true,storage:'persistent'}});}});
- const result=await command(['agent','settings','secret','set','--key-stdin','--input',JSON.stringify({expectedRevision:4,configuration})],{base:f.base,stdin:key+'\n'}).result;
- assert.equal(result.code,0);assert.equal(f.calls.length,2);assert.equal((result.body.data as typeof settings).secret.configured,true);assert.equal((result.body.data as typeof settings).configuration.model,'[redacted]');assert.equal(result.stdout.includes(key),false);assert.equal(result.stderr.includes(key),false);
+ const key='SYNTHETIC_PRIVATE_KEY_1234567890';const f=await fixture(t,(req,res,input)=>{if(req.method==='GET')reply(res,settings);else{assert.equal(input.secretActions.length,1);const action=input.secretActions[0];assert.ok(action?.action==='replace');assert.equal(action.serviceKey,ADAPTER_CUSTOM_SERVICE_KEY);assert.equal(action.value,key);assert.equal(action.storage,'persistent');reply(res,adapterSettings({...configuration,model:key},{revision:5,secretStorage:'persistent'}));}});
+ const result=await command(['agent','settings','secret','set','--key-stdin','--input',JSON.stringify(secretMetadata)],{base:f.base,stdin:key+'\n'}).result;
+ assert.equal(result.code,0);assert.equal(f.calls.length,2);assert.equal((result.body.data as typeof settings).execution?.secret.configured,true);assert.equal((result.body.data as typeof settings).execution?.configuration.model,'[redacted]');assert.equal(result.stdout.includes(key),false);assert.equal(result.stderr.includes(key),false);
 });
 
 test('persistent unavailability refuses before key input; only explicit session succeeds',async t=>{
- const f=await fixture(t,(req,res,input)=>reply(res,req.method==='GET'?{...settings,storage:{persistentAvailable:false,sessionScope:'server',reasonCode:'WEB_SESSION_ONLY'}}:{...settings,revision:5,secret:{configured:true,storage:input.secret.storage}}));const metadata=JSON.stringify({expectedRevision:4,configuration});
+ const f=await fixture(t,(req,res,input)=>{if(req.method==='GET')reply(res,{...settings,storage:{persistentAvailable:false,sessionScope:'server',reasonCode:'WEB_SESSION_ONLY'}});else{const action=input.secretActions[0];assert.ok(action?.action==='replace');reply(res,adapterSettings(configuration,{revision:5,secretStorage:action.storage}));}});const metadata=JSON.stringify(secretMetadata);
  const denied=await command(['agent','secret','set','--key-stdin','--input',metadata],{base:f.base,stdin:'SYNTHETIC_SESSION_KEY'}).result;assert.equal(denied.code,3);assert.equal(f.calls.length,1);
- const accepted=await command(['agent','secret','set','--key-stdin','--storage','session','--input',metadata],{base:f.base,stdin:'SYNTHETIC_SESSION_KEY'}).result;assert.equal(accepted.code,0);assert.equal(f.calls.at(-1)!.body.secret.storage,'session');
+ const accepted=await command(['agent','secret','set','--key-stdin','--storage','session','--input',metadata],{base:f.base,stdin:'SYNTHETIC_SESSION_KEY'}).result;assert.equal(accepted.code,0);assert.deepEqual(f.calls.at(-1)!.body.secretActions,[{serviceKey:ADAPTER_CUSTOM_SERVICE_KEY,action:'replace',storage:'session',value:'SYNTHETIC_SESSION_KEY'}]);
 });
 
 test('explicit key-file uses private regular-file policy, not permissive JSON input', {skip:process.platform==='win32'},async t=>{
- const dir=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-cli-agent-key-'));t.after(()=>rm(dir,{recursive:true,force:true}));const file=path.join(dir,'key');await writeFile(file,'SYNTHETIC_KEY_FILE_VALUE\n',{mode:0o600});const metadata=JSON.stringify({expectedRevision:4,configuration});
- const f=await fixture(t,(req,res,input)=>reply(res,req.method==='GET'?settings:{...settings,revision:5,secret:{configured:true,storage:input.secret.storage}}));
+ const dir=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-cli-agent-key-'));t.after(()=>rm(dir,{recursive:true,force:true}));const file=path.join(dir,'key');await writeFile(file,'SYNTHETIC_KEY_FILE_VALUE\n',{mode:0o600});const metadata=JSON.stringify(secretMetadata);
+ const f=await fixture(t,(req,res,input)=>{if(req.method==='GET')reply(res,settings);else{const action=input.secretActions[0];assert.ok(action?.action==='replace');reply(res,adapterSettings(configuration,{revision:5,secretStorage:action.storage}));}});
  assert.equal((await command(['agent','secret','set','--key-file',file,'--input',metadata],{base:f.base}).result).code,0);assert.equal(f.calls.length,2);
  await chmod(file,0o644);const denied=await command(['agent','secret','set','--key-file',file,'--input',metadata],{base:f.base}).result;assert.equal(denied.code,2);assert.equal(f.calls.length,3);assert.equal(denied.stdout.includes('SYNTHETIC_KEY_FILE_VALUE'),false);
 });
 
 test('unknown settings response reads metadata once and never retries or invents a receipt',async t=>{
- const f=await fixture(t,(req,res,_input,calls)=>{if(req.method==='GET')reply(res,calls.some((call: { method: string|undefined; })=>call.method==='PUT')?{...settings,revision:5,secret:{configured:true,storage:'persistent'}}:settings);else req.socket.destroy();});
- const result=await command(['agent','secret','set','--key-stdin','--input',JSON.stringify({expectedRevision:4,configuration})],{base:f.base,stdin:'SYNTHETIC_UNKNOWN_KEY'}).result;
+ const f=await fixture(t,(req,res,_input,calls)=>{if(req.method==='GET')reply(res,calls.some((call: { method: string|undefined; })=>call.method==='PUT')?adapterSettings(configuration,{revision:5,secretStorage:'persistent'}):settings);else req.socket.destroy();});
+ const result=await command(['agent','secret','set','--key-stdin','--input',JSON.stringify(secretMetadata)],{base:f.base,stdin:'SYNTHETIC_UNKNOWN_KEY'}).result;
  assert.equal(result.code,3);assert.equal(result.body.error.code,'AGENT_SETTINGS_OUTCOME_UNKNOWN');assert.equal(f.calls.filter(call=>call.method==='PUT').length,1);assert.equal(result.body.error.details!.lookup,'agent settings get');
  assert.deepEqual(f.calls.map(call=>call.method),['GET','PUT','GET']);
- assert.deepEqual(result.body.error.details!.observation,{state:'read',revision:5,configurationMatchesRequested:true,keyConfigured:true,keyStorage:'persistent',provesWriteSucceeded:false});
+ const observed=adapterSettings(configuration,{revision:5,secretStorage:'persistent'});
+ assert.deepEqual(result.body.error.details!.observation,{state:'read',revision:5,servicesMatchRequested:true,mioSelectionMatchesRequested:true,services:observed.services.map(entry=>({serviceKey:entry.serviceKey,revision:entry.revision,keyConfigured:entry.secret.configured,keyStorage:entry.secret.storage})),provesWriteSucceeded:false});
  assert.equal(result.stdout.includes('SYNTHETIC_UNKNOWN_KEY'),false);assert.equal(result.stderr.includes('SYNTHETIC_UNKNOWN_KEY'),false);
+});
+
+test('v3 settings set publishes one collection while old single-slot and embedded key actions are rejected',async t=>{
+ const f=await fixture(t,(_req,res,input)=>{assert.deepEqual(input.services,adapterMetadata(settings).services);assert.deepEqual(input.mioSelection,settings.mioSelection);assert.deepEqual(input.secretActions,[]);reply(res,adapterSettings(configuration,{revision:5}));});
+ const result=await command(['agent','settings','set','--input',JSON.stringify(adapterMetadata(settings))],{base:f.base}).result;
+ assert.equal(result.code,0);assert.deepEqual(f.calls.map(call=>call.method),['PUT']);
+ for(const input of [{expectedRevision:4,configuration},{...adapterMetadata(settings),secretActions:[]},{...adapterMetadata(settings),services:settings.services}]){
+  const rejected=await command(['agent','settings','set','--input',JSON.stringify(input)],{base:f.base}).result;assert.equal(rejected.code,2);
+ }
+ assert.equal(f.calls.length,1);
+});
+
+test('targeted secret removal preserves other services and unknown keys or stale CAS fail before key input',async t=>{
+ const f=await fixture(t,(req,res,input)=>{if(req.method==='GET')reply(res,settings);else{assert.deepEqual(input.services,adapterMetadata(settings).services);assert.deepEqual(input.mioSelection,settings.mioSelection);assert.deepEqual(input.secretActions,[{serviceKey:ADAPTER_CUSTOM_SERVICE_KEY,action:'remove'}]);reply(res,adapterSettings(configuration,{revision:5}));}});
+ const removed=await command(['agent','settings','secret','remove','--input',JSON.stringify(secretMetadata)],{base:f.base}).result;
+ assert.equal(removed.code,0);assert.deepEqual(f.calls.map(call=>call.method),['GET','PUT']);
+ const missing=await command(['agent','settings','secret','set','--key-file','/synthetic/must-not-open','--input',JSON.stringify({...secretMetadata,serviceKey:randomUUID()})],{base:f.base}).result;
+ assert.equal(missing.code,2);assert.equal(missing.body.error.code,'VALIDATION_ERROR');
+ const stale=await command(['agent','settings','secret','set','--key-file','/synthetic/must-not-open','--input',JSON.stringify({...secretMetadata,expectedRevision:3})],{base:f.base}).result;
+ assert.equal(stale.code,3);assert.equal(stale.body.error.code,'AGENT_SETTINGS_CONFLICT');assert.deepEqual(f.calls.map(call=>call.method),['GET','PUT','GET','GET']);
 });
 
 test('doctor performs only the public diagnostic GET; live diagnosis requires and forwards explicit profile',async t=>{

@@ -1,3 +1,4 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import {parseProjectApiPath,projectApiPath} from '../packages/contracts/src/project-file.ts';
@@ -43,7 +44,7 @@ async function fixture(t:TestContext,protocol:AgentProtocol){
   const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-h1e-runtime-')),store=openStore(root),services=createServices(store,new Map());
   const project=object(await services.call('project.create',{name:'Usage fixture'})),projectId=String(project.id);
   const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
-  await settings.put({expectedRevision:0,configuration:{presetId:'custom',platformId:'custom',protocol,model:'synthetic-usage-model',baseUrl:'https://harness.example.com'},secret:{action:'replace',storage:'session',value:randomUUID()}});
+  await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:{presetId:'custom',platformId:'custom',protocol,model:'synthetic-usage-model',baseUrl:'https://harness.example.com'},secret:{action:'replace',storage:'session',value:randomUUID()}});
   const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
   const tools=createAgentTaskTools({store,services}),requests:string[]=[];let index=0,script:Script=async function*(){yield {type:'done',output:output(protocol)};};
   const gateway:TaskGateway=async function*(request){request.beforeSubmit?.();requests.push(request.body);yield*script(++index);};
@@ -51,7 +52,7 @@ async function fixture(t:TestContext,protocol:AgentProtocol){
   t.after(async()=>{runtime.close();tools.dispose();await settings.close();store.close();rmSync(root,{recursive:true,force:true});});
   return {store,settings,projectId,requests,get runtime(){return runtime;},
     setScript(value:Script){script=value;index=0;},
-    async send(){return runtime.send(projectId,{requestId:randomUUID(),text:'Offline usage request',expectedSettingsRevision:(await settings.get()).revision,locale:'en'});},
+    async send(){return runtime.send(projectId,{requestId:randomUUID(),text:'Offline usage request',expectedSettingsRevision:testAgentExecution(await settings.get()).revision,locale:'en'});},
     async settle(runId:string){await runtime.drain();return runtime.journal.snapshot(runId);},
     action(snapshot:AgentTaskSnapshot,action:AgentTaskControlAction,extra:Record<string,unknown>={}){return runtime.action(projectId,snapshot.run.id,{requestId:randomUUID(),expectedRevision:snapshot.run.revision,action,...extra});},
     restart(readOnly=false){runtime.close();runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318,readOnly});},
@@ -101,8 +102,8 @@ for(const protocol of protocols)test(`${protocol}: missing and malformed optiona
 });
 
 for(const protocol of protocols)test(`${protocol}: recovery sends the frozen original intent and stores only its observed completion usage`,async t=>{
-  const f=await fixture(t,protocol),settings=await f.settings.get(),history=[{role:'user',content:'Frozen pre-H1e request'}],body=buildTaskModelRequest(settings.configuration,history,[],4318);
-  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Frozen pre-H1e request',configuration:{...settings.configuration},settingsRevision:settings.revision,context:[taskResponseLanguageContext('en')]});
+  const f=await fixture(t,protocol),settings=await f.settings.get(),history=[{role:'user',content:'Frozen pre-H1e request'}],body=buildTaskModelRequest(testAgentExecution(settings).configuration,history,[],4318);
+  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Frozen pre-H1e request',configuration:{...testAgentExecution(settings).configuration},settingsRevision:testAgentExecution(settings).revision,settingsBinding:testAgentExecution(settings).binding,context:[taskResponseLanguageContext('en')]});
   const model=f.runtime.journal.beginModelStep(created.run.id,{request:{body,history},data:{baseline:[]}},[]),frozen=structuredClone(model.request);
   f.setScript(async function*(){yield {type:'done',output:{...output(protocol),usage:{inputTokens:0,outputTokens:0,cacheReadTokens:0,cacheWriteTokens:0}}};});
   f.restart();const interrupted=f.runtime.get(f.projectId,created.run.id);assert.equal(interrupted.run.status,'interrupted');
@@ -112,8 +113,8 @@ for(const protocol of protocols)test(`${protocol}: recovery sends the frozen ori
 });
 
 for(const protocol of protocols)test(`${protocol}: an interrupted dispatched request still has unknown outcome and no invented usage`,async t=>{
-  const f=await fixture(t,protocol),settings=await f.settings.get(),history=[{role:'user',content:'Unknown exchange'}],body=buildTaskModelRequest(settings.configuration,history,[],4318);
-  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Unknown exchange',configuration:{...settings.configuration},settingsRevision:settings.revision,context:[]});
+  const f=await fixture(t,protocol),settings=await f.settings.get(),history=[{role:'user',content:'Unknown exchange'}],body=buildTaskModelRequest(testAgentExecution(settings).configuration,history,[],4318);
+  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Unknown exchange',configuration:{...testAgentExecution(settings).configuration},settingsRevision:testAgentExecution(settings).revision,settingsBinding:testAgentExecution(settings).binding,context:[]});
   const model=f.runtime.journal.beginModelStep(created.run.id,{request:{body,history}},[]);f.runtime.journal.markDispatch(created.run.id,model.id);
   f.restart();const interrupted=f.runtime.get(f.projectId,created.run.id);assert.equal(interrupted.steps[0]?.status,'unknown');
   await assert.rejects(f.action(interrupted,'resume'),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.equal(f.requests.length,0);assert.equal(f.runtime.journal.step(model.id).result,undefined);assertPublic(f.runtime.get(f.projectId,created.run.id));

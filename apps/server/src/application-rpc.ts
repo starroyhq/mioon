@@ -15,14 +15,17 @@ import type {ProjectEntryCreateInput} from '../../../packages/contracts/src/proj
 import {isProjectBackupOperation} from '../../../packages/contracts/src/project-backups.ts';
 import {callProjectBackupOperation} from './project-backup-operations.ts';
 import type {ProjectBackupOperations} from './project-backup-operations.ts';
+import {isProjectCopyOperation} from '../../../packages/contracts/src/project-copies.ts';
+import type {ProjectCopies} from './project-host/copies.ts';
 
 /** App operations never choose an arbitrary project's service as a global
  * facade. Settings and listings work with every project closed. */
-export function createApplicationRpc({library, app, manager, directories, signal, providerList, imageProfiles, refreshSummaries, backups, createProject}: {
+export function createApplicationRpc({library, app, manager, directories, signal, providerList, imageProfiles, refreshSummaries, backups, copies, createProject}: {
   library: AppLibrary; app: ApplicationRuntime; manager: ProjectHostManager<HostedProject>; directories: AppDirectories; signal: AbortSignal;
   providerList: () => unknown; imageProfiles: (input: unknown) => unknown;
   refreshSummaries: () => void;
   backups?: ProjectBackupOperations;
+  copies?: ProjectCopies;
   createProject: ReturnType<typeof createInitializedProject>;
 }) {
   const ports = createProjectServiceApplication(library, signal);
@@ -36,6 +39,13 @@ export function createApplicationRpc({library, app, manager, directories, signal
   }).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id)));
   return {async call(operation: string, raw: unknown): Promise<unknown> {
     signal.throwIfAborted();
+    if (isProjectCopyOperation(operation)) {
+      if (!copies) throw new AppError('PROJECT_COPY_UNAVAILABLE', '项目复制暂不可用。', 503);
+      // Application-only contracts: CLI/MCP discovery deliberately does not
+      // expose these until their 0.1.x project commands are implemented.
+      const method = operation === 'project.duplicate' ? copies.duplicate : copies.saveAs;
+      return await method(raw as Parameters<ProjectCopies['duplicate']>[0]);
+    }
     if (isProjectBackupOperation(operation)) {
       if (!backups) throw new AppError('PROJECT_BACKUP_UNAVAILABLE', '项目备份服务尚未配置', 503);
       return await callProjectBackupOperation(backups, operation, raw);

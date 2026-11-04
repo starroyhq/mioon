@@ -235,3 +235,36 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .native-settings-panel-header :is(button, summary) { -webkit-app-region: no-drag; }
 .native-settings-panel .settings-center { grid-template-columns: 188px minmax(0, 1fr); }
 @media (max-width: 820px) { .native-settings-panel .settings-center { grid-template-columns: 164px minmax(0, 1fr); } .native-settings-panel .settings-center-content { padding-inline: 18px; } }
+
+/* Only a visible retained service shell removes the host's detail inset. */
+.settings-center-content:has(.settings-services-layout:not([hidden])) { padding: 0; }
+.settings-center-content:has(.settings-services-layout:not([hidden])) > .settings-center-heading { padding: 16px 24px; margin: 0; border-bottom: 1px solid var(--wb-line-subtle); }
+.settings-center-content:has(.settings-services-layout:not([hidden])) > .settings-center-heading h1 { font-size: var(--wb-text-section); }
+.settings-center-content:has(.settings-services-layout:not([hidden])) > .settings-center-heading p { display: none; }
+.settings-center-content:has(.settings-services-layout:not([hidden])) > .settings-connection-panes { padding-bottom: 0; }
+.mio-services-settings .agent-settings-form { width: 100%; min-width: 0; height: 100%; }
+.mio-settings-general, .mio-settings-service { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.mio-settings-service-head, .mio-settings-model-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.mio-settings-service-head h2, .mio-settings-model-heading h3, .mio-settings-service .mio-settings-section-head h3 { margin: 0; font-size: var(--wb-text-section); font-weight: 600; }
+.mio-services-settings .mio-settings-rows { padding-inline-start: 0; gap: 16px; }
+.mio-services-settings .mio-settings-row { grid-template-columns: 88px minmax(0, 1fr); }
+.mio-services-settings .mio-settings-key-entry[hidden] { display: none; }
+.mio-services-settings .mio-settings-key-entry { grid-template-columns: minmax(0, 1fr); }
+.mio-services-settings .mio-settings-key-entry > .workbench-select { max-width: 210px; }
+.mio-services-settings .mio-settings-inline > input { min-width: 120px; }
+.mio-services-settings .mio-settings-control { max-width: none; }
+.mio-services-settings .wb-tabs { max-width: 100%; }
+.mio-services-settings .wb-tabs [data-slot="tabs-list"] { display: flex; flex-wrap: wrap; height: auto; }
+.mio-services-settings .mio-settings-page-notice { margin-bottom: 20px; color: var(--wb-soft); font-size: var(--wb-text-caption); line-height: 1.6; overflow-wrap: anywhere; }
+.mio-services-settings .mio-settings-page-notice[role="alert"] { color: var(--wb-warning); }
+.mio-current-model { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 16px; border: 1px solid var(--wb-line); border-radius: var(--wb-radius-card); background: var(--wb-input); }
+.mio-current-model-copy { display: flex; flex: 1; flex-direction: column; gap: 6px; min-width: 0; }
+.mio-current-model-copy > strong { color: var(--wb-text); font-size: var(--wb-text-section); overflow-wrap: anywhere; }
+.mio-current-model-copy > span, .mio-current-model-copy .mio-settings-inline > span { color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.5; }
+.mio-model-section { gap: 10px; }
+.mio-model-list { display: flex; flex-direction: column; gap: 4px; }
+.mio-model-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 10px; border: 1px solid var(--wb-line-subtle); border-radius: var(--wb-radius-control); }
+.mio-model-row > div:first-child { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 120px; }
+.mio-model-row strong { color: var(--wb-soft); font: 500 var(--wb-text-label)/1.5 var(--wb-font-mono); overflow-wrap: anywhere; }
+@media (max-width: 860px) { .mio-services-settings .mio-settings-row { grid-template-columns: minmax(0, 1fr); } }
+.mio-services-settings .wb-tabs > [data-slot="tabs-list"] { width: fit-content; min-width: 0; max-width: 100%; }

@@ -7,6 +7,7 @@ import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v
 import type {AgentTaskConversation,AgentTaskConversationPage,AgentTaskControlInput,AgentTaskReceipt,AgentTaskRun,AgentTaskSnapshot} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {createAgentTaskCloseReporter} from '../apps/web/src/native-close-sources.ts';
 import {createNativeCloseRegistry,createNativeCloseAdmission} from '../apps/web/src/native-close-state.ts';
+import {adapterSettings} from './helpers/agent-adapter-fixture.ts';
 import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigation-state.ts';
 
 const id=(value:number)=>`00000000-0000-4000-8000-${String(value).padStart(12,'0')}`;
@@ -30,7 +31,7 @@ function fixture(t:TestContext,initial:AgentTaskSnapshot[]=[],patch:Partial<Agen
   let authorized=options.authorized!==false,uploadSerial=100;
   const posts:{send:Parameters<AgentTaskClient['send']>[1][];action:Parameters<AgentTaskClient['action']>[1][];upload:Parameters<AgentTaskClient['upload']>[1][];authorize:number}={send:[],action:[],upload:[],authorize:0};
   const reads:{run:string[];conversation:{id:string;cursor:string|null}[];lookup:AgentTaskPending[]}={run:[],conversation:[],lookup:[]};
-  const project=():AgentTaskProjectSnapshot=>({version:2,instanceId:id(2),projectId,runs:options.recentRuns??[...runs.values()].map(value=>value.run).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)),policy:structuredClone(DEFAULT_AGENT_TASK_POLICY),authorization:{revision:authorized?2:1,scopes:authorized?['project_agent']:[]},settings:{revision:0,configuration:{presetId:'openai',platformId:'global',baseUrl:'https://example.invalid/v1',model:'synthetic',protocol:'responses'},secret:{configured:false,storage:'none'},storage:{persistentAvailable:false,sessionScope:'server',reasonCode:null},presets:[],scope:'settings_only',verification:'not_tested'}});
+  const project=():AgentTaskProjectSnapshot=>({version:2,instanceId:id(2),projectId,runs:options.recentRuns??[...runs.values()].map(value=>value.run).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)),policy:structuredClone(DEFAULT_AGENT_TASK_POLICY),authorization:{revision:authorized?2:1,scopes:authorized?['project_agent']:[]},settings:adapterSettings({presetId:'openai',platformId:'global',baseUrl:'https://api.openai.com/v1',model:'synthetic',protocol:'responses'},{revision:0})});
   const defaults:AgentTaskClient={
     list:async()=>project(),
     history:async()=>{const grouped=new Map<string,AgentTaskSnapshot[]>();for(const value of runs.values()){const key=value.run.conversationId!;grouped.set(key,[...grouped.get(key)??[],value]);}return {conversations:[...grouped.values()].map(conversation),nextCursor:null};},

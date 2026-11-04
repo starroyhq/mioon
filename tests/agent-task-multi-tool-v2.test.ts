@@ -1,3 +1,4 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -31,7 +32,7 @@ async function fixture(t:TestContext,protocol:AgentProtocol,kind:'approve'|'deny
   const first=record(await services.call('shot.create',{projectId,title:'First',prompt:'Original first'}));
   const second=record(await services.call('shot.create',{projectId,title:'Second',prompt:'Original second'}));
   const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
-  await settings.put({expectedRevision:0,configuration:{presetId:'ollama',platformId:'local',protocol,baseUrl:`http://127.0.0.1:11434${protocol==='anthropic_messages'?'':'/v1'}`,model:'qwen3:8b'},secret:{action:'remove'}});
+  await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:{presetId:'ollama',platformId:'local',protocol,baseUrl:`http://127.0.0.1:11434${protocol==='anthropic_messages'?'':'/v1'}`,model:'qwen3:8b'},secret:{action:'remove'}});
   const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
   const tools=createAgentTaskTools({store,services}),executed:string[]=[],preparedUpdates:string[]=[],bodies:string[]=[];
   const observed:AgentTaskTools={...tools,prepare(input){if(input.operation==='mioon_shot_update')preparedUpdates.push(String(record(input.input).shotId));return tools.prepare(input);},async execute(prepared,context){executed.push(context.stepId);return tools.execute(prepared,context);}};
@@ -47,7 +48,7 @@ async function fixture(t:TestContext,protocol:AgentProtocol,kind:'approve'|'deny
   if(kind!=='answer'){const policy=runtime.policy();runtime.journal.updatePolicy({...policy,modes:{...policy.modes,local_reversible:'confirm'}});}
   t.after(async()=>{runtime.close();await runtime.drain();tools.dispose();await services.drain();await settings.close();store.close();rmSync(root,{recursive:true,force:true});});
   return {store,services,settings,projectId,firstId:String(first.id),secondId:String(second.id),executed,preparedUpdates,bodies,get runtime(){return runtime;},
-    async send(){const sent=await runtime.send(projectId,{requestId:randomUUID(),text:'Independent short calls; ask last.',expectedSettingsRevision:(await settings.get()).revision});await runtime.drain();return runtime.get(projectId,sent.run.id);},
+    async send(){const sent=await runtime.send(projectId,{requestId:randomUUID(),text:'Independent short calls; ask last.',expectedSettingsRevision:testAgentExecution(await settings.get()).revision});await runtime.drain();return runtime.get(projectId,sent.run.id);},
     async restart(snapshot:AgentTaskSnapshot){
       runtime.close();await runtime.drain();runtime=create();
       const current=runtime.get(projectId,snapshot.run.id);

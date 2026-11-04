@@ -12,7 +12,8 @@ import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.ts';
-import {AGENT_PROTOCOLS, deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
+import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
+import {agentServiceInput} from '../packages/contracts/src/agent-connection-settings.ts';
 import {agentAuthorizationListSchema} from '../packages/contracts/src/agent-authorization.ts';
 import type {AgentAuthorizationList} from '../packages/contracts/src/agent-authorization.ts';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
@@ -73,6 +74,15 @@ test('Anthropic settings, targets and scoped authority stay consistent across re
     return envelope(result.structuredContent);
   }
   const settings = async () => data((await http('/api/agent/settings')).body) as AgentSettingsSnapshot;
+  const customServiceKey = randomUUID();
+  async function settingsMetadata(configuration: AgentConfiguration) {
+    const current = await settings(), serviceKey = configuration.presetId === 'custom' ? customServiceKey : configuration.presetId;
+    const entry = {serviceKey, presetId: configuration.presetId, name: configuration.presetId === 'custom' ? 'Offline gateway' : 'Anthropic',
+      platformId: configuration.platformId, protocol: configuration.protocol, addressInput: configuration.presetId === 'custom' ? configuration.baseUrl : '', manualModelIds: [configuration.model]};
+    return {expectedRevision: current.revision, services: [...current.services.filter(service => service.serviceKey !== serviceKey).map(agentServiceInput), entry],
+      mioSelection: {serviceKey, modelId: configuration.model}};
+  }
+  async function execution() {const selected = (await settings()).execution; assert.ok(selected); return selected;}
   async function targets(): Promise<AgentAuthorizationList> {
     const fromHttp = agentAuthorizationListSchema.parse(await rpc('agent.authorization.list'));
     const fromCli = await cli('agent.authorization.list'); assert.equal(fromCli.code, 0, JSON.stringify(fromCli.body));
@@ -82,6 +92,7 @@ test('Anthropic settings, targets and scoped authority stay consistent across re
   }
   async function grant(via: 'http' | 'cli' | 'mcp', scope: 'typed_chat_only' | 'project_agent') {
     const state = await targets();
+    assert.ok(state.currentTarget);
     const input = {requestId: randomUUID(), expectedRevision: state.revision, expectedSettingsRevision: state.currentTarget.settingsRevision,
       destination: state.currentTarget.destination, model: state.currentTarget.model, scope};
     if (via === 'http') return rpc('agent.authorization.grant', input);
@@ -90,15 +101,15 @@ test('Anthropic settings, targets and scoped authority stay consistent across re
   }
 
   const native: AgentConfiguration = {protocol: 'anthropic_messages', presetId: 'anthropic', platformId: 'global', baseUrl: 'https://api.anthropic.com', model: 'claude-haiku-4-5'};
-  const saved = await http('/api/agent/settings', 'PUT', {expectedRevision: (await settings()).revision, configuration: native,
-    secret: {action: 'replace', storage: 'session', value: 'synthetic-offline-native-key'}});
-  assert.equal(saved.status, 200); assert.deepEqual((await settings()).configuration, native);
+  const saved = await http('/api/agent/settings', 'PUT', {...await settingsMetadata(native),
+    secretActions: [{serviceKey: 'anthropic', action: 'replace', storage: 'session', value: 'synthetic-offline-native-key'}]});
+  assert.equal(saved.status, 200); assert.deepEqual((await execution()).configuration, native);
   const fromCli = await cli('agent.settings.get'); assert.equal(fromCli.code, 0, JSON.stringify(fromCli.body));
   assert.deepEqual(data(fromCli.body), await settings());
   const preset = (await settings()).presets.find(item => item.id === 'anthropic'); assert.ok(preset);
-  assert.equal(preset.defaultProtocol, 'anthropic_messages'); assert.deepEqual(preset.availableProtocols, Object.keys(AGENT_PROTOCOLS));
+  assert.equal(preset.defaultProtocol, 'anthropic_messages'); assert.deepEqual(preset.availableProtocols, ['anthropic_messages']);
   assert.equal(preset.platforms[0]?.baseUrl, 'https://api.anthropic.com');
-  const firstTarget = await targets(); assert.equal(firstTarget.currentTarget.destination, 'https://api.anthropic.com/v1/messages');
+  const firstTarget = await targets(); assert.ok(firstTarget.currentTarget); assert.equal(firstTarget.currentTarget.destination, 'https://api.anthropic.com/v1/messages');
   assert.equal(firstTarget.currentTarget.model, native.model);
   const tools = (await client.listTools()).tools.map(tool => tool.name);
   for (const name of ['agent_settings_get', 'agent_settings_set', 'agent_settings_secret_set', 'agent_task_send']) assert.equal(tools.includes(name), false);
@@ -108,9 +119,10 @@ test('Anthropic settings, targets and scoped authority stay consistent across re
   const project = await rpc('project.create', {name: 'Offline native protocol authority'}); assert.ok(object(project) && typeof project.id === 'string');
   const projectId = project.id, prefix = projectApiPath(projectId, 'agent', 'tasks', 'v2');
   const beforeAttempt = await targets();
+  assert.ok(beforeAttempt.currentTarget);
   attemptedGrant = {requestId: randomUUID(), expectedRevision: beforeAttempt.revision, expectedSettingsRevision: beforeAttempt.currentTarget.settingsRevision,
     destination: beforeAttempt.currentTarget.destination, model: beforeAttempt.currentTarget.model, scope: 'project_inspection'};
-  const sent = await http(prefix, 'POST', {requestId: randomUUID(), expectedSettingsRevision: (await settings()).revision, text: 'Offline fixture attempts an unlisted authorization tool'});
+  const sent = await http(prefix, 'POST', {requestId: randomUUID(), expectedSettingsRevision: (await execution()).revision, text: 'Offline fixture attempts an unlisted authorization tool'});
   assert.equal(sent.status, 200); const accepted = data(sent.body); assert.ok(object(accepted) && object(accepted.run) && typeof accepted.run.id === 'string');
   let ended: Record<string, unknown> | undefined;
   for (let attempt = 0; attempt < 200; attempt++) {
@@ -122,24 +134,30 @@ test('Anthropic settings, targets and scoped authority stay consistent across re
 
   async function assertInactive(configuration: AgentConfiguration) {
     const current = await settings(), listed = await targets();
-    assert.equal(listed.currentTarget.destination, deriveAgentEndpoint(configuration)); assert.equal(listed.currentTarget.settingsRevision, current.revision);
+    assert.ok(listed.currentTarget); assert.ok(current.execution);
+    assert.equal(listed.currentTarget.destination, deriveAgentEndpoint(configuration)); assert.equal(listed.currentTarget.settingsRevision, current.execution.revision);
     const fromCli = await cli('agent.task.list', {projectId}); assert.equal(fromCli.code, 0, JSON.stringify(fromCli.body));
     const httpPage = data((await http(prefix)).body), cliPage = data(fromCli.body);
     assert.ok(object(httpPage) && object(cliPage)); assert.deepEqual(cliPage.settings, httpPage.settings); assert.deepEqual(cliPage.authorization, httpPage.authorization);
     assert.ok(object(httpPage.authorization)); assert.deepEqual(httpPage.authorization.scopes, []);
-    const input = {expectedSettingsRevision: current.revision, text: 'Must remain unauthorized'};
+    const input = {expectedSettingsRevision: current.execution.revision, text: 'Must remain unauthorized'};
     const blocked = await http(prefix, 'POST', {requestId: randomUUID(), ...input});
     assert.equal(blocked.status, 409); assert.equal(blocked.body.ok, false); if (blocked.body.ok) assert.fail(); assert.equal(blocked.body.error.code, 'AGENT_TASK_CONSENT_REQUIRED');
     const blockedCli = await cli('agent.task.send', {projectId, requestId: randomUUID(), ...input});
     assert.notEqual(blockedCli.code, 0); assert.equal(blockedCli.body.ok, false); if (blockedCli.body.ok) assert.fail(); assert.equal(blockedCli.body.error.code, 'AGENT_TASK_CONSENT_REQUIRED');
     assert.equal(taskCalls, 1);
   }
-  const movedEndpoint = {...native, baseUrl: 'https://api.anthropic.com/compat'};
-  const moved = await cli('agent.settings.set', {expectedRevision: (await settings()).revision, configuration: movedEndpoint});
+  const beforeInvalid = await settings(), invalidOfficial = await settingsMetadata({...native, baseUrl: 'https://api.anthropic.com/compat'});
+  const official = invalidOfficial.services.find(service => service.serviceKey === 'anthropic'); assert.ok(official);
+  official.addressInput = 'https://api.anthropic.com/compat';
+  const invalid = await cli('agent.settings.set', invalidOfficial);
+  assert.notEqual(invalid.code, 0); assert.equal(invalid.body.ok, false); assert.deepEqual(await settings(), beforeInvalid);
+  const movedEndpoint = {...native, presetId: 'custom', platformId: 'custom', baseUrl: 'https://offline-gateway.example/compat'};
+  const moved = await cli('agent.settings.set', await settingsMetadata(movedEndpoint));
   assert.equal(moved.code, 0, JSON.stringify(moved.body)); assert.deepEqual(data(moved.body), await settings());
   await assertInactive(movedEndpoint); await grant('http', 'project_agent');
   const switched: AgentConfiguration = {...movedEndpoint, presetId: 'custom', platformId: 'custom', protocol: 'responses'};
-  const changed = await cli('agent.settings.set', {expectedRevision: (await settings()).revision, configuration: switched});
+  const changed = await cli('agent.settings.set', await settingsMetadata(switched));
   assert.equal(changed.code, 0, JSON.stringify(changed.body)); await assertInactive(switched);
   assert.equal(chatCalls, 0); assert.equal(taskCalls, 1);
 });

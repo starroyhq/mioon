@@ -141,7 +141,7 @@ export interface ProjectHostManager<Runtime extends ProjectHostRuntime = Project
    * with the project closed in this process. New requests wait; requests in
    * flight get DEFAULT_REQUEST_DRAIN_MS, then PROJECT_HOST_BUSY and nothing is
    * cancelled. `run` must not acquire the same project. */
-  withExclusive<T>(projectId: string, run: (registration: RecentProject) => T | Promise<T>): Promise<T>;
+  withExclusive<T>(projectId: string, run: (registration: RecentProject) => T | Promise<T>, options?: {readonly rejectWindowLeases?: boolean}): Promise<T>;
   /** At startup: S0a's recovery for every registered project (as list()),
    * waits for the search of missing ones, then reopens the projects in the
    * task index with a task lease. */
@@ -823,7 +823,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     if (errors.length > 0) throw errors[0];
   }
 
-  async function withExclusive<T>(projectId: string, run: (registration: RecentProject) => T | Promise<T>): Promise<T> {
+  async function withExclusive<T>(projectId: string, run: (registration: RecentProject) => T | Promise<T>, admission: {readonly rejectWindowLeases?: boolean} = {}): Promise<T> {
     checkProjectId(projectId);
     assertRunning();
     const previous = exclusive.get(projectId) ?? Promise.resolve();
@@ -846,12 +846,14 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       if (entry?.closeFailure !== undefined) throw entry.closeFailure;
       if (entry?.state === 'open') {
         const paused = entry;
+        if (admission.rejectWindowLeases && hasLease(paused, 'window')) throw projectHostError('PROJECT_HOST_BUSY', {projectId});
         paused.paused = true;
         clearTimer(paused);
         const drained = await waitForRequests(paused, drainTimeoutMs);
         paused.paused = false;
         if (stateOf(paused) === 'open') {
-          if (!drained || hasLease(paused, 'request') || hasLease(paused, 'task') || isBusy(paused)) {
+          if (!drained || hasLease(paused, 'request') || hasLease(paused, 'task') || isBusy(paused)
+            || admission.rejectWindowLeases && hasLease(paused, 'window')) {
             scheduleIdle(paused);
             throw projectHostError('PROJECT_HOST_BUSY', {projectId});
           }

@@ -22,7 +22,7 @@ const destination = z.string().min(1).max(2080).refine(value=>{
   }catch{return false;}
 });
 export const agentAuthorizationTargetSchema=z.object({destination,model,scope:agentAuthorizationScopeSchema}).strict();
-export const agentAuthorizationCurrentTargetSchema=z.object({destination,model,settingsRevision:revision}).strict();
+export const agentAuthorizationCurrentTargetSchema=z.object({destination,model,settingsRevision:revision}).strict().nullable();
 export const agentAuthorizationRecordSchema=agentAuthorizationTargetSchema.extend({id:z.string().uuid(),createdAt:z.string().datetime()}).strict();
 export const agentAuthorizationSnapshotSchema=z.object({revision,scopes:z.array(agentAuthorizationScopeSchema).max(6)}).strict();
 export const agentAuthorizationListSchema=z.object({revision,currentTarget:agentAuthorizationCurrentTargetSchema,

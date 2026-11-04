@@ -1,3 +1,6 @@
+import {putTestAgentConfiguration,testAgentExecution,testAgentCredential} from './helpers/agent-settings-fixture.ts';
+import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import type {AgentSettingsSnapshot} from '../packages/contracts/src/agent-connection-settings.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
@@ -17,13 +20,13 @@ async function engine(t: TestContext, extra: Record<string, unknown> = {}, stora
   const settings = await createAgentSettings({persistence: {load: async () => null, save: async (value: unknown) => { persisted = value; }}, ...extra} as never);
   t.after(() => settings.close());
   const initial = await settings.get();
-  const saved = await settings.put({expectedRevision: 0, configuration: initial.configuration, secret: {action: 'replace', storage, value: SECRET}});
-  return {settings, expected: {expectedRevision: saved.revision, configuration: saved.configuration}, get persisted() { return persisted; }};
+  const saved = await putTestAgentConfiguration(settings,{expectedRevision: 0, configuration: {...DEFAULT_AGENT_CONFIGURATION,presetId:"custom",platformId:"custom"}, secret: {action: 'replace', storage, value: SECRET}});
+  return {settings, expected: testAgentCredential(saved), get persisted() { return persisted; }};
 }
 const safe = (value: unknown): true => { assert.equal(JSON.stringify(value).includes(SECRET), false); return true; };
 const request = (operation: string, input?: Record<string, unknown>) => ({type: 'agent-settings-request', version: 1, requestId: randomUUID(), operation, selfPort: 4318, ...(input ? {input} : {})});
 type AcquireFn = (expected: unknown, options?: {selfPort?: number; signal?: AbortSignal}) => Promise<{apiKey: string | null}>;
-type ClientView = {close(): void; get(options?: {selfPort?: number}): Promise<{revision: number; configuration: Record<string, unknown>; secret: {configured?: boolean}}>; put(input: Record<string, unknown>, options?: {selfPort?: number}): Promise<{revision: number; configuration: Record<string, unknown>; secret: {configured?: boolean}}>; [AGENT_CREDENTIAL_ACQUIRE]: AcquireFn};
+type ClientView = {close(): void; get(options?: {selfPort?: number}): Promise<AgentSettingsSnapshot>; put(input: Record<string, unknown>, options?: {selfPort?: number}): Promise<AgentSettingsSnapshot>; [AGENT_CREDENTIAL_ACQUIRE]: AcquireFn};
 function pair(settings: Awaited<ReturnType<typeof createAgentSettings>>, timeout = 10000) {
   const port = new EventEmitter() as EventEmitter & {postMessage: (message: unknown) => void}; const outgoing: unknown[] = [], replies: unknown[] = [];
   const broker = createAgentSettingsBroker({agentSettings: settings, getSelfPort: () => 4318, send: (data: unknown) => { replies.push(data); port.emit('message', {data}); }} as never);
@@ -40,9 +43,9 @@ test('trusted symbol acquisition requires exact revision/full configuration, whi
     {...f.expected, configuration: {...f.expected.configuration, protocol: 'responses'}},
     {...f.expected, configuration: {...f.expected.configuration, baseUrl: 'https://different.example.com/v1'}}]) await assert.rejects(f.settings[AGENT_CREDENTIAL_ACQUIRE](input), {code: 'AGENT_SETTINGS_CONFLICT'});
   await assert.rejects(f.settings[AGENT_CREDENTIAL_ACQUIRE]({...f.expected, secret: SECRET}), {code: 'AGENT_SETTINGS_VALIDATION'});
-  await f.settings.put({expectedRevision: f.expected.expectedRevision, configuration: {...f.expected.configuration, baseUrl: 'https://changed.example.com/v1'}, secret: {action: 'keep'}});
+  await putTestAgentConfiguration(f.settings,{expectedRevision: f.expected.expectedRevision, configuration: {...f.expected.configuration, baseUrl: 'https://changed.example.com/v1'}, secret: {action: 'keep'}});
   const changed = await f.settings.get();
-  assert.equal(((await f.settings[AGENT_CREDENTIAL_ACQUIRE]({expectedRevision: changed.revision, configuration: changed.configuration})) as {apiKey: string | null}).apiKey, null);
+  assert.equal(((await f.settings[AGENT_CREDENTIAL_ACQUIRE](testAgentCredential(changed))) as {apiKey: string | null}).apiKey, null);
 });
 
 test('persistent credentials recheck OS vault and binding at each acquire without caching decoded secrets', async (t: TestContext) => {
@@ -76,10 +79,10 @@ test('desktop acquisition is narrow, request-bound and never put in cached publi
   safe(await p.client.get({selfPort: 4318}));
   const wrong = request('acquire', {...f.expected, configuration: {...f.expected.configuration, model: 'another'}});
   p.broker.handle(wrong as never); await turn(); assert.equal((p.replies.at(-1) as {ok?: boolean}).ok, false); safe(p.replies.at(-1));
-  const changed = await p.client.put({expectedRevision: f.expected.expectedRevision, configuration: {...f.expected.configuration, protocol: 'responses'}, secret: {action: 'keep'}}, {selfPort: 4318});
-  assert.equal(changed.configuration.protocol, 'responses'); assert.equal(changed.secret.configured, true);
-  await assert.rejects(p.client[AGENT_CREDENTIAL_ACQUIRE]({...f.expected, expectedRevision: changed.revision}, {selfPort: 4318}), {code: 'AGENT_SETTINGS_CONFLICT'});
-  assert.equal((await p.client[AGENT_CREDENTIAL_ACQUIRE]({expectedRevision: changed.revision, configuration: changed.configuration}, {selfPort: 4318})).apiKey, SECRET);
+  const changed = await putTestAgentConfiguration(p.client,{expectedRevision: f.expected.expectedRevision, configuration: {...f.expected.configuration, protocol: 'responses'}, secret: {action: 'keep'}}, {selfPort: 4318});
+  assert.equal(testAgentExecution(changed).configuration.protocol, 'responses'); assert.equal(testAgentExecution(changed).secret.configured, true);
+  await assert.rejects(p.client[AGENT_CREDENTIAL_ACQUIRE]({...f.expected, expectedRevision: testAgentExecution(changed).revision}, {selfPort: 4318}), {code: 'AGENT_SETTINGS_CONFLICT'});
+  assert.equal((await p.client[AGENT_CREDENTIAL_ACQUIRE](testAgentCredential(changed), {selfPort: 4318})).apiKey, SECRET);
   assert.ok(p.outgoing.every(message => (message as {version?: number}).version === 1));
 });
 
@@ -99,7 +102,7 @@ test('client rejects credential-shaped responses to public reads and wrong-bound
 
 test('abort/utility replacement cancels main acquisition and late credentials reach neither client nor replacement', async (t: TestContext) => {
   const f = await engine(t); let finish: (() => void) | undefined; let signal: AbortSignal | undefined;
-  const settings = {get: () => f.settings.get(), [AGENT_CREDENTIAL_ACQUIRE](expected: {expectedRevision: number; configuration: Record<string, unknown>}, options: {signal?: AbortSignal}) { signal = options.signal; return new Promise(resolve => { finish = () => resolve({revision: expected.expectedRevision, configuration: expected.configuration, apiKey: SECRET}); }); }};
+  const settings = {get: () => f.settings.get(), [AGENT_CREDENTIAL_ACQUIRE](expected: {expectedRevision: number; configuration: Record<string, unknown>}, options: {signal?: AbortSignal}) { signal = options.signal; return new Promise(resolve => { finish = () => resolve({revision: expected.expectedRevision, configuration: expected.configuration, binding:(expected as typeof f.expected).binding, apiKey: SECRET}); }); }};
   const old = pair(settings as never); t.after(() => old.close());
   const controller = new AbortController();
   const pending = old.client[AGENT_CREDENTIAL_ACQUIRE](f.expected, {selfPort: 4318, signal: controller.signal});

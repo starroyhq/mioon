@@ -1,3 +1,4 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -53,7 +54,7 @@ async function fixture(t:TestContext,{authorize=true,providers=new Map<string,Pr
   const project=object(await services.call('project.create',{name:'Anthropic offline fixture'})),projectId=String(project.id);
   const shot=object(await services.call('shot.create',{projectId,title:'Saved shot',prompt:'original prompt'}));
   const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
-  await settings.put({expectedRevision:0,configuration:selectedConfiguration,secret:{action:'replace',storage:'session',value:key}});
+  await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:selectedConfiguration,secret:{action:'replace',storage:'session',value:key}});
   const authorizations=createTestAuthorizations(()=>({...store}),settings);if(authorize)await authorizeTestScope(authorizations,'project_agent');
   const requests:RecordedRequest[]=[],effects:string[]=[],loads:string[]=[];
   let script:Script=(_request,response)=>response.end(frames([],'离线任务完成',{model:selectedConfiguration.model}));
@@ -86,7 +87,7 @@ async function fixture(t:TestContext,{authorize=true,providers=new Map<string,Pr
         ?frames([call('mioon_tools_load',{names})],'加载本轮工具',{model:selectedConfiguration.model})
         :index===(names.length?2:1)?frames(calls,'准备处理',{model:selectedConfiguration.model}):frames([],'离线任务完成',{model:selectedConfiguration.model}));
     },
-    async send(requestId:string=randomUUID()){return runtime.send(projectId,{requestId,text:'仅执行离线测试',expectedSettingsRevision:(await settings.get()).revision});},
+    async send(requestId:string=randomUUID()){return runtime.send(projectId,{requestId,text:'仅执行离线测试',expectedSettingsRevision:testAgentExecution(await settings.get()).revision});},
     async settle(runId:string){await runtime.drain();return runtime.get(projectId,runId);},
     async wait(runId:string,status:string){const until=Date.now()+10000;for(;;){const value=runtime.get(projectId,runId);if(value.run.status===status)return value;if(Date.now()>until)throw Error(`Unexpected task state: ${value.run.status}/${value.run.pauseReason}`);await pause(5);}},
     async received(count:number){const until=Date.now()+10000;while(requests.length<count){if(Date.now()>until)throw Error('Local model request was not received');await pause(5);}},
@@ -134,7 +135,7 @@ test('Anthropic approved edit resumes the original tool after restart without an
   assert.equal(JSON.stringify(f.runtime.journal.step(planning.id).request),frozen);
 });
 
-const miniMaxNative:AgentConfiguration={presetId:'minimax',platformId:'china',protocol:'anthropic_messages',model:'MiniMax-M3',baseUrl:'https://minimax-compatible.example.com/anthropic'};
+const miniMaxNative:AgentConfiguration={presetId:'minimax',platformId:'china',protocol:'anthropic_messages',model:'MiniMax-M3',baseUrl:'https://api.minimax.cn/anthropic'};
 test('MiniMax preset keeps Messages, bound credentials and one approved edit across native task recovery',async t=>{
   const f=await fixture(t,{selectedConfiguration:miniMaxNative});f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,local_reversible:'confirm'}});
   f.plan([call('mioon_shot_update',{shotId:String(f.shot.id),expectedRevision:Number(f.shot.revision),patch:{prompt:'MiniMax native edit'},_mio_step:'调整测试镜头'})]);
@@ -153,7 +154,7 @@ test('changing the current MiniMax protocol cannot rewrite or replay an already 
   const f=await fixture(t,{selectedConfiguration:miniMaxNative});f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,local_reversible:'confirm'}});
   f.plan([call('mioon_shot_update',{shotId:String(f.shot.id),expectedRevision:Number(f.shot.revision),patch:{prompt:'must remain unapplied'}})]);
   const sent=await f.send();await f.wait(sent.run.id,'awaiting_approval');await f.runtime.drain();const planning=f.runtime.journal.snapshot(sent.run.id).steps.filter(item=>item.kind==='model').at(-1)!,frozen=JSON.stringify(planning.request),settings=await f.settings.get();
-  await f.settings.put({expectedRevision:settings.revision,configuration:{...miniMaxNative,protocol:'chat_completions'},secret:{action:'keep'}});
+  await putTestAgentConfiguration(f.settings,{expectedRevision:settings.revision,configuration:{...miniMaxNative,baseUrl:'https://api.minimax.cn/v1',protocol:'chat_completions'},secret:{action:'keep'}});
   f.restart();await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');const failed=await f.settle(sent.run.id);
   assert.equal(failed.run.status,'failed');assert.equal(failed.run.pauseReason,'AGENT_SETTINGS_CONFLICT');assert.equal(f.requests.length,2);assert.equal(f.effects.length,0);assert.deepEqual(f.loads,['tools.load']);
   assert.deepEqual(failed.run.configuration,miniMaxNative);assert.equal(JSON.stringify(f.runtime.journal.step(planning.id).request),frozen);assert.equal(object(f.store.get('shots',String(f.shot.id))).prompt,'original prompt');

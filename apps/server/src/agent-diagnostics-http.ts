@@ -48,7 +48,7 @@ export function createAgentDiagnosticsHttp(deps:Dependencies){
       if(projectId!==null&&!deps.hasProject(projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');
       const settings=sanitizeAgentSettingsResult(await deps.settings.get({selfPort:deps.selfPort()}));
       const storage=deps.storage?.(projectId??undefined);
-      reply(200,{ok:true,data:{version:1,settings,policy:deps.policy(),authorization:deps.authorizations.snapshot(settings.configuration),catalog:inspectAgentTaskCatalog(deps.tools),...(storage?{storage}:{}),...(projectId!==null?{projectId}:{}),verification:'not_tested'}});
+      reply(200,{ok:true,data:{version:1,settings,policy:deps.policy(),authorization:deps.authorizations.snapshot(settings.execution?.configuration??null),catalog:inspectAgentTaskCatalog(deps.tools),...(storage?{storage}:{}),...(projectId!==null?{projectId}:{}),verification:'not_tested'}});
     }catch(error){
       const failure=agentTaskFailure(object(error)&&['AGENT_TASK_INVALID','AGENT_TASK_NOT_FOUND','AGENT_TASK_STORAGE_CORRUPT'].includes(String(error.code))?String(error.code):'AGENT_TASK_STORAGE_UNAVAILABLE');
       reply(failure.status,{ok:false,error:{code:failure.code,message:failure.message,details:{},retryable:false}});

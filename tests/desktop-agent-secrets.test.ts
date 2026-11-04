@@ -10,7 +10,8 @@ import { createAgentSettingsBroker, createAgentSettingsClient, MAX_AGENT_SETTING
 import { BackendSupervisor } from '../apps/desktop/src/supervisor.ts';
 import { DEFAULT_AGENT_CONFIGURATION } from '../packages/business/src/agent/presets.ts';
 import { AGENT_CREDENTIAL_ACQUIRE } from '../packages/business/src/agent/settings.ts';
-import { agentCredentialBinding } from '../packages/business/src/agent/config.ts';
+import {agentServiceInput} from '../packages/contracts/src/agent-connection-settings.ts';
+import type {AgentSettingsSnapshot,AgentExecutionSettings} from '../packages/contracts/src/agent-connection-settings.ts';
 
 type AgentCodecOptions = Parameters<typeof createDesktopSecretCodec>[0];
 type SafeStorageArg = Parameters<typeof desktopSecretStorage>[0];
@@ -27,6 +28,11 @@ const storageOf = (vault: unknown, platform: NodeJS.Platform) => desktopSecretSt
 type SafeStorage = Parameters<typeof createDesktopSecretCodec>[0]['safeStorage'];
 const DUMMY_KEY = 'dummy-desktop-only-credential-never-live';
 const nextTurn = (): Promise<void> => new Promise(resolve => { setImmediate(resolve); });
+function execution(snapshot:AgentSettingsSnapshot):AgentExecutionSettings {assert.ok(snapshot.execution);return snapshot.execution;}
+function metadata(snapshot:AgentSettingsSnapshot){return {expectedRevision:snapshot.revision,services:snapshot.services.map(agentServiceInput),mioSelection:snapshot.mioSelection};}
+function replacement(snapshot:AgentSettingsSnapshot,storage:'session'|'persistent'='persistent',value=DUMMY_KEY){
+ return {...metadata(snapshot),mioSelection:{serviceKey:'openai',modelId:DEFAULT_AGENT_CONFIGURATION.model},secretActions:[{serviceKey:'openai',action:'replace' as const,storage,value}]};
+}
 
 // Synthetic crypto fixture only. This does not certify native OS keychain
 // behavior on Linux, macOS or Windows, and no provider request is made.
@@ -160,17 +166,16 @@ test('broker exposes only bounded get/put requests with safe errors', async () =
   broker.close();
 });
 
-test('broker public serializer excludes raw keys, ciphertext and arbitrary engine properties', async () => {
+test('broker strict public serializer rejects raw keys, ciphertext and arbitrary engine properties without reflecting them', async () => {
   const base = await sampleSettings();
   const messages: SentMessage[] = [];
   const broker = createAgentSettingsBroker({ send: (value: unknown) => messages.push(value as SentMessage),
     agentSettings: { get: async () => ({ ...base, apiKey: DUMMY_KEY, plaintext: DUMMY_KEY, encryptedKey: DUMMY_KEY, envelope: { secret: DUMMY_KEY },
-      secret: { ...base.secret, value: DUMMY_KEY, ciphertext: DUMMY_KEY },
+      services:base.services.map(entry=>({...entry,secret:{...entry.secret,value:DUMMY_KEY,ciphertext:DUMMY_KEY}})),
       storage: { ...base.storage, path: DUMMY_KEY }, presets: [{ secret: DUMMY_KEY }] }) } } as unknown as BrokerOptions);
   broker.handle(request()); await nextTurn();
   assert.equal(messages.length, 1);
-  assert.equal(messages[0].ok, true);
-  assert.deepEqual(messages[0].data, base);
+  assert.equal(messages[0].ok,false);assert.equal(messages[0].data,undefined);
   assertSanitized(messages[0]);
   broker.close();
 });
@@ -178,7 +183,7 @@ test('broker public serializer excludes raw keys, ciphertext and arbitrary engin
 test('broker fails closed on malformed public configuration without echoing it', async () => {
   const base = await sampleSettings(), messages: SentMessage[] = [];
   const broker = createAgentSettingsBroker({ send: (value: unknown) => messages.push(value as SentMessage),
-    agentSettings: { get: async () => ({ ...base, configuration: { ...base.configuration, value: DUMMY_KEY } }) } } as unknown as BrokerOptions);
+    agentSettings: { get: async () => ({ ...base, services:base.services.map((entry,index)=>index===0?{...entry,protocol:DUMMY_KEY}:entry) }) } } as unknown as BrokerOptions);
   broker.handle(request()); await nextTurn();
   assert.equal(messages.length, 1); assert.equal(messages[0].ok, false); assertSanitized(messages[0]);
   broker.close();
@@ -315,9 +320,8 @@ for (const platform of ['linux', 'darwin'] as const) test('desktop settings pers
   try {
     engine = await createDesktopAgentSettings({ safeStorage, userData, appId: 'app.starroy.mioon.dev', platform });
     const initial = await engine.get();
-    const saved = await engine.put({ expectedRevision: initial.revision, configuration: initial.configuration,
-      secret: { action: 'replace', value: DUMMY_KEY, storage: 'persistent' } });
-    assert.deepEqual(saved.secret, { configured: true, storage: 'persistent' });
+    const saved = await engine.put(replacement(initial));
+    assert.deepEqual(execution(saved).secret, { configured: true, storage: 'persistent' });
     assert.deepEqual(saved.storage, { persistentAvailable: true, sessionScope: 'app', reasonCode: null });
     assertSanitized(saved);
     const directory = path.join(userData, 'agent-settings'), file = path.join(directory, 'settings.json');
@@ -329,16 +333,16 @@ for (const platform of ['linux', 'darwin'] as const) test('desktop settings pers
     await engine.close();
     engine = await createDesktopAgentSettings({ safeStorage, userData, appId: 'app.starroy.mioon.dev', platform });
     const restored = await engine.get();
-    assert.deepEqual(restored.secret, saved.secret); assert.equal(restored.revision, saved.revision); assertSanitized(restored);
+    assert.deepEqual(restored.services,saved.services);assert.deepEqual(restored.execution,saved.execution);assert.equal(restored.revision,saved.revision);assertSanitized(restored);
   } finally { await engine?.close(); await rm(userData, { recursive: true, force: true }); }
 });
 
-for (const platform of ['linux', 'darwin'] as const) test('desktop legacy migration preserves encrypted channel wrapper v1 through locked-vault protocol save (' + platform + ')', async t => {
+for (const platform of ['linux', 'darwin'] as const) test('desktop v3 legacy projection never decrypts or retains old keys and new keys keep the native channel wrapper (' + platform + ')', async t => {
   const userData = await mkdtemp(path.join(tmpdir(), 'mioon-agent-legacy-desktop-'));
   const safeStorage = fakeVault(), appId = 'app.starroy.mioon.dev';
   const vault = asyncCodec({safeStorage, appId, platform});
   const {protocol, ...configuration} = DEFAULT_AGENT_CONFIGURATION;
-  const binding = agentCredentialBinding(configuration as unknown as Parameters<typeof agentCredentialBinding>[0]);
+  const binding = JSON.stringify([configuration.presetId,configuration.platformId,configuration.baseUrl]);
   const encrypted = await vault.encrypt(JSON.stringify({version: 1, binding, value: DUMMY_KEY}));
   const directory = path.join(userData, 'agent-settings'), file = path.join(directory, 'settings.json');
   await mkdir(directory, {mode: 0o700});
@@ -352,25 +356,26 @@ for (const platform of ['linux', 'darwin'] as const) test('desktop legacy migrat
   const port = pairedPort(), replies: SentMessage[] = [];
   const broker = createAgentSettingsBroker({agentSettings: engine, send: (data: unknown) => { replies.push(data as SentMessage); port.emit('message', {data}); }});
   port.postMessage = data => queueMicrotask(() => broker.handle(data));
-  type SnapshotShape = {revision: number; configuration: {protocol: string; [key: string]: unknown}; secret: {configured: boolean}; storage: {persistentAvailable: boolean}};
-  const client = createAgentSettingsClient({port}) as unknown as {get(): Promise<SnapshotShape>; put(input: unknown): Promise<SnapshotShape>; close(): void}; t.after(() => { client.close(); broker.close(); });
+  const client = createAgentSettingsClient({port}) as unknown as {get(): Promise<AgentSettingsSnapshot>; put(input: unknown): Promise<AgentSettingsSnapshot>; close(): void}; t.after(() => { client.close(); broker.close(); });
   const initial = await client.get();
-  assert.equal(initial.configuration.protocol, 'chat_completions'); assert.equal(initial.revision, 12);
-  assert.equal(initial.secret.configured, true); assert.equal(initial.storage.persistentAvailable, false);
+  assert.equal(execution(initial).configuration.protocol,'chat_completions');assert.equal(initial.revision,12);
+  assert.equal(execution(initial).secret.configured,false);assert.equal(initial.storage.persistentAvailable,false);assert.ok(initial.notices.includes('LEGACY_KEYS_CLEARED'));
   assert.equal(await readFile(file, 'utf8'), bytes); assert.equal(reads, 0);
-  const saved = await client.put({expectedRevision: 12, configuration: {...initial.configuration, protocol: 'responses'}, secret: {action: 'keep'}});
-  assert.equal(saved.revision, 13); assert.equal(saved.configuration.protocol, 'responses');
+  const saved=await client.put({...metadata(initial),services:initial.services.map(entry=>entry.serviceKey==='openai'?{...agentServiceInput(entry),protocol:'responses'}:agentServiceInput(entry)),secretActions:[]});
+  assert.equal(saved.revision,13);assert.equal(execution(saved).configuration.protocol,'responses');
   const stored = JSON.parse(await readFile(file, 'utf8'));
-  assert.equal(stored.version, 2); assert.deepEqual(stored.secret, {binding, encrypted}); assert.equal(reads, 0);
+  assert.equal(stored.version,3);assert.ok(stored.services.every((entry:{secret:unknown})=>entry.secret===null));assert.equal(JSON.stringify(stored).includes(encrypted),false);assert.equal(reads,0);
   assert.ok(replies.every(reply => reply.version === 1)); replies.forEach(assertSanitized);
   await engine.close(); safeStorage.isEncryptionAvailable = () => true;
   engine = await createDesktopAgentSettings({safeStorage: fakeVault(), userData, appId, platform});
   const restored = await engine.get();
-  assert.equal((await engine[AGENT_CREDENTIAL_ACQUIRE]({expectedRevision: restored.revision, configuration: restored.configuration})).apiKey, DUMMY_KEY);
-  const wrapper = JSON.parse(decrypt(Buffer.from(encrypted, 'base64')));
+  const active=execution(restored);assert.equal((await engine[AGENT_CREDENTIAL_ACQUIRE]({expectedRevision:active.revision,configuration:active.configuration,binding:active.binding})).apiKey,null);
+  const entered=await engine.put({...replacement(restored),services:restored.services.map(agentServiceInput)}),current=execution(entered);
+  assert.equal((await engine[AGENT_CREDENTIAL_ACQUIRE]({expectedRevision:current.revision,configuration:current.configuration,binding:current.binding})).apiKey,DUMMY_KEY);
+  const fresh=JSON.parse(await readFile(file,'utf8')).services.find((entry:{serviceKey:string})=>entry.serviceKey==='openai').secret;
+  const wrapper=JSON.parse(decrypt(Buffer.from(fresh.encrypted,'base64')));
   assert.equal(wrapper.version, 1); assert.equal(wrapper.appId, appId);
-  assert.deepEqual(JSON.parse(wrapper.plaintext), {version: 1, binding, value: DUMMY_KEY});
-  assert.equal(JSON.parse(await readFile(file, 'utf8')).secret.encrypted, encrypted);
+  const payload=JSON.parse(wrapper.plaintext);assert.equal(payload.version,2);assert.equal(payload.serviceKey,'openai');assert.equal(payload.binding,fresh.binding);assert.equal(payload.value,DUMMY_KEY);assert.notEqual(payload.binding,binding);
 });
 
 test('unavailable Linux vault supports explicit session-only entry until app engine closes', async () => {
@@ -380,11 +385,9 @@ test('unavailable Linux vault supports explicit session-only entry until app eng
   try {
     engine = await createDesktopAgentSettings({ safeStorage, userData, appId: 'app.starroy.mioon.dev', platform: 'linux' });
     const initial = await engine.get();
-    await assert.rejects(engine.put({ expectedRevision: initial.revision, configuration: initial.configuration,
-      secret: { action: 'replace', value: DUMMY_KEY, storage: 'persistent' } }), { code: 'AGENT_SETTINGS_STORAGE_UNAVAILABLE' });
-    const saved = await engine.put({ expectedRevision: initial.revision, configuration: initial.configuration,
-      secret: { action: 'replace', value: DUMMY_KEY, storage: 'session' } });
-    assert.deepEqual(saved.secret, { configured: true, storage: 'session' });
+    await assert.rejects(engine.put(replacement(initial)),{code:'AGENT_SETTINGS_STORAGE_UNAVAILABLE'});
+    const saved=await engine.put(replacement(initial,'session'));
+    assert.deepEqual(execution(saved).secret,{configured:true,storage:'session'});
     assert.equal(saved.storage.sessionScope, 'app'); assert.equal(saved.storage.persistentAvailable, false);
     // A new utility/client gets the same main-owned session, with no getter for
     // its actual key. Closing that client does not close the app-owned engine.
@@ -392,14 +395,14 @@ test('unavailable Linux vault supports explicit session-only entry until app eng
       const port = pairedPort();
       const broker = createAgentSettingsBroker({ agentSettings: engine, send: (data: unknown) => port.emit('message', { data }) });
       port.postMessage = data => { queueMicrotask(() => broker.handle(data)); };
-      const client = createAgentSettingsClient({ port } as unknown as Parameters<typeof createAgentSettingsClient>[0]) as unknown as {get(): Promise<{secret: unknown}>; close(): void};
-      assert.deepEqual((await client.get()).secret, saved.secret);
+      const client = createAgentSettingsClient({ port } as unknown as Parameters<typeof createAgentSettingsClient>[0]) as unknown as {get(): Promise<AgentSettingsSnapshot>; close(): void};
+      assert.deepEqual((await client.get()).services,saved.services);assert.deepEqual((await client.get()).execution,saved.execution);
       client.close(); broker.close();
     }
     assert.equal((await readFile(path.join(userData, 'agent-settings/settings.json'), 'utf8')).includes(DUMMY_KEY), false);
     await engine.close();
     engine = await createDesktopAgentSettings({ safeStorage, userData, appId: 'app.starroy.mioon.dev', platform: 'linux' });
-    assert.deepEqual((await engine.get()).secret, { configured: false, storage: 'none' });
+    assert.deepEqual(execution(await engine.get()).secret,{configured:false,storage:'none'});
   } finally { await engine?.close(); await rm(userData, { recursive: true, force: true }); }
 });
 
@@ -410,21 +413,18 @@ for (const platform of ['linux', 'darwin'] as const) test('native encryption fai
   try {
     engine = await createDesktopAgentSettings({ safeStorage, userData, appId: 'app.starroy.mioon.dev', platform });
     const initial = await engine.get();
-    const saved = await engine.put({ expectedRevision: initial.revision, configuration: initial.configuration,
-      secret: { action: 'replace', value: DUMMY_KEY, storage: 'persistent' } });
+    const saved=await engine.put(replacement(initial));
     const file = path.join(userData, 'agent-settings/settings.json'), before = await readFile(file, 'utf8');
     const encrypt = safeStorage.encryptString!; let payloadFailures = 0;
     safeStorage.encryptString = value => {
       if (value.startsWith('{')) { payloadFailures++; throw new Error(DUMMY_KEY); }
       return encrypt(value); // The disposable availability probe must succeed.
     };
-    await assert.rejects(async () => engine!.put({ expectedRevision: saved.revision, configuration: saved.configuration,
-      secret: { action: 'replace', value: DUMMY_KEY + '-replacement', storage: 'persistent' } }), assertSanitized);
+    await assert.rejects(async()=>engine!.put(replacement(saved,'persistent',DUMMY_KEY+'-replacement')),assertSanitized);
     assert.equal(await readFile(file, 'utf8'), before);
     assert.equal(payloadFailures, 1);
     const after = await engine.get();
-    assert.equal(after.revision, saved.revision); assert.deepEqual(after.secret, saved.secret);
-    assert.deepEqual(after.configuration, saved.configuration);
+    assert.equal(after.revision,saved.revision);assert.deepEqual(after.services,saved.services);assert.deepEqual(after.execution,saved.execution);
     assert.equal(after.storage.persistentAvailable, platform === 'linux', 'Linux status remains dynamically checked; macOS native failure is latched');
   } finally { await engine?.close(); await rm(userData, { recursive: true, force: true }); }
 });
@@ -448,6 +448,35 @@ test('broker bounds concurrent utility requests without retaining unbounded plai
   for (const finish of finishes) finish(base);
   await nextTurn();
   assert.equal(messages.length, 1);
+});
+
+test('trusted broker credentials bind selection and per-entry revisions while other services can be saved',async t=>{
+ const userData=await mkdtemp(path.join(tmpdir(),'mioon-agent-entry-witness-'));
+ const engine=await createDesktopAgentSettings({safeStorage:fakeVault(),userData,appId:'app.starroy.mioon.dev',platform:'linux'});
+ const port=pairedPort(),replies:SentMessage[]=[],requests:unknown[]=[];
+ const broker=createAgentSettingsBroker({agentSettings:engine,send(data){replies.push(data as SentMessage);port.emit('message',{data});}});
+ port.postMessage=value=>{requests.push(value);queueMicrotask(()=>broker.handle(value));};const client=createAgentSettingsClient({port});
+ t.after(async()=>{client.close();broker.close();await engine.close();await rm(userData,{recursive:true,force:true});});
+ const initial=await engine.get(),a=randomUUID(),b=randomUUID(),model='synthetic-shared-model',entry={presetId:'custom' as const,name:'Synthetic',platformId:'custom',protocol:'chat_completions' as const,addressInput:'https://synthetic.example',manualModelIds:[model]},keyA=DUMMY_KEY+'-A',keyB=DUMMY_KEY+'-B';
+ const saved=await engine.put({expectedRevision:initial.revision,services:[...initial.services.map(agentServiceInput),{...entry,serviceKey:a},{...entry,serviceKey:b}],mioSelection:{serviceKey:a,modelId:model},secretActions:[{serviceKey:a,action:'replace',storage:'session',value:keyA},{serviceKey:b,action:'replace',storage:'session',value:keyB}]});
+ const frozen=execution(saved),expected={expectedRevision:frozen.revision,configuration:frozen.configuration,binding:frozen.binding};
+ const other=await engine.put({...metadata(saved),secretActions:[{serviceKey:b,action:'replace',storage:'session',value:keyB+'-new'}]});
+ assert.equal(other.revision,saved.revision+1);assert.deepEqual(other.execution,saved.execution);
+ assert.deepEqual(await client[AGENT_CREDENTIAL_ACQUIRE](expected),{revision:frozen.revision,configuration:frozen.configuration,binding:frozen.binding,apiKey:keyA});
+ const original=requests.find(value=>value!==null&&typeof value==='object'&&'operation' in value&&value.operation==='acquire');assert.ok(original);
+ broker.handle(original);assert.equal(replies.at(-1)?.ok,false,'An old acquire ID must not replay a plaintext credential');
+ assert.equal(replies.filter(reply=>reply.ok&&reply.data!==null&&typeof reply.data==='object'&&'apiKey' in reply.data&&reply.data.apiKey===keyA).length,1);
+ await assert.rejects(client[AGENT_CREDENTIAL_ACQUIRE]({...expected,binding:{...frozen.binding,serviceKey:b}}),{code:'AGENT_SETTINGS_CONFLICT'});
+ const switched=await engine.put({...metadata(other),mioSelection:{serviceKey:b,modelId:model},secretActions:[]});
+ const back=await engine.put({...metadata(switched),mioSelection:{serviceKey:a,modelId:model},secretActions:[]});
+ assert.deepEqual(back.mioSelection,saved.mioSelection);assert.notEqual(back.mioSelectionRevision,saved.mioSelectionRevision);
+ await assert.rejects(client[AGENT_CREDENTIAL_ACQUIRE](expected),{code:'AGENT_SETTINGS_CONFLICT'});
+ const beforeKey=execution(back),oldKeyRequest={expectedRevision:beforeKey.revision,configuration:beforeKey.configuration,binding:beforeKey.binding};
+ const rekeyed=await engine.put({...metadata(back),secretActions:[{serviceKey:a,action:'replace',storage:'session',value:keyA+'-new'}]});
+ assert.deepEqual(rekeyed.mioSelection,back.mioSelection);assert.notEqual(execution(rekeyed).binding.entryRevision,beforeKey.binding.entryRevision);
+ await assert.rejects(client[AGENT_CREDENTIAL_ACQUIRE](oldKeyRequest),{code:'AGENT_SETTINGS_CONFLICT'});
+ const current=execution(rekeyed);assert.deepEqual(await client[AGENT_CREDENTIAL_ACQUIRE]({expectedRevision:current.revision,configuration:current.configuration,binding:current.binding}),{revision:current.revision,configuration:current.configuration,binding:current.binding,apiKey:keyA+'-new'});
+ const disk=await readFile(path.join(userData,'agent-settings/settings.json'),'utf8');for(const key of [keyA,keyB])assert.equal(disk.includes(key),false);
 });
 
 test('supervisor lets an in-flight settings request reply during graceful HTTP shutdown', async () => {

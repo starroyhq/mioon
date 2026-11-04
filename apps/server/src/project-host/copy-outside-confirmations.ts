@@ -6,6 +6,19 @@ import type {OutsidePathConfirmationStore} from '../../../../packages/business/s
 
 export type CopyOutsidePaths = Pick<OutsidePathConfirmationStore, 'list' | 'confirm'>;
 
+/** Reads the exact transferable scope without granting anything. Callers with
+ * an application transaction can commit grants, registration and receipt together. */
+export function copiedProjectConfirmationDirectories(outsidePaths: Pick<CopyOutsidePaths, 'list'>, sourceProjectId: string, sourceProjectDir: string): readonly string[] {
+  const existing = outsidePaths.list(sourceProjectId);
+  if (existing.length > 20_000) throw new AppError('PROJECT_BACKUP_COPY_FAILED', '素材位置确认过多，未转移确认。', 409);
+  const directories = new Set(existing.map(entry => outsidePathConfirmationSchema.parse(entry))
+    .filter(entry => entry.projectId === sourceProjectId).map(entry => entry.directory));
+  try {directories.add(realpathSync(path.resolve(sourceProjectDir)));} catch { /* Missing sources grant nothing. */ }
+  const values = [...directories].sort();
+  if (Buffer.byteLength(JSON.stringify(values)) > 1024 * 1024) throw new AppError('PROJECT_BACKUP_COPY_FAILED', '素材位置确认记录过大，未转移确认。', 409);
+  return values;
+}
+
 /** A user-requested new-ID copy transfers only existing consent: the source
  * project directory itself and its exact confirmed directories. No descendant
  * permission, project-file grant or model input enters this operation.
@@ -15,14 +28,7 @@ export type CopyOutsidePaths = Pick<OutsidePathConfirmationStore, 'list' | 'conf
  * again after a user has revoked one on the new project. */
 export function transferCopiedProjectConfirmations(outsidePaths: CopyOutsidePaths, sourceProjectId: string, projectId: string,
   sourceProjectDir: string, claim: (directories: readonly string[]) => void): void {
-  const existing = outsidePaths.list(sourceProjectId);
-  if (existing.length > 20_000) throw new AppError('PROJECT_BACKUP_COPY_FAILED', '素材位置确认过多，未转移确认。', 409);
-  const directories = new Set(existing.map(entry => outsidePathConfirmationSchema.parse(entry))
-    .filter(entry => entry.projectId === sourceProjectId).map(entry => entry.directory));
-  // A missing source directory grants nothing; its references remain missing.
-  try {directories.add(realpathSync(path.resolve(sourceProjectDir)));} catch {}
-  const values = [...directories].sort();
-  if (Buffer.byteLength(JSON.stringify(values)) > 1024 * 1024) throw new AppError('PROJECT_BACKUP_COPY_FAILED', '素材位置确认记录过大，未转移确认。', 409);
+  const values = copiedProjectConfirmationDirectories(outsidePaths, sourceProjectId, sourceProjectDir);
   claim(values);
   const confirmedAt = new Date().toISOString();
   for (const directory of values) outsidePaths.confirm(outsidePathConfirmationSchema.parse({projectId, directory, confirmedAt}));

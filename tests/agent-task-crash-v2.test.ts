@@ -1,3 +1,5 @@
+import {putTestAgentConfiguration} from './helpers/agent-settings-fixture.ts';
+import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -27,7 +29,7 @@ async function crashFixture(t:TestContext,protocol:string,boundary:string){
 for(const protocol of ['chat_completions','responses'] as const)for(const boundary of ['model_intent','model_send','tool_before_commit','tool_after_commit','generation_accept','result_commit'])test(`${protocol}: SIGKILL ${boundary} preserves atomic progress and never resubmits`,{timeout:25000},async t=>{
  const f=await crashFixture(t,protocol,boundary),store=openStore(f.root),services=createServices(store,new Map());
  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();
- await settings.put({expectedRevision:0,configuration:{...initial.configuration,protocol},secret:{action:'replace',storage:'session',value:'SYNTHETIC_CRASH_ONLY'}});
+ await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration(protocol),secret:{action:'replace',storage:'session',value:'SYNTHETIC_CRASH_ONLY'}});
  const tools=createAgentTaskTools({store,services});let modelRequests=0;
  const gateway:TaskGateway=async function*(){modelRequests++;yield {type:'done',output:{text:'Recovered without repeat',toolCalls:[],providerOutput:protocol==='responses'?[]:{role:'assistant',content:'Recovered without repeat'}}};};
  const runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations:createTestAuthorizations(()=>({...store}),settings),tools,gateway,selfPort:()=>4318});

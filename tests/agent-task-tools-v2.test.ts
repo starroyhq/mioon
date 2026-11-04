@@ -1,3 +1,5 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
+import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {s1PublicOperationSchemas} from '../packages/contracts/src/asset-generation.ts';
 import test,{type TestContext} from 'node:test';
@@ -176,7 +178,7 @@ test('every actual model tool catalog has self-contained schema references in bo
  for(const tool of tools)assertSchemaReferences(tool.parameters);
  const current=await settings.get();
  for(const protocol of ['chat_completions','responses'] as const){
-  const body:unknown=JSON.parse(buildTaskModelRequest({...current.configuration,protocol},[{role:'user',content:'Synthetic schema discovery only'}],tools,4318));assert.ok(record(body)&&Array.isArray(body.tools));assert.equal(body.tools.length,tools.length);
+  const body:unknown=JSON.parse(buildTaskModelRequest(defaultTestAgentConfiguration(protocol),[{role:'user',content:'Synthetic schema discovery only'}],tools,4318));assert.ok(record(body)&&Array.isArray(body.tools));assert.equal(body.tools.length,tools.length);
   for(const tool of body.tools){assert.ok(record(tool));const definition=protocol==='responses'?tool:tool.function;assert.ok(record(definition));assertSchemaReferences(definition.parameters);}
  }
 });
@@ -272,7 +274,7 @@ test('schema projection resolves escaped local identities before removing host i
 });
 test('real tool discovery projects only protocol-supported definition fields on the wire',async t=>{
  const f=await fixture(t),settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});t.after(()=>settings.close());const current=await settings.get();
- for(const protocol of ['chat_completions','responses'] as const){const value:unknown=JSON.parse(buildTaskModelRequest({...current.configuration,protocol},[{role:'user',content:'Synthetic body only'}],f.tools.list(),4318));if(!record(value)||!Array.isArray(value.tools))throw Error('Invalid model request');
+ for(const protocol of ['chat_completions','responses'] as const){const value:unknown=JSON.parse(buildTaskModelRequest(defaultTestAgentConfiguration(protocol),[{role:'user',content:'Synthetic body only'}],f.tools.list(),4318));if(!record(value)||!Array.isArray(value.tools))throw Error('Invalid model request');
   for(const item of value.tools){if(!record(item))throw Error('Invalid tool');const definition=protocol==='responses'?item:item.function;if(!record(definition))throw Error('Invalid definition');assert.deepEqual(Object.keys(definition).filter(field=>!['type','name','description','parameters','strict'].includes(field)),[]);}
  }
 });
@@ -538,14 +540,14 @@ test('existing image group accepts its own revision advance and single backgroun
  await until(()=>f.store.db.prepare('SELECT state FROM image_tasks WHERE id=?').get(acceptedSeed.id as string)?.state==='succeeded');seed=false;
  const group=await f.services.call('image.group.get',{projectId:f.projectId,groupId:acceptedSeed.groupId});if(!record(group)||typeof group.id!=='string'||typeof group.revision!=='number')throw Error('Invalid existing group');
  f.journal.transition(f.run.id,f.journal.run(f.run.id).revision,'stopped');
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await settings.put({expectedRevision:0,configuration:initial.configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_EXISTING_IMAGE_GROUP_ONLY'}});
+ const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'session',value:'SYNTHETIC_EXISTING_IMAGE_GROUP_ONLY'}});
  const authorizations=createTestAuthorizations(()=>({...f.store}),settings);await authorizeTestScope(authorizations,'project_agent');let modelCalls=0;
  const args={...input,prompt:'Same group second synthetic version',groupId:group.id,expectedRevision:group.revision};
  const gateway:TaskGateway=async function*(){const output:TaskModelOutput={text:'Synthetic image queued',toolCalls:[],providerOutput:[]};modelCalls++;if(modelCalls===1)output.toolCalls=[{id:'load-existing-image-group-tools',name:'mioon_tools_load',arguments:{names:['mioon_image_generate']}}];else if(modelCalls===2)output.toolCalls=[{id:'existing-image-group-call',name:'mioon_image_generate',arguments:args}];output.providerOutput={role:'assistant',content:output.text,tool_calls:output.toolCalls.map(call=>({id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}))};yield {type:'done',output};};
  const runtime=createAgentTaskRuntime({store:f.store,agentSettings:settings,authorizations,tools:f.tools,journal:f.journal,gateway,selfPort:()=>4318});
  try{
   runtime.updatePolicy({requestId:randomUUID(),expectedRevision:runtime.policy().revision,stepLimit:30,modes:{...runtime.policy().modes,paid:'direct'},acknowledgePaid:true});
-  const sent=await runtime.send(f.projectId,{requestId:randomUUID(),text:'Generate the next version in the selected group',expectedSettingsRevision:(await settings.get()).revision});await entered;await runtime.drain();
+  const sent=await runtime.send(f.projectId,{requestId:randomUUID(),text:'Generate the next version in the selected group',expectedSettingsRevision:testAgentExecution(await settings.get()).revision});await entered;await runtime.drain();
   const completed=runtime.get(f.projectId,sent.run.id),step=completed.steps.find(item=>item.toolCall?.name==='mioon_image_generate');if(!step)throw Error('Missing accepted image step');const target=step.targets?.find(item=>item.kind==='image_group'&&item.id===group.id);assert.ok(target);
   assert.equal(completed.steps.filter(item=>item.toolCall?.name==='mioon_tools_load'&&item.status==='completed').length,1);assert.equal(completed.run.stepsUsed,5);
   const admittedRevision=f.journal.targetRevision(f.projectId,'image_group',group.id);assert.ok(admittedRevision>target.revision,'acceptance advances the existing group target itself');
@@ -561,7 +563,7 @@ for(const action of ['handBack','deny'] as const)test(`a background image approv
  const f=await fixture(t,{imageOptions:{generate:async(snapshot,context)=>{enter();await barrier;return createMockImageAdapter().generate(snapshot,{...context,beforeDispatch:()=>{if(typeof context.beforeDispatch!=='function')throw Error('Missing host dispatch fence');context.beforeDispatch();posts++;}});}}});
  async function until(check:()=>boolean,describe:()=>unknown=()=>''):Promise<void>{const deadline=Date.now()+30_000;while(!check()){if(Date.now()>=deadline)assert.fail(`Synthetic background approval did not settle ${JSON.stringify(describe())}`);await delay(10);}}
  const shot=await f.shot('Foreground approval target'),prompt=()=>(f.store.get('shots',shot.id) as Record<string,unknown>).prompt,savedPrompt=prompt();f.journal.transition(f.run.id,f.journal.run(f.run.id).revision,'stopped');
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await settings.put({expectedRevision:0,configuration:initial.configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_BACKGROUND_REQUEUE_ONLY'}});
+ const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'session',value:'SYNTHETIC_BACKGROUND_REQUEUE_ONLY'}});
  const authorizations=createTestAuthorizations(()=>({...f.store}),settings);await authorizeTestScope(authorizations,'project_agent');let modelCalls=0;
  const gateway:TaskGateway=async function*(){const output:TaskModelOutput={text:'Synthetic background requeue',toolCalls:[],providerOutput:[]};modelCalls++;
   if(modelCalls===1)output.toolCalls=[{id:'background-requeue-load',name:'mioon_tools_load',arguments:{names:['mioon_image_generate','mioon_shot_update']}}];
@@ -571,7 +573,7 @@ for(const action of ['handBack','deny'] as const)test(`a background image approv
  const runtime=createAgentTaskRuntime({store:f.store,agentSettings:settings,authorizations,tools:f.tools,journal:f.journal,gateway,selfPort:()=>4318});
  try{
   runtime.updatePolicy({requestId:randomUUID(),expectedRevision:runtime.policy().revision,stepLimit:30,modes:{...runtime.policy().modes,paid:'direct',local_reversible:'confirm'},acknowledgePaid:true});
-  const sent=await runtime.send(f.projectId,{requestId:randomUUID(),text:'Queue an image, then edit the shot',expectedSettingsRevision:(await settings.get()).revision});await entered;
+  const sent=await runtime.send(f.projectId,{requestId:randomUUID(),text:'Queue an image, then edit the shot',expectedSettingsRevision:testAgentExecution(await settings.get()).revision});await entered;
   await until(()=>runtime.get(f.projectId,sent.run.id).run.status==='awaiting_approval');
   const waiting=runtime.get(f.projectId,sent.run.id),image=waiting.steps.find(item=>item.toolCall?.name==='mioon_image_generate'),foreground=waiting.steps.find(item=>item.toolCall?.name==='mioon_shot_update');
   if(!image||!foreground)throw Error('Missing synthetic steps');assert.equal(image.status,'completed');assert.equal(foreground.status,'awaiting_approval');
@@ -682,13 +684,13 @@ for(const action of ['revoke_grant','disable_paid_direct'] as const)test(`real r
  let enter:()=>void=()=>{},release:()=>void=()=>{};const entered=new Promise<void>(resolve=>{enter=resolve;}),barrier=new Promise<void>(resolve=>{release=resolve;});let posts=0;
  const provider:Provider={id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},async submit(_snapshot,context){enter();await barrier;context.beforeSubmit?.();posts++;return {providerJobId:'never-actually-sent'};},async reconcile(){return null;},async poll(){return {status:'running'};},async download(){throw Error('No output requested');}};
  const providers=new Map([['mock',provider]]),f=await fixture(t,{},providers),shot=await f.shot('Real gate source');f.journal.transition(f.run.id,f.journal.run(f.run.id).revision,'stopped');
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await settings.put({expectedRevision:0,configuration:initial.configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_TASK_GATE_ONLY'}});
+ const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'session',value:'SYNTHETIC_TASK_GATE_ONLY'}});
  const authorizations=createTestAuthorizations(()=>({...f.store}),settings);await authorizeTestScope(authorizations,'project_agent');let modelCalls=0;
  const gateway:TaskGateway=async function*(){const output:TaskModelOutput={text:'Queued synthetic task',toolCalls:[],providerOutput:[]};modelCalls++;if(modelCalls===1)output.toolCalls=[{id:'load-synthetic-generation-tools',name:'mioon_tools_load',arguments:{names:['mioon_generation_submit']}}];else if(modelCalls===2){const args={shotId:shot.id,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'};output.toolCalls=[{id:'synthetic-generation-call',name:'mioon_generation_submit',arguments:args}];}output.providerOutput={role:'assistant',content:output.text,tool_calls:output.toolCalls.map(call=>({id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}))};yield {type:'done',output};};
  const runtime=createAgentTaskRuntime({store:f.store,agentSettings:settings,authorizations,tools:f.tools,journal:f.journal,gateway,selfPort:()=>4318});let worker:ReturnType<typeof startWorker>|undefined;
  try{
   runtime.updatePolicy({requestId:randomUUID(),expectedRevision:runtime.policy().revision,stepLimit:30,modes:{...runtime.policy().modes,paid:'direct'},acknowledgePaid:true});
-  const sent=await runtime.send(f.projectId,{requestId:randomUUID(),text:'Queue synthetic generation',expectedSettingsRevision:(await settings.get()).revision});await runtime.drain();const completed=runtime.get(f.projectId,sent.run.id);assert.equal(completed.run.status,'completed');assert.equal(completed.run.stepsUsed,5);assert.equal(completed.steps.filter(item=>item.toolCall?.name==='mioon_tools_load'&&item.status==='completed').length,1);
+  const sent=await runtime.send(f.projectId,{requestId:randomUUID(),text:'Queue synthetic generation',expectedSettingsRevision:testAgentExecution(await settings.get()).revision});await runtime.drain();const completed=runtime.get(f.projectId,sent.run.id);assert.equal(completed.run.status,'completed');assert.equal(completed.run.stepsUsed,5);assert.equal(completed.steps.filter(item=>item.toolCall?.name==='mioon_tools_load'&&item.status==='completed').length,1);
   worker=startWorker(f.store,f.services,providers);await entered;
   if(action==='revoke_grant'){const current=await authorizations.list(),grant=current.authorizations.find(item=>item.scope==='project_agent');assert.ok(grant);await authorizations.revoke({requestId:randomUUID(),expectedRevision:current.revision,authorizationId:grant.id});}
   else runtime.updatePolicy({requestId:randomUUID(),expectedRevision:runtime.policy().revision,stepLimit:30,modes:{...runtime.policy().modes,paid:'confirm'}});

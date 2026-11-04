@@ -1,3 +1,5 @@
+import {putTestAgentConfiguration,testAgentExecution} from './agent-settings-fixture.ts';
+import {defaultTestAgentConfiguration} from './agent-preset-configurations.ts';
 // This owned process has only a synthetic gateway and a local PNG renderer.
 // SIGKILL intentionally bypasses shutdown and SQLite transaction cleanup.
 import {appendFileSync,writeFileSync} from 'node:fs';
@@ -26,7 +28,7 @@ const services=createServices(store,new Map(),{imageOptions:{generate:async(snap
 const project=await services.call('project.create',{name:'Owned SIGKILL fixture'}) as {id:string};
 const shot=await services.call('shot.create',{projectId:project.id,title:'Before'}) as {id:string;revision:number};
 const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();
-await settings.put({expectedRevision:0,configuration:{...initial.configuration,protocol},secret:{action:'replace',storage:'session',value:'SYNTHETIC_CRASH_ONLY'}});
+await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration(protocol),secret:{action:'replace',storage:'session',value:'SYNTHETIC_CRASH_ONLY'}});
 const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
 const base=createAgentTaskTools({store,services});
 const tools={...base,async execute(prepared:Parameters<typeof base.execute>[0],context:Parameters<typeof base.execute>[1]){
@@ -45,5 +47,5 @@ const runtime=createAgentTaskRuntime({store,agentSettings:settings,authorization
 runtime.journal.updatePolicy({...runtime.policy(),modes:{...runtime.policy().modes,paid:'direct'}});
 ready=true;
 const requestId=randomUUID();writeFileSync(path.join(root,'fixture.json'),JSON.stringify({projectId:project.id,shotId:shot.id,requestId,protocol}));
-await runtime.send(project.id,{requestId,text:'Owned crash test',expectedSettingsRevision:(await settings.get()).revision});
+await runtime.send(project.id,{requestId,text:'Owned crash test',expectedSettingsRevision:testAgentExecution(await settings.get()).revision});
 setTimeout(()=>{throw Error('SIGKILL boundary not reached');},15000);

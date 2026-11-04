@@ -12,9 +12,9 @@ The CLI is a local HTTP client for the **same running backend and database** use
 
 | 命令 | 输入与行为 |
 | --- | --- |
-| `agent settings get` | `{}`；只返回配置、revision 和密钥 configured/storage 元数据 |
-| `agent settings set` | `{expectedRevision, configuration}`；保留同一凭据绑定下的密钥，不接收密钥值 |
-| `agent settings secret set/remove` | `{expectedRevision, configuration}`；set 使用下面的安全输入，remove 显式移除 |
+| `agent settings get` | `{}`；返回 v3 集合、条目修订、Mio 选择/执行投影及无密钥状态 |
+| `agent settings set` | `{expectedRevision, services, mioSelection}`；整页 CAS，保留每条同一接收者绑定下的密钥，不接收密钥值 |
+| `agent settings secret set/remove` | `{expectedRevision, serviceKey}`；先读取该条目并核对整页 CAS，set 使用下面的安全输入，remove 显式移除本条 |
 | `agent doctor` | `{projectId?}`；连接本地后端，读取公开设置、策略、授权和目录检查摘要，不发送模型请求 |
 | `agent diagnose --live` | 与 send 相同，必须包含 `diagnostic`；显式允许诊断模型请求 |
 | `agent diagnose latest` | `{}`；只读返回全工作区最近一次文本诊断（设置页的测试连接）的状态、时间、协议、地址、模型和失败代码；不发送模型请求，不返回测试文字、回复或密钥 |
@@ -84,7 +84,7 @@ mioon agent settings secret set --input-file ./metadata.json --key-stdin --stora
 
 诊断使用 `agent diagnose --live`，输入中另传 `diagnostic:{profile:"text"|"read_only"|"catalog",toolNames?:[...]}`；普通 `agent task send` 拒绝该字段并指向明确的诊断入口。底层客户端和 REST 仍复用同一发送接口。text 不提供工具；read_only 只提供只读工具（不含提问工具 `mioon_ask`，诊断没有可以作答的对话）；catalog 可选唯一工具名子集，仅验证目录接受情况，绝不执行模型返回的工具。诊断仍检查 requestId、settings revision、`project_agent` 授权和步数预算，可能产生文本模型费用。诊断成功不能替代完整工具目录下的真实回复、只读往返和自主剪片验收。
 
-每轮执行、上传、策略和控制写入必须保留调用者自己的 requestId；CLI 不生成它，也不自动提交第二次。响应丢失或无法验证时返回 UNKNOWN 与对应 GET lookup；只查原操作，不换 ID、不自动重发。settings PUT 没有 requestId/持久回执，因此未知时在同一个已绑定本地连接上只追加一次有界 GET，错误仍报告未知，并附 revision、配置是否匹配、configured/storage 的公开观察值；不能把 configured=true 当作新密钥已经保存的证明。读回失败也只报告观察不可用，不重发 PUT；Ctrl+C 不再发起读回。后续可手动 `agent settings get` 核对。
+每轮执行、上传、策略和控制写入必须保留调用者自己的 requestId；CLI 不生成它，也不自动提交第二次。响应丢失或无法验证时返回 UNKNOWN 与对应 GET lookup；只查原操作，不换 ID、不自动重发。settings PUT 没有 requestId/持久回执，因此未知时在同一个已绑定本地连接上只追加一次有界 GET，错误仍报告未知，并附 revision、集合元数据是否匹配及各条 configured/storage 的公开观察值；不能把 configured=true 当作新密钥已经保存的证明。读回失败也只报告观察不可用，不重发 PUT；Ctrl+C 不再发起读回。后续可手动 `agent settings get` 核对。
 
 所有 Agent 命令仍只向 stdout 输出一个 JSON envelope；watch/events 的持久快照进度写到 stderr。SSE `after` 是序列游标，流中只有 changed 通知，CLI 会重新读取持久快照；断线也只 GET 恢复。events 是同一观察方式，不声称导出完整原始事件日志。等待审批、预算暂停、中断或未知时退出 3 并返回 `action_needed`；失败/停止退出 6，成功退出 0，期限退出 5，Ctrl+C 退出 130 且仅停止本地观察，不停止 Run。继续、批准、停止和未知处置均需要新的明确控制命令。CLI 不接受已退役的 `--workspace-origin`，也不会将它当作 HTTP Origin。
 
@@ -1121,15 +1121,16 @@ Discover `mioon schema timeline.loudness.apply`. After an explicitly reviewed cu
 
 ## 项目文件（.mioon）
 
-`mioon project export|import|duplicate` 走专门的管理接口，不在业务 RPC schema 和 MCP 工具目录里，详见 [PROJECT-PACKAGE.md](PROJECT-PACKAGE.md)。
+`mioon project export|import` 走专门的管理接口，不在业务 RPC schema 和 MCP 工具目录里，详见 [PROJECT-PACKAGE.md](PROJECT-PACKAGE.md)。
 
 | 命令 | 输入 |
 | --- | --- |
 | `project export` | `--input '{"projectId":"…","media":"all"\|"used"}' --output <新文件>`；不覆盖已有文件，进度写到 stderr |
 | `project import` | `--file <文件.mioon> --request-id <id>`，可选 `--input '{"name":"…"}'`；先完整校验再创建 |
-| `project duplicate` | `--request-id <id> --input '{"projectId":"…","name":"…"}'` |
 
-导入和复制要求调用方提供 requestId；用同一个 requestId 重试时，返回同一个项目。
+导入要求调用方提供 requestId；用同一个 requestId 重试时，返回同一个项目。
+
+`mioon project duplicate` 暂不可用，在读取输入、初始化本机存储或发起网络请求前返回 `PROJECT_COPY_UNAVAILABLE`（409）；旧共享客户端的 `duplicateProject` 也直接返回同一错误，不发起请求。CLI/MCP 的新项目复制、另存为入口留待 0.1.x；当前应用层能力见 [PROJECT-COPIES.md](PROJECT-COPIES.md)。
 
 ## 素材引用导入
 

@@ -1,3 +1,4 @@
+import type {AgentSettingsBinding} from '../../../contracts/src/agent-connection-settings.ts';
 export {AGENT_TASK_EVENT_PAGE_BYTES} from './task-event-limits-v2.ts';
 import {createMioProjectJournal} from './mio-journal-factory.ts';
 import {testProjectAppLibrary} from '../project-service-application.ts';
@@ -28,7 +29,7 @@ export interface AgentTaskJournal {
 "conversationPolicies": () => boolean;
 "lookupRequest": (projectId: string, requestId: string) => AgentTaskSnapshot | null;
 "lookupEdit": (requestId: string) => unknown;
-"create": (input: { requestId: string; projectId: string; conversationId?: string; text: string; configuration: AgentTaskJson; settingsRevision?: number; context?: AgentTaskJson[]; attachments?: string[]; policy?: AgentTaskPolicy; diagnostic?: AgentTaskDiagnostic; conversationModes?: AgentTaskPolicyModes; rulesSnapshot?: FrozenMioRules; }) => AgentTaskSnapshot;
+"create": (input: { requestId: string; projectId: string; conversationId?: string; text: string; configuration: AgentTaskJson; settingsRevision?: number; settingsBinding?:AgentSettingsBinding; context?: AgentTaskJson[]; attachments?: string[]; policy?: AgentTaskPolicy; diagnostic?: AgentTaskDiagnostic; conversationModes?: AgentTaskPolicyModes; rulesSnapshot?: FrozenMioRules; }) => AgentTaskSnapshot;
 "conversation": (projectId: string, conversationId: string, options?: { cursor?: string; limit?: number; }) => AgentTaskConversationPage;
 "conversationSummary": (projectId: string, conversationId: string) => AgentTaskConversation;
 "contextRuns": (projectId: string, conversationId: string) => AgentTaskRun[];

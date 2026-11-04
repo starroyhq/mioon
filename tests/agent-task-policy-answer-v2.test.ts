@@ -1,3 +1,5 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
+import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 
 
 
@@ -49,7 +51,7 @@ async function fixture(t:TestContext){
  const projectId=store.projectId;
  const shotId=String(record(await services.call('shot.create',{projectId,title:'Saved title'})).id);
  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();
- await settings.put({expectedRevision:0,configuration:{...initial.configuration,protocol:'chat_completions'},secret:{action:'replace',storage:'session',value:'SYNTHETIC_POLICY_ANSWER_TEST_ONLY'}});
+ await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'session',value:'SYNTHETIC_POLICY_ANSWER_TEST_ONLY'}});
  const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
  const tools=createAgentTaskTools({store,services}),bodies:string[]=[],queue:AgentTaskToolCall[][]=[];
  const gateway:TaskGateway=async function*(request){
@@ -64,7 +66,7 @@ async function fixture(t:TestContext){
   get runtime(){return runtime;},
   async settingsRevision(){return (await settings.get()).revision;},
   queue(...batches:AgentTaskToolCall[][]){queue.push(...batches);},
-  async send(text:string,extra:Record<string,unknown>={}):Promise<AgentTaskSnapshot>{const sent=await runtime.send(projectId,{requestId:randomUUID(),text,expectedSettingsRevision:(await settings.get()).revision,...extra});await runtime.drain();return runtime.get(projectId,sent.run.id);},
+  async send(text:string,extra:Record<string,unknown>={}):Promise<AgentTaskSnapshot>{const sent=await runtime.send(projectId,{requestId:randomUUID(),text,expectedSettingsRevision:testAgentExecution(await settings.get()).revision,...extra});await runtime.drain();return runtime.get(projectId,sent.run.id);},
   async submit(input:Record<string,unknown>):Promise<AgentTaskSnapshot>{const sent=await runtime.send(projectId,input);await runtime.drain();return runtime.get(projectId,sent.run.id);},
   get(runId:string){return runtime.get(projectId,runId);},
   async action(runId:string,action:AgentTaskControlAction,extra:Record<string,unknown>={}){const current=runtime.get(projectId,runId);const next=await runtime.action(projectId,runId,{requestId:randomUUID(),expectedRevision:current.run.revision,action,...extra});await runtime.drain();return {sent:next,settled:runtime.get(projectId,runId)};},

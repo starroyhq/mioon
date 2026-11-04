@@ -5,6 +5,8 @@ import {PROJECT_NAME_MAX_LENGTH, projectNameProblem} from './project-name.ts';
 import {recentProjectSchema} from './project-registry.ts';
 import type {RecentProject} from './project-registry.ts';
 import type {ProjectEntriesResponse} from './project-entry.ts';
+import {projectCopyInputSchema} from './project-copies.ts';
+import type {ProjectCopyInput, ProjectCopyResponse} from './project-copies.ts';
 
 /** Trusted utility control payloads, not HTTP/renderer messages. The main
  * process generates opaque UUID window owners; these are not BrowserWindow's
@@ -23,12 +25,14 @@ export const projectEntryAcquireInputSchema = z.object({projectId: projectIdSche
 export const projectEntryReleaseInputSchema = z.object({windowId}).strict();
 export const projectEntryWindowSchema = z.object({windowId, project: recentProjectSchema}).strict();
 export const projectEntryWindowRevokedSchema = z.object({windowId, projectId: projectIdSchema}).strict();
+export const projectEntrySaveAsInputSchema = projectCopyInputSchema.extend({windowId});
 export type ProjectEntryCreateInput = z.infer<typeof projectEntryCreateInputSchema>;
 export type ProjectEntryOpenPathInput = z.infer<typeof projectEntryOpenPathInputSchema>;
 export type ProjectEntryAcquireInput = z.infer<typeof projectEntryAcquireInputSchema>;
 export type ProjectEntryReleaseInput = z.infer<typeof projectEntryReleaseInputSchema>;
 export type ProjectEntryWindow = z.infer<typeof projectEntryWindowSchema>;
 export type ProjectEntryWindowRevoked = z.infer<typeof projectEntryWindowRevokedSchema>;
+export type ProjectEntrySaveAsInput = z.infer<typeof projectEntrySaveAsInputSchema>;
 
 /** No server types, SQL, caller-selected lease kinds or persisted lease IDs. */
 export interface ProjectEntryControlPort {
@@ -37,5 +41,7 @@ export interface ProjectEntryControlPort {
   openPath(input: ProjectEntryOpenPathInput): Promise<ProjectEntryWindow>;
   acquire(input: ProjectEntryAcquireInput): Promise<ProjectEntryWindow>;
   release(input: ProjectEntryReleaseInput): void;
+  duplicate?(input: ProjectCopyInput): Promise<ProjectCopyResponse>;
+  saveAs?(input: ProjectEntrySaveAsInput): Promise<{copy: ProjectCopyResponse; window: ProjectEntryWindow}>;
   onWindowRevoked(listener: (event: ProjectEntryWindowRevoked) => void): () => void;
 }

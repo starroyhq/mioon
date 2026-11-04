@@ -3,6 +3,7 @@ import path from 'node:path';
 import {ClientError,EXIT_CODES} from '@mioon/client';
 import {createAgentClient,AGENT_COMMAND_SCHEMAS,AGENT_CONTROL_COMMANDS,agentControlCommandInputSchema,parseAgentInput,agentInputSchema} from '@mioon/client/agent';
 import type {AgentControlCommand} from '@mioon/client/agent';
+import {agentServiceInput} from '@mioon/contracts/agent-connection-settings';
 import {readAgentKey} from './agent-key.ts';
 
 type Options=Record<string,string|true>;
@@ -24,7 +25,7 @@ export function agentCommandHelp(operation?:string):unknown{
  const schema=operation?selected(operation):undefined;
  if(operation&&!['agent','agent.task','agent.settings','agent.settings.secret','agent.secret','agent.policy','agent.conversation','agent.conversation.policy'].includes(operation)&&!schema)throw new ClientError('UNKNOWN_OPERATION','Unknown Agent management command.');
  const checksHelp=operation==='agent.task.checks'?{description:'Reads lightweight local checks by default. Set preflight:true in the JSON input to run the full local media preflight; it may take up to 30 seconds.'}:{};
- return {name:'mioon agent',usage:'mioon agent <command words> --input <JSON>',commands:[...Object.keys(AGENT_COMMAND_SCHEMAS),...Object.keys(AGENT_CONTROL_COMMANDS).map(action=>`agent.task.${action}`)],...(schema?{operation,inputSchema:agentInputSchema(schema)}:{}),...checksHelp,options:{'--input':'Strict JSON metadata; never include a key. Use - for JSON stdin.','--input-file':'Explicit JSON file, exclusive with --input.','--request-id':'Caller-owned stable ID for task, upload, control and policy writes.','--key-stdin':'agent settings secret set only; exclusive raw key input, never combined with --input -.','--key-file':'agent settings secret set only; owner-only regular file in a private directory.','--storage':'agent settings secret set only: persistent (default) or explicit session.','--file':'agent task upload only; explicit local media/Cube file.','--timeout-ms':'Agent watch/events deadline, 1–86400000 ms, default 60000.','--interval-ms':'Reconnect delay after SSE loss, 20–60000 ms, default 500.','--live':'agent diagnose only; explicitly authorize one diagnostic task under the existing step budget.'},output:'One JSON envelope on stdout; task snapshots/progress on stderr.',safety:'Management commands are not model or MCP tools. No automatic approvals, retries, budget continuation or unknown-result resolution. On lost write response query the original receipt; settings has no receipt and must only be read back. Ctrl+C stops local observation only.'};
+ return {name:'mioon agent',usage:'mioon agent <command words> --input <JSON>',commands:[...Object.keys(AGENT_COMMAND_SCHEMAS),...Object.keys(AGENT_CONTROL_COMMANDS).map(action=>`agent.task.${action}`)],...(schema?{operation,inputSchema:agentInputSchema(schema)}:{}),...checksHelp,options:{'--input':'Strict JSON metadata; settings set takes the service collection and Mio selection; secret set/remove take expectedRevision and serviceKey. Never include a key. Use - for JSON stdin.','--input-file':'Explicit JSON file, exclusive with --input.','--request-id':'Caller-owned stable ID for task, upload, control and policy writes.','--key-stdin':'agent settings secret set only; exclusive raw key input, never combined with --input -.','--key-file':'agent settings secret set only; owner-only regular file in a private directory.','--storage':'agent settings secret set only: persistent (default) or explicit session.','--file':'agent task upload only; explicit local media/Cube file.','--timeout-ms':'Agent watch/events deadline, 1–86400000 ms, default 60000.','--interval-ms':'Reconnect delay after SSE loss, 20–60000 ms, default 500.','--live':'agent diagnose only; explicitly authorize one diagnostic task under the existing step budget.'},output:'One JSON envelope on stdout; task snapshots/progress on stderr.',safety:'Management commands are not model or MCP tools. No automatic approvals, retries, budget continuation or unknown-result resolution. On lost write response query the original receipt; settings has no receipt and must only be read back. Ctrl+C stops local observation only.'};
 }
 function rawSecretFields(value:unknown):boolean{
  if(Array.isArray(value))return value.some(rawSecretFields);if(!value||typeof value!=='object')return false;
@@ -45,12 +46,16 @@ export async function runAgentCommand(operation:string,input:Record<string,unkno
  if(rawSecretFields(input))fail('Keys and credentials are not accepted in JSON metadata. Use agent settings secret set with a secure input source.');
  if(operation==='agent.task.send'&&Object.hasOwn(input,'diagnostic'))fail('Use agent diagnose --live for diagnostic tasks; agent task send accepts ordinary tasks only.');
  const client=createAgentClient(),request={signal};
- if(operation==='agent.settings.secret.set'){
-  const metadata=parseAgentInput(AGENT_COMMAND_SCHEMAS[operation],input),storage=options.storage==='session'?'session':'persistent';
+ if(operation==='agent.settings.secret.set'||operation==='agent.settings.secret.remove'){
+  const metadata=parseAgentInput(AGENT_COMMAND_SCHEMAS[operation],input);
   const current=await client.settingsGet(request);if(current.revision!==metadata.expectedRevision)throw new ClientError('AGENT_SETTINGS_CONFLICT','Settings changed; read the current settings before entering a key.',{status:409});
+  if(!current.services.some(entry=>entry.serviceKey===metadata.serviceKey))throw new ClientError('VALIDATION_ERROR','Select an existing serviceKey from agent settings get.');
+  const update={expectedRevision:metadata.expectedRevision,services:current.services.map(agentServiceInput),mioSelection:current.mioSelection};
+  if(operation==='agent.settings.secret.remove')return client.settingsPut(update,[{serviceKey:metadata.serviceKey,action:'remove'}],request);
+  const storage=options.storage==='session'?'session':'persistent';
   if(storage==='persistent'&&!current.storage.persistentAvailable)throw new ClientError('AGENT_SETTINGS_STORAGE_UNAVAILABLE','Persistent storage is unavailable. Explicitly choose session storage if intended.',{status:409});
   const key=await readAgentKey({keyStdin:options['key-stdin']===true,keyFile:typeof options['key-file']==='string'?options['key-file']:undefined,signal,redact});
-  return client.settingsPut(metadata,{action:'replace',storage,value:key},request);
+  return client.settingsPut(update,[{serviceKey:metadata.serviceKey,action:'replace',storage,value:key}],request);
  }
  if(operation==='agent.task.upload'){
   const file=options.file;if(typeof file!=='string')return fail('Agent task upload requires an explicitly selected --file.');
@@ -60,8 +65,7 @@ export async function runAgentCommand(operation:string,input:Record<string,unkno
  if(operation.startsWith('agent.task.')&&Object.hasOwn(AGENT_CONTROL_COMMANDS,operation.slice('agent.task.'.length)))return client.action(operation.slice('agent.task.'.length) as AgentControlCommand,input,request);
  switch(operation){
   case 'agent.settings.get':parseAgentInput(AGENT_COMMAND_SCHEMAS[operation],input);return client.settingsGet(request);
-  case 'agent.settings.set':return client.settingsPut(input,{action:'keep'},request);
-  case 'agent.settings.secret.remove':return client.settingsPut(input,{action:'remove'},request);
+  case 'agent.settings.set':return client.settingsPut(input,[],request);
   case 'agent.doctor':return client.doctor(input,request);
   case 'agent.diagnose':parseAgentInput(AGENT_COMMAND_SCHEMAS[operation],input);return client.send(input,request);
   case 'agent.diagnose.latest':parseAgentInput(AGENT_COMMAND_SCHEMAS[operation],input);return client.diagnoseLatest(request);
