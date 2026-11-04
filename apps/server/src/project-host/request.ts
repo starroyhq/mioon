@@ -26,6 +26,7 @@ export function projectHandlerTarget(route: ProjectApiRoute): {readonly projectI
   if (FAMILIES.has(first)) return target(...segments);
   if (segments.length === 1 && first === 'export-files') return target(...segments);
   if (segments.length === 2 && first === 'version-comparison' && segments[1] === 'media') return target(...segments);
+  if (segments.length === 2 && first === 'images' && segments[1] === 'services') return target(...segments);
   if (segments.length === 3 && first === 'images' && segments[1] === 'reviews' && ['approve', 'reject'].includes(segments[2])) return target(...segments);
   if (first !== 'agent' || segments[1] !== 'tasks' || segments[2] !== 'v2') return null;
   const tail = segments.slice(3);

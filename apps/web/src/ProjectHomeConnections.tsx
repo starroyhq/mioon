@@ -4,8 +4,9 @@ import type { ReactNode } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import Icon from './icons.tsx';
 import LanguageControl from './LanguageControl.tsx';
+import GenerationLiveGateNotice from './GenerationLiveGateNotice.tsx';
 import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
-import { isSettingsConnectionPage } from './settings-window-state.ts';
+import { isSettingsConnectionPage, normalizeSettingsPage } from './settings-window-state.ts';
 import type { SettingsConnectionPage, SettingsPage } from './settings-window-state.ts';
 import { SettingsAbout, SettingsModelServices, SettingsShortcuts } from './SettingsExtraPages.tsx';
 
@@ -14,36 +15,36 @@ const slots: readonly { id: HomeConnectionSlot; label: 'shell.agentLabel' | 'she
   { id: 'agent', label: 'shell.agentLabel' }, { id: 'official', label: 'shell.openaiImage' },
   { id: 'custom', label: 'shell.compatibleImage' }, { id: 'comfy', label: 'shell.localComfy' },
 ];
-const categories = ['general', 'workspace', 'video-tools', 'models', 'agent', 'extensions', 'shortcuts', 'about'] as const;
+const categories = ['general', 'workspace', 'video-tools', 'models', 'agent', 'shortcuts', 'about'] as const;
 type Category = typeof categories[number];
 const categoryIconNames: Partial<Record<Category, string>> = { general: 'settings', workspace: 'folder', 'video-tools': 'film', models: 'sparkle', about: 'info' };
 const categoryIconPaths: Partial<Record<Category, ReactNode>> = {
   agent: <><rect x="5" y="7" width="14" height="13" rx="3" /><path d="M12 3v4M2 12h3m14 0h3M9 12v2m6-2v2m-6 3h6" /></>,
-  extensions: <path d="M9 3H4v6a3 3 0 1 1 0 6v6h6a3 3 0 1 0 6 0h5v-6a3 3 0 1 1 0-6V3h-6a3 3 0 1 1-6 0Z" />,
   shortcuts: <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M10 13h.01M14 13h.01M18 13h.01M8 16h8" /></>,
 };
 function SettingsCategoryIcon({ category }: { category: Category }) {
   const path = categoryIconPaths[category];
   return path ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{path}</svg> : <Icon name={categoryIconNames[category] ?? 'info'} size={16} strokeWidth={1.5} />;
 }
-const categoryFor = (page: SettingsPage): Category => page === 'official' ? 'models' : page === 'custom' || page === 'comfy' ? 'extensions' : page;
+const categoryFor = (page: SettingsPage): Category => page === 'official' || page === 'custom' || page === 'comfy' || page === 'extensions' ? 'models' : page;
 const connectionCategory = (page: SettingsPage) => ['agent', 'models', 'extensions', 'official', 'custom', 'comfy'].includes(page);
 
 /** Retained form owners keep their original identity and admission. Fixed
  * native page intentions never grant a category its own connection identity. */
-export default function ProjectHomeConnections({ selected, page = selected, onSelect, onPage, panes, general, connectionsAvailable = true, active = true, workspace, videoTools, videoModels }: {
+export default function ProjectHomeConnections({ selected, page: requestedPage = selected, onSelect, onPage, panes, general, connectionsAvailable = true, active = true, workspace, videoTools, videoModels }: {
   selected: HomeConnectionSlot; page?: SettingsPage; onSelect: (slot: HomeConnectionSlot) => void; onPage?: (page: SettingsPage) => void;
   panes: Readonly<Record<HomeConnectionSlot, ReactNode>>; general?: ReactNode; connectionsAvailable?: boolean; active?: boolean;
   workspace?: ReactNode; videoTools?: ReactNode; videoModels?: ReactNode;
 }) {
   const { t, formatNumber } = useI18n();
+  const page = normalizeSettingsPage(requestedPage);
   const heading = useId(), opened = useRef(new Set<HomeConnectionSlot>());
   if (isSettingsConnectionPage(page)) opened.current.add(page);
   const category = categoryFor(page);
-  const selectPage = (next: SettingsPage) => { if (connectionCategory(next) && !connectionsAvailable) return; if (onPage) onPage(next); else if (isSettingsConnectionPage(next)) onSelect(next); };
+  const selectPage = (next: SettingsPage) => { next = normalizeSettingsPage(next); if (connectionCategory(next) && !connectionsAvailable) return; if (onPage) onPage(next); else if (isSettingsConnectionPage(next)) onSelect(next); };
   const categoryLabel = (id: Category) => t(id === 'general' ? 'settings.general' : `redesign.settings.${id}`);
-  const hints = { general: 'settings.generalHint', workspace: 'redesign.settings.workspaceHint', 'video-tools': 'redesign.settings.videoHint', models: 'redesign.settings.modelsHint', agent: 'redesign.settings.agentHint', extensions: 'redesign.settings.extensionsHint', shortcuts: 'redesign.settings.shortcutsHint', about: 'redesign.settings.aboutHint' } as const;
-  const modelSlots = category === 'extensions' ? slots.filter(slot => slot.id === 'custom' || slot.id === 'comfy') : [];
+  const hints = { general: 'settings.generalHint', workspace: 'redesign.settings.workspaceHint', 'video-tools': 'redesign.settings.videoHint', models: 'redesign.settings.modelsHint', agent: 'redesign.settings.agentHint', shortcuts: 'redesign.settings.shortcutsHint', about: 'redesign.settings.aboutHint' } as const;
+  const modelSlots = category === 'models' ? slots.filter(slot => slot.id !== 'agent') : [];
   return <section className="settings-center" data-testid="settings-center" data-page={page} aria-label={t('settings.title')}>
     <nav className="settings-center-nav" aria-label={t('settings.categories')}>
       <span className="settings-center-nav-label">{t('settings.title')}</span>
@@ -51,6 +52,7 @@ export default function ProjectHomeConnections({ selected, page = selected, onSe
       <p className="settings-local-status"><Icon name="lock" size={12} />{t('redesign.settings.localPreferences')}</p>
     </nav>
     <div className="settings-center-content" aria-labelledby={heading}>
+      <GenerationLiveGateNotice active={active && connectionsAvailable && category === 'models'} pageKey={page} onOpen={() => {if (page !== 'models') selectPage('models'); else if (typeof document !== 'undefined') {const control = document.getElementById('settings-live-generation'); control?.scrollIntoView?.({block: 'nearest'}); control?.focus();}}} />
       <header className="settings-center-heading"><h1 id={heading}>{categoryLabel(category)}</h1><p>{t(hints[category])}</p></header>
       <section hidden={page !== 'general'} inert={page !== 'general'} className="settings-general" data-testid="settings-general">
         <h2 className="settings-section-title">{t('redesign.settings.languageSection')}</h2>

@@ -2,6 +2,7 @@ type Rec = Record<string, unknown>;
 import {z} from 'zod';
 import {canonicalImageInput, imageSchemas, imageEditSourceSchema} from './images.ts';
 import {customImageConfigurationSchema, isCompleteCustomImageConfiguration, getCustomImageDestination, CUSTOM_IMAGE_ENDPOINT_LIMIT} from './image-settings.ts';
+import {customImageConfigurationV2Schema, customImageConnectionIdV2Schema, isCompleteCustomImageConfigurationV2} from './generation-image-settings.ts';
 import {comfyImageConfigurationSchema,isCompleteComfyImageConfiguration,getComfyImageDestination,comfyImageExecutionSchema,comfyImagePolicySchema} from './comfy-images.ts';
 
 // Strict additive edit branches leave historical text-to-image receipts intact.
@@ -79,7 +80,20 @@ const editIntent = z.object({schemaVersion:z.literal(4),reviewId:id,input:offici
  destination:z.literal(IMAGE_EDIT_REVIEW_DESTINATION),policy:imageReviewPolicySchema,sourceImage:imageEditSourceSchema}).strict().refine(matchesEditSource,'Edit source identity mismatch').refine(legacyEdit,'Version 4 edits are limited to the original profile');
 const sizedEditIntent = z.object({schemaVersion:z.literal(5),reviewId:id,input:officialEdit,settingsRevision:revision,
  destination:z.literal(IMAGE_EDIT_REVIEW_DESTINATION),policy:imageReviewPolicySchema,sourceImage:imageEditSourceSchema}).strict().refine(matchesEditSource,'Edit source identity mismatch');
-export const imageReviewIntentSchema = z.union([officialIntent, customIntent, comfyIntent, editIntent, sizedEditIntent]);
+const reviewedConfigurationV2 = customImageConfigurationV2Schema.refine(value => value.enabled && isCompleteCustomImageConfigurationV2(value));
+const matchesServiceConfiguration = (value: ReviewCustomConfigurationValues): boolean => {
+  const parsed = customImageConfigurationV2Schema.safeParse(value.configuration);
+  return parsed.success && parsed.data.enabled && isCompleteCustomImageConfigurationV2(parsed.data) &&
+    value.input?.model === parsed.data.model && canonicalImageInput(value.input?.options) === canonicalImageInput(parsed.data.options) &&
+    value.destination === getCustomImageDestination(parsed.data.baseUrl);
+};
+const connectionFields = {connectionId: customImageConnectionIdV2Schema, configurationRevision: revision};
+const customServiceIntent = z.object({schemaVersion: z.literal(6), reviewId: id, input: customGeneration,
+  settingsRevision: revision, destination: customDestination, policy: imageReviewPolicySchema,
+  ...connectionFields, configuration: reviewedConfigurationV2}).strict()
+  .refine(value => value.settingsRevision === value.configurationRevision, 'Configuration revision mismatch')
+  .refine(matchesServiceConfiguration, 'Custom review configuration mismatch');
+export const imageReviewIntentSchema = z.union([officialIntent, customIntent, comfyIntent, editIntent, sizedEditIntent, customServiceIntent]);
 const responseFields = {id, projectId: id, requestId: key, input: officialGeneration,
   inputHash: hash, settingsRevision: revision, destination: z.literal(IMAGE_REVIEW_DESTINATION), policy: imageReviewPolicySchema,
   state: z.enum(IMAGE_REVIEW_STATES), revision, taskId: id.nullable(), postAttempts: z.number().int().min(0).max(1),
@@ -109,11 +123,15 @@ const verifyResponse = (value: ReviewResponseValues, context: z.RefinementCtx) =
 const officialResponse = z.object(responseFields).strict().superRefine(verifyResponse);
 const customResponse = z.object({...responseFields, input: customGeneration, destination: customDestination, configuration: reviewedConfiguration})
   .strict().refine(matchesConfiguration, 'Custom review configuration mismatch').superRefine(verifyResponse);
+const customServiceResponse = z.object({...responseFields, input: customGeneration, destination: customDestination,
+  ...connectionFields, configuration: reviewedConfigurationV2}).strict()
+  .refine(value => value.settingsRevision === value.configurationRevision, 'Configuration revision mismatch')
+  .refine(matchesServiceConfiguration, 'Custom review configuration mismatch').superRefine(verifyResponse);
 const comfyResponse=z.object({...responseFields,input:comfyGeneration,destination:z.string().max(80),policy:comfyImagePolicySchema,configuration:reviewedComfyConfiguration,execution:comfyImageExecutionSchema})
   .strict().refine(matchesComfyConfiguration,'Local review configuration mismatch').superRefine(verifyResponse);
 const editResponse=z.object({...responseFields,input:officialEdit,destination:z.literal(IMAGE_EDIT_REVIEW_DESTINATION),sourceImage:imageEditSourceSchema})
  .strict().refine(matchesEditSource,'Edit source identity mismatch').superRefine(verifyResponse);
-export const imageReviewResponseSchema = z.union([officialResponse, customResponse, comfyResponse, editResponse]);
+export const imageReviewResponseSchema = z.union([officialResponse, customResponse, comfyResponse, editResponse, customServiceResponse]);
 export type ImageReviewResponse = z.infer<typeof imageReviewResponseSchema>;
 export const isImageReviewResponse = (value: unknown): value is ImageReviewResponse => imageReviewResponseSchema.safeParse(value).success;
 export function isImageReviewListResponse(input: unknown, result: unknown): boolean {

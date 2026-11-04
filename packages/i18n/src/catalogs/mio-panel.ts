@@ -9,7 +9,7 @@ export const mioPanelMessages = {
   "agent.panel.retry": {"zh-Hans": "重试这一步", "zh-Hant": "重試這一步", "en": "Retry this step", "ja": "このステップを再試行"},
   "agent.panel.failureReason": {"zh-Hans": "原因：{reason}", "zh-Hant": "原因：{reason}", "en": "Reason: {reason}", "ja": "原因：{reason}"},
   "agent.panel.errorSettings.agent": {"zh-Hans": "检查 Mio 的模型连接", "zh-Hant": "檢查 Mio 的模型連線", "en": "Check Mio’s model connection", "ja": "Mio のモデル接続を確認"},
-  "agent.panel.errorSettings.models": {"zh-Hans": "打开模型与服务设置", "zh-Hant": "開啟模型與服務設定", "en": "Open Models and services settings", "ja": "モデルとサービスの設定を開く"},
+  "agent.panel.errorSettings.models": {"zh-Hans": "打开生成服务设置", "zh-Hant": "開啟生成服務設定", "en": "Open Generation services settings", "ja": "生成サービスの設定を開く"},
   "agent.panel.errorSettings.video-tools": {"zh-Hans": "打开视频工具设置", "zh-Hant": "開啟影片工具設定", "en": "Open Video tools settings", "ja": "動画ツール設定を開く"},
   "agent.panel.modifiedAfter": {"zh-Hans": "目标之后有更新，请核对当前内容", "zh-Hant": "目標之後有更新，請核對目前內容", "en": "This target has later updates; review its current content", "ja": "対象に後続の更新があります。現在の内容を確認してください"},
   "agent.panel.modifiedAfterKept": {"zh-Hans": "目标之后有更新，保留当前内容", "zh-Hant": "目標之後有更新，保留目前內容", "en": "This target has later updates; keep its current content", "ja": "対象に後続の更新があります。現在の内容を保持します"},

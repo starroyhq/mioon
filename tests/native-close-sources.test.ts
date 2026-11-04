@@ -110,9 +110,10 @@ function renderer<F extends string>(filename:F, fixture: Record<string,unknown>,
     if (name === './image-generation.ts') return { ...image, createImageGenerationSession: (input: image.ImageGenerationSessionOptions) => session = (image.createImageGenerationSession({ ...input, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) as unknown as SessionFor<F>) };
     if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
     if (name === './image-settings.ts') return { createImageSettingsClient: () => fixture.settingsClient };
+    if (name === './generation-image-services.ts') return {createGenerationImageServicesClient: () => ({list: async () => []})};
     if (name === './comfy-image-settings.ts') return { ...comfySettings, createComfyImageSettingsClient: () => fixture.comfySettingsClient };
     if (name === './ComfyImageDetails.tsx') return primitives;
-    if (['./ImageSettings.tsx', './ComfyImageSettings.tsx', './SettingsNavigationSlot.tsx', './icons.tsx'].includes(name)) return { __esModule: true, default: name };
+    if (['./ImageSettings.tsx', './CustomImageServicesSettings.tsx', './ComfyImageSettings.tsx', './SettingsNavigationSlot.tsx', './icons.tsx'].includes(name)) return { __esModule: true, default: name };
     if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitives;
     if (name.endsWith('.css')) return {};
     throw Error(`Unexpected close test import: ${name}`);

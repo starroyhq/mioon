@@ -3,7 +3,7 @@ import {handleUserRulesHttp} from './mio-rules-http.ts';
 import {MAX_WORKSPACE_PREFERENCES_BYTES} from '@mioon/business';
 import {MAX_AGENT_SETTINGS_BYTES} from '@mioon/business/agent/config';
 import type {PublicStorage, SecretCodec, SettingsContextOptions} from '@mioon/business/agent/settings';
-import {sanitizeAgentSettingsError, sanitizeAgentSettingsResult} from '@mioon/business/agent/settings';
+import {AGENT_CREDENTIAL_ACQUIRE, sanitizeAgentSettingsError, sanitizeAgentSettingsResult} from '@mioon/business/agent/settings';
 import type {TaskGateway} from '@mioon/business/agent/task-gateway-v2';
 import {agentTaskFailure} from '@mioon/business/agent/task-runtime-v2';
 import {listAgentTaskTools} from '@mioon/business/agent/task-tools-v2';
@@ -33,6 +33,7 @@ import {validateApplicationStorage, createApplicationFileGuard} from './project-
 import {createProjectHostManager} from './project-host/manager.ts';
 import {createProjectBackups} from './project-host/backups.ts';
 import {createProjectCopies} from './project-host/copies.ts';
+import type {ProjectTemplateCatalogEntry} from './project-host/templates.ts';
 import type {ProjectHostManager} from './project-host/manager.ts';
 import type {InspectProject} from './project-host/host.ts';
 import {composeHostedProject} from './project-host/runtime.ts';
@@ -86,6 +87,7 @@ interface ImageSecretCodecPort {
 interface AgentSettingsPort {
   get(options?: SettingsContextOptions & {selfPort?: number | undefined}): Promise<unknown>;
   put(input: unknown, options?: SettingsContextOptions & {selfPort?: number | undefined}): Promise<unknown>;
+  [AGENT_CREDENTIAL_ACQUIRE]?(input: unknown, options?: SettingsContextOptions): Promise<unknown>;
   close(): unknown;
 }
 interface ImageNetworkSeam {lookup?: ReviewedImageGatewayOptions['lookup']; httpsRequest?: ReviewedImageGatewayOptions['httpsRequest']}
@@ -120,6 +122,10 @@ export interface ServerOptions {
    * SQLite backup/copy. No request or environment can select this port. */
   projectBackupCopyForTest?: Parameters<typeof createProjectBackups>[0]['copy'];
   projectCopyBoundaryForTest?: Parameters<typeof createProjectCopies>[0]['onBoundary'];
+  projectCopyActionBoundaryForTest?: Parameters<typeof createProjectCopies>[0]['onActionBoundary'];
+  /** Trusted installation catalog; requests can select an ID/version, never
+   * provide a template file or media allowlist. */
+  projectTemplates?: readonly ProjectTemplateCatalogEntry[];
   localDraftChannel?: LocalDraftChannel;
   nativeAudioPreview?: NativeAudioPreviewAuthority;
 }
@@ -242,6 +248,8 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       }
     };
     const copies = createProjectCopies({manager, library: appLibrary, directories, assertProjectFile, signal: shutdown.signal,
+      ...(options.projectTemplates === undefined ? {} : {projectTemplates: options.projectTemplates}),
+      ...(options.projectCopyActionBoundaryForTest === undefined ? {} : {onActionBoundary: options.projectCopyActionBoundaryForTest}),
       ...(options.projectCopyBoundaryForTest === undefined ? {} : {onBoundary: options.projectCopyBoundaryForTest})});
     drainCopies = copies.drain;
     await copies.recover();
@@ -319,6 +327,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
           finally { lease?.release(); }
           return;
         }
+        if (await app.modelListHttp(req, res, url)) return;
         if (url.pathname === '/api/agent/settings') {
           try {
             const context = {selfPort: listeningPort()};

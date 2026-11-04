@@ -4,7 +4,7 @@
 
 ## 应用库与索引
 
-应用库格式为4。仅精确已知的3可窄升级到4；旧索引JSON及其他表数据保留，新增阶段/原因/来源/修订标量按旧格式默认解释。未知或改动过的结构拒绝；旧1/2的历史升级函数和冻结件保留供验证，不作为当前opener升级到4的生产通道。project/history/cache仍为3/9/2。
+应用库格式为4。仅精确已知的3可窄升级到4；旧索引JSON及其他表数据保留，新增阶段/原因/来源/修订标量按旧格式默认解释。未知或改动过的结构拒绝；旧1/2的历史升级函数和冻结件保留供验证，不作为当前opener升级到4的生产通道。project/history/cache仍为3/10/2，沿用 main 的 history 10；S3-A不改内核结构。
 
 `background_task_index` 每条包含项目和任务身份、路径线索、`phase`、原因码、`sourceHistory`、索引修订及原任务修订。phase为prepared、active、blocked、archived或done，不替换领域status。键包含history代际；同taskId的另一份history不能覆盖旧归档。索引最多全应用4096、单项目512条，不是无限任务历史；原项目队列和资源上限不变。
 

@@ -22,10 +22,10 @@ const shellCoreMessages = {
     "ja": "一般"
   },
   "settings.models": {
-    "zh-Hans": "模型与服务",
-    "zh-Hant": "模型與服務",
-    "en": "Models & services",
-    "ja": "モデルとサービス"
+    "zh-Hans": "生成服务",
+    "zh-Hant": "生成服務",
+    "en": "Generation services",
+    "ja": "生成サービス"
   },
   "settings.extensions": {
     "zh-Hans": "扩展",

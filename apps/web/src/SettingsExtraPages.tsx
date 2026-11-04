@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import {notifyGenerationLiveGateChanged} from './GenerationLiveGateNotice.tsx';
 import { WorkbenchBadge, WorkbenchButton } from '@mioon/ui/components/workbench-controls';
 import { Switch } from '@mioon/ui/components/switch';
 import { Label } from '@mioon/ui/components/label';
@@ -39,7 +40,7 @@ export function SettingsModelServices({ active,onOpenOfficial }: { active: boole
   const changeLive=async(enabled:boolean)=>{
     const captured=current.current;if(!captured.active||captured.saving||!captured.settings)return;
     current.current={...captured,saving:true};setSaving(true);setSaveError(null);
-    try{const next=await saveWorkspaceSettings({expectedRevision:captured.settings.revision,liveGeneration:enabled});if(mounted.current){setSettings(next);refresh(value=>value+1);}}
+    try{const next=await saveWorkspaceSettings({expectedRevision:captured.settings.revision,liveGeneration:enabled});if(mounted.current){setSettings(next);refresh(value=>value+1);notifyGenerationLiveGateChanged();}}
     catch(error){if(mounted.current)setSaveError((error as {code?:string})?.code??'NETWORK');}
     finally{if(mounted.current)setSaving(false);current.current={...current.current,saving:false};}
   };
@@ -47,7 +48,7 @@ export function SettingsModelServices({ active,onOpenOfficial }: { active: boole
     <div className="settings-live-generation"><div><Label htmlFor="settings-live-generation">{t('redesign.settings.liveGeneration')}</Label><p id="settings-live-generation-help">{t('workspace.settings.liveHelp')}</p></div><Switch id="settings-live-generation" data-testid="settings-live-generation" checked={settings?.liveGeneration===true} disabled={!active||!settings||saving||checking} onCheckedChange={enabled=>void changeLive(enabled)} aria-describedby="settings-live-generation-help" />{!settings && <WorkbenchBadge>{t('redesign.settings.statusUnknown')}</WorkbenchBadge>}</div>
     {saveError&&<p role="alert">{t(saveError==='WORKSPACE_SETTINGS_CONFLICT'?'workspace.settings.conflict':'workspace.settings.failed')}</p>}
     {failed && <p role="alert">{t('redesign.settings.statusFailed')}</p>}
-    <h2 className="settings-section-title">{t('video.providers.environment')}</h2><p className="settings-appearance-hint">{t('redesign.settings.serverOnly')}</p>
+    <p className="settings-appearance-hint">{t('redesign.settings.separateKeys')}</p><h2 className="settings-section-title">{t('video.providers.environment')}</h2><p className="settings-appearance-hint">{t('redesign.settings.serverOnly')}</p>
     <dl>{services.map(service => <div key={service.id}><dt>{service.label}<code>{service.variable}</code></dt><dd><WorkbenchBadge tone={status?.[service.id] ? 'success' : 'neutral'}>{status && Object.hasOwn(status, service.id) ? t(status[service.id] ? 'redesign.settings.configured' : 'redesign.settings.notConfigured') : t('redesign.settings.statusUnknown')}</WorkbenchBadge><WorkbenchButton variant="ghost" data-testid={`settings-service-check-${service.id}`} aria-label={`${t('redesign.settings.detect')} ${service.label}`} disabled={!active || checking} loading={checking} onClick={() => { if (current.current.active && !checking) refresh(value => value + 1); }}>{t('redesign.settings.detect')}</WorkbenchButton></dd></div>)}<div><dt>{t('shell.openaiImage')}</dt><dd><WorkbenchButton variant="ghost" data-testid="settings-service-official" disabled={!active||!onOpenOfficial} onClick={()=>{if(current.current.active)onOpenOfficial?.();}}>{t('workspace.settings.open')}</WorkbenchButton></dd></div><div><dt>{t('redesign.settings.localSimulation')}</dt><dd><WorkbenchBadge tone={simulation ? 'success' : 'neutral'}>{t(simulation === null ? 'redesign.settings.statusUnknown' : simulation ? 'workspace.tools.supported' : 'workspace.tools.missing')}</WorkbenchBadge></dd></div></dl>
     </div><footer className="settings-page-actions settings-services-actions"><WorkbenchBadge tone={saveError||failed?'warning':settings?'success':'neutral'} dot>{t(saving?'workspace.settings.saving':saveError||failed?'workspace.settings.unconfirmed':checking?'workspace.settings.reading':settings?'workspace.settings.instant':'workspace.settings.reading')}</WorkbenchBadge><WorkbenchButton disabled={!active||saving||checking} onClick={()=>{if(current.current.active&&!current.current.saving)refresh(value=>value+1);}}>{t('agent.authorization.refresh')}</WorkbenchButton></footer>
   </section>;

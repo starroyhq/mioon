@@ -41,7 +41,10 @@ import type {Provider} from './provider-registry.ts';
 import {videoBindingCapabilities} from '../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding} from '../../contracts/src/video-providers.ts';
 import {getWan30Capability,resolveWanGenerationParameters} from '../../contracts/src/wan-video.ts';
-import type {VideoSettingsService} from './video/settings.ts';
+import type {VideoGenerationSettings} from './video/generation.ts';
+import {isVideoBindingHistoryUnavailable} from './video/settings-v2.ts';
+import {generationImageServiceSchemas} from '../../contracts/src/generation-image-services.ts';
+import type {GenerationImageServiceOperation} from '../../contracts/src/generation-image-services.ts';
 import {createConfiguredVideoProvider} from './video/runtime.ts';
 import {listVideoConnections,readVideoBinding,sameVideoExecutionDomain,prepareConfiguredVideoInputs} from './video/generation.ts';
 import {prepareGenerationInputs,generationReferenceSelection,readGenerationAsset,assertGenerationReferenceIds,assertGenerationShotOwnership,assertGenerationJobOwnership,currentGenerationClaim,hasSubjectGeneration,validateSubjectGenerationOwnership,assertSubjectGenerationSelection,assertSubjectGenerationRequestVacant,readGenerationLinkedJob} from './generation-inputs.ts';
@@ -103,7 +106,7 @@ export interface ServiceApplicationPorts {
 export interface CreateServicesOptions {
  deferBackgroundRecovery?: boolean;
  application?: ServiceApplicationPorts;
- videoSettings?: VideoSettingsService;
+ videoSettings?: VideoGenerationSettings;
  videoFetch?: typeof fetch;
  env?: NodeJS.ProcessEnv;
  signal?: AbortSignal;
@@ -145,6 +148,7 @@ export interface OrdinaryServices {
  inspection: InspectionService;
  imageApproval: (input: unknown)=>unknown;
  imageRejection: (input: unknown)=>unknown;
+ generationImageServices: (operation: string, input: unknown)=>unknown;
 }
 export interface ShotRecord extends ServiceRow {
  id: string;
@@ -242,7 +246,10 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const boundProvider=(binding:VideoExecutionBinding):Provider=>{
 
   if(!videoSettings)throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','视频连接设置不可用。',409);
-  videoSettings.assertBinding(binding);
+  try {videoSettings.assertBinding(binding);} catch (error) {
+   if(isVideoBindingHistoryUnavailable(error))throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','原任务绑定的视频连接历史不可用。',409);
+   throw error;
+  }
   const key=canonical(binding);let provider=configuredVideoProviders.get(key);
   if(!provider){provider=createConfiguredVideoProvider({root,binding,acquireCredential:()=>videoSettings.acquire(binding,ownerSignal),...(videoFetch?{fetchImpl:videoFetch}:{})});configuredVideoProviders.set(key,provider);}
   return provider;
@@ -686,5 +693,14 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   });
  }
  const isBusy=():boolean=>active.size>0||images.isBusy()||frames.isBusy()||scenes.isBusy()||backgroundTasks.snapshot().some(task=>task.keepAlive);
- return {activateBackground,compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed as (input: unknown)=>unknown,imageRejection:images.rejectReview as (input: unknown)=>unknown} as OrdinaryServices;
+ const assertImageMutationAllowed=():void=>{checkpoint(ownerSignal);assertApplicationMutationAllowed();assertMutationAllowed?.();};
+ const generationImageServices=(operation:string,input:unknown):unknown=>{
+  checkpoint(ownerSignal);
+  if(!Object.hasOwn(generationImageServiceSchemas,operation))throw new AppError('UNKNOWN_OPERATION','图片服务操作不存在',400);
+  const op=operation as GenerationImageServiceOperation,parsed=generationImageServiceSchemas[op].safeParse(input);
+  if(!parsed.success)throw new AppError('VALIDATION_ERROR','图片服务参数无效',400);
+  if(op==='image.service.review.prepare')assertImageMutationAllowed();
+  return publicValue(images.generationServices(op,parsed.data));
+ };
+ return {activateBackground,compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
 }

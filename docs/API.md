@@ -16,6 +16,8 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 | `GET /api/workspace-info` | 应用目录信息 |
 | `GET /api/projects/{projectId}/workspace-info` | 正常项目请求租约内的真实项目目录信息；复用 `workspaceInfoSchema`，供已验证 owner 的桌面导出选择素材根，不接受调用方文件路径 |
 | `GET /api/agent/tasks/v2/diagnostics/latest` | 从应用 documents 返回 `{test:null}` 或严格五字段摘要；不打开关闭的项目 |
+| `POST /api/agent/models/list` | X6b 应用级只读模型发现：仅列表网络请求，可写独立的无密钥缓存；不打开项目或运行推理 |
+| `POST /api/agent/models/cache` | X6b 单服务缓存读取：无网络、无密钥读取、无文件创建；坏缓存视为未命中 |
 
 首页摘要的 `projectSummaryCoverSchema.url` 现在必须为 `/api/project-covers/{摘要项目ID}`，不再是素材 URL。诊断摘要仅有 `completedAt`、`status`、`protocol`、`model`、`errorCode`，由项目诊断完成时更新，没有对话内容、请求原文或密钥。应用库版本 2 只允许精确已知 v1 结构事务升级，保留原三种 documents 字节及其它登记、策略回执。
 
@@ -27,6 +29,16 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 | `APP_LIBRARY_INVALID` | 422 | 全局 latest 读取到无效诊断摘要；`{reason:'unusable'}` |
 
 两者沿用 `{ok:false,error:{code,message,details,retryable:false}}`，严格契约见 [app-library-http.ts](../packages/contracts/src/app-library-http.ts)。应用库的 `LOCKED`、`FORMAT_NEWER` 在监听前拒绝启动，`CLOSED` 是内部生命周期错误，不能将它们都视为已有 HTTP 操作的可达响应。受信 `inspectProject` 和 `inspectApplication` 仅交给测试代码，分别借用实际项目和 B1 连接；同步调用、拒绝异步回调及关闭后调用。子进程测试使用固定快照/故障 IPC，不接受 SQL 或任意路径，不增加 HTTP、CLI 或环境变量入口。
+
+### Mio 模型发现与缓存（X6b）
+
+这两个应用管理接口仅接受 `POST` 和 `application/json`，继承本机 Host/Origin、Bearer 或 SameSite 会话认证，响应均为 `Cache-Control: no-store`。它们不进入项目 RPC、CLI、MCP 或 Mio 工具目录。严格叶契约为 [agent-model-list.ts](../packages/contracts/src/agent-model-list.ts)，Node 管理 client 提供 `modelsList(input, {signal?, timeoutMs?})`、`modelsCache(input, options)`。
+
+两个输入共同包含 `{serviceKey, expectedSettingsRevision, selection}`；`selection` 为 `{presetId, platformId, baseUrl, protocol}`，不要求先选模型，不接受任意 URL、HTTP 方法或 header。`models/list` 另收 `credential`：`{source:'saved'}`、`{source:'input',value}` 或 `{source:'none'}`。一次性输入仅在本地 POST 中短暂携带，不放 URL、设置、缓存或错误；已保存密钥通过受信代理在宿主获取，列表结果不走密钥 broker。无密钥只限目录明确允许的列表。
+
+成功结果为 `{outcome:'success', models:[{id, displayName?, adaptation}], complete, source, fetchedAt}`。`source` 是 `current_protocol`、`same_platform_compatible` 或 `public_local`；部分清单保留已验证前缀并将 `complete` 设为 `false`。其他结果为 `invalid_key`、`unavailable`、`unreachable`、`network_denied` 和固定的安全 `reason`，不包含供应商原始正文。参数错误、过期设置修订等沿用 `AGENT_SETTINGS_*` 错误 envelope。缓存结果为 `{status:'miss'}` 或 `{status:'hit',result:<成功结果>}`，读取不获取密钥、不联网、不写入设置或缓存。
+
+本地输入完整 UTF-8 上限 16 KiB，响应完整 JSON 上限 256 KiB；单密钥仍为 8192 字节。列表从本地入口起共用 15 秒期限，client 此方法默认等待 18 秒并支持取消，不重试；其他 client 方法超时不变。分页最多 10 页、1000 个模型、累计原始响应 1 MiB，只请求服务端目录推出的地址和分页参数，不跟随重定向或远端 `next` URL。列表观察不会改变设置修订、Mio 选择、授权、`verification` 或已适配模型能力。只有限定的无密钥清单缓存可以写到应用私有的 `agent-settings/model-list-cache/`；项目库、应用 SQL 及 Mio 请求历史均不因模型发现写入。
 
 ### S6-A 目录读取
 
@@ -528,15 +540,22 @@ storage uses a narrow main-process OS codec, never renderer/preload decryption
 or plaintext fallback. Saving settings neither generates nor approves a request.
 The exact official secret-write/read contract is in
 [Images activation](IMAGE-ACTIVATION.md#private-authenticated-http-settings-contract).
-The separate authenticated `GET`/`PUT /api/images/custom-settings` uses the same
-strict `{expectedRevision,configuration,secret}` update and redacted result
-shape. Its configuration adds `connectionId:"custom"`, uses provider
-`openai-compatible`, profile `openai-images-json-png-v1`, a canonical public-DNS
-HTTPS base URL and a bounded ASCII model. See [custom settings](IMAGE-COMPATIBLE.md#exact-private-settings-contract)
-for exact fields and constraints. Saving validates syntax without probing.
-Changing a keyed base URL/model requires explicit removal or a newly entered key;
-the official slot stays untouched. Custom review DTOs additionally retain full
-immutable `configuration` and actual `destination`; official v1 DTOs stay intact.
+The separate authenticated `GET`/`PUT /api/images/custom-settings` manages the
+v2 custom collection. PUT carries action `create`, `put`, `remove` or `batch`,
+the collection revision, and the lowercase draft UUID. Updating/removing an
+existing item also checks its configuration revision. Each configuration keeps
+provider `openai-compatible`, profile `openai-images-json-png-v1`, a canonical
+public-DNS HTTPS URL and a bounded ASCII model. Model changes keep the recipient
+key; an address change with `keep` detaches it. Saving validates syntax without
+probing. See [generation services](GENERATION-SERVICES.md) for fields and limits.
+
+Web/client-only `POST /api/projects/{projectId}/images/services` accepts
+`{operation,input}` for `image.service.list` and `image.service.review.prepare`.
+The latter freezes the explicit connection UUID, its configuration revision,
+full configuration and actual destination. Old no-ID entry points resolve an
+exact single service and reject ambiguous collections. The new operations are
+absent from RPC/CLI/MCP/Mio discovery; both fixed request catalogs remain intact.
+Official and retained custom v1 review DTOs stay readable.
 
 Authenticated `POST /api/images/reviews/approve` and `/reject` each take exactly
 `{projectId,reviewId,expectedRevision}`. Approval returns the original queued

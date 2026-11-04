@@ -266,5 +266,7 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .mio-model-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 10px; border: 1px solid var(--wb-line-subtle); border-radius: var(--wb-radius-control); }
 .mio-model-row > div:first-child { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 120px; }
 .mio-model-row strong { color: var(--wb-soft); font: 500 var(--wb-text-label)/1.5 var(--wb-font-mono); overflow-wrap: anywhere; }
+.mio-model-display-name { color: var(--wb-muted); font-size: var(--wb-text-caption); overflow-wrap: anywhere; }
+.mio-model-observation { min-height: 1.6em; }
 @media (max-width: 860px) { .mio-services-settings .mio-settings-row { grid-template-columns: minmax(0, 1fr); } }
 .mio-services-settings .wb-tabs > [data-slot="tabs-list"] { width: fit-content; min-width: 0; max-width: 100%; }

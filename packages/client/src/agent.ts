@@ -15,6 +15,7 @@ import {agentAuthorizationSnapshotSchema} from '@mioon/contracts';
 import {projectApiPath} from '../../contracts/src/project-file.ts';
 import {agentConfigurationSchema,agentSettingsSnapshotSchema,agentSettingsMetadataSchema,agentSettingsUpdateSchema,agentServiceInput,agentServiceKeySchema,AGENT_CONNECTION_LIMITS} from '../../contracts/src/agent-connection-settings.ts';
 import type {AgentSettingsSnapshot,AgentSecretAction} from '../../contracts/src/agent-connection-settings.ts';
+import {AGENT_MODEL_LIST_LIMITS,agentModelListRequestSchema,agentModelListResultSchema,agentModelListCacheRequestSchema,agentModelListCacheResultSchema} from '../../contracts/src/agent-model-list.ts';
 export {agentConfigurationSchema,agentSettingsSnapshotSchema};
 export type {AgentSettingsSnapshot};
 
@@ -108,6 +109,16 @@ export function createAgentClient({env=process.env,fetchImpl=fetch,requestTimeou
  }
  function parsed<T>(schema:z.ZodType<T>,value:unknown):T{const result=schema.safeParse(value);if(!result.success)throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid Agent response.');return result.data;}
  const client={
+  async modelsList(value:unknown,options:AgentRequestOptions={}){
+   const input=parseAgentInput(agentModelListRequestSchema,value),secrets=input.credential.source==='input'?[input.credential.value]:[];
+   const result=parsed(agentModelListResultSchema,await request('/api/agent/models/list',{...options,timeoutMs:options.timeoutMs??18000,method:'POST',body:input,secrets,responseLimit:AGENT_MODEL_LIST_LIMITS.resultBytes}));
+   if(result.outcome==='success'&&secrets.some(secret=>result.models.some(model=>model.id.includes(secret)||model.displayName?.includes(secret))))throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid Agent model list response.');
+   return result;
+  },
+  async modelsCache(value:unknown,options:AgentRequestOptions={}){
+   const input=parseAgentInput(agentModelListCacheRequestSchema,value);
+   return parsed(agentModelListCacheResultSchema,await request('/api/agent/models/cache',{...options,timeoutMs:options.timeoutMs??18000,method:'POST',body:input,responseLimit:AGENT_MODEL_LIST_LIMITS.resultBytes}));
+  },
   async settingsGet(options:AgentRequestOptions={}){return parsed(agentSettingsSnapshotSchema,await request('/api/agent/settings',{...options,responseLimit:AGENT_CONNECTION_LIMITS.transportBytes}));},
   async settingsPut(value:unknown,secretActions:readonly AgentSecretAction[]=[],options:AgentRequestOptions={}){
    const input=parseAgentInput(settingInput,value);

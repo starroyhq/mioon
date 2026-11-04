@@ -1,5 +1,5 @@
 # 项目文件 v1：约定
-日期：2026-10-30 起草，2026-11-02 按 S0 P4 实现补充，2026-11-03 补充 V2 项目自动备份与 V1-B 版本恢复及自动保存，2026-11-04 补充 S5-A 复制与另存为。当前代码已切换真实项目存储，验收和发布状态以对应 PR 为准；后续约定变更仍提给协调人。
+日期：2026-10-30 起草，2026-11-02 按 S0 P4 实现补充，2026-11-03 补充 V2 项目自动备份与 V1-B 版本恢复及自动保存，2026-11-04 补充 S5-A/B 复制、另存为与模板。当前代码已切换真实项目存储，验收和发布状态以对应 PR 为准；后续约定变更仍提给协调人。
 
 项目文件 v1 让 `.mioon` 成为项目本身：一个 SQLite 文件只存一个项目的当前内容；Mio 记录、撤销、版本、任务、回执和草稿按项目 ID 存在本机。这份文档记下各张任务卡共同遵守的约定，名字以契约代码为准：
 
@@ -11,9 +11,9 @@
 - 首页封面使用应用级 `GET /api/project-covers/<ID>`，只读缓存，缺失返回 404，不 acquire 项目；`projectSummaryCoverSchema` 已同步此 URL。应用 `/api/workspace-info` 返回应用根，新增项目 `/api/projects/<ID>/workspace-info` 在真实租约内返回项目根，复用原 schema，供可信桌面导出使用。
 - 全局 `diagnostics/latest` 从应用 documents 读取严格五字段摘要：`completedAt/status/protocol/model/errorCode`；无项目对话、请求或密钥，也不打开项目。应用库当前为 v4，仅精确已知 v3 做 S3-A 的3→4升级，扩展后台任务索引，保留旧索引JSON及其他数据；不接受未知/改动结构，也不组合旧1/2升级到4。历史冻结件和旧升级函数仍保留供验证。HTTP B1 错误仅公开 `APP_LIBRARY_LIMIT`（507）与 `APP_LIBRARY_INVALID`（422）。
 - V2 已接入宿主打开/关闭的项目自动备份，最近三份按项目 ID、内容序号和令牌去重；`project.backup.list/inspect/restore/status` 是应用级操作，恢复使用新 ID、新令牌和空本机记录。专用 `MioB` 标记使备份不能作为普通项目打开或登记；接口、提交点和故障边界见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)。不启用旧工作区备份接口，也没有接入备份界面。
-- 生产素材以引用定位：项目格式为 3、cache 为 2，history 为 9。格式 1、2 的旧开发项目及备份明确拒绝、零写入，需重建。路径导入不复制，网页/Mio 上传写固定 `素材/`；生成写 `生成/`，成片写 `导出/`，排他发布、不自动删除项目文件。完整契约见 [素材引用](ASSET-REFERENCES.md)和[项目产物](PROJECT-OUTPUTS.md)。
+- 生产素材以引用定位：项目格式为 3、cache 为 2，history 为 10。格式 1、2 的旧开发项目及备份明确拒绝、零写入，需重建。路径导入不复制，网页/Mio 上传写固定 `素材/`；生成写 `生成/`，成片写 `导出/`，排他发布、不自动删除项目文件。完整契约见 [素材引用](ASSET-REFERENCES.md)和[项目产物](PROJECT-OUTPUTS.md)。
 - `project.version.list/save/preview/restore` 是项目级操作，提供手动/自动保存、保留清理和确认恢复；正文仅存本机 history，界面另卡实现；见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。
-- S5-A 已提供应用级复制/另存为和受信端口，带重绑定版本、空执行域，不接界面或 CLI/MCP 新命令；见 [PROJECT-COPIES.md](PROJECT-COPIES.md)。S5-B 的副本/复制到/模板、S5-C 的废纸篓及 V4 的打包导入导出尚未接入；旧工作区备份/恢复已退役。精确错误和按项目后的图片、帧、LUT 可达容量见 [宿主当前状态](PROJECT-HOST.md#0-p4-当前运行状态)。不调用旧生产生命周期链；S3-A只做任务索引上限，跨项目运行调度和历史/LUT/Mio总量硬限留0.1.x或另卡。
+- S5-A/B 已提供应用级复制/另存为、副本作为新项目打开、复制到和受控模板及受信端口；按入口只带重绑定版本或空本机记录，不接界面或 CLI/MCP 新命令；见 [PROJECT-COPIES.md](PROJECT-COPIES.md)。S5-C 的废纸篓及 V4 的打包导入导出尚未接入；旧工作区备份/恢复已退役。精确错误和按项目后的图片、帧、LUT 可达容量见 [宿主当前状态](PROJECT-HOST.md#0-p4-当前运行状态)。不调用旧生产生命周期链；S3-A只做任务索引上限，跨项目运行调度和历史/LUT/Mio总量硬限留0.1.x或另卡。
 
 下文保留内核约定和 P1/P2 阶段记录；注明阶段的历史说明不代表 P4 仍在使用旧默认入口。
 
@@ -26,8 +26,9 @@
 | `packages/contracts/src/project-version-operations.ts` | 版本保存、分页列表、完整预览和确认恢复契约 |
 | `packages/contracts/src/project-backups.ts` | V2 应用级备份操作、响应、描述和效果声明 |
 | `packages/contracts/src/project-backup-records.ts` | V2 私有 JSON 索引和恢复意图，不是 history 表 |
-| `packages/contracts/src/project-copies.ts` | S5-A 应用层复制/另存为叶契约，不进入公共或模型目录 |
+| `packages/contracts/src/project-copies.ts` | S5-A/B 应用层复制/另存为、副本、复制到和模板叶契约，不进入公共或模型目录 |
 | `packages/contracts/src/project-copy-records.ts` | S5-A 私有 v1 intent，不是应用库或 history 结构升级 |
+| `packages/contracts/src/project-copy-action-records.ts` | S5-B 私有 v1 intent，记录选中源/新文件夹的身份和恢复阶段 |
 
 这些模块不引入 Node 的模块，网页也能导入。按路径导入，不经过 `contracts/src/index.ts`。现有的交换文件见 `PROJECT-PACKAGE.md`，由 V4 删除。
 
@@ -58,7 +59,7 @@ S5-A 的 `project.duplicate` / `project.save-as` 在应用 `/api/rpc` 使用独�
 
 目标不带 Mio 对话、后台任务、撤销、草稿、旧请求回执/自动标记、备份、imports、cache 或规范信任；旧 mioRunId 仅为版本来源。复制保留素材引用，按新目录重定位而不复制媒体；源目录与已有外部目录确认按既有范围随登记和应用回执原子转移，重放不恢复已撤销许可。新 history 的 seen 记录 builder 最终实际 pair，首次打开为 current。
 
-Finder 直接复制出的同 ID 文件仍走副本检测；S5-B 的“作为新项目打开”才负责替换选中副本并换 ID，不带登记原件的版本或执行记录。S5-B 的“复制到…”/模板、S5-C 的废纸篓尚未提供，0.1.0 永久清理义务已按协调决定销项。完整入口、intent、发布与后续义务见 [PROJECT-COPIES.md](PROJECT-COPIES.md)。
+Finder 直接复制出的同 ID 文件仍走副本检测；S5-B 的 `project.adopt-copy` 只在持 SQLite 写锁时用 builder 生成新 ID 暂存文件，校验原文件身份后替换选中副本，不原位重键，不带登记原件的版本或执行记录。`project.copy-to` 只读捕获选中的受限源；本机有 history 就携带重绑定版本，分叉也带，读不了整笔拒绝。`project.template.instantiate` 只按可信 catalog 在新文件夹建实例并复制白名单素材，两次实例素材独立；不合并到已有文件夹。三项不接界面、CLI/MCP 或 Mio。S5-C 的废纸篓尚未提供，0.1.0 永久清理义务已按协调决定销项。完整入口、intent、发布与后续义务见 [PROJECT-COPIES.md](PROJECT-COPIES.md)。
 
 ## 入口与作用域
 `openStore(root)` 用于 store 级真实 TEST 布局；`startServer({dataDir})` 的 `dataDir` 是应用目录，项目通过真实登记和内核 opener 打开。`createServices` 仅为确切 TEST store 惰性接入真实测试应用库；生产宿主必须显式注入应用配置、写入守卫和备份端口，不能靠 root 或复制 store 字段获得应用能力。测试显式的 `createServerProject` / `openServerProject` 也登记同一 TEST 能力，使用真实服务端布局，不另外创建 TEST 布局的影子项目。共享一个应用目录的这些测试 store 复用唯一真实 B1，最后一个 store 关闭时才关闭 B1；生产服务端不参与这个 TEST 持有者表。
@@ -109,8 +110,8 @@ Finder 直接复制出的同 ID 文件仍走副本检测；S5-B 的“作为新�
 依据是 10-30 的崩溃恢复实测：跨两个文件的大事务提交到一半时 `SIGKILL`，再看重开以后两个文件是否一致（Node 24.21.0，SQLite 3.53.4，回滚日志模式加独占锁）。
 
 - **主库是本机记录 `history.db`。** 项目文件以 `project` 的名字挂上去，缓存库以 `cache` 的名字挂上去（`PROJECT_DATABASE_NAMES`）。
-  - 当前 project/history/cache 格式为 **3/9/2**。项目增加 32 位小写十六进制 `contentToken`，头部 `user_version=3`；history 6 增加版本领域四表，7 允许已发布预演图的图片编辑来源，8 增加 `seenContentToken` 和单行宿主处置提交证据，9 增加三种草稿槽及 scope 状态四表。版本 `mioRunId` 保留来源值，解除对可执行 `mio_runs` 的外键依赖。
-  - 精确已知的 history 2–8 都可在打开事务内直升 9，版本最后写入；2 保留既有开发期 Mio 重置，3–7 保留已有记录和版本字节。2–6 同时沿用 S2 的 `image_reviews` 窄升级，保留 rowid、审阅状态和原始 JSON 字节。2–7 升级的 token 为 NULL，进入恢复会话；8→9 只建空草稿域，保留原内容 pair 与所有旧记录；不把旧记录补成当前令牌，不在准入前清理项目修订账本。外键始终开启，失败或中途退出整笔恢复；未知或改动过的结构仍拒绝，详见 [MIO-RECORDS.md](MIO-RECORDS.md#发布前的开发数据重置)。
+  - 当前 project/history/cache 格式为 **3/10/2**。项目增加 32 位小写十六进制 `contentToken`，头部 `user_version=3`；history 6 增加版本领域四表，7 允许已发布预演图的图片编辑来源，8 增加 `seenContentToken` 和单行宿主处置提交证据，9 增加三种草稿槽及 scope 状态四表，10 允许带服务 UUID 与配置修订的自定义图片审核意图（`schemaVersion:6`）。版本 `mioRunId` 保留来源值，解除对可执行 `mio_runs` 的外键依赖。
+  - 精确已知的 history 2–9 都可在打开事务内直升 10，版本最后写入；2 保留既有开发期 Mio 重置，3–9 保留已有记录和版本字节。2–6 同时沿用 S2 的 `image_reviews` 窄升级，保留 rowid、审阅状态和原始 JSON 字节。2–7 也直升 10，升级的 token 为 NULL，进入恢复会话；8→10 建空草稿域并重建 `image_reviews` 审核意图版本约束，9→10 只重建该约束，保留 rowid、原始 JSON、审阅状态、原内容 pair 与所有旧记录；不把旧记录补成当前令牌，不在准入前清理项目修订账本。外键始终开启，失败或中途退出整笔恢复；未知或改动过的结构仍拒绝，详见 [MIO-RECORDS.md](MIO-RECORDS.md#发布前的开发数据重置)。
   - 未加限定的表名，SQLite 依次到各个库里找，所以现有 SQL 大多不用改。
   - 建表、建触发器，以及 `PRAGMA user_version`、`PRAGMA application_id` 这类语句要带库名，不带时落到主库，也就是本机记录。`PRAGMA foreign_key_check` 不带库名时只查主库。
   - 日志模式和锁模式另有规则，见下面的“日志模式按库名设”。
@@ -236,7 +237,7 @@ P2 当时不改变公开地址、落盘格式、Mio 请求字节、生产入口�
 | `PROJECT_FILE_SINGLE_PROJECT` | store 级 `project.create` 用在已有项目的文件上 | |
 | `PROJECT_FILE_EXISTS` | 新建时目标位置已有文件；HTTP 409 | 内核的详情照打开错误的写法，是 `{database: 'project', reason: 'exists'}`，不放绝对路径；应用级的新建再补上 `projectFile` |
 | `PROJECT_FILE_MOVED` | 项目打开期间单独改名或移动了 `.mioon`，文件夹没动；HTTP 409 | `details` 带 `projectId`。宿主正在按新位置重开，重试即可，见“只改名或单独移动 `.mioon`” |
-| `PROJECT_FILE_COPY` | 要打开的 `.mioon` 带着一个已登记项目的 ID，而登记的那个文件还在原处，这个文件是副本（计划 5.2）；HTTP 409 | `details` 带 `projectId`。应用库在内核的 `checkCopy` 里拒绝，这时还没给副本建本机记录；S5-B 后续提供选中副本换新 ID，S6 接确认界面 |
+| `PROJECT_FILE_COPY` | 要打开的 `.mioon` 带着一个已登记项目的 ID，而登记的那个文件还在原处，这个文件是副本（计划 5.2）；HTTP 409 | `details` 带 `projectId`。应用库在内核的 `checkCopy` 里拒绝，这时还没给副本建本机记录；S5-B 的 `project.adopt-copy` 可对已重验的选中副本生成新身份后替换，S6 接确认界面 |
 | `PROJECT_NOT_FOUND` | URL 里的项目 ID 没有登记；HTTP 404 | `details: {projectId}` |
 | `PROJECT_ID_MISMATCH` | URL 和输入里的 projectId 不一致；HTTP 400 | `details: {projectId}`，是 URL 里的 ID |
 | `PROJECT_UNAVAILABLE` | 已登记，但现在打不开；HTTP 409 | `details: {projectId, reason, invalidReason?}`，`reason` 是前四个原因码之一 |
@@ -265,7 +266,7 @@ P2 当时不改变公开地址、落盘格式、Mio 请求字节、生产入口�
 
 切换使用私有持久 intent、暂存 history 的事务提交证据及 fsync/rename；打开必须先恢复未完成切换，不能把暂时缺失的 history 当 fresh。相同确认重复返回原结果，后续编辑也不重做恢复。最小宿主接口和文字见 [PROJECT-HOST.md](PROJECT-HOST.md#v5-恢复会话)。不提供通用 history 业务 RPC，也不向 Mio 增加工具。
 
-未改内容的物理备份保留 pair；换项目 ID 的复制必须换新令牌，打包改写持久引用也必须换令牌。S5-A 的复制/另存为入口见 [PROJECT-COPIES.md](PROJECT-COPIES.md)，其余 S5-B/C、打包由后续卡实施；内容令牌不是内容哈希或防篡改凭据，不提供父链、祖先证明或旧执行记录的部分继续资格。
+未改内容的物理备份保留 pair；换项目 ID 的复制必须换新令牌，打包改写持久引用也必须换令牌。S5-A/B 的复制/另存为、副本/复制到和模板入口见 [PROJECT-COPIES.md](PROJECT-COPIES.md)，S5-C、打包由后续卡实施；内容令牌不是内容哈希或防篡改凭据，不提供父链、祖先证明或旧执行记录的部分继续资格。
 
 ## 项目自动备份（V2）
 

@@ -95,6 +95,34 @@ export function openClosedProjectSnapshotConnection(options:{readonly projectFil
  }catch(error){db.close();throw error;}
 }
 
+/** S5's copy-adoption capability. A reserved write transaction excludes
+ * SQLite writers while a second, read-only handle feeds native backup. The
+ * backup API cannot read from the same handle's write transaction. Both
+ * handles stay open until the replacement and its caller's bookkeeping end:
+ * closing either descriptor earlier would release this process's POSIX locks. */
+export function openProjectCopyReplacementConnections(projectFile:string):{readonly reader:DatabaseSync;close():void} {
+ const file=path.resolve(projectFile),before=lstatSync(file,{bigint:true}),key=identityOf(before,file);
+ if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1n)throw invalid('project','not-a-regular-file');
+ if(projectFileOwnerKind(key)!==undefined)throw projectFileError('PROJECT_LOCKED',describe('project','locked'));
+ const files:HeldFile[]=[[key,'project']];
+ let writer:DatabaseSync|undefined,reader:DatabaseSync|undefined,registered=false;
+ const close=():void=>{
+  try{if(reader?.isOpen){if(reader.isTransaction)reader.exec('ROLLBACK');reader.close();}}
+  finally{try{if(writer?.isOpen){if(writer.isTransaction)writer.exec('ROLLBACK');writer.close();}}finally{if(registered&&writer)releaseProjectFiles(writer,files);}}
+ };
+ try{
+  writer=new DatabaseSync(file,DATABASE_OPTIONS);
+  writer.exec('PRAGMA trusted_schema=OFF; PRAGMA cell_size_check=ON; BEGIN IMMEDIATE');
+  if(identityOf(lstatSync(file,{bigint:true}),file)!==key)throw invalid('project','unusable');
+  registerProjectFiles(writer,files);registered=true;
+  reader=new DatabaseSync(file,{...DATABASE_OPTIONS,readOnly:true});
+  reader.exec('PRAGMA trusted_schema=OFF; PRAGMA query_only=ON; PRAGMA cell_size_check=ON; BEGIN');
+  if(identityOf(lstatSync(file,{bigint:true}),file)!==key)throw invalid('project','unusable');
+  let closed=false;
+  return {reader,close():void{if(closed)return;closed=true;close();}};
+ }catch(error){close();throw error;}
+}
+
 /** One connection with the local records as `main` and the project file and
  * the cache attached, all three locked until close(). */
 export interface ProjectConnection extends Omit<ProjectStoreContract<DatabaseSync>, 'root'> {

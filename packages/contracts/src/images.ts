@@ -125,7 +125,15 @@ export const imageVersionResponseSchema=z.union([legacyVersionResponseSchema,edi
 const legacyProfileResponseSchema=z.object({providerId,model,name:z.string().min(1).max(120),enabled:z.boolean(),isMock:z.boolean(),evidence:z.enum(['deterministic-mock','offline-tested-not-live']),options:imageOptionsSchema,settingsRevision:revision.optional()}).strict()
  .refine(providerMatches,'Model does not belong to provider').refine(v=>v.isMock===(v.providerId==='mock')&&(!v.isMock||v.enabled&&!Object.hasOwn(v,'settingsRevision'))&&v.evidence===(v.isMock?'deterministic-mock':'offline-tested-not-live'),'Invalid image profile evidence');
 export const imageProfileResponseSchema=z.union([legacyProfileResponseSchema,z.object({providerId:z.literal('comfy-local'),model:comfyCheckpointSchema,name:z.string().min(1).max(120),enabled:z.boolean(),isMock:z.literal(false),evidence:z.literal('offline-tested-not-live'),options:comfyImageOptionsSchema,settingsRevision:revision.optional()}).strict()]);
-export const imageProfilesResponseSchema=z.object({items:z.array(imageProfileResponseSchema).max(4),liveEnabled:z.boolean()}).strict().refine(v=>new Set(v.items.map(i=>i.providerId)).size===v.items.length&&v.liveEnabled===v.items.some(i=>i.providerId!=='mock'&&i.enabled));
+// Custom entries are neutral model groups when several services exist. They
+// carry no selected connection or authority; the old no-ID prepare must refuse.
+// Mock, official Images and Comfy remain singletons beside at most ten groups.
+export const imageProfilesResponseSchema=z.object({items:z.array(imageProfileResponseSchema).max(13),liveEnabled:z.boolean()}).strict().refine(value=>{
+ const custom=value.items.filter(item=>item.providerId==='openai-compatible'),singletons=value.items.filter(item=>item.providerId!=='openai-compatible');
+ return custom.length<=10&&new Set(custom.map(item=>item.model)).size===custom.length&&new Set(singletons.map(item=>item.providerId)).size===singletons.length&&
+  (custom.length<=1||custom.every(item=>!item.enabled)&&new Set(custom.map(item=>item.settingsRevision)).size===1)&&
+  value.liveEnabled===value.items.some(item=>item.providerId!=='mock'&&item.enabled);
+});
 export const imageRequestResponseSchema=z.object({projectId:id,requestId:key,operation:z.enum(IMAGE_MUTATION_OPERATIONS),response:imageTaskResponseSchema}).strict()
  .refine(v=>v.response.projectId===v.projectId&&(v.operation!=='image.generate'||v.response.requestId===v.requestId))
  .refine(v=>v.operation==='image.generate'?v.response.state==='queued'&&v.response.revision===1&&!v.response.dispatched

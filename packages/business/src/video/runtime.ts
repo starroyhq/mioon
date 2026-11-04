@@ -78,9 +78,9 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
     if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});
     let value: unknown;
     try{value=await awaitProvider(()=>acquireCredential(),context.signal);}
-    catch{if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});throw providerError('VIDEO_CREDENTIAL_UNAVAILABLE','The credential bound to this video task is unavailable. Restore it before continuing.',{beforeDispatch:true});}
+    catch{if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});throw providerError('VIDEO_CREDENTIAL_UNAVAILABLE','The credential bound to this video task is unavailable. Re-entering a key only configures new tasks.',{beforeDispatch:true});}
     if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});
-    if(typeof value!=='string'||!value||value!==value.trim()||value.length>8192||/[\u0000-\u0020\u007f]/.test(value))throw providerError('VIDEO_CREDENTIAL_UNAVAILABLE','The credential bound to this video task is unavailable. Restore it before continuing.',{beforeDispatch:true});
+    if(typeof value!=='string'||!value||value!==value.trim()||value.length>8192||/[\u0000-\u0020\u007f]/.test(value))throw providerError('VIDEO_CREDENTIAL_UNAVAILABLE','The credential bound to this video task is unavailable. Re-entering a key only configures new tasks.',{beforeDispatch:true});
     return value;
   }
   async function request(endpoint: string,{method='GET',body,raw,headers={},context={}}: {method?:string;body?:unknown;raw?:{bytes:Uint8Array;contentType:string};headers?:Record<string,string>;context?:ProviderContext}={}): Promise<Record<string,unknown>> {

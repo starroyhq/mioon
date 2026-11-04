@@ -7,9 +7,9 @@ import type {ProjectEntriesResponse} from '../../../packages/contracts/src/proje
 import {
   projectEntryCreateInputSchema, projectEntryOpenPathInputSchema, projectEntryAcquireInputSchema,
   projectEntryReleaseInputSchema, projectEntryWindowSchema,
-  projectEntrySaveAsInputSchema,
+  projectEntrySaveAsInputSchema, projectEntryAdoptCopyInputSchema,
 } from '../../../packages/contracts/src/project-entry-native.ts';
-import {projectCopyInputSchema} from '../../../packages/contracts/src/project-copies.ts';
+import {projectCopyInputSchema, projectCopyToInputSchema, projectTemplateInputSchema} from '../../../packages/contracts/src/project-copies.ts';
 import type {ProjectCopyResponse} from '../../../packages/contracts/src/project-copies.ts';
 import type {ProjectEntryControlPort, ProjectEntryWindow, ProjectEntryWindowRevoked, ProjectEntryCreateInput} from '../../../packages/contracts/src/project-entry-native.ts';
 import type {RecentProject} from '../../../packages/contracts/src/project-registry.ts';
@@ -50,7 +50,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   readonly readScope: () => string;
   readonly createProject: (input: ProjectEntryCreateInput) => Promise<{readonly registration: RecentProject}>;
   readonly refreshSummaries: () => void;
-  readonly copies?: Pick<ProjectCopies, 'duplicate' | 'saveAs' | 'replay'>;
+  readonly copies?: Pick<ProjectCopies, 'duplicate' | 'saveAs' | 'replay' | 'adoptCopy' | 'copyTo' | 'instantiateTemplate' | 'replayAction'>;
 }) {
   const instanceId = randomUUID();
   let establishedScope: string | undefined;
@@ -143,6 +143,40 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
       if (slot) releaseSlot(windowId, slot);
     },
     ...(copies ? {
+      adoptCopy: async (raw: unknown): Promise<{copy: ProjectCopyResponse; window: ProjectEntryWindow}> => {
+        scope();
+        const {windowId, ...input} = parse(projectEntryAdoptCopyInputSchema, raw);
+        const cached = copies.replayAction('project.adopt-copy', input);
+        const slot = windows.get(windowId);
+        if (cached && slot?.lease?.host.projectId === cached.project.projectId) {
+          if (slot.lease.signal.aborted) throw unavailable();
+          return {copy: cached, window: await slot.promise};
+        }
+        let copied: ProjectCopyResponse | undefined;
+        // Reserve the window before replacing the selected copy. bind checks
+        // conflicts/capacity synchronously and owns concurrent retries, so a
+        // rejected window can never leave a committed identity replacement.
+        const window = await bind(windowId, 'adopt:' + input.requestId, async () => {
+          copied = cached ?? await copies.adoptCopy(input);
+          scope();
+          return await manager.acquire(copied.project.projectId, 'window');
+        });
+        const copy = copied ?? copies.replayAction('project.adopt-copy', input);
+        if (!copy || copy.project.projectId !== window.project.projectId) throw unavailable();
+        return {copy, window};
+      },
+      copyTo: async (raw: unknown): Promise<ProjectCopyResponse> => {
+        scope();
+        const result = await copies.copyTo(parse(projectCopyToInputSchema, raw));
+        scope();
+        return result;
+      },
+      instantiateTemplate: async (raw: unknown): Promise<ProjectCopyResponse> => {
+        scope();
+        const result = await copies.instantiateTemplate(parse(projectTemplateInputSchema, raw));
+        scope();
+        return result;
+      },
       duplicate: async (raw: unknown): Promise<ProjectCopyResponse> => {
         scope();
         const result = await copies.duplicate(parse(projectCopyInputSchema, raw));

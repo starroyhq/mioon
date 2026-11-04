@@ -111,18 +111,18 @@ function emptyDrafts(db:DatabaseSync):void{
   for(const table of DRAFT_TABLES)assert.equal(db.prepare(`SELECT count(*) n FROM main.${table}`).get()!.n,0);
 }
 
-for(const [version,manifest] of OLD)test(`history ${version} frozen source is exact and upgrades to9 with empty drafts and original admission`,t=>{
+for(const [version,manifest] of OLD)test(`history ${version} frozen source is exact and upgrades to10 with empty drafts and original admission`,t=>{
   const f=fixture(t,version),before=f.inspect(),files=f.files();assert.deepEqual(before.manifest,manifest.entries);
   const connection=f.open();
   try{
-    assert.equal(HISTORY_SCHEMA_VERSION,9);assert.equal(connection.db.prepare('SELECT version FROM main.schema_version').get()!.version,9);
+    assert.equal(HISTORY_SCHEMA_VERSION,10);assert.equal(connection.db.prepare('SELECT version FROM main.schema_version').get()!.version,10);
     assert.deepEqual(readSchemaManifest(connection.db,'main'),SCHEMA_MANIFEST.history.entries);retained(before,connection.db,version);emptyDrafts(connection.db);
     assert.equal(connection.db.prepare('PRAGMA foreign_keys').get()!.foreign_keys,1);assert.deepEqual(connection.db.prepare('PRAGMA main.foreign_key_check').all(),[]);
     assert.equal(connection.historyState,version===8?'current':'diverged');
     if(version<8){assert.equal(connection.historyAdmission.reason,'legacy-token-missing');assert.equal(connection.historyAdmission.seen.contentToken,null);assert.equal(connection.db.prepare('PRAGMA query_only').get()!.query_only,1);}
     if(version===2){for(const table of LEGACY_MIO_TABLES)assert.equal(connection.db.prepare('SELECT 1 FROM main.sqlite_schema WHERE name=?').get(table),undefined);assert.equal(connection.db.prepare('SELECT count(*) n FROM main.mio_runs').get()!.n,0);}
   }finally{connection.close();}
-  assert.deepEqual(f.files(),files,'project/cache/retired JSON stay byte-exact');const upgraded=f.inspect();const reopened=f.open();reopened.close();assert.deepEqual(f.inspect(),upgraded,'current9 reopen performs no migration or repair');
+  assert.deepEqual(f.files(),files,'project/cache/retired JSON stay byte-exact');const upgraded=f.inspect();const reopened=f.open();reopened.close();assert.deepEqual(f.inspect(),upgraded,'current10 reopen performs no migration or repair');
 });
 
 for(const token of ['unknown','different'] as const)test(`history8 ${token} token remains diverged after adding drafts, without guessing a new pair`,t=>{
@@ -130,7 +130,7 @@ for(const token of ['unknown','different'] as const)test(`history8 ${token} toke
   try{assert.equal(connection.historyState,'diverged');assert.equal(connection.historyAdmission.reason,token==='unknown'?'legacy-token-missing':'content-token-different');retained(before,connection.db,8);emptyDrafts(connection.db);assert.equal(connection.db.prepare('PRAGMA query_only').get()!.query_only,1);}finally{connection.close();}
 });
 
-test('history8 writes schema_version9 exactly once, after all draft objects in the same opening transaction',t=>{
+test('history8 writes schema_version10 exactly once, after all draft objects in the same opening transaction',t=>{
   const f=fixture(t),exec=DatabaseSync.prototype.exec,writes:{sql:string;transaction:boolean;version:unknown}[]=[];
   const mock=t.mock.method(DatabaseSync.prototype,'exec',function(this:DatabaseSync,sql:string):void{
     if(/^CREATE (?:TABLE|(?:UNIQUE )?INDEX|TRIGGER) main\.local_/u.test(sql)||/^UPDATE main\.schema_version SET version=/u.test(sql))writes.push({sql,transaction:this.isTransaction,version:this.prepare('SELECT version FROM main.schema_version').get()!.version});
@@ -170,31 +170,31 @@ for(const damage of ['extra-object','missing-index','changed-trigger','extra-ver
     else if(damage==='invalid-seen-fraction')db.exec('PRAGMA ignore_check_constraints=ON;UPDATE history_state SET seenContentSequence=0.25');
     else if(damage==='same-token-different-sequence')db.exec('UPDATE history_state SET seenContentSequence=seenContentSequence+1');
     else if(damage==='invalid-token')db.exec("PRAGMA ignore_check_constraints=ON;UPDATE history_state SET seenContentToken='broken'");
-    else db.prepare('UPDATE schema_version SET version=?').run(damage==='format1'?1:damage==='future'?10:damage==='v8-labelled7'?7:9);
+    else db.prepare('UPDATE schema_version SET version=?').run(damage==='format1'?1:damage==='future'?HISTORY_SCHEMA_VERSION+1:damage==='v8-labelled7'?7:9);
   }finally{db.close();}
   const before=f.inspect(),files=f.files(),history=hash(readFileSync(f.historyFile));
   assert.throws(()=>f.open(),{code:damage==='future'?'PROJECT_FORMAT_NEWER':'PROJECT_INVALID'});
   assert.deepEqual(f.inspect(),before);assert.deepEqual(f.files(),files);assert.equal(hash(readFileSync(f.historyFile)),history);
 });
 
-for(const point of ['after-state-table','after-delivery-table','after-shot-table','before-version','after-version','after-commit'] as const)test(`history8 SIGKILL ${point} recovers one entire old8 or committed9 profile`,{timeout:60000},t=>{
+for(const point of ['after-state-table','after-delivery-table','after-shot-table','before-version','after-version','after-commit'] as const)test(`history8 SIGKILL ${point} recovers one entire old8 or committed10 profile`,{timeout:60000},t=>{
   const f=fixture(t),before=f.inspect(),files=f.files(),result=spawnSync(process.execPath,[WORKER,JSON.stringify({projectFile:f.projectFile,localDir:f.localDir,cacheDir:f.cacheDir,tempDir:f.tempDir,point})],{stdio:'ignore',timeout:30000});
   assert.equal(result.error,undefined);assert.equal(result.signal,'SIGKILL');const recovered=f.inspect();
   if(point==='after-commit'){
-    assert.deepEqual(recovered.manifest,SCHEMA_MANIFEST.history.entries);assert.equal(recovered.version.length,1);assert.equal(recovered.version[0]!.version,9);
+    assert.deepEqual(recovered.manifest,SCHEMA_MANIFEST.history.entries);assert.equal(recovered.version.length,1);assert.equal(recovered.version[0]!.version,10);
     const db=new DatabaseSync(f.historyFile);try{retained(before,db,8);emptyDrafts(db);}finally{db.close();}
   }else assert.deepEqual(recovered,before);
-  assert.deepEqual(f.files(),files);const connection=f.open();emptyDrafts(connection.db);connection.close();assert.equal(f.inspect().version[0]!.version,9);
+  assert.deepEqual(f.files(),files);const connection=f.open();emptyDrafts(connection.db);connection.close();assert.equal(f.inspect().version[0]!.version,10);
 });
 
 
-test('a reported failure after the upgrade COMMIT leaves complete9, never a partial profile or a false rollback claim',t=>{
+test('a reported failure after the upgrade COMMIT leaves complete10, never a partial profile or a false rollback claim',t=>{
   const f=fixture(t),before=f.inspect(),files=f.files(),exec=DatabaseSync.prototype.exec;let upgrading=false,reached=false;
   const mock=t.mock.method(DatabaseSync.prototype,'exec',function(this:DatabaseSync,sql:string):void{
     exec.call(this,sql);if(sql.startsWith('CREATE TABLE main.local_draft_states('))upgrading=true;
     if(upgrading&&sql==='COMMIT'){reached=true;throw Error('S8 lost open acknowledgement after COMMIT');}
   });
   try{assert.throws(()=>f.open(),{code:'PROJECT_INVALID'});assert.equal(reached,true);}finally{mock.mock.restore();}
-  const db=new DatabaseSync(f.historyFile);try{assert.equal(db.prepare('SELECT version FROM schema_version').get()!.version,9);assert.deepEqual(readSchemaManifest(db,'main'),SCHEMA_MANIFEST.history.entries);retained(before,db,8);emptyDrafts(db);}finally{db.close();}
+  const db=new DatabaseSync(f.historyFile);try{assert.equal(db.prepare('SELECT version FROM schema_version').get()!.version,10);assert.deepEqual(readSchemaManifest(db,'main'),SCHEMA_MANIFEST.history.entries);retained(before,db,8);emptyDrafts(db);}finally{db.close();}
   assert.deepEqual(f.files(),files);const connection=f.open();emptyDrafts(connection.db);connection.close();
 });

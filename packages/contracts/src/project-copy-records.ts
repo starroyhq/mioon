@@ -11,7 +11,7 @@ export const projectCopyIntentSchema = z.object({
   version: z.literal(1), operation: z.enum(['project.duplicate', 'project.save-as']), input: projectCopyInputSchema,
   digest: z.string().regex(/^[a-f0-9]{64}$/u), projectId: projectIdSchema, contentToken: stamp.shape.contentToken,
   sourceFile: absolutePath, sourceIdentity: projectFileIdentitySchema, sourceStamp: stamp.nullable(),
-  phase: z.enum(['prepared', 'captured', 'ready', 'records-published', 'project-published', 'completed']),
+  phase: z.enum(['prepared', 'captured', 'ready', 'records-published', 'project-published', 'completed', 'abandoned']),
   stageDirectory: absolutePath.nullable(), stageDirectoryIdentity: projectFileIdentitySchema.nullable(),
   stageIdentity: projectFileIdentitySchema.nullable(), historyIdentity: projectFileIdentitySchema.nullable(),
   recordsIdentity: projectFileIdentitySchema.nullable(), placeholderIdentity: projectFileIdentitySchema.nullable(),

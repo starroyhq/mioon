@@ -12,7 +12,7 @@ import * as menuProtocol from '../apps/desktop/src/menu-command-protocol.ts';
 const nodes = (value: RootTree) : RootNode[] => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 const text = (value: RootTree) : string => Array.isArray(value) ? value.map(text).join('') : value && typeof value === 'object' ? text(value.props?.children) : value == null || typeof value === 'boolean' ? '' : String(value);
 const flush = () => new Promise(setImmediate);
-function harness<File extends 'SettingsExtraPages.tsx'|'SettingsVideoTools.tsx'|'SettingsWorkspace.tsx'|'SettingsMediaToolsDownload.tsx', Export extends keyof RootControlledModules[File]>(file: File, exportName: Export, imports: Record<string,unknown>, initialProps: Record<string,unknown> = {}) {
+function harness<File extends 'GenerationLiveGateNotice.tsx'|'SettingsExtraPages.tsx'|'SettingsVideoTools.tsx'|'SettingsWorkspace.tsx'|'SettingsMediaToolsDownload.tsx', Export extends keyof RootControlledModules[File]>(file: File, exportName: Export, imports: Record<string,unknown>, initialProps: Record<string,unknown> = {}) {
   const hooks: RootHook[] = []; let cursor = 0, effects: number[] = [], tree: string|number|boolean|RootNode|RootTree[]|null|undefined, props: Record<string,unknown> = { active: true, ...initialProps };
   const react = {
     createElement: (type: string, props: Record<string, unknown> | null, ...children: RootTree[]) => ({ type, props: { ...props, children } }),
@@ -29,6 +29,7 @@ function harness<File extends 'SettingsExtraPages.tsx'|'SettingsVideoTools.tsx'|
     if (name === './i18n/I18nProvider.tsx') return i18nTestModule('zh-Hans');
     if (name === './settings-navigation-state.ts') return navigation;
     if (name === '../../desktop/src/menu-command-protocol.ts') return menuProtocol;
+    if (name === './GenerationLiveGateNotice.tsx') return {notifyGenerationLiveGateChanged() {}};
     if (Object.hasOwn(imports, name)) return imports[name];
     if (name.startsWith('@mioon/ui/') || name.endsWith('.css')) return primitive;
     assert.fail(`Unexpected setting dependency ${name}`);
@@ -36,7 +37,7 @@ function harness<File extends 'SettingsExtraPages.tsx'|'SettingsVideoTools.tsx'|
   return {
     render(patch: Record<string,unknown>|undefined = {}) { props = { ...props, ...patch }; cursor = 0; effects = []; tree = (module.exports[exportName] as (props:Record<string,unknown>)=>RootTree)(props); for (const index of effects) { hooks[index].cleanup?.(); hooks[index].cleanup = hooks[index].callback!(); } return tree; },
     find(id: string) { return nodes(tree).find((node) => node.props?.['data-testid'] === id); },
-    get tree() { return tree; },
+    get tree() { return tree; }, exports: module.exports,
     unmount() { hooks.forEach(hook => hook?.cleanup?.()); },
   };
 }
@@ -153,4 +154,15 @@ test('hidden workspace settings abort pending reads and a late failure cannot pu
   h.render({active:true});await flush();h.render();reject(Object.assign(Error('private stale error'),{code:'NETWORK'}));await flush();h.render();
   assert.equal(reads,2);assert.doesNotMatch(text(h.tree),/private stale error|状态未确认/);
   assert.match(text(nodes(h.tree).find(node=>node.type==='footer')),/更改立即保存在本机/);
+});
+
+test('generation detail gate notices stop hidden reads and react only after the persisted live toggle changes', async () => {
+  let enabled = false, opens = 0; const first = Promise.withResolvers<ReturnType<typeof workspaceSettings>>(), signals: AbortSignal[] = []; let reads = 0;
+  const h = harness('GenerationLiveGateNotice.tsx', 'default', {'./workspace-settings-client.ts': {readWorkspaceSettings: (signal: AbortSignal) => {signals.push(signal); return ++reads === 1 ? first.promise : Promise.resolve(workspaceSettings(enabled));}}}, {pageKey: 'custom', onOpen: () => {opens++;}});
+  h.render(); h.render({active: false}); assert.equal(signals[0]!.aborted, true); first.resolve(workspaceSettings(false)); await flush(); h.render();
+  assert.equal(h.find('generation-live-disabled'), undefined);
+  h.render({active: true, pageKey: 'official'}); await flush(); h.render(); const notice = h.find('generation-live-disabled'); assert.ok(notice);
+  assert.match(text(notice), /真实生成已关闭.*连接设置仍可保存/); nodes(notice).find(node => node.type === 'Button')!.props.onClick(); assert.equal(opens, 1);
+  enabled = true; h.exports.notifyGenerationLiveGateChanged(); await flush(); h.render(); assert.equal(h.find('generation-live-disabled'), undefined);
+  h.unmount();
 });

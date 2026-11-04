@@ -1,5 +1,5 @@
 # 项目宿主
-日期：2026-10-31 起草，2026-11-02 补充 P4 实现状态，2026-11-03 补充 V2 自动备份与 V1-B 版本恢复及自动保存，2026-11-04 补充 S5-A。当前代码已切换到真实项目内核；本轮整体验收和发布状态以 PR 为准。
+日期：2026-10-31 起草，2026-11-02 补充 P4 实现状态，2026-11-03 补充 V2 自动备份与 V1-B 版本恢复及自动保存，2026-11-04 补充 S5-A/B。当前代码已切换到真实项目内核；本轮整体验收和发布状态以 PR 为准。
 
 项目文件 v1 以后，后端同时开着多个项目：每个打开的项目有一个“项目宿主”，里面是这个项目的 store、服务、后台任务循环和 Mio 运行时；应用级的“宿主管理器”负责列出、新建、打开、关闭项目，按 URL 里的项目 ID 把请求交给对应的宿主。
 
@@ -34,13 +34,13 @@ manager 在 factory、`ensureProjectRow`、业务服务/Mio 构造、worker 和�
 
 - `GET /api/project-covers/<ID>` 是应用级只读缓存接口，只读该项目缓存中的 `cover.jpg`、`cover.json`；缺失或不匹配返回 404，从不 acquire 项目。`projectSummaryCoverSchema` 的 URL 已改为此地址，并要求 ID 与摘要项目一致。
 - `GET /api/workspace-info` 返回应用目录；`GET /api/projects/<ID>/workspace-info` 取得正常项目请求租约后返回真实 `projectDir`。两者复用 `workspaceInfoSchema`。桌面导出按已验证 owner 的项目 ID 请求后者，不从 `fileLocation` 猜素材根。
-- 全局 `GET /api/agent/tasks/v2/diagnostics/latest` 只读应用 documents 的 `agent-diagnostic-summary-v1.json`，返回 `{test: null | summary}`，summary 严格只有 `completedAt`、`status`、`protocol`、`model`、`errorCode`。项目诊断完成时更新，不复制对话、请求原文或密钥，不扫描或打开关闭的项目。应用库当前为 3：精确已知 v1 经 v2，再由 R2 的 v2→v3 升级增加用户规范；保留原三种文档字节及其它登记、策略回执。
+- 全局 `GET /api/agent/tasks/v2/diagnostics/latest` 只读应用 documents 的 `agent-diagnostic-summary-v1.json`，返回 `{test: null | summary}`，summary 严格只有 `completedAt`、`status`、`protocol`、`model`、`errorCode`。项目诊断完成时更新，不复制对话、请求原文或密钥，不扫描或打开关闭的项目。应用库当前为 4：仅精确已知 v3 做 S3-A 的3→4升级；保留旧索引JSON及其它文档、登记和策略回执，不组合旧1/2升级到4。
 - 经过 HTTP 的 B1 错误仅列 `APP_LIBRARY_LIMIT`（507，登记容量上限）和 `APP_LIBRARY_INVALID`（422，无效诊断摘要，`details: {reason:'unusable'}`）。`APP_LIBRARY_LOCKED`、`APP_LIBRARY_FORMAT_NEWER` 是监听前的启动错误；`APP_LIBRARY_CLOSED` 是内部生命周期错误，不据此新增公开端点。
 - `inspectProject: receive => …` 是受信测试接收选项；真实服务端子进程可用固定测试 IPC 读取其 own connection。HTTP、CLI 和环境变量不接受 SQL、回调或 inspect 开关；活跃连接复用、关闭项目短开即关、同步回调和 transition 拒绝规则不变。
 - V2 的 `createProjectBackups` 已在生产注册第一个生命周期 hook。正常准入后打开复制项目文件，关闭在运行时排空后、store 关闭前复制；按项目 ID、内容序号和令牌去重、保留最近三份，登记实际完成副本的 pair。`project.backup.list/inspect/restore/status` 走应用 RPC，不 acquire 原项目，恢复为新 ID、新令牌、空本机记录的新文件。实现边界和契约见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)，本卡没有备份界面。
 - S1 素材媒体 GET/HEAD/Range 使用精确宿主 store 的 L1 引用服务，逐块重查权限与身份，响应 no-store；宿主不再预建私有 `media/`。受信用户路径导入/位置确认走固定 `asset-media/trusted` 项目路由，沿用认证与 origin 检查，普通 RPC/MCP 无确认入口。封面缓存绑定无路径内容指纹，首页仍不 acquire 项目。导入、复制恢复许可和格式拒旧见 [ASSET-REFERENCES.md](ASSET-REFERENCES.md)。
 - 备份完整校验成功后按文件身份和变动时间在同一服务实例内缓存；安全属性仍逐次检查，替换或变动即重验。打开去重只确认最近有效项，列表仍核对全部有效项，inspect/restore 仍完整只读校验。
-- 版本领域在真实项目服务中接入 `project.version.list/save/preview/restore`，走项目前缀 RPC；正常准入的每日 hook 在 V2 打开备份校验后执行，Mio 首改与恢复前保存使用同一真实连接和事务。恢复同时核对完整摘要与内容序号/令牌，并在写入前检查应用能力和宿主在途工作。当前 project/history/cache 为 3/9/2，精确已知 history 2–8 可直升到 9，旧 token 缺失时进入恢复会话；详见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。备份四项与版本四项统一进契约根操作表及 effect 表，内置 Mio 均禁用。
+- 版本领域在真实项目服务中接入 `project.version.list/save/preview/restore`，走项目前缀 RPC；正常准入的每日 hook 在 V2 打开备份校验后执行，Mio 首改与恢复前保存使用同一真实连接和事务。恢复同时核对完整摘要与内容序号/令牌，并在写入前检查应用能力和宿主在途工作。当前 project/history/cache 为 3/10/2，精确已知 history 2–9 可直升到 10，旧 token 缺失时进入恢复会话；详见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。备份四项与版本四项统一进契约根操作表及 effect 表，内置 Mio 均禁用。
 
 ### S5-A：复制与另存为
 
@@ -52,17 +52,25 @@ manager 独占先排除窗口和待写工作，再关闭源；随后由关闭源
 
 复用既有应用回执，另以 `<dataDir>/project-copies/` 的私有 v1 intent 固定新身份、暂存/占位身份和阶段，不改变应用库或 history 版本。新 records/项目发布后续办登记与回执，不重拷已发布内容；重放不重新授予撤销的目录确认。S5 发布采用 hard link 或已核身份的 `wx` 占位+rename 回退，exFAT 不因缺 hard link 一概拒绝；协调人接受核对与 rename 间的窄竞态，不新增原生端口。契约、失败/恢复限制、已销项义务见 [PROJECT-COPIES.md](PROJECT-COPIES.md)。
 
+### S5-B：作为新项目打开、复制到和模板
+
+应用 RPC 的 `project.adopt-copy` / `project.copy-to` 绑定选中源的项目 ID、绝对路径、dev/ino 和内容 pair；执行时重验，源始终关闭。adopt 不 acquire 原项目，也不读原 history，用 builder 暂存、持副本 SQLite 写锁、核身份后替换，不做原位重键。copyTo 只读捕获源和本机已有 history，不论 seen 是否匹配都携带版本；坏或被占用就整笔拒绝。`project.template.instantiate` 仅选可信 catalog 的模板 ID/版本，在新文件夹建实例并复制校验过的白名单素材；文件夹冲突不合并。新操作都不进公共、CLI/MCP 或 Mio discovery。
+
+受信 `projectEntries.adoptCopy({...input, windowId})` 先保留空窗口 owner，再执行替换并打开新项目，返回 `{copy, window}`；窗口冲突/容量不足时还没改变副本。`copyTo` / `instantiateTemplate` 返回复制结果，S6 再调用现有打开能力。没有接选择器、菜单、模板或窗口 UI。catalog 由 `ServerOptions.projectTemplates` 在受信初始化时注入，普通请求不提供模板路径/manifest。
+
+启动恢复将 prepared/captured 的未完成转换按已记录身份清理隐藏暂存目录并作废，原键报 `PROJECT_COPY_INTERRUPTED`；不删除身份已变的后来文件，不在同键重造新身份。ready 以后完整结果继续按 intent 续办。
+
 ### 暂不可用的后续能力
 
 | 归属 | 当前操作/地址 | 精确结果 |
 |---|---|---|
 | S5 | 应用 RPC `project.delete` | 409 `PROJECT_DELETE_UNAVAILABLE`，复用原生命周期错误码 |
-| S5-B/C | 作为新项目打开、复制到…、模板、废纸篓 | 尚未实施对应成功入口；不能由 A 的底座能力推断已可用 |
+| S5-C | 废纸篓 | 尚未实施成功入口；不能由复制能力推断已可用 |
 | S5-A / 0.1.x | CLI 和旧客户端 `project.duplicate` | 409 `PROJECT_COPY_UNAVAILABLE`，网络/存储访问前拒绝；新 CLI/MCP 命令后续接入 |
 | V4 | 打包导入导出尚无新生产接口；旧 `/api/project-packages/…`、项目 `package-preview` | 404 `NOT_FOUND`；不进入旧复制、删除或导入链 |
 | S7 | 应用 RPC `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（含 bundle 下载/导入、directory 导入） | 404 `UNKNOWN_OPERATION`（旧文件地址为 `NOT_FOUND`） |
 
-`workspace.restore.inspect` 已退役并返回 404 `UNKNOWN_OPERATION`；不再有旧恢复来源或能力探测协议。工作区设置去掉五个退役备份键；项目自动备份仍由 V2 宿主 hooks 提供。S5-B/C、V4 继续按各卡边界实施。
+`workspace.restore.inspect` 已退役并返回 404 `UNKNOWN_OPERATION`；不再有旧恢复来源或能力探测协议。工作区设置去掉五个退役备份键；项目自动备份仍由 V2 宿主 hooks 提供。S5-C、V4 继续按各卡边界实施。
 
 数据库内的队列、保留容量与配额按各项目宿主的实际三库计算。Mio 的 256 MiB / 65536 行及回执豁免仍由当前 history 计量和触发器保护；各项目的 LUT 保留和任务队列彼此独立。明确的应用级资源预算（例如连续音频会话内存和媒体进程 admission）保持各自契约。
 
