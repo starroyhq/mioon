@@ -78,14 +78,16 @@ async function fixture(t:TestContext,protocol:AgentProtocol='responses',options:
   };
 }
 
-test('only the native non-core catalog discovers the list tool; no future import name is published',()=>{
+test('the native non-core list tool keeps its read-only tier while directory tools stay out of diagnostics',()=>{
   const native=listAgentTaskTools(),diagnostic=listDiagnosticAgentTaskTools(),tool=native.find(tool=>tool.name===MIO_PROJECT_MEDIA_LIST_TOOL);
   assert.equal(tool?.operation,MIO_PROJECT_MEDIA_LIST_OPERATION);assert.equal(tool?.risk,'read_only');
   assert.ok(AGENT_TASK_LOADABLE_TOOL_NAMES.includes(MIO_PROJECT_MEDIA_LIST_TOOL));assert.ok(!AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES.includes(MIO_PROJECT_MEDIA_LIST_TOOL));
   assert.ok(!selectTaskModelTools(native).some(tool=>tool.name===MIO_PROJECT_MEDIA_LIST_TOOL));
   assert.ok(!diagnostic.some(tool=>tool.name===MIO_PROJECT_MEDIA_LIST_TOOL));
   for(const profile of ['text','read_only','catalog'] as const)assert.ok(!selectTaskModelTools(diagnostic,{profile}).some(tool=>tool.name===MIO_PROJECT_MEDIA_LIST_TOOL));
-  assert.ok(!JSON.stringify([native,diagnostic,AGENT_TASK_LOADABLE_TOOL_NAMES]).includes('mioon_asset_import_project_file'));
+  assert.ok(native.some(tool=>tool.name==='mioon_asset_import_project_file'));
+  assert.ok(!diagnostic.some(tool=>tool.name==='mioon_asset_import_project_file'));
+  assert.ok(!AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES.includes('mioon_asset_import_project_file'));
 });
 
 test('a host port is mandatory and strict model input cannot provide owner or path authority',async t=>{
