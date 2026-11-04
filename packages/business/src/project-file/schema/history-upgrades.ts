@@ -7,7 +7,9 @@ import {R1_HISTORY_V4_MANIFEST} from './history-v4-manifest.ts';
 import {R2_HISTORY_V5_MANIFEST} from './history-v5-manifest.ts';
 import {VERSION_SCHEMA} from './domains/versions.ts';
 import {TASK_SCHEMA} from './domains/tasks.ts';
+import {S2_HISTORY_V7_MANIFEST} from './history-v7-manifest.ts';
 import {V1_HISTORY_V6_MANIFEST} from './history-v6-manifest.ts';
+import {HISTORY_RESOLUTION_SCHEMA,HISTORY_STATE_METADATA} from './databases.ts';
 import type {SchemaManifest} from './manifest-check.ts';
 import {LEGACY_MIO_TABLES} from './tables.ts';
 
@@ -58,6 +60,27 @@ function addProjectVersions(db:DatabaseSync):void{
  if(!db.isTransaction)throw new TypeError('A history upgrade requires the opening transaction');
  for(const sql of VERSION_SCHEMA)db.exec(sql.replace(CREATE_PREFIX,'CREATE $1 main.'));
 }
+/** Retain old bytes while adding an explicitly unknown token. ALTER ADD's
+ * stored SQL would not match the canonical manifest, so rebuild these leaves. */
+function addContentStamp(db: DatabaseSync, previousVersions: boolean): void {
+  if (!db.isTransaction) throw new TypeError('History admission upgrade requires a transaction');
+  db.exec('CREATE TEMP TABLE v5_previous_history_state AS SELECT * FROM main.history_state');
+  db.exec('DROP TABLE main.history_state');
+  for (const sql of HISTORY_STATE_METADATA) db.exec(sql.replace(CREATE_PREFIX, 'CREATE $1 main.'));
+  db.exec('INSERT INTO main.history_state(singleton,projectId,seenContentSequence,seenContentToken) SELECT singleton,projectId,seenContentSequence,NULL FROM temp.v5_previous_history_state');
+  db.exec('DROP TABLE temp.v5_previous_history_state');
+  if (previousVersions) {
+    db.exec('CREATE TEMP TABLE v5_previous_versions AS SELECT rowid AS retained_rowid,* FROM main.project_versions');
+    const columns = db.prepare('PRAGMA main.table_info(project_versions)').all().map(row=>'"'+String(row.name).replaceAll('"','""')+'"').join(',');
+    db.exec('DROP TABLE main.project_versions');
+    for (const sql of VERSION_SCHEMA) if (/^CREATE (?:TABLE project_versions\(|(?:UNIQUE )?INDEX project_versions_|TRIGGER \w+ (?:BEFORE|AFTER) (?:INSERT|UPDATE|DELETE) ON project_versions\b)/u.test(sql)) {
+      db.exec(sql.replace(CREATE_PREFIX, 'CREATE $1 main.'));
+    }
+    db.exec(`INSERT INTO main.project_versions(rowid,${columns}) SELECT retained_rowid,${columns} FROM temp.v5_previous_versions ORDER BY retained_rowid`);
+    db.exec('DROP TABLE temp.v5_previous_versions');
+  }
+  db.exec(HISTORY_RESOLUTION_SCHEMA.replace(CREATE_PREFIX, 'CREATE $1 main.'));
+}
 /** Only the whitelisted image review table changes. Keep every retained row,
  * rowid, reverse reference and immutable request byte; incoming FKs remain
  * enabled and deferred until the rebuilt parent has been populated again. */
@@ -80,11 +103,12 @@ function addPrevisImageReviewOrigin(db:DatabaseSync):void{
  if(db.prepare('PRAGMA main.foreign_key_check').all().length)throw projectFileError('PROJECT_INVALID',{database:'history',reason:'foreign-key'});
 }
 export const HISTORY_UPGRADES: readonly HistoryUpgrade[] = Object.freeze([
-  Object.freeze({from: S0_HISTORY_V2_MANIFEST, toVersion: 7, clearLegacyProcessRevisions:true, apply: (db:DatabaseSync)=>{resetDevelopmentMio(db);addProjectVersions(db);addPrevisImageReviewOrigin(db);}}),
-  Object.freeze({from: R1_HISTORY_V3_MANIFEST, toVersion: 7, apply: (db:DatabaseSync)=>{addMioRuleWrites(db,false);addMioStorageCounters(db);addProjectVersions(db);addPrevisImageReviewOrigin(db);}}),
-  Object.freeze({from: R1_HISTORY_V4_MANIFEST, toVersion: 7, apply: (db:DatabaseSync)=>{addMioRuleWrites(db);addProjectVersions(db);addPrevisImageReviewOrigin(db);}}),
-  Object.freeze({from: R2_HISTORY_V5_MANIFEST, toVersion: 7, apply: (db:DatabaseSync)=>{addProjectVersions(db);addPrevisImageReviewOrigin(db);}}),
-  Object.freeze({from: V1_HISTORY_V6_MANIFEST,toVersion:7,apply:addPrevisImageReviewOrigin}),
+  Object.freeze({from: S0_HISTORY_V2_MANIFEST, toVersion: 8, clearLegacyProcessRevisions:true, apply: (db:DatabaseSync)=>{resetDevelopmentMio(db);addProjectVersions(db);addPrevisImageReviewOrigin(db);addContentStamp(db,false);}}),
+  Object.freeze({from: R1_HISTORY_V3_MANIFEST, toVersion: 8, apply: (db:DatabaseSync)=>{addMioRuleWrites(db,false);addMioStorageCounters(db);addProjectVersions(db);addPrevisImageReviewOrigin(db);addContentStamp(db,false);}}),
+  Object.freeze({from: R1_HISTORY_V4_MANIFEST, toVersion: 8, apply: (db:DatabaseSync)=>{addMioRuleWrites(db);addProjectVersions(db);addPrevisImageReviewOrigin(db);addContentStamp(db,false);}}),
+  Object.freeze({from: R2_HISTORY_V5_MANIFEST, toVersion: 8, apply: (db:DatabaseSync)=>{addProjectVersions(db);addPrevisImageReviewOrigin(db);addContentStamp(db,false);}}),
+  Object.freeze({from: V1_HISTORY_V6_MANIFEST, toVersion: 8, apply: (db:DatabaseSync)=>{addPrevisImageReviewOrigin(db);addContentStamp(db,true);}}),
+  Object.freeze({from: S2_HISTORY_V7_MANIFEST, toVersion: 8, apply: (db:DatabaseSync)=>addContentStamp(db,true)}),
 ]);
 
 /** Clears only the four local-process target kinds from an older project.
@@ -103,10 +127,10 @@ export function clearProjectProcessRevisions(db: DatabaseSync, projectId: string
   // its per-row sequence trigger, restoring the exact SQL before validation.
   db.exec(`DROP TRIGGER project.${name}`);
   db.prepare(`DELETE FROM project.agent_task_target_revisions_v2 WHERE ${where}`).run(projectId);
-  const changed = db.prepare('UPDATE project.project_file SET contentSequence=contentSequence+1 WHERE singleton=1 AND contentSequence<?')
+  const changed = db.prepare('UPDATE project.project_file SET contentSequence=contentSequence+1,contentToken=lower(hex(randomblob(16))) WHERE singleton=1 AND contentSequence<?')
     .run(Number.MAX_SAFE_INTEGER);
   if (changed.changes !== 1) throw projectFileError('PROJECT_INVALID', {database: 'project', reason: 'metadata', projectId});
   db.exec(row.sql.replace(/^CREATE TRIGGER /, 'CREATE TRIGGER project.'));
-  db.prepare('UPDATE main.history_state SET seenContentSequence=(SELECT contentSequence FROM project.project_file) WHERE singleton=1 AND projectId=?')
+  db.prepare('UPDATE main.history_state SET seenContentSequence=(SELECT contentSequence FROM project.project_file),seenContentToken=(SELECT contentToken FROM project.project_file) WHERE singleton=1 AND projectId=?')
     .run(projectId);
 }

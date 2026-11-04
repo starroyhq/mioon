@@ -21,7 +21,7 @@ import type {ProjectBackupOperations} from '../apps/server/src/project-backup-op
 const run = promisify(execFile), repo = fileURLToPath(new URL('../', import.meta.url));
 const token = 'synthetic-v2-backup-transport-token';
 const projectId = '11111111-aaaa-4111-8111-111111111111', backupId = randomUUID(), now = '2026-11-03T00:00:00.000Z';
-const summary: ProjectBackupSummary = {projectId, backupId, contentSequence: 7, createdAt: now, reason: 'open', sizeBytes: 16384};
+const summary: ProjectBackupSummary = {projectId, backupId, contentSequence: 7,contentToken:'0123456789abcdef0123456789abcdef', createdAt: now, reason: 'open', sizeBytes: 16384};
 const status: ProjectBackupStatus = {projectId, state: 'idle', lastAttemptAt: now, lastCompletedAt: now, lastError: null};
 
 test('backup contracts are explicit application operations, strict and separate from Mio tools', async () => {
@@ -45,6 +45,7 @@ test('backup contracts are explicit application operations, strict and separate 
   assert.equal(projectBackupSchemas['project.backup.restore'].safeParse({...restore, projectId: projectId.toUpperCase()}).success, false);
   assert.equal(projectBackupSchemas['project.backup.list'].safeParse({projectId}).success, true);
   assert.equal(isProjectBackupResponse('project.backup.list', {projectId}, {projectId, backups: [summary]}), true);
+  for(const contentToken of [undefined,'0'.repeat(31),'A'.repeat(32),'g'.repeat(32)])assert.equal(isProjectBackupResponse('project.backup.list',{projectId},{projectId,backups:[{...summary,contentToken}]}),false);
   assert.equal(isProjectBackupResponse('project.backup.list', {projectId}, {projectId, backups: [summary, summary]}), false);
   assert.equal(isProjectBackupResponse('project.backup.inspect', {projectId, backupId}, {...summary, backupId: randomUUID(), projectName: 'Example', sourceProjectDir: '/private/tmp', tableCounts: {projects: 1}}), false);
   assert.equal(isProjectBackupResponse('project.backup.status', {projectId}, {...status, projectId: randomUUID()}), false);

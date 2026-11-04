@@ -6,6 +6,7 @@ import {isProjectStore} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
 import {PROJECT_FILE_SCHEMA_VERSION, schemaStatements} from '../project-file/schema/databases.ts';
 import {PROJECT_SNAPSHOT_MAX_RAW_BYTES} from './limits.ts';
+import {FORMAT_2_SNAPSHOT_TABLE_SQL, FORMAT_1_COPY_TABLE_SQL} from './format-2.ts';
 
 /** A closed, independently reviewed ledger. Adding a project table requires
  * classifying it here; CONTENT_TABLES is deliberately not used as this list. */
@@ -16,7 +17,7 @@ export const PROJECT_SNAPSHOT_TABLES = Object.freeze([
 export type ProjectSnapshotTable = typeof PROJECT_SNAPSHOT_TABLES[number];
 export const PROJECT_SNAPSHOT_EXCLUSIONS = Object.freeze({
   schema_version: 'Kernel format evidence; never restore an old format number.',
-  project_file: 'Project identity and content sequence evidence; never rewind it.',
+  project_file: 'Project identity and current content stamp; never rewind them.',
   agent_task_target_revisions_v2: 'Revision evidence; restoring must advance current revisions.',
 });
 export const PROJECT_SNAPSHOT_PROFILE = 1;
@@ -57,20 +58,20 @@ const tableNames = [...PROJECT_SNAPSHOT_TABLES, 'agent_task_target_revisions_v2'
 const tableSql = schemaStatements('project').filter(sql => sql.startsWith('CREATE TABLE '));
 const validatedDocuments = new WeakSet<object>();
 let shapes: ReadonlyMap<string, Shape> | undefined;
-function tableShapes(): ReadonlyMap<string, Shape> {
-  if (shapes) return shapes;
+let format2Shapes: ReadonlyMap<string, Shape> | undefined;
+function createTableShapes(statements: readonly string[]): ReadonlyMap<string, Shape> {
   const db = new DatabaseSync(':memory:');
   try {
-    for (const sql of tableSql) db.exec(sql);
-    shapes = new Map(tableNames.map(table => {
+    for (const sql of statements) db.exec(sql);
+    return new Map(tableNames.map(table => {
       const columns = db.prepare(`PRAGMA table_info(${quote(table)})`).all().map(row => ({name: String(row.name), type: String(row.type), notnull: Number(row.notnull), pk: Number(row.pk)}));
-      const sql = tableSql.find(statement => statement.startsWith(`CREATE TABLE ${table}(`));
+      const sql = statements.find(statement => statement.startsWith(`CREATE TABLE ${table}(`));
       if (!sql || !columns.length) throw snapshotInvalid('unclassified-table-shape');
       return [table, {columns, primaryKeys: columns.filter(column => column.pk).sort((a, b) => a.pk - b.pk).map(column => column.name), sql}];
     }));
-    return shapes;
   } finally {db.close();}
 }
+function tableShapes(): ReadonlyMap<string, Shape> {return shapes ??= createTableShapes(tableSql);}
 export function tableColumns(table: ProjectSnapshotTable | 'agent_task_target_revisions_v2'): readonly string[] {
   const shape = tableShapes().get(table);
   if (!shape) throw snapshotInvalid('table');
@@ -174,9 +175,9 @@ function validateCell(value: unknown, column: Column): value is SnapshotCell {
   if (column.type === 'REAL') return typeof value === 'number' && Number.isFinite(value);
   return false;
 }
-function validateRows(table: ProjectSnapshotTable | 'agent_task_target_revisions_v2', rows: unknown, projectId: string): asserts rows is readonly SnapshotRow[] {
+function validateRows(table: ProjectSnapshotTable | 'agent_task_target_revisions_v2', rows: unknown, projectId: string, definitions: ReadonlyMap<string, Shape>): asserts rows is readonly SnapshotRow[] {
   if (!Array.isArray(rows)) throw snapshotInvalid('rows');
-  const shape = tableShapes().get(table)!;
+  const shape = definitions.get(table)!;
   let previous: string | undefined;
   for (const row of rows) {
     if (!object(row) || !exact(row, shape.columns.map(column => column.name)) || !shape.columns.every(column => validateCell(row[column.name], column))) throw snapshotInvalid('row-columns');
@@ -191,7 +192,7 @@ function validateRows(table: ProjectSnapshotTable | 'agent_task_target_revisions
         } catch {throw snapshotInvalid('json-column');}
       }
     }
-    const key = rowKey(table, row as SnapshotRow);
+    const key = canonicalJson(shape.primaryKeys.map(column => row[column]));
     if (previous !== undefined && compare(previous, key) >= 0) throw snapshotInvalid('row-order-or-duplicate');
     previous = key;
   }
@@ -200,21 +201,20 @@ function validateRows(table: ProjectSnapshotTable | 'agent_task_target_revisions
 /** Validate untrusted decoded rows against the current SQL table constraints
  * and native FK graph in an isolated in-memory database. No live trigger is
  * disabled; retained-row triggers are not needed to validate a static value. */
-export function validateProjectDocument(input: unknown): ProjectDocument {
-  if (object(input) && validatedDocuments.has(input)) return input as unknown as ProjectDocument;
+function validateDocument(input: unknown, format: number, statements: readonly string[], definitions: ReadonlyMap<string, Shape>): ProjectDocument {
   if (!object(input) || !exact(input, ['snapshotProfileVersion', 'projectId', 'projectFormatVersion', 'evidence', 'tables'])
-    || input.snapshotProfileVersion !== PROJECT_SNAPSHOT_PROFILE || input.projectFormatVersion !== PROJECT_FILE_SCHEMA_VERSION || !isProjectId(input.projectId)
+    || input.snapshotProfileVersion !== PROJECT_SNAPSHOT_PROFILE || input.projectFormatVersion !== format || !isProjectId(input.projectId)
     || !object(input.evidence) || !exact(input.evidence, ['contentSequence', 'targetRevisions']) || typeof input.evidence.contentSequence !== 'number'
     || !Number.isSafeInteger(input.evidence.contentSequence) || input.evidence.contentSequence < 0 || !object(input.tables)
     || !exact(input.tables, PROJECT_SNAPSHOT_TABLES)) throw snapshotInvalid('document');
-  for (const table of PROJECT_SNAPSHOT_TABLES) validateRows(table, input.tables[table], input.projectId);
-  validateRows('agent_task_target_revisions_v2', input.evidence.targetRevisions, input.projectId);
+  for (const table of PROJECT_SNAPSHOT_TABLES) validateRows(table, input.tables[table], input.projectId, definitions);
+  validateRows('agent_task_target_revisions_v2', input.evidence.targetRevisions, input.projectId, definitions);
   if ((input.tables.projects as readonly unknown[]).length !== 1) throw snapshotInvalid('project-row');
   const db = new DatabaseSync(':memory:', {enableForeignKeyConstraints: false, enableDoubleQuotedStringLiterals: false});
   try {
-    for (const sql of tableSql) db.exec(sql);
+    for (const sql of statements) db.exec(sql);
     for (const table of tableNames) {
-      const columns = tableColumns(table);
+      const columns = definitions.get(table)!.columns.map(column => column.name);
       const insert = db.prepare(`INSERT INTO ${quote(table)}(${columns.map(quote).join(',')}) VALUES(${columns.map(() => '?').join(',')})`);
       const rows = table === 'agent_task_target_revisions_v2' ? input.evidence.targetRevisions : input.tables[table];
       for (const row of rows as readonly SnapshotRow[]) insert.run(...columns.map(column => snapshotCellValue(row[column])));
@@ -235,6 +235,36 @@ export function validateProjectDocument(input: unknown): ProjectDocument {
     Object.freeze(rows);
   }
   Object.freeze(input.tables); Object.freeze(input.evidence); Object.freeze(input);
-  validatedDocuments.add(input);
   return input as unknown as ProjectDocument;
+}
+
+export function validateProjectDocument(input: unknown): ProjectDocument {
+  if (object(input) && validatedDocuments.has(input)) return input as unknown as ProjectDocument;
+  const result = validateDocument(input, PROJECT_FILE_SCHEMA_VERSION, tableSql, tableShapes());
+  validatedDocuments.add(result);
+  return result;
+}
+
+/** A logical format-2 snapshot is validated against its frozen content DDL
+ * before the metadata-only 2→3 adaptation. No captured token is invented and
+ * no original envelope, digest or compressed bytes are rewritten. */
+export function decodeSupportedProjectDocument(input: unknown): ProjectDocument {
+  if (object(input) && input.projectFormatVersion === 1) {
+    validateDocument(input, 1, FORMAT_1_COPY_TABLE_SQL, format2Shapes ??= createTableShapes(FORMAT_1_COPY_TABLE_SQL));
+    throw new AppError('PROJECT_VERSION_SNAPSHOT_UNSUPPORTED', '此版本使用不支持恢复的旧项目业务格式；正文仍保留。', 422,
+      {projectFormatVersion: 1, snapshotProfileVersion: 1});
+  }
+  if (object(input) && input.projectFormatVersion === 2 && Number(PROJECT_FILE_SCHEMA_VERSION) === 3) {
+    const old = validateDocument(input, 2, FORMAT_2_SNAPSHOT_TABLE_SQL, format2Shapes ??= createTableShapes(FORMAT_2_SNAPSHOT_TABLE_SQL));
+    return validateProjectDocument({...old, projectFormatVersion: PROJECT_FILE_SCHEMA_VERSION});
+  }
+  return validateProjectDocument(input);
+}
+
+/** Structural preservation is deliberately separate from business restore.
+ * Known format 1 may be carried byte-for-byte, never adapted to current data. */
+export function validateProjectDocumentForCopy(input: unknown): ProjectDocument {
+  if (object(input) && input.projectFormatVersion === 1)
+    return validateDocument(input, 1, FORMAT_1_COPY_TABLE_SQL, format2Shapes ??= createTableShapes(FORMAT_1_COPY_TABLE_SQL));
+  return decodeSupportedProjectDocument(input);
 }

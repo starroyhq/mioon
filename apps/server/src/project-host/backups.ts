@@ -1,7 +1,7 @@
 /** Project-file backups are local records, not projects. Listing and recovery
  * use the private index and the dedicated read-only kernel reader, never a
  * lease on the original project. */
-import {randomUUID, createHash} from 'node:crypto';
+import {randomBytes,randomUUID, createHash} from 'node:crypto';
 import {lstatSync, mkdirSync, readdirSync, rmSync, rmdirSync} from 'node:fs';
 import path from 'node:path';
 import {AppError} from '../../../../packages/contracts/src/app-error.ts';
@@ -9,7 +9,7 @@ import {isProjectId} from '../../../../packages/contracts/src/project-file.ts';
 import {ensurePrivateDirectory, readPrivateFile, writePrivateFileAtomic, validateManagedFile, validatePrivateDirectory} from '../../../../packages/contracts/src/private-storage.ts';
 import {projectBackupSchemas, projectBackupStatusSchema, projectBackupSummarySchema} from '../../../../packages/contracts/src/project-backups.ts';
 import type {ProjectBackupStatus} from '../../../../packages/contracts/src/project-backups.ts';
-import {projectBackupIndexSchema, projectBackupIntentSchema} from '../../../../packages/contracts/src/project-backup-records.ts';
+import {legacyProjectBackupIndexSchema,legacyProjectBackupIntentSchema,projectBackupIndexSchema, projectBackupIntentSchema} from '../../../../packages/contracts/src/project-backup-records.ts';
 import type {ProjectBackupEntry} from '../../../../packages/contracts/src/project-backup-records.ts';
 import {createProjectBackup, openProjectBackup, inspectCopiedProjectFile, syncCopiedDirectory} from '../../../../packages/business/src/project-file/backup.ts';
 import {copyProjectBackup} from '../../../../packages/business/src/project-file/copy.ts';
@@ -69,6 +69,11 @@ export function createProjectBackups({directories, registry, identity, assertPro
     const value = read(rootFor(projectId), 'index.json');
     if (value === null) return [];
     const parsed = projectBackupIndexSchema.safeParse(value);
+    if(!parsed.success){
+      const legacy=legacyProjectBackupIndexSchema.safeParse(value);
+      if(legacy.success && legacy.data.projectId===projectId && legacy.data.backups.every(entry=>entry.projectId===projectId)
+        && new Set(legacy.data.backups.map(entry=>entry.backupId)).size===legacy.data.backups.length)return [];
+    }
     if (!parsed.success || parsed.data.projectId !== projectId || parsed.data.backups.some(entry => entry.projectId !== projectId)
       || new Set(parsed.data.backups.map(entry => entry.backupId)).size !== parsed.data.backups.length) {
       throw failure('PROJECT_BACKUP_INDEX_INVALID', '备份索引无效，原备份未更改。');
@@ -85,16 +90,20 @@ export function createProjectBackups({directories, registry, identity, assertPro
   const validationKey = (entry: Entry): string => {
     const file = fileFor(entry.projectId, entry.backupId);
     validateManagedFile(file, {root: rootFor(entry.projectId), private: true});
+    for(const suffix of ['-journal','-wal','-shm']){
+      const sidecar=lstatSync(file+suffix,{throwIfNoEntry:false});
+      if(sidecar && (sidecar.size>0 || !sidecar.isFile()))throw failure('PROJECT_BACKUP_CHANGED','备份存在未确认的日志，未执行恢复。');
+    }
     const info = lstatSync(file, {bigint: true});
     // ctime/birthtime distinguish an inode reused for a different generation,
     // even when a replacement preserves its size and restores its mtime.
     return [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs, info.birthtimeNs,
-      entry.projectId, entry.contentSequence, entry.sizeBytes].join(':');
+      entry.projectId, entry.contentSequence, entry.contentToken, entry.sizeBytes].join(':');
   };
   const verify = (entry: Entry, before = validationKey(entry)) => {
     const file = fileFor(entry.projectId, entry.backupId);
     const reader = openBackup(file);
-    if (reader.identity.projectId !== entry.projectId || reader.identity.contentSequence !== entry.contentSequence || reader.identity.sizeBytes !== entry.sizeBytes) {
+    if (reader.identity.projectId !== entry.projectId || reader.identity.contentSequence !== entry.contentSequence || reader.identity.contentToken!==entry.contentToken || reader.identity.sizeBytes !== entry.sizeBytes) {
       reader.close();
       validated.delete(file);
       throw failure('PROJECT_BACKUP_CHANGED', '备份与索引不一致，未执行恢复。');
@@ -178,7 +187,7 @@ export function createProjectBackups({directories, registry, identity, assertPro
       ensurePrivateDirectory(root, {create: true});
       saveStatus(current);
       const indexed = index(projectId);
-      const sequence = Number(host.store.db.prepare('SELECT contentSequence FROM project.project_file WHERE singleton=1').get()?.contentSequence);
+      const stamp=host.store.db.prepare('SELECT contentSequence,contentToken FROM project.project_file WHERE singleton=1').get();
       // Unchanged opens need only the latest valid copy. Inspecting/listing or
       // making a new copy checks the older entries when they are actually used.
       let latestIndex = 0;
@@ -186,9 +195,9 @@ export function createProjectBackups({directories, registry, identity, assertPro
         try {confirm(indexed[latestIndex]); break;} catch { /* A bad copy never suppresses a replacement. */ }
       }
       const latest = indexed[latestIndex];
-      if (latest && latest.contentSequence === sequence) {
+      if (latest && stamp && latest.contentSequence === stamp.contentSequence && latest.contentToken===stamp.contentToken) {
         const retained = indexed.slice(latestIndex);
-        if (latestIndex !== 0) durableWrite(root, 'index.json', {version: 1, projectId, backups: retained});
+        if (latestIndex !== 0) durableWrite(root, 'index.json', {version: 2, projectId, backups: retained});
         // Confirm the committed index's directory before deleting any orphan.
         syncCopiedDirectory(root);
         cleanup(projectId, retained);
@@ -204,12 +213,12 @@ export function createProjectBackups({directories, registry, identity, assertPro
       ensurePrivateDirectory(pending);
       const copied = await backup(host.store, path.join(pending, 'project.mioon'));
       if (copied.projectId !== projectId) throw failure('PROJECT_BACKUP_CHANGED', '备份项目身份不一致。');
-      const entry: Entry = {...projectBackupSummarySchema.parse({backupId, projectId, contentSequence: copied.contentSequence, createdAt: new Date().toISOString(), reason, sizeBytes: copied.sizeBytes}), sourceProjectDir: host.store.projectDir};
+      const entry: Entry = {...projectBackupSummarySchema.parse({backupId, projectId, contentSequence: copied.contentSequence,contentToken:copied.contentToken, createdAt: new Date().toISOString(), reason, sizeBytes: copied.sizeBytes}), sourceProjectDir: host.store.projectDir};
       const previous = validEntries(indexed.slice(latestIndex));
       const next = [entry, ...previous].slice(0, 3);
       // Publication of this index is the commit point. Never restore an older
       // index after removing its files, even when later cleanup fails.
-      write(root, 'index.json', {version: 1, projectId, backups: next});
+      write(root, 'index.json', {version: 2, projectId, backups: next});
       published = true;
       syncCopiedDirectory(root);
       // createProjectBackup has already validated this finished native copy.
@@ -252,7 +261,21 @@ export function createProjectBackups({directories, registry, identity, assertPro
       const digest = createHash('sha256').update(JSON.stringify({sourceProjectId, backupId, projectFile})).digest('hex');
       const previous = read(requests, `${requestId}.json`);
       const parsedIntent = previous === null ? null : projectBackupIntentSchema.safeParse(previous);
-      if (parsedIntent && !parsedIntent.success) throw failure('PROJECT_BACKUP_INDEX_INVALID', '恢复回执无效，未更改目标。');
+      if (parsedIntent && !parsedIntent.success) {
+        const legacy=legacyProjectBackupIntentSchema.safeParse(previous);
+        if(!legacy.success)throw failure('PROJECT_BACKUP_INDEX_INVALID', '恢复回执无效，未更改目标。');
+        const saved=legacy.data;
+        if(saved.digest!==digest || saved.requestId!==requestId || saved.sourceProjectId!==sourceProjectId)throw failure('REQUEST_ID_REUSED', '请求 ID 已用于不同的恢复。');
+        // No old unfinished request has evidence for a fixed target token.
+        // Only a complete receipt may be replayed, without opening its file.
+        if(saved.phase!=='registered' || !saved.project || !saved.fileIdentity || saved.backupId!==backupId || saved.projectFile!==projectFile
+          || saved.projectId===sourceProjectId || saved.project.projectId!==saved.projectId || saved.project.projectFile!==projectFile
+          || !sameIdentity(saved.fileIdentity,saved.project.fileIdentity))throw failure('PROJECT_BACKUP_INDEX_INVALID','旧版未完成的恢复回执缺少内容令牌，未更改目标。');
+        const registered=registry.get(saved.projectId);
+        if(!registered || registered.projectFile!==projectFile || !sameIdentity(saved.fileIdentity,registered.fileIdentity)
+          || !sameIdentity(saved.fileIdentity,identity(projectFile)))throw failure('PROJECT_BACKUP_RESTORE_CHANGED','已恢复的目标与旧回执不一致，未重新创建。');
+        return {requestId,sourceProjectId,backupId,project:saved.project};
+      }
       let intent = parsedIntent?.success ? parsedIntent.data : null;
       if (intent && (intent.digest !== digest || intent.requestId !== requestId || intent.sourceProjectId !== sourceProjectId)) throw failure('REQUEST_ID_REUSED', '请求 ID 已用于不同的恢复。');
       if (intent && (intent.backupId !== backupId || intent.projectFile !== projectFile || intent.projectId === sourceProjectId
@@ -260,11 +283,14 @@ export function createProjectBackups({directories, registry, identity, assertPro
           || !intent.fileIdentity || !sameIdentity(intent.fileIdentity, intent.project.fileIdentity)))) throw failure('PROJECT_BACKUP_INDEX_INVALID', '恢复回执的绑定无效，未更改目标。');
       if (!intent) {
         if (exists(projectFile)) throw failure('PROJECT_FILE_EXISTS', '目标项目文件已存在。');
-        find(sourceProjectId, backupId);
+        const source=verify(find(sourceProjectId,backupId));
+        let sourceContentSequence:number,sourceContentToken:string;
+        try{sourceContentSequence=source.identity.contentSequence;sourceContentToken=source.identity.contentToken;}finally{source.close();}
         registry.assertCanRegister?.();
         ensurePrivateDirectory(requests, {create: true});
         syncCopiedDirectory(root);
-        intent = {version: 1, requestId, digest, sourceProjectId, backupId, projectFile, projectId: randomUUID(), phase: 'prepared', fileIdentity: null, project: null};
+        intent = {version: 2, requestId, digest, sourceProjectId, backupId, projectFile, projectId: randomUUID(),sourceContentSequence,sourceContentToken,
+          targetContentToken:randomBytes(16).toString('hex'), phase: 'prepared', fileIdentity: null, project: null};
         durableWrite(requests, `${requestId}.json`, intent);
       }
       // Exact replay must not open a database already held by its new host.
@@ -280,11 +306,14 @@ export function createProjectBackups({directories, registry, identity, assertPro
       if (!exists(projectFile)) {
         if (intent.phase !== 'prepared') throw failure('PROJECT_BACKUP_RESTORE_CHANGED', '已恢复的目标被移动或删除，未重新创建。');
         const entry = find(sourceProjectId, backupId), reader = verify(entry); reader.close();
-        await copy({backupFile: fileFor(sourceProjectId, backupId), sourceProjectDir: entry.sourceProjectDir, projectFile, projectId: intent.projectId});
+        if(entry.contentSequence!==intent.sourceContentSequence || entry.contentToken!==intent.sourceContentToken)throw failure('PROJECT_BACKUP_CHANGED','备份内容与恢复意图不一致，未执行恢复。');
+        await copy({backupFile: fileFor(sourceProjectId, backupId), sourceProjectDir: entry.sourceProjectDir, projectFile, projectId: intent.projectId,
+          contentToken:intent.targetContentToken,expectedSource:{projectId:sourceProjectId,contentSequence:intent.sourceContentSequence,contentToken:intent.sourceContentToken}});
       }
       const copied = inspectCopiedProjectFile(projectFile);
       const fileIdentity = identity(projectFile);
-      if (copied.projectId !== intent.projectId || !fileIdentity || intent.fileIdentity && !sameIdentity(intent.fileIdentity, fileIdentity)) throw failure('PROJECT_BACKUP_RESTORE_CHANGED', '目标与恢复回执不一致，未覆盖目标。');
+      if (copied.projectId !== intent.projectId || copied.contentSequence!==intent.sourceContentSequence || copied.contentToken!==intent.targetContentToken
+        || !fileIdentity || intent.fileIdentity && !sameIdentity(intent.fileIdentity, fileIdentity)) throw failure('PROJECT_BACKUP_RESTORE_CHANGED', '目标与恢复回执不一致，未覆盖目标。');
       intent = {...intent, phase: 'published', fileIdentity};
       durableWrite(requests, `${requestId}.json`, intent);
       const existing = registry.get(intent.projectId);

@@ -41,8 +41,8 @@ function kernelConnection(): DatabaseSync {
 /** The metadata rows first, then the project row with the same ID. */
 function addProject(db: DatabaseSync): string {
   const projectId = randomUUID();
-  db.prepare('INSERT INTO main.history_state VALUES(1,?,0)').run(projectId);
-  db.prepare('INSERT INTO project.project_file VALUES(1,?,0)').run(projectId);
+  db.prepare('INSERT INTO main.history_state VALUES(1,?,0,?)').run(projectId,'0'.repeat(32));
+  db.prepare('INSERT INTO project.project_file VALUES(1,?,0,?)').run(projectId,'0'.repeat(32));
   db.prepare('INSERT INTO projects(id,data) VALUES(?,?)').run(projectId, '{}');
   return projectId;
 }
@@ -292,7 +292,7 @@ test('installed connection-level triggers are exactly the generated statements',
     ]);
     assert.deepEqual(stored.slice(14, -1).map(row => row.tbl_name), CROSS_FILE_RELATIONS.flatMap(relation => [relation.child.table, relation.child.table, relation.parent.table, relation.parent.table]));
     assert.equal(statements.at(-1), SEEN_SEQUENCE_TRIGGER);
-    assert.equal(SEEN_SEQUENCE_TRIGGER, 'CREATE TEMP TRIGGER project_file_seen_sequence AFTER UPDATE OF contentSequence ON project.project_file BEGIN UPDATE history_state SET seenContentSequence=NEW.contentSequence;END');
+    assert.equal(SEEN_SEQUENCE_TRIGGER, 'CREATE TEMP TRIGGER project_file_seen_sequence AFTER UPDATE OF contentSequence,contentToken ON project.project_file WHEN (SELECT seenContentSequence FROM history_state)=OLD.contentSequence AND (SELECT seenContentToken FROM history_state)=OLD.contentToken BEGIN UPDATE history_state SET seenContentSequence=NEW.contentSequence,seenContentToken=NEW.contentToken;END');
     const jobs = CROSS_FILE_RELATIONS.find(relation => relation.child.table === 'jobs')!;
     const fail = "BEGIN SELECT RAISE(ABORT,'FOREIGN KEY constraint failed');END";
     assert.deepEqual(relationTriggerStatements(jobs), [
@@ -367,7 +367,7 @@ test('with all three databases attached and the triggers installed, every write 
     db.close();
   }
   // main also holds the Mock provider's two ledger tables.
-  assert.equal(tables, 47 + 2 + 7 + 4 + 20 + 3);
+  assert.equal(tables, 47 + 2 + 7 + 4 + 20 + 4);
 });
 
 test('real tables: cross-file keys, process-entity revisions and the content sequence', () => {

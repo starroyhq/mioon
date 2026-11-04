@@ -35,6 +35,7 @@ import {createProjectBackups} from './project-host/backups.ts';
 import type {ProjectHostManager} from './project-host/manager.ts';
 import type {InspectProject} from './project-host/host.ts';
 import {composeHostedProject} from './project-host/runtime.ts';
+import {handleProjectHistoryHttp} from './project-host/history-http.ts';
 import type {HostedProject} from './project-host/runtime.ts';
 import {createProjectCoverHttp} from './project-host/covers.ts';
 import {bindProjectNativeAudio} from './project-host/native-audio.ts';
@@ -179,6 +180,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     const backups = createProjectBackups({directories, registry: library.registry, identity: library.projectFileIdentity, assertProjectFile, outsidePaths: library.outsidePaths, copy: options.projectBackupCopyForTest});
     drainBackups = backups.drain;
     manager = createProjectHostManager({directories, registry: library.registry, identity: library.projectFileIdentity, taskIndex: library.taskIndex,
+      assertMutationAllowed: createProjectServiceApplication(appLibrary, shutdown.signal).assertMutationAllowed,
       hooks: [backups.hooks, {afterOpen: context => {
         try { opened.get(context.projectId)!.captureDailyVersion(); }
         catch (error) {
@@ -272,6 +274,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         const route = parseProjectApiPath(url.pathname);
         if (route) {
           if (url.searchParams.getAll('projectId').some(value => value !== route.projectId)) throw projectIdMismatch(route.projectId);
+          if (await handleProjectHistoryHttp(projects, req, res, url, route)) return;
           const lease = await projects.acquire(route.projectId, 'request');
           activeProjectId = route.projectId;
           relocate = lease.host.relocate;
@@ -293,7 +296,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
           // The synchronous lease admission must not wait for an exclusive
           // close and then reopen a project merely for diagnostics.
           const lease = id !== null && projects.status(id)?.state === 'open' ? projects.tryAcquireOpen(id, 'request') : null;
-          try { await (lease?.host.runtime.project.agentDiagnosticsHttp ?? appDiagnostics)(req, res, url); }
+          try { await (lease && !lease.host.recovery ? lease.host.runtime.project.agentDiagnosticsHttp : appDiagnostics)(req, res, url); }
           finally { lease?.release(); }
           return;
         }

@@ -1,7 +1,7 @@
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
-import {mkdirSync,mkdtempSync,realpathSync,rmSync} from 'node:fs';
+import {mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
@@ -46,15 +46,20 @@ test('history6 is frozen independently of current declarations',()=>{
  const db=new DatabaseSync(':memory:');try{db.exec('BEGIN');buildPreviousHistoryDatabase(db,6);db.exec('COMMIT');assert.deepEqual(readSchemaManifest(db,'main'),V1_HISTORY_V6_MANIFEST.entries);assert.equal(db.prepare('PRAGMA application_id').get()!.application_id,0x4d696f48);}finally{db.close();}
 });
 test('the exact history6 upgrade preserves every retained review byte, rowid and state with foreign keys enabled',t=>{
- const f=fixture(t),before=f.inspect(),connection=f.open();
+ const f=fixture(t),before=f.inspect(),projectBytes=readFileSync(f.projectFile),connection=f.open();
  try{
   assert.equal(connection.db.prepare('PRAGMA foreign_keys').get()!.foreign_keys,1);assert.deepEqual(connection.db.prepare('PRAGMA main.foreign_key_check').all(),[]);
   assert.equal(connection.db.prepare('SELECT version FROM main.schema_version').get()!.version,HISTORY_SCHEMA_VERSION);
   assert.deepEqual(readSchemaManifest(connection.db,'main'),SCHEMA_MANIFEST.history.entries);
   assert.equal(connection.db.prepare('SELECT contentSequence FROM project.project_file').get()!.contentSequence,0);
+  assert.equal(connection.historyState,'diverged');assert.equal(connection.historyAdmission.reason,'legacy-token-missing');
+  assert.deepEqual(connection.historyAdmission.seen,{contentSequence:0,contentToken:null});
+  assert.equal(connection.db.prepare('PRAGMA query_only').get()!.query_only,1);
  }finally{connection.close();}
- const after=f.inspect();for(const key of ['reviews','tasks','jobs','requests','state'] as const)assert.deepEqual(after[key],before[key]);
- const reopened=f.open();try{assert.deepEqual(reopened.db.prepare('SELECT rowid,* FROM main.image_reviews ORDER BY rowid').all(),before.reviews);}finally{reopened.close();}
+ const after=f.inspect();for(const key of ['reviews','tasks','jobs','requests'] as const)assert.deepEqual(after[key],before[key]);
+ assert.deepEqual(after.state.map(row=>({...row})),before.state.map(row=>({...row,seenContentToken:null})));
+ assert.deepEqual(readFileSync(f.projectFile),projectBytes);
+ const reopened=f.open();try{assert.deepEqual(reopened.db.prepare('SELECT rowid,* FROM main.image_reviews ORDER BY rowid').all(),before.reviews);assert.equal(reopened.historyState,'diverged');assert.equal(reopened.historyAdmission.seen.contentToken,null);}finally{reopened.close();}
 });
 for(const point of ['after-drop','after-create','after-copy','before-version','after-version'] as const)test(`history6 image review upgrade rolls all objects and rows back at ${point}`,t=>{
  const f=fixture(t),before=f.inspect(),exec=DatabaseSync.prototype.exec;let hit=false;
@@ -75,6 +80,6 @@ for(const point of ['after-drop','after-copy','after-commit'])test(`a real SIGKI
  const f=fixture(t),before=f.inspect(),worker=fileURLToPath(new URL('./fixtures/project-output-history-upgrade-worker.ts',import.meta.url));
  const result=spawnSync(process.execPath,[worker,JSON.stringify({projectFile:f.projectFile,localDir:f.localDir,cacheDir:f.cacheDir,tempDir:f.tempDir,point})],{stdio:'ignore',timeout:30000});
  assert.equal(result.error,undefined);assert.equal(result.signal,'SIGKILL');
- const recovered=f.inspect();if(recovered.version===6)assert.deepEqual(recovered,before);else{assert.equal(recovered.version,HISTORY_SCHEMA_VERSION);assert.deepEqual(recovered.manifest,SCHEMA_MANIFEST.history.entries);for(const key of ['reviews','tasks','jobs','requests','state']as const)assert.deepEqual(recovered[key],before[key]);}
- const connection=f.open();connection.close();assert.equal(f.inspect().version,HISTORY_SCHEMA_VERSION);
+ const recovered=f.inspect();if(recovered.version===6)assert.deepEqual(recovered,before);else{assert.equal(recovered.version,HISTORY_SCHEMA_VERSION);assert.deepEqual(recovered.manifest,SCHEMA_MANIFEST.history.entries);for(const key of ['reviews','tasks','jobs','requests']as const)assert.deepEqual(recovered[key],before[key]);assert.deepEqual(recovered.state.map(row=>({...row})),before.state.map(row=>({...row,seenContentToken:null})));}
+ const connection=f.open();try{assert.equal(connection.historyState,'diverged');assert.equal(connection.historyAdmission.reason,'legacy-token-missing');assert.equal(connection.historyAdmission.seen.contentToken,null);}finally{connection.close();}assert.equal(f.inspect().version,HISTORY_SCHEMA_VERSION);
 });

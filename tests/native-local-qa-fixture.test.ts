@@ -34,7 +34,9 @@ test('native QA refuses a live B1 or project owner without opening a second SQLi
  assert.equal(captureNativeQa(root).rows.projects!.length,1);
 });
 test('expected native content metadata advances only its real host and keeps all other fields exact',async t=>{
- const root=directory(t),fixture=await prepareNativeQaProject(root,'Sequence QA');await closeQaProject(fixture);const before=captureNativeQa(root);
+ const root=directory(t),fixture=await prepareNativeQaProject(root,'Sequence QA');await closeQaProject(fixture);
+ const otherProject=await prepareNativeQaProject(root,'Unchanged metadata QA');await closeQaProject(otherProject);
+ const before=captureNativeQa(root);
  const store=openServerProject(root,fixture.project.id);
  store.tx(()=>store.put('assets',{id:randomUUID(),projectId:fixture.project.id,name:'Metadata only',mimeType:'video/mp4',duration:1,hasAudio:false}));store.close();
  const after=captureNativeQa(root);
@@ -42,6 +44,36 @@ test('expected native content metadata advances only its real host and keeps all
  assert.deepEqual(checkedNativeMetadata(before,after,[fixture.project.id]),new Set(after.metadataTableNames));
  const forged=structuredClone(after);forged.kernelMetadata[fixture.project.id]!.project_file![0]!.projectId=randomUUID();
  assert.throws(()=>checkedNativeMetadata(before,forged,[fixture.project.id]),{code:'ERR_ASSERTION'});
+ assert.throws(()=>checkedNativeMetadata(before,after,[otherProject.project.id]),{code:'ERR_ASSERTION'});
+ const id=fixture.project.id,metadata=after.kernelMetadata[id]!,prior=before.kernelMetadata[id]!;
+ const token=metadata.project_file![0]!.contentToken;assert.ok(typeof token==='string');
+ const differentToken=token==='0'.repeat(32)?'1'.repeat(32):'0'.repeat(32);
+ for(const invalidToken of ['', 'a'.repeat(31), 'A'.repeat(32), 'g'.repeat(32), prior.project_file![0]!.contentToken]){
+  const wrong=structuredClone(after),host=wrong.kernelMetadata[id]!;
+  host.project_file![0]!.contentToken=invalidToken!;host.history_state![0]!.seenContentToken=invalidToken!;
+  assert.throws(()=>checkedNativeMetadata(before,wrong,[id]),{code:'ERR_ASSERTION'});
+ }
+ const wrongSeenToken=structuredClone(after);wrongSeenToken.kernelMetadata[id]!.history_state![0]!.seenContentToken=differentToken;
+ assert.throws(()=>checkedNativeMetadata(before,wrongSeenToken,[id]),{code:'ERR_ASSERTION'});
+ const wrongSeenSequence=structuredClone(after);wrongSeenSequence.kernelMetadata[id]!.history_state![0]!.seenContentSequence=Number(metadata.project_file![0]!.contentSequence)+1;
+ assert.throws(()=>checkedNativeMetadata(before,wrongSeenSequence,[id]),{code:'ERR_ASSERTION'});
+ const withoutSequence=structuredClone(before);withoutSequence.kernelMetadata[id]!.project_file![0]!.contentToken=token;withoutSequence.kernelMetadata[id]!.history_state![0]!.seenContentToken=token;
+ assert.throws(()=>checkedNativeMetadata(before,withoutSequence,[id]),{code:'ERR_ASSERTION'});
+ const decreased=structuredClone(after),lower=Number(prior.project_file![0]!.contentSequence)-1;
+ decreased.kernelMetadata[id]!.project_file![0]!.contentSequence=lower;decreased.kernelMetadata[id]!.history_state![0]!.seenContentSequence=lower;
+ assert.throws(()=>checkedNativeMetadata(before,decreased,[id]),{code:'ERR_ASSERTION'});
+ const foreignToken=structuredClone(after),foreign=foreignToken.kernelMetadata[otherProject.project.id]!;
+ foreign.project_file![0]!.contentToken=differentToken;foreign.history_state![0]!.seenContentToken=differentToken;
+ assert.throws(()=>checkedNativeMetadata(before,foreignToken,[id]),{code:'ERR_ASSERTION'});
+ const foreignPair=structuredClone(after),other=foreignPair.kernelMetadata[otherProject.project.id]!,next=Number(other.project_file![0]!.contentSequence)+1;
+ other.project_file![0]!.contentSequence=next;other.project_file![0]!.contentToken=differentToken;
+ other.history_state![0]!.seenContentSequence=next;other.history_state![0]!.seenContentToken=differentToken;
+ assert.throws(()=>checkedNativeMetadata(before,foreignPair,[id]),{code:'ERR_ASSERTION'});
+ const wrongCompanionId=structuredClone(after);wrongCompanionId.kernelMetadata[id]!.history_state![0]!.projectId=randomUUID();
+ assert.throws(()=>checkedNativeMetadata(before,wrongCompanionId,[id]),{code:'ERR_ASSERTION'});
+ const extraField=structuredClone(after);extraField.kernelMetadata[id]!.project_file![0]!.unexpected='forged';
+ assert.throws(()=>checkedNativeMetadata(before,extraField,[id]),{code:'ERR_ASSERTION'});
+ assert.deepEqual(checkedNativeMetadata(after,captureNativeQa(root)),new Set(after.metadataTableNames),'rejected report forgeries do not mutate either actual project');
 });
 
 test('cold native QA validates real acquire summaries and rejects unrelated application or registry changes',async t=>{
