@@ -195,6 +195,24 @@ test('actual complete missing warning retains the Mio row; partial and failed re
  result={outcome:'invalid_key',reason:'rejected'};h.click(`agent-settings-check-key-${custom}`);await flush();h.render();assert.equal(h.find(`agent-settings-model-list-status-${custom}`).props['data-phase'],'invalid_key');assert.equal(nodes(h.render()).some(node=>node.props['data-testid']===`agent-settings-model-missing-${custom}`),false);assert.deepEqual(f.saved().mioSelection,{serviceKey:custom,modelId:model});assert.equal(f.calls.length,0);h.unmount();
 });
 
+test('actual missing warning applies only to the saved connection and remains valid through manual-model-only edits',async()=>{
+ for(const edit of ['protocol','address','platform','manual']){
+  const initial=edit==='platform'?adapterSettings({presetId:'minimax',platformId:'china',baseUrl:'https://api.minimax.cn/v1',model:'MiniMax-M3',protocol:'chat_completions'},{revision:0,secretStorage:'session'}):adapterSettings(undefined,{revision:0,secretStorage:'session'});
+  const f=settingsUiFixture({initial}),key=initial.mioSelection!.serviceKey,model=initial.mioSelection!.modelId,discovery:AgentModelListClient={modelsCache:async()=>({status:'hit',result:listed()}),modelsList:async()=>listed()};
+  const h=uiHarness(f.client,discovery);await ready(h);h.view(key);await flush();h.render();assert.ok(h.find(`agent-settings-model-missing-${key}`));
+  if(edit==='protocol')h.change(`agent-settings-protocol-${key}`,'responses');
+  else if(edit==='manual'){const input=h.find(`agent-settings-model-${key}`);(input.props.ref as {current:{value:string}}).current.value='manual-extra';h.click(`agent-settings-add-model-${key}`);}
+  else{
+   if(edit==='platform')h.change(`agent-settings-platform-${key}`,'international');
+   else{h.change(`agent-settings-base-url-${key}`,'https://changed.example');invoke(h.find(`agent-settings-base-url-${key}`),'onBlur');h.render();}
+   h.key(key,'synthetic-secret-new');invoke(h.find(`agent-settings-key-${key}`),'onBlur');
+  }
+  await flush();h.render();assert.equal(h.find(`agent-settings-model-list-status-${key}`).props['data-phase'],'success');
+  assert.equal(nodes(h.render()).some(node=>node.props['data-testid']===`agent-settings-model-missing-${key}`),edit==='manual',edit);
+  assert.ok(h.find(`agent-settings-model-row-${key}-${model}`));assert.deepEqual(f.saved().mioSelection,initial.mioSelection);assert.equal(f.calls.length,0);h.unmount();
+ }
+});
+
 test('actual detail switch, binding changes and page hide cancel fetches without losing independent DOM inputs or accepting late rows',async()=>{
  for(const action of ['switch','binding','hide','save']){
   const pending=deferred(),signals:AbortSignal[]=[],f=settingsUiFixture(),discovery:AgentModelListClient={modelsCache:async()=>({status:'miss'}),modelsList:async(_input,options)=>{signals.push(options.signal);return pending.promise;}};

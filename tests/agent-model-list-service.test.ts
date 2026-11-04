@@ -116,6 +116,31 @@ test('final cache witness and publication share admission with the entire follow
  release.resolve();assert.equal((await pending).outcome,'success');await writing;assert.equal(settled,true);assert.equal(f.writes,2);
 });
 
+test('the total list deadline also bounds waiting for the settings/cache admission queue',async t=>{
+ const cache=cacheStore(),entered=deferred<void>(),release=deferred<void>(),write=cache.store.write.bind(cache.store);
+ cache.store.write=async(...args)=>{entered.resolve();await release.promise;return write(...args);};
+ const f=await fixture(t,async()=>success(),cache);
+ const publishing=f.models.list(request(f.snapshot));await entered.promise;
+ t.mock.timers.enable({apis:['setTimeout','Date']});
+ try{
+  const queued=f.models.list(request(f.snapshot,'deepseek'));
+  t.mock.timers.tick(15000);
+  assert.deepEqual(await queued,{outcome:'unreachable',reason:'timeout'});
+  assert.equal(f.cache.writes,0,'deadline settles without waiting for the preceding publication');
+ }finally{t.mock.timers.reset();release.resolve();}
+ assert.equal((await publishing).outcome,'success');
+ assert.equal(f.cache.writes,1,'expired queued request never dispatches or publishes later');
+});
+
+test('cancelled cache reads settle while an earlier publication owns admission',async t=>{
+ const cache=cacheStore(),entered=deferred<void>(),release=deferred<void>(),write=cache.store.write.bind(cache.store);
+ cache.store.write=async(...args)=>{entered.resolve();await release.promise;return write(...args);};
+ const f=await fixture(t,async()=>success(),cache),publishing=f.models.list(request(f.snapshot));await entered.promise;
+ const controller=new AbortController(),reading=f.models.cache(inputToCache(request(f.snapshot)),{signal:controller.signal});
+ controller.abort();await assert.rejects(reading,{code:'AGENT_SETTINGS_CLOSED'});
+ release.resolve();await publishing;assert.equal(f.cache.writes,1);
+});
+
 test('two fetches completing backwards retain only the newest epoch, including partial and complete empty lists',async t=>{
  const answers=[deferred<AgentModelListSuccess>(),deferred<AgentModelListSuccess>()],entered=[deferred<void>(),deferred<void>()];let calls=0;
  const f=await fixture(t,async()=>{const index=calls++;entered[index]!.resolve();return answers[index]!.promise;});

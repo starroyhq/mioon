@@ -1,4 +1,4 @@
-import {agentModelListRequestSchema,agentModelListCacheRequestSchema,agentModelListResultSchema} from '../../../contracts/src/agent-model-list.ts';
+import {AGENT_MODEL_LIST_LIMITS,agentModelListRequestSchema,agentModelListCacheRequestSchema,agentModelListResultSchema} from '../../../contracts/src/agent-model-list.ts';
 import type {AgentModelListRequest,AgentModelListCacheRequest,AgentModelListResult,AgentModelListCacheResult,AgentModelListSelection} from '../../../contracts/src/agent-model-list.ts';
 import type {AgentServiceSnapshot,AgentSettingsSnapshot} from '../../../contracts/src/agent-connection-settings.ts';
 import {agentSettingsSnapshotSchema} from '../../../contracts/src/agent-connection-settings.ts';
@@ -35,6 +35,16 @@ export function createAgentModelListService({settings:owner,cache:store,fetch:fe
   return {...options,selfPort:options.selfPort??selfPort(),signal:options.signal?AbortSignal.any([lifetime.signal,options.signal]):lifetime.signal};
  }
  function checkpoint(options:SettingsContextOptions):void{if(closed||options.signal?.aborted||options.isActive?.()===false)throw agentSettingsError('AGENT_SETTINGS_CLOSED');}
+ function wait<T>(promise:Promise<T>,options:SettingsContextOptions):Promise<T>{
+  // A caller's deadline bounds queue admission and credential waits too. The
+  // queued work retains its checkpoint so it cannot dispatch after rejection.
+  return new Promise<T>((resolve,reject)=>{
+   const aborted=()=>reject(agentSettingsError('AGENT_SETTINGS_CLOSED'));
+   if(options.signal?.aborted){promise.catch(()=>{});aborted();return;}
+   options.signal?.addEventListener('abort',aborted,{once:true});
+   promise.then(resolve,reject).finally(()=>options.signal?.removeEventListener('abort',aborted));
+  });
+ }
  function schedule<T>(operation:()=>T|Promise<T>):Promise<T>{
   const result=tail.then(()=>{if(closed||lifetime.signal.aborted)throw agentSettingsError('AGENT_SETTINGS_CLOSED');return operation();});tail=result.catch(()=>{});return result;
  }
@@ -81,23 +91,23 @@ export function createAgentModelListService({settings:owner,cache:store,fetch:fe
   settings:wrapped,
   async cache(raw:unknown,options:SettingsContextOptions={}):Promise<AgentModelListCacheResult>{
    const parsed=agentModelListCacheRequestSchema.safeParse(raw);if(!parsed.success)return validation();const opts=context(options);
-   return schedule(async()=>{
+   return wait(schedule(async()=>{
     const frozen=freeze(await read(opts),parsed.data,opts);if(!frozen.identity||!store)return {status:'miss'};
     let result;try{result=await store.read(frozen.identity);}catch{return {status:'miss'};}
     checkpoint(opts);if(!result)return {status:'miss'};
     return {status:'hit',result:{...result,models:adaptAgentModelListModels(frozen.selection,result.models)}};
-   });
+   }),opts);
   },
   async list(raw:unknown,options:SettingsContextOptions={}):Promise<AgentModelListResult>{
    const started=Date.now(),parsed=agentModelListRequestSchema.safeParse(raw);if(!parsed.success)return validation();
    const input:AgentModelListRequest=parsed.data,controller=new AbortController(),timeout=new AbortController();
-   const timer=setTimeout(()=>timeout.abort(),Math.max(0,15000-(Date.now()-started)));
+   const timer=setTimeout(()=>timeout.abort(),Math.max(0,AGENT_MODEL_LIST_LIMITS.totalTimeoutMs-(Date.now()-started)));
    const opts=context({...options,signal:AbortSignal.any([controller.signal,timeout.signal,...(options.signal?[options.signal]:[])])});
    let epoch=0;
    try{
-    const frozen=await schedule(async()=>{
+    const frozen=await wait(schedule(async()=>{
      const frozen=freeze(await read(opts),input,opts);invalidate(input.serviceKey);epoch=epochs.get(input.serviceKey)!;pending.set(input.serviceKey,controller);return frozen;
-    });
+    }),opts);
     const current=()=>{checkpoint(opts);if(epochs.get(input.serviceKey)!==epoch)conflict();};
     const descriptor=resolveAgentModelListDescriptor(frozen.selection,opts);
     if(!descriptor)return {outcome:'unavailable',reason:'not_provided'};
@@ -110,7 +120,7 @@ export function createAgentModelListService({settings:owner,cache:store,fetch:fe
      // the saved complete configuration, never that draft or a guessed model.
      if(agentCredentialBinding(saved)!==agentCredentialBinding({...frozen.selection,model:'connection-validation'}))conflict();
      const expected:AgentCredentialRequest={purpose:'model_list',expectedRevision:frozen.snapshot.revision,configuration:saved,binding:{serviceKey:entry.serviceKey,entryRevision:entry.revision,selectionRevision:frozen.snapshot.mioSelectionRevision}};
-     const acquired=await schedule(async()=>{current();const latest=freeze(await read(opts),input,opts);if(!latest.entry||latest.entry.revision!==entry.revision)conflict();return sanitizeAgentCredentialResult(await owner[AGENT_CREDENTIAL_ACQUIRE]!(expected,opts),expected);});
+     const acquired=await wait(schedule(async()=>{current();const latest=freeze(await read(opts),input,opts);if(!latest.entry||latest.entry.revision!==entry.revision)conflict();return sanitizeAgentCredentialResult(await owner[AGENT_CREDENTIAL_ACQUIRE]!(expected,opts),expected);}),opts);
      current();apiKey=acquired.apiKey;
     }else{
      if(!descriptor.allowNone)return {outcome:'invalid_key',reason:'required'};
@@ -122,9 +132,9 @@ export function createAgentModelListService({settings:owner,cache:store,fetch:fe
     if(!apiKey&&!descriptor.allowNone)return {outcome:'invalid_key',reason:'required'};
     current();
     // Input credentials and acquired plaintext remain scoped to this one call.
-    const result=agentModelListResultSchema.parse(await fetchList({selection:frozen.selection,apiKey,signal:opts.signal,selfPort:opts.selfPort}));
+    const result=agentModelListResultSchema.parse(await wait(fetchList({selection:frozen.selection,apiKey,signal:opts.signal,selfPort:opts.selfPort}),opts));
     apiKey=null;
-    return await schedule(async()=>{
+    return await wait(schedule(async()=>{
      current();const latest=freeze(await read(opts),input,opts);current();
      if(result.outcome==='success'&&frozen.identity&&latest.identity&&equal(frozen.identity,latest.identity)){
       // Keep admission until atomic publication is done. A queued save/delete
@@ -133,7 +143,7 @@ export function createAgentModelListService({settings:owner,cache:store,fetch:fe
       current();
      }
      return result;
-    });
+    }),opts);
    }catch(error){
     if(timeout.signal.aborted&&!lifetime.signal.aborted&&!options.signal?.aborted)return {outcome:'unreachable',reason:'timeout'};
     throw error;
