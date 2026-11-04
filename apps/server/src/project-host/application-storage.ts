@@ -80,7 +80,16 @@ export function createApplicationFileGuard(directories: AppDirectories, {metadat
     const file = path.resolve(requested);
     if (snapshotDepth === 0) refresh();
     const privatePath = protectedRoots.some(root => within(root, file)) || within(dataDir, file) && !within(projectsDir, file);
-    const info = readMetadata(file), previous = info?.isFile() && info.ino !== 0n ? identities.get(`${info.dev}:${info.ino}`) : undefined;
+    let info: ApplicationFileMetadata | undefined;
+    try {info = readMetadata(file);}
+    catch (error) {
+      const code = (error as {code?:unknown}|null)?.code;
+      if (!privatePath && (code === 'EACCES' || code === 'EPERM')) {
+        throw new AppError('PROJECT_ACCESS_DENIED', '系统没有允许访问项目所在的位置', 403, {database:'project',reason:'access-denied'});
+      }
+      throw error;
+    }
+    const previous = info?.isFile() && info.ino !== 0n ? identities.get(`${info.dev}:${info.ino}`) : undefined;
     const current = info?.isFile() ? generation(info) : undefined;
     const samePrivateFile = previous !== undefined && (previous === 0n || current === 0n || previous === current);
     if (privatePath || samePrivateFile) {

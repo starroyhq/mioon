@@ -655,7 +655,9 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     try {
       result = maintenance.recoverProjectFile(registration.projectFile);
     } catch (error) {
-      recoveries.delete(projectId);
+      const code = errorCode(error);
+      if (code === 'PROJECT_ACCESS_DENIED' || code === 'EACCES' || code === 'EPERM') recoveries.set(projectId,{state:'access-denied'});
+      else recoveries.delete(projectId);
       emit({type: 'maintenance-failed', projectId, error});
       return;
     }
