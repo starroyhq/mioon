@@ -11,6 +11,7 @@ import type {AgentModelListSuccess} from '../packages/contracts/src/agent-model-
 import * as i18n from '../packages/i18n/src/index.ts';
 import {createI18nTestContext} from './helpers/i18n.ts';
 import {adapterSettings} from './helpers/agent-adapter-fixture.ts';
+import {agentAdaptedModelHints} from '../packages/business/src/agent/model-profiles.ts';
 import {AGENT_CONNECTION_LIMITS} from '../packages/contracts/src/agent-connection-settings.ts';
 import type {AgentSettingsSnapshot} from '../packages/contracts/src/agent-connection-settings.ts';
 import type {SettingsServicesLayoutProps} from '../apps/web/src/SettingsServicesLayout.tsx';
@@ -94,6 +95,9 @@ function nodes(value:unknown):Element[]{return Array.isArray(value)?value.flatMa
 function invoke(node:Element,name:string,...args:unknown[]):unknown{const callback=node.props[name];assert.equal(typeof callback,'function',name);return Reflect.apply(callback as (...values:unknown[])=>unknown,undefined,args);}
 const source=readFileSync(new URL('../apps/web/src/AgentSettings.tsx',import.meta.url),'utf8'),transformed=transformSync(source,{loader:'tsx',format:'cjs',jsx:'transform'}).code;
 const listed=(ids:string[]=[]):AgentModelListSuccess=>({outcome:'success',models:ids.map(id=>({id,adaptation:'unverified'})),complete:true,source:'current_protocol',fetchedAt:'2026-11-04T00:00:00.000Z'});
+function adaptedUiSettings():AgentSettingsSnapshot{
+ const initial=uiSettings();for(const preset of initial.presets){preset.supportedModelHints=agentAdaptedModelHints(preset.id);for(const platform of preset.platforms)platform.supportedModelHints=agentAdaptedModelHints(preset.id);}return initial;
+}
 function uiHarness(client:logic.AgentSettingsClient,discovery:AgentModelListClient={modelsCache:async()=>({status:'hit',result:listed()}),modelsList:async()=>listed()}){
  const hooks:Hook[]=[],dom=new Map<string,{value:string}>(),listeners=new Set<()=>void>(),reports:navigation.SettingsNavigationState[]=[];let cursor=0,pending:Array<()=>void>=[],tree:unknown,visible=true,locale:Locale='zh-Hans';
  const document={hidden:false,addEventListener:(_name:string,fn:()=>void)=>listeners.add(fn),removeEventListener:(_name:string,fn:()=>void)=>listeners.delete(fn)};
@@ -161,6 +165,34 @@ test('actual detail opens only its cache, merges fetched and manual rows, and do
  const discovery:AgentModelListClient={modelsCache:async input=>{cacheCalls.push(input.serviceKey);return {status:'hit',result:listed(['remote-model','gpt-4.1-mini'])};},modelsList:async input=>{listCalls.push(input.serviceKey);return listed(['refreshed-model']);}};
  const h=uiHarness(f.client,discovery);await ready(h);assert.deepEqual(cacheCalls,[]);h.view('openai');await flush();h.render();assert.deepEqual(cacheCalls,['openai']);assert.deepEqual(listCalls,[]);assert.ok(h.find('agent-settings-model-row-openai-gpt-4.1-mini'));assert.ok(h.find('agent-settings-model-row-openai-manual-model'));assert.equal(h.find('agent-settings-save').props.disabled,true);assert.equal(f.calls.length,0);assert.equal(f.saved().revision,initial.revision);assert.equal(f.saved().verification,'not_tested');
  for(const locale of i18n.LOCALES){h.setLocale(locale);assert.doesNotMatch(JSON.stringify(h.find('agent-settings-model-list-status-openai')),/agent\.settings\.models\./);}assert.deepEqual(cacheCalls,['openai']);h.unmount();
+});
+
+test('actual Qwen detail without a list offers adapted models and selects one only in the unsaved Mio draft',async()=>{
+ const initial=adaptedUiSettings(),entry=initial.services.find(item=>item.serviceKey==='qwen')!,platform=initial.presets.find(item=>item.id===entry.presetId)!.platforms.find(item=>item.id===entry.platformId)!,model=platform.supportedModelHints?.[entry.protocol]?.[0];assert.ok(model);
+ const f=settingsUiFixture({initial}),cacheCalls:string[]=[],listCalls:Parameters<AgentModelListClient['modelsList']>[0][]=[],discovery:AgentModelListClient={modelsCache:async input=>{cacheCalls.push(input.serviceKey);return {status:'miss'};},modelsList:async input=>{listCalls.push(input);return {outcome:'unavailable',reason:'not_provided'};}};
+ const h=uiHarness(f.client,discovery);await ready(h);h.view('qwen');await flush();h.render();assert.deepEqual(cacheCalls,['qwen']);assert.equal(listCalls.length,1);assert.equal(listCalls[0]!.serviceKey,'qwen');assert.deepEqual(listCalls[0]!.credential,{source:'none'});assert.equal(h.find('agent-settings-model-list-status-qwen').props['data-phase'],'unavailable');
+ assert.match(JSON.stringify(h.find(`agent-settings-model-row-qwen-${model}`)),new RegExp(i18n.translate('zh-Hans','agent.settings.x6.adapted')));assert.equal(h.find(`agent-settings-use-qwen-${model}`).props.disabled,false);assert.equal(h.latest().dirty,false);
+ h.click(`agent-settings-use-qwen-${model}`);assert.equal(h.latest().dirty,true);assert.match(JSON.stringify(h.find('agent-settings-current-model')),new RegExp(model.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));assert.match(JSON.stringify(h.find('agent-settings-current-model')),new RegExp(i18n.translate('zh-Hans','agent.settings.x6.pendingModel')));
+ assert.equal(f.calls.length,0);assert.deepEqual(f.saved().mioSelection,initial.mioSelection);assert.equal(f.saved().revision,initial.revision);assert.equal(f.saved().verification,'not_tested');h.unmount();
+});
+
+test('actual partial list supplements absent adapted models while a complete list does not offer them',async()=>{
+ for(const complete of [false,true]){
+  const initial=adaptedUiSettings(),entry=initial.services.find(item=>item.serviceKey==='openai')!,platform=initial.presets.find(item=>item.id===entry.presetId)!.platforms.find(item=>item.id===entry.platformId)!,model=platform.supportedModelHints?.[entry.protocol]?.[0];assert.ok(model);
+  const f=settingsUiFixture({initial}),discovery:AgentModelListClient={modelsCache:async()=>({status:'hit',result:{...listed(['remote-model']),complete}}),modelsList:async()=>assert.fail('A matching cache must not fetch')},h=uiHarness(f.client,discovery);
+  await ready(h);h.view('openai');await flush();h.render();assert.ok(h.find('agent-settings-model-row-openai-remote-model'));assert.equal(nodes(h.render()).some(node=>node.props['data-testid']===`agent-settings-model-row-openai-${model}`),!complete);
+  if(!complete){assert.equal(h.find(`agent-settings-use-openai-${model}`).props.disabled,false);assert.match(JSON.stringify(h.find(`agent-settings-model-row-openai-${model}`)),new RegExp(i18n.translate('zh-Hans','agent.settings.x6.adapted')));}
+  assert.equal(h.latest().dirty,false);assert.equal(f.calls.length,0);assert.deepEqual(f.saved().mioSelection,initial.mioSelection);h.unmount();
+ }
+});
+
+test('actual refresh supplements adapted models during loading and failure despite an older complete cache, then removes the fallback on complete success',async()=>{
+ const initial=adaptedUiSettings(),entry=initial.services.find(item=>item.serviceKey==='openai')!,platform=initial.presets.find(item=>item.id===entry.presetId)!.platforms.find(item=>item.id===entry.platformId)!,model=platform.supportedModelHints?.[entry.protocol]?.[0];assert.ok(model);
+ const f=settingsUiFixture({initial}),pending=deferred();let requests=0;const discovery:AgentModelListClient={modelsCache:async()=>({status:'hit',result:listed(['retained-remote'])}),modelsList:async()=>++requests===1?pending.promise:listed(['replacement-remote'])},h=uiHarness(f.client,discovery);
+ const hasAdapted=()=>nodes(h.render()).some(node=>node.props['data-testid']===`agent-settings-model-row-openai-${model}`);
+ await ready(h);h.view('openai');await flush();h.render();assert.equal(hasAdapted(),false);h.key('openai','synthetic-secret');h.click('agent-settings-fetch-openai');assert.equal(h.find('agent-settings-model-list-status-openai').props['data-phase'],'loading');assert.equal(hasAdapted(),true);assert.ok(h.find('agent-settings-model-row-openai-retained-remote'));
+ pending.resolve({outcome:'unreachable',reason:'timeout'});await flush();h.render();assert.equal(h.find('agent-settings-model-list-status-openai').props['data-phase'],'unreachable');assert.equal(hasAdapted(),true);assert.ok(h.find('agent-settings-model-row-openai-retained-remote'));
+ h.click('agent-settings-fetch-openai');await flush();h.render();assert.equal(h.find('agent-settings-model-list-status-openai').props['data-phase'],'success');assert.equal(hasAdapted(),false);assert.ok(h.find('agent-settings-model-row-openai-replacement-remote'));assert.equal(requests,2);assert.equal(f.calls.length,0);assert.deepEqual(f.saved().mioSelection,initial.mioSelection);assert.equal(f.saved().verification,'not_tested');h.unmount();
 });
 
 test('actual key typing dispatches nothing until blur; checking and fetching use one-shot input and only model choice is dirty',async()=>{
