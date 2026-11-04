@@ -1,3 +1,9 @@
+> **历史文档 / Historical document（S7-C，2026-11-03）**
+>
+> 本页保留音量包络尚处 dormant40/restored41 阶段的扫描器、证据与兼容性验收。旧工作区 profile、恢复角色和构造器已随 S7-B1/B2 退役；当前音量包络及音频编辑功能继续保留，不能按本文启用旧路径。
+>
+> 现行项目布局见 [PROJECT-HOST.md](PROJECT-HOST.md)，时间线与音频操作见 [API.md](API.md)。
+
 # Dormant volume-envelope workspace admission
 
 Later backend activation is documented in [VOLUME-ENVELOPE-BACKEND-ACTIVATION.md](VOLUME-ENVELOPE-BACKEND-ACTIVATION.md). The dated slice evidence below is preserved.

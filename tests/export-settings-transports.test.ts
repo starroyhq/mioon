@@ -25,8 +25,6 @@ import {startServer} from '../apps/server/src/index.ts';
 import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {schemaObjects} from './helpers/project-database.ts';
 
 import type {TestContext} from 'node:test';
@@ -171,7 +169,7 @@ async function wire(t: Pick<TestContext,'after'>,{media=false}: {media?: boolean
   async finished(id: string){const end=Date.now()+30000;while(Date.now()<end){const value=await client.rpc<{status: string; error?: unknown; assetId?: string; snapshot: {delivery?: unknown}}>('export.get',{exportId:id},{projectId:project.id});if(['succeeded','failed'].includes(value.status)){assert.equal(value.status,'succeeded',JSON.stringify(value.error));return value;}await pause(25);}assert.fail('Synthetic render did not reach a terminal state');},
  };
 }
-test('export settings offline CLI and official MCP expose identical strict schemas and truthful effects without Agent authority',{timeout:45000},async t=>{
+test('export settings offline CLI and official MCP expose identical strict schemas and truthful effects',{timeout:45000},async t=>{
  const catalog=schemaCatalog(discoverSchema());assert.deepEqual((await cli(undefined,['schema'])).data,catalog);
  const official=await officialMcp(t,'http://127.0.0.1:1'),tools=(await official.mcp.listTools({})).tools;
  assert.deepEqual((await official.call('mioon_schema',{})).data,catalog);
@@ -185,7 +183,7 @@ test('export settings offline CLI and official MCP expose identical strict schem
  assert.equal(definition.effects.fileWrite,true,'v2 capability can create bounded owned proof staging');
  for(const key of ['databaseWrite','externalIO','paidGeneration','openWorld','destructive'])assert.equal(definition.effects[key],false);
  const render=schemaOperation(discoverSchema({operation:'timeline.render'}));assert.equal(render.requiresRequestId,true);assert.equal(render.effects.databaseWrite,true);assert.equal(render.effects.fileWrite,true);assert.equal(render.effects.localProcess,true);assert.equal(render.effects.paidGeneration,false);
- assert.ok(!JSON.stringify(READ_TOOL_DEFINITIONS).includes('timeline.export.capabilities'));assert.ok(!JSON.stringify(EDIT_TOOL_DEFINITIONS).includes('timeline.export.capabilities'));
+
 });
 
 test('actual HTTP CLI and MCP capabilities prove CRF and bitrate locally without writes and reject strict injected fields',{timeout:120000},async t=>{

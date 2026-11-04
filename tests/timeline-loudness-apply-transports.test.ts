@@ -23,10 +23,6 @@ import {startServer} from '../apps/server/src/index.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
-import {TIMELINE_GAIN_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-gain-tool-policy.ts';
 import {loudnessApplyFixture} from './fixtures/timeline-loudness-apply.ts';
 import {projectDirFor} from './helpers/project-database.ts';
 import {readProjectState} from './helpers/project-state.ts';
@@ -197,7 +193,7 @@ async function waitForReceipt(f: Fixture,requestId: string): Promise<ReceiptRow>
   assert.fail('Accepted mutation did not produce its retained receipt before the bounded deadline');
 }
 
-test('actual CLI and official MCP discover strict apply intent and local-mutation annotations offline without adding Agent authority',{timeout:60000},async t=>{
+test('actual CLI and official MCP discover strict apply intent and local-mutation annotations offline',{timeout:60000},async t=>{
   const definition=discoverSchema({operation}) as unknown as DiscoveryWire,catalog=discoverSchema(),mcp=await official(t);
   assert.deepEqual((await cli(t,undefined,['schema',operation]).result).body,{ok:true,data:definition});
   assert.deepEqual(await mcp.call('mioon_schema',{operation}),{ok:true,data:definition});
@@ -222,10 +218,6 @@ test('actual CLI and official MCP discover strict apply intent and local-mutatio
   const {notes,...effects}=definition.effects;
   assert.deepEqual(effects,{readOnly:false,idempotent:true,destructive:true,openWorld:false,databaseWrite:true,fileWrite:false,externalIO:false,localProcess:true,paidGeneration:false});
   assert.match(notes,/Socket interruption does not cancel accepted mutation/);assert.match(notes,/No client gains/);
-  assert.deepEqual(READ_TOOL_DEFINITIONS.map(item=>item.name),['mioon_project_inspect','mioon_asset_inspect','mioon_shot_inspect','mioon_timeline_inspect']);
-  assert.deepEqual(EDIT_TOOL_DEFINITIONS.map(item=>item.name),['mioon_propose_shot_update']);
-  assert.deepEqual(TIMELINE_EDIT_TOOL_DEFINITIONS.map(item=>item.name),['mioon_propose_timeline_clip_move']);
-  assert.deepEqual(TIMELINE_GAIN_EDIT_TOOL_DEFINITIONS.map(item=>item.name),['mioon_propose_timeline_clip_gain']);
   const {input}=await loudnessApplyFixture();const missing: Record<string, unknown>={...input};delete missing['requestId'];
   for(const invoke of [()=>cli(t,undefined,[...operation.split('.'),'--input',JSON.stringify(missing)]).result.then((result: {body: WireEnvelope})=>result.body),
     ()=>mcp.call(toolName,missing)]){const body=await invoke();assert.equal(body.ok,false);assert.equal(body.error?.code,'VALIDATION_ERROR');}

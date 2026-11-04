@@ -16,8 +16,6 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {discoverSchema} from '../packages/client/src/index.ts';
 import {optionalRequestIdOperations} from './helpers/catalog-input-branches.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {IDS, TOKEN} from './helpers/mutation-wire-fixture.ts';
 import {PRIVATE, DISPOSITION_IDS, BATCH_IDS, ORIGINAL_BYTES} from './helpers/asset-disposition-wire-fixture.ts';
 import type {ChildProcess} from 'node:child_process';

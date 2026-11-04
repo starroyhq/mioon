@@ -1,3 +1,9 @@
+> **历史文档 / Historical document（S7-C，2026-11-03）**
+>
+> 本页保留旧工作区 schema24/25 固定角色检测与后续26/27前置兼容证据。旧 marker/profile 分发、离线恢复和冻结构造器已随 S7-B1/B2 退役；其版本号和准入规则不适用于当前项目文件内核。
+>
+> 现行项目文件结构与版本约定见 [PROJECT-FILE.md](PROJECT-FILE.md)，当前启动与持有边界见 [PROJECT-HOST.md](PROJECT-HOST.md)。
+
 # 工作区固定 schema / profile 边界（S 前置片）
 
 基线：`0343ed390a85c319210b5f179180cf9c8c3985c2`。这是统一响度原子应用之前的兼容保护；本片不新增编辑操作，不写入 26/27 marker，也不执行新迁移。2026-10-14 已通过独立最终 typecheck 与串行全量核验。

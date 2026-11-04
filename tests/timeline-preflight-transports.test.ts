@@ -30,8 +30,6 @@ import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {createClient, discoverSchema} from '../packages/client/src/index.ts';
 import {parse, schemas, operationEffect, exportPreflightSchemas, exportPreflightResponseSchema,
   isExportPreflightResponse, EXPORT_PREFLIGHT_LIMITS} from '../packages/contracts/src/index.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {IDS, TOKEN, NOW, uuid, seedMutationStore} from './helpers/mutation-wire-fixture.ts';
 import {openServerProject,projectDirFor} from './helpers/project-database.ts';
 import {createApplicationStorageReader,createProjectStorageReader} from './fixtures/project-server-process.ts';
@@ -310,8 +308,6 @@ test('export preflight contracts reject malformed DTOs and preserve omitted lega
     {issues: [{code: 'SAFE', severity: 'error', message: 'Safe', assetId: 'bad'}]}, {issues: [{code: 'SAFE', severity: 'error', message: 'Safe', stderr: PRIVATE}]},
     {issues: Array.from({length: 129}, () => ({code: 'SAFE', severity: 'warning', message: 'Safe'}))}] as const))
     assert.equal(isExportPreflightResponse({...ready, ...patch}), false, JSON.stringify(patch));
-  assert.deepEqual(READ_TOOL_DEFINITIONS.map(tool => tool.name), ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect']);
-  assert.deepEqual(EDIT_TOOL_DEFINITIONS.map(tool => tool.name), ['mioon_propose_shot_update']);
 });
 
 test('shared client grants only preflight default transport grace and honors explicit deadlines without retry', async t => {

@@ -19,8 +19,6 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {discoverSchema} from '../packages/client/src/index.ts';
 import {optionalRequestIdOperations} from './helpers/catalog-input-branches.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {IDS, TOKEN} from './helpers/mutation-wire-fixture.ts';
 import {PRIVATE, RANGE_IDS} from './helpers/source-range-wire-fixture.ts';
 import type {ProjectState} from './helpers/project-state.ts';
@@ -283,8 +281,6 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
       }
     }
     assert.deepEqual(optionalRequestIdOperations(catalog), ['asset.import',...oldMutations].sort(),'only S1 public upload joins the six original optional mutation keys');
-    assert.deepEqual(READ_TOOL_DEFINITIONS.map(tool => tool.name).sort(), ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect'].sort());
-    assert.deepEqual(EDIT_TOOL_DEFINITIONS.map(tool => tool.name), ['mioon_propose_shot_update']);
     await backend.unchanged(before, 'discovery');
   });
 

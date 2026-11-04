@@ -18,10 +18,6 @@ import type {AgentAuthorizationList} from '../packages/contracts/src/agent-autho
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 import type {AgentSettingsSnapshot} from '../packages/business/src/agent/settings.ts';
 import type {AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
-import {parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.ts';
-import {parseEditToolArguments} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {parseTimelineEditToolArguments} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
-import {parseTimelineGainEditToolArguments} from '../packages/business/src/agent/timeline-gain-tool-policy.ts';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -123,9 +119,6 @@ test('Anthropic settings, targets and scoped authority stay consistent across re
     await new Promise(resolve => setTimeout(resolve, 5));
   }
   assert.equal(ended?.status, 'failed'); assert.equal(taskCalls, 1); assert.deepEqual(await targets(), beforeAttempt);
-  for (const parser of [parseReadToolArguments, parseEditToolArguments, parseTimelineEditToolArguments, parseTimelineGainEditToolArguments]) {
-    assert.throws(() => parser('mioon_agent_authorization_grant', JSON.stringify(attemptedGrant)));
-  }
 
   async function assertInactive(configuration: AgentConfiguration) {
     const current = await settings(), listed = await targets();

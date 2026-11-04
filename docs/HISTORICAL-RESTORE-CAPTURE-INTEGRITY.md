@@ -1,3 +1,9 @@
+> **历史文档 / Historical document（S7-C，2026-11-03）**
+>
+> 本页保留旧 source24–38/restored25–39 的捕获完整性与固定历史验证证据。旧工作区恢复、profile 分发和恢复完整性冻结机制已随 S7-B1/B2 退役；下文的命令、构造器和通过数仅用于历史追溯。
+>
+> 现行项目文件与升级约定见 [PROJECT-FILE.md](PROJECT-FILE.md)，当前宿主边界见 [PROJECT-HOST.md](PROJECT-HOST.md)。
+
 # Historical restore capture integrity
 
 ## Boundary

@@ -273,7 +273,7 @@ approximation; record any non-mechanical patch explicitly and extend its tests.
 
 ## Subsequent dual-workspace change — 2026-10-09
 
-The global Base UI Tabs switch now selects 画板 or 剪辑 for the same project. Unlike the earlier migration checkpoint, the inactive workspace is intentionally unmounted. Canvas has no timeline and its storyboard defaults closed; Editing has no storyboard or React Flow tree. The inspector's collapsible content retains drafts within its active workspace, while a workspace change first applies explicit dirty-navigation confirmation. Per-project view preferences restore Canvas geometry/selection and Editing playhead/zoom/scroll after remount. See [dual-workspace acceptance](ACCEPTANCE-DUAL-WORKSPACE.md) for current checks; the migration evidence below is historical.
+The global Base UI Tabs switch now selects 画板 or 剪辑 for the same project. Unlike the earlier migration checkpoint, the inactive workspace is intentionally unmounted. Canvas has no timeline and its storyboard defaults closed; Editing has no storyboard or React Flow tree. The inspector's collapsible content retains drafts within its active workspace, while a workspace change first applies explicit dirty-navigation confirmation. Per-project view preferences restore Canvas geometry/selection and Editing playhead/zoom/scroll after remount. See [historical dual-workspace acceptance](ACCEPTANCE-DUAL-WORKSPACE.md) for the 2026-10-09 checks and their limits; current project layout and lifecycle are described in [PROJECT-HOST.md](PROJECT-HOST.md). The migration evidence below is historical.
 
 ## Verified migration checkpoint — 2026-10-09
 

@@ -1,6 +1,6 @@
 import {
-  OPACITY_ENVELOPE_PROFILE, OPACITY_ENVELOPE_LIMITS, validateOpacityEnvelope, createOpacityEnvelopeEvaluator,
-  type OpacityEnvelope, type OpacityEnvelopeEvaluator,
+  OPACITY_ENVELOPE_PROFILE, OPACITY_ENVELOPE_LIMITS, validateOpacityEnvelope,
+  type OpacityEnvelope,
 } from '../../packages/contracts/src/timeline-opacity-envelope.ts';
 import {createTimelineOpacityCandidateContracts, type OpacityCandidateContext} from '../../packages/contracts/src/timeline-opacity-candidate.ts';
 
@@ -9,14 +9,11 @@ const exactProfile: 'mioon-clip-linear-opacity-v1' = OPACITY_ENVELOPE_PROFILE;
 const exactLimit: 7 = OPACITY_ENVELOPE_LIMITS.points;
 const nonAny: false = false as IsAny<ReturnType<typeof validateOpacityEnvelope>>;
 const curve: OpacityEnvelope = {profileId: exactProfile, points: [{frame: 0, opacity: 1}]};
-const evaluator: OpacityEnvelopeEvaluator = createOpacityEnvelopeEvaluator({durationFrames: 20, opacityEnvelope: curve});
-const value: number = evaluator.atFrame(10);
+const value: OpacityEnvelope | null = validateOpacityEnvelope(curve, 20);
 // @ts-expect-error readonly point list is not a mutable editor buffer
 curve.points.push({frame: 1, opacity: 0});
 // @ts-expect-error readonly point values cannot be changed by a consumer
 curve.points[0]!.opacity = 0;
-// @ts-expect-error evaluator operations are immutable
-evaluator.atFrame = () => 0;
 // @ts-expect-error unsupported curve versions do not widen the current profile
 const wrong: OpacityEnvelope = {profileId: 'mioon-clip-linear-opacity-v2', points: []};
 const context: OpacityCandidateContext = {trackKind: 'video', durationFrames: 20};

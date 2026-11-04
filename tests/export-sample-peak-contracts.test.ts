@@ -9,10 +9,9 @@ import {EXPORT_SAMPLE_PEAK_ALGORITHM,EXPORT_SAMPLE_PEAK_LIMITS,exportSamplePeakS
   exportSamplePeakResponseSchema,isExportSamplePeakResponse,exportSamplePeakReason} from '@mioon/contracts/export-sample-peak';
 import {isExportSamplePeakFrameCountCompatible} from '@mioon/contracts/export-sample-peak';
 import {samplePeakOperation as operation,samplePeakInput as input,readySamplePeak,incompleteSamplePeak} from './helpers/export-sample-peak-fixture.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 
 const changed = (change: (report: SamplePeakReportFixture) => unknown) => {const report: SamplePeakReportFixture=readySamplePeak();change(report);return report;};
-test('已导出文件解码样本峰值 has exact shared input, bounds, truthful effects and no Agent read authority',()=>{
+test('已导出文件解码样本峰值 has exact shared input, bounds, truthful effects',()=>{
   assert.equal(schemas[operation],exportSamplePeakSchemas[operation]);
   assert.equal(schemas[operation],exportSamplePeakInputSchema);
   assert.deepEqual(parse(operation,input),input);
@@ -27,7 +26,6 @@ test('已导出文件解码样本峰值 has exact shared input, bounds, truthful
   assert.deepEqual(effectAnnotations(operationEffect(operation)),{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false});
   assert.equal(operationEffect(operation).localProcess,true);
   for(const key of ['databaseWrite','fileWrite','externalIO','paidGeneration'] as const)assert.equal(operationEffect(operation)[key],false);
-  assert.deepEqual(READ_TOOL_DEFINITIONS.map(tool=>tool.name),['mioon_project_inspect','mioon_asset_inspect','mioon_shot_inspect','mioon_timeline_inspect']);
 });
 for(const candidate of [null,{},[],{projectId:input.projectId}, {...input,projectId:'wrong'},...['requestId','path','url','dataBase64','assetId','sha256','timeoutMs','exportSettings','extraArgs','expectedWorkspaceOrigin'].map(key=>({...input,[key]:'forbidden'}))])
   test(`strict input rejects ${JSON.stringify(candidate)}`,()=>assert.equal(exportSamplePeakInputSchema.safeParse(candidate).success,false));

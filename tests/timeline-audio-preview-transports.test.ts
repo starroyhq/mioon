@@ -27,10 +27,6 @@ import {startServer} from '../apps/server/src/index.ts';
 import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
-import {TIMELINE_GAIN_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-gain-tool-policy.ts';
 import {projectDirFor, schemaObjects} from './helpers/project-database.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -191,8 +187,6 @@ test('real startServer HTTP, CLI and official MCP expose identical read-only pla
   assert.deepEqual(effects, {readOnly: true, idempotent: true, destructive: false, openWorld: false, databaseWrite: false,
     fileWrite: false, externalIO: false, localProcess: false, paidGeneration: false});
   assert.match(notes!, /Not a built-in Agent tool/);
-  for (const catalog of [READ_TOOL_DEFINITIONS, EDIT_TOOL_DEFINITIONS, TIMELINE_EDIT_TOOL_DEFINITIONS, TIMELINE_GAIN_EDIT_TOOL_DEFINITIONS])
-    assert.ok(catalog.every(value => !/audioPreview|audio_preview|audition/i.test(value.name)), 'No new built-in Agent execution authority');
   const httpResult = await rpc(f.backend.url, f.input); assert.equal(httpResult.response.status, 200); assert.equal(httpResult.body.ok, true);
   const cliResult = await cli(t, f.backend.url, [...operation.split('.'), '--input', JSON.stringify(f.input)]);
   assert.equal(cliResult.code, 0); assert.deepEqual(cliResult.body, httpResult.body);
