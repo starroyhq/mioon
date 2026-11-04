@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
-import {closeSync, constants, fstatSync, fsyncSync, linkSync, lstatSync, openSync, readSync, rmSync} from 'node:fs';
+import {chmodSync, closeSync, constants, fstatSync, fsyncSync, linkSync, lstatSync, mkdtempSync, openSync, readSync, renameSync, rmSync} from 'node:fs';
+import type {BigIntStats} from 'node:fs';
 import path from 'node:path';
 import {backup, DatabaseSync} from 'node:sqlite';
 import {createPrivateTemporaryDirectory, ensurePrivateDirectory, validateManagedFile} from '@mioon/contracts/private-storage';
@@ -150,6 +151,71 @@ export function publishCopiedFile(temporary: string, destination: string, onPubl
   // fails. Callers must retain all files needed by the published target.
   onPublished?.();
   syncCopiedDirectory(path.dirname(destination));
+}
+
+/** Portable project directories may be on exFAT. They must be real
+ * directories, but are not application-private storage with mandatory 0700. */
+export function validateProjectCopyStagingDirectory(directory:string):BigIntStats {
+ const absolute=path.resolve(directory),root=path.parse(absolute).root;
+ let current=root,info=lstatSync(root,{bigint:true});
+ for(const segment of absolute.slice(root.length).split(path.sep).filter(Boolean)){
+  current=path.join(current,segment);info=lstatSync(current,{bigint:true});
+  if(!info.isDirectory()||info.isSymbolicLink())throw new AppError('PROJECT_LOCATION_INVALID','项目位置不能经过符号链接或非目录。',400);
+ }
+ if(!info.isDirectory())throw new AppError('PROJECT_LOCATION_INVALID','项目位置不是目录。',400);
+ return info;
+}
+export function createProjectCopyStagingDirectory(parent:string,prefix='project-copy-'):string {
+ if(!/^\.?[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(prefix))throw new TypeError('Invalid project staging prefix');
+ validateProjectCopyStagingDirectory(parent);
+ const created=mkdtempSync(path.join(path.resolve(parent),prefix));
+ try{
+  try{chmodSync(created,0o700);}catch(error){if(!['EPERM','ENOTSUP','EOPNOTSUPP'].includes(String((error as {code?:unknown})?.code)))throw error;}
+  validateProjectCopyStagingDirectory(created);return created;
+ }catch(error){rmSync(created,{recursive:true,force:true});throw error;}
+}
+export interface ProjectCopyPlaceholder {readonly dev:string;readonly ino:string}
+export interface PublishProjectCopyOptions {
+ readonly onPlaceholder?:(identity:ProjectCopyPlaceholder)=>void;
+ readonly onPublished?:()=>void;
+}
+/** S5 publication only. V2's established hard-link failure contract remains
+ * in publishCopiedFile. The coordinator accepts the metadata-check/rename
+ * gap on volumes without links; no stronger inode CAS is claimed here. */
+export function publishProjectCopyFile(temporary:string,destination:string,options:PublishProjectCopyOptions={}):void {
+ if(path.resolve(temporary)===path.resolve(destination))throw new TypeError('A project publication needs a distinct stage');
+ validateProjectCopyStagingDirectory(path.dirname(destination));
+ let placeholder:ProjectCopyPlaceholder|undefined,published=false;
+ try{
+  try{linkSync(temporary,destination);published=true;}
+  catch(error){
+   const code=(error as {code?:unknown})?.code;
+   if(code==='EEXIST')throw projectFileError('PROJECT_FILE_EXISTS',{database:'project',reason:'exists'});
+   if(!['EPERM','ENOTSUP','EOPNOTSUPP','ENOSYS','EXDEV'].includes(String(code)))throw error;
+   let fd:number;
+   try{fd=openSync(destination,'wx',0o600);}
+   catch(failure){
+    const why=(failure as {code?:unknown})?.code;
+    if(why==='EEXIST')throw projectFileError('PROJECT_FILE_EXISTS',{database:'project',reason:'exists'});
+    if(['ENOTSUP','EOPNOTSUPP','ENOSYS'].includes(String(why)))throw new AppError('PROJECT_COPY_UNSUPPORTED_FILESYSTEM','目标卷不能安全发布项目文件。',409);
+    throw failure;
+   }
+   try{const info=fstatSync(fd,{bigint:true});placeholder={dev:String(info.dev),ino:String(info.ino)};fsyncSync(fd);}finally{closeSync(fd);}
+   options.onPlaceholder?.(placeholder);
+   syncCopiedDirectory(path.dirname(destination));
+   const current=lstatSync(destination,{bigint:true,throwIfNoEntry:false});
+   if(!current?.isFile()||current.isSymbolicLink()||String(current.dev)!==placeholder.dev||String(current.ino)!==placeholder.ino)
+    throw projectFileError('PROJECT_FILE_EXISTS',{database:'project',reason:'exists'});
+   renameSync(temporary,destination);published=true;
+  }
+  options.onPublished?.();syncCopiedDirectory(path.dirname(destination));
+ }catch(error){
+  if(placeholder&&!published){
+   const current=lstatSync(destination,{bigint:true,throwIfNoEntry:false});
+   if(current?.isFile()&&String(current.dev)===placeholder.dev&&String(current.ino)===placeholder.ino){rmSync(destination);syncCopiedDirectory(path.dirname(destination));}
+  }
+  throw error;
+ }
 }
 
 /** Native backup of the owner's attached project database. In particular this

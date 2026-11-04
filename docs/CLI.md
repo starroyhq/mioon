@@ -1121,15 +1121,16 @@ Discover `mioon schema timeline.loudness.apply`. After an explicitly reviewed cu
 
 ## 项目文件（.mioon）
 
-`mioon project export|import|duplicate` 走专门的管理接口，不在业务 RPC schema 和 MCP 工具目录里，详见 [PROJECT-PACKAGE.md](PROJECT-PACKAGE.md)。
+`mioon project export|import` 走专门的管理接口，不在业务 RPC schema 和 MCP 工具目录里，详见 [PROJECT-PACKAGE.md](PROJECT-PACKAGE.md)。
 
 | 命令 | 输入 |
 | --- | --- |
 | `project export` | `--input '{"projectId":"…","media":"all"\|"used"}' --output <新文件>`；不覆盖已有文件，进度写到 stderr |
 | `project import` | `--file <文件.mioon> --request-id <id>`，可选 `--input '{"name":"…"}'`；先完整校验再创建 |
-| `project duplicate` | `--request-id <id> --input '{"projectId":"…","name":"…"}'` |
 
-导入和复制要求调用方提供 requestId；用同一个 requestId 重试时，返回同一个项目。
+导入要求调用方提供 requestId；用同一个 requestId 重试时，返回同一个项目。
+
+`mioon project duplicate` 暂不可用，在读取输入、初始化本机存储或发起网络请求前返回 `PROJECT_COPY_UNAVAILABLE`（409）；旧共享客户端的 `duplicateProject` 也直接返回同一错误，不发起请求。CLI/MCP 的新项目复制、另存为入口留待 0.1.x；当前应用层能力见 [PROJECT-COPIES.md](PROJECT-COPIES.md)。
 
 ## 素材引用导入
 

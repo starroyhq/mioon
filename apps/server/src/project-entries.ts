@@ -7,13 +7,17 @@ import type {ProjectEntriesResponse} from '../../../packages/contracts/src/proje
 import {
   projectEntryCreateInputSchema, projectEntryOpenPathInputSchema, projectEntryAcquireInputSchema,
   projectEntryReleaseInputSchema, projectEntryWindowSchema,
+  projectEntrySaveAsInputSchema,
 } from '../../../packages/contracts/src/project-entry-native.ts';
+import {projectCopyInputSchema} from '../../../packages/contracts/src/project-copies.ts';
+import type {ProjectCopyResponse} from '../../../packages/contracts/src/project-copies.ts';
 import type {ProjectEntryControlPort, ProjectEntryWindow, ProjectEntryWindowRevoked, ProjectEntryCreateInput} from '../../../packages/contracts/src/project-entry-native.ts';
 import type {RecentProject} from '../../../packages/contracts/src/project-registry.ts';
 import type {ProjectHostManager} from './project-host/manager.ts';
 import type {ProjectHostRuntime, ProjectLease} from './project-host/host.ts';
 import type {ProjectRegistryPort} from './project-host/ports.ts';
 import {projectHostError} from './project-host/errors.ts';
+import type {ProjectCopies} from './project-host/copies.ts';
 
 interface WindowSlot<Runtime extends ProjectHostRuntime> {
   readonly key: string;
@@ -37,7 +41,7 @@ export function projectEntryWithinRoot(root: string, file: string): boolean {
 
 /** A production capability owned by one server instance. Neither its window
  * bindings nor its path-taking methods are registered as HTTP operations. */
-export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries}: {
+export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, copies}: {
   readonly manager: ProjectHostManager<Runtime>;
   readonly registry: ProjectRegistryPort;
   readonly projectsDir: string;
@@ -46,6 +50,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   readonly readScope: () => string;
   readonly createProject: (input: ProjectEntryCreateInput) => Promise<{readonly registration: RecentProject}>;
   readonly refreshSummaries: () => void;
+  readonly copies?: Pick<ProjectCopies, 'duplicate' | 'saveAs' | 'replay'>;
 }) {
   const instanceId = randomUUID();
   let establishedScope: string | undefined;
@@ -137,6 +142,47 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
       const {windowId} = parse(projectEntryReleaseInputSchema, input), slot = windows.get(windowId);
       if (slot) releaseSlot(windowId, slot);
     },
+    ...(copies ? {
+      duplicate: async (raw: unknown): Promise<ProjectCopyResponse> => {
+        scope();
+        const result = await copies.duplicate(parse(projectCopyInputSchema, raw));
+        scope();
+        return result;
+      },
+      saveAs: async (raw: unknown): Promise<{copy: ProjectCopyResponse; window: ProjectEntryWindow}> => {
+        scope();
+        const {windowId, ...input} = parse(projectEntrySaveAsInputSchema, raw);
+        const cached = copies.replay('project.save-as', input);
+        const slot = windows.get(windowId);
+        if (cached && slot?.lease?.host.projectId === cached.project.projectId) {
+          if (slot.lease.signal.aborted) throw unavailable();
+          return {copy: cached, window: await slot.promise};
+        }
+        if (!slot?.lease || slot.lease.host.projectId !== input.projectId || slot.lease.signal.aborted) throw unavailable();
+        const status = manager.status(input.projectId);
+        if (status?.leases.window !== 1 || status.leases.request > 0 || status.leases.task > 0
+          || !slot.lease.host.recovery && slot.lease.host.runtime.isBusy()) throw projectHostError('PROJECT_HOST_BUSY', {projectId: input.projectId});
+        // Release only this trusted window owner. The service then closes the
+        // source under its exclusive gate; another window is never closed.
+        releaseSlot(windowId, slot);
+        try {
+          const copy = cached ?? await copies.saveAs(input);
+          scope();
+          const window = await bind(windowId, 'id:' + copy.project.projectId, () => manager.acquire(copy.project.projectId, 'window'));
+          return {copy, window};
+        } catch (error) {
+          if (!signal.aborted) {
+            try {await bind(windowId, 'id:' + input.projectId, () => manager.acquire(input.projectId, 'window'));}
+            catch (reopenError) {
+              throw new AppError('PROJECT_SAVE_AS_REOPEN_FAILED', '另存为未完成，原项目也未能重新打开，请重新定位原项目。', 409,
+                {projectId: input.projectId, causeCode: error instanceof AppError ? error.code : 'COPY_FAILED',
+                  reopenCode: reopenError instanceof AppError ? reopenError.code : 'OPEN_FAILED'});
+            }
+          }
+          throw error;
+        }
+      },
+    } : {}),
     onWindowRevoked: listener => {
       active();
       if (typeof listener !== 'function') throw invalid();

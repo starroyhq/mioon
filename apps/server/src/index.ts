@@ -32,6 +32,7 @@ import {serverAppDirectories} from './project-host/directories.ts';
 import {validateApplicationStorage, createApplicationFileGuard} from './project-host/application-storage.ts';
 import {createProjectHostManager} from './project-host/manager.ts';
 import {createProjectBackups} from './project-host/backups.ts';
+import {createProjectCopies} from './project-host/copies.ts';
 import type {ProjectHostManager} from './project-host/manager.ts';
 import type {InspectProject} from './project-host/host.ts';
 import {composeHostedProject} from './project-host/runtime.ts';
@@ -116,6 +117,7 @@ export interface ServerOptions {
   /** In-process shutdown fixture only; the default still performs the real
    * SQLite backup/copy. No request or environment can select this port. */
   projectBackupCopyForTest?: Parameters<typeof createProjectBackups>[0]['copy'];
+  projectCopyBoundaryForTest?: Parameters<typeof createProjectCopies>[0]['onBoundary'];
   localDraftChannel?: LocalDraftChannel;
   nativeAudioPreview?: NativeAudioPreviewAuthority;
 }
@@ -167,6 +169,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
   let application: Awaited<ReturnType<typeof composeApplicationRuntime>> | undefined;
   let manager: ProjectHostManager<HostedProject> | undefined;
   let drainBackups: (() => Promise<void>) | undefined;
+  let drainCopies: (() => Promise<void>) | undefined;
   let server: Server | undefined;
   const opened = new Map<string, HostedProject>();
   const selfPort = (): number | undefined => { const address = server?.address(); return address !== null && typeof address === 'object' ? address.port : undefined; };
@@ -227,7 +230,11 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         if (entry && summary) appLibrary.registry.upsert({...entry, name: summary.name, summary: summary.summary});
       }
     };
-    const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir,
+    const copies = createProjectCopies({manager, library: appLibrary, directories, assertProjectFile, signal: shutdown.signal,
+      ...(options.projectCopyBoundaryForTest === undefined ? {} : {onBoundary: options.projectCopyBoundaryForTest})});
+    drainCopies = copies.drain;
+    await copies.recover();
+    const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies,
       channel, signal: shutdown.signal, createProject, refreshSummaries, readScope: () => {
         const directory = validatePrivateDirectory(root), db = validateManagedFile(appLibrary.databaseFile, {root});
         const identity = projectFileIdentity(appLibrary.databaseFile);
@@ -238,7 +245,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       }});
     const userRules=createMioUserRules(library,{signal:shutdown.signal});
     const appAgentHttp = createApplicationAgentHttp(library, shutdown.signal);
-    const rpc = createApplicationRpc({library, app, manager, directories, backups, createProject, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
+    const rpc = createApplicationRpc({library, app, manager, directories, backups, copies, createProject, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
       imageProfiles: input => listImageProfiles(app.profileDependencies, input as never), refreshSummaries});
     const covers = createProjectCoverHttp({directories, readProject: id => library!.registry.get(id), signal: shutdown.signal});
     const policy = createApplicationPolicy(library.agentPolicy);
@@ -396,7 +403,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       const drain = new Promise<void>((resolve, reject) => server!.close(error => error ? reject(error) : resolve()));
       const force = setTimeout(() => server?.closeAllConnections(), 3000); force.unref();
       try {
-        await boundedShutdown(Promise.all([projects.closeAll(), files.close(), drain, backups.drain()]), 'SERVER_STOP_TIMEOUT');
+        await boundedShutdown(Promise.all([projects.closeAll(), files.close(), drain, backups.drain(), copies.drain()]), 'SERVER_STOP_TIMEOUT');
         await boundedShutdown(Promise.all([terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), app.close()]), 'SERVER_STOP_TIMEOUT');
       } finally { clearTimeout(force); }
       appLibrary.close();
@@ -407,7 +414,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
   } catch (error) {
     shutdown.abort(); server?.closeAllConnections();
     const drain = server?.listening ? new Promise<void>(resolve => server!.close(() => resolve())) : Promise.resolve();
-    await boundedShutdown(Promise.all([drain, manager?.closeAll(), files.close(), drainBackups?.()]), 'SERVER_STOP_TIMEOUT');
+    await boundedShutdown(Promise.all([drain, manager?.closeAll(), files.close(), drainBackups?.(), drainCopies?.()]), 'SERVER_STOP_TIMEOUT');
     await boundedShutdown(Promise.all([terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), application?.close()]), 'SERVER_STOP_TIMEOUT');
     library?.close(); lock.release(); throw error;
   }
