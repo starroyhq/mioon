@@ -1,11 +1,13 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, unlink, realpath, cp } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, unlink, realpath, cp, symlink, chmod } from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import desktopBuildMetadata from '../apps/desktop/build-metadata.ts';
 import desktopIdentity from '../apps/desktop/identity.ts';
+import {stageProjectExampleResources} from '../packages/business/src/project-example-resources.ts';
 
 const { readBuildMetadata, validateBuildMetadata, validateStagedMetadata } = desktopBuildMetadata;
 const { identityForChannel } = desktopIdentity;
@@ -26,6 +28,7 @@ async function fixture(t: TestContext, root = rootPackage(), desktop = desktopPa
 
 async function builderFixture(t: TestContext) {
   const directory = await fixture(t);
+  await symlink(fileURLToPath(new URL('../node_modules/', import.meta.url)), path.join(directory, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   for (const name of ['builder-config.ts', 'subtitle-resources.ts', 'runtime-notices.ts', 'build-metadata.ts', 'identity.ts']) {
     await copyFile(new URL(`../apps/desktop/${name}`, import.meta.url), path.join(directory, 'apps/desktop', name));
   }
@@ -169,6 +172,7 @@ test('beforePack rejects stale same-channel versions and names for both channels
   const stage = path.join(directory, 'apps/desktop/build');
   await mkdir(stage);
   await cp(new URL('../packages/business/resources/subtitles/',import.meta.url),path.join(stage,'subtitles'),{recursive:true});
+  await stageProjectExampleResources(fileURLToPath(new URL('../examples/project-file-v1/', import.meta.url)), path.join(stage, 'examples'));
   const stageFile = path.join(stage, 'package.json'), context = { packager: { info: { appDir: stage } } };
   for (const channel of ['production', 'development']) {
     const identity = identityForChannel(channel), config = builderConfig(channel);
@@ -195,4 +199,21 @@ test('staging build preflights metadata before cleanup and writes the root appli
   assert.ok(validation >= 0 && cleanup > validation, 'Metadata validation must run before staging removal');
   assert.match(source, /version: appVersion/);
   assert.doesNotMatch(source, /version: pkg\.version/);
+});
+
+test('beforePack rejects missing or corrupted examples after metadata and subtitle checks without changing the stage', async t => {
+  const {directory, builderConfig} = await builderFixture(t), stage = path.join(directory, 'apps/desktop/build');
+  await mkdir(stage); await cp(new URL('../packages/business/resources/subtitles/', import.meta.url), path.join(stage, 'subtitles'), {recursive: true});
+  const identity = identityForChannel('production'), metadata = JSON.stringify(stagePackage(identity)), metadataFile = path.join(stage, 'package.json');
+  await writeFile(metadataFile, metadata);
+  const config = builderConfig('production'), context = {packager: {info: {appDir: stage}}};
+  await assert.rejects(config.beforePack(context), {code: 'ENOENT'});
+  const examples = path.join(stage, 'examples');
+  const entries = await stageProjectExampleResources(fileURLToPath(new URL('../examples/project-file-v1/', import.meta.url)), examples);
+  await config.beforePack(context);
+  const asset = path.join(entries[0].directory, entries[0].manifest.assets[0].path), original = await readFile(asset);
+  await chmod(asset, 0o600); await writeFile(asset, Buffer.alloc(original.length));
+  await assert.rejects(config.beforePack(context), {code: 'PROJECT_EXAMPLE_RESOURCES_INVALID'});
+  assert.equal(await readFile(metadataFile, 'utf8'), metadata);
+  assert.deepEqual(await readFile(asset), Buffer.alloc(original.length), 'verification does not silently repair corrupted package resources');
 });

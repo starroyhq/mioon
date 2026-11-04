@@ -437,6 +437,7 @@ async function start(): Promise<DesktopStartReport> {
       if (!expected && backend === ownedBackend && !quitting) { windowHost?.refresh(); if (windowContext?.incident === incident && !smokeOutput) void backendFailed(ownedBackend, incident); }
     });
     const started = await backend.start({ dataDir: directories.dataDir, cacheDir:directories.cacheDir, projectsDir:directories.projectsDir, distDir: path.join(app.getAppPath(), 'web'),
+      projectTemplatesDir:path.join(app.isPackaged?process.resourcesPath:app.getAppPath(),'examples'),
       subtitleResourcesDir:path.join(app.isPackaged?process.resourcesPath:app.getAppPath(),'subtitles'),token, nativeAudioPreview: nativeAudioIdentity.config });
     startup.checkpoint();
     incident.assertAlive();

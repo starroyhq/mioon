@@ -1,6 +1,7 @@
 import {defineConfig} from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import {fileURLToPath} from 'node:url';
+import {projectExamplesPlugin} from './project-examples-plugin.ts';
 
 const port = 5173;
 const backend = 'http://127.0.0.1:4318';
@@ -28,7 +29,7 @@ const proxy = () => ({
   },
 });
 export default defineConfig(() => ({
-  plugins: [loopbackOnly, tailwindcss()],
+  plugins: [loopbackOnly, tailwindcss(), projectExamplesPlugin(fileURLToPath(new URL('../../examples/project-file-v1', import.meta.url)))],
   resolve: {alias: {'@': fileURLToPath(new URL('./src', import.meta.url))}},
   server: {host: '127.0.0.1',port,strictPort:true,cors:false,proxy:{'/api':proxy(),'/media':proxy(),'/health':proxy()}},
   build: {outDir: 'dist', emptyOutDir:true},

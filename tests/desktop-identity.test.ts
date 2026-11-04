@@ -5,8 +5,10 @@ import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, stat, cp } from 'node
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import {fileURLToPath} from 'node:url';
 import desktopIdentity from '../apps/desktop/identity.ts';
 import { dataPaths, ensureDataIdentity, writeConnection, removeConnection } from '../apps/desktop/src/config.ts';
+import {stageProjectExampleResources} from '../packages/business/src/project-example-resources.ts';
 const { identityForChannel, buildChannel } = desktopIdentity;
 const require = createRequire(import.meta.url);
 const production = identityForChannel('production'), development = identityForChannel('development');
@@ -59,6 +61,7 @@ test('both package configs retain security and separate identities, names and ou
 test('packaging refuses missing or opposite-channel staging, including packaged development', async () => {
   const root = await temp();
   await cp(new URL('../packages/business/resources/subtitles/',import.meta.url),path.join(root,'subtitles'),{recursive:true});
+  await stageProjectExampleResources(fileURLToPath(new URL('../examples/project-file-v1/', import.meta.url)), path.join(root, 'examples'));
   const { appVersion } = require('../apps/desktop/build-metadata.ts').readBuildMetadata();
   try {
     for (const identity of [production, development]) {

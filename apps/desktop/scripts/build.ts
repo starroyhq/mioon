@@ -10,6 +10,7 @@ import {prepareBuilderConfig} from './prepare-builder-config.ts';
 import {localRequireBundlePlugin} from './bundle-local-require.ts';
 import {stageTrayResources} from '../tray-resources.ts';
 import {stageProjectNotices} from './stage-project-notices.ts';
+import {stageProjectExampleResources, verifyProjectExampleResources} from '../../../packages/business/src/project-example-resources.ts';
 const identity = desktopIdentity.identityForChannel(desktopIdentity.buildChannel(process.argv.slice(2)));
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const { appVersion, desktopPackage: pkg } = desktopBuildMetadata.readBuildMetadata(root);
@@ -21,6 +22,8 @@ const desktop = path.join(root, 'apps/desktop');
 const output = path.join(desktop, 'build');
 const web = path.join(root, 'apps/web/dist');
 await readFile(path.join(web, 'index.html')).catch(() => { throw new Error('Build the shared web UI first: pnpm build'); });
+const examples = path.join(web, 'project-examples');
+verifyProjectExampleResources(examples);
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 for (const name of ['main', 'backend']) {
@@ -35,7 +38,9 @@ for (const name of ['main', 'backend']) {
 await build({ entryPoints: [path.join(desktop, 'src/preload.ts')], outfile: path.join(output, 'preload.cjs'),
   bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron'],
   sourcemap: false, legalComments: 'eof', logLevel: 'info' });
-await cp(web, path.join(output, 'web'), { recursive: true, dereference: true });
+await cp(web, path.join(output, 'web'), { recursive: true, dereference: true,
+  filter: source => source !== examples });
+await stageProjectExampleResources(examples, path.join(output, 'examples'));
 await mkdir(path.join(output, 'icons'));
 await cp(path.join(desktop, 'resources/icon.png'), path.join(output, 'icons/icon.png'));
 await stageTrayResources(path.join(desktop, 'resources/tray'), path.join(output, 'icons/tray'));
