@@ -5,6 +5,7 @@ import {backup, DatabaseSync} from 'node:sqlite';
 import type {SQLInputValue} from 'node:sqlite';
 import {createPrivateTemporaryDirectory} from '@mioon/contracts/private-storage';
 import {AppError} from '../../../contracts/src/app-error.ts';
+import type {MediaReference} from '../../../contracts/src/media-reference.ts';
 import {isProjectId, PROJECT_DATABASE_NAMES} from '../../../contracts/src/project-file.ts';
 import {rewriteProjectCopyRow,relocateProjectCopyReference} from './copy-values.ts';
 import {
@@ -26,6 +27,8 @@ export interface CopyProjectOptions {
   readonly projectName?: string;
   /** Only isolated S5 targets clear local-process revision evidence. */
   readonly clearProcessRevisions?: true;
+  /** Trusted template whitelist: every asset must map to a verified independent copy. */
+  readonly referenceTargets?: ReadonlyMap<string, MediaReference>;
   /** Trusted S5 publication; omitted V2 callers retain their existing contract. */
   readonly publish?: (temporary:string,destination:string)=>void;
   /** Trusted recovery-intent ID, or a fresh UUID when S5 copies directly. */
@@ -91,7 +94,7 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
             if(table==='projects'&&options.projectName!==undefined&&typeof row.data==='string'){const data=JSON.parse(row.data) as Record<string,unknown>;data.name=options.projectName;row.data=JSON.stringify(data);}
             if (table === 'assets' && typeof row.data === 'string') {
               const data = JSON.parse(row.data) as Record<string, unknown>;
-              relocateProjectCopyReference(data, sourceProjectDir, path.resolve(options.targetProjectDir ?? parent));
+              relocateProjectCopyReference(data, sourceProjectDir, path.resolve(options.targetProjectDir ?? parent), options.referenceTargets);
               row.data = JSON.stringify(data);
             }
             const columns = Object.keys(row);

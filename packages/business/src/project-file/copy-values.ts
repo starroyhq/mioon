@@ -1,6 +1,7 @@
 import {lstatSync} from 'node:fs';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
+import type {MediaReference} from '../../../contracts/src/media-reference.ts';
 import {referencePathForRealFile,resolveReferencePath} from '../media-reference/paths.ts';
 
 /** Only ownership fields change. User text and entity/provenance IDs do not
@@ -23,8 +24,15 @@ export function rewriteProjectCopyRow(table:string,input:Record<string,unknown>,
 
 /** Rebase a reference without reading the material. Missing files remain
  * references to the same location rather than being silently discarded. */
-export function relocateProjectCopyReference(data:Record<string,unknown>,from:string,to:string):void {
+export function relocateProjectCopyReference(data:Record<string,unknown>,from:string,to:string,referenceTargets?:ReadonlyMap<string,MediaReference>):void {
  const parsed=mediaReferenceSchema.safeParse(data.reference);
+ if(referenceTargets){
+  const file=parsed.success?resolveReferencePath(from,parsed.data):null,target=file===null?undefined:referenceTargets.get(file);
+  if(!parsed.success||!target||parsed.data.sizeBytes!==target.sizeBytes||parsed.data.sampledSha256!==target.sampledSha256
+   ||parsed.data.fullSha256!==null&&parsed.data.fullSha256!==target.fullSha256)
+   throw new AppError('PROJECT_TEMPLATE_INVALID','模板素材未在已校验的白名单中或指纹不匹配。',422,{reason:'asset-reference'});
+  data.reference={...mediaReferenceSchema.parse(target)};return;
+ }
  if(!parsed.success||parsed.data.pathForm==='absolute')return;
  const file=resolveReferencePath(from,parsed.data);
  if(file===null)throw new AppError('PROJECT_BACKUP_COPY_FAILED','无法安全地复制项目内容',409,{reason:'media-reference'});
