@@ -17,27 +17,19 @@ import {resolveProjectMediaFile} from '@mioon/business/project-media-storage';
 import type { Store as Store } from '@mioon/business/store-contract';
 import { ownsStoreLock, assertProjectStore } from '@mioon/business/store-runtime';
 import { createEditTasks } from '@mioon/business/edit-tasks';
-import { validateImageConsumption } from '@mioon/business/image-consumption';
 import { createCompatibleImageGateway,createLiveImageGateway } from '@mioon/business/images/gateway';
 import { createCustomImageSettings,createImageSettings } from '@mioon/business/images/settings';
 import { createCustomImageSettingsFile,createImageSettingsFile } from '@mioon/business/images/settings-file';
 import { createLastProject,readLastProjectTarget } from '@mioon/business/last-project';
-import { createLocalDelivery } from '@mioon/business/local-delivery';
-import { createLocalDrafts } from '@mioon/business/local-drafts';
-import { createLocalMutationServices } from '@mioon/business/local-mutations';
-import { createLocalShotText } from '@mioon/business/local-shot-text';
-import { createLocalShotTextDomain } from '@mioon/business/local-shot-text-domain';
 import { boundedShutdown } from '@mioon/business/operation-lifecycle';
 import { isProjectStore } from '@mioon/business/project-file/index';
 import { createProjectPackageService } from '@mioon/business/project-package/service';
 import type { ServiceApplicationPorts } from '@mioon/business/services';
-import { canonical,hash } from '@mioon/business/services';
-import { createTimelineRecoveryBoundary,readTimelineReceipt } from '@mioon/business/timeline-recovery';
 import { readOwnedTimelineAsset } from '@mioon/business/timeline-sources';
 import { createUiPreferences } from '@mioon/business/ui-preferences';
 import { createVideoSettings } from '@mioon/business/video/settings';
 import { createWorkspaceConfiguration } from '@mioon/business/workspace-configuration';
-import { AppError,hasRequestNotAppliedProof,isTimelineMutationResponse,isTimelineRenderRecord,publicValue,schemas } from '@mioon/contracts';
+import { AppError,isTimelineRenderRecord } from '@mioon/contracts';
 import { readPrivateFile,validateManagedDirectory,validateManagedFile,validatePrivateDirectory,writePrivateFileAtomic } from '@mioon/contracts/private-storage';
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage,ServerResponse } from 'node:http';
@@ -54,13 +46,11 @@ import { createExportFileRecovery } from './export-file-recovery.ts';
 import { createImageHttp } from './image-http.ts';
 import type { ServerOptions } from './index.ts';
 import { createLastProjectHttp } from './last-project-http.ts';
-import { createLocalDeliveryHttp } from './local-delivery-http.ts';
-import { createLocalDraftHttp } from './local-drafts-http.ts';
-import { createLocalShotTextHttp } from './local-shot-text-http.ts';
 import type { createProjectDeletionGate } from './project-deletion-gate.ts';
 import { createProjectPackageHttp } from './project-package-http.ts';
 import type { ProjectAddress } from './project-host/request.ts';
 import {ProjectHostCleanupError} from './project-host/host.ts';
+import {createProjectDraftsFactory} from './project-host/drafts.ts';
 import { createTimelineAudioContinuousHttp } from './timeline-audio-continuous-http.ts';
 import { createTimelineAudioPreviewHttp } from './timeline-audio-preview-http.ts';
 import { createVideoHttp } from './video-http.ts';
@@ -72,13 +62,9 @@ type ImageSettings = Awaited<ReturnType<typeof createImageSettings>>;
 type CustomImageSettings = Awaited<ReturnType<typeof createCustomImageSettings>>;
 type VideoSettings = Awaited<ReturnType<typeof createVideoSettings>>;
 type ComfySettings = Awaited<ReturnType<typeof createComfySettings>>;
-type LocalDrafts = ReturnType<typeof createLocalDrafts>;
-type LocalDelivery = ReturnType<typeof createLocalDelivery>;
 type LastProject = ReturnType<typeof createLastProject>;
 type WorkspacePreferences = ReturnType<typeof createWorkspacePreferences>;
 type ExportFileRecovery = ReturnType<typeof createExportFileRecovery>;
-type LocalShotText = ReturnType<typeof createLocalShotText>;
-type LocalDraftHttpHandler = ReturnType<typeof createLocalDraftHttp>;
 
 /** Trusted application-owned ports, never HTTP or environment configuration.
  * The app library remains on its own connection; it is not attached here. */
@@ -112,9 +98,9 @@ export interface ProjectRuntimeOptions extends Pick<ServerOptions,
   readonly settings?: {readonly image?: ImageSettings; readonly customImage?: CustomImageSettings; readonly video?: VideoSettings; readonly comfy?: ComfySettings};
 }
 
-/** Shared project assembly. It neither opens a store nor binds a listener.
- * The legacy server uses the default ports; kernel assembly is opt-in and
- * requires explicit app dependencies until the host switches in S0 P4. */
+/** Shared assembly on a real kernel store and explicit application ports.
+ * It neither opens a store nor binds a listener; drafts remain an unbound
+ * factory until the host supplies its own context. */
 export async function composeProjectRuntime({store, shutdown, deletionGate, baseRoot = store.root, port, serverPort, listeningPort,
   agentSettings: suppliedAgentSettings, agentSecretCodecFactory, imageSecretCodec, videoSecretCodec, imageNetwork, comfyNetwork,
   comfyModule = 'load', taskGatewayV2, taskFault, localDraftChannel = 'web', nativeAudioPreview, application, serviceApplication, settings,
@@ -125,9 +111,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
   const kernel = true;
   if ((!application || !serviceApplication)) throw new TypeError('Kernel project assembly requires application ports');
   const appRoot = application?.dataDir ?? root;
-  const localRoot = store.localDir;
   const appScope = application ? {databaseFile: application.databaseFile} : {};
-  const draftScope = {databaseFile: path.join(store.localDir, 'history.db')};
   const documents = application ? {documents: createAppCompanionDocuments(application)} : {};
   const ownsLock = () => ownsStoreLock(store);
   const ownsAppLock = application ? () => {
@@ -202,12 +186,6 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     uiPreferences = createUiPreferences({root:appRoot,...appScope,...documents,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
       guards:{ownsLock:ownsAppLock,isReadOnly:()=>false,hasProject}});
-    const localDrafts: LocalDrafts = createLocalDrafts({root:localRoot,...draftScope,channel:localDraftChannel,signal:shutdown.signal,
-      storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
-      guards:{ownsLock,
-        readTimeline:projectId=>createTimelineRecoveryBoundary(store.db,{projectId}).read(),
-        readClipAsset:(projectId,clip)=>createTimelineRecoveryBoundary(store.db,{projectId}).clipSource(clip)}});
-    const localDraftHttp: LocalDraftHttpHandler = createLocalDraftHttp({drafts:localDrafts,signal:shutdown.signal});
     const lastProject: LastProject = createLastProject({root:appRoot,...appScope,...documents,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
       guards:{ownsLock:ownsAppLock,
@@ -216,43 +194,15 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     // Imported generations are finished history, so they are archived out of the task center.
     const projectPackages = null;
     const projectPackageHttp = createProjectPackageHttp({service:()=>projectPackages!,available:()=>projectPackages!==null,signal:shutdown.signal});
-    const localDelivery: LocalDelivery = createLocalDelivery({root:localRoot,...draftScope,channel:localDraftChannel,signal:shutdown.signal,
-      storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
-      guards:{ownsLock,
-        readTimeline:projectId=>createTimelineRecoveryBoundary(store.db,{projectId}).read({sourceSemantics:false}),
-        isRenderInput:value=>schemas['timeline.render'].safeParse(value).success,
-        isRenderResponse:(input,value)=>isTimelineMutationResponse('timeline.render',input,value),
-        isNotApplied:(input,error)=>hasRequestNotAppliedProof(error,input,{operation:'timeline.render'}),
-        readReceipt:input=>{
-          const saved=readTimelineReceipt(store.db,input,'timeline.render');
-          if(!saved)return null;
-          if(saved.requestHash!==hash({operation:'timeline.render',input}))throw new AppError('IDEMPOTENCY_CONFLICT','原导出请求身份与内容不一致。',409);
-          return publicValue(createTimelineRecoveryBoundary(store.db,input).replay('timeline.render',saved.response as string));
-        },
-        render:async input=>serviceCall('timeline.render',input)}});
-    const localDeliveryHttp = createLocalDeliveryHttp({delivery:localDelivery,signal:shutdown.signal});
     const exportFileRecovery: ExportFileRecovery=createExportFileRecovery({root,db:store.db,signal:shutdown.signal,hold:deletionGate.hold,
       guards:{isTimelineRenderRecord,readOwnedAsset:(projectId,assetId)=>readOwnedTimelineAsset(store.db,projectId,assetId)},
       assertAvailable:()=>{if(!ownsStoreLock(store))throw new AppError('EXPORT_FILE_UNAVAILABLE','导出文件不可用。',409);},
       validateFile:(file,allowMissing)=>resolveProjectMediaFile(store,path.relative(root,file),{allowMissing}).info,
       validateDirectory:directory=>validateManagedDirectory(directory,{root:path.join(root,'media')})});
-    let localShotText!: LocalShotText,localShotTextHttp: HttpHandler=async()=>false,audioPreviewHttp: HttpHandler=async()=>false,continuousAudioHttp: HttpHandler=async()=>false;
     const ordinary = services;
-    const neverMutate=()=>{throw new Error('Read-only shot receipt boundary');};
-    const shotReplay=createLocalMutationServices(ordinaryStore,{canonical,readOnly:true,check:neverMutate,now:neverMutate,references:{guardManualUpdate:neverMutate}});
-    const shotTextDomain=createLocalShotTextDomain({db:store.db,canonical,
-      replay:(projectId,input)=>shotReplay.updateShotInProject(projectId,input),
-      // Domain reads cross-project ownership before this fixed consumption check;
-      // the stored asset record always starts with its string id.
-      validateAsset:(projectId,asset)=>validateImageConsumption(store.db,asset as Record<string, unknown> & {id: string},projectId),
-      isRevisionConflict:error=>error instanceof AppError&&error.code==='REVISION_CONFLICT',
-      updateShotInProject:(projectId,input)=>ordinary.updateShotInProject(projectId,input)});
-    localShotText=createLocalShotText({root:localRoot,...draftScope,channel:localDraftChannel,signal:shutdown.signal,
-      storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
-      guards:{...shotTextDomain,ownsLock:()=>ownsStoreLock(store),
-        isShotUpdateInput:value=>schemas['shot.update'].safeParse(value).success}});
-    localShotTextHttp=createLocalShotTextHttp({shotText:localShotText,signal:shutdown.signal});
-
+    const draftsFactory = createProjectDraftsFactory({store, channel: localDraftChannel, services: ordinary,
+      call: (operation, input) => serviceCall(operation, input), ownsApplicationLock: ownsAppLock});
+    let audioPreviewHttp: HttpHandler=async()=>false,continuousAudioHttp: HttpHandler=async()=>false;
     audioPreviewHttp=createTimelineAudioPreviewHttp({service:ordinary.audioPreview,nativeAdmission:nativeAudioPreview,signal:shutdown.signal,assertAvailable:()=>{assertProjectStore(store);}});
     continuousAudioHttp=createTimelineAudioContinuousHttp({service:ordinary.audioPreview,nativeAdmission:nativeAudioPreview,signal:shutdown.signal,assertAvailable:()=>{assertProjectStore(store);}});
     // Desktop injects a narrow trusted-main proxy. Web mode persists only
@@ -275,9 +225,9 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
 
     return {
       providers, services, serviceCall, serviceDrain, agentSettings, agentAuthorizations, uiPreferences, imageSettings, customImageSettings, videoSettings, comfySettings,
-      localDrafts, lastProject, localDelivery, localShotText,
-      editTasks, workspacePreferences, imageHttp, comfyHttp, videoHttp, editTasksHttp, localDraftHttp, lastProjectHttp, projectPackageHttp,
-      localDeliveryHttp, exportFileRecovery, localShotTextHttp, audioPreviewHttp, continuousAudioHttp,
+      lastProject, draftsFactory,
+      editTasks, workspacePreferences, imageHttp, comfyHttp, videoHttp, editTasksHttp, lastProjectHttp, projectPackageHttp,
+      exportFileRecovery, audioPreviewHttp, continuousAudioHttp,
       taskToolsV2, taskRuntimeV2, taskHttpV2, agentDiagnosticsHttp, projectRules, closeSettings,
       startWorker: () => worker ??= startWorker(store, services, providers, {signal: shutdown.signal}),
     };

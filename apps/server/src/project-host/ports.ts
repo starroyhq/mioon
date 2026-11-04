@@ -109,11 +109,14 @@ export type MioRuntimeFactory = (context: ProjectHostContext, app: MioAppService
 // ---------------------------------------------------------------------------
 // S8: drafts
 
-/** One project's drafts. Before S8: today's three JSON modules with localDir
- * as their root; after S8: the draft tables of the local records. */
+/** One project's local-history draft services, borrowed from its host. */
 export interface ProjectDraftsPort {
   /** local-drafts, local-delivery and local-shot-text routes. */
   handle(request: ProjectRequest): Promise<boolean>;
+  /** Includes admitted work through terminal persistence and finally, even
+   * after the HTTP response closes. Stored pending intents alone are idle. */
+  isBusy(): boolean;
+  /** Stops admission and joins complete continuations before SQLite closes. */
   drain(): Promise<void>;
 }
 export type ProjectDraftsFactory = (context: ProjectHostContext) => ProjectDraftsPort;
