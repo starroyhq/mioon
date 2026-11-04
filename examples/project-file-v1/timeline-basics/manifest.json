@@ -1,0 +1,31 @@
+{
+  "templateId": "timeline-basics",
+  "version": 1,
+  "projectFile": {
+    "path": "timeline-basics.mioon",
+    "sizeBytes": 397312,
+    "sha256": "2ca9f8813c4cfe956b3a762ae87852748cc7d674ac6dedff76f645ce8a1696c9"
+  },
+  "assets": [
+    {
+      "path": "media/scene-a.mp4",
+      "sizeBytes": 119045,
+      "sha256": "2274735462c0eb91f03184262a0c7ce20f06dde066bac5c8c349ecdbab9fa6da"
+    },
+    {
+      "path": "media/scene-b.mp4",
+      "sizeBytes": 173037,
+      "sha256": "c42829953f33873940d3ced8118fe2fac6fa4fae88610daac8b1fd6b55243c08"
+    },
+    {
+      "path": "media/overlay-star.png",
+      "sizeBytes": 9292,
+      "sha256": "2ead76627a1ec2e41685649a8d21313929241cc5172d07d7402afb750b6d43e4"
+    },
+    {
+      "path": "media/sound-bed.wav",
+      "sizeBytes": 960078,
+      "sha256": "36c77738cba7b6732fb80bfbb25d7407c022c7d21db1c2865df26aeee1e61899"
+    }
+  ]
+}
