@@ -2,6 +2,21 @@ import type {MessageCatalog} from '../types.ts';
 
 /** Settings › Mio (design screens 07-09 and 07-10). */
 export const mioSettingsMessages = {
+  "agent.settings.models.loading": {"zh-Hans":"正在获取模型列表…","zh-Hant":"正在取得模型清單…","en":"Fetching models…","ja":"モデルを取得中…"},
+  "agent.settings.models.idle": {"zh-Hans":"先显示已保存的缓存；获取列表不会保存连接设置。","zh-Hant":"先顯示已儲存的快取；取得清單不會儲存連線設定。","en":"Saved cache appears first. Fetching a list does not save connection settings.","ja":"保存済みのキャッシュを先に表示します。一覧の取得では接続設定を保存しません。"},
+  "agent.settings.models.waitingKey": {"zh-Hans":"填写密钥后获取模型列表，也可以手动添加模型。","zh-Hant":"填寫金鑰後取得模型清單，也可以手動新增模型。","en":"Enter a key to fetch models, or add a model manually.","ja":"キーを入力してモデルを取得するか、モデルを手動で追加してください。"},
+  "agent.settings.models.success": {"zh-Hans":"已获取模型列表","zh-Hant":"已取得模型清單","en":"Model list fetched","ja":"モデル一覧を取得しました"},
+  "agent.settings.models.empty": {"zh-Hans":"服务返回了完整的空列表，可以手动添加模型。","zh-Hant":"服務傳回完整的空清單，可以手動新增模型。","en":"The service returned a complete empty list. You can add a model manually.","ja":"サービスが完全な空の一覧を返しました。モデルは手動で追加できます。"},
+  "agent.settings.models.partial": {"zh-Hans":"只获取到部分列表；保留当前模型和手动添加的模型。","zh-Hant":"僅取得部分清單；保留目前模型與手動新增的模型。","en":"Only part of the list was fetched. Current and manual models are retained.","ja":"一覧の一部のみを取得しました。現在のモデルと手動追加のモデルを保持します。"},
+  "agent.settings.models.invalidKey": {"zh-Hans":"密钥无效或没有列出模型的权限。检查密钥后点“获取”重试。","zh-Hant":"金鑰無效或沒有列出模型的權限。檢查金鑰後點「取得」重試。","en":"The key is invalid or cannot list models. Review it and fetch again.","ja":"キーが無効か、モデル一覧の権限がありません。確認して再取得してください。"},
+  "agent.settings.models.unavailable": {"zh-Hans":"服务不提供已确认的模型列表，无法单独检查密钥。手动添加模型并保存后测试连接。","zh-Hant":"服務未提供已確認的模型清單，無法單獨檢查金鑰。手動新增模型並儲存後測試連線。","en":"No confirmed model-list endpoint is available, so the key cannot be checked separately. Add a model manually, save, then test the connection.","ja":"確認済みのモデル一覧 API がなく、キーだけの確認はできません。モデルを手動追加して保存後、接続をテストしてください。"},
+  "agent.settings.models.unreachable": {"zh-Hans":"没能获取列表。保留上次列表，可以稍后点“获取”重试。","zh-Hant":"無法取得清單。保留上次清單，可稍後點「取得」重試。","en":"Could not fetch the list. The previous list is retained; fetch again later.","ja":"一覧を取得できませんでした。前回の一覧を保持します。後でもう一度取得してください。"},
+  "agent.settings.models.networkDenied": {"zh-Hans":"网络策略拒绝此地址，未获取模型列表。","zh-Hant":"網路原則拒絕此位址，未取得模型清單。","en":"The network policy blocked this address. No model list was fetched.","ja":"ネットワークポリシーがこのアドレスを拒否したため、一覧を取得していません。"},
+  "agent.settings.models.fetchedAt": {"zh-Hans":"上次获取 {time}","zh-Hant":"上次取得 {time}","en":"Last fetched {time}","ja":"最終取得 {time}"},
+  "agent.settings.models.missing": {"zh-Hans":"列表里已没有","zh-Hant":"清單中已沒有","en":"No longer listed","ja":"一覧にありません"},
+  "agent.settings.models.missingWarning": {"zh-Hans":"{model} 不在服务商最新的完整列表里，可能已经下线。先测试连接确认，或换一个模型。当前选择不会自动更换。","zh-Hant":"{model} 不在服務商最新的完整清單中，可能已經下線。先測試連線確認，或換一個模型。目前選擇不會自動更換。","en":"{model} is absent from the service’s latest complete list and may have been retired. Test the connection or choose another model. The current selection will not change automatically.","ja":"{model} は最新の完全な一覧にありません。提供終了の可能性があります。接続をテストするか、別のモデルを選んでください。現在の選択は自動変更しません。"},
+  "agent.settings.models.manual": {"zh-Hans":"手动添加","zh-Hant":"手動新增","en":"Manual","ja":"手動追加"},
+  "agent.settings.models.scope": {"zh-Hans":"检查只调用模型列表，不发送项目内容，也不验证推理能力。未验证模型使用服务的通用写法；先保存并测试连接再使用。","zh-Hant":"檢查僅呼叫模型清單，不傳送專案內容，也不驗證推論能力。未驗證模型使用服務的通用格式；先儲存並測試連線後使用。","en":"Checking only lists models: it sends no project content and does not verify inference. Unverified models use the service’s generic template. Save and test the connection before use.","ja":"チェックは一覧の取得のみで、プロジェクトの内容を送信せず、推論能力も検証しません。未検証モデルはサービスの汎用形式を使用します。保存後に接続をテストしてください。"},
   "mio.settings.connection.title": {"zh-Hans": "模型连接", "zh-Hant": "模型連線", "en": "Model connection", "ja": "モデル接続"},
   "mio.settings.label.baseUrl": {"zh-Hans": "接口地址", "zh-Hant": "介面位址", "en": "Endpoint", "ja": "エンドポイント"},
   "mio.settings.label.protocol": {"zh-Hans": "协议", "zh-Hant": "協定", "en": "Protocol", "ja": "プロトコル"},

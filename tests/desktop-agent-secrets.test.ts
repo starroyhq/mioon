@@ -479,6 +479,37 @@ test('trusted broker credentials bind selection and per-entry revisions while ot
  const disk=await readFile(path.join(userData,'agent-settings/settings.json'),'utf8');for(const key of [keyA,keyB])assert.equal(disk.includes(key),false);
 });
 
+test('model-list purpose acquires only one saved service through the existing trusted broker', async t => {
+ const userData=await mkdtemp(path.join(tmpdir(),'mioon-model-list-broker-'));
+ const engine=await createDesktopAgentSettings({safeStorage:fakeVault(),userData,appId:'app.starroy.mioon.dev',platform:'linux'});
+ const port=pairedPort(),requests:unknown[]=[],replies:SentMessage[]=[];
+ const broker=createAgentSettingsBroker({agentSettings:engine,send(data){replies.push(data as SentMessage);port.emit('message',{data});}});
+ port.postMessage=value=>{requests.push(value);queueMicrotask(()=>broker.handle(value));};
+ const client=createAgentSettingsClient({port});
+ t.after(async()=>{client.close();broker.close();await engine.close();await rm(userData,{recursive:true,force:true});});
+ const initial=await engine.get(),a=randomUUID(),b=randomUUID(),model='synthetic-model',keyA=DUMMY_KEY+'-list-A',keyB=DUMMY_KEY+'-list-B';
+ const entry={presetId:'custom' as const,name:'Synthetic list',platformId:'custom',protocol:'chat_completions' as const,addressInput:'https://synthetic.example/v1',manualModelIds:[model]};
+ const saved=await engine.put({expectedRevision:initial.revision,services:[...initial.services.map(agentServiceInput),{...entry,serviceKey:a},{...entry,serviceKey:b}],mioSelection:{serviceKey:a,modelId:model},secretActions:[{serviceKey:a,action:'replace',storage:'session',value:keyA},{serviceKey:b,action:'replace',storage:'session',value:keyB}]});
+ const chosen=saved.services.find(service=>service.serviceKey===b)!;
+ const binding={serviceKey:b,entryRevision:chosen.revision,selectionRevision:saved.mioSelectionRevision};
+ const configuration={presetId:'custom',platformId:'custom',baseUrl:entry.addressInput,model:'connection-validation',protocol:entry.protocol};
+ const expected={expectedRevision:saved.revision,binding,configuration,purpose:'model_list' as const};
+ assert.deepEqual(await client[AGENT_CREDENTIAL_ACQUIRE](expected),{revision:saved.revision,binding,configuration,apiKey:keyB});
+ assert.equal(JSON.stringify(await client.get()).includes(keyB),false);
+ const {purpose:_purpose,...inference}=expected;
+ await assert.rejects(client[AGENT_CREDENTIAL_ACQUIRE](inference),{code:'AGENT_SETTINGS_CONFLICT'});
+ for(const invalid of [{...expected,binding:{...binding,serviceKey:a}}, {...expected,configuration:{...configuration,baseUrl:'https://evil.example/v1'}}, {...expected,expectedRevision:saved.revision+1}, {...expected,purpose:'inference'}, {...expected,rawUrl:'https://evil.example'}]) {
+  await assert.rejects(client[AGENT_CREDENTIAL_ACQUIRE](invalid),error=>{assert.equal(JSON.stringify(error).includes(keyB),false);return true;});
+ }
+ const changed=await engine.put({...metadata(saved),secretActions:[{serviceKey:b,action:'replace',storage:'session',value:keyB+'-new'}]});
+ await assert.rejects(client[AGENT_CREDENTIAL_ACQUIRE](expected),{code:'AGENT_SETTINGS_CONFLICT'});
+ assert.deepEqual(changed.execution,saved.execution,'saving the non-selected service still preserves the inference witness');
+ const acquire=requests.find(value=>value!==null&&typeof value==='object'&&'operation'in value&&value.operation==='acquire');assert.ok(acquire);
+ broker.handle(acquire);assert.equal(replies.at(-1)?.ok,false,'list purpose cannot replay an old plaintext acquire response');
+ assert.equal(MAX_AGENT_SETTINGS_MESSAGE_BYTES,64*1024);
+ assert.equal(requests.some(value=>value!==null&&typeof value==='object'&&'operation'in value&&!['get','put','acquire'].includes(String(value.operation))),false);
+});
+
 test('supervisor lets an in-flight settings request reply during graceful HTTP shutdown', async () => {
   const base = await sampleSettings(), child = fakeChild();
   const originalSend = child.postMessage;
