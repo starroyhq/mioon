@@ -1,3 +1,5 @@
+import {pauseUnavailableBackgroundTask} from './background-task-state.ts';
+import {markBackgroundTaskChanged,isBackgroundTaskIndexUncertain,safeBackgroundTaskIndexError} from './background-task-events.ts';
 import {assertProjectStore} from './store-runtime.ts';
 import {isProjectStore} from './project-file/store.ts';
 import {prepareProjectAssetFullHash, registerProjectMediaStore} from './project-media-storage.ts';
@@ -34,16 +36,18 @@ export interface SceneServicesOptions {
  detect?: (options: DetectManagedScenesOptions)=>Promise<ManagedSceneDetection>;
  decodeKeyframes?: (options: DecodeSceneKeyframesOptions)=>Promise<DecodedSceneKeyframes>;
  autoRun?: boolean;
+ deferRecovery?: boolean;
  fault?: SceneFault;
 }
 export interface SceneService {
+ readonly activateBackground: ()=>void;
  readonly isBusy: ()=>boolean;
  readonly handlers: Readonly<Record<string,(input: unknown)=>unknown>>;
  readonly drain: ()=>Promise<void>;
 }
 interface SceneOwnerRecord {
  readonly root: string; readonly signal: AbortSignal|undefined; readonly detect: NonNullable<SceneServicesOptions['detect']>;
- readonly decodeKeyframes: NonNullable<SceneServicesOptions['decodeKeyframes']>; readonly autoRun: boolean; readonly fault: SceneFault; service: SceneService;
+ readonly decodeKeyframes: NonNullable<SceneServicesOptions['decodeKeyframes']>; readonly autoRun: boolean; readonly deferRecovery: boolean; readonly fault: SceneFault; service: SceneService;
 }
 interface SceneTaskRequest {readonly projectId: string; readonly taskId: string; readonly expectedRevision: number; readonly requestId: string}
 interface SceneCutsInput {readonly projectId: string; readonly assetId: string; readonly sourceHash: string; readonly expectedResultId: string; readonly cuts: readonly number[]; readonly requestId: string}
@@ -61,10 +65,12 @@ interface SceneAttempt {readonly id: string; readonly projectId: string; readonl
 function fail(code: string,status?: number): never {throw failure(code,status);}
 function invalid(): never {return fail('SCENE_RECORD_INVALID');}
 export function safeSceneServiceError(cause: unknown): {code: string; message: string; status: number; details?: Record<string,unknown>} {
+ const index=safeBackgroundTaskIndexError(cause);if(index)return index;
  const safe=safeSceneFailure(cause),proof=isRecord(cause)?verifiedRefusals.get(cause):null;
  return {...safe,...(proof?{details:{sceneOutcome:proof}}:{})};
 }
 function publicFailure(cause: unknown): AppError {
+ const index=safeBackgroundTaskIndexError(cause);if(index)return new AppError(index.code,index.message,index.status,index.details);
  const safe=safeSceneServiceError(cause),error=scenePublicFailure(cause,safe.details??{});
  if(safe.details&&isRecord(error))verifiedRefusals.set(error,safe.details.sceneOutcome);return error;
 }
@@ -83,16 +89,17 @@ const stopCodes=new Set(['MEDIA_CANCELLED','SCENE_INTERRUPTED','SCENE_SERVICE_ST
  * it becomes cancelling, its decoder is stopped, and it ends cancelled with no
  * result. A storyboard stages one keyframe per segment, publishes them, then
  * creates every image asset and shot in one transaction. */
-export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect=detectManagedScenes,decodeKeyframes=decodeSceneKeyframes,autoRun=true,fault=noop}: SceneServicesOptions={}): SceneService {
+export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect=detectManagedScenes,decodeKeyframes=decodeSceneKeyframes,autoRun=true,deferRecovery=false,fault=noop}: SceneServicesOptions={}): SceneService {
  assertProjectStore(store);
  const old=owners.get(store.db);
- if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.detect!==detect||old.decodeKeyframes!==decodeKeyframes||old.autoRun!==autoRun||old.fault!==fault)fail('SCENE_SERVICE_ACTIVE');return old.service;}
+ if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.detect!==detect||old.decodeKeyframes!==decodeKeyframes||old.autoRun!==autoRun||old.deferRecovery!==deferRecovery||old.fault!==fault)fail('SCENE_SERVICE_ACTIVE');return old.service;}
  const {db,root,tx}=store,queue: SceneAttempt[]=[],pending=new Set<string>(),active=new Set<Promise<unknown>>(),attemptSignals=new Set<AbortSignal>();
  const releaseProjectMedia=registerProjectMediaStore(store);
  const attempts=new Map<string,AbortController>(),progress=new Map<string,Record<string,number>>(),resumeRequested=new Map<string,boolean>();
  const controller=new AbortController(),signal: AbortSignal=ownerSignal?AbortSignal.any([ownerSignal,controller.signal]):controller.signal;
+ let backgroundActive=false;
  let stopped=false,running=false,reported=false,draining: Promise<void>|undefined;
- const registration: SceneOwnerRecord={root,signal:ownerSignal,detect,decodeKeyframes,autoRun,fault,service:undefined as unknown as SceneService};
+ const registration: SceneOwnerRecord={root,signal:ownerSignal,detect,decodeKeyframes,autoRun,deferRecovery,fault,service:undefined as unknown as SceneService};
  const history=createSceneHistoryReaders(store),{schemaPresent,project,asset,task,summary,latestResultId,prior}=history;
  const storage=createSceneShotsStorage(store);
  function owner({allowStopped=false}: {allowStopped?: boolean}={}): void {
@@ -106,7 +113,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
   if(Object.keys(patch).some(key=>!['state','started','resultId','errorCode','stagedReceipt','outcome'].includes(key)))throw Error('Invalid internal scene patch');
   const entries=Object.entries(patch),result=db.prepare(`UPDATE scene_tasks SET ${entries.map(([key])=>`${key}=?`).join(',')},revision=revision+1,updatedAt=? WHERE id=? AND projectId=? AND revision=?`)
    .run(...entries.map(([,entry])=>entry),now(),value.row.id,value.row.projectId,value.row.revision);
-  if(result.changes!==1)fail('SCENE_REVISION_CONFLICT');return task(value.row.projectId,value.row.id) as T;
+  if(result.changes!==1)fail('SCENE_REVISION_CONFLICT');markBackgroundTaskChanged(db,'scene_task',value.row.id);return task(value.row.projectId,value.row.id) as T;
  }
  const count=(table: string,where: string,args: readonly SQLInputValue[],cap: number): number=>{
   const value=db.prepare(`SELECT count(*) AS n FROM (SELECT 1 FROM ${table}${where?' WHERE '+where:''} LIMIT ?)`).get(...args,cap+1)?.n;
@@ -127,7 +134,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
  }
  function sourceFile(source: Record<string,unknown>): ManagedSource {
   try{const result=validateManagedSource(root,source,{maxBytes:SCENE_LIMITS.sourceBytes});if(result.info.size!==source.sizeBytes)fail('SCENE_SOURCE_CHANGED');return result;}
-  catch(cause){if(property(cause,'code')==='SCENE_SOURCE_CHANGED')throw cause;fail('SCENE_SOURCE_INVALID');}
+  catch(cause){if(property(cause,'code')==='SCENE_SOURCE_CHANGED')throw cause;throw Object.defineProperty(failure('SCENE_SOURCE_INVALID'),'cause',{value:cause});}
  }
  /** The task's frozen source must still be the owned asset and the same file. */
  function sourceFence(original: SceneTaskView,expected?: ManagedFileIdentity): {source: Record<string,unknown>; file: string; info: ManagedFileIdentity} {
@@ -170,6 +177,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
    if(!sceneDetectTaskResponseSchema.safeParse(value).success)invalid();
    db.prepare("INSERT INTO scene_tasks(id,projectId,kind,sourceAssetId,requestId,inputHash,input,snapshot,state,revision,started,resultId,stagedReceipt,outcome,errorCode,createdAt,updatedAt) VALUES(?,?,'detect',?,?,?,?,?,'queued',1,0,NULL,NULL,NULL,NULL,?,?)")
     .run(id,input.projectId,input.sourceAssetId,input.requestId,hash(input),canonical(input),canonical(snapshot),timestamp,timestamp);
+   markBackgroundTaskChanged(db,'scene_task',id);
    record('scene.detect',input as unknown as SceneMutationInput,value,{taskId:id});task(input.projectId,id);
    // Detection is an observation: its accepted task changes no business asset.
    // Commit the same validated ACK here so the older observation runner does
@@ -235,6 +243,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
    if(!sceneShotsTaskResponseSchema.safeParse(value).success)invalid();
    db.prepare("INSERT INTO scene_tasks(id,projectId,kind,sourceAssetId,requestId,inputHash,input,snapshot,state,revision,started,resultId,stagedReceipt,outcome,errorCode,createdAt,updatedAt) VALUES(?,?,'shots',?,?,?,?,?,'queued',1,0,NULL,NULL,NULL,NULL,?,?)")
     .run(id,input.projectId,input.sourceAssetId,input.requestId,hash(input),canonical(input),canonical(snapshot),timestamp,timestamp);
+   markBackgroundTaskChanged(db,'scene_task',id);
    // Mio's storyboard step owns this task: a stopped run retires it before it starts.
    bindAgentTaskJobInside(db,'scene',id);
    record('scene.shots.create',input as unknown as SceneMutationInput,value,{taskId:id});task(input.projectId,id);
@@ -467,6 +476,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
  async function execute(entry: SceneAttempt): Promise<void> {
   try{await withAgentTaskJobOrigin(db,'scene',entry.id,()=>executeInside(entry));}
   catch(cause){
+   if(isBackgroundTaskIndexUncertain(cause))throw cause;
    if(entry.local)try{
     const checked=task(entry.projectId,entry.id);
     if(checked.kind==='shots'&&checked.row.state==='persisting')settle(checked,{code:'SCENE_INTERRUPTED'},'SCENE_SHOTS_FAILED');
@@ -488,6 +498,8 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
    if(queued.kind==='detect')await executeDetect(entry,queued,attempt,state);
    else await executeShots(entry,queued,attempt,state);
   }catch(cause){
+   if(isBackgroundTaskIndexUncertain(cause))return;
+   if(pauseUnavailableBackgroundTask(db,{kind:'scene_task',taskId:entry.id},cause))return;
    if(queued)try{
     const checked=task(entry.projectId,entry.id);
     // An unstarted task an Assistant gate held back waits for its run to resume.
@@ -511,7 +523,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
   pending.add(id);if(local)queue.unshift({id,projectId,local});else queue.push({id,projectId});queueMicrotask(pump);
  }
  function pump(): void {
-  if(running||stopped||signal.aborted)return;const entry=queue[0];if(!entry)return;
+  if(!backgroundActive||running||stopped||signal.aborted)return;const entry=queue[0];if(!entry)return;
   // A durable active row whose attempt was lost must stay visible for
   // restart reconciliation; it cannot cause unrelated queued tasks to fail.
   try{owner();if(!entry.local&&db.prepare(`SELECT 1 FROM scene_tasks WHERE state IN ('running','cancelling','persisting') LIMIT 1`).get())return;}catch{diagnose();return;}
@@ -619,6 +631,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
    await Promise.allSettled([...active]);if([...attemptSignals].some(attemptSignal=>hasUnconfirmedMediaProcesses({signal:attemptSignal})))assertMediaTerminated([{status:'unconfirmed'}]);
   })(),'SCENE_STOP_TIMEOUT').then(()=>{releaseProjectMedia();});draining=result;void result.catch(()=>{if(draining===result)draining=undefined;});return result;
  }
- const service: SceneService={handlers,drain,isBusy:()=>active.size>0||pending.size>0};registration.service=service;owners.set(db,registration);
- try{reconcile();}catch(cause){releaseProjectMedia();owners.delete(db);removeResumer();removeStopper();throw cause;}return service;
+ const activateBackground=():void=>{if(backgroundActive||stopped)return;backgroundActive=true;reconcile();queueMicrotask(pump);};
+ const service: SceneService={handlers,drain,activateBackground,isBusy:()=>active.size>0||pending.size>0};registration.service=service;owners.set(db,registration);
+ try{if(!deferRecovery)activateBackground();}catch(cause){releaseProjectMedia();owners.delete(db);removeResumer();removeStopper();throw cause;}return service;
 }

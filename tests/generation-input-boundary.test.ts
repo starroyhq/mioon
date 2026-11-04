@@ -15,6 +15,7 @@ import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProviderRegistry,usesInputProfiles,registerInputProfileWrapper,normalizedCapabilities} from '../packages/business/src/provider-registry.ts';
 import {startWorker, type Worker} from '../packages/business/src/jobs.ts';
+import {markBackgroundTaskChanged} from '../packages/business/src/background-task-events.ts';
 import {createJsonRequest} from '../packages/business/src/providers/live-common.ts';
 import {createVeoProvider} from '../packages/business/src/providers/veo.ts';
 import {INPUT_PROFILE_VERSION,getCapabilityProfile,getLegacyCapabilityProfile} from '../packages/contracts/src/index.ts';
@@ -260,6 +261,8 @@ for(const status of ['queued','submitting'])for(const drift of ['relational-owne
  if(drift==='relational-owner')withoutForeignKeys(f.store.db,()=>withoutProcessTargetRevisions(f.store.db,['jobs'],()=>f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(other.id,job.id)));
  else if(drift==='json-owner')withoutForeignKeys(f.store.db,()=>f.store.put('jobs',{...saved,projectId:other.id}));
  else withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(other.id,f.shot.id));
+ // SQL tampering is a committed fixture change, so notify its exact managed ID.
+ markBackgroundTaskChanged(f.store.db,'job',job.id);
  const before=rawGenerationState(f),log=t.mock.method(console,'error',()=>{});
  await f.tick();await f.tick();await f.stop();assert.deepEqual(rawGenerationState(f),before);assert.equal(f.posts(),0);
  assert.deepEqual(log.mock.calls.map(call=>call.arguments),[['Skipped invalid local generation record.']]);

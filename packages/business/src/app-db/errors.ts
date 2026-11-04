@@ -25,8 +25,9 @@ const ERRORS = {
   AGENT_POLICY_REQUEST_EXISTS: {status: 409, message: '这个放行请求已有回执'},
   APP_OPERATION_RECEIPT_CONFLICT: {status: 409, message: '同一个请求 ID 已有不同的回执'},
   PROJECT_INBOX_ITEM_CONFLICT: {status: 409, message: '收件箱里已有同一 ID 的不同条目'},
+  BACKGROUND_TASK_INDEX_CONFLICT: {status: 409, message: '后台任务索引已变化，原记录仍保留'},
   LOCAL_RECORDS_NOT_FOUND: {status: 404, message: '找不到这份本机记录'},
-  LOCAL_RECORDS_IN_USE: {status: 409, message: '这份本机记录的项目文件还找得到，或项目正打开着'},
+  LOCAL_RECORDS_IN_USE: {status: 409, message: '这份本机记录的项目文件还找得到、项目正打开着，或仍有未结束的后台任务'},
   LOCAL_RECORDS_SUPER_JOURNAL: {status: 409, message: '这份本机记录里有还用得着的超级日志，不能删除'},
 } as const;
 export type AppLibraryErrorCode = keyof typeof ERRORS;

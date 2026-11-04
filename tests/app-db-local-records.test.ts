@@ -27,11 +27,12 @@ interface Setup {
   /** `records/<project ID>/` with files of the given sizes, folders 0700 like the kernel's. */
   records(projectId: string, files?: Readonly<Record<string, number>>): string;
 }
-function setup(t: TestContext, open: ReadonlySet<string> = new Set()): Setup {
+function setup(t: TestContext, open: ReadonlySet<string> = new Set(), backgroundBusy?: (projectId: string) => boolean): Setup {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-b1-records-'));
   t.after(() => rmSync(root, {recursive: true, force: true}));
   const dataDir = path.join(root, 'data');
-  const library = openAppLibrary({dataDir, isProjectOpen: projectId => open.has(projectId)});
+  const library = openAppLibrary({dataDir, isProjectOpen: projectId => open.has(projectId),
+    ...(backgroundBusy === undefined ? {} : {isProjectBackgroundBusy: backgroundBusy})});
   t.after(() => library.close());
   const records = (projectId: string, files: Readonly<Record<string, number>> = {}): string => {
     const folder = path.join(dataDir, PROJECT_RECORDS_DIRECTORY, projectId);
@@ -119,6 +120,59 @@ test('records whose project file cannot be found are listed with their size, nam
 test('no records folder lists nothing', async t => {
   const {library} = setup(t);
   assert.deepEqual(await library.localRecords.list(), []);
+});
+
+for (const phase of ['prepared', 'active', 'blocked'] as const) test(`unfinished ${phase} task records refuse local-record deletion without opening history`, async t => {
+  const f = setup(t), projectId = randomUUID(), folder = f.records(projectId, {'history.db': 100, 'imports/kept.txt': 20});
+  const entry = {projectId, projectFile: path.join(f.root, 'Absent.mioon'), kind: 'job' as const, taskId: randomUUID(), indexedAt: '2026-11-04T00:00:00.000Z',
+    phase, reason: phase === 'active' ? null : 'PROJECT_MISSING', sourceHistory: 'a'.repeat(64), revision: 1, taskRevision: 1};
+  f.library.taskIndex.upsert(entry);
+  const rows = f.library.taskIndex.listProject(projectId), changes = f.library.db.prepare('SELECT total_changes() n').get()!.n;
+  const failure = await appError(() => f.library.localRecords.delete(projectId));
+  assert.deepEqual([failure.code, failure.status, failure.details], ['LOCAL_RECORDS_IN_USE', 409, {projectId}]);
+  assert.equal(existsSync(path.join(folder, 'history.db')), true);
+  assert.equal(lstatSync(path.join(folder, 'history.db')).size, 100);
+  assert.deepEqual(f.library.taskIndex.listProject(projectId), rows);
+  assert.equal(f.library.db.prepare('SELECT total_changes() n').get()!.n, changes);
+});
+
+test('a false injected work callback cannot bypass the durable index; archived and done work no longer blocks', async t => {
+  const f = setup(t, new Set(), () => false), projectId = randomUUID(), folder = f.records(projectId, {'history.db': 100});
+  const legacy = {projectId, projectFile: path.join(f.root, 'Absent.mioon'), kind: 'export' as const, taskId: randomUUID(), indexedAt: '2026-11-04T00:00:00.000Z'};
+  f.library.taskIndex.upsert(legacy);
+  assert.equal((await appError(() => f.library.localRecords.delete(projectId))).code, 'LOCAL_RECORDS_IN_USE');
+  f.library.taskIndex.archive(projectId, null);
+  const archived = f.library.taskIndex.listProject(projectId);
+  await f.library.localRecords.delete(projectId);
+  assert.equal(existsSync(folder), false);
+  assert.deepEqual(f.library.taskIndex.listProject(projectId), archived);
+  const doneProject = randomUUID(), doneFolder = f.records(doneProject, {'history.db': 10});
+  const done = {...legacy, projectId: doneProject, taskId: randomUUID(), phase: 'done' as const};
+  f.library.taskIndex.upsert(done);
+  await f.library.localRecords.delete(doneProject);
+  assert.equal(existsSync(doneFolder), false);
+  assert.deepEqual(f.library.taskIndex.listProject(doneProject), []);
+});
+
+test('live in-flight work refuses deletion even before it has a durable task entry', async t => {
+  const busy = new Set<string>(), f = setup(t, new Set(), id => busy.has(id)), projectId = randomUUID();
+  const folder = f.records(projectId, {'history.db': 10}); busy.add(projectId);
+  assert.equal((await appError(() => f.library.localRecords.delete(projectId))).code, 'LOCAL_RECORDS_IN_USE');
+  assert.equal(existsSync(folder), true); assert.deepEqual(f.library.taskIndex.listProject(projectId), []);
+  busy.delete(projectId); await f.library.localRecords.delete(projectId); assert.equal(existsSync(folder), false);
+});
+
+test('the final synchronous deletion check sees a task introduced by the live-work observer', async t => {
+  let checks = 0;
+  const projectId = randomUUID(), f = setup(t, new Set(), id => {
+    if (id === projectId && ++checks === 2) f.library.taskIndex.upsert({projectId,
+      projectFile: path.join(f.root, 'Absent.mioon'), kind: 'job', taskId: randomUUID(), indexedAt: '2026-11-04T00:00:00.000Z'});
+    return false;
+  });
+  const folder = f.records(projectId, {'history.db': 10});
+  assert.equal((await appError(() => f.library.localRecords.delete(projectId))).code, 'LOCAL_RECORDS_IN_USE');
+  assert.equal(checks, 2); assert.equal(existsSync(folder), true);
+  assert.equal(f.library.taskIndex.listProject(projectId).length, 1);
 });
 
 test('a super-journal still needed keeps its folder; one no journal refers to does not', async t => {

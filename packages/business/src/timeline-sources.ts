@@ -7,7 +7,7 @@ import path from 'node:path';
 import {AppError,isTimelineSubtitleSnapshotProfile,getTimelineSubtitleIssue,isTimelineExportSnapshot} from '@mioon/contracts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
-import {validateManagedSource,verifiedManagedHash,sameManagedFile} from './managed-media.ts';
+import {validateManagedSource,verifiedManagedHash,sameManagedFile,retainManagedUnavailableCause} from './managed-media.ts';
 import {run,runStreaming,checkMediaEffect} from './media-runtime.ts';
 import {parseProbeOutput,withProbePermit} from './media-probe.ts';
 import {validateTimeline,freezeTimelineSnapshot} from './timeline-inputs.ts';
@@ -107,7 +107,7 @@ export function validatePreparedTimelineSources(db: DatabaseSync,projectId: stri
    if(!isTimelineColourSnapshot(snapshot))throw invalid();
    verifyTimelineColourLuts(snapshot.colourPlan as never,createTimelineColourLutReader(db,projectId) as never,false);
   }
- }catch{throw fault('TIMELINE_SOURCE_UNAVAILABLE','A frozen timeline source is no longer available in this project.');}
+ }catch(cause){throw retainManagedUnavailableCause(fault('TIMELINE_SOURCE_UNAVAILABLE','A frozen timeline source is no longer available in this project.'),cause);}
 }
 
 // The transaction contains bounded synchronous reads only. No timeline.ensure,
@@ -156,8 +156,13 @@ function timelineInputSourceError(error:unknown,assetId:string):unknown {
  const failure=error as {timelineAssetId?:string;code?:string;message?:string};
  if(error&&typeof error==='object'){
   failure.timelineAssetId=assetId;
+  if(['MEDIA_MISSING','MEDIA_OUTSIDE_NOT_CONFIRMED'].includes(failure.code as string)) {
+   const wrapped = error instanceof AppError ? new AppError('MANAGED_SOURCE_INVALID',error.message,error.status,error.details)
+    : Object.assign(new Error(failure.message),{code:'MANAGED_SOURCE_INVALID'});
+   Object.assign(wrapped,{timelineAssetId:assetId});return retainManagedUnavailableCause(wrapped,error);
+  }
   if(['MEDIA_CHANGED','MEDIA_CHANGED_DURING_READ'].includes(failure.code as string))failure.code='MANAGED_SOURCE_CHANGED';
-  else if(['MEDIA_MISSING','MEDIA_NOT_MEDIA','MEDIA_OUTSIDE_NOT_CONFIRMED'].includes(failure.code as string))failure.code='MANAGED_SOURCE_INVALID';
+  else if(failure.code==='MEDIA_NOT_MEDIA')failure.code='MANAGED_SOURCE_INVALID';
   if(failure.code==='MANAGED_SOURCE_CHANGED')failure.message='Export input bytes differ from frozen version hash';
  }
  return error;

@@ -1,4 +1,8 @@
+import {isBackgroundTaskIndexUncertain} from './background-task-events.ts';
+import type {BackgroundTaskRef} from './background-task-events.ts';
+import {AppError} from '../../contracts/src/app-error.ts';
 import {assertProjectStore} from './store-runtime.ts';
+import {createProjectBackgroundState,pauseUnavailableBackgroundTask,markBackgroundTaskInvalid} from './background-task-state.ts';
 import {registerExportActivity,isCancelledExport,exportStage} from './export-controls.ts';
 import {assertAgentTaskJobEffect,withAgentTaskJobOrigin,recordAgentTaskJobDispatch,allowAgentTaskJobTargetMutation,isAgentTaskEffectBlocked,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
 import {isFloatTimelineExport,claimFloatTimelineExport,sameFloatTimelineAttempt,requeueFloatTimelineExport,createFloatTimelineAttemptRegistry,ownedFloatTimelineMeasurement,bindFloatTimelineMeasurement,bindFloatTimelineFailure,assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
@@ -8,7 +12,7 @@ import {timelineRenderDeliveryFields,hasTimelineDeliveryIdentity,TIMELINE_DELIVE
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {isTimelineExportSnapshot,isTimelineRenderRecord} from '@mioon/contracts';
 import {lstatSync} from 'node:fs';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {terminateMediaProcesses,waitForMediaProcesses} from './media-processes.ts';
 import {rename,link,unlink,lstat,open} from 'node:fs/promises';
@@ -26,7 +30,7 @@ import type {Provider} from './provider-registry.ts';
 import {readVideoBinding} from './video/generation.ts';
 import {effectiveVideoParameters,isWan30Binding} from '../../contracts/src/wan-video.ts';
 import {isSeedance25Binding} from '../../contracts/src/seedance-video.ts';
-import {markGenerationPreflightFailure,isGenerationPreflightFailure} from './generation-inputs.ts';
+import {markGenerationPreflightFailure,isGenerationPreflightFailure,currentGenerationClaim,readGenerationLinkedJob} from './generation-inputs.ts';
 import {assertMediaTerminated,awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
 import {publishProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput} from './project-output-publication.ts';
 import {createOutputArtifactStage,readOutputArtifact,writeOutputArtifact,outputArtifactStage,outputArtifactDigest,restoredArtifactAudioCheck,assertOutputArtifactStage,sealOutputArtifactStage} from './output-artifact-storage.ts';
@@ -66,13 +70,25 @@ const stringValue=(value: unknown): string|undefined=>typeof value==='string'?va
 const numberValue=(value: unknown): number|undefined=>typeof value==='number'?value:undefined;
 const arrayValue=(value: unknown): unknown[]=>Array.isArray(value)?value:[];
 const isThenable=(value: unknown): value is PromiseLike<unknown>=>value!==null&&(typeof value==='object'||typeof value==='function')&&typeof (value as {then?: unknown}).then==='function';
+const isKnownAgentTaskBlock=(error: unknown): boolean=>isAgentTaskEffectBlocked(error)&&['AGENT_TASK_PAUSED','AGENT_TASK_STOPPED','AGENT_TASK_CONSENT_REQUIRED','AGENT_TASK_TARGET_CHANGED','AGENT_TASK_TARGET_CLAIMED','AGENT_TASK_APPROVAL_REQUIRED'].includes(stringValue(property(error,'code'))??'');
 
 export function startWorker(inputStore: ServiceStore,services: Services,providers: ReadonlyMap<string,Provider>,{signal:ownerSignal}: {signal?: AbortSignal}={}): Worker {
  const store: JobsStore=inputStore as unknown as JobsStore;
  assertProjectStore(inputStore);
+ const ownerProjectId=inputStore.projectId;
  const {list,get,put,tx,root}=store;
+ const backgroundTasks=createProjectBackgroundState(inputStore);
  let stopped=Boolean(ownerSignal?.aborted),cycle: Promise<void>|null=null,stopping: Promise<void>|undefined,shutdownFailure: unknown;
  const operations=new Set<AbortController>(),floatClaims=createFloatTimelineAttemptRegistry();
+ const invalidCandidates=new Map<string,{ref:BackgroundTaskRef;frozenJob?:string}>();
+ const frozenJobIdentity=(job: Record<string,unknown>): string=>createHash('sha256').update(JSON.stringify([
+  ...['id','projectId','shotId','providerId','model','requestId','requestHash','retryOfJobId'].map(name=>[name,typeof job[name],job[name]??null]),['snapshot',job.snapshot],
+ ])).digest('hex');
+ const observeInvalid=(kind: 'job'|'export',taskId: string,frozenJob?:string): void=>{invalidCandidates.set(`${kind}:${taskId}`,{ref:{kind,taskId},...(frozenJob?{frozenJob}:{})});};
+ const invalidTimeline=(error: unknown): boolean=>error instanceof Error&&property(error,'code')==='INVALID_TIMELINE_SNAPSHOT'&&property(error,'status')===409;
+ const saveGenerationGuarded=(job: JobRecord,patch: ServiceRow): ServiceRow|null=>{
+  const value=services.saveGenerationGuarded(job,patch);if(value===null)observeInvalid('job',job.id,frozenJobIdentity(job));return value;
+ };
  // Preserve relational identity before decoding worker-owned timeline exports.
  // This bound applies to the frozen export row, never its source bytes or the
  // combined jobs behind its lineages. Corrupt/oversized timeline rows are
@@ -97,11 +113,13 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const value=record as ExportRecord;
   if(value.id!==row.id||value.projectId!==row.projectId)return invalidExport();
   if(value.mode==='timeline'&&property(property(value.snapshot,'timeline'),'projectId')!==row.projectId)return invalidExport();
-  try{assertFloatTimelineExportRead(store.db,record,{isTimelineRenderRecord,readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(store.db,projectId,assetId)});}catch{return invalidExport();}
+  try{assertFloatTimelineExportRead(store.db,record,{isTimelineRenderRecord,readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(store.db,projectId,assetId)});}catch(error){if(!invalidTimeline(error))throw error;return invalidExport();}
   return value;
  }
- const workerExports=(): ExportRecord[]=>store.db.prepare(`SELECT ${exportColumns} FROM exports${''}`).all(...([])).map(row=>decodeExport(row as Record<string,unknown>)).filter((value): value is ExportRecord=>Boolean(value));
- const workerExport=(id: string): ExportRecord|null=>decodeExport(store.db.prepare(`SELECT ${exportColumns} FROM exports WHERE id=?`).get(id) as Record<string,unknown>|undefined);
+ const workerExport=(id: string,observe=true): ExportRecord|null=>{
+  const value=decodeExport(store.db.prepare(`SELECT ${exportColumns} FROM exports WHERE id=?`).get(id) as Record<string,unknown>|undefined);
+  if(!value&&observe)observeInvalid('export',id);return value;
+ };
  // Custom delivery adds an awaited capability step. Preserve the complete
  // immutable acceptance identity across every existing async/publication fence;
  // a replaced snapshot must never be restored by publishing an older copy.
@@ -125,16 +143,41 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    if(!receipt)return false;
    const response: unknown=JSON.parse(String(receipt.response));
    return property(response,'status')==='queued'&&isTimelineRenderRecord(response,input as never)&&exportIdentity(response as ExportRecord)===exportIdentity(e);
-  }catch{return false;}
+  }catch(error){if(!(error instanceof SyntaxError)&&!invalidTimeline(error))throw error;return false;}
  }
- const currentOwnedExport=(e: ExportRecord,{cleanupOnly=false}: {cleanupOnly?: boolean}={}): ExportRecord|null=>{
-  const latest=workerExport(e.id);
+ const currentOwnedExport=(e: ExportRecord,{cleanupOnly=false,observe=true}: {cleanupOnly?: boolean;observe?: boolean}={}): ExportRecord|null=>{
+  const latest=workerExport(e.id,observe),refused=(): null=>{if(observe)observeInvalid('export',e.id);return null;};
 
-  if(!latest||latest.mode!==e.mode||latest.id!==e.id||latest.projectId!==e.projectId)return null;
-  if((hasTimelineDeliveryIdentity(e)||hasTimelineDeliveryIdentity(latest)||receiptHasDelivery(e))&&(exportIdentity(latest)!==exportIdentity(e)||!customReceiptMatches(e)))return null;
-  if(!cleanupOnly&&!sameFloatTimelineAttempt(e,latest as never))return null;
+  if(!latest||latest.mode!==e.mode||latest.id!==e.id||latest.projectId!==e.projectId)return refused();
+  if((hasTimelineDeliveryIdentity(e)||hasTimelineDeliveryIdentity(latest)||receiptHasDelivery(e))&&(exportIdentity(latest)!==exportIdentity(e)||!customReceiptMatches(e)))return refused();
+  if(!cleanupOnly&&!sameFloatTimelineAttempt(e,latest as never))return refused();
   return latest;
  };
+ function verifyInvalidCandidates(): void {
+  // A failed fence inside a transaction is only a candidate. Reread the exact
+  // committed identity after it ends; rollback or a newer valid row must not
+  // publish a phantom block. SQL/audit faults are not proof of invalid data.
+  if(store.db.isTransaction)return;
+  const candidates=[...invalidCandidates.values()];invalidCandidates.clear();
+  for(const {ref,frozenJob} of candidates){
+   backgroundTasks.refresh([ref]);
+   let invalid=false;
+   if(ref.kind==='job')try{
+    const current=readGenerationLinkedJob(store.db,ref.taskId);
+    if(current.id!==ref.taskId||current.projectId!==ownerProjectId||typeof current.shotId!=='string'||!isRecord(current.snapshot))invalid=true;
+    else{
+     currentGenerationClaim(store.db,current as unknown as JobRecord);
+     // An abandoned unaccepted attempt cannot continue with changed frozen
+     // input. Mutable progress/revision fields do not establish corruption.
+     if(frozenJob&&['queued','submitting'].includes(String(current.status))&&frozenJobIdentity(current)!==frozenJob)invalid=true;
+    }
+   }catch(error){if(!(error instanceof AppError)||!['INVALID_GENERATION_OWNERSHIP','GENERATION_STATE_CHANGED'].includes(error.code))throw error;invalid=true;}
+   else if(ref.kind==='export'){
+    const current=workerExport(ref.taskId,false);invalid=!current||!currentOwnedExport(current,{observe:false});
+   }
+   if(invalid)markBackgroundTaskInvalid(store.db,ref);
+  }
+ }
 
  // An unconfirmed owned writer is a fatal lifecycle boundary. Preserve the
  // first failure and stop this cycle plus every future automatic/manual tick.
@@ -164,10 +207,25 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const message=property(e,'uncertain')?'供应商可能已受理。正在对账，不会自动重新提交。':filesystem?'本地产物文件不可用，已保留任务记录':String(property(e,'message')||'任务操作失败');
   return {code,message:message.replace(/(?:Bearer\s+|sk-)[A-Za-z0-9_\-.]+/gi,'[redacted]').slice(0,600),retryable:true};
  };
- for(const j of list('jobs')){const job=recordValue(j) as JobRecord|null;if(job&&job.status==='submitting')services.saveGenerationGuarded(job,{status:'submission_unknown',phase:'recovering_submit',error:{code:'SUBMISSION_UNKNOWN',message:'服务在提交期间中断；先对账，绝不盲目重新提交',retryable:true}});}
- for(const e of workerExports())if(e.status==='running')tx(()=>{
+ let invalidQueuedReported=false;
+ for(const ref of backgroundTasks.snapshot().filter(task=>task.kind==='job')){
+  const job=recordValue(get('jobs',ref.taskId)) as JobRecord|null;
+  if(job?.status==='queued'&&ref.reason==='BACKGROUND_TASK_INVALID'){
+   // Projection already refused this identity. Preserve the former worker's
+   // ownership diagnostic once on handover, without entering a write/dispatch
+   // path or making a refused row hold a continuation lease.
+   try{if(job.id!==ref.taskId||job.projectId!==inputStore.projectId)throw Error('Invalid project task owner');currentGenerationClaim(store.db,job);}
+   catch{if(!invalidQueuedReported){invalidQueuedReported=true;console.error('Skipped invalid local generation record.');}}
+   continue;
+  }
+  if(job&&job.status==='submitting')saveGenerationGuarded(job,{status:'submission_unknown',phase:'recovering_submit',error:{code:'SUBMISSION_UNKNOWN',message:'服务在提交期间中断；先对账，绝不盲目重新提交',retryable:true}});
+  else if(job&&(job.status==='submission_unknown'||job.phase==='connection_required'&&['queued','running','downloading'].includes(job.status)))services.saveJob(job,{nextPollAt:0});
+ }
+ for(const ref of backgroundTasks.snapshot().filter(task=>task.kind==='export')){const e=workerExport(ref.taskId);if(e?.status==='running')tx(()=>{
   const current=currentOwnedExport(e);if(current?.status==='running')put('exports',{...(isFloatTimelineExport(current)?requeueFloatTimelineExport(current):current),status:'queued',updatedAt:now()});
- });
+ });}
+ backgroundTasks.refresh();
+ verifyInvalidCandidates();
 
  async function processJob(original: JobRecord,signal: AbortSignal): Promise<void> {
   checkpoint(signal);
@@ -226,7 +284,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     j=current;
     if(JSON.stringify(j.snapshot)!==preparedSnapshot)throw Object.assign(Error('准备素材期间冻结快照已改变'),{code:'INVALID_REFERENCE_MANIFEST'});
     services.validateGenerationDispatch(j);
-    const claimed=services.saveGenerationGuarded(guardJob,{status:'submitting',phase:'provider_submit',submissionCount:submissionCount+1});
+    const claimed=saveGenerationGuarded(guardJob,{status:'submitting',phase:'provider_submit',submissionCount:submissionCount+1});
     if(!claimed)return;
     j=claimed as JobRecord;guardJob=j;
     const claim=j;
@@ -333,6 +391,9 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     if(projectOwner&&published)await markProjectOutputRegistered(projectOwner,published.publication,{signal});
    }
   } catch(error) {
+   if(isBackgroundTaskIndexUncertain(error))return;
+   if(isAgentTaskEffectBlocked(error)&&!isKnownAgentTaskBlock(error))throw error;
+   if(pauseUnavailableBackgroundTask(store.db,{kind:'job',taskId:original.id},error))return;
    if(property(error,'terminationUnconfirmed'))failShutdown(error);
    const latest=recordValue(get('jobs',guardJob.id)) as JobRecord|null;
    if(latest?.status==='cancelled'||latest?.status==='succeeded')return;
@@ -340,26 +401,26 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    // A trusted host gate can prove that this attempt never reached POST. Keep
    // the original queue identity so explicit resume continues it exactly once.
    if((blockedGate||isAgentTaskEffectBlocked(error))&&!postPermitted&&!acceptedProviderId){
-    const cancelled=isAgentTaskJobStopped(store.db,'job',j.id);if(j.status==='submitting'||j.status==='queued'&&cancelled)services.saveGenerationGuarded(guardJob,{status:cancelled?'cancelled':'queued',phase:cancelled?'cancelled_before_dispatch':'waiting',submissionCount,error:null,nextPollAt:0});
+    const cancelled=isAgentTaskJobStopped(store.db,'job',j.id);if(j.status==='submitting'||j.status==='queued'&&cancelled)saveGenerationGuarded(guardJob,{status:cancelled?'cancelled':'queued',phase:cancelled?'cancelled_before_dispatch':'waiting',submissionCount,error:null,nextPollAt:0});
     return;
    }
    if(errorCode?.startsWith('VIDEO_SETTINGS_')||errorCode==='VIDEO_CREDENTIAL_UNAVAILABLE'){
     // Retain the exact configured connection and task when credentials need
     // restoring; this path never authorizes a replacement submission.
     const definitelyUnsubmitted=j.status==='submitting'&&(property(error,'beforeDispatch')===true||isGenerationPreflightFailure(error));
-    if(latest)services.saveGenerationGuarded(latest,{...(definitelyUnsubmitted?{status:'queued',submissionCount}:{}),phase:'connection_required',error:safeError(error),nextPollAt:Date.now()+5000});
+    if(latest)saveGenerationGuarded(latest,{...(definitelyUnsubmitted?{status:'queued',submissionCount}:{}),phase:'connection_required',error:safeError(error),nextPollAt:Date.now()+5000});
     return;
    }
    if(j.status==='submitting') {
     if(isGenerationPreflightFailure(error)&&!acceptedProviderId){
      // This fence ran before fetch, so no attempt was dispatched. Do not
      // overwrite a concurrent cancellation or requeue a rejected paid action.
-     services.saveGenerationGuarded(guardJob,{status:'failed',phase:'input_preflight_failed',submissionCount,error:safeError(error),nextPollAt:0});
+     saveGenerationGuarded(guardJob,{status:'failed',phase:'input_preflight_failed',submissionCount,error:safeError(error),nextPollAt:0});
      return;
     }
     if(!latest)return;
     if(property(error,'beforeDispatch')===true&&!acceptedProviderId) {
-     services.saveGenerationGuarded(guardJob,{status:'queued',phase:'waiting',submissionCount,error:null,nextPollAt:0});
+     saveGenerationGuarded(guardJob,{status:'queued',phase:'waiting',submissionCount,error:null,nextPollAt:0});
      if(property(error,'terminationUnconfirmed'))persistMediaPause('jobs',j.id,'');
      return;
     }
@@ -373,14 +434,14 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     return;
    } else if(j.providerId==='mock'&&j.status==='downloading'&&errorCode==='MOCK_RENDERER_UNSUPPORTED')services.saveJob(latest as JobRecord,{status:'failed',phase:'provider_failed',error:{...safeError(error),retryable:false},nextPollAt:0});
    else if(['running','downloading','submission_unknown'].includes(j.status))services.saveJob(latest as JobRecord,{error:safeError(error,j.status==='downloading'?'DOWNLOAD_FAILED':'POLL_ERROR'),nextPollAt:Date.now()+1000});
-   else services.saveGenerationGuarded(guardJob,{status:'failed',error:safeError(error)});
+   else saveGenerationGuarded(guardJob,{status:'failed',error:safeError(error)});
   }
  }
 
  async function processExport(original: ExportRecord,signal: AbortSignal): Promise<void> {
   checkpoint(signal);
   try{assertAgentTaskJobEffect(store.db,'export',original.id);}catch(error){
-   if(isAgentTaskEffectBlocked(error)&&isAgentTaskJobStopped(store.db,'export',original.id)){tx(()=>{const latest=currentOwnedExport(original);if(latest?.status==='queued')put('exports',{...latest,status:'failed',error:{code:'EXPORT_CANCELLED',message:'导出已取消',retryable:false},updatedAt:now()});});return;}throw error;
+   if(isKnownAgentTaskBlock(error)&&isAgentTaskJobStopped(store.db,'export',original.id)){tx(()=>{const latest=currentOwnedExport(original);if(latest?.status==='queued')put('exports',{...latest,status:'failed',error:{code:'EXPORT_CANCELLED',message:'导出已取消',retryable:false},updatedAt:now()});});return;}throw error;
   }
   let e: ExportRecord=original;
   if(!exportUuid(e.id)||!exportUuid(e.projectId)){invalidExport();return;}
@@ -496,6 +557,8 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    publicationAccepted=true;
   } catch(error) {
    if(publicationAccepted)return;
+   if(isBackgroundTaskIndexUncertain(error))return;
+   if(pauseUnavailableBackgroundTask(store.db,{kind:'export',taskId:e.id},error))return;
    terminationUnconfirmed=Boolean(property(error,'terminationUnconfirmed'));
    if(property(error,'terminationUnconfirmed'))failShutdown(error);
    const failExport=(): void=>{
@@ -549,7 +612,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   catch(error) {
    // A trusted task control fence defers only its own candidate. Storage,
    // audit and uncertain-effect failures must still abort the whole cycle.
-   if(!isAgentTaskEffectBlocked(error)||!['AGENT_TASK_PAUSED','AGENT_TASK_STOPPED','AGENT_TASK_CONSENT_REQUIRED','AGENT_TASK_TARGET_CHANGED','AGENT_TASK_TARGET_CLAIMED','AGENT_TASK_APPROVAL_REQUIRED'].includes(stringValue(property(error,'code'))??''))throw error;
+   if(!isKnownAgentTaskBlock(error))throw error;
   }
  }
  function tick(): Promise<void> {
@@ -557,9 +620,13 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   if(cycle)return cycle;
   cycle=(async()=>{
    try {
-    for(const j of list('jobs')){const job=recordValue(j) as JobRecord|null;if(job&&!stopped&&typeof job.status==='string'&&['queued','running','downloading','submission_unknown'].includes(job.status))await advance(job,processJob as WorkerOperation);}
+    // Projection does not grant authority or classify failures of its gate.
+    // Recheck only agent-blocked queued candidates through the original gate:
+    // ordinary denials skip one candidate; audit/storage faults stop the cycle.
+    verifyInvalidCandidates();
+    for(const ref of backgroundTasks.snapshot()){if(ref.kind!=='job'||!ref.keepAlive&&!ref.reason?.startsWith('AGENT_'))continue;const job=recordValue(get('jobs',ref.taskId)) as JobRecord|null;if(job&&!stopped&&typeof job.status==='string'&&['queued','running','downloading','submission_unknown'].includes(job.status)&&(ref.keepAlive||job.status==='queued'))await advance(job,processJob as WorkerOperation);verifyInvalidCandidates();}
     if(stopped)return;
-    for(const e of workerExports())if(!stopped&&e.status==='queued')await advance(e,processExport as unknown as WorkerOperation);
+    for(const ref of backgroundTasks.snapshot()){if(ref.kind!=='export'||!ref.keepAlive&&!ref.reason?.startsWith('AGENT_'))continue;const e=workerExport(ref.taskId);if(e&&!stopped&&e.status==='queued')await advance(e,processExport as unknown as WorkerOperation);verifyInvalidCandidates();}
    } catch(error) {console.error('Worker cycle failed:',stringValue(property(error,'code'))||String(property(error,'name')));}
   })().finally(()=>{cycle=null;});
   return cycle;

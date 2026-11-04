@@ -56,6 +56,7 @@ import { createProjectPackageHttp } from './project-package-http.ts';
 import type { ProjectAddress } from './project-host/request.ts';
 import {ProjectHostCleanupError} from './project-host/host.ts';
 import {createProjectDraftsFactory} from './project-host/drafts.ts';
+import {createProjectBackgroundState} from '../../../packages/business/src/background-task-state.ts';
 import { createTimelineAudioContinuousHttp } from './timeline-audio-continuous-http.ts';
 import { createTimelineAudioPreviewHttp } from './timeline-audio-preview-http.ts';
 import { createVideoHttp } from './video-http.ts';
@@ -101,6 +102,8 @@ export interface ProjectRuntimeOptions extends Pick<ServerOptions,
   readonly serviceApplication?: ServiceApplicationPorts;
   /** Host-owned app data/cache/temp roots; never model or request input. */
   readonly privateMediaDirectories: readonly string[];
+  /** The host activates durable recovery after its open backup and S3 lease. */
+  readonly deferBackgroundRecovery?: boolean;
   /** Borrowed app settings are closed by their owner, not this project. */
   readonly settings?: {readonly image?: ImageSettings; readonly customImage?: CustomImageSettings; readonly video?: VideoSettings; readonly comfy?: ComfySettings};
 }
@@ -110,7 +113,7 @@ export interface ProjectRuntimeOptions extends Pick<ServerOptions,
  * factory until the host supplies its own context. */
 export async function composeProjectRuntime({store, shutdown, deletionGate, baseRoot = store.root, port, serverPort, listeningPort,
   agentSettings: suppliedAgentSettings, agentSecretCodecFactory, imageSecretCodec, videoSecretCodec, imageNetwork, comfyNetwork,
-  comfyModule = 'load', taskGatewayV2, taskFault, localDraftChannel = 'web', nativeAudioPreview, application, serviceApplication, privateMediaDirectories, settings,
+  comfyModule = 'load', taskGatewayV2, taskFault, localDraftChannel = 'web', nativeAudioPreview, application, serviceApplication, privateMediaDirectories, settings, deferBackgroundRecovery = false,
 }: ProjectRuntimeOptions) {
   const root = store.root, ordinaryStore = store;
   assertProjectStore(store);
@@ -177,7 +180,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     const comfyReservedPorts = (): Set<number> => new Set([port, serverPort()].filter((value): value is number => value !== undefined && Number.isInteger(value) && value > 0));
     comfySettings = settings?.comfy ?? await createComfySettings({directory:path.join(appRoot,'comfy-settings'),privateRoot:appRoot,reservedPorts:comfyReservedPorts});
     const {connector:comfyConnector,availability:comfyModuleAvailability} = composeOfficialComfyModule(comfyModule,()=>createComfyConnector({reservedPorts:comfyReservedPorts,...(comfyNetwork ? {networkDeps:{httpRequest:comfyNetwork.httpRequest}} : {})}));
-    const composed = createServices(ordinaryStore, providers, {...(serviceApplication?{application:serviceApplication}:{}),env:providerEnv,signal: shutdown.signal,videoSettings,agentAuthorizations,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettingsV2:customImageSettings,customGateway:createCompatibleImageGatewayV2({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
+    const composed = createServices(ordinaryStore, providers, {...(serviceApplication?{application:serviceApplication}:{}),env:providerEnv,signal: shutdown.signal,videoSettings,agentAuthorizations,deferBackgroundRecovery,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettingsV2:customImageSettings,customGateway:createCompatibleImageGatewayV2({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
     services = composed;
     serviceCall = (operation, input, context) => composed.call(operation, input, context);
     serviceDrain = () => composed.drain();
@@ -188,7 +191,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     editTasks = createEditTasks({store: ordinaryStore, services, ...(taskFault ? {fault: taskFault} : {})});
     // openStore already owns the exclusive workspace lock. Startup only
     // reconciles durable evidence and never dispatches a prepared edit.
-    await editTasks.reconcileStartup();
+    if (!deferBackgroundRecovery) await editTasks.reconcileStartup();
     const editTasksHttp = createEditTasksHttp({tasks: editTasks, signal: shutdown.signal});
     const workspacePreferences: WorkspacePreferences = createWorkspacePreferences(ordinaryStore,application?{application:{db:application.db,tx:application.tx,hasProject}}:{});
     uiPreferences = createUiPreferences({root:appRoot,...appScope,...documents,channel:localDraftChannel,signal:shutdown.signal,
@@ -231,12 +234,21 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     agentDiagnosticsHttp=createAgentDiagnosticsHttp({settings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,policy:()=>taskRuntimeV2!.policy(),selfPort:()=>listeningPort(),hasProject:id=>!!store.get('projects',id),storage:projectId=>projectId===store.projectId?readMioStorage(store.db):undefined});
     }
 
+    let backgroundActivated = !deferBackgroundRecovery;
     return {
       providers, services, serviceCall, serviceDrain, agentSettings, agentAuthorizations, uiPreferences, imageSettings, customImageSettings, videoSettings, comfySettings,
       lastProject, draftsFactory,
       editTasks, workspacePreferences, imageHttp, comfyHttp, videoHttp, editTasksHttp, lastProjectHttp, projectPackageHttp,
       exportFileRecovery, audioPreviewHttp, continuousAudioHttp,
       taskToolsV2, taskRuntimeV2, taskHttpV2, agentDiagnosticsHttp, projectRules, closeSettings,
+      backgroundTasks: createProjectBackgroundState(store),
+      activateBackground: (): void => {
+        if (backgroundActivated) return;
+        shutdown.signal.throwIfAborted();
+        services.activateBackground();
+        editTasks!.reconcileStartup();
+        backgroundActivated = true;
+      },
       startWorker: () => worker ??= startWorker(store, services, providers, {signal: shutdown.signal}),
     };
   } catch (error) {

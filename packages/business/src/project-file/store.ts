@@ -8,6 +8,8 @@ import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
 import type {MediaReference} from '../../../contracts/src/media-reference.ts';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {mediaUnavailableError} from '../../../contracts/src/media-reference-errors.ts';
+import {markBackgroundTaskChanged, flushBackgroundTaskChanges, discardBackgroundTaskChanges, closeBackgroundTaskEvents,
+  validateBackgroundTaskAdmission, validateBackgroundTaskChanges} from '../background-task-events.ts';
 
 /** The contract's project store with the read and write surface of today's
  * Store (same tables, columns, errors and transaction rules; tx
@@ -148,6 +150,10 @@ export function openStagedProjectStore(options: StagedProjectConnectionOptions):
 }
 function storeFromConnection(connection: ProjectConnection): ProjectStore {
   const database = connection.db;
+  const notificationFailed = (): never => {
+    throw new AppError('BACKGROUND_TASK_INDEX_UNCERTAIN', '任务已经记录，但后台索引尚未确认。请重新打开项目检查，不要重复提交生成。', 503,
+      {projectId: connection.projectId, mutationOutcome: 'unknown'});
+  };
   const table = (t: string): string => {
     if (!TABLES.has(t)) throw Error('Unknown table');
     return t;
@@ -167,7 +173,16 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
     const record = value as Readonly<Record<string, unknown>>;
     const values = columns.map(column => column === 'data' ? JSON.stringify(value) : sqlValue(record[column]));
     connection.throwIfMoved();
+    if ((t === 'jobs' || t === 'exports') && typeof record.id === 'string' && !database.isTransaction) {
+      validateBackgroundTaskAdmission(database, [{kind: t === 'jobs' ? 'job' : 'export', taskId: record.id}]);
+    }
     database.prepare(`INSERT INTO ${t}(${columns.join(',')}) VALUES(${columns.map(() => '?').join(',')}) ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(...values);
+    if ((t === 'jobs' || t === 'exports') && typeof record.id === 'string') {
+      // Inside a transaction this only records an identity. An autocommit put
+      // has already committed, so its synchronous notification cannot roll back.
+      try { markBackgroundTaskChanged(database, t === 'jobs' ? 'job' : 'export', record.id); }
+      catch { notificationFailed(); }
+    }
     return value;
   };
   // A transaction owns its complete synchronous callback. Never commit before
@@ -186,25 +201,35 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
     if (database.isTransaction) throw new Error('Nested transactions are not supported');
     connection.throwIfMoved();
     database.exec('BEGIN');
+    let result!: T;
     try {
       for (const fence of transactionFences.get(database) ?? []) fence();
-      const result = callback();
+      result = callback();
       if (isThenable(result)) {
         if (isPromise(result)) Promise.resolve(result).catch(() => {});
         throw new TypeError('Transactions require a synchronous result');
       }
       for (const observer of transactionObservers.get(database) ?? []) observer(result);
+      // A pure quota check prevents a committed task from exceeding the
+      // discovery bound. It never writes a prepared app-library record.
+      validateBackgroundTaskChanges(database);
       database.exec('COMMIT');
-      return result;
     } catch (error) {
-      if (database.isTransaction) database.exec('ROLLBACK');
+      try { if (database.isTransaction) database.exec('ROLLBACK'); }
+      finally { discardBackgroundTaskChanges(database); }
       throw error;
     }
+    // App-library indexing follows the actual project COMMIT. Its failure is
+    // uncertain acknowledgement, never evidence that the domain rolled back.
+    try { flushBackgroundTaskChanges(database); }
+    catch { notificationFailed(); }
+    return result;
   };
   let closed = false;
   const close = (): void => {
     if (closed) return;
     connection.close();
+    closeBackgroundTaskEvents(database);
     closed = true;
   };
   const store: ProjectStore = {
