@@ -342,6 +342,7 @@ node tests/helpers/project-file-schema-derivation.ts --check
 - **草稿：** clip、delivery、shot-text 草稿分别存在本项目 `history.db` 的 `local_clip_drafts`、`local_delivery_drafts`、`local_shot_text_drafts`；`local_draft_states` 保留每类已保存空状态的 scope。写入只使用宿主持有的同一个连接和短事务，不改变项目文件、内容序号或内容身份。执行原业务仍遵循原业务事务及回执，不与草稿终态伪装成一次提交。
   - `local-drafts-v1.json`、`local-delivery-v1.json`、`local-shot-text-v1.json` **已退役**：不导入、不再读取或写入，原位、原名、原字节保留，可以手工删除。打开、升级和关闭不会自动删除或改名这些文件，旧 pending 不会被自动恢复执行。
   - scope 继续绑定渠道、本机目录和该连接持有的 `history.db` 文件身份；instanceId 每次宿主打开重新生成，不落库。GET/list 不建记录，discard 留修订墓碑；成功 ACK 在 SQLite COMMIT 后发出，丢失 ACK 仍须重新读取或显式恢复确认。
+  - Mio 撤销素材导入的零消费者证明会按真实槽结构检查 clip 草稿的 `source.assetId`；当前片段已经移除也不丢弃该依赖。`draft:null` 墓碑没有素材引用；scope、delivery 名称/导出意图和 shot-text 文本/窄 patch 没有素材身份，归入忽略清单。文本中恰好出现素材 UUID 不构成引用。
   - 0.1.0 只发布 macOS。Windows 的 clip 接口保持不可用；delivery/shot-text 可读，变更操作在任何 SQL 效果前报本地错误族的 `STORAGE_UNAVAILABLE`，不再先写入后返回 `SAVE_UNCERTAIN`。Windows 保存支持另行实施和原生验收。
 - **Mock 供应商的账本：** Mock 供应商运行时在库连接上建的 `mock_provider_tasks`、`mock_provider_submissions` 两张表和它们的索引，收进本机记录的任务领域（`schema/domains/tasks.ts`），本机记录的格式版本从 1 升到 2。供应商照旧用不带库名的 `CREATE TABLE IF NOT EXISTS`，在主库也就是本机记录里找到这两张表，不会再建；不收进来的话，下次打开时本机记录的结构对不上清单，报 `PROJECT_INVALID`（`schema`）。
 - **建库文件按领域分，每份有一个负责人：**
