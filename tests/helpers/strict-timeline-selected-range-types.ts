@@ -1,7 +1,7 @@
 import type {MediaReference} from '../../packages/contracts/src/media-reference.ts';
 import type {selectedRangeFixture as originalFixture} from '../fixtures/selected-range-http-fixture.ts';
 import type {createLocalDelivery} from '../../packages/business/src/local-delivery.ts';
-import type {LocalDeliveryEnvelope, LocalDeliveryExecution, LocalDeliveryPrepare} from '../../packages/contracts/src/local-delivery.ts';
+import type {LocalDeliveryEnvelope, LocalDeliveryExecution, LocalDeliveryPrepare, LocalDeliverySlot} from '../../packages/contracts/src/local-delivery.ts';
 import type {MediaProcessEvent} from '../../packages/business/src/media-processes.ts';
 import type {FixtureProject, FixtureTimeline, FixtureAsset, FixtureExport} from './strict-timeline-core-types.ts';
 import type {TypedServices, TypedStore, ServiceResponse} from './strict-service-responses.ts';
@@ -10,12 +10,13 @@ import type {SQLOutputValue} from 'node:sqlite';
 export type DeliveryEnvelope = Extract<LocalDeliveryEnvelope,{supported:true}>;
 export type DeliveryExecution = Omit<LocalDeliveryExecution,'envelope'|'response'> & {envelope:DeliveryEnvelope;response:FixtureExport|null};
 interface FileEntry {directory?:string;name?:string;hash?:string}
-interface Checkpoint {rows:Record<string,unknown[]>;files:FileEntry[]}
+interface Checkpoint {rows:Record<string,unknown[]>;drafts:string;files:FileEntry[]}
 interface Observation {path:string;body:unknown;status:number|undefined}
 export interface SelectedRangeFixture {
  root:string;project:FixtureProject;timeline:FixtureTimeline;sources:(Omit<FixtureAsset,'relativePath'>&({reference:MediaReference;referenceRevision:number}|{relativePath:string}))[];
  dispatches:LocalDeliveryPrepare['input'][];submissions:unknown[];observations:Observation[];media:MediaProcessEvent[];capabilityChecks:unknown[];
  file:string;store:TypedStore;services:TypedServices;delivery:ReturnType<typeof createLocalDelivery>;url:string;
+ draftRows():LocalDeliverySlot[];draftState():string;
  rows():Record<string,unknown[]>;receipt(requestId:string):Record<string,SQLOutputValue>|undefined;
  checkpoint():Promise<Checkpoint>;unchanged(before:unknown):Promise<void>;
  request<T=unknown>(suffix:string,options?:{method?:string;input?:unknown;signal?:AbortSignal}):Promise<{status:number;body:RpcEnvelope<T>}>;

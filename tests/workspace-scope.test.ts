@@ -5,6 +5,7 @@ import {mkdtempSync,mkdirSync,writeFileSync,statSync,renameSync,copyFileSync,ope
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {calculateWorkspaceScope} from '../packages/contracts/src/workspace-scope.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createLocalDrafts} from '../packages/business/src/local-drafts.ts';
 import {createLastProject} from '../packages/business/src/last-project.ts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
@@ -66,25 +67,25 @@ test('replacement directory changes identity even when original database inode i
   assert.notEqual(calculateWorkspaceScope(((((after!))) as unknown as Parameters<typeof calculateWorkspaceScope>[0])),calculateWorkspaceScope(((((before!))) as unknown as Parameters<typeof calculateWorkspaceScope>[0])));
 });
 
-test('draft and last-project services share legacy identity without weakening caller guards',t=>{
-  const f=fixture(t),key={projectId:'11111111-1111-4111-8111-111111111111',timelineId:'22222222-2222-4222-8222-222222222222',clipId:'33333333-3333-4333-8333-333333333333'};
+test('SQL drafts keep history identity while last-project retains its independent scope and caller guards',t=>{
+  const f=fixture(t),store=openStore(path.join(f.parent,'draft-project'));t.after(()=>store.close());const key={projectId:store.projectId,timelineId:'22222222-2222-4222-8222-222222222222',clipId:'33333333-3333-4333-8333-333333333333'};
   let ownsLock=true;
   const guards={ownsLock:()=>ownsLock,isRestored:()=>false,readTimeline:()=>null,readClipAsset:()=>null,readProject:()=>null};
   for(const channel of ['web','production','development'] as const){
-    const options={root:f.root,channel,storage,guards},drafts=createLocalDrafts(options),lastProject=createLastProject(options);
-    assert.equal((drafts.get(key) as Extract<ReturnType<typeof drafts.get>,{supported:true}>).workspaceScope,legacy(f.input(channel) as Parameters<typeof legacy>[0]));
+    const options={root:f.root,channel,storage,guards},drafts=createLocalDrafts({store,channel,guards}),lastProject=createLastProject(options);
+    assert.equal((drafts.get(key) as Extract<ReturnType<typeof drafts.get>,{supported:true}>).workspaceScope,legacy({channel,root:store.localDir,directory:validatePrivateDirectory(store.localDir)!,db:validateManagedFile(path.join(store.localDir,'history.db'),{root:store.localDir})!}));
     assert.equal((lastProject.get() as Extract<ReturnType<typeof lastProject.get>,{supported:true}>).workspaceScope,legacy(((f.input(channel)) as unknown as Parameters<typeof legacy>[0])));
     ownsLock=false;
     assert.throws(()=>drafts.get(key),{code:'LOCAL_DRAFT_OWNER_REQUIRED'});
     assert.throws(()=>lastProject.get(),{code:'LAST_PROJECT_OWNER_REQUIRED'});
     ownsLock=true;
   }
-  for(const [create,code] of [[createLocalDrafts,'LOCAL_DRAFT_VALIDATION'],[createLastProject,'LAST_PROJECT_VALIDATION']] as const){
-    assert.throws(()=>create({root:'relative',storage,guards}),{code});
-  }
-  const options={root:f.root,storage,guards},drafts=createLocalDrafts(options),lastProject=createLastProject(options);
+  assert.throws(()=>createLocalDrafts({store:{...store,localDir:'relative'},guards}).get(key),{code:'LOCAL_DRAFT_OWNER_REQUIRED'});
+  assert.throws(()=>createLastProject({root:'relative',storage,guards}),{code:'LAST_PROJECT_VALIDATION'});
+  const options={root:f.root,storage,guards},drafts=createLocalDrafts({store,guards}),lastProject=createLastProject(options);
   drafts.get(key);lastProject.get();
   const replacement=path.join(f.root,'replacement.sqlite');writeFileSync(replacement,'replacement',{mode:0o600});renameSync(replacement,path.join(f.root,'workbench.sqlite'));
+  const history=path.join(store.localDir,'history.db');renameSync(history,history+'.held');writeFileSync(history,'replacement',{mode:0o600});
   assert.throws(()=>drafts.get(key),{code:'LOCAL_DRAFT_SCOPE_MISMATCH'});
   assert.throws(()=>lastProject.get(),{code:'LAST_PROJECT_SCOPE_MISMATCH'});
 });

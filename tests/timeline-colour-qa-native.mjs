@@ -76,11 +76,19 @@ async function audit(label) {
   for(const values of Object.values(rows))assert.ok(values.length<=1000);
   assert.equal(storage.locations[fixture.projectId]?.projectFile,fixture.projectFile);
   const media=coldNativeQaMediaSnapshot(workspace,fixture.projectId);
-  const draftPath = path.join(fixture.localDir, 'local-drafts-v1.json');
+  // Draft evidence comes from this project's already captured cold kernel,
+  // never from a retired JSON file or a second connection to a live owner.
+  const local = storage.projectSnapshots[fixture.projectId].rows;
+  const states = local['main.local_draft_states'].filter(row => row.kind === 'clip');
+  assert.ok(states.length <= 1);
+  const entries = [...local['main.local_clip_drafts']].sort((a, b) => Number(a.ordinal) - Number(b.ordinal)).map(row => JSON.parse(row.data));
+  assert.ok(states.length === 1 || entries.length === 0, 'Draft rows require their retained scope state');
+  assert.ok(entries.every(entry => entry.projectId === fixture.projectId));
+  const draft = states.length ? {version: 2, workspaceScope: states[0].workspaceScope, entries} : null;
   const result = { synthetic: true,kernel:true,kind:'cold-sql',storage, at: new Date().toISOString(), tables: Object.fromEntries(Object.entries(rows).map(([name, value]) => [name, { count: value.length, sha256: sha(json(value)) }])),
     timeline: rows.timelines.map(row => JSON.parse(row.data)).find(t => t.id === fixture.timelineId), requests: rows.timeline_requests, history: rows.timeline_history,
     editTasks: rows.edit_tasks, exports: rows.exports.map(row => JSON.parse(row.data)), assets: rows.assets.map(row => JSON.parse(row.data)), lutResources: rows.project_lut_resources, lutRequests: rows.lut_import_requests,
-    draft: await exists(draftPath) ? await readJson(draftPath) : null, media, originalSource: await coldNativeQaAssetFile(workspace,fixture.projectId,fixture.assetId) };
+    draft, media, originalSource: await coldNativeQaAssetFile(workspace,fixture.projectId,fixture.assetId) };
   assert.equal(result.originalSource.sha256, fixture.sourceHash); await save(label + '-audit.json', result);
   return { label, revision: result.timeline.revision, colour: result.timeline.clips[0].colour, exports: result.exports.map(e => ({ id: e.id, status: e.status, purpose: e.purpose })), tables: result.tables };
 }

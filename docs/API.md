@@ -1660,7 +1660,11 @@ Named download links bind `/api/projects/{projectId}/media/{assetId}?download=1&
 
 ### 私有镜头文字草稿与保存恢复
 
-普通工作区的右侧镜头表单使用 authenticated `/api/local-shot-text` 私有接口保存 title/prompt 草稿及原 `shot.update` 精确意图；不是公共 RPC/CLI/MCP/Agent 操作。GET 必须携带 projectId 与 shotId，只读且不创建记录；草稿与意图使用独立 CAS、后端工作区/实例身份。公开 shot.update 输入与响应仍兼容。文字请求的 prepare/execute/recover、容量/隐私/备份排除合同见 [SHOT-TEXT-DRAFTS.md](SHOT-TEXT-DRAFTS.md)。读取或恢复表单不自动执行业务。
+右侧镜头表单使用 authenticated `/api/projects/<项目ID>/local-shot-text` 私有接口保存 title/prompt 草稿及原 `shot.update` 精确意图；不是公共 RPC/CLI/MCP/Agent 操作。GET 必须携带 projectId 与 shotId，只读且不创建记录；草稿与意图使用独立 CAS、本机记录范围和实例身份。公开 shot.update 输入与响应仍兼容。文字请求的 prepare/execute/recover、容量/隐私合同见 [SHOT-TEXT-DRAFTS.md](SHOT-TEXT-DRAFTS.md)。读取或恢复表单不自动执行业务。
+
+三类私有草稿都写本项目 history 的草稿领域表。外部路径统一以 `/api/projects/<项目ID>` 为前缀：clip 使用 `/local-drafts`、`/local-drafts/clip`；delivery 使用 `/local-delivery` 及其 `/draft`、`/prepare`、`/execute`、`/recover` 子路径；shot-text 同理。现有字段、CAS、限额、回执校验和错误族保持；旧 `/api/local-…` 未寻址地址仍返回404。三个旧 JSON 不导入、不读写、不自动清理，详见 [PROJECT-FILE.md](PROJECT-FILE.md)。
+
+宿主关闭先停止草稿接纳，再等待完整 execute/recover（含终态持久化和 finally）结束，最后才可关闭连接。客户端断开响应不能证明后端已结束；持久 pending 不自动执行，也不单独阻止关闭。SQLite COMMIT 后丢失 ACK 仍是不确定结果，须重新读取或按原 intent 显式 recover。0.1.0 Windows 的 delivery/shot-text 变更端点在任何 SQL 效果前返回503 `*_STORAGE_UNAVAILABLE`；clip 维持原不可用状态。
 
 
 ## Selected-range timeline exports

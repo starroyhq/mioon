@@ -154,7 +154,7 @@
 
 **S0 P2 的组装接缝（历史阶段记录，当时尚未切换生产存储）：**
 
-- `apps/server/src/project-runtime.ts` 的 `composeProjectRuntime` 从已打开的 store 组装 providers、业务服务、编辑任务、Mio、草稿及对应 HTTP handler。它不打开/关闭 store、不绑定监听器，也不创建宿主管理器。P2 时旧 `startServer` 调用同一个工厂，仍用旧目录、默认设置、路由和工作区；P4 改由真实宿主调用，工厂的 store 所有权边界不变。
+- `apps/server/src/project-runtime.ts` 的 `composeProjectRuntime` 从已打开的 store 组装 providers、业务服务、编辑任务和 Mio，并返回已绑定业务依赖的草稿工厂。真实宿主把自己的 context 传给 `ProjectDraftsFactory`，每个宿主创建一份草稿服务及 HTTP handler。工厂不打开/关闭 store、不绑定监听器，也不创建宿主管理器；store 及其唯一连接仍由宿主管理器持有。
 - P2 时新内核只在定向集成测试中装配，必须显式提供应用库端口与 `ServiceApplicationPorts`；P4 的生产宿主沿用此注入。项目连接不挂载应用库。应用配置、偏好、全局 Mio policy、授权、最近项目使用应用范围；三个项目 JSON 使用 `localDir/history.db` 的身份。`databaseFile` 的验证仍要求私有根内的直接子文件，只做原有 stat 验证，不读取持有的数据库。
 - `isAppLibraryHeld(identity, db)` 可同时核对文件身份与实际持有它的连接；不能把一个仍打开的连接与另一个库的路径拼接成应用权限。应用 documents 的 companion 写入经独立应用事务提交后才返回确认，拒绝加入外层未提交事务。Mio policy 的 CAS 写入也使用独立应用事务，policy 与请求回执一起提交；无 CAS 的既有 B1 写法仍可组合进应用事务。
 - 新工厂支持借用应用设置；借用的设置和配置/备份端口由应用所有者关闭，关闭项目不关闭它们。工厂启动失败时先取消并等待内部任务和自建设置；清理成功才重抛原启动错误。清理失败或超时会保留两类错误，外层不得关闭 SQLite 或释放锁，遵守既有 `boundedShutdown` 的安全边界。
@@ -333,7 +333,10 @@ node tests/helpers/project-file-schema-derivation.ts --check
 
 ## 放行设置、草稿和建库文件
 - **放行设置：** 全局放行档位及其回执（2 张表）放在应用库；对话级覆盖及其回执（2 张表）跟着对话，放在本机记录里。两者都不在项目文件里，别人发来的项目照样放宽不了权限。这样 `agent_task_conversation_policy_owner_v2` 也不再跨文件。
-- **草稿：** `local-drafts-v1.json`、`local-delivery-v1.json`、`local-shot-text-v1.json` 三个文件改为本机记录里的草稿表，由 S8 实现。
+- **草稿：** clip、delivery、shot-text 草稿分别存在本项目 `history.db` 的 `local_clip_drafts`、`local_delivery_drafts`、`local_shot_text_drafts`；`local_draft_states` 保留每类已保存空状态的 scope。写入只使用宿主持有的同一个连接和短事务，不改变项目文件、内容序号或内容身份。执行原业务仍遵循原业务事务及回执，不与草稿终态伪装成一次提交。
+  - `local-drafts-v1.json`、`local-delivery-v1.json`、`local-shot-text-v1.json` **已退役**：不导入、不再读取或写入，原位、原名、原字节保留，可以手工删除。打开、升级和关闭不会自动删除或改名这些文件，旧 pending 不会被自动恢复执行。
+  - scope 继续绑定渠道、本机目录和该连接持有的 `history.db` 文件身份；instanceId 每次宿主打开重新生成，不落库。GET/list 不建记录，discard 留修订墓碑；成功 ACK 在 SQLite COMMIT 后发出，丢失 ACK 仍须重新读取或显式恢复确认。
+  - 0.1.0 只发布 macOS。Windows 的 clip 接口保持不可用；delivery/shot-text 可读，变更操作在任何 SQL 效果前报本地错误族的 `STORAGE_UNAVAILABLE`，不再先写入后返回 `SAVE_UNCERTAIN`。Windows 保存支持另行实施和原生验收。
 - **Mock 供应商的账本：** Mock 供应商运行时在库连接上建的 `mock_provider_tasks`、`mock_provider_submissions` 两张表和它们的索引，收进本机记录的任务领域（`schema/domains/tasks.ts`），本机记录的格式版本从 1 升到 2。供应商照旧用不带库名的 `CREATE TABLE IF NOT EXISTS`，在主库也就是本机记录里找到这两张表，不会再建；不收进来的话，下次打开时本机记录的结构对不上清单，报 `PROJECT_INVALID`（`schema`）。
 - **建库文件按领域分，每份有一个负责人：**
 

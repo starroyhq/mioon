@@ -102,7 +102,7 @@ Node 只读客户端为 @mioon/client/project-entry 的 createProjectEntriesClie
 | `exportFileRecovery`（`/api/export-files`） | 同上 | K2 改路径，S0 |
 | 预听：`audioPreviewHttp`、`continuousAudioHttp`、`services.audioPreview` | 同上 | K2 改路径，S0 |
 | 图片审阅的 `approve`、`reject`（`imageHttp` 里调 `imageApproval`、`imageRejection` 的两条） | 按审阅 ID 在项目里找 | K2 改路径，S0 从 `imageHttp` 拆出 |
-| 本机草稿：`localDrafts`、`localDelivery`、`localShotText` 和它们的 HTTP，`shotTextDomain`、`shotReplay` | 草稿属于本机记录 | S8；S8 之前每个宿主一份，三个 JSON 文件放 `localDir` |
+| 本机草稿：`ProjectDraftsFactory` 创建的 clip、delivery、shot-text 和 HTTP，`shotTextDomain`、`shotReplay` | 四张草稿领域表属于本机记录，同宿主唯一连接 | S8；三个旧 JSON 原位退役，不导入、不读写 |
 | `files`（`createFileResponses`）的媒体流 | 关闭项目要等它的文件流；静态文件另用应用级的一份 | S0 |
 | 删除闸门的请求跟踪（`deletionGate.track`、`rpc`）和 `hold()` | 换成宿主的请求租约；`hold()` 算进运行时的忙碌和排空 | S0 |
 | `/api/projects/<id>/package-preview`（交换文件的预览） | 读项目内容；已经在新前缀下 | V4 删除；之前进宿主 |
@@ -324,9 +324,9 @@ export type InspectProject = <T>(projectId: string, inspect: (db: DatabaseSync) 
 | 方法 | 做什么 |
 |---|---|
 | `handle(request)` | 按顺序试 `rpc`、`media`、版本对比、预听、导出文件、图片审阅、草稿、Mio（`agent/tasks/v2/…`、`editing`）、编辑任务（`tasks…`）；`rpc` 里沿用 K2 的 `PROJECT_ID_MISMATCH` 核对。都不匹配返回 `false`，由分派层回 404 |
-| `isBusy()` | Mio 正在跑的轮次、执行中的编辑任务、`hold()` 住的文件发布、`worker` 正在调的供应商请求。忙时既不空闲关闭，也不让独占操作进来 |
+| `isBusy()` | Mio 正在跑的轮次、执行中的编辑任务、`hold()` 住的文件发布、`worker` 正在调的供应商请求，以及草稿完整在途回调（包括业务返回后的终态保存和 finally）。响应断开不会使草稿提前空闲，静止 pending 不算忙；版本恢复也单独检查草稿 busy |
 | `interrupt()` | 关闭的第一步：关掉 SSE（Mio 的 `taskHttpV2.close()`、运行时的 `close()`），中止 Mio 正在跑的轮次 |
-| `drain()` | 停 `worker`，等 `services.drain()`、`editTasks.drain()`、Mio 的 `drain()`、文件流和版本对比媒体关闭 |
+| `drain()` | 草稿先停止新接纳，晚到请求直接报对应503且不读 body；停 `worker`，等草稿完整回调、`services.drain()`、`editTasks.drain()`、Mio 的 `drain()`、文件流和版本对比媒体关闭。未确认排空时保留连接和锁，不进入关库 |
 | `dispose()` | `taskToolsV2.dispose()` 这类同步的收尾 |
 
 切换前的 `composeServer` 关闭顺序为：`shutdown.abort()`，关 SSE，`Promise.all` 等 `worker.stop()`、`taskRuntimeV2.drain()`、`serviceDrain()`、`editTasks.drain()`、`files.close()`、`versionComparisonMedia.close()`，然后 `taskToolsV2.dispose()`、`store.close()`。P4 将项目排空/释放交给运行时和管理器，应用资源在全部项目关闭后释放。
@@ -369,7 +369,7 @@ export interface MioAppServices {readonly policy: AgentPolicyStorePort; readonly
 export interface MioRuntimePort {handle(request: ProjectRequest): Promise<boolean>; isBusy(): boolean; interrupt(): void; drain(): Promise<void>; dispose(): void}
 export type MioRuntimeFactory = (context: ProjectHostContext, app: MioAppServices) => MioRuntimePort;
 // S8：草稿
-export interface ProjectDraftsPort {handle(request: ProjectRequest): Promise<boolean>; drain(): Promise<void>}
+export interface ProjectDraftsPort {handle(request: ProjectRequest): Promise<boolean>; isBusy(): boolean; drain(): Promise<void>}
 export type ProjectDraftsFactory = (context: ProjectHostContext) => ProjectDraftsPort;
 // S0a：内核的恢复函数
 export type {ProjectFileRecovery};  // 从内核导入；invalid 带 ProjectInvalidReason
@@ -401,7 +401,7 @@ export function createMemoryAgentPolicyStore(initial?: AgentTaskPolicy | null): 
 | `ProjectInboxPort` | S3 | 宿主不直接调；S3 的 `afterOpen` 钩子把结果写进项目再删掉，应用级的 S3 代码 `add` | `createMemoryProjectInbox` |
 | `ProjectLifecycleHooks` | V1、V2，也给 S3 | `afterOpen`：组装好以后，顺序调用；`beforeClose`：倒序，排空以后。V2 已注册第一个 hook，打开先备份、关闭最后备份；V1 每日版本和 S3 收件箱按后续卡接入 | V2 已用真实 hooks；其他卡未接入前不注册 |
 | `MioRuntimeFactory`、`MioRuntimePort` | R1 | 工厂里每个宿主建一份；`handle`、`isBusy`、`interrupt`、`drain`、`dispose` 并进宿主的同名方法 | 现在的 `createAgentTaskRuntime` 加 `createAgentTaskHttp`。设置和发送授权也是应用级的，由工厂的闭包带进去 |
-| `ProjectDraftsFactory`、`ProjectDraftsPort` | S8 | 工厂里每个宿主建一份 | 现在的三个 JSON 模块，每个宿主一份，根目录用 `localDir`，范围文件用 `history.db`（6.2 第 4 步） |
+| `ProjectDraftsFactory`、`ProjectDraftsPort` | S8 | 完成业务装配后绑定依赖，宿主用真实 context 建一份；`isBusy` 并入宿主及版本恢复门禁，`drain` 等完整终态回调与 finally | 三类服务只写同一连接的 history 草稿表；scope 按该连接持有的 history 文件身份算；持久 pending 本身不算忙 |
 | `KernelMaintenancePort` | S0a（#106，已合入） | `list()`、`restore()`，见第 5 节 | 不用替身：默认就是内核的 `recoverProjectFile`，测试可以换成别的 |
 
 V2 的 hook 捕获自身已经结束的备份失败，落安全状态后正常返回，不能让 `afterOpen` 因备份失败而失败。factory 此时可能已有后台写入，备份采用 SQLite 完成时一致副本，从副本读身份/序号，不增加激活闸门。关闭开始时 context.signal 已中止，V2 不用它取消原生备份；完整等待结束后才让管理器关库。状态与列表等应用操作详见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)，均不以 acquire 原项目来读备份。
