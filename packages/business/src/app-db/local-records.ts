@@ -42,6 +42,8 @@ export interface LocalRecordsOptions {
   readonly identity: (projectFile: string) => ProjectFileIdentity | null;
   /** Whether this process has the project open (the project host). */
   readonly isProjectOpen: (projectId: string) => boolean;
+  /** Durable index plus live requests; must be rechecked before rename. */
+  readonly isProjectBackgroundBusy: (projectId: string) => boolean;
 }
 
 /** Folders left by a delete that stopped between the rename and the removal. */
@@ -96,7 +98,7 @@ async function folderSize(folder: string, depth = 0): Promise<number> {
   return total;
 }
 
-export function createLocalRecords({dataDir, registry, identity, isProjectOpen}: LocalRecordsOptions): LocalRecordsStore {
+export function createLocalRecords({dataDir, registry, identity, isProjectOpen, isProjectBackgroundBusy}: LocalRecordsOptions): LocalRecordsStore {
   const recordsDir = path.join(dataDir, PROJECT_RECORDS_DIRECTORY);
   /** The registered file is still at its place (lstat only). */
   const atRegisteredPlace = (entry: RecentProject): boolean =>
@@ -154,11 +156,12 @@ export function createLocalRecords({dataDir, registry, identity, isProjectOpen}:
       sweepTombstones();
       if (folderOf(projectId) === null) throw appLibraryError('LOCAL_RECORDS_NOT_FOUND', {projectId});
       if (await projectFound(projectId)) throw appLibraryError('LOCAL_RECORDS_IN_USE', {projectId});
+      if (isProjectBackgroundBusy(projectId)) throw appLibraryError('LOCAL_RECORDS_IN_USE', {projectId});
       // Checked again without awaiting from here to the rename.
       const folder = folderOf(projectId);
       if (folder === null) throw appLibraryError('LOCAL_RECORDS_NOT_FOUND', {projectId});
       const entry = registry.get(projectId);
-      if (isProjectOpen(projectId) || (entry !== null && atRegisteredPlace(entry))) throw appLibraryError('LOCAL_RECORDS_IN_USE', {projectId});
+      if (isProjectOpen(projectId) || (entry !== null && atRegisteredPlace(entry)) || isProjectBackgroundBusy(projectId)) throw appLibraryError('LOCAL_RECORDS_IN_USE', {projectId});
       if (hasSuperJournalInUse(folder)) throw appLibraryError('LOCAL_RECORDS_SUPER_JOURNAL', {projectId});
       validatePrivateDirectory(folder);
       // Renamed first, so a removal that stops halfway never leaves a records

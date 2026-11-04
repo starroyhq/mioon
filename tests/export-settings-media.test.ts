@@ -268,7 +268,9 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
   const replacementBytes=Buffer.from('Different fixture-owned inode must be preserved.');
   const prepare=store.db.prepare;
   if(phase==='publication-read-unknown')t.mock.method(store.db,'prepare',(function(this: unknown, sql: string, ...args: unknown[]){
-   if(readUncertain&&!store.db.isTransaction&&sql.includes('FROM exports WHERE id=?')){
+   // Fault the original ownership/cleanup read only. S3's fixed-ID metadata
+   // projection reads different columns and cannot authorize output deletion.
+   if(readUncertain&&!store.db.isTransaction&&sql.startsWith('SELECT CASE')&&sql.endsWith('FROM exports WHERE id=?')){
     readUncertain=false;readFailureObserved=true;throw Error('Synthetic private cleanup-read failure.');
    }
    return (prepare.call as (thisArg: unknown, sql: string, ...values: unknown[]) => unknown)(this, sql, ...args) as never;

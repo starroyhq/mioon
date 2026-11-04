@@ -1,6 +1,7 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {markBackgroundTaskChanged} from '../packages/business/src/background-task-events.ts';
 import {mkdtempSync, realpathSync, rmSync, mkdirSync, writeFileSync, readFileSync} from 'node:fs';
 import {createServer, IncomingMessage, ServerResponse} from 'node:http';
 import {once} from 'node:events';
@@ -384,6 +385,9 @@ test('hosted restore refuses retained prepared or unknown edit effects without c
     const taskId = randomUUID(), requestId = randomUUID(), input = {projectId, requestId, expectedRevision: 1}, at = '2026-11-03T00:00:00.000Z';
     f.store.tx(() => f.store.db.prepare("INSERT INTO main.edit_tasks(id,projectId,operation,input,requestId,digest,lane,origin,status,revision,acknowledged,createdAt,updatedAt,bytes) VALUES(?,?,'timeline.undo',?,?,?,'timeline:mutation','new',?,1,0,?,?,16384)")
       .run(taskId, projectId, JSON.stringify(input), requestId, hash({operation: 'timeline.undo', input}), status, at, at));
+    // This trusted raw fault injection bypasses the domain writer. Publish its
+    // exact committed identity rather than restoring a seven-table scan.
+    markBackgroundTaskChanged(f.store.db, 'edit_task', taskId);
     assert.ok(f.runtime.unfinishedTasks!().some(task => task.kind === 'edit_task' && task.taskId === taskId));
     const before = f.state(), content = f.store.list('shots'), tasks = f.store.db.prepare('SELECT * FROM main.edit_tasks ORDER BY position').all();
     await assert.rejects(f.rpc('project.version.restore', {projectId, versionId: saved.version.id, requestId: randomUUID(),

@@ -1,4 +1,6 @@
 import {assertProjectStore} from '../store-runtime.ts';
+import {markBackgroundTaskChanged,isBackgroundTaskIndexUncertain} from '../background-task-events.ts';
+import {pauseUnavailableBackgroundTask} from '../background-task-state.ts';
 import {isProjectDatabase as isProjectLayout} from '../project-file/held-files.ts';
 import {createComfyAdmission} from './admission.ts';
 import {randomUUID,createHash} from 'node:crypto';
@@ -127,12 +129,14 @@ export function createComfyRemoteServices(store: ComfyRemoteStore, {signal: pare
     const entries = Object.entries(patch);
     const result = db.prepare(`UPDATE image_remote_runs SET ${entries.length ? entries.map(([k]) => `${k}=?`).join(',') + ',' : ''}revision=revision+1,updatedAt=? WHERE taskId=? AND projectId=? AND revision=?`).run(...entries.map(([, v]) => v as SQLInputValue), now(), value.row.taskId, value.row.projectId, value.row.revision);
     if (result.changes !== 1) fail('COMFY_REMOTE_REVISION_CONFLICT');
+    markBackgroundTaskChanged(db, 'image_task', value.row.taskId);
     return run(value.row.projectId, value.row.taskId);
   }
   function patchObservation(entry: ComfyObservationEntry, state: string, errorCode: string | null = null, {allowStopped = false}: {allowStopped?: boolean} = {}) {
     const value = currentClaim(entry, {allowStopped});
     const result = db.prepare('UPDATE image_remote_observations SET state=?,errorCode=?,revision=revision+1,updatedAt=? WHERE id=? AND revision=?').run(state, errorCode, now(), entry.id, entry.revision);
     if (result.changes !== 1) fail();
+    markBackgroundTaskChanged(db, 'image_task', entry.taskId);
     return readObservation(value.row.id).row;
   }
   function prepareTask(projectId: string, taskId: string) {
@@ -179,10 +183,13 @@ export function createComfyRemoteServices(store: ComfyRemoteStore, {signal: pare
         if (!isComfyObserveResponse(input, ack)) fail();
         fault('before_remote_observation_accept', {input});
         db.prepare(`INSERT INTO image_remote_observations(requestId,id,projectId,taskId,inputHash,canonicalInput,response,state,revision,remoteRevision,errorCode,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?,'queued',1,?,NULL,?,?)`).run(input.requestId, id, input.projectId, input.taskId, hash(input), canonical(input), JSON.stringify(ack), ack.remoteRevision, timestamp, timestamp);
+        markBackgroundTaskChanged(db, 'image_task', input.taskId);
         accepted = readObservation(id).row;
         return ack;
       });
     } catch (cause) {
+      if (isBackgroundTaskIndexUncertain(cause)) throw cause;
+      if (pauseUnavailableBackgroundTask(db, {kind: 'image_task', taskId: input.taskId}, cause)) throw cause;
       const code = object(cause)?.code;
       if (typeof code === 'string' && ['COMFY_MODULE_UNAVAILABLE', 'COMFY_REMOTE_STATE', 'COMFY_REMOTE_REVISION_CONFLICT', 'COMFY_REMOTE_BUSY', 'COMFY_REMOTE_CAPACITY'].includes(code) && !db.isTransaction) {
         try {
@@ -224,6 +231,8 @@ export function createComfyRemoteServices(store: ComfyRemoteStore, {signal: pare
       });
       tx(() => {entry = patchObservation(entry, 'finished');});
     } catch (cause) {
+      if (isBackgroundTaskIndexUncertain(cause)) return;
+      if (pauseUnavailableBackgroundTask(db, {kind: 'image_task', taskId: entry.taskId}, cause)) return;
       try {
         tx(() => {
           const checked = currentClaim(entry, {allowStopped: true});

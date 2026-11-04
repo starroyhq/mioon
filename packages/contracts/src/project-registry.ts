@@ -40,10 +40,28 @@ export const BACKGROUND_TASK_KINDS = Object.freeze(['job', 'export', 'edit_task'
 export type BackgroundTaskKind = typeof BACKGROUND_TASK_KINDS[number];
 /** An unfinished task. After a restart the backend reopens its project to
  * keep polling and reconciling. */
-export const backgroundTaskIndexEntrySchema = z.object({
+export const backgroundTaskIndexEntryV3Schema = z.object({
   projectId: projectIdSchema, projectFile: absolutePath, kind: z.enum(BACKGROUND_TASK_KINDS), taskId: id, indexedAt: date,
 }).strict();
+export const BACKGROUND_TASK_PHASES = Object.freeze(['prepared', 'active', 'blocked', 'archived', 'done'] as const);
+export type BackgroundTaskPhase = typeof BACKGROUND_TASK_PHASES[number];
+export const BACKGROUND_TASK_INDEX_LIMITS = Object.freeze({application: 4096, project: 512});
+const indexRevision = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+/** Optional fields accept the old in-memory ports. Production stores normalize
+ * them to unverified discovery records; omission never grants execution. */
+export const backgroundTaskIndexEntrySchema = backgroundTaskIndexEntryV3Schema.extend({
+  phase: z.enum(BACKGROUND_TASK_PHASES).optional(), reason: z.string().min(1).max(200).nullable().optional(),
+  sourceHistory: sha256.nullable().optional(), revision: indexRevision.optional(), taskRevision: count.optional(),
+}).strict();
 export type BackgroundTaskIndexEntry = z.infer<typeof backgroundTaskIndexEntrySchema>;
+export type StoredBackgroundTaskIndexEntry = BackgroundTaskIndexEntry & {
+  phase: BackgroundTaskPhase; reason: string | null; sourceHistory: string | null; revision: number; taskRevision: number;
+};
+export function normalizeBackgroundTaskIndexEntry(value: BackgroundTaskIndexEntry): StoredBackgroundTaskIndexEntry {
+  const entry = backgroundTaskIndexEntrySchema.parse(value);
+  return {...entry, phase: entry.phase ?? 'prepared', reason: entry.reason === undefined ? 'INDEX_UNVERIFIED' : entry.reason,
+    sourceHistory: entry.sourceHistory ?? null, revision: entry.revision ?? 1, taskRevision: entry.taskRevision ?? 0};
+}
 /** A result that arrived while its project could not be opened. Its media
  * waits in the app data staging area and is written into the project, under
  * the existing receipt and reconciliation rules, when the project next opens.

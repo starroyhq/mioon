@@ -5,8 +5,8 @@ import {chmodSync,mkdtempSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {openAppLibrary,APP_LIBRARY_APPLICATION_ID,APP_LIBRARY_FILE} from '../packages/business/src/app-db/index.ts';
-import {appLibraryStatements,expectedAppSchema,readAppSchema} from '../packages/business/src/app-db/schema.ts';
+import {openAppLibrary,APP_LIBRARY_APPLICATION_ID,APP_LIBRARY_FILE,APP_LIBRARY_SCHEMA_VERSION} from '../packages/business/src/app-db/index.ts';
+import {appLibraryStatements,expectedAppSchema,readAppSchema,upgradeAppLibraryV2} from '../packages/business/src/app-db/schema.ts';
 
 const at='2026-11-03T00:00:00.000Z';
 function directory(t:TestContext):string{const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-user-rules-'));t.after(()=>rmSync(root,{recursive:true,force:true}));return root;}
@@ -39,17 +39,19 @@ test('user-rules CAS and operation receipt compose in one B1 transaction and rol
  assert.throws(()=>library.db.exec("INSERT OR REPLACE INTO user_rules VALUES(2,'invalid',1,'now')"),/CHECK/u);
 });
 
-test('only the exact application v2 profile upgrades to v3 without changing existing bytes',t=>{
+test('only the explicit historical v2 profile upgrades to v3 without changing existing bytes',t=>{
  const f=v2(t),before=inspect(f.file,db=>db.prepare('SELECT * FROM app_documents').all());
- const library=openAppLibrary({dataDir:f.dataDir});try{assert.deepEqual(readAppSchema(library.db),expectedAppSchema(3));assert.deepEqual(library.db.prepare('SELECT * FROM app_documents').all(),before);assert.deepEqual(library.userRules.get(),{text:'',revision:0,updatedAt:null});assert.equal(library.db.prepare('SELECT version FROM schema_version').get()?.version,3);}finally{library.close();}
- for(const mutation of ['extra','changed'] as const){const other=v2(t);inspect(other.file,db=>db.exec(mutation==='extra'?'CREATE TABLE unknown_extension(value TEXT)':"DROP TRIGGER immutable_app_operation_receipts;CREATE TRIGGER immutable_app_operation_receipts BEFORE UPDATE ON app_operation_receipts BEGIN SELECT 1;END"));assert.throws(()=>openAppLibrary({dataDir:other.dataDir}),{code:'APP_LIBRARY_INVALID'});inspect(other.file,db=>{assert.equal(db.prepare('SELECT version FROM schema_version').get()?.version,2);assert.equal(db.prepare("SELECT 1 FROM sqlite_master WHERE name='user_rules'").get(),undefined);});}
+ assert.throws(()=>openAppLibrary({dataDir:f.dataDir}),{code:'APP_LIBRARY_INVALID'});
+ inspect(f.file,db=>{upgradeAppLibraryV2(db);assert.deepEqual(readAppSchema(db),expectedAppSchema(3));assert.deepEqual(db.prepare('SELECT * FROM app_documents').all(),before);assert.equal(db.prepare('SELECT version FROM schema_version').get()?.version,3);});
+ const library=openAppLibrary({dataDir:f.dataDir});try{assert.deepEqual(readAppSchema(library.db),expectedAppSchema());assert.deepEqual(library.db.prepare('SELECT * FROM app_documents').all(),before);assert.deepEqual(library.userRules.get(),{text:'',revision:0,updatedAt:null});assert.equal(library.db.prepare('SELECT version FROM schema_version').get()?.version,APP_LIBRARY_SCHEMA_VERSION);}finally{library.close();}
+ for(const mutation of ['extra','changed'] as const){const other=v2(t);inspect(other.file,db=>db.exec(mutation==='extra'?'CREATE TABLE unknown_extension(value TEXT)':"DROP TRIGGER immutable_app_operation_receipts;CREATE TRIGGER immutable_app_operation_receipts BEFORE UPDATE ON app_operation_receipts BEGIN SELECT 1;END"));assert.throws(()=>openAppLibrary({dataDir:other.dataDir}),{code:'APP_LIBRARY_INVALID'});assert.throws(()=>inspect(other.file,db=>upgradeAppLibraryV2(db)),/v2 schema does not match/);inspect(other.file,db=>{assert.equal(db.prepare('SELECT version FROM schema_version').get()?.version,2);assert.equal(db.prepare("SELECT 1 FROM sqlite_master WHERE name='user_rules'").get(),undefined);});}
 });
 
 for(const point of ['after-create','before-commit'] as const)test(`application v2→v3 rollback ${point} restores schema and version`,t=>{
  const f=v2(t),exec=DatabaseSync.prototype.exec;let hit=false;
  const mock=t.mock.method(DatabaseSync.prototype,'exec',function(this:DatabaseSync,sql:string):void{if(sql==='COMMIT'&&point==='before-commit'&&this.prepare("SELECT 1 FROM sqlite_master WHERE name='user_rules'").get()){hit=true;throw Error('injected');}exec.call(this,sql);if(point==='after-create'&&sql.startsWith('CREATE TABLE user_rules(')){hit=true;throw Error('injected');}});
- assert.throws(()=>openAppLibrary({dataDir:f.dataDir}),{code:'APP_LIBRARY_INVALID'});mock.mock.restore();assert.equal(hit,true);
- inspect(f.file,db=>{assert.deepEqual(readAppSchema(db),expectedAppSchema(2));assert.equal(db.prepare('SELECT version FROM schema_version').get()?.version,2);});openAppLibrary({dataDir:f.dataDir}).close();
+ assert.throws(()=>inspect(f.file,db=>upgradeAppLibraryV2(db)),/injected/);mock.mock.restore();assert.equal(hit,true);
+ inspect(f.file,db=>{assert.deepEqual(readAppSchema(db),expectedAppSchema(2));assert.equal(db.prepare('SELECT version FROM schema_version').get()?.version,2);});inspect(f.file,db=>upgradeAppLibraryV2(db));openAppLibrary({dataDir:f.dataDir}).close();
 });
 
 for(const point of ['after-create','before-commit','after-commit'] as const)test(`application v2→v3 SIGKILL ${point} leaves a complete old or new profile`,t=>{
@@ -57,5 +59,6 @@ for(const point of ['after-create','before-commit','after-commit'] as const)test
  const source=`import{DatabaseSync}from'node:sqlite';import{upgradeAppLibraryV2}from ${JSON.stringify(module)};const db=new DatabaseSync(process.argv[1]);db.exec('PRAGMA journal_mode=DELETE;PRAGMA synchronous=FULL;PRAGMA cache_size=1;PRAGMA cache_spill=ON');const exec=db.exec.bind(db);db.exec=sql=>{if(sql==='COMMIT'&&process.argv[2]==='before-commit')process.kill(process.pid,'SIGKILL');exec(sql);if(sql.startsWith('CREATE TABLE user_rules(')&&process.argv[2]==='after-create'||sql==='COMMIT'&&process.argv[2]==='after-commit')process.kill(process.pid,'SIGKILL');};upgradeAppLibraryV2(db);throw Error('barrier missed');`;
  const result=spawnSync(process.execPath,['--input-type=module','-e',source,f.file,point],{stdio:'ignore',timeout:30000});assert.equal(result.signal,'SIGKILL');
  inspect(f.file,db=>{assert.equal(db.prepare('SELECT version FROM schema_version').get()?.version,point==='after-commit'?3:2);assert.deepEqual(readAppSchema(db),expectedAppSchema(point==='after-commit'?3:2));});
- const library=openAppLibrary({dataDir:f.dataDir});try{assert.deepEqual(readAppSchema(library.db),expectedAppSchema(3));assert.equal(library.documents.read('ui-preferences-v1.json'),'{"preserved":"原件\\r\\n🙂"}');}finally{library.close();}
+ inspect(f.file,db=>{if(db.prepare('SELECT version FROM schema_version').get()?.version===2)upgradeAppLibraryV2(db);assert.deepEqual(readAppSchema(db),expectedAppSchema(3));});
+ const library=openAppLibrary({dataDir:f.dataDir});try{assert.deepEqual(readAppSchema(library.db),expectedAppSchema());assert.equal(library.documents.read('ui-preferences-v1.json'),'{"preserved":"原件\\r\\n🙂"}');}finally{library.close();}
 });

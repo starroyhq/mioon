@@ -1,3 +1,5 @@
+import {pauseUnavailableBackgroundTask} from './background-task-state.ts';
+import {markBackgroundTaskChanged,isBackgroundTaskIndexUncertain,safeBackgroundTaskIndexError} from './background-task-events.ts';
 import {assertProjectStore} from './store-runtime.ts';
 import {assertTimelineVolumeEnvelopeWorkspace} from './timeline-volume-envelope-admission.ts';
 import {assertTimelineAudioRoleWorkspace} from './store-capabilities.ts';
@@ -45,7 +47,7 @@ const errors: Readonly<Record<string,[number,string]>>=Object.freeze({
  EDIT_TASK_STORAGE_UNAVAILABLE: [503, '无法安全读取或保存编辑任务。'],
 });
 export const editTaskError = (code: string): AppError => { const key = Object.hasOwn(errors, code) ? code : 'EDIT_TASK_STORAGE_UNAVAILABLE'; const entry=errors[key]; return new AppError(key, entry[1], entry[0]); };
-export function safeEditTaskError(error: unknown) { const safe = editTaskError((error as {code?: string}|null|undefined)?.code as string); return {status: safe.status, code: safe.code, message: safe.message}; }
+export function safeEditTaskError(error: unknown): {status: number;code: string;message: string;details?: Record<string,unknown>} { const index=safeBackgroundTaskIndexError(error);if(index)return index;const safe = editTaskError((error as {code?: string}|null|undefined)?.code as string); return {status: safe.status, code: safe.code, message: safe.message}; }
 const fail: (code: string)=>never = code => { throw editTaskError(code); };
 const corrupt: ()=>never = () => fail('EDIT_TASK_STORAGE_UNAVAILABLE');
 const invalid: ()=>never = () => fail('EDIT_TASK_VALIDATION');
@@ -121,7 +123,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
  const open = (): void => { if (closing) corrupt(); };
  const owner = (): void => { if (!ownsStoreLock(store)) fail('EDIT_TASK_OWNER_REQUIRED'); };
  const inject = (label: string): void => { const result = fault(label); if (result && typeof (result as PromiseLike<unknown>).then === 'function') { (result as PromiseLike<unknown> & {catch?: (callback: ()=>void)=>unknown}).catch?.(()=>{}); corrupt(); } };
- const guarded = <T>(fn: ()=>T): T => { try { return fn(); } catch (error) { throw editTaskError((error as {code?: string})?.code as string); } };
+ const guarded = <T>(fn: ()=>T): T => { try { return fn(); } catch (error) { if(isBackgroundTaskIndexUncertain(error))throw error;throw editTaskError((error as {code?: string})?.code as string); } };
  const readOnly = <T>(fn: ()=>T): T => {
   if (db.isTransaction) corrupt();
   db.exec('BEGIN'); try { const result = fn(); db.exec('COMMIT'); return result; } catch (error) { if (db.isTransaction) db.exec('ROLLBACK'); throw error; }
@@ -216,6 +218,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
   const result=db.prepare('UPDATE edit_tasks SET status=?,revision=revision+1,claim=?,claimInstance=?,receiptDigest=?,errorCode=?,acknowledged=?,updatedAt=? WHERE id=? AND revision=?')
    .run(status,claim,claimInstance,receiptDigest,errorCode,acknowledged,timestamp(),row.id,row.revision);
   if(result.changes!==1)fail('EDIT_TASK_CONFLICT');
+  markBackgroundTaskChanged(db,'edit_task',row.id);
   return byId(row.projectId,row.id);
  }
  function applied(value: DecodedTask,result: unknown): DecodedTask { return update(value,'applied',{receiptDigest:hash(result)}); }
@@ -270,6 +273,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
     inject('beforePreparePersist');
     db.prepare(`INSERT INTO edit_tasks(id,projectId,operation,input,requestId,digest,lane,origin,status,revision,acknowledged,createdAt,updatedAt,bytes${''}) VALUES(?,?,?,?,?,?,?,?,?,1,0,?,?,?${''})`)
      .run(id,args.projectId,args.operation,intent.text,intent.requestId,intent.digest,intent.lane,args.origin,status,now,now,EDIT_TASK_LIMITS.rowBytes,...([]));
+    markBackgroundTaskChanged(db,'edit_task',id);
     return envelope(byId(args.projectId,id));
    });
    inject('afterPreparePersist');return result;
@@ -297,10 +301,12 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    });
   }); },
   execute(input: unknown,context: Record<string,unknown>={}) {
+   let claimedId:string|undefined;
    const work=(async()=>{
     open();owner();let claimed: DecodedTask|undefined;
     const initial=store.tx(()=>{
      owner();const {args,value}=action(input,['instanceId']);
+     claimedId=value.row.id;
      if(!uuid(args.instanceId))invalid();if(args.instanceId!==instanceId)fail('EDIT_TASK_STALE_INSTANCE');
      if(terminal(value.row)||value.row.status==='dispatching')return envelope(value,true);
      const result=receipt(value);if(result!==null)return envelope(applied(value,result),true);
@@ -314,6 +320,8 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
      let dispatchError: unknown;
      try { await (dispatch(claimed.task.operation,structuredClone(claimed.task.input) as Record<string,unknown>,claimed)); }
      catch(error){dispatchError=error;}
+     if(isBackgroundTaskIndexUncertain(dispatchError))throw dispatchError;
+     if(dispatchError&&pauseUnavailableBackgroundTask(db,{kind:'edit_task',taskId:claimed!.row.id},dispatchError))throw dispatchError;
      inject('afterBusinessCommit');
      const finished=store.tx(()=>{
       owner();const claimedTask=claimed!;const current=byId(claimedTask.row.projectId,claimedTask.row.id);
@@ -330,7 +338,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
      });
      inject('afterOutcomePersist');return finished;
     } finally { if(claimed)life.active.delete(claimed.row.claim); }
-   })().catch((error: unknown)=>{throw editTaskError((error as {code?: string})?.code as string);});
+   })().catch((error: unknown)=>{if(isBackgroundTaskIndexUncertain(error))throw error;if(claimedId)pauseUnavailableBackgroundTask(db,{kind:'edit_task',taskId:claimedId},error);throw editTaskError((error as {code?: string})?.code as string);});
    active.add(work);work.then(()=>active.delete(work),()=>active.delete(work));return work;
   },
   reconcile(input: unknown,context: Record<string,unknown>={}) { return guarded(()=>{

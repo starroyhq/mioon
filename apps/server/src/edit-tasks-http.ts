@@ -107,7 +107,7 @@ export function createEditTasksHttp({tasks, signal}: EditTasksHttpOptions) {
       if (res.headersSent) res.destroy();
       else {
         const safe = safeEditTaskError(error);
-        json(res, safe.status, {ok: false, error: {code: safe.code, message: safe.message, details: {}, retryable: false}});
+        json(res, safe.status, {ok: false, error: {code: safe.code, message: safe.message, details: safe.details ?? {}, retryable: false}});
       }
     }
     return true;

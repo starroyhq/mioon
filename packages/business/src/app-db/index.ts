@@ -49,6 +49,9 @@ export interface AppLibraryOptions {
    * project are never listed or deleted. Called on every check, so the host
    * may supply it before its manager exists. */
   readonly isProjectOpen?: (projectId: string) => boolean;
+  /** Adds live in-flight work to the durable task-index gate. Returning false
+   * cannot bypass unfinished records in this library. */
+  readonly isProjectBackgroundBusy?: (projectId: string) => boolean;
 }
 
 /** Satisfies the project host's AppLibraryPort (registry, agentPolicy,
@@ -85,13 +88,16 @@ export interface AppLibrary {
 
 /** Opens (or creates) the app library of `dataDir`. A second open of the same
  * library, in this process or another, is APP_LIBRARY_LOCKED until close(). */
-export function openAppLibrary({dataDir, findMovedRoots = [], findMovedLimit, isProjectOpen = () => false}: AppLibraryOptions): AppLibrary {
+export function openAppLibrary({dataDir, findMovedRoots = [], findMovedLimit, isProjectOpen = () => false, isProjectBackgroundBusy = () => false}: AppLibraryOptions): AppLibrary {
   const database = openAppDatabase(dataDir);
   try {
     const registry = createProjectRegistry(database, {
       identity: projectFileIdentity,
       findMoved: {roots: [...findMovedRoots], ...(findMovedLimit === undefined ? {} : {limit: findMovedLimit})},
     });
+    const taskIndex = createBackgroundTaskIndexStore(database);
+    const backgroundBusy = (projectId: string): boolean => isProjectBackgroundBusy(projectId) || taskIndex.listProject(projectId)
+      .some(entry => entry.phase !== 'archived' && entry.phase !== 'done');
     return Object.freeze({
       dataDir: database.dataDir,
       databaseFile: database.file,
@@ -102,10 +108,10 @@ export function openAppLibrary({dataDir, findMovedRoots = [], findMovedLimit, is
       rulesTrust: Object.freeze(createProjectRulesTrustStore(database)),
       userRules: Object.freeze(createUserRulesStore(database)),
       outsidePaths: Object.freeze(createOutsidePathConfirmationStore(database)),
-      taskIndex: Object.freeze(createBackgroundTaskIndexStore(database)),
+      taskIndex: Object.freeze(taskIndex),
       inbox: Object.freeze(createProjectInboxStore(database)),
       receipts: Object.freeze(createAppOperationReceiptStore(database)),
-      localRecords: Object.freeze(createLocalRecords({dataDir: database.dataDir, registry, identity: projectFileIdentity, isProjectOpen})),
+      localRecords: Object.freeze(createLocalRecords({dataDir: database.dataDir, registry, identity: projectFileIdentity, isProjectOpen, isProjectBackgroundBusy: backgroundBusy})),
       db: database.db,
       tx: database.tx,
       close: database.close,

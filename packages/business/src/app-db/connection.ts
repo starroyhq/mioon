@@ -12,7 +12,7 @@ import type {ProjectFileIdentity} from '../../../contracts/src/project-registry.
 import {appLibraryError, appLibraryInvalid, isSqliteBusy, isSqliteCorrupt, isSqliteReadOnly} from './errors.ts';
 import {
   APP_LIBRARY_APPLICATION_ID, APP_LIBRARY_FILE, APP_LIBRARY_SCHEMA_VERSION, APP_SCHEMA_VERSION_TABLE_SQL, buildAppLibrary, compareAppSchema,
-  readAppSchema, expectedAppSchema, upgradeAppLibraryV1, upgradeAppLibraryV2,
+  readAppSchema, expectedAppSchema, upgradeAppLibraryV3,
 } from './schema.ts';
 
 /** As the project-file kernel opens its files: a busy timeout of 0 makes an
@@ -110,15 +110,14 @@ function checkStructure(db: DatabaseSync): void {
   if (typeof versions?.version === 'number' && versions.version > APP_LIBRARY_SCHEMA_VERSION) {
     throw appLibraryError('APP_LIBRARY_FORMAT_NEWER', {formatVersion: versions.version, supportedFormatVersion: APP_LIBRARY_SCHEMA_VERSION});
   }
-  if (versions?.count === 1 && versions.version === 1) {
-    const differences = compareAppSchema(readAppSchema(db), expectedAppSchema(1));
+  // S3-A admits only the exact real v3 profile. The old v1/v2 upgrade
+  // functions remain explicit historical verification helpers, not an
+  // automatic composition that grants those profiles current admission.
+  if (versions?.count !== 1 || (versions.version !== 3 && versions.version !== APP_LIBRARY_SCHEMA_VERSION)) throw appLibraryInvalid('schema-version');
+  if (versions.version === 3) {
+    const differences = compareAppSchema(readAppSchema(db), expectedAppSchema(3));
     if (differences.length) throw appLibraryInvalid('schema', differences);
-    upgradeAppLibraryV1(db);
-  } else if (versions?.count !== 1 || (versions.version !== 2 && versions.version !== APP_LIBRARY_SCHEMA_VERSION)) throw appLibraryInvalid('schema-version');
-  if (db.prepare('SELECT version FROM main.schema_version').get()?.version === 2) {
-    const differences = compareAppSchema(readAppSchema(db), expectedAppSchema(2));
-    if (differences.length) throw appLibraryInvalid('schema', differences);
-    upgradeAppLibraryV2(db);
+    upgradeAppLibraryV3(db);
   }
   const differences = compareAppSchema(readAppSchema(db));
   if (differences.length > 0) throw appLibraryInvalid('schema', differences);

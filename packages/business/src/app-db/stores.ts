@@ -3,9 +3,10 @@ import {agentTaskPolicySchema, DEFAULT_AGENT_TASK_POLICY} from '../../../contrac
 import type {AgentTaskPolicy} from '../../../contracts/src/agent-tasks-v2.ts';
 import {isProjectId, projectIdSchema} from '../../../contracts/src/project-file.ts';
 import {
-  backgroundTaskIndexEntrySchema, outsidePathConfirmationSchema, projectInboxItemSchema, projectRulesTrustSchema,
+  BACKGROUND_TASK_INDEX_LIMITS, BACKGROUND_TASK_PHASES, backgroundTaskIndexEntrySchema, normalizeBackgroundTaskIndexEntry,
+  outsidePathConfirmationSchema, projectInboxItemSchema, projectRulesTrustSchema,
 } from '../../../contracts/src/project-registry.ts';
-import type {BackgroundTaskIndexEntry, OutsidePathConfirmation, ProjectInboxItem, ProjectRulesTrust} from '../../../contracts/src/project-registry.ts';
+import type {BackgroundTaskIndexEntry, BackgroundTaskPhase, StoredBackgroundTaskIndexEntry, OutsidePathConfirmation, ProjectInboxItem, ProjectRulesTrust} from '../../../contracts/src/project-registry.ts';
 import type {AppDatabase} from './connection.ts';
 import {appLibraryError} from './errors.ts';
 import {APP_DOCUMENT_LIMITS, APP_DOCUMENT_NAMES, APP_RECORD_LIMITS} from './schema.ts';
@@ -207,27 +208,177 @@ export function createOutsidePathConfirmationStore(database: AppDatabase): Outsi
 /** S3's BackgroundTaskIndexPort: projects with unfinished tasks. */
 export interface BackgroundTaskIndexStore {
   /** By indexing time, then project, kind and task. */
-  list(): BackgroundTaskIndexEntry[];
-  /** Replaces this project's entries in one transaction; an empty list removes
-   * them. Every entry must belong to the project, each task once. */
+  list(): StoredBackgroundTaskIndexEntry[];
+  listProject(projectId: string): StoredBackgroundTaskIndexEntry[];
+  /** Same semantic record is a no-op, including a changed polling timestamp.
+   * A changed live record increments its stored revision. Archived sources
+   * cannot be resurrected by a later event under the same identity. */
+  upsert(entry: BackgroundTaskIndexEntry): void;
+  /** Pure pre-COMMIT capacity check for the final batch; no transaction or
+   * reservation is written. Callers apply done entries before new entries. */
+  assertCanUpsert(entries: readonly BackgroundTaskIndexEntry[]): void;
+  markProject(projectId: string, phase: BackgroundTaskPhase, reason: string | null): void;
+  /** When a source is given, archives it and unverified legacy entries only;
+   * a replay must not retire work from a different nonempty source. */
+  archive(projectId: string, sourceHistory?: string | null): void;
+  /** Replaces current entries atomically while retaining archived generations.
+   * A done entry may be removed. Every task/source pair appears once. */
   replace(projectId: string, entries: readonly BackgroundTaskIndexEntry[]): void;
 }
 
 export function createBackgroundTaskIndexStore(database: AppDatabase): BackgroundTaskIndexStore {
+  const order = " ORDER BY json_extract(data,'$.indexedAt'),projectId,kind,taskId,sourceHistory";
+  const read = (row: Record<string, unknown>): StoredBackgroundTaskIndexEntry => {
+    let entry: StoredBackgroundTaskIndexEntry;
+    try {entry = normalizeBackgroundTaskIndexEntry(backgroundTaskIndexEntrySchema.parse(decode(row.data)));}
+    catch {throw appLibraryError('APP_LIBRARY_INVALID', {reason: 'unusable'});}
+    if (database.statement("SELECT 1 FROM json_tree(?) WHERE typeof(key)='text' GROUP BY parent,key HAVING count(*)>1 LIMIT 1").get(String(row.data))
+      || row.projectId !== entry.projectId || row.kind !== entry.kind || row.taskId !== entry.taskId || row.sourceHistory !== (entry.sourceHistory ?? '')
+      || row.phase !== entry.phase || row.reason !== entry.reason || row.revision !== entry.revision || row.taskRevision !== entry.taskRevision)
+      throw appLibraryError('APP_LIBRARY_INVALID', {reason: 'unusable'});
+    return entry;
+  };
+  const key = (entry: StoredBackgroundTaskIndexEntry): string => JSON.stringify([entry.kind, entry.taskId, entry.sourceHistory]);
+  const listProject = (projectId: string): StoredBackgroundTaskIndexEntry[] => {
+    const owner = projectIdSchema.parse(projectId);
+    return database.statement('SELECT * FROM background_task_index WHERE projectId=?' + order).all(owner).map(read);
+  };
+  const equal = (left: StoredBackgroundTaskIndexEntry, right: StoredBackgroundTaskIndexEntry): boolean => {
+    const {revision: _leftRevision, indexedAt: _leftTime, ...a} = left;
+    const {revision: _rightRevision, indexedAt: _rightTime, ...b} = right;
+    return isDeepStrictEqual(a, b);
+  };
+  const assertExisting = (entry: StoredBackgroundTaskIndexEntry, current: StoredBackgroundTaskIndexEntry | null): void => {
+    if (current?.phase === 'archived' && !equal(current, entry)
+      || current && entry.taskRevision < current.taskRevision
+      || current && entry.phase !== 'done' && !equal(current, entry) && current.revision >= Number.MAX_SAFE_INTEGER)
+      throw appLibraryError('BACKGROUND_TASK_INDEX_CONFLICT', {projectId: entry.projectId});
+  };
+  const count = (projectId?: string): number => {
+    const value = projectId === undefined ? database.statement('SELECT count(*) AS n FROM background_task_index').get()!.n
+      : database.statement('SELECT count(*) AS n FROM background_task_index WHERE projectId=?').get(projectId)!.n;
+    if (typeof value !== 'number') throw appLibraryError('APP_LIBRARY_INVALID', {reason: 'unusable'});
+    return value;
+  };
+  const assertCapacity = (total: number, projects: ReadonlyMap<string, number>): void => {
+    if (total > BACKGROUND_TASK_INDEX_LIMITS.application) throw appLibraryError('APP_LIBRARY_LIMIT', {record: 'background_task_index'});
+    for (const [projectId, size] of projects) if (size > BACKGROUND_TASK_INDEX_LIMITS.project)
+      throw appLibraryError('APP_LIBRARY_LIMIT', {record: 'background_task_index', projectId});
+  };
+  const find = (entry: StoredBackgroundTaskIndexEntry): StoredBackgroundTaskIndexEntry | null => {
+    const row = database.statement('SELECT * FROM background_task_index WHERE projectId=? AND kind=? AND taskId=? AND sourceHistory=?')
+      .get(entry.projectId, entry.kind, entry.taskId, entry.sourceHistory ?? '');
+    return row ? read(row) : null;
+  };
+  const assertCanUpsert = (entries: readonly BackgroundTaskIndexEntry[]): void => {
+    if (entries.length > BACKGROUND_TASK_INDEX_LIMITS.application) throw appLibraryError('APP_LIBRARY_LIMIT', {record: 'background_task_index'});
+    const parsed = entries.map(normalizeBackgroundTaskIndexEntry), seen = new Set<string>(), projects = new Map<string, number>();
+    const simulated = new Map<string, StoredBackgroundTaskIndexEntry | null>();
+    const identity = (entry: StoredBackgroundTaskIndexEntry): string => JSON.stringify([entry.projectId, entry.kind, entry.taskId, entry.sourceHistory]);
+    const current = (entry: StoredBackgroundTaskIndexEntry): StoredBackgroundTaskIndexEntry | null => {
+      const id = identity(entry);
+      if (!simulated.has(id)) simulated.set(id, find(entry));
+      return simulated.get(id)!;
+    };
+    let total = count();
+    for (const entry of parsed) {
+      const id = identity(entry);
+      if (seen.has(id)) throw new TypeError('Task index preflight must name each task once per source');
+      seen.add(id);
+    }
+    const change = (entry: StoredBackgroundTaskIndexEntry, delta: number): void => {
+      total += delta; projects.set(entry.projectId, (projects.get(entry.projectId) ?? count(entry.projectId)) + delta);
+    };
+    // Match the writer's done-first order and consume a legacy placeholder at
+    // most once even when the same batch also finishes that legacy identity.
+    for (const entry of [...parsed.filter(entry => entry.phase === 'done'), ...parsed.filter(entry => entry.phase !== 'done')]) {
+      const before = current(entry); assertExisting(entry, before);
+      if (before?.phase === 'archived') continue;
+      if (entry.sourceHistory !== null && entry.phase !== 'archived') {
+        const unverified = {...entry, sourceHistory: null}, legacy = current(unverified);
+        if (legacy && legacy.phase !== 'archived') {simulated.set(identity(unverified), null); change(entry, -1);}
+      }
+      if (entry.phase === 'done') {
+        if (before) change(entry, -1);
+        simulated.set(identity(entry), null);
+      } else {
+        if (!before) change(entry, 1);
+        simulated.set(identity(entry), entry);
+      }
+    }
+    assertCapacity(total, projects);
+  };
+  const write = (entry: StoredBackgroundTaskIndexEntry): void => {
+    const source = entry.sourceHistory ?? '';
+    const current = find(entry); assertExisting(entry, current);
+    if (current?.phase === 'archived') {
+      if (equal(current, entry)) return;
+      throw appLibraryError('BACKGROUND_TASK_INDEX_CONFLICT', {projectId: entry.projectId});
+    }
+    // A verified source adopts the old source-less discovery row in this same
+    // app transaction. Archived placeholders and other real sources are never
+    // consumed; legacy adoption must not require a temporary extra quota slot.
+    if (entry.sourceHistory !== null && entry.phase !== 'archived') {
+      const legacy = find({...entry, sourceHistory: null});
+      if (legacy && legacy.phase !== 'archived') database.statement("DELETE FROM background_task_index WHERE projectId=? AND kind=? AND taskId=? AND sourceHistory='' AND phase<>'archived'")
+        .run(entry.projectId, entry.kind, entry.taskId);
+    }
+    if (entry.phase === 'done') {
+      if (current) database.statement('DELETE FROM background_task_index WHERE projectId=? AND kind=? AND taskId=? AND sourceHistory=?')
+        .run(entry.projectId, entry.kind, entry.taskId, source);
+      return;
+    }
+    if (current) {
+      if (equal(current, entry)) return;
+      if (current.revision >= Number.MAX_SAFE_INTEGER) throw appLibraryError('BACKGROUND_TASK_INDEX_CONFLICT', {projectId: entry.projectId});
+      const next = {...entry, revision: current.revision + 1}, data = JSON.stringify(next);
+      if (Buffer.byteLength(data) > APP_RECORD_LIMITS.taskIndex) throw appLibraryError('APP_LIBRARY_LIMIT', {record: 'background_task_index'});
+      database.statement('UPDATE background_task_index SET phase=?,reason=?,revision=?,taskRevision=?,data=? WHERE projectId=? AND kind=? AND taskId=? AND sourceHistory=?')
+        .run(next.phase, next.reason, next.revision, next.taskRevision, data, entry.projectId, entry.kind, entry.taskId, source);
+      return;
+    }
+    assertCapacity(count() + 1, new Map([[entry.projectId, count(entry.projectId) + 1]]));
+    const data = JSON.stringify(entry);
+    if (Buffer.byteLength(data) > APP_RECORD_LIMITS.taskIndex) throw appLibraryError('APP_LIBRARY_LIMIT', {record: 'background_task_index'});
+    database.statement('INSERT INTO background_task_index(projectId,kind,taskId,sourceHistory,phase,reason,revision,taskRevision,data) VALUES(?,?,?,?,?,?,?,?,?)')
+      .run(entry.projectId, entry.kind, entry.taskId, source, entry.phase, entry.reason, entry.revision, entry.taskRevision, data);
+  };
   return {
-    list(): BackgroundTaskIndexEntry[] {
-      return database.statement("SELECT data FROM background_task_index ORDER BY json_extract(data,'$.indexedAt'),projectId,kind,taskId").all()
-        .map(row => backgroundTaskIndexEntrySchema.parse(decode(row.data)));
-    },
-    replace(projectId: string, entries: readonly BackgroundTaskIndexEntry[]): void {
-      const owner = projectIdSchema.parse(projectId);
-      const parsed = entries.map(entry => backgroundTaskIndexEntrySchema.parse(entry));
-      if (parsed.some(entry => entry.projectId !== owner)) throw new TypeError('Task index entries must belong to the project');
-      if (new Set(parsed.map(entry => `${entry.kind}:${entry.taskId}`)).size !== parsed.length) throw new TypeError('Task index entries must name each task once');
+    list: () => database.statement('SELECT * FROM background_task_index' + order).all().map(read),
+    listProject,
+    upsert: entry => {const parsed = normalizeBackgroundTaskIndexEntry(entry); database.atomically(() => write(parsed));},
+    assertCanUpsert,
+    markProject(projectId, phase, reason) {
+      if (!BACKGROUND_TASK_PHASES.includes(phase)) throw new TypeError('Invalid task index phase');
       database.atomically(() => {
-        database.statement('DELETE FROM background_task_index WHERE projectId=?').run(owner);
-        const insert = database.statement('INSERT INTO background_task_index(projectId,kind,taskId,data) VALUES(?,?,?,?)');
-        for (const entry of parsed) insert.run(owner, entry.kind, entry.taskId, JSON.stringify(entry));
+        for (const entry of listProject(projectId)) {
+          if (entry.phase === 'archived' || entry.phase === 'done') continue;
+          write(normalizeBackgroundTaskIndexEntry({...entry, phase, reason}));
+        }
+      });
+    },
+    archive(projectId, sourceHistory) {
+      if (sourceHistory !== undefined && sourceHistory !== null && !/^[a-f0-9]{64}$/u.test(sourceHistory)) throw new TypeError('Invalid source history');
+      database.atomically(() => {
+        for (const entry of listProject(projectId)) {
+          if (entry.phase === 'archived' || entry.phase === 'done'
+            || sourceHistory !== undefined && entry.sourceHistory !== null && entry.sourceHistory !== sourceHistory) continue;
+          write({...entry, phase: 'archived', reason: 'HISTORY_REPLACED'});
+        }
+      });
+    },
+    replace(projectId, entries) {
+      const owner = projectIdSchema.parse(projectId), parsed = entries.map(normalizeBackgroundTaskIndexEntry);
+      if (parsed.some(entry => entry.projectId !== owner)) throw new TypeError('Task index entries must belong to the project');
+      if (new Set(parsed.map(key)).size !== parsed.length) throw new TypeError('Task index entries must name each task once per source');
+      const wanted = new Set(parsed.map(key));
+      database.atomically(() => {
+        for (const entry of listProject(owner)) {
+          if (entry.phase !== 'archived' && !wanted.has(key(entry))) database.statement('DELETE FROM background_task_index WHERE projectId=? AND kind=? AND taskId=? AND sourceHistory=?')
+            .run(owner, entry.kind, entry.taskId, entry.sourceHistory ?? '');
+        }
+        for (const entry of parsed.filter(entry => entry.phase === 'done')) write(entry);
+        for (const entry of parsed.filter(entry => entry.phase !== 'done')) write(entry);
       });
     },
   };

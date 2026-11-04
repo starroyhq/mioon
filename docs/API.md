@@ -10,6 +10,7 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 
 | 应用/项目接口 | 当前行为 |
 | --- | --- |
+| `GET /api/background-tasks` | S3-A应用级只读任务等待摘要：`limit`为1–100（默认50）、`after`为项目ID游标；返回`version:1`、`projects[{projectId,taskCount,reasonCodes}]`和`nextCursor`，最多256KiB。只列项目打不开且有未结束任务的项，不打开项目，不提供结果弃置；独立契约`@mioon/contracts/background-task-query` |
 | `GET /api/project-entries` | S6-A 新增：只读登记目录、availability、封面缓存地址和应用库/服务实例身份；网页渠道限 projectsDir 内已登记项，桌面渠道为全部最近项；不扫描、不 acquire 运行时 |
 | `GET /api/project-covers/{projectId}` | 应用级认证，只读缓存 `cover.jpg/cover.json`；缺失或与登记摘要不匹配为 404 `NOT_FOUND`，不 acquire 项目 |
 | `GET /api/workspace-info` | 应用目录信息 |
@@ -61,7 +62,9 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 
 `workspace.restore.inspect` 已完全退役，返回 404 `UNKNOWN_OPERATION`。音频角色和音量包络直接按普通编辑条件使用，不再发能力探测。工作区设置仅保留真实生成开关和修订号，详见 [工作区设置](WORKSPACE-SETTINGS.md)。
 
-项目隔离也作用于幂等与容量：相同 `requestId` 在不同项目各自保存回执，不能跨项目重放。原 `Global/workspace` 配额现在只在当前项目库计算；N 个项目的图片排队/任务/请求可达 `8N/1000N/3000N`（旧总量 `32/10000/30000`），帧排队/活跃/任务/请求可达 `2N/1N/256N/4096N`（旧 `8/1/2048/32768`），LUT 可达 `128N` 个及 `64 MiB × N`（旧 `512` 个及 `128 MiB`）。每项目约束不变，跨应用总量调度留 S3。
+项目隔离也作用于幂等与容量：相同 `requestId` 在不同项目各自保存回执，不能跨项目重放。原 `Global/workspace` 配额现在只在当前项目库计算；N 个项目的图片排队/任务/请求可达 `8N/1000N/3000N`（旧总量 `32/10000/30000`），帧排队/活跃/任务/请求可达 `2N/1N/256N/4096N`（旧 `8/1/2048/32768`），LUT 可达 `128N` 个及 `64 MiB × N`（旧 `512` 个及 `128 MiB`）。每项目约束不变；S3-A只限制应用任务索引4096/单项目512条，跨应用运行总量调度留0.1.x，历史/LUT/Mio存量硬限另卡。
+
+任务事务已经提交、随后应用索引确认失败时，503 `BACKGROUND_TASK_INDEX_UNCERTAIN` 的 `details.mutationOutcome` 为 `unknown`；原任务与回执保留，不能当作确定未执行而另发生成。完整恢复与发现窗口见 [后台任务](BACKGROUND-TASKS.md)。
 
 ## 按项目寻址
 
