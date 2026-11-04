@@ -308,10 +308,10 @@ test('the web client accepts only the closed check result shape',()=>{
   for(const value of [{result:'ok',message:'echo'},{result:'other'},{result:'http_error',httpStatus:99},null,'ok'])assert.throws(()=>safeCompatibleCheck(value),{code:'INVALID_RESPONSE'});
 });
 
-test('a compatible connection runs end to end: one multipart POST, status, /content download, one decoded version',async t=>{
+test('a v2 compatible connection runs end to end: one multipart POST, status, /content download, one decoded version',async t=>{
   const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-compatible-e2e-'))),video=path.join(root,'fixture.mp4');
   await promisify(execFile)('ffmpeg',['-v','error','-f','lavfi','-i','color=c=teal:s=360x640:r=24','-t','4','-c:v','libx264','-pix_fmt','yuv420p','-threads','1','-y',video]);
-  const bytes=await readFile(video),store=openStore(root),settings=await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root});
+  const bytes=await readFile(video),store=openStore(root),settings=await createVideoSettingsV2({directory:path.join(root,'video-settings'),privateRoot:root});
   const calls:Array<{url:string;method:string;authorization:string|null;body?:string}>=[];
   const videoFetch=(async(input:string|URL|Request,init?:RequestInit)=>{
     const url=String(input),method=init?.method??'GET',authorization=new Headers(init?.headers).get('authorization');
@@ -327,7 +327,7 @@ test('a compatible connection runs end to end: one multipart POST, status, /cont
   let worker:ReturnType<typeof startWorker>|null=null;
   t.after(async()=>{await worker?.stop();await services.drain();await settings.close();store.close();await rm(root,{recursive:true,force:true});});
   await services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
-  const config=configuration({outputHosts:['cdn.example.com']});
+  const {archived:legacyArchive,...config}=configuration({outputHosts:['cdn.example.com']});void legacyArchive;
   await settings.put({action:'save',expectedRevision:0,configuration:config,secret:{action:'replace',value:KEY,storage:'session'}});
   const project=await services.call('project.create',{name:'Compatible integration'}) as ServiceRow;
   const shot=await services.call('shot.create',{projectId:project.id,title:'Compatible shot',prompt:'Synthetic shapes move.',aspectRatio:'9:16',duration:4,referenceAssetIds:[]}) as ServiceRow;

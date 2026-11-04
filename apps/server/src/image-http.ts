@@ -77,7 +77,7 @@ export function createImageHttp({settings,customSettings,generationServices,appr
    const code=errorField(error,'code');
    const safe: SafeImageError = code==='IMAGE_HTTP_VALIDATION'?{code,message:'图像请求格式无效或超出大小限制。',status:errorStatus(error) ?? 400}
     :code==='VALIDATION_ERROR'?{code,message:'图片服务请求格式无效。',status:400}
-    :typeof code==='string'&&code.startsWith('IMAGE_SETTINGS_')?(customSettingsRoute||servicesRoute?sanitizeCustomImageSettingsV2Error(error):sanitizeImageSettingsError(error))
+    :typeof code==='string'&&code.startsWith('IMAGE_SETTINGS_')?(customSettingsRoute||servicesRoute||['IMAGE_SETTINGS_SELECTION_REQUIRED','IMAGE_SETTINGS_NOT_FOUND','IMAGE_SETTINGS_CAPACITY'].includes(code)?sanitizeCustomImageSettingsV2Error(error):sanitizeImageSettingsError(error))
     :typeof code==='string'&&code.startsWith('IMAGE_REVIEW_')?safeImageReviewError(error):safeImageServiceError(error);
    json(res,safe.status,{ok:false,error:{code:safe.code,message:safe.message,details:safe.details||{},retryable:false}});
   }

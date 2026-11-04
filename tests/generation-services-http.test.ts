@@ -13,12 +13,13 @@ import {IMAGE_FIXED_OPTIONS} from '../packages/contracts/src/images.ts';
 import {IMAGE_REVIEW_LIMITS} from '../packages/contracts/src/image-reviews.ts';
 import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2} from '../packages/contracts/src/generation-image-settings.ts';
 import {startServer} from '../apps/server/src/index.ts';
+import {customImageSettingsV2Error} from '../packages/business/src/images/custom-settings-v2.ts';
 
 const projectId=randomUUID(),connectionId=randomUUID();
 const generation={projectId,name:'Image',providerId:'openai-compatible',model:'custom-image',prompt:'Synthetic scene',options:IMAGE_FIXED_OPTIONS,requestId:randomUUID()};
-async function fixture() {
+async function fixture(approvalErrorCode?: string) {
   const calls:Array<{operation:string;input:unknown}>=[];
-  const handler=createImageHttp({approve:()=>assert.fail('Preparation must not approve'),reject:()=>assert.fail('Preparation must not reject'),
+  const handler=createImageHttp({approve:()=>{if(approvalErrorCode)throw customImageSettingsV2Error(approvalErrorCode);return assert.fail('Preparation must not approve');},reject:()=>assert.fail('Preparation must not reject'),
     generationServices:(operation,input)=>{calls.push({operation,input});return {operation,prepared:true};}});
   return {calls,async request({pathname='/api/images/services',method='POST',input,headers={},raw,address={projectId}}:
     {pathname?:string;method?:string;input?:unknown;headers?:Record<string,string>;raw?:Buffer;address?:{projectId:string}|null}={}) {
@@ -66,6 +67,13 @@ test('service inputs cannot name another project and invalid bodies never reach 
     assert.equal((await f.request(options)).status,400);
   const large=await f.request({headers:{'content-length':String(IMAGE_REVIEW_LIMITS.intentBytes+1)}});
   assert.equal(large.status,413);assert.equal(large.headers.Connection,'close');assert.equal(f.calls.length,0);
+});
+
+test('approval keeps fixed v2 removed/selection/capacity errors instead of relabeling them as a failed save',async()=>{
+  for(const code of ['IMAGE_SETTINGS_NOT_FOUND','IMAGE_SETTINGS_SELECTION_REQUIRED','IMAGE_SETTINGS_CAPACITY']){
+    const f=await fixture(code),result=await f.request({pathname:'/api/images/reviews/approve',input:{projectId,reviewId:randomUUID(),expectedRevision:1}});
+    assert.equal(result.status,409);assert.equal(result.data?.error?.code,code);assert.deepEqual(f.calls,[]);
+  }
 });
 
 test('actual project HTTP serves explicit service lists behind authentication while new preparation operations remain outside RPC',async t=>{

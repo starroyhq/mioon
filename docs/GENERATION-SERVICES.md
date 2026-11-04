@@ -1,0 +1,45 @@
+# 生成服务
+
+在“设置 → 生成服务”管理视频和图片服务。当前沿用原有设置布局；三段式页面和整页统一保存由 G1b 接入共用外壳。
+
+视频六家内置服务各一份，自定义视频可以多份；官方图片与本机 ComfyUI 各一份，自定义图片最多十份。自定义服务使用页面新建草稿时生成的小写 UUID，服务端检查唯一性和删除墓碑。删除后不能复用 UUID；同名、同地址的新服务也有独立身份。
+
+每家单独保存密钥，同公司的视频、图片及 Mio 也不共享密钥。自定义图片的密钥绑定命名空间、providerId、服务 UUID、profileId 和规范化完整地址。改模型保留密钥，配置修订使旧审核失效；改地址并选择“保留”会保存新地址并自动断开本家的密钥。视频换区域、工作空间或地址同样断开当前引用，原持久引用继续供已冻结的任务查询。
+
+“仅本次运行”旁提示：“应用退出后，正在进行的生成没法继续查询结果。” 设置不再提供历史密钥恢复入口。重填相同文本的密钥也会有新的引用，不能替换旧任务冻结的引用。缺密钥时不重新发出生成请求。
+
+## 设置 HTTP
+
+已有本机 Host/Origin、会话或令牌鉴权及 JSON/大小限制继续生效。所有返回均使用 `{ok:true,data}`，内容只含脱敏元数据。
+
+| 路径 | 读取 | 保存 |
+|---|---|---|
+| `/api/video-providers/settings` | 视频 v2 snapshot，含 notice | `save`、`delete` 或原子 `batch`，携带 expectedRevision |
+| `/api/images/custom-settings` | 自定义图片 v2 集合，含 notice | PUT 的 action 为 `create`、`put`、`remove` 或原子 `batch` |
+| `/api/images/settings` | 官方图片 v1 | 原官方保存契约 |
+| `/api/images/comfy-settings` | 本机 ComfyUI v1 | 原 ComfyUI 保存契约 |
+
+图片 create 带 `{action:'create',expectedRevision,connectionId,name,configuration,secret}`。put 另带该项的 expectedConfigurationRevision，remove 带集合及该项修订。configuration 包含 enabled、providerId、profileId、baseUrl、model、options，服务身份在顶层 connectionId。批量操作在单个文件内一次比较后写入，一项失败则整批不发布；跨文件不声称整体事务。保存失败或结果未知时只读核对，不自动重放密钥或生成操作。
+
+视频配置和密钥均未变化的保存不产生新连接修订或集合修订；仍检查原文件未被外部改变。到达容量上限返回 `VIDEO_SETTINGS_CAPACITY`，不将有效设置说成损坏。删除自定义服务销毁它的配置、历史凭据和内存材料，已生成媒体保留；已发出的远端请求可能仍完成。
+
+## 精确图片审核
+
+网页与共享 client 的 `generationImages()` 通过 `POST /api/projects/{projectId}/images/services` 发送 `{operation,input}`：
+
+- `image.service.list`：输入 `{projectId}`，返回该项目地址下可展示的脱敏自定义图片集合。
+- `image.service.review.prepare`：输入 `{input:<原 image.generate 输入>,connectionId,configurationRevision}`，准备该 UUID 的审核。
+
+这些新操作不进入 RPC、CLI、MCP 或固定 Mio 工具目录。新审核意图冻结 connectionId、configurationRevision、完整 configuration、目的地与原始生成输入。settingsRevision 对应这一个服务的配置修订。另一家的变更不改派它；同一 requestId 换服务会冲突。确认、取密钥和最终同步派发围栏都核对同一冻结身份，供应商请求体不增加服务 UUID 或修订。
+
+旧无 ID 入口只有一家时精确解析这一家，多家时固定拒绝，不按启用、模型或顺序猜测。Mio 的说明为“有多个自定义图片服务，请在生成面板里选择。” 多家时旧 profile discovery 只提供禁用的模型分组元数据，不选取连接；prepare 在取密钥或落审核前拒绝。官方图片和 ComfyUI 保持原入口。
+
+用户确认仍使用现有项目地址下的私有 approve/reject 路径。准备审核不等于批准，保存设置也不触发检查、图片生成或付费请求。请求结果不明时核对原 requestId 和原服务身份。
+
+## 文件与旧版本
+
+视频文件使用 v2 envelope，冻结执行 binding 及密钥包装仍为 v1。自定义图片文件使用 v2 集合及 `mioon.images.openai-compatible.v2` 专用命名空间。官方图片、ComfyUI 和 liveGeneration 格式不变。
+
+严格有效的旧视频 v1、自定义图片 v1 在内存中读为空 v2，页面一次性提示“旧版生成服务设置已重置，请重新配置。” 读取不写盘、不导入或解密旧密钥；首次明确保存才写 v2。文件初始不存在时首次写入不得覆盖后来出现的文件。原始字节、文件身份、权限、链接和限额检查持续生效；坏文件及未知版本拒绝。
+
+新图片审核严格分支配套 history 10 的 CHECK 和从真实 history 9 的窄升级。旧审核记录保持原 JSON 和语义，已生成结果的读取不依赖当前设置或密钥。共享文件版本顺序为 V5=8、S8=9、G1a=10；G1a 不提前使用 8 或 9。

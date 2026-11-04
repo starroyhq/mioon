@@ -9,7 +9,7 @@ import type {ImageSettingsPersistence} from './settings.ts';
 
 export interface CustomImageSettingsV2FileOptions {directory?: string; privateRoot?: string; filename?: string}
 export interface CustomImageSettingsV2File extends ImageSettingsPersistence {load(): Promise<unknown>; save(value: unknown): Promise<void>}
-/** The factory is independent of production startup. Missing reads are inert;
+/** Dedicated private settings adapter. Missing reads are inert;
  * only an explicit v2 save can replace an exact recognized legacy envelope. */
 export function createCustomImageSettingsV2File({directory, privateRoot = directory,
   filename = CUSTOM_IMAGE_SETTINGS_FILENAME}: CustomImageSettingsV2FileOptions = {}): CustomImageSettingsV2File {
@@ -37,7 +37,7 @@ export function createCustomImageSettingsV2File({directory, privateRoot = direct
         if (initialized && token !== baseline) fail('IMAGE_SETTINGS_CORRUPT');
         let result: unknown = null;
         if (contents !== null) {
-          const parsed: unknown = JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(contents));
+          const parsed: unknown = JSON.parse(new TextDecoder('utf-8', {fatal: true, ignoreBOM: true}).decode(contents));
           if (parsed && typeof parsed === 'object' && 'version' in parsed && parsed.version === 1 &&
             contents.length > IMAGE_SETTINGS_LIMITS.envelopeBytes) fail('IMAGE_SETTINGS_CORRUPT');
           result = validateCustomImageSettingsV2Stored(parsed);

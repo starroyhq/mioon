@@ -137,7 +137,8 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
         // asset field, however, needs an explicit classification before undo.
         deny('unsupported');
       }
-      if (key === 'schemaVersion' && ![1, 2, 3, 4, 5].includes(Number(item))) deny('unsupported');
+      if (key === 'schemaVersion' && ![1, 2, 3, 4, 5].includes(Number(item)) &&
+        !(item === 6 && depth === 0 && source === 'main.image_reviews.canonicalIntent')) deny('unsupported');
       if (key === 'parameters' && (!object(item) || !fields(item, parameterKeys)
         || Object.values(item).some(entry => entry !== null && typeof entry === 'object'))) deny('unsupported');
       if (key === 'videoInput' && !wanVideoInputSchema.safeParse(item).success) deny('invalid');

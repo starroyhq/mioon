@@ -5,7 +5,7 @@ import {IMAGE_CREDENTIAL_ACQUIRE, IMAGE_SETTINGS_ASSERT_CURRENT, imageSettingsEr
 import type {AcquiredImageCredential} from './settings.ts';
 import {IMAGE_EDIT_LIMITS} from '../../../contracts/src/images.ts';
 import {canonicalImageInput} from '../../../contracts/src/images.ts';
-import {customImageConfigurationV2Schema, CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE} from '../../../contracts/src/generation-image-settings.ts';
+import {customImageConfigurationV2Schema, CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE, CUSTOM_IMAGE_SETTINGS_V2_LIMITS} from '../../../contracts/src/generation-image-settings.ts';
 import type {createCustomImageSettingsV2} from './custom-settings-v2.ts';
 import {createOpenAIImageAdapter, createCompatibleImageAdapter} from './adapter.ts';
 import type {ImageAdapterResult} from './adapter.ts';
@@ -115,15 +115,24 @@ export function createCompatibleImageGatewayV2({settings, lookup = lookupDns, ht
     if (!parsed.success || !parsed.data.enabled || snapshot.model !== parsed.data.model ||
       canonicalImageInput(snapshot.options) !== canonicalImageInput(parsed.data.options) || sourceBytes !== undefined ||
       typeof beforeDispatch !== 'function' || typeof connectionId !== 'string' || settingsRevision !== configurationRevision) throw imageSettingsError('IMAGE_SETTINGS_CONFLICT');
-    const expected = {connectionId, configurationRevision, configuration: parsed.data};
+    Object.freeze(snapshot.options); Object.freeze(snapshot);
+    Object.freeze(parsed.data.options); Object.freeze(parsed.data);
+    const expected = Object.freeze({connectionId, configurationRevision, configuration: parsed.data});
     const credential = await settings.acquire(expected, {signal});
     if (signal?.aborted) throw imageSettingsError('IMAGE_SETTINGS_CLOSED');
-    if (credential.namespace !== CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE || !credential.apiKey) throw imageSettingsError('IMAGE_SETTINGS_NOT_CONFIGURED');
+    if (!credential || credential.namespace !== CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE || credential.connectionId !== connectionId ||
+      credential.configurationRevision !== configurationRevision || canonicalImageInput(credential.configuration) !== canonicalImageInput(expected.configuration)) throw imageSettingsError('IMAGE_SETTINGS_CONFLICT');
+    if (!credential.apiKey) throw imageSettingsError('IMAGE_SETTINGS_NOT_CONFIGURED');
+    if (typeof credential.apiKey !== 'string' || credential.apiKey.length > CUSTOM_IMAGE_SETTINGS_V2_LIMITS.secretBytes || !/^[\x21-\x7e]+$/.test(credential.apiKey)) throw imageSettingsError('IMAGE_SETTINGS_CONFLICT');
     const transport = createCompatibleImageJsonTransport({lookup, httpsRequest, apiKey: credential.apiKey, baseUrl: parsed.data.baseUrl});
     return createCompatibleImageAdapter({transport, baseUrl: parsed.data.baseUrl}).generate(snapshot, {signal, beforeDispatch: () => {
       // This synchronous fence and the caller's durable dispatch fence run in
       // the same turn immediately before transport submission.
-      if (settings.assertCurrent(expected) !== true) throw imageSettingsError('IMAGE_SETTINGS_CONFLICT');
+      const confirmed: unknown = settings.assertCurrent(expected);
+      if (confirmed !== true) {
+        if (confirmed && typeof (confirmed as {then?: unknown}).then === 'function') Promise.resolve(confirmed).catch(() => {});
+        throw imageSettingsError('IMAGE_SETTINGS_CONFLICT');
+      }
       return (beforeDispatch as () => unknown)();
     }});
   }});

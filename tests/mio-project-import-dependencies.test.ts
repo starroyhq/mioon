@@ -266,6 +266,16 @@ test('a frozen generation without a relation stays clear, while unknown fields c
   job(f, snapshot(f, {futureMediaBindings: []})); assert.deepEqual(f.read(), {status: 'unproven', reason: 'unsupported'});
 });
 
+for (const [name, capabilities, expected] of [
+  ['retained capability version 5', {schemaVersion: 5}, {status: 'clear'}],
+  ['version 6 in another history column', {schemaVersion: 6}, {status: 'unproven', reason: 'unsupported'}],
+  ['nested version 6 outside the intent root', {nested: {schemaVersion: 6}}, {status: 'unproven', reason: 'unsupported'}],
+  ['future version 7', {schemaVersion: 7}, {status: 'unproven', reason: 'unsupported'}],
+] as const) test(`G1a's narrow review exception keeps ${name} explicitly classified`, t => {
+  const f = fixture(t); job(f, snapshot(f, {capabilities}));
+  assert.deepEqual(f.read(), expected);
+});
+
 test('image edit acceptance consumes its source before there is any result asset', t => {
   const f = fixture(t), requestId = randomUUID(), input = {projectId: f.projectId, requestId, name: 'Edit', prompt: 'Edit it', providerId: 'mock', model: 'mock-image-v1',
     options: IMAGE_FIXED_OPTIONS, purpose: 'edit', inputImage: {assetId: f.assetId, sha256: hash}};

@@ -692,13 +692,14 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ['frame_tasks',"state IN ('queued','running','persisting')"],
   ['scene_tasks',"state IN ('queued','running','cancelling','persisting')"],
  ] as const).some(([table,condition])=>hasStoreTable(db,table)&&!!db.prepare(`SELECT 1 FROM ${table} WHERE ${condition} LIMIT 1`).get());
+ const assertImageMutationAllowed=():void=>{checkpoint(ownerSignal);assertApplicationMutationAllowed();assertMutationAllowed?.();};
  const generationImageServices=(operation:string,input:unknown):unknown=>{
   checkpoint(ownerSignal);
   if(!Object.hasOwn(generationImageServiceSchemas,operation))throw new AppError('UNKNOWN_OPERATION','图片服务操作不存在',400);
   const op=operation as GenerationImageServiceOperation,parsed=generationImageServiceSchemas[op].safeParse(input);
   if(!parsed.success)throw new AppError('VALIDATION_ERROR','图片服务参数无效',400);
-  if(op==='image.service.review.prepare'){assertApplicationMutationAllowed();assertMutationAllowed?.();}
+  if(op==='image.service.review.prepare')assertImageMutationAllowed();
   return publicValue(images.generationServices(op,parsed.data));
  };
- return {compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed as (input: unknown)=>unknown,imageRejection:images.rejectReview as (input: unknown)=>unknown,generationImageServices} as OrdinaryServices;
+ return {compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
 }

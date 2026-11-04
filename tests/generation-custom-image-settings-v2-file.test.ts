@@ -48,7 +48,7 @@ test('recognized v1 bytes and inode survive repeated reads until the first expli
 
 test('unknown, corrupt, oversized or foreign files never become resettable legacy settings', async t => {
   const f = await fixture(t); await mkdir(f.directory, {mode: 0o700});
-  for (const content of ['{"bad":', JSON.stringify({...legacy(), version: 3}), JSON.stringify({...legacy(), namespace: IMAGE_SETTINGS_NAMESPACE}),
+  for (const content of ['{"bad":', '\uFEFF'+JSON.stringify(legacy()), JSON.stringify({...legacy(), version: 3}), JSON.stringify({...legacy(), namespace: IMAGE_SETTINGS_NAMESPACE}),
     JSON.stringify({...legacy(), secret: {value: 'synthetic-key'}}), JSON.stringify(legacy()) + ' '.repeat(IMAGE_SETTINGS_LIMITS.envelopeBytes),
     JSON.stringify(empty()) + ' '.repeat(CUSTOM_IMAGE_SETTINGS_V2_LIMITS.envelopeBytes)]) {
     await writeFile(f.file, content, {mode: 0o600});

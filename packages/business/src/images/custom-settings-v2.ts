@@ -110,7 +110,7 @@ function boundedOperation<T>(operation: () => T | Promise<T>, signal?: AbortSign
   });
 }
 
-/** Independent, currently unwired v2 owner. The collection CAS serializes disk
+/** Independent v2 owner. The collection CAS serializes disk
  * publication; authorization fences are per connection, so editing B cannot
  * revoke A. An acquired key is only a snapshot: assertCurrent must run at the
  * final dispatch boundary synchronously, without an intervening await. */

@@ -288,3 +288,21 @@ test('four-language rerenders preserve image connection draft, password DOM and 
   for (const locale of i18n.LOCALES) { const tree = ui.setLocale(locale); assert.ok(JSON.stringify(tree).includes(i18n.translate(locale, 'image.settings.notice.savedSession'))); }
   ui.unmount(); f.session.dispose();
 });
+
+test('custom service review rejection binds UUID and configuration revision even when model and destination match', async () => {
+  const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`, at = '2026-11-04T00:00:00.000Z';
+  const {connectionId: _legacy, ...configuration} = customConfiguration();
+  const input = {projectId: id(1), requestId: 'exact-service-review', name: 'Exact', prompt: 'Exact prompt', providerId: 'openai-compatible', model: configuration.model, options: configuration.options};
+  const review = {id: id(2), projectId: id(1), requestId: input.requestId, input, inputHash: createHash('sha256').update(canonicalImageInput(input)).digest('hex'), settingsRevision: 1,
+    connectionId: id(3), configurationRevision: 1, configuration, destination: `${configuration.baseUrl}/images/generations`, policy: IMAGE_REVIEW_POLICY,
+    state: 'pending', revision: 1, taskId: null, postAttempts: 0, createdAt: at, updatedAt: at, approvedAt: null, rejectedAt: null, dispatchedAt: null};
+  assert.equal(isImageReviewResponse(review), true);
+  const rejected = {...review, state: 'rejected', revision: 2, rejectedAt: at}; let calls = 0;
+  const client = (reply: unknown) => createImageReviewClient({fetchImpl: async () => {calls++; return Response.json({ok: true, data: reply});}});
+  assert.deepEqual(await client(rejected).reject(review), rejected);
+  for (const reply of [{...rejected, connectionId: id(4)}, {...rejected, configurationRevision: 2, settingsRevision: 2}]) {
+    assert.equal(isImageReviewResponse(reply), true);
+    await assert.rejects(client(reply).reject(review), {code: 'NETWORK'});
+  }
+  assert.equal(calls, 3, 'No rejected receipt is retried');
+});

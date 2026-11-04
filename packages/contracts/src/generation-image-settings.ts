@@ -3,8 +3,8 @@ import {IMAGE_FIXED_OPTIONS, imageOptionsSchema} from './images.ts';
 import {CUSTOM_IMAGE_PROFILE_ID} from './image-settings.ts';
 import {customImageBaseUrlSchema, customImageModelSchema} from './image-compatible.ts';
 
-// Standalone settings declarations. These are intentionally absent from the
-// operation catalog until the explicit-connection generation lane is wired.
+// Dedicated settings declarations, separate from the fixed RPC/Mio operation
+// catalog and its credential-free generation inputs.
 export const CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE = 'mioon.images.openai-compatible.v2';
 export const CUSTOM_IMAGE_SETTINGS_V2_NOTICE = 'LEGACY_CUSTOM_IMAGE_SETTINGS_RESET';
 export const CUSTOM_IMAGE_SETTINGS_V2_LIMITS = Object.freeze({connections: 10, connectionIds: 4096,
