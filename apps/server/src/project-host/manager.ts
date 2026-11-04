@@ -35,6 +35,7 @@ import {completedHistoryResolution, prepareHistorySwitch, recoverHistorySwitch} 
 import type {HistorySwitchBoundary} from '../../../../packages/business/src/project-file/history-switch.ts';
 import {projectHistoryResolveSchema} from '../../../../packages/contracts/src/project-history-recovery.ts';
 import type {ProjectHistoryResolveInput, ProjectHistoryResolveResult} from '../../../../packages/contracts/src/project-history-recovery.ts';
+import {archivedBackgroundHistorySource, currentBackgroundHistorySource} from './background-history.ts';
 
 export interface ManagerClock {
   now(): number;
@@ -405,7 +406,16 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       // A recovery session has not normally opened the project yet. Preserve
       // its previous recency until resolution and successful runtime startup.
       if (!entry.recovery) {
-        for (const hook of hooks) await hook.afterOpen?.(entry.context);
+        const readiness = Object.freeze({host: entry.host!, retainTask: (): ProjectLease<Runtime> => {
+          if (entry.state !== 'opening' || entry.controller.signal.aborted || entries.get(entry.projectId) !== entry) {
+            throw projectHostError('PROJECT_HOST_TRANSITION', {projectId: entry.projectId});
+          }
+          return grant(entry, 'task');
+        }});
+        for (const hook of hooks) await hook.afterOpen?.(entry.context, readiness);
+        // Older embedders have no S3 hook. Activation is idempotent; production
+        // performs it explicitly between the open backup and daily version.
+        entry.runtime?.activateBackground?.();
         const summary = entry.runtime?.summarize?.() ?? null;
         // Identity registration is needed before composing, but a failed open
         // must not become the most recently opened project.
@@ -597,7 +607,19 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     if (unfinished) {
       try {
         const indexedAt = timestamp();
-        taskIndex.replace(entry.projectId, unfinished.map(task => ({projectId: entry.projectId, projectFile, kind: task.kind, taskId: task.taskId, indexedAt})));
+        const previous = taskIndex.listProject?.(entry.projectId) ?? taskIndex.list().filter(task => task.projectId === entry.projectId);
+        taskIndex.replace(entry.projectId, unfinished.map(task => {
+          const matching = previous.filter(value => value.kind === task.kind && value.taskId === task.taskId);
+          const old = matching.find(value => value.sourceHistory === task.sourceHistory)
+            ?? matching.find(value => value.sourceHistory == null && value.phase !== 'archived');
+          const unavailable = reason === 'relocate';
+          return {projectId: entry.projectId, projectFile, kind: task.kind, taskId: task.taskId, indexedAt: old?.indexedAt ?? indexedAt,
+            ...(task.phase === undefined ? {} : {phase: unavailable ? 'blocked' as const : task.phase}),
+            ...(task.reason === undefined ? {} : {reason: unavailable ? old?.reason ?? 'PROJECT_FILE_MOVED' : task.reason}),
+            ...(task.sourceHistory === undefined ? {} : {sourceHistory: task.sourceHistory}),
+            ...(task.taskRevision === undefined ? {} : {taskRevision: task.taskRevision}),
+            ...(old?.revision === undefined ? {} : {revision: old.revision + 1})};
+        }));
       } catch (error) {
         errors.push(error);
       }
@@ -932,10 +954,13 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     await Promise.all([...searches.values()]);
     const leases: ProjectLease<Runtime>[] = [];
     const failures: {readonly projectId: string; readonly error: unknown}[] = [];
-    for (const projectId of new Set(taskIndex.list().map(entry => entry.projectId))) {
+    for (const projectId of new Set(taskIndex.list().filter(entry => entry.phase !== 'archived' && entry.phase !== 'done').map(entry => entry.projectId))) {
       try {
         const lease = await acquire(projectId, 'task');
-        if (lease.host.recovery) lease.release();
+        if (lease.host.recovery) {
+          taskIndex.markProject?.(projectId, 'blocked', 'PROJECT_HISTORY_DIVERGED');
+          lease.release();
+        }
         else leases.push(lease);
       } catch (error) {
         failures.push({projectId, error});
@@ -994,16 +1019,16 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     const registered = registry.get(input.projectId);
     if (!registered) throw projectNotFound(input.projectId);
     const receipt = completedHistoryResolution(switchOptions(registered.projectFile, input.projectId), input);
-    if (receipt) return receipt;
+    if (receipt) { archiveTaskIndex(input, receipt); return receipt; }
     return withExclusive(input.projectId, registration => {
       writeAllowed();
       const config = switchOptions(registration.projectFile, input.projectId);
       const completed = completedHistoryResolution(config, input);
-      if (completed) return completed;
+      if (completed) { archiveTaskIndex(input, completed); return completed; }
       const resumed = recoverHistorySwitch(config);
       if (resumed) {
         const receipt = completedHistoryResolution(config, input);
-        if (receipt) return receipt;
+        if (receipt) { archiveTaskIndex(input, receipt); return receipt; }
       }
       const store = openStore({projectFile: registration.projectFile, locate, checkCopy: registeredCopyCheck(input.projectId)});
       try {
@@ -1014,9 +1039,25 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       } finally {store.close();}
       const result = recoverHistorySwitch(config);
       if (!result) throw new AppError('PROJECT_HISTORY_SWITCH_PENDING', '本机记录处置尚未完成。', 409);
-      writeAllowed(); taskIndex.replace(input.projectId, []);
+      archiveTaskIndex(input, result);
       return result;
     });
+  }
+
+  function archiveTaskIndex(input: ProjectHistoryResolveInput, result: ProjectHistoryResolveResult): void {
+    writeAllowed();
+    const projectId = input.projectId;
+    const current = taskIndex.listProject?.(projectId) ?? taskIndex.list().filter(task => task.projectId === projectId);
+    const pending = current.filter(task => task.phase !== 'archived' && task.phase !== 'done');
+    if (pending.length === 0) return;
+    const localDir = locate(projectId).localDir, currentSource = currentBackgroundHistorySource(localDir);
+    // A replay after new work began must not require the already-retired old
+    // archive, and must never archive tasks accepted by the replacement DB.
+    if (pending.every(task => task.sourceHistory === currentSource)) return;
+    const source = archivedBackgroundHistorySource(localDir, result.archive, input.historyIdentity);
+    if (taskIndex.archive) taskIndex.archive(projectId, source);
+    else taskIndex.replace(projectId, current.map(task => task.sourceHistory && task.sourceHistory !== source || task.phase === 'archived' ? task
+      : {...task, phase: 'archived', reason: 'PROJECT_HISTORY_ARCHIVED', revision: (task.revision ?? 0) + 1}));
   }
 
   return Object.freeze({list, create, openPath, prepareAcquire, acquire, tryAcquireOpen, close, closeAll, withExclusive, restore, inspectProject, status, resolveHistory});

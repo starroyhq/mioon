@@ -25,6 +25,7 @@ import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createProjectFile} from '../packages/business/src/project-file/index.ts';
 import {withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
+import {markBackgroundTaskChanged} from '../packages/business/src/background-task-events.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createTimelinePreflightServices,timelineSnapshotHash} from '../packages/business/src/timeline-preflight.ts';
 import {readTimelinePreflightSnapshot,prepareTimelineInputs,readOwnedTimelineAsset,validateFrozenTimelineSourceGraph} from '../packages/business/src/timeline-sources.ts';
@@ -345,9 +346,12 @@ test('worker startup and queued enumeration leave aliased foreign malformed and 
    {...exportRecord(f,status),padding:'SECRET'.repeat(750000)},
   ];
   const insert=f.store.db.prepare('INSERT INTO exports(id,projectId,data) VALUES(?,?,?)');
-  rows.forEach((record,index)=>insert.run(index===1?randomUUID():record.id,f.project.id,JSON.stringify(record)));
-  insert.run(randomUUID(),f.project.id,'{SECRET corrupt');
-  const hugeIdentity=exportRecord(f,status);withoutProcessTargetRevisions(f.store.db,['exports'],()=>insert.run('SECRET'.repeat(350000),f.project.id,JSON.stringify(hugeIdentity)));
+  const insertedIds:string[]=[];
+  rows.forEach((record,index)=>{const id=index===1?randomUUID():record.id;insert.run(id,f.project.id,JSON.stringify(record));insertedIds.push(id);});
+  const corruptId=randomUUID();insert.run(corruptId,f.project.id,'{SECRET corrupt');insertedIds.push(corruptId);
+  const hugeIdentity=exportRecord(f,status),hugeId='SECRET'.repeat(350000);withoutProcessTargetRevisions(f.store.db,['exports'],()=>insert.run(hugeId,f.project.id,JSON.stringify(hugeIdentity)));insertedIds.push(hugeId);
+  // Bare SQL deliberately bypasses the store's committed exact-ID notification.
+  for(const id of insertedIds)markBackgroundTaskChanged(f.store.db,'export',id);
   const before=exportRows(f),writes=f.writes(),events: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[]=[],diagnostics: (unknown[])[]=[],off=onMediaProcess(event=>events.push(event));const mocked=t.mock.method(console,'error',(...args: unknown[])=>diagnostics.push(args));
   const owner=new AbortController();if(status==='running')owner.abort();const worker=startWorker(f.store,f.services,new Map(),{signal:owner.signal});
   try{await worker.tick();await worker.stop();assert.equal(f.writes(),writes);assert.deepEqual(exportRows(f),before);assert.deepEqual((events as unknown),[]);assert.equal(diagnostics.length,1);assert.deepEqual(diagnostics[0],['Skipped invalid local export record.']);}
@@ -394,7 +398,12 @@ test('worker rechecks relational ownership after rendering and never publishes t
 });
 
 test('worker timeline failure guard and status write share one transaction and preserve a reassigned row',async t=>{
- const f=await fixture(t);await f.seed();await unlink(mediaFixturePath(f.root,f.assetValue));const record=exportRecord(f);f.store.put('exports',record);
+ const f=await fixture(t);await f.seed();
+ // Missing media now pauses for source reconnection. Corrupt bytes still enter
+ // the original failure-write path whose ownership transaction is under test.
+ await writeFile(mediaFixturePath(f.root,f.assetValue),'synthetic changed bytes');const record=exportRecord(f);f.store.put('exports',record);
+ assert.notEqual(sha(await readFile(mediaFixturePath(f.root,f.assetValue))),f.assetValue!.sha256);
+ await assert.rejects(prepareTimelineInputs(record.snapshot as Parameters<typeof prepareTimelineInputs>[0],{root:f.root,projectId:f.project.id,readAsset:id=>{const asset=readOwnedTimelineAsset(f.store.db,f.project.id,id);return asset?{...asset,duration:asset.duration??null}:null;}}),{code:'MANAGED_SOURCE_CHANGED'});
  const originalTx=f.store.tx;let transactions=0,dataAtMove;f.store.tx=fn=>{if(++transactions===2){dataAtMove=exportRows(f)[0].data;withoutProcessTargetRevisions(f.store.db,['exports'],()=>withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.other.id,record.id)));}return originalTx(fn);};
  const mocked=t.mock.method(console,'error',()=>{}),events: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[]=[],off=onMediaProcess(event=>events.push(event));const worker=startWorker(f.store,f.services,new Map());
  try{await worker.tick();await worker.stop();assert.ok(transactions>=2);assert.equal(exportRows(f)[0].data,dataAtMove);assert.deepEqual((events as unknown),[]);assert.equal((f.store.get('exports',record.id)!.error as unknown),null);}
@@ -406,10 +415,10 @@ test('worker rejects malformed 36-character and traversal UUID identities before
  for(const status of (['running','queued'] as const))await t.test(status,async t=>{
   const f=await fixture(t);await f.seed();const insert=f.store.db.prepare('INSERT INTO exports(id,projectId,data) VALUES(?,?,?)');
   for(const bad of identities){
-   assert.equal(bad.length,36);const row=exportRecord(f,status,{id:bad});insert.run(bad,f.project.id,JSON.stringify(row));
+   assert.equal(bad.length,36);const row=exportRecord(f,status,{id:bad});insert.run(bad,f.project.id,JSON.stringify(row));markBackgroundTaskChanged(f.store.db,'export',bad);
    // A kernel project cannot contain a second project row. Corrupt only the
    // local export reference to exercise the same malformed owner identity.
-   const projectRow=exportRecord(f,status,{projectId:bad});projectRow.snapshot.timeline.projectId=bad;withoutProcessTargetRevisions(f.store.db,['exports'],()=>withoutForeignKeys(f.store.db,()=>insert.run(projectRow.id,bad,JSON.stringify(projectRow))));
+   const projectRow=exportRecord(f,status,{projectId:bad});projectRow.snapshot.timeline.projectId=bad;withoutProcessTargetRevisions(f.store.db,['exports'],()=>withoutForeignKeys(f.store.db,()=>insert.run(projectRow.id,bad,JSON.stringify(projectRow))));markBackgroundTaskChanged(f.store.db,'export',projectRow.id);
   }
   const before=exportRows(f),writes=f.writes(),files=await readdir(f.root,{recursive:true}),events: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[]=[],off=onMediaProcess(event=>events.push(event));const mocked=t.mock.method(console,'error',()=>{});const owner=new AbortController();if(status==='running')owner.abort();const worker=startWorker(f.store,f.services,new Map(),{signal:owner.signal});
   try{await worker.tick();await worker.stop();assert.equal(f.writes(),writes);assert.deepEqual(exportRows(f),before);assert.deepEqual((events as unknown),[]);assert.deepEqual(await readdir(f.root,{recursive:true}),files);}
@@ -419,11 +428,13 @@ test('worker rejects malformed 36-character and traversal UUID identities before
 
 test('SQL rejects duplicate mode keys before oversized timeline JSON can bypass its materialization cap',async t=>{
  const f=await fixture(t);await f.seed();const insert=f.store.db.prepare('INSERT INTO exports(id,projectId,data) VALUES(?,?,?)');
- for(const escaped of ([false,true] as const)){const row=exportRecord(f,'running'),body=JSON.stringify({...row,padding:'x'.repeat(5*1024*1024)});const data='{"mode":"storyboard",'+body.slice(1).replace('"mode":"timeline"',escaped?'"m\\u006fde":"timeline"':'"mode":"timeline"');insert.run(row.id,f.project.id,data);}
- for(const malformed of ([JSON.stringify('x'.repeat(5*1024*1024)),JSON.stringify([{...exportRecord(f,'running'),padding:'x'.repeat(5*1024*1024)}])] as const))insert.run(randomUUID(),f.project.id,malformed);
- const singleEscaped=exportRecord(f,'running');insert.run(singleEscaped.id,f.project.id,JSON.stringify({...singleEscaped,padding:'x'.repeat(5*1024*1024)}).replace('"mode":"timeline"','"m\\u006fde":"timeline"'));
+ const insertedIds:string[]=[];
+ for(const escaped of ([false,true] as const)){const row=exportRecord(f,'running'),body=JSON.stringify({...row,padding:'x'.repeat(5*1024*1024)});const data='{"mode":"storyboard",'+body.slice(1).replace('"mode":"timeline"',escaped?'"m\\u006fde":"timeline"':'"mode":"timeline"');insert.run(row.id,f.project.id,data);insertedIds.push(row.id);}
+ for(const malformed of ([JSON.stringify('x'.repeat(5*1024*1024)),JSON.stringify([{...exportRecord(f,'running'),padding:'x'.repeat(5*1024*1024)}])] as const)){const id=randomUUID();insert.run(id,f.project.id,malformed);insertedIds.push(id);}
+ const singleEscaped=exportRecord(f,'running');insert.run(singleEscaped.id,f.project.id,JSON.stringify({...singleEscaped,padding:'x'.repeat(5*1024*1024)}).replace('"mode":"timeline"','"m\\u006fde":"timeline"'));insertedIds.push(singleEscaped.id);
+ for(const id of insertedIds)markBackgroundTaskChanged(f.store.db,'export',id);
  const before=exportRows(f),writes=f.writes(),events: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[]=[],off=onMediaProcess(event=>events.push(event));const original=f.store.db.prepare.bind(f.store.db);let seen=0;
- const prepare=t.mock.method(f.store.db,'prepare',function(sql: string){const statement=original(sql);if(sql.startsWith('SELECT CASE')&&sql.endsWith('FROM exports')){const all=statement.all.bind(statement);statement.all=(...args)=>{const rows=all(...((args) as unknown as Parameters<NonNullable<typeof all>>));rows.forEach(row=>assert.equal((row.data as unknown),null));seen++;return rows;};}return statement;});
+ const prepare=t.mock.method(f.store.db,'prepare',function(sql: string){const statement=original(sql);if(sql.startsWith('SELECT CASE')&&sql.endsWith('FROM exports WHERE id=?')){const get=statement.get.bind(statement);statement.get=(...args)=>{const row=get(args[0] as string);assert.ok(row);assert.equal((row.data as unknown),null);seen++;return row;};}return statement;});
  const mocked=t.mock.method(console,'error',()=>{}),owner=new AbortController();owner.abort();const worker=startWorker(f.store,f.services,new Map(),{signal:owner.signal});
  try{await worker.stop();assert.ok(seen);assert.equal(f.writes(),writes);assert.deepEqual(exportRows(f),before);assert.deepEqual((events as unknown),[]);}
  finally{off();mocked.mock.restore();prepare.mock.restore();await worker.stop();}
@@ -433,8 +444,8 @@ test('worker row identity cannot be bypassed by absent storyboard or relabeled l
  for(const status of (['running','queued'] as const))await t.test(status,async t=>{
   const f=await fixture(t);await f.seed();const insert=f.store.db.prepare('INSERT INTO exports(id,projectId,data) VALUES(?,?,?)');
   for(const mode of ([undefined,'storyboard','legacy'] as const)){
-   const foreign=exportRecord(f,status,{mode,projectId:f.other.id,snapshot:[] as unknown as FixtureSnapshot});insert.run(foreign.id,f.project.id,JSON.stringify(foreign));
-   const alias=exportRecord(f,status,{mode,snapshot:[] as unknown as FixtureSnapshot});insert.run(randomUUID(),f.project.id,JSON.stringify(alias));
+   const foreign=exportRecord(f,status,{mode,projectId:f.other.id,snapshot:[] as unknown as FixtureSnapshot});insert.run(foreign.id,f.project.id,JSON.stringify(foreign));markBackgroundTaskChanged(f.store.db,'export',foreign.id);
+   const alias=exportRecord(f,status,{mode,snapshot:[] as unknown as FixtureSnapshot}),aliasId=randomUUID();insert.run(aliasId,f.project.id,JSON.stringify(alias));markBackgroundTaskChanged(f.store.db,'export',aliasId);
   }
   const before=exportRows(f),writes=f.writes(),events: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[]=[],off=onMediaProcess(event=>events.push(event)),mocked=t.mock.method(console,'error',()=>{}),owner=new AbortController();if(status==='running')owner.abort();const worker=startWorker(f.store,f.services,new Map(),{signal:owner.signal});
   try{await worker.tick();await worker.stop();assert.equal(f.writes(),writes);assert.deepEqual(exportRows(f),before);assert.deepEqual((events as unknown),[]);}

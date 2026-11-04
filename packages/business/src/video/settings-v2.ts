@@ -45,6 +45,13 @@ export function sanitizeVideoSettingsV2Error(value: unknown): {code: string; mes
   return {code: safe.code, message: safe.message, status: safe.status};
 }
 const fail = (code: string): never => {throw videoSettingsV2Error(code);};
+const unavailableBindingHistory = new WeakSet<object>();
+/** Internal classification only. Public settings validation keeps its existing
+ * error, while the task runtime can pause a structurally valid frozen binding
+ * whose settings history was retired (including the explicit v1 reset). */
+export function isVideoBindingHistoryUnavailable(error: unknown): error is VideoSettingsError {
+  return error !== null && typeof error === 'object' && unavailableBindingHistory.has(error);
+}
 const copy = <T>(value: T): T => structuredClone(value);
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 const exact = (value: unknown, keys: readonly string[]): value is Record<string, unknown> => object(value) && Reflect.ownKeys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -146,7 +153,11 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     try {selected = parseVideoBinding(videoExecutionBindingV2Schema.parse(input));} catch {return fail('VIDEO_BINDING_INVALID');}
     if (state.deletedConnectionIds.includes(selected.connectionId)) return fail('VIDEO_SETTINGS_DELETED');
     const historical = state.history.find(entry => entry.configuration.id === selected.connectionId && entry.revision === selected.configurationRevision);
-    if (!historical || !same(binding(historical, selected.model.id), selected)) return fail('VIDEO_BINDING_INVALID');
+    if (!historical) {
+      const error = videoSettingsV2Error('VIDEO_BINDING_INVALID');
+      unavailableBindingHistory.add(error); throw error;
+    }
+    if (!same(binding(historical, selected.model.id), selected)) return fail('VIDEO_BINDING_INVALID');
     if (material(selected.credentialRef) === 'none') return fail('VIDEO_SETTINGS_NOT_CONFIGURED');
     return selected;
   };

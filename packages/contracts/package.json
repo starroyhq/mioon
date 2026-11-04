@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./public-operations": "./src/public-operations.ts",
     "./project-entry": "./src/project-entry.ts",
+    "./background-task-query": "./src/background-task-query.ts",
     "./project-entry-native": "./src/project-entry-native.ts",
     "./project-entry-desktop": "./src/project-entry-desktop.ts",
     "./project-entry-control": "./src/project-entry-control.ts",
