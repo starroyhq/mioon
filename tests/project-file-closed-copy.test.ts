@@ -100,7 +100,7 @@ test('current history9 with real S8 repository rows is captured read-only withou
  const f=fixture(t),store=f.open();
  let drafts:unknown;
  try{
-  assert.equal(HISTORY_SCHEMA_VERSION,9);assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()!.version,9);
+  assert.equal(SCHEMA_MANIFEST.history.version,HISTORY_SCHEMA_VERSION);assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()!.version,HISTORY_SCHEMA_VERSION);
   const repository=createLocalDraftRepository<ClipDraftDisk>({store,kind:'clip',ownsLock:()=>store.db.isOpen,validate:value=>clipDraftDiskSchema.parse(value)});
   const initial=repository.read(),saved={...initial,entries:[{projectId:f.projectId,timelineId:randomUUID(),clipId:randomUUID(),revision:1,draft:null}]};
   repository.save(saved,localDraftDigest(initial));assert.deepEqual(repository.read(),saved);
@@ -109,7 +109,7 @@ test('current history9 with real S8 repository rows is captured read-only withou
  const before=evidence(f.history),source=evidence(f.projectFile),captured=await captureClosedProjectSnapshot(f.options);
  const copied=new DatabaseSync(captured.historyFile!,{readOnly:true});
  try{
-  assert.equal(copied.prepare('SELECT version FROM schema_version').get()!.version,9);
+  assert.equal(copied.prepare('SELECT version FROM schema_version').get()!.version,HISTORY_SCHEMA_VERSION);
   assert.deepEqual(readSchemaManifest(copied,'main'),SCHEMA_MANIFEST.history.entries);
   assert.equal(copied.prepare('SELECT count(*) n FROM local_clip_drafts').get()!.n,1);
   assert.deepEqual(Object.fromEntries(DRAFT_TABLES.map(table=>[table,copied.prepare(`SELECT rowid,* FROM main.${table} ORDER BY rowid`).all()])),drafts);

@@ -5,8 +5,8 @@ import {PROJECT_NAME_MAX_LENGTH, projectNameProblem} from './project-name.ts';
 import {recentProjectSchema} from './project-registry.ts';
 import type {RecentProject} from './project-registry.ts';
 import type {ProjectEntriesResponse} from './project-entry.ts';
-import {projectCopyInputSchema} from './project-copies.ts';
-import type {ProjectCopyInput, ProjectCopyResponse} from './project-copies.ts';
+import {projectAdoptCopyInputSchema, projectCopyInputSchema} from './project-copies.ts';
+import type {ProjectCopyInput, ProjectCopyResponse, ProjectCopyToInput, ProjectTemplateInput} from './project-copies.ts';
 
 /** Trusted utility control payloads, not HTTP/renderer messages. The main
  * process generates opaque UUID window owners; these are not BrowserWindow's
@@ -26,6 +26,7 @@ export const projectEntryReleaseInputSchema = z.object({windowId}).strict();
 export const projectEntryWindowSchema = z.object({windowId, project: recentProjectSchema}).strict();
 export const projectEntryWindowRevokedSchema = z.object({windowId, projectId: projectIdSchema}).strict();
 export const projectEntrySaveAsInputSchema = projectCopyInputSchema.extend({windowId});
+export const projectEntryAdoptCopyInputSchema = projectAdoptCopyInputSchema.extend({windowId});
 export type ProjectEntryCreateInput = z.infer<typeof projectEntryCreateInputSchema>;
 export type ProjectEntryOpenPathInput = z.infer<typeof projectEntryOpenPathInputSchema>;
 export type ProjectEntryAcquireInput = z.infer<typeof projectEntryAcquireInputSchema>;
@@ -33,6 +34,7 @@ export type ProjectEntryReleaseInput = z.infer<typeof projectEntryReleaseInputSc
 export type ProjectEntryWindow = z.infer<typeof projectEntryWindowSchema>;
 export type ProjectEntryWindowRevoked = z.infer<typeof projectEntryWindowRevokedSchema>;
 export type ProjectEntrySaveAsInput = z.infer<typeof projectEntrySaveAsInputSchema>;
+export type ProjectEntryAdoptCopyInput = z.infer<typeof projectEntryAdoptCopyInputSchema>;
 
 /** No server types, SQL, caller-selected lease kinds or persisted lease IDs. */
 export interface ProjectEntryControlPort {
@@ -43,5 +45,8 @@ export interface ProjectEntryControlPort {
   release(input: ProjectEntryReleaseInput): void;
   duplicate?(input: ProjectCopyInput): Promise<ProjectCopyResponse>;
   saveAs?(input: ProjectEntrySaveAsInput): Promise<{copy: ProjectCopyResponse; window: ProjectEntryWindow}>;
+  adoptCopy?(input: ProjectEntryAdoptCopyInput): Promise<{copy: ProjectCopyResponse; window: ProjectEntryWindow}>;
+  copyTo?(input: ProjectCopyToInput): Promise<ProjectCopyResponse>;
+  instantiateTemplate?(input: ProjectTemplateInput): Promise<ProjectCopyResponse>;
   onWindowRevoked(listener: (event: ProjectEntryWindowRevoked) => void): () => void;
 }

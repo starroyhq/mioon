@@ -15,7 +15,7 @@ import type {ProjectEntryCreateInput} from '../../../packages/contracts/src/proj
 import {isProjectBackupOperation} from '../../../packages/contracts/src/project-backups.ts';
 import {callProjectBackupOperation} from './project-backup-operations.ts';
 import type {ProjectBackupOperations} from './project-backup-operations.ts';
-import {isProjectCopyOperation} from '../../../packages/contracts/src/project-copies.ts';
+import {isProjectCopyActionOperation, isProjectCopyOperation, projectCopyActionSchemas} from '../../../packages/contracts/src/project-copies.ts';
 import type {ProjectCopies} from './project-host/copies.ts';
 
 /** App operations never choose an arbitrary project's service as a global
@@ -39,6 +39,16 @@ export function createApplicationRpc({library, app, manager, directories, signal
   }).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id)));
   return {async call(operation: string, raw: unknown): Promise<unknown> {
     signal.throwIfAborted();
+    if (isProjectCopyActionOperation(operation)) {
+      if (!copies) throw new AppError('PROJECT_COPY_UNAVAILABLE', '项目复制暂不可用。', 503);
+      const parsed = projectCopyActionSchemas[operation].safeParse(raw);
+      if (!parsed.success) throw new AppError('VALIDATION_ERROR', '项目复制参数无效', 400, {issues: parsed.error.issues});
+      switch (operation) {
+        case 'project.adopt-copy': return await copies.adoptCopy(parsed.data as Parameters<ProjectCopies['adoptCopy']>[0]);
+        case 'project.copy-to': return await copies.copyTo(parsed.data as Parameters<ProjectCopies['copyTo']>[0]);
+        case 'project.template.instantiate': return await copies.instantiateTemplate(parsed.data as Parameters<ProjectCopies['instantiateTemplate']>[0]);
+      }
+    }
     if (isProjectCopyOperation(operation)) {
       if (!copies) throw new AppError('PROJECT_COPY_UNAVAILABLE', '项目复制暂不可用。', 503);
       // Application-only contracts: CLI/MCP discovery deliberately does not

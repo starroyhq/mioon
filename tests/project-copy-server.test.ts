@@ -17,6 +17,7 @@ import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {openProjectStore, isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
 import {HISTORY_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
+import {HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {DRAFT_TABLES} from '../packages/business/src/project-file/schema/domains/drafts.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {createProjectVersions} from '../packages/business/src/project-versions/service.ts';
@@ -174,7 +175,7 @@ async function seedS8Drafts(f: CopyFixture, keepWindow = false) {
   assert.equal(rows.local_draft_states.length, 3);
   for (const table of ['local_clip_drafts', 'local_delivery_drafts', 'local_shot_text_drafts']) assert.equal(rows[table].length, 1, table);
   assert.deepEqual(f.inspect(projectId, readProjectContentStamp), beforeContent, 'all three draft saves and preparation write only history');
-  assert.equal(f.inspect(projectId, db => db.prepare('SELECT version FROM main.schema_version').get()!.version), 9);
+  assert.equal(f.inspect(projectId, db => db.prepare('SELECT version FROM main.schema_version').get()!.version), HISTORY_SCHEMA_VERSION);
   const versions = f.inspect(projectId, db => db.prepare('SELECT id,trigger,name,createdAt FROM project_versions ORDER BY id').all());
   const staleWrite = {...authority(pending), projectId, shotId: shot.id, expectedDraftRevision: pending.draftRevision, draftId,
     baseRevision: shot.revision, baseText: {title: shot.title, prompt: shot.prompt}, raw: {title: 'A stale owner cannot save this', prompt: shot.prompt}};
@@ -190,7 +191,7 @@ for (const operation of ['project.duplicate', 'project.save-as'] as const)
     assert.deepEqual(f.sourceFiles(), before, 'closed-source history and all pending draft bytes remain unchanged');
     const target = f.targetStore(copy);
     try {
-      assert.equal(target.historyState, 'current'); assert.equal(target.db.prepare('SELECT version FROM main.schema_version').get()!.version, 9);
+      assert.equal(target.historyState, 'current'); assert.equal(target.db.prepare('SELECT version FROM main.schema_version').get()!.version, HISTORY_SCHEMA_VERSION);
       assert.deepEqual(readProjectContentStamp(target.db), {contentSequence: copy.contentSequence, contentToken: copy.contentToken});
       assert.deepEqual(target.db.prepare('SELECT id,trigger,name,createdAt FROM project_versions ORDER BY id').all(), seeded.versions);
       for (const table of DRAFT_TABLES) assert.deepEqual(target.db.prepare(`SELECT * FROM main.${table}`).all(), [], table);
