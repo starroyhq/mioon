@@ -150,7 +150,7 @@ export function createAgentSettingsSession({client=createAgentSettingsClient(),o
  const editable=()=>active&&visible&&agentSettingsEditable(state);
  const readyPatch=()=>({phase:state.recovery?state.phase:'ready' as const,message:state.recovery?state.message:'',displayMessages:state.recovery?state.displayMessages:[]});
  const service=(key:string)=>state.draft?.services.find(item=>item.serviceKey===key);
- const issue=(descriptor:DisplayMessage)=>publish({phase:'error',message:'设置未通过校验。',displayMessages:[descriptor]});
+ const issue=(descriptor:DisplayMessage)=>publish({phase:'error',message:'AGENT_SETTINGS_VALIDATION',displayMessages:[descriptor]});
  function read({recover=false}:{recover?:boolean}={}):Promise<boolean> {
   if(!active||agentSettingsBusy(state)&&state.phase!=='loading')return Promise.resolve(false);
   const token=++epoch;publish({phase:recover?'reconciling':'loading',message:'',displayMessages:recover?[message('agent.settings.notice.rereading')]:[]});
