@@ -26,6 +26,9 @@ import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 
 
 import {createImageSettings} from '../packages/business/src/images/settings.ts';
+import {createCustomImageSettingsV2} from '../packages/business/src/images/custom-settings-v2.ts';
+import {createVideoSettingsV2} from '../packages/business/src/video/settings-v2.ts';
+import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2} from '../packages/contracts/src/generation-image-settings.ts';
 
 function temporary(): string {
   return mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-project-runtime-'));
@@ -141,6 +144,20 @@ test('project cleanup leaves borrowed settings owned and usable by the applicati
     assert.equal(closed, 0);
     assert.ok(await image.get(), 'the app can still use its borrowed settings after project close');
   } finally { await image.close(); }
+});
+
+test('project cleanup keeps borrowed v2 custom image and video owners usable by the application',async t=>{
+  const f=fixture(t),customImage=await createCustomImageSettingsV2({persistence:{load:async()=>null,save:async()=>{}}}),
+    video=await createVideoSettingsV2({directory:path.join(f.library!.dataDir,'video-settings'),privateRoot:f.library!.dataDir});
+  let customCloses=0,videoCloses=0;
+  try {
+    const item=(await customImage.create({expectedRevision:0,connectionId:randomUUID(),name:'Borrowed',configuration:{...DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2,
+      enabled:true,baseUrl:'https://images.example.com/v1',model:'borrowed-image'},secret:{action:'replace',storage:'session',value:'synthetic-borrowed-key'}})).connections[0];
+    await f.compose({settings:{customImage:{...customImage,async close(){customCloses++;await customImage.close();}},video:{...video,async close(){videoCloses++;await video.close();}}}});
+    await f.close();assert.equal(customCloses,0);assert.equal(videoCloses,0);
+    assert.equal((await customImage.acquire({connectionId:item.connectionId,configurationRevision:item.configurationRevision,configuration:item.configuration})).apiKey,'synthetic-borrowed-key');
+    assert.equal((await video.get()).revision,0);
+  } finally {await customImage.close();await video.close();}
 });
 
 test('failed private kernel cleanup preserves both failures and cannot authorize closing its owned SQLite connection', async t => {

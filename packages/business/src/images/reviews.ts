@@ -9,6 +9,8 @@ import {IMAGE_EDIT_REVIEW_DESTINATION, IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_PO
 import {createImageEditSourceResolver} from './edit-source.ts';
 import {createImageOwnershipReader} from '../image-ownership.ts';
 import {customImageConfigurationSchema, isCompleteCustomImageConfiguration, getCustomImageDestination} from '../../../contracts/src/image-settings.ts';
+import {customImageConfigurationV2Schema, isCompleteCustomImageConfigurationV2} from '../../../contracts/src/generation-image-settings.ts';
+import {generationImageServiceSchemas} from '../../../contracts/src/generation-image-services.ts';
 import {ownsStoreLock} from '../store-runtime.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {COMFY_IMAGE_POLICY, COMFY_IMAGE_PROFILE_ID, COMFY_IMAGE_VERSION, comfyImageConfigurationSchema, isCompleteComfyImageConfiguration, getComfyImageDestination} from '../../../contracts/src/comfy-images.ts';
@@ -23,9 +25,9 @@ export interface ImageReviewRow {
   state: string; revision: number; taskId: string | null; postAttempts: number; createdAt: string; updatedAt: string;
   approvedAt: string | null; rejectedAt: string | null; dispatchedAt: string | null;
 }
-export interface ExpectedImageSettings {revision: number; destination: string; configuration?: unknown}
+export interface ExpectedImageSettings {revision: number; destination: string; configuration?: unknown; connectionId?: string; configurationRevision?: number}
 export interface ImageReviewHooks {
-  getSettings?: (providerId: string) => unknown;
+  getSettings?: (providerId: string, connectionId?: string) => unknown;
   assertSettings?: (expected: ExpectedImageSettings, providerId: string) => unknown;
   signal?: AbortSignal;
   fault?: (stage: string, details?: Record<string, unknown>) => unknown;
@@ -91,7 +93,8 @@ function decodeReviewRow(row: ImageReviewRow | undefined) {
     inputHash: row!.inputHash, settingsRevision: frozenIntent.settingsRevision, destination: frozenIntent.destination, policy: frozenIntent.policy,
     state: row!.state, revision: row!.revision, taskId: row!.taskId, postAttempts: row!.postAttempts, createdAt: row!.createdAt, updatedAt: row!.updatedAt,
     approvedAt: row!.approvedAt, rejectedAt: row!.rejectedAt, dispatchedAt: row!.dispatchedAt,
-    ...(frozenIntent.schemaVersion === 2 || frozenIntent.schemaVersion === 3 ? {configuration: frozenIntent.configuration} : {}),
+    ...([2, 3, 6].includes(frozenIntent.schemaVersion) && 'configuration' in frozenIntent ? {configuration: frozenIntent.configuration} : {}),
+    ...(frozenIntent.schemaVersion === 6 ? {connectionId: frozenIntent.connectionId, configurationRevision: frozenIntent.configurationRevision} : {}),
     ...(frozenIntent.schemaVersion === 4 || frozenIntent.schemaVersion === 5 ? {sourceImage: frozenIntent.sourceImage} : {}),
     ...(frozenIntent.schemaVersion === 3 ? {execution: frozenIntent.execution} : {})};
   const parsed = imageReviewResponseSchema.safeParse(dto);
@@ -163,20 +166,23 @@ export function createImageReviewServices(store: ImageStore, {getSettings, asser
     let value: unknown; try {value = JSON.parse(row?.data as string);} catch {fail('IMAGE_REVIEW_NOT_FOUND', 404);}
     if (object(value)?.id !== projectId) fail('IMAGE_REVIEW_NOT_FOUND', 404);
   }
-  function settings(settingsRevision: number, generation: ImageGenerationInput, frozenIntent?: ImageReviewIntent): ExpectedImageSettings {
+  function settings(settingsRevision: number, generation: ImageGenerationInput, frozenIntent?: ImageReviewIntent, connectionId?: string): ExpectedImageSettings {
     if (typeof getSettings !== 'function') fail('IMAGE_LIVE_DISABLED', 403);
-    const current = object(synchronous(getSettings, generation.providerId));
+    const selectedId = frozenIntent?.schemaVersion === 6 ? frozenIntent.connectionId : connectionId;
+    const current = object(synchronous(getSettings, generation.providerId, selectedId));
     if (!current || typeof current.revision !== 'number' || !Number.isSafeInteger(current.revision) || current.revision < 1 || current.revision !== settingsRevision) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
     if (current.enabled !== true) fail('IMAGE_LIVE_DISABLED', 403);
     let expected: ExpectedImageSettings = {revision: settingsRevision, destination: purposeOf(generation) === 'edit' ? IMAGE_EDIT_REVIEW_DESTINATION : IMAGE_REVIEW_DESTINATION};
     if (generation.providerId === 'openai-compatible') {
-      const parsed = customImageConfigurationSchema.safeParse(current.configuration);
-      if (!parsed.success || !parsed.data.enabled || !isCompleteCustomImageConfiguration(parsed.data) ||
+      const multi = typeof current.connectionId === 'string';
+      const parsed = multi ? customImageConfigurationV2Schema.safeParse(current.configuration) : customImageConfigurationSchema.safeParse(current.configuration);
+      if (!parsed.success || !parsed.data.enabled || !(multi ? isCompleteCustomImageConfigurationV2(parsed.data) : isCompleteCustomImageConfiguration(parsed.data)) ||
           parsed.data.model !== generation.model || canonical(parsed.data.options) !== canonical(generation.options)) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
       const configuration = parsed.data, destination = getCustomImageDestination(configuration.baseUrl);
-      if (current.destination !== destination || frozenIntent && (frozenIntent.schemaVersion !== 2 ||
+      if (selectedId !== undefined && current.connectionId !== selectedId || current.destination !== destination || frozenIntent && (frozenIntent.schemaVersion !== (multi ? 6 : 2) || !('configuration' in frozenIntent) ||
           frozenIntent.destination !== destination || canonical(frozenIntent.configuration) !== canonical(configuration))) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
-      expected = {revision: settingsRevision, destination, configuration};
+      if (multi && (current.configurationRevision !== settingsRevision || frozenIntent && (frozenIntent.schemaVersion !== 6 || frozenIntent.connectionId !== current.connectionId))) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
+      expected = {revision: settingsRevision, destination, configuration, ...(multi ? {connectionId: current.connectionId as string, configurationRevision: settingsRevision} : {})};
     } else if (generation.providerId === 'comfy-local') {
       const parsed = comfyImageConfigurationSchema.safeParse(current.configuration);
       if (!parsed.success || !parsed.data.enabled || !isCompleteComfyImageConfiguration(parsed.data) || parsed.data.model !== generation.model || canonical(parsed.data.options) !== canonical(generation.options)) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
@@ -230,15 +236,24 @@ export function createImageReviewServices(store: ImageStore, {getSettings, asser
     const replay = prepareReplay(input); if (replay) return replay;
     return editSources.verify(input.input).then(verified => {editSources.assertCurrent(input.input, verified); return prepareVerified(input, verified);});
   }
-  function prepareReplay(input: {input: ImageGenerationInput; settingsRevision: number}): ImageReviewDto | null {
+  function prepareService(raw: unknown): ImageReviewDto {
+    const input = parse(generationImageServiceSchemas['image.service.review.prepare'], raw);
+    return prepareVerified({input: input.input, settingsRevision: input.configurationRevision, connectionId: input.connectionId});
+  }
+  interface PreparedReviewInput {input: ImageGenerationInput; settingsRevision: number; connectionId?: string}
+  function replayMatches(original: ReturnType<typeof decodeReviewRow>, input: PreparedReviewInput): void {
+    if (original.intent.settingsRevision !== input.settingsRevision || input.connectionId !== undefined &&
+      (original.intent.schemaVersion !== 6 || original.intent.connectionId !== input.connectionId)) fail('IMAGE_REVIEW_CONFLICT');
+  }
+  function prepareReplay(input: PreparedReviewInput): ImageReviewDto | null {
     owner(); project(input.input.projectId);
     const previous = db.prepare(`SELECT ${columns} FROM image_reviews WHERE requestId=? LIMIT 1`).get(input.input.requestId) as ImageReviewRow | undefined;
     if (!previous) return null;
     if (previous.projectId !== input.input.projectId || previous.canonicalInput !== canonical(input.input)) fail('IMAGE_REVIEW_CONFLICT');
-    const original = decode(previous); if (original.intent.settingsRevision !== input.settingsRevision) fail('IMAGE_REVIEW_CONFLICT'); return original.dto;
+    const original = decode(previous); replayMatches(original, input); return original.dto;
   }
-  function prepareVerified(raw: unknown, verified?: {descriptor: unknown; bytes: Buffer}): ImageReviewDto {
-    const input = parse(imageReviewSchemas['image.review.prepare'], raw), generation = input.input;
+  function prepareVerified(input: PreparedReviewInput, verified?: {descriptor: unknown; bytes: Buffer}): ImageReviewDto {
+    const generation = input.input;
     const canonicalInput = canonical(generation);
     if (Buffer.byteLength(canonicalInput) > IMAGE_LIMITS.inputBytes) fail('IMAGE_REVIEW_CAPACITY', 507);
     return tx(() => {
@@ -248,19 +263,20 @@ export function createImageReviewServices(store: ImageStore, {getSettings, asser
         // A conflicting project gets no prompt or other retained review data.
         if (previous.projectId !== generation.projectId || previous.canonicalInput !== canonicalInput) fail('IMAGE_REVIEW_CONFLICT');
         const original = decode(previous);
-        if (original.intent.settingsRevision !== input.settingsRevision) fail('IMAGE_REVIEW_CONFLICT');
+        replayMatches(original, input);
         return original.dto; // Exact history survives setting changes, restarts, rejection, and dispatch.
       }
       if (db.prepare('SELECT 1 FROM image_requests WHERE requestId=? LIMIT 1').get(generation.requestId) || db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='image_remote_observations'").get() && db.prepare('SELECT 1 FROM image_remote_observations WHERE requestId=? LIMIT 1').get(generation.requestId)) fail('IMAGE_REVIEW_CONFLICT');
       if (verified) editSources.assertOwned(generation, verified.descriptor);
       const groupId = 'groupId' in generation ? generation.groupId : undefined;
       if (groupId) {const group = createImageOwnershipReader(db, generation.projectId, {fail: invalid}).group(groupId) as {revision: number; activeTaskId: string | null; name: string}; if (verified && (group.revision !== generation.expectedRevision || group.activeTaskId !== null || group.name !== generation.name)) fail('IMAGE_REVIEW_CONFLICT');}
-      const selected = settings(input.settingsRevision, generation); capacity(generation.projectId);
+      const selected = settings(input.settingsRevision, generation, undefined, input.connectionId); capacity(generation.projectId);
       const id = randomUUID(), timestamp = now();
       let execution;
       if (generation.providerId === 'comfy-local') {const seed = randomInt(0, 2 ** 48 - 1), promptId = randomUUID(), clientId = randomUUID(), outputNonce = randomUUID(); const graph = buildComfyWorkflow({prompt: generation.prompt, checkpoint: generation.model, seed, outputNonce}); execution = {workflowId: COMFY_IMAGE_PROFILE_ID, workflowVersion: 1 as const, comfyVersion: COMFY_IMAGE_VERSION, seed, promptId, clientId, outputNonce, filenamePrefix: `mioon_${outputNonce}`, graphHash: hashComfyWorkflow(graph), graph};}
       // Since schema62 every new edit intent is v5; retained v4 rows stay readable.
-      const intent: Record<string, unknown> = {schemaVersion: purposeOf(generation) === 'edit' ? 5 : generation.providerId === 'comfy-local' ? 3 : generation.providerId === 'openai-compatible' ? 2 : 1, reviewId: id, input: generation, settingsRevision: input.settingsRevision,
+      const intent: Record<string, unknown> = {schemaVersion: purposeOf(generation) === 'edit' ? 5 : generation.providerId === 'comfy-local' ? 3 : generation.providerId === 'openai-compatible' ? selected.connectionId ? 6 : 2 : 1, reviewId: id, input: generation, settingsRevision: input.settingsRevision,
+        ...(selected.connectionId ? {connectionId: selected.connectionId, configurationRevision: selected.configurationRevision} : {}),
         ...(verified ? {sourceImage: verified.descriptor} : {}), destination: selected.destination, policy: generation.providerId === 'comfy-local' ? COMFY_IMAGE_POLICY : IMAGE_REVIEW_POLICY,
         ...(['openai-compatible', 'comfy-local'].includes(generation.providerId) ? {configuration: selected.configuration} : {}), ...(execution ? {execution} : {})};
       if (!imageReviewIntentSchema.safeParse(intent).success) invalid();
@@ -386,7 +402,7 @@ export function createImageReviewServices(store: ImageStore, {getSettings, asser
     'image.review.get': snapshotRead((raw: unknown) => {const input = parse(imageReviewSchemas['image.review.get'], raw); return review(input.projectId, input.reviewId).dto;}),
     'image.review.list': snapshotRead((raw: unknown) => list(parse(imageReviewSchemas['image.review.list'], raw))),
   });
-  return Object.freeze({handlers, readForApproval: snapshotRead(readForApproval), authorizeAcceptance, verifyReplay: snapshotRead(verifyReplay),
+  return Object.freeze({handlers, prepareService, readForApproval: snapshotRead(readForApproval), authorizeAcceptance, verifyReplay: snapshotRead(verifyReplay),
     getForTask: snapshotRead(getForTask), sourceForApproval: snapshotRead(sourceForApproval), beforeDispatch, reject, stop() {stopped = true;}});
 }
 function purposeOf(generation: ImageGenerationInput): 'edit' | undefined { return 'purpose' in generation ? generation.purpose : undefined; }

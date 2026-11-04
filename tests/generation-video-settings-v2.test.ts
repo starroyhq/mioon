@@ -4,10 +4,10 @@ import {mkdtemp, readFile, realpath, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID, randomBytes, createCipheriv, createDecipheriv} from 'node:crypto';
-import {VIDEO_PROVIDER_NAMES, VIDEO_SETTINGS_LIMITS, VIDEO_SECRET_NAMESPACE, defaultVideoModels} from '../packages/contracts/src/video-providers.ts';
-import {VIDEO_BUILTIN_PROVIDER_IDS, videoConnectionConfigurationV2Schema, videoSettingsUpdateV2Schema} from '../packages/contracts/src/generation-video-settings.ts';
+import {VIDEO_PROVIDER_NAMES, VIDEO_SETTINGS_LIMITS, VIDEO_SECRET_NAMESPACE, defaultVideoModels, parseVideoBinding} from '../packages/contracts/src/video-providers.ts';
+import {VIDEO_BUILTIN_PROVIDER_IDS, compatibleVideoCheckV2Schema, videoConnectionConfigurationV2Schema, videoSettingsSnapshotV2Schema, videoSettingsUpdateV2Schema} from '../packages/contracts/src/generation-video-settings.ts';
 import type {VideoConnectionConfigurationV2} from '../packages/contracts/src/generation-video-settings.ts';
-import {createVideoSettingsV2, emptyVideoSettingsV2Envelope, validateVideoSettingsV2Envelope} from '../packages/business/src/video/settings-v2.ts';
+import {createVideoSettingsV2, emptyVideoSettingsV2Envelope, sanitizeVideoSettingsV2Error, validateVideoSettingsV2Envelope} from '../packages/business/src/video/settings-v2.ts';
 import type {VideoSettingsV2Options} from '../packages/business/src/video/settings-v2.ts';
 import {createVideoSettingsV2File} from '../packages/business/src/video/settings-v2-file.ts';
 
@@ -151,12 +151,54 @@ test('one CAS fences synchronous selection and competing writers, and failed bat
   const binding = f.settings.select(current.id, 1, current.models[0]!.id), before = await readFile(f.file, 'utf8');
   await assert.rejects(f.settings.put({action: 'batch', expectedRevision: 1, operations: [{action: 'save', configuration: custom, secret: replace()}, {action: 'delete', connectionId: current.id}]}), {code: 'VIDEO_SETTINGS_VALIDATION'});
   assert.equal(await readFile(f.file, 'utf8'), before); assert.equal(await f.settings.acquire(binding), KEY);
-  const writes = Array.from({length: 4}, () => f.settings.put({action: 'save', expectedRevision: 1, configuration: current, secret: keep}));
+  const writes = Array.from({length: 4}, () => f.settings.put({action: 'save', expectedRevision: 1, configuration: {...current, enabled: false}, secret: keep}));
   assert.throws(() => f.settings.select(current.id, 1, current.models[0]!.id), {code: 'VIDEO_SETTINGS_CONFLICT'});
   const results = await Promise.allSettled(writes); assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
   for (const result of results) if (result.status === 'rejected') assert.equal(result.reason.code, 'VIDEO_SETTINGS_CONFLICT');
-  const snapshot = await f.settings.get(); snapshot.connections[0]!.configuration.enabled = false;
-  assert.equal((await f.settings.get()).connections[0]!.configuration.enabled, true);
+  const snapshot = await f.settings.get(); snapshot.connections[0]!.configuration.enabled = true;
+  assert.equal((await f.settings.get()).connections[0]!.configuration.enabled, false);
+});
+
+test('unchanged saves preserve file identity, historical bindings and both revisions, including repeated identical keys', async t => {
+  const f = await fixture(t), real = createVideoSettingsV2File(f.options); let saves = 0;
+  const persistence = {load: real.load, async save(value: Parameters<typeof real.save>[0], signal?: AbortSignal) {saves++; await real.save(value, signal);}};
+  const settings = await createVideoSettingsV2({...f.options, persistence}); t.after(() => settings.close()); const current = configuration();
+  await settings.put({action: 'save', expectedRevision: 0, configuration: current, secret: replace()});
+  const original = settings.select(current.id, 1, current.models[0]!.id), before = await readFile(f.file, 'utf8');
+  for (const secret of [keep, replace(), keep]) {
+    const snapshot = await settings.put({action: 'save', expectedRevision: 1, configuration: current, secret});
+    assert.equal(snapshot.revision, 1); assert.equal(snapshot.connections[0]!.revision, 1);
+    assert.equal(await readFile(f.file, 'utf8'), before); assert.deepEqual(settings.select(current.id, 1, current.models[0]!.id), original);
+  }
+  assert.equal(saves, 1); assert.equal(await settings.acquire(original), KEY);
+  await settings.put({action: 'save', expectedRevision: 1, configuration: current, secret: {action: 'remove'}});
+  const removed = await readFile(f.file, 'utf8');
+  assert.equal((await settings.put({action: 'save', expectedRevision: 2, configuration: current, secret: {action: 'remove'}})).revision, 2);
+  assert.equal(await readFile(f.file, 'utf8'), removed); assert.equal(saves, 2);
+});
+
+test('persistent-key deduplication proves equality without rotating a frozen ref, while storage changes remain explicit', async t => {
+  const secretCodec = codec(), f = await fixture(t, {secretCodec, storage: {persistentAvailable: true, sessionScope: 'server', reasonCode: null}}), current = configuration();
+  await f.settings.put({action: 'save', expectedRevision: 0, configuration: current, secret: replace(KEY, 'persistent')});
+  const original = f.settings.select(current.id, 1, current.models[0]!.id), before = await readFile(f.file, 'utf8');
+  const unchanged = await f.settings.put({action: 'save', expectedRevision: 1, configuration: current, secret: replace(KEY, 'persistent')});
+  assert.equal(unchanged.revision, 1); assert.equal(secretCodec.encryptions, 1); assert.equal(secretCodec.decryptions, 1); assert.equal(await readFile(f.file, 'utf8'), before);
+  await f.settings.put({action: 'save', expectedRevision: 1, configuration: current, secret: replace(KEY, 'session')});
+  const next = f.settings.select(current.id, 2, current.models[0]!.id); assert.notEqual(next.credentialRef, original.credentialRef);
+  assert.equal(await f.settings.acquire(original), KEY); assert.equal(await f.settings.acquire(next), KEY);
+});
+
+test('a mixed batch increments only changed connections and an all-noop batch never persists', async t => {
+  const f = await fixture(t), real = createVideoSettingsV2File(f.options); let saves = 0;
+  const persistence = {load: real.load, async save(value: Parameters<typeof real.save>[0], signal?: AbortSignal) {saves++; await real.save(value, signal);}};
+  const settings = await createVideoSettingsV2({...f.options, persistence}); t.after(() => settings.close()); const a = configuration(), b = configuration('compatible');
+  await settings.put({action: 'batch', expectedRevision: 0, operations: [a, b].map(configuration => ({action: 'save', configuration, secret: replace()}))});
+  const renamed = {...b, name: 'Custom renamed'};
+  const changed = await settings.put({action: 'batch', expectedRevision: 1, operations: [{action: 'save', configuration: a, secret: keep}, {action: 'save', configuration: renamed, secret: keep}]});
+  assert.equal(changed.revision, 2); assert.deepEqual(changed.connections.map(view => view.revision), [1, 2]);
+  const before = await readFile(f.file, 'utf8');
+  assert.equal((await settings.put({action: 'batch', expectedRevision: 2, operations: [a, renamed].map(configuration => ({action: 'save', configuration, secret: keep}))})).revision, 2);
+  assert.equal(saves, 2); assert.equal(await readFile(f.file, 'utf8'), before); assert.equal(JSON.parse(before).history.length, 3);
 });
 
 test('a successful batch persists exactly once and a rejected later operation cannot publish its earlier session key', async t => {
@@ -238,4 +280,74 @@ test('copied encrypted credentials cannot be replayed under another frozen refer
   const plaintext = JSON.parse(secretCodec.decrypt(envelope.credentials[0].encrypted)); plaintext.credentialRef = randomUUID();
   envelope.credentials[0].encrypted = secretCodec.encrypt(JSON.stringify(plaintext)); await writeFile(f.file, JSON.stringify(envelope), {mode: 0o600});
   const reopened = await createVideoSettingsV2(f.options); t.after(() => reopened.close()); await assert.rejects(reopened.acquire(binding), {code: 'VIDEO_SETTINGS_CORRUPT'});
+});
+
+test('every v2 UUID boundary rejects uppercase without changing the legacy frozen binding parser', async t => {
+  const f = await fixture(t), current = configuration('compatible'); current.id = 'abcdef12-0000-4000-8000-000000000001'; current.models[0]!.id = 'bcdef012-0000-4000-8000-000000000002';
+  await f.settings.put({action: 'save', expectedRevision: 0, configuration: current, secret: replace()});
+  const binding = f.settings.select(current.id, 1, current.models[0]!.id);
+  for (const configuration of [{...current, id: current.id.toUpperCase()}, {...current, models: current.models.map(model => ({...model, id: model.id.toUpperCase()}))}]) await assert.rejects(f.settings.put({action: 'save', expectedRevision: 1, configuration, secret: keep}), {code: 'VIDEO_SETTINGS_VALIDATION'});
+  assert.throws(() => f.settings.select(current.id.toUpperCase(), 1, current.models[0]!.id), {code: 'VIDEO_SETTINGS_VALIDATION'});
+  assert.throws(() => f.settings.select(current.id, 1, current.models[0]!.id.toUpperCase()), {code: 'VIDEO_SETTINGS_VALIDATION'});
+  await assert.rejects(f.settings.acquireCompatible(current.id.toUpperCase(), 1), {code: 'VIDEO_SETTINGS_VALIDATION'});
+  assert.equal(compatibleVideoCheckV2Schema.safeParse({source: 'saved', connectionId: current.id.toUpperCase(), configurationRevision: 1}).success, false);
+  for (const invalid of [{...binding, connectionId: current.id.toUpperCase()}, {...binding, model: {...binding.model, id: binding.model.id.toUpperCase()}}, {...binding, credentialRef: 'ABCDEF12-0000-4000-8000-000000000003'}]) {
+    assert.throws(() => f.settings.assertBinding(invalid), {code: 'VIDEO_BINDING_INVALID'}); await assert.rejects(f.settings.acquire(invalid), {code: 'VIDEO_BINDING_INVALID'});
+  }
+  assert.equal(parseVideoBinding({...binding, connectionId: current.id.toUpperCase()}).connectionId, current.id.toUpperCase());
+  const envelope = JSON.parse(await readFile(f.file, 'utf8'));
+  const ids = [current.id, current.models[0]!.id, envelope.credentials[0].ref];
+  for (const id of ids) {
+    const uppercase = id.toUpperCase(); assert.notEqual(uppercase, id);
+    assert.throws(() => validateVideoSettingsV2Envelope(JSON.parse(JSON.stringify(envelope).replaceAll(id, uppercase))), {code: 'VIDEO_SETTINGS_CORRUPT'});
+  }
+  assert.throws(() => validateVideoSettingsV2Envelope({...envelope, deletedConnectionIds: ['ABCDEF12-0000-4000-8000-000000000004']}), {code: 'VIDEO_SETTINGS_CORRUPT'});
+  await f.settings.put({action: 'delete', expectedRevision: 1, connectionId: current.id});
+  await assert.rejects(f.settings.put({action: 'save', expectedRevision: 2, configuration: {...current, id: current.id.toUpperCase()}, secret: replace()}), {code: 'VIDEO_SETTINGS_VALIDATION'});
+  await assert.rejects(f.settings.put({action: 'delete', expectedRevision: 2, connectionId: current.id.toUpperCase()}), {code: 'VIDEO_SETTINGS_VALIDATION'});
+});
+
+test('strict public snapshots reject secret echoes, impossible status combinations and duplicate built-ins', () => {
+  const savedConfiguration = configuration();
+  const valid = {revision: 1, connections: [{configuration: savedConfiguration, revision: 1, secret: {configured: false, storage: 'none'}}], storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, notice: null};
+  assert.equal(videoSettingsSnapshotV2Schema.safeParse(valid).success, true);
+  for (const value of [{...valid, apiKey: KEY}, {...valid, notice: 'untrusted text'}, {...valid, storage: {...valid.storage, reasonCode: null}}, {...valid, connections: [{...valid.connections[0], credentialRef: randomUUID()}]}, {...valid, connections: [{...valid.connections[0], secret: {configured: false, storage: 'session'}}]}, {...valid, connections: [...valid.connections, {...valid.connections[0], configuration: {...savedConfiguration, id: randomUUID()}}]}]) assert.equal(videoSettingsSnapshotV2Schema.safeParse(value).success, false);
+  for (const code of ['VIDEO_SETTINGS_CAPACITY', 'VIDEO_SETTINGS_DELETED', 'UNTRUSTED_CODE']) {
+    const safe = sanitizeVideoSettingsV2Error({code, message: KEY + '/private/file', path: '/private/file'});
+    assert.doesNotMatch(JSON.stringify(safe), /synthetic|private/);
+    assert.equal(safe.status, code === 'VIDEO_SETTINGS_CAPACITY' ? 507 : code === 'VIDEO_SETTINGS_DELETED' ? 409 : 503);
+  }
+});
+
+test('full connection and credential collections report capacity without corrupting the saved state', async t => {
+  const f = await fixture(t), first = configuration('compatible');
+  await f.settings.put({action: 'save', expectedRevision: 0, configuration: first, secret: replace()}); await f.settings.close();
+  const envelope = JSON.parse(await readFile(f.file, 'utf8')), template = envelope.credentials[0];
+  envelope.credentials = Array.from({length: VIDEO_SETTINGS_LIMITS.credentials}, () => ({...template, ref: randomUUID(), encrypted: null}));
+  envelope.history = envelope.credentials.map((credential: {ref: string}, index: number) => ({configuration: first, revision: index + 1, credentialRef: credential.ref}));
+  envelope.connections = [envelope.history.at(-1)]; envelope.revision = VIDEO_SETTINGS_LIMITS.credentials;
+  validateVideoSettingsV2Envelope(envelope); await writeFile(f.file, JSON.stringify(envelope), {mode: 0o600});
+  const settings = await createVideoSettingsV2(f.options); t.after(() => settings.close()); const before = await readFile(f.file, 'utf8');
+  assert.equal((await settings.put({action: 'save', expectedRevision: 256, configuration: first, secret: keep})).revision, 256);
+  await assert.rejects(settings.put({action: 'save', expectedRevision: 256, configuration: first, secret: replace('synthetic-new-rotation')}), {code: 'VIDEO_SETTINGS_CAPACITY', status: 507});
+  assert.equal(await readFile(f.file, 'utf8'), before); assert.equal((await settings.get()).revision, 256);
+  const next = await settings.put({action: 'save', expectedRevision: 256, configuration: {...first, name: 'Still editable'}, secret: keep}); assert.equal(next.revision, 257);
+
+  const other = await fixture(t), configurations = Array.from({length: VIDEO_SETTINGS_LIMITS.connections}, () => configuration('compatible'));
+  await other.settings.put({action: 'batch', expectedRevision: 0, operations: configurations.map(configuration => ({action: 'save', configuration, secret: keep}))});
+  const disk = await readFile(other.file, 'utf8');
+  await assert.rejects(other.settings.put({action: 'save', expectedRevision: 1, configuration: configuration('compatible'), secret: keep}), {code: 'VIDEO_SETTINGS_CAPACITY', status: 507});
+  assert.equal((await other.settings.get()).revision, 1); assert.equal(await readFile(other.file, 'utf8'), disk);
+});
+
+test('history growth at the envelope limit reports capacity while an unchanged save still succeeds without writing', async t => {
+  const f = await fixture(t), current = configuration();
+  await f.settings.put({action: 'save', expectedRevision: 0, configuration: current, secret: keep}); await f.settings.close();
+  const envelope = JSON.parse(await readFile(f.file, 'utf8')), baseBytes = Buffer.byteLength(JSON.stringify(envelope)) + 1;
+  envelope.deletedConnectionIds = Array.from({length: Math.floor((VIDEO_SETTINGS_LIMITS.fileBytes - baseBytes - 64) / 39)}, (_, index) => `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`);
+  validateVideoSettingsV2Envelope(envelope); const bytes = JSON.stringify(envelope); await writeFile(f.file, bytes, {mode: 0o600});
+  const settings = await createVideoSettingsV2(f.options); t.after(() => settings.close());
+  assert.equal((await settings.put({action: 'save', expectedRevision: 1, configuration: current, secret: keep})).revision, 1);
+  await assert.rejects(settings.put({action: 'save', expectedRevision: 1, configuration: {...current, enabled: false}, secret: keep}), {code: 'VIDEO_SETTINGS_CAPACITY', status: 507});
+  assert.equal(await readFile(f.file, 'utf8'), bytes); assert.equal((await settings.get()).revision, 1);
 });

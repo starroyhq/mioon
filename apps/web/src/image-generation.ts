@@ -5,6 +5,9 @@ import { createImageRejectionCloseLatch } from './native-close-sources.ts';
 import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS, IMAGE_REVIEW_LIMITS, IMAGE_EDIT_LIMITS, IMAGE_EDIT_SOURCE_MIME_TYPES, imageEditOutputSize, imageEditProfile, parseImageSize, imageEditInputImageSchema, imageEditSourceSchema, canonicalImageInput, imageSchemas, isImageTaskResponse, isImageGroupResponse, isImageMutationResponse, isImageRequestResponse, isImageListResponse, isImageReviewResponse, isImageReviewListResponse, isImageReviewPreparationResponse, isCompleteCustomImageConfiguration, getCustomImageDestination, COMFY_IMAGE_OPTIONS, comfyImageExecutionSchema, isCompleteComfyImageConfiguration, getComfyImageDestination } from '@mioon/contracts';
 import type { ImageTaskResponse, ImageGroupResponse, ImageVersionResponse, ImageReviewResponse } from '@mioon/contracts';
 import { safeImageSettings } from './image-settings.ts';
+import {customImageConfigurationV2Schema, customImageConnectionV2Schema, customImageConnectionIdV2Schema} from '../../../packages/contracts/src/generation-image-settings.ts';
+import type {CustomImageConnectionV2} from '../../../packages/contracts/src/generation-image-settings.ts';
+import type {GenerationImageServicesClient, CustomImageServicePreparation} from './generation-image-services.ts';
 import { safeComfyImageSettings, safeComfyConnectorAvailability, comfyConnectorAvailable } from './comfy-image-settings.ts';
 import { createComfyObservationSession, comfyObservationActive, comfyCanObserve } from './comfy-image-observation.ts';
 export { comfyCanObserve } from './comfy-image-observation.ts';
@@ -65,6 +68,7 @@ export interface ImagePending {
   sourceIssue?: string;
   sourceImage?: Record<string, unknown> | null;
   settingsRevision?: number;
+  connectionId?: string; configurationRevision?: number;
   configuration?: Record<string, unknown>;
   destination?: string;
   execution?: Record<string, unknown> | null;
@@ -79,6 +83,7 @@ export interface ImageGenerationState {
   providerId: ImageProviderId;
   settings: ImageSettingsView | null;
   customSettings: ImageSettingsView | null;
+  customServices?: CustomImageConnectionV2[];
   comfySettings: ImageSettingsView | null;
   comfyAvailability: unknown;
   comfyAvailabilityPhase: 'idle' | 'loading' | 'ready' | 'error';
@@ -124,6 +129,7 @@ export interface ImageGenerationSessionOptions {
   reviewClient?: ImageReviewClient;
   settings?: unknown; settingsReader?: () => Promise<unknown>;
   customSettings?: unknown; customSettingsReader?: () => Promise<unknown>;
+  generationServices?: GenerationImageServicesClient;
   comfySettings?: unknown; comfySettingsReader?: () => Promise<unknown>;
   comfyAvailability?: unknown; comfyAvailabilityReader?: () => Promise<unknown>;
   storage?: Storage;
@@ -144,6 +150,7 @@ export interface ImageTargetAuthorization {
   inputImage: ImageInputImage | null;
   configuration: ImageConfigurationView;
   settingsRevision: number;
+  connectionId?: string; configurationRevision?: number;
   destination: string | null;
 }
 export interface ImagePage<T> { items: T[]; nextCursor: string | null }
@@ -197,7 +204,7 @@ export function imageInputIssue(draft: ImageDraft): string {
   return '';
 }
 export function initialImageGenerationState(): ImageGenerationState {
-  return { draft: { name: '', prompt: '' }, mode: 'text', inputImage: null, sourcePreview: null, providerId: 'mock', settings: null, customSettings: null, comfySettings: null, comfyAvailability: null, comfyAvailabilityPhase: 'idle', remotes: {}, remotePending: null, remoteActionTaskId: null, remoteStorageBlocked: false, reviews: [], reviewCursor: null, reviewTrail: [], nextReviewCursor: null, reviewActionId: null, target: null, targetRequest: null, tasks: [], groups: [], versions: [], selectedGroupId: null, groupCursor: null, groupTrail: [], nextGroupCursor: null, versionCursor: null, versionTrail: [], nextVersionCursor: null, historyPhase: 'idle', pending: null, phase: 'idle', loaded: false, message: '', displayMessage: null, storageBlocked: false, pollPaused: false, actionTaskId: null };
+  return { draft: { name: '', prompt: '' }, mode: 'text', inputImage: null, sourcePreview: null, providerId: 'mock', settings: null, customSettings: null, customServices: [], comfySettings: null, comfyAvailability: null, comfyAvailabilityPhase: 'idle', remotes: {}, remotePending: null, remoteActionTaskId: null, remoteStorageBlocked: false, reviews: [], reviewCursor: null, reviewTrail: [], nextReviewCursor: null, reviewActionId: null, target: null, targetRequest: null, tasks: [], groups: [], versions: [], selectedGroupId: null, groupCursor: null, groupTrail: [], nextGroupCursor: null, versionCursor: null, versionTrail: [], nextVersionCursor: null, historyPhase: 'idle', pending: null, phase: 'idle', loaded: false, message: '', displayMessage: null, storageBlocked: false, pollPaused: false, actionTaskId: null };
 }
 export const imageDraftDirty = (state: ImageGenerationState): boolean => Boolean(state.draft.name || state.draft.prompt || state.target || state.mode === 'edit' || state.inputImage);
 // Metadata only: eligibility here is a chooser hint. The backend alone verifies
@@ -230,6 +237,9 @@ export function imageEditReviewMatchesDraft(state: ImageGenerationState, review:
   if (input?.purpose !== 'edit') return true;
   return state.mode === 'edit' && state.providerId === input.providerId && state.draft.name === input.name && state.draft.prompt === input.prompt && canonicalImageInput(state.inputImage) === canonicalImageInput(input.inputImage) && (state.target?.groupId || undefined) === input.groupId && (state.target?.expectedRevision || undefined) === input.expectedRevision;
 }
+const completeCustom = (value: unknown): boolean => customImageConfigurationV2Schema.safeParse(value).success && record(value) && value.baseUrl !== '' && value.model !== '' || isCompleteCustomImageConfiguration(value);
+const serviceSettings = (item: CustomImageConnectionV2 | undefined): ImageSettingsView | null => item ? {revision: item.configurationRevision, connectionId: item.connectionId, configurationRevision: item.configurationRevision, configuration: copy(item.configuration), secret: copy(item.secret)} : null;
+const safeCustomServices = (value: unknown): CustomImageConnectionV2[] => {const parsed = customImageConnectionV2Schema.array().max(10).parse(value); if (new Set(parsed.map(item => item.connectionId)).size !== parsed.length) throw problem('INVALID_RESPONSE'); return copy(parsed);};
 const paidProvider = (providerId: string | null | undefined): boolean => Boolean(providerId && ['openai', 'openai-compatible'].includes(providerId));
 const reviewedProvider = (providerId: string | null | undefined): boolean => paidProvider(providerId) || providerId === 'comfy-local';
 export const imageSelectedSettings = (state: ImageGenerationState, providerId: string = state.providerId): ImageSettingsView | null => providerId === 'comfy-local' ? state.comfySettings : providerId === 'openai-compatible' ? state.customSettings : providerId === 'openai' ? state.settings : null;
@@ -242,7 +252,7 @@ export function imageReviewCanApprove(state: ImageGenerationState, review: unkno
   const reviewInput = view.input;
   if (reviewInput.purpose === 'edit' && reviewInput.groupId && !state.groups.some(group => group.id === reviewInput.groupId && group.revision === reviewInput.expectedRevision && !group.activeTaskId)) return false;
   if (reviewInput.providerId === 'comfy-local') return comfyConnectorAvailable(state.comfyAvailability) && settings.readiness?.checked === true && isCompleteComfyImageConfiguration(settings.configuration) && canonicalImageInput(settings.configuration) === canonicalImageInput(view.configuration);
-  return settings.secret.configured === true && (reviewInput.providerId !== 'openai-compatible' || canonicalImageInput(settings.configuration) === canonicalImageInput(view.configuration));
+  return settings.secret.configured === true && (reviewInput.providerId !== 'openai-compatible' || canonicalImageInput(settings.configuration) === canonicalImageInput(view.configuration) && ('connectionId' in view ? settings.connectionId === view.connectionId && settings.configurationRevision === view.configurationRevision : settings.connectionId === undefined));
 }
 export function imageTaskReview(state: ImageGenerationState, task: ImageTaskView | null | undefined): ImageReviewView | null {
   if (!task) return null;
@@ -252,15 +262,15 @@ export function imageTaskReview(state: ImageGenerationState, task: ImageTaskView
 export function imagePaidAuthorization(state: ImageGenerationState): ImageTargetAuthorization | null {
   const settings = imageSelectedSettings(state);
   if (!settings || !paidProvider(state.providerId)) return null;
-  return { providerId: state.providerId, draft: copy(state.draft), target: copy(state.target), mode: state.mode, inputImage: copy(state.inputImage), configuration: copy(settings.configuration), settingsRevision: settings.revision,
-    destination: state.providerId === 'openai-compatible' ? isCompleteCustomImageConfiguration(settings.configuration) ? getCustomImageDestination(settings.configuration.baseUrl) : null : `${settings.configuration.baseUrl}/images/${state.mode === 'edit' ? 'edits' : 'generations'}` };
+  return { providerId: state.providerId, draft: copy(state.draft), target: copy(state.target), mode: state.mode, inputImage: copy(state.inputImage), configuration: copy(settings.configuration), settingsRevision: settings.revision, ...(typeof settings.connectionId === 'string' ? {connectionId: settings.connectionId, configurationRevision: settings.revision} : {}),
+    destination: state.providerId === 'openai-compatible' ? completeCustom(settings.configuration) ? getCustomImageDestination(settings.configuration.baseUrl) : null : `${settings.configuration.baseUrl}/images/${state.mode === 'edit' ? 'edits' : 'generations'}` };
 }
 export function imageCanGenerate(state: ImageGenerationState): boolean {
   const group = state.target && state.groups.find(item => item.id === state.target?.groupId), settings = imageSelectedSettings(state);
-  return Boolean(state.loaded && !state.pending && !state.storageBlocked && !state.actionTaskId && !state.reviewActionId && !state.remoteActionTaskId && !state.remotePending && !state.remoteStorageBlocked && !['loading', 'submitting', 'targeting'].includes(state.phase) && !imageInputIssue(state.draft) && !imageEditDraftIssue(state) && (state.providerId === 'mock' || state.providerId === 'comfy-local' && comfyConnectorAvailable(state.comfyAvailability) && settings?.configuration.enabled === true && settings.readiness?.checked === true && settings.revision > 0 && isCompleteComfyImageConfiguration(settings.configuration) || paidProvider(state.providerId) && settings?.configuration.enabled === true && settings.secret.configured === true && settings.revision > 0 && (state.providerId !== 'openai-compatible' || isCompleteCustomImageConfiguration(settings.configuration))) && (!state.target || (group && !group.activeTaskId && group.revision === state.target.expectedRevision)));
+  return Boolean(state.loaded && !state.pending && !state.storageBlocked && !state.actionTaskId && !state.reviewActionId && !state.remoteActionTaskId && !state.remotePending && !state.remoteStorageBlocked && !['loading', 'submitting', 'targeting'].includes(state.phase) && !imageInputIssue(state.draft) && !imageEditDraftIssue(state) && (state.providerId === 'mock' || state.providerId === 'comfy-local' && comfyConnectorAvailable(state.comfyAvailability) && settings?.configuration.enabled === true && settings.readiness?.checked === true && settings.revision > 0 && isCompleteComfyImageConfiguration(settings.configuration) || paidProvider(state.providerId) && settings?.configuration.enabled === true && settings.secret.configured === true && settings.revision > 0 && (state.providerId !== 'openai-compatible' || completeCustom(settings.configuration))) && (!state.target || (group && !group.activeTaskId && group.revision === state.target.expectedRevision)));
 }
 const pendingMatchesReview = (pending: ImagePending, review: ImageReviewView): boolean => (!pending.sourceImage || canonicalImageInput(pending.sourceImage) === canonicalImageInput(review.sourceImage)) && canonicalImageInput(pending.input) === canonicalImageInput(review.input) && pending.settingsRevision === review.settingsRevision &&
-  (pending.input.providerId !== 'openai-compatible' || pending.version === 2 && canonicalImageInput(pending.configuration) === canonicalImageInput(review.configuration) && pending.destination === review.destination) &&
+  (pending.input.providerId !== 'openai-compatible' || (pending.version === 2 && review.connectionId === undefined || pending.version === 4 && pending.connectionId === review.connectionId && pending.configurationRevision === review.configurationRevision) && canonicalImageInput(pending.configuration) === canonicalImageInput(review.configuration) && pending.destination === review.destination) &&
   (pending.input.providerId !== 'comfy-local' || pending.version === 3 && canonicalImageInput(pending.configuration) === canonicalImageInput(review.configuration) && pending.destination === review.destination && (!pending.execution || canonicalImageInput(pending.execution) === canonicalImageInput(review.execution)));
 const imageOperationSchema = (operation: string): (typeof imageSchemas)[keyof typeof imageSchemas] | undefined => Object.hasOwn(imageSchemas, operation) ? imageSchemas[operation as keyof typeof imageSchemas] : undefined;
 const fixedIntent = (projectId: string, value: unknown): boolean => {
@@ -272,7 +282,7 @@ const fixedIntent = (projectId: string, value: unknown): boolean => {
   if (!Number.isSafeInteger(fixed.settingsRevision) || typeof fixed.settingsRevision !== 'number' || fixed.settingsRevision < 1 || typeof fixed.approvalAttempted !== 'boolean' || !(fixed.reviewId === null || typeof fixed.reviewId === 'string')) return false;
   if (input.providerId === 'openai') return fixed.version === 1;
   if (input.providerId === 'comfy-local') return fixed.version === 3 && isCompleteComfyImageConfiguration(fixed.configuration) && record(fixed.configuration) && fixed.configuration.enabled === true && fixed.configuration.model === input.model && canonicalImageInput(fixed.configuration.options) === canonicalImageInput(input.options) && fixed.destination === getComfyImageDestination(fixed.configuration.baseUrl as string) && (fixed.execution === null && fixed.reviewId === null && !fixed.approvalAttempted || comfyImageExecutionSchema.safeParse(fixed.execution).success);
-  return fixed.version === 2 && isCompleteCustomImageConfiguration(fixed.configuration) && record(fixed.configuration) && fixed.configuration.enabled === true && fixed.configuration.model === input.model && canonicalImageInput(fixed.configuration.options) === canonicalImageInput(input.options) && fixed.destination === getCustomImageDestination(fixed.configuration.baseUrl as string);
+  return (fixed.version === 2 && !Object.hasOwn(fixed, 'connectionId') && isCompleteCustomImageConfiguration(fixed.configuration) || fixed.version === 4 && customImageConnectionIdV2Schema.safeParse(fixed.connectionId).success && fixed.configurationRevision === fixed.settingsRevision && customImageConfigurationV2Schema.safeParse(fixed.configuration).success) && completeCustom(fixed.configuration) && record(fixed.configuration) && fixed.configuration.enabled === true && fixed.configuration.model === input.model && canonicalImageInput(fixed.configuration.options) === canonicalImageInput(input.options) && fixed.destination === getCustomImageDestination(fixed.configuration.baseUrl as string);
 };
 const safeTask = (value: unknown, projectId: string): ImageTaskView => {
   if (!isImageTaskResponse(value) || value.projectId !== projectId) throw problem('INVALID_RESPONSE');
@@ -300,7 +310,7 @@ async function notAccepted(error: unknown, operation: string, input: ImageMutati
 }
 
 /** One project lifetime. Reads never dispatch work; every mutation needs a saved exact intent. */
-export function createImageGenerationSession({ projectId, api = rpc as unknown as ImageApi, reviewClient = createImageReviewClient() as unknown as ImageReviewClient, settings, settingsReader, customSettings, customSettingsReader, comfySettings, comfySettingsReader, comfyAvailability, comfyAvailabilityReader, storage, requestId = newRequestId, onChange = () => {}, onGenerated = () => {}, setTimer = setTimeout, clearTimer = clearTimeout, pollMs = 1500, pollLimit = 40, timeoutMs = 15000 }: ImageGenerationSessionOptions) {
+export function createImageGenerationSession({ projectId, api = rpc as unknown as ImageApi, reviewClient = createImageReviewClient() as unknown as ImageReviewClient, settings, settingsReader, customSettings, customSettingsReader, generationServices, comfySettings, comfySettingsReader, comfyAvailability, comfyAvailabilityReader, storage, requestId = newRequestId, onChange = () => {}, onGenerated = () => {}, setTimer = setTimeout, clearTimer = clearTimeout, pollMs = 1500, pollLimit = 40, timeoutMs = 15000 }: ImageGenerationSessionOptions) {
   let state: ImageGenerationState = initialImageGenerationState(), disposed = false, visible = true, readEpoch = 0, selectionEpoch = 0, interactionEpoch = 0, timer: number | null = null, polls = 0, reading = false, availabilityEpoch = 0, focusedTaskId: string | null = null;
   if (settings) state.settings = safeImageSettings(settings) as ImageSettingsView;
   if (customSettings) state.customSettings = safeImageSettings(customSettings, 'custom') as ImageSettingsView;
@@ -312,6 +322,11 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
     const expired = new Promise<never>((_, reject) => { deadline = setTimeout(() => { controller.abort(); reject(problem('NETWORK')); }, timeoutMs); });
     try { return await Promise.race([Promise.resolve().then(() => api(operation, input, { signal: controller.signal })), expired]); }
     finally { clearTimeout(deadline); calls.delete(controller); }
+  }
+  async function serviceCall<T>(operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const controller = new AbortController(); calls.add(controller); let deadline: ReturnType<typeof setTimeout> | undefined;
+    try {return await Promise.race([operation(controller.signal), new Promise<never>((_, reject) => {deadline = setTimeout(() => {controller.abort(); reject(problem('NETWORK'));}, timeoutMs);})]);}
+    finally {clearTimeout(deadline); calls.delete(controller);}
   }
   const store = (): Storage | null => storage === undefined ? globalThis.sessionStorage : storage;
   const emit = (patch: Partial<ImageGenerationState>): void => {
@@ -440,7 +455,14 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
         try { const latest = safeImageSettings(await settingsReader()) as ImageSettingsView; if (!owned(epoch)) return false; emit({ settings: latest }); }
         catch { if (!owned(epoch)) return false; emit({ settings: null, message: '暂时无法核验图像设置。付费生成已暂停，Mock 与已保存记录仍可使用。', displayMessage: localizedMessage('image.state.settingsUnverifiable') }); }
       }
-      if (customSettingsReader) {
+      if (generationServices) {
+        try { const services = safeCustomServices(await serviceCall(signal => generationServices.list(projectId, signal))); if (!owned(epoch)) return false;
+          const selectedId = state.customSettings?.connectionId;
+          const selected = services.find(item => item.connectionId === selectedId) ?? (selectedId === undefined && services.length === 1 ? services[0] : undefined);
+          const selectedSettings = serviceSettings(selected); if (canonicalImageInput(selectedSettings) !== canonicalImageInput(state.customSettings)) interactionEpoch++;
+          emit({customServices: services, customSettings: selectedSettings});
+        } catch {if (!owned(epoch)) return false; emit({customServices: [], customSettings: null});}
+      } else if (customSettingsReader) {
         try { const latest = safeImageSettings(await customSettingsReader(), 'custom') as ImageSettingsView; if (!owned(epoch)) return false; emit({ customSettings: latest }); }
         catch { if (!owned(epoch)) return false; emit({ customSettings: null }); }
       }
@@ -582,14 +604,14 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
     if (!selected) return false;
     const input: ImageMutationInput = { projectId, name: state.draft.name, prompt: state.draft.prompt, providerId: state.providerId, model: selected.configuration.model, options: requestOptions(state, selected.configuration.model ?? ''), requestId: requestId(), ...editInput(state), ...(state.target || {}) };
     if (!imageOperationSchema('image.generate')?.safeParse(input).success) return false;
-    const pending: ImagePending = { version: custom ? 2 : 1, operation: 'image.generate', input, settingsRevision: selected.revision, reviewId: null, approvalAttempted: false, ...(custom ? { configuration: copy(selected.configuration) as unknown as Record<string, unknown>, destination: getCustomImageDestination(selected.configuration.baseUrl) } : {}) }, interaction = interactionEpoch;
+    const pending: ImagePending = { version: custom && typeof selected.connectionId === 'string' ? 4 : custom ? 2 : 1, operation: 'image.generate', input, settingsRevision: selected.revision, ...(custom && typeof selected.connectionId === 'string' ? {connectionId: selected.connectionId, configurationRevision: selected.revision} : {}), reviewId: null, approvalAttempted: false, ...(custom ? { configuration: copy(selected.configuration) as unknown as Record<string, unknown>, destination: getCustomImageDestination(selected.configuration.baseUrl) } : {}) }, interaction = interactionEpoch;
     try { savePending(pending); } catch { emit({ message: '无法保存原始付费请求，本次尚未发送。', displayMessage: localizedMessage('image.state.paidRequestSaveFailed') }); return false; }
     stopTimer(); readEpoch++; reading = false; emit({ pending, phase: 'submitting', message: '', displayMessage: null });
     const prepareInput = { input: copy(input), settingsRevision: pending.settingsRevision };
     try {
-      const prepared = await call('image.review.prepare', prepareInput);
+      const prepared = custom && pending.version === 4 && generationServices ? await serviceCall(signal => generationServices.prepare({input, connectionId: pending.connectionId!, configurationRevision: pending.configurationRevision!} as CustomImageServicePreparation, signal)) : await call('image.review.prepare', prepareInput);
       if (disposed || state.pending !== pending) return false;
-      if (!isImageReviewPreparationResponse(prepareInput, prepared) || !isImageReviewResponse(prepared) || !pendingMatchesReview(pending, reviewViewOf(prepared)) || prepared.state !== 'pending') throw problem('INVALID_RESPONSE');
+      if (!(pending.version === 4 ? isImageReviewResponse(prepared) && prepared.projectId === projectId && canonicalImageInput(prepared.input) === canonicalImageInput(input) : isImageReviewPreparationResponse(prepareInput, prepared)) || !isImageReviewResponse(prepared) || !pendingMatchesReview(pending, reviewViewOf(prepared)) || prepared.state !== 'pending') throw problem('INVALID_RESPONSE');
       const review = mergeReview(prepared);
       const next: ImagePending = { ...pending, reviewId: review.id, ...(review.sourceImage ? { sourceImage: copy(review.sourceImage) } : {}) };
       if (!updatePending(pending, next)) return false;
@@ -660,6 +682,7 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
   return {
     getState: (): ImageGenerationState => copy(state), getNativeCloseState: rejectionClose.getState, load, generatePaid, prepareComfy,
     setSettings(value: unknown): boolean { if (disposed) return false; const settings = safeImageSettings(value) as ImageSettingsView; if (canonicalImageInput(state.settings) !== canonicalImageInput(settings)) interactionEpoch++; emit({ settings }); return true; },
+    selectCustomService(connectionId: string): boolean {if (!composerEditable()) return false; const selected = state.customServices?.find(item => item.connectionId === connectionId); if (!selected) return false; interactionEpoch++; emit({customSettings: serviceSettings(selected), providerId: 'openai-compatible'}); return true;},
     setCustomSettings(value: unknown): boolean { if (disposed) return false; const customSettings = safeImageSettings(value, 'custom') as ImageSettingsView; if (canonicalImageInput(state.customSettings) !== canonicalImageInput(customSettings)) interactionEpoch++; emit({ customSettings }); return true; },
     setComfyAvailability(value: unknown): boolean { if (disposed) return false; availabilityEpoch++; let comfyAvailability: unknown = null; try { comfyAvailability = safeComfyConnectorAvailability(value); } catch {} emit({ comfyAvailability, comfyAvailabilityPhase: comfyAvailability ? 'ready' : 'error' }); return Boolean(comfyAvailability); },
     setComfySettings(value: unknown): boolean { if (disposed) return false; const comfySettings = safeComfyImageSettings(value) as unknown as ImageSettingsView; if (canonicalImageInput(state.comfySettings) !== canonicalImageInput(comfySettings)) interactionEpoch++; emit({ comfySettings }); return true; },
@@ -680,7 +703,7 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
       let pending = state.pending;
       if (!pending) {
         const input = reviewValue.input, providerId = input.providerId;
-        pending = { version: providerId === 'comfy-local' ? 3 : providerId === 'openai-compatible' ? 2 : 1, operation: 'image.generate', input: copy(reviewValue.input) as unknown as ImageMutationInput, settingsRevision: reviewValue.settingsRevision, reviewId: reviewValue.id, approvalAttempted: false, preserveDraft: input.purpose !== 'edit', ...(reviewValue.sourceImage ? { sourceImage: copy(reviewValue.sourceImage) } : {}), ...(['openai-compatible', 'comfy-local'].includes(providerId as string) ? { configuration: reviewValue.configuration, destination: reviewValue.destination ?? undefined } : {}), ...(providerId === 'comfy-local' ? { execution: reviewValue.execution ?? null } : {}) };
+        pending = { version: providerId === 'comfy-local' ? 3 : providerId === 'openai-compatible' && typeof reviewValue.connectionId === 'string' ? 4 : providerId === 'openai-compatible' ? 2 : 1, ...(typeof reviewValue.connectionId === 'string' ? {connectionId: reviewValue.connectionId, configurationRevision: Number(reviewValue.configurationRevision)} : {}), operation: 'image.generate', input: copy(reviewValue.input) as unknown as ImageMutationInput, settingsRevision: reviewValue.settingsRevision, reviewId: reviewValue.id, approvalAttempted: false, preserveDraft: input.purpose !== 'edit', ...(reviewValue.sourceImage ? { sourceImage: copy(reviewValue.sourceImage) } : {}), ...(['openai-compatible', 'comfy-local'].includes(providerId as string) ? { configuration: reviewValue.configuration, destination: reviewValue.destination ?? undefined } : {}), ...(providerId === 'comfy-local' ? { execution: reviewValue.execution ?? null } : {}) };
         try { savePending(pending); } catch { emit({ message: '无法保存原始审批请求，本次未发送。', displayMessage: localizedMessage('image.state.approvalRequestSaveFailed') }); return false; }
         emit({ pending });
       }

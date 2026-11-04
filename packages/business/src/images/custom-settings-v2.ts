@@ -1,7 +1,6 @@
-import {randomUUID} from 'node:crypto';
 import {canonicalImageInput} from '../../../contracts/src/images.ts';
 import {CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE, CUSTOM_IMAGE_SETTINGS_V2_NOTICE, CUSTOM_IMAGE_SETTINGS_V2_LIMITS,
-  customImageConnectionIdV2Schema, customImageConfigurationV2Schema, isCompleteCustomImageConfigurationV2,
+  customImageConnectionIdV2Schema, isCompleteCustomImageConfigurationV2,
   customImageSecretUpdateV2Schema, customImageStorageV2Schema, customImageSettingsV2ResultSchema,
   customImageCreateV2Schema, customImagePutV2Schema, customImageRemoveV2Schema, customImageBatchV2Schema,
   customImageCredentialRequestV2Schema, customImageEncryptedV2Schema, customImageStoredConnectionV2Schema,
@@ -9,7 +8,8 @@ import {CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE, CUSTOM_IMAGE_SETTINGS_V2_NOTICE, CUS
 import type {CustomImageConfigurationV2, CustomImageConnectionV2, CustomImageSettingsV2Result,
   CustomImageCredentialRequestV2} from '../../../contracts/src/generation-image-settings.ts';
 import {validateCustomImageSettingsEnvelope} from './settings.ts';
-import {IMAGE_SETTINGS_LIMITS} from '../../../contracts/src/image-settings.ts';
+import {IMAGE_SETTINGS_LIMITS, CUSTOM_IMAGE_PROFILE_ID} from '../../../contracts/src/image-settings.ts';
+import {customImageBaseUrlSchema} from '../../../contracts/src/image-compatible.ts';
 import type {ImageSettingsPersistence, ImageSettingsSecretCodec, ImageSettingsStorageCapability} from './settings.ts';
 
 const limits = CUSTOM_IMAGE_SETTINGS_V2_LIMITS;
@@ -62,13 +62,11 @@ export interface CustomImageSettingsV2Options {
   persistence: ImageSettingsPersistence;
   secretCodec?: ImageSettingsSecretCodec;
   storage?: ImageSettingsStorageCapability | (() => ImageSettingsStorageCapability);
-  /** Trusted construction seam; never part of a settings update. */
-  createConnectionId?: () => string;
 }
 export interface AcquiredCustomImageCredentialV2 extends CustomImageCredentialRequestV2 {namespace: string; apiKey: string | null}
-export function customImageCredentialBindingV2(connectionId: string, configuration: CustomImageConfigurationV2): string {
+export function customImageCredentialBindingV2(connectionId: string, configuration: Pick<CustomImageConfigurationV2, 'providerId' | 'profileId' | 'baseUrl'>): string {
   return JSON.stringify([namespace, configuration.providerId, connectionId, configuration.profileId,
-    configuration.baseUrl, configuration.model, configuration.options]);
+    configuration.baseUrl]);
 }
 export function validateCustomImageSettingsV2Envelope(input: unknown): CustomImageSettingsV2Envelope {
   const value = parse(customImageSettingsV2EnvelopeSchema, input, 'IMAGE_SETTINGS_CORRUPT');
@@ -94,10 +92,10 @@ export function validateCustomImageSecretPlaintextV2(plaintext: unknown): Return
   let decoded: unknown; try {decoded = JSON.parse(plaintext);} catch {fail('IMAGE_SETTINGS_CORRUPT');}
   const value = parse(customImageSecretPlaintextV2Schema, decoded, 'IMAGE_SETTINGS_CORRUPT');
   let binding: unknown; try {binding = JSON.parse(value.binding);} catch {fail('IMAGE_SETTINGS_CORRUPT');}
-  if (!Array.isArray(binding) || binding.length !== 7 || binding[0] !== namespace || binding[2] !== value.connectionId) fail('IMAGE_SETTINGS_CORRUPT');
-  const configuration = parse(customImageConfigurationV2Schema, {enabled: true, providerId: binding[1],
-    profileId: binding[3], baseUrl: binding[4], model: binding[5], options: binding[6]}, 'IMAGE_SETTINGS_CORRUPT');
-  if (!isCompleteCustomImageConfigurationV2(configuration) || value.binding !== customImageCredentialBindingV2(value.connectionId, configuration)) fail('IMAGE_SETTINGS_CORRUPT');
+  if (!Array.isArray(binding) || binding.length !== 5 || binding[0] !== namespace || binding[1] !== 'openai-compatible' ||
+    binding[2] !== value.connectionId || binding[3] !== CUSTOM_IMAGE_PROFILE_ID) fail('IMAGE_SETTINGS_CORRUPT');
+  const baseUrl = parse(customImageBaseUrlSchema, binding[4], 'IMAGE_SETTINGS_CORRUPT');
+  if (value.binding !== customImageCredentialBindingV2(value.connectionId, {providerId: 'openai-compatible', profileId: CUSTOM_IMAGE_PROFILE_ID, baseUrl})) fail('IMAGE_SETTINGS_CORRUPT');
   return value;
 }
 function boundedOperation<T>(operation: () => T | Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -117,7 +115,7 @@ function boundedOperation<T>(operation: () => T | Promise<T>, signal?: AbortSign
  * revoke A. An acquired key is only a snapshot: assertCurrent must run at the
  * final dispatch boundary synchronously, without an intervening await. */
 export async function createCustomImageSettingsV2({persistence, secretCodec, storage = {
-  persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, createConnectionId = randomUUID}: CustomImageSettingsV2Options) {
+  persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}}: CustomImageSettingsV2Options) {
   let state: CustomImageSettingsV2Envelope = {version: 2, namespace, revision: 0, connections: [], deletedConnectionIds: []};
   let baseline: string | null = null, notice: typeof CUSTOM_IMAGE_SETTINGS_V2_NOTICE | null = null;
   let fault: string | null = null, closed = false, refreshBlocked = false;
@@ -182,7 +180,8 @@ export async function createCustomImageSettingsV2({persistence, secretCodec, sto
   async function replacement(id: string, configuration: CustomImageConfigurationV2, secret: SecretUpdate,
     previous?: StoredConnection): Promise<{secret: StoredConnection['secret']; session: Session | undefined}> {
     const binding = customImageCredentialBindingV2(id, configuration), sameBinding = previous && binding === customImageCredentialBindingV2(id, previous.configuration);
-    if (secret.action === 'keep' && previous && !sameBinding && (previous.secret || sessions.has(id))) fail('IMAGE_SETTINGS_CONFLICT');
+    // A new recipient must never inherit this connection's old credential.
+    // Keeping after an address change saves the configuration with no key.
     if (secret.action === 'replace') {
       if (!isCompleteCustomImageConfigurationV2(configuration)) fail('IMAGE_SETTINGS_VALIDATION');
       if (secret.storage === 'session') return {secret: null, session: {binding, value: secret.value}};
@@ -226,20 +225,16 @@ export async function createCustomImageSettingsV2({persistence, secretCodec, sto
   function batch(raw: unknown): Promise<CustomImageSettingsV2Result> {
     try {
       const input = parseWrite(customImageBatchV2Schema, raw);
-      const ids = input.operations.flatMap(item => item.action === 'create' ? [] : [item.connectionId]);
+      const ids = input.operations.map(item => item.connectionId);
       return admit(ids, async () => {
         assertCollection(input.expectedRevision);
         const candidate = structuredClone(state), nextSessions = new Map(sessions);
         candidate.revision = nextRevision();
         for (const operation of input.operations) {
           if (operation.action === 'create') {
+            const id = operation.connectionId;
+            if (candidate.deletedConnectionIds.includes(id) || candidate.connections.some(item => item.connectionId === id)) fail('IMAGE_SETTINGS_CONFLICT');
             if (candidate.connections.length + candidate.deletedConnectionIds.length >= limits.connectionIds) fail('IMAGE_SETTINGS_CAPACITY');
-            let id: string | null = null;
-            for (let attempt = 0; attempt < 16; attempt++) {
-              const proposed = parse(customImageConnectionIdV2Schema, createConnectionId());
-              if (!candidate.deletedConnectionIds.includes(proposed) && !candidate.connections.some(item => item.connectionId === proposed)) {id = proposed; break;}
-            }
-            if (id === null) fail('IMAGE_SETTINGS_CAPACITY');
             const credentials = await replacement(id, operation.configuration, operation.secret); available();
             candidate.connections.push({connectionId: id, name: operation.name, configurationRevision: 1,
               configuration: operation.configuration, secret: credentials.secret});

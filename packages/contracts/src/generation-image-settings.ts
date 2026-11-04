@@ -48,7 +48,7 @@ export const customImageSettingsV2ResultSchema = z.object({revision,
 export type CustomImageConnectionV2 = z.infer<typeof customImageConnectionV2Schema>;
 export type CustomImageSettingsV2Result = z.infer<typeof customImageSettingsV2ResultSchema>;
 const write = {expectedRevision: revision, name, configuration: customImageConfigurationV2Schema, secret: customImageSecretUpdateV2Schema};
-export const customImageCreateV2Schema = z.object(write).strict();
+export const customImageCreateV2Schema = z.object({...write, connectionId: customImageConnectionIdV2Schema}).strict();
 export const customImagePutV2Schema = z.object({...write, connectionId: customImageConnectionIdV2Schema,
   expectedConfigurationRevision: positiveRevision}).strict();
 export const customImageRemoveV2Schema = z.object({expectedRevision: revision, connectionId: customImageConnectionIdV2Schema,
@@ -58,7 +58,7 @@ export const customImageBatchV2Schema = z.object({expectedRevision: revision, op
   customImagePutV2Schema.omit({expectedRevision: true}).extend({action: z.literal('put')}).strict(),
   customImageRemoveV2Schema.omit({expectedRevision: true}).extend({action: z.literal('remove')}).strict(),
 ])).min(1).max(CUSTOM_IMAGE_SETTINGS_V2_LIMITS.connections * 2)}).strict().refine(value => {
-  const ids = value.operations.flatMap(item => item.action === 'create' ? [] : [item.connectionId]);
+  const ids = value.operations.map(item => item.connectionId);
   return new Set(ids).size === ids.length;
 }, 'A connection may be changed only once in a batch');
 export const customImageCredentialRequestV2Schema = z.object({connectionId: customImageConnectionIdV2Schema,

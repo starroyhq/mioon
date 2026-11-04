@@ -2,7 +2,7 @@ import type { MessageCatalog } from '../types.ts';
 
 export const agentTaskErrorMessages = {
   "agent.task.error.preflightStale": {"zh-Hans": "预检结果已过期，请重新检查时间线后再继续", "zh-Hant": "預檢結果已過期，請重新檢查時間軸後再繼續", "en": "The preflight result is out of date. Check the timeline again before continuing", "ja": "事前チェックの結果が古くなっています。タイムラインを再確認してから続行してください"},
-  "agent.task.error.generation": {"zh-Hans": "生成服务未能完成这一步，请检查模型与服务设置及原生成记录", "zh-Hant": "生成服務未能完成這一步，請檢查模型與服務設定及原生成紀錄", "en": "The generation service could not complete this step. Check Models and services settings and the original generation record", "ja": "生成サービスがこのステップを完了できませんでした。モデルとサービスの設定および元の生成記録を確認してください"},
+  "agent.task.error.generation": {"zh-Hans": "生成服务未能完成这一步，请检查生成服务设置及原生成记录", "zh-Hant": "生成服務未能完成這一步，請檢查生成服務設定及原生成紀錄", "en": "The generation service could not complete this step. Check Generation services settings and the original generation record", "ja": "生成サービスがこのステップを完了できませんでした。生成サービスの設定および元の生成記録を確認してください"},
   "agent.task.error.skipRequired": {"zh-Hans": "请先选择跳过冲突的这一处，再继续执行", "zh-Hant": "請先選擇跳過衝突的這一處，再繼續執行", "en": "Choose to skip the conflicting content before continuing", "ja": "競合した箇所をスキップしてから続行してください"},
   "agent.task.error.noteLimit": {"zh-Hans": "待生效的补充说明已满 5 条，请等待下一步读取后再发送", "zh-Hant": "待生效的補充說明已滿 5 條，請等待下一步讀取後再傳送", "en": "Five instructions are waiting. Send another after the next step reads them", "ja": "未反映の補足指示が 5 件あります。次のステップで読み込まれてから追加してください"},
   "agent.task.error.noteCapacity": {"zh-Hans": "这条补充说明超出当前上下文容量，请缩短后重新发送", "zh-Hant": "這條補充說明超出目前上下文容量，請縮短後重新傳送", "en": "This note exceeds the remaining context space. Shorten it and send again", "ja": "この補足指示は現在のコンテキスト容量を超えています。短くして再送してください"},
@@ -175,5 +175,6 @@ export const agentTaskErrorMessages = {
     "zh-Hant": "檔案未能加入本次對話，請檢查檔案類型、大小與數量",
     "en": "The file could not be added. Check its type, size and the file count",
     "ja": "ファイルを追加できませんでした。種類、サイズ、ファイル数を確認してください"
-  }
+  },
+  "agent.task.error.imageSelectionRequired": {"zh-Hans": "有多个自定义图片服务，请在生成面板里选择。", "zh-Hant": "有多個自訂圖片服務，請在生成面板中選擇。", "en": "There are multiple custom image services. Choose one in the generation panel.", "ja": "カスタム画像サービスが複数あります。生成パネルで選択してください。"},
 } as const satisfies MessageCatalog;

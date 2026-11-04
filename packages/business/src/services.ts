@@ -41,7 +41,9 @@ import type {Provider} from './provider-registry.ts';
 import {videoBindingCapabilities} from '../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding} from '../../contracts/src/video-providers.ts';
 import {getWan30Capability,resolveWanGenerationParameters} from '../../contracts/src/wan-video.ts';
-import type {VideoSettingsService} from './video/settings.ts';
+import type {VideoGenerationSettings} from './video/generation.ts';
+import {generationImageServiceSchemas} from '../../contracts/src/generation-image-services.ts';
+import type {GenerationImageServiceOperation} from '../../contracts/src/generation-image-services.ts';
 import {createConfiguredVideoProvider} from './video/runtime.ts';
 import {listVideoConnections,readVideoBinding,sameVideoExecutionDomain,prepareConfiguredVideoInputs} from './video/generation.ts';
 import {prepareGenerationInputs,generationReferenceSelection,readGenerationAsset,assertGenerationReferenceIds,assertGenerationShotOwnership,assertGenerationJobOwnership,currentGenerationClaim,hasSubjectGeneration,validateSubjectGenerationOwnership,assertSubjectGenerationSelection,assertSubjectGenerationRequestVacant,readGenerationLinkedJob} from './generation-inputs.ts';
@@ -102,7 +104,7 @@ export interface ServiceApplicationPorts {
 }
 export interface CreateServicesOptions {
  application?: ServiceApplicationPorts;
- videoSettings?: VideoSettingsService;
+ videoSettings?: VideoGenerationSettings;
  videoFetch?: typeof fetch;
  env?: NodeJS.ProcessEnv;
  signal?: AbortSignal;
@@ -143,6 +145,7 @@ export interface OrdinaryServices {
  inspection: InspectionService;
  imageApproval: (input: unknown)=>unknown;
  imageRejection: (input: unknown)=>unknown;
+ generationImageServices: (operation: string, input: unknown)=>unknown;
 }
 export interface ShotRecord extends ServiceRow {
  id: string;
@@ -689,5 +692,13 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ['frame_tasks',"state IN ('queued','running','persisting')"],
   ['scene_tasks',"state IN ('queued','running','cancelling','persisting')"],
  ] as const).some(([table,condition])=>hasStoreTable(db,table)&&!!db.prepare(`SELECT 1 FROM ${table} WHERE ${condition} LIMIT 1`).get());
- return {compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed as (input: unknown)=>unknown,imageRejection:images.rejectReview as (input: unknown)=>unknown} as OrdinaryServices;
+ const generationImageServices=(operation:string,input:unknown):unknown=>{
+  checkpoint(ownerSignal);
+  if(!Object.hasOwn(generationImageServiceSchemas,operation))throw new AppError('UNKNOWN_OPERATION','图片服务操作不存在',400);
+  const op=operation as GenerationImageServiceOperation,parsed=generationImageServiceSchemas[op].safeParse(input);
+  if(!parsed.success)throw new AppError('VALIDATION_ERROR','图片服务参数无效',400);
+  if(op==='image.service.review.prepare'){assertApplicationMutationAllowed();assertMutationAllowed?.();}
+  return publicValue(images.generationServices(op,parsed.data));
+ };
+ return {compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed as (input: unknown)=>unknown,imageRejection:images.rejectReview as (input: unknown)=>unknown,generationImageServices} as OrdinaryServices;
 }

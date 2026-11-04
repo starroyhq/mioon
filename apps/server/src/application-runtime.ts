@@ -7,12 +7,15 @@ import {isAppLibraryHeld, projectFileIdentity} from '@mioon/business/app-db/inde
 import {createAppCompanionDocuments} from '@mioon/business/companion-scope';
 import {createComfyConnector} from '@mioon/business/comfy/connector';
 import {createComfySettings} from '@mioon/business/comfy/settings';
-import {createCustomImageSettings, createImageSettings} from '@mioon/business/images/settings';
-import {createCompatibleImageGateway, createLiveImageGateway} from '@mioon/business/images/gateway';
-import {createCustomImageSettingsFile, createImageSettingsFile} from '@mioon/business/images/settings-file';
+import {createImageSettings} from '@mioon/business/images/settings';
+import {createLiveImageGateway,createCompatibleImageGatewayV2} from '@mioon/business/images/gateway';
+import {createImageSettingsFile} from '@mioon/business/images/settings-file';
+import {createCustomImageSettingsV2} from '@mioon/business/images/custom-settings-v2';
+import {createCustomImageSettingsV2File} from '@mioon/business/images/custom-settings-v2-file';
 import {createLastProject} from '@mioon/business/last-project';
 import {createUiPreferences} from '@mioon/business/ui-preferences';
-import {createVideoSettings} from '@mioon/business/video/settings';
+import {createVideoSettingsV2} from '@mioon/business/video/settings-v2';
+import {createVideoSettingsV2File} from '@mioon/business/video/settings-v2-file';
 import {createWorkspacePreferences} from '@mioon/business/workspace-preferences';
 import {readPrivateFile, validateManagedFile, validatePrivateDirectory, writePrivateFileAtomic} from '@mioon/contracts/private-storage';
 import {deriveAgentEndpoint} from '../../../packages/contracts/src/agent-protocol.ts';
@@ -55,10 +58,11 @@ export async function composeApplicationRuntime(library: AppLibrary, options: Se
     const image = await createImageSettings({persistence: createImageSettingsFile({directory: path.join(root, 'image-settings'), privateRoot: root}),
       ...(options.imageSecretCodec ? {secretCodec: options.imageSecretCodec, storage: () => options.imageSecretCodec!.storage()} : {})});
     closers.push(() => image.close());
-    const customImage = await createCustomImageSettings({persistence: createCustomImageSettingsFile({directory: path.join(root, 'image-settings'), privateRoot: root}),
+    const customImage = await createCustomImageSettingsV2({persistence: createCustomImageSettingsV2File({directory: path.join(root, 'image-settings'), privateRoot: root}),
       ...(options.imageSecretCodec ? {secretCodec: options.imageSecretCodec, storage: () => options.imageSecretCodec!.storage()} : {})});
     closers.push(() => customImage.close());
-    const video = await createVideoSettings({directory: path.join(root, 'video-settings'), privateRoot: root, signal,
+    const video = await createVideoSettingsV2({directory: path.join(root, 'video-settings'), privateRoot: root, signal,
+      persistence: createVideoSettingsV2File({directory: path.join(root, 'video-settings'), privateRoot: root}),
       ...(options.videoSecretCodec ? {secretCodec: options.videoSecretCodec, storage: () => options.videoSecretCodec!.storage()} : {})});
     closers.push(() => video.close());
     const reservedPorts = () => new Set([options.port, selfPort()].filter((port): port is number => Number.isInteger(port) && port !== undefined && port > 0));
@@ -76,8 +80,8 @@ export async function composeApplicationRuntime(library: AppLibrary, options: Se
       if (errors.length) throw new AggregateError(errors, 'Application settings could not close');
     };
     return {agentSettings, ownsSettings, authorizations, ui, lastProject, preferences, settings: {image, customImage, video, comfy},
-      profileDependencies: {settings: image, customSettings: customImage, comfySettings: comfy, comfyConnector: connector,
-        liveGateway: createLiveImageGateway({settings: image, ...options.imageNetwork}), customGateway: createCompatibleImageGateway({settings: customImage, ...options.imageNetwork})},
+      profileDependencies: {settings: image, customSettingsV2: customImage, comfySettings: comfy, comfyConnector: connector,
+        liveGateway: createLiveImageGateway({settings: image, ...options.imageNetwork}),customGateway:createCompatibleImageGatewayV2({settings:customImage,...options.imageNetwork})},
       imageHttp: createImageHttp({settings: image, customSettings: customImage, signal,
         approve: () => { throw new AppError('NOT_FOUND', '接口不存在', 404); }, reject: () => { throw new AppError('NOT_FOUND', '接口不存在', 404); }}),
       videoHttp: createVideoHttp({settings: video, signal}), comfyHttp: createComfyHttp({settings: comfy, connector, availability, signal}),

@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {validateImageSecretPlaintext} from '@mioon/business/images/settings';
+import {validateDesktopImageSecretPlaintext} from './image-secret-store.ts';
 import type {ImageSecretCodec, ImageSecretStorage} from './image-secret-store.ts';
 import type {SecretOperationOptions} from './secret-store.ts';
 
@@ -71,14 +71,14 @@ function safeStorage(value: unknown): SafeStorage {
 function safeResult(operation: CodecOperation, value: unknown): unknown {
   if (operation === 'status') return safeStorage(value);
   if (operation === 'encrypt') { if (!validCiphertext(value)) throw codecError(); return value; }
-  validateImageSecretPlaintext(value);
+  validateDesktopImageSecretPlaintext(value);
   return value;
 }
 function validInput(operation: unknown, input: unknown): boolean {
   if (operation === 'status') return input === undefined;
   if (operation === 'decrypt') return validCiphertext(input);
   if (operation !== 'encrypt') return false;
-  try { validateImageSecretPlaintext(input); return true; } catch { return false; }
+  try { validateDesktopImageSecretPlaintext(input); return true; } catch { return false; }
 }
 function response(requestId: string, value: unknown, error?: unknown) {
   if (error) {

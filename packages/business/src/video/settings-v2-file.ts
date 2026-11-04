@@ -4,7 +4,7 @@ import type {Stats} from 'node:fs';
 import {ensurePrivateDirectory, validateManagedDirectory, validateManagedFile, privateStorageIdentity, readPrivateFile, writePrivateFileAtomic} from '@mioon/contracts/private-storage';
 import {VIDEO_SETTINGS_V1_RESET_NOTICE} from '../../../contracts/src/generation-video-settings.ts';
 import {VIDEO_SECRET_LIMITS, validateVideoSettingsEnvelope} from './settings.ts';
-import {emptyVideoSettingsV2Envelope, validateVideoSettingsV2Envelope, videoSettingsV2Error} from './settings-v2.ts';
+import {assertVideoSettingsV2Capacity, emptyVideoSettingsV2Envelope, sanitizeVideoSettingsV2Error, validateVideoSettingsV2Envelope, videoSettingsV2Error} from './settings-v2.ts';
 import type {VideoSettingsEnvelopeV2} from './settings-v2.ts';
 
 export interface VideoSettingsV2LoadResult {
@@ -59,6 +59,7 @@ export function createVideoSettingsV2File({directory, privateRoot = directory}: 
     },
     async save(value: VideoSettingsEnvelopeV2, signal?: AbortSignal) {
       try {
+        assertVideoSettingsV2Capacity(value);
         const bytes = JSON.stringify(validateVideoSettingsV2Envelope(value)) + '\n';
         if (Buffer.byteLength(bytes) > VIDEO_SECRET_LIMITS.envelopeBytes) throw Error();
         if (signal?.aborted) throw Error();
@@ -67,11 +68,11 @@ export function createVideoSettingsV2File({directory, privateRoot = directory}: 
         if (!initialized || JSON.stringify(read().fingerprint) !== JSON.stringify(baseline)) throw Error();
         ensurePrivateDirectory(boundary, {create: true});
         ensurePrivateDirectory(root, {create: true});
-        writePrivateFileAtomic(file, bytes, {root, maxBytes: VIDEO_SECRET_LIMITS.envelopeBytes});
+        writePrivateFileAtomic(file, bytes, {root, maxBytes: VIDEO_SECRET_LIMITS.envelopeBytes, replace: baseline !== null});
         const persisted = read().fingerprint;
         if (!persisted || persisted.sha256 !== createHash('sha256').update(bytes).digest('hex')) throw Error();
         baseline = persisted;
-      } catch { throw videoSettingsV2Error('VIDEO_SETTINGS_SAVE_FAILED'); }
+      } catch (error) { throw videoSettingsV2Error(sanitizeVideoSettingsV2Error(error).code === 'VIDEO_SETTINGS_CAPACITY' ? 'VIDEO_SETTINGS_CAPACITY' : 'VIDEO_SETTINGS_SAVE_FAILED'); }
     },
   });
 }

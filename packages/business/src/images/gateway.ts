@@ -4,6 +4,9 @@ import {DEFAULT_IMAGE_CONFIGURATION, customImageConfigurationSchema, isCompleteC
 import {IMAGE_CREDENTIAL_ACQUIRE, IMAGE_SETTINGS_ASSERT_CURRENT, imageSettingsError, sanitizeImageCredentialResult, sanitizeCustomImageCredentialResult, createImageSettings} from './settings.ts';
 import type {AcquiredImageCredential} from './settings.ts';
 import {IMAGE_EDIT_LIMITS} from '../../../contracts/src/images.ts';
+import {canonicalImageInput} from '../../../contracts/src/images.ts';
+import {customImageConfigurationV2Schema, CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE} from '../../../contracts/src/generation-image-settings.ts';
+import type {createCustomImageSettingsV2} from './custom-settings-v2.ts';
 import {createOpenAIImageAdapter, createCompatibleImageAdapter} from './adapter.ts';
 import type {ImageAdapterResult} from './adapter.ts';
 import {createImageJsonTransport, createImageEditTransport, createCompatibleImageJsonTransport} from './network.ts';
@@ -22,7 +25,7 @@ interface GatewaySlot {
   transport: (options: GatewayTransportOptions, snapshot: unknown) => unknown;
   adapter: (options: {transport?: unknown; baseUrl?: unknown}) => GatewayAdapter;
 }
-export interface Gateways {generate(input: unknown, options?: {signal?: AbortSignal; beforeDispatch?: unknown; settingsRevision?: unknown; configuration?: unknown; sourceBytes?: unknown}): Promise<ImageAdapterResult>}
+export interface Gateways {generate(input: unknown, options?: {signal?: AbortSignal; beforeDispatch?: unknown; settingsRevision?: unknown; configuration?: unknown; connectionId?: unknown; configurationRevision?: unknown; sourceBytes?: unknown}): Promise<ImageAdapterResult>}
 const record = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 const isEdit = (snapshot: unknown): boolean => record(snapshot)?.purpose === 'edit';
 function reviewedCustomConfiguration(configuration: unknown, input: unknown) {
@@ -99,4 +102,29 @@ export function createCompatibleImageGateway(options: ReviewedImageGatewayOption
     transport: createCompatibleImageJsonTransport,
     adapter: createCompatibleImageAdapter,
   });
+}
+
+/** The frozen review owns the selected service. A collection revision or a
+ * current UI selection is never sufficient to acquire its credential. */
+export function createCompatibleImageGatewayV2({settings, lookup = lookupDns, httpsRequest = requestHttps}: {
+  settings: Awaited<ReturnType<typeof createCustomImageSettingsV2>>; lookup?: typeof lookupDns; httpsRequest?: typeof requestHttps;
+}): Gateways {
+  return Object.freeze({async generate(input: unknown, {signal, beforeDispatch, settingsRevision, configuration, connectionId, configurationRevision, sourceBytes}: NonNullable<Parameters<Gateways['generate']>[1]> = {}) {
+    const snapshot = parseImageAdapterInput(input, 'openai-compatible');
+    const parsed = customImageConfigurationV2Schema.safeParse(configuration);
+    if (!parsed.success || !parsed.data.enabled || snapshot.model !== parsed.data.model ||
+      canonicalImageInput(snapshot.options) !== canonicalImageInput(parsed.data.options) || sourceBytes !== undefined ||
+      typeof beforeDispatch !== 'function' || typeof connectionId !== 'string' || settingsRevision !== configurationRevision) throw imageSettingsError('IMAGE_SETTINGS_CONFLICT');
+    const expected = {connectionId, configurationRevision, configuration: parsed.data};
+    const credential = await settings.acquire(expected, {signal});
+    if (signal?.aborted) throw imageSettingsError('IMAGE_SETTINGS_CLOSED');
+    if (credential.namespace !== CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE || !credential.apiKey) throw imageSettingsError('IMAGE_SETTINGS_NOT_CONFIGURED');
+    const transport = createCompatibleImageJsonTransport({lookup, httpsRequest, apiKey: credential.apiKey, baseUrl: parsed.data.baseUrl});
+    return createCompatibleImageAdapter({transport, baseUrl: parsed.data.baseUrl}).generate(snapshot, {signal, beforeDispatch: () => {
+      // This synchronous fence and the caller's durable dispatch fence run in
+      // the same turn immediately before transport submission.
+      if (settings.assertCurrent(expected) !== true) throw imageSettingsError('IMAGE_SETTINGS_CONFLICT');
+      return (beforeDispatch as () => unknown)();
+    }});
+  }});
 }
