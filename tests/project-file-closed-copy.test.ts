@@ -19,6 +19,7 @@ import {buildPreviousHistoryDatabase} from './fixtures/kernel-history-previous-s
 import {HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {readSchemaManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
 import {V5_HISTORY_V8_MANIFEST} from '../packages/business/src/project-file/schema/history-v8-manifest.ts';
+import {S8_HISTORY_V9_MANIFEST} from '../packages/business/src/project-file/schema/history-v9-manifest.ts';
 import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
 import {captureProjectDocumentInside} from '../packages/business/src/project-versions/document.ts';
 import {encodeProjectDocument} from '../packages/business/src/project-versions/codec.ts';
@@ -63,7 +64,7 @@ test('no history means no source records or shadow cache are created',async t=>{
  unchanged(f.projectFile,before);assert.deepEqual(readdirSync(f.directory),['project.source.sqlite']);
 });
 
-for(const version of [2,3,4,5,6,7,8] as const)test(`exact old history ${version} is copied without migration or requiring matching seen`,async t=>{
+for(const version of [2,3,4,5,6,7,8,9] as const)test(`exact old history ${version} is copied without migration or requiring matching seen`,async t=>{
  const f=fixture(t),store=f.open();
  const document=store.tx(()=>captureProjectDocumentInside(store)),blob=encodeProjectDocument(document);store.close();
  const sourceIdentity=inspectProjectFileReadOnly(f.projectFile),seenToken=sourceIdentity.contentToken==='f'.repeat(32)?'e'.repeat(32):'f'.repeat(32);
@@ -71,11 +72,11 @@ for(const version of [2,3,4,5,6,7,8] as const)test(`exact old history ${version}
  let retainedVersions:unknown,retainedBlobs:unknown;
  try{
   db.exec('BEGIN');buildPreviousHistoryDatabase(db,version);
-  if(version===8){
+  if(version===8||version===9){
    db.prepare('INSERT INTO history_state VALUES(1,?,91,?)').run(f.projectId,seenToken);
    db.prepare('INSERT INTO project_version_blobs VALUES(?,?,?,?,?,?)').run(blob.hash,blob.profile,blob.codec,blob.rawBytes,blob.compressedBytes,blob.payload);
    db.prepare("INSERT INTO project_versions VALUES(?,?,'manual','保留版本',NULL,?,?,?,0)").run(randomUUID(),f.projectId,document.evidence.contentSequence,'2026-11-04T00:00:00.000Z',blob.hash);
-   assert.deepEqual(readSchemaManifest(db,'main'),V5_HISTORY_V8_MANIFEST.entries);
+   assert.deepEqual(readSchemaManifest(db,'main'),version===8?V5_HISTORY_V8_MANIFEST.entries:S8_HISTORY_V9_MANIFEST.entries);
    retainedVersions=db.prepare('SELECT * FROM project_versions ORDER BY id').all();retainedBlobs=db.prepare('SELECT * FROM project_version_blobs ORDER BY hash').all();
   }else db.prepare('INSERT INTO history_state VALUES(1,?,91)').run(f.projectId);
   db.prepare("INSERT INTO idempotency VALUES('kept','request','digest','resource')").run();db.exec('COMMIT');
@@ -84,12 +85,12 @@ for(const version of [2,3,4,5,6,7,8] as const)test(`exact old history ${version}
  const copied=new DatabaseSync(captured.historyFile!,{readOnly:true});
  try{
   assert.equal(copied.prepare('SELECT version FROM schema_version').get()!.version,version);assert.equal(copied.prepare('SELECT seenContentSequence FROM history_state').get()!.seenContentSequence,91);assert.equal(copied.prepare("SELECT resourceId FROM idempotency WHERE scope='kept'").get()!.resourceId,'resource');
-  if(version===8){
-   assert.deepEqual(readSchemaManifest(copied,'main'),V5_HISTORY_V8_MANIFEST.entries);
+  if(version===8||version===9){
+   assert.deepEqual(readSchemaManifest(copied,'main'),version===8?V5_HISTORY_V8_MANIFEST.entries:S8_HISTORY_V9_MANIFEST.entries);
    assert.equal(copied.prepare('SELECT seenContentToken FROM history_state').get()!.seenContentToken,seenToken);assert.notEqual(seenToken,captured.identity.contentToken);
    assert.deepEqual(copied.prepare('SELECT * FROM project_versions ORDER BY id').all(),retainedVersions);
    assert.deepEqual(copied.prepare('SELECT * FROM project_version_blobs ORDER BY hash').all(),retainedBlobs);
-   assert.equal(copied.prepare("SELECT count(*) n FROM sqlite_schema WHERE name='local_clip_drafts'").get()!.n,0,'capturing frozen v8 never upgrades its history');
+   assert.equal(copied.prepare("SELECT count(*) n FROM sqlite_schema WHERE name='local_clip_drafts'").get()!.n,version===8?0:1,'capturing frozen history keeps that version’s draft-table profile');
   }
  }
  finally{copied.close();}

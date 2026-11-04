@@ -321,7 +321,10 @@ export function createProjectCopies({manager, library, directories, assertProjec
     async recover(): Promise<void> {
       assertAllowed();
       for (const intent of records.list()) {
-        if (['prepared', 'captured', 'abandoned'].includes(intent.phase)) {abandon(intent); continue;}
+        if (['prepared', 'captured', 'abandoned'].includes(intent.phase)) {
+          try {abandon(intent);} catch { /* Keep the intent for a later cleanup; unavailable media must not block startup. */ }
+          continue;
+        }
         if (intent.phase === 'completed') {cleanup(intent); continue;}
         const receipt = library.receipts.read(intent.operation, intent.input.requestId);
         if (receipt) {
