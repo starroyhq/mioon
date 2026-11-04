@@ -12,7 +12,6 @@ import {createServices,hash} from '../../packages/business/src/services.ts';
 import {createTimelineRecoveryBoundary,readTimelineReceipt} from '../../packages/business/src/timeline-recovery.ts';
 import {createLocalDelivery} from '../../packages/business/src/local-delivery.ts';
 import {schemas,isTimelineMutationResponse,hasRequestNotAppliedProof,publicValue} from '@mioon/contracts';
-import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
 import {readProjectState} from '../helpers/project-state.ts';
 
 const [root,...extra]=process.argv.slice(2);assert.ok(root&&path.isAbsolute(root));assert.equal(extra.length,0);const send=process.send?.bind(process);assert.ok(send);
@@ -25,7 +24,7 @@ function boundary(phase: string): never|void{
  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0);
  throw Error('A crash-only boundary unexpectedly resumed');
 }
-const delivery=createLocalDelivery({root:store.localDir,databaseFile:path.join(store.localDir,'history.db'),storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
+const delivery=createLocalDelivery({store,
  guards:{ownsLock:()=>ownsStoreLock(store),
   readTimeline:(projectId: string)=>createTimelineRecoveryBoundary(store.db,{projectId}).read({sourceSemantics:false}),
   isRenderInput:(value: unknown)=>schemas['timeline.render'].safeParse(value).success,
@@ -38,7 +37,7 @@ const delivery=createLocalDelivery({root:store.localDir,databaseFile:path.join(s
    const saved=readTimelineReceipt(store.db,input,'timeline.render');assert.ok(saved,'A business commit must have its immutable receipt');
    boundary('afterBusinessReceiptCommit');return response;}},
  fault:(point: string)=>{if(point==='beforeOutcomePersist')inOutcome=true;
-  boundary(inOutcome&&point==='afterDirectorySync'?'afterOutcomePersist':point);}});
+  boundary(inOutcome&&point==='afterConfirm'?'afterOutcomePersist':point);}});
 
 interface DeliveryWorkerMessage {id: string; method: string; input: Record<string, unknown> & {operation?: string; input?: unknown; requestId?: string; [key: string]: unknown}}
 process.on('message',async (raw: unknown)=>{
@@ -46,9 +45,9 @@ process.on('message',async (raw: unknown)=>{
  const message=raw as DeliveryWorkerMessage;
  const {id,method,input}=message;
  try{
-  if(method==='close'){closing=true;await services.drain();store.close();process.disconnect();return;}
+  if(method==='close'){closing=true;await delivery.drain();await services.drain();store.close();process.disconnect();return;}
   let data;
-  if(method==='arm'){assert.ok(typeof input==='string'&&['beforePersist','afterDirectorySync','beforeDispatch','afterBusinessReceiptCommit','beforeOutcomePersist','afterOutcomePersist'].includes(input as never));armed=String(input);inOutcome=false;data={armed};}
+  if(method==='arm'){assert.ok(typeof input==='string'&&['beforePersist','beforeCommit','afterCommit','afterConfirm','beforeDispatch','afterBusinessReceiptCommit','beforeOutcomePersist','afterOutcomePersist'].includes(input as never));armed=String(input);inOutcome=false;data={armed};}
   else if(method==='observe')data={dispatches:structuredClone(dispatches)};
   else if(method==='snapshot')data=readProjectState(store.db);
   else if(method==='rpc'){assert.ok(['timeline.track.add'].includes(String(input.operation)));data=await services.call(String(input.operation),input.input as never);}

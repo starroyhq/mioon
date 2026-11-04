@@ -11,7 +11,7 @@
 - 首页封面使用应用级 `GET /api/project-covers/<ID>`，只读缓存，缺失返回 404，不 acquire 项目；`projectSummaryCoverSchema` 已同步此 URL。应用 `/api/workspace-info` 返回应用根，新增项目 `/api/projects/<ID>/workspace-info` 在真实租约内返回项目根，复用原 schema，供可信桌面导出使用。
 - 全局 `diagnostics/latest` 从应用 documents 读取严格五字段摘要：`completedAt/status/protocol/model/errorCode`；无项目对话、请求或密钥，也不打开项目。应用库当前为 v3：精确已知 v1 经 v2，再以 R2 的 v2→v3 升级增加用户规范；保原三种文档及其它记录。HTTP B1 错误仅公开 `APP_LIBRARY_LIMIT`（507）与 `APP_LIBRARY_INVALID`（422）。
 - V2 已接入宿主打开/关闭的项目自动备份，最近三份按项目 ID、内容序号和令牌去重；`project.backup.list/inspect/restore/status` 是应用级操作，恢复使用新 ID、新令牌和空本机记录。专用 `MioB` 标记使备份不能作为普通项目打开或登记；接口、提交点和故障边界见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)。不启用旧工作区备份接口，也没有接入备份界面。
-- 生产素材以引用定位：项目格式为 3、cache 为 2，history 为 8。格式 1、2 的旧开发项目及备份明确拒绝、零写入，需重建。路径导入不复制，网页/Mio 上传写固定 `素材/`；生成写 `生成/`，成片写 `导出/`，排他发布、不自动删除项目文件。完整契约见 [素材引用](ASSET-REFERENCES.md)和[项目产物](PROJECT-OUTPUTS.md)。
+- 生产素材以引用定位：项目格式为 3、cache 为 2，history 为 9。格式 1、2 的旧开发项目及备份明确拒绝、零写入，需重建。路径导入不复制，网页/Mio 上传写固定 `素材/`；生成写 `生成/`，成片写 `导出/`，排他发布、不自动删除项目文件。完整契约见 [素材引用](ASSET-REFERENCES.md)和[项目产物](PROJECT-OUTPUTS.md)。
 - `project.version.list/save/preview/restore` 是项目级操作，提供手动/自动保存、保留清理和确认恢复；正文仅存本机 history，界面另卡实现；见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。
 - S5-A 已提供应用级复制/另存为和受信端口，带重绑定版本、空执行域，不接界面或 CLI/MCP 新命令；见 [PROJECT-COPIES.md](PROJECT-COPIES.md)。S5-B 的副本/复制到/模板、S5-C 的废纸篓及 V4 的打包导入导出尚未接入；旧工作区备份/恢复已退役。精确错误和按项目后的图片、帧、LUT 可达容量见 [宿主当前状态](PROJECT-HOST.md#0-p4-当前运行状态)。不调用旧生产生命周期链；全应用总量控制留 S3。
 
@@ -109,8 +109,8 @@ Finder 直接复制出的同 ID 文件仍走副本检测；S5-B 的“作为新�
 依据是 10-30 的崩溃恢复实测：跨两个文件的大事务提交到一半时 `SIGKILL`，再看重开以后两个文件是否一致（Node 24.21.0，SQLite 3.53.4，回滚日志模式加独占锁）。
 
 - **主库是本机记录 `history.db`。** 项目文件以 `project` 的名字挂上去，缓存库以 `cache` 的名字挂上去（`PROJECT_DATABASE_NAMES`）。
-  - 当前 project/history/cache 格式为 **3/8/2**。项目增加 32 位小写十六进制 `contentToken`，头部 `user_version=3`；history 6 增加版本领域四表，7 允许已发布预演图的图片编辑来源，8 增加 `seenContentToken` 和单行宿主处置提交证据。版本 `mioRunId` 保留来源值，解除对可执行 `mio_runs` 的外键依赖。
-  - 精确已知的 history 2–7 都可在打开事务内直升 8，版本最后写入；2 保留既有开发期 Mio 重置，3–7 保留已有记录和版本字节。2–6 同时沿用 S2 的 `image_reviews` 窄升级，保留 rowid、审阅状态和原始 JSON 字节。升级的 token 为 NULL，进入恢复会话；不把旧记录补成当前令牌，不在准入前清理项目修订账本。外键始终开启，失败或中途退出整笔恢复；未知或改动过的结构仍拒绝，详见 [MIO-RECORDS.md](MIO-RECORDS.md#发布前的开发数据重置)。
+  - 当前 project/history/cache 格式为 **3/9/2**。项目增加 32 位小写十六进制 `contentToken`，头部 `user_version=3`；history 6 增加版本领域四表，7 允许已发布预演图的图片编辑来源，8 增加 `seenContentToken` 和单行宿主处置提交证据，9 增加三种草稿槽及 scope 状态四表。版本 `mioRunId` 保留来源值，解除对可执行 `mio_runs` 的外键依赖。
+  - 精确已知的 history 2–8 都可在打开事务内直升 9，版本最后写入；2 保留既有开发期 Mio 重置，3–7 保留已有记录和版本字节。2–6 同时沿用 S2 的 `image_reviews` 窄升级，保留 rowid、审阅状态和原始 JSON 字节。2–7 升级的 token 为 NULL，进入恢复会话；8→9 只建空草稿域，保留原内容 pair 与所有旧记录；不把旧记录补成当前令牌，不在准入前清理项目修订账本。外键始终开启，失败或中途退出整笔恢复；未知或改动过的结构仍拒绝，详见 [MIO-RECORDS.md](MIO-RECORDS.md#发布前的开发数据重置)。
   - 未加限定的表名，SQLite 依次到各个库里找，所以现有 SQL 大多不用改。
   - 建表、建触发器，以及 `PRAGMA user_version`、`PRAGMA application_id` 这类语句要带库名，不带时落到主库，也就是本机记录。`PRAGMA foreign_key_check` 不带库名时只查主库。
   - 日志模式和锁模式另有规则，见下面的“日志模式按库名设”。
@@ -166,7 +166,7 @@ Finder 直接复制出的同 ID 文件仍走副本检测；S5-B 的“作为新�
 
 **S0 P2 的组装接缝（历史阶段记录，当时尚未切换生产存储）：**
 
-- `apps/server/src/project-runtime.ts` 的 `composeProjectRuntime` 从已打开的 store 组装 providers、业务服务、编辑任务、Mio、草稿及对应 HTTP handler。它不打开/关闭 store、不绑定监听器，也不创建宿主管理器。P2 时旧 `startServer` 调用同一个工厂，仍用旧目录、默认设置、路由和工作区；P4 改由真实宿主调用，工厂的 store 所有权边界不变。
+- `apps/server/src/project-runtime.ts` 的 `composeProjectRuntime` 从已打开的 store 组装 providers、业务服务、编辑任务和 Mio，并返回已绑定业务依赖的草稿工厂。真实宿主把自己的 context 传给 `ProjectDraftsFactory`，每个宿主创建一份草稿服务及 HTTP handler。工厂不打开/关闭 store、不绑定监听器，也不创建宿主管理器；store 及其唯一连接仍由宿主管理器持有。
 - P2 时新内核只在定向集成测试中装配，必须显式提供应用库端口与 `ServiceApplicationPorts`；P4 的生产宿主沿用此注入。项目连接不挂载应用库。应用配置、偏好、全局 Mio policy、授权、最近项目使用应用范围；三个项目 JSON 使用 `localDir/history.db` 的身份。`databaseFile` 的验证仍要求私有根内的直接子文件，只做原有 stat 验证，不读取持有的数据库。
 - `isAppLibraryHeld(identity, db)` 可同时核对文件身份与实际持有它的连接；不能把一个仍打开的连接与另一个库的路径拼接成应用权限。应用 documents 的 companion 写入经独立应用事务提交后才返回确认，拒绝加入外层未提交事务。Mio policy 的 CAS 写入也使用独立应用事务，policy 与请求回执一起提交；无 CAS 的既有 B1 写法仍可组合进应用事务。
 - 新工厂支持借用应用设置；借用的设置和配置/备份端口由应用所有者关闭，关闭项目不关闭它们。工厂启动失败时先取消并等待内部任务和自建设置；清理成功才重抛原启动错误。清理失败或超时会保留两类错误，外层不得关闭 SQLite 或释放锁，遵守既有 `boundedShutdown` 的安全边界。
@@ -351,7 +351,11 @@ node tests/helpers/project-file-schema-derivation.ts --check
 
 ## 放行设置、草稿和建库文件
 - **放行设置：** 全局放行档位及其回执（2 张表）放在应用库；对话级覆盖及其回执（2 张表）跟着对话，放在本机记录里。两者都不在项目文件里，别人发来的项目照样放宽不了权限。这样 `agent_task_conversation_policy_owner_v2` 也不再跨文件。
-- **草稿：** `local-drafts-v1.json`、`local-delivery-v1.json`、`local-shot-text-v1.json` 三个文件改为本机记录里的草稿表，由 S8 实现。
+- **草稿：** clip、delivery、shot-text 草稿分别存在本项目 `history.db` 的 `local_clip_drafts`、`local_delivery_drafts`、`local_shot_text_drafts`；`local_draft_states` 保留每类已保存空状态的 scope。写入只使用宿主持有的同一个连接和短事务，不改变项目文件、内容序号或内容身份。执行原业务仍遵循原业务事务及回执，不与草稿终态伪装成一次提交。
+  - `local-drafts-v1.json`、`local-delivery-v1.json`、`local-shot-text-v1.json` **已退役**：不导入、不再读取或写入，原位、原名、原字节保留，可以手工删除。打开、升级和关闭不会自动删除或改名这些文件，旧 pending 不会被自动恢复执行。
+  - scope 继续绑定渠道、本机目录和该连接持有的 `history.db` 文件身份；instanceId 每次宿主打开重新生成，不落库。GET/list 不建记录，discard 留修订墓碑；成功 ACK 在 SQLite COMMIT 后发出，丢失 ACK 仍须重新读取或显式恢复确认。
+  - Mio 撤销素材导入的零消费者证明会按真实槽结构检查 clip 草稿的 `source.assetId`；当前片段已经移除也不丢弃该依赖。`draft:null` 墓碑没有素材引用；scope、delivery 名称/导出意图和 shot-text 文本/窄 patch 没有素材身份，归入忽略清单。文本中恰好出现素材 UUID 不构成引用。
+  - 0.1.0 只发布 macOS。Windows 的 clip 接口保持不可用；delivery/shot-text 可读，变更操作在任何 SQL 效果前报本地错误族的 `STORAGE_UNAVAILABLE`，不再先写入后返回 `SAVE_UNCERTAIN`。Windows 保存支持另行实施和原生验收。
 - **Mock 供应商的账本：** Mock 供应商运行时在库连接上建的 `mock_provider_tasks`、`mock_provider_submissions` 两张表和它们的索引，收进本机记录的任务领域（`schema/domains/tasks.ts`），本机记录的格式版本从 1 升到 2。供应商照旧用不带库名的 `CREATE TABLE IF NOT EXISTS`，在主库也就是本机记录里找到这两张表，不会再建；不收进来的话，下次打开时本机记录的结构对不上清单，报 `PROJECT_INVALID`（`schema`）。
 - **建库文件按领域分，每份有一个负责人：**
 

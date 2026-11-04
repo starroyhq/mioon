@@ -1,9 +1,12 @@
 import {importNativeQaAsset,coldNativeQaAssetFile,coldNativeQaMediaSnapshot} from './helpers/native-local-qa-fixture.ts';
-/** Live first-boot/close-decision/pre-crash stages record bounded physical/JSON
+/** Live first-boot/close-decision/pre-crash stages record physical evidence and explicit unverified UI expectations
  * captures only. SQL audit/verify stages require normal Quit, or confirmed owned
  * SIGKILL plus backend exit. Use resume <unique-label> between cold stages,
  * reselecting/reapplying the saved form through native UI after each restart.
- * prepare/help/syntax never imply native GUI validation. */
+ * prepare/help/syntax never imply native GUI validation. prepare records a real
+ * daily-open version through the normal store/service guard; all stages must
+ * stay in that UTC date and local daily bucket, otherwise use a fresh fixture.
+ * Live expectedDraft is unverified workflow metadata; only post-exit SQL proves it. */
 import {prepareNativeQaProject,openNativeQaProject,listNativeQaProjects,closeQaProject,captureNativeQa,readNativeQaDocument,checkedNativeMetadata,checkedNativeApplication,prepareNativeQaLiveLayout,captureNativeQaLive} from './helpers/native-local-qa-fixture.ts';
 /** Disposable, synthetic packaged Linux acceptance. Never a product entry point.
  *
@@ -41,6 +44,8 @@ import {ensurePrivateDirectory,readPrivateFile,validateManagedFile} from '../pac
 
 import {createServices,hash as requestHash} from '../packages/business/src/services.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
+import {captureDailyProjectVersion} from '../packages/business/src/project-versions/daily.ts';
+import {projectVersionLocalDay,projectVersionTimeZone} from '../packages/business/src/project-versions/retention.ts';
 import {createWorkspacePreferences} from '../packages/business/src/workspace-preferences.ts';
 import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
 import {ownQaChild} from './helpers/qa-owned-child.mjs';
@@ -67,7 +72,7 @@ async function fileHash(file,maxBytes=512*1024*1024){
  for(const key of ['dev','ino','size','mtimeMs','ctimeMs'])assert.equal(after[key],before[key],'Evidence changed while hashing');return {bytes:before.size,sha256:hash.digest('hex')};
 }
 async function packageHashes(){return {executable:await fileHash(executable),asar:await fileHash(asar)};}
-function environment(){return {...Object.fromEntries(['PATH','HOME','LANG','LC_ALL','DISPLAY','XAUTHORITY','XDG_RUNTIME_DIR','DBUS_SESSION_BUS_ADDRESS','TMPDIR']
+function environment(){return {...Object.fromEntries(['PATH','HOME','LANG','LC_ALL','DISPLAY','XAUTHORITY','XDG_RUNTIME_DIR','DBUS_SESSION_BUS_ADDRESS','TMPDIR','TZ']
  .filter(key=>typeof process.env[key]==='string').map(key=>[key,process.env[key]])),MIOON_DESKTOP_USER_DATA:userData,MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_FFMPEG_PATH:ffmpeg,MIOON_FFPROBE_PATH:ffprobe};}
 async function command(binary,args,label){
  assert.ok([ffmpeg,ffprobe].includes(binary));assert.ok(safeLabel(label));
@@ -77,10 +82,7 @@ async function command(binary,args,label){
  }catch(error){if(owned&&!owned.closed)await owned.stop();throw error;}finally{clearTimeout(timer);await stdout.close();await stderr?.close();}
 }
 function fixture(){for(const directory of [root,runtime,report,userData,workspace])ensurePrivateDirectory(directory);const value=readJson(fixtureFile,128*1024);assert.equal(value.assetReferenceFixture,1,'Historical pre-reference fixture must be preserved; use a fresh root');assert.equal(value.kernel,true,'Use a fresh current-kernel fixture');
- assert.equal(value.synthetic,true);assert.equal(value.scenario,'local-delivery');assert.equal(value.workspace,workspace);return value;}
-function sidecarFile(){return path.join(fixture().localDir,'local-delivery-v1.json');}
-function sidecar(){const bytes=readPrivateFile(sidecarFile(),{root:fixture().localDir,allowMissing:true,private:true,maxBytes:2*1024*1024});
- return bytes===null?null:{disk:contract.disk.parse(JSON.parse(bytes.toString('utf8'))),bytes:bytes.length,sha256:sha(bytes)};}
+ assert.equal(value.synthetic,true);assert.equal(value.scenario,'local-delivery');assert.equal(value.workspace,workspace);assert.equal(value.dailyOpenPrepared,true);assert.equal(value.dailyOpenUtcDate,new Date().toISOString().slice(0,10),'UTC day changed: use a fresh fixture or an explicitly renewed cold baseline');assert.equal(value.dailyOpenTimeZone,projectVersionTimeZone(),'QA timezone changed: use a fresh fixture');assert.equal(value.dailyOpenLocalDay,projectVersionLocalDay(new Date(),value.dailyOpenTimeZone),'daily-open bucket changed: use a fresh fixture');return value;}
 function lockSnapshot(){const info=validateManagedFile(lockFile,{root:workspace,allowMissing:true,private:true,maxBytes:64});if(!info)return null;
  const bytes=readPrivateFile(lockFile,{root:workspace,private:true,maxBytes:64});assert.match(bytes.toString('utf8'),/^[1-9][0-9]{0,9}$/);
  return {pid:Number(bytes.toString('utf8')),bytes:bytes.length,sha256:sha(bytes),dev:String(info.dev),ino:String(info.ino),mtimeMs:info.mtimeMs,ctimeMs:info.ctimeMs};}
@@ -121,8 +123,9 @@ assert.equal(await exists(root),false,'Native fixture already exists; no overwri
   const state=defaultWorkspaceState();delete state.shared.assetSearch;state.canvas.viewport={x:0,y:0,zoom:1};state.activeMode='editing';state.editing.selectedClipId=timeline.clips[0].id;state.editing.playhead=17;state.editing.previewKind='source';
   createWorkspacePreferences(store).put(project.id,{expectedRevision:0,state});
   assert.equal(await exists(path.join(store.localDir,'local-delivery-v1.json')),false,'Preparation must never seed a title draft or export intent');
+  const dailyNow=new Date(),dailyTimeZone=projectVersionTimeZone();const dailyVersion=captureDailyProjectVersion(store,{assertMutationAllowed:()=>services.assertMutationAllowed(),now:()=>dailyNow,timeZone:()=>dailyTimeZone});assert.ok(dailyVersion,'Prepare the actual daily-open version before freezing the cold business baseline');
   value={synthetic:true,assetReferenceFixture:1,kernel:true,scenario:'local-delivery',id:randomUUID(),workspace,projectDir:store.projectDir,localDir:store.localDir,projectFile:store.projectFile,projectId:project.id,projectName:project.name,timelineId:timeline.id,clipId:timeline.clips[0].id,
-   assetId:asset.id,baseRevision:timeline.revision,expectedTimeline:timeline,expectedTitle:'Crash-recovered export',sourceSha256:asset.sha256,sourceFile:await fileHash(source),initialSidecarAbsent:true};
+   assetId:asset.id,baseRevision:timeline.revision,expectedTimeline:timeline,expectedTitle:'Crash-recovered export',sourceSha256:asset.sha256,sourceFile:await fileHash(source),initialDraftsEmpty:true,dailyOpenPrepared:true,dailyOpenUtcDate:dailyNow.toISOString().slice(0,10),dailyOpenLocalDay:projectVersionLocalDay(dailyNow,dailyTimeZone),dailyOpenTimeZone:dailyTimeZone};
  }finally{try{await services.drain();}finally{store.close();}}
  await writeFile(fixtureFile,json(value),{mode:0o600,flag:'wx'});const {workspace:privateWorkspace,...sanitized}=value;await writeReport('fixture.json',sanitized);await audit('prepared');await writeReport('database-layout.json',await prepareNativeQaLiveLayout(workspace));
  for(const label of ['first','reopen','final'])await writeFile(path.join(runtime,'launch-'+label+'.sh'),
@@ -135,25 +138,52 @@ function expectedSystemTables(result,before,{content=false,preferences=false}={}
  return new Set([...checkedNativeMetadata(before,result,content?[selected]:[]),...checkedNativeApplication(before,result,opened,preferences?[prepared.originalFallback?.id??selected]:[])]);
 }
 function readDatabase(){return captureNativeQa(workspace);}
-function row(result,prepared){const entries=result.sidecar?.disk.entries??[];assert.equal(entries.length,1);assert.equal(entries[0].projectId,prepared.projectId);return entries[0];}
+function coldDraftSnapshot(captured,prepared){
+ const source=captured.projectSnapshots[prepared.projectId];assert.ok(source,'Cold SQL must name the actual registered project');
+ const states=source.rows['main.local_draft_states'].filter(value=>value.kind==='delivery'),slots=source.rows['main.local_delivery_drafts'];assert.ok(states.length<=1);assert.ok(slots.length<=128);
+ for(const stored of slots){const value=contract.slot.parse(JSON.parse(stored.data));assert.equal(value.projectId,prepared.projectId);for(const key of ['projectId','draftRevision','intentRevision'])assert.equal(stored[key],value[key]);assert.equal(stored.intentId,value.intent?.intentId??null);assert.equal(stored.requestId,value.intent?.input.requestId??null);assert.equal(stored.intentStatus,value.intent?.outcome.status??null);}
+ if(slots.length){assert.equal(states.length,1);assert.match(states[0].workspaceScope,/^[a-f0-9]{64}$/u);}
+ return {source:'cold-kernel-sql',projectId:prepared.projectId,states,slots};
+}
+function coldDraftPeers(captured,prepared){
+ const peers={};for(const [projectId,snapshot] of Object.entries(captured.projectSnapshots))for(const table of ['local_draft_states','local_clip_drafts','local_delivery_drafts','local_shot_text_drafts']){
+  const values=snapshot.rows['main.'+table];assert.ok(Array.isArray(values));peers[projectId+'.'+table]=projectId!==prepared.projectId?values:table==='local_delivery_drafts'?[]:table==='local_draft_states'?values.filter(value=>value.kind!=='delivery'):values;
+ }return peers;
+}
+function assertEmptyDrafts(result){assert.equal(result.drafts.source,'cold-kernel-sql');assert.deepEqual(result.drafts.states,[]);assert.deepEqual(result.drafts.slots,[]);}
+function assertLiveExpectation(result,prepared,state='saved'){
+ assert.equal(result.kind,'live-physical');assert.equal(result.draftSqlObserved,false);assert.equal(result.expectedDraft.source,'operator-workflow-expectation-not-sql-evidence');assert.equal(result.expectedDraft.state,state);
+ assert.deepEqual(result.expectedDraft.raw,state==='empty'?null:{deliveryName:prepared.expectedTitle});
+}
+function assertDraftEditingPhysical(result,before){
+ assert.equal(result.kind,'live-physical');assert.equal(before.kind,'live-physical');
+ const selected=fixture().projectId,history=result.physical.databases.find(value=>value.kind==='history'&&value.projectId===selected);assert.ok(history);
+ const allowed=file=>file===history.file||file.startsWith(history.file+'-');
+ assert.deepEqual(result.physical.databases.map(({kind,projectId,file})=>({kind,projectId,file})),before.physical.databases.map(({kind,projectId,file})=>({kind,projectId,file})));
+ assert.deepEqual(result.physical.files.filter(value=>!allowed(value.file)),before.physical.files.filter(value=>!allowed(value.file)),'project/cache/application and every other SQLite file stay exact while autosave changes only this history');
+ for(const value of result.physical.databases)if(value.file!==history.file)assert.deepEqual(value,before.physical.databases.find(prior=>prior.file===value.file));
+ const actual=result.physical.files.find(value=>value.file===history.file),prior=before.physical.files.find(value=>value.file===history.file);assert.ok(actual&&prior);for(const key of ['dev','ino','mode','uid','gid','nlink','birthtimeNs'])assert.equal(actual.identity[key],prior.identity[key],'the held history identity is stable');
+}
+
+function row(result,prepared){assert.equal(result.drafts.source,'cold-kernel-sql');const entries=result.drafts.slots.map(value=>contract.slot.parse(JSON.parse(value.data)));assert.equal(entries.length,1);assert.equal(entries[0].projectId,prepared.projectId);return entries[0];}
 function assertDraft(result,prepared){const saved=row(result,prepared);assert.equal(saved.draft.raw.deliveryName,prepared.expectedTitle);assert.equal(saved.draft.timelineId,prepared.timelineId);assert.equal(saved.draft.baseRevision,prepared.baseRevision);assert.equal(saved.intent,null);assert.equal(saved.intentRevision,0);assert.ok(saved.draftRevision>=1);}
-function assertBusinessUnchanged(result,baseline,{allowPreferences=false}={}){
+function assertBusinessUnchanged(result,baseline,{allowPreferences=false,allowDraft=false}={}){
  assert.equal(result.schemaSha256,baseline.schemaSha256);assert.deepEqual(Object.keys(result.tables),Object.keys(baseline.tables));
- const systemTables=expectedSystemTables(result,baseline,{preferences:allowPreferences});
+ const systemTables=expectedSystemTables(result,baseline,{preferences:allowPreferences});if(allowDraft){systemTables.add('local_delivery_drafts');systemTables.add('local_draft_states');}assert.deepEqual(result.draftPeers,baseline.draftPeers,'all other projects and draft kinds remain SQL-exact');
  for(const name of Object.keys(baseline.tables))if(!systemTables.has(name)&&!(allowPreferences&&name==='workspace_preferences'))assert.deepEqual(result.tables[name],baseline.tables[name],`Unexpected change in ${name}`);
  assert.deepEqual(result.media,baseline.media,'Unexpected media change');assert.deepEqual(result.timelines,baseline.timelines,'Saved timeline changed');
 }
 function assertPhysicalUnchanged(result,before){assert.equal(result.kind,'live-physical');assert.equal(before.kind,'live-physical');assert.deepEqual(result.physical.files,before.physical.files,'All real SQLite files and journals remain byte/identity-exact');assert.deepEqual(result.physical.databases,before.physical.databases);}
-async function liveCapture(label){
+async function liveCapture(label,{record=true}={}){
  assert.ok(['first-boot','before-crash'].includes(label),'This SQL audit requires normal Quit before capture');
  const prepared=fixture(),lock=lockSnapshot();assert.ok(lock,'a hot capture requires the real backend lock');
  const names=(await readdir(report)).filter(name=>/^[a-z0-9-]+-connection\.json$/.test(name));assert.ok(names.length<=32);
  let owner;for(const name of names){const connection=readJson(path.join(report,name));if(connection.backendPid!==lock.pid)continue;
   const launch=readJson(path.join(report,name.replace('-connection.json','-launch.json')));assert.equal(connection.launchId,launch.launchId);owner=[launch.mainPid,connection.backendPid];}
  assert.ok(owner,'the exact owned launch and backend connection must match');
- const result={synthetic:true,kind:'live-physical',label,fixtureId:prepared.id,at:new Date().toISOString(),lock,physical:captureNativeQaLive(readJson(path.join(report,'database-layout.json')),owner),sidecar:sidecar()};
- if(label==='before-crash')assertDraft(result,prepared);
- await writeReport(label+'-capture.json',result);return result;
+ const result={synthetic:true,kind:'live-physical',label,fixtureId:prepared.id,at:new Date().toISOString(),lock,physical:captureNativeQaLive(readJson(path.join(report,'database-layout.json')),owner),draftSqlObserved:false,expectedDraft:{source:'operator-workflow-expectation-not-sql-evidence',state:label==='first-boot'?'empty':'saved',raw:label==='first-boot'?null:{deliveryName:prepared.expectedTitle}}};
+ assertLiveExpectation(result,prepared,label==='first-boot'?'empty':'saved');
+ if(record)await writeReport(label+'-capture.json',result);return result;
 }
 async function resume(label){
  assert.equal(process.platform,'linux');assert.ok(safeLabel(label));const prepared=fixture();assert.equal(lockSnapshot(),null,'normal quit is required before a continuation');const hashes=await packageHashes();
@@ -169,22 +199,22 @@ async function resume(label){
 }
 async function audit(label,{afterCrash=false}={}){
  if(!afterCrash&&lockSnapshot()!==null)return liveCapture(label);
- assert.ok(safeLabel(label));const prepared=fixture(),{rows,schemaSha256,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries}=readDatabase();const media=coldNativeQaMediaSnapshot(workspace,prepared.projectId);assert.ok(media.length<=32,'Media audit limit');
+ assert.ok(safeLabel(label));const prepared=fixture(),captured=readDatabase(),{rows,schemaSha256,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries}=captured;const media=coldNativeQaMediaSnapshot(workspace,prepared.projectId);assert.ok(media.length<=32,'Media audit limit');
  for(const item of media)assert.match(path.basename(item.name),/^[a-zA-Z0-9._-]+\.(mp4|png|wav)$/);
  const tables=Object.fromEntries(Object.entries(rows).map(([name,value])=>[name,{count:value.length,sha256:sha(JSON.stringify(value)),rowSha256:value.map(item=>sha(JSON.stringify(item)))}]));
  const result={synthetic:true,at:new Date().toISOString(),label,fixtureId:prepared.id,schemaSha256,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries,tables,logicalDatabaseSha256:sha(JSON.stringify(tables)),
   timelines:rows.timelines.map(item=>JSON.parse(item.data)),assets:rows.assets.map(item=>JSON.parse(item.data)),exports:rows.exports.map(item=>JSON.parse(item.data)),
-  timelineRequests:rows.timeline_requests.map(item=>({requestId:item.requestId,requestHash:item.requestHash,response:JSON.parse(item.response)})),sidecar:sidecar(),lock:lockSnapshot(),media};
+  timelineRequests:rows.timeline_requests.map(item=>({requestId:item.requestId,requestHash:item.requestHash,response:JSON.parse(item.response)})),drafts:coldDraftSnapshot(captured,prepared),draftPeers:coldDraftPeers(captured,prepared),lock:lockSnapshot(),media};
  assert.deepEqual(result.timelines,[prepared.expectedTimeline]);
- if(label==='prepared'||label==='first-boot'){assert.equal(result.sidecar,null);assert.equal(result.exports.length,0);if(label==='first-boot')assertBusinessUnchanged(result,readJson(path.join(report,'prepared-audit.json')),{allowPreferences:true});}
- if(label==='before-crash'){assertDraft(result,prepared);assertBusinessUnchanged(result,readJson(path.join(report,'prepared-audit.json')),{allowPreferences:true});assert.equal(result.lock?.pid,readJson(path.join(report,'first-connection.json')).backendPid);}
- if(label==='after-reopen'||label==='after-restore'){assertDraft(result,prepared);const before=readJson(path.join(report,'before-crash-audit.json'));assertBusinessUnchanged(result,before,{allowPreferences:true});assert.deepEqual(result.sidecar,before.sidecar,'Discovery and restoring the saved name must not alter retained sidecar bytes');}
- if(label==='after-normal-reopen') {const before=readJson(path.join(report,'after-export-audit.json'));assertBusinessUnchanged(result,before,{allowPreferences:true});assert.deepEqual(result.sidecar,before.sidecar);}
+ if(label==='prepared'||label==='first-boot'){assertEmptyDrafts(result);assert.equal(result.exports.length,0);if(label==='first-boot')assertBusinessUnchanged(result,readJson(path.join(report,'prepared-audit.json')),{allowPreferences:true});}
+ if(label==='before-crash'){assertDraft(result,prepared);assertBusinessUnchanged(result,readJson(path.join(report,'prepared-audit.json')),{allowPreferences:true,allowDraft:true});assert.equal(result.lock?.pid,readJson(path.join(report,'first-connection.json')).backendPid);}
+ if(label==='after-reopen'||label==='after-restore'){assertDraft(result,prepared);const before=readJson(path.join(report,'before-crash-audit.json'));assertBusinessUnchanged(result,before,{allowPreferences:true});assert.deepEqual(result.drafts,before.drafts,'Discovery and restoring the saved name must not alter retained draft SQL rows');}
+ if(label==='after-normal-reopen') {const before=readJson(path.join(report,'after-export-audit.json'));assertBusinessUnchanged(result,before,{allowPreferences:true});assert.deepEqual(result.drafts,before.drafts);}
  await writeReport(label+'-audit.json',result);return result;
 }
 async function launch(label){
  assert.equal(process.platform,'linux');assert.ok(['first','reopen','final'].includes(label));const prepared=fixture();let previous=null;assert.equal(await exists(path.join(report,label+'-launch.json')),false,'Launch evidence already exists');
- if(label==='first'){assert.equal(lockSnapshot(),null);assert.equal(sidecar(),null);assert.equal(await exists(path.join(userData,'mcp-connection.json')),false);}
+ if(label==='first'){assert.equal(lockSnapshot(),null);assertEmptyDrafts({drafts:coldDraftSnapshot(readDatabase(),prepared)});assert.equal(await exists(path.join(userData,'mcp-connection.json')),false);}
  else if(label==='reopen'){
   const exit=readJson(path.join(report,'first-exit.json')),inspection=readJson(path.join(report,'crash-inspection.json'));assert.deepEqual(exit.result,{code:null,signal:'SIGKILL'});assert.equal(exit.crashRequested,true);
   assert.equal(inspection.backendProcessAbsent,true);assert.equal(inspection.health.error,'ECONNREFUSED');assert.equal(inspection.lockUnchanged,true);assert.deepEqual(await namespaces(),inspection.namespaces);
@@ -203,7 +233,7 @@ async function launch(label){
    if(Date.now()>=deadline)throw Error('Native observation window ended before an operator quit');
    if(label==='first'&&!crashRequested&&await exists(path.join(runtime,'first-crash-request.json'))){
     const request=readJson(path.join(runtime,'first-crash-request.json'));assert.equal(request.fixtureId,prepared.id);assert.equal(request.launchId,initial.launchId);assert.equal(request.label,'first');
-    const before=readJson(path.join(report,'before-crash-capture.json'));assertDraft(before,prepared);assert.deepEqual(lockSnapshot(),before.lock);assert.deepEqual(sidecar(),before.sidecar);
+    const before=readJson(path.join(report,'before-crash-capture.json'));assertLiveExpectation(before,prepared);assert.deepEqual(lockSnapshot(),before.lock);assertPhysicalUnchanged(await liveCapture('before-crash',{record:false}),before);
     crashRequested=true;assert.equal(owned.child.kill('SIGKILL'),true,'The exact owned main process was not signalled');childSignals.push('SIGKILL');}
    if(!owned.closed)await pause(200);
   }
@@ -216,7 +246,7 @@ async function launch(label){
 }
 async function crash(label){
  assert.equal(label,'first','Only the initial exact owned native main may be crashed');const prepared=fixture();assert.equal(await exists(path.join(report,'first-exit.json')),false);
- const launchRecord=readJson(path.join(report,'first-launch.json')),before=readJson(path.join(report,'before-crash-capture.json'));assertDraft(before,prepared);assert.deepEqual(sidecar(),before.sidecar);assert.deepEqual(lockSnapshot(),before.lock);
+ const launchRecord=readJson(path.join(report,'first-launch.json')),before=readJson(path.join(report,'before-crash-capture.json'));assertLiveExpectation(before,prepared);assertPhysicalUnchanged(await liveCapture('before-crash',{record:false}),before);assert.deepEqual(lockSnapshot(),before.lock);
  await writeFile(path.join(runtime,'first-crash-request.json'),json({fixtureId:prepared.id,label,launchId:launchRecord.launchId}),{mode:0o600,flag:'wx'});
 }
 async function inspectCrash(){
@@ -227,7 +257,7 @@ async function inspectCrash(){
   if((stat===null&&probe.error==='ECONNREFUSED')||Date.now()>=deadline)break;await pause(250);}
  const result={synthetic:true,fixtureId:prepared.id,at:new Date().toISOString(),namespaces:nativeNamespaces,origin:connection.origin,port:connection.port,reportedBackendPid:connection.backendPid,
   stat,backendProcessAbsent:stat===null,health:probe,lock:lockSnapshot(),lockUnchanged:JSON.stringify(lockSnapshot())===JSON.stringify(before.lock),numericPidSignals:0};
- await writeReport('crash-inspection.json',result);assert.equal(result.backendProcessAbsent,true,'Backend remains; do not relaunch or remove its lock');assert.equal(probe.error,'ECONNREFUSED');assert.equal(result.lockUnchanged,true);const cold=await audit('before-crash',{afterCrash:true});assert.deepEqual(cold.lock,before.lock);assert.deepEqual(cold.sidecar,before.sidecar);
+ await writeReport('crash-inspection.json',result);assert.equal(result.backendProcessAbsent,true,'Backend remains; do not relaunch or remove its lock');assert.equal(probe.error,'ECONNREFUSED');assert.equal(result.lockUnchanged,true);const cold=await audit('before-crash',{afterCrash:true});assert.deepEqual(cold.lock,before.lock);assertLiveExpectation(before,prepared);assertDraft(cold,prepared);
  return result;
 }
 async function verifyExport(){
@@ -240,7 +270,8 @@ async function verifyExport(){
  assert.equal(exported.snapshot.deliveryName,prepared.expectedTitle);assert.deepEqual(exported.snapshot.timeline,prepared.expectedTimeline);assert.equal(result.schemaSha256,before.schemaSha256);
  const systemTables=expectedSystemTables(result,before,{content:true,preferences:true});
  for(const [name,table] of Object.entries(before.tables)){if(systemTables.has(name))continue;
-  if(['assets','exports','timeline_requests'].includes(name)){assert.equal(result.tables[name].count,table.count+1,`One export adds one ${name} row`);for(const digest of table.rowSha256)assert.ok(result.tables[name].rowSha256.includes(digest),`Original ${name} row changed`);}
+  if(name==='local_delivery_drafts'){assert.equal(result.tables[name].count,table.count);assert.deepEqual(result.draftPeers,before.draftPeers);}
+  else if(['assets','exports','timeline_requests'].includes(name)){assert.equal(result.tables[name].count,table.count+1,`One export adds one ${name} row`);for(const digest of table.rowSha256)assert.ok(result.tables[name].rowSha256.includes(digest),`Original ${name} row changed`);}
   else if(name!=='workspace_preferences')assert.deepEqual(result.tables[name],table,`Unexpected export change in ${name}`);
  }
  const requests=result.timelineRequests.filter(item=>!before.timelineRequests.some(prior=>prior.requestId===item.requestId));assert.equal(requests.length,1);const receipt=requests[0];
@@ -266,16 +297,16 @@ async function final(){
  const result=await audit('final'),after=readJson(path.join(report,'after-export-audit.json')),normal=readJson(path.join(report,'after-normal-reopen-audit.json'));
  const preparedAudit=readJson(path.join(report,'prepared-audit.json')),firstBoot=readJson(path.join(report,'first-boot-capture.json')),beforeCrash=readJson(path.join(report,'before-crash-audit.json'));
  const recovered=readJson(path.join(report,'after-reopen-audit.json')),restored=readJson(path.join(report,'after-restore-audit.json'));
- assert.equal(preparedAudit.sidecar,null);assert.equal(firstBoot.sidecar,null);assertPhysicalUnchanged(readJson(path.join(report,'before-crash-capture.json')),firstBoot);assertBusinessUnchanged(beforeCrash,preparedAudit,{allowPreferences:true});
- for(const observation of [beforeCrash,recovered,restored]){assertDraft(observation,prepared);assertBusinessUnchanged(observation,preparedAudit,{allowPreferences:true});}
- assert.deepEqual(recovered.sidecar,beforeCrash.sidecar);assert.deepEqual(restored.sidecar,beforeCrash.sidecar);
- assertBusinessUnchanged(result,after,{allowPreferences:true});assertBusinessUnchanged(normal,after,{allowPreferences:true});assert.deepEqual(result.sidecar,after.sidecar);assert.deepEqual(normal.sidecar,after.sidecar);
+ assertEmptyDrafts(preparedAudit);assertLiveExpectation(firstBoot,prepared,'empty');assertDraftEditingPhysical(readJson(path.join(report,'before-crash-capture.json')),firstBoot);assertBusinessUnchanged(beforeCrash,preparedAudit,{allowPreferences:true,allowDraft:true});
+ for(const observation of [beforeCrash,recovered,restored]){assertDraft(observation,prepared);assertBusinessUnchanged(observation,preparedAudit,{allowPreferences:true,allowDraft:true});}
+ assert.deepEqual(recovered.drafts,beforeCrash.drafts);assert.deepEqual(restored.drafts,beforeCrash.drafts);
+ assertBusinessUnchanged(result,after,{allowPreferences:true});assertBusinessUnchanged(normal,after,{allowPreferences:true});assert.deepEqual(result.drafts,after.drafts);assert.deepEqual(normal.drafts,after.drafts);
  const launches=[],connections=[],exits=[];for(const label of ['first','reopen','final']){launches.push(readJson(path.join(report,label+'-launch.json')));connections.push(readJson(path.join(report,label+'-connection.json')));exits.push(readJson(path.join(report,label+'-exit.json')));}
  const hashes=await packageHashes();for(const launch of launches)assert.deepEqual(launch.packageHashes,hashes);for(const exit of exits)assert.deepEqual(exit.endedPackageHashes,hashes);
  assert.deepEqual(exits[0].result,{code:null,signal:'SIGKILL'});assert.deepEqual(exits[0].childSignals,['SIGKILL']);for(const exit of exits.slice(1)){assert.deepEqual(exit.result,{code:0,signal:null});assert.equal(exit.backendLockReleased,true);}
  const summary={synthetic:true,kernel:true,scenario:'local-delivery',platform:'linux',productionBackend:true,fixtureId:prepared.id,packageHashes:hashes,
   draftOnlyCrashRecovery:true,startupAndDiscoveryDidNotExport:true,explicitNameRestoreDidNotExport:true,savedTimelineUnchanged:true,originalMediaUnchanged:true,
-  originalSidecarBytesUnchangedOnDiscovery:true,normalReopenPreservedAcceptedIntent:true,ports:connections.map(({label,origin,port,backendPid})=>({label,origin,port,backendPid})),
+  exactDraftSqlUnchangedOnDiscovery:true,draftEvidenceSource:'confirmed cold kernel SQL after backend exit; live expectedDraft is not observed SQL',normalReopenPreservedAcceptedIntent:true,ports:connections.map(({label,origin,port,backendPid})=>({label,origin,port,backendPid})),
   crash:exits[0],normalExits:exits.slice(1),crashInspection:readJson(path.join(report,'crash-inspection.json')),exportVerification:readJson(path.join(report,'export-verification.json')),screenshots,
   nativeLostAckBoundaryTested:false,lostAckCoverage:'Separate real-service Node process SIGKILL matrix; no claimed native GUI lost-ACK observation',
   uiEvidence:'Native screenshots reviewed by operator; no renderer injection',deliveryScope:'Report only; exclude private-runtime, discovery, credentials, database and media'};
@@ -283,6 +314,6 @@ async function final(){
 }
 
 const [action,label,...extra]=process.argv.slice(2);assert.equal(extra.length,0);
-if(action==='--help')console.log('prepare; launch first; audit first-boot (physical while live); audit before-crash (JSON/physical only); crash first; inspect-crash (cold SQL after confirmed backend exit); launch reopen; normal Quit before SQL audit; resume <unique-label> for later UI stages; close before verify/final. Last-project starts with resume boot, normal Quit, audit first-boot, then launch first. No GUI validation is implied by prepare.');else if(action==='resume')await resume(label);else if(action==='prepare')console.log(json(await prepare()));else if(action==='launch')await launch(label);else if(action==='audit')console.log(json(await audit(label)));
+if(action==='--help')console.log('Use a fresh fixture if UTC date/local daily-open bucket/timezone changes. prepare creates the normal daily-open version before its cold baseline; live expectedDraft is not SQL evidence. prepare; launch first; audit first-boot (physical while live); audit before-crash (physical + unverified operator expectation only; actual SQL after confirmed exit); crash first; inspect-crash (cold SQL after confirmed backend exit); launch reopen; normal Quit before SQL audit; resume <unique-label> for later UI stages; close before verify/final. Last-project starts with resume boot, normal Quit, audit first-boot, then launch first. No GUI validation is implied by prepare.');else if(action==='resume')await resume(label);else if(action==='prepare')console.log(json(await prepare()));else if(action==='launch')await launch(label);else if(action==='audit')console.log(json(await audit(label)));
 else if(action==='crash')await crash(label);else if(action==='inspect-crash')console.log(json(await inspectCrash()));else if(action==='verify-export')console.log(json(await verifyExport()));
 else if(action==='final')console.log(json(await final()));else throw Error('Expected prepare/launch first|reopen|final/audit label/crash first/inspect-crash/verify-export/final');

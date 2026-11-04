@@ -1,4 +1,4 @@
-import {projectApiPath} from '../packages/contracts/src/project-file.ts';
+import {projectApiPath,projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {RpcEnvelope} from './helpers/strict-timeline-audio-types.ts';
 import type {OrdinaryDeliveryEnvelope} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {LocalShotTextSupported} from '../apps/web/src/local-shot-text-state.ts';
@@ -15,12 +15,13 @@ import http from 'node:http';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
-import {mkdtemp,realpath,readFile,stat,rm} from 'node:fs/promises';
+import {mkdtemp,realpath,stat,rm} from 'node:fs/promises';
 import {startServer} from '../apps/server/src/index.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import {createServerProject} from './helpers/project-database.ts';
+import {readProjectState} from './helpers/project-state.ts';
 import {schemas,isTimelineMutationResponse} from '@mioon/contracts';
 import {createLocalDeliverySchemas} from '@mioon/contracts/local-delivery';
 import type { BinaryLike } from 'crypto';
@@ -64,8 +65,9 @@ async function fixture(t: test.TestContext){
     draft:value.draft?{draftId:value.draft.draftId,revision:value.draftRevision,raw:value.draft.raw}:null,
     input:{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',...(value.draft?.raw.deliveryName?{deliveryName:value.draft.raw.deliveryName}:{})}});
   // The running server holds the project, so rows are read on its own connection.
-  const rows=()=>inspect(project.id,db=>({exports:db.prepare('SELECT id,data FROM exports ORDER BY rowid').all(),receipts:db.prepare('SELECT requestId,response FROM timeline_requests ORDER BY rowid').all()}));
-  return {root,project,timeline,get,call,name,prepare,rows,get url(){return server.url;},file:path.join(created.store.localDir,'local-delivery-v1.json'),
+  const rows=()=>inspect(project.id,db=>{const state=readProjectState(db);return {exports:db.prepare('SELECT id,data FROM exports ORDER BY rowid').all(),receipts:db.prepare('SELECT requestId,response FROM timeline_requests ORDER BY rowid').all(),tables:Object.fromEntries(Object.entries(state.tables).filter(([name])=>name!=='local_delivery_drafts').map(([name,rows])=>[name,name==='local_draft_states'?rows.filter(row=>row.kind!=='delivery'):rows]))};});
+  const draftState=()=>inspect(project.id,db=>JSON.stringify({states:db.prepare('SELECT * FROM local_draft_states WHERE kind=?').all('delivery'),slots:db.prepare('SELECT * FROM local_delivery_drafts ORDER BY ordinal').all()}));
+  return {root,project,timeline,get,call,name,prepare,rows,draftState,get url(){return server.url;},file:path.join(created.store.localDir,'local-delivery-v1.json'),
     async restart(){await server.close();await start();},
     async dropNextExecution(){
       const observed=Promise.withResolvers<WireResponse<WireExecution>>();
@@ -81,12 +83,17 @@ async function fixture(t: test.TestContext){
 }
 
 test('actual authenticated HTTP persists only title and exact export input; GET is noncreating',{timeout:30000},async t=>{
-  const f=await fixture(t),before=f.rows(),initial=await f.get();assert.equal(initial.draft,null);assert.equal(initial.intent,null);
+  const f=await fixture(t);
+  // Establish the host's daily-open capture before testing the drafts domain.
+  const opened=await request<Record<string,unknown>>(f.url,projectRpcPath(f.project.id),{method:'POST',input:{operation:'project.inspect',input:{projectId:f.project.id}}});
+  assert.equal(opened.status,200);assert.equal(opened.body.ok,true);
+  const before=f.rows();assert.equal(before.tables.project_versions.filter(row=>row.trigger==='daily-open').length,1);assert.equal(before.tables.project_version_capture_marks.filter(row=>row.kind==='daily-open').length,1);
+  const initial=await f.get();assert.equal(initial.draft,null);assert.equal(initial.intent,null);
   await assert.rejects(stat(f.file),{code:'ENOENT'});
   const raw='恢复名称\nraw invalid for export';const saved=await f.call(route(f.project.id)+'/draft',{method:'PUT',input:f.name(initial,raw)});
   assert.equal(saved.draft!.raw.deliveryName,raw);assert.deepEqual(f.rows(),before);
-  const bytes=await readFile(f.file),info=await stat(f.file);assert.equal(info.mode&0o777,0o600);await f.get();assert.deepEqual(await readFile(f.file),bytes);
-  const bad=f.prepare(saved);const refused=await request(f.url,route(f.project.id)+'/prepare',{method:'POST',input:bad});assert.equal(refused.status,400);assert.deepEqual(f.rows(),before);assert.deepEqual(await readFile(f.file),bytes);
+  const bytes=f.draftState();await assert.rejects(stat(f.file),{code:'ENOENT'});await f.get();assert.deepEqual(f.draftState(),bytes);
+  const bad=f.prepare(saved);const refused=await request(f.url,route(f.project.id)+'/prepare',{method:'POST',input:bad});assert.equal(refused.status,400);assert.deepEqual(f.rows(),before);assert.deepEqual(f.draftState(),bytes);
   for(const options of [{authenticated:false},{headers:{origin:'https://foreign.example'}}]){const denied=await request(f.url,`${route(f.project.id)}?projectId=${f.project.id}`,options);assert.ok([401,403].includes(denied.status));assert.equal(JSON.stringify(denied.body).includes(raw),false);}
   for(const suffix of [`${route(f.project.id)}?projectId=${f.project.id}&extra=1`,`${route(f.project.id)}?projectId=${f.project.id}&projectId=${f.project.id}`])assert.equal((await request(f.url,suffix)).status,400);
 });

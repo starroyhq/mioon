@@ -6,6 +6,8 @@ import {R1_HISTORY_V3_MANIFEST} from './history-v3-manifest.ts';
 import {R1_HISTORY_V4_MANIFEST} from './history-v4-manifest.ts';
 import {R2_HISTORY_V5_MANIFEST} from './history-v5-manifest.ts';
 import {VERSION_SCHEMA} from './domains/versions.ts';
+import {DRAFT_SCHEMA} from './domains/drafts.ts';
+import {V5_HISTORY_V8_MANIFEST} from './history-v8-manifest.ts';
 import {TASK_SCHEMA} from './domains/tasks.ts';
 import {S2_HISTORY_V7_MANIFEST} from './history-v7-manifest.ts';
 import {V1_HISTORY_V6_MANIFEST} from './history-v6-manifest.ts';
@@ -102,13 +104,20 @@ function addPrevisImageReviewOrigin(db:DatabaseSync):void{
  db.exec('DROP TABLE temp.s2_retained_image_reviews');
  if(db.prepare('PRAGMA main.foreign_key_check').all().length)throw projectFileError('PROJECT_INVALID',{database:'history',reason:'foreign-key'});
 }
+/** UI recovery starts empty. Retained execution records and the V5 content
+ * stamp are untouched; only the caller writes the final schema version. */
+function addDrafts(db:DatabaseSync):void{
+ if(!db.isTransaction)throw new TypeError('A draft history upgrade requires the opening transaction');
+ for(const sql of DRAFT_SCHEMA)db.exec(sql.replace(CREATE_PREFIX,'CREATE $1 main.'));
+}
 export const HISTORY_UPGRADES: readonly HistoryUpgrade[] = Object.freeze([
-  Object.freeze({from: S0_HISTORY_V2_MANIFEST, toVersion: 8, clearLegacyProcessRevisions:true, apply: (db:DatabaseSync)=>{resetDevelopmentMio(db);addProjectVersions(db);addPrevisImageReviewOrigin(db);addContentStamp(db,false);}}),
-  Object.freeze({from: R1_HISTORY_V3_MANIFEST, toVersion: 8, apply: (db:DatabaseSync)=>{addMioRuleWrites(db,false);addMioStorageCounters(db);addProjectVersions(db);addPrevisImageReviewOrigin(db);addContentStamp(db,false);}}),
-  Object.freeze({from: R1_HISTORY_V4_MANIFEST, toVersion: 8, apply: (db:DatabaseSync)=>{addMioRuleWrites(db);addProjectVersions(db);addPrevisImageReviewOrigin(db);addContentStamp(db,false);}}),
-  Object.freeze({from: R2_HISTORY_V5_MANIFEST, toVersion: 8, apply: (db:DatabaseSync)=>{addProjectVersions(db);addPrevisImageReviewOrigin(db);addContentStamp(db,false);}}),
-  Object.freeze({from: V1_HISTORY_V6_MANIFEST, toVersion: 8, apply: (db:DatabaseSync)=>{addPrevisImageReviewOrigin(db);addContentStamp(db,true);}}),
-  Object.freeze({from: S2_HISTORY_V7_MANIFEST, toVersion: 8, apply: (db:DatabaseSync)=>addContentStamp(db,true)}),
+  Object.freeze({from: S0_HISTORY_V2_MANIFEST, toVersion: 9, clearLegacyProcessRevisions:true, apply: (db:DatabaseSync)=>{resetDevelopmentMio(db);addProjectVersions(db);addPrevisImageReviewOrigin(db);addContentStamp(db,false);addDrafts(db);}}),
+  Object.freeze({from: R1_HISTORY_V3_MANIFEST, toVersion: 9, apply: (db:DatabaseSync)=>{addMioRuleWrites(db,false);addMioStorageCounters(db);addProjectVersions(db);addPrevisImageReviewOrigin(db);addContentStamp(db,false);addDrafts(db);}}),
+  Object.freeze({from: R1_HISTORY_V4_MANIFEST, toVersion: 9, apply: (db:DatabaseSync)=>{addMioRuleWrites(db);addProjectVersions(db);addPrevisImageReviewOrigin(db);addContentStamp(db,false);addDrafts(db);}}),
+  Object.freeze({from: R2_HISTORY_V5_MANIFEST, toVersion: 9, apply: (db:DatabaseSync)=>{addProjectVersions(db);addPrevisImageReviewOrigin(db);addContentStamp(db,false);addDrafts(db);}}),
+  Object.freeze({from: V1_HISTORY_V6_MANIFEST, toVersion: 9, apply: (db:DatabaseSync)=>{addPrevisImageReviewOrigin(db);addContentStamp(db,true);addDrafts(db);}}),
+  Object.freeze({from: S2_HISTORY_V7_MANIFEST, toVersion: 9, apply: (db:DatabaseSync)=>{addContentStamp(db,true);addDrafts(db);}}),
+  Object.freeze({from: V5_HISTORY_V8_MANIFEST, toVersion: 9, apply: addDrafts}),
 ]);
 
 /** Clears only the four local-process target kinds from an older project.

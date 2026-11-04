@@ -36,8 +36,6 @@
   ],
   "exclude": [
     "./helpers/timeline-mix-loudness-ui-fixture.ts",
-    "./typecheck/**",
-    "./fixtures/local-drafts-v1-contracts.ts",
-    "./fixtures/local-drafts-v1-reader.ts"
+    "./typecheck/**"
   ]
 }

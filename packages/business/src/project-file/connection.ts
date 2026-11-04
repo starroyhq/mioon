@@ -5,7 +5,8 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import {pathToFileURL} from 'node:url';
-import {ensurePrivateDirectory} from '@mioon/contracts/private-storage';
+import {ensurePrivateDirectory, validatePrivateDirectory, validateManagedFile, privateStorageIdentity} from '@mioon/contracts/private-storage';
+import type {Stats} from 'node:fs';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {isProjectId, PROJECT_CACHE_FILE, PROJECT_DATABASE_NAMES, PROJECT_FILE_EXISTS, PROJECT_HISTORY_FILE} from '../../../contracts/src/project-file.ts';
 import type {ContentStamp, ProjectHistoryAdmission, ProjectHistoryState, ProjectInvalidReason, ProjectStore as ProjectStoreContract} from '../../../contracts/src/project-file.ts';
@@ -101,6 +102,8 @@ export interface ProjectConnection extends Omit<ProjectStoreContract<DatabaseSyn
    * moved since the open (see movedAlone). The store calls it before every
    * write it starts. */
   throwIfMoved(): void;
+  /** Metadata only, tied to this held connection; never opens another DB fd. */
+  historyIdentity(): {readonly directory: Stats; readonly db: Stats};
 }
 
 export interface CreateProjectFileOptions {
@@ -467,6 +470,7 @@ interface AttachedDatabases {
   readonly historyState: ProjectHistoryState;
   readonly historyAdmission: ProjectHistoryAdmission;
   readonly held: readonly HeldFile[];
+  readonly historyIdentity: {readonly directory: string; readonly db: string; readonly birthtimeMs: number};
 }
 
 /** Steps 2 and 3: the local records as main (locked, checked or found empty),
@@ -498,6 +502,10 @@ function attachDatabases(projectFile: string, projectKey: string, identity: Proj
     checkStructure(db, PROJECT, 'project', projectId);
     const current = readProjectIdentity(db, PROJECT);
     if (current.projectId !== projectId) throw invalid('project', 'project-mismatch', projectId);
+    // Token-bearing histories must pass admission before an upgrade (or cache
+    // rebuild) can publish any change. Older profiles acquire a nullable token
+    // inside their reviewed transition and are checked in that transaction.
+    if (!fresh && (!upgrade || upgrade.from.version >= 8)) classifyHistoryStamp(db, false);
     database = 'cache';
     attachCache(db, cacheFile);
     for (const [schema, kind] of [[HISTORY, 'history'], [PROJECT, 'project'], [CACHE, 'cache']] as const) {
@@ -513,6 +521,7 @@ function attachDatabases(projectFile: string, projectKey: string, identity: Proj
       const transition = upgrade;
       inTransaction(db, () => {
         transition.apply(db);
+        classifyHistoryStamp(db, false);
         db.exec(`UPDATE ${HISTORY}.schema_version SET version=${transition.toVersion}`);
         checkStructure(db, HISTORY, 'history', projectId);
         checkStructure(db, PROJECT, 'project', projectId);
@@ -547,7 +556,11 @@ function attachDatabases(projectFile: string, projectKey: string, identity: Proj
     Object.defineProperty(db, 'open', {value: (): never => {
       throw new TypeError('Reopen project databases through openProjectConnection or openProjectStore, not db.open().');
     }});
-    return {db, held, historyState:historyAdmission.state, historyAdmission};
+    const directory = validatePrivateDirectory(path.dirname(historyFile));
+    const history = validateManagedFile(historyFile, {root: path.dirname(historyFile)});
+    if (!directory || !history) throw invalid('history', 'unusable', projectId);
+    if (history.ino && `${history.dev}:${history.ino}` !== held[1]![0]) throw invalid('history', 'unusable', projectId);
+    return {db, held, historyIdentity: {directory: privateStorageIdentity(directory), db: privateStorageIdentity(history), birthtimeMs: history.birthtimeMs}, historyState: historyAdmission.state, historyAdmission};
   } catch (error) {
     try { opened?.close(); } catch {}
     throw openFailure(error, database, projectId);
@@ -615,8 +628,9 @@ function openConnection({projectFile: requested, locate, checkCopy}: OpenProject
   const localDir = path.resolve(location.localDir), cacheDir = path.resolve(location.cacheDir), tempDir = path.resolve(location.tempDir);
   if (!staged && lstatSync(path.join(localDir,'history-switch-active.json'),{throwIfNoEntry:false})) throw new AppError('PROJECT_HISTORY_SWITCH_PENDING','本机记录切换尚未完成。',409,{projectId:identity.projectId});
   for (const directory of [localDir, cacheDir, tempDir]) ensurePrivateDirectory(directory, {create: true});
-  const historyFile = staged?.historyFile ?? path.join(localDir,PROJECT_HISTORY_FILE);
-  const {db, held: files, historyState, historyAdmission} = attachDatabases(projectFile, projectKey, identity, historyFile, path.join(cacheDir, PROJECT_CACHE_FILE),staged);
+  const historyFile = staged?.historyFile ?? path.join(localDir, PROJECT_HISTORY_FILE);
+  const {db, held: files, historyState, historyAdmission, historyIdentity} = attachDatabases(projectFile, projectKey, identity, historyFile, path.join(cacheDir, PROJECT_CACHE_FILE), staged);
+  const {directory: directoryIdentity, db: historyFileIdentity, birthtimeMs: historyBirthtime} = historyIdentity;
   registerProjectFiles(db, files);
   removeUnusedSuperJournals(localDir);
   let closed = false;
@@ -624,6 +638,17 @@ function openConnection({projectFile: requested, locate, checkCopy}: OpenProject
     db, projectId: identity.projectId, projectFile, projectDir: path.dirname(projectFile), localDir, cacheDir, tempDir, historyState, historyAdmission,
     throwIfMoved(): void {
       if (movedAlone(projectFile, projectKey)) throw projectFileMovedError(identity.projectId);
+    },
+    historyIdentity() {
+      if (closed || !db.isOpen) throw new TypeError('The project connection is closed');
+      if (movedAlone(projectFile, projectKey)) throw projectFileMovedError(identity.projectId);
+      const directory = validatePrivateDirectory(localDir);
+      const history = validateManagedFile(historyFile, {root: localDir});
+      if (!directory || !history || privateStorageIdentity(directory) !== directoryIdentity
+        || privateStorageIdentity(history) !== historyFileIdentity || history.birthtimeMs !== historyBirthtime) {
+        throw Object.assign(new Error('The held history identity changed'), {code: 'PROJECT_HISTORY_IDENTITY_CHANGED'});
+      }
+      return {directory, db: history};
     },
     close(): void {
       if (closed) return;

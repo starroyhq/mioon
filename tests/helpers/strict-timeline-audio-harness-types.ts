@@ -1,17 +1,3 @@
-import type {createLocalDrafts} from '../../packages/business/src/local-drafts.ts';
-
-export interface LegacySchema {
-  parse(value: unknown): unknown;
-  safeParse(value: unknown): {success: true; data: unknown} | {success: false; error: unknown};
-}
-export interface LegacyDraftContracts {
-  clipDraftRawSchema: LegacySchema;
-  clipDraftDiskSchema: LegacySchema;
-}
-// The frozen v1 reader has the same public methods and storage/guard options.
-// Keep its implementation outside the current Zod compiler graph.
-export interface LegacyDraftReader {createLocalDrafts: typeof createLocalDrafts}
-
 export type ElementTree = ElementNode | string | number | boolean | null | undefined | ElementTree[];
 export interface ElementNode {
   type: unknown;
