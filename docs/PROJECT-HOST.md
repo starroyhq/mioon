@@ -76,7 +76,7 @@ manager 独占先排除窗口和待写工作，再关闭源；随后由关闭源
 | 帧排队 / 活跃 / 任务 / 请求 | `2N / 1N / 256N / 4096N` | `8 / 1 / 2048 / 32768` |
 | LUT 数量 / 字节 | `128N / 64 MiB × N` | `512 / 128 MiB` |
 
-应用级总量调度和限额归 S3，P4 没有新增跨项目全局调度器。
+S3-A只增加应用任务索引的4096/512条上限，不增加全应用运行槽或公平调度；跨项目总量调度、历史/LUT/Mio存量硬限留0.1.x或另卡。各项目原有上限照旧。
 
 ### S6-A：项目目录与受信控制
 
@@ -128,7 +128,7 @@ Node 只读客户端为 @mioon/client/project-entry 的 createProjectEntriesClie
 | `store`（`openStore(root)`） | 一个 `.mioon` 一个连接，独占锁从打开到关闭 | S0 |
 | `providers`（`createProviderRegistry({db, root, env})`） | Mock 供应商把任务账本建在 store 的连接上；真实供应商用 `root` 读参考图、存下载 | S0（Mock 的两张表收进本机记录），S1、S2（`root`） |
 | `services`（`createServices`）和 `services.drain()` | 绑定 store | S0 |
-| `worker`（`startWorker`） | 只扫已打开项目的 `jobs`（计划第 9 节） | S0；调度和任务索引归 S3 |
+| `worker`（`startWorker`） | 只处理该宿主统一投影已纳管的 job/export ID | S3-A 提交后通知和有界恢复 |
 | `editTasks`、`reconcileStartup()`、`editTasksHttp`（`/api/tasks…`） | 编辑任务记在本机记录；打开时对账 | S0 |
 | `taskToolsV2`、`taskRuntimeV2`，`taskHttpV2` 的项目路由和 `editing` | Mio 的对话和步骤记在本机记录 | S0 接线，R1 改运行时 |
 | `versionComparisonMedia` | 读这个项目的素材 | K2 改路径，S0 |
@@ -292,12 +292,12 @@ export type ProjectHostEvent =
 - **`create(input)`**：建文件夹（不指定 `projectFile` 时）和 `.mioon`，登记，`lastOpenedAt` 为 `null`，不打开。名字规则见 3.1。指定的 `.mioon` 已存在报 `PROJECT_FILE_EXISTS`（409，`details` 是内核的写法再加 `projectFile`）；所在文件夹不存在报 `PROJECT_LOCATION_INVALID`（400）；不是绝对路径、扩展名不是 `.mioon`、文件名以 `.` 开头报 `VALIDATION_ERROR`。中途失败时删掉这次建出的东西。`createProjectFiles` 是同一件事的函数形式，测试辅助函数 `createServerProject` 直接用它（2.7）。
 - **`openPath(projectFile, kind)`**：按路径打开（桌面的打开对话框、双击 `.mioon`、CLI 的 `project open --path`）。同一个文件（按文件身份认）已经开着就直接给租约；否则内核打开。没登记的新登记，名字取文件名去掉 `.mioon`；已登记的把登记改到这个路径。项目正在打开、关闭或独占时，在内核的 `checkCopy` 里中止，等它结束再试。内核的错误原样抛出，由应用级的 `project.open` 填进 `projectOpenFailureSchema`。
 - **`acquire(projectId, kind)`**：按项目 ID 取得宿主的租约。已登记但没打开的，按登记自动打开。没登记报 `PROJECT_NOT_FOUND`；打不开报 `PROJECT_UNAVAILABLE`，见 2.5。登记的路径上没有文件（`PROJECT_MISSING`），或打开途中被移动（S0a：`PROJECT_INVALID`，起因是 1032）时，先按文件身份找一次，找到就改登记再开。登记的路径上是另一个项目 ID 的文件时，在 `checkCopy` 里拒绝（`PROJECT_UNAVAILABLE`、`reason: 'PROJECT_MISSING'`），不会给那个 ID 建本机记录。
-- **三种租约**（`PROJECT_LEASE_KINDS`）：`window`，编辑窗口显示这个项目，窗口关掉时释放；`task`，S3 在项目有未完成的后台任务时持有；`request`，一个在途的 HTTP 请求，SSE 和文件流也算，响应结束时释放。`release()` 幂等。
+- **三种租约**（`PROJECT_LEASE_KINDS`）：`window`，编辑窗口显示这个项目，窗口关掉时释放；`task`，S3 在项目有可继续推进的后台任务时持有（仅等用户/源的条目可释放）；`request`，一个在途的 HTTP 请求，SSE 和文件流也算，响应结束时释放。`release()` 幂等。
 - **什么时候自动关闭**：见 3.3。
 - **`close(projectId)`**：立即关闭，撤销所有租约，在途请求先给 3 秒。各步出错照样走完，最后抛第一个错误。
 - **`closeAll()`**：应用退出时用。并行关闭全部宿主，等独占操作结束；之后 `acquire`、`openPath`、`create`、`withExclusive` 都报 `PROJECT_HOST_STOPPED`（503）。
 - **关闭时按文件身份更新登记**：打开时 `lstat` 记下文件身份，写进登记；关闭时再 `lstat` 打开时的路径，文件不在或身份不同，就调登记表的 `findMoved` 找新位置，找到就改登记。名字和摘要也在这一步更新。
-- **`restore()`**：启动时用。和 `list()` 一样先做恢复，等后台的查找结束，再按后台任务索引逐个 `acquire(id, 'task')`，返回的租约交给 S3，任务结束时释放。除了有未完成任务的项目，启动时不打开任何项目。
+- **`restore()`**：启动时用。和 `list()` 一样先做恢复，等后台的查找结束，再按后台任务索引逐个 `acquire(id, 'task')`，返回的交接租约交给 S3，S3 已在 ready 中另持自身租约，立即释放交接租约；自身租约随可执行工作及真实在途结束而释放。除了有未完成任务的项目，启动时不打开任何项目。
 - **`withExclusive(projectId, run)`**：应用级操作（删除、复制、改名、关闭、另存为）取得独占，见 4.2。
 - **`checkMoved(projectId)`**：单独改名或移动 `.mioon` 的检查。定为由内核检查（第 7 节第 6 条）；内核的检查合入以前，宿主把它登记成事务守卫顶上，见 4.6。
 - **`inspectProject`**：受信任的测试接口，见 2.7。
@@ -390,11 +390,18 @@ export interface AppLibraryPort {
   close(): void;
 }
 // S3：后台任务
-export interface BackgroundTaskIndexPort {list(): readonly BackgroundTaskIndexEntry[]; replace(projectId: string, entries: readonly BackgroundTaskIndexEntry[]): void}
+export interface BackgroundTaskIndexPort {
+  list(): readonly BackgroundTaskIndexEntry[];
+  replace(projectId: string, entries: readonly BackgroundTaskIndexEntry[]): void;
+  listProject?(projectId: string): readonly BackgroundTaskIndexEntry[];
+  upsert?(entry: BackgroundTaskIndexEntry): void;
+  markProject?(projectId: string, phase: BackgroundTaskPhase, reason: string | null): void;
+  archive?(projectId: string, sourceHistory?: string): void;
+}
 export interface ProjectInboxPort {add(item: ProjectInboxItem): void; list(projectId: string): readonly ProjectInboxItem[]; remove(projectId: string, itemId: string): void}
 // V1、V2、S3：生命周期钩子
 export interface ProjectLifecycleHooks {
-  afterOpen?(host: ProjectHostContext): void | Promise<void>;   // 运行时组装好、第一个租约之前；抛错则打开失败
+  afterOpen?(host: ProjectHostContext, readiness?: ProjectHostReadiness): void | Promise<void>; // S3只在opening使用固定retainTask接缝；抛错则打开失败
   beforeClose?(host: ProjectHostContext): void | Promise<void>; // 请求和运行时排空以后、store 关闭以前；出错记下，关闭照常
 }
 // R1：Mio
@@ -430,14 +437,14 @@ export function createMemoryAgentPolicyStore(initial?: AgentTaskPolicy | null): 
 | `ProjectFileIdentityPort` | B1 | 新建、打开、关闭时，`openPath` 认已开着的同一个文件，`checkMoved` | `statProjectFileIdentity`：`lstat(…, {bigint: true})` 的 dev、ino，不是普通文件时返回 `null`。只 stat，不打开文件；Windows 上的完整文件 ID 由 B1 验证 |
 | `AgentPolicyStorePort` | B1；Mio 怎样读由调用方传入，和己商定 | 不直接调；经 `MioAppServices` 交给 Mio | `createMemoryAgentPolicyStore` |
 | `AppLibraryPort` | B1 | 切换时由 `startServer` 打开，交给管理器和 Mio；`databaseFile` 给各个范围文件 | 无；S0 切换要等 B1 合入 |
-| `BackgroundTaskIndexPort` | S3 | `restore()` 读；每次关闭用 `unfinishedTasks()` 的结果替换这个项目的条目 | `createMemoryBackgroundTaskIndex`；启动时没有要恢复的项目 |
-| `ProjectInboxPort` | S3 | 宿主不直接调；S3 的 `afterOpen` 钩子把结果写进项目再删掉，应用级的 S3 代码 `add` | `createMemoryProjectInbox` |
-| `ProjectLifecycleHooks` | V1、V2，也给 S3 | `afterOpen`：组装好以后，顺序调用；`beforeClose`：倒序，排空以后。V2 已注册第一个 hook，打开先备份、关闭最后备份；V1 每日版本和 S3 收件箱按后续卡接入 | V2 已用真实 hooks；其他卡未接入前不注册 |
+| `BackgroundTaskIndexPort` | S3 | S3-A在任务COMMIT后同步更新；`restore()`交接租约/failures，关闭替换当前集合并保留archived | `createMemoryBackgroundTaskIndex`；启动时没有要恢复的项目 |
+| `ProjectInboxPort` | S3 | 占位端口保留；S3-B/C离线接收/回填已定0.1.x，S3-A不扩展或应用结果 | `createMemoryProjectInbox` |
+| `ProjectLifecycleHooks` | V1、V2，也给 S3 | `afterOpen`：组装好以后，顺序调用；`beforeClose`：倒序，排空以后。打开按V2备份→S3取租约/激活→每日版本；关闭仍倒序，V2最后备份 | V2 已用真实 hooks；其他卡未接入前不注册 |
 | `MioRuntimeFactory`、`MioRuntimePort` | R1 | 工厂里每个宿主建一份；`handle`、`isBusy`、`interrupt`、`drain`、`dispose` 并进宿主的同名方法 | 现在的 `createAgentTaskRuntime` 加 `createAgentTaskHttp`。设置和发送授权也是应用级的，由工厂的闭包带进去 |
 | `ProjectDraftsFactory`、`ProjectDraftsPort` | S8 | 完成业务装配后绑定依赖，宿主用真实 context 建一份；`isBusy` 并入宿主及版本恢复门禁，`drain` 等完整终态回调与 finally | 三类服务只写同一连接的 history 草稿表；scope 按该连接持有的 history 文件身份算；持久 pending 本身不算忙 |
 | `KernelMaintenancePort` | S0a（#106，已合入） | `list()`、`restore()`，见第 5 节 | 不用替身：默认就是内核的 `recoverProjectFile`，测试可以换成别的 |
 
-V2 的 hook 捕获自身已经结束的备份失败，落安全状态后正常返回，不能让 `afterOpen` 因备份失败而失败。factory 此时可能已有后台写入，备份采用 SQLite 完成时一致副本，从副本读身份/序号，不增加激活闸门。关闭开始时 context.signal 已中止，V2 不用它取消原生备份；完整等待结束后才让管理器关库。状态与列表等应用操作详见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)，均不以 acquire 原项目来读备份。
+V2 的 hook 捕获自身已经结束的备份失败，落安全状态后正常返回，不能让 `afterOpen` 因备份失败而失败。S3-A让宿主后台恢复/worker在打开备份之后取得自身租约再激活；备份仍采用SQLite完成时一致副本，从副本读身份/序号，不把备份错误变成业务成功。关闭开始时 context.signal 已中止，V2 不用它取消原生备份；完整等待结束后才让管理器关库。状态与列表等应用操作详见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)，均不以 acquire 原项目来读备份。
 
 ### 2.5 路由
 
@@ -566,7 +573,7 @@ export function claimProjectFolder(parentDir: string, folderName: string): Claim
 - 内核要求三个本机目录是私有目录、路径里没有符号链接，系统临时目录在 macOS 上经过 `/var`，会被拒绝。
 - 桌面版不沿用 `<userData>/workspace/`：本机记录的文件夹以后不能搬，换名字只有切换这一次机会；旧的 `workspace/` 里还留着开发数据，分开以后不会被误读或误删。切换时改 `config.ts` 的 `dataPaths`。Electron 的 `app.getPath` 没有 `cache` 这一项，所以缓存目录按平台算。
 - 覆盖 userData 的是测试和冒烟运行，不该碰真实的影片和缓存目录。
-- 每个项目一个暂存子目录：图片、抽帧、拆解的暂存带着崩溃恢复用的回执（`image-storage.ts`），要跨重启保留，也不能被别的项目的清理扫掉；和缓存的 `projects/<ID>/` 对称；`tmp/` 下还能放应用级的暂存，例如 S3 收件箱的媒体。
+- 每个项目一个暂存子目录：图片、抽帧、拆解的暂存带着崩溃恢复用的回执（`image-storage.ts`），要跨重启保留，也不能被别的项目的清理扫掉；和缓存的 `projects/<ID>/` 对称；`tmp/` 下还能放应用级的暂存，例如留给0.1.x的S3收件箱媒体，S3-A不启用。
 
 ### 3.3 自动打开的项目什么时候关
 
@@ -583,7 +590,7 @@ export function claimProjectFolder(parentDir: string, folderName: string): Claim
 |---|---|
 | CLI 连发请求，间隔都不到 60 秒 | 一直开着；最后一个请求结束 60 秒后关闭 |
 | 关窗口，没有别的租约，运行时不忙 | 立即关闭 |
-| 关窗口，还有生成任务没结束（S3 持有 `task` 租约） | 开着；任务结束、释放租约后立即关闭 |
+| 关窗口，还有可推进的生成任务（S3 持有 `task` 租约） | 开着；任务结束、释放租约后立即关闭 |
 | 关窗口时 Mio 正在跑一轮 | 开着，每秒复查；这一轮结束后关闭 |
 
 测试用手动时钟逐条验证（`tests/project-host-manager.test.ts`）。
@@ -639,9 +646,11 @@ export function claimProjectFolder(parentDir: string, folderName: string): Claim
 
 ### 4.4 关闭窗口后还有未完成的任务（S3）
 
-S3 在项目有未完成任务时持有 `task` 租约，宿主就不关。任务结束、释放租约时，因为窗口释放已经取消了宽限，宿主马上关闭。关闭时 `unfinishedTasks()` 的结果写进任务索引。重启后 `restore()` 按索引重新打开这些项目，并拿 `task` 租约交给 S3，继续轮询和对账。
+S3-A在V2打开备份后、每日版本之前，通过固定ready接缝补登并取得自己的一条`task`租约，再激活后台恢复和worker；不在afterOpen里await同项目acquire。任务COMMIT后同步按ID更新索引和统一状态投影，真实回调/finally未结束前不释放。终态或只剩等用户/源等blocked原因时释放，blocked仍算未结束工作。原生音频等其他task租约不受影响。
 
-应用级的“关闭”操作（S6 的菜单）经 `withExclusive`，会撤销 `task` 租约：未完成的任务留在本机记录和索引里，下次打开或重启时继续。要不要在这时提示或拒绝，由 S3、S6 定。
+重启`restore()`的租约和failures交S3；缺失、只读、被锁的项目保留blocked原因，不反复重开。P4每秒扫七表的timer已撤，改用状态通知及对已纳管ID的有界到期检查。关闭时仍取未结束快照，保留archived代际；项目提交与索引之间强退可能漏登，下次打开补登。详情及0.1.x收件箱边界见[后台任务](BACKGROUND-TASKS.md)。
+
+`withExclusive`遇仍在用的task租约返回`PROJECT_HOST_BUSY`，不会替用户撤销。S6不接会撤销后台工作的显式关闭项目；普通窗口释放与应用退出分别沿既有流程。U2删除本机记录现在也检查未结束索引/在线工作，blocked/unknown不放行。
 
 ### 4.5 应用退出
 

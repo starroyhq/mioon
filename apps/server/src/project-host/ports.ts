@@ -5,7 +5,7 @@
 import type {AgentTaskPolicy} from '../../../../packages/contracts/src/agent-tasks-v2.ts';
 import type {BackgroundTaskIndexEntry, ProjectFileIdentity, ProjectInboxItem, RecentProject} from '../../../../packages/contracts/src/project-registry.ts';
 import type {ProjectFileRecovery} from '../../../../packages/business/src/project-file/index.ts';
-import type {ProjectHostContext, ProjectRequest} from './host.ts';
+import type {ProjectHostContext, ProjectHostReadiness, ProjectRequest} from './host.ts';
 
 // ---------------------------------------------------------------------------
 // B1: app database
@@ -61,6 +61,12 @@ export interface BackgroundTaskIndexPort {
   list(): readonly BackgroundTaskIndexEntry[];
   /** Replaces this project's entries; an empty list removes them. */
   replace(projectId: string, entries: readonly BackgroundTaskIndexEntry[]): void;
+  listProject?(projectId: string): readonly BackgroundTaskIndexEntry[];
+  upsert?(entry: BackgroundTaskIndexEntry): void;
+  markProject?(projectId: string, phase: 'prepared' | 'active' | 'blocked' | 'archived' | 'done', reason: string | null): void;
+  archive?(projectId: string, sourceHistory?: string): void;
+  /** Read-only capacity proof, before the project COMMIT; writes remain after it. */
+  assertCanUpsert?(entries: readonly BackgroundTaskIndexEntry[]): void;
 }
 
 /** Results that arrived while their project could not be opened. S3's
@@ -77,7 +83,7 @@ export interface ProjectInboxPort {
 export interface ProjectLifecycleHooks {
   /** After the runtime is composed, before the first lease (V2's open backup,
    * S3's inbox). Throwing fails the open. */
-  afterOpen?(host: ProjectHostContext): void | Promise<void>;
+  afterOpen?(host: ProjectHostContext, readiness?: ProjectHostReadiness): void | Promise<void>;
   /** After requests and the runtime drained, store still open (V1's version
    * on close, V2's close backup). Errors are recorded; the close goes on.
    * Hooks run in reverse order of registration. */

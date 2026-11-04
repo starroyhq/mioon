@@ -9,11 +9,11 @@
 - 应用目录为服务端 `dataDir` 或桌面 `<userData>/data/`，与项目目录分开；桌面旧 `workspace/` 不迁移、不再读。服务端发现旧 `workbench.sqlite` 时以 `VALIDATION_ERROR`（400）拒绝启动且零迁移。目录选项、覆盖 userData 的隔离规则和实际工厂见 [PROJECT-HOST.md](PROJECT-HOST.md)。
 - 生产旧项目 RPC/REST/media 地址已退役：应用 `/api/rpc` 仍存在，但只接受应用操作；项目请求必须带 `/api/projects/<ID>/` 前缀。`project-routes.ts` 仅作测试内部适配。历史保存 URL 不改字节，实际访问重建新地址。同一 `requestId` 的回执在各项目独立，不能跨项目重放。
 - 首页封面使用应用级 `GET /api/project-covers/<ID>`，只读缓存，缺失返回 404，不 acquire 项目；`projectSummaryCoverSchema` 已同步此 URL。应用 `/api/workspace-info` 返回应用根，新增项目 `/api/projects/<ID>/workspace-info` 在真实租约内返回项目根，复用原 schema，供可信桌面导出使用。
-- 全局 `diagnostics/latest` 从应用 documents 读取严格五字段摘要：`completedAt/status/protocol/model/errorCode`；无项目对话、请求或密钥，也不打开项目。应用库当前为 v3：精确已知 v1 经 v2，再以 R2 的 v2→v3 升级增加用户规范；保原三种文档及其它记录。HTTP B1 错误仅公开 `APP_LIBRARY_LIMIT`（507）与 `APP_LIBRARY_INVALID`（422）。
+- 全局 `diagnostics/latest` 从应用 documents 读取严格五字段摘要：`completedAt/status/protocol/model/errorCode`；无项目对话、请求或密钥，也不打开项目。应用库当前为 v4，仅精确已知 v3 做 S3-A 的3→4升级，扩展后台任务索引，保留旧索引JSON及其他数据；不接受未知/改动结构，也不组合旧1/2升级到4。历史冻结件和旧升级函数仍保留供验证。HTTP B1 错误仅公开 `APP_LIBRARY_LIMIT`（507）与 `APP_LIBRARY_INVALID`（422）。
 - V2 已接入宿主打开/关闭的项目自动备份，最近三份按项目 ID、内容序号和令牌去重；`project.backup.list/inspect/restore/status` 是应用级操作，恢复使用新 ID、新令牌和空本机记录。专用 `MioB` 标记使备份不能作为普通项目打开或登记；接口、提交点和故障边界见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)。不启用旧工作区备份接口，也没有接入备份界面。
 - 生产素材以引用定位：项目格式为 3、cache 为 2，history 为 9。格式 1、2 的旧开发项目及备份明确拒绝、零写入，需重建。路径导入不复制，网页/Mio 上传写固定 `素材/`；生成写 `生成/`，成片写 `导出/`，排他发布、不自动删除项目文件。完整契约见 [素材引用](ASSET-REFERENCES.md)和[项目产物](PROJECT-OUTPUTS.md)。
 - `project.version.list/save/preview/restore` 是项目级操作，提供手动/自动保存、保留清理和确认恢复；正文仅存本机 history，界面另卡实现；见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。
-- S5-A 已提供应用级复制/另存为和受信端口，带重绑定版本、空执行域，不接界面或 CLI/MCP 新命令；见 [PROJECT-COPIES.md](PROJECT-COPIES.md)。S5-B 的副本/复制到/模板、S5-C 的废纸篓及 V4 的打包导入导出尚未接入；旧工作区备份/恢复已退役。精确错误和按项目后的图片、帧、LUT 可达容量见 [宿主当前状态](PROJECT-HOST.md#0-p4-当前运行状态)。不调用旧生产生命周期链；全应用总量控制留 S3。
+- S5-A 已提供应用级复制/另存为和受信端口，带重绑定版本、空执行域，不接界面或 CLI/MCP 新命令；见 [PROJECT-COPIES.md](PROJECT-COPIES.md)。S5-B 的副本/复制到/模板、S5-C 的废纸篓及 V4 的打包导入导出尚未接入；旧工作区备份/恢复已退役。精确错误和按项目后的图片、帧、LUT 可达容量见 [宿主当前状态](PROJECT-HOST.md#0-p4-当前运行状态)。不调用旧生产生命周期链；S3-A只做任务索引上限，跨项目运行调度和历史/LUT/Mio总量硬限留0.1.x或另卡。
 
 下文保留内核约定和 P1/P2 阶段记录；注明阶段的历史说明不代表 P4 仍在使用旧默认入口。
 
@@ -221,7 +221,7 @@ P2 当时不改变公开地址、落盘格式、Mio 请求字节、生产入口�
   - 请求指向已登记、但没打开的项目时，服务端按登记自动打开；CLI、MCP 和外部 agent 照旧传 projectId；
   - 打不开报 `PROJECT_UNAVAILABLE`，详情里带打开失败的原因码，原因码是 `PROJECT_INVALID` 时另带细分原因 `invalidReason`；没登记报 `PROJECT_NOT_FOUND`；
   - 列表和封面请求不触发自动打开。没打开的项目，封面用缓存的缩略图，见下面的“封面”；
-  - **自动关闭**（10-31 定，S0 实现）：没有租约、没有在途请求、运行时也不忙，而且最后一个请求结束已满 60 秒，就关闭。关窗口不用等这 60 秒。有未完成的后台任务（S3 持有的租约）或 Mio 正在跑时不关。
+  - **自动关闭**（10-31 定，S0 实现）：没有租约、没有在途请求、运行时也不忙，而且最后一个请求结束已满 60 秒，就关闭。关窗口不用等这 60 秒。有可推进的后台任务（S3 持有的租约）或 Mio 正在跑时不关；仅等用户/源的任务仍保留索引，但不永久持库。
 - **封面**（10-31 定）：宿主在打开时、关闭前，以及封面素材变了时，把封面缩成长边 512 像素的 JPEG，和一个记素材 ID、指纹的 `cover.json` 一起存进这个项目的缓存目录。应用级的封面接口只读这两个文件，不打开项目，找不到时界面显示占位图。封面不写进项目目录，接口名由 S6 和 B1 定。
 - **生命周期操作：** 删除、复制、改名、关闭、另存为虽然带 projectId，但属于应用级操作，因为它们要关掉项目宿主、改登记。
 - 桌面主进程也是客户端（`main.ts` 等 5 个文件），在 K2 的范围里。`native-audio-preview-host.ts` 只给 `/api/timeline-audio-preview` 开头的请求加原生音频签名头，路由挪动时要一起改。
@@ -301,8 +301,8 @@ S1 已切换生产导入和全部素材读端。资产只以 `reference` 定位�
 下面这些都存在应用库里，从不写进项目文件（`project-registry.ts`）：
 
 - **最近项目：** 项目 ID、项目文件路径、文件身份、名称、最近打开时间，以及首页摘要的缓存（描述、版本号、创建和更新时间、画幅、镜头数、时长、封面素材）。`project.summary.list` 读不了没打开的项目，所以由项目宿主在项目打开期间和关闭时刷新缓存。
-- **后台任务索引：** 每个未完成的任务一条，记项目 ID、路径、任务种类和任务 ID。重启后按索引重新打开项目，继续轮询和对账。
-- **收件箱：** 项目打不开时到达的结果。媒体先放在应用数据目录的暂存区，下次打开项目时再写入，回执和对账规则不变。
+- **后台任务索引：** S3-A在任务事务提交后同步记录，关闭时仍整项目更新；包含项目/任务身份、阶段、原因、来源history代际和修订，最多全应用4096/单项目512条。重启消费租约和失败，blocked保留等待原因；V5旧代际archived，不写进新history。项目COMMIT到索引之间强退仍可能漏登，下次打开补上，见[后台任务](BACKGROUND-TASKS.md)。
+- **收件箱：** 现有表只保留占位格式；离线应用接收、暂存和回填（S3-B/C）已定放0.1.x。0.1.0项目不在时暂停，任务留本机history，找到后按原规则继续；离线超过供应商保留期可能无法取回结果，不自动重提。
 - **规范信任：** 项目 ID 加 `AGENTS.md` 的内容哈希。
 - **项目外路径确认：** 项目 ID、文件夹、确认时间。
 - **本机记录清单：** 项目 ID、大小，以及文件夹里有没有还用得着的超级日志（`hasSuperJournal`，按内核的 `isSuperJournalInUse` 算）。列清单时不打开 `history.db`；有还用得着的超级日志的不能删。
@@ -428,4 +428,4 @@ type InspectProject = <T>(projectId: string, inspect: (db: DatabaseSync) => T) =
 ## 待定
 - 封面接口已在 P4 定为 `GET /api/project-covers/<ID>`；后续首页体验归 S6。
 - 打开副本时的提示还没有设计稿，打开结果里暂不带副本信息。
-- 收件箱条目的结果字段由 S3 补上；恢复预览的改动列表沿用 Mio 修改卡片的展示词汇，V1 可以补字段。
+- 收件箱条目的结果字段留0.1.x的S3-B/C另排应用库版本；S3-A不扩表、不加应用接收器。恢复预览的改动列表沿用 Mio 修改卡片的展示词汇。

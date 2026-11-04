@@ -1,4 +1,5 @@
 import {mioTable} from './agent/mio-table-layout.ts';
+import {createProjectBackgroundState} from './background-task-state.ts';
 import {createWorkspaceConfiguration} from './workspace-configuration.ts';
 import {isProjectStore} from './project-file/store.ts';
 import {mutateProjectRecord} from './project-record-mutations.ts';
@@ -9,7 +10,6 @@ import {isS1PublicOperation,s1PublicOperationSchemas} from '../../contracts/src/
 import {mediaUnavailableError} from '../../contracts/src/media-reference-errors.ts';
 import {isAssetMediaOperation, assetMediaEffects} from '../../contracts/src/asset-media.ts';
 import type {OutsidePathConfirmationStore} from './app-db/stores.ts';
-import {hasStoreTable} from './store-layout.ts';
 import {createExportControlServices} from './export-controls.ts';
 import {createTaskDispositionServices} from './task-dispositions.ts';
 import {createManagedAssetImportHandler} from './managed-asset-import.ts';
@@ -101,6 +101,7 @@ export interface ServiceApplicationPorts {
  assertMutationAllowed(): void;
 }
 export interface CreateServicesOptions {
+ deferBackgroundRecovery?: boolean;
  application?: ServiceApplicationPorts;
  videoSettings?: VideoSettingsService;
  videoFetch?: typeof fetch;
@@ -119,6 +120,7 @@ type AudioPreviewService=ReturnType<typeof createTimelineAudioPreviewCoordinator
 type InspectionService=ReturnType<typeof createInspectionServices>;
 /** Ordinary backend surface returned by createServices. */
 export interface OrdinaryServices {
+ activateBackground: ()=>void;
  handlers: ServiceHandlers;
  call: (operation: string,input: unknown,context?: ServiceHandlerContext)=>Promise<unknown>;
  drain: ()=>Promise<void>;
@@ -195,9 +197,10 @@ export const now=(): string=>new Date().toISOString();
 export function canonical(v: unknown): string {return JSON.stringify(v,(_key: string,x: unknown)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x) as string;}
 export const hash=(v: unknown): string=>createHash('sha256').update(canonical(v)).digest('hex');
 export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<string,Provider>,
- {application,env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,sceneOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,videoSettings,videoFetch}: CreateServicesOptions={}): OrdinaryServices {
+ {application,env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,sceneOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,videoSettings,videoFetch,deferBackgroundRecovery=false}: CreateServicesOptions={}): OrdinaryServices {
  assertProjectStore(inputStore);
  const store = inputStore;
+ const backgroundTasks=createProjectBackgroundState(store);
  const kernelProjectId=inputStore.projectId;
  application??=testProjectServiceApplication(store,env);
  if(!application||typeof application.assertMutationAllowed!=='function')throw new TypeError('Project services require explicit application configuration and write admission.');
@@ -429,12 +432,13 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const assetDispositions=createAssetDispositionServices(store,{canonical});
  const subjects=createSubjectServices(store,{canonical,now});
  const waveforms=createWaveformServices(store,{signal:ownerSignal});
- const images=createImageServices(store,{...imageOptions,signal:ownerSignal,assertLiveAllowed:()=>configuration.assertLiveEnabled()} as Parameters<typeof createImageServices>[1]);
- const frames=createFrameServices(store,{...frameOptions,signal:ownerSignal} as Parameters<typeof createFrameServices>[1]);
- const scenes=createSceneServices(store,{...sceneOptions,signal:ownerSignal});
+ const images=createImageServices(store,{...imageOptions,deferRecovery:deferBackgroundRecovery||imageOptions?.deferRecovery,signal:ownerSignal,assertLiveAllowed:()=>configuration.assertLiveEnabled()} as Parameters<typeof createImageServices>[1]);
+ const frames=createFrameServices(store,{...frameOptions,deferRecovery:deferBackgroundRecovery||frameOptions?.deferRecovery,signal:ownerSignal} as Parameters<typeof createFrameServices>[1]);
+ const scenes=createSceneServices(store,{...sceneOptions,deferRecovery:deferBackgroundRecovery||sceneOptions?.deferRecovery,signal:ownerSignal});
  // Registered after images: finished variant images become subject versions in
  // the image service's publishing transaction.
- const subjectVariants=createSubjectVariantServices(store);
+ const subjectVariants=createSubjectVariantServices(store,{deferRecovery:deferBackgroundRecovery});
+ const activateBackground=():void=>{images.activateBackground();frames.activateBackground();scenes.activateBackground();subjectVariants.activateBackground();backgroundTasks.refresh();};
  const previs=createPrevisServices(store,{now});
  // Read disclosure verifies only retained subject ownership/provenance. It
  // never evaluates current provider lifecycle, quota, enabled state or POST policy.
@@ -681,13 +685,6 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    return saveJob(current as JobRecord,patch);
   });
  }
- const isBusy=():boolean=>active.size>0||images.isBusy()||frames.isBusy()||scenes.isBusy()||([
-  ['jobs',"json_valid(data) AND json_extract(data,'$.status') IN ('queued','submitting','running','downloading')"],
-  ['exports',"json_valid(data) AND json_extract(data,'$.status') IN ('queued','running')"],
-  ['image_tasks',"state IN ('queued','dispatching','receiving','persisting')"],
-  ['image_remote_observations',"state IN ('queued','running')"],
-  ['frame_tasks',"state IN ('queued','running','persisting')"],
-  ['scene_tasks',"state IN ('queued','running','cancelling','persisting')"],
- ] as const).some(([table,condition])=>hasStoreTable(db,table)&&!!db.prepare(`SELECT 1 FROM ${table} WHERE ${condition} LIMIT 1`).get());
- return {compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed as (input: unknown)=>unknown,imageRejection:images.rejectReview as (input: unknown)=>unknown} as OrdinaryServices;
+ const isBusy=():boolean=>active.size>0||images.isBusy()||frames.isBusy()||scenes.isBusy()||backgroundTasks.snapshot().some(task=>task.keepAlive);
+ return {activateBackground,compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed as (input: unknown)=>unknown,imageRejection:images.rejectReview as (input: unknown)=>unknown} as OrdinaryServices;
 }

@@ -14,12 +14,13 @@ import {AppError} from '../packages/contracts/src/app-error.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskPolicy} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {BackgroundTaskIndexEntry, ProjectFileIdentity, ProjectInboxItem, RecentProject} from '../packages/contracts/src/project-registry.ts';
+import {normalizeBackgroundTaskIndexEntry} from '../packages/contracts/src/project-registry.ts';
 import {PrivateStorageError} from '../packages/contracts/src/private-storage.ts';
 import {
   APP_DOCUMENT_LIMITS, APP_LIBRARY_APPLICATION_ID, APP_LIBRARY_FILE, APP_LIBRARY_SCHEMA_VERSION, openAppLibrary,
 } from '../packages/business/src/app-db/index.ts';
 import type {AppLibrary} from '../packages/business/src/app-db/index.ts';
-import {APP_LIBRARY_STATEMENTS, appLibraryStatements, expectedAppSchema, FORMAT_72_APP_STATEMENTS, readAppSchema} from '../packages/business/src/app-db/schema.ts';
+import {APP_LIBRARY_STATEMENTS, appLibraryStatements, expectedAppSchema, FORMAT_72_APP_STATEMENTS, readAppSchema, upgradeAppLibraryV1, upgradeAppLibraryV2} from '../packages/business/src/app-db/schema.ts';
 import {isAppLibraryHeld} from '../packages/business/src/app-db/connection.ts';
 import {isProjectDatabase, isProjectFileHeld} from '../packages/business/src/project-file/connection.ts';
 
@@ -148,8 +149,10 @@ test('a new library is built from the current application-state SQL and the B1 t
     'f7aa62f54c5e09ffb405b8efe8369f3445e32758526b5e30484ad542e58f7de9');
   assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema(2))).digest('hex'),
     '7c99f8946a65136c55068d877d91645be595280c5e2ec65ef0d47d5465b1c95d');
-  assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema())).digest('hex'),
+  assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema(3))).digest('hex'),
     '8a037a9700be47380961f35fa2fae5c3880766f6d8349d80888e169708c9433c');
+  assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema())).digest('hex'),
+    '2ed1111e2e87865ef3f400f2615393b52040e6679d60632a30afa9d60baa37eb');
 });
 
 test('the library is reopened with its records and checked again on every open', t => {
@@ -168,7 +171,7 @@ test('the library is reopened with its records and checked again on every open',
   assert.equal(again.databaseFile, first.databaseFile);
 });
 
-test('only an exact v1 library upgrades its document whitelist, preserving existing records and bytes', t => {
+test('explicit historical v1 upgrades preserve bytes, while the current opener refuses v1', t => {
   const dataDir = path.join(scratch(t), 'data'); mkdirSync(dataDir, {mode: 0o700});
   const file = path.join(dataDir, APP_LIBRARY_FILE);
   writeFileSync(file, '', {mode: 0o600});
@@ -179,11 +182,21 @@ test('only an exact v1 library upgrades its document whitelist, preserving exist
   legacy.prepare('INSERT INTO app_documents VALUES(?,?)').run('ui-preferences-v1.json', text);
   const row = project(); legacy.prepare('INSERT INTO recent_projects(position,projectId,data) VALUES(1,?,?)').run(row.projectId, JSON.stringify(row));
   legacy.close();
+  const source = readFileSync(file);
+  assert.throws(() => openAppLibrary({dataDir}), {code: 'APP_LIBRARY_INVALID'});
+  assert.deepEqual(readFileSync(file), source);
+  tamper(file, db => {
+    upgradeAppLibraryV1(db);
+    assert.deepEqual(readAppSchema(db), expectedAppSchema(2));
+    assert.equal(db.prepare('SELECT data FROM app_documents').get()!.data, text);
+    upgradeAppLibraryV2(db);
+    assert.deepEqual(readAppSchema(db), expectedAppSchema(3));
+  });
   const upgraded = openAppLibrary({dataDir});
   assert.deepEqual(readAppSchema(upgraded.db), expectedAppSchema());
   assert.equal(upgraded.documents.read('ui-preferences-v1.json'), text);
   assert.deepEqual(upgraded.registry.get(row.projectId), row);
-  assert.deepEqual(upgraded.db.prepare('SELECT version FROM schema_version').all().map(row => row.version), [3]);
+  assert.deepEqual(upgraded.db.prepare('SELECT version FROM schema_version').all().map(row => row.version), [APP_LIBRARY_SCHEMA_VERSION]);
   upgraded.close();
   const badDir = path.join(scratch(t), 'bad'); mkdirSync(badDir, {mode: 0o700});
   const badFile = path.join(badDir, APP_LIBRARY_FILE); writeFileSync(badFile, '', {mode: 0o600});
@@ -412,7 +425,7 @@ test('after close every store refuses with APP_LIBRARY_CLOSED, and close is idem
   library.close();
   for (const action of [
     () => library.registry.list(), () => library.agentPolicy.read(), () => library.documents.read('last-project-v1.json'),
-    () => library.taskIndex.list(), () => library.tx(() => 1),
+    () => library.taskIndex.list(), () => library.taskIndex.assertCanUpsert([]), () => library.tx(() => 1),
   ]) assert.equal(appError(action).code, 'APP_LIBRARY_CLOSED');
 });
 
@@ -528,16 +541,16 @@ test('the task index replaces one project\'s entries at a time', t => {
   const second = [entry(b, 'image_task', '2026-11-01T08:00:00.000Z')];
   library.taskIndex.replace(a, first);
   library.taskIndex.replace(b, second);
-  assert.deepEqual(library.taskIndex.list(), [second[0], first[1], first[0]]);
+  assert.deepEqual(library.taskIndex.list(), [second[0], first[1], first[0]].map(normalizeBackgroundTaskIndexEntry));
   const next = [entry(a, 'scene_task', '2026-11-01T09:00:00.000Z')];
   library.taskIndex.replace(a, next);
-  assert.deepEqual(library.taskIndex.list(), [second[0], next[0]]);
+  assert.deepEqual(library.taskIndex.list(), [second[0], next[0]].map(normalizeBackgroundTaskIndexEntry));
   assert.throws(() => library.taskIndex.replace(a, second), /must belong to the project/);
   assert.throws(() => library.taskIndex.replace(a, [next[0], next[0]]), /each task once/);
   assert.throws(() => library.taskIndex.replace('not an id', []), {name: 'ZodError'});
-  assert.deepEqual(library.taskIndex.list(), [second[0], next[0]]);
+  assert.deepEqual(library.taskIndex.list(), [second[0], next[0]].map(normalizeBackgroundTaskIndexEntry));
   library.taskIndex.replace(a, []);
-  assert.deepEqual(library.taskIndex.list(), [second[0]]);
+  assert.deepEqual(library.taskIndex.list(), [second[0]].map(normalizeBackgroundTaskIndexEntry));
 });
 
 test('inbox items are added once, listed by arrival and removed by project and ID', t => {

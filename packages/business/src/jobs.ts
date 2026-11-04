@@ -1,4 +1,6 @@
+import {isBackgroundTaskIndexUncertain} from './background-task-events.ts';
 import {assertProjectStore} from './store-runtime.ts';
+import {createProjectBackgroundState,pauseUnavailableBackgroundTask} from './background-task-state.ts';
 import {registerExportActivity,isCancelledExport,exportStage} from './export-controls.ts';
 import {assertAgentTaskJobEffect,withAgentTaskJobOrigin,recordAgentTaskJobDispatch,allowAgentTaskJobTargetMutation,isAgentTaskEffectBlocked,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
 import {isFloatTimelineExport,claimFloatTimelineExport,sameFloatTimelineAttempt,requeueFloatTimelineExport,createFloatTimelineAttemptRegistry,ownedFloatTimelineMeasurement,bindFloatTimelineMeasurement,bindFloatTimelineFailure,assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
@@ -71,6 +73,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
  const store: JobsStore=inputStore as unknown as JobsStore;
  assertProjectStore(inputStore);
  const {list,get,put,tx,root}=store;
+ const backgroundTasks=createProjectBackgroundState(inputStore);
  let stopped=Boolean(ownerSignal?.aborted),cycle: Promise<void>|null=null,stopping: Promise<void>|undefined,shutdownFailure: unknown;
  const operations=new Set<AbortController>(),floatClaims=createFloatTimelineAttemptRegistry();
  // Preserve relational identity before decoding worker-owned timeline exports.
@@ -100,7 +103,6 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   try{assertFloatTimelineExportRead(store.db,record,{isTimelineRenderRecord,readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(store.db,projectId,assetId)});}catch{return invalidExport();}
   return value;
  }
- const workerExports=(): ExportRecord[]=>store.db.prepare(`SELECT ${exportColumns} FROM exports${''}`).all(...([])).map(row=>decodeExport(row as Record<string,unknown>)).filter((value): value is ExportRecord=>Boolean(value));
  const workerExport=(id: string): ExportRecord|null=>decodeExport(store.db.prepare(`SELECT ${exportColumns} FROM exports WHERE id=?`).get(id) as Record<string,unknown>|undefined);
  // Custom delivery adds an awaited capability step. Preserve the complete
  // immutable acceptance identity across every existing async/publication fence;
@@ -164,10 +166,15 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const message=property(e,'uncertain')?'供应商可能已受理。正在对账，不会自动重新提交。':filesystem?'本地产物文件不可用，已保留任务记录':String(property(e,'message')||'任务操作失败');
   return {code,message:message.replace(/(?:Bearer\s+|sk-)[A-Za-z0-9_\-.]+/gi,'[redacted]').slice(0,600),retryable:true};
  };
- for(const j of list('jobs')){const job=recordValue(j) as JobRecord|null;if(job&&job.status==='submitting')services.saveGenerationGuarded(job,{status:'submission_unknown',phase:'recovering_submit',error:{code:'SUBMISSION_UNKNOWN',message:'服务在提交期间中断；先对账，绝不盲目重新提交',retryable:true}});}
- for(const e of workerExports())if(e.status==='running')tx(()=>{
+ for(const ref of backgroundTasks.snapshot().filter(task=>task.kind==='job')){
+  const job=recordValue(get('jobs',ref.taskId)) as JobRecord|null;
+  if(job&&job.status==='submitting')services.saveGenerationGuarded(job,{status:'submission_unknown',phase:'recovering_submit',error:{code:'SUBMISSION_UNKNOWN',message:'服务在提交期间中断；先对账，绝不盲目重新提交',retryable:true}});
+  else if(job&&job.phase==='connection_required'&&['queued','running','downloading','submission_unknown'].includes(job.status))services.saveJob(job,{nextPollAt:0});
+ }
+ for(const ref of backgroundTasks.snapshot().filter(task=>task.kind==='export')){const e=workerExport(ref.taskId);if(e?.status==='running')tx(()=>{
   const current=currentOwnedExport(e);if(current?.status==='running')put('exports',{...(isFloatTimelineExport(current)?requeueFloatTimelineExport(current):current),status:'queued',updatedAt:now()});
- });
+ });}
+ backgroundTasks.refresh();
 
  async function processJob(original: JobRecord,signal: AbortSignal): Promise<void> {
   checkpoint(signal);
@@ -333,6 +340,8 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     if(projectOwner&&published)await markProjectOutputRegistered(projectOwner,published.publication,{signal});
    }
   } catch(error) {
+   if(isBackgroundTaskIndexUncertain(error))return;
+   if(pauseUnavailableBackgroundTask(store.db,{kind:'job',taskId:original.id},error))return;
    if(property(error,'terminationUnconfirmed'))failShutdown(error);
    const latest=recordValue(get('jobs',guardJob.id)) as JobRecord|null;
    if(latest?.status==='cancelled'||latest?.status==='succeeded')return;
@@ -496,6 +505,8 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    publicationAccepted=true;
   } catch(error) {
    if(publicationAccepted)return;
+   if(isBackgroundTaskIndexUncertain(error))return;
+   if(pauseUnavailableBackgroundTask(store.db,{kind:'export',taskId:e.id},error))return;
    terminationUnconfirmed=Boolean(property(error,'terminationUnconfirmed'));
    if(property(error,'terminationUnconfirmed'))failShutdown(error);
    const failExport=(): void=>{
@@ -557,9 +568,9 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   if(cycle)return cycle;
   cycle=(async()=>{
    try {
-    for(const j of list('jobs')){const job=recordValue(j) as JobRecord|null;if(job&&!stopped&&typeof job.status==='string'&&['queued','running','downloading','submission_unknown'].includes(job.status))await advance(job,processJob as WorkerOperation);}
+    for(const ref of backgroundTasks.snapshot()){if(ref.kind!=='job'||!ref.keepAlive)continue;const job=recordValue(get('jobs',ref.taskId)) as JobRecord|null;if(job&&!stopped&&typeof job.status==='string'&&['queued','running','downloading','submission_unknown'].includes(job.status))await advance(job,processJob as WorkerOperation);}
     if(stopped)return;
-    for(const e of workerExports())if(!stopped&&e.status==='queued')await advance(e,processExport as unknown as WorkerOperation);
+    for(const ref of backgroundTasks.snapshot()){if(ref.kind!=='export'||!ref.keepAlive)continue;const e=workerExport(ref.taskId);if(e&&!stopped&&e.status==='queued')await advance(e,processExport as unknown as WorkerOperation);}
    } catch(error) {console.error('Worker cycle failed:',stringValue(property(error,'code'))||String(property(error,'name')));}
   })().finally(()=>{cycle=null;});
   return cycle;

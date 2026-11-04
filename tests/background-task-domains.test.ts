@@ -1,0 +1,330 @@
+import test, {type TestContext} from 'node:test';
+import assert from 'node:assert/strict';
+import {createHash, randomUUID} from 'node:crypto';
+import {mkdtempSync, renameSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {setTimeout as pause} from 'node:timers/promises';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import type {CreateServicesOptions} from '../packages/business/src/services.ts';
+import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
+import {setImageResultListener} from '../packages/business/src/images.ts';
+import {createProjectBackgroundState,pauseUnavailableBackgroundTask} from '../packages/business/src/background-task-state.ts';
+import {subscribeBackgroundTaskChanges,safeBackgroundTaskIndexError} from '../packages/business/src/background-task-events.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
+import type {Provider} from '../packages/business/src/provider-registry.ts';
+import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
+import {renderMockImagePng} from '../packages/business/src/images/png.ts';
+import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
+
+const object = (value: unknown): Record<string, unknown> => {assert.ok(value && typeof value === 'object' && !Array.isArray(value)); return value as Record<string, unknown>;};
+async function fixture(t: TestContext, providers: ReadonlyMap<string, Provider> = new Map(), options: CreateServicesOptions = {}) {
+  const root = mkdtempSync(path.join(tmpdir(), 'mioon-background-domains-')); let store = openStore(root);
+  let services = createServices(store, providers, {...options, imageOptions: {autoRun: false, ...options.imageOptions}, frameOptions: {autoRun: false, ...options.frameOptions}, sceneOptions: {autoRun: false, ...options.sceneOptions}});
+  t.after(async () => {await services.drain(); store.close(); rmSync(root, {recursive: true, force: true});});
+  const project = object(await services.call('project.create', {name: 'Background domain receipts'})), projectId = String(project.id);
+  const state = () => createProjectBackgroundState(store);
+  function asset() {
+    const bytes = mp4HeaderFixture('Original source bytes'), id = randomUUID(), relativePath = `media/${id}.mp4`;
+    writeFileSync(path.join(root, relativePath), bytes, {mode: 0o600});
+    return store.put('assets', {id, projectId, name: 'Source.mp4', mimeType: 'video/mp4', sha256: createHash('sha256').update(bytes).digest('hex'),
+      sizeBytes: bytes.length, relativePath, width: 4, height: 2, duration: 1, provenance: 'user-import'});
+  }
+  return {root, projectId, get store() {return store;}, get services() {return services;}, state, asset,
+    async reopenDeferred() {await services.drain(); store.close(); store = openStore(root); services = createServices(store, providers, {deferBackgroundRecovery: true, imageOptions: {autoRun: false}, frameOptions: {autoRun: false}, sceneOptions: {autoRun: false}});},
+  };
+}
+
+test('actual image, frame, scene and edit acceptance/terminal changes reach one state with the original receipts', async t => {
+  const f = await fixture(t), source = f.asset(), seen: string[] = [], unsubscribe = f.state().subscribe(tasks => seen.push(...tasks.map(task => task.kind)));
+  t.after(unsubscribe);
+  const imageInput = {projectId: f.projectId, name: 'Draft image', providerId: 'mock', model: IMAGE_MODELS.mock, prompt: 'Synthetic', options: {...IMAGE_FIXED_OPTIONS}, requestId: randomUUID()};
+  const image = object(await f.services.call('image.generate', imageInput));
+  const frameInput = {projectId: f.projectId, sourceAssetId: source.id, sourceHash: source.sha256, sourceFrame: 0, requestId: randomUUID()};
+  const frame = object(await f.services.call('frame.extract', frameInput));
+  const sceneInput = {projectId: f.projectId, sourceAssetId: source.id, sourceHash: source.sha256, requestId: randomUUID()};
+  const scene = object(await f.services.call('scene.detect', sceneInput));
+  const timeline = object(await f.services.call('timeline.get', {projectId: f.projectId})), edits = createEditTasks({store: f.store, services: f.services});
+  const edit = object(edits.prepare({projectId: f.projectId, operation: 'timeline.track.add', origin: 'new',
+    input: {projectId: f.projectId, expectedRevision: timeline.revision, kind: 'video', name: 'Video', requestId: randomUUID()}}));
+  const editTask = object(edit.task);
+  for (const [kind, id, keepAlive] of [['image_task', image.id, true], ['frame_task', frame.id, true], ['scene_task', scene.id, true], ['edit_task', editTask.id, false]] as const) {
+    const projected = f.state().snapshot().find(task => task.kind === kind && task.taskId === id);
+    assert.ok(projected); assert.equal(projected.keepAlive, keepAlive); assert.ok(seen.includes(kind));
+  }
+  assert.equal(f.services.isBusy(), true);
+  for (const [operation, value] of [['image.task.cancelQueued', image], ['frame.task.cancelQueued', frame], ['scene.task.cancel', scene]] as const)
+    await f.services.call(operation, {projectId: f.projectId, taskId: value.id, expectedRevision: value.revision, requestId: randomUUID()});
+  assert.equal(f.services.isBusy(), false, 'only a prepared edit remains, with no active continuation');
+  assert.equal(f.state().snapshot().find(task => task.taskId === editTask.id)!.classification, 'waiting_user');
+  assert.deepEqual(await f.services.call('image.generate', imageInput), image);
+  assert.deepEqual(await f.services.call('frame.extract', frameInput), frame);
+  assert.deepEqual(await f.services.call('scene.detect', sceneInput), scene);
+  await edits.drain();
+});
+
+test('deferred construction performs no task recovery write; explicit activation runs it once and survives service drain snapshots', async t => {
+  const f = await fixture(t), source = f.asset();
+  const image = object(await f.services.call('image.generate', {projectId: f.projectId, name: 'Deferred', providerId: 'mock', model: IMAGE_MODELS.mock, prompt: 'Synthetic', options: {...IMAGE_FIXED_OPTIONS}, requestId: randomUUID()}));
+  const frame = object(await f.services.call('frame.extract', {projectId: f.projectId, sourceAssetId: source.id, sourceHash: source.sha256, sourceFrame: 0, requestId: randomUUID()}));
+  const scene = object(await f.services.call('scene.detect', {projectId: f.projectId, sourceAssetId: source.id, sourceHash: source.sha256, requestId: randomUUID()}));
+  await f.reopenDeferred();
+  assert.equal(f.store.db.prepare('SELECT state FROM image_tasks WHERE id=?').get(String(image.id))!.state, 'queued');
+  assert.equal(f.store.db.prepare('SELECT state FROM frame_tasks WHERE id=?').get(String(frame.id))!.state, 'queued');
+  assert.equal(f.store.db.prepare('SELECT state FROM scene_tasks WHERE id=?').get(String(scene.id))!.state, 'queued');
+  const before = f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
+  assert.equal(f.state().snapshot().find(task => task.taskId === image.id)!.keepAlive, true);
+  assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n, before);
+  f.services.activateBackground();
+  assert.equal(f.store.db.prepare('SELECT state FROM image_tasks WHERE id=?').get(String(image.id))!.state, 'interrupted_before_dispatch');
+  assert.equal(f.store.db.prepare('SELECT state FROM frame_tasks WHERE id=?').get(String(frame.id))!.state, 'interrupted');
+  assert.equal(f.store.db.prepare('SELECT state FROM scene_tasks WHERE id=?').get(String(scene.id))!.state, 'interrupted');
+  assert.equal(f.state().snapshot().find(task => task.taskId === image.id)!.keepAlive, false);
+  assert.equal(f.state().snapshot().find(task => task.taskId === frame.id)!.keepAlive, false);
+  assert.equal(f.state().snapshot().find(task => task.taskId === scene.id)!.keepAlive, false);
+  const activated = f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
+  f.services.activateBackground();
+  assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n, activated);
+  await f.services.drain();
+  assert.equal(f.state().snapshot().find(task => task.taskId === image.id)!.classification, 'waiting_user');
+});
+
+for (const kind of ['frame', 'scene'] as const) test(`a ${kind} source disappearing after its durable acceptance pauses without decoder execution or failed state`, async t => {
+  let sourcePath = '', decoders = 0;
+  const fault = (point: string) => {if (point === 'after_acceptance') rmSync(sourcePath);};
+  const f = await fixture(t, new Map(), kind === 'frame' ? {frameOptions: {autoRun: true, fault, decode: async () => {decoders++; throw Error('must not decode');}}}
+    : {sceneOptions: {autoRun: true, fault, detect: async () => {decoders++; throw Error('must not decode');}}});
+  const source = f.asset(); sourcePath = path.join(f.root, 'media', source.id + '.mp4');
+  const input = {projectId: f.projectId, sourceAssetId: source.id, sourceHash: source.sha256, ...(kind === 'frame' ? {sourceFrame: 0} : {}), requestId: randomUUID()};
+  const task = object(await f.services.call(kind === 'frame' ? 'frame.extract' : 'scene.detect', input));
+  for (let attempt = 0; attempt < 100 && f.state().snapshot().find(item => item.taskId === task.id)?.reason !== 'SOURCE_UNAVAILABLE'; attempt++) await pause(5);
+  const projected = f.state().snapshot().find(item => item.taskId === task.id)!;
+  assert.equal(projected.reason, 'SOURCE_UNAVAILABLE'); assert.equal(projected.keepAlive, false); assert.equal(decoders, 0);
+  assert.equal(f.store.db.prepare(`SELECT state FROM ${kind === 'frame' ? 'frame_tasks' : 'scene_tasks'} WHERE id=?`).get(String(task.id))!.state, 'queued');
+  const receipt = object(await f.services.call(kind === 'frame' ? 'frame.request.get' : 'scene.request.get', {projectId: f.projectId, requestId: input.requestId}));
+  assert.deepEqual(receipt.response, task); assert.equal(f.store.list('assets').length, 1);
+  assert.equal(f.services.isBusy(), false);
+});
+
+test('an active subject batch derives its child image work and becomes quiet after cancelled children', async t => {
+  const f = await fixture(t), bytes = await renderMockImagePng({width: 768, height: 1024}), id = randomUUID(), relativePath = `media/${id}.png`;
+  writeFileSync(path.join(f.root, relativePath), bytes, {mode: 0o600});
+  f.store.put('assets', {id, projectId: f.projectId, name: 'Actor.png', mimeType: 'image/png', sha256: createHash('sha256').update(bytes).digest('hex'), width: 768, height: 1024, sizeBytes: bytes.length, relativePath, provenance: 'user-import'});
+  const subject = object(await f.services.call('subject.create', {projectId: f.projectId, kind: 'character', name: 'Actor', assetId: id, requestId: randomUUID()}));
+  const batch = object(await f.services.call('subject.variants.create', {projectId: f.projectId, subjectId: subject.id, sourceVersionId: subject.headVersionId, kind: 'angle',
+    items: [{kind: 'angle', position: 'front-left', focal: 'standard'}], providerId: 'mock', model: IMAGE_MODELS.mock, requestId: randomUUID()}));
+  assert.equal(f.state().snapshot().find(task => task.taskId === batch.id)!.classification, 'waiting_user');
+  const item = object((batch.items as unknown[])[0]), image = object(await f.services.call('image.generate', item.imageInput));
+  assert.equal(f.state().snapshot().find(task => task.taskId === batch.id)!.keepAlive, true);
+  const beforePause = f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
+  assert.equal(pauseUnavailableBackgroundTask(f.store.db, {kind: 'image_task', taskId: String(image.id)}, {code: 'MEDIA_MISSING'}), true);
+  assert.equal(f.state().snapshot().find(task => task.taskId === batch.id)!.keepAlive, false);
+  assert.equal(f.state().snapshot().find(task => task.taskId === batch.id)!.reason, 'SOURCE_UNAVAILABLE');
+  f.state().refresh(); assert.equal(f.state().snapshot().find(task => task.taskId === batch.id)!.keepAlive, false);
+  assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n, beforePause);
+  await f.services.call('image.task.cancelQueued', {projectId: f.projectId, taskId: image.id, expectedRevision: image.revision, requestId: randomUUID()});
+  assert.equal(f.state().snapshot().find(task => task.taskId === batch.id)!.classification, 'terminal');
+  assert.equal(f.services.isBusy(), false);
+  assert.equal(f.store.db.prepare('SELECT state FROM subject_variant_batches WHERE id=?').get(String(batch.id))!.state, 'active', 'business batch history is not rewritten to manufacture terminal');
+});
+
+test('an already succeeded image with a refused startup subject link remains pending without holding the project forever', async t => {
+  const f = await fixture(t, new Map(), {imageOptions: {autoRun: true}}), bytes = await renderMockImagePng({width: 768, height: 1024}), id = randomUUID(), relativePath = `media/${id}.png`;
+  writeFileSync(path.join(f.root, relativePath), bytes, {mode: 0o600});
+  f.store.put('assets', {id, projectId: f.projectId, name: 'Actor.png', mimeType: 'image/png', sha256: createHash('sha256').update(bytes).digest('hex'), width: 768, height: 1024, sizeBytes: bytes.length, relativePath, provenance: 'user-import'});
+  const subject = object(await f.services.call('subject.create', {projectId: f.projectId, kind: 'character', name: 'Actor', assetId: id, requestId: randomUUID()}));
+  const batch = object(await f.services.call('subject.variants.create', {projectId: f.projectId, subjectId: subject.id, sourceVersionId: subject.headVersionId, kind: 'angle',
+    items: [{kind: 'angle', position: 'front-left', focal: 'standard'}], providerId: 'mock', model: IMAGE_MODELS.mock, requestId: randomUUID()}));
+  // Simulate the documented historical case: image publication ran while its
+  // subject result listener was not registered. Keep the real image receipt.
+  const removeListener = setImageResultListener(f.store.db, () => {});
+  const item = object((batch.items as unknown[])[0]), image = object(await f.services.call('image.generate', item.imageInput));
+  for (let attempt = 0; attempt < 1000 && f.store.db.prepare('SELECT state FROM image_tasks WHERE id=?').get(String(image.id))!.state !== 'succeeded'; attempt++) await pause(10);
+  assert.equal(f.store.db.prepare('SELECT state FROM image_tasks WHERE id=?').get(String(image.id))!.state, 'succeeded');
+  assert.equal(f.store.db.prepare('SELECT versionId FROM subject_variant_items WHERE batchId=?').get(String(batch.id))!.versionId, null);
+  removeListener(); await f.reopenDeferred();
+  // A concrete failed link must not create an imaginary automatic executor.
+  f.store.db.exec("CREATE TRIGGER project.injected_subject_link_failure BEFORE INSERT ON subject_versions BEGIN SELECT RAISE(ABORT,'Injected link refusal'); END;");
+  try {f.services.activateBackground();} finally {f.store.db.exec('DROP TRIGGER project.injected_subject_link_failure');}
+  const pending = f.state().snapshot().find(task => task.taskId === batch.id)!;
+  assert.equal(pending.classification, 'result_pending'); assert.equal(pending.reason, 'SUBJECT_VARIANT_LINK_PENDING'); assert.equal(pending.keepAlive, false);
+  assert.equal(f.services.isBusy(), false);
+  const changes = f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
+  f.state().refresh(); f.services.activateBackground();
+  assert.equal(f.services.isBusy(), false); assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n, changes);
+  assert.equal(f.store.db.prepare('SELECT versionId FROM subject_variant_items WHERE batchId=?').get(String(batch.id))!.versionId, null);
+  assert.equal(f.store.db.prepare('SELECT state FROM image_tasks WHERE id=?').get(String(image.id))!.state, 'succeeded');
+  const receipt = object(await f.services.call('image.request.get', {projectId: f.projectId, requestId: object(item.imageInput).requestId}));
+  assert.deepEqual(receipt.response, image);
+});
+
+test('a project lost during an accepted provider download pauses the original job without another submit', async t => {
+  const calls = {submit: 0, poll: 0, download: 0}; let move: (() => void) | undefined;
+  const provider: Provider = {id: 'ark', capabilities: {models: ['fixture'], inputModes: ['text'], aspectRatios: ['9:16'], durations: [4], configured: true, enabled: true},
+    submit: async () => {calls.submit++; return {providerJobId: 'accepted-before-loss'};}, reconcile: async () => null,
+    poll: async () => {calls.poll++; return {status: 'succeeded'};}, download: async () => {calls.download++; move!(); throw Object.assign(Error('project removed'), {code: 'ENOENT'});}};
+  const providers = new Map([['ark', provider]]), f = await fixture(t, providers);
+  const shot = object(await f.services.call('shot.create', {projectId: f.projectId, title: 'Frozen', prompt: 'Synthetic', duration: 4}));
+  const job = object(await f.services.call('generation.submit', {shotId: shot.id, expectedRevision: shot.revision, providerId: 'ark', requestId: randomUUID()}));
+  const originalFile = f.store.projectFile; move = () => renameSync(originalFile, originalFile + '.moved');
+  const worker = startWorker(f.store, f.services, providers);
+  try {
+    await worker.tick(); await worker.tick();
+    for (let attempt = 0; attempt < 20 && calls.download === 0; attempt++) {await pause(5); await worker.tick();}
+    const stored = object(f.store.get('jobs', String(job.id)));
+    assert.equal(stored.status, 'downloading'); assert.equal(stored.requestId, job.requestId); assert.equal(stored.submissionCount, 1);
+    assert.deepEqual(calls, {submit: 1, poll: 1, download: 1});
+    assert.equal(f.state().snapshot().find(task => task.taskId === job.id)!.keepAlive, false);
+    assert.equal(f.state().snapshot().find(task => task.taskId === job.id)!.reason, 'PROJECT_MISSING');
+    await worker.tick(); assert.deepEqual(calls, {submit: 1, poll: 1, download: 1});
+    assert.equal(f.store.list('assets').length, 0); assert.equal(f.store.list('versions').length, 0);
+  } finally {await worker.stop(); renameSync(originalFile + '.moved', originalFile);}
+});
+
+for (const kind of ['image', 'frame', 'scene', 'edit'] as const) test(`${kind} acceptance preserves its committed row and original receipt when the app index reports an unknown outcome`, async t => {
+  const f = await fixture(t), source = f.asset(); f.state();
+  const input = kind === 'image' ? {projectId: f.projectId, name: 'Index uncertain', providerId: 'mock', model: IMAGE_MODELS.mock, prompt: 'Synthetic', options: {...IMAGE_FIXED_OPTIONS}, requestId: randomUUID()}
+    : kind === 'edit' ? {projectId: f.projectId, operation: 'timeline.track.add', origin: 'new', input: {projectId: f.projectId, expectedRevision: object(await f.services.call('timeline.get', {projectId: f.projectId})).revision, kind: 'video', name: 'Video', requestId: randomUUID()}}
+      : {projectId: f.projectId, sourceAssetId: source.id, sourceHash: source.sha256, ...(kind === 'frame' ? {sourceFrame: 0} : {}), requestId: randomUUID()};
+  const edits = kind === 'edit' ? createEditTasks({store: f.store, services: f.services}) : null;
+  const invoke = () => edits ? edits.prepare(input) : f.services.call(kind === 'image' ? 'image.generate' : kind === 'frame' ? 'frame.extract' : 'scene.detect', input);
+  const unsubscribe = subscribeBackgroundTaskChanges(f.store.db, () => {throw Error('Synthetic app-index failure after real COMMIT');});
+  try {
+    await assert.rejects(Promise.resolve().then(invoke), error => {
+      const safe = safeBackgroundTaskIndexError(error); assert.ok(safe);
+      assert.equal(safe.code, 'BACKGROUND_TASK_INDEX_UNCERTAIN'); assert.equal(safe.status, 503);
+      assert.deepEqual(safe.details, {mutationOutcome: 'unknown', projectId: f.projectId});
+      assert.equal(safe.message.includes('Synthetic'), false); return true;
+    });
+  } finally {unsubscribe();}
+  const table = kind === 'edit' ? 'edit_tasks' : `${kind}_tasks`;
+  const row = f.store.db.prepare(`SELECT * FROM ${table}`).get()!;
+  assert.equal(f.store.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()!.n, 1);
+  assert.equal(kind === 'edit' ? row.status : row.state, kind === 'edit' ? 'prepared' : 'queued');
+  assert.equal(row.errorCode, null);
+  assert.equal(f.state().snapshot().find(task => task.taskId === row.id)!.reason, 'BACKGROUND_TASK_INDEX_UNCERTAIN');
+  assert.equal(f.services.isBusy(), false, 'a committed row without a queued executor cannot hold a continuation lease');
+  const replay = object(await invoke()), replayTask = kind === 'edit' ? object(replay.task) : replay;
+  assert.equal(replayTask.id, row.id);
+  if (kind !== 'edit') {
+    const receipt = f.store.db.prepare(`SELECT response FROM ${kind}_requests WHERE requestId=?`).get(String(object(input).requestId))!;
+    assert.deepEqual(JSON.parse(String(receipt.response)), replay);
+  }
+  assert.equal(f.store.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()!.n, 1);
+  await edits?.drain();
+});
+
+test('an image dispatch-fence COMMIT whose index fails never changes the accepted task to failed or repeats dispatch', async t => {
+  let dispatched = 0;
+  const f = await fixture(t, new Map(), {imageOptions: {autoRun: true, generate: async (_snapshot, context) => {
+    assert.equal(typeof context.beforeDispatch, 'function'); (context.beforeDispatch as () => void)(); dispatched++; throw Error('must not cross uncertain fence');
+  }}}); f.state();
+  let indexFailed = false;
+  const unsubscribe = subscribeBackgroundTaskChanges(f.store.db, refs => {
+    for (const ref of refs) if (ref.kind === 'image_task' && f.store.db.prepare('SELECT state FROM image_tasks WHERE id=?').get(ref.taskId)?.state === 'dispatching') {
+      indexFailed = true; throw Error('Synthetic app-index dispatch failure');
+    }
+  }); t.after(unsubscribe);
+  const input = {projectId: f.projectId, name: 'Index fence', providerId: 'mock', model: IMAGE_MODELS.mock, prompt: 'Synthetic', options: {...IMAGE_FIXED_OPTIONS}, requestId: randomUUID()};
+  const accepted = object(await f.services.call('image.generate', input));
+  for (let attempt = 0; attempt < 100 && !indexFailed; attempt++) await pause(5);
+  assert.equal(indexFailed, true); await pause(10);
+  const row = f.store.db.prepare('SELECT state,errorCode,dispatched FROM image_tasks WHERE id=?').get(String(accepted.id))!;
+  assert.deepEqual({...row}, {state: 'dispatching', errorCode: null, dispatched: 1}); assert.equal(dispatched, 0);
+  assert.equal(f.state().snapshot().find(task => task.taskId === accepted.id)!.reason, 'BACKGROUND_TASK_INDEX_UNCERTAIN');
+  assert.equal(f.services.isBusy(), false);
+  assert.deepEqual(await f.services.call('image.generate', input), accepted); assert.equal(dispatched, 0);
+  assert.equal(f.store.list('assets').length, 0);
+});
+
+test('a committed provider receipt survives app-index failure without failed rewrite or another submit', async t => {
+  const calls = {submit: 0, poll: 0};
+  const provider: Provider = {id: 'ark', capabilities: {models: ['fixture'], inputModes: ['text'], aspectRatios: ['9:16'], durations: [4], configured: true, enabled: true},
+    submit: async () => {calls.submit++; return {providerJobId: 'accepted-once'};}, reconcile: async () => null,
+    poll: async () => {calls.poll++; return {status: 'running'};}, download: async () => {throw Error('must not download');}};
+  const providers = new Map([['ark', provider]]), f = await fixture(t, providers);
+  const shot = object(await f.services.call('shot.create', {projectId: f.projectId, title: 'Index receipt', prompt: 'Synthetic', duration: 4}));
+  const input = {shotId: shot.id, expectedRevision: shot.revision, providerId: 'ark', requestId: randomUUID()};
+  const job = object(await f.services.call('generation.submit', input)); f.state();
+  let failures = 0;
+  const unsubscribe = subscribeBackgroundTaskChanges(f.store.db, refs => {
+    if (refs.some(ref => ref.kind === 'job' && object(f.store.get('jobs', ref.taskId)).providerJobId === 'accepted-once')) {failures++; throw Error('Synthetic receipt-index failure');}
+  });
+  const worker = startWorker(f.store, f.services, providers);
+  try {
+    await worker.tick(); const committed = object(f.store.get('jobs', String(job.id)));
+    assert.equal(failures, 1); assert.equal(committed.status, 'running'); assert.equal(committed.providerJobId, 'accepted-once');
+    assert.equal(committed.error, null); assert.equal(committed.submissionCount, 1); assert.equal(calls.submit, 1);
+    assert.equal(f.state().snapshot().find(task => task.taskId === job.id)!.reason, 'BACKGROUND_TASK_INDEX_UNCERTAIN'); assert.equal(f.services.isBusy(), false);
+    assert.equal(object(await f.services.call('generation.submit', input)).id, job.id);
+    await worker.tick(); assert.equal(calls.submit, 1);
+    assert.equal(object(f.store.get('jobs', String(job.id))).status, 'running');
+    assert.equal(f.store.list('versions').length, 0);
+  } finally {unsubscribe(); await worker.stop();}
+});
+
+test('an uncertain committed job claim has no surviving executor and cannot auto-submit', async t => {
+  let submits = 0;
+  const provider: Provider = {id: 'ark', capabilities: {models: ['fixture'], inputModes: ['text'], aspectRatios: ['9:16'], durations: [4], configured: true, enabled: true},
+    submit: async () => {submits++; return {providerJobId: 'must-not-submit'};}, reconcile: async () => null,
+    poll: async () => {throw Error('must not poll');}, download: async () => {throw Error('must not download');}};
+  const providers = new Map([['ark', provider]]), f = await fixture(t, providers);
+  const shot = object(await f.services.call('shot.create', {projectId: f.projectId, title: 'Uncertain claim', prompt: 'Synthetic', duration: 4}));
+  const job = object(await f.services.call('generation.submit', {shotId: shot.id, expectedRevision: shot.revision, providerId: 'ark', requestId: randomUUID()}));
+  const unsubscribe = subscribeBackgroundTaskChanges(f.store.db, refs => {
+    if (refs.some(ref => ref.kind === 'job' && object(f.store.get('jobs', ref.taskId)).status === 'submitting')) throw Error('Synthetic claim-index failure');
+  });
+  const worker = startWorker(f.store, f.services, providers);
+  try {
+    await worker.tick(); const original = object(f.store.get('jobs', String(job.id)));
+    assert.equal(original.status, 'submitting'); assert.equal(original.submissionCount, 1); assert.equal(original.providerJobId, null);
+    assert.equal(f.state().snapshot().find(task => task.taskId === job.id)!.keepAlive, false);
+    assert.equal(f.state().snapshot().find(task => task.taskId === job.id)!.reason, 'BACKGROUND_TASK_INDEX_UNCERTAIN');
+    assert.equal(f.services.isBusy(), false); await worker.tick(); assert.equal(submits, 0);
+    assert.deepEqual(f.store.get('jobs', String(job.id)), original);
+  } finally {unsubscribe(); await worker.stop();}
+});
+
+test('a missing frozen export source pauses the real worker without failed rewrite or receipt changes', async t => {
+  const f = await fixture(t), source = f.asset();
+  let timeline = object(await f.services.call('timeline.get', {projectId: f.projectId}));
+  timeline = object(await f.services.call('timeline.clip.add', {projectId: f.projectId, expectedRevision: timeline.revision, requestId: randomUUID(), assetId: source.id,
+    trackId: object((timeline.tracks as unknown[])[0]).id, startFrame: 0, durationFrames: 6}));
+  const input = {projectId: f.projectId, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'export'};
+  const accepted = object(await f.services.call('timeline.render', input));
+  const storedBeforeLoss = object(f.store.get('exports', String(accepted.id)));
+  const receipt = f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId);
+  rmSync(path.join(f.root, 'media', source.id + '.mp4'));
+  const worker = startWorker(f.store, f.services, new Map());
+  try {
+    await worker.tick(); const original = object(f.store.get('exports', String(accepted.id)));
+    assert.equal(original.status, 'running'); assert.equal(original.error, null); assert.deepEqual(original.snapshot, storedBeforeLoss.snapshot);
+    assert.equal(f.state().snapshot().find(task => task.taskId === accepted.id)!.reason, 'SOURCE_UNAVAILABLE');
+    assert.equal(f.services.isBusy(), false); await worker.tick(); assert.deepEqual(f.store.get('exports', String(accepted.id)), original);
+    assert.deepEqual(f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId), receipt);
+    assert.equal(f.store.list('assets').length, 1); assert.equal(f.store.list('versions').length, 0);
+  } finally {await worker.stop();}
+});
+
+test('a missing frozen paid-generation reference pauses the original queued job without any submit', async t => {
+  let submits = 0;
+  const provider: Provider = {id: 'ark', capabilities: {models: ['fixture'], inputModes: ['text','image'], aspectRatios: ['9:16'], durations: [4], configured: true, enabled: true},
+    submit: async () => {submits++; return {providerJobId: 'must-not-submit'};}, reconcile: async () => null,
+    poll: async () => {throw Error('must not poll');}, download: async () => {throw Error('must not download');}};
+  const providers = new Map([['ark', provider]]), f = await fixture(t, providers), bytes = await renderMockImagePng({width: 360, height: 640}), id = randomUUID(), relativePath = `media/${id}.png`;
+  writeFileSync(path.join(f.root, relativePath), bytes, {mode: 0o600});
+  f.store.put('assets', {id, projectId: f.projectId, name: 'Reference.png', mimeType: 'image/png', sha256: createHash('sha256').update(bytes).digest('hex'), width: 360, height: 640, sizeBytes: bytes.length, relativePath, provenance: 'user-import'});
+  const shot = object(await f.services.call('shot.create', {projectId: f.projectId, title: 'Missing reference', prompt: 'Synthetic', duration: 4, referenceAssetIds: [id]}));
+  const accepted = object(await f.services.call('generation.submit', {shotId: shot.id, expectedRevision: shot.revision, providerId: 'ark', requestId: randomUUID()}));
+  const storedBeforeLoss = object(f.store.get('jobs', String(accepted.id)));
+  rmSync(path.join(f.root, relativePath)); const worker = startWorker(f.store, f.services, providers);
+  try {
+    await worker.tick(); const original = object(f.store.get('jobs', String(accepted.id)));
+    assert.equal(original.status, 'queued'); assert.equal(original.submissionCount, 0); assert.equal(original.error, null); assert.deepEqual(original.snapshot, storedBeforeLoss.snapshot);
+    assert.deepEqual(original, storedBeforeLoss);
+    assert.equal(f.state().snapshot().find(task => task.taskId === accepted.id)!.reason, 'SOURCE_UNAVAILABLE'); assert.equal(f.services.isBusy(), false);
+    await worker.tick(); assert.equal(submits, 0); assert.deepEqual(f.store.get('jobs', String(accepted.id)), original);
+    assert.equal(f.store.list('versions').length, 0); assert.equal(f.store.list('assets').length, 1);
+  } finally {await worker.stop();}
+});

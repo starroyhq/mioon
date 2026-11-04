@@ -1,3 +1,5 @@
+import {pauseUnavailableBackgroundTask} from './background-task-state.ts';
+import {markBackgroundTaskChanged,isBackgroundTaskIndexUncertain,safeBackgroundTaskIndexError} from './background-task-events.ts';
 import {assertProjectStore} from './store-runtime.ts';
 import path from 'node:path';
 import {isProjectStore} from './project-file/store.ts';
@@ -48,6 +50,7 @@ export interface ImageServicesOptions {
  assertLiveAllowed?: ()=>void;
  generate?: GenerateImage;
  autoRun?: boolean;
+ deferRecovery?: boolean;
  fault?: ImageFault;
  settings?: ImageSettingsService;
  liveGateway?: Gateways|null;
@@ -72,6 +75,7 @@ export interface ImageProfileList {
  liveEnabled: boolean;
 }
 export interface ImageService {
+ readonly activateBackground: ()=>void;
  readonly isBusy: ()=>boolean;
  readonly handlers: Readonly<Record<string,(input: unknown,context?: {signal?: AbortSignal|null; [key: string]: unknown})=>unknown>>;
  readonly drain: ()=>Promise<void>;
@@ -96,6 +100,7 @@ interface ImageOwnerRecord {
  readonly signal: AbortSignal|undefined;
  readonly generate: GenerateImage;
  readonly autoRun: boolean;
+ readonly deferRecovery: boolean;
  readonly fault: ImageFault;
  readonly settings?: ImageSettingsService;
  readonly liveGateway?: Gateways|null;
@@ -124,7 +129,8 @@ const isRecord=(value: unknown): value is Record<string, unknown>=>value!==null&
 const property=(value: unknown,key: string): unknown=>isRecord(value)?value[key]:undefined;
 // Safe custom pre-dispatch diagnostics. A dispatched task always remains unknown.
 const customPreDispatchCodes=new Set(['IMAGE_NETWORK_DENIED','IMAGE_CONNECTION_FAILED','IMAGE_TIMEOUT','IMAGE_DISPATCH_BLOCKED','IMAGE_SETTINGS_CONFLICT','IMAGE_SETTINGS_NOT_CONFIGURED','IMAGE_SETTINGS_DISABLED']);
-export function safeImageServiceError(cause: unknown): {code: string; message: string; status: number} {
+export function safeImageServiceError(cause: unknown): {code: string; message: string; status: number; details?: Record<string,unknown>} {
+ const index=safeBackgroundTaskIndexError(cause);if(index)return index;
  if(property(cause,'code')==='COMFY_MODULE_UNAVAILABLE')return {code:'COMFY_MODULE_UNAVAILABLE',message:COMFY_MODULE_UNAVAILABLE_MESSAGE,status:503};
  const rawCode=property(cause,'code');
  const code=typeof rawCode==='string'&&Object.hasOwn(messages,rawCode)?rawCode:'IMAGE_STORAGE_FAILED';
@@ -143,13 +149,14 @@ const asReceipt=(value: unknown): ImageReceipt|null=>value?value as ImageReceipt
  * user approval; injected dependencies are trusted tests, never RPC options. */
 // S0: each real project owns this queue/connection. The historical Global
 // limits are connection-local; queuedPerProject=8 remains the tighter limit.
-export function createImageServices(store: ImageStore,{signal:ownerSignal,generate=defaultGenerate,autoRun=true,fault=noop,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,comfyModuleAvailability,assertLiveAllowed}: ImageServicesOptions={}): ImageService {
+export function createImageServices(store: ImageStore,{signal:ownerSignal,generate=defaultGenerate,autoRun=true,deferRecovery=false,fault=noop,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,comfyModuleAvailability,assertLiveAllowed}: ImageServicesOptions={}): ImageService {
  assertProjectStore(store);
  const old=owners.get(store.db);
- if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.generate!==generate||old.autoRun!==autoRun||old.fault!==fault||old.settings!==settings||old.liveGateway!==liveGateway||old.customSettings!==customSettings||old.customGateway!==customGateway||old.comfySettings!==comfySettings||old.comfyConnector!==comfyConnector||old.comfyModuleAvailability!==comfyModuleAvailability)fail('IMAGE_SERVICE_ACTIVE');return old.service;}
+ if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.generate!==generate||old.autoRun!==autoRun||old.deferRecovery!==deferRecovery||old.fault!==fault||old.settings!==settings||old.liveGateway!==liveGateway||old.customSettings!==customSettings||old.customGateway!==customGateway||old.comfySettings!==comfySettings||old.comfyConnector!==comfyConnector||old.comfyModuleAvailability!==comfyModuleAvailability)fail('IMAGE_SERVICE_ACTIVE');return old.service;}
  const {db,tx}=store,queue: ImageAttempt[]=[],pending=new Map<string,ImageAttempt>(),active=new Set<Promise<unknown>>();
  const releaseProjectMedia=registerProjectMediaStore(store);
  const controller=new AbortController(),signal: AbortSignal=ownerSignal?AbortSignal.any([ownerSignal,controller.signal]):controller.signal;
+ let backgroundActive=false;
  let stopped=false,running=false,reconciled=false,reported=false;
  const comfyAdmission=createComfyAdmission(comfyConnector,comfyModuleAvailability);
  const selectedSettings=(providerId: string): ImageSettingsService|ComfySettingsService|null=>providerId==='openai'?settings??null:providerId==='openai-compatible'?customSettings??null:providerId==='comfy-local'?comfySettings??null:null;
@@ -183,6 +190,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   const entries=Object.entries(patch),timestamp=now();
   const result=db.prepare(`UPDATE image_tasks SET ${entries.map(([key])=>`${key}=?`).join(',')},revision=revision+1,updatedAt=? WHERE id=? AND projectId=? AND revision=?`).run(...entries.map(([,v])=>v) as SQLInputValue[],timestamp,value.row.id,value.row.projectId,value.row.revision);
   if(result.changes!==1)fail('IMAGE_REVISION_CONFLICT');
+  markBackgroundTaskChanged(db,'image_task',value.row.id);
   if(release){const g=reader(value.row.projectId).group(value.row.groupId);maxRevision(g.revision);if(g.activeTaskId!==value.row.id)invalid();db.prepare('UPDATE image_groups SET activeTaskId=NULL,headVersionId=?,revision=revision+1,updatedAt=? WHERE id=? AND projectId=? AND revision=?').run(headVersionId??g.headVersionId,timestamp,g.id,g.projectId,g.revision);}
   return task(value.row.projectId,value.row.id,{shallow:true});
  }
@@ -211,6 +219,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
    else{groupId=randomUUID();db.prepare('INSERT INTO image_groups(id,projectId,name,revision,headVersionId,activeTaskId,createdAt,updatedAt) VALUES(?,?,?,1,NULL,?,?,?)').run(groupId,generation.projectId,generation.name,id,timestamp,timestamp);}
    const snapshot={schemaVersion:1,projectId:generation.projectId,groupId,taskId:id,name:generation.name,prompt:generation.prompt,providerId:generation.providerId,model:generation.model,options:generation.options,...(input.purpose==='edit'?{purpose:'edit',inputImage:input.inputImage,sourceImage:verified?.descriptor}:{})};
    db.prepare("INSERT INTO image_tasks(id,projectId,groupId,requestId,inputHash,input,snapshot,state,revision,dispatched,stagedReceipt,versionId,errorCode,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?,'queued',1,0,NULL,NULL,NULL,?,?)").run(id,generation.projectId,groupId,generation.requestId,hash(generation),canonical(generation),canonical(snapshot),timestamp,timestamp);
+   markBackgroundTaskChanged(db,'image_task',id);
    bindAgentTaskJobInside(db,'image',id);
    if(generation.providerId!=='mock')reviews.authorizeAcceptance(generation,id,approval,verified??undefined);
    if(generation.providerId==='comfy-local')remote.prepareTask(generation.projectId,id);
@@ -292,7 +301,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
    let original=current(target as unknown as ImageHistoryTask);const check=(): ImageHistoryTask=>{claim();return current(original);};
    try{check();const receipt=await storage.stage(stageTask(original),candidate,check);fault('after_result_manifest',{taskId:original.row.id});
     original=tx(()=>{check();return change(original,{state:'persisting',stagedReceipt:canonical(receipt),errorCode:null});});fault('after_result_receipt',{taskId:original.row.id});await finalize(original);
-   }catch(cause){try{const checked=current(original,{allowStopped:true});claim();let receipt=asReceipt(checked.receipt);try{receipt??=storage.readReceipt(stageTask(checked));}catch{}tx(()=>{claim();if(receipt)change(checked,{state:'local_result_error',stagedReceipt:checked.row.stagedReceipt??canonical(receipt),errorCode:'IMAGE_RESULT_INVALID'},{allowStopped:true});else if(checked.row.state!=='outcome_unknown')change(checked,{state:'outcome_unknown',errorCode:'IMAGE_OUTCOME_UNKNOWN'},{allowStopped:true});});}catch{}throw cause;}
+   }catch(cause){if(isBackgroundTaskIndexUncertain(cause))throw cause;try{const checked=current(original,{allowStopped:true});claim();let receipt=asReceipt(checked.receipt);try{receipt??=storage.readReceipt(stageTask(checked));}catch{}tx(()=>{claim();if(receipt)change(checked,{state:'local_result_error',stagedReceipt:checked.row.stagedReceipt??canonical(receipt),errorCode:'IMAGE_RESULT_INVALID'},{allowStopped:true});else if(checked.row.state!=='outcome_unknown')change(checked,{state:'outcome_unknown',errorCode:'IMAGE_OUTCOME_UNKNOWN'},{allowStopped:true});});}catch{}throw cause;}
   }});
  function execute(entry:ImageAttempt):Promise<void>{return withAgentTaskJobOrigin(db,'image',entry.id,()=>executeInside(entry));}
  async function executeInside(entry: ImageAttempt): Promise<void> {
@@ -321,6 +330,8 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
    original=tx(()=>change(original as ImageHistoryTask,{state:'persisting',stagedReceipt:canonical(receipt),errorCode:null}));fault('after_result_receipt',{taskId:original.row.id});
    await finalize(original);
   }catch(cause){
+   if(isBackgroundTaskIndexUncertain(cause))return;
+   if(pauseUnavailableBackgroundTask(db,{kind:'image_task',taskId:entry.id},cause))return;
    if(!original)return;
    try{
     // A failed ownership/revision fence never authorizes another row write.
@@ -345,7 +356,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   const entry: ImageAttempt={id,projectId,local};pending.set(id,entry);queue.push(entry);queueMicrotask(pump);
  }
  function pump(): void {
-  if(running||stopped||signal.aborted)return;const entry=queue.shift();if(!entry)return;running=true;
+  if(!backgroundActive||running||stopped||signal.aborted)return;const entry=queue.shift();if(!entry)return;running=true;
   const promise=execute(entry).finally(()=>{active.delete(promise);pending.delete(entry.id);running=false;if(entry.resumeRequested)enqueue(entry.id,entry.projectId,false);pump();});active.add(promise);
  }
  function reconcile(): void {
@@ -374,7 +385,8 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
  async function drain(): Promise<void> {removeResumer();removeStopper();if(!stopped){stopped=true;controller.abort();reviews.stop();queue.length=0;}await Promise.all([boundedShutdown(Promise.allSettled([...active]),'IMAGE_STOP_TIMEOUT'),remote.drain()]);releaseProjectMedia();}
  for(const operation of Object.keys(handlers)){if(Object.hasOwn(history.handlers,operation))continue;const handler=handlers[operation];if(!handler)continue;handlers[operation]=(input: unknown)=>{if(!schemaPresent())fail('IMAGE_SCHEMA_REQUIRED',503);return handler(input);};}
  const approveReviewed=(approval: unknown): unknown=>{const input=reviews.readForApproval(approval);return mutateWithSource('image.generate',input as unknown as ImageMutationInput,approval);};
- const service: ImageService={handlers,drain,isBusy:()=>active.size>0||pending.size>0,approveReviewed:approveReviewed as ImageService['approveReviewed'],rejectReview:reviews.reject};
- owners.set(db,{root:store.root,signal:ownerSignal,generate,autoRun,fault,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,comfyModuleAvailability,service});
- try{reconcile();remote.reconcile();}catch(error){releaseProjectMedia();owners.delete(db);throw error;}return service;
+ const activateBackground=():void=>{if(backgroundActive||stopped)return;backgroundActive=true;reconcile();remote.reconcile();queueMicrotask(pump);};
+ const service: ImageService={handlers,drain,activateBackground,isBusy:()=>active.size>0||pending.size>0,approveReviewed:approveReviewed as ImageService['approveReviewed'],rejectReview:reviews.reject};
+ owners.set(db,{root:store.root,signal:ownerSignal,generate,autoRun,deferRecovery,fault,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,comfyModuleAvailability,service});
+ try{if(!deferRecovery)activateBackground();}catch(error){releaseProjectMedia();owners.delete(db);throw error;}return service;
 }

@@ -1,3 +1,5 @@
+import {pauseUnavailableBackgroundTask} from './background-task-state.ts';
+import {markBackgroundTaskChanged,isBackgroundTaskIndexUncertain,safeBackgroundTaskIndexError} from './background-task-events.ts';
 import {assertProjectStore} from './store-runtime.ts';
 import {isProjectStore} from './project-file/store.ts';
 import {hasAssetReference, mediaLocatorFields} from './asset-reference-record.ts';
@@ -33,9 +35,11 @@ export interface FrameServicesOptions {
  signal?: AbortSignal;
  decode?: (options?: DecodeManagedFrameOptions)=>Promise<DecodedManagedFrame>;
  autoRun?: boolean;
+ deferRecovery?: boolean;
  fault?: FrameFault;
 }
 export interface FrameService {
+ readonly activateBackground: ()=>void;
  readonly isBusy: ()=>boolean;
  readonly handlers: Readonly<Record<string,(input: unknown,context?: {signal?: AbortSignal|null})=>unknown>>;
  readonly drain: ()=>Promise<void>;
@@ -45,6 +49,7 @@ interface FrameOwnerRecord {
  readonly signal: AbortSignal|undefined;
  readonly decode: (options?: DecodeManagedFrameOptions)=>Promise<DecodedManagedFrame>;
  readonly autoRun: boolean;
+ readonly deferRecovery: boolean;
  readonly fault: FrameFault;
  service: FrameService;
 }
@@ -68,11 +73,13 @@ function fail(code: string,status?: number): never {throw failure(code,status);}
 function missing(): never {return fail('FRAME_NOT_FOUND',404);}
 function invalid(): never {return fail('FRAME_RECORD_INVALID');}
 export function safeFrameServiceError(cause: unknown): {code: string; message: string; status: number; details?: Record<string,unknown>} {
+ const index=safeBackgroundTaskIndexError(cause);if(index)return index;
  const safe=safeFrameFailure(cause),proof=isRecord(cause)?verifiedRefusals.get(cause):null;
  return {...safe,...(proof?{details:{frameOutcome:proof}}:{})};
 }
 const bounded=(name: string,size: number,nullable=false): string=>`CASE WHEN ${nullable?`${name} IS NULL OR `:''}(typeof(${name})='text' AND length(CAST(${name} AS BLOB)) BETWEEN 1 AND ${size}) THEN ${name} ELSE 0 END AS ${name}`;
 function publicFailure(cause: unknown): AppError {
+ const index=safeBackgroundTaskIndexError(cause);if(index)return new AppError(index.code,index.message,index.status,index.details);
  const safe=safeFrameServiceError(cause),error=framePublicFailure(cause,safe.details??{});
  if(safe.details&&isRecord(error))verifiedRefusals.set(error,safe.details.frameOutcome as unknown);return error;
 }
@@ -84,14 +91,15 @@ const stageTask=(value: FrameTaskView): FrameStorageTask=>({...value.row,snapsho
  * This module has no provider, model, settings, network, or generic tool seam. */
 // S0: Global counters describe this one project connection. The original
 // queuedPerProject=2 and retained per-project limits remain unchanged.
-export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode=decodeManagedFrame as unknown as (options?: DecodeManagedFrameOptions)=>Promise<DecodedManagedFrame>,autoRun=true,fault=noop}: FrameServicesOptions={}): FrameService {
+export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode=decodeManagedFrame as unknown as (options?: DecodeManagedFrameOptions)=>Promise<DecodedManagedFrame>,autoRun=true,deferRecovery=false,fault=noop}: FrameServicesOptions={}): FrameService {
  assertProjectStore(store);
  const old=owners.get(store.db);
- if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.decode!==decode||old.autoRun!==autoRun||old.fault!==fault)fail('FRAME_SERVICE_ACTIVE');return old.service;}
+ if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.decode!==decode||old.autoRun!==autoRun||old.deferRecovery!==deferRecovery||old.fault!==fault)fail('FRAME_SERVICE_ACTIVE');return old.service;}
  const {db,root,tx}=store,queue: FrameAttempt[]=[],pending=new Set<string>(),preparations=new Map<string,{operation: string;projectId: string;canonicalInput: string;promise: Promise<unknown>}>(),active=new Set<Promise<unknown>>(),attemptSignals=new Set<AbortSignal>();
  const controller=new AbortController(),signal: AbortSignal=ownerSignal?AbortSignal.any([ownerSignal,controller.signal]):controller.signal,resumeRequested=new Set<string>();
+ let backgroundActive=false;
  let stopped=false,running=false,reported=false,draining: Promise<void>|undefined,releaseProjectMedia=()=>{};
- const registration: FrameOwnerRecord={root,signal:ownerSignal,decode,autoRun,fault,service:undefined as unknown as FrameService};
+ const registration: FrameOwnerRecord={root,signal:ownerSignal,decode,autoRun,deferRecovery,fault,service:undefined as unknown as FrameService};
  const storage=createFrameStorage(store,{validatePng});
  const history: FrameHistoryReaders=createFrameHistoryReaders(store),{schemaPresent,project,task,prior}=history;
  const graph=(projectId: string): FrameReader=>createOwnedMediaGraphReader(db,projectId) as unknown as FrameReader;
@@ -109,7 +117,7 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
   if(Object.keys(patch).some(key=>!['state','started','stagedReceipt','assetId','errorCode'].includes(key)))throw Error('Invalid internal frame patch');
   const entries=Object.entries(patch),result=db.prepare(`UPDATE frame_tasks SET ${entries.map(([key])=>`${key}=?`).join(',')},revision=revision+1,updatedAt=? WHERE id=? AND projectId=? AND revision=?`)
    .run(...entries.map(([,entry])=>entry) as import('node:sqlite').SQLInputValue[],now(),value.row.id,value.row.projectId,value.row.revision);
-  if(result.changes!==1)fail('FRAME_REVISION_CONFLICT');return task(value.row.projectId,value.row.id);
+  if(result.changes!==1)fail('FRAME_REVISION_CONFLICT');markBackgroundTaskChanged(db,'frame_task',value.row.id);return task(value.row.projectId,value.row.id);
  }
  const count=(table: string,where: string,args: readonly import('node:sqlite').SQLInputValue[],cap: number): number=>{
   const value=db.prepare(`SELECT count(*) AS n FROM (SELECT 1 FROM ${table}${where?' WHERE '+where:''} LIMIT ?)`).get(...args,cap+1)?.n;
@@ -134,11 +142,11 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
  }
  function sourceFile(asset: FrameRow): ManagedSource {
   try{const result=validateManagedSource(root,asset,{maxBytes:FRAME_LIMITS.sourceBytes});if(result.info.size!==asset.sizeBytes)fail('FRAME_SOURCE_CHANGED');return result;}
-  catch(cause){if(property(cause,'code')==='FRAME_SOURCE_CHANGED')throw cause;fail('FRAME_SOURCE_INVALID');}
+  catch(cause){if(property(cause,'code')==='FRAME_SOURCE_CHANGED')throw cause;throw Object.defineProperty(failure('FRAME_SOURCE_INVALID'),'cause',{value:cause});}
  }
  async function sourceHash(asset: FrameRow,expected?: ManagedSource['info']): Promise<VerifiedManagedSource> {
   try{return await verifiedManagedHash(root,asset,{signal,expected,maxBytes:FRAME_LIMITS.sourceBytes,beforeEffect:assertTaskEffectOrigin});}
-  catch(cause){if(signal.aborted)fail('FRAME_SERVICE_STOPPED',503);fail(property(cause,'code')==='MANAGED_SOURCE_CHANGED'?'FRAME_SOURCE_CHANGED':'FRAME_SOURCE_INVALID');}
+  catch(cause){if(signal.aborted)fail('FRAME_SERVICE_STOPPED',503);throw Object.defineProperty(failure(property(cause,'code')==='MANAGED_SOURCE_CHANGED'?'FRAME_SOURCE_CHANGED':'FRAME_SOURCE_INVALID'),'cause',{value:cause});}
  }
  function sourceFence(original: FrameTaskView,expected?: ManagedFileIdentity): {file: string; info: ManagedFileIdentity; asset: FrameRow; value: FrameTaskView} {
   const value=current(original),{asset}=source(value.input as unknown as FrameSourceInput,value.snapshot),file=sourceFile(asset);
@@ -173,6 +181,7 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
    if(!frameTaskResponseSchema.safeParse(value).success)invalid();
    db.prepare("INSERT INTO frame_tasks(id,projectId,requestId,inputHash,input,snapshot,state,revision,started,stagedReceipt,assetId,errorCode,createdAt,updatedAt) VALUES(?,?,?,?,?,?,'queued',1,0,NULL,NULL,NULL,?,?)")
     .run(id,input.projectId,input.requestId,hash(input),canonical(input),canonical(snapshot),timestamp,timestamp);
+   markBackgroundTaskChanged(db,'frame_task',id);
    bindAgentTaskJobInside(db,'frame',id);
    record('frame.extract',input,value as unknown as FrameTaskResponse);task(input.projectId,id);return {value:value as unknown as FrameTaskResponse,replayed:false};
   });
@@ -246,6 +255,8 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
    original=tx(()=>{sourceFence(original as FrameTaskView,verified.info);return change(original as FrameTaskView,{state:'persisting',stagedReceipt:canonical(receipt),errorCode:null});});fault('after_result_receipt',{taskId:original.row.id});
    await finalize(original,verified.info);
   }catch(cause){
+   if(isBackgroundTaskIndexUncertain(cause))return;
+   if(pauseUnavailableBackgroundTask(db,{kind:'frame_task',taskId:entry.id},cause))return;
    if(original)try{
     const checked=current(original,{allowStopped:true});if(!['queued','running','persisting'].includes(checked.row.state))return;
     if(!checked.row.started&&(blockedGate||isAgentTaskEffectBlocked(cause))){if(isAgentTaskJobStopped(db,'frame',entry.id))tx(()=>change(checked,{state:'cancelled_before_start',errorCode:null},{allowStopped:true}));return;}
@@ -270,7 +281,7 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
   pending.add(id);const entry: FrameAttempt={id,projectId,local};if(local)queue.unshift(entry);else queue.push(entry);queueMicrotask(pump);
  }
  function pump(): void {
-  if(running||stopped||signal.aborted)return;const entry=queue[0];if(!entry)return;
+  if(!backgroundActive||running||stopped||signal.aborted)return;const entry=queue[0];if(!entry)return;
   // A durable active row whose enqueue was lost must remain visible for
   // restart reconciliation; it cannot cause unrelated queued tasks to fail.
   try{owner();if(!entry.local&&db.prepare("SELECT 1 FROM frame_tasks WHERE state IN ('running','persisting') LIMIT 1").get())return;}catch{diagnose();return;}
@@ -348,6 +359,7 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
   })(),'FRAME_STOP_TIMEOUT').then(()=>{releaseProjectMedia();});draining=result;void result.catch(()=>{if(draining===result)draining=undefined;});return result;
  }
  Object.assign(handlers,history.handlers);
- const service: FrameService={handlers,drain,isBusy:()=>active.size>0||pending.size>0||preparations.size>0};registration.service=service;owners.set(db,registration);
- try{releaseProjectMedia=registerProjectMediaStore(store);reconcile();}catch(cause){releaseProjectMedia();owners.delete(db);throw cause;}return service;
+ const activateBackground=():void=>{if(backgroundActive||stopped)return;backgroundActive=true;reconcile();queueMicrotask(pump);};
+ const service: FrameService={handlers,drain,activateBackground,isBusy:()=>active.size>0||pending.size>0||preparations.size>0};registration.service=service;owners.set(db,registration);
+ try{releaseProjectMedia=registerProjectMediaStore(store);if(!deferRecovery)activateBackground();}catch(cause){releaseProjectMedia();owners.delete(db);throw cause;}return service;
 }

@@ -105,7 +105,31 @@ export function createMemoryBackgroundTaskIndex(entries: readonly BackgroundTask
     replace: (projectId, next) => {
       const parsed = next.map(entry => backgroundTaskIndexEntrySchema.parse(entry));
       if (parsed.some(entry => entry.projectId !== projectId)) throw new TypeError('Task index entries must belong to the project');
-      current = [...current.filter(entry => entry.projectId !== projectId), ...parsed];
+      const archived = current.filter(entry => entry.projectId === projectId && entry.phase === 'archived');
+      current = [...current.filter(entry => entry.projectId !== projectId), ...archived,
+        ...parsed.filter(entry => !archived.some(old => old.kind === entry.kind && old.taskId === entry.taskId && old.sourceHistory === entry.sourceHistory))];
+    },
+    listProject: projectId => current.filter(entry => entry.projectId === projectId),
+    upsert: entry => {
+      const parsed = backgroundTaskIndexEntrySchema.parse(entry);
+      if (parsed.sourceHistory != null && parsed.phase !== 'archived') current = current.filter(old => old.projectId !== parsed.projectId
+        || old.kind !== parsed.kind || old.taskId !== parsed.taskId || old.sourceHistory != null || old.phase === 'archived');
+      const at = current.findIndex(old => old.projectId === parsed.projectId && old.kind === parsed.kind && old.taskId === parsed.taskId && old.sourceHistory === parsed.sourceHistory);
+      if (at < 0) {if (parsed.phase !== 'done') current.push(parsed);}
+      else {
+        if (current[at]!.phase === 'archived') return;
+        if (parsed.phase === 'done') current.splice(at, 1);
+        else current[at] = parsed;
+      }
+    },
+    markProject: (projectId, phase, reason) => {
+      current = current.map(entry => entry.projectId !== projectId || entry.phase === 'archived' || entry.phase === 'done' ? entry
+        : backgroundTaskIndexEntrySchema.parse({...entry, phase, reason, revision: (entry.revision ?? 0) + 1}));
+    },
+    archive: (projectId, sourceHistory) => {
+      current = current.map(entry => entry.projectId !== projectId || entry.phase === 'archived'
+        || sourceHistory !== undefined && entry.sourceHistory != null && entry.sourceHistory !== sourceHistory ? entry
+        : backgroundTaskIndexEntrySchema.parse({...entry, phase: 'archived', reason: 'PROJECT_HISTORY_ARCHIVED', revision: (entry.revision ?? 0) + 1}));
     },
   };
 }

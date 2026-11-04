@@ -1,3 +1,4 @@
+import {markBackgroundTaskChanged} from './background-task-events.ts';
 import {assertProjectStore} from './store-runtime.ts';
 import {randomUUID,randomBytes,createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import type {DatabaseSync,SQLInputValue} from 'node:sqlite';
@@ -12,7 +13,7 @@ import {ownsStoreLock} from './store-runtime.ts';
 import {isSubjectVersionHidden,subjectVariantSchemaPresent} from './subject-variant-visibility.ts';
 
 export interface SubjectVariantStore {readonly db: DatabaseSync; tx<T>(callback: ()=>T): T}
-export interface SubjectVariantService {readonly handlers: Readonly<Record<string,(input: unknown)=>unknown>>; readonly drain: ()=>Promise<void>}
+export interface SubjectVariantService {readonly handlers: Readonly<Record<string,(input: unknown)=>unknown>>; readonly activateBackground: ()=>void; readonly drain: ()=>Promise<void>}
 type Row=Record<string,unknown>;
 type MutationInput=Record<string,unknown>&{readonly projectId: string; readonly requestId: string};
 interface CreateInput extends MutationInput {subjectId: string; sourceVersionId: string; kind: 'angle'|'light'; items: SubjectVariantSpec[]; providerId: 'mock'|'openai'; model: string}
@@ -59,9 +60,9 @@ const RUNNING=new Set(['queued','dispatching','receiving','persisting','succeede
 const RETRYABLE=new Set(['failed','cancelled_before_dispatch']);
 const EDIT_ORIGINS=new Set(['user-import','generated','synthetic-mock','extracted-frame']);
 
-export function createSubjectVariantServices(store: SubjectVariantStore): SubjectVariantService {
+export function createSubjectVariantServices(store: SubjectVariantStore,{deferRecovery=false}: {deferRecovery?: boolean}={}): SubjectVariantService {
  assertProjectStore(store);
- const {db,tx}=store,secret=randomBytes(32);
+ const {db,tx}=store,secret=randomBytes(32);let backgroundActive=false;
  const schemaPresent=(): boolean=>subjectVariantSchemaPresent(db);
  function owner(): void {if(!ownsStoreLock(store))fail('SUBJECT_VARIANT_STATE_CONFLICT',403);}
  function project(projectId: string): void {if(!db.prepare('SELECT 1 FROM projects WHERE id=? LIMIT 1').get(projectId))missing();}
@@ -182,6 +183,7 @@ export function createSubjectVariantServices(store: SubjectVariantStore): Subjec
    if(!subjectVariantSnapshotSchema.safeParse(snapshot).success)invalid();
    db.prepare("INSERT INTO subject_variant_batches(id,projectId,subjectId,sourceVersionId,kind,requestId,inputHash,input,snapshot,state,revision,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?,?,?,'active',1,?,?)")
     .run(id,input.projectId,input.subjectId,input.sourceVersionId,input.kind,input.requestId,sha(canonical(input)),canonical(input),canonical(snapshot),timestamp,timestamp);
+   markBackgroundTaskChanged(db,'subject_variant_batch',id);
    const insert=db.prepare('INSERT INTO subject_variant_items(batchId,projectId,position,attempt,imageRequestId,versionId,revision,updatedAt) VALUES(?,?,?,1,?,NULL,1,?)');
    input.items.forEach((_,index)=>insert.run(id,input.projectId,index+1,subjectVariantImageRequestId(id,index+1,1),timestamp));
    const value=dto(batch(input.projectId,id));record('subject.variants.create',input,value,id);
@@ -191,6 +193,7 @@ export function createSubjectVariantServices(store: SubjectVariantStore): Subjec
  function change(view: BatchView,state: 'active'|'undone',timestamp: string): void {
   if(view.row.revision>=Number.MAX_SAFE_INTEGER)fail('SUBJECT_VARIANT_CAPACITY',507);
   if(db.prepare('UPDATE subject_variant_batches SET state=?,revision=revision+1,updatedAt=? WHERE id=? AND projectId=? AND revision=?').run(state,timestamp,view.row.id,view.row.projectId,view.row.revision).changes!==1)invalid();
+  markBackgroundTaskChanged(db,'subject_variant_batch',view.row.id);
  }
  function retry(input: RetryInput): SubjectVariantBatch {
   return tx(()=>{
@@ -244,6 +247,7 @@ export function createSubjectVariantServices(store: SubjectVariantStore): Subjec
   db.prepare('INSERT INTO subject_versions(id,projectId,subjectId,number,assetId,data) VALUES(?,?,?,?,?,?)').run(versionId,result.projectId,view.row.subjectId,number,result.assetId,JSON.stringify(value));
   if(db.prepare('UPDATE subjects SET revision=?,updatedAt=? WHERE id=? AND projectId=? AND revision=?').run(number,timestamp,view.row.subjectId,result.projectId,subject.revision).changes!==1)invalid();
   if(db.prepare('UPDATE subject_variant_items SET versionId=?,revision=revision+1,updatedAt=? WHERE batchId=? AND position=? AND revision=?').run(versionId,timestamp,view.row.id,item!.position,item!.revision).changes!==1)invalid();
+  markBackgroundTaskChanged(db,'subject_variant_batch',view.row.id);
  }
  // A result published while this service was not registered is linked on the
  // next start, from the image task's own receipt.
@@ -309,7 +313,8 @@ export function createSubjectVariantServices(store: SubjectVariantStore): Subjec
  handlers['subject.variants.get']=(input: unknown)=>{const data=parse('subject.variants.get',input) as {projectId: string; batchId: string};
   return snapshotRead(()=>{project(data.projectId);const view=batch(data.projectId,data.batchId);return dto(view,undoState(view));});};
  handlers['subject.variants.list']=(input: unknown)=>{const data=parse('subject.variants.list',input) as {projectId: string; subjectId: string; limit?: number; cursor?: string};return snapshotRead(()=>list(data));};
- const removeListener=setImageResultListener(db,result=>link(result));
- reconcile();
- return Object.freeze({handlers:Object.freeze(handlers),drain:async()=>{removeListener();}});
+ const removeListener=setImageResultListener(db,result=>{if(backgroundActive)link(result);});
+ const activateBackground=():void=>{if(backgroundActive)return;backgroundActive=true;reconcile();};
+ if(!deferRecovery)activateBackground();
+ return Object.freeze({handlers:Object.freeze(handlers),activateBackground,drain:async()=>{removeListener();}});
 }
