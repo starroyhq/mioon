@@ -140,9 +140,34 @@ export function validateDeclaredSchema(input: SchemaDeclarations = declaredSchem
       }
       return readTableShape(db, table, schema).foreignKeys.some(fk => fk.from === column && typeof fk.to === 'string' && projectBound(schema, String(fk.table), fk.to, next));
     };
+    // These local UI records deliberately outlive missing content targets.
+    // Prove their native history_state guard instead of adding a content FK.
+    const draftProjectBound = (kind: DatabaseKind, table: string): boolean => {
+      const kinds: Record<string, string> = {local_clip_drafts: 'clip', local_delivery_drafts: 'delivery', local_shot_text_drafts: 'shot-text'};
+      if (kind !== 'history' || !Object.hasOwn(kinds, table)) return false;
+      const projectId = '11111111-1111-4111-8111-111111111111', foreign = '22222222-2222-4222-8222-222222222222';
+      db.exec('SAVEPOINT draft_project_guard_probe');
+      try {
+        db.prepare('INSERT INTO main.history_state(singleton,projectId,seenContentSequence) VALUES(1,?,0)').run(projectId);
+        db.prepare('INSERT INTO main.local_draft_states VALUES(?,?)').run(kinds[table]!, '0'.repeat(64));
+        const row: Record<string, unknown> = table === 'local_clip_drafts'
+          ? {projectId: foreign, timelineId: projectId, clipId: projectId, revision: 1, draft: null}
+          : {projectId: foreign, ...(table === 'local_shot_text_drafts' ? {shotId: projectId} : {}), draftRevision: 1, draft: null, intentRevision: 0, intent: null};
+        const columns = Object.keys(row).filter(key => !['draft', 'intent'].includes(key));
+        const values = columns.map(key => row[key] as string | number);
+        const insert = db.prepare(`INSERT INTO main.${table}(${columns.join(',')},ordinal,data) VALUES(${columns.map(() => '?').join(',')},1,?)`);
+        let rejected = false;
+        try {insert.run(...values, JSON.stringify(row));}
+        catch (error) {rejected = error instanceof Error && error.message === 'LOCAL_DRAFT_SQL_PROJECT';}
+        if (!rejected) throw new Error(`Missing native history project guard for ${table}`);
+        row.projectId = projectId;
+        insert.run(...columns.map(key => row[key] as string | number), JSON.stringify(row));
+        return true;
+      } finally {db.exec('ROLLBACK TO draft_project_guard_probe; RELEASE draft_project_guard_probe');}
+    };
     for (const kind of ['history', 'cache'] as const) for (const table of input.tables[kind]) {
       if (readTableShape(db, table, SCHEMAS[kind]).columns.some(column => column.name === 'projectId') &&
-          !projectBound(SCHEMAS[kind], table, 'projectId')) {
+          !projectBound(SCHEMAS[kind], table, 'projectId') && !draftProjectBound(kind, table)) {
         throw new Error(`Missing project relation for ${SCHEMAS[kind]}.${table}`);
       }
     }

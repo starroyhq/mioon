@@ -8,6 +8,7 @@ import {RECEIPT_SCHEMA} from './domains/receipts.ts';
 import {TASK_SCHEMA} from './domains/tasks.ts';
 import {TIMELINE_HISTORY_SCHEMA} from './domains/timeline-history.ts';
 import {VERSION_SCHEMA} from './domains/versions.ts';
+import {DRAFT_SCHEMA} from './domains/drafts.ts';
 import {CONTENT_TABLES} from './tables.ts';
 
 /** The three SQLite databases of one project: the project file itself, the
@@ -75,7 +76,7 @@ const HISTORY_STATE_METADATA: readonly string[] = Object.freeze([
 
 const DOMAIN_STATEMENTS: Readonly<Record<DatabaseKind, readonly string[]>> = {
   project: CONTENT_SCHEMA,
-  history: [...RECEIPT_SCHEMA, ...TASK_SCHEMA, ...TIMELINE_HISTORY_SCHEMA, ...MIO_SCHEMA, ...VERSION_SCHEMA],
+  history: [...RECEIPT_SCHEMA, ...TASK_SCHEMA, ...TIMELINE_HISTORY_SCHEMA, ...MIO_SCHEMA, ...VERSION_SCHEMA, ...DRAFT_SCHEMA],
   cache: CACHE_SCHEMA,
 };
 

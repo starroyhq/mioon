@@ -28,6 +28,13 @@ export function isProjectStore(value: unknown): value is ProjectStore {
     && store.localDir === connection.localDir && store.cacheDir === connection.cacheDir && store.tempDir === connection.tempDir;
 }
 
+/** Narrow metadata assertion over this exact kernel capability. A copied
+ * store or a different held database cannot provide its history identity. */
+export function heldProjectHistoryIdentity(value: unknown): ReturnType<ReturnType<typeof openProjectConnection>['historyIdentity']> {
+  if (!isProjectStore(value)) throw Object.assign(new TypeError('Project store identity is not verified'), {code: 'PROJECT_STORE_UNVERIFIED'});
+  return verifiedStores.get(value)!.connection.historyIdentity();
+}
+
 /** Backend-owned transaction fences run first inside every store transaction,
  * observers last before its commit; an observer failure rolls back both domain
  * rows and its own writes. The same rules as db.ts's workspace registrations,
