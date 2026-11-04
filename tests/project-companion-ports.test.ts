@@ -1,7 +1,7 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openAppLibrary, isAppLibraryHeld, projectFileIdentity} from '../packages/business/src/app-db/index.ts';
@@ -105,16 +105,16 @@ test('authorization scope uses the held app library and keeps exact target, rece
   await assert.rejects(authorizations.list(), {code: 'AGENT_AUTHORIZATION_UNAVAILABLE'});
 });
 
-test('three project JSON companions bind to localDir/history.db and retain cross-scope and ownership fences', t => {
+test('three project SQL drafts bind to localDir/history.db and retain cross-scope and ownership fences', t => {
   const f = fixture(t), timelineId = randomUUID(), clipId = randomUUID(), assetId = randomUUID(), shotId = randomUUID();
   const timeline = {id: timelineId, projectId: f.projectId, revision: 1, clips: [{id: clipId, assetId}]};
   const shot = {id: shotId, projectId: f.projectId, revision: 1, title: 'Original', prompt: 'Prompt'};
-  const common = {root: f.localDir, databaseFile: path.join(f.localDir, 'history.db'), storage};
+  const common = {store: f.store};
   const owned = {ownsLock: () => ownsStoreLock(f.store), isRestored: () => false};
   const drafts = createLocalDrafts({...common, guards: {...owned, readTimeline: () => timeline, readClipAsset: () => ({id: assetId, projectId: f.projectId, sha256: 'a'.repeat(64)})}});
   const key = {projectId: f.projectId, timelineId, clipId}, initial = drafts.get(key);
   assert.equal(initial.supported, true); if (!initial.supported) return;
-  const directory = validatePrivateDirectory(f.localDir), db = validateManagedFile(common.databaseFile, {root: f.localDir}); assert.ok(directory); assert.ok(db);
+  const directory = validatePrivateDirectory(f.localDir), db = validateManagedFile(path.join(f.localDir, 'history.db'), {root: f.localDir}); assert.ok(directory); assert.ok(db);
   const expectedScope = calculateWorkspaceScope({channel: 'web', root: f.localDir, directory, db});
   assert.equal(initial.workspaceScope, expectedScope);
   const saved = drafts.put({...key, workspaceScope: initial.workspaceScope, instanceId: initial.instanceId, expectedRevision: 0, baseRevision: 1, source: {assetId, assetSha256: 'a'.repeat(64)}, raw: {name: 'Raw draft', trackId: randomUUID(), startFrame: '0', durationFrames: '', sourceInFrame: '0', rect: {x: '0', y: '0', width: '720', height: '1280'}, gain: '1'}});
@@ -131,9 +131,11 @@ test('three project JSON companions bind to localDir/history.db and retain cross
   const textDraft = text.get({projectId: f.projectId, shotId}); assert.equal(textDraft.supported, true); if (!textDraft.supported) return;
   assert.equal(textDraft.workspaceScope, expectedScope);
   text.put({projectId: f.projectId, shotId, workspaceScope: textDraft.workspaceScope, instanceId: textDraft.instanceId, expectedDraftRevision: 0, draftId: randomUUID(), baseRevision: 1, baseText: {title: shot.title, prompt: shot.prompt}, raw: {title: '', prompt: 'Unsubmitted'}});
-  for (const name of [LOCAL_DRAFT_FILENAME, LOCAL_DELIVERY_FILENAME, LOCAL_SHOT_TEXT_FILENAME]) {
-    assert.equal(JSON.parse(readFileSync(path.join(f.localDir, name), 'utf8')).workspaceScope, expectedScope);
+  for (const [name, kind, table] of [[LOCAL_DRAFT_FILENAME, 'clip', 'local_clip_drafts'], [LOCAL_DELIVERY_FILENAME, 'delivery', 'local_delivery_drafts'], [LOCAL_SHOT_TEXT_FILENAME, 'shot-text', 'local_shot_text_drafts']]) {
+    assert.equal(f.store.db.prepare('SELECT workspaceScope FROM main.local_draft_states WHERE kind=?').get(kind)?.workspaceScope, expectedScope);
     assert.equal(existsSync(path.join(f.projectDir, name)), false);
+    assert.equal(existsSync(path.join(f.localDir, name)), false);
+    assert.equal(f.store.db.prepare(`SELECT count(*) AS n FROM main.${table}`).get()?.n, 1);
   }
   assert.throws(() => delivery.put({projectId: f.projectId, workspaceScope: 'b'.repeat(64), instanceId: exportDraft.instanceId, expectedDraftRevision: 1, draftId: randomUUID(), timelineId, baseRevision: 1, raw: {deliveryName: 'Foreign'}}), {code: 'LOCAL_DELIVERY_SCOPE_MISMATCH'});
   f.store.close();

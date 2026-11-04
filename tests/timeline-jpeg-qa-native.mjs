@@ -223,10 +223,20 @@ async function audit(label, branch = 'original') {
     assert.match(asset.relativePath, /^media\/[a-zA-Z0-9._-]+$/u); originals[name] = {managed: await fileHash(path.join(directory, asset.relativePath)), fixture: await fileHash(asset.fixtureFile)};
     assert.equal(originals[name].managed.sha256, asset.sha256); assert.deepEqual(originals[name].fixture, asset.fixtureHash);
   }
-  const draftFile = path.join(f.localDir, 'local-drafts-v1.json'), timeline = decode(raw.timelines).find(t => t.id === f.timelineId);
+  const timeline = decode(raw.timelines).find(t => t.id === f.timelineId);
+  // Use the same cold SQL capture as timeline/receipt evidence. Old JSON is
+  // neither read nor used as a fallback when there is no persisted scope.
+  const states = raw.local_draft_states.rows.filter(row => cell(row, raw.local_draft_states, 'kind') === 'clip');
+  assert.ok(states.length <= 1);
+  const entries = [...raw.local_clip_drafts.rows]
+    .sort((a, b) => Number(cell(a, raw.local_clip_drafts, 'ordinal')) - Number(cell(b, raw.local_clip_drafts, 'ordinal')))
+    .map(row => JSON.parse(cell(row, raw.local_clip_drafts, 'data')));
+  assert.ok(states.length === 1 || entries.length === 0, 'Draft rows require their retained scope state');
+  assert.ok(entries.every(entry => entry.projectId === f.projectId));
+  const draft = states.length ? {version: 2, workspaceScope: cell(states[0], raw.local_draft_states, 'workspaceScope'), entries} : null;
   const result = {synthetic: true, at: stamp(), branch, kernel: f.kernel, databases, schemaVersion: readDb(directory, db => db.prepare('SELECT max(version) AS n FROM project.schema_version').get().n, f),
     tables: Object.fromEntries(Object.entries(raw).map(([name, value]) => [name, {count: value.rows.length, sha256: sha(json(value))}])), raw, timeline, assets, exports: decode(raw.exports),
-    draft: await exists(draftFile) ? await readJson(draftFile) : null, media: await tree(path.join(directory, 'media')), originals};
+    draft, media: await tree(path.join(directory, 'media')), originals};
   assert.equal(result.schemaVersion, PROJECT_FILE_SCHEMA_VERSION);
   await save(label + '-audit.json', result);
   return {label, branch, schemaVersion: result.schemaVersion, revision: timeline.revision, imageClip: timeline.clips.find(c => c.id === f.imageClipId), exports: result.exports.map(e => ({id: e.id, status: e.status, purpose: e.purpose}))};

@@ -74,7 +74,8 @@ async function databaseSnapshot(workspace,fixture){
     const jobs=db.prepare('SELECT data FROM jobs ORDER BY rowid').all().map(row=>JSON.parse(row.data));
     const submissions=db.prepare('SELECT request_id,job_id,provider_job_id,outcome FROM mock_provider_submissions ORDER BY id').all();
     const providerTasks=db.prepare('SELECT count(*) AS n FROM mock_provider_tasks').get().n;
-    return JSON.parse(JSON.stringify({tables,jobs,submissions,providerTasks,databases:auditQaDatabases(db),application:auditQaDatabases(application.db)}));
+    const drafts={scope:db.prepare("SELECT * FROM local_draft_states WHERE kind='clip'").all(),rows:db.prepare('SELECT * FROM local_clip_drafts ORDER BY ordinal').all()};
+    return JSON.parse(JSON.stringify({tables,jobs,submissions,providerTasks,drafts,draftSha256:sha(JSON.stringify(drafts)),databases:auditQaDatabases(db),application:auditQaDatabases(application.db)}));
   }finally{await services.drain();store.close();}
 }
 async function assertCold(c){
@@ -107,7 +108,7 @@ async function prepare(){
       trackId:timeline.tracks.find(track=>track.kind==='video').id,startFrame:0,durationFrames:60,name:'已保存的合成时间线片段'});
     const subjectRequestId=randomUUID(),subject=await services.call('subject.create',{projectId:project.id,kind:'product',name:'已保存合成主体',assetId:imageAsset.id,requestId:subjectRequestId});
     const requestId=randomUUID(),job=await services.call('generation.submit',{shotId:shot.id,expectedRevision:shot.revision,providerId:'mock',requestId,parameters:{scenario:'unknown'}});
-    const clip=timeline.clips[0],drafts=createLocalDrafts({root:store.localDir,databaseFile:path.join(store.localDir,'history.db'),channel:'production',storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
+    const clip=timeline.clips[0],drafts=createLocalDrafts({store,channel:'production',
       guards:{ownsLock:()=>ownsStoreLock(store),readTimeline:id=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),readClipAsset:(id,value)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(value)}});
     const key={projectId:project.id,timelineId:timeline.id,clipId:clip.id},current=drafts.get(key);
     drafts.put({...key,workspaceScope:current.workspaceScope,instanceId:current.instanceId,expectedRevision:current.revision,baseRevision:timeline.revision,
@@ -118,7 +119,7 @@ async function prepare(){
       timelineId:timeline.id,clipId:clip.id,subjectId:subject.id,subjectRequestId,jobId:job.id,requestId};
   }finally{await services.drain();await closeQaProject(owner);}
   await writeNew(path.join(runtime,'fixture.json'),fixture);
-  await writeNew(path.join(runtime,'baseline.json'),{...await databaseSnapshot(workspace,fixture),media:await mediaHashes(fixture.projectDir),draftSha256:sha(await readFile(path.join(fixture.localDir,'local-drafts-v1.json')))});
+  await writeNew(path.join(runtime,'baseline.json'),{...await databaseSnapshot(workspace,fixture),media:await mediaHashes(fixture.projectDir)});
   await writeNew(path.join(report,'fixture-summary.json'),{synthetic:true,platform:process.platform,arch:process.arch,appVersion:'0.4.1',channel:'production',
     assets:2,shots:1,timelineClips:1,existingSubjects:1,existingSubjectReceipts:1,localDrafts:1,generationScenario:'mock:unknown',realProvidersEnabled:false});
   return {root,report,projectName:fixture.projectName,projectId:fixture.projectId,clipId:fixture.clipId,jobId:fixture.jobId};
@@ -192,7 +193,7 @@ async function diagnostics(c){
 async function audit(nameOverride){
   const c=await context(),name=label(typeof nameOverride==='string'?nameOverride:options.label||'audit'),baseline=await readJson(path.join(c.runtime,'baseline.json')),current=await databaseSnapshot(c.workspace,c.fixture);
   for(const table of fixedTables)assert.deepEqual(current.tables[table],baseline.tables[table],`${table} changed across native lifecycle`);
-  assert.deepEqual(await mediaHashes(c.fixture.projectDir),baseline.media);assert.equal(sha(await readFile(path.join(c.fixture.localDir,'local-drafts-v1.json'))),baseline.draftSha256);
+  assert.deepEqual(await mediaHashes(c.fixture.projectDir),baseline.media);assert.equal(current.draftSha256,baseline.draftSha256);assert.deepEqual(current.drafts,baseline.drafts);
   assert.equal(current.jobs.length,1);const job=current.jobs[0],original=baseline.jobs[0];
   for(const key of ['id','projectId','shotId','requestId','snapshot','createdAt'])assert.deepEqual(job[key],original[key]);
   assert.equal(job.id,c.fixture.jobId);assert.equal(job.status,'submission_unknown');assert.equal(job.submissionCount,1);

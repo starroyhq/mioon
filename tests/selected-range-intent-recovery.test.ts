@@ -7,7 +7,7 @@ import type {SelectedRangeFixture} from './helpers/strict-timeline-selected-rang
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {readFile, stat} from 'node:fs/promises';
+import {stat} from 'node:fs/promises';
 
 
 import {isTimelineMutationResponse, publicValue} from '@mioon/contracts';
@@ -23,10 +23,10 @@ async function prepared(f: SelectedRangeFixture, {settings = false} = {}) {
   const input = f.prepare(draft, settings ? {exportSettings: structuredClone(SETTINGS)} : {});
   const value = await f.local('/prepare', input);
   assert.equal((value.intent)!.outcome.status, 'pending'); assert.deepEqual((value.intent)!.input, input.input);
-  assert.equal((await stat(f.file)).mode & 0o777, 0o600);
-  const disk = JSON.parse(await readFile(f.file, 'utf8'));
-  assert.equal(disk.version, 1); assert.deepEqual(disk.entries[0].intent.input, (value.intent)!.input);
-  assert.deepEqual(disk.entries[0].draft.raw, {deliveryName: '交付 · exact range 🎬'}, 'existing draft stays title-only');
+  await assert.rejects(stat(f.file),{code:'ENOENT'});
+  const savedSlot = f.draftRows()[0];
+  assert.equal(f.store.db.prepare("SELECT kind FROM main.local_draft_states WHERE kind='delivery'").get()!.kind,'delivery'); assert.deepEqual(savedSlot.intent!.input, (value.intent)!.input);
+  assert.deepEqual(savedSlot.draft!.raw, {deliveryName: '交付 · exact range 🎬'}, 'existing draft stays title-only');
   assert.equal(f.dispatches.length, 0); assert.equal(f.store.list('exports').length, 0); await f.assertNoWorker();
   return {value, input};
 }
@@ -39,21 +39,21 @@ async function passiveGet(f: SelectedRangeFixture) {
 async function passiveRestart(f: SelectedRangeFixture) {
   const before = await f.checkpoint(), count = f.dispatches.length, media = f.media.length;
   await f.restart(); await f.unchanged(before);
-  assert.equal(f.dispatches.length, count, 'service/companion recreation cannot dispatch');
+  assert.equal(f.dispatches.length, count, 'service/draft repository recreation cannot dispatch');
   assert.equal(f.media.length, media, 'startup cannot probe or render'); await f.assertNoWorker();
   return passiveGet(f);
 }
 
-test('prepared ranged companion survives close/recreate and GET without dispatch; explicit recovery dispatches only its original key and range', {timeout: 30_000}, async t => {
+test('prepared ranged intent survives close/recreate and GET without dispatch; explicit recovery dispatches only its original key and range', {timeout: 30_000}, async t => {
   const f = (await selectedRangeFixture(t) as unknown as SelectedRangeFixture);
   await passiveGet(f); await assert.rejects(stat(f.file), {code: 'ENOENT'});
-  const beforePrepare = f.rows(), {value, input} = await prepared(f, {settings: true}), frozen = JSON.stringify((value.intent)!.input), sidecar = await readFile(f.file);
-  assert.deepEqual(f.rows(), beforePrepare, 'prepare writes only the existing private companion');
+  const beforePrepare = f.rows(), {value, input} = await prepared(f, {settings: true}), frozen = JSON.stringify((value.intent)!.input), sidecar = f.draftState();
+  assert.deepEqual(f.rows(), beforePrepare, 'prepare writes only the history drafts domain');
   assert.equal(f.receipt(input.input.requestId), undefined);
   const current = await passiveRestart(f);
   assert.notEqual(current.instanceId, value.instanceId); assert.equal(current.workspaceScope, value.workspaceScope);
   assert.equal((current.intent)!.intentId, (value.intent)!.intentId); assert.equal(JSON.stringify((current.intent)!.input), frozen);
-  assert.deepEqual(await readFile(f.file), sidecar); assert.equal(f.store.list('exports').length, 0);
+  assert.deepEqual(f.draftState(), sidecar); assert.equal(f.store.list('exports').length, 0);
   const stale = await f.request(projectApiPath(f.project.id,'local-delivery','recover'), {method: 'POST', input: action(value as Parameters<typeof action>[0])});
   assert.equal(stale.status, 409); assert.equal(stale.body.error.code, 'LOCAL_DELIVERY_STALE_INSTANCE');
   const replacement = {...input, ...authority(current as Parameters<typeof authority>[0]), intentId: randomUUID(), input: {...input.input, requestId: randomUUID(), exportRange: {startFrame: 0, endFrame: 1}}};
@@ -94,10 +94,10 @@ for (const loss of ['after-business-commit', 'accepted-http-ack']) test(`${loss}
   assert.equal((receipt)!.requestHash, hash({operation: 'timeline.render', input: input.input}));
   assert.equal(isTimelineMutationResponse('timeline.render', input.input, original), true);
   assert.deepEqual(original.snapshot.exportRange, RANGE); assert.deepEqual(original.snapshot.timeline, f.timeline);
-  const sidecar = await readFile(f.file), current = await passiveRestart(f);
+  const sidecar = f.draftState(), current = await passiveRestart(f);
   assert.equal((current.intent)!.outcome.status, loss === 'accepted-http-ack' ? 'accepted' : 'pending');
   assert.equal((current.intent)!.intentId, (value.intent)!.intentId); assert.equal(JSON.stringify((current.intent)!.input), frozen);
-  assert.deepEqual(await readFile(f.file), sidecar); assert.equal(f.store.list('exports').length, 1);
+  assert.deepEqual(f.draftState(), sidecar); assert.equal(f.store.list('exports').length, 1);
   // Current form/title and saved timeline change after restart. Recovery must
   // use the persisted composition/key/range, including when its old end is now
   // outside the shorter current composition.

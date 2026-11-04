@@ -15,7 +15,6 @@ import {validateImageConsumption} from '../../packages/business/src/image-consum
 import {createLocalShotTextDomain} from '../../packages/business/src/local-shot-text-domain.ts';
 import {createLocalShotText} from '../../packages/business/src/local-shot-text.ts';
 import {schemas,AppError} from '@mioon/contracts';
-import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
 import {schemaObjects, withoutForeignKeys} from '../helpers/project-database.ts';
 import type {DatabaseSync} from 'node:sqlite';
 
@@ -29,10 +28,8 @@ export function shotTextForStore(store: Store, services: Services, {fault=()=>{}
  const domain=createLocalShotTextDomain({db:store.db,canonical,replay:(projectId: string,input: never)=>replay.updateShotInProject(projectId,input as never),
   validateAsset:(projectId: string,asset: never)=>validateImageConsumption(store.db,asset as never,projectId),isRevisionConflict:(error: unknown)=>error instanceof AppError&&error.code==='REVISION_CONFLICT',
   updateShotInProject:(projectId: string,input: never)=>services.updateShotInProject(projectId,input as never)} as never);
- const wrap = <F extends (...args: never[])=>unknown>(fn: F): F => (((...args: never[])=>{calls.storage++;return fn(...args);}) as F);
- const storage = {readPrivateFile: wrap(readPrivateFile as never), writePrivateFileAtomic: wrap(writePrivateFileAtomic as never), validatePrivateDirectory: wrap(validatePrivateDirectory as never), validateManagedFile: wrap(validateManagedFile as never)} as never;
- const scope=isProjectStore(store)?{root:store.localDir,databaseFile:path.join(store.localDir,'history.db')}:{root:store.root};
- const local=createLocalShotText({...scope,storage,fault,guards:{...domain,
+ assert.ok(isProjectStore(store),'The fixture must use the exact live project store');
+ const local=createLocalShotText({store,fault,guards:{...domain,
   ownsLock:()=>{calls.ownsLock++;return ownsStoreLock(store);},isShotUpdateInput:(value: unknown)=>schemas['shot.update'].safeParse(value).success,
   readShot:(...args: never[])=>{calls.readShot++;return (domain.readShot as (...rest: never[])=>unknown)(...args);},readReceipt:(...args: never[])=>{calls.readReceipt++;return (domain.readReceipt as (...rest: never[])=>unknown)(...args);},
   update:async(projectId: string,input: {requestId: string})=>{calls.update++;dispatches.push({projectId,input:structuredClone(input)});const response=await domain.update(projectId,input as never);
@@ -51,13 +48,13 @@ async function main(){
  const [root,...extra]=process.argv.slice(2);assert.ok(root&&path.isAbsolute(root));assert.equal(extra.length,0);const send=process.send?.bind(process);assert.ok(send);
  const store=openStore(root),services=createServices(store,new Map(),{env:{MIOON_ENABLE_LIVE_PROVIDER:'0'}});let armed: string|null=null,inOutcome=false,closing=false;const dispatches: {projectId: string; input: unknown}[]=[];
  function boundary(phase: string): void {if(armed!==phase)return;writeSync(1,JSON.stringify({type:'boundary',phase,dispatches:dispatches.length})+'\n');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0);throw Error('A crash-only boundary resumed');}
- const {local}=shotTextForStore(store,services,{dispatches,afterCommit:()=>boundary('afterBusinessReceiptCommit'),fault:(point: string)=>{if(point==='beforeOutcomePersist')inOutcome=true;boundary(inOutcome&&point==='afterDirectorySync'?'afterOutcomePersist':point);}});
+ const {local}=shotTextForStore(store,services,{dispatches,afterCommit:()=>boundary('afterBusinessReceiptCommit'),fault:(point: string)=>{if(point==='beforeOutcomePersist')inOutcome=true;boundary(inOutcome&&point==='afterConfirm'?'afterOutcomePersist':point);}});
  const first=store.db.prepare('SELECT id,projectId FROM shots ORDER BY rowid LIMIT 1').get() as {id: string; projectId: string}|undefined;assert.ok(first);const instanceId=(local.get({projectId:first.projectId,shotId:first.id}) as {instanceId?: string}).instanceId;
  interface WorkerMessage {id: string; method: string; input: Record<string, unknown> & {requestId?: string; kind?: string; foreignProjectId?: string; operation?: string; [key: string]: unknown}}
  process.on('message',async (raw: unknown)=>{if(closing)return;const message=raw as WorkerMessage;const {id,method,input}=message;try{
-  if(method==='close'){closing=true;await services.drain();store.close();process.disconnect();return;}
+  if(method==='close'){closing=true;await local.drain();await services.drain();store.close();process.disconnect();return;}
   let data;
-  if(method==='arm'){assert.ok(typeof input==='string'&&['beforePersist','afterDirectorySync','beforeDispatch','afterBusinessReceiptCommit','beforeOutcomePersist','afterOutcomePersist'].includes(input as never));armed=String(input);inOutcome=false;data={armed};}
+  if(method==='arm'){assert.ok(typeof input==='string'&&['beforePersist','beforeCommit','afterCommit','afterConfirm','beforeDispatch','afterBusinessReceiptCommit','beforeOutcomePersist','afterOutcomePersist'].includes(input as never));armed=String(input);inOutcome=false;data={armed};}
   else if(method==='identity')data={instanceId};
   else if(method==='observe')data={dispatches:structuredClone(dispatches)};
   else if(method==='snapshot')data=readShotTextState(store.db);

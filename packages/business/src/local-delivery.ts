@@ -1,11 +1,9 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {constants,openSync,closeSync,fsyncSync,fstatSync} from 'node:fs';
 import {isProxy} from 'node:util/types';
-import path from 'node:path';
 import {LOCAL_DELIVERY_LIMITS,createLocalDeliverySchemas} from '@mioon/contracts/local-delivery';
 import type {LocalDeliveryRenderInput,LocalDeliveryDraftValue,LocalDeliveryIntent,LocalDeliverySlot,LocalDeliveryDisk,LocalDeliveryEnvelope,LocalDeliveryExecution,LocalDeliveryExecute} from '@mioon/contracts/local-delivery';
-import type {LocalDraftStorage} from './local-drafts.ts';
-import {validateCompanionScope} from './companion-scope.ts';
+import type {ProjectStore} from './project-file/store.ts';
+import {createLocalDraftRepository, LocalDraftRepositoryError} from './local-draft-repository.ts';
 
 export const LOCAL_DELIVERY_FILENAME='local-delivery-v1.json';
 const messages={
@@ -64,10 +62,10 @@ export interface LocalDeliveryGuards{
   /** The backend binds only services.call('timeline.render', input). */
   render(input:LocalDeliveryRenderInput):Promise<unknown>;
 }
-export type LocalDeliveryFaultPoint='beforePersist'|'afterPersist'|'beforeDirectorySync'|'afterDirectorySync'|'beforeDispatch'|'afterDispatch'|'beforeOutcomePersist';
+export type LocalDeliveryFaultPoint='beforePersist'|'afterPersist'|'beforeCommit'|'afterCommit'|'beforeConfirm'|'afterConfirm'|'beforeDispatch'|'afterDispatch'|'beforeOutcomePersist';
 export interface LocalDeliveryOptions{
-  root:string;channel?:'web'|'production'|'development';guards:LocalDeliveryGuards;storage:LocalDraftStorage;signal?:AbortSignal;
-  databaseFile?:string;
+  store:ProjectStore;channel?:'web'|'production'|'development';guards:LocalDeliveryGuards;signal?:AbortSignal;
+  relocate?:()=>void;
   fault?:(point:LocalDeliveryFaultPoint)=>void;
 }
 const unsupported={supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'} as const;
@@ -75,32 +73,27 @@ const unsupported={supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'} as c
 /** Local title and one immutable latest export intention per project. This is
  * deliberately not an operation journal, renderer settlement API or RPC tool.
  * A pending reservation is durable before the single fixed service can run. */
-export function createLocalDelivery({root,channel='web',guards,storage,signal,fault=()=>{},databaseFile}:LocalDeliveryOptions){
-  if(!path.isAbsolute(root)||!['web','production','development'].includes(channel))fail('LOCAL_DELIVERY_VALIDATION');
-  const schemas=createLocalDeliverySchemas(guards.isRenderInput),file=path.join(root,LOCAL_DELIVERY_FILENAME),instanceId=randomUUID();
+export function createLocalDelivery({store,channel='web',guards,signal,fault=()=>{},relocate}:LocalDeliveryOptions){
+  if(!['web','production','development'].includes(channel))fail('LOCAL_DELIVERY_VALIDATION');
+  const schemas=createLocalDeliverySchemas(guards.isRenderInput),instanceId=randomUUID();
+  const repository=createLocalDraftRepository<LocalDeliveryDisk>({store,kind:'delivery',channel,signal,relocate,ownsLock:()=>guards.ownsLock(),fault:point=>fault(point),
+    validate:value=>{const result=schemas.disk.safeParse(value);if(!result.success)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');return result.data;}});
   const flights=new Map<string,{intentId:string;revision:number;promise:Promise<LocalDeliveryExecution>}>();
   const readDigests=new WeakMap<LocalDeliveryDisk,string>(),uncertain=new Map<string,string>();
-  let scope:string|undefined;
-  function guarded<T>(fn:()=>T):T{try{return fn();}catch(error){if(error instanceof LocalDeliveryError)throw error;fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');}}
+  let draining=false,drainPromise:Promise<void>|undefined;
+  function guarded<T>(fn:()=>T):T{try{return fn();}catch(error){if(error instanceof LocalDeliveryError)throw error;if(error instanceof LocalDraftRepositoryError)fail(`LOCAL_DELIVERY_${error.reason}`);fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');}}
   function owned():void{if(signal?.aborted)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');if(guards.ownsLock()!==true)fail('LOCAL_DELIVERY_OWNER_REQUIRED');}
   function active():boolean{owned();return true;}
-  function identity():string{
-    const {directory,db}=validateCompanionScope(root,storage,databaseFile);
-    if(!directory||!db)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
-    const current=createHash('sha256').update(JSON.stringify([channel,path.resolve(root),String(directory.dev),String(directory.ino),String(db.dev),String(db.ino),db.birthtimeMs??null])).digest('hex');
-    if(scope!==undefined&&scope!==current)fail('LOCAL_DELIVERY_SCOPE_MISMATCH');scope=current;return current;
-  }
+  function identity():string{return repository.scope();}
+  function admission():void{if(draining)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');}
+  function mutation():void{admission();if(process.platform==='win32')fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');}
   function writable(args:{workspaceScope:string;instanceId:string}):void{
+    if(process.platform==='win32')fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
     owned();if(args.workspaceScope!==identity())fail('LOCAL_DELIVERY_SCOPE_MISMATCH');
     if(args.instanceId!==instanceId)fail('LOCAL_DELIVERY_STALE_INSTANCE');
   }
   function read():LocalDeliveryDisk{
-    owned();const workspaceScope=identity(),bytes=storage.readPrivateFile(file,{root,allowMissing:true,private:true,maxBytes:LOCAL_DELIVERY_LIMITS.envelopeBytes});
-    if(bytes===null){const empty:LocalDeliveryDisk={version:1,workspaceScope,entries:[]};readDigests.set(empty,sha(empty));return empty;}
-    if(!Buffer.isBuffer(bytes)||bytes.length>LOCAL_DELIVERY_LIMITS.envelopeBytes)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
-    let value:unknown;try{value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');}
-    const result=schemas.disk.safeParse(value);if(!result.success)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
-    if(result.data.workspaceScope!==workspaceScope)fail('LOCAL_DELIVERY_SCOPE_MISMATCH');
+    owned();const result={data:repository.read()};
     const projects=new Set<string>(),intents=new Set<string>(),requests=new Set<string>();
     for(const row of result.data.entries){
       if(projects.has(row.projectId)||Buffer.byteLength(JSON.stringify(row))>LOCAL_DELIVERY_LIMITS.rowBytes)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');projects.add(row.projectId);
@@ -141,24 +134,37 @@ export function createLocalDelivery({root,channel='web',guards,storage,signal,fa
     const shown=uncertain.get(row.projectId)===row.intent?.intentId&&row.intent?{...row,intent:{...row.intent,outcome:{status:'pending' as const}}}:row;
     return clone({supported:true,workspaceScope:identity(),instanceId,...shown,draftTargetStatus:target(row.draft,current),intentTargetStatus:target(row.intent,current)});
   }
-  function syncDirectory():void{
+  function confirmSaved():void{
     owned();identity();try{
-      fault('beforeDirectorySync');owned();identity();
-      const expected=storage.validatePrivateDirectory(root);if(!expected)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
-      const fd=openSync(root,constants.O_RDONLY|constants.O_NOFOLLOW);
-      try{const actual=fstatSync(fd);if(!actual.isDirectory()||actual.dev!==expected.dev||actual.ino!==expected.ino||actual.uid!==process.getuid?.()||(actual.mode&0o077))fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');fsyncSync(fd);}finally{closeSync(fd);}
-      fault('afterDirectorySync');owned();identity();
+      fault('beforeConfirm');owned();repository.confirm();
+      fault('afterConfirm');owned();identity();
     }catch{fail('LOCAL_DELIVERY_SAVE_UNCERTAIN');}
   }
-  function persist(disk:LocalDeliveryDisk):void{
+  function repositoryCheck(check:()=>void):void{
+    try{check();}catch(error){
+      if(error instanceof LocalDeliveryError){
+        switch(error.code){
+          case 'LOCAL_DELIVERY_CONFLICT':throw new LocalDraftRepositoryError('CONFLICT',error);
+          case 'LOCAL_DELIVERY_OWNER_REQUIRED':throw new LocalDraftRepositoryError('OWNER_REQUIRED',error);
+          case 'LOCAL_DELIVERY_SCOPE_MISMATCH':throw new LocalDraftRepositoryError('SCOPE_MISMATCH',error);
+          case 'LOCAL_DELIVERY_LIMIT':throw new LocalDraftRepositoryError('LIMIT',error);
+          case 'LOCAL_DELIVERY_CAPACITY':throw new LocalDraftRepositoryError('CAPACITY',error);
+          case 'LOCAL_DELIVERY_STORAGE_UNAVAILABLE':throw new LocalDraftRepositoryError('STORAGE_UNAVAILABLE',error);
+          case 'LOCAL_DELIVERY_SAVE_UNCERTAIN':throw new LocalDraftRepositoryError('SAVE_UNCERTAIN',error);
+          default:throw new LocalDraftRepositoryError('STORAGE_UNAVAILABLE',error);
+        }
+      }
+      throw error;
+    }
+  }
+  function persist(disk:LocalDeliveryDisk,check?:()=>void):void{
     owned();if(disk.workspaceScope!==identity())fail('LOCAL_DELIVERY_SCOPE_MISMATCH');
     const bytes=JSON.stringify(disk)+'\n';
     if(disk.entries.length>LOCAL_DELIVERY_LIMITS.slots||Buffer.byteLength(bytes)>LOCAL_DELIVERY_LIMITS.envelopeBytes)fail('LOCAL_DELIVERY_CAPACITY');
     if(disk.entries.some(row=>Buffer.byteLength(JSON.stringify(row))>LOCAL_DELIVERY_LIMITS.rowBytes))fail('LOCAL_DELIVERY_LIMIT');
     const before=readDigests.get(disk);if(before===undefined)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
     fault('beforePersist');owned();if(disk.workspaceScope!==identity())fail('LOCAL_DELIVERY_SCOPE_MISMATCH');
-    if(sha(read())!==before)fail('LOCAL_DELIVERY_CONFLICT');
-    let published=false;try{storage.writePrivateFileAtomic(file,bytes,{root,private:true,maxBytes:LOCAL_DELIVERY_LIMITS.envelopeBytes});published=true;fault('afterPersist');if(sha(read())!==sha(disk))fail('LOCAL_DELIVERY_SAVE_UNCERTAIN');syncDirectory();if(sha(read())!==sha(disk))fail('LOCAL_DELIVERY_SAVE_UNCERTAIN');}
+    let published=false;try{repository.save(disk,before,check?()=>repositoryCheck(check):undefined);published=true;fault('afterPersist');if(sha(read())!==sha(disk))fail('LOCAL_DELIVERY_SAVE_UNCERTAIN');confirmSaved();if(sha(read())!==sha(disk))fail('LOCAL_DELIVERY_SAVE_UNCERTAIN');}
     catch(error){if(published)fail('LOCAL_DELIVERY_SAVE_UNCERTAIN');throw error;}
   }
   function exact(args:LocalDeliveryExecute):{disk:LocalDeliveryDisk;row:LocalDeliverySlot;intent:LocalDeliveryIntent}{
@@ -167,14 +173,14 @@ export function createLocalDelivery({root,channel='web',guards,storage,signal,fa
     return {disk,row,intent:row.intent};
   }
   async function run(args:LocalDeliveryExecute):Promise<LocalDeliveryExecution>{
+    try{
     // Scheduled only after the project single-flight claim is installed.
     const initial=exact(args),original=clone(initial.intent),originalDigest=sha(original);
     const finish=():{disk:LocalDeliveryDisk;row:LocalDeliverySlot;intent:LocalDeliveryIntent}=>{
       const latest=exact(args);if(sha(latest.intent)!==originalDigest)fail('LOCAL_DELIVERY_CONFLICT');
       const current=timeline(args.projectId);if(!current||current.id!==original.timelineId)fail('LOCAL_DELIVERY_CONFLICT');return latest;
     };
-    try{
-      finish();syncDirectory(); // Includes an earlier uncertain prepare publication.
+      finish();confirmSaved(); // Includes an earlier uncertain prepare publication.
       let result=receipt(original),error:unknown;
       if(result===null){
         fault('beforeDispatch');finish();
@@ -203,56 +209,67 @@ export function createLocalDelivery({root,channel='web',guards,storage,signal,fa
           if(next.draftRevision===Number.MAX_SAFE_INTEGER)fail('LOCAL_DELIVERY_CONFLICT');next.draftRevision++;next.draft=null;
         }
         replace(latest.disk,next);
-        try{persist(latest.disk);}catch(error){uncertain.set(args.projectId,args.intentId);throw error;}
+        const provenOutcome=outcome;
+        try{persist(latest.disk,()=>{
+          writable(args);const actual=slot(read(),args.projectId),current=timeline(args.projectId);if(!current||current.id!==original.timelineId)fail('LOCAL_DELIVERY_CONFLICT');const saved=receipt(original);
+          if(!same(actual,latest.row)&&!same(actual,next))fail('LOCAL_DELIVERY_CONFLICT');
+          if(provenOutcome.status==='accepted'?!same(saved,result):saved!==null)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
+        });}catch(error){uncertain.set(args.projectId,args.intentId);throw error;}
         uncertain.delete(args.projectId);return {envelope:response(next),response:outcome.status==='accepted'?clone(result):null};
       }
       return {envelope:response(latest.row),response:null};
-    }catch(error){if(error instanceof LocalDeliveryError)throw error;fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');}
+    }catch(error){if(error instanceof LocalDeliveryError)throw error;if(error instanceof LocalDraftRepositoryError)fail(`LOCAL_DELIVERY_${error.reason}`);fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');}
   }
   function execute(value:unknown):Promise<LocalDeliveryExecution>{
     return guarded(()=>{
-      if(!active())return Promise.resolve({envelope:unsupported,response:null});
+      mutation();if(!active())return Promise.resolve({envelope:unsupported,response:null});
       const args=parse(schemas.execute,value),found=exact(args);
       // A terminal intent can be observed again only with its current revision.
-      if(terminal(found.intent)){timeline(args.projectId);const saved=evidence(found.row);syncDirectory();const latest=exact(args);if(!same(latest.intent,found.intent))fail('LOCAL_DELIVERY_CONFLICT');evidence(latest.row);uncertain.delete(args.projectId);return Promise.resolve({envelope:response(latest.row),response:found.intent.outcome.status==='accepted'?clone(saved):null});}
+      if(terminal(found.intent)){timeline(args.projectId);const saved=evidence(found.row);confirmSaved();const latest=exact(args);if(!same(latest.intent,found.intent))fail('LOCAL_DELIVERY_CONFLICT');evidence(latest.row);uncertain.delete(args.projectId);return Promise.resolve({envelope:response(latest.row),response:found.intent.outcome.status==='accepted'?clone(saved):null});}
       const activeFlight=flights.get(args.projectId);
       if(activeFlight){if(activeFlight.intentId!==args.intentId||activeFlight.revision!==args.expectedIntentRevision)fail('LOCAL_DELIVERY_CONFLICT');return activeFlight.promise;}
-      const promise=Promise.resolve().then(()=>run(args));
+      const promise=Promise.resolve().then(()=>run(args)).finally(()=>{if(flights.get(args.projectId)?.promise===promise)flights.delete(args.projectId);});
       flights.set(args.projectId,{intentId:args.intentId,revision:args.expectedIntentRevision,promise});
-      void promise.finally(()=>{if(flights.get(args.projectId)?.promise===promise)flights.delete(args.projectId);}).catch(()=>{});
       return promise;
     });
   }
   return {
-    assertProjectDeletable(projectId:string):void{guarded(()=>{owned();if(!/^[a-f0-9-]{36}$/iu.test(projectId))fail('LOCAL_DELIVERY_VALIDATION');const disk=read();if(flights.has(projectId)||uncertain.has(projectId)||disk.entries.some(row=>row.projectId===projectId&&row.intent&&row.intent.outcome.status==='pending'))fail('LOCAL_DELIVERY_CONFLICT');});},
-    removeProject(projectId:string):void{guarded(()=>{owned();if(!/^[a-f0-9-]{36}$/iu.test(projectId))fail('LOCAL_DELIVERY_VALIDATION');const disk=read();if(flights.has(projectId)||uncertain.has(projectId)||disk.entries.some(row=>row.projectId===projectId&&row.intent&&row.intent.outcome.status==='pending'))fail('LOCAL_DELIVERY_CONFLICT');const entries=disk.entries.filter(row=>row.projectId!==projectId);if(entries.length===disk.entries.length)return;disk.entries=entries;persist(disk);syncDirectory();});},
-    get(value:unknown):LocalDeliveryEnvelope{return guarded(()=>{if(!active())return unsupported;const {projectId}=parse(schemas.project,value);return response(slot(read(),projectId));});},
+    assertProjectDeletable(projectId:string):void{guarded(()=>{admission();owned();if(!/^[a-f0-9-]{36}$/iu.test(projectId))fail('LOCAL_DELIVERY_VALIDATION');const disk=read();if(flights.has(projectId)||uncertain.has(projectId)||disk.entries.some(row=>row.projectId===projectId&&row.intent&&row.intent.outcome.status==='pending'))fail('LOCAL_DELIVERY_CONFLICT');});},
+    removeProject(projectId:string):void{guarded(()=>{mutation();owned();if(!/^[a-f0-9-]{36}$/iu.test(projectId))fail('LOCAL_DELIVERY_VALIDATION');const disk=read();if(flights.has(projectId)||uncertain.has(projectId)||disk.entries.some(row=>row.projectId===projectId&&row.intent&&row.intent.outcome.status==='pending'))fail('LOCAL_DELIVERY_CONFLICT');const entries=disk.entries.filter(row=>row.projectId!==projectId);if(entries.length===disk.entries.length)return;disk.entries=entries;persist(disk);confirmSaved();});},
+    get(value:unknown):LocalDeliveryEnvelope{return guarded(()=>{admission();if(!active())return unsupported;const {projectId}=parse(schemas.project,value);return response(slot(read(),projectId));});},
     put(value:unknown):LocalDeliveryEnvelope{return guarded(()=>{
-      if(!active())return unsupported;const args=parse(schemas.put,value);writable(args);const disk=read(),row=slot(disk,args.projectId),current=timeline(args.projectId);evidence(row);
+      mutation();if(!active())return unsupported;const args=parse(schemas.put,value);writable(args);const disk=read(),row=slot(disk,args.projectId),current=timeline(args.projectId);evidence(row);
       const nextDraft={draftId:args.draftId,timelineId:args.timelineId,baseRevision:args.baseRevision,raw:args.raw};
-      if(row.draftRevision===args.expectedDraftRevision+1&&row.draft&&same(nextDraft,{draftId:row.draft.draftId,timelineId:row.draft.timelineId,baseRevision:row.draft.baseRevision,raw:row.draft.raw})){syncDirectory();return response(row);}
+      if(row.draftRevision===args.expectedDraftRevision+1&&row.draft&&same(nextDraft,{draftId:row.draft.draftId,timelineId:row.draft.timelineId,baseRevision:row.draft.baseRevision,raw:row.draft.raw})){confirmSaved();return response(row);}
       if(row.draftRevision!==args.expectedDraftRevision||row.draftRevision===Number.MAX_SAFE_INTEGER)fail('LOCAL_DELIVERY_CONFLICT');
       if(row.draft?(row.draft.draftId!==args.draftId||row.draft.timelineId!==args.timelineId||row.draft.baseRevision!==args.baseRevision):target(nextDraft,current)!=='matching')fail('LOCAL_DELIVERY_CONFLICT');
-      const next={...row,draftRevision:row.draftRevision+1,draft:{...nextDraft,updatedAt:new Date().toISOString()}};replace(disk,next);persist(disk);return response(next);
+      const next={...row,draftRevision:row.draftRevision+1,draft:{...nextDraft,updatedAt:new Date().toISOString()}};replace(disk,next);persist(disk,()=>{const actual=timeline(args.projectId);evidence(row);if(!row.draft&&target(nextDraft,actual)!=='matching')fail('LOCAL_DELIVERY_CONFLICT');});return response(next);
     });},
     discard(value:unknown):LocalDeliveryEnvelope{return guarded(()=>{
-      if(!active())return unsupported;const args=parse(schemas.discard,value);writable(args);const disk=read(),row=slot(disk,args.projectId);timeline(args.projectId);evidence(row);
+      mutation();if(!active())return unsupported;const args=parse(schemas.discard,value);writable(args);const disk=read(),row=slot(disk,args.projectId);timeline(args.projectId);evidence(row);
       // Tombstones retain revision but not draftId. Without the exact deleted
       // identity, a repeated DELETE must reread rather than manufacture an ACK.
       if(!row.draft||row.draft.draftId!==args.draftId||row.draftRevision!==args.expectedDraftRevision||row.draftRevision===Number.MAX_SAFE_INTEGER)fail('LOCAL_DELIVERY_CONFLICT');
-      const next={...row,draftRevision:row.draftRevision+1,draft:null};replace(disk,next);persist(disk);return response(next);
+      const next={...row,draftRevision:row.draftRevision+1,draft:null};replace(disk,next);persist(disk,()=>{timeline(args.projectId);evidence(row);});return response(next);
     });},
     prepare(value:unknown):LocalDeliveryEnvelope{return guarded(()=>{
-      if(!active())return unsupported;const args=parse(schemas.prepare,value);writable(args);const disk=read(),row=slot(disk,args.projectId),current=timeline(args.projectId);evidence(row);
+      mutation();if(!active())return unsupported;const args=parse(schemas.prepare,value);writable(args);const disk=read(),row=slot(disk,args.projectId),current=timeline(args.projectId);evidence(row);
       const intent={intentId:args.intentId,timelineId:args.timelineId,baseRevision:args.baseRevision,draft:args.draft,input:args.input};
-      if(row.intentRevision===args.expectedIntentRevision+1&&row.intent&&same(intent,{intentId:row.intent.intentId,timelineId:row.intent.timelineId,baseRevision:row.intent.baseRevision,draft:row.intent.draft,input:row.intent.input})){syncDirectory();return response(row);}
+      if(row.intentRevision===args.expectedIntentRevision+1&&row.intent&&same(intent,{intentId:row.intent.intentId,timelineId:row.intent.timelineId,baseRevision:row.intent.baseRevision,draft:row.intent.draft,input:row.intent.input})){confirmSaved();return response(row);}
       if(row.intentRevision!==args.expectedIntentRevision||(row.intent?.intentId??null)!==args.expectedIntentId||row.intentRevision===Number.MAX_SAFE_INTEGER||row.intent&&!terminal(row.intent)||flights.has(args.projectId)||uncertain.has(args.projectId))fail('LOCAL_DELIVERY_CONFLICT');
       if(disk.entries.some(item=>item.intent&&(item.intent.intentId===args.intentId||item.intent.input.requestId===args.input.requestId)))fail('LOCAL_DELIVERY_CONFLICT');
       if(target(intent,current)!=='matching')fail('LOCAL_DELIVERY_CONFLICT');
       if(args.draft&&(!row.draft||row.draftRevision!==args.draft.revision||row.draft.draftId!==args.draft.draftId||row.draft.timelineId!==args.timelineId||row.draft.baseRevision!==args.baseRevision||!same(row.draft.raw,args.draft.raw)))fail('LOCAL_DELIVERY_CONFLICT');
       const next:LocalDeliverySlot={...row,intentRevision:row.intentRevision+1,intent:{...intent,createdAt:new Date().toISOString(),outcome:{status:'pending'}}};
-      replace(disk,next);persist(disk);return response(next);
+      replace(disk,next);persist(disk,()=>{const actual=timeline(args.projectId);evidence(row);if(target(intent,actual)!=='matching')fail('LOCAL_DELIVERY_CONFLICT');});return response(next);
     });},
     execute,recover:execute,
+    isBusy:():boolean=>flights.size>0,
+    drain():Promise<void>{
+      draining=true;
+      // Every flight includes its finally. A settled business rejection has no
+      // remaining resource to drain; the host separately bounds this full join.
+      return drainPromise??=Promise.allSettled([...flights.values()].map(flight=>flight.promise)).then(()=>{});
+    },
   };
 }

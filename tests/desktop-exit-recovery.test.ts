@@ -1,6 +1,5 @@
 import {assetMediaRecordSchema} from '../packages/contracts/src/asset-media.ts';
 import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
-import {TEST_STORE_LAYOUT} from '../packages/contracts/src/project-file.ts';
 import type {TaskEnvelope} from './helpers/strict-edit-task-types.ts';
 import type {BackendSupervisorOptions} from '../apps/desktop/src/supervisor.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
@@ -151,7 +150,11 @@ async function fixture(t: test.TestContext) {
       const db = openProjectDatabase(root);
       try { return read(db); } finally { db.close(); }
     },
-    sidecar: () => readFile(path.join(root,...TEST_STORE_LAYOUT.localDir,'local-shot-text-v1.json'), 'utf8'),
+    async draftRecords(): Promise<string> {
+      // Reuse the owned worker's trusted snapshot while it is alive. Only
+      // confirmed exit permits the normal exclusive recovery/open path.
+      return JSON.stringify(await this.snapshot(['local_draft_states', 'local_shot_text_drafts']));
+    },
     diagnostics: async () => (await readFile(path.join(root, 'diagnostics', 'backend-exit.jsonl'), 'utf8'))
       .trim().split('\n').map(line => JSON.parse(line))
   };
@@ -161,7 +164,7 @@ async function fixture(t: test.TestContext) {
 
 for (const phase of ['afterClaim', 'afterBusinessCommit']) {
   test(`desktop ${phase}: controlled worker death retains evidence and explicit restart never redispatches`, {timeout: 45000}, async t => {
-    const f = await fixture(t), baseline = await f.snapshot(), draftBytes = await f.sidecar();
+    const f = await fixture(t), baseline = await f.snapshot(), draftBytes = await f.draftRecords();
     const input = {projectId: f.project.id, kind: 'character', name: 'Interrupted subject', assetId: f.source.id, requestId: randomUUID()};
     const prepared = await f.worker.ask('prepare', {projectId: f.project.id, operation: 'subject.create', input, origin: 'new'});
     await f.worker.ask('arm', phase);
@@ -188,7 +191,7 @@ for (const phase of ['afterClaim', 'afterBusinessCommit']) {
     assert.deepEqual(committed.subject_requests.slice(0, baseline.subject_requests.length), baseline.subject_requests,
       'Previously committed receipt bytes must remain immutable');
     assert.equal(committed.subject_requests.length, baseline.subject_requests.length + (phase === 'afterBusinessCommit' ? 1 : 0));
-    assert.equal(await f.sidecar(), draftBytes);
+    assert.equal(await f.draftRecords(), draftBytes);
     assert.deepEqual(await readFile(mediaFixturePath(f.root,f.source)), sourceBytes);
 
     assert.deepEqual(await f.start(), {processed: 1, unavailable: 0});
@@ -211,7 +214,7 @@ for (const phase of ['afterClaim', 'afterBusinessCommit']) {
     assert.deepEqual(((await f.worker.ask('observe')).dispatches as unknown), [], 'Startup and observation can only inspect existing evidence');
     assert.deepEqual(await f.snapshot(), committed);
     assert.deepEqual(await f.snapshot(['edit_tasks']), taskRows);
-    assert.equal(await f.sidecar(), draftBytes);
+    assert.equal(await f.draftRecords(), draftBytes);
     assert.deepEqual(await readFile(mediaFixturePath(f.root,f.source)), sourceBytes);
 
     await f.supervisor.stop();
@@ -230,6 +233,6 @@ for (const phase of ['afterClaim', 'afterBusinessCommit']) {
       assert.deepEqual(await services.call('timeline.get', {projectId: f.project.id}), f.timeline);
       assert.deepEqual(reopened.get('assets', f.source.id), f.source);
     } finally { await services.drain(); reopened.close(); }
-    assert.equal(await f.sidecar(), draftBytes);
+    assert.equal(await f.draftRecords(), draftBytes);
   });
 }

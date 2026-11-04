@@ -1,7 +1,6 @@
 
 
 import {canonical} from '../packages/business/src/services.ts';
-import {readPrivateFile, validatePrivateDirectory, validateManagedFile} from '@mioon/contracts/private-storage';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import type {LocalShotTextSupported} from '../apps/web/src/local-shot-text-state.ts';
 import type {MediaShot} from './helpers/strict-service-responses.ts';
@@ -11,7 +10,7 @@ import type {TypedStore, TypedServices} from './helpers/strict-service-responses
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, statSync, copyFileSync, chmodSync, symlinkSync, linkSync} from 'node:fs';
+import {mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, statSync, symlinkSync, linkSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
@@ -23,9 +22,7 @@ import {createLocalShotText,LOCAL_SHOT_TEXT_FILENAME} from '@mioon/business/loca
 import {createLocalShotTextDomain} from '@mioon/business/local-shot-text-domain';
 import {LOCAL_SHOT_TEXT_LIMITS,createLocalShotTextSchemas} from '@mioon/contracts/local-shot-text';
 import {schemas,AppError} from '@mioon/contracts';
-import {writePrivateFileAtomic} from '@mioon/contracts/private-storage';
 import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
-const storage={readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile};
 const contract=createLocalShotTextSchemas(value=>schemas['shot.update'].safeParse(value).success);
 const code=(value: string)=>(error: { code: string; message: string|string[]; })=>error.code===value&&!error.message.includes('PRIVATE');
 const authority=(value: { workspaceScope: unknown; instanceId: unknown; projectId: unknown; shotId: unknown; })=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId,shotId:value.shotId});
@@ -38,19 +35,19 @@ async function foreignProject(t: test.TestContext,name: string){
   try{return await services.call('project.create',{name});}
   finally{await services.drain();store.close();}
 }
-async function fixture(t: test.TestContext,{legacy=false}={}){
+async function fixture(t: test.TestContext){
   const root=mkdtempSync(path.join(tmpdir(),'mioon-local-shot-text-'));const open=openStore;let store=(open(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices),shotText: OrdinaryShotText,fault: (point: string) => void=()=>{},update: (arg0: string,arg1: LocalShotTextUpdateInput) => Promise<unknown>,extraGuards={},calls: (LocalShotTextUpdateInput)[]=[];
   const project=await services.call('project.create',{name:'Local text'}),shot=await services.call('shot.create',{projectId:project.id,title:'Original title',prompt:'Original prompt'});
   const originalUpdate=(projectId: string,input: unknown)=>services.updateShotInProject(projectId,input);update=originalUpdate;
   const localRoot=()=>isProjectStore(store)?store.localDir:root;
-  const scope=()=>isProjectStore(store)?{databaseFile:path.join(store.localDir,'history.db')}:{};
+  const kernel=()=>{assert.ok(isProjectStore(store));return store;};
   const start=(options: Partial<Parameters<typeof createLocalShotText>[0]>={})=>{
     const never=()=>{throw Error('PRIVATE mutator called during read');};
     const replay=createLocalMutationServices(store,{canonical,readOnly:true,check:never,now:never,references:{guardManualUpdate:never}});
     const domain=createLocalShotTextDomain({db:store.db,canonical,replay:(projectId,input)=>replay.updateShotInProject(projectId,input),
       validateAsset:(projectId,asset)=>validateImageConsumption(store.db,(asset as unknown as Parameters<typeof validateImageConsumption>[1]),projectId),isRevisionConflict:error=>error instanceof AppError&&error.code==='REVISION_CONFLICT',
       updateShotInProject:(projectId,input)=>{calls.push(structuredClone(input));return update(projectId,input);}});
-    shotText=(createLocalShotText({root:localRoot(),...scope(),storage,guards:{...domain,ownsLock:()=>ownsStoreLock(store),isShotUpdateInput:value=>schemas['shot.update'].safeParse(value).success,...extraGuards},fault:point=>fault(point),...options}) as OrdinaryShotText);return shotText;
+    shotText=(createLocalShotText({store:kernel(),guards:{...domain,ownsLock:()=>ownsStoreLock(store),isShotUpdateInput:value=>schemas['shot.update'].safeParse(value).success,...extraGuards},fault:point=>fault(point),...options}) as OrdinaryShotText);return shotText;
   };start();
   t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
   const get=(value=shot)=>shotText.get({projectId:value.projectId,shotId:value.id});
@@ -60,13 +57,15 @@ async function fixture(t: test.TestContext,{legacy=false}={}){
     setFault(fn: (point: string) => void){fault=fn;},setUpdate(fn: (projectId: string, input: LocalShotTextUpdateInput) => Promise<unknown>){update=fn;},setGuards(value: {ownsLock?:()=>boolean}){extraGuards=value;start();},
     restart(){store.close();store=(open(root) as TypedStore);services=(createServices(store,new Map()) as TypedServices);start();},
     receipt(input: {requestId: string}){return store.db.prepare('SELECT * FROM mutation_requests WHERE requestId=?').get(input.requestId);},
+    draftState(){return JSON.stringify(store.db.prepare('SELECT * FROM local_shot_text_drafts ORDER BY ordinal').all());},
+    draftRows(){return store.db.prepare('SELECT data FROM local_shot_text_drafts ORDER BY ordinal').all().map(row=>JSON.parse(String(row.data))) as {intent:{outcome:{status:string}};draftRevision:number}[];},
     snapshot(){return JSON.stringify(schemaObjects(store.db).sort(byName).map(({name,sql})=>({name,sql})))+'\n'+JSON.stringify(['projects','shots','assets','versions','jobs','mutation_requests','asset_range_requests','asset_disposition_requests','subject_requests'].map(table=>store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));},
   };
 }
 
-test('GET and independent draft CAS preserve raw/base text without SQLite writes or dispatch',async t=>{
+test('GET and independent draft CAS preserve raw/base text with history-only writes and no dispatch',async t=>{
   const f=await fixture(t),before=f.snapshot(),empty=f.get();assert.ok(contract.envelope.safeParse(empty).success);assert.equal(existsSync(f.file),false);
-  const input=f.put(empty,{title:' \n\u0000 ',prompt:'invalid raw '.repeat(500)}),saved=f.shotText.put(input);assert.deepEqual(saved.draft!.raw,input.raw);assert.deepEqual(saved.draft!.baseText,input.baseText);assert.equal(saved.draftRevision,1);assert.equal(saved.draftTargetStatus,'matching');assert.equal(statSync(f.file).mode&0o777,0o600);assert.equal(f.snapshot(),before);assert.equal(f.calls.length,0);
+  const input=f.put(empty,{title:' \n\u0000 ',prompt:'invalid raw '.repeat(500)}),saved=f.shotText.put(input);assert.deepEqual(saved.draft!.raw,input.raw);assert.deepEqual(saved.draft!.baseText,input.baseText);assert.equal(saved.draftRevision,1);assert.equal(saved.draftTargetStatus,'matching');assert.equal(existsSync(f.file),false);assert.equal(f.draftRows()[0].draftRevision,1);assert.equal(f.snapshot(),before);assert.equal(f.calls.length,0);
   assert.deepEqual(f.shotText.put(input),saved);const newer=f.shotText.put(f.put(saved));assert.throws(()=>f.shotText.put(input),code('LOCAL_SHOT_TEXT_CONFLICT'));
   const removed=f.shotText.discard({...authority(newer),expectedDraftRevision:newer.draftRevision,draftId:newer.draft!.draftId});assert.equal(removed.draft,null);assert.equal(removed.draftRevision,3);assert.equal(f.snapshot(),before);
 });
@@ -113,17 +112,17 @@ test('actual fresh revision rollback settles not_applied and terminal recovery n
   const next=f.shotText.prepare(f.prepare(f.get()));assert.notEqual(next.intent!.intentId,prepared.intent!.intentId);
 });
 
-for(const point of ['beforePersist','afterPersist','beforeDirectorySync','afterDirectorySync'])test(`prepare fault ${point} never dispatches`,async t=>{
+for(const point of ['beforePersist','beforeCommit','afterCommit','afterPersist','beforeConfirm','afterConfirm'])test(`prepare fault ${point} never dispatches`,async t=>{
   const f=await fixture(t),saved=f.shotText.put(f.put()),input=f.prepare(saved),before=f.snapshot();f.setFault((label: string)=>{if(label===point)throw Error('PRIVATE fault');});
   assert.throws(()=>f.shotText.prepare(input));assert.equal(f.calls.length,0);assert.equal(f.snapshot(),before);f.setFault(()=>{});if(f.get().intent)assert.equal(f.get().intent!.outcome.status,'pending');
 });
 
-for(const point of ['beforeOutcomePersist','beforePersist','afterPersist','beforeDirectorySync','afterDirectorySync'])test(`outcome fault ${point} keeps a reservation until explicit original-key recovery`,async t=>{
+for(const point of ['beforeOutcomePersist','beforePersist','beforeCommit','afterCommit','afterPersist','beforeConfirm','afterConfirm'])test(`outcome fault ${point} keeps a reservation until explicit original-key recovery`,async t=>{
   const f=await fixture(t),prepared=f.shotText.prepare(f.prepare(f.shotText.put(f.put())));let outcome=false;f.setFault((label: string)=>{if(label==='beforeOutcomePersist')outcome=true;if(outcome&&label===point)throw Error('PRIVATE fault');});
   await assert.rejects(f.shotText.execute(action(prepared)));f.setFault(()=>{});const found=f.get();assert.equal(found.intent!.outcome.status,'pending');assert.equal(f.calls.length,1);assert.equal((await f.shotText.recover(action(found))).envelope.intent!.outcome.status,'applied');assert.equal(f.calls.length,1);
 });
 
-test('postrename not-applied uncertainty never reruns the terminal intent',async t=>{
+test('postcommit not-applied uncertainty never reruns the terminal intent',async t=>{
   const f=await fixture(t),prepared=f.shotText.prepare(f.prepare(f.shotText.put(f.put())));f.store.put('shots',{...f.shot,revision:2});let outcome=false;
   f.setFault((point: string)=>{if(point==='beforeOutcomePersist')outcome=true;if(outcome&&point==='afterPersist')throw Error('PRIVATE fault');});await assert.rejects(f.shotText.execute(action(prepared)));f.setFault(()=>{});assert.equal(f.get().intent!.outcome.status,'pending');f.store.put('shots',f.shot);
   assert.equal((await f.shotText.recover(action(f.get()))).envelope.intent!.outcome.status,'not_applied');assert.equal(f.calls.length,1);
@@ -168,7 +167,7 @@ test('late owner reassignment, real owner loss and abort cannot persist a termin
     f.setUpdate(async(projectId: string,input: unknown)=>{const result=await f.originalUpdate(projectId,input);entered.resolve();await gate.promise;return result;});const pending=f.shotText.execute(action(prepared));await entered.promise;
     if(kind==='owner'){const foreign=await foreignProject(t,'Foreign');withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(foreign.id,f.shot.id));}
     if(kind==='lease')f.store.close();
-    if(kind==='abort')controller.abort();gate.resolve();await assert.rejects(pending);assert.equal(JSON.parse(readFileSync(f.file) as unknown as string).entries[0].intent.outcome.status,'pending');
+    if(kind==='abort')controller.abort();gate.resolve();await assert.rejects(pending);if(kind==='lease')f.restart();assert.equal(f.draftRows()[0].intent.outcome.status,'pending');
   }
 });
 
@@ -178,16 +177,17 @@ test('maximum legal multibyte/control text survives draft, intent, receipt and n
   const result=await f.shotText.execute(action(prepared));assert.equal(result.response!.title,raw.title);assert.equal(result.response!.prompt,raw.prompt);f.restart();assert.deepEqual((await f.shotText.recover(action(f.get()))).response,result.response);
 });
 
-test('tombstones count toward capacity and never evict existing keys',async t=>{
-  const f=await fixture(t),empty=f.get(),entries=Array.from({length:LOCAL_SHOT_TEXT_LIMITS.slots},()=>({projectId:randomUUID(),shotId:randomUUID(),draftRevision:1,draft:null,intentRevision:0,intent:null}));
-  writeFileSync(f.file,JSON.stringify({version:1,workspaceScope:empty.workspaceScope,entries}),{mode:0o600});const bytes=readFileSync(f.file);assert.throws(()=>f.shotText.put(f.put(empty)),code('LOCAL_SHOT_TEXT_CAPACITY'));assert.deepEqual(readFileSync(f.file),bytes);
+test('same-project tombstones count toward capacity and never evict existing keys',async t=>{
+  const f=await fixture(t),empty=f.get(),entries=Array.from({length:LOCAL_SHOT_TEXT_LIMITS.slots},()=>({projectId:f.project.id,shotId:randomUUID(),draftRevision:1,draft:null,intentRevision:0,intent:null}));
+  f.store.tx(()=>{f.store.db.prepare('INSERT INTO local_draft_states(kind,workspaceScope) VALUES(?,?)').run('shot-text',empty.workspaceScope);for(const [index,row] of entries.entries())f.store.db.prepare('INSERT INTO local_shot_text_drafts(projectId,shotId,draftRevision,intentRevision,intentId,requestId,intentStatus,ordinal,data) VALUES(?,?,1,0,NULL,NULL,NULL,?,?)').run(row.projectId,row.shotId,index+1,JSON.stringify(row));});
+  const bytes=f.draftState();assert.throws(()=>f.shotText.put(f.put(empty)),code('LOCAL_SHOT_TEXT_CAPACITY'));assert.equal(f.draftState(),bytes);assert.equal(f.store.db.prepare('SELECT count(*) n FROM local_shot_text_drafts').get()!.n,128);assert.equal(existsSync(f.file),false);
 });
 
-test('stale instances, copied scopes, malformed and unsafe private companions never repair or reset',async t=>{
-  const f=await fixture(t),saved=f.shotText.put(f.put()),old=f.put(saved);f.restart();assert.throws(()=>f.shotText.put(old),code('LOCAL_SHOT_TEXT_STALE_INSTANCE'));const bytes=readFileSync(f.file);
-  f.start({channel:'production'});assert.throws(f.get,code('LOCAL_SHOT_TEXT_SCOPE_MISMATCH'));f.start();const other=await fixture(t);copyFileSync(f.file,other.file);chmodSync(other.file,0o600);assert.throws(other.get,code('LOCAL_SHOT_TEXT_SCOPE_MISMATCH'));
-  for(const raw of ['{','null',Buffer.from([0xff]),'x'.repeat(LOCAL_SHOT_TEXT_LIMITS.envelopeBytes+1)]){writeFileSync(f.file,raw);assert.throws(f.get,code('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE'));assert.deepEqual(readFileSync(f.file),Buffer.from(raw));}
-  rmSync(f.file);const target=path.join(f.root,'private-target');writeFileSync(target,'PRIVATE',{mode:0o600});symlinkSync(target,f.file);assert.throws(f.get);rmSync(f.file);linkSync(target,f.file);assert.throws(f.get);rmSync(f.file);writeFileSync(f.file,bytes,{mode:0o644});assert.throws(f.get);assert.equal(statSync(f.file).mode&0o777,0o644);
+test('stale instances and copied SQL scopes reject while retired malformed and unsafe companions remain untouched',async t=>{
+  const f=await fixture(t),saved=f.shotText.put(f.put()),old=f.put(saved);f.restart();assert.throws(()=>f.shotText.put(old),code('LOCAL_SHOT_TEXT_STALE_INSTANCE'));const bytes=f.draftState();
+  f.start({channel:'production'});assert.throws(f.get,code('LOCAL_SHOT_TEXT_SCOPE_MISMATCH'));assert.equal(f.draftState(),bytes);f.start();const other=await fixture(t);other.store.db.prepare('INSERT INTO local_draft_states(kind,workspaceScope) VALUES(?,?)').run('shot-text',saved.workspaceScope);assert.throws(other.get,code('LOCAL_SHOT_TEXT_SCOPE_MISMATCH'));assert.equal(other.store.db.prepare('SELECT count(*) n FROM local_shot_text_drafts').get()!.n,0);
+  for(const raw of ['{','null',Buffer.from([0xff]),'x'.repeat(LOCAL_SHOT_TEXT_LIMITS.envelopeBytes+1)]){writeFileSync(f.file,raw);assert.deepEqual(f.get().draft,saved.draft);assert.deepEqual(readFileSync(f.file),Buffer.from(raw));assert.equal(f.draftState(),bytes);}
+  rmSync(f.file);const target=path.join(f.root,'private-target');writeFileSync(target,'PRIVATE',{mode:0o600});symlinkSync(target,f.file);assert.deepEqual(f.get().draft,saved.draft);assert.equal(readFileSync(target,'utf8'),'PRIVATE');rmSync(f.file);linkSync(target,f.file);assert.deepEqual(f.get().draft,saved.draft);assert.equal(readFileSync(target,'utf8'),'PRIVATE');rmSync(f.file);writeFileSync(f.file,'retired',{mode:0o644});assert.deepEqual(f.get().draft,saved.draft);assert.equal(statSync(f.file).mode&0o777,0o644);assert.equal(f.draftState(),bytes);
 });
 
 test('reentrant before-persist write trips full-file CAS while malformed inputs never evaluate getters',async t=>{
@@ -199,9 +199,66 @@ test('reentrant before-persist write trips full-file CAS while malformed inputs 
 
 
 
-test('successful same-CAS retry checkpoints prepublication storage failure before prepare',async t=>{
+test('successful same-CAS retry checkpoints precommit SQL failure before prepare',async t=>{
   const f=await fixture(t);let failed=false;
-  f.start({storage:{...storage,writePrivateFileAtomic(...args: Parameters<typeof writePrivateFileAtomic>){if(!failed){failed=true;throw Error('PRIVATE before publication');}return writePrivateFileAtomic(...args);}}});
-  const input=f.put();assert.throws(()=>f.shotText.put(input),code('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE'));assert.equal(existsSync(f.file),false);
+  f.setFault(point=>{if(point==='beforeCommit'&&!failed){failed=true;throw Error('PRIVATE before SQL commit');}});
+  const input=f.put();assert.throws(()=>f.shotText.put(input),code('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE'));assert.equal(existsSync(f.file),false);assert.equal(f.store.db.prepare('SELECT count(*) n FROM local_shot_text_drafts').get()!.n,0);assert.equal(f.store.db.prepare("SELECT count(*) n FROM local_draft_states WHERE kind='shot-text'").get()!.n,0);
   const saved=f.shotText.put(input);assert.equal(saved.draftRevision,1);assert.equal(f.shotText.prepare(f.prepare(saved)).intent!.outcome.status,'pending');assert.equal(f.calls.length,0);
+});
+
+
+test('drain seals admission and waits through the full accepted outcome and finally',async t=>{
+  const f=await fixture(t),prepared=f.shotText.prepare(f.prepare(f.shotText.put(f.put()))),gate=Promise.withResolvers<void>(),entered=Promise.withResolvers<void>();
+  f.setUpdate(async (projectId,input)=>{entered.resolve();await gate.promise;return f.originalUpdate(projectId,input);});
+  const flight=f.shotText.execute(action(prepared));await entered.promise;assert.equal(f.shotText.isBusy(),true);
+  let completed=false;const draining=f.shotText.drain();assert.equal(f.shotText.drain(),draining);void draining.then(()=>{completed=true;});await Promise.resolve();assert.equal(completed,false);
+  assert.throws(f.get,code('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE'));gate.resolve();const result=await flight;await draining;
+  assert.equal(result.envelope.intent!.outcome.status,'applied');assert.equal(f.shotText.isBusy(),false);assert.equal(completed,true);assert.equal(f.store.db.isOpen,true);assert.equal(f.calls.length,1);
+  f.restart();assert.equal(f.get().intent!.outcome.status,'applied');assert.equal(f.calls.length,1);
+});
+
+test('drain joins an aborted in-flight callback and never dispatches a persisted idle pending intent',async t=>{
+  const f=await fixture(t),controller=new AbortController();f.start({signal:controller.signal});const prepared=f.shotText.prepare(f.prepare(f.shotText.put(f.put()))),gate=Promise.withResolvers<void>(),entered=Promise.withResolvers<void>();
+  f.setUpdate(async (projectId,input)=>{const result=await f.originalUpdate(projectId,input);entered.resolve();await gate.promise;return result;});const flight=f.shotText.execute(action(prepared));const rejected=assert.rejects(flight,code('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE'));await entered.promise;controller.abort();const draining=f.shotText.drain();gate.resolve();await rejected;await draining;
+  assert.equal(f.shotText.isBusy(),false);assert.equal(f.store.db.isOpen,true);assert.equal(f.draftRows()[0].intent.outcome.status,'pending');assert.equal(f.calls.length,1);
+  f.restart();assert.equal(f.shotText.isBusy(),false);assert.equal(f.get().intent!.outcome.status,'pending');await f.shotText.drain();assert.equal(f.calls.length,1);
+});
+
+test('Windows mutations reject before any SQL effect or business dispatch',async t=>{
+  const f=await fixture(t),prepared=f.shotText.prepare(f.prepare(f.shotText.put(f.put()))),put=f.put(f.get()),before=f.draftState(),changes=f.store.db.prepare('SELECT total_changes() n').get()!.n;
+  const platform=Object.getOwnPropertyDescriptor(process,'platform')!;
+  try{Object.defineProperty(process,'platform',{value:'win32'});
+    for(const invoke of [()=>f.shotText.put(put),()=>f.shotText.discard({...authority(prepared),expectedDraftRevision:1,draftId:randomUUID()}),()=>f.shotText.prepare({}),()=>f.shotText.execute(action(prepared)),()=>f.shotText.recover(action(prepared)),()=>f.shotText.removeProject(f.project.id)])assert.throws(invoke,code('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE'));
+    assert.equal(f.store.db.prepare('SELECT total_changes() n').get()!.n,changes);assert.equal(f.draftState(),before);assert.equal(f.calls.length,0);
+  }finally{Object.defineProperty(process,'platform',platform);}
+  assert.equal(f.get().intent!.outcome.status,'pending');
+});
+
+
+test('owner revocation inside the SQL transaction rolls back the first slot and scope state',async t=>{
+  const f=await fixture(t);let held=true;f.setGuards({ownsLock:()=>held});const input=f.put(),before=f.snapshot(),drafts=f.draftState();
+  f.setFault(point=>{if(point==='beforeCommit')held=false;});
+  assert.throws(()=>f.shotText.put(input),code('LOCAL_SHOT_TEXT_OWNER_REQUIRED'));assert.equal(f.draftState(),drafts);assert.equal(f.snapshot(),before);assert.equal(f.calls.length,0);assert.equal(existsSync(f.file),false);
+  assert.equal(f.store.db.prepare("SELECT count(*) n FROM local_draft_states WHERE kind='shot-text'").get()!.n,0);
+  held=true;f.setFault(()=>{});assert.equal(f.shotText.put(input).draftRevision,1);assert.equal(f.get().draft!.draftId,input.draftId);
+});
+
+
+test('before-persist business changes with unchanged draft rows reject new drafts and prepare by exact conflict',async t=>{
+  for(const operation of ['put','prepare']){
+    const f=await fixture(t);if(operation==='prepare')f.shotText.put(f.put());
+    const input=operation==='put'?f.put():f.prepare(),before=f.draftState();let entered=false;
+    f.setFault(point=>{if(point==='beforePersist'&&!entered){entered=true;f.store.put('shots',{...f.shot,revision:f.shot.revision+1});}});
+    assert.throws(()=>operation==='put'?f.shotText.put(input):f.shotText.prepare(input),code('LOCAL_SHOT_TEXT_CONFLICT'));f.setFault(()=>{});
+    assert.equal(entered,true);assert.equal(f.draftState(),before);assert.equal(f.get().intent,null);assert.equal(f.calls.length,0);assert.equal(existsSync(f.file),false);
+  }
+});
+
+test('transaction rechecks preserve editing and explicit discard of an existing changed or missing target',async t=>{
+  for(const status of ['changed','missing']){
+    const f=await fixture(t),saved=f.shotText.put(f.put());let entered=false;
+    f.setFault(point=>{if(point==='beforePersist'&&!entered){entered=true;if(status==='changed'){f.store.put('shots',{...f.shot,revision:f.shot.revision+1});}else{f.store.db.prepare('DELETE FROM shots WHERE id=?').run(f.shot.id);}}});
+    const result=f.shotText.put(f.put(saved,{title:'Later raw',prompt:f.shot.prompt}));f.setFault(()=>{});assert.equal(entered,true);assert.equal(result.draftTargetStatus,status);assert.equal(result.draftRevision,saved.draftRevision+1);
+    const discarded=f.shotText.discard({...authority(result),expectedDraftRevision:result.draftRevision,draftId:result.draft!.draftId});assert.equal(discarded.draft,null);assert.equal(discarded.draftRevision,result.draftRevision+1);assert.equal(f.calls.length,0);
+  }
 });

@@ -1,4 +1,3 @@
-import {TEST_STORE_LAYOUT} from '../packages/contracts/src/project-file.ts';
 import {assertProjectProcessCatalog} from './fixtures/project-process-catalog.ts';
 import type {OrdinaryDeliveryEnvelope} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {LocalShotTextSupported} from '../apps/web/src/local-shot-text-state.ts';
@@ -13,14 +12,14 @@ type WorkerExecution={envelope:WorkerEnvelope;response:FixtureExport|null};
 type WorkerReply<M extends string>=M extends 'get'|'put'|'prepare'?WorkerEnvelope:M extends 'execute'|'recover'?WorkerExecution:M extends 'executeBoth'?[WorkerExecution,WorkerExecution]:M extends 'observe'?{dispatches:unknown[]}:M extends 'identity'?{instanceId:string}:M extends 'snapshot'?ProjectState:unknown;
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 /** Real Node process death around real shared business services and the private
- * delivery sidecar. This does not claim native GUI lost-ACK coverage or media
+ * delivery history rows. This does not claim native GUI lost-ACK coverage or media
  * validation; tests/local-delivery-qa-native.mjs covers the native title flow.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {randomUUID,createHash} from 'node:crypto';
-import {mkdtemp,realpath,readFile,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,realpath,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -83,7 +82,7 @@ async function fixture(t: test.TestContext){
    sha256:createHash('sha256').update(source).digest('hex'),width:2,height:2,hasVideo:true,hasAudio:false,sizeBytes:source.length,provenance:'user-import',createdAt:new Date().toISOString()});
   timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:id,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:60});
  }finally{await services.drain();store.close();}
- const f={root,project,timeline,file:path.join(root,...TEST_STORE_LAYOUT.localDir,'local-delivery-v1.json'),get worker(){return worker;},
+ const f={root,project,timeline,get worker(){return worker;},
   async start(){worker=spawnWorker(root);workers.push(worker);const ready=await deadline(worker.ready,'worker startup');assert.equal(ready.pid,worker.child.pid);assert.equal(ready.dispatches,0);
    assert.throws(()=>openProjectDatabase(root),{code:'PROJECT_LOCKED'});return ready;},
   async restart(){await worker.close();return this.start();},
@@ -102,10 +101,10 @@ async function fixture(t: test.TestContext){
    const db=openProjectDatabase(root);try{return read(db);}finally{db.close();}
   },
   async snapshot(){const state=await this.state();
-  assertProjectProcessCatalog(state);return state;
+  assertProjectProcessCatalog(state);return {...state,tables:Object.fromEntries(Object.entries(state.tables).filter(([name])=>name!=='local_delivery_drafts').map(([name,rows])=>[name,name==='local_draft_states'?rows.filter(row=>row.kind!=='delivery'):rows]))};
   },
   receipt:async(requestId:string)=>(await f.state()).tables.timeline_requests.find(row=>row.requestId===requestId),
-  sidecar:()=>readFile(path.join(root,...TEST_STORE_LAYOUT.localDir,'local-delivery-v1.json'),'utf8'),
+  draftState:async()=>{const state=await f.state();return JSON.stringify({scope:state.tables.local_draft_states.filter(row=>row.kind==='delivery'),slots:state.tables.local_delivery_drafts});},
   async crash(phase: string,method: string,input: unknown){await worker.ask('arm',phase);const reached=worker.waitBoundary(phase),reply=worker.ask(method,input);
    const lost=assert.rejects(reply,{code:'WORKER_EXITED',signal:'SIGKILL'});const point=await reached;
    assert.deepEqual(await worker.kill(),{code:null,signal:'SIGKILL'});await lost;
@@ -118,36 +117,36 @@ const noDispatch=async (f: Awaited<ReturnType<typeof fixture>>)=>assert.deepEqua
 async function title(f: Awaited<ReturnType<typeof fixture>>){return f.ask('put',f.put(await f.get()));}
 
 // Draft durability alone must never be confused with export intent durability.
-test('before intent publication: real process death preserves draft and zero dispatches',{timeout:45000},async t=>{
- const f=await fixture(t),draft=await title(f),input=f.prepare(draft),before=await f.snapshot(),sidecar=await f.sidecar();
- const point=await f.crash('beforePersist','prepare',input);assert.equal(point.dispatches,0);assert.equal(await f.sidecar(),sidecar);assert.deepEqual(await f.snapshot(),before);
+for(const phase of ['beforePersist','beforeCommit'])test(`${phase}: real process death preserves draft and zero dispatches`,{timeout:45000},async t=>{
+ const f=await fixture(t),draft=await title(f),input=f.prepare(draft),before=await f.snapshot(),sidecar=await f.draftState();
+ const point=await f.crash(phase,'prepare',input);assert.equal(point.dispatches,0);assert.equal(await f.draftState(),sidecar);assert.deepEqual(await f.snapshot(),before);
  await f.start();const current=await f.get();assert.equal(current.intent,null);assert.deepEqual(current.draft,draft.draft);assert.notEqual(current.instanceId,draft.instanceId);
- assert.equal(await f.sidecar(),sidecar);assert.deepEqual(await f.snapshot(),before);await noDispatch(f);
+ assert.equal(await f.draftState(),sidecar);assert.deepEqual(await f.snapshot(),before);await noDispatch(f);
  await assert.rejects(f.ask('prepare',input),{code:'LOCAL_DELIVERY_STALE_INSTANCE'});await noDispatch(f);
 });
 
-for(const phase of ['afterDirectorySync','beforeDispatch'])test(`${phase}: prepared process crash is passive on startup and explicitly recovers exact input once`,{timeout:45000},async t=>{
+for(const phase of ['afterCommit','afterConfirm','beforeDispatch'])test(`${phase}: prepared process crash is passive on startup and explicitly recovers exact input once`,{timeout:45000},async t=>{
  const f=await fixture(t),draft=await title(f),input=f.prepare(draft),before=await f.snapshot();let prepared;
- if(phase==='afterDirectorySync')assert.equal((await f.crash(phase,'prepare',input)).dispatches,0);
+ if(phase==='afterCommit'||phase==='afterConfirm')assert.equal((await f.crash(phase,'prepare',input)).dispatches,0);
  else{prepared=await f.ask('prepare',input);assert.equal((await f.crash(phase,'execute',action(prepared))).dispatches,0);}
- const bytes=await f.sidecar();assert.deepEqual(await f.snapshot(),before);await f.start();const current=await f.get();
- assert.equal(current.intent!.outcome.status,'pending');assert.deepEqual(current.intent!.input,input.input);assert.equal(await f.sidecar(),bytes);assert.deepEqual(await f.snapshot(),before);await noDispatch(f);
+ const bytes=await f.draftState();assert.deepEqual(await f.snapshot(),before);await f.start();const current=await f.get();
+ assert.equal(current.intent!.outcome.status,'pending');assert.deepEqual(current.intent!.input,input.input);assert.equal(await f.draftState(),bytes);assert.deepEqual(await f.snapshot(),before);await noDispatch(f);
  await assert.rejects(f.ask('recover',{...action(current),instanceId:draft.instanceId}),{code:'LOCAL_DELIVERY_STALE_INSTANCE'});
  const accepted=await f.ask('recover',action(current));assert.equal(accepted.envelope.intent!.outcome.status,'accepted');assert.equal(accepted.response!.requestId,input.input.requestId);
  assert.deepEqual((await f.ask('observe')).dispatches,[input.input]);assert.equal((await f.snapshot()).tables.exports.length,1);
  assert.equal((await f.snapshot()).tables.timeline_requests.length,before.tables.timeline_requests.length+1);
- const complete=await f.snapshot(),settled=await f.sidecar();assert.deepEqual(await f.ask('recover',action(accepted.envelope)),accepted);
- assert.deepEqual(await f.snapshot(),complete);assert.equal(await f.sidecar(),settled);assert.deepEqual((await f.ask('observe')).dispatches,[input.input]);
+ const complete=await f.snapshot(),settled=await f.draftState();assert.deepEqual(await f.ask('recover',action(accepted.envelope)),accepted);
+ assert.deepEqual(await f.snapshot(),complete);assert.equal(await f.draftState(),settled);assert.deepEqual((await f.ask('observe')).dispatches,[input.input]);
 });
 
 for(const phase of ['afterBusinessReceiptCommit','beforeOutcomePersist','afterOutcomePersist'])test(`${phase}: lost ACK uses immutable business receipt after process restart without a second export`,{timeout:45000},async t=>{
  const f=await fixture(t),draft=await title(f),prepared=await f.ask('prepare',f.prepare(draft)),frozen=JSON.stringify(prepared.intent!.input);
  assert.equal((await f.crash(phase,'execute',action(prepared))).dispatches,1);
- const receipt=await f.receipt(prepared.intent!.input.requestId),original=publicValue(JSON.parse(receipt!.response as string)),committed=await f.snapshot(),bytes=await f.sidecar();
+ const receipt=await f.receipt(prepared.intent!.input.requestId),original=publicValue(JSON.parse(receipt!.response as string)),committed=await f.snapshot(),bytes=await f.draftState();
  assert.equal(receipt!.requestHash,hash({operation:'timeline.render',input:prepared.intent!.input}));assert.equal(committed.tables.exports.length,1);
  await f.start();const current=await f.get();assert.equal(current.intent!.outcome.status,phase==='afterOutcomePersist'?'accepted':'pending');
  assert.equal(JSON.stringify(current.intent!.input),frozen);assert.equal(current.workspaceScope,prepared.workspaceScope);assert.notEqual(current.instanceId,prepared.instanceId);
- assert.deepEqual(await f.snapshot(),committed);assert.equal(await f.sidecar(),bytes);await noDispatch(f);
+ assert.deepEqual(await f.snapshot(),committed);assert.equal(await f.draftState(),bytes);await noDispatch(f);
  await assert.rejects(f.ask('recover',action(prepared)),{code:'LOCAL_DELIVERY_STALE_INSTANCE'});
  // A later real business edit must not rebase the frozen recovery input.
  await f.ask('rpc',{operation:'timeline.track.add',input:{projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),kind:'audio'}});
@@ -162,9 +161,9 @@ test('durably not_applied remains terminal across process death and repeated exp
  await f.ask('rpc',{operation:'timeline.track.add',input:{projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),kind:'audio'}});
  const before=await f.snapshot();assert.equal((await f.crash('afterOutcomePersist','execute',action(prepared))).dispatches,1);
  assert.deepEqual(await f.snapshot(),before);assert.equal(await f.receipt(prepared.intent!.input.requestId),undefined);
- await f.start();const current=await f.get(),sidecar=await f.sidecar();assert.equal(current.intent!.outcome.status,'not_applied');assert.equal(current.intent!.outcome.code,'REVISION_CONFLICT');assert.deepEqual(current.draft,draft.draft);
+ await f.start();const current=await f.get(),sidecar=await f.draftState();assert.equal(current.intent!.outcome.status,'not_applied');assert.equal(current.intent!.outcome.code,'REVISION_CONFLICT');assert.deepEqual(current.draft,draft.draft);
  for(let i=0;i<2;i++){const result=await f.ask('recover',action(current));assert.equal(result.response,null);assert.deepEqual(result.envelope,current);}
- assert.equal(await f.sidecar(),sidecar);assert.deepEqual(await f.snapshot(),before);await noDispatch(f);
+ assert.equal(await f.draftState(),sidecar);assert.deepEqual(await f.snapshot(),before);await noDispatch(f);
 });
 
 test('two windows share one durable reservation and one exact original dispatch',{timeout:45000},async t=>{
@@ -175,7 +174,7 @@ test('two windows share one durable reservation and one exact original dispatch'
  const [a,b]=await f.ask('executeBoth',action(prepared));assert.deepEqual(a,b);assert.deepEqual(a.envelope.draft,newer.draft);assert.equal(a.response!.snapshot.deliveryName,draft.draft!.raw.deliveryName);
  assert.deepEqual((await f.ask('observe')).dispatches,[request.input]);assert.equal((await f.snapshot()).tables.exports.length,1);
  await assert.rejects(f.ask('put',f.put(windowB,'Stale overwrite')),{code:'LOCAL_DELIVERY_CONFLICT'});
- const before=await f.snapshot(),sidecar=await f.sidecar();await f.restart();const current=await f.get();await noDispatch(f);
+ const before=await f.snapshot(),sidecar=await f.draftState();await f.restart();const current=await f.get();await noDispatch(f);
  assert.deepEqual(current.draft,newer.draft);assert.deepEqual((await f.ask('recover',action(current))).response,a.response);
- assert.equal(await f.sidecar(),sidecar);assert.deepEqual(await f.snapshot(),before);await noDispatch(f);
+ assert.equal(await f.draftState(),sidecar);assert.deepEqual(await f.snapshot(),before);await noDispatch(f);
 });
