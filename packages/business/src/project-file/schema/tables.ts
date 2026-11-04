@@ -6,7 +6,7 @@
  * for supported history upgrades and the legacy workspace until S7-B2.
  * `schema_version` exists in all three databases and is defined in databases.ts. */
 export type TablePlacement = 'project' | 'history' | 'cache' | 'app' | 'removed';
-export type HistoryDomain = 'receipts' | 'tasks' | 'timelineHistory' | 'mio' | 'versions';
+export type HistoryDomain = 'receipts' | 'tasks' | 'timelineHistory' | 'mio' | 'versions' | 'drafts';
 
 export const CONTENT_TABLES: readonly string[] = Object.freeze([
   'projects', 'assets', 'asset_annotations', 'asset_dispositions', 'asset_ranges', 'shots', 'nodes', 'edges', 'versions',
@@ -45,11 +45,13 @@ export const HISTORY_TABLES_BY_DOMAIN: Readonly<Record<HistoryDomain, readonly s
     'mio_storage_counters','mio_rule_writes',
   ]),
   versions: Object.freeze(['project_version_blobs','project_versions','project_version_requests','project_version_capture_marks']),
+  drafts: Object.freeze(['local_draft_states','local_clip_drafts','local_delivery_drafts','local_shot_text_drafts']),
 });
 
 export const HISTORY_TABLES: readonly string[] = Object.freeze([
   ...HISTORY_TABLES_BY_DOMAIN.receipts, ...HISTORY_TABLES_BY_DOMAIN.tasks,
   ...HISTORY_TABLES_BY_DOMAIN.timelineHistory, ...HISTORY_TABLES_BY_DOMAIN.mio, ...HISTORY_TABLES_BY_DOMAIN.versions,
+  ...HISTORY_TABLES_BY_DOMAIN.drafts,
 ]);
 
 export const CACHE_TABLES: readonly string[] = Object.freeze(['waveform_cache', 'previs_thumbnails']);

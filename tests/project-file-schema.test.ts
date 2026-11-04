@@ -163,7 +163,7 @@ test('table placement lists every current domain once and keeps compatibility na
   const all = [...CONTENT_TABLES, ...HISTORY_TABLES, ...CACHE_TABLES, ...APP_DATABASE_TABLES, ...REMOVED_TABLES];
   assert.equal(new Set(all).size, all.length);
   assert.equal(CONTENT_TABLES.length, 18);
-  assert.equal(HISTORY_TABLES.length, 58);
+  assert.equal(HISTORY_TABLES.length, 62);
   assert.equal(CACHE_TABLES.length, 2);
   assert.equal(APP_DATABASE_TABLES.length, 3);
   assert.equal(REMOVED_TABLES.length, 10);
@@ -173,6 +173,7 @@ test('table placement lists every current domain once and keeps compatibility na
   assert.deepEqual(HISTORY_TABLES_BY_DOMAIN.timelineHistory.length, 2);
   assert.equal(HISTORY_TABLES_BY_DOMAIN.mio.length, 20);
   assert.equal(HISTORY_TABLES_BY_DOMAIN.versions.length, 4);
+  assert.deepEqual(HISTORY_TABLES_BY_DOMAIN.drafts, ['local_draft_states', 'local_clip_drafts', 'local_delivery_drafts', 'local_shot_text_drafts']);
   assert.equal(HISTORY_TABLES_BY_DOMAIN.mio.includes('mio_process_target_revisions'), true);
   assert.equal(HISTORY_TABLES_BY_DOMAIN.mio.includes('mio_storage_counters'), true);
   assert.equal(HISTORY_TABLES.includes('mock_provider_tasks'), true);
@@ -229,7 +230,7 @@ test('the independent versions domain has four exact table shapes, indexes and n
   const db = buildAlone('history');
   try {
     assert.deepEqual([...HISTORY_TABLES_BY_DOMAIN.versions], Object.keys(expected));
-    assert.equal(readSchemaManifest(db, 'main').length, 525);
+    assert.equal(readSchemaManifest(db, 'main').length, 555);
     for (const [table, shape] of Object.entries(expected)) {
       const actual = readTableShape(db, table);
       assert.deepEqual(actual.columns.map(column => column.name), shape.columns, `${table}: all columns independently listed`);
@@ -326,14 +327,14 @@ test('each database built alone compiles every insert, update and delete of ever
       }
     } finally { db.close(); }
   }
-  assert.equal(tables, 84);
+  assert.equal(tables, 88);
   assert.equal(tables, CONTENT_TABLES.length+HISTORY_TABLES.length+CACHE_TABLES.length+6);
 });
 
 const MANIFEST_DIGESTS: Readonly<Record<DatabaseKind, Readonly<Record<number, string>>>> = {
   project: {1: '6e96c3872a938817b65e71750d1e68bd8fa84c7f3f8d92490de22a0e34d649ce', 2: 'f86a2d31c85aa42896bd7d93e8ececa66c039942a0e32d36cb22b7483ea9929f', 3: 'a663d3fb003fc82b43864342da6799664d1524a0876cf2314930b62ae27f5142'},
   // 2: the Mock provider's ledger in the task domain.
-  history: {1: 'e0445f02d867f3aeedc283708f58d30efa7b0465e8987f7f739e8f5580791243', 2: '34ad833f0a676602490ce69b0f8804f79f1b30750b76a9f58d41abeb14dfd7a0', 3: 'b9487064fb0fa4447f3eb3896121d648184007a2b675927222beea3518c91a3a', 4: '047b9b4d7c2aa2376f2a97c2d4b042b326d730b5ad79504e77d3f8df1ca8dc82', 5: '6d2615d8d96d70d8d5926d387f1709e13d74dacf9d77414592750ec3ee3848de', 6: '7c150a8de4736982f109c04f71d1965385fa9629bc1bd4f48ebeda141d48eeb9',7:'540f80d50bcd564e584cf1bf526ca7019d083f095932ba7d19c8b18c2356a1ca',8:'0a009a3030d2177d5e8bee0a685b02bdc2fa96bc8ab494221e94a36676d44974'},
+  history: {1: 'e0445f02d867f3aeedc283708f58d30efa7b0465e8987f7f739e8f5580791243', 2: '34ad833f0a676602490ce69b0f8804f79f1b30750b76a9f58d41abeb14dfd7a0', 3: 'b9487064fb0fa4447f3eb3896121d648184007a2b675927222beea3518c91a3a', 4: '047b9b4d7c2aa2376f2a97c2d4b042b326d730b5ad79504e77d3f8df1ca8dc82', 5: '6d2615d8d96d70d8d5926d387f1709e13d74dacf9d77414592750ec3ee3848de', 6: '7c150a8de4736982f109c04f71d1965385fa9629bc1bd4f48ebeda141d48eeb9',7:'540f80d50bcd564e584cf1bf526ca7019d083f095932ba7d19c8b18c2356a1ca',8:'0a009a3030d2177d5e8bee0a685b02bdc2fa96bc8ab494221e94a36676d44974',9:'a3a8bbe9ce7cc75c3c8d0168f7135ff6cd92867bc051393cf4336f1d8da17b64'},
   cache: {1: 'be43585ad9045d7ed844c609b9af13829372efb83741b55f4f4f8e7b2f2fd61c', 2: '21b8f4c33fcb2c2b20d87c8bfd8a51d15bb6fdef8a7ae081aba462a900048fa3'},
 };
 

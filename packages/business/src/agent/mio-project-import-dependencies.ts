@@ -28,6 +28,7 @@ import {INSPECTION_ROW_LIMITS} from '../inspection-query.ts';
 import {projectRetainedTimelineReceipt} from '../timeline-retained-receipts.ts';
 import {restoreTimelineEditableSnapshot} from '../timeline-recovery.ts';
 import {decodeProjectDocument} from '../project-versions/codec.ts';
+import {clipDraftSlotSchema, LOCAL_DRAFT_LIMITS} from '../../../contracts/src/local-drafts.ts';
 
 export type MioProjectImportDependencyResult = {readonly status: 'clear'}
   | {readonly status: 'referenced'; readonly source: string}
@@ -56,6 +57,9 @@ function deny(reason: 'invalid' | 'limit' | 'unsupported'): never {throw new Ref
 // not media consumers. mio_imports is still checked through its actual FK.
 // V5's project_history_resolution is the fixed completed-switch ACK (project
 // content stamp and archive name), not a retained media/restore input.
+// S8 scope state, delivery names/render intents and shot text/patches contain
+// no asset identities. Clip drafts retain an explicit source even when their
+// current timeline clip has gone, so their typed data is a consumer below.
 const ignored = {
   project: ['schema_version', 'project_file', 'agent_task_target_revisions_v2', 'asset_annotations', 'asset_dispositions', 'asset_ranges',
     'subjects', 'subject_bindings', 'image_groups', 'scene_results', 'project_lut_resources'],
@@ -65,7 +69,8 @@ const ignored = {
     'mio_storage_counters', 'mio_blobs', 'mio_conversations', 'mio_runs', 'mio_entries', 'mio_steps', 'mio_requests',
     'mio_controls', 'mio_control_states', 'mio_imports', 'mio_job_origins', 'mio_edit_claims', 'mio_edit_owners', 'mio_edit_receipts',
     'mio_conversation_policies', 'mio_conversation_policy_requests', 'mio_events', 'mio_process_target_revisions', 'mio_rule_writes',
-    'project_version_blobs', 'project_versions', 'project_version_requests', 'project_version_capture_marks'],
+    'project_version_blobs', 'project_versions', 'project_version_requests', 'project_version_capture_marks',
+    'local_draft_states', 'local_delivery_drafts', 'local_shot_text_drafts'],
   cache: ['schema_version', 'waveform_cache', 'previs_thumbnails'],
 } as const;
 const dataFields = {
@@ -93,7 +98,8 @@ const consumerCells = {
     subject_variant_requests: ['canonicalInput', 'response'], previs_requests: ['response'], jobs: ['data'], exports: ['data'],
     edit_tasks: ['input'], image_tasks: ['input', 'snapshot', 'stagedReceipt'], image_reviews: ['canonicalInput', 'canonicalIntent'],
     frame_tasks: ['input', 'snapshot', 'stagedReceipt'], scene_tasks: ['input', 'snapshot', 'stagedReceipt', 'outcome'],
-    subject_variant_batches: ['input', 'snapshot'], mock_provider_tasks: ['snapshot_json'], timeline_history: ['beforeSnapshot', 'afterSnapshot'], mio_changes: ['data']},
+    subject_variant_batches: ['input', 'snapshot'], mock_provider_tasks: ['snapshot_json'], timeline_history: ['beforeSnapshot', 'afterSnapshot'], mio_changes: ['data'],
+    local_clip_drafts: ['data']},
   cache: {},
 } as const;
 const singleAssetKeys = new Set(['assetId', 'sourceAssetId', 'lastFrameAssetId']);
@@ -294,8 +300,10 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
     let currentTimeline: unknown;
     for (const schema of ['project', 'main'] as const) for (const [table, columns] of Object.entries(consumerCells[schema])) {
       const info = db.prepare(`PRAGMA ${schema}.table_info(${quote(table)})`).all(), columnNames = new Set(info.map(row => row.name));
-      const metadata = ['id', 'projectId', 'operation', 'requestId', 'kind', 'runId', 'stepId'].filter(key => columnNames.has(key));
-      const maximum = (INSPECTION_ROW_LIMITS as Readonly<Record<string, number>>)[table] ?? limits.cellBytes;
+      const metadata = ['id', 'projectId', 'operation', 'requestId', 'kind', 'runId', 'stepId',
+        ...(table === 'local_clip_drafts' ? ['timelineId', 'clipId', 'revision'] : [])].filter(key => columnNames.has(key));
+      const maximum = table === 'local_clip_drafts' ? LOCAL_DRAFT_LIMITS.rowBytes
+        : (INSPECTION_ROW_LIMITS as Readonly<Record<string, number>>)[table] ?? limits.cellBytes;
       const select = columns.flatMap(column => [`CASE WHEN ${quote(column)} IS NULL THEN NULL WHEN typeof(${quote(column)})='text'
         AND length(CAST(${quote(column)} AS BLOB)) BETWEEN 1 AND ${maximum} THEN ${quote(column)} ELSE 0 END AS ${quote(column)}`]);
       for (const row of db.prepare(`SELECT ${[...metadata.map(quote), ...select].join(',')} FROM ${schema}.${quote(table)} LIMIT ${limits.rows + 1}`).iterate()) {
@@ -310,6 +318,13 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
           if (schema === 'project' && ['projects', 'assets', 'shots', 'nodes', 'edges', 'versions', 'timelines', 'subject_versions', 'image_versions'].includes(table)) {
             content(table, value, source, row.id);
             if (table === 'timelines') currentTimeline = value;
+          } else if (table === 'local_clip_drafts') {
+            const slot = clipDraftSlotSchema.safeParse(value);
+            if (!slot.success || slot.data.projectId !== store.projectId
+              || slot.data.timelineId !== row.timelineId || slot.data.clipId !== row.clipId || slot.data.revision !== row.revision) deny('invalid');
+            // Scan only the validated semantic source: raw UI strings are not
+            // references and assetSha256 is a fingerprint, not another ID.
+            if (slot.data.draft?.source.assetId === assetId) referenced(source);
           } else if (table === 'jobs' || table === 'exports') content(table, value, source, row.id);
           else if (table === 'mio_changes') recoverableChange(value, source, row);
           else if (table === 'timeline_requests') receipt(value, source, row.requestId);

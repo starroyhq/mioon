@@ -15,7 +15,6 @@ import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.
 import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createLocalDrafts} from '../packages/business/src/local-drafts.ts';
 import {createTimelineRecoveryBoundary} from '../packages/business/src/timeline-recovery.ts';
-import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '../packages/contracts/src/private-storage.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createWorkspacePreferences} from '../packages/business/src/workspace-preferences.ts';
 import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
@@ -50,7 +49,7 @@ async function prepare(){
   let timeline=await services.call('timeline.format.set',{projectId:project.id,expectedProjectRevision:project.revision,expectedRevision:0,requestId:randomUUID(),presetId:'landscape_720'});
   timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:asset.id,trackId:timeline.tracks.find(track=>track.kind==='video').id,startFrame:0,durationFrames:60,name:'原来已保存的片段'});
   if(scenario==='capacity'){
-   const drafts=createLocalDrafts({root:store.localDir,databaseFile:path.join(store.localDir,'history.db'),channel:'production',storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},guards:{ownsLock:()=>ownsStoreLock(store),readTimeline:id=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),readClipAsset:(id,clip)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(clip)}});
+   const drafts=createLocalDrafts({store,channel:'production',guards:{ownsLock:()=>ownsStoreLock(store),readTimeline:id=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),readClipAsset:(id,clip)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(clip)}});
    // Fill the documented retained-slot limit through real service writes and
    // exact CAS deletes. No forged sidecar row, authority, or backend test switch.
    for(let index=0;index<128;index++){
@@ -73,7 +72,8 @@ async function prepare(){
 async function audit(label){
  if(!/^[a-z0-9-]{1,60}$/.test(label))throw Error('Invalid audit label');const fixture=await readJson(fixtureFile);
  const {rows,kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries}=captureNativeQa(workspace);
- const sidecar=path.join(fixture.localDir,'local-drafts-v1.json'),draft=await exists(sidecar)?await readJson(sidecar):null;
+ const scope=rows.local_draft_states.find(row=>row.kind==='clip')?.workspaceScope,draft=scope?{version:2,workspaceScope:scope,entries:rows.local_clip_drafts.sort((a,b)=>a.ordinal-b.ordinal).map(row=>JSON.parse(row.data))}:null;
+ assert.equal(await exists(path.join(fixture.localDir,'local-drafts-v1.json')),false,'a fresh SQL fixture never recreates retired JSON');
  const media=coldNativeQaMediaSnapshot(workspace,fixture.projectId);
  const timeline=rows.timelines.map(row=>JSON.parse(row.data)).find(value=>value.id===fixture.timelineId);
  const result={synthetic:true,at:new Date().toISOString(),kernelMetadata,metadataTableNames,applicationRows,applicationScope,projectSummaries,tables:Object.fromEntries(Object.entries(rows).map(([key,value])=>[key,{count:value.length,sha256:sha(JSON.stringify(value))}])),timeline,editTasks:rows.edit_tasks.map(row=>({id:row.id,requestId:row.requestId,status:row.status,acknowledged:row.acknowledged})),exports:rows.exports.map(row=>JSON.parse(row.data)),draft,media};

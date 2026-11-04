@@ -8,6 +8,7 @@ import {RECEIPT_SCHEMA} from './domains/receipts.ts';
 import {TASK_SCHEMA} from './domains/tasks.ts';
 import {TIMELINE_HISTORY_SCHEMA} from './domains/timeline-history.ts';
 import {VERSION_SCHEMA} from './domains/versions.ts';
+import {DRAFT_SCHEMA} from './domains/drafts.ts';
 import {CONTENT_TABLES} from './tables.ts';
 
 /** The three SQLite databases of one project: the project file itself, the
@@ -20,8 +21,8 @@ export type DatabaseKind = keyof typeof PROJECT_DATABASE_NAMES;
  * schema/manifest.ts (`node tests/helpers/project-file-schema-derivation.ts --write`)
  * and recording the new manifest digest in tests/project-file-schema.test.ts. */
 export const PROJECT_FILE_SCHEMA_VERSION = 3;
-/** 3 replaced development task tables; 4 adds counters; 5 adds rule-write intents; 6 adds local project versions; 7 adds proven previs image-edit origins; 8 adds content tokens and recovery confirmation. */
-export const HISTORY_SCHEMA_VERSION = 8;
+/** 3 replaced development task tables; 4 adds counters; 5 adds rule-write intents; 6 adds local project versions; 7 adds proven previs image-edit origins; 8 adds content tokens and recovery confirmation; 9 adds host-local drafts. */
+export const HISTORY_SCHEMA_VERSION = 9;
 export const CACHE_SCHEMA_VERSION = 2;
 
 /** SQLite header `application_id` values: 'MioP', 'MioH' and 'MioC'. */
@@ -78,7 +79,7 @@ export const HISTORY_RESOLUTION_SCHEMA = "CREATE TABLE project_history_resolutio
 
 const DOMAIN_STATEMENTS: Readonly<Record<DatabaseKind, readonly string[]>> = {
   project: CONTENT_SCHEMA,
-  history: [...RECEIPT_SCHEMA, ...TASK_SCHEMA, ...TIMELINE_HISTORY_SCHEMA, ...MIO_SCHEMA, ...VERSION_SCHEMA],
+  history: [...RECEIPT_SCHEMA, ...TASK_SCHEMA, ...TIMELINE_HISTORY_SCHEMA, ...MIO_SCHEMA, ...VERSION_SCHEMA, ...DRAFT_SCHEMA],
   cache: CACHE_SCHEMA,
 };
 

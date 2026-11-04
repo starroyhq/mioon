@@ -3,7 +3,7 @@ import type {MediaReference} from '../../packages/contracts/src/media-reference.
 import {projectApiPath, parseProjectApiPath} from '../../packages/contracts/src/project-file.ts';
 import {rpcPathFor} from '../../packages/contracts/src/project-addressing.ts';
 /** Synthetic loopback listener, not the full desktop server. It uses the real
- * shared services, SQLite, observation adapter and private-delivery adapter.
+ * shared services, SQLite, observation adapter and history-backed delivery adapter.
  * No job worker is constructed, so admission/recovery cannot encode media.
  */
 import assert from 'node:assert/strict';
@@ -14,7 +14,6 @@ import {randomUUID, createHash} from 'node:crypto';
 import {deflateSync} from 'node:zlib';
 import {mkdtemp, readFile, readdir, writeFile, rm, realpath, stat} from 'node:fs/promises';
 import {schemas, parse, isTimelineMutationResponse, hasRequestNotAppliedProof, publicValue, AppError} from '@mioon/contracts';
-import {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile} from '@mioon/contracts/private-storage';
 import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 
 import {ownsStoreLock} from '../../packages/business/src/store-runtime.ts';
@@ -100,8 +99,8 @@ export async function selectedRangeFixture(t: unknown): Promise<Record<string, u
       // real-media gates. No renderer, model or provider is started here.
       inspect: async (value: unknown) => {capabilityChecks.push(structuredClone(value)); return {status: 'available', code: 'EXPORT_CAPABILITY_AVAILABLE'};},
     }});
-    const localRoot = isProjectStore(store) ? store.localDir : root;
-    delivery = createLocalDelivery({root: localRoot, ...(isProjectStore(store) ? {databaseFile: path.join(localRoot, 'history.db')} : {}), storage: {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile},
+    assert.ok(isProjectStore(store),'A delivery fixture requires the exact live project store');
+    delivery = createLocalDelivery({store,
       fault: (point: string) => fault(point), guards: {
         ownsLock: () => ownsStoreLock(store!),
         readTimeline: (projectId: string) => createTimelineRecoveryBoundary(store!.db, {projectId}).read({sourceSemantics: false}),
@@ -120,6 +119,7 @@ export async function selectedRangeFixture(t: unknown): Promise<Record<string, u
   const close = async (): Promise<void> => {
     if (server) {server.closeAllConnections(); await bounded(new Promise<void>(resolve => server!.close(() => resolve())), 'Synthetic listener close'); server = null;}
     if (cancellation) {await cancellation.service.drain(); cancellation = null;}
+    if (delivery) {await delivery.drain(); delivery = null;deliveryHttp = null;}
     if (services) {await services.drain(); services = null;}
     if (store?.db.isOpen) store.close();
   };
@@ -153,7 +153,7 @@ export async function selectedRangeFixture(t: unknown): Promise<Record<string, u
       if (request.headers.authorization !== `Bearer ${TOKEN}`) return send(response, 401, {ok: false, error: {code: 'UNAUTHORIZED'}});
       if (request.headers.origin && request.headers.origin !== f.url) return send(response, 403, {ok: false, error: {code: 'ORIGIN_REJECTED'}});
       // Drop only the completed acknowledgement. The actual business and
-      // companion commits are observed before the exact socket is destroyed.
+      // history commits are observed before the exact socket is destroyed.
       const end = response.end.bind(response);
       (response as unknown as {end: unknown}).end = (bytes?: string|Buffer) => {
         if (bytes !== undefined) observations.push({path: requestedPath, body: JSON.parse(String(bytes)), status: response.statusCode});
@@ -199,6 +199,8 @@ export async function selectedRangeFixture(t: unknown): Promise<Record<string, u
         result[prefix + schema + '.sqlite_schema'] = db.prepare(`SELECT * FROM ${quote(schema)}.sqlite_schema ORDER BY type,name`).all();
         for (const row of db.prepare(`SELECT name FROM ${quote(schema)}.sqlite_schema WHERE type='table' ORDER BY name`).all()) {
           const name = String(row.name);
+          if (name === 'local_delivery_drafts') continue;
+          if (name === 'local_draft_states') {result[name] = db.prepare(`SELECT * FROM ${quote(schema)}.${quote(name)} WHERE kind<>'delivery' ORDER BY rowid`).all();continue;}
           result[prefix + (Object.hasOwn(result, name) ? schema + '.' + name : name)] = db.prepare(`SELECT * FROM ${quote(schema)}.${quote(name)} ORDER BY rowid`).all();
         }
       };
@@ -207,8 +209,10 @@ export async function selectedRangeFixture(t: unknown): Promise<Record<string, u
       if (app) snapshot(app.db, 'main', 'app.');
       return result;
     },
+    draftRows: () => store!.db.prepare('SELECT data FROM main.local_delivery_drafts ORDER BY ordinal').all().map(row=>JSON.parse(String(row.data))),
+    draftState: () => JSON.stringify({states:store!.db.prepare("SELECT * FROM main.local_draft_states WHERE kind='delivery'").all(),slots:store!.db.prepare('SELECT * FROM main.local_delivery_drafts ORDER BY ordinal').all()}),
     receipt: (requestId: string) => store!.db.prepare('SELECT * FROM timeline_requests WHERE requestId=?').get(requestId),
-    async checkpoint(): Promise<{rows: Record<string, unknown[]>; files: FileEntry[]}> {return {rows: f.rows(), files: await files(root)};},
+    async checkpoint(): Promise<{rows: Record<string, unknown[]>; drafts: string; files: FileEntry[]}> {return {rows: f.rows(), drafts: f.draftState(), files: await files(root)};},
     async unchanged(before: unknown): Promise<void> {assert.deepEqual(await f.checkpoint(), before);},
     async request(suffix: string, {method = 'GET', input, signal}: {method?: string; input?: unknown; signal?: AbortSignal} = {}) {
       const response = await fetch(f.url + suffix, {method, redirect: 'error', signal: signal ?? AbortSignal.timeout(15_000),
