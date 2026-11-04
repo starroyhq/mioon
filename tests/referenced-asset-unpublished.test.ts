@@ -13,6 +13,7 @@ import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createMioProjectMedia} from '../packages/business/src/agent/mio-project-media.ts';
 import {createAssetMediaServices} from '../packages/business/src/asset-media-services.ts';
 import {createManagedAssetImportHandler} from '../packages/business/src/managed-asset-import.ts';
+import {createReferencedAssetProjectImport} from '../packages/business/src/referenced-asset-project-import.ts';
 import {run} from '../packages/business/src/media.ts';
 import {mediaMtimeMs} from '../packages/business/src/media-reference/fingerprint.ts';
 import {registerProjectMediaStore} from '../packages/business/src/project-media-storage.ts';
@@ -119,13 +120,32 @@ for (const phase of ['prepared', 'registered']) test(`${phase} preserves its dis
   }
 });
 
-test('prepared native-path receipt with no upload attempt only passes after its exact asset is registered', async t => {
+test('prepared reference-only path receipts do not claim a publication or block ordinary candidates after row removal', async t => {
   const f = fixture(t), publication = f.published(1, 'prepared');
   const value = {...publication.value, attempt: 0}; delete (value as Record<string, unknown>).file;
   f.receipt(value, path.basename(publication.receipt));
   await readProjectUnpublishedMediaSnapshot(f.store, options);
   f.store.db.prepare('DELETE FROM assets WHERE id=?').run(publication.asset.id);
-  await assert.rejects(readProjectUnpublishedMediaSnapshot(f.store, options), invalid);
+  const view = await readProjectUnpublishedMediaSnapshot(f.store, options);
+  assert.equal(view.isExcluded(publication.file, lstatSync(publication.file, {bigint: true})), false);
+});
+
+test('a real rolled-back S1 path preparation remains not_applied without poisoning later read-only listing', async t => {
+  const f = fixture(t), rt = runtime(f), source = path.join(f.projectDir, 'ordinary.png'), bytes = png();
+  writeFileSync(source, bytes);
+  const input = {projectId: f.store.projectId, requestId: randomUUID(), sourcePath: source};
+  const importer = createReferencedAssetProjectImport(f.store, {importPath: (value, context) => rt.importer(value, context)});
+  const proof = await importer.prepare(input, {beforeEffect: rt.beforeEffect});
+  const stop = new Error('rollback asset and its task recording');
+  await assert.rejects(importer.execute(proof, {beforeEffect: rt.beforeEffect, recordCreatedInside() {throw stop;}}), error => error === stop);
+  assert.equal(f.store.list('assets', f.store.projectId).length, 0);
+  assert.equal((await importer.lookup(input, {beforeEffect: rt.beforeEffect})).outcome, 'not_applied');
+  const saved = readdirSync(f.receipts).filter(name => name.endsWith('.json')).map(name => path.join(f.receipts, name));
+  assert.equal(saved.length, 1);
+  const receipt = readFileSync(saved[0]!), value = JSON.parse(receipt.toString('utf8')) as Record<string, unknown>;
+  assert.equal(value.phase, 'prepared'); assert.equal(value.attempt, 0); assert.equal(Object.hasOwn(value, 'file'), false);
+  assert.deepEqual((await rt.list('')).entries.map(entry => entry.name), ['ordinary.png']);
+  assert.deepEqual(readFileSync(saved[0]!), receipt); assert.deepEqual(readFileSync(source), bytes);
 });
 
 test('missing unpublished attempts pass, but any surviving current or historical target refuses the whole list', async t => {

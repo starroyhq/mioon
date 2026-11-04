@@ -193,11 +193,17 @@ export async function readProjectUnpublishedMediaSnapshot(store: ProjectStore,
         const record = value.phase === 'unpublished' ? null : assetRecord(value.asset, id);
         // A terminal receipt records an already completed publication, not a
         // promise that its asset row or file can never be edited/relinked (or
-        // removed by a later undo). Only prepared still needs current DB proof.
+        // removed by a later undo). Prepared uploads still need current DB proof.
         const registered = value.phase === 'registered' ? null : currentAsset(id);
         const published = value.phase === 'registered' ||
           record !== null && registered !== null && canonical(record) === canonical(assetRecord(registered, id));
-        if (value.phase !== 'unpublished' && !published) invalid();
+        // A path-only preparation has no owned project-file publication. Its
+        // transaction may roll back while this immutable S1 evidence remains;
+        // treating the ordinary referenced source as a partial would then block
+        // every later list/import. Upload attempts and S2 publication evidence
+        // keep their existing completion requirements.
+        const referenceOnly = attempt === 0 && !Object.hasOwn(value, 'file') && record !== null && record.publication === undefined;
+        if (value.phase !== 'unpublished' && !published && !referenceOnly) invalid();
         if (attempt === 0) {
           if (Object.hasOwn(value, 'file')) invalid();
         } else {
