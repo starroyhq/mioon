@@ -17,6 +17,15 @@ import {openProjectBackup,inspectCopiedProjectFile,publishProjectCopyFile} from 
 import {copyProjectToNewFile} from '../packages/business/src/project-file/copy.ts';
 import {buildPreviousHistoryDatabase} from './fixtures/kernel-history-previous-schema.ts';
 import {HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {readSchemaManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
+import {V5_HISTORY_V8_MANIFEST} from '../packages/business/src/project-file/schema/history-v8-manifest.ts';
+import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
+import {captureProjectDocumentInside} from '../packages/business/src/project-versions/document.ts';
+import {encodeProjectDocument} from '../packages/business/src/project-versions/codec.ts';
+import {createLocalDraftRepository,localDraftDigest} from '../packages/business/src/local-draft-repository.ts';
+import {clipDraftDiskSchema} from '../packages/contracts/src/local-drafts.ts';
+import type {ClipDraftDisk} from '../packages/contracts/src/local-drafts.ts';
+import {DRAFT_TABLES} from '../packages/business/src/project-file/schema/domains/drafts.ts';
 
 const code=(expected:string)=>(error:unknown):boolean=>Boolean(error&&typeof error==='object'&&'code' in error&&error.code===expected);
 function fixture(t:TestContext){
@@ -54,13 +63,58 @@ test('no history means no source records or shadow cache are created',async t=>{
  unchanged(f.projectFile,before);assert.deepEqual(readdirSync(f.directory),['project.source.sqlite']);
 });
 
-for(const version of [2,3,4,5,6,7] as const)test(`exact old history ${version} is copied without migration or requiring matching seen`,async t=>{
- const f=fixture(t);rmSync(f.history);const db=new DatabaseSync(f.history);
- try{db.exec('BEGIN');buildPreviousHistoryDatabase(db,version);db.prepare('INSERT INTO history_state VALUES(1,?,91)').run(f.projectId);db.prepare("INSERT INTO idempotency VALUES('kept','request','digest','resource')").run();db.exec('COMMIT');}finally{db.close();}
+for(const version of [2,3,4,5,6,7,8] as const)test(`exact old history ${version} is copied without migration or requiring matching seen`,async t=>{
+ const f=fixture(t),store=f.open();
+ const document=store.tx(()=>captureProjectDocumentInside(store)),blob=encodeProjectDocument(document);store.close();
+ const sourceIdentity=inspectProjectFileReadOnly(f.projectFile),seenToken=sourceIdentity.contentToken==='f'.repeat(32)?'e'.repeat(32):'f'.repeat(32);
+ rmSync(f.history);const db=new DatabaseSync(f.history);
+ let retainedVersions:unknown,retainedBlobs:unknown;
+ try{
+  db.exec('BEGIN');buildPreviousHistoryDatabase(db,version);
+  if(version===8){
+   db.prepare('INSERT INTO history_state VALUES(1,?,91,?)').run(f.projectId,seenToken);
+   db.prepare('INSERT INTO project_version_blobs VALUES(?,?,?,?,?,?)').run(blob.hash,blob.profile,blob.codec,blob.rawBytes,blob.compressedBytes,blob.payload);
+   db.prepare("INSERT INTO project_versions VALUES(?,?,'manual','保留版本',NULL,?,?,?,0)").run(randomUUID(),f.projectId,document.evidence.contentSequence,'2026-11-04T00:00:00.000Z',blob.hash);
+   assert.deepEqual(readSchemaManifest(db,'main'),V5_HISTORY_V8_MANIFEST.entries);
+   retainedVersions=db.prepare('SELECT * FROM project_versions ORDER BY id').all();retainedBlobs=db.prepare('SELECT * FROM project_version_blobs ORDER BY hash').all();
+  }else db.prepare('INSERT INTO history_state VALUES(1,?,91)').run(f.projectId);
+  db.prepare("INSERT INTO idempotency VALUES('kept','request','digest','resource')").run();db.exec('COMMIT');
+ }finally{db.close();}
  const before=evidence(f.history),source=evidence(f.projectFile),captured=await captureClosedProjectSnapshot(f.options);
  const copied=new DatabaseSync(captured.historyFile!,{readOnly:true});
- try{assert.equal(copied.prepare('SELECT version FROM schema_version').get()!.version,version);assert.equal(copied.prepare('SELECT seenContentSequence FROM history_state').get()!.seenContentSequence,91);assert.equal(copied.prepare("SELECT resourceId FROM idempotency WHERE scope='kept'").get()!.resourceId,'resource');}
+ try{
+  assert.equal(copied.prepare('SELECT version FROM schema_version').get()!.version,version);assert.equal(copied.prepare('SELECT seenContentSequence FROM history_state').get()!.seenContentSequence,91);assert.equal(copied.prepare("SELECT resourceId FROM idempotency WHERE scope='kept'").get()!.resourceId,'resource');
+  if(version===8){
+   assert.deepEqual(readSchemaManifest(copied,'main'),V5_HISTORY_V8_MANIFEST.entries);
+   assert.equal(copied.prepare('SELECT seenContentToken FROM history_state').get()!.seenContentToken,seenToken);assert.notEqual(seenToken,captured.identity.contentToken);
+   assert.deepEqual(copied.prepare('SELECT * FROM project_versions ORDER BY id').all(),retainedVersions);
+   assert.deepEqual(copied.prepare('SELECT * FROM project_version_blobs ORDER BY hash').all(),retainedBlobs);
+   assert.equal(copied.prepare("SELECT count(*) n FROM sqlite_schema WHERE name='local_clip_drafts'").get()!.n,0,'capturing frozen v8 never upgrades its history');
+  }
+ }
  finally{copied.close();}
+ unchanged(f.history,before);unchanged(f.projectFile,source);
+});
+
+test('current history9 with real S8 repository rows is captured read-only without dropping or rewriting drafts',async t=>{
+ const f=fixture(t),store=f.open();
+ let drafts:unknown;
+ try{
+  assert.equal(HISTORY_SCHEMA_VERSION,9);assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()!.version,9);
+  const repository=createLocalDraftRepository<ClipDraftDisk>({store,kind:'clip',ownsLock:()=>store.db.isOpen,validate:value=>clipDraftDiskSchema.parse(value)});
+  const initial=repository.read(),saved={...initial,entries:[{projectId:f.projectId,timelineId:randomUUID(),clipId:randomUUID(),revision:1,draft:null}]};
+  repository.save(saved,localDraftDigest(initial));assert.deepEqual(repository.read(),saved);
+  drafts=Object.fromEntries(DRAFT_TABLES.map(table=>[table,store.db.prepare(`SELECT rowid,* FROM main.${table} ORDER BY rowid`).all()]));
+ }finally{store.close();}
+ const before=evidence(f.history),source=evidence(f.projectFile),captured=await captureClosedProjectSnapshot(f.options);
+ const copied=new DatabaseSync(captured.historyFile!,{readOnly:true});
+ try{
+  assert.equal(copied.prepare('SELECT version FROM schema_version').get()!.version,9);
+  assert.deepEqual(readSchemaManifest(copied,'main'),SCHEMA_MANIFEST.history.entries);
+  assert.equal(copied.prepare('SELECT count(*) n FROM local_clip_drafts').get()!.n,1);
+  assert.deepEqual(Object.fromEntries(DRAFT_TABLES.map(table=>[table,copied.prepare(`SELECT rowid,* FROM main.${table} ORDER BY rowid`).all()])),drafts);
+  assert.deepEqual(copied.prepare('PRAGMA foreign_key_check').all(),[]);
+ }finally{copied.close();}
  unchanged(f.history,before);unchanged(f.projectFile,source);
 });
 

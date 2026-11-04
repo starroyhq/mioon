@@ -17,10 +17,15 @@ import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {openProjectStore, isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
 import {HISTORY_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
+import {DRAFT_TABLES} from '../packages/business/src/project-file/schema/domains/drafts.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {createProjectVersions} from '../packages/business/src/project-versions/service.ts';
 import {projectCopyResponseSchema, type ProjectCopyInput, type ProjectCopyResponse} from '../packages/contracts/src/project-copies.ts';
 import type {ProjectVersionSaveResponse, ProjectVersionPreviewResponse} from '../packages/contracts/src/project-version-operations.ts';
+import type {ClipDraftEnvelope} from '../packages/contracts/src/local-drafts.ts';
+import type {LocalDeliveryEnvelope} from '../packages/contracts/src/local-delivery.ts';
+import type {LocalShotTextEnvelope} from '../packages/contracts/src/local-shot-text.ts';
+import {png} from './helpers/timeline-image-fixtures.ts';
 import {readProjectState, changeMarks} from './helpers/project-state.ts';
 
 interface Wire<T> {ok: boolean; data?: T; error?: {code: string; details?: unknown}}
@@ -108,6 +113,128 @@ async function fixture(t: TestContext) {
 function denied(result: {status: number; body: Wire<unknown>}, status: number, code: string): void {
   assert.equal(result.status, status, JSON.stringify(result.body)); assert.equal(result.body.ok, false); assert.equal(result.body.error?.code, code);
 }
+
+type CopyFixture = Awaited<ReturnType<typeof fixture>>;
+const draftRows = (db: DatabaseSync) => Object.fromEntries(DRAFT_TABLES.map(table => [table, db.prepare(`SELECT rowid,* FROM main.${table} ORDER BY rowid`).all()]));
+const authority = (value: {workspaceScope: string; instanceId: string}) => ({workspaceScope: value.workspaceScope, instanceId: value.instanceId});
+
+async function seedS8Drafts(f: CopyFixture, keepWindow = false) {
+  const projectId = f.source.projectId, windowId = randomUUID(); await f.native.acquire({projectId, windowId});
+  const json = async <T>(tail: string, method = 'GET', body?: unknown) => {
+    const response = await fetch(`${f.server.url}/api/projects/${projectId}${tail}`, {method,
+      headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'},
+      ...(body === undefined ? {} : {body: JSON.stringify(body)})});
+    return {status: response.status, body: await response.json() as Wire<T>};
+  };
+  const data = <T>(result: {status: number; body: Wire<T>}): T => {
+    assert.equal(result.status, 200, JSON.stringify(result.body)); assert.equal(result.body.ok, true); assert.ok(result.body.data); return result.body.data;
+  };
+  const asset = data(await f.rpc<{id: string; sha256: string}>('asset.import', {projectId, name: 'Draft source.png', mimeType: 'image/png',
+    dataBase64: png({width: 16, height: 16, rgba: false, tagged: false}).toString('base64')}, projectId));
+  type Timeline = {id: string; revision: number; tracks: Array<{id: string}>; clips: Array<{id: string; assetId: string}>};
+  const initialTimeline = data(await f.rpc<Timeline>('timeline.get', {projectId}, projectId));
+  const timeline = data(await f.rpc<Timeline>('timeline.clip.add', {projectId, requestId: randomUUID(), expectedRevision: initialTimeline.revision,
+    assetId: asset.id, trackId: initialTimeline.tracks[0]!.id, startFrame: 0, durationFrames: 30}, projectId));
+  const clip = timeline.clips.find(value => value.assetId === asset.id); assert.ok(clip);
+  const shot = data(await f.rpc<{id: string; revision: number; title: string; prompt: string}>('shot.create', {projectId,
+    title: 'Unchanged business title', prompt: 'Retained business prompt', requestId: randomUUID()}, projectId));
+  data(await f.rpc<ProjectVersionSaveResponse>('project.version.save', {projectId, requestId: randomUUID(), name: 'S8 business checkpoint'}, projectId));
+  const beforeContent = f.inspect(projectId, readProjectContentStamp);
+
+  const key = {projectId, timelineId: timeline.id, clipId: clip.id}, query = new URLSearchParams(key).toString();
+  const clipEnvelope = data(await json<ClipDraftEnvelope>(`/local-drafts/clip?${query}`)); assert.equal(clipEnvelope.supported, true);
+  if (!clipEnvelope.supported) throw Error('Expected a current clip draft owner');
+  const savedClip = data(await json<ClipDraftEnvelope>('/local-drafts/clip', 'PUT', {...authority(clipEnvelope), ...key,
+    expectedRevision: 0, baseRevision: timeline.revision, source: {assetId: asset.id, assetSha256: asset.sha256},
+    raw: {name: 'Unapplied clip text', trackId: timeline.tracks[0]!.id, startFrame: '4', durationFrames: '30', sourceInFrame: '0',
+      rect: {x: '0', y: '0', width: '1080', height: '1920'}, gain: '1'}}));
+  assert.equal(savedClip.supported, true); if (!savedClip.supported) throw Error('Expected a stored clip draft');
+  assert.equal(savedClip.draft?.raw.name, 'Unapplied clip text');
+
+  const delivery = data(await json<LocalDeliveryEnvelope>(`/local-delivery?projectId=${projectId}`)); assert.equal(delivery.supported, true);
+  if (!delivery.supported) throw Error('Expected a current delivery draft owner');
+  const savedDelivery = data(await json<LocalDeliveryEnvelope>('/local-delivery/draft', 'PUT', {...authority(delivery), projectId,
+    expectedDraftRevision: 0, draftId: randomUUID(), timelineId: timeline.id, baseRevision: timeline.revision, raw: {deliveryName: 'Unapplied output draft'}}));
+  assert.equal(savedDelivery.supported, true); if (!savedDelivery.supported) throw Error('Expected a stored delivery draft');
+  assert.equal(savedDelivery.draft?.raw.deliveryName, 'Unapplied output draft');
+
+  const initialShot = data(await json<LocalShotTextEnvelope>(`/local-shot-text?projectId=${projectId}&shotId=${shot.id}`)); assert.equal(initialShot.supported, true);
+  if (!initialShot.supported) throw Error('Expected a current shot draft owner');
+  const raw = {title: 'Pending title must not execute', prompt: shot.prompt}, draftId = randomUUID();
+  const savedShot = data(await json<LocalShotTextEnvelope>('/local-shot-text/draft', 'PUT', {...authority(initialShot), projectId, shotId: shot.id,
+    expectedDraftRevision: 0, draftId, baseRevision: shot.revision, baseText: {title: shot.title, prompt: shot.prompt}, raw}));
+  assert.equal(savedShot.supported, true); if (!savedShot.supported) throw Error('Expected a stored shot draft');
+  const pending = data(await json<LocalShotTextEnvelope>('/local-shot-text/prepare', 'POST', {...authority(savedShot), projectId, shotId: shot.id,
+    expectedIntentRevision: 0, expectedIntentId: null, intentId: randomUUID(), baseRevision: shot.revision,
+    baseText: {title: shot.title, prompt: shot.prompt}, draft: {draftId, revision: savedShot.draftRevision, raw},
+    input: {requestId: randomUUID(), shotId: shot.id, expectedRevision: shot.revision, patch: {title: raw.title}}}));
+  assert.equal(pending.supported, true); if (!pending.supported) throw Error('Expected a pending shot intent');
+  assert.equal(pending.intent?.outcome.status, 'pending');
+  const rows = f.inspect(projectId, draftRows);
+  assert.equal(rows.local_draft_states.length, 3);
+  for (const table of ['local_clip_drafts', 'local_delivery_drafts', 'local_shot_text_drafts']) assert.equal(rows[table].length, 1, table);
+  assert.deepEqual(f.inspect(projectId, readProjectContentStamp), beforeContent, 'all three draft saves and preparation write only history');
+  assert.equal(f.inspect(projectId, db => db.prepare('SELECT version FROM main.schema_version').get()!.version), 9);
+  const versions = f.inspect(projectId, db => db.prepare('SELECT id,trigger,name,createdAt FROM project_versions ORDER BY id').all());
+  const staleWrite = {...authority(pending), projectId, shotId: shot.id, expectedDraftRevision: pending.draftRevision, draftId,
+    baseRevision: shot.revision, baseText: {title: shot.title, prompt: shot.prompt}, raw: {title: 'A stale owner cannot save this', prompt: shot.prompt}};
+  if (!keepWindow) {f.native.release({windowId}); await eventually(() => !isProjectFileHeld(f.source.fileIdentity));}
+  return {windowId, rows, versions, beforeContent, shot, pending, staleWrite, json};
+}
+
+for (const operation of ['project.duplicate', 'project.save-as'] as const)
+  test(`history9 ${operation} carries versions without any of the source's nonempty S8 draft tables`, async t => {
+    const f = await fixture(t), seeded = await seedS8Drafts(f), before = f.sourceFiles(), input = f.input('S8 copy');
+    const result = await f.rpc<ProjectCopyResponse>(operation, input); assert.equal(result.status, 200, JSON.stringify(result.body));
+    const copy = projectCopyResponseSchema.parse(result.body.data); assert.equal(copy.versions, seeded.versions.length);
+    assert.deepEqual(f.sourceFiles(), before, 'closed-source history and all pending draft bytes remain unchanged');
+    const target = f.targetStore(copy);
+    try {
+      assert.equal(target.historyState, 'current'); assert.equal(target.db.prepare('SELECT version FROM main.schema_version').get()!.version, 9);
+      assert.deepEqual(readProjectContentStamp(target.db), {contentSequence: copy.contentSequence, contentToken: copy.contentToken});
+      assert.deepEqual(target.db.prepare('SELECT id,trigger,name,createdAt FROM project_versions ORDER BY id').all(), seeded.versions);
+      for (const table of DRAFT_TABLES) assert.deepEqual(target.db.prepare(`SELECT * FROM main.${table}`).all(), [], table);
+      assert.equal((target.get('shots', seeded.shot.id) as {title: string}).title, seeded.shot.title);
+      assert.equal(target.db.prepare('SELECT count(*) n FROM main.jobs').get()!.n, 0);
+    } finally {target.close();}
+    const windowId = randomUUID(); await f.native.acquire({projectId: copy.project.projectId, windowId});
+    const current = f.inspect(copy.project.projectId, draftRows); for (const table of DRAFT_TABLES) assert.deepEqual(current[table], [], table);
+    assert.equal(f.inspect(copy.project.projectId, db => JSON.parse(String(db.prepare('SELECT data FROM project.shots WHERE id=?').get(seeded.shot.id)!.data)).title), seeded.shot.title);
+    assert.deepEqual(f.sourceFiles(), before, 'opening the copy does not resume or rewrite the source drafts');
+    f.native.release({windowId});
+  });
+
+for (const failureMode of ['existing-target', 'capture-fault'] as const)
+  test(`S8 pending drafts survive native save-as ${failureMode}, reopening rejects its old instance, and retry omits all drafts`, async t => {
+    const f = await fixture(t), seeded = await seedS8Drafts(f, true), input = {...f.input('S8 failed'), windowId: seeded.windowId};
+    const failure = Error('S8 captured copy failure');
+    if (failureMode === 'existing-target') writeFileSync(input.projectFile, 'Keep the existing target', {flag: 'wx'});
+    else f.setBoundary(phase => {if (phase === 'captured') throw failure;});
+    await assert.rejects(f.native.saveAs!(input), error => failureMode === 'capture-fault' ? error === failure
+      : Boolean(error && typeof error === 'object' && 'code' in error && error.code === 'PROJECT_FILE_EXISTS'));
+    f.setBoundary(undefined);
+    const opened = await f.native.acquire({projectId: f.source.projectId, windowId: seeded.windowId}); assert.equal(opened.project.projectId, f.source.projectId);
+    assert.deepEqual(f.inspect(f.source.projectId, draftRows), seeded.rows);
+    assert.deepEqual(f.inspect(f.source.projectId, readProjectContentStamp), seeded.beforeContent);
+    const read = await seeded.json<LocalShotTextEnvelope>(`/local-shot-text?projectId=${f.source.projectId}&shotId=${seeded.shot.id}`);
+    assert.equal(read.status, 200); assert.ok(read.body.data?.supported);
+    assert.equal(read.body.data.intent?.outcome.status, 'pending'); assert.notEqual(read.body.data.instanceId, seeded.pending.instanceId);
+    const beforeStale = f.inspect(f.source.projectId, snapshot);
+    denied(await seeded.json('/local-shot-text/draft', 'PUT', seeded.staleWrite), 409, 'LOCAL_SHOT_TEXT_STALE_INSTANCE');
+    assert.deepEqual(f.inspect(f.source.projectId, snapshot), beforeStale, 'retired draft authority cannot write after the source reopens');
+
+    const copied = await f.native.saveAs!({...f.input('S8 retry'), windowId: seeded.windowId});
+    assert.equal(copied.window.windowId, seeded.windowId); assert.equal(copied.copy.versions, seeded.versions.length);
+    assert.notEqual(copied.window.project.projectId, f.source.projectId); assert.equal(isProjectFileHeld(f.source.fileIdentity), false);
+    const targetDrafts = f.inspect(copied.copy.project.projectId, draftRows); for (const table of DRAFT_TABLES) assert.deepEqual(targetDrafts[table], [], table);
+    const stamp = f.inspect(copied.copy.project.projectId, db => ({file: readProjectContentStamp(db), seen: db.prepare('SELECT seenContentSequence,seenContentToken FROM history_state').get()}));
+    assert.equal(stamp.seen?.seenContentSequence, stamp.file.contentSequence); assert.equal(stamp.seen?.seenContentToken, stamp.file.contentToken);
+    assert.equal(f.inspect(copied.copy.project.projectId, db => JSON.parse(String(db.prepare('SELECT data FROM project.shots WHERE id=?').get(seeded.shot.id)!.data)).title), seeded.shot.title);
+    const sourceHistory = new DatabaseSync(path.join(f.local.localDir, 'history.db'), {readOnly: true});
+    try {assert.deepEqual(draftRows(sourceHistory), seeded.rows);} finally {sourceHistory.close();}
+    if (failureMode === 'existing-target') assert.equal(readFileSync(input.projectFile, 'utf8'), 'Keep the existing target');
+    f.native.release({windowId: seeded.windowId});
+  });
 
 for (const operation of ['project.duplicate', 'project.save-as'] as const)
   test(`authenticated ${operation} carries real manual/daily versions into a current project with an empty execution domain`, async t => {
