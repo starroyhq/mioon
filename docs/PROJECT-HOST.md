@@ -1,5 +1,5 @@
 # 项目宿主
-日期：2026-10-31 起草，2026-11-02 补充 P4 实现状态，2026-11-03 补充 V2 自动备份与 V1-B 版本恢复及自动保存，2026-11-04 补充 S5-A。当前代码已切换到真实项目内核；本轮整体验收和发布状态以 PR 为准。
+日期：2026-10-31 起草，2026-11-02 补充 P4 实现状态，2026-11-03 补充 V2 自动备份与 V1-B 版本恢复及自动保存，2026-11-04 补充 S5-A/B。当前代码已切换到真实项目内核；本轮整体验收和发布状态以 PR 为准。
 
 项目文件 v1 以后，后端同时开着多个项目：每个打开的项目有一个“项目宿主”，里面是这个项目的 store、服务、后台任务循环和 Mio 运行时；应用级的“宿主管理器”负责列出、新建、打开、关闭项目，按 URL 里的项目 ID 把请求交给对应的宿主。
 
@@ -52,17 +52,25 @@ manager 独占先排除窗口和待写工作，再关闭源；随后由关闭源
 
 复用既有应用回执，另以 `<dataDir>/project-copies/` 的私有 v1 intent 固定新身份、暂存/占位身份和阶段，不改变应用库或 history 版本。新 records/项目发布后续办登记与回执，不重拷已发布内容；重放不重新授予撤销的目录确认。S5 发布采用 hard link 或已核身份的 `wx` 占位+rename 回退，exFAT 不因缺 hard link 一概拒绝；协调人接受核对与 rename 间的窄竞态，不新增原生端口。契约、失败/恢复限制、已销项义务见 [PROJECT-COPIES.md](PROJECT-COPIES.md)。
 
+### S5-B：作为新项目打开、复制到和模板
+
+应用 RPC 的 `project.adopt-copy` / `project.copy-to` 绑定选中源的项目 ID、绝对路径、dev/ino 和内容 pair；执行时重验，源始终关闭。adopt 不 acquire 原项目，也不读原 history，用 builder 暂存、持副本 SQLite 写锁、核身份后替换，不做原位重键。copyTo 只读捕获源和本机已有 history，不论 seen 是否匹配都携带版本；坏或被占用就整笔拒绝。`project.template.instantiate` 仅选可信 catalog 的模板 ID/版本，在新文件夹建实例并复制校验过的白名单素材；文件夹冲突不合并。新操作都不进公共、CLI/MCP 或 Mio discovery。
+
+受信 `projectEntries.adoptCopy({...input, windowId})` 先保留空窗口 owner，再执行替换并打开新项目，返回 `{copy, window}`；窗口冲突/容量不足时还没改变副本。`copyTo` / `instantiateTemplate` 返回复制结果，S6 再调用现有打开能力。没有接选择器、菜单、模板或窗口 UI。catalog 由 `ServerOptions.projectTemplates` 在受信初始化时注入，普通请求不提供模板路径/manifest。
+
+启动恢复将 prepared/captured 的未完成转换按已记录身份清理隐藏暂存目录并作废，原键报 `PROJECT_COPY_INTERRUPTED`；不删除身份已变的后来文件，不在同键重造新身份。ready 以后完整结果继续按 intent 续办。
+
 ### 暂不可用的后续能力
 
 | 归属 | 当前操作/地址 | 精确结果 |
 |---|---|---|
 | S5 | 应用 RPC `project.delete` | 409 `PROJECT_DELETE_UNAVAILABLE`，复用原生命周期错误码 |
-| S5-B/C | 作为新项目打开、复制到…、模板、废纸篓 | 尚未实施对应成功入口；不能由 A 的底座能力推断已可用 |
+| S5-C | 废纸篓 | 尚未实施成功入口；不能由复制能力推断已可用 |
 | S5-A / 0.1.x | CLI 和旧客户端 `project.duplicate` | 409 `PROJECT_COPY_UNAVAILABLE`，网络/存储访问前拒绝；新 CLI/MCP 命令后续接入 |
 | V4 | 打包导入导出尚无新生产接口；旧 `/api/project-packages/…`、项目 `package-preview` | 404 `NOT_FOUND`；不进入旧复制、删除或导入链 |
 | S7 | 应用 RPC `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（含 bundle 下载/导入、directory 导入） | 404 `UNKNOWN_OPERATION`（旧文件地址为 `NOT_FOUND`） |
 
-`workspace.restore.inspect` 已退役并返回 404 `UNKNOWN_OPERATION`；不再有旧恢复来源或能力探测协议。工作区设置去掉五个退役备份键；项目自动备份仍由 V2 宿主 hooks 提供。S5-B/C、V4 继续按各卡边界实施。
+`workspace.restore.inspect` 已退役并返回 404 `UNKNOWN_OPERATION`；不再有旧恢复来源或能力探测协议。工作区设置去掉五个退役备份键；项目自动备份仍由 V2 宿主 hooks 提供。S5-C、V4 继续按各卡边界实施。
 
 数据库内的队列、保留容量与配额按各项目宿主的实际三库计算。Mio 的 256 MiB / 65536 行及回执豁免仍由当前 history 计量和触发器保护；各项目的 LUT 保留和任务队列彼此独立。明确的应用级资源预算（例如连续音频会话内存和媒体进程 admission）保持各自契约。
 

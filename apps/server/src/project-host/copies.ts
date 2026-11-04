@@ -22,16 +22,20 @@ import {projectHostError} from './errors.ts';
 import {copiedProjectConfirmationDirectories} from './copy-outside-confirmations.ts';
 import {copyFailure, copyIdentity, createCopyRecords, sameCopyIdentity} from './copy-records.ts';
 import type {CopyIntent} from './copy-records.ts';
+import {createProjectCopyActions} from './copy-actions.ts';
+import type {ProjectCopyActionBoundary} from './copy-actions.ts';
+import type {ProjectCopyActionInput} from '../../../../packages/contracts/src/project-copies.ts';
+import type {ProjectTemplateCatalogEntry} from './templates.ts';
 
 export type ProjectCopyBoundary = 'prepared' | 'captured' | 'ready' | 'records-prepared' | 'records-published' | 'project-published' | 'registered';
-export interface ProjectCopies {
+export interface ProjectCopies extends Omit<ReturnType<typeof createProjectCopyActions>, 'recover' | 'drain'> {
   duplicate(input: ProjectCopyInput): Promise<ProjectCopyResponse>;
   saveAs(input: ProjectCopyInput): Promise<ProjectCopyResponse>;
   replay(operation: ProjectCopyOperation, input: ProjectCopyInput): ProjectCopyResponse | null;
   recover(): Promise<void>;
   drain(): Promise<void>;
 }
-export function createProjectCopies({manager, library, directories, assertProjectFile, signal, onBoundary}: {
+export function createProjectCopies({manager, library, directories, assertProjectFile, signal, onBoundary, projectTemplates, onActionBoundary}: {
   readonly manager: ProjectHostManager;
   readonly library: AppLibrary;
   readonly directories: AppDirectories;
@@ -39,7 +43,10 @@ export function createProjectCopies({manager, library, directories, assertProjec
   readonly signal: AbortSignal;
   /** Trusted failure seam, never a request or environment option. */
   readonly onBoundary?: (boundary: ProjectCopyBoundary, input: ProjectCopyInput) => void | Promise<void>;
+  readonly projectTemplates?: readonly ProjectTemplateCatalogEntry[];
+  readonly onActionBoundary?: (boundary: ProjectCopyActionBoundary, input: ProjectCopyActionInput) => void | Promise<void>;
 }): ProjectCopies {
+  const actions = createProjectCopyActions({manager, library, directories, assertProjectFile, signal, projectTemplates, onActionBoundary});
   const assertAllowed = createProjectServiceApplication(library, signal).assertMutationAllowed!;
   const records = createCopyRecords(directories.dataDir, assertAllowed);
   const running = new Map<string, {digest: string; promise: Promise<ProjectCopyResponse>}>();
@@ -112,6 +119,25 @@ export function createProjectCopies({manager, library, directories, assertProjec
         rmdirSync(intent.stageDirectory); // Only our empty directory; never remove unknown contents.
       }
     } catch { /* A completed receipt remains final; a later recovery can clean its owned stages. */ }
+  };
+
+  const abandon = (intent: CopyIntent): void => {
+    // No public outcome exists before ready. Persist a tombstone first: a
+    // retry must not silently allocate another identity for this request.
+    if (intent.phase !== 'abandoned') intent = save({...intent, phase: 'abandoned'});
+    if (intent.stageDirectory && sameCopyIdentity(copyIdentity(intent.stageDirectory), intent.stageDirectoryIdentity)) {
+      validateProjectCopyStagingDirectory(intent.stageDirectory);
+      const ownedContents = (directory: string): boolean => readdirSync(directory).every(name => {
+        if (!/^project\.mioon(?:-(?:journal|wal|shm))?$/u.test(name) && !/^project-copy-[a-zA-Z0-9_-]+$/u.test(name)) return false;
+        const file = path.join(directory, name), info = lstatSync(file);
+        return !info.isSymbolicLink() && (info.isFile() && info.nlink === 1 || info.isDirectory() && name.startsWith('project-copy-') && ownedContents(file));
+      });
+      if (ownedContents(intent.stageDirectory) && sameCopyIdentity(copyIdentity(intent.stageDirectory), intent.stageDirectoryIdentity)) {
+        rmSync(intent.stageDirectory, {recursive: true});
+        syncCopiedDirectory(path.dirname(intent.stageDirectory));
+      }
+    }
+    cleanup(intent);
   };
 
   async function finish(intent: CopyIntent): Promise<ProjectCopyResponse> {
@@ -195,6 +221,7 @@ export function createProjectCopies({manager, library, directories, assertProjec
     let intent = existing;
     const digest = digestFor(operation, input);
     if (intent && intent.digest !== digest) throw copyFailure('REQUEST_ID_REUSED', '请求 ID 已用于不同的项目复制。');
+    if (intent?.phase === 'abandoned') throw copyFailure('PROJECT_COPY_INTERRUPTED', '项目复制在准备阶段中断并已作废，请重新发起复制。');
     if (intent && ['ready', 'records-published', 'project-published', 'completed'].includes(intent.phase)) return finish(intent);
     const observed = manager.status(input.projectId);
     if (observed?.leases.window || observed?.state === 'opening') throw projectHostError('PROJECT_HOST_BUSY', {projectId: input.projectId});
@@ -290,9 +317,11 @@ export function createProjectCopies({manager, library, directories, assertProjec
     running.set(id, {digest, promise});
     return promise;
   };
-  return {duplicate: async input => call('project.duplicate', input), saveAs: async input => call('project.save-as', input), replay,
+  return {...actions, duplicate: async input => call('project.duplicate', input), saveAs: async input => call('project.save-as', input), replay,
     async recover(): Promise<void> {
+      assertAllowed();
       for (const intent of records.list()) {
+        if (['prepared', 'captured', 'abandoned'].includes(intent.phase)) {abandon(intent); continue;}
         if (intent.phase === 'completed') {cleanup(intent); continue;}
         const receipt = library.receipts.read(intent.operation, intent.input.requestId);
         if (receipt) {
@@ -307,7 +336,8 @@ export function createProjectCopies({manager, library, directories, assertProjec
           try {await call(intent.operation, intent.input);} catch { /* Keep exact intent and target; retry never overwrites unknown files. */ }
         }
       }
+      await actions.recover();
     },
-    async drain(): Promise<void> {while (running.size) await Promise.allSettled([...running.values()].map(entry => entry.promise));},
+    async drain(): Promise<void> {await actions.drain(); while (running.size) await Promise.allSettled([...running.values()].map(entry => entry.promise));},
   };
 }

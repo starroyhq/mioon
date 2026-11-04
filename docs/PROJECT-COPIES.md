@@ -1,6 +1,6 @@
-# 项目复制与另存为（S5-A）
+# 项目复制、另存为与模板（S5-A/B）
 
-日期：2026-11-04。本文对应 S5-A 的应用能力和受信端口；界面尚未接线，验收与发布状态以对应 PR 为准。S5-B 的“作为新项目打开”“复制到…”和模板，以及 S5-C 的废纸篓另卡实施。
+日期：2026-11-04。本文对应 S5-A/B 的应用能力和受信端口；界面尚未接线，验收与发布状态以对应 PR 为准。S5-C 的废纸篓另卡实施。
 
 ## 当前入口与契约
 
@@ -33,6 +33,24 @@
 
 受信 `ProjectEntryControlPort` 可选提供 `duplicate(input)` 和 `saveAs({...input, windowId})`。`saveAs` 返回 `{copy, window}`；`windowId` 是主进程持有的窗口 owner，不能由普通 HTTP 请求指定。端口存在不代表桌面选择器、菜单或窗口 UI 已接入。
 
+### S5-B：副本、受限源和模板
+
+下列三个操作同样只在已认证的应用 `/api/rpc` 和受信端口提供，不进入公共 `schemas`、CLI/MCP discovery 或 Mio 工具。未知字段严格拒绝，普通 HTTP 不能指定 `windowId`。
+
+| 操作 | 严格输入 | 受信端口 |
+| --- | --- | --- |
+| `project.adopt-copy` | `sourceProjectId`、`sourceFile`、`sourceIdentity`、`sourceStamp`、`requestId` | `adoptCopy({...input, windowId})` 返回 `{copy, window}`，在指定空窗口打开新身份 |
+| `project.copy-to` | 上述源字段，加新目标 `projectFile` 和可选 `name` | `copyTo(input)` 返回复制结果，后续打开由调用方负责 |
+| `project.template.instantiate` | `templateId`、正整数 `templateVersion`、`parentDir`、`name`、`requestId` | `instantiateTemplate(input)` 返回实例结果，后续打开由调用方负责 |
+
+`sourceIdentity` 是精确十进制字符串 `{dev, ino}`，`sourceStamp` 是 `{contentSequence, contentToken}`。它们绑定用户选择时观察到的关闭文件，不授予覆盖权限；执行时重新核对路径、文件身份、项目 ID 和内容 pair，变化就拒绝。源、目标 `.mioon` 路径与父目录必须是当前系统的规范绝对路径。三个操作均返回既有 `projectCopyResponseSchema`；模板的 `sourceProjectId` 指向受控模板的项目身份。
+
+“作为新项目打开”只接受仍被登记原件识别为副本的文件；原件、同 inode 硬链接、原件已移动的候选都不能借此改身份。不 acquire 原项目，不读取它的 history。服务对选中副本持 SQLite 写锁，用 copy builder 在同一目录生成、校验新 ID/令牌的暂存文件，再核对原 dev/ino 并 rename 替换；不原位重键、不摘触发器，不遗留旧 `-wal`、`-shm`、`-journal`。登记原件和其本机记录不变；新项目不带原件的版本、Mio、任务、撤销或草稿。受信端口先保留窗口 owner 并检查冲突/容量，才替换副本；已完成替换后的打开失败不回写旧身份。普通 HTTP 仅完成操作本身，不管理窗口。
+
+“复制到…”从用户选中的关闭或受限文件只读捕获，不依赖它能被普通 writable opener 打开，也不把原登记移到选中路径。源文件、日志和登记均不写；本机有该 `sourceProjectId` 的 history **就必须携带版本，不论 seen 是否匹配**，分叉不另加确认。坏、被占用或无法可靠读取的 history 整笔拒绝，只有不存在才没有版本来源。转换、执行域清空、素材引用重定位、原目录确认和目标排他发布与普通复制相同。
+
+模板来自宿主安装时注入的可信 catalog。请求只选择已登记的 ID/版本，不能上传 manifest、白名单或任意源路径。模板必须是当前物理格式的普通项目文件；素材按白名单验证真实大小/hash，拒绝穿越、symlink、隐藏/私有文件、缺失或损坏素材。实例只建到 `<parentDir>/<name>/<name>.mioon` 的**新文件夹**，已存在目录或 symlink 均报 `PROJECT_FILE_EXISTS`，不合并进已有目录。白名单素材复制到新目录并重写引用，不用 hard link；两次请求生成独立 ID、令牌和素材，模板不变。模板不提供原 history、Mio、撤销、草稿、cache、imports 或规范信任。S6-D 的正式示例、界面和真实卷验收另行交付，小测试夹具不能代替正式示例验收。
+
 ## 关闭源与窗口顺序
 
 - 首页复制先检查窗口租约；源在任何窗口打开时返回 `PROJECT_HOST_BUSY`，不会替用户关闭窗口。
@@ -56,7 +74,7 @@
 
 复制当前内容也清理这四种过程目标修订。目标 history 的 seen 取 builder 完成后的实际 `{contentSequence, contentToken}`，而非最初分配的旧值；首次正常打开应为 `current`，不会伪造分叉。后续打开仍执行正常的版本/备份生命周期。
 
-普通复制和另存为继续**引用同一份素材**。每个当前或历史素材 reference 按源、目标项目目录重新定位，保留指纹和 referenceRevision；不存在的素材仍指向原位置，不因复制而删除引用。它们不提供素材独立副本；模板的独立素材由 S5-B 实施，携带素材打包由 V4 承担。
+普通复制、另存为和复制到继续**引用同一份素材**。每个当前或历史素材 reference 按源、目标项目目录重新定位，保留指纹和 referenceRevision；不存在的素材仍指向原位置，不因复制而删除引用。只有模板在本卡生成独立素材副本；携带素材打包由 V4 承担。
 
 同一台电脑上，源项目目录及既有外部目录确认按原有范围转给新项目，和新登记、固定应用回执在 B1 事务中一起提交；不扩大到新位置，也不复制规范信任。重放不重新授予用户后来已撤销的目录许可。
 
@@ -66,11 +84,13 @@
 
 阶段为 `prepared → captured → ready → records-published → project-published → completed`。项目和版本转换、完整校验与同步在发布前完成；新 records 先发布，项目文件随后发布，再将登记、目录确认和应用回执原子提交。源快照仅为私有转换输入，完成后清理，不成为目标 history 归档。
 
+S5-B 的三个操作使用独立的私有 **v1** `project-copy-action-records.ts`，位于 `<dataDir>/project-copy-actions/<operation>-<requestId>.json`。除严格输入、摘要、新身份/令牌及阶段外，记录选中源的身份/pair、固定目标路径、模板目标文件夹与排他目录占位的身份；A intent 仅补 `abandoned` 作废阶段，其输入及身份绑定保持原义，不增加应用库表或占 history 号。模板完整目录和 adopt 替换都由同一请求的记录续办，不把中断当成新的复制。
+
 同一 `(operation, requestId)` 与同一输入返回固定结果；不同输入复用键返回 `REQUEST_ID_REUSED`。重放不再复制、转换版本、重新分配 ID 或打开目标。目标已编辑但文件身份仍一致时仍返回原回执；目标被移动、替换或撤登记则报 `PROJECT_COPY_TARGET_CHANGED`，不重新创建。
 
 目标已有普通文件、空文件或 symlink 均拒绝覆盖。支持 hard link 的卷采用排他发布；S5 的不支持 hard link 分支（含 exFAT）先用 `wx` 建自己的占位，intent 记录 dev/ino，rename 前核对占位身份。崩溃后仅按身份处理本请求占位，不删除后来文件。核对与 rename 之间被非 SQLite 程序换掉占位的窄竞态是协调人明确接受的边界；没有新增原生 no-replace 端口，也不宣称真实卷验收已完成。
 
-`prepared/captured` 的未完成转换由原键重试；`ready` 及之后已有固定完整结果的 intent 可在启动恢复中尝试续办发布、登记和回执。发布后故障保留目标与 intent，不能当成“零写入失败”再次覆盖。异常身份、无法清理的未知内容或应用 owner 失效时保留证据，不以换库重开取得旧写权限。实际故障与平台验收以 PR 证据为准；本文不提供未实测的耗时。
+启动恢复将 `prepared/captured` 阶段未完成的转换作废，只按已记录身份清理本请求的隐藏暂存目录；保留作废记录，同一请求键返回 `PROJECT_COPY_INTERRUPTED`，不重新分配身份或重新复制。目录/文件身份已变时不删后来内容。`ready` 及之后已有固定完整结果的 intent 可在启动恢复中尝试续办发布、登记和回执。发布后故障保留目标与 intent，不能当成“零写入失败”再次覆盖。异常身份、无法清理的未知内容或应用 owner 失效时保留证据，不以换库重开取得旧写权限。实际故障与平台验收以 PR 证据为准；本文不提供未实测的耗时。
 
 ## 主要错误
 
@@ -85,16 +105,19 @@
 | `REQUEST_ID_REUSED`（409） | 同操作的请求键用于不同输入 |
 | `PROJECT_COPY_SOURCE_CHANGED` / `PROJECT_COPY_TARGET_CHANGED`（409） | 源或目标的位置、文件身份、登记与已绑定结果不一致 |
 | `PROJECT_COPY_INTENT_INVALID`（409） | 私有恢复记录或回执绑定无效，不能猜测续办 |
+| `PROJECT_COPY_INTERRUPTED`（409） | 启动恢复已作废的未完成转换；原请求键不再执行 |
 | `PROJECT_VERSION_SNAPSHOT_UNSUPPORTED`（422） | 不能跨 ID 转换的历史快照，附具体 versionId |
 | `PROJECT_VERSION_SNAPSHOT_INVALID` / `PROJECT_VERSION_RECORD_INVALID`（422） | 快照校验、版本归属、正文引用或计数无效 |
 | `PROJECT_VERSION_SNAPSHOT_LIMIT`（413） | 有界快照转换超过容量；不跳过版本 |
 | `PROJECT_SAVE_AS_REOPEN_FAILED`（409） | 另存为流程异常，且原窗口未能重新打开源 |
 
+S5-B 另将文件系统失败映射到明确的应用错误：`EACCES` / `EPERM` 保留原码并返回 403；`EROFS` 返回 `PROJECT_INVALID`（422，`details.reason: 'read-only'`）；`ENOENT` / `ENOTDIR` 返回 `PROJECT_LOCATION_INVALID`（400）；`ENOSPC` / `EDQUOT` 返回 `PROJECT_COPY_CAPACITY`（507）。此映射仅限本卡的复制动作，不改全局文件错误语义。
+
 CLI 与旧客户端的 `project.duplicate` 当前在网络/存储访问前返回 `PROJECT_COPY_UNAVAILABLE`（409）；CLI/MCP 新复制和另存为命令留 0.1.x/S4。没有配置复制服务的应用 RPC 返回同码 503。旧 package 路由仍是 404，不是新操作的回退。
 
 ## 后续范围与已销项义务
 
-S5-B 才实施副本“作为新项目打开”、受限源“复制到…”和模板；S5-C 才实施将 `.mioon` 移到废纸篓。本卡没有这些成功入口，也不接删除或复制界面。当前应用 `project.delete` 仍返回 `PROJECT_DELETE_UNAVAILABLE`（409）。
+S5-C 才实施将 `.mioon` 移到废纸篓；本卡不接删除、复制或模板界面。当前应用 `project.delete` 仍返回 `PROJECT_DELETE_UNAVAILABLE`（409）。
 
 协调人 11-04 已决定：0.1.0 不做永久删除，后续 trash 仅移 `.mioon` 并在确定成功后撤登记，保留素材和本机记录。以下旧义务逐项销项：
 

@@ -33,6 +33,7 @@ import {validateApplicationStorage, createApplicationFileGuard} from './project-
 import {createProjectHostManager} from './project-host/manager.ts';
 import {createProjectBackups} from './project-host/backups.ts';
 import {createProjectCopies} from './project-host/copies.ts';
+import type {ProjectTemplateCatalogEntry} from './project-host/templates.ts';
 import type {ProjectHostManager} from './project-host/manager.ts';
 import type {InspectProject} from './project-host/host.ts';
 import {composeHostedProject} from './project-host/runtime.ts';
@@ -119,6 +120,10 @@ export interface ServerOptions {
    * SQLite backup/copy. No request or environment can select this port. */
   projectBackupCopyForTest?: Parameters<typeof createProjectBackups>[0]['copy'];
   projectCopyBoundaryForTest?: Parameters<typeof createProjectCopies>[0]['onBoundary'];
+  projectCopyActionBoundaryForTest?: Parameters<typeof createProjectCopies>[0]['onActionBoundary'];
+  /** Trusted installation catalog; requests can select an ID/version, never
+   * provide a template file or media allowlist. */
+  projectTemplates?: readonly ProjectTemplateCatalogEntry[];
   localDraftChannel?: LocalDraftChannel;
   nativeAudioPreview?: NativeAudioPreviewAuthority;
 }
@@ -232,6 +237,8 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       }
     };
     const copies = createProjectCopies({manager, library: appLibrary, directories, assertProjectFile, signal: shutdown.signal,
+      ...(options.projectTemplates === undefined ? {} : {projectTemplates: options.projectTemplates}),
+      ...(options.projectCopyActionBoundaryForTest === undefined ? {} : {onActionBoundary: options.projectCopyActionBoundaryForTest}),
       ...(options.projectCopyBoundaryForTest === undefined ? {} : {onBoundary: options.projectCopyBoundaryForTest})});
     drainCopies = copies.drain;
     await copies.recover();
