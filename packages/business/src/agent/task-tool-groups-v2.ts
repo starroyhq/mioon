@@ -1,5 +1,6 @@
 import type {AgentTaskLocale,AgentTaskStep} from '@mioon/contracts/agent-tasks-v2';
 import {MIO_PROJECT_MEDIA_LIST_OPERATION,MIO_PROJECT_MEDIA_LIST_TOOL} from '../../../contracts/src/mio-project-media.ts';
+import {MIO_PROJECT_FILE_IMPORT_OPERATION,MIO_PROJECT_FILE_IMPORT_TOOL} from '../../../contracts/src/mio-project-import.ts';
 
 export const AGENT_TASK_TOOLS_LOAD_NAME='mioon_tools_load';
 export const AGENT_TASK_TOOLS_LOAD_OPERATION='tools.load';
@@ -34,7 +35,7 @@ export const AGENT_TASK_TOOL_GROUPS=Object.freeze({
   // C8 v2: camera previs nodes live on the canvas; reading a scene is loaded with the tools that change it.
   canvas:['shot.create','shot.update','shot.reorder','node.create','node.update','edge.create','edge.delete','reference.attach','reference.detach','version.select','project.rename','previs.inspect','previs.create','previs.scene.set'],
   subjects:['subject.list','subject.version.list','subject.binding.list','subject.create','subject.version.add','subject.binding.set'],
-  assets:['asset.range.get','asset.range.set','asset.disposition.list','asset.disposition.set','asset.annotation.list','asset.annotation.set','asset.waveform.get','asset.waveform.request','asset.importSelected',MIO_PROJECT_MEDIA_LIST_OPERATION],
+  assets:['asset.range.get','asset.range.set','asset.disposition.list','asset.disposition.set','asset.annotation.list','asset.annotation.set','asset.waveform.get','asset.waveform.request','asset.importSelected',MIO_PROJECT_MEDIA_LIST_OPERATION,MIO_PROJECT_FILE_IMPORT_OPERATION],
   // A crossfade decides how two overlapping clips hand over.
   editing:['timeline.seed','timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.rippleRemove','timeline.clip.split','timeline.clip.refreshSources','timeline.shots.append','timeline.format.set','timeline.history.get','timeline.clip.crossfade'],
   subtitles:['timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove'],
@@ -48,6 +49,7 @@ export const AGENT_TASK_TOOL_GROUPS=Object.freeze({
 } as const satisfies Readonly<Record<AgentTaskToolGroupId,readonly string[]>>);
 
 function toolName(operation:string):string{
+  if(operation===MIO_PROJECT_FILE_IMPORT_OPERATION)return MIO_PROJECT_FILE_IMPORT_TOOL;
   if(operation==='asset.importSelected')return 'mioon_asset_import_selected';
   if(operation==='lut.importSelected')return 'mioon_lut_import_selected';
   if(operation===AGENT_TASK_ASK_OPERATION)return AGENT_TASK_ASK_TOOL;
@@ -55,7 +57,7 @@ function toolName(operation:string):string{
 }
 const groupedTools=AGENT_TASK_TOOL_GROUP_IDS.flatMap(group=>AGENT_TASK_TOOL_GROUPS[group].map(operation=>({group,operation,name:toolName(operation)})));
 export type AgentTaskToolCatalogProfile='native'|'legacy';
-const legacyGroupedTools=groupedTools.flatMap(tool=>tool.operation==='project.rules.set'||tool.operation===MIO_PROJECT_MEDIA_LIST_OPERATION?[]:tool.operation==='project.rename'?[tool,{group:'canvas' as const,operation:'project.notes.set',name:'mioon_project_notes_set'}]:[tool]);
+const legacyGroupedTools=groupedTools.flatMap(tool=>tool.operation==='project.rules.set'||tool.operation===MIO_PROJECT_MEDIA_LIST_OPERATION||tool.operation===MIO_PROJECT_FILE_IMPORT_OPERATION?[]:tool.operation==='project.rename'?[tool,{group:'canvas' as const,operation:'project.notes.set',name:'mioon_project_notes_set'}]:[tool]);
 const catalogTools=(profile:AgentTaskToolCatalogProfile)=>profile==='legacy'?legacyGroupedTools:groupedTools;
 export const AGENT_TASK_LOADABLE_TOOL_NAMES=Object.freeze(groupedTools.filter(tool=>tool.group!=='core').map(tool=>tool.name));
 export const AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES=Object.freeze(legacyGroupedTools.filter(tool=>tool.group!=='core').map(tool=>tool.name));
@@ -128,7 +130,7 @@ export function loadedAgentTaskToolGroups(steps:readonly TaskToolLoadStep[]):Age
 export function loadedAgentTaskToolNames(steps:readonly TaskToolLoadStep[],profile:AgentTaskToolCatalogProfile='native'):string[]{
   const available=loadableNames(profile);
   const groups=new Set(loadedAgentTaskToolGroups(steps));
-  const loaded=new Set(catalogTools(profile).filter(tool=>tool.group!=='core'&&groups.has(tool.group)&&tool.name!==MIO_PROJECT_MEDIA_LIST_TOOL).map(tool=>tool.name));
+  const loaded=new Set(catalogTools(profile).filter(tool=>tool.group!=='core'&&groups.has(tool.group)&&tool.name!==MIO_PROJECT_MEDIA_LIST_TOOL&&tool.name!==MIO_PROJECT_FILE_IMPORT_TOOL).map(tool=>tool.name));
   for(const step of steps){
     if(step.kind!=='tool'||step.status!=='completed'||step.toolCall?.name!==AGENT_TASK_TOOLS_LOAD_NAME)continue;
     const input=step.toolCall.arguments,result=step.result;
