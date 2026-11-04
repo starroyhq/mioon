@@ -1,7 +1,7 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
-import {mkdtempSync, renameSync, rmSync, writeFileSync} from 'node:fs';
+import {chmodSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,renameSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
@@ -17,6 +17,11 @@ import type {Provider} from '../packages/business/src/provider-registry.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
+import {run} from '../packages/business/src/media-runtime.ts';
+import {setProjectOutputPublicationTestHooks} from '../packages/business/src/project-output-publication.ts';
+import {PROJECT_OUTPUT_FOLDERS} from '../packages/contracts/src/project-output-publication.ts';
+import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
+import {beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 
 const object = (value: unknown): Record<string, unknown> => {assert.ok(value && typeof value === 'object' && !Array.isArray(value)); return value as Record<string, unknown>;};
 async function fixture(t: TestContext, providers: ReadonlyMap<string, Provider> = new Map(), options: CreateServicesOptions = {}) {
@@ -326,5 +331,95 @@ test('a missing frozen paid-generation reference pauses the original queued job 
     assert.equal(f.state().snapshot().find(task => task.taskId === accepted.id)!.reason, 'SOURCE_UNAVAILABLE'); assert.equal(f.services.isBusy(), false);
     await worker.tick(); assert.equal(submits, 0); assert.deepEqual(f.store.get('jobs', String(accepted.id)), original);
     assert.equal(f.store.list('versions').length, 0); assert.equal(f.store.list('assets').length, 1);
+  } finally {await worker.stop();}
+});
+
+test('a real missing media executable retains MEDIA_SPAWN_FAILED and cannot masquerade as a missing source', async t => {
+  const f = await fixture(t), job = {id: randomUUID(), projectId: f.projectId, revision: 1, status: 'queued', phase: 'waiting', providerId: 'mock', providerJobId: null, submissionCount: 0, error: null};
+  f.store.put('jobs', job); const state = f.state(), originalExecutable = process.env.MIOON_FFMPEG_PATH;
+  process.env.MIOON_FFMPEG_PATH = path.join(f.root, 'missing-ffmpeg');
+  try {
+    await assert.rejects(run('ffmpeg', ['-version']), error => {
+      const failure = object(error); assert.equal(failure.code, 'MEDIA_SPAWN_FAILED');
+      assert.equal(Object.hasOwn(failure, 'path'), false); assert.equal(Object.hasOwn(failure, 'cause'), false);
+      assert.equal(pauseUnavailableBackgroundTask(f.store.db, {kind: 'job', taskId: job.id}, error), false); return true;
+    });
+  } finally {if (originalExecutable === undefined) delete process.env.MIOON_FFMPEG_PATH; else process.env.MIOON_FFMPEG_PATH = originalExecutable;}
+  assert.deepEqual(f.store.get('jobs', job.id), job); assert.equal(state.snapshot().find(task => task.taskId === job.id)!.reason, null);
+});
+
+test('a real cross-volume publication EACCES keeps the ordinary export failed outcome while its project and sources remain available', async t => {
+  const f = await fixture(t), sourceFile = path.join(f.store.tempDir, 'publication-source.mp4');
+  await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-n', '-f', 'lavfi', '-i', 'color=c=red:s=64x48:r=30:d=1', '-an', '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '1', '-pix_fmt', 'yuv420p', sourceFile], {timeout: 30000, maxStdoutBytes: 0});
+  const source = object(await f.services.call('asset.import', {projectId: f.projectId, name: 'Publication source.mp4', mimeType: 'video/mp4', dataBase64: readFileSync(sourceFile).toString('base64')}));
+  let timeline = object(await f.services.call('timeline.get', {projectId: f.projectId}));
+  timeline = object(await f.services.call('timeline.clip.add', {projectId: f.projectId, expectedRevision: timeline.revision, requestId: randomUUID(), assetId: source.id,
+    trackId: object((timeline.tracks as unknown[])[0]).id, startFrame: 0, durationFrames: 6}));
+  const input = {projectId: f.projectId, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'export'};
+  const accepted = object(await f.services.call('timeline.render', input)), before = object(f.store.get('exports', String(accepted.id)));
+  const receipt = f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId);
+  const outputDirectory = path.join(f.root, PROJECT_OUTPUT_FOLDERS.exports); mkdirSync(outputDirectory, {mode: 0o755}); chmodSync(outputDirectory, 0o500);
+  const removeHook = setProjectOutputPublicationTestHooks(f.store, {forceCopy: true});
+  const worker = startWorker(f.store, f.services, new Map());
+  try {
+    await worker.tick(); const failed = object(f.store.get('exports', String(accepted.id)));
+    assert.equal(failed.status, 'failed'); assert.equal(object(failed.error).code, 'INVALID_MEDIA');
+    assert.deepEqual(failed.snapshot, before.snapshot); assert.equal(failed.assetId, null);
+    const projected = f.state().snapshot().find(task => task.taskId === accepted.id)!;
+    assert.equal(projected.classification, 'terminal'); assert.equal(projected.keepAlive, false); assert.equal(projected.reason, null);
+    assert.equal((lstatSync(f.store.projectFile).mode & 0o222) !== 0, true); assert.equal((lstatSync(f.root).mode & 0o222) !== 0, true);
+    assert.deepEqual(f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId), receipt);
+    assert.equal(f.store.list('assets').length, 1); assert.equal(f.store.list('versions').length, 0); assert.equal(f.services.isBusy(), false);
+  } finally {removeHook(); chmodSync(outputDirectory, 0o700); await worker.stop();}
+});
+
+for (const runStatus of ['paused', 'interrupted'] as const) test(`a ${runStatus} Mio run blocks a new queued dispatch without blocking an accepted task's read-only observation`, async t => {
+  const f = await fixture(t), journal = createAgentTaskJournal(f.store);
+  const run = journal.create({projectId: f.projectId, requestId: randomUUID(), text: 'Observe the original task', configuration: {protocol: 'responses'}}).run;
+  const step = beginFixtureToolStep(journal, run.id, {tier: 'paid', toolCall: {id: randomUUID(), name: 'mioon_generation_submit', arguments: {}}});
+  journal.transition(run.id, journal.run(run.id).revision, runStatus, 'user');
+  const jobs = ['queued', 'running', 'downloading', 'submission_unknown'].map(status => ({id: randomUUID(), projectId: f.projectId, revision: 1, status, phase: 'waiting',
+    providerId: 'ark', providerJobId: ['running', 'downloading'].includes(status) ? 'original-provider-task' : null, submissionCount: status === 'queued' ? 0 : 1, requestId: randomUUID(), nextPollAt: 0, error: null}));
+  f.store.tx(() => {
+    for (const job of jobs) {
+      f.store.put('jobs', job);
+      f.store.db.prepare('INSERT INTO mio_job_origins(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)')
+        .run('job', job.id, run.id, step.id, f.projectId, job.requestId, 'generation.submit');
+    }
+  });
+  const changes = f.store.db.prepare('SELECT total_changes() AS n').get()!.n; f.state().refresh();
+  for (const job of jobs) {
+    const projected = f.state().snapshot().find(task => task.taskId === job.id)!;
+    assert.equal(projected.keepAlive, job.status !== 'queued'); assert.equal(projected.reason, job.status === 'queued' ? 'AGENT_TASK_PAUSED' : job.status === 'submission_unknown' ? 'SUBMISSION_UNKNOWN' : null);
+    assert.deepEqual(f.store.get('jobs', job.id), job);
+  }
+  assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n, changes, 'classification never writes approval, run, task or receipt state');
+});
+
+test('legacy unknown snapshots receive one read-only startup probe, become quiet on null and only observe the original task on explicit recovery', async t => {
+  const calls = {submit: 0, reconcile: 0, poll: 0}, reconcileIds: string[] = []; let found = false;
+  const provider: Provider = {id: 'ark', capabilities: {models: ['fixture'], inputModes: ['text'], aspectRatios: ['9:16'], durations: [4], configured: true, enabled: true},
+    submit: async () => {calls.submit++; throw Object.assign(Error('Synthetic response lost'), {uncertain: true});},
+    reconcile: async requestId => {calls.reconcile++; reconcileIds.push(requestId); return found ? {providerJobId: 'original-provider-task'} : null;},
+    poll: async taskId => {calls.poll++; assert.equal(taskId, 'original-provider-task'); return {status: 'failed', error: {code: 'SYNTHETIC_TERMINAL', message: 'Original task finished without media'}};},
+    download: async () => {throw Error('must not download');}};
+  const providers = new Map([['ark', provider]]), f = await fixture(t, providers);
+  const shot = object(await f.services.call('shot.create', {projectId: f.projectId, title: 'Legacy observation', prompt: 'Synthetic', duration: 4}));
+  const input = {shotId: shot.id, expectedRevision: shot.revision, providerId: 'ark', requestId: randomUUID()};
+  const accepted = object(await f.services.call('generation.submit', input));
+  let worker = startWorker(f.store, f.services, providers);
+  try {
+    await worker.tick(); await worker.stop(); assert.equal(calls.submit, 1);
+    const unknown = object(f.store.get('jobs', String(accepted.id))); assert.equal(unknown.status, 'submission_unknown');
+    assert.equal(f.state().snapshot().find(task => task.taskId === accepted.id)!.keepAlive, false);
+    worker = startWorker(f.store, f.services, providers); await worker.tick();
+    assert.equal(calls.reconcile, 1); assert.equal(f.state().snapshot().find(task => task.taskId === accepted.id)!.keepAlive, false);
+    await worker.tick(); assert.equal(calls.reconcile, 1); assert.equal(calls.submit, 1);
+    found = true; f.services.saveJob(object(f.store.get('jobs', String(accepted.id))) as Parameters<typeof f.services.saveJob>[0], {nextPollAt: 0});
+    await worker.tick(); assert.equal(object(f.store.get('jobs', String(accepted.id))).status, 'running');
+    await worker.tick(); const finished = object(f.store.get('jobs', String(accepted.id)));
+    assert.equal(finished.status, 'failed'); assert.equal(object(finished.error).code, 'SYNTHETIC_TERMINAL');
+    assert.deepEqual(calls, {submit: 1, reconcile: 2, poll: 1}); assert.deepEqual(reconcileIds, [input.requestId, input.requestId]);
+    assert.deepEqual(finished.snapshot, unknown.snapshot); assert.equal(finished.requestId, input.requestId); assert.equal(finished.submissionCount, 1);
   } finally {await worker.stop();}
 });

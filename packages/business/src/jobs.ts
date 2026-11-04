@@ -28,7 +28,7 @@ import type {Provider} from './provider-registry.ts';
 import {readVideoBinding} from './video/generation.ts';
 import {effectiveVideoParameters,isWan30Binding} from '../../contracts/src/wan-video.ts';
 import {isSeedance25Binding} from '../../contracts/src/seedance-video.ts';
-import {markGenerationPreflightFailure,isGenerationPreflightFailure} from './generation-inputs.ts';
+import {markGenerationPreflightFailure,isGenerationPreflightFailure,currentGenerationClaim} from './generation-inputs.ts';
 import {assertMediaTerminated,awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
 import {publishProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput} from './project-output-publication.ts';
 import {createOutputArtifactStage,readOutputArtifact,writeOutputArtifact,outputArtifactStage,outputArtifactDigest,restoredArtifactAudioCheck,assertOutputArtifactStage,sealOutputArtifactStage} from './output-artifact-storage.ts';
@@ -68,6 +68,7 @@ const stringValue=(value: unknown): string|undefined=>typeof value==='string'?va
 const numberValue=(value: unknown): number|undefined=>typeof value==='number'?value:undefined;
 const arrayValue=(value: unknown): unknown[]=>Array.isArray(value)?value:[];
 const isThenable=(value: unknown): value is PromiseLike<unknown>=>value!==null&&(typeof value==='object'||typeof value==='function')&&typeof (value as {then?: unknown}).then==='function';
+const isKnownAgentTaskBlock=(error: unknown): boolean=>isAgentTaskEffectBlocked(error)&&['AGENT_TASK_PAUSED','AGENT_TASK_STOPPED','AGENT_TASK_CONSENT_REQUIRED','AGENT_TASK_TARGET_CHANGED','AGENT_TASK_TARGET_CLAIMED','AGENT_TASK_APPROVAL_REQUIRED'].includes(stringValue(property(error,'code'))??'');
 
 export function startWorker(inputStore: ServiceStore,services: Services,providers: ReadonlyMap<string,Provider>,{signal:ownerSignal}: {signal?: AbortSignal}={}): Worker {
  const store: JobsStore=inputStore as unknown as JobsStore;
@@ -166,10 +167,19 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const message=property(e,'uncertain')?'供应商可能已受理。正在对账，不会自动重新提交。':filesystem?'本地产物文件不可用，已保留任务记录':String(property(e,'message')||'任务操作失败');
   return {code,message:message.replace(/(?:Bearer\s+|sk-)[A-Za-z0-9_\-.]+/gi,'[redacted]').slice(0,600),retryable:true};
  };
+ let invalidQueuedReported=false;
  for(const ref of backgroundTasks.snapshot().filter(task=>task.kind==='job')){
   const job=recordValue(get('jobs',ref.taskId)) as JobRecord|null;
+  if(job?.status==='queued'&&ref.reason==='BACKGROUND_TASK_INVALID'){
+   // Projection already refused this identity. Preserve the former worker's
+   // ownership diagnostic once on handover, without entering a write/dispatch
+   // path or making a refused row hold a continuation lease.
+   try{if(job.id!==ref.taskId||job.projectId!==inputStore.projectId)throw Error('Invalid project task owner');currentGenerationClaim(store.db,job);}
+   catch{if(!invalidQueuedReported){invalidQueuedReported=true;console.error('Skipped invalid local generation record.');}}
+   continue;
+  }
   if(job&&job.status==='submitting')services.saveGenerationGuarded(job,{status:'submission_unknown',phase:'recovering_submit',error:{code:'SUBMISSION_UNKNOWN',message:'服务在提交期间中断；先对账，绝不盲目重新提交',retryable:true}});
-  else if(job&&job.phase==='connection_required'&&['queued','running','downloading','submission_unknown'].includes(job.status))services.saveJob(job,{nextPollAt:0});
+  else if(job&&(job.status==='submission_unknown'||job.phase==='connection_required'&&['queued','running','downloading'].includes(job.status)))services.saveJob(job,{nextPollAt:0});
  }
  for(const ref of backgroundTasks.snapshot().filter(task=>task.kind==='export')){const e=workerExport(ref.taskId);if(e?.status==='running')tx(()=>{
   const current=currentOwnedExport(e);if(current?.status==='running')put('exports',{...(isFloatTimelineExport(current)?requeueFloatTimelineExport(current):current),status:'queued',updatedAt:now()});
@@ -341,6 +351,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    }
   } catch(error) {
    if(isBackgroundTaskIndexUncertain(error))return;
+   if(isAgentTaskEffectBlocked(error)&&!isKnownAgentTaskBlock(error))throw error;
    if(pauseUnavailableBackgroundTask(store.db,{kind:'job',taskId:original.id},error))return;
    if(property(error,'terminationUnconfirmed'))failShutdown(error);
    const latest=recordValue(get('jobs',guardJob.id)) as JobRecord|null;
@@ -389,7 +400,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
  async function processExport(original: ExportRecord,signal: AbortSignal): Promise<void> {
   checkpoint(signal);
   try{assertAgentTaskJobEffect(store.db,'export',original.id);}catch(error){
-   if(isAgentTaskEffectBlocked(error)&&isAgentTaskJobStopped(store.db,'export',original.id)){tx(()=>{const latest=currentOwnedExport(original);if(latest?.status==='queued')put('exports',{...latest,status:'failed',error:{code:'EXPORT_CANCELLED',message:'导出已取消',retryable:false},updatedAt:now()});});return;}throw error;
+   if(isKnownAgentTaskBlock(error)&&isAgentTaskJobStopped(store.db,'export',original.id)){tx(()=>{const latest=currentOwnedExport(original);if(latest?.status==='queued')put('exports',{...latest,status:'failed',error:{code:'EXPORT_CANCELLED',message:'导出已取消',retryable:false},updatedAt:now()});});return;}throw error;
   }
   let e: ExportRecord=original;
   if(!exportUuid(e.id)||!exportUuid(e.projectId)){invalidExport();return;}
@@ -560,7 +571,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   catch(error) {
    // A trusted task control fence defers only its own candidate. Storage,
    // audit and uncertain-effect failures must still abort the whole cycle.
-   if(!isAgentTaskEffectBlocked(error)||!['AGENT_TASK_PAUSED','AGENT_TASK_STOPPED','AGENT_TASK_CONSENT_REQUIRED','AGENT_TASK_TARGET_CHANGED','AGENT_TASK_TARGET_CLAIMED','AGENT_TASK_APPROVAL_REQUIRED'].includes(stringValue(property(error,'code'))??''))throw error;
+   if(!isKnownAgentTaskBlock(error))throw error;
   }
  }
  function tick(): Promise<void> {
@@ -568,9 +579,12 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   if(cycle)return cycle;
   cycle=(async()=>{
    try {
-    for(const ref of backgroundTasks.snapshot()){if(ref.kind!=='job'||!ref.keepAlive)continue;const job=recordValue(get('jobs',ref.taskId)) as JobRecord|null;if(job&&!stopped&&typeof job.status==='string'&&['queued','running','downloading','submission_unknown'].includes(job.status))await advance(job,processJob as WorkerOperation);}
+    // Projection does not grant authority or classify failures of its gate.
+    // Recheck only agent-blocked queued candidates through the original gate:
+    // ordinary denials skip one candidate; audit/storage faults stop the cycle.
+    for(const ref of backgroundTasks.snapshot()){if(ref.kind!=='job'||!ref.keepAlive&&!ref.reason?.startsWith('AGENT_'))continue;const job=recordValue(get('jobs',ref.taskId)) as JobRecord|null;if(job&&!stopped&&typeof job.status==='string'&&['queued','running','downloading','submission_unknown'].includes(job.status)&&(ref.keepAlive||job.status==='queued'))await advance(job,processJob as WorkerOperation);}
     if(stopped)return;
-    for(const ref of backgroundTasks.snapshot()){if(ref.kind!=='export'||!ref.keepAlive)continue;const e=workerExport(ref.taskId);if(e&&!stopped&&e.status==='queued')await advance(e,processExport as unknown as WorkerOperation);}
+    for(const ref of backgroundTasks.snapshot()){if(ref.kind!=='export'||!ref.keepAlive&&!ref.reason?.startsWith('AGENT_'))continue;const e=workerExport(ref.taskId);if(e&&!stopped&&e.status==='queued')await advance(e,processExport as unknown as WorkerOperation);}
    } catch(error) {console.error('Worker cycle failed:',stringValue(property(error,'code'))||String(property(error,'name')));}
   })().finally(()=>{cycle=null;});
   return cycle;

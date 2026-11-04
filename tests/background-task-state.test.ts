@@ -72,6 +72,8 @@ test('post-COMMIT uncertainty pauses every affected live identity, survives due 
 for (const [status, patch, classification, keepAlive] of [
   ['queued', {}, 'running', true], ['running', {}, 'running', true], ['downloading', {}, 'running', true],
   ['submission_unknown', {providerId: 'ark'}, 'remote_unknown', false],
+  ['submission_unknown', {providerId: 'ark', nextPollAt: 0}, 'remote_unknown', true],
+  ['submission_unknown', {providerId: 'ark', nextPollAt: 5000}, 'remote_unknown', false],
   ['submission_unknown', {providerId: 'ark', providerJobId: 'accepted-remote'}, 'remote_unknown', true],
   ['submission_unknown', {providerId: 'mock'}, 'remote_unknown', true],
   ['queued', {phase: 'connection_required', error: {code: 'VIDEO_CONNECTION_REQUIRED'}}, 'waiting_user', false],

@@ -21,6 +21,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {databaseFiles, dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
+import {createProjectBackgroundState} from '../packages/business/src/background-task-state.ts';
 import {onMediaProcess, type MediaProcessEvent} from '../packages/business/src/media-processes.ts';
 
 
@@ -186,11 +187,45 @@ test('storyboard and float timeline request keys remain separate in both orders 
       assert.equal((await owner.services.call('export.get', {exportId: legacy.id})).status, 'failed', 'unrelated legacy record is not a float-report authority');
       f.store.put('exports', float!);
       owner.store.put('exports', {...legacy, status: 'running'});
+      const background = createProjectBackgroundState(owner.store), application = testProjectAppLibrary(owner.store);
+      assert.ok(application);
+      const exportTable = `${storeTableSchema(owner.store.db, 'exports')}.exports`;
+      const unrelated = (state: ReturnType<typeof rows>) => Object.fromEntries(Object.entries(state).map(([table, values]) => [table,
+        table === exportTable ? values.filter(row => row.id !== legacy.id) : values]));
+      const beforeUnrelated = unrelated(owner.state()), beforeOther = owner === f ? null : f.state(), beforeApplication = rows(application.db);
+      // The only accepted worker writes are its queued recovery and running
+      // claim, each advancing this exact process fence once.
+      const processRevision = beforeUnrelated[`${storeTableSchema(owner.store.db, 'mio_process_target_revisions')}.mio_process_target_revisions`]
+        .find(row => row.kind === 'export' && row.targetId === legacy.id);
+      assert.ok(processRevision); processRevision.revision = Number(processRevision.revision) + 2;
       const writes: string[] = [], put = owner.store.put;
       owner.store.put = (table, value) => {if (table === 'exports' && (value as typeof value & {id:("malformed-id")}).id === legacy.id) writes.push((value as typeof value & {status:("failed")}).status); return put(table, value);};
-      try {await tick(owner);} finally {owner.store.put = put;}
-      assert.deepEqual(writes, ['queued', 'running', 'failed'], 'legacy worker recovery/dispatch remains eligible; deliberately missing source fails normally');
-      assert.equal((owner.store.get('exports', legacy.id)!.error)!.code, 'MEDIA_MISSING');
+      const events: MediaProcessEvent[] = [], off = onMediaProcess(event => {events.push(event);}), worker = startWorker(owner.store, owner.services, new Map());
+      try {
+        await worker.tick();
+        assert.deepEqual(writes, ['queued', 'running'], 'recovery and dispatch remain eligible; an unavailable source pauses the existing record');
+        const current = owner.store.get('exports', legacy.id)! as FixtureStoryboardExport;
+        assert.equal(current.status, 'running', 'missing media is not a fabricated export failure');
+        assert.equal(current.error, null); assert.equal(current.assetId, null); assert.equal(current.url, null);
+        assert.deepEqual(current.snapshot, legacy.snapshot, 'the frozen storyboard source pointers remain authoritative');
+        assert.deepEqual(current.orderedVersionIds, legacy.orderedVersionIds);
+        assert.deepEqual(background.snapshot().find(task => task.kind === 'export' && task.taskId === legacy.id), {
+          kind: 'export', taskId: legacy.id, classification: 'waiting_user', keepAlive: false, reason: 'SOURCE_UNAVAILABLE', taskRevision: 0,
+        });
+        assert.deepEqual(unrelated(owner.state()), beforeUnrelated, 'the paused attempt cannot modify other native rows or float namespace');
+        if (owner !== f) assert.deepEqual(f.state(), beforeOther, 'the other real project remains isolated');
+        assert.deepEqual(rows(application.db), beforeApplication, 'source loss cannot rewrite application records');
+        assert.deepEqual(owner.store.get('exports', accepted.id) ?? null, owner === f ? float : null);
+        const pausedSql = capture(), pausedFiles = await dataFileSnapshot(owner.root, [...databaseFiles(owner.store.db), ...databaseFiles(application.db)]),
+          changes = owner.store.db.prepare('SELECT total_changes() AS n').get()!.n;
+        await worker.tick();
+        assert.deepEqual(writes, ['queued', 'running'], 'the same paused worker never retries or overwrites its outcome');
+        assert.deepEqual(capture(), pausedSql); assert.deepEqual(rows(application.db), beforeApplication);
+        assert.equal(owner.store.db.prepare('SELECT total_changes() AS n').get()!.n, changes);
+        assert.deepEqual(await dataFileSnapshot(owner.root, [...databaseFiles(owner.store.db), ...databaseFiles(application.db)]), pausedFiles);
+        assert.deepEqual(events, [], 'the absent source cannot launch an encoder or publish an output');
+      } finally {off(); await worker.stop(); owner.store.put = put;}
+      assert.deepEqual(plain(owner.store.db.prepare("SELECT * FROM idempotency WHERE scope='export' AND requestId=?").get(requestId)), legacyReceipt);
       assert.deepEqual(receipt(f, input), saved);
       assert.equal(f.store.list('exports').length + (owner === f ? 0 : owner.store.list('exports').length), owner === f ? 2 : 3);
     });

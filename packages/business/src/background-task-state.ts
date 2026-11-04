@@ -1,6 +1,5 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {lstatSync, realpathSync} from 'node:fs';
-import path from 'node:path';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {parseVideoBinding} from '../../contracts/src/video-providers.ts';
 import type {ProjectStore} from './project-file/store.ts';
@@ -63,9 +62,9 @@ export function pauseUnavailableBackgroundTask(db: DatabaseSync, ref: Background
       else if ((project.mode & 0o222n) === 0n || (directory.mode & 0o222n) === 0n) reason = 'PROJECT_READONLY';
     } catch (failure) {reason = ['EACCES', 'EPERM', 'EROFS'].includes(objectCode(failure) ?? '') ? 'PROJECT_READONLY' : 'PROJECT_MISSING';}
     if (!reason && unavailableSource) reason = 'SOURCE_UNAVAILABLE';
-    if (!reason && causes.some(item => filesystemCodes.has(String(item.code)) && typeof item.path === 'string'
-      && !path.resolve(item.path).startsWith(instance.store.tempDir + path.sep)
-      && !path.resolve(item.path).startsWith(instance.store.localDir + path.sep))) reason = 'SOURCE_UNAVAILABLE';
+    // A filesystem path alone does not prove source ownership: publication,
+    // tools and credentials can fail too. Only the source boundary above can
+    // identify unavailable media while the project itself remains usable.
   }
   if (!reason) return false;
   instance?.pause(ref, reason);
@@ -146,7 +145,10 @@ export function createProjectBackgroundState(input: unknown): ProjectBackgroundS
         if (row.providerId === 'kling' && typeof row.executionBinding === 'string') try {
           externalLookup = parseVideoBinding(JSON.parse(row.executionBinding)).providerId === 'kling';
         } catch {/* Malformed bindings remain blocked for explicit repair. */}
-        return result('remote_unknown', Boolean(row.providerJobId) || row.providerId === 'mock' || row.reconciliation === 'request-id' || externalLookup, 'SUBMISSION_UNKNOWN');
+        // Explicit activation/recovery may request one read-only lookup even
+        // for an older snapshot without a declared reconciliation capability.
+        // A null lookup writes a future nextPollAt and becomes quiet again.
+        return result('remote_unknown', Boolean(row.providerJobId) || row.providerId === 'mock' || row.reconciliation === 'request-id' || externalLookup || row.nextPollAt === 0, 'SUBMISSION_UNKNOWN');
       }
       value = ['queued', 'submitting', 'running', 'downloading'].includes(state) ? result('running', true) : result('waiting_user', false, 'BACKGROUND_TASK_INVALID');
     } else if (ref.kind === 'edit_task') {
@@ -185,7 +187,11 @@ export function createProjectBackgroundState(input: unknown): ProjectBackgroundS
       value = ['queued', 'dispatching', 'running', 'cancelling', 'persisting'].includes(state)
         ? result(state === 'persisting' ? 'result_pending' : 'running', true) : result('waiting_user', false, 'BACKGROUND_TASK_INVALID');
     }
-    const denied = value.keepAlive ? effectReason(ref) : null;
+    // A paused Mio run still observes an already accepted provider task. The
+    // original worker keeps its queued/POST and target-write authorization;
+    // projection must not reuse that dispatch gate to block poll or reconcile.
+    const dispatchGated = ref.kind !== 'job' || state === 'queued';
+    const denied = value.keepAlive && dispatchGated ? effectReason(ref) : null;
     return denied ? result('waiting_user', false, denied) : value;
   }
   function read(ref: BackgroundTaskRef): TaskProjection {
