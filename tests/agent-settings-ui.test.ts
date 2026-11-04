@@ -4,6 +4,10 @@ import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import * as logic from '../apps/web/src/agent-settings.ts';
 import * as navigation from '../apps/web/src/settings-navigation-state.ts';
+import * as modelDiscovery from '../apps/web/src/agent-model-list-session.ts';
+import * as modelRows from '../apps/web/src/agent-model-list-rows.ts';
+import type {AgentModelListClient} from '../apps/web/src/agent-model-list-session.ts';
+import type {AgentModelListSuccess} from '../packages/contracts/src/agent-model-list.ts';
 import * as i18n from '../packages/i18n/src/index.ts';
 import {createI18nTestContext} from './helpers/i18n.ts';
 import {adapterSettings} from './helpers/agent-adapter-fixture.ts';
@@ -89,7 +93,8 @@ const isElement=(value:unknown):value is Element=>Boolean(value&&typeof value===
 function nodes(value:unknown):Element[]{return Array.isArray(value)?value.flatMap(nodes):isElement(value)?[value,...nodes(value.props.children)]:[];}
 function invoke(node:Element,name:string,...args:unknown[]):unknown{const callback=node.props[name];assert.equal(typeof callback,'function',name);return Reflect.apply(callback as (...values:unknown[])=>unknown,undefined,args);}
 const source=readFileSync(new URL('../apps/web/src/AgentSettings.tsx',import.meta.url),'utf8'),transformed=transformSync(source,{loader:'tsx',format:'cjs',jsx:'transform'}).code;
-function uiHarness(client:logic.AgentSettingsClient){
+const listed=(ids:string[]=[]):AgentModelListSuccess=>({outcome:'success',models:ids.map(id=>({id,adaptation:'unverified'})),complete:true,source:'current_protocol',fetchedAt:'2026-11-04T00:00:00.000Z'});
+function uiHarness(client:logic.AgentSettingsClient,discovery:AgentModelListClient={modelsCache:async()=>({status:'hit',result:listed()}),modelsList:async()=>listed()}){
  const hooks:Hook[]=[],dom=new Map<string,{value:string}>(),listeners=new Set<()=>void>(),reports:navigation.SettingsNavigationState[]=[];let cursor=0,pending:Array<()=>void>=[],tree:unknown,visible=true,locale:Locale='zh-Hans';
  const document={hidden:false,addEventListener:(_name:string,fn:()=>void)=>listeners.add(fn),removeEventListener:(_name:string,fn:()=>void)=>listeners.delete(fn)};
  const element=(type:unknown,props:Record<string,unknown>|null,...children:unknown[]):Element=>{
@@ -109,6 +114,8 @@ function uiHarness(client:logic.AgentSettingsClient){
   if(id==='../../../packages/i18n/src/index.ts')return i18n;if(id==='../../../packages/contracts/src/agent-connection-settings.ts')return {AGENT_CONNECTION_LIMITS};
   if(id==='./settings-navigation-state.ts')return navigation;if(id==='./workspace-visibility.tsx')return {useWorkspaceVisibility:()=>visible};
   if(id==='./agent-settings.ts')return {...logic,createAgentSettingsSession:(options:logic.AgentSettingsSessionOptions)=>logic.createAgentSettingsSession({...options,client})};
+  if(id==='./agent-model-list-session.ts')return {...modelDiscovery,createAgentModelListSession:(options:Parameters<typeof modelDiscovery.createAgentModelListSession>[0])=>modelDiscovery.createAgentModelListSession({...options,client:discovery})};
+  if(id==='./agent-model-list-rows.ts')return modelRows;
   if(id==='./SettingsServicesLayout.tsx')return {__esModule:true,default:'ServicesLayout'};
   if(id==='@mioon/ui/components/workbench-confirm')return {useConfirmation:()=>async()=>true};
   if(id==='./AgentTaskPolicy.tsx'||id==='./AgentAuthorizations.tsx'||id==='./AgentConnectionTest.tsx'||id==='./icons.tsx')return {__esModule:true,default:id};
@@ -144,8 +151,58 @@ test('actual page hide, document hide and discard clear all passwords; old handl
  for(const mode of ['page','document','discard']){const f=settingsUiFixture(),h=uiHarness(f.client);await ready(h);h.view('openai');h.key('openai','synthetic-secret-openai');h.view('deepseek');h.key('deepseek','synthetic-secret-deepseek');const old=h.find('agent-settings-key-deepseek');if(mode==='page')h.setVisible(false);else if(mode==='document')h.documentHidden();else h.click('agent-settings-cancel');assert.equal(h.keyValue('openai'),'');assert.equal(h.keyValue('deepseek'),'');invoke(old,'onChange',{target:{value:'synthetic-secret-late'}});h.render();assert.equal(f.calls.length,0);assertNoSecrets(h.reports);h.unmount();}
 });
 
-test('actual manual-model selection remains draft only; X6b fetch/check stay disabled and unverified',async()=>{
- const f=settingsUiFixture(),h=uiHarness(f.client);await ready(h);h.view('openai');const input=h.find('agent-settings-model-openai');(input.props.ref as {current:{value:string}}).current.value='manual-new';h.click('agent-settings-add-model-openai');h.click('agent-settings-use-openai-manual-new');assert.equal(f.calls.length,0);assert.equal(h.find('agent-settings-fetch-openai').props.disabled,true);assert.equal(h.find('agent-settings-current-model').props.children!==undefined,true);h.save();await flush();h.render();assert.equal(f.saved().mioSelection?.modelId,'manual-new');assert.equal(f.calls.length,1);h.unmount();
+test('actual manual-model selection remains draft only while list fetching stays independent of save and verification',async()=>{
+ const f=settingsUiFixture(),h=uiHarness(f.client);await ready(h);h.view('openai');await flush();h.render();const input=h.find('agent-settings-model-openai');(input.props.ref as {current:{value:string}}).current.value='manual-new';h.click('agent-settings-add-model-openai');h.click('agent-settings-use-openai-manual-new');assert.equal(f.calls.length,0);assert.equal(h.find('agent-settings-fetch-openai').props.disabled,false);assert.equal(h.find('agent-settings-current-model').props.children!==undefined,true);h.save();await flush();h.render();assert.equal(f.saved().mioSelection?.modelId,'manual-new');assert.equal(f.calls.length,1);assert.equal(f.saved().verification,'not_tested');h.unmount();
+});
+
+test('actual detail opens only its cache, merges fetched and manual rows, and does not dirty or verify the page',async()=>{
+ const initial=uiSettings();initial.services.find(entry=>entry.serviceKey==='openai')!.manualModelIds=['manual-model'];
+ const f=settingsUiFixture({initial}),cacheCalls:string[]=[],listCalls:string[]=[];
+ const discovery:AgentModelListClient={modelsCache:async input=>{cacheCalls.push(input.serviceKey);return {status:'hit',result:listed(['remote-model','gpt-4.1-mini'])};},modelsList:async input=>{listCalls.push(input.serviceKey);return listed(['refreshed-model']);}};
+ const h=uiHarness(f.client,discovery);await ready(h);assert.deepEqual(cacheCalls,[]);h.view('openai');await flush();h.render();assert.deepEqual(cacheCalls,['openai']);assert.deepEqual(listCalls,[]);assert.ok(h.find('agent-settings-model-row-openai-gpt-4.1-mini'));assert.ok(h.find('agent-settings-model-row-openai-manual-model'));assert.equal(h.find('agent-settings-save').props.disabled,true);assert.equal(f.calls.length,0);assert.equal(f.saved().revision,initial.revision);assert.equal(f.saved().verification,'not_tested');
+ for(const locale of i18n.LOCALES){h.setLocale(locale);assert.doesNotMatch(JSON.stringify(h.find('agent-settings-model-list-status-openai')),/agent\.settings\.models\./);}assert.deepEqual(cacheCalls,['openai']);h.unmount();
+});
+
+test('actual key typing dispatches nothing until blur; checking and fetching use one-shot input and only model choice is dirty',async()=>{
+ const f=settingsUiFixture(),calls:Parameters<AgentModelListClient['modelsList']>[0][]=[],discovery:AgentModelListClient={modelsCache:async()=>({status:'miss'}),modelsList:async input=>{calls.push(input);return listed(['new-model']);}};
+ const h=uiHarness(f.client,discovery);await ready(h);h.view('openai');await flush();h.render();assert.equal(h.find('agent-settings-model-list-status-openai').props['data-phase'],'waiting_key');assert.equal(calls.length,0);
+ h.key('openai','synthetic-secret-openai');assert.equal(calls.length,0);invoke(h.find('agent-settings-key-openai'),'onBlur');await flush();h.render();assert.equal(calls.length,1);assert.deepEqual(calls[0]!.credential,{source:'input',value:'synthetic-secret-openai'});assert.equal(h.keyValue('openai'),'synthetic-secret-openai');assert.ok(h.find('agent-settings-model-row-openai-new-model'));assert.equal(f.calls.length,0);assert.equal(f.saved().verification,'not_tested');
+ h.click('agent-settings-check-key-openai');await flush();h.render();assert.equal(calls.length,2);h.click('agent-settings-fetch-openai');await flush();h.render();assert.equal(calls.length,3);h.click('agent-settings-use-openai-new-model');assert.equal(f.saved().mioSelection?.serviceKey,custom);assert.equal(f.calls.length,0);assertNoSecrets(h.reports);h.unmount();
+});
+
+test('actual address editing waits for blur, then valid local addresses fetch once and incomplete addresses never dispatch',async()=>{
+ const f=settingsUiFixture(),calls:Parameters<AgentModelListClient['modelsList']>[0][]=[],discovery:AgentModelListClient={modelsCache:async()=>({status:'miss'}),modelsList:async input=>{calls.push(input);return listed(['local-model']);}};
+ const h=uiHarness(f.client,discovery);await ready(h);h.view('ollama');await flush();h.render();assert.equal(calls.length,1);
+ for(const value of ['http://127.0.0.1:1','http://127.0.0.1:11','http://127.0.0.1:11435']){h.change('agent-settings-base-url-ollama',value);await flush();h.render();assert.equal(calls.length,1,'Typing legal prefixes must not fetch');}
+ invoke(h.find('agent-settings-base-url-ollama'),'onBlur');h.render();await flush();h.render();assert.equal(calls.length,2);assert.equal(calls[1]!.selection.baseUrl,'http://127.0.0.1:11435/v1');assert.deepEqual(calls[1]!.credential,{source:'none'});
+ h.change('agent-settings-base-url-ollama','http://');invoke(h.find('agent-settings-base-url-ollama'),'onBlur');h.render();await flush();h.render();assert.equal(calls.length,2);assert.equal(h.find('agent-settings-fetch-ollama').props.disabled,true);assert.equal(f.calls.length,0);h.unmount();
+});
+
+test('actual protocol change fetches the new descriptor without clearing the entered key or saving a Mio selection',async()=>{
+ const f=settingsUiFixture(),calls:Parameters<AgentModelListClient['modelsList']>[0][]=[],discovery:AgentModelListClient={modelsCache:async()=>({status:'hit',result:listed()}),modelsList:async input=>{calls.push(input);return listed(['new-model']);}};
+ const h=uiHarness(f.client,discovery);await ready(h);h.view('openai');await flush();h.render();h.key('openai','synthetic-secret');h.change('agent-settings-protocol-openai','responses');await flush();h.render();assert.equal(calls.length,1);assert.equal(calls[0]!.selection.protocol,'responses');assert.deepEqual(calls[0]!.credential,{source:'input',value:'synthetic-secret'});assert.equal(h.keyValue('openai'),'synthetic-secret');assert.equal(f.calls.length,0);assert.equal(f.saved().mioSelection?.serviceKey,custom);h.unmount();
+});
+
+test('actual selected detail can list with its own saved key before it becomes the saved Mio selection',async()=>{
+ const initial=uiSettings();initial.services.find(entry=>entry.serviceKey==='openai')!.secret={configured:true,storage:'session'};const f=settingsUiFixture({initial}),calls:Parameters<AgentModelListClient['modelsList']>[0][]=[],discovery:AgentModelListClient={modelsCache:async()=>({status:'miss'}),modelsList:async input=>{calls.push(input);return listed(['new-model']);}};
+ const h=uiHarness(f.client,discovery);await ready(h);h.view('openai');await flush();h.render();assert.equal(calls.length,1);assert.equal(calls[0]!.serviceKey,'openai');assert.deepEqual(calls[0]!.credential,{source:'saved'});assert.equal(f.saved().mioSelection?.serviceKey,custom);assert.equal(f.calls.length,0);assert.equal(f.saved().verification,'not_tested');assert.equal(h.find('agent-settings-save').props.disabled,true);h.unmount();
+});
+
+test('actual complete missing warning retains the Mio row; partial and failed refreshes cannot assert a model disappeared',async()=>{
+ let result:Awaited<ReturnType<AgentModelListClient['modelsList']>>=listed();const f=settingsUiFixture(),discovery:AgentModelListClient={modelsCache:async()=>({status:'hit',result:listed()}),modelsList:async()=>result};
+ const h=uiHarness(f.client,discovery);await ready(h);h.view(custom);await flush();h.render();assert.ok(h.find(`agent-settings-model-missing-${custom}`));const model=f.saved().mioSelection!.modelId;assert.ok(h.find(`agent-settings-model-row-${custom}-${model}`));
+ h.key(custom,'synthetic-secret');result={...listed(),complete:false};h.click(`agent-settings-fetch-${custom}`);await flush();h.render();assert.equal(nodes(h.render()).some(node=>node.props['data-testid']===`agent-settings-model-missing-${custom}`),false);assert.ok(h.find(`agent-settings-model-row-${custom}-${model}`));
+ result={outcome:'invalid_key',reason:'rejected'};h.click(`agent-settings-check-key-${custom}`);await flush();h.render();assert.equal(h.find(`agent-settings-model-list-status-${custom}`).props['data-phase'],'invalid_key');assert.equal(nodes(h.render()).some(node=>node.props['data-testid']===`agent-settings-model-missing-${custom}`),false);assert.deepEqual(f.saved().mioSelection,{serviceKey:custom,modelId:model});assert.equal(f.calls.length,0);h.unmount();
+});
+
+test('actual detail switch, binding changes and page hide cancel fetches without losing independent DOM inputs or accepting late rows',async()=>{
+ for(const action of ['switch','binding','hide','save']){
+  const pending=deferred(),signals:AbortSignal[]=[],f=settingsUiFixture(),discovery:AgentModelListClient={modelsCache:async()=>({status:'miss'}),modelsList:async(_input,options)=>{signals.push(options.signal);return pending.promise;}};
+  const h=uiHarness(f.client,discovery);await ready(h);h.view(custom);await flush();h.render();h.key(custom,'synthetic-secret-custom');invoke(h.find(`agent-settings-key-${custom}`),'onBlur');await flush();h.render();assert.equal(signals.length,1);const oldFetch=h.find(`agent-settings-fetch-${custom}`);
+  if(action==='switch'){h.view('openai');assert.equal(h.keyValue(custom),'synthetic-secret-custom');invoke(oldFetch,'onClick');}
+  else if(action==='binding')h.change(`agent-settings-base-url-${custom}`,'https://changed.example');else if(action==='hide')h.setVisible(false);else h.save();
+  assert.equal(signals[0]!.aborted,true,action);pending.resolve(listed(['late-model']));await flush();h.render();assert.equal(nodes(h.render()).some(node=>node.props['data-testid']===`agent-settings-model-row-${custom}-late-model`),false,action);if(action!=='save')assert.equal(f.calls.length,0);h.unmount();
+ }
 });
 
 test('current verification requires active token, three-part binding and exact protocol/model; old summaries remain historical',async()=>{

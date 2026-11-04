@@ -43,7 +43,8 @@
     "./loudness-range": "./src/loudness-range.ts",
     "./timeline-clip-loudness": "./src/timeline-clip-loudness.ts",
     "./agent-provider-catalog": "./src/agent-provider-catalog.ts",
-    "./agent-connection-settings": "./src/agent-connection-settings.ts"
+    "./agent-connection-settings": "./src/agent-connection-settings.ts",
+    "./agent-model-list": "./src/agent-model-list.ts"
   },
   "dependencies": {
     "zod": "3.25.76"

@@ -108,16 +108,26 @@ export async function resolveAgentDestination(configuration: unknown, {selfPort,
   let config: AgentConfiguration;
   try { config = parseAgentConfiguration(configuration, {selfPort}); } catch { return denied(); }
   const url = new URL(deriveAgentEndpoint(config));
+  if (config.presetId === 'ollama') {
+    const prefix = config.protocol === 'anthropic_messages' ? '' : '/v1';
+    if (url.pathname !== `${prefix}${AGENT_PROTOCOLS[config.protocol].path}`) denied();
+  }
+  return resolvePinnedAgentDestination(url, {local:config.presetId==='ollama',selfPort,lookup,signal,maxDnsAnswers});
+}
+/** Shared internal pinning policy for fixed inference and model-list routes.
+ * Routes are derived by their own callers; this is not a public URL API. */
+export async function resolvePinnedAgentDestination(url:URL,{local=false,selfPort,lookup=dnsLookup,signal,maxDnsAnswers=AGENT_NETWORK_LIMITS.maxDnsAnswers}:{local?:boolean;selfPort?:number;lookup?:typeof dnsLookup;signal?:AbortSignal;maxDnsAnswers?:number}={}):Promise<AgentDestination>{
   const hostname = bareHost(url.hostname), port = Number(url.port || (url.protocol === 'https:' ? 443 : 80));
   if (signal?.aborted) throw abortError(signal);
-  if (config.presetId === 'ollama') {
+  if(url.username||url.password||url.hash||!['http:','https:'].includes(url.protocol))denied();
+  if(local){
     if (typeof selfPort !== 'number' || !Number.isInteger(selfPort) || selfPort < 1 || selfPort > 65535 || port === selfPort) denied();
-    // localhost means this exact loopback destination, never a host-file/DNS alias.
-    const address = hostname === 'localhost' ? '127.0.0.1' : hostname;
-    const prefix = config.protocol === 'anthropic_messages' ? '' : '/v1';
-    if (!['127.0.0.1', '::1'].includes(address) || url.pathname !== `${prefix}${AGENT_PROTOCOLS[config.protocol].path}`) denied();
-    return {hostname, address, family: isIP(address), port, secure: url.protocol === 'https:', path: url.pathname, local: true};
+    // localhost is this exact loopback destination, never a DNS/hosts alias.
+    const address=hostname==='localhost'?'127.0.0.1':hostname;
+    if(!['127.0.0.1','::1'].includes(address))denied();
+    return {hostname, address, family: isIP(address), port, secure: url.protocol === 'https:', path: url.pathname+url.search, local: true};
   }
+  if(url.protocol!=='https:')denied();
   let addresses: Array<{address: string; family: number}>;
   if (isIP(hostname)) addresses = [{address: hostname, family: isIP(hostname)}];
   else {
@@ -128,7 +138,7 @@ export async function resolveAgentDestination(configuration: unknown, {selfPort,
   if (!Array.isArray(addresses) || !addresses.length || addresses.length > maxDnsAnswers) denied();
   for (const item of addresses) if (!item || ![4, 6].includes(item.family) || isIP(item.address) !== item.family || !isPublicAgentAddress(item.address)) denied();
   const {address, family} = addresses[0];
-  return {hostname, address, family, port, secure: true, path: url.pathname, local: false};
+  return {hostname, address, family, port, secure: true, path: url.pathname+url.search, local: false};
 }
 function limitsFor(overrides: Record<string, number> = {}): NetworkLimits {
   const result: NetworkLimits = {...AGENT_NETWORK_LIMITS};

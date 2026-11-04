@@ -2,6 +2,8 @@ import path from 'node:path';
 import {createAgentAuthorizations} from '@mioon/business/agent/authorizations';
 import {createAgentSettings, sanitizeAgentSettingsResult} from '@mioon/business/agent/settings';
 import {createAgentSettingsFile} from '@mioon/business/agent/settings-file';
+import {createAgentModelListService} from '@mioon/business/agent/model-list-service';
+import {createAgentModelListCache} from '@mioon/business/agent/model-list-cache';
 import type {AppLibrary} from '@mioon/business/app-db/index';
 import {isAppLibraryHeld, projectFileIdentity} from '@mioon/business/app-db/index';
 import {createAppCompanionDocuments} from '@mioon/business/companion-scope';
@@ -20,6 +22,7 @@ import {createComfyHttp} from './comfy-http.ts';
 import {composeOfficialComfyModule} from './comfy-module.ts';
 import {createImageHttp} from './image-http.ts';
 import {createLastProjectHttp} from './last-project-http.ts';
+import {createAgentModelListHttp} from './agent-model-list-http.ts';
 import {createVideoHttp} from './video-http.ts';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
 import type {ServerOptions} from './index.ts';
@@ -48,6 +51,13 @@ export async function composeApplicationRuntime(library: AppLibrary, options: Se
       ownsSettings = true;
       closers.push(() => agentSettings!.close());
     }
+    const modelLists = createAgentModelListService({settings: agentSettings,
+      cache: createAgentModelListCache({directory: path.join(root, 'agent-settings', 'model-list-cache'), privateRoot: root}),
+      signal, selfPort});
+    closers.push(() => modelLists.close());
+    // All settings writes, including those borrowed by project runtimes, enter
+    // the same admission queue as final cache publication and deletion.
+    agentSettings = modelLists.settings;
     const authorizations = createAgentAuthorizations({...scope, guards: {ownsLock}, readCurrentTarget: async () => {
       const settings = sanitizeAgentSettingsResult(await agentSettings!.get({selfPort: selfPort()}));
       const active=settings.execution;return active?{destination:deriveAgentEndpoint(active.configuration),model:active.configuration.model,settingsRevision:active.revision}:null;
@@ -81,6 +91,7 @@ export async function composeApplicationRuntime(library: AppLibrary, options: Se
       imageHttp: createImageHttp({settings: image, customSettings: customImage, signal,
         approve: () => { throw new AppError('NOT_FOUND', '接口不存在', 404); }, reject: () => { throw new AppError('NOT_FOUND', '接口不存在', 404); }}),
       videoHttp: createVideoHttp({settings: video, signal}), comfyHttp: createComfyHttp({settings: comfy, connector, availability, signal}),
+      modelListHttp: createAgentModelListHttp({models: modelLists, signal, selfPort}),
       lastProjectHttp: createLastProjectHttp({lastProject, signal}), close};
   } catch (error) {
     const results = await Promise.allSettled(closers.map(close => { try { return Promise.resolve(close()); } catch (failure) { return Promise.reject(failure); } }));
