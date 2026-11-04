@@ -104,17 +104,29 @@ test('legacy source changes, deletion and equal-byte inode replacements fence th
   }
 });
 
-test('raw source fingerprints distinguish invalid UTF-8 bytes with the same decoded replacement character', async t => {
+test('invalid UTF-8 sources fail closed even when replacement decoding yields identical text', async t => {
   const f = await fixture(t), envelope = JSON.parse(await readFile(f.file, 'utf8'));
   envelope.connections[0].configuration.name = 'byte-marker-X'; envelope.history[0].configuration.name = 'byte-marker-X';
   const bytes = Buffer.from(JSON.stringify(envelope));
   for (let index = 0; index < bytes.length; index++) if (bytes.subarray(index, index + 13).toString() === 'byte-marker-X') bytes[index + 12] = 0x80;
-  await writeFile(f.file, bytes, {mode: 0o600});
-  const settings = await createVideoSettingsV2(f.options); t.after(() => settings.close()); assert.equal((await settings.get()).notice, VIDEO_SETTINGS_V1_RESET_NOTICE);
   const changed = Buffer.from(bytes); for (let index = 0; index < changed.length; index++) if (changed[index] === 0x80) changed[index] = 0x81;
-  assert.equal(bytes.toString('utf8'), changed.toString('utf8')); assert.notDeepEqual(bytes, changed); await writeFile(f.file, changed, {mode: 0o600});
-  await assert.rejects(settings.put({action: 'save', expectedRevision: 0, configuration: current(), secret: {action: 'keep'}}), {code: 'VIDEO_SETTINGS_SAVE_FAILED'});
-  await assert.rejects(settings.get(), {code: 'VIDEO_SETTINGS_SAVE_FAILED'}); assert.deepEqual(await readFile(f.file), changed);
+  assert.equal(bytes.toString('utf8'), changed.toString('utf8')); assert.notDeepEqual(bytes, changed);
+  for (const invalid of [bytes, changed]) {
+    await writeFile(f.file, invalid, {mode: 0o600});
+    const settings = await createVideoSettingsV2(f.options); t.after(() => settings.close());
+    await assert.rejects(settings.get(), {code: 'VIDEO_SETTINGS_CORRUPT'});
+    await assert.rejects(settings.put({action: 'save', expectedRevision: 0, configuration: current(), secret: {action: 'keep'}}), {code: 'VIDEO_SETTINGS_CORRUPT'});
+    assert.deepEqual(await readFile(f.file), invalid);
+  }
+});
+
+test('valid UTF-8 replacement characters remain readable in known legacy settings', async t => {
+  const f = await fixture(t), envelope = JSON.parse(await readFile(f.file, 'utf8'));
+  envelope.connections[0].configuration.name = '合法 Unicode \ufffd'; envelope.history[0].configuration.name = '合法 Unicode \ufffd';
+  const bytes = Buffer.from(JSON.stringify(envelope)); await writeFile(f.file, bytes, {mode: 0o600});
+  const settings = await createVideoSettingsV2(f.options); t.after(() => settings.close());
+  assert.equal((await settings.get()).notice, VIDEO_SETTINGS_V1_RESET_NOTICE);
+  assert.deepEqual((await settings.get()).connections, []); assert.deepEqual(await readFile(f.file), bytes);
 });
 
 test('a file appearing after an initially missing source cannot be overwritten by an empty v2 owner', async t => {

@@ -47,7 +47,7 @@ export function createVideoSettingsV2File({directory, privateRoot = directory}: 
         if (initialized && JSON.stringify(fingerprint) !== JSON.stringify(baseline)) throw Error();
         const accept = <T>(value: T): T => {if (!initialized) {baseline = fingerprint; initialized = true;} return value;};
         if (bytes === null) return accept(null);
-        const value: unknown = JSON.parse(bytes.toString('utf8'));
+        const value: unknown = JSON.parse(new TextDecoder('utf-8', {fatal: true, ignoreBOM: true}).decode(bytes));
         if (value && typeof value === 'object' && 'version' in value && value.version === 1) {
           // Validate the complete known format before resetting. No key is
           // decrypted, copied into v2, or written during this read.
