@@ -48,7 +48,9 @@ export function createProjectCopies({manager, library, directories, assertProjec
   const digestFor = (operation: ProjectCopyOperation, input: ProjectCopyInput) => createHash('sha256').update(canonicalJson({operation, input})).digest('hex');
   const parse = (input: unknown): ProjectCopyInput => {
     const parsed = projectCopyInputSchema.safeParse(input);
-    if (!parsed.success) throw copyFailure('VALIDATION_ERROR', '复制需要项目、稳定请求 ID 和新的绝对 .mioon 文件路径。', 400);
+    if (!parsed.success || !path.isAbsolute(parsed.data.projectFile) || path.normalize(parsed.data.projectFile) !== parsed.data.projectFile) {
+      throw copyFailure('VALIDATION_ERROR', '复制需要项目、稳定请求 ID 和当前系统上新的规范绝对 .mioon 文件路径。', 400);
+    }
     return parsed.data;
   };
   const boundary = async (phase: ProjectCopyBoundary, intent: CopyIntent): Promise<void> => {

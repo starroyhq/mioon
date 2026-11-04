@@ -164,6 +164,16 @@ test('duplicate refuses a source window without revoking it or cancelling the so
   f.native.release({windowId});
 });
 
+test('copy refuses foreign-platform absolute paths before interpreting them as local relative targets', async t => {
+  const f = await fixture(t), input = f.input(), before = f.sourceFiles(), app = f.application(snapshot);
+  const foreign = process.platform === 'win32' ? ['/projects/Copy.mioon'] : ['C:\\Projects\\Copy.mioon', '\\\\server\\share\\Copy.mioon'];
+  for (const projectFile of foreign) for (const operation of ['project.duplicate', 'project.save-as'])
+    denied(await f.rpc(operation, {...input, projectFile}), 400, 'VALIDATION_ERROR');
+  assert.deepEqual(f.sourceFiles(), before); assert.deepEqual(f.application(snapshot), app);
+  assert.equal(existsSync(path.join(f.dataDir, 'project-copies')), false);
+  assert.deepEqual(readdirSync(f.targets), []);
+});
+
 test('native save-as moves the same window to the new project and replays without reopening its source', async t => {
   const f = await fixture(t), windowId = randomUUID(); await f.native.acquire({projectId: f.source.projectId, windowId});
   const input = {...f.input(), windowId}, result = await f.native.saveAs!(input);
