@@ -310,7 +310,10 @@ export function createProjectCopyActions({manager, library, directories, assertP
           intent = save({...intent, phase: 'completed'}); cleanup(intent); continue;
         }
         if (intent.phase === 'completed') {cleanup(intent); continue;}
-        if (['prepared', 'captured', 'abandoned'].includes(intent.phase)) {abandon(intent); continue;}
+        if (['prepared', 'captured', 'abandoned'].includes(intent.phase)) {
+          try {abandon(intent);} catch { /* Keep the intent for a later cleanup; unavailable media must not block startup. */ }
+          continue;
+        }
         try {await call(intent.operation, intent.input);} catch { /* Preserve published identities; never overwrite another file on startup. */ }
       }
     },
