@@ -32,7 +32,17 @@ test('project clients preserve local IO boundaries and exact unavailable errors 
  const input=path.join(work,'selected.mioon');writeFileSync(input,'explicit synthetic input');
  await assert.rejects(importProjectPackage({},input,{env}),{code:'VALIDATION_ERROR'});
  await assert.rejects(importProjectPackage({requestId:randomUUID()},input,{env}),{code:'NOT_FOUND',status:404});
- await assert.rejects(duplicateProject({projectId:created.id,requestId:randomUUID(),name:'Unavailable duplicate'},{env}),{code:'NOT_FOUND',status:404});
+ let duplicateRequests=0;
+ await assert.rejects(duplicateProject({projectId:created.id,requestId:randomUUID(),name:'Unavailable duplicate'},{env,fetchImpl:async()=>{duplicateRequests++;throw Error('duplicate must not use the network');}}),{code:'PROJECT_COPY_UNAVAILABLE',status:409});
+ assert.equal(duplicateRequests,0,'the retired duplicate client refuses before backend lookup or network');
  assert.equal(readFileSync(input,'utf8'),'explicit synthetic input');
  assert.deepEqual({app:app(snapshot),project:project(created.id,snapshot),files:readdirSync(root,{recursive:true}).sort()},before);
+});
+
+test('the retired duplicate helper never reads connection options or contacts a backend', async () => {
+ let reads=0,requests=0;
+ const options={get env():NodeJS.ProcessEnv{reads++;throw Error('connection options must not be inspected');},fetchImpl:async()=>{requests++;throw Error('network must not be used');}};
+ for(const input of [{},{projectId:randomUUID(),requestId:randomUUID()},{projectId:randomUUID(),requestId:randomUUID(),name:'Explicit copy'}])
+  await assert.rejects(duplicateProject(input,options),{code:'PROJECT_COPY_UNAVAILABLE',status:409});
+ assert.equal(reads,0);assert.equal(requests,0);
 });

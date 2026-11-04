@@ -1,10 +1,12 @@
 import {projectRpcPath} from './project-file.ts';
+import {isProjectCopyOperation} from './project-copies.ts';
+import type {ProjectCopyOperation} from './project-copies.ts';
 /** Which RPC address each operation uses (docs/API.md, “按项目寻址”). No Node
  * imports: the server, the client package, CLI, MCP, the web app and the
  * desktop main process share this one table. Operations not listed here are
  * project-level and name their project in their input. */
 
-/** Operations served at `/api/rpc`. They span projects, or, like deleting and
+/** Public discovery operations served at `/api/rpc`. They span projects, or, like deleting and
  * renaming, change the registry and so belong to the app even though their
  * input names a project. */
 export const APP_LEVEL_OPERATIONS = Object.freeze([
@@ -14,7 +16,7 @@ export const APP_LEVEL_OPERATIONS = Object.freeze([
   'provider.list', 'video.connection.list',
   'workspace.settings.get', 'workspace.settings.set',
 ] as const);
-export type AppLevelOperation = typeof APP_LEVEL_OPERATIONS[number];
+export type AppLevelOperation = typeof APP_LEVEL_OPERATIONS[number] | ProjectCopyOperation;
 /** Project-level operations whose input names only an entity, never its
  * project. Callers give the project beside the input; the server answers
  * NOT_FOUND when the entity belongs to another project. */
@@ -24,7 +26,7 @@ export const ENTITY_ADDRESSED_OPERATIONS = Object.freeze([
 ] as const);
 export type EntityAddressedOperation = typeof ENTITY_ADDRESSED_OPERATIONS[number];
 export const isAppLevelOperation = (operation: unknown): operation is AppLevelOperation =>
-  (APP_LEVEL_OPERATIONS as readonly unknown[]).includes(operation);
+  (APP_LEVEL_OPERATIONS as readonly unknown[]).includes(operation) || isProjectCopyOperation(operation);
 export const isEntityAddressedOperation = (operation: unknown): operation is EntityAddressedOperation =>
   (ENTITY_ADDRESSED_OPERATIONS as readonly unknown[]).includes(operation);
 const field = (value: unknown, name: string): unknown =>
