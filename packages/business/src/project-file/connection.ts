@@ -476,6 +476,10 @@ function attachDatabases(projectFile: string, projectKey: string, identity: Proj
     checkStructure(db, PROJECT, 'project', projectId);
     const current = readProjectIdentity(db, PROJECT);
     if (current.projectId !== projectId) throw invalid('project', 'project-mismatch', projectId);
+    // Token-bearing histories must pass admission before an upgrade (or cache
+    // rebuild) can publish any change. Older profiles acquire a nullable token
+    // inside their reviewed transition and are checked in that transaction.
+    if (!fresh && (!upgrade || upgrade.from.version >= 8)) classifyHistoryStamp(db, false);
     database = 'cache';
     attachCache(db, cacheFile);
     for (const [schema, kind] of [[HISTORY, 'history'], [PROJECT, 'project'], [CACHE, 'cache']] as const) {
@@ -491,6 +495,7 @@ function attachDatabases(projectFile: string, projectKey: string, identity: Proj
       const transition = upgrade;
       inTransaction(db, () => {
         transition.apply(db);
+        classifyHistoryStamp(db, false);
         db.exec(`UPDATE ${HISTORY}.schema_version SET version=${transition.toVersion}`);
         checkStructure(db, HISTORY, 'history', projectId);
         checkStructure(db, PROJECT, 'project', projectId);

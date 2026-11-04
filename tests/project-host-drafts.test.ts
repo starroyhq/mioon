@@ -301,10 +301,10 @@ test('a hosted draft continuation blocks idle and the independent version-restor
       expectedIntentRevision: prepared.intentRevision});
     await entered.promise; pending.close();
     assert.equal(host.project.services.isBusy(), false); assert.equal(drafts.isBusy(), true); assert.equal(host.isBusy(), true);
-    const preview = await rpc<{contentSequence: number; previewDigest: string}>('project.version.preview', {projectId, versionId: saved.version.id});
+    const preview = await rpc<{contentSequence: number; contentToken: string; previewDigest: string}>('project.version.preview', {projectId, versionId: saved.version.id});
     const before = store.db.prepare('SELECT total_changes() AS n').get()!.n;
     await assert.rejects(rpc('project.version.restore', {projectId, versionId: saved.version.id, requestId: randomUUID(),
-      expectedContentSequence: preview.contentSequence, previewDigest: preview.previewDigest}), {code: 'PROJECT_HOST_BUSY', status: 409});
+      expectedContentSequence: preview.contentSequence, expectedContentToken: preview.contentToken, previewDigest: preview.previewDigest}), {code: 'PROJECT_HOST_BUSY', status: 409});
     assert.equal(store.db.prepare('SELECT total_changes() AS n').get()!.n, before);
     gate.resolve(); await pending.promise;
     assert.equal(drafts.isBusy(), false);
