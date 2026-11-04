@@ -22,6 +22,7 @@ import {IMAGE_MODELS, IMAGE_FIXED_OPTIONS, imageSchemas, imageOptionsSchema,
   imageProfileResponseSchema, imageProfilesResponseSchema, isImageProfilesResponse} from '../packages/contracts/src/images.ts';
 import {DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION,
   customImageModelSchema} from '../packages/contracts/src/image-settings.ts';
+import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2} from '../packages/contracts/src/generation-image-settings.ts';
 import {DEFAULT_COMFY_IMAGE_CONFIGURATION, COMFY_IMAGE_OPTIONS, comfyCheckpointSchema,
   comfyImageOptionsSchema} from '../packages/contracts/src/comfy-images.ts';
 import {createClient, operationDefinition} from '../packages/client/src/index.ts';
@@ -383,8 +384,11 @@ test('real HTTP, CLI and official MCP discover the same revisions without provid
       headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`}, body: JSON.stringify(input)});
     const body = await response.json(); assert.equal(response.status, 200, JSON.stringify(body)); assert.equal(body.ok, true); return body.data;
   }
+  const customConnectionId=randomUUID(),customV2={...DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2,enabled:true,baseUrl:customConfiguration.baseUrl,model:customConfiguration.model};
   for (let i = 0; i < 3; i++) {
     for (let revision = 0; revision <= i; revision++) await request(['/api/images/settings','/api/images/custom-settings','/api/images/comfy-settings'][i],
+      i===1?{action:revision?'put':'create',expectedRevision:revision,connectionId:customConnectionId,name:'自定义 Images',configuration:customV2,
+        ...(revision?{expectedConfigurationRevision:revision}:{}),secret:revision?{action:'keep'}:{action:'replace',storage:'persistent',value:'SYNTHETIC_PROFILE_SECRET'}}:
       {expectedRevision: revision, configuration: configurations[i], ...(i === 2 ? {} : {secret: revision ? {action: 'keep'} :
         {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_PROFILE_SECRET'}})});
   }

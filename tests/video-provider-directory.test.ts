@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp, readFile, realpath, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {createVideoSettings} from '../packages/business/src/video/settings.ts';
+import {createVideoSettingsV2} from '../packages/business/src/video/settings-v2.ts';
 import {listVideoConnections} from '../packages/business/src/video/generation.ts';
 import {newVideoConnection} from '../apps/web/src/video-settings.ts';
 import {readGenerationProviderDirectory} from '../apps/web/src/video-provider-directory.ts';
@@ -19,7 +19,7 @@ const asOf = '2026-10-20';
 test('a corrupt private video file degrades only its directory and a repaired service restores discovery', async t => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-video-directory-')));
   const options = {directory: path.join(root, 'video-settings'), privateRoot: root};
-  let settings = await createVideoSettings(options);
+  let settings = await createVideoSettingsV2(options);
   t.after(async () => {await settings.close(); await rm(root, {recursive: true, force: true});});
   const configuration = newVideoConnection('minimax'); configuration.enabled = true;
   await settings.put({action: 'save', expectedRevision: 0, configuration, secret: {action: 'replace', storage: 'session', value: 'synthetic-video-directory-key'}});
@@ -37,7 +37,7 @@ test('a corrupt private video file degrades only its directory and a repaired se
   assert.equal(findGenerationProvider(healthy.providers, 'minimax', configuration.id)?.connectionId, configuration.id);
   await settings.close();
   await writeFile(path.join(options.directory, 'settings.json'), '{corrupt-private-video-file', {mode: 0o600});
-  settings = await createVideoSettings(options);
+  settings = await createVideoSettingsV2(options);
   await assert.rejects(settings.get(), {code: 'VIDEO_SETTINGS_CORRUPT'});
   const degraded = await readGenerationProviderDirectory(call);
   assert.equal(degraded.videoUnavailable, true);
@@ -48,7 +48,7 @@ test('a corrupt private video file degrades only its directory and a repaired se
   assert.ok(!degraded.providers.some(provider => provider.connectionId), 'Previously discovered connections must not survive a directory failure');
   await settings.close();
   await writeFile(path.join(options.directory, 'settings.json'), original, {mode: 0o600});
-  settings = await createVideoSettings(options);
+  settings = await createVideoSettingsV2(options);
   const repaired = await readGenerationProviderDirectory(call);
   assert.equal(repaired.videoUnavailable, false);
   assert.equal(findGenerationProvider(repaired.providers, 'minimax', configuration.id)?.connectionId, configuration.id);

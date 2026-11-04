@@ -9,7 +9,7 @@ export const settingsRedesignMessages = {
   'redesign.settings.backupInstructions': { 'zh-Hans': '备份与恢复说明', 'zh-Hant': '備份與還原說明', en: 'Backup and restore instructions', ja: 'バックアップと復元の手順' },
   'redesign.settings.workspace': { 'zh-Hans': '工作区', 'zh-Hant': '工作區', en: 'Workspace', ja: 'ワークスペース' },
   'redesign.settings.video-tools': { 'zh-Hans': '视频工具', 'zh-Hant': '影片工具', en: 'Video tools', ja: '動画ツール' },
-  'redesign.settings.models': { 'zh-Hans': '模型与服务', 'zh-Hant': '模型與服務', en: 'Models and services', ja: 'モデルとサービス' },
+  'redesign.settings.models': { 'zh-Hans': '生成服务', 'zh-Hant': '生成服務', en: 'Generation services', ja: '生成サービス' },
   'redesign.settings.providers': { 'zh-Hans': '服务商', 'zh-Hant': '服務商', en: 'Providers', ja: 'プロバイダー' },
   'redesign.settings.agent': { 'zh-Hans': 'Mio', 'zh-Hant': 'Mio', en: 'Mio', ja: 'Mio' },
   'redesign.settings.extensions': { 'zh-Hans': '扩展', 'zh-Hant': '擴充功能', en: 'Extensions', ja: '拡張機能' },
@@ -45,4 +45,7 @@ export const settingsRedesignMessages = {
   "redesign.settings.liveControlled": {"zh-Hans": "由本地服务启动配置控制；修改 MIOON_ENABLE_LIVE_PROVIDER 后重启服务生效", "zh-Hant": "由本機服務啟動設定控制；修改 MIOON_ENABLE_LIVE_PROVIDER 後重新啟動服務生效", "en": "Controlled at local server startup; restart after changing MIOON_ENABLE_LIVE_PROVIDER", "ja": "ローカルサーバーの起動設定で制御します。MIOON_ENABLE_LIVE_PROVIDER の変更後は再起動してください"},
   "redesign.settings.checking": {"zh-Hans": "正在检测…", "zh-Hant": "正在偵測…", "en": "Checking…", "ja": "確認中…"},
   "redesign.settings.statusUnknown": {"zh-Hans": "尚未检测", "zh-Hant": "尚未偵測", "en": "Not checked", "ja": "未確認"},
+  "redesign.settings.separateKeys": {"zh-Hans": "每家生成服务单独填写密钥，与 Mio 的密钥互不通用。", "zh-Hant": "每家生成服務需分別填寫金鑰，與 Mio 的金鑰不共用。", "en": "Enter a separate key for each generation service. Mio uses its own key.", "ja": "生成サービスごとにキーを入力してください。Mio のキーとは別に管理されます。"},
+  "redesign.settings.liveDisabled": {"zh-Hans": "真实生成已关闭，连接设置仍可保存。", "zh-Hant": "真實生成已關閉，仍可儲存連線設定。", "en": "Live generation is off. Connection settings can still be saved.", "ja": "実サービス生成はオフです。接続設定は引き続き保存できます。"},
+  "redesign.settings.openLiveGeneration": {"zh-Hans": "去打开", "zh-Hant": "前往開啟", "en": "Turn it on", "ja": "有効にする"},
 } as const satisfies MessageCatalog;

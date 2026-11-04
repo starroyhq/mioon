@@ -49,11 +49,11 @@ test('missing initial slot retains the existing agent default for legacy native 
 
 for (const page of ['general', 'workspace', 'video-tools', 'models', 'extensions', 'shortcuts', 'about'] as const) test(`native ${page} entry opens its actual page without selecting or changing a connection`, async () => {
   const f = fixture({ initial: { settingsSlot: page } }), captured = f.registry.capture();
-  assert.equal(f.navigation.page, page); assert.equal(f.navigation.selected, 'agent');
+  assert.equal(f.navigation.page, page === 'extensions' ? 'models' : page); assert.equal(f.navigation.selected, 'agent');
   assert.deepEqual(f.registry.capture(), captured); assert.equal(f.confirmations.length, 0);
   assert.equal(await f.navigation.select('custom'), true);
   f.navigation.receive(context({ settingsSlot: page, settingsVersion: 2 })); await tick();
-  assert.equal(f.navigation.page, page); assert.equal(f.navigation.selected, 'custom');
+  assert.equal(f.navigation.page, page === 'extensions' ? 'models' : page); assert.equal(f.navigation.selected, 'custom');
   assert.deepEqual(f.registry.capture(), captured); assert.equal(f.confirmations.length, 0);
 });
 
@@ -322,4 +322,14 @@ test('web disposal revokes pending close and denies stale open or page actions a
   assert.equal(await (f.navigation.open as unknown as (slot?: string)=>Promise<boolean>)(), false); assert.equal(await f.navigation.selectPage('general'), false);
   f.navigation.activate(); answer.resolve(true); assert.equal(await pending, false);
   assert.equal(f.navigation.opened, true); assert.equal(f.navigation.page, 'custom'); assert.equal(f.navigation.selected, 'custom');
+});
+
+test('retired extension intentions normalize on initial native context, later requests and web navigation', async () => {
+  const native = fixture({initial: {settingsSlot: 'extensions'}}); assert.equal(native.navigation.page, 'models');
+  await native.navigation.selectPage('official'); native.navigation.receive(context({settingsSlot: 'extensions', settingsVersion: 2})); await tick();
+  assert.equal(native.navigation.page, 'models'); assert.equal(native.navigation.selected, 'official');
+  const registry = createSettingsNavigationRegistry(), web = createWebSettingsNavigation({registry, confirm: async () => true});
+  assert.equal(await web.open('extensions'), true); assert.equal(web.page, 'models'); await web.selectPage('comfy');
+  assert.equal(await web.selectPage('extensions'), true); assert.equal(web.page, 'models'); assert.equal(web.selected, 'comfy');
+  native.navigation.dispose(); web.dispose();
 });

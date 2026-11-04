@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
 import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2} from '../packages/contracts/src/generation-image-settings.ts';
 import type {CustomImageConnectionV2} from '../packages/contracts/src/generation-image-settings.ts';
 import {createCustomImageSettingsV2, validateCustomImageSettingsV2Envelope} from '../packages/business/src/images/custom-settings-v2.ts';
 
 const configuration = {...structuredClone(DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2), enabled: true, baseUrl: 'https://images.example.com/v1', model: 'same-model'};
-const create = (expectedRevision = 0, name = 'A', value = 'synthetic-key-A', storage = 'session') => ({expectedRevision, name, configuration, secret: {action: 'replace', storage, value}});
+const create = (expectedRevision = 0, name = 'A', value = 'synthetic-key-A', storage = 'session') => ({expectedRevision, connectionId: randomUUID(), name, configuration, secret: {action: 'replace', storage, value}});
 const expected = (item: CustomImageConnectionV2) => ({connectionId: item.connectionId, configurationRevision: item.configurationRevision, configuration: item.configuration});
 const put = (expectedRevision: number, item: CustomImageConnectionV2, patch: Record<string, unknown> = {}) => ({expectedRevision, connectionId: item.connectionId,
   expectedConfigurationRevision: item.configurationRevision, name: item.name, configuration: item.configuration, secret: {action: 'keep'}, ...patch});
@@ -112,16 +113,17 @@ for (const outcome of ['candidate', 'missing', 'foreign', 'unreadable'] as const
   }
 });
 
-test('an uncertain create never allocates or saves a second UUID until a fresh owner reads the committed collection', async t => {
-  const file = memory(); let saves = 0, allocations = 0;
+test('an uncertain create keeps its draft UUID and never saves a second service until a fresh owner reads the committed collection', async t => {
+  const file = memory(); let saves = 0;
   const persistence = {load: file.load, save: async (value: unknown): Promise<void> => {saves++; await file.save(value); throw Error('synthetic-lost-ack');}};
-  const settings = await createCustomImageSettingsV2({persistence, createConnectionId: () => {allocations++; return '00000000-0000-4000-8000-000000000001';}});
+  const settings = await createCustomImageSettingsV2({persistence}), input = create();
   t.after(() => settings.close());
+  await assert.rejects(settings.create(input), {code: 'IMAGE_SETTINGS_SAVE_FAILED'});
   await assert.rejects(settings.create(create()), {code: 'IMAGE_SETTINGS_SAVE_FAILED'});
-  await assert.rejects(settings.create(create()), {code: 'IMAGE_SETTINGS_SAVE_FAILED'});
-  assert.equal(saves, 1); assert.equal(allocations, 1);
+  assert.equal(saves, 1);
   const restarted = await createCustomImageSettingsV2({persistence: file}); t.after(() => restarted.close());
   const collection = await restarted.get(); assert.equal(collection.revision, 1); assert.equal(collection.connections.length, 1);
+  assert.equal(collection.connections[0].connectionId, input.connectionId);
   assert.equal((await restarted.acquire(expected(collection.connections[0]))).apiKey, null);
 });
 

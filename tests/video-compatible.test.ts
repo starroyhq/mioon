@@ -9,6 +9,7 @@ import path from 'node:path';
 import {crc32,deflateSync} from 'node:zlib';
 import {createConfiguredVideoProvider} from '../packages/business/src/video/runtime.ts';
 import {createVideoSettings} from '../packages/business/src/video/settings.ts';
+import {createVideoSettingsV2} from '../packages/business/src/video/settings-v2.ts';
 import {compatibleVideoSize} from '../packages/business/src/video/adapters.ts';
 import {createCompatibleVideoSdkClient} from '../packages/business/src/video/compatible-sdk.ts';
 import {createPinnedVideoFetch,isUndispatchedVideoNetworkFailure} from '../packages/business/src/video/network.ts';
@@ -22,7 +23,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import type {JobRecord,ServiceRow} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
-import {defaultVideoModels,normalizeCompatibleVideoBaseUrl,parseVideoBinding,videoConnectionConfigurationSchema,videoConnectionEndpoint,videoOutputHosts} from '../packages/contracts/src/video-providers.ts';
+import {defaultVideoModels,normalizeCompatibleVideoBaseUrl,parseVideoBinding,videoConnectionConfigurationSchema,videoConnectionEndpoint,videoOutputHosts,VIDEO_PROVIDER_NAMES} from '../packages/contracts/src/video-providers.ts';
 import type {VideoConnectionConfiguration,VideoExecutionBinding} from '../packages/contracts/src/video-providers.ts';
 
 const BASE='https://api.example.com/v1',KEY='synthetic-compatible-key';
@@ -280,7 +281,9 @@ test('test connection reads /models with the key and maps only the outcome',asyn
 });
 
 test('the check route sends a draft key only to the normalized draft origin and a saved key only to its own origin',async t=>{
-  const f=await settingsFixture(t),config=configuration(),official={...configuration(),providerId:'minimax' as const,region:'global',models:defaultVideoModels('minimax')};delete (official as {baseUrl?:string}).baseUrl;
+  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-v2-check-'))),settings=await createVideoSettingsV2({directory:path.join(root,'video-settings'),privateRoot:root});
+  t.after(async()=>{await settings.close();await rm(root,{recursive:true,force:true});});
+  const f={settings}, {archived:ignored,...config}=configuration(),official={...config,id:randomUUID(),providerId:'minimax' as const,name:VIDEO_PROVIDER_NAMES.minimax,region:'global',models:defaultVideoModels('minimax')};void ignored;delete (official as {baseUrl?:string}).baseUrl;
   await f.settings.put({action:'save',expectedRevision:0,configuration:config,secret:{action:'replace',value:KEY,storage:'session'}});
   await f.settings.put({action:'save',expectedRevision:1,configuration:official,secret:{action:'replace',value:'synthetic-official',storage:'session'}});
   const calls:string[]=[],keys:Array<string|null>=[];
@@ -305,10 +308,10 @@ test('the web client accepts only the closed check result shape',()=>{
   for(const value of [{result:'ok',message:'echo'},{result:'other'},{result:'http_error',httpStatus:99},null,'ok'])assert.throws(()=>safeCompatibleCheck(value),{code:'INVALID_RESPONSE'});
 });
 
-test('a compatible connection runs end to end: one multipart POST, status, /content download, one decoded version',async t=>{
+test('a v2 compatible connection runs end to end: one multipart POST, status, /content download, one decoded version',async t=>{
   const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-compatible-e2e-'))),video=path.join(root,'fixture.mp4');
   await promisify(execFile)('ffmpeg',['-v','error','-f','lavfi','-i','color=c=teal:s=360x640:r=24','-t','4','-c:v','libx264','-pix_fmt','yuv420p','-threads','1','-y',video]);
-  const bytes=await readFile(video),store=openStore(root),settings=await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root});
+  const bytes=await readFile(video),store=openStore(root),settings=await createVideoSettingsV2({directory:path.join(root,'video-settings'),privateRoot:root});
   const calls:Array<{url:string;method:string;authorization:string|null;body?:string}>=[];
   const videoFetch=(async(input:string|URL|Request,init?:RequestInit)=>{
     const url=String(input),method=init?.method??'GET',authorization=new Headers(init?.headers).get('authorization');
@@ -324,7 +327,7 @@ test('a compatible connection runs end to end: one multipart POST, status, /cont
   let worker:ReturnType<typeof startWorker>|null=null;
   t.after(async()=>{await worker?.stop();await services.drain();await settings.close();store.close();await rm(root,{recursive:true,force:true});});
   await services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
-  const config=configuration({outputHosts:['cdn.example.com']});
+  const {archived:legacyArchive,...config}=configuration({outputHosts:['cdn.example.com']});void legacyArchive;
   await settings.put({action:'save',expectedRevision:0,configuration:config,secret:{action:'replace',value:KEY,storage:'session'}});
   const project=await services.call('project.create',{name:'Compatible integration'}) as ServiceRow;
   const shot=await services.call('shot.create',{projectId:project.id,title:'Compatible shot',prompt:'Synthetic shapes move.',aspectRatio:'9:16',duration:4,referenceAssetIds:[]}) as ServiceRow;

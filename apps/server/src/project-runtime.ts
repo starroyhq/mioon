@@ -19,9 +19,11 @@ import {resolveProjectMediaFile} from '@mioon/business/project-media-storage';
 import type { Store as Store } from '@mioon/business/store-contract';
 import { ownsStoreLock, assertProjectStore } from '@mioon/business/store-runtime';
 import { createEditTasks } from '@mioon/business/edit-tasks';
-import { createCompatibleImageGateway,createLiveImageGateway } from '@mioon/business/images/gateway';
-import { createCustomImageSettings,createImageSettings } from '@mioon/business/images/settings';
-import { createCustomImageSettingsFile,createImageSettingsFile } from '@mioon/business/images/settings-file';
+import { createLiveImageGateway,createCompatibleImageGatewayV2 } from '@mioon/business/images/gateway';
+import { createImageSettings } from '@mioon/business/images/settings';
+import { createImageSettingsFile } from '@mioon/business/images/settings-file';
+import { createCustomImageSettingsV2 } from '@mioon/business/images/custom-settings-v2';
+import { createCustomImageSettingsV2File } from '@mioon/business/images/custom-settings-v2-file';
 import { createLastProject,readLastProjectTarget } from '@mioon/business/last-project';
 import { boundedShutdown } from '@mioon/business/operation-lifecycle';
 import { isProjectStore } from '@mioon/business/project-file/index';
@@ -29,7 +31,8 @@ import { createProjectPackageService } from '@mioon/business/project-package/ser
 import type { ServiceApplicationPorts } from '@mioon/business/services';
 import { readOwnedTimelineAsset } from '@mioon/business/timeline-sources';
 import { createUiPreferences } from '@mioon/business/ui-preferences';
-import { createVideoSettings } from '@mioon/business/video/settings';
+import { createVideoSettingsV2 } from '@mioon/business/video/settings-v2';
+import { createVideoSettingsV2File } from '@mioon/business/video/settings-v2-file';
 import { createWorkspaceConfiguration } from '@mioon/business/workspace-configuration';
 import { AppError,isTimelineRenderRecord } from '@mioon/contracts';
 import { readPrivateFile,validateManagedDirectory,validateManagedFile,validatePrivateDirectory,writePrivateFileAtomic } from '@mioon/contracts/private-storage';
@@ -61,8 +64,8 @@ type HttpHandler = (req: IncomingMessage, res: ServerResponse, url: URL, address
 type Services = ReturnType<typeof createServices>;
 type ServiceCall = (operation: string, input: unknown, context?: Record<string, unknown>) => Promise<unknown>;
 type ImageSettings = Awaited<ReturnType<typeof createImageSettings>>;
-type CustomImageSettings = Awaited<ReturnType<typeof createCustomImageSettings>>;
-type VideoSettings = Awaited<ReturnType<typeof createVideoSettings>>;
+type CustomImageSettings = Awaited<ReturnType<typeof createCustomImageSettingsV2>>;
+type VideoSettings = Awaited<ReturnType<typeof createVideoSettingsV2>>;
 type ComfySettings = Awaited<ReturnType<typeof createComfySettings>>;
 type LastProject = ReturnType<typeof createLastProject>;
 type WorkspacePreferences = ReturnType<typeof createWorkspacePreferences>;
@@ -164,20 +167,21 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
       }});
     imageSettings = settings?.image ?? await createImageSettings({persistence:createImageSettingsFile({directory:path.join(appRoot,'image-settings'),privateRoot:appRoot}),
       ...(imageSecretCodec?{secretCodec:imageSecretCodec,storage:()=>imageSecretCodec.storage()}: {})});
-    customImageSettings = settings?.customImage ?? await createCustomImageSettings({persistence:createCustomImageSettingsFile({directory:path.join(appRoot,'image-settings'),privateRoot:appRoot}),
+    customImageSettings = settings?.customImage ?? await createCustomImageSettingsV2({persistence:createCustomImageSettingsV2File({directory:path.join(appRoot,'image-settings'),privateRoot:appRoot}),
       ...(imageSecretCodec?{secretCodec:imageSecretCodec,storage:()=>imageSecretCodec.storage()}: {})});
-    videoSettings = settings?.video ?? await createVideoSettings({directory:path.join(appRoot,'video-settings'),privateRoot:appRoot,signal:shutdown.signal,
+    videoSettings = settings?.video ?? await createVideoSettingsV2({directory:path.join(appRoot,'video-settings'),privateRoot:appRoot,signal:shutdown.signal,
+      persistence:createVideoSettingsV2File({directory:path.join(appRoot,'video-settings'),privateRoot:appRoot}),
       ...(videoSecretCodec?{secretCodec:videoSecretCodec,storage:()=>videoSecretCodec.storage()}: {})});
     // Evaluate at every real I/O boundary, including desktop's port:0 binding.
     // This process knows its backend listener, not unrelated frontend processes.
     const comfyReservedPorts = (): Set<number> => new Set([port, serverPort()].filter((value): value is number => value !== undefined && Number.isInteger(value) && value > 0));
     comfySettings = settings?.comfy ?? await createComfySettings({directory:path.join(appRoot,'comfy-settings'),privateRoot:appRoot,reservedPorts:comfyReservedPorts});
     const {connector:comfyConnector,availability:comfyModuleAvailability} = composeOfficialComfyModule(comfyModule,()=>createComfyConnector({reservedPorts:comfyReservedPorts,...(comfyNetwork ? {networkDeps:{httpRequest:comfyNetwork.httpRequest}} : {})}));
-    const composed = createServices(ordinaryStore, providers, {...(serviceApplication?{application:serviceApplication}:{}),env:providerEnv,signal: shutdown.signal,videoSettings,agentAuthorizations,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
+    const composed = createServices(ordinaryStore, providers, {...(serviceApplication?{application:serviceApplication}:{}),env:providerEnv,signal: shutdown.signal,videoSettings,agentAuthorizations,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettingsV2:customImageSettings,customGateway:createCompatibleImageGatewayV2({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
     services = composed;
     serviceCall = (operation, input, context) => composed.call(operation, input, context);
     serviceDrain = () => composed.drain();
-    imageHttp=createImageHttp({settings:imageSettings,customSettings:customImageSettings,approve:composed.imageApproval,reject:composed.imageRejection,signal:shutdown.signal});
+    imageHttp=createImageHttp({settings:imageSettings,customSettings:customImageSettings,generationServices:composed.generationImageServices,approve:composed.imageApproval,reject:composed.imageRejection,signal:shutdown.signal});
     videoHttp=createVideoHttp({settings:videoSettings,signal:shutdown.signal});
     comfyHttp=createComfyHttp({settings:comfySettings,connector:comfyConnector,availability:comfyModuleAvailability,signal:shutdown.signal});
     }

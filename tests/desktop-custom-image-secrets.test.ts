@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {createCipheriv, createDecipheriv, randomUUID} from 'node:crypto';
 import {setImmediate as nextTurn} from 'node:timers/promises';
-import {createDesktopImageSecretCodec} from '../apps/desktop/src/image-secret-store.ts';
+import {createDesktopImageSecretCodec,validateDesktopImageSecretPlaintext} from '../apps/desktop/src/image-secret-store.ts';
 import {createDesktopSecretCodec} from '../apps/desktop/src/secret-store.ts';
 import {createImageSecretBroker, createImageSecretClient} from '../apps/desktop/src/image-secret-broker.ts';
-import {createImageSettings, createCustomImageSettings, IMAGE_CREDENTIAL_ACQUIRE, validateImageSecretPlaintext} from '../packages/business/src/images/settings.ts';
+import {createImageSettings, IMAGE_CREDENTIAL_ACQUIRE} from '../packages/business/src/images/settings.ts';
+import {createCustomImageSettingsV2,customImageCredentialBindingV2,validateCustomImageSettingsV2Envelope} from '../packages/business/src/images/custom-settings-v2.ts';
+import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2,CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE} from '../packages/contracts/src/generation-image-settings.ts';
+import type {CustomImageConnectionV2} from '../packages/contracts/src/generation-image-settings.ts';
 import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION, DEFAULT_IMAGE_CONFIGURATION, CUSTOM_IMAGE_SETTINGS_NAMESPACE, IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.ts';
 
 const APP_ID = 'app.starroy.mioon.dev', SENTINEL = 'synthetic-custom-vault-key';
@@ -15,11 +18,12 @@ type BrokerOptions = Parameters<typeof createImageSecretBroker>[0];
 type ImageSettingsOptions = Parameters<typeof createImageSettings>[0];
 interface AsyncImageCodec {storage(): unknown; encrypt(plaintext: unknown): Promise<string>; decrypt(ciphertext: unknown): Promise<string>; close(): void}
 const imageCodec = (options: ImageCodecOptions): AsyncImageCodec => createDesktopImageSecretCodec(options) as unknown as AsyncImageCodec;
-const config = {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION, enabled: true, baseUrl: 'https://images.example.com/v1', model: 'custom-image'};
-const binding = JSON.stringify([CUSTOM_IMAGE_SETTINGS_NAMESPACE, config.providerId, config.connectionId, config.profileId, config.baseUrl, config.model, config.options]);
-const wrapper = {version: 1, namespace: CUSTOM_IMAGE_SETTINGS_NAMESPACE, binding, value: SENTINEL};
+const config = {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2, enabled: true, baseUrl: 'https://images.example.com/v1', model: 'custom-image'},connectionId=randomUUID();
+const binding = customImageCredentialBindingV2(connectionId,config);
+const wrapper = {version: 2, namespace: CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE,connectionId,binding,value: SENTINEL};
 const plaintext = JSON.stringify(wrapper);
 const expected = (value: {revision: number; configuration: unknown}) => ({expectedRevision: value.revision, configuration: value.configuration});
+const customExpected=(value:CustomImageConnectionV2)=>({connectionId:value.connectionId,configurationRevision:value.configurationRevision,configuration:value.configuration});
 interface FakeImageVault {
   isAsyncEncryptionAvailable(): Promise<boolean>;
   encryptStringAsync(value: string): Promise<Buffer>;
@@ -75,7 +79,7 @@ test('custom plaintext validation rejects arbitrary profiles, incomplete or nonc
   const vault = fakeVault(), codec = codecFor(vault), legacy = createDesktopSecretCodec({safeStorage: vault, appId: APP_ID, platform: 'darwin'});
   const mutateBinding = (change: (values: unknown[]) => unknown)=> JSON.stringify({...wrapper, binding: JSON.stringify(change(JSON.parse(binding)))});
   const bad = [SENTINEL, JSON.stringify({...wrapper, namespace: 'mioon.agent.v1'}), JSON.stringify({...wrapper, namespace: 'mioon.images.compatible.v1'}),
-    JSON.stringify({...wrapper, extra: SENTINEL}), JSON.stringify({...wrapper, version: 2}), JSON.stringify({...wrapper, binding: []}),
+    JSON.stringify({...wrapper, extra: SENTINEL}), JSON.stringify({...wrapper, version: 1}), JSON.stringify({...wrapper, binding: []}),
     JSON.stringify({...wrapper, binding: ' ' + binding}), JSON.stringify({...wrapper, value: {secret: SENTINEL}}), JSON.stringify({...wrapper, value: SENTINEL + '\n'}),
     JSON.stringify({...wrapper, value: 'x'.repeat(4097)}), 'x'.repeat(16385)];
   const bindingMutations: Array<[number, unknown]> = [[0, IMAGE_SETTINGS_NAMESPACE], [1, 'openai'], [2, 'arbitrary'], [3, 'chat-completions'],
@@ -85,7 +89,7 @@ test('custom plaintext validation rejects arbitrary profiles, incomplete or nonc
   }
   bad.push(mutateBinding((values: unknown[]) => [...values, 'unexpected']));
   for (const plain of bad) {
-    assert.throws(() => validateImageSecretPlaintext(plain), safe);
+    assert.throws(() => validateDesktopImageSecretPlaintext(plain), safe);
     await assert.rejects(codec.encrypt(plain), safe);
     const encrypted = await legacy.encrypt(plain);
     await assert.rejects(codec.decrypt(encrypted), safe);
@@ -116,32 +120,44 @@ for (const platform of ['linux', 'darwin'] as const) test('two utility engines s
   const vault = fakeVault(), pair = connected(vault, platform); t.after(() => pair.close());
   const officialFile = memory(), customFile = memory(), options = {secretCodec: pair.client, storage: pair.client.storage};
   const official = await createImageSettings({persistence: officialFile, ...options} as unknown as ImageSettingsOptions); t.after(() => official.close());
-  let custom = await createCustomImageSettings({persistence: customFile, ...options} as unknown as ImageSettingsOptions); t.after(() => custom.close());
+  let custom = await createCustomImageSettingsV2({persistence: customFile, ...options}); t.after(() => custom.close());
   const a = await official.put({expectedRevision: 0, configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, secret: {action: 'replace', storage: 'persistent', value: 'synthetic-official'}});
   const savedOfficial = structuredClone(officialFile.value);
-  const b = await custom.put({expectedRevision: 0, configuration: config, secret: {action: 'replace', storage: 'persistent', value: SENTINEL}});
+  const b = (await custom.create({expectedRevision: 0,connectionId,name:'Custom',configuration: config, secret: {action: 'replace', storage: 'persistent', value: SENTINEL}})).connections[0];
   safe(customFile.value); safe(b); assert.deepEqual(officialFile.value, savedOfficial);
-  assert.equal((await custom[IMAGE_CREDENTIAL_ACQUIRE](expected(b))).apiKey, SENTINEL);
+  assert.equal((await custom.acquire(customExpected(b))).apiKey, SENTINEL);
   assert.equal((await official[IMAGE_CREDENTIAL_ACQUIRE](expected(a))).apiKey, 'synthetic-official');
-  await custom.close(); custom = await createCustomImageSettings({persistence: customFile, ...options});
-  assert.equal((await custom[IMAGE_CREDENTIAL_ACQUIRE](expected(b))).apiKey, SENTINEL);
+  await custom.close(); custom = await createCustomImageSettingsV2({persistence: customFile, ...options});
+  assert.equal((await custom.acquire(customExpected(b))).apiKey, SENTINEL);
   vault.isEncryptionAvailable = () => false;
-  await assert.rejects(async () => custom.put({expectedRevision: 1, configuration: config, secret: {action: 'replace', storage: 'persistent', value: SENTINEL}}), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
-  assert.equal((await custom.get()).secret.storage, 'persistent'); assert.deepEqual(officialFile.value, savedOfficial);
-  const session = await custom.put({expectedRevision: 1, configuration: config, secret: {action: 'replace', storage: 'session', value: SENTINEL}});
-  assert.equal(session.secret.storage, 'session'); assert.equal(customFile.value!.secret, null); safe(customFile.value);
-  await custom.close(); custom = await createCustomImageSettings({persistence: customFile, ...options});
-  assert.deepEqual((await custom.get()).secret, {configured: false, storage: 'none'});
+  const update={expectedRevision:1,connectionId,expectedConfigurationRevision:1,name:'Custom',configuration:config};
+  await assert.rejects(async () => custom.put({...update,secret: {action: 'replace', storage: 'persistent', value: SENTINEL}}), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
+  assert.equal((await custom.get()).connections[0].secret.storage, 'persistent'); assert.deepEqual(officialFile.value, savedOfficial);
+  const session = (await custom.put({...update,secret: {action: 'replace', storage: 'session', value: SENTINEL}})).connections[0];
+  assert.equal(session.secret.storage, 'session'); assert.equal(validateCustomImageSettingsV2Envelope(customFile.value).connections[0].secret, null); safe(customFile.value);
+  await custom.close(); custom = await createCustomImageSettingsV2({persistence: customFile, ...options});
+  assert.deepEqual((await custom.get()).connections[0].secret, {configured: false, storage: 'none'});
 });
 
 test('copied ciphertext from another Images slot or custom recipient never yields its key from a settings engine', async t => {
   const pair = connected(); t.after(() => pair.close());
   const copied = await pair.client.encrypt(plaintext);
-  const wrongConfig = {...config, model: 'different-image'};
-  const wrongBinding = JSON.stringify([CUSTOM_IMAGE_SETTINGS_NAMESPACE, config.providerId, config.connectionId, config.profileId, config.baseUrl, wrongConfig.model, config.options]);
+  const wrongConfig = {...config, baseUrl: 'https://other-images.example.com/v2'};
+  const wrongBinding = customImageCredentialBindingV2(connectionId,wrongConfig);
   const persistence = memory();
-  await persistence.save({version: 1, namespace: CUSTOM_IMAGE_SETTINGS_NAMESPACE, revision: 1, configuration: wrongConfig, secret: {binding: wrongBinding, encrypted: copied}});
-  const settings = await createCustomImageSettings({persistence, secretCodec: pair.client, storage: pair.client.storage} as unknown as ImageSettingsOptions); t.after(() => settings.close());
-  const snapshot = await settings.get(); assert.equal(snapshot.storage.persistentAvailable, false); safe(snapshot);
-  await assert.rejects(settings[IMAGE_CREDENTIAL_ACQUIRE](expected(snapshot)), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
+  await persistence.save({version: 2, namespace: CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE, revision: 1,deletedConnectionIds:[],connections:[{connectionId,name:'Custom',configurationRevision:1,configuration: wrongConfig, secret: {binding: wrongBinding, encrypted: copied}}]});
+  const settings = await createCustomImageSettingsV2({persistence, secretCodec: pair.client, storage: pair.client.storage}); t.after(() => settings.close());
+  const snapshot = await settings.get();safe(snapshot);
+  await assert.rejects(settings.acquire(customExpected(snapshot.connections[0])), {code: 'IMAGE_SETTINGS_CORRUPT'});
+});
+
+test('legacy custom v1 credentials are rejected before OS encryption and legacy file reset never asks the broker to decrypt',async t=>{
+  const vault=fakeVault(),codec=codecFor(vault),oldConfiguration={...DEFAULT_CUSTOM_IMAGE_CONFIGURATION,enabled:true,baseUrl:config.baseUrl,model:config.model};
+  const oldBinding=JSON.stringify([CUSTOM_IMAGE_SETTINGS_NAMESPACE,oldConfiguration.providerId,'custom',oldConfiguration.profileId,oldConfiguration.baseUrl,oldConfiguration.model,oldConfiguration.options]);
+  const oldPlaintext=JSON.stringify({version:1,namespace:CUSTOM_IMAGE_SETTINGS_NAMESPACE,binding:oldBinding,value:SENTINEL});
+  let encrypts=0,decrypts=0;vault.encryptString=()=>{encrypts++;throw Error(SENTINEL);};vault.decryptString=()=>{decrypts++;throw Error(SENTINEL);};
+  await assert.rejects(codec.encrypt(oldPlaintext),{code:'IMAGE_SETTINGS_VALIDATION'});assert.equal(encrypts,0);
+  const persistence=memory();await persistence.save({version:1,namespace:CUSTOM_IMAGE_SETTINGS_NAMESPACE,revision:1,configuration:oldConfiguration,secret:{binding:oldBinding,encrypted:Buffer.from('synthetic-old-cipher').toString('base64')}});
+  const settings=await createCustomImageSettingsV2({persistence,secretCodec:codec,storage:{persistentAvailable:true,sessionScope:'server',reasonCode:null}});t.after(()=>settings.close());
+  assert.deepEqual((await settings.get()).connections,[]);assert.equal((await settings.get()).notice,'LEGACY_CUSTOM_IMAGE_SETTINGS_RESET');assert.equal(decrypts,0);
 });

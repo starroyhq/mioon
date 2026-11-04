@@ -3,6 +3,8 @@ import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import type { ProjectWindowContext, ProjectWindowSettingsSlot } from './desktop-window-client.ts';
 import type { SettingsNavigationRegistry } from './settings-navigation-state.ts';
 export type SettingsPage = ProjectWindowSettingsSlot;
+/** Keep native fixed intentions valid while the retired category joins generation services. */
+export const normalizeSettingsPage = (page: SettingsPage): SettingsPage => page === 'extensions' ? 'models' : page;
 export type SettingsConnectionPage = 'agent' | 'official' | 'custom' | 'comfy';
 export const isSettingsConnectionPage = (page: SettingsPage): page is SettingsConnectionPage => page === 'agent' || page === 'official' || page === 'custom' || page === 'comfy';
 /** Slot requests own no form data. All form owners stay mounted and a later
@@ -11,12 +13,13 @@ export function createSettingsWindowNavigation({ context: initial, registry, con
   context: ProjectWindowContext; registry: SettingsNavigationRegistry; confirm: (message: string | DisplayMessage) => Promise<boolean>; onChange?: () => void;
 }) {
   let active = true, context = initial, intent = 0, seenVersion = initial.settingsVersion;
-  let page: SettingsPage = initial.settingsSlot ?? 'agent';
+  let page: SettingsPage = normalizeSettingsPage(initial.settingsSlot ?? 'agent');
   // A menu can request any fixed settings page. Only connection pages may
   // select a retained provider form; General must not mount or read one.
   let selected: SettingsConnectionPage = isSettingsConnectionPage(page) ? page : 'agent';
   let notice: string | DisplayMessage = '';
   async function selectPage(next: SettingsPage): Promise<boolean> {
+    next = normalizeSettingsPage(next);
     const serial = ++intent;
     if (!active || context.quitting) return false;
     if (next === page) return true;

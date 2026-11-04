@@ -45,6 +45,8 @@ import {isEntityAddressedOperation, rpcPathFor} from '../../contracts/src/projec
 import {isProjectId} from '../../contracts/src/project-file.ts';
 import {projectBackupSchemas,isProjectBackupOperation, isProjectBackupResponse} from '../../contracts/src/project-backups.ts';
 import {isProjectVersionOperation, isProjectVersionResponse} from '../../contracts/src/project-version-operations.ts';
+import {generationImageServiceSchemas, isGenerationImageServiceResponse} from '../../contracts/src/generation-image-services.ts';
+import type {GenerationImageServiceOperation} from '../../contracts/src/generation-image-services.ts';
 
 export {schemas, descriptions, resolveConnection, effectAnnotations};
 export const VERSION = applicationPackage.version;
@@ -277,6 +279,7 @@ export interface DoctorReport {
   providers: unknown;
 }
 export interface Client {
+  generationImages<T = unknown>(operation: GenerationImageServiceOperation, input: unknown, options?: RpcOptions): Promise<T>;
   trustedAssetMedia<T = unknown>(operation: TrustedAssetMediaOperation, input: unknown, options?: RpcOptions): Promise<T>;
   rpc<T = unknown>(operation: string, input?: unknown, options?: RpcOptions): Promise<T>;
   capabilities<T = unknown>(options?: RpcOptions): Promise<T>;
@@ -528,5 +531,15 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     }
     return envelope.data;
   }
-  return {rpc, capabilities, doctor, watch, trustedAssetMedia};
+  async function generationImages<T = unknown>(operation: GenerationImageServiceOperation, input: unknown, options: RpcOptions = {}): Promise<T> {
+    if(!Object.hasOwn(generationImageServiceSchemas,operation))throw new ClientError('UNKNOWN_OPERATION','Unknown image service action.');
+    const parsed=generationImageServiceSchemas[operation].safeParse(input);
+    if(!parsed.success)throw new ClientError('VALIDATION_ERROR','Invalid image service arguments.');
+    const projectId='projectId' in parsed.data?parsed.data.projectId:parsed.data.input.projectId;
+    if(options.projectId!==undefined&&options.projectId!==projectId)throw new ClientError('VALIDATION_ERROR','Image service project address mismatch.');
+    const envelope=await request(projectApiPath(projectId,'images','services'),{body:{operation,input:parsed.data},signal:options.signal,timeoutMs:options.timeoutMs}) as {data:unknown};
+    if(!isGenerationImageServiceResponse(operation,parsed.data,envelope.data))throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid image service response.',{details:'input' in parsed.data?{operation,requestId:parsed.data.input.requestId,submissionMayHaveSucceeded:true}:{}});
+    return envelope.data as T;
+  }
+  return {rpc, capabilities, doctor, watch, trustedAssetMedia, generationImages};
 }

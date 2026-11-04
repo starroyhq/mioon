@@ -1,6 +1,8 @@
 # Explicit Images configuration-revision discovery
 
-2026-10-10. Implementation baseline: `090a8e3c2cdaa0f0d75cf918916067cb4ca70f6d`.
+Original discovery checkpoint: 2026-10-10. Implementation baseline:
+`090a8e3c2cdaa0f0d75cf918916067cb4ca70f6d`. Current custom service selection uses
+the separate [v2 generation-service contract](GENERATION-SERVICES.md).
 
 ## Public contract
 
@@ -10,19 +12,30 @@
 mioon image profile list --input '{"includeSettingsRevision":true}'
 ```
 
-MCP uses `image_profile_list` with the same JSON; HTTP uses the existing authenticated RPC envelope. Omitted input, `{}`, or `includeSettingsRevision:false` preserves the original response and field order. The parser does not inject false into empty client requests, so those requests remain compatible with older strict-empty backends.
+MCP uses `image_profile_list` with the same JSON; HTTP uses the existing authenticated RPC envelope. Omitted input, `{}`, or `includeSettingsRevision:false` omits revision fields. The parser does not inject false into empty client requests, so those requests remain compatible with older strict-empty backends. The fixed catalog does not expose a custom service UUID or select a service.
 
-Explicit true may add only `settingsRevision` to an already-listed official OpenAI, custom-compatible Images or local ComfyUI profile. It is a positive safe integer taken from the same safe settings snapshot used for that profile's model/options/availability. Mock never gets the field. Zero, missing, malformed or unreadable revisions are omitted; incomplete custom/Comfy entries remain omitted as before. A valid revision can be visible while a profile is disabled or not ready; it grants neither readiness nor permission.
+Explicit true may add only `settingsRevision` to an already-listed official OpenAI, custom-compatible Images or local ComfyUI profile. It is a positive safe integer from the same safe snapshot used for that profile's model/options/availability. Mock never gets the field. Zero, missing or invalid revision values are not invented; incomplete custom/Comfy entries are omitted. A valid revision can be visible while a profile is disabled or not ready; it grants neither readiness nor permission.
+
+With exactly one custom v2 entry, the legacy profile can expose that entry's configuration revision. With multiple entries, discovery groups complete entries by model, marks those groups disabled and may expose the collection revision as advisory metadata. That value does not identify a service or authorize preparation. Two services may share a model and address; callers must not infer a selected UUID from this grouping. Settings owners with pending or failed writes can reject a read rather than supply stale authorization.
+
+The response allows up to ten distinct custom model groups beside the three singleton providers (Mock, official Images and Comfy). Multiple custom groups must all be disabled and share the same optional advisory revision. Duplicate models, additional singleton entries, an eleventh custom group, or an enabled ambiguous group are invalid. Older response decoders enforcing one row per provider need updating for this metadata output; the request and fixed tool input schema are unchanged. Status labels remain bounded to 120 UTF-16 units without splitting a valid surrogate pair; the full service name stays unchanged in its settings.
 
 The client binds revision-bearing responses to an explicitly opted-in request. Unknown fields, invalid values and revisions on Mock remain invalid. No destination, credentials, secret storage metadata or settings object is exposed. No acquisition/decryption, network check, workflow inspection, task creation, database/file write or preparation occurs.
 
 ## Review flow and limits
 
-For a new user-requested image intent, select the matching provider item and pass its returned revision to the existing `image.review.prepare`. Keep the complete original input and nested stable request ID. Missing metadata requires configuration help, never guessing a revision or borrowing another slot's value.
+For official OpenAI or local ComfyUI, use the matching profile's returned revision with the existing `image.review.prepare`. The legacy custom entry also remains available when the collection contains exactly one service; the backend resolves its UUID and checks that service. With two or more services, it rejects with “有多个自定义图片服务，请在生成面板里选择。” The total entry count applies, including disabled entries; enabled state, model and ordering are not selectors.
 
-Discovery is a point-in-time read. Subsequent settings changes still fail the existing prepare/approval/dispatch fences. It does not approve requests, grant a model permission, change a retained review, create a new key or retry generation. User approval remains the existing private application action. Default older callers and historical receipts are unchanged; no migration or namespace is added.
+Web callers use `client.generationImages('image.service.list', {projectId})`, select the exact returned `connectionId` and `configurationRevision`, then call `generationImages('image.service.review.prepare', {input,connectionId,configurationRevision})`. These calls use `POST /api/projects/{projectId}/images/services`, outside fixed RPC/CLI/MCP/Mio catalogs. See the [complete preparation example](IMAGE-COMPATIBLE.md#public-request-preparation-private-paid-approval). Explicit CLI/MCP/Mio service selection is a 0.1.x follow-up.
 
-## Acceptance
+Keep the complete original input, nested stable request ID and selected service identity after uncertainty. Missing metadata requires configuration help, never guessing a revision or borrowing another service's value.
+
+Discovery is a point-in-time read. Subsequent settings changes still fail the prepare/approval/dispatch fences. It does not approve requests, grant model permission, change a retained review, create a new key, migrate a settings file or retry generation. The explicit-service review freezes its own UUID, full configuration and revision, so changes to another service do not redirect it. User approval remains the private project application action; historical receipts keep their original identity.
+
+## Historical acceptance: 2026-10-10
+
+The following numbers and native smoke describe the original discovery checkpoint,
+not acceptance of custom v2 settings, explicit UUID selection or G1a native behavior.
 
 Test-driven regression and strict contracts/business/HTTP/CLI/official-MCP checks passed: **12/12 focused**, then **281/281 affected**, 0 skipped (overlapping counts). The affected gate includes old catalog/client/Images/Comfy checks and updated quickstart command contracts. Independent source review found no blocking issue.
 

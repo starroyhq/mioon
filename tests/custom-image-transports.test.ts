@@ -22,8 +22,8 @@ import {startServer} from '../apps/server/src/index.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {createClient} from '../packages/client/src/index.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, isImageTaskResponse} from '../packages/contracts/src/images.ts';
-import {DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION,
-  CUSTOM_IMAGE_SETTINGS_NAMESPACE, IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.ts';
+import {DEFAULT_IMAGE_CONFIGURATION,IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.ts';
+import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2,CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE} from '../packages/contracts/src/generation-image-settings.ts';
 import {isImageReviewResponse} from '../packages/contracts/src/image-reviews.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import type { PathLike } from 'fs';
@@ -33,7 +33,8 @@ const token = 'synthetic-custom-images-local-http-token';
 const officialKey = 'SYNTHETIC_OFFICIAL_SLOT_NOT_A_REAL_KEY';
 const customKey = 'SYNTHETIC_CUSTOM_SLOT_NOT_A_REAL_KEY';
 const rotatedKey = 'SYNTHETIC_ROTATED_CUSTOM_SLOT_NOT_A_REAL_KEY';
-const customConfiguration = {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION, enabled: true,
+const customConnectionId=randomUUID();
+const customConfiguration = {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2, enabled: true,
   baseUrl: 'https://images.example.test/tenant-a/api/v9', model: 'vendor/art-v3:synthetic'};
 const changedUrlConfiguration = {...customConfiguration, baseUrl: 'https://other-images.example.test/tenant-b/v2'};
 const changedModelConfiguration = {...changedUrlConfiguration, model: 'another-vendor/draw-v4:synthetic'};
@@ -175,7 +176,9 @@ async function fixture(t: test.TestContext) {
     },
     async settings(configuration: { enabled?: boolean; providerId: unknown; profileId?: unknown; baseUrl?: unknown; model?: unknown; options?: unknown; connectionId?: unknown; }, expectedRevision: number, secret: { action: string; storage?: string; value?: string; }, expectedCode?: unknown) {
       const route = configuration.providerId === 'openai' ? '/api/images/settings' : '/api/images/custom-settings';
-      const response = await f.request(route, {method: 'PUT', input: {configuration, expectedRevision, secret}});
+      const response = await f.request(route, {method: 'PUT', input:configuration.providerId==='openai'?{configuration,expectedRevision,secret}:
+        {action:expectedRevision?'put':'create',expectedRevision,connectionId:customConnectionId,name:'自定义 Images',configuration,secret,
+          ...(expectedRevision?{expectedConfigurationRevision:expectedRevision}:{})}});
       assert.equal(response.body.ok, !expectedCode, JSON.stringify(response.body));
       if (expectedCode) assert.equal(response.body.error.code, expectedCode); else assert.equal(response.status, 200);
       return response.body.data;
@@ -272,12 +275,13 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
   await t.test('custom settings and private review actions require authentication; no public approval or settings operation exists', async () => {
     for (const [route, method, input] of [
       ['/api/images/custom-settings', 'GET'], ['/api/images/custom-settings', 'PUT', {}],
+      [projectApiPath(project.id,'images','services'),'POST',{operation:'image.service.list',input:{projectId:project.id}}],
       [projectApiPath(project.id, 'images', 'reviews', 'approve'), 'POST', {}], [projectApiPath(project.id, 'images', 'reviews', 'reject'), 'POST', {}],
     ] as const) {
       assert.equal((await f.request(route, {method, input, authenticated: false})).status, 401);
       assert.equal((await f.request(route, {method, input, headers: {origin: 'https://untrusted.example.test'}})).status, 403);
     }
-    for (const operation of ['image.review.approve', 'image.review.reject', 'image.customSettings.get', 'image.customSettings.put', 'image.settings.get'])
+    for (const operation of ['image.review.approve', 'image.review.reject', 'image.customSettings.get', 'image.customSettings.put', 'image.settings.get','image.service.list','image.service.review.prepare'])
       await f.rpc(operation, {}, 'UNKNOWN_OPERATION');
     assert.equal((await f.request('/api/images/custom-settings?unexpected=1')).status, 400);
     assert.equal((await f.request('/api/images/custom-settings', {method: 'POST', input: {}})).status, 405);
@@ -289,8 +293,7 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
     mockAck = await f.client.rpc('image.generate', mockInput); mockFinished = await f.settled(mockAck);
     mockRows = f.retained(mockAck); mockAsset = await f.asset(mockAck); assert.equal(mockAsset.version.isMock, true);
     const emptyCustom = (await f.request('/api/images/custom-settings')).body.data;
-    assert.deepEqual(emptyCustom.configuration, DEFAULT_CUSTOM_IMAGE_CONFIGURATION); assert.equal(emptyCustom.revision, 0);
-    assert.equal(emptyCustom.secret.configured, false);
+    assert.deepEqual(emptyCustom.connections, []); assert.equal(emptyCustom.revision, 0);assert.equal(emptyCustom.notice,null);
     const official = await f.settings({...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, 0, {action: 'replace', storage: 'session', value: officialKey});
     assert.equal(official.revision, 1); assert.equal(official.secret.storage, 'session'); assert.deepEqual(f.counts(), [0, 0, 0]);
     officialFile = await readFile(path.join(f.root, 'image-settings/settings.json'), 'utf8');
@@ -306,12 +309,14 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
   await t.test('custom GET/save makes no DNS or provider POST and cannot consume or alter the official slot', async () => {
     const counts = f.counts(), official = (await f.request('/api/images/settings')).body.data;
     const saved = await f.settings(customConfiguration, 0, {action: 'replace', storage: 'session', value: customKey});
-    assert.equal(saved.revision, 1); assert.deepEqual(saved.configuration, customConfiguration); assert.equal(saved.secret.storage, 'session');
+    assert.equal(saved.revision, 1); assert.deepEqual(saved.connections[0].configuration, customConfiguration); assert.equal(saved.connections[0].secret.storage, 'session');
+    assert.equal(saved.connections[0].connectionId,customConnectionId);assert.equal(saved.connections[0].configurationRevision,1);
     assert.deepEqual((await f.request('/api/images/custom-settings')).body.data, saved);
     assert.deepEqual((await f.request('/api/images/settings')).body.data, official);
     assert.equal(await readFile(path.join(f.root, 'image-settings/settings.json'), 'utf8'), officialFile);
     const persisted = JSON.parse(await readFile(path.join(f.root, 'image-settings/custom-settings.json'), 'utf8'));
-    assert.equal(persisted.namespace, CUSTOM_IMAGE_SETTINGS_NAMESPACE); assert.equal(persisted.secret, null);
+    assert.equal(persisted.version,2);assert.equal(persisted.namespace,CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE);assert.equal(persisted.connections[0].secret,null);
+    assert.equal(persisted.connections[0].connectionId,customConnectionId);assert.deepEqual(persisted.deletedConnectionIds,[]);
     const profiles = await f.client.rpc('image.profile.list');
     assert.deepEqual(profiles.items.map(value => value.providerId).sort(), ['mock', 'openai', 'openai-compatible']);
     assert.equal(profiles.items.find((value: { providerId: string; }) => value.providerId === 'openai-compatible')!.model, customConfiguration.model);
@@ -320,16 +325,18 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
     assert.deepEqual(f.counts(), counts); assert.equal(await filesContain(f.root, [officialKey, customKey, rotatedKey]), false);
   });
 
-  await t.test('CLI and official MCP can prepare/read immutable v2 reviews but cannot approve, reveal keys, or POST', async () => {
+  await t.test('unchanged single-service CLI and official MCP prepare/read immutable UUID-bound reviews but cannot approve, reveal keys, or POST', async () => {
     const counts = f.counts(); customInput = inputFor(project.id);
     customReview = await cli(['image', 'review', 'prepare', '--input', JSON.stringify({input: customInput, settingsRevision: 1})], f.env) as FixtureImageReview;
     assert.ok(isImageReviewResponse(customReview)); assert.equal(customReview.state, 'pending');
     assert.deepEqual(customReview.configuration, customConfiguration);
+    assert.ok('connectionId'in customReview);assert.equal(customReview.connectionId,customConnectionId);assert.equal(customReview.configurationRevision,1);
     assert.equal(customReview.destination, `${customConfiguration.baseUrl}/images/generations`);
     assert.deepEqual(await cli(['image', 'review', 'get', '--input', JSON.stringify({projectId: project.id, reviewId: customReview.id})], f.env), customReview);
     const catalog = await cli(['schema'], f.env);
     assert.ok(catalog.operations.some((value: { operation: string; }) => value.operation === 'image.review.prepare'));
     assert.ok(!catalog.operations.some((value: { operation: string; }) => /image\.(?:review\.(?:approve|reject)|(?:custom)?settings\.)/i.test(value.operation)));
+    assert.ok(!catalog.operations.some((value:{operation:string})=>value.operation.startsWith('image.service.')));
     for (const verb of ['approve', 'reject']) await cli(['image', 'review', verb, '--input', JSON.stringify(approvalFor(customReview))], f.env, 'UNKNOWN_OPERATION');
     const client = new Client({name: 'synthetic-custom-images-acceptance', version: '1.0.0'}, {capabilities: {}});
     const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')],
@@ -339,6 +346,7 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
       const tools = (await client.listTools()).tools;
       assert.ok(tools.some(value => value.name === 'image_review_prepare'));
       assert.ok(!tools.some(value => /image_(?:review_(?:approve|reject)|(?:custom_?)?settings_)/i.test(value.name)));
+      assert.ok(!tools.some(value=>value.name.startsWith('image_service_')));
       for (const [name, args] of [['image_review_prepare', {input: customInput, settingsRevision: 1}],
         ['image_review_get', {projectId: project.id, reviewId: customReview.id}]] as const) {
         const result = (await client.callTool({name, arguments: args}) as import("@modelcontextprotocol/sdk/types.js").CallToolResult);
@@ -352,7 +360,8 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
       }
     } finally {await client.close();}
     const raw = f.use(project.id, db => db.prepare('SELECT canonicalIntent FROM image_reviews WHERE id=?').get(customReview.id)!.canonicalIntent);
-    const intent = JSON.parse((raw as string)); assert.equal(intent.schemaVersion, 2); assert.deepEqual(intent.configuration, customConfiguration);
+    const intent = JSON.parse((raw as string)); assert.equal(intent.schemaVersion, 6); assert.deepEqual(intent.configuration, customConfiguration);
+    assert.equal(intent.connectionId,customConnectionId);assert.equal(intent.configurationRevision,1);
     const before = f.snapshot(project.id);
     await f.rpc('image.generate', customInput, 'IMAGE_REVIEW_REQUIRED');
     assert.equal(f.snapshot(project.id), before); assert.deepEqual(f.counts(), counts);
@@ -399,19 +408,18 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
     assert.equal(f.snapshot(project.id), before); assert.deepEqual(f.counts(), counts.map(value => value + 1));
   });
 
-  await t.test('changing recipient or model cannot keep the original key or approve old pending intent', async () => {
-    const counts = f.counts(), previous = (await f.request('/api/images/custom-settings')).body.data;
-    await f.settings(changedUrlConfiguration, 1, {action: 'keep'}, 'IMAGE_SETTINGS_CONFLICT');
-    assert.deepEqual((await f.request('/api/images/custom-settings')).body.data, previous);
-    const changed = await f.settings(changedUrlConfiguration, 1, {action: 'replace', storage: 'session', value: rotatedKey});
-    assert.equal(changed.revision, 2); await f.approve(stale, 'IMAGE_REVIEW_SETTINGS_CHANGED');
+  await t.test('changing recipient disconnects its key while same-address model changes keep it; both invalidate old pending intent', async () => {
+    const counts = f.counts();
+    const cleared=await f.settings(changedUrlConfiguration,1,{action:'keep'});
+    assert.equal(cleared.revision,2);assert.deepEqual(cleared.connections[0].secret,{configured:false,storage:'none'});
+    const changed = await f.settings(changedUrlConfiguration, 2, {action: 'replace', storage: 'session', value: rotatedKey});
+    assert.equal(changed.revision, 3); await f.approve(stale, 'IMAGE_REVIEW_SETTINGS_CHANGED');
     assert.deepEqual(await f.prepare(stale.input, 1), stale);
-    const pending = await f.prepare(inputFor(project.id, changedUrlConfiguration), 2);
-    await f.settings(changedModelConfiguration, 2, {action: 'keep'}, 'IMAGE_SETTINGS_CONFLICT');
-    assert.deepEqual((await f.request('/api/images/custom-settings')).body.data, changed);
-    const updated = await f.settings(changedModelConfiguration, 2, {action: 'replace', storage: 'session', value: rotatedKey});
-    assert.equal(updated.revision, 3); await f.approve(pending, 'IMAGE_REVIEW_SETTINGS_CHANGED');
-    assert.deepEqual(await f.prepare(pending.input, 2), pending);
+    const pending = await f.prepare(inputFor(project.id, changedUrlConfiguration), 3);
+    const updated = await f.settings(changedModelConfiguration, 3, {action:'keep'});
+    assert.equal(updated.revision, 4);assert.equal(updated.connections[0].secret.configured,true);assert.equal(updated.connections[0].secret.storage,'session');
+    assert.deepEqual((await f.request('/api/images/custom-settings')).body.data,updated);await f.approve(pending, 'IMAGE_REVIEW_SETTINGS_CHANGED');
+    assert.deepEqual(await f.prepare(pending.input, 3), pending);
     assert.equal(await readFile(path.join(f.root, 'image-settings/settings.json'), 'utf8'), officialFile);
     assert.deepEqual(f.counts(), counts);
   });
@@ -461,14 +469,14 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
   });
 
   await t.test('restart drops both session keys and retains pending and unknown custom work without re-POST or implicit approval', async () => {
-    const pendingInput = inputFor(project.id, changedModelConfiguration), pending = await f.prepare(pendingInput, 3);
-    const input = inputFor(project.id, changedModelConfiguration), review = await f.prepare(input, 3), counts = f.counts();
+    const pendingInput = inputFor(project.id, changedModelConfiguration), pending = await f.prepare(pendingInput, 4);
+    const input = inputFor(project.id, changedModelConfiguration), review = await f.prepare(input, 4), counts = f.counts();
     f.network.holdResponse = true; const ack = await f.approve(review); await f.settled(ack, 'dispatching');
     assert.deepEqual(f.counts(), counts.map(value => value + 1));
     assert.deepEqual(f.network.posts.at(-1), {hostname: 'other-images.example.test', path: '/tenant-b/v2/images/generations', key: rotatedKey, body: wireBody(input)});
     await f.restart(); f.network.holdResponse = false;
     for (const route of ['/api/images/settings', '/api/images/custom-settings']) {
-      const settings = (await f.request(route)).body.data; assert.equal(settings.secret.configured, false); assert.equal(settings.secret.storage, 'none');
+      const settings = (await f.request(route)).body.data,secret=route==='/api/images/custom-settings'?settings.connections[0].secret:settings.secret;assert.equal(secret.configured,false);assert.equal(secret.storage,'none');
     }
     const unknown = await f.client.rpc('image.task.get', {projectId: project.id, taskId: ack.id});
     assert.equal(unknown.state, 'outcome_unknown'); assert.equal(unknown.dispatched, true);
@@ -479,8 +487,8 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
       assert.deepEqual(await f.approve(review), ack);
       assert.deepEqual((await f.client.rpc('image.request.get', {projectId: project.id, requestId: input.requestId}))!.response, ack);
       assert.deepEqual(await f.client.rpc('image.generate', input), ack);
-      assert.deepEqual(await f.prepare(input, 3), retained);
-      assert.deepEqual(await f.prepare(pendingInput, 3), pending);
+      assert.deepEqual(await f.prepare(input, 4), retained);
+      assert.deepEqual(await f.prepare(pendingInput, 4), pending);
     }
     await f.approve(pending, 'IMAGE_SETTINGS_NOT_CONFIGURED');
     await f.client.rpc('image.profile.list'); await f.client.rpc('image.review.list', {projectId: project.id});

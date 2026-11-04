@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {mkdtemp, mkdir, readFile, writeFile, readdir, rm, stat, rename, link, symlink, chmod} from 'node:fs/promises';
@@ -9,7 +10,7 @@ import {CUSTOM_IMAGE_SETTINGS_NAMESPACE, IMAGE_SETTINGS_NAMESPACE, DEFAULT_CUSTO
 import {CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE, CUSTOM_IMAGE_SETTINGS_V2_LIMITS, DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2} from '../packages/contracts/src/generation-image-settings.ts';
 
 const configuration = {...structuredClone(DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2), enabled: true, baseUrl: 'https://images.example.com/v1', model: 'same-model'};
-const create = (expectedRevision = 0) => ({expectedRevision, name: 'A', configuration, secret: {action: 'replace', storage: 'session', value: 'synthetic-session-only'}});
+const create = (expectedRevision = 0) => ({expectedRevision, connectionId: randomUUID(), name: 'A', configuration, secret: {action: 'replace', storage: 'session', value: 'synthetic-session-only'}});
 const legacy = () => ({version: 1, namespace: CUSTOM_IMAGE_SETTINGS_NAMESPACE, revision: 73, configuration: {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION}, secret: null});
 async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'g1-custom-images-v2-')); t.after(() => rm(root, {recursive: true, force: true}));
@@ -47,7 +48,7 @@ test('recognized v1 bytes and inode survive repeated reads until the first expli
 
 test('unknown, corrupt, oversized or foreign files never become resettable legacy settings', async t => {
   const f = await fixture(t); await mkdir(f.directory, {mode: 0o700});
-  for (const content of ['{"bad":', JSON.stringify({...legacy(), version: 3}), JSON.stringify({...legacy(), namespace: IMAGE_SETTINGS_NAMESPACE}),
+  for (const content of ['{"bad":', '\uFEFF'+JSON.stringify(legacy()), JSON.stringify({...legacy(), version: 3}), JSON.stringify({...legacy(), namespace: IMAGE_SETTINGS_NAMESPACE}),
     JSON.stringify({...legacy(), secret: {value: 'synthetic-key'}}), JSON.stringify(legacy()) + ' '.repeat(IMAGE_SETTINGS_LIMITS.envelopeBytes),
     JSON.stringify(empty()) + ' '.repeat(CUSTOM_IMAGE_SETTINGS_V2_LIMITS.envelopeBytes)]) {
     await writeFile(f.file, content, {mode: 0o600});

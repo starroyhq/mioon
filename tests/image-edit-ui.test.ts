@@ -201,10 +201,11 @@ function renderer(f: Fixture): Harness {
     if (name === '@mioon/contracts') return contracts;
     if (name === './image-generation.ts') return {...logic, createImageGenerationSession: (value: Record<string, unknown>) => logic.createImageGenerationSession({...value, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {}} as never)};
     if (name === './workspace-visibility.tsx') return {useWorkspaceVisibility: () => visible};
-    if (name === './ImageSettings.tsx' || name === './ComfyImageSettings.tsx') return {__esModule: true, default: name};
+    if (name === './ImageSettings.tsx' || name === './CustomImageServicesSettings.tsx' || name === './ComfyImageSettings.tsx') return {__esModule: true, default: name};
     if (name === './SettingsNavigationSlot.tsx') return {__esModule: true, default: 'SettingsNavigationSlot'};
     if (name === './ComfyImageDetails.tsx') return primitive;
     if (name === './image-settings.ts') return {createImageSettingsClient: (value: {slot?: string}) => value?.slot === 'custom' ? f.customSettingsClient : f.settingsClient};
+    if (name === './generation-image-services.ts') return {createGenerationImageServicesClient: () => ({list: async () => []})};
     if (name === './comfy-image-settings.ts') return {comfyConnectorAvailabilityDescriptor, createComfyImageSettingsClient: () => ({read: async () => {throw Error('Not configured');}})};
     if (name === './icons.tsx') return {default: 'Icon'};
     if (name.endsWith('.css')) return {};

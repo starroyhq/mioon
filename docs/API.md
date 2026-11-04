@@ -525,15 +525,22 @@ storage uses a narrow main-process OS codec, never renderer/preload decryption
 or plaintext fallback. Saving settings neither generates nor approves a request.
 The exact official secret-write/read contract is in
 [Images activation](IMAGE-ACTIVATION.md#private-authenticated-http-settings-contract).
-The separate authenticated `GET`/`PUT /api/images/custom-settings` uses the same
-strict `{expectedRevision,configuration,secret}` update and redacted result
-shape. Its configuration adds `connectionId:"custom"`, uses provider
-`openai-compatible`, profile `openai-images-json-png-v1`, a canonical public-DNS
-HTTPS base URL and a bounded ASCII model. See [custom settings](IMAGE-COMPATIBLE.md#exact-private-settings-contract)
-for exact fields and constraints. Saving validates syntax without probing.
-Changing a keyed base URL/model requires explicit removal or a newly entered key;
-the official slot stays untouched. Custom review DTOs additionally retain full
-immutable `configuration` and actual `destination`; official v1 DTOs stay intact.
+The separate authenticated `GET`/`PUT /api/images/custom-settings` manages the
+v2 custom collection. PUT carries action `create`, `put`, `remove` or `batch`,
+the collection revision, and the lowercase draft UUID. Updating/removing an
+existing item also checks its configuration revision. Each configuration keeps
+provider `openai-compatible`, profile `openai-images-json-png-v1`, a canonical
+public-DNS HTTPS URL and a bounded ASCII model. Model changes keep the recipient
+key; an address change with `keep` detaches it. Saving validates syntax without
+probing. See [generation services](GENERATION-SERVICES.md) for fields and limits.
+
+Web/client-only `POST /api/projects/{projectId}/images/services` accepts
+`{operation,input}` for `image.service.list` and `image.service.review.prepare`.
+The latter freezes the explicit connection UUID, its configuration revision,
+full configuration and actual destination. Old no-ID entry points resolve an
+exact single service and reject ambiguous collections. The new operations are
+absent from RPC/CLI/MCP/Mio discovery; both fixed request catalogs remain intact.
+Official and retained custom v1 review DTOs stay readable.
 
 Authenticated `POST /api/images/reviews/approve` and `/reject` each take exactly
 `{projectId,reviewId,expectedRevision}`. Approval returns the original queued
