@@ -1,3 +1,5 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
+import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -23,7 +25,7 @@ function output(calls:AgentTaskToolCall[]):TaskModelOutput{
 test('real Mio subtitle undo retains valid locked format history while unknown operations still fail closed',async t=>{
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-format-mio-undo-'));
  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initialSettings=await settings.get();
- await settings.put({expectedRevision:initialSettings.revision,configuration:{...initialSettings.configuration,protocol:'chat_completions'},secret:{action:'replace',storage:'session',value:'SYNTHETIC_FORMAT_MIO_UNDO_KEY'}});
+ await putTestAgentConfiguration(settings,{expectedRevision:initialSettings.revision,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'session',value:'SYNTHETIC_FORMAT_MIO_UNDO_KEY'}});
  let models=0,timelineRevision=0,inspect!:InspectProject;
  const gateway:TaskGateway=async function*(request){
   request.beforeSubmit?.();models++;
@@ -51,9 +53,9 @@ test('real Mio subtitle undo retains valid locked format history while unknown o
  const populated=await rpc('timeline.clip.add',{projectId,expectedRevision:initialized.body.data.revision,requestId:randomUUID(),assetId,trackId:videoTrack.id,startFrame:0,durationFrames:90});
  assert.equal(populated.status,200,JSON.stringify(populated.body));assert.ok(isTimelineRecord(populated.body.data,{projectId}));timelineRevision=populated.body.data.revision;
  const authorization=await request(prefix);assert.equal(authorization.status,200);assert.ok(object(authorization.body.data)&&object(authorization.body.data.authorization));
- const snapshotSettings=await settings.get(),granted=await request('/api/rpc','POST',{operation:'agent.authorization.grant',input:{requestId:randomUUID(),expectedRevision:authorization.body.data.authorization.revision,expectedSettingsRevision:snapshotSettings.revision,destination:deriveAgentEndpoint(snapshotSettings.configuration),model:snapshotSettings.configuration.model,scope:'project_agent'}});
+ const snapshotSettings=await settings.get(),granted=await request('/api/rpc','POST',{operation:'agent.authorization.grant',input:{requestId:randomUUID(),expectedRevision:authorization.body.data.authorization.revision,expectedSettingsRevision:testAgentExecution(snapshotSettings).revision,destination:deriveAgentEndpoint(testAgentExecution(snapshotSettings).configuration),model:testAgentExecution(snapshotSettings).configuration.model,scope:'project_agent'}});
  assert.equal(granted.status,200,JSON.stringify(granted.body));
- const sent=await request(prefix,'POST',{requestId:randomUUID(),text:'Add two subtitles',expectedSettingsRevision:snapshotSettings.revision});
+ const sent=await request(prefix,'POST',{requestId:randomUUID(),text:'Add two subtitles',expectedSettingsRevision:testAgentExecution(snapshotSettings).revision});
  assert.equal(sent.status,200,JSON.stringify(sent.body));const accepted=agentTaskSnapshotSchema.parse(sent.body.data);
  async function settle():Promise<AgentTaskSnapshot>{
   for(let count=0;count<1000;count++){

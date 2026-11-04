@@ -8,6 +8,9 @@ import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {initializeNodePrivateStorage} from '../packages/node-host/src/private-storage-bootstrap.ts';
 import {createPrivateTemporaryDirectory,validateManagedFile} from '../packages/contracts/src/private-storage.ts';
+import {agentServiceInput,agentSettingsSnapshotSchema} from '../packages/contracts/src/agent-connection-settings.ts';
+import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {testAgentExecution} from './helpers/agent-settings-fixture.ts';
 
 test('native Windows headless backend and separate CLI share private storage, diagnostics and synthetic v2 tool/control receipts',{skip:process.platform!=='win32',timeout:180000},async t=>{
  await initializeNodePrivateStorage();
@@ -31,7 +34,7 @@ test('native Windows headless backend and separate CLI share private storage, di
  t.after(async()=>{await service.close();rmSync(root,{recursive:true,force:true});});
  const env: NodeJS.ProcessEnv={...process.env,MIOON_BASE_URL:service.url,MIOON_TOKEN_FILE:service.tokenFile};delete env.MIOON_TOKEN;delete env.MIOON_CONNECTION_FILE;
  const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url));
- async function cli(words: string[],input: { name?: string; projectId?: unknown; expectedRevision?: unknown; configuration?: unknown; requestId?: `${string}-${string}-${string}-${string}-${string}`; expectedSettingsRevision?: unknown; destination?: unknown; model?: unknown; scope?: string; text?: string; runId?: unknown; }|undefined={},options: { key?: string; flags?: string[]; }|undefined={}){
+ async function cli(words: string[],input: Record<string,unknown>={},options: { key?: string; flags?: string[]; }|undefined={}){
   const child=spawn(process.execPath,[entry,...words,'--input',JSON.stringify(input),...(options.flags??[])],{env,stdio:[options.key===undefined?'ignore':'pipe','pipe','pipe']});
   if(options.key!==undefined)(child.stdin)!.end(options.key);
   let stdout='',stderrBytes=0;(child.stdout)!.setEncoding('utf8').on('data',bytes=>{stdout+=bytes;if(Buffer.byteLength(stdout)>512*1024)child.kill('SIGKILL');});(child.stderr)!.on('data',bytes=>{stderrBytes+=bytes.length;});
@@ -39,7 +42,7 @@ test('native Windows headless backend and separate CLI share private storage, di
   const lines=stdout.trim().split('\n');assert.equal(lines.length,1);const envelope=JSON.parse(lines[0]);assert.deepEqual(result,{code:0,signal:null},JSON.stringify({command:words.join('.'),code:envelope.error?.code,message:envelope.error?.message}));assert.equal(envelope.ok,true);assert.ok(stderrBytes<8192);return envelope.data;
  }
  assert.ok(validateManagedFile(service.tokenFile,{root:path.dirname(service.tokenFile),private:true}));
- const settings=await cli(['agent','settings','get']);assert.equal(settings.secret.configured,false);
+ const settings=agentSettingsSnapshotSchema.parse(await cli(['agent','settings','get']));assert.equal(settings.execution,null);assert.ok(settings.services.every(service=>!service.secret.configured));
  const project=await cli(['project','create'],{name:'Windows isolated native CLI smoke'});assert.match(project.id,/^[a-f0-9-]{36}$/u);
  const listed=await cli(['project','list']);assert.deepEqual(listed.map((value: {id: string})=>value.id),[project.id]);
  const doctor=await cli(['agent','doctor'],{projectId:project.id});assert.equal(doctor.verification,'not_tested');assert.equal(doctor.catalog.valid,true);assert.ok(doctor.catalog.count>0);
@@ -47,10 +50,11 @@ test('native Windows headless backend and separate CLI share private storage, di
  assert.ok(validateManagedFile(path.join(root,'app-library.db'),{root,private:true}));assert.ok(validateManagedFile(service.tokenFile,{root:path.dirname(service.tokenFile),private:true}));assert.equal(modelCalls,0);
  // Only this constructor-injected synthetic generator can answer. This is
  // actual v2 CLI/SQLite/tool execution, never a real vendor/model acceptance.
- const secured=await cli(['agent','settings','secret','set'],{expectedRevision:settings.revision,configuration:settings.configuration},{key:'SYNTHETIC_WINDOWS_SESSION_NO_PROVIDER',flags:['--key-stdin','--storage','session']});
+ const selected=await cli(['agent','settings','set'],{expectedRevision:settings.revision,services:settings.services.map(agentServiceInput),mioSelection:{serviceKey:'openai',modelId:DEFAULT_AGENT_CONFIGURATION.model}});
+ const secured=agentSettingsSnapshotSchema.parse(await cli(['agent','settings','secret','set'],{expectedRevision:selected.revision,serviceKey:'openai'},{key:'SYNTHETIC_WINDOWS_SESSION_NO_PROVIDER',flags:['--key-stdin','--storage','session']}));
  const authorization=await cli(['agent','authorization','list']);
- await cli(['agent','authorization','grant'],{requestId:randomUUID(),expectedRevision:authorization.revision,expectedSettingsRevision:secured.revision,destination:authorization.currentTarget.destination,model:authorization.currentTarget.model,scope:'project_agent'});
- const send={projectId:project.id,requestId:randomUUID(),expectedSettingsRevision:secured.revision,text:'Create one synthetic shot for the isolated Windows task-control test'};
+ await cli(['agent','authorization','grant'],{requestId:randomUUID(),expectedRevision:authorization.revision,expectedSettingsRevision:testAgentExecution(secured).revision,destination:authorization.currentTarget.destination,model:authorization.currentTarget.model,scope:'project_agent'});
+ const send={projectId:project.id,requestId:randomUUID(),expectedSettingsRevision:testAgentExecution(secured).revision,text:'Create one synthetic shot for the isolated Windows task-control test'};
  const accepted=await cli(['agent','task','send'],send);
  const ended=await cli(['agent','task','status'],{projectId:project.id,runId:accepted.run.id});assert.equal(ended.run.status,'completed');assert.equal(ended.changes.length,1);assert.equal(modelCalls,3);
  const control={projectId:project.id,runId:ended.run.id,requestId:randomUUID(),expectedRevision:ended.run.revision};

@@ -50,7 +50,7 @@ export async function composeApplicationRuntime(library: AppLibrary, options: Se
     }
     const authorizations = createAgentAuthorizations({...scope, guards: {ownsLock}, readCurrentTarget: async () => {
       const settings = sanitizeAgentSettingsResult(await agentSettings!.get({selfPort: selfPort()}));
-      return {destination: deriveAgentEndpoint(settings.configuration), model: settings.configuration.model, settingsRevision: settings.revision};
+      const active=settings.execution;return active?{destination:deriveAgentEndpoint(active.configuration),model:active.configuration.model,settingsRevision:active.revision}:null;
     }});
     const image = await createImageSettings({persistence: createImageSettingsFile({directory: path.join(root, 'image-settings'), privateRoot: root}),
       ...(options.imageSecretCodec ? {secretCodec: options.imageSecretCodec, storage: () => options.imageSecretCodec!.storage()} : {})});

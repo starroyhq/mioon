@@ -1,3 +1,4 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -38,7 +39,7 @@ async function fixture(t:TestContext,protocol:AgentProtocol='responses',options:
   const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-project-media-tools-')),store=openStore(root),services=createServices(store,new Map());
   const project=object(await services.call('project.create',{name:'Mio directory tool test'})),projectId=String(project.id);
   const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
-  await settings.put({expectedRevision:0,configuration:{presetId:'ollama',platformId:'local',protocol,model:'qwen3:8b',baseUrl:'http://127.0.0.1:11434'+(protocol==='anthropic_messages'?'':'/v1')},secret:{action:'remove'}});
+  await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:{presetId:'ollama',platformId:'local',protocol,model:'qwen3:8b',baseUrl:'http://127.0.0.1:11434'+(protocol==='anthropic_messages'?'':'/v1')},secret:{action:'remove'}});
   const authorizations=createTestAuthorizations(store,settings);await authorizeTestScope(authorizations,'project_agent');
   const calls:Array<{projectId:string;input:Parameters<MioProjectMediaPort['list']>[1];signal:AbortSignal|undefined}>=[];
   const projectMedia:MioProjectMediaPort={async list(owner,input,context){
@@ -60,18 +61,18 @@ async function fixture(t:TestContext,protocol:AgentProtocol='responses',options:
   function restart(){runtime.close();runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318});}
   return {root,store,projectId,base,tools,calls,prepared,executed,requests,get runtime(){return runtime;},close,restart,
     script(value:Script){script=value;},
-    async send(){return runtime.send(projectId,{requestId:randomUUID(),text:'List the project media directory.',expectedSettingsRevision:(await settings.get()).revision});},
+    async send(){return runtime.send(projectId,{requestId:randomUUID(),text:'List the project media directory.',expectedSettingsRevision:testAgentExecution(await settings.get()).revision});},
     async settle(runId:string){await runtime.drain();return runtime.get(projectId,runId);},
     async resume(runId:string){const current=runtime.get(projectId,runId);return runtime.action(projectId,runId,{requestId:randomUUID(),expectedRevision:current.run.revision,action:'resume'});},
     async frozen(mode:'groups'|'names'){
-      const saved=await settings.get(),history:AgentTaskJson[]=[{role:'user',content:'Continue the frozen directory observation.'}],body=object(JSON.parse(buildTaskModelRequest(saved.configuration,history,selectTaskModelTools(base.list()),4318)));
+      const saved=await settings.get(),history:AgentTaskJson[]=[{role:'user',content:'Continue the frozen directory observation.'}],body=object(JSON.parse(buildTaskModelRequest(testAgentExecution(saved).configuration,history,selectTaskModelTools(base.list()),4318)));
       assert.ok(Array.isArray(body.tools));
       for(const entry of body.tools){
         const wire=object(entry),definition=protocol==='chat_completions'?object(wire.function):wire;if(definition.name!==AGENT_TASK_TOOLS_LOAD_NAME)continue;
         const schema=object(definition[protocol==='anthropic_messages'?'input_schema':'parameters']),properties=object(schema.properties);
         schema.properties={[mode]:{type:'array',items:{type:'string',enum:mode==='groups'?AGENT_TASK_LOADABLE_TOOL_GROUP_IDS:['mioon_asset_range_get']},minItems:1,maxItems:mode==='groups'?AGENT_TASK_LOADABLE_TOOL_GROUP_IDS.length:1},...(properties._mio_step?{_mio_step:properties._mio_step}:{})};schema.required=[mode];
       }
-      const original=JSON.stringify(body),created=runtime.journal.create({projectId,requestId:randomUUID(),text:'Continue the frozen directory observation.',configuration:{...saved.configuration},settingsRevision:saved.revision,context:history});
+      const original=JSON.stringify(body),created=runtime.journal.create({projectId,requestId:randomUUID(),text:'Continue the frozen directory observation.',configuration:{...testAgentExecution(saved).configuration},settingsRevision:testAgentExecution(saved).revision,settingsBinding:testAgentExecution(saved).binding,context:history});
       runtime.journal.beginModelStep(created.run.id,{request:{body:original,history},data:{baseline:runtime.journal.revisionSnapshot(projectId).map(({kind,id,revision})=>({kind,id,revision}))}},[]);
       restart();return {original,sent:await runtime.action(projectId,created.run.id,{requestId:randomUUID(),expectedRevision:runtime.get(projectId,created.run.id).run.revision,action:'resume'})};
     },

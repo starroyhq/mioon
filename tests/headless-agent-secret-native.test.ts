@@ -24,6 +24,7 @@ import {createHeadlessAgentSecretCodec} from ${JSON.stringify(new URL('../apps/s
 import {createAgentSettings,AGENT_CREDENTIAL_ACQUIRE} from ${JSON.stringify(new URL('../packages/business/src/agent/settings.ts',import.meta.url).href)};
 import {createAgentSettingsFile} from ${JSON.stringify(new URL('../packages/business/src/agent/settings-file.ts',import.meta.url).href)};
 import {DEFAULT_AGENT_CONFIGURATION} from ${JSON.stringify(new URL('../packages/business/src/agent/presets.ts',import.meta.url).href)};
+import {putTestAgentConfiguration,testAgentCredential} from ${JSON.stringify(new URL('./helpers/agent-settings-fixture.ts',import.meta.url).href)};
 const synthetic='SYNTHETIC_HEADLESS_NATIVE_NO_PROVIDER';
 await initializeNodePrivateStorage();
 process.once('message',async input=>{
@@ -40,8 +41,8 @@ process.once('message',async input=>{
   if(input.action==='status'){process.send({ok:true,available:codec.storage().persistentAvailable},()=>process.exit(0));return;}
   if(!codec.storage().persistentAvailable){process.send({ok:false,available:false},()=>process.exit(0));return;}
   settings=await createAgentSettings({persistence:createAgentSettingsFile({directory:input.directory}),secretCodec:codec.secretCodec,storage:codec.storage});
-  if(input.action==='save')await settings.put({expectedRevision:0,configuration:DEFAULT_AGENT_CONFIGURATION,secret:{action:'replace',storage:'persistent',value:synthetic}});
-  const credential=await settings[AGENT_CREDENTIAL_ACQUIRE]({expectedRevision:1,configuration:DEFAULT_AGENT_CONFIGURATION});
+  if(input.action==='save')await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:DEFAULT_AGENT_CONFIGURATION,secret:{action:'replace',storage:'persistent',value:synthetic}});
+  const credential=await settings[AGENT_CREDENTIAL_ACQUIRE](testAgentCredential(await settings.get()));
   const matches=credential.apiKey===synthetic;await settings.close();
   process.send({ok:true,matches},()=>process.exit(0));
  }catch{try{await settings?.close();}catch{}codec?.close();process.send({ok:false},()=>process.exit(0));}

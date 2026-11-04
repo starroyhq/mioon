@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
-import {mioSettingsMessages} from '../packages/i18n/src/catalogs/mio-settings.ts';
+import {catalogs} from '../packages/i18n/src/index.ts';
 import {agentTaskErrorKey} from '../apps/web/src/agent-task-errors.ts';
 import type {AgentConnectionTestState} from '../apps/web/src/agent-connection-test.ts';
 
@@ -15,12 +15,12 @@ function text(value:unknown):string {
 function render(state:AgentConnectionTestState) {
   const dates:string[]=[],translationKeys:string[]=[];
   const React={createElement:(type:unknown,props:object|null,...children:unknown[]):Element=>({type,props:{...props,children}}),Fragment:'fragment',
-    useLayoutEffect:()=>{},useRef:()=>({current:null}),useState:()=>[state,()=>{}]};
+    useMemo:(fn:()=>unknown)=>fn(),useLayoutEffect:()=>{},useRef:()=>({current:null}),useState:()=>[state,()=>{}]};
   const module:{exports:{default?:(props:unknown)=>unknown}}={exports:{}};
   const translate=(key:string,values:Record<string,unknown>={})=>{
     translationKeys.push(key);
-    const entry=mioSettingsMessages[key as keyof typeof mioSettingsMessages];
-    let value=entry?entry['zh-Hans']:key;
+    const entry=catalogs[key as keyof typeof catalogs];
+    const translated=entry?.['zh-Hans'];let value=typeof translated==='string'?translated:key;
     for(const [name,replacement] of Object.entries(values))value=value.replaceAll(`{${name}}`,String(replacement));
     return value;
   };
@@ -41,7 +41,7 @@ function render(state:AgentConnectionTestState) {
 test('settings shows the global five-field summary as a diagnostic summary without claiming a current endpoint match',()=>{
   const completedAt='2026-11-02T08:00:00.000Z',latest={completedAt,status:'completed' as const,protocol:'chat_completions' as const,model:'diagnostic-model',errorCode:null};
   const result=render({phase:'idle',latest,review:null,error:null});
-  assert.match(result.text,/最近诊断摘要（chat_completions · diagnostic-model）/);assert.match(result.text,/已记录时间/);assert.match(result.text,/连接正常/);
+  assert.match(result.text,/最近诊断摘要（chat_completions · diagnostic-model）/);assert.match(result.text,/已记录时间/);assert.match(result.text,/连接正常/);assert.match(result.text,/历史诊断；不代表当前设置已通过测试/);
   assert.deepEqual(result.dates,[completedAt]);assert.doesNotMatch(result.text,/a-different-endpoint|another-model|undefined/);
   const failed=render({phase:'idle',latest:{...latest,status:'failed',errorCode:'AGENT_TASK_SETTINGS_CHANGED'},review:null,error:null});
   assert.ok(failed.translationKeys.includes(agentTaskErrorKey('AGENT_TASK_SETTINGS_CHANGED')));

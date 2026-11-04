@@ -94,7 +94,7 @@ export function createAgentConnectionTestSession({ client = createAgentTaskClien
     publish({ phase: 'testing', review: null, error: null });
     let sent: AgentTaskSnapshot;
     try {
-      sent = await client.send(projectId, { requestId: id, text: AGENT_CONNECTION_TEST_TEXT, expectedSettingsRevision: snapshot.settings.revision, ...(locale ? { locale } : {}), diagnostic: { profile: 'text' } });
+      sent = await client.send(projectId, { requestId: id, text: AGENT_CONNECTION_TEST_TEXT, expectedSettingsRevision: snapshot.settings.execution!.revision, ...(locale ? { locale } : {}), diagnostic: { profile: 'text' } });
     } catch (error) {
       if (!current(token)) return;
       if (agentTaskDefinitiveFailure(error)) { publish({ phase: 'idle', error: failureCode(error) }); return; }
@@ -129,10 +129,11 @@ export function createAgentConnectionTestSession({ client = createAgentTaskClien
         const snapshot = await client.list(projectId);
         if (!current(token)) return false;
         if (snapshot.readOnly) { publish({ phase: 'idle', error: 'AGENT_TASK_READ_ONLY' }); return false; }
-        if (snapshot.settings.revision !== settingsRevision) { publish({ phase: 'idle', error: 'AGENT_TASK_SETTINGS_CHANGED' }); return false; }
+        if (!snapshot.settings.execution) { publish({ phase: 'idle', error: 'AGENT_TASK_NOT_CONFIGURED' }); return false; }
+        if (snapshot.settings.execution.revision !== settingsRevision) { publish({ phase: 'idle', error: 'AGENT_TASK_SETTINGS_CHANGED' }); return false; }
         if (!snapshot.authorization.scopes.includes('project_agent')) {
           pending = snapshot;
-          publish({ phase: 'review', review: { projectId, destination: deriveAgentEndpoint(snapshot.settings.configuration), model: snapshot.settings.configuration.model } });
+          publish({ phase: 'review', review: { projectId, destination: deriveAgentEndpoint(snapshot.settings.execution!.configuration), model: snapshot.settings.execution!.configuration.model } });
           return true;
         }
         await send(token, snapshot);
@@ -150,7 +151,7 @@ export function createAgentConnectionTestSession({ client = createAgentTaskClien
         const snapshot = await client.list(reviewed.projectId);
         if (!current(token)) return false;
         pending = null;
-        if (snapshot.settings.revision !== reviewed.settings.revision || deriveAgentEndpoint(snapshot.settings.configuration) !== review.destination || snapshot.settings.configuration.model !== review.model) {
+        if (!snapshot.settings.execution || !reviewed.settings.execution || snapshot.settings.execution.revision !== reviewed.settings.execution.revision || JSON.stringify(snapshot.settings.execution.binding)!==JSON.stringify(reviewed.settings.execution.binding) || deriveAgentEndpoint(snapshot.settings.execution!.configuration) !== review.destination || snapshot.settings.execution!.configuration.model !== review.model) {
           publish({ phase: 'idle', review: null, error: 'AGENT_TASK_SETTINGS_CHANGED' }); return false;
         }
         if (!snapshot.authorization.scopes.includes('project_agent')) { publish({ phase: 'idle', review: null, error: 'AGENT_AUTHORIZATION_REQUIRED' }); return false; }

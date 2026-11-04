@@ -1,3 +1,4 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -37,7 +38,7 @@ async function fixture(t: TestContext, protocol: AgentProtocol = 'chat_completio
   let store = openStore(root), services = createServices(store, new Map()), application = testProjectAppLibrary(store)!;
   const project = object(await services.call('project.create', {name: 'Frozen rules project'})), projectId = String(project.id);
   const settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
-  await settings.put({expectedRevision: 0, configuration: {presetId: 'custom', platformId: 'custom', protocol,
+  await putTestAgentConfiguration(settings,{expectedRevision: 0, configuration: {presetId: 'custom', platformId: 'custom', protocol,
     model: 'synthetic-rules', baseUrl: 'https://harness.example.com'}, secret: {action: 'replace', storage: 'session', value: 'SYNTHETIC_LOCAL_TEST_ONLY'}});
   const authorizations = createTestAuthorizations(() => ({...store}), settings); await authorizeTestScope(authorizations, 'project_agent');
   let rules = createMioProjectRules({store, application, ...rulesOptions}), captureCount = 0;
@@ -54,7 +55,7 @@ async function fixture(t: TestContext, protocol: AgentProtocol = 'chat_completio
   t.after(async () => {runtime.close(); tools.dispose(); await settings.close(); store.close(); rmSync(root, {recursive: true, force: true});});
   return {projectId, root, requests, settings, get store() {return store;}, get application() {return application;}, get runtime() {return runtime;}, get rules() {return rules;}, get captures() {return captureCount;},
     respond(next: typeof respond) {respond = next;}, beforeResponse(next?: () => void) {beforeResponse = next;},
-    async send(extra: Record<string, unknown> = {}) {return runtime.send(projectId, {requestId: randomUUID(), text: 'Current explicit request', expectedSettingsRevision: (await settings.get()).revision, locale: 'en', ...extra});},
+    async send(extra: Record<string, unknown> = {}) {return runtime.send(projectId, {requestId: randomUUID(), text: 'Current explicit request', expectedSettingsRevision: testAgentExecution(await settings.get()).revision, locale: 'en', ...extra});},
     async settle(id: string) {await runtime.drain(); return runtime.journal.snapshot(id);},
     action(snapshot: AgentTaskSnapshot, action: string, extra: Record<string, unknown> = {}) {return runtime.action(projectId, snapshot.run.id, {requestId: randomUUID(), expectedRevision: snapshot.run.revision, action, ...extra});},
     reopen() {runtime.close(); tools.dispose(); store.close(); store = openStore(root); services = createServices(store, new Map()); application = testProjectAppLibrary(store)!; rules = createMioProjectRules({store, application}); tools = createAgentTaskTools({store, services, rules}); runtime = build();},

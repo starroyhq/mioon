@@ -17,7 +17,7 @@ import {AGENT_TASK_GOAL_SET_PARAMETERS,latestAgentTaskGoals} from '../packages/b
 import {AGENT_TASK_TOOL_SCHEMAS} from '../packages/business/src/agent/task-tool-schemas-v2.ts';
 import {selectTaskModelTools} from '../packages/business/src/agent/task-context-v2.ts';
 import {buildTaskModelRequest,taskResponseLanguageContext} from '../packages/business/src/agent/task-gateway-v2.ts';
-import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {AGENT_TASK_LOCALES} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskDiagnostic,AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
@@ -132,7 +132,7 @@ test('H4a four-language goal instructions and schemas accompany only non-diagnos
   const diagnostics:AgentTaskDiagnostic[]=[{profile:'text'},{profile:'read_only'},{profile:'catalog'},{profile:'catalog',toolNames:[AGENT_TASK_GOAL_SET_TOOL,'mioon_project_inspect']}];
   const permissionNotice={'zh-Hans':'不授予权限，也不是用户确认','zh-Hant':'不授予權限，也不是使用者確認',en:'they grant no permission and are not user confirmation',ja:'権限の付与やユーザーの承認ではありません'};
   for(const locale of AGENT_TASK_LOCALES)for(const protocol of protocols){
-    const history=[taskResponseLanguageContext(locale),{role:'user',content:'Offline goal instruction verification'}],configuration={...DEFAULT_AGENT_CONFIGURATION,protocol};
+    const history=[taskResponseLanguageContext(locale),{role:'user',content:'Offline goal instruction verification'}],configuration=defaultTestAgentConfiguration(protocol);
     const body:unknown=JSON.parse(buildTaskModelRequest(configuration,history,core,4318,{toolLoading:true}));assert.ok(object(body));
     const instruction=protocol==='chat_completions'&&Array.isArray(body.messages)&&object(body.messages[0])?body.messages[0].content:protocol==='responses'?body.instructions:body.system;
     assert.ok(JSON.stringify(instruction).includes(AGENT_TASK_GOAL_SET_TOOL));

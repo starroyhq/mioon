@@ -41,7 +41,7 @@ export interface AgentAuthorizations{
   grant(input:unknown):Promise<AgentAuthorizationReceipt>;
   revoke(input:unknown):Promise<AgentAuthorizationReceipt>;
   assertAuthorized(input:unknown):void;
-  snapshot(configuration:AgentEndpointConfiguration&{model:string}):AgentAuthorizationSnapshot;
+  snapshot(configuration:(AgentEndpointConfiguration&{model:string})|null):AgentAuthorizationSnapshot;
 }
 function plain(value:unknown):void{
   if(value===null||typeof value!=='object'||isProxy(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value)))fail('AGENT_AUTHORIZATION_VALIDATION');
@@ -122,7 +122,7 @@ export function createAgentAuthorizations({root,channel='web',storage,guards,rea
       return schedule(async()=>{
         const target=await current(),disk=read(),previous=replay(disk,input.requestId,hash);if(previous)return structuredClone(previous);
         mutation(disk,input.expectedRevision);
-        if(target.settingsRevision!==input.expectedSettingsRevision||target.destination!==input.destination||target.model!==input.model)fail('AGENT_AUTHORIZATION_SETTINGS_CONFLICT');
+        if(!target||target.settingsRevision!==input.expectedSettingsRevision||target.destination!==input.destination||target.model!==input.model)fail('AGENT_AUTHORIZATION_SETTINGS_CONFLICT');
         let grant=disk.authorizations.find(row=>identity(row)===identity(input));
         if(!grant){
           if(disk.authorizations.length>=AGENT_AUTHORIZATION_LIMITS.grants)fail('AGENT_AUTHORIZATION_LIMIT');
@@ -148,7 +148,7 @@ export function createAgentAuthorizations({root,channel='web',storage,guards,rea
       if(!read().authorizations.some(row=>identity(row)===identity(target)))fail('AGENT_AUTHORIZATION_REQUIRED');
     },
     snapshot(configuration){
-      const destination=deriveAgentEndpoint(configuration),disk=read();
+      const disk=read();if(!configuration)return {revision:disk.revision,scopes:[]};const destination=deriveAgentEndpoint(configuration);
       return {revision:disk.revision,scopes:AGENT_AUTHORIZATION_SCOPES.filter(scope=>disk.authorizations.some(row=>identity(row)===identity({destination,model:configuration.model,scope})))};
     },
   };

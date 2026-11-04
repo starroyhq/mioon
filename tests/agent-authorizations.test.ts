@@ -1,3 +1,5 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
+import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm,readFile,writeFile,symlink,stat} from 'node:fs/promises';
@@ -15,14 +17,14 @@ async function fixture(t: TestContext){
   const root=await mkdtemp(path.join(tmpdir(),'mioon-authorizations-'));let store=openStore(root);
   const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
   const initial=await settings.get();
-  await settings.put({expectedRevision:0,configuration:initial.configuration,secret:{action:'replace',storage:'session',value:'synthetic-authorization-secret'}});
+  await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:DEFAULT_AGENT_CONFIGURATION,secret:{action:'replace',storage:'session',value:'synthetic-authorization-secret'}});
   const authorizations=createTestAuthorizations((()=>store) as never,settings);
   t.after(async()=>{store.close();await settings.close();await rm(root,{recursive:true,force:true});});
   return {root,settings,authorizations,get store(){return store;},file:path.join(testProjectAppLibrary(store)!.dataDir,AGENT_AUTHORIZATION_FILENAME),
     reopen(){store.close();store=openStore(root);},
     async input(scope='typed_chat_only'){
       const current=await authorizations.list();return {requestId:randomUUID(),expectedRevision:current.revision,
-        expectedSettingsRevision:current.currentTarget.settingsRevision,destination:current.currentTarget.destination,model:current.currentTarget.model,scope};
+        expectedSettingsRevision:current.currentTarget!.settingsRevision,destination:current.currentTarget!.destination,model:current.currentTarget!.model,scope};
     },
   };
 }
@@ -50,13 +52,13 @@ test('first send is denied; grants persist by exact endpoint/model/scope across 
 test('Messages authorization binds its complete endpoint and protocol changes cannot reuse a CC grant',async t=>{
   for(const presetId of ['custom','minimax']){
   const f=await fixture(t), initial=await f.settings.get();
-  const custom={presetId,platformId:presetId==='custom'?'custom':'china',baseUrl:'https://compat.example.com/anthropic',model:'explicit-model',protocol:'chat_completions' as const};
-  await f.settings.put({expectedRevision:initial.revision,configuration:custom,secret:{action:'keep'}});
+  const custom={presetId,platformId:presetId==='custom'?'custom':'china',baseUrl:presetId==='custom'?'https://compat.example.com/anthropic':'https://api.minimax.cn/v1',model:'explicit-model',protocol:'chat_completions' as const};
+  await putTestAgentConfiguration(f.settings,{expectedRevision:initial.revision,configuration:custom,secret:{action:'keep'}});
   const cc=await f.input();await f.authorizations.grant(cc);f.authorizations.assertAuthorized(target(cc));
   const current=await f.settings.get();
-  await f.settings.put({expectedRevision:current.revision,configuration:{...custom,protocol:'anthropic_messages'},secret:{action:'keep'}});
-  const messages=await f.input();assert.equal(messages.destination,'https://compat.example.com/anthropic/v1/messages');
-  assert.deepEqual(f.authorizations.snapshot((await f.settings.get()).configuration).scopes,[]);
+  await putTestAgentConfiguration(f.settings,{expectedRevision:current.revision,configuration:{...custom,protocol:'anthropic_messages',baseUrl:presetId==='custom'?custom.baseUrl:'https://api.minimax.cn/anthropic'},secret:{action:'keep'}});
+  const messages=await f.input();assert.equal(messages.destination,presetId==='custom'?'https://compat.example.com/anthropic/v1/messages':'https://api.minimax.cn/anthropic/v1/messages');
+  assert.deepEqual(f.authorizations.snapshot(testAgentExecution(await f.settings.get()).configuration).scopes,[]);
   assert.throws(()=>f.authorizations.assertAuthorized(target(messages)),{code:'AGENT_AUTHORIZATION_REQUIRED'});
   await assert.rejects(f.authorizations.grant({...cc,expectedRevision:messages.expectedRevision,requestId:randomUUID()}),{code:'AGENT_AUTHORIZATION_SETTINGS_CONFLICT'});
   for(const scope of AGENT_AUTHORIZATION_SCOPES)assert.equal(agentAuthorizationSchemas['agent.authorization.grant'].safeParse({...messages,scope}).success,true);
@@ -81,7 +83,7 @@ test('CAS, exact receipts and revocation cannot revive an old grant',async t=>{
 
 test('changed settings, unsafe files and corruption fail closed without overwriting evidence',async t=>{
   const f=await fixture(t),input=await f.input(),current=await f.settings.get();
-  await f.settings.put({expectedRevision:current.revision,configuration:{...current.configuration,model:'changed-model'},secret:{action:'keep'}});
+  await putTestAgentConfiguration(f.settings,{expectedRevision:current.revision,configuration:{...testAgentExecution(current).configuration,model:'changed-model'},secret:{action:'keep'}});
   await assert.rejects(f.authorizations.grant(input),{code:'AGENT_AUTHORIZATION_SETTINGS_CONFLICT'});
   await writeFile(f.file,'retained corrupt evidence',{mode:0o600});
   await assert.rejects(f.authorizations.list(),{code:'AGENT_AUTHORIZATION_UNAVAILABLE'});

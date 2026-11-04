@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { AGENT_CONNECTION_TEST_TEXT, agentConnectionTestMatches, chooseAgentConnectionTestProject, createAgentConnectionTestSession } from '../apps/web/src/agent-connection-test.ts';
 import type { AgentConnectionTestDependencies, AgentConnectionTestState } from '../apps/web/src/agent-connection-test.ts';
 import type { AgentTaskProjectSnapshot } from '../apps/web/src/agent-tasks-v2.ts';
+import {adapterSettings} from './helpers/agent-adapter-fixture.ts';
 import {agentTaskConnectionTestResponseSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type { AgentTaskConnectionTest, AgentTaskSnapshot, AgentTaskStatus } from '../packages/contracts/src/agent-tasks-v2.ts';
 
@@ -14,7 +15,7 @@ type SendInput = Parameters<Client['send']>[1];
 
 function project(projectId: string, { authorized = true, revision = 3 }: { authorized?: boolean; revision?: number } = {}): AgentTaskProjectSnapshot {
   return { version: 2, instanceId: 'instance', projectId, runs: [], policy: { revision: 1, stepLimit: 30, modes: { read_only: 'direct', local_reversible: 'direct', local_irreversible: 'direct', paid: 'confirm' } },
-    settings: { revision, configuration } as unknown as AgentTaskProjectSnapshot['settings'], authorization: { revision: 7, scopes: authorized ? ['project_agent'] : [] } as unknown as AgentTaskProjectSnapshot['authorization'] };
+    settings: adapterSettings(configuration,{revision}), authorization: { revision: 7, scopes: authorized ? ['project_agent'] : [] } as unknown as AgentTaskProjectSnapshot['authorization'] };
 }
 function run(status: AgentTaskStatus, projectId = projectA): AgentTaskSnapshot {
   return { run: { id: runId, projectId, requestId: 'request-1', text: AGENT_CONNECTION_TEST_TEXT, status, revision: 1, stepLimit: 30, budget: 30, stepsUsed: 1, configuration, createdAt: at, updatedAt: at }, steps: [], changes: [] } as unknown as AgentTaskSnapshot;
@@ -102,10 +103,25 @@ test('loading the global completed summary never opens a project, and disposal s
   assert.ok(g.calls.read <= 1); assert.equal(g.calls.send.length <= 1, true);
 });
 
-test('global diagnostic response permits exactly the five safe summary fields',()=>{
+test('global diagnostic response permits five safe summary fields and an optional complete current-selection witness',()=>{
  const summary=stored('failed',{errorCode:'PROVIDER_FAILED'});assert.deepEqual(agentTaskConnectionTestResponseSchema.parse({test:summary}),{test:summary});
  for(const extra of [{runId},{projectId:projectA},{baseUrl:configuration.baseUrl},{createdAt:at},{updatedAt:at},{failureCode:'PROVIDER_FAILED'}])
   assert.equal(agentTaskConnectionTestResponseSchema.safeParse({test:{...summary,...extra}}).success,false);
  assert.equal(agentTaskConnectionTestResponseSchema.safeParse({test:{...summary,status:'running'}}).success,false);
+ const execution=project(projectA).settings.execution!,witness={settingsRevision:execution.revision,settingsBinding:execution.binding};
+ assert.equal(agentTaskConnectionTestResponseSchema.safeParse({test:{...summary,...witness}}).success,true);
+ for(const partial of [{settingsRevision:execution.revision},{settingsBinding:execution.binding},{...witness,settingsBinding:{...execution.binding,entryRevision:-1}}])assert.equal(agentTaskConnectionTestResponseSchema.safeParse({test:{...summary,...partial}}).success,false);
  assert.equal(agentTaskConnectionTestResponseSchema.safeParse({test:null}).success,true);
+});
+
+
+test('diagnostics use the chosen execution token; a different service/global CAS update does not change the reviewed connection',async()=>{
+ const changed=project(projectA);changed.settings.revision=25;const f=harness({snapshots:[changed]});await f.session.load();assert.equal(await f.session.start({settingsRevision:3}),true);assert.equal(f.calls.send[0]!.input.expectedSettingsRevision,3);
+ const missing=project(projectA);missing.settings=adapterSettings(null);const g=harness({snapshots:[missing]});await g.session.load();assert.equal(await g.session.start({settingsRevision:3}),false);assert.equal(g.session.getState().error,'AGENT_TASK_NOT_CONFIGURED');assert.equal(g.calls.send.length,0);
+});
+
+test('diagnostic authorization rejects an ABA witness change but accepts an unrelated collection save',async()=>{
+ const reviewed=project(projectA,{authorized:false}),unrelated=project(projectA);unrelated.settings.revision=reviewed.settings.revision+1;
+ const f=harness({snapshots:[reviewed,unrelated]});await f.session.load();await f.session.start({settingsRevision:3});assert.equal(await f.session.confirm(),true);assert.equal(f.calls.send.length,1);
+ const changed=project(projectA);changed.settings.execution!.binding.selectionRevision++;const g=harness({snapshots:[reviewed,changed]});await g.session.load();await g.session.start({settingsRevision:3});assert.equal(await g.session.confirm(),false);assert.equal(g.session.getState().error,'AGENT_TASK_SETTINGS_CHANGED');assert.equal(g.calls.send.length,0);
 });

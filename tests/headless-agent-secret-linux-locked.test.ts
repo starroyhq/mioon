@@ -24,13 +24,14 @@ import {createHeadlessAgentSecretCodec} from ${JSON.stringify(new URL('../apps/s
 import {createAgentSettings} from ${JSON.stringify(new URL('../packages/business/src/agent/settings.ts',import.meta.url).href)};
 import {createAgentSettingsFile} from ${JSON.stringify(new URL('../packages/business/src/agent/settings-file.ts',import.meta.url).href)};
 import {DEFAULT_AGENT_CONFIGURATION} from ${JSON.stringify(new URL('../packages/business/src/agent/presets.ts',import.meta.url).href)};
+import {putTestAgentConfiguration} from ${JSON.stringify(new URL('./helpers/agent-settings-fixture.ts',import.meta.url).href)};
 let settings,codec,reopened;
 try{
  const directory=path.join(process.env.HOME,'agent-settings');
  codec=await createHeadlessAgentSecretCodec({directory,channel:'development'});
  assert.equal(codec.storage().persistentAvailable,true);
  settings=await createAgentSettings({persistence:createAgentSettingsFile({directory}),secretCodec:codec.secretCodec,storage:codec.storage});
- await settings.put({expectedRevision:0,configuration:DEFAULT_AGENT_CONFIGURATION,secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_LOCKED_HEADLESS_NO_PROVIDER'}});
+ await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:DEFAULT_AGENT_CONFIGURATION,secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_LOCKED_HEADLESS_NO_PROVIDER'}});
  const before=await readFile(path.join(directory,'settings.json'));
  const run=promisify(execFile),args=['--session','--type=method_call','--print-reply','--dest=org.freedesktop.secrets','/org/freedesktop/secrets'];
  const reply=await run('dbus-send',[...args,'org.freedesktop.Secret.Service.ReadAlias','string:default'],{timeout:3000,maxBuffer:8192});
@@ -40,7 +41,7 @@ try{
  assert.equal((await codec.secretCodec.refreshStorage()).persistentAvailable,false);
  reopened=await createHeadlessAgentSecretCodec({directory,channel:'development'});
  assert.equal(reopened.storage().persistentAvailable,false);
- await assert.rejects(settings.put({expectedRevision:1,configuration:DEFAULT_AGENT_CONFIGURATION,secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_REPLACEMENT_MUST_FAIL'}}));
+ await assert.rejects(putTestAgentConfiguration(settings,{expectedRevision:1,configuration:DEFAULT_AGENT_CONFIGURATION,secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_REPLACEMENT_MUST_FAIL'}}));
  assert.deepEqual(await readFile(path.join(directory,'settings.json')),before);
  process.stdout.write(JSON.stringify({ok:true,lockedUnavailable:true,ciphertextUnchanged:true}));
 }catch{process.stdout.write(JSON.stringify({ok:false}));process.exitCode=1;}

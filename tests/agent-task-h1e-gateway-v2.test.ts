@@ -76,6 +76,9 @@ test('H1e Chat Completions requests ask for usage only on documentation-backed p
   for(const preset of AGENT_PRESETS){
     const platform=preset.platforms.find(item=>item.baseUrl)||preset.platforms[0]!;
     const config:AgentConfiguration={presetId:preset.id,platformId:platform.id,baseUrl:platform.baseUrl||'https://compatible.example.com/v1',model:platform.model||'fixture-model',protocol:'chat_completions'};
+    if(!platform.availableProtocols.includes('chat_completions')){
+      assert.throws(()=>buildTaskModelRequest(config,[{role:'user',content:'合成编译'}],[]),{code:'AGENT_CHAT_PROFILE_UNSUPPORTED'},preset.id);continue;
+    }
     const body=JSON.parse(buildTaskModelRequest(config,[{role:'user',content:'合成编译'}],[])) as Record<string,unknown>;
     assert.deepEqual(body.stream_options,supported.has(preset.id)?{include_usage:true}:undefined,preset.id);
     assert.equal(body.max_tokens??body.max_completion_tokens,agentModelTokenLimits(config).outputTokens,preset.id);
@@ -92,16 +95,19 @@ test('H1e Chat Completions usage requests require the documented official origin
   const official:AgentConfiguration[]=[
     {...DEFAULT_AGENT_CONFIGURATION,baseUrl:'https://api.openai.com/v1/'},
     {presetId:'deepseek',platformId:'global',protocol:'chat_completions',model:'deepseek-flash',baseUrl:'https://api.deepseek.com'},
-    {presetId:'deepseek',platformId:'global',protocol:'chat_completions',model:'deepseek-flash',baseUrl:'https://api.deepseek.com/v1'},
     {presetId:'qwen',platformId:'beijing',protocol:'chat_completions',model:'qwen-plus',baseUrl:'https://dashscope.aliyuncs.com/compatible-mode/v1'},
     {presetId:'qwen',platformId:'singapore',protocol:'chat_completions',model:'qwen-plus',baseUrl:'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'},
   ];
+  assert.throws(()=>buildTaskModelRequest({presetId:'deepseek',platformId:'global',protocol:'chat_completions',model:'deepseek-flash',baseUrl:'https://api.deepseek.com/v1'},[{role:'user',content:'端点编译'}],[]),{code:'AGENT_CHAT_VALIDATION'});
   for(const config of official){
     const build=(value:AgentConfiguration)=>JSON.parse(buildTaskModelRequest(value,[{role:'user',content:'端点编译'}],[])) as Record<string,unknown>;
     assert.deepEqual(build(config).stream_options,{include_usage:true},config.baseUrl);
     const url=new URL(config.baseUrl);
     for(const baseUrl of [`https://compatible.example.com${url.pathname}`,`${url.origin}:444${url.pathname}`,`${url.origin}/proxy${url.pathname}`,`https://${url.hostname}.example.com${url.pathname}`]){
-      assert.equal(build({...config,baseUrl}).stream_options,undefined,baseUrl);
+      // Fixed entries cannot send a credential to an edited endpoint at all.
+      assert.throws(()=>build({...config,baseUrl}),{code:'AGENT_CHAT_VALIDATION'},baseUrl);
+      // The same explicit custom endpoint remains a passive usage observer.
+      assert.equal(build({...config,baseUrl,presetId:'custom',platformId:'custom'}).stream_options,undefined,baseUrl);
     }
     assert.equal(build({...config,presetId:'custom',platformId:'custom'}).stream_options,undefined);
   }

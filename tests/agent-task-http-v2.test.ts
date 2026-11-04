@@ -1,3 +1,5 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
+import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 import {projectApiPath,projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {mioRunUsageSchema} from '../packages/contracts/src/mio-run-usage.ts';
 import {createAgentClient} from '../packages/client/src/agent.ts';
@@ -27,7 +29,7 @@ const object=(value:unknown):value is Record<string,unknown>=>value!==null&&type
 test('continued policy has a specific fixed HTTP error without exposing internal markers or consuming a receipt',async t=>{
  const f=await fixture(t,'chat_completions',async function*(request){request.beforeSubmit?.();yield {type:'done',output:{text:'Completed locally',toolCalls:[],providerOutput:{role:'assistant',content:'Completed locally'}}};});
  await f.authorize();
- const expectedSettingsRevision=(await f.settings.get()).revision,first={requestId:randomUUID(),text:'Start with a conversation policy',expectedSettingsRevision,policy:{modes:AGENT_TASK_POLICY_PRESETS.step}};
+ const expectedSettingsRevision=testAgentExecution(await f.settings.get()).revision,first={requestId:randomUUID(),text:'Start with a conversation policy',expectedSettingsRevision,policy:{modes:AGENT_TASK_POLICY_PRESETS.step}};
  const sent=await f.request(f.prefix,'POST',first);assert.equal(sent.status,200);
  const original=await f.settle(agentTaskSnapshotSchema.parse(sent.data).run.id),conversationId=original.run.conversationId!,requestId=randomUUID();
  const continued={requestId,text:'Continue without changing the conversation modes',expectedSettingsRevision,conversationId};
@@ -47,7 +49,7 @@ test('the real K2 server serves usage only at the authenticated read-only projec
  const reported={inputTokens:80,outputTokens:4,cacheReadTokens:20,cacheWriteTokens:0};
  const f=await fixture(t,'chat_completions',async function*(request){request.beforeSubmit?.();yield {type:'done',output:{text:'Private passive counters',toolCalls:[],providerOutput:{role:'assistant',content:'Private passive counters'},usage:reported}};});
  await f.authorize();
- const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'Read usage without provider access',expectedSettingsRevision:(await f.settings.get()).revision});assert.equal(sent.status,200);
+ const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'Read usage without provider access',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision});assert.equal(sent.status,200);
  const snapshot=agentTaskSnapshotSchema.parse(sent.data);await f.settle(snapshot.run.id);
  const client=createAgentClient({env:{MIOON_BASE_URL:f.server.url,MIOON_TOKEN:f.server.token}}),count=f.models;
  const usage=await client.usage({projectId:f.projectId,runId:snapshot.run.id});mioRunUsageSchema.parse(usage);assert.deepEqual(usage.knownTotals,reported);assert.equal(usage.dispatchedModelSteps,1);assert.equal(usage.cacheReadRate,0.25);
@@ -74,7 +76,7 @@ async function cliSnapshot(url:string,token:string,projectId:string,runId:string
 async function fixture(t:TestContext,protocol:AgentConfiguration['protocol']='chat_completions',customGateway?:TaskGateway,groups:readonly AgentTaskLoadableToolGroupId[]=customGateway?[]:['canvas']){
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-http-v2-'));
  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});const initial=await settings.get();
- await settings.put({expectedRevision:initial.revision,configuration:{...initial.configuration,protocol},secret:{action:'replace',storage:'session',value:'SYNTHETIC_TASK_HTTP_KEY'}});
+ await putTestAgentConfiguration(settings,{expectedRevision:initial.revision,configuration:{...DEFAULT_AGENT_CONFIGURATION,protocol},secret:{action:'replace',storage:'session',value:'SYNTHETIC_TASK_HTTP_KEY'}});
  let models=0,loadRequests=0;
  const gateway:TaskGateway=async function*(request){const body=JSON.parse(request.body) as {messages?:{role?:string;tool_call_id?:string}[];input?:{type?:string;call_id?:string}[]};
   const answered=body.messages?.some(item=>item.role==='tool'&&item.tool_call_id==='call_http')||body.input?.some(item=>item.type==='function_call_output'&&item.call_id==='call_http');
@@ -100,8 +102,8 @@ async function fixture(t:TestContext,protocol:AgentConfiguration['protocol']='ch
  }
  const created=await request('/api/rpc','POST',{operation:'project.create',input:{name:'HTTP v2 fixture'}});assert.ok(object(created.data)&&typeof created.data.id==='string');const projectId=created.data.id;
  const prefix=projectApiPath(projectId,'agent','tasks','v2');
- async function authorize(){const snapshot=await request(prefix);assert.ok(object(snapshot.data));const snapshotSettings=snapshot.data.settings;assert.ok(object(snapshotSettings)&&object(snapshotSettings.configuration));
-  const result=await request('/api/rpc','POST',{operation:'agent.authorization.grant',input:{requestId:randomUUID(),expectedRevision:(snapshot.data.authorization as {revision:number}).revision,expectedSettingsRevision:snapshotSettings.revision,destination:deriveAgentEndpoint(snapshotSettings.configuration as unknown as AgentConfiguration),model:snapshotSettings.configuration.model,scope:'project_agent'}});assert.equal(result.status,200);
+ async function authorize(){const snapshot=await request(prefix);assert.ok(object(snapshot.data));const snapshotSettings=snapshot.data.settings;const execution=testAgentExecution(snapshotSettings);
+  const result=await request('/api/rpc','POST',{operation:'agent.authorization.grant',input:{requestId:randomUUID(),expectedRevision:(snapshot.data.authorization as {revision:number}).revision,expectedSettingsRevision:execution.revision,destination:deriveAgentEndpoint(execution.configuration as unknown as AgentConfiguration),model:execution.configuration.model,scope:'project_agent'}});assert.equal(result.status,200);
  }
  async function settle(id:string,status:string[]=['completed','failed','paused','awaiting_approval']):Promise<AgentTaskSnapshot>{
   for(let count=0;count<400;count++){const result=await request(`${prefix}/${id}`);assert.equal(result.status,200);const snapshot=result.data as AgentTaskSnapshot;if(status.includes(snapshot.run.status))return snapshot;await new Promise(resolve=>setTimeout(resolve,5));}assert.fail('Synthetic HTTP task did not settle');
@@ -109,7 +111,7 @@ async function fixture(t:TestContext,protocol:AgentConfiguration['protocol']='ch
  return {root,request,prefix,projectId,settings,server,authorize,settle,state:()=>inspect(projectId,db=>({state:readProjectState(db),marks:changeMarks(db)})),get models(){return models;},get loadRequests(){return loadRequests;}};
 }
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: authenticated HTTP task, durable SSE notification, lookup and undo complete without provider access`,async t=>{
- const f=await fixture(t,protocol),input={requestId:randomUUID(),text:'创建一个镜头',expectedSettingsRevision:(await f.settings.get()).revision};
+ const f=await fixture(t,protocol),input={requestId:randomUUID(),text:'创建一个镜头',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision};
  assert.equal((await f.request(f.prefix,'GET',undefined,false)).status,401);
  assert.equal((await f.request(f.prefix,'POST',input)).status,409);assert.equal(f.models,0);
  await f.authorize();const sent=await f.request(f.prefix,'POST',input);assert.equal(sent.status,200);const accepted=sent.data as AgentTaskSnapshot;
@@ -137,7 +139,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
   yield {type:'done',output:{text:'synthetic preview',toolCalls:[toolCall],providerOutput:protocol==='responses'?[{id:'fc_preview',call_id:toolCall.id,type:'function_call',name:toolCall.name,arguments:JSON.stringify(toolCall.arguments),status:'completed'}]:{role:'assistant',content:null,tool_calls:[{id:toolCall.id,type:'function',function:{name:toolCall.name,arguments:JSON.stringify(toolCall.arguments)}}]}}};
  };
  const f=await fixture(t,protocol,gateway,['video']);const shot=await f.request(projectRpcPath(f.projectId),'POST',{operation:'shot.create',input:{projectId:f.projectId,title:'Approval target',duration:6,aspectRatio:'16:9',prompt:'DO_NOT_PROJECT_GENERATION_PROMPT'}});assert.equal(shot.status,200);assert.ok(object(shot.data));shotId=String(shot.data.id);shotRevision=Number(shot.data.revision);await f.authorize();
- const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'synthetic approval preview',expectedSettingsRevision:(await f.settings.get()).revision});assert.equal(sent.status,200);const pending=await f.settle((sent.data as AgentTaskSnapshot).run.id);assert.equal(pending.run.status,'awaiting_approval');assert.equal(f.loadRequests,1);assert.equal(pending.changes.length,0);assert.ok(agentTaskSnapshotSchema.safeParse(pending).success);
+ const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'synthetic approval preview',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision});assert.equal(sent.status,200);const pending=await f.settle((sent.data as AgentTaskSnapshot).run.id);assert.equal(pending.run.status,'awaiting_approval');assert.equal(f.loadRequests,1);assert.equal(pending.changes.length,0);assert.ok(agentTaskSnapshotSchema.safeParse(pending).success);
  const planned=pending.steps.find(step=>step.toolCall?.name==='mioon_generation_submit')?.display;assert.ok(planned);assert.equal(planned.targets[0]?.name,'Approval target');assert.equal(planned.fields.find(field=>field.property==='durationSeconds')?.after,6);assert.equal(planned.fields.find(field=>field.property==='seed')?.after,123);assert.equal(planned.fields.find(field=>field.property==='mode')?.after,'text_to_video');assert.ok(planned.fields.every(field=>field.before===undefined));assert.doesNotMatch(JSON.stringify(planned),/DO_NOT_PROJECT|prompt|snapshot|requestId|expectedRevision/u);
  const jobs=await f.request(projectRpcPath(f.projectId),'POST',{operation:'job.list',input:{projectId:f.projectId}});assert.equal(jobs.status,200);assert.deepEqual(jobs.data,[]);
  const lookup=await f.request(`${f.prefix}/requests/${(sent.data as AgentTaskSnapshot).run.requestId}`);assert.ok(object(lookup.data)&&object(lookup.data.snapshot));assert.deepEqual((lookup.data.snapshot as unknown as AgentTaskSnapshot).steps.find(step=>step.toolCall?.name==='mioon_generation_submit')?.display,planned);
@@ -156,7 +158,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  const f=await fixture(t,protocol,gateway,['canvas']);
  try{
   const created=await f.request(projectRpcPath(f.projectId),'POST',{operation:'shot.create',input:{projectId:f.projectId,title:'Conflict target',duration:2,prompt:'Saved original'}});assert.equal(created.status,200);assert.ok(object(created.data));shotId=String(created.data.id);shotRevision=Number(created.data.revision);await f.authorize();
-  const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'synthetic conflict',expectedSettingsRevision:(await f.settings.get()).revision});assert.equal(sent.status,200);await entered;
+  const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'synthetic conflict',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision});assert.equal(sent.status,200);await entered;
   const changed=await f.request(projectRpcPath(f.projectId),'POST',{operation:'shot.update',input:{shotId,expectedRevision:shotRevision,patch:{duration:3,prompt:'Saved manual change'}}});assert.equal(changed.status,200);assert.ok(object(changed.data));release();
   const done=await f.settle((sent.data as AgentTaskSnapshot).run.id);assert.equal(done.run.status,'completed');assert.ok(agentTaskSnapshotSchema.safeParse(done).success);assert.equal(done.changes.length,0);assert.equal(f.loadRequests,1);assert.equal(models,2);
   const handed=done.steps.findLast(step=>step.kind==='tool');assert.ok(handed);assert.equal(handed.status,'rejected');assert.equal(handed.error?.code,'TARGET_CHANGED');assert.equal(handed.data,undefined);assert.equal(handed.request,undefined);
@@ -167,7 +169,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: REST validates locale and keeps original request lookup and language conflicts`,async t=>{
   const requests:string[]=[],gateway:TaskGateway=async function*(request){requests.push(request.body);yield {type:'done',output:{text:'synthetic',toolCalls:[],providerOutput:protocol==='responses'?[]:{role:'assistant',content:'synthetic'}}};};
   const f=await fixture(t,protocol,gateway);await f.authorize();
-  const input={requestId:randomUUID(),text:'synthetic',expectedSettingsRevision:(await f.settings.get()).revision,locale:'ja'};
+  const input={requestId:randomUUID(),text:'synthetic',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision,locale:'ja'};
   for(const locale of ['zh-CN','fr',null,1]){const result=await f.request(f.prefix,'POST',{...input,locale});assert.equal(result.status,400);assert.ok(object(result.error));assert.equal(result.error.code,'AGENT_TASK_INVALID');}
   assert.equal(requests.length,0);
   const sent=await f.request(f.prefix,'POST',input);assert.equal(sent.status,200);const run=(sent.data as AgentTaskSnapshot).run;await f.settle(run.id);
@@ -200,7 +202,7 @@ test('retired workspace backup stays unknown during and after a live v2 model wi
  t.after(async()=>{await rm(backupDirectory,{recursive:true,force:true});});
  try{
   await f.authorize();
-  const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'等待本地合成模型',expectedSettingsRevision:(await f.settings.get()).revision});assert.equal(sent.status,200);await entered;
+  const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'等待本地合成模型',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision});assert.equal(sent.status,200);await entered;
   const running=(sent.data as AgentTaskSnapshot).run.id,before=f.state();
   const blocked=await f.request('/api/rpc','POST',{operation:'workspace.backup.create',input:{requestId:randomUUID()}});assert.equal(blocked.status,404);assert.ok(object(blocked.error));assert.equal(blocked.error.code,'UNKNOWN_OPERATION');
   assert.deepEqual(f.state(),before);assert.deepEqual(await readdir(backupDirectory),[]);
@@ -213,7 +215,7 @@ test('retired workspace backup stays unknown during and after a live v2 model wi
 
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: HTTP and CLI share conversation grouping, scoped members, diagnostics exclusion and receipt identity`,async t=>{
  const bodies:string[]=[];const gateway:TaskGateway=async function*(request){request.beforeSubmit?.();bodies.push(request.body);yield {type:'done',output:{text:`reply ${bodies.length}`,toolCalls:[],providerOutput:protocol==='responses'?[]:{role:'assistant',content:`reply ${bodies.length}`}}};};
- const f=await fixture(t,protocol,gateway);await f.authorize();const revision=(await f.settings.get()).revision;
+ const f=await fixture(t,protocol,gateway);await f.authorize();const revision=testAgentExecution(await f.settings.get()).revision;
  const send=async(text:string,conversationId?:string,requestId:string=randomUUID(),diagnostic?:{profile:'text'})=>f.request(f.prefix,'POST',{requestId,text,expectedSettingsRevision:revision,...(conversationId?{conversationId}:{}),...(diagnostic?{diagnostic}:{})});
  const firstResponse=await send('First conversation'),first=agentTaskSnapshotSchema.parse(firstResponse.data);assert.equal(firstResponse.status,200);await f.settle(first.run.id);assert.ok(first.run.conversationId);
  const other=agentTaskSnapshotSchema.parse((await send('Other conversation private')).data);await f.settle(other.run.id);
@@ -233,7 +235,7 @@ async function cliTaskControl(url:string,token:string,command:string,input:Recor
 test('HTTP and CLI notes use the same durable queue and control receipt without changing a submitted request',async t=>{
  let enter=()=>{},release=()=>{},models=0;const entered=new Promise<void>(resolve=>{enter=resolve;}),released=new Promise<void>(resolve=>{release=resolve;}),bodies:string[]=[];
  const gateway:TaskGateway=async function*(request){bodies.push(request.body);models++;request.beforeSubmit?.();if(models===1){enter();await released;}yield {type:'done',output:{text:'Synthetic response',toolCalls:[],providerOutput:{role:'assistant',content:'Synthetic response'}}};};
- const f=await fixture(t,'chat_completions',gateway);try{await f.authorize();const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'HTTP and CLI notes',expectedSettingsRevision:(await f.settings.get()).revision}),run=agentTaskSnapshotSchema.parse(sent.data).run;await entered;
+ const f=await fixture(t,'chat_completions',gateway);try{await f.authorize();const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'HTTP and CLI notes',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision}),run=agentTaskSnapshotSchema.parse(sent.data).run;await entered;
  const current=agentTaskSnapshotSchema.parse((await f.request(`${f.prefix}/${run.id}`)).data),http={requestId:randomUUID(),expectedRevision:current.run.revision,action:'note',text:'HTTP_ADDITIONAL_NOTE'};
  const noted=await f.request(`${f.prefix}/${run.id}/actions`,'POST',http);assert.equal(noted.status,200);const one=agentTaskSnapshotSchema.parse(noted.data);assert.equal(one.run.notes?.[0]?.requestId,http.requestId);
  const cliId=randomUUID(),two=await cliTaskControl(f.server.url,f.server.token,'note',{projectId:f.projectId,runId:run.id,requestId:cliId,expectedRevision:one.run.revision,text:'CLI_ADDITIONAL_NOTE'});assert.equal(two.run.notes?.length,2);assert.equal(two.run.notes?.[1]?.requestId,cliId);assert.doesNotMatch(bodies[0]!,/ADDITIONAL_NOTE/);
@@ -244,7 +246,7 @@ test('HTTP and CLI notes use the same durable queue and control receipt without 
 test('HTTP conflict hand-back completes on its own, keeps the saved target and leaves skip nothing to answer',async t=>{
  let enter=()=>{},release=()=>{},models=0,shotId='',revision=0;const entered=new Promise<void>(resolve=>{enter=resolve;}),released=new Promise<void>(resolve=>{release=resolve;});
  const gateway:TaskGateway=async function*(request){models++;request.beforeSubmit?.();if(models===1){enter();await released;const toolCall={id:'http_skip_conflict',name:'mioon_shot_update',arguments:{shotId,expectedRevision:revision,patch:{prompt:'stale AI plan'}}};yield {type:'done',output:{text:'',toolCalls:[toolCall],providerOutput:{role:'assistant',content:null,tool_calls:[{id:toolCall.id,type:'function',function:{name:toolCall.name,arguments:JSON.stringify(toolCall.arguments)}}]} as AgentTaskJson}};}else yield {type:'done',output:{text:'User edit kept',toolCalls:[],providerOutput:{role:'assistant',content:'User edit kept'} as AgentTaskJson}};};
- const f=await fixture(t,'chat_completions',gateway,['canvas']);try{const created=await f.request(projectRpcPath(f.projectId),'POST',{operation:'shot.create',input:{projectId:f.projectId,title:'Skip HTTP target',prompt:'original'}});assert.ok(object(created.data));shotId=String(created.data.id);revision=Number(created.data.revision);await f.authorize();const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'HTTP conflict skip',expectedSettingsRevision:(await f.settings.get()).revision}),run=agentTaskSnapshotSchema.parse(sent.data).run;await entered;
+ const f=await fixture(t,'chat_completions',gateway,['canvas']);try{const created=await f.request(projectRpcPath(f.projectId),'POST',{operation:'shot.create',input:{projectId:f.projectId,title:'Skip HTTP target',prompt:'original'}});assert.ok(object(created.data));shotId=String(created.data.id);revision=Number(created.data.revision);await f.authorize();const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'HTTP conflict skip',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision}),run=agentTaskSnapshotSchema.parse(sent.data).run;await entered;
  assert.equal((await f.request(projectRpcPath(f.projectId),'POST',{operation:'shot.update',input:{shotId,expectedRevision:revision,patch:{prompt:'manual preserved'}}})).status,200);release();const done=await f.settle(run.id);assert.equal(done.run.status,'completed');assert.equal(done.changes.length,0);assert.deepEqual(done.run.skippedTargets,[]);assert.equal(models,2);assert.equal(f.loadRequests,1);
  const handed=done.steps.find(step=>step.toolCall?.name==='mioon_shot_update');assert.ok(handed);assert.equal(handed.status,'rejected');assert.equal(handed.error?.code,'TARGET_CHANGED');assert.ok(object(handed.result)&&object(handed.result.error)&&Array.isArray(handed.result.error.current));const current=handed.result.error.current[0];assert.ok(object(current)&&object(current.value));assert.equal(current.value.prompt,'manual preserved');
  // No conflict pause remains, so skip has nothing to answer and is rejected as invalid.
@@ -259,7 +261,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  const gateway:TaskGateway=async function*(request){models++;request.beforeSubmit?.();if(models===1){enter();await released;}yield {type:'done',output:{text:'Synthetic response',toolCalls:[],providerOutput:protocol==='responses'?[]:{role:'assistant',content:'Synthetic response'}}};};
  const f=await fixture(t,protocol,gateway);
  try{
-  await f.authorize();const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'Capacity check',expectedSettingsRevision:(await f.settings.get()).revision});const run=agentTaskSnapshotSchema.parse(sent.data).run;await entered;
+  await f.authorize();const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'Capacity check',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision});const run=agentTaskSnapshotSchema.parse(sent.data).run;await entered;
   let current=agentTaskSnapshotSchema.parse((await f.request(`${f.prefix}/${run.id}`)).data);
   for(let index=0;index<4;index++){const accepted=await f.request(`${f.prefix}/${run.id}/actions`,'POST',{requestId:randomUUID(),expectedRevision:current.run.revision,action:'note',text:String(index).repeat((index===3?16:32)*1024)});assert.equal(accepted.status,200);current=agentTaskSnapshotSchema.parse(accepted.data);}
   const requestId=randomUUID(),rejected=await f.request(`${f.prefix}/${run.id}/actions`,'POST',{requestId,expectedRevision:current.run.revision,action:'note',text:'x'.repeat(16*1024)});assert.equal(rejected.status,409);assert.ok(object(rejected.error));assert.equal(rejected.error.code,'AGENT_TASK_NOTE_CAPACITY');
@@ -274,7 +276,7 @@ async function cliControl(url:string,token:string,command:string,input:Record<st
 }
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: CLI retry and whole undo agree with HTTP receipts and safe snapshots`,async t=>{
  let models=0;const gateway:TaskGateway=async function*(request){models++;if(models===2)assert.match(request.body,/VALIDATION_ERROR/);const toolCalls=models===1?[{id:'invalid_create',name:'mioon_shot_create',arguments:{title:'Invalid request',duration:-1}}]:models===2?[{id:'create_first',name:'mioon_shot_create',arguments:{title:'Keep this manually edited shot',duration:4}},{id:'create_second',name:'mioon_shot_create',arguments:{title:'Undo this unchanged shot',duration:4}}]:[];yield {type:'done',output:{text:'Synthetic retry',toolCalls,providerOutput:protocol==='responses'?toolCalls.map(call=>({type:'function_call',call_id:call.id,name:call.name,arguments:JSON.stringify(call.arguments),status:'completed'})):{role:'assistant',content:'Synthetic retry',tool_calls:toolCalls.map(call=>({id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}))}}};};
- const f=await fixture(t,protocol,gateway,['canvas']);await f.authorize();const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'Synthetic retry and undo',expectedSettingsRevision:(await f.settings.get()).revision});assert.equal(sent.status,200);const failed=await f.settle(agentTaskSnapshotSchema.parse(sent.data).run.id);assert.equal(failed.run.status,'failed');assert.equal(failed.steps.at(-1)?.status,'failed');assert.equal(models,1);assert.equal(f.loadRequests,1);
+ const f=await fixture(t,protocol,gateway,['canvas']);await f.authorize();const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'Synthetic retry and undo',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision});assert.equal(sent.status,200);const failed=await f.settle(agentTaskSnapshotSchema.parse(sent.data).run.id);assert.equal(failed.run.status,'failed');assert.equal(failed.steps.at(-1)?.status,'failed');assert.equal(models,1);assert.equal(f.loadRequests,1);
  const request={projectId:f.projectId,runId:failed.run.id,requestId:randomUUID(),expectedRevision:failed.run.revision,stepId:failed.steps.at(-1)!.id};await cliControl(f.server.url,f.server.token,'retry',request);const done=await f.settle(failed.run.id);assert.equal(done.run.status,'completed');assert.equal(done.changes.length,2);assert.equal(models,3);
  const replay=await f.request(`${f.prefix}/${failed.run.id}/actions`,'POST',{...request,projectId:undefined,action:'retry'});assert.equal(replay.status,200);assert.equal(models,3);const receipt=await f.request(`${f.prefix}/${failed.run.id}/actions/${request.requestId}`);assert.ok(object(receipt.data)&&object(receipt.data.receipt));assert.equal(receipt.data.receipt.action,'retry');
  const kept=done.changes[0]!,removed=done.changes[1]!;const shotId=kept.targets[0]!.id;assert.equal((await f.request(projectRpcPath(f.projectId),'POST',{operation:'shot.update',input:{shotId,expectedRevision:1,patch:{prompt:'User keeps this content'}}})).status,200);const fresh=agentTaskSnapshotSchema.parse((await f.request(`${f.prefix}/${failed.run.id}`)).data),cli=await cliSnapshot(f.server.url,f.server.token,f.projectId,failed.run.id);assert.deepEqual(cli.changes,fresh.changes);assert.equal(fresh.changes[0]?.modifiedAfter,true);assert.deepEqual(fresh.changes.map(change=>change.undoDisposition),['retain','undo']);assert.ok(fresh.changes.every(change=>change.before===null&&change.after===null&&change.undo===undefined));
@@ -288,11 +290,11 @@ test('the latest connection test reads the same newest text diagnostic over HTTP
  const empty=await f.request(route);assert.equal(empty.status,200);assert.deepEqual(empty.data,{test:null});
  assert.equal((await f.request(route,'POST',{})).status,405);assert.equal((await f.request(`${route}?projectId=${f.projectId}`)).status,400);assert.equal((await f.request(route,'GET',undefined,false)).status,401);
  await f.authorize();
- const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'PRIVATE_CONNECTION_TEST_TEXT',expectedSettingsRevision:(await f.settings.get()).revision,diagnostic:{profile:'text'}});assert.equal(sent.status,200);
+ const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'PRIVATE_CONNECTION_TEST_TEXT',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision,diagnostic:{profile:'text'}});assert.equal(sent.status,200);
  const done=await f.settle((sent.data as AgentTaskSnapshot).run.id,['completed','failed','stopped']);assert.equal(done.run.status,'completed');
  const latest=agentTaskConnectionTestResponseSchema.parse((await f.request(route)).data);
  assert.equal(latest.test?.status,'completed');assert.equal(latest.test?.protocol,'chat_completions');assert.equal(latest.test?.errorCode,null);
- assert.deepEqual(Object.keys(latest.test!).sort(),['completedAt','errorCode','model','protocol','status']);assert.ok(Number.isFinite(Date.parse(latest.test!.completedAt)));
+ assert.deepEqual(Object.keys(latest.test!).sort(),['completedAt','errorCode','model','protocol','settingsBinding','settingsRevision','status']);assert.ok(Number.isFinite(Date.parse(latest.test!.completedAt)));
  const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','diagnose','latest','--input','{}'],{env:{...process.env,MIOON_BASE_URL:f.server.url,MIOON_TOKEN:f.server.token,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});
  let stdout='';child.stdout.setEncoding('utf8').on('data',(chunk:string)=>{stdout+=chunk;});
  const code=await new Promise<number|null>((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic CLI read timed out'));},15000);child.once('error',reject);child.once('close',value=>{clearTimeout(timer);resolve(value);});});
@@ -313,7 +315,7 @@ test('HTTP and CLI read and set a conversation policy and answer a waiting quest
  };
  const f=await fixture(t,'chat_completions',gateway);await f.authorize();
  const {step:STEP,default:DEFAULT}=AGENT_TASK_POLICY_PRESETS;
- const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'Ask before planning',expectedSettingsRevision:(await f.settings.get()).revision,policy:{modes:STEP}});assert.equal(sent.status,200);
+ const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'Ask before planning',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision,policy:{modes:STEP}});assert.equal(sent.status,200);
  const waiting=await f.settle(agentTaskSnapshotSchema.parse(sent.data).run.id,['awaiting_answer','failed']);assert.equal(waiting.run.status,'awaiting_answer');assert.equal(models,1);
  const conversationId=waiting.run.conversationId!,route=`${f.prefix}/conversations/${conversationId}/policy`;
  const read=await f.request(route);assert.equal(read.status,200);assert.ok(object(read.data));
@@ -342,7 +344,7 @@ for(const via of ['http','cli'] as const)test(`X4 follow-up: a foreground approv
  const f=await fixture(t,'chat_completions',gateway,['canvas']),before=await f.request('/api/agent/tasks/v2/policy');assert.ok(object(before.data));const policy=before.data.policy as AgentTaskPolicy;
  assert.equal((await f.request('/api/agent/tasks/v2/policy','PUT',{...policy,requestId:randomUUID(),expectedRevision:policy.revision,modes:{...policy.modes,local_reversible:'confirm'}})).status,200);
  const created=await f.request(projectRpcPath(f.projectId),'POST',{operation:'shot.create',input:{projectId:f.projectId,title:'Approval hand-back target',prompt:'Saved original'}});assert.ok(object(created.data));shotId=String(created.data.id);revision=Number(created.data.revision);await f.authorize();
- const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'X4 follow-up approval',expectedSettingsRevision:(await f.settings.get()).revision});assert.equal(sent.status,200);
+ const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'X4 follow-up approval',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision});assert.equal(sent.status,200);
  const waiting=await f.settle(agentTaskSnapshotSchema.parse(sent.data).run.id),step=waiting.steps.find(item=>item.toolCall?.name==='mioon_shot_update');assert.equal(waiting.run.status,'awaiting_approval');assert.ok(step);assert.equal(step.status,'awaiting_approval');
  assert.equal((await f.request(projectRpcPath(f.projectId),'POST',{operation:'shot.update',input:{shotId,expectedRevision:revision,patch:{prompt:'Manual save before approval'}}})).status,200);
  const requestId=randomUUID(),control={requestId,expectedRevision:waiting.run.revision,stepId:step.id},code='AGENT_TASK_TARGET_CHANGED',message='该目标已被手动修改，这一步没有执行，Mio 会按当前内容重新规划。';
@@ -375,7 +377,7 @@ test('X4 follow-up: a conflict the worker finds for a queued paid job pauses the
   const before=await f.request('/api/agent/tasks/v2/policy');assert.ok(object(before.data));const policy=before.data.policy as AgentTaskPolicy;
   assert.equal((await f.request('/api/agent/tasks/v2/policy','PUT',{...policy,requestId:randomUUID(),expectedRevision:policy.revision,stepLimit:4,modes:{...policy.modes,paid:'direct'},acknowledgePaid:true})).status,200);
   const created=await f.request(projectRpcPath(f.projectId),'POST',{operation:'shot.create',input:{projectId:f.projectId,title:'Background conflict target',duration:2,aspectRatio:'9:16',prompt:'Saved original'}});assert.ok(object(created.data));shotId=String(created.data.id);revision=Number(created.data.revision);await f.authorize();
-  const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'X4 follow-up background conflict',expectedSettingsRevision:(await f.settings.get()).revision});assert.equal(sent.status,200);const runId=agentTaskSnapshotSchema.parse(sent.data).run.id;
+  const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'X4 follow-up background conflict',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision});assert.equal(sent.status,200);const runId=agentTaskSnapshotSchema.parse(sent.data).run.id;
   const budget=await f.settle(runId);assert.equal(budget.run.status,'paused');assert.equal(budget.run.pauseReason,'budget');
   const jobs=async()=>{const listed=await f.request(projectRpcPath(f.projectId),'POST',{operation:'job.list',input:{projectId:f.projectId}});assert.equal(listed.status,200);assert.ok(Array.isArray(listed.data));return listed.data.map(item=>{assert.ok(object(item));return item;});};
   // Guard: the job was accepted and nothing sent it before the budget pause.

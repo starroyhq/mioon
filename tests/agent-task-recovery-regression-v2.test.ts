@@ -1,3 +1,5 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
+import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, realpath, rm} from 'node:fs/promises';
@@ -73,7 +75,7 @@ async function fixture(t: TestContext, {lostSubmission = false, finalModelFailur
   const shot = record(await services.call('shot.create', {projectId, title: 'One original request', prompt: 'A synthetic blue shape', duration: 4, aspectRatio: '9:16'}));
   const settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
   const initial = await settings.get();
-  await settings.put({expectedRevision: initial.revision, configuration: {...initial.configuration, protocol: 'chat_completions'}, secret: {action: 'replace', storage: 'session', value: 'SYNTHETIC_RECOVERY_ONLY'}});
+  await putTestAgentConfiguration(settings,{expectedRevision: initial.revision, configuration: defaultTestAgentConfiguration('chat_completions'), secret: {action: 'replace', storage: 'session', value: 'SYNTHETIC_RECOVERY_ONLY'}});
   const authorizations = createTestAuthorizations(() => ({...store}), settings);
   await authorizeTestScope(authorizations, 'project_agent');
   const generationInput = {shotId: shot.id, expectedRevision: shot.revision, providerId: 'mock', model: 'recovery-motion'};
@@ -132,7 +134,7 @@ async function fixture(t: TestContext, {lostSubmission = false, finalModelFailur
     counters, seenPollIds, seenReconcileIds, waitIds, job, read, action, stable, assertOriginal,
     get runtime() { return runtime; }, get store() { return store; }, get services() { return services; }, projectId,
     async accepted() {
-      const sent = await runtime.send(projectId, {requestId: randomUUID(), text: 'Generate once, then wait on that exact job. Do not retry generation.', expectedSettingsRevision: (await settings.get()).revision});
+      const sent = await runtime.send(projectId, {requestId: randomUUID(), text: 'Generate once, then wait on that exact job. Do not retry generation.', expectedSettingsRevision: testAgentExecution(await settings.get()).revision});
       const pending = await stable(sent.run.id); await runtime.drain();
       assert.equal(pending.run.status, 'awaiting_approval'); assert.equal(store.list('jobs', projectId).length, 0); assert.equal(counters.submit, 0); assert.equal(counters.generationTools, 0);
       assert.equal(counters.modelPosts, 2); assert.equal(pending.run.stepsUsed, 4);

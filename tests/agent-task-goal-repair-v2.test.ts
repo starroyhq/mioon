@@ -11,6 +11,9 @@ import {agentTaskSnapshotSchema} from '../packages/contracts/src/agent-tasks-v2.
 import {GOAL_PROTOCOLS,openGoalRepairFixture,setCountGoal,goalCall} from './helpers/agent-task-goal-repair-fixture.ts';
 import type {GoalProtocol} from './helpers/agent-task-goal-repair-fixture.ts';
 import type {AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentSettingsBinding} from '../packages/contracts/src/agent-connection-settings.ts';
+import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
+import {testAgentExecution} from './helpers/agent-settings-fixture.ts';
 const record=(value:unknown):Record<string,unknown>=>{assert.ok(value&&typeof value==='object'&&!Array.isArray(value));return value as Record<string,unknown>;};
 const markers=(steps:AgentTaskStep[])=>steps.filter(step=>step.data&&record(step.data).goalRepair!==undefined);
 async function fixture(t:TestContext,protocol:GoalProtocol){
@@ -110,9 +113,14 @@ for(const protocol of GOAL_PROTOCOLS){
   let restored:Awaited<ReturnType<typeof openGoalRepairFixture>>|undefined;
   t.after(async()=>{if(child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');await restored?.close();rmSync(root,{recursive:true,force:true});});
   const result=await new Promise<NodeJS.Signals|null>((resolve,reject)=>{child.once('error',reject);child.once('close',(_code,signal)=>resolve(signal));});assert.equal(result,'SIGKILL',stderr);
-  const saved=JSON.parse(readFileSync(join(root,'fixture.json'),'utf8')) as {projectId:string;requestId:string};
+  const saved=JSON.parse(readFileSync(join(root,'fixture.json'),'utf8')) as {projectId:string;requestId:string;settingsRevision:number;settingsBinding:AgentSettingsBinding;configuration:AgentConfiguration};
+  const settingsFile=join(root,'agent-settings/settings.json'),settingsBytes=readFileSync(settingsFile);
   const f=restored=await openGoalRepairFixture(root,protocol,saved.projectId);
   const found=f.runtime.lookup(f.projectId,saved.requestId).snapshot!;assert.equal(found.run.status,'interrupted');assert.equal(f.bodies.length,0);
+  const execution=testAgentExecution(await f.settings.get());
+  assert.equal(execution.revision,saved.settingsRevision);assert.deepEqual(execution.binding,saved.settingsBinding);assert.deepEqual(execution.configuration,saved.configuration);
+  assert.equal(found.run.settingsRevision,saved.settingsRevision);assert.deepEqual(found.run.settingsBinding,saved.settingsBinding);
+  assert.deepEqual(readFileSync(settingsFile),settingsBytes,'reopening retains the persisted witness without saving or re-signing the interrupted run');
   const before=f.runtime.journal.snapshot(found.run.id),marked=markers(before.steps);assert.equal(marked.length,1);
   const message=String(record(record(marked[0]!.data).goalRepair).message),intent=before.steps.find(step=>step.status==='intent');
   const frozen=intent?.request&&record(intent.request).body;
@@ -124,6 +132,7 @@ for(const protocol of GOAL_PROTOCOLS){
   // The original interrupted state deliberately does not accept notes.
   if(boundary==='marker_replan'){const run=f.runtime.journal.run(found.run.id);f.runtime.journal.resume(run.id,run.revision);}
   const done=boundary==='marker_replan'?await f.action(found.run.id,'note',{text:'Keep this late instruction verbatim.'}):await f.action(found.run.id,'resume');assert.equal(done.run.status,'completed');assert.equal(f.bodies.length,1);assert.equal(done.run.stepsUsed,4);
+  assert.equal(done.run.settingsRevision,saved.settingsRevision);assert.deepEqual(done.run.settingsBinding,saved.settingsBinding);assert.deepEqual(readFileSync(settingsFile),settingsBytes);
   const messages=f.bodies[0]!;assert.ok(messages.includes(JSON.stringify(message).slice(1,-1)));if(frozen!==undefined)assert.equal(messages,frozen);
   assert.equal(markers(f.runtime.journal.snapshot(done.run.id).steps).length,1);assert.equal((messages.match(/mio\.goal\.repair/gu)??[]).length,1);
   if(boundary==='marker_replan'){

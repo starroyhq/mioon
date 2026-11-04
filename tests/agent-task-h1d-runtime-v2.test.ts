@@ -1,3 +1,4 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -50,7 +51,7 @@ async function fixture(t:TestContext,protocol:AgentProtocol){
   const project=object(await services.call('project.create',{name:'Frozen overview'})),projectId=String(project.id);
   const first=object(await services.call('shot.create',{projectId,title:'Original shot',prompt:'Original prompt'})),shotId=String(first.id);
   const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
-  await settings.put({expectedRevision:0,configuration:{presetId:'custom',platformId:'custom',protocol,model:'synthetic-h1d-model',baseUrl:'https://harness.example.com'},secret:{action:'replace',storage:'session',value:'SYNTHETIC_LOCAL_TEST_ONLY'}});
+  await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:{presetId:'custom',platformId:'custom',protocol,model:'synthetic-h1d-model',baseUrl:'https://harness.example.com'},secret:{action:'replace',storage:'session',value:'SYNTHETIC_LOCAL_TEST_ONLY'}});
   const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
   const baseTools=createAgentTaskTools({store,services}),requests:string[]=[];
   let script:Script=async function*(){yield {type:'done',output:output(protocol)};},index=0,afterRead:((prepared:PreparedAgentTaskTool)=>Promise<void>)|undefined;
@@ -67,7 +68,7 @@ async function fixture(t:TestContext,protocol:AgentProtocol){
   t.after(async()=>{runtime.close();baseTools.dispose();await settings.close();store.close();rmSync(root,{recursive:true,force:true});});
   return {store,services,settings,tools,requests,projectId,shotId,get runtime(){return runtime;},
     setScript(next:Script){script=next;index=0;},afterRead(next?:typeof afterRead){afterRead=next;},
-    async send(text='H1d offline test',extra:Record<string,unknown>={}){return runtime.send(projectId,{requestId:randomUUID(),text,expectedSettingsRevision:(await settings.get()).revision,locale:'en',...extra});},
+    async send(text='H1d offline test',extra:Record<string,unknown>={}){return runtime.send(projectId,{requestId:randomUUID(),text,expectedSettingsRevision:testAgentExecution(await settings.get()).revision,locale:'en',...extra});},
     async settle(runId:string){await runtime.drain();return runtime.journal.snapshot(runId);},
     action(snapshot:AgentTaskSnapshot,action:AgentTaskControlAction,extra:Record<string,unknown>={}){return runtime.action(projectId,snapshot.run.id,{requestId:randomUUID(),expectedRevision:snapshot.run.revision,action,...extra});},
     restart(){runtime.close();runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318});},
@@ -138,8 +139,8 @@ for(const protocol of protocols)test(`${protocol}: diagnostics omit H1d observat
   f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_version_list',{shotId:f.shotId})]:[])};});
   const sent=await f.send('Diagnostic',{diagnostic:{profile:'read_only'}}),done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(changed,true);
   for(const body of f.requests){assert.equal(markerCount(body,TASK_PROJECT_OVERVIEW_KIND),0);assert.equal(markerCount(body,TASK_STALE_TARGETS_KIND),0);assert.equal(markerCount(body,TASK_RUN_RECORD_KIND),0);}
-  const settings=await f.settings.get(),originalHistory=[{role:'user',content:'Original intent before H1d'}],original=buildTaskModelRequest(settings.configuration,originalHistory,[],4318),context=[taskResponseLanguageContext('en'),{role:'user',content:'x'.repeat(TASK_MODEL_LIMITS.historyBytes+1)}];
-  const retained=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Original intent before H1d',configuration:{...settings.configuration},settingsRevision:settings.revision,context});
+  const settings=await f.settings.get(),originalHistory=[{role:'user',content:'Original intent before H1d'}],original=buildTaskModelRequest(testAgentExecution(settings).configuration,originalHistory,[],4318),context=[taskResponseLanguageContext('en'),{role:'user',content:'x'.repeat(TASK_MODEL_LIMITS.historyBytes+1)}];
+  const retained=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Original intent before H1d',configuration:{...testAgentExecution(settings).configuration},settingsRevision:testAgentExecution(settings).revision,settingsBinding:testAgentExecution(settings).binding,context});
   const model=f.runtime.journal.beginModelStep(retained.run.id,{request:{body:original,history:originalHistory},data:{baseline:[]}},[]),saved=structuredClone(model.request),requestsBefore=f.requests.length;
   f.afterRead();f.setScript(async function*(){yield {type:'done',output:output(protocol)};});f.restart();
   const interrupted=f.runtime.get(f.projectId,retained.run.id);assert.equal(interrupted.run.status,'interrupted');await f.action(interrupted,'resume');const resumed=await f.settle(retained.run.id);

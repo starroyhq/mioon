@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {startServer} from '../apps/server/src/index.ts';
 import {inspectAgentTaskCatalog} from '../apps/server/src/agent-diagnostics-http.ts';
+import type {AgentSettingsSnapshot} from '../packages/contracts/src/agent-connection-settings.ts';
 import type {AgentTaskToolDefinition} from '../packages/business/src/agent/task-tools-v2.ts';
 
 test('agent doctor authenticates, reports safe settings and full catalog without model requests',async t=>{
@@ -17,8 +18,8 @@ test('agent doctor authenticates, reports safe settings and full catalog without
  assert.equal((await request(undefined,{headers:{origin:'https://hostile.invalid'}})).status,403);
  const hostileHost=await new Promise<number|undefined>((resolve,reject)=>{http.get(server.url+'/api/agent/diagnostics',{headers:{host:'hostile.invalid',authorization:`Bearer ${server.token}`}},res=>{res.resume();resolve(res.statusCode);}).on('error',reject);});assert.equal(hostileHost,403);
  const response=await request();assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
- const value=await response.json() as {ok:boolean;data:{version:number;settings:{secret:{configured:boolean};revision:number};catalog:{count:number;valid:boolean;issues:unknown[]};verification:string;authorization:{scopes:string[]}}};
- assert.equal(value.ok,true);assert.equal(value.data.version,1);assert.equal(value.data.settings.secret.configured,false);assert.ok(value.data.catalog.count>80);assert.equal(value.data.catalog.valid,true);assert.deepEqual(value.data.catalog.issues,[]);assert.deepEqual(value.data.authorization.scopes,[]);assert.equal(value.data.verification,'not_tested');
+ const value=await response.json() as {ok:boolean;data:{version:number;settings:AgentSettingsSnapshot;catalog:{count:number;valid:boolean;issues:unknown[]};verification:string;authorization:{scopes:string[]}}};
+ assert.equal(value.ok,true);assert.equal(value.data.version,1);assert.equal(value.data.settings.execution,null);assert.ok(value.data.settings.services.every(entry=>!entry.secret.configured));assert.ok(value.data.catalog.count>80);assert.equal(value.data.catalog.valid,true);assert.deepEqual(value.data.catalog.issues,[]);assert.deepEqual(value.data.authorization.scopes,[]);assert.equal(value.data.verification,'not_tested');
  assert.doesNotMatch(JSON.stringify(value),/apiKey|encrypted|SYNTHETIC/u);
  for(const route of ['/api/agent/diagnostics?projectId=bad','/api/agent/diagnostics?projectId=x&projectId=y','/api/agent/diagnostics?live=true'])assert.equal((await request(route)).status,400);
  assert.equal((await request('/api/agent/diagnostics?projectId=00000000-0000-4000-8000-000000000000')).status,404);

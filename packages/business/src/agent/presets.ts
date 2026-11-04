@@ -1,16 +1,15 @@
 import {AGENT_PROTOCOLS} from '../../../contracts/src/agent-protocol.ts';
 import type {AgentProtocol} from '../../../contracts/src/agent-protocol.ts';
+import type {AgentAddressMode, AgentPresetEntry, AgentPresetPlatform, AgentPresetSource, AgentProtocolEndpoint} from '../../../contracts/src/agent-provider-catalog.ts';
 import type {AgentConfiguration} from './config.ts';
+export type {AgentPresetEntry, AgentPresetPlatform, AgentPresetSource, AgentPresetProtocols, AgentProtocolEndpoint, AgentAddressMode} from '../../../contracts/src/agent-provider-catalog.ts';
 
 // Documentation-backed starting values only. This catalog performs no network I/O.
 // Account/model access and protocol compatibility remain untested.
-export interface AgentPresetSource {label: string; url: string}
-export interface AgentPresetPlatform {id: string; label: string; baseUrl: string; model: string; sources: AgentPresetSource[]; notes?: string; baseUrlTemplate?: string}
-export interface AgentPresetBase {id: string; label: string; description: string; platforms: AgentPresetPlatform[]}
-export interface AgentPresetProtocols {defaultProtocol: AgentProtocol; availableProtocols: AgentProtocol[]}
-export interface AgentPresetEntry extends AgentPresetProtocols {id: string; label: string; description: string; platforms: Array<AgentPresetPlatform & AgentPresetProtocols>; supportedModelHints?: Partial<Record<AgentProtocol, string[]>>; protocolNotes?: Partial<Record<AgentProtocol, string>>}
+interface StartingPlatform {id: string; label: string; baseUrl: string; model: string; sources: AgentPresetSource[]; notes?: string; baseUrlTemplate?: string}
+export interface AgentPresetBase {id: string; label: string; description: string; platforms: StartingPlatform[]}
 const source = (label: string, url: string): AgentPresetSource => ({label, url});
-const platform = (id: string, label: string, baseUrl: string, model: string, sources: AgentPresetSource[], notes?: string, baseUrlTemplate?: string): AgentPresetPlatform => ({id, label, baseUrl, model, sources, ...(notes ? {notes} : {}), ...(baseUrlTemplate ? {baseUrlTemplate} : {})});
+const platform = (id: string, label: string, baseUrl: string, model: string, sources: AgentPresetSource[], notes?: string, baseUrlTemplate?: string): StartingPlatform => ({id, label, baseUrl, model, sources, ...(notes ? {notes} : {}), ...(baseUrlTemplate ? {baseUrlTemplate} : {})});
 const qwenSources = [source('官方端点与区域', 'https://www.alibabacloud.com/help/en/model-studio/base-url'), source('Responses API', 'https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-responses')];
 const catalog: AgentPresetBase[] = [
   {id: 'openai', label: 'OpenAI', description: '非推理文本基线；可明确选择 Chat Completions 或 Responses。', platforms: [platform('global', 'OpenAI', 'https://api.openai.com/v1', 'gpt-4.1-mini', [source('模型文档', 'https://developers.openai.com/api/docs/models/gpt-4.1-mini')])]},
@@ -38,8 +37,8 @@ const catalog: AgentPresetBase[] = [
   {id: 'ollama', label: 'Ollama 本地', description: '仅本机回环；按协议填写基础地址，通常无需密钥，不下载模型，不包含云端路由授权。', platforms: [platform('local', '本机 · Ollama', 'http://127.0.0.1:11434/v1', 'qwen3:8b', [source('OpenAI 兼容接口', 'https://docs.ollama.com/api/openai-compatibility')])]},
 ];
 function freeze<T extends object>(value: T): Readonly<T> { for (const child of Object.values(value as Record<string, unknown>)) if (child && typeof child === 'object') freeze(child as object); return Object.freeze(value); }
-// Presets supply starting values, not a protocol allowlist or live compatibility
-// certification. Protocol selection is independent; defaults stay unchanged.
+// Runnable protocols derive only from their documentation-backed endpoint.
+// This is a static allowlist, not account access or live model certification.
 const responseModelHints: Record<string, string[]> = {
   openai: ['gpt-4.1-mini', 'gpt-4.1-mini-2025-04-14'],
   deepseek: ['deepseek-flash'],
@@ -47,14 +46,83 @@ const responseModelHints: Record<string, string[]> = {
   custom: [],
   ollama: ['qwen3:8b'],
 };
+const checkedAt = '2026-11-03';
+function protocolEndpoint(baseUrl: string, url: string, options: {baseUrlTemplate?: string; blockedReason?: string} = {}): AgentProtocolEndpoint {
+  return {baseUrl, sources: url ? [source('官方协议文档', url)] : [], checkedAt, ...options};
+}
+function platformEndpoints(presetId: string, item: StartingPlatform): {addressMode: AgentAddressMode; protocols: Partial<Record<AgentProtocol, AgentProtocolEndpoint>>} {
+  const cc = 'chat_completions', r = 'responses', m = 'anthropic_messages';
+  if (presetId === 'custom') return {addressMode: 'custom', protocols: {[cc]: protocolEndpoint('', ''), [r]: protocolEndpoint('', ''), [m]: protocolEndpoint('', '')}};
+  if (presetId === 'ollama') return {addressMode: 'local', protocols: {
+    [cc]: protocolEndpoint(item.baseUrl, 'https://docs.ollama.com/api/openai-compatibility'),
+    [r]: protocolEndpoint(item.baseUrl, 'https://docs.ollama.com/api/openai-compatibility'),
+    [m]: protocolEndpoint(new URL(item.baseUrl).origin, 'https://docs.ollama.com/api/anthropic-compatibility'),
+  }};
+  if (presetId === 'qwen') {
+    const workspace = item.id.startsWith('workspace-'), base = workspace ? '' : item.baseUrl;
+    const template = item.baseUrlTemplate, messageBase = base.replace('/compatible-mode/v1', '/apps/anthropic');
+    return {addressMode: workspace ? 'workspace' : 'fixed', protocols: {
+      [cc]: protocolEndpoint(base, 'https://help.aliyun.com/en/model-studio/compatibility-of-openai-with-dashscope', template ? {baseUrlTemplate: template} : {}),
+      [r]: protocolEndpoint(base, 'https://help.aliyun.com/en/model-studio/qwen-api-via-openai-responses', template ? {baseUrlTemplate: template} : {}),
+      [m]: protocolEndpoint(messageBase, 'https://help.aliyun.com/en/model-studio/anthropic-api-messages', template ? {baseUrlTemplate: template.replace('/compatible-mode/v1', '/apps/anthropic')} : {}),
+    }};
+  }
+  if (presetId === 'openai') return {addressMode: 'fixed', protocols: {
+    [cc]: protocolEndpoint(item.baseUrl, 'https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create'),
+    [r]: protocolEndpoint(item.baseUrl, 'https://developers.openai.com/api/reference/resources/responses/methods/create'),
+  }};
+  if (presetId === 'anthropic') return {addressMode: 'fixed', protocols: {
+    [cc]: protocolEndpoint('https://api.anthropic.com/v1', 'https://platform.claude.com/docs/en/cli-sdks-libraries/libraries/openai-sdk', {blockedReason: '官方将OpenAI兼容层定位为测试与比较，本应用仅开放Messages。'}),
+    [m]: protocolEndpoint(item.baseUrl, 'https://platform.claude.com/docs/en/api/messages/create'),
+  }};
+  if (presetId === 'deepseek') return {addressMode: 'fixed', protocols: {
+    [cc]: protocolEndpoint(item.baseUrl, 'https://api-docs.deepseek.com/api/create-chat-completion/'),
+    [r]: protocolEndpoint(item.baseUrl, 'https://api-docs.deepseek.com/api/create-response/'),
+    [m]: protocolEndpoint(item.baseUrl + '/anthropic', 'https://api-docs.deepseek.com/guides/anthropic_api'),
+  }};
+  if (presetId === 'zhipu') {
+    const origin = new URL(item.baseUrl).origin, international = item.id === 'international';
+    return {addressMode: 'fixed', protocols: {
+      [cc]: protocolEndpoint(item.baseUrl, international ? 'https://docs.z.ai/guides/develop/openai/python.md' : 'https://docs.bigmodel.cn/cn/guide/develop/openai/introduction.md'),
+      [r]: protocolEndpoint(origin + '/api/v1', international ? 'https://docs.z.ai/devpack/tool/codex.md' : 'https://docs.bigmodel.cn/cn/guide/develop/responses/introduction.md', international ? {blockedReason: 'Z.ai Responses尚缺可确认的关闭思考字段，当前不支持。'} : {}),
+      [m]: protocolEndpoint(origin + '/api/anthropic', international ? 'https://docs.z.ai/guides/develop/http/introduction.md' : 'https://docs.bigmodel.cn/cn/guide/develop/claude/introduction.md'),
+    }};
+  }
+  if (presetId === 'kimi') {
+    const domain = item.id === 'china' ? 'platform.kimi.com' : 'platform.kimi.ai';
+    return {addressMode: 'fixed', protocols: {
+      [cc]: protocolEndpoint(item.baseUrl, `https://${domain}/docs/api/chat.md`),
+      [r]: protocolEndpoint(item.baseUrl, `https://${domain}/docs/api/responses.md`, {blockedReason: 'Kimi Responses尚缺可确认的关闭思考字段，当前不支持。'}),
+      [m]: protocolEndpoint(new URL(item.baseUrl).origin + '/anthropic', `https://${domain}/docs/api/messages.md`, {blockedReason: '当前Messages鉴权与该接口的Bearer文档不兼容，当前不支持。'}),
+    }};
+  }
+  if (presetId === 'minimax') {
+    const domain = item.id === 'china' ? 'platform.minimax.cn' : 'platform.minimax.io';
+    return {addressMode: 'fixed', protocols: {
+      [cc]: protocolEndpoint(item.baseUrl, `https://${domain}/docs/api-reference/text-openai-api`),
+      [r]: protocolEndpoint(item.baseUrl, `https://${domain}/docs/api-reference/responses-create`),
+      [m]: protocolEndpoint(new URL(item.baseUrl).origin + '/anthropic', `https://${domain}/docs/api-reference/text-anthropic-api`),
+    }};
+  }
+  if (presetId === 'openrouter') return {addressMode: 'fixed', protocols: {
+    [cc]: protocolEndpoint(item.baseUrl, 'https://openrouter.ai/docs/api/reference/parameters'),
+    [r]: protocolEndpoint(item.baseUrl, 'https://openrouter.ai/docs/api_reference/responses/overview'),
+    [m]: protocolEndpoint('https://openrouter.ai/api', 'https://openrouter.ai/docs/api/api-reference/anthropic-messages/create-a-message', {blockedReason: '当前Messages鉴权与该接口的Bearer文档不兼容，当前不支持。'}),
+  }};
+  throw new TypeError('Unclassified agent provider');
+}
 export const AGENT_PRESETS: readonly AgentPresetEntry[] = freeze(catalog.map(preset => {
-  const hasResponses = Object.hasOwn(responseModelHints, preset.id);
-  const protocols: AgentPresetProtocols & Pick<AgentPresetEntry, 'supportedModelHints' | 'protocolNotes'> = {
-    defaultProtocol: preset.id === 'anthropic' ? 'anthropic_messages' : 'chat_completions',
-    availableProtocols: Object.keys(AGENT_PROTOCOLS) as AgentProtocol[],
-    ...(hasResponses ? {supportedModelHints: {responses: responseModelHints[preset.id]}} : {}),
-    ...(preset.id === 'qwen' ? {protocolNotes: {responses: '仅 qwen3.8-flash 非思考文本配置；本应用限制上下文大小，但供应商自动截断无法禁用。区域、工作空间与账户权限须匹配，未经真实调用验证。'}} : {}),
+  const defaultProtocol: AgentProtocol = preset.id === 'anthropic' ? 'anthropic_messages' : 'chat_completions';
+  const shared = {
+    ...(Object.hasOwn(responseModelHints, preset.id) ? {supportedModelHints: {responses: responseModelHints[preset.id]}} : {}),
+    ...(preset.id === 'qwen' ? {protocolNotes: {responses: 'qwen3.8-flash有固定非思考档案，其余模型使用未验证通用字段。供应商自动截断无法禁用；区域、工作空间与账户权限须匹配。'}} : {}),
   };
-  return {...preset, ...protocols, platforms: preset.platforms.map(item => ({...item, ...protocols}))};
+  const platforms: AgentPresetPlatform[] = preset.platforms.map(item => {
+    const selected = platformEndpoints(preset.id, item);
+    const availableProtocols = (Object.keys(AGENT_PROTOCOLS) as AgentProtocol[]).filter(protocol => selected.protocols[protocol] && !selected.protocols[protocol]?.blockedReason);
+    return {...item, ...selected, defaultProtocol, availableProtocols, ...shared};
+  });
+  const availableProtocols = (Object.keys(AGENT_PROTOCOLS) as AgentProtocol[]).filter(protocol => platforms.some(item => item.availableProtocols.includes(protocol)));
+  return {...preset, platforms, defaultProtocol, availableProtocols, ...shared};
 }));
 export const DEFAULT_AGENT_CONFIGURATION: Readonly<AgentConfiguration> = Object.freeze({presetId: 'openai', platformId: 'global', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1-mini', protocol: 'chat_completions'});

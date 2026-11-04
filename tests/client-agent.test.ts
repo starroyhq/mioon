@@ -1,18 +1,20 @@
 import type {AgentClient} from '../packages/client/src/agent.ts';
-interface ClientFailure extends Error {code: string; exitCode: number; details: {outcomeUnknown: boolean; lookup: string; observation: {state: string; provesWriteSucceeded: boolean}}}
+interface ClientFailure extends Error {code: string; exitCode: number; details: {outcomeUnknown: boolean; lookup: string; observation: {state: string; revision?:number;servicesMatchRequested?:boolean;mioSelectionMatchesRequested?:boolean;services?:Array<{serviceKey:string;revision:number;keyConfigured:boolean;keyStorage:string}>;provesWriteSucceeded: boolean}}}
 interface FetchCapture {url: string; options: Omit<RequestInit, 'body' | 'headers'> & {body?: string; headers: Record<string, string>}}
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {createAgentClient,AGENT_CONTROL_COMMANDS} from '../packages/client/src/agent.ts';
-import {sanitizeAgentSettingsResult, type AgentSettingsSnapshot} from '../packages/business/src/agent/settings.ts';
+import {sanitizeAgentSettingsResult} from '../packages/business/src/agent/settings.ts';
 import {AGENT_PRESETS,DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 import {AGENT_PROTOCOLS} from '@mioon/contracts';
 import type {AgentProtocol} from '../packages/contracts/src/agent-protocol.ts';
+import {ADAPTER_CONFIGURATION,ADAPTER_CUSTOM_SERVICE_KEY,adapterSettings,adapterMetadata} from './helpers/agent-adapter-fixture.ts';
+import {AGENT_CONNECTION_LIMITS,agentSettingsSnapshotSchema} from '../packages/contracts/src/agent-connection-settings.ts';
 const projectId=randomUUID(),runId=randomUUID(),stepId=randomUUID(),changeId=randomUUID(),requestId=randomUUID();
-const configuration={presetId:'custom',platformId:'custom',baseUrl:'https://synthetic.example',model:'synthetic-model',protocol:'chat_completions'};
+const configuration=ADAPTER_CONFIGURATION;
 const policy={revision:0,stepLimit:30,modes:{read_only:'direct',local_reversible:'direct',local_irreversible:'direct',paid:'confirm'}};
-const settings={revision:4,configuration,secret:{configured:false,storage:'none'},storage:{persistentAvailable:true,sessionScope:'server',reasonCode:null},presets:[],scope:'settings_only',verification:'not_tested'};
+const settings=adapterSettings(),metadata=adapterMetadata(settings);
 const env={MIOON_BASE_URL:'http://127.0.0.1:4318',MIOON_TOKEN:'SYNTHETIC_CLIENT_AGENT_TOKEN_1234567890'};
 const snapshot=(status: string|undefined='running',revision: number|undefined=1)=>({run:{id:runId,projectId,requestId,text:'synthetic',status,revision,stepLimit:30,budget:30,stepsUsed:1,configuration,createdAt:'2026-10-21T00:00:00Z',updatedAt:'2026-10-21T00:00:00Z'},steps:[],changes:[]});
 const ok=(value: unknown)=>new Response(JSON.stringify({ok:true,data:value}),{headers:{'content-type':'application/json'}});
@@ -20,7 +22,7 @@ const ok=(value: unknown)=>new Response(JSON.stringify({ok:true,data:value}),{he
 test('settings, project and doctor accept the actual sanitized preset catalog without making optional metadata required',async()=>{
  for(const protocol of Object.keys(AGENT_PROTOCOLS) as AgentProtocol[]){
  const chosen=protocol==='chat_completions'?DEFAULT_AGENT_CONFIGURATION:{...configuration,protocol};
- const actual=sanitizeAgentSettingsResult({...settings,configuration:chosen});
+ const actual=sanitizeAgentSettingsResult(adapterSettings(chosen));
  assert.deepEqual(actual.presets,AGENT_PRESETS);
  const client=createAgentClient({env,fetchImpl:async url=>{
   if((url as string).endsWith('/settings'))return ok(actual);
@@ -30,25 +32,27 @@ test('settings, project and doctor accept the actual sanitized preset catalog wi
  assert.deepEqual((await client.settingsGet()).presets,AGENT_PRESETS);
  assert.deepEqual((await client.list({projectId})).settings.presets,AGENT_PRESETS);
  assert.deepEqual((await client.doctor()).settings.presets,AGENT_PRESETS);
- assert.deepEqual((await client.settingsGet()).configuration,chosen);
+ assert.deepEqual((await client.settingsGet()).execution?.configuration,chosen);
  }
 });
 
 test('settings accepts every explicit shared protocol without retry and rejects unknown protocols before dispatch',async()=>{
- const calls: FetchCapture[]=[];
+ const calls: FetchCapture[]=[];let response=adapterSettings();
  const client=createAgentClient({env,fetchImpl:async(url,options)=>{
   calls.push({url,options} as FetchCapture);
-  const input=JSON.parse(options!.body as string) as {configuration:AgentSettingsSnapshot['configuration']};
-  return ok(sanitizeAgentSettingsResult({...settings,configuration:input.configuration}));
+  return ok(response);
  }});
  for(const protocol of Object.keys(AGENT_PROTOCOLS) as AgentProtocol[]){
   const selected={...configuration,protocol};
-  assert.deepEqual((await client.settingsPut({expectedRevision:4,configuration:selected})).configuration,selected);
-  const sent=JSON.parse(calls.at(-1)!.options.body!) as {configuration:unknown};
-  assert.deepEqual(sent.configuration,selected);
+  response=adapterSettings(selected);
+  assert.deepEqual((await client.settingsPut(adapterMetadata(response))).execution?.configuration,selected);
+  const sent=JSON.parse(calls.at(-1)!.options.body!);
+  assert.equal(sent.services.find((entry:{serviceKey:string})=>entry.serviceKey===ADAPTER_CUSTOM_SERVICE_KEY).protocol,protocol);
+  assert.deepEqual(sent.secretActions,[]);
  }
  assert.equal(calls.length,3);
- await assert.rejects(client.settingsPut({expectedRevision:4,configuration:{...configuration,protocol:'auto'}}),{code:'VALIDATION_ERROR'});
+ await assert.rejects(client.settingsPut({...metadata,services:metadata.services.map(entry=>entry.serviceKey===ADAPTER_CUSTOM_SERVICE_KEY?{...entry,protocol:'auto'}:entry)}),{code:'VALIDATION_ERROR'});
+ await assert.rejects(client.settingsPut({expectedRevision:4,configuration}),{code:'VALIDATION_ERROR'});
  assert.equal(calls.length,3);
 });
 
@@ -57,11 +61,11 @@ test('MiniMax Messages settings preserve the explicit provider, platform, URL an
  const calls:FetchCapture[]=[];
  const client=createAgentClient({env,fetchImpl:async(url,options)=>{
   calls.push({url,options} as FetchCapture);
-  return ok(sanitizeAgentSettingsResult({...settings,configuration:selected}));
+  return ok(adapterSettings(selected));
  }});
- assert.deepEqual((await client.settingsPut({expectedRevision:4,configuration:selected})).configuration,selected);
- const sent=JSON.parse(calls[0]!.options.body!) as {expectedRevision:number;configuration:unknown;secret:unknown};
- assert.equal(sent.expectedRevision,4);assert.deepEqual(sent.configuration,selected);assert.deepEqual(sent.secret,{action:'keep'});
+ assert.deepEqual((await client.settingsPut(adapterMetadata(adapterSettings(selected)))).execution?.configuration,selected);
+ const sent=JSON.parse(calls[0]!.options.body!);
+ assert.equal(sent.expectedRevision,4);assert.deepEqual(sent.services.find((entry:{serviceKey:string})=>entry.serviceKey==='minimax'),{serviceKey:'minimax',presetId:'minimax',name:'MiniMax',platformId:'china',protocol:'anthropic_messages',addressInput:'',manualModelIds:['MiniMax-M3']});assert.deepEqual(sent.secretActions,[]);
  assert.equal(calls.length,1);assert.equal(calls[0]!.options.method,'PUT');
 });
 
@@ -119,11 +123,14 @@ test('unknown settings writes read the same connection once and remain unknown e
     mutableEnv.MIOON_BASE_URL='http://127.0.0.1:4320';mutableEnv.MIOON_TOKEN='SYNTHETIC_DIFFERENT_CONNECTION_TOKEN';
     if(lost)throw Error(chosen);return ok({wrong:chosen});
    }
-   return ok({...settings,revision:5,secret:{configured:true,storage:'persistent'},unexpectedSecret:chosen});
+   return ok(adapterSettings(configuration,{revision:5,secretStorage:'persistent'}));
   }});
-  await assert.rejects(client.settingsPut({expectedRevision:4,configuration},{action:'replace',storage:'persistent',value:chosen}),error=>{
+  await assert.rejects(client.settingsPut(metadata,[{serviceKey:ADAPTER_CUSTOM_SERVICE_KEY,action:'replace',storage:'persistent',value:chosen}]),error=>{
    assert.equal((error as ClientFailure).code,'AGENT_SETTINGS_OUTCOME_UNKNOWN');assert.equal((error as ClientFailure).exitCode,3);assert.equal((error as ClientFailure).details.outcomeUnknown,true);
-   assert.deepEqual((error as ClientFailure).details.observation,{state:'read',revision:5,configurationMatchesRequested:true,keyConfigured:true,keyStorage:'persistent',provesWriteSucceeded:false});
+   const observation=(error as ClientFailure).details.observation;
+   assert.equal(observation.state,'read');assert.equal(observation.revision,5);assert.equal(observation.servicesMatchRequested,true);assert.equal(observation.mioSelectionMatchesRequested,true);assert.equal(observation.provesWriteSucceeded,false);
+   assert.ok(observation.services);assert.equal(observation.services.length,10);assert.deepEqual(observation.services.find(entry=>entry.serviceKey===ADAPTER_CUSTOM_SERVICE_KEY),{serviceKey:ADAPTER_CUSTOM_SERVICE_KEY,revision:1,keyConfigured:true,keyStorage:'persistent'});
+   assert.ok(observation.services.filter(entry=>entry.serviceKey!==ADAPTER_CUSTOM_SERVICE_KEY).every(entry=>entry.keyConfigured===false&&entry.keyStorage==='none'));
    assert.equal(JSON.stringify(error).includes(chosen),false);return true;
   });
   assert.deepEqual(calls.map(c=>(c.options)!.method),['PUT','GET']);
@@ -135,23 +142,23 @@ test('unknown settings writes read the same connection once and remain unknown e
 test('failed settings readback preserves uncertainty without response data or a second write',async()=>{
  const calls: unknown[]=[],marker='SYNTHETIC_READBACK_ERROR_NEVER_ECHO';
  const client=createAgentClient({env,fetchImpl:async(url,options)=>{calls.push((options)!.method);if((options)!.method==='PUT')throw Error(marker);return new Response(JSON.stringify({ok:false,error:{code:'AGENT_SETTINGS_'+marker,message:marker,details:{key:marker}}}),{status:503});}});
- await assert.rejects(client.settingsPut({expectedRevision:4,configuration}),error=>{
+ await assert.rejects(client.settingsPut(metadata),error=>{
   assert.equal((error as ClientFailure).code,'AGENT_SETTINGS_OUTCOME_UNKNOWN');assert.deepEqual((error as ClientFailure).details.observation,{state:'unavailable',code:'BACKEND_UNAVAILABLE',provesWriteSucceeded:false});assert.equal(JSON.stringify(error).includes(marker),false);return true;
  });
  assert.deepEqual(calls,['PUT','GET']);
 });
 test('a successful HTTP status carrying a rejection envelope is unverified, never a known settings failure',async()=>{
  const calls: unknown[]=[];const client=createAgentClient({env,fetchImpl:async(_url,options)=>{calls.push((options)!.method);return (options)!.method==='PUT'?new Response(JSON.stringify({ok:false,error:{code:'AGENT_SETTINGS_CONFLICT'}}),{status:200}):ok(settings);}});
- await assert.rejects(client.settingsPut({expectedRevision:4,configuration}),error=>(error as ClientFailure).code==='AGENT_SETTINGS_OUTCOME_UNKNOWN'&&(error as ClientFailure).details.outcomeUnknown===true&&(error as ClientFailure).details.observation.state==='read');
+ await assert.rejects(client.settingsPut(metadata),error=>(error as ClientFailure).code==='AGENT_SETTINGS_OUTCOME_UNKNOWN'&&(error as ClientFailure).details.outcomeUnknown===true&&(error as ClientFailure).details.observation.state==='read');
  assert.deepEqual(calls,['PUT','GET']);
 });
 test('settings cancellation performs no readback, and a timed-out write only observes once',async()=>{
  const controller=new AbortController(),calls: unknown[]=[];
  const client=createAgentClient({env,fetchImpl:async(_url,options)=>{calls.push((options)!.method);controller.abort();throw Error('synthetic abort');}});
- await assert.rejects(client.settingsPut({expectedRevision:4,configuration},{action:'keep'},{signal:controller.signal}),error=>(error as ClientFailure).exitCode===130&&(error as ClientFailure).details.outcomeUnknown===true&&(error as ClientFailure).details.observation.state==='not_attempted');
+ await assert.rejects(client.settingsPut(metadata,[],{signal:controller.signal}),error=>(error as ClientFailure).exitCode===130&&(error as ClientFailure).details.outcomeUnknown===true&&(error as ClientFailure).details.observation.state==='not_attempted');
  assert.deepEqual(calls,['PUT']);
  const timed: unknown[]=[];const timeoutClient=createAgentClient({env,fetchImpl:async(_url,options)=>{timed.push((options)!.method);if((options)!.method==='GET')return ok(settings);return new Promise((_resolve,reject)=>(options)!.signal!.addEventListener('abort',()=>reject(Error('synthetic timeout')),{once:true}));}});
- await assert.rejects(timeoutClient.settingsPut({expectedRevision:4,configuration},{action:'keep'},{timeoutMs:25}),error=>(error as ClientFailure).exitCode===5&&(error as ClientFailure).details.outcomeUnknown===true&&(error as ClientFailure).details.observation.state==='read'&&(error as ClientFailure).details.observation.provesWriteSucceeded===false);
+ await assert.rejects(timeoutClient.settingsPut(metadata,[],{timeoutMs:25}),error=>(error as ClientFailure).exitCode===5&&(error as ClientFailure).details.outcomeUnknown===true&&(error as ClientFailure).details.observation.state==='read'&&(error as ClientFailure).details.observation.provesWriteSucceeded===false);
  assert.deepEqual(timed,['PUT','GET']);
 });
 test('cancellation during the sole settings readback exits locally with 130 while retaining the unknown write',async()=>{
@@ -160,20 +167,45 @@ test('cancellation during the sole settings readback exits locally with 130 whil
   calls.push((options)!.method);if((options)!.method==='PUT')throw Error('synthetic response loss');
   return new Promise((_resolve,reject)=>{(options)!.signal!.addEventListener('abort',()=>reject(Error('synthetic readback cancelled')),{once:true});setTimeout(()=>controller.abort(),20);});
  }});
- await assert.rejects(client.settingsPut({expectedRevision:4,configuration},{action:'keep'},{signal:controller.signal}),error=>{
+ await assert.rejects(client.settingsPut(metadata,[],{signal:controller.signal}),error=>{
   assert.equal((error as ClientFailure).code,'INTERRUPTED');assert.equal((error as ClientFailure).exitCode,130);assert.equal((error as ClientFailure).details.outcomeUnknown,true);
   assert.deepEqual((error as ClientFailure).details.observation,{state:'unavailable',code:'INTERRUPTED',provesWriteSucceeded:false});return true;
  });
  assert.deepEqual(calls,['PUT','GET']);
 });
 
-test('public settings and doctor drop unknown fields, and backend errors never reflect response messages',async()=>{
+test('strict public settings reject unknown fields while doctor drops unrelated metadata and errors never reflect response messages',async()=>{
  const secret='SYNTHETIC_KEY_NEVER_ECHO_123';let calls=0;
  const client=createAgentClient({env,fetchImpl:async()=>{calls++;return calls===1?ok({...settings,apiKey:secret}):new Response(JSON.stringify({ok:false,error:{code:'AGENT_SETTINGS_CONFLICT',message:secret,details:{key:secret}}}),{status:409});}});
- assert.equal((await client.settingsGet() as unknown as Record<string, unknown>).apiKey,undefined);
- await assert.rejects(client.settingsPut({expectedRevision:4,configuration},{action:'replace',storage:'persistent',value:secret}),error=>(error as ClientFailure).code==='AGENT_SETTINGS_CONFLICT'&&!JSON.stringify(error).includes(secret)&&!(error as ClientFailure).message.includes(secret));
+ await assert.rejects(client.settingsGet(),{code:'BACKEND_PROTOCOL_ERROR'});
+ await assert.rejects(client.settingsPut(metadata,[{serviceKey:ADAPTER_CUSTOM_SERVICE_KEY,action:'replace',storage:'persistent',value:secret}]),error=>(error as ClientFailure).code==='AGENT_SETTINGS_CONFLICT'&&!JSON.stringify(error).includes(secret)&&!(error as ClientFailure).message.includes(secret));
  const doctor=createAgentClient({env,fetchImpl:async(url,options)=>{assert.equal((options)!.method,'GET');assert.ok((url as string).endsWith(`/api/agent/diagnostics?projectId=${projectId}`));return ok({version:1,settings,policy,authorization:{revision:0,scopes:[]},catalog:{count:89,valid:true,issues:[]},projectId,verification:'not_tested',headers:{authorization:secret}});}});
  assert.equal((await doctor.doctor({projectId}) as unknown as Record<string, unknown>).headers,undefined);
+});
+
+test('a multi-service save sends one atomic collection and redacts every replacement key from errors',async()=>{
+ const secondKey=randomUUID(),secondEntry={...settings.services.find(entry=>entry.serviceKey===ADAPTER_CUSTOM_SERVICE_KEY)!,serviceKey:secondKey,name:'Second custom'},batch=agentSettingsSnapshotSchema.parse({...settings,services:[...settings.services,secondEntry]});
+ const keys=['SYNTHETIC_KEY_A','SYNTHETIC_KEY_B'],calls:FetchCapture[]=[];
+ const client=createAgentClient({env,fetchImpl:async(url,options)=>{calls.push({url,options} as FetchCapture);return new Response(JSON.stringify({ok:false,error:{code:`AGENT_SETTINGS_${keys.join('_')}`,message:keys.join(' ')}}),{status:409});}});
+ await assert.rejects(client.settingsPut(adapterMetadata(batch),[
+  {serviceKey:ADAPTER_CUSTOM_SERVICE_KEY,action:'replace',storage:'session',value:keys[0]},
+  {serviceKey:secondKey,action:'replace',storage:'persistent',value:keys[1]},
+ ]),error=>{
+  for(const key of keys){assert.ok(!JSON.stringify(error).includes(key));assert.ok(!String(error).includes(key));}
+  return true;
+ });
+ assert.equal(calls.length,1);assert.equal(calls[0].options.method,'PUT');
+ const sent=JSON.parse(calls[0].options.body!);assert.equal(sent.services.length,11);assert.deepEqual(sent.mioSelection,batch.mioSelection);
+ assert.deepEqual(sent.secretActions.map((entry:{serviceKey:string})=>entry.serviceKey),[ADAPTER_CUSTOM_SERVICE_KEY,secondKey]);
+});
+
+test('settings HTTP responses enforce the 64 KiB byte boundary before parsing a valid DTO',async()=>{
+ const body=JSON.stringify({ok:true,data:settings}),length=Buffer.byteLength(body),limit=AGENT_CONNECTION_LIMITS.transportBytes;assert.ok(length<limit);
+ for(const extra of [0,1]){
+  const client=createAgentClient({env,fetchImpl:async()=>new Response(body+' '.repeat(limit-length+extra),{headers:{'content-type':'application/json'}})});
+  if(extra===0)assert.deepEqual(await client.settingsGet(),settings);
+  else await assert.rejects(client.settingsGet(),{code:'BACKEND_PROTOCOL_ERROR'});
+ }
 });
 
 test('watch reads durable snapshots after fragmented CRLF SSE notifications and never writes',async()=>{

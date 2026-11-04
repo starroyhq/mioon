@@ -12,7 +12,7 @@ import {lstatSync} from 'node:fs';
  * authorizer. Only explicit approved-input construction grants a scope. */
 interface AuthorizationsStore {readonly root: string; readonly db: unknown}
 type StoreOrRead = AuthorizationsStore | (() => AuthorizationsStore)
-interface SettingsSnapshot {readonly configuration: unknown; readonly revision: number}
+interface SettingsSnapshot {readonly execution: {readonly configuration: {readonly model:string};readonly revision:number}|null}
 interface SettingsReader {get(): Promise<SettingsSnapshot>}
 type Authorizations = ReturnType<typeof createAgentAuthorizations>
 export function createTestAuthorizations(storeOrRead: StoreOrRead, settings: SettingsReader): Authorizations {
@@ -28,23 +28,25 @@ export function createTestAuthorizations(storeOrRead: StoreOrRead, settings: Set
       const info=lstatSync(databaseFile,{bigint:true});
       return isAppLibraryHeld({dev:String(info.dev),ino:String(info.ino)},app.db);
     }},
-    readCurrentTarget:async()=>{const current=await settings.get();return {
+    readCurrentTarget:async()=>{const {execution:current}=await settings.get();return current? {
       destination:deriveAgentEndpoint(current.configuration as never),model:(current.configuration as {model: string}).model,settingsRevision:current.revision,
-    };},
+    }:null;},
   });
 }
 export async function authorizeTestScope(authorizations: Authorizations,scope='typed_chat_only'): Promise<void> {
   const current=await authorizations.list();
-  if(current.authorizations.some((row: {destination: string; model: string; scope: string})=>row.destination===current.currentTarget.destination&&row.model===current.currentTarget.model&&row.scope===scope))return;
-  await authorizations.grant({requestId:randomUUID(),expectedRevision:current.revision,expectedSettingsRevision:current.currentTarget.settingsRevision,
-    destination:current.currentTarget.destination,model:current.currentTarget.model,scope});
+  const target=current.currentTarget;if(!target)throw new Error('No selected Mio connection');
+  if(current.authorizations.some((row: {destination: string; model: string; scope: string})=>row.destination===target.destination&&row.model===target.model&&row.scope===scope))return;
+  await authorizations.grant({requestId:randomUUID(),expectedRevision:current.revision,expectedSettingsRevision:target.settingsRevision,
+    destination:target.destination,model:target.model,scope});
 }
 interface HttpRequest { (route: string, options: {method: string; input: unknown}): Promise<{status: number; body?: unknown}> }
-interface HttpSnapshot {authorization: {scopes: readonly string[]; revision: number}; settings: {revision: number; configuration: unknown}}
+interface HttpSnapshot {authorization: {scopes: readonly string[]; revision: number}; settings: SettingsSnapshot}
 export async function authorizeHttpSnapshot(request: HttpRequest, snapshot: HttpSnapshot, scope='typed_chat_only'): Promise<void> {
   if(snapshot.authorization.scopes.includes(scope))return;
+  const execution=snapshot.settings.execution;if(!execution)throw new Error('No selected Mio connection');
   const result=await request('/api/rpc',{method:'POST',input:{operation:'agent.authorization.grant',input:{requestId:randomUUID(),
-    expectedRevision:snapshot.authorization.revision,expectedSettingsRevision:snapshot.settings.revision,
-    destination:deriveAgentEndpoint(snapshot.settings.configuration as never),model:(snapshot.settings.configuration as {model: string}).model,scope}}});
+    expectedRevision:snapshot.authorization.revision,expectedSettingsRevision:execution.revision,
+    destination:deriveAgentEndpoint(execution.configuration as never),model:(execution.configuration as {model: string}).model,scope}}});
   if(result.status!==200||(result.body as {ok?: unknown}|null|undefined)?.ok!==true)throw new Error(`Synthetic authorization failed: ${result.status}`);
 }
