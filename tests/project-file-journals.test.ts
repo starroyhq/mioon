@@ -4,11 +4,11 @@
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {linkSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
+import {linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {isSuperJournalInUse, superJournalsIn} from '../packages/business/src/project-file/index.ts';
-import {isHotJournal, isSuperJournalName, superJournalNamedBy} from '../packages/business/src/project-file/journals.ts';
+import {copyIsolatedRecoveryJournal, isHotJournal, isSuperJournalName, superJournalNamedBy} from '../packages/business/src/project-file/journals.ts';
 
 const JOURNAL_MAGIC = Buffer.from([0xd9, 0xd5, 0x05, 0xf9, 0x20, 0xa1, 0x63, 0xd7]);
 
@@ -145,4 +145,20 @@ test('a journal may name the super-journal by another path to the same file', t 
   assert.equal(isSuperJournalInUse(superJournal), true, 'through a hard link');
   writeSuperJournal(path.join(localDir, 'history.db-mj0000009FF'), [projectJournal]);
   assert.equal(isSuperJournalInUse(path.join(localDir, 'history.db-mj0000009FF')), false, 'another file');
+});
+
+test('isolated recovery strips a validated master link without changing the source journal or super-journal',t=>{
+ const root=scratch(t),master=path.join(root,'history.db-mj000000900'),source=path.join(root,'source-journal'),copy=path.join(root,'copy-journal');
+ writeSuperJournal(master,[source]);writeJournal(source,{names:master});
+ const bytes=readFileSync(source),record=bytes.length-20-Buffer.byteLength(master);bytes.writeUInt32BE(4096,24);bytes.writeUInt32BE(0x40001,record);writeFileSync(source,bytes);
+ const superBytes=readFileSync(master);copyIsolatedRecoveryJournal(source,copy);
+ assert.deepEqual(readFileSync(source),bytes);assert.deepEqual(readFileSync(master),superBytes);assert.deepEqual(readFileSync(copy),bytes.subarray(0,record));assert.equal(superJournalNamedBy(copy),null);
+});
+test('an already removed master keeps committed pages in isolated validation rather than forcing rollback',t=>{
+ const root=scratch(t),source=writeJournal(path.join(root,'source-journal'),{names:path.join(root,'missing-master')}),copy=path.join(root,'copy-journal'),bytes=readFileSync(source);
+ copyIsolatedRecoveryJournal(source,copy);assert.equal(readFileSync(copy).length,0);assert.deepEqual(readFileSync(source),bytes);
+});
+test('an ambiguous master tail is rejected without editing its source',t=>{
+ const root=scratch(t),source=writeJournal(path.join(root,'source-journal'),{names:path.join(root,'master'),checksum:bytes=>unsignedSum(bytes)+1}),bytes=readFileSync(source);
+ assert.throws(()=>copyIsolatedRecoveryJournal(source,path.join(root,'copy-journal')),/Invalid master journal tail/);assert.deepEqual(readFileSync(source),bytes);
 });

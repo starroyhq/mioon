@@ -4,7 +4,7 @@ import {workspaceSettingsSchema} from '../packages/contracts/src/workspace-confi
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {chmodSync, lstatSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync} from 'node:fs';
+import {chmodSync, lstatSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
@@ -18,6 +18,7 @@ import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {findHeldAppProjectFile} from '../packages/business/src/app-db/connection.ts';
 import {isProjectDatabase, isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
 import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
+import {projectLocation, serverAppDirectories} from '../apps/server/src/project-host/directories.ts';
 import {mutateProjectRecord} from '../packages/business/src/project-record-mutations.ts';
 import {testStoreForConnection} from '../packages/business/src/project-file/test-store.ts';
 import {createServerProject, foreignKeyCheck, openProjectDatabase, projectDatabasePath, projectDirFor, schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
@@ -154,6 +155,18 @@ test('createServerProject closes its opened kernel and removes registration afte
   const library = openAppLibrary({dataDir});
   try { assert.equal(library.registry.get(projectId), null); }
   finally { library.close(); }
+  // A retry creates a different physical file and therefore a new token. The
+  // kernel must preserve the first file's local evidence rather than silently
+  // admitting it under that new token, even when initialization never ran.
+  const local = projectLocation(serverAppDirectories(dataDir), projectId), historyFile = path.join(local.localDir, 'history.db');
+  const previous = readFileSync(historyFile);
+  assert.throws(() => createServerProject(dataDir, {projectId, name: 'Unconfirmed new file'}), {code: 'PROJECT_HISTORY_DIVERGED'});
+  assert.deepEqual(readFileSync(historyFile), previous);
+  assert.equal(lstatSync(path.dirname(projectFile), {throwIfNoEntry: false}), undefined);
+  assert.ok(identities.every(identity => !isProjectFileHeld(identity)));
+  // Only this test's generated, closed fixture records are discarded. The
+  // helper itself never deletes pre-existing local records to force admission.
+  for (const directory of [local.localDir, local.cacheDir, local.tempDir]) rmSync(directory, {recursive: true, force: true});
   const recovered = createServerProject(dataDir, {projectId, name: 'Recovered initialization'});
   try { assert.equal(projectName(recovered.store.db, projectId), 'Recovered initialization'); }
   finally { recovered.store.close(); }

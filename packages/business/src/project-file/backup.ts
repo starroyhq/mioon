@@ -20,6 +20,7 @@ export const PROJECT_BACKUP_APPLICATION_ID = 0x4d696f42;
 export interface ProjectBackupIdentity {
   readonly projectId: string;
   readonly contentSequence: number;
+  readonly contentToken: string;
   readonly formatVersion: number;
   readonly name: string | null;
   readonly sizeBytes: number;
@@ -43,11 +44,17 @@ const invalid = (reason: string, cause?: unknown): AppError => {
 
 /** Refuse held SQLite inodes before opening a descriptor: closing an fs
  * descriptor of a live project file would drop this process's POSIX locks. */
-function checkHeader(file: string, applicationId: number): number {
+function checkHeader(file: string, applicationId: number) {
   const info = lstatSync(file, {bigint: true});
   if (!info.isFile() || info.nlink !== 1n) throw invalid('not-a-regular-single-link-file');
   const identity = {dev: String(info.dev), ino: String(info.ino)};
   if (isProjectFileHeld(identity) || isAppLibraryHeld(identity)) throw invalid('held-database');
+  // A read-only connection must not reinterpret uncertain journal pages or
+  // create sidecars. Old formats are rejected before SQLite sees the file.
+  for (const suffix of ['-journal','-wal','-shm']) {
+    const sidecar=lstatSync(file+suffix,{throwIfNoEntry:false});
+    if(sidecar && (sidecar.size>0 || !sidecar.isFile()))throw invalid('journal');
+  }
   // Backups live in a private record folder; a published portable project
   // can live in a normal 0755 user directory, just like connection.ts accepts.
   if (applicationId === PROJECT_BACKUP_APPLICATION_ID) validateManagedFile(file, {private: true});
@@ -58,21 +65,22 @@ function checkHeader(file: string, applicationId: number): number {
     const header = Buffer.alloc(100);
     if (readSync(fd, header, 0, header.length, 0) !== 100 || header.toString('latin1', 0, 16) !== 'SQLite format 3\u0000'
       || header.readUInt32BE(68) !== applicationId || header[18] !== 1 || header[19] !== 1) throw invalid('header');
-    return Number(actual.size);
+    if(header.readUInt32BE(60)!==PROJECT_FILE_SCHEMA_VERSION)throw invalid('format');
+    return {sizeBytes:Number(actual.size),generation:[actual.dev,actual.ino,actual.size,actual.mtimeNs,actual.ctimeNs].join(':')};
   } finally { closeSync(fd); }
 }
 
 /** Full current project profile; only the dedicated marker differs. */
 export function readCopiedProjectIdentity(db: DatabaseSync, applicationId: number, sizeBytes: number): ProjectBackupIdentity {
-  if (pragma(db, 'application_id') !== applicationId || pragma(db, 'encoding') !== 'UTF-8' || pragma(db, 'journal_mode') !== 'delete') throw invalid('profile');
+  if (pragma(db, 'application_id') !== applicationId || pragma(db,'user_version')!==PROJECT_FILE_SCHEMA_VERSION || pragma(db, 'encoding') !== 'UTF-8' || pragma(db, 'journal_mode') !== 'delete') throw invalid('profile');
   if (db.prepare("SELECT sql FROM sqlite_schema WHERE type='table' AND name='schema_version'").get()?.sql !== SCHEMA_VERSION_TABLE_SQL) throw invalid('format');
   const versions = db.prepare('SELECT version FROM schema_version').all();
   if (versions.length !== 1 || versions[0].version !== PROJECT_FILE_SCHEMA_VERSION) throw invalid('format');
   const diff = compareManifest(readSchemaManifest(db, 'main'), SCHEMA_MANIFEST.project.entries);
   if (diff.changed.length || diff.missing.length || diff.unexpected.length) throw invalid('schema');
-  const rows = db.prepare('SELECT singleton,projectId,contentSequence FROM project_file').all(), row = rows[0];
+  const rows = db.prepare('SELECT singleton,projectId,contentSequence,contentToken FROM project_file').all(), row = rows[0];
   if (rows.length !== 1 || row.singleton !== 1 || !isProjectId(row.projectId) || typeof row.contentSequence !== 'number'
-    || !Number.isSafeInteger(row.contentSequence) || row.contentSequence < 0) throw invalid('metadata');
+    || !Number.isSafeInteger(row.contentSequence) || row.contentSequence < 0 || typeof row.contentToken!=='string' || !/^[a-f0-9]{32}$/u.test(row.contentToken)) throw invalid('metadata');
   const projects = db.prepare('SELECT id,data FROM projects LIMIT 2').all();
   if (projects.length > 1 || projects.length === 1 && projects[0].id !== row.projectId) throw invalid('project-row');
   if (pragma(db, 'quick_check') !== 'ok' || db.prepare('PRAGMA foreign_key_check').get() !== undefined) throw invalid('integrity');
@@ -83,16 +91,18 @@ export function readCopiedProjectIdentity(db: DatabaseSync, applicationId: numbe
       if (data !== null && typeof data === 'object' && 'name' in data && typeof data.name === 'string') name = data.name;
     } catch { throw invalid('project-data'); }
   }
-  return Object.freeze({projectId: row.projectId, contentSequence: row.contentSequence, formatVersion: PROJECT_FILE_SCHEMA_VERSION, name, sizeBytes});
+  return Object.freeze({projectId: row.projectId, contentSequence: row.contentSequence, contentToken:row.contentToken, formatVersion: PROJECT_FILE_SCHEMA_VERSION, name, sizeBytes});
 }
 
 function openReadOnly(file: string, applicationId: number): ProjectBackupReader {
   let db: DatabaseSync | undefined;
   try {
-    const size = checkHeader(file, applicationId);
+    const before = checkHeader(file, applicationId);
     db = new DatabaseSync(file, options);
     db.exec('PRAGMA trusted_schema=OFF; PRAGMA query_only=ON; PRAGMA cell_size_check=ON');
-    const identity = readCopiedProjectIdentity(db, applicationId, size), database = db;
+    const identity = readCopiedProjectIdentity(db, applicationId, before.sizeBytes), database = db;
+    const after=lstatSync(file,{bigint:true});
+    if(!after.isFile() || after.nlink!==1n || [after.dev,after.ino,after.size,after.mtimeNs,after.ctimeNs].join(':')!==before.generation)throw invalid('file-changed');
     const reader: ProjectBackupReader = Object.freeze({db: database, identity, close: (): void => { if (database.isOpen) database.close(); }});
     readers.add(reader);
     return reader;

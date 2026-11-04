@@ -17,11 +17,12 @@ import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtim
 import {createProjectVersions} from '../packages/business/src/project-versions/service.ts';
 import {installProjectVersionCapture} from '../packages/business/src/project-versions/capture.ts';
 import {captureProjectDocumentInside} from '../packages/business/src/project-versions/document.ts';
+import {copyProjectVersionsInside} from '../packages/business/src/project-versions/copy.ts';
 
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 interface Shot {id: string; revision: number; prompt: string; orderIndex: number}
-async function fixture(t: TestContext) {
-  const root = mkdtempSync(path.join(tmpdir(), 'project-version-mio-undo-')), created = createServerProject(root, {name: 'Version undo combination'});
+async function fixture(t: TestContext, sharedProjectId?: string) {
+  const root = mkdtempSync(path.join(tmpdir(), 'project-version-mio-undo-')), created = createServerProject(root, {name: 'Version undo combination', ...(sharedProjectId ? {projectId: sharedProjectId} : {})});
   let store = created.store;
   const projectId = created.projectId, settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
   function assemble() {
@@ -53,7 +54,7 @@ async function fixture(t: TestContext) {
   }
   const restore = (versionId: string) => {
     const preview = current.versions.preview({projectId, versionId});
-    return current.versions.restore({projectId, versionId, requestId: randomUUID(), expectedContentSequence: preview.contentSequence, previewDigest: preview.previewDigest});
+    return current.versions.restore({projectId, versionId, requestId: randomUUID(), expectedContentSequence: preview.contentSequence, expectedContentToken: preview.contentToken, previewDigest: preview.previewDigest});
   };
   const undo = (change: AgentTaskChange) => current.tools.undo(change, {beforeEffect: () => current.services.assertMutationAllowed(),
     recordInside: item => {current.journal.markChangeRevertedInside(item.id);}, retainInside: (item, reason) => {current.journal.markChangeRetainedInside(item.id, reason);}});
@@ -61,6 +62,33 @@ async function fixture(t: TestContext) {
     get store() {return store;}, get journal() {return current.journal;}, get services() {return current.services;}, get versions() {return current.versions;}, get runtime() {return current.runtime;},
     async reopen() {await current.close(); store.close(); store = openServerProject(root, projectId); current = assemble();}};
 }
+
+test('a new real Mio edit is attributable after raw version copying even below the original rowid boundary', async t => {
+  const source = await fixture(t), shot = await source.services.call('shot.create', {projectId: source.projectId, title: 'Copied content', prompt: 'Before', duration: 2}) as Shot;
+  for (const prompt of ['First Mio edit', 'Captured Mio edit']) await source.execute('shot.update', {
+    shotId: shot.id, expectedRevision: source.shot(shot.id).revision, patch: {prompt}});
+  const saved = source.versions.save({projectId: source.projectId, requestId: randomUUID()}).version;
+  const oldBoundary = Number(source.store.db.prepare('SELECT mioChangeRowid FROM main.project_versions WHERE id=?').get(saved.id)!.mioChangeRowid);
+  assert.equal(oldBoundary, 2);
+  const target = await fixture(t, source.projectId);
+  // The real switch retains this project content and its persistent target
+  // ledger. Construct that same content with a separate empty history owner.
+  target.store.put('shots', source.shot(shot.id));
+  const ledger = source.store.db.prepare('SELECT * FROM project.agent_task_target_revisions_v2 ORDER BY kind,targetId').all();
+  target.store.tx(() => {
+    for (const row of ledger) target.store.db.prepare('INSERT INTO project.agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(?,?,?,?) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=excluded.revision')
+      .run(row.projectId, row.kind, row.targetId, row.revision);
+    copyProjectVersionsInside(source.store.db, target.store.db, {projectId: source.projectId});
+  });
+  assert.equal(target.store.db.prepare('SELECT count(*) n FROM main.mio_changes').get()!.n, 0);
+  assert.equal(target.store.db.prepare('SELECT 1 FROM main.mio_runs WHERE id=?').get(source.run.id), undefined, 'old execution authority is not copied');
+  const [change] = await target.execute('shot.update', {shotId: shot.id, expectedRevision: target.shot(shot.id).revision, patch: {prompt: 'New domain Mio edit'}});
+  const newRowid = Number(target.store.db.prepare('SELECT rowid FROM main.mio_changes WHERE id=?').get(change.id)!.rowid);
+  assert.ok(newRowid < oldBoundary); assert.ok(change.targets.some(item => Number(item.revisionAfter) > Number(ledger.find(row => row.kind === 'shot' && row.targetId === shot.id)!.revision)));
+  const state = target.state(), preview = target.versions.preview({projectId: target.projectId, versionId: saved.id});
+  assert.equal(preview.changes.find(item => item.table === 'shots' && item.key.includes(shot.id))!.source, 'mio');
+  assert.deepEqual(target.state(), state, 'attribution reads neither rewrite change state nor grant old undo authority');
+});
 
 async function restoredIndependentTargets(t: TestContext) {
   const f = await fixture(t), a = await f.services.call('shot.create', {projectId: f.projectId, title: 'Restored target', prompt: 'A before', duration: 2}) as Shot,

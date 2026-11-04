@@ -8,6 +8,7 @@ import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
+import {execFileSync} from 'node:child_process';
 import {
   copyProjectBackup, copyProjectToNewFile, createProjectBackup, inspectCopiedProjectFile, inspectProjectBackup, openProjectBackup,
   openProjectStore, openStore, PROJECT_BACKUP_APPLICATION_ID, PROJECT_FILE_APPLICATION_ID,
@@ -50,6 +51,7 @@ test('native backup copies attached project content, not main history, and leave
   const identity = await createProjectBackup(store, backupFile);
   assert.equal(identity.projectId, store.projectId);
   assert.equal(identity.contentSequence, before);
+  assert.equal(identity.contentToken,store.db.prepare('SELECT contentToken FROM project.project_file').get()?.contentToken);assert.match(identity.contentToken,/^[a-f0-9]{32}$/u);
   assert.equal(identity.name, '备份项目');
   assert.ok(identity.sizeBytes > 100);
   assert.equal(sequence(store), before);
@@ -153,6 +155,7 @@ test('restore preserves real IDs, immutable content, BLOBs and project-owned ref
   assert.equal(result.projectId, newId);
   assert.notEqual(newId, oldId);
   assert.equal(result.contentSequence, sequence(store));
+  assert.notEqual(result.contentToken,store.db.prepare('SELECT contentToken FROM project.project_file').get()?.contentToken);
   assert.equal(existsSync(path.join(path.dirname(projectFile), 'local')), false);
   const restored = openRecovered(projectFile); t.after(() => restored.close());
   assert.equal(restored.historyState, 'fresh');
@@ -229,9 +232,58 @@ test('the S5 copy primitive also accepts a live owner and produces a separately 
   assert.equal(sequence(store), before);
   const other = openRecovered(projectFile); t.after(() => other.close());
   assert.deepEqual(plain(other.db.prepare('SELECT projectId,seenContentSequence FROM main.history_state').get()), {projectId: result.projectId, seenContentSequence: before});
+  assert.equal(other.db.prepare('SELECT seenContentToken FROM main.history_state').get()?.seenContentToken,result.contentToken);
   assert.equal(other.get('projects', store.projectId), null);
   other.put('projects', {id: result.projectId, name: 'independent'});
   assert.equal((store.get('projects', store.projectId) as {name: string}).name, '备份项目');
+});
+
+test('a fixed copy token is preserved while stale source stamps and reused tokens refuse publication',async t=>{
+ const{root,store,backupFile}=fixture(t),source=await createProjectBackup(store,backupFile),bytes=readFileSync(backupFile);
+ const contentToken=source.contentToken==='0'.repeat(32)?'1'.repeat(32):'0'.repeat(32),target=destination(root,'fixed-token');
+ const result=await copyProjectBackup({backupFile,sourceProjectDir:store.projectDir,projectFile:target,projectId:randomUUID(),contentToken,
+   expectedSource:{projectId:store.projectId,contentSequence:source.contentSequence,contentToken:source.contentToken}});
+ assert.equal(result.contentToken,contentToken);assert.equal(inspectCopiedProjectFile(target).contentToken,contentToken);assert.equal(result.contentSequence,source.contentSequence);
+ for(const token of [source.contentToken,'bad','A'.repeat(32)]){
+   const file=destination(root,randomUUID());await assert.rejects(copyProjectBackup({backupFile,sourceProjectDir:store.projectDir,projectFile:file,contentToken:token}),token===source.contentToken?code('PROJECT_BACKUP_COPY_FAILED'):TypeError);
+   assert.equal(existsSync(file),false);assert.deepEqual(readdirSync(path.dirname(file)),[]);
+ }
+ for(const expectedSource of [{projectId:store.projectId,contentSequence:source.contentSequence+1,contentToken:source.contentToken},
+   {projectId:store.projectId,contentSequence:source.contentSequence,contentToken},
+   {projectId:randomUUID(),contentSequence:source.contentSequence,contentToken:source.contentToken}]){
+   const file=destination(root,randomUUID());await assert.rejects(copyProjectBackup({backupFile,sourceProjectDir:store.projectDir,projectFile:file,contentToken,expectedSource}),code('PROJECT_BACKUP_COPY_FAILED'));
+   assert.equal(existsSync(file),false);assert.deepEqual(readdirSync(path.dirname(file)),[]);
+ }
+ assert.deepEqual(readFileSync(backupFile),bytes);
+});
+
+test('backup and copied-file readers reject old header versions before touching source or journal files',async t=>{
+ const{root,store,backupFile}=fixture(t);await createProjectBackup(store,backupFile);
+ const restored=destination(root),copy=await copyProjectBackup({backupFile,sourceProjectDir:store.projectDir,projectFile:restored});assert.ok(copy);
+ for(const [source,inspect]of [[backupFile,inspectProjectBackup],[restored,inspectCopiedProjectFile]] as const){
+   for(const version of [1,2,999]){
+     const file=path.join(root,`${randomUUID()}.mioon`);copyFileSync(source,file);
+     const fd=fs.openSync(file,'r+');try{const marker=Buffer.alloc(4);marker.writeUInt32BE(version);fs.writeSync(fd,marker,0,4,60);}finally{fs.closeSync(fd);}
+     const journal=file+'-journal';writeFileSync(journal,Buffer.from('preserved recovery evidence'),{mode:0o600});
+     const before=readFileSync(file),companion=readFileSync(journal),entries=readdirSync(root).sort();
+     assert.throws(()=>inspect(file),code('PROJECT_BACKUP_INVALID'));assert.deepEqual(readFileSync(file),before);assert.deepEqual(readFileSync(journal),companion);assert.deepEqual(readdirSync(root).sort(),entries);
+   }
+ }
+});
+
+test('real SIGKILL hot-journal backups remain byte-identical on current and old-format copy rejection',async t=>{
+ const{root,store,backupFile}=fixture(t);await createProjectBackup(store,backupFile);
+ for(const version of [2,3]){
+   const file=path.join(root,`hot-${version}.mioon`);copyFileSync(backupFile,file);
+   const program=`import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync(${JSON.stringify(file)});db.exec('PRAGMA cache_size=1; PRAGMA cache_spill=ON; BEGIN IMMEDIATE');db.prepare("UPDATE projects SET data=json_set(data,'$.note',?)").run('x'.repeat(2*1024*1024));process.kill(process.pid,'SIGKILL');`;
+   assert.throws(()=>execFileSync(process.execPath,['--input-type=module','--eval',program],{stdio:'ignore'}),(error:unknown)=>!!error&&typeof error==='object'&&'signal' in error&&error.signal==='SIGKILL');
+   const journal=file+'-journal';assert.ok(existsSync(journal));assert.equal(readFileSync(journal).subarray(0,8).toString('hex'),'d9d505f920a163d7','spilled rollback pages have a real hot header');
+   if(version===2){const fd=fs.openSync(file,'r+');try{const marker=Buffer.alloc(4);marker.writeUInt32BE(2);fs.writeSync(fd,marker,0,4,60);}finally{fs.closeSync(fd);}}
+   const before=readFileSync(file),evidence=readFileSync(journal),target=destination(root,`hot-target-${version}`),entries=readdirSync(root).sort();
+   assert.throws(()=>openProjectBackup(file),code('PROJECT_BACKUP_INVALID'));
+   await assert.rejects(copyProjectBackup({backupFile:file,sourceProjectDir:store.projectDir,projectFile:target}),code('PROJECT_BACKUP_INVALID'));
+   assert.deepEqual(readFileSync(file),before);assert.deepEqual(readFileSync(journal),evidence);assert.deepEqual(readdirSync(root).sort(),entries);assert.deepEqual(readdirSync(path.dirname(target)),[]);
+ }
 });
 
 test('portable 0755 project folders preserve nested references without broadening their directory permission', async t => {

@@ -75,7 +75,7 @@ function guards(store: ProjectStore) {
 function selected(api: ReturnType<typeof versionApi>, projectId: string, versionId: string) {
   const preview = api.preview({projectId, versionId});
   assert.equal(preview.restoreAvailable, true);
-  return {preview, input: {projectId, versionId, requestId: randomUUID(), expectedContentSequence: preview.contentSequence, previewDigest: preview.previewDigest}};
+  return {preview, input: {projectId, versionId, requestId: randomUUID(), expectedContentSequence: preview.contentSequence, expectedContentToken: preview.contentToken, previewDigest: preview.previewDigest}};
 }
 
 async function fixture(t: TestContext) {

@@ -383,7 +383,7 @@ async function runScenario(f: Fixture, protocol: AgentProtocol, scenario: Finger
     assert.ok(Array.isArray(tools));
     // A diagnostic has none of the conversation-only host tools: no loader,
     // nobody to answer a question, and no methods or review reports (C6).
-    assert.equal(tools.length, f.tools.list().filter(value => value.risk === 'read_only' && !AGENT_TASK_CONVERSATION_TOOLS.includes(value.name)).length);
+    assert.equal(tools.length, f.tools.diagnosticList().filter(value => value.risk === 'read_only' && !AGENT_TASK_CONVERSATION_TOOLS.includes(value.name)).length);
     assert.ok(tools.every(value => {
       const tool = object(value), name = object(protocol === 'chat_completions' ? tool.function : tool).name;
       return !AGENT_TASK_CONVERSATION_TOOLS.includes(String(name));

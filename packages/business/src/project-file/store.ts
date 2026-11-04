@@ -2,10 +2,11 @@ import type {DatabaseSync, SQLInputValue} from 'node:sqlite';
 import {isAsyncFunction, isPromise} from 'node:util/types';
 import type {ProjectStore as ProjectStoreContract} from '../../../contracts/src/project-file.ts';
 import type {Store} from '../store-contract.ts';
-import {createProjectFile, isProjectDatabase, openProjectConnection} from './connection.ts';
-import type {CreateProjectFileOptions, OpenProjectConnectionOptions} from './connection.ts';
+import {createProjectFile, isProjectDatabase, openProjectConnection, openStagedProjectConnection} from './connection.ts';
+import type {CreateProjectFileOptions, OpenProjectConnectionOptions, ProjectConnection, StagedProjectConnectionOptions} from './connection.ts';
 import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
 import type {MediaReference} from '../../../contracts/src/media-reference.ts';
+import {AppError} from '../../../contracts/src/app-error.ts';
 import {mediaUnavailableError} from '../../../contracts/src/media-reference-errors.ts';
 
 /** The contract's project store with the read and write surface of today's
@@ -140,7 +141,12 @@ const sqlValue = (value: unknown): SQLInputValue => {
 /** Opens a project file (openProjectConnection) as a store. `root` is the
  * project directory. */
 export function openProjectStore(options: OpenProjectConnectionOptions): ProjectStore {
-  const connection = openProjectConnection(options);
+  return storeFromConnection(openProjectConnection(options));
+}
+export function openStagedProjectStore(options: StagedProjectConnectionOptions): ProjectStore {
+  return storeFromConnection(openStagedProjectConnection(options));
+}
+function storeFromConnection(connection: ProjectConnection): ProjectStore {
   const database = connection.db;
   const table = (t: string): string => {
     if (!TABLES.has(t)) throw Error('Unknown table');
@@ -156,6 +162,7 @@ export function openProjectStore(options: OpenProjectConnectionOptions): Project
   };
   const put = <T extends object>(t: string, value: T): T => {
     table(t);
+    if (connection.historyState === 'diverged') throw new AppError('PROJECT_HISTORY_DIVERGED','项目内容与本机记录不一致，请先确认处置。',409,{projectId:connection.projectId});
     const columns = t === 'projects' ? ['id', 'data'] : t === 'versions' ? ['id', 'projectId', 'jobId', 'data'] : ['id', 'projectId', 'data'];
     const record = value as Readonly<Record<string, unknown>>;
     const values = columns.map(column => column === 'data' ? JSON.stringify(value) : sqlValue(record[column]));
@@ -203,7 +210,7 @@ export function openProjectStore(options: OpenProjectConnectionOptions): Project
   const store: ProjectStore = {
     db: database, root: connection.projectDir,
     projectId: connection.projectId, projectFile: connection.projectFile, projectDir: connection.projectDir,
-    localDir: connection.localDir, cacheDir: connection.cacheDir, tempDir: connection.tempDir, historyState: connection.historyState,
+    localDir: connection.localDir, cacheDir: connection.cacheDir, tempDir: connection.tempDir, historyState: connection.historyState, historyAdmission: connection.historyAdmission,
     get, list, put, tx, close,
   };
   verifiedStores.set(store, {connection, isClosed: () => closed});
@@ -212,6 +219,6 @@ export function openProjectStore(options: OpenProjectConnectionOptions): Project
 
 /** Creates the project file (never replacing one), then opens it. */
 export function createProjectStore(options: OpenProjectConnectionOptions & CreateProjectFileOptions): ProjectStore {
-  createProjectFile(options.projectFile, options.projectId === undefined ? {} : {projectId: options.projectId});
+  createProjectFile(options.projectFile, {projectId: options.projectId,contentToken:options.contentToken});
   return openProjectStore(options);
 }

@@ -352,7 +352,7 @@ test('hosted restore, daily, Mio and bulk captures cannot write after applicatio
       return true;
     };
     await assert.rejects(f.rpc('project.version.restore', {projectId, versionId: saved.version.id, requestId: randomUUID(),
-      expectedContentSequence: preview.contentSequence, previewDigest: preview.previewDigest}), denied);
+      expectedContentSequence: preview.contentSequence, expectedContentToken: preview.contentToken, previewDigest: preview.previewDigest}), denied);
     assert.throws(() => f.runtime.captureDailyVersion(), denied);
     assert.throws(() => f.store.tx(() => saveBeforeBulkChangeInside(f.store, {trigger: 'bulk-change', requestId: randomUUID(),
       assertMutationAllowed: () => f.runtime.project.services.assertMutationAllowed()})), denied);
@@ -375,7 +375,7 @@ test('hosted restore refuses retained prepared or unknown edit effects without c
     const saved = await f.rpc<ProjectVersionSaveResponse>('project.version.save', {projectId, requestId: randomUUID()});
     const clean = await f.rpc<ProjectVersionPreviewResponse>('project.version.preview', {projectId, versionId: saved.version.id});
     const admitted = await f.rpc<{versionId: string}>('project.version.restore', {projectId, versionId: saved.version.id, requestId: randomUUID(),
-      expectedContentSequence: clean.contentSequence, previewDigest: clean.previewDigest});
+      expectedContentSequence: clean.contentSequence, expectedContentToken: clean.contentToken, previewDigest: clean.previewDigest});
     assert.equal(admitted.versionId, saved.version.id, 'the quiet real host admits restoration before any retained effect exists');
     await f.runtime.project.services.call('shot.create', {projectId, title: 'Current content must survive busy restore', requestId: randomUUID()});
     const preview = await f.rpc<ProjectVersionPreviewResponse>('project.version.preview', {projectId, versionId: saved.version.id});
@@ -387,7 +387,7 @@ test('hosted restore refuses retained prepared or unknown edit effects without c
     assert.ok(f.runtime.unfinishedTasks!().some(task => task.kind === 'edit_task' && task.taskId === taskId));
     const before = f.state(), content = f.store.list('shots'), tasks = f.store.db.prepare('SELECT * FROM main.edit_tasks ORDER BY position').all();
     await assert.rejects(f.rpc('project.version.restore', {projectId, versionId: saved.version.id, requestId: randomUUID(),
-      expectedContentSequence: preview.contentSequence, previewDigest: preview.previewDigest}), {code: 'PROJECT_HOST_BUSY', status: 409});
+      expectedContentSequence: preview.contentSequence, expectedContentToken: preview.contentToken, previewDigest: preview.previewDigest}), {code: 'PROJECT_HOST_BUSY', status: 409});
     assert.deepEqual(f.state(), before);
     assert.deepEqual(f.store.list('shots'), content);
     assert.deepEqual(f.store.db.prepare('SELECT * FROM main.edit_tasks ORDER BY position').all(), tasks);

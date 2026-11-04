@@ -1,4 +1,4 @@
-import {closeSync, fstatSync, lstatSync, openSync, readdirSync, readFileSync, readSync, statSync} from 'node:fs';
+import {closeSync, copyFileSync, fstatSync, ftruncateSync, lstatSync, openSync, readdirSync, readFileSync, readSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {PROJECT_HISTORY_FILE} from '../../../contracts/src/project-file.ts';
 
@@ -123,4 +123,33 @@ export function isSuperJournalInUse(superJournal: string): boolean {
     }
   }
   return false;
+}
+
+/** Copy a rollback journal for isolated validation. A valid master-journal
+ * pseudo-record is stripped so recovery cannot follow/delete source paths.
+ * An ambiguous tail is refused; source files are never opened for writing. */
+export function copyIsolatedRecoveryJournal(source: string, destination: string): void {
+  const master = superJournalNamedBy(source);
+  copyFileSync(source,destination);
+  const fd = openSync(destination,'r+');
+  try {
+    const size = fstatSync(fd).size;
+    const tail = size >= 16 ? readAt(fd,16,size-16) : Buffer.alloc(0);
+    const hasMasterMagic = tail.length === 16 && tail.subarray(8).equals(JOURNAL_MAGIC);
+    if (hasMasterMagic && master === null) throw new Error('Invalid master journal tail');
+    if (master !== null) {
+      // Removing the super-journal is the attached commit point. If it is
+      // already absent SQLite keeps the database pages instead of rolling
+      // them back; reproduce that decision without following its old path.
+      const masterInfo = lstatSync(master,{throwIfNoEntry:false});
+      if (!masterInfo) {ftruncateSync(fd,0);return;}
+      if (!masterInfo.isFile()) throw new Error('Invalid master journal file');
+      const length = tail.readUInt32BE(0), record = size-20-length;
+      const header = readAt(fd,28,0), pseudo = readAt(fd,4,record);
+      const pageSize = header.length === 28 ? header.readUInt32BE(24) : 0;
+      if (record < 28 || pseudo.length !== 4 || pageSize < 512 || pageSize > 65536 || (pageSize & (pageSize-1)) !== 0
+        || pseudo.readUInt32BE(0) !== Math.floor(0x40000000/pageSize)+1) throw new Error('Invalid master journal pseudo-record');
+      ftruncateSync(fd,record);
+    }
+  } finally {closeSync(fd);}
 }
