@@ -68,7 +68,7 @@ test('the project manifest retains the three scene tables and rejects invalid ta
  const f=fixture(t);
  assert.ok(schemaObjects(f.store.db).some(row=>row.schema==='project'&&row.name==='project_file'));
  assert.deepEqual(schemaObjects(f.store.db).filter(({type,name})=>type==='table'&&name.startsWith('scene_')).map(({name})=>name).sort(),['scene_requests','scene_results','scene_tasks']);
- assert.equal((f.store.db.prepare('SELECT max(version) AS v FROM main.schema_version').get())!.v,7);
+ assert.equal((f.store.db.prepare('SELECT max(version) AS v FROM main.schema_version').get())!.v,8);
  // Rows outside the accepted shape cannot be written directly.
  assert.throws(()=>f.store.db.prepare("INSERT INTO scene_tasks(id,projectId,kind,sourceAssetId,requestId,inputHash,input,snapshot,state,revision,started,createdAt,updatedAt) VALUES(?,?,'detect',?,?,?,?,?,'running',1,1,'t','t')")
   .run(randomUUID(),f.project.id,f.asset.id,'direct-row-1','a'.repeat(64),'{}','{}'),/CHECK constraint failed|scene tasks must be accepted/);

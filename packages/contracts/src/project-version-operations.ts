@@ -8,6 +8,7 @@ const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const cursor = z.string().min(1).max(4096);
 const page = {limit: z.number().int().min(1).max(100).optional(), cursor: cursor.optional()};
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
+const contentToken = z.string().regex(/^[a-f0-9]{32}$/u);
 /** Closed project content inventory; metadata and revision ledgers are not
  * restore targets. The snapshot inventory test checks this independently. */
 export const PROJECT_VERSION_CONTENT_TABLES = Object.freeze([
@@ -22,7 +23,7 @@ export const projectVersionSchemas = {
   'project.version.save': z.object({projectId: projectIdSchema, requestId: id, name: z.string().min(1).max(150).optional()}).strict(),
   'project.version.preview': z.object({projectId: projectIdSchema, versionId: id, ...page}).strict(),
   'project.version.restore': z.object({projectId: projectIdSchema, versionId: id, requestId: id,
-    expectedContentSequence: count, previewDigest: digest}).strict(),
+    expectedContentSequence: count, expectedContentToken: contentToken, previewDigest: digest}).strict(),
 };
 export type ProjectVersionOperation = keyof typeof projectVersionSchemas;
 export const isProjectVersionOperation = (operation: string): operation is ProjectVersionOperation => Object.hasOwn(projectVersionSchemas, operation);
@@ -48,7 +49,7 @@ export const projectVersionDifferenceSchema = z.object({
 }).strict().refine(value => value.action !== 'keep-current' || value.reason !== null, 'A retained current row requires a reason.');
 export type ProjectVersionDifference = z.infer<typeof projectVersionDifferenceSchema>;
 export const projectVersionPreviewResponseSchema = z.object({
-  projectId: projectIdSchema, version: projectVersionSummarySchema, contentSequence: count, previewDigest: digest,
+  projectId: projectIdSchema, version: projectVersionSummarySchema, contentSequence: count, contentToken, previewDigest: digest,
   totalChanges: count, keptCurrentCount: count,
   changes: z.array(projectVersionDifferenceSchema).max(100), nextCursor: cursor.nullable(),
   restoreAvailable: z.boolean(),
@@ -60,7 +61,7 @@ export type ProjectVersionSaveResponse = z.infer<typeof projectVersionSaveRespon
 export type ProjectVersionPreviewResponse = z.infer<typeof projectVersionPreviewResponseSchema>;
 export const projectVersionRestoreResponseSchema = z.object({
   projectId: projectIdSchema, requestId: id, versionId: id, beforeVersionId: id,
-  contentSequence: count, totalChanges: count,
+  contentSequence: count, contentToken, totalChanges: count,
   appliedChanges: z.array(projectVersionDifferenceSchema),
   keptCurrent: z.array(projectVersionDifferenceSchema),
 }).strict().refine(value => value.totalChanges === value.appliedChanges.length + value.keptCurrent.length
@@ -80,7 +81,7 @@ export const projectVersionDescriptions = {
   'project.version.list': '分页列出本机保存的项目版本，不读取媒体、不恢复内容或任务。',
   'project.version.save': '以稳定 requestId 手动保存当前项目完整内容快照，可选名称；只写本机记录，不改变项目内容。重复输入返回原始回执。',
   'project.version.preview': '只读预览当前内容与所选版本的完整差异计数和分页，列明 Mio 或你/其他来源、保持当前及原因；摘要绑定整份差异和恢复确认。',
-  'project.version.restore': '按完整预览摘要和当前内容序号恢复所选项目版本，先保存恢复前版本；保持当前项属于成功回执，稳定请求重放原结果，不重发任务或媒体效果。',
+  'project.version.restore': '按完整预览摘要和当前内容序号及令牌恢复所选项目版本，先保存恢复前版本；保持当前项属于成功回执，稳定请求重放原结果，不重发任务或媒体效果。',
 };
 const read: Readonly<OperationEffect> = Object.freeze({readOnly: true, idempotent: true, destructive: false, openWorld: false,
   databaseWrite: false, fileWrite: false, externalIO: false, localProcess: false, paidGeneration: false,
@@ -113,7 +114,8 @@ export function isProjectVersionResponse(operation: ProjectVersionOperation, inp
   if (operation === 'project.version.restore') {
     const wanted = request.data as ProjectVersionRestoreInput, actual = response.data as ProjectVersionRestoreResponse;
     return actual.requestId === wanted.requestId && actual.versionId === wanted.versionId
-      && actual.beforeVersionId !== wanted.versionId && actual.contentSequence >= wanted.expectedContentSequence;
+      && actual.beforeVersionId !== wanted.versionId && actual.contentSequence >= wanted.expectedContentSequence
+      && (actual.contentSequence === wanted.expectedContentSequence ? actual.contentToken === wanted.expectedContentToken : actual.contentToken !== wanted.expectedContentToken);
   }
   const wanted = request.data as ProjectVersionPreviewInput, actual = response.data as ProjectVersionPreviewResponse;
   return actual.version.projectId === wanted.projectId && actual.version.id === wanted.versionId

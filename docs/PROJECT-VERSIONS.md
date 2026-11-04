@@ -75,13 +75,21 @@
 
 ## 确认恢复与自动保存
 
-`project.version.restore` 同时验证 `expectedContentSequence` 与完整 `previewDigest`。宿主拒绝尚有工作、未知提交结果或在途内容请求的项目；随后在原连接的同步事务里重新核对基线、保存恢复前版本、应用预览计划、写完整原始回执。内容和目标修订只向前推进。任一步失败，内容、恢复前版本、回执、清理均回滚。
+`project.version.restore` 同时验证 `expectedContentSequence`、`expectedContentToken` 与完整 `previewDigest`。预览返回当前 `contentSequence` 和 `contentToken`，摘要也绑定令牌；同序号但不同令牌的副本会使旧确认和分页失效。成功回执返回实际提交后的 pair，恢复不写回快照旧序号或令牌。宿主拒绝尚有工作、未知提交结果或在途内容请求的项目；随后在原连接的同步事务里重新核对基线、保存恢复前版本、应用预览计划、写完整原始回执。内容和目标修订只向前推进。任一步失败，内容、恢复前版本、回执、清理均回滚。
 
 可变状态恢复到快照；快照以后新增的对象按删除、墓碑、保持当前的顺序处理。保留对象的依赖闭包不能丢失。`keep-current` 项与原因原样写进成功回执，不是部分失败。不可变结果不覆盖；缺失的历史结果可在事务内按经校验计划精确补回，不伪造 job、不关闭 FK 或删除本机过程记录。时间线经领域入口追加手动历史，保留正常 undo/redo；不相关子目标保持其当前 JSON 表示和修订。
 
 现存素材保留这台机器上的当前定位及其配套身份信息，包括 S1 的 `reference`、`referenceRevision`，避免恢复旧版本使已经修复的链接再次失效；其他可变字段按版本恢复。缺失素材则补回快照引用，仍须通过通常的读取授权，不新授予外部目录访问权。恢复不读取或复制外部媒体字节。
 
 同请求重试先返回原始回执，不要求再次满足旧基线，即使自动版本后来已轮转也不重新恢复。仍须通过当前应用写入守卫。换输入报 `REQUEST_ID_REUSED`。回执包含全部应用项与保持项；超过已有 64 KiB 回执上限整笔拒绝，不截断。主体修订须遵守原生逐次 +1 约束；单次恢复累计最多推进 10,000 步，过大跨度在预览阶段报 `PROJECT_VERSION_RESTORE_LIMIT`，执行阶段再防御核对，避免小快照携带巨大编号而阻塞宿主。
+
+## 外部副本与恢复会话
+
+项目格式 3 的内容令牌是当前 CAS 身份，不是快照内容哈希。新快照仍使用 profile 1，记录真实项目格式，不给历史快照编造捕获 token。物理旧格式项目不能直接打开；本机已经保存的**逻辑格式 2 / profile 1** 正文则先经独立冻结的 18 表约束、封闭字段、原有解压容量及 hash 校验，再仅将格式元数据适配到当前格式 3。原 blob/hash/gzip 字节不重写。合法格式 1/profile 1 通过有界 codec/hash/规范 JSON、冻结的封闭字段/列形状、项目归属和引用检查后，只原字节携带并保留在列表；预览和恢复明确报 `PROJECT_VERSION_SNAPSHOT_UNSUPPORTED`，不适配或应用旧业务行。损坏正文和未知格式仍拒绝，不能靠“不支持恢复”跳过完整性检查。
+
+文件与本机记录失配时，宿主在正常运行时、Mio、worker 和自动保存启动前进入恢复会话。版本 list/preview 直接使用真实连接的读事务；预览按处置后空执行域规划，旧 Mio 来源、时间线撤销和 history/cache 引用不参与保持闭包，内容自身的领域约束、不可变结果、墓碑、素材定位和权限规则仍适用。预览不修改源项目或旧 history。确认恢复在新建的真实 store 上重新计算同一摘要并校验当前 pair，不把旧 store 的执行计划能力转移到新连接。
+
+切换仅复制 `project_version_blobs`、`project_versions` 原始行，校验有界正文、摘要对应、引用、容量和复制计数；不复制请求回执、自动保存标记、Mio 或其他执行记录。`mioRunId` 保留原来源值，脱离旧执行域的外键依赖；它不意味着旧运行仍可恢复或撤销。旧 history 整份只读归档。恢复会话不触发 daily，新 history 正常打开后按原日期/时区键保存当天首个版本，保留政策不变。
 
 自动保存时机：
 
@@ -92,7 +100,7 @@
 
 自动版本保留最近 20 条与最近 7 个本地日历日各自最早一条的并集，时区和 DST 使用日历计算。执行中的版本 pin 和新恢复前版本受保护；只删除无剩余版本引用的 blob。请求回执、捕获标记和手动版本不删除。采集、内存库校验和 gzip 同步进行；首改/大改前存不下则整笔回滚，每日失败可稍后重试，不通过删除手动版本腾空间，不承诺文件立即缩小。
 
-恢复不主动更改 Mio change 的状态。被恢复目标的修订变化使旧 undo 按现有规则报 `AGENT_TASK_TARGET_CHANGED`；独立目标仍可撤销，`undo_all` 沿用现有 supersession 规则。同内容序号的分叉副本盲点仍归 V5。
+恢复不主动更改 Mio change 的状态。被恢复目标的修订变化使旧 undo 按现有规则报 `AGENT_TASK_TARGET_CHANGED`；独立目标仍可撤销，`undo_all` 沿用现有 supersession 规则。V5 按序号加令牌识别分叉，失配时先进入宿主恢复会话；处置后旧执行记录整份归档，不再授予撤销资格。
 
 ## HTTP、CLI、MCP 契约
 
@@ -102,9 +110,8 @@
 | --- | --- | --- |
 | `project.version.list` | `{projectId,limit?,cursor?}` | `{projectId,versions,nextCursor}` |
 | `project.version.save` | `{projectId,requestId,name?}` | `{projectId,requestId,version}`，稳定手动保存回执 |
-| `project.version.preview` | `{projectId,versionId,limit?,cursor?}` | `{projectId,version,contentSequence,previewDigest,totalChanges,keptCurrentCount,changes,nextCursor,restoreAvailable:boolean}` |
-
-| `project.version.restore` | `{projectId,versionId,requestId,expectedContentSequence,previewDigest}` | `{projectId,requestId,versionId,beforeVersionId,contentSequence,totalChanges,appliedChanges,keptCurrent}`，完整原始回执 |
+| `project.version.preview` | `{projectId,versionId,limit?,cursor?}` | `{projectId,version,contentSequence,contentToken,previewDigest,totalChanges,keptCurrentCount,changes,nextCursor,restoreAvailable:boolean}` |
+| `project.version.restore` | `{projectId,versionId,requestId,expectedContentSequence,expectedContentToken,previewDigest}` | `{projectId,requestId,versionId,beforeVersionId,contentSequence,contentToken,totalChanges,appliedChanges,keptCurrent}`，完整原始回执 |
 
 limit 为 1–100，默认 100；name 为 1–150 字符；游标最多 4096 字符。HTTP 使用认证 `POST /api/projects/<projectId>/rpc` 的 `{operation,input}`。URL 与 input 项目不一致报 `PROJECT_ID_MISMATCH`；旧应用 `/api/rpc` 不接受这四个项目级操作。版本不存在和外项目版本都返回同样的未找到，不泄露另一项目。
 
@@ -132,6 +139,7 @@ MCP 名称为 `project_version_list/save/preview/restore`，参数和结果与�
 | `PROJECT_VERSION_CURSOR_INVALID` | 400；签名、请求绑定、重启或预览内容变化导致游标无效 |
 | `PROJECT_VERSION_RECORD_INVALID` | 422；本机摘要、正文关联、保存回执或 Mio 来源记录损坏 |
 | `PROJECT_VERSION_SNAPSHOT_INVALID` | 422；profile、规范文档、行、归属、gzip、长度或哈希不合法 |
+| `PROJECT_VERSION_SNAPSHOT_UNSUPPORTED` | 422；已完整保留的格式 1/profile 1 正文尚无业务恢复适配，不能预览或执行恢复 |
 | `PROJECT_VERSION_SNAPSHOT_LIMIT` | 413；原文或压缩正文超限，整次保存拒绝 |
 | `PROJECT_VERSION_PREVIEW_LIMIT` | 409；对象标识超出有界预览上限，不截断 |
 | `PROJECT_VERSION_IMMUTABLE_CONFLICT` | 409；同一 ID 的不可变内容冲突，不能给出恢复计划 |

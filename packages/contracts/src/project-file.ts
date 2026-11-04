@@ -49,8 +49,8 @@ export const PROJECT_CACHE_FILE = 'cache.db';
  * roll back.
  *
  * Opening order, never reversed:
- * 1. open the project file alone, read its project ID and format version and
- *    let SQLite finish any recovery, then close it;
+ * 1. preflight the project header, exact format and identity read-only; hot
+ *    journals require explicit, validated current-format recovery first;
  * 2. open the local records as main;
  * 3. attach the project file and the cache, check them against the schema
  *    manifest, then create the connection's temporary triggers.
@@ -103,9 +103,18 @@ export function isProjectStoreInternalEntry(entry: string): boolean {
   return parts[0] === TEST_STORE_DIRECTORY || name.endsWith(`${PROJECT_FILE_EXTENSION}-journal`) || SUPER_JOURNAL.test(name);
 }
 
-/** The local records compared with the project file by content sequence. */
-export const PROJECT_HISTORY_STATES = Object.freeze(['fresh', 'current', 'file-older', 'file-newer'] as const);
+/** Content identity, independent of object revision and process history. */
+export interface ContentStamp {readonly contentSequence: number; readonly contentToken: string}
+export type ProjectHistoryDivergenceReason = 'file-sequence-smaller' | 'file-sequence-larger' | 'content-token-different' | 'legacy-token-missing';
+/** Invalid input raises an open error and never returns a live store. */
+export const PROJECT_HISTORY_STATES = Object.freeze(['fresh', 'current', 'diverged'] as const);
 export type ProjectHistoryState = typeof PROJECT_HISTORY_STATES[number];
+export interface ProjectHistoryAdmission {
+  readonly state: ProjectHistoryState;
+  readonly reason: ProjectHistoryDivergenceReason | null;
+  readonly file: ContentStamp;
+  readonly seen: {readonly contentSequence: number; readonly contentToken: string | null};
+}
 
 /** What the project store adds to the existing store surface. `Db` is
  * `DatabaseSync` in the backend; as a parameter it keeps Node types out of
@@ -126,6 +135,7 @@ export interface ProjectStore<Db = unknown> {
   /** App temp directory for staging. It may be on another volume than projectDir. */
   readonly tempDir: string;
   readonly historyState: ProjectHistoryState;
+  readonly historyAdmission: ProjectHistoryAdmission;
   close(): void;
 }
 
@@ -196,7 +206,7 @@ export interface ForeignKeyViolation {
 export const PROJECT_INVALID_REASONS = Object.freeze([
   'not-a-regular-file', 'not-a-project-file', 'journal-mode', 'encoding', 'application-id',
   'schema-version', 'schema', 'metadata', 'project-row', 'foreign-key', 'project-mismatch',
-  'corrupt', 'read-only', 'unusable',
+  'corrupt', 'read-only', 'unusable', 'hot-journal',
 ] as const);
 export type ProjectInvalidReason = typeof PROJECT_INVALID_REASONS[number];
 

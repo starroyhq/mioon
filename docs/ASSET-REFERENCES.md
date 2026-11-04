@@ -1,6 +1,6 @@
 # 素材引用：S1
 
-项目资产只有引用一种定位方式。路径导入不复制；网页上传先暂存，再排他发布到固定的 `素材/`。项目格式为 2，旧格式明确拒绝打开、零写入；旧开发项目需要重建，不做转换。cache v2 不匹配时只重建缓存。S2 的 history 7 增加预演图的图片编辑来源校验，精确已知的 history 6 可原子升级，保留原记录；Mio 工具输入与请求指纹不变。
+项目资产只有引用一种定位方式。路径导入不复制；网页上传先暂存，再排他发布到固定的 `素材/`。项目格式为 3，旧格式明确拒绝打开、零写入；旧开发项目需要重建，不做转换。cache v2 不匹配时只重建缓存。S2 的 history 7 增加预演图的图片编辑来源校验，精确已知的 history 6 可原子升级，保留原记录；Mio 工具输入与请求指纹不变。
 
 直接打开旧格式时，内核返回 `PROJECT_INVALID`（422），`details.reason` 为 `schema-version`。通过项目 ID 打开时，宿主返回 `PROJECT_UNAVAILABLE`（409），`details.reason` 为 `PROJECT_INVALID`、`invalidReason` 为 `schema-version`。
 

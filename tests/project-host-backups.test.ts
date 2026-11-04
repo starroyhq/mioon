@@ -4,12 +4,13 @@ import {randomUUID} from 'node:crypto';
 import {copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
+import {DatabaseSync} from 'node:sqlite';
 import {createProjectBackups} from '../apps/server/src/project-host/backups.ts';
 import {createApplicationFileGuard} from '../apps/server/src/project-host/application-storage.ts';
 import {createMemoryProjectRegistry, createProjectHostManager, projectLocation, serverAppDirectories, statProjectFileIdentity} from '../apps/server/src/project-host/index.ts';
 import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
 import {openProjectStore} from '../packages/business/src/project-file/index.ts';
-import {createProjectBackup} from '../packages/business/src/project-file/backup.ts';
+import {createProjectBackup,inspectProjectBackup,inspectCopiedProjectFile} from '../packages/business/src/project-file/backup.ts';
 import type {ProjectHostRuntime} from '../apps/server/src/project-host/host.ts';
 import type {ProjectBackupsOptions} from '../apps/server/src/project-host/backups.ts';
 
@@ -118,7 +119,13 @@ test('backup restores with a new ID and empty local records; request replay surv
     assertProjectFile: createApplicationFileGuard(f.directories)});
   assert.deepEqual(await restarted.restore(input), restored);
   const opened = await f.manager.acquire(restored.project.projectId, 'window');
+  const pairBefore=opened.host.store.db.prepare('SELECT contentSequence,contentToken FROM project.project_file').get()!;
+  opened.host.store.put('projects',{id:restored.project.projectId,name:'Edited after restore'});
+  const pairAfter=opened.host.store.db.prepare('SELECT contentSequence,contentToken FROM project.project_file').get()!;
+  assert.ok(Number(pairAfter.contentSequence)>Number(pairBefore.contentSequence));assert.notEqual(pairAfter.contentToken,pairBefore.contentToken);
   assert.deepEqual(await restarted.restore(input), restored, 'replay does not open the new host database and preserves its original response');
+  assert.equal((opened.host.store.get('projects',restored.project.projectId) as {name:string}).name,'Edited after restore');
+  assert.deepEqual(opened.host.store.db.prepare('SELECT contentSequence,contentToken FROM project.project_file').get(),pairAfter);
   opened.release(); await f.manager.close(restored.project.projectId);
   await assert.rejects(restarted.restore({...input, projectFile: target + '.mioon'}), {code: 'REQUEST_ID_REUSED'});
   await assert.rejects(restarted.restore({...input, requestId: randomUUID()}), {code: 'PROJECT_FILE_EXISTS'});
@@ -127,6 +134,62 @@ test('backup restores with a new ID and empty local records; request replay surv
   writeFileSync(path.join(recordRoot, 'index.json'), JSON.stringify({version: 1, projectId: id, backups: []}), {mode: 0o600});
   assert.deepEqual(await restarted.restore(input), restored);
   assert.equal(f.registry.list().length, 2);
+});
+
+test('a validated same-sequence fork with a different token cannot suppress the current file backup',async t=>{
+ const f=await setup(t),projectId=f.project.projectId,lease=await f.manager.acquire(projectId,'window');
+ const initial=(await f.backups.list({projectId})).backups[0]!;
+ lease.host.store.put('projects',{id:projectId,name:'Current branch'});lease.release();await f.manager.close(projectId);
+ const current=(await f.backups.list({projectId})).backups[0]!,root=path.join(projectLocation(f.directories,projectId).localDir,'backups');
+ const oldFile=path.join(root,initial.backupId,'project.mioon'),currentFile=path.join(root,current.backupId,'project.mioon');
+ copyFileSync(oldFile,currentFile);
+ const fork=new DatabaseSync(currentFile);try{fork.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify({id:projectId,name:'Other branch'}),projectId);}finally{fork.close();}
+ const actual=inspectProjectBackup(currentFile);assert.equal(actual.contentSequence,current.contentSequence);assert.notEqual(actual.contentToken,current.contentToken);
+ const indexFile=path.join(root,'index.json'),index=JSON.parse(readFileSync(indexFile,'utf8'));
+ index.backups[0].contentToken=actual.contentToken;index.backups[0].sizeBytes=actual.sizeBytes;writeFileSync(indexFile,JSON.stringify(index),{mode:0o600});
+ assert.equal((await f.backups.list({projectId})).backups[0]!.contentToken,actual.contentToken,'the alternative branch is a real valid copy');
+ const reopened=await f.manager.acquire(projectId,'window');reopened.release();await f.manager.close(projectId);
+ const listed=(await f.backups.list({projectId})).backups;
+ assert.equal(listed.length,3);assert.equal(listed[0]!.contentSequence,listed[1]!.contentSequence);assert.equal(listed[0]!.contentToken,current.contentToken);
+ assert.equal(listed[1]!.contentToken,actual.contentToken);assert.notEqual(listed[0]!.backupId,current.backupId);
+ assert.equal((await f.backups.inspect({projectId,backupId:listed[0]!.backupId})).projectName,'Current branch');
+ assert.equal((await f.backups.inspect({projectId,backupId:listed[1]!.backupId})).projectName,'Other branch');
+});
+
+test('the index records the actual completed copy pair when content advances during native capture',async t=>{
+ let before:{contentSequence:unknown;contentToken:unknown}|undefined;
+ const f=await setup(t,{backup:async(store,file)=>{
+   if(!before){before=store.db.prepare('SELECT contentSequence,contentToken FROM project.project_file').get() as typeof before;store.put('projects',{id:store.projectId,name:'Changed while copying'});}
+   return createProjectBackup(store,file);
+ }}),projectId=f.project.projectId,lease=await f.manager.acquire(projectId,'window');
+ const actual=lease.host.store.db.prepare('SELECT contentSequence,contentToken FROM project.project_file').get()!,entry=(await f.backups.list({projectId})).backups[0]!;
+ assert.ok(before);assert.ok(Number(entry.contentSequence)>Number(before.contentSequence));assert.notEqual(entry.contentToken,before.contentToken);
+ assert.equal(entry.contentSequence,actual.contentSequence);assert.equal(entry.contentToken,actual.contentToken);
+ const copied=inspectProjectBackup(path.join(projectLocation(f.directories,projectId).localDir,'backups',entry.backupId,'project.mioon'));
+ assert.equal(entry.contentSequence,copied.contentSequence);assert.equal(entry.contentToken,copied.contentToken);
+ lease.release();await f.manager.close(projectId);assert.deepEqual((await f.backups.list({projectId})).backups,[entry]);
+});
+
+test('legacy indexes cannot deduplicate and only complete legacy restore receipts may replay',async t=>{
+ const f=await setup(t),projectId=f.project.projectId,lease=await f.manager.acquire(projectId,'window');lease.release();await f.manager.close(projectId);
+ const root=path.join(projectLocation(f.directories,projectId).localDir,'backups'),indexFile=path.join(root,'index.json'),first=(await f.backups.list({projectId})).backups[0]!;
+ const input={projectId,backupId:first.backupId,requestId:randomUUID(),projectFile:path.join(f.directories.projectsDir,'legacy-replay.mioon')},restored=await f.backups.restore(input);
+ const receipt=path.join(root,'restore-requests',`${input.requestId}.json`),modern=JSON.parse(readFileSync(receipt,'utf8'));
+ const{sourceContentSequence:_sequence,sourceContentToken:_source,targetContentToken:_target,...legacy}=modern;legacy.version=1;writeFileSync(receipt,JSON.stringify(legacy),{mode:0o600});
+ const opened=await f.manager.acquire(restored.project.projectId,'window');opened.host.store.put('projects',{id:restored.project.projectId,name:'New branch'});
+ assert.deepEqual(await f.backups.restore(input),restored);assert.equal((opened.host.store.get('projects',restored.project.projectId) as {name:string}).name,'New branch');
+ opened.release();await f.manager.close(restored.project.projectId);
+ for(const phase of ['prepared','published']){
+   writeFileSync(receipt,JSON.stringify({...legacy,phase}),{mode:0o600});const bytes=readFileSync(input.projectFile);
+   await assert.rejects(f.backups.restore(input),{code:'PROJECT_BACKUP_INDEX_INVALID'});assert.deepEqual(readFileSync(input.projectFile),bytes);
+ }
+ const index=JSON.parse(readFileSync(indexFile,'utf8'));index.version=1;index.backups=index.backups.map(({contentToken:_token,...row}:Record<string,unknown>)=>row);
+ writeFileSync(indexFile,JSON.stringify(index),{mode:0o600});const oldCopy=path.join(root,first.backupId,'project.mioon'),bytes=readFileSync(oldCopy);
+ assert.deepEqual((await f.backups.list({projectId})).backups,[]);assert.deepEqual(readFileSync(oldCopy),bytes);
+ const again=await f.manager.acquire(projectId,'window');again.release();await f.manager.close(projectId);
+ const replacement=(await f.backups.list({projectId})).backups[0]!;assert.notEqual(replacement.backupId,first.backupId);assert.equal(replacement.contentToken,first.contentToken);
+ assert.equal(JSON.parse(readFileSync(indexFile,'utf8')).version,2);assert.equal(existsSync(oldCopy),false);
+ assert.equal(inspectCopiedProjectFile(input.projectFile).projectId,restored.project.projectId);
 });
 
 test('a damaged latest backup cannot suppress a replacement at the same sequence; abandoned copies are cleaned on an unchanged open', async t => {

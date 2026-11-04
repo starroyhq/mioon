@@ -20,7 +20,7 @@ import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {AppError} from '../packages/contracts/src/app-error.ts';
 import {PROJECT_FILE_MOVED} from '../packages/contracts/src/project-file.ts';
-import {createProjectStore, openProjectStore} from '../packages/business/src/project-file/index.ts';
+import {createProjectStore, openProjectStore, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/index.ts';
 import type {ProjectLocation, ProjectStore} from '../packages/business/src/project-file/index.ts';
 
 interface Project extends ProjectLocation {
@@ -122,7 +122,7 @@ test('opening keeps the project file\'s journal open and leaves the file\'s byte
     assert.equal(digestElsewhere(project.projectFile), digest);
     assert.equal(stampOf(project.projectFile), stamp);
     assert.deepEqual(entries(directory), [`project.mioon:${statSync(project.projectFile).size}`, 'project.mioon-journal:0']);
-    assert.equal(store.db.prepare('PRAGMA project.user_version').get()?.user_version, 0);
+    assert.equal(store.db.prepare('PRAGMA project.user_version').get()?.user_version, PROJECT_FILE_SCHEMA_VERSION);
   } finally {
     store.close();
   }

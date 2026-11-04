@@ -13,7 +13,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
-import {createProjectStore, openProjectStore, PROJECT_FILE_APPLICATION_ID, recoverProjectFile} from '../packages/business/src/project-file/index.ts';
+import {createProjectStore, openProjectStore, PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION, recoverProjectFile} from '../packages/business/src/project-file/index.ts';
 import type {ProjectLocation} from '../packages/business/src/project-file/index.ts';
 import {isHotJournal} from '../packages/business/src/project-file/journals.ts';
 import {addCrashProject, crashPad, readCrashRows, writeCrashRows} from './helpers/project-file-crash-data.ts';
@@ -182,7 +182,7 @@ test('a missing path is missing; other files are clean without a hot journal and
   writeFileSync(path.join(other, 'notes.mioon'), 'Mioon project notes\n'.repeat(20));
   const wal = path.join(other, 'wal.mioon');
   const db = new DatabaseSync(wal);
-  db.exec(`PRAGMA application_id=${PROJECT_FILE_APPLICATION_ID}; PRAGMA journal_mode=WAL; CREATE TABLE t(x)`);
+  db.exec(`PRAGMA application_id=${PROJECT_FILE_APPLICATION_ID}; PRAGMA user_version=${PROJECT_FILE_SCHEMA_VERSION}; PRAGMA journal_mode=WAL; CREATE TABLE t(x)`);
   db.close();
   const cases: readonly (readonly [string, string])[] = [
     [path.join(other, 'folder.mioon'), 'not-a-regular-file'], [path.join(other, 'link.mioon'), 'not-a-regular-file'],

@@ -75,12 +75,12 @@ test('the kernel reports with the contract types and the contract creation code'
 });
 
 test('states and error codes are the agreed strings', () => {
-  assert.deepEqual(PROJECT_HISTORY_STATES, ['fresh', 'current', 'file-older', 'file-newer']);
+  assert.deepEqual(PROJECT_HISTORY_STATES, ['fresh', 'current', 'diverged']);
   assert.deepEqual(PROJECT_OPEN_ERROR_CODES, ['PROJECT_MISSING', 'PROJECT_LOCKED', 'PROJECT_FORMAT_NEWER', 'PROJECT_INVALID']);
   assert.deepEqual(PROJECT_INVALID_REASONS, [
     'not-a-regular-file', 'not-a-project-file', 'journal-mode', 'encoding', 'application-id',
     'schema-version', 'schema', 'metadata', 'project-row', 'foreign-key', 'project-mismatch',
-    'corrupt', 'read-only', 'unusable',
+    'corrupt', 'read-only', 'unusable', 'hot-journal',
   ]);
   assert.ok(Object.isFrozen(PROJECT_INVALID_REASONS));
   // Type-level: the kernel's reasons are the contract's PROJECT_INVALID reasons and the four that go with other codes.

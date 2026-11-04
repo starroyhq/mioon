@@ -162,7 +162,13 @@ function changeRecord(store:ProjectStore, targets:{kind:string;id:string;revisio
 }
 
 test('Mio attribution follows new rowids and later undo evidence, including virtual project-level timeline targets',t=>{
-  const f=fixture(t),{ids,document:saved}=fullDocument(f.capture());
+  const f=fixture(t),{ids,document:base}=fullDocument(f.capture());
+  // This pre-capture asset change is already represented by the captured
+  // persistent target ledger, even though its rows are synthetic preview data.
+  const evidence=structuredClone(base.evidence);
+  (evidence.targetRevisions as SnapshotRow[]).push({projectId:base.projectId,kind:'asset',targetId:ids.asset,revision:1});
+  (evidence.targetRevisions as SnapshotRow[]).sort((a,b)=>rowKey('agent_task_target_revisions_v2',a)<rowKey('agent_task_target_revisions_v2',b)?-1:1);
+  const saved=validateProjectDocument({...base,evidence});
   const current=revise(saved,tables=>{
     for(const table of ['assets','shots','timelines']as const)tables[table]=tables[table].map(row=>({...row,data:canonicalJson({...JSON.parse(String(row.data)),fixtureValue:'changed'})}));
   });

@@ -10,8 +10,8 @@
 - 生产旧项目 RPC/REST/media 地址已退役：应用 `/api/rpc` 仍存在，但只接受应用操作；项目请求必须带 `/api/projects/<ID>/` 前缀。`project-routes.ts` 仅作测试内部适配。历史保存 URL 不改字节，实际访问重建新地址。同一 `requestId` 的回执在各项目独立，不能跨项目重放。
 - 首页封面使用应用级 `GET /api/project-covers/<ID>`，只读缓存，缺失返回 404，不 acquire 项目；`projectSummaryCoverSchema` 已同步此 URL。应用 `/api/workspace-info` 返回应用根，新增项目 `/api/projects/<ID>/workspace-info` 在真实租约内返回项目根，复用原 schema，供可信桌面导出使用。
 - 全局 `diagnostics/latest` 从应用 documents 读取严格五字段摘要：`completedAt/status/protocol/model/errorCode`；无项目对话、请求或密钥，也不打开项目。应用库当前为 v3：精确已知 v1 经 v2，再以 R2 的 v2→v3 升级增加用户规范；保原三种文档及其它记录。HTTP B1 错误仅公开 `APP_LIBRARY_LIMIT`（507）与 `APP_LIBRARY_INVALID`（422）。
-- V2 已接入宿主打开/关闭的项目自动备份，最近三份按内容序号去重；`project.backup.list/inspect/restore/status` 是应用级操作，恢复使用新 ID 和空本机记录。专用 `MioB` 标记使备份不能作为普通项目打开或登记；接口、提交点和故障边界见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)。不启用旧工作区备份接口，也没有接入备份界面。
-- 生产素材以引用定位：项目格式为 2、cache 为 2，history 为 7。格式 1 的旧开发项目及备份明确拒绝、零写入，需重建。路径导入不复制，网页/Mio 上传写固定 `素材/`；生成写 `生成/`，成片写 `导出/`，排他发布、不自动删除项目文件。完整契约见 [素材引用](ASSET-REFERENCES.md)和[项目产物](PROJECT-OUTPUTS.md)。
+- V2 已接入宿主打开/关闭的项目自动备份，最近三份按项目 ID、内容序号和令牌去重；`project.backup.list/inspect/restore/status` 是应用级操作，恢复使用新 ID、新令牌和空本机记录。专用 `MioB` 标记使备份不能作为普通项目打开或登记；接口、提交点和故障边界见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)。不启用旧工作区备份接口，也没有接入备份界面。
+- 生产素材以引用定位：项目格式为 3、cache 为 2，history 为 8。格式 1、2 的旧开发项目及备份明确拒绝、零写入，需重建。路径导入不复制，网页/Mio 上传写固定 `素材/`；生成写 `生成/`，成片写 `导出/`，排他发布、不自动删除项目文件。完整契约见 [素材引用](ASSET-REFERENCES.md)和[项目产物](PROJECT-OUTPUTS.md)。
 - `project.version.list/save/preview/restore` 是项目级操作，提供手动/自动保存、保留清理和确认恢复；正文仅存本机 history，界面另卡实现；见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。
 - S5 的删除、复制和另存为，V4 的打包导入导出，S7 的工作区备份/恢复仍未接入新布局；精确错误和按项目后的图片、帧、LUT 可达容量见 [宿主当前状态](PROJECT-HOST.md#0-p4-当前运行状态)。不调用旧生产生命周期链；全应用总量控制留 S3。
 
@@ -29,7 +29,7 @@
 
 这些模块不引入 Node 的模块，网页也能导入。按路径导入，不经过 `contracts/src/index.ts`。现有的交换文件见 `PROJECT-PACKAGE.md`，由 V4 删除。
 
-备份四个操作与版本三个操作统一登记到契约根 `index.ts` 的 `schemas/descriptions` 和 `operation-effects.ts`；客户端不再另拼备份操作表。七项都在内置 Mio 的禁用列表中，生成 schema 不表示向 Mio 开放。
+备份四个操作与版本四个操作统一登记到契约根 `index.ts` 的 `schemas/descriptions` 和 `operation-effects.ts`；客户端不再另拼备份操作表。八项都在内置 Mio 的禁用列表中，生成 schema 不表示向 Mio 开放。V5 只同步 `project.version.restore` 新 CAS 字段的生成 schema，不改变 Mio 的校验、恢复或撤销实现。
 
 ## 一个文件一个项目
 - 一个 `.mioon` 恰好一个项目。项目 ID 在建文件时生成并写进文件；文件里只有一行 `projects`，ID 等于文件的项目 ID，由 K1 在结构里保证。
@@ -97,8 +97,8 @@
 依据是 10-30 的崩溃恢复实测：跨两个文件的大事务提交到一半时 `SIGKILL`，再看重开以后两个文件是否一致（Node 24.21.0，SQLite 3.53.4，回滚日志模式加独占锁）。
 
 - **主库是本机记录 `history.db`。** 项目文件以 `project` 的名字挂上去，缓存库以 `cache` 的名字挂上去（`PROJECT_DATABASE_NAMES`）。
-  - 当前 project/history/cache 格式为 **2/7/2**。history 6 增加独立 `versions` 领域的四表；7 只重建 `image_reviews` 的精确 CHECK，允许绑定已发布预演图的图片编辑来源，不加表，不改模型输入。
-  - 精确已知的 history 2–6 可在打开事务内升级到 7，版本最后写入；2 保留既有开发期 Mio 重置，3–6 保留已有记录。6 的升级保留 rowid、审阅状态和原始 JSON 字节，外键始终开启，失败或中途退出整笔恢复。未知或改动过的结构仍拒绝；详见 [MIO-RECORDS.md](MIO-RECORDS.md#发布前的开发数据重置)。
+  - 当前 project/history/cache 格式为 **3/8/2**。项目增加 32 位小写十六进制 `contentToken`，头部 `user_version=3`；history 6 增加版本领域四表，7 允许已发布预演图的图片编辑来源，8 增加 `seenContentToken` 和单行宿主处置提交证据。版本 `mioRunId` 保留来源值，解除对可执行 `mio_runs` 的外键依赖。
+  - 精确已知的 history 2–7 都可在打开事务内直升 8，版本最后写入；2 保留既有开发期 Mio 重置，3–7 保留已有记录和版本字节。2–6 同时沿用 S2 的 `image_reviews` 窄升级，保留 rowid、审阅状态和原始 JSON 字节。升级的 token 为 NULL，进入恢复会话；不把旧记录补成当前令牌，不在准入前清理项目修订账本。外键始终开启，失败或中途退出整笔恢复；未知或改动过的结构仍拒绝，详见 [MIO-RECORDS.md](MIO-RECORDS.md#发布前的开发数据重置)。
   - 未加限定的表名，SQLite 依次到各个库里找，所以现有 SQL 大多不用改。
   - 建表、建触发器，以及 `PRAGMA user_version`、`PRAGMA application_id` 这类语句要带库名，不带时落到主库，也就是本机记录。`PRAGMA foreign_key_check` 不带库名时只查主库。
   - 日志模式和锁模式另有规则，见下面的“日志模式按库名设”。
@@ -108,7 +108,7 @@
   - 项目文件作主库时，提交中途崩溃后再移动项目目录，SQLite 照旧路径找不到超级日志，就把两边的热日志都当成已提交，项目文件或本机记录损坏（实测 `database disk image is malformed`）。
   - 本机记录作主库时，同样的情况下两个文件都能正确回滚。
 - **打开顺序：**
-  1. 单独打开项目文件，读出项目 ID 和格式版本，同时让 SQLite 完成恢复，然后关掉；
+  1. 先查本进程持有的文件身份，再只读原始文件头和完整精确结构。项目格式 1、2、未知新格式、伪造的新头或热日志均在读写打开和创建本机目录之前拒绝。合法格式 3 的故障恢复由显式 `recoverProjectFile` 先在隔离副本验证，再按项目优先的顺序恢复原件；普通 open 不隐式恢复热日志；
   2. 打开本机记录，作主库；
   3. 挂上项目文件和缓存库，按结构清单校验，建连接级的临时触发器。
 
@@ -238,23 +238,29 @@ P2 当时不改变公开地址、落盘格式、Mio 请求字节、生产入口�
 - 只按实体 ID 寻址的操作不用新的错误码，见上一节。
 
 ## 本机记录状态
-打开项目时，比较项目文件的内容序号和本机记录见过的序号：
+打开项目时，比较文件与本机记录的完整内容身份 `{contentSequence, contentToken}`。现有持久内容行触发器在推进序号的同一 UPDATE 中用 SQLite `randomblob(16)` 换令牌；raw SQL、自动提交和 LUT 独立事务都适用，回滚不推进。多行事务仍可推进多次，history-only 写入不换令牌。
 
 | 状态 | 含义 |
 |---|---|
 | `fresh` | 本机还没有这个项目的记录，例如别人发来的文件 |
-| `current` | 序号一致 |
-| `file-older` | 文件比记录旧，例如从备份恢复过，或被旧副本覆盖。超出文件状态的记录改为只读，相关的 Mio 撤销不可用，版本仍可恢复 |
-| `file-newer` | 文件在别处改过。记录照常继续，之前的 Mio 变化按修订号核对 |
+| `current` | 序号和令牌都相等，正常准入 |
+| `diverged` | 其他合法差异：序号较小、较大、同序号异令牌、旧 history 缺少令牌；都要确认处置，不按序号推断可靠的内容先后 |
+| `invalid` | 非法字段、同令牌异序号、身份或结构损坏，返回确切错误，不建立 store |
 
-表中 `file-older` / `file-newer` 的处置是后续约定；当前内核计算状态，但宿主尚未完整接入这些控制分支，归 V5。V1/V2 只按内容序号工作：相同序号、不同内容的副本分叉识别不出，V2 可能据此跳过备份，不能把 `current` 当作完整内容相等的证明。
+成功 store 的 `historyState` 只有前三项；`historyAdmission` 保留打开时的不可变 pair/原因证据。只有 fresh/current 连接可同步 seen pair。diverged 的连接由 SQLite 只读模式和连接级写入守卫拒绝内容与旧 history 写入，宿主在 factory 之前分流，不构造 Mio、worker、业务服务，不做 daily 或自动备份。
+
+恢复会话只可查看状态、列版本、预览、确认和关闭。确认“以当前文件继续”或“恢复某个本机版本”都经过应用 owner 守卫、项目独占和文件/history 身份及 pair CAS。整份旧 history 改名为同目录只读归档，新 history 只带原版本 blob 和版本行；旧请求回执、自动保存标记、Mio 对话/任务/撤销不带。已提交但结果未知的 provider 任务只显示数量，不续跑或重发。恢复版本在新 history 中作为新的 V1 内容提交，序号与令牌向前走。
+
+切换使用私有持久 intent、暂存 history 的事务提交证据及 fsync/rename；打开必须先恢复未完成切换，不能把暂时缺失的 history 当 fresh。相同确认重复返回原结果，后续编辑也不重做恢复。最小宿主接口和文字见 [PROJECT-HOST.md](PROJECT-HOST.md#v5-恢复会话)。不提供通用 history 业务 RPC，也不向 Mio 增加工具。
+
+未改内容的物理备份保留 pair；换项目 ID 的复制必须换新令牌，打包改写持久引用也必须换令牌。S5/V3 的产品入口由各卡实现；内容令牌不是内容哈希或防篡改凭据，不提供父链、祖先证明或旧执行记录的部分继续资格。
 
 ## 项目自动备份（V2）
 
 - 备份在真实宿主的 `afterOpen` / `beforeClose` 中，用持有连接的 SQLite backup 接口复制 attached `project`，不是 `main`（history）。关闭备份在排空后、关库前；打开接受 SQLite 完成时一致副本，不暂停 worker。
 - `localDir/backups/` 保存项目副本、私有 JSON 索引/状态和恢复意图。只改目标副本的专用 `application_id` 为 `MioB`；普通 opener 拒绝，专用 opener 只读查看，不建 history/cache 或登记。
-- 与最近有效副本的内容序号相同则不轮换；损坏、缺失副本不作去重依据。索引最多指向三份；确认原子索引的目录同步后才清理旧份，维护失败保留额外文件，后续捕获清理受控孤儿。
-- 同进程完整校验成功后，按文件 dev/ino/size/mtime/ctime/birthtime 和索引中的项目/内容序号/大小记住结果；每次命中仍检查私有文件安全属性。替换、变动或失败都须重验。打开去重只找到最近有效副本即停止；列表仍逐项确认全部有效项，inspect/restore 仍完整只读校验。
+- 与最近有效副本的项目 ID、内容序号、令牌都相同才不轮换；同序号异令牌仍备份，损坏、缺失副本不作去重依据。索引最多指向三份；确认原子索引的目录同步后才清理旧份，维护失败保留额外文件，后续捕获清理受控孤儿。
+- 同进程完整校验成功后，按文件 dev/ino/size/mtime/ctime/birthtime 和索引中的项目/内容序号/令牌/大小记住结果；每次命中仍检查私有文件安全属性与 journal sidecar。替换、变动或失败都须重验。打开去重只找到最近有效副本即停止；列表仍逐项确认全部有效项，inspect/restore 仍完整只读校验。索引和恢复 intent 为私有 JSON v2；缺令牌旧索引没有去重资格。
 - 恢复到明确的新文件，目标存在报 `PROJECT_FILE_EXISTS`；新 projectId、空本机记录，实体 ID 保留。V2 的共享复制能力供 S5 复用，当前托管媒体校验后复制，正式引用按原来源目录重定位，不改源项目或源备份。
 - 新增的四个 `project.backup.*` 操作走应用 `/api/rpc`，列表/查看/状态和从备份恢复不 acquire 原项目。原生备份完整 await，超过阈值可见 slow，不做硬超时；失败不挡开关，但不承诺慢 I/O 的关闭时限。
 

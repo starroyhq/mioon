@@ -5,6 +5,7 @@ import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
 import {CROSS_FILE_RELATIONS} from '../project-file/cross-file/relations.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
+import {readProjectContentStamp} from '../project-file/content-stamp.ts';
 import {canonicalJson, primaryKeys, PROJECT_SNAPSHOT_TABLES, rowKey, snapshotCellValue, tableColumns, validateProjectDocument} from './document.ts';
 import type {ProjectDocument, ProjectSnapshotTable, SnapshotRow} from './document.ts';
 
@@ -24,14 +25,15 @@ const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
 const token = (table: Table, key: string) => `${table}\0${key}`;
 export interface RestorePlan {readonly changes: ProjectVersionDifference[]; readonly document: ProjectDocument}
-const restorePlans = new WeakMap<RestorePlan, {store: ProjectStore; current: ProjectDocument}>();
+const restorePlans = new WeakMap<RestorePlan, {store: ProjectStore; current: ProjectDocument; contentToken: string}>();
+export interface RestorePlanningOptions {readonly executionDomain?: 'current' | 'empty'}
 /** The execution capability is local to a reviewed plan on its original store.
  * HTTP callers cannot construct one by posting a document or a diff. */
 export function restorePlanCurrent(store: ProjectStore, plan: RestorePlan): ProjectDocument {
   const context = restorePlans.get(plan);
   if (!isProjectStore(store) || !store.db.isTransaction || context?.store !== store) throw new TypeError('Restoration requires a plan from this live store inside its transaction');
-  const sequence = store.db.prepare('SELECT contentSequence FROM project.project_file').get()?.contentSequence;
-  if (sequence !== context.current.evidence.contentSequence) fail('PROJECT_VERSION_BASELINE_CHANGED', '项目内容已改变，请重新预览。');
+  const stamp = readProjectContentStamp(store.db);
+  if (stamp?.contentSequence !== context.current.evidence.contentSequence || stamp?.contentToken !== context.contentToken) fail('PROJECT_VERSION_BASELINE_CHANGED', '项目内容已改变，请重新预览。');
   return context.current;
 }
 function fail(code: string, message: string, details?: Record<string, unknown>): never {
@@ -84,12 +86,13 @@ function fields(table: Table, before?: SnapshotRow, after?: SnapshotRow): string
   return tableColumns(table).filter(column => !metadata.has(column) && canonicalJson(a[column] ?? null) !== canonicalJson(b[column] ?? null));
 }
 
-/** Attribution is deliberately object-level. A Mio change after the captured
- * rowid boundary, or an older change undone after capture, marks its targets.
+/** Attribution is deliberately object-level. A later rowid, undo evidence or
+ * a persistent target revision beyond the snapshot marks the recorded targets.
  * Other differences are "you or another source", never proven manual edits. */
 function mioTargets(store: ProjectStore, saved: ProjectDocument, boundary: number, createdAt: string): Set<string> {
   const result = new Set<string>();
   const revisions = new Map(saved.evidence.targetRevisions.map(row => [`${row.kind}:${row.targetId}`, Number(row.revision)]));
+  const persistentKinds = new Set<string>([...Object.values(targetKinds), 'timeline_clip', 'timeline_track', 'timeline_subtitle']);
   for (const row of store.db.prepare('SELECT rowid,data FROM main.mio_changes WHERE projectId=? ORDER BY rowid').all(store.projectId)) {
     let value: unknown;
     try {value = JSON.parse(String(row.data));} catch {fail('PROJECT_VERSION_RECORD_INVALID', 'Mio 变化记录损坏，无法准确标示来源。');}
@@ -98,8 +101,14 @@ function mioTargets(store: ProjectStore, saved: ProjectDocument, boundary: numbe
     const change = parsed.data;
     const revised = [...change.targets, ...(change.revertedTargets ?? [])].some(target =>
       Math.max(target.revision, target.revisionAfter ?? 0) > (revisions.get(`${target.kind}:${target.id}`) ?? 0));
+    // Copied versions retain their original rowid boundary while a replacement
+    // history starts at rowid 1. Persistent content revisions survive that
+    // replacement and provide additional attribution evidence without granting
+    // any execution or compensation authority to archived changes.
+    const contentRevised = [...change.targets, ...(change.revertedTargets ?? [])].some(target => persistentKinds.has(target.kind)
+      && Math.max(target.revision, target.revisionAfter ?? 0) > (revisions.get(`${target.kind}:${target.id}`) ?? 0));
     const after = Number(row.rowid) > boundary || typeof change.revertedAt === 'string' && Date.parse(change.revertedAt) > Date.parse(createdAt)
-      || change.status === 'reverted' && revised;
+      || change.status === 'reverted' && revised || contentRevised;
     if (after) for (const target of [...change.targets, ...(change.revertedTargets ?? [])]) result.add(`${target.kind}:${target.id}`);
   }
   return result;
@@ -168,10 +177,11 @@ function logicalReferences(table: Table, row: SnapshotRow): {table: Table; id: s
 
 /** Complete diff data only: no content writes, receipt writes, trigger changes
  * or effects. V1-A does not expose executable restoration. */
-export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, current: ProjectDocument, mioChangeRowid: number, versionCreatedAt: string): RestorePlan {
+export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, current: ProjectDocument, mioChangeRowid: number, versionCreatedAt: string, options: RestorePlanningOptions = {}): RestorePlan {
   if (!isProjectStore(store) || !store.db.isTransaction) throw new TypeError('Preview requires a real project store in its transaction');
   if (saved.projectId !== store.projectId || current.projectId !== store.projectId) fail('PROJECT_ID_MISMATCH', '版本内容不属于此项目。');
-  const touched = mioTargets(store, saved, mioChangeRowid, versionCreatedAt);
+  const empty = options.executionDomain === 'empty';
+  const touched = empty ? new Set<string>() : mioTargets(store, saved, mioChangeRowid, versionCreatedAt);
   const differences = new Map<string, ProjectVersionDifference>(), predicted = new Map<Table, Map<string, SnapshotRow>>();
   const removable = new Map<string, {table: Table; key: string; row: SnapshotRow}>();
   for (const table of PROJECT_SNAPSHOT_TABLES) {
@@ -227,7 +237,7 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
       }
       else if (retained.has(table)) {
         diff.action = 'keep-current'; diff.reason = '快照后新增的受保护结果或只前进对象不能删除，保持当前。';
-      } else if (table === 'timelines' && store.db.prepare('SELECT 1 FROM main.timeline_history WHERE projectId=? LIMIT 1').get(store.projectId)) {
+      } else if (!empty && table === 'timelines' && store.db.prepare('SELECT 1 FROM main.timeline_history WHERE projectId=? LIMIT 1').get(store.projectId)) {
         diff.action = 'keep-current'; diff.reason = '本机时间线编辑历史仍引用此聚合，保持当前身份和内容，不删除过程历史。';
       } else if (table === 'asset_annotations') {
         const reset = {...before!, tags: '[]', note: ''}; finalRows.set(key, reset);
@@ -269,7 +279,7 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
   };
   // Cross-file rows are process/cache evidence and will not be rewound. Their
   // actual references protect current owners even when no snapshot row did.
-  for (const candidate of [...removable.values()]) for (const relation of CROSS_FILE_RELATIONS) {
+  for (const candidate of [...removable.values()]) for (const relation of empty ? [] : CROSS_FILE_RELATIONS) {
     if (relation.parent.table !== candidate.table) continue;
     const values = relation.parent.columns.map(column => candidate.row[column]);
     if (values.some(value => value === null || value === undefined)) continue;
@@ -316,7 +326,7 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
   for (const change of changes) {Object.freeze(change.fields); Object.freeze(change);}
   Object.freeze(changes);
   const plan = Object.freeze({changes, document});
-  restorePlans.set(plan, {store, current});
+  restorePlans.set(plan, {store, current, contentToken: readProjectContentStamp(store.db).contentToken});
   return plan;
 }
 

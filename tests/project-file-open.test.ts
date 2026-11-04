@@ -148,10 +148,10 @@ test('createProjectFile publishes a complete project file and never replaces any
   const root = scratch(t);
   const file = path.join(root, 'Film.mioon');
   const projectId = randomUUID();
-  assert.equal(createProjectFile(file, {projectId}), projectId);
+  assert.equal(createProjectFile(file, {projectId,contentToken:'a'.repeat(32)}), projectId);
   assert.deepEqual(readdirSync(root), ['Film.mioon'], 'no temporary file or journal is left behind');
   const db = new DatabaseSync(file, {readOnly: true});
-  assert.deepEqual(plain(db.prepare('SELECT * FROM project_file').get()), {singleton: 1, projectId, contentSequence: 0});
+  assert.deepEqual(plain(db.prepare('SELECT * FROM project_file').get()), {singleton: 1, projectId, contentSequence: 0,contentToken:'a'.repeat(32)});
   assert.equal(pragma(db, 'application_id'), PROJECT_FILE_APPLICATION_ID);
   assert.equal(pragma(db, 'journal_mode'), 'delete');
   assert.deepEqual(readSchemaManifest(db, 'main'), SCHEMA_MANIFEST.project.entries);
@@ -550,7 +550,7 @@ test('a cache that does not match is rebuilt and the open goes on', async t => {
 // ---------------------------------------------------------------------------
 // Local records state and copies
 
-test('the local records state follows the content sequence: fresh, current, file-newer, file-older', t => {
+test('the local records state is fresh/current or diverged with numeric-only reasons', t => {
   const project = layout(scratch(t));
   const projectId = createProjectFile(project.projectFile);
   let connection = open(project);
@@ -583,21 +583,23 @@ test('the local records state follows the content sequence: fresh, current, file
   connection.close();
   for (let round = 0; round < 2; round++) {
     connection = open(project);
-    assert.equal(connection.historyState, 'file-newer');
+    assert.equal(connection.historyState, 'diverged');
+    assert.equal(connection.historyAdmission.reason,'file-sequence-larger');
     connection.close();
   }
 
   // Replaced by an older copy: older than ours.
   const older = path.join(scratch(t), 'older.mioon');
   copyFileSync(project.projectFile, older);
-  connection = open(project);
+  connection = open(elsewhere);
   addShot(connection);
   const latest = sequences(connection.db);
   assert.equal(latest.seen, latest.file);
   connection.close();
   copyFileSync(older, project.projectFile);
-  connection = open(project);
-  assert.equal(connection.historyState, 'file-older');
+  connection = open(elsewhere);
+  assert.equal(connection.historyState, 'diverged');
+  assert.equal(connection.historyAdmission.reason,'file-sequence-smaller');
   connection.close();
 });
 
