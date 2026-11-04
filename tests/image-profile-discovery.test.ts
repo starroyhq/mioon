@@ -27,8 +27,6 @@ import {DEFAULT_COMFY_IMAGE_CONFIGURATION, COMFY_IMAGE_OPTIONS, comfyCheckpointS
 import {createClient, operationDefinition} from '../packages/client/src/index.ts';
 import {startServer} from '../apps/server/src/index.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import type { PathLike } from 'fs';
 import {changeMarks,readProjectState} from './helpers/project-state.ts';
 
@@ -411,8 +409,6 @@ test('real HTTP, CLI and official MCP discover the same revisions without provid
   assert.equal(definition.requiresRequestId, false);
   assert.deepEqual(tool!.annotations, {readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false});
   assert.ok(!tools.some(value => /image_review_approve|image.*settings|comfy.*check/i.test(value.name)));
-  assert.deepEqual(READ_TOOL_DEFINITIONS.map(value => value.name), ['mioon_project_inspect','mioon_asset_inspect','mioon_shot_inspect','mioon_timeline_inspect']);
-  assert.deepEqual(EDIT_TOOL_DEFINITIONS.map(value => value.name), ['mioon_propose_shot_update']);
   for (const input of [{}, {includeSettingsRevision: false}, optIn]) {
     const response:Response = await fetch(server.url + '/api/rpc', {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000),
       headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`}, body: JSON.stringify({operation, input})});

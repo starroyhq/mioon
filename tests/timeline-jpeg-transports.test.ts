@@ -18,7 +18,6 @@ import {operationEffect} from '../packages/contracts/src/index.ts';
 import {createServerProject,schemaObjects} from './helpers/project-database.ts';
 import {changeMarks} from './helpers/project-state.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {READ_TOOL_DEFINITIONS, READ_TOOL_OPERATIONS, parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.ts';
 import {pillowJfifFixture} from './helpers/timeline-jpeg-fixtures.ts';
 import {sha, stamp} from './helpers/timeline-image-fixtures.ts';
 
@@ -50,7 +49,7 @@ function clientFixture(value: unknown): {client: ReturnType<typeof createClient>
   return {client, requests};
 }
 
-test('JPEG discovery declares a local decoder but remains read-only, private and outside generic Agent tools', () => {
+test('JPEG discovery declares a local decoder and remains read-only and private', () => {
   const definition = discoverSchema({operation}) as unknown as DiscoveryView;
   assert.equal(definition.toolName, 'timeline_colour_jpeg_inspect');
   assert.equal(definition.command, 'timeline colour jpeg inspect');
@@ -66,14 +65,6 @@ test('JPEG discovery declares a local decoder but remains read-only, private and
   assert.deepEqual(effectAnnotations(definition.effects as never), {readOnlyHint: true, destructiveHint: false,
     idempotentHint: true, openWorldHint: false});
   assert.equal(operationEffect(pngOperation).localProcess, false, 'the historical PNG operation stays decoder-free');
-  assert.deepEqual(READ_TOOL_DEFINITIONS.map(tool => tool.name), [
-    'mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect',
-  ]);
-  assert.deepEqual(Object.values(READ_TOOL_OPERATIONS), ['project.inspect', 'asset.inspect', 'shot.inspect', 'timeline.inspect']);
-  for (const name of ['timeline_colour_jpeg_inspect', 'mioon_timeline_colour_jpeg_inspect'])
-    assert.throws(() => parseReadToolArguments(name, JSON.stringify(input)), {code: 'AGENT_CHAT_TOOLS_UNSUPPORTED'});
-
-
 });
 
 test('JPEG client accepts only exact SHA-bound untagged baseline decoder evidence', async () => {

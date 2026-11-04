@@ -1,3 +1,9 @@
+> **历史文档 / Historical document（S7-C，2026-11-03）**
+>
+> 本页保留 2026-10-09、`650c04c` 基线的视图偏好持久化与原生/浏览器验收。视图偏好功能继续保留；文中的 schema-v5 布局、迁移和当时通过数仅供追溯，不作为当前存储布局或当前验收结论。
+>
+> 现行项目与应用库布局见 [PROJECT-HOST.md](PROJECT-HOST.md)，接口和寻址见 [API.md](API.md)。
+
 # Durable workspace preferences acceptance — 2026-10-09
 
 Baseline: `650c04c`. This bounded follow-up persists each project's Canvas/Editing view independently of business data. The same worktree also contains the user-requested Mioon rename and one-time renderer-key migration; its details and separate regression evidence are in [MIOON-MIGRATION.md](MIOON-MIGRATION.md).

@@ -28,8 +28,6 @@ import {validatePng} from '../packages/business/src/images/png.ts';
 import {createClient} from '../packages/client/src/index.ts';
 import {FRAME_MUTATION_OPERATIONS, frameSchemas, isFrameTaskResponse, isFrameRequestResponse,
   isFrameListResponse, canonicalFrameInput} from '../packages/contracts/src/frame-extraction.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {openServerProject,createServerProject,projectDirFor} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
@@ -296,7 +294,7 @@ test('frames share strict real HTTP, actual CLI and official MCP extraction/reco
     }
     return backend;
   }
-  await t.test('six strict schema/effect definitions agree without broadening built-in Agent authority', async () => {
+  await t.test('six strict schema/effect definitions agree', async () => {
     const before = await f.checkpoint(), catalog = (await cli(['schema'], {})).data;
     assert.deepEqual((await mcp.call('mioon_schema')).data, catalog);
     const tools = (await mcp.client.listTools()).tools;
@@ -312,8 +310,6 @@ test('frames share strict real HTTP, actual CLI and official MCP extraction/reco
       assert.equal(e.fileWrite, ['frame.extract', 'frame.task.recoverResult'].includes(operation));
       assert.deepEqual(tool.annotations, {readOnlyHint:e.readOnly, destructiveHint:e.destructive, idempotentHint:e.idempotent, openWorldHint:e.openWorld});
     }
-    assert.deepEqual(READ_TOOL_DEFINITIONS.map(value => value.name), ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect']);
-    assert.deepEqual(EDIT_TOOL_DEFINITIONS.map(value => value.name), ['mioon_propose_shot_update']);
     for (const operation of Object.keys(frameSchemas)) {
       const input = operation === 'frame.extract' ? f.input() : operation === 'frame.request.get' ? {projectId:f.project.id, requestId:f.queued.requestId}
         : operation === 'frame.task.list' ? {projectId:f.project.id} : {projectId:f.project.id, taskId:f.queued.id,

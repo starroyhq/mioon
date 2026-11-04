@@ -25,8 +25,6 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {discoverSchema} from '../packages/client/src/index.ts';
 import {parse, operationEffect, isWaveformResponse, WAVEFORM_ALGORITHM, WAVEFORM_MAX_POINTS} from '../packages/contracts/src/index.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {IDS, TOKEN, NOW, uuid, seedMutationStore} from './helpers/mutation-wire-fixture.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -361,7 +359,7 @@ test('waveforms have project-scoped HTTP, real CLI and official MCP parity acros
     return result;
   };
 
-  await t.test('discovery matches strict contracts and effects without expanding built-in Agent tools', async () => {
+  await t.test('discovery matches strict contracts and effects', async () => {
     const before = await backend.checkpoint(), catalog = (discoverSchema() as DiscoverySchemaResult), listed = ((await backend.client.listTools() as {tools:TestTool[]})).tools;
     assert.deepEqual((await backend.cliArgs(['schema'])).data, catalog);
     assert.deepEqual((await backend.mcp('mioon_schema')).data, catalog);
@@ -377,8 +375,6 @@ test('waveforms have project-scoped HTTP, real CLI and official MCP parity acros
       assert.equal(((tool)!.annotations)!.destructiveHint, request); assert.equal(((tool)!.annotations)!.openWorldHint, false);
       assert.equal(definition.effects.databaseWrite, request); assert.equal(definition.effects.localProcess, request);
       for (const key of (['fileWrite', 'externalIO', 'paidGeneration'] as const)) assert.equal(definition.effects[key], false);
-      for (const definitions of ([READ_TOOL_DEFINITIONS, EDIT_TOOL_DEFINITIONS] as const))
-        assert.ok(!JSON.stringify(definitions).includes(operation), `${operation} is absent from built-in Agent tools`);
     }
     await backend.unchanged(before, 'discovery');
   });

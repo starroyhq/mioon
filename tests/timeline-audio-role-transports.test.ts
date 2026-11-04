@@ -20,7 +20,6 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient} from '../packages/client/src/index.ts';
 import {createServerProject} from './helpers/project-database.ts';
 import {createProjectStorageReader} from './fixtures/project-server-process.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const token = 'timeline-audio-role-transports-synthetic-token';

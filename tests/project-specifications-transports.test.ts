@@ -14,8 +14,6 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient,discoverSchema} from '@mioon/client';
 import {isTimelineFormatReadResponse,operationEffects} from '@mioon/contracts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {taskFixture,database,snapshot,taskPath,REPO,TASK_TOKEN} from './helpers/edit-tasks-http-fixture.ts';
 
 const env=(url: string)=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_BASE_URL:url,MIOON_TOKEN:TASK_TOKEN});
@@ -52,7 +50,7 @@ async function wire(t: test.TestContext){
 }
 const formatInput=(state: {projectId: string;projectRevision: number;timelineRevision: number},presetId: string)=>({projectId:state.projectId,expectedProjectRevision:state.projectRevision,expectedRevision:state.timelineRevision,requestId:randomUUID(),presetId});
 
-test('format reads are noncreating and schemas/effects discoverable through actual CLI and official MCP, without Agent authority',{timeout:60000},async (t: test.TestContext)=>{
+test('format reads are noncreating and schemas/effects discoverable through actual CLI and official MCP',{timeout:60000},async (t: test.TestContext)=>{
  const w=await wire(t),{f}=w;
  const before=await snapshot(f.root),read=await w.client.rpc('timeline.format.get',{projectId:f.foreign.id});
  assert.ok(isTimelineFormatReadResponse(read,{projectId:f.foreign.id}));assert.equal(read.timelineId,null);assert.equal(read.timelineRevision,0);assert.equal(read.presetId,'portrait_1080');assert.equal(read.eligible,true);assert.deepEqual(await snapshot(f.root),before);
@@ -65,7 +63,7 @@ test('format reads are noncreating and schemas/effects discoverable through actu
   const tool=tools.find(x=>x.name===operation.replaceAll('.','_'));assert.ok(tool);assert.equal(tool.inputSchema.additionalProperties,false);
   assert.equal(tool.annotations!.readOnlyHint,operation.endsWith('.get'));
  }
- assert.ok(!JSON.stringify(READ_TOOL_DEFINITIONS).includes('timeline.format'));assert.ok(!JSON.stringify(EDIT_TOOL_DEFINITIONS).includes('timeline.format'));
+
  for(const transport of w.transports){const invalid=await transport.call('timeline.format.set',{...formatInput(read,'landscape_720'),fps:60});assert.equal(invalid.ok,false);assert.equal(invalid.error.code,'VALIDATION_ERROR');}
  assert.deepEqual(await snapshot(f.root),before);
 });

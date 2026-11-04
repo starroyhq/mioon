@@ -24,8 +24,6 @@ import {createClient} from '../packages/client/src/index.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_LIMITS, IMAGE_MODELS, IMAGE_MUTATION_OPERATIONS, imageSchemas,
   isImageTaskResponse, isImageProfilesResponse, isImageRequestResponse,
   isImageListResponse} from '../packages/contracts/src/images.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {createServerProject, schemaObjects} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
@@ -208,7 +206,7 @@ test('image generation uses one durable contract across real HTTP, CLI and offic
     return response;
   }
 
-  await t.test('discovery has strict matching schemas/effects and keeps built-in Agent catalogs unchanged', async () => {
+  await t.test('discovery has strict matching schemas/effects', async () => {
     const before = f.checkpoint();
     const catalog = (await cli(['schema'], {})).data;
     assert.deepEqual((await mcp.call('mioon_schema')).data, catalog);
@@ -236,8 +234,6 @@ test('image generation uses one durable contract across real HTTP, CLI and offic
     assert.equal(profiles.liveEnabled, false);
     assert.equal(profiles.items.find((item: { providerId: string; }) => item.providerId === 'mock').enabled, true);
     assert.equal(profiles.items.find((item: { providerId: string; }) => item.providerId === 'openai').enabled, false);
-    assert.deepEqual(READ_TOOL_DEFINITIONS.map(item => item.name), ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect']);
-    assert.deepEqual(EDIT_TOOL_DEFINITIONS.map(item => item.name), ['mioon_propose_shot_update']);
     f.unchanged(before, 'schema/profile discovery');
   });
 

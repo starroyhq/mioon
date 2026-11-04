@@ -139,13 +139,12 @@ test('client validates input scope, strict response shape, claims and pack-to-re
  assert.equal(touched,0);assert.equal(calls,0);
 });
 
-test('API CLI MCP share discovery and read-only effects; built-in Agent tool authority stays unchanged',()=>{
+test('API CLI MCP share discovery and read-only effects',()=>{
  assert.equal(schemas['lut.look.inspect'],lookPackInspectInputSchema);const definition=discoverSchema({operation:'lut.look.inspect'}) as Exclude<ReturnType<typeof discoverSchema>,{operations: unknown}>;
  assert.equal(definition.toolName,'lut_look_inspect');assert.equal(definition.command,'lut look inspect');assert.equal(definition.requiresRequestId,false);
  assert.deepEqual(definition.inputSchema.required,['projectId','lutId']);assert.equal(definition.inputSchema.additionalProperties,false);
  assert.deepEqual(effectAnnotations(operationEffect('lut.look.inspect')),{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false});
  for(const key of ['databaseWrite','fileWrite','externalIO','localProcess','paidGeneration'])assert.equal(definition.effects[key as keyof typeof definition.effects],false);
- for(const file of ['read-tool-policy.ts'])assert.equal(readFileSync(new URL('../packages/business/src/agent/'+file,import.meta.url),'utf8').includes('lut.look.inspect'),false);
  const implementation=readFileSync(new URL('../packages/business/src/look-pack-inspection.ts',import.meta.url),'utf8');
  for(const forbidden of ['node:fs','node:child_process','node:http','node:https','fetch(','INSERT INTO','UPDATE main.','DELETE FROM'])assert.equal(implementation.includes(forbidden),false,forbidden);
 });

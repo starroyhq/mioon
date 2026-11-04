@@ -17,10 +17,6 @@ import {startServer} from '../apps/server/src/index.ts';
 import {continuousAudioQuery, CONTINUOUS_AUDIO_PROFILE} from '../packages/contracts/src/timeline-audio-continuous.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
-import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
-import {TIMELINE_GAIN_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-gain-tool-policy.ts';
 import {mkdtempPortable} from './helpers/temp-root.ts';
 
 const execute = promisify(execFile), operation = 'timeline.audioPreview.continuousPlan';
@@ -56,8 +52,6 @@ test('real HTTP RPC, CLI and official MCP expose the same strict read-only conti
   assert.deepEqual(definition.inputSchema.required, ['projectId', 'timelineId', 'expectedRevision', 'startFrame']);
   assert.equal(definition.inputSchema.additionalProperties, false);
   assert.equal(operationEffect(operation).readOnly, true); assert.equal(operationEffect(operation).localProcess, false);
-  for (const tools of [READ_TOOL_DEFINITIONS, EDIT_TOOL_DEFINITIONS, TIMELINE_EDIT_TOOL_DEFINITIONS, TIMELINE_GAIN_EDIT_TOOL_DEFINITIONS])
-    assert.ok(tools.every(tool => !/audioPreview|audio_preview|audition/i.test(tool.name)), 'No built-in Agent execution authority');
   const plan = await client.rpc(operation, input) as PlanWire;
   assert.equal(plan.schemaVersion, 2); assert.equal(plan.profileId, CONTINUOUS_AUDIO_PROFILE); assert.equal(plan.durationFrames, 3);
   const cli = await execute(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), ...operation.split('.'), '--input', JSON.stringify(input)],

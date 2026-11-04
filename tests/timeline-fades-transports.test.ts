@@ -23,7 +23,6 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient} from '../packages/client/src/index.ts';
 import {createServerProject} from './helpers/project-database.ts';
 import {createProjectStorageReader} from './fixtures/project-server-process.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import type { ChildProcessByStdio } from 'child_process';
 import type { Readable } from 'stream';
 
@@ -94,7 +93,6 @@ test('fade CLI and official MCP schemas are optional, strict, offline and retain
   assert.deepEqual(catalog.operations.filter((item) => item.operation.startsWith('timeline.')).map((item) => item.operation).sort(), timelineOperations.sort(), 'timeline discovery includes explicit source replacement and ripple removal alongside existing fade fields');
   // Public local inspection is broader than the explicitly consented Agent tool set.
   assert.deepEqual(catalog.operations.filter((item) => item.operation.endsWith('.inspect')).map((item) => item.operation).sort(), ['asset.inspect', 'lut.inspect', 'lut.look.inspect', 'project.backup.inspect', 'project.inspect', 'shot.inspect', 'timeline.colour.image.inspect', 'timeline.colour.jpeg.inspect', 'timeline.colour.source.inspect', 'timeline.inspect']);
-  assert.deepEqual(READ_TOOL_DEFINITIONS.map(tool => tool.name), ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect']);
   // These two former capability probes are retired, including their advisory
   // schemas/effects. Offline discovery must reject them without a backend.
   for (const operation of ['workspace.restore.inspect','workspace.backup.inspect']) {

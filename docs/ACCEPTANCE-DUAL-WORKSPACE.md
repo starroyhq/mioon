@@ -1,3 +1,9 @@
+> **历史文档 / Historical document（S7-C，2026-11-03）**
+>
+> 本页保留 2026-10-09、`df0f0ad` 基线的画板/剪辑双视图验收及平台限制。双视图功能继续保留；当时的临时视图偏好、旧工作区布局和复现步骤不代表当前实现或当前验收结果。
+>
+> 现行组件约定见 [UI-COMPONENTS.md](UI-COMPONENTS.md)，项目布局与生命周期见 [PROJECT-HOST.md](PROJECT-HOST.md)。
+
 # Dual-workspace acceptance — 2026-10-09
 
 Baseline: `df0f0ad` (typed references on top of durable timeline history). This is an incremental renderer/layout change, with no version bump, new dependency, new backend operation, deployment, or live-provider call.

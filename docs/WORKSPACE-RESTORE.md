@@ -1,3 +1,9 @@
+> **历史文档 / Historical document（S7-C，2026-11-03）**
+>
+> 本页保留旧 schema24→25 安全可编辑恢复副本及后续固定 profile 的契约与验收。旧离线工作区恢复、held/origin 携带链及其旧公开入口已随 S7-B1/B2 退役；下文不是当前操作指南，也不代表当前项目内核仍支持这些 profile。
+>
+> 现行项目自动备份及恢复接口见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)，项目/应用库生命周期见 [PROJECT-HOST.md](PROJECT-HOST.md)，公开操作见 [API.md](API.md)。
+
 # Safe editable workspace restore: contract and staged implementation
 
 Implemented in an isolated worktree on 2026-10-12 from source baseline `beb7fcf663cb45b935b1aab53d60a89e356be9b9`; the final independent parent aggregate passed on 2026-10-12: 4775 total, 4773 passed, 0 failed, 2 skipped (1215750.130935ms, exit0). Release review remains the parent’s final gate. Gate A passed parent review, including fixed-schema preservation and the locked Electron44.7.0 main→utilityProcess SQLite gate. Gate B actual HTTP/CLI/official MCP, local execution fences and renderer checks passed. Gate C passed on the initial Linux production package: ordinary export, restored import/edit/undo/preview/export, three normal native exits, full application recreation, exact captured-row/history/source/backup preservation and real output probe/decode/audio checks. The initial unclassified ordinary Mock schema refusal was preserved and corrected with an exact optional profile, followed by fresh focused/Electron/build/native verification. No live provider calls are part of this slice; Mac/Windows native acceptance remains unperformed.

@@ -6,8 +6,10 @@ import type {PublicStorage, SecretCodec, SettingsContextOptions} from '@mioon/bu
 import {sanitizeAgentSettingsError, sanitizeAgentSettingsResult} from '@mioon/business/agent/settings';
 import type {TaskGateway} from '@mioon/business/agent/task-gateway-v2';
 import {agentTaskFailure} from '@mioon/business/agent/task-runtime-v2';
+import {listAgentTaskTools} from '@mioon/business/agent/task-tools-v2';
 import {createApplicationPolicy} from '@mioon/business/agent/application-policy-v2';
 import {openAppLibrary, isAppLibraryHeld, projectFileIdentity} from '@mioon/business/app-db/index';
+import {createProjectServiceApplication} from '@mioon/business/project-service-application';
 import {createEditTasks} from '@mioon/business/edit-tasks';
 import type {NativeAudioPreviewAuthority} from '@mioon/business/native-audio-preview';
 import {boundedShutdown, assertMediaTerminated} from '@mioon/business/operation-lifecycle';
@@ -41,6 +43,7 @@ import {createApplicationRpc} from './application-rpc.ts';
 import {createInitializedProject} from './project-host/create-project.ts';
 import {createProjectEntries} from './project-entries.ts';
 import {createAgentDiagnosticsHttp} from './agent-diagnostics-http.ts';
+import {createApplicationAgentHttp} from './application-agent-http.ts';
 import {body, json, field} from './http-json.ts';
 import {callObservedRpc} from './rpc-observation.ts';
 import {createFileResponses} from './file-response.ts';
@@ -232,12 +235,11 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         return calculateWorkspaceScope({root, channel, directory, db});
       }});
     const userRules=createMioUserRules(library,{signal:shutdown.signal});
-    const appAgentHttp = (await import('./application-agent-http.ts')).createApplicationAgentHttp(library, shutdown.signal);
+    const appAgentHttp = createApplicationAgentHttp(library, shutdown.signal);
     const rpc = createApplicationRpc({library, app, manager, directories, backups, createProject, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
       imageProfiles: input => listImageProfiles(app.profileDependencies, input as never), refreshSummaries});
     const covers = createProjectCoverHttp({directories, readProject: id => library!.registry.get(id), signal: shutdown.signal});
     const policy = createApplicationPolicy(library.agentPolicy);
-    const {listAgentTaskTools} = await import('@mioon/business/agent/task-tools-v2');
     const appDiagnostics = createAgentDiagnosticsHttp({settings: app.agentSettings, authorizations: app.authorizations, tools: {list: listAgentTaskTools},
       policy: policy.policy, selfPort: listeningPort, hasProject: id => appLibrary.registry.get(id) !== null});
     const hosts = new Set<string>(), origins = new Set<string>();
@@ -408,6 +410,4 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
   }
 }
 
-import {createProjectServiceApplication} from '@mioon/business/project-service-application';
-function awaitConfiguration(library: NonNullable<ReturnType<typeof openAppLibrary>>) { return createProjectServiceApplication(library).configuration; }
-function createProjectServiceEnvironment(library: NonNullable<ReturnType<typeof openAppLibrary>>) { return awaitConfiguration(library).environment(); }
+function createProjectServiceEnvironment(library: NonNullable<ReturnType<typeof openAppLibrary>>) { return createProjectServiceApplication(library).configuration.environment(); }

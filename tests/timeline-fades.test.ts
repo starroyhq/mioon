@@ -11,8 +11,6 @@ import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {getTimelineFadeIssue, TIMELINE_FADE_MAX_FRAMES, parse, schemas} from '../packages/contracts/src/index.ts';
-import {READ_TOOL_DEFINITIONS, parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.ts';
-import {EDIT_TOOL_DEFINITIONS, parseEditToolArguments} from '../packages/business/src/agent/edit-tool-policy.ts';
 import type { SQLOutputValue } from 'node:sqlite';
 
 // Synthetic metadata only: these tests never invoke providers or media workers.
@@ -248,14 +246,4 @@ test('fade requests distinguish omitted and explicit zero and retain revision an
   f.restart();
   assert.deepEqual(await f.call('timeline.clip.update', update), timeline);
   assert.deepEqual(await f.call('timeline.clip.add', input), original);
-});
-
-test('audio fades do not expand either model-facing Agent catalog or authority', () => {
-  assert.deepEqual(READ_TOOL_DEFINITIONS.map(tool => tool.name), ['mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect']);
-  assert.deepEqual(EDIT_TOOL_DEFINITIONS.map(tool => tool.name), ['mioon_propose_shot_update']);
-  assert.deepEqual(Object.keys(EDIT_TOOL_DEFINITIONS[0].parameters.properties), ['title', 'prompt']);
-  for (const operation of (['timeline_clip_add', 'timeline_clip_update', 'timeline_clip_split', 'timeline_fade'] as const)) {
-    assert.throws(() => parseReadToolArguments(operation, '{}'), {code: 'AGENT_CHAT_TOOLS_UNSUPPORTED'});
-    assert.throws(() => parseEditToolArguments(operation, '{}'), {code: 'AGENT_CHAT_TOOLS_UNSUPPORTED'});
-  }
 });

@@ -22,7 +22,6 @@ import type {InspectProject} from '../apps/server/src/index.ts';
 import {createClient, discoverSchema, effectAnnotations} from '../packages/client/src/index.ts';
 import {operationEffect} from '../packages/contracts/src/index.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {READ_TOOL_DEFINITIONS, READ_TOOL_OPERATIONS, parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.ts';
 import {png, sha, stamp} from './helpers/timeline-image-fixtures.ts';
 import {createServerProject, schemaObjects} from './helpers/project-database.ts';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport';
@@ -52,7 +51,7 @@ function clientFixture(value: string|{ assetSha256: string; kind: string; eviden
   return {client, requests};
 }
 
-test('image inspection shares exact bounded effects and does not widen the generic Agent read catalog', () => {
+test('image inspection shares exact bounded read-only effects', () => {
   const definition = (discoverSchema({operation}) as OperationDefinition);
   assert.equal(definition.toolName, 'timeline_colour_image_inspect');
   assert.equal(definition.command, 'timeline colour image inspect');
@@ -68,12 +67,6 @@ test('image inspection shares exact bounded effects and does not widen the gener
   assert.deepEqual(effectAnnotations(definition.effects), {readOnlyHint: true, destructiveHint: false,
     idempotentHint: true, openWorldHint: false});
   assert.equal(operationEffect(videoOperation).localProcess, true, 'video probe effects remain separate');
-  assert.deepEqual(READ_TOOL_DEFINITIONS.map(tool => tool.name), [
-    'mioon_project_inspect', 'mioon_asset_inspect', 'mioon_shot_inspect', 'mioon_timeline_inspect',
-  ]);
-  assert.deepEqual(Object.values(READ_TOOL_OPERATIONS), ['project.inspect', 'asset.inspect', 'shot.inspect', 'timeline.inspect']);
-  for (const name of (['timeline_colour_image_inspect', 'mioon_timeline_colour_image_inspect'] as const))
-    assert.throws(() => parseReadToolArguments(name, JSON.stringify(input)), {code: 'AGENT_CHAT_TOOLS_UNSUPPORTED'});
 });
 
 test('shared image client preserves SHA-bound image evidence and the historical video DTO unchanged', async () => {

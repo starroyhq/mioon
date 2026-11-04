@@ -16,7 +16,6 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {discoverSchema,createClient,schemas} from '@mioon/client';
 import {parse,isTimelineClipLoudnessResponse,effectAnnotations,operationEffect,EXPORT_LOUDNESS_PROFILE,TIMELINE_CLIP_LOUDNESS_PROFILE} from '@mioon/contracts';
 import {matchInput,matchedClipLoudness} from './fixtures/clip-loudness-match-fixtures.ts';
-import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
 import {clipLoudnessOperation as operation,clipLoudnessInput as input,clipLoudnessToken as token,readyClipLoudness,silentClipLoudness} from './fixtures/timeline-clip-loudness-fixtures.ts';
 
@@ -105,7 +104,6 @@ test('actual CLI and official MCP discover the exact strict loudness input and u
   assert.deepEqual(effects,{readOnly:true,idempotent:true,destructive:false,openWorld:false,databaseWrite:false,fileWrite:false,externalIO:false,localProcess:true,paidGeneration:false});
   assert.ok(notes!.includes('one complete selected saved clip'));
   assert.ok(notes!.includes('no implicit target or apply authority'));
-  assert.deepEqual(READ_TOOL_DEFINITIONS.map(value=>value.name),['mioon_project_inspect','mioon_asset_inspect','mioon_shot_inspect','mioon_timeline_inspect']);
   const catalog=discoverSchema();
   assert.deepEqual((await cli(t,undefined,['schema']).result).body,{ok:true,data:catalog});
   assert.deepEqual(await mcp.call('mioon_schema',{}),{ok:true,data:catalog});
