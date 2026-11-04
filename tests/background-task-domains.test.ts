@@ -22,6 +22,7 @@ import {setProjectOutputPublicationTestHooks} from '../packages/business/src/pro
 import {PROJECT_OUTPUT_FOLDERS} from '../packages/contracts/src/project-output-publication.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
+import {createProviderRegistry,registerInputProfileWrapper} from '../packages/business/src/provider-registry.ts';
 
 const object = (value: unknown): Record<string, unknown> => {assert.ok(value && typeof value === 'object' && !Array.isArray(value)); return value as Record<string, unknown>;};
 async function fixture(t: TestContext, providers: ReadonlyMap<string, Provider> = new Map(), options: CreateServicesOptions = {}) {
@@ -422,4 +423,115 @@ test('legacy unknown snapshots receive one read-only startup probe, become quiet
     assert.deepEqual(calls, {submit: 1, reconcile: 2, poll: 1}); assert.deepEqual(reconcileIds, [input.requestId, input.requestId]);
     assert.deepEqual(finished.snapshot, unknown.snapshot); assert.equal(finished.requestId, input.requestId); assert.equal(finished.submissionCount, 1);
   } finally {await worker.stop();}
+});
+
+for (const target of ['generation snapshot', 'export owner', 'export ACK range'] as const) test(`a deeply invalid ${target} retains raw bytes but cannot hold a task lease without an executor`, async t => {
+  const providers = new Map<string, Provider>(), env = {MIOON_ENABLE_LIVE_PROVIDER: '1', GEMINI_API_KEY: 'synthetic-audit-only'};
+  const f = await fixture(t, providers, {env, profileNow: () => Date.parse('2026-10-10T12:00:00Z')});
+  let id: string, original: Record<string, unknown>, originalReceipt: string | undefined, requestId: string | undefined, dispatches = 0;
+  const kind = target === 'generation snapshot' ? 'job' : 'export', table = kind === 'job' ? 'jobs' : 'exports';
+  if (kind === 'job') {
+    const registry = createProviderRegistry({db: f.store.db, root: f.root, env}), provider = registry.get('veo')!;
+    providers.set('veo', registerInputProfileWrapper({...provider, submit: async () => {dispatches++; throw Error('must not dispatch an invalid snapshot');}}, provider));
+    const shot = object(await f.services.call('shot.create', {projectId: f.projectId, title: 'Deep snapshot', prompt: 'Synthetic', duration: 4}));
+    const accepted = object(await f.services.call('generation.submit', {shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'veo'})); id = String(accepted.id);
+    original = object(f.store.get('jobs', id)); f.store.put('jobs', {...original, snapshot: {...object(original.snapshot), shotId: randomUUID()}});
+  } else {
+    const source = f.asset(); let timeline = object(await f.services.call('timeline.get', {projectId: f.projectId}));
+    timeline = object(await f.services.call('timeline.clip.add', {projectId: f.projectId, expectedRevision: timeline.revision, requestId: randomUUID(), assetId: source.id,
+      trackId: object((timeline.tracks as unknown[])[0]).id, startFrame: 0, durationFrames: 12}));
+    requestId = randomUUID(); const accepted = object(await f.services.call('timeline.render', {projectId: f.projectId, expectedRevision: timeline.revision, requestId, purpose: 'export', exportRange: {startFrame: 1, endFrame: 8}})); id = String(accepted.id);
+    original = object(f.store.get('exports', id)); originalReceipt = String(f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(requestId)!.response);
+    if (target === 'export owner') {
+      f.store.db.exec('DROP TRIGGER immutable_timeline_render_snapshot'); const snapshot = object(original.snapshot);
+      f.store.put('exports', {...original, snapshot: {...snapshot, timeline: {...object(snapshot.timeline), projectId: randomUUID()}}});
+    } else {
+      f.store.db.exec('DROP TRIGGER immutable_timeline_responses'); const receipt = object(JSON.parse(originalReceipt));
+      object(object(receipt.snapshot).exportRange).endFrame = 7;
+      f.store.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(JSON.stringify(receipt), requestId);
+    }
+  }
+  const state = f.state(), log = t.mock.method(console, 'error', () => {});
+  const raw = () => JSON.stringify(Object.fromEntries(['jobs', 'exports', 'job_events', 'timeline_requests', 'idempotency'].map(name => [name, f.store.db.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()])));
+  const before = raw(), changes = f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
+  assert.equal(state.snapshot().find(task => task.taskId === id)!.keepAlive, true, 'shallow metadata alone cannot prove the bad frozen content');
+  const worker = startWorker(f.store, f.services, providers);
+  try {
+    await worker.tick(); await worker.tick(); const projected = state.snapshot().find(task => task.taskId === id)!;
+    assert.equal(projected.classification, 'waiting_user'); assert.equal(projected.reason, 'BACKGROUND_TASK_INVALID'); assert.equal(projected.keepAlive, false);
+    assert.equal(f.services.isBusy(), false); assert.equal(worker.isBusy(), false); assert.equal(dispatches, 0);
+    assert.equal(object(f.store.get(table, id)).status, 'queued'); assert.equal(raw(), before); assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n, changes);
+    assert.deepEqual(log.mock.calls.map(call => call.arguments), target === 'generation snapshot' ? [['Skipped invalid local generation record.']] : target === 'export owner' ? [['Skipped invalid local export record.']] : []);
+    state.refresh(); assert.equal(state.snapshot().find(task => task.taskId === id)!.keepAlive, false); assert.equal(raw(), before);
+  } finally {await worker.stop();}
+  // A real committed recovery, rather than an ordinary due read, retires the
+  // memory block. This fixture restores the exact original immutable evidence.
+  f.store.tx(() => {
+    if (target === 'export ACK range') f.store.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(originalReceipt!, requestId!);
+    f.store.put(table, original);
+  });
+  assert.equal(state.snapshot().find(task => task.taskId === id)!.keepAlive, true); assert.equal(state.snapshot().find(task => task.taskId === id)!.reason, null);
+});
+
+test('a storage read failure in an export guard is not proof of an invalid task', async t => {
+  const f = await fixture(t), source = f.asset(); let timeline = object(await f.services.call('timeline.get', {projectId: f.projectId}));
+  timeline = object(await f.services.call('timeline.clip.add', {projectId: f.projectId, expectedRevision: timeline.revision, requestId: randomUUID(), assetId: source.id,
+    trackId: object((timeline.tracks as unknown[])[0]).id, startFrame: 0, durationFrames: 6}));
+  const accepted = object(await f.services.call('timeline.render', {projectId: f.projectId, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'export'}));
+  const state = f.state(), before = f.store.get('exports', String(accepted.id)), changes = f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
+  const failure = Object.assign(Error('Synthetic storage read failed'), {code: 'ERR_SQLITE_ERROR'}), prepare = f.store.db.prepare;
+  f.store.db.prepare = sql => {if (/FROM timeline_requests/u.test(sql)) throw failure; return prepare.call(f.store.db, sql);};
+  try {assert.throws(() => startWorker(f.store, f.services, new Map()), error => error === failure);} finally {f.store.db.prepare = prepare;}
+  assert.deepEqual(f.store.get('exports', String(accepted.id)), before); assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n, changes);
+  assert.equal(state.snapshot().find(task => task.taskId === accepted.id)!.keepAlive, true); assert.equal(state.snapshot().find(task => task.taskId === accepted.id)!.reason, null);
+});
+
+test('an abandoned generation attempt with changed frozen input becomes quiet without rewriting its refused record', async t => {
+  const providers = new Map<string, Provider>(), env = {MIOON_ENABLE_LIVE_PROVIDER: '1', GEMINI_API_KEY: 'synthetic-audit-only'};
+  const f = await fixture(t, providers, {env, profileNow: () => Date.parse('2026-10-10T12:00:00Z')}), registry = createProviderRegistry({db: f.store.db, root: f.root, env}), provider = registry.get('veo')!;
+  let posts = 0, afterTamper: string | undefined, changesAfterTamper: unknown;
+  const raw = () => JSON.stringify({jobs: f.store.db.prepare('SELECT * FROM jobs ORDER BY rowid').all(), events: f.store.db.prepare('SELECT * FROM job_events ORDER BY rowid').all()});
+  providers.set('veo', registerInputProfileWrapper({...provider, submit: async (_snapshot: unknown, context: Parameters<Provider['submit']>[1]) => {
+    await Promise.resolve(); const job = object(f.store.list('jobs')[0]);
+    f.store.put('jobs', {...job, snapshot: {...object(job.snapshot), prompt: 'Changed after the original claim'}});
+    afterTamper = raw(); changesAfterTamper = f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
+    context.beforeSubmit!(); posts++; return {providerJobId: 'must-not-post'};
+  }}, provider));
+  const shot = object(await f.services.call('shot.create', {projectId: f.projectId, title: 'Stable original', prompt: 'Synthetic', duration: 4}));
+  const accepted = object(await f.services.call('generation.submit', {shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'veo'}));
+  const log = t.mock.method(console, 'error', () => {}), worker = startWorker(f.store, f.services, providers);
+  try {
+    await worker.tick(); await worker.tick(); assert.notEqual(afterTamper, undefined); assert.equal(raw(), afterTamper);
+    assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n, changesAfterTamper); assert.equal(posts, 0);
+    assert.equal(object(f.store.get('jobs', String(accepted.id))).status, 'submitting');
+    assert.equal(f.state().snapshot().find(task => task.taskId === accepted.id)!.reason, 'BACKGROUND_TASK_INVALID');
+    assert.equal(f.services.isBusy(), false); assert.equal(worker.isBusy(), false);
+    assert.deepEqual(log.mock.calls.map(call => call.arguments), [['Skipped invalid local generation record.']]);
+  } finally {await worker.stop();}
+});
+
+test('normal queued revision and nextPollAt changes cannot publish a phantom frozen-input block', async t => {
+  const providers = new Map<string, Provider>(), env = {MIOON_ENABLE_LIVE_PROVIDER: '1', GEMINI_API_KEY: 'synthetic-audit-only'};
+  const f = await fixture(t, providers, {env, profileNow: () => Date.parse('2026-10-10T12:00:00Z')}), registry = createProviderRegistry({db: f.store.db, root: f.root, env}), provider = registry.get('veo')!;
+  let posts = 0;
+  providers.set('veo', registerInputProfileWrapper({...provider, submit: async (_snapshot: unknown, context: Parameters<Provider['submit']>[1]) => {context.beforeSubmit!(); posts++; return {providerJobId: 'accepted-once'};}, poll: async () => ({status: 'running'})}, provider));
+  const shot = object(await f.services.call('shot.create', {projectId: f.projectId, title: 'Progress metadata', prompt: 'Synthetic', duration: 4}));
+  const accepted = object(await f.services.call('generation.submit', {shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'veo'}));
+  const originalGuard = f.services.saveGenerationGuarded; let changeOnce = true;
+  f.services.saveGenerationGuarded = (job, patch) => {
+    if (changeOnce && job.status === 'queued' && patch.status === 'submitting') {
+      changeOnce = false; f.store.put('jobs', {...object(f.store.get('jobs', job.id)), revision: Number(job.revision) + 1, nextPollAt: Date.now() + 60000});
+    }
+    return originalGuard(job, patch);
+  };
+  const log = t.mock.method(console, 'error', () => {}), worker = startWorker(f.store, f.services, providers);
+  try {
+    await worker.tick(); const pending = object(f.store.get('jobs', String(accepted.id)));
+    assert.equal(pending.status, 'queued'); assert.equal(posts, 0);
+    assert.equal(f.state().snapshot().find(task => task.taskId === accepted.id)!.reason, null); assert.equal(f.state().snapshot().find(task => task.taskId === accepted.id)!.keepAlive, true);
+    assert.deepEqual(log.mock.calls.map(call => call.arguments), [['Skipped invalid local generation record.']]);
+    f.services.saveJob(pending as Parameters<typeof f.services.saveJob>[0], {nextPollAt: 0}); await worker.tick();
+    assert.equal(posts, 1); assert.equal(object(f.store.get('jobs', String(accepted.id))).status, 'running');
+    assert.equal(f.state().snapshot().find(task => task.taskId === accepted.id)!.reason, null);
+  } finally {await worker.stop(); f.services.saveGenerationGuarded = originalGuard;}
 });

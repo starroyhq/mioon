@@ -5,7 +5,7 @@ import {chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync} fr
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
-import {createProjectBackgroundState, pauseUnavailableBackgroundTask} from '../packages/business/src/background-task-state.ts';
+import {createProjectBackgroundState, pauseUnavailableBackgroundTask,markBackgroundTaskInvalid} from '../packages/business/src/background-task-state.ts';
 import {markBackgroundTaskChanged, subscribeBackgroundTaskChanges} from '../packages/business/src/background-task-events.ts';
 import type {BackgroundTaskRef} from '../packages/business/src/background-task-events.ts';
 
@@ -171,4 +171,19 @@ test('explicit dirty IDs can reconcile a native committed transition without a s
   const f = fixture(t), value = f.job(); f.store.put('jobs', value);
   f.store.tx(() => {f.store.db.prepare("UPDATE jobs SET data=json_set(data,'$.status','succeeded','$.revision',2) WHERE id=?").run(value.id); markBackgroundTaskChanged(f.store.db, 'job', value.id);});
   assert.equal(f.state!.snapshot().find(item => item.taskId === value.id)!.classification, 'terminal');
+});
+
+test('a proven invalid identity blocks only admitted work outside transactions and stays quiet until committed recovery or a new owner', t => {
+  const f = fixture(t), value = f.job(), ref = {kind: 'job' as const, taskId: value.id}; f.store.put('jobs', value);
+  const changes = f.store.db.prepare('SELECT total_changes() AS n').get()!.n, before = f.state!.snapshot();
+  assert.equal(markBackgroundTaskInvalid(f.store.db, {kind: 'job', taskId: randomUUID()}), false);
+  assert.throws(() => f.store.tx(() => markBackgroundTaskInvalid(f.store.db, ref)), /requires a completed transaction/u);
+  assert.deepEqual(f.state!.snapshot(), before);
+  assert.equal(markBackgroundTaskInvalid(f.store.db, ref), true);
+  f.state!.refresh();
+  assert.equal(f.state!.snapshot()[0]!.reason, 'BACKGROUND_TASK_INVALID'); assert.equal(f.state!.snapshot()[0]!.keepAlive, false);
+  assert.deepEqual(f.store.get('jobs', value.id), value); assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n, changes);
+  f.store.put('jobs', {...value, revision: 2}); assert.equal(f.state!.snapshot()[0]!.keepAlive, true);
+  markBackgroundTaskInvalid(f.store.db, ref); f.state!.dispose();
+  const reopened = createProjectBackgroundState(f.store); assert.equal(reopened.snapshot()[0]!.keepAlive, true); assert.equal(reopened.snapshot()[0]!.reason, null);
 });

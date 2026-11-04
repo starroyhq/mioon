@@ -37,6 +37,15 @@ const code = (value: unknown, fallback: string): string => typeof value === 'str
 const revision = (value: unknown): number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 const objectCode = (error: unknown): string | undefined => record(error) && typeof error.code === 'string' ? error.code : undefined;
 
+/** Only an already admitted identity that a worker has revalidated outside its
+ * transaction may be blocked here. Its durable task and receipt stay intact. */
+export function markBackgroundTaskInvalid(db: DatabaseSync, ref: BackgroundTaskRef): boolean {
+  if (db.isTransaction) throw new TypeError('Invalid background task publication requires a completed transaction');
+  const instance = instances.get(db), task = instance?.state.snapshot().find(item => key(item) === key(ref));
+  if (!instance || !task || task.classification === 'terminal') return false;
+  instance.pause(ref, 'BACKGROUND_TASK_INVALID'); return true;
+}
+
 /** Host/file loss pauses the original task. It is not a generation failure and
  * must be observed before an old catch path tries to update the lost owner. */
 export function pauseUnavailableBackgroundTask(db: DatabaseSync, ref: BackgroundTaskRef, error: unknown): boolean {
