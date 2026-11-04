@@ -31,7 +31,7 @@ import { taskBackgroundLocation, taskCurrentEntries, taskDisplayEntries, taskDis
 import type { TaskDisplayLookup } from './agent-task-presentation.ts';
 import './agent-task-v2.css';
 
-export interface AgentTaskPanelProps { projectId: string; workspaceScope?: string; projectName?: string; timelineFps?:number; targetName?: TaskDisplayLookup; onSettings: (page?: 'agent' | 'models' | 'video-tools') => unknown; onClose: () => unknown; onOpenRequests?: (selectedId?: string) => unknown; onDraftChange?: (dirty: boolean) => unknown; onApplied?: (projectId: string, snapshot: AgentTaskSnapshot, landed?: readonly string[]) => unknown; onLocate?: (change: AgentTaskChange) => unknown; reveal?: AgentTaskReveal | null; shotNumber?: (shotId: string) => number | undefined; onReview?: (projectId: string, entries: ReviewIssueEntry[]) => unknown; onReviewLocate?: (entry: ReviewIssueEntry) => unknown; reviewReveal?: AgentReviewReveal | null; nativeCloseRegistry?: unknown }
+export interface AgentTaskPanelProps { isAdmissionAllowed?: () => boolean; projectId: string; workspaceScope?: string; projectName?: string; timelineFps?:number; targetName?: TaskDisplayLookup; onSettings: (page?: 'agent' | 'models' | 'video-tools') => unknown; onClose: () => unknown; onOpenRequests?: (selectedId?: string) => unknown; onDraftChange?: (dirty: boolean) => unknown; onApplied?: (projectId: string, snapshot: AgentTaskSnapshot, landed?: readonly string[]) => unknown; onLocate?: (change: AgentTaskChange) => unknown; reveal?: AgentTaskReveal | null; shotNumber?: (shotId: string) => number | undefined; onReview?: (projectId: string, entries: ReviewIssueEntry[]) => unknown; onReviewLocate?: (entry: ReviewIssueEntry) => unknown; reviewReveal?: AgentReviewReveal | null; nativeCloseRegistry?: unknown }
 const finished = (status: string) => ['completed', 'failed', 'stopped', 'reverted'].includes(status);
 const errorSettings = (code: string): 'agent' | 'models' | 'video-tools' | undefined => {
   if (['FFMPEG_UNAVAILABLE', 'FFMPEG_NOT_FOUND', 'FFMPEG_MISSING', 'FFPROBE_UNAVAILABLE', 'FFPROBE_NOT_FOUND', 'FFMPEG_CAPABILITY_UNAVAILABLE', 'FFMPEG_FILTER_UNAVAILABLE', 'EXPORT_CAPABILITY_TOOL_UNAVAILABLE', 'EXPORT_CAPABILITY_UNSUPPORTED', 'EXPORT_CAPABILITY_CONFIGURATION', 'EXPORT_CAPABILITY_FAILED', 'EXPORT_CAPABILITY_TIMEOUT', 'SUBTITLE_RENDERER_UNAVAILABLE'].includes(code)) return 'video-tools';
@@ -48,8 +48,11 @@ function StepIcon({ step, read }: { step: AgentTaskStep; read?: string }) {
     {working ? <span className="wb-spinner" /> : <Icon name={read ?? (step.status === 'completed' ? 'check' : step.status === 'failed' ? 'close' : step.status === 'unknown' ? 'info' : step.status === 'awaiting_approval' ? 'pause' : step.status === 'awaiting_answer' ? 'question' : 'minus')} />}
   </span>;
 }
-export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', timelineFps, targetName, onSettings, onOpenRequests, onDraftChange = () => {}, onApplied, onLocate, reveal = null, shotNumber, onReview, onReviewLocate, reviewReveal = null, nativeCloseRegistry }: AgentTaskPanelProps) {
-  const { t, locale } = useI18n(), visible = useWorkspaceVisibility();
+export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspaceScope = 'normal', timelineFps, targetName, onSettings, onOpenRequests, onDraftChange = () => {}, onApplied, onLocate, reveal = null, shotNumber, onReview, onReviewLocate, reviewReveal = null, nativeCloseRegistry }: AgentTaskPanelProps) {
+  const { t, locale } = useI18n(), workspaceVisible = useWorkspaceVisibility();
+  const admission=useRef(isAdmissionAllowed);admission.current=isAdmissionAllowed;
+  const canInteract=()=>{try{return admission.current?.()!==false;}catch{return false;}};
+  const visible=workspaceVisible&&canInteract();
   const [state, setState] = useState<AgentTaskSessionState>({ phase: 'loading', project: null, snapshot: null, draft: '', uploads: [], pending: null, error: '', conversationId:null,conversation:null,rounds:[],selectionKey:'new',draftDirty:false,draftVersion:0,unknownOutcome:false,policy:{conversationId:null,phase:'ready',value:null,modes:null},history: { conversations: [], nextCursor: null, phase: 'closed' } });
   const [undoPreview,setUndoPreview]=useState<{snapshot:AgentTaskSnapshot;selectionKey:string}|null>(null),[undoLoading,setUndoLoading]=useState(false);
   const undoTrigger=useRef<HTMLButtonElement|null>(null),undoCancel=useRef<HTMLButtonElement|null>(null),undoFlight=useRef(false),undoRead=useRef(0);
@@ -67,7 +70,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
     let mounted = true;
     checksNavigation.current++;setChecksAttached(true);
     const close = createAgentTaskCloseReporter(nativeCloseRegistry as NativeCloseSourceRegistry | undefined);
-    const current = createAgentTaskSession({ projectId, getLocale: () => language.current, receipts: createAgentTaskReceiptStore(undefined, workspaceScope), onChange: next => { if (!mounted) return; close.publish(next); callbacks.current.onDraftChange(next.draftDirty && !next.pending); setState(next); }, onChangeApplied: (next, landed) => callbacks.current.onApplied?.(projectId, next, landed) });
+    const current = createAgentTaskSession({ projectId, isAdmissionAllowed:canInteract, getLocale: () => language.current, receipts: createAgentTaskReceiptStore(undefined, workspaceScope), onChange: next => { if (!mounted) return; close.publish(next); callbacks.current.onDraftChange(next.draftDirty && !next.pending); setState(next); }, onChangeApplied: (next, landed) => callbacks.current.onApplied?.(projectId, next, landed) });
     session.current = current; close.publish(current.getState());
     const changed = () => current.setVisible(visibility.current && document.visibilityState !== 'hidden');
     document.addEventListener('visibilitychange', changed); void current.load();
@@ -156,7 +159,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   const canAnswer = !blocked && answerMode && agentTaskAnswerTextValid(state.draft);
   const canSubmit = answerMode?canAnswer:noteMode?canNote:canSend;
   async function send() {
-    if (!canSubmit || composition.current || sendFlight.current || !session.current || session.current.getState().selectionKey!==state.selectionKey) return;
+    if (!canInteract() || !visibility.current || !canSubmit || composition.current || sendFlight.current || !session.current || session.current.getState().selectionKey!==state.selectionKey) return;
     if(answerMode&&waitingQuestion){sendFlight.current=true;try{await session.current.answer(waitingQuestion.id,[],state.draft,run?.id);}finally{sendFlight.current=false;}return;}
     if(noteMode){sendFlight.current=true;try{await session.current.note();}finally{sendFlight.current=false;}return;}
     if (!approved) { setReview(session.current.authorizationReview()); return; }
@@ -164,13 +167,13 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   }
   async function confirmSend() {
     const current = session.current, original = review;
-    if (!current || !original || blocked || sendFlight.current) return;
+    if (!canInteract() || !visibility.current || !current || !original || blocked || sendFlight.current) return;
     sendFlight.current = true;
     try { await current.authorizeAndSend(original); } finally { sendFlight.current = false; if (session.current === current) setReview(null); }
   }
   async function undoAll(snapshot:AgentTaskSnapshot,trigger:HTMLButtonElement) {
     const current=session.current,key=state.selectionKey;
-    if(!current||blocked||undoFlight.current||!['completed','failed','stopped'].includes(snapshot.run.status))return;
+    if(!canInteract()||!visibility.current||!current||blocked||undoFlight.current||!['completed','failed','stopped'].includes(snapshot.run.status))return;
     const owner=++undoRead.current;undoTrigger.current=trigger;undoFlight.current=true;setUndoLoading(true);
     try {
       const fresh=await current.refreshRound(snapshot.run.id);
@@ -184,7 +187,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   const undoBlocked=willKeep.some(change=>change.status==='applied'&&change.reversible&&change.undoDisposition!=='retain');
   function confirmUndo(){
     const current=session.current,preview=undoPreview;
-    if(!current||!preview||blocked||!undoCurrent||!willUndo.length||current.getState().selectionKey!==preview.selectionKey)return;
+    if(!canInteract()||!visibility.current||!current||!preview||blocked||!undoCurrent||!willUndo.length||current.getState().selectionKey!==preview.selectionKey)return;
     const fresh=current.getState().rounds.find(item=>item.run.id===preview.snapshot.run.id);
     if(!fresh||fresh.run.revision!==preview.snapshot.run.revision||JSON.stringify(fresh.changes)!==JSON.stringify(preview.snapshot.changes))return;
     setUndoPreview(null);void current.action('undo_all',{undoChangeIds:willUndo.map(change=>change.id)},fresh.run.id);

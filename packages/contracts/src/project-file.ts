@@ -140,7 +140,7 @@ export interface ProjectStore<Db = unknown> {
 }
 
 /** Why a project cannot be opened. */
-export const PROJECT_OPEN_ERROR_CODES = Object.freeze(['PROJECT_MISSING', 'PROJECT_LOCKED', 'PROJECT_FORMAT_NEWER', 'PROJECT_INVALID'] as const);
+export const PROJECT_OPEN_ERROR_CODES = Object.freeze(['PROJECT_MISSING', 'PROJECT_LOCKED', 'PROJECT_FORMAT_NEWER', 'PROJECT_INVALID', 'PROJECT_ACCESS_DENIED'] as const);
 export type ProjectOpenErrorCode = typeof PROJECT_OPEN_ERROR_CODES[number];
 /** Store-level `project.create` on a file that already has its project. */
 export const PROJECT_FILE_SINGLE_PROJECT = 'PROJECT_FILE_SINGLE_PROJECT';
@@ -217,6 +217,7 @@ const failure = {projectFile: filePath, projectId: projectIdSchema.nullable()};
 export const projectOpenFailureSchema = z.discriminatedUnion('code', [
   z.object({code: z.literal('PROJECT_MISSING'), ...failure}).strict(),
   z.object({code: z.literal('PROJECT_LOCKED'), ...failure}).strict(),
+  z.object({code: z.literal('PROJECT_ACCESS_DENIED'), ...failure}).strict(),
   z.object({code: z.literal('PROJECT_FORMAT_NEWER'), ...failure, database: z.enum(['project', 'history', 'cache']), formatVersion, supportedFormatVersion: formatVersion}).strict(),
   z.object({code: z.literal('PROJECT_INVALID'), ...failure, reason: z.enum(PROJECT_INVALID_REASONS)}).strict(),
 ]).refine(value => value.code !== 'PROJECT_FORMAT_NEWER' || value.formatVersion > value.supportedFormatVersion,

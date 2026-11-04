@@ -8,6 +8,7 @@ import { readDesktopWindowBridge } from '../apps/web/src/desktop-window-client.t
 import { reportEditorWindowStatus as reportRaw } from '../apps/web/src/editor-native-window.ts';
 import { createProjectEntryController } from '../apps/web/src/project-entry-state.ts';
 import { createLastProjectController } from '../apps/web/src/last-project-state.ts';
+import {createProjectWindowLeaseFixture,projectWindowLeaseValue} from './helpers/project-window-lease-fixture.ts';
 interface Envelope {supported: true; workspaceScope: string; instanceId: string; projectId: string | null; revision: number; updatedAt: string | null; targetStatus: string}
 interface LocatorValue {projectId: string | null; expectedRevision: number; [key: string]: unknown}
 interface LocatorState {pendingInput?: unknown; uncertain?: boolean}
@@ -42,6 +43,8 @@ function fixture(t: TestContext, { put }: FixtureOptions = {}) {
       this.webContents.mainFrame = {url}; this.webContents.emit('did-navigate', {}, url); this.emit('ready-to-show'); }
   }
   const host = createProjectWindowHost({ backendId, launcherUrl: `${origin}/`, settingsUrl: `${origin}/?settings=1`, editorUrl: id => `${origin}/?project=${id}`,
+    projectEntries:createProjectWindowLeaseFixture().port,
+    admitProject:async(_owner,projectId)=>projectWindowLeaseValue(backendId,projectId).project.projectFile,
     isCurrent: () => true, canInteract: () => interactive, createWindow() { const window = new FakeWindow(); windows.push(window); return window as never; },
     consumeProjectEntry: (owner: {window: FakeWindowView}, entryToken: unknown, projectId: unknown) => controllers.get(owner.window)?.consume(entryToken, projectId) });
   const envelope = (projectId: string | null = null, rev = 0): Envelope => ({ supported: true, workspaceScope: 'a'.repeat(64), instanceId: backendId,

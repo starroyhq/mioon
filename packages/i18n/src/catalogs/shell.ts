@@ -381,6 +381,12 @@ const shellCoreMessages = {
     "en": "Keep this window open. Check for unfinished input before restarting",
     "ja": "このウィンドウを開いたまま、再起動する前に未完了の入力がないか確認してください"
   },
+  "shell.projectLeaseRevoked": {
+    "zh-Hans":"项目连接已失效，已暂停提交。请保留当前窗口，关闭前先核对未保存的内容。",
+    "zh-Hant":"專案連線已失效，已暫停提交。請保留目前視窗，關閉前先核對尚未儲存的內容。",
+    "en":"The project connection is no longer valid. Submissions are paused. Keep this window open and review unsaved input before closing.",
+    "ja":"プロジェクトの接続が無効になり、送信を停止しました。このウィンドウを開いたまま、閉じる前に未保存の入力を確認してください。"
+  },
   "shell.checkingWindow": {
     "zh-Hans": "正在核对桌面窗口…",
     "zh-Hant": "正在核對桌面視窗…",

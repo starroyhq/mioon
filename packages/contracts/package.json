@@ -9,6 +9,8 @@
     "./public-operations": "./src/public-operations.ts",
     "./project-entry": "./src/project-entry.ts",
     "./project-entry-native": "./src/project-entry-native.ts",
+    "./project-entry-desktop": "./src/project-entry-desktop.ts",
+    "./project-entry-control": "./src/project-entry-control.ts",
     "./project-name": "./src/project-name.ts",
     "./private-storage": "./src/private-storage.ts",
     "./asset-media": "./src/asset-media.ts",

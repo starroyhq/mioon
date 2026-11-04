@@ -29,8 +29,8 @@ function section(source: string, start: string, end: string): string {
 }
 const compile = (source: string, name: string, env: Record<string, unknown>): ((...args: unknown[])=>unknown) => evaluateSource(`${source}\nreturn ${name};`, Object.keys(env), Object.values(env), {loader: 'tsx'});
 const modesMarkup = section(app, '<Tabs value={workspaceMode} onValueChange={changeMode}', '</Tabs>') + '</Tabs>';
-const videoDirectoryNoticeSource = section(app, '  const videoDirectoryNotice =', '  if (!workbenchReady && !retainWorkbenchForClip)');
-const homeBoundary = section(app, '  if (!workbenchReady && !retainWorkbenchForClip) return <>{webSettingsCenter}<ProjectHome ', '  return <>{webSettingsCenter}<main className={`workbench');
+const videoDirectoryNoticeSource = section(app, '  const videoDirectoryNotice =', '  if (!workbenchReady && !retainWorkbenchForClip && !nativeLeaseRevoked.current)');
+const homeBoundary = section(app, '  if (!workbenchReady && !retainWorkbenchForClip && !nativeLeaseRevoked.current) return <>{webSettingsCenter}<ProjectHome ', '  return <>{webSettingsCenter}<main className={`workbench');
 const refreshSource = section(app, '  const refresh = useCallback(', '  async function revealImageAsset(');
 const readySource = section(app, '  function projectSessionReady()', '  const workbenchReady =');
 const settingsSource = section(app, '  async function prepareSettingsDeparture()', '  async function changeHomePage(');
@@ -68,7 +68,7 @@ const fixture = `
   const AgentSettings = () => null, ImageSettings = () => null, ComfyImageSettings = () => null;
   const RestoredUnavailable = ({title}) => <span>{title}</span>;
   export function Surface({ data, loading, workspaceMode, changeMode, workbenchReady, projects, projectOpening, toast, busy,
-    projectListStatus, homePage, changeHomePage, selectProject, refreshHomeProjects, createProject, retainWorkbenchForClip = false, webSettingsCenter = null, videoDirectoryUnavailable = false, preferenceScope = { current: null }, editorSession = {current:'normal'}, workspace = {},
+    projectListStatus, homePage, changeHomePage, selectProject, refreshHomeProjects, createProject, retainWorkbenchForClip = false, nativeLeaseRevoked = {current:false}, webSettingsCenter = null, videoDirectoryUnavailable = false, preferenceScope = { current: null }, editorSession = {current:'normal'}, workspace = {},
     lastProjectStatus, lastProjectRef, homeConnection, setHomeConnection, settingsNavigation, prepareSettingsDeparture, setHomePage, locale = 'zh-Hans' }) {
     const { t } = createI18nTestContext(locale);
     ${videoDirectoryNoticeSource}

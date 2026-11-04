@@ -442,6 +442,67 @@ test('a project moved while closed is found by file identity when it opens', asy
   lease.release();
 });
 
+test('prepareAcquire finds a moved file after its old directory disappears without opening any database', async t => {
+  let recoveryCalls = 0;
+  const {dataDir, manager, registry, opens, state} = await setup(t, {maintenance: {recoverProjectFile: () => {recoveryCalls++; return {state: 'clean'};}}});
+  const film = await manager.create({name: 'Film'}), moved = path.join(dataDir, 'projects', 'Moved Film');
+  renameSync(path.dirname(film.projectFile), moved);
+  assert.equal(existsSync(path.dirname(film.projectFile)), false);
+  const prepared = await manager.prepareAcquire(film.projectId), projectFile = path.join(moved, 'Film.mioon');
+  assert.equal(prepared.projectFile, projectFile);
+  assert.deepEqual(prepared.fileIdentity, film.fileIdentity);
+  assert.equal(registry.get(film.projectId)?.projectFile, projectFile);
+  assert.deepEqual([opens.count, state.calls, recoveryCalls], [0, 0, 0]);
+  const lease = await manager.acquire(film.projectId, 'window', {projectFile: prepared.projectFile});
+  assert.equal(lease.host.store.projectFile, projectFile);
+  lease.release();
+});
+
+test('a path admitted before a registry move cannot open the new path', async t => {
+  const {dataDir, manager, registry, opens} = await setup(t);
+  const film = await manager.create({name: 'Film'}), prepared = await manager.prepareAcquire(film.projectId);
+  const moved = path.join(dataDir, 'projects', 'Moved Film');
+  renameSync(path.dirname(film.projectFile), moved);
+  registry.upsert({...film, projectFile: path.join(moved, 'Film.mioon')});
+  await assert.rejects(manager.acquire(film.projectId, 'window', {projectFile: prepared.projectFile}), {code: 'PROJECT_FILE_MOVED', status: 409});
+  assert.equal(opens.count, 0);
+});
+
+test('a pinned acquire never searches for a moved file or opens an unapproved replacement path', async t => {
+  const {dataDir, manager, registry, opens} = await setup(t);
+  const film = await manager.create({name: 'Film'}), prepared = await manager.prepareAcquire(film.projectId);
+  renameSync(path.dirname(film.projectFile), path.join(dataDir, 'projects', 'Moved Film'));
+  let searches = 0;
+  registry.findMoved = async () => {searches++; return null;};
+  await assert.rejects(manager.acquire(film.projectId, 'window', {projectFile: prepared.projectFile}), {code: 'PROJECT_UNAVAILABLE', details: {projectId: film.projectId, reason: 'PROJECT_MISSING'}});
+  assert.equal(searches, 0);
+  assert.equal(opens.count, 1, 'only the admitted path reached the kernel');
+});
+
+test('a pinned acquire rechecks the registry after asynchronous host composition', async t => {
+  const {manager, registry, opens, state, gate} = await setup(t);
+  const film = await manager.create({name: 'Film'}), composing = gate();
+  state.gate = composing.promise;
+  const pending = manager.acquire(film.projectId, 'window', {projectFile: film.projectFile});
+  const refused = assert.rejects(pending, {code: 'PROJECT_FILE_MOVED', status: 409});
+  registry.upsert({...film, projectFile: path.join(path.dirname(film.projectFile), 'Other.mioon')});
+  composing.open();
+  await refused;
+  assert.equal(opens.count, 1);
+  assert.equal(manager.status(film.projectId), null, 'the obsolete composition was discarded');
+  assert.equal(registry.get(film.projectId)?.projectFile, path.join(path.dirname(film.projectFile), 'Other.mioon'));
+  assert.equal(registry.get(film.projectId)?.lastOpenedAt, null);
+});
+
+test('prepareAcquire preserves access denial instead of treating an unreadable location as missing', async t => {
+  let deny = false;
+  const {manager, opens} = await setup(t, {identity: file => {if (deny) throw Object.assign(new Error('private path'), {code: 'EACCES'}); return statProjectFileIdentity(file);}});
+  const film = await manager.create({name: 'Film'});
+  deny = true;
+  await assert.rejects(manager.prepareAcquire(film.projectId), {code: 'PROJECT_ACCESS_DENIED', status: 403});
+  assert.equal(opens.count, 0);
+});
+
 test('concurrent acquires open a project once and share its host', async t => {
   const {manager, state, opens, gate} = await setup(t);
   const film = await manager.create({name: 'Film'});

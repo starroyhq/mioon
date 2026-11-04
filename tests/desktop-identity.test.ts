@@ -50,6 +50,11 @@ test('both package configs retain security and separate identities, names and ou
     assert.equal(config.publish, null); assert.equal(config.asar, true);
     assert.equal(config.electronFuses.runAsNode, false);
     assert.equal(config.electronFuses.onlyLoadAppFromAsar, true);
+    assert.deepEqual(config.fileAssociations,[{ext:'mioon',name:'Mioon Project',description:'Mioon Project File',mimeType:'application/vnd.mioon.project',role:'Editor'}]);
+    assert.deepEqual(Object.keys(config.mac.extendInfo).sort(),['NSDesktopFolderUsageDescription','NSDocumentsFolderUsageDescription','NSDownloadsFolderUsageDescription','NSRemovableVolumesUsageDescription']);
+    for(const text of Object.values(config.mac.extendInfo))assert.ok(typeof text==='string'&&text.length>20);
+    assert.equal('CFBundleURLTypes' in config.mac.extendInfo,false);
+
   }
   assert.notEqual(prod.directories.output, dev.directories.output);
   assert.notEqual(prod.linux.artifactName, dev.linux.artifactName);

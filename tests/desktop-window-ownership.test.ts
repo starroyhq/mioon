@@ -1,3 +1,7 @@
+import {createDesktopHarnessAppearanceCache,createDesktopHarnessProjectBroker,createDesktopHarnessProjectEntries} from './helpers/strict-desktop-harness-types.ts';
+import {createProjectEntryDesktopHost} from '../apps/desktop/src/project-entry-desktop-host.ts';
+import {PROJECT_ENTRY_DESKTOP_CHANNEL} from '../packages/contracts/src/project-entry-desktop.ts';
+import {createProjectEntryControlBroker} from '../apps/desktop/src/project-entry-control.ts';
 import {ASSET_IMPORT_CHANNEL,createAssetImportHost,importNativeAssetPath} from '../apps/desktop/src/asset-import-host.ts';
 import {desktopAppDirectories} from '../apps/server/src/project-host/directories.ts';
 import {isProjectId,projectApiPath} from '../packages/contracts/src/project-file.ts';
@@ -13,7 +17,7 @@ import {createMenuCommandBridge} from '../apps/desktop/src/menu-command-preload.
 import {menuCommandGestureScript} from '../apps/desktop/src/menu-command-gesture.ts';
 import { WORKSPACE_NATIVE_CHANNEL } from '../packages/contracts/src/workspace-native.ts';
 import { createWorkspaceNativeHost } from '../apps/desktop/src/workspace-native-host.ts';
-import { createProjectFileOpener, uploadProjectFile, projectFileArguments } from '../apps/desktop/src/project-file-open.ts';
+import { createProjectFileOpener, projectFileArguments } from '../apps/desktop/src/project-file-open.ts';
 import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts';
 import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
 import { resolveLocale } from '../packages/i18n/src/locale.ts';
@@ -48,7 +52,7 @@ import { windowChromeOptions, MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop
 import { settingsWindowOptions } from '../apps/desktop/src/settings-window.ts';
 import { createDesktopTray } from '../apps/desktop/src/tray-host.ts';
 import { desktopTrayHarness } from './helpers/desktop-tray-harness.ts';
-import { createDesktopWindowAppearance } from '../apps/desktop/src/window-appearance.ts';
+import { createDesktopWindowAppearance, desktopWindowBackground } from '../apps/desktop/src/window-appearance.ts';
 
 const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
 const tools = { ffmpeg: '/synthetic/ffmpeg', ffprobe: '/synthetic/ffprobe', versions: { ffmpeg: 'synthetic' } };
@@ -98,10 +102,14 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
   });
   function fork() {
     const index = r.children.length, config = options.child?.(index) ?? {};
+    const projectPort=createDesktopHarnessProjectEntries();
+    const projectBroker=createDesktopHarnessProjectBroker(message=>queueMicrotask(()=>child.emit('message',message)),options.projectControl?.(index,projectPort)??projectPort);
     const child: DesktopHarnessChild<string> = Object.assign(new EventEmitter(), {
       pid: 31000 + index, messages: [], kills: 0, hardKills: 0,
       ready() { child.emit('message', { type: 'ready', url: `http://127.0.0.1:${45000 + index}`, runtime: { pid: child.pid } }); },
-      postMessage(message: { type: string; dataDir?:string; cacheDir?:string; projectsDir?:string }) {
+      postMessage(message: { type: string; dataDir?:string; cacheDir?:string; projectsDir?:string; backendId?:string }) {
+        if(message.type==='start'){assert.equal(typeof message.backendId,'string');projectBroker.start(message.backendId!);}
+        if(projectBroker.handle(message))return;
         if(message.type==='start'){assert.equal(message.dataDir,'/synthetic/data');assert.equal(message.cacheDir,'/synthetic/Library/Caches/synthetic');assert.equal(message.projectsDir,'/synthetic/Mioon');}
         child.messages.push(message.type);
         if (message.type === 'start' && config.ready !== false) queueMicrotask(() => child.ready());
@@ -119,7 +127,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
   class Window extends EventEmitter {
     static getFocusedWindow() { return options.focusedWindow ? options.focusedWindow(r.windows) : r.windows.findLast(window => !window.destroyed) ?? null; }
     constructor(config: DesktopHarnessWindowConfig) {
-      super(); this.config = config; this.destroyed = false; this.closedDelivered = false;
+      super();options.windowCreated?.(config); this.config = config; this.destroyed = false; this.closedDelivered = false;
       this.urls = []; this.shows = 0; this.focuses = 0; this.flushes = 0; this.visible = false; this.hides = 0;
       this.fullScreen = false; this.menuPackets = []; this.nativeUndos = 0; this.nativeRedos = 0;
       this.gestureCalls = []; this.gestureInputs = [];
@@ -213,20 +221,14 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       await options.load?.(this.index, this.urls.length, url);
     }
   }
-  const context = vm.createContext({ desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, menuCommandGestureScript, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...nativeTray, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
+  const context = vm.createContext({ createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(options.cache), probeDesktopProjectLocation:options.projectLocation??(async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'})), desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, menuCommandGestureScript, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...nativeTray, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/data', configFile: '/synthetic/config' }),
     initializeDesktopPrivateStorage: () => {}, privateStorageHelperFile: () => '/synthetic/native/mioon_private_storage.node',
     CLIP_LUT_RECOVERY_CHANNEL, createDesktopLutRecoveryHost, calculateWorkspaceScope,
-    WORKSPACE_TOOLS_CHANNEL, createWorkspaceToolsHost, WORKSPACE_NATIVE_CHANNEL, createWorkspaceNativeHost, ASSET_IMPORT_CHANNEL, createAssetImportHost, importNativeAssetPath, createProjectFileOpener, uploadProjectFile, projectFileArguments,
+    WORKSPACE_TOOLS_CHANNEL, createWorkspaceToolsHost, WORKSPACE_NATIVE_CHANNEL, createWorkspaceNativeHost, ASSET_IMPORT_CHANNEL, createAssetImportHost, importNativeAssetPath, createProjectFileOpener, projectFileArguments,
     nativeTheme: Object.assign(new EventEmitter(), {shouldUseDarkColors:true}),
-    createDesktopWindowAppearance: (options: Parameters<typeof createDesktopWindowAppearance>[0]) => createDesktopWindowAppearance({...options,
-      // This lifecycle fixture has no persistent appearance sidecar. Keep the
-      // real scope/current/abort controller while excluding OS filesystem IO.
-      storage:{...options.storage,readPrivateFile:(file,configuration)=>{
-        assert.equal(file,'/synthetic/data/ui-preferences-v1.json');
-        assert.equal(configuration.private,true);return null;
-      }},watchDirectory:()=>Object.assign(new EventEmitter(),{close(){}})}),
+    createDesktopWindowAppearance,
     createDesktopLutRecoveryStore: createLutStore,
     validatePrivateDirectory: (root: unknown) => { assert.equal(root, '/synthetic/data'); return lutDirectory; },
     validateManagedFile: (file: string, { root }: {root: string}) => {
@@ -275,7 +277,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
     ipcMain: { handle(channel: string, handler: (...values: unknown[]) => unknown) {
-      assert.ok([ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
+      assert.ok([ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
       r.ipcHandlers ??= new Map(); assert.equal(r.ipcHandlers.has(channel), false); r.ipcHandlers.set(channel, handler);
       if (channel === PROJECT_WINDOW_CHANNEL) r.bridge = handler; else if (channel === NATIVE_AUDIO_CHANNEL) r.audioBridge = handler;
     } },
@@ -296,8 +298,9 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     storageFailureDialog: (error: Error) => ({ title: 'Storage failure', detail: error.message })
   });
   vm.runInContext(source, context, { filename: 'actual-desktop-main.ts' });
+  options.beforeReady?.(app);
   assert.deepEqual([...r.ipcHandlers!.keys()].sort(),
-    [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL].sort());
+    [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL].sort());
   const get = (text: string) => vm.runInContext(text, context);
   t.after(async () => {
     get('quitting = true; trayHost?.dispose()'); options.release?.();
@@ -354,6 +357,49 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     }
   };
 }
+
+test('real main cold Finder and hot second-instance opens share a leased editor without uploading or flashing a launcher',async t=>{
+ const file='/synthetic/Movies/Film.mioon',leases=new Set<string>(),released:string[]=[];let constructions=0,opens=0;
+ const f=await harness(t,{
+  beforeReady:app=>{app.emit('open-file',{preventDefault(){}},file);},
+  windowCreated:()=>{constructions++;if(constructions===1)assert.ok(leases.size>0,'the utility lease must exist before BrowserWindow construction');},
+  projectControl:(_index,port)=>({...port,openPath:async input=>{assert.equal(input.projectFile,file);opens++;const result=await port.openPath(input);leases.add(input.windowId);return result;},release:input=>{released.push(input.windowId);leases.delete(input.windowId);port.release(input);}}),
+ });
+ await f.initial();assert.equal(constructions,1,JSON.stringify({opens,dialogs:f.r.dialogs}));assert.equal(f.r.windows.length,1,JSON.stringify({opens,leases:[...leases],dialogs:f.r.dialogs}));assert.ok(f.r.windows[0].urls[0].includes('?project='));assert.equal(opens,1);assert.equal(leases.size,1);
+ f.app.emit('second-instance',{},['mioon',file],'/synthetic');try{await until(()=>opens===2&&released.length===1);}catch{assert.fail(JSON.stringify({opens,released,leases:[...leases],dialogs:f.r.dialogs}));}assert.equal(f.r.windows.length,1);assert.equal(leases.size,1);
+ f.r.windows[0].destroy();await until(()=>released.length===2);assert.equal(new Set(released).size,2,'temporary duplicate lease and editor lease each release once');assert.equal(leases.size,0);
+});
+
+test('real main discards an OS open whose location probe finishes after backend replacement',async t=>{
+ const probe=Promise.withResolvers<import('../packages/contracts/src/project-entry-desktop.ts').ProjectLocationFacts>();let probed=0;const opened:number[]=[];
+ const f=await harness(t,{projectLocation:async()=>{probed++;return probe.promise;},projectControl:(index,port)=>({...port,openPath:async input=>{opened.push(index);return port.openPath(input);}})});
+ await f.initial();f.app.emit('open-file',{preventDefault(){}},'/synthetic/Movies/Late.mioon');await until(()=>probed===1);
+ const restart=f.restart();await until(()=>f.r.backends.length===2&&f.r.connections.length===2);
+ probe.resolve({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'});await restart;await tick();
+ assert.deepEqual(opened,[],'no old or replacement utility may acquire a lease for the stale OS intent');assert.equal(f.r.windows.filter(window=>!window.destroyed).length,1);assert.ok(f.r.windows.filter(window=>!window.destroyed).every(window=>!window.urls.at(-1)?.includes('?project=')));assert.equal(f.fatals().length,0);
+});
+
+test('real main keeps a later valid OS file queued until the earlier failure sheet closes',async t=>{
+ const bad='/synthetic/Movies/Bad.mioon',good='/synthetic/Movies/Good.mioon',sheet=Promise.withResolvers<{response:number}>(),probed:string[]=[],opened:string[]=[];let sheets=0;
+ const f=await harness(t,{
+  beforeReady:app=>{app.emit('open-file',{preventDefault(){}},bad);app.emit('open-file',{preventDefault(){}},good);},
+  projectLocation:async input=>{probed.push(input.path);return {fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'};},
+  projectControl:(_index,port)=>({...port,openPath:async input=>{opened.push(input.projectFile);if(input.projectFile===bad)throw Object.assign(Error('synthetic corrupt project'),{code:'PROJECT_INVALID',status:422,details:{reason:'corrupt'}});return port.openPath(input);}}),
+  dialog:()=>{sheets++;return sheet.promise;},release:()=>sheet.resolve({response:0}),
+ });
+ await until(()=>sheets===1);await tick();assert.deepEqual(probed,[bad]);assert.deepEqual(opened,[bad]);assert.deepEqual(Array.from(f.get('projectFiles.pending')),[good]);
+ sheet.resolve({response:0});await f.initial();
+ assert.deepEqual(opened,[bad,good]);assert.deepEqual(probed,[bad,good]);assert.equal(sheets,1);assert.equal(f.r.windows.filter(window=>window.urls.at(-1)?.includes('?project=')).length,1);assert.equal(f.fatals().length,0);
+});
+
+test('real main project-entry IPC refuses settings children, their blocked parent and a replaced frame',async t=>{
+ const f=await harness(t);await f.initial();const parent=f.r.windows[0],host=f.get('windowHost'),handler=f.r.ipcHandlers!.get(PROJECT_ENTRY_DESKTOP_CHANNEL)!;
+ const invoke=(window:typeof parent,frame:DesktopHarnessFrame=window.webContents.mainFrame)=>handler({sender:window.webContents,senderFrame:frame},{action:'capabilities'}) as Promise<{ok:boolean}>;
+ assert.equal((await invoke(parent)).ok,true);
+ assert.equal((await invoke(parent,{url:parent.webContents.mainFrame.url})).ok,false);
+ assert.equal(host.showSettings('agent',parent),true);const settings=f.r.windows.at(-1)!;await host.loadFor(settings);
+ assert.equal((await invoke(settings)).ok,false);assert.equal((await invoke(parent)).ok,false);
+});
 
 for (const stage of ['drain', 'backend-stop', 'remove', 'clear', 'new-validation', 'new-backend', 'new-cookie', 'new-connection', 'new-load']) {
   test(`activate cannot open a second window at restart ${stage}`, { timeout: 10000 }, async t => {
