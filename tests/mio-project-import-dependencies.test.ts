@@ -16,6 +16,11 @@ import {storeManualVersionInside, storeProjectVersionInside} from '../packages/b
 import {copyProjectVersionsInside} from '../packages/business/src/project-versions/copy.ts';
 import {FRAME_PROFILE, FRAME_PROFILE_ID, FRAME_SELECTION_RULE} from '../packages/contracts/src/frame-extraction.ts';
 import {IMAGE_FIXED_OPTIONS} from '../packages/contracts/src/images.ts';
+import {clipDraftSlotSchema, type ClipDraftSlot} from '../packages/contracts/src/local-drafts.ts';
+import {createLocalDeliverySchemas} from '../packages/contracts/src/local-delivery.ts';
+import {createLocalShotTextSchemas} from '../packages/contracts/src/local-shot-text.ts';
+import {schemas} from '../packages/contracts/src/index.ts';
+import {VOLUME_ENVELOPE_PROFILE} from '../packages/contracts/src/timeline-volume-envelope.ts';
 
 const now = '2026-11-04T00:00:00.000Z', hash = 'a'.repeat(64);
 function fixture(t: TestContext, createAsset = true, ownedProjectId?: string) {
@@ -97,6 +102,90 @@ test('arbitrary text equal to the ID is not a consumer', t => {
   const f = fixture(t);
   f.store.put('shots', {...shot(f), title: f.assetId, prompt: f.assetId});
   f.store.put('nodes', {id: randomUUID(), projectId: f.projectId, type: 'text', text: f.assetId, label: f.assetId, position: {x: 0, y: 0}, revision: 1, createdAt: now});
+  assert.deepEqual(f.read(), {status: 'clear'});
+});
+
+function clipDraft(f: Fixture, sourceAssetId = f.assetId): ClipDraftSlot {
+  return {projectId: f.projectId, timelineId: randomUUID(), clipId: randomUUID(), revision: 1,
+    draft: {baseRevision: 1, source: {assetId: sourceAssetId, assetSha256: hash}, updatedAt: now,
+      raw: {name: f.assetId, trackId: randomUUID(), startFrame: '', durationFrames: '9e', sourceInFrame: 0,
+        rect: {x: 0, y: 0, width: 1024, height: 1024}, gain: '0.',
+        volumeEnvelope: {profileId: VOLUME_ENVELOPE_PROFILE, points: [{frame: '', multiplier: '1e'}]}}}};
+}
+function retainClipDraft(f: Fixture, slot: ClipDraftSlot, raw = JSON.stringify(slot)): void {
+  f.store.db.prepare("INSERT INTO main.local_draft_states(kind,workspaceScope) VALUES('clip',?)").run(hash);
+  f.store.db.prepare('INSERT INTO main.local_clip_drafts(projectId,timelineId,clipId,revision,data,ordinal) VALUES(?,?,?,?,?,1)')
+    .run(slot.projectId, slot.timelineId, slot.clipId, slot.revision, raw);
+}
+
+test('S8 clip draft retains its semantic source after its current timeline and clip are gone', t => {
+  const f = fixture(t), slot = clipDraft(f);
+  assert.ok(clipDraftSlotSchema.safeParse(slot).success);
+  retainClipDraft(f, slot);
+  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM project.timelines').get()!.n, 0);
+  assert.deepEqual(f.read(), {status: 'referenced', source: 'main.local_clip_drafts.data'});
+});
+
+for (const kind of ['tombstone', 'other-source'] as const) test(`S8 ${kind} clip slot does not turn raw UUID text into an asset consumer`, t => {
+  const f = fixture(t), slot = clipDraft(f, randomUUID());
+  if (kind === 'tombstone') slot.draft = null;
+  assert.ok(clipDraftSlotSchema.safeParse(slot).success);
+  retainClipDraft(f, slot);
+  assert.deepEqual(f.read(), {status: 'clear'});
+});
+
+for (const damage of ['missing-raw', 'bad-source', 'future-field', 'bad-envelope', 'duplicate-key', 'projection', 'oversized'] as const)
+  test(`S8 ${damage} clip record refuses an absence proof without repairing it`, t => {
+    const f = fixture(t), slot = clipDraft(f, randomUUID());
+    const original = JSON.stringify(slot);
+    const raw = damage === 'missing-raw' ? original.replace('"raw":', '"missingRaw":')
+      : damage === 'bad-source' ? original.replace(slot.draft!.source.assetId, 'not-an-asset')
+        : damage === 'future-field' ? original.replace('"source":{', '"source":{"futureAssetId":null,')
+          : damage === 'bad-envelope' ? original.replace('"frame":""', '"frame":"invalid"')
+            : damage === 'duplicate-key' ? original.replace('"source":{', `"source":{"assetId":"${f.assetId}",`)
+              : damage === 'projection' ? original.replace(slot.clipId, randomUUID()) : original + ' '.repeat(8193 - Buffer.byteLength(original));
+    // These two emulate damaged persisted CHECK projections/row length; normal
+    // SQL writes reject them before this read-only proof can run.
+    const damagedCheck = damage === 'projection' || damage === 'oversized';
+    if (damagedCheck) f.store.db.exec('PRAGMA ignore_check_constraints=ON');
+    try {retainClipDraft(f, slot, raw);} finally {if (damagedCheck) f.store.db.exec('PRAGMA ignore_check_constraints=OFF');}
+    assert.deepEqual(f.read(), {status: 'unproven', reason: damage === 'oversized' ? 'limit' : 'invalid'});
+    assert.equal(f.store.db.prepare('SELECT data FROM main.local_clip_drafts').get()!.data, raw);
+  });
+
+test('S8 clip source proof admits exactly 8192 UTF-8 bytes without normalizing the retained JSON', t => {
+  const f = fixture(t), slot = clipDraft(f, randomUUID());
+  slot.draft!.raw.name = `界🙂 ${f.assetId}`;
+  const original = JSON.stringify(slot), raw = original + ' '.repeat(8192 - Buffer.byteLength(original));
+  assert.equal(Buffer.byteLength(raw), 8192);
+  retainClipDraft(f, slot, raw);
+  assert.deepEqual(f.read(), {status: 'clear'});
+  assert.equal(f.store.db.prepare('SELECT data FROM main.local_clip_drafts').get()!.data, raw);
+});
+
+test('S8 scope, delivery and text records carry text and fixed intents rather than asset references', t => {
+  const f = fixture(t), timelineId = randomUUID(), shotId = randomUUID(), draftId = randomUUID();
+  const delivery = {projectId: f.projectId, draftRevision: 1,
+    draft: {draftId, timelineId, baseRevision: 1, raw: {deliveryName: f.assetId}, updatedAt: now}, intentRevision: 1,
+    intent: {intentId: randomUUID(), timelineId, baseRevision: 1, draft: {draftId, revision: 1, raw: {deliveryName: f.assetId}},
+      input: {projectId: f.projectId, expectedRevision: 1, requestId: randomUUID(), purpose: 'export', deliveryName: f.assetId},
+      createdAt: now, outcome: {status: 'pending'}}};
+  const text = {projectId: f.projectId, shotId, draftRevision: 1,
+    draft: {draftId, baseRevision: 1, baseText: {title: 'Before', prompt: ''}, raw: {title: f.assetId, prompt: f.assetId}, updatedAt: now}, intentRevision: 1,
+    intent: {intentId: randomUUID(), baseRevision: 1, baseText: {title: 'Before', prompt: ''},
+      draft: {draftId, revision: 1, raw: {title: f.assetId, prompt: f.assetId}},
+      input: {requestId: randomUUID(), shotId, expectedRevision: 1, patch: {title: f.assetId, prompt: f.assetId}},
+      createdAt: now, outcome: {status: 'pending'}}};
+  assert.ok(createLocalDeliverySchemas(value => schemas['timeline.render'].safeParse(value).success).slot.safeParse(delivery).success);
+  assert.ok(createLocalShotTextSchemas(value => schemas['shot.update'].safeParse(value).success).slot.safeParse(text).success);
+  f.store.tx(() => {
+    for (const kind of ['clip', 'delivery', 'shot-text'])
+      f.store.db.prepare('INSERT INTO main.local_draft_states(kind,workspaceScope) VALUES(?,?)').run(kind, hash);
+    f.store.db.prepare('INSERT INTO main.local_delivery_drafts(projectId,draftRevision,intentRevision,intentId,requestId,intentStatus,data,ordinal) VALUES(?,1,1,?,?,\'pending\',?,1)')
+      .run(f.projectId, delivery.intent.intentId, delivery.intent.input.requestId, JSON.stringify(delivery));
+    f.store.db.prepare('INSERT INTO main.local_shot_text_drafts(projectId,shotId,draftRevision,intentRevision,intentId,requestId,intentStatus,data,ordinal) VALUES(?,?,1,1,?,?,\'pending\',?,1)')
+      .run(f.projectId, shotId, text.intent.intentId, text.intent.input.requestId, JSON.stringify(text));
+  });
   assert.deepEqual(f.read(), {status: 'clear'});
 });
 

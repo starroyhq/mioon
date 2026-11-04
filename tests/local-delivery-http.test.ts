@@ -55,7 +55,8 @@ test('production route is placed behind existing Host/Origin and authentication 
   const runtime=readFileSync(new URL('../apps/server/src/project-host/runtime.ts',import.meta.url),'utf8');
   const origin=server.indexOf('ORIGIN_REJECTED'),auth=server.indexOf('if (!authenticated(req))'),lease=server.indexOf("await projects.acquire(route.projectId, 'request')"),route=server.indexOf('await lease.host.runtime.handle(');
   assert.ok(route>0);assert.ok(origin>=0&&origin<auth);assert.ok(auth>=0&&auth<lease);assert.ok(lease<route);
-  const handler=runtime.indexOf('project.localDeliveryHttp');assert.ok(handler>0);assert.ok(runtime.indexOf('const address = {projectId}')<handler);assert.match(runtime,/await handler\(req, res, local, address\)/u);
+  const handler=runtime.indexOf('await drafts.handle({req, res, url: local, route, signal})');assert.ok(handler>0);assert.ok(runtime.indexOf('const address = {projectId}')<handler);
+  const factory=readFileSync(new URL('../apps/server/src/project-host/drafts.ts',import.meta.url),'utf8');assert.match(factory,/await handle\(request\.req, request\.res, local, \{projectId: context\.projectId\}\)/u);assert.match(factory,/request\.route\.projectId !== context\.projectId/u);
   const contracts=readFileSync(new URL('../packages/contracts/src/index.ts',import.meta.url),'utf8');assert.equal(contracts.includes("'local-delivery'"),false);
   const mcp=readFileSync(new URL('../apps/mcp/src/index.ts',import.meta.url),'utf8');assert.equal(mcp.includes('local-delivery'),false);
 });

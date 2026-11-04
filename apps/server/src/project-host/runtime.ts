@@ -26,6 +26,7 @@ import {bindAgentTaskRowValidation} from '@mioon/business/agent/task-project-row
 import {callObservedRpc} from '../rpc-observation.ts';
 import {projectHandlerTarget, assertProjectRpc} from './request.ts';
 import type {ProjectHostContext, ProjectHostRuntime, ProjectRequest, UnfinishedTask} from './host.ts';
+import type {ProjectDraftsPort} from './ports.ts';
 import {ensureProjectRow} from './project-initialization.ts';
 import {readWorkspaceInfo} from '../workspace-info.ts';
 import {mediaExecutable} from '@mioon/business/media-environment';
@@ -77,11 +78,19 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     if (!(error instanceof ProjectRuntimeCleanupError)) releaseRowValidation();
     throw error;
   }
+  let draftsForCleanup: ProjectDraftsPort | undefined;
+  let workerForCleanup: ReturnType<HostedProject['project']['startWorker']> | undefined;
+  let coverForCleanup: ReturnType<typeof createProjectCoverPublisher> | undefined;
+  let releaseCoverForCleanup: (() => void) | undefined;
+  try {
+  const drafts = project.draftsFactory(context);
+  draftsForCleanup = drafts;
   const worker = project.startWorker();
+  workerForCleanup = worker;
   let restoring = false;
   const versions = createProjectVersions(store, {assertMutationAllowed: assertVersionWrite,
     assertRestoreAllowed: () => {
-      if (restoring || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy()
+      if (restoring || drafts.isBusy() || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy()
         || Boolean(project.projectRules?.isBusy()) || files.isBusy() || cover.isRendering()
         || !deletionGate.isQuiescent(['project.version.restore']) || unfinishedTasks().length > 0) {
         throw new AppError('PROJECT_HOST_BUSY', '项目仍有未结束的内容操作，请稍后恢复。', 409);
@@ -120,7 +129,9 @@ export async function composeHostedProject(context: ProjectHostContext, library:
   };
   const assetMediaHttp = createAssetMediaHttp({store, outsidePaths: library.outsidePaths, signal: shutdown.signal, assertMutationAllowed: () => project.services.assertMutationAllowed()});
   const cover = createProjectCoverPublisher({store, readCover:()=>readProjectCover(store,projectId), signal: shutdown.signal});
+  coverForCleanup = cover;
   const removeCoverObserver = registerProjectTransactionObserver(store.db, () => cover.refresh());
+  releaseCoverForCleanup = removeCoverObserver;
   cover.refresh();
   const unfinishedTasks = (): readonly UnfinishedTask[] => {
     const tables = [['jobs', 'job', "json_extract(data,'$.status')"], ['exports', 'export', "json_extract(data,'$.status')"], ['edit_tasks', 'edit_task', 'status'], ['image_tasks', 'image_task', 'state'], ['frame_tasks', 'frame_task', 'state'], ['scene_tasks', 'scene_task', 'state'], ['subject_variant_batches', 'subject_variant_batch', 'state']] as const;
@@ -153,8 +164,9 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     // The dispatcher owns response completion, revocation and lease release.
     if (signal.aborted) { res.destroy(); return true; }
     if (local.pathname === '/api/version-comparison/media' && await comparisons.handle(req, res, local)) return true;
+    if (await drafts.handle({req, res, url: local, route, signal})) return true;
     for (const handler of [project.imageHttp, (request: IncomingMessage, response: ServerResponse, target: URL) => project.taskHttpV2!.handle(request, response, target, address),
-      project.editTasksHttp, project.localDraftHttp, project.localDeliveryHttp, project.localShotTextHttp,
+      project.editTasksHttp,
       project.exportFileRecovery.handle, project.continuousAudioHttp, project.audioPreviewHttp]) {
       if (await handler(req, res, local, address)) return true;
     }
@@ -196,9 +208,29 @@ export async function composeHostedProject(context: ProjectHostContext, library:
   }
   return {project, handle, summarize: summary, unfinishedTasks,
     captureDailyVersion: () => { captureDailyProjectVersion(store, {assertMutationAllowed: assertVersionWrite}); },
-    isBusy: () => restoring || files.isBusy() || cover.isRendering() || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy() || Boolean(project.projectRules?.isBusy()) || !deletionGate.isQuiescent(),
+    isBusy: () => restoring || drafts.isBusy() || files.isBusy() || cover.isRendering() || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy() || Boolean(project.projectRules?.isBusy()) || !deletionGate.isQuiescent(),
     interrupt: () => { shutdown.abort(); project.projectRules?.close(); project.taskRuntimeV2?.close(); project.taskHttpV2?.close(); },
-    drain: async () => { await boundedShutdown(Promise.all([worker.stop(), project.taskRuntimeV2?.drain(), project.projectRules?.drain(), project.serviceDrain(), project.editTasks.drain(), cover.drain(), files.close(), comparisons.close(), project.closeSettings()]), 'SERVER_STOP_TIMEOUT'); },
+    drain: async () => { await boundedShutdown(Promise.all([drafts.drain(), worker.stop(), project.taskRuntimeV2?.drain(), project.projectRules?.drain(), project.serviceDrain(), project.editTasks.drain(), cover.drain(), files.close(), comparisons.close(), project.closeSettings()]), 'SERVER_STOP_TIMEOUT'); },
     dispose: () => { project.projectRules?.close(); removeVersionCapture(); removeCoverObserver(); project.taskToolsV2?.dispose(); deletionGate.close(); releaseRowValidation(); context.signal.removeEventListener('abort', abort); },
   };
+  } catch (error) {
+    // Once the core exists, later host assembly can fail too. Keep every
+    // borrowed owner alive until all admitted continuations are settled.
+    shutdown.abort();
+    project.projectRules?.close(); project.taskRuntimeV2?.close(); project.taskHttpV2?.close();
+    try {
+      const results = await boundedShutdown(Promise.allSettled([
+        () => draftsForCleanup?.drain(), () => workerForCleanup?.stop(), () => project.taskRuntimeV2?.drain(),
+        () => project.projectRules?.drain(), () => project.serviceDrain(), () => project.editTasks.drain(),
+        () => coverForCleanup?.drain(), () => files.close(), () => comparisons.close(), () => project.closeSettings(),
+      ].map(close => {try {return Promise.resolve(close());} catch (failure) {return Promise.reject(failure);}})), 'SERVER_STOP_TIMEOUT');
+      const failures = results.filter(result => result.status === 'rejected').map(result => result.reason);
+      if (failures.length) throw new AggregateError(failures, 'Project host cleanup failed');
+    } catch (cleanupError) {
+      throw new ProjectRuntimeCleanupError(error, cleanupError);
+    }
+    project.taskToolsV2?.dispose(); removeVersionCapture(); releaseCoverForCleanup?.(); deletionGate.close(); releaseRowValidation();
+    context.signal.removeEventListener('abort', abort);
+    throw error;
+  }
 }

@@ -93,10 +93,14 @@ async function mediaCommand(binary,args,label){
 }
 function fixture(){for(const directory of [root,runtime,report,userData,workspace])ensurePrivateDirectory(directory);const value=readJson(fixtureFile,128*1024);assert.equal(value.assetReferenceFixture,1,'Historical pre-reference fixture must be preserved; use a fresh root');assert.equal(value.kernel,true,'Use a fresh current-kernel fixture');
  assert.equal(value.synthetic,true);assert.equal(value.kind,'clip-close');assert.equal(value.scenario,scenario);assert.equal(value.workspace,workspace);assert.equal(value.repo,repo);return value;}
-function sidecarFile(){return path.join(fixture().localDir,'local-drafts-v1.json');}
-function sidecar(){const info=validateManagedFile(sidecarFile(),{root:fixture().localDir,allowMissing:true,private:true,maxBytes:LOCAL_DRAFT_LIMITS.envelopeBytes});
- const bytes=readPrivateFile(sidecarFile(),{root:fixture().localDir,allowMissing:true,private:true,maxBytes:LOCAL_DRAFT_LIMITS.envelopeBytes});
- return bytes===null?null:{disk:clipDraftDiskSchema.parse(JSON.parse(bytes.toString('utf8'))),bytes:bytes.length,sha256:sha(bytes),mode:info.mode&0o777};}
+function sidecar(rows=captureNativeQa(workspace).rows){
+ const prepared=fixture(),state=rows.local_draft_states.find(row=>row.kind==='clip'),entries=rows.local_clip_drafts.sort((a,b)=>a.ordinal-b.ordinal).map(row=>JSON.parse(row.data));
+ assert.ok(rows.local_draft_states.every(row=>row.kind==='clip'),'this synthetic case never saves another draft kind');
+ if(!state){assert.equal(entries.length,0);return null;}
+ const disk=clipDraftDiskSchema.parse({version:2,workspaceScope:state.workspaceScope,entries}),bytes=Buffer.from(JSON.stringify(disk)+'\n');
+ const info=validateManagedFile(path.join(prepared.localDir,'history.db'),{root:prepared.localDir,private:true});
+ return {disk,bytes:bytes.length,sha256:sha(bytes),mode:info.mode&0o777,directoryMode:validatePrivateDirectory(prepared.localDir).mode&0o777,storage:'history.db'};
+}
 function lockSnapshot(){const info=validateManagedFile(lockFile,{root:workspace,allowMissing:true,private:true,maxBytes:64});if(!info)return null;
  const bytes=readPrivateFile(lockFile,{root:workspace,private:true,maxBytes:64});assert.match(bytes.toString('utf8'),/^[1-9][0-9]{0,9}$/);
  return {pid:Number(bytes.toString('utf8')),sha256:sha(bytes),dev:String(info.dev),ino:String(info.ino)};}
@@ -124,13 +128,13 @@ const rawFor=clip=>Object.fromEntries(['name','trackId','startFrame','durationFr
 function draftRow(result,prepared){const entries=result.sidecar?.disk.entries??[];assert.equal(entries.length,1);const row=entries[0];
  for(const key of ['projectId','timelineId','clipId'])assert.equal(row[key],prepared[key]);return row;}
 function assertDraft(result,prepared){const row=draftRow(result,prepared);assert.ok(row.revision>=1);assert.equal(row.draft.baseRevision,prepared.baseRevision);
- assert.deepEqual(row.draft.source,{assetId:prepared.assetId,assetSha256:prepared.sourceSha256});assert.deepEqual(row.draft.raw,{...rawFor(prepared.originalClip),name:prepared.expectedName});assert.equal(result.sidecar.mode,0o600);}
-function assertCapacity(result,prepared){assert.equal(result.sidecar?.disk.entries.length,128);assert.equal(result.sidecar.mode,0o600);
+ assert.deepEqual(row.draft.source,{assetId:prepared.assetId,assetSha256:prepared.sourceSha256});assert.deepEqual(row.draft.raw,{...rawFor(prepared.originalClip),name:prepared.expectedName});assert.equal(result.sidecar.directoryMode,0o700);}
+function assertCapacity(result,prepared){assert.equal(result.sidecar?.disk.entries.length,128);assert.equal(result.sidecar.directoryMode,0o700);
  assert.ok(result.sidecar.disk.entries.every(row=>row.draft===null&&row.revision===2&&row.projectId===prepared.projectId&&row.timelineId===prepared.timelineId&&row.clipId!==prepared.clipId));}
 function assertSavedTimeline(result,prepared){assert.equal(result.timelines.length,1);const expected=structuredClone(prepared.expectedTimeline),actual=result.timelines[0];
  expected.revision++;expected.updatedAt=actual.updatedAt;expected.clips[0].name=prepared.expectedName;assert.deepEqual(actual,expected,'Only the saved name/revision/timestamp may change');}
 function unchanged(result,before,{allowPreferences=false}={}){assert.equal(result.schemaSha256,before.schemaSha256);assert.deepEqual(Object.keys(result.tables),Object.keys(before.tables));
- const systemTables=expectedSystemTables(result,before,{preferences:allowPreferences});
+ const systemTables=expectedSystemTables(result,before,{preferences:allowPreferences});systemTables.add('local_draft_states');systemTables.add('local_clip_drafts');
  for(const name of Object.keys(before.tables))if(!systemTables.has(name)&&!(allowPreferences&&name==='workspace_preferences'))assert.deepEqual(result.tables[name],before.tables[name],`Unexpected change in ${name}`);
  assert.deepEqual(result.media,before.media);assert.deepEqual(result.timelines,before.timelines);}
 function retainedRows(result,before,name,added){assert.equal(result.tables[name].count,before.tables[name].count+added,`Unexpected ${name} count`);
@@ -153,7 +157,7 @@ assert.equal(await exists(root),false,'Fixture already exists; no overwrite or c
   timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:asset.id,
    trackId:timeline.tracks.find(track=>track.kind==='video').id,startFrame:0,durationFrames:60,name:'Original saved clip'});
   if(scenario==='capacity'){
-   const drafts=createLocalDrafts({root:store.localDir,databaseFile:path.join(store.localDir,'history.db'),channel:'production',storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
+   const drafts=createLocalDrafts({store,channel:'production',
     guards:{ownsLock:()=>ownsStoreLock(store),readTimeline:id=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),readClipAsset:(id,clip)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(clip)}});
    assert.equal(LOCAL_DRAFT_LIMITS.slots,128);
    // All retained tombstones come from the real service and exact CAS discard.
@@ -204,9 +208,10 @@ async function liveCapture(label){
  let owner;for(const name of names){const connection=readJson(path.join(report,name));if(connection.backendPid!==lock.pid)continue;
   const launch=readJson(path.join(report,name.replace('-connection.json','-launch.json')));assert.equal(connection.launchId,launch.launchId);owner=[launch.mainPid,connection.backendPid];}
  assert.ok(owner,'the exact owned launch and backend connection must match');
- const result={synthetic:true,kind:'live-physical',label,fixtureId:prepared.id,at:new Date().toISOString(),lock,physical:captureNativeQaLive(readJson(path.join(report,'database-layout.json')),owner),sidecar:sidecar()};
- if(label==='first-boot'){if(scenario==='capacity')assertCapacity(result,prepared);else assert.equal(result.sidecar,null);assert.equal(lock.pid,readJson(path.join(report,'first-connection.json')).backendPid);}
- else{const before=readJson(path.join(report,'first-boot-capture.json'));assertPhysicalUnchanged(result,before);assert.deepEqual(result.sidecar,before.sidecar);assertCapacity(result,prepared);if(label==='after-continue'){readJson(path.join(report,'after-refusal-capture.json'));assert.equal(await exists(path.join(report,'first-exit.json')),false,'Continue Editing unexpectedly exited');const connection=readJson(path.join(report,'first-connection.json'));assert.equal(lock.pid,connection.backendPid);assert.ok(await processStat(connection.backendPid));assert.equal((await health(connection.origin)).status,200);}if(label==='after-abandon')readJson(path.join(report,'after-continue-capture.json'));}
+ const result={synthetic:true,kind:'live-physical',label,fixtureId:prepared.id,at:new Date().toISOString(),lock,physical:captureNativeQaLive(readJson(path.join(report,'database-layout.json')),owner),draftInspection:{kind:'cold-only',baseline:'prepared-audit.json'}};
+ const cold=readJson(path.join(report,'prepared-audit.json'));
+ if(label==='first-boot'){if(scenario==='capacity')assertCapacity(cold,prepared);else assert.equal(cold.sidecar,null);assert.equal(lock.pid,readJson(path.join(report,'first-connection.json')).backendPid);}
+ else{const before=readJson(path.join(report,'first-boot-capture.json'));assertPhysicalUnchanged(result,before);assert.deepEqual(result.draftInspection,before.draftInspection);assertCapacity(cold,prepared);if(label==='after-continue'){readJson(path.join(report,'after-refusal-capture.json'));assert.equal(await exists(path.join(report,'first-exit.json')),false,'Continue Editing unexpectedly exited');const connection=readJson(path.join(report,'first-connection.json'));assert.equal(lock.pid,connection.backendPid);assert.ok(await processStat(connection.backendPid));assert.equal((await health(connection.origin)).status,200);}if(label==='after-abandon')readJson(path.join(report,'after-continue-capture.json'));}
  await writeReport(label+'-capture.json',result);return result;
 }
 async function resume(label){
@@ -233,7 +238,7 @@ async function audit(label,{afterCrash=false}={}){
   assets:rows.assets.map(row=>JSON.parse(row.data)),exports:rows.exports.map(row=>JSON.parse(row.data)),editTasks:rows.edit_tasks.map(row=>({...row,input:JSON.parse(row.input)})),
   timelineRequests:rows.timeline_requests.map(row=>({requestId:row.requestId,requestHash:row.requestHash,response:JSON.parse(row.response)})),
   timelineHistory:rows.timeline_history.map(row=>({id:row.id,projectId:row.projectId,position:row.position,operation:row.operation,beforeSha256:businessHash(JSON.parse(row.beforeSnapshot)),afterSha256:businessHash(JSON.parse(row.afterSnapshot))})),
-  historyCursors:rows.timeline_history_cursors,sidecar:sidecar(),lock:lockSnapshot(),media};
+  historyCursors:rows.timeline_history_cursors,sidecar:sidecar(rows),lock:lockSnapshot(),media};
  if(label==='prepared'){assert.deepEqual(result.timelines,[prepared.expectedTimeline]);assert.equal(result.editTasks.length,0);assert.equal(result.exports.length,0);assert.equal(result.lock,null);}
  if(scenario==='capacity'){
   assertCapacity(result,prepared);assert.deepEqual(result.timelines,[prepared.expectedTimeline]);
