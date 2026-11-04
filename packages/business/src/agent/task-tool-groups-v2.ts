@@ -1,4 +1,5 @@
 import type {AgentTaskLocale,AgentTaskStep} from '@mioon/contracts/agent-tasks-v2';
+import {MIO_PROJECT_MEDIA_LIST_OPERATION,MIO_PROJECT_MEDIA_LIST_TOOL} from '../../../contracts/src/mio-project-media.ts';
 
 export const AGENT_TASK_TOOLS_LOAD_NAME='mioon_tools_load';
 export const AGENT_TASK_TOOLS_LOAD_OPERATION='tools.load';
@@ -33,7 +34,7 @@ export const AGENT_TASK_TOOL_GROUPS=Object.freeze({
   // C8 v2: camera previs nodes live on the canvas; reading a scene is loaded with the tools that change it.
   canvas:['shot.create','shot.update','shot.reorder','node.create','node.update','edge.create','edge.delete','reference.attach','reference.detach','version.select','project.rename','previs.inspect','previs.create','previs.scene.set'],
   subjects:['subject.list','subject.version.list','subject.binding.list','subject.create','subject.version.add','subject.binding.set'],
-  assets:['asset.range.get','asset.range.set','asset.disposition.list','asset.disposition.set','asset.annotation.list','asset.annotation.set','asset.waveform.get','asset.waveform.request','asset.importSelected'],
+  assets:['asset.range.get','asset.range.set','asset.disposition.list','asset.disposition.set','asset.annotation.list','asset.annotation.set','asset.waveform.get','asset.waveform.request','asset.importSelected',MIO_PROJECT_MEDIA_LIST_OPERATION],
   // A crossfade decides how two overlapping clips hand over.
   editing:['timeline.seed','timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.rippleRemove','timeline.clip.split','timeline.clip.refreshSources','timeline.shots.append','timeline.format.set','timeline.history.get','timeline.clip.crossfade'],
   subtitles:['timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove'],
@@ -54,7 +55,7 @@ function toolName(operation:string):string{
 }
 const groupedTools=AGENT_TASK_TOOL_GROUP_IDS.flatMap(group=>AGENT_TASK_TOOL_GROUPS[group].map(operation=>({group,operation,name:toolName(operation)})));
 export type AgentTaskToolCatalogProfile='native'|'legacy';
-const legacyGroupedTools=groupedTools.flatMap(tool=>tool.operation==='project.rules.set'?[]:tool.operation==='project.rename'?[tool,{group:'canvas' as const,operation:'project.notes.set',name:'mioon_project_notes_set'}]:[tool]);
+const legacyGroupedTools=groupedTools.flatMap(tool=>tool.operation==='project.rules.set'||tool.operation===MIO_PROJECT_MEDIA_LIST_OPERATION?[]:tool.operation==='project.rename'?[tool,{group:'canvas' as const,operation:'project.notes.set',name:'mioon_project_notes_set'}]:[tool]);
 const catalogTools=(profile:AgentTaskToolCatalogProfile)=>profile==='legacy'?legacyGroupedTools:groupedTools;
 export const AGENT_TASK_LOADABLE_TOOL_NAMES=Object.freeze(groupedTools.filter(tool=>tool.group!=='core').map(tool=>tool.name));
 export const AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES=Object.freeze(legacyGroupedTools.filter(tool=>tool.group!=='core').map(tool=>tool.name));
@@ -65,16 +66,13 @@ export const agentTaskToolNamesForGroup=(group:AgentTaskToolGroupId,profile:Agen
 
 /** Check the actual model catalog, including host-only tools, exactly once. */
 export function assertAgentTaskToolGroupCoverage(definitions:readonly {name:string;operation:string}[]):void{
+  const expected=catalogTools(definitions.some(tool=>tool.name==='mioon_project_rules_set')?'native':'legacy');
   const names=new Set<string>();
   for(const definition of definitions){
-    const assigned:Array<{group:AgentTaskToolGroupId;operation:string;name:string}>=groupedTools.filter(tool=>tool.operation===definition.operation&&tool.name===definition.name);
-    if(definition.name==='mioon_project_notes_set'&&definition.operation==='project.notes.set')assigned.push({group:'canvas',operation:definition.operation,name:definition.name});
+    const assigned=expected.filter(tool=>tool.operation===definition.operation&&tool.name===definition.name);
     if(names.has(definition.name)||assigned.length!==1)throw Error('Agent task tool grouping is incomplete or ambiguous');
     names.add(definition.name);
   }
-  const excluded=names.has('mioon_project_rules_set')?'mioon_project_notes_set':'mioon_project_rules_set';
-  const expected:Array<{group:AgentTaskToolGroupId;operation:string;name:string}>=groupedTools.filter(tool=>tool.name!==excluded);
-  if(excluded==='mioon_project_rules_set')expected.push({group:'canvas',operation:'project.notes.set',name:'mioon_project_notes_set'});
   if(expected.length!==definitions.length||expected.some(tool=>!names.has(tool.name)))throw Error('Agent task tool grouping is incomplete or ambiguous');
 }
 
@@ -125,11 +123,12 @@ export function loadedAgentTaskToolGroups(steps:readonly TaskToolLoadStep[]):Age
 
 /** Names receipts bind only their own requested subset. Retired names may stay
  * in historical JSON, but never become visible. Legacy group receipts keep
- * their original meaning; their `tools` metadata is not authority. */
+ * their original meaning; their `tools` metadata is not authority. Project
+ * directory reads require a completed exact-name load, never an old group. */
 export function loadedAgentTaskToolNames(steps:readonly TaskToolLoadStep[],profile:AgentTaskToolCatalogProfile='native'):string[]{
   const available=loadableNames(profile);
   const groups=new Set(loadedAgentTaskToolGroups(steps));
-  const loaded=new Set(catalogTools(profile).filter(tool=>tool.group!=='core'&&groups.has(tool.group)).map(tool=>tool.name));
+  const loaded=new Set(catalogTools(profile).filter(tool=>tool.group!=='core'&&groups.has(tool.group)&&tool.name!==MIO_PROJECT_MEDIA_LIST_TOOL).map(tool=>tool.name));
   for(const step of steps){
     if(step.kind!=='tool'||step.status!=='completed'||step.toolCall?.name!==AGENT_TASK_TOOLS_LOAD_NAME)continue;
     const input=step.toolCall.arguments,result=step.result;

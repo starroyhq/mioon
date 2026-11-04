@@ -1,4 +1,6 @@
 import {projectRulesToolInputSchema} from '../../../contracts/src/mio-rules.ts';
+import {MIO_PROJECT_MEDIA_LIMITS,MIO_PROJECT_MEDIA_LIST_OPERATION,MIO_PROJECT_MEDIA_LIST_TOOL,mioProjectMediaListInputSchema,mioProjectMediaListingSchema} from '../../../contracts/src/mio-project-media.ts';
+import type {MioProjectMediaPort} from '../../../contracts/src/mio-project-media.ts';
 import {createMioProjectRules} from './mio-rules.ts';
 import type {MioProjectRules} from './mio-rules.ts';
 import {AGENT_TASK_LEGACY_TOOLS_LOAD_PARAMETERS} from './task-tool-groups-v2.ts';
@@ -129,6 +131,7 @@ function hydrateInput(operation:string,input:Value,projectId:string,requestId:st
  return parse(operation as OperationName,source) as Value;
 }
 function taskToolOperation(operation:string):string{
+ if(operation===MIO_PROJECT_MEDIA_LIST_TOOL)return MIO_PROJECT_MEDIA_LIST_OPERATION;
  if(operation==='mioon_project_rules_set')return 'project.rules.set';
  if(operation==='mioon_node_inspect')return 'node.inspect';
  if(operation==='mioon_edge_inspect')return 'edge.inspect';
@@ -374,10 +377,11 @@ export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const d
 export const listAgentTaskTools=():AgentTaskToolDefinition[]=>{
  const definitions=listDiagnosticAgentTaskTools().filter(tool=>tool.operation!=='project.notes.set').map(tool=>tool.name===AGENT_TASK_TOOLS_LOAD_NAME?{...tool,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS}:tool);
  definitions.push({name:'mioon_project_rules_set',operation:'project.rules.set',description:'提议修改当前项目 AGENTS.md 规范。expectedHash 是刚读取的原文件 SHA-256（不存在时为 null），proposedText 是完整新内容，最多8192 UTF-8字节。宿主展示原文与修改并始终等待用户审批。规范不是授权，修改只从下一轮用户请求生效。',parameters:{type:'object',properties:{expectedHash:{anyOf:[{type:'string',minLength:64,maxLength:64,pattern:'^[a-f0-9]{64}$'},{type:'null'}]},proposedText:{type:'string',maxLength:8192}},required:['expectedHash','proposedText'],additionalProperties:false},risk:'local_irreversible',receipt:'durable rules publication intent and original approval',recovery:'inspect the same request; never repeat uncertain publication',undo:'unavailable'});
+ definitions.push({name:MIO_PROJECT_MEDIA_LIST_TOOL,operation:MIO_PROJECT_MEDIA_LIST_OPERATION,description:'分页列出当前项目目录内的文件夹和媒体元信息，仅返回相对名称、类型、大小和时长。directory 默认为项目根目录的空串，可用返回的文件夹名导航；只读有界文件头及当前页时长，不递归、解码、采样、全读、哈希、写缓存或导入。',parameters:{type:'object',properties:{directory:{type:'string',maxLength:MIO_PROJECT_MEDIA_LIMITS.pathBytes,description:'Project-relative directory; omit or use an empty string for the project root. No absolute paths, dot entries or parent traversal.'},limit:{type:'integer',minimum:1,maximum:MIO_PROJECT_MEDIA_LIMITS.maxLimit},cursor:{type:'string',minLength:1,maxLength:MIO_PROJECT_MEDIA_LIMITS.cursorBytes,pattern:'^[A-Za-z0-9_-]+$'}},additionalProperties:false},risk:'read_only',receipt:'observation',recovery:'read the retained metadata result; never rescan while rebuilding a request',undo:'unavailable'});
  assertAgentTaskToolGroupCoverage(definitions);return definitions;
 };
 
-export function createAgentTaskTools({store,services,policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:injectedJournal,rules:injectedRules}:{store:Store;rules?:MioProjectRules;services:OrdinaryServices;policyStore?:AgentPolicyStore;journal?:AgentTaskJournal}){
+export function createAgentTaskTools({store,services,policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:injectedJournal,rules:injectedRules,projectMedia}:{store:Store;rules?:MioProjectRules;projectMedia?:MioProjectMediaPort;services:OrdinaryServices;policyStore?:AgentPolicyStore;journal?:AgentTaskJournal}){
  assertProjectStore(store);
  const catalogProfile='native';
  const list=catalogProfile==='native'?listAgentTaskTools:listDiagnosticAgentTaskTools;
@@ -475,8 +479,13 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
  function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names'}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void;toolLoadMode?:AgentTaskToolLoadMode}):PreparedAgentTaskTool{
   operation=taskToolOperation(operation);
   if(isProjectStore(store)&&operation==='project.notes.set')fail('AGENT_TASK_TOOL_FORBIDDEN','旧说明工具已停用，请改用必须审批的规范提议');
-  let risk=operation==='project.rules.set'?'local_irreversible':['task.wait','node.inspect','edge.inspect',AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_ASK_OPERATION,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_GOAL_SET_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
+  let risk=operation==='project.rules.set'?'local_irreversible':['task.wait','node.inspect','edge.inspect',MIO_PROJECT_MEDIA_LIST_OPERATION,AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_ASK_OPERATION,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_GOAL_SET_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
   if(!risk||!object(input))fail('AGENT_TASK_TOOL_FORBIDDEN','此工具未获准用于助理任务');rejectHostFields(input);
+  if(operation===MIO_PROJECT_MEDIA_LIST_OPERATION){
+   if(!isProjectStore(store)||!projectMedia||projectId!==store.projectId)fail('AGENT_TASK_TOOL_FORBIDDEN','项目目录列表仅用于当前原生项目的宿主端口');
+   const parsed=mioProjectMediaListInputSchema.safeParse(input);if(!parsed.success)fail('VALIDATION_ERROR','目录列表参数无效：仅接受项目相对 directory、有界 limit 和列表返回的 cursor');
+   return {projectId,operation,input:parsed.data,risk:'read_only',targets:[],referencedTargets:[],before:{}};
+  }
   if(operation==='project.rules.set'){
    if(!isProjectStore(store)||projectId!==store.projectId||!rules)fail('AGENT_TASK_TOOL_FORBIDDEN','规范工具仅用于当前原生项目');
    const parsed=projectRulesToolInputSchema.safeParse(input);if(!parsed.success)fail('VALIDATION_ERROR','规范参数无效：须包含 expectedHash 和最多8192字节的 proposedText');
@@ -620,6 +629,14 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   preparedOrigins.set(origin,prepared);
   return withTaskEffectOrigin(origin,async()=>{
    beforeEffect();if(context.signal?.aborted)fail('AGENT_TASK_ABORTED','任务已暂停');
+   if(prepared.operation===MIO_PROJECT_MEDIA_LIST_OPERATION){
+    if(!isProjectStore(store)||!projectMedia||prepared.projectId!==store.projectId||journal.run(context.runId).projectId!==prepared.projectId)fail('AGENT_TASK_TOOL_FORBIDDEN','项目目录列表仅用于当前原生项目的宿主端口');
+    const input=mioProjectMediaListInputSchema.safeParse(prepared.input);if(!input.success)fail('VALIDATION_ERROR','目录列表参数无效');
+    const value=await projectMedia.list(prepared.projectId,input.data,{signal:context.signal,beforeEffect});
+    beforeEffect();if(context.signal?.aborted)fail('AGENT_TASK_ABORTED','任务已暂停');
+    const result=mioProjectMediaListingSchema.safeParse(value);if(!result.success)fail('AGENT_TASK_TOOL_RESULT_INVALID','宿主目录列表不符合有界元信息契约');
+    return {result:json(result.data),changes:[],recorded:false};
+   }
    if(prepared.operation===AGENT_TASK_GOAL_SET_OPERATION){
     if(journal.run(context.runId).projectId!==prepared.projectId)fail('AGENT_TASK_PROJECT_MISMATCH','工具执行不属于当前项目');
     const normalized=normalizeAgentTaskGoals(prepared.input);if(!normalized)fail('VALIDATION_ERROR',goalParameterMessage);
@@ -632,7 +649,9 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
      const requested=parseAgentTaskToolLoadInput(prepared.input);if(!requested)fail('AGENT_TASK_INVALID_TOOL','工具加载参数无效');
      const loaded=new Set(loadedAgentTaskToolGroups(steps));
      const groups=requested.filter(group=>!loaded.has(group)),selected=new Set(groups);
-     const names=list().filter(tool=>{const group=agentTaskToolGroupForName(tool.name,catalogProfile);return group!==undefined&&group!=='core'&&selected.has(group);}).map(tool=>tool.name);
+     // Old group intents retain their original scope; directory reads are
+     // disclosed and loaded only by a new exact-name request.
+     const names=list().filter(tool=>{const group=agentTaskToolGroupForName(tool.name,catalogProfile);return group!==undefined&&group!=='core'&&selected.has(group)&&tool.name!==MIO_PROJECT_MEDIA_LIST_TOOL;}).map(tool=>tool.name);
      const result:AgentTaskJson={groups,tools:names};
      return {result,changes:[],recorded:false};
     }
