@@ -116,7 +116,7 @@ async function bounded<T>(operation: () => T | Promise<T>, signal?: AbortSignal)
   });
 }
 
-/** An independent v2 engine; production continues to use createVideoSettings. */
+/** Production settings owner; execution bindings retain their original format. */
 export async function createVideoSettingsV2({directory, privateRoot = directory, secretCodec, storage = {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, signal, persistence = createVideoSettingsV2File({directory, privateRoot})}: VideoSettingsV2Options): Promise<VideoSettingsV2Service> {
   const lifetime = new AbortController(), activeSignal = signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal;
   const operationSignal = (request?: AbortSignal) => request ? AbortSignal.any([activeSignal, request]) : activeSignal;

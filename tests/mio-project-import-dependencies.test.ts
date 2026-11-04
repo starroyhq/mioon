@@ -15,7 +15,9 @@ import {encodeProjectDocument} from '../packages/business/src/project-versions/c
 import {storeManualVersionInside, storeProjectVersionInside} from '../packages/business/src/project-versions/repository.ts';
 import {copyProjectVersionsInside} from '../packages/business/src/project-versions/copy.ts';
 import {FRAME_PROFILE, FRAME_PROFILE_ID, FRAME_SELECTION_RULE} from '../packages/contracts/src/frame-extraction.ts';
-import {IMAGE_FIXED_OPTIONS} from '../packages/contracts/src/images.ts';
+import {IMAGE_FIXED_OPTIONS, imageVersionResponseSchema} from '../packages/contracts/src/images.ts';
+import {IMAGE_REVIEW_POLICY, imageReviewIntentSchema} from '../packages/contracts/src/image-reviews.ts';
+import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2} from '../packages/contracts/src/generation-image-settings.ts';
 import {clipDraftSlotSchema, type ClipDraftSlot} from '../packages/contracts/src/local-drafts.ts';
 import {createLocalDeliverySchemas} from '../packages/contracts/src/local-delivery.ts';
 import {createLocalShotTextSchemas} from '../packages/contracts/src/local-shot-text.ts';
@@ -543,4 +545,95 @@ test('the distinct version-blob limit refuses rather than skipping older recover
   });
   f.store.put('assets', f.asset);
   assert.deepEqual(f.read(), {status: 'unproven', reason: 'limit'});
+});
+
+function customServiceReviewIntent(f: Fixture, groupId?: string) {
+  const reviewId = randomUUID(), configuration = {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2, enabled: true,
+    baseUrl: 'https://images.example.test/review/v1', model: 'import-proof-image-model'};
+  const input = {projectId: f.projectId, requestId: randomUUID(), name: f.assetId, prompt: `Unrelated user text: ${f.assetId}`,
+    providerId: 'openai-compatible', model: configuration.model, options: IMAGE_FIXED_OPTIONS,
+    ...(groupId ? {groupId, expectedRevision: 1} : {})};
+  const parsed = imageReviewIntentSchema.parse({schemaVersion: 6, reviewId, input, settingsRevision: 1,
+    connectionId: randomUUID(), configurationRevision: 1, configuration,
+    destination: `${configuration.baseUrl}/images/generations`, policy: IMAGE_REVIEW_POLICY});
+  assert.equal(parsed.schemaVersion, 6);
+  if (parsed.schemaVersion !== 6) assert.fail('The fixture must be the exact text-to-image service review contract');
+  assert.equal('purpose' in parsed.input, false); assert.equal('inputImage' in parsed.input, false); assert.equal('sourceImage' in parsed, false);
+  return parsed;
+}
+function retainServiceReview(f: Fixture, intent: ReturnType<typeof customServiceReviewIntent>, options: {rawIntent?: string; corrupt?: boolean} = {}) {
+  const canonicalInput = JSON.stringify(intent.input), canonicalIntent = options.rawIntent ?? JSON.stringify(intent),
+    digest = (value: string) => createHash('sha256').update(value).digest('hex');
+  // Only explicit negative persisted-corruption cases bypass the fixture CHECK.
+  // The production catalog and every valid v6 insert retain their exact checks.
+  if (options.corrupt) f.store.db.exec('PRAGMA ignore_check_constraints=ON');
+  try {
+    f.store.db.prepare(`INSERT INTO main.image_reviews(id,projectId,requestId,inputHash,canonicalInput,intentHash,canonicalIntent,
+      state,revision,taskId,postAttempts,createdAt,updatedAt,approvedAt,rejectedAt,dispatchedAt)
+      VALUES(?,?,?,?,?,?,?,'pending',1,NULL,0,?,?,NULL,NULL,NULL)`)
+      .run(intent.reviewId, f.projectId, intent.input.requestId, digest(canonicalInput), canonicalInput, digest(canonicalIntent), canonicalIntent, now, now);
+  } finally {if (options.corrupt) f.store.db.exec('PRAGMA ignore_check_constraints=OFF');}
+  return canonicalIntent;
+}
+function assertReviewProofUnchanged(f: Fixture, expected: ReturnType<typeof readMioProjectImportDependencies>) {
+  const before = JSON.stringify(f.store.db.prepare('SELECT rowid,* FROM main.image_reviews ORDER BY rowid').all()), changes = f.changes();
+  assert.deepEqual(f.read(), expected); assert.equal(f.changes(), changes);
+  assert.equal(JSON.stringify(f.store.db.prepare('SELECT rowid,* FROM main.image_reviews ORDER BY rowid').all()), before);
+}
+
+test('G1a valid root v6 service review without an asset relation grants a clear metadata-only proof', t => {
+  const f = fixture(t), intent = customServiceReviewIntent(f), retained = retainServiceReview(f, intent);
+  assert.ok(imageReviewIntentSchema.safeParse(JSON.parse(retained)).success);
+  assertReviewProofUnchanged(f, {status: 'clear'});
+  assert.equal(f.store.db.prepare('SELECT canonicalIntent FROM main.image_reviews WHERE id=?').get(intent.reviewId)!.canonicalIntent, retained);
+});
+
+test('G1a valid v6 group target retains its image version asset through the actual project FK', t => {
+  const f = fixture(t), groupId = randomUUID(), versionId = randomUUID(), taskId = randomUUID();
+  const version = imageVersionResponseSchema.parse({id: versionId, projectId: f.projectId, groupId, taskId, number: 1, assetId: f.assetId,
+    sha256: hash, mimeType: 'image/png', width: 1024, height: 1024, byteLength: 100, isMock: true,
+    providerId: 'mock', model: 'mock-image-v1', options: IMAGE_FIXED_OPTIONS, createdAt: now});
+  f.store.tx(() => {
+    f.store.db.prepare(`INSERT INTO project.image_groups(id,projectId,name,revision,headVersionId,activeTaskId,createdAt,updatedAt)
+      VALUES(?,?,?,1,?,NULL,?,?)`).run(groupId, f.projectId, f.assetId, versionId, now, now);
+    f.store.db.prepare('INSERT INTO project.image_versions(id,projectId,groupId,taskId,number,assetId,data) VALUES(?,?,?,?,1,?,?)')
+      .run(versionId, f.projectId, groupId, taskId, f.assetId, JSON.stringify(version));
+  });
+  const intent = customServiceReviewIntent(f, groupId), retained = retainServiceReview(f, intent);
+  assert.ok(imageReviewIntentSchema.safeParse(JSON.parse(retained)).success);
+  assert.equal(intent.input.groupId, version.groupId); assert.equal(version.assetId, f.assetId);
+  assert.deepEqual(f.store.db.prepare('PRAGMA project.foreign_key_check').all(), []);
+  const before = JSON.stringify(f.store.db.prepare('SELECT rowid,* FROM project.image_versions').all());
+  assertReviewProofUnchanged(f, {status: 'referenced', source: 'project.image_versions.assetId'});
+  assert.equal(JSON.stringify(f.store.db.prepare('SELECT rowid,* FROM project.image_versions').all()), before);
+});
+
+for (const damage of ['missing-connection', 'mismatched-revision', 'nested-version', 'future-v7'] as const)
+  test(`G1a ${damage} in canonicalIntent remains contract-invalid rather than widening the version exception`, t => {
+    const f = fixture(t), intent = customServiceReviewIntent(f), damaged: Record<string, unknown> = structuredClone(intent);
+    if (damage === 'missing-connection') delete damaged.connectionId;
+    else if (damage === 'mismatched-revision') damaged.configurationRevision = 2;
+    else if (damage === 'nested-version') damaged.extra = {schemaVersion: 6};
+    else damaged.schemaVersion = 7;
+    assert.equal(imageReviewIntentSchema.safeParse(damaged).success, false);
+    const retained = retainServiceReview(f, intent, {rawIntent: JSON.stringify(damaged), corrupt: true});
+    // canonicalIntent is validated as a contract before its tree is traversed.
+    // Wrong-column/nested capability v6 and future v7 cases above remain unsupported.
+    assertReviewProofUnchanged(f, {status: 'unproven', reason: 'invalid'});
+    assert.equal(f.store.db.prepare('SELECT canonicalIntent FROM main.image_reviews WHERE id=?').get(intent.reviewId)!.canonicalIntent, retained);
+  });
+
+test('G1a v6 review cannot borrow a foreign JSON project owner through a local SQL row', t => {
+  const f = fixture(t), valid = customServiceReviewIntent(f), intent = {...valid, input: {...valid.input, projectId: randomUUID()}};
+  assert.ok(imageReviewIntentSchema.safeParse(intent).success);
+  retainServiceReview(f, intent, {corrupt: true});
+  assertReviewProofUnchanged(f, {status: 'unproven', reason: 'invalid'});
+});
+
+test('G1a valid v6 JSON does not bypass the existing canonicalIntent cell budget', t => {
+  const f = fixture(t), intent = customServiceReviewIntent(f), original = JSON.stringify(intent), retained = original + ' '.repeat(LIMITS.cellBytes + 1 - Buffer.byteLength(original));
+  assert.equal(Buffer.byteLength(retained), LIMITS.cellBytes + 1);
+  assert.ok(imageReviewIntentSchema.safeParse(JSON.parse(retained)).success);
+  retainServiceReview(f, intent, {rawIntent: retained, corrupt: true});
+  assertReviewProofUnchanged(f, {status: 'unproven', reason: 'limit'});
 });

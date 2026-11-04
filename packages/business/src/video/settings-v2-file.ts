@@ -22,7 +22,7 @@ export function videoSettingsV2FileIdentity(info: Pick<Stats, 'dev' | 'ino' | 'b
   return JSON.stringify([privateStorageIdentity(info), info.birthtimeMs, info.ctimeMs, info.mtimeMs, info.size, info.mode, info.uid, info.nlink]);
 }
 
-/** This leaf is opt-in. No production startup or route selects the v2 format yet. */
+/** Read known v1 without importing keys; write v2 only on an explicit save. */
 export function createVideoSettingsV2File({directory, privateRoot = directory}: {directory: string; privateRoot?: string}): VideoSettingsV2Persistence {
   if (typeof directory !== 'string' || typeof privateRoot !== 'string' || !path.isAbsolute(directory) || !path.isAbsolute(privateRoot)) throw videoSettingsV2Error('VIDEO_SETTINGS_CORRUPT');
   const root = path.resolve(directory), boundary = path.resolve(privateRoot), relative = path.relative(boundary, root), file = path.join(root, 'settings.json');

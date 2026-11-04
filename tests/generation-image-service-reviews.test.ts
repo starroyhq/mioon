@@ -113,12 +113,12 @@ async function fixture(t: test.TestContext, {withB = true, autoRun = true, bound
     readReview: async (id: string) => serviceReview(await services.call('image.review.get', {projectId, reviewId: id})),
   };
 }
-function assertFrozen(f: Awaited<ReturnType<typeof fixture>>, review: Awaited<ReturnType<typeof serviceReview>>, input: Generation) {
-  assert.equal(review.connectionId, f.a); assert.equal(review.configurationRevision, 1); assert.equal(review.settingsRevision, 1);
+function assertFrozen(f: Awaited<ReturnType<typeof fixture>>, review: Awaited<ReturnType<typeof serviceReview>>, input: Generation, connectionId = f.a) {
+  assert.equal(review.connectionId, connectionId); assert.equal(review.configurationRevision, 1); assert.equal(review.settingsRevision, 1);
   assert.deepEqual(review.configuration, configuration()); assert.deepEqual(review.input, input); assert.equal(review.destination, `${configuration().baseUrl}/images/generations`);
   const row = f.store.db.prepare('SELECT canonicalInput,canonicalIntent,inputHash,intentHash FROM image_reviews WHERE id=?').get(review.id)!;
   const intent = JSON.parse(String(row.canonicalIntent)) as Record<string, unknown>;
-  assert.equal(intent.schemaVersion, 6); assert.equal(intent.connectionId, f.a); assert.equal(intent.configurationRevision, 1); assert.equal(intent.settingsRevision, 1);
+  assert.equal(intent.schemaVersion, 6); assert.equal(intent.connectionId, connectionId); assert.equal(intent.configurationRevision, 1); assert.equal(intent.settingsRevision, 1);
   assert.deepEqual(intent.configuration, configuration()); assert.equal(row.canonicalInput, canonical(input)); assert.equal(row.inputHash, createHash('sha256').update(canonical(input)).digest('hex'));
   assert.equal(row.intentHash, createHash('sha256').update(String(row.canonicalIntent)).digest('hex'));
   assert.doesNotMatch(JSON.stringify(review), /SYNTHETIC_SERVICE_[AB]/);
@@ -134,6 +134,16 @@ test('explicit A keeps its own frozen review and paid key after adding and editi
   assert.deepEqual(f.net.posts[0]!.body, expectedBody(input)); assert.doesNotMatch(JSON.stringify(f.net.posts[0]!.body), /connectionId|configurationRevision|settingsRevision/);
   assert.deepEqual(f.acquisitions, [{connectionId: f.a, configurationRevision: 1, configuration: configuration()}]);
   assert.equal(String(f.store.db.prepare('SELECT canonicalIntent FROM image_reviews WHERE id=?').get(review.id)!.canonicalIntent), stored);
+  assert.equal((await f.readReview(review.id)).postAttempts, 1);
+});
+
+test('the second of two identical services dispatches its explicitly selected key through the complete review lifecycle', async t => {
+  const f = await fixture(t), input = f.input(), review = await f.prepare(f.b, input); assertFrozen(f, review, input, f.b);
+  assert.deepEqual(f.item(f.a).configuration, f.item(f.b).configuration); assert.equal(f.item(f.a).configurationRevision, f.item(f.b).configurationRevision);
+  const accepted = await f.approve(review), completed = await f.settled(accepted.id, 'succeeded');
+  assert.equal(completed.dispatched, true); assert.equal(f.net.posts.length, 1); assert.equal(f.net.posts[0]!.authorization, `Bearer ${KEY_B}`);
+  assert.deepEqual(f.net.posts[0]!.body, expectedBody(input)); assert.doesNotMatch(JSON.stringify(f.net.posts[0]!.body), /connectionId|configurationRevision|settingsRevision/);
+  assert.deepEqual(f.acquisitions, [{connectionId: f.b, configurationRevision: 1, configuration: configuration()}]);
   assert.equal((await f.readReview(review.id)).postAttempts, 1);
 });
 
@@ -156,11 +166,30 @@ test('the same request ID cannot change its explicit service even when model and
   assert.equal(f.acquisitionAttempts, 0); assert.equal(f.net.posts.length, 0);
 });
 
+test('explicit service reviews cannot cross project stores or borrow another project service identity', async t => {
+  const f = await fixture(t, {autoRun: false}), other = await fixture(t, {autoRun: false}), input = f.input(), review = await f.prepare(f.a, input);
+  const rows = (owner: typeof f) => JSON.stringify(owner.store.db.prepare('SELECT * FROM image_reviews ORDER BY id').all());
+  const changes = (owner: typeof f) => owner.store.db.prepare('SELECT total_changes() AS n').get()!.n;
+  const retained = rows(f), otherRetained = rows(other), before = changes(f), otherBefore = changes(other);
+  await assert.rejects(f.prepare(f.a, {...input, projectId: other.projectId}), {code: 'IMAGE_REVIEW_NOT_FOUND'});
+  await assert.rejects(f.prepare(other.a, f.input(), 1), {code: 'IMAGE_SETTINGS_NOT_FOUND'});
+  await assert.rejects(async () => f.services.imageApproval({...approval(review), projectId: other.projectId}), {code: 'IMAGE_REVIEW_NOT_FOUND'});
+  await assert.rejects(async () => other.services.imageApproval({projectId: other.projectId, reviewId: review.id, expectedRevision: review.revision}), {code: 'IMAGE_REVIEW_NOT_FOUND'});
+  await assert.rejects(async () => other.services.call('image.review.get', {projectId: other.projectId, reviewId: review.id}), {code: 'IMAGE_REVIEW_NOT_FOUND'});
+  assert.equal(rows(f), retained); assert.equal(rows(other), otherRetained); assert.equal(changes(f), before); assert.equal(changes(other), otherBefore);
+  for (const owner of [f, other]) {
+    assert.equal(owner.store.db.prepare('SELECT count(*) AS n FROM image_tasks').get()!.n, 0);
+    assert.equal(owner.store.db.prepare('SELECT count(*) AS n FROM image_requests').get()!.n, 0);
+    assert.equal(owner.acquisitionAttempts, 0); assert.equal(owner.net.lookups, 0); assert.equal(owner.net.posts.length, 0);
+  }
+});
+
 test('new no-ID requests reject multiple services while exact historical preparation and acceptance still replay', async t => {
   const f = await fixture(t, {withB: false, autoRun: false}), input = f.input(), review = await f.legacyPrepare(input); assertFrozen(f, review, input);
   const accepted = await f.approve(review), receipt = String(f.store.db.prepare('SELECT response FROM image_requests WHERE requestId=?').get(input.requestId)!.response);
   await f.add(f.b, KEY_B);
   await assert.rejects(f.legacyPrepare(f.input()), {code: 'IMAGE_SETTINGS_SELECTION_REQUIRED'});
+  await assert.rejects(f.services.call('image.generate', f.input()), {code: 'IMAGE_SETTINGS_SELECTION_REQUIRED'});
   assert.deepEqual(await f.legacyPrepare(input), await f.readReview(review.id)); assert.deepEqual(await f.approve(review), accepted);
   assert.deepEqual(await f.services.call('image.generate', input), accepted);
   assert.equal(String(f.store.db.prepare('SELECT response FROM image_requests WHERE requestId=?').get(input.requestId)!.response), receipt);

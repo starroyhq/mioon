@@ -227,7 +227,16 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   if(operation==='image.generate'){
    const generation=toInput(input);
    if(generation.providerId==='comfy-local')comfyAdmission.assertAvailable();
-   if(generation.providerId!=='mock'){if(!selectedSettings(generation.providerId)||!selectedGateway(generation.providerId))fail('IMAGE_LIVE_DISABLED',403);if(!approval){if(generation.providerId==='comfy-local'){const configured=readComfyCurrent();if(!configured||!configured.configuration.enabled||!configured.readiness?.checked)fail('IMAGE_LIVE_DISABLED',403);}else{const configured=readImageCurrent(selectedSettings(generation.providerId) as ImageSettingsService|undefined);if(!configured||!configured.configuration.enabled||!configured.secret?.configured)fail('IMAGE_LIVE_DISABLED',403);}fail('IMAGE_REVIEW_REQUIRED',403);}}
+   if(generation.providerId!=='mock'){
+    const serviceSettings=generation.providerId==='openai-compatible'?customSettingsV2:undefined;
+    if(!(serviceSettings||selectedSettings(generation.providerId))||!selectedGateway(generation.providerId))fail('IMAGE_LIVE_DISABLED',403);
+    if(!approval){
+     if(serviceSettings){const configured=serviceSettings.select();if(!configured.configuration.enabled||!configured.secret.configured)fail('IMAGE_LIVE_DISABLED',403);}
+     else if(generation.providerId==='comfy-local'){const configured=readComfyCurrent();if(!configured||!configured.configuration.enabled||!configured.readiness?.checked)fail('IMAGE_LIVE_DISABLED',403);}
+     else{const configured=readImageCurrent(selectedSettings(generation.providerId) as ImageSettingsService|undefined);if(!configured||!configured.configuration.enabled||!configured.secret?.configured)fail('IMAGE_LIVE_DISABLED',403);}
+     fail('IMAGE_REVIEW_REQUIRED',403);
+    }
+   }
    const id=randomUUID(),timestamp=now();let groupId: string;
    if(generation.groupId){const g=group(generation.projectId,generation.groupId);if(g.revision!==generation.expectedRevision)fail('IMAGE_REVISION_CONFLICT');if(g.activeTaskId!==null)fail('IMAGE_GROUP_BUSY');if(g.name!==generation.name)fail('IMAGE_STATE_CONFLICT');maxRevision(g.revision);groupId=g.id;db.prepare('UPDATE image_groups SET activeTaskId=?,revision=revision+1,updatedAt=? WHERE id=? AND projectId=? AND revision=?').run(id,timestamp,g.id,g.projectId,g.revision);}
    else{groupId=randomUUID();db.prepare('INSERT INTO image_groups(id,projectId,name,revision,headVersionId,activeTaskId,createdAt,updatedAt) VALUES(?,?,?,1,NULL,?,?,?)').run(groupId,generation.projectId,generation.name,id,timestamp,timestamp);}
