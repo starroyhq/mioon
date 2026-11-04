@@ -79,6 +79,12 @@ GET /api/projects/<projectId>/agent/tasks/v2/<runId>/usage
 
 client 提供 `usage({projectId,runId})`，校验 DTO 和运行身份。GET 不计步、不写库、不调用模型或供应商，经 P4 项目宿主租约进入对应处理函数，不增加旧地址的 usage 兼容入口。原 status、snapshot、events、控制回执仍不夹带 usage、原请求或 provider output。没有新增界面、CLI 命令或模型工具目录项。
 
+## 项目工作目录
+
+原生普通会话可按名称加载只读项目媒体列表，目录由 exact project host 固定；分页、
+有界元信息读取、未发布回执保守过滤及冻结来源门槛见 [R3-A 工作目录](MIO-PROJECT-MEDIA.md)。
+列表结果只作为 tool-result 记录，重拼请求不访问实时文件系统。导入工具留 R3-B。
+
 ## 项目存储计量与配额
 
 当前 v3 storage 契约以 `scope: project` 和可信 projectId 标识范围，枚举原 18 张记录表、单行 `mio_storage_counters` 和 R2 的 `mio_rule_writes`，共 20 张 Mio 表。历史 v2 保留精确 19 表校验。计数表只有整数列，自身占 0 个逻辑字节、1 行；唯一 blob 只计一次，失败/unknown 原件、partial、对话 policy 及请求回执都不能漏计。全局 policy 属于应用库，不回算项目。
