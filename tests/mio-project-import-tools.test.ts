@@ -5,7 +5,6 @@ import {createHash,randomUUID} from 'node:crypto';
 import {existsSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,realpathSync,renameSync,rmSync,unlinkSync,utimesSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {setTimeout as delay} from 'node:timers/promises';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
@@ -84,8 +83,10 @@ async function fixture(t:TestContext,protocol:AgentProtocol='responses',options:
     async send(){return current.runtime.send(projectId,{requestId:randomUUID(),text:'Import the source file from this project.',expectedSettingsRevision:(await settings.get()).revision});},
     async settle(id:string){await current.runtime.drain();return current.runtime.get(projectId,id);},
     async wait(id:string,status:'awaiting_approval'|'paused'){
-      const end=Date.now()+10000;
-      for(;;){const value=current.runtime.get(projectId,id);if(value.run.status===status)return value;if(Date.now()>end)assert.fail('Unexpected import state '+value.run.status);await delay(2);}
+      // Source preparation includes real media I/O. Await the runtime's work
+      // boundary instead of racing it against the runner's wall-clock speed.
+      await current.runtime.drain();
+      const value=current.runtime.get(projectId,id);assert.equal(value.run.status,status);return value;
     },
     async action(snapshot:AgentTaskSnapshot,action:AgentTaskControlAction,extra:Record<string,unknown>={}){return current.runtime.action(projectId,snapshot.run.id,{requestId:randomUUID(),expectedRevision:snapshot.run.revision,action,...extra});},
     reopen,

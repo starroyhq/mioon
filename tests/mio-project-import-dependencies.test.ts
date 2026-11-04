@@ -1,25 +1,27 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {gzipSync} from 'node:zlib';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import {readMioProjectImportDependencies, readMioProjectImportDependenciesInside,
   MIO_PROJECT_IMPORT_DEPENDENCY_LIMITS as LIMITS} from '../packages/business/src/agent/mio-project-import-dependencies.ts';
 import {newTimelineRecord} from '../packages/business/src/timeline-new-record.ts';
 import {defaultPrevisScene} from '../packages/contracts/src/previs.ts';
-import {captureProjectDocumentInside} from '../packages/business/src/project-versions/document.ts';
+import {captureProjectDocumentInside, canonicalJson} from '../packages/business/src/project-versions/document.ts';
 import {encodeProjectDocument} from '../packages/business/src/project-versions/codec.ts';
-import {storeManualVersionInside} from '../packages/business/src/project-versions/repository.ts';
+import {storeManualVersionInside, storeProjectVersionInside} from '../packages/business/src/project-versions/repository.ts';
+import {copyProjectVersionsInside} from '../packages/business/src/project-versions/copy.ts';
 import {FRAME_PROFILE, FRAME_PROFILE_ID, FRAME_SELECTION_RULE} from '../packages/contracts/src/frame-extraction.ts';
 import {IMAGE_FIXED_OPTIONS} from '../packages/contracts/src/images.ts';
 
 const now = '2026-11-04T00:00:00.000Z', hash = 'a'.repeat(64);
-function fixture(t: TestContext, createAsset = true) {
+function fixture(t: TestContext, createAsset = true, ownedProjectId?: string) {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-import-dependencies-')), projectDir = path.join(root, 'project');
   mkdirSync(projectDir);
-  const store = createProjectStore({projectFile: path.join(projectDir, 'Film.mioon'),
+  const store = createProjectStore({projectFile: path.join(projectDir, 'Film.mioon'), ...(ownedProjectId ? {projectId: ownedProjectId} : {}),
     locate: () => ({localDir: path.join(root, 'local'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   const projectId = store.projectId, assetId = randomUUID();
   store.put('projects', {id: projectId, name: 'Dependencies', description: '', revision: 1, createdAt: now, updatedAt: now});
@@ -299,6 +301,65 @@ test('a version captured before this registration is not a permanent consumer', 
   f.store.tx(() => {const saved = captureProjectDocumentInside(f.store); storeManualVersionInside(f.store.db, f.projectId, 'Before', saved.evidence.contentSequence, encodeProjectDocument(saved));});
   f.store.put('assets', f.asset);
   assert.deepEqual(f.read(), {status: 'clear'});
+});
+
+function retainFormat(f: Fixture, format: number, mioRunId?: string) {
+  const document = f.store.tx(() => captureProjectDocumentInside(f.store));
+  const raw = Buffer.from(canonicalJson({...document, projectFormatVersion: format})), payload = gzipSync(raw, {level: 1});
+  const blob = {profile: 1 as const, codec: 'gzip' as const, hash: createHash('sha256').update(raw).digest('hex'), rawBytes: raw.length,
+    compressedBytes: payload.length, payload};
+  const version = f.store.tx(() => storeProjectVersionInside(f.store.db, {projectId: f.projectId,
+    trigger: mioRunId ? 'mio-turn' : 'manual', ...(mioRunId ? {mioRunId} : {}), contentSequence: document.evidence.contentSequence,
+    blob, mioChangeRowid: 0, createdAt: now}));
+  return {document, blob, version};
+}
+function assertRetainedBlob(f: Fixture, expected: {hash: string; payload: Uint8Array}): void {
+  const row = f.store.db.prepare('SELECT hash,payload FROM main.project_version_blobs WHERE hash=?').get(expected.hash), payload = row?.payload;
+  assert.equal(row?.hash, expected.hash); assert.ok(payload instanceof Uint8Array);
+  assert.deepEqual(Buffer.from(payload), Buffer.from(expected.payload));
+}
+
+test('V5 history-resolution confirmation is an audit ACK, not a media consumer', t => {
+  const f = fixture(t), requestId = randomUUID(), content = f.store.db.prepare('SELECT contentSequence,contentToken FROM project.project_file').get();
+  f.store.db.prepare('INSERT INTO main.project_history_resolution(singleton,requestId,digest,result) VALUES(1,?,?,?)')
+    .run(requestId, hash, JSON.stringify({projectId: f.projectId, requestId, action: 'continue',
+      archive: `history-20261104000000-${requestId}.db`, content, activation: 'pending'}));
+  assert.deepEqual(f.read(), {status: 'clear'});
+});
+
+for (const includesAsset of [false, true]) test(`V5 format-2 snapshot ${includesAsset ? 'retains its asset' : 'before creation stays clear'} through the supported decoder`, t => {
+  const f = fixture(t, includesAsset), saved = retainFormat(f, 2);
+  assert.equal(saved.document.projectFormatVersion, 3, 'The live kernel captures current format 3');
+  if (!includesAsset) f.store.put('assets', f.asset);
+  assert.deepEqual(f.read(), includesAsset ? {status: 'referenced', source: 'main.project_versions.assets'} : {status: 'clear'});
+  assertRetainedBlob(f, saved.blob);
+});
+
+test('V5 preserves format 1 without granting a current-business decoder to dependency proof', t => {
+  const f = fixture(t, false), saved = retainFormat(f, 1);
+  f.store.put('assets', f.asset);
+  assert.deepEqual(f.read(), {status: 'unproven', reason: 'unsupported'});
+  assertRetainedBlob(f, saved.blob);
+});
+
+test('unknown historical formats remain fail-closed without rewriting their retained blob', t => {
+  const f = fixture(t, false), saved = retainFormat(f, 99);
+  f.store.put('assets', f.asset);
+  assert.deepEqual(f.read(), {status: 'unproven', reason: 'invalid'});
+  assertRetainedBlob(f, saved.blob);
+});
+
+test('V5 replacement history retains a format-2 Mio version consumer without copying its execution owner', t => {
+  const source = fixture(t), {run} = mioAudit(source), saved = retainFormat(source, 2, run);
+  const target = fixture(t, false, source.projectId);
+  target.store.tx(() => copyProjectVersionsInside(source.store.db, target.store.db, {projectId: source.projectId}));
+  target.store.put('assets', source.asset);
+  assert.equal(target.store.db.prepare('SELECT count(*) n FROM main.mio_runs').get()?.n, 0);
+  assert.equal(target.store.db.prepare('SELECT mioRunId FROM main.project_versions WHERE id=?').get(saved.version.id)?.mioRunId, run);
+  const before = target.changes();
+  assert.deepEqual(readMioProjectImportDependencies(target.store, source.assetId), {status: 'referenced', source: 'main.project_versions.assets'});
+  assert.equal(target.changes(), before);
+  assertRetainedBlob(target, saved.blob);
 });
 
 for (const [name, body, reason] of [

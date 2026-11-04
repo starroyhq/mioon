@@ -54,10 +54,12 @@ function deny(reason: 'invalid' | 'limit' | 'unsupported'): never {throw new Ref
 // become a hole in an old deletion proof, even when it has no SQL foreign key.
 // Revision tombstones, Mio transcripts and S1 idempotency are retained audit,
 // not media consumers. mio_imports is still checked through its actual FK.
+// V5's project_history_resolution is the fixed completed-switch ACK (project
+// content stamp and archive name), not a retained media/restore input.
 const ignored = {
   project: ['schema_version', 'project_file', 'agent_task_target_revisions_v2', 'asset_annotations', 'asset_dispositions', 'asset_ranges',
     'subjects', 'subject_bindings', 'image_groups', 'scene_results', 'project_lut_resources'],
-  main: ['schema_version', 'history_state', 'idempotency', 'project_mutation_requests', 'timeline_format_requests',
+  main: ['schema_version', 'history_state', 'project_history_resolution', 'idempotency', 'project_mutation_requests', 'timeline_format_requests',
     'lut_import_requests', 'task_disposition_requests', 'job_events', 'image_remote_runs', 'image_remote_observations',
     'subject_variant_items', 'task_dispositions', 'mock_provider_submissions', 'timeline_history_cursors',
     'mio_storage_counters', 'mio_blobs', 'mio_conversations', 'mio_runs', 'mio_entries', 'mio_steps', 'mio_requests',
@@ -391,6 +393,10 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
     return clear;
   } catch (error) {
     if (error instanceof Refusal) return error.result;
+    // V5 preserves format-1 blobs byte-for-byte but deliberately offers no
+    // business restore decoder for them. Preservation is not proof that their
+    // old business rows can be safely inspected as today's media semantics.
+    if (object(error) && error.code === 'PROJECT_VERSION_SNAPSHOT_UNSUPPORTED') return {status: 'unproven', reason: 'unsupported'};
     // SQL corruption, malformed JSON and unsupported retained contracts never
     // become evidence of absence. No repair or observer runs on this path.
     return {status: 'unproven', reason: 'invalid'};
