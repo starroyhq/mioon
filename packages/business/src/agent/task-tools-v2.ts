@@ -1,11 +1,17 @@
 import {projectRulesToolInputSchema} from '../../../contracts/src/mio-rules.ts';
 import {MIO_PROJECT_MEDIA_LIMITS,MIO_PROJECT_MEDIA_LIST_OPERATION,MIO_PROJECT_MEDIA_LIST_TOOL,mioProjectMediaListInputSchema,mioProjectMediaListingSchema} from '../../../contracts/src/mio-project-media.ts';
 import type {MioProjectMediaPort} from '../../../contracts/src/mio-project-media.ts';
+import {MIO_PROJECT_FILE_IMPORT_OPERATION,MIO_PROJECT_FILE_IMPORT_TOOL,mioProjectFileImportInputSchema,mioProjectFileImportResultSchema} from '../../../contracts/src/mio-project-import.ts';
+import type {MioProjectImportPort} from './mio-project-import.ts';
+import {projectAssetImportPreparationSchema,projectAssetImportReceiptProofSchema,projectAssetImportCreationProofSchema,projectAssetImportAssetDigest} from '../referenced-asset-project-import.ts';
+import type {ProjectAssetImportPreparation,ProjectAssetImportCreationProof,ProjectAssetImportLookup} from '../referenced-asset-project-import.ts';
+import {readMioProjectImportDependencies,readMioProjectImportDependenciesInside} from './mio-project-import-dependencies.ts';
 import {createMioProjectRules} from './mio-rules.ts';
 import type {MioProjectRules} from './mio-rules.ts';
 import {AGENT_TASK_LEGACY_TOOLS_LOAD_PARAMETERS} from './task-tool-groups-v2.ts';
 import {mioTable} from './mio-table-layout.ts';
 import {createHash,randomUUID} from 'node:crypto';
+import {isAsyncFunction} from 'node:util/types';
 import path from 'node:path';
 import {setTimeout as waitDelay} from 'node:timers/promises';
 import {AppError,schemas,descriptions,operationEffect,parse,canonicalPrevisValue,isPrevisNodeRecord,isPrevisScene} from '@mioon/contracts';
@@ -131,6 +137,7 @@ function hydrateInput(operation:string,input:Value,projectId:string,requestId:st
  return parse(operation as OperationName,source) as Value;
 }
 function taskToolOperation(operation:string):string{
+ if(operation===MIO_PROJECT_FILE_IMPORT_TOOL)return MIO_PROJECT_FILE_IMPORT_OPERATION;
  if(operation===MIO_PROJECT_MEDIA_LIST_TOOL)return MIO_PROJECT_MEDIA_LIST_OPERATION;
  if(operation==='mioon_project_rules_set')return 'project.rules.set';
  if(operation==='mioon_node_inspect')return 'node.inspect';
@@ -177,7 +184,7 @@ export function agentTaskExplicitTargets(operation:string,input:unknown,projectI
  return [...references.values()];
 }
 export interface AgentTaskToolDefinition {name:string;operation:string;description:string;parameters:unknown;risk:AgentTaskTier;receipt:string;recovery:string;undo:string}
-export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot;forceApproval?:boolean;proposal?:AgentTaskJson}
+export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot;forceApproval?:boolean;proposal?:AgentTaskJson;projectFileImport?:ProjectAssetImportPreparation}
 export interface AgentTaskToolContext {runId:string;stepId:string;requestId:string;signal?:AbortSignal;beforeEffect:()=>void;recordInside:(result:AgentTaskJson,changes?:TaskChangeInput[])=>void;appendChangesInside?:(changes:TaskChangeInput[])=>void}
 export interface AgentTaskUndoContext {requestId?:string;beforeEffect:()=>void;beforeCompensation?:()=>void;recordInside:(change:AgentTaskChange)=>void;retainInside:(change:AgentTaskChange,reason:string)=>void;expectedTargets?:AgentTaskTarget[]}
 export interface AgentTaskLocalRecovery {outcome:'not_applied';reason:'read_only'|'atomic_receipt_absent'}
@@ -239,7 +246,27 @@ function undoDisposition(change:AgentTaskChange,current:Snapshot,expected:AgentT
  const target=expected.length===1?expected[0]:undefined;
  return target&&entries.length===1&&target.revisionAfter!==undefined&&revision(target)>target.revision&&!unchanged?'retain':'blocked';
 }
+/** This is ownership of one new row, never a generic asset deletion permit.
+ * Its original revision is checked even after another AI change was undone:
+ * a value restored through ABA is still a row that has been changed. */
+function projectFileImportUndo(store:Store,change:AgentTaskChange):{proof:ProjectAssetImportCreationProof;entry:SnapshotEntry}|null{
+ if(!isProjectStore(store)||change.operation!==MIO_PROJECT_FILE_IMPORT_OPERATION||!change.reversible||change.status!=='applied'||change.targets.length!==1||!Array.isArray(change.undo)||change.undo.length!==1)return null;
+ const value=change.undo[0];if(!object(value)||value.before!==undefined||!object(value.after)||!object(value.after.value))return null;
+ const parsed=projectAssetImportCreationProofSchema.safeParse(value.projectImport);if(!parsed.success)return null;
+ const proof=parsed.data,after=value.after,target=change.targets[0]!,afterValue=after.value;
+ if(!object(afterValue))return null;
+ if(proof.projectId!==change.projectId||proof.requestId!==change.stepId||after.kind!=='asset'||after.table!=='assets'||after.id!==proof.assetId||after.revision!==proof.assetRevision||target.kind!=='asset'||target.id!==proof.assetId||target.revision!==proof.assetRevision||target.revisionBefore!==0||target.revisionAfter!==proof.assetRevision||canonical(change.before)!==canonical([null])||canonical(change.after)!==canonical([after]))return null;
+ const current=store.get('assets',proof.assetId);
+ if(readRevision(store,change.projectId,'asset',proof.assetId)!==proof.assetRevision||!object(current))return null;
+ try{if(projectAssetImportAssetDigest(afterValue)!==proof.assetDigest||projectAssetImportAssetDigest(current)!==proof.assetDigest)return null;}
+ catch(error){if(object(error)&&error.code==='AGENT_TASK_INVALID_TARGET')return null;throw error;}
+ return {proof,entry:{kind:'asset',table:'assets',id:proof.assetId,revision:proof.assetRevision,value:afterValue}};
+}
 function undoDependencies(store:Store,change:AgentTaskChange,current:Snapshot,entries:Array<{before?:SnapshotEntry;after?:SnapshotEntry}>):UndoDisposition{
+ if(change.operation===MIO_PROJECT_FILE_IMPORT_OPERATION){
+  const owned=projectFileImportUndo(store,change);if(!owned||!isProjectStore(store))return 'blocked';
+  return readMioProjectImportDependencies(store,owned.proof.assetId).status==='clear'?'undo':'blocked';
+ }
  const {db}=store,removedEdges=new Set(entries.filter(entry=>!entry.before&&entry.after?.kind==='edge').map(entry=>entry.after!.id));
  const timelineEntries=entries.filter(entry=>(entry.after??entry.before)!.kind.startsWith('timeline'));
  if(timelineEntries.length){
@@ -378,10 +405,11 @@ export const listAgentTaskTools=():AgentTaskToolDefinition[]=>{
  const definitions=listDiagnosticAgentTaskTools().filter(tool=>tool.operation!=='project.notes.set').map(tool=>tool.name===AGENT_TASK_TOOLS_LOAD_NAME?{...tool,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS}:tool);
  definitions.push({name:'mioon_project_rules_set',operation:'project.rules.set',description:'提议修改当前项目 AGENTS.md 规范。expectedHash 是刚读取的原文件 SHA-256（不存在时为 null），proposedText 是完整新内容，最多8192 UTF-8字节。宿主展示原文与修改并始终等待用户审批。规范不是授权，修改只从下一轮用户请求生效。',parameters:{type:'object',properties:{expectedHash:{anyOf:[{type:'string',minLength:64,maxLength:64,pattern:'^[a-f0-9]{64}$'},{type:'null'}]},proposedText:{type:'string',maxLength:8192}},required:['expectedHash','proposedText'],additionalProperties:false},risk:'local_irreversible',receipt:'durable rules publication intent and original approval',recovery:'inspect the same request; never repeat uncertain publication',undo:'unavailable'});
  definitions.push({name:MIO_PROJECT_MEDIA_LIST_TOOL,operation:MIO_PROJECT_MEDIA_LIST_OPERATION,description:'分页列出当前项目目录内的文件夹和媒体元信息，仅返回相对名称、类型、大小和时长。directory 默认为项目根目录的空串，可用返回的文件夹名导航；只读有界文件头及当前页时长，不递归、解码、采样、全读、哈希、写缓存或导入。',parameters:{type:'object',properties:{directory:{type:'string',maxLength:MIO_PROJECT_MEDIA_LIMITS.pathBytes,description:'Project-relative directory; omit or use an empty string for the project root. No absolute paths, dot entries or parent traversal.'},limit:{type:'integer',minimum:1,maximum:MIO_PROJECT_MEDIA_LIMITS.maxLimit},cursor:{type:'string',minLength:1,maxLength:MIO_PROJECT_MEDIA_LIMITS.cursorBytes,pattern:'^[A-Za-z0-9_-]+$'}},additionalProperties:false},risk:'read_only',receipt:'observation',recovery:'read the retained metadata result; never rescan while rebuilding a request',undo:'unavailable'});
+ definitions.push({name:MIO_PROJECT_FILE_IMPORT_TOOL,operation:MIO_PROJECT_FILE_IMPORT_OPERATION,description:'将当前项目目录内的媒体文件登记为素材。path 仅接受可见项目相对路径，不能读取项目外或未完成发布的文件；按本地可撤销档执行，撤销只移除本步骤新建、未改过且零消费者的登记，始终保留文件和审计。',parameters:{type:'object',properties:{path:{type:'string',minLength:1,maxLength:MIO_PROJECT_MEDIA_LIMITS.pathBytes},name:{type:'string',minLength:1,maxLength:200}},required:['path'],additionalProperties:false},risk:'local_reversible',receipt:'S1 original-request registration and atomic task step',recovery:'look up the original request; never repeat an unknown import',undo:'remove only this unchanged unconsumed new registration'});
  assertAgentTaskToolGroupCoverage(definitions);return definitions;
 };
 
-export function createAgentTaskTools({store,services,policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:injectedJournal,rules:injectedRules,projectMedia}:{store:Store;rules?:MioProjectRules;projectMedia?:MioProjectMediaPort;services:OrdinaryServices;policyStore?:AgentPolicyStore;journal?:AgentTaskJournal}){
+export function createAgentTaskTools({store,services,policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:injectedJournal,rules:injectedRules,projectMedia,projectImport}:{store:Store;rules?:MioProjectRules;projectMedia?:MioProjectMediaPort;projectImport?:MioProjectImportPort;services:OrdinaryServices;policyStore?:AgentPolicyStore;journal?:AgentTaskJournal}){
  assertProjectStore(store);
  const catalogProfile='native';
  const list=catalogProfile==='native'?listAgentTaskTools:listDiagnosticAgentTaskTools;
@@ -396,9 +424,10 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
  const backgroundOrigins=new WeakSet<AgentTaskEffectOrigin>();
  const transactionSnapshots=new WeakMap<AgentTaskEffectOrigin,Snapshot>();
  const transactionCounts=new WeakMap<AgentTaskEffectOrigin,number>();
- const removeFence=registerStoreTransactionFence(db,()=>{const origin=taskEffectOrigin();if(!origin)return;if(!origin.recorded)origin.beforeEffect();transactionSnapshots.set(origin,snapshot(store,origin.projectId));transactionCounts.set(origin,Number(db.prepare('SELECT total_changes() AS n').get()!.n));});
+ const removeFence=registerStoreTransactionFence(db,()=>{const origin=taskEffectOrigin();if(!origin)return;if(!origin.recorded)origin.beforeEffect();if(origin.operation===MIO_PROJECT_FILE_IMPORT_OPERATION)return;transactionSnapshots.set(origin,snapshot(store,origin.projectId));transactionCounts.set(origin,Number(db.prepare('SELECT total_changes() AS n').get()!.n));});
  const removeObserver=registerStoreTransactionObserver(db,result=>{
-  const origin=taskEffectOrigin(),active=origin?preparedOrigins.get(origin):undefined,before=origin?transactionSnapshots.get(origin):undefined;if(!origin||!active||!before||origin.projectId!==active.projectId)return;
+  const origin=taskEffectOrigin();if(origin?.operation===MIO_PROJECT_FILE_IMPORT_OPERATION)return;
+  const active=origin?preparedOrigins.get(origin):undefined,before=origin?transactionSnapshots.get(origin):undefined;if(!origin||!active||!before||origin.projectId!==active.projectId)return;
   const after=snapshot(store,active.projectId),backgroundGeneration=backgroundOrigins.has(origin)&&active.operation==='generation.submit',captured=changes({...active,before},after,{backgroundGeneration});
   // Cost uncertainty is audit evidence even when only a scheduling field was
   // updated. Keep it independent of the filtered business-change projection.
@@ -479,12 +508,17 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
  function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names'}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void;toolLoadMode?:AgentTaskToolLoadMode}):PreparedAgentTaskTool{
   operation=taskToolOperation(operation);
   if(isProjectStore(store)&&operation==='project.notes.set')fail('AGENT_TASK_TOOL_FORBIDDEN','旧说明工具已停用，请改用必须审批的规范提议');
-  let risk=operation==='project.rules.set'?'local_irreversible':['task.wait','node.inspect','edge.inspect',MIO_PROJECT_MEDIA_LIST_OPERATION,AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_ASK_OPERATION,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_GOAL_SET_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
+  let risk=operation===MIO_PROJECT_FILE_IMPORT_OPERATION?'local_reversible':operation==='project.rules.set'?'local_irreversible':['task.wait','node.inspect','edge.inspect',MIO_PROJECT_MEDIA_LIST_OPERATION,AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_ASK_OPERATION,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_GOAL_SET_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
   if(!risk||!object(input))fail('AGENT_TASK_TOOL_FORBIDDEN','此工具未获准用于助理任务');rejectHostFields(input);
   if(operation===MIO_PROJECT_MEDIA_LIST_OPERATION){
    if(!isProjectStore(store)||!projectMedia||projectId!==store.projectId)fail('AGENT_TASK_TOOL_FORBIDDEN','项目目录列表仅用于当前原生项目的宿主端口');
    const parsed=mioProjectMediaListInputSchema.safeParse(input);if(!parsed.success)fail('VALIDATION_ERROR','目录列表参数无效：仅接受项目相对 directory、有界 limit 和列表返回的 cursor');
    return {projectId,operation,input:parsed.data,risk:'read_only',targets:[],referencedTargets:[],before:{}};
+  }
+  if(operation===MIO_PROJECT_FILE_IMPORT_OPERATION){
+   if(!isProjectStore(store)||!projectImport||projectId!==store.projectId)fail('AGENT_TASK_TOOL_FORBIDDEN','项目文件导入仅用于当前原生项目宿主');
+   const parsed=mioProjectFileImportInputSchema.safeParse(input);if(!parsed.success)fail('VALIDATION_ERROR','导入参数仅接受可见项目相对 path 和可选 name');
+   return {projectId,operation,input:parsed.data,risk:'local_reversible',targets:[],referencedTargets:[],before:{}};
   }
   if(operation==='project.rules.set'){
    if(!isProjectStore(store)||projectId!==store.projectId||!rules)fail('AGENT_TASK_TOOL_FORBIDDEN','规范工具仅用于当前原生项目');
@@ -603,6 +637,22 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   const referencedTargets=[...targets];for(const reference of references)if(!referencedTargets.some(target=>target.kind===reference.kind&&target.id===reference.id))referencedTargets.push({...reference,revision:0});
   return {projectId,operation,input:hostInput,risk,targets:risk==='read_only'?[]:targets,referencedTargets,before};
  }
+ async function prepareProjectFileImport(prepared:PreparedAgentTaskTool,context:{requestId:string;retained?:unknown;signal?:AbortSignal;beforeEffect:()=>void}):Promise<PreparedAgentTaskTool>{
+  if(prepared.operation!==MIO_PROJECT_FILE_IMPORT_OPERATION)return prepared;
+  if(!isProjectStore(store)||!projectImport||prepared.projectId!==store.projectId)fail('AGENT_TASK_TOOL_FORBIDDEN','项目文件导入缺少原生宿主');
+  const input=mioProjectFileImportInputSchema.parse(prepared.input);
+  const proof=await projectImport.prepare(prepared.projectId,input,context);
+  const checked=projectAssetImportPreparationSchema.parse(proof);
+  if(checked.input.projectId!==prepared.projectId||checked.input.requestId!==context.requestId)fail('AGENT_TASK_INVALID_TARGET','项目文件准备证明不属于此步骤');
+  if(context.retained!==undefined&&canonical(checked)!==canonical(projectAssetImportPreparationSchema.parse(context.retained)))fail('AGENT_TASK_TARGET_CHANGED','原审批的文件证明不能替换');
+  return {...prepared,projectFileImport:checked};
+ }
+ async function lookupProjectFileImport(prepared:PreparedAgentTaskTool,context:{requestId:string;retained:unknown;signal?:AbortSignal;beforeEffect:()=>void}):Promise<ProjectAssetImportLookup>{
+  if(prepared.operation!==MIO_PROJECT_FILE_IMPORT_OPERATION||!isProjectStore(store)||!projectImport||prepared.projectId!==store.projectId)fail('AGENT_TASK_TOOL_FORBIDDEN','此步骤不是项目文件导入');
+  const proof=projectAssetImportPreparationSchema.parse(context.retained);
+  if(proof.input.projectId!==prepared.projectId||proof.input.requestId!==context.requestId)fail('AGENT_TASK_INVALID_TARGET','导入查证必须使用原步骤请求');
+  return projectImport.lookup(proof,context);
+ }
  async function execute(prepared:PreparedAgentTaskTool,context:AgentTaskToolContext):Promise<{result:AgentTaskJson;changes:TaskChangeInput[];recorded:boolean}>{
   if(prepared.operation==='project.rules.set'){
    context.beforeEffect();if(context.signal?.aborted)fail('AGENT_TASK_ABORTED','任务已暂停');
@@ -629,6 +679,38 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   preparedOrigins.set(origin,prepared);
   return withTaskEffectOrigin(origin,async()=>{
    beforeEffect();if(context.signal?.aborted)fail('AGENT_TASK_ABORTED','任务已暂停');
+   if(prepared.operation===MIO_PROJECT_FILE_IMPORT_OPERATION){
+    if(!isProjectStore(store)||!projectImport||!prepared.projectFileImport||prepared.projectId!==store.projectId||journal.run(context.runId).projectId!==prepared.projectId||context.requestId!==context.stepId)fail('AGENT_TASK_TOOL_FORBIDDEN','项目文件导入缺少原步骤的准备证明');
+    if(isAsyncFunction(context.recordInside))throw new TypeError('Import recording must be synchronous');
+    const proof=projectAssetImportPreparationSchema.parse(prepared.projectFileImport);
+    if(proof.input.projectId!==prepared.projectId||proof.input.requestId!==context.requestId)fail('AGENT_TASK_INVALID_TARGET','导入证明不属于此步骤');
+    try{
+     const value=await projectImport.execute(proof,{signal:context.signal,beforeEffect,recordCreatedInside:raw=>{
+      beforeEffect();if(!db.isTransaction||origin.recorded)fail('AGENT_TASK_STATE_CONFLICT','新登记必须与唯一工具回执同事务');
+      const creation=projectAssetImportCreationProofSchema.parse(raw),current=store.get('assets',creation.assetId);
+      if(creation.projectId!==prepared.projectId||creation.requestId!==context.requestId||creation.inputDigest!==proof.inputDigest||!object(current)||projectAssetImportAssetDigest(current)!==creation.assetDigest||readRevision(store,prepared.projectId,'asset',creation.assetId)!==creation.assetRevision)fail('AGENT_TASK_INVALID_TARGET','S1新建登记证明无法核对');
+      const entry:SnapshotEntry={kind:'asset',table:'assets',id:creation.assetId,value:structuredClone(current),revision:creation.assetRevision};
+      const change:TaskChangeInput={projectId:prepared.projectId,operation:MIO_PROJECT_FILE_IMPORT_OPERATION,
+       targets:[{kind:'asset',id:creation.assetId,revision:creation.assetRevision,revisionBefore:0,revisionAfter:creation.assetRevision}],before:json([null]),after:json([entry]),undo:json([{after:entry,projectImport:creation}]),reversible:true,summary:'登记项目文件为素材；仅可撤销这份未改过且零消费者的新登记'};
+      const result=mioProjectFileImportResultSchema.parse({registration:'created',assetId:creation.assetId,asset:creation.asset});
+      const written:unknown=context.recordInside(json(result),[change]);
+      if(written&&typeof written==='object'&&'then' in written)throw new TypeError('Import recording must be synchronous');
+      origin.recorded=true;
+     }});
+     const receipt=projectAssetImportReceiptProofSchema.parse(value.receipt);
+     if(receipt.projectId!==prepared.projectId||receipt.requestId!==context.requestId||receipt.inputDigest!==proof.inputDigest||receipt.assetId!==value.asset.id||value.asset.projectId!==prepared.projectId)fail('AGENT_TASK_TOOL_RESULT_INVALID','导入回执不属于原项目和步骤');
+     const result=mioProjectFileImportResultSchema.parse({registration:value.disposition,assetId:value.asset.id,asset:value.asset});
+     if(value.disposition==='created'&&!origin.recorded||value.disposition==='reused'&&origin.recorded)fail('AGENT_TASK_STATE_CONFLICT','新建与复用回执不一致');
+     return {result:json(result),changes:[],recorded:origin.recorded};
+    }catch(error){
+     // A private S1 ACK can fail after the atomic row+Change+step commit. Only
+     // that already durable step proves success; an in-memory callback alone
+     // also runs in transactions that subsequently roll back.
+     const saved=journal.step(context.stepId),result=mioProjectFileImportResultSchema.safeParse(saved.result);
+     if(origin.recorded&&saved.status==='completed'&&saved.runId===context.runId&&result.success&&result.data.registration==='created')return {result:json(result.data),changes:[],recorded:true};
+     origin.recorded=false;throw error;
+    }
+   }
    if(prepared.operation===MIO_PROJECT_MEDIA_LIST_OPERATION){
     if(!isProjectStore(store)||!projectMedia||prepared.projectId!==store.projectId||journal.run(context.runId).projectId!==prepared.projectId)fail('AGENT_TASK_TOOL_FORBIDDEN','项目目录列表仅用于当前原生项目的宿主端口');
     const input=mioProjectMediaListInputSchema.safeParse(prepared.input);if(!input.success)fail('VALIDATION_ERROR','目录列表参数无效');
@@ -651,7 +733,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
      const groups=requested.filter(group=>!loaded.has(group)),selected=new Set(groups);
      // Old group intents retain their original scope; directory reads are
      // disclosed and loaded only by a new exact-name request.
-     const names=list().filter(tool=>{const group=agentTaskToolGroupForName(tool.name,catalogProfile);return group!==undefined&&group!=='core'&&selected.has(group)&&tool.name!==MIO_PROJECT_MEDIA_LIST_TOOL;}).map(tool=>tool.name);
+     const names=list().filter(tool=>{const group=agentTaskToolGroupForName(tool.name,catalogProfile);return group!==undefined&&group!=='core'&&selected.has(group)&&tool.name!==MIO_PROJECT_MEDIA_LIST_TOOL&&tool.name!==MIO_PROJECT_FILE_IMPORT_TOOL;}).map(tool=>tool.name);
      const result:AgentTaskJson={groups,tools:names};
      return {result,changes:[],recorded:false};
     }
@@ -802,6 +884,21 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   if(!change.reversible||change.status!=='applied'||!Array.isArray(change.undo))fail('AGENT_TASK_NOT_REVERSIBLE','此项变化不能撤销');
   const undoEntries=change.undo;
   return store.tx(()=>{
+   if(change.operation===MIO_PROJECT_FILE_IMPORT_OPERATION){
+    context.beforeEffect();const owned=projectFileImportUndo(store,change);
+    if(!owned||!isProjectStore(store))fail('AGENT_TASK_TARGET_CHANGED','原登记已变化或不属于本步骤');
+    const target=change.targets[0]!;
+    if(db.prepare(`SELECT 1 FROM ${mioTable(db,'claims')} WHERE projectId=? AND kind='asset' AND targetId=?`).get(change.projectId,owned.proof.assetId))fail('AGENT_TASK_TARGET_CLAIMED','素材仍有未保存草稿');
+    if(readMioProjectImportDependenciesInside(store,owned.proof.assetId).status!=='clear')fail('AGENT_TASK_TARGET_CHANGED','素材已有消费者或依赖无法证明为空');
+    context.beforeCompensation?.();context.beforeEffect();
+    if(!projectFileImportUndo(store,change))fail('AGENT_TASK_TARGET_CHANGED','登记在补偿前已变化');
+    if(db.prepare(`SELECT 1 FROM ${mioTable(db,'claims')} WHERE projectId=? AND kind='asset' AND targetId=?`).get(change.projectId,owned.proof.assetId))fail('AGENT_TASK_TARGET_CLAIMED','素材仍有未保存草稿');
+    if(readMioProjectImportDependenciesInside(store,owned.proof.assetId).status!=='clear')fail('AGENT_TASK_TARGET_CHANGED','补偿前出现新消费者或依赖无法证明为空');
+    const removed=db.prepare('DELETE FROM assets WHERE id=? AND projectId=?').run(owned.proof.assetId,change.projectId);
+    if(removed.changes!==1)fail('AGENT_TASK_TARGET_CHANGED','登记已不存在');
+    context.recordInside(change);
+    return {targets:[{...target,revision:readRevision(store,change.projectId,'asset',owned.proof.assetId)}]};
+   }
    context.beforeEffect();const current=snapshot(store,change.projectId),expected=context.expectedTargets??change.targets;
    for(const target of expected){if(readRevision(store,change.projectId,target.kind,target.id)!==target.revision)fail('AGENT_TASK_TARGET_CHANGED','目标在此项变化后已被修改');if(db.prepare(`SELECT 1 FROM ${mioTable(db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(change.projectId,target.kind,target.id))fail('AGENT_TASK_TARGET_CLAIMED','目标仍有未保存草稿');}
    const entries:Array<{before?:SnapshotEntry;after?:SnapshotEntry}>=[];
@@ -864,6 +961,6 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   db.prepare(`UPDATE ${table} SET ${fields.map(field=>`"${field}"=?`).join(',')} WHERE ${descriptor.id}=? AND projectId=?`).run(...values,identity.id,projectId);
  }
 
- return {list,diagnosticList:listDiagnosticAgentTaskTools,prepare,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,currentTargets,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
+ return {list,diagnosticList:listDiagnosticAgentTaskTools,prepare,prepareProjectFileImport,lookupProjectFileImport,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,currentTargets,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
 }
 export type AgentTaskTools=ReturnType<typeof createAgentTaskTools>;

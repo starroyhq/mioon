@@ -16,6 +16,8 @@ import {hasStoreTable} from '../store-layout.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
 import type {AgentTaskJournal} from './task-journal-v2.ts';
 import type {AgentTaskTools,PreparedAgentTaskTool} from './task-tools-v2.ts';
+import {MIO_PROJECT_FILE_IMPORT_OPERATION,MIO_PROJECT_FILE_IMPORT_TOOL,mioProjectFileImportResultSchema} from '../../../contracts/src/mio-project-import.ts';
+import type {ProjectAssetImportLookup} from '../referenced-asset-project-import.ts';
 import {agentTaskExplicitTargets,agentTaskChangeWasModified,projectAgentTaskUndo} from './task-tools-v2.ts';
 import {setAgentTaskEffectGate,resumeAgentTaskJobs,stopAgentTaskJobs} from './task-effects-v2.ts';
 import {AGENT_CREDENTIAL_ACQUIRE,sanitizeAgentCredentialResult,sanitizeAgentSettingsResult} from './settings.ts';
@@ -230,7 +232,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const explicit=step.toolCall?agentTaskExplicitTargets(step.toolCall.name,step.toolCall.arguments,journal.run(step.runId).projectId).map(target=>({...target,revision:0})):[];
     return [...dispatchTargets(step),...references.map(value=>{const parsed=agentTaskTargetSchema.safeParse(value);if(!parsed.success)throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');return parsed.data;}),...explicit];
   }
-  const approvalDigest=(step:AgentTaskStep):string=>createHash('sha256').update(JSON.stringify({call:step.toolCall,targets:step.targets,tier:step.tier,...(record(step.data)&&Array.isArray(step.data.dispatchApprovalTargets)?{dispatchTargets:step.data.dispatchApprovalTargets}:{}),...(record(step.data)&&step.data.rulesProposal!==undefined?{rulesProposal:step.data.rulesProposal}:{})})).digest('hex');
+  const approvalDigest=(step:AgentTaskStep):string=>createHash('sha256').update(JSON.stringify({call:step.toolCall,targets:step.targets,tier:step.tier,...(record(step.data)&&Array.isArray(step.data.dispatchApprovalTargets)?{dispatchTargets:step.data.dispatchApprovalTargets}:{}),...(record(step.data)&&step.data.rulesProposal!==undefined?{rulesProposal:step.data.rulesProposal}:{}),...(record(step.data)&&step.data.projectFileImport!==undefined?{projectFileImport:step.data.projectFileImport}:{})})).digest('hex');
   const approved=(step:AgentTaskStep):boolean=>record(step.data)&&step.data.approvalDigest===approvalDigest(step);
   /** The user's answer becomes the question's tool result. It is input, never an approval. */
   function answerResult(step:AgentTaskStep,request:{choices:number[];text?:string}):AgentTaskJson{
@@ -396,13 +398,22 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         return journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:'VALIDATION_ERROR',message}},error:{code:'VALIDATION_ERROR',message}});
       }
       prepared=toolset().prepare({projectId:run.projectId,operation:call.name,input:call.arguments,...(call.name===AGENT_TASK_TOOLS_LOAD_NAME?{toolLoadMode:sourceTaskModelToolLoadMode(protocol,source.request)}:{}),beforeTargetRead:target=>assertNotSkipped(journal.run(runId),[{...target,revision:0}])});
+      if(prepared.operation===MIO_PROJECT_FILE_IMPORT_OPERATION){
+        const initial=prepared,stepId=step.id;
+        // Preparing the frozen source is read-only and precedes approval. The
+        // full execution toolFence would require that approval too early.
+        const beforePrepare=()=>{signal.throwIfAborted();const current=fence(runId);assertNotSkipped(current,initial.referencedTargets??initial.targets);journal.assertTargets(current.projectId,initial.targets);};
+        prepared=await toolset().prepareProjectFileImport(initial,{requestId:stepId,signal,beforeEffect:beforePrepare,
+          ...(record(step.data)&&step.data.projectFileImport!==undefined?{retained:step.data.projectFileImport}:{})});
+        beforePrepare();step=journal.step(stepId);
+      }
       if(['asset.importSelected','lut.importSelected'].includes(prepared.operation)&&(!Array.isArray(run.attachments)||!run.attachments.includes(String(prepared.input.handle))))throw agentTaskFailure('AGENT_TASK_CONSENT_REQUIRED');
       assertNotSkipped(journal.run(runId),prepared.referencedTargets??prepared.targets);
       if(step.targets&&!isDeepStrictEqual(step.targets,prepared.targets)){
         conflicts=[...step.targets.filter(target=>!prepared!.targets.some(item=>item.kind===target.kind&&item.id===target.id&&item.revision===target.revision)),...prepared.targets.filter(target=>!step!.targets!.some(item=>item.kind===target.kind&&item.id===target.id))];
         throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       }
-      step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets),...(prepared.proposal===undefined?{}:{rulesProposal:prepared.proposal})}});
+      step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets),...(prepared.proposal===undefined?{}:{rulesProposal:prepared.proposal}),...(prepared.projectFileImport===undefined?{}:{projectFileImport:json(prepared.projectFileImport)})}});
       conflicts=modelConflictingTargets(prepared,source);if(conflicts.length)throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       journal.assertTargets(run.projectId,prepared.targets);
       // C3: a question waits for the user's answer; nothing is dispatched.
@@ -710,13 +721,26 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const undo=request.action==='undo_change'||request.action==='undo_all';
     const old=journal.lookupControl(request.requestId);if(old){owned(projectId,runId);if(undo)journal.beginControl(request);else journal.performControl(request,()=>null);return safeSnapshot(journal.snapshot(runId),store);}
     let run=owned(projectId,runId);const cancelBackgroundSteps:string[]=[];try{if(run.revision!==request.expectedRevision)throw agentTaskFailure('AGENT_TASK_REVISION_CONFLICT');
+    let projectImportResolution:ProjectAssetImportLookup|undefined;
+    if(request.action==='resolve_unknown'&&request.stepId){
+      const original=journal.step(request.stepId);
+      if(original.runId===runId&&original.status==='unknown'&&original.toolCall?.name===MIO_PROJECT_FILE_IMPORT_TOOL){
+        const retained=record(original.data)?original.data.projectFileImport:undefined;
+        const prepared=toolset().prepare({projectId,operation:original.toolCall.name,input:original.toolCall.arguments});
+        const checkLookup=()=>{mutable();const current=owned(projectId,runId),step=journal.step(original.id);if(current.revision!==request.expectedRevision)throw agentTaskFailure('AGENT_TASK_REVISION_CONFLICT');if(step.runId!==runId||step.status!=='unknown'||step.toolCall?.name!==MIO_PROJECT_FILE_IMPORT_TOOL)throw agentTaskFailure('AGENT_TASK_STATE_CONFLICT');};
+        // Read the bounded original-key receipt outside the control's write
+        // transaction. Its synchronous snapshot fence is checked inside it.
+        projectImportResolution=await toolset().lookupProjectFileImport(prepared,{requestId:original.id,retained,beforeEffect:checkLookup});
+        checkLookup();
+      }
+    }
     if(request.action==='undo_change'||request.action==='undo_all'){
       if(!terminal(run))throw agentTaskFailure('AGENT_TASK_PAUSED');
       const changes=journal.snapshot(runId).changes,undoChangeIds=request.action==='undo_all'&&request.undoChangeIds!==undefined?new Set(request.undoChangeIds):undefined;
       if(undoChangeIds){const planned=projectAgentTaskUndo(store,projectId,changes),currentIds=changes.filter(change=>planned.get(change.id)?.undoDisposition==='undo').map(change=>change.id);if(currentIds.length!==undoChangeIds.size||currentIds.some(id=>!undoChangeIds.has(id)))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');}
       journal.beginControl(request);
       const candidates=changes.reverse();
-      const chain=new Map<string,AgentTaskTarget>(),retainedChangeIds:string[]=[];
+      const chain=new Map<string,AgentTaskTarget>(),retainedChangeIds:string[]=[];let importControlCompleted=false;
       try{for(const change of candidates){
         if(change.status==='reverted'){for(const target of change.revertedTargets??[])chain.set(`${target.kind}:${target.id}`,target);continue;}
         if(change.status!=='applied'||!change.reversible||request.action==='undo_change'&&change.id!==request.changeId)continue;
@@ -725,12 +749,19 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         const expectedTargets=change.targets.map(target=>{const next=chain.get(`${target.kind}:${target.id}`);return next&&next.revisionBefore===(target.revisionAfter??target.revision)?next:target;});
         if(request.action==='undo_change'&&change.targets.some(target=>target.revisionAfter!==undefined&&journal.targetRevision(projectId,target.kind,target.id)>target.revisionAfter))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
         if(request.action==='undo_all'&&store.tx(()=>{if(!agentTaskChangeWasModified(store,change,expectedTargets))return false;journal.markChangeSupersededInside(change.id);return true;})){retainedChangeIds.push(change.id);continue;}
-        const reverted=toolset().undo(change,{requestId:`${request.requestId}:${change.id}`,expectedTargets,beforeEffect:()=>{owned(projectId,runId);journal.assertTargets(projectId,expectedTargets);},beforeCompensation:()=>{if(undoChangeIds&&!undoChangeIds.has(change.id))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');},recordInside:()=>{journal.markChangeRevertedInside(change.id);},retainInside:(_change,reason)=>{journal.markChangeRetainedInside(change.id,reason);}});
+        const reverted=toolset().undo(change,{requestId:`${request.requestId}:${change.id}`,expectedTargets,beforeEffect:()=>{owned(projectId,runId);journal.assertTargets(projectId,expectedTargets);},beforeCompensation:()=>{if(undoChangeIds&&!undoChangeIds.has(change.id))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');},recordInside:()=>{
+          journal.markChangeRevertedInside(change.id);
+          if(change.operation===MIO_PROJECT_FILE_IMPORT_OPERATION){
+            const revertedIds=journal.snapshot(runId).changes.filter(item=>item.status==='reverted').map(item=>item.id);
+            journal.finishControl(request.requestId,{state:request.action==='undo_change'?'completed':'pending',revertedIds});
+            importControlCompleted=request.action==='undo_change';
+          }
+        },retainInside:(_change,reason)=>{journal.markChangeRetainedInside(change.id,reason);}});
         if(reverted.retained){retainedChangeIds.push(change.id);continue;}
         for(const target of reverted.targets)chain.set(`${target.kind}:${target.id}`,target);
       }}catch(error){journal.finishControl(request.requestId,{state:'blocked',code:code(error),...(retainedChangeIds.length?{retainedChangeIds}:{})});throw error;}
       run=journal.run(runId);if(request.action==='undo_all'&&!journal.snapshot(runId).changes.some(change=>change.reversible&&change.status==='applied'))changeStatus(runId,'reverted');
-      journal.finishControl(request.requestId,{state:'completed',...(retainedChangeIds.length?{retainedChangeIds}:{})});
+      if(!importControlCompleted)journal.finishControl(request.requestId,{state:'completed',...(retainedChangeIds.length?{retainedChangeIds}:{})});
     }else journal.performControl(request,():AgentTaskJson=>{
       run=owned(projectId,runId);if(run.revision!==request.expectedRevision)throw agentTaskFailure('AGENT_TASK_REVISION_CONFLICT');
       if(request.action==='note'){journal.appendNoteInside(runId,request.requestId,request.text);assertNoteCapacity(runId);return {state:'completed',noteRequestId:request.requestId};}
@@ -771,7 +802,20 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         if(request.action==='approve'&&isProjectStore(store)&&step.toolCall?.name==='mioon_project_rules_set')return {state:'completed',approvedRules:{stepId:step.id,proposalDigest:approvalDigest(step)}};
       }else if(request.action==='resolve_unknown'){
         if(!request.stepId)throw agentTaskFailure('AGENT_TASK_INVALID');const step=journal.step(request.stepId);if(step.runId!==runId||step.status!=='unknown')throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
-        if(step.kind==='model'&&request.resolution==='discard')journal.updateStep(runId,step.id,{status:'failed',result:{discarded:true},error:{code:'USER_DISCARDED_UNKNOWN',message:'用户已将未知模型请求标记为失败。'}});
+        if(step.toolCall?.name===MIO_PROJECT_FILE_IMPORT_TOOL){
+          const proof=projectImportResolution;if(!proof)throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');proof.assertCurrent();
+          if(proof.outcome==='applied'&&request.resolution==='accept_result'){
+            const result=mioProjectFileImportResultSchema.parse({registration:'reused',assetId:proof.asset.id,asset:proof.asset});
+            // A receipt proves the original import, not a missing creation
+            // Change. Recovery therefore adds no compensation authority.
+            journal.updateStep(runId,step.id,{status:'completed',result:json(result)});
+          }else if(proof.outcome==='not_applied'&&request.resolution==='discard'||proof.outcome==='retired'&&request.resolution==='accept_result'){
+            const retired=proof.outcome==='retired';
+            journal.updateStep(runId,step.id,{status:'failed',result:{error:{code:retired?'PROJECT_IMPORT_RETIRED':'UNKNOWN_NOT_APPLIED',message:retired?'原请求登记已移除，保留历史，不重建。':'已核对原请求，登记未提交；请重新规划，不重放旧参数。'}},error:{code:retired?'PROJECT_IMPORT_RETIRED':'UNKNOWN_NOT_APPLIED',message:'已核对原请求的登记状态。'}});
+            const sourceId=record(step.data)&&typeof step.data.sourceModelStepId==='string'?step.data.sourceModelStepId:undefined;
+            if(sourceId){const source=journal.step(sourceId);if(source.runId!==runId||source.kind!=='model'||source.status!=='completed')throw agentTaskFailure('AGENT_TASK_STATE_CONFLICT');journal.updateStep(runId,source.id,{data:{...(record(source.data)?source.data:{}),toolsInvalidated:true}});}
+          }else throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
+        }else if(step.kind==='model'&&request.resolution==='discard')journal.updateStep(runId,step.id,{status:'failed',result:{discarded:true},error:{code:'USER_DISCARDED_UNKNOWN',message:'用户已将未知模型请求标记为失败。'}});
         else if(step.toolCall?.name==='mioon_task_wait'&&request.resolution==='accept_result'){
           const prepared=toolset().prepare({projectId,operation:step.toolCall.name,input:step.toolCall.arguments}),result=toolset().recoverWait(prepared);
           if(result===null)throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');journal.updateStep(runId,step.id,{status:'completed',result});
