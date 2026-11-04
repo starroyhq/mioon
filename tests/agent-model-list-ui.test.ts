@@ -52,7 +52,26 @@ test('three-source rows deduplicate, sort stably, retain actual and pending sele
 
 test('only a complete successful matching list marks a missing actual Mio model; manual rows are never removed',()=>{
  for(const complete of [true,false])for(const showMissing of [true,false]){const rows=agentModelListRows({observation:success([],complete),adaptedIds:[],manualIds:['manual'],currentId:'current',showMissing});assert.deepEqual(rows.map(row=>row.id),['current','manual']);assert.equal(rows[0]!.missing,complete&&showMissing);assert.equal(rows[1]!.manual,true);}
- const rows=agentModelListRows({adaptedIds:['not-observed'],manualIds:[],currentId:'current'});assert.deepEqual(rows.map(row=>row.id),['current']);assert.equal(rows[0]!.missing,false);
+ const rows=agentModelListRows({adaptedIds:['not-observed'],manualIds:[],currentId:'current'});assert.deepEqual(rows.map(row=>row.id),['current','not-observed']);assert.equal(rows[0]!.missing,false);assert.equal(rows[1]!.adapted,true);
+});
+
+test('partial lists supplement static adapted models after Mio and before provider-only rows; complete lists do not',()=>{
+ for(const complete of [false,true]){
+  const rows=agentModelListRows({observation:success(['remote-first','adapted-seen','remote-last'],complete),adaptedIds:['adapted-unseen','adapted-seen','current'],manualIds:['manual'],currentId:'current',draftId:'pending'});
+  assert.deepEqual(rows.map(row=>row.id),complete?['current','adapted-seen','remote-first','remote-last','manual','pending']:['current','adapted-seen','adapted-unseen','remote-first','remote-last','manual','pending']);
+  assert.ok(rows.filter(row=>['current','adapted-seen','adapted-unseen'].includes(row.id)).every(row=>row.adapted));
+  assert.equal(rows.length,new Set(rows.map(row=>row.id)).size);assert.equal(rows.find(row=>row.id==='pending')?.pending,true);
+  const custom=agentModelListRows({observation:success(['remote'],complete),adaptedIds:['adapted-unseen'],manualIds:['manual'],custom:true});
+  assert.deepEqual(custom.map(row=>row.id),['remote','manual']);assert.ok(custom.every(row=>!row.adapted));
+ }
+});
+
+test('a failed or pending refresh supplements adapted rows even while retaining an older complete observation',()=>{
+ const options={observation:success(['remote']),adaptedIds:['adapted-unseen'],manualIds:['manual'],currentId:'current'};
+ const retained=agentModelListRows({...options,hasCompleteList:false,showMissing:false});
+ assert.deepEqual(retained.map(row=>row.id),['current','adapted-unseen','remote','manual']);assert.ok(retained.every(row=>!row.missing));
+ assert.deepEqual(agentModelListRows({...options,hasCompleteList:true}).map(row=>row.id),['current','remote','manual']);
+ const empty=agentModelListRows({...options,observation:success([]),hasCompleteList:true});assert.deepEqual(empty.map(row=>row.id),['current','manual']);
 });
 
 test('browser client uses authenticated no-store POSTs, strict bounds and never reflects remote errors or key text',async()=>{
