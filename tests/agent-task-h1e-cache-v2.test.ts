@@ -11,7 +11,7 @@ import {agentTaskToolGroupForName} from '../packages/business/src/agent/task-too
 import {AGENT_TASK_SKILLS} from '../packages/business/src/agent/task-skills-v2.ts';
 import {applyTaskAnthropicCaching} from '../packages/business/src/agent/task-cache-v2.ts';
 import {buildTaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
-import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {presetConfigurations} from './helpers/agent-preset-configurations.ts';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 
 const config:AgentConfiguration={presetId:'anthropic',platformId:'global',protocol:'anthropic_messages',baseUrl:'https://api.anthropic.com',model:'claude-haiku-4-5'};
@@ -79,7 +79,8 @@ test('H1e request builder freezes the official cache policy into the serialized 
   const definition={name:'mioon_project_inspect',description:'inspect',parameters:{type:'object',properties:{},additionalProperties:false}};
   const wire=buildTaskModelRequest(config,[{role:'user',content:'离线'}],[definition]);
   assert.equal(count(JSON.parse(wire)),3);assert.equal(JSON.parse(wire).max_tokens,16384);
-  const compatible=buildTaskModelRequest({...DEFAULT_AGENT_CONFIGURATION,presetId:'minimax',platformId:'international',baseUrl:'https://api.minimax.io/v1',protocol:'anthropic_messages',model:'MiniMax-M3'},[{role:'user',content:'离线'}],[definition]);
+  const minimax=presetConfigurations().find(value=>value.presetId==='minimax'&&value.platformId==='international'&&value.protocol==='anthropic_messages');assert.ok(minimax,'The catalog must provide an explicit supported MiniMax Messages configuration');
+  const compatible=buildTaskModelRequest(minimax,[{role:'user',content:'离线'}],[definition]);
   assert.equal(compatible.includes('cache_control'),false);
 });
 

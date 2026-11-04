@@ -9,6 +9,10 @@ import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {initializeNodePrivateStorage} from '../packages/node-host/src/private-storage-bootstrap.ts';
 import {createPrivateTemporaryDirectory,ensurePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
+import {agentSettingsSnapshotSchema,agentServiceInput} from '../packages/contracts/src/agent-connection-settings.ts';
+import type {AgentSettingsSnapshot} from '../packages/contracts/src/agent-connection-settings.ts';
+import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {testAgentExecution} from './helpers/agent-settings-fixture.ts';
 
 // All vault operations target this test's random private root. No enumeration,
 // user-vault locking or provider requests are part of this opt-in validation.
@@ -30,6 +34,7 @@ import {startServer} from ${JSON.stringify(new URL('../apps/server/src/index.ts'
 import {createHeadlessAgentSecretCodec} from ${JSON.stringify(new URL('../apps/server/src/headless-agent-secret-codec.ts',import.meta.url).href)};
 import {createAgentSettings,AGENT_CREDENTIAL_ACQUIRE} from ${JSON.stringify(new URL('../packages/business/src/agent/settings.ts',import.meta.url).href)};
 import {createAgentSettingsFile} from ${JSON.stringify(new URL('../packages/business/src/agent/settings-file.ts',import.meta.url).href)};
+import {testAgentCredential} from ${JSON.stringify(new URL('./helpers/agent-settings-fixture.ts',import.meta.url).href)};
 await initializeNodePrivateStorage();
 process.once('message',async input=>{
  let codec,settings,service,modelCalls=0;
@@ -52,7 +57,7 @@ process.once('message',async input=>{
   codec=await createHeadlessAgentSecretCodec({directory:input.directory,channel:'web'});
   settings=await createAgentSettings({persistence:createAgentSettingsFile({directory:input.directory}),secretCodec:codec.secretCodec,storage:codec.storage});
   const snapshot=await settings.get();
-  const credential=await settings[AGENT_CREDENTIAL_ACQUIRE]({expectedRevision:snapshot.revision,configuration:snapshot.configuration});
+  const credential=await settings[AGENT_CREDENTIAL_ACQUIRE](testAgentCredential(snapshot));
   const matches=credential.apiKey===${JSON.stringify(synthetic)};await settings.close();finish({ok:true,matches});
  }catch{try{await settings?.close();await service?.close();}catch{}codec?.close();finish({ok:false});}
 });`;
@@ -76,7 +81,7 @@ process.once('message',async input=>{
  async function call(action: string){const running=operation(action),result=await running.next();await running.closed;return result;}
  async function start(){active=operation('serve');const connection=await active.next();assert.equal(connection.ok,true,'Synthetic backend startup must succeed.');return connection;}
  async function stop(){const running=active;if(!running)return;active=undefined;running.child.send({action:'close'});assert.deepEqual(await running.next(),{ok:true,modelCalls:0});await running.closed;}
- async function cli(connection: HostMessage,words: string[],input: { expectedRevision?: unknown; configuration?: unknown; }|undefined={},key?: string|undefined){
+ async function cli(connection: HostMessage,words: string[],input: Record<string,unknown>={},key?: string|undefined){
   const environment={...env,MIOON_BASE_URL:connection.url,MIOON_TOKEN_FILE:connection.tokenFile};
   const args=[cliEntry,'agent','settings',...words,'--input',JSON.stringify(input),...(key===undefined?[]:['--key-stdin'])];
   const child=spawn(process.execPath,args,{env:environment,stdio:['pipe','pipe','pipe'],windowsHide:true});
@@ -88,22 +93,25 @@ process.once('message',async input=>{
   assert.equal(result.signal,null);assert.equal(stdout.includes(synthetic),false);assert.equal(stderr.includes(synthetic),false);
   const lines=stdout.trim().split('\n');assert.equal(lines.length,1);return {code:result.code,body:JSON.parse(lines[0])};
  }
- async function get(connection: HostMessage){const result=await cli(connection,['get']);assert.equal(result.code,0,JSON.stringify(result.body.error));assert.equal(result.body.ok,true);return result.body.data;}
- async function save(connection: HostMessage,current: {revision: number; configuration: unknown}){const result=await cli(connection,['secret','set'],{expectedRevision:current.revision,configuration:current.configuration},synthetic);assert.equal(result.code,0,JSON.stringify(result.body.error));assert.equal(result.body.ok,true);return result.body.data;}
+ async function get(connection: HostMessage){const result=await cli(connection,['get']);assert.equal(result.code,0,JSON.stringify(result.body.error));assert.equal(result.body.ok,true);return agentSettingsSnapshotSchema.parse(result.body.data);}
+ async function save(connection: HostMessage,current: AgentSettingsSnapshot){
+  const selected=await cli(connection,['set'],{expectedRevision:current.revision,services:current.services.map(agentServiceInput),mioSelection:{serviceKey:'openai',modelId:DEFAULT_AGENT_CONFIGURATION.model}});assert.equal(selected.code,0);assert.equal(selected.body.ok,true);
+  const result=await cli(connection,['secret','set'],{expectedRevision:selected.body.data.revision,serviceKey:'openai'},synthetic);assert.equal(result.code,0,JSON.stringify(result.body.error));assert.equal(result.body.ok,true);return agentSettingsSnapshotSchema.parse(result.body.data);
+ }
  t.after(async()=>{try{await stop();assert.equal((await call('delete')).ok,true);assert.deepEqual(await call('present'),{ok:true,value:false});}finally{await rm(root,{recursive:true,force:true});}});
  assert.deepEqual(await call('present'),{ok:true,value:false});
- const first=await start(),initial=await get(first);assert.deepEqual(initial.secret,{configured:false,storage:'none'});assert.equal(initial.storage.persistentAvailable,true);
- const saved=await save(first,initial);assert.deepEqual(saved.secret,{configured:true,storage:'persistent'});await stop();
+ const first=await start(),initial=await get(first);assert.equal(initial.execution,null);assert.ok(initial.services.every(service=>!service.secret.configured));assert.equal(initial.storage.persistentAvailable,true);
+ const saved=await save(first,initial);assert.deepEqual(testAgentExecution(saved).secret,{configured:true,storage:'persistent'});await stop();
  const bytes=await readFile(path.join(directory,'settings.json'));assert.equal(bytes.includes(Buffer.from(synthetic)),false);
  assert.deepEqual(await call('read'),{ok:true,matches:true});
- const second=await start(),reopened=await get(second);assert.equal(reopened.revision,saved.revision);assert.deepEqual(reopened.secret,saved.secret);
- const removed=await cli(second,['secret','remove'],{expectedRevision:reopened.revision,configuration:reopened.configuration});assert.equal(removed.code,0);assert.deepEqual(removed.body.data.secret,{configured:false,storage:'none'});await stop();
- const third=await start(),afterRemoval=await get(third);assert.equal(afterRemoval.revision,removed.body.data.revision);assert.deepEqual(afterRemoval.secret,{configured:false,storage:'none'});
+ const second=await start(),reopened=await get(second);assert.equal(reopened.revision,saved.revision);assert.deepEqual(testAgentExecution(reopened).secret,testAgentExecution(saved).secret);
+ const removed=await cli(second,['secret','remove'],{expectedRevision:reopened.revision,serviceKey:'openai'});assert.equal(removed.code,0);assert.deepEqual(testAgentExecution(removed.body.data).secret,{configured:false,storage:'none'});await stop();
+ const third=await start(),afterRemoval=await get(third);assert.equal(afterRemoval.revision,removed.body.data.revision);assert.deepEqual(testAgentExecution(afterRemoval).secret,{configured:false,storage:'none'});
  const savedAgain=await save(third,afterRemoval);await stop();
  const beforeUnavailable=await readFile(path.join(directory,'settings.json')),fenceBefore=await readFile(path.join(directory,'headless-dek-web-v1.json'));
  assert.deepEqual(await call('delete'),{ok:true,value:true});assert.deepEqual(await call('present'),{ok:true,value:false});
- const fourth=await start(),unavailable=await get(fourth);assert.equal(unavailable.revision,savedAgain.revision);assert.deepEqual(unavailable.secret,{configured:true,storage:'persistent'});assert.equal(unavailable.storage.persistentAvailable,false);assert.equal(unavailable.storage.reasonCode,'OS_SECRET_STORE_UNAVAILABLE');
- const refused=await cli(fourth,['secret','set'],{expectedRevision:unavailable.revision,configuration:unavailable.configuration},synthetic);assert.equal(refused.code,3);assert.equal(refused.body.error.code,'AGENT_SETTINGS_STORAGE_UNAVAILABLE');await stop();
+ const fourth=await start(),unavailable=await get(fourth);assert.equal(unavailable.revision,savedAgain.revision);assert.deepEqual(testAgentExecution(unavailable).secret,{configured:true,storage:'persistent'});assert.equal(unavailable.storage.persistentAvailable,false);assert.equal(unavailable.storage.reasonCode,'OS_SECRET_STORE_UNAVAILABLE');
+ const refused=await cli(fourth,['secret','set'],{expectedRevision:unavailable.revision,serviceKey:'openai'},synthetic);assert.equal(refused.code,3);assert.equal(refused.body.error.code,'AGENT_SETTINGS_STORAGE_UNAVAILABLE');await stop();
  assert.deepEqual(await call('read'),{ok:false});assert.deepEqual(await call('present'),{ok:true,value:false});
  assert.deepEqual(await readFile(path.join(directory,'settings.json')),beforeUnavailable);assert.deepEqual(await readFile(path.join(directory,'headless-dek-web-v1.json')),fenceBefore);
  const sourceHashes: Record<string, string>={};

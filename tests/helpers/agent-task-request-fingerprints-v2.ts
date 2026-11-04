@@ -1,3 +1,4 @@
+import {putTestAgentConfiguration,testAgentExecution} from './agent-settings-fixture.ts';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
 import {mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
@@ -193,7 +194,7 @@ async function fixture(protocol: AgentProtocol, official = false, harness: TaskR
   const assertNoSessionSecret = (value: string): void => {
     assert.ok(sessionSecret === null || !value.includes(sessionSecret), 'Session credentials must not enter request artifacts');
   };
-  await settings.put({expectedRevision: 0, configuration, secret: sessionSecret === null ? {action: 'remove'} : {
+  await putTestAgentConfiguration(settings,{expectedRevision: 0, configuration, secret: sessionSecret === null ? {action: 'remove'} : {
     action: 'replace', storage: 'session', value: sessionSecret,
   }});
   const authorizations = ports?.createAuthorizations(settings) ?? createTestAuthorizations(() => store, settings);
@@ -229,7 +230,7 @@ async function fixture(protocol: AgentProtocol, official = false, harness: TaskR
     restart() {runtime.close(); runtime = createRuntime(); runtimes.push(runtime);},
     setScript(value: Script) {script = value;},
     async send(text = 'Inspect this project.', options: Record<string, unknown> = {}) {
-      return runtime.send(projectId, {requestId: randomUUID(), expectedSettingsRevision: (await settings.get()).revision, text, ...options});
+      return runtime.send(projectId, {requestId: randomUUID(), expectedSettingsRevision: testAgentExecution(await settings.get()).revision, text, ...options});
     },
     async settle(runId: string) {await runtime.drain(); return runtime.get(projectId, runId);},
     action(snapshot: AgentTaskSnapshot, action: string, extra: Record<string, unknown> = {}) {

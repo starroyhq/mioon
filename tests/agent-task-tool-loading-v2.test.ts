@@ -1,3 +1,4 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -47,7 +48,7 @@ async function fixture(t:TestContext,protocol:AgentProtocol='responses'){
  const project=object(await services.call('project.create',{name:'Tool loading test'})),projectId=String(project.id);
  const shot=object(await services.call('shot.create',{projectId,title:'Original',prompt:'Keep this until actually executed.'}));
  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
- await settings.put({expectedRevision:0,configuration:{presetId:'ollama',platformId:'local',protocol,model:'qwen3:8b',baseUrl:`http://127.0.0.1:11434${protocol==='anthropic_messages'?'':'/v1'}`},secret:{action:'remove'}});
+ await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:{presetId:'ollama',platformId:'local',protocol,model:'qwen3:8b',baseUrl:`http://127.0.0.1:11434${protocol==='anthropic_messages'?'':'/v1'}`},secret:{action:'remove'}});
  const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
  const base=createAgentTaskTools({store,services}),prepared:string[]=[],executed:string[]=[],requests:TaskModelRequest[]=[];
  let script:Script=async function*(){yield {type:'done',output:output(protocol)};},beforeExecute:((prepared:PreparedAgentTaskTool)=>void)|undefined;
@@ -57,17 +58,17 @@ async function fixture(t:TestContext,protocol:AgentProtocol='responses'){
  t.after(async()=>{runtime.close();base.dispose();await settings.close();store.close();rmSync(root,{recursive:true,force:true});});
  return {store,services,projectId,shot,settings,tools,prepared,executed,requests,get runtime(){return runtime;},
   script(value:Script){script=value;},beforeExecute(value:(prepared:PreparedAgentTaskTool)=>void){beforeExecute=value;},
-  async send(extra:Record<string,unknown>={}){return runtime.send(projectId,{requestId:randomUUID(),text:'Run the synthetic tool plan.',expectedSettingsRevision:(await settings.get()).revision,...extra});},
+  async send(extra:Record<string,unknown>={}){return runtime.send(projectId,{requestId:randomUUID(),text:'Run the synthetic tool plan.',expectedSettingsRevision:testAgentExecution(await settings.get()).revision,...extra});},
   async sendLegacy(){
-   const saved=await settings.get(),context:AgentTaskJson[]=[{role:'user',content:'Continue the frozen group-loader intent.'}],body=legacyLoaderRequest(saved.configuration,context,selectTaskModelTools(base.list()));
-   const created=runtime.journal.create({projectId,requestId:randomUUID(),text:'Continue the frozen group-loader intent.',configuration:{...saved.configuration},settingsRevision:saved.revision,context});
+   const saved=await settings.get(),context:AgentTaskJson[]=[{role:'user',content:'Continue the frozen group-loader intent.'}],body=legacyLoaderRequest(testAgentExecution(saved).configuration,context,selectTaskModelTools(base.list()));
+   const created=runtime.journal.create({projectId,requestId:randomUUID(),text:'Continue the frozen group-loader intent.',configuration:{...testAgentExecution(saved).configuration},settingsRevision:testAgentExecution(saved).revision,settingsBinding:testAgentExecution(saved).binding,context});
    runtime.journal.beginModelStep(created.run.id,{request:{body,history:context},data:{baseline:runtime.journal.revisionSnapshot(projectId).map(({kind,id,revision})=>({kind,id,revision}))}},[]);
    runtime.close();runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318});
    return runtime.action(projectId,created.run.id,{requestId:randomUUID(),expectedRevision:runtime.get(projectId,created.run.id).run.revision,action:'resume'});
   },
   async sendFrozenNames(names:string[]){
    const saved=await settings.get(),context:AgentTaskJson[]=[{role:'user',content:'Continue the frozen name-loader intent.'}];
-   const body=object(JSON.parse(buildTaskModelRequest(saved.configuration,context,selectTaskModelTools(base.list()),4318)));
+   const body=object(JSON.parse(buildTaskModelRequest(testAgentExecution(saved).configuration,context,selectTaskModelTools(base.list()),4318)));
    assert.ok(Array.isArray(body.tools));
    for(const entry of body.tools){
     const wire=object(entry),definition=protocol==='chat_completions'?object(wire.function):wire;
@@ -75,7 +76,7 @@ async function fixture(t:TestContext,protocol:AgentProtocol='responses'){
     const schema=object(definition[protocol==='anthropic_messages'?'input_schema':'parameters']),selection=object(object(schema.properties).names);
     object(selection.items).enum=names;selection.maxItems=names.length;
    }
-   const original=JSON.stringify(body),created=runtime.journal.create({projectId,requestId:randomUUID(),text:'Continue the frozen name-loader intent.',configuration:{...saved.configuration},settingsRevision:saved.revision,context});
+   const original=JSON.stringify(body),created=runtime.journal.create({projectId,requestId:randomUUID(),text:'Continue the frozen name-loader intent.',configuration:{...testAgentExecution(saved).configuration},settingsRevision:testAgentExecution(saved).revision,settingsBinding:testAgentExecution(saved).binding,context});
    runtime.journal.beginModelStep(created.run.id,{request:{body:original,history:context},data:{baseline:runtime.journal.revisionSnapshot(projectId).map(({kind,id,revision})=>({kind,id,revision}))}},[]);
    runtime.close();runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318});
    const sent=await runtime.action(projectId,created.run.id,{requestId:randomUUID(),expectedRevision:runtime.get(projectId,created.run.id).run.revision,action:'resume'});
@@ -124,7 +125,7 @@ for(const protocol of protocols)test(`${protocol}: a note with a stale load rece
  assert.deepEqual(done.steps.find(step=>step.id===stale.id)?.result,stale.result);
  // A store holds one project, so another project never shares this runtime;
  // the runtime that read the stale receipt still runs later unrelated work.
- const next=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'Continue unrelated work.',expectedSettingsRevision:(await f.settings.get()).revision});
+ const next=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'Continue unrelated work.',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision});
  await f.runtime.drain();assert.equal(f.runtime.get(f.projectId,next.run.id).run.status,'completed');
 });
 
@@ -195,8 +196,8 @@ for(const outcome of ['rejected','unknown'] as const)test(`${outcome} load evide
 
 for(const protocol of protocols)test(`${protocol}: a legacy full-catalog unsent intent keeps its original body and may execute its disclosed edit`,async t=>{
  const f=await fixture(t,protocol),settings=await f.settings.get(),context:AgentTaskJson[]=[{role:'user',content:'Legacy full-catalog request.'}];
- const original=buildTaskModelRequest(settings.configuration,context,f.tools.list().filter(tool=>tool.name!==AGENT_TASK_TOOLS_LOAD_NAME),4318);
- const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Legacy full-catalog request.',configuration:{...settings.configuration},settingsRevision:settings.revision,context});
+ const original=buildTaskModelRequest(testAgentExecution(settings).configuration,context,f.tools.list().filter(tool=>tool.name!==AGENT_TASK_TOOLS_LOAD_NAME),4318);
+ const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Legacy full-catalog request.',configuration:{...testAgentExecution(settings).configuration},settingsRevision:testAgentExecution(settings).revision,settingsBinding:testAgentExecution(settings).binding,context});
  const model=f.runtime.journal.beginModelStep(created.run.id,{request:{body:original,history:context},data:{baseline:f.runtime.journal.revisionSnapshot(f.projectId).map(({kind,id,revision})=>({kind,id,revision}))}},[]);
  f.script(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_shot_update',{shotId:String(f.shot.id),expectedRevision:1,patch:{title:'Legacy disclosed edit'}})]:[])};});
  f.restart();await f.action(f.runtime.get(f.projectId,created.run.id),'resume');const done=await f.settle(created.run.id);
@@ -207,8 +208,8 @@ for(const protocol of protocols)test(`${protocol}: a legacy full-catalog unsent 
 
 for(const protocol of protocols)test(`${protocol}: a real zero-tool legacy intent rejects a known hidden call without preparing it`,async t=>{
  const f=await fixture(t,protocol),settings=await f.settings.get(),context:AgentTaskJson[]=[{role:'user',content:'Legacy text-only request.'}];
- const original=buildTaskModelRequest(settings.configuration,context,[],4318);assert.deepEqual(sourceTaskModelToolNames(protocol,{body:original}),[]);
- const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Legacy text-only request.',configuration:{...settings.configuration},settingsRevision:settings.revision,context});
+ const original=buildTaskModelRequest(testAgentExecution(settings).configuration,context,[],4318);assert.deepEqual(sourceTaskModelToolNames(protocol,{body:original}),[]);
+ const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Legacy text-only request.',configuration:{...testAgentExecution(settings).configuration},settingsRevision:testAgentExecution(settings).revision,settingsBinding:testAgentExecution(settings).binding,context});
  const model=f.runtime.journal.beginModelStep(created.run.id,{request:{body:original,history:context},data:{baseline:[]}},[]);
  f.script(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_shot_update',{shotId:String(f.shot.id),expectedRevision:1,patch:{title:'Never prepared'}})]:[])};});
  f.restart();await f.action(f.runtime.get(f.projectId,created.run.id),'resume');const done=await f.settle(created.run.id);
@@ -258,7 +259,7 @@ for(const protocol of protocols)for(const mode of ['names','groups'] as const)te
 });
 
 for(const protocol of protocols)test(`${protocol}: frozen loader enums constrain later names and schema modes independently of metadata`,async t=>{
- const f=await fixture(t,protocol),configuration=(await f.settings.get()).configuration,history:AgentTaskJson[]=[{role:'user',content:'Frozen loader limits.'}];
+ const f=await fixture(t,protocol),configuration=testAgentExecution(await f.settings.get()).configuration,history:AgentTaskJson[]=[{role:'user',content:'Frozen loader limits.'}];
  const original=object(JSON.parse(buildTaskModelRequest(configuration,history,selectTaskModelTools(f.tools.list()),4318))),entries=original.tools;assert.ok(Array.isArray(entries));
  const wire=entries.map(object).find(entry=>object(protocol==='chat_completions'?entry.function:entry).name===AGENT_TASK_TOOLS_LOAD_NAME);assert.ok(wire);
  const definition=protocol==='chat_completions'?object(wire.function):wire,key=protocol==='anthropic_messages'?'input_schema':'parameters',schema=object(definition[key]),selection=object(object(schema.properties).names);

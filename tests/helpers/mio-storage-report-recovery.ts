@@ -1,3 +1,4 @@
+import {testAgentExecution} from './agent-settings-fixture.ts';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
@@ -83,10 +84,10 @@ export async function collectMioQueueBound() {
   });
   try {
     const settings = await fixture.settings.get();
-    await fixture.runtime.send(fixture.store.projectId, {requestId: randomUUID(), expectedSettingsRevision: settings.revision, text: 'Hold one synthetic model request.'});
+    await fixture.runtime.send(fixture.store.projectId, {requestId: randomUUID(), expectedSettingsRevision: testAgentExecution(settings).revision, text: 'Hold one synthetic model request.'});
     await ready;
     const outcomes = await Promise.all(Array.from({length: 8}, async () => {
-      try {await fixture.runtime.send(fixture.store.projectId, {requestId: randomUUID(), expectedSettingsRevision: settings.revision, text: 'Concurrent queue probe.'}); return 'accepted';}
+      try {await fixture.runtime.send(fixture.store.projectId, {requestId: randomUUID(), expectedSettingsRevision: testAgentExecution(settings).revision, text: 'Concurrent queue probe.'}); return 'accepted';}
       catch (error) {assert.ok(error !== null && typeof error === 'object' && 'code' in error); return String(error.code);}
     }));
     const pendingRequests = Number(fixture.store.db.prepare("SELECT count(*) AS n FROM mio_requests WHERE state IN ('intent','dispatch_started')").get()!.n);

@@ -11,29 +11,27 @@ import type {AgentTaskSnapshot} from '@mioon/contracts/agent-tasks-v2';
 import {mioRunUsageSchema} from '@mioon/contracts/mio-run-usage';
 import {mioStorageSnapshotSchema} from '@mioon/contracts/mio-storage';
 import {agentTaskChecksSchema,agentTaskChecksInputSchema} from '@mioon/contracts/agent-tasks-v2';
-import {agentAuthorizationSnapshotSchema,AGENT_PROTOCOLS} from '@mioon/contracts';
+import {agentAuthorizationSnapshotSchema} from '@mioon/contracts';
 import {projectApiPath} from '../../contracts/src/project-file.ts';
+import {agentConfigurationSchema,agentSettingsSnapshotSchema,agentSettingsMetadataSchema,agentSettingsUpdateSchema,agentServiceInput,agentServiceKeySchema,AGENT_CONNECTION_LIMITS} from '../../contracts/src/agent-connection-settings.ts';
+import type {AgentSettingsSnapshot,AgentSecretAction} from '../../contracts/src/agent-connection-settings.ts';
+export {agentConfigurationSchema,agentSettingsSnapshotSchema};
+export type {AgentSettingsSnapshot};
 
 const id=z.string().uuid(),revision=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),requestId=z.string().min(8).max(200);
 const text=z.string().max(4096),code=z.string().regex(/^[A-Z][A-Z0-9_]{1,90}$/u);
-type AgentProtocol=keyof typeof AGENT_PROTOCOLS;
-const agentProtocolSchema=z.enum(Object.keys(AGENT_PROTOCOLS) as [AgentProtocol,...AgentProtocol[]]);
-export const agentConfigurationSchema=z.object({presetId:z.string().min(1).max(100),platformId:z.string().min(1).max(100),baseUrl:z.string().url().max(2048).refine(value=>{try{const u=new URL(value);return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password&&!u.search&&!u.hash;}catch{return false;}}),model:z.string().min(1).max(200),protocol:agentProtocolSchema}).strict();
-const presetProtocols={defaultProtocol:agentProtocolSchema,availableProtocols:z.array(agentProtocolSchema).max(agentProtocolSchema.options.length),supportedModelHints:z.record(z.array(text).max(20)).optional(),protocolNotes:z.record(text).optional()};
-const platformSchema=z.object({id:text,label:text,baseUrl:text,model:text,...presetProtocols,notes:text.optional(),baseUrlTemplate:text.optional(),sources:z.array(z.object({label:text,url:text})).max(20)});
-export const agentSettingsSnapshotSchema=z.object({revision,configuration:agentConfigurationSchema,secret:z.object({configured:z.boolean(),storage:z.enum(['none','session','persistent'])}),storage:z.object({persistentAvailable:z.boolean(),sessionScope:z.enum(['app','server']),reasonCode:code.nullable()}),presets:z.array(z.object({id:text,label:text,description:text,...presetProtocols,platforms:z.array(platformSchema).max(20)})).max(30),scope:z.literal('settings_only'),verification:z.literal('not_tested')}).refine(value=>value.secret.configured===(value.secret.storage!=='none'));
-export type AgentSettingsSnapshot=z.infer<typeof agentSettingsSnapshotSchema>;
 export const agentDiagnosticSchema=agentTaskDiagnosticSchema;
 const sendSchema=agentTaskSendSchema;
 const location=z.object({projectId:id,runId:id}).strict();
-const settingInput=z.object({expectedRevision:revision,configuration:agentConfigurationSchema}).strict();
+const settingInput=agentSettingsMetadataSchema;
+const settingSecretInput=z.object({expectedRevision:revision,serviceKey:agentServiceKeySchema}).strict();
 const policyInput=agentTaskPolicySchema.omit({revision:true}).extend({requestId,expectedRevision:revision,acknowledgePaid:z.boolean().optional()}).strict();
 const conversationPolicyLocation=z.object({projectId:id,conversationId:id}).strict();
 const conversationPolicyInput=agentTaskConversationPolicySetSchema.extend({projectId:id,conversationId:id}).strict();
 const uploadInput=z.object({projectId:id,requestId,name:z.string().min(1).max(200),mimeType:z.string().min(1).max(100),dataBase64:z.string().max(40*1024*1024)}).strict();
 const watchInput=location.extend({after:revision.optional()});
 export const AGENT_COMMAND_SCHEMAS=Object.freeze({
- 'agent.settings.get':z.object({}).strict(),'agent.settings.set':settingInput,'agent.settings.secret.set':settingInput,'agent.settings.secret.remove':settingInput,
+ 'agent.settings.get':z.object({}).strict(),'agent.settings.set':settingInput,'agent.settings.secret.set':settingSecretInput,'agent.settings.secret.remove':settingSecretInput,
  'agent.doctor':z.object({projectId:id.optional()}).strict(),'agent.diagnose':sendSchema.extend({diagnostic:agentDiagnosticSchema}),'agent.diagnose.latest':z.object({}).strict(),
  'agent.policy.get':z.object({}).strict(),'agent.policy.set':policyInput,'agent.policy.lookup':z.object({requestId}).strict(),
  'agent.conversation.policy.get':conversationPolicyLocation,'agent.conversation.policy.set':conversationPolicyInput,
@@ -81,23 +79,23 @@ function outcome(snapshot:AgentTaskSnapshot):AgentWatchResult['outcome']|null {
  return null;
 }
 function timeout(value:number):number{if(!Number.isSafeInteger(value)||value<1||value>86400000)return invalid();return value;}
-async function responseJson(response:Response):Promise<unknown>{
+async function responseJson(response:Response,maxBytes=16*1024*1024):Promise<unknown>{
  if(!response.body)throw new ClientError('BACKEND_PROTOCOL_ERROR','Empty Agent response.');
  const reader=response.body.getReader(),chunks:Uint8Array[]=[];let size=0;
- try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>16*1024*1024)throw new ClientError('BACKEND_PROTOCOL_ERROR','Agent response exceeds the safe size limit.');chunks.push(value);}}finally{await reader.cancel().catch(()=>{});}
+ try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>maxBytes)throw new ClientError('BACKEND_PROTOCOL_ERROR','Agent response exceeds the safe size limit.');chunks.push(value);}}finally{await reader.cancel().catch(()=>{});}
  try{return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;}catch{throw new ClientError('BACKEND_PROTOCOL_ERROR','Unreadable Agent response.');}
 }
 /** A failed write is never retried. Recovery metadata names only a GET lookup. */
 export function createAgentClient({env=process.env,fetchImpl=fetch,requestTimeoutMs=30000}:ClientOptions={}){
- async function request(route:string,{method='GET',body,signal,timeoutMs=requestTimeoutMs,recovery,secret,validate,connection}:{method?:'GET'|'POST'|'PUT';body?:unknown;recovery?:Recovery;secret?:string;validate?:(value:unknown)=>unknown;connection?:LocalConnection}&AgentRequestOptions={}):Promise<unknown>{
+ async function request(route:string,{method='GET',body,signal,timeoutMs=requestTimeoutMs,recovery,secrets=[],validate,connection,responseLimit}:{method?:'GET'|'POST'|'PUT';body?:unknown;recovery?:Recovery;secrets?:readonly string[];validate?:(value:unknown)=>unknown;connection?:LocalConnection;responseLimit?:number}&AgentRequestOptions={}):Promise<unknown>{
   timeout(timeoutMs);const checkpoint=()=>{if(signal?.aborted)throw new ClientError('INTERRUPTED','Stopped locally before dispatch.',{exitCode:EXIT_CODES.interrupted});};checkpoint();const {base,token}=connection??await resolveConnection(env);checkpoint();
   const timer=AbortSignal.timeout(timeoutMs),combined=signal?AbortSignal.any([signal,timer]):timer;
   const details=recovery?{...recovery,outcomeUnknown:true,recovery:'Query the original operation with GET. Do not resubmit or invent another request ID.'}:{};
   try{
    const response=await fetchImpl(base+route,{method,headers:{authorization:`Bearer ${token}`,...(body===undefined?{}:{'content-type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:combined,redirect:'error'});
-   const value=await responseJson(response);
+   const value=await responseJson(response,responseLimit);
    if(!object(value)||typeof value.ok!=='boolean'||value.ok&&(!response.ok||!Object.hasOwn(value,'data'))||!value.ok&&response.ok)throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid Agent response.');
-   if(!value.ok||!response.ok){const raw=object(value.error)?value.error.code:undefined;const safeCode=typeof raw==='string'&&/^(?:AGENT_TASK_|AGENT_SETTINGS_|RESTORE_|WORKSPACE_)[A-Z0-9_]{1,80}$|^(?:UNAUTHORIZED|ORIGIN_REJECTED|METHOD_NOT_ALLOWED)$/u.test(raw)?String(safeValue(raw,[token,secret??''])):'BACKEND_PROTOCOL_ERROR';throw new ClientError(safeCode,'The local backend rejected the Agent operation.',{status:response.status,details:recovery?{...recovery,recovery:'Query the original operation before any further action.'}:{}});}
+   if(!value.ok||!response.ok){const raw=object(value.error)?value.error.code:undefined;const safeCode=typeof raw==='string'&&/^(?:AGENT_TASK_|AGENT_SETTINGS_|RESTORE_|WORKSPACE_)[A-Z0-9_]{1,80}$|^(?:UNAUTHORIZED|ORIGIN_REJECTED|METHOD_NOT_ALLOWED)$/u.test(raw)?String(safeValue(raw,[token,...secrets])):'BACKEND_PROTOCOL_ERROR';throw new ClientError(safeCode,'The local backend rejected the Agent operation.',{status:response.status,details:recovery?{...recovery,recovery:'Query the original operation before any further action.'}:{}});}
    validate?.(value.data);return value.data;
   }catch(error){
    if(signal?.aborted)throw new ClientError('INTERRUPTED','Stopped locally; the Agent task was not cancelled.',{details,exitCode:EXIT_CODES.interrupted});
@@ -110,13 +108,13 @@ export function createAgentClient({env=process.env,fetchImpl=fetch,requestTimeou
  }
  function parsed<T>(schema:z.ZodType<T>,value:unknown):T{const result=schema.safeParse(value);if(!result.success)throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid Agent response.');return result.data;}
  const client={
-  async settingsGet(options:AgentRequestOptions={}){return parsed(agentSettingsSnapshotSchema,await request('/api/agent/settings',options));},
-  async settingsPut(value:unknown,secret:{action:'keep'|'remove'}|{action:'replace';storage:'session'|'persistent';value:string}={action:'keep'},options:AgentRequestOptions={}){
+  async settingsGet(options:AgentRequestOptions={}){return parsed(agentSettingsSnapshotSchema,await request('/api/agent/settings',{...options,responseLimit:AGENT_CONNECTION_LIMITS.transportBytes}));},
+  async settingsPut(value:unknown,secretActions:readonly AgentSecretAction[]=[],options:AgentRequestOptions={}){
    const input=parseAgentInput(settingInput,value);
-   const secretSchema=z.union([z.object({action:z.enum(['keep','remove'])}).strict(),z.object({action:z.literal('replace'),storage:z.enum(['session','persistent']),value:z.string().min(1).refine(v=>Buffer.byteLength(v)<=8192&&!/[\u0000-\u001f\u007f-\u009f]/u.test(v)&&Boolean(v.trim()))}).strict()]);
-   const chosen=parseAgentInput(secretSchema,secret);
+   const update=parseAgentInput(agentSettingsUpdateSchema,{...input,secretActions});
+   const secrets=update.secretActions.flatMap(action=>action.action==='replace'?[action.value]:[]);
    const connection=await resolveConnection(env);
-   try{return parsed(agentSettingsSnapshotSchema,await request('/api/agent/settings',{...options,connection,method:'PUT',body:{...input,secret:chosen},secret:'value'in chosen?chosen.value:undefined,validate:value=>parsed(agentSettingsSnapshotSchema,value),recovery:{operation:'settings.put',lookup:'agent settings get'}}));}
+   try{return parsed(agentSettingsSnapshotSchema,await request('/api/agent/settings',{...options,connection,method:'PUT',body:update,secrets,responseLimit:AGENT_CONNECTION_LIMITS.transportBytes,validate:value=>parsed(agentSettingsSnapshotSchema,value),recovery:{operation:'settings.put',lookup:'agent settings get'}}));}
    catch(error){
     if(!(error instanceof ClientError)||!object(error.details)||error.details.outcomeUnknown!==true)throw error;
     const recoveryDetails=error.details;
@@ -126,8 +124,8 @@ export function createAgentClient({env=process.env,fetchImpl=fetch,requestTimeou
     let observation:Record<string,unknown>={state:'not_attempted',reason:'cancelled'};
     if(!options.signal?.aborted){
      try{
-      const current=parsed(agentSettingsSnapshotSchema,await request('/api/agent/settings',{connection,signal:options.signal,timeoutMs:Math.min(options.timeoutMs??requestTimeoutMs,5000)}));
-      observation={state:'read',revision:current.revision,configurationMatchesRequested:JSON.stringify(current.configuration)===JSON.stringify(input.configuration),keyConfigured:current.secret.configured,keyStorage:current.secret.storage,provesWriteSucceeded:false};
+      const current=parsed(agentSettingsSnapshotSchema,await request('/api/agent/settings',{connection,signal:options.signal,timeoutMs:Math.min(options.timeoutMs??requestTimeoutMs,5000),responseLimit:AGENT_CONNECTION_LIMITS.transportBytes}));
+      observation={state:'read',revision:current.revision,servicesMatchRequested:JSON.stringify(current.services.map(agentServiceInput))===JSON.stringify(input.services),mioSelectionMatchesRequested:JSON.stringify(current.mioSelection)===JSON.stringify(input.mioSelection),services:current.services.map(entry=>({serviceKey:entry.serviceKey,revision:entry.revision,keyConfigured:entry.secret.configured,keyStorage:entry.secret.storage})),provesWriteSucceeded:false};
      }catch(readError){
       const readCode=readError instanceof ClientError&&['BACKEND_UNAVAILABLE','BACKEND_PROTOCOL_ERROR','TIMEOUT','INTERRUPTED'].includes(readError.code)?readError.code:'BACKEND_UNAVAILABLE';
       observation={state:'unavailable',code:readCode,provesWriteSucceeded:false};

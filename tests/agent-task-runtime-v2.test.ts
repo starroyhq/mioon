@@ -1,3 +1,6 @@
+import {agentServiceInput} from '../packages/contracts/src/agent-connection-settings.ts';
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
+import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 
 import {beginFixtureModelStep,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
@@ -71,7 +74,7 @@ async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='re
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-runtime-v2-')),store=openStore(root),services=createServices(store,providers);
  const project=object(await services.call('project.create',{name:'Runtime project'})),projectId=String(project.id);
  const first=shot(await services.call('shot.create',{projectId,title:'First',prompt:'saved first'})),other=shot(await services.call('shot.create',{projectId,title:'Other',prompt:'saved other'}));
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await settings.put({expectedRevision:0,configuration:{...initial.configuration,protocol},secret:{action:'replace',storage:'session',value:'SYNTHETIC_LOCAL_TEST_ONLY'}});
+ const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:initial.revision,configuration:{...DEFAULT_AGENT_CONFIGURATION,protocol},secret:{action:'replace',storage:'session',value:'SYNTHETIC_LOCAL_TEST_ONLY'}});
  const bridge=desktopBridge?desktopSettingsBridge(settings,4318):null,runtimeSettings=bridge?.settings??settings;
  const authorizations=createTestAuthorizations(()=>store,settings);await authorizeTestScope(authorizations,'project_agent');
  const requests:TaskModelRequest[]=[],scriptRequestIndexes:number[]=[],effects=new Map<string,string>(),baseTools=createAgentTaskTools({store,services});let beforeTool:((prepared:PreparedAgentTaskTool)=>Promise<void>)|undefined,script:Script=async function*(){yield {type:'done',output:output(protocol)};},loadGroups:readonly AgentTaskLoadableToolGroupId[]=[],loadingRequests=0;
@@ -92,7 +95,7 @@ async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='re
   scriptRequest(index:number){const position=scriptRequestIndexes[index-1];assert.notEqual(position,undefined);return requests[position!]!;},
   setScript(value:Script,{loadGroups:groups=[]}:{loadGroups?:readonly AgentTaskLoadableToolGroupId[]}={}){script=value;loadGroups=groups;},beforeTool(value:(prepared:PreparedAgentTaskTool)=>Promise<void>){beforeTool=value;},
   async revoke(){const current=await authorizations.list(),grant=current.authorizations.find(item=>item.scope==='project_agent');assert.ok(grant);await authorizations.revoke({requestId:randomUUID(),expectedRevision:current.revision,authorizationId:grant.id});},
-  async send(text='执行测试',requestId:string=randomUUID()){return runtime.send(projectId,{requestId,text,expectedSettingsRevision:(await settings.get()).revision});},
+  async send(text='执行测试',requestId:string=randomUUID()){return runtime.send(projectId,{requestId,text,expectedSettingsRevision:testAgentExecution(await settings.get()).revision});},
   async settle(runId:string){await runtime.drain();return runtime.get(projectId,runId);},
   async wait(runId:string,statuses:AgentTaskStatus[]){const deadline=Date.now()+10000;for(;;){const snapshot=runtime.get(projectId,runId);if(statuses.includes(snapshot.run.status))return snapshot;if(Date.now()>deadline)throw Error(`Unexpected task state ${JSON.stringify(snapshot.run)}`);await delay(5);}},
   action(snapshot:AgentTaskSnapshot,action:AgentTaskControlAction,extra:Record<string,unknown>={}){return runtime.action(projectId,snapshot.run.id,{requestId:randomUUID(),expectedRevision:snapshot.run.revision,action,...extra});},
@@ -125,7 +128,7 @@ function m4PauseFromApproval(f:RuntimeFixture,runId:string,reason:'conflict'|'ed
 async function m4ConflictPause(f:RuntimeFixture,{reason,target,calls,script,protocol='responses',locale,text='执行测试',conflict,ownerId,loadGroups=['canvas']}:{reason:'conflict'|'editing';target:{kind:string;id:string};calls:AgentTaskToolCall[];script?:(index:number)=>AgentTaskToolCall[];protocol?:'chat_completions'|'responses';locale?:typeof AGENT_TASK_LOCALES[number];text?:string;conflict?:()=>Promise<unknown>;ownerId?:string;loadGroups?:readonly AgentTaskLoadableToolGroupId[]}){
  const modes=f.runtime.policy().modes;f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...modes,local_reversible:'confirm'}});
  f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?calls:script?.(index)??[])};},{loadGroups});
- const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text,...(locale?{locale}:{}),expectedSettingsRevision:(await f.settings.get()).revision});
+ const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text,...(locale?{locale}:{}),expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision});
  const waiting=await f.settle(sent.run.id);assert.equal(waiting.run.status,'awaiting_approval');const stepId=waiting.steps.find(item=>item.status==='awaiting_approval')?.id;assert.ok(stepId);
  f.runtime.journal.updatePolicy({...f.runtime.policy(),modes});
  let owner:string|undefined;
@@ -160,7 +163,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
   for(const locale of AGENT_TASK_LOCALES){
     const f=await fixture(t,protocol);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:2});
     f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_project_inspect')]:[])};});
-    const input={requestId:randomUUID(),text:'Use French; Mioon host response language v1: en.',expectedSettingsRevision:(await f.settings.get()).revision,locale};
+    const input={requestId:randomUUID(),text:'Use French; Mioon host response language v1: en.',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision,locale};
     const sent=await f.runtime.send(f.projectId,input),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'budget');
     assert.equal(taskResponseLocale(f.runtime.journal.run(sent.run.id).context),locale);assert.equal(sent.run.context,undefined);
     f.restart();const interrupted=f.runtime.get(f.projectId,sent.run.id);assert.equal(interrupted.run.status,'interrupted');
@@ -180,7 +183,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
   for(const locale of AGENT_TASK_LOCALES){
     const f=await fixture(t,protocol),selected=object(await f.tools.stageImport({projectId:f.projectId,requestId:randomUUID(),name:'Selected source.png',mimeType:'image/png',dataBase64:png().toString('base64')})),handle=String(selected.id);
     f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_project_inspect')]:[])};});
-    const input={requestId:randomUUID(),text:'Inspect the selected attachment metadata only.',expectedSettingsRevision:(await f.settings.get()).revision,locale,uploads:[handle]},content=input.text+'\n'+expected[locale]+JSON.stringify([{handle,name:'Selected source.png',mimeType:'image/png'}]);
+    const input={requestId:randomUUID(),text:'Inspect the selected attachment metadata only.',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision,locale,uploads:[handle]},content=input.text+'\n'+expected[locale]+JSON.stringify([{handle,name:'Selected source.png',mimeType:'image/png'}]);
     const sent=await f.runtime.send(f.projectId,input),done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,2);assert.deepEqual(f.runtime.journal.run(sent.run.id).context?.at(-1),{role:'user',content});assert.equal(sent.run.context,undefined);
     for(const request of f.requests){const body=object(JSON.parse(request.body)),history=body[protocol==='responses'?'input':'messages'];assert.ok(Array.isArray(history));assert.ok(history.some(item=>object(item).role==='user'&&object(item).content===content));}
     f.restart();assert.equal((await f.runtime.send(f.projectId,input)).run.id,sent.run.id);assert.equal(f.requests.length,2);assert.deepEqual(f.runtime.journal.run(sent.run.id).context?.at(-1),{role:'user',content});
@@ -206,38 +209,38 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
   f.restart();const stable=f.runtime.get(f.projectId,sent.run.id);assert.equal(stable.steps.find(step=>step.id===original.id)?.text,caption);assert.equal(f.requests.length,(2)+f.loadingRequests);assert.equal(f.effects.size,(1)+f.loadingEffects);
 });
 test('omitted locale and explicit Simplified Chinese replay the same run; invalid locale never creates a request',async t=>{
-  const f=await fixture(t),input={requestId:randomUUID(),text:'English user content does not choose the response language',expectedSettingsRevision:(await f.settings.get()).revision};
+  const f=await fixture(t),input={requestId:randomUUID(),text:'English user content does not choose the response language',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision};
   const sent=await f.runtime.send(f.projectId,input);await f.settle(sent.run.id);
   assert.equal((await f.runtime.send(f.projectId,{...input,locale:'zh-Hans'})).run.id,sent.run.id);
   for(const locale of [null,'','EN','zh-CN','fr',{},1])await assert.rejects(f.runtime.send(f.projectId,{...input,requestId:randomUUID(),locale}),{code:'AGENT_TASK_INVALID'});
   assert.equal(f.requests.length,1);assert.equal(f.runtime.journal.list(f.projectId).length,1);
 });
 test('a legacy locale receipt survives an old retained context without the host marker',async t=>{
-  const f=await fixture(t,'responses',new Map()),input={requestId:randomUUID(),text:'Legacy retained context',expectedSettingsRevision:(await f.settings.get()).revision};
+  const f=await fixture(t,'responses',new Map()),input={requestId:randomUUID(),text:'Legacy retained context',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision};
   // A real native v1 request can retain context without the later host marker.
-  const settings=await f.settings.get(),context:AgentTaskJson[]=[{role:'user',content:input.text}],created=f.runtime.journal.create({projectId:f.projectId,requestId:input.requestId,text:input.text,settingsRevision:settings.revision,configuration:settings.configuration as unknown as AgentTaskJson,context});
-  f.runtime.journal.beginModelStep(created.run.id,{request:{body:buildTaskModelRequest(settings.configuration,context,[],4318),history:context},data:{baseline:[]}},[]);
+  const settings=await f.settings.get(),context:AgentTaskJson[]=[{role:'user',content:input.text}],created=f.runtime.journal.create({projectId:f.projectId,requestId:input.requestId,text:input.text,settingsRevision:testAgentExecution(settings).revision,settingsBinding:testAgentExecution(settings).binding,configuration:testAgentExecution(settings).configuration as unknown as AgentTaskJson,context});
+  f.runtime.journal.beginModelStep(created.run.id,{request:{body:buildTaskModelRequest(testAgentExecution(settings).configuration,context,[],4318),history:context},data:{baseline:[]}},[]);
   f.restart();await f.action(f.runtime.get(f.projectId,created.run.id),'resume');const sent=await f.settle(created.run.id);
   f.restart();assert.equal((await f.runtime.send(f.projectId,input)).run.id,sent.run.id);assert.equal((await f.runtime.send(f.projectId,{...input,locale:'zh-Hans'})).run.id,sent.run.id);assert.equal(f.requests.length,1);
 });
 test('history byte trimming keeps the exact host language and final user message without inheriting an earlier locale',async t=>{
   const f=await fixture(t);f.setScript(async function*(){yield {type:'done',output:output('responses',[],'x'.repeat(50000))};});
-  let conversationId:string|undefined;for(let index=0;index<4;index++){const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'previous '+index+' '+('x'.repeat(28000)),expectedSettingsRevision:(await f.settings.get()).revision,locale:'en',...(conversationId?{conversationId}:{})});conversationId=sent.run.conversationId;await f.settle(sent.run.id);}
-  const text='現在の指示',sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text,expectedSettingsRevision:(await f.settings.get()).revision,locale:'ja',conversationId});await f.settle(sent.run.id);
+  let conversationId:string|undefined;for(let index=0;index<4;index++){const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'previous '+index+' '+('x'.repeat(28000)),expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision,locale:'en',...(conversationId?{conversationId}:{})});conversationId=sent.run.conversationId;await f.settle(sent.run.id);}
+  const text='現在の指示',sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text,expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision,locale:'ja',conversationId});await f.settle(sent.run.id);
   const context=f.runtime.journal.run(sent.run.id).context!;assert.deepEqual(context[0],taskResponseLanguageContext('ja'));assert.deepEqual(context.at(-1),{role:'user',content:text});assert.ok(Buffer.byteLength(JSON.stringify(taskBaseModelHistory(context)))<=TASK_MODEL_LIMITS.historyBytes);assert.ok(context.length<10);assert.equal(taskResponseLocale(context),'ja');
 });
 test('resuming a legacy model intent sends its original journaled body without rewriting language',async t=>{
   const f=await fixture(t),settings=await f.settings.get(),context=[{role:'user',content:'legacy request'}];
-  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'legacy request',configuration:{...settings.configuration},settingsRevision:settings.revision,context});
-  const body=object(JSON.parse(buildTaskModelRequest(settings.configuration,context,[],4318)));body.instructions='旧版固定中文指令';const original=JSON.stringify(body);
+  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'legacy request',configuration:{...testAgentExecution(settings).configuration},settingsRevision:testAgentExecution(settings).revision,settingsBinding:testAgentExecution(settings).binding,context});
+  const body=object(JSON.parse(buildTaskModelRequest(testAgentExecution(settings).configuration,context,[],4318)));body.instructions='旧版固定中文指令';const original=JSON.stringify(body);
   const step=f.runtime.journal.beginModelStep(created.run.id,{request:{body:original,history:context},data:{baseline:[]}},[]);
   f.restart();const interrupted=f.runtime.get(f.projectId,created.run.id);assert.equal(interrupted.run.status,'interrupted');assert.equal(interrupted.steps[0]!.status,'intent');
   await f.action(interrupted,'resume');const done=await f.settle(created.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,1);assert.equal(f.requests[0]!.body,original);assert.equal(object(f.runtime.journal.step(step.id).request).body,original);
 });
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: an unsent intent bypasses reassembly even when retained base context cannot fit`,async t=>{
   const f=await fixture(t,protocol),settings=await f.settings.get(),history=[{role:'user',content:'Retained request before the assembler upgrade.'}];
-  const original=buildTaskModelRequest(settings.configuration,history,[],4318),context=[taskResponseLanguageContext('en'),{role:'user',content:'x'.repeat(TASK_MODEL_LIMITS.historyBytes+1)}];
-  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Retained request before the assembler upgrade.',configuration:{...settings.configuration},settingsRevision:settings.revision,context});
+  const original=buildTaskModelRequest(testAgentExecution(settings).configuration,history,[],4318),context=[taskResponseLanguageContext('en'),{role:'user',content:'x'.repeat(TASK_MODEL_LIMITS.historyBytes+1)}];
+  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Retained request before the assembler upgrade.',configuration:{...testAgentExecution(settings).configuration},settingsRevision:testAgentExecution(settings).revision,settingsBinding:testAgentExecution(settings).binding,context});
   const model=f.runtime.journal.beginModelStep(created.run.id,{request:{body:original,history},data:{baseline:[]}},[]),frozen=structuredClone(model.request);
   f.restart();await f.action(f.runtime.get(f.projectId,created.run.id),'resume');const done=await f.settle(created.run.id);
   assert.equal(done.run.status,'completed');assert.equal(f.requests.length,1);assert.equal(f.requests[0]!.body,original);
@@ -245,8 +248,8 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
   assert.equal(done.run.stepsUsed,1);assert.deepEqual(done.run.notes,[]);assert.equal(f.effects.size,0);
 });
 test('retained continuation is validated before a later historical model can execute its tool batch',async t=>{
- const f=await fixture(t,'responses',new Map()),settings=await f.settings.get(),context=[taskResponseLanguageContext('en'),{role:'user',content:'Resume recorded work.'}],body=buildTaskModelRequest(settings.configuration,context,f.tools.list(),4318);
- const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Resume recorded work.',configuration:{...settings.configuration},settingsRevision:settings.revision,context});
+ const f=await fixture(t,'responses',new Map()),settings=await f.settings.get(),context=[taskResponseLanguageContext('en'),{role:'user',content:'Resume recorded work.'}],body=buildTaskModelRequest(testAgentExecution(settings).configuration,context,f.tools.list(),4318);
+ const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Resume recorded work.',configuration:{...testAgentExecution(settings).configuration},settingsRevision:testAgentExecution(settings).revision,settingsBinding:testAgentExecution(settings).binding,context});
  const first=beginFixtureModelStep(f.runtime.journal,created.run.id);first.complete('Earlier observed output');
  f.runtime.journal.updateStep(created.run.id,first.step.id,{data:{baseline:[],noteContinuationRequested:true}});
  const edit=call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'Must not execute after invalid history'}}),second=beginFixtureModelStep(f.runtime.journal,created.run.id,[edit]);second.complete();
@@ -296,12 +299,12 @@ for(const protocol of ['chat_completions','responses'] as const){
  });
  test(`${protocol}: desktop broker pins snapshot, send and credential acquisition to the live backend port`,async t=>{
   const f=await fixture(t,protocol,new Map(),{desktopBridge:true});assert.ok(f.bridge);
-  const project=await f.runtime.snapshot(f.projectId);assert.equal(project.projectId,f.projectId);assert.equal(project.settings.secret.configured,true);assert.deepEqual(project.runs,[]);
+  const project=await f.runtime.snapshot(f.projectId);assert.equal(project.projectId,f.projectId);assert.equal(testAgentExecution(project.settings).secret.configured,true);assert.deepEqual(project.runs,[]);
   assert.ok(!JSON.stringify(project).includes('SYNTHETIC_LOCAL_TEST_ONLY'));
   const sent=await f.send('仅回复连接正常'),done=await f.settle(sent.run.id);
   assert.equal(done.run.status,'completed');assert.equal(done.steps.length,1);assert.equal(done.steps[0]?.kind,'model');assert.equal(done.steps[0]?.status,'completed');assert.equal(done.changes.length,0);assert.equal(f.effects.size,0);
   assert.equal(f.requests.length,1);assert.equal(f.requests[0]?.apiKey,'SYNTHETIC_LOCAL_TEST_ONLY');assert.equal(f.requests[0]?.selfPort,4318);
-  assert.deepEqual(f.bridge.requests,[{operation:'get',selfPort:4318},{operation:'get',selfPort:4318},{operation:'acquire',selfPort:4318}]);
+  assert.deepEqual(f.bridge.requests,[{operation:'get',selfPort:4318},{operation:'get',selfPort:4318},{operation:'get',selfPort:4318},{operation:'acquire',selfPort:4318}]);
  });
  test(`${protocol}: multiple tools and model rounds execute sequentially and replay never repeats`,async t=>{const f=await fixture(t,protocol);f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_project_inspect'),call('mioon_shot_inspect',{limit:2})]:index===2?[call('mioon_timeline_inspect')]:[])};});const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,3);assert.equal(f.effects.size,3);assert.equal(done.steps.length,6);const replay=await f.send('执行测试',sent.run.requestId);assert.equal(replay.run.id,sent.run.id);assert.equal(f.effects.size,3);assert.match(f.requests[1].body,protocol==='responses'?/function_call_output/:/tool_call_id/);f.restart();assert.equal(f.requests.length,3);assert.equal(f.effects.size,3);});
  test(`${protocol}: revocation after first done prevents every tool and continuation`,async t=>{const f=await fixture(t,protocol);f.setScript(async function*(){yield {type:'done',output:output(protocol,[call('mioon_project_inspect')])};await f.revoke();});const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'failed');assert.equal(done.run.pauseReason,'AGENT_TASK_CONSENT_REQUIRED');assert.equal(f.effects.size,0);assert.equal(f.requests.length,1);});
@@ -612,7 +615,7 @@ for(const externalAba of [false,true])test(`persisted compensation chain ${exter
 });
 for(const protocol of ['chat_completions','responses'] as const){
  test(`${protocol}: text diagnostics omit tools and replay cannot widen the persisted profile`,async t=>{
-  const f=await fixture(t,protocol),input={requestId:randomUUID(),text:'仅检查文本连接',expectedSettingsRevision:(await f.settings.get()).revision,diagnostic:{profile:'text'}};
+  const f=await fixture(t,protocol),input={requestId:randomUUID(),text:'仅检查文本连接',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision,diagnostic:{profile:'text'}};
   const sent=await f.runtime.send(f.projectId,input),done=await f.settle(sent.run.id);
   assert.equal(done.run.status,'completed');assert.deepEqual(done.run.diagnostic,{profile:'text'});assert.equal(f.effects.size,0);
   const body=object(JSON.parse(f.requests[0]!.body));for(const field of ['tools','tool_choice','parallel_tool_calls'])assert.equal(Object.hasOwn(body,field),false);
@@ -622,17 +625,17 @@ for(const protocol of ['chat_completions','responses'] as const){
  });
  test(`${protocol}: read-only diagnostics roundtrip a tool and reject a write response before reading targets`,async t=>{
   const f=await fixture(t,protocol);f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_project_inspect')]:[])};});
-  const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'读取项目名称',expectedSettingsRevision:(await f.settings.get()).revision,diagnostic:{profile:'read_only'}}),done=await f.settle(sent.run.id);
+  const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'读取项目名称',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision,diagnostic:{profile:'read_only'}}),done=await f.settle(sent.run.id);
   assert.equal(done.run.status,'completed');assert.equal(f.requests.length,2);assert.equal(f.effects.size,1);assert.equal(done.changes.length,0);
   const names=(object(JSON.parse(f.requests[0]!.body)).tools as Record<string,unknown>[]).map(tool=>protocol==='chat_completions'?String(object(tool.function).name):String(tool.name));
   assert.ok(names.includes('mioon_project_inspect'));assert.ok(!names.includes('mioon_shot_update'));
   f.setScript(async function*(){yield {type:'done',output:output(protocol,[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:f.first.revision,patch:{prompt:'forbidden'}})])};});
-  const denied=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'拒绝诊断写入',expectedSettingsRevision:(await f.settings.get()).revision,diagnostic:{profile:'read_only'}}),failed=await f.settle(denied.run.id);
+  const denied=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'拒绝诊断写入',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision,diagnostic:{profile:'read_only'}}),failed=await f.settle(denied.run.id);
   assert.equal(failed.run.status,'failed');assert.equal(failed.run.pauseReason,'AGENT_TASK_DIAGNOSTIC_TOOL_FORBIDDEN');assert.equal(f.effects.size,1);assert.equal(failed.steps.filter(step=>step.kind==='tool').length,0);assert.equal(object(f.store.get('shots',f.first.id)).prompt,'saved first');
  });
  test(`${protocol}: catalog probes describe an admitted subset without executing returned tools`,async t=>{
   const f=await fixture(t,protocol);f.setScript(async function*(){yield {type:'done',output:output(protocol,[call('mioon_shot_create',{title:'Never created',prompt:'probe'})])};});
-  const diagnostic={profile:'catalog',toolNames:['mioon_shot_create']},input={requestId:randomUUID(),text:'检查工具schema',expectedSettingsRevision:(await f.settings.get()).revision,diagnostic};
+  const diagnostic={profile:'catalog',toolNames:['mioon_shot_create']},input={requestId:randomUUID(),text:'检查工具schema',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision,diagnostic};
   const sent=await f.runtime.send(f.projectId,input),done=await f.settle(sent.run.id);
   assert.equal(done.run.status,'completed');assert.deepEqual(done.run.diagnostic,diagnostic);assert.equal(done.steps.length,1);assert.equal(f.effects.size,0);assert.equal(done.changes.length,0);assert.equal(f.requests.length,1);
   assert.equal((object(JSON.parse(f.requests[0]!.body)).tools as unknown[]).length,1);
@@ -642,7 +645,7 @@ for(const protocol of ['chat_completions','responses'] as const){
 }
 test('diagnostics cannot enter ordinary conversation history or narrow normal tool discovery',async t=>{
  const f=await fixture(t);f.setScript(async function*(){yield {type:'done',output:output('responses',[],'DIAGNOSTIC_PRIVATE_CONTEXT')};});
- const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'DIAGNOSTIC_PROMPT',expectedSettingsRevision:(await f.settings.get()).revision,diagnostic:{profile:'text'}});await f.settle(sent.run.id);
+ const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'DIAGNOSTIC_PROMPT',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision,diagnostic:{profile:'text'}});await f.settle(sent.run.id);
  f.setScript(async function*(){yield {type:'done',output:output('responses')};});const normal=await f.send('普通任务');await f.settle(normal.run.id);
  const request=f.requests[1]!,names=(object(JSON.parse(request.body)).tools as Record<string,unknown>[]).map(tool=>String(tool.name));assert.doesNotMatch(request.body,/DIAGNOSTIC_PRIVATE_CONTEXT|DIAGNOSTIC_PROMPT/u);assert.deepEqual(names,f.tools.list().filter(tool=>agentTaskToolNamesForGroup('core').includes(tool.name)).map(tool=>tool.name));assert.equal(f.runtime.get(f.projectId,normal.run.id).run.diagnostic,undefined);assert.equal(f.runtime.history(f.projectId).conversations.length,1);assert.equal(f.runtime.history(f.projectId).conversations[0]?.lastRunId,normal.run.id);assert.equal((await f.runtime.snapshot(f.projectId)).runs.length,1);assert.throws(()=>f.runtime.conversation(f.projectId,sent.run.conversationId!),{code:'AGENT_TASK_NOT_FOUND'});
 });
@@ -661,7 +664,7 @@ for(const point of [
 
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: conversations bind prior context, exclude other conversations and retain exact request identity`,async t=>{
  const f=await fixture(t,protocol);f.setScript(async function*(index){yield {type:'done',output:output(protocol,[],`reply ${index}`)};});
- const settings=await f.settings.get(),send=(text:string,conversationId?:string,requestId:string=randomUUID())=>f.runtime.send(f.projectId,{requestId,text,expectedSettingsRevision:settings.revision,...(conversationId?{conversationId}:{})});
+ const settings=await f.settings.get(),send=(text:string,conversationId?:string,requestId:string=randomUUID())=>f.runtime.send(f.projectId,{requestId,text,expectedSettingsRevision:testAgentExecution(settings).revision,...(conversationId?{conversationId}:{})});
  const first=await send('conversation A first');await f.settle(first.run.id);assert.ok(first.run.conversationId);assert.notEqual(first.run.conversationId,first.run.id);
  const other=await send('conversation B private');await f.settle(other.run.id);assert.notEqual(other.run.conversationId,first.run.conversationId);
  const requestId=randomUUID(),next=await send('conversation A next',first.run.conversationId,requestId);await f.settle(next.run.id);
@@ -670,7 +673,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  await assert.rejects(send('conversation A next',undefined,requestId),{code:'AGENT_TASK_REQUEST_CONFLICT'});
  await assert.rejects(send('conversation A first',first.run.conversationId,first.run.requestId),{code:'AGENT_TASK_REQUEST_CONFLICT'});
  const before=f.requests.length;await assert.rejects(send('missing',randomUUID()),{code:'AGENT_TASK_NOT_FOUND'});assert.equal(f.requests.length,before);
- await assert.rejects(f.runtime.send(f.projectId,{requestId:randomUUID(),text:'diagnostic cannot join',expectedSettingsRevision:settings.revision,conversationId:first.run.conversationId,diagnostic:{profile:'text'}}),{code:'AGENT_TASK_INVALID'});
+ await assert.rejects(f.runtime.send(f.projectId,{requestId:randomUUID(),text:'diagnostic cannot join',expectedSettingsRevision:testAgentExecution(settings).revision,conversationId:first.run.conversationId,diagnostic:{profile:'text'}}),{code:'AGENT_TASK_INVALID'});
  const history=f.runtime.history(f.projectId);assert.equal(history.conversations.length,2);const group=history.conversations.find(item=>item.id===first.run.conversationId);assert.ok(group);assert.equal(group.title,'conversation A first');assert.equal(group.runCount,2);assert.equal(group.lastRunId,next.run.id);
  const page=f.runtime.conversation(f.projectId,first.run.conversationId!);assert.deepEqual(new Set(page.runs.map(run=>run.id)),new Set([first.run.id,next.run.id]));assert.ok(page.runs.every(run=>!Object.hasOwn(run,'context')));assert.equal(f.requests.length,before);
 });
@@ -703,7 +706,7 @@ for(const protocol of ['chat_completions','responses'] as const){
   const noted=await f.runtime.action(f.projectId,sent.run.id,request);assert.equal(noted.run.notes?.length,1);assert.equal(noted.run.notes?.[0]?.modelStepId,undefined);await f.runtime.action(f.projectId,sent.run.id,request);assert.equal(f.runtime.journal.run(sent.run.id).notes?.length,1);
   await assert.rejects(f.runtime.action(f.projectId,sent.run.id,{...request,text:'different text'}),{code:'AGENT_TASK_REQUEST_CONFLICT'});assert.equal(f.requests[0]!.body,initialBody);assert.doesNotMatch(initialBody,/KEEP_THIS_ADDITIONAL_INSTRUCTION/);
   release.resolve();const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.stepsUsed,2);assert.equal(f.requests.length,2);assert.match(f.requests[1]!.body,/KEEP_THIS_ADDITIONAL_INSTRUCTION/);assert.equal(done.run.notes?.[0]?.modelStepId,done.steps.filter(step=>step.kind==='model')[1]?.id);
-  const next=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'same conversation next round',conversationId:done.run.conversationId,expectedSettingsRevision:(await f.settings.get()).revision});assert.equal((await f.settle(next.run.id)).run.status,'completed');assert.match(f.requests[2]!.body,/KEEP_THIS_ADDITIONAL_INSTRUCTION/);
+  const next=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'same conversation next round',conversationId:done.run.conversationId,expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision});assert.equal((await f.settle(next.run.id)).run.status,'completed');assert.match(f.requests[2]!.body,/KEEP_THIS_ADDITIONAL_INSTRUCTION/);
  });
 }
 for(const state of ['paused','awaiting_approval'] as const)test(`notes submitted while ${state} wait for a new model request, not the pending tool batch`,async t=>{
@@ -934,10 +937,10 @@ async function noteHistoryFixture(t:TestContext,protocol:'chat_completions'|'res
  const f=await fixture(t,protocol);let conversationId:string|undefined;
  f.setScript(async function*(){yield {type:'done',output:replyOutput(protocol,'a'.repeat(2000))};});
  for(let index=0;index<3;index++){
-  const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'u'.repeat(messageLength),expectedSettingsRevision:(await f.settings.get()).revision,...(conversationId?{conversationId}:{})});
+  const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'u'.repeat(messageLength),expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision,...(conversationId?{conversationId}:{})});
   const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');conversationId=done.run.conversationId;
  }
- return {...f,sendNext:async()=>f.runtime.send(f.projectId,{requestId:randomUUID(),text:'u'.repeat(messageLength),expectedSettingsRevision:(await f.settings.get()).revision,conversationId})};
+ return {...f,sendNext:async()=>f.runtime.send(f.projectId,{requestId:randomUUID(),text:'u'.repeat(messageLength),expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision,conversationId})};
 }
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity rejects an already persisted streamed reply atomically and replays its rejection`,async t=>{
  // No earlier conversation is available to drop: the current user message,
@@ -1138,17 +1141,17 @@ test('whole undo confirmation cannot expand after a draft is released and replay
 });
 test('a text diagnostic cut off by a restart stops instead of blocking the project, and stays the latest connection test',async t=>{
   const f=await fixture(t),settings=await f.settings.get();assert.deepEqual(f.runtime.latestConnectionTest(),{test:null});
-  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'PRIVATE_CONNECTION_TEST_TEXT',configuration:{...settings.configuration},settingsRevision:settings.revision,diagnostic:{profile:'text'}});
+  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'PRIVATE_CONNECTION_TEST_TEXT',configuration:{...testAgentExecution(settings).configuration},settingsRevision:testAgentExecution(settings).revision,settingsBinding:testAgentExecution(settings).binding,diagnostic:{profile:'text'}});
   const step=beginFixtureModelStep(f.runtime.journal,created.run.id).step;f.runtime.journal.updateStep(created.run.id,step.id,{status:'dispatch_started'});
   f.restart();const stopped=f.runtime.get(f.projectId,created.run.id);
   assert.equal(stopped.run.status,'stopped');assert.equal(stopped.run.pauseReason,'restart');assert.equal(stopped.steps[0]!.status,'unknown');
   const latest=f.runtime.latestConnectionTest().test!;
-  assert.deepEqual({...latest,createdAt:undefined,updatedAt:undefined},{runId:created.run.id,projectId:f.projectId,status:'stopped',protocol:settings.configuration.protocol,baseUrl:settings.configuration.baseUrl,model:settings.configuration.model,createdAt:undefined,updatedAt:undefined});
+  assert.deepEqual({...latest,createdAt:undefined,updatedAt:undefined},{runId:created.run.id,projectId:f.projectId,status:'stopped',protocol:testAgentExecution(settings).configuration.protocol,baseUrl:testAgentExecution(settings).configuration.baseUrl,model:testAgentExecution(settings).configuration.model,createdAt:undefined,updatedAt:undefined});
   assert.doesNotMatch(JSON.stringify(latest),/PRIVATE_CONNECTION_TEST_TEXT/u);
   const sent=await f.send();assert.equal((await f.settle(sent.run.id)).run.status,'completed','A stopped diagnostic leaves the project free for the next send');
 });
 test('the latest connection test is the newest text diagnostic and reports only a failed run\'s code',async t=>{
-  const f=await fixture(t,'chat_completions'),revision=(await f.settings.get()).revision;
+  const f=await fixture(t,'chat_completions'),revision=testAgentExecution(await f.settings.get()).revision;
   const diagnose=(profile:'text'|'read_only')=>f.runtime.send(f.projectId,{requestId:randomUUID(),text:'检查连接',expectedSettingsRevision:revision,diagnostic:{profile}});
   const passed=await diagnose('text');await f.settle(passed.run.id);
   assert.equal(f.runtime.latestConnectionTest().test?.runId,passed.run.id);assert.equal(f.runtime.latestConnectionTest().test?.status,'completed');assert.equal(Object.hasOwn(f.runtime.latestConnectionTest().test!,'failureCode'),false);
@@ -1181,7 +1184,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`X4: ${prot
 test('X4: hand-back and invalidated-batch instructions use the run locale',async t=>{
  const expected={'zh-Hans':['目标在你读取后已被修改','用户正在手动编辑这一处','此批旧工具参数已失效'],'zh-Hant':['目標在你讀取後已被修改','使用者正在手動編輯這一處','此批舊工具參數已失效'],en:['The target changed after you read it','The user is editing this target','The old tool arguments in this batch are no longer valid'],ja:['読み取った後に対象が変更された','ユーザーがこの対象を手動で編集中','このバッチの古いツール引数は無効になりました']} as const;
  for(const locale of AGENT_TASK_LOCALES){
-  const [changed,editing,invalidated]=expected[locale],send=async(f:RuntimeFixture)=>(await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'synthetic X4 locale',locale,expectedSettingsRevision:(await f.settings.get()).revision})).run.id;
+  const [changed,editing,invalidated]=expected[locale],send=async(f:RuntimeFixture)=>(await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'synthetic X4 locale',locale,expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision})).run.id;
   const held=await fixture(t);held.runtime.journal.claim({projectId:held.projectId,ownerId:'x4-locale-draft',targets:[{kind:'shot',id:held.first.id,revision:held.runtime.journal.targetRevision(held.projectId,'shot',held.first.id)}]});
   held.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:held.first.id,expectedRevision:1,patch:{prompt:'held by a draft'}}),call('mioon_shot_update',{shotId:held.other.id,expectedRevision:1,patch:{prompt:'stale batch call'}})]:[])};},{loadGroups:['canvas']});
   const heldRun=await send(held);assert.equal((await held.settle(heldRun)).run.status,'completed');const heldBody=held.scriptRequest(2).body;
@@ -1262,7 +1265,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`X4 follow-
 test('X4 follow-up: the stale revision instruction uses the run locale',async t=>{
  for(const locale of AGENT_TASK_LOCALES){
   const f=await fixture(t);f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[staleShotUpdate(f)]:[])};},{loadGroups:['canvas']});
-  const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'synthetic X4 follow-up locale',locale,expectedSettingsRevision:(await f.settings.get()).revision}),done=await f.settle(sent.run.id);
+  const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'synthetic X4 follow-up locale',locale,expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision}),done=await f.settle(sent.run.id);
   assert.equal(done.run.status,'completed',locale);assert.equal(done.steps.find(step=>step.toolCall?.name==='mioon_shot_update')?.error?.message,staleRevisionMessages[locale]);
   assert.ok(f.scriptRequest(2).body.includes(staleRevisionMessages[locale]),`${locale}: stale revision`);
  }
@@ -1281,7 +1284,7 @@ test('X4 follow-up: a reorder that meets a changed shot set hands back an empty 
   const f=await fixture(t),project=object(f.store.get('projects',f.projectId)),order=()=>[f.first.id,f.other.id].map(id=>{const saved=object(f.store.get('shots',id));return [saved.orderIndex,saved.revision];}),before=order();let added=false;
   f.beforeTool(async prepared=>{if(prepared.operation==='shot.reorder'&&!added){added=true;await f.services.call('shot.create',{projectId:f.projectId,title:'Added during dispatch'});}});
   f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_reorder',{expectedRevision:revisionField(project),shotIds:[f.other.id,f.first.id]})]:[])};},{loadGroups:['canvas']});
-  const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'synthetic X4 follow-up reorder',locale,expectedSettingsRevision:(await f.settings.get()).revision}),done=await f.settle(sent.run.id);
+  const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'synthetic X4 follow-up reorder',locale,expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision}),done=await f.settle(sent.run.id);
   assert.equal(added,true);assert.equal(done.run.status,'completed',locale);assert.equal(runPaused(f,sent.run.id),false);assert.equal(done.changes.length,0);assert.deepEqual(order(),before);
   const step=f.runtime.journal.snapshot(sent.run.id).steps.find(item=>item.toolCall?.name==='mioon_shot_reorder');assert.ok(step);
   assert.equal(step.status,'rejected');assert.equal(step.error?.code,'TARGET_CHANGED');assert.equal(step.error?.message,projectRereadMessages[locale]);assert.equal(object(step.data).dispatchPrevented,true);
@@ -1303,4 +1306,26 @@ for(const action of ['handBack','deny'] as const)test(`X4 follow-up: ${action===
  assert.equal(wakeups,1);
  const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(wakeups,1);assert.equal(done.changes.length,0);assert.equal(done.steps.find(item=>item.id===step.id)?.status,'rejected');
  assert.equal(object(f.store.get('shots',f.first.id)).prompt,action==='handBack'?'saved before approval':'saved first');
+});
+
+for(const changed of ['other','active-key','selection-aba'] as const)test(`connection witness: ${changed} between model requests preserves isolation`,async t=>{
+ const f=await fixture(t),entered=gate(),release=gate();
+ f.setScript(async function*(index){if(index===1){entered.resolve();await release.promise;}yield {type:'done',output:output('responses',index===1?[call('mioon_project_inspect')]:[])};});
+ const sent=await f.send();await entered.promise;
+ const old=await f.settings.get(),services=old.services.map(agentServiceInput);
+ if(changed==='selection-aba'){
+  await f.settings.put({expectedRevision:old.revision,services,mioSelection:{serviceKey:'ollama',modelId:'qwen3:8b'},secretActions:[]});
+  await f.settings.put({expectedRevision:(await f.settings.get()).revision,services,mioSelection:old.mioSelection,secretActions:[]});
+ }else await f.settings.put({expectedRevision:old.revision,services,mioSelection:old.mioSelection,secretActions:[{serviceKey:changed==='other'?'deepseek':'openai',action:'replace',storage:'session',value:'SYNTHETIC_UPDATED_ENTRY_KEY'}]});
+ release.resolve();const done=await f.settle(sent.run.id);
+ if(changed==='other'){assert.equal(done.run.status,'completed');assert.equal(f.requests.length,2);assert.ok(f.requests.every(request=>request.apiKey==='SYNTHETIC_LOCAL_TEST_ONLY'));}
+ else{assert.equal(done.run.status,'failed');assert.equal(done.run.pauseReason,'AGENT_SETTINGS_CONFLICT');assert.equal(f.requests.length,1);}
+});
+
+test('an old frozen run without an entry witness cannot be re-signed from current settings',async t=>{
+ const f=await fixture(t),execution=testAgentExecution(await f.settings.get());
+ const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'legacy unsigned intent',configuration:{...execution.configuration},settingsRevision:execution.revision,context:[{role:'user',content:'legacy unsigned intent'}]});
+ f.restart();const restored=f.runtime.get(f.projectId,created.run.id);assert.equal(restored.run.status,'interrupted');
+ await f.action(restored,'resume');const failed=await f.settle(created.run.id);
+ assert.equal(failed.run.status,'failed');assert.equal(failed.run.pauseReason,'AGENT_TASK_SETTINGS_CHANGED');assert.equal(f.requests.length,0);assert.equal(f.runtime.journal.run(created.run.id).settingsBinding,undefined);assert.deepEqual(failed.run.configuration,execution.configuration);
 });

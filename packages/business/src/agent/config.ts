@@ -1,9 +1,14 @@
 import {isIP} from 'node:net';
-import {AGENT_PROTOCOLS} from '@mioon/contracts';
+import {AGENT_PROTOCOLS} from '../../../contracts/src/agent-protocol.ts';
 import type {AgentProtocol} from '../../../contracts/src/agent-protocol.ts';
+import {agentCredentialReceiverBinding, isAgentModelIdentifier, validateAgentProviderEndpoint,agentPresetPlatform,resolveAgentPresetBaseUrl} from '../../../contracts/src/agent-provider-catalog.ts';
+import type {AgentProviderConfiguration} from '../../../contracts/src/agent-provider-catalog.ts';
+import {agentServiceInputSchema,agentSettingsUpdateSchema,AGENT_CONNECTION_LIMITS} from '../../../contracts/src/agent-connection-settings.ts';
+import type {AgentServiceInput,AgentSettingsUpdate} from '../../../contracts/src/agent-connection-settings.ts';
+export type {AgentSettingsUpdate} from '../../../contracts/src/agent-connection-settings.ts';
 import {AGENT_PRESETS} from './presets.ts';
 
-export const MAX_AGENT_SETTINGS_BYTES = 16 * 1024;
+export const MAX_AGENT_SETTINGS_BYTES = AGENT_CONNECTION_LIMITS.transportBytes;
 export const MAX_AGENT_SECRET_BYTES = 8192;
 const messages = {
   AGENT_SETTINGS_VALIDATION: [400, 'Agent 设置格式无效，请检查地址、模型和密钥输入。'],
@@ -16,7 +21,6 @@ const messages = {
 export type AgentSettingsErrorCode = keyof typeof messages;
 export type AgentSettingsFailure = Error & {code: AgentSettingsErrorCode; status: number};
 const errorCode = (error: unknown): string | undefined => error !== null && typeof error === 'object' && 'code' in error && typeof (error as {code?: unknown}).code === 'string' ? (error as {code: string}).code : undefined;
-const integer = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value);
 export function agentSettingsError(code: string = 'AGENT_SETTINGS_VALIDATION'): AgentSettingsFailure {
   const known = typeof code === 'string' && Object.hasOwn(messages, code);
   const resolved = (known ? code : 'AGENT_SETTINGS_SAVE_FAILED') as AgentSettingsErrorCode;
@@ -72,31 +76,33 @@ export function normalizeAgentBaseUrl(value: unknown, {local = false, selfPort, 
   } else if (url.protocol !== 'https:' || !remoteHostAllowed(url.hostname)) invalid();
   return `${url.origin}${pathname}`;
 }
-export interface AgentConfiguration {presetId: string; platformId: string; baseUrl: string; model: string; protocol: AgentProtocol}
+export type AgentConfiguration = AgentProviderConfiguration;
 export function parseAgentConfiguration(value: unknown, options: {selfPort?: number} = {}): AgentConfiguration {
   if (!exactObject(value, ['presetId', 'platformId', 'baseUrl', 'model', 'protocol'])) invalid();
   const preset = AGENT_PRESETS.find(item => item.id === value.presetId);
   const platform = preset?.platforms.find(item => item.id === value.platformId);
   if (!platform || typeof value.protocol !== 'string' || !Object.hasOwn(AGENT_PROTOCOLS, value.protocol) ||
     !(platform.availableProtocols as readonly string[]).includes(value.protocol)) invalid();
-  if (typeof value.model !== 'string' || !value.model.trim() || value.model.length > 200 || controls.test(value.model)) invalid();
-  return {presetId: value.presetId as string, platformId: value.platformId as string, baseUrl: normalizeAgentBaseUrl(value.baseUrl, {local: value.presetId === 'ollama', selfPort: options.selfPort, protocol: value.protocol as AgentProtocol}), model: value.model.trim(), protocol: value.protocol as AgentProtocol};
+  if (typeof value.model !== 'string' || !isAgentModelIdentifier(value.model.trim())) invalid();
+  const configuration = {presetId: value.presetId as string, platformId: value.platformId as string, baseUrl: normalizeAgentBaseUrl(value.baseUrl, {local: value.presetId === 'ollama', selfPort: options.selfPort, protocol: value.protocol as AgentProtocol}), model: value.model.trim(), protocol: value.protocol as AgentProtocol};
+  try {validateAgentProviderEndpoint(AGENT_PRESETS, configuration);} catch {return invalid();}
+  return configuration;
 }
 // Credential identity deliberately excludes model and protocol; authorization
 // checks still compare the full configuration and its revision before delivery.
-export const agentCredentialBinding = (configuration: AgentConfiguration): string => JSON.stringify([configuration.presetId, configuration.platformId, configuration.baseUrl]);
-export type AgentSettingsSecret = {action: 'keep' | 'remove'} | {action: 'replace'; value: string; storage: 'session' | 'persistent'};
-export interface AgentSettingsUpdate {expectedRevision: number; configuration: AgentConfiguration; secret: AgentSettingsSecret}
+export const agentCredentialBinding = (configuration: AgentConfiguration): string => agentCredentialReceiverBinding(AGENT_PRESETS, configuration);
+export function normalizeAgentService(value:unknown,options:{selfPort?:number}={}):AgentServiceInput{
+ try{
+  const entry=agentServiceInputSchema.parse(value),preset=AGENT_PRESETS.find(p=>p.id===entry.presetId),platform=agentPresetPlatform(AGENT_PRESETS,entry.presetId,entry.platformId);
+  if(!preset||!platform||entry.presetId!=='custom'&&entry.name!==preset.label||platform.addressMode==='fixed'&&entry.addressInput!=='')throw Error();
+  const baseUrl=resolveAgentPresetBaseUrl(AGENT_PRESETS,entry.presetId,entry.platformId,entry.protocol,platform.addressMode==='fixed'?undefined:entry.addressInput);
+  const configuration=parseAgentConfiguration({presetId:entry.presetId,platformId:entry.platformId,baseUrl,model:'connection-validation',protocol:entry.protocol},options);
+  const addressInput=platform.addressMode==='fixed'?'':platform.addressMode==='workspace'?new URL(configuration.baseUrl).hostname.split('.')[0]!:platform.addressMode==='local'?new URL(configuration.baseUrl).origin:configuration.baseUrl;
+  return {...entry,addressInput};
+ }catch{return invalid();}
+}
 export function parseAgentSettingsUpdate(value: unknown, options: {selfPort?: number} = {}): AgentSettingsUpdate {
-  if (!exactObject(value, ['expectedRevision', 'configuration', 'secret']) || !integer(value.expectedRevision) || value.expectedRevision < 0) invalid();
-  const configuration = parseAgentConfiguration(value.configuration, options);
-  let secret: AgentSettingsSecret;
-  if (exactObject(value.secret, ['action']) && ['keep', 'remove'].includes(value.secret.action as string)) secret = {action: value.secret.action as 'keep' | 'remove'};
-  else if (exactObject(value.secret, ['action', 'value', 'storage']) && value.secret.action === 'replace' && ['session', 'persistent'].includes(value.secret.storage as string)) {
-    if (typeof value.secret.value !== 'string' || !value.secret.value.trim() || Buffer.byteLength(value.secret.value, 'utf8') > MAX_AGENT_SECRET_BYTES || controls.test(value.secret.value)) invalid();
-    secret = {action: 'replace', value: value.secret.value, storage: value.secret.storage as 'session' | 'persistent'};
-  } else invalid();
-  // Guard direct trusted callers too; HTTP has an independent streaming limit.
-  if (Buffer.byteLength(JSON.stringify({expectedRevision: value.expectedRevision, configuration, secret}), 'utf8') > MAX_AGENT_SETTINGS_BYTES) invalid();
-  return {expectedRevision: value.expectedRevision, configuration, secret};
+  const parsed=agentSettingsUpdateSchema.safeParse(value);if(!parsed.success)return invalid();
+  const services=parsed.data.services.map(entry=>normalizeAgentService(entry,options));
+  return {...parsed.data,services};
 }

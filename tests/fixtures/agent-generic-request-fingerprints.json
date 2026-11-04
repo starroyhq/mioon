@@ -1,0 +1,3742 @@
+{
+  "version": 1,
+  "note": "X6a generic templates only; no existing 99-request fixture is replaced or updated.",
+  "requests": [
+    {
+      "presetId": "openai",
+      "platformId": "global",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://api.openai.com/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24305",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24305,
+      "sha256": "54cf2f82f17a9909ad9f78b2322d781c5c9d89af23f91e4d5acda0c9325b438c"
+    },
+    {
+      "presetId": "openai",
+      "platformId": "global",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://api.openai.com/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24305",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24305,
+      "sha256": "54cf2f82f17a9909ad9f78b2322d781c5c9d89af23f91e4d5acda0c9325b438c"
+    },
+    {
+      "presetId": "openai",
+      "platformId": "global",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://api.openai.com/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25501",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25501,
+      "sha256": "b7d9b939349410306f94fef568aad62e581b71ace3f86fea5e82a84ae914ffb2"
+    },
+    {
+      "presetId": "openai",
+      "platformId": "global",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://api.openai.com/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25721",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25721,
+      "sha256": "f1fb99010e3289bcb09a458b6e352909afda76de205f708c08cb7f2b62eaa4ac"
+    },
+    {
+      "presetId": "openai",
+      "platformId": "global",
+      "protocol": "responses",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://api.openai.com/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24035",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24035,
+      "sha256": "bbc117e2b855c0e9fc7590ff5db46338d5de40c5401ffe063c27ee57ac9e07a1"
+    },
+    {
+      "presetId": "openai",
+      "platformId": "global",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://api.openai.com/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24035",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24035,
+      "sha256": "bbc117e2b855c0e9fc7590ff5db46338d5de40c5401ffe063c27ee57ac9e07a1"
+    },
+    {
+      "presetId": "openai",
+      "platformId": "global",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://api.openai.com/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25217",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25217,
+      "sha256": "74d73139104786cbb5e5331cc88b70968483b0c90772e7f85cbdaef573613922"
+    },
+    {
+      "presetId": "openai",
+      "platformId": "global",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://api.openai.com/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25436",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25436,
+      "sha256": "40c642650426cc91a7ea93f0ff746e5c6f978833f0486e0fee683fe7a12eb8a3"
+    },
+    {
+      "presetId": "anthropic",
+      "platformId": "global",
+      "protocol": "anthropic_messages",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://api.anthropic.com/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23637",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23637,
+      "sha256": "bf9129ff3dda8ab976d569c7d31cb2c5bd76f760aadc858d6228c079f7de1c17"
+    },
+    {
+      "presetId": "anthropic",
+      "platformId": "global",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://api.anthropic.com/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23637",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23637,
+      "sha256": "bf9129ff3dda8ab976d569c7d31cb2c5bd76f760aadc858d6228c079f7de1c17"
+    },
+    {
+      "presetId": "anthropic",
+      "platformId": "global",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://api.anthropic.com/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24757",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24757,
+      "sha256": "15b239acdce63362e9c32e380b3f4c2cdd3695f85f19eddf30a67556cd0bf6c4"
+    },
+    {
+      "presetId": "anthropic",
+      "platformId": "global",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://api.anthropic.com/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24974",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24974,
+      "sha256": "104c08e2117e9d5eb8524d321f3b3171cf8ed5a3d780c01a6bf3be2e71e452b2"
+    },
+    {
+      "presetId": "deepseek",
+      "platformId": "global",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://api.deepseek.com/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24014",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24014,
+      "sha256": "76eca1245149d689fac165d01fc7e1429602622203452ff5845703d02fa43970"
+    },
+    {
+      "presetId": "deepseek",
+      "platformId": "global",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://api.deepseek.com/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24014",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24014,
+      "sha256": "76eca1245149d689fac165d01fc7e1429602622203452ff5845703d02fa43970"
+    },
+    {
+      "presetId": "deepseek",
+      "platformId": "global",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://api.deepseek.com/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25195",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25195,
+      "sha256": "cbd7121632733a0fdefe3ea306b4c496edfd4d344faa4b40ace640986b6b1c0b"
+    },
+    {
+      "presetId": "deepseek",
+      "platformId": "global",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://api.deepseek.com/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25415",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25415,
+      "sha256": "3dabdabb2398170422d7a25b699a8e667652b382c97e6cfff306f4a724b402a2"
+    },
+    {
+      "presetId": "deepseek",
+      "platformId": "global",
+      "protocol": "responses",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://api.deepseek.com/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "deepseek",
+      "platformId": "global",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://api.deepseek.com/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "deepseek",
+      "platformId": "global",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://api.deepseek.com/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24911",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24911,
+      "sha256": "31707de1f2fa2a0c359a3e17df4f20492d746ec136b066042734ed72a08db44e"
+    },
+    {
+      "presetId": "deepseek",
+      "platformId": "global",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://api.deepseek.com/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25130",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25130,
+      "sha256": "6e8f3ca2a020072a6a795a81c2d0ac48707cfe12b0f2290a545717fceb05000a"
+    },
+    {
+      "presetId": "deepseek",
+      "platformId": "global",
+      "protocol": "anthropic_messages",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://api.deepseek.com/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "deepseek",
+      "platformId": "global",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://api.deepseek.com/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "deepseek",
+      "platformId": "global",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://api.deepseek.com/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24621",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24621,
+      "sha256": "426ebcf5db7e0477745aa19bc4454126cfa8aa307b90c4294a1c4ba2a2f1dc6f"
+    },
+    {
+      "presetId": "deepseek",
+      "platformId": "global",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://api.deepseek.com/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24838",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24838,
+      "sha256": "da955de166714a254121b800692740b2922b07a5ed2414b389750a5cf737ab46"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "beijing",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24034",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24034,
+      "sha256": "980df327583e8487c19f34f79688601e4dd5fc279e04ed1c8caab53c1a3a94ef"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "beijing",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24034",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24034,
+      "sha256": "980df327583e8487c19f34f79688601e4dd5fc279e04ed1c8caab53c1a3a94ef"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "beijing",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25215",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25215,
+      "sha256": "0b78846be720d90e2bd28f09923fe6c8acea4bf0e8a72e9c4a5178cad454ab87"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "beijing",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25435",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25435,
+      "sha256": "ae272b7e1555645e18d8ade10a6f316b7e7442fdf14b5b2095483fa1563a273d"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "beijing",
+      "protocol": "responses",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "beijing",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "beijing",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24911",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24911,
+      "sha256": "31707de1f2fa2a0c359a3e17df4f20492d746ec136b066042734ed72a08db44e"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "beijing",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25130",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25130,
+      "sha256": "6e8f3ca2a020072a6a795a81c2d0ac48707cfe12b0f2290a545717fceb05000a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "beijing",
+      "protocol": "anthropic_messages",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://dashscope.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "beijing",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://dashscope.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "beijing",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://dashscope.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24621",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24621,
+      "sha256": "426ebcf5db7e0477745aa19bc4454126cfa8aa307b90c4294a1c4ba2a2f1dc6f"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "beijing",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://dashscope.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24838",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24838,
+      "sha256": "da955de166714a254121b800692740b2922b07a5ed2414b389750a5cf737ab46"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "singapore",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24034",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24034,
+      "sha256": "980df327583e8487c19f34f79688601e4dd5fc279e04ed1c8caab53c1a3a94ef"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "singapore",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24034",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24034,
+      "sha256": "980df327583e8487c19f34f79688601e4dd5fc279e04ed1c8caab53c1a3a94ef"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "singapore",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25215",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25215,
+      "sha256": "0b78846be720d90e2bd28f09923fe6c8acea4bf0e8a72e9c4a5178cad454ab87"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "singapore",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25435",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25435,
+      "sha256": "ae272b7e1555645e18d8ade10a6f316b7e7442fdf14b5b2095483fa1563a273d"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "singapore",
+      "protocol": "responses",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "singapore",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "singapore",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24911",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24911,
+      "sha256": "31707de1f2fa2a0c359a3e17df4f20492d746ec136b066042734ed72a08db44e"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "singapore",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25130",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25130,
+      "sha256": "6e8f3ca2a020072a6a795a81c2d0ac48707cfe12b0f2290a545717fceb05000a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "singapore",
+      "protocol": "anthropic_messages",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://dashscope-intl.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "singapore",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://dashscope-intl.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "singapore",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://dashscope-intl.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24621",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24621,
+      "sha256": "426ebcf5db7e0477745aa19bc4454126cfa8aa307b90c4294a1c4ba2a2f1dc6f"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "singapore",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://dashscope-intl.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24838",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24838,
+      "sha256": "da955de166714a254121b800692740b2922b07a5ed2414b389750a5cf737ab46"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-beijing",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23994",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23994,
+      "sha256": "03146c4ffc7cd46c2c1d17b6fb8b9d015c85715dbf2fa7bd9adb0315e0adb4b5"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-beijing",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23994",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23994,
+      "sha256": "03146c4ffc7cd46c2c1d17b6fb8b9d015c85715dbf2fa7bd9adb0315e0adb4b5"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-beijing",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25175",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25175,
+      "sha256": "d8ac6383a102f07c419eb00894dc450b2e74a8f611b758c6a5a06588c48c9051"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-beijing",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25395",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25395,
+      "sha256": "f7c6ee63bd5828e6958a49838b3160bba6332c5ffc64f5b98695adf6a92eb0c6"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-beijing",
+      "protocol": "responses",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-beijing",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-beijing",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24911",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24911,
+      "sha256": "31707de1f2fa2a0c359a3e17df4f20492d746ec136b066042734ed72a08db44e"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-beijing",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25130",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25130,
+      "sha256": "6e8f3ca2a020072a6a795a81c2d0ac48707cfe12b0f2290a545717fceb05000a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-beijing",
+      "protocol": "anthropic_messages",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.cn-beijing.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-beijing",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.cn-beijing.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-beijing",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.cn-beijing.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24621",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24621,
+      "sha256": "426ebcf5db7e0477745aa19bc4454126cfa8aa307b90c4294a1c4ba2a2f1dc6f"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-beijing",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.cn-beijing.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24838",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24838,
+      "sha256": "da955de166714a254121b800692740b2922b07a5ed2414b389750a5cf737ab46"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-southeast-1",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23994",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23994,
+      "sha256": "03146c4ffc7cd46c2c1d17b6fb8b9d015c85715dbf2fa7bd9adb0315e0adb4b5"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-southeast-1",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23994",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23994,
+      "sha256": "03146c4ffc7cd46c2c1d17b6fb8b9d015c85715dbf2fa7bd9adb0315e0adb4b5"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-southeast-1",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25175",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25175,
+      "sha256": "d8ac6383a102f07c419eb00894dc450b2e74a8f611b758c6a5a06588c48c9051"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-southeast-1",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25395",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25395,
+      "sha256": "f7c6ee63bd5828e6958a49838b3160bba6332c5ffc64f5b98695adf6a92eb0c6"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-southeast-1",
+      "protocol": "responses",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-southeast-1",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-southeast-1",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24911",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24911,
+      "sha256": "31707de1f2fa2a0c359a3e17df4f20492d746ec136b066042734ed72a08db44e"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-southeast-1",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25130",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25130,
+      "sha256": "6e8f3ca2a020072a6a795a81c2d0ac48707cfe12b0f2290a545717fceb05000a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-southeast-1",
+      "protocol": "anthropic_messages",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.ap-southeast-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-southeast-1",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.ap-southeast-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-southeast-1",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.ap-southeast-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24621",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24621,
+      "sha256": "426ebcf5db7e0477745aa19bc4454126cfa8aa307b90c4294a1c4ba2a2f1dc6f"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-southeast-1",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.ap-southeast-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24838",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24838,
+      "sha256": "da955de166714a254121b800692740b2922b07a5ed2414b389750a5cf737ab46"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-us-east-1",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.us-east-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23994",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23994,
+      "sha256": "03146c4ffc7cd46c2c1d17b6fb8b9d015c85715dbf2fa7bd9adb0315e0adb4b5"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-us-east-1",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.us-east-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23994",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23994,
+      "sha256": "03146c4ffc7cd46c2c1d17b6fb8b9d015c85715dbf2fa7bd9adb0315e0adb4b5"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-us-east-1",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.us-east-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25175",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25175,
+      "sha256": "d8ac6383a102f07c419eb00894dc450b2e74a8f611b758c6a5a06588c48c9051"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-us-east-1",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.us-east-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25395",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25395,
+      "sha256": "f7c6ee63bd5828e6958a49838b3160bba6332c5ffc64f5b98695adf6a92eb0c6"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-us-east-1",
+      "protocol": "responses",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.us-east-1.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-us-east-1",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.us-east-1.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-us-east-1",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.us-east-1.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24911",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24911,
+      "sha256": "31707de1f2fa2a0c359a3e17df4f20492d746ec136b066042734ed72a08db44e"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-us-east-1",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.us-east-1.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25130",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25130,
+      "sha256": "6e8f3ca2a020072a6a795a81c2d0ac48707cfe12b0f2290a545717fceb05000a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-us-east-1",
+      "protocol": "anthropic_messages",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.us-east-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-us-east-1",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.us-east-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-us-east-1",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.us-east-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24621",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24621,
+      "sha256": "426ebcf5db7e0477745aa19bc4454126cfa8aa307b90c4294a1c4ba2a2f1dc6f"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-us-east-1",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.us-east-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24838",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24838,
+      "sha256": "da955de166714a254121b800692740b2922b07a5ed2414b389750a5cf737ab46"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-hongkong",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.cn-hongkong.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23994",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23994,
+      "sha256": "03146c4ffc7cd46c2c1d17b6fb8b9d015c85715dbf2fa7bd9adb0315e0adb4b5"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-hongkong",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.cn-hongkong.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23994",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23994,
+      "sha256": "03146c4ffc7cd46c2c1d17b6fb8b9d015c85715dbf2fa7bd9adb0315e0adb4b5"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-hongkong",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.cn-hongkong.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25175",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25175,
+      "sha256": "d8ac6383a102f07c419eb00894dc450b2e74a8f611b758c6a5a06588c48c9051"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-hongkong",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.cn-hongkong.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25395",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25395,
+      "sha256": "f7c6ee63bd5828e6958a49838b3160bba6332c5ffc64f5b98695adf6a92eb0c6"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-hongkong",
+      "protocol": "responses",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.cn-hongkong.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-hongkong",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.cn-hongkong.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-hongkong",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.cn-hongkong.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24911",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24911,
+      "sha256": "31707de1f2fa2a0c359a3e17df4f20492d746ec136b066042734ed72a08db44e"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-hongkong",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.cn-hongkong.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25130",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25130,
+      "sha256": "6e8f3ca2a020072a6a795a81c2d0ac48707cfe12b0f2290a545717fceb05000a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-hongkong",
+      "protocol": "anthropic_messages",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.cn-hongkong.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-hongkong",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.cn-hongkong.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-hongkong",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.cn-hongkong.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24621",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24621,
+      "sha256": "426ebcf5db7e0477745aa19bc4454126cfa8aa307b90c4294a1c4ba2a2f1dc6f"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-cn-hongkong",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.cn-hongkong.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24838",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24838,
+      "sha256": "da955de166714a254121b800692740b2922b07a5ed2414b389750a5cf737ab46"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-northeast-1",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.ap-northeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23994",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23994,
+      "sha256": "03146c4ffc7cd46c2c1d17b6fb8b9d015c85715dbf2fa7bd9adb0315e0adb4b5"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-northeast-1",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.ap-northeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23994",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23994,
+      "sha256": "03146c4ffc7cd46c2c1d17b6fb8b9d015c85715dbf2fa7bd9adb0315e0adb4b5"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-northeast-1",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.ap-northeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25175",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25175,
+      "sha256": "d8ac6383a102f07c419eb00894dc450b2e74a8f611b758c6a5a06588c48c9051"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-northeast-1",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.ap-northeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25395",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25395,
+      "sha256": "f7c6ee63bd5828e6958a49838b3160bba6332c5ffc64f5b98695adf6a92eb0c6"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-northeast-1",
+      "protocol": "responses",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.ap-northeast-1.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-northeast-1",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.ap-northeast-1.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-northeast-1",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.ap-northeast-1.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24911",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24911,
+      "sha256": "31707de1f2fa2a0c359a3e17df4f20492d746ec136b066042734ed72a08db44e"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-northeast-1",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.ap-northeast-1.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25130",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25130,
+      "sha256": "6e8f3ca2a020072a6a795a81c2d0ac48707cfe12b0f2290a545717fceb05000a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-northeast-1",
+      "protocol": "anthropic_messages",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.ap-northeast-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-northeast-1",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.ap-northeast-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-northeast-1",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.ap-northeast-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24621",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24621,
+      "sha256": "426ebcf5db7e0477745aa19bc4454126cfa8aa307b90c4294a1c4ba2a2f1dc6f"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-ap-northeast-1",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.ap-northeast-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24838",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24838,
+      "sha256": "da955de166714a254121b800692740b2922b07a5ed2414b389750a5cf737ab46"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-eu-central-1",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.eu-central-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23994",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23994,
+      "sha256": "03146c4ffc7cd46c2c1d17b6fb8b9d015c85715dbf2fa7bd9adb0315e0adb4b5"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-eu-central-1",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.eu-central-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23994",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23994,
+      "sha256": "03146c4ffc7cd46c2c1d17b6fb8b9d015c85715dbf2fa7bd9adb0315e0adb4b5"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-eu-central-1",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.eu-central-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25175",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25175,
+      "sha256": "d8ac6383a102f07c419eb00894dc450b2e74a8f611b758c6a5a06588c48c9051"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-eu-central-1",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.eu-central-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25395",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25395,
+      "sha256": "f7c6ee63bd5828e6958a49838b3160bba6332c5ffc64f5b98695adf6a92eb0c6"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-eu-central-1",
+      "protocol": "responses",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.eu-central-1.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-eu-central-1",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.eu-central-1.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23744",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23744,
+      "sha256": "5524079cfc19d7090519fa2f84b507c45048b8c3b5aaf4888c38e609cad0565a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-eu-central-1",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.eu-central-1.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24911",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24911,
+      "sha256": "31707de1f2fa2a0c359a3e17df4f20492d746ec136b066042734ed72a08db44e"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-eu-central-1",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.eu-central-1.maas.aliyuncs.com/compatible-mode/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25130",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25130,
+      "sha256": "6e8f3ca2a020072a6a795a81c2d0ac48707cfe12b0f2290a545717fceb05000a"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-eu-central-1",
+      "protocol": "anthropic_messages",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.eu-central-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-eu-central-1",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://synthetic-workspace.eu-central-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-eu-central-1",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://synthetic-workspace.eu-central-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24621",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24621,
+      "sha256": "426ebcf5db7e0477745aa19bc4454126cfa8aa307b90c4294a1c4ba2a2f1dc6f"
+    },
+    {
+      "presetId": "qwen",
+      "platformId": "workspace-eu-central-1",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://synthetic-workspace.eu-central-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24838",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24838,
+      "sha256": "da955de166714a254121b800692740b2922b07a5ed2414b389750a5cf737ab46"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "china",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23953",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23953,
+      "sha256": "7d2fd287fe0b4c6ffb9da2d3e5fc0542db6d56011a4b1122c86caf068d60ca36"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "china",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23953",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23953,
+      "sha256": "7d2fd287fe0b4c6ffb9da2d3e5fc0542db6d56011a4b1122c86caf068d60ca36"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "china",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25134",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25134,
+      "sha256": "64695a4738d4df6bac825d71b7b2bfd6cc1874c24ffb9d43944595b0c603e996"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "china",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25354",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25354,
+      "sha256": "2f7452194330db36322066522d2ccbc470511649e35124b61981752bbdacbc6e"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "china",
+      "protocol": "responses",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://open.bigmodel.cn/api/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23723",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23723,
+      "sha256": "8e9953d25f2a45efeb4d2ff5aceec9b05dfa3455d7554759f9f08f1fb1ae3065"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "china",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://open.bigmodel.cn/api/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23723",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23723,
+      "sha256": "8e9953d25f2a45efeb4d2ff5aceec9b05dfa3455d7554759f9f08f1fb1ae3065"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "china",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://open.bigmodel.cn/api/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24890",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24890,
+      "sha256": "51815c308507ea8712ff5d15b050aaf4715bcb58b5600817ca25a1b0f7dcf014"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "china",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://open.bigmodel.cn/api/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25109",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25109,
+      "sha256": "1196ce06dadf998e98db9d6f2778fc8aed1ab7a449c0dcbf84bd715aa7f2ba7b"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "china",
+      "protocol": "anthropic_messages",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://open.bigmodel.cn/api/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "china",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://open.bigmodel.cn/api/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "china",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://open.bigmodel.cn/api/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24621",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24621,
+      "sha256": "426ebcf5db7e0477745aa19bc4454126cfa8aa307b90c4294a1c4ba2a2f1dc6f"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "china",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://open.bigmodel.cn/api/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24838",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24838,
+      "sha256": "da955de166714a254121b800692740b2922b07a5ed2414b389750a5cf737ab46"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "international",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://api.z.ai/api/paas/v4/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23953",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23953,
+      "sha256": "7d2fd287fe0b4c6ffb9da2d3e5fc0542db6d56011a4b1122c86caf068d60ca36"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "international",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://api.z.ai/api/paas/v4/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23953",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23953,
+      "sha256": "7d2fd287fe0b4c6ffb9da2d3e5fc0542db6d56011a4b1122c86caf068d60ca36"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "international",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://api.z.ai/api/paas/v4/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25134",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25134,
+      "sha256": "64695a4738d4df6bac825d71b7b2bfd6cc1874c24ffb9d43944595b0c603e996"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "international",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://api.z.ai/api/paas/v4/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25354",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25354,
+      "sha256": "2f7452194330db36322066522d2ccbc470511649e35124b61981752bbdacbc6e"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "international",
+      "protocol": "anthropic_messages",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://api.z.ai/api/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "international",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://api.z.ai/api/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "international",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://api.z.ai/api/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24621",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24621,
+      "sha256": "426ebcf5db7e0477745aa19bc4454126cfa8aa307b90c4294a1c4ba2a2f1dc6f"
+    },
+    {
+      "presetId": "zhipu",
+      "platformId": "international",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://api.z.ai/api/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24838",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24838,
+      "sha256": "da955de166714a254121b800692740b2922b07a5ed2414b389750a5cf737ab46"
+    },
+    {
+      "presetId": "kimi",
+      "platformId": "china",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://api.moonshot.cn/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23974",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23974,
+      "sha256": "41725c5457b4119d4db64486d581f3f46d9144a021bcf884218e797f845ec3e3"
+    },
+    {
+      "presetId": "kimi",
+      "platformId": "china",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://api.moonshot.cn/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23974",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23974,
+      "sha256": "41725c5457b4119d4db64486d581f3f46d9144a021bcf884218e797f845ec3e3"
+    },
+    {
+      "presetId": "kimi",
+      "platformId": "china",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://api.moonshot.cn/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25155",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25155,
+      "sha256": "9a49847bc6b7e969cf16d21cf0a09af290efe205d65d64df41f529a2b2376fec"
+    },
+    {
+      "presetId": "kimi",
+      "platformId": "china",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://api.moonshot.cn/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25375",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25375,
+      "sha256": "ea099f1f1a06e27d5f862662df6e9ebfcd5b3476c97eea1ff90bcc097a282506"
+    },
+    {
+      "presetId": "kimi",
+      "platformId": "international",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://api.moonshot.ai/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23974",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23974,
+      "sha256": "41725c5457b4119d4db64486d581f3f46d9144a021bcf884218e797f845ec3e3"
+    },
+    {
+      "presetId": "kimi",
+      "platformId": "international",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://api.moonshot.ai/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23974",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23974,
+      "sha256": "41725c5457b4119d4db64486d581f3f46d9144a021bcf884218e797f845ec3e3"
+    },
+    {
+      "presetId": "kimi",
+      "platformId": "international",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://api.moonshot.ai/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25155",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25155,
+      "sha256": "9a49847bc6b7e969cf16d21cf0a09af290efe205d65d64df41f529a2b2376fec"
+    },
+    {
+      "presetId": "kimi",
+      "platformId": "international",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://api.moonshot.ai/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25375",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25375,
+      "sha256": "ea099f1f1a06e27d5f862662df6e9ebfcd5b3476c97eea1ff90bcc097a282506"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "china",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://api.minimax.cn/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23964",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23964,
+      "sha256": "58e28b5c83ffa1cbcf19e4d00ea1eb45b3dd0b9af373e26e45be73680f0b9aba"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "china",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://api.minimax.cn/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23964",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23964,
+      "sha256": "58e28b5c83ffa1cbcf19e4d00ea1eb45b3dd0b9af373e26e45be73680f0b9aba"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "china",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://api.minimax.cn/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25145",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25145,
+      "sha256": "e55644f17ed61941cf0a8c89e57da827c910ff7c28d0a55e7f9e18a041e1b085"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "china",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://api.minimax.cn/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25365",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25365,
+      "sha256": "f547990646ded899315c45f246a6252bd6d1c9c477e92dd6716e60575ef9e65a"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "china",
+      "protocol": "responses",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://api.minimax.cn/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23723",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23723,
+      "sha256": "8e9953d25f2a45efeb4d2ff5aceec9b05dfa3455d7554759f9f08f1fb1ae3065"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "china",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://api.minimax.cn/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23723",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23723,
+      "sha256": "8e9953d25f2a45efeb4d2ff5aceec9b05dfa3455d7554759f9f08f1fb1ae3065"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "china",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://api.minimax.cn/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24890",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24890,
+      "sha256": "51815c308507ea8712ff5d15b050aaf4715bcb58b5600817ca25a1b0f7dcf014"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "china",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://api.minimax.cn/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25109",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25109,
+      "sha256": "1196ce06dadf998e98db9d6f2778fc8aed1ab7a449c0dcbf84bd715aa7f2ba7b"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "china",
+      "protocol": "anthropic_messages",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://api.minimax.cn/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "china",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://api.minimax.cn/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "china",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://api.minimax.cn/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24621",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24621,
+      "sha256": "426ebcf5db7e0477745aa19bc4454126cfa8aa307b90c4294a1c4ba2a2f1dc6f"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "china",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://api.minimax.cn/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24838",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24838,
+      "sha256": "da955de166714a254121b800692740b2922b07a5ed2414b389750a5cf737ab46"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "international",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://api.minimax.io/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23964",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23964,
+      "sha256": "58e28b5c83ffa1cbcf19e4d00ea1eb45b3dd0b9af373e26e45be73680f0b9aba"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "international",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://api.minimax.io/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23964",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23964,
+      "sha256": "58e28b5c83ffa1cbcf19e4d00ea1eb45b3dd0b9af373e26e45be73680f0b9aba"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "international",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://api.minimax.io/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25145",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25145,
+      "sha256": "e55644f17ed61941cf0a8c89e57da827c910ff7c28d0a55e7f9e18a041e1b085"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "international",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://api.minimax.io/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25365",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25365,
+      "sha256": "f547990646ded899315c45f246a6252bd6d1c9c477e92dd6716e60575ef9e65a"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "international",
+      "protocol": "responses",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://api.minimax.io/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23723",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23723,
+      "sha256": "8e9953d25f2a45efeb4d2ff5aceec9b05dfa3455d7554759f9f08f1fb1ae3065"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "international",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://api.minimax.io/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23723",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23723,
+      "sha256": "8e9953d25f2a45efeb4d2ff5aceec9b05dfa3455d7554759f9f08f1fb1ae3065"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "international",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://api.minimax.io/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24890",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24890,
+      "sha256": "51815c308507ea8712ff5d15b050aaf4715bcb58b5600817ca25a1b0f7dcf014"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "international",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://api.minimax.io/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25109",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25109,
+      "sha256": "1196ce06dadf998e98db9d6f2778fc8aed1ab7a449c0dcbf84bd715aa7f2ba7b"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "international",
+      "protocol": "anthropic_messages",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://api.minimax.io/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "international",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://api.minimax.io/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "international",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://api.minimax.io/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24621",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24621,
+      "sha256": "426ebcf5db7e0477745aa19bc4454126cfa8aa307b90c4294a1c4ba2a2f1dc6f"
+    },
+    {
+      "presetId": "minimax",
+      "platformId": "international",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://api.minimax.io/anthropic/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24838",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24838,
+      "sha256": "da955de166714a254121b800692740b2922b07a5ed2414b389750a5cf737ab46"
+    },
+    {
+      "presetId": "openrouter",
+      "platformId": "global",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24333",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24333,
+      "sha256": "724b48a6d0417754fe72d858bddb32313f7076dede10568f8215ad2c290be2ed"
+    },
+    {
+      "presetId": "openrouter",
+      "platformId": "global",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24333",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24333,
+      "sha256": "724b48a6d0417754fe72d858bddb32313f7076dede10568f8215ad2c290be2ed"
+    },
+    {
+      "presetId": "openrouter",
+      "platformId": "global",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25529",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25529,
+      "sha256": "782efb726ac406ea950348f82555b96486f8c4d836baf33d8d208f282f168219"
+    },
+    {
+      "presetId": "openrouter",
+      "platformId": "global",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25749",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25749,
+      "sha256": "284250c542d8e76f3a107783d1e13fb45acb09de1879d7467535ae0a29bc7ce5"
+    },
+    {
+      "presetId": "openrouter",
+      "platformId": "global",
+      "protocol": "responses",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://openrouter.ai/api/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23807",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23807,
+      "sha256": "75a67289379273931f18abd751ad295b91e9ef877e3ca731e3db85f962dadde9"
+    },
+    {
+      "presetId": "openrouter",
+      "platformId": "global",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://openrouter.ai/api/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23807",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23807,
+      "sha256": "75a67289379273931f18abd751ad295b91e9ef877e3ca731e3db85f962dadde9"
+    },
+    {
+      "presetId": "openrouter",
+      "platformId": "global",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://openrouter.ai/api/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24974",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24974,
+      "sha256": "7d682ac2f15300406e0e06195d11a7b0175078831e55e7373d540b90c1b2fcc6"
+    },
+    {
+      "presetId": "openrouter",
+      "platformId": "global",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://openrouter.ai/api/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25193",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25193,
+      "sha256": "936f5b0ce07db7e9ddd6cb56e152d1588c5c19d95b7f6ede06ac0d99168b81ba"
+    },
+    {
+      "presetId": "custom",
+      "platformId": "custom",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://gateway.example.com/team/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24240",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24240,
+      "sha256": "eb10d2b8a11c0e5a0e9a2e1f143fbb5c96c16b739e2dd7ed3b66aed7b30503a1"
+    },
+    {
+      "presetId": "custom",
+      "platformId": "custom",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://gateway.example.com/team/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24240",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24240,
+      "sha256": "eb10d2b8a11c0e5a0e9a2e1f143fbb5c96c16b739e2dd7ed3b66aed7b30503a1"
+    },
+    {
+      "presetId": "custom",
+      "platformId": "custom",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://gateway.example.com/team/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25436",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25436,
+      "sha256": "6bed5dad52c6d35447fc95bbb911823f590abf89257ebd941133fbc4352b5cc2"
+    },
+    {
+      "presetId": "custom",
+      "platformId": "custom",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://gateway.example.com/team/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25656",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25656,
+      "sha256": "04ea05f924bf5f98abc4d7b02a5c1c81021d773a1fb7011e751932dd311b338d"
+    },
+    {
+      "presetId": "custom",
+      "platformId": "custom",
+      "protocol": "responses",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://gateway.example.com/team/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24035",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24035,
+      "sha256": "bbc117e2b855c0e9fc7590ff5db46338d5de40c5401ffe063c27ee57ac9e07a1"
+    },
+    {
+      "presetId": "custom",
+      "platformId": "custom",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://gateway.example.com/team/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24035",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24035,
+      "sha256": "bbc117e2b855c0e9fc7590ff5db46338d5de40c5401ffe063c27ee57ac9e07a1"
+    },
+    {
+      "presetId": "custom",
+      "platformId": "custom",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://gateway.example.com/team/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25217",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25217,
+      "sha256": "74d73139104786cbb5e5331cc88b70968483b0c90772e7f85cbdaef573613922"
+    },
+    {
+      "presetId": "custom",
+      "platformId": "custom",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://gateway.example.com/team/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25436",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25436,
+      "sha256": "40c642650426cc91a7ea93f0ff746e5c6f978833f0486e0fee683fe7a12eb8a3"
+    },
+    {
+      "presetId": "custom",
+      "platformId": "custom",
+      "protocol": "anthropic_messages",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "https://gateway.example.com/team/v1/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "custom",
+      "platformId": "custom",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "https://gateway.example.com/team/v1/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "custom",
+      "platformId": "custom",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "https://gateway.example.com/team/v1/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24621",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24621,
+      "sha256": "426ebcf5db7e0477745aa19bc4454126cfa8aa307b90c4294a1c4ba2a2f1dc6f"
+    },
+    {
+      "presetId": "custom",
+      "platformId": "custom",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "https://gateway.example.com/team/v1/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24838",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24838,
+      "sha256": "da955de166714a254121b800692740b2922b07a5ed2414b389750a5cf737ab46"
+    },
+    {
+      "presetId": "ollama",
+      "platformId": "local",
+      "protocol": "chat_completions",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "http://127.0.0.1:11434/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23948",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23948,
+      "sha256": "8c39ca12a3fe75bd46ba4bf12aee6b66538cf780b866c755b1931671358b5b6c"
+    },
+    {
+      "presetId": "ollama",
+      "platformId": "local",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "http://127.0.0.1:11434/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23948",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23948,
+      "sha256": "8c39ca12a3fe75bd46ba4bf12aee6b66538cf780b866c755b1931671358b5b6c"
+    },
+    {
+      "presetId": "ollama",
+      "platformId": "local",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "http://127.0.0.1:11434/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25129",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25129,
+      "sha256": "33675f4b16bbd1a9c9b26ce36ab8005c2bb084ae666c1711c096c38d6a9789f5"
+    },
+    {
+      "presetId": "ollama",
+      "platformId": "local",
+      "protocol": "chat_completions",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "http://127.0.0.1:11434/v1/chat/completions",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25349",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25349,
+      "sha256": "26ba45d61160bfd2f92a06a3fa9abc0950fa5383020861f7a569783767b17dd6"
+    },
+    {
+      "presetId": "ollama",
+      "platformId": "local",
+      "protocol": "responses",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "http://127.0.0.1:11434/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23723",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23723,
+      "sha256": "8e9953d25f2a45efeb4d2ff5aceec9b05dfa3455d7554759f9f08f1fb1ae3065"
+    },
+    {
+      "presetId": "ollama",
+      "platformId": "local",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "http://127.0.0.1:11434/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23723",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 23723,
+      "sha256": "8e9953d25f2a45efeb4d2ff5aceec9b05dfa3455d7554759f9f08f1fb1ae3065"
+    },
+    {
+      "presetId": "ollama",
+      "platformId": "local",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "http://127.0.0.1:11434/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24890",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 24890,
+      "sha256": "51815c308507ea8712ff5d15b050aaf4715bcb58b5600817ca25a1b0f7dcf014"
+    },
+    {
+      "presetId": "ollama",
+      "platformId": "local",
+      "protocol": "responses",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "http://127.0.0.1:11434/v1/responses",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "25109",
+        "Connection": "close",
+        "Authorization": "Bearer <synthetic>"
+      },
+      "bytes": 25109,
+      "sha256": "1196ce06dadf998e98db9d6f2778fc8aed1ab7a449c0dcbf84bd715aa7f2ba7b"
+    },
+    {
+      "presetId": "ollama",
+      "platformId": "local",
+      "protocol": "anthropic_messages",
+      "scenario": "text",
+      "index": 1,
+      "endpoint": "http://127.0.0.1:11434/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "ollama",
+      "platformId": "local",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 1,
+      "endpoint": "http://127.0.0.1:11434/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "23476",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 23476,
+      "sha256": "c8f0e46e3df772278aae9bf237a61b624c0be692d6137846b69269749dd20b83"
+    },
+    {
+      "presetId": "ollama",
+      "platformId": "local",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 2,
+      "endpoint": "http://127.0.0.1:11434/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24621",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24621,
+      "sha256": "426ebcf5db7e0477745aa19bc4454126cfa8aa307b90c4294a1c4ba2a2f1dc6f"
+    },
+    {
+      "presetId": "ollama",
+      "platformId": "local",
+      "protocol": "anthropic_messages",
+      "scenario": "tool_roundtrip",
+      "index": 3,
+      "endpoint": "http://127.0.0.1:11434/v1/messages",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "Accept-Encoding": "identity",
+        "Content-Length": "24838",
+        "Connection": "close",
+        "x-api-key": "<synthetic>",
+        "anthropic-version": "2023-06-01"
+      },
+      "bytes": 24838,
+      "sha256": "da955de166714a254121b800692740b2922b07a5ed2414b389750a5cf737ab46"
+    }
+  ]
+}

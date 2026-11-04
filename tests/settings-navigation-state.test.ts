@@ -11,22 +11,23 @@ import * as comfy from '../apps/web/src/comfy-image-settings.ts';
 import * as i18nCore from '../packages/i18n/src/index.ts';
 import { i18nTestModule } from './helpers/i18n.ts';
 import { DEFAULT_COMFY_IMAGE_CONFIGURATION } from '@mioon/contracts';
+import {AGENT_CONNECTION_LIMITS,agentSettingsSnapshotSchema} from '../packages/contracts/src/agent-connection-settings.ts';
+import type {SettingsServicesLayoutProps} from '../apps/web/src/SettingsServicesLayout.tsx';
+import {settingsUiFixture,ADAPTER_CUSTOM_SERVICE_KEY} from './helpers/agent-settings-ui-fixture.ts';
 
 interface SettingsSnapshot {revision: number; configuration: Record<string, unknown>; secret?: {configured: boolean; storage: string}; storage?: typeof storage; presets?: unknown[]; scope?: string; verification?: string; readiness?: {checked: boolean; checkedAt: null}}
 interface SettingsWrite {expectedRevision: number; configuration: Record<string, unknown>; secret?: {action: string; storage: string}}
-interface SettingsOverrides {write?(input: SettingsWrite, saved: SettingsSnapshot): unknown; read?(count: number, saved: SettingsSnapshot): unknown; check?(input: unknown): unknown}
+interface SettingsOverrides {write?(input: unknown, saved: unknown): unknown; read?(count: number, saved: unknown): unknown; check?(input: unknown): unknown}
 const deferred = () => { let resolve!: (value?: unknown) => void, reject!: (error: unknown) => void; const promise = new Promise<unknown>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const flush = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
 const copy = <T>(value: T): T => structuredClone(value);
-const config = { presetId: 'openai', platformId: 'global', baseUrl: 'https://api.example.com/v1', model: 'synthetic-model', protocol: 'chat_completions' };
 const storage = { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' };
 function snapshot(slot: string): SettingsSnapshot {
-  if (slot === 'agent') return { revision: 0, configuration: { ...config }, secret: { configured: false, storage: 'none' }, storage,
-    scope: 'settings_only', verification: 'not_tested', presets: [{ id: 'openai', label: 'OpenAI', platforms: [{ id: 'global', label: 'Global', baseUrl: config.baseUrl, model: config.model, defaultProtocol: 'chat_completions', availableProtocols: ['chat_completions', 'responses'], sources: [] }] }] };
   if (slot === 'comfy') return { revision: 0, configuration: { ...copy(DEFAULT_COMFY_IMAGE_CONFIGURATION), enabled: true, baseUrl: 'http://127.0.0.1:8188', model: 'synthetic.safetensors' }, readiness: { checked: false, checkedAt: null } };
   return { revision: 0, configuration: slot === 'official' ? copy(image.DEFAULT_IMAGE_CONFIGURATION) : { ...copy(image.DEFAULT_CUSTOM_IMAGE_CONFIGURATION), baseUrl: 'https://images.example.com/v1', model: 'synthetic-image' }, secret: { configured: false, storage: 'none' }, storage };
 }
 function fixture(slot: string, options: SettingsOverrides = {}) {
+  if(slot==='agent'){const f=settingsUiFixture({read:options.read,write:options.write});return {client:f.client,writes:f.calls,checks:[] as unknown[],get reads(){return f.reads;},saved:f.saved};}
   let saved = snapshot(slot), reads = 0; const writes: SettingsWrite[] = [], checks: unknown[] = [];
   const client = {
     ...(slot === 'comfy' ? { readAvailability: async () => ({ schemaVersion: 1, connectorId: 'mioon.comfy-local', implementationVersion: '1', state: 'available', reason: 'ready', fixedForSession: true }) } : {}),
@@ -51,18 +52,25 @@ function renderer(slot: string, f: {client: unknown}, callback?: (value: navigat
   const hooks: RootHook[] = [], dom = new Map<string, {value: string}>(), changes: navigation.SettingsNavigationState[] = []; let cursor = 0, effects: number[] = [], tree: RootTree, visible = true, contextKey = 'project-one', closes = 0;
   let onNavigationStateChange = callback || (value => changes.push(value));
   const react: {default?: unknown} & Record<string, unknown> = {
-    createElement(type: unknown, props: Record<string, unknown> = {}, ...children: unknown[]) { return { type, props: { ...props, children } }; },
+    createElement(type: unknown, props: Record<string, unknown> = {}, ...children: unknown[]) {
+      if(type==='SettingsServicesLayout'){const layout=props as unknown as SettingsServicesLayoutProps;return {type,props:{...props,children:[...layout.groups.flatMap(group=>group.items.map(item=>({type:'Button',props:{'data-testid':item.testId,onClick:()=>layout.onSelect(item.key)}}))),...layout.panels.map(panel=>panel.content),{type:'Button',props:{'data-testid':layout.footer.save.testId,disabled:layout.footer.save.disabled,onClick:layout.footer.save.onAction}},{type:'Button',props:{'data-testid':layout.footer.discard!.testId,disabled:layout.footer.discard!.disabled,onClick:layout.footer.discard!.onAction}}]}};}
+      return { type, props: { ...props, children } }; },
     useState(initial: unknown) { const i = cursor++; hooks[i] ||= { value: typeof initial === 'function' ? initial() : initial }; return [hooks[i].value, (value: unknown) => { hooks[i].value = typeof value === 'function' ? value(hooks[i].value) : value; }]; },
+    createRef(){return {current:null};},
     useRef(initial: unknown) { return hooks[cursor++] ||= { current: initial }; },
     useMemo(fn: () => unknown, deps: readonly unknown[]) { const i = cursor++; if (!hooks[i] || !equalDeps(hooks[i].deps, deps)) hooks[i] = { value: fn(), deps }; return hooks[i].value; },
     useLayoutEffect(fn: () => void | (() => void), deps: readonly unknown[]) { const i = cursor++, old = hooks[i]; if (old && equalDeps(old.deps, deps)) return; hooks[i] = { fn, deps, cleanup: old?.cleanup }; effects.push(i); },
   }; react.default = react;
   const module = { exports: {} as {default(props: unknown): RootTree} }, primitives = new Proxy({}, { get: (_, key) => String(key) });
-  Function('module', 'exports', 'require', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, (name: string) => {
+  const fakeDocument={hidden:false,addEventListener(){},removeEventListener(){}};
+  Function('module', 'exports', 'require','document', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, (name: string) => {
     if (name === 'react') return react;
     if (name === './i18n/I18nProvider.tsx') return i18nTestModule();
     if (name.includes('packages/i18n/src/index.ts')) return i18nCore;
     if (name === './settings-navigation-state.ts') return navigation;
+    if(name==='./SettingsServicesLayout.tsx')return {default:'SettingsServicesLayout',__esModule:true};
+    if(name==='../../../packages/contracts/src/agent-connection-settings.ts')return {AGENT_CONNECTION_LIMITS};
+    if(name==='@mioon/ui/components/workbench-confirm')return {useConfirmation:()=>async()=>true};
     if (name === './agent-settings.ts') return { ...agent, createAgentSettingsSession: (options?: agent.AgentSettingsSessionOptions|undefined) => agent.createAgentSettingsSession({ ...options, client: f.client as agent.AgentSettingsClient }) };
     if (name === './image-settings.ts') return image;
     if (name === './comfy-image-settings.ts') return comfy;
@@ -79,7 +87,7 @@ function renderer(slot: string, f: {client: unknown}, callback?: (value: navigat
     if (name === './icons.tsx') return { default: 'Icon' };
     if (name.endsWith('.css')) return {};
     throw Error(`Unexpected import ${name}`);
-  });
+  },fakeDocument);
   const prefix = slot === 'agent' ? 'agent-settings' : slot === 'official' ? 'image-settings' : `${slot}-image-settings`;
   const ui = {
     render() {
@@ -89,9 +97,10 @@ function renderer(slot: string, f: {client: unknown}, callback?: (value: navigat
       for (const i of effects) { hooks[i].cleanup?.(); hooks[i].cleanup = hooks[i].fn!(); }
       return tree;
     },
-    find(suffix: string) { return nodes(tree).find((node: RootNode) => node.props['data-testid'] === `${prefix}-${suffix}`); },
-    edit(value: string|boolean) { const field = ui.find(slot === 'agent' ? 'model' : 'enable'); (field)!.props.onChange({ target: { value, checked: value } }); },
-    key(value: string) { const field = ui.find('key'); ((field)!.props.ref as {current: {value: string}}).current.value = value; (field)!.props.onChange({ target: { value } }); },
+    find(suffix: string) { const id=slot==='agent'&&['key','model'].includes(suffix)?`${prefix}-${suffix}-${ADAPTER_CUSTOM_SERVICE_KEY}`:`${prefix}-${suffix}`;return nodes(tree).find((node: RootNode) => node.props['data-testid'] === id); },
+    edit(value: string|boolean) { if(slot==='agent'){ui.viewAgent();const field=ui.find('model')!;(field.props.ref as {current:{value:string}}).current.value=String(value);nodes(tree).find(node=>node.props['data-testid']===`agent-settings-add-model-${ADAPTER_CUSTOM_SERVICE_KEY}`)!.props.onClick();ui.render();nodes(tree).find(node=>node.props['data-testid']===`agent-settings-use-${ADAPTER_CUSTOM_SERVICE_KEY}-${value}`)!.props.onClick();return;} const field = ui.find(slot === 'agent' ? 'model' : 'enable'); (field)!.props.onChange({ target: { value, checked: value } }); },
+    viewAgent(){if(slot!=='agent')return;nodes(tree).find(node=>node.props['data-testid']===`agent-settings-nav-${ADAPTER_CUSTOM_SERVICE_KEY}`)!.props.onClick();ui.render();},
+    key(value: string) { if(slot==='agent')ui.viewAgent();const field = ui.find('key'); ((field)!.props.ref as {current: {value: string}}).current.value = value; (field)!.props.onChange({ target: { value } }); },
     save() { (nodes(tree).find((node: RootNode) => node.type === 'form'))!.props.onSubmit({ preventDefault() {} }); },
     back() { return (ui.find('back'))!.props.onClick(); },
     get closes() { return closes; },
@@ -212,7 +221,7 @@ test('agent: the page has no form-level Back; Discard reverts the draft without 
   assert.equal(ui.find('back'), undefined);
   ui.edit(changedValue('agent')); ui.render(); assert.equal(ui.latest().dirty, true); assert.equal(ui.find('cancel')!.props.disabled, false);
   ui.find('cancel')!.props.onClick(); ui.render();
-  assert.equal(ui.closes, 0); assert.equal(ui.latest().dirty, false); assert.equal(ui.find('model')!.props.value, f.saved().configuration.model); assert.equal(f.writes.length, 0);
+  assert.equal(ui.closes, 0); assert.equal(ui.latest().dirty, false); assert.equal(nodes(ui.render()).some(node=>node.props['data-testid']===`agent-settings-model-row-${ADAPTER_CUSTOM_SERVICE_KEY}-${changedValue('agent')}`),false); assert.equal(agentSettingsSnapshotSchema.parse(f.saved()).mioSelection?.modelId,'synthetic-model'); assert.equal(f.writes.length, 0);
   ui.key('synthetic-key-before-hide'); ui.hide(); assert.equal((ui.find('key')!.props.ref as {current: {value: string}}).current.value, ''); ui.unmount();
 });
 

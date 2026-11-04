@@ -1,6 +1,8 @@
 import {isDeepStrictEqual} from 'node:util';
 import {parseAgentConfiguration} from './config.ts';
 import type {AgentConfiguration} from './config.ts';
+import {AGENT_PRESETS} from './presets.ts';
+import {agentPresetPlatform} from '../../../contracts/src/agent-provider-catalog.ts';
 import {agentChatError} from './chat-errors.ts';
 import {ANTHROPIC_MESSAGES_FIELDS, ANTHROPIC_MIN_THINKING_BUDGET_TOKENS, anthropicThinkingFields} from './anthropic-protocol.ts';
 import type {AgentProtocol} from '../../../contracts/src/agent-protocol.ts';
@@ -34,8 +36,9 @@ export interface AgentModelTokenLimits {contextTokens: number | null; outputToke
 /** Keep documented capability separate from the output limit sent today. */
 interface AgentModelTokenProfile extends AgentModelTokenLimits {maxOutputTokens: number | null}
 // These are explicit text-only profiles, not a vendor-wide compatibility claim.
-// Model aliases/edits remain saveable settings, but unsupported named profiles
-// fail before inference. Sources and region/account caveats: AGENT-PROVIDERS.md.
+// Unknown models use a separate conservative generic profile; combinations
+// without a runnable endpoint fail before inference. Sources and region/account
+// caveats: AGENT-PROVIDERS.md.
 // No catalog model requires thinking: each optional profile's model documents
 // the disable switch it sends, and gpt-4.1-mini does not reason.
 // Documented maximum output: gpt-4.1-mini 32,768; deepseek-flash 393,216;
@@ -59,11 +62,19 @@ const profiles: Record<string, AgentChatProfile> = {
   ollama: Object.freeze({models: ['qwen3:8b'], tokenField: 'max_tokens', fields: {reasoning_effort: 'none'}, thinkingTier: 'optional', contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS}),
 };
 export const AGENT_CHAT_PROFILES: Readonly<Record<string, AgentChatProfile>> = freeze(profiles);
+// Generic models have a separately bounded profile. They never borrow a named
+// model's context/output capacity or its special stream termination contract.
+const genericChatProfiles: Readonly<Record<string, AgentChatProfile>> = freeze(Object.fromEntries(Object.entries(profiles).map(([id, profile]) => [id, {
+  ...profile, models: null, contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS, thinkingTier: 'unsupported' as const,
+  ...(id === 'openrouter' ? {fields: {...profile.fields, reasoning: {enabled: false}}} : {}),
+}])));
 /** Select request fields before dispatch. A preset without a dedicated profile
  * uses this protocol's generic template; errors never trigger another attempt. */
 export function agentChatProfile(configuration: AgentConfiguration): AgentChatProfile {
   if (configuration.protocol !== 'chat_completions') throw agentChatError('AGENT_CHAT_VALIDATION');
-  return Object.hasOwn(AGENT_CHAT_PROFILES, configuration.presetId) ? AGENT_CHAT_PROFILES[configuration.presetId] : AGENT_CHAT_PROFILES.custom;
+  const exact = Object.hasOwn(AGENT_CHAT_PROFILES, configuration.presetId) ? AGENT_CHAT_PROFILES[configuration.presetId] : undefined;
+  if (exact && (exact.models === null || exact.models.includes(configuration.model))) return exact;
+  return Object.hasOwn(genericChatProfiles, configuration.presetId) ? genericChatProfiles[configuration.presetId] : genericChatProfiles.custom;
 }
 /** MiniMax recommends the OpenAI SDK, whose SSE iterator accepts natural EOF.
  * Restrict that terminal contract to this exact official non-thinking profile;
@@ -88,11 +99,22 @@ const responseProfiles: Record<string, AgentResponsesProfile> = {
   qwen: {models: ['qwen3.8-flash'], fields: {reasoning: {effort: 'none'}}, thinkingTier: 'optional', contextTokens: 1000000, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS},
 };
 export const AGENT_RESPONSES_PROFILES: Readonly<Record<string, AgentResponsesProfile>> = freeze(responseProfiles);
+const genericResponsesProfiles: Readonly<Record<string, AgentResponsesProfile>> = freeze({
+  ...Object.fromEntries(Object.entries(responseProfiles).map(([id, profile]) => [id, {...profile, models: null, contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS, thinkingTier: 'unsupported' as const}])),
+  zhipu: {models: null, fields: {reasoning: {effort: 'none'}}, thinkingTier: 'unsupported', contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS},
+  minimax: {models: null, fields: {reasoning: {effort: 'none'}}, thinkingTier: 'unsupported', contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS},
+  // The Responses schema independently supports enabled:false. provider fields
+  // enforce routing constraints. Unverified models still never admit thinking;
+  // in particular an old fallback body gains no capability from today's map.
+  openrouter: {models: null, fields: {provider: {require_parameters: true, allow_fallbacks: false}, reasoning: {enabled: false}}, thinkingTier: 'unsupported', contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS},
+});
 /** Unlisted vendor/protocol combinations use the explicitly selected protocol's
  * generic template from the first request, with no error-driven switching. */
 export function agentResponsesProfile(configuration: AgentConfiguration): AgentResponsesProfile {
   if (configuration.protocol !== 'responses') throw agentChatError('AGENT_CHAT_VALIDATION');
-  return Object.hasOwn(AGENT_RESPONSES_PROFILES, configuration.presetId) ? AGENT_RESPONSES_PROFILES[configuration.presetId] : AGENT_RESPONSES_PROFILES.custom;
+  const exact = Object.hasOwn(AGENT_RESPONSES_PROFILES, configuration.presetId) ? AGENT_RESPONSES_PROFILES[configuration.presetId] : undefined;
+  if (exact && (exact.models === null || exact.models.includes(configuration.model))) return exact;
+  return Object.hasOwn(genericResponsesProfiles, configuration.presetId) ? genericResponsesProfiles[configuration.presetId] : genericResponsesProfiles.custom;
 }
 /** Messages has its own `thinking` request parameter, which every task request
  * sends disabled, so each Messages preset is optional. The other protocols take
@@ -141,13 +163,16 @@ export function agentRequestThinks(configuration: AgentConfiguration, body: Reco
     : configuration.protocol === 'responses' ? agentResponsesProfile(configuration).fields : ANTHROPIC_MESSAGES_FIELDS;
   return !Object.entries(off).every(([key, value]) => isDeepStrictEqual(body[key], value));
 }
-function qwenEndpoint(config: AgentConfiguration): boolean {
-  const fixed: Record<string, string> = {beijing: 'https://dashscope.aliyuncs.com/compatible-mode/v1', singapore: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'};
-  if (Object.hasOwn(fixed, config.platformId)) return config.baseUrl === fixed[config.platformId];
-  if (!config.platformId.startsWith('workspace-')) return false;
-  const region = config.platformId.slice('workspace-'.length), url = new URL(config.baseUrl);
-  return url.protocol === 'https:' && !url.port && url.pathname === '/compatible-mode/v1' &&
-    new RegExp(`^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.${region}\\.maas\\.aliyuncs\\.com$`).test(url.hostname);
+/** Only exact named profiles get the adapted label, regardless of whether a
+ * model came from a fetched list, manual input or an old saved selection. */
+export function agentAdaptedModelHints(presetId: string): Partial<Record<AgentProtocol, string[]>> {
+  if (presetId === 'custom') return {};
+  const chat = AGENT_CHAT_PROFILES[presetId]?.models, responses = AGENT_RESPONSES_PROFILES[presetId]?.models,
+    messages = AGENT_MESSAGES_TOKEN_LIMITS[presetId]?.models;
+  return {...(chat ? {chat_completions: [...chat]} : {}), ...(responses ? {responses: [...responses]} : {}), ...(messages ? {anthropic_messages: [...messages]} : {})};
+}
+export function agentModelAdaptation(configuration: AgentConfiguration): 'adapted' | 'unverified' {
+  return agentAdaptedModelHints(configuration.presetId)[configuration.protocol]?.includes(configuration.model) ? 'adapted' : 'unverified';
 }
 
 export interface ToolProfile {parallel: boolean; choice: boolean; strict: boolean}
@@ -174,6 +199,9 @@ export const AGENT_READ_TOOL_PROFILES: Readonly<Record<AgentProtocol, Readonly<R
     qwen: {parallel: false, choice: true, strict: false},
     deepseek: {parallel: false, choice: true, strict: false},
     ollama: {parallel: false, choice: false, strict: false},
+    zhipu: {parallel: false, choice: false, strict: false},
+    minimax: {parallel: false, choice: false, strict: false},
+    openrouter: {parallel: false, choice: true, strict: false},
   },
   anthropic_messages: {
     anthropic: {parallel: false, choice: true, strict: false},
@@ -189,8 +217,15 @@ export function agentReadToolProfile(configuration: AgentConfiguration): ToolPro
 }
 
 export interface AgentProfileValidationOptions {selfPort?: number}
+function rejectBlockedEndpoint(configuration: unknown): void {
+  if (!object(configuration) || typeof configuration.presetId !== 'string' || typeof configuration.platformId !== 'string' ||
+      !['chat_completions', 'responses', 'anthropic_messages'].includes(String(configuration.protocol))) return;
+  const platform = agentPresetPlatform(AGENT_PRESETS, configuration.presetId, configuration.platformId);
+  if (platform && !platform.availableProtocols.includes(configuration.protocol as AgentProtocol)) fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
+}
 export function validateAgentChatProfile(configuration: unknown, {selfPort}: AgentProfileValidationOptions = {}): AgentConfiguration {
   let config: AgentConfiguration;
+  rejectBlockedEndpoint(configuration);
   try { config = parseAgentConfiguration(configuration, {selfPort}); } catch { return fail('AGENT_CHAT_VALIDATION'); }
   if (config.protocol !== 'chat_completions') fail('AGENT_CHAT_VALIDATION');
   const profile = agentChatProfile(config);
@@ -199,18 +234,18 @@ export function validateAgentChatProfile(configuration: unknown, {selfPort}: Age
 }
 export function validateAgentResponsesProfile(configuration: unknown, {selfPort}: AgentProfileValidationOptions = {}): AgentConfiguration {
   let config: AgentConfiguration;
+  rejectBlockedEndpoint(configuration);
   try { config = parseAgentConfiguration(configuration, {selfPort}); } catch { return fail('AGENT_CHAT_VALIDATION'); }
   if (config.protocol !== 'responses') fail('AGENT_CHAT_VALIDATION');
   const profile = agentResponsesProfile(config);
-  if (!profile || (profile.models && !profile.models.includes(config.model)) ||
-    (config.presetId === 'deepseek' && config.baseUrl !== 'https://api.deepseek.com') ||
-    (config.presetId === 'qwen' && !qwenEndpoint(config))) fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
+  if (!profile || (profile.models && !profile.models.includes(config.model))) fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
   return config;
 }
 // All presets use this same explicit text/client-tool Messages subset, with
 // thinking disabled. A model name does not grant additional content families.
 export function validateAnthropicMessagesProfile(configuration: unknown, {selfPort}: AgentProfileValidationOptions = {}): AgentConfiguration {
   let config: AgentConfiguration;
+  rejectBlockedEndpoint(configuration);
   try {config = parseAgentConfiguration(configuration, {selfPort});} catch {return fail('AGENT_CHAT_VALIDATION');}
   if (config.protocol !== 'anthropic_messages') fail('AGENT_CHAT_VALIDATION');
   return config;

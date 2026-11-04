@@ -27,7 +27,7 @@ import {agentDiagnosticSummarySchema} from '../../../contracts/src/agent-diagnos
 import type {AgentDiagnosticSummary} from '../../../contracts/src/agent-diagnostic-summary.ts';
 import {testProjectAppLibrary} from '../project-service-application.ts';
 import type {AgentConfiguration} from './config.ts';
-import {parseAgentConfiguration} from './config.ts';
+import {parseAgentConfiguration,agentSettingsError} from './config.ts';
 import {agentChatHttpStatus,agentChatStreamReason,safeAgentChatError} from './chat-errors.ts';
 import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskModelHistoryBudget,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
 import type {TaskGateway,TaskHistoryBudget,TaskModelOutput,TaskModelItem} from './task-gateway-v2.ts';
@@ -142,7 +142,7 @@ export function agentTaskFailure(value:string,{handedBack=false,undo=false,polic
   const handedBackMessages:Record<string,string>={AGENT_TASK_TARGET_CHANGED:'该目标已被手动修改，这一步没有执行，Mio 会按当前内容重新规划。',AGENT_TASK_TARGET_CLAIMED:'该目标正在手动编辑，这一步没有执行，Mio 会重新规划。'};
   if(handedBack&&Object.hasOwn(handedBackMessages,value))return Object.assign(new Error(handedBackMessages[value]),{code:value,status:409,handedBack:true as const});
   if(undo&&(value==='AGENT_TASK_TARGET_CHANGED'||value==='AGENT_TASK_TARGET_CLAIMED'))return Object.assign(new Error(value==='AGENT_TASK_TARGET_CHANGED'?'目标已被修改，本次撤销没有完成。请检查当前保存状态。':'目标正在手动编辑，本次撤销没有完成。请检查当前保存状态。'),{code:value,status:409});
-  const messages:Record<string,string>={AGENT_TASK_NOT_FOUND:'任务不存在。',AGENT_TASK_CLOSED:'任务服务已关闭。',AGENT_TASK_READ_ONLY:'恢复副本中的智能助理任务仅供查看。',AGENT_TASK_STOPPED:'任务已停止，尚未发出的工作已阻断。',AGENT_TASK_INVALID:'任务参数无效。',AGENT_TASK_BUSY:'本项目已有未结束任务，请继续或停止原任务。',AGENT_TASK_CONSENT_REQUIRED:'当前目标、模型和项目任务范围尚未授权，或授权已撤销。',AGENT_TASK_SETTINGS_CHANGED:'连接设置已变化，请重新确认目标和模型。',AGENT_TASK_TARGET_CHANGED:'该目标已被手动修改，任务已暂停。',AGENT_TASK_TARGET_CLAIMED:'该目标正在手动编辑，任务已暂停。',AGENT_TASK_UNKNOWN_RESULT:'上一步结果未知，请先核对原请求。',AGENT_TASK_REVISION_CONFLICT:'任务已被其他窗口更新，请重新读取。',AGENT_TASK_REQUEST_CONFLICT:'此请求标识已用于其他内容。',AGENT_TASK_STORAGE_LIMIT:'Mio 任务历史已达容量上限，已有记录保留，请先检查容量诊断。',AGENT_TASK_STORAGE_UNAVAILABLE:'无法安全读取或保存任务记录。',AGENT_TASK_FAILED:'任务未完成，请检查已保存记录。',AGENT_TASK_PAUSED:'任务已暂停。',AGENT_TASK_APPROVAL_REQUIRED:'此操作需要确认。'};
+  const messages:Record<string,string>={AGENT_TASK_NOT_FOUND:'任务不存在。',AGENT_TASK_CLOSED:'任务服务已关闭。',AGENT_TASK_READ_ONLY:'恢复副本中的智能助理任务仅供查看。',AGENT_TASK_STOPPED:'任务已停止，尚未发出的工作已阻断。',AGENT_TASK_INVALID:'任务参数无效。',AGENT_TASK_BUSY:'本项目已有未结束任务，请继续或停止原任务。',AGENT_TASK_CONSENT_REQUIRED:'当前目标、模型和项目任务范围尚未授权，或授权已撤销。',AGENT_TASK_SETTINGS_CHANGED:'连接设置已变化，请重新确认目标和模型。',AGENT_TASK_NOT_CONFIGURED:'请先在设置中选择Mio使用的模型。',AGENT_TASK_TARGET_CHANGED:'该目标已被手动修改，任务已暂停。',AGENT_TASK_TARGET_CLAIMED:'该目标正在手动编辑，任务已暂停。',AGENT_TASK_UNKNOWN_RESULT:'上一步结果未知，请先核对原请求。',AGENT_TASK_REVISION_CONFLICT:'任务已被其他窗口更新，请重新读取。',AGENT_TASK_REQUEST_CONFLICT:'此请求标识已用于其他内容。',AGENT_TASK_STORAGE_LIMIT:'Mio 任务历史已达容量上限，已有记录保留，请先检查容量诊断。',AGENT_TASK_STORAGE_UNAVAILABLE:'无法安全读取或保存任务记录。',AGENT_TASK_FAILED:'任务未完成，请检查已保存记录。',AGENT_TASK_PAUSED:'任务已暂停。',AGENT_TASK_APPROVAL_REQUIRED:'此操作需要确认。'};
   return Object.assign(new Error(messages[value]??messages.AGENT_TASK_FAILED),{code:value,status:value==='AGENT_TASK_NOT_FOUND'?404:value==='AGENT_TASK_INVALID'?400:409});
 }
 function modelOutput(value:unknown):TaskModelOutput {
@@ -483,15 +483,31 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       return journal.updateStep(runId,step.id,{status:'failed',result:{error:{code:failure,message:'工具未完成，请检查参数或可用性。'}},error:{code:failure,message:'工具未完成，请检查参数或可用性。'}});
     }
   }
+  async function checkExecutionWitness(runId:string,signal:AbortSignal):Promise<void>{
+    const frozen=fence(runId);if(!frozen.settingsBinding)throw agentTaskFailure('AGENT_TASK_SETTINGS_CHANGED');
+    const settings=await new Promise<unknown>((resolve,reject)=>{
+      const abort=()=>reject(agentTaskFailure('AGENT_TASK_PAUSED'));signal.addEventListener('abort',abort,{once:true});
+      Promise.resolve().then(()=>{fence(runId);return agentSettings.get({selfPort:selfPort(),signal});}).then(resolve,reject).finally(()=>signal.removeEventListener('abort',abort));
+    });
+    const active=sanitizeAgentSettingsResult(settings).execution;fence(runId);
+    if(!active||active.revision!==frozen.settingsRevision||!isDeepStrictEqual(active.binding,frozen.settingsBinding)||!isDeepStrictEqual(active.configuration,configuration(frozen)))throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
+  }
+  async function acquireForModel(runId:string,signal:AbortSignal):Promise<string|null>{
+    const run=fence(runId);if(!run.settingsBinding)throw agentTaskFailure('AGENT_TASK_SETTINGS_CHANGED');
+    const expected={expectedRevision:run.settingsRevision??0,configuration:configuration(run),binding:run.settingsBinding};
+    const credential=await new Promise<Awaited<ReturnType<AgentSettingsService[typeof AGENT_CREDENTIAL_ACQUIRE]>>>((resolve,reject)=>{
+      const abort=()=>reject(agentTaskFailure('AGENT_TASK_PAUSED'));signal.addEventListener('abort',abort,{once:true});
+      Promise.resolve().then(()=>{fence(runId);return agentSettings[AGENT_CREDENTIAL_ACQUIRE](expected,{selfPort:selfPort(),signal});}).then(resolve,reject).finally(()=>signal.removeEventListener('abort',abort));
+    });
+    const acquired=sanitizeAgentCredentialResult(credential,expected);fence(runId);return acquired.apiKey;
+  }
   async function execute(runId:string,signal:AbortSignal):Promise<void>{
     let inflight:string|undefined;
     try {
-      let run=fence(runId);const config=configuration(run),expected={expectedRevision:run.settingsRevision??0,configuration:config};
-      const credential=await new Promise<Awaited<ReturnType<AgentSettingsService[typeof AGENT_CREDENTIAL_ACQUIRE]>>>((resolve,reject)=>{
-        const abort=()=>reject(agentTaskFailure('AGENT_TASK_PAUSED'));signal.addEventListener('abort',abort,{once:true});
-        Promise.resolve().then(()=>{fence(runId);return agentSettings[AGENT_CREDENTIAL_ACQUIRE](expected,{selfPort:selfPort(),signal});}).then(resolve,reject).finally(()=>signal.removeEventListener('abort',abort));
-      });
-      const acquired=sanitizeAgentCredentialResult(credential,expected);if(!acquired)throw agentTaskFailure('AGENT_TASK_SETTINGS_CHANGED');const key=acquired.apiKey;fence(runId);
+      let run=fence(runId);const config=configuration(run);
+      // Recovery can execute retained tools without another model request. Check
+      // the frozen selected-entry witness before that path, without decoding a key.
+      await checkExecutionWitness(runId,signal);
       modelRequests:for(;;){
         run=fence(runId);const snapshot=journal.snapshot(runId),context=cloneTaskBaseContext(run.context,run.text),fragments:TaskModelContextFragment[]=[];
         let repairSource=snapshot.steps.find(step=>step.kind==='model'&&goalRepairMessage(step)!==undefined)?.id;
@@ -564,6 +580,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           model=pendingModel??journal.beginModelStep(runId,{request:{body,history},data:{baseline:json(baseline),assemblyModelStepIds:[...new Set(fragments.flatMap(fragment=>fragment.modelStepId?[fragment.modelStepId]:[]))],...(resumeModel?{previousModelStepId:resumeModel.id}:{}),...(repairSource?{goalRepairSourceModelStepId:repairSource}:{})}},pendingNotes.map(note=>note.requestId));
         }
         const knownTools=run.diagnostic?undefined:toolset().list();
+        // Each model request reacquires only its frozen selected service. A
+        // save to another service cannot invalidate it or deliver another key.
+        const key=await acquireForModel(runId,signal);
         journal.markDispatch(runId,model.id);inflight=model.id;let output:TaskModelOutput|null=null,pending='',lastFlush=Date.now();
         let flushTimer:ReturnType<typeof setTimeout>|undefined,flushFailed=false,timerError:unknown,rejectRead:((error:unknown)=>void)|undefined;
         const clearFlushTimer=()=>{if(flushTimer!==undefined){clearTimeout(flushTimer);flushTimer=undefined;}};
@@ -647,12 +666,12 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       if(onDiagnosticCompleted&&run.diagnostic?.profile==='text'&&terminal(run)){
         const config=record(run.configuration)?run.configuration:{};
         onDiagnosticCompleted(agentDiagnosticSummarySchema.parse({completedAt:run.updatedAt,status:run.status,
-          protocol:config.protocol,model:config.model,errorCode:run.status==='failed'&&typeof run.pauseReason==='string'&&/^[A-Z][A-Z0-9_]{0,79}$/u.test(run.pauseReason)?run.pauseReason:null}));
+          protocol:config.protocol,model:config.model,...(run.settingsBinding&&run.settingsRevision!==undefined?{settingsBinding:run.settingsBinding,settingsRevision:run.settingsRevision}:{}),errorCode:run.status==='failed'&&typeof run.pauseReason==='string'&&/^[A-Z][A-Z0-9_]{0,79}$/u.test(run.pauseReason)?run.pauseReason:null}));
       }
       if(entry.restartRequested&&!closed&&!storageFaulted&&run.status==='running')queueMicrotask(()=>launch(runId));
     }).catch(failClosed);
   }
-  async function snapshot(projectId:string){checkOpen();if(!store.get('projects',projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');const settings=sanitizeAgentSettingsResult(await agentSettings.get({selfPort:selfPort()}));return {version:2 as const,instanceId,projectId,readOnly,runs:(hasTables?journal.list(projectId,{excludeDiagnostics:true}):[]).map(run=>{const {context,...summary}=run;return summary;}),policy:hasTables?journal.policy():structuredClone(DEFAULT_AGENT_TASK_POLICY),settings,authorization:authorizations.snapshot(settings.configuration)};}
+  async function snapshot(projectId:string){checkOpen();if(!store.get('projects',projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');const settings=sanitizeAgentSettingsResult(await agentSettings.get({selfPort:selfPort()}));return {version:2 as const,instanceId,projectId,readOnly,runs:(hasTables?journal.list(projectId,{excludeDiagnostics:true}):[]).map(run=>{const {context,...summary}=run;return summary;}),policy:hasTables?journal.policy():structuredClone(DEFAULT_AGENT_TASK_POLICY),settings,authorization:authorizations.snapshot(settings.execution?.configuration??null)};}
   async function send(projectId:string,input:unknown):Promise<AgentTaskSnapshot>{
     mutable();if(!record(input)||Object.keys(input).some(key=>!['requestId','text','expectedSettingsRevision','expectedRevision','locale','uploads','diagnostic','conversationId','policy'].includes(key))||typeof input.requestId!=='string'||input.requestId.length<8||input.requestId.length>200||typeof input.text!=='string'||!input.text.trim()||Buffer.byteLength(input.text)>32*1024||!Number.isSafeInteger(input.expectedSettingsRevision)||input.uploads!==undefined&&(!Array.isArray(input.uploads)||input.uploads.length>20||input.uploads.some(id=>typeof id!=='string'||!/^[-a-f0-9]{36}$/u.test(id))))throw agentTaskFailure('AGENT_TASK_INVALID');
     const parsedLocale=agentTaskLocaleSchema.safeParse(input.locale===undefined?DEFAULT_AGENT_TASK_LOCALE:input.locale);if(!parsedLocale.success)throw agentTaskFailure('AGENT_TASK_INVALID');const locale=parsedLocale.data;
@@ -669,8 +688,8 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     if(parsedPolicy&&(!parsedPolicy.success||!parsedPolicy.data||diagnostic||!journal.conversationPolicies()))throw agentTaskFailure('AGENT_TASK_INVALID');
     const conversationModes=parsedPolicy?.success?parsedPolicy.data?.modes:undefined;
     const previous=journal.lookupRequest(projectId,input.requestId);if(previous){if(previous.run.text!==input.text||taskResponseLocale(previous.run.context)!==locale||!isDeepStrictEqual(previous.run.attachments??[],uploads)||!isDeepStrictEqual(previous.run.diagnostic,diagnostic))throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');if(journal.requestConversationId(previous.run.id)!==conversationId)throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');if(!journal.sentConversationModesMatch(input.requestId,conversationModes))throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');return safeSnapshot(previous,store);}
-    const settings=sanitizeAgentSettingsResult(await agentSettings.get({selfPort:selfPort()}));if(settings.revision!==input.expectedSettingsRevision)throw agentTaskFailure('AGENT_TASK_SETTINGS_CHANGED');
-    const dummy={configuration:json(settings.configuration)} as AgentTaskRun;authorize(dummy);
+    const settings=sanitizeAgentSettingsResult(await agentSettings.get({selfPort:selfPort()})),execution=settings.execution;if(!execution)throw agentTaskFailure('AGENT_TASK_NOT_CONFIGURED');if(execution.revision!==input.expectedSettingsRevision)throw agentTaskFailure('AGENT_TASK_SETTINGS_CHANGED');
+    const dummy={configuration:json(execution.configuration)} as AgentTaskRun;authorize(dummy);
     if(conversationModes?.paid==='direct'&&journal.policy().modes.paid!=='direct'&&parsedPolicy?.success&&parsedPolicy.data?.acknowledgePaid!==true)throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
     const historyRuns=diagnostic||!conversationId?undefined:journal.modelContextRuns(projectId,conversationId).reverse();
     const projectOverview=diagnostic?undefined:collectTaskProjectOverview(store,projectId),projectNotes=undefined;
@@ -684,7 +703,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const {context}=assembleRunContext({locale,text:input.text,historyRuns,projectOverview,projectNotes,rulesSnapshot,attachments,budget});
     if(active.size>=4)throw agentTaskFailure('AGENT_TASK_BUSY');
     mutable();
-    const created=journal.create({projectId,...(conversationId?{conversationId}:{}),...(conversationModes?{conversationModes}:{}),requestId:input.requestId,text:input.text,configuration:json(settings.configuration),settingsRevision:settings.revision,context,attachments:uploads,...(rulesSnapshot?{rulesSnapshot}:{}),...(diagnostic?{diagnostic}:{})});launch(created.run.id);return safeSnapshot(journal.snapshot(created.run.id),store);
+    const created=journal.create({projectId,...(conversationId?{conversationId}:{}),...(conversationModes?{conversationModes}:{}),requestId:input.requestId,text:input.text,configuration:json(execution.configuration),settingsRevision:execution.revision,settingsBinding:execution.binding,context,attachments:uploads,...(rulesSnapshot?{rulesSnapshot}:{}),...(diagnostic?{diagnostic}:{})});launch(created.run.id);return safeSnapshot(journal.snapshot(created.run.id),store);
   }
   function assertNoteCapacity(runId:string):void {
     const snapshot=journal.snapshot(runId),run=snapshot.run,latest=snapshot.steps.filter(step=>step.kind==='model').at(-1);

@@ -1,9 +1,11 @@
 import test, {after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {stripTypeScriptTypes} from 'node:module';
+import {createRequire, stripTypeScriptTypes} from 'node:module';
+import {pathToFileURL} from 'node:url';
 import {EventEmitter} from 'node:events';
 import {randomUUID, createCipheriv, createDecipheriv} from 'node:crypto';
+import type {AgentSettingsSnapshot, AgentExecutionSettings} from '../packages/contracts/src/agent-connection-settings.ts';
 
 const APP_ID = 'app.starroy.mioon.dev';
 const SENTINEL = 'synthetic-async-vault-only';
@@ -32,8 +34,8 @@ interface TestChild extends EventEmitter {messages: Array<Record<string, unknown
 const root = new URL('../', import.meta.url);
 const data = (source: string): string => 'data:text/javascript;base64,' + Buffer.from(source).toString('base64');
 
-// No installed dependencies are used or borrowed. Real Agent config/settings,
-// codecs, brokers, supervisor and quit-helper bodies use import-only rewriting.
+// Real Agent config/settings schemas use the installed, locked Zod dependency.
+// Codecs, brokers, supervisor and quit-helper bodies use import-only rewriting.
 // Every approved TypeScript module uses Node's strip-only erasure;
 // their type-only imports must never become runtime imports. Native audition
 // schemas are a counted rejecting double: this secrets-only fixture supplies no
@@ -66,6 +68,7 @@ after(() => assert.equal(workspaceNativeContracts.calls, 0, 'Secrets fixtures mu
 after(() => assert.equal(deliveryParser.calls, 0, 'Secrets fixtures must never execute download parsing'));
 after(() => assert.equal(projectAddressParser.calls, 0, 'Secrets fixtures must never execute project address parsing'));
 const overrides = new Map([
+  ['zod', pathToFileURL(createRequire(new URL('packages/contracts/package.json', root)).resolve('zod')).href],
   ['node:fs', diagnosticFsUrl],
   ['@mioon/contracts/timeline-delivery', deliveryParserUrl],
   ['../../../packages/contracts/src/project-file.ts', projectAddressParserUrl],
@@ -85,7 +88,11 @@ const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18
   'apps/desktop/src/image-secret-broker.ts', 'apps/desktop/src/video-secret-broker.ts', 'apps/desktop/src/secret-broker.ts', 'apps/desktop/src/supervisor.ts',
   'apps/desktop/src/security.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'apps/desktop/src/exit-diagnostics.ts', 'apps/desktop/src/diagnostic-append-windows.ts',
   'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/shutdown.ts', 'packages/business/src/agent/settings.ts', 'packages/business/src/agent/config.ts',
-  'packages/business/src/agent/presets.ts', 'packages/contracts/src/agent-protocol.ts']);
+  'packages/business/src/agent/presets.ts', 'packages/contracts/src/agent-protocol.ts',
+  'packages/business/src/agent/settings-envelope.ts', 'packages/contracts/src/agent-connection-settings.ts',
+  'packages/contracts/src/agent-connection-private.ts', 'packages/contracts/src/agent-provider-catalog.ts',
+  'packages/business/src/agent/model-profiles.ts', 'packages/business/src/agent/anthropic-protocol.ts',
+  'packages/business/src/agent/chat-errors.ts']);
 const reviewedTypeScript = approved;
 const urls = new Map<string, string>();
 function moduleUrl(name: string): string {
@@ -96,7 +103,7 @@ function moduleUrl(name: string): string {
   if (reviewedTypeScript.has(name)) source = stripTypeScriptTypes(source, {mode: 'strip'});
   source = source.replace(/\bfrom\s+(['"])([^'"]+)\1/g, (_match: string, quote: string, specifier: string) => {
     let url = overrides.get(specifier);
-    if (!url && ['node:path', 'node:crypto', 'node:net', 'node:events'].includes(specifier)) url = specifier;
+    if (!url && ['node:path', 'node:crypto', 'node:net', 'node:events', 'node:util'].includes(specifier)) url = specifier;
     if (!url && specifier === '../identity.ts') {
       const identity = new URL('apps/desktop/identity.ts', root);
       assert.doesNotMatch(readFileSync(identity, 'utf8'), /\bimport\b|\brequire\s*\(/);
@@ -115,7 +122,8 @@ const images = await import(moduleUrl('apps/desktop/src/image-secret-store.ts'))
 const imageBridge = await import(moduleUrl('apps/desktop/src/image-secret-broker.ts'));
 const agentBridge = await import(moduleUrl('apps/desktop/src/secret-broker.ts'));
 const agent = await import(moduleUrl('packages/business/src/agent/settings.ts'));
-const agentConfig = await import(moduleUrl('packages/business/src/agent/config.ts'));
+const {defaultServices} = await import(moduleUrl('packages/business/src/agent/settings-envelope.ts'));
+const {agentServiceInput} = await import(moduleUrl('packages/contracts/src/agent-connection-settings.ts'));
 const {DEFAULT_AGENT_CONFIGURATION} = await import(moduleUrl('packages/business/src/agent/presets.ts'));
 const {BackendSupervisor} = await import(moduleUrl('apps/desktop/src/supervisor.ts'));
 const {stopBackendForQuit} = await import(moduleUrl('apps/desktop/src/shutdown.ts'));
@@ -171,7 +179,10 @@ function imagePair(codec: unknown, {timeout = 1000}: {timeout?: number} = {}) {
   const client = imageBridge.createImageSecretClient({port, timeout});
   return {client, broker, messages, close() { client.close(); broker.close(); }};
 }
-const update = (revision = 0, storage = 'persistent') => ({expectedRevision: revision, configuration: {...DEFAULT_AGENT_CONFIGURATION}, secret: {action: 'replace', storage, value: SENTINEL}});
+const update = (revision = 0, storage = 'persistent') => ({expectedRevision: revision,
+  services: defaultServices().map(agentServiceInput), mioSelection: {serviceKey: 'openai', modelId: DEFAULT_AGENT_CONFIGURATION.model},
+  secretActions: [{serviceKey: 'openai', action: 'replace', storage, value: SENTINEL}]});
+function execution(snapshot: AgentSettingsSnapshot): AgentExecutionSettings { assert.ok(snapshot.execution); return snapshot.execution; }
 const safeError = (error: unknown): boolean => { assert.ok(!(JSON.stringify(error) + String((error as {message?: unknown})?.message)).includes(SENTINEL)); return true; };
 
 test('audited imports and codec construction make no native calls; Images client completes an async round trip', async t => {
@@ -187,7 +198,7 @@ test('audited imports and codec construction make no native calls; Images client
   assert.ok(['status', 'encrypt', 'decrypt'].every(method => f.calls.includes(method)));
 });
 
-test('import fixture permits only six reviewed erased modules and refuses runtime Electron or unknown source paths', () => {
+test('import fixture permits only explicitly reviewed erased modules and refuses runtime Electron or unknown source paths', () => {
   const name = 'apps/desktop/src/timeline-delivery-download.ts';
   const original = readFileSync(new URL(name, root), 'utf8');
   assert.match(original, /import type \{[^}]*\} from 'electron'/);
@@ -375,11 +386,11 @@ for (const method of ['encrypt', 'decrypt']) {
       }
     };
     const pending = method === 'encrypt' ? engine.put(update(saved.revision))
-      : engine[agent.AGENT_CREDENTIAL_ACQUIRE]({expectedRevision: saved.revision, configuration: saved.configuration});
+      : engine[agent.AGENT_CREDENTIAL_ACQUIRE]({expectedRevision: execution(saved).revision, configuration: execution(saved).configuration, binding: execution(saved).binding});
     await assert.rejects(pending, (error: unknown) => { assert.equal((error as {code?: string}).code, 'AGENT_SETTINGS_STORAGE_UNAVAILABLE'); return safeError(error); });
     assert.equal(failures, 1); assert.deepEqual(persistence.value, original); assert.equal(persistence.saves, 1);
     const after = await engine.get();
-    assert.equal(after.revision, saved.revision); assert.deepEqual(after.configuration, saved.configuration); assert.deepEqual(after.secret, saved.secret);
+    assert.equal(after.revision, saved.revision); assert.deepEqual(after.services, saved.services); assert.deepEqual(after.execution, saved.execution);
   });
 }
 
@@ -596,6 +607,8 @@ test('Agent engine close waits for an atomic save that already started', async t
 });
 
 test('Agent client rejects a response past its deadline before the timeout callback runs', async () => {
+  const engine = await agent.createAgentSettings({persistence: memory()});
+  const snapshot = await engine.get(); await engine.close();
   const port = new EventEmitter() as TestPort;
   let request: {deadline: number; requestId: string} | undefined;
   port.postMessage = (value: {type?: string; deadline?: number; requestId?: string}) => { if (value.type === 'agent-settings-request') request = value as {deadline: number; requestId: string}; };
@@ -604,8 +617,7 @@ test('Agent client rejects a response past its deadline before the timeout callb
   try {
     Date.now = () => request!.deadline;
     port.emit('message', {data: {type: 'agent-settings-response', version: 1, requestId: request!.requestId,
-      ok: true, data: {revision: 0, configuration: {...DEFAULT_AGENT_CONFIGURATION}, secret: {configured: false, storage: 'none'},
-        storage: {persistentAvailable: true, sessionScope: 'app', reasonCode: null}}}});
+      ok: true, data: snapshot}});
     assert.equal(await pending, 'AGENT_SETTINGS_TIMEOUT');
   } finally { Date.now = realNow; client.close(); }
 });
@@ -625,24 +637,27 @@ test('Images client rejects a delayed status response before the timeout callbac
   } finally { Date.now = realNow; client.close(); }
 });
 
-test('initial async status and old-secret decrypt are bounded, preserving old bytes and session-only choice', async t => {
+test('initial async status is bounded and legacy keys are never decrypted, preserving old bytes and session-only choice', async t => {
   for (const operation of ['status', 'decrypt']) {
     const f = vault(), codec = codecFor(f, {timeout: 25}), gate = deferred();
-    const configuration = {...DEFAULT_AGENT_CONFIGURATION}, binding = agentConfig.agentCredentialBinding(configuration);
+    const configuration = {...DEFAULT_AGENT_CONFIGURATION}, binding = JSON.stringify([configuration.presetId, configuration.platformId, configuration.baseUrl]);
     const encrypted = f.seal(JSON.stringify({version: 1, appId: APP_ID, plaintext: JSON.stringify({version: 1, binding, value: SENTINEL})})).toString('base64');
     const original = {version: 2, revision: 4, configuration, secret: {binding, encrypted}}, persistence = memory(original);
+    let oldDecrypts = 0;
     f.before = async (method, value) => {
+      if (method === 'decrypt' && f.open(asBuffer(value)).startsWith('{')) oldDecrypts++;
       if (method === operation && (operation === 'status' || f.open(asBuffer(value)).startsWith('{'))) await gate.promise;
     };
     const engine = await agent.createAgentSettings({persistence, secretCodec: codec, storage: codec.storage});
     t.after(async () => { gate.resolve(); await engine.close(); });
     assert.deepEqual(persistence.value, original); assert.equal(persistence.saves, 0);
     const snapshot = await engine.get();
-    assert.equal(snapshot.storage.persistentAvailable, false); assert.equal(snapshot.secret.configured, true);
+    assert.equal(snapshot.storage.persistentAvailable, operation !== 'status'); assert.equal(execution(snapshot).secret.configured, false);
+    assert.ok(snapshot.notices.includes('LEGACY_KEYS_CLEARED')); assert.equal(oldDecrypts, 0);
     gate.resolve(); await turn();
-    assert.equal((await engine.get()).storage.persistentAvailable, false);
-    const session = await engine.put({expectedRevision: 4, configuration, secret: {action: 'replace', storage: 'session', value: SENTINEL}});
-    assert.equal(session.secret.storage, 'session');
+    assert.equal((await engine.get()).storage.persistentAvailable, operation !== 'status'); assert.equal(oldDecrypts, 0);
+    const session = await engine.put(update(4, 'session'));
+    assert.equal(execution(session).secret.storage, 'session');
   }
 });
 
@@ -663,13 +678,21 @@ test('startup abort returns without waiting for the native Promise and never ena
 });
 
 test('Agent binding validation rejects copied channel-valid plaintext without changing its stored envelope', async t => {
-  const f = vault(), codec = codecFor(f), configuration = {...DEFAULT_AGENT_CONFIGURATION};
-  const binding = agentConfig.agentCredentialBinding(configuration);
-  const encrypted = f.seal(JSON.stringify({version: 1, appId: APP_ID, plaintext: JSON.stringify({version: 1, binding: 'wrong', value: SENTINEL})})).toString('base64');
-  const original = {version: 2, revision: 3, configuration, secret: {binding, encrypted}}, persistence = memory(original);
+  const f = vault(), codec = codecFor(f), initial = memory();
+  const first = await agent.createAgentSettings({persistence: initial, secretCodec: codec, storage: codec.storage});
+  await first.put(update()); await first.close();
+  const original = initial.value;
+  assert.ok(original && Array.isArray(original.services));
+  const selected = original.services.find((value: {serviceKey: string}) => value.serviceKey === 'openai');
+  assert.ok(selected?.secret);
+  const wrapper = JSON.parse(f.open(Buffer.from(selected.secret.encrypted, 'base64')));
+  const plaintext = JSON.parse(wrapper.plaintext); assert.equal(plaintext.version, 2);
+  selected.secret.encrypted = f.seal(JSON.stringify({...wrapper, plaintext: JSON.stringify({...plaintext, binding: 'wrong'})})).toString('base64');
+  const persistence = memory(original);
   const engine = await agent.createAgentSettings({persistence, secretCodec: codec, storage: codec.storage});
   t.after(() => engine.close());
-  await assert.rejects(engine[agent.AGENT_CREDENTIAL_ACQUIRE]({expectedRevision: 3, configuration}), {code: 'AGENT_SETTINGS_STORAGE_UNAVAILABLE'});
+  const active = execution(await engine.get());
+  await assert.rejects(engine[agent.AGENT_CREDENTIAL_ACQUIRE]({expectedRevision: active.revision, configuration: active.configuration, binding: active.binding}), {code: 'AGENT_SETTINGS_STORAGE_UNAVAILABLE'});
   assert.deepEqual(persistence.value, original); assert.equal(persistence.saves, 0);
 });
 

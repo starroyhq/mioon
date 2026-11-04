@@ -1,3 +1,4 @@
+import {agentSettingsBindingSchema} from '../../../contracts/src/agent-connection-settings.ts';
 import {createHash, randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import type {ProjectStore} from '../project-file/store.ts';
@@ -115,6 +116,7 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
     const value = records.run(runId); if (value.revision === Number.MAX_SAFE_INTEGER) fail('AGENT_TASK_REVISION_LIMIT');
     db.prepare('UPDATE mio_runs SET revision=revision+1,updatedAt=? WHERE id=?').run(new Date(Math.max(Date.parse(at), Date.parse(value.createdAt), Date.parse(value.updatedAt))).toISOString(), runId);
   }
+  function parseSettingsBinding(value:unknown){const parsed=agentSettingsBindingSchema.safeParse(value);if(!parsed.success)return fail('AGENT_TASK_STORAGE_CORRUPT');return parsed.data;}
   function run(id: string): AgentTaskRun {
     const value = records.run(id), first = content(id, 'user_message')[0]?.value;
     if (!first || typeof first.text !== 'string' || value.configurationBlobHash === null) return fail('AGENT_TASK_STORAGE_CORRUPT');
@@ -131,7 +133,7 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
     });
     const skippedTargets = content(id, 'host_state').filter(item => item.value.type === 'skipped_targets').flatMap(item => Array.isArray(item.value.items) ? item.value.items as unknown as AgentTaskSkippedTarget[] : []);
     return {id, projectId, conversationId: value.conversationId, requestId: value.requestId, text: first.text, notes, skippedTargets, status: value.status, revision: value.revision, stepLimit: value.stepLimit, budget: value.budget, stepsUsed: value.stepsUsed,
-      configuration: decode<AgentTaskJson>(blob(value.configurationBlobHash)), ...(value.settingsRevision === null ? {} : {settingsRevision: value.settingsRevision}),
+      configuration: decode<AgentTaskJson>(blob(value.configurationBlobHash)), ...(metadata?.settingsBinding===undefined?{}:{settingsBinding:parseSettingsBinding(metadata.settingsBinding)}), ...(value.settingsRevision === null ? {} : {settingsRevision: value.settingsRevision}),
       ...(metadata?.contextView === undefined || contextEntry === undefined ? {} : {context: contextProjection(contextEntry.entry.id, metadata.contextView)}), ...(metadata?.attachments === undefined ? {} : {attachments: metadata.attachments as string[]}), ...(metadata?.diagnostic === undefined ? {} : {diagnostic: metadata.diagnostic as unknown as AgentTaskRun['diagnostic']}),
       createdAt: value.createdAt, updatedAt: value.updatedAt, ...(typeof state?.reason === 'string' ? {pauseReason: state.reason} : {})};
   }
@@ -217,7 +219,7 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
     return {run: value, steps: records.steps(id).map(item => step(item.id)), changes: records.changes(id), backgroundPending: hasPendingBackground(id), ...(ended && typeof execution.value.updatedAt === 'string' ? {executionEndedAt: execution.value.updatedAt} : {})};
   }
   function create(input: Parameters<AgentTaskJournal['create']>[0]): AgentTaskSnapshot { return transact(() => {
-    own(input.projectId); const digest = hash({projectId: input.projectId, conversationId: input.conversationId, text: input.text, configuration: input.configuration, settingsRevision: input.settingsRevision, context: input.context, attachments: input.attachments, ...(input.diagnostic ? {diagnostic: input.diagnostic} : {}), ...(input.conversationModes ? {conversationModes: input.conversationModes} : {}), ...(input.rulesSnapshot ? {rulesSnapshot: input.rulesSnapshot} : {})});
+    own(input.projectId); const digest = hash({projectId: input.projectId, conversationId: input.conversationId, text: input.text, configuration: input.configuration, settingsRevision: input.settingsRevision, ...(input.settingsBinding?{settingsBinding:input.settingsBinding}:{}), context: input.context, attachments: input.attachments, ...(input.diagnostic ? {diagnostic: input.diagnostic} : {}), ...(input.conversationModes ? {conversationModes: input.conversationModes} : {}), ...(input.rulesSnapshot ? {rulesSnapshot: input.rulesSnapshot} : {})});
     const old = db.prepare('SELECT id,digest FROM mio_runs WHERE requestId=? AND projectId=?').get(input.requestId, projectId);
     if (old) { if (old.digest !== digest) fail('AGENT_TASK_REQUEST_CONFLICT'); return snapshot(String(old.id)); }
     if (!store.get('projects', projectId)) fail('PROJECT_NOT_FOUND');
@@ -235,7 +237,7 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
     append(id, 'user_message', {text: input.text}, at);
     if (rulesSnapshotHash) records.appendEntry({id: randomUUID(), runId: id, kind: 'rules_snapshot', createdAt: at, payload: {blobHash: rulesSnapshotHash}});
     const sourceEntryIds = db.prepare('SELECT id FROM mio_entries WHERE conversationId=? AND projectId=? ORDER BY rowid').all(conversationId, projectId).map(row => String(row.id));
-    append(id, 'host_hint', json({type: 'run_context', contextView: input.context === undefined ? undefined : contextAssembly.freezeContext(input.context, sourceEntryIds), attachments: input.attachments, diagnostic: input.diagnostic}), at);
+    append(id, 'host_hint', json({type: 'run_context', contextView: input.context === undefined ? undefined : contextAssembly.freezeContext(input.context, sourceEntryIds), attachments: input.attachments, diagnostic: input.diagnostic,...(input.settingsBinding?{settingsBinding:agentSettingsBindingSchema.parse(input.settingsBinding)}:{})}), at);
     if (input.conversationModes) {
       const modes = agentTaskPolicyModesSchema.parse(input.conversationModes);
       db.prepare('INSERT INTO mio_conversation_policies(conversationId,projectId,revision,data) VALUES(?,?,1,?)').run(conversationId, projectId, encode({conversationId, projectId, revision: 1, modes, updatedAt: at}));

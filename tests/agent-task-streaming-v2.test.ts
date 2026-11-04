@@ -1,3 +1,5 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
+import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -27,7 +29,7 @@ async function fixture(t:TestContext,protocol:Protocol='responses'){
  assert.ok(isProjectStore(store),'Ordinary streaming exercises the native project kernel');
  const projectId=String(object(await services.call('project.create',{name:'Streaming test'})).id);
  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();
- await settings.put({expectedRevision:0,configuration:{...initial.configuration,protocol},secret:{action:'replace',storage:'session',value:'SYNTHETIC_LOCAL_TEST_ONLY'}});
+ await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration(protocol),secret:{action:'replace',storage:'session',value:'SYNTHETIC_LOCAL_TEST_ONLY'}});
  const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
  const tools=createAgentTaskTools({store,services}),requests:TaskModelRequest[]=[];
  let script:TaskGateway=async function*(){yield {type:'done',output:output(protocol,'Complete')};};
@@ -50,7 +52,7 @@ async function fixture(t:TestContext,protocol:Protocol='responses'){
  observeCheckpoints();
  t.after(async()=>{runtime.close();await runtime.drain();tools.dispose();await settings.close();store.close();rmSync(root,{recursive:true,force:true});});
  return {projectId,requests,get runtime(){return runtime;},setScript(value:TaskGateway){script=value;},
-  async send(text='Stream a response',requestId:string=randomUUID()){return runtime.send(projectId,{requestId,text,expectedSettingsRevision:(await settings.get()).revision});},
+  async send(text='Stream a response',requestId:string=randomUUID()){return runtime.send(projectId,{requestId,text,expectedSettingsRevision:testAgentExecution(await settings.get()).revision});},
   // Observed durable checkpoint contents, never payloads reconstructed from
   // lightweight events. Successful completion clears this mutable checkpoint.
   checkpointTexts(runId:string){return [...(checkpoints.get(runId)??[])];},

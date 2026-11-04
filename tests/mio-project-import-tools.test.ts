@@ -1,3 +1,4 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -46,7 +47,7 @@ async function fixture(t:TestContext,protocol:AgentProtocol='responses',options:
   const projectId=store.projectId,source=path.join(root,'source.png'),sourceBytes=png({width:32,height:24,rgba:false});
   writeFileSync(source,sourceBytes);const sourceTime=new Date('2026-11-01T00:00:00.000Z');utimesSync(source,sourceTime,sourceTime);
   const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
-  await settings.put({expectedRevision:0,configuration:{presetId:'ollama',platformId:'local',protocol,model:'qwen3:8b',baseUrl:'http://127.0.0.1:11434'+(protocol==='anthropic_messages'?'':'/v1')},secret:{action:'remove'}});
+  await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:{presetId:'ollama',platformId:'local',protocol,model:'qwen3:8b',baseUrl:'http://127.0.0.1:11434'+(protocol==='anthropic_messages'?'':'/v1')},secret:{action:'remove'}});
   const authorizations=createTestAuthorizations(()=>store,settings);await authorizeTestScope(authorizations,'project_agent');
   const prepares:Array<{requestId:string;retained:unknown;result:Preparation}>=[],executions:Preparation[]=[],lookups:Preparation[]=[],creations:CreationProof[]=[],requests:TaskModelRequest[]=[];
   let unknownBeforeExecute=false,unknownAfterExecute=false,failCreatedRecord=false,reuseBeforeExecute=false,closed=false;
@@ -80,7 +81,7 @@ async function fixture(t:TestContext,protocol:AgentProtocol='responses',options:
     get store(){return store;},get services(){return services;},get tools(){return current.tools;},get runtime(){return current.runtime;},get port(){return current.actual;},close,
     script(value:Script){script=value;},
     failBeforeExecute(){unknownBeforeExecute=true;},failAfterExecute(){unknownAfterExecute=true;},failRecord(){failCreatedRecord=true;},reuseNext(){reuseBeforeExecute=true;},
-    async send(){return current.runtime.send(projectId,{requestId:randomUUID(),text:'Import the source file from this project.',expectedSettingsRevision:(await settings.get()).revision});},
+    async send(){return current.runtime.send(projectId,{requestId:randomUUID(),text:'Import the source file from this project.',expectedSettingsRevision:testAgentExecution(await settings.get()).revision});},
     async settle(id:string){await current.runtime.drain();return current.runtime.get(projectId,id);},
     async wait(id:string,status:'awaiting_approval'|'paused'){
       // Source preparation includes real media I/O. Await the runtime's work
@@ -91,14 +92,14 @@ async function fixture(t:TestContext,protocol:AgentProtocol='responses',options:
     async action(snapshot:AgentTaskSnapshot,action:AgentTaskControlAction,extra:Record<string,unknown>={}){return current.runtime.action(projectId,snapshot.run.id,{requestId:randomUUID(),expectedRevision:snapshot.run.revision,action,...extra});},
     reopen,
     async frozen(mode:'groups'|'names'){
-      const saved=await settings.get(),history:AgentTaskJson[]=[{role:'user',content:'Continue the frozen project import intent.'}],body=object(JSON.parse(buildTaskModelRequest(saved.configuration,history,selectTaskModelTools(current.tools.list()),4318)));
+      const saved=await settings.get(),history:AgentTaskJson[]=[{role:'user',content:'Continue the frozen project import intent.'}],body=object(JSON.parse(buildTaskModelRequest(testAgentExecution(saved).configuration,history,selectTaskModelTools(current.tools.list()),4318)));
       assert.ok(Array.isArray(body.tools));
       for(const entry of body.tools){
         const wire=object(entry),definition=protocol==='chat_completions'?object(wire.function):wire;if(definition.name!==AGENT_TASK_TOOLS_LOAD_NAME)continue;
         const schema=object(definition[protocol==='anthropic_messages'?'input_schema':'parameters']),properties=object(schema.properties);
         schema.properties={[mode]:{type:'array',items:{type:'string',enum:mode==='groups'?AGENT_TASK_LOADABLE_TOOL_GROUP_IDS:['mioon_project_media_list']},minItems:1,maxItems:mode==='groups'?AGENT_TASK_LOADABLE_TOOL_GROUP_IDS.length:1},...(properties._mio_step?{_mio_step:properties._mio_step}:{})};schema.required=[mode];
       }
-      const original=JSON.stringify(body),created=current.runtime.journal.create({projectId,requestId:randomUUID(),text:'Continue the frozen project import intent.',configuration:{...saved.configuration},settingsRevision:saved.revision,context:history});
+      const original=JSON.stringify(body),created=current.runtime.journal.create({projectId,requestId:randomUUID(),text:'Continue the frozen project import intent.',configuration:{...testAgentExecution(saved).configuration},settingsRevision:testAgentExecution(saved).revision,settingsBinding:testAgentExecution(saved).binding,context:history});
       current.runtime.journal.beginModelStep(created.run.id,{request:{body:original,history},data:{baseline:current.runtime.journal.revisionSnapshot(projectId).map(({kind,id,revision})=>({kind,id,revision}))}},[]);
       await reopen();
       return {original,sent:await current.runtime.action(projectId,created.run.id,{requestId:randomUUID(),expectedRevision:current.runtime.get(projectId,created.run.id).run.revision,action:'resume'})};

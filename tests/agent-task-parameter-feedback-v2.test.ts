@@ -1,3 +1,5 @@
+import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
+import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -100,7 +102,7 @@ async function runtimeFixture(t:TestContext,protocol:'chat_completions'|'respons
   await services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
   const project=await services.call('project.create',{name:'Correction fixture'});assert.ok(object(project)&&typeof project.id==='string');const projectId=project.id;
   const shot=await services.call('shot.create',{projectId,title:'Saved shot',prompt:'A synthetic blue cube rotates.',duration:4,aspectRatio:'9:16'});assert.ok(object(shot));
-  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await settings.put({expectedRevision:0,configuration:{...initial.configuration,protocol},secret:{action:'replace',storage:'session',value:'SYNTHETIC_CHAT_KEY'}});
+  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration(protocol),secret:{action:'replace',storage:'session',value:'SYNTHETIC_CHAT_KEY'}});
   const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
   const sourceTools=createAgentTaskTools({store,services}),requests:string[]=[];let script:TaskGateway=async function*(){throw Error('A synthetic model script is required');},executeFailure:unknown;
   const tools={...sourceTools,async execute(...args:Parameters<typeof sourceTools.execute>){if(executeFailure)throw executeFailure;return sourceTools.execute(...args);}};
@@ -113,7 +115,7 @@ async function runtimeFixture(t:TestContext,protocol:'chat_completions'|'respons
     return {text:'',toolCalls:calls,providerOutput:protocol==='responses'?calls.map(call=>({type:'function_call',call_id:call.id,name:call.name,arguments:JSON.stringify(call.arguments),status:'completed'})):{role:'assistant',content:null,tool_calls:calls.map(call=>({id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}))}};
   }
   return {root,store,services,settings,authorizations,tools,runtime,posts,requests,base,projectId,shot,setScript(value:TaskGateway){script=value;},failExecute(error:unknown){executeFailure=error;},output,
-    async send(){return runtime.send(projectId,{requestId:randomUUID(),text:'Correct parameters locally then request one 2K four-second video.',expectedSettingsRevision:(await settings.get()).revision});},
+    async send(){return runtime.send(projectId,{requestId:randomUUID(),text:'Correct parameters locally then request one 2K four-second video.',expectedSettingsRevision:testAgentExecution(await settings.get()).revision});},
     async settle(runId:string){await runtime.drain();return runtime.get(projectId,runId);},
     async approve(snapshot:AgentTaskSnapshot){const step=snapshot.steps.find(step=>step.status==='awaiting_approval');assert.ok(step);const control={requestId:randomUUID(),expectedRevision:snapshot.run.revision,action:'approve' as const,stepId:step.id};await runtime.action(projectId,snapshot.run.id,control);await runtime.action(projectId,snapshot.run.id,control);},
     async tick(){worker??=startWorker(store,services,new Map());await worker.tick();},

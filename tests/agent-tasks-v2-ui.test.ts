@@ -13,11 +13,12 @@ import { agentTaskWaitingQuestion } from '../apps/web/src/agent-tasks-v2.ts';
 import { taskStepTitle } from '../apps/web/src/agent-task-presentation.ts';
 import type { AgentTaskJson, AgentTaskStep } from '../packages/contracts/src/agent-tasks-v2.ts';
 import { createNativeCloseRegistry,createNativeCloseAdmission } from '../apps/web/src/native-close-state.ts';
+import {adapterSettings} from './helpers/agent-adapter-fixture.ts';
 import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigation-state.ts';
 
 const projectId = '11111111-1111-4111-8111-111111111111', runId = '22222222-2222-4222-8222-222222222222', stepId = '33333333-3333-4333-8333-333333333333', time = '2026-10-20T00:00:00.000Z';
 const snapshot = (status: AgentTaskSnapshot['run']['status'] = 'completed', revision = 1): AgentTaskSnapshot => ({ run: { id: runId, projectId, requestId: crypto.randomUUID(), text: 'test task', status, revision, stepLimit: 30, budget: 30, stepsUsed: 1, configuration: {}, createdAt: time, updatedAt: time }, steps: [], changes: [] });
-const project = (): AgentTaskProjectSnapshot => ({ version: 2, instanceId: '44444444-4444-4444-8444-444444444444', projectId, runs: [], policy: structuredClone(DEFAULT_AGENT_TASK_POLICY), authorization: { revision: 1, scopes: ['project_agent'] }, settings: { revision: 0, configuration: { presetId: 'openai', platformId: 'global', baseUrl: 'https://example.invalid/v1', model: 'synthetic', protocol: 'responses' }, secret: { configured: false, storage: 'none' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: null }, presets: [], scope: 'settings_only', verification: 'not_tested' } });
+const project = (): AgentTaskProjectSnapshot => ({ version: 2, instanceId: '44444444-4444-4444-8444-444444444444', projectId, runs: [], policy: structuredClone(DEFAULT_AGENT_TASK_POLICY), authorization: { revision: 1, scopes: ['project_agent'] }, settings: adapterSettings({presetId:'openai',platformId:'global',baseUrl:'https://api.openai.com/v1',model:'synthetic',protocol:'responses'},{revision:0}) });
 const conversation=(run:AgentTaskSnapshot['run'])=>({id:run.conversationId??run.id,projectId:run.projectId,title:run.text,createdAt:run.createdAt,updatedAt:run.updatedAt,lastRunId:run.id,lastRunStatus:run.status,changeCount:0,runCount:1});
 function deferred<T>() { let resolve!: (value: T) => void, reject!: (value: unknown) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 const flush = async () => { for (let index = 0; index < 20; index++) await Promise.resolve(); };
@@ -390,7 +391,7 @@ test('first-send confirmation grants only the reviewed binding and sends exactly
   const current=project();current.authorization.scopes=[];let grants=0,locale:AgentTaskLocale='ja';
   const f=fixture({list:async()=>structuredClone(current),authorize:async()=>{grants++;current.authorization={revision:2,scopes:['project_agent']};}},undefined,()=>{},{getLocale:()=>locale});
   t.after(()=>f.session.dispose());await f.session.load();f.session.edit('reviewed draft');
-  const review=f.session.authorizationReview();assert.ok(review);assert.equal(review.destination,'https://example.invalid/v1/responses');assert.equal(review.locale,'ja');
+  const review=f.session.authorizationReview();assert.ok(review);assert.equal(review.destination,'https://api.openai.com/v1/responses');assert.equal(review.locale,'ja');
   assert.equal(grants,0);assert.equal(f.sent.length,0);
   assert.equal(await f.session.authorizeAndSend(review),true);assert.equal(grants,1);assert.equal(f.sent.length,1);assert.equal((f.sent[0] as {text:string;locale:string}).text,'reviewed draft');assert.equal((f.sent[0] as {locale:string}).locale,'ja');
   assert.equal(await f.session.authorizeAndSend(review),false);assert.equal(grants,1);assert.equal(f.sent.length,1);
@@ -404,7 +405,7 @@ test('authorization review becomes stale before confirmation when its text, loca
       if(changed==='draft')f.session.edit('new draft');
       if(changed==='locale')locale='en';
       if(changed==='upload')await f.session.upload({name:'local.png',type:'image/png',size:1,arrayBuffer:async()=>new Uint8Array([0]).buffer});
-      if(changed==='settings'){current.settings.revision++;current.settings.configuration.model='changed-model';await f.session.load();}
+      if(changed==='settings'){current.settings=adapterSettings({...current.settings.execution!.configuration,model:'changed-model'},{revision:current.settings.execution!.revision+1});await f.session.load();}
       assert.equal(await f.session.authorizeAndSend(review),false);assert.equal(grants,0);assert.equal(f.sent.length,0);assert.ok(f.session.getState().draft);
     }finally{f.session.dispose();}
   });
@@ -417,7 +418,7 @@ test('an authorization response cannot send after changed input, changed setting
     try{await f.session.load();f.session.edit('preserve reviewed draft');const review=f.session.authorizationReview();assert.ok(review);const sending=f.session.authorizeAndSend(review);assert.equal(grants,1);
       current.authorization={revision:2,scopes:['project_agent']};
       if(changed==='draft')f.session.edit('new unsent draft');
-      if(changed==='settings'){current.settings.revision++;current.settings.configuration.model='new-model';}
+      if(changed==='settings'){current.settings=adapterSettings({...current.settings.execution!.configuration,model:'new-model'},{revision:current.settings.execution!.revision+1});}
       if(changed==='revoked')current.authorization={revision:3,scopes:[]};
       if(changed==='hidden'){f.session.setVisible(false);f.session.setVisible(true);}
       grant.resolve();assert.equal(await sending,false);assert.equal(f.sent.length,0);assert.equal(f.actions.length,0);assert.ok(f.session.getState().draft);

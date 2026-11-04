@@ -2,7 +2,6 @@ import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
-import {AGENT_PRESETS} from '../packages/business/src/agent/presets.ts';
 import {AGENT_CHAT_PROFILES,AGENT_RESPONSES_PROFILES,agentAnthropicThinkingFields,agentChatProfile,agentModelThinkingTier,agentRequestThinks,agentResponsesProfile} from '../packages/business/src/agent/model-profiles.ts';
 import {ANTHROPIC_MESSAGES_FIELDS} from '../packages/business/src/agent/anthropic-protocol.ts';
 import {anthropicMessages} from '../packages/business/src/agent/anthropic-wire.ts';
@@ -13,6 +12,7 @@ import type {TaskModelContextFragment} from '../packages/business/src/agent/task
 import type {AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AnthropicNativeStreamEvent} from '../packages/business/src/agent/anthropic-sdk-transport.ts';
 import {nativeAnthropicEvents,nativeAnthropicSse} from './helpers/anthropic-native-events.ts';
+import {presetConfigurations} from './helpers/agent-preset-configurations.ts';
 
 type Protocol=AgentConfiguration['protocol'];
 const definitions=[{name:'mioon_shot_create',description:'Create a saved shot',parameters:{type:'object',properties:{title:{type:'string'}},required:['title'],additionalProperties:false}}];
@@ -23,10 +23,7 @@ const json=(value:unknown):string=>`data: ${JSON.stringify(value)}\n\n`;
 const optionalPresets:Record<Exclude<Protocol,'anthropic_messages'>,string[]>={chat_completions:['deepseek','qwen','zhipu','kimi','minimax','ollama'],responses:['deepseek','qwen','ollama']};
 
 function presetConfiguration(presetId:string,protocol:Protocol):AgentConfiguration{
-  const preset=AGENT_PRESETS.find(item=>item.id===presetId)!,platform=preset.platforms.find(item=>item.baseUrl)??preset.platforms[0]!;
-  return {presetId:preset.id as AgentConfiguration['presetId'],platformId:platform.id,protocol,
-    baseUrl:protocol==='anthropic_messages'&&preset.id==='ollama'?new URL(platform.baseUrl).origin:platform.baseUrl||'https://example.com/v1',
-    model:(protocol==='responses'?preset.supportedModelHints?.responses?.[0]:undefined)||platform.model||'synthetic-mio'};
+  const configuration=presetConfigurations().find(item=>item.presetId===presetId&&item.protocol===protocol);assert.ok(configuration);return configuration;
 }
 function offSwitch(configuration:AgentConfiguration):Readonly<Record<string,unknown>>{
   return configuration.protocol==='chat_completions'?agentChatProfile(configuration).fields:configuration.protocol==='responses'?agentResponsesProfile(configuration).fields:ANTHROPIC_MESSAGES_FIELDS;
@@ -66,9 +63,9 @@ const deltas=(items:readonly TaskModelItem[]):TaskModelItem[]=>items.filter(item
 test('thinking tiers follow each preset profile, and every task request keeps thinking off',()=>{
   for(const profile of [...Object.values(AGENT_CHAT_PROFILES),...Object.values(AGENT_RESPONSES_PROFILES)])assert.notEqual(profile.thinkingTier,'required','no catalog model requires thinking yet');
   let combinations=0;
-  for(const preset of AGENT_PRESETS)for(const protocol of preset.availableProtocols){
-    const configuration=presetConfiguration(preset.id,protocol),tier=agentModelThinkingTier(configuration),label=`${preset.id}/${protocol}`;
-    assert.equal(tier,protocol==='anthropic_messages'||optionalPresets[protocol].includes(preset.id)?'optional':'unsupported',label);
+  for(const configuration of presetConfigurations()){
+    const {protocol,presetId,platformId}=configuration,tier=agentModelThinkingTier(configuration),label=`${presetId}/${platformId}/${protocol}`;
+    assert.equal(tier,protocol==='anthropic_messages'||optionalPresets[protocol].includes(presetId)?'optional':'unsupported',label);
     const body=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>;
     assert.equal(agentRequestThinks(configuration,body),false,`${label} sends its documented off switch`);
     if(protocol!=='anthropic_messages')assert.equal(body.max_tokens??body.max_completion_tokens??body.max_output_tokens,4096,label);
@@ -80,7 +77,7 @@ test('thinking tiers follow each preset profile, and every task request keeps th
     if(protocol!=='anthropic_messages')assert.equal(lifted.max_tokens??lifted.max_completion_tokens??lifted.max_output_tokens,4096,`${label} keeps its output limit when thinking is requested`);
     combinations++;
   }
-  assert.ok(combinations>=30);
+  assert.equal(combinations,51);
 });
 test('Messages turns thinking on only for a required model, with a manual budget below max_tokens',()=>{
   for(const tier of ['unsupported','optional'] as const)for(const output of [4096,16384])assert.equal(agentAnthropicThinkingFields(tier,output),ANTHROPIC_MESSAGES_FIELDS);

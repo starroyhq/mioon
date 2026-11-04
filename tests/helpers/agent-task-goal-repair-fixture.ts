@@ -1,7 +1,11 @@
+import {putTestAgentConfiguration,testAgentExecution} from './agent-settings-fixture.ts';
+import assert from 'node:assert/strict';
+import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
+import {createAgentSettingsFile} from '../../packages/business/src/agent/settings-file.ts';
 import {createAgentTaskTools} from '../../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../../packages/business/src/agent/task-runtime-v2.ts';
 import {createMockProvider} from '../../packages/business/src/providers/mock.ts';
@@ -28,8 +32,17 @@ export async function openGoalRepairFixture(root:string,protocol:GoalProtocol,ex
  const services=createServices(store,new Map([['mock',provider]]));
  const project=existingProjectId?{id:existingProjectId}:await services.call('project.create',{name:'Goal repair fixture'}) as {id:string};
  if(!existingProjectId)await services.call('shot.create',{projectId:project.id,title:'Original shot'});
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
- await settings.put({expectedRevision:0,configuration:{presetId:'custom',platformId:'custom',protocol,model:'synthetic-goal-model',baseUrl:'https://goal.example.com/v1'},secret:{action:'replace',storage:'session',value:'SYNTHETIC_GOAL_REPAIR_TEST_ONLY'}});
+ const configuration={presetId:'custom',platformId:'custom',protocol,model:'synthetic-goal-model',baseUrl:'https://goal.example.com/v1'};
+ const settings=await createAgentSettings({persistence:createAgentSettingsFile({directory:join(root,'agent-settings')})});
+ if(existingProjectId===undefined){
+  await putTestAgentConfiguration(settings,{expectedRevision:0,configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_GOAL_REPAIR_TEST_ONLY'}});
+ }else{
+  // Recovery reads the saved service identity and revision witness. Replacing
+  // the expired session key here would change the entry and invalidate the run.
+  const restored=testAgentExecution(await settings.get());
+  assert.deepEqual(restored.configuration,configuration);
+  assert.deepEqual(restored.secret,{configured:false,storage:'none'});
+ }
  const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
  const tools=createAgentTaskTools({store,services}),bodies:string[]=[];
  let plan:(index:number)=>AgentTaskToolCall[]|Promise<AgentTaskToolCall[]>=()=>[];
@@ -37,7 +50,7 @@ export async function openGoalRepairFixture(root:string,protocol:GoalProtocol,ex
  const runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318});
  return {store,services,settings,tools,runtime,bodies,projectId:project.id,
   plan(next:typeof plan){plan=next;},
-  async send(extra:Record<string,unknown>={}){const sent=await runtime.send(project.id,{requestId:randomUUID(),text:'Make the requested shots',expectedSettingsRevision:(await settings.get()).revision,...extra});await runtime.drain();return runtime.get(project.id,sent.run.id);},
+  async send(extra:Record<string,unknown>={}){const sent=await runtime.send(project.id,{requestId:randomUUID(),text:'Make the requested shots',expectedSettingsRevision:testAgentExecution(await settings.get()).revision,...extra});await runtime.drain();return runtime.get(project.id,sent.run.id);},
   async action(runId:string,action:AgentTaskControlAction,extra:Record<string,unknown>={}){const current=runtime.get(project.id,runId);await runtime.action(project.id,runId,{requestId:randomUUID(),expectedRevision:current.run.revision,action,...extra});await runtime.drain();return runtime.get(project.id,runId);},
   async close(){runtime.close();await runtime.drain();tools.dispose();await services.drain();await settings.close();store.close();},
  };
