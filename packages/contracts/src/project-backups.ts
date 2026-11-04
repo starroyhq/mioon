@@ -27,7 +27,7 @@ export type ProjectBackupRestoreInput = z.infer<typeof projectBackupSchemas['pro
 export type ProjectBackupStatusInput = z.infer<typeof projectBackupSchemas['project.backup.status']>;
 
 export const projectBackupSummarySchema = z.object({
-  backupId: id, projectId: projectIdSchema, contentSequence: count, createdAt: date,
+  backupId: id, projectId: projectIdSchema, contentSequence: count, contentToken: z.string().regex(/^[a-f0-9]{32}$/u), createdAt: date,
   reason: z.enum(['open', 'close']), sizeBytes: count,
 }).strict();
 export type ProjectBackupSummary = z.infer<typeof projectBackupSummarySchema>;
@@ -55,9 +55,9 @@ export const projectBackupResponseSchemas = {
 };
 
 export const projectBackupDescriptions = {
-  'project.backup.list': '列出一个项目最近三份自动备份，不打开项目、不恢复任务。备份仅按内容序号去重；同序号分叉内容暂时无法识别。',
+  'project.backup.list': '列出一个项目最近三份自动备份，不打开项目、不恢复任务。备份按项目 ID、内容序号和内容令牌去重。',
   'project.backup.inspect': '只读查看指定项目备份的内容摘要和表计数，不将备份登记或当作普通项目打开。',
-  'project.backup.restore': '把指定备份恢复到明确的新 .mioon 文件，分配新项目 ID 和空本机记录；目标已存在就拒绝。保留原项目、备份和素材；稳定 requestId 精确重放。',
+  'project.backup.restore': '把指定备份恢复到明确的新 .mioon 文件，分配新项目 ID、新内容令牌和空本机记录；目标已存在就拒绝。保留原项目、备份和素材；稳定 requestId 精确重放。',
   'project.backup.status': '读取项目自动备份的 running/slow 状态、最后完成时间和失败原因，不打开项目或启动备份。',
 };
 const read: Readonly<OperationEffect> = Object.freeze({readOnly: true, idempotent: true, destructive: false, openWorld: false,

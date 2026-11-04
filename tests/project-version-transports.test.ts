@@ -27,7 +27,7 @@ const token = 'synthetic-v1-version-transport-token';
 const projectId = '11111111-aaaa-4111-8111-111111111111', versionId = randomUUID(), requestId = randomUUID();
 const summary: ProjectVersionSummary = {id: versionId, projectId, trigger: 'manual', name: null, mioRunId: null,
   contentSequence: 7, createdAt: '2026-11-03T00:00:00.000Z'};
-const preview: ProjectVersionPreviewResponse = {projectId, version: summary, contentSequence: 8, previewDigest: 'a'.repeat(64),
+const preview: ProjectVersionPreviewResponse = {projectId, version: summary, contentSequence: 8, contentToken: 'c'.repeat(32), previewDigest: 'a'.repeat(64),
   totalChanges: 1, keptCurrentCount: 0, changes: [{table: 'projects', key: projectId, action: 'change', source: 'user-or-other', fields: ['data'], reason: null}],
   nextCursor: null, restoreAvailable: false};
 
@@ -52,16 +52,17 @@ test('version contracts expose strict manual save, confirmed restoration and bou
     assert.equal(projectVersionSchemas['project.version.list'].safeParse({projectId, limit}).success, false);
   assert.equal(projectVersionSchemas['project.version.preview'].safeParse({projectId, versionId, requestId}).success, false);
   assert.equal(projectVersionSchemas['project.version.preview'].safeParse({projectId, versionId, cursor: 'x'.repeat(4097)}).success, false);
-  const restoring = {projectId, versionId, requestId, expectedContentSequence: 8, previewDigest: preview.previewDigest};
+  const restoring = {projectId, versionId, requestId, expectedContentSequence: 8, expectedContentToken: preview.contentToken, previewDigest: preview.previewDigest};
   assert.equal(projectVersionSchemas['project.version.restore'].safeParse(restoring).success, true);
-  for (const patch of [{expectedContentSequence: -1}, {expectedContentSequence: 1.5}, {previewDigest: 'a'},
+  for (const patch of [{expectedContentSequence: -1}, {expectedContentSequence: 1.5}, {expectedContentToken: undefined}, {expectedContentToken: 'a'}, {expectedContentToken: 'A'.repeat(32)}, {previewDigest: 'a'},
     {requestId: 'unstable'}, {snapshot: {}}, {trigger: 'restore'}])
     assert.equal(projectVersionSchemas['project.version.restore'].safeParse({...restoring, ...patch}).success, false);
-  const restored = {projectId, versionId, requestId, beforeVersionId: randomUUID(), contentSequence: 9,
+  const restored = {projectId, versionId, requestId, beforeVersionId: randomUUID(), contentSequence: 9, contentToken: 'd'.repeat(32),
     totalChanges: 1, appliedChanges: preview.changes, keptCurrent: []};
   assert.equal(isProjectVersionResponse('project.version.restore', restoring, restored), true);
   for (const patch of [{requestId: randomUUID()}, {versionId: randomUUID()}, {projectId: randomUUID()},
-    {beforeVersionId: versionId}, {contentSequence: 7}, {totalChanges: 0},
+    {beforeVersionId: versionId}, {contentSequence: 7}, {contentToken: undefined}, {contentToken: 'A'.repeat(32)},
+    {contentToken: restoring.expectedContentToken}, {contentSequence: 8}, {totalChanges: 0},
     {keptCurrent: preview.changes, appliedChanges: []}])
     assert.equal(isProjectVersionResponse('project.version.restore', restoring, {...restored, ...patch}), false);
   assert.equal(isProjectVersionResponse('project.version.list', {projectId}, {projectId, versions: [summary], nextCursor: null}), true);
@@ -106,7 +107,7 @@ test('client binds version replies and retains save identity after an uncertain 
   });
   assert.equal(sends, 1);
   await assert.rejects(disconnected.rpc('project.version.restore', {projectId, versionId, requestId,
-    expectedContentSequence: 8, previewDigest: preview.previewDigest}), (error: unknown) => {
+    expectedContentSequence: 8, expectedContentToken: preview.contentToken, previewDigest: preview.previewDigest}), (error: unknown) => {
     const failure = error as {code: string; details: {requestId: string; submissionMayHaveSucceeded: boolean}};
     assert.equal(failure.code, 'BACKEND_UNAVAILABLE'); assert.equal(failure.details.requestId, requestId);
     assert.equal(failure.details.submissionMayHaveSucceeded, true); return true;
@@ -171,7 +172,7 @@ test('HTTP CLI and official MCP agree on local version save/list/preview/restore
   const foreign = await raw('project.version.preview', {projectId: other.id, versionId: saved.version.id}, other.id);
   assert.equal(foreign.response.status, 404);
   const foreignRestore = await raw('project.version.restore', {projectId: other.id, versionId: saved.version.id,
-    requestId: randomUUID(), expectedContentSequence: 0, previewDigest: 'a'.repeat(64)}, other.id);
+    requestId: randomUUID(), expectedContentSequence: 0, expectedContentToken: 'c'.repeat(32), previewDigest: 'a'.repeat(64)}, other.id);
   assert.equal(foreignRestore.response.status, 404); assert.equal(foreignRestore.body.error.code, 'PROJECT_VERSION_NOT_FOUND');
   const mismatch = await raw('project.version.list', {projectId: other.id}, id);
   assert.equal(mismatch.response.status, 400); assert.equal(mismatch.body.error.code, 'PROJECT_ID_MISMATCH');
@@ -194,7 +195,7 @@ test('HTTP CLI and official MCP agree on local version save/list/preview/restore
   assert.deepEqual(await rpc('project.version.list', {projectId: id}, id), listed, 'same local day restart does not duplicate daily capture');
   assert.equal((await rpc<ProjectVersionPreviewResponse>('project.version.preview', selection, id)).previewDigest, diff.previewDigest);
   env.MIOON_BASE_URL = server.url;
-  const restoring = {...selection, requestId: randomUUID(), expectedContentSequence: diff.contentSequence, previewDigest: diff.previewDigest};
+  const restoring = {...selection, requestId: randomUUID(), expectedContentSequence: diff.contentSequence, expectedContentToken: diff.contentToken, previewDigest: diff.previewDigest};
   const restored = await rpc<ProjectVersionRestoreResponse>('project.version.restore', restoring, id);
   assert.equal(restored.versionId, saved.version.id); assert.equal(restored.requestId, restoring.requestId);
   assert.equal(restored.totalChanges, diff.totalChanges); assert.deepEqual(restored.keptCurrent, []);

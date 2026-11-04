@@ -5,6 +5,8 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID, createHash} from 'node:crypto';
 import {syncBuiltinESMExports} from 'node:module';
+import {spawn} from 'node:child_process';
+import {once} from 'node:events';
 import {createProjectBackups} from '../apps/server/src/project-host/backups.ts';
 import {createApplicationFileGuard} from '../apps/server/src/project-host/application-storage.ts';
 import {createMemoryProjectRegistry, createProjectHostManager, projectLocation, serverAppDirectories, statProjectFileIdentity} from '../apps/server/src/project-host/index.ts';
@@ -12,14 +14,16 @@ import {ensureProjectRow} from '../apps/server/src/project-host/project-initiali
 import {openProjectStore} from '../packages/business/src/project-file/index.ts';
 import type {ProjectHostRuntime} from '../apps/server/src/project-host/host.ts';
 import type {ProjectRegistryPort} from '../apps/server/src/project-host/ports.ts';
+import type {ProjectBackupsOptions} from '../apps/server/src/project-host/backups.ts';
+import {copyProjectBackup,inspectCopiedProjectFile} from '../packages/business/src/project-file/index.ts';
 
 const ioError = (message: string) => Object.assign(new Error(message), {code: 'EIO'});
 const hash = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
-async function fixture(t: TestContext, registry: ProjectRegistryPort = createMemoryProjectRegistry()) {
+async function fixture(t: TestContext, registry: ProjectRegistryPort = createMemoryProjectRegistry(),extra:Partial<Pick<ProjectBackupsOptions,'copy'>>={}) {
   const root = fs.mkdtempSync(path.join(tmpdir(), 'project-backup-fault-'));
   const directories = serverAppDirectories(root);
-  const options = {directories, registry, identity: statProjectFileIdentity, assertProjectFile: createApplicationFileGuard(directories), onWarning: () => {}};
+  const options = {directories, registry, identity: statProjectFileIdentity, assertProjectFile: createApplicationFileGuard(directories), onWarning: () => {},...extra};
   const backups = createProjectBackups(options);
   const manager = createProjectHostManager({directories, registry, hooks: [backups.hooks], factory: async (): Promise<ProjectHostRuntime> => ({
     handle: async () => false, isBusy: () => false, interrupt: () => {}, drain: async () => {}, dispose: () => {},
@@ -69,6 +73,56 @@ test('failed index rename preserves the committed three backups byte-for-byte an
   const status = await f.backups.status({projectId: f.projectId});
   assert.equal(status.state, 'failed');
   assert.equal(status.lastError?.code, 'STORAGE_PRIVATE_REQUIRED');
+});
+
+test('a prepared retry reuses its source pair and target token and a later edited target remains an exact receipt replay',async t=>{
+ const attempts:Array<Parameters<typeof copyProjectBackup>[0]>=[];
+ const f=await fixture(t,undefined,{copy:async options=>{attempts.push(options);if(attempts.length===1)throw ioError('failed before copy');return copyProjectBackup(options);}});
+ await f.unchanged();const source=(await f.backups.list({projectId:f.projectId})).backups[0]!,sourceHash=hash(f.copyFile(source.backupId));
+ const input={projectId:f.projectId,backupId:source.backupId,requestId:randomUUID(),projectFile:path.join(f.directories.projectsDir,'prepared-retry.mioon')};
+ await assert.rejects(f.backups.restore(input),{code:'EIO'});
+ const intentFile=path.join(f.backupRoot,'restore-requests',`${input.requestId}.json`),intent=JSON.parse(fs.readFileSync(intentFile,'utf8'));
+ assert.equal(intent.version,2);assert.equal(intent.phase,'prepared');assert.equal(intent.sourceContentSequence,source.contentSequence);assert.equal(intent.sourceContentToken,source.contentToken);
+ assert.match(intent.targetContentToken,/^[a-f0-9]{32}$/u);assert.notEqual(intent.targetContentToken,source.contentToken);assert.equal(fs.existsSync(input.projectFile),false);
+ const restarted=createProjectBackups(f.options),restored=await restarted.restore(input),copied=inspectCopiedProjectFile(input.projectFile);
+ assert.equal(attempts.length,2);assert.equal(attempts[0]!.contentToken,intent.targetContentToken);assert.equal(attempts[1]!.contentToken,intent.targetContentToken);
+ assert.deepEqual(attempts[1]!.expectedSource,{projectId:f.projectId,contentSequence:source.contentSequence,contentToken:source.contentToken});
+ assert.equal(copied.projectId,intent.projectId);assert.equal(copied.contentSequence,source.contentSequence);assert.equal(copied.contentToken,intent.targetContentToken);
+ const opened=await f.manager.acquire(restored.project.projectId,'window');opened.host.store.put('projects',{id:restored.project.projectId,name:'Edited after retry'});
+ const edited=opened.host.store.db.prepare('SELECT contentSequence,contentToken FROM project.project_file').get()!;
+ assert.notEqual(edited.contentToken,intent.targetContentToken);assert.deepEqual(await restarted.restore(input),restored);assert.equal(attempts.length,2);
+ assert.deepEqual(opened.host.store.db.prepare('SELECT contentSequence,contentToken FROM project.project_file').get(),edited);
+ assert.equal((opened.host.store.get('projects',restored.project.projectId) as {name:string}).name,'Edited after retry');
+ opened.release();await f.manager.close(restored.project.projectId);assert.equal(hash(f.copyFile(source.backupId)),sourceHash);
+});
+
+test('SIGKILL after durable prepared intent keeps the allocated token for the next process',async t=>{
+ const f=await fixture(t);await f.unchanged();const source=(await f.backups.list({projectId:f.projectId})).backups[0]!;
+ const input={projectId:f.projectId,backupId:source.backupId,requestId:randomUUID(),projectFile:path.join(f.directories.projectsDir,'killed-prepared.mioon')};
+ const moduleUrl=(file:string)=>new URL(`../${file}`,import.meta.url).href;
+ const program=`
+ const {createProjectBackups}=await import(${JSON.stringify(moduleUrl('apps/server/src/project-host/backups.ts'))});
+ const {createApplicationFileGuard}=await import(${JSON.stringify(moduleUrl('apps/server/src/project-host/application-storage.ts'))});
+ const {createMemoryProjectRegistry,serverAppDirectories,statProjectFileIdentity}=await import(${JSON.stringify(moduleUrl('apps/server/src/project-host/index.ts'))});
+ const directories=serverAppDirectories(${JSON.stringify(f.root)}),registry=createMemoryProjectRegistry();registry.upsert(${JSON.stringify(f.project)});
+ const backups=createProjectBackups({directories,registry,identity:statProjectFileIdentity,assertProjectFile:createApplicationFileGuard(directories),
+ copy:async options=>{setInterval(()=>{},1000);process.stdout.write(JSON.stringify({contentToken:options.contentToken,projectId:options.projectId})+'\\n');await new Promise(()=>{});}});
+ await backups.restore(${JSON.stringify(input)});`;
+ const child=spawn(process.execPath,['--input-type=module','--eval',program],{stdio:['ignore','pipe','pipe']});
+ let stderr='';child.stderr.setEncoding('utf8').on('data',(text:string)=>{stderr=(stderr+text).slice(-4000);});
+ t.after(()=>{if(child.exitCode===null && child.signalCode===null)child.kill('SIGKILL');});
+ const exit=once(child,'exit'),line=await new Promise<string>((resolve,reject)=>{
+   const timeout=setTimeout(()=>{child.kill('SIGKILL');reject(Error(`child did not reach prepared copy: ${stderr}`));},10_000);
+   let output='';child.stdout.setEncoding('utf8').on('data',(text:string)=>{output+=text;if(output.includes('\n')){clearTimeout(timeout);resolve(output.split('\n')[0]);}});
+   child.once('error',error=>{clearTimeout(timeout);reject(error);});
+   child.once('exit',(status,signal)=>{clearTimeout(timeout);if(!output.includes('\n'))reject(Error(`child exited ${status}/${signal}: ${stderr}`));});
+ });
+ child.kill('SIGKILL');const outcome=await exit;assert.equal(outcome[1],'SIGKILL');
+ const reported=JSON.parse(line),intentFile=path.join(f.backupRoot,'restore-requests',`${input.requestId}.json`),intent=JSON.parse(fs.readFileSync(intentFile,'utf8'));
+ assert.equal(intent.phase,'prepared');assert.equal(intent.targetContentToken,reported.contentToken);assert.equal(intent.projectId,reported.projectId);assert.equal(fs.existsSync(input.projectFile),false);
+ const restored=await createProjectBackups(f.options).restore(input),actual=inspectCopiedProjectFile(input.projectFile);
+ assert.equal(restored.project.projectId,intent.projectId);assert.equal(actual.contentToken,intent.targetContentToken);assert.equal(actual.contentSequence,source.contentSequence);
+ assert.notEqual(actual.contentToken,source.contentToken);assert.deepEqual(await f.backups.restore(input),restored);
 });
 
 test('cleanup failure after index publication keeps the new three readable and an unchanged capture removes the orphan', async t => {

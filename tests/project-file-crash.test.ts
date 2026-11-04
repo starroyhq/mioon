@@ -328,6 +328,8 @@ async function crash(t: TestContext, killAt: KillAt, payloadMiB: number, {move =
   }
   if (move === 'after-crash') moveDirectory();
   beforeReopen?.(project, scene, before);
+  const recovery=recoverProjectFile(project.projectFile);
+  assert.ok(recovery.state==='clean'||recovery.state==='recovered',JSON.stringify(recovery));
   const store = openProjectStore({projectFile: project.projectFile, locate: () => original});
   let reopened: {rows: CrashRows; file: unknown; seen: unknown; historyState: string; integrity: Record<string, unknown[]>; foreignKeys: unknown[]};
   try {
@@ -435,7 +437,9 @@ test('a copy of the project directory opened after SIGKILL keeps the super-journ
       const superJournal = path.join(project.localDir, scene.superJournals[0].name);
       const copyFile = path.join(`${path.dirname(project.projectFile)}-copy`, path.basename(project.projectFile));
       cpSync(path.dirname(project.projectFile), path.dirname(copyFile), {recursive: true});
-      // Same project ID, same local records: opening the copy rolls back the copy and history.db.
+      // Explicit current-format recovery precedes ordinary read-only preflight.
+      assert.deepEqual(recoverProjectFile(copyFile),{state:'recovered'});
+      // Same project ID, same local records: history.db then rolls back.
       const store = openProjectStore({projectFile: copyFile, locate: () => project});
       try {
         assert.equal(readCrashRows(store.db, store.projectId).content, before);

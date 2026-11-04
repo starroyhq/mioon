@@ -1,4 +1,3 @@
-import {expectedContentMetadata} from './helpers/kernel-content-metadata.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectRpcPath,projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {PipedProcess,SqlRows,ProcessOutcome,BackendReady,IpcMessage,WireMessage,WireData,WireEnvelope,WireCall} from './helpers/strict-timeline-wire-response-types.ts';
@@ -9,6 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import {mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import http from 'node:http';
 import {tmpdir} from 'node:os';
@@ -28,6 +28,47 @@ const source = Buffer.from('# preserve exact CRLF and missing final newline\r\nT
 const expectedHash = createHash('sha256').update(source).digest('hex');
 const changedTables = new Set(['project_lut_resources', 'lut_import_requests']);
 const pause = (ms?: number|undefined) => new Promise(resolve => setTimeout(resolve, ms));
+
+function expectedLutContentMetadata(before: SqlRows, after: SqlRows, changedProjectIds: readonly string[]) {
+  const ids = before.project_file.map(row => String(row.projectId));
+  assert.deepEqual(after.project_file.map(row => String(row.projectId)), ids, 'LUT operations preserve every project metadata identity');
+  assert.equal(new Set(changedProjectIds).size, changedProjectIds.length);
+  const actualChanges = ids.filter(projectId => !isDeepStrictEqual(
+    before.project_lut_resources.filter(row => row.projectId === projectId), after.project_lut_resources.filter(row => row.projectId === projectId)));
+  assert.deepEqual(actualChanges.sort(), [...changedProjectIds].sort(), 'only the explicitly imported projects have content changes');
+  const metadata: Record<string, Record<string, unknown>[]> = {project_file: [], history_state: []};
+  const stamp = (row: SqlRows[string][number], sequenceKey: string, tokenKey: string) => {
+    const sequence = row[sequenceKey], token = row[tokenKey];
+    assert.ok(typeof sequence === 'number' || typeof sequence === 'bigint');
+    assert.ok(Number.isSafeInteger(Number(sequence)) && Number(sequence) >= 0);
+    assert.equal(typeof token, 'string'); assert.match(String(token), /^[a-f0-9]{32}$/u);
+    return {sequence, token};
+  };
+  for (const projectId of ids) {
+    const one = (rows: SqlRows, table: string) => {
+      const matches = rows[table].filter(row => row.projectId === projectId);
+      assert.equal(matches.length, 1, `${table} has exactly one row for ${projectId}`); return matches[0];
+    };
+    const oldFile = one(before, 'project_file'), file = one(after, 'project_file');
+    const oldHistory = one(before, 'history_state'), history = one(after, 'history_state');
+    const prior = stamp(oldFile, 'contentSequence', 'contentToken'), current = stamp(file, 'contentSequence', 'contentToken');
+    assert.deepEqual(stamp(oldHistory, 'seenContentSequence', 'seenContentToken'), prior, 'the baseline seen pair matches its actual project');
+    assert.deepEqual(stamp(history, 'seenContentSequence', 'seenContentToken'), current, 'the committed seen pair matches its actual project');
+    assert.equal(typeof current.sequence, typeof prior.sequence, 'native SQLite sequence type stays stable');
+    if (changedProjectIds.includes(projectId)) {
+      assert.ok(current.sequence > prior.sequence, 'an actual LUT content mutation advances the sequence');
+      assert.notEqual(current.token, prior.token, 'an actual LUT content mutation changes its token');
+    } else {
+      assert.deepEqual(current, prior, 'a project without a LUT content mutation retains its entire pair');
+      assert.deepEqual(file, oldFile); assert.deepEqual(history, oldHistory);
+    }
+    metadata.project_file.push(Object.assign(Object.create(Object.getPrototypeOf(oldFile)), oldFile,
+      {contentSequence: current.sequence, contentToken: current.token}));
+    metadata.history_state.push(Object.assign(Object.create(Object.getPrototypeOf(oldHistory)), oldHistory,
+      {seenContentSequence: current.sequence, seenContentToken: current.token}));
+  }
+  return metadata;
+}
 
 async function bounded<T>(promise: Promise<T>, label: string, ms: number|undefined = 15_000) {
   let timer;
@@ -165,6 +206,7 @@ async function fixture(t: test.TestContext) {
   const snapshot = async () => (await checkpoint()).rows;
   const unchanged = async (before: Awaited<ReturnType<typeof checkpoint>>) => {
     const after = await checkpoint();
+    expectedLutContentMetadata(before.rows, after.rows, []);
     assert.deepEqual(after.rows, before.rows, 'read/replay/rejection does not change any persisted row in either real project');
     assert.deepEqual(after.version, before.version, 'read/replay/rejection does not perform an equal-value commit');
   };
@@ -287,6 +329,8 @@ test('actual CLI and official MCP stdio prove project-owned LUT import/replay an
   assert.deepEqual(Buffer.from((await f.snapshot()).project_lut_resources.find(row => row.id === saved.resource.id)!.content as string, 'base64'), source,
     'actual CLI --file preserves every original byte in real SQLite storage');
   metadataOnly(saved, f.root);
+  const afterImport = await f.snapshot(), firstMetadata = expectedLutContentMetadata(before, afterImport, [project.id]);
+  for (const table of Object.keys(firstMetadata)) assert.deepEqual(afterImport[table], firstMetadata[table]);
 
   const mcp = await f.mcpConnection();
   const tools = await mcp.client.listTools({}, {timeout: 5_000});
@@ -299,9 +343,12 @@ test('actual CLI and official MCP stdio prove project-owned LUT import/replay an
       await mcp.call('lut.import', {...input, ...change}, 'IDEMPOTENCY_CONFLICT');
     await f.cli('lut.import', {...input, name: 'changed.cube'}, 'IDEMPOTENCY_CONFLICT');
     await f.unchanged(checkpoint);
-    const owner=await f.state(project.id),independent=(await mcp.call('lut.import',{...input,projectId:other.id})).data;
+    const crossProjectBefore=await f.snapshot(),owner=await f.state(project.id),independent=(await mcp.call('lut.import',{...input,projectId:other.id})).data;
     assert.equal(independent.resource.projectId,other.id);assert.notEqual(independent.resource.id,saved.resource.id);
+    expectedLutContentMetadata(crossProjectBefore,await f.snapshot(),[other.id]);
+    const replay=await f.checkpoint();
     assert.deepEqual((await f.cli('lut.import',{...input,projectId:other.id})).data,independent,'a project replays only its own same-key receipt');
+    await f.unchanged(replay);
     assert.deepEqual(await f.state(project.id),owner,'another project cannot write or replay the original owner');
   });
 
@@ -329,6 +376,7 @@ test('actual CLI and official MCP stdio prove project-owned LUT import/replay an
 
   for (const mode of ['drop', 'tamper']) await t.test(`actual ${mode === 'drop' ? 'CLI lost' : 'MCP forged-hash'} acknowledgement is uncertain and explicitly recovered across transports`, async () => {
     const proxy = await f.responseProxy(mode);
+    const beforeMutation = await f.snapshot();
     const original = {...input, requestId: `wire-${mode}-original-key`, name: `${mode}.cube`};
     const response = mode === 'drop'
       ? await f.cli('lut.import', original, 'BACKEND_UNAVAILABLE', {base: proxy.url})
@@ -342,6 +390,7 @@ test('actual CLI and official MCP stdio prove project-owned LUT import/replay an
     assert.deepEqual(proxy.seen[0].submitted, {operation: 'lut.import', input: original});
     const committed = proxy.seen[0].envelope.data;
     const checkpoint = await f.checkpoint();
+    expectedLutContentMetadata(beforeMutation,checkpoint.rows,[project.id]);
     const recovered = mode === 'drop' ? await mcp.call('lut.import', original) : await f.cli('lut.import', original);
     assert.deepEqual(recovered.data, committed, 'explicit same-key cross-transport retry returns the original committed resource');
     await pause(50);
@@ -352,12 +401,7 @@ test('actual CLI and official MCP stdio prove project-owned LUT import/replay an
 
   const after = await f.snapshot();
   assert.deepEqual(Object.keys(after), Object.keys(before));
-  const metadata:Record<string,Record<string,unknown>[]>={project_file:[],history_state:[]};
-  for(const projectId of [project.id,other.id]){
-    const select=(rows:SqlRows)=>Object.fromEntries(Object.keys(metadata).map(table=>[table,rows[table].filter(row=>row.projectId===projectId)]));
-    const expected=expectedContentMetadata(select(before),select(after));
-    for(const table of Object.keys(metadata))metadata[table].push(...expected[table]);
-  }
+  const metadata=expectedLutContentMetadata(before,after,[project.id,other.id]);
   for (const table of Object.keys(before)) if (!changedTables.has(table) && table !== 'agent_task_target_revisions_v2')
     assert.deepEqual(after[table], metadata[table]??before[table], `${table} is untouched by LUT resource operations`);
   for (const entry of before.agent_task_target_revisions_v2) assert.deepEqual(after.agent_task_target_revisions_v2.find(next => next.projectId === entry.projectId && next.kind === entry.kind && next.targetId === entry.targetId), entry, 'LUT import leaves prior target revisions unchanged');

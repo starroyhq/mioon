@@ -79,6 +79,8 @@ const textSites = {
   // Checks CLI stdout JSON and stderr diagnostics both decode before collection.
   'tests/agent-task-checks-transport-v2.test.ts': 2,
   'tests/agent-task-h1e-runtime-v2.test.ts': 2,
+  // Prepared-backup SIGKILL protocol line and child diagnostics are UTF-8.
+  'tests/project-backup-failures.test.ts': 2,
   // Native Anthropic transport checks collect CLI JSON and diagnostics as UTF-8.
   'tests/agent-anthropic-transports.test.ts': 2,
   'tests/headless-agent-secret-public-native.test.mjs': 2,

@@ -112,15 +112,32 @@ export function readNativeQaDocument(dataDir:string,name:string):string|null{
  try{const row=app.db.prepare('SELECT data FROM app_documents WHERE name=?').get(name);if(!row)return null;assert.equal(typeof row.data,'string');return row.data as string;}finally{app.close();}
 }
 type MetadataEvidence={kernelMetadata:Record<string,Record<string,QaRows>>;metadataTableNames:string[]};
-/** Only an explicitly expected project's content sequence may advance. Every
- * other metadata field and every companion sequence remains exact. */
+/** Only an explicitly expected host may advance its complete content pair.
+ * Validate rotation and matching seen evidence before projecting the two
+ * token fields; every other field and every other host remains exact. */
 export function checkedNativeMetadata(before:MetadataEvidence,after:MetadataEvidence,changedProjectIds:readonly string[]=[]):ReadonlySet<string>{
  assert.deepEqual(Object.keys(after.kernelMetadata).sort(),Object.keys(before.kernelMetadata).sort());
  assert.deepEqual(after.metadataTableNames,before.metadataTableNames);
  for(const [projectId,prior]of Object.entries(before.kernelMetadata)){
   const current=after.kernelMetadata[projectId]!;
   if(current.project_file?.[0]?.contentSequence===prior.project_file?.[0]?.contentSequence)assert.deepEqual(current,prior);
-  else{assert.ok(changedProjectIds.includes(projectId),'only the explicitly mutated host advances');assert.deepEqual(current,expectedContentMetadata(prior,current));}
+  else{
+   assert.ok(changedProjectIds.includes(projectId),'only the explicitly mutated host advances');
+   const expected=expectedContentMetadata(prior,current);
+   assert.equal(prior.history_state?.length,1,'one prior actual seen metadata row');
+   assert.equal(current.history_state?.length,1,'one actual seen metadata row');
+   const oldToken=prior.project_file?.[0]?.contentToken,token=current.project_file?.[0]?.contentToken;
+   assert.ok(typeof oldToken==='string');assert.match(oldToken,/^[a-f0-9]{32}$/u,'the prior content token is canonical');
+   assert.ok(typeof token==='string');assert.match(token,/^[a-f0-9]{32}$/u,'a changed content token is canonical');
+   assert.notEqual(token,oldToken,'a content commit rotates its token');
+   assert.equal(prior.history_state![0]!.seenContentSequence,prior.project_file![0]!.contentSequence,'prior seen sequence matches the portable file');
+   assert.equal(prior.history_state![0]!.seenContentToken,oldToken,'prior seen token matches the portable file');
+   assert.equal(current.history_state![0]!.seenContentSequence,current.project_file![0]!.contentSequence,'seen sequence matches the changed portable file');
+   assert.equal(current.history_state![0]!.seenContentToken,token,'seen token matches the changed portable file');
+   expected.project_file![0]!.contentToken=token;
+   expected.history_state![0]!.seenContentToken=token;
+   assert.deepEqual(current,expected);
+  }
  }
  return new Set(after.metadataTableNames);
 }

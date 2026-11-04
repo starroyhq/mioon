@@ -23,7 +23,7 @@ if (point === 'hold-old') {
 const exec = DatabaseSync.prototype.exec;
 let upgrading = false;
 DatabaseSync.prototype.exec = function(this: DatabaseSync, sql: string): void {
-  if (!upgrading && (sql.startsWith('DROP TABLE main.agent_task_')||sql.startsWith('DROP TRIGGER main.quota_mio_')||sql.startsWith('CREATE TABLE main.mio_rule_writes(')||sql.startsWith('CREATE TABLE main.project_version_blobs('))) {
+  if (!upgrading && (sql.startsWith('DROP TABLE main.history_state')||sql.startsWith('DROP TABLE main.agent_task_')||sql.startsWith('DROP TRIGGER main.quota_mio_')||sql.startsWith('CREATE TABLE main.mio_rule_writes(')||sql.startsWith('CREATE TABLE main.project_version_blobs('))) {
     // Force the schema reset to spill dirty pages before COMMIT, so a kill
     // exercises journal recovery rather than only discarding an in-memory DDL.
     exec.call(this, 'PRAGMA main.cache_size=8; PRAGMA project.cache_size=8; PRAGMA cache_spill=ON');
@@ -31,9 +31,9 @@ DatabaseSync.prototype.exec = function(this: DatabaseSync, sql: string): void {
   if(point==='counter-after-init'&&sql===CURRENT_VERSION_WRITE)barrier();
   if(point==='versions-before-version'&&sql===CURRENT_VERSION_WRITE)barrier();
   exec.call(this, sql);
-  if (sql.startsWith('DROP TABLE main.agent_task_')||sql.startsWith('DROP TRIGGER main.quota_mio_')||sql.startsWith('CREATE TABLE main.mio_rule_writes(')||sql.startsWith('CREATE TABLE main.project_version_blobs(')) upgrading = true;
+  if (sql.startsWith('DROP TABLE main.history_state')||sql.startsWith('DROP TABLE main.agent_task_')||sql.startsWith('DROP TRIGGER main.quota_mio_')||sql.startsWith('CREATE TABLE main.mio_rule_writes(')||sql.startsWith('CREATE TABLE main.project_version_blobs(')) upgrading = true;
   if (point === 'after-drop' && sql === 'DROP TABLE main.agent_task_runs_v2'
-    || point === 'after-cleanup' && sql.startsWith('CREATE TRIGGER project.project_file_sequence_agent_task_target_revisions_v2_delete ')
+    || point === 'after-metadata' && sql.startsWith('CREATE TRIGGER main.history_state_guard_identity ')
     || point === 'after-version' && sql === CURRENT_VERSION_WRITE
     || point === 'after-commit' && upgrading && sql === 'COMMIT'
     || point === 'counter-after-create' && sql.startsWith('CREATE TABLE main.mio_storage_counters(')
