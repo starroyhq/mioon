@@ -101,6 +101,9 @@ process.parentPort.on('message', ({ data }) => {
       for (const name of ['dataDir', 'cacheDir', 'projectsDir'] as const) {
         if (typeof data[name] !== 'string' || !path.isAbsolute(data[name])) throw new TypeError('Invalid backend application directory');
       }
+      if (data.projectTemplatesDir !== undefined && (typeof data.projectTemplatesDir !== 'string' || !path.isAbsolute(data.projectTemplatesDir))) {
+        throw new TypeError('Invalid backend examples directory');
+      }
       // A missing/locked OS vault disables persistent Images writes; it never
       // turns them into plaintext writes or prevents unrelated editing startup.
       try { await imageSecretCodec.refreshStorage(); } catch { /* Fail-closed cached availability. */ }
@@ -109,7 +112,8 @@ process.parentPort.on('message', ({ data }) => {
       // A desktop utility without the fixed public-key gate must never fall
       // back to the ordinary Web PCM lane because main wiring was incomplete.
       nativeAudioPreview = createNativeAudioPreviewAuthority(data.nativeAudioPreview);
-      server = await startServer({ comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE), dataDir: data.dataDir, cacheDir:data.cacheDir, projectsDir:data.projectsDir, port: 0, distDir: data.distDir, token: data.token, agentSettings, imageSecretCodec, videoSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
+      server = await startServer({ comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE), dataDir: data.dataDir, cacheDir:data.cacheDir, projectsDir:data.projectsDir, port: 0, distDir: data.distDir,
+        projectTemplatesDir: data.projectTemplatesDir, token: data.token, agentSettings, imageSecretCodec, videoSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
       if (typeof data.backendId !== 'string' || data.backendId !== data.nativeAudioPreview?.backendId) throw new TypeError('Invalid backend project owner');
       projectControl = createProjectEntryControlBroker({backendId:data.backendId, control:server.projectEntries,
         send:message=>process.parentPort!.postMessage(message), isCurrent:()=>!closing});

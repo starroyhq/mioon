@@ -59,6 +59,7 @@ interface BackendStartConfig {
   readonly projectsDir: string;
   readonly distDir: string;
   readonly subtitleResourcesDir: string;
+  readonly projectTemplatesDir?: string;
   readonly token: string;
   readonly nativeAudioPreview?: NativeAudioConfig;
 }
