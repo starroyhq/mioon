@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { schemas } from '../packages/contracts/src/index.ts';
-import { createLauncherClient, createLauncherController, parseLauncherProjects } from '../apps/web/src/launcher-state.ts';
-import type { LauncherProject } from '../apps/web/src/launcher-state.ts';
+import { createLauncherClient, createLauncherController, parseLauncherProjects, LauncherCreateError } from '../apps/web/src/launcher-state.ts';
+import type { LauncherCreatedProject } from '../apps/web/src/launcher-state.ts';
+import { projectEntriesResponseSchema } from '../packages/contracts/src/project-entry.ts';
+import type { ProjectEntriesResponse } from '../packages/contracts/src/project-entry.ts';
 import { createProjectEntryController } from '../apps/web/src/project-entry-state.ts';
 import { createLastProjectController } from '../apps/web/src/last-project-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
@@ -21,16 +23,23 @@ interface OpenRecord { projectId: string; remember: boolean; entryToken: string 
 interface InvokeArgs extends OpenRecord { controller: ProjectController }
 
 const uuid = (n: number): string => `78000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const checks: ContractChecks = { parseCreateInput: value => schemas['project.create'].parse(value) };
+const checks: ContractChecks = { parseCreateInput: value => schemas['project.create'].parse(value), readDirectory: async () => directory([row()]) };
 const ctx = (patch: object = {}): LauncherContext => ({ version: 2, role: 'launcher', windowId: uuid(9), contextId: uuid(1), backendId: uuid(2), initialProjectId: null, autoOpen: false,
   editorProjectId: null, editorPhase: 'none', editorCount: 0, entryMode: null, entryVersion: 0, entryReceipt: null,
   settingsSlot: null, settingsVersion: 0, selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false, ...patch }) as LauncherContext;
-const row = (id: string = uuid(3), name: string = '故事'): LauncherProject => ({ id, name, description: '', revision: 1, createdAt: '2026-10-13T00:00:00.000Z', updatedAt: '2026-10-13T00:00:00.000Z' });
+const row = (id: string = uuid(3), name: string = '故事'): LauncherCreatedProject => ({ id, name, description: '', revision: 1, createdAt: '2026-10-13T00:00:00.000Z', updatedAt: '2026-10-13T00:00:00.000Z' });
+function directory(projects: readonly LauncherCreatedProject[], patch: Partial<ProjectEntriesResponse> = {}): ProjectEntriesResponse {
+  return projectEntriesResponseSchema.parse({version: 1, appLibraryScope: 'a'.repeat(64), instanceId: uuid(900), registered: projects.map((project, index) => ({
+    project: {projectId: project.id, name: project.name, projectFile: `/native-recent/${project.id}.mioon`, fileIdentity: {dev: '1', ino: String(index + 1)}, lastOpenedAt: null,
+      summary: {description: project.description, revision: project.revision, createdAt: project.createdAt, updatedAt: project.updatedAt,
+        fps: 30, width: 1080, height: 1920, presetId: 'portrait_1080', shotCount: 0, durationFrames: 0, cover: null}}, availability: {state: 'available'}, coverUrl: null})), ...patch});
+}
 const result = (patch: object = {}): EntryResult => ({ ok: true, reason: 'accepted', targetWindowId: uuid(11), targetPhase: 'opening', ...patch }) as EntryResult;
 const tick = (): Promise<void> => new Promise(resolve => { setImmediate(resolve); });
-function fixture({ context = ctx(), confirm = async () => true, rpc, invoke, locator = null }:
+function fixture({ context = ctx(), confirm = async () => true, rpc, readDirectory, invoke, locator = null, explicitProjectId = null }:
   { context?: LauncherContext; confirm?: () => Promise<boolean>; rpc?: (operation: string, input?: Readonly<Record<string, unknown>>) => unknown;
-    invoke?: (value: InvokeArgs) => unknown; locator?: Locator | null } = {}) {
+    readDirectory?: () => unknown;
+    invoke?: (value: InvokeArgs) => unknown; locator?: Locator | null; explicitProjectId?: string | null } = {}) {
   const calls: Array<[string, unknown]> = [], opens: OpenRecord[] = []; let current = context, serial = 100;
   let controller: ProjectController;
   const bridge = { context: async () => current,
@@ -43,10 +52,10 @@ function fixture({ context = ctx(), confirm = async () => true, rpc, invoke, loc
   const client = createLauncherClient(async (operation, input) => {
     calls.push([operation, input]);
     if (rpc) return rpc(operation, input);
-    if (operation === 'project.list') return [row(), row(uuid(4))];
     if (operation === 'project.create') return row(uuid(5), String((input as { name?: unknown } | undefined)?.name));
-  }, checks);
-  controller = createProjectEntryController({ client, context, bridge, locator, confirm, newToken: () => uuid(++serial) });
+    assert.fail(`Unexpected native RPC ${operation}`);
+  }, {...checks, readDirectory: async () => {calls.push(['directory.list', undefined]); return readDirectory ? readDirectory() : directory([row(), row(uuid(4))]);}});
+  controller = createProjectEntryController({ client, context, bridge, locator, explicitProjectId, confirm, newToken: () => uuid(++serial) });
   controller.activate();
   return { controller, calls, opens, client, bridge, context: () => current,
     receive(patch: object) { current = { ...current, ...patch } as LauncherContext; controller.updateContext(current); } };
@@ -57,6 +66,142 @@ test('catalog and create ACK use canonical unknown validation including exact in
   const client = createLauncherClient(async () => { dispatched++; return row(); }, checks);
   await assert.rejects(client.create('', '')); assert.equal(dispatched, 0);
   await assert.rejects(client.create('different', '')); assert.equal(dispatched, 1);
+});
+test('default native directory reads the fixed GET and retains registrations with no cached summary', async () => {
+  const original = globalThis.fetch, requests: {url: string; options: RequestInit}[] = [];
+  const catalog = directory([row(), row(uuid(4))]);
+  catalog.registered[0].project.summary = null;
+  catalog.registered[0].project.projectFile = '/Volumes/外置盘/未知项目.mioon';
+  catalog.registered[0].availability = {state: 'missing'};
+  try {
+    globalThis.fetch = async (url, options) => {requests.push({url: String(url), options: options!}); return Response.json({ok: true, data: catalog});};
+    const client = createLauncherClient(async () => assert.fail('Listing must never use RPC project.list'), {parseCreateInput: checks.parseCreateInput});
+    const projects = await client.list();
+    assert.deepEqual(projects, [{id: uuid(3), name: '故事', updatedAt: ''}, row(uuid(4))]);
+    assert.equal(Object.hasOwn(projects[0], 'description'), false); assert.equal(Object.hasOwn(projects[0], 'revision'), false); assert.equal(Object.hasOwn(projects[0], 'createdAt'), false);
+    assert.equal(requests[0].url, '/api/project-entries'); assert.equal(requests[0].options.method, 'GET');
+    assert.equal(requests[0].options.credentials, 'same-origin'); assert.equal(requests[0].options.cache, 'no-store'); assert.equal(requests[0].options.redirect, 'error');
+    assert.equal(requests[0].options.body, undefined); assert.equal(JSON.stringify(projects).includes('/Volumes/'), false);
+    catalog.registered = []; assert.deepEqual(await client.list(), []);
+  } finally {globalThis.fetch = original;}
+});
+test('native catalog requires the complete strict DTO before pinning or accepting another backend instance', async () => {
+  const valid = directory([row()]); let value: unknown = {...valid, instanceId: 'invalid'};
+  const client = createLauncherClient(async () => assert.fail('No list RPC'), {...checks, readDirectory: async () => value});
+  await assert.rejects(client.list(), {code: 'BACKEND_PROTOCOL_ERROR'});
+  value = directory([row()], {appLibraryScope: 'b'.repeat(64)}); assert.deepEqual(await client.list(), [row()]);
+  for (const malformed of [[row()], {...valid, appLibraryScope: 'b'.repeat(64), registered: [valid.registered[0], valid.registered[0]]},
+    {...valid, appLibraryScope: 'b'.repeat(64), extra: true},
+    {...valid, appLibraryScope: 'b'.repeat(64), instanceId: uuid(901), registered: [{...valid.registered[0], availability: {state: 'unknown'}}]}]) {
+    value = malformed; await assert.rejects(client.list(), {code: 'BACKEND_PROTOCOL_ERROR'});
+  }
+  value = directory([row(uuid(4))], {appLibraryScope: 'b'.repeat(64), instanceId: uuid(902)});
+  assert.deepEqual(await client.list(), [row(uuid(4))]);
+});
+test('same project UUID in a different library blocks creation before dispatch and permanently pins the private client', async () => {
+  let value = directory([row()]), reads = 0, creates = 0;
+  const client = createLauncherClient(async () => {creates++; return row();}, {...checks, readDirectory: async () => {reads++; return value;}});
+  await client.list(); value = directory([row()], {appLibraryScope: 'b'.repeat(64), instanceId: uuid(901)});
+  await assert.rejects(client.create(row().name, ''), error => error instanceof LauncherCreateError && error.outcome === 'rejected');
+  assert.equal(creates, 0); assert.equal(reads, 2);
+  value = directory([row()]);
+  await assert.rejects(client.list(), {code: 'PROJECT_ENTRY_SCOPE_MISMATCH', status: 409});
+  await assert.rejects(client.create(row().name, ''), error => error instanceof LauncherCreateError && error.outcome === 'rejected');
+  assert.equal(reads, 2); assert.equal(creates, 0);
+});
+test('create always rechecks directory identity and a failed preflight is definitive without a create RPC', async () => {
+  let reads = 0, creates = 0, offline = false;
+  const client = createLauncherClient(async () => {creates++; return row();}, {...checks, readDirectory: async () => {reads++; if (offline) throw Error('offline'); return directory([row()]);}});
+  await client.list(); offline = true;
+  await assert.rejects(client.create(row().name, ''), error => error instanceof LauncherCreateError && error.outcome === 'rejected');
+  assert.equal(creates, 0); assert.equal(reads, 2);
+  offline = false; assert.deepEqual(await client.create(row().name, ''), row());
+  assert.equal(creates, 1); assert.equal(reads, 3);
+});
+test('a scope mismatch observed after create dispatch keeps its acknowledgement unknown', async () => {
+  const pending = Promise.withResolvers<unknown>(); let value = directory([row()]), creates = 0;
+  const client = createLauncherClient(async () => {creates++; return pending.promise;}, {...checks, readDirectory: async () => value});
+  const creating = client.create(row().name, ''); await tick(); assert.equal(creates, 1);
+  value = directory([row()], {appLibraryScope: 'b'.repeat(64)});
+  await assert.rejects(client.list(), {code: 'PROJECT_ENTRY_SCOPE_MISMATCH'});
+  pending.resolve(row());
+  await assert.rejects(creating, error => error instanceof LauncherCreateError && error.outcome === 'unknown');
+  assert.equal(creates, 1);
+});
+test('unknown-summary membership never weakens canonical create acknowledgement validation', async () => {
+  const catalog = directory([row()]); catalog.registered[0].project.summary = null;
+  const client = createLauncherClient(async () => ({id: row().id, name: row().name, updatedAt: ''}), {...checks, readDirectory: async () => catalog});
+  assert.deepEqual(await client.list(), [{id: row().id, name: row().name, updatedAt: ''}]);
+  await assert.rejects(client.create(row().name, ''), error => error instanceof LauncherCreateError && error.outcome === 'unknown');
+});
+test('cancelled native departure performs no directory read or window dispatch even for an uncached UUID', async () => {
+  for (const target of [uuid(3), uuid(99)]) {
+    const f = fixture({confirm: async () => false}); await f.controller.boot();
+    f.controller.reportCreate({dirty: true, busy: false, version: 1}); const reads = f.calls.length;
+    assert.equal(await f.controller.open(target), false); assert.equal(f.calls.length, reads); assert.equal(f.opens.length, 0);
+    assert.equal(f.controller.getState().catalogReady, true);
+  }
+});
+test('native open confirms departure before a fresh directory read and uses only that read for membership', async () => {
+  const answer = Promise.withResolvers<boolean>(), order: string[] = []; let catalog = directory([row()]);
+  const f = fixture({confirm: () => {order.push('confirm'); return answer.promise;}, readDirectory: () => {order.push('GET'); return catalog;},
+    invoke: ({controller, entryToken, projectId}) => {order.push('open'); assert.equal(controller.consume(entryToken, projectId).accepted, true); return result();}});
+  await f.controller.boot(); order.length = 0; catalog = directory([row(uuid(4))]);
+  f.controller.reportCreate({dirty: true, busy: false, version: 1});
+  const opening = f.controller.open(uuid(4)); assert.deepEqual(order, ['confirm']);
+  answer.resolve(true); assert.equal(await opening, true);
+  assert.deepEqual(order, ['confirm', 'GET', 'open']); assert.deepEqual(f.opens.map(item => item.projectId), [uuid(4)]);
+});
+test('fresh native open cannot reuse cached membership after a failed read, malformed DTO or same-UUID library replacement', async () => {
+  for (const failure of ['offline', 'malformed', 'scope']) {
+    let catalog: unknown = directory([row()]);
+    const f = fixture({readDirectory: () => {if (failure === 'offline' && catalog === null) throw Error('offline'); return catalog;}});
+    await f.controller.boot();
+    catalog = failure === 'offline' ? null : failure === 'malformed' ? [row()] : directory([row()], {appLibraryScope: 'b'.repeat(64)});
+    assert.equal(await f.controller.open(uuid(3)), false); assert.equal(f.opens.length, 0);
+    assert.equal(f.controller.getState().catalogReady, false); assert.equal(f.controller.getState().listBusy, false);
+    assert.ok(f.controller.getState().listError); assert.equal(f.controller.getState().projects[0].id, uuid(3), 'Old display data is never fresh authority');
+  }
+});
+test('a removed registration in a successful native read cannot be opened from its old card', async () => {
+  let catalog = directory([row()]); const f = fixture({readDirectory: () => catalog}); await f.controller.boot();
+  catalog = directory([]); assert.equal(await f.controller.open(uuid(3)), false);
+  assert.equal(f.opens.length, 0); assert.deepEqual(f.controller.getState().projects, []);
+  assert.equal(f.controller.getState().catalogReady, true); assert.ok(f.controller.getState().error);
+});
+test('a native open read rejects repeated open/create actions and keeps one exact confirmed flight', async () => {
+  const held = Promise.withResolvers<unknown>(); let reads = 0, confirmations = 0;
+  const f = fixture({confirm: async () => {confirmations++; return true;}, readDirectory: () => ++reads === 1 ? directory([row()]) : held.promise});
+  await f.controller.boot(); f.controller.reportCreate({dirty: true, busy: false, version: 1});
+  const opening = f.controller.open(uuid(3)); await tick(); assert.equal(reads, 2); assert.equal(f.controller.getState().listBusy, true);
+  assert.equal(await f.controller.open(uuid(3)), false); assert.equal(await f.controller.create('new', ''), false);
+  assert.equal(reads, 2); assert.equal(confirmations, 1); assert.equal(f.opens.length, 0);
+  held.resolve(directory([row()])); assert.equal(await opening, true); assert.equal(f.opens.length, 1);
+});
+test('input, native context, visibility and lifetime changes revoke a pending native open read', async () => {
+  for (const change of ['input', 'context', 'quit-cancel', 'hidden', 'lifetime']) {
+    const held = Promise.withResolvers<unknown>(); let reads = 0;
+    const f = fixture({readDirectory: () => ++reads === 1 ? directory([row()]) : held.promise}); await f.controller.boot();
+    f.controller.reportCreate({dirty: true, busy: false, version: 1});
+    const opening = f.controller.open(uuid(3)); await tick(); assert.equal(reads, 2);
+    if (change === 'input') f.controller.reportCreate({dirty: true, busy: false, version: 2});
+    if (change === 'context') f.receive({settingsVersion: 1});
+    if (change === 'quit-cancel') {f.receive({quitting: true}); f.receive({quitting: false});}
+    if (change === 'hidden') f.controller.setVisible(false);
+    if (change === 'lifetime') {f.controller.dispose(); f.controller.activate();}
+    held.resolve(directory([row()])); assert.equal(await opening, false); assert.equal(f.opens.length, 0);
+  }
+});
+test('a newer catalog read retires old native open success and failure without consuming its departure again', async () => {
+  for (const reject of [false, true]) {
+    const held = Promise.withResolvers<unknown>(); let reads = 0;
+    const f = fixture({readDirectory: () => ++reads === 2 ? held.promise : directory([row()])}); await f.controller.boot();
+    const opening = f.controller.open(uuid(3)); await tick(); assert.equal(reads, 2);
+    assert.equal(await f.controller.refresh(), true); assert.equal(reads, 3);
+    if (reject) held.reject(Error('old failure')); else held.resolve(directory([row()]));
+    assert.equal(await opening, false); assert.equal(f.opens.length, 0); assert.equal(f.controller.getState().listBusy, false);
+    assert.equal(f.controller.getState().listError, ''); assert.equal(f.controller.getState().catalogReady, true);
+  }
 });
 test('explicit openings seal a one-use permit and different editor projects never replace the source', async () => {
   const initial = ctx({ role: 'editor', initialProjectId: uuid(3), editorProjectId: uuid(3), editorPhase: 'ready', editorCount: 1 });
@@ -93,7 +238,7 @@ test('an exact late accepted receipt closes the editor picker after an unknown o
 });
 test('programmatic open cannot bypass unknown creation and refreshing never proves creation success', async () => {
   const pending = Promise.withResolvers<unknown>();
-  const f = fixture({ rpc: async (op) => op === 'project.list' ? [row()] : pending.promise });
+  const f = fixture({ readDirectory: () => directory([row()]), rpc: async () => pending.promise });
   await f.controller.boot();
   f.controller.reportCreate({ dirty: true, busy: true, version: 1 });
   const work = f.controller.create('new', '');
@@ -145,12 +290,14 @@ test('confirmed create keeps one latch into open, and failed open never replays 
   assert.equal(f.controller.getState().createUnknown, false); assert.equal(f.controller.getState().createdProjectId, uuid(5));
   assert.equal(f.calls.filter(([op]) => op === 'project.create').length, 1);
 });
-test('first startup is read-only, consumed once, and cancelled by newer local input', async () => {
+test('first startup stays home without a URL; an explicit target is read-only, consumed once, and cancelled by newer input', async () => {
   const locator = { activate() {}, dispose() {}, discover: async () => null, getState: () => ({ identityBlocked: false }), invalidateNavigation() {}, rememberOpened() { assert.fail('startup cannot remember'); } } as unknown as Locator;
   const f = fixture({ context: ctx({ autoOpen: true }), locator }); await f.controller.boot(); await f.controller.boot();
-  assert.deepEqual(f.opens.map(value => value.remember), [false]);
-  const held = Promise.withResolvers<unknown>(); const g = fixture({ context: ctx({ autoOpen: true }), locator, rpc: async op => held.promise });
-  const boot = g.controller.boot(); g.controller.interacted(); held.resolve([row()]); await boot; assert.equal(g.opens.length, 0);
+  assert.deepEqual(f.opens, []);
+  const explicit = fixture({ context: ctx({ autoOpen: true }), locator, explicitProjectId: uuid(3) }); await explicit.controller.boot(); await explicit.controller.boot();
+  assert.deepEqual(explicit.opens.map(value => [value.projectId, value.remember]), [[uuid(3), false]]);
+  const held = Promise.withResolvers<unknown>(); const g = fixture({ context: ctx({ autoOpen: true }), locator, explicitProjectId: uuid(3), readDirectory: () => held.promise });
+  const boot = g.controller.boot(); g.controller.interacted(); held.resolve(directory([row()])); await boot; assert.equal(g.opens.length, 0);
 });
 test('launcher-only locator queue invalidates stale selections before a later ready target', async () => {
   const writes: Array<[string, number]> = [], order: Array<[string, number]> = [];
@@ -164,7 +311,7 @@ test('launcher-only locator queue invalidates stale selections before a later re
   assert.deepEqual(writes, [[uuid(4), 2]]); assert.deepEqual(order, [['invalidate', 0], ['invalidate', 1], ['invalidate', 2]]);
 });
 test('entry unknown creation preserves exact P0 close-only risk admission across quit context', async () => {
-  const f = fixture({ rpc: async op => op === 'project.list' ? [row()] : Promise.reject(new Error('unknown')) });
+  const f = fixture({ readDirectory: () => directory([row()]), rpc: async () => Promise.reject(new Error('unknown')) });
   await f.controller.boot(); f.controller.reportCreate({ dirty: true, busy: false, version: 1 }); await f.controller.create('new', '');
   const admission = createNativeCloseAdmission({ registry: createNativeCloseRegistry(), settings: createSettingsNavigationRegistry(),
     readScope: () => 'same', readDocumentURL: () => 'http://localhost/', readAdditionalSnapshot: f.controller.readCloseSnapshot,
