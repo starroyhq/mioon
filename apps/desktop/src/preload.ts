@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 // Marker remains available if any later bridge setup fails.
 contextBridge.exposeInMainWorld('__mioonDesktop', true);
+import {createProjectEntriesDesktopBridge} from './project-entry-desktop-preload.ts';
+contextBridge.exposeInMainWorld('__mioonProjectEntries',createProjectEntriesDesktopBridge((channel,request)=>ipcRenderer.invoke(channel,request)));
 import {createWorkspaceNativeBridges} from './workspace-native-preload.ts';
 const workspaceNative=createWorkspaceNativeBridges((channel,request)=>ipcRenderer.invoke(channel,request));
 contextBridge.exposeInMainWorld('__mioonWorkspaceNative',workspaceNative.native);

@@ -336,6 +336,26 @@ test('public project.create uses the same complete initialization without exposi
   f.server.projectEntries.release({windowId});
 });
 
+test('trusted recent preparation resolves a completely moved directory before location admission without opening the project', async t => {
+  const f = await fixture(t, 'production'), old = f.a.projectFile;
+  const movedDirectory = path.join(path.dirname(path.dirname(old)), 'Moved Catalog A');
+  renameSync(path.dirname(old), movedDirectory);
+  assert.equal(existsSync(path.dirname(old)), false);
+  const projectFile = path.join(movedDirectory, path.basename(old));
+  const before = readFileSync(projectFile);
+  const prepared = await f.server.projectEntries.prepareAcquire!({projectId: f.a.projectId});
+  assert.equal(prepared.projectFile, projectFile);
+  assert.equal(prepared.lastOpenedAt, null, 'metadata resolution is not a successful open');
+  assert.deepEqual(readFileSync(projectFile), before);
+  const held = f.hold(f.a.projectId);
+  assert.equal(held.db.isOpen, true, 'preparation held no project connection or lock');
+  held.close();
+  const windowId = randomUUID();
+  const opened = await f.server.projectEntries.acquire({projectId: f.a.projectId, windowId, expectedProjectFile: projectFile});
+  assert.equal(opened.project.projectFile, projectFile);
+  f.server.projectEntries.release({windowId});
+});
+
 test('native open registers the original selected file, while missing and locked failures preserve recent records and locks', async t => {
   const f = await fixture(t), donor = createServerProject(path.join(f.root, 'donor-app'), {name: 'Selected ordinary project'});
   const selected = donor.store.projectFile, selectedId = donor.projectId;

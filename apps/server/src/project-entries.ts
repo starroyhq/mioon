@@ -1,22 +1,25 @@
 import {randomUUID} from 'node:crypto';
 import type {IncomingMessage, ServerResponse} from 'node:http';
 import path from 'node:path';
+import {lstatSync} from 'node:fs';
+import {inspectProjectFileReadOnly} from '@mioon/business/project-file/index';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
 import {projectEntriesResponseSchema, PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
 import type {ProjectEntriesResponse} from '../../../packages/contracts/src/project-entry.ts';
 import {
-  projectEntryCreateInputSchema, projectEntryOpenPathInputSchema, projectEntryAcquireInputSchema,
+  projectEntryCreateInputSchema, projectEntryOpenPathInputSchema, projectEntryAcquireInputSchema, projectEntryPrepareAcquireInputSchema,
   projectEntryReleaseInputSchema, projectEntryWindowSchema,
   projectEntrySaveAsInputSchema, projectEntryAdoptCopyInputSchema,
 } from '../../../packages/contracts/src/project-entry-native.ts';
-import {projectCopyInputSchema, projectCopyToInputSchema, projectTemplateInputSchema} from '../../../packages/contracts/src/project-copies.ts';
+import {projectCopyInputSchema, projectCopyToInputSchema, projectTemplateInputSchema, projectCopySourceSchema} from '../../../packages/contracts/src/project-copies.ts';
+import {projectEntryInspectCopyInputSchema} from '../../../packages/contracts/src/project-entry-control.ts';
 import type {ProjectCopyResponse} from '../../../packages/contracts/src/project-copies.ts';
 import type {ProjectEntryControlPort, ProjectEntryWindow, ProjectEntryWindowRevoked, ProjectEntryCreateInput} from '../../../packages/contracts/src/project-entry-native.ts';
 import type {RecentProject} from '../../../packages/contracts/src/project-registry.ts';
 import type {ProjectHostManager} from './project-host/manager.ts';
 import type {ProjectHostRuntime, ProjectLease} from './project-host/host.ts';
 import type {ProjectRegistryPort} from './project-host/ports.ts';
-import {projectHostError} from './project-host/errors.ts';
+import {projectFileMoved, projectHostError} from './project-host/errors.ts';
 import type {ProjectCopies} from './project-host/copies.ts';
 
 interface WindowSlot<Runtime extends ProjectHostRuntime> {
@@ -88,7 +91,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
       try {listener(event);} catch { /* An observer cannot prevent lease cleanup. */ }
     }
   };
-  const bind = (windowId: string, key: string, acquire: () => Promise<ProjectLease<Runtime>>): Promise<ProjectEntryWindow> => {
+  const bind = (windowId: string, key: string, acquire: () => Promise<ProjectLease<Runtime>>, expectedProjectFile?: string): Promise<ProjectEntryWindow> => {
     scope();
     const existing = windows.get(windowId);
     if (existing) {
@@ -111,6 +114,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
       scope();
       const project = registry.get(lease.host.projectId);
       if (!project) throw unavailable();
+      if (expectedProjectFile !== undefined && project.projectFile !== expectedProjectFile) throw projectFileMoved(lease.host.projectId);
       const result = projectEntryWindowSchema.parse({windowId, project});
       slot.revoke = () => {
         if (windows.get(windowId) !== slot) return;
@@ -123,7 +127,24 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     return promise;
   };
   const control: ProjectEntryControlPort = {
+    inspectSelectedCopy: async raw => {
+      scope();
+      const {projectFile} = parse(projectEntryInspectCopyInputSchema, raw);
+      const before = lstatSync(projectFile, {bigint:true});
+      const stamp = inspectProjectFileReadOnly(projectFile);
+      const after = lstatSync(projectFile, {bigint:true});
+      if (before.dev!==after.dev || before.ino!==after.ino || before.size!==after.size || before.mtimeNs!==after.mtimeNs || before.ctimeNs!==after.ctimeNs) throw unavailable();
+      scope();
+      return projectCopySourceSchema.parse({sourceProjectId:stamp.projectId,sourceFile:projectFile,sourceIdentity:{dev:String(after.dev),ino:String(after.ino)},sourceStamp:{contentSequence:stamp.contentSequence,contentToken:stamp.contentToken}});
+    },
     listRecent: () => list(true),
+    prepareAcquire: async raw => {
+      scope();
+      const {projectId} = parse(projectEntryPrepareAcquireInputSchema, raw);
+      const project = await manager.prepareAcquire(projectId);
+      scope();
+      return project;
+    },
     create: async input => {
       scope();
       const result = await createProject(parse(projectEntryCreateInputSchema, input));
@@ -136,7 +157,9 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     },
     acquire: input => {
       const selected = parse(projectEntryAcquireInputSchema, input);
-      return bind(selected.windowId, 'id:' + selected.projectId, () => manager.acquire(selected.projectId, 'window'));
+      const pinned = selected.expectedProjectFile;
+      return bind(selected.windowId, 'id:' + selected.projectId + (pinned === undefined ? '' : ':path:' + pinned),
+        () => manager.acquire(selected.projectId, 'window', pinned === undefined ? undefined : {projectFile: pinned}), pinned);
     },
     release: input => {
       const {windowId} = parse(projectEntryReleaseInputSchema, input), slot = windows.get(windowId);
