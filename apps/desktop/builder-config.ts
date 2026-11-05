@@ -50,6 +50,7 @@ export interface BuilderConfig {
     hardenedRuntime: true;
     gatekeeperAssess: false;
     identity: null;
+    signIgnore: string[];
     extendInfo: Record<string,string>;
     artifactName: string;
   };
@@ -125,6 +126,10 @@ export function builderConfig(channel: string): BuilderConfig {
       hardenedRuntime: true,
       gatekeeperAssess: false,
       identity: null,
+      // The signer treats ordinary binary data as signing candidates. Keep
+      // these manifest-verified files read-only; the outer app seals them as
+      // resources. No executable, framework or other resource is excluded.
+      signIgnore: [String.raw`[/\\]Contents[/\\]Resources[/\\]examples[/\\]timeline-basics[/\\](?:manifest\.json|README\.md|SOURCE\.md|LICENSE|timeline-basics\.mioon|media[/\\](?:overlay-star\.png|scene-[ab]\.mp4|sound-bed\.wav))$`],
       extendInfo: {
         NSDesktopFolderUsageDescription: 'Mioon opens and saves the projects and media you choose on your Desktop.',
         NSDocumentsFolderUsageDescription: 'Mioon opens and saves the projects and media you choose in Documents.',
