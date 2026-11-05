@@ -28,7 +28,9 @@ async function fixture(t: TestContext, root = rootPackage(), desktop = desktopPa
 
 async function builderFixture(t: TestContext) {
   const directory = await fixture(t);
-  await symlink(fileURLToPath(new URL('../node_modules/', import.meta.url)), path.join(directory, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+  // The copied builder is a desktop package consumer. Resolve its declared
+  // workspace dependencies even when the root has no incidental links.
+  await symlink(fileURLToPath(new URL('../apps/desktop/node_modules/', import.meta.url)), path.join(directory, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   for (const name of ['builder-config.ts', 'subtitle-resources.ts', 'runtime-notices.ts', 'build-metadata.ts', 'identity.ts']) {
     await copyFile(new URL(`../apps/desktop/${name}`, import.meta.url), path.join(directory, 'apps/desktop', name));
   }
