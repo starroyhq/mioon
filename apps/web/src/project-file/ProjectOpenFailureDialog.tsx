@@ -13,6 +13,7 @@ import './project-file-home.css';
 export type ProjectOpenFailureAction = 'locate' | 'remove' | 'restore' | 'reveal' | 'update' | 'retry' | 'openOriginal' | 'adoptCopy' | 'copyTo' | 'systemSettings' | 'chooseLocation' | 'closeProject' | 'recheck';
 export type ProjectOpenFailureActionState = ActionState<ProjectOpenFailureAction> | {readonly kind: 'unknown'; readonly action: ProjectOpenFailureAction};
 export interface ProjectOpenFailureDialogProps {
+  readonly interactionBlocked?: boolean;
   readonly open: boolean;
   readonly failure: ProjectOpenIssue;
   /** The name in the registry; without one the file name without `.mioon` is shown. */
@@ -48,7 +49,7 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
   const { t } = useI18n();
   const { failure, action } = props;
   const current = useRef(props); current.current = props;
-  const working = action.kind === 'working', locked = working || action.kind === 'unknown';
+  const working = action.kind === 'working', locked = Boolean(props.interactionBlocked) || working || action.kind === 'unknown';
   const name = props.projectName ?? (failure.projectFile ? stemOf(failure.projectFile) : t('projectFile.open.unknownName'));
   const callbacks = (value: ProjectOpenFailureDialogProps): Record<ProjectOpenFailureAction, (() => void) | undefined> => ({locate: value.onLocate, remove: value.onRemove,
     restore: value.onRestoreBackup, reveal: value.onReveal, update: value.onCheckUpdate, retry: value.onRetry, openOriginal: value.onOpenOriginal,
@@ -57,16 +58,16 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
   const removable = Number.isSafeInteger(count) && count === 0;
   const run = (kind: ProjectOpenFailureAction, label: string, onClick: (() => void) | undefined, primary = false) => {
     if (!onClick) return null;
-    const disabled = (locked && !(action.kind === 'unknown' && kind === 'recheck')) || kind === 'remove' && !removable;
+    const disabled = Boolean(props.interactionBlocked) || (locked && !(action.kind === 'unknown' && kind === 'recheck')) || kind === 'remove' && !removable;
     const title = kind === 'remove' && !removable ? t(count !== undefined && count > 0 ? 'projectFile.home.menu.waitingHelp' : 'projectFile.home.waitingUnavailable') : undefined;
     return <WorkbenchButton key={kind} variant={primary ? 'primary' : 'secondary'} title={title} data-testid={`pf-open-${kind}`} loading={working && action.action === kind} disabled={disabled} onClick={() => {
       const next = current.current;
-      if (!next.open || next.failure !== failure || next.action.kind === 'working' || next.action.kind === 'unknown' && kind !== 'recheck' || kind === 'remove' && next.waitingTaskCount !== 0) return;
+      if (next.interactionBlocked || !next.open || next.failure !== failure || next.action.kind === 'working' || next.action.kind === 'unknown' && kind !== 'recheck' || kind === 'remove' && next.waitingTaskCount !== 0) return;
       callbacks(next)[kind]?.();
     }}>{label}</WorkbenchButton>;
   };
   const close = (label: string, primary = false) =>
-    <WorkbenchButton key="close" variant={primary ? 'primary' : 'secondary'} data-testid="pf-open-close" disabled={locked} onClick={() => {const next = current.current; if (next.open && next.action.kind !== 'working' && next.action.kind !== 'unknown') next.onClose();}}>{label}</WorkbenchButton>;
+    <WorkbenchButton key="close" variant={primary ? 'primary' : 'secondary'} data-testid="pf-open-close" disabled={locked} onClick={() => {const next = current.current; if (!next.interactionBlocked && next.open && next.action.kind !== 'working' && next.action.kind !== 'unknown') next.onClose();}}>{label}</WorkbenchButton>;
   let title: string, body: ReactNode, buttons: ReactNode;
   switch (failure.code) {
     case 'PROJECT_MISSING':
@@ -105,7 +106,7 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
     }
     case 'PROJECT_FILE_COPY':
       title = t('projectFile.open.copy.title', {name});
-      body = <span className="pf-open-copy"><span>{t('projectFile.open.copy.intro')}</span><span className="pf-open-path" data-testid="pf-open-original-path">{failure.originalProjectFile}</span><span>{t('projectFile.open.copy.body')}</span></span>;
+      body = <span className="pf-open-copy">{failure.originalProjectFile && <><span>{t('projectFile.open.copy.intro')}</span><span className="pf-open-path" data-testid="pf-open-original-path">{failure.originalProjectFile}</span></>}<span>{t('projectFile.open.copy.body')}</span></span>;
       buttons = <>{close(t('common.cancel'))}{run('openOriginal', t('projectFile.open.copy.openOriginal'), props.onOpenOriginal, !props.onAdoptCopy)}{run('adoptCopy', t('projectFile.open.copy.adopt'), props.onAdoptCopy, true)}</>;
       break;
     case 'PROJECT_FILE_MOVED': {
@@ -134,8 +135,8 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
       buttons = <>{close(t('common.close'), !props.onRetry)}{run('retry', t('projectFile.common.retry'), props.onRetry, true)}</>;
       break;
   }
-  return <Dialog open={props.open} onOpenChange={next => {const value = current.current; if (!next && value.action.kind !== 'working' && value.action.kind !== 'unknown') value.onClose(); }}>
-    <WorkbenchDialogContent title={title} description={body} size="confirm" showCloseButton={false} className="pf-dialog pf-open-dialog" data-testid="pf-open-dialog" data-code={failure.code} footer={buttons}>
+  return <Dialog open={props.open} onOpenChange={next => {const value = current.current; if (!next && !value.interactionBlocked && value.action.kind !== 'working' && value.action.kind !== 'unknown') value.onClose(); }}>
+    <WorkbenchDialogContent inert={props.interactionBlocked || undefined} title={title} description={body} size="confirm" showCloseButton={false} className="pf-dialog pf-open-dialog" data-testid="pf-open-dialog" data-code={failure.code} footer={buttons}>
       {action.kind === 'error' && <WorkbenchAlert tone="danger" data-testid="pf-open-error" icon={<WorkbenchIcon name="warning" size={16} />}>{t(`projectFile.open.failed.${action.action}`)}</WorkbenchAlert>}
       {action.kind === 'unknown' && <WorkbenchAlert tone="warning" data-testid="pf-open-unknown">{t('projectFile.open.outcomeUnknown')}{run('recheck', t('projectFile.create.recheck'), props.onRecheck, true)}</WorkbenchAlert>}
     </WorkbenchDialogContent>

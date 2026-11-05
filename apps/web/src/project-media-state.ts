@@ -7,6 +7,9 @@ import {mediaStatusDisplay} from './project-file/media-status.ts';
 import type {MediaStatusUi} from './project-file/media-status.ts';
 import {createProjectMediaClient, mediaLocationPageSchema, mediaRelinkPreviewSchema, ProjectMediaError} from './project-media-client.ts';
 import type {ProjectMediaClient, MediaLocationPage, MediaRelinkPreview} from './project-media-client.ts';
+import {NATIVE_ASSET_MEDIA_LIMITS, nativeRelinkPreviewSchema, nativeRelinkApplyResultSchema} from '../../../packages/contracts/src/asset-media-native.ts';
+import type {NativeRelinkPreview} from '../../../packages/contracts/src/asset-media-native.ts';
+import type {ProjectMediaNativeClient} from './project-media-native-client.ts';
 
 export interface ProjectMediaOwner {readonly appLibraryScope: string; readonly instanceId: string; readonly projectId: string; readonly epoch: number; readonly session: string}
 export interface ProjectMediaAsset {readonly id: string; readonly projectId: string; readonly name: string; readonly mimeType: string; readonly referenceRevision: number}
@@ -28,33 +31,44 @@ export interface ProjectMediaState {
   readonly canChangeSelection: boolean;
   readonly canApply: boolean;
   readonly lastError: string | null;
+  readonly nativeOutcomeUnknown: boolean;
+  readonly nativeConfirmedDirectories: readonly string[];
 }
 export const sameMediaOwner = (a: ProjectMediaOwner | null, b: ProjectMediaOwner | null): boolean => a === b || Boolean(a && b && a.appLibraryScope === b.appLibraryScope && a.instanceId === b.instanceId && a.projectId === b.projectId && a.epoch === b.epoch && a.session === b.session);
 const initial = (owner: ProjectMediaOwner | null, canChoose: boolean): ProjectMediaState => ({owner, status: {kind: 'loading'}, locations: {kind: 'loading'}, outsideOpen: false, outsideAction: {kind: 'idle'}, rulesUntrusted: false,
-  relinkOpen: false, relink: {kind: 'loading'}, applyAction: {kind: 'idle'}, changedSelected: [], newAdded: 0, canChoose, canChangeSelection: true, canApply: false, lastError: null});
+  relinkOpen: false, relink: {kind: 'loading'}, applyAction: {kind: 'idle'}, changedSelected: [], newAdded: 0, canChoose, canChangeSelection: true, canApply: false, lastError: null, nativeOutcomeUnknown: false, nativeConfirmedDirectories: []});
 function invalid(code = 'BACKEND_PROTOCOL_ERROR'): never {throw new ProjectMediaError(code);}
 const basisKey = (assets: readonly ProjectMediaAsset[]): string => JSON.stringify(assets.map(asset => [asset.id, asset.referenceRevision]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
 type Preview = {readonly value: MediaRelinkPreview; readonly paths: ReadonlyMap<string, string>; readonly revisions: ReadonlyMap<string, number>};
 interface ApplyStep {readonly kind: 'relink' | 'changed'; readonly input: {projectId: string; requestId: string; previewToken?: string; assetId?: string; expectedReferenceRevision?: number}; readonly revisions: ReadonlyMap<string, number>; readonly existingIds: ReadonlySet<string>}
 interface ApplyIntent {readonly steps: readonly ApplyStep[]; index: number; added: number}
 interface PermissionIntent {readonly steps: readonly {directory: string; locationToken: string; requestId: string}[]; readonly assetKey: string; index: number}
+interface NativePreview {readonly value: NativeRelinkPreview; readonly basis: string; readonly revisions: ReadonlyMap<string, number>; readonly kinds: ReadonlyMap<string, MediaRelinkRow['mediaKind']>; readonly expires: number}
+interface NativeIntent {readonly preview: NativePreview; readonly input: {projectId: string; previewToken: string; requestId: string}; unknown: boolean; dispatched: boolean}
 
 /** A view owner for S1 capabilities. File selection is an optional trusted
  * port; this controller never manufactures paths, imports or permission. */
-export function createProjectMediaController({client = createProjectMediaClient(), readOwner, readAssets, choosePreview, onChange = () => {}, onApplied = () => {}, autoOpenOutside = true, newRequestId = () => crypto.randomUUID()}: {
-  client?: ProjectMediaClient; readOwner: () => ProjectMediaOwner | null; readAssets: () => readonly ProjectMediaAsset[]; choosePreview?: ChooseMediaPreview;
-  onChange?: (state: ProjectMediaState) => void; onApplied?: (owner: ProjectMediaOwner) => unknown | Promise<unknown>; autoOpenOutside?: boolean; newRequestId?: () => string;
+export function createProjectMediaController({client = createProjectMediaClient(), readOwner, readAssets, choosePreview, nativeRelink, onChange = () => {}, onApplied = () => {}, autoOpenOutside = true, newRequestId = () => crypto.randomUUID(), now = Date.now}: {
+  client?: ProjectMediaClient; readOwner: () => ProjectMediaOwner | null; readAssets: () => readonly ProjectMediaAsset[]; choosePreview?: ChooseMediaPreview; nativeRelink?: ProjectMediaNativeClient;
+  onChange?: (state: ProjectMediaState) => void; onApplied?: (owner: ProjectMediaOwner) => unknown | Promise<unknown>; autoOpenOutside?: boolean; newRequestId?: () => string; now?: () => number;
 }) {
   let active = false, generation = 0, statusSerial = 0, locationSerial = 0, rulesSerial = 0, selectionSerial = 0;
-  let state = initial(null, Boolean(choosePreview)), assetKey = '', dismissedOutside = false;
+  const chooserAvailable = Boolean(nativeRelink || choosePreview);
+  let state = initial(null, chooserAvailable), assetKey = '', dismissedOutside = false;
   const requests = new Map<AbortController, string>();
   const selectedRevisions = new Map<string, number>();
   let preview: Preview | null = null, selected = new Set<string>(), intent: ApplyIntent | null = null, permissionIntent: PermissionIntent | null = null;
+  let nativePreview: NativePreview | null = null, nativeIntent: NativeIntent | null = null;
+  let retiredNativeIntent: NativeIntent | null = null;
+  let nativeOwnerBlocked = false;
+  const retiredNativeUnknown = (): boolean => Boolean(retiredNativeIntent) || nativeOwnerBlocked;
+  const nativeTokens = new Set<string>();
   const ownerCurrent = (owner: ProjectMediaOwner | null, lifetime = generation): owner is ProjectMediaOwner => Boolean(active && owner && lifetime === generation && sameMediaOwner(owner, state.owner) && sameMediaOwner(owner, readOwner()));
   function publish(patch: Partial<ProjectMediaState> = {}): void {
     const next = {...state, ...patch};
-    const canChangeSelection = !intent && next.applyAction.kind !== 'working';
-    state = Object.freeze({...next, canChoose: Boolean(choosePreview) && canChangeSelection, canChangeSelection, changedSelected: Object.freeze([...selected]), canApply: Boolean(intent || preview?.value.chosen.matches || selected.size) && next.applyAction.kind !== 'working'});
+    const available = !retiredNativeUnknown() && !intent && !nativeIntent && next.applyAction.kind !== 'working';
+    const canChangeSelection = available && !nativePreview;
+    state = Object.freeze({...next, nativeOutcomeUnknown: next.nativeOutcomeUnknown || retiredNativeUnknown(), canChoose: chooserAvailable && available, canChangeSelection, changedSelected: Object.freeze([...selected]), canApply: !retiredNativeUnknown() && Boolean(intent || nativeIntent || nativePreview?.value.rows.some(row => row.assetId === nativePreview?.value.assetId && row.outcome === 'picked') || preview?.value.chosen.matches || selected.size) && next.applyAction.kind !== 'working'});
     if (active) onChange(state);
   }
   const errorCode = (error: unknown): string => error instanceof ProjectMediaError ? error.code : 'BACKEND_UNAVAILABLE';
@@ -68,6 +82,26 @@ export function createProjectMediaController({client = createProjectMediaClient(
     return [...revisions].every(([id, revision]) => current.get(id) === revision);
   }
   function abortChannel(channel: string): void {for (const [abort, value] of requests) if (value === channel) abort.abort();}
+  function retireNativePreview(): void {
+    const old = nativePreview; nativePreview = null;
+    // Accepted previews are receipt evidence. Main owns their retirement after
+    // dispatch; a renderer cancellation only collects an unaccepted preview.
+    if (old && nativeIntent?.preview !== old) void nativeRelink?.discard({projectId: old.value.projectId, previewToken: old.value.previewToken}).catch(() => {});
+  }
+  function discardNativeAnswer(owner: ProjectMediaOwner, raw: unknown): void {
+    const value = nativeRelinkPreviewSchema.safeParse(raw);
+    if (value.success && value.data.projectId === owner.projectId) {
+      if (nativeTokens.size < NATIVE_ASSET_MEDIA_LIMITS.retainedEntries) nativeTokens.add(value.data.previewToken);
+      void nativeRelink?.discard({projectId: owner.projectId, previewToken: value.data.previewToken}).catch(() => {});
+    }
+  }
+  function retainRetiredNativeIntent(value: NativeIntent | null = nativeIntent): void {
+    if (!value?.dispatched) return;
+    retiredNativeIntent ??= value;
+    // Retired owner evidence remains visible to native close admission, while
+    // no stale callback may publish or lend its retry authority to a new scope.
+    state = Object.freeze({...state, nativeOutcomeUnknown: true, canChoose: false, canChangeSelection: false, canApply: false});
+  }
   async function request<T>(action: (signal: AbortSignal) => Promise<T>, channel = 'action'): Promise<T> {
     const abort = new AbortController(); requests.set(abort, channel);
     let rejectAbort: (error: ProjectMediaError) => void = () => {};
@@ -79,6 +113,10 @@ export function createProjectMediaController({client = createProjectMediaClient(
   }
   function rows(): MediaRelinkResult {
     if (!state.owner) return {rows: [], foundBy: null};
+    if (nativePreview) {
+      return {rows: nativePreview.value.rows.map(row => ({assetId: row.assetId, name: row.name, from: row.from, to: row.to, outcome: row.outcome,
+        mediaKind: nativePreview!.kinds.get(row.assetId)!})), foundBy: nativePreview.value.foundBy};
+    }
     const locations = state.locations.kind === 'ready' ? new Map(state.locations.value.assets.map(asset => [asset.assetId, asset])) : new Map();
     const statuses = state.status.kind === 'ready' ? state.status.value : {};
     const found = new Set(preview?.value.found.map(asset => asset.assetId) ?? []);
@@ -164,13 +202,38 @@ export function createProjectMediaController({client = createProjectMediaClient(
   }
   async function choose(assetId: string): Promise<void> {
     const owner = state.owner, lifetime = generation, serial = ++selectionSerial;
-    if (!choosePreview || !ownerCurrent(owner, lifetime) || state.applyAction.kind === 'working' || intent) return;
+    if (!chooserAvailable || !ownerCurrent(owner, lifetime) || state.applyAction.kind === 'working' || intent || nativeIntent || retiredNativeUnknown()) return;
     abortChannel('choose');
-    const basis = new Map(assets(owner).map(asset => [asset.id, asset.referenceRevision])), revision = basis.get(assetId);
+    const catalog = assets(owner), basis = new Map(catalog.map(asset => [asset.id, asset.referenceRevision])), revision = basis.get(assetId);
     if (!revision) return;
-    preview = null; selected.clear(); selectedRevisions.clear(); publish({relink: {kind: 'loading'}, applyAction: {kind: 'idle'}});
+    retireNativePreview(); preview = null; selected.clear(); selectedRevisions.clear(); publish({relink: {kind: 'loading'}, applyAction: {kind: 'idle'}, nativeOutcomeUnknown: false, nativeConfirmedDirectories: []});
     try {
-      const result = await request(signal => choosePreview({projectId: owner.projectId, assetId, expectedReferenceRevision: revision, signal}), 'choose');
+      if (nativeRelink) {
+        if (nativeTokens.size >= NATIVE_ASSET_MEDIA_LIMITS.retainedEntries) invalid('ASSET_RELINK_LIMIT');
+        const result = await request(async signal => {
+          if (signal.aborted || !ownerCurrent(owner, lifetime) || serial !== selectionSerial || !revisionsCurrent(owner, basis)) return null;
+          const value = await nativeRelink.choose({projectId: owner.projectId, assetId, expectedReferenceRevision: revision}, {signal});
+          // The native port may ignore cancellation. Even a stale answer must
+          // release its own preview rather than lend it to the new owner.
+          if (value && (signal.aborted || !ownerCurrent(owner, lifetime) || serial !== selectionSerial || !revisionsCurrent(owner, basis))) {
+            discardNativeAnswer(owner, value); return null;
+          }
+          return value;
+        }, 'choose');
+        if (!ownerCurrent(owner, lifetime) || serial !== selectionSerial || !revisionsCurrent(owner, basis)) return;
+        if (result === null) {renderRelink(); return;}
+        const value = nativeRelinkPreviewSchema.parse(result);
+        try {
+          if (value.projectId !== owner.projectId || value.assetId !== assetId || value.expectedReferenceRevision !== revision || nativeTokens.has(value.previewToken) ||
+            value.rows.some(row => basis.get(row.assetId) !== row.referenceRevision)) invalid('REVISION_CONFLICT');
+          nativeTokens.add(value.previewToken);
+          const revisions = new Map(value.rows.filter(row => row.outcome === 'picked' || row.outcome === 'auto').map(row => [row.assetId, row.referenceRevision]));
+          const kinds = new Map(catalog.map(asset => [asset.id, asset.mimeType.startsWith('video/') ? 'video' as const : asset.mimeType.startsWith('audio/') ? 'audio' as const : 'image' as const]));
+          nativePreview = {value, revisions, kinds, basis: basisKey(catalog), expires: now() + NATIVE_ASSET_MEDIA_LIMITS.ticketMs};
+          publish(); renderRelink(); return;
+        } catch (error) {discardNativeAnswer(owner, value); throw error;}
+      }
+      const result = await request(signal => choosePreview!({projectId: owner.projectId, assetId, expectedReferenceRevision: revision, signal}), 'choose');
       if (!ownerCurrent(owner, lifetime) || serial !== selectionSerial || !revisionsCurrent(owner, basis)) return;
       if (result === null) {renderRelink(); return;}
       const value = mediaRelinkPreviewSchema.parse(result.preview), paths = new Map<string, string>();
@@ -179,19 +242,65 @@ export function createProjectMediaController({client = createProjectMediaClient(
       const changes = [value.chosen.assetId, ...value.found.map(asset => asset.assetId)];
       if (changes.some(id => !paths.has(id)) || [...changes, ...value.mismatched.map(asset => asset.assetId), ...value.unverified.map(asset => asset.assetId)].some(id => !basis.has(id))) invalid();
       preview = {value, paths, revisions: new Map(changes.map(id => [id, basis.get(id)!]))}; publish(); renderRelink();
-    } catch (error) {if (ownerCurrent(owner, lifetime) && serial === selectionSerial) publish({relink: {kind: 'error', retryable: true}, lastError: errorCode(error)});}
+    } catch (error) {if (ownerCurrent(owner, lifetime) && serial === selectionSerial) {
+      if (nativeRelink && ['ASSET_MEDIA_NATIVE_OUTCOME_UNKNOWN', 'PROJECT_ENTRY_OUTCOME_UNKNOWN'].includes(errorCode(error))) nativeOwnerBlocked = true;
+      publish({relink: {kind: 'error', retryable: true}, lastError: errorCode(error)});
+    }}
   }
   function toggleChanged(assetId: string): void {
     const owner = state.owner;
-    if (!ownerCurrent(owner) || state.applyAction.kind === 'working' || intent || state.status.kind !== 'ready') return;
+    if (!ownerCurrent(owner) || state.applyAction.kind === 'working' || intent || nativeIntent || retiredNativeUnknown() || nativePreview || state.status.kind !== 'ready') return;
     const row = state.status.value[assetId];
     if (!row || row.status !== 'changed' || !row.readable || row.reason === 'unverified' || assets(owner).find(asset => asset.id === assetId)?.referenceRevision !== row.referenceRevision) return;
     if (selected.has(assetId)) {selected.delete(assetId); selectedRevisions.delete(assetId);} else {selected.add(assetId); selectedRevisions.set(assetId, row.referenceRevision);}
     publish(); renderRelink();
   }
+  async function applyNative(owner: ProjectMediaOwner, lifetime: number): Promise<boolean> {
+    if (!nativeRelink) return false;
+    if (!nativeIntent) {
+      const value = nativePreview;
+      if (!value || !value.value.rows.some(row => row.assetId === value.value.assetId && row.outcome === 'picked')) return false;
+      if (value.expires <= now() || value.basis !== basisKey(assets(owner)) || !revisionsCurrent(owner, value.revisions)) {
+        retireNativePreview(); publish({applyAction: {kind: 'error', action: 'apply'}, lastError: 'REVISION_CONFLICT'}); renderRelink(); return false;
+      }
+      nativeIntent = {preview: value, input: Object.freeze({projectId: owner.projectId, previewToken: value.value.previewToken, requestId: newRequestId()}), unknown: false, dispatched: false};
+    }
+    const exact = nativeIntent, retry = exact.unknown; let dispatched = false, observedGrant = false;
+    publish({applyAction: {kind: 'working', action: 'apply'}});
+    try {
+      if (!ownerCurrent(owner, lifetime) || nativeIntent !== exact) return false;
+      dispatched = true; exact.dispatched = true;
+      const result = nativeRelinkApplyResultSchema.parse(await request(signal => nativeRelink.apply(exact.input, {signal})));
+      if (!ownerCurrent(owner, lifetime) || nativeIntent !== exact) {retainRetiredNativeIntent(exact); return false;}
+      observedGrant = result.confirmedDirectories.length > 0;
+      publish({nativeConfirmedDirectories: Object.freeze([...result.confirmedDirectories])});
+      if (result.status === 'failed') throw new ProjectMediaError(result.error.code, {status: result.error.status,
+        outcomeUnknown: result.error.status >= 500 || ['ASSET_MEDIA_NATIVE_OUTCOME_UNKNOWN', 'PROJECT_ENTRY_OUTCOME_UNKNOWN'].includes(result.error.code)});
+      const revisions = exact.preview.revisions;
+      // An unknown intent may explicitly replay its original key after a fresh
+      // catalog observed its committed revision. Its receipt never overwrites
+      // that catalog: onApplied obtains current project records again.
+      if (!retry && !revisionsCurrent(owner, revisions) || result.assets.length !== revisions.size || new Set(result.assets.map(asset => asset.id)).size !== revisions.size ||
+        result.assets.some(asset => asset.projectId !== owner.projectId || asset.referenceRevision !== (revisions.get(asset.id) ?? -1) + 1 || asset.hashState !== 'full' || asset.sha256 === null)) throw new ProjectMediaError('BACKEND_PROTOCOL_ERROR', {outcomeUnknown: true});
+      nativeIntent = null; nativePreview = null;
+      publish({nativeOutcomeUnknown: false, applyAction: {kind: 'idle'}}); await observeApplied(owner, lifetime); return true;
+    } catch (error) {
+      if (ownerCurrent(owner, lifetime) && nativeIntent === exact) {
+        const unknown = dispatched && (!(error instanceof ProjectMediaError) || error.outcomeUnknown);
+        if (unknown) exact.unknown = true;
+        else {nativeIntent = null; nativePreview = null;}
+        publish({nativeOutcomeUnknown: unknown, applyAction: {kind: 'error', action: 'apply'}, lastError: errorCode(error)}); renderRelink();
+        // A failed relink can truthfully report an already confirmed directory.
+        // Observe it without repeating a grant or any successful mutation.
+        if (observedGrant) await refresh();
+      } else if (dispatched) retainRetiredNativeIntent(exact);
+      return false;
+    }
+  }
   async function apply(): Promise<boolean> {
     const owner = state.owner, lifetime = generation;
-    if (!ownerCurrent(owner, lifetime) || state.applyAction.kind === 'working') return false;
+    if (!ownerCurrent(owner, lifetime) || state.applyAction.kind === 'working' || retiredNativeUnknown()) return false;
+    if (nativePreview || nativeIntent) return applyNative(owner, lifetime);
     if (!intent) {
       const basis = new Map(assets(owner).map(asset => [asset.id, asset.referenceRevision])), steps: ApplyStep[] = [];
       if (preview?.value.chosen.matches) steps.push({kind: 'relink', input: {projectId: owner.projectId, requestId: newRequestId(), previewToken: preview.value.previewToken}, revisions: preview.revisions, existingIds: new Set(basis.keys())});
@@ -274,17 +383,17 @@ export function createProjectMediaController({client = createProjectMediaClient(
     if (status?.status === 'online' && !status.readable && !status.outside) return {kind: 'check-failed'};
     return status && status.referenceRevision === current.referenceRevision ? mediaStatusDisplay(status) : {kind: 'checking'};
   }
-  function cancelRelink(): void {if (state.applyAction.kind === 'working') return; selectionSerial++; abortChannel('choose'); if (!intent) {preview = null; selected.clear(); selectedRevisions.clear();} publish({relinkOpen: false, ...(intent ? {} : {applyAction: {kind: 'idle'} as const})});}
+  function cancelRelink(): void {if (state.applyAction.kind === 'working' || nativeIntent || retiredNativeUnknown()) return; selectionSerial++; abortChannel('choose'); if (!intent) {retireNativePreview(); preview = null; selected.clear(); selectedRevisions.clear();} publish({relinkOpen: false, ...(intent ? {} : {applyAction: {kind: 'idle'} as const})});}
   return {
     getState: (): ProjectMediaState => state,
     activate() {active = true;},
-    dispose() {active = false; generation++; statusSerial++; locationSerial++; selectionSerial++; for (const [abort] of requests) abort.abort(); requests.clear(); preview = null; intent = null; permissionIntent = null; selected.clear(); selectedRevisions.clear(); state = initial(null, Boolean(choosePreview));},
+    dispose() {active = false; generation++; statusSerial++; locationSerial++; selectionSerial++; for (const [abort] of requests) abort.abort(); requests.clear(); retainRetiredNativeIntent(); retireNativePreview(); nativeIntent = null; preview = null; intent = null; permissionIntent = null; selected.clear(); selectedRevisions.clear(); state = {...initial(null, chooserAvailable), nativeOutcomeUnknown: retiredNativeUnknown(), canChoose: chooserAvailable && !retiredNativeUnknown(), canChangeSelection: !retiredNativeUnknown()};},
     update(owner: ProjectMediaOwner | null) {
       let key: string;
       try {key = owner ? basisKey(assets(owner)) : '';}
-      catch (error) {generation++; for (const [abort] of requests) abort.abort(); requests.clear(); preview = null; intent = null; permissionIntent = null; selected.clear(); selectedRevisions.clear(); state = initial(owner, Boolean(choosePreview)); publish({status: {kind: 'error', retryable: true}, locations: {kind: 'error', retryable: true}, lastError: errorCode(error)}); return;}
-      if (!sameMediaOwner(owner, state.owner)) {generation++; for (const [abort] of requests) abort.abort(); requests.clear(); preview = null; intent = null; permissionIntent = null; selected.clear(); selectedRevisions.clear(); dismissedOutside = false; state = initial(owner ? Object.freeze({...owner}) : null, Boolean(choosePreview)); assetKey = key; publish();}
-      else if (key !== assetKey) {assetKey = key; statusSerial++; locationSerial++; selectionSerial++; abortChannel('status'); abortChannel('locations'); abortChannel('choose'); if (!intent) {preview = null; selected.clear(); selectedRevisions.clear();} publish({status: {kind: 'loading'}, locations: {kind: 'loading'}});}
+      catch (error) {generation++; for (const [abort] of requests) abort.abort(); requests.clear(); retainRetiredNativeIntent(); retireNativePreview(); nativeIntent = null; preview = null; intent = null; permissionIntent = null; selected.clear(); selectedRevisions.clear(); state = initial(owner, chooserAvailable); publish({status: {kind: 'error', retryable: true}, locations: {kind: 'error', retryable: true}, lastError: errorCode(error)}); return;}
+      if (!sameMediaOwner(owner, state.owner)) {generation++; for (const [abort] of requests) abort.abort(); requests.clear(); retainRetiredNativeIntent(); retireNativePreview(); nativeIntent = null; preview = null; intent = null; permissionIntent = null; selected.clear(); selectedRevisions.clear(); dismissedOutside = false; state = initial(owner ? Object.freeze({...owner}) : null, chooserAvailable); assetKey = key; publish();}
+      else if (key !== assetKey) {assetKey = key; statusSerial++; locationSerial++; selectionSerial++; abortChannel('status'); abortChannel('locations'); abortChannel('choose'); if (!intent && !nativeIntent) {retireNativePreview(); preview = null; selected.clear(); selectedRevisions.clear();} publish({status: {kind: 'loading'}, locations: {kind: 'loading'}});}
     },
     refresh, refreshStatus, refreshLocations,
     openOutside() {if (!ownerCurrent(state.owner)) return; publish({outsideOpen: true}); void refreshLocations(); void refreshRules();},

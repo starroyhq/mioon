@@ -42,9 +42,9 @@ export function render(kind,readable=false,status='unconfirmed-found') {
  if(kind==='unknown')child=<ProjectMediaImage asset={{id:id(99),projectId}} src={url} alt="unknown"/>;
  return renderToStaticMarkup(<ProjectMediaProvider media={media}>{child}</ProjectMediaProvider>);
 }
-export function relink(capability,selected=false) {
- return renderToStaticMarkup(<MediaRelinkDialog open projectName="synthetic" state={{kind:'ready',value:{rows:[{assetId:asset.id,name:asset.name,mediaKind:'image',from:'/real/original.png',to:null,outcome:'changed'}],foundBy:null}}} apply={{kind:'idle'}}
-   {...(capability?{onChooseFile:noop}: {})} onUseNewFile={noop} changedSelected={selected?[asset.id]:[]} canApply={selected} onApply={noop} onRetry={noop} onClose={noop}/>);
+export function relink(capability,selected=false,unknown=false) {
+ return renderToStaticMarkup(<MediaRelinkDialog open projectName="synthetic" state={{kind:'ready',value:{rows:[{assetId:asset.id,name:asset.name,mediaKind:'image',from:'/real/original.png',to:null,outcome:'changed'}],foundBy:null}}} apply={unknown?{kind:'error',action:'apply'}:{kind:'idle'}} outcomeUnknown={unknown} confirmedDirectories={unknown?['/real']:[]}
+   {...(capability?{onChooseFile:noop}: {})} onUseNewFile={noop} changedSelected={selected?[asset.id]:[]} canApply={selected||unknown} onApply={noop} onRetry={noop} onClose={noop}/>);
 }
 export function outside() {return renderToStaticMarkup(<OutsideLocationsDialog open projectName="synthetic" fromAnotherComputer={false} state={{kind:'ready',value:[{directory:'/offline',volume:null,assetCount:1,available:false}]}} rulesUntrusted action={{kind:'idle'}} onOpenOnly={noop} onAllow={noop} onRetry={noop} onClose={noop}/>);}
 `;
@@ -52,7 +52,7 @@ const built = await build({stdin: {contents: code, loader: 'tsx', resolveDir: jo
   builder.onResolve({filter: /^@mioon\/ui\/components\/(?:dialog|dropdown-menu)$/}, () => ({path: join(fixtures, 'ssr-overlays.tsx')}));
   builder.onResolve({filter: /\/i18n\/I18nProvider\.tsx$/}, () => ({path: join(fixtures, 'ssr-i18n.tsx')}));
 }}]});
-const module = {exports: {} as {render(kind: string, readable?: boolean, status?: string): string; relink(capability: boolean, selected?: boolean): string; outside(): string}};
+const module = {exports: {} as {render(kind: string, readable?: boolean, status?: string): string; relink(capability: boolean, selected?: boolean, unknown?: boolean): string; outside(): string}};
 Function('require', 'module', 'exports', built.outputFiles[0]!.text)(createRequire(import.meta.url), module, module.exports);
 const ui = module.exports;
 const button = (markup: string, testId: string): string => new RegExp(`<button\\b(?=[^>]*data-testid="${testId}")[^>]*>`, 'u').exec(markup)?.[0] ?? '';
@@ -84,4 +84,15 @@ test('an unavailable outside directory cannot be granted; the real independent r
   assert.match(button(markup, 'pf-outside-allow'), /\sdisabled=""/u);
   assert.match(markup, /尚未在此设备启用/u);
   assert.doesNotMatch(markup, /data-testid="pf-outside-enable-rules"/u);
+});
+
+test('native unknown locks cancellation and file choices while explicitly offering the original operation again', () => {
+  const markup = ui.relink(true, false, true);
+  assert.match(button(markup, 'pf-relink-cancel'), /\sdisabled=""/u);
+  assert.match(button(markup, 'pf-relink-choose-00000000-0000-4000-8000-000000000001'), /\sdisabled=""/u);
+  assert.match(button(markup, 'pf-relink-use-new-00000000-0000-4000-8000-000000000001'), /\sdisabled=""/u);
+  assert.doesNotMatch(button(markup, 'pf-relink-apply'), /\sdisabled=""/u);
+  assert.match(markup, /重试原操作/u); assert.match(markup, /请保留此窗口/u);
+  assert.match(markup, /data-testid="pf-relink-confirmed-directories"/u);
+  assert.doesNotMatch(markup, /素材的位置没有改变/u);
 });

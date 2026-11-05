@@ -7,7 +7,7 @@ interface ProjectOpenIssueLocation {
   readonly projectId: string | null;
 }
 export type ProjectOpenIssue = ProjectOpenFailure
-  | (ProjectOpenIssueLocation & {readonly code: 'PROJECT_FILE_COPY'; readonly originalProjectFile: string; readonly originalProjectId: string})
+  | (ProjectOpenIssueLocation & {readonly code: 'PROJECT_FILE_COPY'; readonly originalProjectFile: string | null; readonly originalProjectId: string | null})
   | (ProjectOpenIssueLocation & {readonly code: 'PROJECT_FILE_MOVED'; readonly reason: 'missing' | 'access-denied' | 'disk-disconnected'; readonly writeRejected: true})
   | (ProjectOpenIssueLocation & {readonly code: 'PROJECT_ACCESS_DENIED'; readonly context?: 'open' | 'create'})
   | (ProjectOpenIssueLocation & {readonly code: 'NETWORK_LOCATION'})

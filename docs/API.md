@@ -54,20 +54,24 @@ S6-C 2a 的 renderer identity owner 只从完整校验后的目录建立 appLibr
 
 最近目录表示已登记项目及成功打开记录；读取、搜索、排序和选择卡片不保存“上次选择的项目”。没有明确项目 URL 时停留首页，不因最近记录自动打开；显式目标不可用时不替换为其他项目。原生编辑窗口继续严格使用宿主分配的项目 UUID。旧 last-project HTTP 已退役，见[下文](#private-last-project-locator已退役)。
 
-受信 ServerInstance.projectEntries 的创建、按路径打开、window 租约等方法不是 HTTP/RPC/CLI/环境入口；JSON 里写 path、windowId 或 lease kind 不能取得这些能力。S6-B 已提供主进程/utility 和真实窗口接线；S6-B2（#177）的补桥与 S6-C 2b 的界面接线仍待后续，接口与生命周期见 [PROJECT-HOST.md](PROJECT-HOST.md#s6-a项目目录与受信控制)。
+受信 ServerInstance.projectEntries 的创建、按路径打开、window 租约等方法不是 HTTP/RPC/CLI/环境入口；JSON 里写 path、windowId 或 lease kind 不能取得这些能力。S6-B/B2 已提供主进程/utility 与真实窗口桥，S6-C 2b 按公开能力接入桌面界面，接口与生命周期见 [PROJECT-HOST.md](PROJECT-HOST.md#s6-a项目目录与受信控制)。
 
 S6-C 2a 接入 12-04 素材状态与 12-06 外部位置的现有 HTTP 能力、严格 DTO 适配和内容读取门，以及受控的新建、打开错误、位置风险 UI、四语和目录身份迁移。状态读取走项目 RPC 的 `asset.media.status.list`；外部位置列表和明确确认走项目的 `asset-media/trusted` 固定入口。缺失、变化、未确认或尚未取得有效状态的内容不能触发素材读取；未知写入保留原请求归属，不用刷新列表证明成功。本批不代表全部 Q 或 S6-C 流程完成。
 
-S6-B 已合入；C 线再补 S6-B2（#177）：可信重新指向选择、权限帮助/Reveal、原项目事实、只读/网络来源的复制观察票据等，由 S6-C 2b 合入后接线。选择必须绑定当前项目、素材及修订，不能先 import 再借授权，也不能把 asset-import token 当 sourcePath。`copyTo` 的“复制到…”与另存为、复制项目统一使用系统存储面板，说明行相同，默认名为项目名；不再另用文件夹选择面板。只读/网络来源仍拒绝原位置打开，复制必须基于受信票据、完整观察源且不覆盖目标。
+S6-C 2b 消费原生桥：重新指向直接使用 `__mioonAssetMediaNative` 的 choose/apply/discard，页面不提交路径或替代 owner token。原生选择绑定项目、素材及修订，外部目录同意仍由宿主取得；取消不导入、登记或写授权。未知 apply 保留原 preview/requestId，只有用户明确重试原操作才调用同一输入，不自动重发；owner 失效后保留未知关闭保护，不让新 owner 借旧票据。
+
+打开与新建使用受信项目入口；`opened` 表示宿主已经开窗或聚焦，不再开第二次。副本原件名称与路径只来自验证结果，打开原件只传票据；权限帮助只打开固定系统设置页，Reveal 只传登记项目或票据。只读/网络来源继续拒绝原地打开，`copyTo` 用受信只读来源和共享系统存储面板，不覆盖目标。位置风险仅来自真实卷事实，关闭提示仅影响本次窗口会话。
+
+模板实例化补桥新增可选 `templates` 能力（当前仅 `timeline-basics` v1）、`chooseLocation` 的 `template` 用途与 `instantiateTemplate`。main 把真实目标及模板信息绑定到 backend/window/context 的一次性票据；页面只提交 token、固定模板 ID/版本、名称和原 requestId，不能提供 parentDir/路径。私有 main→utility 严格校验命令与复制回执后调用既有 S5 实例化。没有验证过的资源时不声明该能力；取消零写，同票据同输入只回放原结果，目标存在拒绝。确定回执后通过原先确认所发的局部许可，再核目录并打开新 ID；开窗失败只重试打开，不再实例化。
 
 应用 RPC `project.delete` 已采用 S5-C 的移到废纸篓语义：严格确认登记路径、文件身份及项目 revision，仅受信桌面主进程调用 `shell.trashItem`，确定成功后撤登记并保存固定回执。素材及全部本机记录保留；打开窗口、会写回项目的工作或 Mio 等待回答/审批时拒绝，S8 草稿不阻止。没有受信能力的网页/headless 返回 `PROJECT_TRASH_UNAVAILABLE`；CLI/MCP 命令留 0.1.x，在输入/私有存储/后端访问前明确拒绝。同键重放确定回执，结果不明不重做、不撤登记。旧 `confirmPermanentDeletion` 严格报 `VALIDATION_ERROR`（400），没有永久清理或 `cleanup:'pending'`。详见 [PROJECT-LIFECYCLE.md](PROJECT-LIFECYCLE.md)。
 
-以下能力尚未接入当前界面；未有真实界面接线或原生桥未就绪时，相关动作按 D8 隐藏，不由已有 HTTP 服务推断 UI 能力：
+界面按真实能力显示入口；未有端口时按 D8 隐藏，不从后端服务的存在推断原生能力：
 
 | 归属 | 操作 | 当前结果 |
 | --- | --- | --- |
-| S6-B/B2、S6-C 2b | 系统项目选择、可信重新指向、权限帮助/Reveal、复制/另存为 UI | 等 C 线受信桥合入后接线；未接能力不显示动作，S5 已有服务不等于界面可用 |
-| S6-D、S5-C、S6-C 2b | 模板、废纸篓 UI | 模板资源与废纸篓服务已合入；界面尚未接线时按 D8 隐藏 |
+| S6-B/B2、S6-C 2b | 系统项目选择、可信重新指向、权限帮助/Reveal、复制到和复制项目 | 桌面能力就绪时接入；`saveAs=false`，另存为继续隐藏 |
+| S6-D、S5-C、S6-C 2b | 从示例开始、移到废纸篓 | 桌面资源/能力就绪时显示；移除仅依确定回执，未知保留原意图和项目卡片 |
 | V4 | 打包导入导出；旧 `/api/project-packages/…` 和项目 `package-preview` | 未注册生产接口，旧地址为 404 `NOT_FOUND` |
 | S7 | `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（bundle 下载/导入、directory 导入） | 404 `UNKNOWN_OPERATION`（旧文件地址为 `NOT_FOUND`） |
 

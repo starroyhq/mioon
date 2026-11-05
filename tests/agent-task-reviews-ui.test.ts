@@ -251,9 +251,9 @@ test('project notes accept plain text up to 8192 bytes', () => {
   assert.equal(projectNotesOf(null), '');
 });
 
-test('the project menu opens the notes between import and duplicate, and saves through project.notes.set', () => {
+test('the project menu keeps editable notes before export when open-source duplication is hidden', () => {
   const app = read('App.tsx'), dialog = read('ProjectNotesDialog.tsx');
-  assert.match(app, /\{t\('projectPackage\.menu\.import'\)\}<\/DropdownMenuItem><DropdownMenuSeparator \/><DropdownMenuItem data-testid="project-menu-notes" disabled=\{loading \|\| !data\.project\} onClick=\{\(\) => \{ setShowProjects\(false\); if \(data\.project\) setNotesOpen\(true\); \}\}><Icon name="note" size=\{15\} \/>\{t\('projectNotes\.menu'\)\}<\/DropdownMenuItem><DropdownMenuSeparator \/><DropdownMenuItem data-testid="project-menu-duplicate"/);
+  assert.match(app, /\{t\('projectPackage\.menu\.import'\)\}<\/DropdownMenuItem><DropdownMenuSeparator \/><DropdownMenuItem data-testid="project-menu-notes" disabled=\{loading \|\| !data\.project\} onClick=\{\(\) => \{ setShowProjects\(false\); if \(data\.project\) setNotesOpen\(true\); \}\}><Icon name="note" size=\{15\} \/>\{t\('projectNotes\.menu'\)\}<\/DropdownMenuItem><DropdownMenuSeparator \/><DropdownMenuItem data-testid="project-menu-export"/);
   assert.match(app, /<ProjectNotesDialog open=\{notesOpen && Boolean\(data\.project\)\}[^\n]*readOnly=\{false\}/, 'current project notes use the ordinary editable host path');
   assert.match(dialog, /saveProjectNotes\(call, \{ base, notes: retained\?\.notes \?\? draft, retained \}\)/);
   assert.match(dialog, /\{!readOnly && <Button variant="primary" data-testid="project-notes-save"/);

@@ -30,11 +30,12 @@ export type NewProjectFileState =
   | { readonly kind: 'created'; readonly projectName?: string; readonly opening?: boolean }
   | { readonly kind: 'error'; readonly code: 'PROJECT_FILE_EXISTS' | 'unknown' };
 export interface NewProjectFileDialogProps {
+  readonly interactionBlocked?: boolean;
   readonly open: boolean;
   readonly values: NewProjectFileValues;
   readonly onChange: (patch: Partial<NewProjectFileValues>) => void;
   /** The chosen folder as shown, e.g. `~/Movies/Mioon`. */
-  readonly location: { readonly display: string; readonly risks?: readonly ProjectLocationRisk[]; readonly status?: 'ready' | 'checking' | 'unavailable' };
+  readonly location: { readonly display: string; readonly risks?: readonly ProjectLocationRisk[]; readonly status?: 'ready' | 'checking' | 'unavailable' | 'unselected' };
   /** Web creation currently always creates a folder. Do not offer a switch
    * until the selected creation capability can implement both layouts. */
   readonly folderMode?: 'choose' | 'always' | 'never';
@@ -53,17 +54,17 @@ export const NEW_PROJECT_FILE_DEFAULTS: Omit<NewProjectFileValues, 'name'> = Obj
 
 /** New project (12-02): a controlled form; the caller creates the file. */
 export function NewProjectFileDialog(props: NewProjectFileDialogProps): ReactElement {
-  const {open, values, location, onChooseLocation, state, folderMode = 'choose'} = props;
+  const {open, values, location, onChooseLocation, state, folderMode = 'choose', interactionBlocked = false} = props;
   const { t } = useI18n();
   const id = useId();
   const current = useRef(props); current.current = props;
   const creating = state.kind === 'creating' || state.kind === 'created' && state.opening === true;
-  const frozen = creating || state.kind === 'unknown' || state.kind === 'created';
+  const frozen = interactionBlocked || creating || state.kind === 'unknown' || state.kind === 'created';
   const createFolder = folderMode === 'always' || folderMode === 'choose' && values.createFolder;
   const problem = projectNameProblem(values.name);
   const canSubmit = problem === null && values.description.length <= NEW_PROJECT_DESCRIPTION_MAX_LENGTH && !frozen &&
     (location.status === undefined || location.status === 'ready') && !location.risks?.some(risk => risk.kind === 'network');
-  const editable = (): boolean => current.current.open && ['editing', 'error'].includes(current.current.state.kind);
+  const editable = (): boolean => !current.current.interactionBlocked && current.current.open && ['editing', 'error'].includes(current.current.state.kind);
   const change = (patch: Partial<NewProjectFileValues>): void => {if (editable()) current.current.onChange(patch);};
   const submit = (): void => {
     const next = current.current;
@@ -71,13 +72,13 @@ export function NewProjectFileDialog(props: NewProjectFileDialogProps): ReactEle
       next.location.status !== undefined && next.location.status !== 'ready' || next.location.risks?.some(risk => risk.kind === 'network')) return;
     next.onSubmit();
   };
-  const close = (): void => {const next = current.current; if (next.open && next.state.kind !== 'creating' && next.state.kind !== 'unknown' && !(next.state.kind === 'created' && next.state.opening)) next.onClose();};
+  const close = (): void => {const next = current.current; if (!next.interactionBlocked && next.open && next.state.kind !== 'creating' && next.state.kind !== 'unknown' && !(next.state.kind === 'created' && next.state.opening)) next.onClose();};
   return <Dialog open={open} onOpenChange={next => { if (!next) close(); }}>
-    <WorkbenchDialogContent title={t('projectFile.create.title')} size="standard" className="pf-dialog pf-create-dialog" data-testid="pf-create-dialog" showCloseButton={!creating && state.kind !== 'unknown'}
+    <WorkbenchDialogContent inert={interactionBlocked || undefined} title={t('projectFile.create.title')} size="standard" className="pf-dialog pf-create-dialog" data-testid="pf-create-dialog" showCloseButton={!interactionBlocked && !creating && state.kind !== 'unknown'}
       footer={<>
-        <WorkbenchButton data-testid="pf-create-cancel" disabled={creating || state.kind === 'unknown'} onClick={close}>{t(state.kind === 'created' ? 'common.close' : 'common.cancel')}</WorkbenchButton>
-        {state.kind === 'unknown' ? props.onRecheck && <WorkbenchButton variant="primary" data-testid="pf-create-recheck" onClick={() => {if (current.current.open && current.current.state.kind === 'unknown') current.current.onRecheck?.();}}>{t('projectFile.create.recheck')}</WorkbenchButton>
-          : state.kind === 'created' ? props.onRetryOpen && <WorkbenchButton variant="primary" data-testid="pf-create-retry-open" loading={creating} disabled={creating} onClick={() => {const next = current.current; if (next.open && next.state.kind === 'created' && !next.state.opening) next.onRetryOpen?.();}}>{t('projectFile.create.retryOpen')}</WorkbenchButton>
+        <WorkbenchButton data-testid="pf-create-cancel" disabled={interactionBlocked || creating || state.kind === 'unknown'} onClick={close}>{t(state.kind === 'created' ? 'common.close' : 'common.cancel')}</WorkbenchButton>
+        {state.kind === 'unknown' ? props.onRecheck && <WorkbenchButton variant="primary" data-testid="pf-create-recheck" disabled={interactionBlocked} onClick={() => {if (!current.current.interactionBlocked && current.current.open && current.current.state.kind === 'unknown') current.current.onRecheck?.();}}>{t('projectFile.create.recheck')}</WorkbenchButton>
+          : state.kind === 'created' ? props.onRetryOpen && <WorkbenchButton variant="primary" data-testid="pf-create-retry-open" loading={creating} disabled={interactionBlocked || creating} onClick={() => {const next = current.current; if (!next.interactionBlocked && next.open && next.state.kind === 'created' && !next.state.opening) next.onRetryOpen?.();}}>{t('projectFile.create.retryOpen')}</WorkbenchButton>
             : <WorkbenchButton type="submit" form={`${id}-form`} variant="primary" data-testid="pf-create-submit" loading={creating} disabled={!canSubmit}>{t('projectFile.create.submit')}</WorkbenchButton>}
       </>}>
       <form id={`${id}-form`} className="pf-create-form" aria-busy={creating || undefined} onSubmit={event => { event.preventDefault(); submit(); }}>

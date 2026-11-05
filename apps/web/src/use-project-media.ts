@@ -3,6 +3,7 @@ import {createProjectMediaController, sameMediaOwner} from './project-media-stat
 import type {ChooseMediaPreview, ProjectMediaAsset, ProjectMediaController, ProjectMediaOwner, ProjectMediaState} from './project-media-state.ts';
 import type {ProjectMediaClient} from './project-media-client.ts';
 import type {MediaStatusUi} from './project-file/media-status.ts';
+import type {ProjectMediaNativeClient} from './project-media-native-client.ts';
 
 export interface ProjectMediaBinding {
   readonly state: ProjectMediaState;
@@ -24,12 +25,14 @@ export function useProjectMedia(options: {
   readonly onApplied?: (owner: ProjectMediaOwner) => unknown | Promise<unknown>;
   readonly client?: ProjectMediaClient;
   readonly choosePreview?: ChooseMediaPreview;
+  readonly nativeRelink?: ProjectMediaNativeClient;
   readonly autoOpenOutside?: boolean;
 }): ProjectMediaBinding {
   const live = useRef(options); live.current = options;
   const changed = useRef<(value: ProjectMediaState) => void>(() => {});
   const [controller] = useState(() => createProjectMediaController({
     ...(options.client ? {client: options.client} : {}), ...(options.choosePreview ? {choosePreview: options.choosePreview} : {}),
+    ...(options.nativeRelink ? {nativeRelink: options.nativeRelink} : {}),
     ...(options.autoOpenOutside === undefined ? {} : {autoOpenOutside: options.autoOpenOutside}),
     readOwner: () => sameMediaOwner(live.current.owner, live.current.readOwner()) ? live.current.owner : null,
     readAssets: () => live.current.assets, onChange: value => changed.current(value), onApplied: owner => live.current.onApplied?.(owner),

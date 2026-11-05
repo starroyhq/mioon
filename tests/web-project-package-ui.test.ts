@@ -46,13 +46,14 @@ test('empty home keeps a bare header and offers "或导入项目文件" under th
   assert.doesNotMatch(ui().render({ ...base, projects: [] }), /project-home-import/, 'no entry without an import handler (restored workspace)');
 });
 
-test('workbench project menu adds import, duplicate and export while new project stays last', () => {
+test('workbench project menu preserves package entries and hides copy of an open source', () => {
   const app = read('apps/web/src/App.tsx');
   const start = app.indexOf('<DropdownMenuContent align="start" className="workbench-project-menu">');
   const menu = app.slice(start, app.indexOf('</DropdownMenuContent>', start));
-  const order = ['projects.openWorkspace', 'project-menu-import', 'project-menu-duplicate', 'project-menu-export', 'panels-menu', 'export-button', 'new-project-menu'].map(token => menu.indexOf(token));
+  const order = ['projects.openWorkspace', 'project-menu-import', 'project-menu-export', 'panels-menu', 'export-button', 'new-project-menu'].map(token => menu.indexOf(token));
   assert.ok(order.every(index => index > 0), String(order));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
+  assert.doesNotMatch(menu, /project-menu-duplicate/, 'Native project duplication requires a closed source and belongs to the home menu');
   assert.ok(menu.lastIndexOf('<DropdownMenuItem') < menu.indexOf('new-project-menu'), 'new project remains the last menu item');
   assert.match(menu, /openExport\(\{ id: data\.project\.id, name: data\.project\.name \}, \{ unsaved: saveIsDirty \}\)/);
   assert.match(app, /<ProjectPackageLayer place="workbench"/);

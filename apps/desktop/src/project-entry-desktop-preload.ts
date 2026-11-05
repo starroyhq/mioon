@@ -13,8 +13,12 @@ export function createProjectEntriesDesktopBridge(invoke:(channel:typeof PROJECT
  return Object.freeze({
   capabilities:async()=>projectDesktopCapabilitiesSchema.parse(await request({action:'capabilities'})),
   listRecent:async()=>projectEntriesResponseSchema.parse(await request({action:'listRecent'})),
-  chooseLocation:async(input:Parameters<ProjectEntriesDesktopBridge['chooseLocation']>[0])=>{const value=await request({action:'chooseLocation',...input});return value===null?null:projectDesktopSelectionSchema.parse(value);},
+  chooseLocation:async(input:Parameters<ProjectEntriesDesktopBridge['chooseLocation']>[0])=>{const value=await request({action:'chooseLocation',...input});if(value===null)return null;const selection=projectDesktopSelectionSchema.parse(value);if(input.purpose==='template'&&!selection.template)throw new Error('Invalid template selection');return selection;},
   createAtSelection:async(input:Parameters<ProjectEntriesDesktopBridge['createAtSelection']>[0])=>projectDesktopCreatedSchema.parse(await request({action:'createAtSelection',...input})),
+  instantiateTemplate:async(input:Parameters<NonNullable<ProjectEntriesDesktopBridge['instantiateTemplate']>>[0])=>{
+   const result=projectCopyResponseSchema.parse(await request({action:'instantiateTemplate',...input}));
+   if(result.requestId!==input.requestId||result.project.name!==input.name)throw new Error('Invalid template instance response');return result;
+  },
   openSelectedFile:async()=>projectDesktopOpenResultSchema.parse(await request({action:'openSelectedFile'})),
   takePendingOpen:async()=>{const value=await request({action:'takePendingOpen'});return value===null?null:projectDesktopOpenResultSchema.parse(value);},
   openPrivacySettings:async()=>{if(await request({action:'openPrivacySettings'})!==null)throw new Error('Invalid project entry response');},

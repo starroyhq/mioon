@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createNativeCloseAdmission, createNativeCloseRegistry, installNativeCloseAdmission, type NativeCloseInspection } from '../apps/web/src/native-close-state.ts';
 import { combineNativeEntryClose } from '../apps/web/src/native-entry-close.ts';
+import {createProjectMediaCloseReader} from '../apps/web/src/project-media-native-close.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
@@ -53,7 +54,8 @@ function fixture({ native = true, unknown = true, writesChangeState = false } = 
   const write = (name: string) => { calls.push(name); if (writesChangeState) additional = { ...additional, busy: true }; return Promise.resolve(true); };
   const clip = { hasPendingComposition: () => false,
     hasUnpersisted: () => { calls.push('clip-sync'); return true; }, flushForClose: () => write('clip-put'), capture: () => 1, isCurrent: () => true };
-  const env = { combineNativeEntryClose, nativeProjectEntry: null,
+  const mediaState = {applyAction: {kind: 'idle'}, nativeOutcomeUnknown: false};
+  const env = { combineNativeEntryClose, nativeProjectEntry: null, readMediaClose: createProjectMediaCloseReader(() => mediaState),
     nativeWindow: native ? { role: 'editor', projectId: 'a' } : null,
     nativeSettingsScope: { pauseObservation(paused: unknown) { pauses.push(paused); } },
     window, document, globalThis: global, useEffect: (callback: () => ()=>void) => cleanups.push(callback()), installNativeCloseAdmission,

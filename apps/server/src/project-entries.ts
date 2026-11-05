@@ -16,6 +16,7 @@ import {
 import {projectCopyInputSchema, projectCopyToInputSchema, projectTemplateInputSchema, projectCopySourceSchema} from '../../../packages/contracts/src/project-copies.ts';
 import {projectEntryInspectCopyInputSchema} from '../../../packages/contracts/src/project-entry-control.ts';
 import type {ProjectCopyResponse} from '../../../packages/contracts/src/project-copies.ts';
+import type {ProjectDesktopTemplate} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectEntryControlPort, ProjectEntryWindow, ProjectEntryWindowRevoked, ProjectEntryCreateInput} from '../../../packages/contracts/src/project-entry-native.ts';
 import type {RecentProject} from '../../../packages/contracts/src/project-registry.ts';
 import type {ProjectHostManager} from './project-host/manager.ts';
@@ -49,7 +50,7 @@ export function projectEntryWithinRoot(root: string, file: string): boolean {
 
 /** A production capability owned by one server instance. Neither its window
  * bindings nor its path-taking methods are registered as HTTP operations. */
-export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, copies, trash, assertProjectFile, copyOriginal, nativeRelink}: {
+export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, copies, trash, assertProjectFile, copyOriginal, nativeRelink, templates}: {
   readonly manager: ProjectHostManager<Runtime>;
   readonly registry: ProjectRegistryPort;
   readonly projectsDir: string;
@@ -58,6 +59,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   readonly readScope: () => string;
   readonly createProject: (input: ProjectEntryCreateInput) => Promise<{readonly registration: RecentProject}>;
   readonly refreshSummaries: () => void;
+  readonly templates?: readonly ProjectDesktopTemplate[];
   readonly copies?: Pick<ProjectCopies, 'duplicate' | 'saveAs' | 'replay' | 'adoptCopy' | 'copyTo' | 'instantiateTemplate' | 'replayAction'>;
   readonly assertProjectFile?: (file:string) => void;
   readonly copyOriginal?: (candidate:{projectId:string;projectFile:string}) => RecentProject|null;
@@ -196,6 +198,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     return promise;
   };
   const control: ProjectEntryControlPort = {
+    ...(templates?.length?{templates:Object.freeze(templates.map(template=>Object.freeze({...template})))}:{}),
     ...(scopedNative?{nativeRelink:scopedNative}:{}),
     inspectSelectedCopy: async raw => {
       scope();

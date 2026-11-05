@@ -38,6 +38,8 @@ export interface MediaRelinkDialogProps {
   readonly changedSelected?: readonly string[];
   readonly canApply?: boolean;
   readonly newAdded?: number;
+  readonly outcomeUnknown?: boolean;
+  readonly confirmedDirectories?: readonly string[];
   readonly onApply: () => void;
   readonly onRetry: () => void;
   readonly onClose: () => void;
@@ -48,6 +50,7 @@ export function MediaRelinkDialog(props: MediaRelinkDialogProps): ReactElement {
   const { t } = useI18n();
   const { state, apply } = props;
   const applying = apply.kind === 'working';
+  const locked = applying || props.outcomeUnknown === true;
   const rows = state.kind === 'ready' ? state.value.rows : [];
   const found = rows.filter(row => row.outcome === 'picked' || row.outcome === 'auto').length;
   const selected = new Set(props.changedSelected ?? []);
@@ -73,28 +76,30 @@ export function MediaRelinkDialog(props: MediaRelinkDialogProps): ReactElement {
         <WorkbenchBadge tone={row.outcome === 'changed' ? 'warning' : row.outcome === 'missing' ? 'danger' : 'success'}>{t(`projectFile.media.relink.outcome.${row.outcome}`)}</WorkbenchBadge>
         {selected.has(row.assetId) && <span className="pf-help" data-testid={`pf-relink-new-selected-${row.assetId}`}>{t('projectFile.media.relink.newSelected')}</span>}
         {(row.outcome === 'changed' || row.outcome === 'missing') && <span className="pf-relink-actions">
-          {row.outcome === 'changed' && props.onUseNewFile && (props.canUseNewFile?.(row.assetId) ?? true) && <WorkbenchButton size="compact" data-testid={`pf-relink-use-new-${row.assetId}`} aria-pressed={selected.has(row.assetId)} disabled={applying} onClick={() => props.onUseNewFile?.(row.assetId)}>{t('projectFile.media.relink.useNew')}</WorkbenchButton>}
-          {props.onChooseFile && <WorkbenchButton size="compact" data-testid={`pf-relink-choose-${row.assetId}`} disabled={applying} onClick={() => props.onChooseFile?.(row.assetId)}>{t('projectFile.media.relink.choose')}</WorkbenchButton>}
+          {row.outcome === 'changed' && props.onUseNewFile && (props.canUseNewFile?.(row.assetId) ?? true) && <WorkbenchButton size="compact" data-testid={`pf-relink-use-new-${row.assetId}`} aria-pressed={selected.has(row.assetId)} disabled={locked} onClick={() => props.onUseNewFile?.(row.assetId)}>{t('projectFile.media.relink.useNew')}</WorkbenchButton>}
+          {props.onChooseFile && <WorkbenchButton size="compact" data-testid={`pf-relink-choose-${row.assetId}`} disabled={locked} onClick={() => props.onChooseFile?.(row.assetId)}>{t('projectFile.media.relink.choose')}</WorkbenchButton>}
         </span>}
       </span>
     </li>)}</ul>
     {rows.some(row => row.outcome === 'changed') && <p className="pf-help pf-relink-help">{t('projectFile.media.relink.changedHelp')}</p>}
-    {apply.kind === 'error' && <WorkbenchAlert tone="danger" data-testid="pf-relink-apply-error">{t('projectFile.media.relink.applyFailed')}</WorkbenchAlert>}
+    {apply.kind === 'error' && !props.outcomeUnknown && <WorkbenchAlert tone="danger" data-testid="pf-relink-apply-error">{t('projectFile.media.relink.applyFailed')}</WorkbenchAlert>}
   </>;
   const ready = state.kind === 'ready' && rows.length > 0;
-  return <Dialog open={props.open} onOpenChange={next => { if (!next && !applying) props.onClose(); }}>
-    <WorkbenchDialogContent title={t('projectFile.media.relink.title')} size="standard" className="pf-dialog pf-relink-dialog" data-testid="pf-relink-dialog" showCloseButton={!applying}
+  return <Dialog open={props.open} onOpenChange={next => { if (!next && !locked) props.onClose(); }}>
+    <WorkbenchDialogContent title={t('projectFile.media.relink.title')} size="standard" className="pf-dialog pf-relink-dialog" data-testid="pf-relink-dialog" showCloseButton={!locked}
       description={ready ? t('projectFile.media.relink.subtitle', { name: props.projectName, count: rows.length }) : props.projectName}
       footer={<>
         {ready && <p className="pf-footer-note" data-testid="pf-relink-summary">{t('projectFile.media.relink.summary', { found, pending: rows.length - found })}</p>}
         {state.kind === 'ready' && rows.length === 0
-          ? <WorkbenchButton variant="primary" data-testid="pf-relink-close" onClick={props.onClose}>{t('common.close')}</WorkbenchButton>
+          ? <WorkbenchButton variant="primary" data-testid="pf-relink-close" disabled={locked} onClick={props.onClose}>{t('common.close')}</WorkbenchButton>
           : <>
-            <WorkbenchButton data-testid="pf-relink-cancel" disabled={applying} onClick={props.onClose}>{t('common.cancel')}</WorkbenchButton>
-            <WorkbenchButton variant="primary" data-testid="pf-relink-apply" loading={applying} disabled={!(props.canApply ?? (ready && found > 0))} onClick={props.onApply}>{t('projectFile.media.relink.apply')}</WorkbenchButton>
+            <WorkbenchButton data-testid="pf-relink-cancel" disabled={locked} onClick={props.onClose}>{t('common.cancel')}</WorkbenchButton>
+            <WorkbenchButton variant="primary" data-testid="pf-relink-apply" loading={applying} disabled={!(props.canApply ?? (ready && found > 0))} onClick={props.onApply}>{t(props.outcomeUnknown ? 'projectFile.media.relink.retryOriginal' : 'projectFile.media.relink.apply')}</WorkbenchButton>
           </>}
       </>}>
       {Boolean(props.newAdded) && <WorkbenchAlert tone="success" data-testid="pf-relink-new-added">{t('projectFile.media.relink.newAdded', {count: props.newAdded ?? 0})}</WorkbenchAlert>}
+      {props.outcomeUnknown && <WorkbenchAlert tone="warning" data-testid="pf-relink-outcome-unknown">{t('projectFile.media.relink.outcomeUnknown')}</WorkbenchAlert>}
+      {Boolean(props.confirmedDirectories?.length) && <WorkbenchAlert tone="warning" data-testid="pf-relink-confirmed-directories">{t('projectFile.media.relink.confirmedDirectories', {count: props.confirmedDirectories!.length})}</WorkbenchAlert>}
       {body}
     </WorkbenchDialogContent>
   </Dialog>;

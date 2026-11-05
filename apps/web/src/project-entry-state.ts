@@ -7,6 +7,7 @@ import type { LauncherClient, LauncherCreateMetadata, LauncherState } from './la
 import { LauncherCreateError } from './launcher-state.ts';
 import type {ProjectEntryIdentityOwner} from './project-entry-identity.ts';
 import {chooseInitialProject} from './last-project-navigation.ts';
+import type {ProjectEntriesDesktopBridge} from '../../../packages/contracts/src/project-entry-desktop.ts';
 
 export interface ProjectEntryState extends LauncherState {
   readonly shown: boolean;
@@ -16,7 +17,7 @@ export interface ProjectEntryState extends LauncherState {
   readonly openUnknown: boolean;
   readonly createdProjectId: string | null;
 }
-interface Departure { readonly owner: number; readonly localVersion: number; readonly intent: number; readonly metadataVersion: number; readonly contextVersion: number }
+interface Departure { readonly owner: number; readonly localVersion: number; readonly intent: number; readonly metadataVersion: number; readonly contextVersion: number; readonly external: string }
 interface Permit {
   readonly token: string;
   readonly projectId: string;
@@ -30,21 +31,30 @@ export interface ProjectEntryConsumption { readonly version: 1; readonly entryTo
  * Sealing happens synchronously after consent. Every input handler consults the
  * same latch; the native host can consume, but cannot mint, this permission. */
 export function createProjectEntryController({ client, bridge, context: initialContext, identity = null, manageIdentityLifecycle = true, explicitProjectId = null,
+  desktopClient = null, readAdditionalSnapshot = () => ({dirty: false, busy: false, unknown: false, identity: [] as unknown[]}),
+  onNativeOpenError = () => {},
+  readNativeDraftVersion = () => 0,
   confirm = async () => false, onChange = () => {}, newToken = () => globalThis.crypto.randomUUID(),
 }: { client: LauncherClient; bridge: ProjectWindowBridge; context: ProjectWindowContext; identity?: ProjectEntryIdentityOwner | null; manageIdentityLifecycle?: boolean;
-  explicitProjectId?: string | null; confirm?: (message: string | DisplayMessage) => Promise<boolean>; onChange?: (state: ProjectEntryState) => void; newToken?: () => string }) {
+  explicitProjectId?: string | null; desktopClient?: ProjectEntriesDesktopBridge | null;
+  readAdditionalSnapshot?: () => {dirty: boolean; busy: boolean; unknown: boolean; identity: readonly unknown[]};
+  onNativeOpenError?: (error: unknown, projectId: string) => void;
+  readNativeDraftVersion?: () => number;
+  confirm?: (message: string | DisplayMessage) => Promise<boolean>; onChange?: (state: ProjectEntryState) => void; newToken?: () => string }) {
   if (initialContext.role !== 'launcher' && initialContext.role !== 'editor') throw new Error('Project entry requires an owned entry window');
   let context = initialContext, active = false, lifetime = 0, readSerial = 0, intent = 0, interactionSerial = 0, localVersion = 0, contextVersion = 0;
   let visible = true, autoConsumed = initialContext.role !== 'launcher' || !initialContext.autoOpen;
   let observedEntry = 0;
   let openFlight: object | null = null;
   let metadata: LauncherCreateMetadata = { dirty: false, busy: false, version: 0 }, permit: Permit | null = null;
+  let nativeActionMetadata = {busy: false, unknown: false, version: 0};
+  const nativeResultPermits = new WeakSet<() => boolean>();
   let state: ProjectEntryState = { projects: [], catalogReady: false, listBusy: true, listError: '', phase: 'home', openingProjectId: null,
     error: '', notice: '', creating: false, createUnknown: false, version: 0, shown: initialContext.role === 'launcher', mode: 'open',
     formIntent: 0, sealed: false, openUnknown: false, createdProjectId: null };
   const emit = (patch: Partial<ProjectEntryState> = {}) => { state = Object.freeze({ ...state, ...patch, version: state.version + 1 }); if (active) onChange(state); };
   const alive = (owner: number) => active && lifetime === owner;
-  const ownerCurrent = () => active && !context.quitting && !identity?.getState().identityBlocked && context.contextId === initialContext.contextId && context.backendId === initialContext.backendId;
+  const ownerCurrent = () => active && !context.quitting && !context.leaseRevoked && !context.settingsModalOpen && !identity?.getState().identityBlocked && context.contextId === initialContext.contextId && context.backendId === initialContext.backendId;
   const available = () => ownerCurrent() && visible && state.shown && (context.role !== 'launcher' || context.editorCount === 0) && !permit && !state.creating && !state.createUnknown && !state.openUnknown;
   const interact = () => { intent++; interactionSerial++; autoConsumed = true; };
   function reportCreate(next: LauncherCreateMetadata) {
@@ -55,11 +65,11 @@ export function createProjectEntryController({ client, bridge, context: initialC
     metadata = Object.freeze({ ...next }); localVersion++;
   }
   const departureCurrent = (ticket: Departure) => alive(ticket.owner) && available() && !metadata.busy &&
-    ticket.localVersion === localVersion && ticket.metadataVersion === metadata.version && ticket.intent === intent && ticket.contextVersion === contextVersion;
-  async function departure(message: string | DisplayMessage = msg('projects.keepCreateOpen')): Promise<Departure | null> {
+    ticket.localVersion === localVersion && ticket.metadataVersion === metadata.version && ticket.intent === intent && ticket.contextVersion === contextVersion && ticket.external === JSON.stringify(readAdditionalSnapshot().identity);
+  async function departure(message: string | DisplayMessage = msg('projects.keepCreateOpen'), preserveDraft = false): Promise<Departure | null> {
     if (!available() || metadata.busy) return null;
-    const ticket: Departure = Object.freeze({ owner: lifetime, localVersion, intent, metadataVersion: metadata.version, contextVersion });
-    if (metadata.dirty && !await confirm(message)) return null;
+    const ticket: Departure = Object.freeze({ owner: lifetime, localVersion, intent, metadataVersion: metadata.version, contextVersion, external: JSON.stringify(readAdditionalSnapshot().identity) });
+    if (!preserveDraft && (metadata.dirty || readAdditionalSnapshot().dirty) && !await confirm(message)) return null;
     return departureCurrent(ticket) ? ticket : null;
   }
   function settle(token: string, result: ProjectWindowOpenResult): boolean {
@@ -92,12 +102,21 @@ export function createProjectEntryController({ client, bridge, context: initialC
     permit = { token, projectId, contextId: context.contextId, backendId: context.backendId, localVersion, consumed: false };
     emit({ sealed: true, openUnknown: false, phase: 'opening', openingProjectId: projectId, error: '', notice: '' });
     try {
-      const result = await bridge.openProject(projectId, remember, token);
+      const native = desktopClient ? await desktopClient.openRecent({projectId, remember, entryToken: token}) : null;
+      if (native && (native.status !== 'opened' || native.projectId !== projectId)) throw new Error('Native recent acknowledgement does not match its sealed entry');
+      const result: ProjectWindowOpenResult = native
+        ? {ok: true, reason: 'accepted', targetWindowId: native.windowId, targetPhase: null}
+        : await bridge.openProject(projectId, remember, token);
       if (!alive(owner)) return false;
       if (permit?.token === token) return settle(token, result);
       // A matching subscription receipt may have arrived before invoke returned.
       return context.entryReceipt?.entryToken === token && context.entryReceipt.result.ok === true;
-    } catch {
+    } catch (error) {
+      if (desktopClient && alive(owner)) onNativeOpenError(error, projectId);
+      if (desktopClient && alive(owner) && error !== null && typeof error === 'object' && 'code' in error && ['PROJECT_ACCESS_DENIED', 'PROJECT_MISSING', 'PROJECT_LOCKED', 'PROJECT_INVALID', 'PROJECT_FORMAT_NEWER'].includes(String(error.code))) {
+        if (permit?.token === token) {permit = null; emit({sealed: false, openUnknown: false, phase: 'error', error: msg('projects.windowOpenFailed')});}
+        return false;
+      }
       if (!alive(owner) || permit?.token !== token) return context.entryReceipt?.entryToken === token && context.entryReceipt.result.ok === true;
       emit({ openUnknown: true, phase: 'error', error: msg('projects.openOutcomeUnknown') });
       await reconcileOpen();
@@ -105,6 +124,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     }
   }
   async function open(projectId: string, remember = true): Promise<boolean> {
+    if (readAdditionalSnapshot().busy || readAdditionalSnapshot().unknown || nativeActionMetadata.busy || nativeActionMetadata.unknown) return false;
     if (!isProjectWindowId(projectId) || !ownerCurrent() || openFlight || permit || state.creating || state.createUnknown || state.openUnknown) return false;
     const flight = {}; openFlight = flight;
     try {
@@ -129,6 +149,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     catch { /* Missing evidence keeps the original owner and latch. */ }
   }
   async function show(mode: 'open' | 'new'): Promise<boolean> {
+    if (readAdditionalSnapshot().busy || readAdditionalSnapshot().unknown || nativeActionMetadata.busy || nativeActionMetadata.unknown) return false;
     if (!ownerCurrent() || permit || state.creating || state.createUnknown || state.openUnknown) {
       if (active) emit({ notice: msg('projects.checkCurrentRequest') });
       return false;
@@ -139,6 +160,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     return true;
   }
   async function dismiss(): Promise<boolean> {
+    if (readAdditionalSnapshot().busy || readAdditionalSnapshot().unknown || nativeActionMetadata.busy || nativeActionMetadata.unknown) return false;
     if (context.role !== 'editor') return false;
     interact();
     const ticket = await departure(msg('projects.keepCreateClose'));
@@ -209,22 +231,56 @@ export function createProjectEntryController({ client, bridge, context: initialC
     await opening;
     return true; // The known create must never be replayed for an open failure.
   }
+  async function prepareNativeDeparture(preserveDraft = false): Promise<(() => boolean) | null> {
+    const ready = () => ownerCurrent() && visible && !permit && !state.creating && !state.createUnknown && !state.openUnknown && !metadata.busy && (context.role !== 'launcher' || context.editorCount === 0);
+    if (!ready() || nativeActionMetadata.busy || nativeActionMetadata.unknown) return null;
+    const ticket = {owner: lifetime, localVersion, metadataVersion: metadata.version, contextVersion, intent, external: JSON.stringify(readAdditionalSnapshot().identity)};
+    const same = () => ready() && alive(ticket.owner) && ticket.intent === intent && ticket.localVersion === localVersion && ticket.metadataVersion === metadata.version && ticket.contextVersion === contextVersion && JSON.stringify(readAdditionalSnapshot().identity) === ticket.external;
+    if (!preserveDraft && (metadata.dirty || readAdditionalSnapshot().dirty) && !await confirm(msg('projects.keepCreateOpen'))) return null;
+    if (!same() || !await refresh() || !same()) return null;
+    // This permit excludes only the home action's own busy/unknown reports.
+    // Other form changes, native work and every owner/lease change invalidate it.
+    return () => same() && !readAdditionalSnapshot().busy && !readAdditionalSnapshot().unknown;
+  }
+  async function prepareNativeResultDeparture(preserveDraft = false): Promise<(() => boolean) | null> {
+    const ticket = {owner: lifetime, localVersion, contextVersion, metadataVersion: metadata.version, intent, draft: readNativeDraftVersion()};
+    if (!await prepareNativeDeparture(preserveDraft)) return null;
+    const current = () => ownerCurrent() && visible && alive(ticket.owner) && !permit && !state.creating && !state.createUnknown && !state.openUnknown &&
+      !nativeActionMetadata.busy && !nativeActionMetadata.unknown && ticket.intent === intent && ticket.localVersion === localVersion && ticket.contextVersion === contextVersion && ticket.metadataVersion === metadata.version && ticket.draft === readNativeDraftVersion();
+    if (!current()) return null;
+    nativeResultPermits.add(current); return current;
+  }
+  async function openNativeCreated(projectId: string, granted: () => boolean): Promise<boolean> {
+    if (!isProjectWindowId(projectId) || !nativeResultPermits.has(granted) || !granted() || openFlight) return false;
+    const flight = {}; openFlight = flight;
+    try {
+      if (!await refresh() || !granted() || !state.projects.some(project => project.id === projectId)) return false;
+      nativeResultPermits.delete(granted);
+      return await dispatchOpen(projectId, true);
+    } finally {if (openFlight === flight) openFlight = null;}
+  }
   return {
     activate() { if (!active) { active = true; lifetime++; if (manageIdentityLifecycle) identity?.activate(); } },
     dispose() { active = false; lifetime++; readSerial++; openFlight = null; if (manageIdentityLifecycle) identity?.dispose(); },
     boot: () => refresh(true), refresh: () => refresh(false), open, create, show, dismiss, reconcileOpen, updateContext, reportCreate,
     interacted() { interactionSerial++; autoConsumed = true; },
     setVisible(value: boolean) { visible = value; },
-    canMutate: () => available(),
+    canMutate: () => available() && !readAdditionalSnapshot().busy && !readAdditionalSnapshot().unknown && !nativeActionMetadata.busy && !nativeActionMetadata.unknown,
+    prepareNativeDeparture: async (preserveDraft = false) => Boolean(await prepareNativeDeparture(preserveDraft)),
+    prepareHomeNativeDeparture: async () => {const granted = await prepareNativeDeparture(false); if (granted) nativeResultPermits.add(granted); return granted;},
+    prepareNativeResultDeparture, openNativeCreated, openNativeResult: openNativeCreated,
+    reportNativeAction(next: {busy: boolean; unknown: boolean; version: number}) {if (Number.isSafeInteger(next.version) && next.version > nativeActionMetadata.version) {nativeActionMetadata = {...next};}},
+    finishNativeOpen() {if (ownerCurrent() && context.role === 'editor') emit({shown: false});},
+    isNativeActionCurrent: () => ownerCurrent() && visible,
     consume(entryToken: string, projectId: string): ProjectEntryConsumption {
       const accepted = Boolean(ownerCurrent() && permit && !permit.consumed && permit.token === entryToken && permit.projectId === projectId &&
         permit.contextId === context.contextId && permit.backendId === context.backendId && permit.localVersion === localVersion && !state.createUnknown);
       if (accepted && permit) permit.consumed = true;
       return Object.freeze({ version: 1, entryToken, projectId, accepted });
     },
-    readCloseSnapshot() { return { dirty: metadata.dirty, busy: state.creating || Boolean(permit && !state.openUnknown), unknown: state.createUnknown,
+    readCloseSnapshot() { const extra = readAdditionalSnapshot(); return { dirty: metadata.dirty || extra.dirty, busy: state.creating || Boolean(permit && !state.openUnknown) || extra.busy || nativeActionMetadata.busy, unknown: state.createUnknown || state.openUnknown || extra.unknown || nativeActionMetadata.unknown,
       identity: [initialContext.contextId, intent, localVersion, metadata.version, state.creating, state.createUnknown, permit?.token ?? null, state.openUnknown,
-        identity?.getState().appLibraryScope, identity?.getState().instanceId, identity?.getState().identityBlocked] }; },
+        identity?.getState().appLibraryScope, identity?.getState().instanceId, identity?.getState().identityBlocked, ...extra.identity, nativeActionMetadata.busy, nativeActionMetadata.unknown, nativeActionMetadata.version] }; },
     getState: () => state, getContext: () => context, identity,
   };
 }

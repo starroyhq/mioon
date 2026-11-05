@@ -1,5 +1,6 @@
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {lstatSync} from 'node:fs';
 import {PROJECT_ENTRY_DESKTOP_LIMITS,projectEntryDesktopRequestSchema,projectLocationFactsSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectEntryDesktopRequest,ProjectLocationFacts,ProjectStoragePurpose,ProjectDesktopOpenResult} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import {projectEntryWindowSchema,projectEntrySourceObservationSchema} from '../../../packages/contracts/src/project-entry-native.ts';
@@ -10,6 +11,7 @@ import {recentProjectSchema} from '../../../packages/contracts/src/project-regis
 import type {RecentProject} from '../../../packages/contracts/src/project-registry.ts';
 import type {DesktopProjectEntryControl} from './project-entry-control.ts';
 import {safeProjectEntryControlError} from './project-entry-control.ts';
+import {projectNameProblem} from '../../../packages/contracts/src/project-name.ts';
 
 export interface ProjectEntryDesktopOwner<W=unknown>{window:W;windowId:string;backendId:string;contextId:string;projectId?:string;isCurrent():boolean}
 interface OpenResult{ok:boolean;targetWindowId:string|null;reason:string}
@@ -30,7 +32,7 @@ interface Options<E,W>{
  revealVerifiedPath?(owner:ProjectEntryDesktopOwner<W>,file:string):void|Promise<void>;
 }
 type CopySource=ReturnType<typeof projectCopySourceSchema.parse>;
-type Ticket<W>={owner:ProjectEntryDesktopOwner<W>;expires:number}&({kind:'storage';purpose:ProjectStoragePurpose;file:string;facts:ProjectLocationFacts}|{kind:'copy'|'source';source:CopySource;original:RecentProject|null});
+type Ticket<W>={owner:ProjectEntryDesktopOwner<W>;expires:number}&({kind:'storage';purpose:ProjectStoragePurpose;file:string;facts:ProjectLocationFacts;template?:{id:'timeline-basics';version:1;name:string;parentDir:string}}|{kind:'copy'|'source';source:CopySource;original:RecentProject|null});
 const unavailable=(code='PROJECT_ENTRY_UNAVAILABLE')=>Object.assign(new Error(code),{code,status:409});
 const same=<W>(a:ProjectEntryDesktopOwner<W>,b:ProjectEntryDesktopOwner<W>)=>a.window===b.window&&a.windowId===b.windowId&&a.backendId===b.backendId&&a.contextId===b.contextId;
 const absolute=(file:string):boolean=>path.isAbsolute(file)&&path.resolve(file)===file;
@@ -136,6 +138,22 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
      return await opened(owner,await options.backend.acquire({projectId:original.projectId,windowId:randomUUID(),expectedProjectFile:original.projectFile}));
     }
     if(request.action==='chooseLocation'){
+     if(request.purpose==='template'){
+      const capability=await options.backend.capabilities();check(owner);
+      const template=capability.templates?.find(value=>value.id==='timeline-basics'&&value.version===1);
+      if(!template)throw unavailable('PROJECT_TEMPLATE_NOT_FOUND');
+      const selected=await options.chooseSaveFile(owner,{suggestedName:request.suggestedName,message:request.message});check(owner);
+      if(selected===null)return null;
+      if(!absolute(selected)||!selected.endsWith('.mioon'))throw unavailable('PROJECT_LOCATION_INVALID');
+      if(lstatSync(selected,{throwIfNoEntry:false}))throw unavailable('PROJECT_FILE_EXISTS');
+      const parentDir=path.dirname(selected),name=path.basename(selected,'.mioon');
+      if(projectNameProblem(name)!==null)throw unavailable('PROJECT_LOCATION_INVALID');
+      // S5 creates a dedicated folder. Observe its real existing parent; the
+      // final folder/file path is derived here, never from renderer display text.
+      const file=path.join(parentDir,name,name+'.mioon'),facts=await location(owner,parentDir,'template',true);
+      const bound={id:template.id,version:template.version,name,parentDir};
+      return {token:put({kind:'storage',purpose:'template',file,facts,template:bound,owner,expires:Date.now()+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs}),displayPath:file,facts,template:{...template,name}};
+     }
      const file=request.purpose==='create'?await options.chooseDirectory(owner,{message:request.message}):await options.chooseSaveFile(owner,{suggestedName:request.suggestedName,message:request.message});
      check(owner);if(file===null)return null;
      const facts=await location(owner,file,request.purpose,request.purpose==='create');
@@ -146,6 +164,14 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
      await location(owner,ticket.file,'create',true);check(owner);
      const project=recentProjectSchema.parse(await options.backend.create({name:request.name,...(request.description!==undefined?{description:request.description}:{}),...(request.timelinePresetId?{timelinePresetId:request.timelinePresetId}:{}),...(request.createFolder?{parentDir:ticket.file}:{projectFile:path.join(ticket.file,request.name+'.mioon')})}));
      mutationResult(owner);return {status:'created',project};
+    });
+    if(request.action==='instantiateTemplate')return await mutate(request.token,owner,request,async ticket=>{
+     if(ticket.kind!=='storage'||ticket.purpose!=='template'||!ticket.template||ticket.template.id!==request.templateId||ticket.template.version!==request.templateVersion||ticket.template.name!==request.name)throw unavailable();
+     await location(owner,ticket.template.parentDir,'template',true);check(owner);
+     const copy=projectCopyResponseSchema.parse(await options.backend.instantiateTemplate({templateId:request.templateId,templateVersion:request.templateVersion,parentDir:ticket.template.parentDir,name:ticket.template.name,requestId:request.requestId}));
+     mutationResult(owner);
+     if(copy.requestId!==request.requestId||copy.project.projectFile!==ticket.file||copy.project.name!==ticket.template.name)throw unavailable('PROJECT_ENTRY_OUTCOME_UNKNOWN');
+     return copy;
     });
     if(request.action==='openSelectedFile'){
      const file=await options.chooseOpenFile(owner);check(owner);return file===null?{status:'cancelled'}:await selectedOpen(owner,file);
