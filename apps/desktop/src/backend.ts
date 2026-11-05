@@ -7,6 +7,7 @@ import { initializeSubtitleResources } from '@mioon/business/subtitle-resources'
 import { createAgentSettingsClient } from './secret-broker.ts';
 import { createImageSecretClient } from './image-secret-broker.ts';
 import { createVideoSecretClient } from './video-secret-client.ts';
+import {createProjectTrashClient} from './project-trash-broker.ts';
 import { createNativeAudioPreviewAuthority } from '@mioon/business/native-audio-preview';
 import type {NativeAudioPreviewAuthority} from '@mioon/business/native-audio-preview';
 import {createBackendLease, BACKEND_LEASE_TIMING} from './backend-lease.ts';
@@ -46,6 +47,7 @@ let nativeAudioPreview: NativeAudioPreviewAuthority | undefined;
 const agentSettings = createAgentSettingsClient({ port: process.parentPort });
 const imageSecretCodec = createImageSecretClient({ port: process.parentPort });
 const videoSecretCodec = createVideoSecretClient({ port: process.parentPort });
+const projectTrash = createProjectTrashClient({port: process.parentPort});
 onMediaProcess(({ type, pid, kind }: MediaProcessEvent) => process.parentPort!.postMessage({ type: 'media-process', event: type, pid, kind }));
 async function shutdown(reason: ExitDiagnosticReason) {
   if (closing) return;
@@ -59,6 +61,7 @@ async function shutdown(reason: ExitDiagnosticReason) {
   try { agentSettings.close(); } catch { exitCode = 1; }
   try { imageSecretCodec.close(); } catch { exitCode = 1; }
   try { videoSecretCodec.close(); } catch { exitCode = 1; }
+  try { projectTrash.close(); } catch { exitCode = 1; }
   if (exitCode !== 0) reportExitDiagnostic('shutdown-failed');
   try {
     process.parentPort!.postMessage(exitCode === 0 ? { type: 'stopped' } : {
@@ -95,6 +98,7 @@ process.parentPort.on('message', ({ data }) => {
       for (const name of ['dataDir', 'cacheDir', 'projectsDir'] as const) {
         if (typeof data[name] !== 'string' || !path.isAbsolute(data[name])) throw new TypeError('Invalid backend application directory');
       }
+      if (data.projectTrashAvailable !== undefined && typeof data.projectTrashAvailable !== 'boolean') throw new TypeError('Invalid project trash capability');
       // A missing/locked OS vault disables persistent Images writes; it never
       // turns them into plaintext writes or prevents unrelated editing startup.
       try { await imageSecretCodec.refreshStorage(); } catch { /* Fail-closed cached availability. */ }
@@ -103,7 +107,9 @@ process.parentPort.on('message', ({ data }) => {
       // A desktop utility without the fixed public-key gate must never fall
       // back to the ordinary Web PCM lane because main wiring was incomplete.
       nativeAudioPreview = createNativeAudioPreviewAuthority(data.nativeAudioPreview);
-      server = await startServer({ comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE), dataDir: data.dataDir, cacheDir:data.cacheDir, projectsDir:data.projectsDir, port: 0, distDir: data.distDir, token: data.token, agentSettings, imageSecretCodec, videoSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
+      server = await startServer({ comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE), dataDir: data.dataDir, cacheDir:data.cacheDir, projectsDir:data.projectsDir, port: 0, distDir: data.distDir,
+        projectTrash: data.projectTrashAvailable === true ? projectTrash : undefined,
+        token: data.token, agentSettings, imageSecretCodec, videoSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
       if (!closing) process.parentPort!.postMessage({ type: 'ready', url: server.url,
         runtime: { electron: process.versions.electron, node: process.versions.node, sqlite: process.versions.sqlite, pid: process.pid } });
     } catch (error) {
@@ -117,6 +123,7 @@ process.parentPort.on('message', ({ data }) => {
       agentSettings.close();
       imageSecretCodec.close();
       videoSecretCodec.close();
+      projectTrash.close();
       process.exitCode = 1;
       setImmediate(() => process.exit(1));
     }

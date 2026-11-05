@@ -35,6 +35,7 @@ function backendHarness({ close = async () => {}, start = undefined, diagnosticF
     createAgentSettingsClient: () => ({ close: settingsClose }),
     createImageSecretClient: () => ({ close: imageClose, refreshStorage: async () => {} }),
     createVideoSecretClient: () => ({ close() {}, refreshStorage: async () => {} }),
+    createProjectTrashClient: () => ({close() {}}),
     createNativeAudioPreviewAuthority: () => ({}),
     Date: class extends Date { static now() { return now; } },
     setInterval: (callback: () => void) => { intervals.push(callback); return intervals.length; },
@@ -197,7 +198,7 @@ for (const [origin, trigger] of [
         createBackendLease, BACKEND_LEASE_TIMING, performance,
         process: sandboxProcess, DatabaseSync: function () {},
         createAgentSettingsClient: () => ({}), createImageSecretClient: () => ({}),
-        createVideoSecretClient: () => ({}), initializeDesktopPrivateStorage() {},
+        createVideoSecretClient: () => ({}), createProjectTrashClient: () => ({close() {}}), initializeDesktopPrivateStorage() {},
         onMediaProcess() {}, setInterval() { return 1; }, clearInterval() {}, setImmediate
       });
       ${trigger}

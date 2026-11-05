@@ -95,6 +95,7 @@ try {
     // S5's application copy API is not a CLI capability until S4/0.1.x.
     // Refuse before reading input, initializing storage or resolving a backend.
     if (operation === 'project.duplicate') throw new ClientError('PROJECT_COPY_UNAVAILABLE', 'Project copy commands are not available in this client yet.', {status: 409});
+    if (operation === 'project.delete') throw new ClientError('PROJECT_TRASH_UNAVAILABLE', 'Project trash commands are not available in this client yet.', {status: 409});
     // Reject unknown/retired operations before reading input or initializing storage.
     if (!agent && !agentSchema && words[0] !== 'schema' && !Object.hasOwn(schemas, operation) &&
       !['doctor', 'capabilities', 'job.watch', 'export.watch', 'asset.download', 'export.download', 'project.export', 'project.import', 'project.duplicate'].includes(operation))

@@ -7,6 +7,7 @@ import type {RecentProject} from './project-registry.ts';
 import type {ProjectEntriesResponse} from './project-entry.ts';
 import {projectAdoptCopyInputSchema, projectCopyInputSchema} from './project-copies.ts';
 import type {ProjectCopyInput, ProjectCopyResponse, ProjectCopyToInput, ProjectTemplateInput} from './project-copies.ts';
+import type {ProjectDeleteInput, ProjectDeleteResponse} from './project-lifecycle.ts';
 
 /** Trusted utility control payloads, not HTTP/renderer messages. The main
  * process generates opaque UUID window owners; these are not BrowserWindow's
@@ -48,5 +49,6 @@ export interface ProjectEntryControlPort {
   adoptCopy?(input: ProjectEntryAdoptCopyInput): Promise<{copy: ProjectCopyResponse; window: ProjectEntryWindow}>;
   copyTo?(input: ProjectCopyToInput): Promise<ProjectCopyResponse>;
   instantiateTemplate?(input: ProjectTemplateInput): Promise<ProjectCopyResponse>;
+  trash?(input: ProjectDeleteInput): Promise<ProjectDeleteResponse>;
   onWindowRevoked(listener: (event: ProjectEntryWindowRevoked) => void): () => void;
 }

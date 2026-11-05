@@ -5,6 +5,8 @@ import { createAgentSettingsBroker } from './secret-broker.ts';
 import { createImageSecretBroker } from './image-secret-broker.ts';
 import { createVideoSecretBroker } from './video-secret-broker.ts';
 import { createNativeAudioPreviewBroker } from './native-audio-preview-broker.ts';
+import {createProjectTrashBroker} from './project-trash-broker.ts';
+import type {ProjectTrashNativeOptions} from './project-trash-broker.ts';
 import { nativeAudioConfigSchema } from '@mioon/contracts/native-audio-preview';
 import type {NativeAudioCommand, NativeAudioConfig, NativeAudioReply} from '@mioon/contracts/native-audio-preview';
 import { createExitDiagnostics, classifyBackendExit } from './exit-diagnostics.ts';
@@ -70,6 +72,7 @@ export interface BackendSupervisorOptions {
   agentSettings?: DesktopAgentSettings | null;
   imageSecretCodec?: ImageSecretCodec | null;
   videoSecretCodec?: VideoSecretCodec | null;
+  projectTrash?: ProjectTrashNativeOptions;
 }
 function recordOf(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' ? value as Record<string, unknown> : null;
@@ -113,6 +116,7 @@ export class BackendSupervisor extends EventEmitter {
   readonly agentSettings: DesktopAgentSettings | null | undefined;
   readonly imageSecretCodec: ImageSecretCodec | null | undefined;
   readonly videoSecretCodec: VideoSecretCodec | null | undefined;
+  readonly projectTrash: ProjectTrashNativeOptions | undefined;
   state: SupervisorState = 'idle';
   mediaPids = new Set<number>();
   mediaKinds = new Map<number, string | undefined>();
@@ -135,7 +139,7 @@ export class BackendSupervisor extends EventEmitter {
 
   constructor({ fork, modulePath, environment, startupTimeout = 20000, stopTimeout = BACKEND_STOP_BUDGET.gracefulMs,
     terminateTimeout = BACKEND_STOP_BUDGET.terminateMs, exitTimeout = BACKEND_STOP_BUDGET.confirmMs,
-    forceKill = forceOwnedUtility, agentSettings, imageSecretCodec, videoSecretCodec }: BackendSupervisorOptions) {
+    forceKill = forceOwnedUtility, agentSettings, imageSecretCodec, videoSecretCodec, projectTrash }: BackendSupervisorOptions) {
     super();
     for (const value of [startupTimeout, stopTimeout, terminateTimeout, exitTimeout]) {
       if (!Number.isSafeInteger(value) || value < 0 || value > 60000) throw new Error('Invalid backend lifecycle budget');
@@ -151,6 +155,7 @@ export class BackendSupervisor extends EventEmitter {
     this.agentSettings = agentSettings;
     this.imageSecretCodec = imageSecretCodec;
     this.videoSecretCodec = videoSecretCodec;
+    this.projectTrash = projectTrash;
   }
 
   start(config: BackendStartConfig): Promise<BackendReady> {
@@ -215,6 +220,8 @@ export class BackendSupervisor extends EventEmitter {
         isCurrent: () => this.child === child && ['running', 'stopping'].includes(this.state),
       }) : null;
       this.nativeAudioBroker = nativeAudioBroker;
+      const projectTrashBroker = createProjectTrashBroker({native: this.projectTrash,
+        send: message => child.postMessage(message), isActive: () => this.child === child && this.state === 'running'});
       timer = setTimeout(() => { this.noteExitReason('startup-timeout'); fail(new Error('本地服务启动超时')); kill('startup-timeout'); }, this.startupTimeout);
       child.on('error', () => {
         if (this.child !== child || !['starting', 'running'].includes(this.state)) return;
@@ -227,6 +234,7 @@ export class BackendSupervisor extends EventEmitter {
         if (imageSecretBroker.handle(message)) return;
         if (videoSecretBroker.handle(message)) return;
         if (nativeAudioBroker?.handle(message)) return;
+        if (projectTrashBroker.handle(message)) return;
         if (this.child !== child) return;
         if (isBackendLeaseProbe(message)) {
           // A suspended utility must prove its parent is still this live
@@ -287,6 +295,7 @@ export class BackendSupervisor extends EventEmitter {
         imageSecretBroker.close();
         videoSecretBroker.close();
         nativeAudioBroker?.close();
+        projectTrashBroker.close();
         clearTimeout(timer);
         clearInterval(heartbeat);
         if (this.child !== child) return;
@@ -310,7 +319,7 @@ export class BackendSupervisor extends EventEmitter {
         this.emit('exit', { code, expected: this.expectedExit,
           ...(this.hasUnconfirmedMedia ? { mediaExitConfirmed: false } : {}) });
       });
-      try { child.postMessage({ type: 'start', ...config }); }
+      try { child.postMessage({ type: 'start', ...config, projectTrashAvailable: this.projectTrash !== undefined }); }
       catch { this.noteExitReason('startup-communication-failed'); fail(new Error('本地服务启动通信失败')); kill('startup-communication-failed'); }
     });
   }

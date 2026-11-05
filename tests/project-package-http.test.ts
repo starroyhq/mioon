@@ -37,6 +37,6 @@ test('real project hosts refuse legacy package routes and permanent deletion wit
   assert.equal(response.status,404);assert.equal(response.body.error.code,'NOT_FOUND');
  }
  const rejected=await call(server.url,'/api/rpc',{method:'POST',body:JSON.stringify({operation:'project.delete',input:{projectId:project.id,requestId:randomUUID(),expectedRevision:project.revision,confirmPermanentDeletion:true}})});
- assert.equal(rejected.status,409);assert.equal(rejected.body.error.code,'PROJECT_DELETE_UNAVAILABLE');
+ assert.equal(rejected.status,400);assert.equal(rejected.body.error.code,'VALIDATION_ERROR');
  assert.deepEqual({application:application(snapshot),project:projectStore(project.id,snapshot)},before,'unavailable maintenance writes no project/application row, receipt, schema or change mark');
 });

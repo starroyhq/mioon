@@ -142,7 +142,7 @@ export interface ProjectHostManager<Runtime extends ProjectHostRuntime = Project
    * with the project closed in this process. New requests wait; requests in
    * flight get DEFAULT_REQUEST_DRAIN_MS, then PROJECT_HOST_BUSY and nothing is
    * cancelled. `run` must not acquire the same project. */
-  withExclusive<T>(projectId: string, run: (registration: RecentProject) => T | Promise<T>, options?: {readonly rejectWindowLeases?: boolean}): Promise<T>;
+  withExclusive<T>(projectId: string, run: (registration: RecentProject) => T | Promise<T>, options?: {readonly rejectWindowLeases?: boolean; readonly assertCanClose?: (host: ProjectHost<Runtime>) => void}): Promise<T>;
   /** At startup: S0a's recovery for every registered project (as list()),
    * waits for the search of missing ones, then reopens the projects in the
    * task index with a task lease. */
@@ -845,9 +845,12 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     if (errors.length > 0) throw errors[0];
   }
 
-  async function withExclusive<T>(projectId: string, run: (registration: RecentProject) => T | Promise<T>, admission: {readonly rejectWindowLeases?: boolean} = {}): Promise<T> {
+  async function withExclusive<T>(projectId: string, run: (registration: RecentProject) => T | Promise<T>, admission: {readonly rejectWindowLeases?: boolean; readonly assertCanClose?: (host: ProjectHost<Runtime>) => void} = {}): Promise<T> {
     checkProjectId(projectId);
     assertRunning();
+    if (admission.assertCanClose !== undefined && (typeof admission.assertCanClose !== 'function' || isAsyncFunction(admission.assertCanClose))) {
+      throw new TypeError('Close admission requires a synchronous callback');
+    }
     const previous = exclusive.get(projectId) ?? Promise.resolve();
     let finish: () => void = () => {};
     const mine = new Promise<void>(resolve => { finish = resolve; });
@@ -871,20 +874,35 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
         if (admission.rejectWindowLeases && hasLease(paused, 'window')) throw projectHostError('PROJECT_HOST_BUSY', {projectId});
         paused.paused = true;
         clearTimer(paused);
-        const drained = await waitForRequests(paused, drainTimeoutMs);
-        paused.paused = false;
-        if (stateOf(paused) === 'open') {
-          if (!drained || hasLease(paused, 'request') || hasLease(paused, 'task') || isBusy(paused)
-            || admission.rejectWindowLeases && hasLease(paused, 'window')) {
-            scheduleIdle(paused);
-            throw projectHostError('PROJECT_HOST_BUSY', {projectId});
+        let admissionRefused = false;
+        try {
+          const drained = await waitForRequests(paused, drainTimeoutMs);
+          if (stateOf(paused) === 'open') {
+            if (!drained || hasLease(paused, 'request') || hasLease(paused, 'task') || isBusy(paused)
+              || admission.rejectWindowLeases && hasLease(paused, 'window')) {
+              throw projectHostError('PROJECT_HOST_BUSY', {projectId});
+            }
+            // Read the live host before interrupt() changes any waiting Mio
+            // state. No acquire path can admit another lease while paused.
+            if (admission.assertCanClose) {
+              try { synchronousResult(admission.assertCanClose(paused.host!)); }
+              catch (error) { admissionRefused = true; throw error; }
+            }
+            const errors = await closeEntry(paused, 'exclusive');
+            if (errors.length > 0) throw errors[0];
+          } else {
+            // Closed meanwhile by close() or closeAll().
+            await paused.closed;
+            assertRunning();
           }
-          const errors = await closeEntry(paused, 'exclusive');
-          if (errors.length > 0) throw errors[0];
-        } else {
-          // Closed meanwhile by close() or closeAll().
-          await paused.closed;
-          assertRunning();
+        } finally {
+          paused.paused = false;
+          if (stateOf(paused) === 'open') {
+            // A slow rejected inspection must not synchronously turn its
+            // refusal into an idle close/interrupt after the grace expires.
+            if (admissionRefused && paused.graceUntil <= clock.now()) setTimer(paused, busyRecheckMs);
+            else scheduleIdle(paused);
+          }
         }
       }
       const registration = registry.get(projectId);
