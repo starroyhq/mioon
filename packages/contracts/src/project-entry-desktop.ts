@@ -14,14 +14,16 @@ export const projectStoragePurposeSchema=z.enum(['create','save-as','duplicate',
 export type ProjectStoragePurpose=z.infer<typeof projectStoragePurposeSchema>;
 export const projectDesktopSelectionSchema=z.object({token:uuid,displayPath:z.string().min(1).max(4096),facts:projectLocationFactsSchema}).strict();
 export type ProjectDesktopSelection=z.infer<typeof projectDesktopSelectionSchema>;
-export const projectDesktopCapabilitiesSchema=z.object({ready:z.boolean(),create:z.boolean(),open:z.boolean(),saveAs:z.boolean(),duplicate:z.boolean(),copyTo:z.boolean(),adoptCopy:z.boolean()}).strict();
+export const projectDesktopCapabilitiesSchema=z.object({ready:z.boolean(),create:z.boolean(),open:z.boolean(),saveAs:z.boolean(),duplicate:z.boolean(),copyTo:z.boolean(),adoptCopy:z.boolean(),help:z.boolean().optional(),reveal:z.boolean().optional(),openOriginal:z.boolean().optional(),copySource:z.boolean().optional(),locationFacts:z.boolean().optional()}).strict();
 export type ProjectDesktopCapabilities=z.infer<typeof projectDesktopCapabilitiesSchema>;
 export const projectDesktopOpenResultSchema=z.discriminatedUnion('status',[
  z.object({status:z.literal('opened'),projectId:projectIdSchema,windowId:uuid}).strict(),
  z.object({status:z.literal('cancelled')}).strict(),
- z.object({status:z.literal('copy'),token:uuid,name:line}).strict(),
+ z.object({status:z.literal('copy'),token:uuid,name:line,original:z.object({name:line,displayPath:z.string().min(1).max(4096)}).strict().optional()}).strict(),
+ z.object({status:z.literal('copy-source'),token:uuid,name:line,displayPath:z.string().min(1).max(4096),reason:z.enum(['read-only','network']),facts:projectLocationFactsSchema}).strict(),
 ]);
 export type ProjectDesktopOpenResult=z.infer<typeof projectDesktopOpenResultSchema>;
+export const projectDesktopLocationSchema=z.object({displayPath:z.string().min(1).max(4096),facts:projectLocationFactsSchema}).strict();
 export const projectDesktopCreatedSchema=z.object({status:z.literal('created'),project:recentProjectSchema}).strict();
 export const projectEntryDesktopRequestSchema=z.discriminatedUnion('action',[
  z.object({action:z.literal('capabilities')}).strict(),
@@ -30,12 +32,16 @@ export const projectEntryDesktopRequestSchema=z.discriminatedUnion('action',[
  z.object({action:z.literal('createAtSelection'),token:uuid,name,description:z.string().max(2000).optional(),timelinePresetId:z.enum(['portrait_1080','landscape_1080','square_1080']).optional(),createFolder:z.boolean()}).strict(),
  z.object({action:z.literal('openSelectedFile')}).strict(),
  z.object({action:z.literal('takePendingOpen')}).strict(),
+ z.object({action:z.literal('openPrivacySettings')}).strict(),
+ z.object({action:z.literal('reveal'),projectId:projectIdSchema.optional(),token:uuid.optional()}).strict(),
+ z.object({action:z.literal('openOriginal'),token:uuid}).strict(),
+ z.object({action:z.literal('currentLocation')}).strict(),
  z.object({action:z.literal('openRecent'),projectId:projectIdSchema,entryToken:uuid,remember:z.boolean()}).strict(),
  z.object({action:z.literal('adoptCopy'),token:uuid}).strict(),
  z.object({action:z.literal('saveAs'),token:uuid,projectId:projectIdSchema,requestId:uuid,name:name.optional()}).strict(),
  z.object({action:z.literal('duplicate'),token:uuid,projectId:projectIdSchema,requestId:uuid,name:name.optional()}).strict(),
  z.object({action:z.literal('copyTo'),token:uuid,sourceToken:uuid,requestId:uuid,name:name.optional()}).strict(),
-]);
+]).refine(value=>value.action!=='reveal'||(value.projectId===undefined)!==(value.token===undefined));
 export type ProjectEntryDesktopRequest=z.infer<typeof projectEntryDesktopRequestSchema>;
 export interface ProjectEntriesDesktopBridge {
  capabilities():Promise<ProjectDesktopCapabilities>;
@@ -44,6 +50,10 @@ export interface ProjectEntriesDesktopBridge {
  createAtSelection(input:Omit<Extract<ProjectEntryDesktopRequest,{action:'createAtSelection'}>,'action'>):Promise<z.infer<typeof projectDesktopCreatedSchema>>;
  openSelectedFile():Promise<ProjectDesktopOpenResult>;
  takePendingOpen():Promise<ProjectDesktopOpenResult|null>;
+ openPrivacySettings():Promise<void>;
+ reveal(input:{projectId:string}|{token:string}):Promise<void>;
+ openOriginal(input:{token:string}):Promise<ProjectDesktopOpenResult>;
+ currentLocation():Promise<z.infer<typeof projectDesktopLocationSchema>>;
  openRecent(input:{projectId:string;entryToken:string;remember:boolean}):Promise<ProjectDesktopOpenResult>;
  adoptCopy(input:{token:string}):Promise<ProjectDesktopOpenResult>;
  saveAs(input:Omit<Extract<ProjectEntryDesktopRequest,{action:'saveAs'}>,'action'>):Promise<unknown>;

@@ -25,6 +25,7 @@ import {AppError} from '@mioon/contracts';
 import {readPrivateFile, writePrivateFileAtomic, validateManagedFile, validatePrivateDirectory} from '@mioon/contracts/private-storage';
 import {calculateWorkspaceScope} from '../../../packages/contracts/src/workspace-scope.ts';
 import type {ProjectEntryControlPort} from '../../../packages/contracts/src/project-entry-native.ts';
+import type {NativeAssetMediaPort, NativeAssetMediaRequestOptions} from '../../../packages/contracts/src/asset-media-native.ts';
 import {parseProjectApiPath} from '../../../packages/contracts/src/project-file.ts';
 import {agentDiagnosticSummarySchema} from '../../../packages/contracts/src/agent-diagnostic-summary.ts';
 import {projectIdMismatch, isDatabaseMovedError, projectFileMoved} from './project-host/errors.ts';
@@ -253,7 +254,31 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       ...(options.projectCopyBoundaryForTest === undefined ? {} : {onBoundary: options.projectCopyBoundaryForTest})});
     drainCopies = copies.drain;
     await copies.recover();
-    const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies,
+    const nativeManager = manager;
+    const withNativeMedia = async <T>(projectId:string, options:NativeAssetMediaRequestOptions|undefined,
+      call:(port:NativeAssetMediaPort, options:NativeAssetMediaRequestOptions)=>Promise<T>):Promise<T> => {
+      // Private document-bound calls may only retain an already open host. In
+      // particular a late ticket discard must not reopen a closed project.
+      const runtime = opened.get(projectId);
+      if (!runtime || nativeManager.status(projectId)?.state !== 'open') throw new AppError('PROJECT_ENTRY_UNAVAILABLE', '项目入口已失效，请重新打开', 409);
+      const lease = nativeManager.tryAcquireOpen(projectId, 'request');
+      if (!lease) throw new AppError('PROJECT_ENTRY_UNAVAILABLE', '项目入口已失效，请重新打开', 409);
+      try {
+        const signal = AbortSignal.any([shutdown.signal, lease.signal, ...(options?.signal ? [options.signal] : [])]);
+        signal.throwIfAborted();
+        if (lease.host.runtime !== runtime) throw new AppError('PROJECT_ENTRY_UNAVAILABLE', '项目入口已失效，请重新打开', 409);
+        return await call(runtime.nativeAssetMedia, {signal, beforeEffect: options?.beforeEffect});
+      } finally { lease.release(); }
+    };
+    const nativeRelink:NativeAssetMediaPort = {
+      candidate:(input,options)=>withNativeMedia(input.projectId,options,(port,fence)=>port.candidate(input,fence)),
+      preview:(input,options)=>withNativeMedia(input.projectId,options,(port,fence)=>port.preview(input,fence)),
+      apply:(input,options)=>withNativeMedia(input.projectId,options,(port,fence)=>port.apply(input,fence)),
+      discard:async(input,options)=>{if (!opened.has(input.projectId) || nativeManager.status(input.projectId)?.state !== 'open') return;
+        return withNativeMedia(input.projectId,options,(port,fence)=>port.discard(input,fence));},
+    };
+    const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies, assertProjectFile, nativeRelink,
+      copyOriginal:candidate=>{const originalPath=appLibrary.registry.copyOf(candidate),entry=originalPath?appLibrary.registry.get(candidate.projectId):null;return entry?.projectFile===originalPath?entry:null;},
       channel, signal: shutdown.signal, createProject, refreshSummaries, readScope: () => {
         const directory = validatePrivateDirectory(root), db = validateManagedFile(appLibrary.databaseFile, {root});
         const identity = projectFileIdentity(appLibrary.databaseFile);

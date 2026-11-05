@@ -15,6 +15,7 @@
     "./project-name": "./src/project-name.ts",
     "./private-storage": "./src/private-storage.ts",
     "./asset-media": "./src/asset-media.ts",
+    "./asset-media-native": "./src/asset-media-native.ts",
     "./media-reference": "./src/media-reference.ts",
     "./media-reference-errors": "./src/media-reference-errors.ts",
     "./export-sample-peak": "./src/export-sample-peak.ts",

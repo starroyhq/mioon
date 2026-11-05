@@ -6,7 +6,7 @@ import {assetMediaPublicSchemas, trustedAssetMediaSchemas, isAssetMediaOperation
 import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
 import {projectMediaPath} from '../../contracts/src/project-file.ts';
-import {ensurePrivateDirectory, readPrivateFile, writePrivateFileAtomic} from '../../contracts/src/private-storage.ts';
+import {ensurePrivateDirectory, readPrivateFile, writePrivateFileAtomic, removePrivateFile} from '../../contracts/src/private-storage.ts';
 import type {OutsidePathConfirmationStore} from './app-db/stores.ts';
 import {createProjectAssetReferenceServices} from './project-asset-references.ts';
 import {prepareProjectAssetFullHash} from './project-media-storage.ts';
@@ -23,6 +23,8 @@ import {probe} from './media.ts';
 import {isMediaToolFailure} from './media-runtime.ts';
 import {mediaUnavailableError, mediaUnavailableErrorDetailsSchemas} from '../../contracts/src/media-reference-errors.ts';
 import {EXPORT_PREFLIGHT_LIMITS} from '../../contracts/src/export-preflight.ts';
+import type {NativeRelinkRow} from '../../contracts/src/asset-media-native.ts';
+import type {NativeRelinkRetention} from './native-relink-retention.ts';
 
 type Row = Record<string, unknown>;
 function object(value: unknown): value is Row {return value !== null && typeof value === 'object' && !Array.isArray(value);}
@@ -32,12 +34,14 @@ const requestLocks = new WeakMap<ProjectStore, Map<string, Promise<unknown>>>();
 
 /** Ordinary operations never grant permission. The separate trusted entry is
  * only called by the authenticated user-action HTTP adapter, never RPC/MCP. */
-export function createAssetMediaServices(store: ProjectStore, {outsidePaths, signal, beforeEffect}: {outsidePaths: OutsidePathConfirmationStore; signal?: AbortSignal; beforeEffect?: () => void}) {
+export function createAssetMediaServices(store: ProjectStore, {outsidePaths, signal, beforeEffect, nativeRelinkOwner, nativeRelinkStorage}: {outsidePaths: OutsidePathConfirmationStore; signal?: AbortSignal; beforeEffect?: () => void; nativeRelinkOwner?: string; nativeRelinkStorage?:NativeRelinkRetention}) {
   const references = createProjectAssetReferenceServices(store, {outsidePaths});
   const locks = requestLocks.get(store) ?? new Map<string, Promise<unknown>>();
   requestLocks.set(store, locks);
-  const directory = path.join(store.tempDir, 'asset-media');
+  if(nativeRelinkOwner&&!nativeRelinkStorage)throw new TypeError('Native relink evidence requires bounded storage');
+  const directory = nativeRelinkStorage?.directory??path.join(store.tempDir, 'asset-media');
   ensurePrivateDirectory(directory, {create: true});
+  const writeEvidence=(file:string,bytes:string)=>nativeRelinkStorage?nativeRelinkStorage.write(path.basename(file),bytes):writePrivateFileAtomic(file,bytes,{root:directory,maxBytes:8*1024*1024});
   const fence = (): void => {checkpoint(signal); beforeEffect?.(); if (!isProjectStore(store)) throw new AppError('PROJECT_UNAVAILABLE', '项目已关闭', 409);};
   const access = () => ({projectDir: store.projectDir, projectFile: store.projectFile,
     mayReadOutside: (file: string) => outsidePaths.list(store.projectId).some(grant => isFileInDirectory(grant.directory, file)),
@@ -52,7 +56,7 @@ export function createAssetMediaServices(store: ProjectStore, {outsidePaths, sig
   }
   function saveToken(kind: string, data: Row): string {
     const token = randomUUID();
-    writePrivateFileAtomic(path.join(directory, `${token}.json`), JSON.stringify({version: 1, kind, projectId: store.projectId, ...data}), {root: directory, maxBytes: 8 * 1024 * 1024});
+    writeEvidence(path.join(directory,`${token}.json`),JSON.stringify({version:1,kind,projectId:store.projectId,...data}));
     return token;
   }
   function token(value: string, kind: string): Row {
@@ -74,7 +78,27 @@ export function createAssetMediaServices(store: ProjectStore, {outsidePaths, sig
     return store.get('projects', id);
   }, now: () => new Date().toISOString(), beforeEffect: fence});
 
-  async function perform(op: string, input: Row, allowGrant = true): Promise<unknown> {
+  function relinkPreview(input: Row): Row & {changes:unknown[]} {
+    const preview=token(String(input.previewToken),'relink');
+    // A native candidate is authority only for its exact trusted document.
+    // Ordinary RPC must never borrow its transient outside-read consent.
+    if (preview.nativeOwner !== nativeRelinkOwner) fail();
+    if (preview.matches !== true || !Array.isArray(preview.changes)) fail('MEDIA_CHANGED');
+    return {...preview,changes:preview.changes};
+  }
+  async function prepareRelinkChanges(preview: Row): Promise<{old: Row; reference: MediaReference}[]> {
+    const changes: {old: Row; reference: MediaReference}[]=[];
+    for (const value of preview.changes as unknown[]) {
+      if (!object(value)) fail(); const old=record(String(value.assetId));
+      if (old.referenceRevision!==value.expectedReferenceRevision) fail();
+      const reference=mediaReferenceSchema.parse(value.reference);
+      await admitMedia(access(),reference,{signal,beforeEffect:fence});fence();
+      if(reference.fullSha256)await computeFullSha256(access(),reference,{signal,beforeEffect:fence});fence();
+      changes.push({old,reference});
+    }
+    return changes;
+  }
+  async function perform(op: string, input: Row, allowGrant = true, nativeProjection = false): Promise<unknown> {
     fence(); if (input.projectId !== store.projectId) throw new AppError('NOT_FOUND', '找不到项目', 404);
     if (op === 'asset.media.status.list') {
       const selected = page(input), items = [];
@@ -154,26 +178,38 @@ export function createAssetMediaServices(store: ProjectStore, {outsidePaths, sig
       const result = await relinkMedia(access(), source.map(asset => ({id: String(asset.id), reference: mediaReferenceSchema.parse(asset.reference)})), {assetId: String(chosen.id), file: String(input.sourcePath)}, {signal,beforeEffect:previewFence}); previewFence();
       const changes = [result.chosen, ...result.found].map(value => ({assetId: value.assetId, reference: value.reference,
         expectedReferenceRevision: source.find(asset=>asset.id===value.assetId)?.referenceRevision}));
-      const previewToken = saveToken('relink', {chosen: chosen.id, matches: result.chosen.matches, changes});
-      return {previewToken, chosen: {assetId: chosen.id, matches: result.chosen.matches}, found: result.found.map(value => ({assetId: value.assetId})),
+      const savePreview=()=>{
+        previewFence();const token=saveToken('relink', {chosen: chosen.id, matches: result.chosen.matches, changes,...(nativeRelinkOwner?{nativeOwner:nativeRelinkOwner}:{})});
+        if(nativeProjection)try{previewFence();}catch(error){if(nativeRelinkStorage)nativeRelinkStorage.remove(`${token}.json`);else removePrivateFile(path.join(directory,`${token}.json`),{root:directory,maxBytes:8*1024*1024});throw error;}
+        return token;
+      };
+      const previewToken = nativeProjection?'':savePreview();
+      const value={previewToken, chosen: {assetId: chosen.id, matches: result.chosen.matches}, found: result.found.map(value => ({assetId: value.assetId})),
         mismatched: result.mismatched.map(value => ({assetId: value.assetId})), unverified: result.unverified.map(value => ({assetId: value.assetId}))};
+      if (!nativeProjection) return value;
+      const nativeRows: NativeRelinkRow[]=[];
+      for (const asset of source) {
+        previewFence();
+        const assetId=String(asset.id),reference=mediaReferenceSchema.parse(asset.reference);
+        const found=result.found.find(entry=>entry.assetId===assetId),mismatched=result.mismatched.find(entry=>entry.assetId===assetId),unverified=result.unverified.find(entry=>entry.assetId===assetId);
+        let outcome:NativeRelinkRow['outcome'],to:string|null;
+        if(assetId===chosen.id){outcome=result.chosen.matches?'picked':'changed';to=result.chosen.file;}
+        else if(found){outcome='auto';to=found.file;}
+        else if(mismatched){outcome='changed';to=mismatched.file;}
+        else if(unverified){outcome='missing';to=null;}
+        else {const state=await references.inspect(assetId,{signal,beforeEffect:previewFence});previewFence();if(state.status==='online')continue;outcome=state.status==='changed'?'changed':'missing';to=null;}
+        nativeRows.push({assetId,name:String(asset.name),from:resolveReferencePath(store.projectDir,reference)??reference.path,to,outcome,referenceRevision:Number(asset.referenceRevision)});
+      }
+      return {previewToken:savePreview(),rows:nativeRows};
     }
     if (op === 'asset.media.relink.apply') {
-      const preview = token(String(input.previewToken), 'relink'); if (preview.matches !== true || !Array.isArray(preview.changes)) fail('MEDIA_CHANGED');
+      const preview = relinkPreview(input);
       const accepted = store.db.prepare('SELECT requestHash FROM idempotency WHERE scope=? AND requestId=?').get(op, String(input.requestId));
       if (accepted) {
         if (accepted.requestHash !== digest(input)) throw new AppError('IDEMPOTENCY_CONFLICT', '请求 ID 已用于不同内容', 409);
         return {assets: preview.changes.map(value => {if (!object(value)) fail(); return toAssetMediaDto(record(String(value.assetId)));})};
       }
-      const changes: {old: Row; reference: MediaReference}[] = [];
-      for (const value of preview.changes) {
-        if (!object(value)) fail(); const old = record(String(value.assetId));
-        if (old.referenceRevision !== value.expectedReferenceRevision) fail();
-        const reference = mediaReferenceSchema.parse(value.reference);
-        await admitMedia(access(), reference, {signal, beforeEffect: fence}); fence();
-        if(reference.fullSha256)await computeFullSha256(access(),reference,{signal,beforeEffect:fence});fence();
-        changes.push({old, reference});
-      }
+      const changes = await prepareRelinkChanges(preview);
       return store.tx(() => {
         const assets = changes.map(({old, reference}) => {
           fence(); if (digest(record(String(old.id))) !== digest(old)) fail();
@@ -226,9 +262,9 @@ export function createAssetMediaServices(store: ProjectStore, {outsidePaths, sig
       // the user has since revoked. A new explicit action uses a new key.
       if (op.includes('.outside.')) throw new AppError('REVISION_CONFLICT', '请重新读取位置状态', 409);
     }
-    writePrivateFileAtomic(file, JSON.stringify({digest: expected, phase: 'intent'}), {root: directory, maxBytes: 8 * 1024 * 1024});
+    writeEvidence(file,JSON.stringify({digest:expected,phase:'intent'}));
     const result = await perform(op, input, existing === null); fence();
-    writePrivateFileAtomic(file, JSON.stringify({digest: expected, phase: 'completed', result}), {root: directory, maxBytes: 8 * 1024 * 1024});
+    writeEvidence(file,JSON.stringify({digest:expected,phase:'completed',result}));
     return result;
   }
   function invoke(op: string, input: Row): Promise<unknown> {
@@ -240,6 +276,31 @@ export function createAssetMediaServices(store: ProjectStore, {outsidePaths, sig
     return result;
   }
   return {
+    /** Reconciliation reads existing proofs before attempting any new write,
+     * including when native retention is full or temporary tickets expired. */
+    nativeRelinkReceipt(input:unknown):unknown|null{
+      if(!nativeRelinkOwner)throw new TypeError('A native relink owner is required');
+      fence();const parsed=assetMediaPublicSchemas['asset.media.relink.apply'].parse(input);
+      if(parsed.projectId!==store.projectId)fail();
+      const preview=relinkPreview(parsed),file=path.join(directory,`request-${digest(['asset.media.relink.apply',parsed.requestId])}.json`);
+      const raw=readPrivateFile(file,{root:directory,allowMissing:true,encoding:'utf8',maxBytes:8*1024*1024});fence();
+      if(raw!==null){const saved:unknown=JSON.parse(String(raw));if(!object(saved)||saved.digest!==digest(parsed))fail('IDEMPOTENCY_CONFLICT');if(saved.phase==='completed')return saved.result;}
+      const accepted=store.db.prepare('SELECT requestHash FROM idempotency WHERE scope=? AND requestId=?').get('asset.media.relink.apply',parsed.requestId);
+      if(!accepted)return null;if(accepted.requestHash!==digest(parsed))fail('IDEMPOTENCY_CONFLICT');
+      return{assets:preview.changes.map(value=>{if(!object(value))fail();return toAssetMediaDto(record(String(value.assetId)));})};
+    },
+    /** Constructor-only capability, never selected by public operation input. */
+    async nativeRelinkPreview(input: unknown): Promise<unknown> {
+      if (!nativeRelinkOwner) throw new TypeError('A native relink owner is required');
+      return perform('asset.media.relink.preview',assetMediaPublicSchemas['asset.media.relink.preview'].parse(input),true,true);
+    },
+    async validateNativeRelinkApply(input: unknown): Promise<void> {
+      if (!nativeRelinkOwner) throw new TypeError('A native relink owner is required');
+      fence();
+      const parsed=assetMediaPublicSchemas['asset.media.relink.apply'].parse(input);
+      if(parsed.projectId!==store.projectId)fail();
+      const preview=relinkPreview(parsed);fence();await prepareRelinkChanges(preview);fence();
+    },
     async call(operation: string, input: unknown): Promise<unknown> {
       if (!isAssetMediaOperation(operation)) throw new AppError('NOT_FOUND', '找不到素材操作', 404);
       const parsed = assetMediaPublicSchemas[operation].safeParse(input);

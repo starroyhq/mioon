@@ -5,4 +5,5 @@ declare const __MIOON_DESKTOP_CHANNEL__: 'production' | 'development';
 
 interface Window {
   readonly __mioonProjectEntries?: import('../../../packages/contracts/src/project-entry-desktop.ts').ProjectEntriesDesktopBridge;
+  readonly __mioonAssetMediaNative?: import('./asset-relink-preload.ts').NativeAssetMediaBridge;
 }

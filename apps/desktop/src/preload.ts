@@ -3,6 +3,8 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 contextBridge.exposeInMainWorld('__mioonDesktop', true);
 import {createProjectEntriesDesktopBridge} from './project-entry-desktop-preload.ts';
 contextBridge.exposeInMainWorld('__mioonProjectEntries',createProjectEntriesDesktopBridge((channel,request)=>ipcRenderer.invoke(channel,request)));
+import {createNativeAssetMediaBridge} from './asset-relink-preload.ts';
+contextBridge.exposeInMainWorld('__mioonAssetMediaNative',createNativeAssetMediaBridge((channel,request)=>ipcRenderer.invoke(channel,request)));
 import {createWorkspaceNativeBridges} from './workspace-native-preload.ts';
 const workspaceNative=createWorkspaceNativeBridges((channel,request)=>ipcRenderer.invoke(channel,request));
 contextBridge.exposeInMainWorld('__mioonWorkspaceNative',workspaceNative.native);

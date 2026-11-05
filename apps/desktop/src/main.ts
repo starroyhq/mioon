@@ -71,6 +71,9 @@ import type {ProjectEntryDesktopOwner} from './project-entry-desktop-host.ts';
 import { PROJECT_ENTRY_DESKTOP_CHANNEL } from '../../../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectLocationFacts} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import { probeDesktopProjectLocation } from './project-location-probe.ts';
+import {createProjectLocationHelp} from './project-location-help.ts';
+import {createAssetRelinkHost} from './asset-relink-host.ts';
+import {NATIVE_ASSET_MEDIA_CHANNEL} from '../../../packages/contracts/src/asset-media-native.ts';
 import type {DesktopStartReport} from './smoke-checks.ts';
 
 type DesktopStartup = ReturnType<typeof createDesktopStartup>;
@@ -97,6 +100,7 @@ interface CodedFailure {
   readonly code?: string;
   readonly reason?: string;
   readonly message?: string;
+  readonly details?: {readonly reason?: unknown;readonly invalidReason?: unknown};
 }
 function codedFailure(error: unknown): CodedFailure {
   return error !== null && typeof error === 'object' ? error as CodedFailure : {};
@@ -163,6 +167,7 @@ let workspaceToolsHost: WorkspaceToolsHost | null = null;
 let workspaceNativeHost:WorkspaceNativeHost|null=null;
 let projectEntryHost:ReturnType<typeof createProjectEntryDesktopHost<IpcMainInvokeEvent,BrowserWindow>>|null=null;
 let assetImportHost:ReturnType<typeof createAssetImportHost<IpcMainInvokeEvent>>|null=null;
+let assetRelinkHost:ReturnType<typeof createAssetRelinkHost<IpcMainInvokeEvent,BrowserWindow>>|null=null;
 let trayHost: ReturnType<typeof createDesktopTray> | null = null;
 let trayOperation: {action: TrayAction; settingsSlot: ProjectWindowSettingsSlot; intent: number; promise: Promise<void>} | null = null, trayIntent = 0;
 const nativeDialogs = new Set<{window: BrowserWindow}>();
@@ -460,6 +465,7 @@ async function start(): Promise<DesktopStartReport> {
         check:()=>{if(!ownsWindowContext(context))throw new Error('Application preferences owner unavailable.');}}),
       isCurrent:()=>ownsWindowContext(context),getWindows:()=>windowHost?.windows()||[],ownsWindow:window=>ownsWindow(window,context)});
     await context.appearance.ready();startup.checkpoint();incident.assertAlive();
+    let ownedRelinkHost:typeof assetRelinkHost=null;
     windowHost = createProjectWindowHost<BrowserWindow>({
       backendId, projectEntries:ownedBackend.projectEntries, launcherUrl: `${started.url}/`, editorUrl: (projectId: string) => `${started.url}/?project=${projectId}`,
       isCurrent: () => ownsWindowContext(context),
@@ -485,8 +491,9 @@ async function start(): Promise<DesktopStartReport> {
       onDocumentInvalidated: owner => {
         menuCommands?.forget(owner.window.webContents);
         ownedAudioHost?.revokeOwner({ ...owner, projectId: owner.projectId as string }, false);
+        ownedRelinkHost?.invalidateWindow(owner.windowId);
       },
-      onWebContentsDestroyed: windowId => ownedAudioHost?.revokeWindowDestroyed(windowId),
+      onWebContentsDestroyed: windowId => {ownedAudioHost?.revokeWindowDestroyed(windowId);ownedRelinkHost?.invalidateWindow(windowId);},
       onLoadError: (error, window) => { if (ownsWindow(window, context) && !smokeOutput) void initialWindowFailed(window, context).catch(fatal); },
     });
     const ownedWindowHost=windowHost;
@@ -578,6 +585,7 @@ async function start(): Promise<DesktopStartReport> {
       }
       return true;
     };
+    const locationHelp=createProjectLocationHelp({openExternal:url=>shell.openExternal(url),showItemInFolder:file=>shell.showItemInFolder(file)});
     const entries=projectEntryHost=createProjectEntryDesktopHost<IpcMainInvokeEvent,BrowserWindow>({
       backend:ownedBackend.projectEntries,isReady:()=>{try{nativeBackendCurrent();return !restarting;}catch{return false;}},
       ownerForEvent:event=>{const window=windowHost?.windowForContents(event.sender);if(!window||nativeDialogs.size!==0||event.senderFrame!==window.webContents.mainFrame)return null;return nativeOwner(window);},
@@ -585,15 +593,36 @@ async function start(): Promise<DesktopStartReport> {
       chooseOpenFile:owner=>ownedPanel(owner,async()=>{const result=await dialog.showOpenDialog(owner.window,{properties:['openFile'],filters:[{name:nt('native.projectFileFilter'),extensions:['mioon']}]});return result.canceled?null:result.filePaths[0]??null;}),
       chooseSaveFile:(owner,input)=>ownedPanel(owner,async()=>{const result=await dialog.showSaveDialog(owner.window,{message:input.message,defaultPath:path.join(app.getPath('documents'),input.suggestedName+'.mioon'),filters:[{name:nt('native.projectFileFilter'),extensions:['mioon']}],properties:['showOverwriteConfirmation','createDirectory']});return result.canceled?null:result.filePath??null;}),
       probeLocation:input=>probeDesktopProjectLocation(input),admitLocation:admit,
+      ...(process.platform==='darwin'?{openPrivacySettings:async()=>locationHelp.openPrivacySettings()}:{}),
+      revealVerifiedPath:(_owner,file)=>locationHelp.revealVerifiedPath(file),
       adoptPrepared:prepared=>ownedWindowHost.adoptPrepared(prepared),
       openRecent:(owner,projectId,entryToken,remember)=>Promise.resolve(ownedWindowHost.dispatch({sender:owner.window.webContents,senderFrame:owner.window.webContents.mainFrame},{action:'open',contextId:owner.contextId,projectId,entryToken,remember})) as Promise<import('./project-window-protocol.ts').ProjectWindowOpenResult>,
     });
+    ownedRelinkHost=assetRelinkHost=createAssetRelinkHost<IpcMainInvokeEvent,BrowserWindow>({
+      isReady:()=>{try{nativeBackendCurrent();return !restarting;}catch{return false;}},
+      ownerForEvent:event=>{
+        const window=ownedWindowHost.windowForContents(event.sender),owner=ownedWindowHost.ownerForContents(event.sender);
+        if(windowHost!==ownedWindowHost||!window||!owner||owner.role!=='editor'||!owner.projectId||nativeDialogs.size!==0||event.senderFrame!==window.webContents.mainFrame||event.senderFrame!==owner.frame||event.senderFrame?.url!==owner.url)return null;
+        const selected=nativeOwner(window);if(!selected||!selected.isCurrent())return null;
+        return {...selected,projectId:owner.projectId,key:event.senderFrame,isCurrent:()=>selected.isCurrent()&&windowHost===ownedWindowHost&&event.senderFrame===window.webContents.mainFrame&&event.senderFrame===owner.frame&&event.senderFrame?.url===owner.url};
+      },
+      backend:ownedBackend.projectEntries.nativeRelink,
+      chooseFile:owner=>ownedPanel(owner,async()=>{const result=await dialog.showOpenDialog(owner.window,{properties:['openFile']});return result.canceled?null:result.filePaths[0]??null;}),
+      confirmOutside:async(owner,input)=>(await showOwnedDialog(owner.window,context,{type:'question',message:nt('native.relinkOutsideTitle'),detail:nt('native.relinkOutsideDetail',{path:input.displayPath}),buttons:[nt('native.cancel'),nt('native.relinkOutsideAllow')],defaultId:0,cancelId:0}))===1,
+    });
+    const relink=ownedRelinkHost;
+    context.startup.signal.addEventListener('abort',()=>{relink.dispose();if(assetRelinkHost===relink)assetRelinkHost=null;},{once:true});
     const openSelected=async(file:string)=>{
       nativeBackendCurrent();
       if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
       const facts=await probeDesktopProjectLocation({path:file,purpose:'open',isDirectory:false});
       nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
-      if(!facts.isLocal||facts.volumeReadOnly)throw Object.assign(new Error('Project location rejected'),{code:'PROJECT_LOCATION_REJECTED'});
+      if(!facts.isLocal||facts.volumeReadOnly){
+        await openWindow(context);nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
+        const parent=ownedWindowHost.ensureLauncher();if(parent)await ownedWindowHost.loadFor(parent);nativeBackendCurrent();
+        const owner=parent?nativeOwner(parent):null;if(!owner)throw new Error('Copy source owner unavailable');
+        const result=await entries.openPath(owner,file);entries.rememberPendingOpen(owner,result);return;
+      }
       // A positive warning needs a retained owner. Ordinary cold local opens
       // acquire the editor directly and never flash a launcher first.
       if(facts.cloud==='known-icloud'||facts.cloud==='known-file-provider'||!facts.permissionBits||facts.fileSystem.toLowerCase()==='exfat'){
@@ -604,7 +633,8 @@ async function start(): Promise<DesktopStartReport> {
       }
       try{const result=await ownedWindowHost.openPath(file);nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');if(!result.ok)throw new Error('Project open unavailable');}
       catch(error){
-        if(errorCode(error)!=='PROJECT_FILE_COPY')throw error;
+        const failure=codedFailure(error),readOnly=failure.code==='PROJECT_INVALID'&&failure.details?.reason==='read-only'||failure.code==='PROJECT_UNAVAILABLE'&&failure.details?.reason==='PROJECT_INVALID'&&failure.details?.invalidReason==='read-only';
+        if(failure.code!=='PROJECT_FILE_COPY'&&!readOnly)throw error;
         await openWindow(context);nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
         const parent=ownedWindowHost.ensureLauncher();if(parent)await ownedWindowHost.loadFor(parent);nativeBackendCurrent();
         const owner=parent?nativeOwner(parent):null;
@@ -992,6 +1022,7 @@ ipcMain.handle(APP_LANGUAGE_CHANNEL, (event, request) => {
 });
 ipcMain.handle(NATIVE_AUDIO_CHANNEL, (event, request) => nativeAudioHost?.dispatch(event, request) ?? null);
 ipcMain.handle(PROJECT_ENTRY_DESKTOP_CHANNEL,(event,request)=>{if(!projectEntryHost)throw new Error('Project entries unavailable.');return projectEntryHost.handle(event,request);});
+ipcMain.handle(NATIVE_ASSET_MEDIA_CHANNEL,(event,request)=>{if(!assetRelinkHost)throw new Error('Native media selection unavailable.');return assetRelinkHost.handle(event,request);});
 ipcMain.handle(PROJECT_WINDOW_CHANNEL, (event, request) => {
   if (!windowHost) throw new Error('Native windows are not available.');
   const result = windowHost.dispatch(event, request);

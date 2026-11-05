@@ -1,4 +1,4 @@
-import {PROJECT_ENTRY_DESKTOP_CHANNEL,projectEntryDesktopRequestSchema,projectDesktopCapabilitiesSchema,projectDesktopSelectionSchema,projectDesktopOpenResultSchema,projectDesktopCreatedSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
+import {PROJECT_ENTRY_DESKTOP_CHANNEL,projectEntryDesktopRequestSchema,projectDesktopCapabilitiesSchema,projectDesktopSelectionSchema,projectDesktopOpenResultSchema,projectDesktopCreatedSchema,projectDesktopLocationSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectEntriesDesktopBridge} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import {projectEntriesResponseSchema} from '../../../packages/contracts/src/project-entry.ts';
 import {projectCopyResponseSchema} from '../../../packages/contracts/src/project-copies.ts';
@@ -17,6 +17,10 @@ export function createProjectEntriesDesktopBridge(invoke:(channel:typeof PROJECT
   createAtSelection:async(input:Parameters<ProjectEntriesDesktopBridge['createAtSelection']>[0])=>projectDesktopCreatedSchema.parse(await request({action:'createAtSelection',...input})),
   openSelectedFile:async()=>projectDesktopOpenResultSchema.parse(await request({action:'openSelectedFile'})),
   takePendingOpen:async()=>{const value=await request({action:'takePendingOpen'});return value===null?null:projectDesktopOpenResultSchema.parse(value);},
+  openPrivacySettings:async()=>{if(await request({action:'openPrivacySettings'})!==null)throw new Error('Invalid project entry response');},
+  reveal:async(input:Parameters<ProjectEntriesDesktopBridge['reveal']>[0])=>{if(await request({action:'reveal',...input})!==null)throw new Error('Invalid project entry response');},
+  openOriginal:async(input:Parameters<ProjectEntriesDesktopBridge['openOriginal']>[0])=>projectDesktopOpenResultSchema.parse(await request({action:'openOriginal',...input})),
+  currentLocation:async()=>projectDesktopLocationSchema.parse(await request({action:'currentLocation'})),
   openRecent:async(input:Parameters<ProjectEntriesDesktopBridge['openRecent']>[0])=>projectDesktopOpenResultSchema.parse(await request({action:'openRecent',...input})),
   adoptCopy:async(input:Parameters<ProjectEntriesDesktopBridge['adoptCopy']>[0])=>projectDesktopOpenResultSchema.parse(await request({action:'adoptCopy',...input})),
   saveAs:async(input:Parameters<ProjectEntriesDesktopBridge['saveAs']>[0])=>projectCopyResponseSchema.parse(await request({action:'saveAs',...input})),
