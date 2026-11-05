@@ -1,0 +1,96 @@
+import {projectEntriesResponseSchema} from '../../../packages/contracts/src/project-entry.ts';
+import type {ProjectEntriesResponse} from '../../../packages/contracts/src/project-entry.ts';
+import {createProjectEntryDirectoryClient, ProjectEntryDirectoryError} from './project-entry-directory-client.ts';
+import type {ProjectEntryDirectoryErrorCode} from './project-entry-directory-client.ts';
+
+export interface ProjectEntryDirectoryFailure {readonly code: ProjectEntryDirectoryErrorCode; readonly status?: number}
+export interface ProjectEntryDirectoryState {
+  readonly phase: 'idle' | 'loading' | 'ready' | 'error' | 'blocked';
+  readonly snapshot: ProjectEntriesResponse | null;
+  /** Changes only after a complete, validated snapshot from a new instance. */
+  readonly epoch: number;
+  readonly error: ProjectEntryDirectoryFailure | null;
+}
+export type ProjectEntryDirectoryReadPort = (options: {readonly signal: AbortSignal}) => Promise<unknown>;
+const validScope = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value);
+function freezeSnapshot(value: ProjectEntriesResponse): ProjectEntriesResponse {
+  for (const entry of value.registered) {
+    Object.freeze(entry.project.fileIdentity);
+    if (entry.project.summary) {if (entry.project.summary.cover) Object.freeze(entry.project.summary.cover); Object.freeze(entry.project.summary);}
+    Object.freeze(entry.project); Object.freeze(entry.availability); Object.freeze(entry);
+  }
+  Object.freeze(value.registered); return Object.freeze(value);
+}
+
+/** A read owner for one application library. Disposal retires pending reads,
+ * but cannot erase a verified library pin or unblock an identity mismatch. */
+export function createProjectEntryDirectoryController({read, expectedScope = () => null, onChange = () => {}}: {
+  readonly read?: ProjectEntryDirectoryReadPort;
+  readonly expectedScope?: () => string | null | undefined;
+  readonly onChange?: (state: ProjectEntryDirectoryState) => void;
+} = {}) {
+  const port = read ?? createProjectEntryDirectoryClient().list;
+  let active = false, generation = 0, readSerial = 0;
+  let pinnedScope: string | null = null, instanceId: string | null = null, pending: AbortController | null = null;
+  let state: ProjectEntryDirectoryState = Object.freeze({phase: 'idle', snapshot: null, epoch: 0, error: null});
+  const publish = (patch: Partial<ProjectEntryDirectoryState>): void => {state = Object.freeze({...state, ...patch}); if (active) onChange(state);};
+  const current = (owner: number, serial: number): boolean => active && generation === owner && readSerial === serial && state.phase !== 'blocked';
+  const block = (): void => {
+    readSerial++; pending?.abort(); pending = null;
+    publish({phase: 'blocked', snapshot: null, error: Object.freeze({code: 'PROJECT_ENTRY_SCOPE_MISMATCH', status: 409})});
+  };
+  function expectation(): string | null {
+    const value = expectedScope();
+    if (value === null || value === undefined) return null;
+    if (!validScope(value)) throw new ProjectEntryDirectoryError('BACKEND_PROTOCOL_ERROR');
+    if (pinnedScope !== null && pinnedScope !== value) {block(); return null;}
+    return value;
+  }
+  return {
+    getState: (): ProjectEntryDirectoryState => state,
+    activate(): void {if (!active) {active = true; generation++;}},
+    dispose(): void {
+      active = false; generation++; readSerial++; pending?.abort(); pending = null;
+      if (state.phase !== 'blocked') publish({phase: 'idle', snapshot: null, error: null});
+    },
+    async refresh(): Promise<boolean> {
+      if (!active || state.phase === 'blocked') return false;
+      const owner = generation, serial = ++readSerial;
+      pending?.abort(); const controller = new AbortController(); pending = controller;
+      publish({phase: 'loading', snapshot: null, error: null});
+      let stop = (): void => {};
+      try {
+        if (!current(owner, serial) || controller.signal.aborted) return false;
+        const expectedBefore = expectation();
+        if (!current(owner, serial)) return false;
+        const aborted = new Promise<never>((_resolve, reject) => {stop = () => reject(new ProjectEntryDirectoryError('INTERRUPTED'));});
+        controller.signal.addEventListener('abort', stop, {once: true});
+        const value = await Promise.race([port({signal: controller.signal}), aborted]);
+        if (!current(owner, serial) || controller.signal.aborted) return false;
+        const expectedAfter = expectation();
+        if (!current(owner, serial)) return false;
+        const parsed = projectEntriesResponseSchema.safeParse(value);
+        if (!parsed.success) throw new ProjectEntryDirectoryError('BACKEND_PROTOCOL_ERROR');
+        const snapshot = parsed.data;
+        if (pinnedScope !== null && snapshot.appLibraryScope !== pinnedScope ||
+          expectedBefore !== null && snapshot.appLibraryScope !== expectedBefore ||
+          expectedAfter !== null && snapshot.appLibraryScope !== expectedAfter) {block(); return false;}
+        const epoch = state.epoch + (instanceId === snapshot.instanceId ? 0 : 1);
+        pinnedScope = snapshot.appLibraryScope; instanceId = snapshot.instanceId;
+        publish({phase: 'ready', snapshot: freezeSnapshot(snapshot), epoch, error: null});
+        return true;
+      } catch (error) {
+        if (!current(owner, serial) || controller.signal.aborted) return false;
+        // A changed external library revokes an old response, including errors.
+        try {expectation();} catch {error = new ProjectEntryDirectoryError('BACKEND_PROTOCOL_ERROR');}
+        if (!current(owner, serial)) return false;
+        if (error instanceof ProjectEntryDirectoryError && error.code === 'PROJECT_ENTRY_SCOPE_MISMATCH') {block(); return false;}
+        const failure: ProjectEntryDirectoryFailure = error instanceof ProjectEntryDirectoryError
+          ? {code: error.code, ...(error.status === undefined ? {} : {status: error.status})} : {code: 'BACKEND_UNAVAILABLE'};
+        publish({phase: 'error', snapshot: null, error: Object.freeze(failure)});
+        return false;
+      } finally {controller.signal.removeEventListener('abort', stop); if (pending === controller) pending = null;}
+    },
+  };
+}
+export type ProjectEntryDirectoryController = ReturnType<typeof createProjectEntryDirectoryController>;

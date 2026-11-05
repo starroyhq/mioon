@@ -9,6 +9,7 @@ import { schemas } from '../packages/contracts/src/index.ts';
 import { createLauncherClient, LauncherCreateError, type LauncherCreateMetadata, type LauncherOperation } from '../apps/web/src/launcher-state.ts';
 import { createProjectEntryController } from '../apps/web/src/project-entry-state.ts';
 import { ApiError } from '../apps/web/src/api.ts';
+import { projectEntriesResponseSchema } from '../packages/contracts/src/project-entry.ts';
 
 import { lenientFunction, stripSourceTypes } from './helpers/eval-source.ts';
 import type { DisplayMessage } from '../packages/i18n/src/types.ts';
@@ -19,6 +20,12 @@ const app = readFileSync(process.env.MIOON_EDITOR_CREATE_APP_SOURCE || new URL('
 const id = (n: number) => `76000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const name = 'Private project name', description = 'Private project description';
 const row = () => ({ id: id(2), name, description, revision: 1, createdAt: '2026-10-13T00:00:00.000Z', updatedAt: '2026-10-13T00:00:00.000Z' });
+function directory() {
+  const item = row();
+  return projectEntriesResponseSchema.parse({version: 1, appLibraryScope: 'a'.repeat(64), instanceId: id(900), registered: [{
+    project: {projectId: item.id, name: item.name, projectFile: `/native-recent/${item.id}.mioon`, fileIdentity: {dev: '1', ino: '2'}, lastOpenedAt: null,
+      summary: {description: item.description, revision: item.revision, createdAt: item.createdAt, updatedAt: item.updatedAt, fps: 30, width: 1080, height: 1920, presetId: 'portrait_1080', shotCount: 0, durationFrames: 0, cover: null}}, availability: {state: 'available'}, coverUrl: null}]});
+}
 const deferred = () => { let resolve!:(value?:unknown)=>void, reject!:(reason?:unknown)=>void; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const tick = () => new Promise(setImmediate);
 function section(start: string, end: string) {
@@ -88,10 +95,9 @@ async function entryFixture(options: { create?: unknown; open?:(input:unknown)=>
   };
   const client = createLauncherClient(async (operation, input) => {
     calls.push([operation, input]);
-    if (operation === 'project.list') { if (failure.list) throw Error('Project list unavailable'); return [row()]; }
     if (operation === 'project.create') return options.create ? (options.create as (input:unknown)=>unknown)(input) : row();
     assert.fail(`Unexpected entry operation ${operation}`);
-  }, checks as import('../apps/web/src/launcher-state.ts').LauncherContractChecks);
+  }, {...checks, readDirectory: async () => {if (failure.list) throw Error('Project directory unavailable'); return directory();}});
   controller = createProjectEntryController({ client, bridge:bridge as unknown as Parameters<typeof createProjectEntryController>[0]['bridge'], context: current, confirm: async () => true, newToken: () => id(++token) });
   controller.activate(); await controller.show('new'); await tick();
   assert.ok(controller.getState().catalogReady, 'The real canonical project catalog read completed');
@@ -205,7 +211,7 @@ test('native known rejection permits only a new explicit submission after the us
 });
 
 test('create client defaults to unknown without trusted transport classification and never classifies an invalid ACK as rejection', async () => {
-  const plainChecks = { parseCreateInput: checks.parseCreateInput };
+  const plainChecks = { parseCreateInput: checks.parseCreateInput, readDirectory: async () => directory() };
   const definitive = new ApiError('Rejected', 'VALIDATION_ERROR', undefined, true, 400);
   for (const contractChecks of [plainChecks, { ...plainChecks, isDefinitiveCreateRejection() { throw Error('No proof available'); } }]) {
     const client = createLauncherClient(async () => { throw definitive; }, contractChecks);

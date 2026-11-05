@@ -55,6 +55,9 @@ export interface ProjectHomeProps {
   query?: string;
   onQuery?: (value: string) => void;
   toolbar?: ReactNode;
+  /** A verified project-file catalog can replace the legacy summary cards
+   * while the existing header, form owner and navigation guards stay mounted. */
+  catalog?: ReactNode;
   projectMenu?: (project: ProjectHomeProject) => ReactNode;
   totalProjects?: number;
   settings: ReactNode;
@@ -98,7 +101,7 @@ function ProjectTime({ value }: { value: string }) {
 /** Presentation only. The parent owns project reads, creation, navigation scope,
  * and whether a successful creation may still be accepted by this page. */
 export default function ProjectHome({ projects, phase, openingName, error, notice, busy, listBusy, listError,
-  page, onPage, onOpen, onRetry, onRefresh, onCreate, settings, status, help, active = true, createDisabledReason = '', onCreateStateChange, canMutateEntry, createIntentVersion = 0, onImport, justImported = [], query = '', onQuery, toolbar, projectMenu, totalProjects = projects.length, onRegisterMenuHelp, onMenuHelpStateChange }: ProjectHomeProps) {
+  page, onPage, onOpen, onRetry, onRefresh, onCreate, settings, status, help, active = true, createDisabledReason = '', onCreateStateChange, canMutateEntry, createIntentVersion = 0, onImport, justImported = [], query = '', onQuery, toolbar, catalog, projectMenu, totalProjects = projects.length, onRegisterMenuHelp, onMenuHelpStateChange }: ProjectHomeProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const prefix = useId();
   const searchInput=useRef<HTMLInputElement>(null);
@@ -192,7 +195,7 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
       <WorkbenchButton type="button" data-testid="project-home-refresh" disabled={listBusy || locked} onClick={() => { if (helpAuthority.current === helpScope && helpScope.open && helpScope.active && helpScope.page === 'projects' && canRefresh()) onRefresh(); }}>{listBusy ? t('projects.refreshing') : t('projects.refreshList')}</WorkbenchButton>
     </WorkbenchDialogContent></Dialog>}
     <div className="project-home-layout">
-      <main className="project-home-main" aria-labelledby={`${prefix}-heading`}>
+      <main className="project-home-main" aria-labelledby={catalog ? undefined : `${prefix}-heading`}>
         {notice && <div className="project-home-notice" role="status">{renderMessage(notice)}</div>}
         {status && <div className="project-home-notice">{status}</div>}
         {phase === 'opening' && <section className="project-home-feedback" data-phase="opening" role="status" aria-live="polite" aria-busy="true">
@@ -207,7 +210,7 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
           <header className="project-home-heading"><div><div className="project-home-eyebrow">{t('projects.workspace')}</div><h1 id={`${prefix}-heading`}>{t('settings.title')}</h1><p>{t('settings.scope')}</p></div></header>
           <div className="project-home-settings-body">{settings}</div>
         </section> : <>
-          <header className="project-home-heading"><div><h1 id={`${prefix}-heading`}>{t('redesign.projects.all')} {totalProjects > 0 && <span className="project-home-total">{totalProjects}</span>}</h1></div>{totalProjects > 0 && <div className="project-home-toolbar">{toolbar}</div>}</header>
+          {!catalog && <header className="project-home-heading"><div><h1 id={`${prefix}-heading`}>{t('redesign.projects.all')} {totalProjects > 0 && <span className="project-home-total">{totalProjects}</span>}</h1></div>{totalProjects > 0 && <div className="project-home-toolbar">{toolbar}</div>}</header>}
           {createDisabledReason && <p className="project-home-notice" role="status" data-testid="project-home-create-disabled">{createDisabledReason}</p>}
           {createOpen && <Dialog open onOpenChange={open => { if (!open && canAct()) setCreateOpen(false); }}><WorkbenchDialogContent title={t('projects.createNew')} size="standard" className="project-home-create-dialog"><form id={`${prefix}-create`} className="project-home-create" data-testid="project-home-create-form" onSubmit={create} aria-labelledby={`${prefix}-create-heading`} aria-busy={busy || submitting}>
             <h2 className="sr-only" id={`${prefix}-create-heading`}>{t('projects.createNew')}</h2>
@@ -228,7 +231,7 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
               <WorkbenchButton type="submit" variant="primary" size="large" data-testid="project-home-create-submit" disabled={locked || Boolean(createDisabledReason) || !name.trim()}>{busy || submitting ? t('projects.creating') : t('projects.create')}</WorkbenchButton>
             </div>
           </form></WorkbenchDialogContent></Dialog>}
-          <section className={`project-home-catalog${empty ? ' project-home-catalog-empty' : ''}`} aria-labelledby={`${prefix}-heading`} aria-busy={listBusy}>
+          {catalog ?? <section className={`project-home-catalog${empty ? ' project-home-catalog-empty' : ''}`} aria-labelledby={`${prefix}-heading`} aria-busy={listBusy}>
             {listError && <div className="project-home-list-header">
               <Button type="button" variant="ghost" data-testid={helpOpen ? undefined : 'project-home-refresh'} disabled={listBusy || locked || !active}
                 onClick={() => { if (canRefresh()) onRefresh(); }}>{listBusy ? t('projects.refreshing') : t('projects.refreshList')}</Button>
@@ -249,8 +252,8 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
                 </Button>
               </article></li>)}
             </ul>}
-          </section>
-          {!projects.length && totalProjects > 0 && <p className="project-home-empty" role="status">{t('redesign.projects.noResults')}</p>}
+          </section>}
+          {!catalog && !projects.length && totalProjects > 0 && <p className="project-home-empty" role="status">{t('redesign.projects.noResults')}</p>}
         </>}
       </main>
     </div>

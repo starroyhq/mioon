@@ -8,6 +8,7 @@
 .project-home-screen > .project-home .project-home-settings-button { min-height: var(--wb-control); height: var(--wb-control); width: var(--wb-control); padding: 0; font-size: 18px; color: var(--wb-soft); }
 .project-home-screen > .project-home > .project-home-layout { width: 100%; display: block; flex: 1; min-height: 0; }
 .project-home-screen > .project-home > .project-home-layout > .project-home-main { display: flex; flex-direction: column; height: 100%; padding: 28px 48px 32px; }
+.project-home-screen > .project-home > .project-home-layout > .project-home-main > .pf-home { padding-inline: 0; }
 .project-home-header-spacer { flex: 1; }
 .project-home-catalog { min-width: 0; }
 .project-home-catalog-empty { display: flex; flex: 1; min-height: 240px; }

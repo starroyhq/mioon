@@ -38,7 +38,7 @@ export function createSettingsWindowNavigation({ context: initial, registry, con
       context = next;
       if (next.settingsVersion <= seenVersion) return;
       seenVersion = next.settingsVersion;
-      if (next.settingsSlot) void select(next.settingsSlot);
+      if (next.settingsSlot) return select(next.settingsSlot);
     },
     activate() { active = true; }, dispose() { active = false; intent++; },
     get page() { return page; }, get selected() { return selected; }, get notice() { return notice; }, get version() { return intent; },
