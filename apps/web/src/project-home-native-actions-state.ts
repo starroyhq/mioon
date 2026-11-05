@@ -145,7 +145,7 @@ export function createProjectHomeNativeActionsController(options: {
       return false;
     }
   }
-  return {
+  const controller={
     getState:()=>state,
     getMetadata:():ProjectHomeNativeActionMetadata=>({busy:busy(state.kind),unknown:uncertain(state.kind)||retainedUnknown,version:state.version}),
     activate():void {if(!active){active=true;lifetime++;}},
@@ -209,7 +209,15 @@ export function createProjectHomeNativeActionsController(options: {
         return await execute(operation);
       }catch{return false;}finally{rechecking=false;}
     },
+    async recheckRetained():Promise<boolean> {
+      const original=pending;
+      // Reuse only this still-live departure, including its exact opaque
+      // parent permit. A new visibility lifetime or owner cannot rebind it.
+      if(!original||!current(original.authority))return false;
+      return controller.recheck(original.authority.current,original.authority.nativePermit);
+    },
     retryOpen:()=>openCreated(false),
   };
+  return controller;
 }
 export type ProjectHomeNativeActionsController=ReturnType<typeof createProjectHomeNativeActionsController>;

@@ -16,13 +16,17 @@ import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 import {RECENT_PROJECTS} from './fixtures/project-file-ui/fixtures.ts';
 import {tagOf, escapeHtml} from './helpers/project-file-ui.ts';
 import {lenientFunction} from './helpers/eval-source.ts';
+import {createProjectEntryController} from '../apps/web/src/project-entry-state.ts';
+import {createLauncherClient} from '../apps/web/src/launcher-state.ts';
+import type {ProjectWindowBridge, ProjectWindowContext} from '../apps/web/src/desktop-window-client.ts';
+import {projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
 
 const id=(n:number)=>`77000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const projectId=RECENT_PROJECTS[0]!.projectId;
 const selection:ProjectDesktopSelection={token:id(50),displayPath:'/synthetic/Panel name/Panel name.mioon',facts:{fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'},template:{id:'timeline-basics',version:1,name:'Panel name'}};
 const held=<T>()=>Promise.withResolvers<T>();
 type ExampleInput=Parameters<NonNullable<ProjectEntriesDesktopBridge['instantiateTemplate']>>[0];
-function fixture(onNativeResult?:(projectId:string,permit:()=>boolean)=>Promise<boolean>){
+function fixture(onNativeResult?:(projectId:string,permit:()=>boolean)=>Promise<boolean>,onNativeMetadata?:(metadata:ProjectHomeNativeActionMetadata)=>void){
  let snapshot=projectEntriesResponseSchema.parse({version:1,appLibraryScope:'a'.repeat(64),instanceId:id(1),registered:[{project:structuredClone(RECENT_PROJECTS[0]!),availability:{state:'available'},coverUrl:`/api/project-covers/${projectId}`}]}),owner:ProjectHomeNativeActionIdentity|null={appLibraryScope:snapshot.appLibraryScope,instanceId:snapshot.instanceId,epoch:1};
  const reads:unknown[]=[],trashes:ProjectDeleteInput[]=[],examples:ExampleInput[]=[],metadata:ProjectHomeNativeActionMetadata[]=[],opened:string[]=[];
  let ids=100,refreshes=0,allowed=true,openAccepted=false;
@@ -32,7 +36,7 @@ function fixture(onNativeResult?:(projectId:string,permit:()=>boolean)=>Promise<
  let instantiate:NonNullable<ProjectEntriesDesktopBridge['instantiateTemplate']>=async input=>projectCopyResponseSchema.parse({requestId:input.requestId,sourceProjectId:projectId,project:{projectId:id(60),projectFile:selection.displayPath,fileIdentity:{dev:'1',ino:'60'},name:input.name,lastOpenedAt:null,summary:null},contentSequence:0,contentToken:'a'.repeat(32),versions:0});
  let refresh=async()=>{refreshes++;};
  let ports:ProjectHomeNativeActions|undefined={trash:async input=>{trashes.push(input);return trash(input);},example:{templates:[{id:'timeline-basics',version:1}],bridge:{chooseLocation:input=>choose(input),instantiateTemplate:async input=>{examples.push(input);return instantiate(input);}}}};
- const controller=createProjectHomeNativeActionsController({ports:()=>ports,owner:()=>owner,canStart:()=>allowed,readDirectory:async()=>{reads.push('GET');return read();},onChange:(_state,next)=>metadata.push(next),onRefresh:()=>refresh(),onOpenCreated:async projectId=>{opened.push(projectId);return openAccepted;},...(onNativeResult?{onOpenNativeResult:onNativeResult}:{}),newRequestId:()=>id(++ids)});controller.activate();
+ const controller=createProjectHomeNativeActionsController({ports:()=>ports,owner:()=>owner,canStart:()=>allowed,readDirectory:async()=>{reads.push('GET');return read();},onChange:(_state,next)=>{metadata.push(next);onNativeMetadata?.(next);},onRefresh:()=>refresh(),onOpenCreated:async projectId=>{opened.push(projectId);return openAccepted;},...(onNativeResult?{onOpenNativeResult:onNativeResult}:{}),newRequestId:()=>id(++ids)});controller.activate();
  return {controller,reads,trashes,examples,metadata,opened,get snapshot(){return snapshot;},set snapshot(value){snapshot=value;},get refreshes(){return refreshes;},setOwner(value:ProjectHomeNativeActionIdentity|null){owner=value;},setAllowed(value:boolean){allowed=value;},setRead(value:typeof read){read=value;},setTrash(value:typeof trash){trash=value;},setChoose(value:typeof choose){choose=value;},setInstantiate(value:typeof instantiate){instantiate=value;},setRefresh(value:typeof refresh){refresh=value;},setOpen(value:boolean){openAccepted=value;},setPorts(value:ProjectHomeNativeActions|undefined){ports=value;}};
 }
 
@@ -169,6 +173,65 @@ function screenAction(f:ReturnType<typeof fixture>,prepare:()=>Promise<(()=>bool
  return {action,env,busy};
 }
 
+function parentScreenFixture(){
+ let entry!:ReturnType<typeof createProjectEntryController>,confirmations=0,preparations=0;
+ const granted:(()=>boolean)[]=[],openedPermits:(()=>boolean)[]=[],hostOpens:string[]=[],parentReads:unknown[][]=[];
+ const extra={dirty:false,busy:false,unknown:false,identity:[1]};
+ const f=fixture(async(projectId,permit)=>{openedPermits.push(permit);return entry.openNativeResult(projectId,permit);},metadata=>entry.reportNativeAction(metadata));
+ const context:ProjectWindowContext={version:2,role:'launcher',windowId:id(30),contextId:id(31),backendId:f.snapshot.instanceId,initialProjectId:null,autoOpen:false,editorProjectId:null,editorPhase:'none',editorCount:0,entryMode:null,entryVersion:0,entryReceipt:null,settingsSlot:null,settingsVersion:0,selectionProjectId:null,selectionVersion:0,locatorStatus:null,locatorIntent:null,quitting:false};
+ const bridge:ProjectWindowBridge={context:async()=>context,openProject:async projectId=>{hostOpens.push(projectId);return{ok:true,reason:'accepted',targetWindowId:id(90),targetPhase:null};},publishLocatorStatus:async()=>true,requestLocatorAction:async()=>true,requestProjectEntry:async()=>true,showProjects:async()=>true,showSettings:async()=>true,closeSettings:async()=>true,editorStatus:async()=>true,subscribe:()=>()=>{}};
+ const identity=projectEntryOwnerFixture(()=>f.snapshot,parentReads);
+ entry=createProjectEntryController({context,bridge,identity,readAdditionalSnapshot:()=>extra,confirm:async()=>{confirmations++;return true;},newToken:()=>id(91),
+  client:createLauncherClient(async()=>assert.fail('Home native actions cannot dispatch the legacy create RPC'),{parseCreateInput:value=>value,readDirectory:async()=>f.snapshot})});
+ entry.activate();entry.reportCreate({dirty:true,busy:false,version:1});
+ const screen=screenAction(f,async()=>{preparations++;const permit=await entry.prepareHomeNativeDeparture();if(permit)granted.push(permit);return permit;});
+ // Match the production ProjectEntry refresh callback: interaction observation
+ // does not revoke the departure intent or discard the retained draft.
+ f.setRefresh(async()=>{entry.interacted();await entry.refresh();});
+ return{f,entry,screen,context,extra,parentReads,granted,openedPermits,hostOpens,get confirmations(){return confirmations;},get preparations(){return preparations;}};
+}
+
+test('actual parent and Screen recheck a template unknown with the original opaque permit and exact input',async t=>{
+ const p=parentScreenFixture(),{f,entry,screen}=p;t.after(()=>{f.controller.dispose();entry.dispose();});
+ f.setInstantiate(async()=>{throw Object.assign(Error('Unknown'),{code:'PROJECT_ENTRY_OUTCOME_UNKNOWN',status:409,details:{}});});
+ await screen.action('example');const original=f.examples[0]!;
+ assert.equal(f.controller.getState().kind,'example-unknown');assert.equal(entry.readCloseSnapshot().unknown,true);assert.equal(f.controller.close(),false);assert.equal(p.confirmations,1);assert.equal(p.preparations,1);
+ const beforePrepare=p.parentReads.length;assert.equal(await entry.prepareHomeNativeDeparture(),null,'A new action remains forbidden by the real parent unknown gate');assert.equal(p.parentReads.length,beforePrepare);
+ const gate=held<Awaited<ReturnType<NonNullable<ProjectEntriesDesktopBridge['instantiateTemplate']>>>>();f.setInstantiate(()=>gate.promise);
+ const pending=screen.action('recheck');await new Promise(setImmediate);await screen.action('recheck');
+ assert.equal(f.examples.length,2);assert.equal(f.examples[1],original);assert.equal(entry.readCloseSnapshot().unknown,true);assert.equal(f.controller.close(),false);assert.deepEqual(p.hostOpens,[]);
+ const receipt=projectCopyResponseSchema.parse({requestId:original.requestId,sourceProjectId:projectId,project:{projectId:id(60),projectFile:selection.displayPath,fileIdentity:{dev:'1',ino:'60'},name:original.name,lastOpenedAt:null,summary:null},contentSequence:0,contentToken:'a'.repeat(32),versions:0});
+ f.snapshot.registered.push({project:receipt.project,availability:{state:'available'},coverUrl:null});gate.resolve(receipt);await pending;
+ assert.equal(f.controller.getState().kind,'idle');assert.equal(entry.readCloseSnapshot().unknown,false);assert.equal(entry.readCloseSnapshot().dirty,true);assert.deepEqual(p.hostOpens,[receipt.project.projectId]);
+ assert.equal(p.openedPermits[0],p.granted[0],'The original parent WeakSet permit reaches automatic open without a wrapper');assert.equal(p.openedPermits.length,1);assert.equal(p.confirmations,1);assert.equal(p.preparations,1);assert.equal(f.examples.length,2);
+ assert.deepEqual(f.examples[1],{token:selection.token,templateId:'timeline-basics',templateVersion:1,name:'Panel name',requestId:original.requestId});
+});
+
+test('actual parent and Screen retain unknown without reads or replay after another guard or the original authority expires',async t=>{
+ for(const change of ['native-busy','native-unknown','native-input','parent-input','page-input','page-lifetime','visibility','parent-lifetime','lease','context','library','instance','epoch'] as const){
+  const p=parentScreenFixture(),{f,entry,screen}=p;t.after(()=>{f.controller.dispose();entry.dispose();});
+  f.setInstantiate(async()=>{throw Object.assign(Error('Unknown'),{code:'PROJECT_ENTRY_OUTCOME_UNKNOWN',status:409,details:{}});});await screen.action('example');const original=f.examples[0]!;
+  switch(change){
+   case'native-busy':p.extra.busy=true;break;
+   case'native-unknown':p.extra.unknown=true;break;
+   case'native-input':p.extra.identity=[2];p.extra.dirty=true;break;
+   case'parent-input':entry.reportCreate({dirty:true,busy:false,version:2});break;
+   case'page-input':screen.env.form.current.version++;break;
+   case'page-lifetime':screen.env.lifetime.current++;break;
+   case'visibility':f.controller.dispose();f.controller.activate();break;
+   case'parent-lifetime':entry.dispose();entry.activate();break;
+   case'lease':entry.updateContext({...p.context,leaseRevoked:true});break;
+   case'context':entry.updateContext({...p.context,settingsModalOpen:true});break;
+   case'library':f.setOwner({appLibraryScope:'b'.repeat(64),instanceId:f.snapshot.instanceId,epoch:1});break;
+   case'instance':f.setOwner({appLibraryScope:f.snapshot.appLibraryScope,instanceId:id(2),epoch:1});break;
+   case'epoch':f.setOwner({appLibraryScope:f.snapshot.appLibraryScope,instanceId:f.snapshot.instanceId,epoch:2});break;
+  }
+  const reads=f.reads.length,parentReads=p.parentReads.length;await screen.action('recheck');
+  assert.equal(f.reads.length,reads,change);assert.equal(p.parentReads.length,parentReads,change);assert.equal(f.examples.length,1,change);assert.equal(f.examples[0],original,change);assert.deepEqual(p.hostOpens,[],change);
+  assert.equal(f.controller.getState().kind,'example-unknown',change);assert.equal(f.controller.close(),false,change);assert.equal(entry.readCloseSnapshot().unknown,true,change);assert.equal(p.confirmations,1,change);assert.equal(p.preparations,1,change);
+ }
+});
+
 test('actual Screen obtains native dirty consent before metadata GET or its own busy report; cancellation has zero effects',async()=>{
  const f=fixture(),gate=held<(()=>boolean)|null>(),screen=screenAction(f,()=>gate.promise);const pending=screen.action('trash',projectId);
  assert.equal(f.controller.getMetadata().busy,false);assert.deepEqual(f.reads,[]);assert.deepEqual(f.metadata,[]);gate.resolve(null);await pending;
@@ -182,9 +245,9 @@ test('actual Screen rejects late native consent after new local input or a repla
  }
 });
 
-test('actual Screen reports a failed native preparation without submitting or replacing a retained unknown input',async()=>{
+test('actual Screen reports a failed preparation and retains unknown when the original permit is revoked',async()=>{
  const f=fixture(),screen=screenAction(f,async()=>{throw Error('Preparation unavailable');});await screen.action('trash',projectId);assert.deepEqual(f.reads,[]);assert.deepEqual(f.trashes,[]);assert.equal(f.controller.getState().kind,'trash-blocked');assert.equal(f.controller.getMetadata().busy,false);
- f.controller.close();f.setTrash(async()=>{throw new BrowserRpcError('NETWORK');});await f.controller.prepareTrash(projectId);await f.controller.confirmTrash();const reads=f.reads.length,original=f.trashes[0];await screen.action('recheck');assert.equal(f.controller.getState().kind,'trash-unknown');assert.equal(f.controller.close(),false);assert.equal(f.reads.length,reads);assert.equal(f.trashes.length,1);assert.equal(f.trashes[0],original);
+ f.controller.close();let allowed=true;f.setTrash(async()=>{throw new BrowserRpcError('NETWORK');});await f.controller.prepareTrash(projectId,()=>allowed);await f.controller.confirmTrash();const reads=f.reads.length,original=f.trashes[0];allowed=false;await screen.action('recheck');assert.equal(f.controller.getState().kind,'trash-unknown');assert.equal(f.controller.close(),false);assert.equal(f.reads.length,reads);assert.equal(f.trashes.length,1);assert.equal(f.trashes[0],original);
 });
 
 test('actual Screen carries the live native permit through fresh metadata and explicit unknown recheck',async()=>{

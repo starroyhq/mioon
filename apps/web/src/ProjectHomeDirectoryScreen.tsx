@@ -165,6 +165,9 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
     const owner = lifetime.current, observedForm = form.current, formVersion = form.current.version;
     preparingNative.current = true; setOpeningBusy(true);
     try {
+      // This is the original dispatched intent, not a new departure. Its live
+      // authority still checks the page, parent input, owner and lease.
+      if (recheck) {await native.recheckRetained(); return;}
       const prepare = current.current.onPrepareNativeAction;
       const parentPermit = prepare ? await prepare() : observedForm.dirty && !await confirm(t('projects.keepCreateOpen')) ? null : () => true;
       if (!parentPermit) return;
@@ -172,7 +175,6 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
       if (!permit()) return;
       if (action === 'trash' && projectId) await native.prepareTrash(projectId, permit);
       else if (action === 'example') await native.startExample(t('projectHomeNative.example.storage'), t('projectHomeNative.example.name'), permit, prepare ? parentPermit : undefined);
-      else if (recheck) await native.recheck(permit, prepare ? parentPermit : undefined);
     } catch {
       if (active() && owner === lifetime.current) native.rejectPreparation(action === 'example');
     } finally {
