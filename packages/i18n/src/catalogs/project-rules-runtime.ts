@@ -1,6 +1,7 @@
 import type { MessageCatalog } from '../types.ts';
 
 export const projectRulesRuntimeMessages = {
+ 'projectRules.runtime.receiptOwnerUnknown':{'zh-Hans':'这份未确认的规范请求来自旧版记录，无法核实所属的应用资料库。原请求仍保留，不能在当前资料库核对或重发。','zh-Hant':'這份未確認的規範請求來自舊版記錄，無法核實所屬的應用程式資料庫。原請求仍保留，無法在目前資料庫核對或重送。',en:'This unconfirmed rules request has a legacy record without a verifiable application library. The original is retained and cannot be checked or resent in this library.',ja:'この未確認のルール要求は、所属ライブラリーを確認できない旧版の記録です。元の要求は保持され、このライブラリーで照合や再送はできません。'},
   'projectRules.runtime.pending': {'zh-Hans': '有一次规范保存尚未核对完成。完成核对前不会启用或覆盖文件。', 'zh-Hant': '有一次規範儲存尚未核對完成。完成核對前不會啟用或覆寫檔案。', en: 'A rules write is still unresolved. The file will not be enabled or replaced until it is checked.', ja: '規範の保存結果が未確認です。確認が完了するまで有効化や上書きはできません。'},
   'projectRules.runtime.pendingLabel': {'zh-Hans': '等待核对', 'zh-Hant': '等待核對', en: 'Awaiting verification', ja: '確認待ち'},
   'projectRules.runtime.unavailable': {'zh-Hans': '暂时无法安全读取或确认此文件，当前不会启用。', 'zh-Hant': '暫時無法安全讀取或確認此檔案，目前不會啟用。', en: 'This file cannot currently be read or verified safely and is not enabled.', ja: '現在、このファイルを安全に読み取り・確認できないため有効にできません。'},

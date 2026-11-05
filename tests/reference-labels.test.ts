@@ -112,7 +112,7 @@ function harness(name: string) {
   const code = transformSync(readFileSync(new URL('../apps/web/src/ReferenceConnections.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
   const module = { exports: {} as Record<string, (props: unknown)=>ElementTree> };
   Function('module', 'exports', 'require', code)(module, module.exports, (id: string) => {
-    if (id === 'react') return react;
+    if (id === './project-media-read-gate.tsx') return {useProjectMediaReadGate: () => null, ProjectMediaImage: 'img'}; if (id === './project-file/MediaStatus.tsx') return {MediaStatusBadge: 'MediaStatusBadge', MediaStatusNote: 'MediaStatusNote', MediaAttentionBanner: 'MediaAttentionBanner'}; if (id === 'react') return react;
     if (id.endsWith('/i18n/I18nProvider.tsx')) return i18nTestModule();
     if (id === './reference-connections.ts') return references;
     if (id === './WorkspaceControls.tsx') return { WorkbenchSelect: 'WorkbenchSelect' };

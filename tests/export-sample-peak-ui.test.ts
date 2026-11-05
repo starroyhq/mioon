@@ -132,8 +132,9 @@ test('actual App context uses current refs, transport option shape, and frozen r
   assert.doesNotMatch(block, /timeline\?\.revision|setRightDockTab|setShowExports|refresh\(/);
   const live = context(), calls: {operation:string;input:{projectId:string;exportId:string};options:ExportSamplePeakReadOptions}[] = [], dataRef = { current: { project: { id: projectId }, exports: live.exports, assets: live.assets } }, currentProject = { current: projectId };
   const workspaceRef = { current:{} as {} }, projectEpoch = { current: 1 }, navigationEpoch = { current: 0 }, panelIntent = { current: 0 }, viewRef = { current: { activeMode: 'editing' } };
+  let readable=true;
   let controller:ExportSamplePeakController;
-  const environment = {editorSession: {current:'normal'},  workspaceRef, currentProject, projectEpoch, navigationEpoch, panelIntent, viewRef, dataRef,
+  const environment = {projectMedia:{canRead:(_asset:unknown)=>readable},editorSession: {current:'normal'},  workspaceRef, currentProject, projectEpoch, navigationEpoch, panelIntent, viewRef, dataRef,
     projectSessionReady: () => true, workbenchReady: true,
     online: true, auth: true, loading: false, showDelivery: true, showExports: true, isTimelineRenderRecord,
     setAuth() { assert.fail('unexpected auth mutation'); }, async rpc(operation:string,input:{projectId:string;exportId:string},options:ExportSamplePeakReadOptions) { calls.push({ operation, input, options }); return report(controller.getState().targets.find((target: { exportId: unknown; }) => target.exportId === input.exportId)!); },
@@ -157,6 +158,12 @@ test('actual App context uses current refs, transport option shape, and frozen r
   const blocked = createExportSamplePeakController(({ getContext: () => unopened, isRenderRecord: isTimelineRenderRecord,
     read() { assert.fail('Unaccepted project data cannot start historical-file observation'); } } as unknown as Parameters<typeof createExportSamplePeakController>[0]));
   blocked.setContext((unopened as unknown as Parameters<typeof blocked.setContext>[0])); await blocked.check(target, unopened.scope); assert.equal(calls.length, 1);
+  const exportsBefore=structuredClone(dataRef.current.exports),assetsBefore=structuredClone(dataRef.current.assets),before=calls.length;
+  readable=false;const denied=actual.exportSamplePeakContext();assert.equal(denied.assets.length,0);assert.equal(denied.exports,dataRef.current.exports);
+  controller!.setContext(denied);assert.equal(denied.exports.length,2);
+  await controller!.check(target,controller!.getState().scope);assert.equal(calls.length,before);assert.equal(controller!.getState().report,null);
+  assert.deepEqual(dataRef.current.exports,exportsBefore);assert.deepEqual(dataRef.current.assets,assetsBefore);
+  readable=true;controller!.setContext(actual.exportSamplePeakContext());
   projectEpoch.current++; controller!.setContext(actual.exportSamplePeakContext()); assert.equal(controller!.getState().report, null);
   currentProject.current = id(88); controller!.setContext(actual.exportSamplePeakContext());
   await controller!.check(controller!.getState().targets[0], controller!.getState().scope); assert.equal(calls.length, 1);

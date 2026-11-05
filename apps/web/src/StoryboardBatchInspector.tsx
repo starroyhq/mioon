@@ -1,3 +1,4 @@
+import {ProjectMediaImage} from './project-media-read-gate.tsx';
 import React, { useEffect, useState } from 'react';
 import { ScrollArea } from '@mioon/ui/components/scroll-area';
 import { WorkbenchAlert, WorkbenchBadge, WorkbenchButton } from '@mioon/ui/components/workbench-controls';
@@ -66,7 +67,7 @@ export default function StoryboardBatchInspector({ task, sourceName, shots, keyf
       </BoardInspectorGroup>
       <BoardInspectorGroup title={t('scene.batch.references')}>
         <p className="storyboard-batch-hint">{t('scene.batch.referencesHint')}</p>
-        <div className="storyboard-batch-keyframes">{keyframes.slice(0, thumbnails).map(keyframe => <span key={keyframe.assetId}>{keyframe.url && <img src={keyframe.url} alt="" draggable={false} />}</span>)}
+        <div className="storyboard-batch-keyframes">{keyframes.slice(0, thumbnails).map(keyframe => <span key={keyframe.assetId}>{keyframe.url && <ProjectMediaImage asset={{id: keyframe.assetId, projectId: task.projectId}} src={keyframe.url} alt="" draggable={false} />}</span>)}
           {keyframes.length > thumbnails && <b>{`+${keyframes.length - thumbnails}`}</b>}</div>
       </BoardInspectorGroup>
     </div></ScrollArea>

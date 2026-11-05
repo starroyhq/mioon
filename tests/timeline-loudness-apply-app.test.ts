@@ -13,6 +13,7 @@ import { id, input, report, context as mixContext, projectId, timelineId, fixtur
 import { message as messageKey, renderMessage } from './helpers/i18n.ts';
 import { lenientFunction } from './helpers/eval-source.ts';
 import { touchesLockedTrack } from '../apps/web/src/timeline-track-locks.ts';
+import {projectEntryFixture, projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
 const Function = lenientFunction;
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const part = (start: string, end: string): string => app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start)));
@@ -68,9 +69,11 @@ async function harness(wire: Wire, onBusy: (busy: boolean) => void = () => {}): 
   const client = createEditTaskClient({ fetcher: wire.fetcher as never }), tasks = createEditTaskController({ client }); await tasks.load(projectId);
   const busy = new Set<string>(), refreshed: unknown[] = [], recovered: TaskRecord[] = [], notices: unknown[] = [];
   const currentProject = { current: projectId }, dataRef = { current: { project: { id: projectId }, timeline: { id: timelineId, revision: 4 }, timelineHistory: { revision: 4 } } };
+  const identity = projectEntryOwnerFixture(() => projectEntryFixture([{id: projectId}]));
+  assert.ok(await identity.discover());
   let options: Parameters<ReturnType<typeof createTimelineLoudnessApplyController>['review']> & {submit?: ApplyHarness['submit']} | undefined, keys = 0, epoch = 0;
   const env: Record<string, unknown> = {
-    application: null, clipDraftRef: { current: null }, trackLocksRef: { current: {} }, touchesLockedTrack, setSubjectRefresh: () => undefined, msg: messageKey,
+    projectEntryIdentityRef: {current: identity}, application: null, clipDraftRef: { current: null }, trackLocksRef: { current: {} }, touchesLockedTrack, setSubjectRefresh: () => undefined, msg: messageKey,
     localizedError: (value: never) => Object.assign(new Error(renderMessage('zh-Hans', value)), { displayMessage: value }),
     readTimelineLoudnessRecoveryScope: () => 'test-workspace-identity', nativeCloseRegistry: { current: undefined }, isDurableEditOperation, isTimelineMutationResponse, submitTimelineLoudnessApply, tasksRef: { current: tasks }, currentProject, dataRef,
     timelinePending: false, requestId: () => `unused-generated-key-${++keys}`, context: () => ({ projectId: currentProject.current, epoch }), isCurrent: (captured: {projectId: string; epoch: number}) => captured.projectId === currentProject.current && captured.epoch === epoch,

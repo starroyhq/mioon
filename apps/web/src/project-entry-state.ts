@@ -5,9 +5,8 @@ import type { ProjectWindowOpenResult } from '../../desktop/src/project-window-p
 import type { ProjectWindowBridge, ProjectWindowContext } from './desktop-window-client.ts';
 import type { LauncherClient, LauncherCreateMetadata, LauncherState } from './launcher-state.ts';
 import { LauncherCreateError } from './launcher-state.ts';
-import { createLastProjectController } from './last-project-state.ts';
-import type { LastProjectController } from './last-project-state.ts';
-import { assertLastProjectBootIdentity, chooseInitialProject } from './last-project-navigation.ts';
+import type {ProjectEntryIdentityOwner} from './project-entry-identity.ts';
+import {chooseInitialProject} from './last-project-navigation.ts';
 
 export interface ProjectEntryState extends LauncherState {
   readonly shown: boolean;
@@ -30,14 +29,14 @@ export interface ProjectEntryConsumption { readonly version: 1; readonly entryTo
 /** An entry owns only its catalog, create request and departure permission.
  * Sealing happens synchronously after consent. Every input handler consults the
  * same latch; the native host can consume, but cannot mint, this permission. */
-export function createProjectEntryController({ client, bridge, context: initialContext, locator = null, explicitProjectId = null,
+export function createProjectEntryController({ client, bridge, context: initialContext, identity = null, manageIdentityLifecycle = true, explicitProjectId = null,
   confirm = async () => false, onChange = () => {}, newToken = () => globalThis.crypto.randomUUID(),
-}: { client: LauncherClient; bridge: ProjectWindowBridge; context: ProjectWindowContext; locator?: LastProjectController | null;
+}: { client: LauncherClient; bridge: ProjectWindowBridge; context: ProjectWindowContext; identity?: ProjectEntryIdentityOwner | null; manageIdentityLifecycle?: boolean;
   explicitProjectId?: string | null; confirm?: (message: string | DisplayMessage) => Promise<boolean>; onChange?: (state: ProjectEntryState) => void; newToken?: () => string }) {
   if (initialContext.role !== 'launcher' && initialContext.role !== 'editor') throw new Error('Project entry requires an owned entry window');
   let context = initialContext, active = false, lifetime = 0, readSerial = 0, intent = 0, interactionSerial = 0, localVersion = 0, contextVersion = 0;
   let visible = true, autoConsumed = initialContext.role !== 'launcher' || !initialContext.autoOpen;
-  let observedEntry = 0, observedSelection = -1, rememberedSelection = -1;
+  let observedEntry = 0;
   let openFlight: object | null = null;
   let metadata: LauncherCreateMetadata = { dirty: false, busy: false, version: 0 }, permit: Permit | null = null;
   let state: ProjectEntryState = { projects: [], catalogReady: false, listBusy: true, listError: '', phase: 'home', openingProjectId: null,
@@ -45,7 +44,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     formIntent: 0, sealed: false, openUnknown: false, createdProjectId: null };
   const emit = (patch: Partial<ProjectEntryState> = {}) => { state = Object.freeze({ ...state, ...patch, version: state.version + 1 }); if (active) onChange(state); };
   const alive = (owner: number) => active && lifetime === owner;
-  const ownerCurrent = () => active && !context.quitting && context.contextId === initialContext.contextId && context.backendId === initialContext.backendId;
+  const ownerCurrent = () => active && !context.quitting && !identity?.getState().identityBlocked && context.contextId === initialContext.contextId && context.backendId === initialContext.backendId;
   const available = () => ownerCurrent() && visible && state.shown && (context.role !== 'launcher' || context.editorCount === 0) && !permit && !state.creating && !state.createUnknown && !state.openUnknown;
   const interact = () => { intent++; interactionSerial++; autoConsumed = true; };
   function reportCreate(next: LauncherCreateMetadata) {
@@ -72,14 +71,6 @@ export function createProjectEntryController({ client, bridge, context: initialC
       ...(result.ok && context.role === 'editor' ? { shown: false } : {}) });
     return result.ok;
   }
-  function observeLocator(next: ProjectWindowContext) {
-    if (!locator || next.role !== 'launcher' || next.selectionVersion < observedSelection) return;
-    if (next.selectionVersion > observedSelection) { observedSelection = next.selectionVersion; locator.invalidateNavigation(observedSelection); }
-    if (!next.quitting && next.selectionProjectId && next.selectionVersion > rememberedSelection && state.catalogReady) {
-      rememberedSelection = next.selectionVersion;
-      locator.rememberOpened(next.selectionProjectId, next.selectionVersion);
-    }
-  }
   function updateContext(next: ProjectWindowContext) {
     if (next.contextId !== context.contextId || next.backendId !== context.backendId || next.windowId !== context.windowId || next.role !== context.role) return;
     const enteredQuit = next.quitting && !context.quitting;
@@ -88,7 +79,6 @@ export function createProjectEntryController({ client, bridge, context: initialC
     if (enteredQuit) { readSerial++; if (state.listBusy) emit({ listBusy: false }); }
     if (!next.autoOpen) autoConsumed = true;
     if (next.entryReceipt && permit?.token === next.entryReceipt.entryToken) settle(permit.token, next.entryReceipt.result);
-    observeLocator(next);
     if (next.entryVersion > observedEntry) {
       observedEntry = next.entryVersion; interact();
       if (next.entryMode) void show(next.entryMode);
@@ -161,13 +151,17 @@ export function createProjectEntryController({ client, bridge, context: initialC
     emit({ catalogReady: false, listBusy: true, listError: '' });
     try {
       if (!ownerCurrent() || !alive(owner) || serial !== readSerial) return false;
-      const [projects, remembered] = await Promise.all([client.list(), initial && locator ? locator.discover() : Promise.resolve(null)]);
-      if (!ownerCurrent() || !alive(owner) || serial !== readSerial) return false;
-      if (locator) assertLastProjectBootIdentity(locator.getState());
-      emit({ catalogReady: true, projects, listBusy: false }); observeLocator(context);
+      // A new catalog owner supersedes an older read; its client list joins
+      // this same verification rather than starting a second directory GET.
+      const verification = identity?.refresh();
+      const [projects] = await Promise.all([client.list(), verification]);
+      if (!alive(owner) || serial !== readSerial) return false;
+      identity?.assertIdentity();
+      if (!ownerCurrent()) return false;
+      emit({ catalogReady: true, projects, listBusy: false });
       if (initial && context.role === 'launcher' && context.autoOpen && !autoConsumed && selection === interactionSerial && !context.quitting && context.editorCount === 0) {
         autoConsumed = true;
-        const choice = chooseInitialProject(projects, explicitProjectId, remembered?.envelope ?? null);
+        const choice = chooseInitialProject(projects, explicitProjectId, null);
         if (choice.notice) emit({ notice: choice.notice });
         if (choice.projectId) await open(choice.projectId, false);
       }
@@ -196,7 +190,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     } catch { if (alive(owner)) emit({ creating: false, notice: msg('projects.unconfirmedNotCreated') }); return false; }
     if (!ownerCurrent() || !visible || context.role === 'launcher' && context.editorCount > 0) { emit({ creating: false }); return false; }
     let created;
-    try { created = await client.create(name, description, timelinePresetId); }
+    try { created = await client.create(name, description, timelinePresetId); identity?.assertIdentity(); }
     catch (error) {
       if (alive(owner)) {
         const rejected = error instanceof LauncherCreateError && error.outcome === 'rejected';
@@ -216,8 +210,8 @@ export function createProjectEntryController({ client, bridge, context: initialC
     return true; // The known create must never be replayed for an open failure.
   }
   return {
-    activate() { if (!active) { active = true; lifetime++; locator?.activate(); } },
-    dispose() { active = false; lifetime++; readSerial++; openFlight = null; locator?.dispose(); },
+    activate() { if (!active) { active = true; lifetime++; if (manageIdentityLifecycle) identity?.activate(); } },
+    dispose() { active = false; lifetime++; readSerial++; openFlight = null; if (manageIdentityLifecycle) identity?.dispose(); },
     boot: () => refresh(true), refresh: () => refresh(false), open, create, show, dismiss, reconcileOpen, updateContext, reportCreate,
     interacted() { interactionSerial++; autoConsumed = true; },
     setVisible(value: boolean) { visible = value; },
@@ -229,11 +223,12 @@ export function createProjectEntryController({ client, bridge, context: initialC
       return Object.freeze({ version: 1, entryToken, projectId, accepted });
     },
     readCloseSnapshot() { return { dirty: metadata.dirty, busy: state.creating || Boolean(permit && !state.openUnknown), unknown: state.createUnknown,
-      identity: [initialContext.contextId, intent, localVersion, metadata.version, state.creating, state.createUnknown, permit?.token ?? null, state.openUnknown] }; },
-    getState: () => state, getContext: () => context, locator,
+      identity: [initialContext.contextId, intent, localVersion, metadata.version, state.creating, state.createUnknown, permit?.token ?? null, state.openUnknown,
+        identity?.getState().appLibraryScope, identity?.getState().instanceId, identity?.getState().identityBlocked] }; },
+    getState: () => state, getContext: () => context, identity,
   };
 }
 export type ProjectEntryController = ReturnType<typeof createProjectEntryController>;
-export function createLauncherEntryController(options: Omit<Parameters<typeof createProjectEntryController>[0], 'locator'> & { locator?: LastProjectController }) {
-  return createProjectEntryController({ ...options, locator: options.locator ?? createLastProjectController() });
+export function createLauncherEntryController(options: Parameters<typeof createProjectEntryController>[0]) {
+  return createProjectEntryController(options);
 }

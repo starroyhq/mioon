@@ -38,7 +38,7 @@ export function VersionDifferenceList({changes, testId = 'pf-restore-changes'}: 
   </li>)}</ul>;
 }
 export interface RestoreVersionDialogProps {
-  readonly open: boolean; readonly version: ProjectVersionItem; readonly now: Date;
+  readonly open: boolean; readonly interactionBlocked?:boolean; readonly version: ProjectVersionItem; readonly now: Date;
   readonly preview: ViewState<HistoryPreview>; readonly restore: ActionState<'restore'>;
   readonly unknown?: boolean; readonly pendingEdits?: boolean; readonly errorCode?: string; readonly paging?: boolean;
   readonly onMore?: () => void; readonly onRestore: () => void; readonly onRetry: () => void; readonly onClose: () => void;
@@ -47,8 +47,8 @@ export interface RestoreVersionDialogProps {
 export function RestoreVersionDialog(props: RestoreVersionDialogProps): ReactElement {
   const {t} = useI18n(), {preview, restore} = props, working = restore.kind === 'working';
   const stale = restore.kind === 'error' && !props.unknown && historyErrorKey(props.errorCode) === 'projectHistory.error.stale';
-  return <Dialog open={props.open} onOpenChange={next => {if (!next && !working) props.onClose();}}>
-    <WorkbenchDialogContent title={t('projectFile.versions.restore.title', {name: versionTitle(t, props.version, props.now)})} size="confirm" showCloseButton={false}
+  return <Dialog open={props.open} onOpenChange={next => {if (!next && !working && !props.interactionBlocked) props.onClose();}}>
+    <WorkbenchDialogContent inert={props.interactionBlocked||undefined} title={t('projectFile.versions.restore.title', {name: versionTitle(t, props.version, props.now)})} size="confirm" showCloseButton={false}
       className="pf-dialog pf-restore-dialog" data-testid="pf-restore-dialog" footer={<>
         <WorkbenchButton data-testid="pf-restore-cancel" disabled={working} onClick={props.onClose}>{t('common.cancel')}</WorkbenchButton>
         <WorkbenchButton variant="primary" data-testid="pf-restore-confirm" loading={working} disabled={working || stale || props.pendingEdits && !props.unknown || preview.kind !== 'ready' || !preview.value.restoreAvailable}

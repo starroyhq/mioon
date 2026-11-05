@@ -126,10 +126,13 @@ export interface ProjectHostManager<Runtime extends ProjectHostRuntime = Project
    * is open; otherwise the file is opened and registered, or its registration
    * moved to this path. Kernel errors pass through unchanged. */
   openPath(projectFile: string, kind: ProjectLeaseKind): Promise<ProjectLease<Runtime>>;
+  /** Resolves the registered file by identity using metadata only, before a
+   * trusted desktop caller admits its current location. Opens no database. */
+  prepareAcquire(projectId: string): Promise<RecentProject>;
   /** A lease on the project's host, opening a registered project that is not
    * open. PROJECT_NOT_FOUND when not registered, PROJECT_UNAVAILABLE when it
    * cannot be opened. */
-  acquire(projectId: string, kind: ProjectLeaseKind): Promise<ProjectLease<Runtime>>;
+  acquire(projectId: string, kind: ProjectLeaseKind, admission?: {readonly projectFile: string}): Promise<ProjectLease<Runtime>>;
   /** Synchronously borrows only an already-open, unpaused host. Never waits
    * for an exclusive operation or opens a project for an application read. */
   tryAcquireOpen(projectId: string, kind: ProjectLeaseKind): ProjectLease<Runtime> | null;
@@ -142,7 +145,7 @@ export interface ProjectHostManager<Runtime extends ProjectHostRuntime = Project
    * with the project closed in this process. New requests wait; requests in
    * flight get DEFAULT_REQUEST_DRAIN_MS, then PROJECT_HOST_BUSY and nothing is
    * cancelled. `run` must not acquire the same project. */
-  withExclusive<T>(projectId: string, run: (registration: RecentProject) => T | Promise<T>, options?: {readonly rejectWindowLeases?: boolean}): Promise<T>;
+  withExclusive<T>(projectId: string, run: (registration: RecentProject) => T | Promise<T>, options?: {readonly rejectWindowLeases?: boolean; readonly assertCanClose?: (host: ProjectHost<Runtime>) => void}): Promise<T>;
   /** At startup: S0a's recovery for every registered project (as list()),
    * waits for the search of missing ones, then reopens the projects in the
    * task index with a task lease. */
@@ -419,6 +422,9 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
         const registration: RecentProject = {
           ...entry.registration, ...(summary ? {name: summary.name, summary: summary.summary} : {}), lastOpenedAt: timestamp(),
         };
+        const current = registry.get(entry.projectId);
+        if (!current || current.projectFile !== entry.registration.projectFile
+          || !sameProjectFileIdentity(current.fileIdentity, entry.identity)) throw projectFileMoved(entry.projectId);
         registry.upsert(registration);
         entry.registration = registration;
       }
@@ -649,7 +655,9 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     try {
       result = maintenance.recoverProjectFile(registration.projectFile);
     } catch (error) {
-      recoveries.delete(projectId);
+      const code = errorCode(error);
+      if (code === 'PROJECT_ACCESS_DENIED' || code === 'EACCES' || code === 'EPERM') recoveries.set(projectId,{state:'access-denied'});
+      else recoveries.delete(projectId);
       emit({type: 'maintenance-failed', projectId, error});
       return;
     }
@@ -724,12 +732,58 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
   // -------------------------------------------------------------------------
   // The manager
 
-  async function acquire(projectId: string, kind: ProjectLeaseKind): Promise<ProjectLease<Runtime>> {
+  async function prepareAcquire(projectId: string): Promise<RecentProject> {
+    checkProjectId(projectId);
+    const readIdentity = (projectFile: string): ProjectFileIdentity | null => {
+      try {return identity(projectFile);}
+      catch (error) {
+        if (errorCode(error) === 'EACCES' || errorCode(error) === 'EPERM') {
+          throw new AppError('PROJECT_ACCESS_DENIED', '没有权限访问项目位置，请检查系统权限后重试', 403, {projectId});
+        }
+        throw error;
+      }
+    };
+    for (;;) {
+      assertRunning();
+      const pending = exclusive.get(projectId);
+      if (pending) {await pending; continue;}
+      const registration = registry.get(projectId);
+      if (!registration) throw projectNotFound(projectId);
+      if (sameProjectFileIdentity(readIdentity(registration.projectFile), registration.fileIdentity)) return registration;
+      let found: string | null;
+      try {found = await registry.findMoved(registration);}
+      catch (error) {
+        if (errorCode(error) === 'EACCES' || errorCode(error) === 'EPERM') {
+          throw new AppError('PROJECT_ACCESS_DENIED', '没有权限访问项目位置，请检查系统权限后重试', 403, {projectId});
+        }
+        throw error;
+      }
+      assertRunning();
+      const current = registry.get(projectId);
+      if (exclusive.has(projectId) || !current || current.projectFile !== registration.projectFile
+        || !sameProjectFileIdentity(current.fileIdentity, registration.fileIdentity)) continue;
+      if (found === null) throw projectUnavailable(projectId, 'PROJECT_MISSING');
+      const projectFile = path.resolve(found);
+      if (!sameProjectFileIdentity(readIdentity(projectFile), current.fileIdentity)) throw projectUnavailable(projectId, 'PROJECT_MISSING');
+      // Only the registry moves here. Recovery and project/history/cache opens
+      // remain behind the desktop's location admission and acquire().
+      const moved: RecentProject = {...current, projectFile};
+      registry.upsert(moved);
+      return moved;
+    }
+  }
+
+  async function acquire(projectId: string, kind: ProjectLeaseKind, admission?: {readonly projectFile: string}): Promise<ProjectLease<Runtime>> {
     checkProjectId(projectId);
     checkLeaseKind(kind);
+    const pinned = admission?.projectFile;
+    if (pinned !== undefined && (!path.isAbsolute(pinned) || path.resolve(pinned) !== pinned)) throw new TypeError('Invalid admitted project path');
     let searched = false;
     for (;;) {
       assertRunning();
+      // Re-read after every asynchronous wait: a location approved for one
+      // path never authorizes a moved registration or an old open host.
+      if (pinned !== undefined && registry.get(projectId)?.projectFile !== pinned) throw projectFileMoved(projectId);
       const pending = exclusive.get(projectId);
       if (pending) {
         await pending;
@@ -737,6 +791,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       }
       const entry = entries.get(projectId);
       if (entry) {
+        if (pinned !== undefined && entry.store.projectFile !== pinned) throw projectFileMoved(projectId);
         if (entry.closeFailure !== undefined) throw entry.closeFailure;
         if (entry.state === 'open') return grant(entry, kind);
         await (entry.state === 'opening' ? entry.ready : entry.closed);
@@ -749,7 +804,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
         continue;
       } catch (error) {
         // Not at its path, or moved while the kernel opened it (S0a: PROJECT_INVALID caused by 1032).
-        if (!searched && (errorCode(error) === 'PROJECT_MISSING' || isDatabaseMovedError(error))) {
+        if (pinned === undefined && !searched && (errorCode(error) === 'PROJECT_MISSING' || isDatabaseMovedError(error))) {
           searched = true;
           const found = await registry.findMoved(registration);
           if (found !== null && path.resolve(found) !== registration.projectFile) {
@@ -845,9 +900,12 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     if (errors.length > 0) throw errors[0];
   }
 
-  async function withExclusive<T>(projectId: string, run: (registration: RecentProject) => T | Promise<T>, admission: {readonly rejectWindowLeases?: boolean} = {}): Promise<T> {
+  async function withExclusive<T>(projectId: string, run: (registration: RecentProject) => T | Promise<T>, admission: {readonly rejectWindowLeases?: boolean; readonly assertCanClose?: (host: ProjectHost<Runtime>) => void} = {}): Promise<T> {
     checkProjectId(projectId);
     assertRunning();
+    if (admission.assertCanClose !== undefined && (typeof admission.assertCanClose !== 'function' || isAsyncFunction(admission.assertCanClose))) {
+      throw new TypeError('Close admission requires a synchronous callback');
+    }
     const previous = exclusive.get(projectId) ?? Promise.resolve();
     let finish: () => void = () => {};
     const mine = new Promise<void>(resolve => { finish = resolve; });
@@ -871,20 +929,35 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
         if (admission.rejectWindowLeases && hasLease(paused, 'window')) throw projectHostError('PROJECT_HOST_BUSY', {projectId});
         paused.paused = true;
         clearTimer(paused);
-        const drained = await waitForRequests(paused, drainTimeoutMs);
-        paused.paused = false;
-        if (stateOf(paused) === 'open') {
-          if (!drained || hasLease(paused, 'request') || hasLease(paused, 'task') || isBusy(paused)
-            || admission.rejectWindowLeases && hasLease(paused, 'window')) {
-            scheduleIdle(paused);
-            throw projectHostError('PROJECT_HOST_BUSY', {projectId});
+        let admissionRefused = false;
+        try {
+          const drained = await waitForRequests(paused, drainTimeoutMs);
+          if (stateOf(paused) === 'open') {
+            if (!drained || hasLease(paused, 'request') || hasLease(paused, 'task') || isBusy(paused)
+              || admission.rejectWindowLeases && hasLease(paused, 'window')) {
+              throw projectHostError('PROJECT_HOST_BUSY', {projectId});
+            }
+            // Read the live host before interrupt() changes any waiting Mio
+            // state. No acquire path can admit another lease while paused.
+            if (admission.assertCanClose) {
+              try { synchronousResult(admission.assertCanClose(paused.host!)); }
+              catch (error) { admissionRefused = true; throw error; }
+            }
+            const errors = await closeEntry(paused, 'exclusive');
+            if (errors.length > 0) throw errors[0];
+          } else {
+            // Closed meanwhile by close() or closeAll().
+            await paused.closed;
+            assertRunning();
           }
-          const errors = await closeEntry(paused, 'exclusive');
-          if (errors.length > 0) throw errors[0];
-        } else {
-          // Closed meanwhile by close() or closeAll().
-          await paused.closed;
-          assertRunning();
+        } finally {
+          paused.paused = false;
+          if (stateOf(paused) === 'open') {
+            // A slow rejected inspection must not synchronously turn its
+            // refusal into an idle close/interrupt after the grace expires.
+            if (admissionRefused && paused.graceUntil <= clock.now()) setTimer(paused, busyRecheckMs);
+            else scheduleIdle(paused);
+          }
         }
       }
       const registration = registry.get(projectId);
@@ -1007,5 +1080,5 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       : {...task, phase: 'archived', reason: 'PROJECT_HISTORY_ARCHIVED', revision: (task.revision ?? 0) + 1}));
   }
 
-  return Object.freeze({list, create, openPath, acquire, tryAcquireOpen, close, closeAll, withExclusive, restore, inspectProject, status, resolveHistory});
+  return Object.freeze({list, create, openPath, prepareAcquire, acquire, tryAcquireOpen, close, closeAll, withExclusive, restore, inspectProject, status, resolveHistory});
 }

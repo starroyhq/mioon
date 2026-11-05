@@ -20,6 +20,7 @@ import { timelineHistoryState } from '../apps/web/src/timeline-history.ts';
 import { mutationNotApplied } from '../apps/web/src/mutation-submissions.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
+import {PROJECT_ENTRY_TEST_SCOPE, projectEntryFixture, projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
 const Function = lenientFunction;
 const taskIntentModule = { exports: {} as typeof import('../apps/web/src/task-workspace-intent.ts') };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
@@ -251,31 +252,31 @@ function sessionFixture(t: TestContext) {
   Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { get length() { return values.size; }, key: (index: number) => [...values.keys()][index], getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) } });
   t.after(() => { if (previous) Object.defineProperty(globalThis, 'sessionStorage', previous); else delete (globalThis as {sessionStorage?: Storage}).sessionStorage; }); return values;
 }
-function parentHarness({ ready = true } = {}) {
+async function parentHarness({ ready = true } = {}) {
   const c = context(), calls: [string, unknown, number, {review?: replacement.ReplacementReview}][] = [], dataRef = { current: { project: { id: projectId }, ...c } }, viewRef = { current: { activeMode: 'editing', editing: { selectedClipId: clipId, quickAssetId: null as string | null } } };
-  const deps = { ...replacement, canPublishProjectOpen,
-    nativeWindow: null, projectOpening: { phase: ready ? 'ready' : 'loading' },
-    // This extracted App slice reaches the passive native status hook. Web has
-    // no native binding; preserve that exact boundary without any host action.
-    useEditorWindowStatus: (binding: unknown) => assert.equal(binding, null),
-    openedProject: { current: ready ? projectOpenAttempt(projectId, 1, 'normal') : null }, importSession: { current: { active: true, selection: 0 } }, viewReady: { current: true }, editorSession: {current: 'normal'}, workspaceRef: { current: {  } }, dataRef, viewRef, currentProject: { current: projectId }, projectEpoch: { current: 1 }, inspectorEpoch: 0, dirtyRef: { current: false }, isBusy: () => false,
+  const identity = projectEntryOwnerFixture(() => projectEntryFixture([{id: projectId}]));
+  assert.ok(await identity.discover());
+  const deps = { projectEntryIdentityRef: {current: identity}, ...replacement, canPublishProjectOpen,
+    openedProject: { current: ready ? projectOpenAttempt(projectId, 1, PROJECT_ENTRY_TEST_SCOPE) : null }, importSession: { current: { active: true, selection: 0 } }, viewReady: { current: true }, editorSession: {current: PROJECT_ENTRY_TEST_SCOPE}, workspaceRef: { current: {  } }, dataRef, viewRef, currentProject: { current: projectId }, projectEpoch: { current: 1 }, inspectorEpoch: 0, dirtyRef: { current: false }, isBusy: () => false,
     tasksRef: { current: { blocked: () => false } }, pendingForProject: () => [], online: true, auth: true, loading: false, mutateTimeline: async (...args: [string, unknown, number, {review?: replacement.ReplacementReview}]) => { calls.push(args); return acknowledged(args[3].review || replacement.createClipReplacementReview(c, `asset:${newAssetId}`)!); } };
-  const compiled = Function('deps', `const { ${Object.keys(deps).join(', ')} } = deps; ${extract('function projectSessionReady()', '  const panelSurface =')} ${extract('function clipReplacementContext()', 'function exportSettingsContext()')} return { clipReplacementContext, replaceTimelineClipSource };`)(deps) as {clipReplacementContext(): replacement.ReplacementContext;replaceTimelineClipSource(review: replacement.ReplacementReview | null): Promise<replacement.ClipReplacementSubmitResult>};
+  // The parent guard needs the real session predicate and workbench readiness,
+  // not the following media owner/hook or passive native window status effect.
+  const compiled = Function('deps', `const { ${Object.keys(deps).join(', ')} } = deps; ${extract('function projectSessionReady()', '  function readProjectMediaOwner(')} ${extract('function clipReplacementContext()', 'function exportSettingsContext()')} return { clipReplacementContext, replaceTimelineClipSource };`)(deps) as {clipReplacementContext(): replacement.ReplacementContext;replaceTimelineClipSource(review: replacement.ReplacementReview | null): Promise<replacement.ClipReplacementSubmitResult>};
   return { ...compiled, deps, calls, c };
 }
 
 test('actual parent guard rechecks current project, selection, scope, revision, metadata and unsaved draft before dispatch', async () => {
-  for (const change of [(h: ReturnType<typeof parentHarness>) => { h.deps.currentProject.current = id(99); }, (h: ReturnType<typeof parentHarness>) => { h.deps.projectEpoch.current++; }, (h: ReturnType<typeof parentHarness>) => { h.deps.viewRef.current.editing.selectedClipId = id(99); }, (h: ReturnType<typeof parentHarness>) => { h.deps.viewRef.current.activeMode = 'canvas'; }, (h: ReturnType<typeof parentHarness>) => { h.deps.viewRef.current.editing.quickAssetId = newAssetId; }, (h: ReturnType<typeof parentHarness>) => { h.deps.dirtyRef.current = true; }, (h: ReturnType<typeof parentHarness>) => { h.deps.dataRef.current.timeline.revision++; }, (h: ReturnType<typeof parentHarness>) => { h.deps.dataRef.current.assets[1].name = 'Changed'; }] as const) {
-    const h = parentHarness(), review = replacement.createClipReplacementReview(h.c, `asset:${newAssetId}`); change(h);
+  for (const change of [(h: Awaited<ReturnType<typeof parentHarness>>) => { h.deps.currentProject.current = id(99); }, (h: Awaited<ReturnType<typeof parentHarness>>) => { h.deps.projectEpoch.current++; }, (h: Awaited<ReturnType<typeof parentHarness>>) => { h.deps.viewRef.current.editing.selectedClipId = id(99); }, (h: Awaited<ReturnType<typeof parentHarness>>) => { h.deps.viewRef.current.activeMode = 'canvas'; }, (h: Awaited<ReturnType<typeof parentHarness>>) => { h.deps.viewRef.current.editing.quickAssetId = newAssetId; }, (h: Awaited<ReturnType<typeof parentHarness>>) => { h.deps.dirtyRef.current = true; }, (h: Awaited<ReturnType<typeof parentHarness>>) => { h.deps.dataRef.current.timeline.revision++; }, (h: Awaited<ReturnType<typeof parentHarness>>) => { h.deps.dataRef.current.assets[1].name = 'Changed'; }] as const) {
+    const h = await parentHarness(), review = replacement.createClipReplacementReview(h.c, `asset:${newAssetId}`); change(h);
     assert.equal((await h.replaceTimelineClipSource(review)).status, 'rejected'); assert.equal(h.calls.length, 0);
   }
-  const h = parentHarness(), review = replacement.createClipReplacementReview(h.c, `asset:${newAssetId}`);
+  const h = await parentHarness(), review = replacement.createClipReplacementReview(h.c, `asset:${newAssetId}`);
   assert.equal((await h.replaceTimelineClipSource(review)).status, 'applied'); assert.equal(h.calls.length, 1);
   assert.equal(h.calls[0][0], 'timeline.clip.replaceSource'); assert.equal(h.calls[0][1], review!.input); assert.equal(h.calls[0][2], 7);
 });
 
 test('actual parent replacement cannot use retained project metadata before session acceptance', async () => {
-  const h = parentHarness({ ready: false }), review = replacement.createClipReplacementReview(h.c, `asset:${newAssetId}`);
+  const h = await parentHarness({ ready: false }), review = replacement.createClipReplacementReview(h.c, `asset:${newAssetId}`);
   const live = h.clipReplacementContext();
   assert.equal(live.projectId, null); assert.equal(live.visible, false); assert.equal(live.connected, false);
   assert.equal((await h.replaceTimelineClipSource(review)).status, 'rejected'); assert.deepEqual(h.calls, []);

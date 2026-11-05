@@ -33,6 +33,8 @@ import {mediaExecutable} from '@mioon/business/media-environment';
 import packageMetadata from '../../../../package.json' with {type: 'json'};
 import {registerProjectTransactionObserver} from '@mioon/business/project-file/index';
 import {createAssetMediaHttp} from '../asset-media-http.ts';
+import {createNativeAssetMediaServices} from '@mioon/business/asset-media-native';
+import type {NativeAssetMediaPort} from '../../../../packages/contracts/src/asset-media-native.ts';
 import {sameManagedFile} from '@mioon/business/managed-media';
 import {mediaUnavailableError} from '@mioon/contracts/media-reference-errors';
 import {createProjectCoverPublisher} from './cover-publisher.ts';
@@ -40,6 +42,7 @@ import {backgroundHistorySource} from './background-history.ts';
 
 export interface HostedProject extends ProjectHostRuntime {
   readonly project: Awaited<ReturnType<typeof composeProjectRuntime>>;
+  readonly nativeAssetMedia: NativeAssetMediaPort;
   /** Trusted lifecycle entry, not an RPC-controlled automatic trigger. */
   captureDailyVersion(): void;
 }
@@ -134,6 +137,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     return {name, summary: {...rest, cover: cover ? {assetId: cover.assetId, mimeType: cover.mimeType} : null}};
   };
   const assetMediaHttp = createAssetMediaHttp({store, outsidePaths: library.outsidePaths, signal: shutdown.signal, assertMutationAllowed: () => project.services.assertMutationAllowed()});
+  const nativeAssetMedia = createNativeAssetMediaServices(store, {outsidePaths: library.outsidePaths, signal: shutdown.signal, beforeEffect: () => project.services.assertMutationAllowed()});
   const cover = createProjectCoverPublisher({store, readCover:()=>readProjectCover(store,projectId), signal: shutdown.signal});
   coverForCleanup = cover;
   const removeCoverObserver = registerProjectTransactionObserver(store.db, () => cover.refresh());
@@ -205,7 +209,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     }
     return false;
   }
-  return {project, handle, summarize: summary, unfinishedTasks, backgroundTasks: project.backgroundTasks, activateBackground,
+  return {project, nativeAssetMedia, handle, summarize: summary, unfinishedTasks, backgroundTasks: project.backgroundTasks, activateBackground,
     captureDailyVersion: () => { captureDailyProjectVersion(store, {assertMutationAllowed: assertVersionWrite}); },
     isBusy: () => restoring || drafts.isBusy() || files.isBusy() || cover.isRendering() || Boolean(worker?.isBusy()) || project.taskRuntimeV2!.isBusy() || project.services.isBusy() || Boolean(project.projectRules?.isBusy()) || !deletionGate.isQuiescent(),
     interrupt: () => { shutdown.abort(); project.projectRules?.close(); project.taskRuntimeV2?.close(); project.taskHttpV2?.close(); },

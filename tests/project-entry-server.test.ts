@@ -13,6 +13,7 @@ import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createProjectFile,isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
 import {createProjectHomeServices} from '../packages/business/src/project-home.ts';
 import {projectEntriesResponseSchema,projectEntryResponseSchema} from '../packages/contracts/src/project-entry.ts';
+import {calculateWorkspaceScope} from '../packages/contracts/src/workspace-scope.ts';
 import type {ProjectEntriesResponse} from '../packages/contracts/src/project-entry.ts';
 import type {ProjectEntryWindowRevoked} from '../packages/contracts/src/project-entry-native.ts';
 import type {RecentProject} from '../packages/contracts/src/project-registry.ts';
@@ -129,7 +130,7 @@ function registry(f: Fixture): readonly RecentProject[] {
   return f.server.projectEntries.listRecent().registered.map(entry => entry.project);
 }
 
-test('application catalog retains legacy identity and reads registered metadata and covers without acquiring a runtime', async t => {
+test('application catalog retains the physical application identity and reads metadata without a runtime or legacy route', async t => {
   const f = await fixture(t), before = registry(f);
   const a = f.hold(f.a.projectId), b = f.hold(f.b.projectId);
   const entries = await f.catalog(), again = await f.catalog();
@@ -140,9 +141,12 @@ test('application catalog retains legacy identity and reads registered metadata 
   assert.equal(entries.registered.find(entry => entry.project.projectId === f.a.projectId)!.coverUrl, `/api/project-covers/${f.a.projectId}`);
   assert.equal(entries.registered.find(entry => entry.project.projectId === f.b.projectId)!.coverUrl, null);
   assert.deepEqual(registry(f), before, 'listing does not change successful-open timestamps or registrations');
-  const legacy = await f.json<{supported: boolean; workspaceScope: string}>('/api/last-project');
-  assert.equal(legacy.status, 200); assert.equal(legacy.body.data!.supported, true);
-  assert.equal(entries.appLibraryScope, legacy.body.data!.workspaceScope);
+  assert.equal(entries.appLibraryScope, calculateWorkspaceScope({channel: 'web', root: f.dataDir,
+    directory: lstatSync(f.dataDir), db: lstatSync(path.join(f.dataDir, 'app-library.db'))}));
+  for (const method of ['GET', 'PUT']) {
+    const legacy = await f.json('/api/last-project', {method});
+    assert.equal(legacy.status, 404); assert.equal(legacy.body.error?.code, 'NOT_FOUND');
+  }
   const cover = await f.fetch(`/api/project-covers/${f.a.projectId}`);
   assert.equal(cover.status, 200); assert.deepEqual(Buffer.from(await cover.arrayBuffer()), jpeg);
   assert.equal(a.db.isOpen, true); assert.equal(b.db.isOpen, true);
@@ -403,6 +407,26 @@ test('public project.create uses the same complete initialization without exposi
   const rejected = await f.rpc('project.create', {name: 'No HTTP paths', parentDir: outside});
   assert.equal(rejected.status, 400); assert.equal(rejected.body.error!.code, 'VALIDATION_ERROR');
   assert.equal(existsSync(outside), false);
+  f.server.projectEntries.release({windowId});
+});
+
+test('trusted recent preparation resolves a completely moved directory before location admission without opening the project', async t => {
+  const f = await fixture(t, 'production'), old = f.a.projectFile;
+  const movedDirectory = path.join(path.dirname(path.dirname(old)), 'Moved Catalog A');
+  renameSync(path.dirname(old), movedDirectory);
+  assert.equal(existsSync(path.dirname(old)), false);
+  const projectFile = path.join(movedDirectory, path.basename(old));
+  const before = readFileSync(projectFile);
+  const prepared = await f.server.projectEntries.prepareAcquire!({projectId: f.a.projectId});
+  assert.equal(prepared.projectFile, projectFile);
+  assert.equal(prepared.lastOpenedAt, null, 'metadata resolution is not a successful open');
+  assert.deepEqual(readFileSync(projectFile), before);
+  const held = f.hold(f.a.projectId);
+  assert.equal(held.db.isOpen, true, 'preparation held no project connection or lock');
+  held.close();
+  const windowId = randomUUID();
+  const opened = await f.server.projectEntries.acquire({projectId: f.a.projectId, windowId, expectedProjectFile: projectFile});
+  assert.equal(opened.project.projectFile, projectFile);
   f.server.projectEntries.release({windowId});
 });
 

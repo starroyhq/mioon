@@ -1,3 +1,5 @@
+import {useProjectMediaReadGate} from './project-media-read-gate.tsx';
+import {MediaStatusBadge, MediaStatusNote} from './project-file/MediaStatus.tsx';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@mioon/ui/components/dialog';
 import { Input } from '@mioon/ui/components/input';
@@ -66,7 +68,8 @@ export default function SceneDetectionDialog({ asset, state, controller, timelin
   const pending = state.pending?.assetId === asset.id ? state.pending : null;
   const notice = state.notice && (state.notice.assetId === asset.id || state.notice.assetId === null) ? state.notice : null;
   const idle = state.phase === 'idle' && !state.pending, writable = !state.readOnly && idle;
-  const url = assetUrl(asset), frameCount = result?.frameCount ?? task?.progress?.frameCount ?? Math.max(1, Math.floor(Number(asset.duration) * SOURCE_RANGE_FPS));
+  const gate = useProjectMediaReadGate(), blocked = Boolean(gate && !gate.canRead(asset));
+  const url = blocked ? '' : assetUrl(asset), frameCount = result?.frameCount ?? task?.progress?.frameCount ?? Math.max(1, Math.floor(Number(asset.duration) * SOURCE_RANGE_FPS));
 
   useEffect(() => { void controller.loadResult(asset.id); }, [controller, asset.id, asset.sha256]);
   // A detection that finished elsewhere (or here) replaces the shown result.
@@ -112,15 +115,17 @@ export default function SceneDetectionDialog({ asset, state, controller, timelin
 
   const started = useRef(false);
   useEffect(() => {
-    if (!autoStart || started.current || state.readOnly || !state.tasksLoaded || view?.phase !== 'ready' || active || !idle) return;
+    if (blocked || !autoStart || started.current || state.readOnly || !state.tasksLoaded || view?.phase !== 'ready' || active || !idle) return;
     started.current = true;
     // The parameters effect has not re-rendered yet; start from what is known about this video.
     if (!current) void controller.detect(asset, touched.current ? params : knownOptions ?? params);
-  }, [autoStart, state.readOnly, state.tasksLoaded, view?.phase, Boolean(active), idle, current]);
+  }, [autoStart, state.readOnly, state.tasksLoaded, view?.phase, Boolean(active), idle, current, blocked]);
 
   const run = async (action: () => Promise<unknown>): Promise<void> => { try { await action(); } catch {} };
   const detect = (): Promise<void> => run(async () => {
+    if (gate && !gate.canRead(asset)) return;
     if (dirty && !await confirm(msg('scene.redetect.confirm', { count: adjustments }))) return;
+    if (gate && !gate.canRead(asset)) return;
     // Unsaved adjustments go only once the new detection is accepted; a refusal keeps them editable.
     if (await controller.detect(asset, params)) setDraft(result ? seed(result) : null);
   });
@@ -144,7 +149,7 @@ export default function SceneDetectionDialog({ asset, state, controller, timelin
   const toggleSegment = (index: number, value: boolean): void => { if (!result) return; const next = new Set(chosenSegments); if (value) next.add(index); else next.delete(index); setChosen({ resultId: result.id, segments: next }); };
   const chooseAll = (value: boolean): void => { if (result) setChosen({ resultId: result.id, segments: new Set(value ? segments.map(item => item.index) : []) }); };
   const block = storyboardBlock({ readOnly: state.readOnly, current, dirty: dirty || outdated, busy: Boolean(active), count: chosenSegments.length });
-  const build = (): Promise<void> => run(async () => { if (result && !block) await controller.createShots(asset, result.id, chosenSegments); });
+  const build = (): Promise<void> => run(async () => { if (result && !block && (!gate || gate.canRead(asset))) await controller.createShots(asset, result.id, chosenSegments); });
   const shotsFailure = !storyboard && latestShots && storyboardNeedsAttention(latestShots, state.tasks) ? latestShots : null;
   const sensitivityLabel = (value: number): string => { const level = sceneSensitivityLevel(value); return level === 'low' ? t('scene.sensitivity.low', { value }) : level === 'high' ? t('scene.sensitivity.high', { value }) : t('scene.sensitivity.medium', { value }); };
   const seconds = (value: number): string => formatNumber(value, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -159,7 +164,7 @@ export default function SceneDetectionDialog({ asset, state, controller, timelin
   const readOnlyAlert = state.readOnly ? <WorkbenchAlert tone="neutral" data-testid="scene-read-only">{t('scene.readOnly')}</WorkbenchAlert> : null;
 
   const preview = <div className="scene-preview">
-    <div className="scene-preview-stage">{url ? <video ref={video} src={url} preload="metadata" playsInline data-testid="scene-preview-video"
+    <div className="scene-preview-stage">{blocked && gate ? <div className="pf-media-blocked" data-testid="scene-media-blocked"><MediaStatusBadge status={gate.statusFor(asset)} /><MediaStatusNote status={gate.statusFor(asset)} /></div> : url ? <video ref={video} src={url} preload="metadata" playsInline data-testid="scene-preview-video"
       onLoadedMetadata={() => seek(position)} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)}
       onTimeUpdate={event => { const frame = Math.min(frameCount - 1, Math.floor(event.currentTarget.currentTime * SOURCE_RANGE_FPS)); setPosition(frame); if (!event.currentTarget.paused && !task) { const at = sceneSegmentAt(segments, frame); if (at && at.index !== selected) setSelected(at.index); } }} /> : null}
       {task ? <span className="scene-preview-badge"><Icon name="search" size={12} />{t('scene.detecting.at', { time: sceneTime(detected ?? 0) })}</span>
@@ -183,7 +188,7 @@ export default function SceneDetectionDialog({ asset, state, controller, timelin
     <div className="scene-param-row"><Label htmlFor="scene-min-shot">{t('scene.params.minShot')}</Label><div className="scene-param-input"><Input id="scene-min-shot" data-testid="scene-min-shot" type="number" inputMode="decimal" min={SCENE_MIN_SHOT_SECONDS[0]} max={SCENE_MIN_SHOT_SECONDS[1]} step={0.1} disabled={!writable}
       value={minShotText ?? String(params.minShotSeconds)} onChange={event => setMinShotText(event.target.value)}
       onBlur={() => { const value = Number(minShotText); if (minShotText !== null && Number.isFinite(value) && value > 0) changeParams({ minShotSeconds: clampMinShot(value) }); setMinShotText(null); }} /><span>{t('scene.unit.seconds')}</span></div></div>
-    <div className="scene-param-actions"><WorkbenchButton variant="ghost" size="compact" data-testid="scene-redetect" disabled={!writable || Boolean(active)} title={state.readOnly ? t('scene.readOnly') : undefined} onClick={() => void detect()}><RefreshCw size={13} />{t(result ? 'scene.params.redetect' : 'scene.params.start')}</WorkbenchButton>
+    <div className="scene-param-actions"><WorkbenchButton variant="ghost" size="compact" data-testid="scene-redetect" disabled={blocked || !writable || Boolean(active)} title={state.readOnly ? t('scene.readOnly') : undefined} onClick={() => void detect()}><RefreshCw size={13} />{t(result ? 'scene.params.redetect' : 'scene.params.start')}</WorkbenchButton>
       {result && <span>{renderMessage(msg(result.origin === 'manual' ? 'scene.params.savedAt' : 'scene.params.detectedAt', { time: renderMessage(ago(result.createdAt)) }))}</span>}</div>
   </section>;
 
@@ -268,7 +273,7 @@ export default function SceneDetectionDialog({ asset, state, controller, timelin
       </> : <>
         <span className="scene-footer-note"><Icon name="film" size={13} />{timelineClips ? t('scene.split.clips', { count: timelineClips }) : t('scene.split.none')}</span>
         <WorkbenchButton variant="secondary" data-testid="scene-split" disabled={Boolean(splitReason) || !result || !idle} title={splitReason ? renderMessage(splitReason) : undefined} onClick={() => void run(() => result ? onSplit(asset.id, result.id) : Promise.resolve())}><Scissors size={14} />{t('scene.split.action')}</WorkbenchButton>
-        {result && <WorkbenchButton variant="primary" className="scene-storyboard-action" data-testid="scene-storyboard" disabled={Boolean(block) || !idle} title={block ? renderMessage(storyboardBlockMessage(block)) : undefined}
+        {result && <WorkbenchButton variant="primary" className="scene-storyboard-action" data-testid="scene-storyboard" disabled={blocked || Boolean(block) || !idle} title={block ? renderMessage(storyboardBlockMessage(block)) : undefined}
           onClick={() => void build()}><Icon name="grid" size={14} />{t('scene.storyboard.action', { count: chosenSegments.length })}</WorkbenchButton>}
       </>}</footer>
     </DialogContent>

@@ -10,6 +10,8 @@ import type { createNativeCloseAdmission } from '../apps/web/src/native-close-st
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { createSettingsWindowNavigation } from '../apps/web/src/settings-window-state.ts';
 import type { SettingsRenderProps } from '../apps/web/src/SettingsRoot.tsx';
+import {createProjectEntryIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
+import type {ProjectEntryIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
 
 interface Node { type: unknown; key: unknown; props: Record<string, unknown> & { children?: unknown } }
 interface Effect { deps: readonly unknown[]; cleanup?: void | (() => void) }
@@ -171,12 +173,15 @@ async function settingsPanel(onClose: (page: { __mioonNativeCloseAdmission?: Ret
   let locale: import('../packages/i18n/src/index.ts').Locale = 'zh-Hans';
   let props: SettingsRenderProps | undefined;
   let owner: ReturnType<ReturnType<typeof createSettingsNavigationRegistry>['register']> | undefined;
+  let identity!: ProjectEntryIdentityOwner;
+  let directory: unknown = {version: 1, appLibraryScope: 'a'.repeat(64), instanceId: id(900), registered: []};
   const Component = load('SettingsRoot.tsx', h.react, {
     './i18n/I18nProvider.tsx': {useI18n: () => i18nTestModule(locale).useI18n()}, '@mioon/ui/components/workbench-confirm': { useConfirmation: () => options.confirm ?? (async () => false) },
     './UiPreferencesProvider.tsx': { useUiPreferences: () => ({ pauseObservation }) },
     './settings-navigation-state.ts': { createSettingsNavigationRegistry }, './native-close-state.ts': { createNativeCloseRegistry, installNativeCloseAdmission },
-    './settings-window-state.ts': { createSettingsWindowNavigation }, './launcher-state.ts': { createLauncherClient: () => ({list: async () => []}) },
-    './ProjectHomeConnections.tsx': { __esModule: true, default: 'connection-shell' }, './NativeLocatorStatus.tsx': { __esModule: true, default: 'locator-status' },
+    './settings-window-state.ts': { createSettingsWindowNavigation },
+    './project-entry-identity.ts': {createProjectEntryIdentityOwner: (input: Parameters<typeof createProjectEntryIdentityOwner>[0]) => identity = createProjectEntryIdentityOwner(input)},
+    './ProjectHomeConnections.tsx': { __esModule: true, default: 'connection-shell' }, './ProjectEntryIdentityStatus.tsx': { __esModule: true, default: 'identity-status' },
     '@mioon/ui/components/button': { Button: 'Button' }, '@mioon/ui/components/workbench-icons': { WorkbenchIcon: 'WorkbenchIcon' },
   }, { window: page, document });
   let settings = context({ role: 'settings', initialProjectId: null, editorProjectId: null, editorPhase: 'none', settingsSlot: options.initialSlot ?? 'agent', settingsVersion: 1 });
@@ -184,13 +189,15 @@ async function settingsPanel(onClose: (page: { __mioonNativeCloseAdmission?: Ret
   let requests = 0;
   const bridge = { subscribe: (listener: (next: ProjectWindowContext) => void) => {receive = listener; return () => {receive = () => {};};}, closeSettings: () => { requests++; return onClose(page); } };
   const render = () => {
-    h.begin(); const tree = Component({ context: settings, bridge, rpc() {}, contractChecks: {}, renderSettings(next: SettingsRenderProps) {
+    h.begin(); const tree = Component({ context: settings, bridge, rpc() {}, contractChecks: {readDirectory: async () => {if (directory instanceof Error) throw directory; return directory;}}, renderSettings(next: SettingsRenderProps) {
       props = next; owner ??= next.registry.register('retained-form'); owner.update({ dirty: true, busy: false, blocked: false, version: 1 }); return marker;
     } }); h.flush(); return tree;
   };
   render(); await new Promise(resolve => setImmediate(resolve)); const tree = render();
   assert.ok(props); assert.ok(nodes(tree).includes(marker));
   return { render, page, marker, input, password, observation,
+    identity, directory(value: unknown) {directory = value;},
+    reportForm(state: Parameters<NonNullable<typeof owner>['update']>[0]) {assert.ok(owner); owner.update(state);},
     receive(next: ProjectWindowContext) {settings = next; receive(next);},
     setLocale(next: typeof locale) {locale = next;},
     get context() {return settings;}, get props() {assert.ok(props); return props;}, get stateUpdates() {return h.updates;},
@@ -224,6 +231,24 @@ test('SettingsRoot releases an outstanding native observation pause when its doc
   assert.deepEqual(f.props.registry.capture(), before);
   f.dispose(); assert.deepEqual(f.observation, [true, false]);
   assert.equal(f.page.__mioonNativeCloseAdmission, undefined);
+});
+
+test('SettingsRoot identity failures retain the exact secret input and recovery owners while a changed instance stays inert', async () => {
+  const f = await settingsPanel(async () => false), retained = f.props.registry.capture();
+  f.directory(Error('private disconnected endpoint')); await f.identity.refresh(); let tree = f.render();
+  assert.equal(find(tree, 'retained-native-key'), f.input); assert.equal(nodes(tree).find(node => nodes(node.props.children).includes(f.marker) && Object.hasOwn(node.props, 'inert'))?.props.inert, true);
+  assert.deepEqual(f.props.registry.capture(), retained); assert.equal(f.password.value, 'SYNTHETIC_RETAINED_NATIVE_KEY');
+  f.directory({version: 1, appLibraryScope: 'a'.repeat(64), instanceId: id(900), registered: []}); await f.identity.refresh(); tree = f.render();
+  assert.equal(nodes(tree).find(node => nodes(node.props.children).includes(f.marker) && Object.hasOwn(node.props, 'inert'))?.props.inert, false);
+  const admission = f.page.__mioonNativeCloseAdmission!, ticket = admission.inspect();
+  f.reportForm({dirty: true, busy: false, blocked: true, version: 2}); const unresolved = f.props.registry.capture();
+  f.directory({version: 1, appLibraryScope: 'a'.repeat(64), instanceId: id(901), registered: []}); await f.identity.refresh(); tree = f.render();
+  assert.equal(f.identity.getState().identityBlocked, true); assert.equal(f.identity.getVerifiedScope(), null);
+  assert.equal(find(tree, 'retained-native-key'), f.input); assert.equal(f.password.value, 'SYNTHETIC_RETAINED_NATIVE_KEY');
+  assert.deepEqual(f.props.registry.capture(), unresolved); assert.equal(admission.commit(ticket.token, {discardDirty: true, allowDrainFailure: false, expiresAt: Date.now() + 1000}), false);
+  assert.equal(admission.inspect('reload', f.page.location.href).disposition, 'blocked');
+  f.directory({version: 1, appLibraryScope: 'a'.repeat(64), instanceId: id(900), registered: []}); await f.identity.refresh();
+  assert.equal(f.identity.getVerifiedScope(), null); assert.equal(find(f.render(), 'retained-native-key'), f.input); f.dispose();
 });
 
 test('native close requests coalesce while pending and rejection keeps the same dirty settings form without fallback', async () => {

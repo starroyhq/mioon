@@ -51,7 +51,7 @@ test('actual App close drain immediately waits for the registered clip draft ins
   const gate = deferred(), f = fixture({ held: gate }); let settled = false;
   const closing = f.drain().then(value => { settled = true; return value; });
   await new Promise(setImmediate);
-  assert.deepEqual(f.calls, ['view', 'locator', 'clip']);
+  assert.deepEqual(f.calls, ['view', 'clip']);
   assert.equal(settled, false, 'An unresolved local draft must not be reported saved');
   gate.resolve(true); assert.equal(await closing, true);
 });
@@ -152,7 +152,7 @@ test('desktop close warning describes unconfirmed local drafts and view without 
 });
 
 
-test('native editor close drains its own clip and view while the launcher exclusively drains the shared locator', async () => {
+test('native editor close drains its own clip and view without writing the retired locator', async () => {
   const f=fixture({native:true});assert.equal(await f.drain(),true);assert.deepEqual(f.calls,['view','clip']);
   f.calls.length=0;await f.listeners.get('window:pagehide')!();assert.equal(f.calls.includes('locator'),false);assert.equal(f.calls.includes('view'),true);
 });

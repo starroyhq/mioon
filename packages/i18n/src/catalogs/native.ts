@@ -66,6 +66,12 @@ export const nativeMessages = {
     "en": "Open project",
     "ja": "プロジェクトを開く"
   },
+  "native.projectTrashUnconfirmed": {
+    "zh-Hans": "项目文件是否已移到废纸篓尚不明确，未重复操作。",
+    "zh-Hant": "專案檔案是否已移到垃圾桶尚不明確，未重複操作。",
+    "en": "It is unclear whether the project file was moved to the Trash. The operation was not repeated.",
+    "ja": "プロジェクトファイルがゴミ箱に移動されたか確認できません。操作は繰り返していません。"
+  },
   "native.connections": {
     "zh-Hans": "连接设置",
     "zh-Hant": "連線設定",
@@ -805,6 +811,16 @@ export const nativeMessages = {
   'native.openProjectFileNotMioon': { 'zh-Hans': '“{name}”不是 Mioon 项目文件。', 'zh-Hant': '「{name}」不是 Mioon 專案檔案。', en: '“{name}” is not a Mioon project file.', ja: '「{name}」は Mioon プロジェクトファイルではありません。' },
   'native.openProjectFileNewer': { 'zh-Hans': '“{name}”由更新版本的 Mioon 创建，请先升级应用。', 'zh-Hant': '「{name}」由較新版本的 Mioon 建立，請先更新應用程式。', en: '“{name}” was made by a newer version of Mioon. Update the app first.', ja: '「{name}」は新しいバージョンの Mioon で作成されています。先にアプリを更新してください。' },
   'native.openProjectFileDamaged': { 'zh-Hans': '“{name}”已损坏或不完整。', 'zh-Hant': '「{name}」已損毀或不完整。', en: '“{name}” is damaged or incomplete.', ja: '「{name}」は破損しているか、不完全です。' },
-  'native.openProjectFileUnavailable': { 'zh-Hans': '现在无法打开“{name}”。', 'zh-Hant': '目前無法開啟「{name}」。', en: 'Cannot open “{name}” right now.', ja: '「{name}」を今は開けません。' },
-  'native.openProjectFileSystemUnavailable': { 'zh-Hans': '从系统打开“{name}”尚不可用。', 'zh-Hant': '從系統開啟「{name}」尚未提供。', en: 'Opening “{name}” from the system is not available yet.', ja: 'システムから「{name}」を開く機能はまだ利用できません。' },
+  'native.openProjectFileUnavailable': { 'zh-Hans': '现在无法打开“{name}”，请稍后重试。', 'zh-Hant': '目前無法開啟「{name}」，請稍後重試。', en: 'Cannot open “{name}” right now. Try again later.', ja: '「{name}」を今は開けません。後でもう一度お試しください。' },
+  'native.openProjectFileAccessDenied': { 'zh-Hans': '系统没有允许 Mioon 访问“{name}”所在的位置。请检查系统隐私设置或选择另一个位置。', 'zh-Hant': '系統未允許 Mioon 存取「{name}」所在的位置。請檢查系統隱私設定或選擇其他位置。', en: 'The system did not allow Mioon to access the location of “{name}”. Check system privacy settings or choose another location.', ja: 'システムが「{name}」の場所へのアクセスを許可していません。プライバシー設定を確認するか、別の場所を選んでください。' },
+  'native.openProjectFileReadOnly': { 'zh-Hans': '“{name}”不能写入。Mioon 要能写入才能打开项目，请复制到可写的位置，或检查文件及所在位置的权限。', 'zh-Hant': '「{name}」無法寫入。Mioon 要能寫入才能開啟專案，請複製到可寫入的位置，或檢查檔案與所在位置的權限。', en: '“{name}” is read-only. Mioon needs write access to open a project. Copy it to a writable location or check its permissions.', ja: '「{name}」に書き込めません。プロジェクトを開くには書き込み権限が必要です。書き込める場所にコピーするか、権限を確認してください。' },
+  'native.openProjectFileMissing': { 'zh-Hans': '找不到“{name}”。请检查磁盘连接或重新选择文件。', 'zh-Hant': '找不到「{name}」。請檢查磁碟連線或重新選擇檔案。', en: '“{name}” could not be found. Check the drive connection or choose the file again.', ja: '「{name}」が見つかりません。ドライブの接続を確認するか、ファイルを選び直してください。' },
+  'native.projectLocationRejected': { 'zh-Hans': '这个位置无法安全写入项目。项目文件不能放在网络共享或只读磁盘上，请选择另一个位置。', 'zh-Hant': '這個位置無法安全寫入專案。專案檔案不能放在網路共享或唯讀磁碟上，請選擇其他位置。', en: 'Projects cannot be written safely here. Choose a location outside network shares and read-only drives.', ja: 'この場所には安全に書き込めません。ネットワーク共有や読み取り専用ドライブ以外の場所を選んでください。' },
+  'native.projectLocationWarning': { 'zh-Hans': '这个位置有存储风险', 'zh-Hant': '這個位置有儲存風險', en: 'Storage risks at this location', ja: 'この保存場所のリスク' },
+  'native.projectLocationICloud': { 'zh-Hans': '这个位置由 iCloud 云盘同步。同步到一半时打开，或者在两台电脑上同时打开，可能产生冲突副本或不完整的文件。建议放在本机或外置盘上。', 'zh-Hant': '這個位置由 iCloud 雲碟同步。同步到一半時開啟，或在兩台電腦上同時開啟，可能產生衝突副本或不完整的檔案。建議放在本機或外接磁碟上。', en: 'iCloud Drive syncs this location. Opening during sync or on two computers can cause conflicting or incomplete copies. Prefer a local or external drive.', ja: 'この場所はiCloud Driveで同期されます。同期中や2台で同時に開くと、競合や不完全なコピーが生じる場合があります。ローカルまたは外部ドライブを推奨します。' },
+  'native.projectLocationSync': { 'zh-Hans': '这个位置由系统 File Provider 同步。同步到一半时打开，或者在两台电脑上同时打开，可能产生冲突副本或不完整的文件。建议放在本机或外置盘上。', 'zh-Hant': '這個位置由系統 File Provider 同步。同步到一半時開啟，或在兩台電腦上同時開啟，可能產生衝突副本或不完整的檔案。建議放在本機或外接磁碟上。', en: 'A system File Provider syncs this location. Opening during sync or on two computers can cause conflicting or incomplete copies. Prefer a local or external drive.', ja: 'この場所はシステムのFile Providerで同期されます。同期中や2台で同時に開くと競合や不完全なコピーが生じる場合があります。ローカルまたは外部ドライブを推奨します。' },
+  'native.projectLocationPermissions': { 'zh-Hans': '这块磁盘不支持文件权限，这台电脑上的其他账户也能读写项目文件。拔出磁盘前，请先关闭项目。', 'zh-Hant': '這個磁碟不支援檔案權限，這台電腦上的其他帳戶也能讀寫專案檔案。拔出磁碟前，請先關閉專案。', en: 'This drive does not enforce file permissions. Other accounts can read and write the project. Close the project before disconnecting the drive.', ja: 'このドライブはファイル権限を適用しません。他のアカウントもプロジェクトを読み書きできます。取り外す前にプロジェクトを閉じてください。' },
+  'native.relinkOutsideTitle': { 'zh-Hans': '允许读取这个素材位置？', 'zh-Hant': '允許讀取這個素材位置？', en: 'Allow access to this media location?', ja: 'このメディアの場所へのアクセスを許可しますか？' },
+  'native.relinkOutsideDetail': { 'zh-Hans': '将读取“{path}”及其所在目录中可重新指向的素材，供本次预览。只有确认应用后才保存该目录的读取授权。取消不更改授权。', 'zh-Hant': '將讀取「{path}」及其所在目錄中可重新指向的素材，供本次預覽。只有確認套用後才儲存該目錄的讀取授權。取消不變更授權。', en: 'Read “{path}” and relinkable media in its directory for this preview. The directory permission is saved only when you apply. Cancelling leaves permissions unchanged.', ja: 'プレビューのために「{path}」と同じフォルダ内の再リンク可能なメディアを読み取ります。適用を確定した時だけフォルダの読み取り許可を保存します。キャンセルでは許可を変更しません。' },
+  'native.relinkOutsideAllow': { 'zh-Hans': '允许预览', 'zh-Hant': '允許預覽', en: 'Allow preview', ja: 'プレビューを許可' },
 } as const satisfies MessageCatalog;

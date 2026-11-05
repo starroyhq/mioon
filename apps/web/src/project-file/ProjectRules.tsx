@@ -35,7 +35,7 @@ export interface ProjectRulesDialogProps {
   readonly save: ActionState<'save' | 'enable'>;
   /** The file changed elsewhere since it was read. */
   readonly conflict: boolean;
-  readonly blocked?: boolean;
+  readonly blocked?: boolean; readonly interactionBlocked?:boolean;
   readonly notice?: ReactNode;
   readonly onSave: () => void;
   /** Enables the file; with a changed draft the caller saves it first. */
@@ -76,7 +76,7 @@ export function ProjectRulesDialog(props: ProjectRulesDialogProps): ReactElement
     ? <WorkbenchButton variant="primary" data-testid="pf-rules-enable" loading={saving && save.action === 'enable'} disabled={locked || props.conflict || problem !== null} onClick={props.onEnable}>{t(dirty ? 'projectFile.rules.saveAndEnable' : 'projectFile.rules.enable')}</WorkbenchButton>
     : <WorkbenchButton variant="primary" data-testid="pf-rules-save" loading={saving && save.action === 'save'} disabled={ready === null || locked || props.conflict || !dirty || problem !== null} onClick={props.onSave}>{t('projectFile.rules.save')}</WorkbenchButton>;
   return <Dialog open={props.open} onOpenChange={next => { if (!next && !saving) props.onClose(); }}>
-    <WorkbenchDialogContent title={t('projectFile.rules.title')} description={t('projectFile.rules.description', file)} className="pf-dialog pf-rules-dialog" data-testid="pf-rules-dialog" showCloseButton={!saving}
+    <WorkbenchDialogContent inert={props.interactionBlocked||undefined} title={t('projectFile.rules.title')} description={t('projectFile.rules.description', file)} className="pf-dialog pf-rules-dialog" data-testid="pf-rules-dialog" showCloseButton={!saving}
       footer={<>
         <div className="pf-footer-note pf-rules-file">
           <span className="pf-rules-path"><Icon name="note" size={14} /><span className="pf-mono" data-testid="pf-rules-path">{displayPath(props.path, props.homeDirectory)}</span>{status}</span>

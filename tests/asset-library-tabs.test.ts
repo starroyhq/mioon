@@ -11,7 +11,7 @@ function fixture(){
   const react={createElement:(type: unknown,props: Record<string, unknown> | null,...children: ElementTree[])=>({type,props:{...props,children}}),useState(initial: unknown){const index=cursor++;if(!(index in slots))slots[index]=initial;return[slots[index],(value: (arg0: unknown) => unknown)=>{slots[index]=typeof value==='function'?value(slots[index]):value;}];}};(react as typeof react & {default: unknown}).default=react;
   const module=({exports:{}} as ElementModule);
   Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/AssetLibrary.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)((name: string)=>{
-    if(name==='react')return react;if(name.endsWith('I18nProvider.tsx'))return i18nTestModule();if(name.endsWith('.css'))return{};
+    if (name === './project-media-read-gate.tsx') return {useProjectMediaReadGate: () => null, ProjectMediaImage: 'img'}; if (name === './project-file/MediaStatus.tsx') return {MediaStatusBadge: 'MediaStatusBadge', MediaStatusNote: 'MediaStatusNote', MediaAttentionBanner: 'MediaAttentionBanner'}; if(name==='react')return react;if(name.endsWith('I18nProvider.tsx'))return i18nTestModule();if(name.endsWith('.css'))return{};
     if(name==='./AssetDispositionControls.tsx')return{default:'AssetDispositionControls',useDispositionInteraction:()=>({visible,admit:(action: () => void)=>{if(visible)action();}})};
     if(name==='./asset-disposition-state.ts')return{dispositionCounts:()=>({}),dispositionFilters:[],filterLibraryAssets:(assets: unknown)=>assets};
     if(name==='./asset-annotation-state.ts')return{annotationTags:()=>[],annotationMatches:()=>true,annotationRow:()=>null};

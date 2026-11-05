@@ -93,7 +93,7 @@ test('actual AssetLibrary composes saved tag, type, name, disposition and unused
   const module: { exports: Record<string, unknown> } = { exports: {} }, primitives = new Proxy({} as Record<string, unknown>, { get: (_target: unknown, key: string) => String(key) });
   const code = transformSync(readFileSync(new URL('../apps/web/src/AssetLibrary.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
   Function('module', 'exports', 'require', code)(module, module.exports, (name: string) => {
-    if (name === 'react') return react;
+    if (name === './project-media-read-gate.tsx') return {useProjectMediaReadGate: () => null, ProjectMediaImage: 'img'}; if (name === './project-file/MediaStatus.tsx') return {MediaStatusBadge: 'MediaStatusBadge', MediaStatusNote: 'MediaStatusNote', MediaAttentionBanner: 'MediaAttentionBanner'}; if (name === 'react') return react;
     if (name.includes('I18nProvider')) return { useI18n: () => ({ t: (key: string, params?: Record<string, unknown>) => translate('en', key as never, params as never), renderMessage: (value: unknown) => renderMessage('en', value as never), formatNumber: (value: number) => String(value) }) };
     if (name === './asset-annotation-state.ts') return annotationState;
     if (name === './asset-disposition-state.ts') return dispositions;

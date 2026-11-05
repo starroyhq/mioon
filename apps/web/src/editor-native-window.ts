@@ -18,11 +18,11 @@ export async function reportEditorWindowStatus(binding: EditorWindowBinding, pro
   rememberProject?(projectId: string): unknown;
 } = {}): Promise<boolean> {
   const captured = binding.context;
-  if (options.isCurrent?.() === false || captured.role !== 'editor' || captured.initialProjectId !== projectId ||
+  if (options.isCurrent?.() === false || captured.leaseRevoked === true || captured.role !== 'editor' || captured.initialProjectId !== projectId ||
       captured.editorProjectId !== projectId || !isProjectWindowId(projectId)) return false;
   const fresh = await binding.bridge.context();
   if (options.isCurrent?.() === false || fresh.contextId !== captured.contextId || fresh.windowId !== captured.windowId ||
-      fresh.backendId !== captured.backendId || fresh.role !== 'editor' || fresh.initialProjectId !== projectId || fresh.quitting) return false;
+      fresh.backendId !== captured.backendId || fresh.role !== 'editor' || fresh.initialProjectId !== projectId || fresh.quitting || fresh.leaseRevoked === true) return false;
   const accepted = await binding.bridge.editorStatus(projectId, phase);
   return accepted === true && options.isCurrent?.() !== false;
 }
@@ -33,7 +33,7 @@ export function useEditorWindowStatus(binding: EditorWindowBinding | null, proje
     let active = true;
     void reportEditorWindowStatus(binding, projectId, ready ? 'ready' : 'failed', { isCurrent: () => active }).catch(() => {});
     return () => { active = false; };
-  }, [binding?.bridge, binding?.context.contextId, binding?.context.quitting, projectId, phase, ready]);
+  }, [binding?.bridge, binding?.context.contextId, binding?.context.quitting, binding?.context.leaseRevoked, projectId, phase, ready]);
 }
 /** Navigation to a separate settings owner preserves the composer. The current
  * consent is invalidated through its existing visibility method; no send/load is

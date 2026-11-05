@@ -1,6 +1,5 @@
 import { message as msg } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
-import type { LastProjectEnvelope } from '@mioon/contracts/last-project';
 
 const uuid = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/iu;
 const scope = /^[a-f0-9]{64}$/u;
@@ -21,9 +20,9 @@ export function createProjectBootGuard(getSelectionEpoch: () => number) {
   };
 }
 
-/** Only an explicit URL selects a startup target. A locator observation still
- * establishes cache identity at the caller, but never selects a project. */
-export function chooseInitialProject(projects: readonly { id: string }[], explicit: string | null, _observed: LastProjectEnvelope | null): InitialProjectChoice {
+/** Only an explicit URL selects a startup target. The optional compatibility
+ * argument has no authority; current callers establish identity via directory. */
+export function chooseInitialProject(projects: readonly { id: string }[], explicit: string | null, _observed?: unknown): InitialProjectChoice {
   const available = (id: string | null): id is string => typeof id === 'string' && uuid.test(id) && projects.some(project => project.id === id);
   if (available(explicit)) return { projectId: explicit, source: 'url', notice: null };
   return { projectId: null, source: 'none', notice: explicit !== null ? msg('projects.bootMissingEmpty') : null };

@@ -73,7 +73,7 @@
       "capture": "page",
       "file": "12-05.png",
       "format": "png",
-      "bytes": 22718,
+      "bytes": 22427,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -85,7 +85,7 @@
       "capture": "page",
       "file": "12-05-missing.png",
       "format": "png",
-      "bytes": 25668,
+      "bytes": 25385,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -133,7 +133,7 @@
       "capture": "page",
       "file": "12-05-applying.png",
       "format": "png",
-      "bytes": 22436,
+      "bytes": 22149,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -145,7 +145,43 @@
       "capture": "page",
       "file": "12-05-apply-error.png",
       "format": "png",
-      "bytes": 24826,
+      "bytes": 24537,
+      "width": 1440,
+      "height": 900,
+      "errors": []
+    },
+    {
+      "id": "12-05-no-native-chooser",
+      "design": "12-05",
+      "state": "unavailable",
+      "capture": "page",
+      "file": "12-05-no-native-chooser.png",
+      "format": "png",
+      "bytes": 15706,
+      "width": 1440,
+      "height": 900,
+      "errors": []
+    },
+    {
+      "id": "12-05-changed-selected",
+      "design": "12-05",
+      "state": "staged",
+      "capture": "page",
+      "file": "12-05-changed-selected.png",
+      "format": "png",
+      "bytes": 23200,
+      "width": 1440,
+      "height": 900,
+      "errors": []
+    },
+    {
+      "id": "12-05-new-added",
+      "design": "12-05",
+      "state": "applied",
+      "capture": "page",
+      "file": "12-05-new-added.png",
+      "format": "png",
+      "bytes": 24126,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -157,7 +193,7 @@
       "capture": "page",
       "file": "12-06.png",
       "format": "png",
-      "bytes": 32204,
+      "bytes": 32255,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -169,7 +205,7 @@
       "capture": "page",
       "file": "12-06-loading.png",
       "format": "png",
-      "bytes": 25254,
+      "bytes": 25448,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -181,7 +217,7 @@
       "capture": "page",
       "file": "12-06-empty.png",
       "format": "png",
-      "bytes": 23648,
+      "bytes": 23828,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -193,7 +229,7 @@
       "capture": "page",
       "file": "12-06-error.png",
       "format": "png",
-      "bytes": 25265,
+      "bytes": 25448,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -205,7 +241,7 @@
       "capture": "page",
       "file": "12-06-no-rules-note.png",
       "format": "png",
-      "bytes": 29350,
+      "bytes": 29887,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -217,7 +253,31 @@
       "capture": "page",
       "file": "12-06-allowing.png",
       "format": "png",
-      "bytes": 31817,
+      "bytes": 31868,
+      "width": 1440,
+      "height": 900,
+      "errors": []
+    },
+    {
+      "id": "12-06-from-another",
+      "design": "12-06",
+      "state": "ready",
+      "capture": "page",
+      "file": "12-06-from-another.png",
+      "format": "png",
+      "bytes": 32744,
+      "width": 1440,
+      "height": 900,
+      "errors": []
+    },
+    {
+      "id": "12-06-allow-unavailable",
+      "design": "12-06",
+      "state": "unavailable",
+      "capture": "page",
+      "file": "12-06-allow-unavailable.png",
+      "format": "png",
+      "bytes": 31952,
       "width": 1440,
       "height": 900,
       "errors": []

@@ -25,6 +25,7 @@ const projectId='11111111-1111-4111-8111-111111111111',stepId='22222222-2222-422
 const trustedRules=(owner:string):ProjectRulesSnapshot=>projectRulesSnapshotSchema.parse({projectId:owner,file:'AGENTS.md',exists:true,text:'Synthetic project rules',hash:createHash('sha256').update('Synthetic project rules').digest('hex'),trust:'trusted',maxBytes:8192,readError:null,pendingWrites:false});
 function harness({backgroundPending=false,readOnly=false,status,changes=[],locale='zh-Hans',readRules}: {backgroundPending?: boolean;readOnly?: boolean;status?: string;changes?: TaskPanelChange[];locale?: Locale;readRules?:(owner:string,signal:AbortSignal)=>Promise<ProjectRulesSnapshot>}={}){
   let currentLocale=locale,currentProjectId=projectId,refreshResult: Promise<unknown>|null=null,currentVisible=true;
+  let currentAdmission=true;
   const hooks: Hook[]=[];let cursor=0,pending: number[]=[],tree: Tree,loads=0,hookWrites=0;const calls: unknown[][]=[];
   const react={createElement:(type: string,props: Partial<ElementProps>|null,...children: Tree[])=>({type,props:{...props,children:type==='dialog'&&!props!.open?[]:type==='dialog-content'?[...children,props!.footer]:type==='retained'?[...children,props!.recovery]:children}}),Fragment:'fragment',useRef:(value: unknown)=>hooks[cursor++]??={current:value},useState:(value: unknown)=>{const index=cursor++;hooks[index]??={value};return[hooks[index].value,(next: (arg0: unknown) => unknown)=>{hookWrites++;hooks[index].value=typeof next==='function'?next(hooks[index].value):next;}];},useLayoutEffect:(fn: ()=>void|(()=>void),deps: readonly unknown[])=>{const index=cursor++,old=hooks[index];if(!old||deps.some((value: unknown,at)=>value!==old.deps![at])){hooks[index]={...old,fn,deps};pending.push(index);}}};(react as typeof react & {default?: unknown}).default=react;
   const snapshot: TaskPanelSnapshot={run:{id:'run',projectId,text:'synthetic task',status:status??(backgroundPending?'completed':'awaiting_approval'),stepsUsed:2,budget:30,configuration:{model:'historical-model'}},steps:[{id:stepId,kind:'tool',status:'completed',approvalRequired:true,tier:'paid',toolCall:{name:'mioon_generation_submit',arguments:{}}}],changes,backgroundPending};
@@ -52,9 +53,9 @@ function harness({backgroundPending=false,readOnly=false,status,changes=[],local
     if(id==='react')return react;if(id==='./agent-task-presentation.ts')return presentation;if(id==='./agent-task-requirements.ts')return requirements;if(id.includes('packages/i18n/src/index.ts'))return{message};if(id.includes('workbench-confirm'))return{useConfirmation:()=>async()=>true};if(id.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};if(id.includes('/dialog'))return{Dialog:'dialog'};if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};if(id.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};if(id==='./AgentRetainedEditing.tsx')return{__esModule:true,default:'retained'};if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(currentLocale)};if(id==='./agent-task-errors.ts')return{agentTaskErrorKey};if(id.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>currentVisible};if(id==='./AgentConversationHistory.tsx')return{__esModule:true,default:'conversation-history'};if(id==='./agent-task-questions.ts')return questions;if(id==='./agent-task-reviews.ts')return reviews;if(id==='./AgentTaskContinuityReport.tsx')return{__esModule:true,default:'continuity-report'};if(id==='./AgentTaskQuestion.tsx')return{AgentTaskQuestionCard:'question-card',AgentTaskAnswerRow:'answer-row'};if(id==='./agent-tasks-v2.ts')return{agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion,createAgentTaskReceiptStore:()=>({}),agentTaskPromptValid:()=>true,createAgentTaskSession:(value: TaskPanelOptions)=>{options=value;return{getState:()=>state,load(){loads++;value.onChange(state);},setVisible(){},dispose(){},cancelSelection(){},refreshRound:async (id: string)=>{calls.push(['refreshRound',id]);if(refreshResult)return await refreshResult;return state.rounds.find(item=>item.run.id===id)??null;},action:(...args: unknown[])=>calls.push(args),send:async()=>{calls.push(['send']);return true;},note:async()=>{calls.push(['note']);return true;},answer:async(...args: unknown[])=>{calls.push(['answer',...args]);return true;},authorizationReview:()=>({projectId,settingsRevision:1,authorizationRevision:1,destination:'https://example.invalid/v1/responses',model:'current-model',text:state.draft,uploads:state.uploads.map(item=>item.id),locale:currentLocale}),authorizeAndSend:async (value: unknown)=>{calls.push(['authorizeAndSend',value]);return true;},edit:(value: string)=>{state.draft=value;calls.push(['edit',value]);},removeUpload:(id: unknown)=>{state.uploads=state.uploads.filter(item=>item.id!==id);},history(){calls.push(['history']);},selectConversation:async(...args: unknown[])=>{calls.push(['selectConversation',...args]);return true;},newConversation:()=>{calls.push(['newConversation']);return true;}};}};
     if(id.includes('native-close-sources'))return{createAgentTaskCloseReporter:()=>({publish(){},release(){}})};if(id.includes('agent-settings.ts'))return{deriveAgentEndpoint:()=>'/synthetic'};if(id.includes('/button'))return{Button:'button'};if(id.includes('/textarea'))return{Textarea:'textarea'};if(id.includes('/input'))return{Input:'input'};if(id.includes('/badge'))return{Badge:'badge'};return{__esModule:true,default:'placeholder'};
   });
-  const render=()=>{cursor=0;pending=[];tree=module.exports.default!({projectId:currentProjectId,onSettings(page: unknown){calls.push(page ? ['settings',page] : ['settings']);},onClose(){}});for(const index of pending){hooks[index].cleanup?.();hooks[index].cleanup=hooks[index].fn!();}return nodes(tree);};render();
+  const render=()=>{cursor=0;pending=[];tree=module.exports.default!({isAdmissionAllowed:()=>currentAdmission,projectId:currentProjectId,onSettings(page: unknown){calls.push(page ? ['settings',page] : ['settings']);},onClose(){}});for(const index of pending){hooks[index].cleanup?.();hooks[index].cleanup=hooks[index].fn!();}return nodes(tree);};render();
   let disposed=false;
-  return{render,calls,state,rulesReads,rulesResponses,get hookWrites(){return hookWrites;},setLocale(value: Locale){currentLocale=value;},setProject(value: string){currentProjectId=value;},setVisible(value: boolean){currentVisible=value;},setRefresh(value: Promise<unknown>|null){refreshResult=value;},get options(){return options;},get loads(){return loads;},find:(id: unknown)=>nodes(tree).find((node)=>node.props?.['data-testid']===id),unmount(){if(disposed)return;disposed=true;for(const hook of hooks)hook.cleanup?.();restoreGlobals();}};
+  return{render,calls,state,setAdmissionAllowed(value:boolean){currentAdmission=value;},rulesReads,rulesResponses,get hookWrites(){return hookWrites;},setLocale(value: Locale){currentLocale=value;},setProject(value: string){currentProjectId=value;},setVisible(value: boolean){currentVisible=value;},setRefresh(value: Promise<unknown>|null){refreshResult=value;},get options(){return options;},get loads(){return loads;},find:(id: unknown)=>nodes(tree).find((node)=>node.props?.['data-testid']===id),unmount(){if(disposed)return;disposed=true;for(const hook of hooks)hook.cleanup?.();restoreGlobals();}};
 }
 test('a completed-conversation refresh keeps real panel inputs and write controls disabled until it settles',async()=>{
   const h=harness({status:'completed'});try{
@@ -63,6 +64,17 @@ test('a completed-conversation refresh keeps real panel inputs and write control
     tree.find(node=>node.type==='form')!.props.onSubmit({preventDefault(){}});await new Promise(resolve=>setImmediate(resolve));
     assert.deepEqual(h.calls,[]);assert.equal(h.state.draft,'next task');
     h.state.phase='ready';h.render();for(const id of ['agent-task-draft','agent-task-send','agent-task-upload'])assert.equal(h.find(id)!.props.disabled,false,id);
+  }finally{h.unmount();}
+});
+
+test('native lease admission blocks the actual retained Mio panel without recreating its session or clearing its draft',async()=>{
+  const h=harness({status:'completed'});try{
+    const draft=h.find('agent-task-draft')!,ref=draft.props.ref,loads=h.loads,oldForm=h.render().find(node=>node.type==='form')!;
+    const allowed=Reflect.get(h.options,'isAdmissionAllowed') as ()=>boolean;assert.equal(allowed(),true);
+    h.setAdmissionAllowed(false);assert.equal(allowed(),false,'The original session observes the live native fence before a rerender');h.render();
+    assert.equal(h.loads,loads);assert.equal(h.find('agent-task-draft')!.props.ref,ref);assert.equal(h.find('agent-task-draft')!.props.value,'next task');
+    for(const id of ['agent-task-draft','agent-task-send','agent-task-upload',`agent-task-approve-${stepId}`])assert.equal(h.find(id)!.props.disabled,true,id);
+    oldForm.props.onSubmit({preventDefault(){}});await new Promise(setImmediate);assert.deepEqual(h.calls,[]);assert.equal(h.state.draft,'next task');assert.equal(h.state.draftDirty,true);
   }finally{h.unmount();}
 });
 
@@ -433,4 +445,17 @@ test('real rules observations validate trusted snapshots, remain read-only and f
     finish({...trustedRules(projectId),trust:'untrusted'});await new Promise(resolve=>setImmediate(resolve));
     assert.equal(late.hookWrites,writes);assert.deepEqual(late.calls,[]);
   }finally{late.unmount();}
+});
+
+for (const outcome of ['success','failure'] as const) test(`a revoked admission fences rules focus reads and a late ${outcome} before rerender without clearing the Mio session`,async()=>{
+  let finish!:(value:ProjectRulesSnapshot)=>void,reject!:(reason:Error)=>void;
+  const h=harness({status:'completed',readRules:()=>new Promise((resolve,no)=>{finish=resolve;reject=no;})});
+  try{
+    assert.equal(h.rulesReads.length,1);const loads=h.loads,writes=h.hookWrites,draft=h.state.draft,pending=h.state.pending;
+    h.setAdmissionAllowed(false);window.dispatchEvent(new Event('focus'));
+    assert.equal(h.rulesReads.length,1,'the old focus listener checks the live fence before its next render');
+    if(outcome==='success')finish({...trustedRules(projectId),trust:'untrusted'});else reject(new Error('synthetic late read failure'));
+    await new Promise(setImmediate);assert.equal(h.hookWrites,writes,'a late success or error cannot publish into the revoked owner');assert.deepEqual(h.calls,[]);
+    h.render();assert.equal(h.loads,loads);assert.equal(h.state.draft,draft);assert.equal(h.state.pending,pending);assert.equal(h.state.draftDirty,true);
+  }finally{h.unmount();}
 });

@@ -276,7 +276,7 @@ test('the default policy confirms irreversible work, saved policies keep their m
  f.restart();assert.equal(f.runtime.policy().modes.local_irreversible,'direct');
 });
 
-test('waiting and answered questions retain their Mio policies; application deletion refuses without writes',async t=>{
+test('waiting and answered questions retain their Mio policies; legacy permanent deletion refuses without writes',async t=>{
  const f=await fixture(t);f.queue([ask(opening)]);
  const waiting=await f.send('Plan the opening',{policy:{modes:STEP}}),step=question(waiting);
  assert.equal(waiting.run.status,'awaiting_answer');
@@ -292,7 +292,7 @@ test('waiting and answered questions retain their Mio policies; application dele
  const snapshot=(db:DatabaseSync)=>({state:readProjectState(db),marks:changeMarks(db)});
  const before={project:project(f.projectId,snapshot),app:app(snapshot)};
  const response=await fetch(server.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation:'project.delete',input:{requestId:randomUUID(),projectId:f.projectId,expectedRevision:1,confirmPermanentDeletion:true}})});
- assert.equal(response.status,409);assert.equal((await response.json() as {error:{code:string}}).error.code,'PROJECT_DELETE_UNAVAILABLE');
+ assert.equal(response.status,400);assert.equal((await response.json() as {error:{code:string}}).error.code,'VALIDATION_ERROR');
  assert.deepEqual({project:project(f.projectId,snapshot),app:app(snapshot)},before);
- // Successful project/policy cascade removal is the S5 handoff, not an S7 path.
+ // S5-C trashes only the project file; terminal policies stay in local history.
 });

@@ -11,12 +11,25 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import * as stateModule from '../apps/web/src/timeline-mix-loudness-state.ts';
+import {timelineAudioMediaReadable} from '../apps/web/src/project-media-readability.ts';
 import { timelineAudioPreviewSourceIdentity } from '../apps/web/src/use-timeline-audio-preview.ts';
 import {  context, input, report, draft, id, projectId, timelineId, sourceId, type MixInput } from './helpers/timeline-mix-loudness-ui-fixture.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = (name: string) => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
 const flatten=(value:TestTree):TestNode[]=>Array.isArray(value)?value.flatMap(flatten):value&&typeof value==='object'?[value,...flatten(value.props?.children)]:[];
 const byTest=(tree:TestTree,id:string)=>flatten(tree).find(item=>item.props?.['data-testid']===id);
+test('audio readability skips empty/image clips, rejects missing references and checks video even without a reported audio stream', () => {
+  const assets=Object.freeze([{id:'image',mimeType:'image/png'},{id:'audio',mimeType:'audio/wav'},{id:'video',mimeType:'video/mp4',hasAudio:false}]);
+  const reads:unknown[]=[];const denied=(asset:unknown)=>{reads.push(asset);return false;};
+  for(const timeline of [null,undefined,{clips:[]},{clips:[{}, {assetId:null}]},{clips:[{assetId:'image'}]}]) assert.equal(timelineAudioMediaReadable(timeline,assets,denied),true);
+  assert.deepEqual(reads,[]);
+  assert.equal(timelineAudioMediaReadable({clips:[{assetId:'missing'}]},assets,denied),false);assert.deepEqual(reads,[]);
+  for(const assetId of ['audio','video']) {
+    assert.equal(timelineAudioMediaReadable({clips:[{assetId}]},assets,denied),false);
+    assert.equal(timelineAudioMediaReadable({clips:[{assetId}]},assets,()=>true),true);
+  }
+  assert.deepEqual(reads,[assets[1],assets[2]]);
+});
 function component() {
   const tree = (type?: unknown, props?: Record<string,unknown>, ...children: unknown[]) => ({ type, props: { ...(props as Record<string, unknown>), children } }), react = { createElement: tree }; (react as typeof react & {default:unknown}).default = react;
   const module:TestModule<Parameters<typeof import('../apps/web/src/TimelineMixLoudness.tsx').default>[0]> = { exports: {} as TestModule<Parameters<typeof import('../apps/web/src/TimelineMixLoudness.tsx').default>[0]>['exports'] };
@@ -113,8 +126,9 @@ test('actual App wiring reads saved snapshot, pinned workspace and live draft co
     tracks: [{ id: id(7), kind: 'audio', orderIndex: 0, muted: false, hidden: false }],
     clips: [{ id: id(4), trackId: id(7), assetId: sourceId, startFrame: 0, sourceInFrame: 0, durationFrames: 60, gain: .5 }] };
   const dataRef = { current: { project: { id: projectId }, timeline: saved, assets: [{ id: sourceId, projectId, sha256: 'a'.repeat(64), sizeBytes: 128, mimeType: 'audio/wav', hasAudio: true }] } };
+  let readable=true;
   let dirty = false, controller!:ReturnType<typeof stateModule.createTimelineMixLoudnessController>; const calls: ({ operation: unknown; input: MixInput; options: unknown; })[] = [];
-  const env = { application: null, showDelivery: true, timelineAudioPreviewSourceIdentity, dataRef,
+  const env = { application: null, showDelivery: true, timelineAudioPreviewSourceIdentity, timelineAudioMediaReadable, projectMedia:{canRead:(asset:unknown)=>Boolean(asset)&&readable}, dataRef,
     editorSession: {current: 'normal'}, workspaceRef: { current: {  } }, currentProject: { current: projectId }, projectEpoch: { current: 1 }, navigationEpoch: { current: 0 }, panelIntent: { current: 0 }, viewRef: { current: { activeMode: 'editing' } },
     projectSessionReady: () => true, workbenchReady: true, online: true, auth: true, loading: false, rightDockTab: 'delivery', showExports: false, panelVisible: () => true,
     clipDirty: false, subtitleDirty: false, formatDirty: false, timelineBusy: false, isBusy: () => false,
@@ -131,4 +145,9 @@ test('actual App wiring reads saved snapshot, pinned workspace and live draft co
   const onlyContext = app.slice(first, app.indexOf('  const timelineMixLoudness =', first));
   const unavailable = Function(...Object.keys(unopened), `${onlyContext};return timelineMixLoudnessContext();`)(...Object.values(unopened)) as stateModule.TimelineMixLoudnessContext;
   assert.equal((unavailable.projectId as unknown), null); assert.equal(unavailable.connected, false); assert.equal(unavailable.visible, false);
+  const savedRows=structuredClone(saved),savedAssets=structuredClone(dataRef.current.assets),before=calls.length;
+  readable=false;const blocked=actual.timelineMixLoudnessContext();assert.equal(blocked.connected,false);
+  controller.setContext(blocked);controller.setDraft(draft,controller.getState());assert.equal(await controller.prepare(controller.getState()),null);
+  assert.equal(calls.length,before);assert.deepEqual(saved,savedRows);assert.deepEqual(dataRef.current.assets,savedAssets);
+  readable=true;assert.equal(actual.timelineMixLoudnessContext().connected,true);
 });

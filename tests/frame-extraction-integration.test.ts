@@ -96,10 +96,14 @@ test('actual App hook connects capture/rpc/reveal with source or narrow Properti
   const app = text('App.tsx'), start = app.indexOf('  const frameExtraction = useFrameExtraction('), end = app.indexOf('\n\n', start);
   assert.ok(start > 0 && end > start);
   const calls:(Omit<UseFrameExtractionOptions,"onResult">&{onResult?:(projectId:string,task?:FrameTaskResponse)=>unknown})[] = [], controller = { capture: () => {} }, state = { visible: true }, refreshes: (unknown)[] = [];
-  const env = { workbenchReady: true, data: { project: { id: projectId }, assets: [sourceAsset] }, sourceRangeScope: sourceScope, rangeAsset: sourceAsset, workspaceMode: 'editing', rightDockTab: 'agent', panelVisible: (name: string):boolean => name === 'canvas', quickAssetId: sourceId, sourceRangeBlocked: false, busy: {}, rpc: () => {}, requestId: () => 'stable-request-key', currentProject: { current: projectId }, refresh: (pid: unknown) => refreshes.push(pid), revealImageAsset: () => {}, useFrameExtraction: (input:Omit<UseFrameExtractionOptions,"onResult">&{onResult?:(projectId:string,task?:FrameTaskResponse)=>unknown}) => { calls.push(input); return { controller, state }; } };
+  const env = { mediaReadable: true, projectMedia: {canRead: (_asset: unknown): boolean => env.mediaReadable}, workbenchReady: true, data: { project: { id: projectId }, assets: [sourceAsset] }, sourceRangeScope: sourceScope, rangeAsset: sourceAsset, workspaceMode: 'editing', rightDockTab: 'agent', panelVisible: (name: string):boolean => name === 'canvas', quickAssetId: sourceId, sourceRangeBlocked: false, busy: {}, rpc: () => {}, requestId: () => 'stable-request-key', currentProject: { current: projectId }, refresh: (pid: unknown) => refreshes.push(pid), revealImageAsset: () => {}, useFrameExtraction: (input:Omit<UseFrameExtractionOptions,"onResult">&{onResult?:(projectId:string,task?:FrameTaskResponse)=>unknown}) => { calls.push(input); return { controller, state }; } };
   const evaluate = () => (Function(...Object.keys(env), `${app.slice(start, end)}; return frameExtraction;`)(...Object.values(env))) as {controller:{capture():void};state:{visible:boolean}};
   assert.equal(evaluate().controller, controller); const configured = calls.at(-1);
   assert.equal(configured!.visible, true); assert.equal(configured!.blocked, false); assert.equal(configured!.rpc, env.rpc); assert.equal(configured!.sourceScope, sourceScope); assert.equal(configured!.revealAsset, env.revealImageAsset);
+  env.mediaReadable = false; evaluate();
+  assert.equal(calls.at(-1)!.sourceAsset, null); assert.deepEqual(calls.at(-1)!.assets, []); assert.equal(calls.at(-1)!.blocked, true);
+  assert.deepEqual(env.data.assets, [sourceAsset], 'Media admission never removes the saved asset');
+  env.mediaReadable = true; evaluate();
   env.workbenchReady = false; evaluate();
   const homeConfig = calls.at(-1); assert.equal(homeConfig!.projectId, null); assert.equal(homeConfig!.visible, false);
   const homeCalls: (unknown[])[] = [], home = hooksHarness(text('use-frame-extraction.ts'), { './frame-extraction.ts': frame }, 'useFrameExtraction');

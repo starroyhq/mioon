@@ -17,15 +17,18 @@ import {callProjectBackupOperation} from './project-backup-operations.ts';
 import type {ProjectBackupOperations} from './project-backup-operations.ts';
 import {isProjectCopyActionOperation, isProjectCopyOperation, projectCopyActionSchemas} from '../../../packages/contracts/src/project-copies.ts';
 import type {ProjectCopies} from './project-host/copies.ts';
+import type {ProjectTrashActions} from './project-host/trash.ts';
+import type {ProjectDeleteInput} from '../../../packages/contracts/src/project-lifecycle.ts';
 
 /** App operations never choose an arbitrary project's service as a global
  * facade. Settings and listings work with every project closed. */
-export function createApplicationRpc({library, app, manager, directories, signal, providerList, imageProfiles, refreshSummaries, backups, copies, createProject}: {
+export function createApplicationRpc({library, app, manager, directories, signal, providerList, imageProfiles, refreshSummaries, backups, copies, trash, createProject}: {
   library: AppLibrary; app: ApplicationRuntime; manager: ProjectHostManager<HostedProject>; directories: AppDirectories; signal: AbortSignal;
   providerList: () => unknown; imageProfiles: (input: unknown) => unknown;
   refreshSummaries: () => void;
   backups?: ProjectBackupOperations;
   copies?: ProjectCopies;
+  trash?: ProjectTrashActions;
   createProject: ReturnType<typeof createInitializedProject>;
 }) {
   const ports = createProjectServiceApplication(library, signal);
@@ -94,7 +97,10 @@ export function createApplicationRpc({library, app, manager, directories, signal
           } finally { store.close(); }
         });
       }
-      case 'project.delete': return unavailable(operation);
+      case 'project.delete': {
+        if (!trash) throw new AppError('PROJECT_TRASH_UNAVAILABLE', '当前环境暂不支持将项目文件移到废纸篓。', 409);
+        return await trash.trash(parsed.data as ProjectDeleteInput);
+      }
       case 'agent.authorization.list': return app.authorizations.list(input);
       case 'agent.authorization.grant': return await app.authorizations.grant(input);
       case 'agent.authorization.revoke': return app.authorizations.revoke(input);

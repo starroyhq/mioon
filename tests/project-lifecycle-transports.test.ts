@@ -36,7 +36,7 @@ test('HTTP, CLI and MCP share real registry rename CAS and exact receipts',{time
   assert.equal(renamed.name,rename.name);assert.deepEqual(await mcp('project.rename',rename),renamed);assert.deepEqual(await http('project.rename',rename),renamed);
   const listed=await http('project.list');assert.equal(listed[0].id,project.id);assert.equal(listed[0].name,rename.name);
   const denied=await fetch(server.url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({operation:'project.delete',input:{requestId:randomUUID(),projectId:project.id,expectedRevision:renamed.revision,confirmPermanentDeletion:true}})});
-  assert.equal(denied.status,409);assert.equal((await denied.json()).error.code,'PROJECT_DELETE_UNAVAILABLE');
+  assert.equal(denied.status,400);assert.equal((await denied.json()).error.code,'VALIDATION_ERROR');
   assert.deepEqual(await http('project.list'),listed);
   const tools=(await client.listTools()).tools;assert.equal(tools.find(value=>value.name==='project_delete')!.annotations!.destructiveHint,true);assert.equal(tools.find(value=>value.name==='project_delete')!.annotations!.idempotentHint,true);
 });

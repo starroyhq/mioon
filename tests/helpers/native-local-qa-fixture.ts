@@ -19,7 +19,6 @@ import {createQaProject,closeQaProject} from './kernel-qa-fixture.mjs';
 import {expectedContentMetadata} from './kernel-content-metadata.ts';
 import {createProjectHomeServices} from '../../packages/business/src/project-home.ts';
 import {calculateWorkspaceScope} from '../../packages/contracts/src/workspace-scope.ts';
-import {lastProjectDiskSchema} from '../../packages/contracts/src/last-project.ts';
 import {prepareNativeQaAuditLayout,snapshotNativeQaFiles,nativeQaProcessAlive} from './native-qa-audit.mjs';
 import {recentProjectSchema} from '../../packages/contracts/src/project-registry.ts';
 import {parseWorkspacePreferencesState} from '../../packages/business/src/workspace-preferences.ts';
@@ -142,18 +141,12 @@ export function checkedNativeMetadata(before:MetadataEvidence,after:MetadataEvid
  return new Set(after.metadataTableNames);
 }
 type AppEvidence={applicationScope:string;applicationRows:Record<string,QaRows>;projectSummaries:ReturnType<typeof captureNativeQa>['projectSummaries']};
-/** Expected app-level effects of opening a QA project. Other documents and
- * other projects' registration/identity/preferences remain byte-exact. */
+/** Expected app-level effects of opening a QA project. Every document,
+ * including the retired selection, stays byte-exact. */
 export function checkedNativeApplication(before:AppEvidence,after:AppEvidence,openedProjectIds:readonly string[],preferenceProjectIds:readonly string[]=[]):ReadonlySet<string>{
  assert.equal(after.applicationScope,before.applicationScope,'actual native application root/database identity remains exact');
  const priorDocs=before.applicationRows['main.app_documents']??[],docs=after.applicationRows['main.app_documents']??[];
- assert.deepEqual(docs.filter(row=>row.name!=='last-project-v1.json'),priorDocs.filter(row=>row.name!=='last-project-v1.json'));
- const prior=priorDocs.find(row=>row.name==='last-project-v1.json'),current=docs.find(row=>row.name==='last-project-v1.json');
- if(JSON.stringify(prior)!==JSON.stringify(current)){
-  assert.ok(current&&typeof current.data==='string');const next=lastProjectDiskSchema.parse(JSON.parse(current.data));assert.ok(openedProjectIds.includes(next.projectId));assert.equal(next.workspaceScope,after.applicationScope,'the native locator belongs to this actual B1/root identity');
-  if(prior){assert.equal(typeof prior.data,'string');const old=lastProjectDiskSchema.parse(JSON.parse(String(prior.data)));assert.notEqual(next.projectId,old.projectId,'remembering the same project must not write again');assert.equal(next.workspaceScope,old.workspaceScope);assert.equal(next.revision,old.revision+1);assert.ok(Date.parse(next.updatedAt)>=Date.parse(old.updatedAt));}
-  else assert.equal(next.revision,1);
- }
+ assert.deepEqual(docs,priorDocs,'opening cannot rewrite the retired last-project document or any other application document');
  const oldRegistry=before.applicationRows['main.recent_projects']??[],registry=after.applicationRows['main.recent_projects']??[];
  assert.equal(registry.length,oldRegistry.length);
  for(const row of registry){
@@ -173,7 +166,7 @@ export function checkedNativeApplication(before:AppEvidence,after:AppEvidence,op
   assert.ok(Number.isSafeInteger(row.revision)&&Number(row.revision)>0);assert.equal(typeof row.state,'string');parseWorkspacePreferencesState(JSON.parse(String(row.state)));
   const old=oldPreferences.find(value=>value.projectId===row.projectId);if(old&&JSON.stringify(old)!==JSON.stringify(row))assert.ok(Number(row.revision)>Number(old.revision),'a changed preference advances its real revision');
  }
- return new Set(['app.app_documents','app.recent_projects',...(preferenceProjectIds.length?['workspace_preferences']:[])]);
+ return new Set(['app.recent_projects',...(preferenceProjectIds.length?['workspace_preferences']:[])]);
 }
 
 /** Live report processes collect only bounded physical evidence. Their trusted

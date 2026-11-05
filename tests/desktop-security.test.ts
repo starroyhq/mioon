@@ -134,10 +134,13 @@ test('package configuration disables runtime injection and cannot publish by def
   const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   assert.ok(main.includes('app.enableSandbox()'));
   assert.ok(!main.includes('no-sandbox'));
-  assert.ok(!main.includes('shell.openExternal'));
+  // B2 permits one main-only fixed Settings helper, never a renderer URL.
+  const fixedSettingsFactory = 'createProjectLocationHelp({openExternal:url=>shell.openExternal(url),showItemInFolder:file=>shell.showItemInFolder(file)})';
+  assert.equal(main.split(fixedSettingsFactory).length - 1, 1);
+  assert.ok(!main.replace(fixedSettingsFactory, '').includes('shell.openExternal'));
   assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
   assert.deepEqual([...main.matchAll(/ipcMain\s*\.\s*handle\s*\(\s*([^,]+),/g)].map(match => match[1].trim()).sort(),
-    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
+    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_ASSET_MEDIA_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_ENTRY_DESKTOP_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
   assert.match(main, /^import \{ CLIP_LUT_RECOVERY_CHANNEL \} from '\.\.\/\.\.\/\.\.\/packages\/contracts\/src\/clip-lut-recovery\.ts';$/m);
   assert.match(main, /^ipcMain\.handle\(CLIP_LUT_RECOVERY_CHANNEL, \(event, request\) => lutRecoveryHost\?\.dispatch\(event, request\) \?\? \{ ok: false, code: 'LUT_RECOVERY_UNAVAILABLE' \}\);$/m);
   // Restrict these checks to LUT wiring so another host cannot satisfy its authority guards.

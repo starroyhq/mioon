@@ -35,6 +35,8 @@ export function projectOpenFailureKind(error: unknown): 'auth' | 'identity' | 'p
     case 'UNAUTHORIZED': return 'auth';
     case 'LAST_PROJECT_SCOPE_MISMATCH':
     case 'LAST_PROJECT_STALE_INSTANCE': return 'identity';
+    case 'PROJECT_ENTRY_SCOPE_MISMATCH':
+    case 'PROJECT_ENTRY_STALE_INSTANCE': return 'identity';
     default: return 'project';
   }
 }

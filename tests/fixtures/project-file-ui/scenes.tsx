@@ -6,6 +6,7 @@ import { NEW_PROJECT_FILE_DEFAULTS, NewProjectFileDialog } from '../../../apps/w
 import type { NewProjectFileDialogProps } from '../../../apps/web/src/project-file/NewProjectFileDialog.tsx';
 import { ProjectOpenFailureDialog } from '../../../apps/web/src/project-file/ProjectOpenFailureDialog.tsx';
 import type { ProjectOpenFailureDialogProps } from '../../../apps/web/src/project-file/ProjectOpenFailureDialog.tsx';
+import {ProjectLocationRiskBanner} from '../../../apps/web/src/project-file/ProjectLocationRisk.tsx';
 import { MediaAttentionBanner, MediaStatusBadge, MediaStatusNote, mediaStatusTone } from '../../../apps/web/src/project-file/MediaStatus.tsx';
 import type { MediaAttentionBannerProps } from '../../../apps/web/src/project-file/MediaStatus.tsx';
 import { mediaStatusDisplay } from '../../../apps/web/src/project-file/media-status.ts';
@@ -52,7 +53,7 @@ function group(name: SceneGroup, list: readonly SceneInput[]): readonly Scene[] 
 const none = (): void => undefined;
 
 // ---------------------------------------------------------------------------
-// Group 1: home, new project, cannot open (12-01 to 12-03d)
+// Group 1: home, new project, opening issues and location risks (12-01 to 12-03i, 12-15)
 const missing: ProjectAvailabilityView = { state: 'missing' };
 function items(overrides: Readonly<Record<string, ProjectAvailabilityView>> = {}): readonly RecentProjectItem[] {
   return RECENT_PROJECTS.map(project => ({ project, coverUrl: COVER_URLS[project.projectId] ?? null,
@@ -77,6 +78,8 @@ function cannotOpen(patch: Partial<ProjectOpenFailureDialogProps> & Pick<Project
   const dialog = <ProjectOpenFailureDialog open projectName={null} action={{ kind: 'idle' }} platform="mac" onLocate={none} onRemove={none} onClose={none} {...patch} />;
   return behind ? <>{home()}{dialog}</> : dialog;
 }
+const issueLocation={projectFile:OPEN_FAILURES.missing.projectFile,projectId:PROJECT_IDS.interview};
+const copyIssue={...issueLocation,code:'PROJECT_FILE_COPY',originalProjectId:PROJECT_IDS.city,originalProjectFile:`${HOME}/Movies/Mioon/访谈剪辑样片/访谈剪辑样片.mioon`} as const;
 const homeScenes = group('home', [
   { id: '12-01', design: '12-01', state: 'ready', render: () => home() },
   { id: '12-01-list', design: '12-01', state: 'ready', render: () => home({ view: 'list', waiting: {kind: 'ready', value: []}, state: { kind: 'ready', value: items({
@@ -103,17 +106,44 @@ const homeScenes = group('home', [
   { id: '12-02-invalid-name', design: '12-02', state: 'error', render: () => create({}, { name: '访谈:第一版' }) },
   { id: '12-02-creating', design: '12-02', state: 'working', render: () => create({ state: { kind: 'creating' } }) },
   { id: '12-02-exists', design: '12-02', state: 'error', render: () => create({ state: { kind: 'error', code: 'PROJECT_FILE_EXISTS' } }) },
-  { id: '12-02-web', design: '12-02', state: 'ready', render: () => create({ onChooseLocation: undefined, location: { display: '/srv/mioon/projects' } }) },
-  { id: '12-03', design: '12-03', state: 'ready', render: () => cannotOpen({ failure: OPEN_FAILURES.missing, projectName: '访谈剪辑样片', inboxCount: 2 }, true) },
-  { id: '12-03-no-inbox', design: '12-03', state: 'ready', render: () => cannotOpen({ failure: OPEN_FAILURES.missing, projectName: '访谈剪辑样片', inboxCount: 0 }, true) },
-  { id: '12-03-locating', design: '12-03', state: 'working', render: () => cannotOpen({ failure: OPEN_FAILURES.missing, projectName: '访谈剪辑样片', inboxCount: 2, action: { kind: 'working', action: 'locate' } }, true) },
-  { id: '12-03-error', design: '12-03', state: 'error', render: () => cannotOpen({ failure: OPEN_FAILURES.missing, projectName: '访谈剪辑样片', inboxCount: 2, action: { kind: 'error', action: 'locate' } }, true) },
+  { id: '12-02-web', design: '12-02', state: 'ready', render: () => create({ onChooseLocation: undefined, folderMode:'always', location: { display: '/srv/mioon/projects' } }) },
+  { id: '12-02b-cloud', design: '12-02b', state: 'warning', render: () => create({location:{display:'iCloud 云盘/Mioon',risks:[{kind:'cloud',serviceName:'iCloud 云盘'}]}}) },
+  { id: '12-02b-exfat', design: '12-02b', state: 'warning', render: () => create({location:{display:'/Volumes/素材盘/Mioon',risks:[{kind:'permissions',fileSystem:'exFAT'}]}}) },
+  { id: '12-02b-permissions', design: '12-02b', state: 'warning', render: () => create({location:{display:'/Volumes/共享素材/Mioon',risks:[{kind:'permissions'}]}}) },
+  { id: '12-02b-network', design: '12-02b', state: 'error', render: () => create({location:{display:'/Volumes/团队共享/项目',risks:[{kind:'network'}]}}) },
+  { id: '12-02b-checking', design: '12-02b', state: 'loading', render: () => create({location:{display:'/Volumes/素材盘/Mioon',status:'checking'}}) },
+  { id: '12-02b-unavailable', design: '12-02b', state: 'error', render: () => create({location:{display:'/Volumes/素材盘/Mioon',status:'unavailable'}}) },
+  { id: '12-02-unknown', design: '12-02', state: 'unknown', render: () => create({state:{kind:'unknown'},onRecheck:none}) },
+  { id: '12-02-created', design: '12-02', state: 'created', render: () => create({state:{kind:'created',projectName:'未命名项目'},onRetryOpen:none}) },
+  { id: '12-02-created-opening', design: '12-02', state: 'working', render: () => create({state:{kind:'created',projectName:'未命名项目',opening:true},onRetryOpen:none}) },
+  { id: '12-03', design: '12-03', state: 'ready', render: () => cannotOpen({ failure: OPEN_FAILURES.missing, projectName: '访谈剪辑样片', waitingTaskCount: 2 }, true) },
+  { id: '12-03-no-inbox', design: '12-03', state: 'ready', render: () => cannotOpen({ failure: OPEN_FAILURES.missing, projectName: '访谈剪辑样片', waitingTaskCount: 0 }, true) },
+  { id: '12-03-locating', design: '12-03', state: 'working', render: () => cannotOpen({ failure: OPEN_FAILURES.missing, projectName: '访谈剪辑样片', waitingTaskCount: 2, action: { kind: 'working', action: 'locate' } }, true) },
+  { id: '12-03-error', design: '12-03', state: 'error', render: () => cannotOpen({ failure: OPEN_FAILURES.missing, projectName: '访谈剪辑样片', waitingTaskCount: 2, action: { kind: 'error', action: 'locate' } }, true) },
+  { id: '12-03-tasks-unknown', design: '12-03', state: 'unknown', render: () => cannotOpen({failure:OPEN_FAILURES.missing,projectName:'访谈剪辑样片'},true) },
   { id: '12-03b', design: '12-03b', state: 'ready', capture: 'dialog', render: () => cannotOpen({ failure: OPEN_FAILURES.locked, projectName: '城市夜景短片' }) },
   { id: '12-03c', design: '12-03c', state: 'ready', capture: 'dialog', render: () => cannotOpen({ failure: OPEN_FAILURES.newer, onCheckUpdate: none }) },
   { id: '12-03c-history', design: '12-03c', state: 'ready', capture: 'dialog', render: () => cannotOpen({ failure: OPEN_FAILURES.newerHistory }) },
   { id: '12-03d', design: '12-03d', state: 'ready', capture: 'dialog', render: () => cannotOpen({ failure: OPEN_FAILURES.corrupt, onRestoreBackup: none }) },
   { id: '12-03d-restoring', design: '12-03d', state: 'working', capture: 'dialog', render: () => cannotOpen({ failure: OPEN_FAILURES.corrupt, onRestoreBackup: none, action: { kind: 'working', action: 'restore' } }) },
   { id: '12-03d-read-only', design: '12-03d', state: 'ready', capture: 'dialog', render: () => cannotOpen({ failure: OPEN_FAILURES.readOnly, onReveal: none }) },
+  { id: '12-03e', design: '12-03e', state: 'ready', capture:'dialog', render: () => cannotOpen({failure:copyIssue,projectName:'访谈剪辑样片',onOpenOriginal:none,onAdoptCopy:none}) },
+  { id: '12-03e-no-capabilities', design: '12-03e', state: 'unavailable', capture:'dialog', render: () => cannotOpen({failure:copyIssue,projectName:'访谈剪辑样片'}) },
+  { id: '12-03e-unknown', design: '12-03e', state: 'unknown', capture:'dialog', render: () => cannotOpen({failure:copyIssue,projectName:'访谈剪辑样片',action:{kind:'unknown',action:'adoptCopy'},onOpenOriginal:none,onAdoptCopy:none,onRecheck:none}) },
+  { id: '12-03f-missing', design: '12-03f', state: 'error', capture:'dialog', render: () => cannotOpen({failure:{...issueLocation,code:'PROJECT_FILE_MOVED',reason:'missing',writeRejected:true},projectName:'访谈剪辑样片',onCloseProject:none}) },
+  { id: '12-03f-access', design: '12-03f', state: 'error', capture:'dialog', render: () => cannotOpen({failure:{...issueLocation,code:'PROJECT_FILE_MOVED',reason:'access-denied',writeRejected:true},projectName:'访谈剪辑样片',onCloseProject:none}) },
+  { id: '12-03f-disk', design: '12-03f', state: 'error', capture:'dialog', render: () => cannotOpen({failure:{...issueLocation,code:'PROJECT_FILE_MOVED',reason:'disk-disconnected',writeRejected:true},projectName:'访谈剪辑样片',onCloseProject:none}) },
+  { id: '12-03g', design: '12-03g', state: 'error', capture:'dialog', render: () => cannotOpen({failure:{...issueLocation,code:'PROJECT_ACCESS_DENIED'},projectName:'访谈剪辑样片',onOpenSystemSettings:none,onRetry:none}) },
+  { id: '12-03g-create', design: '12-03g', state: 'error', capture:'dialog', render: () => cannotOpen({failure:{...issueLocation,code:'PROJECT_ACCESS_DENIED',context:'create'},projectName:'未命名项目',onOpenSystemSettings:none,onChooseLocation:none}) },
+  { id: '12-03g-web', design: '12-03g', state: 'error', capture:'dialog', render: () => cannotOpen({failure:{...issueLocation,code:'PROJECT_ACCESS_DENIED'},projectName:'访谈剪辑样片',platform:'web',onRetry:none}) },
+  { id: '12-03h', design: '12-03h', state: 'error', capture:'dialog', render: () => cannotOpen({failure:OPEN_FAILURES.readOnly,onReveal:none,onCopyTo:none}) },
+  { id: '12-03i', design: '12-03i', state: 'error', capture:'dialog', render: () => cannotOpen({failure:{...issueLocation,code:'NETWORK_LOCATION'},projectName:'访谈剪辑样片',onCopyTo:none}) },
+  { id: '12-03i-no-copy', design: '12-03i', state: 'unavailable', capture:'dialog', render: () => cannotOpen({failure:{...issueLocation,code:'NETWORK_LOCATION'},projectName:'访谈剪辑样片'}) },
+  { id: '12-03-unknown', design: '12-03g', state: 'unknown', capture:'dialog', render: () => cannotOpen({failure:{code:'OPEN_UNAVAILABLE',projectId:null,projectFile:null},projectName:null,onRetry:none}) },
+  { id: '12-15-cloud', design: '12-15', state: 'warning', capture:'frame', frameWidth:1024, render: () => <ProjectLocationRiskBanner risks={[{kind:'cloud',serviceName:'iCloud 云盘'}]} onDismiss={none} /> },
+  { id: '12-15-exfat', design: '12-15', state: 'warning', capture:'frame', frameWidth:1024, render: () => <ProjectLocationRiskBanner risks={[{kind:'permissions',fileSystem:'exFAT'}]} onDismiss={none} /> },
+  { id: '12-15-combined', design: '12-15', state: 'warning', capture:'frame', frameWidth:1024, render: () => <ProjectLocationRiskBanner risks={[{kind:'cloud',serviceName:'iCloud 云盘'},{kind:'permissions'}]} onDismiss={none} /> },
+
 ]);
 
 // ---------------------------------------------------------------------------
@@ -146,7 +176,7 @@ function relink(patch: Partial<MediaRelinkDialogProps> = {}): ReactElement {
     apply={{ kind: 'idle' }} onChooseFile={none} onUseNewFile={none} onApply={none} onRetry={none} onClose={none} {...patch} />;
 }
 function outside(patch: Partial<OutsideLocationsDialogProps> = {}): ReactElement {
-  return <>{home()}<OutsideLocationsDialog open projectName="访谈剪辑样片" fromAnotherComputer state={{ kind: 'ready', value: OUTSIDE_LOCATIONS }} rulesUntrusted action={{ kind: 'idle' }}
+  return <>{home()}<OutsideLocationsDialog open projectName="访谈剪辑样片" fromAnotherComputer={false} state={{ kind: 'ready', value: OUTSIDE_LOCATIONS }} rulesUntrusted action={{ kind: 'idle' }}
     homeDirectory={HOME} onOpenOnly={none} onAllow={none} onRetry={none} onClose={none} {...patch} /></>;
 }
 const mediaScenes = group('media', [
@@ -163,12 +193,18 @@ const mediaScenes = group('media', [
   { id: '12-05-error', design: '12-05', state: 'error', render: () => relink({ state: { kind: 'error', retryable: true } }) },
   { id: '12-05-applying', design: '12-05', state: 'working', render: () => relink({ apply: { kind: 'working', action: 'apply' } }) },
   { id: '12-05-apply-error', design: '12-05', state: 'error', render: () => relink({ apply: { kind: 'error', action: 'apply' } }) },
+  { id: '12-05-no-native-chooser', design: '12-05', state: 'unavailable', render: () => relink({state:{kind:'ready',value:{rows:[RELINK_ROWS[2],RELINK_MISSING_ROW],foundBy:null}},onChooseFile:undefined,onUseNewFile:undefined,canApply:false}) },
+  { id: '12-05-changed-selected', design: '12-05', state: 'staged', render: () => relink({changedSelected:[RELINK_ROWS[2].assetId],canUseNewFile:id=>id===RELINK_ROWS[2].assetId,canApply:true}) },
+  { id: '12-05-new-added', design: '12-05', state: 'applied', render: () => relink({newAdded:1}) },
   { id: '12-06', design: '12-06', state: 'ready', render: () => outside() },
   { id: '12-06-loading', design: '12-06', state: 'loading', render: () => outside({ state: { kind: 'loading' } }) },
   { id: '12-06-empty', design: '12-06', state: 'empty', render: () => outside({ state: { kind: 'ready', value: [] }, rulesUntrusted: false }) },
   { id: '12-06-error', design: '12-06', state: 'error', render: () => outside({ state: { kind: 'error', retryable: true } }) },
   { id: '12-06-no-rules-note', design: '12-06', state: 'ready', render: () => outside({ rulesUntrusted: false }) },
   { id: '12-06-allowing', design: '12-06', state: 'working', render: () => outside({ action: { kind: 'working', action: 'allow' } }) },
+  { id: '12-06-from-another', design: '12-06', state: 'ready', render: () => outside({fromAnotherComputer:true}) },
+  { id: '12-06-allow-unavailable', design: '12-06', state: 'unavailable', render: () => outside({canAllow:false}) },
+
 ]);
 
 // ---------------------------------------------------------------------------

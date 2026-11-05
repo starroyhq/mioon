@@ -42,7 +42,7 @@ interface LiveProject {
 }
 
 const unavailableReasons = new Set(['PROJECT_MISSING', 'PROJECT_FILE_MOVED', 'PROJECT_READ_ONLY', 'PROJECT_READONLY', 'PROJECT_LOCKED',
-  'PROJECT_UNAVAILABLE', 'PROJECT_INVALID', 'PROJECT_FORMAT_NEWER', 'PROJECT_HISTORY_DIVERGED', 'PROJECT_HISTORY_IDENTITY_CHANGED']);
+  'PROJECT_UNAVAILABLE', 'PROJECT_INVALID', 'PROJECT_FORMAT_NEWER', 'PROJECT_ACCESS_DENIED', 'PROJECT_HISTORY_DIVERGED', 'PROJECT_HISTORY_IDENTITY_CHANGED']);
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 function failureReason(error: unknown): string {
   const code = record(error) ? error.code : null, details = record(error) && record(error.details) ? error.details : null;

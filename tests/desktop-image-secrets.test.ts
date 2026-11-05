@@ -319,24 +319,25 @@ test('desktop wiring keeps renderer secret capabilities private and settings own
   assert.match(main, /createDesktopImageSecretCodec\(\{ safeStorage, appId: identity\.appId \}\)/);
   assert.doesNotMatch(main, /createImageSettings\(/);
   assert.match(backend, /createImageSecretClient\(\{ port: process\.parentPort \}\)/);
-  assert.match(backend, /startServer\(\{ comfyModule: comfyModuleModeFromEnvironment\(process\.env\.MIOON_COMFY_MODULE\), dataDir: data\.dataDir, cacheDir:data\.cacheDir, projectsDir:data\.projectsDir, port: 0, distDir: data\.distDir, token: data\.token, agentSettings, imageSecretCodec, videoSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ \}\)/);
+  assert.match(backend, /startServer\(\{ comfyModule: comfyModuleModeFromEnvironment\(process\.env\.MIOON_COMFY_MODULE\), dataDir: data\.dataDir, cacheDir:data\.cacheDir, projectsDir:data\.projectsDir, port: 0, distDir: data\.distDir,\n        projectTemplatesDir: data\.projectTemplatesDir,\n        projectTrash: data\.projectTrashAvailable === true \? projectTrash : undefined,\n        token: data\.token, agentSettings, imageSecretCodec, videoSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ \}\)/);
   for (const source of [backend, broker]) {
     assert.doesNotMatch(source, /ipcMain|ipcRenderer|contextBridge|preload\s*:/);
     assert.doesNotMatch(source, /sandbox\s*:\s*false|nodeIntegration\s*:\s*true/);
   }
   assert.doesNotMatch(main, /sandbox\s*:\s*false|nodeIntegration\s*:\s*true/);
   assert.deepEqual([...main.matchAll(/ipcMain\s*\.\s*handle\s*\(\s*([^,]+),/g)].map(match => match[1].trim()).sort(),
-    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
+    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_ASSET_MEDIA_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_ENTRY_DESKTOP_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
   assert.doesNotMatch(main, /ipcMain\s*\[|ipcMain\s*\.\s*(?:on|once|handleOnce)\s*\(/);
   assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
   const preload = await readFile(new URL('../apps/desktop/src/preload.ts', import.meta.url), 'utf8');
   const bridge = await readFile(new URL('../apps/desktop/src/project-window-preload.ts', import.meta.url), 'utf8');
   const assetImportBridge = await readFile(new URL('../apps/desktop/src/asset-import-preload.ts', import.meta.url), 'utf8');
+  const assetRelinkBridge = await readFile(new URL('../apps/desktop/src/asset-relink-preload.ts', import.meta.url), 'utf8');
   const audioBridge = await readFile(new URL('../apps/desktop/src/native-audio-preview-preload.ts', import.meta.url), 'utf8');
   const languageBridge = await readFile(new URL('../apps/desktop/src/app-language-preload.ts', import.meta.url), 'utf8');
   const menuBridge = await readFile(new URL('../apps/desktop/src/menu-command-preload.ts', import.meta.url), 'utf8');
   const menuProtocol = await readFile(new URL('../apps/desktop/src/menu-command-protocol.ts', import.meta.url), 'utf8');
-  assert.doesNotMatch(preload + bridge + assetImportBridge + audioBridge + languageBridge + menuBridge + menuProtocol + await readFile(new URL('../apps/desktop/src/workspace-native-preload.ts', import.meta.url), 'utf8'), /safeStorage|secretCodec|agentSettings|decrypt|process\.parentPort|imageSecret|\.env|access-token/);
+  assert.doesNotMatch(preload + bridge + assetImportBridge + assetRelinkBridge + audioBridge + languageBridge + menuBridge + menuProtocol + await readFile(new URL('../apps/desktop/src/workspace-native-preload.ts', import.meta.url), 'utf8'), /safeStorage|secretCodec|agentSettings|decrypt|process\.parentPort|imageSecret|\.env|access-token/);
   assert.deepEqual([...preload.matchAll(/exposeInMainWorld\('([^']+)'/g)].map(match => match[1]).sort(),
-    ['__mioonAppLanguage', '__mioonAssetImport', '__mioonDesktop', '__mioonExportFiles', '__mioonLutRecovery', '__mioonMenuCommands', '__mioonNativeAudioPreview', '__mioonProjectBackups', '__mioonProjectPackages', '__mioonProjectWindow', '__mioonWorkspaceNative', '__mioonWorkspaceTools']);
+    ['__mioonAppLanguage', '__mioonAssetImport', '__mioonAssetMediaNative', '__mioonDesktop', '__mioonExportFiles', '__mioonLutRecovery', '__mioonMenuCommands', '__mioonNativeAudioPreview', '__mioonProjectBackups', '__mioonProjectEntries', '__mioonProjectPackages', '__mioonProjectWindow', '__mioonWorkspaceNative', '__mioonWorkspaceTools']);
 });
