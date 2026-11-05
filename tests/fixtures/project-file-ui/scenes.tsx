@@ -1,7 +1,7 @@
 import React from 'react';
 import type { ReactElement } from 'react';
-import { RecentProjectsView } from '../../../apps/web/src/project-file/RecentProjects.tsx';
-import type { InboxEntry, RecentProjectItem, RecentProjectsViewProps } from '../../../apps/web/src/project-file/RecentProjects.tsx';
+import { RecentProjectMenu, ProjectWaitingNotice, RecentProjectsView } from '../../../apps/web/src/project-file/RecentProjects.tsx';
+import type { RecentProjectItem, RecentProjectsViewProps, WaitingProject } from '../../../apps/web/src/project-file/RecentProjects.tsx';
 import { NEW_PROJECT_FILE_DEFAULTS, NewProjectFileDialog } from '../../../apps/web/src/project-file/NewProjectFileDialog.tsx';
 import type { NewProjectFileDialogProps } from '../../../apps/web/src/project-file/NewProjectFileDialog.tsx';
 import { ProjectOpenFailureDialog } from '../../../apps/web/src/project-file/ProjectOpenFailureDialog.tsx';
@@ -26,7 +26,7 @@ import { ProjectRulesChangeCard, ProjectRulesDialog, ProjectRulesNotice } from '
 import type { ProjectRulesChangeCardProps, ProjectRulesDialogProps } from '../../../apps/web/src/project-file/ProjectRules.tsx';
 import type { ProjectAvailabilityView } from '../../../apps/web/src/project-file/types.ts';
 import type { MediaStatus } from '../../../packages/contracts/src/media-reference.ts';
-import { COMPARISON, COVER_URLS, HOME, INBOX_ITEMS, MEDIA_THUMBS, NOW, OLDER_VERSIONS, OPEN_FAILURES, OUTSIDE_LOCATIONS, PACK_MANIFEST, PACK_RESULT, PROJECT_IDS, RECENT_PROJECTS, RELINK_MISSING_ROW, RELINK_ROWS,
+import { COMPARISON, COVER_URLS, HOME, MEDIA_THUMBS, NOW, OLDER_VERSIONS, OPEN_FAILURES, OUTSIDE_LOCATIONS, PACK_MANIFEST, PACK_RESULT, PROJECT_IDS, RECENT_PROJECTS, RELINK_MISSING_ROW, RELINK_ROWS,
   RESTORE_PREVIEW, RESTORE_PREVIEW_MORE, RULES_CHANGE, RULES_CHANGE_MIXED, RULES_PATH, RULES_TEXT, VERSIONS } from './fixtures.ts';
 
 /** One state of one U1 component, after a 12-xx preview. The gallery renders
@@ -58,11 +58,17 @@ function items(overrides: Readonly<Record<string, ProjectAvailabilityView>> = {}
   return RECENT_PROJECTS.map(project => ({ project, coverUrl: COVER_URLS[project.projectId] ?? null,
     availability: overrides[project.projectId] ?? (project.projectId === PROJECT_IDS.interview ? missing : { state: 'available' }) }));
 }
-const inbox: readonly InboxEntry[] = [{ projectId: PROJECT_IDS.interview, projectName: '访谈剪辑样片', count: INBOX_ITEMS.filter(item => item.projectId === PROJECT_IDS.interview).length, availability: missing }];
+const waiting: readonly WaitingProject[] = [{ projectId: PROJECT_IDS.interview, projectName: '访谈剪辑样片', taskCount: 2, reason: 'missing-volume', volumeName: '外接硬盘', lastOpenedAt: RECENT_PROJECTS.at(-1)!.lastOpenedAt }];
 function home(patch: Partial<RecentProjectsViewProps> = {}): ReactElement {
-  return <RecentProjectsView state={{ kind: 'ready', value: items() }} sort="recent" onSortChange={none} view="grid" onViewChange={none} now={NOW} homeDirectory={HOME} inbox={inbox}
+  return <RecentProjectsView state={{ kind: 'ready', value: items() }} sort="recent" onSortChange={none} view="grid" onViewChange={none} now={NOW} homeDirectory={HOME} waiting={{kind: 'ready', value: waiting}}
     onOpen={none} onLocate={none} onRetry={none} onCreate={none} onOpenFile={none} {...patch} />;
 }
+function homeMenu(patch: Partial<React.ComponentProps<typeof RecentProjectMenu>> = {}): ReactElement {
+  return <div style={{position: 'relative', width: 320, minHeight: 250, margin: '80px 140px'}}><RecentProjectMenu item={{...items()[1]!, availability: {state: 'open'}}} platform="mac" open waitingKnown onOpen={none} onLocate={none} onCopy={none} onReveal={none} onTrash={none} onForget={none} {...patch} /></div>;
+}
+const reasons: readonly WaitingProject[] = RECENT_PROJECTS.map((project, index) => ({projectId: project.projectId, projectName: project.name, taskCount: index + 1,
+  reason: (['unavailable', 'access-denied', 'read-only', 'locked', 'missing', 'missing-volume'] as const)[index]!,
+  ...(index === 5 ? {volumeName: '外接硬盘'} : {}), lastOpenedAt: project.lastOpenedAt}));
 function create(patch: Partial<NewProjectFileDialogProps> = {}, values: Partial<NewProjectFileDialogProps['values']> = {}): ReactElement {
   return <>{home()}<NewProjectFileDialog open values={{ name: '未命名项目', ...NEW_PROJECT_FILE_DEFAULTS, ...values }} onChange={none}
     location={{ display: '~/Movies/Mioon' }} onChooseLocation={none} state={{ kind: 'editing' }} onSubmit={none} onClose={none} {...patch} /></>;
@@ -73,12 +79,24 @@ function cannotOpen(patch: Partial<ProjectOpenFailureDialogProps> & Pick<Project
 }
 const homeScenes = group('home', [
   { id: '12-01', design: '12-01', state: 'ready', render: () => home() },
-  { id: '12-01-list', design: '12-01', state: 'ready', render: () => home({ view: 'list', inbox: [], state: { kind: 'ready', value: items({
+  { id: '12-01-list', design: '12-01', state: 'ready', render: () => home({ view: 'list', waiting: {kind: 'ready', value: []}, state: { kind: 'ready', value: items({
     [PROJECT_IDS.city]: { state: 'locked' }, [PROJECT_IDS.product]: { state: 'invalid', reason: 'read-only' }, [PROJECT_IDS.season]: { state: 'invalid', reason: 'corrupt' } }) } }) },
-  { id: '12-01-empty', design: '12-01', state: 'empty', render: () => home({ state: { kind: 'ready', value: [] }, inbox: [] }) },
-  { id: '12-01-loading', design: '12-01', state: 'loading', render: () => home({ state: { kind: 'loading' }, inbox: [] }) },
-  { id: '12-01-error', design: '12-01', state: 'error', render: () => home({ state: { kind: 'error', retryable: true }, inbox: [] }) },
-  { id: '12-01-inbox-none', design: '12-01', state: 'ready', render: () => home({ inbox: [] }) },
+  { id: '12-01-empty', design: '12-01', state: 'empty', render: () => home({ state: { kind: 'ready', value: [] }, waiting: {kind: 'ready', value: []} }) },
+  { id: '12-01-loading', design: '12-01', state: 'loading', render: () => home({ state: { kind: 'loading' }, waiting: {kind: 'loading'} }) },
+  { id: '12-01-error', design: '12-01', state: 'error', render: () => home({ state: { kind: 'error', retryable: true }, waiting: {kind: 'ready', value: []} }) },
+  { id: '12-01-inbox-none', design: '12-01', state: 'ready', render: () => home({ waiting: {kind: 'ready', value: []} }) },
+  { id: '12-01-no-summary', design: '12-01', state: 'ready', render: () => home({ state: {kind: 'ready', value: [{...items()[0]!, project: {...RECENT_PROJECTS[0]!, summary: null, lastOpenedAt: null}, coverUrl: null}]}, waiting: {kind: 'ready', value: []} }) },
+  { id: '12-01-cover-error', design: '12-01', state: 'ready', render: () => home({ state: {kind: 'ready', value: [{...items()[0]!, coverUrl: '/api/project-covers/missing-cache'}]}, waiting: {kind: 'ready', value: []} }) },
+  { id: '12-01-no-matches', design: '12-01', state: 'empty', render: () => home({query: '找不到的项目'}) },
+  { id: '12-21', design: '12-21', state: 'ready', render: () => homeMenu() },
+  { id: '12-21-open', design: '12-21b', state: 'open', render: () => homeMenu({openedInWindow: true}) },
+  { id: '12-21-missing', design: '12-21b', state: 'missing', render: () => homeMenu({item: items().at(-1)!}) },
+  { id: '12-21-waiting', design: '12-21b', state: 'waiting', render: () => homeMenu({item: items().at(-1)!, waitingProject: waiting[0]}) },
+  { id: '12-21-unknown', design: '12-21b', state: 'unknown', render: () => homeMenu({item: items().at(-1)!, waitingKnown: false}) },
+  { id: '12-21-web', design: '12-21b', state: 'web', render: () => homeMenu({platform: 'web', onLocate: undefined, onCopy: undefined, onReveal: undefined, onTrash: undefined, onForget: undefined}) },
+  { id: '12-24', design: '12-24', state: 'collapsed', render: () => home({waiting: {kind: 'ready', value: reasons}}) },
+  { id: '12-24-reasons', design: '12-24', state: 'reasons', render: () => <div className="pf-home">{reasons.map(entry => <ProjectWaitingNotice key={entry.projectId} entries={[entry]} platform="mac" onOpen={none} onLocate={none} onReveal={none} onAccessHelp={none} />)}</div> },
+  { id: '12-24-error', design: '12-24', state: 'error', render: () => home({waiting: {kind: 'error', retryable: true}, onRetryWaiting: none}) },
   { id: '12-02', design: '12-02', state: 'ready', render: () => create() },
   { id: '12-02-no-folder', design: '12-02', state: 'ready', render: () => create({}, { createFolder: false, presetId: 'landscape_1080', description: '雨夜城市，霓虹倒影，冷色调，节奏舒缓' }) },
   { id: '12-02-empty-name', design: '12-02', state: 'empty', render: () => create({}, { name: '' }) },

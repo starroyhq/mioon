@@ -106,6 +106,14 @@ ServerInstance.projectEntries 是生产受信端口，契约在 project-entry-na
 
 Node 只读客户端为 @mioon/client/project-entry 的 createProjectEntriesClient().list()：固定地址、认证 GET、严格响应/UTF-8/字节上限、取消和超时，不自动重试。新增错误为 PROJECT_ENTRY_SCOPE_MISMATCH（409）、PROJECT_ENTRY_UNAVAILABLE（503）、PROJECT_ENTRY_WINDOW_CONFLICT（409，受信端口）、PROJECT_ENTRY_LIMIT（413）。未改应用库/项目/history/cache 格式、Mio 工具目录或请求指纹。
 
+### S6-C：首页与最近项目
+
+网页首页、原生启动器和编辑器内的项目选择共用 GET /api/project-entries；渠道范围仍由服务端决定。无摘要的登记保留名称和位置，未知时间不编造。最近打开为默认顺序；搜索、排序和网格/列表仅作用于已登记目录。封面读取失败显示占位，不为补图打开项目。没有显式项目 URL 时停在首页；显式目标不可用时不改开其他项目，原生编辑窗口仍由宿主指定项目。
+
+“生成任务在等项目”来自 GET /api/background-tasks 的完整分页，按当前目录核对身份和项目后统计；读取失败或换库时不展示旧计数，用户可明确重试。首页不自动打开、接收或丢弃结果。打开卡片前重新读取目录并核对库身份；原生窗口的未保存输入确认先于该读取，未知打开/创建结果仍由原窗口核对。
+
+本次先接首页和最近项目菜单；系统文件选择、复制/另存为、废纸篓和模板尚无已接通能力时隐藏入口。打开错误、素材和旧入口退役在后续接线完成，旧 /api/last-project 在全部消费者迁移前保留。
+
 以下保留 10-31 的接口设计、切换前清点和第 6 节实施计划作为历史依据；其中“下一轮”“现在的 composeServer”指当时的旧入口，当前行为以上述 P4 状态和实际源码为准。S0a 内核接口的调用时机仍见第 5 节。
 
 约定以 `PROJECT-FILE.md` 为准，本文只引用、不重复。代码在 `apps/server/src/project-host/`：
