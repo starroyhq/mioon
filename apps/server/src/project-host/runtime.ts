@@ -36,6 +36,7 @@ import {createAssetMediaHttp} from '../asset-media-http.ts';
 import {sameManagedFile} from '@mioon/business/managed-media';
 import {mediaUnavailableError} from '@mioon/contracts/media-reference-errors';
 import {createProjectCoverPublisher} from './cover-publisher.ts';
+import {backgroundHistorySource} from './background-history.ts';
 
 export interface HostedProject extends ProjectHostRuntime {
   readonly project: Awaited<ReturnType<typeof composeProjectRuntime>>;
@@ -68,7 +69,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     project = await composeProjectRuntime({...options, store, shutdown, deletionGate, port: options.port ?? 4318, serverPort: selfPort, listeningPort,
       baseRoot: library.dataDir, application: library, serviceApplication: createProjectServiceApplication(library, shutdown.signal),
       privateMediaDirectories: [context.directories.dataDir, context.directories.cacheDir, context.directories.tempDir],
-      agentSettings: app.agentSettings, settings: app.settings});
+      agentSettings: app.agentSettings, settings: app.settings, deferBackgroundRecovery: true});
   } catch (error) {
     removeVersionCapture();
     shutdown.abort();
@@ -85,12 +86,17 @@ export async function composeHostedProject(context: ProjectHostContext, library:
   try {
   const drafts = project.draftsFactory(context);
   draftsForCleanup = drafts;
-  const worker = project.startWorker();
-  workerForCleanup = worker;
+  let worker: ReturnType<HostedProject['project']['startWorker']> | undefined;
+  const sourceHistory = backgroundHistorySource(store);
+  const activateBackground = (): void => {
+    project.activateBackground();
+    worker ??= project.startWorker();
+    workerForCleanup = worker;
+  };
   let restoring = false;
   const versions = createProjectVersions(store, {assertMutationAllowed: assertVersionWrite,
     assertRestoreAllowed: () => {
-      if (restoring || drafts.isBusy() || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy()
+      if (restoring || drafts.isBusy() || worker?.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy()
         || Boolean(project.projectRules?.isBusy()) || files.isBusy() || cover.isRendering()
         || !deletionGate.isQuiescent(['project.version.restore']) || unfinishedTasks().length > 0) {
         throw new AppError('PROJECT_HOST_BUSY', '项目仍有未结束的内容操作，请稍后恢复。', 409);
@@ -134,15 +140,8 @@ export async function composeHostedProject(context: ProjectHostContext, library:
   releaseCoverForCleanup = removeCoverObserver;
   cover.refresh();
   const unfinishedTasks = (): readonly UnfinishedTask[] => {
-    const tables = [['jobs', 'job', "json_extract(data,'$.status')"], ['exports', 'export', "json_extract(data,'$.status')"], ['edit_tasks', 'edit_task', 'status'], ['image_tasks', 'image_task', 'state'], ['frame_tasks', 'frame_task', 'state'], ['scene_tasks', 'scene_task', 'state'], ['subject_variant_batches', 'subject_variant_batch', 'state']] as const;
-    const result: UnfinishedTask[] = [];
-    for (const [table, kind, status] of tables) {
-      // Fixed kernel tables, never supplied by HTTP or inferred from filenames.
-      for (const row of store.db.prepare(`SELECT id,${status} AS status FROM ${table}`).all()) {
-        if (['queued', 'running', 'pending', 'prepared', 'dispatching', 'receiving', 'persisting', 'polling', 'submitting', 'downloading', 'cancelling', 'recovering', 'uncertain', 'unknown', 'outcome_unknown', 'submission_unknown', 'accepted'].includes(String(row.status))) result.push({kind, taskId: String(row.id)});
-      }
-    }
-    return result;
+    return project.backgroundTasks.snapshot().filter(task => task.classification !== 'terminal').map(task => ({kind: task.kind,
+      taskId: task.taskId, phase: task.keepAlive ? 'active' : 'blocked', reason: task.reason, sourceHistory, taskRevision: task.taskRevision}));
   };
   async function handle({req, res, url, route, signal}: ProjectRequest): Promise<boolean> {
     if (await assetMediaHttp.handle(req, res, url, route)) return true;
@@ -206,12 +205,12 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     }
     return false;
   }
-  return {project, handle, summarize: summary, unfinishedTasks,
+  return {project, handle, summarize: summary, unfinishedTasks, backgroundTasks: project.backgroundTasks, activateBackground,
     captureDailyVersion: () => { captureDailyProjectVersion(store, {assertMutationAllowed: assertVersionWrite}); },
-    isBusy: () => restoring || drafts.isBusy() || files.isBusy() || cover.isRendering() || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy() || Boolean(project.projectRules?.isBusy()) || !deletionGate.isQuiescent(),
+    isBusy: () => restoring || drafts.isBusy() || files.isBusy() || cover.isRendering() || Boolean(worker?.isBusy()) || project.taskRuntimeV2!.isBusy() || project.services.isBusy() || Boolean(project.projectRules?.isBusy()) || !deletionGate.isQuiescent(),
     interrupt: () => { shutdown.abort(); project.projectRules?.close(); project.taskRuntimeV2?.close(); project.taskHttpV2?.close(); },
-    drain: async () => { await boundedShutdown(Promise.all([drafts.drain(), worker.stop(), project.taskRuntimeV2?.drain(), project.projectRules?.drain(), project.serviceDrain(), project.editTasks.drain(), cover.drain(), files.close(), comparisons.close(), project.closeSettings()]), 'SERVER_STOP_TIMEOUT'); },
-    dispose: () => { project.projectRules?.close(); removeVersionCapture(); removeCoverObserver(); project.taskToolsV2?.dispose(); deletionGate.close(); releaseRowValidation(); context.signal.removeEventListener('abort', abort); },
+    drain: async () => { await boundedShutdown(Promise.all([drafts.drain(), worker?.stop(), project.taskRuntimeV2?.drain(), project.projectRules?.drain(), project.serviceDrain(), project.editTasks.drain(), cover.drain(), files.close(), comparisons.close(), project.closeSettings()]), 'SERVER_STOP_TIMEOUT'); },
+    dispose: () => { project.backgroundTasks.dispose(); project.projectRules?.close(); removeVersionCapture(); removeCoverObserver(); project.taskToolsV2?.dispose(); deletionGate.close(); releaseRowValidation(); context.signal.removeEventListener('abort', abort); },
   };
   } catch (error) {
     // Once the core exists, later host assembly can fail too. Keep every
@@ -229,7 +228,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     } catch (cleanupError) {
       throw new ProjectRuntimeCleanupError(error, cleanupError);
     }
-    project.taskToolsV2?.dispose(); removeVersionCapture(); releaseCoverForCleanup?.(); deletionGate.close(); releaseRowValidation();
+    project.backgroundTasks.dispose(); project.taskToolsV2?.dispose(); removeVersionCapture(); releaseCoverForCleanup?.(); deletionGate.close(); releaseRowValidation();
     context.signal.removeEventListener('abort', abort);
     throw error;
   }

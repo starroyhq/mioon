@@ -38,6 +38,19 @@ export interface VerifiedManagedSource extends ManagedSource {
 }
 
 const fault = (code: string): ManagedMediaError => Object.assign(new Error('The managed media source cannot be verified safely.'),{code});
+/** Preserve only concrete unavailability evidence behind the existing public
+ * family. Changed bytes and malformed media retain their original failures. */
+export function retainManagedUnavailableCause<T extends Error>(failure: T, cause: unknown): T {
+ const visited = new Set<unknown>(); let next = cause;
+ for (let depth = 0; next !== null && typeof next === 'object' && !visited.has(next) && depth < 8; depth++) {
+  visited.add(next); const item = next as {code?: unknown;cause?: unknown};
+  if (typeof item.code === 'string' && ['MEDIA_MISSING','MEDIA_OUTSIDE_NOT_CONFIRMED','ENOENT','EACCES','EPERM','EROFS','EIO','ENOTDIR','ENODEV','ESTALE'].includes(item.code)) {
+   Object.defineProperty(failure, 'cause', {value: cause}); break;
+  }
+  next = item.cause;
+ }
+ return failure;
+}
 export const sameManagedFile = (a: ManagedFileIdentity | null | undefined, b: ManagedFileIdentity | null | undefined): boolean => Boolean(a&&b&&(['dev','ino','size','mtimeMs','ctimeMs'] as const).every(key=>a[key]===b[key]));
 // Validate every ancestor and the exact regular, single-link owner-controlled
 // leaf. This never repairs permissions or follows a symlink into managed media.
@@ -48,7 +61,7 @@ export function validateManagedSource(root: string, asset: ManagedAssetReference
   relative.split('/').some(part=>!part||part==='.'||part==='..')||!relative.startsWith('media/'))throw fault('MANAGED_SOURCE_INVALID');
  const file=path.resolve(root,relative),media=path.join(root,'media');
  if(!file.startsWith(media+path.sep))throw fault('MANAGED_SOURCE_INVALID');
- let info: Stats | null;try{info=registeredProjectMediaFile(root,relative)?.info??validateManagedFile(file,{root});}catch{throw fault('MANAGED_SOURCE_INVALID');}
+ let info: Stats | null;try{info=registeredProjectMediaFile(root,relative)?.info??validateManagedFile(file,{root});}catch(cause){throw retainManagedUnavailableCause(fault('MANAGED_SOURCE_INVALID'),cause);}
  if(!info)throw fault('MANAGED_SOURCE_INVALID');
  if(info.size>maxBytes)throw fault('MANAGED_SOURCE_LIMIT');
  return {file,info};
@@ -100,7 +113,7 @@ export async function verifiedManagedHash(root: string, asset: ManagedAssetRefer
   if(effectFailure)throw effectFailure;
   const code=typeof error==='object'&&error!==null&&'code' in error&&typeof error.code==='string'?error.code:undefined;
   if(code?.startsWith('MANAGED_')||code==='PREFLIGHT_BUDGET')throw error;
-  throwIfMediaAborted(signal);throw fault('MANAGED_SOURCE_INVALID');
+  throwIfMediaAborted(signal);throw retainManagedUnavailableCause(fault('MANAGED_SOURCE_INVALID'),error);
  }
  // Closing is mandatory even after revocation. Its await is fenced too.
  finally{

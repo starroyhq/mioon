@@ -356,6 +356,30 @@ test('actual empty startup chooses home while explicit startup succeeds without 
   assert.equal(callsOf(selected, 'replaceState').length, 1);
 });
 
+test('nonempty startup without a project URL never reads project contents, even with a matching remembered project', async () => {
+  const h = harness({discovery: Promise.resolve({workspaceScope: 'a'.repeat(64), envelope: {
+    supported: true, workspaceScope: 'a'.repeat(64), instanceId: id(9), revision: 1,
+    projectId: id(2), updatedAt: '2026-10-13T00:00:00.000Z', targetStatus: 'matching',
+  }}), get() {assert.fail('A home startup must not call project.get.');}});
+  await h.boot();
+  assert.deepEqual(h.env.projects, projects); assert.equal(h.env.projectOpening.phase, 'home'); assert.equal(h.env.currentProject.current, null);
+  assert.equal(h.env.data.project, null); assert.equal(h.eligible(), false);
+  assert.deepEqual(callsOf(h, 'rpc').filter(call => call[1] === 'project.get'), []);
+  for (const action of ['preferences', 'tasks.load', 'remember', 'replaceState', 'pushState']) assert.deepEqual(callsOf(h, action), [], action);
+});
+
+test('an explicit unavailable project stays on home and never opens a remembered or first listed project', async () => {
+  const h = harness({discovery: Promise.resolve({workspaceScope: 'a'.repeat(64), envelope: {
+    supported: true, workspaceScope: 'a'.repeat(64), instanceId: id(9), revision: 1,
+    projectId: id(2), updatedAt: '2026-10-13T00:00:00.000Z', targetStatus: 'matching',
+  }}), get() {assert.fail('An unavailable URL must not open another project.');}});
+  h.env.window.location.search = `?project=${id(3)}`; await h.boot();
+  assert.equal(h.env.projectOpening.phase, 'home'); assert.equal(h.env.currentProject.current, null); assert.equal(h.eligible(), false);
+  assert.deepEqual(callsOf(h, 'rpc').filter(call => call[1] === 'project.get'), []);
+  assert.deepEqual(callsOf(h, 'notice'), [['notice', msg('projects.bootMissingEmpty'), 'error']]);
+  assert.deepEqual(callsOf(h, 'remember'), []); assert.deepEqual(callsOf(h, 'replaceState'), []);
+});
+
 
 function nativeEditor(projectId: string) {
   return { context: { version: 2, role: 'editor', windowId: id(7), contextId: id(8), backendId: id(9), initialProjectId: projectId,

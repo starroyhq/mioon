@@ -55,6 +55,9 @@ const fixture = `
   import { renderToStaticMarkup } from 'react-dom/server';
   import { Tabs, TabsList, TabsTrigger } from '@mioon/ui/components/tabs';
   import { Button } from '@mioon/ui/components/button';
+  // This fixture deliberately renders the synchronous form presentation. The
+  // App return below is real; directory loading/identity and the production
+  // ProjectHomeDirectoryScreen are covered by directory and browser tests.
   import ProjectHome from './src/ProjectHome.tsx';
   import LastProjectStatus from './src/LastProjectStatus.tsx';
   import { useButton } from ${JSON.stringify(join(baseRoot, 'internals/use-button/useButton.js'))};
@@ -63,12 +66,12 @@ const fixture = `
   const Icon = () => null;
   export function Modes({data, loading, workspaceMode, changeMode}) { return ${modesMarkup}; }
   // Only the global settings slot is inert in this projects-page fixture. The
-  // actual App early return, ProjectHome, shared controls and status are executed.
+  // actual App early return, form presentation, shared controls and status run.
   const ProjectHomeConnections = () => null, AgentDockPane = () => null, SettingsNavigationSlot = () => null;
   const AgentSettings = () => null, ImageSettings = () => null, ComfyImageSettings = () => null;
   const RestoredUnavailable = ({title}) => <span>{title}</span>;
   export function Surface({ data, loading, workspaceMode, changeMode, workbenchReady, projects, projectOpening, toast, busy,
-    projectListStatus, homePage, changeHomePage, selectProject, refreshHomeProjects, createProject, retainWorkbenchForClip = false, webSettingsCenter = null, videoDirectoryUnavailable = false, preferenceScope = { current: null }, editorSession = {current:'normal'}, workspace = {},
+    projectListStatus, homePage, changeHomePage, selectProject, refreshHomeProjects, createProject, retainWorkbenchForClip = false, webSettingsCenter = null, webSettingsOpen = false, setAuth, videoDirectoryUnavailable = false, preferenceScope = { current: null }, editorSession = {current:'normal'}, workspace = {},
     lastProjectStatus, lastProjectRef, homeConnection, setHomeConnection, settingsNavigation, prepareSettingsDeparture, setHomePage, locale = 'zh-Hans' }) {
     const { t } = createI18nTestContext(locale);
     ${videoDirectoryNoticeSource}
@@ -124,6 +127,7 @@ interface EnvAccess extends Record<string, unknown> {
   refresh?: (...args: unknown[])=>Promise<unknown>;
   preferenceScope: {current: unknown};
   projectListStatus: {busy: boolean; error: string};
+  webSettingsOpen: boolean;
   projects: unknown[];
 }
 interface HarnessResult {env: EnvAccess; calls: unknown[][]; change: (...args: unknown[])=>Promise<unknown>; boot: ()=>Promise<unknown>; create: (...args: unknown[])=>Promise<boolean>}
@@ -159,7 +163,7 @@ function harness({ projectId = null, mode = 'canvas', loading = false, ready = B
     openedProject: { current: null }, projectCreateFlight: { current: null }, settingsNavigation: { current: createSettingsNavigationRegistry() },
     timelineFormatRef: { current: null }, deliveryNameRef: { current: null }, localDeliveryRef: { current: null },
     projectOpening: { phase: projectId && ready ? 'ready' : 'home', projectId, error: '' }, projects: [],
-    projectListStatus: { busy: false, error: '' }, busy: {}, homePage: 'projects', homeConnection: 'agent', toast: null, videoDirectoryUnavailable: false,
+    projectListStatus: { busy: false, error: '' }, busy: {}, homePage: 'projects', homeConnection: 'agent', toast: null, webSettingsOpen: false, videoDirectoryUnavailable: false,
     markBusy: (...args: unknown[]) => calls.push(['markBusy', ...args]), setHomeConnection() {}, changeHomePage() {}, refreshHomeProjects() {},
     ...Object.fromEntries(['setLastSync', 'setView', 'setMobilePanel', 'setPreviewAsset', 'setComparisonId', 'setShowCreate', 'setProjects', 'setWorkspace', 'setAuth', 'setOnline', 'setProviders', 'setVideoDirectoryUnavailable', 'setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setNodes', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setRealConfirm', 'setToast', 'setZoom', 'setPanelOverlay', 'setHomePage', 'setHomeConnection', 'setPanelOpen', 'setSettingsOpen', 'setAgentPage', 'setWorkspaceMode', 'setShowTasks', 'setSelectedTaskId', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setTaskState', 'setShowSettings', 'setWebSettingsOpen', 'setCanvasToolbar', 'notify'].map((name: string) => [name, (...args: unknown[]) => calls.push([name, ...args])])),
   };
@@ -202,6 +206,16 @@ test('actual empty startup shows the independent home and never mounts project m
     assert.match(openingTag(html, id), /tabindex="0"/);
   }
   assert.doesNotMatch(html, /role="dialog"/);
+});
+
+test('the extracted home boundary binds settings visibility and routes unauthorized reads to the real auth setter', () => {
+  const f = harness();
+  const home = (props: Record<string, unknown>) => nodes(ui.Surface(props)).find(node => typeof node.props?.onUnauthorized === 'function');
+  const shown = home(modeProps(f)); assert.ok(shown); assert.equal(shown.props?.active, true);
+  f.env.webSettingsOpen = true;
+  const hidden = home(modeProps(f)); assert.ok(hidden); assert.equal(hidden.props?.active, false);
+  (hidden.props!.onUnauthorized as () => void)();
+  assert.deepEqual(f.calls, [['setAuth', false]]);
 });
 
 test('actual home status shows the localized optional video directory failure and clears it after retry', async () => {

@@ -7,6 +7,8 @@ import type {ProjectStore} from '../../../../packages/business/src/project-file/
 import type {AppDirectories} from './directories.ts';
 import type {ProjectLeaseKind} from './types.ts';
 import type {ProjectHistorySession} from './history-session.ts';
+import type {TaskProjection} from '../../../../packages/business/src/background-task-state.ts';
+import type {BackgroundTaskRef} from '../../../../packages/business/src/background-task-events.ts';
 
 /** A failed factory could not settle its admitted work. The manager must keep
  * its SQLite connection and lock instead of letting late effects use a closed DB. */
@@ -47,6 +49,19 @@ export interface ProjectHostSummary {
 export interface UnfinishedTask {
   readonly kind: BackgroundTaskKind;
   readonly taskId: string;
+  readonly phase?: 'prepared' | 'active' | 'blocked' | 'archived' | 'done';
+  readonly reason?: string | null;
+  readonly sourceHistory?: string | null;
+  readonly taskRevision?: number;
+}
+
+export interface ProjectBackgroundTaskState {
+  snapshot(): readonly TaskProjection[];
+  subscribe(listener: (snapshot: readonly TaskProjection[]) => void): () => void;
+  /** With no arguments, checks only already-admitted identities. */
+  refresh(): void;
+  /** Pure admission view over the caller's still-uncommitted identities. */
+  preview?(refs: readonly BackgroundTaskRef[]): readonly TaskProjection[];
 }
 
 /** Everything one project runs: services, worker, edit tasks, Mio, drafts and
@@ -69,6 +84,16 @@ export interface ProjectHostRuntime {
   summarize?(): ProjectHostSummary | null;
   /** S3: unfinished background tasks, written to the task index on close. */
   unfinishedTasks?(): readonly UnfinishedTask[];
+  readonly backgroundTasks?: ProjectBackgroundTaskState;
+  /** Starts the already-composed workers after backup and S3 lease admission. */
+  activateBackground?(): void;
+}
+
+/** Only supplied during normal opening. Retaining does not recursively acquire
+ * the same opening host; an escaped callback refuses once it is ready/closing. */
+export interface ProjectHostReadiness {
+  readonly host: ProjectHost;
+  retainTask(): ProjectLease;
 }
 
 /** Composes one project's runtime on an open store. Called once per open; a

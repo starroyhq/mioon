@@ -45,6 +45,8 @@ import {composeApplicationRuntime} from './application-runtime.ts';
 import {createApplicationRpc} from './application-rpc.ts';
 import {createInitializedProject} from './project-host/create-project.ts';
 import {createProjectEntries} from './project-entries.ts';
+import {createBackgroundCoordinator} from './project-host/background-coordinator.ts';
+import {createBackgroundTaskHttp} from './project-host/background-http.ts';
 import {createAgentDiagnosticsHttp} from './agent-diagnostics-http.ts';
 import {createApplicationAgentHttp} from './application-agent-http.ts';
 import {body, json, field} from './http-json.ts';
@@ -174,6 +176,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
   let library: ReturnType<typeof openAppLibrary> | undefined;
   let application: Awaited<ReturnType<typeof composeApplicationRuntime>> | undefined;
   let manager: ProjectHostManager<HostedProject> | undefined;
+  let background: ReturnType<typeof createBackgroundCoordinator> | undefined;
   let drainBackups: (() => Promise<void>) | undefined;
   let drainCopies: (() => Promise<void>) | undefined;
   let server: Server | undefined;
@@ -181,16 +184,21 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
   const selfPort = (): number | undefined => { const address = server?.address(); return address !== null && typeof address === 'object' ? address.port : undefined; };
   const listeningPort = (): number => { const result = selfPort(); if (result === undefined) throw new TypeError('The local HTTP listener is not bound to a TCP port.'); return result; };
   try {
-    library = openAppLibrary({dataDir: root, findMovedRoots: [directories.projectsDir], isProjectOpen: id => manager?.status(id) !== null && manager?.status(id) !== undefined});
+    library = openAppLibrary({dataDir: root, findMovedRoots: [directories.projectsDir], isProjectOpen: id => manager?.status(id) !== null && manager?.status(id) !== undefined,
+      isProjectBackgroundBusy: id => background?.inspectProjectWork(id).mayWriteBack ?? true});
     const appLibrary = library;
     application = await composeApplicationRuntime(library, options, shutdown.signal, selfPort);
     const app = application;
+    background = createBackgroundCoordinator({index: library.taskIndex, inbox: library.inbox, identity: library.projectFileIdentity,
+      assertMutationAllowed: createProjectServiceApplication(appLibrary, shutdown.signal).assertMutationAllowed});
+    const backgroundTasks = background;
+    const backgroundHttp = createBackgroundTaskHttp(backgroundTasks);
     const assertProjectFile = createApplicationFileGuard(directories);
     const backups = createProjectBackups({directories, registry: library.registry, identity: library.projectFileIdentity, assertProjectFile, outsidePaths: library.outsidePaths, copy: options.projectBackupCopyForTest});
     drainBackups = backups.drain;
     manager = createProjectHostManager({directories, registry: library.registry, identity: library.projectFileIdentity, taskIndex: library.taskIndex,
       assertMutationAllowed: createProjectServiceApplication(appLibrary, shutdown.signal).assertMutationAllowed,
-      hooks: [backups.hooks, {afterOpen: context => {
+      hooks: [backups.hooks, backgroundTasks.hooks, {afterOpen: context => {
         try { opened.get(context.projectId)!.captureDailyVersion(); }
         catch (error) {
           // A daily version is best effort; no success mark is committed on
@@ -204,8 +212,11 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       maintenance: {recoverProjectFile: file => { assertProjectFile(file); return recoverProjectFile(file); }},
       recoverySnapshot: recover => assertProjectFile.withSnapshot(recover),
       factory: async context => { const runtime = await composeHostedProject(context, appLibrary, app, options, selfPort, listeningPort); opened.set(context.projectId, runtime); return runtime; },
-      onEvent: event => { if ((event.type === 'closed' || event.type === 'open-failed') && event.projectId !== null) opened.delete(event.projectId); },
+      onEvent: event => { try {backgroundTasks.onHostEvent(event);} finally {
+        if ((event.type === 'closed' || event.type === 'open-failed') && event.projectId !== null) opened.delete(event.projectId);
+      } },
     });
+    backgroundTasks.bindManager(manager);
     const projects = manager;
     if (options.nativeAudioPreview) bindProjectNativeAudio(options.nativeAudioPreview, projects);
     options.inspectProject?.(manager.inspectProject);
@@ -286,6 +297,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
           if (!authenticated(req)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '请使用本地访问令牌登录'}});
         }
         if (projectEntries.handle(req, res, url)) return;
+        if (backgroundHttp(req, res, url)) return;
         const route = parseProjectApiPath(url.pathname);
         if (route) {
           if (url.searchParams.getAll('projectId').some(value => value !== route.projectId)) throw projectIdMismatch(route.projectId);
@@ -392,15 +404,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       }
     };
     const restored = await manager.restore();
-    const restorationTimers = new Set<ReturnType<typeof setInterval>>();
-    for (const lease of restored.leases) {
-      const timer = setInterval(() => {
-        if (lease.signal.aborted || lease.host.runtime.unfinishedTasks?.().length === 0) {
-          clearInterval(timer); restorationTimers.delete(timer); lease.release();
-        }
-      }, 1000);
-      timer.unref(); restorationTimers.add(timer);
-    }
+    backgroundTasks.acceptRestore(restored);
     server = http.createServer(handle);
     await new Promise<void>((resolve, reject) => { server!.once('error', reject); server!.listen(port, '127.0.0.1', resolve); });
     const actualPort = listeningPort();
@@ -408,7 +412,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     let closing: Promise<void> | undefined;
     const close = (): Promise<void> => closing ??= (async () => {
       shutdown.abort();
-      for (const timer of restorationTimers) clearInterval(timer);
+      backgroundTasks.stop();
       const drain = new Promise<void>((resolve, reject) => server!.close(error => error ? reject(error) : resolve()));
       const force = setTimeout(() => server?.closeAllConnections(), 3000); force.unref();
       try {
@@ -421,7 +425,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     return {url: `http://127.0.0.1:${actualPort}`, port: actualPort, token, tokenFile, dataDir: root, projectEntries: projectEntries.control,
       close};
   } catch (error) {
-    shutdown.abort(); server?.closeAllConnections();
+    shutdown.abort(); background?.stop(); server?.closeAllConnections();
     const drain = server?.listening ? new Promise<void>(resolve => server!.close(() => resolve())) : Promise.resolve();
     await boundedShutdown(Promise.all([drain, manager?.closeAll(), files.close(), drainBackups?.(), drainCopies?.()]), 'SERVER_STOP_TIMEOUT');
     await boundedShutdown(Promise.all([terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), application?.close()]), 'SERVER_STOP_TIMEOUT');

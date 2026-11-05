@@ -32,15 +32,17 @@ const selectSource=section('  async function selectProject(', '  async function 
 const bootSource=section('  async function boot(): Promise<void> {','  useEffect(() => {\n    bootGuard.current!.activate();');
 const compile=<N extends keyof AppFunctions>(code: string,name: N,env: Record<string, unknown>): AppFunctions[N] =>Function(...Object.keys(env),`${code}\nreturn ${name};`)(...Object.values(env)) as AppFunctions[N];
 
-test('initial choice uses valid explicit URL then valid locator then ordinary fallback without mutation',()=>{
+test('initial choice opens only a valid visible explicit URL and leaves locator observations unchanged',()=>{
  const frozen=structuredClone(envelope);
  assert.deepEqual(chooseInitialProject(projects,id(1),envelope),{projectId:id(1),source:'url',notice:null});
- assert.equal(chooseInitialProject(projects,id(3),envelope).projectId,id(2));
- assert.equal(chooseInitialProject(projects,null,envelope).source,'remembered');
- assert.equal(chooseInitialProject(projects,null,{...envelope,targetStatus:'missing'}).projectId,id(1));
- assert.match(renderCoreMessage('zh-Hans',chooseInitialProject(projects,null,{...envelope,targetStatus:'missing'}).notice),/不可用/);
- assert.equal(chooseInitialProject([],null,null).source,'none');
- assert.equal(chooseInitialProject(projects,null,{supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'}).source,'fallback');
+ for(const explicit of [id(3),'not-a-project','']){
+  const choice=chooseInitialProject(projects,explicit,envelope);assert.equal(choice.projectId,null);assert.equal(choice.source,'none');
+  assert.equal(renderCoreMessage('zh-Hans',choice.notice),'该项目暂时不可用，请在首页重试或选择其他项目');
+ }
+ for(const observed of [envelope,{...envelope,targetStatus:'missing' as const},{supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'} as const,null]){
+  assert.deepEqual(chooseInitialProject(projects,null,observed),{projectId:null,source:'none',notice:null});
+ }
+ assert.deepEqual(chooseInitialProject([],null,null),{projectId:null,source:'none',notice:null});
  assert.deepEqual(envelope,frozen);
 });
 test('verified identity cannot change on reconnect and read failure preserves an established scope',()=>{
@@ -136,13 +138,13 @@ function bootHarness({discovery=Promise.resolve({envelope,workspaceScope:scope})
  });
  return{env,epoch,calls,guard,boot:()=>compile(bootSource,'boot',env)()};
 }
-test('actual App startup chooses the remembered nonfirst project, with explicit URL precedence and no remember write',async()=>{
- const f=bootHarness();await f.boot();assert.deepEqual(f.calls.filter(x=>x[0]==='select'),[['select',id(2),true]]);assert.equal(f.env.preferenceScope!.current,scope);assert.equal(f.env.projectSessionReady(),true);assert.equal(f.calls.some(x=>x[0]==='remember'),false);
+test('actual App startup retains verified scope on home and only explicit URL opens without a remember write',async()=>{
+ const f=bootHarness();await f.boot();assert.deepEqual(f.calls.filter(x=>x[0]==='select'),[]);assert.equal(f.env.preferenceScope!.current,scope);assert.equal(f.env.projectSessionReady(),false);assert.equal(f.calls.some(x=>x[0]==='remember'),false);
  const g=bootHarness({explicit:id(1)});await g.boot();assert.deepEqual(g.calls.filter(x=>x[0]==='select'),[['select',id(1),true]]);
 });
-test('video directory failure preserves remembered-project boot and refresh, then clears its error after recovery',async()=>{
+test('video directory failure preserves explicit-project boot and refresh, then clears its error after recovery',async()=>{
  for(const code of ['VIDEO_SETTINGS_CORRUPT','NETWORK']){
-  let error: string | null=code;const f=bootHarness({videoDirectory:async()=>{if(error)throw Object.assign(Error(error),{code:error});return[];}});
+  let error: string | null=code;const f=bootHarness({explicit:id(2),videoDirectory:async()=>{if(error)throw Object.assign(Error(error),{code:error});return[];}});
   await f.boot();assert.equal(f.env.auth,true,code);assert.equal(f.env.projectSessionReady(),true);assert.equal(f.env.currentProject.current,id(2));assert.equal(f.env.videoDirectoryUnavailable,true);
   assert.deepEqual(f.calls.filter(x=>x[0]==='select'),[['select',id(2),true]]);assert.equal(f.env.preferenceScope!.current,scope);assert.equal(f.calls.some(x=>x[0]==='remember'),false);
   f.env.viewRef.current.activeMode='editing';f.env.viewRef.current.editing.playhead=72;
@@ -151,25 +153,25 @@ test('video directory failure preserves remembered-project boot and refresh, the
  }
 });
 test('late optional video failure from an older boot cannot replace a newer boot directory state',async()=>{
- const held=deferred();let reads=0;const f=bootHarness({videoDirectory:()=>++reads===1?held.promise:[]});
+ const held=deferred();let reads=0;const f=bootHarness({explicit:id(2),videoDirectory:()=>++reads===1?held.promise:[]});
  const old=f.boot();await new Promise(setImmediate);await f.boot();assert.equal(f.env.auth,true);assert.equal(f.env.videoDirectoryUnavailable,false);assert.equal(f.env.projectSessionReady(),true);
  const count=f.calls.length;(held.reject)!(Object.assign(Error('late corrupt settings'),{code:'VIDEO_SETTINGS_CORRUPT'}));await old;
  assert.equal(f.calls.length,count);assert.equal(f.env.videoDirectoryUnavailable,false);assert.equal(f.env.currentProject.current,id(2));
 });
-test('optional video directory 401 remains an authentication failure during remembered-project boot',async()=>{
+test('optional video directory 401 remains an authentication failure during explicit-project boot',async()=>{
  for(const error of [Object.assign(Error('UNAUTHORIZED'),{code:'UNAUTHORIZED'}),Object.assign(Error('HTTP 401'),{status:401})]){
-  const f=bootHarness({videoDirectory:async()=>{throw error;}});await f.boot();assert.equal(f.env.auth,false);assert.equal(f.calls.some(x=>x[0]==='select'),false);assert.equal(f.env.projectSessionReady(),false);
+  const f=bootHarness({explicit:id(2),videoDirectory:async()=>{throw error;}});await f.boot();assert.equal(f.env.auth,false);assert.equal(f.calls.some(x=>x[0]==='select'),false);assert.equal(f.env.projectSessionReady(),false);
  }
 });
 test('actual App stale startup cannot replace newer selection, publish data after unmount',async()=>{
- const gate=deferred(),f=bootHarness({discovery:gate.promise}),old=f.boot();await new Promise(setImmediate);f.epoch.current++;(gate.resolve)!({envelope,workspaceScope:scope});await old;assert.equal(f.calls.some(x=>x[0]==='select'||x[0]==='projects'),false);
- const held=deferred(),g=bootHarness({discovery:held.promise}),pending=g.boot();await new Promise(setImmediate);g.guard.deactivate();(held.resolve)!({envelope,workspaceScope:scope});await pending;assert.equal(g.calls.some(x=>x[0]==='select'||x[0]==='projects'),false);
+ const gate=deferred(),f=bootHarness({explicit:id(2),discovery:gate.promise}),old=f.boot();await new Promise(setImmediate);f.epoch.current++;(gate.resolve)!({envelope,workspaceScope:scope});await old;assert.equal(f.calls.some(x=>x[0]==='select'||x[0]==='projects'),false);
+ const held=deferred(),g=bootHarness({explicit:id(2),discovery:held.promise}),pending=g.boot();await new Promise(setImmediate);g.guard.deactivate();(held.resolve)!({envelope,workspaceScope:scope});await pending;assert.equal(g.calls.some(x=>x[0]==='select'||x[0]==='projects'),false);
 });
-test('initial foreign locator permits uncached manual project fallback; changed established identity blocks startup',async()=>{
- const first=bootHarness({discovery:Promise.resolve(null)});first.env.lastProjectRef.current.getState=()=>({identityBlocked:true,revision:null});await first.boot();
+test('initial foreign locator permits uncached explicit project selection; changed established identity blocks startup',async()=>{
+ const first=bootHarness({explicit:id(1),discovery:Promise.resolve(null)});first.env.lastProjectRef.current.getState=()=>({identityBlocked:true,revision:null});await first.boot();
  assert.deepEqual(first.calls.filter(x=>x[0]==='select'),[['select',id(1),true]]);assert.equal(first.env.preferenceScope!.current,null);
  for(const revision of [0,1]){
-  const changed=bootHarness({discovery:Promise.resolve(null)});changed.env.lastProjectRef.current.getState=()=>({identityBlocked:true,revision});await changed.boot();
+  const changed=bootHarness({explicit:id(1),discovery:Promise.resolve(null)});changed.env.lastProjectRef.current.getState=()=>({identityBlocked:true,revision});await changed.boot();
   assert.equal(changed.calls.some(x=>x[0]==='select'),false);assert.ok(changed.calls.some(x=>x[0]==='auth'&&x[1]==='error'));assert.equal(changed.env.preferenceScope!.current,null);
  }
 });
