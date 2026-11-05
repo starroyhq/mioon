@@ -1,14 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync,rmSync,mkdirSync,copyFileSync,renameSync,readFileSync} from 'node:fs';
+import {mkdtempSync,rmSync,mkdirSync,copyFileSync,renameSync,readFileSync,linkSync,lstatSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {startServer} from '../apps/server/src/index.ts';
 import {createServerProject} from './helpers/project-database.ts';
-import {createProjectEntryControlClient,createProjectEntryControlBroker} from '../apps/desktop/src/project-entry-control.ts';
+import {createProjectEntryControlClient,createProjectEntryControlBroker,safeProjectEntryControlError} from '../apps/desktop/src/project-entry-control.ts';
 import {PROJECT_ENTRY_CONTROL_LIMITS} from '../packages/contracts/src/project-entry-control.ts';
 import type {ProjectEntryControlPort} from '../packages/contracts/src/project-entry-native.ts';
+import {openStore,isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
+import {openAppLibrary,isAppLibraryHeld} from '../packages/business/src/app-db/index.ts';
+import type {NativeAssetMediaPort} from '../packages/contracts/src/asset-media-native.ts';
+import {createProjectEntries} from '../apps/server/src/project-entries.ts';
+import type {ProjectHostManager} from '../apps/server/src/project-host/manager.ts';
+import type {ProjectRegistryPort} from '../apps/server/src/project-host/ports.ts';
 
 async function fixture(t:test.TestContext,wrap?:(control:ProjectEntryControlPort)=>ProjectEntryControlPort,onReply?:(message:unknown,deliver:()=>void)=>void){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-entry-control-')),dataDir=path.join(root,'app'),parent=path.join(root,'selected');mkdirSync(parent);
@@ -35,6 +42,78 @@ test('real utility control roundtrip opens the selected original, creates once a
  const adoptedCopy=path.join(f.root,'Finder Copy.mioon');copyFileSync(f.file,adoptedCopy);
  const observed=await f.client.api.inspectSelectedCopy({projectFile:adoptedCopy});assert.equal(observed.sourceProjectId,f.projectId);
  assert.match(observed.sourceStamp.contentToken,/^[a-f0-9]{32}$/u);assert.equal(observed.sourceFile,adoptedCopy);
+ const source=await f.client.api.observeSource({projectFile:adoptedCopy});assert.equal(source.name,'Original');assert.equal(source.source.sourceFile,adoptedCopy);
+});
+
+for(const kind of ['project','history','cache','application'] as const)test(`source observation refuses an alias of a held ${kind} before any descriptor can release its real write lock`,async t=>{
+ const f=await fixture(t),store=openStore(path.join(f.root,'foreign-project')),library=openAppLibrary({dataDir:path.join(f.root,'foreign-app')});
+ try{store.put('projects',{id:store.projectId,name:'Held source'});
+ const file={project:store.projectFile,history:path.join(store.localDir,'history.db'),cache:path.join(store.cacheDir,'cache.db'),application:library.databaseFile}[kind],alias=path.join(f.parent,`${kind}.mioon`);
+ linkSync(file,alias);const info=lstatSync(alias,{bigint:true}),identity={dev:String(info.dev),ino:String(info.ino)};
+ assert.equal(kind==='application'?isAppLibraryHeld(identity):isProjectFileHeld(identity),true);
+ const probe=()=>{const result=spawnSync(process.execPath,['--input-type=module','-e',`import{DatabaseSync}from'node:sqlite';let db;try{db=new DatabaseSync(process.argv[1],{timeout:0});db.exec('BEGIN IMMEDIATE;ROLLBACK');process.stdout.write(JSON.stringify({ok:true}));}catch(error){process.stdout.write(JSON.stringify({ok:false,errcode:error.errcode}));}finally{db?.close();}`,file],{encoding:'utf8',timeout:60_000});assert.equal(result.status,0,result.stderr);return JSON.parse(result.stdout);};
+ assert.deepEqual(probe(),{ok:false,errcode:5});
+ await assert.rejects(f.client.api.observeSource({projectFile:alias}),{code:'PROJECT_LOCKED'});
+ assert.deepEqual(probe(),{ok:false,errcode:5},'refusing the source must preserve the existing owner lock');
+ }finally{store.close();library.close();}
+});
+
+test('format projection keeps only verified complete database/version facts and MOVED evidence stays unchanged',()=>{
+ const detail={database:'history',formatVersion:123,supportedFormatVersion:122};
+ assert.deepEqual(safeProjectEntryControlError({code:'PROJECT_UNAVAILABLE',status:409,details:{reason:'PROJECT_FORMAT_NEWER'},cause:{code:'PROJECT_FORMAT_NEWER',details:detail}}).details,{reason:'PROJECT_FORMAT_NEWER',...detail});
+ for(const details of [{formatVersion:123},{database:'project',formatVersion:123},{database:'unknown',formatVersion:123,supportedFormatVersion:122}]){
+  const result=safeProjectEntryControlError({code:'PROJECT_FORMAT_NEWER',status:409,details});assert.equal('formatVersion'in result.details,false);assert.equal('supportedFormatVersion'in result.details,false);
+ }
+ const projectId=randomUUID();assert.deepEqual(safeProjectEntryControlError({code:'PROJECT_FILE_MOVED',status:409,details:{projectId}}),{code:'PROJECT_FILE_MOVED',status:409,details:{projectId}});
+});
+
+test('native source observation guards private application files and relink preserves only strict cause codes',async t=>{
+ const f=await fixture(t,control=>({...control,nativeRelink:{async candidate(){throw Object.assign(new Error('private source path must never escape'),{code:'REVISION_CONFLICT',status:409});},async preview(){assert.fail();},async apply(){assert.fail();},async discard(){}}}));
+ await assert.rejects(f.client.api.observeSource({projectFile:path.join(f.root,'app','app-library.db')}),{code:'PROJECT_LOCATION_INVALID'});
+ await assert.rejects(f.client.api.nativeRelink.candidate({projectId:f.projectId,ownerToken:randomUUID(),assetId:randomUUID(),expectedReferenceRevision:1,sourcePath:f.file}),error=>{assert.equal((error as {code:string}).code,'REVISION_CONFLICT');assert.equal(String(error).includes('private source path'),false);return true;});
+});
+
+for(const operation of ['candidate','preview','apply'] as const)test(`native ${operation} enforces application scope at its real continuation and apply uncertainty retains its original request`,async()=>{
+ let scope='a'.repeat(64),begun!:()=>void,finish!:()=>void,effects=0,forwarded:AbortSignal|undefined;
+ const entered=new Promise<void>(resolve=>{begun=resolve;}),gate=new Promise<void>(resolve=>{finish=resolve;});
+ const projectId=randomUUID(),ownerToken=randomUUID(),assetId=randomUUID(),token=randomUUID(),requestId='original-native-apply-request';
+ const native:NativeAssetMediaPort={
+  async candidate(input,options){forwarded=options?.signal;begun();await gate;options?.beforeEffect?.();effects++;return{projectId,assetId,expectedReferenceRevision:1,candidateToken:token,displayPath:input.sourcePath,outside:false,confirmationRequired:false};},
+  async preview(_input,options){forwarded=options?.signal;begun();await gate;options?.beforeEffect?.();effects++;return{projectId,assetId,expectedReferenceRevision:1,previewToken:token,displayPath:'/verified/source.png',outside:false,rows:[{assetId,name:'Source',from:'source.png',to:'/verified/source.png',outcome:'picked',referenceRevision:1}],foundBy:null};},
+  async apply(_input,options){forwarded=options?.signal;options?.beforeEffect?.();effects++;begun();await gate;return{status:'failed',error:{code:'REVISION_CONFLICT',status:409},confirmedDirectories:[]};},
+  async discard(){},
+ };
+ const stop=new AbortController(),request=new AbortController();let callerChecks=0;
+ const failAccess={get(){assert.fail('Private native forwarding cannot fall back to opening a project');}};
+ const entry=createProjectEntries({manager:new Proxy({} as ProjectHostManager,failAccess),registry:new Proxy({} as ProjectRegistryPort,failAccess),projectsDir:'/unread-projects',channel:'development',signal:stop.signal,readScope:()=>scope,createProject:async()=>{assert.fail();},refreshSummaries(){assert.fail();},nativeRelink:native});
+ const port=entry.control.nativeRelink!;
+ const pending=operation==='candidate'?port.candidate({projectId,ownerToken,assetId,expectedReferenceRevision:1,sourcePath:'/verified/source.png'},{signal:request.signal,beforeEffect:()=>{callerChecks++;}}):operation==='preview'?port.preview({projectId,ownerToken,candidateToken:token,allowOutside:false},{signal:request.signal,beforeEffect:()=>{callerChecks++;}}):port.apply({projectId,ownerToken,previewToken:token,requestId},{signal:request.signal,beforeEffect:()=>{callerChecks++;}});
+ await entered;assert.equal(forwarded,request.signal);assert.ok(callerChecks>0);scope='b'.repeat(64);finish();
+ await assert.rejects(pending,error=>{const failure=error as {code:string;details?:{requestId?:string}};assert.equal(failure.code,operation==='apply'?'PROJECT_ENTRY_OUTCOME_UNKNOWN':'PROJECT_ENTRY_SCOPE_MISMATCH');if(operation==='apply'){assert.equal(failure.details?.requestId,requestId);assert.equal(safeProjectEntryControlError(error).details.requestId,requestId);}return true;});
+ assert.equal(effects,operation==='apply'?1:0);
+ await assert.rejects(port.candidate({projectId,ownerToken,assetId,expectedReferenceRevision:1,sourcePath:'/verified/source.png'}),{code:'PROJECT_ENTRY_SCOPE_MISMATCH'});
+ stop.abort();
+});
+
+test('relink cancellation aborts the exact service call and a late candidate is discarded instead of granting a usable ticket',async t=>{
+ let begun!:()=>void,finish!:()=>void,signal:AbortSignal|undefined;const entered=new Promise<void>(resolve=>{begun=resolve;}),gate=new Promise<void>(resolve=>{finish=resolve;});
+ const ownerToken=randomUUID(),assetId=randomUUID(),candidateToken=randomUUID(),discarded:unknown[]=[];
+ const f=await fixture(t,control=>({...control,nativeRelink:{async candidate(input,options){signal=options?.signal;begun();await gate;return{projectId:input.projectId,assetId,expectedReferenceRevision:1,candidateToken,displayPath:input.sourcePath,outside:false,confirmationRequired:false};},async preview(){assert.fail();},async apply(){assert.fail();},async discard(input){discarded.push(input);}}}));
+ const cancel=new AbortController(),pending=f.client.api.nativeRelink.candidate({projectId:f.projectId,ownerToken,assetId,expectedReferenceRevision:1,sourcePath:f.file},{signal:cancel.signal});
+ await entered;cancel.abort();await assert.rejects(pending,{code:'PROJECT_ENTRY_UNAVAILABLE'});for(let i=0;i<5;i++)await new Promise<void>(resolve=>setImmediate(resolve));assert.equal(signal?.aborted,true);
+ finish();for(let i=0;i<10;i++)await new Promise<void>(resolve=>setImmediate(resolve));assert.deepEqual(discarded,[{projectId:f.projectId,ownerToken,candidateToken}]);
+});
+
+test('completed relink candidate cancellation cleans only its own ticket and a cancelled apply is never executed again',async t=>{
+ let queued!:()=>void,ackQueued=new Promise<void>(resolve=>{queued=resolve;});let applying=false,applies=0;const discarded:unknown[]=[];
+ const ownerToken=randomUUID(),assetId=randomUUID(),candidateToken=randomUUID();
+ const port:NativeAssetMediaPort={async candidate(input){return{projectId:input.projectId,assetId,expectedReferenceRevision:1,candidateToken,displayPath:input.sourcePath,outside:false,confirmationRequired:false};},async preview(){assert.fail();},async apply(){applies++;return{status:'failed',error:{code:'REVISION_CONFLICT',status:409},confirmedDirectories:[]};},async discard(input){discarded.push(input);}};
+ const f=await fixture(t,control=>({...control,nativeRelink:port}),(message,deliver)=>{const value=message as {ok?:boolean;data?:{candidateToken?:string;status?:string}};if(value.ok&&(value.data?.candidateToken===candidateToken||applying&&value.data?.status==='failed'))queued();else deliver();});
+ const cancel=new AbortController(),candidate=f.client.api.nativeRelink.candidate({projectId:f.projectId,ownerToken,assetId,expectedReferenceRevision:1,sourcePath:f.file},{signal:cancel.signal});
+ await ackQueued;cancel.abort();await assert.rejects(candidate,{code:'PROJECT_ENTRY_UNAVAILABLE'});for(let i=0;i<10;i++)await new Promise<void>(resolve=>setImmediate(resolve));assert.deepEqual(discarded,[{projectId:f.projectId,ownerToken,candidateToken}]);
+ ackQueued=new Promise<void>(resolve=>{queued=resolve;});applying=true;const stop=new AbortController(),apply=f.client.api.nativeRelink.apply({projectId:f.projectId,ownerToken,previewToken:randomUUID(),requestId:randomUUID()},{signal:stop.signal});
+ await ackQueued;stop.abort();await assert.rejects(apply,{code:'PROJECT_ENTRY_OUTCOME_UNKNOWN'});for(let i=0;i<5;i++)await new Promise<void>(resolve=>setImmediate(resolve));
+ const request=f.sent.find(message=>message!==null&&typeof message==='object'&&'command'in message&&(message.command as {operation:string}).operation==='mediaRelinkApply');assert.ok(request);f.broker.handle(request);for(let i=0;i<5;i++)await new Promise<void>(resolve=>setImmediate(resolve));assert.equal(applies,1);
 });
 
 test('control timeout cancels its own pending lease and drops late ACK without reopening or retrying',async t=>{

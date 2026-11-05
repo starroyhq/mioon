@@ -1,3 +1,6 @@
+import {createAssetRelinkHost} from '../apps/desktop/src/asset-relink-host.ts';
+import {createProjectLocationHelp} from '../apps/desktop/src/project-location-help.ts';
+import {NATIVE_ASSET_MEDIA_CHANNEL} from '../packages/contracts/src/asset-media-native.ts';
 import {createDesktopHarnessAppearanceCache,createDesktopHarnessProjectBroker,createDesktopHarnessProjectEntries} from './helpers/strict-desktop-harness-types.ts';
 import {createProjectEntryDesktopHost} from '../apps/desktop/src/project-entry-desktop-host.ts';
 import {PROJECT_ENTRY_DESKTOP_CHANNEL} from '../packages/contracts/src/project-entry-desktop.ts';
@@ -480,12 +483,12 @@ async function mainStartupHarness({ validate, settings }: {validate?(tools: unkn
   const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
   const app = new EventEmitter();
   const counts = { forks: 0, settings: 0, quits: 0, cleanup: 0, exits: [] as number[], notices: [] as DesktopHarnessDialog[] };
-  const expectedChannels = [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL];
+  const expectedChannels = [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL];
   const registeredChannels = new Set();
   Object.assign(app, { isPackaged: false, enableSandbox() {}, setName() {}, setAppUserModelId() {}, setDesktopName() {},
     commandLine: { appendSwitch() {} }, getPath: () => '/synthetic', requestSingleInstanceLock: () => true,
     whenReady: () => new Promise(() => {}), quit: () => { counts.quits++; }, exit: (code: number) => counts.exits.push(code) });
-  const context = vm.createContext({ createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(), probeDesktopProjectLocation:async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'}), desktopAppDirectories, app, createMenuCommandHost, applicationMenuTemplate, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS,
+  const context = vm.createContext({ createAssetRelinkHost, createProjectLocationHelp, NATIVE_ASSET_MEDIA_CHANNEL, createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(), probeDesktopProjectLocation:async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'}), desktopAppDirectories, app, createMenuCommandHost, applicationMenuTemplate, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS,
     Menu: {buildFromTemplate: desktopMenuHarness, setApplicationMenu() {}},
     createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'linux', env: {}, on() {} }, path,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },

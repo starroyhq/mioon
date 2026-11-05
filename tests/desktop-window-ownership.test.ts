@@ -1,3 +1,6 @@
+import {createAssetRelinkHost} from '../apps/desktop/src/asset-relink-host.ts';
+import {createProjectLocationHelp} from '../apps/desktop/src/project-location-help.ts';
+import {NATIVE_ASSET_MEDIA_CHANNEL} from '../packages/contracts/src/asset-media-native.ts';
 import {createDesktopHarnessAppearanceCache,createDesktopHarnessProjectBroker,createDesktopHarnessProjectEntries} from './helpers/strict-desktop-harness-types.ts';
 import {createProjectEntryDesktopHost} from '../apps/desktop/src/project-entry-desktop-host.ts';
 import {PROJECT_ENTRY_DESKTOP_CHANNEL} from '../packages/contracts/src/project-entry-desktop.ts';
@@ -221,7 +224,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       await options.load?.(this.index, this.urls.length, url);
     }
   }
-  const context = vm.createContext({ createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(options.cache), probeDesktopProjectLocation:options.projectLocation??(async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'})), desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, menuCommandGestureScript, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...nativeTray, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
+  const context = vm.createContext({ createAssetRelinkHost, createProjectLocationHelp, NATIVE_ASSET_MEDIA_CHANNEL, createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(options.cache), probeDesktopProjectLocation:options.projectLocation??(async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'})), desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, menuCommandGestureScript, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...nativeTray, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/data', configFile: '/synthetic/config' }),
     initializeDesktopPrivateStorage: () => {}, privateStorageHelperFile: () => '/synthetic/native/mioon_private_storage.node',
@@ -277,7 +280,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
     ipcMain: { handle(channel: string, handler: (...values: unknown[]) => unknown) {
-      assert.ok([ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
+      assert.ok([ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
       r.ipcHandlers ??= new Map(); assert.equal(r.ipcHandlers.has(channel), false); r.ipcHandlers.set(channel, handler);
       if (channel === PROJECT_WINDOW_CHANNEL) r.bridge = handler; else if (channel === NATIVE_AUDIO_CHANNEL) r.audioBridge = handler;
     } },
@@ -300,7 +303,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
   vm.runInContext(source, context, { filename: 'actual-desktop-main.ts' });
   options.beforeReady?.(app);
   assert.deepEqual([...r.ipcHandlers!.keys()].sort(),
-    [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL].sort());
+    [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL].sort());
   const get = (text: string) => vm.runInContext(text, context);
   t.after(async () => {
     get('quitting = true; trayHost?.dispose()'); options.release?.();
@@ -399,6 +402,46 @@ test('real main project-entry IPC refuses settings children, their blocked paren
  assert.equal((await invoke(parent,{url:parent.webContents.mainFrame.url})).ok,false);
  assert.equal(host.showSettings('agent',parent),true);const settings=f.r.windows.at(-1)!;await host.loadFor(settings);
  assert.equal((await invoke(settings)).ok,false);assert.equal((await invoke(parent)).ok,false);
+});
+
+for(const reason of ['network','read-only-volume','read-only-file'] as const){
+ test(`real main retains a trusted copy source for a cold ${reason} selection without opening an editor`,async t=>{
+  const file='/synthetic/Movies/Source.mioon',projectId=randomUUID();let opens=0,observations=0;
+  const f=await harness(t,{
+   beforeReady:app=>app.emit('open-file',{preventDefault(){}},file),
+   projectLocation:async()=>({fileSystem:'apfs',isLocal:reason!=='network',volumeReadOnly:reason==='read-only-volume',permissionBits:true,cloud:'not-reported'}),
+   projectControl:(_index,port)=>({...port,openPath:async()=>{opens++;throw Object.assign(new Error('Read-only source'),{code:'PROJECT_INVALID',details:{database:'project',reason:'read-only'}});},
+    observeSource:async input=>{assert.equal(input.projectFile,file);observations++;return {name:'Source',original:null,source:{sourceProjectId:projectId,sourceFile:file,sourceIdentity:{dev:'1',ino:'2'},sourceStamp:{contentSequence:0,contentToken:'a'.repeat(32)}}};}}),
+  });
+  await f.initial();assert.equal(opens,reason==='read-only-file'?2:0);assert.equal(observations,1);
+  assert.equal(f.r.windows.length,1);const launcher=f.r.windows[0];assert.ok(!launcher.urls[0].includes('?project='));
+  const handler=f.r.ipcHandlers!.get(PROJECT_ENTRY_DESKTOP_CHANNEL)!;
+  const result=await handler({sender:launcher.webContents,senderFrame:launcher.webContents.mainFrame},{action:'takePendingOpen'}) as {ok:boolean;data:{status:string;reason:string;displayPath:string;token:string}};
+  assert.equal(result.ok,true);assert.equal(result.data.status,'copy-source');assert.equal(result.data.reason,reason==='network'?'network':'read-only');assert.equal(result.data.displayPath,file);assert.ok(isProjectId(result.data.token));
+ });
+}
+
+test('real main retains relink document tickets across a temporary Settings admission fence',async t=>{
+ const projectId='22222222-2222-4222-8222-222222222222',assetId=randomUUID(),owners:string[]=[];let picks=0;
+ const f=await harness(t,{
+  beforeReady:app=>app.emit('open-file',{preventDefault(){}},'/synthetic/Movies/Project.mioon'),
+  projectControl:(_index,port)=>({...port,nativeRelink:{
+   candidate:async input=>{owners.push(input.ownerToken);return {projectId,assetId,expectedReferenceRevision:1,candidateToken:randomUUID(),displayPath:'/synthetic/Movies/image.png',outside:false,confirmationRequired:false};},
+   preview:async()=>({projectId,assetId,expectedReferenceRevision:1,previewToken:randomUUID(),displayPath:'/synthetic/Movies/image.png',outside:false,rows:[{assetId,name:'image.png',from:'/synthetic/old/image.png',to:'/synthetic/Movies/image.png',outcome:'picked',referenceRevision:1}],foundBy:null}),
+   apply:async input=>{owners.push(input.ownerToken);return {status:'failed',error:{code:'MEDIA_CHANGED',status:409},confirmedDirectories:[]};},
+   discard:async()=>{},
+  }}),
+ });
+ await f.initial();const editor=f.r.windows[0],host=f.get('windowHost'),handler=f.r.ipcHandlers!.get(NATIVE_ASSET_MEDIA_CHANNEL)!;
+ f.get('dialog').showOpenDialog=async()=>{picks++;return {canceled:false,filePaths:['/synthetic/Movies/image.png']};};
+ const invoke=(input:unknown)=>handler({sender:editor.webContents,senderFrame:editor.webContents.mainFrame},input) as Promise<{ok:boolean;data:{previewToken:string;status?:string}}>;
+ const choose={action:'choose',projectId,assetId,expectedReferenceRevision:1},first=await invoke(choose);assert.equal(first.ok,true);
+ assert.equal(host.showSettings('agent',editor),true);const settings=f.r.windows.at(-1)!;await host.loadFor(settings);
+ assert.equal((await invoke(choose)).ok,false);assert.equal(picks,1,'blocked admission cannot show a picker');
+ settings.destroy();settings.deliverClosed();await tick();
+ const applied=await invoke({action:'apply',projectId,previewToken:first.data.previewToken,requestId:randomUUID()});
+ assert.equal(applied.ok,true,'the original document ticket remains usable after Settings closes');assert.equal(applied.data.status,'failed');
+ assert.equal((await invoke(choose)).ok,true);assert.equal(picks,2);assert.equal(new Set(owners).size,1,'temporary admission never retires or remints document authority');
 });
 
 for (const stage of ['drain', 'backend-stop', 'remove', 'clear', 'new-validation', 'new-backend', 'new-cookie', 'new-connection', 'new-load']) {

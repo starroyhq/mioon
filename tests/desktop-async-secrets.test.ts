@@ -85,11 +85,16 @@ const projectEntryContractsUrl = data(`export let calls = 0;
   export const projectEntryControlErrorSchema = projectEntryControlRequestSchema;
   export const parseProjectEntryControlResult = forbidden;`);
 const projectEntryContracts = await import(projectEntryContractsUrl);
+const nativeAssetMediaContractsUrl = data(`export let calls = 0;
+  const forbidden = () => { calls++; throw Error('Native relink contracts are outside this secrets fixture'); };
+  export const NATIVE_ASSET_MEDIA_LIMITS = new Proxy({}, {get: forbidden});`);
+const nativeAssetMediaContracts = await import(nativeAssetMediaContractsUrl);
 after(() => assert.equal(nativeAudioContracts.calls, 0, 'Secrets fixtures must never execute native audition schemas'));
 after(() => assert.equal(projectTrashContracts.calls, 0, 'Secrets fixtures must never execute project trash schemas or refusals'));
 after(() => assert.equal(projectTrashFs.calls, 0, 'Secrets fixtures must never attempt project trash filesystem access'));
 after(() => assert.equal(workspaceNativeContracts.calls, 0, 'Secrets fixtures must never execute workspace native schemas'));
 after(() => assert.equal(projectEntryContracts.calls, 0, 'Secrets fixtures must never execute project entry contracts'));
+after(() => assert.equal(nativeAssetMediaContracts.calls, 0, 'Secrets fixtures must never execute native relink contracts'));
 after(() => assert.equal(deliveryParser.calls, 0, 'Secrets fixtures must never execute download parsing'));
 after(() => assert.equal(projectAddressParser.calls, 0, 'Secrets fixtures must never execute project address parsing'));
 const overrides = new Map([
@@ -102,6 +107,7 @@ const overrides = new Map([
   ['../../../packages/contracts/src/workspace-native.ts', workspaceNativeContractsUrl],
   ['../../../packages/contracts/src/project-entry.ts', projectEntryContractsUrl],
   ['../../../packages/contracts/src/project-entry-control.ts', projectEntryContractsUrl],
+  ['../../../packages/contracts/src/asset-media-native.ts', nativeAssetMediaContractsUrl],
   ['@mioon/contracts', data('export {AGENT_PROTOCOLS} from ' + JSON.stringify(new URL('packages/contracts/src/agent-protocol.ts', root).href) + '; export const IMAGE_SETTINGS_LIMITS = {updateBytes: 16384, ciphertextCharacters: 49152};')],
   ['../../../packages/contracts/src/image-settings.ts', data('export const IMAGE_SETTINGS_NAMESPACE = ' + JSON.stringify(imageNamespaces.official) + ';')],
   ['../../../packages/contracts/src/generation-image-settings.ts', data('export const CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE = ' + JSON.stringify(imageNamespaces.custom) + ';')],
@@ -243,7 +249,7 @@ test('import fixture permits only explicitly reviewed erased modules and refuses
   assert.equal(overrides.has('electron'), false);
   assert.equal(overrides.has('@mioon/contracts/arbitrary'), false);
   for (const unreviewed of ['apps/desktop/src/main.ts', 'apps/desktop/src/backend.ts', 'packages/contracts/src/timeline-delivery.ts',
-    'packages/contracts/src/project-trash-native.ts', 'packages/contracts/src/project-entry.ts', 'packages/contracts/src/project-entry-control.ts', 'apps/desktop/src/../src/not-approved.ts']) {
+    'packages/contracts/src/project-trash-native.ts', 'packages/contracts/src/project-entry.ts', 'packages/contracts/src/project-entry-control.ts', 'packages/contracts/src/asset-media-native.ts', 'apps/desktop/src/../src/not-approved.ts']) {
     assert.throws(() => moduleUrl(unreviewed), /Unreviewed source:/);
   }
   assert.equal(deliveryParser.calls, 0);
@@ -252,6 +258,7 @@ test('import fixture permits only explicitly reviewed erased modules and refuses
   assert.equal(projectTrashFs.calls, 0);
   assert.equal(overrides.get('../../../packages/contracts/src/project-trash-native.ts'), projectTrashContractsUrl);
   assert.equal(projectEntryContracts.calls, 0);
+  assert.equal(nativeAssetMediaContracts.calls, 0);
   assert.equal(reviewedTypeScript.size, approved.size);
   for (const name of approved) assert.ok(reviewedTypeScript.has(name), name);
   for (const adapter of reviewedTypeScript) assert.ok(urls.has(adapter));

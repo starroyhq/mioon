@@ -2,14 +2,16 @@ import {randomUUID} from 'node:crypto';
 import type {IncomingMessage, ServerResponse} from 'node:http';
 import path from 'node:path';
 import {lstatSync} from 'node:fs';
-import {inspectProjectFileReadOnly} from '@mioon/business/project-file/index';
+import type {BigIntStats} from 'node:fs';
+import {inspectProjectFileReadOnly, inspectCopiedProjectFile, isProjectFileHeld, projectFileError} from '@mioon/business/project-file/index';
+import {isAppLibraryHeld, sameProjectFileIdentity} from '@mioon/business/app-db/index';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
 import {projectEntriesResponseSchema, PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
 import type {ProjectEntriesResponse} from '../../../packages/contracts/src/project-entry.ts';
 import {
   projectEntryCreateInputSchema, projectEntryOpenPathInputSchema, projectEntryAcquireInputSchema, projectEntryPrepareAcquireInputSchema,
   projectEntryReleaseInputSchema, projectEntryWindowSchema,
-  projectEntrySaveAsInputSchema, projectEntryAdoptCopyInputSchema,
+  projectEntrySaveAsInputSchema, projectEntryAdoptCopyInputSchema, projectEntrySourceObservationSchema,
 } from '../../../packages/contracts/src/project-entry-native.ts';
 import {projectCopyInputSchema, projectCopyToInputSchema, projectTemplateInputSchema, projectCopySourceSchema} from '../../../packages/contracts/src/project-copies.ts';
 import {projectEntryInspectCopyInputSchema} from '../../../packages/contracts/src/project-entry-control.ts';
@@ -21,6 +23,7 @@ import type {ProjectHostRuntime, ProjectLease} from './project-host/host.ts';
 import type {ProjectRegistryPort} from './project-host/ports.ts';
 import {projectFileMoved, projectHostError} from './project-host/errors.ts';
 import type {ProjectCopies} from './project-host/copies.ts';
+import type {NativeAssetMediaPort,NativeAssetMediaRequestOptions} from '../../../packages/contracts/src/asset-media-native.ts';
 import type {ProjectTrashActions} from './project-host/trash.ts';
 import {projectDeleteInputSchema} from '../../../packages/contracts/src/project-lifecycle.ts';
 
@@ -46,7 +49,7 @@ export function projectEntryWithinRoot(root: string, file: string): boolean {
 
 /** A production capability owned by one server instance. Neither its window
  * bindings nor its path-taking methods are registered as HTTP operations. */
-export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, copies, trash}: {
+export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, copies, trash, assertProjectFile, copyOriginal, nativeRelink}: {
   readonly manager: ProjectHostManager<Runtime>;
   readonly registry: ProjectRegistryPort;
   readonly projectsDir: string;
@@ -56,6 +59,9 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   readonly createProject: (input: ProjectEntryCreateInput) => Promise<{readonly registration: RecentProject}>;
   readonly refreshSummaries: () => void;
   readonly copies?: Pick<ProjectCopies, 'duplicate' | 'saveAs' | 'replay' | 'adoptCopy' | 'copyTo' | 'instantiateTemplate' | 'replayAction'>;
+  readonly assertProjectFile?: (file:string) => void;
+  readonly copyOriginal?: (candidate:{projectId:string;projectFile:string}) => RecentProject|null;
+  readonly nativeRelink?: NativeAssetMediaPort;
   readonly trash?: ProjectTrashActions;
 }) {
   const instanceId = randomUUID();
@@ -82,6 +88,66 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     if (!result.success) throw unavailable();
     return result.data;
   };
+  const generation = (info:BigIntStats):string => [info.dev,info.ino,info.size,info.mtimeNs,info.ctimeNs].join(':');
+  // Before any descriptor is opened (including journal/header reads), refuse
+  // every held SQLite inode. Closing an alias would drop the owner's POSIX lock.
+  const sourceMetadata = (file:string):BigIntStats => {
+    const info=lstatSync(file,{bigint:true}),identity={dev:String(info.dev),ino:String(info.ino)};
+    if(isProjectFileHeld(identity)||isAppLibraryHeld(identity))throw projectFileError('PROJECT_LOCKED',{database:'project',reason:'locked'});
+    if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1n)throw projectFileError('PROJECT_INVALID',{database:'project',reason:'not-a-regular-file'});
+    return info;
+  };
+  const observeFile = (file:string) => {
+    assertProjectFile?.(file);
+    const before=sourceMetadata(file);
+    for(const suffix of ['-journal','-wal','-shm'])if(lstatSync(file+suffix,{throwIfNoEntry:false}))sourceMetadata(file+suffix);
+    const stamp=inspectProjectFileReadOnly(file);
+    const metadata=inspectCopiedProjectFile(file);
+    const after=sourceMetadata(file);
+    if(generation(before)!==generation(after)||stamp.projectId!==metadata.projectId||stamp.contentSequence!==metadata.contentSequence||stamp.contentToken!==metadata.contentToken)throw unavailable();
+    return {metadata,identity:{dev:String(after.dev),ino:String(after.ino)}};
+  };
+  const observedOriginal = (source:{projectId:string;projectFile:string}):RecentProject|null => {
+    const original=copyOriginal?.(source);
+    if(!original)return null;
+    try{
+      assertProjectFile?.(original.projectFile);
+      const before=lstatSync(original.projectFile,{bigint:true});
+      if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1n||!sameProjectFileIdentity({dev:String(before.dev),ino:String(before.ino)},original.fileIdentity))return null;
+      // An open host is the only reader allowed to touch its live connection;
+      // refreshSummaries obtains its verified name without opening an alias.
+      if(isProjectFileHeld(original.fileIdentity)){
+        if(manager.status(original.projectId)?.state!=='open')return null;
+        refreshSummaries();
+        const current=registry.get(original.projectId);
+        return current&&current.projectFile===original.projectFile&&sameProjectFileIdentity(current.fileIdentity,original.fileIdentity)&&generation(lstatSync(original.projectFile,{bigint:true}))===generation(before)?current:null;
+      }
+      const found=observeFile(original.projectFile);
+      if(found.metadata.projectId!==original.projectId||typeof found.metadata.name!=='string'||!sameProjectFileIdentity(found.identity,original.fileIdentity)||generation(lstatSync(original.projectFile,{bigint:true}))!==generation(before))return null;
+      return {...original,name:found.metadata.name};
+    }catch{return null;}
+  };
+  const nativeFence = (options:NativeAssetMediaRequestOptions|undefined):NativeAssetMediaRequestOptions & {beforeEffect():void} => {
+    scope();
+    const beforeEffect=()=>{options?.signal?.throwIfAborted();scope();options?.beforeEffect?.();};
+    beforeEffect();
+    return {...options,beforeEffect};
+  };
+  const scopedNative:NativeAssetMediaPort|undefined=nativeRelink?{
+    candidate:async(input,options)=>{const fence=nativeFence(options),result=await nativeRelink.candidate(input,fence);fence.beforeEffect();return result;},
+    preview:async(input,options)=>{const fence=nativeFence(options),result=await nativeRelink.preview(input,fence);fence.beforeEffect();return result;},
+    discard:async(input,options)=>{const fence=nativeFence(options);await nativeRelink.discard(input,fence);fence.beforeEffect();},
+    apply:async(input,options)=>{
+      const fence=nativeFence(options);
+      try{const result=await nativeRelink.apply(input,fence);fence.beforeEffect();return result;}
+      catch(error){
+        // A dispatched apply may already have committed. Losing the app scope
+        // or document fence can never be reported as proof of no execution.
+        try{fence.beforeEffect();}catch{throw new AppError('PROJECT_ENTRY_OUTCOME_UNKNOWN','应用结果需要按原请求核对',409,{projectId:input.projectId,requestId:input.requestId,operation:'mediaRelinkApply'});}
+        throw error;
+      }
+    },
+  }:undefined;
   const releaseSlot = (windowId: string, slot: WindowSlot<Runtime>): void => {
     if (windows.get(windowId) === slot) windows.delete(windowId);
     if (slot.lease && slot.revoke) slot.lease.signal.removeEventListener('abort', slot.revoke);
@@ -130,16 +196,21 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     return promise;
   };
   const control: ProjectEntryControlPort = {
+    ...(scopedNative?{nativeRelink:scopedNative}:{}),
     inspectSelectedCopy: async raw => {
       scope();
       const {projectFile} = parse(projectEntryInspectCopyInputSchema, raw);
-      const before = lstatSync(projectFile, {bigint:true});
-      const stamp = inspectProjectFileReadOnly(projectFile);
-      const after = lstatSync(projectFile, {bigint:true});
-      if (before.dev!==after.dev || before.ino!==after.ino || before.size!==after.size || before.mtimeNs!==after.mtimeNs || before.ctimeNs!==after.ctimeNs) throw unavailable();
+      const {metadata:stamp,identity}=observeFile(projectFile);
       scope();
-      return projectCopySourceSchema.parse({sourceProjectId:stamp.projectId,sourceFile:projectFile,sourceIdentity:{dev:String(after.dev),ino:String(after.ino)},sourceStamp:{contentSequence:stamp.contentSequence,contentToken:stamp.contentToken}});
+      return projectCopySourceSchema.parse({sourceProjectId:stamp.projectId,sourceFile:projectFile,sourceIdentity:identity,sourceStamp:{contentSequence:stamp.contentSequence,contentToken:stamp.contentToken}});
     },
+    ...(assertProjectFile?{observeSource:async(raw:unknown)=>{
+      scope();
+      const {projectFile}=parse(projectEntryInspectCopyInputSchema,raw),{metadata,identity}=observeFile(projectFile);
+      const original=observedOriginal({projectId:metadata.projectId,projectFile});
+      scope();
+      return projectEntrySourceObservationSchema.parse({source:{sourceProjectId:metadata.projectId,sourceFile:projectFile,sourceIdentity:identity,sourceStamp:{contentSequence:metadata.contentSequence,contentToken:metadata.contentToken}},name:metadata.name,original});
+    }}:{}),
     listRecent: () => list(true),
     prepareAcquire: async raw => {
       scope();

@@ -251,6 +251,14 @@ Finder 双击、open-file 和 second-instance argv 共用顺序队列。冷启�
 
 创建、打开、另存为、复制、复制到共用有界卷元信息探测：网络卷、只读卷拒绝，mount 无法读取或无法匹配时拒绝并要求换位置；exFAT/noowners 提示权限风险。macOS 仅将 realpath 后的 `~/Library/Mobile Documents/` 和 `~/Library/CloudStorage/` 识别为正向同步位置，其余为 not-reported，不表示“不是云盘”。不增加原生模块或修改隐私数据库。打开中的 EACCES/EPERM 使用独立 `PROJECT_ACCESS_DENIED`，与只读、缺失、损坏区分。
 
+S6-B2 对拒绝打开的只读文件、只读卷和网络来源提供独立的只读复制票据；观察前检查应用私有路径、项目/history/cache/应用库持有身份及日志，观察后复核文件身份和内容戳，不取得写租约、不登记来源。`copyTo` 仍用同一个系统存储面板选择新文件，不覆盖目标。COPY 只有核实登记与文件身份后才提供原项目名称和路径；`openOriginal` 只消费当前窗口的票据，再做正常打开检查。当前位置查询只读取当前编辑窗的登记项目及卷事实。MOVED 和格式错误保留实际证据；只有已验证的数据库和版本组合才公开数字。
+
+权限帮助仅允许固定的 macOS“文件与文件夹”设置页，失败后退到设置首页；不接收页面 URL。Reveal 只接收登记 projectId 或当前窗口已有的选择票据，主进程解析路径。各项能力通过项目入口端口声明，窗口替换未实现的另存为继续为 false。
+
+素材重新指向使用独立的 `__mioonAssetMediaNative` 固定端口。页面只提供当前项目、素材与引用修订；主进程用系统面板选择候选，并绑定 backend/window/document。外部候选须明确同意，预览只临时读取一个精确目录；取消不导入、不登记、不持久化授权。最终应用在 S1 修订、文件身份和完整哈希验证后才保存目录授权，再走原 apply 事务；缺少完整哈希的旧引用仍保留样本匹配语义。原 preview token 不可经普通 HTTP/RPC 借用，acceptChanged 继续只针对旧引用当前位置。未知结果保留原 requestId 查证，不自动重提，也不因重放重新授予已撤销的目录权限。
+
+已接受操作的查证证据与临时预览的十分钟期限分离；未知结果未查证时，本窗口只允许原 preview/requestId 继续核对。原生证据单独保存在私有临时目录，最多 1,024 个证据文件、32 MiB；重开时只读重算，满额拒新证据，保留已接受的查证记录，不改变 Mio 存储配额。`confirmedDirectories` 是该次操作的授权事实，重放原结果不代表目录目前仍获授权，当前读取权限继续由 S1 检查。
+
 原生首帧使用 userData 下的 `desktop-appearance-cache-v1.json`：严格 v1，最多 4 KiB，只含 appId、channel、appLibraryScope、theme 和版本。读库身份只做 stat，不直接打开应用库；权威偏好仍由认证后端读取。缺失缓存跟随系统，坏文件或身份不符不覆盖，旧 owner 迟到结果不写，后端失败保留最后好值。不读取旧偏好 JSON，也不改 nativeTheme.themeSource。后端启动前的工具进度窗使用同一缓存填色。
 
 签名包的系统文件选择到 utility 访问、TCC 首次允许/拒绝与恢复、外置盘以及三种同步位置（iCloud、CloudStorage、老式第三方文件夹）在 Q 验收。桌面与文稿的 iCloud 同步无法由当前有界接口确认，按 not-reported，精确识别留 0.1.x。测试桩不代替这些系统验收。
