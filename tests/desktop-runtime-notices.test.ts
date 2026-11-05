@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {readMacRuntimeNoticeProvenance, verifyMacRuntimeNoticeFiles, RUNTIME_NOTICE_PROVENANCE_FILE} from '../apps/desktop/runtime-notices.ts';
 import {readBuildMetadata} from '../apps/desktop/build-metadata.ts';
+import {fileURLToPath} from 'node:url';
+import {stageProjectExampleResources} from '../packages/business/src/project-example-resources.ts';
 
 const require = createRequire(import.meta.url);
 const { builderConfig } = require('../apps/desktop/builder-config.ts');
@@ -49,12 +51,26 @@ async function packageRename(item: NoticeFixture) {
   for (const file of NOTICE_FILES) await rm(path.join(item.root, file.source));
   await rename(item.extracted, item.packaged);
   await cp(new URL('../packages/business/resources/subtitles/',import.meta.url),path.join(item.packaged,'Contents/Resources/subtitles'),{recursive:true});
+  await stageProjectExampleResources(fileURLToPath(new URL('../examples/project-file-v1/', import.meta.url)), path.join(item.packaged, 'Contents/Resources/examples'));
   return path.join(item.packaged, 'Contents/Resources/licenses');
 }
 
 async function assertMissing(file: string) {
   await assert.rejects(lstat(file), { code: 'ENOENT' });
 }
+
+test('afterPack independently rejects a removed example manifest after retaining runtime notices', async t => {
+  const item = await fixture(t); await item.config.afterExtract(item.context); await packageRename(item);
+  const example = path.join(item.packaged, 'Contents/Resources/examples/timeline-basics');
+  const project = path.join(example, 'timeline-basics.mioon'), projectBefore = await readFile(project);
+  const manifest = path.join(example, 'manifest.json'), manifestBefore = await readFile(manifest);
+  await rm(manifest);
+  await assert.rejects(item.config.afterPack(item.context), {code: 'PROJECT_EXAMPLE_RESOURCES_INVALID', details: {reason: 'manifest'}});
+  assert.deepEqual(await readFile(project), projectBefore);
+  for (const file of NOTICE_FILES) assert.deepEqual(await readFile(path.join(item.packaged, 'Contents/Resources/licenses', file.output)), item.originals.get(file.output));
+  await writeFile(manifest, manifestBefore, {flag: 'wx', mode: 0o444});
+  await item.config.afterPack(item.context);
+});
 
 test('both channels preserve each Mac target notice byte-for-byte through cleanup and bundle rename', async t => {
   for (const channel of ['development', 'production']) {
@@ -276,6 +292,7 @@ test('non-Mac runtime notices remain a no-op; external fonts verify with unchang
       // No host runtime is needed: only fixed external font fixtures.
       const root=await mkdtemp(path.join(tmpdir(),'mioon-package-font-'));t.after(()=>rm(root,{recursive:true,force:true}));
       await cp(new URL('../packages/business/resources/subtitles/',import.meta.url),path.join(root,'resources/subtitles'),{recursive:true});
+      await stageProjectExampleResources(fileURLToPath(new URL('../examples/project-file-v1/', import.meta.url)), path.join(root, 'resources/examples'));
       const context = { electronPlatformName: platform, appOutDir: root };
       await config.afterExtract(context);
       await config.afterPack(context);

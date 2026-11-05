@@ -49,6 +49,11 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
         : t('projectFile.open.missing.body', { path: failure.projectFile });
       buttons = <>{run('remove', t('projectFile.open.missing.remove'), props.onRemove)}{run('locate', t('projectFile.home.locate'), props.onLocate, true)}</>;
       break;
+    case 'PROJECT_ACCESS_DENIED':
+      title = t('native.openProjectFileFailed');
+      body = t('native.openProjectFileAccessDenied', { name });
+      buttons = close(t('common.close'), true);
+      break;
     case 'PROJECT_LOCKED':
       title = t('projectFile.open.locked.title', { name });
       body = t('projectFile.open.locked.body');

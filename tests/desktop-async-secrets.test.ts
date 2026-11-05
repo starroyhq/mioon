@@ -70,10 +70,26 @@ const projectTrashFsUrl = data('export let calls = 0; export function lstatSync(
 const projectTrashFs = await import(projectTrashFsUrl);
 const workspaceNativeContractsUrl = data('export let calls = 0; const forbidden = () => { calls++; throw Error("Workspace native schemas are outside this secrets fixture"); }; export const workspaceNativeRequestSchema = {parse: forbidden};');
 const workspaceNativeContracts = await import(workspaceNativeContractsUrl);
+// The supervisor now constructs the real project-entry client. This fixture
+// never sends project commands: deny and count both schema and budget access.
+const projectEntryContractsUrl = data(`export let calls = 0;
+  const forbidden = () => { calls++; throw Error('Project entry contracts are outside this secrets fixture'); };
+  export const PROJECT_ENTRY_LIMITS = new Proxy({}, {get: forbidden});
+  export const PROJECT_ENTRY_CONTROL_LIMITS = new Proxy({}, {get: forbidden});
+  export const projectEntryControlRequestSchema = {parse: forbidden, safeParse: forbidden};
+  export const projectEntryControlCancelSchema = projectEntryControlRequestSchema;
+  export const projectEntryControlReleaseSchema = projectEntryControlRequestSchema;
+  export const projectEntryControlResponseSchema = projectEntryControlRequestSchema;
+  export const projectEntryControlRevokedSchema = projectEntryControlRequestSchema;
+  export const projectEntryControlCommandSchema = projectEntryControlRequestSchema;
+  export const projectEntryControlErrorSchema = projectEntryControlRequestSchema;
+  export const parseProjectEntryControlResult = forbidden;`);
+const projectEntryContracts = await import(projectEntryContractsUrl);
 after(() => assert.equal(nativeAudioContracts.calls, 0, 'Secrets fixtures must never execute native audition schemas'));
 after(() => assert.equal(projectTrashContracts.calls, 0, 'Secrets fixtures must never execute project trash schemas or refusals'));
 after(() => assert.equal(projectTrashFs.calls, 0, 'Secrets fixtures must never attempt project trash filesystem access'));
 after(() => assert.equal(workspaceNativeContracts.calls, 0, 'Secrets fixtures must never execute workspace native schemas'));
+after(() => assert.equal(projectEntryContracts.calls, 0, 'Secrets fixtures must never execute project entry contracts'));
 after(() => assert.equal(deliveryParser.calls, 0, 'Secrets fixtures must never execute download parsing'));
 after(() => assert.equal(projectAddressParser.calls, 0, 'Secrets fixtures must never execute project address parsing'));
 const overrides = new Map([
@@ -84,6 +100,8 @@ const overrides = new Map([
   ['@mioon/contracts/native-audio-preview', nativeAudioContractsUrl],
   ['../../../packages/contracts/src/project-trash-native.ts', projectTrashContractsUrl],
   ['../../../packages/contracts/src/workspace-native.ts', workspaceNativeContractsUrl],
+  ['../../../packages/contracts/src/project-entry.ts', projectEntryContractsUrl],
+  ['../../../packages/contracts/src/project-entry-control.ts', projectEntryContractsUrl],
   ['@mioon/contracts', data('export {AGENT_PROTOCOLS} from ' + JSON.stringify(new URL('packages/contracts/src/agent-protocol.ts', root).href) + '; export const IMAGE_SETTINGS_LIMITS = {updateBytes: 16384, ciphertextCharacters: 49152};')],
   ['../../../packages/contracts/src/image-settings.ts', data('export const IMAGE_SETTINGS_NAMESPACE = ' + JSON.stringify(imageNamespaces.official) + ';')],
   ['../../../packages/contracts/src/generation-image-settings.ts', data('export const CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE = ' + JSON.stringify(imageNamespaces.custom) + ';')],
@@ -100,7 +118,7 @@ const overrides = new Map([
 const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18n/src/catalogs/native.ts', 'apps/desktop/src/secret-store-linux.ts', 'apps/desktop/src/secret-store.ts', 'apps/desktop/src/image-secret-store.ts',
   'apps/desktop/src/image-secret-broker.ts', 'apps/desktop/src/video-secret-broker.ts', 'apps/desktop/src/secret-broker.ts', 'apps/desktop/src/supervisor.ts',
   'apps/desktop/src/security.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'apps/desktop/src/exit-diagnostics.ts', 'apps/desktop/src/diagnostic-append-windows.ts',
-  'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/project-trash-broker.ts', 'apps/desktop/src/shutdown.ts', 'packages/business/src/agent/settings.ts', 'packages/business/src/agent/config.ts',
+  'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/project-trash-broker.ts', 'apps/desktop/src/project-entry-control.ts', 'apps/desktop/src/shutdown.ts', 'packages/business/src/agent/settings.ts', 'packages/business/src/agent/config.ts',
   'packages/business/src/agent/presets.ts', 'packages/contracts/src/agent-protocol.ts',
   'packages/business/src/agent/settings-envelope.ts', 'packages/contracts/src/agent-connection-settings.ts',
   'packages/contracts/src/agent-connection-private.ts', 'packages/contracts/src/agent-provider-catalog.ts',
@@ -203,9 +221,11 @@ test('audited imports and codec construction make no native calls; Images client
   assert.deepEqual(f.calls, []);
   assert.ok(![...urls.keys()].some(name => /\/(?:main|backend)\.mjs$/.test(name)));
   assert.ok(urls.has('apps/desktop/src/timeline-delivery-download.ts'));
+  assert.ok(urls.has('apps/desktop/src/project-entry-control.ts'));
   assert.ok(!urls.has('packages/contracts/src/timeline-delivery.ts'));
   assert.ok(urls.has('apps/desktop/src/project-trash-broker.ts'));
   assert.ok(!urls.has('packages/contracts/src/project-trash-native.ts'));
+  assert.ok(!urls.has('packages/contracts/src/project-entry-control.ts'));
   const pair = imagePair(codec); t.after(() => pair.close());
   const encrypted = await pair.client.encrypt(imagePlaintexts[0]);
   assert.equal(await pair.client.decrypt(encrypted), imagePlaintexts[0]);
@@ -222,7 +242,8 @@ test('import fixture permits only explicitly reviewed erased modules and refuses
   assert.deepEqual([...erased.matchAll(/\bfrom\s+(['"])([^'"]+)\1/g)].map(match => match[2]), ['./app-language-text.ts', 'node:path', '@mioon/contracts/timeline-delivery', '../../../packages/contracts/src/project-file.ts']);
   assert.equal(overrides.has('electron'), false);
   assert.equal(overrides.has('@mioon/contracts/arbitrary'), false);
-  for (const unreviewed of ['apps/desktop/src/main.ts', 'apps/desktop/src/backend.ts', 'packages/contracts/src/timeline-delivery.ts', 'packages/contracts/src/project-trash-native.ts', 'apps/desktop/src/../src/not-approved.ts']) {
+  for (const unreviewed of ['apps/desktop/src/main.ts', 'apps/desktop/src/backend.ts', 'packages/contracts/src/timeline-delivery.ts',
+    'packages/contracts/src/project-trash-native.ts', 'packages/contracts/src/project-entry.ts', 'packages/contracts/src/project-entry-control.ts', 'apps/desktop/src/../src/not-approved.ts']) {
     assert.throws(() => moduleUrl(unreviewed), /Unreviewed source:/);
   }
   assert.equal(deliveryParser.calls, 0);
@@ -230,6 +251,7 @@ test('import fixture permits only explicitly reviewed erased modules and refuses
   assert.equal(projectTrashContracts.calls, 0);
   assert.equal(projectTrashFs.calls, 0);
   assert.equal(overrides.get('../../../packages/contracts/src/project-trash-native.ts'), projectTrashContractsUrl);
+  assert.equal(projectEntryContracts.calls, 0);
   assert.equal(reviewedTypeScript.size, approved.size);
   for (const name of approved) assert.ok(reviewedTypeScript.has(name), name);
   for (const adapter of reviewedTypeScript) assert.ok(urls.has(adapter));

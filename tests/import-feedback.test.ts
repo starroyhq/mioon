@@ -76,8 +76,8 @@ function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = 
     }
   }
   let effect!: () => () => void, cleanup!: () => void;
-  const importSession = Function('useRef', 'useEffect', 'requestCounter', `${lifecycleSource}\nreturn importSession;`)(
-    (value: unknown) => ({ current: value }), (fn: () => () => void) => { effect = fn; cleanup = fn(); }, requestCounter);
+  const importSession = Function('useRef', 'useEffect', 'requestCounter', 'nativeLeaseRevoked', 'nativeWindow', 'useLayoutEffect', `${lifecycleSource}\nreturn importSession;`)(
+    (value: unknown) => ({ current: value }), (fn: () => () => void) => { effect = fn; cleanup = fn(); }, requestCounter, {current: false}, null, (fn: () => unknown) => fn());
   const editorSession={current:'normal'};
   const scope = {editorSession,  application: null, msg, renderCoreMessage, nativeWindow: null, editorInputs: { current: createEditorWindowInputs() }, ...projectOpening, projectSessionReady: () => projectReady, workspaceRef, data, dataRef, currentProject, navigationEpoch, projectEpoch, requestCounter, importSession, busyRef: { current: busy }, ...feedback,
     setShowCreate: (value: unknown) => stateWrites.push(['create', value]), context: () => ({ projectId: currentProject.current, epoch: navigationEpoch.current, session: editorSession.current }),

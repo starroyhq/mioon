@@ -6,8 +6,10 @@ import { createProjectWindowHost, type ProjectWindowCreation, type ProjectWindow
 import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter } from '../apps/desktop/src/project-window-quit.ts';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import { PROJECT_WINDOW_EVENT, isProjectWindowContext } from '../apps/desktop/src/project-window-protocol.ts';
+import {createProjectWindowLeaseFixture,projectWindowLeaseValue} from './helpers/project-window-lease-fixture.ts';
 
 import type {ProjectWindowContext, ProjectWindowOpenResult} from '../apps/desktop/src/project-window-protocol.ts';
+import type {ProjectEntryWindow} from '../packages/contracts/src/project-entry-native.ts';
 
 type Gate = Omit<PromiseWithResolvers<unknown>, 'resolve'> & {resolve(value?: unknown): void};
 const backendId = '11111111-1111-4111-8111-111111111111';
@@ -18,7 +20,7 @@ const editorUrl = (projectId: string) => `${origin}/?project=${projectId}`;
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 class NativeWindow extends EventEmitter {
-  declare creation: Pick<ProjectWindowCreation<NativeWindow>, 'role' | 'parent'>;
+  declare creation: Pick<ProjectWindowCreation<NativeWindow>, 'role' | 'parent'> & Partial<Pick<ProjectWindowCreation<NativeWindow>,'windowId'>>;
   declare events: string[];
   declare destroyed: boolean;
   declare visible: boolean;
@@ -89,12 +91,17 @@ interface HostSetup {
  restoreFocus?: HostOptions['canRestoreParentFocus'];
  invalidated?: HostOptions['onDocumentInvalidated']; destroyed?: HostOptions['onWebContentsDestroyed'];
  consume?: HostOptions['consumeProjectEntry'];
+ projectEntries?:HostOptions['projectEntries']|null;
+ admit?:HostOptions['admitProject']|null;
 }
 function fixture(t: test.TestContext, setup: HostSetup = {}) {
   const events: string[] = [], created: NativeWindow[] = [], owners = new Map<NativeWindow, ProjectWindowOwner<NativeWindow>>();
   let current = true, interactive = true;
+  const leases=createProjectWindowLeaseFixture();
   const host = createProjectWindowHost({ backendId, launcherUrl: `${origin}/`, editorUrl,
     projectActionReservations: setup.projectActions,
+    projectEntries:setup.projectEntries===null?undefined:setup.projectEntries??leases.port,
+    admitProject:setup.admit===null?undefined:setup.admit??(async(_owner,projectId)=>projectWindowLeaseValue(backendId,projectId).project.projectFile),
     isCurrent: () => current, canInteract: () => interactive,
     createWindow: creation => {
       const window = new NativeWindow(creation, events);
@@ -113,7 +120,7 @@ function fixture(t: test.TestContext, setup: HostSetup = {}) {
     { contextId: (host.contextFor(window))!.contextId, ...request }) as InvokeResult<R['action']>;
   const open = (projectId: string, source: NativeWindow|undefined = created.find(window => window.creation.role === 'launcher')!, entryToken: string = randomUUID(), remember: boolean = true) =>
     invoke(source, { action: 'open', projectId, entryToken, remember });
-  return { host, events, created, owners, event, invoke, open,
+  return { host, events, created, owners, event, invoke, open,leases,
     setCurrent(value: boolean) { current = value; }, setInteractive(value: boolean) { interactive = value; host.refresh(); },
     async launcher() { const window = host.ensureLauncher()!; await host.loadFor(window); return window; },
     async editor(projectId: string|undefined = projectA) {
@@ -123,6 +130,93 @@ function fixture(t: test.TestContext, setup: HostSetup = {}) {
     ready(window: NativeWindow, projectId: string|undefined = projectA) { return invoke(window, { action: 'editor-status', projectId, phase: 'ready' }); },
   };
 }
+
+test('an editor obtains its real window lease before construction and releases only at actual closed',async t=>{
+  const leases=createProjectWindowLeaseFixture(),gate=Promise.withResolvers<ProjectEntryWindow>(),calls:Array<{projectId:string;windowId:string;expectedProjectFile?:string}>=[];
+  const f=fixture(t,{projectEntries:{...leases.port,acquire:async input=>{calls.push(input);return gate.promise;}},create:window=>{if(window.creation.role==='editor')assert.equal(calls[0]?.windowId,window.creation.windowId);}}),launcher=await f.launcher();
+  const pending=f.open(projectA);await tick();assert.equal(calls.length,1);assert.equal(calls[0]!.expectedProjectFile,projectWindowLeaseValue(backendId,projectA).project.projectFile);assert.equal(f.created.length,1);assert.equal(launcher.visible,true);
+  gate.resolve(projectWindowLeaseValue(calls[0]!.windowId,projectA));const result=await pending;assert.equal(result.reason,'accepted');assert.equal(result.targetWindowId,calls[0]!.windowId);
+  const editor=f.created.at(-1)!;await f.host.loadFor(editor);editor.hide();editor.emit('minimize');editor.navigate(editorUrl(projectA));f.ready(editor);assert.equal(f.host.showSettings('agent',editor),true);await tick();assert.deepEqual(leases.released,[]);
+  editor.holdClose=true;editor.close();f.host.closeStateChanged(editor,'closing');assert.deepEqual(leases.released,[]);f.host.closeStateChanged(editor,'retained');assert.deepEqual(leases.released,[]);
+  editor.finishClose();editor.emit('closed');assert.deepEqual(leases.released,[result.targetWindowId]);assert.equal(leases.acquired.length,0,'This fixture used its explicitly delayed real port');
+});
+
+test('missing or failed acquire never creates a fake editable window; constructor failure retires its candidate',async t=>{
+  for(const kind of ['missing','failed','constructor']){
+    const leases=createProjectWindowLeaseFixture(),f=fixture(t,{projectEntries:kind==='missing'?null:kind==='failed'?{...leases.port,acquire:async()=>{throw Object.assign(Error('Denied'),{code:'PROJECT_FILE_LOCKED'});}}:leases.port,create:window=>{if(kind==='constructor'&&window.creation.role==='editor')throw Error('Constructor failed');}});
+    const launcher=await f.launcher(),result=await f.open(projectA);assert.equal(result.reason,'unavailable');assert.equal(f.created.length,1);assert.equal(f.host.contextFor(launcher)!.editorCount,0);
+    assert.equal(leases.released.length,kind==='missing'?0:1);assert.equal(leases.active.size,0);if(kind==='constructor')assert.equal(launcher.visible,true);
+  }
+});
+
+test('sealed renderer entries require physical-location admission before any window lease or native window',async t=>{
+  for(const kind of ['missing','rejected','stale','quit']){
+    const leases=createProjectWindowLeaseFixture(),gate=Promise.withResolvers<string>(),f=fixture(t,{projectEntries:leases.port,admit:kind==='missing'?null:async(owner,projectId)=>{assert.equal(owner.role,'launcher');assert.equal(projectId,projectA);if(kind==='rejected')throw Object.assign(Error('Volume denied'),{code:'PROJECT_FILE_LOCATION_UNSUPPORTED'});return gate.promise;}}),launcher=await f.launcher(),pending=f.open(projectA);
+    await tick();assert.equal(leases.acquired.length,0);assert.equal(f.created.length,1);
+    if(kind==='stale')launcher.navigate(`${origin}/`);if(kind==='quit')f.setInteractive(false);gate.resolve(projectWindowLeaseValue(backendId,projectA).project.projectFile);
+    assert.equal((await pending).reason,kind==='stale'||kind==='quit'?'busy':'unavailable');assert.equal(leases.acquired.length,0);assert.deepEqual(leases.released,[]);assert.equal(f.created.length,1);
+  }
+});
+
+test('late acquire ACKs clean only their candidate after source reload, actual closure, Quit, backend change or disposal',async t=>{
+  for(const invalidation of ['reload','closed','quit','backend','dispose']){
+    const leases=createProjectWindowLeaseFixture(),gate=Promise.withResolvers<ProjectEntryWindow>();let candidateId='';
+    const f=fixture(t,{projectEntries:{...leases.port,acquire:async input=>{candidateId=input.windowId;return gate.promise;}}}),launcher=await f.launcher(),pending=f.open(projectA);await tick();assert.ok(candidateId);
+    if(invalidation==='reload')launcher.navigate(`${origin}/`);else if(invalidation==='closed')launcher.finishClose();else if(invalidation==='quit')f.setInteractive(false);else if(invalidation==='backend')f.setCurrent(false);else f.host.dispose();
+    gate.resolve(projectWindowLeaseValue(candidateId,projectA));assert.equal((await pending).reason,'busy',invalidation);assert.equal(f.created.filter(window=>window.creation.role==='editor').length,0);assert.deepEqual(leases.released,[candidateId],invalidation);
+  }
+});
+
+test('wrong acquire acknowledgements cannot transfer or release another window owner',async t=>{
+  for(const kind of ['window','project','path','malformed']){
+    const leases=createProjectWindowLeaseFixture();let candidateId='';const foreign=randomUUID(),f=fixture(t,{projectEntries:{...leases.port,acquire:async input=>{candidateId=input.windowId;const value=projectWindowLeaseValue(kind==='window'?foreign:input.windowId,kind==='project'?projectB:projectA);if(kind==='path')value.project.projectFile+='.mioon';return kind==='malformed'?{} as ProjectEntryWindow:value;}}});
+    await f.launcher();assert.equal((await f.open(projectA)).reason,'unavailable');assert.deepEqual(leases.released,[candidateId]);assert.equal(f.created.length,1);assert.equal(leases.released.includes(foreign),false);
+  }
+});
+
+test('native openPath checks the actual path before duplicate focus, propagates copy errors and releases extra leases',async t=>{
+  const leases=createProjectWindowLeaseFixture(),gate=Promise.withResolvers<ProjectEntryWindow>(),paths:Array<{projectFile:string;windowId:string}>=[];let copy=false;
+  const copyError=Object.assign(Error('Project copy requires confirmation'),{code:'PROJECT_FILE_COPY',status:409,details:{projectId:projectA}});
+  const f=fixture(t,{projectEntries:{...leases.port,openPath:async input=>{paths.push(input);if(copy)throw copyError;return gate.promise;}}});await f.launcher();const editor=await f.editor();f.ready(editor);const owned=f.host.contextFor(editor)!.windowId,before=editor.focuses;
+  const duplicate=f.host.openPath('/synthetic/project.mioon');await tick();assert.equal(editor.focuses,before);assert.equal(paths.length,1);gate.resolve(projectWindowLeaseValue(paths[0]!.windowId,projectA));assert.equal((await duplicate).reason,'already-open');assert.ok(editor.focuses>before);assert.deepEqual(leases.released,[paths[0]!.windowId]);assert.equal(leases.active.has(owned),true);
+  copy=true;const after=editor.focuses;await assert.rejects(f.host.openPath('/synthetic/copy.mioon'),error=>error===copyError);assert.equal(editor.focuses,after);assert.equal(f.created.length,2);assert.deepEqual(leases.released,[paths[0]!.windowId,paths[1]!.windowId]);editor.finishClose();assert.deepEqual(leases.released,[paths[0]!.windowId,paths[1]!.windowId,owned]);
+});
+
+test('trusted prepared leases retain their exact window ID, reuse safely and never resurrect a retired owner',async t=>{
+  const f=fixture(t);await f.launcher();const first=projectWindowLeaseValue(randomUUID(),projectA);f.leases.active.set(first.windowId,first);
+  assert.equal((await f.host.adoptPrepared(first)).reason,'accepted');const editor=f.created.at(-1)!;await f.host.loadFor(editor);assert.equal(f.host.contextFor(editor)!.windowId,first.windowId);
+  assert.equal((await f.host.adoptPrepared(first)).reason,'already-open');assert.deepEqual(f.leases.released,[]);
+  const extra=projectWindowLeaseValue(randomUUID(),projectA);f.leases.active.set(extra.windowId,extra);assert.equal((await f.host.adoptPrepared(extra)).reason,'already-open');assert.deepEqual(f.leases.released,[extra.windowId]);
+  editor.finishClose();assert.equal((await f.host.adoptPrepared(first)).ok,false);assert.deepEqual(f.leases.released,[extra.windowId,first.windowId]);assert.equal(f.created.length,2);
+});
+
+test('lease revocation preserves the immutable failed window and close guards but retires submissions and all later ready reports',async t=>{
+  const invalidated:ProjectWindowDocumentOwner<NativeWindow>[]=[],f=fixture(t,{invalidated:owner=>invalidated.push(owner)});await f.launcher();const editor=await f.editor();f.ready(editor);const before=f.host.ownerForContents(editor.webContents)!;const windowId=f.host.contextFor(editor)!.windowId;
+  f.leases.revoke(windowId,projectA);const failed=f.host.contextFor(editor)!;assert.equal(failed.editorPhase,'failed');assert.equal(failed.initialProjectId,projectA);assert.equal(failed.editorProjectId,projectA);assert.equal(editor.destroyed,false);assert.equal(f.owners.get(editor)!.isCurrent(),true,'Native dirty/close admission retains its exact owner');assert.equal(before.isCurrent(),false);assert.equal(f.host.ownerForContents(editor.webContents),null);assert.equal(invalidated.at(-1)?.windowId,windowId);assert.equal(f.ready(editor),false);
+  editor.navigate(editorUrl(projectA));assert.equal(f.host.contextFor(editor)!.editorPhase,'failed');assert.equal(f.ready(editor),false);assert.deepEqual(f.leases.released,[]);editor.finishClose();assert.deepEqual(f.leases.released,[windowId]);
+});
+
+test('revoke before an acquire ACK or a prepared handoff cannot create an editable replacement',async t=>{
+  const leases=createProjectWindowLeaseFixture(),gate=Promise.withResolvers<ProjectEntryWindow>();let windowId='';const f=fixture(t,{projectEntries:{...leases.port,acquire:async input=>{windowId=input.windowId;return gate.promise;}}});await f.launcher();const pending=f.open(projectA);await tick();leases.revoke(windowId,projectA);gate.resolve(projectWindowLeaseValue(windowId,projectA));assert.equal((await pending).ok,false);assert.equal(f.created.length,1);assert.deepEqual(leases.released,[windowId]);
+  const prepared=projectWindowLeaseValue(randomUUID(),projectB);leases.revoke(prepared.windowId,projectB);assert.equal((await f.host.adoptPrepared(prepared)).ok,false);assert.equal(f.created.length,1);assert.deepEqual(leases.released,[windowId,prepared.windowId]);
+});
+
+test('a failed editor load retains its window lease until actual closure',async t=>{
+  const load=Promise.withResolvers<unknown>(),f=fixture(t,{create:window=>{if(window.creation.role==='editor')window.loading=load;}});await f.launcher();const result=await f.open(projectA),editor=f.created.at(-1)!;load.reject(Error('Load failed'));await assert.rejects(f.host.loadFor(editor));assert.equal(f.host.contextFor(editor)!.editorPhase,'failed');assert.deepEqual(f.leases.released,[]);editor.finishClose();assert.deepEqual(f.leases.released,[result.targetWindowId]);
+});
+
+test('native file opens and prepared handoffs share settings and system-dialog fences, including a dialog arriving during open',async t=>{
+  for(const kind of ['settings','dialog'])for(const late of [false,true]){
+    const leases=createProjectWindowLeaseFixture(),gate=Promise.withResolvers<ProjectEntryWindow>();let candidateId='',opens=0;const f=fixture(t,{projectEntries:{...leases.port,openPath:async input=>{opens++;candidateId=input.windowId;return gate.promise;}}}),launcher=await f.launcher();
+    const pending=late?f.host.openPath('/synthetic/project.mioon'):null;if(late)await tick();
+    if(kind==='settings'){assert.equal(f.host.showSettings('agent',launcher),true);await tick();}else assert.equal(f.host.prepareNativeDialog(launcher),true);
+    if(pending){gate.resolve(projectWindowLeaseValue(candidateId,projectA));assert.equal((await pending).reason,'busy');assert.deepEqual(leases.released,[candidateId]);}
+    else{assert.equal((await f.host.openPath('/synthetic/project.mioon')).reason,'busy');assert.equal(opens,0);}
+    const prepared=projectWindowLeaseValue(randomUUID(),projectB);assert.equal((await f.host.adoptPrepared(prepared)).reason,'busy');assert.equal(leases.released.at(-1),prepared.windowId);assert.equal(f.created.some(window=>window.creation.role==='editor'),false);
+    if(kind==='settings')f.created.find(window=>window.creation.role==='settings')!.finishClose();else f.host.finishNativeDialog(launcher,f.host.contextFor(launcher)!.contextId);
+    const fresh=projectWindowLeaseValue(randomUUID(),projectA);assert.equal((await f.host.adoptPrepared(fresh)).reason,'accepted');
+  }
+});
 
 test('different projects get immutable editors and the launcher hides at first reservation', async t => {
   const f = fixture(t), launcher = await f.launcher(), a = await f.editor(), b = await f.editor(projectB);
@@ -440,6 +534,7 @@ test('an exact hidden native dialog owner can be revealed while ordinary quit ad
   assert.equal(editor.visible, true); assert.equal(minimized, false); assert.equal(launcher.visible, false);
   assert.equal(f.host.contextFor(editor)!.contextId, contextId); assert.equal(owner?.isCurrent(), true);
   assert.equal(f.host.activate(editor), false); assert.equal(editor.closeCalls, 0); assert.equal(f.created.length, 2);
+  f.host.finishNativeDialog(editor,contextId);
   f.host.closeStateChanged(editor, 'retained'); f.setInteractive(true);
   launcher.emit('ready-to-show'); assert.equal(launcher.visible, false);
   assert.equal(f.host.hideToTray(), true); assert.equal(f.host.activate(editor), true); assert.equal(editor.visible, true);
@@ -456,6 +551,7 @@ test('preparing one hidden dialog never revives another owner after its scoped p
   assert.equal(f.invoke(b, {action: 'project-entry', mode: 'new'}), false); assert.equal(b.visible, false);
   const shows = a.shows, focuses = a.focuses;
   assert.equal(f.host.prepareNativeDialog(a), true); assert.equal(a.shows, shows); assert.equal(a.focuses, focuses);
+  assert.equal(f.host.hideToTray(),false);f.host.finishNativeDialog(a,f.host.contextFor(a)!.contextId);
   assert.equal(f.host.hideToTray(), true); assert.equal(f.host.activate(b), true); assert.equal(b.visible, true);
 });
 
@@ -481,6 +577,9 @@ test('a native-sheet completion cannot hide a foreign, destroyed or replacement 
   f.host.finishNativeDialog(foreign, oldContextId); assert.equal(launcher.visible, true);
   launcher.navigate(`${origin}/`); const currentContextId = f.host.contextFor(launcher)!.contextId;
   assert.notEqual(currentContextId, oldContextId); assert.equal(launcher.visible, false);
+  assert.equal(f.host.prepareNativeDialog(launcher),false,'Reload cannot replace a still-pending native dialog owner');
+  assert.equal((await f.host.openPath('/synthetic/project.mioon')).reason,'busy');
+  f.host.finishNativeDialog(launcher,oldContextId);
   assert.equal(f.host.prepareNativeDialog(launcher), true);
   f.host.finishNativeDialog(launcher, oldContextId); assert.equal(launcher.visible, true);
   f.host.finishNativeDialog(launcher, currentContextId); assert.equal(launcher.visible, false);

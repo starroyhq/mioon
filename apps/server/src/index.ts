@@ -35,6 +35,7 @@ import {createProjectBackups} from './project-host/backups.ts';
 import {createProjectCopies} from './project-host/copies.ts';
 import {createProjectTrash} from './project-host/trash.ts';
 import type {ProjectTrashPort} from '../../../packages/contracts/src/project-trash-native.ts';
+import {loadInstalledProjectTemplates} from './project-host/project-examples.ts';
 import type {ProjectTemplateCatalogEntry} from './project-host/templates.ts';
 import type {ProjectHostManager} from './project-host/manager.ts';
 import type {InspectProject} from './project-host/host.ts';
@@ -131,6 +132,9 @@ export interface ServerOptions {
   /** Trusted installation catalog; requests can select an ID/version, never
    * provide a template file or media allowlist. */
   projectTemplates?: readonly ProjectTemplateCatalogEntry[];
+  /** Trusted installation resource root, not an HTTP/renderer path. Missing
+   * resources disable examples without preventing ordinary project opens. */
+  projectTemplatesDir?: string;
   localDraftChannel?: LocalDraftChannel;
   nativeAudioPreview?: NativeAudioPreviewAuthority;
 }
@@ -254,7 +258,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       }
     };
     const copies = createProjectCopies({manager, library: appLibrary, directories, assertProjectFile, signal: shutdown.signal,
-      ...(options.projectTemplates === undefined ? {} : {projectTemplates: options.projectTemplates}),
+      projectTemplates: options.projectTemplates ?? loadInstalledProjectTemplates(options.projectTemplatesDir ?? path.join(dist, 'project-examples')),
       ...(options.projectCopyActionBoundaryForTest === undefined ? {} : {onActionBoundary: options.projectCopyActionBoundaryForTest}),
       ...(options.projectCopyBoundaryForTest === undefined ? {} : {onBoundary: options.projectCopyBoundaryForTest})});
     drainCopies = copies.drain;
