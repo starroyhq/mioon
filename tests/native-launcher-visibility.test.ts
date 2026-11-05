@@ -8,18 +8,22 @@ import { transformSync } from 'esbuild';
 import { schemas } from '../packages/contracts/src/index.ts';
 import { createLauncherClient } from '../apps/web/src/launcher-state.ts';
 import { createProjectEntryController } from '../apps/web/src/project-entry-state.ts';
+import { projectEntriesResponseSchema } from '../packages/contracts/src/project-entry.ts';
 
 const uuid = (n: number) => `79000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const context = (patch?: { autoOpen?: boolean; role?: string; initialProjectId?: string; editorProjectId?: string; editorPhase?: string; editorCount?: number; }|undefined) => ({ version: 2, role: 'launcher', windowId: uuid(1), contextId: uuid(2), backendId: uuid(3), initialProjectId: null, autoOpen: false,
   editorProjectId: null, editorPhase: 'none', editorCount: 0, entryMode: null, entryVersion: 0, entryReceipt: null,
   settingsSlot: null, settingsVersion: 0, selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false, ...patch });
 const project = (n: number) => ({ id: uuid(n), name: `Project ${n}`, description: '', revision: 1, createdAt: '2026-10-14T00:00:00.000Z', updatedAt: '2026-10-14T00:00:00.000Z' });
+const directory = (projects: readonly ReturnType<typeof project>[]) => projectEntriesResponseSchema.parse({version: 1, appLibraryScope: 'a'.repeat(64), instanceId: uuid(900), registered: projects.map((item, index) => ({
+  project: {projectId: item.id, name: item.name, projectFile: `/native-recent/${item.id}.mioon`, fileIdentity: {dev: '1', ino: String(index + 1)}, lastOpenedAt: null,
+    summary: {description: item.description, revision: item.revision, createdAt: item.createdAt, updatedAt: item.updatedAt, fps: 30, width: 1080, height: 1920, presetId: 'portrait_1080', shotCount: 0, durationFrames: 0, cover: null}}, availability: {state: 'available'}, coverUrl: null}))});
 const tick = () => new Promise(setImmediate);
 const source = readFileSync(new URL('../apps/web/src/native-project-entry.ts', import.meta.url), 'utf8');
 const code = transformSync(source, { loader: 'ts', format: 'cjs' }).code;
 
 /** Run the real renderer hook and controller; only React scheduling, the DOM,
- * read-only RPC transport and native bridge are synthetic. */
+ * read-only directory transport and native bridge are synthetic. */
 function fixture({ initialContext = context(), visible = true, list, open, explicitProjectId = null, create = async () => { throw new Error('lost create ACK'); } }: {initialContext?:ReturnType<typeof context>;visible?:boolean;list?:()=>unknown;open?:()=>unknown;explicitProjectId?:string|null;create?:(input:unknown)=>unknown} = {}) {
   const effects:(()=>void|(()=>void))[] = [], cleanups:(()=>void)[] = [], calls: (string | Error | undefined)[] = [], opens:{projectId:string;remember:boolean;entryToken:string}[] = [], listeners = new Set<(value:ReturnType<typeof context>)=>void>();
   let current = initialContext, catalog = [project(10), project(11)], controller:Controller;
@@ -46,10 +50,10 @@ function fixture({ initialContext = context(), visible = true, list, open, expli
     assert.fail(`Unexpected hook dependency ${name}`);
   }, module, module.exports, window, document);
   controller = module.exports.useNativeProjectEntry(({ context: initialContext, bridge, locator,
-    contractChecks: { parseCreateInput: (value: unknown) => schemas['project.create'].parse(value) },
+    contractChecks: { parseCreateInput: (value: unknown) => schemas['project.create'].parse(value),
+      readDirectory: async () => {calls.push('directory.list'); return list ? list() : directory(catalog);} },
     rpc: async (operation: string|Error|undefined, input: unknown) => {
       calls.push(operation);
-      if (operation === 'project.list') return list ? list() : catalog;
       if (operation === 'project.create') return create(input);
       assert.fail(operation);
     } } as unknown as Parameters<typeof module.exports.useNativeProjectEntry>[0]));
@@ -71,7 +75,7 @@ test('returning native launcher refreshes A/B to A/B/C after the last editor clo
   f.catalog([project(10), project(11), project(12)]);
   f.receive({ editorCount: 0 }); f.visibility(true); await tick();
   assert.deepEqual(f.controller.getState().projects.map((row: { id: unknown; }) => row.id), [uuid(10), uuid(11), uuid(12)]);
-  assert.deepEqual(f.calls, ['project.list', 'project.list']);
+  assert.deepEqual(f.calls, ['directory.list', 'directory.list']);
   assert.deepEqual(f.controller.readCloseSnapshot(), before, 'Read-only refresh must preserve the exact dirty owner and close evidence');
   f.visibility(true); f.visibility(true); await tick();
   assert.equal(f.calls.length, 2, 'Repeated visible events are not another reveal');
@@ -81,11 +85,11 @@ test('returning native launcher refreshes A/B to A/B/C after the last editor clo
 test('first reveal keeps the initial boot read and its one-time explicit URL open instead of superseding it', async () => {
   const pending = Promise.withResolvers();
   const f = fixture({ initialContext: context({ autoOpen: true }), explicitProjectId: uuid(10), visible: false, list: () => pending.promise }); await tick();
-  f.visibility(true); pending.resolve([project(10)]); await tick();
-  assert.equal(f.calls.filter(op => op === 'project.list').length, 1);
+  f.visibility(true); pending.resolve(directory([project(10)])); await tick();
+  assert.equal(f.calls.filter(op => op === 'directory.list').length, 2, 'One boot read and one fresh explicit-open admission');
   assert.equal(f.opens.length, 1); assert.equal(f.opens[0].remember, false);
   f.visibility(false); f.visibility(true); await tick();
-  assert.equal(f.calls.filter(op => op === 'project.list').length, 2); assert.equal(f.opens.length, 1);
+  assert.equal(f.calls.filter(op => op === 'directory.list').length, 3); assert.equal(f.opens.length, 1);
   f.dispose();
 });
 
@@ -98,20 +102,20 @@ test('editor visibility alone never boots or refreshes its retained project pick
 
 test('an initially hidden launcher whose boot is complete refreshes on its first actual reveal', async () => {
   const f = fixture({ visible: false }); await tick();
-  assert.equal(f.calls.filter(op => op === 'project.list').length, 1);
+  assert.equal(f.calls.filter(op => op === 'directory.list').length, 1);
   f.receive({ editorCount: 1 }); f.catalog([project(10), project(11), project(12)]);
   f.receive({ editorCount: 0 }); f.visibility(true); await tick();
   assert.deepEqual(f.controller.getState().projects.map((row: { id: unknown; }) => row.id), [uuid(10), uuid(11), uuid(12)]);
-  assert.equal(f.calls.filter(op => op === 'project.list').length, 2); assert.deepEqual((f.opens as unknown), []); f.dispose();
+  assert.equal(f.calls.filter(op => op === 'directory.list').length, 2); assert.deepEqual((f.opens as unknown), []); f.dispose();
 });
 
 test('a later launcher reveal owns its catalog and ignores a superseded success or failure', async () => {
   for (const failure of [false, true]) {
     const older = Promise.withResolvers(); let reads = 0;
-    const f = fixture({ list: () => ++reads === 1 ? [project(10)] : reads === 2 ? older.promise : [project(10), project(12)] }); await tick();
+    const f = fixture({ list: () => ++reads === 1 ? directory([project(10)]) : reads === 2 ? older.promise : directory([project(10), project(12)]) }); await tick();
     f.visibility(false); f.visibility(true); await tick(); assert.equal(reads, 2);
     f.visibility(false); f.visibility(true); await tick(); assert.equal(reads, 3);
-    if (failure) older.reject(new Error('old read failed')); else older.resolve([project(10), project(11)]);
+    if (failure) older.reject(new Error('old read failed')); else older.resolve(directory([project(10), project(11)]));
     await tick(); assert.deepEqual(f.controller.getState().projects.map((row: { id: unknown; }) => row.id), [uuid(10), uuid(12)]);
     assert.equal(f.controller.getState().listError, ''); assert.deepEqual((f.opens as unknown), []); f.dispose();
   }
@@ -119,10 +123,10 @@ test('a later launcher reveal owns its catalog and ignores a superseded success 
 
 test('disposed visibility subscriptions and old lifetime replies cannot mutate a reactivated owner', async () => {
   const older = Promise.withResolvers(); let reads = 0;
-  const f = fixture({ list: () => ++reads === 1 ? [project(10)] : reads === 2 ? older.promise : [project(12)] }); await tick();
+  const f = fixture({ list: () => ++reads === 1 ? directory([project(10)]) : reads === 2 ? older.promise : directory([project(12)]) }); await tick();
   f.visibility(false); f.visibility(true); await tick(); assert.equal(reads, 2);
   f.dispose(); f.controller.activate(); await f.controller.refresh();
-  older.resolve([project(11)]); await tick();
+  older.resolve(directory([project(11)])); await tick();
   assert.deepEqual(f.controller.getState().projects.map((row: { id: unknown; }) => row.id), [uuid(12)]);
   f.visibility(false); f.visibility(true); await tick(); assert.equal(reads, 3);
   assert.equal(f.window.__mioonProjectEntryAdmission, undefined); f.controller.dispose();
@@ -144,7 +148,7 @@ test('visibility refresh may show a created row but never acknowledges unknown c
 
 test('failed return refresh retains the old catalog and dirty input and can recover on the next return', async () => {
   let reads = 0;
-  const f = fixture({ list: () => ++reads === 2 ? Promise.reject(new Error('offline')) : [project(10)] }); await tick();
+  const f = fixture({ list: () => ++reads === 2 ? Promise.reject(new Error('offline')) : directory([project(10)]) }); await tick();
   f.controller.reportCreate({ dirty: true, busy: false, version: 1 });
   f.visibility(false); f.visibility(true); await tick();
   assert.equal(f.controller.getState().projects[0].id, uuid(10)); assert.notEqual(f.controller.getState().listError, '');
@@ -170,12 +174,12 @@ test('return refresh does not acknowledge an unknown open or consume its sealed 
 test('entering quit invalidates a pending catalog read even after quit cancellation and suppresses new reads', async () => {
   for (const cancel of [false, true]) {
     const older = Promise.withResolvers(); let reads = 0;
-    const f = fixture({ list: () => ++reads === 1 ? [project(10)] : reads === 2 ? older.promise : [project(12)] }); await tick();
+    const f = fixture({ list: () => ++reads === 1 ? directory([project(10)]) : reads === 2 ? older.promise : directory([project(12)]) }); await tick();
     const pending = f.controller.refresh(); await tick();
     f.receive({ quitting: true });
     f.visibility(false); f.visibility(true); await tick(); assert.equal(reads, 2, 'Quitting must not start another read');
     if (cancel) f.receive({ quitting: false });
-    older.resolve([project(11)]); await pending;
+    older.resolve(directory([project(11)])); await pending;
     assert.deepEqual(f.controller.getState().projects.map((row: { id: unknown; }) => row.id), [uuid(10)], 'Pre-quit response no longer owns the catalog');
     assert.equal(f.controller.getState().listBusy, false);
     if (cancel) { f.visibility(false); f.visibility(true); await tick(); assert.deepEqual(f.controller.getState().projects.map((row: { id: unknown; }) => row.id), [uuid(12)]); }

@@ -3,7 +3,7 @@ import React from 'react';
 import type { ReactNode } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@mioon/ui/components/dialog';
-import ProjectHome from './ProjectHomeScreen.tsx';
+import ProjectHome from './ProjectHomeDirectoryScreen.tsx';
 import type { ProjectEntryController } from './project-entry-state.ts';
 import type { ProjectWindowSettingsSlot } from './desktop-window-client.ts';
 import type {MenuHelpControl} from './desktop-menu-client.ts';
@@ -26,11 +26,11 @@ export default function ProjectEntry({ controller, status, help, onSettings, edi
       <DialogDescription>{t('projects.separateWindow')}</DialogDescription>
       <Button type="button" variant="ghost" disabled={state.creating || state.sealed || state.createUnknown || state.openUnknown} onClick={() => { void controller.dismiss(); }}>{t('projects.closeSelection')}</Button></div>}
     {state.openUnknown && <div className="project-home-notice" role="status"><p>{t('projects.checkOriginalOpen')}</p><Button type="button" variant="outline" onClick={() => { void controller.reconcileOpen(); }}>{t('projects.checkWindow')}</Button></div>}
-    <ProjectHome legacyWorkspaceActions={false} onRegisterMenuHelp={onRegisterMenuHelp} onMenuHelpStateChange={onMenuHelpStateChange} presentation={editor ? 'embedded' : 'page'} summaryEnabled={state.catalogReady} active={state.shown && !context.quitting} summaryScope={context.backendId} projects={state.projects} phase={state.phase} openingName={state.projects.find(project => project.id === state.openingProjectId)?.name}
+    <ProjectHome parentGuardsDeparture catalogReady={state.catalogReady} onRegisterMenuHelp={onRegisterMenuHelp} onMenuHelpStateChange={onMenuHelpStateChange} presentation={editor ? 'embedded' : 'page'} active={state.shown && !context.quitting} summaryScope={controller.locator?.getVerifiedScope() ?? undefined} projects={state.projects} phase={state.phase} openingProjectId={state.openingProjectId} openingName={state.projects.find(project => project.id === state.openingProjectId)?.name}
       error={state.error} notice={state.notice} busy={state.creating || state.sealed || context.quitting} listBusy={state.listBusy} listError={state.listError}
-      page="projects" onPage={page => { if (page === 'settings') onSettings('agent'); }} onOpen={id => { void controller.open(id); }}
-      onRetry={() => { if (state.openUnknown) void controller.reconcileOpen(); else if (state.openingProjectId) void controller.open(state.openingProjectId); }}
-      onRefresh={() => { controller.interacted(); void controller.refresh(); }} onCreate={controller.create} settings={null} status={status} help={help}
+      page="projects" onPage={page => { if (page === 'settings') onSettings('agent'); }} onOpen={id => controller.open(id)}
+      onRetry={async () => { if (state.openUnknown) {await controller.reconcileOpen(); return !controller.getState().openUnknown;} return state.openingProjectId ? controller.open(state.openingProjectId) : false; }}
+      onRefresh={() => { controller.interacted(); return controller.refresh(); }} onCreate={controller.create} settings={null} status={status} help={help}
       createDisabledReason={disabled} onCreateStateChange={controller.reportCreate} canMutateEntry={controller.canMutate} createIntentVersion={state.formIntent} />
   </>;
   if (!editor) return contents;

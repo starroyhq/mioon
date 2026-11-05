@@ -58,8 +58,8 @@ export async function readBoundedJsonResponse(response: Response, {signal, maxBy
   }
 }
 
-/** This HTTP resource is root-filtered on Web. A future native all-recent
- * capability must be injected as a different read port, never a URL option. */
+/** The server's trusted channel selects Web root filtering or desktop recent
+ * registrations. Renderer URL parameters never select a directory mode. */
 export function createProjectEntryDirectoryClient({fetcher = (...args: Parameters<typeof fetch>) => fetch(...args), timeoutMs = 30_000}: {
   readonly fetcher?: typeof fetch; readonly timeoutMs?: number;
 } = {}) {
