@@ -1,7 +1,7 @@
 import {assetMediaPrepareResponseSchema} from '../../../packages/contracts/src/asset-media.ts';
 import type {AssetImportBridge,NativeAssetSelection} from '../../desktop/src/asset-import-preload.ts';
 import { videoBindingCapabilities, parseVideoBinding } from '../../../packages/contracts/src/video-providers.ts';
-import VideoProviderSettings from './VideoProviderSettings.tsx';
+import GenerationServicesSettings from './GenerationServicesSettings.tsx';
 import {WorkbenchIcon} from '@mioon/ui/components/workbench-icons';
 import {touchesLockedTrack} from './timeline-track-locks.ts';
 import { timelineCrossfadeCandidates } from './timeline-crossfade-state.ts';
@@ -34,9 +34,6 @@ import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
 import { preflightErrorMessage, preflightIssueMessage, exportCapabilityMessage } from './export-preflight-state.ts';
 import ExportPreview from './ExportPreview.tsx';
 import { isExportPreviewRange, suggestedExportPreviewRange, exportPreviewContextKey, exportPreviewResult } from './export-preview-state.ts';
-import ComfyImageSettings from './ComfyImageSettings.tsx';
-import ImageSettings from './ImageSettings.tsx';
-import CustomImageServicesSettings from './CustomImageServicesSettings.tsx';
 import AgentSettings from './AgentSettings.tsx';
 import SettingsNavigationSlot from './SettingsNavigationSlot.tsx';
 import ProjectHomeConnections from './ProjectHomeConnections.tsx';
@@ -385,7 +382,7 @@ export interface AppProps {
 export interface ModalProps {title: React.ReactNode; subtitle?: React.ReactNode; children: React.ReactNode; onClose: () => void; wide?: boolean}
 export interface CreateProjectProps {onClose: () => void; onCreate: (name: string, description: string, timelinePresetId?: string) => unknown; busy?: boolean}
 export interface SettingsConnectionFormsProps {
-  selected: HomeConnectionSlot; page: SettingsPage; visible: boolean; registry: SettingsNavigationRegistry;
+  selected: HomeConnectionSlot; page: SettingsPage; entryVersion?: number; visible: boolean; registry: SettingsNavigationRegistry;
   onSelect: (slot: HomeConnectionSlot) => void; onPage: (page: SettingsPage) => void; general: React.ReactNode;
   connectionsAvailable?: boolean; beforeClose?: () => unknown; onClose?: () => void;
   /** The open project, where the Mio connection test runs; absent in the home screen and the settings window. */
@@ -436,12 +433,16 @@ function CreateProject({ onClose, onCreate, busy }: CreateProjectProps) {
   return <Modal title={t('projects.newStory')} subtitle={t('projects.newStoryHint')} onClose={onClose}><form className="modal-form" onSubmit={e => { e.preventDefault(); onCreate(name.trim(), description.trim()); }}><Label className="field-label" htmlFor="project-name">{t('projects.name')}</Label><Input id="project-name" data-testid="project-name" value={name} onChange={e => setName(e.target.value)} placeholder={t('projects.namePlaceholder')} maxLength={150} required autoFocus /><Label className="field-label" htmlFor="project-description">{t('projects.direction')}<span className="optional">{t('shell.optional')}</span></Label><Textarea id="project-description" rows={3} maxLength={2000} value={description} onChange={e => setDescription(e.target.value)} placeholder={t('projects.directionPlaceholder')} /><Button variant="ghost" className="button primary full" data-testid="create-project-submit" disabled={!name.trim() || busy} type="submit"><Icon name="plus" size={16} />{t('projects.create')}</Button></form></Modal>;
 }
 
-export function SettingsConnectionForms({ selected, page, visible, registry, onSelect, onPage, general, connectionsAvailable = true, beforeClose, onClose, projectId = null }: SettingsConnectionFormsProps) { const { t } = useI18n(); return <ProjectHomeConnections videoModels={<SettingsNavigationSlot registry={registry} slot="home:video-models">{report => <VideoProviderSettings active={visible && page === 'models' && connectionsAvailable} onNavigationStateChange={report} />}</SettingsNavigationSlot>} active={visible} workspace={<SettingsWorkspace active={visible && page === 'workspace'} />} videoTools={<SettingsNavigationSlot registry={registry} slot="home:video-tools">{report => <SettingsVideoTools active={visible && page === 'video-tools'} onNavigationStateChange={report} />}</SettingsNavigationSlot>} selected={selected} page={page} connectionsAvailable={connectionsAvailable} onSelect={onSelect} onPage={onPage} general={<>{general}<SettingsNavigationSlot registry={registry} slot="home:appearance">{report => <SettingsAppearance active={visible && page === 'general'} onNavigationStateChange={report} />}</SettingsNavigationSlot></>} panes={{
-  agent: <AgentDockPane visible={visible && connectionsAvailable && page === 'agent'}><SettingsNavigationSlot registry={registry} slot="home:agent">{report => <AgentSettings closeLabel={t('common.closeSettings')} beforeClose={beforeClose as unknown as () => void} onClose={onClose as unknown as () => void} onNavigationStateChange={report} projectId={projectId} />}</SettingsNavigationSlot></AgentDockPane>,
-  official: <AgentDockPane visible={visible && connectionsAvailable && page === 'official'}><SettingsNavigationSlot registry={registry} slot="home:official">{report => <ImageSettings active={visible && connectionsAvailable && page === 'official'} contextKey="native-settings" closeLabel={t('common.closeSettings')} slot="official" onSelectSlot={onSelect as unknown as () => void} onRequestSelectSlot={onSelect as unknown as () => void} beforeClose={beforeClose as unknown as () => void} onClose={onClose as unknown as () => void} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
-  custom: <AgentDockPane visible={visible && connectionsAvailable && page === 'custom'}><SettingsNavigationSlot registry={registry} slot="home:custom">{report => <CustomImageServicesSettings active={visible && connectionsAvailable && page === 'custom'} contextKey="native-settings" closeLabel={t('common.closeSettings')} onSelectSlot={onSelect as unknown as (slot: string) => void} onRequestSelectSlot={onSelect as unknown as (slot: string) => void} beforeClose={beforeClose} onClose={onClose} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
-  comfy: <AgentDockPane visible={visible && connectionsAvailable && page === 'comfy'}><SettingsNavigationSlot registry={registry} slot="home:comfy">{report => <ComfyImageSettings client={undefined as never} active={visible && connectionsAvailable && page === 'comfy'} contextKey="native-settings" closeLabel={t('common.closeSettings')} onSelectSlot={onSelect as unknown as () => void} onRequestSelectSlot={onSelect as unknown as () => void} beforeClose={beforeClose as unknown as () => void} onClose={onClose as unknown as () => void} onNavigationStateChange={report} />}</SettingsNavigationSlot></AgentDockPane>,
-}} />; }
+export function SettingsConnectionForms({ selected, page, entryVersion, visible, registry, onSelect, onPage, general, connectionsAvailable = true, beforeClose, onClose, projectId = null }: SettingsConnectionFormsProps) {
+  const { t } = useI18n();
+  const generationCategory = ['models', 'extensions', 'official', 'custom', 'comfy'].includes(page);
+  return <ProjectHomeConnections active={visible} workspace={<SettingsWorkspace active={visible && page === 'workspace'} />}
+    videoTools={<SettingsNavigationSlot registry={registry} slot="home:video-tools">{report => <SettingsVideoTools active={visible && page === 'video-tools'} onNavigationStateChange={report} />}</SettingsNavigationSlot>}
+    generationServices={<SettingsNavigationSlot registry={registry} slot="home:generation-services">{report => <GenerationServicesSettings active={visible && connectionsAvailable && generationCategory} page={page} entryVersion={entryVersion} onNavigationStateChange={report} />}</SettingsNavigationSlot>}
+    selected={selected} page={page} connectionsAvailable={connectionsAvailable} onSelect={onSelect} onPage={onPage}
+    general={<>{general}<SettingsNavigationSlot registry={registry} slot="home:appearance">{report => <SettingsAppearance active={visible && page === 'general'} onNavigationStateChange={report} />}</SettingsNavigationSlot></>}
+    panes={{agent: <AgentDockPane visible={visible && connectionsAvailable && page === 'agent'}><SettingsNavigationSlot registry={registry} slot="home:agent">{report => <AgentSettings closeLabel={t('common.closeSettings')} beforeClose={beforeClose as unknown as () => void} onClose={onClose as unknown as () => void} onNavigationStateChange={report} projectId={projectId} />}</SettingsNavigationSlot></AgentDockPane>}} />;
+}
 
 export default function App({ nativeWindow = null, nativeProjectEntry = null }: AppProps = {}) {
   const [nativeMenuBridge] = useState(() => {
