@@ -19,16 +19,24 @@ export default function WebSettingsCenter({ request, registry, onOpenChange, ren
   const closeButton = useRef<HTMLButtonElement>(null), callbacks = useRef({ onOpenChange });
   callbacks.current = { onOpenChange };
   const [, rerender] = useState(0);
+  const [entryVersion, setEntryVersion] = useState(0);
   const [navigation] = useState(() => createWebSettingsNavigation({ registry, confirm, onChange: () => rerender(value => value + 1) }));
   useEffect(() => { navigation.activate(); return () => navigation.dispose(); }, [navigation]);
-  useEffect(() => { if (request) void navigation.open(connectionsAvailable ? request.page : 'general').then(accepted => request.resolve?.(accepted)); }, [request, navigation, connectionsAvailable]);
+  useEffect(() => {
+    let current = true;
+    if (request) void navigation.open(connectionsAvailable ? request.page : 'general').then(accepted => {
+      if (current && accepted) setEntryVersion(version => version + 1);
+      request.resolve?.(current && accepted);
+    });
+    return () => { current = false; };
+  }, [request, navigation, connectionsAvailable]);
   useEffect(() => { callbacks.current.onOpenChange(navigation.opened); }, [navigation.opened]);
   return <Dialog open={navigation.opened} onOpenChange={open => { if (!open) void navigation.close(); }}>
     <DialogContent keepMounted showCloseButton={false} initialFocus={closeButton} className="web-settings-dialog project-home" data-testid="web-settings-dialog" hidden={!navigation.opened} inert={!navigation.opened} aria-describedby={undefined}>
     <DialogTitle className="sr-only">{t('settings.title')}</DialogTitle><Button ref={closeButton} type="button" variant="ghost" className="settings-center-close" aria-label={t('common.close')} data-testid="settings-center-close" onClick={() => { void navigation.close(); }}><WorkbenchIcon name="close" /></Button>
     <div className="web-settings-scroll">
       {navigation.notice && <p role="status" className="project-home-notice">{renderMessage(navigation.notice)}</p>}
-      {renderSettings({ selected: navigation.selected, page: navigation.page, visible: navigation.opened, registry, connectionsAvailable, general: undefined,
+      {renderSettings({ selected: navigation.selected, page: navigation.page, entryVersion, visible: navigation.opened, registry, connectionsAvailable, general: undefined,
         onSelect: slot => { if (connectionsAvailable) void navigation.selectPage(slot); }, onPage: page => { if (connectionsAvailable || !['agent', 'models', 'extensions', 'official', 'custom', 'comfy'].includes(page)) void navigation.selectPage(page); },
         beforeClose: async () => { void navigation.close(); return false; }, onClose: () => {} })}
     </div>

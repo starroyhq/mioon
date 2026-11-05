@@ -15,7 +15,7 @@ interface Node { type: unknown; key: unknown; props: Record<string, unknown> & {
 interface Effect { deps: readonly unknown[]; cleanup?: void | (() => void) }
 function hooks() {
   const slots: unknown[] = [], effects = new Map<number, Effect>(), pending: Array<() => void> = [];
-  let cursor = 0;
+  let cursor = 0, updates = 0;
   const useEffect = (callback: () => void | (() => void), deps: readonly unknown[]) => {
     const index = cursor++, previous = effects.get(index);
     if (previous && deps.length === previous.deps.length && deps.every((value, at) => Object.is(value, previous.deps[at]))) return;
@@ -29,11 +29,11 @@ function hooks() {
     useRef(value: unknown) { const index = cursor++; if (!(index in slots)) slots[index] = { current: value }; return slots[index]; },
     useState(value: unknown) {
       const index = cursor++; if (!(index in slots)) slots[index] = typeof value === 'function' ? value() : value;
-      return [slots[index], (next: unknown) => { slots[index] = typeof next === 'function' ? next(slots[index]) : next; }];
+      return [slots[index], (next: unknown) => {updates++; slots[index] = typeof next === 'function' ? next(slots[index]) : next; }];
     },
     useEffect, useLayoutEffect: useEffect,
   };
-  return { react, begin() { cursor = 0; }, flush() { pending.splice(0).forEach(run => run()); }, dispose() { effects.forEach(effect => effect.cleanup?.()); effects.clear(); } };
+  return { react, begin() { cursor = 0; }, flush() { pending.splice(0).forEach(run => run()); }, dispose() { effects.forEach(effect => effect.cleanup?.()); effects.clear(); }, get updates() {return updates;} };
 }
 function load(filename: string, react: ReturnType<typeof hooks>['react'], dependencies: Record<string, unknown>, globals: Record<string, unknown> = {}): (props: Record<string, unknown>) => Node {
   const module: { exports: { default?: (props: Record<string, unknown>) => Node } } = { exports: {} };
@@ -158,7 +158,7 @@ test('DesktopRoot applies only its verified modal flag without replacing its edi
   receive(context({ settingsModalOpen: false })); assert.equal(render().props.blocked, false); h.dispose();
 });
 
-async function settingsPanel(onClose: (page: { __mioonNativeCloseAdmission?: ReturnType<typeof createNativeCloseAdmission> }) => Promise<boolean>) {
+async function settingsPanel(onClose: (page: { __mioonNativeCloseAdmission?: ReturnType<typeof createNativeCloseAdmission> }) => Promise<boolean>, options: {initialSlot?: ProjectWindowContext['settingsSlot']; confirm?: () => Promise<boolean>} = {}) {
   class Page extends Events {
     location = { href: 'http://127.0.0.1:44123/' }; closeCalls = 0;
     __mioonNativeCloseAdmission?: ReturnType<typeof createNativeCloseAdmission>;
@@ -166,20 +166,23 @@ async function settingsPanel(onClose: (page: { __mioonNativeCloseAdmission?: Ret
   }
   const h = hooks(), page = new Page(), document = Object.assign(new Document(), { visibilityState: 'visible' });
   const observation: boolean[] = [], pauseObservation = (paused: boolean) => { observation.push(paused); };
-  const marker = { type: 'retained-settings-form', key: 'settings', props: { draft: 'synthetic unsaved key draft' } };
+  const password = {value: 'SYNTHETIC_RETAINED_NATIVE_KEY'}, input = {type: 'input', key: 'key', props: {'data-testid': 'retained-native-key', ref: {current: password}}};
+  const marker = { type: 'retained-settings-form', key: 'settings', props: { draft: 'synthetic unsaved key draft', children: [input] } };
+  let locale: import('../packages/i18n/src/index.ts').Locale = 'zh-Hans';
   let props: SettingsRenderProps | undefined;
   let owner: ReturnType<ReturnType<typeof createSettingsNavigationRegistry>['register']> | undefined;
   const Component = load('SettingsRoot.tsx', h.react, {
-    './i18n/I18nProvider.tsx': i18nTestModule(), '@mioon/ui/components/workbench-confirm': { useConfirmation: () => async () => false },
+    './i18n/I18nProvider.tsx': {useI18n: () => i18nTestModule(locale).useI18n()}, '@mioon/ui/components/workbench-confirm': { useConfirmation: () => options.confirm ?? (async () => false) },
     './UiPreferencesProvider.tsx': { useUiPreferences: () => ({ pauseObservation }) },
     './settings-navigation-state.ts': { createSettingsNavigationRegistry }, './native-close-state.ts': { createNativeCloseRegistry, installNativeCloseAdmission },
     './settings-window-state.ts': { createSettingsWindowNavigation }, './launcher-state.ts': { createLauncherClient: () => ({list: async () => []}) },
     './ProjectHomeConnections.tsx': { __esModule: true, default: 'connection-shell' }, './NativeLocatorStatus.tsx': { __esModule: true, default: 'locator-status' },
     '@mioon/ui/components/button': { Button: 'Button' }, '@mioon/ui/components/workbench-icons': { WorkbenchIcon: 'WorkbenchIcon' },
   }, { window: page, document });
-  const settings = context({ role: 'settings', initialProjectId: null, editorProjectId: null, editorPhase: 'none', settingsSlot: 'agent', settingsVersion: 1 });
+  let settings = context({ role: 'settings', initialProjectId: null, editorProjectId: null, editorPhase: 'none', settingsSlot: options.initialSlot ?? 'agent', settingsVersion: 1 });
+  let receive = (_next: ProjectWindowContext) => {};
   let requests = 0;
-  const bridge = { subscribe: () => () => {}, closeSettings: () => { requests++; return onClose(page); } };
+  const bridge = { subscribe: (listener: (next: ProjectWindowContext) => void) => {receive = listener; return () => {receive = () => {};};}, closeSettings: () => { requests++; return onClose(page); } };
   const render = () => {
     h.begin(); const tree = Component({ context: settings, bridge, rpc() {}, contractChecks: {}, renderSettings(next: SettingsRenderProps) {
       props = next; owner ??= next.registry.register('retained-form'); owner.update({ dirty: true, busy: false, blocked: false, version: 1 }); return marker;
@@ -187,7 +190,11 @@ async function settingsPanel(onClose: (page: { __mioonNativeCloseAdmission?: Ret
   };
   render(); await new Promise(resolve => setImmediate(resolve)); const tree = render();
   assert.ok(props); assert.ok(nodes(tree).includes(marker));
-  return { render, page, marker, props, observation, button: find(tree, 'native-settings-panel-close').props.onClick as () => void, dispose: h.dispose, get requests() { return requests; } };
+  return { render, page, marker, input, password, observation,
+    receive(next: ProjectWindowContext) {settings = next; receive(next);},
+    setLocale(next: typeof locale) {locale = next;},
+    get context() {return settings;}, get props() {assert.ok(props); return props;}, get stateUpdates() {return h.updates;},
+    button: find(tree, 'native-settings-panel-close').props.onClick as () => void, dispose: h.dispose, get requests() { return requests; } };
 }
 
 test('SettingsRoot requests main-side closure before renderer unload and cancelled native admission retains dirty owners', async () => {
@@ -229,5 +236,43 @@ test('native close requests coalesce while pending and rejection keeps the same 
     assert.equal(failed.props.role, 'alert'); assert.equal(JSON.stringify(failed).includes('PRIVATE'), false);
     assert.deepEqual(f.props.registry.capture(), before); assert.equal(f.page.closeCalls, 0); assert.ok(nodes(f.render()).includes(f.marker));
     f.dispose(); f.button(); await new Promise(resolve => setImmediate(resolve)); assert.equal(f.requests, 1, 'retired close callback cannot address a new native owner');
+  }
+});
+
+test('native accepted same-slot entries advance a renderer version without remounting the input or clearing it on cancelled close', async () => {
+  const f = await settingsPanel(async () => false, {initialSlot: 'official'}), original = f.context, retained = f.props.registry.capture();
+  assert.equal(f.props.entryVersion, 0);
+  f.receive({...original, settingsVersion: 2}); await new Promise(setImmediate); let tree = f.render();
+  assert.equal(f.props.entryVersion, 1); assert.equal(f.props.page, 'official'); assert.equal(find(tree, 'retained-native-key'), f.input);
+  f.receive({...original, settingsVersion: 3}); await new Promise(setImmediate); tree = f.render();
+  assert.equal(f.props.entryVersion, 2); assert.equal(find(tree, 'retained-native-key'), f.input);
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {f.setLocale(locale); tree = f.render(); assert.equal(f.props.entryVersion, 2); assert.equal(find(tree, 'retained-native-key'), f.input);}
+  f.button(); await new Promise(setImmediate); tree = f.render();
+  assert.equal(f.props.entryVersion, 2); assert.equal(find(tree, 'retained-native-key'), f.input); assert.equal(f.password.value, 'SYNTHETIC_RETAINED_NATIVE_KEY'); assert.deepEqual(f.props.registry.capture(), retained);
+  for (const next of [{...original, settingsVersion: 2}, {...original, settingsVersion: 3}, {...original, contextId: id(88), settingsVersion: 4}, {...original, windowId: id(89), settingsVersion: 4}, {...original, backendId: id(90), settingsVersion: 4}]) {
+    f.receive(next); await new Promise(setImmediate); f.render(); assert.equal(f.props.entryVersion, 2);
+  }
+  f.dispose();
+});
+
+test('a cancelled native entry is never adopted by later manual navigation and a superseded or disposed entry cannot advance', async () => {
+  let allow = false;
+  const f = await settingsPanel(async () => false, {initialSlot: 'official', confirm: async () => allow}), original = f.context;
+  f.receive({...original, settingsSlot: 'custom', settingsVersion: 2}); await new Promise(setImmediate); f.render();
+  assert.equal(f.props.page, 'official'); assert.equal(f.props.entryVersion, 0);
+  allow = true; f.props.onPage('custom'); await new Promise(setImmediate); let tree = f.render();
+  assert.equal(f.props.page, 'custom'); assert.equal(f.props.entryVersion, 0); assert.equal(find(tree, 'retained-native-key'), f.input);
+  f.receive({...original, settingsSlot: 'custom', settingsVersion: 3}); await new Promise(setImmediate); f.render(); assert.equal(f.props.entryVersion, 1);
+  f.dispose();
+  for (const transition of ['superseded', 'disposed'] as const) {
+    const answer = Promise.withResolvers<boolean>(), g = await settingsPanel(async () => false, {initialSlot: 'official', confirm: () => answer.promise}), initial = g.context;
+    g.receive({...initial, settingsSlot: 'custom', settingsVersion: 2});
+    if (transition === 'superseded') g.receive({...initial, settingsSlot: 'official', settingsVersion: 3}); else g.dispose();
+    await new Promise(setImmediate); tree = transition === 'disposed' ? tree : g.render();
+    const version = g.props.entryVersion, updates = g.stateUpdates;
+    answer.resolve(true); await new Promise(setImmediate);
+    if (transition !== 'disposed') {g.render(); assert.equal(g.props.page, 'official'); g.dispose();}
+    assert.equal(g.props.entryVersion, version);
+    if (transition === 'disposed') assert.equal(g.stateUpdates, updates, 'A retired native owner cannot publish a late entry version');
   }
 });

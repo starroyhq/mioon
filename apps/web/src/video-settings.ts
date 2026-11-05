@@ -141,6 +141,9 @@ export function createVideoSettingsSession({ client = createVideoSettingsClient(
 }
 export type VideoSettingsSession = ReturnType<typeof createVideoSettingsSession>;
 export const videoSettingsEndpoint = (draft: VideoConnectionConfigurationV2 | null): string => { try { return draft ? videoConnectionEndpoint(draft) : ''; } catch { return ''; } };
+/** Display the implemented compatible create route without changing its frozen
+ * credential-recipient base URL or any provider request. */
+export const videoSettingsRequestEndpoint = (draft: VideoConnectionConfigurationV2 | null): string => {try {return draft?.providerId === 'compatible' ? `${normalizeCompatibleVideoBaseUrl(draft.baseUrl)}/videos` : videoSettingsEndpoint(draft);} catch {return '';}};
 /** Host of a compatible draft's base URL once it is valid; that host is always an output host. */
 export const compatibleServiceHost = (draft: VideoConnectionConfigurationV2 | null): string => { if (draft?.providerId !== 'compatible') return ''; try { return new URL(normalizeCompatibleVideoBaseUrl(draft.baseUrl)).hostname; } catch { return ''; } };
 
