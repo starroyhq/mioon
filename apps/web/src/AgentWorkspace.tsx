@@ -16,6 +16,7 @@ const pass = <T,>(value: unknown): T => value as T;
 export interface AgentDockPaneProps { visible: boolean; children?: ReactNode; id?: string; labelledBy?: string; fallbackFocus?: string }
 export interface AgentWorkspaceProps {
   onOpenSettings?: ((page: string) => unknown) | null;
+  onReviewProjectRules?: () => void;
   settingsOverlayOpen?: boolean;
   nativeSettingsScope?: unknown;
   nativeCloseRegistry?: unknown;
@@ -69,7 +70,7 @@ export function AgentDockPane({ visible, children, id, labelledBy, fallbackFocus
   </div></WorkspaceVisibilityProvider>;
 }
 
-export default function AgentWorkspace({ onOpenSettings, settingsOverlayOpen = false, nativeSettingsScope, nativeCloseRegistry, navigationRegistry, projectId, workspaceScope = 'normal', projectName, timelineFps, targetName, onApplied, onTaskApplied, onTaskLocate, taskReveal = null, shotNumber, onTaskReview, onTaskReviewLocate, reviewReveal = null, onTaskOpenRequests, page, onPage, onCollapse, onDraftChange }: AgentWorkspaceProps): ReactElement {
+export default function AgentWorkspace({ onReviewProjectRules, onOpenSettings, settingsOverlayOpen = false, nativeSettingsScope, nativeCloseRegistry, navigationRegistry, projectId, workspaceScope = 'normal', projectName, timelineFps, targetName, onApplied, onTaskApplied, onTaskLocate, taskReveal = null, shotNumber, onTaskReview, onTaskReviewLocate, reviewReveal = null, onTaskOpenRequests, page, onPage, onCollapse, onDraftChange }: AgentWorkspaceProps): ReactElement {
   const { t } = useI18n();
   // Settings are global and stay mounted within this dock; only chat is
   // project-keyed. App guards project departure before unmounting the dock.
@@ -78,7 +79,7 @@ export default function AgentWorkspace({ onOpenSettings, settingsOverlayOpen = f
   if (page === 'settings') settingsOpened.current = true;
   return <div className="agent-workspace" data-testid="agent-workspace" data-page={page}>
     <AgentDockPane id="agent-chat-pane" visible={page === 'chat' && !settingsOverlayOpen} fallbackFocus="[data-testid=right-dock-tab-agent]">
-      {projectId ? <AgentTaskPanel nativeCloseRegistry={nativeCloseRegistry} key={`${workspaceScope}:${projectId}`} workspaceScope={workspaceScope} projectId={projectId} projectName={projectName} timelineFps={timelineFps} targetName={targetName} onApplied={onTaskApplied ?? onApplied} onLocate={onTaskLocate} reveal={taskReveal} shotNumber={shotNumber} onReview={onTaskReview} onReviewLocate={onTaskReviewLocate} reviewReveal={reviewReveal} onOpenRequests={onTaskOpenRequests} onSettings={target => onOpenSettings ? onOpenSettings(target ?? 'agent') : onPage('settings')} onClose={onCollapse} onDraftChange={onDraftChange} /> : <div className="agent-chat-empty"><h3>{t('agent.workspace.selectProject')}</h3><p>{t('agent.workspace.noImplicitProjectContent')}</p></div>}
+      {projectId ? <AgentTaskPanel onReviewProjectRules={onReviewProjectRules} nativeCloseRegistry={nativeCloseRegistry} key={`${workspaceScope}:${projectId}`} workspaceScope={workspaceScope} projectId={projectId} projectName={projectName} timelineFps={timelineFps} targetName={targetName} onApplied={onTaskApplied ?? onApplied} onLocate={onTaskLocate} reveal={taskReveal} shotNumber={shotNumber} onReview={onTaskReview} onReviewLocate={onTaskReviewLocate} reviewReveal={reviewReveal} onOpenRequests={onTaskOpenRequests} onSettings={target => onOpenSettings ? onOpenSettings(target ?? 'agent') : onPage('settings')} onClose={onCollapse} onDraftChange={onDraftChange} /> : <div className="agent-chat-empty"><h3>{t('agent.workspace.selectProject')}</h3><p>{t('agent.workspace.noImplicitProjectContent')}</p></div>}
     </AgentDockPane>
     <AgentDockPane id="agent-settings-pane" visible={page === 'settings'} fallbackFocus="[data-testid=right-dock-tab-agent]">
       {!nativeSettingsScope && !onOpenSettings && settingsOpened.current && <SettingsNavigationSlot registry={navigationRegistry} slot="workbench:agent">{report => <AgentSettings onClose={() => onPage('chat')} onNavigationStateChange={pass(report)} />}</SettingsNavigationSlot>}

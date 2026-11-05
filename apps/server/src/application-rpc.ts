@@ -39,6 +39,7 @@ export function createApplicationRpc({library, app, manager, directories, signal
   }).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id)));
   return {async call(operation: string, raw: unknown): Promise<unknown> {
     signal.throwIfAborted();
+    if (operation === 'project.notes.set') throw new AppError('UNKNOWN_OPERATION', '未知操作', 404);
     if (isProjectCopyActionOperation(operation)) {
       if (!copies) throw new AppError('PROJECT_COPY_UNAVAILABLE', '项目复制暂不可用。', 503);
       const parsed = projectCopyActionSchemas[operation].safeParse(raw);

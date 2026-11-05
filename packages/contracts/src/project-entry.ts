@@ -38,3 +38,11 @@ export const projectEntriesResponseSchema = z.object({
 }).strict().refine(value => new Set(value.registered.map(entry => entry.project.projectId)).size === value.registered.length,
   'Each registered project appears once.');
 export type ProjectEntriesResponse = z.infer<typeof projectEntriesResponseSchema>;
+
+/** One authenticated registration for a native result action. Reading this
+ * descriptor does not acquire a project or grant a file/window capability. */
+export const projectEntryResponseSchema = z.object({
+  version: z.literal(1), appLibraryScope: z.string().regex(/^[a-f0-9]{64}$/u), instanceId: z.string().uuid(),
+  entry: projectEntrySchema,
+}).strict();
+export type ProjectEntryResponse = z.infer<typeof projectEntryResponseSchema>;

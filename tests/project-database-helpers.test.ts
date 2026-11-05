@@ -396,32 +396,40 @@ test('project initialization commits its description and preset atomically and r
   } finally { store.close(); }
 });
 
-test('kernel project record edits share the original revision and exact receipt contract without old lifecycle DDL', t => {
+test('kernel rename keeps CAS and exact historical ACK bytes while retired notes cannot write', t => {
   const store = openStore(dataDirectory(t)), other = openStore(dataDirectory(t));
   try {
-    ensureProjectRow(store, {name: 'Original'});
-    ensureProjectRow(other, {name: 'Other'});
+    ensureProjectRow(store, {name: 'Original'}); ensureProjectRow(other, {name: 'Other'});
+    const current=store.get('projects',store.projectId)!;store.put('projects',{...current,notes:'Historical saved notes'});
     const structure = schemaObjects(store.db), rename = {projectId: store.projectId, requestId: randomUUID(), expectedRevision: 1, name: 'Renamed'};
     const renamed = mutateProjectRecord(store, 'project.rename', rename);
-    const notes = {projectId: store.projectId, requestId: randomUUID(), expectedRevision: 2, notes: 'Saved notes'};
-    const saved = mutateProjectRecord(store, 'project.notes.set', notes);
-    assert.equal(saved.revision, 3);
-    assert.equal(saved.notes, notes.notes);
+    assert.equal(renamed.revision,2);assert.equal(Object.hasOwn(renamed,'notes'),false);
+    const historical=store.get('projects',store.projectId);assert.ok(historical&&typeof historical==='object'&&'notes' in historical);
+    assert.equal(historical.notes,'Historical saved notes');
+    const raw=store.db.prepare('SELECT data FROM projects WHERE id=?').get(store.projectId)!.data;
+    const ack=store.db.prepare('SELECT response FROM project_mutation_requests WHERE requestId=?').get(rename.requestId)!.response;
+    assert.equal(JSON.parse(String(ack)).notes,'Historical saved notes');
     assert.deepEqual(mutateProjectRecord(store, 'project.rename', rename), renamed);
-    assert.deepEqual(mutateProjectRecord(store, 'project.notes.set', notes), saved);
-    assert.throws(() => mutateProjectRecord(store, 'project.notes.set', {...notes, notes: 'Changed input'}), {code: 'IDEMPOTENCY_CONFLICT'});
-    assert.throws(() => mutateProjectRecord(store, 'project.notes.set', {...notes, requestId: randomUUID()}), {code: 'REVISION_CONFLICT'});
+    assert.equal(store.db.prepare('SELECT response FROM project_mutation_requests WHERE requestId=?').get(rename.requestId)!.response,ack);
+    const notes={projectId:store.projectId,requestId:randomUUID(),expectedRevision:2,notes:'Must not write'};
+    const changes=store.db.prepare('SELECT total_changes() n').get()!.n;
+    for(const input of [notes,{...notes,notes:'Changed input'},{...notes,requestId:randomUUID()}])
+      assert.throws(()=>mutateProjectRecord(store,'project.notes.set' as never,input),{code:'UNKNOWN_OPERATION',status:404});
+    assert.equal(store.db.prepare('SELECT total_changes() n').get()!.n,changes);
+    assert.equal(store.db.prepare('SELECT data FROM projects WHERE id=?').get(store.projectId)!.data,raw);
     assert.throws(() => mutateProjectRecord(store, 'project.rename', {...rename, projectId: other.projectId}), {code: 'NOT_FOUND'});
     assert.equal(other.db.prepare('SELECT count(*) AS n FROM project_mutation_requests').get()?.n, 0);
-    assert.equal(store.db.prepare('SELECT count(*) AS n FROM project_mutation_requests').get()?.n, 2);
+    assert.equal(store.db.prepare('SELECT count(*) AS n FROM project_mutation_requests').get()?.n, 1);
     store.db.exec("CREATE TEMP TRIGGER fixture_mutation_fail BEFORE INSERT ON main.project_mutation_requests BEGIN SELECT RAISE(ABORT,'synthetic project receipt failure');END");
-    assert.throws(() => mutateProjectRecord(store, 'project.notes.set', {...notes, requestId: randomUUID(), expectedRevision: 3, notes: 'Must roll back'}), /synthetic project receipt failure/);
-    assert.deepEqual(store.get('projects', store.projectId), saved);
-    assert.equal(store.db.prepare('SELECT count(*) AS n FROM project_mutation_requests').get()?.n, 2);
+    const next={...rename,requestId:randomUUID(),expectedRevision:2,name:'Must roll back'};
+    assert.throws(() => mutateProjectRecord(store, 'project.rename', next), /synthetic project receipt failure/);
+    assert.equal(store.db.prepare('SELECT data FROM projects WHERE id=?').get(store.projectId)!.data,raw);
+    assert.equal(store.db.prepare('SELECT count(*) AS n FROM project_mutation_requests').get()?.n, 1);
     store.db.exec('DROP TRIGGER temp.fixture_mutation_fail');
-    const cleared = mutateProjectRecord(store, 'project.notes.set', {...notes, requestId: randomUUID(), expectedRevision: 3, notes: ' \n\t'});
-    assert.equal(cleared.revision, 4);
-    assert.equal(Object.hasOwn(cleared, 'notes'), false);
+    const updated = mutateProjectRecord(store, 'project.rename', next);
+    assert.equal(updated.revision,3);assert.equal(updated.name,'Must roll back');
+    assert.equal(Object.hasOwn(updated,'notes'),false);
+    const persisted=store.get('projects',store.projectId);assert.ok(persisted&&typeof persisted==='object'&&'notes' in persisted);assert.equal(persisted.notes,'Historical saved notes');
     assert.deepEqual(schemaObjects(store.db), structure);
     assert.throws(() => mutateProjectRecord({...store}, 'project.rename', rename), /live kernel store/);
   } finally { store.close(); other.close(); }
@@ -489,6 +497,46 @@ test('foreignKeyCheck retains native checks for an explicit non-project memory c
   } finally { db.close(); }
 });
 
+test('retired notes HTTP rejects before acquiring a closed project and preserves identity, app rows and backup files', async t => {
+  const dataDir = dataDirectory(t), {projectId, store} = createServerProject(dataDir, {name: 'Closed historical notes'});
+  const projectFile = store.projectFile, localDir = store.localDir, projectDir = store.projectDir;
+  const current = store.get('projects', projectId); assert.ok(current);
+  store.put('projects', {...current, notes: 'Historical notes stay in their original project'});
+  store.close();
+  const info = lstatSync(projectFile, {bigint: true}), identity = {dev: String(info.dev), ino: String(info.ino)};
+  const tree = (directory: string) => readdirSync(directory, {recursive: true}).map(String).sort().map(name => {
+    const file = path.join(directory, name), stat = lstatSync(file);
+    return {name, directory: stat.isDirectory(), bytes: stat.isFile() ? readFileSync(file).toString('base64') : null};
+  });
+  let inspectApplication!: InspectApplication, backupCalls = 0;
+  const server = await startServer({dataDir, port: 0, token: TOKEN,
+    inspectApplication: inspect => {inspectApplication = inspect;},
+    projectBackupCopyForTest: async () => {backupCalls++; throw Error('Retired notes must not schedule a backup');}});
+  t.after(() => server.close());
+  const application = () => inspectApplication(db => ({changes: db.prepare('SELECT total_changes() n').get()!.n,
+    rows: schemaObjects(db).filter(row => row.type === 'table').map(row => ({schema: row.schema, table: row.name,
+      rows: db.prepare(`SELECT rowid,* FROM "${row.schema}"."${row.name}" ORDER BY rowid`).all()}))}));
+  const before = {project: readFileSync(projectFile), local: tree(localDir), folder: tree(projectDir), application: application()};
+  assert.equal(isProjectFileHeld(identity), false);
+  assert.equal(backupCalls, 0);
+  const input = {operation: 'project.notes.set', input: {projectId, requestId: randomUUID(), expectedRevision: 1, notes: 'Cannot write'}};
+  const cases = [
+    {url: `/api/projects/${projectId}/rpc`, input, authenticated: true, status: 404, code: 'UNKNOWN_OPERATION'},
+    {url: '/api/rpc', input, authenticated: true, status: 404, code: 'UNKNOWN_OPERATION'},
+    {url: `/api/projects/${projectId}/rpc`, input: {...input, input: {...input.input, projectId: randomUUID()}}, authenticated: true, status: 400, code: 'PROJECT_ID_MISMATCH'},
+    {url: `/api/projects/${projectId}/rpc?projectId=${randomUUID()}`, input, authenticated: true, status: 400, code: 'PROJECT_ID_MISMATCH'},
+    {url: `/api/projects/${projectId}/rpc`, input, authenticated: false, status: 401, code: 'UNAUTHORIZED'},
+  ];
+  for (const entry of cases) {
+    const response = await fetch(server.url + entry.url, {method: 'POST', headers: {'Content-Type': 'application/json', ...(entry.authenticated ? {authorization: `Bearer ${TOKEN}`} : {})}, body: JSON.stringify(entry.input)});
+    const result = await response.json() as {ok: boolean; error: {code: string}};
+    assert.equal(response.status, entry.status, JSON.stringify(result)); assert.equal(result.ok, false); assert.equal(result.error.code, entry.code);
+    assert.equal(isProjectFileHeld(identity), false);
+    assert.equal(backupCalls, 0); assert.deepEqual(application(), before.application);
+    assert.deepEqual(readFileSync(projectFile), before.project); assert.deepEqual(tree(localDir), before.local); assert.deepEqual(tree(projectDir), before.folder);
+  }
+});
+
 test('the server serves a project filled before it started, and inspectProject reads it on the server connection', {timeout: 120_000}, async t => {
   const dataDir = dataDirectory(t);
   const {projectId, store} = createServerProject(dataDir, {name: 'Filled before start'});
@@ -508,6 +556,11 @@ test('the server serves a project filled before it started, and inspectProject r
   const listed = await rpc('project.list', {}) as {id: string; name: string}[];
   assert.deepEqual(listed.map(({id, name}) => ({id, name})), [{id: projectId, name: 'Filled before start'}]);
   await rpc('shot.create', {requestId: randomUUID(), projectId, title: 'Written by the server'});
+  // The dispatcher has already consumed the RPC envelope. JSON null must
+  // reach the original validator, rather than trigger a second stream read.
+  const invalid = await fetch(server.url + rpcPathFor('project.get', {projectId}), {method: 'POST', headers: {authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json'}, body: 'null'});
+  const invalidBody = await invalid.json() as {error: {code: string}};
+  assert.equal(invalid.status, 400); assert.equal(invalidBody.error.code, 'VALIDATION_ERROR');
 
   const connections = new Set<DatabaseSync>();
   const shots = inspectProject(projectId, db => {

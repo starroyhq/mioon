@@ -338,5 +338,5 @@ test('desktop wiring keeps renderer secret capabilities private and settings own
   const menuProtocol = await readFile(new URL('../apps/desktop/src/menu-command-protocol.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(preload + bridge + assetImportBridge + audioBridge + languageBridge + menuBridge + menuProtocol + await readFile(new URL('../apps/desktop/src/workspace-native-preload.ts', import.meta.url), 'utf8'), /safeStorage|secretCodec|agentSettings|decrypt|process\.parentPort|imageSecret|\.env|access-token/);
   assert.deepEqual([...preload.matchAll(/exposeInMainWorld\('([^']+)'/g)].map(match => match[1]).sort(),
-    ['__mioonAppLanguage', '__mioonAssetImport', '__mioonDesktop', '__mioonExportFiles', '__mioonLutRecovery', '__mioonMenuCommands', '__mioonNativeAudioPreview', '__mioonProjectPackages', '__mioonProjectWindow', '__mioonWorkspaceNative', '__mioonWorkspaceTools']);
+    ['__mioonAppLanguage', '__mioonAssetImport', '__mioonDesktop', '__mioonExportFiles', '__mioonLutRecovery', '__mioonMenuCommands', '__mioonNativeAudioPreview', '__mioonProjectBackups', '__mioonProjectPackages', '__mioonProjectWindow', '__mioonWorkspaceNative', '__mioonWorkspaceTools']);
 });

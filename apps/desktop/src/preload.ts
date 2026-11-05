@@ -6,6 +6,7 @@ const workspaceNative=createWorkspaceNativeBridges((channel,request)=>ipcRendere
 contextBridge.exposeInMainWorld('__mioonWorkspaceNative',workspaceNative.native);
 contextBridge.exposeInMainWorld('__mioonExportFiles',workspaceNative.exports);
 contextBridge.exposeInMainWorld('__mioonProjectPackages',workspaceNative.projectPackages);
+contextBridge.exposeInMainWorld('__mioonProjectBackups',workspaceNative.projectBackups);
 import {createWorkspaceToolsBridge} from './workspace-tools-preload.ts';
 contextBridge.exposeInMainWorld('__mioonWorkspaceTools',createWorkspaceToolsBridge((channel,request)=>ipcRenderer.invoke(channel,request)));
 import { createDesktopLutRecoveryBridge } from './lut-recovery-preload.ts';

@@ -109,8 +109,10 @@ export function createProjectPackageService({store,appVersion,afterCreate=async(
     const read=await readProjectPackage({source,destination:directory,signal});
     const document=read.document as ProjectDocument;
     if(!document||document.formatVersion!==1||!document.project||typeof document.project.name!=='string'||!Array.isArray(document.assets))throw projectPackageError('PROJECT_PACKAGE_INVALID_CONTENT');
-    // Project notes (C6) follow the same plain-text limit as project.notes.set.
-    if(document.project.notes!==undefined&&(typeof document.project.notes!=='string'||!projectNotesValid(document.project.notes)))throw projectPackageError('PROJECT_PACKAGE_INVALID_CONTENT');
+    // Old containers may retain this retired field. Validate it at the input
+    // boundary, but never copy it into a new project or AGENTS.md.
+    const retiredNotes:unknown=Reflect.get(document.project,'notes');
+    if(retiredNotes!==undefined&&(typeof retiredNotes!=='string'||!projectNotesValid(retiredNotes)))throw projectPackageError('PROJECT_PACKAGE_INVALID_CONTENT');
     const files=new Map([...read.media].map(([key,value])=>[key,value.file]));
     const {suggested,taken}=uniqueName(read.manifest.project.name),timeline=document.timeline as {width?:number;height?:number;fps?:number}|null;
     const preview:ProjectPackageImportPreview={id,kind:'import',name:read.manifest.project.name,suggestedName:suggested,nameTaken:taken,counts:read.manifest.counts,totalBytes:read.totalBytes,fileCount:read.manifest.files.length,

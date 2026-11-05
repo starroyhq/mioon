@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync, rmSync, unlinkSync} from 'node:fs';
+import {mkdtempSync, readFileSync, rmSync, unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
+import {DatabaseSync} from 'node:sqlite';
 import {startServer, type InspectApplication} from '../apps/server/src/index.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {backgroundTaskQueryResponseSchema} from '../packages/contracts/src/background-task-query.ts';
+import {PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {createServerProject} from './helpers/project-database.ts';
 
 test('authenticated background metadata lists offline tasks without acquiring projects or exposing private evidence', async t => {
@@ -38,4 +40,28 @@ test('authenticated background metadata lists offline tasks without acquiring pr
   assert.equal((await owned('/api/background-tasks', {method: 'POST'})).status, 405);
   for (const query of ['?limit=0', '?limit=101', '?limit=1&limit=2', '?after=../private', '?projectFile=/private'])
     assert.equal((await owned('/api/background-tasks' + query)).status, 400);
+});
+
+test('closed projects from a newer format retain their exact unavailable reason in homepage metadata', async t => {
+  const root = mkdtempSync(path.join(tmpdir(), 'u2-newer-background-')), token = 'synthetic-u2-http-token';
+  const project = createServerProject(root, {name: 'Newer format'}), projectFile = project.store.projectFile;
+  project.store.close();
+  const future = new DatabaseSync(projectFile);
+  try {future.exec(`PRAGMA user_version=${PROJECT_FILE_SCHEMA_VERSION + 1}`);} finally {future.close();}
+  const original = readFileSync(projectFile), app = openAppLibrary({dataDir: root});
+  app.taskIndex.upsert({projectId: project.projectId, projectFile, kind: 'job', taskId: randomUUID(), indexedAt: new Date().toISOString()});
+  app.close();
+  let inspect!: InspectApplication;
+  const server = await startServer({dataDir: root, port: 0, token, inspectApplication: read => {inspect = read;}});
+  t.after(async () => {await server.close(); rmSync(root, {recursive: true, force: true});});
+  const changes = inspect(db => db.prepare('SELECT total_changes() AS n').get()!.n);
+  for (let repeat = 0; repeat < 2; repeat++) {
+    const response = await fetch(server.url + '/api/background-tasks', {headers: {authorization: `Bearer ${token}`}});
+    assert.equal(response.status, 200);
+    const data = backgroundTaskQueryResponseSchema.parse((await response.json()).data);
+    assert.deepEqual(data.projects, [{projectId: project.projectId, taskCount: 1, reasonCodes: ['PROJECT_FORMAT_NEWER']}]);
+    assert.equal(data.nextCursor, null);
+  }
+  assert.equal(inspect(db => db.prepare('SELECT total_changes() AS n').get()!.n), changes, 'metadata queries cannot retry opening or rewrite the index');
+  assert.deepEqual(readFileSync(projectFile), original, 'a newer project file remains byte for byte unchanged');
 });

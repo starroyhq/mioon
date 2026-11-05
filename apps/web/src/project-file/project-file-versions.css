@@ -52,3 +52,28 @@
 .pf-restore-body { color: var(--wb-soft); font-size: var(--wb-text-body); line-height: 1.6; }
 .pf-restore-changes > li { min-height: 56px; }
 .pf-restore-state { min-height: 120px; }
+
+/* U2: shared history tabs and real backup metadata. */
+.pf-versions-dialog .wb-dialog-content { flex-direction: column; }
+.pf-versions-dialog .wb-dialog-content > [data-slot="tabs"] { flex: none; padding: 0 20px 12px; }
+.pf-versions-dialog .wb-dialog-content > .wb-alert { flex: none; margin: 0 20px 12px; }
+.pf-versions-body { overflow: hidden; min-height: 320px; }
+.pf-backups { padding: 4px 24px 24px; overflow-y: auto; min-height: 320px; }
+.pf-backups > p { margin-bottom: 16px; }
+.pf-backups .pf-rows > li { gap: 12px; padding: 16px 0; }
+.pf-backup-metadata { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; }
+.pf-backup-metadata dd { margin: 0; overflow-wrap: anywhere; }
+.pf-backup-failed { color: var(--wb-warning); }
+.pf-restore-dialog .wb-dialog-content { max-height: min(64vh, 600px); overflow-y: auto; }
+.pf-restore-changes .pf-row-title { white-space: normal; overflow-wrap: anywhere; }
+.pf-restore-changes .pf-row-detail { display: block; white-space: normal; overflow-wrap: anywhere; }
+.pf-keep-reason { color: var(--wb-soft); }
+@media (max-width: 700px) {
+  .pf-versions-dialog .wb-dialog-heading { padding-right: 40px; }
+  .pf-versions-save.wb-button { position: static; margin: 0 20px 10px; align-self: flex-start; }
+  .pf-versions-list { width: 40%; min-width: 140px; }
+  .pf-version-detail { padding: 8px 16px; }
+  .pf-backups .pf-rows > li { flex-wrap: wrap; }
+}
+.pf-restore-changes .pf-row-main { min-width: 0; }
+.pf-restore-changes .pf-row-title .pf-mono { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }

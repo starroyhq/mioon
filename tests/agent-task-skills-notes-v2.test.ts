@@ -6,7 +6,7 @@ import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync,readFileSync,realpathSync,rmSync} from 'node:fs';
+import {existsSync,mkdtempSync,readFileSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
@@ -32,8 +32,9 @@ import {AGENT_TASK_LOCALES,AGENT_TASK_SKILL_NAMES} from '../packages/contracts/s
 import type {AgentTaskJson,AgentTaskSnapshot,AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {VIDEO_PROVIDER_NAMES,VIDEO_TEMPLATES} from '../packages/contracts/src/video-providers.ts';
 import {SEEDANCE25_CAPABILITIES} from '../packages/contracts/src/seedance-video.ts';
-import {PROJECT_NOTES_MAX_BYTES} from '../packages/contracts/src/project-lifecycle.ts';
+import {RULES_MAX_BYTES} from '../packages/contracts/src/mio-rules.ts';
 import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
+import {createMioProjectRules} from '../packages/business/src/agent/mio-rules.ts';
 
 const record=(value:unknown):Record<string,unknown>=>{assert.ok(value&&typeof value==='object'&&!Array.isArray(value));return value as Record<string,unknown>;};
 const call=(name:string,args:object):AgentTaskToolCall=>({id:randomUUID(),name,arguments:args as AgentTaskJson});
@@ -62,7 +63,7 @@ async function fixture(t:TestContext){
   project(){return record(store.get('projects',projectId));},
   /** The journal keeps the frozen model context; public snapshots never expose it. */
   context(runId:string){return (createAgentTaskJournal(store).run(runId).context??[]) as AgentTaskJson[];},
-  async setNotes(notes:string,requestId=randomUUID()){return record(await services.call('project.notes.set',{requestId,projectId,expectedRevision:Number(record(store.get('projects',projectId)).revision),notes}));},
+  seedHistoricalNotes(notes:string){return record(store.put('projects',{...record(store.get('projects',projectId)),notes}));},
  };
 }
 const tool=(snapshot:AgentTaskSnapshot,name:string)=>{const found=snapshot.steps.filter(step=>step.kind==='tool'&&step.toolCall?.name===name);assert.ok(found.length,`missing ${name} step`);return found;};
@@ -171,27 +172,32 @@ test('a continuity report names this project\'s shots, changes nothing, and othe
  assert.equal(done.changes.length,0);assert.equal(JSON.stringify(f.store.get('shots',f.shotId)),before);
 });
 
-test('project notes save under project CAS, replay exactly, refuse invalid text and clear when blank', async t => {
- const f=await fixture(t);
- const start=Number(f.project().revision),requestId=randomUUID();
- const saved=await f.setNotes(NOTES,requestId);
- assert.equal(saved.notes,NOTES);assert.equal(saved.revision,start+1);assert.equal(f.project().notes,NOTES);
- assert.equal(record(record(await f.services.call('project.get',{projectId:f.projectId})).project).notes,NOTES,'project.get returns the notes');
- assert.deepEqual(record(await f.services.call('project.notes.set',{requestId,projectId:f.projectId,expectedRevision:start,notes:NOTES})),saved,'an exact replay returns the saved acknowledgement');
- await assert.rejects(f.services.call('project.notes.set',{requestId,projectId:f.projectId,expectedRevision:start,notes:'other'}),{code:'IDEMPOTENCY_CONFLICT'});
- await assert.rejects(f.services.call('project.notes.set',{requestId:randomUUID(),projectId:f.projectId,expectedRevision:start,notes:'stale'}),{code:'REVISION_CONFLICT'});
- const revision=Number(f.project().revision);
- for(const notes of ['x'.repeat(PROJECT_NOTES_MAX_BYTES+1),'一'.repeat(Math.floor(PROJECT_NOTES_MAX_BYTES/3)+1),'bell\u0007','return\r\n','lone \ud800'])
-  await assert.rejects(f.services.call('project.notes.set',{requestId:randomUUID(),projectId:f.projectId,expectedRevision:revision,notes}),{code:'VALIDATION_ERROR'},JSON.stringify(notes).slice(0,40));
- assert.equal(f.project().revision,revision);
- const exact='一'.repeat(Math.floor(PROJECT_NOTES_MAX_BYTES/3))+'\t';assert.equal((await f.setNotes(exact)).notes,exact);
- const cleared=await f.setNotes('  \n ');assert.equal(Object.hasOwn(cleared,'notes'),false);assert.equal(Object.hasOwn(f.project(),'notes'),false);
+test('retired notes reject every public write while real AGENTS rules retain CAS, replay and text boundaries', async t => {
+ const f=await fixture(t),start=Number(f.project().revision),requestId=randomUUID();
+ const saved=f.seedHistoricalNotes(NOTES);
+ assert.equal(saved.notes,NOTES);assert.equal(saved.revision,start);assert.equal(f.project().notes,NOTES);
+ assert.equal(Object.hasOwn(record(record(await f.services.call('project.get',{projectId:f.projectId})).project),'notes'),false);
+ const before=f.store.db.prepare('SELECT data FROM projects WHERE id=?').get(f.projectId)!.data;
+ for(const notes of [NOTES,'other','stale'])await assert.rejects(f.services.call('project.notes.set',{requestId,projectId:f.projectId,expectedRevision:start,notes}),{code:'UNKNOWN_OPERATION',status:404});
+ assert.equal(f.store.db.prepare('SELECT data FROM projects WHERE id=?').get(f.projectId)!.data,before);
+ assert.equal(existsSync(join(f.root,'AGENTS.md')),false);
+ const application=testProjectAppLibrary(f.store);assert.ok(application);
+ const rules=createMioProjectRules({store:f.store,application});t.after(()=>rules.close());
+ const input={requestId,expectedHash:null,text:NOTES},enabled=rules.save(input);assert.equal(enabled.text,NOTES);assert.equal(enabled.trust,'trusted');
+ assert.deepEqual(rules.save(input),enabled);
+ assert.throws(()=>rules.save({...input,text:'other'}),{code:'MIO_RULES_REQUEST_CONFLICT'});
+ assert.throws(()=>rules.save({...input,requestId:randomUUID()}),{code:'MIO_RULES_CONFLICT'});
+ for(const text of ['x'.repeat(RULES_MAX_BYTES+1),'一'.repeat(Math.floor(RULES_MAX_BYTES/3)+1),'bell\u0007','lone \ud800'])
+  assert.throws(()=>rules.save({requestId:randomUUID(),expectedHash:enabled.hash,text}),{code:'MIO_RULES_INVALID'},JSON.stringify(text).slice(0,40));
+ const exact='一'.repeat(Math.floor(RULES_MAX_BYTES/3))+'\t',full=rules.save({requestId:randomUUID(),expectedHash:enabled.hash,text:exact});assert.equal(full.text,exact);
+ const crlf=rules.save({requestId:randomUUID(),expectedHash:full.hash,text:'return\r\n'});assert.equal(crlf.text,'return\r\n');
+ const cleared=rules.save({requestId:randomUUID(),expectedHash:crlf.hash,text:''});assert.equal(cleared.text,'');assert.equal(cleared.trust,'trusted');assert.equal(f.project().notes,NOTES);assert.equal(f.project().revision,start);
 });
 test('native retained requests preserve their explicitly frozen notes wrapper; new diagnostics carry none', async t => {
  const f=await fixture(t);
  const empty=await f.send('No notes yet');
  assert.ok(!JSON.stringify(f.context(empty.run.id)).includes('mio.project.notes'));
- await f.setNotes(NOTES);
+ await f.seedHistoricalNotes(NOTES);
  // The native producer no longer gathers the retired manual notes tool's
  // context. A retained accepted request still replays its frozen typed wrapper.
  const settings=await f.settings.get(),contextInput=assembleRunContext({locale:'en',text:'Plan episode one',projectOverview:collectTaskProjectOverview(f.store,f.projectId),projectNotes:NOTES}).context;
@@ -209,13 +215,13 @@ test('native retained requests preserve their explicitly frozen notes wrapper; n
  assert.ok(sentBody.messages.some(item=>item.role==='user'&&item.content.includes(JSON.stringify(NOTES).slice(1,-1))),'the provider request carries the notes');
  assert.equal(sentBody.messages.at(-1)!.content,'Plan episode one');
  // A later edit never rewrites an already sent run.
- await f.setNotes('changed afterwards');
+ await f.seedHistoricalNotes('changed afterwards');
  assert.deepEqual(f.context(sent.run.id),context);
  const diagnostic=await f.send('Connection check',{diagnostic:{profile:'text'}});
  assert.ok(!JSON.stringify(f.context(diagnostic.run.id)).includes('mio.project.notes'),'diagnostics carry no notes');
 });
-test('native Mio rejects the retired notes tool and preserves the old manual notes API', async t => {
- const f=await fixture(t);await f.setNotes(NOTES);
+test('native Mio and manual public calls reject retired notes without migrating historical bytes', async t => {
+ const f=await fixture(t);await f.seedHistoricalNotes(NOTES);
  const revision=Number(f.project().revision);
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'project.notes.set',input:{expectedRevision:revision,notes:'forbidden'}}),{code:'AGENT_TASK_TOOL_FORBIDDEN'});
  f.queue([call('mioon_project_notes_set',{expectedRevision:revision,notes:`${NOTES}\n周屿的伞是黑色的。`})]);
@@ -227,7 +233,7 @@ test('native Mio rejects the retired notes tool and preserves the old manual not
  assert.ok(!JSON.stringify(f.context(done.run.id)).includes(NOTES));
 });
 test('project-layout notes stay unchanged when legacy import and workspace backup operations are unavailable', async t => {
- const f=await fixture(t);await f.setNotes(NOTES);
+ const f=await fixture(t);await f.seedHistoricalNotes(NOTES);
  const application=testProjectAppLibrary(f.store);assert.ok(application);
  const quote=(name:string)=>'"'+name.replaceAll('"','""')+'"';
  const capture=()=>[f.store.db,application.db].map(db=>({
@@ -235,7 +241,8 @@ test('project-layout notes stay unchanged when legacy import and workspace backu
   changes:db.prepare('SELECT total_changes() AS n').get()!.n,
  }));
  const before=capture(),collected=collectProject(f.store,f.projectId,{media:'used'} as never);
- assert.equal(collected.document.project.notes,NOTES);
+ assert.equal(Object.hasOwn(collected.document.project,'notes'),false);
+ assert.equal(existsSync(join(f.root,'AGENTS.md')),false);
  assert.throws(()=>createProjectFromDocument(f.store,{document:collected.document,files:new Map(),name:'Unavailable copy',move:false}),
   {name:'TypeError',message:'Legacy project package imports cannot run on project databases.'});
  for(const [operation,input] of [

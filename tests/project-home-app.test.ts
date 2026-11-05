@@ -3,7 +3,7 @@ interface HomeOptions {nativeWindow?:ReturnType<typeof nativeEditor>|null;confir
 interface HomeEnvironment extends Record<string,unknown> {auth:boolean|'error'|null;bootGuard:{current:ReturnType<typeof createProjectBootGuard>};busy:Record<string,unknown>;currentProject:{current:string|null};data:HomeSnapshot;dataRef:{current:HomeSnapshot};homePage:string;importSession:{current:{active:boolean;selection:number}};loading:boolean;nativeWindow:ReturnType<typeof nativeEditor>|null;navigationEpoch:{current:number};openedProject:{current:opening.ProjectOpenAttempt|null};projectCreateFlight:{current:unknown};projectEpoch:{current:number};projectListStatus:{busy:boolean;error:string|i18nCore.DisplayMessage};projectOpening:{phase:string;projectId:string|null;error:string};requestCounter:{current:number};toast:unknown;videoDirectoryUnavailable:boolean;viewReady:{current:boolean};viewRef:{current:ReturnType<typeof defaultWorkspaceState>};webSettingsRequest:{page:string;resolve?:(accepted:boolean)=>void}|null;window:{location:{href:string;search:string;pathname:string};history:{pushState:(...args:unknown[])=>number;replaceState:(...args:unknown[])=>number}};editorSession: {current: string}, workspaceRef:{current:{}}}
 interface HomeApi {projectSessionReady():boolean;selectProject(projectId:string,remember?:boolean):Promise<boolean>;refresh(projectId:string,silent?:boolean,options?:{opening?:boolean}):Promise<ReturnType<typeof snapshot>|null>;prepareSettingsDeparture():Promise<unknown>;openGlobalSettings(page?:string):unknown;changeHomePage(page:string):Promise<unknown>;refreshHomeProjects():Promise<unknown>;createProject(name:string,description:string):Promise<boolean>;showProjectHome():Promise<boolean>;boot():Promise<void>}
 type HomeHarness=ReturnType<typeof harness>;
-type HomeUi={React:typeof import('react');renderToStaticMarkup:typeof import('react-dom/server').renderToStaticMarkup;ConfirmationProvider:typeof import('../packages/ui/src/components/workbench-confirm.tsx').ConfirmationProvider}&Record<string,unknown>;
+type HomeUi={canOfferBackupRecovery:typeof import('../apps/web/src/ProjectBackupRecovery.tsx').canOfferBackupRecovery;React:typeof import('react');renderToStaticMarkup:typeof import('react-dom/server').renderToStaticMarkup;ConfirmationProvider:typeof import('../packages/ui/src/components/workbench-confirm.tsx').ConfirmationProvider}&Record<string,unknown>;
 import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
 import * as i18nCore from '../packages/i18n/src/index.ts';
 import test from 'node:test';
@@ -42,7 +42,7 @@ function section(start: string, end: string) {
 function environment(options:HomeOptions = {}) {
   const calls: unknown[][] = [], registry = createSettingsNavigationRegistry();
   const env = { LanguageControl: () => null, renderImportFeedback: (locale: string, value: string|i18nCore.DisplayMessage|null|undefined) => renderCoreMessage((locale as unknown as Parameters<typeof renderCoreMessage>[0]), value), msg, ...createI18nTestContext(), localizedError: (displayMessage: string|i18nCore.DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }),
-    ...opening, videoConnectionProviders, readGenerationProviderDirectory,
+    ...opening, videoConnectionProviders, readGenerationProviderDirectory, canOfferBackupRecovery: homeUi().canOfferBackupRecovery,
     editorInitialSelection, revealNativeProjects, nativeWindow: options.nativeWindow ?? null,
     clipDraftRef: {current: null}, retainWorkbenchForClip: false, guardRetainedInputInteraction() {},
 
@@ -57,6 +57,7 @@ function environment(options:HomeOptions = {}) {
     chooseInitialProject, retainLastProjectScope, assertLastProjectBootIdentity, URL, URLSearchParams,
     useCallback: (callback: unknown) => callback, emptyData, loading: false, auth: true, online: true, videoDirectoryUnavailable: false,
     data: emptyData, projects, projectOpening: { phase: 'home', projectId: null, error: '' },
+    backupFailure: null, historyView: null, nativeBackup: null, saveIsDirty: false,
     homePage: 'projects', homeConnection: 'agent', webSettingsRequest: null, webSettingsOpen: false, projectListStatus: { busy: false, error: '' }, busy: {}, toast: null,
     currentProject: { current: null }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 },
     webSettingsRequestRef: { current: null },
@@ -103,7 +104,7 @@ function environment(options:HomeOptions = {}) {
   for (const name of ['ProjectOpening', 'HomePage', 'ProjectListStatus', 'Auth', 'Online', 'Data', 'Projects', 'Providers', 'LastSync',
     'PropertiesPage', 'TaskState', 'PreferenceStatus', 'Pending', 'ShowProjects', 'Nodes', 'Loading', 'ShotDirty', 'ClipDirty', 'SourceDirty',
     'SubjectDirty', 'SubtitleDirty', 'InspectorEpoch', 'RightDockTab', 'ShowExports', 'ComparisonId', 'PreviewAsset', 'RealConfirm',
-    'Toast', 'MobilePanel', 'PanelOverlay', 'ShowTasks', 'SelectedTaskId', 'ShowDelivery', 'ShowImage', 'ShowProjectChooser', 'View', 'Zoom', 'Workspace', 'ShowCreate', 'WebSettingsRequest', 'WebSettingsOpen', 'AudioRoleCapability', 'VideoDirectoryUnavailable']) {
+    'Toast', 'MobilePanel', 'PanelOverlay', 'ShowTasks', 'SelectedTaskId', 'ShowDelivery', 'ShowImage', 'ShowProjectChooser', 'View', 'Zoom', 'Workspace', 'ShowCreate', 'WebSettingsRequest', 'WebSettingsOpen', 'AudioRoleCapability', 'VideoDirectoryUnavailable', 'BackupFailure', 'HistoryView']) {
     const key = name[0].toLowerCase() + name.slice(1);
     env[`set${name}`] = (value:unknown|((old:unknown)=>unknown)) => { env[key] = typeof value === 'function' ? (value as (old:unknown)=>unknown)(env[key]) : value; calls.push([`set${name}`, env[key]]); };
   }
@@ -403,6 +404,28 @@ test('late boot discovery cannot select over a newer project or publish after un
   }
 });
 
+let builtHomeUi: HomeUi | undefined;
+function homeUi(): HomeUi {
+  if (builtHomeUi) return builtHomeUi;
+  const fixture = `import React from 'react';
+    import { renderToStaticMarkup } from 'react-dom/server';
+    import ProjectHome from './src/ProjectHomeScreen.tsx';
+    import ProjectHistoryDialog from './src/project-file/ProjectHistoryDialog.tsx';
+    import ProjectBackupRecovery, { canOfferBackupRecovery } from './src/ProjectBackupRecovery.tsx';
+    import ProjectHomeConnections from './src/ProjectHomeConnections.tsx';
+    import EditorWindowOpening from './src/EditorWindowOpening.tsx';
+    import SettingsNavigationSlot from './src/SettingsNavigationSlot.tsx';
+    import LastProjectStatus from './src/LastProjectStatus.tsx';
+    import WebSettingsCenter from './src/WebSettingsCenter.tsx';
+    import { ConfirmationProvider } from '@mioon/ui/components/workbench-confirm';
+    import { Button } from '@mioon/ui/components/button';
+    export { React, renderToStaticMarkup, ProjectHome, ProjectHomeConnections, EditorWindowOpening, SettingsNavigationSlot, LastProjectStatus, WebSettingsCenter, ConfirmationProvider, Button, ProjectHistoryDialog, ProjectBackupRecovery, canOfferBackupRecovery };`;
+  const result = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: join(root, 'apps/web') }, bundle: true, platform: 'node', format: 'cjs',
+    write: false, jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
+  const module = {exports:{}} as {exports:HomeUi}; Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
+  return builtHomeUi = module.exports;
+}
+
 let presentation:((h:HomeHarness)=>{html:string;mounted:string[]})|undefined;
 function boundaryRenderer() {
   if (presentation) return presentation;
@@ -415,22 +438,8 @@ function boundaryRenderer() {
   // App's actual root Fragment, settings sibling and outer workbench element; full workbench internals are outside
   // this focused fixture, rather than replaced by a generic permissive proxy.
   const readiness = section('  const workbenchReady =', '  const panelSurface =');
-  const renderSource = readiness + app.slice(start, workbench) + app.slice(workbench, openingEnd + 1) + '</main></>;';
-  const fixture = `import React from 'react';
-    import { renderToStaticMarkup } from 'react-dom/server';
-    import ProjectHome from './src/ProjectHome.tsx';
-    import ProjectHomeConnections from './src/ProjectHomeConnections.tsx';
-    import EditorWindowOpening from './src/EditorWindowOpening.tsx';
-    import SettingsNavigationSlot from './src/SettingsNavigationSlot.tsx';
-    import LastProjectStatus from './src/LastProjectStatus.tsx';
-    import WebSettingsCenter from './src/WebSettingsCenter.tsx';
-    import { ConfirmationProvider } from '@mioon/ui/components/workbench-confirm';
-    import { Button } from '@mioon/ui/components/button';
-    export { React, renderToStaticMarkup, ProjectHome, ProjectHomeConnections, EditorWindowOpening, SettingsNavigationSlot, LastProjectStatus, WebSettingsCenter, ConfirmationProvider, Button };`;
-  const result = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: join(root, 'apps/web') }, bundle: true, platform: 'node', format: 'cjs',
-    write: false, jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
-  const module = {exports:{}} as {exports:HomeUi}; Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
-  const ui = module.exports;
+  const renderSource = readiness + section('  const historyLayer =', '  if (auth === false && !retainWorkbenchForClip)') + app.slice(start, workbench) + app.slice(workbench, openingEnd + 1) + '</main></>;';
+  const ui = homeUi();
   const body = transformSync(`function renderBoundary() { ${renderSource} }`, { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code;
   presentation = (h:HomeHarness) => {
     const mounted: string[] = [];

@@ -104,7 +104,7 @@ claims、owners、edit receipts 和过程修订沿用现有写入豁免；R2 的
 
 B1 的 `project_rules_trust` 按项目 ID 和实际字节 hash 记录信任。Mioon 手工保存的精确内容自动信任；外部修改后 hash 不匹配，项目规范停用，用户查看后可显式启用。用户规范由 `user_rules` 的 revision CAS 和 `app_operation_receipts` 同事务保存，默认空文本、revision 0；应用级读写不打开任何项目。
 
-新用户轮次接受发送时冻结可信项目规范和用户规范，并引用 `mio_blobs`。该轮后续模型调用、批准续接和重放只用冻结版本；本轮获批修改的规范在下一用户轮次生效。优先级是宿主规则、本次明确请求、项目规范、用户通用规范。规范不能扩大权限；诊断不读取或注入规范。旧 `project.notes` 不再进入新 Mio 上下文，不迁移，旧字段/API/UI 留给 U2 删除。
+新用户轮次接受发送时冻结可信项目规范和用户规范，并引用 `mio_blobs`。该轮后续模型调用、批准续接和重放只用冻结版本；本轮获批修改的规范在下一用户轮次生效。优先级是宿主规则、本次明确请求、项目规范、用户通用规范。规范不能扩大权限；诊断不读取或注入规范。旧 `project.notes` 已随 U2-A 从当前公共 DTO、API 和界面退役，不进入新 Mio 上下文，不迁移到 AGENTS.md；已有项目 JSON、原 ACK 和冻结历史 context 原位保留，不清洗历史字节。
 
 模型工具 `mioon_project_rules_set` 只有 `expectedHash`、`proposedText`，始终要求明确批准；模型不能传 `approved`、`trust` 或路径。旧冻结请求里的写说明调用拒绝并交回重新规划，不能沿用旧批准写文件。
 

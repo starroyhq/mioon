@@ -8,14 +8,16 @@ import { buildSync } from 'esbuild';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const read = (file: string) => readFileSync(join(root, file), 'utf8');
-interface BuiltHome {render(props: Record<string, unknown>): string}
+interface BuiltHome {render(props: Record<string, unknown>): string; renderScreen(props: Record<string, unknown>): string}
 let built: BuiltHome;
 function ui() {
   if (built) return built;
   const fixture = `import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server';
     import ProjectHome from './src/ProjectHome.tsx';
-    export const render = props => renderToStaticMarkup(<ProjectHome {...props} />);`;
+    import ProjectHomeScreen from './src/ProjectHomeScreen.tsx';
+    export const render = props => renderToStaticMarkup(<ProjectHome {...props} />);
+    export const renderScreen = props => renderToStaticMarkup(<ProjectHomeScreen {...props} />);`;
   const result = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: join(root, 'apps/web') }, bundle: true, platform: 'node', format: 'cjs', write: false, jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
   const module = { exports: {} };
   Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
@@ -46,24 +48,31 @@ test('empty home keeps a bare header and offers "或导入项目文件" under th
   assert.doesNotMatch(ui().render({ ...base, projects: [] }), /project-home-import/, 'no entry without an import handler (restored workspace)');
 });
 
-test('workbench project menu adds import, duplicate and export while new project stays last', () => {
+test('workbench hides unconnected package actions and keeps real history, rules and new project entries', () => {
   const app = read('apps/web/src/App.tsx');
   const start = app.indexOf('<DropdownMenuContent align="start" className="workbench-project-menu">');
   const menu = app.slice(start, app.indexOf('</DropdownMenuContent>', start));
-  const order = ['projects.openWorkspace', 'project-menu-import', 'project-menu-duplicate', 'project-menu-export', 'panels-menu', 'export-button', 'new-project-menu'].map(token => menu.indexOf(token));
+  const order = ['projects.openWorkspace', 'project-menu-history', 'project-menu-rules', 'panels-menu', 'export-button', 'new-project-menu'].map(token => menu.indexOf(token));
   assert.ok(order.every(index => index > 0), String(order));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
   assert.ok(menu.lastIndexOf('<DropdownMenuItem') < menu.indexOf('new-project-menu'), 'new project remains the last menu item');
-  assert.match(menu, /openExport\(\{ id: data\.project\.id, name: data\.project\.name \}, \{ unsaved: saveIsDirty \}\)/);
-  assert.match(app, /<ProjectPackageLayer place="workbench"/);
+  assert.doesNotMatch(menu, /project-menu-(?:import|duplicate|export)|openExport|openDuplicate|chooseImportFile/);
+  assert.doesNotMatch(app, /ProjectPackageLayer|projectPackageFlow/);
 });
 
-test('home card menu inserts duplicate and export after rename and before delete', () => {
+test('home hides package import, drop, duplicate and export without mounting a legacy request owner', () => {
   const screen = read('apps/web/src/ProjectHomeScreen.tsx');
-  const order = ["'redesign.projects.rename'", 'project-home-duplicate-', 'project-home-export-', '<DropdownMenuSeparator />', "'redesign.projects.delete'"].map(token => screen.indexOf(token));
+  const order = ["'redesign.projects.rename'", "'redesign.projects.location'", '<DropdownMenuSeparator />', "'redesign.projects.delete'"].map(token => screen.indexOf(token));
   assert.ok(order.every(index => index > 0)); assert.deepEqual([...order].sort((a, b) => a - b), order);
-  assert.match(screen, /<ProjectPackageLayer place="home"/);
-  assert.match(screen, /project-home-drop-overlay/);
+  assert.doesNotMatch(screen, /project-home-(?:duplicate|export)-|project-home-drop-overlay|onDrop|onDragEnter|onDragOver/);
+  assert.doesNotMatch(screen, /ProjectPackageLayer|projectPackageFlow|openImport|openExport|openDuplicate|chooseImportFile/);
+  for (const items of [projects, []]) for (const presentation of ['page', 'embedded']) {
+    const html = ui().renderScreen({ ...base, projects: items, presentation, onImport: none, justImported: ['p2'] });
+    assert.doesNotMatch(html, /project-home-import|project-home-just-imported|project-package|project-home-drop-overlay/);
+    assert.match(html, /data-testid="project-home-create-toggle"/);
+    assert.match(html, new RegExp(`data-presentation="${presentation}"`));
+    assert.equal((html.match(/data-testid="project-home-open-p[12]"/g) || []).length, items.length);
+  }
 });
 
 test('project file layer uses shared controls, a hidden file Input and no close button while running', () => {

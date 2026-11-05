@@ -7,18 +7,18 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
 import {setTimeout as pause} from 'node:timers/promises';
-import {startServer, type InspectProject, type ServerOptions} from '../apps/server/src/index.ts';
+import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from '../apps/server/src/index.ts';
 import {writeProjectCover} from '../apps/server/src/project-host/covers.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
-import {createProjectFile} from '../packages/business/src/project-file/index.ts';
+import {createProjectFile,isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
 import {createProjectHomeServices} from '../packages/business/src/project-home.ts';
-import {projectEntriesResponseSchema} from '../packages/contracts/src/project-entry.ts';
+import {projectEntriesResponseSchema,projectEntryResponseSchema} from '../packages/contracts/src/project-entry.ts';
 import type {ProjectEntriesResponse} from '../packages/contracts/src/project-entry.ts';
 import type {ProjectEntryWindowRevoked} from '../packages/contracts/src/project-entry-native.ts';
 import type {RecentProject} from '../packages/contracts/src/project-registry.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {timelineOutputPreset} from '../packages/contracts/src/timeline-output-geometry.ts';
-import {createServerProject, openServerProject} from './helpers/project-database.ts';
+import {createServerProject, openServerProject,schemaObjects} from './helpers/project-database.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 
 const token = 'project-entry-server-synthetic-token';
@@ -31,7 +31,7 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel'] = 'web', {externalProjectsRoot = false} = {}) {
+async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel'] = 'web', {externalProjectsRoot = false,rejectBackup = false} = {}) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-project-entry-server-'));
   const dataDir = path.join(root, 'app'), projectsDir = externalProjectsRoot ? path.join(root, 'selected-projects') : path.join(dataDir, 'projects');
   let server: Server | undefined;
@@ -68,9 +68,10 @@ async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel
       summary: {...rest, cover: {assetId: coverAsset, mimeType: 'image/png'}}});
     if (externalProjectsRoot) library.registry.upsert({...library.registry.get(b.projectId)!, projectFile: bFile});
   } finally {library.close();}
-  let inspect!: InspectProject;
+  let inspect!: InspectProject, inspectApplication!: InspectApplication,backupAttempts=0;
   server = await startServer({dataDir, projectsDir, port: 0, token, localDraftChannel: channel,
-    inspectProject: received => {inspect = received;}});
+    inspectProject: received => {inspect = received;},inspectApplication:received=>{inspectApplication=received;},
+    ...(rejectBackup?{projectBackupCopyForTest:async()=>{backupAttempts++;throw Error('Metadata reads must not start backups');}}:{})});
   const owned = server;
   const fetchOwned = (route: string, options: RequestInit = {}) => fetch(owned.url + route, {...options,
     headers: {authorization: `Bearer ${token}`, ...options.headers}});
@@ -91,6 +92,7 @@ async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel
   };
   return {root, dataDir, projectsDir, server: owned, a: {projectId: a.projectId, projectFile: aFile},
     b: {projectId: b.projectId, projectFile: bFile}, fetch: fetchOwned, json, catalog, rpc, hold,
+    application:<T>(read:(db:DatabaseSync)=>T)=>inspectApplication(read),backupAttempts:()=>backupAttempts,
     native: (projectId: string): DatabaseSync => inspect(projectId, db => db)};
 }
 
@@ -144,6 +146,64 @@ test('application catalog retains legacy identity and reads registered metadata 
   const cover = await f.fetch(`/api/project-covers/${f.a.projectId}`);
   assert.equal(cover.status, 200); assert.deepEqual(Buffer.from(await cover.arrayBuffer()), jpeg);
   assert.equal(a.db.isOpen, true); assert.equal(b.db.isOpen, true);
+  const selected=await f.json(`/api/project-entries/${f.a.projectId}`);
+  assert.equal(selected.status,200);assert.equal(selected.body.ok,true);
+  const descriptor=projectEntryResponseSchema.parse(selected.body.data);
+  assert.deepEqual(descriptor.entry,entries.registered.find(entry=>entry.project.projectId===f.a.projectId));
+  assert.equal(descriptor.instanceId,entries.instanceId);assert.equal(descriptor.appLibraryScope,entries.appLibraryScope);
+  assert.equal(a.db.isOpen,true);assert.equal(b.db.isOpen,true);
+});
+
+test('single registration metadata preserves closed project files, records and B1 rows without opening or backing up',async t=>{
+  const f=await fixture(t,'web',{rejectBackup:true}),beforeRegistry=registry(f);
+  const tree=(directory:string):unknown=>existsSync(directory)?readdirSync(directory,{recursive:true}).map(String).sort().map(name=>{
+    const file=path.join(directory,name),stat=lstatSync(file);
+    return{name,directory:stat.isDirectory(),bytes:stat.isFile()?readFileSync(file).toString('base64'):null};
+  }):null;
+  const files=()=>[f.projectsDir,path.join(f.dataDir,'records'),path.join(f.dataDir,'cache')].map(tree);
+  const application=()=>f.application(db=>({changes:db.prepare('SELECT total_changes() n').get()!.n,
+    rows:schemaObjects(db).filter(row=>row.type==='table').map(row=>({schema:row.schema,name:row.name,
+      rows:db.prepare(`SELECT rowid,* FROM "${row.schema}"."${row.name}" ORDER BY rowid`).all()}))}));
+  const beforeFiles=files(),beforeApplication=application();
+  for(const project of [f.a,f.b]){
+    const expected=beforeRegistry.find(entry=>entry.projectId===project.projectId)!;
+    assert.equal(isProjectFileHeld(expected.fileIdentity),false);
+    const read=async()=>{
+      const response=await f.fetch(`/api/project-entries/${project.projectId}`);
+      assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
+      const body=await response.json() as WireBody<unknown>;assert.equal(body.ok,true);
+      return projectEntryResponseSchema.parse(body.data);
+    };
+    const first=await read(),again=await read();assert.deepEqual(again,first);
+    assert.equal(first.version,1);assert.equal(first.entry.project.projectId,project.projectId);
+    assert.equal(first.entry.project.projectFile,project.projectFile);assert.deepEqual(first.entry.project.fileIdentity,expected.fileIdentity);
+    const actual=lstatSync(project.projectFile,{bigint:true});
+    assert.deepEqual(first.entry.project.fileIdentity,{dev:String(actual.dev),ino:String(actual.ino)});
+    assert.deepEqual(first.entry.project,expected);assert.equal(first.entry.project.lastOpenedAt,null);
+    assert.equal(first.entry.coverUrl,project.projectId===f.a.projectId?`/api/project-covers/${project.projectId}`:null);
+    assert.equal(Object.hasOwn(first,'registered'),false);
+    assert.equal(isProjectFileHeld(expected.fileIdentity),false);assert.equal(f.backupAttempts(),0);
+    assert.deepEqual(application(),beforeApplication);assert.deepEqual(files(),beforeFiles);assert.deepEqual(registry(f),beforeRegistry);
+  }
+});
+
+test('single registration metadata requires authenticated exact canonical GET with no query or body controls',async t=>{
+  const f=await fixture(t,'web',{rejectBackup:true}),route=`/api/project-entries/${f.a.projectId}`,before=registry(f);
+  assert.equal((await fetch(f.server.url+route)).status,401);
+  const foreign=await f.json(route,{headers:{origin:'https://foreign.invalid'}});assert.equal(foreign.status,403);assert.equal(foreign.body.error!.code,'ORIGIN_REJECTED');
+  for(const query of [`projectId=${f.a.projectId}`,'path=%2Foutside','projectFile=%2Foutside','root=%2Foutside','cursor=1']){
+    const result=await f.json(route+'?'+query);assert.equal(result.status,400);assert.equal(result.body.error!.code,'VALIDATION_ERROR');
+  }
+  const getBody=await requestGetBody(f.server.url+route,{projectFile:'/outside',kind:'window'});assert.equal(getBody.status,400);assert.equal(getBody.body.error!.code,'VALIDATION_ERROR');
+  for(const method of ['POST','PUT','PATCH','DELETE','HEAD','OPTIONS']){
+    const response=await f.fetch(route,{method});assert.equal(response.status,405);assert.equal(response.headers.get('allow'),'GET');await response.arrayBuffer();
+  }
+  const unknownId=randomUUID(),unknown=await f.json(`/api/project-entries/${unknownId}`);assert.equal(unknown.status,404);assert.equal(unknown.body.error!.code,'PROJECT_NOT_FOUND');
+  const encoded='%'+f.a.projectId.charCodeAt(0).toString(16)+f.a.projectId.slice(1);
+  for(const tail of ['not-an-id','AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',encoded,encodeURIComponent(f.a.projectId+'/extra'),f.a.projectId+'/',f.a.projectId+'/extra']){
+    const result=await f.json('/api/project-entries/'+tail);assert.equal(result.status,404);assert.equal(result.body.ok,false);
+  }
+  assert.equal(f.backupAttempts(),0);assert.deepEqual(registry(f),before);
 });
 
 for (const firstRead of ['http', 'trusted'] as const) {
@@ -217,11 +277,19 @@ test('web catalog lists only registered files below its project root and never s
   assert.deepEqual(new Set(data.registered.map(entry => entry.project.projectId)), new Set([f.a.projectId, f.b.projectId]));
   assert.ok(registry(f).some(entry => entry.projectId === external.projectId));
   assert.ok(registry(f).some(entry => entry.projectId === peer.projectId));
+  for(const projectId of [external.projectId,peer.projectId,candidateId]){
+    const single=await f.json(`/api/project-entries/${projectId}`);assert.equal(single.status,404);assert.equal(single.body.error!.code,'PROJECT_NOT_FOUND');
+  }
+  const selected=await f.json(`/api/project-entries/${f.a.projectId}`);assert.equal(selected.status,200);
+  assert.equal(projectEntryResponseSchema.parse(selected.body.data).entry.project.projectFile,f.a.projectFile);
   assert.ok(!registry(f).some(entry => entry.projectId === candidateId));
   assert.deepEqual(registry(f), before); assert.deepEqual(readFileSync(candidate), candidateBytes);
   const missing = await f.server.projectEntries.create({name: 'Missing'});
   rmSync(missing.projectFile);
   assert.deepEqual((await f.catalog()).registered.find(entry => entry.project.projectId === missing.projectId)!.availability, {state: 'missing'});
+  const missingSingle=await f.json(`/api/project-entries/${missing.projectId}`);assert.equal(missingSingle.status,200);
+  const missingDescriptor=projectEntryResponseSchema.parse(missingSingle.body.data);
+  assert.equal(missingDescriptor.entry.project.projectFile,missing.projectFile);assert.deepEqual(missingDescriptor.entry.availability,{state:'missing'});
 });
 
 for (const channel of ['production', 'development'] as const) {
@@ -231,6 +299,8 @@ for (const channel of ['production', 'development'] as const) {
     const held = f.hold(entry.projectId), data = await f.catalog();
     assert.ok(data.registered.some(item => item.project.projectId === entry.projectId));
     assert.deepEqual(data, f.server.projectEntries.listRecent());
+    const single=await f.json(`/api/project-entries/${entry.projectId}`);assert.equal(single.status,200);
+    assert.deepEqual(projectEntryResponseSchema.parse(single.body.data).entry,data.registered.find(item=>item.project.projectId===entry.projectId));
     assert.equal(held.db.isOpen, true);
   });
 }

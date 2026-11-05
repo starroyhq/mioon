@@ -805,5 +805,6 @@ export const nativeMessages = {
   'native.openProjectFileNotMioon': { 'zh-Hans': '“{name}”不是 Mioon 项目文件。', 'zh-Hant': '「{name}」不是 Mioon 專案檔案。', en: '“{name}” is not a Mioon project file.', ja: '「{name}」は Mioon プロジェクトファイルではありません。' },
   'native.openProjectFileNewer': { 'zh-Hans': '“{name}”由更新版本的 Mioon 创建，请先升级应用。', 'zh-Hant': '「{name}」由較新版本的 Mioon 建立，請先更新應用程式。', en: '“{name}” was made by a newer version of Mioon. Update the app first.', ja: '「{name}」は新しいバージョンの Mioon で作成されています。先にアプリを更新してください。' },
   'native.openProjectFileDamaged': { 'zh-Hans': '“{name}”已损坏或不完整。', 'zh-Hant': '「{name}」已損毀或不完整。', en: '“{name}” is damaged or incomplete.', ja: '「{name}」は破損しているか、不完全です。' },
-  'native.openProjectFileUnavailable': { 'zh-Hans': '现在无法导入“{name}”，请稍后在项目主页中重试。', 'zh-Hant': '目前無法匯入「{name}」，請稍後在專案首頁重試。', en: 'Cannot import “{name}” right now. Try again from the project home later.', ja: '「{name}」を今は読み込めません。後でプロジェクトホームから再試行してください。' },
+  'native.openProjectFileUnavailable': { 'zh-Hans': '现在无法打开“{name}”。', 'zh-Hant': '目前無法開啟「{name}」。', en: 'Cannot open “{name}” right now.', ja: '「{name}」を今は開けません。' },
+  'native.openProjectFileSystemUnavailable': { 'zh-Hans': '从系统打开“{name}”尚不可用。', 'zh-Hant': '從系統開啟「{name}」尚未提供。', en: 'Opening “{name}” from the system is not available yet.', ja: 'システムから「{name}」を開く機能はまだ利用できません。' },
 } as const satisfies MessageCatalog;

@@ -284,11 +284,11 @@ M5 不升级工作区版本：retry 回执的 action 原为受限字符串，sup
   - 首尾帧补镜：模型的 `inputModes` 要有 `frames`；补的长度取模型允许的时长，用 `frame.extract` 抽出前后两帧，生成成功后再用 `timeline.clip.split`、`timeline.clip.remove` 和 `timeline.clip.add` 换掉这一段，后面的片段不移动。
 - 测试检查每份方法里提到的操作和工具名都是 Mio 能加载的工具。
 
-### 项目说明
+### 项目规范与旧项目说明
 
-- 操作 `project.notes.set {requestId, projectId, expectedRevision, notes}`：说明存在项目记录的 `notes` 字段，UTF-8 不超过 8192 字节，只允许换行和制表符两种控制字符；空白内容清除该字段。修订沿用项目修订号，回执沿用 `project_mutation_requests`，稳定 requestId 精确重放。恢复副本和候选工作区不可用。
-- Mio 的 `mioon_project_notes_set` 在 canvas 组，本地可撤销；变化记录保存项目记录前后快照，撤销与 `project.rename` 相同。
-- 说明随备份恢复，也随项目文件导出、导入和复制（见 `docs/PROJECT-PACKAGE.md`）。
+当前规范由 R2 读取同目录 `AGENTS.md`，只在用户明确保存或启用后冻结到下一用户轮次，修改规范仍要求原 Mio 审批。界面和 HTTP 详见 [本机记录](MIO-RECORDS.md)。
+
+旧 `project.notes.set` 已从公共发现和实际公共执行入口退役，返回 `UNKNOWN_OPERATION`（404）；旧工具返回 `TOOL_RETIRED`/forbidden，不重定向为规范写入。新公共项目 DTO 和新交换文档不带 notes。历史项目 JSON、共享 ACK、旧 typed context 和诊断 catalog 保留原字节供重建；旧说明不迁移、不注入新轮次，不改变 `run.notes` 的运行中追加消息。
 
 ### 连续性检查
 

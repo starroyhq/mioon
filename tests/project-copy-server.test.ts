@@ -319,7 +319,7 @@ test('save-as replay reuses a window reopened by target path and preserves the e
   const f = await fixture(t), windowId = randomUUID(); await f.native.acquire({projectId: f.source.projectId, windowId});
   const input = {...f.input(), windowId}, first = await f.native.saveAs!(input), target = first.copy.project;
   const project = f.inspect(target.projectId, db => JSON.parse(String(db.prepare('SELECT data FROM project.projects WHERE id=?').get(target.projectId)!.data)) as {revision: number});
-  const changed = await f.rpc('project.notes.set', {projectId: target.projectId, requestId: randomUUID(), expectedRevision: project.revision, notes: 'Edited before reopening by path'}, target.projectId);
+  const changed = await f.rpc('project.rename', {projectId: target.projectId, requestId: randomUUID(), expectedRevision: project.revision, name: 'Edited before reopening by path'});
   assert.equal(changed.status, 200, JSON.stringify(changed.body));
   const edited = f.inspect(target.projectId, readProjectContentStamp);
   assert.notEqual(edited.contentToken, first.copy.contentToken);
@@ -425,8 +425,9 @@ test('copy replay preserves later edits on a held target and never regrants a re
   const f = await fixture(t), input = f.input(), first = await f.rpc<ProjectCopyResponse>('project.duplicate', input);
   assert.equal(first.status, 200, JSON.stringify(first.body)); const copy = projectCopyResponseSchema.parse(first.body.data);
   const windowId = randomUUID(); await f.native.acquire({projectId: copy.project.projectId, windowId});
-  const project = f.inspect(copy.project.projectId, db => JSON.parse(String(db.prepare('SELECT data FROM project.projects WHERE id=?').get(copy.project.projectId)!.data)) as {revision: number});
-  const changed = await f.rpc('project.notes.set', {projectId: copy.project.projectId, requestId: randomUUID(), expectedRevision: project.revision, notes: 'Later target edit'}, copy.project.projectId);
+  // Keep the actual held window: app-level rename closes its host exclusively.
+  // A real content edit changes the same copy token without retiring the lease.
+  const changed = await f.rpc('shot.create', {projectId: copy.project.projectId, title:'Later target edit',prompt:'Synthetic later saved content',duration:4},copy.project.projectId);
   assert.equal(changed.status, 200, JSON.stringify(changed.body));
   const grants = () => f.application(db => db.prepare('SELECT * FROM outside_path_confirmations WHERE projectId=? ORDER BY directory').all(copy.project.projectId));
   assert.ok(grants().length > 0);

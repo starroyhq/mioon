@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Textarea } from '@mioon/ui/components/textarea';
 import { Input } from '@mioon/ui/components/input';
 import { Dialog } from '@mioon/ui/components/dialog';
-import { WorkbenchButton as Button, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
+import { WorkbenchAlert, WorkbenchButton as Button, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
 import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
 import { WorkbenchPopover, WorkbenchPopoverContent, WorkbenchPopoverTrigger } from '@mioon/ui/components/workbench-popover';
 import { useI18n } from './i18n/I18nProvider.tsx';
@@ -29,9 +29,13 @@ import Icon from './icons.tsx';
 import { agentTaskErrorKey } from './agent-task-errors.ts';
 import { taskBackgroundLocation, taskCurrentEntries, taskDisplayEntries, taskDisplayLines, taskChangeSummary, taskDisplayTargets, taskTargetTitle, taskDurationSeconds, taskRunDurationSeconds, taskOperationTitle, taskStepStatusKey, taskStepTitle, taskStepBadge, taskUpdatedGoalStepIds, taskFirstGoalRepairStepIds } from './agent-task-presentation.ts';
 import type { TaskDisplayLookup } from './agent-task-presentation.ts';
+import {ProjectRulesNotice, ProjectRulesChangeCard} from './project-file/ProjectRules.tsx';
+import {createWebProjectRulesClient, subscribeProjectRulesChanges} from './project-rules-client.ts';
+import {rulesProposalOf, projectRulesProposalChange, rulesStepApplied} from './project-rules-proposal.ts';
+import type {ProjectRulesSnapshot} from '../../../packages/contracts/src/mio-rules.ts';
 import './agent-task-v2.css';
 
-export interface AgentTaskPanelProps { projectId: string; workspaceScope?: string; projectName?: string; timelineFps?:number; targetName?: TaskDisplayLookup; onSettings: (page?: 'agent' | 'models' | 'video-tools') => unknown; onClose: () => unknown; onOpenRequests?: (selectedId?: string) => unknown; onDraftChange?: (dirty: boolean) => unknown; onApplied?: (projectId: string, snapshot: AgentTaskSnapshot, landed?: readonly string[]) => unknown; onLocate?: (change: AgentTaskChange) => unknown; reveal?: AgentTaskReveal | null; shotNumber?: (shotId: string) => number | undefined; onReview?: (projectId: string, entries: ReviewIssueEntry[]) => unknown; onReviewLocate?: (entry: ReviewIssueEntry) => unknown; reviewReveal?: AgentReviewReveal | null; nativeCloseRegistry?: unknown }
+export interface AgentTaskPanelProps { projectId: string; workspaceScope?: string; projectName?: string; timelineFps?:number; targetName?: TaskDisplayLookup; onSettings: (page?: 'agent' | 'models' | 'video-tools') => unknown; onClose: () => unknown; onOpenRequests?: (selectedId?: string) => unknown; onDraftChange?: (dirty: boolean) => unknown; onApplied?: (projectId: string, snapshot: AgentTaskSnapshot, landed?: readonly string[]) => unknown; onLocate?: (change: AgentTaskChange) => unknown; reveal?: AgentTaskReveal | null; shotNumber?: (shotId: string) => number | undefined; onReview?: (projectId: string, entries: ReviewIssueEntry[]) => unknown; onReviewLocate?: (entry: ReviewIssueEntry) => unknown; reviewReveal?: AgentReviewReveal | null; nativeCloseRegistry?: unknown; onReviewProjectRules?: () => void }
 const finished = (status: string) => ['completed', 'failed', 'stopped', 'reverted'].includes(status);
 const errorSettings = (code: string): 'agent' | 'models' | 'video-tools' | undefined => {
   if (['FFMPEG_UNAVAILABLE', 'FFMPEG_NOT_FOUND', 'FFMPEG_MISSING', 'FFPROBE_UNAVAILABLE', 'FFPROBE_NOT_FOUND', 'FFMPEG_CAPABILITY_UNAVAILABLE', 'FFMPEG_FILTER_UNAVAILABLE', 'EXPORT_CAPABILITY_TOOL_UNAVAILABLE', 'EXPORT_CAPABILITY_UNSUPPORTED', 'EXPORT_CAPABILITY_CONFIGURATION', 'EXPORT_CAPABILITY_FAILED', 'EXPORT_CAPABILITY_TIMEOUT', 'SUBTITLE_RENDERER_UNAVAILABLE'].includes(code)) return 'video-tools';
@@ -48,13 +52,26 @@ function StepIcon({ step, read }: { step: AgentTaskStep; read?: string }) {
     {working ? <span className="wb-spinner" /> : <Icon name={read ?? (step.status === 'completed' ? 'check' : step.status === 'failed' ? 'close' : step.status === 'unknown' ? 'info' : step.status === 'awaiting_approval' ? 'pause' : step.status === 'awaiting_answer' ? 'question' : 'minus')} />}
   </span>;
 }
-export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', timelineFps, targetName, onSettings, onOpenRequests, onDraftChange = () => {}, onApplied, onLocate, reveal = null, shotNumber, onReview, onReviewLocate, reviewReveal = null, nativeCloseRegistry }: AgentTaskPanelProps) {
+export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', timelineFps, targetName, onSettings, onOpenRequests, onDraftChange = () => {}, onApplied, onLocate, reveal = null, shotNumber, onReview, onReviewLocate, reviewReveal = null, nativeCloseRegistry, onReviewProjectRules }: AgentTaskPanelProps) {
   const { t, locale } = useI18n(), visible = useWorkspaceVisibility();
   const [state, setState] = useState<AgentTaskSessionState>({ phase: 'loading', project: null, snapshot: null, draft: '', uploads: [], pending: null, error: '', conversationId:null,conversation:null,rounds:[],selectionKey:'new',draftDirty:false,draftVersion:0,unknownOutcome:false,policy:{conversationId:null,phase:'ready',value:null,modes:null},history: { conversations: [], nextCursor: null, phase: 'closed' } });
   const [undoPreview,setUndoPreview]=useState<{snapshot:AgentTaskSnapshot;selectionKey:string}|null>(null),[undoLoading,setUndoLoading]=useState(false);
   const undoTrigger=useRef<HTMLButtonElement|null>(null),undoCancel=useRef<HTMLButtonElement|null>(null),undoFlight=useRef(false),undoRead=useRef(0);
   const [review, setReview] = useState<AgentTaskAuthorizationReview | null>(null), [historyOpen, setHistoryOpen] = useState(false), [stepsOpen, setStepsOpen] = useState<Record<string,boolean>>({}), [modelMenuOpen, setModelMenuOpen] = useState(false), [following, setFollowing] = useState(true),[composing,setComposing]=useState(false);
   const [checksAttached,setChecksAttached]=useState(true),checksNavigation=useRef(0);
+  const [rulesStatus, setRulesStatus] = useState<ProjectRulesSnapshot | null>(null), [rulesReadError, setRulesReadError] = useState(false), [rulesDismissed, setRulesDismissed] = useState<string | null>(null);
+  const rulesRefresh = useRef<() => void>(() => {});
+  useLayoutEffect(() => {
+    const client = createWebProjectRulesClient(), abort = new AbortController(); let mounted = true, serial = 0;
+    setRulesStatus(null); setRulesReadError(false); setRulesDismissed(null);
+    const read = () => { if (!visible || document.visibilityState === 'hidden') return; const owner = ++serial;
+      void client.read(projectId, {signal: abort.signal}).then(next => { if (mounted && owner === serial) {setRulesStatus(next); setRulesReadError(false);} }, () => {if (mounted && owner === serial) {setRulesStatus(null); setRulesReadError(true);}});
+    };
+    rulesRefresh.current = read; read();
+    const release = subscribeProjectRulesChanges(projectId, read);
+    window.addEventListener('focus', read); document.addEventListener('visibilitychange', read);
+    return () => { mounted = false; ++serial; abort.abort(); release(); window.removeEventListener('focus', read); document.removeEventListener('visibilitychange', read); if (rulesRefresh.current === read) rulesRefresh.current = () => {}; };
+  }, [projectId, workspaceScope, visible]);
   const session = useRef<ReturnType<typeof createAgentTaskSession> | null>(null), callbacks = useRef({ onDraftChange, onApplied }); callbacks.current = { onDraftChange, onApplied };
   const reviewed = useRef(onReview); reviewed.current = onReview;
   const arrivals = useRef<ReturnType<typeof createReviewArrivals> | null>(null); arrivals.current ??= createReviewArrivals();
@@ -218,7 +235,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
     const run=snapshot.run,steps=snapshot.steps,changes=snapshot.changes,skipped=run.skippedTargets??[],notes=run.notes??[],unknown=steps.filter(step=>step.status==='unknown');
     const updatedGoals=taskUpdatedGoalStepIds(steps),firstRepairs=taskFirstGoalRepairStepIds(steps);
     const latest=steps.filter(step=>step.kind==='model'&&modelText(step)).at(-1),elapsed=taskRunDurationSeconds(snapshot),canUndo=['completed','failed','stopped'].includes(run.status)&&unknown.length===0&&!snapshot.backgroundPending,backgroundPending=snapshot.backgroundPending===true;
-    const approval=steps.filter(step=>step.status==='awaiting_approval'||step.approvalRequired===true),marked=steps.filter(step=>step.display?.conflict===true);
+    const approval=steps.filter(step=>(step.status==='awaiting_approval'||step.approvalRequired===true)&&step.toolCall?.name!=='mioon_project_rules_set'),marked=steps.filter(step=>step.display?.conflict===true);
     const conflictSteps=marked.length?marked:[steps.filter(step=>step.kind==='tool'&&['intent','awaiting_approval'].includes(step.status)).at(-1)].filter((step):step is AgentTaskStep=>step!==undefined);
     // Answered questions sit before the reply that followed them; the waiting
     // or stopped one follows the reply that asked it.
@@ -270,6 +287,12 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
         })}</section>}
         {answered&&approval.some(step=>step.tier==='paid')&&<p className="mio-answer-not-approval" data-testid="agent-task-answer-not-approval"><Icon name="info" />{t('agent.panel.question.notApproval')}</p>}
         {((run.status === 'completed'&&latest)||isTaskGoalRepairActive(snapshot)) && run.projectId===projectId && <AgentTaskChecks key={`${workspaceScope}:${run.id}`} scope={workspaceScope} snapshot={snapshot} latest={snapshot===state.snapshot} attached={checksAttached} visible={visible&&!historyOpen} readOnly={readOnly} targetName={targetName} onLocate={onLocate} onOpenRequests={onOpenRequests} />}
+        {steps.filter(step => step.kind === 'tool' && step.toolCall?.name === 'mioon_project_rules_set').map(step => {
+          const proposal = rulesProposalOf(step), pending = state.pending?.runId === run.id && (state.pending.action === 'approve' || state.pending.action === 'deny') ? state.pending : null;
+          const rejected = step.status === 'denied' || step.status === 'rejected' && step.result && typeof step.result === 'object' && !Array.isArray(step.result) && step.result.error && typeof step.result.error === 'object' && !Array.isArray(step.result.error) && step.result.error.code === 'USER_REJECTED';
+          const decision = rulesStepApplied(step) ? {kind: 'allowed' as const} : rejected ? {kind: 'rejected' as const} : step.status === 'unknown' || pending && state.phase === 'unknown' ? {kind: 'unknown' as const} : pending ? {kind: 'submitting' as const, decision: pending.action === 'approve' ? 'allow' as const : 'reject' as const} : step.status === 'awaiting_approval' && proposal ? {kind: 'pending' as const} : {kind: 'unavailable' as const};
+          return <div key={step.id} data-testid={`agent-task-rules-${step.id}`}><ProjectRulesChangeCard proposal={proposal} change={proposal ? projectRulesProposalChange(proposal) : undefined} state={decision} disabled={blocked || run.projectId !== projectId || run.status !== 'awaiting_approval'} onAllow={() => {if (proposal) void act('approve', {stepId: step.id});}} onReject={() => {if (proposal) void act('deny', {stepId: step.id});}} /></div>;
+        })}
         {approval.map(step => <section key={step.id} className="agent-task-approval mio-card" data-testid={`agent-task-approval-${step.id}`}><header><Icon name={step.tier === 'paid' ? 'film' : 'info'} /><strong>{step.tier === 'paid' ? taskOperationTitle(step.display?.operation ?? step.toolCall?.name ?? '', locale) : t('agent.panel.approvalTitle')}</strong></header><p className="mio-secondary">{step.display && taskDisplayTargets(step.display, locale, targetName)}</p>{parameters(step)}{step.tier === 'paid' && step.display?.targets.length ? <dl className="mio-parameters"><div><dt>{t('agent.panel.result')}</dt><dd>{taskDisplayTargets(step.display, locale, targetName)} · {t('agent.panel.newVersion')}</dd></div></dl> : null}{step.tier === 'paid' ? <p className="mio-fee"><Icon name="info" />{t('agent.panel.fee')}</p> : <p>{step.tier ? t(`agent.task.tier.${step.tier}`) : t('agent.task.pending')}</p>}<div className="mio-card-actions"><Button data-testid={`agent-task-deny-${step.id}`} disabled={blocked} onClick={() => { void act('deny', { stepId: step.id }); }}>{t('agent.panel.reject')}</Button><Button variant="primary" data-mio-primary data-testid={`agent-task-approve-${step.id}`} disabled={blocked} onClick={() => { void act('approve', { stepId: step.id }); }}>{t(step.tier === 'paid' ? 'agent.panel.confirmGenerate' : 'agent.task.approve')}</Button></div>{step.tier === 'paid' && <Button variant="ghost" className="mio-settings-link" disabled={!visible} onClick={() => { if (visibility.current) onSettings(); }}>{t('agent.panel.paidSettings')} <Icon name="arrow" /></Button>}</section>)}
         {run.status === 'paused' && unknown.length === 0 && <section className="mio-card" data-testid="agent-task-paused">
           <strong>{t(run.pauseReason === 'budget' ? 'agent.panel.budgetTitle' : ['conflict', 'editing'].includes(run.pauseReason ?? '') ? 'agent.panel.conflictTitle' : 'agent.panel.pauseTitle')}</strong>
@@ -300,6 +323,8 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
       {(state.error || state.phase === 'detached') && <p role="alert" className="mio-error" data-testid="agent-task-error">{t(agentTaskErrorKey(state.error))}</p>}
       {state.pending ? <div className="mio-card" data-testid="agent-task-unknown"><p>{t('agent.task.unknown')}</p><Button disabled={!visible || busy} onClick={() => { void session.current?.reconcile(); }}>{t('agent.task.confirmRead')}</Button></div> : ['error', 'read_error', 'detached'].includes(state.phase) && <Button data-testid="agent-task-reload" disabled={!visible || busy} onClick={() => { void session.current?.load(); }}>{t('agent.task.reload')}</Button>}
       {project?.readOnly && <p className="mio-secondary" data-testid="agent-task-read-only">{t('agent.task.readOnly')}</p>}
+      {onReviewProjectRules && rulesStatus?.trust === 'untrusted' && rulesDismissed !== rulesStatus.hash && <><ProjectRulesNotice enable={{kind: 'idle'}} onReview={() => {if (visibility.current) onReviewProjectRules();}} onLater={() => setRulesDismissed(rulesStatus.hash)} /><p className="mio-rules-current-note">{t('projectRules.runtime.nextRound')}</p></>}
+      {onReviewProjectRules && (rulesReadError || rulesStatus?.trust === 'pending' || rulesStatus?.trust === 'unavailable') && <WorkbenchAlert tone="warning" data-testid="agent-task-rules-unavailable" actions={<><Button size="compact" disabled={!visible} onClick={() => onReviewProjectRules()}>{t('projectFile.rules.review')}</Button><Button size="compact" disabled={!visible} onClick={() => rulesRefresh.current()}>{t('projectRules.runtime.refresh')}</Button></>}>{t(rulesStatus?.trust === 'pending' ? 'projectRules.runtime.pending' : 'projectRules.runtime.unavailable')}</WorkbenchAlert>}
       {!run && !state.pending && <div className="mio-empty" data-testid="agent-task-empty"><p>{t('agent.task.empty')}</p><p className="mio-secondary">{t('agent.panel.try')}</p><div className="mio-suggestions">{(['description', 'gaps', 'subtitles', 'export'] as const).map((suggestion, index) => <Button key={suggestion} variant="secondary" disabled={blocked} onClick={() => { session.current?.edit(t(`agent.panel.suggest.${suggestion}`),state.selectionKey); input.current?.focus(); }}><Icon name={['image', 'zoom', 'text', 'check'][index]} />{t(`agent.panel.suggest.${suggestion}`)}</Button>)}</div></div>}
       {(state.rounds.length?state.rounds:state.snapshot?[state.snapshot]:[]).map(renderRound)}
       {/* Project recovery owns its pending-receipt close fence across conversation selection. */}

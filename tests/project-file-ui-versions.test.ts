@@ -1,8 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {fileURLToPath} from 'node:url';
+import {join} from 'node:path';
+import {randomUUID} from 'node:crypto';
+import {build} from 'esbuild';
 import { LOCALES, translate } from '../packages/i18n/src/index.ts';
-import type { MessageArguments, MessageKey } from '../packages/i18n/src/index.ts';
+import type { Locale, MessageArguments, MessageKey } from '../packages/i18n/src/index.ts';
 import { assertGroupEvidence, escapeHtml, projectFileScenes, tagOf } from './helpers/project-file-ui.ts';
+import {createProjectHistoryClient,ProjectHistoryError} from '../apps/web/src/project-history-client.ts';
+import type {ProjectHistoryClient} from '../apps/web/src/project-history-client.ts';
+import {createProjectHistoryRuntime} from '../apps/web/src/project-history-runtime.ts';
+import type {ProjectHistoryRuntime} from '../apps/web/src/project-history-runtime.ts';
+import type {ProjectHistoryDialogProps} from '../apps/web/src/project-file/ProjectHistoryDialog.tsx';
+import type {RestoreVersionDialogProps} from '../apps/web/src/project-file/RestoreVersionDialog.tsx';
+import {NOW,RESTORE_PREVIEW,VERSIONS} from './fixtures/project-file-ui/fixtures.ts';
 
 // U1 group 3: project menu (12-07), version history (12-08), restore (12-09) and packing (12-10, 12-11).
 const ui = await projectFileScenes();
@@ -12,6 +24,35 @@ const count = (value: string, pattern: RegExp) => (value.match(pattern) ?? []).l
 const disabled = (tag: string | null) => tag !== null && /\sdisabled=""/u.test(tag);
 const busy = (tag: string | null) => tag !== null && /aria-busy="true"/u.test(tag);
 const shortcuts = (markup: string) => [...markup.matchAll(/data-slot="dropdown-menu-shortcut"[^>]*>([^<]*)</gu)].map(match => match[1]);
+
+/** Render the production container against actual controller snapshots. Only
+ * portals, locale and the singleton lookup are adapted for server rendering. */
+async function historyContainer() {
+  const root=fileURLToPath(new URL('../',import.meta.url)),fixtures=join(root,'tests/fixtures/project-file-ui');
+  const entry=`import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';
+    import {ProjectHistoryDialog} from ${JSON.stringify(join(root,'apps/web/src/project-file/ProjectHistoryDialog.tsx'))};
+    import {RestoreVersionDialog} from ${JSON.stringify(join(root,'apps/web/src/project-file/RestoreVersionDialog.tsx'))};
+    import {setLocale} from ${JSON.stringify(join(fixtures,'ssr-i18n.tsx'))};import {setRuntime} from 'u2-ssr-runtime';
+    export function render(runtime,props,locale){setRuntime(runtime);setLocale(locale);return renderToStaticMarkup(<ProjectHistoryDialog {...props}/>);}
+    export function restore(props,locale){setLocale(locale);return renderToStaticMarkup(<RestoreVersionDialog {...props}/>);}`;
+  const result=await build({stdin:{contents:entry,loader:'tsx',resolveDir:join(root,'apps/web')},bundle:true,platform:'node',format:'cjs',write:false,jsx:'automatic',
+    loader:{'.css':'empty'},define:{'process.env.NODE_ENV':'"production"'},nodePaths:[join(root,'apps/web/node_modules')],plugins:[{name:'history-container-ssr',setup(build){
+      build.onResolve({filter:/^@mioon\/ui\/components\/(?:dialog|dropdown-menu)$/},()=>({path:join(fixtures,'ssr-overlays.tsx')}));
+      build.onResolve({filter:/\/i18n\/I18nProvider\.tsx$/},()=>({path:join(fixtures,'ssr-i18n.tsx')}));
+      build.onResolve({filter:/(?:^u2-ssr-runtime$|\/project-history-runtime\.ts$)/},()=>({path:'runtime',namespace:'history-ssr'}));
+      build.onLoad({filter:/.*/,namespace:'history-ssr'},()=>({contents:'let runtime;export function setRuntime(next){runtime=next;}export function projectHistoryRuntime(){return runtime;}',loader:'js'}));
+    }}]});
+  const module={exports:{}};Function('require','module','exports',result.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports);
+  return module.exports as {render(runtime:ProjectHistoryRuntime,props:ProjectHistoryDialogProps,locale:Locale):string;restore(props:RestoreVersionDialogProps,locale:Locale):string};
+}
+const productionHistory=await historyContainer();
+const historyProjectId=RESTORE_PREVIEW.projectId,historyVersion=VERSIONS[0];
+function historyClient(patch:Partial<ProjectHistoryClient>={}):ProjectHistoryClient {
+  return {...createProjectHistoryClient(async()=>assert.fail('Unexpected network in controlled SSR')),
+    list:async()=>({projectId:historyProjectId,versions:[historyVersion.summary],nextCursor:null}),preview:async()=>RESTORE_PREVIEW,...patch};
+}
+const historyProps:ProjectHistoryDialogProps={open:true,projectId:historyProjectId,projectName:'SSR history',onClose:()=>{},onRestored:()=>{},onOpenProject:()=>{}};
+async function settleHistory(){for(let turn=0;turn<25;turn++)await Promise.resolve();}
 
 test('every versions and packing scene renders in all four languages', () => {
   const scenes = ui.list.filter(scene => scene.group === 'versions-pack');
@@ -89,22 +130,27 @@ test('12-08 other triggers, earlier days and the list and detail states', () => 
   assert.ok(tagOf(detailError, 'pf-version-compare-retry'));
 });
 
-test('12-09 restore: what is undone, "N more", Mio\'s superseded changes and the states', () => {
+test('12-09 restore: actual totals, attribution, retained reasons, pagination and the states', () => {
   const page = html('12-09');
   assert.ok(page.includes(text('projectFile.versions.restore.title', { name: 'Mio 第 3 轮之前' })));
-  assert.ok(page.includes(text('projectFile.versions.restore.body', { count: 2 })));
-  assert.ok(page.includes('片段 scene-b.mp4'));
-  assert.ok(page.includes('你改过时长：210 帧 → 180 帧'));
-  assert.ok(page.includes('字幕「镜头缓慢推进」'));
-  assert.ok(page.includes(text('projectFile.versions.restore.changedField', { property: '字幕文字' })));
-  assert.ok(page.includes(text('projectFile.versions.restore.supersededTurn')));
+  assert.ok(page.includes(text('projectHistory.plan', {count: 3, kept: 1})));
+  assert.ok(page.includes('timeline-1'));
+  assert.ok(page.includes(text('projectHistory.fields', {fields: '片段，字幕'})));
+  assert.ok(page.includes(text('projectHistory.source.other')));
+  assert.ok(page.includes(text('projectHistory.source.mio')));
+  assert.ok(page.includes(text('projectHistory.action.keep-current')));
+  assert.ok(page.includes('保留的结果仍引用此素材'));
+  assert.ok(page.includes(text('projectHistory.undo')));
+  assert.equal(page.includes('你改过时长'), false);
+  assert.equal(page.includes('210 帧 → 180 帧'), false);
+  assert.equal(tagOf(page, 'pf-restore-superseded'), null);
   assert.equal(tagOf(page, 'pf-restore-more'), null);
   const more = html('12-09-more');
-  assert.ok(more.includes(text('projectFile.versions.restore.more', { count: 4 })));
-  assert.ok(more.includes(text('projectFile.versions.restore.changedFields', { count: 2 })));
-  assert.ok(more.includes('镜头 雨夜街道'));
+  assert.ok(more.includes(text('projectHistory.plan', {count: 7, kept: 1})));
+  assert.ok(tagOf(more, 'pf-restore-more'));
+  assert.ok(more.includes('node-4'));
   const empty = html('12-09-empty');
-  assert.ok(empty.includes(text('projectFile.versions.restore.bodyNoManual')));
+  assert.ok(empty.includes(text('projectHistory.plan', {count: 0, kept: 0})));
   assert.equal(tagOf(empty, 'pf-restore-changes'), null);
   assert.equal(tagOf(empty, 'pf-restore-superseded'), null);
   assert.equal(disabled(tagOf(empty, 'pf-restore-confirm')), false);
@@ -118,7 +164,8 @@ test('12-09 restore: what is undone, "N more", Mio\'s superseded changes and the
   const restoring = html('12-09-restoring');
   assert.equal(busy(tagOf(restoring, 'pf-restore-confirm')), true);
   assert.equal(disabled(tagOf(restoring, 'pf-restore-cancel')), true);
-  assert.ok(html('12-09-restore-error').includes(text('projectFile.versions.restore.failed')));
+  assert.ok(html('12-09-restore-error').includes(text('projectHistory.error.busy')));
+  assert.ok(html('12-09-restore-error').includes('PROJECT_HOST_BUSY'));
 });
 
 test('12-10 packing: the manifest, the missing warning only when media are missing, and the states', () => {
@@ -163,4 +210,50 @@ test('12-11 packing finished: what was copied, and the missing media only when s
 
 test('versions and packing screenshots match the scene table', async () => {
   await assertGroupEvidence('versions-pack');
+});
+
+test('pending edits preserve real version reads and preview while save and both restore confirmations stay unavailable',async()=>{
+  const runtime=createProjectHistoryRuntime(historyProjectId,historyClient());runtime.open();await settleHistory();await runtime.select(historyVersion.summary.id);
+  try{
+    const normal=productionHistory.render(runtime,historyProps,'zh-Hans');assert.ok(tagOf(normal,'pf-versions-save'));assert.equal(disabled(tagOf(normal,'pf-version-restore')),false);
+    for(const locale of LOCALES){
+      const markup=productionHistory.render(runtime,{...historyProps,pendingEdits:true},locale);
+      assert.ok(tagOf(markup,`pf-version-${historyVersion.summary.id}`));assert.equal(disabled(tagOf(markup,`pf-version-${historyVersion.summary.id}`)),false,'history selection remains readable');
+      assert.ok(tagOf(markup,'pf-version-runtime-diff'));assert.ok(markup.includes('timeline-1'));assert.equal(tagOf(markup,'pf-versions-save'),null);assert.equal(disabled(tagOf(markup,'pf-version-restore')),true);
+      assert.match(tagOf(markup,'pf-history-pending-edits')??'',/data-tone="warning"/u);assert.ok(markup.includes(escapeHtml(translate(locale,'projectHistory.pendingEdits'))));
+      const confirmation=productionHistory.restore({open:true,version:historyVersion,now:NOW,preview:{kind:'ready',value:RESTORE_PREVIEW},restore:{kind:'idle'},pendingEdits:true,onRestore:()=>assert.fail('SSR cannot mutate'),onRetry:()=>{},onClose:()=>{}},locale);
+      assert.equal(disabled(tagOf(confirmation,'pf-restore-confirm')),true);assert.ok(confirmation.includes(escapeHtml(translate(locale,'projectHistory.pendingEdits'))));assert.ok(confirmation.includes('timeline-1'));
+    }
+    assert.equal(runtime.snapshot().attempt,null,'viewing under the dirty guard never starts a write');
+  }finally{runtime.close();}
+});
+
+test('pending edits do not disable an unknown original restore retry or consume its exact input',async()=>{
+  const sent:unknown[]=[];let unknown=true;
+  const runtime=createProjectHistoryRuntime(historyProjectId,historyClient({restore:async input=>{sent.push(structuredClone(input));if(unknown)throw new ProjectHistoryError('BACKEND_UNAVAILABLE');return{projectId:input.projectId,requestId:input.requestId,versionId:input.versionId,beforeVersionId:randomUUID(),contentSequence:RESTORE_PREVIEW.contentSequence+1,contentToken:'c'.repeat(32),totalChanges:0,appliedChanges:[],keptCurrent:[]};}}));
+  runtime.open();await settleHistory();await runtime.select(historyVersion.summary.id);await runtime.restoreVersion();
+  try{
+    const original=structuredClone(runtime.snapshot().attempt);assert.equal(original?.phase,'unknown');assert.equal(original?.kind,'version');
+    for(const locale of LOCALES){
+      const markup=productionHistory.render(runtime,{...historyProps,pendingEdits:true},locale);
+      assert.ok(tagOf(markup,'pf-history-retry-original'));assert.equal(disabled(tagOf(markup,'pf-history-retry-original')),false);assert.ok(markup.includes(escapeHtml(translate(locale,'projectHistory.retryOriginal'))));
+      const confirmation=productionHistory.restore({open:true,version:historyVersion,now:NOW,preview:{kind:'ready',value:RESTORE_PREVIEW},restore:{kind:'error',action:'restore'},pendingEdits:true,unknown:true,onRestore:()=>{},onRetry:()=>{},onClose:()=>{}},locale);
+      assert.equal(disabled(tagOf(confirmation,'pf-restore-confirm')),false);assert.ok(tagOf(confirmation,'pf-restore-unknown'));
+    }
+    assert.deepEqual(runtime.snapshot().attempt,original,'rendering and pending edits preserve the request, pair and digest');assert.equal(sent.length,1);
+    unknown=false;await runtime.retry();assert.deepEqual(sent[1],original?.input);assert.deepEqual(sent[0],sent[1]);assert.equal(sent.length,2);assert.equal(runtime.snapshot().attempt?.phase,'complete');
+  }finally{runtime.close();}
+});
+
+test('backup completion puts the four-language preserved-originals success notice below the real result path',async()=>{
+  const backupId=randomUUID(),newProjectId=randomUUID(),projectFile='/projects/recovered.mioon',backup={projectId:historyProjectId,backupId,contentSequence:1,contentToken:'a'.repeat(32),createdAt:NOW.toISOString(),reason:'close' as const,sizeBytes:4096};
+  const runtime=createProjectHistoryRuntime(historyProjectId,historyClient({backups:async()=>({projectId:historyProjectId,backups:[backup]}),status:async()=>({projectId:historyProjectId,state:'idle',lastAttemptAt:null,lastCompletedAt:null,lastError:null}),inspect:async()=>({...backup,projectName:'SSR history',sourceProjectDir:'/projects/original',tableCounts:{projects:1}}),
+    restoreBackup:async input=>({requestId:input.requestId,sourceProjectId:input.projectId,backupId:input.backupId,project:{projectId:newProjectId,projectFile:input.projectFile,name:'Recovered',fileIdentity:{dev:'1',ino:'2'},summary:null,lastOpenedAt:null}})}));
+  runtime.open('backups');await settleHistory();await runtime.inspect(backupId);await runtime.chooseBackup(async input=>({...input,projectFile}));
+  try{for(const locale of LOCALES){
+    const markup=productionHistory.render(runtime,{...historyProps,pendingEdits:true},locale),notice=tagOf(markup,'pf-backup-originals-preserved');
+    assert.match(notice??'',/data-tone="success"/u);assert.ok(markup.includes(escapeHtml(translate(locale,'projectHistory.backup.originalsPreserved'))));
+    assert.ok(markup.indexOf(projectFile)<markup.indexOf('data-testid="pf-backup-originals-preserved"'));assert.ok(markup.includes(projectFile));
+    assert.equal(markup.includes(escapeHtml(translate(locale,'projectHistory.pendingEdits'))),false,'restoring a separate project is not blocked by current edits');
+  }}finally{runtime.close();}
 });
