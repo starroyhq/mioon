@@ -43,7 +43,8 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
   const current = (serial = generation) => active && serial === generation && isCurrent() && !identity.getState().identityBlocked && !state.blocked;
   const editable = () => current() && state.createOpen && !state.busy && !retry && !knownCreated;
   const rejected = (error: unknown, action: ProjectOpenFailureAction) => object(error) && typeof error.code === 'string' &&
-    (['VALIDATION_ERROR', 'PROJECT_FILE_EXISTS', 'PROJECT_ACCESS_DENIED', 'PROJECT_LOCATION_REJECTED', 'PROJECT_COPY_SOURCE_CHANGED', 'PROJECT_INVALID', 'PROJECT_COPY_INVALID', 'PROJECT_ENTRY_BUSY'].includes(error.code) || action === 'copyTo' && error.code === 'PROJECT_HOST_BUSY');
+    (['VALIDATION_ERROR', 'PROJECT_FILE_EXISTS', 'PROJECT_ACCESS_DENIED', 'PROJECT_LOCATION_REJECTED', 'PROJECT_COPY_SOURCE_CHANGED', 'PROJECT_INVALID', 'PROJECT_COPY_INVALID'].includes(error.code) ||
+      error.code === 'PROJECT_ENTRY_BUSY' && (error.status === 409 || error.status === 503) || action === 'copyTo' && error.code === 'PROJECT_HOST_BUSY' && error.status === 409);
   function retireWrites(): boolean {
     const pending = [...dispatchedWrites, ...(retryIntent ? [retryIntent] : [])].filter(intent => !intent.acknowledged && !intent.retired);
     for (const intent of pending) {intent.retired = true; retiredWrites.add(intent);}

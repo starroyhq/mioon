@@ -136,18 +136,20 @@ test('disposal during metadata preflight is not a dispatched write, but disposal
   assert.equal(await unknown.controller.recheck(), false); assert.equal(unknown.controller.readCloseSnapshot().unknown, true); assert.equal(unknown.calls.filter(call => call.action === 'createAtSelection').length, 1);
 });
 test('known host and entry admission refusal are closable errors while post-dispatch uncertainty remains unknown', async t => {
-  for (const code of ['PROJECT_HOST_BUSY', 'PROJECT_ENTRY_BUSY']) for (const kind of ['duplicate', 'copyTo'] as const) await t.test(code + ' ' + kind, async t => {
+  for (const [code, status] of [['PROJECT_HOST_BUSY', 409], ['PROJECT_ENTRY_BUSY', 409], ['PROJECT_ENTRY_BUSY', 503]] as const) for (const kind of ['duplicate', 'copyTo'] as const) await t.test(code + ' ' + status + ' ' + kind, async t => {
     const f = await fixture(t, {openSelectedFile: () => ({status: 'copy-source', token, name: 'Source', displayPath: '/observed/source.mioon', reason: 'read-only', facts}),
-      [kind]: () => {throw Object.assign(Error(code), {code, status: 409, details: {}});}});
+      [kind]: () => {throw Object.assign(Error(code), {code, status, details: {}});}});
     if (kind === 'copyTo') await f.controller.openFile();
     assert.equal(await (kind === 'duplicate' ? f.controller.duplicate(projectId) : f.controller.copyTo()), false);
     assert.equal(f.calls.filter(call => call.action === kind).length, 1); assert.equal(f.controller.getState().action.kind, 'error'); assert.equal(f.controller.readCloseSnapshot().unknown, false);
     f.controller.closeFailure(); assert.equal(f.controller.getState().failure, null); assert.equal(await f.controller.recheck(), false);
     assert.equal(f.calls.filter(call => call.action === kind).length, 1, 'Closing/rechecking a deterministic refusal never resends a write');
   });
-  const uncertain = await fixture(t, {duplicate: () => {throw Object.assign(Error('Unconfirmed effect'), {code: 'PROJECT_ENTRY_OUTCOME_UNKNOWN', status: 409, details: {}});}});
-  await uncertain.controller.duplicate(projectId); assert.equal(uncertain.controller.getState().action.kind, 'unknown'); assert.equal(uncertain.controller.readCloseSnapshot().unknown, true);
-  uncertain.controller.closeFailure(); assert.notEqual(uncertain.controller.getState().failure, null);
+  for (const [code, status] of [['PROJECT_ENTRY_OUTCOME_UNKNOWN', 409], ['PROJECT_HOST_BUSY', 500], ['PROJECT_ENTRY_BUSY', 500]] as const) {
+    const uncertain = await fixture(t, {duplicate: () => {throw Object.assign(Error('Unconfirmed effect'), {code, status, details: {}});}});
+    await uncertain.controller.duplicate(projectId); assert.equal(uncertain.controller.getState().action.kind, 'unknown'); assert.equal(uncertain.controller.readCloseSnapshot().unknown, true);
+    uncertain.controller.closeFailure(); assert.notEqual(uncertain.controller.getState().failure, null);
+  }
 });
 test('a failed read before explicit write reconciliation preserves the original unknown request', async t => {
   let writes = 0;
