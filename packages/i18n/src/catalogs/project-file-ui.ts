@@ -26,7 +26,6 @@ export const projectFileUiMessages = {
   'projectFile.home.missing': { 'zh-Hans': '找不到项目文件', 'zh-Hant': '找不到專案檔案', en: 'Project file not found', ja: 'プロジェクトファイルが見つかりません' },
   'projectFile.home.lastSeen': { 'zh-Hans': '上次在 {place}', 'zh-Hant': '上次在 {place}', en: 'Last seen in {place}', ja: '前回の場所：{place}' },
   'projectFile.home.locked': { 'zh-Hans': '在另一个 Mioon 中打开', 'zh-Hant': '在另一個 Mioon 中開啟', en: 'Open in another Mioon', ja: '別の Mioon で開いています' },
-  'projectFile.home.accessDenied': { 'zh-Hans': '没有权限访问项目位置', 'zh-Hant': '沒有權限存取專案位置', en: 'No permission to access the project location', ja: 'プロジェクトの場所にアクセスする権限がありません' },
   'projectFile.home.readOnly': { 'zh-Hans': '项目文件只读', 'zh-Hant': '專案檔案唯讀', en: 'Project file is read-only', ja: 'プロジェクトファイルは読み取り専用です' },
   'projectFile.home.invalid': { 'zh-Hans': '文件无效', 'zh-Hant': '檔案無效', en: 'Invalid file', ja: '無効なファイル' },
   'projectFile.home.loading': { 'zh-Hans': '正在读取最近项目…', 'zh-Hant': '正在讀取最近專案…', en: 'Loading recent projects…', ja: '最近のプロジェクトを読み込み中…' },

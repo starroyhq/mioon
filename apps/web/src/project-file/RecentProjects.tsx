@@ -131,7 +131,6 @@ export function RecentProjectCard(props: RecentProjectCardProps): ReactElement {
   const meta = missing
     ? <><span>{t('projectFile.home.missing')}</span><span>{t('projectFile.home.lastSeen', { place: lastSeenLabel(project.projectFile, homeDirectory) })}</span></>
     : availability.state === 'locked' ? <>{folder}<span className="pf-card-status" data-tone="warning">{t('projectFile.home.locked')}</span></>
-      : availability.state === 'access-denied' ? <>{folder}<span className="pf-card-status" data-tone="warning" data-testid={`pf-card-access-denied-${project.projectId}`}>{t('projectFile.home.accessDenied')}</span></>
       : availability.state === 'invalid' ? <><span className="pf-card-status" data-tone={availability.reason === 'read-only' ? 'warning' : 'danger'}>{t(availability.reason === 'read-only' ? 'projectFile.home.readOnly' : 'projectFile.home.invalid')}</span>{folder}</>
         : <>{folder}{when && <span>{display.when(when, now)}</span>}</>;
   return <article className="pf-card" data-availability={availability.state} data-layout={layout} data-testid={`pf-card-${project.projectId}`}>

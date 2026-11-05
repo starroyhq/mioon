@@ -82,7 +82,7 @@ export function createLauncherClient(rpc: LauncherRpc, checks: LauncherContractC
         ...(project.summary ? {description: project.summary.description, revision: project.summary.revision, createdAt: project.summary.createdAt} : {}),
       })));
     },
-    async create(name: string, description: string, timelinePresetId?: string, isAdmissionAllowed: () => boolean = () => true): Promise<LauncherCreatedProject> {
+    async create(name: string, description: string, timelinePresetId?: string): Promise<LauncherCreatedProject> {
       if (identityBlocked) throw new LauncherCreateError('rejected');
       let input: { name: string; description: string; timelinePresetId?: string };
       try {
@@ -92,13 +92,7 @@ export function createLauncherClient(rpc: LauncherRpc, checks: LauncherContractC
       } catch { throw new LauncherCreateError('rejected'); }
       // A previous catalog is not current proof of the application library.
       // Failing this read is definitive: no create RPC has been dispatched.
-      try {
-        if (!isAdmissionAllowed()) throw new LauncherCreateError('rejected');
-        await directory();
-        // The directory GET can outlive its native editor's lease. Consult
-        // live admission at the actual mutation boundary, before any RPC.
-        if (!isAdmissionAllowed()) throw new LauncherCreateError('rejected');
-      } catch {throw new LauncherCreateError('rejected');}
+      try {await directory();} catch {throw new LauncherCreateError('rejected');}
       let response: unknown;
       try { response = await rpc('project.create', input); }
       catch (error) {

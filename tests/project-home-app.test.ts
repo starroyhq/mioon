@@ -1,6 +1,6 @@
 type HomeSnapshot=Omit<ReturnType<typeof snapshot>,'project'>&{project:ReturnType<typeof snapshot>['project']|null};
 interface HomeOptions {nativeWindow?:ReturnType<typeof nativeEditor>|null;confirm?:()=>unknown;guard?:(current:()=>unknown)=>unknown;preferences?:(...args:unknown[])=>unknown;preferenceStatus?:{phase:string;error?:Error};discovery?:Promise<unknown>;videoDirectory?:()=>unknown;rpc?:(operation:string,input:{projectId:string})=>unknown;get?:(projectId:string)=>unknown;create?:(...args:unknown[])=>unknown}
-interface HomeEnvironment extends Record<string,unknown> {auth:boolean|'error'|null;bootGuard:{current:ReturnType<typeof createProjectBootGuard>};busy:Record<string,unknown>;currentProject:{current:string|null};data:HomeSnapshot;dataRef:{current:HomeSnapshot};homePage:string;importSession:{current:{active:boolean;selection:number;leaseRevoked?:boolean}};loading:boolean;nativeLeaseRevoked:{current:boolean};nativeWindow:ReturnType<typeof nativeEditor>|null;navigationEpoch:{current:number};openedProject:{current:opening.ProjectOpenAttempt|null};projectCreateFlight:{current:unknown};projectEpoch:{current:number};projectListStatus:{busy:boolean;error:string|i18nCore.DisplayMessage};projectOpening:{phase:string;projectId:string|null;error:string};requestCounter:{current:number};toast:unknown;videoDirectoryUnavailable:boolean;viewReady:{current:boolean};viewRef:{current:ReturnType<typeof defaultWorkspaceState>};webSettingsRequest:{page:string;resolve?:(accepted:boolean)=>void}|null;window:{location:{href:string;search:string;pathname:string};history:{pushState:(...args:unknown[])=>number;replaceState:(...args:unknown[])=>number}};editorSession: {current: string}, workspaceRef:{current:{}}}
+interface HomeEnvironment extends Record<string,unknown> {auth:boolean|'error'|null;bootGuard:{current:ReturnType<typeof createProjectBootGuard>};busy:Record<string,unknown>;currentProject:{current:string|null};data:HomeSnapshot;dataRef:{current:HomeSnapshot};homePage:string;importSession:{current:{active:boolean;selection:number}};loading:boolean;nativeWindow:ReturnType<typeof nativeEditor>|null;navigationEpoch:{current:number};openedProject:{current:opening.ProjectOpenAttempt|null};projectCreateFlight:{current:unknown};projectEpoch:{current:number};projectListStatus:{busy:boolean;error:string|i18nCore.DisplayMessage};projectOpening:{phase:string;projectId:string|null;error:string};requestCounter:{current:number};toast:unknown;videoDirectoryUnavailable:boolean;viewReady:{current:boolean};viewRef:{current:ReturnType<typeof defaultWorkspaceState>};webSettingsRequest:{page:string;resolve?:(accepted:boolean)=>void}|null;window:{location:{href:string;search:string;pathname:string};history:{pushState:(...args:unknown[])=>number;replaceState:(...args:unknown[])=>number}};editorSession: {current: string}, workspaceRef:{current:{}}}
 interface HomeApi {projectSessionReady():boolean;selectProject(projectId:string,remember?:boolean):Promise<boolean>;refresh(projectId:string,silent?:boolean,options?:{opening?:boolean}):Promise<ReturnType<typeof snapshot>|null>;prepareSettingsDeparture():Promise<unknown>;openGlobalSettings(page?:string):unknown;changeHomePage(page:string):Promise<unknown>;refreshHomeProjects():Promise<unknown>;createProject(name:string,description:string):Promise<boolean>;showProjectHome():Promise<boolean>;boot():Promise<void>}
 type HomeHarness=ReturnType<typeof harness>;
 type HomeUi={React:typeof import('react');renderToStaticMarkup:typeof import('react-dom/server').renderToStaticMarkup;ConfirmationProvider:typeof import('../packages/ui/src/components/workbench-confirm.tsx').ConfirmationProvider}&Record<string,unknown>;
@@ -495,23 +495,6 @@ test('actual auth branches retain their existing protections', () => {
   assert.deepEqual(render(h).mounted, ['Login']); assert.doesNotMatch(render(h).html, /data-testid="project-home"|data-testid="workbench"/);
   h.env.auth = 'error'; const failed = render(h); assert.match(failed.html, /暂时无法连接工作台/); assert.doesNotMatch(failed.html, /data-testid="workbench"/);
 
-});
-
-test('the same native render boundary retains its workbench and dirty owner after lease revocation', async () => {
-  const render = boundaryRenderer(), h = harness({nativeWindow: nativeEditor(id(3))});
-  assert.equal(await h.selectProject(id(3), true), true);
-  const draft = {current: true}; h.env.agentDraft = draft;
-  const data = h.env.dataRef.current, opened = h.env.openedProject.current, epoch = h.env.projectEpoch.current;
-  assert.match(render(h).html, /<main[^>]+data-testid="workbench"/);
-  h.env.nativeLeaseRevoked.current = true; h.env.importSession.current.leaseRevoked = true;
-  assert.equal(h.projectSessionReady(), false);
-  const revoked = render(h);
-  assert.match(revoked.html, /<main[^>]+data-testid="workbench"/);
-  assert.doesNotMatch(revoked.html, /data-testid="project-home"|data-testid="editor-window-opening"/);
-  assert.equal(h.env.dataRef.current, data); assert.equal(h.env.data, data);
-  assert.equal(h.env.agentDraft, draft); assert.equal(draft.current, true);
-  assert.equal(h.env.currentProject.current, id(3)); assert.equal(h.env.projectEpoch.current, epoch);
-  assert.equal(h.env.openedProject.current, opened); assert.equal(h.env.importSession.current.active, true);
 });
 
 test('actual home keeps optional video directory failure visible across toast changes and clears it on recovery', async () => {

@@ -125,7 +125,7 @@ test('without a hot journal nothing of the project file is read: an unreadable o
     assert.deepEqual(recoverProjectFile(project.projectFile), {state: 'clean'});
     // With a hot journal beside it the header is read, and the read fails.
     writeFileSync(journal, Buffer.concat([JOURNAL_MAGIC, Buffer.alloc(504, 1)]));
-    assert.deepEqual(recoverProjectFile(project.projectFile), {state: 'invalid', reason: 'unusable'});
+    assert.deepEqual(recoverProjectFile(project.projectFile), {state: 'access-denied'});
     rmSync(journal);
   } finally {
     chmodSync(project.projectFile, 0o644);
