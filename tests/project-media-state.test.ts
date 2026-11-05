@@ -234,7 +234,7 @@ test('actual App focus rechecks unchanged-reference assets after the strict dire
     const h = await focusFixture();
     assert.equal(h.f.controller.canRead(asset()), true);
     const held = deferred<unknown>(); h.readDirectory(() => held.promise); h.setStatus(changed); h.recheck();
-    await turn(); assert.equal(h.directories.length, 1); assert.equal(h.refreshes(), 0); assert.deepEqual(h.http, []);
+    await turn(); assert.equal(h.directories.length, 1); assert.equal(h.refreshes(), 0); assert.deepEqual([...h.http], []);
     held.resolve(h.snapshot); await turn();
     assert.equal(h.refreshes(), 1); assert.equal(h.f.controller.canRead(asset()), false);
     const state = h.f.controller.getState(); assert.equal(state.status.kind, 'ready');
