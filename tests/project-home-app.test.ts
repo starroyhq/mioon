@@ -43,7 +43,7 @@ function environment(options:HomeOptions = {}) {
   const calls: unknown[][] = [], registry = createSettingsNavigationRegistry();
   const env = { LanguageControl: () => null, renderImportFeedback: (locale: string, value: string|i18nCore.DisplayMessage|null|undefined) => renderCoreMessage((locale as unknown as Parameters<typeof renderCoreMessage>[0]), value), msg, ...createI18nTestContext(), localizedError: (displayMessage: string|i18nCore.DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }),
     ...opening, videoConnectionProviders, readGenerationProviderDirectory,
-    editorInitialSelection, revealNativeProjects, nativeWindow: options.nativeWindow ?? null,
+    editorInitialSelection, revealNativeProjects, nativeWindow: options.nativeWindow ?? null, nativeLeaseRevoked: {current: false},
     clipDraftRef: {current: null}, retainWorkbenchForClip: false, guardRetainedInputInteraction() {},
 
 

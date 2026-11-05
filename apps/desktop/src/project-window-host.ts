@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import {projectEntryWindowSchema,projectEntryWindowRevokedSchema} from '../../../packages/contracts/src/project-entry-native.ts';
+import type {ProjectEntryControlPort,ProjectEntryWindow} from '../../../packages/contracts/src/project-entry-native.ts';
 import { PROJECT_WINDOW_EVENT, isProjectWindowId, isProjectWindowRequest, isProjectWindowSettingsSlot, isProjectWindowEntryMode } from './project-window-protocol.ts';
 import type { ProjectWindowContext, ProjectWindowEntryMode, ProjectWindowEntryReceipt, ProjectWindowOpenResult, ProjectWindowRole, ProjectWindowSettingsSlot, ProjectWindowPhase, ProjectWindowLocatorStatus, ProjectWindowLocatorIntent } from './project-window-protocol.ts';
 
@@ -54,6 +56,10 @@ export interface ProjectWindowHostOptions<W extends ProjectNativeWindow> {
   onWebContentsDestroyed?(windowId: string): void;
   /** Fixed renderer entry-admission hook. Absence/invalid response denies. */
   consumeProjectEntry?(owner: ProjectWindowDocumentOwner<W>, entryToken: string, projectId: string): unknown | Promise<unknown>;
+  /** Main-owned utility port. Editors are never created without a window lease. */
+  readonly projectEntries?: Pick<ProjectEntryControlPort,'openPath'|'acquire'|'release'|'onWindowRevoked'>;
+  /** Main checks the registered physical path/volume before renderer UUID open. */
+  admitProject?(owner:ProjectWindowDocumentOwner<W>,projectId:string):Promise<string>;
 }
 export interface ProjectWindowIPCEvent { readonly sender: ProjectWindowWebContents; readonly senderFrame: ProjectWindowFrame | null }
 interface EntryAttempt {
@@ -62,6 +68,7 @@ interface EntryAttempt {
   result: ProjectWindowOpenResult | null;
 }
 type EditorPhase = Exclude<ProjectWindowPhase, 'none'>;
+interface WindowLease {readonly windowId:string;projectId:string|null;projectFile?:string;released:boolean;revoked:boolean}
 interface WindowRecord<W extends ProjectNativeWindow> {
   readonly window: W; readonly contents: ProjectWindowWebContents; readonly windowId: string; readonly role: ProjectWindowRole; readonly projectId: string | null; readonly url: string;
   readonly parent: WindowRecord<W> | null;
@@ -73,6 +80,7 @@ interface WindowRecord<W extends ProjectNativeWindow> {
   initialLoad: { contextId: string; started: boolean; frame: ProjectWindowFrame | null };
   load: Promise<void>; owner: ProjectWindowOwner<W>;
   listeners: Array<{ target: EventSource; event: string; listener: Listener }>;
+  readonly lease:WindowLease|null;
 }
 const refused = (reason: 'busy' | 'unavailable'): ProjectWindowOpenResult =>
   Object.freeze({ ok: false, reason, targetWindowId: null, targetPhase: null });
@@ -90,13 +98,24 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
   let launcher: WindowRecord<W> | null = null, settings: WindowRecord<W> | null = null;
   const editors = new Map<string, WindowRecord<W>>(), reservations = new Set<string>();
   const records = new Map<W, WindowRecord<W>>(), contentsRecords = new Map<ProjectWindowWebContents, WindowRecord<W>>();
+  const leases=new Map<string,WindowLease>(),retiredLeases=new Set<string>(),revokedLeases=new Set<string>();
+  let projectEntries=options.projectEntries??null,unsubscribeLeases:(()=>void)|null=null;
+  if(projectEntries&&(['openPath','acquire','release','onWindowRevoked'] as const).some(key=>typeof projectEntries?.[key]!=='function'))projectEntries=null;
   const hiddenForTray = new WeakSet<WindowRecord<W>>();
   const nativeDialogPresentation = new WeakSet<WindowRecord<W>>();
+  const nativeDialogOwners=new Map<WindowRecord<W>,string>();
   let disposed = false, launcherCreated = false, trayHidden = false, trayHideEpoch = 0, intent = 0, focusOrder = 0, fence = 0, wasPermitted = options.canInteract();
   let locatorStatus: ProjectWindowLocatorStatus | null = null, locatorIntent: ProjectWindowLocatorIntent | null = null;
   let locatorContextId: string | null = null, locatorIntentVersion = 0;
   let selectionVersion = 0, selectionRecord: WindowRecord<W> | null = null, selectionContextId: string | null = null;
   const lifetime = () => !disposed && options.isCurrent();
+  function releaseLease(lease:WindowLease):void{
+    if(lease.released)return;lease.released=true;retiredLeases.add(lease.windowId);if(leases.get(lease.windowId)===lease)leases.delete(lease.windowId);
+    try{void Promise.resolve(projectEntries?.release({windowId:lease.windowId})).catch(()=>{});}catch{/* The utility lifetime also retires its owned leases. */}
+  }
+  function candidate(projectId:string|null=null,projectFile?:string):WindowLease{
+    const lease={windowId:randomUUID(),projectId,...(projectFile?{projectFile}:{}),released:false,revoked:false};leases.set(lease.windowId,lease);return lease;
+  }
   const editorCount = () => editors.size + reservations.size;
   function permitted() {
     const allowed = lifetime() && options.canInteract();
@@ -110,6 +129,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
   }
   const ownsRecord = (record: WindowRecord<W>) => lifetime() && !record.closed && !record.window.isDestroyed() && records.get(record.window) === record &&
     (record.role === 'launcher' ? launcher === record : record.role === 'settings' ? settings === record : editors.get(record.projectId!) === record);
+  const isClosing=(record:WindowRecord<W>)=>record.phase==='closing';
   // Actual closed, rather than a close request or a renderer failure, releases
   // the parent. A vetoed settings close must keep both native and DOM modality.
   const modalFor = (record: WindowRecord<W>) => lifetime() && settings?.parent === record &&
@@ -127,6 +147,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     return { version: 2, role: record.role, windowId: record.windowId, contextId: record.contextId, backendId: options.backendId,
       initialProjectId: record.projectId, autoOpen: record.autoOpen, editorProjectId: record.projectId,
       editorPhase: record.role === 'editor' ? record.phase : 'none', editorCount: editorCount(),
+      leaseRevoked:record.lease?.revoked===true,
       entryMode: record.entryMode, entryVersion: record.entryVersion, entryReceipt: record.entryReceipt,
       settingsSlot: record.settingsSlot, settingsVersion: record.settingsVersion,
       settingsModalOpen: Boolean(modalFor(record)),
@@ -142,11 +163,11 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     }
   }
   function capture(record: WindowRecord<W>): ProjectWindowDocumentOwner<W> | null {
-    if (!trustedDocument(record) || !record.frame) return null;
+    if (!trustedDocument(record) || !record.frame || record.lease?.revoked) return null;
     const contextId = record.contextId, frame = record.frame;
     return Object.freeze({ window: record.window, windowId: record.windowId, role: record.role, backendId: options.backendId,
       projectId: record.projectId, url: record.url, contextId, frame,
-      isCurrent: () => record.contextId === contextId && record.frame === frame && trustedDocument(record) });
+      isCurrent: () => !record.lease?.revoked && record.contextId === contextId && record.frame === frame && trustedDocument(record) });
   }
   function invalidateDocument(record: WindowRecord<W>) {
     const owner = capture(record);
@@ -194,15 +215,17 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
   function revokeSelection(record: WindowRecord<W>) {
     if (selectionRecord === record) { selectionRecord = null; selectionContextId = null; }
   }
-  function create(role: ProjectWindowRole, projectId: string | null, revealIntent = intent, parent: WindowRecord<W> | null = null, keepHidden = false): WindowRecord<W> | null {
+  function create(role: ProjectWindowRole, projectId: string | null, revealIntent = intent, parent: WindowRecord<W> | null = null, keepHidden = false, lease:WindowLease|null=null): WindowRecord<W> | null {
     if (!permitted()) return null;
     if (role === 'settings' && (!parent || parent.role === 'settings' || !trustedDocument(parent) || parent.phase === 'closing')) return null;
     if (role === 'editor') {
-      if (!projectId || editors.has(projectId) || reservations.has(projectId)) return null;
+      if (!projectId || !lease || lease.released || lease.revoked || lease.projectId!==projectId || editors.has(projectId) || reservations.has(projectId)) return null;
       reservations.add(projectId); hideLauncher();
     }
-    const url = role === 'editor' ? options.editorUrl(projectId!) : role === 'settings' ? options.settingsUrl ?? options.launcherUrl : options.launcherUrl;
-    const windowId = randomUUID(), contextId = randomUUID(), autoOpen = role === 'launcher' && !launcherCreated;
+    let url:string;
+    try{url=role==='editor'?options.editorUrl(projectId!):role==='settings'?options.settingsUrl??options.launcherUrl:options.launcherUrl;}
+    catch(error){if(projectId)reservations.delete(projectId);throw error;}
+    const windowId = lease?.windowId??randomUUID(), contextId = randomUUID(), autoOpen = role === 'launcher' && !launcherCreated;
     let window: W, contents: ProjectWindowWebContents;
     try {
       window = options.createWindow({ role, windowId, contextId, backendId: options.backendId, projectId, autoOpen, url, ...(parent ? {parent: parent.window} : {}) });
@@ -221,7 +244,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     record = { window, contents, windowId, role, projectId, url, parent, contextId, autoOpen, closed: false, committed: false, phase: 'opening', retainedPhase: 'opening',
       frame: null, revealIntent, revealFence: fence, readyToShow: false, focusOrder: ++focusOrder,
       entryMode: null, entryVersion: 0, entryReceipt: null, entryAttempt: null, settingsSlot: null, settingsVersion: 0,
-      initialLoad, load: Promise.resolve(), owner, listeners: [] };
+      initialLoad, load: Promise.resolve(), owner, listeners: [], lease };
     records.set(window, record); contentsRecords.set(contents, record);
     if (trayHidden || keepHidden) hiddenForTray.add(record);
     if (role === 'launcher') { launcher = record; launcherCreated = true; }
@@ -233,7 +256,9 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       const restoreParentFocus = role === 'settings' && parent &&
         ![...records.values()].some(other => other !== record && !other.closed && other.focusOrder > record.focusOrder);
       record.closed = true; revokeSelection(record); retireLocator(record);
+      if(lease)releaseLease(lease);
       nativeDialogPresentation.delete(record);
+      nativeDialogOwners.delete(record);
       records.delete(window); contentsRecords.delete(contents);
       for (const entry of record.listeners) entry.target.removeListener(entry.event, entry.listener);
       if (launcher === record) launcher = null;
@@ -279,7 +304,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       // here would strand its renderer and close guard. A foreign commit remains
       // untrusted through the exact URL and main-frame checks below.
       if (target !== record.url) return;
-      finishNativeDialog(window, record.contextId);
+      retireNativeDialogPresentation(record);
       const previousContext = record.contextId;
       const firstAssignedLoad = !initialLoad.started && initialLoad.contextId === previousContext && target === url;
       invalidateDocument(record); retireLocator(record);
@@ -289,7 +314,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
         initialLoad.started = true; initialLoad.contextId = record.contextId;
         if (selectionRecord === record && selectionContextId === previousContext) selectionContextId = record.contextId;
       } else revokeSelection(record);
-      record.phase = 'opening';
+      record.phase = record.lease?.revoked?'failed':'opening';
       refresh();
     });
     listen(record, contents, 'did-navigate', () => {
@@ -396,7 +421,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     if (record.readyToShow) reveal(record);
     refresh(); return true;
   }
-  function reserveProject(projectId: string, revealIntent: number, mayReveal: boolean): ProjectWindowOpenResult {
+  function reserveProject(projectId: string, revealIntent: number, mayReveal: boolean, lease:WindowLease): ProjectWindowOpenResult {
     if (!permitted()) return refused('busy');
     const existing = editors.get(projectId);
     if (existing) {
@@ -409,8 +434,55 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       return Object.freeze({ ok: true, reason: 'already-open', targetWindowId: existing.windowId, targetPhase: existing.phase });
     }
     if (reservations.has(projectId)) return refused('busy');
-    const record = create('editor', projectId, revealIntent, null, !mayReveal);
+    const record = create('editor', projectId, revealIntent, null, !mayReveal,lease);
+    if(record&&mayReveal)allowExplicitReveal(record);
     return record ? Object.freeze({ ok: true, reason: 'accepted', targetWindowId: record.windowId, targetPhase: record.phase }) : refused('unavailable');
+  }
+  function nativeOpenAllowed():boolean{
+    return permitted()&&!(settings&&!settings.closed)&&nativeDialogOwners.size===0;
+  }
+  function acceptPrepared(raw:unknown,lease:WindowLease,revealIntent:number,mayReveal:boolean,native=false):ProjectWindowOpenResult{
+    try{
+      const parsed=projectEntryWindowSchema.safeParse(raw);
+      if(!parsed.success||parsed.data.windowId!==lease.windowId||lease.projectId!==null&&parsed.data.project.projectId!==lease.projectId||lease.projectFile!==undefined&&parsed.data.project.projectFile!==lease.projectFile)return refused('unavailable');
+      if(!permitted()||native&&!nativeOpenAllowed()||lease.released||lease.revoked||revokedLeases.has(lease.windowId))return refused('busy');
+      lease.projectId=parsed.data.project.projectId;
+      return reserveProject(lease.projectId,revealIntent,mayReveal,lease);
+    }finally{
+      // Only the exact newly created record may take this candidate. Reuse,
+      // stale ACKs and constructor failures retire their own temporary lease.
+      if(![...records.values()].some(record=>record.lease===lease&&!record.closed))releaseLease(lease);
+    }
+  }
+  async function adoptPrepared(prepared:ProjectEntryWindow):Promise<ProjectWindowOpenResult>{
+    const parsed=projectEntryWindowSchema.safeParse(prepared);
+    if(!parsed.success||!projectEntries)return refused('unavailable');
+    const {windowId,project}=parsed.data;
+    if(retiredLeases.has(windowId))return refused('unavailable');
+    const held=leases.get(windowId),existing=[...records.values()].find(record=>record.lease===held&&held!==undefined);
+    if(existing){
+      if(existing.projectId!==project.projectId||!nativeOpenAllowed()||!ownsRecord(existing)||existing.phase==='closing')return refused('busy');
+      allowExplicitReveal(existing);existing.revealIntent=++intent;existing.revealFence=fence;
+      if(existing.readyToShow||existing.phase==='ready'||existing.phase==='failed')reveal(existing);
+      return Object.freeze({ok:true,reason:'already-open',targetWindowId:existing.windowId,targetPhase:existing.phase});
+    }
+    const lease=held??{windowId,projectId:project.projectId,released:false,revoked:revokedLeases.has(windowId)};
+    leases.set(windowId,lease);
+    return acceptPrepared(parsed.data,lease,++intent,true,true);
+  }
+  async function openPath(projectFile:string):Promise<ProjectWindowOpenResult>{
+    if(!nativeOpenAllowed())return refused('busy');
+    const port=projectEntries;if(!port)return refused('unavailable');
+    const lease=candidate(),capturedFence=fence,revealIntent=++intent,presentationEpoch=trayHideEpoch;
+    try{
+      // Paths are checked by the real manager before consulting the UUID window
+      // map, so a copy cannot focus an editor merely by carrying its UUID.
+      const prepared=await port.openPath({projectFile,windowId:lease.windowId});
+      if(!nativeOpenAllowed()||fence!==capturedFence)return refused('busy');
+      return acceptPrepared(prepared,lease,revealIntent,presentationEpoch===trayHideEpoch,true);
+    }finally{
+      if(![...records.values()].some(record=>record.lease===lease&&!record.closed))releaseLease(lease);
+    }
   }
   function openProject(record: WindowRecord<W>, projectId: string, remember: boolean, entryToken: string): Promise<ProjectWindowOpenResult> {
     if (record.role === 'settings') return Promise.resolve(refused('unavailable'));
@@ -454,12 +526,27 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
           // exact entry state supplied this one-use, synchronously sealed token.
           if (editorCount() === 0 && record !== launcher) result = refused('busy');
           else {
-            if (launcher) launcher.autoOpen = false;
-            const mayReveal = sourceMayReveal && presentationEpoch === trayHideEpoch && !trayHidden && !hiddenForTray.has(record);
-            result = reserveProject(projectId.toLowerCase(), revealIntent, mayReveal);
+            if(typeof options.admitProject!=='function')throw new Error('Project location admission unavailable');
+            const expectedProjectFile=await options.admitProject(owner,projectId.toLowerCase());
+            if(typeof expectedProjectFile!=='string'||!expectedProjectFile)throw new Error('Project location admission unavailable');
+            if(!owner.isCurrent()||record.entryAttempt!==attempt||!permitted()||fence!==capturedFence||isClosing(record)||modalFor(record))result=refused('busy');
+            else{
+            const port=projectEntries;
+            if(!port)throw new Error('Project window lease port unavailable');
+            const lease=candidate(projectId.toLowerCase(),expectedProjectFile);
+            try{
+              const prepared=await port.acquire({projectId:projectId.toLowerCase(),windowId:lease.windowId,expectedProjectFile});
+              if(!owner.isCurrent()||record.entryAttempt!==attempt||!permitted()||fence!==capturedFence||isClosing(record)||modalFor(record))result=refused('busy');
+              else{
+                if(launcher)launcher.autoOpen=false;
+                const mayReveal=sourceMayReveal&&presentationEpoch===trayHideEpoch&&!trayHidden&&!hiddenForTray.has(record);
+                result=acceptPrepared(prepared,lease,revealIntent,mayReveal);
+              }
+            }finally{if(![...records.values()].some(target=>target.lease===lease&&!target.closed))releaseLease(lease);}
             const target = editors.get(projectId.toLowerCase());
             if (result.ok && target && remember && selectedVersion === selectionVersion) {
               selectionRecord = target; selectionContextId = target.contextId;
+            }
             }
           }
         }
@@ -516,7 +603,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       if (record.phase !== 'closing') record.window.close();
       return true;
     }
-    if (record.role !== 'editor' || record.projectId !== request.projectId || record.phase === 'closing') return false;
+    if (record.role !== 'editor' || record.projectId !== request.projectId || record.phase === 'closing' || record.lease?.revoked) return false;
     record.phase = request.phase;
     if (request.phase === 'failed') revokeSelection(record);
     refresh();
@@ -535,7 +622,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     // Native alerts and the settings sheet must remain reachable. A destroyed
     // handle still reserves its slot until its actual closed event arrives.
     return lifetime() && options.canInteract() && !trayHidden && settings === null && records.size > 0 &&
-      [...records.values()].every(record => ownsRecord(record) && record.phase !== 'closing' && !nativeDialogPresentation.has(record));
+      [...records.values()].every(record => ownsRecord(record) && record.phase !== 'closing' && !nativeDialogOwners.has(record));
   }
   function hideToTray(): boolean {
     if (!permitted()) return false;
@@ -557,6 +644,8 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       if (!modal.window.isDestroyed()) modal.window.focus();
       return false;
     }
+    if(nativeDialogOwners.has(record))return nativeDialogOwners.get(record)===record.contextId;
+    nativeDialogOwners.set(record,record.contextId);
     // P0 may be waiting on this exact owner while ordinary UI admission is
     // fenced. Reveal only it, without creating a window or changing any close
     // permission; the alert still owns its independent snapshot checks.
@@ -569,14 +658,17 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     window.show(); window.focus(); record.focusOrder = ++focusOrder;
     return true;
   }
+  function retireNativeDialogPresentation(record:WindowRecord<W>):void{
+    if(nativeDialogPresentation.delete(record)&&record.role==='launcher'&&editorCount()!==0)record.window.hide();
+  }
   function finishNativeDialog(window: W, expectedContextId?: string): void {
     const record = records.get(window);
-    if (!record || !ownsRecord(record) || expectedContextId !== undefined && record.contextId !== expectedContextId ||
-      !nativeDialogPresentation.delete(record)) return;
+    if (!record || !ownsRecord(record) || expectedContextId !== undefined && record.contextId !== expectedContextId && nativeDialogOwners.get(record)!==expectedContextId) return;
+    nativeDialogOwners.delete(record);
     // Only the exact launcher shown for an owned native sheet is exempt from
     // normal project-window visibility. Cancellation releases that exemption;
     // a stale completion cannot hide a replacement document's new alert.
-    if (record.role === 'launcher' && editorCount() !== 0) window.hide();
+    retireNativeDialogPresentation(record);
   }
   function closeOrder(): W[] {
     const current = windows(), modal = settings;
@@ -594,8 +686,20 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     if (record.contextId !== expectedContext && (!awaitingInitial || initial.contextId !== record.contextId)) return null;
     return capture(record);
   }
+  if(projectEntries){
+    try{unsubscribeLeases=projectEntries.onWindowRevoked(value=>{
+      const parsed=projectEntryWindowRevokedSchema.safeParse(value);if(!parsed.success)return;
+      const {windowId,projectId}=parsed.data,lease=leases.get(windowId);
+      if(lease?.projectId!==null&&lease?.projectId!==undefined&&lease.projectId!==projectId)return;
+      revokedLeases.add(windowId);if(!lease)return;
+      const record=[...records.values()].find(current=>current.lease===lease);
+      if(record)invalidateDocument(record);
+      lease.revoked=true;
+      if(record){record.phase='failed';record.retainedPhase='failed';revokeSelection(record);refresh();}
+    });}catch{projectEntries=null;}
+  }
   return {
-    ensureLauncher, activate, requestProjectEntry, showProjects: (focused?: W | null) => requestProjectEntry('open', focused), showSettings,
+    ensureLauncher, activate, requestProjectEntry, openPath, adoptPrepared, showProjects: (focused?: W | null) => requestProjectEntry('open', focused), showSettings,
     dispatch, refresh, windows, getWindows: windows, closeOrder, closeStateChanged, canHideToTray, hideToTray, prepareNativeDialog, finishNativeDialog, loadDocumentFor,
     settingsForParent(window: W): W | null { const record = records.get(window); return record ? modalFor(record)?.window ?? null : null; },
     preferredWindow(focused?: W | null): W | null { return preferredRecord(focused)?.window ?? null; },
@@ -607,6 +711,9 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     loadFor(window: W): Promise<void> { return records.get(window)?.load ?? Promise.resolve(); },
     dispose() {
       disposed = true;
+      try{unsubscribeLeases?.();}catch{/* A failed observer cleanup cannot retain leases. */}unsubscribeLeases=null;
+      for(const lease of [...leases.values()])releaseLease(lease);
+      nativeDialogOwners.clear();
       for (const record of records.values()) for (const entry of record.listeners) entry.target.removeListener(entry.event, entry.listener);
       records.clear(); contentsRecords.clear(); editors.clear(); reservations.clear(); launcher = null; settings = null;
     },

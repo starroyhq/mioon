@@ -242,3 +242,15 @@ V4.1 的渠道、隔离、迁移和本轮验证记录见 [ACCEPTANCE-V4.1.md](AC
 历史 Mac arm64 双渠道 `.app` 检查曾确证两份通知丢失；本片在 Linux 合成 Mac 目标布局上验证修复钩子、x64/arm64 与双渠道边界，未重新构建或运行 Mac 包。Mac 会话按用户要求保持停止；签名、公证、传统安装升级和 Windows ACL 门槛仍未由这片验收解决。
 
 保留的前置失败：旧隔离工作树初测22项通过、两个窗口测试文件因尚无 workspace 依赖而未加载；第一次默认缓存安装遇不存在的用户 home，指定既有 store 的离线安装因缺 registry 元数据被供应链门槛拒绝。之后才使用官方 registry 完成同一 frozen lock 安装与上面的完整检查。前片白/蓝绘制异常在本轮未重现，但未查明原因，不能据此宣布修复。最终父级独立全量实际 exit0：3558项，3556通过、0失败、2跳过，576875.394504ms；此结果单独记录，不以 focused 检查替代全量门槛。
+
+## 项目文件原生入口（S6-B）
+
+系统新建、打开与 S5 存储选择走固定的项目入口 preload 端口；路径只保存在主进程，渲染器确认有时限且绑定 backend/window/document 的不透明票据。存储面板的单行说明由调用方传入。取消不创建项目，未知结果不自动重发。另存为的窗口替换能力尚未提供时，能力标志为 false，调用方隐藏入口；已有打包导出端口不冒充该能力。副本的实际身份和内容戳由受信宿主观察，确认后才调用 adoptCopy，不由渲染器提供路径或指纹。
+
+Finder 双击、open-file 和 second-instance argv 共用顺序队列。冷启动等待 backend/session 就绪后按原路径打开，不再上传为项目包；没有文件意图才先显示首页。单个失败不丢后续文件。真正文件身份和 COPY 检查先于窗口复用；同项目复用窗口只释放多余临时租约。每个编辑窗在构造前持 window 租约，真实 closed 恰好释放一次，重载、隐藏、最小化和错误页不释放，普通关窗不执行独占关闭。租约撤销后编辑器停止提交并保留原草稿保护。
+
+创建、打开、另存为、复制、复制到共用有界卷元信息探测：网络卷、只读卷拒绝，mount 无法读取或无法匹配时拒绝并要求换位置；exFAT/noowners 提示权限风险。macOS 仅将 realpath 后的 `~/Library/Mobile Documents/` 和 `~/Library/CloudStorage/` 识别为正向同步位置，其余为 not-reported，不表示“不是云盘”。不增加原生模块或修改隐私数据库。打开中的 EACCES/EPERM 使用独立 `PROJECT_ACCESS_DENIED`，与只读、缺失、损坏区分。
+
+原生首帧使用 userData 下的 `desktop-appearance-cache-v1.json`：严格 v1，最多 4 KiB，只含 appId、channel、appLibraryScope、theme 和版本。读库身份只做 stat，不直接打开应用库；权威偏好仍由认证后端读取。缺失缓存跟随系统，坏文件或身份不符不覆盖，旧 owner 迟到结果不写，后端失败保留最后好值。不读取旧偏好 JSON，也不改 nativeTheme.themeSource。后端启动前的工具进度窗使用同一缓存填色。
+
+签名包的系统文件选择到 utility 访问、TCC 首次允许/拒绝与恢复、外置盘以及三种同步位置（iCloud、CloudStorage、老式第三方文件夹）在 Q 验收。桌面与文稿的 iCloud 同步无法由当前有界接口确认，按 not-reported，精确识别留 0.1.x。测试桩不代替这些系统验收。

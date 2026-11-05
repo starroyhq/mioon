@@ -12,12 +12,15 @@ import type {NativeAudioPreviewAuthority} from '@mioon/business/native-audio-pre
 import {createBackendLease, BACKEND_LEASE_TIMING} from './backend-lease.ts';
 import {initializeDesktopPrivateStorage} from '../../../packages/node-host/src/private-storage-bootstrap.ts';
 import path from 'node:path';
+import {createProjectEntryControlBroker} from './project-entry-control.ts';
+import type {ProjectEntryControlPort} from '../../../packages/contracts/src/project-entry-native.ts';
 
 /** Fixed diagnostic categories only; never a native error message or path. */
 type ExitDiagnosticReason = 'startup-failed' | 'unhandled-rejection' | 'uncaught-exception' | 'stop-requested'
   | 'lease-expired' | 'signal-term' | 'signal-int' | 'shutdown-failed';
 interface BackendServer {
   readonly url: string;
+  readonly projectEntries: ProjectEntryControlPort;
   close(): unknown | Promise<unknown>;
 }
 
@@ -41,6 +44,7 @@ process.on('uncaughtExceptionMonitor', (_error, origin) => {
 });
 
 let server: BackendServer | undefined, starting = false, startFailed = false, closing = false;
+let projectControl: ReturnType<typeof createProjectEntryControlBroker> | undefined;
 let initialization: Promise<void> | undefined;
 let nativeAudioPreview: NativeAudioPreviewAuthority | undefined;
 const agentSettings = createAgentSettingsClient({ port: process.parentPort });
@@ -50,6 +54,7 @@ onMediaProcess(({ type, pid, kind }: MediaProcessEvent) => process.parentPort!.p
 async function shutdown(reason: ExitDiagnosticReason) {
   if (closing) return;
   closing = true;
+  projectControl?.close();
   reportExitDiagnostic(reason);
   parentLease.close();
   clearInterval(lease);
@@ -81,6 +86,7 @@ process.parentPort.on('message', ({ data }) => {
     return;
   }
   if (data?.type === 'stop') { void shutdown('stop-requested'); return; }
+  if (projectControl?.handle(data)) return;
   if (data?.type === 'native-audio:reserve' || data?.type === 'native-audio:retire') {
     if (nativeAudioPreview && !closing) void nativeAudioPreview.command(data).then(
       reply => process.parentPort!.postMessage(reply), () => { /* No fabricated retirement acknowledgment. */ });
@@ -104,6 +110,9 @@ process.parentPort.on('message', ({ data }) => {
       // back to the ordinary Web PCM lane because main wiring was incomplete.
       nativeAudioPreview = createNativeAudioPreviewAuthority(data.nativeAudioPreview);
       server = await startServer({ comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE), dataDir: data.dataDir, cacheDir:data.cacheDir, projectsDir:data.projectsDir, port: 0, distDir: data.distDir, token: data.token, agentSettings, imageSecretCodec, videoSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
+      if (typeof data.backendId !== 'string' || data.backendId !== data.nativeAudioPreview?.backendId) throw new TypeError('Invalid backend project owner');
+      projectControl = createProjectEntryControlBroker({backendId:data.backendId, control:server.projectEntries,
+        send:message=>process.parentPort!.postMessage(message), isCurrent:()=>!closing});
       if (!closing) process.parentPort!.postMessage({ type: 'ready', url: server.url,
         runtime: { electron: process.versions.electron, node: process.versions.node, sqlite: process.versions.sqlite, pid: process.pid } });
     } catch (error) {

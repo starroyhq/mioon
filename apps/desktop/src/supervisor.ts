@@ -11,6 +11,9 @@ import { createExitDiagnostics, classifyBackendExit } from './exit-diagnostics.t
 import type {DesktopAgentSettings} from './secret-store.ts';
 import type {ImageSecretCodec} from './image-secret-store.ts';
 import type {VideoSecretCodec} from './video-secret-store.ts';
+import {randomUUID} from 'node:crypto';
+import {createProjectEntryControlClient} from './project-entry-control.ts';
+import type {DesktopProjectEntryControl} from './project-entry-control.ts';
 
 /** Electron utilityProcess surface used by the supervisor (structural for tests). */
 export interface BackendUtilityProcess {
@@ -50,6 +53,7 @@ export interface StopOutcome {
 export type SupervisorState = 'idle' | 'starting' | 'running' | 'stopping' | 'stopped' | 'failed' | 'stop-unconfirmed' | 'media-unconfirmed';
 interface StopError extends Error { code?: string; exitConfirmed?: boolean; mediaExitConfirmed?: boolean }
 interface BackendStartConfig {
+  readonly backendId?: string;
   readonly dataDir: string;
   readonly cacheDir: string;
   readonly projectsDir: string;
@@ -102,6 +106,11 @@ const backendExitReasons = new Set(['stop-requested', 'lease-expired', 'signal-t
 export const BACKEND_STOP_BUDGET = Object.freeze({ gracefulMs: 10000, terminateMs: 2000, confirmMs: 1000 });
 
 export class BackendSupervisor extends EventEmitter {
+  private projectControl: ReturnType<typeof createProjectEntryControlClient> | null = null;
+  get projectEntries(): DesktopProjectEntryControl {
+    if(!this.projectControl || this.state!=='running') throw new Error('Project entry control is unavailable');
+    return this.projectControl.api;
+  }
   readonly fork: BackendFork;
   readonly modulePath: string;
   readonly environment: NodeJS.ProcessEnv;
@@ -202,6 +211,9 @@ export class BackendSupervisor extends EventEmitter {
         send: message => child.postMessage(message),
         isActive: () => this.child === child && ['running', 'stopping'].includes(this.state),
         getSelfPort: () => this.origin ? Number(new URL(this.origin).port) : null });
+      const backendId=config.backendId??config.nativeAudioPreview?.backendId??randomUUID();
+      const projectControl=this.projectControl=createProjectEntryControlClient({backendId,send:message=>child.postMessage(message),
+        isCurrent:()=>this.child===child&&['running','stopping'].includes(this.state)});
       // Startup needs vault status/decryption while the Images engine is loaded
       // in the utility. This bridge owns no settings or session credential RAM.
       const imageSecretBroker = createImageSecretBroker({ imageSecretCodec: this.imageSecretCodec,
@@ -223,6 +235,7 @@ export class BackendSupervisor extends EventEmitter {
         fail(new Error('本地服务运行时错误')); kill(reason);
       });
       child.on('message', (message: unknown) => {
+        if (projectControl.handle(message)) return;
         if (settingsBroker.handle(message)) return;
         if (imageSecretBroker.handle(message)) return;
         if (videoSecretBroker.handle(message)) return;
@@ -283,6 +296,8 @@ export class BackendSupervisor extends EventEmitter {
         resolve({ url: origin, runtime: notice.runtime as BackendRuntime });
       });
       child.once('exit', (code: number) => {
+        projectControl.close();
+        if(this.projectControl===projectControl)this.projectControl=null;
         settingsBroker.close();
         imageSecretBroker.close();
         videoSecretBroker.close();
@@ -310,7 +325,7 @@ export class BackendSupervisor extends EventEmitter {
         this.emit('exit', { code, expected: this.expectedExit,
           ...(this.hasUnconfirmedMedia ? { mediaExitConfirmed: false } : {}) });
       });
-      try { child.postMessage({ type: 'start', ...config }); }
+      try { child.postMessage({ type: 'start', ...config, backendId }); }
       catch { this.noteExitReason('startup-communication-failed'); fail(new Error('本地服务启动通信失败')); kill('startup-communication-failed'); }
     });
   }

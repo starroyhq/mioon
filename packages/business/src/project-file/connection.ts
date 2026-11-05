@@ -144,12 +144,13 @@ const describe = (database: DatabaseKind, reason: ProjectFileErrorReason, projec
 const invalid = (database: DatabaseKind, reason: ProjectFileErrorReason, projectId?: string): AppError =>
   projectFileError('PROJECT_INVALID', describe(database, reason, projectId));
 
-/** A failed open step: kernel errors pass through, SQLite's busy errors mean
- * another connection holds the file, and anything else makes it invalid. */
+/** Keep explicit OS access denial separate from absence, locks and damage.
+ * A generic SQLITE_CANTOPEN carries no permission evidence. */
 function openFailure(error: unknown, database: DatabaseKind, projectId?: string): AppError {
   if (error instanceof AppError) return error;
   const code = (error as {code?: unknown} | null | undefined)?.code;
   const failure = isSqliteBusy(error) ? projectFileError('PROJECT_LOCKED', describe(database, 'locked', projectId))
+    : code === 'EACCES' || code === 'EPERM' ? projectFileError('PROJECT_ACCESS_DENIED', describe(database, 'access-denied', projectId))
     : database === 'project' && (code === 'ENOENT' || code === 'ENOTDIR') ? projectFileError('PROJECT_MISSING', describe(database, 'missing', projectId))
     : invalid(database, isSqliteCorrupt(error) ? 'corrupt' : isSqliteReadOnly(error) ? 'read-only' : 'unusable', projectId);
   failure.cause = error;
@@ -649,6 +650,7 @@ function openConnection({projectFile: requested, locate, checkCopy}: OpenProject
     const recovery = recoverProjectFile(projectFile);
     if (recovery.state === 'invalid') throw invalid('project',recovery.reason);
     if (recovery.state === 'locked') throw projectFileError('PROJECT_LOCKED',describe('project','locked'));
+    if (recovery.state === 'access-denied') throw projectFileError('PROJECT_ACCESS_DENIED',describe('project','access-denied'));
   }
   const identity = inspectProjectFile(projectFile);
   checkCopy?.({projectId: identity.projectId, projectFile});
@@ -701,20 +703,22 @@ function openConnection({projectFile: requested, locate, checkCopy}: OpenProject
  *   writes; nothing to do here;
  * - `open-here`: this process has the project open; no file was touched;
  * - `missing`: no project file at this path;
+ * - `access-denied`: the OS refused access; not missing or damaged;
  * - `invalid`: not something to recover, with the PROJECT_INVALID reason the
  *   open would report, such as `not-a-project-file` or `read-only`. Only a
  *   path that is not a regular file, or a file with a hot journal beside it,
  *   is found invalid here; any other file is `clean` until it is opened. */
 export type ProjectFileRecovery =
-  | {readonly state: 'clean' | 'recovered' | 'locked' | 'open-here' | 'missing'}
+  | {readonly state: 'clean' | 'recovered' | 'locked' | 'open-here' | 'missing' | 'access-denied'}
   | {readonly state: 'invalid'; readonly reason: ProjectInvalidReason};
 
 const recoveryOf = (error: unknown): ProjectFileRecovery => {
   const failure = openFailure(error, 'project');
   if (failure.code === 'PROJECT_LOCKED') return {state: 'locked'};
   if (failure.code === 'PROJECT_MISSING') return {state: 'missing'};
+  if (failure.code === 'PROJECT_ACCESS_DENIED') return {state: 'access-denied'};
   const {reason} = failure.details as ProjectFileErrorDetails;
-  return {state: 'invalid', reason: reason === 'missing' || reason === 'locked' || reason === 'format-newer' || reason === 'exists' ? 'unusable' : reason};
+  return {state: 'invalid', reason: reason === 'missing' || reason === 'locked' || reason === 'format-newer' || reason === 'exists' || reason === 'access-denied' ? 'unusable' : reason};
 };
 
 /** Step 1 of the opening order and nothing else: when the project file has a

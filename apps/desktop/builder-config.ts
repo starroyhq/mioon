@@ -49,6 +49,7 @@ export interface BuilderConfig {
     hardenedRuntime: true;
     gatekeeperAssess: false;
     identity: null;
+    extendInfo: Record<string,string>;
     artifactName: string;
   };
 }
@@ -92,7 +93,7 @@ export function builderConfig(channel: string): BuilderConfig {
       await writeMacRuntimeNoticeProvenance(context, electronVersion, appVersion, manifest);
       if (appOutDir !== null) runtimeNotices.delete(appOutDir);
     },
-    // Double-clicking a .mioon file stages an import; see src/project-file-open.ts.
+    // OS file intents open the original project path through the trusted host.
     fileAssociations: [{ ext: 'mioon', name: 'Mioon Project', description: 'Mioon Project File', mimeType: 'application/vnd.mioon.project', role: 'Editor' }],
     electronFuses: {
       runAsNode: false,
@@ -120,6 +121,12 @@ export function builderConfig(channel: string): BuilderConfig {
       hardenedRuntime: true,
       gatekeeperAssess: false,
       identity: null,
+      extendInfo: {
+        NSDesktopFolderUsageDescription: 'Mioon opens and saves the projects and media you choose on your Desktop.',
+        NSDocumentsFolderUsageDescription: 'Mioon opens and saves the projects and media you choose in Documents.',
+        NSDownloadsFolderUsageDescription: 'Mioon opens and saves the projects and media you choose in Downloads.',
+        NSRemovableVolumesUsageDescription: 'Mioon opens and saves the projects and media you choose on removable drives.',
+      },
       artifactName: `${identity.executableName}-\${version}-\${os}-\${arch}.\${ext}`
     }
   };
