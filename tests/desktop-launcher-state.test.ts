@@ -28,9 +28,9 @@ const ctx = (patch: object = {}): LauncherContext => ({ version: 2, role: 'launc
 const row = (id: string = uuid(3), name: string = '故事'): LauncherProject => ({ id, name, description: '', revision: 1, createdAt: '2026-10-13T00:00:00.000Z', updatedAt: '2026-10-13T00:00:00.000Z' });
 const result = (patch: object = {}): EntryResult => ({ ok: true, reason: 'accepted', targetWindowId: uuid(11), targetPhase: 'opening', ...patch }) as EntryResult;
 const tick = (): Promise<void> => new Promise(resolve => { setImmediate(resolve); });
-function fixture({ context = ctx(), confirm = async () => true, rpc, invoke, locator = null }:
+function fixture({ context = ctx(), confirm = async () => true, rpc, invoke, locator = null, explicitProjectId = null }:
   { context?: LauncherContext; confirm?: () => Promise<boolean>; rpc?: (operation: string, input?: Readonly<Record<string, unknown>>) => unknown;
-    invoke?: (value: InvokeArgs) => unknown; locator?: Locator | null } = {}) {
+    invoke?: (value: InvokeArgs) => unknown; locator?: Locator | null; explicitProjectId?: string | null } = {}) {
   const calls: Array<[string, unknown]> = [], opens: OpenRecord[] = []; let current = context, serial = 100;
   let controller: ProjectController;
   const bridge = { context: async () => current,
@@ -46,7 +46,7 @@ function fixture({ context = ctx(), confirm = async () => true, rpc, invoke, loc
     if (operation === 'project.list') return [row(), row(uuid(4))];
     if (operation === 'project.create') return row(uuid(5), String((input as { name?: unknown } | undefined)?.name));
   }, checks);
-  controller = createProjectEntryController({ client, context, bridge, locator, confirm, newToken: () => uuid(++serial) });
+  controller = createProjectEntryController({ client, context, bridge, locator, explicitProjectId, confirm, newToken: () => uuid(++serial) });
   controller.activate();
   return { controller, calls, opens, client, bridge, context: () => current,
     receive(patch: object) { current = { ...current, ...patch } as LauncherContext; controller.updateContext(current); } };
@@ -145,11 +145,13 @@ test('confirmed create keeps one latch into open, and failed open never replays 
   assert.equal(f.controller.getState().createUnknown, false); assert.equal(f.controller.getState().createdProjectId, uuid(5));
   assert.equal(f.calls.filter(([op]) => op === 'project.create').length, 1);
 });
-test('first startup is read-only, consumed once, and cancelled by newer local input', async () => {
+test('first startup stays home without a URL; an explicit target is read-only, consumed once, and cancelled by newer input', async () => {
   const locator = { activate() {}, dispose() {}, discover: async () => null, getState: () => ({ identityBlocked: false }), invalidateNavigation() {}, rememberOpened() { assert.fail('startup cannot remember'); } } as unknown as Locator;
   const f = fixture({ context: ctx({ autoOpen: true }), locator }); await f.controller.boot(); await f.controller.boot();
-  assert.deepEqual(f.opens.map(value => value.remember), [false]);
-  const held = Promise.withResolvers<unknown>(); const g = fixture({ context: ctx({ autoOpen: true }), locator, rpc: async op => held.promise });
+  assert.deepEqual(f.opens, []);
+  const explicit = fixture({ context: ctx({ autoOpen: true }), locator, explicitProjectId: uuid(3) }); await explicit.controller.boot(); await explicit.controller.boot();
+  assert.deepEqual(explicit.opens.map(value => [value.projectId, value.remember]), [[uuid(3), false]]);
+  const held = Promise.withResolvers<unknown>(); const g = fixture({ context: ctx({ autoOpen: true }), locator, explicitProjectId: uuid(3), rpc: async op => held.promise });
   const boot = g.controller.boot(); g.controller.interacted(); held.resolve([row()]); await boot; assert.equal(g.opens.length, 0);
 });
 test('launcher-only locator queue invalidates stale selections before a later ready target', async () => {

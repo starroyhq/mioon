@@ -21,18 +21,12 @@ export function createProjectBootGuard(getSelectionEpoch: () => number) {
   };
 }
 
-/** Selects a display target only. It never persists a selection or grants an
- * operation authority; callers must still load and validate the project. */
-export function chooseInitialProject(projects: readonly { id: string }[], explicit: string | null, observed: LastProjectEnvelope | null): InitialProjectChoice {
+/** Only an explicit URL selects a startup target. A locator observation still
+ * establishes cache identity at the caller, but never selects a project. */
+export function chooseInitialProject(projects: readonly { id: string }[], explicit: string | null, _observed: LastProjectEnvelope | null): InitialProjectChoice {
   const available = (id: string | null): id is string => typeof id === 'string' && uuid.test(id) && projects.some(project => project.id === id);
   if (available(explicit)) return { projectId: explicit, source: 'url', notice: null };
-  const remembered = observed?.supported ? observed.projectId : null;
-  if (observed?.supported && observed.targetStatus === 'matching' && available(remembered)) {
-    return { projectId: remembered, source: 'remembered', notice: explicit ? msg('projects.bootMissingRemembered') : null };
-  }
-  const first = projects.find(project => uuid.test(project.id))?.id ?? null;
-  const missing = Boolean(explicit || remembered);
-  return { projectId: first, source: first ? 'fallback' : 'none', notice: missing ? msg(explicit ? first ? 'projects.bootMissingFallback' : 'projects.bootMissingEmpty' : first ? 'projects.bootRememberedFallback' : 'projects.bootRememberedEmpty') : null };
+  return { projectId: null, source: 'none', notice: explicit !== null ? msg('projects.bootMissingEmpty') : null };
 }
 
 /** Once observed, a normal workspace's private storage identity is pinned for

@@ -20,11 +20,11 @@ const code = transformSync(source, { loader: 'ts', format: 'cjs' }).code;
 
 /** Run the real renderer hook and controller; only React scheduling, the DOM,
  * read-only RPC transport and native bridge are synthetic. */
-function fixture({ initialContext = context(), visible = true, list, open, create = async () => { throw new Error('lost create ACK'); } }: {initialContext?:ReturnType<typeof context>;visible?:boolean;list?:()=>unknown;open?:()=>unknown;create?:(input:unknown)=>unknown} = {}) {
+function fixture({ initialContext = context(), visible = true, list, open, explicitProjectId = null, create = async () => { throw new Error('lost create ACK'); } }: {initialContext?:ReturnType<typeof context>;visible?:boolean;list?:()=>unknown;open?:()=>unknown;explicitProjectId?:string|null;create?:(input:unknown)=>unknown} = {}) {
   const effects:(()=>void|(()=>void))[] = [], cleanups:(()=>void)[] = [], calls: (string | Error | undefined)[] = [], opens:{projectId:string;remember:boolean;entryToken:string}[] = [], listeners = new Set<(value:ReturnType<typeof context>)=>void>();
   let current = initialContext, catalog = [project(10), project(11)], controller:Controller;
   const document = new EventTarget() as EventTarget&{visibilityState:string}; document.visibilityState = visible ? 'visible' : 'hidden';
-  const window:{location:{search:string};__mioonProjectEntryAdmission?:{consume:Controller['consume']}} = { location: { search: '' } };
+  const window:{location:{search:string};__mioonProjectEntryAdmission?:{consume:Controller['consume']}} = { location: { search: explicitProjectId === null ? '' : `?project=${explicitProjectId}` } };
   const bridge = {
     context: async () => current,
     subscribe(listener:(value:ReturnType<typeof context>)=>void) { listeners.add(listener); return () => listeners.delete(listener); },
@@ -78,9 +78,9 @@ test('returning native launcher refreshes A/B to A/B/C after the last editor clo
   assert.deepEqual((f.opens as unknown), []); f.dispose();
 });
 
-test('first reveal keeps the initial boot read and its one-time auto-open instead of superseding it', async () => {
+test('first reveal keeps the initial boot read and its one-time explicit URL open instead of superseding it', async () => {
   const pending = Promise.withResolvers();
-  const f = fixture({ initialContext: context({ autoOpen: true }), visible: false, list: () => pending.promise }); await tick();
+  const f = fixture({ initialContext: context({ autoOpen: true }), explicitProjectId: uuid(10), visible: false, list: () => pending.promise }); await tick();
   f.visibility(true); pending.resolve([project(10)]); await tick();
   assert.equal(f.calls.filter(op => op === 'project.list').length, 1);
   assert.equal(f.opens.length, 1); assert.equal(f.opens[0].remember, false);

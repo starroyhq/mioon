@@ -2392,10 +2392,10 @@ const shellCoreMessages = {
     "ja": "リンク先のプロジェクトが存在しないため、一覧の最初のプロジェクトを開きました。別のプロジェクトを選択できます"
   },
   "projects.bootMissingEmpty": {
-    "zh-Hans": "指定链接中的项目不存在。请选择或新建项目",
-    "zh-Hant": "指定連結中的專案不存在。請選擇或新增專案",
-    "en": "The linked project does not exist. Choose or create a project",
-    "ja": "リンク先のプロジェクトが存在しません。プロジェクトを選択または作成してください"
+    "zh-Hans": "该项目暂时不可用，请在首页重试或选择其他项目",
+    "zh-Hant": "該專案暫時無法使用，請在首頁重試或選擇其他專案",
+    "en": "This project is currently unavailable. Retry from the home page or choose another project",
+    "ja": "このプロジェクトは現在利用できません。ホームで再試行するか、別のプロジェクトを選択してください"
   },
   "projects.bootRememberedFallback": {
     "zh-Hans": "上次记住的项目已不可用。已打开列表中的首个项目；可另行选择",
