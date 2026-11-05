@@ -12,7 +12,7 @@ import {openAppLibrary, isAppLibraryHeld, projectFileIdentity} from '@mioon/busi
 import {createProjectServiceApplication} from '@mioon/business/project-service-application';
 import {createEditTasks} from '@mioon/business/edit-tasks';
 import type {NativeAudioPreviewAuthority} from '@mioon/business/native-audio-preview';
-import {boundedShutdown, assertMediaTerminated} from '@mioon/business/operation-lifecycle';
+import {boundedShutdown, assertMediaTerminated, checkpoint} from '@mioon/business/operation-lifecycle';
 import {terminateMediaProcesses} from '@mioon/business/media-processes';
 import {mediaExecutable} from '@mioon/business/media-environment';
 import {inspectMediaTools} from '@mioon/business/media-tool-diagnostics';
@@ -305,6 +305,8 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
           let rpcBody: unknown;
           if (route.kind === 'rpc' && req.method === 'POST') {
             rpcBody = await body(req);
+            // A partial body can finish after shutdown has retired the manager.
+            checkpoint(shutdown.signal);
             if (field(rpcBody, 'operation') === 'project.notes.set') {
               const projectId = field(field(rpcBody, 'input'), 'projectId');
               if (projectId !== undefined && projectId !== route.projectId) throw projectIdMismatch(route.projectId);

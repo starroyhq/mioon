@@ -407,7 +407,7 @@ test('unavailable connection requests normalize to General and cannot activate m
 test('web center stays first keyed sibling across home and workbench rather than replacing the editor tree', () => {
   const app = source('App.tsx');
   assert.match(app, /const webSettingsCenter = nativeWindow \? null : <WebSettingsCenter key="global-settings-center" request=\{webSettingsRequest\} registry=\{settingsNavigation\.current\}/u);
-  assert.match(app, /if \(!workbenchReady && !retainWorkbenchForClip\) return <>\{webSettingsCenter\}<ProjectHome/u);
+  assert.match(app, /if \(!workbenchReady && !retainWorkbenchForClip\) return <>\{webSettingsCenter\}\{historyLayer\}<ProjectHome/u);
   assert.match(app, /return <>\{webSettingsCenter\}<main className=\{`workbench/u);
   assert.doesNotMatch(app, /webSettingsOpen\s*\?\s*<WebSettingsCenter|webSettingsOpen\s*&&\s*<WebSettingsCenter/u);
   const web = source('WebSettingsCenter.tsx');

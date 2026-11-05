@@ -20,6 +20,12 @@ import type { DisplayMessage } from '../packages/i18n/src/types.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const componentPath = path.join(root, 'apps/web/src/TopbarSaveStatus.tsx');
 const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
+// App's project-open failure path uses this exact pure recovery classifier.
+// Keep its current implementation in the eval environment rather than a stub.
+const recoverySource = readFileSync(path.join(root, 'apps/web/src/ProjectBackupRecovery.tsx'), 'utf8');
+const recoveryStart = recoverySource.indexOf('const record ='), recoveryEnd = recoverySource.indexOf('/** A failed project');
+assert.ok(recoveryStart >= 0 && recoveryEnd > recoveryStart, 'Missing pure backup recovery classifier seam');
+const canOfferBackupRecovery = Function(`${stripSourceTypes(recoverySource.slice(recoveryStart, recoveryEnd).replace('export function', 'function'), {loader: 'ts'})}\nreturn canOfferBackupRecovery;`)() as (error: unknown) => boolean;
 // Exact shipped markup, copied before extraction from c3c10316347d30ed50b365442e78738267ac288a.
 // This oracle is deliberately independent of the implementation under test.
 const baselineMarkup = "<div className=\"topbar-sync\" title={lastSync ? `最近同步：${lastSync.toLocaleTimeString('zh-CN')}` : ''}><span className={`status-dot ${!online ? 'red' : Object.values(busy).some(Boolean) ? 'orange' : 'green'}`} />{!online ? '连接中断' : Object.values(busy).some(Boolean) ? '正在同步' : inspectorDirty || formatDirty ? '有未保存修改' : '已保存'}</div><div className=\"workspace-save-status\" data-testid=\"workspace-save-status\" data-phase={preferenceStatus.phase} role=\"status\">{['local', 'conflict', 'error'].includes(preferenceStatus.phase) ? <><span>{preferenceStatus.phase === 'conflict' ? '视图已在其他窗口更新' : '视图位置未同步'}</span>{preferenceStatus.phase === 'error' && preferenceStatus.canRetry && <Button variant=\"ghost\" className=\"text-button\" data-testid=\"retry-workspace-save\" onClick={() => preferencesRef.current.flush({ projectId: currentProject.current })}>重试</Button>}<Button variant=\"ghost\" className=\"text-button\" data-testid=\"reload-workspace-preferences\" onClick={reloadPreferences}>载入已保存视图</Button></> : preferenceStatus.pending ? <span>保存视图…</span> : null}</div>";
@@ -284,10 +290,10 @@ class Server {
 function harness(t: test.TestContext) {
   const server = new Server(), state = { view: defaultWorkspaceState(), preferenceStatus: { phase: 'loading', pending: false } as {phase: string;pending: boolean;canRetry?: boolean},
     inspectorDirty: false, formatDirty: false, inspectorDraft: { title: 'retained inspector draft' }, formatDraft: { width: 1920 },
-    paidReview: { token: 'unchanged paid review' }, mobilePanel: 'canvas', rightDockTab: 'properties' };
+    paidReview: { token: 'unchanged paid review' }, mobilePanel: 'canvas', rightDockTab: 'properties', backupFailure: null as {projectId: string; name: string} | null };
   const calls: unknown[][] = [], currentProject = { current: null as string|null }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 };
   const env = { msg, application: null, ...createI18nTestContext(), localizedError: (value?: string|DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), nativeWindow: null, nativeProjectEntry: null, currentProject, navigationEpoch, projectEpoch, editorSession: {current: 'normal'}, workspaceRef: { current: {  } as {} },
-    projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind,
+    projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind, canOfferBackupRecovery, projects: [],
     openedProject: { current: null }, settingsNavigation: { current: createSettingsNavigationRegistry() },
     loading: false, importSession: { current: { active: true, selection: 0 } }, agentDraft: { current: false }, imageDraft: { current: false },
     guardProjectNavigation: async (_message: unknown, _dirty: unknown, canLeave: () => unknown) => canLeave(), confirm: (async () => true) as (message?:unknown)=>Promise<unknown>,
@@ -304,6 +310,7 @@ function harness(t: test.TestContext) {
       'setShowExports', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setZoom']
       .map(name => [name, (value: unknown) => calls.push([name, value])])),
     setPreferenceStatus: (value: { phase: string; pending: boolean; }) => { state.preferenceStatus = value; calls.push(['status', copy(value)]); },
+    setBackupFailure: (value: {projectId: string; name: string} | null) => { state.backupFailure = value; calls.push(['setBackupFailure', copy(value)]); },
     setView: (value: WorkspaceState) => { state.view = value; calls.push(['view', copy(value)]); },
   };
   (env as typeof env&{setRealConfirm:(value:{token:string})=>void}).setRealConfirm = (value) => { state.paidReview = value; calls.push(['setRealConfirm', value]); };

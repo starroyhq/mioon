@@ -4,6 +4,7 @@ import type {Tree, Element, Hook, Module} from './helpers/strict-agent-ui-types.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { transformSync } from 'esbuild';
 import { createI18nTestContext, translate } from './helpers/i18n.ts';
 import { agentTaskErrorKey } from '../apps/web/src/agent-task-errors.ts';
@@ -13,24 +14,47 @@ import { message } from '../packages/i18n/src/index.ts';
 import {agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion} from '../apps/web/src/agent-tasks-v2.ts';
 import * as questions from '../apps/web/src/agent-task-questions.ts';
 import * as reviews from '../apps/web/src/agent-task-reviews.ts';
+import * as rulesClient from '../apps/web/src/project-rules-client.ts';
+import * as rulesProposal from '../apps/web/src/project-rules-proposal.ts';
+import {projectRulesSnapshotSchema} from '../packages/contracts/src/mio-rules.ts';
+import type {ProjectRulesSnapshot} from '../packages/contracts/src/mio-rules.ts';
 import {adapterSettings,ADAPTER_CONFIGURATION} from './helpers/agent-adapter-fixture.ts';
 const nodes=(value: Tree): Element[]=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes(value.props?.children)]:[];
 const source=readFileSync(new URL('../apps/web/src/AgentTaskPanel.tsx',import.meta.url),'utf8');
 const projectId='11111111-1111-4111-8111-111111111111',stepId='22222222-2222-4222-8222-222222222222';
-function harness({backgroundPending=false,readOnly=false,status,changes=[],locale='zh-Hans'}: {backgroundPending?: boolean;readOnly?: boolean;status?: string;changes?: TaskPanelChange[];locale?: Locale}={}){
+const trustedRules=(owner:string):ProjectRulesSnapshot=>projectRulesSnapshotSchema.parse({projectId:owner,file:'AGENTS.md',exists:true,text:'Synthetic project rules',hash:createHash('sha256').update('Synthetic project rules').digest('hex'),trust:'trusted',maxBytes:8192,readError:null,pendingWrites:false});
+function harness({backgroundPending=false,readOnly=false,status,changes=[],locale='zh-Hans',readRules}: {backgroundPending?: boolean;readOnly?: boolean;status?: string;changes?: TaskPanelChange[];locale?: Locale;readRules?:(owner:string,signal:AbortSignal)=>Promise<ProjectRulesSnapshot>}={}){
   let currentLocale=locale,currentProjectId=projectId,refreshResult: Promise<unknown>|null=null,currentVisible=true;
-  const hooks: Hook[]=[];let cursor=0,pending: number[]=[],tree: Tree,loads=0;const calls: unknown[][]=[];
-  const react={createElement:(type: string,props: Partial<ElementProps>|null,...children: Tree[])=>({type,props:{...props,children:type==='dialog'&&!props!.open?[]:type==='dialog-content'?[...children,props!.footer]:type==='retained'?[...children,props!.recovery]:children}}),Fragment:'fragment',useRef:(value: unknown)=>hooks[cursor++]??={current:value},useState:(value: unknown)=>{const index=cursor++;hooks[index]??={value};return[hooks[index].value,(next: (arg0: unknown) => unknown)=>{hooks[index].value=typeof next==='function'?next(hooks[index].value):next;}];},useLayoutEffect:(fn: ()=>void|(()=>void),deps: readonly unknown[])=>{const index=cursor++,old=hooks[index];if(!old||deps.some((value: unknown,at)=>value!==old.deps![at])){hooks[index]={...old,fn,deps};pending.push(index);}}};(react as typeof react & {default?: unknown}).default=react;
+  const hooks: Hook[]=[];let cursor=0,pending: number[]=[],tree: Tree,loads=0,hookWrites=0;const calls: unknown[][]=[];
+  const react={createElement:(type: string,props: Partial<ElementProps>|null,...children: Tree[])=>({type,props:{...props,children:type==='dialog'&&!props!.open?[]:type==='dialog-content'?[...children,props!.footer]:type==='retained'?[...children,props!.recovery]:children}}),Fragment:'fragment',useRef:(value: unknown)=>hooks[cursor++]??={current:value},useState:(value: unknown)=>{const index=cursor++;hooks[index]??={value};return[hooks[index].value,(next: (arg0: unknown) => unknown)=>{hookWrites++;hooks[index].value=typeof next==='function'?next(hooks[index].value):next;}];},useLayoutEffect:(fn: ()=>void|(()=>void),deps: readonly unknown[])=>{const index=cursor++,old=hooks[index];if(!old||deps.some((value: unknown,at)=>value!==old.deps![at])){hooks[index]={...old,fn,deps};pending.push(index);}}};(react as typeof react & {default?: unknown}).default=react;
   const snapshot: TaskPanelSnapshot={run:{id:'run',projectId,text:'synthetic task',status:status??(backgroundPending?'completed':'awaiting_approval'),stepsUsed:2,budget:30,configuration:{model:'historical-model'}},steps:[{id:stepId,kind:'tool',status:'completed',approvalRequired:true,tier:'paid',toolCall:{name:'mioon_generation_submit',arguments:{}}}],changes,backgroundPending};
   const state: TaskPanelState={phase:'ready',project:{readOnly,runs:[snapshot.run],authorization:{scopes:['project_agent']},settings:adapterSettings({...ADAPTER_CONFIGURATION,model:'current-model'},{revision:1})},snapshot,draft:'next task',uploads:[],pending:null,error:'',conversationId:'run',conversation:{id:'run',title:'synthetic task'},rounds:[snapshot],selectionKey:'run',draftDirty:true,draftVersion:0,unknownOutcome:false,history:{conversations:[{id:'run',title:'synthetic task'}],nextCursor:null,phase:'ready'}};
   const module: Module={exports:{}};let options: TaskPanelOptions;
-  const previous=globalThis.document;globalThis.document={visibilityState:'visible',addEventListener(){},removeEventListener(){}} as unknown as Document;
+  const rulesReads:Array<{projectId:string;signal:AbortSignal}>=[],rulesResponses:ProjectRulesSnapshot[]=[];
+  const rulesModule={...rulesClient,createWebProjectRulesClient:()=>{
+    const client=rulesClient.createWebProjectRulesClient({fetcher:async(input,init)=>{
+      const route=/^\/api\/projects\/([a-f0-9-]+)\/rules$/u.exec(String(input));
+      assert.ok(route,'Rules observations use only a canonical project rules resource');
+      assert.equal(init?.method,'GET');assert.equal(init?.credentials,'same-origin');assert.equal(init?.redirect,'error');assert.equal(init?.body,undefined);
+      assert.ok(init?.signal instanceof AbortSignal);const owner=route[1]!,signal=init.signal;
+      rulesReads.push({projectId:owner,signal});
+      const data=projectRulesSnapshotSchema.parse(await (readRules?readRules(owner,signal):Promise.resolve(trustedRules(owner))));
+      return Response.json({ok:true,data});
+    }});
+    return {...client,async read(...args:Parameters<typeof client.read>){const result=await client.read(...args);rulesResponses.push(result);return result;}};
+  }} satisfies typeof rulesClient;
+  const previous=globalThis.document,previousWindow=Object.getOwnPropertyDescriptor(globalThis,'window');
+  globalThis.document=Object.assign(new EventTarget(),{visibilityState:'visible'}) as unknown as Document;
+  Object.defineProperty(globalThis,'window',{configurable:true,writable:true,value:new EventTarget()});
+  const restoreGlobals=()=>{globalThis.document=previous;if(previousWindow)Object.defineProperty(globalThis,'window',previousWindow);else Reflect.deleteProperty(globalThis,'window');};
   Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs'}).code)(module,module.exports,(id: string|string[])=>{
+    if(id==='./project-rules-client.ts')return rulesModule;if(id==='./project-rules-proposal.ts')return rulesProposal;
     if(id==='react')return react;if(id==='./agent-task-presentation.ts')return presentation;if(id==='./agent-task-requirements.ts')return requirements;if(id.includes('packages/i18n/src/index.ts'))return{message};if(id.includes('workbench-confirm'))return{useConfirmation:()=>async()=>true};if(id.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};if(id.includes('/dialog'))return{Dialog:'dialog'};if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};if(id.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};if(id==='./AgentRetainedEditing.tsx')return{__esModule:true,default:'retained'};if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(currentLocale)};if(id==='./agent-task-errors.ts')return{agentTaskErrorKey};if(id.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>currentVisible};if(id==='./AgentConversationHistory.tsx')return{__esModule:true,default:'conversation-history'};if(id==='./agent-task-questions.ts')return questions;if(id==='./agent-task-reviews.ts')return reviews;if(id==='./AgentTaskContinuityReport.tsx')return{__esModule:true,default:'continuity-report'};if(id==='./AgentTaskQuestion.tsx')return{AgentTaskQuestionCard:'question-card',AgentTaskAnswerRow:'answer-row'};if(id==='./agent-tasks-v2.ts')return{agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion,createAgentTaskReceiptStore:()=>({}),agentTaskPromptValid:()=>true,createAgentTaskSession:(value: TaskPanelOptions)=>{options=value;return{getState:()=>state,load(){loads++;value.onChange(state);},setVisible(){},dispose(){},cancelSelection(){},refreshRound:async (id: string)=>{calls.push(['refreshRound',id]);if(refreshResult)return await refreshResult;return state.rounds.find(item=>item.run.id===id)??null;},action:(...args: unknown[])=>calls.push(args),send:async()=>{calls.push(['send']);return true;},note:async()=>{calls.push(['note']);return true;},answer:async(...args: unknown[])=>{calls.push(['answer',...args]);return true;},authorizationReview:()=>({projectId,settingsRevision:1,authorizationRevision:1,destination:'https://example.invalid/v1/responses',model:'current-model',text:state.draft,uploads:state.uploads.map(item=>item.id),locale:currentLocale}),authorizeAndSend:async (value: unknown)=>{calls.push(['authorizeAndSend',value]);return true;},edit:(value: string)=>{state.draft=value;calls.push(['edit',value]);},removeUpload:(id: unknown)=>{state.uploads=state.uploads.filter(item=>item.id!==id);},history(){calls.push(['history']);},selectConversation:async(...args: unknown[])=>{calls.push(['selectConversation',...args]);return true;},newConversation:()=>{calls.push(['newConversation']);return true;}};}};
     if(id.includes('native-close-sources'))return{createAgentTaskCloseReporter:()=>({publish(){},release(){}})};if(id.includes('agent-settings.ts'))return{deriveAgentEndpoint:()=>'/synthetic'};if(id.includes('/button'))return{Button:'button'};if(id.includes('/textarea'))return{Textarea:'textarea'};if(id.includes('/input'))return{Input:'input'};if(id.includes('/badge'))return{Badge:'badge'};return{__esModule:true,default:'placeholder'};
   });
   const render=()=>{cursor=0;pending=[];tree=module.exports.default!({projectId:currentProjectId,onSettings(page: unknown){calls.push(page ? ['settings',page] : ['settings']);},onClose(){}});for(const index of pending){hooks[index].cleanup?.();hooks[index].cleanup=hooks[index].fn!();}return nodes(tree);};render();
-  return{render,calls,state,setLocale(value: Locale){currentLocale=value;},setProject(value: string){currentProjectId=value;},setVisible(value: boolean){currentVisible=value;},setRefresh(value: Promise<unknown>|null){refreshResult=value;},get options(){return options;},get loads(){return loads;},find:(id: unknown)=>nodes(tree).find((node)=>node.props?.['data-testid']===id),unmount(){for(const hook of hooks)hook.cleanup?.();globalThis.document=previous;}};
+  let disposed=false;
+  return{render,calls,state,rulesReads,rulesResponses,get hookWrites(){return hookWrites;},setLocale(value: Locale){currentLocale=value;},setProject(value: string){currentProjectId=value;},setVisible(value: boolean){currentVisible=value;},setRefresh(value: Promise<unknown>|null){refreshResult=value;},get options(){return options;},get loads(){return loads;},find:(id: unknown)=>nodes(tree).find((node)=>node.props?.['data-testid']===id),unmount(){if(disposed)return;disposed=true;for(const hook of hooks)hook.cleanup?.();restoreGlobals();}};
 }
 test('a completed-conversation refresh keeps real panel inputs and write controls disabled until it settles',async()=>{
   const h=harness({status:'completed'});try{
@@ -391,3 +415,22 @@ test('an answered question collapses before the reply that followed it, and a la
   }finally{h.unmount();}
 });
 
+
+
+test('real rules observations validate trusted snapshots, remain read-only and fence ignored-signal replies after unmount',async()=>{
+  const h=harness({status:'completed'});
+  try{
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.deepEqual(h.rulesResponses,[trustedRules(projectId)]);assert.equal(h.rulesReads.length,1);assert.equal(h.rulesReads[0]!.projectId,projectId);
+    assert.equal(h.rulesReads[0]!.signal.aborted,false);assert.deepEqual(h.calls,[]);
+    h.unmount();assert.equal(h.rulesReads[0]!.signal.aborted,true);
+  }finally{h.unmount();}
+  let finish!:(value:ProjectRulesSnapshot)=>void;
+  const late=harness({status:'completed',readRules:()=>new Promise(resolve=>{finish=resolve;})});
+  try{
+    assert.equal(late.rulesReads.length,1);late.unmount();const writes=late.hookWrites;
+    assert.equal(late.rulesReads[0]!.signal.aborted,true);
+    finish({...trustedRules(projectId),trust:'untrusted'});await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(late.hookWrites,writes);assert.deepEqual(late.calls,[]);
+  }finally{late.unmount();}
+});
