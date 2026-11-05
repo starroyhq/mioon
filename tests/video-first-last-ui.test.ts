@@ -93,7 +93,7 @@ function harness(patch: Partial<VideoProps> = {}) {
     const code = transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
     const module = { exports: {} } as ElementModule<VideoProps>;
     Function('require', 'module', 'exports', code)((name: string) => {
-      if (name === 'react') return react;
+      if (name === './project-media-read-gate.tsx') return {useProjectMediaReadGate: () => null, ProjectMediaImage: 'img'}; if (name === './project-file/MediaStatus.tsx') return {MediaStatusBadge: 'MediaStatusBadge', MediaStatusNote: 'MediaStatusNote', MediaAttentionBanner: 'MediaAttentionBanner'}; if (name === 'react') return react;
       if (name === './i18n/I18nProvider.tsx') return { useI18n: () => createI18nTestContext(locale) };
       if (name === './creation-i18n.ts') return creationI18n;
       if (name.includes('packages/i18n/src/index.ts')) return i18nCore;

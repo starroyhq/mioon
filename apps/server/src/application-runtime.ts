@@ -14,7 +14,6 @@ import {createLiveImageGateway,createCompatibleImageGatewayV2} from '@mioon/busi
 import {createImageSettingsFile} from '@mioon/business/images/settings-file';
 import {createCustomImageSettingsV2} from '@mioon/business/images/custom-settings-v2';
 import {createCustomImageSettingsV2File} from '@mioon/business/images/custom-settings-v2-file';
-import {createLastProject} from '@mioon/business/last-project';
 import {createUiPreferences} from '@mioon/business/ui-preferences';
 import {createVideoSettingsV2} from '@mioon/business/video/settings-v2';
 import {createVideoSettingsV2File} from '@mioon/business/video/settings-v2-file';
@@ -24,7 +23,6 @@ import {deriveAgentEndpoint} from '../../../packages/contracts/src/agent-protoco
 import {createComfyHttp} from './comfy-http.ts';
 import {composeOfficialComfyModule} from './comfy-module.ts';
 import {createImageHttp} from './image-http.ts';
-import {createLastProjectHttp} from './last-project-http.ts';
 import {createAgentModelListHttp} from './agent-model-list-http.ts';
 import {createVideoHttp} from './video-http.ts';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
@@ -81,7 +79,6 @@ export async function composeApplicationRuntime(library: AppLibrary, options: Se
     const {connector, availability} = composeOfficialComfyModule(options.comfyModule ?? 'load', () => createComfyConnector({reservedPorts,
       ...(options.comfyNetwork ? {networkDeps: {httpRequest: options.comfyNetwork.httpRequest}} : {})}));
     const ui = createUiPreferences({...scope, documents, guards: {ownsLock, isReadOnly: () => false, hasProject}});
-    const lastProject = createLastProject({...scope, documents, guards: {ownsLock, readProject: id => hasProject(id) ? {id} : null}});
     // The application port selects db/tx/registration; no project is needed.
     const preferences = createWorkspacePreferences({db: library.db, tx: library.tx, get: () => undefined}, {application: {db: library.db, tx: library.tx, hasProject}});
     const close = async (): Promise<void> => {
@@ -89,14 +86,14 @@ export async function composeApplicationRuntime(library: AppLibrary, options: Se
       const errors = results.flatMap(result => result.status === 'rejected' ? [result.reason] : []);
       if (errors.length) throw new AggregateError(errors, 'Application settings could not close');
     };
-    return {agentSettings, ownsSettings, authorizations, ui, lastProject, preferences, settings: {image, customImage, video, comfy},
+    return {agentSettings, ownsSettings, authorizations, ui, preferences, settings: {image, customImage, video, comfy},
       profileDependencies: {settings: image, customSettingsV2: customImage, comfySettings: comfy, comfyConnector: connector,
         liveGateway: createLiveImageGateway({settings: image, ...options.imageNetwork}),customGateway:createCompatibleImageGatewayV2({settings:customImage,...options.imageNetwork})},
       imageHttp: createImageHttp({settings: image, customSettings: customImage, signal,
         approve: () => { throw new AppError('NOT_FOUND', '接口不存在', 404); }, reject: () => { throw new AppError('NOT_FOUND', '接口不存在', 404); }}),
       videoHttp: createVideoHttp({settings: video, signal}), comfyHttp: createComfyHttp({settings: comfy, connector, availability, signal}),
       modelListHttp: createAgentModelListHttp({models: modelLists, signal, selfPort}),
-      lastProjectHttp: createLastProjectHttp({lastProject, signal}), close};
+      close};
   } catch (error) {
     const results = await Promise.allSettled(closers.map(close => { try { return Promise.resolve(close()); } catch (failure) { return Promise.reject(failure); } }));
     const errors = results.flatMap(result => result.status === 'rejected' ? [result.reason] : []);

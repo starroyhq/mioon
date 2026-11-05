@@ -38,7 +38,7 @@ export function MediaStatusNote({ status }: { readonly status: MediaStatusUi }):
 export interface MediaAttentionBannerProps {
   /** Number of media that need attention; loading while the statuses are checked. */
   readonly state: ViewState<number>;
-  readonly onRelink: () => void;
+  readonly onRelink?: (() => void) | undefined;
   readonly onRetry: () => void;
 }
 /** "N media need attention" above the media library (12-04). Nothing when none do. */
@@ -52,6 +52,6 @@ export function MediaAttentionBanner({ state, onRelink, onRetry }: MediaAttentio
   </div>;
   return <div className="pf-media-banner" data-state="ready" data-tone="danger" data-testid="pf-media-banner">
     <ProjectFileIcon name="fileX" size={16} /><span>{t('projectFile.media.attention', { count: state.value })}</span>
-    <WorkbenchButton size="compact" data-testid="pf-media-banner-relink" onClick={onRelink}><Link size={14} aria-hidden="true" />{t('projectFile.media.relink.action')}</WorkbenchButton>
+    {onRelink && <WorkbenchButton size="compact" data-testid="pf-media-banner-relink" onClick={onRelink}><Link size={14} aria-hidden="true" />{t('projectFile.media.relink.action')}</WorkbenchButton>}
   </div>;
 }

@@ -15,6 +15,7 @@ import { clearSceneThumbnails, createSceneThumbnailer } from '../apps/web/src/sc
 import { sceneOverviewItems, sceneTaskCenterRows, sceneTaskStatus } from '../apps/web/src/scene-task-views.ts';
 import { i18nTestModule, renderMessage, translate } from './helpers/i18n.ts';
 import type { DisplayMessage } from '../packages/i18n/src/types.ts';
+import {stripSourceTypes} from './helpers/eval-source.ts';
 
 const project = '00000000-0000-4000-8000-0000000000a1', otherProject = '00000000-0000-4000-8000-0000000000a2';
 const assetId = '00000000-0000-4000-8000-0000000000a3', taskId = '00000000-0000-4000-8000-0000000000a4', resultId = '00000000-0000-4000-8000-0000000000a5';
@@ -32,6 +33,18 @@ const page = (items: unknown[]|undefined = [], projectId: string|undefined = pro
 const deferred = () => { let resolve!: (value?: unknown) => void, reject!: (reason: unknown) => void; const promise = new Promise<unknown>((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 const refusal = (code: string|undefined, operation: unknown, input: {projectId?: unknown; requestId?: unknown}, patch: {}|undefined = {}) => new ApiError('refused', code, { sceneOutcome: { status: 'not_accepted', operation, projectId: input.projectId, requestId: input.requestId,
   inputHash: createHash('sha256').update(canonicalSceneInput(input)).digest('hex'), ...patch } }, true, code === 'SCENE_CAPACITY' ? 507 : 409);
+
+test('actual App refuses unreadable scene sources before prepare or opening the detection owner', async () => {
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
+  const start = app.indexOf('  async function openSceneDetection('), end = app.indexOf('  const sceneSplitError', start);
+  assert.ok(start > 0 && end > start);
+  let readable = false; const prepared: unknown[] = [], targets: unknown[] = [], shown: boolean[] = [];
+  const env = {projectMedia: {canRead: () => readable}, currentProject: {current: project}, prepareStrongAsset: async (value: unknown) => {prepared.push(value); return asset;}, setShowTasks: (value: boolean) => shown.push(value), setSceneTarget: (value: unknown) => targets.push(value)};
+  const open = Function(...Object.keys(env), stripSourceTypes(app.slice(start, end)) + ';return openSceneDetection;')(...Object.values(env)) as (value: unknown, autoStart: boolean) => Promise<void>;
+  await open({...asset, sha256: null}, true); await open(asset, true);
+  assert.deepEqual(prepared, []); assert.deepEqual(targets, []); assert.deepEqual(shown, []);
+  readable = true; await open(asset, true); assert.deepEqual(targets, [{projectId: project, assetId, autoStart: true}]);
+});
 
 function setup(handler: (operation: string, input: Record<string, unknown>) => unknown = () => page(), extra: Partial<scene.SceneDetectionOptions> = {}) {
   const calls: { operation: string; input: unknown; }[] = [], settled: scene.SceneTask[] = []; let serial = 0, clock = 0;

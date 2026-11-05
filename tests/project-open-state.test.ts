@@ -134,7 +134,7 @@ test('project response identity requires a project object with the exact valid r
 test('project-open failures keep authentication and workspace identity failures distinct', () => {
   assert.equal(projectOpenFailureKind({ code: 'UNAUTHORIZED' }), 'auth');
   assert.equal(projectOpenFailureKind(Object.assign(new Error('session expired'), { code: 'UNAUTHORIZED' })), 'auth');
-  for (const code of ['LAST_PROJECT_SCOPE_MISMATCH', 'LAST_PROJECT_STALE_INSTANCE']) {
+  for (const code of ['LAST_PROJECT_SCOPE_MISMATCH', 'LAST_PROJECT_STALE_INSTANCE', 'PROJECT_ENTRY_SCOPE_MISMATCH', 'PROJECT_ENTRY_STALE_INSTANCE']) {
     assert.equal(projectOpenFailureKind(Object.freeze({ code, message: 'identity changed' })), 'identity', code);
   }
   for (const error of [null, undefined, 'UNAUTHORIZED', [], new Error('UNAUTHORIZED'), {},

@@ -5,11 +5,11 @@ import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
 import { createSettingsNavigationRegistry } from './settings-navigation-state.ts';
 import type { SettingsNavigationRegistry } from './settings-navigation-state.ts';
 import { createNativeCloseRegistry, installNativeCloseAdmission } from './native-close-state.ts';
-import { createLauncherClient } from './launcher-state.ts';
 import type { LauncherContractChecks, LauncherRpc } from './launcher-state.ts';
 import type { ProjectWindowBridge, ProjectWindowContext, ProjectWindowSettingsSlot } from './desktop-window-client.ts';
 import ProjectHomeConnections from './ProjectHomeConnections.tsx';
-import NativeLocatorStatus from './NativeLocatorStatus.tsx';
+import ProjectEntryIdentityStatus from './ProjectEntryIdentityStatus.tsx';
+import {createProjectEntryIdentityOwner} from './project-entry-identity.ts';
 import type { SettingsConnectionPage, SettingsPage } from './settings-window-state.ts';
 import { createSettingsWindowNavigation } from './settings-window-state.ts';
 import { Button } from '@mioon/ui/components/button';
@@ -35,7 +35,7 @@ export default function SettingsRoot({ context, bridge, rpc, contractChecks, ren
   context: ProjectWindowContext; bridge: ProjectWindowBridge; rpc: LauncherRpc; contractChecks: LauncherContractChecks;
   renderSettings: (props: SettingsRenderProps) => ReactNode;
 }) {
-  const { t, renderMessage, formatDate, formatNumber } = useI18n();
+  const { t, renderMessage } = useI18n();
   const confirm = useConfirmation();
   const { pauseObservation } = useUiPreferences();
   const registry = useRef(createSettingsNavigationRegistry()).current, native = useRef(createNativeCloseRegistry()).current;
@@ -44,6 +44,7 @@ export default function SettingsRoot({ context, bridge, rpc, contractChecks, ren
   const receiveEntry = useRef<(next: ProjectWindowContext) => void>(() => {});
   const [navigation] = useState(() => createSettingsWindowNavigation({ context, registry, confirm, onChange: () => rerender(value => value + 1) }));
   const [workspace, setWorkspace] = useState<'pending' | 'ready' | 'failed'>('pending');
+  const [identity] = useState(() => createProjectEntryIdentityOwner({...(contractChecks.readDirectory ? {read: () => contractChecks.readDirectory!()} : {})}));
   const [visible, setVisible] = useState(() => document.visibilityState !== 'hidden');
   const [closeFailed, setCloseFailed] = useState(false);
   const active = useRef(true), closeRequest = useRef<Promise<void> | null>(null);
@@ -62,6 +63,13 @@ export default function SettingsRoot({ context, bridge, rpc, contractChecks, ren
   };
   useEffect(() => {
     let current = true; active.current = true; navigation.activate();
+    identity.activate();
+    const releaseIdentity = identity.subscribe(() => {
+      if (!current) return;
+      const next = identity.getState();
+      setWorkspace(previous => next.phase === 'ready' || previous === 'ready' ? 'ready' : next.phase === 'error' || next.phase === 'blocked' ? 'failed' : 'pending');
+      rerender(value => value + 1);
+    });
     let intent = 0, latestVersion = context.settingsVersion, quitting = context.quitting;
     const receive = (next: ProjectWindowContext) => {
       if (next.role === 'settings' && next.windowId === context.windowId && next.contextId === context.contextId && next.backendId === context.backendId) {
@@ -83,22 +91,22 @@ export default function SettingsRoot({ context, bridge, rpc, contractChecks, ren
     const win = window as SettingsWindow;
     const cleanup = installNativeCloseAdmission(win as Parameters<typeof installNativeCloseAdmission>[0], { registry: native, settings: registry,
       onObservationPause: pauseObservation,
-      readScope: () => `${context.backendId}:${context.contextId}:${navigation.version}`, readDocumentURL: () => window.location.href });
+      readScope: () => JSON.stringify([context.backendId, context.contextId, navigation.version, identity.getState().appLibraryScope, identity.getState().instanceId, identity.getState().identityBlocked]), readDocumentURL: () => window.location.href });
     const drain = async () => registry.canLeave(registry.capture());
     win.__mioonFlushWorkspacePreferences = drain;
-    void createLauncherClient(rpc, contractChecks).list().then(() => { if (current) setWorkspace('ready'); }, () => { if (current) setWorkspace('failed'); });
-    return () => { current = false; active.current = false; if (receiveEntry.current === receive) receiveEntry.current = () => {}; release(); navigation.dispose(); cleanup(); pauseObservation(false); document.removeEventListener('visibilitychange', visibility);
+    void identity.discover();
+    return () => { current = false; active.current = false; if (receiveEntry.current === receive) receiveEntry.current = () => {}; release(); releaseIdentity(); identity.dispose(); navigation.dispose(); cleanup(); pauseObservation(false); document.removeEventListener('visibilitychange', visibility);
       if (win.__mioonFlushWorkspacePreferences === drain) delete win.__mioonFlushWorkspacePreferences; };
-  }, [bridge, navigation, native, registry, pauseObservation]);
+  }, [bridge, navigation, native, registry, pauseObservation, identity]);
   useEffect(() => receiveEntry.current(context), [context]);
   return <main className="project-home project-home-settings-window native-settings-panel"><header className="native-settings-panel-header"><span className="native-settings-panel-title">{t('settings.title')}</span>
-      <details className="settings-workspace-status settings-workspace-status-global" open={workspace === 'failed'}><summary>{t('settings.workspaceStatus')}</summary><div><NativeLocatorStatus context={context} bridge={bridge} recovery /></div></details>
+      <details className="settings-workspace-status settings-workspace-status-global" open={workspace === 'failed' || identity.getState().identityBlocked}><summary>{t('settings.workspaceStatus')}</summary><div><ProjectEntryIdentityStatus owner={identity} /></div></details>
       <Button type="button" variant="ghost" className="native-settings-panel-close" data-testid="native-settings-panel-close" aria-label={t('common.closeSettings')} title={t('common.closeSettings')} onClick={() => { void requestClose(); }}><WorkbenchIcon name="close" /></Button>
     </header>
     <section className="project-home-settings" aria-label={t('settings.title')}>
       {closeFailed && <p role="alert" className="project-home-notice" data-testid="native-settings-close-failed">{t('native.leaveUnverified')}</p>}
       {navigation.notice && <p role="status" className="project-home-notice">{renderMessage(navigation.notice)}</p>}
-      <div className="native-settings-center-body">
+      <div className="native-settings-center-body" inert={workspace === 'ready' && identity.getState().phase !== 'ready'}>
       {workspace === 'ready' ? renderSettings({ selected: navigation.selected, page: navigation.page, entryVersion, visible, registry, onSelect: slot => { void navigation.select(slot); }, onPage: page => { void navigation.selectPage(page); },
         general: undefined,
         // Only native P0 decides actual closure. Returning false prevents the

@@ -1,3 +1,4 @@
+import {useProjectMediaReadGate} from './project-media-read-gate.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useEffect, useRef, useState } from 'react';
 import type { ReactElement, PointerEvent as ReactPointerEvent } from 'react';
@@ -64,9 +65,13 @@ export function lightFromPoint(x: number, y: number): Pick<LightChoice, 'azimuth
   return { azimuth: Math.round(azimuth * 180 / Math.PI), elevation: Math.round(elevation * 180 / Math.PI) };
 }
 /** Whether the image has any pixel that is not fully opaque; null when it cannot be read. */
-export async function imageTransparency(url: string): Promise<boolean | null> {
+export async function imageTransparency(url: string, signal?: AbortSignal): Promise<boolean | null> {
+  const image = new Image(), stop = (): void => image.removeAttribute('src');
+  signal?.addEventListener('abort', stop, {once: true});
   try {
-    const image = new Image(); image.decoding = 'async'; image.src = url; await image.decode();
+    if (signal?.aborted) return null;
+    image.decoding = 'async'; image.src = url; await image.decode();
+    if (signal?.aborted) return null;
     const scale = Math.min(1, 1024 / Math.max(image.naturalWidth, image.naturalHeight, 1));
     const width = Math.max(1, Math.round(image.naturalWidth * scale)), height = Math.max(1, Math.round(image.naturalHeight * scale));
     const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
@@ -77,6 +82,7 @@ export async function imageTransparency(url: string): Promise<boolean | null> {
     for (let index = 3; index < data.length; index += 4) if (data[index]! < 255) return true;
     return false;
   } catch { return null; }
+  finally {signal?.removeEventListener('abort', stop); stop();}
 }
 const issueKeys: Readonly<Record<SubjectVariantSourceIssue, `subjects.variants.issue.${SubjectVariantSourceIssue}`>> = Object.freeze({ format: 'subjects.variants.issue.format', bytes: 'subjects.variants.issue.bytes', dimensions: 'subjects.variants.issue.dimensions', origin: 'subjects.variants.issue.origin', missing: 'subjects.variants.issue.missing', transparent: 'subjects.variants.issue.transparent' });
 const formatLabel = (mimeType: string): string => mimeType === 'image/jpeg' ? 'JPEG' : mimeType === 'image/webp' ? 'WebP' : 'PNG';
@@ -98,6 +104,7 @@ export interface SubjectVariantDialogProps {
 export default function SubjectVariantDialog({ subject, versions, initialSourceId, assets, controller, blocked, notice = null, onClose }: SubjectVariantDialogProps): ReactElement {
   const { t, renderMessage } = useI18n();
   const confirm = useConfirmation();
+  const gate = useProjectMediaReadGate();
   const [tab, setTab] = useState<SubjectVariantKind>('angle');
   const [sourceId, setSourceId] = useState(initialSourceId);
   const [picking, setPicking] = useState(false);
@@ -112,18 +119,19 @@ export default function SubjectVariantDialog({ subject, versions, initialSourceI
   useEffect(() => { live.current = true; let cancelled = false; void controller.readSettings().then(value => { if (!cancelled) setModels(value); }); return () => { cancelled = true; live.current = false; }; }, [controller]);
   const source = versions.find(version => version.id === sourceId) ?? versions.find(version => version.id === subject.headVersionId) ?? subject.headVersion;
   const asset = assets.find(item => item.id === source.assetId && item.projectId === source.projectId);
-  const opacityKey = asset?.id && source.mimeType !== 'image/jpeg' ? `${asset.id}:${source.sha256}` : '';
+  const mediaReadable = !gate || gate.canRead(asset);
+  const opacityKey = mediaReadable && asset?.id && source.mimeType !== 'image/jpeg' ? `${asset.id}:${source.sha256}` : '';
   useEffect(() => {
     if (!opacityKey || !asset) return;
-    let cancelled = false;
-    void imageTransparency(assetUrl(asset)).then(transparent => { if (!cancelled) setOpacity({ key: opacityKey, transparent }); });
-    return () => { cancelled = true; };
+    let cancelled = false; const abort = new AbortController();
+    void imageTransparency(assetUrl(asset), abort.signal).then(transparent => { if (!cancelled) setOpacity({ key: opacityKey, transparent }); });
+    return () => { cancelled = true; abort.abort(); };
   }, [opacityKey]);
   const choices = models ?? subjectVariantModels(null);
   const providerId: SubjectVariantProviderId = providerChoice ?? (choices.find(choice => choice.providerId === 'openai')?.available ? 'openai' : 'mock');
   const model = choices.find(choice => choice.providerId === providerId)!;
   const sourceIssue: SubjectVariantSourceIssue | null = subjectVariantSourceIssue(source, asset, providerId) ?? (opacityKey && opacity?.key === opacityKey && opacity.transparent ? 'transparent' : null);
-  const checking = Boolean(opacityKey && opacity?.key !== opacityKey);
+  const checking = !mediaReadable || Boolean(opacityKey && opacity?.key !== opacityKey);
   const size = subjectVariantOutputSize(source, providerId);
   const sizeLabel = size ? size.replace('x', '×') : '';
   const existing = existingAngles(versions);

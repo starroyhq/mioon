@@ -1,3 +1,4 @@
+import {ProjectMediaImage} from './project-media-read-gate.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useState } from 'react';
 import type { ReactElement } from 'react';
@@ -75,7 +76,7 @@ export function BoundReference({ edge, nodes, assets, busy = false, pending = fa
   const { source, asset, sourceName, sourceLabel, assetLabel, description } = referenceSourceDetails({ sourceId: edge.source, assetId: edge.sourceAssetId, projectId: edge.projectId, nodes, assets, locale }) as { source?: { id?: string } | null; asset?: { id?: string; name?: string } | null; sourceName: string; sourceLabel: string; assetLabel: string; description: string };
   return <section className="bound-reference" data-testid="bound-reference" aria-label={t('assets.reference.boundDescription', { description })}>
     <div className="bound-reference-heading"><Icon name="link" size={14} /><strong>{t('assets.reference.connected')}</strong></div>
-    <div className="bound-reference-source">{asset && <img src={assetUrl(asset)} alt={assetLabel} />}<div><strong title={assetLabel}>{t('assets.reference.sourceAsset', { name: assetLabel })}</strong><span title={sourceLabel}>{t('assets.reference.sourceNode', { name: sourceName })}</span><Button variant="ghost" size="sm" className="text-button" title={sourceLabel} aria-label={t('assets.reference.viewSourceNode', { name: sourceLabel })} disabled={!source} onClick={() => onInspect(source?.id ?? '')}>{t('assets.reference.openSource')}<Icon name="arrow" size={12} /></Button></div></div>
+    <div className="bound-reference-source">{asset && <ProjectMediaImage asset={asset} src={assetUrl(asset)} alt={assetLabel} />}<div><strong title={assetLabel}>{t('assets.reference.sourceAsset', { name: assetLabel })}</strong><span title={sourceLabel}>{t('assets.reference.sourceNode', { name: sourceName })}</span><Button variant="ghost" size="sm" className="text-button" title={sourceLabel} aria-label={t('assets.reference.viewSourceNode', { name: sourceLabel })} disabled={!source} onClick={() => onInspect(source?.id ?? '')}>{t('assets.reference.openSource')}<Icon name="arrow" size={12} /></Button></div></div>
     <p>{t('assets.reference.boundHint')}</p>
     {(dirty || conflict) && <p className="reference-connection-issue">{t('assets.reference.saveShotFirst')}</p>}
     {pending && <p className="reference-connection-issue">{t('assets.reference.pending')}</p>}

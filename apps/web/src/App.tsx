@@ -1,4 +1,10 @@
 import {assetMediaPrepareResponseSchema} from '../../../packages/contracts/src/asset-media.ts';
+import {useProjectMedia} from './use-project-media.ts';
+import type {ProjectMediaOwner} from './project-media-state.ts';
+import {sameMediaOwner} from './project-media-state.ts';
+import {ProjectMediaProvider} from './project-media-read-gate.tsx';
+import {ProjectMediaDialogs} from './ProjectMediaDialogs.tsx';
+import {timelineAudioMediaReadable} from './project-media-readability.ts';
 import type {AssetImportBridge,NativeAssetSelection} from '../../desktop/src/asset-import-preload.ts';
 import { videoBindingCapabilities, parseVideoBinding } from '../../../packages/contracts/src/video-providers.ts';
 import GenerationServicesSettings from './GenerationServicesSettings.tsx';
@@ -50,7 +56,6 @@ import {useTimelineAudioPreview,timelineAudioPreviewSourceIdentity,timelineAudio
 import { createEditorWindowInputs } from './editor-window-inputs.ts';
 import { combineNativeEntryClose } from './native-entry-close.ts';
 import { createNativeProjectLocation } from './native-project-location.ts';
-import NativeLocatorStatus from './NativeLocatorStatus.tsx';
 import { createNativeAudioPreviewAdmission } from './native-audio-preview-adapter.ts';
 import { useEditorSettingsScope } from './editor-settings-scope.ts';
 import { editorInitialSelection, useEditorWindowStatus, openNativeSettings, revealNativeProjects } from './editor-native-window.ts';
@@ -90,7 +95,8 @@ import type {TimelineAudioPreviewContext} from './use-timeline-audio-preview.ts'
 import type {ComparisonBinding, ComparisonContext} from './version-comparison-state.ts';
 import type {TaskWorkspaceContext} from './task-workspace-intent.ts';
 import type {GenerationAsset, GenerationProvider, GenerationShot, GenerationVideoInput} from './generation-settings.ts';
-import type {LastProjectController} from './last-project-state.ts';
+import type {ProjectEntryIdentityOwner} from './project-entry-identity.ts';
+import type {ProjectHomeProject} from './ProjectHome.tsx';
 import type {SettingsNavigationRegistry} from './settings-navigation-state.ts';
 import type {HomeConnectionSlot} from './ProjectHomeConnections.tsx';
 import type {SettingsPage} from './settings-window-state.ts';
@@ -219,10 +225,11 @@ import { pendingForProject, prepareSubmission, prepareRequestReplay, readPending
 import { isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse } from './mutation-submissions.ts';
 import { defaultWorkspaceState, reconcileWorkspaceState, sourceForAsset } from './workspace-state.ts';
 import { createWorkspacePreferences } from './workspace-preferences.ts';
-import { createLastProjectController } from './last-project-state.ts';
-import LastProjectStatus from './LastProjectStatus.tsx';
+import {createProjectEntryIdentityOwner, readProjectEntryIdentity} from './project-entry-identity.ts';
+import ProjectEntryIdentityStatus from './ProjectEntryIdentityStatus.tsx';
+import {projectDirectoryProjects} from './project-directory-presentation.ts';
 import TopbarSaveStatus from './TopbarSaveStatus.tsx';
-import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard, assertLastProjectBootIdentity } from './last-project-navigation.ts';
+import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard } from './last-project-navigation.ts';
 import { migrateBrowserStorage } from './storage-migration.ts';
 import { timelineHistoryState } from './timeline-history.ts';
 import { timelineHistoryActionForKey, timelineSplitActionForKey } from './timeline-keyboard.ts';
@@ -372,6 +379,7 @@ export type ClipReplacementReview = ReplacementReview;
 export interface MediaPause {(): void}
 export type NativeWindowLike = EditorWindowBinding;
 export interface NativeProjectEntryLike {
+  readonly identity?: ProjectEntryIdentityOwner | null;
   open(projectId: string): Promise<boolean> | boolean; show(mode: string): Promise<unknown> | unknown;
   readCloseSnapshot(): unknown; [key: string]: unknown;
 }
@@ -421,6 +429,7 @@ function readableError(error: unknown): AppMessage {
   if (failure?.code === 'STORAGE_MIGRATION_BLOCKED') return msg('shell.error.storageMigration');
   if (failure?.code === 'WORKSPACE_INTENT_ALREADY_PINNED') return msg('shell.error.workspacePinned');
   if (failure?.code === 'LAST_PROJECT_SCOPE_MISMATCH') return msg('shell.error.lastProjectScope');
+  if (failure?.code === 'PROJECT_ENTRY_SCOPE_MISMATCH' || failure?.code === 'PROJECT_ENTRY_STALE_INSTANCE') return msg('projects.locatorKeepWindow');
   return msg('shell.error.incomplete');
 }
 function Modal({ title, subtitle, children, onClose, wide = false }: ModalProps) {
@@ -480,7 +489,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const lockedTrackIds=new Set(trackLocks[data.project?.id||'']||[]);
   const editorSession = useRef(crypto.randomUUID());
   const dataRef = useRef(data); dataRef.current = data;
-  const [projects, setProjects] = useState<AppProject[]>([]);
+  const [projects, setProjects] = useState<readonly ProjectHomeProject[]>([]);
   const [providers, setProviders] = useState<GenerationProvider[]>([]);
   const [videoDirectoryUnavailable, setVideoDirectoryUnavailable] = useState(false);
   const [generationOptions, setGenerationOptions] = useState<Record<string, GenerationOptionState>>({});
@@ -637,11 +646,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const locatorIdentity = useRef<unknown>(null);
   const bootGuard = useRef<ReturnType<typeof createProjectBootGuard> | null>(null);
   if (!bootGuard.current) bootGuard.current = createProjectBootGuard(() => projectEpoch.current);
-  const [lastProjectStatus, setLastProjectStatus] = useState<unknown>(null);
-  const lastProjectRef = useRef<ReturnType<typeof createLastProjectController> | null>(null);
-  if (!lastProjectRef.current) lastProjectRef.current = createLastProjectController({
-    getEpoch: () => projectEpoch.current, onChange: setLastProjectStatus,
-  });
+  const [, setDirectoryPresentation] = useState(0);
+  const projectEntryIdentityRef = useRef<ProjectEntryIdentityOwner | null>(null);
+  if (!projectEntryIdentityRef.current) projectEntryIdentityRef.current = nativeProjectEntry?.identity ?? createProjectEntryIdentityOwner();
   const [inspectorEpoch, setInspectorEpoch] = useState(0);
   const [view, setView] = useState<ViewState>(() => defaultWorkspaceState() as unknown as ViewState);
   const viewRef = useRef<ViewState>(view); viewRef.current = view;
@@ -649,7 +656,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const [preferenceStatus, setPreferenceStatus] = useState<PreferenceStatus>({ phase: 'loading', pending: false });
   const preferencesRef = useRef<ReturnType<typeof createWorkspacePreferences> | null>(null);
   if (!preferencesRef.current) preferencesRef.current = createWorkspacePreferences({
-    getStorageScope: (() => lastProjectRef.current!.getState().identityBlocked ? null : preferenceScope.current) as unknown as () => undefined,
+    getStorageScope: () => projectEntryIdentityRef.current!.getState().identityBlocked ? null : preferenceScope.current,
     onStatus: ((projectId: string, status: PreferenceStatus) => { if (currentProject.current === projectId) setPreferenceStatus(status); }) as unknown as () => void
   });
   const busy = busyByProject[currentProject.current || 'none'] || emptyBusy;
@@ -686,8 +693,21 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const [subjectFocus, setSubjectFocus] = useState<{ subjectId: string; scope: string; basis: string } | null>(null);
   const workspaceMode = view.activeMode as WorkspaceMode;
   const modeLayout = (view.layout as unknown as Record<string, LayoutModeState>)[workspaceMode];
-  function projectSessionReady() { return canPublishProjectOpen(openedProject.current as ProjectOpenAttempt | null, { active: importSession.current.active, currentProjectId: currentProject.current, epoch: projectEpoch.current, workspaceScope: editorSession.current || '', preferencesReady: viewReady.current, dataProjectId: dataRef.current!.project?.id || null, loading: false }); }
+  function projectSessionReady() { return !projectEntryIdentityRef.current!.getState().identityBlocked && projectEntryIdentityRef.current!.getVerifiedScope() !== null && canPublishProjectOpen(openedProject.current as ProjectOpenAttempt | null, { active: importSession.current.active, currentProjectId: currentProject.current, epoch: projectEpoch.current, workspaceScope: editorSession.current || '', preferencesReady: viewReady.current, dataProjectId: dataRef.current!.project?.id || null, loading: false }); }
   const workbenchReady = auth === true && projectSessionReady() && !loading;
+  function readProjectMediaOwner(): ProjectMediaOwner | null {
+    const identity = projectEntryIdentityRef.current!, state = identity.getState(), scope = identity.getVerifiedScope();
+    if (!scope || !state.instanceId || state.identityBlocked || !projectSessionReady() || !currentProject.current) return null;
+    return {appLibraryScope: scope, instanceId: state.instanceId, projectId: currentProject.current, epoch: projectEpoch.current, session: editorSession.current};
+  }
+  const projectMedia = useProjectMedia({
+    owner: readProjectMediaOwner(), readOwner: readProjectMediaOwner,
+    assets: data.assets.flatMap(asset => typeof asset.projectId === 'string' && typeof asset.referenceRevision === 'number' && Number.isSafeInteger(asset.referenceRevision) && asset.referenceRevision > 0
+      ? [{id: asset.id, projectId: asset.projectId, name: asset.name, mimeType: asset.mimeType, referenceRevision: asset.referenceRevision}] : []),
+    onApplied: async owner => {
+      if (sameMediaOwner(readProjectMediaOwner(), owner)) await refresh(owner.projectId);
+    },
+  });
   useEditorWindowStatus(nativeWindow, currentProject.current, projectOpening.phase, workbenchReady);
   const panelSurface = useRef<HTMLDivElement | null>(null), panelIntent = useRef(0), taskWorkspaceState = useRef<{visible: boolean; connected: boolean} | null>(null), taskShotAttempt = useRef(0);
   const [panelChange, setPanelChange] = useState(0);
@@ -812,9 +832,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const serial = ++projectListSerial.current, scope = editorSession.current;
     setProjectListStatus({ busy: true, error: '' });
     try {
-      const list = await rpc('project.list');
+      const directory = await readProjectEntryIdentity(projectEntryIdentityRef.current!);
       if (!importSession.current.active || serial !== projectListSerial.current || scope !== editorSession.current) return;
-      setProjects(list as AppProject[]); setProjectListStatus({ busy: false, error: '' });
+      setProjects(projectDirectoryProjects(directory)); setProjectListStatus({ busy: false, error: '' });
     } catch (error) {
       if (!importSession.current.active || serial !== projectListSerial.current || scope !== editorSession.current) return;
       if (projectOpenFailureKind(error) === 'auth') setAuth(false);
@@ -945,14 +965,25 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (!settingsTicket || !importSession.current.active || importSession.current.selection !== lifetime || !isCurrent(selection)) return false;
     const settingsCurrent = () => importSession.current.active && importSession.current.selection === lifetime && isCurrent(selection) && settingsNavigation.current!.canLeave(settingsTicket as Parameters<NonNullable<typeof settingsNavigation.current>['canLeave']>[0]);
     if (id === currentProject.current && !initial && !reloadPreferences && !loading && projectSessionReady()) {
-      if (!nativeWindow) lastProjectRef.current!.rememberOpened(id, projectEpoch.current);
       return true;
     }
     const draftMessage = imageDraft.current ? msg(agentDraft.current ? 'shell.confirm.unsentBoth' : 'shell.confirm.unsentImage') : agentDraft.current ? msg('shell.confirm.unsentAgent') : msg('shell.confirm.switchProject');
     if (!initial && !await guardProjectNavigation(draftMessage, agentDraft.current || imageDraft.current, settingsCurrent)) return false;
     if (!settingsCurrent()) return false;
+    try {
+      const directory = await readProjectEntryIdentity(projectEntryIdentityRef.current!);
+      if (!settingsCurrent() || !directory.registered.some(entry => entry.project.projectId === id)) return false;
+      projectEntryIdentityRef.current!.assertIdentity();
+    } catch (error) {
+      if (settingsCurrent()) {
+        const kind = projectOpenFailureKind(error);
+        if (kind === 'auth') setAuth(false);
+        else if (kind === 'identity') setAuth('error');
+        setProjectOpening({phase: 'error', projectId: id, error: readableError(error)});
+      }
+      return false;
+    }
     navigationEpoch.current++; const epoch = ++projectEpoch.current; ++requestCounter.current;
-    lastProjectRef.current!.invalidateNavigation(epoch);
     const attempt = projectOpenAttempt(id, epoch, (editorSession.current ?? '') as string);
     openedProject.current = null;
     setProjectOpening({ phase: 'opening', projectId: id, error: '' }); setHomePage('projects');
@@ -985,7 +1016,6 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     openedProject.current = attempt; setProjectOpening({ phase: 'ready', projectId: id, error: '' });
     void window.__mioonUiPreferences?.markOpened?.(id);
     void tasksRef.current!.load(id);
-    if (!nativeWindow && !initial && !reloadPreferences) lastProjectRef.current!.rememberOpened(id, epoch);
     if (next && !viewRef.current!.canvas.selectedId) { const first = [...next.shots].sort((a, b) => a.orderIndex - b.orderIndex)[0] || next.nodes.find((n: AppNode) => n.type !== 'text') || next.nodes[0]; if (first) updateView('canvas', { selectedId: first.id }, { passive: true }); }
     return true;
     } catch (e) {
@@ -1009,7 +1039,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (!current()) return false;
     const message = imageDraft.current ? msg(agentDraft.current ? 'shell.confirm.unsentBoth' : 'shell.confirm.unsentImage') : agentDraft.current ? msg('shell.confirm.unsentAgent') : msg('shell.confirm.switchProject');
     if (!await guardProjectNavigation(message, agentDraft.current || imageDraft.current, current) || !current()) return false;
-    navigationEpoch.current++; const epoch = ++projectEpoch.current; requestCounter.current++; lastProjectRef.current!.invalidateNavigation(epoch);
+    navigationEpoch.current++; ++projectEpoch.current; requestCounter.current++;
     if (currentProject.current) void preferencesRef.current!.flush({ projectId: currentProject.current, keepalive: true } as unknown as {keepalive?: boolean});
     currentProject.current = null; openedProject.current = null; viewReady.current = false;
     dataRef.current = emptyData; setData(emptyData); setNodes([]); setLoading(false); dragging.current = false;
@@ -1032,17 +1062,17 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     preferenceScope.current = null;
     try {
       migrateBrowserStorage();
-      const [list, directory, locator] = await Promise.all([
-        rpc('project.list'), readGenerationProviderDirectory(rpc),
-        lastProjectRef.current!.discover(),
+      const [directory, entries] = await Promise.all([
+        readGenerationProviderDirectory(rpc), readProjectEntryIdentity(projectEntryIdentityRef.current!),
       ]);
       if (!bootGuard.current!.isCurrent(ticket)) return;
       if (clipDraftRef.current?.hasPendingComposition() || clipDraftRef.current?.hasUnsaved()) return;
-      assertLastProjectBootIdentity(lastProjectRef.current!.getState());
-      locatorIdentity.current = retainLastProjectScope(locatorIdentity.current as string | null, locator?.workspaceScope ?? null);
-      preferenceScope.current = locator?.workspaceScope ?? null;
-      setProjects(list as AppProject[]); setProviders(directory.providers); setVideoDirectoryUnavailable(directory.videoUnavailable); setAuth(true); setOnline(true);
-      const choice = editorInitialSelection(nativeWindow, chooseInitialProject(list as never, new URLSearchParams(window.location.search).get('project'), locator?.envelope ?? null));
+      projectEntryIdentityRef.current!.assertIdentity();
+      locatorIdentity.current = retainLastProjectScope(locatorIdentity.current as string | null, entries.appLibraryScope);
+      preferenceScope.current = entries.appLibraryScope;
+      const list = projectDirectoryProjects(entries);
+      setProjects(list); setProviders(directory.providers); setVideoDirectoryUnavailable(directory.videoUnavailable); setAuth(true); setOnline(true);
+      const choice = editorInitialSelection(nativeWindow, chooseInitialProject(list, new URLSearchParams(window.location.search).get('project')));
       if (choice.projectId) {
         const accepted = await selectProject(choice.projectId, true);
         if (accepted && currentProject.current === choice.projectId && choice.notice) notify(choice.notice, 'error');
@@ -1050,18 +1080,26 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     } catch (e) { if (bootGuard.current!.isCurrent(ticket)) { if ((e as {code?: string; status?: number}).code === 'UNAUTHORIZED' || (e as {status?: number}).status === 401) setAuth(false); else { setAuth('error'); notify(readableError(e), 'error'); } } }
   }
   useEffect(() => {
-    bootGuard.current!.activate(); lastProjectRef.current!.activate(); void boot();
-    return () => { bootGuard.current!.deactivate(); lastProjectRef.current!.dispose(); };
+    const identity = projectEntryIdentityRef.current!;
+    const unsubscribe = identity.subscribe(() => setDirectoryPresentation(value => value + 1));
+    bootGuard.current!.activate(); identity.activate(); void boot();
+    const recheck = () => {
+      const owner = readProjectMediaOwner();
+      void identity.refresh().then(snapshot => {
+        if (snapshot && importSession.current.active && !identity.getState().identityBlocked && sameMediaOwner(owner, readProjectMediaOwner())) return projectMedia.controller.refresh();
+      });
+    };
+    window.addEventListener('focus', recheck);
+    return () => { window.removeEventListener('focus', recheck); unsubscribe(); bootGuard.current!.deactivate(); if (!nativeProjectEntry?.identity) identity.dispose(); };
   }, []);
   useEffect(() => {
     const controller = preferencesRef.current!;
-    const locator = lastProjectRef.current!;
     const flush = (event?: Event) => {
       const clip = clipDraftRef.current!;
       if (clip?.hasPendingComposition()) { if (event?.type === 'beforeunload') { event.preventDefault(); (event as BeforeUnloadEvent).returnValue = ''; } return; }
       if (window.__mioonNativeCloseAdmission?.suppressLifecycleFlush?.(event as Event) === true) return;
       void controller.flush({ keepalive: true });
-      { if (!nativeWindow) void locator.flush(); if (localDeliveryRef.current?.controller.hasUnsaved()) void localDeliveryRef.current!.controller.flush(); if (shotTextRef.current?.hasUnpersisted()) void shotTextRef.current!.flush(); }
+      { if (localDeliveryRef.current?.controller.hasUnsaved()) void localDeliveryRef.current!.controller.flush(); if (shotTextRef.current?.hasUnpersisted()) void shotTextRef.current!.flush(); }
       // Lifecycle events offer only a best-effort flush; pagehide cannot
       // guarantee its durability.
       if (clip?.hasUnpersisted()) void clip!.flushForClose();
@@ -1074,13 +1112,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       const capturedSession = editorSession.current;
       const clipOwner = clipDraftRef.current;
       const clip = clipOwner, clipCapture = clip?.capture();
-      const [, remembered, titleSaved, shotSaved, clipSaved] = await Promise.all([
-        controller.flush({ keepalive: true }), nativeWindow ? true : locator.flush(),
+      const [, titleSaved, shotSaved, clipSaved] = await Promise.all([
+        controller.flush({ keepalive: true }),
         !localDeliveryRef.current?.controller.hasUnsaved() ? true : localDeliveryRef.current!.controller.flush(),
         !shotTextRef.current?.hasUnpersisted() ? true : shotTextRef.current!.flush(),
         clip ? clip.flushForClose() : true,
       ]);
-      return !clipDraftRef.current?.hasPendingComposition() && !controller!.hasUnsaved() && remembered && titleSaved && shotSaved && clipSaved && capturedSession === editorSession.current
+      return !clipDraftRef.current?.hasPendingComposition() && !controller!.hasUnsaved() && titleSaved && shotSaved && clipSaved && capturedSession === editorSession.current
         && clipOwner === clipDraftRef.current && (!clip || clip.isCurrent(clipCapture) && !clip!.hasUnpersisted());
     };
     globalThis.__mioonFlushWorkspacePreferences = drain;
@@ -1119,7 +1157,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       clip: clipDraftRef.current, format: timelineFormatRef.current?.controller,
       delivery: deliveryNameRef.current?.controller, subtitle: subtitlesRef.current?.controller, subject: subjectsRef.current?.controller }),
   } as unknown as Parameters<typeof installNativeCloseAdmission>[1]), []);
-  useEffect(() => { if (showProjects) rpc('project.list').then(list => setProjects(list as AppProject[])).catch(e => notify(readableError(e), 'error')); }, [showProjects]);
+  useEffect(() => { if (showProjects) void refreshHomeProjects(); }, [showProjects]);
   useEffect(() => {
     if (!auth || !workbenchReady || !data.project?.id) return;
     const timer = setInterval(() => { if (!dragging.current && document.visibilityState === 'visible') refresh(); }, 2500);
@@ -1128,6 +1166,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
   }, [auth, workbenchReady, data.project?.id, refresh]);
   async function run(key: string, operation: string, input: Record<string, unknown>, message?: AppMessage, options: RunOptions = {}): Promise<unknown> {
+    if (projectEntryIdentityRef.current!.getState().identityBlocked) return null;
     if (clipConnectionBlocked.current) return null;
     const invocationOptions = { ...options, canRevealTasks: captureTaskWorkspaceIntent(readTaskRevealContext) || (() => false) };
     if (isDurableEditOperation(operation) && !options.replay) return runDurable(key, operation, input, message, invocationOptions);
@@ -1433,6 +1472,17 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       const settingsTicket = await prepareSettingsDeparture();
       const settingsCurrent = (): boolean => Boolean(current() && settingsTicket && settingsNavigation.current!.canLeave(settingsTicket as Parameters<NonNullable<typeof settingsNavigation.current>['canLeave']>[0]));
       if (!settingsCurrent() || !await guardProjectNavigation(msg('shell.confirm.createProject'), false, settingsCurrent) || !settingsCurrent()) return false;
+      try {await readProjectEntryIdentity(projectEntryIdentityRef.current!);}
+      catch (error) {
+        if (current()) {
+          const kind = projectOpenFailureKind(error);
+          if (kind === 'auth') setAuth(false);
+          else if (kind === 'identity') setAuth('error');
+          setProjectListStatus({busy: false, error: readableError(error)});
+        }
+        return false;
+      }
+      if (!settingsCurrent()) return false;
       if (nativeWindow) { nativeCreate = editorInputs.current!.beginProjectCreate(captured.projectId); if (!nativeCreate) return false; }
       const nativeOptions: RunOptions | undefined = nativeCreate ? ({
         validateResponse: (result: unknown) => editorInputs.current!.validateProjectCreate(nativeCreate as object, result as object, name, description),
@@ -1441,8 +1491,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       const created = await run('project-create', 'project.create', { name, description, ...(timelinePresetId === undefined ? {} : { timelinePresetId }) }, undefined, nativeOptions);
       if (!created || !current()) return false;
       try {
-        const list = await rpc('project.list'); if (!current()) return false;
-        setProjects(list as AppProject[]); setShowCreate(false);
+        const directory = await readProjectEntryIdentity(projectEntryIdentityRef.current!); if (!current()) return false;
+        setProjects(projectDirectoryProjects(directory)); setShowCreate(false);
         const accepted = await selectProject((created as {id: string}).id);
         if (accepted && alive() && currentProject.current === (created as {id: string}).id) notify(msg('projects.createdImportHint'));
         return accepted;
@@ -2023,12 +2073,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   function clipLoudnessContext(): TimelineClipLoudnessContext {
     const saved = dataRef.current!.timeline, workspaceScope = editorSession.current, editing = viewRef.current!.editing;
+    const clip = saved?.clips.find(item => item.id === editing.selectedClipId);
+    const readable = !clip?.assetId || projectMedia.canRead(dataRef.current!.assets.find(asset => asset.id === clip.assetId));
     return { ...savedClipLoudnessFields(saved, dataRef.current!.assets, editing.selectedClipId),
       scope: workspaceScope === null ? null : `${currentProject.current}:${projectEpoch.current}:${workspaceScope}`,
       projectId: projectSessionReady() && dataRef.current!.project?.id === currentProject.current ? currentProject.current : null,
       executionScope: `${navigationEpoch.current}:${panelIntent.current}:${clipLoudnessEpoch.current}:${inspectorEpoch}`,
       sourceIdentity: timelineAudioPreviewSourceIdentity(saved, dataRef.current!.assets),
-      connected: projectSessionReady() && workspaceScope !== null && online && auth === true && !loading,
+      connected: readable && projectSessionReady() && workspaceScope !== null && online && auth === true && !loading,
       visible: workbenchReady && viewRef.current!.activeMode === 'editing' && !editing.quickAssetId && rightDockTab === 'properties' && propertiesPage === 'inspector' && panelVisible('inspector') && !previewAssetRef.current && !comparisonIdRef.current && !webSettingsOpen,
 
       hasUnsavedDrafts: inspectorDirty || formatDirty || Boolean(clipDraftRef.current?.hasUnsaved() || clipDraftRef.current?.getState().candidate || subtitlesRef.current?.controller.hasUnsaved() || timelineFormatRef.current?.controller.hasUnsaved()),
@@ -2036,12 +2088,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   function timelineMixLoudnessContext(): TimelineMixLoudnessContext {
     const workspaceScope = editorSession.current, saved = dataRef.current!.timeline;
+    const readable = timelineAudioMediaReadable(saved, dataRef.current!.assets, projectMedia.canRead);
     return { scope: workspaceScope === null ? null : `${currentProject.current}:${projectEpoch.current}:${workspaceScope}`,
       projectId: projectSessionReady() && dataRef.current!.project?.id === currentProject.current ? currentProject.current : null,
       timelineId: saved?.id || null, revision: saved?.revision || null, durationFrames: saved?.durationFrames || 0,
       sourceIdentity: timelineAudioPreviewSourceIdentity(saved, dataRef.current!.assets),
       executionScope: `${navigationEpoch.current}:${panelIntent.current}:${viewRef.current!.activeMode}`,
-      connected: projectSessionReady() && workspaceScope !== null && online && auth === true && !loading,
+      connected: readable && projectSessionReady() && workspaceScope !== null && online && auth === true && !loading,
       visible: workbenchReady && showDelivery && !showExports,
 
       hasUnsavedDrafts: clipDirty || subtitleDirty || formatDirty || Boolean(clipDraftRef.current?.hasUnsaved() || clipDraftRef.current?.getState().candidate || subtitlesRef.current?.controller.hasUnsaved() || timelineFormatRef.current?.controller.hasUnsaved()),
@@ -2100,12 +2153,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const registerNativePreviewPause = useCallback((pause: (() => void) | null) => { nativePreviewPause.current = pause; return () => { if (nativePreviewPause.current === pause) nativePreviewPause.current = null; }; }, []);
   function soundAuditionContext(): TimelineAudioPreviewContext {
     const workspaceScope = editorSession.current, saved = dataRef.current!.timeline, editing = viewRef.current!.editing;
+    const readable = timelineAudioMediaReadable(saved, dataRef.current!.assets, projectMedia.canRead);
     return { scope: workspaceScope === null ? null : `${currentProject.current}:${projectEpoch.current}:${workspaceScope}`,
       executionScope: `${navigationEpoch.current}:${viewRef.current!.activeMode}:${editing.previewKind}:${editing.selectedClipId}:${editing.quickAssetId}`,
       projectId: projectSessionReady() && dataRef.current!.project?.id === currentProject.current ? currentProject.current : null,
       timelineId: saved?.id || null, revision: saved?.revision || null, durationFrames: saved?.durationFrames || 0,
       sourceIdentity: timelineAudioPreviewSourceIdentity(saved, dataRef.current!.assets),
-      connected: projectSessionReady() && workspaceScope !== null && online && auth === true && !loading,
+      connected: readable && projectSessionReady() && workspaceScope !== null && online && auth === true && !loading,
       visible: workbenchReady && workspaceMode === 'editing' && previewKind === 'timeline' && panelVisible('canvas') && !previewAsset && !comparisonIdRef.current,
        hasUnsavedDrafts: clipDirty || subtitleDirty || formatDirty || Boolean(clipDraftRef.current?.getState().candidate) };
   }
@@ -2114,7 +2168,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     readContinuousPlan: (input: Record<string, unknown>, options?: Parameters<typeof rpc>[2]) => rpc('timeline.audioPreview.continuousPlan', input, options as never),
     onExplicitPosition: setPlayhead, onBeforePlay: beforeTimelineAudioPlay } as unknown as Parameters<typeof useTimelineAudioPreview>[0]) as unknown as ReturnType<typeof useTimelineAudioPreview>;
   function readTimelineLoudnessRecoveryScope(): string | null {
-    return timelineLoudnessApplyRecoveryScope(lastProjectRef.current!.getState().identityBlocked ? null : preferenceScope.current) as string | null;
+    return timelineLoudnessApplyRecoveryScope(projectEntryIdentityRef.current!.getState().identityBlocked ? null : preferenceScope.current) as string | null;
   }
   const timelineLoudnessApply = useTimelineLoudnessApply({
     nativeCloseRegistry: nativeCloseRegistry.current,
@@ -2136,7 +2190,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       executionScope: `${navigationEpoch.current}:${panelIntent.current}:${viewRef.current!.activeMode}`,
       connected: projectSessionReady() && workspaceScope !== null && online && auth === true && !loading,
       visible: workbenchReady && showDelivery && showExports,
-      exports: dataRef.current!.exports, assets: dataRef.current!.assets };
+      exports: dataRef.current!.exports, assets: dataRef.current!.assets.filter(asset => projectMedia.canRead(asset)) };
   }
   const exportSamplePeak = useExportSamplePeak({ context: exportSamplePeakContext(), getContext: exportSamplePeakContext,
     isRenderRecord: isTimelineRenderRecord,
@@ -2301,6 +2355,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   // Shot detection. The dialog belongs to one project and video; splitting uses the ordinary timeline mutation path.
   async function prepareStrongAsset(asset:AppAsset,purpose:'frame'|'scene'|'timeline'):Promise<AppAsset|null> {
+    if (!projectMedia.canRead(asset)) return null;
     if(typeof asset.sha256==='string'&&(/^[a-f0-9]{64}$/u).test(asset.sha256))return asset;
     const captured=context(),revision=asset.referenceRevision;
     if(asset.sha256!==null||!Number.isSafeInteger(revision)||Number(revision)<1||asset.projectId!==captured.projectId)return null;
@@ -2316,6 +2371,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     }catch(error){if(isCurrent(captured))notify(readableError(error),'error');return null;}
   }
   async function openSceneDetection(asset: AppAsset, autoStart: boolean): Promise<void> {
+    if (!projectMedia.canRead(asset)) return;
     if(asset.sha256===null){const prepared=await prepareStrongAsset(asset,'scene');if(!prepared)return;asset=prepared;}
     const projectId = currentProject.current;
     if (!projectId || asset.projectId !== projectId) return;
@@ -2561,6 +2617,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const clipInspectorRetained = clipInspectorRetention.current.retained;
   clipConnectionBlocked.current = !online || auth !== true || clipInspectorRetained;
   const retainWorkbenchForClip = retainClipWorkbench(displayedClipInspector, clipCompositionPending || Boolean(clipDraftRef.current?.hasPendingComposition()), clipDirty);
+  const retainWorkbenchForIdentity = projectEntryIdentityRef.current!.getState().identityBlocked && viewReady.current && data.project?.id === currentProject.current;
+  const retainSettingsForIdentity = projectEntryIdentityRef.current!.getState().identityBlocked && webSettingsOpen;
   const staleClips = staleClipSources(timeline?.clips ?? [], data.shots, data.versions);
   const shotStatuses = useMemo(() => shotTimelineStatuses(timeline?.clips ?? [], data.shots, data.versions), [timeline, data.shots, data.versions]);
   const staleClipIds = (timeline?.clips ?? []).filter(clip => staleClips.has(clip.id)).sort((a, b) => a.startFrame - b.startFrame).map(clip => clip.id);
@@ -2603,9 +2661,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     save: ((input: Record<string, unknown>) => run(`source-range:${input.assetId as string}`, 'asset.range.set', input, msg('shell.sourceRangeSaved'), { returnAfterNavigation: true })) as never,
     refreshGeneration: sourceRangeRefresh[`${data.project?.id}:${rangeAsset?.id}`] || 0, onDirtyChange: setSourceDirty });
   const sourceRangeBlocked = !online || loading || Boolean(busy['canvas:mutation'] || timelineBusy || activePending.some(entry => isMutationOperation(entry.operation)));
-  const frameExtraction = useFrameExtraction({ projectId: workbenchReady ? data.project?.id : null, sourceScope: sourceRangeScope, sourceAsset: rangeAsset, assets: data.assets as never[],
+  const frameExtraction = useFrameExtraction({ projectId: workbenchReady ? data.project?.id : null, sourceScope: sourceRangeScope, sourceAsset: rangeAsset && projectMedia.canRead(rangeAsset) ? rangeAsset : null, assets: data.assets.filter(asset => projectMedia.canRead(asset)) as never[],
     visible: workbenchReady && workspaceMode === 'editing' && Boolean(quickAssetId && rangeAsset) && (panelVisible('canvas') || panelVisible('inspector') && rightDockTab === 'properties'),
-    blocked: sourceRangeBlocked || Object.values(busy).some(Boolean), rpc: rpc as never, createRequestId: requestId,
+    blocked: sourceRangeBlocked || !projectMedia.canRead(rangeAsset) || Object.values(busy).some(Boolean), rpc: rpc as never, createRequestId: requestId,
     onResult: (projectId: string) => { if (currentProject.current === projectId) void refresh(projectId); }, revealAsset: revealImageAsset });
 
   // A sampled video stays a normal preview source; only the active frame
@@ -2613,7 +2671,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   useEffect(()=>{
     if(!workbenchReady||workspaceMode!=='editing'||!quickAssetId||!rangeAsset||rangeAsset.sha256!==null)return;
     void prepareStrongAsset(rangeAsset,'frame');
-  },[workbenchReady,workspaceMode,quickAssetId,rangeAsset?.id,rangeAsset?.sha256,rangeAsset?.referenceRevision]);
+  },[workbenchReady,workspaceMode,quickAssetId,rangeAsset?.id,rangeAsset?.sha256,rangeAsset?.referenceRevision,projectMedia.state.status]);
 
   // Shot detection: one controller for the dialog, the inspector summaries and the task views. A detection that
   // ends while its own dialog is closed is announced; an open dialog shows the outcome itself.
@@ -2672,7 +2730,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return () => window.removeEventListener('keydown', onKeyDown);
   });
   const storyboardPanel = storyboardTask && storyboardSummary ? <StoryboardBatchInspector task={storyboardTask} sourceName={data.assets.find(asset => asset.id === storyboardTask.sourceAssetId)?.name ?? null} shots={data.shots}
-    keyframes={(storyboardTask.shots ?? []).map(item => ({ assetId: item.assetId, url: assetUrl(data.assets.find(asset => asset.id === item.assetId)) || undefined }))} undo={storyboardUndo} readOnly={false} busy={storyboardBusy}
+    keyframes={(storyboardTask.shots ?? []).map(item => ({ assetId: item.assetId, url: projectMedia.canRead(item.assetId) ? assetUrl(data.assets.find(asset => asset.id === item.assetId)) || undefined : undefined }))} undo={storyboardUndo} readOnly={false} busy={storyboardBusy}
     unconfirmed={scenes.state.phase === 'unknown' && scenes.state.pending?.operation === 'scene.shots.undo' && scenes.state.pending.input.taskId === storyboardTask.id}
     onUndo={() => { void undoStoryboard(storyboardTask.id); }} onRecheck={() => { void scenes.controller.checkUndo(storyboardTask.id); }}
     onReconcile={() => { void scenes.controller.reconcileUnknown(); }} onResend={() => { void scenes.controller.retryUnknown(); }} /> : null;
@@ -2770,8 +2828,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const selectedEdge = data.edges.find(edge => edge.id === selectedEdgeId);
   const visibleAssets = data.assets.filter(a => (assetFilter === 'all' || a.mimeType?.startsWith(`${assetFilter}/`)) && a.name.toLowerCase().includes(assetSearch.toLowerCase()));
   const guardRetainedInputInteraction = (event: React.SyntheticEvent) => {
-    if (!clipConnectionBlocked.current || !retainWorkbenchForClip) return;
-    if ((event.target as Element | null)?.closest?.('[data-testid="clip-volume-envelope"], [data-testid="clip-opacity-envelope"], [data-retained-input-action]')) return;
+    if (!retainWorkbenchForIdentity && (!clipConnectionBlocked.current || !retainWorkbenchForClip)) return;
+    if (!retainWorkbenchForIdentity && (event.target as Element | null)?.closest?.('[data-testid="clip-volume-envelope"], [data-testid="clip-opacity-envelope"], [data-retained-input-action]')) return;
     event.preventDefault(); event.stopPropagation();
   };
   function imageEditScope() { return `${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}:${panelIntent.current}:${editorSession.current}`; }
@@ -2894,13 +2952,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     document.title = title;
     return () => { if (document.title === title) document.title = previous; };
   }, [nativeWindow?.context.contextId, data.project?.id, data.project?.name]);
-  if (auth === false && !retainWorkbenchForClip) return <Login onLogin={boot} />;
-  if ((auth === null || auth === 'error') && !retainWorkbenchForClip) return <div className="boot-page"><LanguageControl /><div className="brand"><span className="brand-mark"><BrandMark /></span>Mioon</div>{auth === null ? <><span className="spinner" /><p>{t('shell.connecting')}</p></> : <><h2>{t('shell.connectFailed')}</h2><p>{toast?.message ? renderImportFeedback(locale, toast.message) : t('shell.checkServer')}</p><Button variant="ghost" className="button primary" onClick={() => { setAuth(null); boot(); }}><Icon name="refresh" />{t('shell.reconnect')}</Button></>}</div>;
-  if (nativeWindow && !workbenchReady && !retainWorkbenchForClip) return <EditorWindowOpening error={projectOpening.error} onRetry={() => { void selectProject((currentProject.current || nativeWindow.context.initialProjectId) as string, false, true); }} onProjects={() => { void nativeProjectEntry?.show('open'); }} />;
-  const webSettingsCenter = nativeWindow ? null : <WebSettingsCenter key="global-settings-center" request={webSettingsRequest} registry={settingsNavigation.current} onOpenChange={setWebSettingsOpen} connectionsAvailable={true} renderSettings={props => <SettingsConnectionForms {...props} projectId={workbenchReady ? currentProject.current : null} />} />;
+  if (auth === false && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !retainSettingsForIdentity) return <Login onLogin={boot} />;
+  if ((auth === null || auth === 'error') && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !retainSettingsForIdentity) return <div className="boot-page"><LanguageControl /><div className="brand"><span className="brand-mark"><BrandMark /></span>Mioon</div>{auth === null ? <><span className="spinner" /><p>{t('shell.connecting')}</p></> : <><h2>{t('shell.connectFailed')}</h2><p>{toast?.message ? renderImportFeedback(locale, toast.message) : t('shell.checkServer')}</p><Button variant="ghost" className="button primary" onClick={() => { setAuth(null); boot(); }}><Icon name="refresh" />{t('shell.reconnect')}</Button></>}</div>;
+  if (nativeWindow && !workbenchReady && !retainWorkbenchForClip && !retainWorkbenchForIdentity) return <EditorWindowOpening error={projectOpening.error} onRetry={() => { void selectProject((currentProject.current || nativeWindow.context.initialProjectId) as string, false, true); }} onProjects={() => { void nativeProjectEntry?.show('open'); }} />;
+  const webSettingsCenter = nativeWindow ? null : <WebSettingsCenter key="global-settings-center" request={webSettingsRequest} registry={settingsNavigation.current} onOpenChange={setWebSettingsOpen} interactionBlocked={projectEntryIdentityRef.current!.getState().identityBlocked} connectionsAvailable={true} renderSettings={props => <SettingsConnectionForms {...props} projectId={workbenchReady ? currentProject.current : null} />} />;
   const videoDirectoryNotice = videoDirectoryUnavailable ? <p className="notice warning" role="status" data-testid="video-directory-unavailable">{t('video.providers.directoryUnavailableHint')}</p> : null;
-  if (!workbenchReady && !retainWorkbenchForClip) return <>{webSettingsCenter}<ProjectHome summaryEnabled={true} active={!webSettingsOpen} openingProjectId={projectOpening.projectId} onUnauthorized={() => setAuth(false)} summaryScope={(preferenceScope.current || editorSession.current) as string} projects={projects as never[]} phase={projectOpening.phase === 'error' ? 'error' : loading || projectOpening.phase === 'opening' ? 'opening' : 'home'} openingName={projects.find(item => item.id === projectOpening.projectId)?.name || t('projects.project')} error={projectOpening.error} notice={toast?.message} busy={Boolean(busy['project-create'] || busy['project-create-flow'])} listBusy={projectListStatus.busy} listError={projectListStatus.error} page={homePage as never} onPage={changeHomePage} onOpen={id => selectProject(id)} onRetry={() => projectOpening.projectId ? selectProject(projectOpening.projectId, false, true) : Promise.resolve(false)} onRefresh={refreshHomeProjects} onCreate={createProject} help={<LastProjectStatus state={(lastProjectStatus || lastProjectRef.current!.getState()) as never} controller={lastProjectRef.current}  />} status={<>{videoDirectoryNotice}{false}</>} settings={null} /></>;
-  return <>{webSettingsCenter}<main className={`workbench workbench-v2 dock-workbench shell-redesign ${geometry.narrow ? 'dock-narrow' : ''} ${geometry.compact ? 'dock-compact' : ''} mode-${workspaceMode} mobile-${mobilePanel} ${assetsCollapsed ? 'assets-collapsed' : ''} ${inspectorCollapsed ? 'inspector-collapsed' : ''} ${timelineCollapsed ? 'timeline-collapsed' : ''}`} data-testid="workbench" onClickCapture={guardRetainedInputInteraction} onKeyDownCapture={guardRetainedInputInteraction} onSubmitCapture={guardRetainedInputInteraction} data-workspace-mode={workspaceMode} data-narrow={geometry.narrow ? 'true' : 'false'} data-compact={geometry.compact ? 'true' : 'false'} style={geometry.style as never}>
+  if (!workbenchReady && !retainWorkbenchForClip && !retainWorkbenchForIdentity) return <>{webSettingsCenter}<ProjectHome summaryEnabled={true} active={!webSettingsOpen} openingProjectId={projectOpening.projectId} onUnauthorized={() => setAuth(false)} summaryScope={(preferenceScope.current || editorSession.current) as string} projects={projects as never[]} phase={projectOpening.phase === 'error' ? 'error' : loading || projectOpening.phase === 'opening' ? 'opening' : 'home'} openingName={projects.find(item => item.id === projectOpening.projectId)?.name || t('projects.project')} error={projectOpening.error} notice={toast?.message} busy={Boolean(busy['project-create'] || busy['project-create-flow'])} listBusy={projectListStatus.busy} listError={projectListStatus.error} page={homePage as never} onPage={changeHomePage} onOpen={id => selectProject(id)} onRetry={() => projectOpening.projectId ? selectProject(projectOpening.projectId, false, true) : Promise.resolve(false)} onRefresh={refreshHomeProjects} onCreate={createProject} readDirectory={() => readProjectEntryIdentity(projectEntryIdentityRef.current!)} help={<ProjectEntryIdentityStatus owner={projectEntryIdentityRef.current!} />} status={<>{videoDirectoryNotice}{false}</>} settings={null} /></>;
+  return <ProjectMediaProvider media={projectMedia}>{webSettingsCenter}{retainWorkbenchForIdentity && <div className="notice warning" role="alert" data-testid="project-entry-identity-blocked">{t('projects.locatorKeepWindow')}</div>}<main inert={retainWorkbenchForIdentity || undefined} className={`workbench workbench-v2 dock-workbench shell-redesign ${geometry.narrow ? 'dock-narrow' : ''} ${geometry.compact ? 'dock-compact' : ''} mode-${workspaceMode} mobile-${mobilePanel} ${assetsCollapsed ? 'assets-collapsed' : ''} ${inspectorCollapsed ? 'inspector-collapsed' : ''} ${timelineCollapsed ? 'timeline-collapsed' : ''}`} data-testid="workbench" onClickCapture={guardRetainedInputInteraction} onKeyDownCapture={guardRetainedInputInteraction} onSubmitCapture={guardRetainedInputInteraction} data-workspace-mode={workspaceMode} data-narrow={geometry.narrow ? 'true' : 'false'} data-compact={geometry.compact ? 'true' : 'false'} style={geometry.style as never}>
     {retainWorkbenchForClip && clipConnectionBlocked.current && <div className="notice warning" role="status" data-testid="retained-clip-connection"><p>{t('volume.envelope.connectionRetained')}</p></div>}
     <WorkspaceVisibilityProvider visible={!comparisonId && !previsOpen}>
     <Input ref={fileInput} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,audio/mpeg,audio/wav,audio/mp4,.mp3,.wav,.m4a" multiple aria-label={t('assets.importLocal')} data-testid="asset-upload" onChange={e => importFiles(Array.from(e.target.files ?? []))} />
@@ -2909,7 +2967,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       <DropdownMenuCheckboxItem checked={!inspectorCollapsed} data-testid="menu-panel-inspector" onCheckedChange={open => setPanelOpen('inspector', open)}>{t('shell.properties')}</DropdownMenuCheckboxItem>
       {workspaceMode === 'editing' ? <DropdownMenuCheckboxItem checked={!timelineCollapsed} data-testid="menu-panel-timeline" onCheckedChange={open => setPanelOpen('timeline', open)}>{t('shell.panel.multitrack')}</DropdownMenuCheckboxItem> : <DropdownMenuCheckboxItem checked={sequenceOpen} data-testid="menu-panel-storyboard" onCheckedChange={open => setPanelOpen('storyboard', open)}>{t('storyboard.order')}</DropdownMenuCheckboxItem>}
       </DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuItem data-testid="reset-panel-layout" onClick={resetPanelLayout}><Icon name="refresh" size={14} />{t('shell.panel.reset')}</DropdownMenuItem></DropdownMenuSubContent></DropdownMenuSub>
-      <DropdownMenuItem data-testid="export-button" disabled={!data.shots.length || selectedCount !== data.shots.length || busy.export} title={selectedCount !== data.shots.length ? t('shell.generateAllShots') : t('shell.exportStoryboardHint')} onClick={createExport}><Icon name="download" size={16} />{t('shell.exportStoryboard')}</DropdownMenuItem><DropdownMenuItem data-testid="timeline-format-open" disabled={!data.project || loading} onClick={openTimelineFormat}><Icon name="settings" size={15} />{t('shell.timelineOutput')}</DropdownMenuItem><DropdownMenuItem className="new-project-menu" onClick={() => { setShowProjects(false); if (nativeWindow) { void nativeProjectEntry?.show('new'); return; } setShowCreate(true); }}><Icon name="plus" size={15} />{t('projects.createNew')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>} modeSwitch={<Tabs value={workspaceMode} onValueChange={changeMode} className="topbar-workspace"><TabsList className="segmented workspace-tabs" aria-label={t('shell.workspaceMode')} tabIndex={!data.project && !loading && workspaceMode === 'canvas' ? 0 : undefined} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined}><TabsTrigger value="canvas" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-canvas">{t('shell.canvas')}</TabsTrigger><TabsTrigger value="editing" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-editing">{t('shell.editing')}</TabsTrigger></TabsList></Tabs>} status={<details className="topbar-status" data-testid="topbar-status"><summary aria-label={t('shell.statusDetails')} title={t('shell.statusDetails')}><span className={`status-dot ${!online ? 'neutral' : saveIsDirty ? 'orange' : videoDirectoryUnavailable || saveFailed ? 'red' : 'green'}`} /><span className="topbar-status-label">{t(!online ? 'redesign.shell.offline' : saveIsDirty ? 'redesign.shell.draft' : videoDirectoryUnavailable ? 'video.providers.directoryUnavailable' : saveFailed ? 'redesign.shell.saveFailed' : 'redesign.shell.saved')}</span><Icon name="down" size={12} /></summary><div className="topbar-status-content" data-text-selectable><TopbarSaveStatus online={online} syncing={Object.values(busy).some(Boolean)} dirty={inspectorDirty || formatDirty || Boolean(annotations.state?.dirtyCount)} lastSync={lastSync} preferenceStatus={preferenceStatus} onRetry={() => preferencesRef.current!.flush({ projectId: currentProject.current } as unknown as {keepalive?: boolean})} onReload={reloadPreferences} /><UiPreferencesNotice />{videoDirectoryNotice}<>{nativeWindow ? <NativeLocatorStatus context={nativeWindow.context} bridge={nativeWindow.bridge} /> : <LastProjectStatus state={(lastProjectStatus || lastProjectRef.current!.getState()) as never} controller={lastProjectRef.current}  />}</></div></details>} actions={<>
+      <DropdownMenuItem data-testid="export-button" disabled={!data.shots.length || selectedCount !== data.shots.length || busy.export} title={selectedCount !== data.shots.length ? t('shell.generateAllShots') : t('shell.exportStoryboardHint')} onClick={createExport}><Icon name="download" size={16} />{t('shell.exportStoryboard')}</DropdownMenuItem><DropdownMenuItem data-testid="timeline-format-open" disabled={!data.project || loading} onClick={openTimelineFormat}><Icon name="settings" size={15} />{t('shell.timelineOutput')}</DropdownMenuItem><DropdownMenuItem className="new-project-menu" onClick={() => { setShowProjects(false); if (nativeWindow) { void nativeProjectEntry?.show('new'); return; } setShowCreate(true); }}><Icon name="plus" size={15} />{t('projects.createNew')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>} modeSwitch={<Tabs value={workspaceMode} onValueChange={changeMode} className="topbar-workspace"><TabsList className="segmented workspace-tabs" aria-label={t('shell.workspaceMode')} tabIndex={!data.project && !loading && workspaceMode === 'canvas' ? 0 : undefined} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined}><TabsTrigger value="canvas" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-canvas">{t('shell.canvas')}</TabsTrigger><TabsTrigger value="editing" disabled={loading || !data.project} aria-describedby={!data.project && !loading && workspaceMode === 'canvas' ? 'workspace-mode-help' : undefined} data-testid="workspace-editing">{t('shell.editing')}</TabsTrigger></TabsList></Tabs>} status={<details className="topbar-status" data-testid="topbar-status"><summary aria-label={t('shell.statusDetails')} title={t('shell.statusDetails')}><span className={`status-dot ${!online ? 'neutral' : saveIsDirty ? 'orange' : videoDirectoryUnavailable || saveFailed ? 'red' : 'green'}`} /><span className="topbar-status-label">{t(!online ? 'redesign.shell.offline' : saveIsDirty ? 'redesign.shell.draft' : videoDirectoryUnavailable ? 'video.providers.directoryUnavailable' : saveFailed ? 'redesign.shell.saveFailed' : 'redesign.shell.saved')}</span><Icon name="down" size={12} /></summary><div className="topbar-status-content" data-text-selectable><TopbarSaveStatus online={online} syncing={Object.values(busy).some(Boolean)} dirty={inspectorDirty || formatDirty || Boolean(annotations.state?.dirtyCount)} lastSync={lastSync} preferenceStatus={preferenceStatus} onRetry={() => preferencesRef.current!.flush({ projectId: currentProject.current } as unknown as {keepalive?: boolean})} onReload={reloadPreferences} /><UiPreferencesNotice />{videoDirectoryNotice}<ProjectEntryIdentityStatus owner={projectEntryIdentityRef.current!} /></div></details>} actions={<>
       <TaskPopover scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}:${panelIntent.current}`} visible={!showTasks && !showDelivery && !showImage && !webSettingsOpen && !comparisonId && !sceneTarget} count={taskCount} uncertain={taskState.phase !== 'ready' || activePending.length > 0 || activeTasks.some(task => !['applied','not_applied'].includes(task.status))} items={[
         ...jobs.filter(job=>activeJob(job)||job.status==='submission_unknown'||job.phase==='output_review_required').map(job=>({id:job.id,label:data.shots.find(shot=>shot.id===job.shotId)?.title||t('tasks.center.shotTask'),status:renderMessage(jobStatusDescriptor(job)),phase:job.status==='submission_unknown'||job.phase==='output_review_required'?'attention':'active',progress:activeJob(job)?job.progress:undefined,tone:job.status==='submission_unknown'?'warning':'neutral'})),
         ...orderedExports.filter(item=>item.mode==='timeline'&&['queued','running'].includes(item.status)).map(item=>({id:`render:${item.id}`,label:typeof item.snapshot?.deliveryName==='string'?item.snapshot.deliveryName:t('redesign.tasks.rendering'),status:renderMessage(statusDescriptor(item.status)),phase:'active',progress:item.progress,tone:'neutral'})),
@@ -2979,10 +3037,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     <Dialog open={showTasks} onOpenChange={open => { if (!open) { markPanelIntent(); setShowTasks(false); } }}><WorkbenchDialogContent title={t('shell.tasks')} size="large" keepMounted hidden={!showTasks} inert={!showTasks} data-testid="task-center-dialog"><AgentDockPane id="right-dock-tasks" labelledBy="right-dock-tasks-tab" visible={showTasks} fallbackFocus="[data-testid=right-dock-tab-properties]"><TaskCenter scenes={sceneTaskCenterEntries(sceneTasks, { ...sceneTaskContext, busy: scenes.state.phase !== 'idle' })} dispositions={taskDispositions} selectedTaskId={selectedTaskId} taskViewScope={taskViewScope} onOpenExportHistory={openExportHistory} captureView={captureTaskView} activeCount={activeCount + activeRenderCount + sceneTasks.filter(sceneTaskActive).length} pending={pending as never} busy={busy} jobs={jobs} data={data as never} reconcileIds={reconcileIds as never} setReconcileIds={setReconcileIds as never} run={run as never} retryGeneration={retryGeneration as never} onInspectJob={inspectTaskJob as never} context={context} confirm={confirm as never} isCurrent={isCurrent as never} tasks={taskState as never} onRecover={recoverTask as never} onReload={(() => tasksRef.current!.load(currentProject.current as string)) as never} onAdopt={adoptLegacyTask as never} /></AgentDockPane></WorkbenchDialogContent></Dialog>
     {showProjectChooser && <Modal title={t('projects.openWorkspace')} onClose={() => setShowProjectChooser(false)}><div className="project-chooser-list">{projects.map(project => <Button variant="ghost" key={project.id} onClick={async () => { if (await selectProject(project.id)) setShowProjectChooser(false); }}><Icon name="folder" size={16} />{project.name}</Button>)}</div></Modal>}
     {toast && <div className={`workbench-toast ${toast.type}`} data-testid="global-toast" data-text-selectable role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'success' ? 'check' : 'info'} size={17} /><span>{renderImportFeedback(locale, toast.message)}</span><Button variant="ghost" className="icon-button small" aria-label={t('shell.dismissNotice')} onClick={() => setToast(null)}><Icon name="close" size={15} /></Button></div>}
-    <ProjectPackageLayer place="workbench" onOpenProject={id => { if (id === data.project?.id) return; if (nativeWindow) void nativeProjectEntry?.open(id); else void selectProject(id); }} onShowAssets={id => { if (id === data.project?.id) return; if (nativeWindow) void nativeProjectEntry?.open(id); else void selectProject(id); }} onProjectsChanged={() => { rpc('project.list').then(list => setProjects(list as AppProject[])).catch(() => {}); }} />
+    <ProjectPackageLayer place="workbench" onOpenProject={id => { if (id === data.project?.id) return; if (nativeWindow) void nativeProjectEntry?.open(id); else void selectProject(id); }} onShowAssets={id => { if (id === data.project?.id) return; if (nativeWindow) void nativeProjectEntry?.open(id); else void selectProject(id); }} onProjectsChanged={() => { void refreshHomeProjects(); }} />
     {!nativeWindow && showCreate && <CreateProject onClose={() => { navigationEpoch.current++; setShowCreate(false); }} onCreate={createProject} busy={busy['project-create'] || busy['project-create-flow']} />}
     {previewAsset && <Modal title={previewAsset.name} subtitle={`${previewAsset.mimeType} · ${formatNumber(previewAsset.sizeBytes / 1024 / 1024, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MB`} onClose={() => setPreviewAsset(null)} wide><div className="asset-preview-large"><Media asset={previewAsset} controls /></div><div className="modal-footer"><Button variant="ghost" className="button primary" onClick={() => { addNode(assetKind(previewAsset), previewAsset); setPreviewAsset(null); }}><Icon name="plus" size={16} />{t('assets.addCanvas')}</Button></div></Modal>}
-    {realConfirm && <Modal title={t('shell.generationConfirmTitle')} subtitle={t('shell.generationCosts')} onClose={() => { realConfirmRef.current = null; setRealConfirm(null); }}><div className="modal-form"><div className="confirmation-summary" data-text-selectable><strong>{realConfirm.connectionName || providerDisplayName(findGenerationProvider(providers, realConfirm.providerId, realConfirm.connectionId) || { id: realConfirm.providerId }, t)}</strong>{realConfirm.connectionId && <p data-testid="generation-connection-review">{t('video.providers.connection')}: {realConfirm.connectionId}<br />{t('video.providers.revision')}: {realConfirm.configurationRevision}<br />{realConfirm.connectionEndpoint}<br />{t('video.providers.resolution')}: {String(realConfirm.shot.parameters?.resolution || '—')}{typeof realConfirm.shot.parameters?.generateAudio === 'boolean' ? ` · ${t('video.providers.generateAudio')}: ${t(realConfirm.shot.parameters.generateAudio ? 'video.providers.audioEnabled' : 'video.providers.audioDisabled')}` : ''}{typeof realConfirm.shot.parameters?.promptExtend === 'boolean' && <><br />{t('video.wan.promptExtend')}: {t(realConfirm.shot.parameters.promptExtend ? 'video.providers.audioEnabled' : 'video.providers.audioDisabled')}</>}{typeof realConfirm.shot.parameters?.watermark === 'boolean' && <><br />{t('video.wan.watermark')}: {t(realConfirm.shot.parameters.watermark ? 'video.providers.audioEnabled' : 'video.providers.audioDisabled')}</>}{realConfirm.shot.parameters?.seed !== undefined && <><br />{t('inspector.seed')}: {String(realConfirm.shot.parameters.seed)}</>}</p>}{realConfirm.retryJobId && <p>{t('shell.generationRetryScope')}</p>}<span>{realConfirm.shot.videoInput || realConfirm.shot.parameters?.durationSeconds !== undefined || realConfirm.shot.parameters?.aspectRatio !== undefined ? t('video.wan.reviewParameters', { model: realConfirm.model as string, mode: renderMessage(inputModeDescriptor(realConfirm.inputMode as string)), duration: realConfirm.shot.parameters?.durationSeconds === -1 ? t('video.wan.smartDuration') : t('shell.durationSeconds', { seconds: Number(realConfirm.shot.parameters?.durationSeconds ?? realConfirm.shot.duration) }), ratio: realConfirm.shot.parameters?.aspectRatio === 'adaptive' ? t('video.wan.adaptive') : (realConfirm.shot.parameters?.aspectRatio ?? realConfirm.shot.aspectRatio) as string }) : t('shell.generationReviewParameters', { model: realConfirm.model as string, mode: renderMessage(inputModeDescriptor(realConfirm.inputMode as string)), seconds: realConfirm.shot.duration as number, ratio: realConfirm.shot.aspectRatio as string })}</span><p>{t('shell.generationDataScope', { count: generationReferences(realConfirm.shot, { frozen: Boolean(realConfirm.retryJobId), subjectReference: realConfirm.subjectReference }).references.length })}</p>{(realConfirm.subjectReference || realConfirm.shot.subjectReference) ? <><SubjectVideoSummary reference={realConfirm.subjectReference || realConfirm.shot.subjectReference} assets={realConfirm.referenceAssets} latestSubject={((subjects as never as {state?: {subjects: Record<string, unknown>}} | null)?.state?.subjects[((realConfirm.subjectReference || realConfirm.shot.subjectReference) as AppSubjectReference).subjectVersion.subjectId as string]) as never} /><p className="subject-warning" data-testid="paid-subject-face-warning">{renderMessage(realConfirm.providerId === 'ark' ? ARK_SUBJECT_WARNING_MESSAGE : MOCK_SUBJECT_WARNING_MESSAGE)}</p><p className="muted">{t('shell.generationSubjectScope')}</p></> : realConfirm.shot.videoInput ? <div data-testid="wan-video-review"><p>{realConfirm.shot.videoInput.prompt ?? realConfirm.shot.prompt}</p><ol>{realConfirm.shot.videoInput.images.map((image, index) => <li key={image.assetId}>{realConfirm.referenceAssets?.find(asset => asset.id === image.assetId) && <img className="video-frame-thumbnail" src={assetUrl(realConfirm.referenceAssets.find(asset => asset.id === image.assetId)!)} alt={realConfirm.referenceAssets.find(asset => asset.id === image.assetId)!.name} style={{ width: 64, height: 64, objectFit: 'contain' }} />}<span>{t(realConfirm.providerId === 'ark' ? 'video.seedance.imageNumber' : 'video.wan.imageNumber', { number: index + 1, name: realConfirm.referenceAssets?.find(asset => asset.id === image.assetId)?.name || image.assetId })} · {t(image.role === 'first_frame' ? 'video.wan.firstFrame' : image.role === 'last_frame' ? 'generation.inputs.lastFrameRole' : 'video.wan.referenceImages')}</span></li>)}</ol>{realConfirm.providerId === 'ark' && realConfirm.shot.videoInput.mode === 'reference_images' && realConfirm.shot.videoInput.images.length > 0 && <p className="subject-warning" data-testid="paid-reference-face-warning">{t('video.seedance.faceWarning')}</p>}{realConfirm.shot.videoInput.audios?.length ? <ol data-testid="paid-reference-audios">{realConfirm.shot.videoInput.audios.map((audio, index) => { const asset = realConfirm.referenceAssets?.find(item => item.id === audio.assetId); return <li key={audio.assetId}>{t('video.seedance.audioNumber', { number: index + 1, name: asset?.name || audio.assetId, seconds: formatNumber(Number(asset?.duration) || 0, { maximumFractionDigits: 1 }) })}</li>; })}</ol> : null}</div> : <VideoFrameSummary shot={realConfirm.shot} assets={realConfirm.referenceAssets} frozen={Boolean(realConfirm.retryJobId)} />}<p className="muted">{t('shell.generationBudgetScope')}</p><p className="muted">{t('shell.generationUnknownNoRetry')}</p></div><Button variant="ghost" className="button primary full" data-testid="confirm-live-generation" onClick={() => confirmGeneration(realConfirm)}>{t('shell.generationConfirmSend')}</Button></div></Modal>}
+    {realConfirm && <Modal title={t('shell.generationConfirmTitle')} subtitle={t('shell.generationCosts')} onClose={() => { realConfirmRef.current = null; setRealConfirm(null); }}><div className="modal-form"><div className="confirmation-summary" data-text-selectable><strong>{realConfirm.connectionName || providerDisplayName(findGenerationProvider(providers, realConfirm.providerId, realConfirm.connectionId) || { id: realConfirm.providerId }, t)}</strong>{realConfirm.connectionId && <p data-testid="generation-connection-review">{t('video.providers.connection')}: {realConfirm.connectionId}<br />{t('video.providers.revision')}: {realConfirm.configurationRevision}<br />{realConfirm.connectionEndpoint}<br />{t('video.providers.resolution')}: {String(realConfirm.shot.parameters?.resolution || '—')}{typeof realConfirm.shot.parameters?.generateAudio === 'boolean' ? ` · ${t('video.providers.generateAudio')}: ${t(realConfirm.shot.parameters.generateAudio ? 'video.providers.audioEnabled' : 'video.providers.audioDisabled')}` : ''}{typeof realConfirm.shot.parameters?.promptExtend === 'boolean' && <><br />{t('video.wan.promptExtend')}: {t(realConfirm.shot.parameters.promptExtend ? 'video.providers.audioEnabled' : 'video.providers.audioDisabled')}</>}{typeof realConfirm.shot.parameters?.watermark === 'boolean' && <><br />{t('video.wan.watermark')}: {t(realConfirm.shot.parameters.watermark ? 'video.providers.audioEnabled' : 'video.providers.audioDisabled')}</>}{realConfirm.shot.parameters?.seed !== undefined && <><br />{t('inspector.seed')}: {String(realConfirm.shot.parameters.seed)}</>}</p>}{realConfirm.retryJobId && <p>{t('shell.generationRetryScope')}</p>}<span>{realConfirm.shot.videoInput || realConfirm.shot.parameters?.durationSeconds !== undefined || realConfirm.shot.parameters?.aspectRatio !== undefined ? t('video.wan.reviewParameters', { model: realConfirm.model as string, mode: renderMessage(inputModeDescriptor(realConfirm.inputMode as string)), duration: realConfirm.shot.parameters?.durationSeconds === -1 ? t('video.wan.smartDuration') : t('shell.durationSeconds', { seconds: Number(realConfirm.shot.parameters?.durationSeconds ?? realConfirm.shot.duration) }), ratio: realConfirm.shot.parameters?.aspectRatio === 'adaptive' ? t('video.wan.adaptive') : (realConfirm.shot.parameters?.aspectRatio ?? realConfirm.shot.aspectRatio) as string }) : t('shell.generationReviewParameters', { model: realConfirm.model as string, mode: renderMessage(inputModeDescriptor(realConfirm.inputMode as string)), seconds: realConfirm.shot.duration as number, ratio: realConfirm.shot.aspectRatio as string })}</span><p>{t('shell.generationDataScope', { count: generationReferences(realConfirm.shot, { frozen: Boolean(realConfirm.retryJobId), subjectReference: realConfirm.subjectReference }).references.length })}</p>{(realConfirm.subjectReference || realConfirm.shot.subjectReference) ? <><SubjectVideoSummary reference={realConfirm.subjectReference || realConfirm.shot.subjectReference} assets={realConfirm.referenceAssets} latestSubject={((subjects as never as {state?: {subjects: Record<string, unknown>}} | null)?.state?.subjects[((realConfirm.subjectReference || realConfirm.shot.subjectReference) as AppSubjectReference).subjectVersion.subjectId as string]) as never} /><p className="subject-warning" data-testid="paid-subject-face-warning">{renderMessage(realConfirm.providerId === 'ark' ? ARK_SUBJECT_WARNING_MESSAGE : MOCK_SUBJECT_WARNING_MESSAGE)}</p><p className="muted">{t('shell.generationSubjectScope')}</p></> : realConfirm.shot.videoInput ? <div data-testid="wan-video-review"><p>{realConfirm.shot.videoInput.prompt ?? realConfirm.shot.prompt}</p><ol>{realConfirm.shot.videoInput.images.map((image, index) => <li key={image.assetId}>{realConfirm.referenceAssets?.find(asset => asset.id === image.assetId) && projectMedia.canRead(realConfirm.referenceAssets.find(asset => asset.id === image.assetId)) && <img className="video-frame-thumbnail" src={assetUrl(realConfirm.referenceAssets.find(asset => asset.id === image.assetId)!)} alt={realConfirm.referenceAssets.find(asset => asset.id === image.assetId)!.name} style={{ width: 64, height: 64, objectFit: 'contain' }} />}<span>{t(realConfirm.providerId === 'ark' ? 'video.seedance.imageNumber' : 'video.wan.imageNumber', { number: index + 1, name: realConfirm.referenceAssets?.find(asset => asset.id === image.assetId)?.name || image.assetId })} · {t(image.role === 'first_frame' ? 'video.wan.firstFrame' : image.role === 'last_frame' ? 'generation.inputs.lastFrameRole' : 'video.wan.referenceImages')}</span></li>)}</ol>{realConfirm.providerId === 'ark' && realConfirm.shot.videoInput.mode === 'reference_images' && realConfirm.shot.videoInput.images.length > 0 && <p className="subject-warning" data-testid="paid-reference-face-warning">{t('video.seedance.faceWarning')}</p>}{realConfirm.shot.videoInput.audios?.length ? <ol data-testid="paid-reference-audios">{realConfirm.shot.videoInput.audios.map((audio, index) => { const asset = realConfirm.referenceAssets?.find(item => item.id === audio.assetId); return <li key={audio.assetId}>{t('video.seedance.audioNumber', { number: index + 1, name: asset?.name || audio.assetId, seconds: formatNumber(Number(asset?.duration) || 0, { maximumFractionDigits: 1 }) })}</li>; })}</ol> : null}</div> : <VideoFrameSummary shot={realConfirm.shot} assets={realConfirm.referenceAssets} frozen={Boolean(realConfirm.retryJobId)} />}<p className="muted">{t('shell.generationBudgetScope')}</p><p className="muted">{t('shell.generationUnknownNoRetry')}</p></div><Button variant="ghost" className="button primary full" data-testid="confirm-live-generation" onClick={() => confirmGeneration(realConfirm)}>{t('shell.generationConfirmSend')}</Button></div></Modal>}
     </WorkspaceVisibilityProvider>
     {comparisonId && <VersionComparison key={`${data.project?.id}:${projectEpoch.current}:${comparisonId}`} context={comparisonContext()} getContext={comparisonContext}
       onClose={() => setComparisonId(null)} onUse={useComparedVersion} onAdd={binding => { if (!timelineBusy && comparisonCurrent(binding, comparisonContext()) && !isBusy(`version:${binding.shotId}`)) addTimelineAsset(binding.assetId); }} busy={Boolean(busy[`version:${comparisonId}`])}
@@ -2994,5 +3052,6 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     <TargetMarkLayer marks={reviewMarks.marks} label={t('agent.review.mark')} icon="search" describe={owner => { const category = reviewMarks.category(owner); return category ? t('agent.review.markTitle', { category: t(`agent.review.category.${category}`) }) : undefined; }} onActivate={revealReviewIssueCard} />
     <ProjectNotesDialog open={notesOpen && Boolean(data.project)} project={data.project ? { id: data.project.id, revision: data.project.revision, notes: data.project.notes } : null} readOnly={false} call={(operation, input) => rpc(operation, input as Record<string, unknown>)} onClose={outcome => { setNotesOpen(false); const projectId = currentProject.current; if (outcome !== 'none' && projectId) { void refresh(projectId); if (outcome === 'saved') notify(msg('projectNotes.saved')); } }} />
     {previsEditor}
-  </main></>;
+    <ProjectMediaDialogs media={projectMedia} projectName={data.project?.name ?? ''} />
+  </main></ProjectMediaProvider>;
 }

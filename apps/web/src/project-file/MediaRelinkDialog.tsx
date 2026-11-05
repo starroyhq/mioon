@@ -32,8 +32,12 @@ export interface MediaRelinkDialogProps {
   readonly homeDirectory?: string | null;
   readonly state: ViewState<MediaRelinkResult>;
   readonly apply: ActionState<'apply'>;
-  readonly onChooseFile: (assetId: string) => void;
-  readonly onUseNewFile: (assetId: string) => void;
+  readonly onChooseFile?: (assetId: string) => void;
+  readonly onUseNewFile?: (assetId: string) => void;
+  readonly canUseNewFile?: (assetId: string) => boolean;
+  readonly changedSelected?: readonly string[];
+  readonly canApply?: boolean;
+  readonly newAdded?: number;
   readonly onApply: () => void;
   readonly onRetry: () => void;
   readonly onClose: () => void;
@@ -46,6 +50,7 @@ export function MediaRelinkDialog(props: MediaRelinkDialogProps): ReactElement {
   const applying = apply.kind === 'working';
   const rows = state.kind === 'ready' ? state.value.rows : [];
   const found = rows.filter(row => row.outcome === 'picked' || row.outcome === 'auto').length;
+  const selected = new Set(props.changedSelected ?? []);
   const path = (value: string) => displayPath(value, props.homeDirectory);
   const pathLine = (label: string, value: string) => <span className="pf-relink-path"><span>{label}</span><code>{path(value)}</code></span>;
   let body: ReactNode;
@@ -66,9 +71,10 @@ export function MediaRelinkDialog(props: MediaRelinkDialogProps): ReactElement {
       </span>
       <span className="pf-row-end pf-relink-end">
         <WorkbenchBadge tone={row.outcome === 'changed' ? 'warning' : row.outcome === 'missing' ? 'danger' : 'success'}>{t(`projectFile.media.relink.outcome.${row.outcome}`)}</WorkbenchBadge>
+        {selected.has(row.assetId) && <span className="pf-help" data-testid={`pf-relink-new-selected-${row.assetId}`}>{t('projectFile.media.relink.newSelected')}</span>}
         {(row.outcome === 'changed' || row.outcome === 'missing') && <span className="pf-relink-actions">
-          {row.outcome === 'changed' && <WorkbenchButton size="compact" data-testid={`pf-relink-use-new-${row.assetId}`} disabled={applying} onClick={() => props.onUseNewFile(row.assetId)}>{t('projectFile.media.relink.useNew')}</WorkbenchButton>}
-          <WorkbenchButton size="compact" data-testid={`pf-relink-choose-${row.assetId}`} disabled={applying} onClick={() => props.onChooseFile(row.assetId)}>{t('projectFile.media.relink.choose')}</WorkbenchButton>
+          {row.outcome === 'changed' && props.onUseNewFile && (props.canUseNewFile?.(row.assetId) ?? true) && <WorkbenchButton size="compact" data-testid={`pf-relink-use-new-${row.assetId}`} aria-pressed={selected.has(row.assetId)} disabled={applying} onClick={() => props.onUseNewFile?.(row.assetId)}>{t('projectFile.media.relink.useNew')}</WorkbenchButton>}
+          {props.onChooseFile && <WorkbenchButton size="compact" data-testid={`pf-relink-choose-${row.assetId}`} disabled={applying} onClick={() => props.onChooseFile?.(row.assetId)}>{t('projectFile.media.relink.choose')}</WorkbenchButton>}
         </span>}
       </span>
     </li>)}</ul>
@@ -85,9 +91,10 @@ export function MediaRelinkDialog(props: MediaRelinkDialogProps): ReactElement {
           ? <WorkbenchButton variant="primary" data-testid="pf-relink-close" onClick={props.onClose}>{t('common.close')}</WorkbenchButton>
           : <>
             <WorkbenchButton data-testid="pf-relink-cancel" disabled={applying} onClick={props.onClose}>{t('common.cancel')}</WorkbenchButton>
-            <WorkbenchButton variant="primary" data-testid="pf-relink-apply" loading={applying} disabled={!ready || found === 0} onClick={props.onApply}>{t('projectFile.media.relink.apply')}</WorkbenchButton>
+            <WorkbenchButton variant="primary" data-testid="pf-relink-apply" loading={applying} disabled={!(props.canApply ?? (ready && found > 0))} onClick={props.onApply}>{t('projectFile.media.relink.apply')}</WorkbenchButton>
           </>}
       </>}>
+      {Boolean(props.newAdded) && <WorkbenchAlert tone="success" data-testid="pf-relink-new-added">{t('projectFile.media.relink.newAdded', {count: props.newAdded ?? 0})}</WorkbenchAlert>}
       {body}
     </WorkbenchDialogContent>
   </Dialog>;

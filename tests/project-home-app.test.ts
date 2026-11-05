@@ -1,6 +1,6 @@
 type HomeSnapshot=Omit<ReturnType<typeof snapshot>,'project'>&{project:ReturnType<typeof snapshot>['project']|null};
-interface HomeOptions {nativeWindow?:ReturnType<typeof nativeEditor>|null;confirm?:()=>unknown;guard?:(current:()=>unknown)=>unknown;preferences?:(...args:unknown[])=>unknown;preferenceStatus?:{phase:string;error?:Error};discovery?:Promise<unknown>;videoDirectory?:()=>unknown;rpc?:(operation:string,input:{projectId:string})=>unknown;get?:(projectId:string)=>unknown;create?:(...args:unknown[])=>unknown}
-interface HomeEnvironment extends Record<string,unknown> {auth:boolean|'error'|null;bootGuard:{current:ReturnType<typeof createProjectBootGuard>};busy:Record<string,unknown>;currentProject:{current:string|null};data:HomeSnapshot;dataRef:{current:HomeSnapshot};homePage:string;importSession:{current:{active:boolean;selection:number}};loading:boolean;nativeWindow:ReturnType<typeof nativeEditor>|null;navigationEpoch:{current:number};openedProject:{current:opening.ProjectOpenAttempt|null};projectCreateFlight:{current:unknown};projectEpoch:{current:number};projectListStatus:{busy:boolean;error:string|i18nCore.DisplayMessage};projectOpening:{phase:string;projectId:string|null;error:string};requestCounter:{current:number};toast:unknown;videoDirectoryUnavailable:boolean;viewReady:{current:boolean};viewRef:{current:ReturnType<typeof defaultWorkspaceState>};webSettingsRequest:{page:string;resolve?:(accepted:boolean)=>void}|null;window:{location:{href:string;search:string;pathname:string};history:{pushState:(...args:unknown[])=>number;replaceState:(...args:unknown[])=>number}};editorSession: {current: string}, workspaceRef:{current:{}}}
+interface HomeOptions {nativeWindow?:ReturnType<typeof nativeEditor>|null;confirm?:()=>unknown;guard?:(current:()=>unknown)=>unknown;preferences?:(...args:unknown[])=>unknown;preferenceStatus?:{phase:string;error?:Error};directory?:()=>unknown;videoDirectory?:()=>unknown;rpc?:(operation:string,input:{projectId:string})=>unknown;get?:(projectId:string)=>unknown;create?:(...args:unknown[])=>unknown}
+interface HomeEnvironment extends Record<string,unknown> {auth:boolean|'error'|null;bootGuard:{current:ReturnType<typeof createProjectBootGuard>};busy:Record<string,unknown>;currentProject:{current:string|null};data:HomeSnapshot;dataRef:{current:HomeSnapshot};homePage:string;importSession:{current:{active:boolean;selection:number}};loading:boolean;nativeWindow:ReturnType<typeof nativeEditor>|null;navigationEpoch:{current:number};openedProject:{current:opening.ProjectOpenAttempt|null};projectCreateFlight:{current:unknown};projectEpoch:{current:number};projectListStatus:{busy:boolean;error:string|i18nCore.DisplayMessage};projectOpening:{phase:string;projectId:string|null;error:string};requestCounter:{current:number};toast:unknown;videoDirectoryUnavailable:boolean;viewReady:{current:boolean};viewRef:{current:ReturnType<typeof defaultWorkspaceState>};webSettingsRequest:{page:string;resolve?:(accepted:boolean)=>void}|null;window:{location:{href:string;search:string;pathname:string};history:{pushState:(...args:unknown[])=>number;replaceState:(...args:unknown[])=>number}};editorSession: {current: string}, workspaceRef:{current:{}};projectEntryIdentityRef:{current:ProjectEntryIdentityOwner}}
 interface HomeApi {projectSessionReady():boolean;selectProject(projectId:string,remember?:boolean):Promise<boolean>;refresh(projectId:string,silent?:boolean,options?:{opening?:boolean}):Promise<ReturnType<typeof snapshot>|null>;prepareSettingsDeparture():Promise<unknown>;openGlobalSettings(page?:string):unknown;changeHomePage(page:string):Promise<unknown>;refreshHomeProjects():Promise<unknown>;createProject(name:string,description:string):Promise<boolean>;showProjectHome():Promise<boolean>;boot():Promise<void>}
 type HomeHarness=ReturnType<typeof harness>;
 type HomeUi={React:typeof import('react');renderToStaticMarkup:typeof import('react-dom/server').renderToStaticMarkup;ConfirmationProvider:typeof import('../packages/ui/src/components/workbench-confirm.tsx').ConfirmationProvider}&Record<string,unknown>;
@@ -17,17 +17,21 @@ import * as opening from '../apps/web/src/project-open-state.ts';
 import { editorInitialSelection, revealNativeProjects } from '../apps/web/src/editor-native-window.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
-import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard, assertLastProjectBootIdentity } from '../apps/web/src/last-project-navigation.ts';
+import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard } from '../apps/web/src/last-project-navigation.ts';
 import {videoConnectionProviders} from '../apps/web/src/generation-settings.ts';
 import {readGenerationProviderDirectory} from '../apps/web/src/video-provider-directory.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
+import {projectEntryFixture, projectEntryOwnerFixture, PROJECT_ENTRY_TEST_SCOPE} from './helpers/project-entry-fixture.ts';
+import {readProjectEntryIdentity} from '../apps/web/src/project-entry-identity.ts';
+import type {ProjectEntryIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
+import {projectDirectoryProjects} from '../apps/web/src/project-directory-presentation.ts';
 const Function = lenientFunction;
 const root = fileURLToPath(new URL('../', import.meta.url));
 // The same assertions can run against an independently extracted baseline App.
 const app = readFileSync(process.env.MIOON_HOME_APP_SOURCE || join(root, 'apps/web/src/App.tsx'), 'utf8');
 const id = (n: number) => `77000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const projects = [1, 2].map(n => ({ id: id(n), name: `项目 ${n}`, updatedAt: '2026-10-13T00:00:00.000Z' }));
+const projects = [1, 2].map(n => ({ id: id(n), name: `项目 ${n}`, updatedAt: '' }));
 const snapshot = (projectId: string) => ({ project: { id: projectId, name: '已核对项目' }, shots: [], nodes: [], edges: [], assets: [], versions: [], jobs: [], exports: [] });
 const emptyData = { project: null, shots: [], nodes: [], edges: [], assets: [], versions: [], jobs: [], exports: [] };
 const deferred = <T = unknown>() => { let resolve!: (value?: T | PromiseLike<T>) => void, reject!: (reason?: unknown) => void; const promise = new Promise<T>((yes, no) => { resolve = (yes as (value?: T | PromiseLike<T>) => void); reject = no; }); return { promise, resolve, reject }; };
@@ -41,10 +45,14 @@ function section(start: string, end: string) {
 }
 function environment(options:HomeOptions = {}) {
   const calls: unknown[][] = [], registry = createSettingsNavigationRegistry();
+  let created = false;
+  const assigned=options.nativeWindow?.context.initialProjectId;
+  const directoryProjects=assigned&&/^[a-f0-9-]{36}$/iu.test(assigned)&&!projects.some(project=>project.id===assigned)?[...projects,{id:assigned,name:'宿主分配项目'}]:projects;
+  const identity = projectEntryOwnerFixture(() => options.directory ? options.directory() : projectEntryFixture(created ? [...directoryProjects, {id:id(3),name:'新项目'}].filter((project,index,all)=>all.findIndex(item=>item.id===project.id)===index) : directoryProjects), calls);
   const env = { LanguageControl: () => null, renderImportFeedback: (locale: string, value: string|i18nCore.DisplayMessage|null|undefined) => renderCoreMessage((locale as unknown as Parameters<typeof renderCoreMessage>[0]), value), msg, ...createI18nTestContext(), localizedError: (displayMessage: string|i18nCore.DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }),
     ...opening, videoConnectionProviders, readGenerationProviderDirectory,
     editorInitialSelection, revealNativeProjects, nativeWindow: options.nativeWindow ?? null,
-    clipDraftRef: {current: null}, retainWorkbenchForClip: false, guardRetainedInputInteraction() {},
+    clipDraftRef: {current: null}, retainWorkbenchForClip: false, retainSettingsForIdentity: false, guardRetainedInputInteraction() {},
 
 
     nativeProjectEntry: { open: async (projectId: unknown) => { calls.push(['nativeEntry.open', projectId]); return true; },
@@ -54,7 +62,7 @@ function environment(options:HomeOptions = {}) {
     // recorded; readiness and selection still execute the real App functions.
     useEditorWindowStatus: (...args: unknown[]) => calls.push(['editorWindowStatus', ...args]),
     useEditorSettingsScope: (binding: unknown) => { calls.push(['editorSettingsScope', binding]); return undefined; },
-    chooseInitialProject, retainLastProjectScope, assertLastProjectBootIdentity, URL, URLSearchParams,
+    chooseInitialProject, retainLastProjectScope, readProjectEntryIdentity, projectDirectoryProjects, projectEntryIdentityRef: {current: identity}, URL, URLSearchParams,
     useCallback: (callback: unknown) => callback, emptyData, loading: false, auth: true, online: true, videoDirectoryUnavailable: false,
     data: emptyData, projects, projectOpening: { phase: 'home', projectId: null, error: '' },
     homePage: 'projects', homeConnection: 'agent', webSettingsRequest: null, webSettingsOpen: false, projectListStatus: { busy: false, error: '' }, busy: {}, toast: null,
@@ -81,21 +89,15 @@ function environment(options:HomeOptions = {}) {
       update: (...args: unknown[]) => calls.push(['preferences.update', ...args]),
     } },
     tasksRef: { current: { getState: () => ({ phase: 'idle', items: [] }), load: async (projectId: unknown) => calls.push(['tasks.load', projectId]) } },
-    lastProjectRef: { current: {
-      invalidateNavigation: (epoch: unknown) => calls.push(['invalidate', epoch]), rememberOpened: (...args: unknown[]) => calls.push(['remember', ...args]),
-      getState: () => ({ phase: 'saved', identityBlocked: false, revision: null }),
-      discover: () => options.discovery || Promise.resolve({ workspaceScope: 'a'.repeat(64), envelope: null }),
-    } },
     rpc: async (operation: string, input: { projectId: string; }) => {
       calls.push(['rpc', operation, input]);
       if (operation === 'video.connection.list') return options.videoDirectory ? options.videoDirectory() : [];
       if (options.rpc) return options.rpc(operation, input);
       if (operation === 'project.get') return options.get ? options.get(input.projectId) : snapshot(input.projectId);
-      if (operation === 'project.list') return projects;
       if (operation === 'provider.list') return [];
       assert.fail(`Unexpected RPC: ${operation}`);
     },
-    run: async (...args: unknown[]) => { calls.push(['run', ...args]); return options.create ? options.create(...args) : { id: id(3) }; },
+    run: async (...args: unknown[]) => { calls.push(['run', ...args]); created = true; return options.create ? options.create(...args) : { id: id(3) }; },
     window: { location: { href: 'http://127.0.0.1:4318/', search: '', pathname: '/' }, history: {
       pushState: (...args: unknown[]) => calls.push(['pushState', ...args]), replaceState: (...args: unknown[]) => calls.push(['replaceState', ...args]),
     } },
@@ -117,7 +119,7 @@ function harness(options:HomeOptions = {}) {
     section('  async function prepareSettingsDeparture()', '  async function changeMode('),
     section('  const refresh = useCallback(', '  async function revealImageAsset('),
     section('  async function selectProject(', '  async function reloadPreferences('),
-    section('  async function boot(): Promise<void> {', '  useEffect(() => {\n    bootGuard.current!.activate();'),
+    section('  async function boot(): Promise<void> {', '  useEffect(() => {\n    const identity = projectEntryIdentityRef.current!;'),
     section('  async function createProject(', '  async function addShot(')].join('\n');
   // A live lexical environment models React rerenders without reimplementing the
   // production functions. Only external services and unrelated draft guards are fakes.
@@ -126,7 +128,7 @@ function harness(options:HomeOptions = {}) {
     eligible: () => opening.canPublishProjectOpen(env.openedProject.current, { active: env.importSession.current.active,
       currentProjectId: env.currentProject.current, epoch: env.projectEpoch.current, workspaceScope: env.editorSession.current,
       preferencesReady: env.viewReady.current, dataProjectId: env.data.project?.id || null, loading: env.loading }),
-    unmount() { env.importSession.current.active = false; env.importSession.current.selection++; env.requestCounter.current++; env.bootGuard.current.deactivate(); },
+    unmount() { env.importSession.current.active = false; env.importSession.current.selection++; env.requestCounter.current++; env.bootGuard.current.deactivate(); env.projectEntryIdentityRef.current.dispose(); },
   };
 }
 const callsOf = (h:{calls:unknown[][]},name:string)=>h.calls.filter(call=>call[0]===name);
@@ -197,7 +199,7 @@ test('actual selection keeps home visible after preferences resolve until valida
   assert.equal(h.env.openedProject.current, null); assert.deepEqual((callsOf(h, 'remember') as unknown), []); assert.deepEqual((callsOf(h, 'tasks.load') as unknown), []);
   held.resolve!(snapshot(id(1))); assert.equal(await pending, true);
   assert.equal(h.env.projectOpening.phase, 'ready'); assert.equal(h.eligible(), true); assert.equal(Object.isFrozen(h.env.openedProject.current), true);
-  assert.deepEqual(callsOf(h, 'remember'), [['remember', id(1), 1]]); assert.deepEqual(callsOf(h, 'tasks.load'), [['tasks.load', id(1)]]);
+  assert.deepEqual(callsOf(h, 'remember'), []); assert.deepEqual(h.env.openedProject.current, opening.projectOpenAttempt(id(1), 1, 'normal')); assert.deepEqual(callsOf(h, 'tasks.load'), [['tasks.load', id(1)]]);
 });
 
 test('actual refresh rejects wrong-project responses before reconciliation or publishing data', async () => {
@@ -221,10 +223,10 @@ test('same-project data without an accepted opening ticket must take the real lo
   const h = harness(); h.env.currentProject.current = id(1); h.env.data = h.env.dataRef.current = snapshot(id(1)); h.env.viewReady.current = true;
   assert.equal(h.projectSessionReady(), false); assert.equal(await h.selectProject(id(1)), true);
   assert.equal(callsOf(h, 'preferences').length, 1); assert.equal(h.env.projectEpoch.current, 1); assert.equal(h.eligible(), true);
-  assert.deepEqual(callsOf(h, 'remember'), [['remember', id(1), 1]]);
+  assert.deepEqual(callsOf(h, 'remember'), []); assert.equal(h.env.openedProject.current?.projectId, id(1));
 });
 
-for (const code of ['UNAUTHORIZED', 'LAST_PROJECT_SCOPE_MISMATCH', 'LAST_PROJECT_STALE_INSTANCE']) {
+for (const code of ['UNAUTHORIZED', 'LAST_PROJECT_SCOPE_MISMATCH', 'LAST_PROJECT_STALE_INSTANCE', 'PROJECT_ENTRY_SCOPE_MISMATCH', 'PROJECT_ENTRY_STALE_INSTANCE']) {
   test(`actual selection preserves ${code} routing from project load and preference fallback`, async () => {
     for (const options of [{ get: async () => { throw failure(code); } }, { preferenceStatus: { phase: 'local', error: failure(code) } }]) {
       const h = harness(options); assert.equal(await h.selectProject(id(1)), false);
@@ -241,7 +243,7 @@ test('slow A and late A failure cannot overwrite a faster B selection', async ()
     const before = h.calls.length; if (reject) held.reject!(failure('UNAUTHORIZED')); else held.resolve!(snapshot(id(1)));
     assert.equal(await old, false); assert.equal(h.calls.length, before); assert.equal(h.env.data.project!.id, id(2));
     assert.equal(h.env.projectOpening.projectId, id(2)); assert.equal(h.env.auth, true); assert.equal(h.eligible(), true);
-    assert.deepEqual(callsOf(h, 'remember'), [['remember', id(2), 2]]);
+    assert.deepEqual(callsOf(h, 'remember'), []); assert.equal(h.env.openedProject.current?.projectId, id(2));
   }
 });
 
@@ -251,7 +253,7 @@ test('same-ID reopen is a new epoch and the first response cannot publish its ti
   const old = h.selectProject(id(1)); await tick(); const next = h.selectProject(id(1)); await tick();
   second.resolve!(snapshot(id(1))); assert.equal(await next, true); const ticket = h.env.openedProject.current, count = h.calls.length;
   first.resolve!(snapshot(id(1))); assert.equal(await old, false); assert.equal(h.env.openedProject.current, ticket);
-  assert.equal(ticket!.epoch, 2); assert.equal(h.calls.length, count); assert.deepEqual(callsOf(h, 'remember'), [['remember', id(1), 2]]);
+  assert.equal(ticket!.epoch, 2); assert.equal(h.calls.length, count); assert.deepEqual(callsOf(h, 'remember'), []); assert.equal(h.env.openedProject.current?.epoch, 2);
 });
 
 test('unmount rejects late successful and failed project loads without publishing or reconciling', async () => {
@@ -301,6 +303,46 @@ test('new settings input during the ordinary project guard invalidates the depar
   assert.equal(await pending, false); assert.equal(h.env.currentProject.current, null); assert.deepEqual((callsOf(h, 'rpc') as unknown), []);
 });
 
+test('selection checks fresh membership and pinned directory identity after the draft guard before preferences or navigation', async () => {
+  for (const replacement of [projectEntryFixture([projects[0]!]), projectEntryFixture(projects, {instanceId: id(8)}), projectEntryFixture(projects, {appLibraryScope: 'b'.repeat(64)})]) {
+    let directory = projectEntryFixture(projects);
+    const h = harness({directory: () => directory, guard: current => {directory = replacement; return current();}});
+    await readProjectEntryIdentity(h.env.projectEntryIdentityRef.current);
+    h.env.currentProject.current = id(1); h.env.data = h.env.dataRef.current = snapshot(id(1));
+    h.env.viewReady.current = true; h.env.openedProject.current = opening.projectOpenAttempt(id(1), 0, 'normal');
+    h.env.projectOpening = {phase: 'ready', projectId: id(1), error: ''};
+    const before = h.env.dataRef.current; h.calls.length = 0;
+    assert.equal(await h.selectProject(id(2)), false);
+    assert.deepEqual(callsOf(h, 'directory'), [['directory', '/api/project-entries', 'GET']]);
+    for (const effect of ['rpc', 'preferences', 'flush', 'pushState', 'replaceState', 'tasks.load']) assert.deepEqual(callsOf(h, effect), [], effect);
+    assert.equal(h.env.currentProject.current, id(1)); assert.equal(h.env.projectEpoch.current, 0); assert.equal(h.env.navigationEpoch.current, 0);
+    assert.equal(h.env.dataRef.current, before);
+    assert.equal(h.env.projectEntryIdentityRef.current.getState().identityBlocked, replacement.registered.length !== 1);
+  }
+});
+
+test('creation preflight failure dispatches no mutation, preserves navigation and releases only its own synchronous latch', async () => {
+  const h = harness({directory: () => {throw Error('Directory unavailable before dispatch');}});
+  assert.equal(await h.createProject('保留的名称', '保留的输入'), false);
+  assert.deepEqual(callsOf(h, 'directory'), [['directory', '/api/project-entries', 'GET']]);
+  for (const effect of ['run', 'rpc', 'preferences', 'flush', 'pushState', 'replaceState']) assert.deepEqual(callsOf(h, effect), [], effect);
+  assert.equal(h.env.currentProject.current, null); assert.equal(h.env.projectEpoch.current, 0); assert.equal(h.env.navigationEpoch.current, 0);
+  assert.equal(h.env.projectCreateFlight.current, null); assert.equal(h.env.busy['project-create-flow'], false);
+  assert.doesNotMatch(renderCoreMessage('zh-Hans', h.env.projectListStatus.error), /可能已创建/u);
+});
+
+test('a late directory check cannot load preferences or create after its renderer navigation owner changes', async () => {
+  for (const operation of ['open', 'create']) {
+    const held = deferred(), h = harness({directory: () => held.promise});
+    const pending = operation === 'open' ? h.selectProject(id(1)) : h.createProject('新项目', ''); await tick();
+    h.env.navigationEpoch.current++; h.env.currentProject.current = id(2); const before = h.calls.length;
+    held.resolve!(projectEntryFixture(projects)); assert.equal(await pending, false);
+    assert.deepEqual(h.calls.slice(before), operation === 'create' ? [['markBusy', null, 'project-create-flow', false]] : []);
+    for (const effect of ['run', 'preferences', 'pushState', 'replaceState']) assert.deepEqual(callsOf(h, effect), [], effect);
+    assert.equal(h.env.currentProject.current, id(2)); assert.equal(h.env.projectEpoch.current, 0);
+  }
+});
+
 test('late create completion cannot steal newer navigation and never repeats the create request', async () => {
   const held = deferred(), h = harness({ create: () => held.promise }), pending = h.createProject('新项目', '简述'); await tick();
   assert.equal(callsOf(h, 'run').length, 1); assert.equal(await h.selectProject(id(2)), true); const count = h.calls.length;
@@ -311,13 +353,11 @@ test('late create completion cannot steal newer navigation and never repeats the
 
 test('create acknowledgements and list responses cannot publish after unmount or a new renderer lifetime', async () => {
   for (const phase of ['ack', 'list']) for (const reactivate of [false, true]) {
-    const held = deferred();
-    const h = harness(phase === 'ack' ? { create: () => held.promise } : { rpc: async (operation: unknown) => {
-      assert.equal(operation, 'project.list'); return held.promise;
-    } });
+    const held = deferred();let reads=0;
+    const h = harness(phase === 'ack' ? { create: () => held.promise } : { directory: () => ++reads===1?projectEntryFixture(projects):held.promise });
     const pending = h.createProject('新项目', ''); await tick(); assert.equal(callsOf(h, 'run').length, 1);
     h.unmount(); if (reactivate) { h.env.importSession.current.active = true; h.env.bootGuard.current.activate(); }
-    const count = h.calls.length; held.resolve!(phase === 'ack' ? { id: id(3) } : [...projects, { ...projects[0], id: id(3) }]);
+    const count = h.calls.length; held.resolve!(phase === 'ack' ? { id: id(3) } : projectEntryFixture([...projects, {id:id(3)}]));
     assert.equal(await pending, false); assert.equal(h.calls.length, count, `${phase}; reactivate=${reactivate}`);
     assert.equal(h.env.currentProject.current, null); assert.equal(h.env.projectCreateFlight.current, null);
     assert.deepEqual((callsOf(h, 'preferences') as unknown), []); assert.equal(callsOf(h, 'run').length, 1);
@@ -325,30 +365,25 @@ test('create acknowledgements and list responses cannot publish after unmount or
 });
 
 test('create with failed list read keeps uncertainty visible and does not retry mutation automatically', async () => {
-  const h = harness({ rpc: async (operation: unknown) => { assert.equal(operation, 'project.list'); throw Error('list unavailable'); } });
+  let reads=0;const h = harness({ directory: () => {if(++reads===1)return projectEntryFixture(projects);throw Error('directory unavailable');} });
   assert.equal(await h.createProject('新项目', ''), false); await tick();
   assert.equal(callsOf(h, 'run').length, 1); assert.equal(h.env.currentProject.current, null);
   assert.match(renderCoreMessage('zh-Hans', h.env.projectListStatus.error), /可能已创建/); assert.match(renderCoreMessage('zh-Hans', h.env.projectListStatus.error), /不要直接重复创建/);
 });
 
 test('create holds its synchronous latch through the post-acknowledgement project-list read', async () => {
-  const listed = deferred(), h = harness({ rpc: async (operation: string, input: { projectId: string; }) => {
-    if (operation === 'project.list') return listed.promise;
-    if (operation === 'project.get') return snapshot(input.projectId);
-    if (operation === 'provider.list') return [];
-    assert.fail(`Unexpected RPC: ${operation}`);
-  } });
+  const listed = deferred();let reads=0;const h = harness({ directory: () => ++reads===1?projectEntryFixture(projects):listed.promise });
   const pending = h.createProject('新项目', '');
   assert.equal(await h.createProject('立即重复', ''), false); await tick();
   assert.equal(callsOf(h, 'run').length, 1); assert.ok(h.env.projectCreateFlight.current); assert.equal(h.env.busy['project-create-flow'], true);
   assert.equal(await h.createProject('ACK 后重复', ''), false); assert.equal(callsOf(h, 'run').length, 1);
-  listed.resolve!([...projects, { ...projects[0], id: id(3) }]); assert.equal(await pending, true);
+  listed.resolve!(projectEntryFixture([...projects, {id:id(3)}])); assert.equal(await pending, true);
   assert.equal(h.env.projectCreateFlight.current, null); assert.equal(h.env.currentProject.current, id(3)); assert.equal(h.eligible(), true);
   assert.equal(callsOf(h, 'run').length, 1);
 });
 
 test('actual empty startup chooses home while explicit startup succeeds without rewriting the locator', async () => {
-  const h = harness({ rpc: async (operation: string) => [] });
+  const h = harness({ directory: () => projectEntryFixture([]) });
   await h.boot(); assert.equal(h.env.auth, true); assert.equal(h.env.projectOpening.phase, 'home'); assert.equal(h.eligible(), false);
   assert.deepEqual((callsOf(h, 'preferences') as unknown), []); assert.deepEqual((callsOf(h, 'remember') as unknown), []);
   const selected = harness(); selected.env.window.location.search = `?project=${id(2)}`; await selected.boot();
@@ -356,23 +391,18 @@ test('actual empty startup chooses home while explicit startup succeeds without 
   assert.equal(callsOf(selected, 'replaceState').length, 1);
 });
 
-test('nonempty startup without a project URL never reads project contents, even with a matching remembered project', async () => {
-  const h = harness({discovery: Promise.resolve({workspaceScope: 'a'.repeat(64), envelope: {
-    supported: true, workspaceScope: 'a'.repeat(64), instanceId: id(9), revision: 1,
-    projectId: id(2), updatedAt: '2026-10-13T00:00:00.000Z', targetStatus: 'matching',
-  }}), get() {assert.fail('A home startup must not call project.get.');}});
+test('nonempty startup without a project URL never reads project contents, and has no retired last-project state', async () => {
+  const h = harness({ get() {assert.fail('A home startup must not call project.get.');}});
   await h.boot();
-  assert.deepEqual(h.env.projects, projects); assert.equal(h.env.projectOpening.phase, 'home'); assert.equal(h.env.currentProject.current, null);
+  assert.deepEqual(h.env.projects, projects);assert.equal('lastProjectRef' in h.env,false);assert.deepEqual(callsOf(h,'directory'),[['directory','/api/project-entries','GET']]);assert.equal(h.env.projectEntryIdentityRef.current.getVerifiedScope(),PROJECT_ENTRY_TEST_SCOPE); assert.equal(h.env.projectOpening.phase, 'home'); assert.equal(h.env.currentProject.current, null);
   assert.equal(h.env.data.project, null); assert.equal(h.eligible(), false);
   assert.deepEqual(callsOf(h, 'rpc').filter(call => call[1] === 'project.get'), []);
   for (const action of ['preferences', 'tasks.load', 'remember', 'replaceState', 'pushState']) assert.deepEqual(callsOf(h, action), [], action);
+  assert.doesNotMatch(app, /\blastProjectRef\b|\blastProjectStatus\b|\bLastProjectStatus\b|\bcreateLastProjectController\b|\/api\/last-project/u);
 });
 
-test('an explicit unavailable project stays on home and never opens a remembered or first listed project', async () => {
-  const h = harness({discovery: Promise.resolve({workspaceScope: 'a'.repeat(64), envelope: {
-    supported: true, workspaceScope: 'a'.repeat(64), instanceId: id(9), revision: 1,
-    projectId: id(2), updatedAt: '2026-10-13T00:00:00.000Z', targetStatus: 'matching',
-  }}), get() {assert.fail('An unavailable URL must not open another project.');}});
+test('an explicit unavailable project stays on home and never opens the first listed project', async () => {
+  const h = harness({ get() {assert.fail('An unavailable URL must not open another project.');}});
   h.env.window.location.search = `?project=${id(3)}`; await h.boot();
   assert.equal(h.env.projectOpening.phase, 'home'); assert.equal(h.env.currentProject.current, null); assert.equal(h.eligible(), false);
   assert.deepEqual(callsOf(h, 'rpc').filter(call => call[1] === 'project.get'), []);
@@ -388,12 +418,9 @@ function nativeEditor(projectId: string) {
     bridge: { editorStatus: async () => true, showProjects: async () => true } };
 }
 
-test('native startup opens only the host-assigned UUID, regardless of URL, remembered target or first project', async () => {
+test('native startup opens only the host-assigned UUID, regardless of URL or first project', async () => {
   const binding = nativeEditor(id(3));
-  const h = harness({ nativeWindow: binding, discovery: Promise.resolve({ workspaceScope: 'a'.repeat(64), envelope: {
-    supported: true, workspaceScope: 'a'.repeat(64), instanceId: id(9), revision: 1, projectId: id(2),
-    updatedAt: '2026-10-13T00:00:00.000Z', targetStatus: 'matching',
-  } }) });
+  const h = harness({ nativeWindow: binding });
   h.env.window.location.search = `?project=${id(1)}`;
   await h.boot();
   assert.equal(h.env.auth, true); assert.equal(h.env.data.project!.id, id(3)); assert.equal(h.eligible(), true);
@@ -420,37 +447,41 @@ test('native invalid assignment cannot borrow a valid Web fallback', async () =>
 
 test('late boot discovery cannot select over a newer project or publish after unmount', async () => {
   for (const unmount of [false, true]) {
-    const held = deferred(), h = harness({ discovery: held.promise }), pending = h.boot(); await tick();
-    if (unmount) h.unmount(); else assert.equal(await h.selectProject(id(2)), true);
-    const count = h.calls.length; held.resolve!({ workspaceScope: 'a'.repeat(64), envelope: null }); await pending;
+    const held = deferred();let reads=0;const h = harness({ directory: () => ++reads===1?held.promise:projectEntryFixture(projects) }), pending = h.boot(); await tick();
+    if (unmount) h.unmount(); else {await h.env.projectEntryIdentityRef.current.refresh();assert.equal(await h.selectProject(id(2)), true);}
+    const count = h.calls.length; held.resolve!(projectEntryFixture(projects)); await pending;
     assert.equal(h.calls.length, count); assert.equal(h.env.currentProject.current, unmount ? null : id(2));
   }
 });
 
-let presentation:((h:HomeHarness)=>{html:string;mounted:string[]})|undefined;
+let presentation:((h:HomeHarness)=>{html:string;mounted:string[];sourceTree():unknown})|undefined;
 function boundaryRenderer() {
   if (presentation) return presentation;
-  const start = app.indexOf('  if (auth === false && !retainWorkbenchForClip) return <Login');
-  const workbench = app.indexOf('  return <>{webSettingsCenter}<main className={`workbench ', start);
+  const start = app.indexOf('  if (auth === false && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !retainSettingsForIdentity) return <Login');
+  const workbench = app.indexOf('  return <ProjectMediaProvider media={projectMedia}>', start);
   const openingEnd = app.indexOf('>\n', workbench);
   assert.ok(start >= 0 && workbench > start && openingEnd > workbench, 'Actual App render boundaries must exist');
   // Mount the complete, unmodified home/auth branch with real ProjectHome,
   // connection navigation and shared controls. The successful boundary retains
-  // App's actual root Fragment, settings sibling and outer workbench element; full workbench internals are outside
+  // App's actual provider, settings/identity-alert siblings and outer workbench
+  // element; full workbench internals are outside
   // this focused fixture, rather than replaced by a generic permissive proxy.
-  const readiness = section('  const workbenchReady =', '  const panelSurface =');
-  const renderSource = readiness + app.slice(start, workbench) + app.slice(workbench, openingEnd + 1) + '</main></>;';
+  const readiness = section('  const workbenchReady =', '  function readProjectMediaOwner()') + section('  useEditorWindowStatus(', '  const panelSurface =') + section('  const retainWorkbenchForIdentity =', '  const staleClips =');
+  const renderSource = readiness + app.slice(start, workbench) + app.slice(workbench, openingEnd + 1) + '</main></ProjectMediaProvider>;';
   const fixture = `import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server';
+    // Synchronous form presentation is intentional here; async directory
+    // loading and native entry are covered by the directory/browser tests.
     import ProjectHome from './src/ProjectHome.tsx';
+    import {ProjectMediaProvider} from './src/project-media-read-gate.tsx';
     import ProjectHomeConnections from './src/ProjectHomeConnections.tsx';
     import EditorWindowOpening from './src/EditorWindowOpening.tsx';
     import SettingsNavigationSlot from './src/SettingsNavigationSlot.tsx';
-    import LastProjectStatus from './src/LastProjectStatus.tsx';
+    import ProjectEntryIdentityStatus from './src/ProjectEntryIdentityStatus.tsx';
     import WebSettingsCenter from './src/WebSettingsCenter.tsx';
     import { ConfirmationProvider } from '@mioon/ui/components/workbench-confirm';
     import { Button } from '@mioon/ui/components/button';
-    export { React, renderToStaticMarkup, ProjectHome, ProjectHomeConnections, EditorWindowOpening, SettingsNavigationSlot, LastProjectStatus, WebSettingsCenter, ConfirmationProvider, Button };`;
+    export { React, renderToStaticMarkup, ProjectHome, ProjectMediaProvider, ProjectHomeConnections, EditorWindowOpening, SettingsNavigationSlot, ProjectEntryIdentityStatus, WebSettingsCenter, ConfirmationProvider, Button };`;
   const result = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: join(root, 'apps/web') }, bundle: true, platform: 'node', format: 'cjs',
     write: false, jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
   const module = {exports:{}} as {exports:HomeUi}; Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
@@ -460,7 +491,7 @@ function boundaryRenderer() {
     const mounted: string[] = [];
     const stub = (name: string) => () => { mounted.push(name); return ui.React.createElement('section', { 'data-stub': name }); };
     const env = { LanguageControl: () => null, renderImportFeedback: (locale: string, value: string|i18nCore.DisplayMessage|null|undefined) => renderCoreMessage((locale as unknown as Parameters<typeof renderCoreMessage>[0]), value), msg, ...createI18nTestContext(), localizedError: (displayMessage: string|i18nCore.DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }), ...h.env, ...h, ...ui,  workspace: h.env.workspaceRef.current,
-      lastProjectStatus: null, setHomeConnection() {}, geometry: { narrow: false, style: {} }, workspaceMode: 'canvas', mobilePanel: 'canvas',
+      projectMedia: null, setHomeConnection() {}, geometry: { narrow: false, style: {} }, workspaceMode: 'canvas', mobilePanel: 'canvas',
       assetsCollapsed: false, inspectorCollapsed: false, timelineCollapsed: false,
       Icon: () => null, BrandMark: () => null, Login: stub('Login'), RestoredUnavailable: stub('RestoredUnavailable'),
       AgentSettings: stub('AgentSettings'), ImageSettings: stub('ImageSettings'), ComfyImageSettings: stub('ComfyImageSettings'),
@@ -469,7 +500,7 @@ function boundaryRenderer() {
       TaskCenter: stub('TaskCenter'), AgentPanel: stub('AgentPanel'), ImageGeneration: stub('ImageGeneration'),
     };
     const render = Function('env', `with (env) { ${body}; return renderBoundary; }`)(env);
-    return { html: ui.renderToStaticMarkup(ui.React.createElement(ui.ConfirmationProvider, null, ui.React.createElement(render as import("react").ComponentType))), mounted };
+    return { html: ui.renderToStaticMarkup(ui.React.createElement(ui.ConfirmationProvider, null, ui.React.createElement(render as import("react").ComponentType))), mounted, sourceTree: () => (render as ()=>unknown)() };
   };
   return presentation;
 }
@@ -497,6 +528,95 @@ test('actual auth branches retain their existing protections', () => {
 
 });
 
+test('identity-blocked dirty home settings retain the keyed settings shell without mounting a workbench or login', async () => {
+  let directory = projectEntryFixture(projects);
+  const h = harness({directory: () => directory}); await h.boot();
+  void h.openGlobalSettings('general'); h.env.webSettingsOpen = true;
+  const request = h.env.webSettingsRequest;
+  const settingsOwner = h.registry.register('home:secret-input'); settingsOwner.update({dirty:true,busy:false,blocked:true,version:1});
+  directory = projectEntryFixture(projects,{instanceId:id(8)}); await h.env.projectEntryIdentityRef.current.refresh();
+  assert.equal(await h.selectProject(id(1)),false);
+  assert.equal(h.env.currentProject.current,null); assert.equal(h.env.viewReady.current,false); assert.equal(h.env.retainWorkbenchForClip,false);
+  const elements = (value:unknown): {key?:unknown;props?:Record<string,unknown>}[] => {
+    if (Array.isArray(value)) return value.flatMap(elements);
+    if (!value || typeof value !== 'object') return [];
+    const node = value as {key?:unknown;props?:Record<string,unknown>}; return [node,...elements(node.props?.children)];
+  };
+  const render = boundaryRenderer();
+  for (const auth of [true,false,null,'error'] as const) {
+    h.env.auth = auth; const result = render(h), nodes = elements(result.sourceTree());
+    assert.match(result.html,/data-testid="project-home"/u);
+    assert.doesNotMatch(result.html,/data-testid="workbench"|data-testid="editor-window-opening"|class="boot-page"/u);
+    assert.equal(result.mounted.includes('Login'),false);
+    const shell = nodes.find(node=>node.key==='global-settings-center'); assert.ok(shell);
+    assert.equal(shell.props?.request,request); assert.equal(shell.props?.registry,h.registry);
+    assert.equal(shell.props?.interactionBlocked,true);
+    assert.equal(nodes.find(node=>node.props?.onCreate===h.createProject)?.props?.active,false);
+    assert.equal(h.env.webSettingsRequest,request); assert.equal(h.env.webSettingsOpen,true); assert.equal(h.env.projectCreateFlight.current,null);
+  }
+  for (const effect of ['preferences','run','pushState','replaceState']) assert.deepEqual(callsOf(h,effect),[],effect);
+  // The separate retention requires an open settings shell. A closed shell
+  // still takes the existing authentication failure branch without a project.
+  h.env.webSettingsOpen = false; h.env.auth = 'error';
+  assert.match(render(h).html,/暂时无法连接工作台/u);
+});
+
+test('a pinned identity block preserves the loaded workbench and inputs behind inert with a separate alert in every early-return branch', async () => {
+  for (const nativeWindow of [null, nativeEditor(id(1))]) {
+    let directory = projectEntryFixture(projects);
+    const h = harness({nativeWindow, directory: () => directory}); assert.equal(await h.selectProject(id(1)), true);
+    const loaded = h.env.dataRef.current, view = h.env.viewRef.current, ticket = h.env.openedProject.current;
+    h.env.agentDraft = {current: true}; h.env.imageDraft = {current: true};
+    directory = projectEntryFixture(projects, {instanceId: id(8)}); await h.env.projectEntryIdentityRef.current.refresh();
+    assert.equal(h.env.projectEntryIdentityRef.current.getState().identityBlocked, true); assert.equal(h.projectSessionReady(), false);
+    const render = boundaryRenderer();
+    for (const auth of [true, false, null, 'error'] as const) {
+      h.env.auth = auth; const result = render(h);
+      assert.match(result.html, /<main\b[^>]*\binert=""[^>]*data-testid="workbench"/u);
+      assert.match(result.html, /role="alert" data-testid="project-entry-identity-blocked"/u);
+      assert.ok(result.html.indexOf('project-entry-identity-blocked') < result.html.indexOf('<main'), 'The alert remains outside the inert workbench');
+      assert.doesNotMatch(result.html, /data-testid="project-home"|data-testid="editor-window-opening"|class="boot-page"/u);
+      assert.deepEqual(result.mounted, []); assert.equal(h.env.retainWorkbenchForClip, false);
+      assert.equal(h.env.dataRef.current, loaded); assert.equal(h.env.viewRef.current, view); assert.equal(h.env.openedProject.current, ticket);
+      assert.deepEqual(h.env.agentDraft, {current: true}); assert.deepEqual(h.env.imageDraft, {current: true});
+    }
+    // A blocked identity alone cannot mount a workbench without a loaded owner.
+    h.env.auth = true; h.env.viewReady.current = false;
+    const unloaded = render(h).html;
+    assert.doesNotMatch(unloaded, /data-testid="workbench"|data-testid="project-entry-identity-blocked"/u);
+  }
+});
+
+test('identity retention blocks all actual captured input events while the independent clip exceptions remain intact', () => {
+  const source = section('  const guardRetainedInputInteraction =', '  function imageEditScope()');
+  const guard = (env: Record<string,unknown>) => Function('env', `with (env) {${source}\nreturn guardRetainedInputInteraction;}`)(env) as (event:unknown)=>void;
+  for (const retainedTarget of [false, true]) {
+    const blocked: string[] = [], event = {target: {closest: () => retainedTarget}, preventDefault: () => blocked.push('prevent'), stopPropagation: () => blocked.push('stop')};
+    guard({retainWorkbenchForIdentity:true, retainWorkbenchForClip:false, clipConnectionBlocked:{current:false}})(event);
+    assert.deepEqual(blocked, ['prevent', 'stop']);
+    blocked.length = 0;
+    guard({retainWorkbenchForIdentity:false, retainWorkbenchForClip:true, clipConnectionBlocked:{current:true}})(event);
+    assert.deepEqual(blocked, retainedTarget ? [] : ['prevent', 'stop']);
+    blocked.length = 0;
+    guard({retainWorkbenchForIdentity:false, retainWorkbenchForClip:false, clipConnectionBlocked:{current:false}})(event);
+    assert.deepEqual(blocked, []);
+  }
+});
+
+test('an already captured run dispatcher cannot send session, durable or replay mutations after the directory identity blocks', async () => {
+  let directory = projectEntryFixture(projects);
+  const h = harness({directory: () => directory}); await readProjectEntryIdentity(h.env.projectEntryIdentityRef.current);
+  const dispatches: string[] = [], env = {...h.env, clipConnectionBlocked: {current:false},
+    captureTaskWorkspaceIntent: () => null, readTaskRevealContext: () => null, isDurableEditOperation: (operation:string) => operation === 'shot.update',
+    runDurable: () => {dispatches.push('durable'); return 'durable';}, runSession: () => {dispatches.push('session'); return 'session';}};
+  const source = section('  async function run(', '  async function runDurable(');
+  const run = Function('env', `with (env) {${source}\nreturn run;}`)(env) as (...args:unknown[])=>Promise<unknown>;
+  assert.equal(await run('edit','shot.update',{}), 'durable'); assert.deepEqual(dispatches,['durable']); dispatches.length = 0;
+  directory = projectEntryFixture(projects,{instanceId:id(8)}); await h.env.projectEntryIdentityRef.current.refresh();
+  for (const [operation, options] of [['shot.update',{}],['shot.create',{}],['shot.update',{replay:true}]] as const) assert.equal(await run('stale',operation,{},undefined,options),null);
+  assert.deepEqual(dispatches,[]);
+});
+
 test('actual home keeps optional video directory failure visible across toast changes and clears it on recovery', async () => {
   let unavailable = true;
   const h = harness({ videoDirectory: async () => { if (unavailable) throw failure('VIDEO_SETTINGS_CORRUPT'); return []; }, rpc: async (operation: string) => [] });
@@ -512,11 +632,14 @@ test('actual home keeps optional video directory failure visible across toast ch
   assert.equal(h.env.videoDirectoryUnavailable, false); assert.doesNotMatch(render(h).html, /data-testid="video-directory-unavailable"/);
 });
 
-test('actual App shares authenticated settled project readiness between workbench display and geometry observation', () => {
-  const wiring = section('  function projectSessionReady()', '  const markPanelIntent =');
+test('actual App shares authenticated settled project readiness between workbench display and geometry observation', async () => {
+  // Media has a separate owner test; retain the actual opening gate, window
+  // status and geometry wiring without invoking its independent hook here.
+  const wiring = section('  function projectSessionReady()', '  function readProjectMediaOwner()') + section('  useEditorWindowStatus(', '  const markPanelIntent =');
   const render = boundaryRenderer();
   const cases:[string,(env:HomeEnvironment)=>void,boolean][] = [
     ['validated project', () => {}, true],
+    ['unverified directory', (env:HomeEnvironment)=>{env.projectEntryIdentityRef.current.dispose();env.projectEntryIdentityRef.current=projectEntryOwnerFixture(()=>projectEntryFixture(projects));}, false],
     ['no accepted ticket', (env: HomeEnvironment) => { env.openedProject.current = null; }, false],
     ['preferences pending', (env: HomeEnvironment) => { env.viewReady.current = false; }, false],
     ['project data missing', (env: HomeEnvironment) => { env.data = env.dataRef.current = emptyData; }, false],
@@ -533,7 +656,7 @@ test('actual App shares authenticated settled project readiness between workbenc
     const h = harness(), observations: unknown[][] = [], modeLayout = defaultWorkspaceState().layout.canvas;
     h.env.currentProject.current = id(1); h.env.projectEpoch.current = 1;
     h.env.openedProject.current = opening.projectOpenAttempt(id(1), 1, 'normal'); h.env.viewReady.current = true;
-    h.env.data = h.env.dataRef.current = snapshot(id(1)); change(h.env);
+    h.env.data = h.env.dataRef.current = snapshot(id(1));await readProjectEntryIdentity(h.env.projectEntryIdentityRef.current); change(h.env);
     const env = { LanguageControl: () => null, renderImportFeedback: (locale: string, value: string|i18nCore.DisplayMessage|null|undefined) => renderCoreMessage((locale as unknown as Parameters<typeof renderCoreMessage>[0]), value), msg, ...createI18nTestContext(), localizedError: (displayMessage: string|i18nCore.DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }), ...h.env, modeLayout, workspaceMode: 'canvas',
       useRef: (initial: unknown) => ({ current: initial }), useState: (initial: unknown) => [initial, () => {}],
       usePanelGeometry: (...args: unknown[]) => { observations.push(args); return { narrow: false, style: {}, effective: modeLayout }; },
@@ -566,7 +689,7 @@ test('native pending/error render never mounts launcher home or settings in the 
 });
 
 
-test('native ready status has no local locator writer while Web selection still remembers', async () => {
+test('native and Web accepted selection have no retired locator writer', async () => {
   const render = boundaryRenderer(), h = harness({ nativeWindow: nativeEditor(id(3)) });
   assert.equal(await h.selectProject(id(3), true), true);
   render(h); const report = callsOf(h, 'editorWindowStatus').at(-1);
@@ -574,7 +697,7 @@ test('native ready status has no local locator writer while Web selection still 
   assert.deepEqual((callsOf(h, 'remember') as unknown), []);
   assert.equal(await h.selectProject(id(3)), true); assert.deepEqual((callsOf(h, 'remember') as unknown), []);
   const web = harness(); assert.equal(await web.selectProject(id(1)), true);
-  assert.deepEqual(callsOf(web, 'remember'), [['remember', id(1), 1]]);
+  assert.deepEqual(callsOf(web, 'remember'), []); assert.equal(web.env.openedProject.current?.projectId, id(1));
 });
 
 test('native alternate project delegates before any editor draft, request or URL mutation', async () => {
