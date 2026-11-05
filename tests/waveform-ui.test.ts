@@ -236,7 +236,7 @@ function componentHarness({ hook = false, waveformState }: {hook?:boolean;wavefo
     if (modules.has(file)) return modules.get(file)!;
     const module = { exports: {} as LoadedModule };
     Function('require', 'module', 'exports', 'document', 'ResizeObserver', 'window', transformSync(readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), { loader: file.endsWith('.tsx') ? 'tsx' : file.endsWith('.ts') ? 'ts' : 'jsx', format: 'cjs' }).code)((id: string) => {
-      if (id === 'react') return react;
+      if (id === './project-media-read-gate.tsx') return {useProjectMediaReadGate: () => null, ProjectMediaImage: 'img'}; if (id === './project-file/MediaStatus.tsx') return {MediaStatusBadge: 'MediaStatusBadge', MediaStatusNote: 'MediaStatusNote', MediaAttentionBanner: 'MediaAttentionBanner'}; if (id === 'react') return react;
       if (id === './i18n/I18nProvider.tsx') return i18nTestModule();
       if (id === './UiPreferencesProvider.tsx') return {useUiPreferences: () => ({preferences:DEFAULT_UI_PREFERENCES})};
       if (id === './timeline-view-geometry.ts') return geometry;

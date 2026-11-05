@@ -13,6 +13,7 @@ import { message as messageKey, renderMessage, type DisplayMessage } from '../pa
 import { isMutationOperation } from '../apps/web/src/mutation-submissions.ts';
 import { creationParameter } from '../apps/web/src/creation-i18n.ts';
 import { lenientFunction } from './helpers/eval-source.ts';
+import {projectEntryFixture, projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
 const Function = lenientFunction;
 const taskIntentModule = { exports: {} as typeof import('../apps/web/src/task-workspace-intent.ts') };
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
@@ -50,7 +51,9 @@ async function harness(t: test.TestContext, hooks: AppTaskHooks = {}) {
   const controller = createEditTaskController({ client: client as unknown as EditTaskClient, onChange: (owner, snapshot) => { if (owner === currentProject.current) state.snapshots.push(snapshot); } });
   await controller.load(projectId);
   const dataRef = { current: { project: { id: projectId }, timeline: { ...timeline(), revision: 1 }, timelineHistory: { revision: 1 } } };
-  const scope = { timelineLoudnessApplyRef: { current: null }, captureTaskWorkspaceIntent,
+  const identity = projectEntryOwnerFixture(() => projectEntryFixture([{id: projectId}]));
+  assert.ok(await identity.discover());
+  const scope = { projectEntryIdentityRef: {current: identity}, timelineLoudnessApplyRef: { current: null }, captureTaskWorkspaceIntent,
     msg: (key: string, ...args: unknown[]) => renderMessage('zh-Hans', (messageKey as (key: string, ...args: unknown[]) => DisplayMessage)(key, ...args)),
     readTaskRevealContext: () => ({ active: true, projectId: currentProject.current, projectEpoch: 0, navigationEpoch: state.epoch, panelIntent: 0, workspaceScope: 'test-workspace' }), subtitlesRef: { current: { controller: { recovered: (task: AppFixtureTask) => { (state.recoveredSubtitleTasks ||= []).push(structuredClone(task)); } } } }, timelineFormatRef: { current: { controller: { recovered: (task: AppFixtureTask) => state.recoveredTasks.push(structuredClone(task)) } } }, ...submissions, isMutationOperation, isDurableEditOperation, taskInputKey, tasksRef: { current: controller }, currentProject, dataRef,
     context: () => ({ projectId: currentProject.current, epoch: state.epoch }), isCurrent: (captured: { projectId: string; epoch: number; }) => captured.projectId === currentProject.current && captured.epoch === state.epoch,

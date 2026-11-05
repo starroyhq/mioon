@@ -336,6 +336,9 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/media/')) {
           if (!authenticated(req)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '请使用本地访问令牌登录'}});
         }
+        // The legacy selection document remains untouched in the application
+        // library. No production route may read, repair or write it.
+        if (url.pathname === '/api/last-project' || url.pathname.startsWith('/api/last-project/')) return json(res, 404, {ok: false, error: {code: 'NOT_FOUND', message: '接口不存在', details: {}, retryable: false}});
         if (projectEntries.handle(req, res, url)) return;
         if (backgroundHttp(req, res, url)) return;
         const route = parseProjectApiPath(url.pathname);
@@ -383,7 +386,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
           } catch (error) { const safe = sanitizeAgentSettingsError(error); return json(res, safe.status, {ok: false, error: {code: safe.code, message: safe.message, details: {}, retryable: false}}); }
         }
         if (url.pathname === '/api/images/settings' || url.pathname === '/api/images/custom-settings') { await app.imageHttp(req, res, url); return; }
-        if (await app.comfyHttp(req, res, url) || await app.videoHttp(req, res, url) || await app.lastProjectHttp(req, res, url)) return;
+        if (await app.comfyHttp(req, res, url) || await app.videoHttp(req, res, url)) return;
         if (url.pathname === '/api/workspace-info' && req.method === 'GET') return json(res, 200, {ok: true, data: await readWorkspaceInfo({root, channel, version: packageMetadata.version, tools: {ffmpeg: mediaExecutable('ffmpeg'), ffprobe: mediaExecutable('ffprobe')}, signal: shutdown.signal})});
         if (url.pathname === '/api/media-tools/check' && req.method === 'POST') {
           const input = await body(req, 64);

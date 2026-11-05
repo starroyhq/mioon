@@ -12,6 +12,7 @@ import { translate } from '../packages/i18n/src/index.ts';
 import { mediaUrl } from '../apps/web/src/api.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 const code = transformSync(readFileSync(new URL('../apps/web/src/ExportPreview.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
+const mediaGateCode = transformSync(readFileSync(new URL('../apps/web/src/project-media-read-gate.tsx', import.meta.url), 'utf8'), {loader: 'tsx', format: 'cjs'}).code;
 function harness(locale = 'en') {
   const hooks:HookSlot[] = [], pending:(()=>void)[] = [], events = new Map(); let cursor = 0, tree:PreviewTree, ownerCalls = 0, registered: (() => unknown)|null,workflowStep=1,formal:{record:FormalRecord;enabled:boolean;projectId?:string|null}={record:null,enabled:false};
   const document = { visibilityState: 'visible', addEventListener: (key: unknown, value: unknown) => events.set(key, value), removeEventListener: (key: unknown) => events.delete(key) };
@@ -21,11 +22,20 @@ function harness(locale = 'en') {
     if (!old || !deps || deps.some((value: unknown, at:number) => value !== old.deps?.[at])) pending.push(() => { old?.cleanup?.(); hooks[index] = { deps, cleanup: fn() }; });
   };
   const react = { createElement: (type: unknown, props:Record<string,unknown>|null,...children:PreviewTree[]) => ({ type, props: props || {}, children }), Fragment: 'fragment',
+    createContext<T>(value: T) {return {Provider: 'provider', value};}, useContext<T>(context: {value: T}): T {return context.value;},
     useRef(initial: unknown) { const index = cursor++; return hooks[index] ||= { current: initial }; },
     useState(initial: unknown) { const index = cursor++; hooks[index] ||= { value: initial }; return [hooks[index].value, (next: unknown) => { hooks[index].value = typeof next === 'function' ? next(hooks[index].value) : next; }]; },
     useEffect: effect, useLayoutEffect: effect };
+  // These player tests mount without an application media Provider. Execute
+  // its real default context instead of inventing a verified readable gate.
+  const mediaGate = {exports: {}} as {exports: typeof import('../apps/web/src/project-media-read-gate.tsx')};
+  Function('module', 'exports', 'require', mediaGateCode)(mediaGate, mediaGate.exports, (name: string) => {
+    if (name === 'react') return react;
+    assert.equal(name, './project-file/MediaStatus.tsx'); return {MediaStatusBadge: 'badge', MediaStatusNote: 'note'};
+  });
+  assert.equal(mediaGate.exports.useProjectMediaReadGate(), null);
   const module={exports:{}} as {exports:{default(props:Record<string,unknown>):PreviewTree}};
-  Function('module', 'exports', 'require', 'document', 'window', code)(module, module.exports, (name: string) => name === 'react' ? react : name.includes('I18nProvider') ? { useI18n: () => ({ t: (key: unknown, params: { readonly [x: string]: string|number; }) => (translate as (locale:Parameters<typeof translate>[0],key:Parameters<typeof translate>[1],params?:Readonly<Record<string,string|number>>)=>string)((locale as unknown as Parameters<typeof translate>[0]), (key as unknown as Parameters<typeof translate>[1]), params) }) } : name.endsWith('ExportWorkflow.tsx')?{useExportWorkflowStep:()=>workflowStep,useExportWorkflowMedia:()=>formal}:name.includes('button') ? { Button: 'button' } : name === './api.ts' ? { mediaUrl } : { __esModule: true, default: 'summary' }, document, window);
+  Function('module', 'exports', 'require', 'document', 'window', code)(module, module.exports, (name: string) => name === 'react' ? react : name === './project-media-read-gate.tsx' ? mediaGate.exports : name.includes('I18nProvider') ? { useI18n: () => ({ t: (key: unknown, params: { readonly [x: string]: string|number; }) => (translate as (locale:Parameters<typeof translate>[0],key:Parameters<typeof translate>[1],params?:Readonly<Record<string,string|number>>)=>string)((locale as unknown as Parameters<typeof translate>[0]), (key as unknown as Parameters<typeof translate>[1]), params) }) } : name.endsWith('ExportWorkflow.tsx')?{useExportWorkflowStep:()=>workflowStep,useExportWorkflowMedia:()=>formal}:name.includes('button') ? { Button: 'button' } : name === './api.ts' ? { mediaUrl } : { __esModule: true, default: 'summary' }, document, window);
   const find = (node: PreviewTree, predicate: (node:PreviewNode)=>boolean) :PreviewNode|null => {
     if (!node || typeof node !== 'object') return null;
     if (predicate((node as PreviewNode))) return (node as PreviewNode);

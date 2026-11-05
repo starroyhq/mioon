@@ -1,3 +1,5 @@
+import {useProjectMediaReadGate} from './project-media-read-gate.tsx';
+import {MediaStatusBadge, MediaStatusNote} from './project-file/MediaStatus.tsx';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import { useI18n } from './i18n/I18nProvider.tsx';
@@ -20,6 +22,10 @@ export default function ExportPreview({ result, visible, canSelect, canGenerate,
   const { t } = useI18n(), step=useExportWorkflowStep(), formal=useExportWorkflowMedia();
   const formalRecord=formal.record;
   if(step>=4)result=step===5&&formal.enabled&&formalRecord?{phase:'succeeded',record:null,stale:false,url:mediaUrl(formal.projectId,formalRecord.assetId)||null}:{phase:'idle',record:null,stale:false,url:null};
+  const gate = useProjectMediaReadGate();
+  const readIdentity = {id: step >= 4 ? formalRecord?.assetId : result.record?.assetId, projectId: formal.projectId};
+  const blocked = Boolean(gate && result.url && !gate.canRead(readIdentity));
+  if (blocked) result = {...result, url: null};
   const video = useRef<HTMLVideoElement | null>(null), [closed, setClosed] = useState(false), [mediaError, setMediaError] = useState(false), [playing,setPlaying]=useState(false),[playhead,setPlayhead]=useState(0),[duration,setDuration]=useState(0);
   const [requesting, setRequesting] = useState(false), generationFlight = useRef(false), mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -41,7 +47,7 @@ export default function ExportPreview({ result, visible, canSelect, canGenerate,
   }, []);
   function guardPlayback(event: React.SyntheticEvent<HTMLVideoElement>) {
     const element = event.currentTarget, binding = live.current;
-    if (element !== video.current || !binding.visible || binding.closed || !binding.url || element.getAttribute('src') !== binding.url || document.visibilityState === 'hidden') { element.pause(); return; }
+    if (gate && !gate.canRead(readIdentity) || element !== video.current || !binding.visible || binding.closed || !binding.url || element.getAttribute('src') !== binding.url || document.visibilityState === 'hidden') { element.pause(); return; }
     binding.onBeforePlay();setPlaying(true);
   }
   const playable=Boolean(result.url&&visible&&!closed), controlsEnabled=playable&&!mediaError;
@@ -60,13 +66,13 @@ export default function ExportPreview({ result, visible, canSelect, canGenerate,
     try { await actions.onGenerate(); }
     finally { generationFlight.current = false; if (mounted.current) setRequesting(false); }
   }
-  const currentMedia=()=>{const element=video.current,binding=live.current;return element&&binding.visible&&!binding.closed&&binding.url&&element.getAttribute('src')===binding.url&&document.visibilityState!=='hidden'?element:null;};
+  const currentMedia=()=>{const element=video.current,binding=live.current;return (!gate||gate.canRead(readIdentity))&&element&&binding.visible&&!binding.closed&&binding.url&&element.getAttribute('src')===binding.url&&document.visibilityState!=='hidden'?element:null;};
   const time=(seconds:number)=>`${Math.floor(seconds/60).toString().padStart(2,'0')}:${Math.floor(seconds%60).toString().padStart(2,'0')}`;
   function togglePlayback(){const element=currentMedia();if(!element)return;if(element.paused){void element.play().catch(()=>{if(currentMedia()===element)setMediaError(true);});}else element.pause();}
   return <section className="export-preview" data-testid="export-preview" aria-label={t(step===5?'redesign.export.finishedPreview':step===4?'redesign.export.encodingPreview':'redesign.export.samplePreview')}>
     <h3>{t(step===5?'redesign.export.finishedPreview':step===4?'redesign.export.encodingPreview':'redesign.export.samplePreview')}</h3>
     <div className="export-preview-stage">
-      {result.phase !== 'idle' && result.url && visible && !closed ? <video ref={video} key={result.url} src={result.url} preload="metadata" playsInline onPlay={guardPlayback} onPlaying={guardPlayback} onPause={event=>{if(event.currentTarget===video.current)setPlaying(false);}} onLoadedMetadata={event=>{if(currentMedia()===event.currentTarget)setDuration(Number.isFinite(event.currentTarget.duration)?event.currentTarget.duration:0);}} onTimeUpdate={event=>{if(currentMedia()===event.currentTarget)setPlayhead(event.currentTarget.currentTime);}} onError={event=>{if(event.currentTarget===video.current&&live.current.url===event.currentTarget.getAttribute('src'))setMediaError(true);}} data-testid="export-preview-player" /> : <div className="export-preview-placeholder">
+      {blocked && gate ? <div className="pf-media-blocked" data-testid="export-media-blocked"><MediaStatusBadge status={gate.statusFor(readIdentity)} /><MediaStatusNote status={gate.statusFor(readIdentity)} /></div> : result.phase !== 'idle' && result.url && visible && !closed ? <video ref={video} key={result.url} src={result.url} preload="metadata" playsInline onPlay={guardPlayback} onPlaying={guardPlayback} onPause={event=>{if(event.currentTarget===video.current)setPlaying(false);}} onLoadedMetadata={event=>{if(currentMedia()===event.currentTarget)setDuration(Number.isFinite(event.currentTarget.duration)?event.currentTarget.duration:0);}} onTimeUpdate={event=>{if(currentMedia()===event.currentTarget)setPlayhead(event.currentTarget.currentTime);}} onError={event=>{if(event.currentTarget===video.current&&live.current.url===event.currentTarget.getAttribute('src'))setMediaError(true);}} data-testid="export-preview-player" /> : <div className="export-preview-placeholder">
         <p>{t(step===4?'redesign.export.encodingPreviewHelp':step===5?'redesign.export.finishedPreviewUnavailable':'export.sample.emptyPlayer')}</p>
         {step<=3 && (closed && result.url ? <Button className="button primary" onClick={() => { if (actionCurrent()) setClosed(false); }}>{t('export.sample.reopen')}</Button> : <Button className="button primary" disabled={!canRequest || !visible} onClick={generateSample} data-testid="export-preview-empty-generate">{preparing && <span className="spinner" aria-hidden="true" />}{t(preparing?'redesign.export.samplePreparing':running?'redesign.export.sampleRendering':'redesign.export.generateSample')}</Button>)}
       </div>}

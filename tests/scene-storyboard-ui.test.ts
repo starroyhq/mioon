@@ -209,7 +209,7 @@ test('the workbench wires storyboards into the dialog, the canvas, the inspector
   // Other tests evaluate App slices between neighbouring handlers; the storyboard handlers stay outside them.
   const handlers = app.indexOf('  // Storyboards. A built one is selected as one batch');
   assert.ok(handlers > app.indexOf('  async function moveTimelineClip(') && handlers < app.indexOf('  function renderUncheckedTimeline('));
-  assert.match(dialog, /if \(result && !block\) await controller\.createShots\(asset, result\.id, chosenSegments\);/);
+  assert.match(dialog, /if \(result && !block && \(!gate \|\| gate\.canRead\(asset\)\)\) await controller\.createShots\(asset, result\.id, chosenSegments\);/);
   assert.match(dialog, /editable=\{writable && current && !outdated && !storyboard\}/, 'cuts lock while a storyboard is built');
   assert.match(read('TaskPopover.tsx'), /item\.onRetry&&<WorkbenchButton/);
   assert.match(read('Nodes.tsx'), /data-batch-mark=\{data\.batchMark \|\| undefined\}/);

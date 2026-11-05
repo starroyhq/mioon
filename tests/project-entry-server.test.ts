@@ -13,6 +13,7 @@ import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createProjectFile} from '../packages/business/src/project-file/index.ts';
 import {createProjectHomeServices} from '../packages/business/src/project-home.ts';
 import {projectEntriesResponseSchema} from '../packages/contracts/src/project-entry.ts';
+import {calculateWorkspaceScope} from '../packages/contracts/src/workspace-scope.ts';
 import type {ProjectEntriesResponse} from '../packages/contracts/src/project-entry.ts';
 import type {ProjectEntryWindowRevoked} from '../packages/contracts/src/project-entry-native.ts';
 import type {RecentProject} from '../packages/contracts/src/project-registry.ts';
@@ -127,7 +128,7 @@ function registry(f: Fixture): readonly RecentProject[] {
   return f.server.projectEntries.listRecent().registered.map(entry => entry.project);
 }
 
-test('application catalog retains legacy identity and reads registered metadata and covers without acquiring a runtime', async t => {
+test('application catalog retains the physical application identity and reads metadata without a runtime or legacy route', async t => {
   const f = await fixture(t), before = registry(f);
   const a = f.hold(f.a.projectId), b = f.hold(f.b.projectId);
   const entries = await f.catalog(), again = await f.catalog();
@@ -138,9 +139,12 @@ test('application catalog retains legacy identity and reads registered metadata 
   assert.equal(entries.registered.find(entry => entry.project.projectId === f.a.projectId)!.coverUrl, `/api/project-covers/${f.a.projectId}`);
   assert.equal(entries.registered.find(entry => entry.project.projectId === f.b.projectId)!.coverUrl, null);
   assert.deepEqual(registry(f), before, 'listing does not change successful-open timestamps or registrations');
-  const legacy = await f.json<{supported: boolean; workspaceScope: string}>('/api/last-project');
-  assert.equal(legacy.status, 200); assert.equal(legacy.body.data!.supported, true);
-  assert.equal(entries.appLibraryScope, legacy.body.data!.workspaceScope);
+  assert.equal(entries.appLibraryScope, calculateWorkspaceScope({channel: 'web', root: f.dataDir,
+    directory: lstatSync(f.dataDir), db: lstatSync(path.join(f.dataDir, 'app-library.db'))}));
+  for (const method of ['GET', 'PUT']) {
+    const legacy = await f.json('/api/last-project', {method});
+    assert.equal(legacy.status, 404); assert.equal(legacy.body.error?.code, 'NOT_FOUND');
+  }
   const cover = await f.fetch(`/api/project-covers/${f.a.projectId}`);
   assert.equal(cover.status, 200); assert.deepEqual(Buffer.from(await cover.arrayBuffer()), jpeg);
   assert.equal(a.db.isOpen, true); assert.equal(b.db.isOpen, true);

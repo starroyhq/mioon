@@ -14,6 +14,20 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
+// Load the production context module. Standalone previews have no Provider;
+// null carries no claim that any media was verified by an owner.
+const standaloneMediaGate=(()=>{
+  const react={createContext:(value:unknown)=>({value}),useContext:(context:{value:unknown})=>context.value};
+  const module:{exports:Record<string,unknown>}={exports:{}};
+  const source=readFileSync(new URL('../apps/web/src/project-media-read-gate.tsx',import.meta.url),'utf8');
+  globalThis.Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs'}).code)(module,module.exports,(name:string)=>{
+    if(name==='react')return react;
+    if(name==='./project-file/MediaStatus.tsx')return {MediaStatusBadge:'MediaStatusBadge',MediaStatusNote:'MediaStatusNote'};
+    throw Error(`Unexpected standalone media gate dependency: ${name}`);
+  });
+  return module.exports;
+})();
+assert.equal((standaloneMediaGate.useProjectMediaReadGate as ()=>unknown)(),null);
 import { createClipLutController, clipLutSourceIssue, clipLutSourceMessage, clipLutFileIssue, prepareClipLutImport } from '../apps/web/src/clip-lut-state.ts';
 import { createClipLutRecovery, clipLutRecoveryKey, clipLutRecoveryMetadata } from '../apps/web/src/clip-lut-recovery.ts';
 import { clipDraftRaw, clipDraftPatch, createClipDraftController } from '../apps/web/src/clip-draft-state.ts';
@@ -221,6 +235,7 @@ test('actual source Preview visibly discloses unprocessed audio and image while 
     (react as typeof react & {default: unknown}).default = react;
     Function('require', 'module', 'exports', code)((name: string) => {
       if (name === 'react') return react;
+      if (name === './project-media-read-gate.tsx') return standaloneMediaGate;
       if (name === './i18n/I18nProvider.tsx') return i18nTestModule(locale);
       if (name === './UiPreferencesProvider.tsx') return {useUiPreferences:() => ({preferences:DEFAULT_UI_PREFERENCES})};
       if (name === './creation-i18n.ts') return creationI18n;

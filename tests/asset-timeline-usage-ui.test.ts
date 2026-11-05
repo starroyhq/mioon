@@ -51,7 +51,7 @@ const h = { visible: true } as CapturedHarness1;
   };
   const load = <T>(source: string|Uint8Array<ArrayBufferLike>, loader: Loader, require: (name:string)=>unknown):T => { const module = { exports: {} }; Function('require', 'module', 'exports', transformSync(source, { loader, format: 'cjs' }).code)(require, module, module.exports); return (module.exports as T); };
   const strictRequire = (name: string) => {
-    if (name === 'react') return { ...react, default: react };
+    if (name === './project-media-read-gate.tsx') return {useProjectMediaReadGate: () => null, ProjectMediaImage: 'img'}; if (name === './project-file/MediaStatus.tsx') return {MediaStatusBadge: 'MediaStatusBadge', MediaStatusNote: 'MediaStatusNote', MediaAttentionBanner: 'MediaAttentionBanner'}; if (name === 'react') return { ...react, default: react };
     if (name.endsWith('/i18n/I18nProvider.tsx')) return i18nTestModule();
     if (name === '@mioon/ui/components/button') return { Button: 'Button' };
     if (name === '@mioon/ui/components/workbench-icons') return { Film: 'Film' };

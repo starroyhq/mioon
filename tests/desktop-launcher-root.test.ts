@@ -86,11 +86,11 @@ test('root mounts all three verified native roles without project-role URL autho
   assert.match(source('NativeEditorRoot.tsx'), /renderEditor\(context, bridge, entry\)/);
 });
 
-test('empty native home moves only a settled locator summary into Help and retains every recovery state', () => {
-  function render(entryPatch: Record<string, unknown> = {}, locatorPatch: Record<string, unknown> = {}): FakeNode {
+test('empty native home moves only a verified directory summary into Help and retains every read failure', () => {
+  function render(entryPatch: Record<string, unknown> = {}, identityPatch: Record<string, unknown> = {}): FakeNode {
     const entry = {projects: [], catalogReady: true, listBusy: false, listError: '', phase: 'home', ...entryPatch};
-    const locatorState = {phase: 'idle', targetStatus: 'unset', uncertain: false, identityBlocked: false, ...locatorPatch};
-    const locator = {getState: () => locatorState}, controller = {getState: () => entry};
+    const identityState = {phase: 'ready', identityBlocked: false, ...identityPatch};
+    const identity = {getState: () => identityState}, controller = {getState: () => entry};
     const react = {
       createElement: (type: unknown, props: FakeProps | null, ...children: unknown[]): FakeNode => ({type, props: {...props, children}}),
       useState: (value: unknown): [unknown, () => void] => [typeof value === 'function' ? (value as () => unknown)() : value, () => {}],
@@ -99,13 +99,12 @@ test('empty native home moves only a settled locator summary into Help and retai
     const module: {exports: {default?: (props: unknown) => FakeNode}} = {exports: {}};
     const dependencies: Record<string, unknown> = {
       react,
-      './last-project-state.ts': {createLastProjectController: () => locator},
-      './LastProjectStatus.tsx': {__esModule: true, default: 'locator-status'},
+      './project-entry-identity.ts': {createProjectEntryIdentityOwner: () => identity},
+      './ProjectEntryIdentityStatus.tsx': {__esModule: true, default: 'identity-status'},
       './native-close-state.ts': {createNativeCloseRegistry: () => ({}), installNativeCloseAdmission() {}},
       './settings-navigation-state.ts': {createSettingsNavigationRegistry: () => ({})},
       './native-project-entry.ts': {useNativeProjectEntry: () => controller},
       './ProjectEntry.tsx': {__esModule: true, default: 'entry'},
-      './native-locator-state.ts': {createNativeLocatorOwner: () => ({})},
       './desktop-menu-client.ts': desktopMenu,
       './workbench-modal-state.ts': modalState,
     };
@@ -114,15 +113,35 @@ test('empty native home moves only a settled locator summary into Help and retai
     }, module, module.exports);
     return module.exports.default!({context: {}, bridge: {}, rpc() {}, contractChecks: {}});
   }
-  for (const phase of ['idle', 'saved']) {
+  for (const phase of ['ready']) {
     const tree = render({}, {phase}); assert.equal(tree.props.status, undefined); assert.ok(tree.props.help);
   }
   const retained = [
     render({projects: [{id: 'project'}]}), render({catalogReady: false}), render({listBusy: true}), render({listError: 'Read failed'}), render({phase: 'error'}),
-    ...['loading', 'pending', 'error', 'conflict', 'unavailable'].map(phase => render({}, {phase})),
-    render({}, {uncertain: true}), render({}, {identityBlocked: true}), render({}, {targetStatus: 'missing'}),
+    ...['idle', 'loading', 'error', 'blocked'].map(phase => render({}, {phase})), render({}, {identityBlocked: true}),
   ];
   for (const tree of retained) {assert.ok(tree.props.status); assert.equal(tree.props.status, tree.props.help);}
+});
+test('directory identity status is read-only in four languages and blocked identity offers no retry write', () => {
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
+    let retries = 0;
+    const owner = {getState: () => ({phase: 'error', identityBlocked: false}), refresh: async () => {retries++;}};
+    const module: {exports: {default?: (props: unknown) => FakeNode}} = {exports: {}};
+    const dependencies: Record<string, unknown> = {
+      react: {createElement: (type: unknown, props: FakeProps | null, ...children: unknown[]): FakeNode => ({type, props: {...props, children}})},
+      '@mioon/ui/components/button': {Button: 'button'}, './i18n/I18nProvider.tsx': i18nTestModule(locale),
+    };
+    Function('require', 'module', 'exports', transformSync(source('ProjectEntryIdentityStatus.tsx'), {loader: 'tsx', format: 'cjs', jsx: 'transform'}).code)((name: string) => {
+      assert.ok(Object.hasOwn(dependencies, name), name); return dependencies[name];
+    }, module, module.exports);
+    const render = module.exports.default!;
+    const error = render({owner}); find(error, 'project-entry-identity-retry').props.onClick!(); assert.equal(retries, 1);
+    assert.ok(JSON.stringify(error).includes(i18nTestModule(locale).useI18n().t('projectFile.home.error')));
+    const blocked = render({owner, state: {phase: 'blocked', identityBlocked: true}});
+    assert.equal(nodes(blocked).some(node => node.props['data-testid'] === 'project-entry-identity-retry'), false);
+    assert.ok(JSON.stringify(blocked).includes(i18nTestModule(locale).useI18n().t('projects.locatorKeepWindow')));
+    for (const phase of ['idle', 'loading', 'ready']) assert.equal(nodes(render({owner, state: {phase, identityBlocked: false}})).some(node => node.props['data-testid'] === 'project-entry-identity-retry'), false);
+  }
 });
 test('entry form stale handlers cannot mutate while sealed before React rerenders disabled props', () => {
   let allowed = true;

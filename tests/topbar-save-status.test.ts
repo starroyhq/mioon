@@ -14,6 +14,8 @@ import { createWorkspacePreferences, durableWorkspaceState } from '../apps/web/s
 import { defaultWorkspaceState, type WorkspaceState } from '../apps/web/src/workspace-state.ts';
 import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from '../apps/web/src/project-open-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
+import {projectEntryFixture,projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
+import {readProjectEntryIdentity} from '../apps/web/src/project-entry-identity.ts';
 import { stripSourceTypes } from './helpers/eval-source.ts';
 import type { DisplayMessage } from '../packages/i18n/src/types.ts';
 
@@ -286,12 +288,13 @@ function harness(t: test.TestContext) {
     inspectorDirty: false, formatDirty: false, inspectorDraft: { title: 'retained inspector draft' }, formatDraft: { width: 1920 },
     paidReview: { token: 'unchanged paid review' }, mobilePanel: 'canvas', rightDockTab: 'properties' };
   const calls: unknown[][] = [], currentProject = { current: null as string|null }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 };
+  const identity=projectEntryOwnerFixture(()=>projectEntryFixture([{id:A},{id:B}]));t.after(()=>identity.dispose());
   const env = { msg, application: null, ...createI18nTestContext(), localizedError: (value?: string|DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), nativeWindow: null, nativeProjectEntry: null, currentProject, navigationEpoch, projectEpoch, editorSession: {current: 'normal'}, workspaceRef: { current: {  } as {} },
     projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind,
     openedProject: { current: null }, settingsNavigation: { current: createSettingsNavigationRegistry() },
     loading: false, importSession: { current: { active: true, selection: 0 } }, agentDraft: { current: false }, imageDraft: { current: false },
     guardProjectNavigation: async (_message: unknown, _dirty: unknown, canLeave: () => unknown) => canLeave(), confirm: (async () => true) as (message?:unknown)=>Promise<unknown>,
-    lastProjectRef: { current: { invalidateNavigation() {}, rememberOpened() {} } },
+    projectEntryIdentityRef:{current:identity},readProjectEntryIdentity,
     requestCounter: { current: 0 }, preferencesRef: { current: null as ReturnType<typeof createWorkspacePreferences>|null }, tasksRef: { current: { getState: () => ({}), load: async () => {} } },
     viewReady: { current: true }, viewRef: { current: state.view }, dataRef: { current: {} }, emptyData: {}, dragging: { current: false },
     pendingForProject: () => [], updateView: () => assert.fail('Selected fixtures must not trigger passive first-item selection'),

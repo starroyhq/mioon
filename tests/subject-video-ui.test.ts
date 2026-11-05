@@ -69,6 +69,7 @@ const slots: HookSlot[] = [], modules = new Map<string,{default:(props:Record<st
     const module = {exports:{}} as {exports:{default:(props:Record<string,unknown>)=>ElementTree}},code = transformSync(readFileSync(new URL(`../apps/web/src/${filename}`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
     Function('module', 'exports', 'require', code)(module, module.exports, (name: string) => {
       if (name === 'react') return react;
+      if (name === './project-media-read-gate.tsx') return {useProjectMediaReadGate: () => null, ProjectMediaImage: 'img'};
       if (name === './i18n/I18nProvider.tsx') return { useI18n: () => i18nTestModule(h.locale).useI18n() };
       if (name.endsWith('/packages/i18n/src/index.ts')) return i18n;
       if (name === './creation-i18n.ts') return creationI18n;

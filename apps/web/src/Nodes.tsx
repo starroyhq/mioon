@@ -15,6 +15,8 @@ import './board-redesign.css';
 import './board-timeline-status.css';
 import { ArrowUpRight } from '@mioon/ui/components/workbench-icons';
 import PrevisNode from './previs/PrevisNode.tsx';
+import {mediaReadIdentity, useProjectMediaReadGate} from './project-media-read-gate.tsx';
+import {MediaStatusBadge, MediaStatusNote} from './project-file/MediaStatus.tsx';
 
 export interface NodeAssetView { id?: string; name?: string; mimeType?: string; width?: number; height?: number; url?: string; [key: string]: unknown }
 export interface NodeVersionView { id?: string; assetId?: string; url?: string; snapshot?: { aspectRatio?: string; duration?: number; [key: string]: unknown }; [key: string]: unknown }
@@ -81,7 +83,9 @@ export function Media({ asset, version, className = '', controls = false, ...pro
   const media = useRef<HTMLMediaElement | null>(null);
   const visible = useWorkspaceVisibility();
   const visibleRef = useRef(visible);
-  const url = version ? versionUrl(version) : assetUrl(asset);
+  const gate = useProjectMediaReadGate(), identity = mediaReadIdentity(asset, version);
+  const blocked = Boolean(gate && (asset || version) && !gate.canRead(identity));
+  const url = blocked ? '' : version ? versionUrl(version) : assetUrl(asset);
   const video = Boolean(version || asset?.mimeType?.startsWith('video/'));
   const audio = asset?.mimeType?.startsWith('audio/');
   const sourceKey = `${version?.id || asset?.id || ''}:${url}:${audio ? 'audio' : 'video'}:${controls}`;
@@ -100,7 +104,7 @@ export function Media({ asset, version, className = '', controls = false, ...pro
   function guardPlayback<T extends HTMLMediaElement>(event: SyntheticEvent<T>, callback?: ReactEventHandler<T>): void {
     const element = event.currentTarget;
     // A queued play/playing event may arrive after a panel was collapsed.
-    if (!visibleRef.current || element !== media.current || !element.isConnected) {
+    if (gate && !gate.canRead(identity) || !visibleRef.current || element !== media.current || !element.isConnected) {
       element.pause();
       return;
     }
@@ -112,6 +116,7 @@ export function Media({ asset, version, className = '', controls = false, ...pro
     onPlaying: (event: SyntheticEvent<HTMLVideoElement>) => guardPlayback(event, props.onPlaying),
     onTimeUpdate: (event: SyntheticEvent<HTMLVideoElement>) => guardPlayback(event, props.onTimeUpdate),
   };
+  if (blocked && gate) return <div className={`media-placeholder pf-media-blocked ${className}`} data-testid="media-read-blocked"><Icon name="film" size={24} /><MediaStatusBadge status={gate.statusFor(identity)} /><MediaStatusNote status={gate.statusFor(identity)} /></div>;
   if (!url) return <div className={`media-placeholder ${className}`}><Icon name="film" size={32} /><span>{t('assets.waitFirstVisual')}</span></div>;
   if (audio) return <div className={`media-audio ${className}`}><Icon name="music" size={28} />{controls ? <audio ref={media as React.Ref<HTMLAudioElement>} key={sourceKey} className="nodrag nowheel" src={url} controls preload="metadata" {...playbackProps as React.AudioHTMLAttributes<HTMLAudioElement>} /> : <span>{t('assets.audioAsset')}</span>}</div>;
   return video ? <video ref={media as React.Ref<HTMLVideoElement>} key={sourceKey} className={`media-content ${className} ${controls ? 'nodrag nowheel' : ''}`} src={url} controls={controls} muted playsInline preload="metadata" {...playbackProps} /> : <img className={`media-content ${className}`} src={url} alt={asset?.name || t('assets.shotReference')} loading="lazy" />;

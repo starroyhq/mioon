@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
@@ -6,6 +6,8 @@ import {isProjectWindowContext,isProjectWindowRequest} from '../apps/desktop/src
 import type {ProjectWindowContext,ProjectWindowBridge} from '../apps/desktop/src/project-window-protocol.ts';
 import {reportEditorWindowStatus} from '../apps/web/src/editor-native-window.ts';
 import {projectOpenAttempt,canPublishProjectOpen} from '../apps/web/src/project-open-state.ts';
+import {readProjectEntryIdentity} from '../apps/web/src/project-entry-identity.ts';
+import {PROJECT_ENTRY_TEST_SCOPE,projectEntryFixture,projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
 
 const projectId='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',windowId='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',contextId='cccccccc-cccc-4ccc-8ccc-cccccccccccc',backendId='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const context:ProjectWindowContext={version:2,role:'editor',windowId,contextId,backendId,initialProjectId:projectId,autoOpen:false,editorProjectId:projectId,editorPhase:'ready',editorCount:1,entryMode:null,entryVersion:0,entryReceipt:null,settingsSlot:null,settingsVersion:0,selectionProjectId:null,selectionVersion:0,locatorStatus:null,locatorIntent:null,quitting:false};
@@ -13,11 +15,12 @@ const app=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8'
 function section(start:string,end:string){const from=app.indexOf(start),to=app.indexOf(end,from);assert.ok(from>=0&&to>from);return transformSync(app.slice(from,to),{loader:'tsx',format:'cjs'}).code;}
 const observe=section('  function observeNativeProjectLease(', '  useLayoutEffect('),ready=section('  function projectSessionReady()', '  const workbenchReady =');
 const run=section('  async function run(', '  async function runDurable('),select=section('  async function selectProject(', '  async function showProjectHome(');
-function fixture(){
+async function fixture(t:TestContext){
+ const directoryCalls:unknown[][]=[],identity=projectEntryOwnerFixture(()=>projectEntryFixture([{id:projectId}]),directoryCalls);t.after(()=>identity.dispose());await readProjectEntryIdentity(identity);
  const importSession={current:{active:true,selection:0,leaseRevoked:false}},nativeLeaseRevoked={current:false},clipConnectionBlocked={current:false},draft={title:'Retained unsaved draft'},data={project:{id:projectId},shots:[{title:'Original project data'}]},published:string[]=[];
- const env={nativeWindow:{context},importSession,nativeLeaseRevoked,clipConnectionBlocked,setNativeLeaseObservation:()=>published.push('lease'),canPublishProjectOpen,openedProject:{current:projectOpenAttempt(projectId,0,'workspace')},currentProject:{current:projectId},projectEpoch:{current:0},editorSession:{current:'workspace'},viewReady:{current:true},dataRef:{current:data},captureTaskWorkspaceIntent:()=>()=>false,readTaskRevealContext:()=>({}),isDurableEditOperation:()=>true,runDurable:async()=>{published.push('submit');return true;},runSession:async()=>{published.push('submit');return true;}};
+ const env={nativeWindow:{context},importSession,nativeLeaseRevoked,projectEntryIdentityRef:{current:identity},clipConnectionBlocked,setNativeLeaseObservation:()=>published.push('lease'),canPublishProjectOpen,openedProject:{current:projectOpenAttempt(projectId,0,PROJECT_ENTRY_TEST_SCOPE)},currentProject:{current:projectId},projectEpoch:{current:0},editorSession:{current:PROJECT_ENTRY_TEST_SCOPE},viewReady:{current:true},dataRef:{current:data},captureTaskWorkspaceIntent:()=>()=>false,readTaskRevealContext:()=>({}),isDurableEditOperation:()=>true,runDurable:async()=>{published.push('submit');return true;},runSession:async()=>{published.push('submit');return true;}};
  const compiled=Function(...Object.keys(env),`${observe}\n${ready}\n${run}\n${select}\nreturn {observeNativeProjectLease,projectSessionReady,run,selectProject};`)(...Object.values(env)) as {observeNativeProjectLease(next:ProjectWindowContext):void;projectSessionReady():boolean;run(key:string,operation:string,input:unknown):Promise<unknown>;selectProject(id:string):Promise<boolean>};
- return {...compiled,...env,draft,data,published};
+ return {...compiled,...env,draft,data,published,directoryCalls};
 }
 
 test('lease revocation is a strict read-only context flag; ordinary load failure and legacy contexts remain distinct',()=>{
@@ -26,15 +29,16 @@ test('lease revocation is a strict read-only context flag; ordinary load failure
  assert.equal(isProjectWindowRequest({action:'editor-status',contextId,projectId,phase:'failed',leaseRevoked:true}),false);
 });
 
-test('actual App observer ignores foreign owners and ordinary failures but revocation immediately stops old callbacks and keeps drafts',async()=>{
- const f=fixture();assert.equal(f.projectSessionReady(),true);assert.equal(await f.run('edit','timeline.clip.update',{}),true);
+test('actual App observer ignores foreign owners and ordinary failures but revocation immediately stops old callbacks and keeps drafts',async t=>{
+ const f=await fixture(t);assert.equal(f.projectSessionReady(),true);assert.equal(await f.run('edit','timeline.clip.update',{}),true);
  for(const patch of [{leaseRevoked:false,editorPhase:'failed' as const},{windowId:backendId,leaseRevoked:true,editorPhase:'failed' as const},{contextId:backendId,leaseRevoked:true,editorPhase:'failed' as const},{initialProjectId:windowId,leaseRevoked:true,editorPhase:'failed' as const},{role:'launcher' as const,leaseRevoked:true,editorPhase:'failed' as const}]){f.observeNativeProjectLease({...context,...patch});assert.equal(f.projectSessionReady(),true);}
  const draft=f.draft,data=f.dataRef.current;f.observeNativeProjectLease({...context,editorPhase:'failed',leaseRevoked:true});assert.equal(f.projectSessionReady(),false);assert.equal(await f.run('late','timeline.clip.update',{}),null);assert.equal(await f.selectProject(projectId),false);assert.equal(f.clipConnectionBlocked.current,true);assert.deepEqual(f.published,['submit','lease']);assert.equal(f.draft,draft);assert.equal(f.dataRef.current,data);assert.equal(f.currentProject.current,projectId);assert.equal(f.importSession.current.active,true);
  f.observeNativeProjectLease({...context,leaseRevoked:false});assert.equal(f.projectSessionReady(),false);assert.equal(await f.run('late','generation.submit',{}),null);assert.deepEqual(f.published,['submit','lease']);
+ assert.deepEqual(f.directoryCalls,[['directory','/api/project-entries','GET']]);
 });
 
 test('the retained workbench and native close protection remain mounted when the lease is revoked',()=>{
- assert.match(app,/nativeWindow && !workbenchReady && !retainWorkbenchForClip && !nativeLeaseRevoked\.current/);assert.match(app,/!workbenchReady && !retainWorkbenchForClip && !nativeLeaseRevoked\.current\) return/);assert.match(app,/data-testid="native-project-lease-revoked"/);
+ assert.match(app,/nativeWindow && !workbenchReady && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !nativeLeaseRevoked\.current/);assert.match(app,/!workbenchReady && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !nativeLeaseRevoked\.current\) return/);assert.match(app,/data-testid="native-project-lease-revoked"/);
  assert.match(app,/installNativeCloseAdmission/);assert.doesNotMatch(observe,/setData|emptyData|discard|dispose|currentProject\.current\s*=|setShotDirty|setClipDirty|setSubjectDirty/);
 });
 

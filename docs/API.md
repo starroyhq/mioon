@@ -48,17 +48,27 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 
 目录最多 8192 条，沿用 B1；本资源完整 JSON 上限 384 MiB，超过报 PROJECT_ENTRY_LIMIT（413），不截断。这是传输边界，不是应用库配额或全部理论数据都能列出的承诺。身份改变报 PROJECT_ENTRY_SCOPE_MISMATCH（409），应用库持有权/生命周期不可用报 PROJECT_ENTRY_UNAVAILABLE（503），标准认证错误不变。
 
-@mioon/client/project-entry 提供 createProjectEntriesClient().list({signal?, timeoutMs?})，固定地址、严格 UTF-8/DTO/字节限额，不重试。旧 /api/last-project 在后续调用方迁完前保留。
+@mioon/client/project-entry 提供 createProjectEntriesClient().list({signal?, timeoutMs?})，固定地址、严格 UTF-8/DTO/字节限额，不重试。浏览器使用独立的只读同源 client，不引入 Node client 或文件系统能力。
 
-受信 ServerInstance.projectEntries 的创建、按路径打开、window 租约等方法不是 HTTP/RPC/CLI/环境入口；JSON 里写 path、windowId 或 lease kind 不能取得这些能力。主进程/utility 和真实窗口接线留 S6-B，接口与生命周期见 [PROJECT-HOST.md](PROJECT-HOST.md#s6-a项目目录与受信控制)。
+S6-C 2a 的 renderer identity owner 只从完整校验后的目录建立 appLibraryScope 与 instanceId。appLibraryScope 是稳定的偏好缓存身份；instanceId 是服务实例身份，不参与磁盘缓存 key。首次验证后，换库或同库换 instance 都永久阻断当前 owner，清除可发布目录及 verified scope；必须由新 renderer 完整验证后重新建立身份。普通读取失败保持 unknown/error，可在原身份下重试，不视为空目录；不能通过 A→null→A 自动重绑，让旧偏好队列或晚到回包重新生效。
+
+最近目录表示已登记项目及成功打开记录；读取、搜索、排序和选择卡片不保存“上次选择的项目”。没有明确项目 URL 时停留首页，不因最近记录自动打开；显式目标不可用时不替换为其他项目。原生编辑窗口继续严格使用宿主分配的项目 UUID。旧 last-project HTTP 已退役，见[下文](#private-last-project-locator已退役)。
+
+受信 ServerInstance.projectEntries 的创建、按路径打开、window 租约等方法不是 HTTP/RPC/CLI/环境入口；JSON 里写 path、windowId 或 lease kind 不能取得这些能力。S6-B 已提供主进程/utility 和真实窗口接线；S6-B2（#177）的补桥与 S6-C 2b 的界面接线仍待后续，接口与生命周期见 [PROJECT-HOST.md](PROJECT-HOST.md#s6-a项目目录与受信控制)。
+
+S6-C 2a 接入 12-04 素材状态与 12-06 外部位置的现有 HTTP 能力、严格 DTO 适配和内容读取门，以及受控的新建、打开错误、位置风险 UI、四语和目录身份迁移。状态读取走项目 RPC 的 `asset.media.status.list`；外部位置列表和明确确认走项目的 `asset-media/trusted` 固定入口。缺失、变化、未确认或尚未取得有效状态的内容不能触发素材读取；未知写入保留原请求归属，不用刷新列表证明成功。本批不代表全部 Q 或 S6-C 流程完成。
+
+S6-B 已合入；C 线再补 S6-B2（#177）：可信重新指向选择、权限帮助/Reveal、原项目事实、只读/网络来源的复制观察票据等，由 S6-C 2b 合入后接线。选择必须绑定当前项目、素材及修订，不能先 import 再借授权，也不能把 asset-import token 当 sourcePath。`copyTo` 的“复制到…”与另存为、复制项目统一使用系统存储面板，说明行相同，默认名为项目名；不再另用文件夹选择面板。只读/网络来源仍拒绝原位置打开，复制必须基于受信票据、完整观察源且不覆盖目标。
 
 应用 RPC `project.delete` 已采用 S5-C 的移到废纸篓语义：严格确认登记路径、文件身份及项目 revision，仅受信桌面主进程调用 `shell.trashItem`，确定成功后撤登记并保存固定回执。素材及全部本机记录保留；打开窗口、会写回项目的工作或 Mio 等待回答/审批时拒绝，S8 草稿不阻止。没有受信能力的网页/headless 返回 `PROJECT_TRASH_UNAVAILABLE`；CLI/MCP 命令留 0.1.x，在输入/私有存储/后端访问前明确拒绝。同键重放确定回执，结果不明不重做、不撤登记。旧 `confirmPermanentDeletion` 严格报 `VALIDATION_ERROR`（400），没有永久清理或 `cleanup:'pending'`。详见 [PROJECT-LIFECYCLE.md](PROJECT-LIFECYCLE.md)。
 
-以下能力仍等待后续卡接入新布局：
+以下能力尚未接入当前界面；未有真实界面接线或原生桥未就绪时，相关动作按 D8 隐藏，不由已有 HTTP 服务推断 UI 能力：
 
 | 归属 | 操作 | 当前结果 |
 | --- | --- | --- |
-| S5、V4 | 复制、另存为、打包导入导出；旧 `/api/project-packages/…` 和项目 `package-preview` | 未注册生产接口，旧地址为 404 `NOT_FOUND` |
+| S6-B/B2、S6-C 2b | 系统项目选择、可信重新指向、权限帮助/Reveal、复制/另存为 UI | 等 C 线受信桥合入后接线；未接能力不显示动作，S5 已有服务不等于界面可用 |
+| S6-D、S5-C、S6-C 2b | 模板、废纸篓 UI | 模板资源与废纸篓服务已合入；界面尚未接线时按 D8 隐藏 |
+| V4 | 打包导入导出；旧 `/api/project-packages/…` 和项目 `package-preview` | 未注册生产接口，旧地址为 404 `NOT_FOUND` |
 | S7 | `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（bundle 下载/导入、directory 导入） | 404 `UNKNOWN_OPERATION`（旧文件地址为 `NOT_FOUND`） |
 
 `workspace.restore.inspect` 已完全退役，返回 404 `UNKNOWN_OPERATION`。音频角色和音量包络直接按普通编辑条件使用，不再发能力探测。工作区设置仅保留真实生成开关和修订号，详见 [工作区设置](WORKSPACE-SETTINGS.md)。
@@ -126,15 +136,11 @@ Response: `{"ok":true,"data":...}`. Error: `{"ok":false,"error":{"code":"REVISIO
 
 For business RPC, the runtime schemas in `packages/contracts/src/index.ts` are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` documents full-record and mutation input/record contracts. MCP tools expose these schemas plus the project-address field for the 11 entity-addressed operations through tools/list.
 
-### Private last-project locator
+### Private last-project locator（已退役）
 
-Authenticated `GET /api/last-project` and `PUT /api/last-project` share a fixed,
-bounded private navigation service. This is renderer-only discovery/storage,
-not an RPC/CLI/MCP/Agent operation. Reads are noncreating; writes require the
-verified workspace scope, current service instance, original expected revision,
-and existing project ID. Exact schemas and capacity/CAS/recovery limits are in
-[`last-project.ts`](../packages/contracts/src/last-project.ts) and
-[LAST-PROJECT.md](LAST-PROJECT.md). Reopening a project never grants task execution.
+`GET /api/last-project`、`PUT /api/last-project` 及该路径的子路径已在 S6-C 2a 退役。保留现有 Host/Origin 和令牌/会话校验；通过校验后，无论 method、query 或 body，均返回 404 `NOT_FOUND`。不存在替代的 last-project RPC、CLI、MCP 或 Mio 操作。
+
+生产 renderer 改用只读目录身份，不再保存选择；服务端不再构造旧定位服务或挂载其读写 handler。应用库中已有 `last-project-v1.json` document 的正常或损坏字节均留作不可达遗留，不删除、不修复、不迁移，本次也不提升库版本。旧 [`last-project.ts`](../packages/contracts/src/last-project.ts) 契约与 [LAST-PROJECT.md](LAST-PROJECT.md) 仅保留为历史实现和单元测试依据，不表示生产接口仍可调用。
 
 ### Private clip-property drafts
 

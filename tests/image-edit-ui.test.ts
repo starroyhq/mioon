@@ -197,7 +197,7 @@ function renderer(f: Fixture): Harness {
       Function('module', 'exports', 'require', code)(settingsModule, settingsModule.exports, (dependency: string) => { assert.equal(dependency, 'react'); return react; });
       return settingsModule.exports;
     }
-    if (name === 'react') return react;
+    if (name === './project-media-read-gate.tsx') return {useProjectMediaReadGate: () => null, ProjectMediaImage: 'img'}; if (name === './project-file/MediaStatus.tsx') return {MediaStatusBadge: 'MediaStatusBadge', MediaStatusNote: 'MediaStatusNote', MediaAttentionBanner: 'MediaAttentionBanner'}; if (name === 'react') return react;
     if (name === '@mioon/contracts') return contracts;
     if (name === './image-generation.ts') return {...logic, createImageGenerationSession: (value: Record<string, unknown>) => logic.createImageGenerationSession({...value, api: f.api, storage: f.storage, requestId: () => requestId, setTimer: () => 1, clearTimer() {}} as never)};
     if (name === './workspace-visibility.tsx') return {useWorkspaceVisibility: () => visible};

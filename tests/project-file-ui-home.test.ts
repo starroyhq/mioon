@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {transformSync} from 'esbuild';
+import {build, transformSync} from 'esbuild';
+import {createRequire} from 'node:module';
+import {fileURLToPath} from 'node:url';
 import { LOCALES, translate } from '../packages/i18n/src/index.ts';
 import type { MessageArguments, MessageKey } from '../packages/i18n/src/index.ts';
 import { assertGroupEvidence, escapeHtml, projectFileScenes, tagOf } from './helpers/project-file-ui.ts';
@@ -9,6 +11,8 @@ import { OPEN_FAILURES, PROJECT_IDS, RECENT_PROJECTS } from './fixtures/project-
 import {orderedRecentProjects, visibleWaitingProjects, waitingProjects} from '../apps/web/src/project-file/recent-project-view.ts';
 import type {WaitingProject} from '../apps/web/src/project-file/recent-project-view.ts';
 import type {ProjectEntry} from '../packages/contracts/src/project-entry.ts';
+import {TIMELINE_CURRENT_OUTPUT_PRESETS} from '../packages/contracts/src/timeline-output-geometry.ts';
+import {projectFilePathPreview, projectNameProblem, revealLabelKey, fileNameOf, stemOf} from '../apps/web/src/project-file/format.ts';
 
 // U1 group 1: home (12-01), new project (12-02) and the open failures (12-03 to 12-03d).
 const ui = await projectFileScenes();
@@ -135,12 +139,12 @@ function findElement(tree: unknown, id: string): TestElement | null {
   if (Array.isArray(tree)) {for (const child of tree) {const found = findElement(child, id); if (found) return found;} return null;}
   const node = tree as TestElement;
   if (node.props?.['data-testid'] === id) return node;
-  return findElement(node.props?.children, id);
+  return findElement([node.props?.children, node.props?.footer, node.props?.actions], id);
 }
 /** Execute the actual small view functions with deterministic hook cells. This
  * checks event closures and the image failure transition without a DOM shim. */
-function homeFunction(name: string, end: string, bindings: Record<string, unknown>): (props: Record<string, unknown>) => TestElement {
-  const source = readFileSync(new URL('../apps/web/src/project-file/RecentProjects.tsx', import.meta.url), 'utf8');
+function homeFunction(name: string, end: string, bindings: Record<string, unknown>, file = '../apps/web/src/project-file/RecentProjects.tsx'): (props: Record<string, unknown>) => TestElement {
+  const source = readFileSync(new URL(file, import.meta.url), 'utf8');
   const start = source.indexOf(`export function ${name}(`), stop = end === 'EOF' ? source.length : source.indexOf(end, start);
   assert.ok(start >= 0 && stop > start);
   const code = transformSync(source.slice(start, stop).replace('export function', 'function'), {loader: 'tsx', jsx: 'transform', target: 'es2023'}).code;
@@ -246,8 +250,8 @@ test('12-02 new project: name checks, path preview, creating, exists and web', (
 test('12-03 the four open failures have distinct titles and the right buttons', () => {
   const titles = ['12-03', '12-03b', '12-03c', '12-03d'].map(title);
   assert.deepEqual(titles, ['找不到「访谈剪辑样片」', '「城市夜景短片」已在另一个 Mioon 中打开', text('projectFile.open.newer.title'), '无法打开「季节变换延时.mioon」']);
-  const inbox = text('projectFile.open.missing.bodyWithInbox', { path: OPEN_FAILURES.missing.projectFile, count: 2 });
-  assert.ok(html('12-03').includes(inbox));
+  assert.ok(html('12-03').includes(text('projectFile.open.missing.body', {path: OPEN_FAILURES.missing.projectFile})));
+  assert.doesNotMatch(html('12-03'), /data-testid="pf-open-inbox"|等待写入/u);
   assert.ok(html('12-03-no-inbox').includes(text('projectFile.open.missing.body', { path: OPEN_FAILURES.missing.projectFile })));
   assert.doesNotMatch(html('12-03-no-inbox'), /data-testid="pf-open-inbox"/u);
   for (const id of ['pf-open-remove', 'pf-open-locate']) assert.ok(tagOf(html('12-03'), id), id);
@@ -264,22 +268,204 @@ test('12-03 the four open failures have distinct titles and the right buttons', 
   assert.match(tagOf(html('12-03d-restoring'), 'pf-open-restore') ?? '', /aria-busy="true"/u);
 });
 
-test('open failure descriptions keep complete English sentences and inbox plurals', () => {
-  assert.ok(ui.render('12-03', 'en').includes('not connected. Once it is found, the 2 waiting generated results are written to it.'));
+test('open failure descriptions keep complete English sentences and task plurals', () => {
+  assert.ok(ui.render('12-03', 'en').includes('or its disk is not connected.'));
   assert.ok(ui.render('12-03d', 'en').includes('never opened. If this project was opened on this computer before, you can restore it from a local backup.'));
-  const singular = translate('en', 'projectFile.open.missing.bodyWithInbox', { path: OPEN_FAILURES.missing.projectFile, count: 1 });
-  assert.ok(singular.includes('not connected. Once it is found, the 1 waiting generated result is written to it.'));
+  const singular = translate('en', 'projectFile.open.missing.bodyWithTasks', {path: OPEN_FAILURES.missing.projectFile, count: 1});
+  const plural = translate('en', 'projectFile.open.missing.bodyWithTasks', {path: OPEN_FAILURES.missing.projectFile, count: 2});
+  assert.ok(singular.includes('not connected. There is 1 generation task waiting'));
+  assert.ok(plural.includes('not connected. There are 2 generation tasks waiting'));
 });
 
 test('12-03d read-only keeps the layout and never calls the file damaged', () => {
   const readOnly = html('12-03d-read-only');
-  assert.equal(title('12-03d-read-only'), '无法打开「产品演示 · 竖屏.mioon」');
+  assert.equal(title('12-03d-read-only'), '「产品演示 · 竖屏」是只读的');
   assert.ok(readOnly.includes(text('projectFile.open.readOnly.body')));
   assert.ok(!readOnly.includes(text('projectFile.open.invalid.body')));
   assert.ok(!readOnly.includes(text('projectFile.open.invalid.restore')));
   assert.equal(tagOf(readOnly, 'pf-open-restore'), null);
   assert.match(readOnly, /data-testid="pf-open-reveal"[^>]*>在 Finder 中显示</u);
   assert.ok(html('12-03d').includes(text('projectFile.open.invalid.body')));
+});
+
+test('P6 gallery keeps waiting counts, optional actions and create outcomes faithful in all four languages', () => {
+  for(const locale of LOCALES) {
+    const positive=ui.render('12-03',locale),zero=ui.render('12-03-no-inbox',locale),unknown=ui.render('12-03-tasks-unknown',locale);
+    assert.ok(positive.includes(escapeHtml(translate(locale,'projectFile.open.missing.bodyWithTasks',{path:OPEN_FAILURES.missing.projectFile,count:2}))));
+    assert.equal(disabled(tagOf(positive,'pf-open-remove')),true);assert.equal(disabled(tagOf(zero,'pf-open-remove')),false);
+    assert.equal(disabled(tagOf(unknown,'pf-open-remove')),true);assert.equal(tagOf(unknown,'pf-open-waiting'),null);
+    for(const id of ['12-02b-network','12-02b-checking','12-02b-unavailable']) assert.equal(disabled(tagOf(ui.render(id,locale),'pf-create-submit')),true,id);
+    for(const id of ['12-02b-cloud','12-02b-exfat','12-02b-permissions']) assert.equal(disabled(tagOf(ui.render(id,locale),'pf-create-submit')),false,id);
+    const web=ui.render('12-02-web',locale);assert.match(tagOf(web,'pf-create-folder')!,/checked=""/u);assert.equal(disabled(tagOf(web,'pf-create-folder')),true);
+    for(const id of ['12-02-unknown','12-02-created','12-02-created-opening']) assert.equal(tagOf(ui.render(id,locale),'pf-create-submit'),null,id);
+    assert.equal(disabled(tagOf(ui.render('12-02-unknown',locale),'pf-create-cancel')),true);
+    const absent=ui.render('12-03e-no-capabilities',locale);assert.equal(tagOf(absent,'pf-open-adoptCopy'),null);assert.equal(tagOf(absent,'pf-open-openOriginal'),null);
+    const adoption=ui.render('12-03e-unknown',locale);assert.equal(disabled(tagOf(adoption,'pf-open-adoptCopy')),true);assert.ok(tagOf(adoption,'pf-open-recheck'));
+    assert.equal(tagOf(ui.render('12-03i-no-copy',locale),'pf-open-copyTo'),null);
+    assert.doesNotMatch(ui.render('12-03-unknown',locale),/undefined|null|\/Users\/|\.mioon/u);
+    for(const id of ['12-15-cloud','12-15-exfat','12-15-combined']) assert.ok(tagOf(ui.render(id,locale),'pf-location-banner'),id);
+  }
+});
+
+/** Additional controlled props exercise defensive boundaries beyond the
+ * fixed gallery table, including malformed facts and missing capabilities. */
+const fixtureRoot = fileURLToPath(new URL('../', import.meta.url));
+const controlledBundle = await build({stdin: {contents: `
+  import React from 'react';
+  import {renderToStaticMarkup} from 'react-dom/server';
+  import {NewProjectFileDialog} from './src/project-file/NewProjectFileDialog.tsx';
+  import {ProjectOpenFailureDialog} from './src/project-file/ProjectOpenFailureDialog.tsx';
+  import {ProjectLocationRiskNotice,ProjectLocationRiskBanner} from './src/project-file/ProjectLocationRisk.tsx';
+  import {setLocale} from ${JSON.stringify(fixtureRoot + 'tests/fixtures/project-file-ui/ssr-i18n.tsx')};
+  const components={create:NewProjectFileDialog,failure:ProjectOpenFailureDialog,risks:ProjectLocationRiskNotice,banner:ProjectLocationRiskBanner};
+  export function render(kind,props,locale){setLocale(locale);return renderToStaticMarkup(React.createElement(components[kind],props));}
+`, loader: 'tsx', resolveDir: fixtureRoot + 'apps/web'}, bundle: true, platform: 'node', format: 'cjs', write: false, jsx: 'automatic', loader: {'.css': 'empty'}, define: {'process.env.NODE_ENV': '"production"'}, nodePaths: [fixtureRoot + 'apps/web/node_modules'],
+  plugins: [{name: 'controlled-open-flow', setup(builder) {
+    builder.onResolve({filter: /^@mioon\/ui\/components\/(?:dialog|dropdown-menu)$/}, () => ({path: fixtureRoot + 'tests/fixtures/project-file-ui/ssr-overlays.tsx'}));
+    builder.onResolve({filter: /\/i18n\/I18nProvider\.tsx$/}, () => ({path: fixtureRoot + 'tests/fixtures/project-file-ui/ssr-i18n.tsx'}));
+  }}]});
+const controlledModule: {exports: unknown} = {exports: {}};
+Function('require', 'module', 'exports', controlledBundle.outputFiles[0]!.text)(createRequire(import.meta.url), controlledModule, controlledModule.exports);
+const controlled = controlledModule.exports as {render(kind: 'create' | 'failure' | 'risks' | 'banner', props: Record<string, unknown>, locale: typeof LOCALES[number]): string};
+const noAction = (): void => {};
+const newProjectProps = {open: true, values: {name: '新项目', description: '', presetId: 'portrait_1080', createFolder: true}, location: {display: '/Users/example/Movies/Mioon'}, state: {kind: 'editing'}, onChange: noAction, onSubmit: noAction, onClose: noAction};
+const openProps = {open: true, projectName: '访谈剪辑样片', failure: OPEN_FAILURES.missing, action: {kind: 'idle'}, platform: 'mac', onClose: noAction};
+
+test('12-02b shows only supplied location facts, blocks network/unknown locations and keeps positive warnings nonblocking', () => {
+  for (const locale of LOCALES) {
+    const plain = controlled.render('create', newProjectProps, locale);
+    assert.doesNotMatch(plain, /data-testid="pf-location-risk-/u);
+    assert.equal(disabled(tagOf(plain, 'pf-create-submit')), false);
+    for (const kind of ['cloud', 'permissions']) {
+      const page = controlled.render('create', {...newProjectProps, location: {...newProjectProps.location, risks: [{kind, ...(kind === 'cloud' ? {serviceName: 'iCloud 云盘'} : {fileSystem: 'exFAT'})}]}}, locale);
+      assert.ok(tagOf(page, `pf-location-risk-${kind}`)); assert.equal(disabled(tagOf(page, 'pf-create-submit')), false);
+    }
+    const network = controlled.render('create', {...newProjectProps, location: {...newProjectProps.location, risks: [{kind: 'network'}]}}, locale);
+    assert.match(network, /data-tone="danger"/u); assert.equal(disabled(tagOf(network, 'pf-create-submit')), true);
+    for (const status of ['checking', 'unavailable']) {
+      const page = controlled.render('create', {...newProjectProps, location: {...newProjectProps.location, status}}, locale);
+      assert.ok(tagOf(page, `pf-create-location-${status}`)); assert.equal(disabled(tagOf(page, 'pf-create-submit')), true);
+    }
+    const fixedFolder = controlled.render('create', {...newProjectProps, folderMode: 'always', values: {...newProjectProps.values, createFolder: false}}, locale);
+    assert.equal(disabled(tagOf(fixedFolder, 'pf-create-folder')), true);
+    assert.match(tagOf(fixedFolder, 'pf-create-folder')!, /checked=""/u);
+    assert.match(fixedFolder, /新项目\/新项目\.mioon/u);
+    const noFolder = controlled.render('create', {...newProjectProps, folderMode: 'never'}, locale);
+    assert.doesNotMatch(tagOf(noFolder, 'pf-create-folder')!, /checked=""/u);
+    assert.doesNotMatch(noFolder, /新项目\/新项目\.mioon/u);
+  }
+  const unknownService = controlled.render('risks', {risks: [{kind: 'cloud'}, {kind: 'permissions', fileSystem: 'APFS'}]}, 'zh-Hans');
+  assert.ok(unknownService.includes('云同步服务')); assert.doesNotMatch(unknownService, /Dropbox|exFAT/u);
+});
+
+test('12-02 unknown creation never offers another create; a known created project offers only reopening', () => {
+  for (const locale of LOCALES) {
+    const unknown = controlled.render('create', {...newProjectProps, state: {kind: 'unknown'}, onRecheck: noAction}, locale);
+    assert.ok(tagOf(unknown, 'pf-create-unknown')); assert.equal(tagOf(unknown, 'pf-create-submit'), null);
+    assert.equal(disabled(tagOf(unknown, 'pf-create-cancel')), true); assert.ok(tagOf(unknown, 'pf-create-recheck'));
+    assert.match(tagOf(unknown, 'pf-create-name')!, /readOnly=""/u);
+    const created = controlled.render('create', {...newProjectProps, state: {kind: 'created'}, onRetryOpen: noAction}, locale);
+    assert.ok(tagOf(created, 'pf-create-created')); assert.ok(tagOf(created, 'pf-create-retry-open')); assert.equal(tagOf(created, 'pf-create-submit'), null);
+    const noRetry = controlled.render('create', {...newProjectProps, state: {kind: 'created'}}, locale);
+    assert.equal(tagOf(noRetry, 'pf-create-retry-open'), null);
+  }
+});
+
+test('12-03 missing uses only verified waiting task counts and optional removal/locate capabilities', () => {
+  for (const locale of LOCALES) {
+    const base = {...openProps, onRemove: noAction, onLocate: noAction};
+    const unknown = controlled.render('failure', base, locale);
+    assert.equal(disabled(tagOf(unknown, 'pf-open-remove')), true);
+    assert.equal(tagOf(unknown, 'pf-open-waiting'), null);
+    const zero = controlled.render('failure', {...base, waitingTaskCount: 0}, locale);
+    assert.equal(disabled(tagOf(zero, 'pf-open-remove')), false);
+    const waiting = controlled.render('failure', {...base, waitingTaskCount: 2}, locale);
+    assert.equal(disabled(tagOf(waiting, 'pf-open-remove')), true); assert.ok(tagOf(waiting, 'pf-open-waiting'));
+    const absent = controlled.render('failure', openProps, locale);
+    assert.equal(tagOf(absent, 'pf-open-remove'), null); assert.equal(tagOf(absent, 'pf-open-locate'), null); assert.ok(tagOf(absent, 'pf-open-close'));
+  }
+});
+
+test('12-03e-i render complete translated issues while unprovided system and copy actions stay hidden', () => {
+  const location = {projectFile: OPEN_FAILURES.missing.projectFile, projectId: PROJECT_IDS.interview};
+  const copy = {...location, code: 'PROJECT_FILE_COPY', originalProjectId: PROJECT_IDS.interview, originalProjectFile: '/Users/example/原项目.mioon'};
+  for (const locale of LOCALES) {
+    const issueCases = [copy, {...location, code: 'PROJECT_ACCESS_DENIED'}, {...location, code: 'NETWORK_LOCATION'}, {...location, code: 'OPEN_UNAVAILABLE'}, OPEN_FAILURES.readOnly];
+    for (const failure of issueCases) {
+      const page = controlled.render('failure', {...openProps, failure}, locale);
+      assert.match(page, /data-testid="pf-open-dialog"/u);
+      for (const action of ['systemSettings', 'copyTo', 'adoptCopy', 'openOriginal', 'retry', 'chooseLocation']) assert.equal(tagOf(page, `pf-open-${action}`), null);
+      assert.doesNotMatch(page, /projectFile\.(open|location)\./u);
+    }
+    const adoption = controlled.render('failure', {...openProps, failure: copy, onOpenOriginal: noAction, onAdoptCopy: noAction}, locale);
+    assert.ok(adoption.includes('/Users/example/原项目.mioon')); assert.ok(tagOf(adoption, 'pf-open-adoptCopy')); assert.ok(tagOf(adoption, 'pf-open-openOriginal'));
+    for (const reason of ['missing', 'access-denied', 'disk-disconnected']) {
+      const moved = controlled.render('failure', {...openProps, failure: {...location, code: 'PROJECT_FILE_MOVED', reason, writeRejected: true}, onCloseProject: noAction, onLocate: noAction}, locale);
+      assert.ok(tagOf(moved, 'pf-open-closeProject')); assert.ok(tagOf(moved, 'pf-open-locate'));
+      assert.ok(moved.length > 500);
+    }
+    const access = controlled.render('failure', {...openProps, failure: {...location, code: 'PROJECT_ACCESS_DENIED', context: 'create'}, onOpenSystemSettings: noAction, onChooseLocation: noAction}, locale);
+    assert.ok(tagOf(access, 'pf-open-systemSettings')); assert.ok(tagOf(access, 'pf-open-chooseLocation')); assert.equal(tagOf(access, 'pf-open-retry'), null);
+    const unavailable = controlled.render('failure', {...openProps, projectName: null, failure: {code: 'OPEN_UNAVAILABLE', projectId: null, projectFile: null}}, locale);
+    assert.doesNotMatch(unavailable, /undefined|null|\/Users\/|\.mioon/u);
+  }
+  const malformedVersions = controlled.render('failure', {...openProps, failure: {...OPEN_FAILURES.newer, formatVersion: 0, supportedFormatVersion: 0}}, 'zh-Hans');
+  assert.ok(malformedVersions.includes(translate('zh-Hans', 'projectFile.open.unavailable.body')));
+  const noWriteProof = controlled.render('failure', {...openProps, failure: {...location, code: 'PROJECT_FILE_MOVED', reason: 'missing', writeRejected: false}}, 'zh-Hans');
+  assert.doesNotMatch(noWriteProof, /刚才那一步修改没有写进/u);
+  const unknown = controlled.render('failure', {...openProps, failure: copy, action: {kind: 'unknown', action: 'adoptCopy'}, onAdoptCopy: noAction, onRecheck: noAction}, 'zh-Hans');
+  assert.equal(disabled(tagOf(unknown, 'pf-open-adoptCopy')), true); assert.equal(disabled(tagOf(unknown, 'pf-open-close')), true);
+  assert.equal(disabled(tagOf(unknown, 'pf-open-recheck')), false);
+});
+
+test('12-15 is controlled by the current open session and makes no claim without positive facts', () => {
+  for (const locale of LOCALES) {
+    assert.equal(controlled.render('banner', {risks: [], onDismiss: noAction}, locale), '');
+    const page = controlled.render('banner', {risks: [{kind: 'cloud', serviceName: 'iCloud 云盘'}, {kind: 'permissions', fileSystem: 'exFAT'}], onDismiss: noAction}, locale);
+    assert.ok(tagOf(page, 'pf-location-banner')); assert.ok(tagOf(page, 'pf-location-dismiss'));
+    assert.equal(count(page, /data-testid="pf-location-risk-/gu), 2);
+  }
+});
+
+test('new project retained callbacks cannot change or repeat creation after its outcome becomes unknown or known', () => {
+  const cell = {current: {}}, calls: string[] = [];
+  const names = ['Dialog', 'WorkbenchDialogContent', 'WorkbenchButton', 'Label', 'Input', 'Textarea', 'Icon', 'Check', 'ProjectLocationRiskNotice', 'WorkbenchAlert'];
+  const create = homeFunction('NewProjectFileDialog', 'EOF', {React: {createElement: element, Fragment: 'fragment'}, useRef: () => cell, useId: () => 'create',
+    useI18n: () => ({t: (key: string) => key}), projectNameProblem, projectFilePathPreview, aspectLabel: () => '9:16', TIMELINE_CURRENT_OUTPUT_PRESETS, NEW_PROJECT_DESCRIPTION_MAX_LENGTH: 500,
+    ...Object.fromEntries(names.map(name => [name, name]))}, '../apps/web/src/project-file/NewProjectFileDialog.tsx');
+  const props = {...newProjectProps, onChange: () => calls.push('change'), onSubmit: () => calls.push('create'), onClose: () => calls.push('close'), onRetryOpen: () => calls.push('open'), onRecheck: () => calls.push('check')};
+  const initial = create(props), edit = findElement(initial, 'pf-create-name')!.props.onChange as (event: unknown) => void;
+  const submit = findElement(initial, 'pf-create-dialog')!.props.children[0] as TestElement;
+  const runSubmit = submit.props.onSubmit as (event: {preventDefault(): void}) => void;
+  create({...props, state: {kind: 'unknown'}}); edit({target: {value: 'another'}}); runSubmit({preventDefault() {}}); assert.deepEqual(calls, []);
+  const created = create({...props, state: {kind: 'created'}}); runSubmit({preventDefault() {}});
+  (findElement(created, 'pf-create-retry-open')!.props.onClick as () => void)(); assert.deepEqual(calls, ['open']);
+  const checking = create({...props, location: {...props.location, status: 'checking'}}); runSubmit({preventDefault() {}}); assert.equal(disabledFromTree(findElement(checking, 'pf-create-submit')), true);
+  create({...props, location: {...props.location, risks: [{kind: 'network'}]}}); runSubmit({preventDefault() {}}); assert.deepEqual(calls, ['open']);
+});
+function disabledFromTree(node: TestElement | null): boolean {return node?.props.disabled === true;}
+
+test('retained failure actions recheck the issue, task state, capability and pending outcome before dispatch', () => {
+  const cell = {current: {}}, calls: string[] = [];
+  const names = ['Dialog', 'WorkbenchDialogContent', 'WorkbenchButton', 'WorkbenchAlert', 'WorkbenchIcon'];
+  const failureView = homeFunction('ProjectOpenFailureDialog', 'EOF', {React: {createElement: element, Fragment: 'fragment'}, useRef: () => cell,
+    useI18n: () => ({t: (key: string) => key}), revealLabelKey, fileNameOf, stemOf,
+    ...Object.fromEntries(names.map(name => [name, name]))}, '../apps/web/src/project-file/ProjectOpenFailureDialog.tsx');
+  const props = {...openProps, waitingTaskCount: 0, onRemove: () => calls.push('remove'), onLocate: () => calls.push('locate'), onRecheck: () => calls.push('check')};
+  const initial = failureView(props);
+  const remove = findElement(initial, 'pf-open-remove')!.props.onClick as () => void;
+  const locate = findElement(initial, 'pf-open-locate')!.props.onClick as () => void;
+  const close = findElement(initial, 'pf-open-close')!.props.onClick as () => void;
+  failureView({...props, waitingTaskCount: undefined}); remove();
+  failureView({...props, waitingTaskCount: 2}); remove();
+  failureView({...props, onRemove: undefined, onLocate: undefined}); remove(); locate();
+  failureView({...props, failure: {...OPEN_FAILURES.missing}}); remove(); locate();
+  failureView({...props, action: {kind: 'working', action: 'locate'}}); remove(); locate(); close();
+  const unknown = failureView({...props, action: {kind: 'unknown', action: 'locate'}}); remove(); locate(); close();
+  assert.deepEqual(calls, []);
+  (findElement(unknown, 'pf-open-recheck')!.props.onClick as () => void)(); assert.deepEqual(calls, ['check']);
+  failureView(props); remove(); locate(); assert.deepEqual(calls, ['check', 'remove', 'locate']);
+  failureView({...props, open: false}); remove(); locate(); assert.deepEqual(calls, ['check', 'remove', 'locate']);
 });
 
 test('home screenshots match the scene table', async () => {

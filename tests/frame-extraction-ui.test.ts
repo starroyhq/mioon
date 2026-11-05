@@ -273,9 +273,9 @@ const sampled={id,projectId,name:'video.mp4',mimeType:'video/mp4',sha256:null,re
 const full={...sampled,sha256:hash,referenceRevision:2,fingerprint:{...sampled.fingerprint,fullSha256:hash},hashState:'full'};
 const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
 const helper=source.slice(source.indexOf('  async function prepareStrongAsset('),source.indexOf('  async function openSceneDetection('));
-function harness({stale=false,malformed=false,changed=false}={}){
+function harness({stale=false,malformed=false,changed=false,readable=true}={}){
  let live=true;const calls:unknown[]=[],refreshes:string[]=[],notices:unknown[]=[],dataRef={current:{assets:[sampled as typeof sampled|typeof full]}};
- const scope={assetMediaPrepareResponseSchema,dataRef,context:()=>({projectId}),isCurrent:()=>live,rpc:async(operation:string,input:unknown)=>{calls.push({operation,input});if(stale)live=false;return {assets:[malformed?{...full,sha256:null}:full]};},refresh:async(project:string)=>{refreshes.push(project);dataRef.current.assets=[changed?{...full,referenceRevision:3}:full];},notify:(value:unknown)=>notices.push(value),readableError:(value:unknown)=>value};
+ const scope={projectMedia: {canRead: () => readable},assetMediaPrepareResponseSchema,dataRef,context:()=>({projectId}),isCurrent:()=>live,rpc:async(operation:string,input:unknown)=>{calls.push({operation,input});if(stale)live=false;return {assets:[malformed?{...full,sha256:null}:full]};},refresh:async(project:string)=>{refreshes.push(project);dataRef.current.assets=[changed?{...full,referenceRevision:3}:full];},notify:(value:unknown)=>notices.push(value),readableError:(value:unknown)=>value};
  const prepare=lenientFunction(...Object.keys(scope),helper+';return prepareStrongAsset;')(...Object.values(scope)) as (asset:unknown,purpose:string)=>Promise<unknown>;
  return {prepare,calls,refreshes,notices};
 }
@@ -291,5 +291,8 @@ test('source prepare refuses invalid ACK, changed current revision or stale page
   if(options.stale)assert.deepEqual(h.refreshes,[]);
  }
  const h=harness();assert.equal(await h.prepare({...sampled,projectId:'33333333-3333-4333-8333-333333333333'},'frame'),null);assert.deepEqual(h.calls,[]);
+});
+test('an unreadable current source never prepares content, including already strong metadata',async()=>{
+ const h=harness({readable:false});assert.equal(await h.prepare(sampled,'frame'),null);assert.equal(await h.prepare(full,'scene'),null);assert.deepEqual(h.calls,[]);assert.deepEqual(h.refreshes,[]);
 });
 }

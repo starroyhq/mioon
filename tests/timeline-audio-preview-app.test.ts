@@ -16,6 +16,7 @@ import { stripSourceTypes } from './helpers/eval-source.ts';
 import { transformSync } from 'esbuild';
 import { buildAudioPreviewPlan } from '../packages/contracts/src/timeline-audio-preview.ts';
 import { createTimelineAudioPreviewController, timelineAudioPreviewSourceIdentity, timelineAudioPreviewPosition, seekTimelineAudioPreview } from '../apps/web/src/use-timeline-audio-preview.ts';
+import {timelineAudioMediaReadable} from '../apps/web/src/project-media-readability.ts';
 import * as i18n from '../packages/i18n/src/index.ts';
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
@@ -48,8 +49,8 @@ function harness() {
   const calls: {rpc: {operation: string; input: AudioPreviewPlanInput; options: AudioPreviewReadOptions}[]; positions: number[]; contexts: MockContext[]; transports: MockTransport[]; order: string[]} = { rpc: [], positions: [], contexts: [], transports: [], order: [] };
   let controller: ReturnType<typeof createTimelineAudioPreviewController> | undefined, latestOptions!: HookOptions;
   const env = {
-    application: null, nativeAudioAdmission: null,
-    timelineAudioPreviewSourceIdentity, timelineAudioPreviewPosition, seekTimelineAudioPreview,
+    application: null, nativeAudioAdmission: null, mediaReadable: true, projectMedia: {canRead: (_asset: unknown): boolean => env.mediaReadable},
+    timelineAudioPreviewSourceIdentity, timelineAudioPreviewPosition, seekTimelineAudioPreview, timelineAudioMediaReadable,
     editorSession: {current: 'normal'}, workspaceRef: { current: {  } as { } }, currentProject: { current: id(1) }, projectEpoch: { current: 1 }, navigationEpoch: { current: 0 },
     dataRef: { current: { project: { id: id(1) }, timeline, assets: [asset] as (Partial<typeof asset> & Pick<typeof asset, 'id' | 'sha256'>)[] } },
     viewRef: { current: { activeMode: 'editing', editing: { previewKind: 'timeline', selectedClipId: null as string | null, quickAssetId: null as string | null, playhead: 30 } } },
@@ -110,6 +111,14 @@ test('actual App hook reads the current saved snapshot, supplies exact RPC optio
   assert.equal(f.controller.getState().hasUnsavedDrafts, true); assert.equal(f.controller.getState().phase, 'ready'); assert.equal(f.calls.rpc.length, 1);
   f.env.dataRef.current.assets[0] = { ...f.env.dataRef.current.assets[0], sha256: 'c'.repeat(64) };
   f.render(); assert.equal(f.calls.transports[0].disposed, true); assert.equal(f.controller.getState().plan, null); assert.equal(f.calls.rpc.length, 1);
+});
+
+test('unreadable audio refuses the plan and allocation while retaining every saved clip', async () => {
+  const f = harness(), saved = structuredClone(f.env.dataRef.current.timeline);
+  f.env.mediaReadable = false; const view = f.render();
+  assert.equal(view.soundAuditionContext().connected, false);
+  assert.equal(await f.controller.prepare(30), false); assert.equal(await f.controller.play(), false);
+  assert.equal(f.calls.rpc.length, 0); assert.equal(f.calls.contexts.length, 0); assert.deepEqual(f.env.dataRef.current.timeline, saved);
 });
 
 test('an unapplied clip recovery candidate warns even with clean inputs without entering the saved mix or changing its owner', async () => {
