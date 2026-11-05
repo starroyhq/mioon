@@ -33,7 +33,8 @@ manager 在 factory、`ensureProjectRow`、业务服务/Mio 构造、worker 和�
 生产仅接受项目前缀下的项目 RPC、REST 和媒体。旧 `/api/rpc` 里的项目操作返回 `VALIDATION_ERROR`（400）；旧项目 REST 和 `/media/<ID>` 返回 `NOT_FOUND`（404）。`project-routes.ts` 仅供测试内部 handler 适配，生产入口不导入它，也不注册旧公开地址。历史记录内保存的 URL 不改写，读取和下载按项目 ID 重建实际地址。同一个 `requestId` 的精确回执按项目独立保存，不能跨项目读取或复用为另一项目的回执。
 
 - `GET /api/project-covers/<ID>` 是应用级只读缓存接口，只读该项目缓存中的 `cover.jpg`、`cover.json`；缺失或不匹配返回 404，从不 acquire 项目。`projectSummaryCoverSchema` 的 URL 已改为此地址，并要求 ID 与摘要项目一致。
-- `GET /api/workspace-info` 返回应用目录；`GET /api/projects/<ID>/workspace-info` 取得正常项目请求租约后返回真实 `projectDir`。两者复用 `workspaceInfoSchema`。桌面导出按已验证 owner 的项目 ID 请求后者，不从 `fileLocation` 猜素材根。
+- `GET /api/workspace-info` 使用 `applicationWorkspaceInfoSchema`：原应用字段保留，另含 `storage.records`、`storage.cache` 的 `{bytes,files,complete}` 和真实 `cacheDirectory`。records 统计全部项目本机记录，不是孤立记录清单的子集；cache 使用实际 `directories.cacheDir`，可在数据目录外。两根独立统计，可能重叠，不相加冒充总空间。只读、有界元数据枚举不打开任何数据库或跟随链接；不可读、变化、深度/数量/精度上限令该项 `complete:false`。原 `usage` 仍是数据目录估计。
+- `GET /api/projects/<ID>/workspace-info` 取得正常项目请求租约后返回真实 `projectDir`，继续使用原 `workspaceInfoSchema`，不增加应用 storage 字段。桌面导出按已验证 owner 的项目 ID 请求后者，不从 `fileLocation` 猜素材根。
 - 全局 `GET /api/agent/tasks/v2/diagnostics/latest` 只读应用 documents 的 `agent-diagnostic-summary-v1.json`，返回 `{test: null | summary}`，summary 严格只有 `completedAt`、`status`、`protocol`、`model`、`errorCode`。项目诊断完成时更新，不复制对话、请求原文或密钥，不扫描或打开关闭的项目。应用库当前为 4：仅精确已知 v3 做 S3-A 的3→4升级；保留旧索引JSON及其它文档、登记和策略回执，不组合旧1/2升级到4。
 - 经过 HTTP 的 B1 错误仅列 `APP_LIBRARY_LIMIT`（507，登记容量上限）和 `APP_LIBRARY_INVALID`（422，无效诊断摘要，`details: {reason:'unusable'}`）。`APP_LIBRARY_LOCKED`、`APP_LIBRARY_FORMAT_NEWER` 是监听前的启动错误；`APP_LIBRARY_CLOSED` 是内部生命周期错误，不据此新增公开端点。
 - `inspectProject: receive => …` 是受信测试接收选项；真实服务端子进程可用固定测试 IPC 读取其 own connection。HTTP、CLI 和环境变量不接受 SQL、回调或 inspect 开关；活跃连接复用、关闭项目短开即关、同步回调和 transition 拒绝规则不变。

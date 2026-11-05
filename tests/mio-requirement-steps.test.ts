@@ -12,6 +12,9 @@ import * as requirements from '../apps/web/src/agent-task-requirements.ts';
 import * as reviews from '../apps/web/src/agent-task-reviews.ts';
 import * as questions from '../apps/web/src/agent-task-questions.ts';
 import * as rulesClient from '../apps/web/src/project-rules-client.ts';
+import * as usageClient from '../apps/web/src/mio-usage-client.ts';
+import * as usageState from '../apps/web/src/mio-usage-state.ts';
+import {usageFixture} from './helpers/mio-usage-fixture.ts';
 import * as rulesProposal from '../apps/web/src/project-rules-proposal.ts';
 import {projectRulesSnapshotSchema} from '../packages/contracts/src/mio-rules.ts';
 import {agentTaskErrorKey} from '../apps/web/src/agent-task-errors.ts';
@@ -135,8 +138,14 @@ const panelSource=readFileSync(new URL('../apps/web/src/AgentTaskPanel.tsx',impo
 function panel(value:AgentTaskSnapshot,locale:Locale='zh-Hans',readOnly=false) {
   const hooks:Hook[]=[];
   let cursor=0,pending:number[]=[],tree:unknown;
-  const state={phase:'ready',project:{readOnly,runs:[value.run],authorization:{scopes:['project_agent']},settings:{configuration:{model:'synthetic-model'}}},snapshot:value,draft:'',uploads:[],pending:null,error:'',conversationId:runId,conversation:{id:runId,title:'Synthetic'},rounds:[value],selectionKey:runId,draftDirty:false,draftVersion:0,unknownOutcome:false,history:{conversations:[],nextCursor:null,phase:'closed'}};
+  const state={phase:'ready',project:{instanceId:'synthetic-requirements-instance',readOnly,runs:[value.run],authorization:{scopes:['project_agent']},settings:{configuration:{model:'synthetic-model'}}},snapshot:value,draft:'',uploads:[],pending:null,error:'',conversationId:runId,conversation:{id:runId,title:'Synthetic'},rounds:[value],selectionKey:runId,draftDirty:false,draftVersion:0,unknownOutcome:false,history:{conversations:[],nextCursor:null,phase:'closed'}};
   const react={createElement:(type:unknown,props:Record<string,unknown>|null,...children:unknown[])=>({type,props:{...props,children}}),Fragment:'fragment',useRef:(current:unknown)=>hooks[cursor++]??={current},useState:(value:unknown)=>{const index=cursor++;hooks[index]??={value};return[hooks[index]!.value,(next:unknown)=>{hooks[index]!.value=typeof next==='function'?next(hooks[index]!.value):next;}];},useLayoutEffect:(effect:()=>void|(()=>void),deps:readonly unknown[])=>{const index=cursor++,old=hooks[index];if(!old||deps.some((value,at)=>value!==old.deps?.[at])){hooks[index]={...old,effect,deps};pending.push(index);}}};
+  const usageReads:Array<{runId:string;signal:AbortSignal}>=[];
+  const usageModule={...usageClient,createMioUsageClient:()=>usageClient.createMioUsageClient({fetcher:async(input,init)=>{
+    const match=/^\/api\/projects\/([a-f0-9-]+)\/agent\/tasks\/v2\/([a-f0-9-]+)\/usage$/u.exec(String(input));
+    assert.ok(match);assert.equal(match[1],projectId);assert.equal(init?.method,'GET');assert.equal(init?.body,undefined);assert.ok(init?.signal instanceof AbortSignal);
+    usageReads.push({runId:match[2]!,signal:init.signal});return Response.json({ok:true,data:usageFixture({runId:match[2]!})});
+  }})} satisfies typeof usageClient;
   const rulesModule={...rulesClient,createWebProjectRulesClient:()=>rulesClient.createWebProjectRulesClient({fetcher:async(input,init)=>{
     assert.equal(String(input),`/api/projects/${projectId}/rules`);assert.equal(init?.method,'GET');assert.equal(init?.credentials,'same-origin');assert.equal(init?.redirect,'error');assert.equal(init?.body,undefined);assert.ok(init?.signal instanceof AbortSignal);
     const data=projectRulesSnapshotSchema.parse({projectId,file:'AGENTS.md',exists:true,text:'Synthetic project rules',hash:createHash('sha256').update('Synthetic project rules').digest('hex'),trust:'trusted',maxBytes:8192,readError:null,pendingWrites:false});
@@ -149,6 +158,9 @@ function panel(value:AgentTaskSnapshot,locale:Locale='zh-Hans',readOnly=false) {
   const module:{exports:{default?:(props:Record<string,unknown>)=>unknown}}={exports:{}};
   const dependencies=(name:string):unknown=>{
     if(name==='react')return{...react,default:react};
+    if(name==='./mio-usage-client.ts')return usageModule;
+    if(name==='./mio-usage-state.ts')return usageState;
+    if(name==='./MioUsage.tsx')return{MioUsageRow:'usage-row',MioUsageDetails:'usage-details'};
     if(name==='./project-rules-client.ts')return rulesModule;
     if(name==='./project-rules-proposal.ts')return rulesProposal;
     if(name==='./agent-task-presentation.ts')return presentation;

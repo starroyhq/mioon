@@ -168,7 +168,10 @@ export function agentTaskNewConversationBlock(state:AgentTaskSessionState):'unav
   if(state.backgroundPending||state.project.runs.some(run=>!terminal.has(run.status))||state.rounds.some(item=>!finished(item)))return 'running';
   return null;
 }
-export function createAgentTaskSession({ projectId, client = createAgentTaskClient(), receipts = createAgentTaskReceiptStore(), requestId = () => crypto.randomUUID(), getLocale = () => 'zh-Hans', onChange = () => {}, onChangeApplied = () => {} }: { projectId: string; client?: AgentTaskClient; receipts?: AgentTaskReceiptStore; requestId?: () => string; getLocale?: () => AgentTaskLocale; onChange?: (state: AgentTaskSessionState) => void; onChangeApplied?: (snapshot: AgentTaskSnapshot, landed: readonly string[]) => void }) {
+export interface AgentTaskUsageObservation {readonly runId:string; readonly serial:number; readonly sequence?:number}
+export function createAgentTaskSession({ projectId, client = createAgentTaskClient(), receipts = createAgentTaskReceiptStore(), requestId = () => crypto.randomUUID(), getLocale = () => 'zh-Hans', onChange = () => {}, onChangeApplied = () => {}, onUsageObservation = () => {} }: { projectId: string; client?: AgentTaskClient; receipts?: AgentTaskReceiptStore; requestId?: () => string; getLocale?: () => AgentTaskLocale; onChange?: (state: AgentTaskSessionState) => void; onChangeApplied?: (snapshot: AgentTaskSnapshot, landed: readonly string[]) => void; onUsageObservation?: (value:AgentTaskUsageObservation)=>void }) {
+  let usageSerial=0;
+  const observeUsage=(runId:string,sequence?:number)=>onUsageObservation({runId,serial:++usageSerial,...(sequence===undefined?{}:{sequence})});
   let authorizationEpoch = 0,selectionOwner:number|null=null;
   let restored:AgentTaskPending|null=null,receiptsBlocked=false;try{restored=receipts.read(projectId);}catch{receiptsBlocked=true;}
   const drafts=new Map<string,{text:string;uploads:AgentTaskUpload[]}>(),unknownRuns=new Set<string>(),backgroundRuns=new Set<string>();let selectionChosen=false;
@@ -261,7 +264,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
     if(state.selectionKey==='new'&&!state.conversationId){drafts.delete('new');}
     const first=rounds[0]!.run,last=rounds.at(-1)!.run;
     const conversation:AgentTaskConversation={id,projectId,title:(same?state.conversation?.title:undefined)??conversationTitle(first.text),createdAt:first.createdAt,updatedAt:rounds.reduce((value,item)=>item.run.updatedAt>value?item.run.updatedAt:value,last.updatedAt),lastRunId:last.id,lastRunStatus:last.status,changeCount:rounds.reduce((sum,item)=>sum+item.changes.length,0),runCount:rounds.length};
-    selectionChosen=true;publish({ snapshot: rounds.at(-1)!,rounds,conversationId:id,conversation,selectionKey:id, ...(state.project?{project:{...state.project,runs:[next.run,...state.project.runs.filter(run=>run.id!==next.run.id)].slice(0,100)}}:{}) }); if (changed) onChangeApplied(next, landed);
+    selectionChosen=true;publish({ snapshot: rounds.at(-1)!,rounds,conversationId:id,conversation,selectionKey:id, ...(state.project?{project:{...state.project,runs:[next.run,...state.project.runs.filter(run=>run.id!==next.run.id)].slice(0,100)}}:{}) }); observeUsage(next.run.id); if (changed) onChangeApplied(next, landed);
   };
   const detach = () => { stream?.abort(); stream = null; if (retry) clearTimeout(retry); retry = null; };
   function reconnect(owner: number, runId: string) {
@@ -288,7 +291,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
     try {
       await client.stream(projectId, run.id, after, controller.signal, event => {
         if (!active || generation !== owner || controller.signal.aborted || state.snapshot?.run.id !== run.id || event.sequence <= after) return;
-        after = event.sequence;
+        after = event.sequence; observeUsage(run.id,event.sequence);
         // Read the durable aggregate; event data is never treated as executable
         // commands and late deltas cannot overwrite a newer revision.
         if (event.type === 'snapshot') { const next = safeAgentTaskSnapshot(event.data, projectId, run.id); retryAttempt=0; accept(next); publish({phase:state.pending?'unknown':'ready'}); if (finished(next)) detach(); }
@@ -330,7 +333,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
     if(!conversation||!rounds.length)throw failure('INVALID_RESPONSE');return{conversation,rounds};
   }
   function showConversation(value:{conversation:AgentTaskConversation;rounds:AgentTaskSnapshot[]}){
-    const {conversation}=value,rounds=value.rounds.map(item=>{const saved=state.conversationId===conversation.id?state.rounds.find(existing=>existing.run.id===item.run.id):undefined;return saved&&saved.run.revision>item.run.revision?saved:item;});for(const snapshot of rounds)rememberPendingResults(snapshot);selectionChosen=true;after=0;publish({...switchDraft(conversation.id),conversationId:conversation.id,conversation,rounds,snapshot:rounds.at(-1)!,phase:'ready',error:''});
+    const {conversation}=value,rounds=value.rounds.map(item=>{const saved=state.conversationId===conversation.id?state.rounds.find(existing=>existing.run.id===item.run.id):undefined;return saved&&saved.run.revision>item.run.revision?saved:item;});for(const snapshot of rounds)rememberPendingResults(snapshot);selectionChosen=true;after=0;publish({...switchDraft(conversation.id),conversationId:conversation.id,conversation,rounds,snapshot:rounds.at(-1)!,phase:'ready',error:''});for(const snapshot of rounds)observeUsage(snapshot.run.id);
   }
   async function load() {
     if(receiptsBlocked){try{const restored=receipts.read(projectId);receiptsBlocked=false;publish({pending:restored});}catch{publish({phase:'error',error:'LOCAL_RECEIPT_UNAVAILABLE'});return;}}

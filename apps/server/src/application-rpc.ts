@@ -17,18 +17,23 @@ import {callProjectBackupOperation} from './project-backup-operations.ts';
 import type {ProjectBackupOperations} from './project-backup-operations.ts';
 import {isProjectCopyActionOperation, isProjectCopyOperation, projectCopyActionSchemas} from '../../../packages/contracts/src/project-copies.ts';
 import type {ProjectCopies} from './project-host/copies.ts';
+import {isLocalRecordOperation} from '../../../packages/contracts/src/local-record-operations.ts';
+import type {LocalRecordsIdentity} from '../../../packages/contracts/src/local-record-operations.ts';
+import {createLocalRecordRpc} from './local-record-rpc.ts';
 
 /** App operations never choose an arbitrary project's service as a global
  * facade. Settings and listings work with every project closed. */
-export function createApplicationRpc({library, app, manager, directories, signal, providerList, imageProfiles, refreshSummaries, backups, copies, createProject}: {
+export function createApplicationRpc({library, app, manager, directories, signal, providerList, imageProfiles, refreshSummaries, backups, copies, createProject, readApplicationIdentity}: {
   library: AppLibrary; app: ApplicationRuntime; manager: ProjectHostManager<HostedProject>; directories: AppDirectories; signal: AbortSignal;
   providerList: () => unknown; imageProfiles: (input: unknown) => unknown;
   refreshSummaries: () => void;
   backups?: ProjectBackupOperations;
   copies?: ProjectCopies;
   createProject: ReturnType<typeof createInitializedProject>;
+  readApplicationIdentity: () => LocalRecordsIdentity;
 }) {
   const ports = createProjectServiceApplication(library, signal);
+  const localRecords = createLocalRecordRpc({store: library.localRecords, readIdentity: readApplicationIdentity, assertMutationAllowed: ports.assertMutationAllowed});
   const invalid = () => new AppError('VALIDATION_ERROR', '这个操作需要项目地址 /api/projects/<项目 ID>/rpc', 400);
   const unavailable = (operation: string): never => { throw new AppError(operation === 'project.delete' ? 'PROJECT_DELETE_UNAVAILABLE' : 'RESTORE_OPERATION_UNAVAILABLE', '此操作尚未接入项目文件布局，请等待对应的项目管理、打包或备份功能。', 409); };
   const summaries = () => projectSummaryListSchema.parse(library.registry.list().flatMap(entry => {
@@ -40,6 +45,7 @@ export function createApplicationRpc({library, app, manager, directories, signal
   return {async call(operation: string, raw: unknown): Promise<unknown> {
     signal.throwIfAborted();
     if (operation === 'project.notes.set') throw new AppError('UNKNOWN_OPERATION', '未知操作', 404);
+    if (isLocalRecordOperation(operation)) return await localRecords.call(operation, raw);
     if (isProjectCopyActionOperation(operation)) {
       if (!copies) throw new AppError('PROJECT_COPY_UNAVAILABLE', '项目复制暂不可用。', 503);
       const parsed = projectCopyActionSchemas[operation].safeParse(raw);

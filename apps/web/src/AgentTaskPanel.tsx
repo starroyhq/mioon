@@ -30,6 +30,10 @@ import { agentTaskErrorKey } from './agent-task-errors.ts';
 import { taskBackgroundLocation, taskCurrentEntries, taskDisplayEntries, taskDisplayLines, taskChangeSummary, taskDisplayTargets, taskTargetTitle, taskDurationSeconds, taskRunDurationSeconds, taskOperationTitle, taskStepStatusKey, taskStepTitle, taskStepBadge, taskUpdatedGoalStepIds, taskFirstGoalRepairStepIds } from './agent-task-presentation.ts';
 import type { TaskDisplayLookup } from './agent-task-presentation.ts';
 import {ProjectRulesNotice, ProjectRulesChangeCard} from './project-file/ProjectRules.tsx';
+import {createMioUsageClient} from './mio-usage-client.ts';
+import {createMioUsageController, EMPTY_MIO_USAGE_STATE} from './mio-usage-state.ts';
+import type {MioUsageController, MioUsageState} from './mio-usage-state.ts';
+import {MioUsageRow, MioUsageDetails} from './MioUsage.tsx';
 import {createWebProjectRulesClient, subscribeProjectRulesChanges} from './project-rules-client.ts';
 import {rulesProposalOf, projectRulesProposalChange, rulesStepApplied} from './project-rules-proposal.ts';
 import type {ProjectRulesSnapshot} from '../../../packages/contracts/src/mio-rules.ts';
@@ -59,6 +63,8 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   const undoTrigger=useRef<HTMLButtonElement|null>(null),undoCancel=useRef<HTMLButtonElement|null>(null),undoFlight=useRef(false),undoRead=useRef(0);
   const [review, setReview] = useState<AgentTaskAuthorizationReview | null>(null), [historyOpen, setHistoryOpen] = useState(false), [stepsOpen, setStepsOpen] = useState<Record<string,boolean>>({}), [modelMenuOpen, setModelMenuOpen] = useState(false), [following, setFollowing] = useState(true),[composing,setComposing]=useState(false);
   const [checksAttached,setChecksAttached]=useState(true),checksNavigation=useRef(0);
+  const [usage,setUsage]=useState<MioUsageState>(EMPTY_MIO_USAGE_STATE),usageReader=useRef<MioUsageController|null>(null);
+  const usageTriggers=useRef(new Map<string,HTMLButtonElement>());
   const [rulesStatus, setRulesStatus] = useState<ProjectRulesSnapshot | null>(null), [rulesReadError, setRulesReadError] = useState(false), [rulesDismissed, setRulesDismissed] = useState<string | null>(null);
   const rulesRefresh = useRef<() => void>(() => {});
   useLayoutEffect(() => {
@@ -84,15 +90,41 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
     let mounted = true;
     checksNavigation.current++;setChecksAttached(true);
     const close = createAgentTaskCloseReporter(nativeCloseRegistry as NativeCloseSourceRegistry | undefined);
-    const current = createAgentTaskSession({ projectId, getLocale: () => language.current, receipts: createAgentTaskReceiptStore(undefined, workspaceScope), onChange: next => { if (!mounted) return; close.publish(next); callbacks.current.onDraftChange(next.draftDirty && !next.pending); setState(next); }, onChangeApplied: (next, landed) => callbacks.current.onApplied?.(projectId, next, landed) });
+    const reader=createMioUsageController({client:createMioUsageClient(),onChange:next=>{if(mounted)setUsage(next);}});
+    usageReader.current=reader;setUsage(EMPTY_MIO_USAGE_STATE);usageTriggers.current.clear();
+    const syncUsage=(next:AgentTaskSessionState)=>reader.sync(next.project?.instanceId?{scope:workspaceScope,projectId,instanceId:next.project.instanceId,selectionKey:next.selectionKey,visible:visibility.current&&!historyVisible.current&&document.visibilityState!=='hidden'}:null,(next.rounds.length?next.rounds:next.snapshot?[next.snapshot]:[]).map(item=>({runId:item.run.id,revision:item.run.revision,terminal:['completed','failed','stopped','reverted'].includes(item.run.status)&&item.backgroundPending!==true})));
+    const current = createAgentTaskSession({ projectId, getLocale: () => language.current, receipts: createAgentTaskReceiptStore(undefined, workspaceScope), onChange: next => { if (!mounted) return; syncUsage(next); close.publish(next); callbacks.current.onDraftChange(next.draftDirty && !next.pending); setState(next); }, onUsageObservation:observation=>reader.observe(observation), onChangeApplied: (next, landed) => callbacks.current.onApplied?.(projectId, next, landed) });
     session.current = current; close.publish(current.getState());
-    const changed = () => current.setVisible(visibility.current && document.visibilityState !== 'hidden');
+    const changed = () => {current.setVisible(visibility.current && document.visibilityState !== 'hidden');syncUsage(current.getState());};
     document.addEventListener('visibilitychange', changed); void current.load();
-    return () => { mounted = false; current.dispose(); close.release(); callbacks.current.onDraftChange(false); document.removeEventListener('visibilitychange', changed); if (session.current === current) session.current = null; };
+    return () => { mounted = false; reader.dispose();if(usageReader.current===reader)usageReader.current=null;current.dispose(); close.release(); callbacks.current.onDraftChange(false); document.removeEventListener('visibilitychange', changed); if (session.current === current) session.current = null; };
   }, [projectId, workspaceScope, nativeCloseRegistry]);
   useLayoutEffect(() => { session.current?.setVisible(visible && document.visibilityState !== 'hidden'); if (!visible) { setReview(null); setUndoPreview(null); setModelMenuOpen(false); setHistoryOpen(false); } }, [visible]);
+  useLayoutEffect(()=>{
+    const current=session.current;if(!current)return;
+    const next=current.getState();
+    usageReader.current?.sync(next.project?.instanceId?{scope:workspaceScope,projectId,instanceId:next.project.instanceId,selectionKey:next.selectionKey,visible:visible&&!historyOpen&&document.visibilityState!=='hidden'}:null,(next.rounds.length?next.rounds:next.snapshot?[next.snapshot]:[]).map(item=>({runId:item.run.id,revision:item.run.revision,terminal:['completed','failed','stopped','reverted'].includes(item.run.status)&&item.backgroundPending!==true})));
+  },[visible,historyOpen,projectId,workspaceScope]);
+  function closeUsage(){
+    const reader=usageReader.current,epoch=reader?.epoch,trigger=usage.detailRunId?usageTriggers.current.get(usage.detailRunId):null;
+    reader?.close();queueMicrotask(()=>{if(usageReader.current===reader&&reader?.epoch===epoch&&visibility.current&&!historyVisible.current&&document.visibilityState!=='hidden'&&trigger?.isConnected)trigger.focus();});
+  }
   const run = state.snapshot?.run, steps = state.snapshot?.steps ?? [], changes = state.snapshot?.changes ?? [], project = state.project;
   const readOnly = project?.readOnly === true, busy = agentTaskSessionBusy(state), blocked = !visible || busy || Boolean(state.pending) || readOnly || !project;
+  // Only the last round owns the existing SSE stream. Older nonterminal
+  // rounds need bounded canonical reads; finished history never polls.
+  const earlierActive=state.rounds.slice(0,-1).filter(item=>!(['completed','failed','stopped','reverted'].includes(item.run.status)&&item.backgroundPending!==true)).map(item=>item.run.id).join(',');
+  useLayoutEffect(()=>{
+    const current=session.current;if(!current||!visible||historyOpen||!project?.instanceId||!earlierActive)return;
+    let live=true,reading=false,cursor=0;
+    const read=async()=>{if(!live||reading||session.current!==current||document.visibilityState==='hidden')return;
+      const rounds=current.getState().rounds.slice(0,-1).filter(item=>!(['completed','failed','stopped','reverted'].includes(item.run.status)&&item.backgroundPending!==true));
+      if(!rounds.length)return;reading=true;const chosen=Array.from({length:Math.min(4,rounds.length)},(_,offset)=>rounds[(cursor+offset)%rounds.length]!.run.id);cursor=(cursor+chosen.length)%rounds.length;
+      try{await Promise.all(chosen.map(id=>current.refreshRound(id)));}finally{reading=false;}
+    };
+    const timer=setInterval(()=>void read(),5000);return()=>{live=false;clearInterval(timer);};
+  },[projectId,workspaceScope,project?.instanceId,visible,historyOpen,earlierActive]);
+
   const backgroundPending = state.snapshot?.backgroundPending === true, active = Boolean(run && !finished(run.status)), approved = project?.authorization.scopes.includes('project_agent');
   const unknown = steps.filter(step => step.status === 'unknown');
   const noteMode = Boolean(run && ['running','awaiting_approval','paused'].includes(run.status));
@@ -124,7 +156,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   useLayoutEffect(() => { if(run)setStepsOpen(value=>({...value,[run.id]:!finished(run.status)||run.status==='failed'})); }, [run?.id, run?.status]);
   // A hidden log has no height, so a round loaded behind another dock tab or the history overlay is measured
   // again when it is shown; a following log then opens on the latest content.
-  useLayoutEffect(() => { if (follow.current && log.current) log.current.scrollTop = log.current.scrollHeight; }, [run?.id, run?.revision, latest && modelText(latest), changes.length, state.error, visible, historyOpen]);
+  useLayoutEffect(() => { if (follow.current && log.current) log.current.scrollTop = log.current.scrollHeight; }, [run?.id, run?.revision, latest && modelText(latest), changes.length, state.error, visible, historyOpen, usage.revision]);
   useLayoutEffect(() => { if(historyOpen)void session.current?.history(); }, [historyOpen]);
   // A "Mio 修改" label on the canvas or timeline opens its change row. The history overlay hides the log, so it
   // closes first; a row of another conversation is not searched for.
@@ -309,9 +341,11 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
         </section>}
         {run.status === 'failed' && <p className="mio-error" role="alert" data-testid="agent-task-run-error">{t('agent.panel.failedTail')}</p>}
         {backgroundPending && <section className="mio-card" data-testid="agent-task-background-pending"><p>{t('agent.task.backgroundPending')}</p>{onOpenRequests && steps.filter(step => step.kind !== 'model' && taskBackgroundLocation(step) !== undefined).map(step => <Button key={step.id} variant="ghost" disabled={!visible} data-testid={`agent-task-background-request-${step.id}`} onClick={() => { if (visibility.current) onOpenRequests(taskBackgroundLocation(step)); }}>{taskStepTitle(step, locale,firstRepairs)} · {t('agent.panel.checkOriginal')}</Button>)}{run.status === 'completed' && <div className="mio-card-actions"><Button data-testid="agent-task-pause" disabled={blocked} onClick={() => { void act('pause'); }}>{t('agent.task.pause')}</Button><Button data-testid="agent-task-stop" disabled={blocked} onClick={() => { void act('stop'); }}>{t('agent.task.stop')}</Button></div>}</section>}
-      {snapshot!==state.snapshot&&(run.status==='interrupted'||unknown.length>0)&&<section className="mio-card">{recoveryFor(snapshot)}</section>}</article>;
+      {snapshot!==state.snapshot&&(run.status==='interrupted'||unknown.length>0)&&<section className="mio-card">{recoveryFor(snapshot)}</section>}
+      <MioUsageRow runId={run.id} view={usage.rounds[run.id]} disabled={!visible||historyOpen||!usage.rounds[run.id]} triggerRef={node=>{if(node)usageTriggers.current.set(run.id,node);else usageTriggers.current.delete(run.id);}} onOpen={()=>{if(visibility.current&&!historyVisible.current)usageReader.current?.open(run.id);}} /></article>;
   }
   return <section className="agent-panel agent-task-panel mio-panel" data-testid="agent-task-panel" data-phase={state.phase} aria-label={t('agent.task.title')}>
+    <MioUsageDetails open={usage.detailRunId!==null} runId={usage.detailRunId} view={usage.detailRunId?usage.rounds[usage.detailRunId]:undefined} onClose={closeUsage} onRetry={()=>{if(usage.detailRunId)usageReader.current?.refresh(usage.detailRunId);}} />
     <header className="agent-task-heading mio-heading"><h3 title={state.conversation?.title}>{state.conversation?.title || t('agent.panel.newConversation')}</h3><div>
       <WorkbenchTooltip content={composing?t('agent.conversation.blocked.composing'):newBlocked?t(`agent.conversation.blocked.${newBlocked}`):t('agent.panel.newConversation')}><Button variant="icon" aria-label={t('agent.panel.newConversation')} data-testid="agent-task-new-conversation" disabled={!visible||composing||Boolean(newBlocked)} aria-describedby={newBlocked||composing?'mio-new-conversation-blocked':undefined} onClick={newConversation}><Icon name="plus" /></Button></WorkbenchTooltip>
       <WorkbenchTooltip content={t('agent.panel.history')}><Button variant="icon" aria-label={t('agent.panel.history')} ref={historyButton} data-testid="agent-task-history-open" aria-expanded={historyOpen} disabled={!visible || busy} onClick={() => { if (visibility.current) setHistoryOpen(value => !value); }}><Icon name="clock" /></Button></WorkbenchTooltip>

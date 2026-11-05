@@ -29,6 +29,7 @@ function harness<File extends 'GenerationLiveGateNotice.tsx'|'SettingsExtraPages
     if (name === './i18n/I18nProvider.tsx') return i18nTestModule('zh-Hans');
     if (name === './settings-navigation-state.ts') return navigation;
     if (name === '../../desktop/src/menu-command-protocol.ts') return menuProtocol;
+    if (name === './LocalRecordsPanel.tsx') return {__esModule:true,default:'LocalRecordsPanel'};
     if (name === './GenerationLiveGateNotice.tsx') return {notifyGenerationLiveGateChanged() {}};
     if (Object.hasOwn(imports, name)) return imports[name];
     if (name.startsWith('@mioon/ui/') || name.endsWith('.css')) return primitive;
@@ -134,20 +135,22 @@ test('Mioon media tools card downloads through the native bridge, reports progre
 test('workspace settings preserve directory, usage and cleanup information without retired backup controls', async t => {
   const calls: string[] = [];
   const h = harness('SettingsWorkspace.tsx','default',{
-    './workspace-info-client.ts': {workspaceToolsBridge:()=>undefined,readWorkspaceInfo:async()=>{calls.push('info');return {dataDirectory:'/private/current-data',usage:{bytes:1024,complete:false},pendingProjectCleanup:2};}},
+    './workspace-info-client.ts': {workspaceToolsBridge:()=>undefined,readWorkspaceInfo:async()=>{calls.push('info');return {dataDirectory:'/private/current-data',usage:{bytes:1024,complete:false},storage:{records:{bytes:3000000,files:3,complete:true},cache:{bytes:2000000,files:2,complete:true},cacheDirectory:'/private/external-cache'},pendingProjectCleanup:2};}},
     './workspace-settings-client.ts': {readWorkspaceSettings:async()=>{calls.push('settings');return workspaceSettings(false);}},
   });
   t.after(()=>h.unmount());h.render();await flush();h.render();
   assert.deepEqual(calls,['info','settings']);
   assert.equal(nodes(h.tree).find(node=>node.type==='input')!.props.value,'/private/current-data');
   assert.match(text(h.tree),/部分文件未统计/);assert.match(text(h.tree),/2/);
+  assert.match(text(h.tree),/本机记录 3.*缓存 2/);assert.match(text(h.tree),/\/private\/external-cache/);assert.match(text(h.tree),/可能重叠/);
+  const localPanel=nodes(h.tree).find(node=>node.type==='LocalRecordsPanel');assert.ok(localPanel);assert.equal(localPanel.props.active,true);assert.equal(localPanel.props.refreshRevision,0);
   assert.equal(h.find('workspace-backup-create'),undefined);assert.equal(h.find('workspace-auto-backup'),undefined);
   assert.match(text(nodes(h.tree).find(node=>node.type==='footer')),/更改立即保存在本机/);
 });
 test('hidden workspace settings abort pending reads and a late failure cannot publish into a new visible owner', async t => {
   let reject!: (reason:unknown)=>void;const signals: AbortSignal[]=[];let reads=0;
   const h = harness('SettingsWorkspace.tsx','default',{
-    './workspace-info-client.ts': {workspaceToolsBridge:()=>undefined,readWorkspaceInfo:async()=>({dataDirectory:'/private/current-data',usage:{bytes:1024,complete:true},pendingProjectCleanup:0})},
+    './workspace-info-client.ts': {workspaceToolsBridge:()=>undefined,readWorkspaceInfo:async()=>({dataDirectory:'/private/current-data',usage:{bytes:1024,complete:true},storage:{records:{bytes:0,files:0,complete:true},cache:{bytes:0,files:0,complete:true},cacheDirectory:'/private/external-cache'},pendingProjectCleanup:0})},
     './workspace-settings-client.ts': {readWorkspaceSettings:async(signal:AbortSignal)=>{signals.push(signal);if(++reads===1)return new Promise((_yes,no)=>{reject=no;});return workspaceSettings(false);}},
   });
   t.after(()=>h.unmount());h.render();h.render({active:false});assert.equal(signals[0].aborted,true);

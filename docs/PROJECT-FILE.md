@@ -306,7 +306,13 @@ S1 已切换生产导入和全部素材读端。资产只以 `reference` 定位�
 - **收件箱：** 现有表只保留占位格式；离线应用接收、暂存和回填（S3-B/C）已定放0.1.x。0.1.0项目不在时暂停，任务留本机history，找到后按原规则继续；离线超过供应商保留期可能无法取回结果，不自动重提。
 - **规范信任：** 项目 ID 加 `AGENTS.md` 的内容哈希。
 - **项目外路径确认：** 项目 ID、文件夹、确认时间。
-- **本机记录清单：** 项目 ID、大小，以及文件夹里有没有还用得着的超级日志（`hasSuperJournal`，按内核的 `isSuperJournalInUse` 算）。列清单时不打开 `history.db`；有还用得着的超级日志的不能删。
+- **本机记录清单：** 项目 ID、大小、登记名称/位置（未知为 `null`）、超级日志保护 `hasSuperJournal`，以及与 S3-A 删除门禁同源的 `hasUnfinishedTasks`。清单不打开项目或 `history.db`；两种保护独立显示，任一存在都不能删。
+
+设置 › 工作区使用应用级 `POST /api/rpc` 的 `local.records.list`（严格 `{}`）和 `local.records.delete`；这两个操作不进入模型工具发现目录。清单返回 `{version:1,appLibraryScope,instanceId,records}`。删除只以 `projectId` 选择目标，并携带同一列表的 `expectedAppLibraryScope`、`expectedInstanceId`；不会接受路径或默认补当前身份。服务端在进入底层清理前比较身份，不符报 `LOCAL_RECORDS_IDENTITY_CHANGED`（409），包括服务重启后的旧确认。
+
+删除时再次检查项目是否找回、宿主是否已开始打开及后台工作；`LOCAL_RECORDS_IN_USE`、`LOCAL_RECORDS_SUPER_JOURNAL`、`LOCAL_RECORDS_NOT_FOUND` 分别保留 409、409、404。成功返回精确的项目 ID 和 scope/instance。删除没有持久回执；文件系统失败或删除后丢失 owner 报 `LOCAL_RECORDS_DELETE_UNCERTAIN`（503），浏览器失联也保守显示结果未知，只刷新核对，不自动重删。列表中消失不能单独证明原删除成功。每次结果都刷新列表；迟到结果不能覆盖另一个页面时代/应用库。
+
+正常列举不删除普通记录，但会继续清理此前已确认删除留下的 `.deleting-*` 墓碑，所以 list/delete 都保留实际应用写入 owner 和 shutdown 守卫，效果声明包含文件写入和破坏性；不删除应用库的后台索引/收件箱或原项目文件。
 
 ## 内核结构的权威来源
 

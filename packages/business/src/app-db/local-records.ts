@@ -20,6 +20,7 @@ import type {AppProjectRegistry} from './registry.ts';
 export interface LocalRecordsItem extends LocalRecordsEntry {
   readonly name: string | null;
   readonly projectFile: string | null;
+  readonly hasUnfinishedTasks: boolean;
 }
 
 /** The local records list (PROJECT-FILE.md, "本机记录的文件夹"). It never opens
@@ -31,8 +32,8 @@ export interface LocalRecordsStore {
   list(): Promise<LocalRecordsItem[]>;
   /** Deletes such a folder after checking again that its project file cannot
    * be found, its project is not open, and it holds no super-journal still in
-   * use. A registered project is deleted inside the host's exclusive operation
-   * (S0's withExclusive), so it cannot be opened meanwhile. */
+   * use. The host's synchronous open/work observers are checked again in the
+   * final, non-awaiting section before rename (including opening hosts). */
   delete(projectId: string): Promise<void>;
 }
 
@@ -44,6 +45,8 @@ export interface LocalRecordsOptions {
   readonly isProjectOpen: (projectId: string) => boolean;
   /** Durable index plus live requests; must be rechecked before rename. */
   readonly isProjectBackgroundBusy: (projectId: string) => boolean;
+  /** A real live application owner, checked before every removal effect. */
+  readonly assertMutationAllowed: () => void;
 }
 
 /** Folders left by a delete that stopped between the rename and the removal. */
@@ -98,7 +101,8 @@ async function folderSize(folder: string, depth = 0): Promise<number> {
   return total;
 }
 
-export function createLocalRecords({dataDir, registry, identity, isProjectOpen, isProjectBackgroundBusy}: LocalRecordsOptions): LocalRecordsStore {
+export function createLocalRecords({dataDir, registry, identity, isProjectOpen, isProjectBackgroundBusy, assertMutationAllowed}: LocalRecordsOptions): LocalRecordsStore {
+  if (typeof assertMutationAllowed !== 'function') throw new TypeError('Local records require a live application owner guard');
   const recordsDir = path.join(dataDir, PROJECT_RECORDS_DIRECTORY);
   /** The registered file is still at its place (lstat only). */
   const atRegisteredPlace = (entry: RecentProject): boolean =>
@@ -113,6 +117,7 @@ export function createLocalRecords({dataDir, registry, identity, isProjectOpen, 
     return await registry.findMoved(entry) !== null;
   };
   const sweepTombstones = (): void => {
+    assertMutationAllowed();
     let names: string[];
     try {
       names = readdirSync(recordsDir);
@@ -121,6 +126,9 @@ export function createLocalRecords({dataDir, registry, identity, isProjectOpen, 
     }
     for (const name of names) {
       if (TOMBSTONE.test(name)) {
+        // Keep this outside the best-effort rm catch: a retired application
+        // owner must stop the whole operation, never continue its sweep.
+        assertMutationAllowed();
         try { rmSync(path.join(recordsDir, name), {recursive: true, force: true}); } catch {}
       }
     }
@@ -138,17 +146,20 @@ export function createLocalRecords({dataDir, registry, identity, isProjectOpen, 
       try {
         entries = await readdir(recordsDir, {withFileTypes: true});
       } catch (error) {
-        if ((error as {code?: unknown}).code === 'ENOENT') return [];
+        if ((error as {code?: unknown}).code === 'ENOENT') {assertMutationAllowed(); return [];}
         throw error;
       }
       const items: LocalRecordsItem[] = [];
       for (const projectId of entries.filter(entry => entry.isDirectory() && isProjectId(entry.name)).map(entry => entry.name).sort()) {
         if (await projectFound(projectId)) continue;
+        assertMutationAllowed();
         const folder = path.join(recordsDir, projectId);
         const entry = localRecordsEntrySchema.parse({projectId, sizeBytes: await folderSize(folder), hasSuperJournal: hasSuperJournalInUse(folder)});
         const registered = registry.get(projectId);
-        items.push({...entry, name: registered?.name ?? null, projectFile: registered?.projectFile ?? null});
+        items.push({...entry, name: registered?.name ?? null, projectFile: registered?.projectFile ?? null,
+          hasUnfinishedTasks: isProjectBackgroundBusy(projectId)});
       }
+      assertMutationAllowed();
       return items;
     },
     async delete(projectId: string): Promise<void> {
@@ -167,7 +178,9 @@ export function createLocalRecords({dataDir, registry, identity, isProjectOpen, 
       // Renamed first, so a removal that stops halfway never leaves a records
       // folder the kernel would open again; list() and delete() sweep the rest.
       const tombstone = path.join(recordsDir, `.deleting-${projectId}-${randomUUID()}`);
+      assertMutationAllowed();
       renameSync(folder, tombstone);
+      assertMutationAllowed();
       rmSync(tombstone, {recursive: true, force: true});
     },
   };
