@@ -319,7 +319,7 @@ test('desktop wiring keeps renderer secret capabilities private and settings own
   assert.match(main, /createDesktopImageSecretCodec\(\{ safeStorage, appId: identity\.appId \}\)/);
   assert.doesNotMatch(main, /createImageSettings\(/);
   assert.match(backend, /createImageSecretClient\(\{ port: process\.parentPort \}\)/);
-  assert.match(backend, /startServer\(\{ comfyModule: comfyModuleModeFromEnvironment\(process\.env\.MIOON_COMFY_MODULE\), dataDir: data\.dataDir, cacheDir:data\.cacheDir, projectsDir:data\.projectsDir, port: 0, distDir: data\.distDir,\n        projectTemplatesDir: data\.projectTemplatesDir, token: data\.token, agentSettings, imageSecretCodec, videoSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ \}\)/);
+  assert.match(backend, /startServer\(\{ comfyModule: comfyModuleModeFromEnvironment\(process\.env\.MIOON_COMFY_MODULE\), dataDir: data\.dataDir, cacheDir:data\.cacheDir, projectsDir:data\.projectsDir, port: 0, distDir: data\.distDir,\n        projectTemplatesDir: data\.projectTemplatesDir,\n        projectTrash: data\.projectTrashAvailable === true \? projectTrash : undefined,\n        token: data\.token, agentSettings, imageSecretCodec, videoSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ \}\)/);
   for (const source of [backend, broker]) {
     assert.doesNotMatch(source, /ipcMain|ipcRenderer|contextBridge|preload\s*:/);
     assert.doesNotMatch(source, /sandbox\s*:\s*false|nodeIntegration\s*:\s*true/);

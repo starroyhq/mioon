@@ -73,6 +73,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   try {
     const tool = tools.get(request.params.name);
     if (!tool) throw new ClientError('UNKNOWN_OPERATION', 'Unknown tool. Use tools/list to discover supported tools.');
+    // Keep discovery available, but do not turn a desktop backend capability
+    // into a CLI/MCP lifecycle command before the 0.1.x client work.
+    if(request.params.name==='project_delete')throw new ClientError('PROJECT_TRASH_UNAVAILABLE','Project trash commands are not available in this client yet.',{status:409});
     if(request.params.name!=='mioon_schema')await (await import('@mioon/node-host/private-storage-bootstrap')).initializeNodePrivateStorage();
     result = successEnvelope(await tool.call(request.params.arguments ?? {}, {signal: extra.signal}));
   } catch (error) { result = errorEnvelope(error); }

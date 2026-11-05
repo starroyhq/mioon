@@ -115,11 +115,11 @@ S5-B 另将文件系统失败映射到明确的应用错误：`EACCES` / `EPERM`
 
 CLI 与旧客户端的 `project.duplicate` 当前在网络/存储访问前返回 `PROJECT_COPY_UNAVAILABLE`（409）；CLI/MCP 新复制和另存为命令留 0.1.x/S4。没有配置复制服务的应用 RPC 返回同码 503。旧 package 路由仍是 404，不是新操作的回退。
 
-## 后续范围与已销项义务
+## 移到废纸篓与已销项义务
 
-S5-C 才实施将 `.mioon` 移到废纸篓；本卡不接删除、复制或模板界面。当前应用 `project.delete` 仍返回 `PROJECT_DELETE_UNAVAILABLE`（409）。
+S5-C 的应用 `project.delete` 仅将关闭的 `.mioon` 移到废纸篓，确定成功才撤登记，素材和本机记录原样保留。它要求受信桌面 `shell.trashItem` 能力；网页/headless 无能力时返回 `PROJECT_TRASH_UNAVAILABLE`，CLI/MCP 在本机访问前明确拒绝。结果不明不重做、不撤登记。契约和准入见 [PROJECT-LIFECYCLE.md](PROJECT-LIFECYCLE.md)；本卡不接删除、复制或模板界面。
 
-协调人 11-04 已决定：0.1.0 不做永久删除，后续 trash 仅移 `.mioon` 并在确定成功后撤登记，保留素材和本机记录。以下旧义务逐项销项：
+协调人 11-04 已决定：0.1.0 不做永久删除。以下旧义务逐项销项：
 
 | 旧永久清理义务 | 状态 |
 | --- | --- |

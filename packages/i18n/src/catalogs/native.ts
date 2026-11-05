@@ -66,6 +66,12 @@ export const nativeMessages = {
     "en": "Open project",
     "ja": "プロジェクトを開く"
   },
+  "native.projectTrashUnconfirmed": {
+    "zh-Hans": "项目文件是否已移到废纸篓尚不明确，未重复操作。",
+    "zh-Hant": "專案檔案是否已移到垃圾桶尚不明確，未重複操作。",
+    "en": "It is unclear whether the project file was moved to the Trash. The operation was not repeated.",
+    "ja": "プロジェクトファイルがゴミ箱に移動されたか確認できません。操作は繰り返していません。"
+  },
   "native.connections": {
     "zh-Hans": "连接设置",
     "zh-Hant": "連線設定",

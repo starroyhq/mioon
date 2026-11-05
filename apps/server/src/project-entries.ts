@@ -21,6 +21,8 @@ import type {ProjectHostRuntime, ProjectLease} from './project-host/host.ts';
 import type {ProjectRegistryPort} from './project-host/ports.ts';
 import {projectFileMoved, projectHostError} from './project-host/errors.ts';
 import type {ProjectCopies} from './project-host/copies.ts';
+import type {ProjectTrashActions} from './project-host/trash.ts';
+import {projectDeleteInputSchema} from '../../../packages/contracts/src/project-lifecycle.ts';
 
 interface WindowSlot<Runtime extends ProjectHostRuntime> {
   readonly key: string;
@@ -44,7 +46,7 @@ export function projectEntryWithinRoot(root: string, file: string): boolean {
 
 /** A production capability owned by one server instance. Neither its window
  * bindings nor its path-taking methods are registered as HTTP operations. */
-export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, copies}: {
+export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, copies, trash}: {
   readonly manager: ProjectHostManager<Runtime>;
   readonly registry: ProjectRegistryPort;
   readonly projectsDir: string;
@@ -54,6 +56,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   readonly createProject: (input: ProjectEntryCreateInput) => Promise<{readonly registration: RecentProject}>;
   readonly refreshSummaries: () => void;
   readonly copies?: Pick<ProjectCopies, 'duplicate' | 'saveAs' | 'replay' | 'adoptCopy' | 'copyTo' | 'instantiateTemplate' | 'replayAction'>;
+  readonly trash?: ProjectTrashActions;
 }) {
   const instanceId = randomUUID();
   let establishedScope: string | undefined;
@@ -240,6 +243,12 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
         }
       },
     } : {}),
+    ...(trash?.available ? {trash: async (raw: unknown) => {
+      scope();
+      const result = await trash.trash(parse(projectDeleteInputSchema, raw));
+      scope();
+      return result;
+    }} : {}),
     onWindowRevoked: listener => {
       active();
       if (typeof listener !== 'function') throw invalid();

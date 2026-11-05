@@ -56,6 +56,8 @@ export interface ProjectWindowHostOptions<W extends ProjectNativeWindow> {
   onWebContentsDestroyed?(windowId: string): void;
   /** Fixed renderer entry-admission hook. Absence/invalid response denies. */
   consumeProjectEntry?(owner: ProjectWindowDocumentOwner<W>, entryToken: string, projectId: string): unknown | Promise<unknown>;
+  /** Main retains these action tokens across backend/window-host replacement. */
+  readonly projectActionReservations?: Map<string, object>;
   /** Main-owned utility port. Editors are never created without a window lease. */
   readonly projectEntries?: Pick<ProjectEntryControlPort,'openPath'|'acquire'|'release'|'onWindowRevoked'>;
   /** Main checks the registered physical path/volume before renderer UUID open. */
@@ -97,6 +99,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
   if (!isProjectWindowId(options.backendId)) throw new Error('Invalid project-window backend identity');
   let launcher: WindowRecord<W> | null = null, settings: WindowRecord<W> | null = null;
   const editors = new Map<string, WindowRecord<W>>(), reservations = new Set<string>();
+  const projectActions = options.projectActionReservations ?? new Map<string, object>();
   const records = new Map<W, WindowRecord<W>>(), contentsRecords = new Map<ProjectWindowWebContents, WindowRecord<W>>();
   const leases=new Map<string,WindowLease>(),retiredLeases=new Set<string>(),revokedLeases=new Set<string>();
   let projectEntries=options.projectEntries??null,unsubscribeLeases:(()=>void)|null=null;
@@ -219,7 +222,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     if (!permitted()) return null;
     if (role === 'settings' && (!parent || parent.role === 'settings' || !trustedDocument(parent) || parent.phase === 'closing')) return null;
     if (role === 'editor') {
-      if (!projectId || !lease || lease.released || lease.revoked || lease.projectId!==projectId || editors.has(projectId) || reservations.has(projectId)) return null;
+      if (!projectId || !lease || lease.released || lease.revoked || lease.projectId!==projectId || editors.has(projectId) || reservations.has(projectId) || projectActions.has(projectId)) return null;
       reservations.add(projectId); hideLauncher();
     }
     let url:string;
@@ -423,6 +426,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
   }
   function reserveProject(projectId: string, revealIntent: number, mayReveal: boolean, lease:WindowLease): ProjectWindowOpenResult {
     if (!permitted()) return refused('busy');
+    if (projectActions.has(projectId)) return refused('busy');
     const existing = editors.get(projectId);
     if (existing) {
       if (!ownsRecord(existing) || existing.phase === 'closing') return refused('busy');
@@ -618,6 +622,17 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     refresh(); return true;
   }
   function windows(): W[] { return lifetime() ? [...records.values()].filter(record => !record.closed).map(record => record.window) : []; }
+  function reserveClosedProjectAction(projectId: string): {isCurrent(): boolean; release(): void} | null {
+    if (!isProjectWindowId(projectId)) return null;
+    projectId = projectId.toLowerCase();
+    if (!permitted() || editors.has(projectId) || reservations.has(projectId) || projectActions.has(projectId)) return null;
+    const token = Object.freeze({});
+    projectActions.set(projectId, token);
+    return Object.freeze({
+      isCurrent: () => lifetime() && projectActions.get(projectId) === token,
+      release() {if (projectActions.get(projectId) === token) projectActions.delete(projectId);},
+    });
+  }
   function canHideToTray(): boolean {
     // Native alerts and the settings sheet must remain reachable. A destroyed
     // handle still reserves its slot until its actual closed event arrives.
@@ -700,7 +715,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
   }
   return {
     ensureLauncher, activate, requestProjectEntry, openPath, adoptPrepared, showProjects: (focused?: W | null) => requestProjectEntry('open', focused), showSettings,
-    dispatch, refresh, windows, getWindows: windows, closeOrder, closeStateChanged, canHideToTray, hideToTray, prepareNativeDialog, finishNativeDialog, loadDocumentFor,
+    dispatch, refresh, windows, getWindows: windows, closeOrder, closeStateChanged, canHideToTray, hideToTray, prepareNativeDialog, finishNativeDialog, loadDocumentFor, reserveClosedProjectAction,
     settingsForParent(window: W): W | null { const record = records.get(window); return record ? modalFor(record)?.window ?? null : null; },
     preferredWindow(focused?: W | null): W | null { return preferredRecord(focused)?.window ?? null; },
     windowForContents(contents: ProjectWindowWebContents): W | null { const record = contentsRecords.get(contents); return record && trustedDocument(record) ? record.window : null; },
