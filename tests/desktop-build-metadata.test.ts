@@ -1,7 +1,7 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, unlink, realpath, cp, symlink, chmod } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, unlink, realpath, cp, chmod } from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -28,12 +28,16 @@ async function fixture(t: TestContext, root = rootPackage(), desktop = desktopPa
 
 async function builderFixture(t: TestContext) {
   const directory = await fixture(t);
-  // The copied builder is a desktop package consumer. Resolve its declared
-  // workspace dependencies even when the root has no incidental links.
-  await symlink(fileURLToPath(new URL('../apps/desktop/node_modules/', import.meta.url)), path.join(directory, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
-  for (const name of ['builder-config.ts', 'subtitle-resources.ts', 'runtime-notices.ts', 'build-metadata.ts', 'identity.ts']) {
+  for (const name of ['subtitle-resources.ts', 'runtime-notices.ts', 'build-metadata.ts', 'identity.ts']) {
     await copyFile(new URL(`../apps/desktop/${name}`, import.meta.url), path.join(directory, 'apps/desktop', name));
   }
+  // Keep the real verifier while resolving it from its original module URL.
+  // The fixture may be on a different Windows drive from the workspace.
+  const source = await readFile(new URL('../apps/desktop/builder-config.ts', import.meta.url), 'utf8');
+  const specifier = "from '@mioon/business/project-example-resources'";
+  assert.equal(source.split(specifier).length, 2, 'exactly one reviewed builder dependency is rebound');
+  await writeFile(path.join(directory, 'apps/desktop/builder-config.ts'), source.replace(specifier,
+    `from ${JSON.stringify(new URL('../packages/business/src/project-example-resources.ts', import.meta.url).href)}`));
   return { directory, builderConfig: require(path.join(directory, 'apps/desktop/builder-config.ts')).builderConfig };
 }
 
