@@ -116,12 +116,13 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
       break;
     }
     case 'PROJECT_ACCESS_DENIED': {
+      const creating = 'context' in failure && failure.context === 'create';
       title = t('projectFile.open.access.title', {name});
       body = <span className="pf-open-access"><span>{t(props.platform === 'mac' ? 'projectFile.open.access.mac' : 'projectFile.open.access.system')}</span>
         {props.platform === 'mac' && <span role="list"><span role="listitem">{t('projectFile.open.access.macSettings')}</span><span role="listitem">{t('projectFile.open.access.folder')}</span></span>}
-        <span>{t(failure.context === 'create' ? 'projectFile.open.access.choose' : 'projectFile.open.access.retry')}</span></span>;
-      buttons = <><span className="pf-open-system-action">{run('systemSettings', t('projectFile.open.access.settings'), props.onOpenSystemSettings)}</span>{close(t(failure.context === 'create' ? 'common.cancel' : 'common.close'))}
-        {failure.context === 'create' ? run('chooseLocation', t('projectFile.open.access.otherLocation'), props.onChooseLocation, true) : run('retry', t('projectFile.common.retry'), props.onRetry, true)}</>;
+        <span>{t(creating ? 'projectFile.open.access.choose' : 'projectFile.open.access.retry')}</span></span>;
+      buttons = <><span className="pf-open-system-action">{run('systemSettings', t('projectFile.open.access.settings'), props.onOpenSystemSettings)}</span>{close(t(creating ? 'common.cancel' : 'common.close'))}
+        {creating ? run('chooseLocation', t('projectFile.open.access.otherLocation'), props.onChooseLocation, true) : run('retry', t('projectFile.common.retry'), props.onRetry, true)}</>;
       break;
     }
     case 'NETWORK_LOCATION':

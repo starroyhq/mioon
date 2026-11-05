@@ -1,7 +1,11 @@
 import type {EventEmitter} from 'node:events';
 import type {BackendSupervisor} from '../../apps/desktop/src/supervisor.ts';
 import type {createDesktopStartup} from '../../apps/desktop/src/startup.ts';
-import type {createDesktopWindowAppearance} from '../../apps/desktop/src/window-appearance.ts';
+import type {DesktopAppearanceCache} from '../../apps/desktop/src/desktop-appearance-cache.ts';
+import {createProjectEntryControlBroker} from '../../apps/desktop/src/project-entry-control.ts';
+import type {ProjectEntryControlPort} from '../../packages/contracts/src/project-entry-native.ts';
+import type {RecentProject} from '../../packages/contracts/src/project-registry.ts';
+import type {ProjectLocationFacts,ProjectStoragePurpose} from '../../packages/contracts/src/project-entry-desktop.ts';
 
 // Named OS-boundary views for the in-memory main-process harnesses. They expose
 // only fields the synthetic app/session/window constructors actually provide.
@@ -65,7 +69,40 @@ export interface DesktopHarnessOptions<W extends DesktopHarnessWindow> {
   dialog?(value: DesktopHarnessDialog, parent: W | null): unknown;
   syncDialog?(window: W, value: DesktopHarnessDialog): number;
   release?(): void; settings?(index: number, value: DesktopHarnessSettings): unknown;
-  storage?: Partial<Parameters<typeof createDesktopWindowAppearance>[0]['storage']>;
+  cache?: Partial<DesktopAppearanceCache>;
+  beforeReady?(app:DesktopHarnessApp):void;
+  windowCreated?(config:DesktopHarnessWindowConfig):void;
+  projectControl?(index:number,port:ProjectEntryControlPort):ProjectEntryControlPort;
+  projectLocation?(input:{path:string;purpose:'open'|ProjectStoragePurpose;isDirectory:boolean}):Promise<ProjectLocationFacts>;
+}
+
+/** Synthetic OS-free application owner. Real client/broker schemas and window
+ * lease messages still run in the lifecycle harnesses. */
+export function createDesktopHarnessProjectEntries():ProjectEntryControlPort {
+ const registrations=new Map<string,RecentProject>(),leases=new Set<string>();
+ const registration=(projectId:string):RecentProject=>{
+  let value=registrations.get(projectId);
+  if(!value){value={projectId,projectFile:`/synthetic/projects/${projectId}.mioon`,fileIdentity:{dev:'1',ino:String(registrations.size+1)},name:'Synthetic project',lastOpenedAt:null,summary:null};registrations.set(projectId,value);}
+  return value;
+ };
+ // Registered launcher entries used by the retained menu/quit scenarios.
+ registration('79000000-0000-4000-8000-000000000001');
+ registration('79000000-0000-4000-8000-000000000002');
+ return {
+  listRecent:()=>({version:1,appLibraryScope:'a'.repeat(64),instanceId:'11111111-1111-4111-8111-111111111111',registered:[...registrations.values()].map(project=>({project,availability:{state:'available'},coverUrl:null}))}),
+  create:async()=>registration('22222222-2222-4222-8222-222222222222'),
+  prepareAcquire:async({projectId})=>registration(projectId),
+  acquire:async({projectId,windowId})=>{leases.add(windowId);return {windowId,project:registration(projectId)};},
+  openPath:async({windowId,projectFile})=>{leases.add(windowId);const project={...registration('22222222-2222-4222-8222-222222222222'),projectFile};registrations.set(project.projectId,project);return {windowId,project};},
+  release:({windowId})=>{leases.delete(windowId);},onWindowRevoked:()=>()=>{},
+ };
+}
+export function createDesktopHarnessProjectBroker(send:(message:unknown)=>void,control:ProjectEntryControlPort=createDesktopHarnessProjectEntries()){
+ let broker:ReturnType<typeof createProjectEntryControlBroker>|undefined;
+ return {start(backendId:string){broker?.close();broker=createProjectEntryControlBroker({backendId,control,send});},handle(message:unknown){return broker?.handle(message)??false;},close(){broker?.close();}};
+}
+export function createDesktopHarnessAppearanceCache(overrides:Partial<DesktopAppearanceCache>={}):DesktopAppearanceCache {
+ return {scope:()=> 'a'.repeat(64),read:()=>null,write:()=>true,...overrides};
 }
 export interface DesktopHarnessRecords<W extends DesktopHarnessWindow, M = DesktopHarnessMessage> {
   scopes: ReturnType<typeof createDesktopStartup>[]; validations: AbortSignal[];

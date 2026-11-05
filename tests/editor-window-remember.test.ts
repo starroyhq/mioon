@@ -12,6 +12,7 @@ import {createLauncherClient} from '../apps/web/src/launcher-state.ts';
 import {readProjectEntryIdentity} from '../apps/web/src/project-entry-identity.ts';
 import {projectEntryFixture, projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
+import {createProjectWindowLeaseFixture,projectWindowLeaseValue} from './helpers/project-window-lease-fixture.ts';
 type AttachedController = ReturnType<typeof createProjectEntryController>;
 type NativeBridge = NonNullable<ReturnType<typeof readDesktopWindowBridge>>;
 interface FakeWebContents extends EventEmitter {mainFrame: {url: string}; getURL(): string; send(channel: string, value: unknown): void}
@@ -39,6 +40,8 @@ function fixture(t: TestContext) {
       this.webContents.mainFrame = {url}; this.webContents.emit('did-navigate', {}, url); this.emit('ready-to-show'); }
   }
   const host = createProjectWindowHost({ backendId, launcherUrl: `${origin}/`, settingsUrl: `${origin}/?settings=1`, editorUrl: id => `${origin}/?project=${id}`,
+    projectEntries:createProjectWindowLeaseFixture().port,
+    admitProject:async(_owner,projectId)=>projectWindowLeaseValue(backendId,projectId).project.projectFile,
     isCurrent: () => true, canInteract: () => interactive, createWindow() { const window = new FakeWindow(); windows.push(window); return window as never; },
     consumeProjectEntry: (owner: {window: FakeWindowView}, entryToken: unknown, projectId: unknown) => typeof entryToken === 'string' && typeof projectId === 'string' ? controllers.get(owner.window)?.consume(entryToken, projectId) : undefined });
   // Deliberately pass the obsolete option as a negative probe: no production

@@ -45,6 +45,9 @@ export interface ProjectWindowContext {
   /** Own immutable editor only, never a global or focused project. */
   readonly editorProjectId: string | null;
   readonly editorPhase: ProjectWindowPhase;
+  /** A revoked host lease is terminal for this immutable editor owner. Old
+   * contexts may omit the field; load failures alone are not revocations. */
+  readonly leaseRevoked?: boolean;
   readonly editorCount: number;
   readonly entryMode: ProjectWindowEntryMode | null;
   readonly entryVersion: number;
@@ -134,12 +137,13 @@ function isProjectWindowLocatorIntent(value: unknown): value is ProjectWindowLoc
 export function isProjectWindowContext(value: unknown): value is ProjectWindowContext {
   if (!record(value) || !keysAre(value, ['version', 'role', 'windowId', 'contextId', 'backendId', 'initialProjectId', 'autoOpen',
     'editorProjectId', 'editorPhase', 'editorCount', 'entryMode', 'entryVersion', 'entryReceipt', 'settingsSlot', 'settingsVersion',
-    'selectionProjectId', 'selectionVersion', 'locatorStatus', 'locatorIntent', 'quitting', ...(Object.hasOwn(value, 'settingsModalOpen') ? ['settingsModalOpen'] : [])]) || value.version !== 2 ||
+    'selectionProjectId', 'selectionVersion', 'locatorStatus', 'locatorIntent', 'quitting', ...(Object.hasOwn(value, 'settingsModalOpen') ? ['settingsModalOpen'] : []), ...(Object.hasOwn(value, 'leaseRevoked') ? ['leaseRevoked'] : [])]) || value.version !== 2 ||
     (typeof value.role !== 'string' || !['launcher', 'editor', 'settings'].includes(value.role)) || !isProjectWindowId(value.windowId) ||
     !isProjectWindowId(value.contextId) || !isProjectWindowId(value.backendId) || typeof value.autoOpen !== 'boolean' ||
     typeof value.quitting !== 'boolean' || !ordinal(value.editorCount) || !ordinal(value.entryVersion) ||
     !ordinal(value.settingsVersion) || !ordinal(value.selectionVersion)) return false;
   if (Object.hasOwn(value, 'settingsModalOpen') && (typeof value.settingsModalOpen !== 'boolean' || value.role === 'settings' && value.settingsModalOpen)) return false;
+  if (Object.hasOwn(value, 'leaseRevoked') && (typeof value.leaseRevoked !== 'boolean' || value.leaseRevoked && (value.role !== 'editor' || value.editorPhase !== 'failed' && value.editorPhase !== 'closing'))) return false;
   if (value.role === 'editor' ? !isProjectWindowId(value.initialProjectId) || value.editorProjectId !== value.initialProjectId || !editorPhase(value.editorPhase) :
     value.initialProjectId !== null || value.editorProjectId !== null || value.editorPhase !== 'none') return false;
   if (value.entryMode !== null && !isProjectWindowEntryMode(value.entryMode)) return false;

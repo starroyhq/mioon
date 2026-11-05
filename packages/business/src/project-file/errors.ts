@@ -10,9 +10,9 @@ import type {DatabaseKind} from './schema/databases.ts';
 export type ProjectFileKernelErrorCode = ProjectOpenErrorCode | typeof PROJECT_FILE_EXISTS | typeof PROJECT_FILE_MOVED;
 
 /** Why an open or a create failed. `missing`, `locked`, `format-newer` and
- * `exists` go with their own codes; every other reason comes with
+ * `exists` and `access-denied` go with their own codes; every other reason comes with
  * PROJECT_INVALID and is one of the contract's PROJECT_INVALID_REASONS. */
-export type ProjectFileErrorReason = 'missing' | 'locked' | 'format-newer' | 'exists' | ProjectInvalidReason;
+export type ProjectFileErrorReason = 'missing' | 'locked' | 'format-newer' | 'exists' | 'access-denied' | ProjectInvalidReason;
 
 /** `details` of every projectFileError(). It never holds an absolute path:
  * `database` says which of the three files failed. `projectId` is set once the
@@ -31,6 +31,7 @@ export interface ProjectFileErrorDetails {
 const ERRORS: Readonly<Record<ProjectFileKernelErrorCode, {readonly status: number; readonly message: string}>> = {
   PROJECT_MISSING: {status: 404, message: '找不到项目文件'},
   PROJECT_LOCKED: {status: 409, message: '项目已在另一个 Mioon 中打开'},
+  PROJECT_ACCESS_DENIED: {status: 403, message: '系统没有允许 Mioon 访问项目所在的位置'},
   PROJECT_FORMAT_NEWER: {status: 409, message: '项目文件来自更新版本的 Mioon，请先升级'},
   PROJECT_INVALID: {status: 422, message: '项目文件的结构无效'},
   PROJECT_FILE_EXISTS: {status: 409, message: '目标位置已有项目文件'},

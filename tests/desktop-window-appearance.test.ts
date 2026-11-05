@@ -2,129 +2,72 @@ import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
-import {mkdtempSync,writeFileSync,readFileSync,renameSync,rmSync,readdirSync,symlinkSync,statSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,renameSync,rmSync,readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {createDesktopWindowAppearance,WINDOW_BACKGROUNDS} from '../apps/desktop/src/window-appearance.ts';
-import {calculateWorkspaceScope} from '../packages/contracts/src/workspace-scope.ts';
+import {createDesktopWindowAppearance,desktopWindowBackground,WINDOW_BACKGROUNDS} from '../apps/desktop/src/window-appearance.ts';
+import {createDesktopAppearanceCache,DESKTOP_APPEARANCE_CACHE_FILENAME} from '../apps/desktop/src/desktop-appearance-cache.ts';
+import type {DesktopAppearanceTheme} from '../apps/desktop/src/desktop-appearance-cache.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
-import {readPrivateFile,validatePrivateDirectory,validateManagedFile} from '../packages/contracts/src/private-storage.ts';
 
-interface AppearanceWindow {destroyed: boolean; owned: boolean; colors: string[]; isDestroyed(): boolean; setBackgroundColor(value: string): void}
-type AppearanceOptions = Parameters<typeof createDesktopWindowAppearance>[0];
-function fixture(t: TestContext, {realWatch=false}: {realWatch?: boolean} = {}) {
-  const root=mkdtempSync(path.join(tmpdir(),'mioon-native-appearance-')),db=path.join(root,'workbench.sqlite'),file=path.join(root,'ui-preferences-v1.json');
-  writeFileSync(db,'synthetic identity only',{mode:0o600});
-  const storage={readPrivateFile,validatePrivateDirectory,validateManagedFile},controller=new AbortController();
-  const nativeTheme=Object.assign(new EventEmitter(),{shouldUseDarkColors:true}) as EventEmitter & {shouldUseDarkColors: boolean; themeSource: string};
-  Object.defineProperty(nativeTheme,'themeSource',{get:()=> 'system',set:()=>assert.fail('Renderer OS queries must not be overridden')});
-  const window=(): AppearanceWindow => ({destroyed:false,owned:true,colors:[],isDestroyed(){return this.destroyed;},setBackgroundColor(value: string){this.colors.push(value);}});
-  const windows: AppearanceWindow[]=[window(),window(),window()];windows[1].destroyed=true;windows[2].owned=false;
-  let current=true, closed=0;
-  let notification: ((name: unknown) => void) | undefined;
-  const watcher=Object.assign(new EventEmitter(),{close(){closed++;}}) as EventEmitter & {close(): void};
-  const scope=()=>calculateWorkspaceScope({root,channel:'development',directory:statSync(root),db:statSync(db)});
-  const record=(theme: string) => ({version:1,workspaceScope:scope(),revision:1,preferences:{...DEFAULT_UI_PREFERENCES,theme},recentOpened:{}});
-  const save=(theme: string)=>writeFileSync(file,JSON.stringify(record(theme)),{mode:0o600});
-  const options={root,channel:'development',storage,nativeTheme,signal:controller.signal,isCurrent:()=>current,
-    getWindows:()=>windows,ownsWindow:(window: AppearanceWindow)=>window.owned,
-    ...(!realWatch?{watchDirectory:(directory: string,listener: (name: unknown) => void)=>{assert.equal(directory,root);notification=listener;return watcher;}}:{})} as unknown as AppearanceOptions;
-  const appearance=createDesktopWindowAppearance(options);
-  t.after(()=>{appearance.dispose();rmSync(root,{recursive:true,force:true});});
-  return {root,db,file,scope,record,save,nativeTheme,appearance,windows,watcher,controller,options,
-    notify:(name: unknown)=>notification!(name),notification:()=>notification!,closed:()=>closed,current:(value: boolean)=>{current=value;}};
+interface AppearanceWindow {destroyed:boolean;owned:boolean;colors:string[];isDestroyed():boolean;setBackgroundColor(value:string):void}
+const response=(theme:DesktopAppearanceTheme)=>({revision:1,preferences:{...DEFAULT_UI_PREFERENCES,theme},recentOpened:{},recoveredDefaults:false,writable:true});
+function fixture(t:TestContext,{cached=null,read=async()=>response('light')}:{cached?:DesktopAppearanceTheme|null;read?:()=>Promise<unknown>}={}){
+ const root=mkdtempSync(path.join(tmpdir(),'mioon-native-appearance-')),dataRoot=path.join(root,'data'),db=path.join(dataRoot,'app-library.db'),file=path.join(root,DESKTOP_APPEARANCE_CACHE_FILENAME);
+ mkdirSync(dataRoot,{mode:0o700});writeFileSync(db,'synthetic application identity',{mode:0o600});
+ const cache=createDesktopAppearanceCache({root,dataRoot,appId:'app.starroy.mioon.dev',channel:'development'});if(cached)assert.equal(cache.write(cached,cache.scope()!,()=>true),true);
+ const controller=new AbortController(),nativeTheme=Object.assign(new EventEmitter(),{shouldUseDarkColors:true});
+ Object.defineProperty(nativeTheme,'themeSource',{get:()=> 'system',set:()=>assert.fail('Renderer OS queries must not be overridden')});
+ const window=():AppearanceWindow=>({destroyed:false,owned:true,colors:[],isDestroyed(){return this.destroyed;},setBackgroundColor(value){this.colors.push(value);}}),windows=[window(),window(),window()];windows[1].destroyed=true;windows[2].owned=false;
+ let current=true,calls=0,reader=read;
+ const options={cache,nativeTheme,signal:controller.signal,isCurrent:()=>current,getWindows:()=>windows,ownsWindow:(window:AppearanceWindow)=>window.owned,readPreferences:()=>{calls++;return reader();}};
+ const appearance=createDesktopWindowAppearance(options);
+ t.after(()=>{appearance.dispose();rmSync(root,{recursive:true,force:true});});
+ return {root,dataRoot,db,file,cache,controller,nativeTheme,windows,appearance,options,calls:()=>calls,current:(value:boolean)=>{current=value;},read:(value:()=>Promise<unknown>)=>{reader=value;}};
 }
-
-test('fixed saved sidecar controls only native fill and never writes files or forces OS appearance',t=>{
-  const f=fixture(t);assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.dark);
-  f.save('light');const before=readFileSync(f.file),files=readdirSync(f.root);
-  f.notify('ui-preferences-v1.json');assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.light);
-  assert.deepEqual(readFileSync(f.file),before);assert.deepEqual(readdirSync(f.root),files);
-  assert.equal(readFileSync(f.db,'utf8'),'synthetic identity only');
-  assert.equal(f.nativeTheme.themeSource,'system');assert.deepEqual(f.windows[1].colors,[]);assert.deepEqual(f.windows[2].colors,[]);
+test('cold native fill uses only an independent same-library cache and never old preference bytes',async t=>{
+ const pending=Promise.withResolvers<unknown>(),f=fixture(t,{cached:'light',read:()=>pending.promise});
+ writeFileSync(path.join(f.dataRoot,'ui-preferences-v1.json'),JSON.stringify({preferences:{theme:'dark'}}),{mode:0o600});
+ const before=readFileSync(f.file),files=readdirSync(f.root);assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.light);assert.equal(f.calls(),1);assert.deepEqual(readFileSync(f.file),before);assert.deepEqual(readdirSync(f.root),files);
+ assert.deepEqual(f.windows[1].colors,[]);assert.deepEqual(f.windows[2].colors,[]);assert.equal(readFileSync(f.db,'utf8'),'synthetic application identity');
+ pending.resolve(response('dark'));await f.appearance.ready();assert.equal(f.windows[0].colors.at(-1),WINDOW_BACKGROUNDS.dark);assert.equal(f.cache.read()?.theme,'dark');
 });
-
-test('saved system appearance follows real OS updates while explicit light and dark stay fixed',t=>{
-  const f=fixture(t);f.save('system');assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.dark);
-  f.nativeTheme.shouldUseDarkColors=false;f.nativeTheme.emit('updated');assert.equal(f.windows[0].colors.at(-1),WINDOW_BACKGROUNDS.light);
-  f.save('dark');f.notify(null);assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.dark);
-  f.save('light');f.notify(Buffer.from('ui-preferences-v1.json'));f.nativeTheme.shouldUseDarkColors=true;f.nativeTheme.emit('updated');
-  assert.equal(f.windows[0].colors.at(-1),WINDOW_BACKGROUNDS.light);
+test('a cache miss follows OS color and does not write until authenticated preferences succeed',async t=>{
+ const pending=Promise.withResolvers<unknown>(),f=fixture(t,{read:()=>pending.promise});f.nativeTheme.shouldUseDarkColors=false;
+ assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.light);assert.deepEqual(readdirSync(f.root),['data']);
+ pending.resolve(response('dark'));await f.appearance.ready();assert.equal(f.windows[0].colors.at(-1),WINDOW_BACKGROUNDS.dark);assert.equal(f.cache.read()?.theme,'dark');
 });
-
-test('missing, bad, unknown-version, invalid-theme and foreign-scope sidecars fall back without repair',t=>{
-  const f=fixture(t);
-  const malformed=['{',Buffer.from([0xff]),JSON.stringify({...f.record('light'),version:2}),JSON.stringify({...f.record('light'),workspaceScope:'a'.repeat(64)}),JSON.stringify(f.record('sepia'))];
-  for(const bytes of malformed){writeFileSync(f.file,bytes,{mode:0o600});const before=readFileSync(f.file);assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.dark);assert.deepEqual(readFileSync(f.file),before);}
-  const recovered=f.record('light');recovered.preferences.scalePercent=999;writeFileSync(f.file,JSON.stringify(recovered),{mode:0o600});
-  assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.light,'invalid unrelated legacy fields normalize independently');
-  rmSync(f.file);assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.dark);
+test('backend failures and invalid responses preserve the last good native theme and cache bytes',async t=>{
+ const f=fixture(t,{cached:'light',read:async()=>{throw Error('backend unavailable');}}),before=readFileSync(f.file);
+ await f.appearance.ready();assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.light);await f.appearance.ready();assert.deepEqual(readFileSync(f.file),before);
+ f.read(async()=>({preferences:{theme:'dark'}}));await f.appearance.ready();assert.equal(f.windows[0].colors.at(-1),WINDOW_BACKGROUNDS.light);assert.deepEqual(readFileSync(f.file),before);
+ f.read(async()=>response('dark'));await f.appearance.ready();assert.equal(f.cache.read()?.theme,'dark');
+ f.read(async()=>{throw Error('offline again');});await f.appearance.ready();assert.equal(f.windows[0].colors.at(-1),WINDOW_BACKGROUNDS.dark);assert.equal(f.cache.read()?.theme,'dark');
 });
-
-test('private storage rejects symlink and oversized sidecars and pins the existing workspace database identity',t=>{
-  const f=fixture(t),target=path.join(f.root,'unrelated.json');writeFileSync(target,JSON.stringify(f.record('light')),{mode:0o600});symlinkSync(target,f.file);
-  assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.dark);rmSync(f.file);
-  writeFileSync(f.file,'x'.repeat(1024*1024+1),{mode:0o600});assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.dark);
-  f.save('light');assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.light);
-  renameSync(f.db,f.db+'.previous');writeFileSync(f.db,'replacement',{mode:0o600});f.save('light');
-  assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.dark,'new inode cannot acquire this start context');
+test('cached and authoritative system themes follow real OS updates without forcing nativeTheme.themeSource',async t=>{
+ const f=fixture(t,{cached:'system',read:async()=>response('system')});await f.appearance.ready();assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.dark);
+ f.nativeTheme.shouldUseDarkColors=false;f.nativeTheme.emit('updated');assert.equal(f.windows[0].colors.at(-1),WINDOW_BACKGROUNDS.light);await f.appearance.ready();
+ f.read(async()=>response('dark'));await f.appearance.ready();f.nativeTheme.emit('updated');assert.equal(f.windows[0].colors.at(-1),WINDOW_BACKGROUNDS.dark);await f.appearance.ready();
 });
-
-test('unrelated directory events do not apply and late watcher or OS callbacks cannot cross context, disposal or abort',t=>{
-  for(const invalidation of ['context','dispose','abort']){
-    const f=fixture(t),lateWatch=f.notification(),lateTheme=f.nativeTheme.listeners('updated')[0];f.save('light');
-    const before=f.windows[0].colors.length;f.notify('other-preferences.json');assert.equal(f.windows[0].colors.length,before);
-    if(invalidation==='context')f.current(false);else if(invalidation==='dispose')f.appearance.dispose();else f.controller.abort();
-    lateWatch('ui-preferences-v1.json');lateTheme!();assert.equal(f.windows[0].colors.length,before);
-    if(invalidation!=='context'){assert.equal(f.nativeTheme.listenerCount('updated'),0);assert.equal(f.closed(),1);}
-    f.appearance.dispose();assert.equal(f.closed(),1);
-  }
+test('late authenticated reads cannot write cache or update windows after owner replacement, disposal or abort',async t=>{
+ for(const kind of ['owner','dispose','abort']as const){
+  const pending=Promise.withResolvers<unknown>(),f=fixture(t,{cached:'light',read:()=>pending.promise}),before=readFileSync(f.file),ready=f.appearance.ready(),count=f.windows[0].colors.length,late=f.nativeTheme.listeners('updated')[0];
+  if(kind==='owner')f.current(false);else if(kind==='dispose')f.appearance.dispose();else f.controller.abort();
+  pending.resolve(response('dark'));await ready;late!();assert.equal(f.windows[0].colors.length,count);assert.deepEqual(readFileSync(f.file),before);
+  f.appearance.dispose();assert.equal(f.nativeTheme.listenerCount('updated'),0);
+ }
 });
-
-test('watch errors stop their watcher; safe creation refresh remains available and skips newly destroyed windows',t=>{
-  const f=fixture(t);f.watcher.emit('error');assert.equal(f.closed(),1);
-  f.save('light');assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.light);
-  f.windows[0].destroyed=true;const count=f.windows[0].colors.length;f.save('dark');f.nativeTheme.emit('updated');assert.equal(f.windows[0].colors.length,count);
+test('library identity replacement while authenticated metadata is in flight cannot inherit appearance',async t=>{
+ const pending=Promise.withResolvers<unknown>(),f=fixture(t,{cached:'light',read:()=>pending.promise}),before=readFileSync(f.file),ready=f.appearance.ready();
+ renameSync(f.db,f.db+'.old');writeFileSync(f.db,'replacement app library',{mode:0o600});pending.resolve(response('dark'));await ready;
+ f.nativeTheme.shouldUseDarkColors=false;assert.equal(f.appearance.backgroundColor(),WINDOW_BACKGROUNDS.light,'invalid identity uses the current OS, not a backend response');assert.deepEqual(readFileSync(f.file),before);
 });
-
-test('actual directory watch survives repeated atomic sidecar replacement without mutating the workspace',async t=>{
-  const f=fixture(t,{realWatch:true});
-  // Let the OS directory watcher for this freshly created private root arm
-  // before the first atomic replacement; otherwise macOS FSEvents can miss the
-  // initial rename and this test observes only the pre-watch background.
-  await new Promise(resolve=>setTimeout(resolve,100));
-  const until=async (color: string)=>{const deadline=Date.now()+3000;while(f.windows[0].colors.at(-1)!==color&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,10));assert.equal(f.windows[0].colors.at(-1),color);};
-  for(const theme of ['light','dark','light'] as const){
-    const staging=path.join(f.root,'.appearance.pending');writeFileSync(staging,JSON.stringify(f.record(theme)),{mode:0o600});renameSync(staging,f.file);await until(WINDOW_BACKGROUNDS[theme]);
-  }
-  assert.deepEqual(readdirSync(f.root).sort(),['ui-preferences-v1.json','workbench.sqlite']);
+test('bad cache bytes remain untouched even when an authenticated good value controls the native fill',async t=>{
+ const f=fixture(t);writeFileSync(f.file,'{',{mode:0o600});await f.appearance.ready();assert.equal(f.windows[0].colors.at(-1),WINDOW_BACKGROUNDS.light);assert.equal(readFileSync(f.file,'utf8'),'{');
 });
-
-test('native fills match the approved token surfaces and main keeps theme IPC and native overrides absent',()=>{
-  const root=new URL('../',import.meta.url),main=readFileSync(new URL('apps/desktop/src/main.ts',root),'utf8');
-  const dark=readFileSync(new URL('packages/ui/src/styles/globals.css',root),'utf8'),light=readFileSync(new URL('packages/ui/src/styles/light.css',root),'utf8');
-  assert.ok(dark.includes(`--wb-bg: ${WINDOW_BACKGROUNDS.dark}`));assert.ok(light.includes(`--wb-bg: ${WINDOW_BACKGROUNDS.light}`));
-  assert.match(main,/backgroundColor: context\.appearance\.backgroundColor\(\)/);
-  assert.doesNotMatch(main,/nativeTheme\.themeSource\s*=/);assert.doesNotMatch(main,/ipcMain\.handle\([^\n]*(?:appearance|theme)/i);
-});
-
-test('app appearance reads authenticated preferences and stats app identity without reading database or legacy JSON bytes',async t=>{
-  const f=fixture(t);f.appearance.dispose();
-  const databaseFile=path.join(f.root,'app-library.db');renameSync(f.db,databaseFile);
-  const response={revision:1,preferences:{...DEFAULT_UI_PREFERENCES,theme:'light'},recentOpened:{},recoveredDefaults:false,writable:true};
-  const appearance=createDesktopWindowAppearance({...f.options,databaseFile,readPreferences:async()=>response,
-    storage:{...f.options.storage,readPrivateFile:()=>assert.fail('Application preferences must use authenticated metadata')}});
-  t.after(()=>appearance.dispose());await appearance.ready();
-  assert.equal(appearance.backgroundColor(),WINDOW_BACKGROUNDS.light);
-  assert.equal(readFileSync(databaseFile,'utf8'),'synthetic identity only');
-  renameSync(databaseFile,databaseFile+'.previous');writeFileSync(databaseFile,'replacement identity',{mode:0o600});
-  await appearance.ready();assert.equal(appearance.backgroundColor(),WINDOW_BACKGROUNDS.dark,'replacement app identity cannot inherit preferences');
-});
-
-test('late application preference reads cannot update windows after the backend context is replaced',async t=>{
-  const f=fixture(t);f.appearance.dispose();const pending=Promise.withResolvers<unknown>();
-  const appearance=createDesktopWindowAppearance({...f.options,databaseFile:f.db,readPreferences:()=>pending.promise});
-  t.after(()=>appearance.dispose());const count=f.windows[0].colors.length;f.current(false);
-  pending.resolve({revision:1,preferences:{...DEFAULT_UI_PREFERENCES,theme:'light'},recentOpened:{},recoveredDefaults:false,writable:true});
-  await appearance.ready();assert.equal(f.windows[0].colors.length,count);
+test('native fill helper is usable before backend startup and retains approved token surfaces',()=>{
+ assert.equal(desktopWindowBackground('light',{shouldUseDarkColors:true}),WINDOW_BACKGROUNDS.light);assert.equal(desktopWindowBackground(null,{shouldUseDarkColors:false}),WINDOW_BACKGROUNDS.light);assert.equal(desktopWindowBackground('system',{shouldUseDarkColors:true}),WINDOW_BACKGROUNDS.dark);
+ const root=new URL('../',import.meta.url),source=readFileSync(new URL('apps/desktop/src/window-appearance.ts',root),'utf8'),main=readFileSync(new URL('apps/desktop/src/main.ts',root),'utf8');
+ const dark=readFileSync(new URL('packages/ui/src/styles/globals.css',root),'utf8'),light=readFileSync(new URL('packages/ui/src/styles/light.css',root),'utf8');assert.ok(dark.includes(`--wb-bg: ${WINDOW_BACKGROUNDS.dark}`));assert.ok(light.includes(`--wb-bg: ${WINDOW_BACKGROUNDS.light}`));
+ assert.doesNotMatch(source,/ui-preferences-v1\.json|uiPreferencesDiskSchema|watchDirectory|workbench\.sqlite/);assert.doesNotMatch(main,/nativeTheme\.themeSource\s*=/);assert.doesNotMatch(main,/ipcMain\.handle\([^\n]*(?:appearance|theme)/iu);
 });

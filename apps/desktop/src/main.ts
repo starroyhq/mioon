@@ -20,7 +20,7 @@ import {MEDIA_TOOLS_CANCEL_TITLE, mediaToolsProgressScript, mediaToolsProgressUr
 import {WORKSPACE_TOOLS_CHANNEL,workspaceInfoSchema} from '../../../packages/contracts/src/workspace-info.ts';
 import {WORKSPACE_NATIVE_CHANNEL} from '../../../packages/contracts/src/workspace-native.ts';
 import {createWorkspaceNativeHost,readNativeBackendMetadata} from './workspace-native-host.ts';
-import {createProjectFileOpener,uploadProjectFile,projectFileArguments} from './project-file-open.ts';
+import {createProjectFileOpener,projectFileArguments} from './project-file-open.ts';
 import {inspectMediaTools} from '../../../packages/business/src/media-tool-diagnostics.ts';
 import {run as runMedia} from '@mioon/business/media-runtime';
 import path from 'node:path';
@@ -64,7 +64,13 @@ import type {MenuCommandDocument} from './menu-command-host.ts';
 import {MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS} from './menu-command-protocol.ts';
 import type {MenuCommandId} from './menu-command-protocol.ts';
 import {menuCommandGestureScript} from './menu-command-gesture.ts';
-import { createDesktopWindowAppearance } from './window-appearance.ts';
+import { createDesktopWindowAppearance, desktopWindowBackground } from './window-appearance.ts';
+import { createDesktopAppearanceCache } from './desktop-appearance-cache.ts';
+import { createProjectEntryDesktopHost } from './project-entry-desktop-host.ts';
+import type {ProjectEntryDesktopOwner} from './project-entry-desktop-host.ts';
+import { PROJECT_ENTRY_DESKTOP_CHANNEL } from '../../../packages/contracts/src/project-entry-desktop.ts';
+import type {ProjectLocationFacts} from '../../../packages/contracts/src/project-entry-desktop.ts';
+import { probeDesktopProjectLocation } from './project-location-probe.ts';
 import type {DesktopStartReport} from './smoke-checks.ts';
 
 type DesktopStartup = ReturnType<typeof createDesktopStartup>;
@@ -135,6 +141,7 @@ let startupStorageError: unknown;
 // any storage access and refuses startup through the same dialog when absent.
 try { initializeDesktopPrivateStorage(privateStorageHelperFile(app)); paths = prepareDesktopStorage(app, process.env.MIOON_DESKTOP_USER_DATA, identity.channel); }
 catch (error) { startupStorageError = error; }
+const appearanceCache = !startupStorageError ? createDesktopAppearanceCache({root:paths.userData,dataRoot:paths.dataDir,appId:identity.appId,channel:identity.channel}) : null;
 // Renderer health evidence for issue #4: bounded local records for unresponsive,
 // responsive and render-process-gone transitions. The factory is feature-detected
 // because VM lifecycle harnesses execute this module with imports stripped; a
@@ -154,6 +161,7 @@ let startupOperation: DesktopStartup | null = null;
 let windowContext: DesktopWindowContext | null | undefined, windowHost: ProjectWindowHost | null | undefined, nativeAudioHost: NativeAudioHost | null | undefined, lutRecoveryHost: LutRecoveryHost | null | undefined;
 let workspaceToolsHost: WorkspaceToolsHost | null = null;
 let workspaceNativeHost:WorkspaceNativeHost|null=null;
+let projectEntryHost:ReturnType<typeof createProjectEntryDesktopHost<IpcMainInvokeEvent,BrowserWindow>>|null=null;
 let assetImportHost:ReturnType<typeof createAssetImportHost<IpcMainInvokeEvent>>|null=null;
 let trayHost: ReturnType<typeof createDesktopTray> | null = null;
 let trayOperation: {action: TrayAction; settingsSlot: ProjectWindowSettingsSlot; intent: number; promise: Promise<void>} | null = null, trayIntent = 0;
@@ -245,23 +253,18 @@ async function presentForReload(window: BrowserWindow, context: DesktopWindowCon
   try { const operation = reload(); refreshApplicationMenu(); return await operation; }
   finally { finishNativePresentation(window, host, owner.contextId); refreshApplicationMenu(); }
 }
-const projectFileFailureText={PROJECT_PACKAGE_NOT_MIOON:'native.openProjectFileNotMioon',PROJECT_PACKAGE_NEWER_FORMAT:'native.openProjectFileNewer',PROJECT_PACKAGE_CORRUPT:'native.openProjectFileDamaged',UNAVAILABLE:'native.openProjectFileUnavailable'} as const;
-// Project files opened from the OS wait here until a backend runs; a window then shows the staged preview.
+const projectFileFailureText=(code:string,reason?:'read-only')=>reason==='read-only'?'native.openProjectFileReadOnly':code==='PROJECT_FORMAT_NEWER'?'native.openProjectFileNewer':code==='PROJECT_ACCESS_DENIED'?'native.openProjectFileAccessDenied':code==='PROJECT_INVALID'?'native.openProjectFileDamaged':code==='PROJECT_MISSING'?'native.openProjectFileMissing':'native.openProjectFileUnavailable';
+// Cold and hot OS intents use one sequential queue, attached only after a trusted backend is ready.
 const projectFiles=createProjectFileOpener({
-  opened:()=>{if(quitCoordinator.state==='idle'&&!restarting){trayIntent++;windowHost?.activate(BrowserWindow.getFocusedWindow());}},
-  failed:(file,code)=>{
-    const options={type:'warning' as const,message:nt('native.openProjectFileFailed'),detail:nt(projectFileFailureText[code],{name:path.basename(file)}),buttons:[nt('native.acknowledge')]};
-    if(quitCoordinator.state==='idle'&&!restarting)windowHost?.activate(BrowserWindow.getFocusedWindow());
-    // A window-less box runs a modal loop on macOS that stalls the main process
-    // long enough for the backend lease to expire, so it is shown as a sheet.
-    // A window may still be appearing after activate(); wait briefly for one.
-    const show=(attempt:number)=>{
-      const parent=BrowserWindow.getFocusedWindow()??BrowserWindow.getAllWindows().find(window=>!window.isDestroyed()&&window.isVisible());
-      if(parent){void dialog.showMessageBox(parent,options);return;}
-      if(attempt<20){setTimeout(()=>show(attempt+1),250);return;}
-      if(process.platform!=='darwin')void dialog.showMessageBox(options);
-    };
-    show(0);
+  opened:()=>{if(quitCoordinator.state==='idle'&&!restarting)trayIntent++;},
+  failed:(file,code,reason)=>{
+    const context=windowContext;
+    if(!context||!ownsWindowContext(context)||restarting||!quitRouter.allowsWindows)return;
+    return (async()=>{
+      await openWindow(context);
+      const parent=windowHost?.preferredWindow(BrowserWindow.getFocusedWindow());
+      if(parent&&ownsWindow(parent,context))await showOwnedDialog(parent,context,{type:'warning',message:nt('native.openProjectFileFailed'),detail:nt(projectFileFailureText(code,reason),{name:path.basename(file)}),buttons:[nt('native.acknowledge')]});
+    })().catch(fatal);
   },
 });
 const windowAdmissions = new WeakMap<BrowserWindow, NativeCloseAdmission>();
@@ -301,7 +304,7 @@ async function installMediaToolsWithProgress(installer: MediaToolsInstaller, sta
   progressSession.setPermissionCheckHandler(() => false);
   progressSession.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !details.url.startsWith('data:') }));
   const window = new BrowserWindow({ title: nt('native.toolsProgressTitle'), width: 440, height: 150, useContentSize: true, resizable: false,
-    minimizable: false, maximizable: false, fullscreenable: false, show: false, icon: path.join(app.getAppPath(), 'icons/icon.png'),
+    minimizable: false, maximizable: false, fullscreenable: false, show: false, backgroundColor:desktopWindowBackground(appearanceCache?.read()?.theme,nativeTheme), icon: path.join(app.getAppPath(), 'icons/icon.png'),
     webPreferences: secureWebPreferences(progressSession) });
   window.webContents.on('will-navigate', event => event.preventDefault());
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -436,7 +439,7 @@ async function start(): Promise<DesktopStartReport> {
       if (!expected) incident.fail();
       if (!expected && backend === ownedBackend && !quitting) { windowHost?.refresh(); if (windowContext?.incident === incident && !smokeOutput) void backendFailed(ownedBackend, incident); }
     });
-    const started = await backend.start({ dataDir: directories.dataDir, cacheDir:directories.cacheDir, projectsDir:directories.projectsDir, distDir: path.join(app.getAppPath(), 'web'),
+    const started = await backend.start({ backendId, dataDir: directories.dataDir, cacheDir:directories.cacheDir, projectsDir:directories.projectsDir, distDir: path.join(app.getAppPath(), 'web'),
       subtitleResourcesDir:path.join(app.isPackaged?process.resourcesPath:app.getAppPath(),'subtitles'),token, nativeAudioPreview: nativeAudioIdentity.config });
     startup.checkpoint();
     incident.assertAlive();
@@ -452,15 +455,13 @@ async function start(): Promise<DesktopStartReport> {
     // A backend handshake alone is not permission to open a window. Publish its
     // context only after this start owns a prepared session and discovery file.
     const context = windowContext = { startup, ready: started, session: activeSession, incident } as DesktopWindowContext;
-    context.appearance = createDesktopWindowAppearance<BrowserWindow>({root:paths.dataDir,channel:identity.channel,nativeTheme,signal:startup.signal,
-      databaseFile:path.join(paths.dataDir,'app-library.db'),
+    context.appearance = createDesktopWindowAppearance<BrowserWindow>({cache:appearanceCache!,nativeTheme,signal:startup.signal,
       readPreferences:()=>readNativeBackendMetadata({base:started.url,token,resource:'/api/ui-preferences',signal:startup.signal,
         check:()=>{if(!ownsWindowContext(context))throw new Error('Application preferences owner unavailable.');}}),
-      storage:{validatePrivateDirectory,validateManagedFile,readPrivateFile: storageRead},isCurrent:()=>ownsWindowContext(context),
-      getWindows:()=>windowHost?.windows()||[],ownsWindow:window=>ownsWindow(window,context)});
+      isCurrent:()=>ownsWindowContext(context),getWindows:()=>windowHost?.windows()||[],ownsWindow:window=>ownsWindow(window,context)});
     await context.appearance.ready();startup.checkpoint();incident.assertAlive();
     windowHost = createProjectWindowHost<BrowserWindow>({
-      backendId, launcherUrl: `${started.url}/`, editorUrl: (projectId: string) => `${started.url}/?project=${projectId}`,
+      backendId, projectEntries:ownedBackend.projectEntries, launcherUrl: `${started.url}/`, editorUrl: (projectId: string) => `${started.url}/?project=${projectId}`,
       isCurrent: () => ownsWindowContext(context),
       canInteract: () => quitRouter.allowsWindows && !context.incident.failed,
       canRestoreParentFocus: () => BrowserWindow.getFocusedWindow() !== null,
@@ -472,6 +473,15 @@ async function start(): Promise<DesktopStartReport> {
         webPreferences: { ...secureWebPreferences(context.session), preload: path.join(app.getAppPath(), 'preload.cjs') } }),
       prepareWindow: (window, owner) => prepareOwnedWindow(window, context, owner),
       consumeProjectEntry: consumeNativeProjectEntry,
+      admitProject:async(owner,projectId)=>{
+        nativeBackendCurrent();const project=await ownedBackend.projectEntries.prepareAcquire({projectId});nativeBackendCurrent();
+        if(!owner.isCurrent())throw new Error('Project admission owner unavailable');
+        if(!project)throw new Error('Project admission unavailable');
+        const facts=await probeDesktopProjectLocation({path:project.projectFile,purpose:'open',isDirectory:false});nativeBackendCurrent();
+        const selected=nativeOwner(owner.window);if(!selected||!owner.isCurrent()||!await admit(selected,facts))throw new Error('Project location rejected');
+        nativeBackendCurrent();if(!owner.isCurrent())throw new Error('Project admission owner unavailable');
+        return project.projectFile;
+      },
       onDocumentInvalidated: owner => {
         menuCommands?.forget(owner.window.webContents);
         ownedAudioHost?.revokeOwner({ ...owner, projectId: owner.projectId as string }, false);
@@ -479,6 +489,7 @@ async function start(): Promise<DesktopStartReport> {
       onWebContentsDestroyed: windowId => ownedAudioHost?.revokeWindowDestroyed(windowId),
       onLoadError: (error, window) => { if (ownsWindow(window, context) && !smokeOutput) void initialWindowFailed(window, context).catch(fatal); },
     });
+    const ownedWindowHost=windowHost;
     ownedAudioHost = createNativeAudioPreviewHost({ backendId, origin: started.url, signer: nativeAudioIdentity,
       request: (command, onPending) => ownedBackend.requestNativeAudio(command, onPending),
       isAdmissionAllowed: () => ownsWindowContext(context) && backend === ownedBackend && quitRouter.allowsWindows && !context.incident.failed,
@@ -546,10 +557,67 @@ async function start(): Promise<DesktopStartReport> {
       fetchProjectPackage:exportId=>{nativeBackendCurrent();return fetch(new URL(`/api/project-packages/exports/${exportId}/download`,started.url),{headers:{authorization:`Bearer ${token}`},redirect:'error',signal:context.startup.signal});},
     });
     activeSession.webRequest.onBeforeSendHeaders((details, callback) => callback(ownedAudioHost.beforeSendHeaders(details)));
-    await openWindow(context);
-    startup.checkpoint();
-    const uploadOpened=(file:string)=>{nativeBackendCurrent();return uploadProjectFile({base:started.url,token,file,signal:context.startup.signal});};
-    projectFiles.attach(uploadOpened);context.startup.signal.addEventListener('abort',()=>projectFiles.detach(uploadOpened),{once:true});
+    const nativeOwner=(window:BrowserWindow):ProjectEntryDesktopOwner<BrowserWindow>|null=>{
+      const owner=windowHost?.ownerForContents(window.webContents);
+      if(!owner||owner.role==='settings'||!owner.isCurrent()||!ownsWindow(window,context))return null;
+      return {window,windowId:owner.windowId,backendId:owner.backendId,contextId:owner.contextId,...(owner.projectId?{projectId:owner.projectId}:{}),isCurrent:()=>{try{nativeBackendCurrent();return !restarting&&owner.isCurrent()&&ownsWindow(window,context)&&!windowAdmissions.get(window)?.pending&&!windowHost?.settingsForParent(window);}catch{return false;}}};
+    };
+    const ownedPanel=async<T>(owner:ProjectEntryDesktopOwner<BrowserWindow>,show:()=>Promise<T>):Promise<T>=>{
+      const host=windowHost;
+      if(!owner.isCurrent()||!host?.prepareNativeDialog(owner.window))throw new Error('Project selection owner unavailable.');
+      const token={window:owner.window};nativeDialogs.add(token);trayIntent++;refreshApplicationMenu();
+      try{return await show();}
+      finally{nativeDialogs.delete(token);finishNativePresentation(owner.window,host,owner.contextId);refreshApplicationMenu();}
+    };
+    const admit=async(owner:ProjectEntryDesktopOwner<BrowserWindow>,facts:ProjectLocationFacts):Promise<boolean>=>{
+      if(!owner.isCurrent())return false;
+      if(!facts.isLocal||facts.volumeReadOnly){await showOwnedDialog(owner.window,context,{type:'warning',message:nt('native.projectLocationRejected'),buttons:[nt('native.acknowledge')]});return false;}
+      if(facts.cloud==='known-icloud'||facts.cloud==='known-file-provider'||!facts.permissionBits||facts.fileSystem.toLowerCase()==='exfat'){
+        const detail=[facts.cloud==='known-icloud'?nt('native.projectLocationICloud'):facts.cloud==='known-file-provider'?nt('native.projectLocationSync'):null,!facts.permissionBits||facts.fileSystem.toLowerCase()==='exfat'?nt('native.projectLocationPermissions'):null].filter(Boolean).join('\n\n');
+        await showOwnedDialog(owner.window,context,{type:'warning',message:nt('native.projectLocationWarning'),detail,buttons:[nt('native.acknowledge')]});return owner.isCurrent();
+      }
+      return true;
+    };
+    const entries=projectEntryHost=createProjectEntryDesktopHost<IpcMainInvokeEvent,BrowserWindow>({
+      backend:ownedBackend.projectEntries,isReady:()=>{try{nativeBackendCurrent();return !restarting;}catch{return false;}},
+      ownerForEvent:event=>{const window=windowHost?.windowForContents(event.sender);if(!window||nativeDialogs.size!==0||event.senderFrame!==window.webContents.mainFrame)return null;return nativeOwner(window);},
+      chooseDirectory:(owner,input)=>ownedPanel(owner,async()=>{const result=await dialog.showOpenDialog(owner.window,{message:input.message,properties:['openDirectory','createDirectory']});return result.canceled?null:result.filePaths[0]??null;}),
+      chooseOpenFile:owner=>ownedPanel(owner,async()=>{const result=await dialog.showOpenDialog(owner.window,{properties:['openFile'],filters:[{name:nt('native.projectFileFilter'),extensions:['mioon']}]});return result.canceled?null:result.filePaths[0]??null;}),
+      chooseSaveFile:(owner,input)=>ownedPanel(owner,async()=>{const result=await dialog.showSaveDialog(owner.window,{message:input.message,defaultPath:path.join(app.getPath('documents'),input.suggestedName+'.mioon'),filters:[{name:nt('native.projectFileFilter'),extensions:['mioon']}],properties:['showOverwriteConfirmation','createDirectory']});return result.canceled?null:result.filePath??null;}),
+      probeLocation:input=>probeDesktopProjectLocation(input),admitLocation:admit,
+      adoptPrepared:prepared=>ownedWindowHost.adoptPrepared(prepared),
+      openRecent:(owner,projectId,entryToken,remember)=>Promise.resolve(ownedWindowHost.dispatch({sender:owner.window.webContents,senderFrame:owner.window.webContents.mainFrame},{action:'open',contextId:owner.contextId,projectId,entryToken,remember})) as Promise<import('./project-window-protocol.ts').ProjectWindowOpenResult>,
+    });
+    const openSelected=async(file:string)=>{
+      nativeBackendCurrent();
+      if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
+      const facts=await probeDesktopProjectLocation({path:file,purpose:'open',isDirectory:false});
+      nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
+      if(!facts.isLocal||facts.volumeReadOnly)throw Object.assign(new Error('Project location rejected'),{code:'PROJECT_LOCATION_REJECTED'});
+      // A positive warning needs a retained owner. Ordinary cold local opens
+      // acquire the editor directly and never flash a launcher first.
+      if(facts.cloud==='known-icloud'||facts.cloud==='known-file-provider'||!facts.permissionBits||facts.fileSystem.toLowerCase()==='exfat'){
+        await openWindow(context);nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
+        const parent=ownedWindowHost.ensureLauncher();if(parent)await ownedWindowHost.loadFor(parent);nativeBackendCurrent();
+        const owner=parent?nativeOwner(parent):null;
+        if(!owner||!await admit(owner,facts))return;nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
+      }
+      try{const result=await ownedWindowHost.openPath(file);nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');if(!result.ok)throw new Error('Project open unavailable');}
+      catch(error){
+        if(errorCode(error)!=='PROJECT_FILE_COPY')throw error;
+        await openWindow(context);nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
+        const parent=ownedWindowHost.ensureLauncher();if(parent)await ownedWindowHost.loadFor(parent);nativeBackendCurrent();
+        const owner=parent?nativeOwner(parent):null;
+        if(!owner)throw new Error('Copy confirmation owner unavailable');
+        const result=await entries.openPath(owner,file);entries.rememberPendingOpen(owner,result);
+      }
+    };
+    const hadFiles=projectFiles.pending.length>0;
+    const openedFiles=projectFiles.attach(openSelected);context.startup.signal.addEventListener('abort',()=>{projectFiles.detach(openSelected);entries.close();if(projectEntryHost===entries)projectEntryHost=null;},{once:true});
+    await openedFiles;startup.checkpoint();
+    if(!hadFiles)await openWindow(context);
+    startup.checkpoint();incident.assertAlive();
+    if(!ownsWindowContext(context))throw cancelledStartupError();
     return { identity, runtime: started.runtime, tools: tools.versions };
   } catch (error) {
     if(windowContext?.startup===startup)windowContext.appearance?.dispose();
@@ -923,6 +991,7 @@ ipcMain.handle(APP_LANGUAGE_CHANNEL, (event, request) => {
   return languageHost.dispatch(event, request);
 });
 ipcMain.handle(NATIVE_AUDIO_CHANNEL, (event, request) => nativeAudioHost?.dispatch(event, request) ?? null);
+ipcMain.handle(PROJECT_ENTRY_DESKTOP_CHANNEL,(event,request)=>{if(!projectEntryHost)throw new Error('Project entries unavailable.');return projectEntryHost.handle(event,request);});
 ipcMain.handle(PROJECT_WINDOW_CHANNEL, (event, request) => {
   if (!windowHost) throw new Error('Native windows are not available.');
   const result = windowHost.dispatch(event, request);
@@ -950,8 +1019,9 @@ if (startupStorageError) void showStorageStartupFailure(app, dialog, startupStor
 else if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', (_event, argv, workingDirectory) => {
-    if (quitCoordinator.state === 'idle' && !restarting) { trayIntent++; windowHost?.activate(BrowserWindow.getFocusedWindow()); }
-    projectFiles.add(projectFileArguments(argv, workingDirectory));
+    const files=projectFileArguments(argv,workingDirectory);
+    if (!files.length && quitCoordinator.state === 'idle' && !restarting) { trayIntent++; windowHost?.activate(BrowserWindow.getFocusedWindow()); }
+    projectFiles.add(files);
   });
   // macOS delivers double-clicked files here, possibly before ready; Windows and Linux use argv.
   app.on('open-file', (event, file) => { event.preventDefault(); projectFiles.add([file]); });

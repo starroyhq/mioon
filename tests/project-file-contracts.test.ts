@@ -76,16 +76,16 @@ test('the kernel reports with the contract types and the contract creation code'
 
 test('states and error codes are the agreed strings', () => {
   assert.deepEqual(PROJECT_HISTORY_STATES, ['fresh', 'current', 'diverged']);
-  assert.deepEqual(PROJECT_OPEN_ERROR_CODES, ['PROJECT_MISSING', 'PROJECT_LOCKED', 'PROJECT_FORMAT_NEWER', 'PROJECT_INVALID']);
+  assert.deepEqual(PROJECT_OPEN_ERROR_CODES, ['PROJECT_MISSING', 'PROJECT_LOCKED', 'PROJECT_FORMAT_NEWER', 'PROJECT_INVALID', 'PROJECT_ACCESS_DENIED']);
   assert.deepEqual(PROJECT_INVALID_REASONS, [
     'not-a-regular-file', 'not-a-project-file', 'journal-mode', 'encoding', 'application-id',
     'schema-version', 'schema', 'metadata', 'project-row', 'foreign-key', 'project-mismatch',
     'corrupt', 'read-only', 'unusable', 'hot-journal',
   ]);
   assert.ok(Object.isFrozen(PROJECT_INVALID_REASONS));
-  // Type-level: the kernel's reasons are the contract's PROJECT_INVALID reasons and the four that go with other codes.
-  const kernelReasons: readonly ProjectFileErrorReason[] = [...PROJECT_INVALID_REASONS, 'missing', 'locked', 'format-newer', 'exists'];
-  const invalidReason = (reason: Exclude<ProjectFileErrorReason, 'missing' | 'locked' | 'format-newer' | 'exists'>): ProjectInvalidReason => reason;
+  // Type-level: the kernel's reasons are the contract's PROJECT_INVALID reasons and the five that go with other codes.
+  const kernelReasons: readonly ProjectFileErrorReason[] = [...PROJECT_INVALID_REASONS, 'missing', 'locked', 'format-newer', 'exists', 'access-denied'];
+  const invalidReason = (reason: Exclude<ProjectFileErrorReason, 'missing' | 'locked' | 'format-newer' | 'exists' | 'access-denied'>): ProjectInvalidReason => reason;
   assert.equal(new Set(kernelReasons).size, kernelReasons.length);
   assert.equal(invalidReason('read-only'), 'read-only');
   assert.equal(PROJECT_FILE_SINGLE_PROJECT, 'PROJECT_FILE_SINGLE_PROJECT');
@@ -161,7 +161,7 @@ test('open results and addressing details are validated', () => {
   assert.ok(projectOpenResultSchema.safeParse({ok: false, error: newer}).success);
   assert.equal(projectOpenFailureSchema.safeParse({...newer, formatVersion: 1}).success, false);
   assert.equal(projectOpenFailureSchema.safeParse({...newer, database: 'app'}).success, false);
-  for (const code of ['PROJECT_MISSING', 'PROJECT_LOCKED'] as const) {
+  for (const code of ['PROJECT_MISSING', 'PROJECT_LOCKED', 'PROJECT_ACCESS_DENIED'] as const) {
     assert.ok(projectOpenFailureSchema.safeParse({code, projectFile, projectId}).success, code);
     assert.equal(projectOpenFailureSchema.safeParse({code, projectFile, projectId: projectId.toUpperCase()}).success, false, code);
     assert.equal(projectOpenFailureSchema.safeParse({code, projectFile, projectId, reason: 'read-only'}).success, false, code);
