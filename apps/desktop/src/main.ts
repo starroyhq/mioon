@@ -604,7 +604,9 @@ async function start(): Promise<DesktopStartReport> {
         const window=ownedWindowHost.windowForContents(event.sender),owner=ownedWindowHost.ownerForContents(event.sender);
         if(windowHost!==ownedWindowHost||!window||!owner||owner.role!=='editor'||!owner.projectId||nativeDialogs.size!==0||event.senderFrame!==window.webContents.mainFrame||event.senderFrame!==owner.frame||event.senderFrame?.url!==owner.url)return null;
         const selected=nativeOwner(window);if(!selected||!selected.isCurrent())return null;
-        return {...selected,projectId:owner.projectId,key:event.senderFrame,isCurrent:()=>selected.isCurrent()&&windowHost===ownedWindowHost&&event.senderFrame===window.webContents.mainFrame&&event.senderFrame===owner.frame&&event.senderFrame?.url===owner.url};
+        // Admission may be temporarily blocked by Settings or a close prompt;
+        // that cannot revoke an unchanged document's already-issued tickets.
+        return {...selected,projectId:owner.projectId,key:event.senderFrame,isCurrent:()=>{try{nativeBackendCurrent();return windowHost===ownedWindowHost&&owner.isCurrent()&&ownsWindow(window,context)&&event.senderFrame===window.webContents.mainFrame&&event.senderFrame===owner.frame&&event.senderFrame?.url===owner.url;}catch{return false;}}};
       },
       backend:ownedBackend.projectEntries.nativeRelink,
       chooseFile:owner=>ownedPanel(owner,async()=>{const result=await dialog.showOpenDialog(owner.window,{properties:['openFile']});return result.canceled?null:result.filePaths[0]??null;}),

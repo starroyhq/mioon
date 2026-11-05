@@ -421,6 +421,29 @@ for(const reason of ['network','read-only-volume','read-only-file'] as const){
  });
 }
 
+test('real main retains relink document tickets across a temporary Settings admission fence',async t=>{
+ const projectId='22222222-2222-4222-8222-222222222222',assetId=randomUUID(),owners:string[]=[];let picks=0;
+ const f=await harness(t,{
+  beforeReady:app=>app.emit('open-file',{preventDefault(){}},'/synthetic/Movies/Project.mioon'),
+  projectControl:(_index,port)=>({...port,nativeRelink:{
+   candidate:async input=>{owners.push(input.ownerToken);return {projectId,assetId,expectedReferenceRevision:1,candidateToken:randomUUID(),displayPath:'/synthetic/Movies/image.png',outside:false,confirmationRequired:false};},
+   preview:async()=>({projectId,assetId,expectedReferenceRevision:1,previewToken:randomUUID(),displayPath:'/synthetic/Movies/image.png',outside:false,rows:[{assetId,name:'image.png',from:'/synthetic/old/image.png',to:'/synthetic/Movies/image.png',outcome:'picked',referenceRevision:1}],foundBy:null}),
+   apply:async input=>{owners.push(input.ownerToken);return {status:'failed',error:{code:'MEDIA_CHANGED',status:409},confirmedDirectories:[]};},
+   discard:async()=>{},
+  }}),
+ });
+ await f.initial();const editor=f.r.windows[0],host=f.get('windowHost'),handler=f.r.ipcHandlers!.get(NATIVE_ASSET_MEDIA_CHANNEL)!;
+ f.get('dialog').showOpenDialog=async()=>{picks++;return {canceled:false,filePaths:['/synthetic/Movies/image.png']};};
+ const invoke=(input:unknown)=>handler({sender:editor.webContents,senderFrame:editor.webContents.mainFrame},input) as Promise<{ok:boolean;data:{previewToken:string;status?:string}}>;
+ const choose={action:'choose',projectId,assetId,expectedReferenceRevision:1},first=await invoke(choose);assert.equal(first.ok,true);
+ assert.equal(host.showSettings('agent',editor),true);const settings=f.r.windows.at(-1)!;await host.loadFor(settings);
+ assert.equal((await invoke(choose)).ok,false);assert.equal(picks,1,'blocked admission cannot show a picker');
+ settings.destroy();settings.deliverClosed();await tick();
+ const applied=await invoke({action:'apply',projectId,previewToken:first.data.previewToken,requestId:randomUUID()});
+ assert.equal(applied.ok,true,'the original document ticket remains usable after Settings closes');assert.equal(applied.data.status,'failed');
+ assert.equal((await invoke(choose)).ok,true);assert.equal(picks,2);assert.equal(new Set(owners).size,1,'temporary admission never retires or remints document authority');
+});
+
 for (const stage of ['drain', 'backend-stop', 'remove', 'clear', 'new-validation', 'new-backend', 'new-cookie', 'new-connection', 'new-load']) {
   test(`activate cannot open a second window at restart ${stage}`, { timeout: 10000 }, async t => {
     const gate = deferred();
