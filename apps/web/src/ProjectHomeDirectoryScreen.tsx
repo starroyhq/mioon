@@ -146,7 +146,7 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
     if (!canAct() || preferences.phase !== 'ready' || preferences.pending || preferences.dirty) return;
     preferences.edit(patch); void preferences.save();
   };
-  return <ProjectHome {...props} active={enabled} projects={props.projects} totalProjects={snapshot?.registered.length ?? 0}
+  return <div className="project-home-screen project-home-page" data-presentation="page" data-view={preferences.preferences.homeView}><ProjectHome {...props} active={enabled} projects={props.projects} totalProjects={snapshot?.registered.length ?? 0}
     busy={busy} query={query} onQuery={value => {if (canAct()) setQuery(value);}}
     onOpen={projectId => {void open(projectId);}}
     onRetry={() => {if (props.openingProjectId) void open(props.openingProjectId, true);}}
@@ -159,5 +159,5 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
       onSortChange={sort => choose({homeSort: sort})} onViewChange={homeView => choose({homeView})}
       onOpen={projectId => {void open(projectId);}} onRetry={() => {void reload();}}
       onRetryWaiting={() => {void reload();}}
-      onCreate={() => {if (canAct()) setCreateIntent(value => value + 1);}} />} />;
+      onCreate={() => {if (canAct()) setCreateIntent(value => value + 1);}} />} /></div>;
 }
