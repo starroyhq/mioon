@@ -57,20 +57,22 @@ export function useNativeProjectEntry({ context, bridge, rpc, contractChecks, id
     const releaseIdentity = identity.subscribe(() => rerender(value => value + 1));
     const win = window as EntryWindow, admission = { consume: controller.consume };
     win.__mioonProjectEntryAdmission = admission;
-    const release = bridge.subscribe(controller.updateContext);
+    const updateContext = (next: ProjectWindowContext) => {controller.updateContext(next); if (next.leaseRevoked || next.quitting) desktop?.retireOwner();};
+    const release = bridge.subscribe(updateContext);
     let wasVisible = document.visibilityState !== 'hidden', bootPending = context.role === 'launcher';
     const visibility = () => {
       if (!effectActive) return;
       const visible = document.visibilityState !== 'hidden', returned = !wasVisible && visible;
       wasVisible = visible;
       controller.setVisible(visible);
+      if (!visible) desktop?.observeAvailability();
       // Do not supersede boot's first catalog and initial choice. A launcher
       // that finished boot while hidden still refreshes on its first reveal.
       if (returned && context.role === 'launcher' && (!bootPending || controller.getState().catalogReady)) void controller.refresh();
       if (returned && desktop && !desktop.getState().capabilities) void desktop.initialize(context.role === 'editor');
     };
     const interaction = () => {if (effectActive) controller.interacted();};
-    visibility(); controller.updateContext(context);
+    visibility(); updateContext(context);
     if (context.role === 'launcher') void controller.boot().then(() => {if (effectActive) return desktop?.initialize(false);}).finally(() => { bootPending = false; });
     else void desktop?.initialize(true);
     document.addEventListener('visibilitychange', visibility);
@@ -83,6 +85,6 @@ export function useNativeProjectEntry({ context, bridge, rpc, contractChecks, id
       document.removeEventListener('input', interaction, true); document.removeEventListener('pointerdown', interaction, true); document.removeEventListener('keydown', interaction, true);
     };
   }, [controller, bridge, identity, desktop]);
-  useEffect(() => controller.updateContext(context), [controller, context]);
+  useEffect(() => {controller.updateContext(context); if (context.leaseRevoked || context.quitting) desktop?.retireOwner();}, [controller, context, desktop]);
   return Object.assign(controller, {desktop});
 }

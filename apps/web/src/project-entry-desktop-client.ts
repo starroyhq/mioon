@@ -29,7 +29,7 @@ export function readProjectEntryDesktopClient(source: unknown): ProjectEntriesDe
   return Object.freeze({
     capabilities: async () => ({...await call('capabilities', {}, projectDesktopCapabilitiesSchema), saveAs: false}),
     listRecent: () => call('listRecent', {}, projectEntriesResponseSchema),
-    chooseLocation: input => call('chooseLocation', input, nullable(projectDesktopSelectionSchema)),
+    chooseLocation: async input => {const selection=await call('chooseLocation', input, nullable(projectDesktopSelectionSchema));if(selection!==null&&(input.purpose==='template'?!selection.template:Object.hasOwn(selection,'template')))throw new Error('Invalid project selection');return selection;},
     createAtSelection: input => call('createAtSelection', input, projectDesktopCreatedSchema),
     openSelectedFile: () => call('openSelectedFile', {}, projectDesktopOpenResultSchema),
     takePendingOpen: () => call('takePendingOpen', {}, nullable(projectDesktopOpenResultSchema)),

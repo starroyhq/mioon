@@ -85,6 +85,78 @@ test('unknown create retains exact inputs and close protection; refresh does not
   assert.equal(await f.controller.recheck(), true); assert.deepEqual(f.calls.filter(call => call.action === 'createAtSelection')[0], f.calls.filter(call => call.action === 'createAtSelection')[1]);
   assert.deepEqual(f.opened, [createdId]); assert.equal(f.controller.readCloseSnapshot().unknown, false);
 });
+test('dispatched native creates retain retired unknown before and after late ACK across scope, instance and disposal', async t => {
+  for (const boundary of ['scope', 'instance', 'dispose'] as const) await t.test(boundary, async t => {
+    const held = Promise.withResolvers<unknown>(); t.after(() => held.resolve({status: 'created', project: created}));
+    const f = await fixture(t, {createAtSelection: () => held.promise});
+    f.controller.showCreate(); f.controller.change({name: 'Retained retired draft'}); await f.controller.chooseLocation();
+    const pending = f.controller.create(); await new Promise(setImmediate);
+    const writes = f.calls.filter(call => call.action === 'createAtSelection'); assert.equal(writes.length, 1);
+    if (boundary === 'dispose') f.controller.dispose();
+    else {f.directory(projectEntryFixture([{id: projectId}], boundary === 'scope' ? {appLibraryScope: 'b'.repeat(64)} : {instanceId: id(88)})); await f.identity.refresh();}
+    assert.equal(f.controller.readCloseSnapshot().unknown, true, 'A dispatched write is unknown synchronously when its owner retires');
+    assert.equal(f.controller.getState().values.name, 'Retained retired draft');
+    held.resolve({status: 'created', project: created}); assert.equal(await pending, false);
+    assert.equal(f.controller.readCloseSnapshot().unknown, true); assert.equal(f.controller.getState().busy, false); assert.deepEqual(f.opened, []);
+    if (boundary === 'dispose') f.controller.activate();
+    assert.equal(await f.controller.recheck(), false); await f.controller.initialize(false);
+    assert.equal(f.calls.filter(call => call.action === 'createAtSelection').length, 1); assert.equal(f.controller.readCloseSnapshot().unknown, true);
+  });
+});
+test('retiring a selected location before create dispatch does not invent an unknown write', async t => {
+  const held = Promise.withResolvers<unknown>(); t.after(() => held.resolve(null));
+  const f = await fixture(t, {chooseLocation: () => held.promise}); f.controller.showCreate(); f.controller.change({name: 'No write yet'});
+  const selecting = f.controller.chooseLocation(); await new Promise(setImmediate);
+  f.directory(projectEntryFixture([{id: projectId}], {instanceId: id(89)})); await f.identity.refresh();
+  assert.equal(f.controller.readCloseSnapshot().unknown, false); held.resolve(null); assert.equal(await selecting, false);
+  assert.equal(f.controller.readCloseSnapshot().unknown, false); assert.equal(f.calls.some(call => call.action === 'createAtSelection'), false);
+});
+test('every native copy mutation keeps its dispatched intent retired after a late success', async t => {
+  for (const kind of ['duplicate', 'copyTo', 'adoptCopy'] as const) await t.test(kind, async t => {
+    const held = Promise.withResolvers<unknown>(); t.after(() => held.resolve(null)); const sourceToken = id(44);
+    const f = await fixture(t, {openSelectedFile: () => kind === 'adoptCopy' ? {status: 'copy', token: sourceToken, name: 'Copy'}
+      : {status: 'copy-source', token: sourceToken, name: 'Source', displayPath: '/observed/source.mioon', reason: 'read-only', facts}, [kind]: () => held.promise});
+    if (kind !== 'duplicate') await f.controller.openFile();
+    const pending = kind === 'duplicate' ? f.controller.duplicate(projectId) : kind === 'copyTo' ? f.controller.copyTo() : f.controller.adoptCopy();
+    await new Promise(setImmediate); const request = f.calls.find(call => call.action === kind); assert.ok(request);
+    f.directory(projectEntryFixture([{id: projectId}], {instanceId: id(92)})); await f.identity.refresh(); assert.equal(f.controller.readCloseSnapshot().unknown, true);
+    held.resolve(kind === 'adoptCopy' ? {status: 'opened', projectId: createdId, windowId: id(9)} : {requestId: request.requestId, sourceProjectId: projectId, project: created, contentSequence: 0, contentToken: 'a'.repeat(32), versions: 0});
+    assert.equal(await pending, false); assert.equal(f.controller.readCloseSnapshot().unknown, true); assert.deepEqual(f.opened, []); assert.deepEqual(f.dispatched, []);
+    assert.equal(await f.controller.recheck(), false); assert.equal(f.calls.filter(call => call.action === kind).length, 1);
+  });
+});
+test('disposal during metadata preflight is not a dispatched write, but disposal of an already unknown write preserves it', async t => {
+  const f = await fixture(t); f.controller.showCreate(); f.controller.change({name: 'Keep preflight draft'}); await f.controller.chooseLocation();
+  const held = Promise.withResolvers<unknown>(); f.holdDirectory(held.promise); const pending = f.controller.create(); await new Promise(setImmediate);
+  f.controller.dispose(); assert.equal(f.controller.readCloseSnapshot().unknown, false); assert.equal(f.controller.getState().busy, false);
+  f.controller.activate(); held.resolve(registered); assert.equal(await pending, false); assert.equal(f.calls.some(call => call.action === 'createAtSelection'), false);
+  assert.equal(f.controller.getState().values.name, 'Keep preflight draft');
+  const unknown = await fixture(t, {createAtSelection: () => {throw Error('Lost ACK');}}); unknown.controller.showCreate(); unknown.controller.change({name: 'Keep unknown draft'}); await unknown.controller.chooseLocation(); await unknown.controller.create();
+  assert.equal(unknown.controller.readCloseSnapshot().unknown, true); unknown.controller.dispose(); unknown.controller.activate();
+  assert.equal(await unknown.controller.recheck(), false); assert.equal(unknown.controller.readCloseSnapshot().unknown, true); assert.equal(unknown.calls.filter(call => call.action === 'createAtSelection').length, 1);
+});
+test('known host and entry admission refusal are closable errors while post-dispatch uncertainty remains unknown', async t => {
+  for (const code of ['PROJECT_HOST_BUSY', 'PROJECT_ENTRY_BUSY']) for (const kind of ['duplicate', 'copyTo'] as const) await t.test(code + ' ' + kind, async t => {
+    const f = await fixture(t, {openSelectedFile: () => ({status: 'copy-source', token, name: 'Source', displayPath: '/observed/source.mioon', reason: 'read-only', facts}),
+      [kind]: () => {throw Object.assign(Error(code), {code, status: 409, details: {}});}});
+    if (kind === 'copyTo') await f.controller.openFile();
+    assert.equal(await (kind === 'duplicate' ? f.controller.duplicate(projectId) : f.controller.copyTo()), false);
+    assert.equal(f.calls.filter(call => call.action === kind).length, 1); assert.equal(f.controller.getState().action.kind, 'error'); assert.equal(f.controller.readCloseSnapshot().unknown, false);
+    f.controller.closeFailure(); assert.equal(f.controller.getState().failure, null); assert.equal(await f.controller.recheck(), false);
+    assert.equal(f.calls.filter(call => call.action === kind).length, 1, 'Closing/rechecking a deterministic refusal never resends a write');
+  });
+  const uncertain = await fixture(t, {duplicate: () => {throw Object.assign(Error('Unconfirmed effect'), {code: 'PROJECT_ENTRY_OUTCOME_UNKNOWN', status: 409, details: {}});}});
+  await uncertain.controller.duplicate(projectId); assert.equal(uncertain.controller.getState().action.kind, 'unknown'); assert.equal(uncertain.controller.readCloseSnapshot().unknown, true);
+  uncertain.controller.closeFailure(); assert.notEqual(uncertain.controller.getState().failure, null);
+});
+test('a failed read before explicit write reconciliation preserves the original unknown request', async t => {
+  let writes = 0;
+  const f = await fixture(t, {createAtSelection: () => {if (++writes === 1) throw Error('Lost ACK'); return {status: 'created', project: created};}});
+  f.controller.showCreate(); f.controller.change({name: 'Keep exact input'}); await f.controller.chooseLocation(); await f.controller.create();
+  const held = Promise.withResolvers<unknown>(); f.holdDirectory(held.promise); const retrying = f.controller.recheck(); await new Promise(setImmediate); held.reject(Error('Metadata offline'));
+  assert.equal(await retrying, false); assert.equal(writes, 1); assert.equal(f.controller.readCloseSnapshot().unknown, true); assert.equal(f.controller.getState().action.kind, 'unknown');
+  f.holdDirectory(null); assert.equal(await f.controller.recheck(), true); const inputs = f.calls.filter(call => call.action === 'createAtSelection'); assert.equal(inputs.length, 2); assert.deepEqual(inputs[0], inputs[1]);
+});
 test('held selected-file response is isolated after replacement directory instance and cannot publish or dispatch', async t => {
   const held = Promise.withResolvers<unknown>(); const f = await fixture(t, {openSelectedFile: () => held.promise});
   const pending = f.controller.openFile(); await new Promise(setImmediate); assert.equal(f.controller.getState().busy, true);

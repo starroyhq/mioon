@@ -33,13 +33,38 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
   let active = false, generation = 0, dismissedRisk = false, pendingTaken = false, draftVersion = 0;
   let initialization: {generation: number; promise: Promise<void>} | null = null;
   let retry: (() => Promise<boolean>) | null = null, knownCreated: string | null = null;
+  interface WriteIntent {readonly action: ProjectOpenFailureAction; readonly resume: () => Promise<boolean>; acknowledged: boolean; retired: boolean}
+  const dispatchedWrites = new Set<WriteIntent>(), retiredWrites = new Set<WriteIntent>();
+  let retryIntent: WriteIntent | null = null;
   let state: NativeProjectDesktopState = {capabilities: null, busy: false, blocked: false, createOpen: false,
     values: {name: '', description: '', presetId: DEFAULT_TIMELINE_OUTPUT_PRESET, createFolder: true}, selection: null, createState: {kind: 'editing'}, failure: null, action: {kind: 'idle'}, risks: []};
   const listeners = new Set<() => void>();
   const emit = (patch: Partial<NativeProjectDesktopState>) => {state = Object.freeze({...state, ...patch}); onChange(); for (const listener of listeners) listener();};
   const current = (serial = generation) => active && serial === generation && isCurrent() && !identity.getState().identityBlocked && !state.blocked;
   const editable = () => current() && state.createOpen && !state.busy && !retry && !knownCreated;
-  const rejected = (error: unknown) => object(error) && typeof error.code === 'string' && ['VALIDATION_ERROR', 'PROJECT_FILE_EXISTS', 'PROJECT_ACCESS_DENIED', 'PROJECT_LOCATION_REJECTED', 'PROJECT_COPY_SOURCE_CHANGED', 'PROJECT_INVALID', 'PROJECT_COPY_INVALID'].includes(error.code);
+  const rejected = (error: unknown, action: ProjectOpenFailureAction) => object(error) && typeof error.code === 'string' &&
+    (['VALIDATION_ERROR', 'PROJECT_FILE_EXISTS', 'PROJECT_ACCESS_DENIED', 'PROJECT_LOCATION_REJECTED', 'PROJECT_COPY_SOURCE_CHANGED', 'PROJECT_INVALID', 'PROJECT_COPY_INVALID', 'PROJECT_ENTRY_BUSY'].includes(error.code) || action === 'copyTo' && error.code === 'PROJECT_HOST_BUSY');
+  function retireWrites(): boolean {
+    const pending = [...dispatchedWrites, ...(retryIntent ? [retryIntent] : [])].filter(intent => !intent.acknowledged && !intent.retired);
+    for (const intent of pending) {intent.retired = true; retiredWrites.add(intent);}
+    if (pending.length) {
+      const action = pending[pending.length - 1].action;
+      // Keep the exact work/input closure, but never give it to a replacement
+      // generation's retry button. A late ACK cannot retire this close risk.
+      retry = null; retryIntent = null;
+      emit({blocked: true, busy: false, capabilities: null, risks: [], action: {kind: 'unknown', action},
+        ...(action === 'chooseLocation' ? {createState: {kind: 'unknown'} as const} : {})});
+    }
+    return retiredWrites.size > 0;
+  }
+  function retireOwner() {
+    const blocked = state.blocked; retireWrites();
+    if (!blocked) {
+      generation++; initialization = null;
+      emit({blocked: true, busy: false, capabilities: null, risks: [],
+        ...(!retiredWrites.size ? {action: {kind: 'idle'} as const, ...(state.createState.kind === 'creating' ? {createState: {kind: 'editing'} as const} : {})} : {})});
+    }
+  }
   function fail(error: unknown, context: 'open' | 'create' = 'open', projectId?: string) {
     if (!current()) return;
     const details = object(error) && object(error.details) ? error.details : {};
@@ -66,35 +91,46 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
         : {code: 'PROJECT_INVALID', projectFile: value.displayPath, projectId: null, reason: 'read-only'};
     emit({failure: {issue, name: value.name, token: value.token}, action: {kind: 'idle'}}); return false;
   }
-  async function run(action: ProjectOpenFailureAction, work: () => Promise<boolean>, {write = false, preserveDraft = false, replay = false, projectId, after}: {write?: boolean | (() => boolean); preserveDraft?: boolean; replay?: boolean; projectId?: string; after?: (permit?: () => boolean) => Promise<void>} = {}): Promise<boolean> {
+  async function run(action: ProjectOpenFailureAction, work: (dispatched: () => void) => Promise<boolean>, {write = false, preserveDraft = false, replay = false, projectId, after}: {write?: boolean | (() => boolean); preserveDraft?: boolean; replay?: boolean; projectId?: string; after?: (permit?: () => boolean) => Promise<void>} = {}): Promise<boolean> {
     if (!current() || state.busy || retry && !replay) return false;
-    const serial = generation; let completed = false, entered = false, grant: (() => boolean) | undefined; emit({busy: true, action: {kind: 'working', action}});
+    const serial = generation, previousRetry = retry, previousIntent = retryIntent;
+    const resume = () => run(action, work, {write, preserveDraft: true, replay: true, projectId, after});
+    let intent: WriteIntent | null = null;
+    const dispatched = () => {if (!intent) {intent = {action, resume, acknowledged: false, retired: false}; dispatchedWrites.add(intent);}};
+    let completed = false, grant: (() => boolean) | undefined; emit({busy: true, action: {kind: 'working', action}});
     try {
       const approved = await beforeAction(preserveDraft);
       if (!current(serial)) return false;
-      if (!approved) {emit({action: {kind: 'idle'}}); return false;}
+      if (!approved) {emit({action: previousIntent ? {kind: 'unknown', action} : {kind: 'idle'}}); return false;}
       grant = typeof approved === 'function' ? approved : undefined;
-      if (grant && !grant()) return false;
+      if (grant && !grant()) {emit({action: previousIntent ? {kind: 'unknown', action} : {kind: 'idle'}}); return false;}
       const scope = identity.getVerifiedScope(), instance = identity.getState().instanceId;
-      if (!scope || !instance) {emit({action: {kind: 'idle'}}); return false;}
-      entered = true;
-      const value = await work();
+      if (!scope || !instance) {emit({action: previousIntent ? {kind: 'unknown', action} : {kind: 'idle'}}); return false;}
+      const value = await work(dispatched);
       if (!current(serial) || !scope || identity.getVerifiedScope() !== scope || identity.getState().instanceId !== instance) return false;
-      retry = null; completed = value; emit({action: {kind: 'idle'}}); return value;
+      for (const recorded of [...dispatchedWrites, ...(previousIntent ? [previousIntent] : [])]) if (!recorded.retired) recorded.acknowledged = true;
+      retry = null; retryIntent = null; completed = value; emit({action: {kind: 'idle'}}); return value;
     } catch (error) {
       if (!current(serial)) return false;
-      if (entered && (typeof write === 'function' ? write() : write) && !rejected(error)) {
-        retry = () => run(action, work, {write, preserveDraft: true, replay: true, projectId, after});
+      const recorded = [...dispatchedWrites].find(value => value === intent);
+      if (recorded && !rejected(error, action)) {
+        retry = resume; retryIntent = recorded;
         emit({action: {kind: 'unknown', action}, ...(action === 'chooseLocation' ? {createState: {kind: 'unknown'} as const} : {})});
         if (!state.failure && action !== 'chooseLocation') fail(error, 'open', projectId);
-      } else {retry = null; emit({action: {kind: 'error', action}}); fail(error, state.createOpen ? 'create' : 'open', projectId);}
+      } else if (!recorded && previousIntent) {
+        retry = previousRetry; retryIntent = previousIntent; emit({action: {kind: 'unknown', action}});
+      } else {
+        if (recorded) recorded.acknowledged = true;
+        retry = null; retryIntent = null; emit({action: {kind: 'error', action}}); fail(error, state.createOpen ? 'create' : 'open', projectId);
+      }
       return false;
     } finally {
+      if (!current(serial)) retireWrites();
+      const recorded = [...dispatchedWrites].find(value => value === intent);
+      if (recorded) dispatchedWrites.delete(recorded);
       if (active && serial === generation) {
-        if (!current(serial) && entered && (typeof write === 'function' ? write() : write)) {
-          retry = () => run(action, work, {write, preserveDraft: true, replay: true, projectId, after});
-          emit({busy: false, action: {kind: 'unknown', action}, ...(action === 'chooseLocation' ? {createState: {kind: 'unknown'} as const} : {})});
-        } else {emit({busy: false, ...(!current(serial) ? {action: {kind: 'idle'} as const} : {})}); if (completed && current(serial)) await after?.(grant);}
+        if (retiredWrites.size) emit({busy: false});
+        else {emit({busy: false, ...(!current(serial) ? {action: {kind: 'idle'} as const} : {})}); if (completed && current(serial)) await after?.(grant);}
       }
     }
   }
@@ -138,7 +174,8 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     const input = {token: selection.token, name: values.name.trim(), description: values.description, timelinePresetId: values.presetId, createFolder: values.createFolder};
     if (!projectEntryDesktopRequestSchema.safeParse({action: 'createAtSelection', ...input}).success || values.description.length > 500) return false;
     emit({createState: {kind: 'creating'}});
-    const success = await run('chooseLocation', async () => {
+    const success = await run('chooseLocation', async dispatched => {
+      dispatched();
       const created = await client.createAtSelection(input);
       if (!current(serial)) return false; knownCreated = created.project.projectId;
       emit({createState: {kind: 'created', projectName: created.project.name}}); return true;
@@ -153,7 +190,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     let exact: {token: string; requestId: string; name?: string} | null = null;
     let copiedId: string | null = null;
     let dispatched = false;
-    const success = await run('copyTo', async () => {
+    const success = await run('copyTo', async markDispatched => {
       if (!exact) {
         const name = kind === 'copy-to' ? failure?.name : identity.getState().snapshot?.registered.find(row => row.project.projectId === projectId)?.project.name;
         if (!name) return false;
@@ -162,6 +199,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
         exact = {token: selection.token, requestId: newId()};
       }
       dispatched = true;
+      markDispatched();
       const copied = projectCopyResponseSchema.parse(kind === 'copy-to' ? await client.copyTo({...exact, sourceToken: sourceToken!}) : await client.duplicate({...exact, projectId: projectId!}));
       if (!current(serial)) return false;
       if (copied.requestId !== exact.requestId || kind === 'duplicate' && copied.sourceProjectId !== projectId) throw new Error('Invalid copy acknowledgement');
@@ -173,11 +211,13 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
   const tokenAction = (kind: 'openOriginal' | 'adoptCopy') => {
     const token = state.failure?.token, serial = generation;
     if (!token || !state.capabilities?.ready || !state.capabilities[kind] || state.failure?.issue.code !== 'PROJECT_FILE_COPY' || kind === 'openOriginal' && !state.failure.issue.originalProjectFile) return Promise.resolve(false);
-    return run(kind, async () => result(await client[kind]({token}), serial), {write: kind === 'adoptCopy'});
+    return run(kind, async dispatched => {if (kind === 'adoptCopy') dispatched(); return result(await client[kind]({token}), serial);}, {write: kind === 'adoptCopy'});
   };
   return {
-    activate() {if (!active) {active = true; generation++; release = identity.subscribe(() => {if (identity.getState().identityBlocked && !state.blocked) {generation++; emit({blocked: true, busy: false, capabilities: null, risks: []});}});}},
-    dispose() {active = false; generation++; initialization = null; release?.(); release = null;},
+    activate() {if (!active) {active = true; generation++; release = identity.subscribe(() => {if (identity.getState().identityBlocked && !state.blocked) retireOwner();});}},
+    dispose() {const retired = retireWrites(); if (!retired) emit({busy: false, action: {kind: 'idle'}, ...(state.createState.kind === 'creating' ? {createState: {kind: 'editing'} as const} : {})}); active = false; generation++; initialization = null; release?.(); release = null;},
+    retireOwner,
+    observeAvailability() {if (active && !isCurrent() && (dispatchedWrites.size || retryIntent)) retireOwner();},
     initialize, getState: () => state, subscribe(listener: () => void) {listeners.add(listener); return () => {listeners.delete(listener);};},
     showCreate() {if (!current() || state.busy || retry || !state.capabilities?.ready || !state.capabilities.create) return false;
       if (knownCreated && !state.createOpen) {knownCreated = null; draftVersion++; emit({values: {name: '', description: '', presetId: DEFAULT_TIMELINE_OUTPUT_PRESET, createFolder: true}, selection: null, createState: {kind: 'editing'}});}
@@ -197,7 +237,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     observeError: fail,
     dismissRisk() {dismissedRisk = true; emit({risks: []});},
     bridge: client,
-    readCloseSnapshot() {return {dirty: !knownCreated && Boolean(state.values.name || state.values.description), busy: state.busy, unknown: Boolean(retry), identity: [generation, state.createOpen, state.values, state.selection?.token, knownCreated, state.action]};},
+    readCloseSnapshot() {return {dirty: !knownCreated && Boolean(state.values.name || state.values.description), busy: state.busy, unknown: Boolean(retry) || retiredWrites.size > 0, identity: [generation, state.createOpen, state.values, state.selection?.token, knownCreated, state.action, retiredWrites.size]};},
   };
 }
 export type NativeProjectDesktopController = ReturnType<typeof createNativeProjectDesktopController>;

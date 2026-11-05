@@ -69,7 +69,7 @@ function fixture({ initialContext = context(), visible = true, list, open, expli
   return { controller, calls, opens, window,
     replayEffects() {cleanups.splice(0).forEach(cleanup => cleanup()); effects.forEach(effect => {const cleanup = effect(); if (cleanup) cleanups.push(cleanup);});},
     catalog(value: { id: string; name: string; description: string; revision: number; createdAt: string; updatedAt: string; }[]) { catalog = value; },
-    receive(patch: { editorCount?: number; quitting?: boolean; }) { current = { ...current, ...patch }; listeners.forEach(listener => listener(current)); },
+    receive(patch: { editorCount?: number; quitting?: boolean; leaseRevoked?: boolean; editorPhase?: string }) { current = { ...current, ...patch }; listeners.forEach(listener => listener(current)); },
     visibility(value: boolean) { document.visibilityState = value ? 'visible' : 'hidden'; document.dispatchEvent(new Event('visibilitychange')); },
     dispose() { cleanups.forEach(cleanup => cleanup()); },
   };
@@ -91,6 +91,28 @@ test('StrictMode effect replay fences the disposed boot continuation before nati
   assert.equal(f.controller.desktop?.getState().busy, false); assert.equal(f.controller.desktop?.getState().failure, null);
   assert.deepEqual(requests, [{action: 'capabilities'}, {action: 'takePendingOpen'}]); assert.deepEqual(f.opens, []);
   f.dispose();
+});
+test('actual native hook keeps a dispatched create unknown in its combined close snapshot after lease revocation', async () => {
+  const held = Promise.withResolvers<unknown>(), requests: Record<string, unknown>[] = [];
+  const created = directory([project(12)]).registered[0].project;
+  const desktop = createProjectEntriesDesktopBridge(async (_channel, input) => {
+    assert.ok(input !== null && typeof input === 'object' && 'action' in input); const request = input as Record<string, unknown>; requests.push(request);
+    if (request.action === 'capabilities') return {ok: true, data: {ready: true, create: true, open: true, saveAs: false, duplicate: true, copyTo: true, adoptCopy: true}};
+    if (request.action === 'chooseLocation') return {ok: true, data: {token: uuid(700), displayPath: '/verified/parent', facts: {fileSystem: 'apfs', isLocal: true, volumeReadOnly: false, permissionBits: true, cloud: 'not-reported'}}};
+    if (request.action === 'createAtSelection') return {ok: true, data: await held.promise};
+    assert.fail('A retired create must never open another window');
+  });
+  const f = fixture({desktop, initialContext: context({role: 'editor', initialProjectId: uuid(10), editorProjectId: uuid(10), editorPhase: 'ready', editorCount: 1})});
+  try {
+    await tick(); await tick(); assert.equal(f.controller.desktop?.showCreate(), true); f.controller.desktop?.change({name: 'Original input'}); await f.controller.desktop?.chooseLocation();
+    const pending = f.controller.desktop!.create(); await tick(); assert.equal(requests.filter(request => request.action === 'createAtSelection').length, 1);
+    f.receive({leaseRevoked: true, editorPhase: 'failed'});
+    assert.equal(f.controller.readCloseSnapshot().unknown, true); assert.equal(f.controller.readCloseSnapshot().dirty, true);
+    held.resolve({status: 'created', project: created}); assert.equal(await pending, false);
+    assert.equal(f.controller.readCloseSnapshot().unknown, true); assert.equal(f.controller.readCloseSnapshot().busy, false);
+    assert.equal(f.controller.desktop?.getState().values.name, 'Original input'); assert.deepEqual(f.opens, []);
+    f.receive({leaseRevoked: false}); assert.equal(await f.controller.desktop?.recheck(), false); assert.equal(requests.filter(request => request.action === 'createAtSelection').length, 1);
+  } finally {held.resolve({status: 'created', project: created}); f.dispose();}
 });
 
 test('returning native launcher refreshes A/B to A/B/C after the last editor closes without a manual click', async () => {

@@ -10,6 +10,7 @@ import {stageProjectExampleResources} from '../packages/business/src/project-exa
 import {createProjectEntryDesktopHost} from '../apps/desktop/src/project-entry-desktop-host.ts';
 import type {ProjectEntryDesktopOwner} from '../apps/desktop/src/project-entry-desktop-host.ts';
 import {createProjectEntriesDesktopBridge} from '../apps/desktop/src/project-entry-desktop-preload.ts';
+import {readProjectEntryDesktopClient} from '../apps/web/src/project-entry-desktop-client.ts';
 import {createProjectEntryControlBroker, createProjectEntryControlClient} from '../apps/desktop/src/project-entry-control.ts';
 import {parseProjectEntryControlResult, projectEntryControlCommandSchema} from '../packages/contracts/src/project-entry-control.ts';
 import {PROJECT_ENTRY_DESKTOP_LIMITS, projectEntryDesktopRequestSchema} from '../packages/contracts/src/project-entry-desktop.ts';
@@ -20,6 +21,26 @@ import type {ProjectCopyResponse, ProjectTemplateInput} from '../packages/contra
 const resourceRoot=fileURLToPath(new URL('../examples/project-file-v1/',import.meta.url));
 const facts:ProjectLocationFacts={fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'};
 const held=<T>()=>Promise.withResolvers<T>();
+
+test('preload and web adapters keep template selection metadata exclusive to the template purpose',async()=>{
+ const ordinary={token:randomUUID(),displayPath:'/synthetic/selected',facts},template={id:'timeline-basics' as const,version:1 as const,name:'Example'};
+ for(const endpoint of ['preload','web'] as const){
+  let response:unknown=ordinary;
+  const bridge=endpoint==='preload'?createProjectEntriesDesktopBridge(async(_channel,input)=>{assert.equal((input as {action:string}).action,'chooseLocation');return{ok:true,data:response};}):readProjectEntryDesktopClient({__mioonProjectEntries:{capabilities:async()=>assert.fail('No capability read in a response-shape check'),chooseLocation:async()=>response}})!;
+  assert.ok(bridge);
+  for(const purpose of ['create','duplicate','copy-to','save-as'] as const){
+   const input={purpose,suggestedName:'Example',message:''};response=ordinary;assert.deepEqual(await bridge.chooseLocation(input),ordinary,`${endpoint}/${purpose}: original valid shape`);
+   response={...ordinary,template};await assert.rejects(bridge.chooseLocation(input),`${endpoint}/${purpose}: template metadata is an extra field`);
+   response={...ordinary,template:undefined};await assert.rejects(bridge.chooseLocation(input),`${endpoint}/${purpose}: an explicit undefined key is still extra`);
+   response=null;assert.equal(await bridge.chooseLocation(input),null,`${endpoint}/${purpose}: cancellation stays valid`);
+  }
+  const input={purpose:'template' as const,suggestedName:'Example',message:''};response=ordinary;await assert.rejects(bridge.chooseLocation(input),`${endpoint}: missing template metadata`);
+  response={...ordinary,template:undefined};await assert.rejects(bridge.chooseLocation(input),`${endpoint}: undefined template metadata`);
+  response={...ordinary,template};assert.deepEqual(await bridge.chooseLocation(input),response,`${endpoint}: complete template selection`);
+  response={...ordinary,template,unexpected:true};await assert.rejects(bridge.chooseLocation(input),`${endpoint}: other extra fields stay forbidden`);
+  response=null;assert.equal(await bridge.chooseLocation(input),null,`${endpoint}: template cancellation stays valid`);
+ }
+});
 function files(root:string):Record<string,string>{
  return Object.fromEntries(readdirSync(root,{recursive:true}).map(String).sort().flatMap(relative=>{
   const file=path.join(root,relative),info=lstatSync(file);return info.isFile()?[[relative,createHash('sha256').update(readFileSync(file)).digest('hex')]]:[];
