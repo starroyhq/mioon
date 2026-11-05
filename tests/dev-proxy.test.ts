@@ -24,7 +24,8 @@ async function isolatedConfiguration(root:string,port:number,backend:string):Pro
  source=replaceReviewed(source,'const port = 5173;',`const port = ${port};`);
  source=replaceReviewed(source,"const backend = 'http://127.0.0.1:4318';",`const backend = ${JSON.stringify(backend)};`);
  for(const name of ['vite','@tailwindcss/vite'])source=replaceReviewed(source,`from '${name}'`,`from ${JSON.stringify(pathToFileURL(require.resolve(name)).href)}`);
- source=replaceReviewed(source,'import.meta.url',JSON.stringify(url.href));
+ source=replaceReviewed(source,"from './project-examples-plugin.ts'",`from ${JSON.stringify(new URL('../apps/web/project-examples-plugin.ts',import.meta.url).href)}`);
+ source=replaceReviewed(source,'import.meta.url',JSON.stringify(url.href),2);
  const configurationPath=path.join(root,'vite.config.ts');
  await writeFile(path.join(root,'package.json'),JSON.stringify({type:'module'})+'\n',{mode:0o600});
  await writeFile(configurationPath,source,{mode:0o600});

@@ -69,7 +69,7 @@ export default function ProjectHomeScreen(props: ProjectHomeProps & { summaryEna
     const attempt: Action = {...original,input,phase:'busy'}; publish(attempt);
     try {
       const response: unknown = await browserRpc(original.kind === 'delete' ? 'project.delete' : 'project.rename', input);
-      if (original.kind === 'delete') { const next = projectDeleteResponseSchema.parse(response); if (next.projectId !== input.projectId || next.requestId !== input.requestId) throw new TypeError('Mismatched project operation.'); if (live.current && actionRef.current === attempt) { if (next.cleanup === 'pending') publish({...attempt,phase:'cleanup'}); else publish(null); refreshList(); } }
+      if (original.kind === 'delete') { const next = projectDeleteResponseSchema.parse(response); if (next.projectId !== input.projectId || next.requestId !== input.requestId) throw new TypeError('Mismatched project operation.'); if (live.current && actionRef.current === attempt) { publish(null); refreshList(); } }
       else { const next = parseLauncherProject(response); if (!('name' in input) || next.id !== input.projectId || next.name !== input.name || next.revision !== input.expectedRevision + 1) throw new TypeError('Mismatched project operation.'); if (live.current && actionRef.current === attempt) { publish(null); refreshList(); } }
     } catch (error) { if (live.current && actionRef.current === attempt) publish({...attempt,phase:error instanceof BrowserRpcError && error.definitive ? 'rejected' : 'unknown'}); }
   }

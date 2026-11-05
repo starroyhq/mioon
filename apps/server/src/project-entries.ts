@@ -24,6 +24,8 @@ import type {ProjectRegistryPort} from './project-host/ports.ts';
 import {projectFileMoved, projectHostError} from './project-host/errors.ts';
 import type {ProjectCopies} from './project-host/copies.ts';
 import type {NativeAssetMediaPort,NativeAssetMediaRequestOptions} from '../../../packages/contracts/src/asset-media-native.ts';
+import type {ProjectTrashActions} from './project-host/trash.ts';
+import {projectDeleteInputSchema} from '../../../packages/contracts/src/project-lifecycle.ts';
 
 interface WindowSlot<Runtime extends ProjectHostRuntime> {
   readonly key: string;
@@ -47,7 +49,7 @@ export function projectEntryWithinRoot(root: string, file: string): boolean {
 
 /** A production capability owned by one server instance. Neither its window
  * bindings nor its path-taking methods are registered as HTTP operations. */
-export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, copies, assertProjectFile, copyOriginal, nativeRelink}: {
+export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, copies, trash, assertProjectFile, copyOriginal, nativeRelink}: {
   readonly manager: ProjectHostManager<Runtime>;
   readonly registry: ProjectRegistryPort;
   readonly projectsDir: string;
@@ -60,6 +62,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   readonly assertProjectFile?: (file:string) => void;
   readonly copyOriginal?: (candidate:{projectId:string;projectFile:string}) => RecentProject|null;
   readonly nativeRelink?: NativeAssetMediaPort;
+  readonly trash?: ProjectTrashActions;
 }) {
   const instanceId = randomUUID();
   let establishedScope: string | undefined;
@@ -311,6 +314,12 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
         }
       },
     } : {}),
+    ...(trash?.available ? {trash: async (raw: unknown) => {
+      scope();
+      const result = await trash.trash(parse(projectDeleteInputSchema, raw));
+      scope();
+      return result;
+    }} : {}),
     onWindowRevoked: listener => {
       active();
       if (typeof listener !== 'function') throw invalid();

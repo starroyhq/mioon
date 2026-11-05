@@ -85,6 +85,7 @@ class NativeWindow extends EventEmitter {
 
 type HostOptions = ProjectWindowHostOptions<NativeWindow>;
 interface HostSetup {
+ projectActions?: Map<string, object>;
  create?(window: NativeWindow): void;
  prepare?: HostOptions['prepareWindow']; onLoadError?: HostOptions['onLoadError'];
  restoreFocus?: HostOptions['canRestoreParentFocus'];
@@ -98,6 +99,7 @@ function fixture(t: test.TestContext, setup: HostSetup = {}) {
   let current = true, interactive = true;
   const leases=createProjectWindowLeaseFixture();
   const host = createProjectWindowHost({ backendId, launcherUrl: `${origin}/`, editorUrl,
+    projectActionReservations: setup.projectActions,
     projectEntries:setup.projectEntries===null?undefined:setup.projectEntries??leases.port,
     admitProject:setup.admit===null?undefined:setup.admit??(async(_owner,projectId)=>projectWindowLeaseValue(backendId,projectId).project.projectFile),
     isCurrent: () => current, canInteract: () => interactive,
@@ -225,6 +227,51 @@ test('different projects get immutable editors and the launcher hides at first r
   assert.equal((await f.open(projectA, b)).reason, 'already-open'); assert.equal(f.created.length, 3);
   assert.equal((a)!.focuses > 0, true); assert.equal((launcher)!.visible, false);
   assert.ok(f.created.flatMap(window => window.webContents.sent).every(({ channel, value }) => channel === PROJECT_WINDOW_EVENT && isProjectWindowContext(value)));
+});
+
+test('a closed-project action excludes new editors without becoming an editor or hiding the launcher', async t => {
+  const f = fixture(t), launcher = await f.launcher(), lease = f.host.reserveClosedProjectAction(projectA.toUpperCase());
+  assert.ok(lease); assert.ok(lease.isCurrent());
+  assert.equal(f.host.contextFor(launcher)!.editorCount, 0);
+  assert.equal(launcher.visible, true);
+  assert.equal(f.host.reserveClosedProjectAction(projectA), null);
+  assert.equal((await f.open(projectA)).reason, 'busy');
+  assert.equal(f.created.length, 1);
+  lease.release(); assert.equal(lease.isCurrent(), false);
+  const next = f.host.reserveClosedProjectAction(projectA); assert.ok(next);
+  lease.release(); assert.equal(next.isCurrent(), true, 'old release cannot remove another action token');
+  next.release(); assert.equal((await f.open(projectA)).reason, 'accepted');
+});
+
+test('destroyed and closing editor slots deny trash until the actual closed event', async t => {
+  const f = fixture(t); await f.launcher(); const editor = await f.editor();
+  f.host.closeStateChanged(editor, 'closing');
+  assert.equal(f.host.reserveClosedProjectAction(projectA), null);
+  assert.equal(f.host.reserveClosedProjectAction(projectA.toUpperCase()), null);
+  editor.destroyed = true;
+  assert.equal(f.host.contextFor(editor), null);
+  assert.equal(f.host.reserveClosedProjectAction(projectA), null);
+  editor.emit('closed');
+  const lease = f.host.reserveClosedProjectAction(projectA); assert.ok(lease); lease.release();
+});
+
+test('trash reservation wins against an editor whose entry admission is still asynchronous', async t => {
+  const hold = Promise.withResolvers<void>();
+  const f = fixture(t, {consume: async (_owner, entryToken, projectId) => {await hold.promise; return {version: 1, entryToken, projectId, accepted: true};}});
+  await f.launcher(); const opening = f.open(projectA), lease = f.host.reserveClosedProjectAction(projectA);
+  assert.ok(lease); hold.resolve();
+  assert.equal((await opening).reason, 'busy'); assert.equal(f.created.length, 1);
+  lease.release(); assert.equal((await f.open(projectA)).reason, 'accepted');
+});
+
+test('the main-owned action token survives disposal and fences a replacement window host', async t => {
+  const projectActions = new Map<string, object>(), old = fixture(t, {projectActions});
+  await old.launcher(); const lease = old.host.reserveClosedProjectAction(projectA); assert.ok(lease);
+  old.host.dispose(); assert.equal(lease.isCurrent(), false);
+  const replacement = fixture(t, {projectActions}); await replacement.launcher();
+  assert.equal((await replacement.open(projectA)).reason, 'busy');
+  assert.equal(replacement.host.reserveClosedProjectAction(projectA), null);
+  lease.release(); assert.equal((await replacement.open(projectA)).reason, 'accepted');
 });
 
 test('v2 requires exact sender, main frame, context and fixed project URL', async t => {
