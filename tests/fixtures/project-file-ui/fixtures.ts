@@ -2,6 +2,7 @@ import type { OutsideProjectLocation } from '../../../packages/contracts/src/med
 import type { ProjectPackResult, ProjectRestorePreview, ProjectVersionSummary } from '../../../packages/contracts/src/project-versions.ts';
 import { message } from '../../../packages/i18n/src/index.ts';
 import type { ProjectOpenFailure } from '../../../packages/contracts/src/project-file.ts';
+import type { ProjectEntry } from '../../../packages/contracts/src/project-entry.ts';
 import type { ProjectInboxItem, RecentProject } from '../../../packages/contracts/src/project-registry.ts';
 
 /** Sample data for the project file screens (U1), in K0 contract shapes and
@@ -55,6 +56,11 @@ export const RECENT_PROJECTS: readonly RecentProject[] = [
   recent('interview', '访谈剪辑样片', 'landscape', 196, '2026-09-12T02:00:00.000Z', '2026-09-12T01:58:00.000Z', 6),
 ];
 export const COVER_URLS: Readonly<Record<string, string>> = Object.fromEntries((Object.keys(COVERS) as Key[]).map(key => [PROJECT_IDS[key], COVERS[key]]));
+
+/** Permission refusal is visible even when no background task waits for it. */
+export const ACCESS_DENIED_PROJECT_ENTRY: ProjectEntry = {
+  project: RECENT_PROJECTS[0]!, availability: {state: 'access-denied'}, coverUrl: null,
+};
 
 /** Two generated results waiting for the missing project. */
 export const INBOX_ITEMS: readonly ProjectInboxItem[] = [1, 2].map(index => ({

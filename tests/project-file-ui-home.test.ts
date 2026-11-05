@@ -5,7 +5,8 @@ import {transformSync} from 'esbuild';
 import { LOCALES, translate } from '../packages/i18n/src/index.ts';
 import type { MessageArguments, MessageKey } from '../packages/i18n/src/index.ts';
 import { assertGroupEvidence, escapeHtml, projectFileScenes, tagOf } from './helpers/project-file-ui.ts';
-import { OPEN_FAILURES, PROJECT_IDS, RECENT_PROJECTS } from './fixtures/project-file-ui/fixtures.ts';
+import { ACCESS_DENIED_PROJECT_ENTRY, HOME, NOW, OPEN_FAILURES, PROJECT_IDS, RECENT_PROJECTS } from './fixtures/project-file-ui/fixtures.ts';
+import {aspectLabel, clockTime, displayPath, folderOf, lastSeenLabel} from '../apps/web/src/project-file/format.ts';
 import {orderedRecentProjects, visibleWaitingProjects, waitingProjects} from '../apps/web/src/project-file/recent-project-view.ts';
 import type {WaitingProject} from '../apps/web/src/project-file/recent-project-view.ts';
 import type {ProjectEntry} from '../packages/contracts/src/project-entry.ts';
@@ -205,6 +206,28 @@ test('12-01 locked, read-only and invalid cards say so; read-only is not called 
   assert.ok(list.includes(text('projectFile.home.locked')));
   assert.ok(list.includes(text('projectFile.home.readOnly')));
   assert.equal(count(list, new RegExp(text('projectFile.home.invalid'), 'gu')), 1);
+});
+
+test('an access-denied recent card has its own warning in every locale without waiting tasks or extra capabilities', () => {
+  for (const locale of LOCALES) {
+    const names = ['WorkbenchButton', 'ProjectCover', 'RecentProjectMenu'];
+    const t = <K extends MessageKey>(key: K, ...args: MessageArguments<K>) => translate(locale, key, ...args);
+    const card = homeFunction('RecentProjectCard', '\n/** A failed cached image', {React: {createElement: element, Fragment: 'fragment'},
+      useRef: () => ({current: {}}), useI18n: () => ({t}),
+      useProjectFileDisplay: () => ({when: () => 'SYNTHETIC_LAST_OPENED_TIME'}),
+      aspectLabel, clockTime, displayPath, folderOf, lastSeenLabel, ...Object.fromEntries(names.map(name => [name, name]))});
+    const projectId = ACCESS_DENIED_PROJECT_ENTRY.project.projectId;
+    const tree = card({item: ACCESS_DENIED_PROJECT_ENTRY, latest: false, sort: 'recent', layout: 'grid', now: NOW, homeDirectory: HOME, onOpen: () => {}});
+    const badge = findElement(tree, `pf-card-access-denied-${projectId}`);
+    assert.ok(badge, locale); assert.equal(badge.props['data-tone'], 'warning');
+    assert.deepEqual(badge.props.children, [translate(locale, 'projectFile.home.accessDenied')]);
+    assert.equal(findElement(tree, `pf-card-waiting-${projectId}`), null);
+    assert.equal(findElement(tree, `pf-card-locate-${projectId}`), null);
+    assert.doesNotMatch(JSON.stringify(tree), /SYNTHETIC_LAST_OPENED_TIME/u);
+    for (const key of ['projectFile.home.missing', 'projectFile.home.readOnly', 'projectFile.home.invalid'] as const) {
+      assert.equal(JSON.stringify(tree).includes(translate(locale, key)), false, `${locale}/${key}`);
+    }
+  }
 });
 
 test('12-01 empty, loading and error states', () => {

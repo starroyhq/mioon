@@ -36,6 +36,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
   explicitProjectId?: string | null; confirm?: (message: string | DisplayMessage) => Promise<boolean>; onChange?: (state: ProjectEntryState) => void; newToken?: () => string }) {
   if (initialContext.role !== 'launcher' && initialContext.role !== 'editor') throw new Error('Project entry requires an owned entry window');
   let context = initialContext, active = false, lifetime = 0, readSerial = 0, intent = 0, interactionSerial = 0, localVersion = 0, contextVersion = 0;
+  let editorLeaseRevoked = initialContext.role === 'editor' && initialContext.leaseRevoked === true;
   let visible = true, autoConsumed = initialContext.role !== 'launcher' || !initialContext.autoOpen;
   let observedEntry = 0, observedSelection = -1, rememberedSelection = -1;
   let openFlight: object | null = null;
@@ -46,6 +47,9 @@ export function createProjectEntryController({ client, bridge, context: initialC
   const emit = (patch: Partial<ProjectEntryState> = {}) => { state = Object.freeze({ ...state, ...patch, version: state.version + 1 }); if (active) onChange(state); };
   const alive = (owner: number) => active && lifetime === owner;
   const ownerCurrent = () => active && !context.quitting && context.contextId === initialContext.contextId && context.backendId === initialContext.backendId;
+  // Revocation retires business admission, not the form/close owner or an
+  // already dispatched request's exact receipt reconciliation.
+  const businessCurrent = () => ownerCurrent() && !editorLeaseRevoked;
   const available = () => ownerCurrent() && visible && state.shown && (context.role !== 'launcher' || context.editorCount === 0) && !permit && !state.creating && !state.createUnknown && !state.openUnknown;
   const interact = () => { intent++; interactionSerial++; autoConsumed = true; };
   function reportCreate(next: LauncherCreateMetadata) {
@@ -83,6 +87,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
   function updateContext(next: ProjectWindowContext) {
     if (next.contextId !== context.contextId || next.backendId !== context.backendId || next.windowId !== context.windowId || next.role !== context.role) return;
     const enteredQuit = next.quitting && !context.quitting;
+    editorLeaseRevoked ||= next.role === 'editor' && next.leaseRevoked === true;
     context = next; contextVersion++;
     // A pre-quit catalog reply cannot regain authority if quitting is cancelled.
     if (enteredQuit) { readSerial++; if (state.listBusy) emit({ listBusy: false }); }
@@ -95,7 +100,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     }
   }
   async function dispatchOpen(projectId: string, remember: boolean): Promise<boolean> {
-    if (!ownerCurrent() || permit || state.createUnknown || !isProjectWindowId(projectId)) return false;
+    if (!businessCurrent() || permit || state.createUnknown || !isProjectWindowId(projectId)) return false;
     const token = newToken();
     if (!isProjectWindowId(token)) return false;
     const owner = lifetime;
@@ -115,7 +120,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     }
   }
   async function open(projectId: string, remember = true): Promise<boolean> {
-    if (!isProjectWindowId(projectId) || !ownerCurrent() || openFlight || permit || state.creating || state.createUnknown || state.openUnknown) return false;
+    if (!isProjectWindowId(projectId) || !businessCurrent() || openFlight || permit || state.creating || state.createUnknown || state.openUnknown) return false;
     const flight = {}; openFlight = flight;
     try {
       interact();
@@ -139,7 +144,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     catch { /* Missing evidence keeps the original owner and latch. */ }
   }
   async function show(mode: 'open' | 'new'): Promise<boolean> {
-    if (!ownerCurrent() || permit || state.creating || state.createUnknown || state.openUnknown) {
+    if (!businessCurrent() || permit || state.creating || state.createUnknown || state.openUnknown) {
       if (active) emit({ notice: msg('projects.checkCurrentRequest') });
       return false;
     }
@@ -178,7 +183,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     }
   }
   async function create(name: string, description: string, timelinePresetId?: string): Promise<boolean> {
-    if (!available() || openFlight || !state.catalogReady) return false;
+    if (!businessCurrent() || !available() || openFlight || !state.catalogReady) return false;
     // The view's submit latch may already be busy; this exact call alone owns
     // it. No second submission can enter after creating is set synchronously.
     interact(); const owner = lifetime;
@@ -191,12 +196,15 @@ export function createProjectEntryController({ client, bridge, context: initialC
           fresh.role !== context.role || fresh.quitting || context.quitting) {
         emit({ creating: false, notice: msg('projects.changedNotCreated') }); return false;
       }
+      // Even an older description can prove this editor's terminal revoke;
+      // it must not otherwise roll back a newer subscription context.
+      editorLeaseRevoked ||= fresh.role === 'editor' && fresh.leaseRevoked === true;
       // An older describe reply cannot erase a newer synchronous host event.
       if (observedContext === contextVersion) updateContext(fresh);
     } catch { if (alive(owner)) emit({ creating: false, notice: msg('projects.unconfirmedNotCreated') }); return false; }
-    if (!ownerCurrent() || !visible || context.role === 'launcher' && context.editorCount > 0) { emit({ creating: false }); return false; }
+    if (!businessCurrent() || !visible || context.role === 'launcher' && context.editorCount > 0) { emit({ creating: false }); return false; }
     let created;
-    try { created = await client.create(name, description, timelinePresetId); }
+    try { created = await client.create(name, description, timelinePresetId, () => alive(owner) && businessCurrent()); }
     catch (error) {
       if (alive(owner)) {
         const rejected = error instanceof LauncherCreateError && error.outcome === 'rejected';
@@ -210,7 +218,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     emit({ projects: [created, ...state.projects.filter(project => project.id !== created.id)], createdProjectId: created.id, notice: msg('projects.created') });
     // Keep creating=true until the open permit is sealed. No free input turn
     // exists between the authoritative create ACK and host reservation.
-    const opening = ownerCurrent() && visible ? dispatchOpen(created.id, true) : Promise.resolve(false);
+    const opening = businessCurrent() && visible ? dispatchOpen(created.id, true) : Promise.resolve(false);
     emit({ creating: false });
     await opening;
     return true; // The known create must never be replayed for an open failure.
@@ -221,9 +229,9 @@ export function createProjectEntryController({ client, bridge, context: initialC
     boot: () => refresh(true), refresh: () => refresh(false), open, create, show, dismiss, reconcileOpen, updateContext, reportCreate,
     interacted() { interactionSerial++; autoConsumed = true; },
     setVisible(value: boolean) { visible = value; },
-    canMutate: () => available(),
+    canMutate: () => businessCurrent() && available(),
     consume(entryToken: string, projectId: string): ProjectEntryConsumption {
-      const accepted = Boolean(ownerCurrent() && permit && !permit.consumed && permit.token === entryToken && permit.projectId === projectId &&
+      const accepted = Boolean(businessCurrent() && permit && !permit.consumed && permit.token === entryToken && permit.projectId === projectId &&
         permit.contextId === context.contextId && permit.backendId === context.backendId && permit.localVersion === localVersion && !state.createUnknown);
       if (accepted && permit) permit.consumed = true;
       return Object.freeze({ version: 1, entryToken, projectId, accepted });
