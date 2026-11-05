@@ -82,6 +82,7 @@ function renderer<F extends string>(filename:F, fixture: Record<string,unknown>,
   } };
   const react = {
     createElement: (type: unknown, props = {}, ...children: ElementTree[]) => ({ type, props: { ...props, children } }),
+    createContext<T>(value: T) {return {Provider: 'provider', value};}, useContext<T>(context: {value: T}): T {return context.value;},
     useState(initial: unknown) { const index = cursor++; hooks[index] ||= { value: typeof initial === 'function' ? initial() : initial }; return [hooks[index].value, (value: (arg0: unknown) => unknown) => { hooks[index].value = typeof value === 'function' ? value(hooks[index].value) : value; }]; },
     useRef(initial: unknown) { return hooks[cursor++] ||= { current: initial }; },
     useMemo(fn: () => unknown, deps: readonly unknown[]) { const index = cursor++; if (!hooks[index] || !same(hooks[index].deps, deps)) hooks[index] = { value: fn(), deps }; return hooks[index].value; },
@@ -105,6 +106,17 @@ function renderer<F extends string>(filename:F, fixture: Record<string,unknown>,
       return activity.exports;
     }
     if (name === './native-close-sources.ts') return sources;
+    if (name === './project-media-read-gate.tsx') {
+      // Preserve the real optional context for these standalone close owners;
+      // no application Provider or fabricated readable media state is supplied.
+      const gate = {exports: {}} as {exports: typeof import('../apps/web/src/project-media-read-gate.tsx')};
+      const code = transformSync(readFileSync(new URL('../apps/web/src/project-media-read-gate.tsx', import.meta.url), 'utf8'), {loader: 'tsx', format: 'cjs'}).code;
+      Function('module', 'exports', 'require', code)(gate, gate.exports, (dependency: string) => {
+        if (dependency === 'react') return react;
+        assert.equal(dependency, './project-file/MediaStatus.tsx'); return primitives;
+      });
+      assert.equal(gate.exports.useProjectMediaReadGate(), null); return gate.exports;
+    }
     if (name === './image-edit-intent.ts') return imageEditIntent;
     if (name === '@mioon/contracts') return contracts;
     if (name === './image-generation.ts') return { ...image, createImageGenerationSession: (input: image.ImageGenerationSessionOptions) => session = (image.createImageGenerationSession({ ...input, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) as unknown as SessionFor<F>) };

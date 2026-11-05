@@ -9,6 +9,11 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { VOLUME_ENVELOPE_PROFILE } from '../packages/contracts/src/timeline-volume-envelope.ts';
 import { readGenerationProviderDirectory } from '../apps/web/src/video-provider-directory.ts';
+import {projectEntryFixture,projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
+import {readProjectEntryIdentity} from '../apps/web/src/project-entry-identity.ts';
+import {projectDirectoryProjects} from '../apps/web/src/project-directory-presentation.ts';
+import {chooseInitialProject,retainLastProjectScope,createProjectBootGuard} from '../apps/web/src/last-project-navigation.ts';
+import {editorInitialSelection} from '../apps/web/src/editor-native-window.ts';
 import { validateCatalogs, translate } from '../packages/i18n/src/index.ts';
 import { volumeEnvelopeMessages } from '../packages/i18n/src/catalogs/volume-envelope.ts';
 import { i18nTestModule } from './helpers/i18n.ts';
@@ -145,23 +150,32 @@ test('retained Inspector adapter keeps exact composing owner across auth loss, m
  result=retainClipInspector(result,replacement,{pending:false,dirty:true,connected:true});assert.equal(result.snapshot,snapshot);assert.equal(result.retained,true);
  result=retainClipInspector(result,replacement,{pending:false,dirty:false,connected:true});assert.equal(result.snapshot,replacement);assert.equal(result.retained,false);
 });
-test('late App boot inspect response cannot adopt workspace or project after composition begins',async()=>{
+test('late App boot directory response cannot adopt workspace or project after composition begins',async()=>{
  const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
  const start=source.indexOf('  async function boot(): Promise<void> {'),end=source.indexOf('  useEffect(() => {',start);
- const body=source.slice(start,end);let pending=false,resolve!: (value: unknown)=>void,adopted=0;
+ const body=source.slice(start,end);let pending=false,held=true,resolve!: (value: unknown)=>void,adopted=0,reads=0;
  const oldWorkspace={};
- const dependencies={clipDraftRef:{current:{hasPendingComposition:()=>pending,hasUnsaved:()=>pending}},bootGuard:{current:{begin:()=>({}),isCurrent:()=>true}},preferenceScope:{current:'old'},migrateBrowserStorage:()=>{},readGenerationProviderDirectory,setVideoDirectoryUnavailable:()=>{},rpc:()=>new Promise(r=>resolve=r),editorSession: {current: 'normal'}, workspaceRef:{current:oldWorkspace},setWorkspace:()=>adopted++,setAuth:()=>{},notify:()=>{},readableError:String};
+ const directory=projectEntryFixture([{id:id(1)}]),identity=projectEntryOwnerFixture(()=>{reads++;return held?new Promise(r=>resolve=r):directory;});
+ const bootGuard=createProjectBootGuard(()=>0);bootGuard.activate();const errors:unknown[]=[],emptyData={project:null};
+ const dependencies={clipDraftRef:{current:{hasPendingComposition:()=>pending,hasUnsaved:()=>pending}},bootGuard:{current:bootGuard},preferenceScope:{current:null as string|null},locatorIdentity:{current:null},migrateBrowserStorage:()=>{},readGenerationProviderDirectory,setVideoDirectoryUnavailable:()=>{},rpc:async()=>[],editorSession: {current: 'normal'}, workspaceRef:{current:oldWorkspace},setWorkspace:()=>adopted++,
+  projectEntryIdentityRef:{current:identity},readProjectEntryIdentity,projectDirectoryProjects,retainLastProjectScope,chooseInitialProject,editorInitialSelection,nativeWindow:null,URLSearchParams,window:{location:{search:''}},
+  setProjects:()=>adopted++,setProviders:()=>{},setAuth:(value:unknown)=>{if(value==='error')errors.push(value);},setOnline:()=>{},notify:(value:unknown)=>errors.push(value),readableError:String,
+  emptyData,dataRef:{current:emptyData},currentProject:{current:null},openedProject:{current:null},viewReady:{current:false},setData:()=>{},setProjectOpening:()=>{}};
  const boot=Function(...Object.keys(dependencies),`${body};return boot;`)(...Object.values(dependencies)) as () => Promise<void>;
- const running=boot();await tick();pending=true;resolve!({});await running;assert.equal(adopted,0);assert.equal(dependencies.workspaceRef.current,oldWorkspace);
+ const running=boot();await tick();assert.equal(reads,1);pending=true;held=false;resolve!(directory);await running;assert.equal(adopted,0);assert.equal(dependencies.workspaceRef.current,oldWorkspace);assert.deepEqual(errors,[]);
  // Already pending must not even clear the original preference scope or read.
- dependencies.preferenceScope.current='retained';await boot();assert.equal(dependencies.preferenceScope.current,'retained');
+ dependencies.preferenceScope.current='retained';await boot();assert.equal(dependencies.preferenceScope.current,'retained');assert.equal(reads,1);
+ // A complete, non-composing control must reach the real directory adoption;
+ // missing free variables caught by boot cannot masquerade as a guarded pass.
+ pending=false;await boot();assert.equal(adopted,1);assert.equal(reads,2);assert.deepEqual(errors,[]);identity.dispose();
 });
 test('retained auth interruption blocks App mutation/recovery entrypoints and keeps login/home from replacing owner',async()=>{
  const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
  for(const name of ['run','runDurable','recoverTask','adoptLegacyTask','runSession'] as const){
-  const start=source.indexOf(`  async function ${name}(`),line=source.slice(start,source.indexOf('\n',start)),next=source.slice(source.indexOf('\n',start)+1).split('\n')[0];
-  assert.match(next,/if \(clipConnectionBlocked.current\) return null/);
-  const fn=Function('clipConnectionBlocked','captureTaskWorkspaceIntent','readTaskRevealContext','readableError',`${line}\n${next}\nthrow Error('should not dispatch');};return ${name};`)({current:true},()=>null,()=>null,String) as (...args: unknown[])=>Promise<unknown>;
+  const start=source.indexOf(`  async function ${name}(`),line=source.slice(start,source.indexOf('\n',start)),guards=source.slice(source.indexOf('\n',start)+1).split('\n').slice(0,name==='run'?2:1);
+  assert.match(guards.at(-1)!,/if \(clipConnectionBlocked.current\) return null/);
+  if(name==='run')assert.match(guards[0],/if \(projectEntryIdentityRef.current!\.getState\(\)\.identityBlocked\) return null/);
+  const fn=Function('clipConnectionBlocked','projectEntryIdentityRef','captureTaskWorkspaceIntent','readTaskRevealContext','readableError',`${line}\n${guards.join('\n')}\nthrow Error('should not dispatch');};return ${name};`)({current:true},{current:{getState:()=>({identityBlocked:false})}},()=>null,()=>null,String) as (...args: unknown[])=>Promise<unknown>;
   assert.equal(await fn({},'op',{},'',{}),null);
  }
  assert.match(source,/auth === false && !retainWorkbenchForClip/);

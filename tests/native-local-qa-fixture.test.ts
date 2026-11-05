@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {startServer} from '../apps/server/src/index.ts';
-import {lastProjectEnvelopeSchema} from '../packages/contracts/src/last-project.ts';
+import {projectEntriesResponseSchema} from '../packages/contracts/src/project-entry.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {run} from '../packages/business/src/media.ts';
 import {createHash} from 'node:crypto';
@@ -78,13 +78,16 @@ test('expected native content metadata advances only its real host and keeps all
 
 test('cold native QA validates real acquire summaries and rejects unrelated application or registry changes',async t=>{
  const root=directory(t),fixture=await prepareNativeQaProject(root,'Acquire QA');await fixture.services.call('timeline.get',{projectId:fixture.project.id});await closeQaProject(fixture);
+ const legacyText=JSON.stringify({retired:true,workspaceScope:'b'.repeat(64)}),app=openAppLibrary({dataDir:root});
+ app.tx(()=>app.documents.write('last-project-v1.json',legacyText));app.close();
  const before=captureNativeQa(root),server=await startServer({dataDir:root,port:0,token:'native-qa-test-token',localDraftChannel:'production'});
  try{const response=await fetch(server.url+projectRpcPath(fixture.project.id),{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer native-qa-test-token'},body:JSON.stringify({operation:'project.get',input:{projectId:fixture.project.id}})});assert.equal(response.status,200);assert.equal((await response.json()).ok,true);
-  const found=await fetch(server.url+'/api/last-project',{headers:{authorization:'Bearer native-qa-test-token'}});assert.equal(found.status,200);const current=lastProjectEnvelopeSchema.parse((await found.json()).data);assert.ok(current.supported);
-  const saved=await fetch(server.url+'/api/last-project',{method:'PUT',headers:{authorization:'Bearer native-qa-test-token','content-type':'application/json'},body:JSON.stringify({workspaceScope:current.workspaceScope,instanceId:current.instanceId,expectedRevision:current.revision,projectId:fixture.project.id})});assert.equal(saved.status,200);const accepted=lastProjectEnvelopeSchema.parse((await saved.json()).data);assert.ok(accepted.supported);assert.equal(accepted.revision,1);
+  const found=await fetch(server.url+'/api/project-entries',{headers:{authorization:'Bearer native-qa-test-token'}});assert.equal(found.status,200);const current=projectEntriesResponseSchema.parse((await found.json()).data);assert.equal(current.appLibraryScope,before.applicationScope);assert.ok(current.registered.some(entry=>entry.project.projectId===fixture.project.id));
+  for(const method of ['GET','PUT']){const retired=await fetch(server.url+'/api/last-project',{method,headers:{authorization:'Bearer native-qa-test-token'}});assert.equal(retired.status,404);}
  }finally{await server.close();}
  const after=captureNativeQa(root);assert.deepEqual(checkedNativeMetadata(before,after),new Set(after.metadataTableNames));
- assert.deepEqual(checkedNativeApplication(before,after,[fixture.project.id]),new Set(['app.app_documents','app.recent_projects']));
+ assert.deepEqual(checkedNativeApplication(before,after,[fixture.project.id]),new Set(['app.recent_projects']));
+ assert.equal(readNativeQaDocument(root,'last-project-v1.json'),legacyText,'normal opens and retired routes leave existing document bytes unchanged');
  assert.throws(()=>checkedNativeApplication(before,after,[]),{code:'ERR_ASSERTION'});
  const forged=structuredClone(after),registration=forged.applicationRows['main.recent_projects']![0]!;
  registration.data=JSON.stringify({...JSON.parse(String(registration.data)),projectFile:'/different/project.mioon'});

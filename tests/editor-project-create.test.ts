@@ -10,6 +10,9 @@ import { createLauncherClient, LauncherCreateError, type LauncherCreateMetadata,
 import { createProjectEntryController } from '../apps/web/src/project-entry-state.ts';
 import { ApiError } from '../apps/web/src/api.ts';
 import { projectEntriesResponseSchema } from '../packages/contracts/src/project-entry.ts';
+import {projectEntryFixture,projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
+import {readProjectEntryIdentity} from '../apps/web/src/project-entry-identity.ts';
+import {projectDirectoryProjects} from '../apps/web/src/project-directory-presentation.ts';
 
 import { lenientFunction, stripSourceTypes } from './helpers/eval-source.ts';
 import type { DisplayMessage } from '../packages/i18n/src/types.ts';
@@ -35,12 +38,14 @@ function section(start: string, end: string) {
 }
 function appFixture(options: { noEntry?: unknown; web?: unknown; create?:(input:unknown)=>unknown; predispatch?: unknown; earlyBusy?: unknown; refreshFailure?: unknown; listFailure?: unknown; }|undefined = {}) {
   const inputs = createEditorWindowInputs(), busy = new Set<string>(), calls: unknown[][] = [];
+  const identity=projectEntryOwnerFixture(()=>projectEntryFixture([{id:id(1)},{id:id(2),name}]));
   let refreshCalls = 0;
   const read = (navigation?: boolean) => inputs.read({ busy, navigation, defaultSettings: TIMELINE_EXPORT_DEFAULT_SETTINGS });
   const env = { application: null, clipConnectionBlocked: {current: false}, msg, ...createI18nTestContext(), localizedError: (value?: string|DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }),
     nativeWindow: options.web ? null : { context: { role: 'editor', initialProjectId: id(1) } }, editorInputs: { current: inputs },
     nativeProjectEntry: options.noEntry ? null : { show: (mode: unknown) => { calls.push(['scoped-entry', mode]); return Promise.resolve(true); } },
     projectCreateFlight: { current: null }, currentProject: { current: id(1) }, importSession: { current: { active: true, selection: 0 } },
+    projectEntryIdentityRef:{current:identity},readProjectEntryIdentity,projectDirectoryProjects,
     context: () => ({ projectId: env.currentProject.current, epoch: 1, workspace: options.predispatch ? {} : null }),
     isCurrent: (capture: { projectId: string; }) => capture.projectId === env.currentProject.current && env.importSession.current.active,
     notify: (...args: unknown[]) => calls.push(['notice', ...args]), readableError: (error: { message: unknown; }) => error.message,
