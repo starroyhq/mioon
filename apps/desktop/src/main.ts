@@ -156,6 +156,8 @@ const rendererDiagnostics = !startupStorageError && typeof createRendererDiagnos
     })()
   : null;
 let win: BrowserWindow | null = null, backend: BackendSupervisor | null = null, activeSession: Session | null = null, ready: BackendReady | null = null, restarting = false, quitting = false;
+// Native trash can outlive its utility; retain its project fence across hosts.
+const projectActionReservations = new Map<string, object>();
 let agentSettings: DesktopAgentSettings | null = null;
 let startupOperation: DesktopStartup | null = null;
 let windowContext: DesktopWindowContext | null | undefined, windowHost: ProjectWindowHost | null | undefined, nativeAudioHost: NativeAudioHost | null | undefined, lutRecoveryHost: LutRecoveryHost | null | undefined;
@@ -432,7 +434,9 @@ async function start(): Promise<DesktopStartReport> {
     backend = new BackendSupervisor({ fork: utilityProcess.fork,
       modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools, process.platform === 'win32' ? privateStorageHelperFile(app) : undefined), agentSettings,
       imageSecretCodec: createDesktopImageSecretCodec({ safeStorage, appId: identity.appId }),
-      videoSecretCodec: createDesktopVideoSecretCodec({ safeStorage, appId: identity.appId }) });
+      videoSecretCodec: createDesktopVideoSecretCodec({ safeStorage, appId: identity.appId }),
+      projectTrash: process.platform === 'darwin' ? {trashItem: file => shell.trashItem(file),
+        reserveClosedProjectAction: projectId => windowHost?.reserveClosedProjectAction(projectId) ?? null} : undefined });
     const ownedBackend = backend, incident = createProjectBackendIncident();
     ownedBackend.on('exit', ({ expected }: {expected?: boolean}) => {
       backendExitObserved = true; ownedAudioHost?.notifyBackendExit();
@@ -440,6 +444,7 @@ async function start(): Promise<DesktopStartReport> {
       if (!expected && backend === ownedBackend && !quitting) { windowHost?.refresh(); if (windowContext?.incident === incident && !smokeOutput) void backendFailed(ownedBackend, incident); }
     });
     const started = await backend.start({ backendId, dataDir: directories.dataDir, cacheDir:directories.cacheDir, projectsDir:directories.projectsDir, distDir: path.join(app.getAppPath(), 'web'),
+      projectTemplatesDir:path.join(app.isPackaged?process.resourcesPath:app.getAppPath(),'examples'),
       subtitleResourcesDir:path.join(app.isPackaged?process.resourcesPath:app.getAppPath(),'subtitles'),token, nativeAudioPreview: nativeAudioIdentity.config });
     startup.checkpoint();
     incident.assertAlive();
@@ -461,6 +466,7 @@ async function start(): Promise<DesktopStartReport> {
       isCurrent:()=>ownsWindowContext(context),getWindows:()=>windowHost?.windows()||[],ownsWindow:window=>ownsWindow(window,context)});
     await context.appearance.ready();startup.checkpoint();incident.assertAlive();
     windowHost = createProjectWindowHost<BrowserWindow>({
+      projectActionReservations,
       backendId, projectEntries:ownedBackend.projectEntries, launcherUrl: `${started.url}/`, editorUrl: (projectId: string) => `${started.url}/?project=${projectId}`,
       isCurrent: () => ownsWindowContext(context),
       canInteract: () => quitRouter.allowsWindows && !context.incident.failed,

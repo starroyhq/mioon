@@ -54,19 +54,20 @@ S6-C 2a 的 renderer identity owner 只从完整校验后的目录建立 appLibr
 
 最近目录表示已登记项目及成功打开记录；读取、搜索、排序和选择卡片不保存“上次选择的项目”。没有明确项目 URL 时停留首页，不因最近记录自动打开；显式目标不可用时不替换为其他项目。原生编辑窗口继续严格使用宿主分配的项目 UUID。旧 last-project HTTP 已退役，见[下文](#private-last-project-locator已退役)。
 
-受信 ServerInstance.projectEntries 的创建、按路径打开、window 租约等方法不是 HTTP/RPC/CLI/环境入口；JSON 里写 path、windowId 或 lease kind 不能取得这些能力。主进程/utility 和真实窗口接线留 S6-B，接口与生命周期见 [PROJECT-HOST.md](PROJECT-HOST.md#s6-a项目目录与受信控制)。
+受信 ServerInstance.projectEntries 的创建、按路径打开、window 租约等方法不是 HTTP/RPC/CLI/环境入口；JSON 里写 path、windowId 或 lease kind 不能取得这些能力。S6-B 已提供主进程/utility 和真实窗口接线；S6-B2（#177）的补桥与 S6-C 2b 的界面接线仍待后续，接口与生命周期见 [PROJECT-HOST.md](PROJECT-HOST.md#s6-a项目目录与受信控制)。
 
 S6-C 2a 接入 12-04 素材状态与 12-06 外部位置的现有 HTTP 能力、严格 DTO 适配和内容读取门，以及受控的新建、打开错误、位置风险 UI、四语和目录身份迁移。状态读取走项目 RPC 的 `asset.media.status.list`；外部位置列表和明确确认走项目的 `asset-media/trusted` 固定入口。缺失、变化、未确认或尚未取得有效状态的内容不能触发素材读取；未知写入保留原请求归属，不用刷新列表证明成功。本批不代表全部 Q 或 S6-C 流程完成。
 
-C 线先交付 S6-B，再补 S6-B2：可信重新指向选择、权限帮助/Reveal、原项目事实、只读/网络来源的复制观察票据等，由 S6-C 2b 合入后接线。选择必须绑定当前项目、素材及修订，不能先 import 再借授权，也不能把 asset-import token 当 sourcePath。`copyTo` 的“复制到…”与另存为、复制项目统一使用系统存储面板，说明行相同，默认名为项目名；不再另用文件夹选择面板。只读/网络来源仍拒绝原位置打开，复制必须基于受信票据、完整观察源且不覆盖目标。
+S6-B 已合入；C 线再补 S6-B2（#177）：可信重新指向选择、权限帮助/Reveal、原项目事实、只读/网络来源的复制观察票据等，由 S6-C 2b 合入后接线。选择必须绑定当前项目、素材及修订，不能先 import 再借授权，也不能把 asset-import token 当 sourcePath。`copyTo` 的“复制到…”与另存为、复制项目统一使用系统存储面板，说明行相同，默认名为项目名；不再另用文件夹选择面板。只读/网络来源仍拒绝原位置打开，复制必须基于受信票据、完整观察源且不覆盖目标。
 
-以下能力尚未接入当前界面；C 线桥接、S6-D 模板等能力未就绪时，相关原生动作按 D8 隐藏，不由已有 HTTP 服务推断 UI 能力：
+应用 RPC `project.delete` 已采用 S5-C 的移到废纸篓语义：严格确认登记路径、文件身份及项目 revision，仅受信桌面主进程调用 `shell.trashItem`，确定成功后撤登记并保存固定回执。素材及全部本机记录保留；打开窗口、会写回项目的工作或 Mio 等待回答/审批时拒绝，S8 草稿不阻止。没有受信能力的网页/headless 返回 `PROJECT_TRASH_UNAVAILABLE`；CLI/MCP 命令留 0.1.x，在输入/私有存储/后端访问前明确拒绝。同键重放确定回执，结果不明不重做、不撤登记。旧 `confirmPermanentDeletion` 严格报 `VALIDATION_ERROR`（400），没有永久清理或 `cleanup:'pending'`。详见 [PROJECT-LIFECYCLE.md](PROJECT-LIFECYCLE.md)。
+
+以下能力尚未接入当前界面；未有真实界面接线或原生桥未就绪时，相关动作按 D8 隐藏，不由已有 HTTP 服务推断 UI 能力：
 
 | 归属 | 操作 | 当前结果 |
 | --- | --- | --- |
-| S5 | 应用 RPC `project.delete` | 409 `PROJECT_DELETE_UNAVAILABLE`，复用原生命周期错误码 |
 | S6-B/B2、S6-C 2b | 系统项目选择、可信重新指向、权限帮助/Reveal、复制/另存为 UI | 等 C 线受信桥合入后接线；未接能力不显示动作，S5 已有服务不等于界面可用 |
-| S6-D、S5-C | 模板、废纸篓 UI | 对应能力未接通时隐藏 |
+| S6-D、S5-C、S6-C 2b | 模板、废纸篓 UI | 模板资源与废纸篓服务已合入；界面尚未接线时按 D8 隐藏 |
 | V4 | 打包导入导出；旧 `/api/project-packages/…` 和项目 `package-preview` | 未注册生产接口，旧地址为 404 `NOT_FOUND` |
 | S7 | `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（bundle 下载/导入、directory 导入） | 404 `UNKNOWN_OPERATION`（旧文件地址为 `NOT_FOUND`） |
 

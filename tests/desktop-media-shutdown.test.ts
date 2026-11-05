@@ -11,7 +11,7 @@ type SyntheticSupervisor = BackendSupervisor & {start(config: Partial<BackendSta
 type MutableUtility = Omit<BackendUtilityProcess, 'pid'> & {pid: number | undefined};
 type SyntheticUtility = EventEmitter & MutableUtility & {sent: {type: string}[]; termCalls: number};
 interface SyntheticTimer {callback(): void; delay: number; cleared: boolean}
-interface LaunchView {localDraftChannel: unknown; nativeAudioPreview: unknown; imageSecretCodec: {refreshStorage(): unknown}; videoSecretCodec: {refreshStorage(): unknown}}
+interface LaunchView {localDraftChannel: unknown; nativeAudioPreview: unknown; projectTemplatesDir: unknown; imageSecretCodec: {refreshStorage(): unknown}; videoSecretCodec: {refreshStorage(): unknown}; projectTrash?: unknown}
 import { WORKSPACE_NATIVE_CHANNEL } from '../packages/contracts/src/workspace-native.ts';
 import { createWorkspaceNativeHost } from '../apps/desktop/src/workspace-native-host.ts';
 import { createProjectFileOpener, projectFileArguments } from '../apps/desktop/src/project-file-open.ts';
@@ -578,28 +578,53 @@ test('native smoke explicitly skips unsafe orphan-crash recovery without countin
   assert.match(source, /record\('graceful-restart-interrupts-and-recovers-active-render'\)/);
 });
 
-async function backendHarness({ close = async () => {}, start, settingsClose = () => {}, imageClose = () => {}, imageRefresh = async () => {}, videoClose = () => {}, videoRefresh = async () => {} }: {close?(): unknown; start?(options: LaunchView): unknown; settingsClose?(): unknown; imageClose?(): unknown; imageRefresh?(): unknown; videoClose?(): unknown; videoRefresh?(): unknown} = {}) {
+async function backendHarness({ close = async () => {}, start, settingsClose = () => {}, imageClose = () => {}, imageRefresh = async () => {}, videoClose = () => {}, videoRefresh = async () => {}, trashClose = () => {}, trashAvailable = false }: {close?(): unknown; start?(options: LaunchView): unknown; settingsClose?(): unknown; imageClose?(): unknown; imageRefresh?(): unknown; videoClose?(): unknown; videoRefresh?(): unknown; trashClose?(): void; trashAvailable?: boolean} = {}) {
   const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/backend.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
   const port = new EventEmitter() as EventEmitter & {postMessage(message: DesktopHarnessMessage): void}, processEvents = new EventEmitter(), messages: DesktopHarnessMessage[] = [], exits: number[] = [];
   const nativeConfig = {version:1,backendId:'11111111-1111-4111-8111-111111111111',
     publicKey:'302a300506032b6570032100d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a'};
   const nativeAuthority = {command:async () => {throw Error('No audition command is expected in this lifecycle fixture');}};
+  const trashClient = {close: trashClose, reserve: async () => {throw Error('No trash is expected in this lifecycle fixture');}};
   let enterStart!: (value: LaunchView) => void; const started = new Promise<LaunchView>(resolve => { enterStart = resolve; });
   port.postMessage = (message: DesktopHarnessMessage) => { messages.push(message); };
   const sandbox = { createProjectEntryControlBroker, path, comfyModuleModeFromEnvironment, createBackendLease, BACKEND_LEASE_TIMING, performance, process: { env: {}, parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
     pid: 23456, on: processEvents.on.bind(processEvents), exit: (code: number) => exits.push(code) },
     __MIOON_DESKTOP_CHANNEL__: 'development',
-    DatabaseSync: function () {}, startServer: async (options: LaunchView) => { assert.equal(options.localDraftChannel,'development'); assert.equal(options.nativeAudioPreview,nativeAuthority); enterStart(options); const server=await (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); assert.ok(server&&typeof server==='object'); return {...server,projectEntries:createDesktopHarnessProjectEntries()}; },
+    DatabaseSync: function () {}, startServer: async (options: LaunchView) => { assert.equal(options.localDraftChannel,'development'); assert.equal(options.nativeAudioPreview,nativeAuthority); assert.equal(options.projectTemplatesDir,'/synthetic/trusted/examples'); enterStart(options); const server=await (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); assert.ok(server&&typeof server==='object'); return {...server,projectEntries:createDesktopHarnessProjectEntries()}; },
     initializeSubtitleResources: (directory: unknown) => { assert.equal(directory,'/synthetic/trusted/subtitles'); }, initializeDesktopPrivateStorage: () => {},
     onMediaProcess: () => {}, createAgentSettingsClient: () => ({ close: settingsClose }),
     createImageSecretClient: () => ({close: imageClose, refreshStorage: imageRefresh}),
     createVideoSecretClient: () => ({close: videoClose, refreshStorage: videoRefresh}),
+    createProjectTrashClient: () => trashClient,
     createNativeAudioPreviewAuthority: (config: unknown) => {assert.equal(config,nativeConfig);return nativeAuthority;},
     setInterval: () => 1, clearInterval: () => {}, setImmediate };
   vm.runInNewContext(source, sandbox, { filename: 'backend-lifecycle-fixture.mjs' });
-  return { messages, exits, port, started, start: () => port.emit('message', { data: { type: 'start',backendId:nativeConfig.backendId,dataDir:'/synthetic/data',cacheDir:'/synthetic/cache',projectsDir:'/synthetic/projects',subtitleResourcesDir:'/synthetic/trusted/subtitles',nativeAudioPreview:nativeConfig } }),
+  return { messages, exits, port, started, trashClient, start: () => port.emit('message', { data: { type: 'start',backendId:nativeConfig.backendId,dataDir:'/synthetic/data',cacheDir:'/synthetic/cache',projectsDir:'/synthetic/projects',subtitleResourcesDir:'/synthetic/trusted/subtitles',projectTemplatesDir:'/synthetic/trusted/examples',nativeAudioPreview:nativeConfig,projectTrashAvailable:trashAvailable } }),
     stop: () => port.emit('message', { data: { type: 'stop' } }) };
 }
+
+test('backend only supplies the owned trash client when main announced the capability and closes it on shutdown', async () => {
+  for (const trashAvailable of [false, true]) {
+    let closes = 0;
+    const runtime = await backendHarness({trashAvailable, trashClose: () => {closes++;}});
+    runtime.start(); const options = await runtime.started;
+    assert.equal(options.projectTrash, trashAvailable ? runtime.trashClient : undefined);
+    runtime.stop(); await tick(); assert.equal(closes, 1); assert.deepEqual(runtime.exits, [0]);
+  }
+});
+
+test('backend forwards its trusted examples directory and refuses malformed parent configuration', async () => {
+  const valid = await backendHarness(); valid.start();
+  assert.equal((await valid.started).projectTemplatesDir, '/synthetic/trusted/examples'); valid.stop(); await tick();
+  assert.deepEqual(valid.exits, [0]);
+  for (const directory of ['relative/examples', 17]) {
+    let starts = 0;
+    const invalid = await backendHarness({start: async () => {starts++; return {close() {}, url: 'http://127.0.0.1:43210'};}});
+    invalid.port.emit('message', {data: {type: 'start', dataDir: '/synthetic/data', cacheDir: '/synthetic/cache', projectsDir: '/synthetic/projects', projectTemplatesDir: directory}});
+    await tick(); assert.equal(starts, 0); assert.deepEqual(invalid.exits, [1]);
+    assert.ok(invalid.messages.some(message => message.type === 'failed' && message.code === 'BACKEND_START_FAILED'));
+  }
+});
 
 test('backend shutdown reports a fixed failure and exits nonzero when close throws', async () => {
   let settingsCloses = 0;

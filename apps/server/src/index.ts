@@ -33,6 +33,9 @@ import {validateApplicationStorage, createApplicationFileGuard} from './project-
 import {createProjectHostManager} from './project-host/manager.ts';
 import {createProjectBackups} from './project-host/backups.ts';
 import {createProjectCopies} from './project-host/copies.ts';
+import {createProjectTrash} from './project-host/trash.ts';
+import type {ProjectTrashPort} from '../../../packages/contracts/src/project-trash-native.ts';
+import {loadInstalledProjectTemplates} from './project-host/project-examples.ts';
 import type {ProjectTemplateCatalogEntry} from './project-host/templates.ts';
 import type {ProjectHostManager} from './project-host/manager.ts';
 import type {InspectProject} from './project-host/host.ts';
@@ -123,9 +126,15 @@ export interface ServerOptions {
   projectBackupCopyForTest?: Parameters<typeof createProjectBackups>[0]['copy'];
   projectCopyBoundaryForTest?: Parameters<typeof createProjectCopies>[0]['onBoundary'];
   projectCopyActionBoundaryForTest?: Parameters<typeof createProjectCopies>[0]['onActionBoundary'];
+  /** Main-owned OS trash and window admission, never supplied by HTTP/env. */
+  projectTrash?: ProjectTrashPort;
+  projectTrashBoundaryForTest?: Parameters<typeof createProjectTrash>[0]['onBoundary'];
   /** Trusted installation catalog; requests can select an ID/version, never
    * provide a template file or media allowlist. */
   projectTemplates?: readonly ProjectTemplateCatalogEntry[];
+  /** Trusted installation resource root, not an HTTP/renderer path. Missing
+   * resources disable examples without preventing ordinary project opens. */
+  projectTemplatesDir?: string;
   localDraftChannel?: LocalDraftChannel;
   nativeAudioPreview?: NativeAudioPreviewAuthority;
 }
@@ -179,6 +188,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
   let background: ReturnType<typeof createBackgroundCoordinator> | undefined;
   let drainBackups: (() => Promise<void>) | undefined;
   let drainCopies: (() => Promise<void>) | undefined;
+  let drainTrash: (() => Promise<void>) | undefined;
   let server: Server | undefined;
   const opened = new Map<string, HostedProject>();
   const selfPort = (): number | undefined => { const address = server?.address(); return address !== null && typeof address === 'object' ? address.port : undefined; };
@@ -248,12 +258,17 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       }
     };
     const copies = createProjectCopies({manager, library: appLibrary, directories, assertProjectFile, signal: shutdown.signal,
-      ...(options.projectTemplates === undefined ? {} : {projectTemplates: options.projectTemplates}),
+      projectTemplates: options.projectTemplates ?? loadInstalledProjectTemplates(options.projectTemplatesDir ?? path.join(dist, 'project-examples')),
       ...(options.projectCopyActionBoundaryForTest === undefined ? {} : {onActionBoundary: options.projectCopyActionBoundaryForTest}),
       ...(options.projectCopyBoundaryForTest === undefined ? {} : {onBoundary: options.projectCopyBoundaryForTest})});
     drainCopies = copies.drain;
     await copies.recover();
-    const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies,
+    const trash = createProjectTrash({manager, library: appLibrary, directories, assertProjectFile, signal: shutdown.signal,
+      inspectProjectWork: backgroundTasks.inspectProjectWork,
+      ...(options.projectTrash === undefined ? {} : {port: options.projectTrash}),
+      ...(options.projectTrashBoundaryForTest === undefined ? {} : {onBoundary: options.projectTrashBoundaryForTest})});
+    drainTrash = trash.drain;
+    const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies, trash,
       channel, signal: shutdown.signal, createProject, refreshSummaries, readScope: () => {
         const directory = validatePrivateDirectory(root), db = validateManagedFile(appLibrary.databaseFile, {root});
         const identity = projectFileIdentity(appLibrary.databaseFile);
@@ -264,7 +279,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       }});
     const userRules=createMioUserRules(library,{signal:shutdown.signal});
     const appAgentHttp = createApplicationAgentHttp(library, shutdown.signal);
-    const rpc = createApplicationRpc({library, app, manager, directories, backups, copies, createProject, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
+    const rpc = createApplicationRpc({library, app, manager, directories, backups, copies, trash, createProject, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
       imageProfiles: input => listImageProfiles(app.profileDependencies, input as never), refreshSummaries});
     const covers = createProjectCoverHttp({directories, readProject: id => library!.registry.get(id), signal: shutdown.signal});
     const policy = createApplicationPolicy(library.agentPolicy);
@@ -419,7 +434,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       const drain = new Promise<void>((resolve, reject) => server!.close(error => error ? reject(error) : resolve()));
       const force = setTimeout(() => server?.closeAllConnections(), 3000); force.unref();
       try {
-        await boundedShutdown(Promise.all([projects.closeAll(), files.close(), drain, backups.drain(), copies.drain()]), 'SERVER_STOP_TIMEOUT');
+        await boundedShutdown(Promise.all([projects.closeAll(), files.close(), drain, backups.drain(), copies.drain(), trash.drain()]), 'SERVER_STOP_TIMEOUT');
         await boundedShutdown(Promise.all([terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), app.close()]), 'SERVER_STOP_TIMEOUT');
       } finally { clearTimeout(force); }
       appLibrary.close();
@@ -430,7 +445,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
   } catch (error) {
     shutdown.abort(); background?.stop(); server?.closeAllConnections();
     const drain = server?.listening ? new Promise<void>(resolve => server!.close(() => resolve())) : Promise.resolve();
-    await boundedShutdown(Promise.all([drain, manager?.closeAll(), files.close(), drainBackups?.(), drainCopies?.()]), 'SERVER_STOP_TIMEOUT');
+    await boundedShutdown(Promise.all([drain, manager?.closeAll(), files.close(), drainBackups?.(), drainCopies?.(), drainTrash?.()]), 'SERVER_STOP_TIMEOUT');
     await boundedShutdown(Promise.all([terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), application?.close()]), 'SERVER_STOP_TIMEOUT');
     library?.close(); lock.release(); throw error;
   }

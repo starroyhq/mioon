@@ -60,12 +60,16 @@ manager 独占先排除窗口和待写工作，再关闭源；随后由关闭源
 
 启动恢复将 prepared/captured 的未完成转换按已记录身份清理隐藏暂存目录并作废，原键报 `PROJECT_COPY_INTERRUPTED`；不删除身份已变的后来文件，不在同键重造新身份。ready 以后完整结果继续按 intent 续办。
 
+### S5-C：只将项目文件移到废纸篓
+
+应用 RPC `project.delete` 要求严格的 `confirmTrash`、确认路径/文件身份和项目 revision。只有受信桌面主进程可以执行 `shell.trashItem`；网页/headless 缺少能力时返回 `PROJECT_TRASH_UNAVAILABLE`，CLI/MCP 命令留 0.1.x 并在本机访问前明确拒绝。成功后仅撤登记并提交固定回执，素材和全部本机记录保留；未知结果保留 intent 和登记，不重做、不根据路径缺失推断成功。
+
+项目有窗口、会写回项目的工作或 Mio 等待回答/审批时拒绝；关闭项目通过 S3-A `inspectProjectWork` 检查，S8 草稿不阻止。关闭前准入不靠 `interrupt` 清掉等待状态。具体契约、保留项和已销项的永久清理义务见 [PROJECT-LIFECYCLE.md](PROJECT-LIFECYCLE.md)。本卡未接 UI，真实 macOS 废纸篓验收交 Q。
+
 ### 暂不可用的后续能力
 
 | 归属 | 当前操作/地址 | 精确结果 |
 |---|---|---|
-| S5 | 应用 RPC `project.delete` | 409 `PROJECT_DELETE_UNAVAILABLE`，复用原生命周期错误码 |
-| S5-C | 废纸篓 | 尚未实施成功入口；不能由复制能力推断已可用 |
 | S5-A / 0.1.x | CLI 和旧客户端 `project.duplicate` | 409 `PROJECT_COPY_UNAVAILABLE`，网络/存储访问前拒绝；新 CLI/MCP 命令后续接入 |
 | V4 | 打包导入导出尚无新生产接口；旧 `/api/project-packages/…`、项目 `package-preview` | 404 `NOT_FOUND`；不进入旧复制、删除或导入链 |
 | S7 | 应用 RPC `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（含 bundle 下载/导入、directory 导入） | 404 `UNKNOWN_OPERATION`（旧文件地址为 `NOT_FOUND`） |

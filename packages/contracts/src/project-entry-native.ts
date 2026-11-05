@@ -7,6 +7,7 @@ import type {RecentProject} from './project-registry.ts';
 import type {ProjectEntriesResponse} from './project-entry.ts';
 import {projectAdoptCopyInputSchema, projectCopyInputSchema} from './project-copies.ts';
 import type {ProjectCopyInput, ProjectCopyResponse, ProjectCopyToInput, ProjectTemplateInput} from './project-copies.ts';
+import type {ProjectDeleteInput, ProjectDeleteResponse} from './project-lifecycle.ts';
 import type {z as Zod} from 'zod';
 import type {projectCopySourceSchema} from './project-copies.ts';
 
@@ -53,6 +54,7 @@ export interface ProjectEntryControlPort {
   adoptCopy?(input: ProjectEntryAdoptCopyInput): Promise<{copy: ProjectCopyResponse; window: ProjectEntryWindow}>;
   copyTo?(input: ProjectCopyToInput): Promise<ProjectCopyResponse>;
   instantiateTemplate?(input: ProjectTemplateInput): Promise<ProjectCopyResponse>;
+  trash?(input: ProjectDeleteInput): Promise<ProjectDeleteResponse>;
   onWindowRevoked(listener: (event: ProjectEntryWindowRevoked) => void): () => void;
   /** Read-only selected-copy observation; never a renderer-supplied stamp. */
   inspectSelectedCopy?(input: {projectFile:string}): Promise<Zod.infer<typeof projectCopySourceSchema>>;

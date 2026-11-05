@@ -47,7 +47,7 @@ test('native Mio admits history above64MiB, atomically rejects above256MiB and r
  f.store.close();const reopened=openStore(f.root);try{createAgentTaskJournal(reopened);validateAgentTaskRowsV2(reopened.db);assert.deepEqual(readMioStorage(reopened.db),full);}finally{reopened.close();}
 });
 function audit(db:DatabaseSync){return {state:snapshot(db),marks:db.prepare('SELECT total_changes() AS changes').get(),versions:db.prepare('PRAGMA database_list').all().filter(row=>row.name!=='temp').map(row=>({name:row.name,version:db.prepare(`PRAGMA "${String(row.name)}".data_version`).get()}))};}
-test('terminal native Mio data stays isolated when application project deletion is unavailable',async t=>{
+test('terminal native Mio data stays isolated when legacy permanent deletion is rejected',async t=>{
  const root=temporary(t),projects=[] as {projectId:string;runId:string}[];
  for(const name of ['Retained A','Retained B']){
   const f=createServerProject(root,{name}),journal=createAgentTaskJournal(f.store);
@@ -63,7 +63,7 @@ test('terminal native Mio data stays isolated when application project deletion 
  const before=await Promise.all(projects.map(item=>inspect(item.projectId,audit))),appBefore=application(audit);
  assert.notDeepEqual(before[0]!.state.tables.mio_entries,before[1]!.state.tables.mio_entries);
  const response=await rpc('/api/rpc','project.delete',{requestId:randomUUID(),projectId:projects[0]!.projectId,expectedRevision:1,confirmPermanentDeletion:true}),body=await response.json() as {error?:{code?:string}};
- assert.equal(response.status,409);assert.equal(body.error?.code,'PROJECT_DELETE_UNAVAILABLE');
+ assert.equal(response.status,400);assert.equal(body.error?.code,'VALIDATION_ERROR');
  for(const [index,item]of projects.entries()){
   assert.deepEqual(await inspect(item.projectId,audit),before[index]);
   assert.equal(await inspect(item.projectId,db=>Number(db.prepare('SELECT count(*) AS n FROM mio_runs WHERE id=?').get(item.runId)!.n)),1);
