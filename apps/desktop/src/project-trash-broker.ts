@@ -4,10 +4,11 @@ import path from 'node:path';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
 import {projectTrashRequestSchema, projectTrashReserveInputSchema, projectTrashCommandSchema as commandSchema, projectTrashReplySchema as replySchema, ProjectTrashRefusedError} from '../../../packages/contracts/src/project-trash-native.ts';
 import type {ProjectTrashPort, ProjectTrashRequest, ProjectTrashReservation, ProjectTrashRefusedCode, ProjectTrashCommand as Command, ProjectTrashReply as Reply} from '../../../packages/contracts/src/project-trash-native.ts';
+import {nativeText} from './app-language-text.ts';
 
 const VERSION = 1, MAX_ACTIONS = 256, MAX_MESSAGES = 1024, MAX_PENDING = 16, MAX_BYTES = 16 * 1024;
 const validId = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(value);
-const unconfirmed = () => new AppError('PROJECT_TRASH_UNCONFIRMED', '项目文件是否已移到废纸篓尚不明确，未重复操作。', 409);
+const unconfirmed = () => new AppError('PROJECT_TRASH_UNCONFIRMED', nativeText('native.projectTrashUnconfirmed'), 409);
 const bounded = (value: unknown): boolean => {try {return Buffer.byteLength(JSON.stringify(value)) <= MAX_BYTES;} catch {return false;}};
 const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 interface WindowReservation {isCurrent(): boolean; release(): void}

@@ -11,6 +11,8 @@ import type {BackendUtilityProcess} from '../apps/desktop/src/supervisor.ts';
 import type {ProjectTrashNativeOptions} from '../apps/desktop/src/project-trash-broker.ts';
 import {ProjectTrashRefusedError, projectTrashFileGenerationSchema, projectTrashRequestSchema} from '../packages/contracts/src/project-trash-native.ts';
 import type {ProjectTrashRequest} from '../packages/contracts/src/project-trash-native.ts';
+import {nativeText, setNativeLanguageReader} from '../apps/desktop/src/app-language-text.ts';
+import type {Locale} from '../packages/i18n/src/types.ts';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 class Port extends EventEmitter {sent: unknown[] = []; postMessage(_value: unknown): void {}}
@@ -134,6 +136,39 @@ test('a lost native ACK times out as unknown without retry or cancellation messa
   assert.equal(f.port.sent.filter(value => (value as {type: string}).type === 'project-trash:trash').length, 1);
   assert.equal(f.port.sent.some(value => /cancel/u.test((value as {type: string}).type)), false);
   lease.release(); f.client.close();
+});
+
+test('real trash errors and lost-ACK deadlines use exact native messages in all four languages without retrying or disclosing native details', async t => {
+  const messages: readonly (readonly [Locale, string])[] = [
+    ['zh-Hans', '项目文件是否已移到废纸篓尚不明确，未重复操作。'],
+    ['zh-Hant', '專案檔案是否已移到垃圾桶尚不明確，未重複操作。'],
+    ['en', 'It is unclear whether the project file was moved to the Trash. The operation was not repeated.'],
+    ['ja', 'プロジェクトファイルがゴミ箱に移動されたか確認できません。操作は繰り返していません。'],
+  ];
+  const privateDetail = 'synthetic-private-secret-/Users/private/project.mioon';
+  try {
+    for (const [locale, message] of messages) {
+      setNativeLanguageReader(() => locale);
+      const exactUnknown = (error: unknown) => {
+        assert.ok(error instanceof Error); assert.equal(error instanceof ProjectTrashRefusedError, false);
+        assert.equal((error as Error & {code: string}).code, 'PROJECT_TRASH_UNCONFIRMED');
+        assert.equal((error as Error & {status: number}).status, 409); assert.equal(error.message, message);
+        assert.doesNotMatch(error.message, /synthetic-private|secret|\/Users\/|mioon-trash-broker/u); return true;
+      };
+      const failed = fixture(t, {trashItem: async () => {throw new Error(privateDetail);}}), lease = await failed.client.reserve(failed.input);
+      await assert.rejects(lease.trash(failed.request()), exactUnknown); await tick();
+      await assert.rejects(lease.trash(failed.request()), exactUnknown);
+      assert.equal(failed.calls, 1); assert.equal(JSON.stringify(failed.replies).includes(privateDetail), false);
+      lease.release(); failed.client.close(); failed.broker.close();
+      const lost = fixture(t, {timeout: 10}), lostLease = await lost.client.reserve(lost.input);
+      lost.dropReplies(); await assert.rejects(lostLease.trash(lost.request()), exactUnknown);
+      assert.equal(lost.calls, 1);
+      assert.equal(lost.port.sent.filter(value => (value as {type: string}).type === 'project-trash:trash').length, 1);
+      assert.equal(lost.port.sent.some(value => /cancel/u.test((value as {type: string}).type)), false);
+      lostLease.release(); lost.client.close(); lost.broker.close();
+    }
+  } finally {setNativeLanguageReader(() => 'zh-Hans');}
+  assert.equal(nativeText('native.projectTrashUnconfirmed'), messages[0][1]);
 });
 
 test('undispatched reservations release on expiration and close while stale messages cannot dispatch', async t => {
