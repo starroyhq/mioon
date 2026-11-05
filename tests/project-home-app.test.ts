@@ -357,6 +357,30 @@ test('actual empty startup chooses home while explicit startup succeeds without 
   assert.equal(callsOf(selected, 'replaceState').length, 1);
 });
 
+test('nonempty startup without a project URL never reads project contents, even with a matching remembered project', async () => {
+  const h = harness({discovery: Promise.resolve({workspaceScope: 'a'.repeat(64), envelope: {
+    supported: true, workspaceScope: 'a'.repeat(64), instanceId: id(9), revision: 1,
+    projectId: id(2), updatedAt: '2026-10-13T00:00:00.000Z', targetStatus: 'matching',
+  }}), get() {assert.fail('A home startup must not call project.get.');}});
+  await h.boot();
+  assert.deepEqual(h.env.projects, projects); assert.equal(h.env.projectOpening.phase, 'home'); assert.equal(h.env.currentProject.current, null);
+  assert.equal(h.env.data.project, null); assert.equal(h.eligible(), false);
+  assert.deepEqual(callsOf(h, 'rpc').filter(call => call[1] === 'project.get'), []);
+  for (const action of ['preferences', 'tasks.load', 'remember', 'replaceState', 'pushState']) assert.deepEqual(callsOf(h, action), [], action);
+});
+
+test('an explicit unavailable project stays on home and never opens a remembered or first listed project', async () => {
+  const h = harness({discovery: Promise.resolve({workspaceScope: 'a'.repeat(64), envelope: {
+    supported: true, workspaceScope: 'a'.repeat(64), instanceId: id(9), revision: 1,
+    projectId: id(2), updatedAt: '2026-10-13T00:00:00.000Z', targetStatus: 'matching',
+  }}), get() {assert.fail('An unavailable URL must not open another project.');}});
+  h.env.window.location.search = `?project=${id(3)}`; await h.boot();
+  assert.equal(h.env.projectOpening.phase, 'home'); assert.equal(h.env.currentProject.current, null); assert.equal(h.eligible(), false);
+  assert.deepEqual(callsOf(h, 'rpc').filter(call => call[1] === 'project.get'), []);
+  assert.deepEqual(callsOf(h, 'notice'), [['notice', msg('projects.bootMissingEmpty'), 'error']]);
+  assert.deepEqual(callsOf(h, 'remember'), []); assert.deepEqual(callsOf(h, 'replaceState'), []);
+});
+
 
 function nativeEditor(projectId: string) {
   return { context: { version: 2, role: 'editor', windowId: id(7), contextId: id(8), backendId: id(9), initialProjectId: projectId,
@@ -409,7 +433,7 @@ function homeUi(): HomeUi {
   if (builtHomeUi) return builtHomeUi;
   const fixture = `import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server';
-    import ProjectHome from './src/ProjectHomeScreen.tsx';
+    import ProjectHome from './src/ProjectHomeDirectoryScreen.tsx';
     import ProjectHistoryDialog from './src/project-file/ProjectHistoryDialog.tsx';
     import ProjectBackupRecovery, { canOfferBackupRecovery } from './src/ProjectBackupRecovery.tsx';
     import ProjectHomeConnections from './src/ProjectHomeConnections.tsx';
@@ -461,9 +485,12 @@ function boundaryRenderer() {
 
 test('actual App renders standalone home, routes settings to the retained center, and exposes workbench only after success', async () => {
   const render = boundaryRenderer(), h = harness();
+  assert.match(app, /import ProjectHome from '\.\/ProjectHomeDirectoryScreen\.tsx'/);
   for (const phase of ['home', 'opening', 'error']) {
     h.env.projectOpening = { phase, projectId: id(1), error: phase === 'error' ? '读取失败' : '' };
     const { html, mounted } = render(h); assert.match(html, /data-testid="project-home"/); assert.match(html, new RegExp(`data-phase="${phase}"`));
+    assert.match(html, /data-testid="pf-home-loading"/);
+    assert.doesNotMatch(html, /data-testid="project-home-open-/);
     assert.doesNotMatch(html, /data-testid="workbench"|task-workspace|react-flow|inspector-region/); assert.deepEqual((mounted as unknown), []);
   }
   await h.changeHomePage('settings');

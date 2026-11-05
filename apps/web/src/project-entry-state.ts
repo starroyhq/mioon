@@ -17,7 +17,7 @@ export interface ProjectEntryState extends LauncherState {
   readonly openUnknown: boolean;
   readonly createdProjectId: string | null;
 }
-interface Departure { readonly owner: number; readonly localVersion: number; readonly intent: number; readonly metadataVersion: number }
+interface Departure { readonly owner: number; readonly localVersion: number; readonly intent: number; readonly metadataVersion: number; readonly contextVersion: number }
 interface Permit {
   readonly token: string;
   readonly projectId: string;
@@ -38,6 +38,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
   let context = initialContext, active = false, lifetime = 0, readSerial = 0, intent = 0, interactionSerial = 0, localVersion = 0, contextVersion = 0;
   let visible = true, autoConsumed = initialContext.role !== 'launcher' || !initialContext.autoOpen;
   let observedEntry = 0, observedSelection = -1, rememberedSelection = -1;
+  let openFlight: object | null = null;
   let metadata: LauncherCreateMetadata = { dirty: false, busy: false, version: 0 }, permit: Permit | null = null;
   let state: ProjectEntryState = { projects: [], catalogReady: false, listBusy: true, listError: '', phase: 'home', openingProjectId: null,
     error: '', notice: '', creating: false, createUnknown: false, version: 0, shown: initialContext.role === 'launcher', mode: 'open',
@@ -55,10 +56,10 @@ export function createProjectEntryController({ client, bridge, context: initialC
     metadata = Object.freeze({ ...next }); localVersion++;
   }
   const departureCurrent = (ticket: Departure) => alive(ticket.owner) && available() && !metadata.busy &&
-    ticket.localVersion === localVersion && ticket.metadataVersion === metadata.version && ticket.intent === intent;
+    ticket.localVersion === localVersion && ticket.metadataVersion === metadata.version && ticket.intent === intent && ticket.contextVersion === contextVersion;
   async function departure(message: string | DisplayMessage = msg('projects.keepCreateOpen')): Promise<Departure | null> {
     if (!available() || metadata.busy) return null;
-    const ticket: Departure = Object.freeze({ owner: lifetime, localVersion, intent, metadataVersion: metadata.version });
+    const ticket: Departure = Object.freeze({ owner: lifetime, localVersion, intent, metadataVersion: metadata.version, contextVersion });
     if (metadata.dirty && !await confirm(message)) return null;
     return departureCurrent(ticket) ? ticket : null;
   }
@@ -114,14 +115,22 @@ export function createProjectEntryController({ client, bridge, context: initialC
     }
   }
   async function open(projectId: string, remember = true): Promise<boolean> {
-    if (!isProjectWindowId(projectId) || !ownerCurrent() || permit || state.creating || state.createUnknown || state.openUnknown) return false;
-    interact(); const owner = lifetime, selected = intent;
-    if (!state.projects.some(project => project.id === projectId)) await refresh();
-    if (!alive(owner) || intent !== selected || !state.projects.some(project => project.id === projectId)) return false;
-    if (context.role === 'editor' && !state.shown) emit({ shown: true, mode: 'open' });
-    const ticket = await departure();
-    if (!ticket || !departureCurrent(ticket)) return false;
-    return dispatchOpen(projectId, remember);
+    if (!isProjectWindowId(projectId) || !ownerCurrent() || openFlight || permit || state.creating || state.createUnknown || state.openUnknown) return false;
+    const flight = {}; openFlight = flight;
+    try {
+      interact();
+      if (context.role === 'editor' && !state.shown) emit({ shown: true, mode: 'open' });
+      const ticket = await departure();
+      if (!ticket || !departureCurrent(ticket)) return false;
+      // Consent precedes the metadata GET. Cached UUID membership can never
+      // authorize opening a project in a replacement application library.
+      const serial = readSerial + 1, refreshed = await refresh();
+      if (!departureCurrent(ticket) || serial !== readSerial || state.listBusy || !refreshed) return false;
+      if (!state.projects.some(project => project.id === projectId)) {
+        emit({ phase: 'error', error: msg('projects.listUnavailable') }); return false;
+      }
+      return await dispatchOpen(projectId, remember);
+    } finally {if (openFlight === flight) openFlight = null;}
   }
   async function reconcileOpen(): Promise<void> {
     if (!active || !permit) return;
@@ -146,13 +155,14 @@ export function createProjectEntryController({ client, bridge, context: initialC
     if (!ticket || !departureCurrent(ticket)) return false;
     emit({ shown: false }); return true;
   }
-  async function refresh(initial = false): Promise<void> {
-    if (!ownerCurrent()) return;
+  async function refresh(initial = false): Promise<boolean> {
+    if (!ownerCurrent()) return false;
     const owner = lifetime, serial = ++readSerial, selection = interactionSerial;
-    emit({ listBusy: true, listError: '' });
+    emit({ catalogReady: false, listBusy: true, listError: '' });
     try {
+      if (!ownerCurrent() || !alive(owner) || serial !== readSerial) return false;
       const [projects, remembered] = await Promise.all([client.list(), initial && locator ? locator.discover() : Promise.resolve(null)]);
-      if (!alive(owner) || serial !== readSerial) return;
+      if (!ownerCurrent() || !alive(owner) || serial !== readSerial) return false;
       if (locator) assertLastProjectBootIdentity(locator.getState());
       emit({ catalogReady: true, projects, listBusy: false }); observeLocator(context);
       if (initial && context.role === 'launcher' && context.autoOpen && !autoConsumed && selection === interactionSerial && !context.quitting && context.editorCount === 0) {
@@ -161,10 +171,14 @@ export function createProjectEntryController({ client, bridge, context: initialC
         if (choice.notice) emit({ notice: choice.notice });
         if (choice.projectId) await open(choice.projectId, false);
       }
-    } catch { if (alive(owner) && serial === readSerial) emit({ listBusy: false, listError: msg('projects.listUnavailable') }); }
+      return true;
+    } catch {
+      if (alive(owner) && serial === readSerial) emit({ catalogReady: false, listBusy: false, listError: msg('projects.listUnavailable') });
+      return false;
+    }
   }
   async function create(name: string, description: string, timelinePresetId?: string): Promise<boolean> {
-    if (!available() || !state.catalogReady) return false;
+    if (!available() || openFlight || !state.catalogReady) return false;
     // The view's submit latch may already be busy; this exact call alone owns
     // it. No second submission can enter after creating is set synchronously.
     interact(); const owner = lifetime;
@@ -203,7 +217,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
   }
   return {
     activate() { if (!active) { active = true; lifetime++; locator?.activate(); } },
-    dispose() { active = false; lifetime++; readSerial++; locator?.dispose(); },
+    dispose() { active = false; lifetime++; readSerial++; openFlight = null; locator?.dispose(); },
     boot: () => refresh(true), refresh: () => refresh(false), open, create, show, dismiss, reconcileOpen, updateContext, reportCreate,
     interacted() { interactionSerial++; autoConsumed = true; },
     setVisible(value: boolean) { visible = value; },

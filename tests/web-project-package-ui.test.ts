@@ -8,7 +8,7 @@ import { buildSync } from 'esbuild';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const read = (file: string) => readFileSync(join(root, file), 'utf8');
-interface BuiltHome {render(props: Record<string, unknown>): string; renderScreen(props: Record<string, unknown>): string}
+interface BuiltHome {render(props: Record<string, unknown>): string; renderScreen(props: Record<string, unknown>): string; renderDirectory(props: Record<string, unknown>): string}
 let built: BuiltHome;
 function ui() {
   if (built) return built;
@@ -16,8 +16,11 @@ function ui() {
     import { renderToStaticMarkup } from 'react-dom/server';
     import ProjectHome from './src/ProjectHome.tsx';
     import ProjectHomeScreen from './src/ProjectHomeScreen.tsx';
+    import ProjectHomeDirectoryScreen from './src/ProjectHomeDirectoryScreen.tsx';
+    import { ConfirmationProvider } from '@mioon/ui/components/workbench-confirm';
     export const render = props => renderToStaticMarkup(<ProjectHome {...props} />);
-    export const renderScreen = props => renderToStaticMarkup(<ProjectHomeScreen {...props} />);`;
+    export const renderScreen = props => renderToStaticMarkup(<ProjectHomeScreen {...props} />);
+    export const renderDirectory = props => renderToStaticMarkup(<ConfirmationProvider><ProjectHomeDirectoryScreen {...props} /></ConfirmationProvider>);`;
   const result = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: join(root, 'apps/web') }, bundle: true, platform: 'node', format: 'cjs', write: false, jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
   const module = { exports: {} };
   Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
@@ -66,12 +69,18 @@ test('home hides package import, drop, duplicate and export without mounting a l
   assert.ok(order.every(index => index > 0)); assert.deepEqual([...order].sort((a, b) => a - b), order);
   assert.doesNotMatch(screen, /project-home-(?:duplicate|export)-|project-home-drop-overlay|onDrop|onDragEnter|onDragOver/);
   assert.doesNotMatch(screen, /ProjectPackageLayer|projectPackageFlow|openImport|openExport|openDuplicate|chooseImportFile/);
+  assert.doesNotMatch(read('apps/web/src/ProjectHomeDirectoryScreen.tsx'), /ProjectPackageLayer|projectPackageFlow|openImport|openExport|openDuplicate|chooseImportFile/);
   for (const items of [projects, []]) for (const presentation of ['page', 'embedded']) {
     const html = ui().renderScreen({ ...base, projects: items, presentation, onImport: none, justImported: ['p2'] });
     assert.doesNotMatch(html, /project-home-import|project-home-just-imported|project-package|project-home-drop-overlay/);
     assert.match(html, /data-testid="project-home-create-toggle"/);
     assert.match(html, new RegExp(`data-presentation="${presentation}"`));
     assert.equal((html.match(/data-testid="project-home-open-p[12]"/g) || []).length, items.length);
+    const directory = ui().renderDirectory({ ...base, projects: items, presentation });
+    assert.match(directory, /data-testid="pf-home-loading"/);
+    assert.doesNotMatch(directory, /project-home-import|project-home-just-imported|project-package|project-home-drop-overlay/);
+    assert.doesNotMatch(directory, /data-testid="(?:project-home-open-|pf-home-list)/, 'Unverified legacy props are not a trusted directory snapshot.');
+    assert.match(directory, new RegExp(`data-presentation="${presentation}"`));
   }
 });
 

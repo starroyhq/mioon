@@ -30,7 +30,7 @@ function section(source: string, start: string, end: string): string {
 const compile = (source: string, name: string, env: Record<string, unknown>): ((...args: unknown[])=>unknown) => evaluateSource(`${source}\nreturn ${name};`, Object.keys(env), Object.values(env), {loader: 'tsx'});
 const modesMarkup = section(app, '<Tabs value={workspaceMode} onValueChange={changeMode}', '</Tabs>') + '</Tabs>';
 const videoDirectoryNoticeSource = section(app, '  const videoDirectoryNotice =', '  if (!workbenchReady && !retainWorkbenchForClip)');
-const homeBoundary = section(app, '  if (!workbenchReady && !retainWorkbenchForClip) return <>{webSettingsCenter}<ProjectHome ', '  return <>{webSettingsCenter}<main className={`workbench');
+const homeBoundary = section(app, '  if (!workbenchReady && !retainWorkbenchForClip) return <>{webSettingsCenter}{historyLayer}<ProjectHome ', '  return <>{webSettingsCenter}<main className={`workbench');
 const refreshSource = section(app, '  const refresh = useCallback(', '  async function revealImageAsset(');
 const readySource = section(app, '  function projectSessionReady()', '  const workbenchReady =');
 const settingsSource = section(app, '  async function prepareSettingsDeparture()', '  async function changeHomePage(');
@@ -55,20 +55,24 @@ const fixture = `
   import { renderToStaticMarkup } from 'react-dom/server';
   import { Tabs, TabsList, TabsTrigger } from '@mioon/ui/components/tabs';
   import { Button } from '@mioon/ui/components/button';
+  // This fixture deliberately renders the synchronous form presentation. The
+  // App return below is real; directory loading/identity and the production
+  // ProjectHomeDirectoryScreen are covered by directory and browser tests.
   import ProjectHome from './src/ProjectHome.tsx';
   import LastProjectStatus from './src/LastProjectStatus.tsx';
+  import { canOfferBackupRecovery } from './src/ProjectBackupRecovery.tsx';
   import { useButton } from ${JSON.stringify(join(baseRoot, 'internals/use-button/useButton.js'))};
   import { createChangeEventDetails } from ${JSON.stringify(join(baseRoot, 'internals/createBaseUIEventDetails.js'))};
   import { REASONS } from ${JSON.stringify(join(baseRoot, 'internals/reasons.js'))};
   const Icon = () => null;
   export function Modes({data, loading, workspaceMode, changeMode}) { return ${modesMarkup}; }
   // Only the global settings slot is inert in this projects-page fixture. The
-  // actual App early return, ProjectHome, shared controls and status are executed.
+  // actual App early return, form presentation, shared controls and status run.
   const ProjectHomeConnections = () => null, AgentDockPane = () => null, SettingsNavigationSlot = () => null;
   const AgentSettings = () => null, ImageSettings = () => null, ComfyImageSettings = () => null;
   const RestoredUnavailable = ({title}) => <span>{title}</span>;
   export function Surface({ data, loading, workspaceMode, changeMode, workbenchReady, projects, projectOpening, toast, busy,
-    projectListStatus, homePage, changeHomePage, selectProject, refreshHomeProjects, createProject, retainWorkbenchForClip = false, webSettingsCenter = null, videoDirectoryUnavailable = false, preferenceScope = { current: null }, editorSession = {current:'normal'}, workspace = {},
+    projectListStatus, homePage, changeHomePage, selectProject, refreshHomeProjects, createProject, retainWorkbenchForClip = false, webSettingsCenter = null, historyLayer = null, backupRecovery = null, backupFailure = null, webSettingsOpen = false, setAuth, videoDirectoryUnavailable = false, preferenceScope = { current: null }, editorSession = {current:'normal'}, workspace = {},
     lastProjectStatus, lastProjectRef, homeConnection, setHomeConnection, settingsNavigation, prepareSettingsDeparture, setHomePage, locale = 'zh-Hans' }) {
     const { t } = createI18nTestContext(locale);
     ${videoDirectoryNoticeSource}
@@ -91,12 +95,12 @@ const fixture = `
     renderToStaticMarkup(<Probe />);
     return result;
   }
-  export { React, Tabs, TabsList, TabsTrigger, Button };
+  export { React, Tabs, TabsList, TabsTrigger, Button, canOfferBackupRecovery };
 `;
 const built = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: join(root, 'apps/web') }, bundle: true, platform: 'node', format: 'cjs', write: false, jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
 const module: {exports: unknown} = { exports: {} };
 Function('require', 'module', 'exports', built.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
-interface UiModule {render(props: Record<string, unknown>): string; Modes(props: Record<string, unknown>): RenderNodeLike; Surface(props: Record<string, unknown>): RenderNodeLike; nativeProps(props: Record<string, unknown>, value: string): NativeHandlers}
+interface UiModule {canOfferBackupRecovery: typeof import('../apps/web/src/ProjectBackupRecovery.tsx').canOfferBackupRecovery; render(props: Record<string, unknown>): string; Modes(props: Record<string, unknown>): RenderNodeLike; Surface(props: Record<string, unknown>): RenderNodeLike; nativeProps(props: Record<string, unknown>, value: string): NativeHandlers}
 interface RenderNodeLike {props: Record<string, unknown> & {onValueChange?: unknown; onCreate?: unknown; children?: unknown}; [key: string]: unknown}
 interface NativeHandlers {onClick(event: unknown): void; onKeyDown(event: unknown): void; onKeyUp(event: unknown): void}
 const ui = module.exports as unknown as UiModule;
@@ -124,6 +128,7 @@ interface EnvAccess extends Record<string, unknown> {
   refresh?: (...args: unknown[])=>Promise<unknown>;
   preferenceScope: {current: unknown};
   projectListStatus: {busy: boolean; error: string};
+  webSettingsOpen: boolean;
   projects: unknown[];
 }
 interface HarnessResult {env: EnvAccess; calls: unknown[][]; change: (...args: unknown[])=>Promise<unknown>; boot: ()=>Promise<unknown>; create: (...args: unknown[])=>Promise<boolean>}
@@ -141,7 +146,7 @@ function assertDisabled(html: unknown, expected: boolean): void {
 
 function harness({ projectId = null, mode = 'canvas', loading = false, ready = Boolean(projectId) }: HarnessOptions = {}): HarnessResult {
   const calls: unknown[][] = [], view = defaultWorkspaceState(); view.activeMode = mode as never;
-  const env: EnvAccess = { msg, ...createI18nTestContext(), localizedError: (value: unknown) => Object.assign(new Error(renderCoreMessage('zh-Hans', value as string)), { displayMessage: value }), clipLoudnessEpoch: { current: 0 }, nativeWindow: null, editorInitialSelection, emptyData, loading, currentProject: { current: projectId }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 }, requestCounter: { current: 0 }, projectSessionReady: () => false, selectProject: async () => false, refresh: async () => undefined,
+  const env: EnvAccess = { canOfferBackupRecovery: ui.canOfferBackupRecovery, backupFailure: null, msg, ...createI18nTestContext(), localizedError: (value: unknown) => Object.assign(new Error(renderCoreMessage('zh-Hans', value as string)), { displayMessage: value }), clipLoudnessEpoch: { current: 0 }, nativeWindow: null, editorInitialSelection, emptyData, loading, currentProject: { current: projectId }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 }, requestCounter: { current: 0 }, projectSessionReady: () => false, selectProject: async () => false, refresh: async () => undefined,
     viewRef: { current: view }, viewReady: { current: ready }, dataRef: { current: projectId ? { ...emptyData, project: { id: projectId } } : emptyData },
     editorSession: {current: 'normal'}, workspaceRef: { current: {} }, importSession: { current: { active: true, selection: 0 } }, dragging: { current: false },
 
@@ -159,9 +164,9 @@ function harness({ projectId = null, mode = 'canvas', loading = false, ready = B
     openedProject: { current: null }, projectCreateFlight: { current: null }, settingsNavigation: { current: createSettingsNavigationRegistry() },
     timelineFormatRef: { current: null }, deliveryNameRef: { current: null }, localDeliveryRef: { current: null },
     projectOpening: { phase: projectId && ready ? 'ready' : 'home', projectId, error: '' }, projects: [],
-    projectListStatus: { busy: false, error: '' }, busy: {}, homePage: 'projects', homeConnection: 'agent', toast: null, videoDirectoryUnavailable: false,
+    projectListStatus: { busy: false, error: '' }, busy: {}, homePage: 'projects', homeConnection: 'agent', toast: null, webSettingsOpen: false, videoDirectoryUnavailable: false,
     markBusy: (...args: unknown[]) => calls.push(['markBusy', ...args]), setHomeConnection() {}, changeHomePage() {}, refreshHomeProjects() {},
-    ...Object.fromEntries(['setLastSync', 'setView', 'setMobilePanel', 'setPreviewAsset', 'setComparisonId', 'setShowCreate', 'setProjects', 'setWorkspace', 'setAuth', 'setOnline', 'setProviders', 'setVideoDirectoryUnavailable', 'setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setNodes', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setRealConfirm', 'setToast', 'setZoom', 'setPanelOverlay', 'setHomePage', 'setHomeConnection', 'setPanelOpen', 'setSettingsOpen', 'setAgentPage', 'setWorkspaceMode', 'setShowTasks', 'setSelectedTaskId', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setTaskState', 'setShowSettings', 'setWebSettingsOpen', 'setCanvasToolbar', 'notify'].map((name: string) => [name, (...args: unknown[]) => calls.push([name, ...args])])),
+    ...Object.fromEntries(['setBackupFailure', 'setLastSync', 'setView', 'setMobilePanel', 'setPreviewAsset', 'setComparisonId', 'setShowCreate', 'setProjects', 'setWorkspace', 'setAuth', 'setOnline', 'setProviders', 'setVideoDirectoryUnavailable', 'setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setNodes', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setRealConfirm', 'setToast', 'setZoom', 'setPanelOverlay', 'setHomePage', 'setHomeConnection', 'setPanelOpen', 'setSettingsOpen', 'setAgentPage', 'setWorkspaceMode', 'setShowTasks', 'setSelectedTaskId', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setTaskState', 'setShowSettings', 'setWebSettingsOpen', 'setCanvasToolbar', 'notify'].map((name: string) => [name, (...args: unknown[]) => calls.push([name, ...args])])),
   };
   if (projectId && ready) env.openedProject.current = projectOpenAttempt(projectId as string, 0, 'normal' as string) as unknown as {projectId?: unknown};
   env.setProjectOpening = (value: unknown) => { env.projectOpening = value as EnvAccess['projectOpening']; calls.push(['setProjectOpening', value]); };
@@ -202,6 +207,16 @@ test('actual empty startup shows the independent home and never mounts project m
     assert.match(openingTag(html, id), /tabindex="0"/);
   }
   assert.doesNotMatch(html, /role="dialog"/);
+});
+
+test('the extracted home boundary binds settings visibility and routes unauthorized reads to the real auth setter', () => {
+  const f = harness();
+  const home = (props: Record<string, unknown>) => nodes(ui.Surface(props)).find(node => typeof node.props?.onUnauthorized === 'function');
+  const shown = home(modeProps(f)); assert.ok(shown); assert.equal(shown.props?.active, true);
+  f.env.webSettingsOpen = true;
+  const hidden = home(modeProps(f)); assert.ok(hidden); assert.equal(hidden.props?.active, false);
+  (hidden.props!.onUnauthorized as () => void)();
+  assert.deepEqual(f.calls, [['setAuth', false]]);
 });
 
 test('actual home status shows the localized optional video directory failure and clears it after retry', async () => {
