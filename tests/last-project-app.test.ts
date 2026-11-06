@@ -29,13 +29,20 @@ const ignoredLegacyObservation=Object.freeze({projectId:id(2)});
 const projects=[{id:id(1)},{id:id(2)}];
 const deferred=()=>{let resolve!: (value?: unknown) => void,reject!: (value: unknown) => void;const promise=new Promise<unknown>((a,b)=>{resolve=a;reject=b;});return{promise,resolve,reject};};
 const app=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
+// Execute the actual pure error classifier used by App's new recovery state;
+// selection/navigation assertions below still run the unmodified App functions.
+const recoverySource=readFileSync(new URL('../apps/web/src/ProjectBackupRecovery.tsx',import.meta.url),'utf8');
+const recoveryStart=recoverySource.indexOf('const record ='),recoveryEnd=recoverySource.indexOf('/** A failed project');
+assert.ok(recoveryStart>=0&&recoveryEnd>recoveryStart);
+const canOfferBackupRecovery=Function(recoverySource.slice(recoveryStart,recoveryEnd).replace('export function','function')+'\nreturn canOfferBackupRecovery;')() as (error:unknown)=>boolean;
+
 function section(start: string,end: string){const a=app.indexOf(start),b=app.indexOf(end,a+start.length);assert.ok(a>=0&&b>a);assert.equal(app.indexOf(start,a+start.length),-1);return app.slice(a,b);}
 const refreshSource=section('  const refresh = useCallback(', '  async function revealImageAsset(');
 const readySource=section('  function projectSessionReady()', '  const workbenchReady =');
 const settingsSource=section('  async function prepareSettingsDeparture()', '  async function changeHomePage(');
 const guardSource=section('  async function guardNavigation(', '  async function guardProjectNavigation(');
 const projectGuardSource=section('  async function guardProjectNavigation(', '  async function prepareSettingsDeparture(');
-const selectSource=section('  async function selectProject(', '  async function reloadPreferences(');
+const selectSource=section('  function captureProjectFeatureAdmission(', '  function projectSessionReady()') + section('  async function selectProject(', '  async function reloadPreferences(');
 const bootSource=section('  async function boot(): Promise<void> {','  useEffect(() => {\n    const identity = projectEntryIdentityRef.current!;');
 const compile=<N extends keyof AppFunctions>(code: string,name: N,env: Record<string, unknown>): AppFunctions[N] =>Function(...Object.keys(env),`${code}\nreturn ${name};`)(...Object.values(env)) as AppFunctions[N];
 
@@ -66,7 +73,7 @@ test('boot tickets reject later boots, project changes and StrictMode disposed l
 function selectionHarness({refresh,confirm=true,videoDirectory}: {refresh?(projectId: string): unknown; confirm?: boolean; videoDirectory?(): unknown}={}){
  const calls: [string, ...unknown[]][]=[],currentProject={current:id(1) as string | null},projectEpoch={current:0},navigationEpoch={current:0};
  const view=defaultWorkspaceState(),identity=projectEntryOwnerFixture(()=>projectEntryFixture(projects),calls);
- const env={msg,...createI18nTestContext(),localizedError:(value?: string|DisplayMessage|null|undefined)=>Object.assign(new Error(renderCoreMessage('zh-Hans',value)),{displayMessage:value}),nativeWindow:null,editorInitialSelection,notify:(...args: unknown[])=>calls.push(['notice',...args]),readableError:(e: Error)=>e.message,editorSession: {current: 'normal'}, workspaceRef:{current:{}},loading:false,importSession:{current:{active:true,selection:0}},currentProject,projectEpoch,navigationEpoch,
+ const env={canOfferBackupRecovery,backupFailure:null,projects,nativeLeaseRevoked:{current:false},msg,...createI18nTestContext(),localizedError:(value?: string|DisplayMessage|null|undefined)=>Object.assign(new Error(renderCoreMessage('zh-Hans',value)),{displayMessage:value}),nativeWindow:null,editorInitialSelection,notify:(...args: unknown[])=>calls.push(['notice',...args]),readableError:(e: Error)=>e.message,editorSession: {current: 'normal'}, workspaceRef:{current:{}},loading:false,importSession:{current:{active:true,selection:0}},currentProject,projectEpoch,navigationEpoch,
   agentDraft:{current:false},imageDraft:{current:false},confirm:async()=>confirm,
   dirtyRef:{current:!confirm},subtitlesRef:{current:null},clipDraftRef:{current:null},shotTextRef:{current:null},subjectsRef:{current:null},
   timelineFormatRef:{current:null},deliveryNameRef:{current:null},localDeliveryRef:{current:null},
@@ -81,7 +88,7 @@ function selectionHarness({refresh,confirm=true,videoDirectory}: {refresh?(proje
   emptyData:{},pendingForProject:()=>[],dragging:{current:false},viewRef:{current:view},
   updateView:()=>{},URL,
   window:{location:{href:'http://127.0.0.1:4318/'},history:{pushState(){},replaceState(){}},__mioonUiPreferences:{markOpened:(projectId: string)=>calls.push(['markOpened',projectId])}},
-  ...Object.fromEntries(['setLastSync','setProviders','setOnline','setPropertiesPage','setTaskState','setPreferenceStatus','setPending','setShowProjects','setData','setNodes','setLoading','setShotDirty','setClipDirty','setSourceDirty','setSubjectDirty','setSubtitleDirty','setInspectorEpoch','setRightDockTab','setPanelOverlay','setSelectedTaskId','setShowTasks','setShowDelivery','setShowImage','setShowProjectChooser','setShowExports','setComparisonId','setPreviewAsset','setRealConfirm','setToast','setMobilePanel','setView','setZoom'].map(name=>[name,(value: unknown)=>calls.push([name,value])])),
+  ...Object.fromEntries(['setBackupFailure','setLastSync','setProviders','setOnline','setPropertiesPage','setTaskState','setPreferenceStatus','setPending','setShowProjects','setData','setNodes','setLoading','setShotDirty','setClipDirty','setSourceDirty','setSubjectDirty','setSubtitleDirty','setInspectorEpoch','setRightDockTab','setPanelOverlay','setSelectedTaskId','setShowTasks','setShowDelivery','setShowImage','setShowProjectChooser','setShowExports','setComparisonId','setPreviewAsset','setRealConfirm','setToast','setMobilePanel','setView','setZoom'].map(name=>[name,(value: unknown)=>calls.push([name,value])])),
  } as unknown as SelectionEnvironment;
  env.context=()=>({projectId:currentProject.current,epoch:navigationEpoch.current,session:env.editorSession.current});
  env.isCurrent=(captured: { projectId: string | null; epoch: number; session: string; })=>captured.projectId===currentProject.current&&captured.epoch===navigationEpoch.current&&captured.session===env.editorSession.current;

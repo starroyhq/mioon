@@ -29,7 +29,8 @@ const requires = (schema: unknown, field: string): boolean => {
 
 test('every operation has exactly one address: app-level, entity-addressed, or the project its input names', () => {
   const operations = Object.keys(schemas);
-  assert.equal(operations.length, 155);
+  assert.equal(operations.length, 154); // Retire only public project.notes.set.
+  assert.equal(operations.includes('project.notes.set'), false);
   for (const operation of PREVIS_OUTPUT_OPERATIONS) {
     assert.ok(Object.hasOwn(schemas, operation), operation);
     assert.equal(isAppLevelOperation(operation), false, operation);

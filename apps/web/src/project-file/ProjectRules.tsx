@@ -10,6 +10,7 @@ import { useI18n } from '../i18n/I18nProvider.tsx';
 import Icon from '../icons.tsx';
 import { displayPath } from './format.ts';
 import type { ActionState, ViewState } from './types.ts';
+import type {HostRulesProposal} from '../project-rules-proposal.ts';
 import './project-file-common.css';
 import './project-file-rules.css';
 
@@ -27,13 +28,15 @@ export interface ProjectRulesDialogProps {
   /** Size limit in bytes (R2). */
   readonly maxBytes: number;
   /** untrusted: changed outside Mioon since it was last enabled here, so not sent to Mio. */
-  readonly trust: 'trusted' | 'untrusted';
+  readonly trust: 'trusted' | 'untrusted' | 'absent' | 'unavailable' | 'pending';
   /** Path of AGENTS.md. */
   readonly path: string;
   readonly homeDirectory?: string | null;
   readonly save: ActionState<'save' | 'enable'>;
   /** The file changed elsewhere since it was read. */
   readonly conflict: boolean;
+  readonly blocked?: boolean; readonly interactionBlocked?:boolean;
+  readonly notice?: ReactNode;
   readonly onSave: () => void;
   /** Enables the file; with a changed draft the caller saves it first. */
   readonly onEnable: () => void;
@@ -42,12 +45,12 @@ export interface ProjectRulesDialogProps {
   readonly onClose: () => void;
 }
 
-/** Project rules (12-12): AGENTS.md in the project folder, edited like the project notes. */
+/** Project rules (12-12): host-backed AGENTS.md hash CAS and trust. */
 export function ProjectRulesDialog(props: ProjectRulesDialogProps): ReactElement {
   const { t } = useI18n();
   const { state, draft, maxBytes, save } = props;
   const ready = state.kind === 'ready' ? state.value : null;
-  const saving = save.kind === 'working';
+  const saving = save.kind === 'working', locked = saving || props.blocked === true;
   const dirty = ready !== null && draft !== ready.text;
   const problem = rulesProblem(draft, maxBytes), bytes = rulesBytes(draft);
   const untrusted = ready?.exists === true && props.trust === 'untrusted';
@@ -57,22 +60,23 @@ export function ProjectRulesDialog(props: ProjectRulesDialogProps): ReactElement
   else if (state.kind === 'error') body = <div className="pf-state" role="alert" data-testid="pf-rules-error"><strong>{t('projectFile.rules.error', file)}</strong>
     {state.retryable && <WorkbenchButton data-testid="pf-rules-retry" onClick={props.onRetry}>{t('projectFile.common.retry')}</WorkbenchButton>}</div>;
   else body = <>
-    <Textarea className="pf-rules-text" data-testid="pf-rules-text" aria-label={t('projectFile.rules.title')} aria-describedby="pf-rules-count" value={draft} readOnly={saving}
-      placeholder={t('projectFile.rules.placeholder')} aria-invalid={problem !== null || undefined} spellCheck={false} onChange={event => { if (!saving) props.onDraftChange(event.target.value); }} />
+    <Textarea className="pf-rules-text" data-testid="pf-rules-text" aria-label={t('projectFile.rules.title')} aria-describedby="pf-rules-count" value={draft} readOnly={locked}
+      placeholder={t('projectFile.rules.placeholder')} aria-invalid={problem !== null || undefined} spellCheck={false} onChange={event => { if (!locked) props.onDraftChange(event.target.value); }} />
     <p id="pf-rules-count" className="pf-rules-count" data-testid="pf-rules-count" data-over={problem === 'tooLong' || undefined}>{t('projectFile.rules.bytes', { bytes, limit: maxBytes })}</p>
     {problem && <p className="pf-rules-problem" role="alert" data-testid="pf-rules-problem">{t(problem === 'tooLong' ? 'projectFile.rules.tooLong' : 'projectFile.rules.invalid', { limit: maxBytes })}</p>}
     {props.conflict && <WorkbenchAlert tone="warning" data-testid="pf-rules-conflict"
       actions={<WorkbenchButton size="compact" data-testid="pf-rules-load-latest" disabled={saving} onClick={props.onLoadLatest}>{t('projectFile.rules.loadLatest')}</WorkbenchButton>}>{t('projectFile.rules.conflict', file)}</WorkbenchAlert>}
     {save.kind === 'error' && <WorkbenchAlert tone="danger" data-testid="pf-rules-save-error">{t(save.action === 'enable' ? 'projectFile.rules.enableFailed' : 'projectFile.rules.saveFailed')}</WorkbenchAlert>}
   </>;
-  const status = ready === null ? null : !ready.exists
+  const status = ready === null ? null : props.trust === 'pending' || props.trust === 'unavailable'
+    ? <WorkbenchBadge tone="warning" data-testid="pf-rules-status">{t(props.trust === 'pending' ? 'projectRules.runtime.pendingLabel' : 'projectRules.runtime.unavailableLabel')}</WorkbenchBadge> : !ready.exists
     ? <span className="pf-rules-status-note" data-testid="pf-rules-new">{t('projectFile.rules.newFile', file)}</span>
-    : <WorkbenchBadge tone={untrusted ? 'warning' : 'success'} data-testid="pf-rules-status">{t(untrusted ? 'projectFile.rules.notEnabled' : 'projectFile.rules.enabled')}</WorkbenchBadge>;
+    : <WorkbenchBadge tone={props.trust === 'trusted' ? 'success' : 'warning'} data-testid="pf-rules-status">{t(untrusted ? 'projectFile.rules.notEnabled' : 'projectFile.rules.enabled')}</WorkbenchBadge>;
   const primary = untrusted
-    ? <WorkbenchButton variant="primary" data-testid="pf-rules-enable" loading={saving && save.action === 'enable'} disabled={saving || problem !== null} onClick={props.onEnable}>{t(dirty ? 'projectFile.rules.saveAndEnable' : 'projectFile.rules.enable')}</WorkbenchButton>
-    : <WorkbenchButton variant="primary" data-testid="pf-rules-save" loading={saving && save.action === 'save'} disabled={ready === null || saving || !dirty || problem !== null} onClick={props.onSave}>{t('projectFile.rules.save')}</WorkbenchButton>;
+    ? <WorkbenchButton variant="primary" data-testid="pf-rules-enable" loading={saving && save.action === 'enable'} disabled={locked || props.conflict || problem !== null} onClick={props.onEnable}>{t(dirty ? 'projectFile.rules.saveAndEnable' : 'projectFile.rules.enable')}</WorkbenchButton>
+    : <WorkbenchButton variant="primary" data-testid="pf-rules-save" loading={saving && save.action === 'save'} disabled={ready === null || locked || props.conflict || !dirty || problem !== null} onClick={props.onSave}>{t('projectFile.rules.save')}</WorkbenchButton>;
   return <Dialog open={props.open} onOpenChange={next => { if (!next && !saving) props.onClose(); }}>
-    <WorkbenchDialogContent title={t('projectFile.rules.title')} description={t('projectFile.rules.description', file)} className="pf-dialog pf-rules-dialog" data-testid="pf-rules-dialog" showCloseButton={!saving}
+    <WorkbenchDialogContent inert={props.interactionBlocked||undefined} title={t('projectFile.rules.title')} description={t('projectFile.rules.description', file)} className="pf-dialog pf-rules-dialog" data-testid="pf-rules-dialog" showCloseButton={!saving}
       footer={<>
         <div className="pf-footer-note pf-rules-file">
           <span className="pf-rules-path"><Icon name="note" size={14} /><span className="pf-mono" data-testid="pf-rules-path">{displayPath(props.path, props.homeDirectory)}</span>{status}</span>
@@ -81,7 +85,7 @@ export function ProjectRulesDialog(props: ProjectRulesDialogProps): ReactElement
         <WorkbenchButton data-testid="pf-rules-discard" disabled={saving} onClick={props.onClose}>{t('projectFile.rules.discard')}</WorkbenchButton>
         {primary}
       </>}>
-      {body}
+      {props.notice}{body}
     </WorkbenchDialogContent>
   </Dialog>;
 }
@@ -121,20 +125,24 @@ export type ProjectRulesChangeState =
   | { readonly kind: 'submitting'; readonly decision: RulesDecision }
   | { readonly kind: 'error'; readonly decision: RulesDecision }
   | { readonly kind: 'allowed' }
-  | { readonly kind: 'rejected' };
+  | { readonly kind: 'rejected' }
+  | { readonly kind: 'unknown' }
+  | { readonly kind: 'unavailable' };
 export interface ProjectRulesChangeCardProps {
-  readonly change: ProjectRulesChange;
+  readonly change?: ProjectRulesChange;
+  readonly proposal?: HostRulesProposal | null;
+  readonly disabled?: boolean;
   readonly state: ProjectRulesChangeState;
   readonly onAllow: () => void;
   readonly onReject: () => void;
 }
 /** Mio's change to the project rules, in the conversation (12-14). Always asks,
  * whatever the confirmation settings; once decided it only shows the outcome. */
-export function ProjectRulesChangeCard({ change, state, onAllow, onReject }: ProjectRulesChangeCardProps): ReactElement {
+export function ProjectRulesChangeCard({ change, proposal, disabled = false, state, onAllow, onReject }: ProjectRulesChangeCardProps): ReactElement {
   const { t } = useI18n();
   const decided = state.kind === 'allowed' || state.kind === 'rejected';
   const submitting = state.kind === 'submitting';
-  const added = change.lines.filter(line => line.kind === 'add').length, removed = change.lines.length - added;
+  const added = change?.lines.filter(line => line.kind === 'add').length ?? 0, removed = (change?.lines.length ?? 0) - added;
   const counts = [...added > 0 ? [t('projectFile.rules.change.added', { count: added })] : [], ...removed > 0 ? [t('projectFile.rules.change.removed', { count: removed })] : []]
     .join(t('projectFile.common.listSeparator'));
   return <section className="pf-rules-card" data-state={state.kind} data-testid="pf-rules-card" aria-label={t('projectFile.rules.change.title')}>
@@ -142,23 +150,27 @@ export function ProjectRulesChangeCard({ change, state, onAllow, onReject }: Pro
       <Icon name="note" size={16} />
       <h3>{t('projectFile.rules.change.title')}</h3>
       <WorkbenchBadge tone={state.kind === 'allowed' ? 'success' : state.kind === 'rejected' ? 'neutral' : 'warning'} data-testid="pf-rules-card-status">
-        {t(state.kind === 'allowed' ? 'projectFile.rules.change.allowed' : state.kind === 'rejected' ? 'projectFile.rules.change.rejected' : 'projectFile.rules.change.needsConfirm')}
+        {t(state.kind === 'allowed' ? 'projectFile.rules.change.allowed' : state.kind === 'rejected' ? 'projectFile.rules.change.rejected' : state.kind === 'unknown' ? 'projectRules.runtime.pendingLabel' : state.kind === 'unavailable' ? 'projectRules.runtime.unavailableLabel' : 'projectFile.rules.change.needsConfirm')}
       </WorkbenchBadge>
     </header>
-    <div className="pf-rules-diff" data-testid="pf-rules-diff">
+    {change && <div className="pf-rules-diff" data-testid="pf-rules-diff">
       <p className="pf-rules-diff-heading">
         <span>{PROJECT_RULES_FILE}</span>
         <span data-testid="pf-rules-diff-counts">{change.section === null ? counts : t('projectFile.rules.change.sectionCounts', { section: change.section, counts })}</span>
       </p>
-      <ul>{change.lines.map((line, index) => <li key={index} data-kind={line.kind}><span className="pf-rules-diff-sign" aria-hidden="true">{line.kind === 'add' ? '+' : '-'}</span>{line.text}</li>)}</ul>
-    </div>
+      <ul>{change.lines.map((line, index) => <li key={index} data-kind={line.kind}><span className="pf-rules-diff-sign" aria-hidden="true">{line.kind === 'add' ? '+' : '-'}</span>{line.text.replace(/\r$/u, ' ␍')}</li>)}</ul>
+    </div>}
+    {proposal && <div className="pf-rules-complete" data-testid="pf-rules-complete">
+      <details><summary>{t('projectRules.runtime.proposalBefore')}</summary><pre>{proposal.beforeText === null ? t('projectRules.runtime.noFile') : proposal.beforeText === '' ? t('projectRules.runtime.emptyFile') : proposal.beforeText.replace(/\r/gu, '␍')}</pre></details>
+      <details><summary>{t('projectRules.runtime.proposalAfter')}</summary><pre>{proposal.proposedText === '' ? t('projectRules.runtime.emptyFile') : proposal.proposedText.replace(/\r/gu, '␍')}</pre></details>
+    </div>}
     <p className="pf-rules-card-note"><Icon name="shield" size={14} />{t('projectFile.rules.change.note')}</p>
     {state.kind === 'error' && <WorkbenchAlert tone="danger" data-testid="pf-rules-card-error">{t('projectFile.rules.change.failed')}</WorkbenchAlert>}
-    {decided
+    {state.kind === 'unknown' || state.kind === 'unavailable' ? <p className="pf-rules-card-result" data-testid="pf-rules-decision-unavailable">{t(state.kind === 'unknown' ? 'projectRules.runtime.decisionUnknown' : 'projectRules.runtime.proposalUnavailable')}</p> : decided
       ? <p className="pf-rules-card-result" data-testid="pf-rules-card-result">{t(state.kind === 'allowed' ? 'projectFile.rules.change.allowedResult' : 'projectFile.rules.change.rejectedResult', { file: PROJECT_RULES_FILE })}</p>
       : <div className="pf-rules-card-actions">
-        <WorkbenchButton data-testid="pf-rules-reject" loading={submitting && state.decision === 'reject'} disabled={submitting} onClick={onReject}>{t('projectFile.rules.change.reject')}</WorkbenchButton>
-        <WorkbenchButton variant="primary" data-testid="pf-rules-allow" loading={submitting && state.decision === 'allow'} disabled={submitting} onClick={onAllow}>
+        <WorkbenchButton data-testid="pf-rules-reject" loading={submitting && state.decision === 'reject'} disabled={submitting || disabled} onClick={onReject}>{t('projectFile.rules.change.reject')}</WorkbenchButton>
+        <WorkbenchButton variant="primary" data-testid="pf-rules-allow" loading={submitting && state.decision === 'allow'} disabled={submitting || disabled} onClick={onAllow}>
           {!(submitting && state.decision === 'allow') && <Check size={14} aria-hidden="true" />}{t('projectFile.rules.change.allow')}
         </WorkbenchButton>
       </div>}

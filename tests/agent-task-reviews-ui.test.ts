@@ -1,12 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync,mkdtempSync,readFileSync,realpathSync,rmSync,writeFileSync } from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {randomUUID} from 'node:crypto';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
+import {createMioProjectRules} from '../packages/business/src/agent/mio-rules.ts';
 import { createTargetMarks, markLabelPosition, markTargetElements, MARK_ATTRIBUTE } from '../apps/web/src/target-marks.ts';
 import { createAgentReviewMarks, createReviewArrivals, parseReviewIssueOwner, revealReviewIssue, reviewIssueOwner, reviewMarkTargets, taskContinuityReportOf, taskSkillReadOf, taskSkillTitleKey } from '../apps/web/src/agent-task-reviews.ts';
 import { taskStepTitle } from '../apps/web/src/agent-task-presentation.ts';
-import { projectNotesOf, projectNotesProblem, saveProjectNotes } from '../apps/web/src/project-notes.ts';
-import type { ProjectNotesCall } from '../apps/web/src/project-notes.ts';
-import { ApiError } from '../apps/web/src/api.ts';
 import type { AgentTaskSnapshot, AgentTaskStep } from '../packages/contracts/src/agent-tasks-v2.ts';
 import { AGENT_TASK_CONTINUITY_CATEGORIES, AGENT_TASK_SKILL_NAMES } from '../packages/contracts/src/agent-tasks-v2.ts';
 import { LOCALES, translate } from '../packages/i18n/src/index.ts';
@@ -195,76 +198,50 @@ test('a clicked review label opens its issue card and highlights it for a moment
   assert.equal(revealReviewIssue(log as unknown as HTMLElement, 'review:other:0'), null);
 });
 
-const project = (revision: number, notes?: string) => ({ id: projectId, name: '雨夜', revision, ...(notes === undefined ? {} : { notes }) });
-function notesServer(start: { revision: number; notes: string }) {
-  let state = { ...start };
-  const calls: Array<[string, unknown]> = [], receipts = new Map<string, unknown>();
-  const call: ProjectNotesCall & { fail?: unknown; edit(notes: string): void } = Object.assign(async (operation: string, input: unknown) => {
-    calls.push([operation, input]);
-    if (operation === 'project.get') return { project: project(state.revision, state.notes || undefined) };
-    if (call.fail) { const error = call.fail; call.fail = undefined; throw error; }
-    const value = input as { requestId: string; expectedRevision: number; notes: string };
-    if (receipts.has(value.requestId)) return receipts.get(value.requestId);
-    if (value.expectedRevision !== state.revision) throw new ApiError('conflict', 'REVISION_CONFLICT', undefined, true, 409);
-    state = { revision: state.revision + 1, notes: value.notes.trim() ? value.notes : '' };
-    const saved = project(state.revision, state.notes || undefined); receipts.set(value.requestId, saved); return saved;
-  }, { edit(notes: string) { state = { revision: state.revision + 1, notes }; } }) as never;
-  return { call, calls, state: () => state };
+function realRules(t:import('node:test').TestContext){
+ const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-review-rules-')),store=openStore(root),application=testProjectAppLibrary(store);assert.ok(application);
+ store.put('projects',{id:store.projectId,name:'真实规范边界',notes:'历史说明不迁移',revision:1});
+ const all:ReturnType<typeof createMioProjectRules>[]=[];
+ const service=(options:Partial<Parameters<typeof createMioProjectRules>[0]>={})=>{const rules=createMioProjectRules({store,application,...options});all.push(rules);return rules;};
+ t.after(()=>{for(const rules of all)rules.close();store.close();rmSync(root,{recursive:true,force:true});});
+ return{root,store,application,file:join(root,'AGENTS.md'),service,historical:store.get('projects',store.projectId)};
 }
 
-test('project notes save on their revision and are read back on a conflict', async () => {
-  let ids = 0; const newRequestId = () => `8888888${ids++}-8888-4888-8888-888888888888`;
-  const server = notesServer({ revision: 4, notes: '旧说明' }), base = { projectId, revision: 4, notes: '旧说明' };
-  assert.deepEqual(await saveProjectNotes(server.call, { base, notes: '新说明', newRequestId }), { kind: 'saved', base: { projectId, revision: 5, notes: '新说明' } });
-  // Another project edit (a rename, a shot change) moved the revision but left the notes alone: saved on the new one.
-  const moved = notesServer({ revision: 7, notes: '旧说明' });
-  assert.deepEqual(await saveProjectNotes(moved.call, { base, notes: '新说明', newRequestId }), { kind: 'saved', base: { projectId, revision: 8, notes: '新说明' } });
-  assert.deepEqual(moved.calls.map(([operation]) => operation), ['project.notes.set', 'project.get', 'project.notes.set']);
-  assert.notEqual((moved.calls[0]![1] as { requestId: string }).requestId, (moved.calls[2]![1] as { requestId: string }).requestId, 'a rebased save is a new request');
-  // The notes themselves changed elsewhere: handed back, nothing overwritten.
-  const changed = notesServer({ revision: 4, notes: '旧说明' }); changed.call.edit('Mio 改过的说明');
-  assert.deepEqual(await saveProjectNotes(changed.call, { base, notes: '新说明', newRequestId }), { kind: 'conflict', latest: { projectId, revision: 5, notes: 'Mio 改过的说明' } });
-  assert.equal(changed.state().notes, 'Mio 改过的说明');
-  // No confirmed answer: the exact request is kept and replayed from the receipt.
-  const flaky = notesServer({ revision: 4, notes: '旧说明' });
-  flaky.call.fail = new TypeError('network');
-  const unknown = await saveProjectNotes(flaky.call, { base, notes: '新说明', newRequestId });
-  assert.equal(unknown.kind, 'unknown');
-  const retained = unknown.kind === 'unknown' ? unknown.input : null;
-  assert.deepEqual(await saveProjectNotes(flaky.call, { base, notes: '新说明', retained, newRequestId }), { kind: 'saved', base: { projectId, revision: 5, notes: '新说明' } });
-  assert.deepEqual(await saveProjectNotes(flaky.call, { base, notes: '新说明', retained, newRequestId }), { kind: 'saved', base: { projectId, revision: 5, notes: '新说明' } }, 'a repeated retry replays and never saves twice');
-  assert.equal(flaky.state().revision, 5);
-  const rejected = notesServer({ revision: 4, notes: '' }); rejected.call.fail = new ApiError('bad', 'VALIDATION_ERROR', undefined, true, 400);
-  assert.deepEqual(await saveProjectNotes(rejected.call, { base: { projectId, revision: 4, notes: '' }, notes: 'x', newRequestId }), { kind: 'rejected', code: 'VALIDATION_ERROR' });
-  const cleared = notesServer({ revision: 4, notes: '旧说明' });
-  assert.deepEqual(await saveProjectNotes(cleared.call, { base, notes: '  \n', newRequestId }), { kind: 'saved', base: { projectId, revision: 5, notes: '' } }, 'blank text clears the notes');
+test('real project rules use file-hash CAS, retain exact requests after a lost observation, and require explicit uncertain recovery',t=>{
+ const f=realRules(t),rules=f.service();assert.equal(rules.read().trust,'absent');assert.equal(existsSync(f.file),false);
+ const input={requestId:randomUUID(),expectedHash:null,text:'新规范'},saved=rules.save(input);assert.equal(saved.text,input.text);assert.equal(saved.trust,'trusted');assert.equal(readFileSync(f.file,'utf8'),input.text);
+ const changes=()=>[f.store.db.prepare('SELECT total_changes() n').get()!.n,f.application.db.prepare('SELECT total_changes() n').get()!.n],before=changes();
+ assert.deepEqual(rules.save(input),saved);assert.deepEqual(changes(),before);assert.equal(rules.lookup(input.requestId).status,'applied');
+ assert.throws(()=>rules.save({...input,text:'different'}),{code:'MIO_RULES_REQUEST_CONFLICT'});
+ writeFileSync(f.file,'外部最新规范');assert.throws(()=>rules.save({requestId:randomUUID(),expectedHash:saved.hash,text:'不能自动覆盖'}),{code:'MIO_RULES_CONFLICT'});
+ assert.equal(readFileSync(f.file,'utf8'),'外部最新规范');assert.equal(rules.read().trust,'untrusted');
+ const current=rules.read(),replacement=rules.save({requestId:randomUUID(),expectedHash:current.hash,text:'用户明确保存'});assert.equal(replacement.text,'用户明确保存');
+ const uncertain=f.service({onPhase:phase=>{if(phase==='prepared')throw Error('lost observation before publication');}}),pending={requestId:randomUUID(),expectedHash:replacement.hash,text:'未确认规范'};
+ assert.throws(()=>uncertain.save(pending),/lost observation/u);assert.equal(rules.lookup(pending.requestId).status,'uncertain');
+ assert.throws(()=>rules.save(pending),{code:'MIO_RULES_WRITE_UNCERTAIN'});assert.equal(readFileSync(f.file,'utf8'),replacement.text);
+ assert.equal(rules.reconcile(pending.requestId).status,'not_applied');assert.equal(readFileSync(f.file,'utf8'),replacement.text);assert.deepEqual(f.store.get('projects',f.store.projectId),f.historical);
 });
 
-test('project notes accept plain text up to 8192 bytes', () => {
-  assert.equal(projectNotesProblem('画幅与时长\n\t9:16'), null);
-  assert.equal(projectNotesProblem('a'.repeat(8192)), null);
-  assert.equal(projectNotesProblem('a'.repeat(8193)), 'tooLong');
-  assert.equal(projectNotesProblem('雨'.repeat(2731)), 'tooLong', 'bytes, not characters, are counted');
-  assert.equal(projectNotesProblem('bell\u0007'), 'invalid');
-  assert.equal(projectNotesOf(project(1, '说明')), '说明');
-  assert.equal(projectNotesOf({ notes: 3 }), '');
-  assert.equal(projectNotesOf(null), '');
+test('real rules accept exact UTF-8 bytes and CRLF without reusing retired notes normalization',t=>{
+ const f=realRules(t),rules=f.service();
+ const exact=rules.save({requestId:randomUUID(),expectedHash:null,text:'a'.repeat(8192)});assert.equal(exact.text!.length,8192);assert.equal(readFileSync(f.file).length,8192);
+ for(const text of ['a'.repeat(8193),'雨'.repeat(2731),'bell\u0007','lone \ud800'])assert.throws(()=>rules.save({requestId:randomUUID(),expectedHash:exact.hash,text}),{code:'MIO_RULES_INVALID'});
+ assert.equal(readFileSync(f.file,'utf8'),exact.text);
+ const crlf=rules.save({requestId:randomUUID(),expectedHash:exact.hash,text:'画幅\r\n\t9:16'});assert.equal(crlf.text,'画幅\r\n\t9:16');assert.equal(readFileSync(f.file,'utf8'),crlf.text);
+ const empty=rules.save({requestId:randomUUID(),expectedHash:crlf.hash,text:''});assert.equal(empty.text,'');assert.equal(empty.trust,'trusted');assert.deepEqual(f.store.get('projects',f.store.projectId),f.historical);
 });
 
-test('the project menu opens the notes between import and duplicate, and saves through project.notes.set', () => {
-  const app = read('App.tsx'), dialog = read('ProjectNotesDialog.tsx');
-  assert.match(app, /\{t\('projectPackage\.menu\.import'\)\}<\/DropdownMenuItem><DropdownMenuSeparator \/><DropdownMenuItem data-testid="project-menu-notes" disabled=\{loading \|\| !data\.project\} onClick=\{\(\) => \{ setShowProjects\(false\); if \(data\.project\) setNotesOpen\(true\); \}\}><Icon name="note" size=\{15\} \/>\{t\('projectNotes\.menu'\)\}<\/DropdownMenuItem><DropdownMenuSeparator \/><DropdownMenuItem data-testid="project-menu-duplicate"/);
-  assert.match(app, /<ProjectNotesDialog open=\{notesOpen && Boolean\(data\.project\)\}[^\n]*readOnly=\{false\}/, 'current project notes use the ordinary editable host path');
-  assert.match(dialog, /saveProjectNotes\(call, \{ base, notes: retained\?\.notes \?\? draft, retained \}\)/);
-  assert.match(dialog, /\{!readOnly && <Button variant="primary" data-testid="project-notes-save"/);
-  assert.doesNotMatch(dialog, /<textarea|<button|<input/, 'shared controls only');
+test('the project menu uses real rules and the retired notes UI has no current entry',()=>{
+ const app=read('App.tsx');assert.match(app,/project-menu-rules/u);assert.doesNotMatch(app,/ProjectNotesDialog|project-menu-notes|projectNotes\./u);
+ for(const file of ['ProjectNotesDialog.tsx','project-notes.ts','project-notes.css'])assert.equal(existsSync(new URL('../apps/web/src/'+file,import.meta.url)),false);
+ const rules=read('project-file/ProjectRules.tsx');assert.match(rules,/projectFile\.rules/u);assert.doesNotMatch(rules,/projectNotes\./u);
 });
 
 test('App wires review marks apart from the "Mio 修改" marks and clears them on project and mode switches', () => {
   const app = read('App.tsx'), workspace = read('AgentWorkspace.tsx'), panel = read('AgentTaskPanel.tsx');
   assert.match(app, /<TargetMarkLayer marks=\{changeMarks\.marks\} label=\{t\('agent\.mark\.label'\)\} ariaLabel=\{t\('agent\.mark\.open'\)\} onActivate=\{revealTaskChange\} \/>\n    <TargetMarkLayer marks=\{reviewMarks\.marks\} label=\{t\('agent\.review\.mark'\)\} icon="search" describe=/);
   assert.match(app, /onTaskReview=\{\(projectId, entries\) => \{ if \(currentProject\.current === projectId\) reviewMarks\.show\(entries\); \}\}/);
-  assert.match(app, /useLayoutEffect\(\(\) => \{ reviewMarks\.reset\(\); setReviewReveal\(null\); setNotesOpen\(false\); \}, \[reviewMarks, data\.project\?\.id\]\);/);
+  assert.match(app, /useLayoutEffect\(\(\) => \{ reviewMarks\.reset\(\); setReviewReveal\(null\); setRulesOpen\(false\); setHistoryView\(null\); \}, \[reviewMarks, data\.project\?\.id\]\);/);
   assert.match(app, /useLayoutEffect\(\(\) => \{ reviewMarks\.clear\(\); \}, \[reviewMarks, workspaceMode\]\);/);
   const locate = app.slice(app.indexOf('  async function locateReviewIssue('), app.indexOf('  useEffect(() => () => reviewMarks.reset()'));
   assert.match(locate, /if \(!await inspect\(first\)\) return;/, '"定位" selects the shot through the normal navigation guard');

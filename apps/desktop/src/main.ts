@@ -11,6 +11,7 @@ import { createAppLanguageHost } from './app-language-host.ts';
 import { APP_LANGUAGE_CHANNEL } from '../../../packages/i18n/src/preference.ts';
 import { resolveLocale } from '../../../packages/i18n/src/locale.ts';
 import { nativeText as nt, setNativeLanguageReader } from './app-language-text.ts';
+import {projectFileUiMessages} from '../../../packages/i18n/src/catalogs/project-file-ui.ts';
 import { app, BrowserWindow, Menu, Tray, nativeImage, session, dialog, utilityProcess, safeStorage, ipcMain, shell, nativeTheme, net } from 'electron';
 import type {IpcMainInvokeEvent, MenuItemConstructorOptions, MessageBoxOptions, Session, WebContents} from 'electron';
 import {createWorkspaceToolsHost} from './workspace-tools-host.ts';
@@ -248,6 +249,24 @@ async function showOwnedDialog(window: BrowserWindow, context: DesktopWindowCont
   const token = {window}; nativeDialogs.add(token); trayIntent++; trayHost?.refresh(); refreshApplicationMenu();
   try { return (await dialog.showMessageBox(window, options)).response; }
   finally {
+    nativeDialogs.delete(token);
+    if (ownsWindow(window, context)) finishNativePresentation(window, host, owner.contextId);
+    trayHost?.refresh(); refreshApplicationMenu();
+  }
+}
+
+/** A backup picker belongs to the initiating frame even if focus changes while
+ * its inspection or the OS sheet is pending. It never performs the restore. */
+async function chooseOwnedBackupFile(window: BrowserWindow, context: DesktopWindowContext, defaultPath: string, check: () => void): Promise<string | null> {
+  check();const host = windowHost, owner = host?.contextFor(window);
+  if (!host || !owner || !ownsWindow(window, context) || !host.prepareNativeDialog(window)) throw new Error('Native backup action is unavailable.');
+  const token = {window}; nativeDialogs.add(token); trayIntent++; trayHost?.refresh(); refreshApplicationMenu();
+  try {
+    check();
+    const result = await dialog.showSaveDialog(window, {title: nt('native.saveProjectFile'), defaultPath,
+      filters: [{name: nt('native.projectFileFilter'), extensions: ['mioon']}], properties: ['showOverwriteConfirmation', 'createDirectory']});
+    check();return result.canceled || !result.filePath ? null : result.filePath;
+  } finally {
     nativeDialogs.delete(token);
     if (ownsWindow(window, context)) finishNativePresentation(window, host, owner.contextId);
     trayHost?.refresh(); refreshApplicationMenu();
@@ -561,10 +580,19 @@ async function start(): Promise<DesktopStartReport> {
       ownerForEvent:event=>{
         const owner=windowHost?.ownerForContents(event.sender),window=windowHost?.windowForContents(event.sender);
         if(!window||!owner||!owner.isCurrent()||!ownsWindow(window,context)||event.senderFrame!==window.webContents.mainFrame||event.senderFrame!==owner.frame||event.senderFrame?.url!==owner.url)return null;
-        return {projectId:owner.role==='editor'?(owner.projectId??undefined):undefined,isCurrent:()=>{try{nativeBackendCurrent();return !restarting&&owner.isCurrent()&&ownsWindow(window,context)&&event.senderFrame===window.webContents.mainFrame&&event.senderFrame===owner.frame&&event.senderFrame?.url===owner.url;}catch{return false;}}};
+        const isCurrent=()=>{try{nativeBackendCurrent();return !restarting&&owner.isCurrent()&&ownsWindow(window,context)&&event.senderFrame===window.webContents.mainFrame&&event.senderFrame===owner.frame&&event.senderFrame?.url===owner.url;}catch{return false;}};
+        return {projectId:owner.role==='editor'?(owner.projectId??undefined):undefined,key:owner.frame,isCurrent,
+          chooseBackupFile:defaultPath=>chooseOwnedBackupFile(window,context,defaultPath,()=>{if(!isCurrent())throw new Error('Native backup action is unavailable.');})};
       },
       readWorkspaceRoot:async projectId=>workspaceInfoSchema.parse(await nativeRead(projectApiPath(projectId,'workspace-info'))).dataDirectory,
       readExport:identity=>nativeRead(projectRpcPath(identity.projectId),{operation:'export.output.get',input:identity}),
+      readBackup:selection=>nativeRead('/api/rpc',{operation:'project.backup.inspect',input:selection}),
+      readProjectEntry:projectId=>nativeRead(`/api/project-entries/${projectId}`),
+      backupFileName:(name,date)=>{
+        const locale=languageHost?.snapshot().locale??resolveLocale('system',systemLanguages());
+        const projectName=name||projectFileUiMessages['projectHistory.backup.fallbackProjectName'][locale];
+        return projectFileUiMessages['projectHistory.backup.defaultName'][locale].replace(/\{name\}|\{date\}/gu,key=>key==='{name}'?projectName:date);
+      },
       openPath:file=>shell.openPath(file),revealPath:file=>shell.showItemInFolder(file),restart,
       chooseSaveFile:async suggestedName=>{const result=await dialog.showSaveDialog({title:nt('native.saveProjectFile'),defaultPath:path.join(app.getPath('documents'),suggestedName),filters:[{name:nt('native.projectFileFilter'),extensions:['mioon']}],properties:['showOverwriteConfirmation','createDirectory']});return result.canceled||!result.filePath?null:result.filePath;},
       fetchProjectPackage:exportId=>{nativeBackendCurrent();return fetch(new URL(`/api/project-packages/exports/${exportId}/download`,started.url),{headers:{authorization:`Bearer ${token}`},redirect:'error',signal:context.startup.signal});},

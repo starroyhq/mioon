@@ -1,5 +1,6 @@
 import type { OutsideProjectLocation } from '../../../packages/contracts/src/media-reference.ts';
-import type { ProjectPackResult, ProjectRestorePreview, ProjectVersionSummary } from '../../../packages/contracts/src/project-versions.ts';
+import type { ProjectPackResult, ProjectVersionSummary } from '../../../packages/contracts/src/project-versions.ts';
+import type { ProjectVersionPreviewResponse } from '../../../packages/contracts/src/project-version-operations.ts';
 import { message } from '../../../packages/i18n/src/index.ts';
 import type { ProjectOpenFailure } from '../../../packages/contracts/src/project-file.ts';
 import type { ProjectInboxItem, RecentProject } from '../../../packages/contracts/src/project-registry.ts';
@@ -120,18 +121,20 @@ export const COMPARISON = [
   { area: 'subtitles', details: [message('projectFile.versions.diff.subtitlesAdded', { count: 3 })] },
 ] as const;
 /** 12-09: what restoring Mio round 3 takes back. */
-export const RESTORE_PREVIEW: ProjectRestorePreview = {
-  version: VERSIONS[0].summary,
-  manualChanges: [
-    { kind: 'timeline_clip', id: 'clip-scene-b', name: 'scene-b.mp4', fields: [{ property: 'durationFrames', before: 210, after: 180 }] },
-    { kind: 'timeline_subtitle', id: 'subtitle-2', name: '镜头缓慢推进', fields: [{ property: 'subtitleText', before: '镜头推进', after: '镜头缓慢推进' }] },
+export const RESTORE_PREVIEW: ProjectVersionPreviewResponse = {
+  projectId: PROJECT_IDS.ui, version: VERSIONS[0].summary, contentSequence: 400,
+  contentToken: '0'.repeat(32), previewDigest: 'a'.repeat(64), totalChanges: 3, keptCurrentCount: 1,
+  changes: [
+    {table: 'timelines', key: 'timeline-1', action: 'change', source: 'user-or-other', fields: ['clips', 'subtitles'], reason: null},
+    {table: 'shots', key: 'shot-4', action: 'change', source: 'mio', fields: ['title'], reason: null},
+    {table: 'assets', key: 'asset-kept', action: 'keep-current', source: 'user-or-other', fields: [], reason: '保留的结果仍引用此素材'},
   ],
-  manualChangeCount: 2, supersededMioChanges: 3,
+  nextCursor: null, restoreAvailable: true,
 };
-export const RESTORE_PREVIEW_MORE: ProjectRestorePreview = {
+export const RESTORE_PREVIEW_MORE: ProjectVersionPreviewResponse = {
   ...RESTORE_PREVIEW,
-  manualChanges: [...RESTORE_PREVIEW.manualChanges, { kind: 'shot', id: 'shot-4', name: '雨夜街道', fields: [{ property: 'description', before: '街道', after: '雨后的城市街道' }, { property: 'durationSeconds', before: 4, after: 6 }] }],
-  manualChangeCount: 7,
+  changes: [...RESTORE_PREVIEW.changes, {table: 'nodes', key: 'node-4', action: 'remove', source: 'user-or-other', fields: [], reason: null}],
+  totalChanges: 7, nextCursor: 'more-preview-page',
 };
 
 /** 12-10 and 12-11: packing UI 走查项目 onto the desktop; two media files are missing. */

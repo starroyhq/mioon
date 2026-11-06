@@ -21,6 +21,9 @@ export interface ProjectRequest {
   readonly res: ServerResponse;
   readonly url: URL;
   readonly route: ProjectApiRoute;
+  /** The authenticated dispatcher may inspect a canonical RPC before opening
+   * its project. Reuse that single body read; other callers keep streaming it. */
+  readonly rpcBody?: unknown;
   /** Aborted when the host closes by force while this request is in flight. */
   readonly signal: AbortSignal;
 }

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {transformSync} from 'esbuild';
 import type {AgentTaskJson,AgentTaskSnapshot,AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {LOCALES,translate,validateCatalogs} from '../packages/i18n/src/index.ts';
@@ -10,6 +11,9 @@ import * as presentation from '../apps/web/src/agent-task-presentation.ts';
 import * as requirements from '../apps/web/src/agent-task-requirements.ts';
 import * as reviews from '../apps/web/src/agent-task-reviews.ts';
 import * as questions from '../apps/web/src/agent-task-questions.ts';
+import * as rulesClient from '../apps/web/src/project-rules-client.ts';
+import * as rulesProposal from '../apps/web/src/project-rules-proposal.ts';
+import {projectRulesSnapshotSchema} from '../packages/contracts/src/mio-rules.ts';
 import {agentTaskErrorKey} from '../apps/web/src/agent-task-errors.ts';
 import {agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion} from '../apps/web/src/agent-tasks-v2.ts';
 import {createI18nTestContext} from './helpers/i18n.ts';
@@ -133,11 +137,20 @@ function panel(value:AgentTaskSnapshot,locale:Locale='zh-Hans',readOnly=false) {
   let cursor=0,pending:number[]=[],tree:unknown;
   const state={phase:'ready',project:{readOnly,runs:[value.run],authorization:{scopes:['project_agent']},settings:{configuration:{model:'synthetic-model'}}},snapshot:value,draft:'',uploads:[],pending:null,error:'',conversationId:runId,conversation:{id:runId,title:'Synthetic'},rounds:[value],selectionKey:runId,draftDirty:false,draftVersion:0,unknownOutcome:false,history:{conversations:[],nextCursor:null,phase:'closed'}};
   const react={createElement:(type:unknown,props:Record<string,unknown>|null,...children:unknown[])=>({type,props:{...props,children}}),Fragment:'fragment',useRef:(current:unknown)=>hooks[cursor++]??={current},useState:(value:unknown)=>{const index=cursor++;hooks[index]??={value};return[hooks[index]!.value,(next:unknown)=>{hooks[index]!.value=typeof next==='function'?next(hooks[index]!.value):next;}];},useLayoutEffect:(effect:()=>void|(()=>void),deps:readonly unknown[])=>{const index=cursor++,old=hooks[index];if(!old||deps.some((value,at)=>value!==old.deps?.[at])){hooks[index]={...old,effect,deps};pending.push(index);}}};
-  const previous=globalThis.document;
-  globalThis.document={visibilityState:'visible',addEventListener(){},removeEventListener(){}} as unknown as Document;
+  const rulesModule={...rulesClient,createWebProjectRulesClient:()=>rulesClient.createWebProjectRulesClient({fetcher:async(input,init)=>{
+    assert.equal(String(input),`/api/projects/${projectId}/rules`);assert.equal(init?.method,'GET');assert.equal(init?.credentials,'same-origin');assert.equal(init?.redirect,'error');assert.equal(init?.body,undefined);assert.ok(init?.signal instanceof AbortSignal);
+    const data=projectRulesSnapshotSchema.parse({projectId,file:'AGENTS.md',exists:true,text:'Synthetic project rules',hash:createHash('sha256').update('Synthetic project rules').digest('hex'),trust:'trusted',maxBytes:8192,readError:null,pendingWrites:false});
+    return Response.json({ok:true,data});
+  }})} satisfies typeof rulesClient;
+  const previous=globalThis.document,previousWindow=Object.getOwnPropertyDescriptor(globalThis,'window');
+  globalThis.document=Object.assign(new EventTarget(),{visibilityState:'visible'}) as unknown as Document;
+  Object.defineProperty(globalThis,'window',{configurable:true,writable:true,value:new EventTarget()});
+  const restoreGlobals=()=>{globalThis.document=previous;if(previousWindow)Object.defineProperty(globalThis,'window',previousWindow);else Reflect.deleteProperty(globalThis,'window');};
   const module:{exports:{default?:(props:Record<string,unknown>)=>unknown}}={exports:{}};
   const dependencies=(name:string):unknown=>{
     if(name==='react')return{...react,default:react};
+    if(name==='./project-rules-client.ts')return rulesModule;
+    if(name==='./project-rules-proposal.ts')return rulesProposal;
     if(name==='./agent-task-presentation.ts')return presentation;
     if(name==='./agent-task-requirements.ts')return requirements;
     if(name==='./agent-task-reviews.ts')return reviews;
@@ -157,10 +170,10 @@ function panel(value:AgentTaskSnapshot,locale:Locale='zh-Hans',readOnly=false) {
     if(name.includes('agent-settings.ts'))return{deriveAgentEndpoint:()=>'/synthetic'};
     return{__esModule:true,default:'placeholder'};
   };
-  try{Function('module','exports','require',transformSync(panelSource,{loader:'tsx',format:'cjs'}).code)(module,module.exports,dependencies);}catch(error){globalThis.document=previous;throw error;}
+  try{Function('module','exports','require',transformSync(panelSource,{loader:'tsx',format:'cjs'}).code)(module,module.exports,dependencies);}catch(error){restoreGlobals();throw error;}
   const render=()=>{cursor=0;pending=[];tree=module.exports.default!({projectId,onSettings(){},onClose(){}});for(const index of pending){hooks[index]!.cleanup?.();hooks[index]!.cleanup=hooks[index]!.effect!();}return nodes(tree);};
-  try{render();render();}catch(error){for(const hook of hooks)hook.cleanup?.();globalThis.document=previous;throw error;}
-  return{render,find:(testId:string)=>nodes(tree).find(node=>node.props['data-testid']===testId),close(){for(const hook of hooks)hook.cleanup?.();globalThis.document=previous;}};
+  try{render();render();}catch(error){for(const hook of hooks)hook.cleanup?.();restoreGlobals();throw error;}
+  return{render,find:(testId:string)=>nodes(tree).find(node=>node.props['data-testid']===testId),close(){for(const hook of hooks)hook.cleanup?.();restoreGlobals();}};
 }
 
 test('H4b real Panel renders read-only goal rows and only model/old-goal neutral badges',()=>{

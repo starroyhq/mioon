@@ -147,7 +147,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     return project.backgroundTasks.snapshot().filter(task => task.classification !== 'terminal').map(task => ({kind: task.kind,
       taskId: task.taskId, phase: task.keepAlive ? 'active' : 'blocked', reason: task.reason, sourceHistory, taskRevision: task.taskRevision}));
   };
-  async function handle({req, res, url, route, signal}: ProjectRequest): Promise<boolean> {
+  async function handle({req, res, url, route, signal, rpcBody}: ProjectRequest): Promise<boolean> {
     if (await assetMediaHttp.handle(req, res, url, route)) return true;
     if (route.kind === 'other' && route.segments.join('/') === 'workspace-info' && req.method === 'GET') {
       json(res, 200, {ok: true, data: await readWorkspaceInfo({root, channel: options.localDraftChannel ?? 'web', version: packageMetadata.version,
@@ -174,7 +174,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
       if (await handler(req, res, local, address)) return true;
     }
     if (local.pathname === '/api/rpc' && req.method === 'POST') {
-      const input = await body(req) as Record<string, unknown>;
+      const input = (rpcBody === undefined ? await body(req) : rpcBody) as Record<string, unknown>;
       if (!input || typeof input.operation !== 'string') throw new AppError('VALIDATION_ERROR', '缺少 operation', 400);
       assertProjectRpc(store.db, address, input.operation, input.input || {});
       deletionGate.rpc(res, input.operation, input.input);

@@ -30,7 +30,7 @@ export interface VersionComparisonGroup {
 /** `selected` value of the current, unsaved content. */
 export const CURRENT_VERSION = 'current';
 export interface VersionHistoryDialogProps {
-  readonly open: boolean;
+  readonly open: boolean; readonly interactionBlocked?:boolean;
   readonly projectName: string;
   readonly now: Date;
   /** Newest first. */
@@ -48,6 +48,14 @@ export interface VersionHistoryDialogProps {
   readonly onRetry: () => void;
   readonly onRetryComparison: () => void;
   readonly onClose: () => void;
+  readonly toolbar?: ReactNode;
+  readonly notice?: ReactNode;
+  readonly detail?: ReactNode;
+  readonly content?: ReactNode;
+  readonly footerNote?: ReactNode;
+  readonly restoreDisabled?: boolean;
+  readonly onMoreVersions?: () => void;
+  readonly paging?: boolean;
 }
 type Translate = ReturnType<typeof useI18n>['t'];
 
@@ -135,20 +143,23 @@ export function VersionHistoryDialog(props: VersionHistoryDialogProps): ReactEle
       </> : <span>{t('projectFile.versions.currentDetail')}</span>}</p>
       {isCurrent ? <p className="pf-help">{t('projectFile.versions.currentHint')}</p> : <>
         <h4 className="pf-version-compare-title">{t('projectFile.versions.compareTitle')}</h4>
-        {compared}
+        {props.detail ?? compared}
         <p className="pf-version-note"><Info size={14} aria-hidden="true" />{t('projectFile.versions.restoreNote')}</p>
       </>}
       <div className="pf-version-actions">
         {props.onCompare && <WorkbenchButton data-testid="pf-version-compare" disabled={isCurrent} onClick={props.onCompare}>{t('projectFile.versions.compareCurrent')}</WorkbenchButton>}
-        <WorkbenchButton variant="primary" data-testid="pf-version-restore" disabled={isCurrent} onClick={props.onRestore}><RotateCcw size={14} aria-hidden="true" />{t('projectFile.versions.restoreAction')}</WorkbenchButton>
+        <WorkbenchButton variant="primary" data-testid="pf-version-restore" disabled={isCurrent || props.restoreDisabled} onClick={props.onRestore}><RotateCcw size={14} aria-hidden="true" />{t('projectFile.versions.restoreAction')}</WorkbenchButton>
       </div>
     </section>
   </div>;
-  return <Dialog open={props.open} onOpenChange={next => { if (!next) props.onClose(); }}>
-    <WorkbenchDialogContent title={t('projectFile.versions.title')} description={t('projectFile.versions.subtitle', { name: props.projectName })} size="large"
-      className="pf-dialog pf-versions-dialog" data-testid="pf-versions-dialog" footer={<p className="pf-footer-note" data-testid="pf-versions-retention">{t('projectFile.versions.retention', props.retention)}</p>}>
+  return <Dialog open={props.open} onOpenChange={next => { if (!next && !props.interactionBlocked) props.onClose(); }}>
+    <WorkbenchDialogContent inert={props.interactionBlocked||undefined} title={t('projectFile.versions.title')} description={t('projectFile.versions.subtitle', { name: props.projectName })} size="large"
+      className="pf-dialog pf-versions-dialog" data-testid="pf-versions-dialog" footer={props.footerNote ?? <p className="pf-footer-note" data-testid="pf-versions-retention">{t('projectFile.versions.retention', props.retention)}</p>}>
       {props.onSaveVersion && <WorkbenchButton className="pf-versions-save" data-testid="pf-versions-save" onClick={props.onSaveVersion}><ProjectFileIcon name="bookmarkPlus" size={14} />{t('projectFile.menu.saveVersion')}</WorkbenchButton>}
-      {body}
+      {props.toolbar}
+      {props.notice}
+      {props.content ?? body}
+      {props.onMoreVersions && <WorkbenchButton data-testid="pf-versions-more" disabled={props.paging} onClick={props.onMoreVersions}>{t('projectHistory.more')}</WorkbenchButton>}
     </WorkbenchDialogContent>
   </Dialog>;
 }

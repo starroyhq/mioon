@@ -12,7 +12,7 @@ import {openAppLibrary, isAppLibraryHeld, projectFileIdentity} from '@mioon/busi
 import {createProjectServiceApplication} from '@mioon/business/project-service-application';
 import {createEditTasks} from '@mioon/business/edit-tasks';
 import type {NativeAudioPreviewAuthority} from '@mioon/business/native-audio-preview';
-import {boundedShutdown, assertMediaTerminated} from '@mioon/business/operation-lifecycle';
+import {boundedShutdown, assertMediaTerminated, checkpoint} from '@mioon/business/operation-lifecycle';
 import {terminateMediaProcesses} from '@mioon/business/media-processes';
 import {mediaExecutable} from '@mioon/business/media-environment';
 import {inspectMediaTools} from '@mioon/business/media-tool-diagnostics';
@@ -345,6 +345,19 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         if (route) {
           if (url.searchParams.getAll('projectId').some(value => value !== route.projectId)) throw projectIdMismatch(route.projectId);
           if (await handleProjectHistoryHttp(projects, req, res, url, route)) return;
+          let rpcBody: unknown;
+          if (route.kind === 'rpc' && req.method === 'POST') {
+            rpcBody = await body(req);
+            // A partial body can finish after shutdown has retired the manager.
+            checkpoint(shutdown.signal);
+            if (field(rpcBody, 'operation') === 'project.notes.set') {
+              const projectId = field(field(rpcBody, 'input'), 'projectId');
+              if (projectId !== undefined && projectId !== route.projectId) throw projectIdMismatch(route.projectId);
+              // A retired writer cannot open the project merely to reject it:
+              // opening could otherwise create history or automatic backups.
+              throw new AppError('UNKNOWN_OPERATION', '未知操作', 404);
+            }
+          }
           const lease = await projects.acquire(route.projectId, 'request');
           activeProjectId = route.projectId;
           relocate = lease.host.relocate;
@@ -354,7 +367,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
           res.once('finish', release); res.once('close', release);
           if (lease.signal.aborted) revoked();
           if (res.destroyed || res.writableEnded || req.aborted) { release(); return; }
-          if (!await lease.host.runtime.handle({req, res, url, route, signal: lease.signal})) notFound(res);
+          if (!await lease.host.runtime.handle({req, res, url, route, signal: lease.signal, ...(route.kind === 'rpc' && req.method === 'POST' ? {rpcBody} : {})})) notFound(res);
           return;
         }
         if (url.pathname.startsWith('/api/projects/')) return notFound(res);

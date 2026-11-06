@@ -5,19 +5,26 @@ import type {BigIntStats} from 'node:fs';
 import {workspaceNativeRequestSchema} from '../../../packages/contracts/src/workspace-native.ts';
 import {exportOutputSchema,type ExportOutput} from '../../../packages/contracts/src/export-controls.ts';
 import {PROJECT_OUTPUT_FOLDERS} from '../../../packages/contracts/src/project-output-publication.ts';
-import {parseProjectApiPath} from '../../../packages/contracts/src/project-file.ts';
+import {parseProjectApiPath,isProjectId} from '../../../packages/contracts/src/project-file.ts';
+import {projectBackupInspectionSchema,projectBackupSchemas,type ProjectBackupInspectInput} from '../../../packages/contracts/src/project-backups.ts';
+import {projectEntryResponseSchema} from '../../../packages/contracts/src/project-entry.ts';
+import {backupRestoreDefaultPath,verifyRestoredBackupFile} from './project-backup-native.ts';
 import {isProjectFileHeld} from '@mioon/business/project-file/held-files';
 import {isAppLibraryHeld} from '@mioon/business/app-db/connection';
 import {computeFullSha256,isInsideRealDirectory,referencePathForRealFile} from '@mioon/business/media-reference/index';
-interface Owner {projectId?:string;isCurrent():boolean}
-interface Options<E>{ownerForEvent(event:E):Owner|null;readWorkspaceRoot(projectId:string):Promise<string>;readExport(identity:{projectId:string;exportId:string}):Promise<unknown>;openPath(file:string):Promise<string>;revealPath(file:string):void;restart():Promise<boolean>;chooseSaveFile?(suggestedName:string):Promise<string|null>;fetchProjectPackage?(exportId:string):Promise<Response>}
+interface Owner {projectId?:string;key?:unknown;isCurrent():boolean;chooseBackupFile?(defaultPath:string):Promise<string|null>}
+interface Options<E>{ownerForEvent(event:E):Owner|null;readWorkspaceRoot(projectId:string):Promise<string>;readExport(identity:{projectId:string;exportId:string}):Promise<unknown>;openPath(file:string):Promise<string>;revealPath(file:string):void;restart():Promise<boolean>;chooseSaveFile?(suggestedName:string):Promise<string|null>;fetchProjectPackage?(exportId:string):Promise<Response>;
+ readBackup?(selection:ProjectBackupInspectInput):Promise<unknown>;readProjectEntry?(projectId:string):Promise<unknown>;backupFileName?(name:string|null,date:string):string}
 const unavailable=()=>Object.assign(new Error('Native workspace action is unavailable.'),{code:'WORKSPACE_NATIVE_UNAVAILABLE'});
 const same=(a:BigIntStats,b:BigIntStats):boolean=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mtimeNs===b.mtimeNs&&a.ctimeNs===b.ctimeNs;
 /** Fixed authenticated metadata reads for the current backend lifetime: the
- * app-level RPC, workspace information, or one project's RPC. */
+ * app-level RPC, workspace information, one project's RPC, or a single
+ * canonical registered-project GET (never a path or catalog). */
 export async function readNativeBackendMetadata({base,token,resource,input,signal,check}:{base:string;token:string;resource:string;input?:object;signal:AbortSignal;check:()=>void}):Promise<unknown> {
  const route=parseProjectApiPath(resource),projectInfo=route?.kind==='other'&&route.segments.length===1&&route.segments[0]==='workspace-info';
- if(resource!=='/api/rpc'&&resource!=='/api/ui-preferences'&&route?.kind!=='rpc'&&!projectInfo)throw unavailable();
+ const entryId=resource.startsWith('/api/project-entries/')?resource.slice('/api/project-entries/'.length):null,projectEntry=entryId!==null&&isProjectId(entryId);
+ if(resource!=='/api/rpc'&&resource!=='/api/ui-preferences'&&route?.kind!=='rpc'&&!projectInfo&&!projectEntry)throw unavailable();
+ if(projectEntry&&input!==undefined)throw unavailable();
  check();const response=await fetch(new URL(resource,base),{method:input?'POST':'GET',headers:{authorization:`Bearer ${token}`,...(input?{'content-type':'application/json'}:{})},...(input?{body:JSON.stringify(input)}:{}),redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(15000)])});
  const reader=response.body?.getReader();if(!reader)throw unavailable();let content='',bytes=0;const decoder=new TextDecoder('utf-8',{fatal:true});
  try{for(;;){const next=await reader.read();if(next.done)break;check();bytes+=next.value.byteLength;if(bytes>256*1024)throw unavailable();content+=decoder.decode(next.value,{stream:true});}content+=decoder.decode();}
@@ -79,6 +86,10 @@ async function writeProjectPackage(response:Response,destination:string,check:()
 }
 export function createWorkspaceNativeHost<E>(options:Options<E>) {
  let busy=false;
+ // Permissions are specific to the OS choice and current frame, and expire
+ // with this backend host. They grant no general path access to the renderer.
+ const backupIntents=new Map<string,{key:unknown;isCurrent:()=>boolean;input:ReturnType<typeof projectBackupSchemas['project.backup.restore']['parse']>;expires:number}>();
+ const pruneBackupIntents=()=>{for(const [key,value] of backupIntents)if(value.expires<Date.now())backupIntents.delete(key);};
  const destinations=new Map<string,{file:string;expires:number}>();
  const destination=(token:string):string=>{const entry=destinations.get(token);if(!entry||entry.expires<Date.now()){destinations.delete(token);throw unavailable();}return entry.file;};
  return {async dispatch(event:E,raw:unknown):Promise<unknown>{
@@ -88,6 +99,31 @@ export function createWorkspaceNativeHost<E>(options:Options<E>) {
   busy=true;
   try{
    if(request.action==='restart'){return await options.restart();}
+   if(request.action==='chooseBackupRestoreDestination'){
+    if(!owner.key||!owner.chooseBackupFile||!options.readBackup||!options.backupFileName)throw unavailable();
+    const selection=request.selection;if(owner.projectId&&owner.projectId!==selection.projectId)throw unavailable();
+    pruneBackupIntents();const prior=backupIntents.get(selection.requestId);
+    if(prior){if(!prior.isCurrent()||prior.key!==owner.key||prior.input.projectId!==selection.projectId||prior.input.backupId!==selection.backupId)throw unavailable();check();return prior.input;}
+    const read=async()=>{const value=projectBackupInspectionSchema.parse(await options.readBackup!({projectId:selection.projectId,backupId:selection.backupId}));check();if(value.projectId!==selection.projectId||value.backupId!==selection.backupId)throw unavailable();return value;};
+    const backup=await read();check();const selected=await owner.chooseBackupFile(backupRestoreDefaultPath(backup,options.backupFileName));check();if(selected===null)return null;
+    if(JSON.stringify(await read())!==JSON.stringify(backup))throw unavailable();
+    const file=/\.mioon$/iu.test(selected)?selected.replace(/\.mioon$/iu,'.mioon'):`${selected}.mioon`;
+    const input=projectBackupSchemas['project.backup.restore'].parse({...selection,projectFile:file});check();
+    if(backupIntents.size>=256)backupIntents.delete(backupIntents.keys().next().value!);
+    // Electron can reuse a mainFrame object across same-URL reloads. Keep the
+    // creating document's lifetime as well as its frame identity.
+    backupIntents.set(selection.requestId,{key:owner.key,isCurrent:()=>owner.isCurrent(),input,expires:Date.now()+PACKAGE_TOKEN_TTL_MS});return input;
+   }
+   if(request.action==='revealRestoredBackup'){
+    if(!owner.key||!options.readProjectEntry)throw unavailable();pruneBackupIntents();
+    const result=request.result,intent=backupIntents.get(result.requestId);
+    if(!intent||!intent.isCurrent()||intent.key!==owner.key||result.sourceProjectId!==intent.input.projectId||result.backupId!==intent.input.backupId||result.project.projectFile!==intent.input.projectFile||result.project.projectId===result.sourceProjectId||owner.projectId&&owner.projectId!==result.sourceProjectId)throw unavailable();
+    const intentCurrent=()=>{check();if(!intent.isCurrent())throw unavailable();};
+    const read=async()=>{const value=projectEntryResponseSchema.parse(await options.readProjectEntry!(result.project.projectId));intentCurrent();if(value.entry.project.projectId!==result.project.projectId)throw unavailable();return value;};
+    const entry=await read(),current=verifyRestoredBackupFile(result,entry,intentCurrent);
+    if(JSON.stringify(await read())!==JSON.stringify(entry))throw unavailable();
+    current();intentCurrent();options.revealPath(result.project.projectFile);return true;
+   }
    if(request.action==='chooseProjectPackageDestination'){
     if(!options.chooseSaveFile)throw unavailable();
     const selected=await options.chooseSaveFile(request.suggestedName);check();if(selected===null)return null;

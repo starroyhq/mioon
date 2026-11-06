@@ -6,7 +6,8 @@ import type {BigIntStats} from 'node:fs';
 import {inspectProjectFileReadOnly, inspectCopiedProjectFile, isProjectFileHeld, projectFileError} from '@mioon/business/project-file/index';
 import {isAppLibraryHeld, sameProjectFileIdentity} from '@mioon/business/app-db/index';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
-import {projectEntriesResponseSchema, PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
+import {projectEntriesResponseSchema, projectEntryResponseSchema, PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
+import {isProjectId} from '../../../packages/contracts/src/project-file.ts';
 import type {ProjectEntriesResponse} from '../../../packages/contracts/src/project-entry.ts';
 import {
   projectEntryCreateInputSchema, projectEntryOpenPathInputSchema, projectEntryAcquireInputSchema, projectEntryPrepareAcquireInputSchema,
@@ -337,7 +338,10 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     listeners.clear();
   }, {once: true});
   return {control, handle(req: IncomingMessage, res: ServerResponse, url: URL): boolean {
-    if (url.pathname !== '/api/project-entries') return false;
+    const single = url.pathname.startsWith('/api/project-entries/');
+    if (url.pathname !== '/api/project-entries' && !single) return false;
+    const projectId = single ? url.pathname.slice('/api/project-entries/'.length) : null;
+    if (projectId !== null && (!isProjectId(projectId) || projectId !== projectId.toLowerCase())) return false;
     if (req.method !== 'GET') {
       res.setHeader('Allow', 'GET');
       throw new AppError('METHOD_NOT_ALLOWED', '请使用 GET', 405);
@@ -348,7 +352,12 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
       res.setHeader('Connection', 'close');
       throw invalid();
     }
-    const payload = JSON.stringify({ok: true, data: list(channel !== 'web')});
+    const catalog = list(channel !== 'web');
+    const entry = projectId === null ? null : catalog.registered.find(item => item.project.projectId === projectId);
+    if (projectId !== null && !entry) throw new AppError('PROJECT_NOT_FOUND', '项目未登记', 404, {projectId});
+    const data = entry ? projectEntryResponseSchema.parse({version: catalog.version, appLibraryScope: catalog.appLibraryScope,
+      instanceId: catalog.instanceId, entry}) : catalog;
+    const payload = JSON.stringify({ok: true, data});
     if (Buffer.byteLength(payload, 'utf8') > PROJECT_ENTRY_LIMITS.responseBytes) {
       throw new AppError('PROJECT_ENTRY_LIMIT', '项目目录响应超过传输上限', 413);
     }

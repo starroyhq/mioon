@@ -30,18 +30,22 @@ function scratch(t: TestContext): string {
 }
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 
-test('real project notes survive reopening while legacy package imports and workspace backups are refused exactly', async t => {
+test('historical notes bytes survive reopening but current DTOs and package documents retire them', async t => {
   const root = scratch(t), store = openStore(root), services = createServices(store, new Map());
   const notes = '真实项目备注\n保留换行和标点。';
   const created = await services.call('project.create', {name: 'Persistent notes'}); assert.ok(object(created));
-  await services.call('project.notes.set', {projectId: store.projectId, requestId: randomUUID(), expectedRevision: created.revision, notes});
+  store.put('projects', {...created, notes}); // Explicit historical fixture, never the retired API.
+  assert.equal(existsSync(path.join(root, 'AGENTS.md')), false);
   const projectId = store.projectId;
   await services.drain(); store.close();
   const reopened = openStore(root), current = createServices(reopened, new Map());
   t.after(async () => {await current.drain(); reopened.close();});
   const project = reopened.get('projects', projectId); assert.ok(object(project)); assert.equal(project.notes, notes);
   const collected = collectProject(reopened, projectId, {media: 'used', includeExports: false});
-  assert.equal(collected.document.project.notes, notes);
+  assert.equal(Object.hasOwn(collected.document.project, 'notes'), false);
+  const view = await current.call('project.get', {projectId}); assert.ok(object(view)); assert.ok(object(view.project)); assert.equal(Object.hasOwn(view.project, 'notes'), false);
+  await assert.rejects(current.call('project.notes.set', {projectId, requestId: randomUUID(), expectedRevision: project.revision, notes}), {code: 'UNKNOWN_OPERATION', status: 404});
+  assert.equal(existsSync(path.join(root, 'AGENTS.md')), false);
   const before = reopened.db.prepare('SELECT total_changes() AS n').get()!.n;
   assert.throws(() => createProjectFromDocument(reopened, {document: collected.document, files: new Map(), name: 'Refused copy', move: false}), {
     name: 'TypeError', message: 'Legacy project package imports cannot run on project databases.',

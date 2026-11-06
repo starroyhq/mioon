@@ -1,9 +1,11 @@
+import {readProjectBackupNativeActions} from '../apps/web/src/project-backup-native.ts';
+import type {ProjectFeatureAdmission} from '../apps/web/src/project-feature-admission.ts';
 type HomeSnapshot=Omit<ReturnType<typeof snapshot>,'project'>&{project:ReturnType<typeof snapshot>['project']|null};
 interface HomeOptions {nativeWindow?:ReturnType<typeof nativeEditor>|null;confirm?:()=>unknown;guard?:(current:()=>unknown)=>unknown;preferences?:(...args:unknown[])=>unknown;preferenceStatus?:{phase:string;error?:Error};directory?:()=>unknown;videoDirectory?:()=>unknown;rpc?:(operation:string,input:{projectId:string})=>unknown;get?:(projectId:string)=>unknown;create?:(...args:unknown[])=>unknown}
 interface HomeEnvironment extends Record<string,unknown> {auth:boolean|'error'|null;bootGuard:{current:ReturnType<typeof createProjectBootGuard>};busy:Record<string,unknown>;currentProject:{current:string|null};data:HomeSnapshot;dataRef:{current:HomeSnapshot};homePage:string;importSession:{current:{active:boolean;selection:number}};loading:boolean;nativeWindow:ReturnType<typeof nativeEditor>|null;navigationEpoch:{current:number};openedProject:{current:opening.ProjectOpenAttempt|null};projectCreateFlight:{current:unknown};projectEpoch:{current:number};projectListStatus:{busy:boolean;error:string|i18nCore.DisplayMessage};projectOpening:{phase:string;projectId:string|null;error:string};requestCounter:{current:number};toast:unknown;videoDirectoryUnavailable:boolean;viewReady:{current:boolean};viewRef:{current:ReturnType<typeof defaultWorkspaceState>};webSettingsRequest:{page:string;resolve?:(accepted:boolean)=>void}|null;window:{location:{href:string;search:string;pathname:string};history:{pushState:(...args:unknown[])=>number;replaceState:(...args:unknown[])=>number}};editorSession: {current: string}, workspaceRef:{current:{}};projectEntryIdentityRef:{current:ProjectEntryIdentityOwner}}
-interface HomeApi {projectSessionReady():boolean;selectProject(projectId:string,remember?:boolean):Promise<boolean>;refresh(projectId:string,silent?:boolean,options?:{opening?:boolean}):Promise<ReturnType<typeof snapshot>|null>;prepareSettingsDeparture():Promise<unknown>;openGlobalSettings(page?:string):unknown;changeHomePage(page:string):Promise<unknown>;refreshHomeProjects():Promise<unknown>;createProject(name:string,description:string):Promise<boolean>;showProjectHome():Promise<boolean>;boot():Promise<void>}
+interface HomeApi {captureProjectFeatureAdmission(projectId:string):ProjectFeatureAdmission|null;projectSessionReady():boolean;selectProject(projectId:string,remember?:boolean):Promise<boolean>;refresh(projectId:string,silent?:boolean,options?:{opening?:boolean}):Promise<ReturnType<typeof snapshot>|null>;prepareSettingsDeparture():Promise<unknown>;openGlobalSettings(page?:string):unknown;changeHomePage(page:string):Promise<unknown>;refreshHomeProjects():Promise<unknown>;createProject(name:string,description:string):Promise<boolean>;showProjectHome():Promise<boolean>;boot():Promise<void>}
 type HomeHarness=ReturnType<typeof harness>;
-type HomeUi={React:typeof import('react');renderToStaticMarkup:typeof import('react-dom/server').renderToStaticMarkup;ConfirmationProvider:typeof import('../packages/ui/src/components/workbench-confirm.tsx').ConfirmationProvider}&Record<string,unknown>;
+type HomeUi={canOfferBackupRecovery:typeof import('../apps/web/src/ProjectBackupRecovery.tsx').canOfferBackupRecovery;React:typeof import('react');renderToStaticMarkup:typeof import('react-dom/server').renderToStaticMarkup;ConfirmationProvider:typeof import('../packages/ui/src/components/workbench-confirm.tsx').ConfirmationProvider}&Record<string,unknown>;
 import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
 import * as i18nCore from '../packages/i18n/src/index.ts';
 import test from 'node:test';
@@ -50,7 +52,7 @@ function environment(options:HomeOptions = {}) {
   const directoryProjects=assigned&&/^[a-f0-9-]{36}$/iu.test(assigned)&&!projects.some(project=>project.id===assigned)?[...projects,{id:assigned,name:'宿主分配项目'}]:projects;
   const identity = projectEntryOwnerFixture(() => options.directory ? options.directory() : projectEntryFixture(created ? [...directoryProjects, {id:id(3),name:'新项目'}].filter((project,index,all)=>all.findIndex(item=>item.id===project.id)===index) : directoryProjects), calls);
   const env = { LanguageControl: () => null, renderImportFeedback: (locale: string, value: string|i18nCore.DisplayMessage|null|undefined) => renderCoreMessage((locale as unknown as Parameters<typeof renderCoreMessage>[0]), value), msg, ...createI18nTestContext(), localizedError: (displayMessage: string|i18nCore.DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }),
-    ...opening, videoConnectionProviders, readGenerationProviderDirectory,
+    ...opening, videoConnectionProviders, readGenerationProviderDirectory, canOfferBackupRecovery: homeUi().canOfferBackupRecovery,
     editorInitialSelection, revealNativeProjects, nativeWindow: options.nativeWindow ?? null, nativeLeaseRevoked: {current: false},
     clipDraftRef: {current: null}, retainWorkbenchForClip: false, retainSettingsForIdentity: false, guardRetainedInputInteraction() {},
 
@@ -65,6 +67,7 @@ function environment(options:HomeOptions = {}) {
     chooseInitialProject, retainLastProjectScope, readProjectEntryIdentity, projectDirectoryProjects, projectEntryIdentityRef: {current: identity}, URL, URLSearchParams,
     useCallback: (callback: unknown) => callback, emptyData, loading: false, auth: true, online: true, videoDirectoryUnavailable: false,
     data: emptyData, projects, projectOpening: { phase: 'home', projectId: null, error: '' },
+    backupFailure: null, historyView: null, nativeBackup: null, saveIsDirty: false,
     homePage: 'projects', homeConnection: 'agent', webSettingsRequest: null, webSettingsOpen: false, projectListStatus: { busy: false, error: '' }, busy: {}, toast: null,
     currentProject: { current: null }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 },
     webSettingsRequestRef: { current: null },
@@ -105,7 +108,7 @@ function environment(options:HomeOptions = {}) {
   for (const name of ['ProjectOpening', 'HomePage', 'ProjectListStatus', 'Auth', 'Online', 'Data', 'Projects', 'Providers', 'LastSync',
     'PropertiesPage', 'TaskState', 'PreferenceStatus', 'Pending', 'ShowProjects', 'Nodes', 'Loading', 'ShotDirty', 'ClipDirty', 'SourceDirty',
     'SubjectDirty', 'SubtitleDirty', 'InspectorEpoch', 'RightDockTab', 'ShowExports', 'ComparisonId', 'PreviewAsset', 'RealConfirm',
-    'Toast', 'MobilePanel', 'PanelOverlay', 'ShowTasks', 'SelectedTaskId', 'ShowDelivery', 'ShowImage', 'ShowProjectChooser', 'View', 'Zoom', 'Workspace', 'ShowCreate', 'WebSettingsRequest', 'WebSettingsOpen', 'AudioRoleCapability', 'VideoDirectoryUnavailable']) {
+    'Toast', 'MobilePanel', 'PanelOverlay', 'ShowTasks', 'SelectedTaskId', 'ShowDelivery', 'ShowImage', 'ShowProjectChooser', 'View', 'Zoom', 'Workspace', 'ShowCreate', 'WebSettingsRequest', 'WebSettingsOpen', 'AudioRoleCapability', 'VideoDirectoryUnavailable', 'BackupFailure', 'HistoryView']) {
     const key = name[0].toLowerCase() + name.slice(1);
     env[`set${name}`] = (value:unknown|((old:unknown)=>unknown)) => { env[key] = typeof value === 'function' ? (value as (old:unknown)=>unknown)(env[key]) : value; calls.push([`set${name}`, env[key]]); };
   }
@@ -114,7 +117,7 @@ function environment(options:HomeOptions = {}) {
 }
 function harness(options:HomeOptions = {}) {
   const { env, calls, registry } = environment(options);
-  const source = [section('  function projectSessionReady()', '  const workbenchReady ='),
+  const source = [section('  function captureProjectFeatureAdmission(', '  function projectSessionReady()'),section('  function projectSessionReady()', '  const workbenchReady ='),
     section('  const context = (): CapturedContext =>', '  taskWorkspaceState.current ='),
     section('  async function prepareSettingsDeparture()', '  async function changeMode('),
     section('  const refresh = useCallback(', '  async function revealImageAsset('),
@@ -123,7 +126,7 @@ function harness(options:HomeOptions = {}) {
     section('  async function createProject(', '  async function addShot(')].join('\n');
   // A live lexical environment models React rerenders without reimplementing the
   // production functions. Only external services and unrelated draft guards are fakes.
-  const api = Function('env', `with (env) { ${source}\nreturn { projectSessionReady, selectProject, refresh, prepareSettingsDeparture, openGlobalSettings, changeHomePage, refreshHomeProjects, createProject, showProjectHome, boot }; }`)(env);
+  const api = Function('env', `with (env) { ${source}\nreturn { captureProjectFeatureAdmission, projectSessionReady, selectProject, refresh, prepareSettingsDeparture, openGlobalSettings, changeHomePage, refreshHomeProjects, createProject, showProjectHome, boot }; }`)(env);
   return { env, calls, registry, ...(api as HomeApi),
     eligible: () => opening.canPublishProjectOpen(env.openedProject.current, { active: env.importSession.current.active,
       currentProjectId: env.currentProject.current, epoch: env.projectEpoch.current, workspaceScope: env.editorSession.current,
@@ -454,6 +457,29 @@ test('late boot discovery cannot select over a newer project or publish after un
   }
 });
 
+let builtHomeUi: HomeUi | undefined;
+function homeUi(): HomeUi {
+  if (builtHomeUi) return builtHomeUi;
+  const fixture = `import React from 'react';
+    import { renderToStaticMarkup } from 'react-dom/server';
+    import ProjectHome from './src/ProjectHomeDirectoryScreen.tsx';
+    import {ProjectMediaProvider} from './src/project-media-read-gate.tsx';
+    import ProjectEntryIdentityStatus from './src/ProjectEntryIdentityStatus.tsx';
+    import ProjectHistoryDialog from './src/project-file/ProjectHistoryDialog.tsx';
+    import ProjectBackupRecovery, { canOfferBackupRecovery } from './src/ProjectBackupRecovery.tsx';
+    import ProjectHomeConnections from './src/ProjectHomeConnections.tsx';
+    import EditorWindowOpening from './src/EditorWindowOpening.tsx';
+    import SettingsNavigationSlot from './src/SettingsNavigationSlot.tsx';
+    import WebSettingsCenter from './src/WebSettingsCenter.tsx';
+    import { ConfirmationProvider } from '@mioon/ui/components/workbench-confirm';
+    import { Button } from '@mioon/ui/components/button';
+    export { React, renderToStaticMarkup, ProjectHome, ProjectHomeConnections, EditorWindowOpening, SettingsNavigationSlot, ProjectMediaProvider, ProjectEntryIdentityStatus, WebSettingsCenter, ConfirmationProvider, Button, ProjectHistoryDialog, ProjectBackupRecovery, canOfferBackupRecovery };`;
+  const result = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: join(root, 'apps/web') }, bundle: true, platform: 'node', format: 'cjs',
+    write: false, jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
+  const module = {exports:{}} as {exports:HomeUi}; Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
+  return builtHomeUi = module.exports;
+}
+
 let presentation:((h:HomeHarness)=>{html:string;mounted:string[];sourceTree():unknown})|undefined;
 function boundaryRenderer() {
   if (presentation) return presentation;
@@ -467,25 +493,8 @@ function boundaryRenderer() {
   // element; full workbench internals are outside
   // this focused fixture, rather than replaced by a generic permissive proxy.
   const readiness = section('  const workbenchReady =', '  function readProjectMediaOwner()') + section('  useEditorWindowStatus(', '  const panelSurface =') + section('  const retainWorkbenchForIdentity =', '  const staleClips =');
-  const renderSource = readiness + app.slice(start, workbench) + app.slice(workbench, openingEnd + 1) + '</main></ProjectMediaProvider>;';
-  const fixture = `import React from 'react';
-    import { renderToStaticMarkup } from 'react-dom/server';
-    // Synchronous form presentation is intentional here; async directory
-    // loading and native entry are covered by the directory/browser tests.
-    import ProjectHome from './src/ProjectHome.tsx';
-    import {ProjectMediaProvider} from './src/project-media-read-gate.tsx';
-    import ProjectHomeConnections from './src/ProjectHomeConnections.tsx';
-    import EditorWindowOpening from './src/EditorWindowOpening.tsx';
-    import SettingsNavigationSlot from './src/SettingsNavigationSlot.tsx';
-    import ProjectEntryIdentityStatus from './src/ProjectEntryIdentityStatus.tsx';
-    import WebSettingsCenter from './src/WebSettingsCenter.tsx';
-    import { ConfirmationProvider } from '@mioon/ui/components/workbench-confirm';
-    import { Button } from '@mioon/ui/components/button';
-    export { React, renderToStaticMarkup, ProjectHome, ProjectMediaProvider, ProjectHomeConnections, EditorWindowOpening, SettingsNavigationSlot, ProjectEntryIdentityStatus, WebSettingsCenter, ConfirmationProvider, Button };`;
-  const result = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: join(root, 'apps/web') }, bundle: true, platform: 'node', format: 'cjs',
-    write: false, jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' } });
-  const module = {exports:{}} as {exports:HomeUi}; Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
-  const ui = module.exports;
+  const renderSource = readiness + section('  const historyLayer =', '  if (auth === false && !retainWorkbenchForClip') + app.slice(start, workbench) + app.slice(workbench, openingEnd + 1) + '</main></ProjectMediaProvider>;';
+  const ui = homeUi();
   const body = transformSync(`function renderBoundary() { ${renderSource} }`, { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code;
   presentation = (h:HomeHarness) => {
     const mounted: string[] = [];
@@ -507,9 +516,12 @@ function boundaryRenderer() {
 
 test('actual App renders standalone home, routes settings to the retained center, and exposes workbench only after success', async () => {
   const render = boundaryRenderer(), h = harness();
+  assert.match(app, /import ProjectHome from '\.\/ProjectHomeDirectoryScreen\.tsx'/);
   for (const phase of ['home', 'opening', 'error']) {
     h.env.projectOpening = { phase, projectId: id(1), error: phase === 'error' ? '读取失败' : '' };
     const { html, mounted } = render(h); assert.match(html, /data-testid="project-home"/); assert.match(html, new RegExp(`data-phase="${phase}"`));
+    assert.match(html, /data-testid="pf-home-loading"/);
+    assert.doesNotMatch(html, /data-testid="project-home-open-/);
     assert.doesNotMatch(html, /data-testid="workbench"|task-workspace|react-flow|inspector-region/); assert.deepEqual((mounted as unknown), []);
   }
   await h.changeHomePage('settings');
@@ -719,4 +731,36 @@ test('returning to home uses exact navigation guards, invalidates old project re
 
 test('home navigation cannot discard over a newer scope or a refused draft confirmation',async()=>{
  const h=harness({guard:async()=>false});h.env.currentProject.current=id(1);const before=h.env.projectEpoch.current;assert.equal(await h.showProjectHome(),false);assert.equal(h.env.currentProject.current,id(1));assert.equal(h.env.projectEpoch.current,before);
+});
+
+
+test('failed project opening retains an application-only backup admission without treating the invalid source as ready', async () => {
+  const h = harness({get: async () => {throw failure('PROJECT_INVALID');}});
+  h.env.nativeBackup=readProjectBackupNativeActions({__mioonProjectBackups:{chooseDestination:async()=>null,reveal:async()=>true}});
+  assert.equal(await h.selectProject(id(1)),false);assert.equal(h.projectSessionReady(),false);
+  const failed = h.env.backupFailure as {projectId:string;admission:ProjectFeatureAdmission|null};
+  assert.equal(failed.projectId,id(1));assert.ok(failed.admission);assert.equal(failed.admission.isCurrent(),true);
+  const directory=h.env.projectEntryIdentityRef.current.getState();
+  assert.equal(failed.admission.scope,directory.appLibraryScope);assert.equal(failed.admission.key,JSON.stringify([directory.appLibraryScope,directory.instanceId,id(1)]));
+  const nodes=(value:unknown): {props?:Record<string,unknown>}[]=>{
+    if(Array.isArray(value))return value.flatMap(nodes);if(!value||typeof value!=='object')return [];
+    const node=value as {props?:Record<string,unknown>};return [node,...nodes(node.props?.children),...nodes(node.props?.status),...nodes(node.props?.recovery)];
+  };
+  const recovery=nodes(boundaryRenderer()(h).sourceTree()).find(node=>node.props?.projectId===id(1)&&node.props?.admission===failed.admission);
+  assert.ok(recovery,'the actual failed-opening branch passes the captured application admission to backup recovery');
+  assert.equal(recovery.props?.interactionBlocked,false);
+  const lease={current:true};h.env.nativeLeaseRevoked=lease;
+  assert.equal(failed.admission.isCurrent(),false);assert.equal(h.captureProjectFeatureAdmission(id(1)),null);
+});
+
+test('project feature admission pins the application pair and checks native lease and selection live without repairing the original owner', async () => {
+  let directory=projectEntryFixture(projects);
+  const h=harness({directory:()=>directory});assert.equal(await h.selectProject(id(1)),true);
+  const first=h.captureProjectFeatureAdmission(id(1));assert.ok(first);assert.equal(first.isCurrent(),true);assert.equal(h.captureProjectFeatureAdmission(id(2)),null);
+  h.env.projectEpoch.current++;assert.equal(first.isCurrent(),false);
+  const next=h.captureProjectFeatureAdmission(id(1));assert.ok(next);assert.equal(next.scope,first.scope);assert.equal(next.scope,PROJECT_ENTRY_TEST_SCOPE);assert.equal(next.key,first.key,'reopening in the same application keeps the receipt/cache namespace');assert.equal(next.isCurrent(),true);
+  directory=projectEntryFixture(projects,{instanceId:id(8)});await h.env.projectEntryIdentityRef.current.refresh();
+  assert.equal(h.env.projectEntryIdentityRef.current.getState().identityBlocked,true);assert.equal(next.isCurrent(),false);assert.equal(h.captureProjectFeatureAdmission(id(1)),null);
+  directory=projectEntryFixture(projects);await h.env.projectEntryIdentityRef.current.refresh();assert.equal(next.isCurrent(),false,'an old pair returning cannot unblock the pinned window');
+  assert.equal(first.isCurrent(),false);assert.equal(h.env.currentProject.current,id(1));
 });

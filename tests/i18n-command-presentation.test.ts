@@ -4,6 +4,7 @@ import {spawn, spawnSync} from 'node:child_process';
 import {createServer} from 'node:http';
 import {fileURLToPath} from 'node:url';
 import {readFileSync} from 'node:fs';
+import {randomUUID} from 'node:crypto';
 import {schemas, operationDefinition, discoverSchema, VERSION} from '@mioon/client';
 import {LOCALES, catalogs, validateCatalogs, translate} from '../packages/i18n/src/index.ts';
 import type {Locale, MessageKey} from '../packages/i18n/src/index.ts';
@@ -38,7 +39,8 @@ async function mcp(t: import('node:test').TestContext, args: string[] = [], env:
 }
 test('presentation catalog is exhaustive in four locales, with unchanged operation identities', () => {
   assert.deepEqual(validateCatalogs(catalogs), []);
-  assert.deepEqual(Object.keys(operationMessages).sort(), Object.keys(schemas).map(key=>`operation.${key}`).sort());
+  assert.deepEqual(Object.keys(operationMessages).sort(), [...Object.keys(schemas).map(key=>`operation.${key}`),'operation.project.notes.set'].sort());
+  for(const locale of LOCALES)assert.ok(translate(locale,'operation.project.notes.set').length>0,'historical operation titles remain readable');
   assert.equal(presentationLocale(undefined),undefined);
   for (const locale of LOCALES) assert.equal(presentationLocale(locale),locale);
   for (const invalid of ['',null,'system','zh-TW','en-US','fr']) assert.throws(()=>presentationLocale(invalid));
@@ -68,13 +70,18 @@ test('continuous plan discovery has four explicit locales without changing machi
 test('CLI localizes only prose; default help snapshot, schema, version and error JSON stay exact', {timeout:180000}, () => {
   const original=cli(['--help']);
   assert.equal(original.status,0);
+  assert.equal(Object.hasOwn(schemas,'project.notes.set'),false);
+  assert.throws(()=>operationDefinition('project.notes.set'),{code:'UNKNOWN_OPERATION'});
+  assert.throws(()=>discoverSchema({operation:'project.notes.set'}),{code:'VALIDATION_ERROR'});
+  const retired=cli(['project','notes','set','--input',JSON.stringify({projectId:randomUUID(),requestId:randomUUID(),expectedRevision:1,notes:'must not reach a backend'})]);
+  assert.notEqual(retired.status,0);assert.equal((retired.json.error as {code:string}).code,'UNKNOWN_OPERATION');
   const snapshot=JSON.parse(readFileSync(new URL('./fixtures/cli-help-legacy.json',import.meta.url),'utf8'));
   // Keep the frozen help fixture: application version and explicit discovery
   // additions may differ, but prose, schemas and operation ordering stay exact.
   const expectedOperations = snapshot.data.operations.filter((operation: string) => !retiredOperations.includes(operation as typeof retiredOperations[number]));
   const {'--workspace-origin': retiredOrigin, ...expectedOptions} = snapshot.data.options;
   assert.equal(typeof retiredOrigin, 'string');
-  expectedOperations.unshift('project.rename', 'project.notes.set', 'project.delete', 'project.summary.list', 'agent.authorization.list', 'agent.authorization.grant', 'agent.authorization.revoke');
+  expectedOperations.unshift('project.rename', 'project.delete', 'project.summary.list', 'agent.authorization.list', 'agent.authorization.grant', 'agent.authorization.revoke');
   expectedOperations.unshift(...round2Operations);
   expectedOperations.splice(expectedOperations.indexOf('timeline.loudness.prepare') + 1, 0, 'timeline.clip.loudness');
   expectedOperations.splice(expectedOperations.indexOf('timeline.audioPreview.plan') + 1, 0, 'timeline.audioPreview.continuousPlan');

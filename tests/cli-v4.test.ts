@@ -20,6 +20,7 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '@mioon/server';
 import type {InspectProject} from '@mioon/server';
 import {schemas} from '@mioon/contracts';
+import {publicOperationSchemas} from '../packages/contracts/src/public-operations.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const cliPath = path.join(repo, 'apps/cli/src/index.ts');
@@ -130,7 +131,9 @@ test('CLI offline discovery is JSON and invalid input fails before connection re
   for (const args of [['--help'], ['--version'], ['schema'], ['schema','generation.submit']]) succeeded(await cli(args));
   const catalog = succeeded(await cli(['schema']));
   const serialized = JSON.stringify(catalog);
-  for (const operation of Object.keys(schemas)) assert.ok(serialized.includes(operation), `schema catalog misses ${operation}`);
+  for (const operation of Object.keys(publicOperationSchemas)) assert.ok(serialized.includes(operation), `schema catalog misses ${operation}`);
+  assert.doesNotMatch(serialized, /project\.notes\.set/u);
+  assert.ok(Object.hasOwn(schemas, 'project.notes.set'), 'Frozen model diagnostics retain the historical schema');
   for (const args of [
     ['project','create','--input','{'],
     ['project','create','--input','[]'],
@@ -138,6 +141,7 @@ test('CLI offline discovery is JSON and invalid input fails before connection re
     ['generation','submit','--input',JSON.stringify({shotId:randomUUID(), expectedRevision:1, providerId:'mock'})],
     ['rpc','does.not.exist','--input','{}'],
     ['schema','does.not.exist'],
+    ['schema','project.notes.set'],
     ['project','list','--unknown-option'],
     ['project','list','--token',token],
     ['generation','submit','--input',JSON.stringify({shotId:randomUUID(), expectedRevision:1, providerId:'mock', requestId:'original-key'}),'--request-id','different-key'],
