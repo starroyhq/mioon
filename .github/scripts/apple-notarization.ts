@@ -37,7 +37,10 @@ export interface AppleStaplerOptions {
 }
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const ATTEMPTS = 3, COMMAND_TIMEOUT = 60000, OUTPUT_LIMIT = 256 * 1024;
-const BACKOFF = [5000, 15000] as const;
+// The previous 20 seconds of backoff were exhausted by a ticket-service network
+// failure. Keep three attempts, with at most 300 seconds of commands and waits
+// (excluding runner scheduling); notarization submission is never repeated.
+const BACKOFF = [30000, 90000] as const;
 export class AppleStaplerFailure extends CheckFailure {
   readonly diagnostics: readonly AppleStaplerDiagnostic[];
   constructor(code: AppleStaplerFailureCode, diagnostics: readonly AppleStaplerDiagnostic[]) {
