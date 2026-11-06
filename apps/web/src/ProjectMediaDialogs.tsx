@@ -10,7 +10,7 @@ export function ProjectMediaDialogs({media, projectName}: {readonly media: Proje
   return <>
     <OutsideLocationsDialog open={state.outsideOpen} projectName={projectName} fromAnotherComputer={false} state={locations} rulesUntrusted={state.rulesUntrusted} action={state.outsideAction}
       canAllow={locations.kind === 'ready' && locations.value.some(value => value.available)} onOpenOnly={() => controller.openOnly()} onClose={() => controller.openOnly()} onAllow={() => {void controller.allowOutside();}} onRetry={() => {void controller.refreshLocations();}} />
-    <MediaRelinkDialog open={state.relinkOpen} projectName={projectName} state={state.relink} apply={state.applyAction} canApply={state.canApply} changedSelected={state.changedSelected} newAdded={state.newAdded}
+    <MediaRelinkDialog open={state.relinkOpen} projectName={projectName} state={state.relink} apply={state.applyAction} canApply={state.canApply} changedSelected={state.changedSelected} newAdded={state.newAdded} outcomeUnknown={state.nativeOutcomeUnknown} confirmedDirectories={state.nativeConfirmedDirectories}
       {...(state.canChoose ? {onChooseFile: (id: string) => {void controller.choose(id);}} : {})} onUseNewFile={id => controller.toggleChanged(id)} canUseNewFile={id => state.canChangeSelection && changedIds.includes(id)}
       onApply={() => {void controller.apply();}} onRetry={() => {void controller.refresh();}} onClose={() => controller.cancelRelink()} />
   </>;

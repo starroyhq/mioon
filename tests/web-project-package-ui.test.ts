@@ -58,6 +58,7 @@ test('workbench hides unconnected package actions and keeps real history, rules 
   const order = ['projects.openWorkspace', 'project-menu-history', 'project-menu-rules', 'panels-menu', 'export-button', 'new-project-menu'].map(token => menu.indexOf(token));
   assert.ok(order.every(index => index > 0), String(order));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
+  assert.doesNotMatch(menu, /project-menu-duplicate/, 'Native project duplication requires a closed source and belongs to the home menu');
   assert.ok(menu.lastIndexOf('<DropdownMenuItem') < menu.indexOf('new-project-menu'), 'new project remains the last menu item');
   assert.doesNotMatch(menu, /project-menu-(?:import|duplicate|export)|openExport|openDuplicate|chooseImportFile/);
   assert.doesNotMatch(app, /ProjectPackageLayer|projectPackageFlow/);

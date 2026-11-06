@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LOCALES, translate } from '../packages/i18n/src/index.ts';
+import {createRequire} from 'node:module';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {build} from 'esbuild';
+import { LOCALES, translate, validateCatalogs } from '../packages/i18n/src/index.ts';
+import {projectFileUiMessages} from '../packages/i18n/src/catalogs/project-file-ui.ts';
 import type { MessageArguments, MessageKey } from '../packages/i18n/src/index.ts';
 import type { MediaStatus } from '../packages/contracts/src/media-reference.ts';
 import type { MediaStatusReason as L1MediaStatusReason, MediaStatusResult } from '../packages/business/src/media-reference/access.ts';
@@ -148,6 +153,33 @@ test('changed acceptance text declares a new identity and preserves existing cli
   }
   assert.match(translate('zh-Hans', 'projectFile.media.relink.changedHelp'), /添加一个新素材.*旧素材、已有片段和历史引用不会更改/u);
   assert.match(translate('en', 'projectFile.media.relink.changedHelp'), /adds a new asset.*existing clips.*remain unchanged/u);
+});
+
+test('confirmed outside locations use English singular and plural in the actual relink alert', async () => {
+  const key='projectFile.media.relink.confirmedDirectories';
+  assert.deepEqual(validateCatalogs({[key]:projectFileUiMessages[key]}),[]);
+  assert.equal(translate('en',key,{count:1}),'This operation confirmed 1 outside location.');
+  assert.equal(translate('en',key,{count:2}),'This operation confirmed 2 outside locations.');
+  assert.equal(translate('en',key,{count:0}),'This operation confirmed 0 outside locations.');
+  const root=fileURLToPath(new URL('../',import.meta.url)),fixtures=join(root,'tests/fixtures/project-file-ui');
+  const built=await build({stdin:{contents:`import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';
+    import {MediaRelinkDialog} from './src/project-file/MediaRelinkDialog.tsx';
+    import {setLocale} from ${JSON.stringify(join(fixtures,'ssr-i18n.tsx'))};
+    export function render(count,locale){setLocale(locale);return renderToStaticMarkup(<MediaRelinkDialog open projectName="synthetic"
+      state={{kind:'ready',value:{rows:[{assetId:'00000000-0000-4000-8000-000000000001',name:'media.png',mediaKind:'image',from:'/synthetic/media.png',to:null,outcome:'missing'}],foundBy:null}}}
+      apply={{kind:'error',action:'apply'}} outcomeUnknown confirmedDirectories={Array.from({length:count},(_,i)=>'/synthetic/location-'+i)}
+      onApply={()=>{}} onRetry={()=>{}} onClose={()=>{}}/>);}`,
+    loader:'tsx',resolveDir:join(root,'apps/web')},bundle:true,platform:'node',format:'cjs',write:false,jsx:'automatic',loader:{'.css':'empty'},define:{'process.env.NODE_ENV':'"production"'},nodePaths:[join(root,'apps/web/node_modules')],plugins:[{name:'confirmed-locations-ssr',setup(builder){
+      builder.onResolve({filter:/^@mioon\/ui\/components\/(?:dialog|dropdown-menu)$/},()=>({path:join(fixtures,'ssr-overlays.tsx')}));
+      builder.onResolve({filter:/\/i18n\/I18nProvider\.tsx$/},()=>({path:join(fixtures,'ssr-i18n.tsx')}));
+    }}]});
+  const module={exports:{} as {render(count:number,locale:typeof LOCALES[number]):string}};
+  Function('require','module','exports',built.outputFiles[0]!.text)(createRequire(import.meta.url),module,module.exports);
+  for(const locale of LOCALES)for(const count of [1,2]){
+    const markup=module.exports.render(count,locale);assert.ok(tagOf(markup,'pf-relink-confirmed-directories'));
+    assert.ok(markup.includes(escapeHtml(translate(locale,key,{count}))),`${locale}/${count}`);
+  }
+  assert.equal(tagOf(module.exports.render(0,'en'),'pf-relink-confirmed-directories'),null);
 });
 
 test('12-06 outside locations: rows, the rules note and the buttons in each state', () => {

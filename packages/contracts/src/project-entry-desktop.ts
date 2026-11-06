@@ -10,11 +10,15 @@ const uuid=z.string().uuid(),name=z.string().min(1).max(PROJECT_NAME_MAX_LENGTH)
 const line=z.string().max(500).refine(value=>!/[\u0000-\u001f\u007f-\u009f]/u.test(value));
 export const projectLocationFactsSchema=z.object({fileSystem:z.string().min(1).max(100),isLocal:z.boolean(),volumeReadOnly:z.boolean(),permissionBits:z.boolean(),cloud:z.enum(['known-icloud','known-file-provider','not-reported','unknown'])}).strict();
 export type ProjectLocationFacts=z.infer<typeof projectLocationFactsSchema>;
-export const projectStoragePurposeSchema=z.enum(['create','save-as','duplicate','copy-to']);
+export const projectStoragePurposeSchema=z.enum(['create','save-as','duplicate','copy-to','template']);
 export type ProjectStoragePurpose=z.infer<typeof projectStoragePurposeSchema>;
-export const projectDesktopSelectionSchema=z.object({token:uuid,displayPath:z.string().min(1).max(4096),facts:projectLocationFactsSchema}).strict();
+/** The renderer may select only the shipped example version, never a path. */
+export const projectDesktopTemplateSchema=z.object({id:z.literal('timeline-basics'),version:z.literal(1)}).strict();
+export type ProjectDesktopTemplate=z.infer<typeof projectDesktopTemplateSchema>;
+export const projectDesktopSelectionSchema=z.object({token:uuid,displayPath:z.string().min(1).max(4096),facts:projectLocationFactsSchema,
+ template:projectDesktopTemplateSchema.extend({name}).optional()}).strict();
 export type ProjectDesktopSelection=z.infer<typeof projectDesktopSelectionSchema>;
-export const projectDesktopCapabilitiesSchema=z.object({ready:z.boolean(),create:z.boolean(),open:z.boolean(),saveAs:z.boolean(),duplicate:z.boolean(),copyTo:z.boolean(),adoptCopy:z.boolean(),help:z.boolean().optional(),reveal:z.boolean().optional(),openOriginal:z.boolean().optional(),copySource:z.boolean().optional(),locationFacts:z.boolean().optional()}).strict();
+export const projectDesktopCapabilitiesSchema=z.object({ready:z.boolean(),create:z.boolean(),open:z.boolean(),saveAs:z.boolean(),duplicate:z.boolean(),copyTo:z.boolean(),adoptCopy:z.boolean(),help:z.boolean().optional(),reveal:z.boolean().optional(),openOriginal:z.boolean().optional(),copySource:z.boolean().optional(),locationFacts:z.boolean().optional(),templates:z.array(projectDesktopTemplateSchema).max(1).optional()}).strict();
 export type ProjectDesktopCapabilities=z.infer<typeof projectDesktopCapabilitiesSchema>;
 export const projectDesktopOpenResultSchema=z.discriminatedUnion('status',[
  z.object({status:z.literal('opened'),projectId:projectIdSchema,windowId:uuid}).strict(),
@@ -30,6 +34,7 @@ export const projectEntryDesktopRequestSchema=z.discriminatedUnion('action',[
  z.object({action:z.literal('listRecent')}).strict(),
  z.object({action:z.literal('chooseLocation'),purpose:projectStoragePurposeSchema,suggestedName:name,message:line}).strict(),
  z.object({action:z.literal('createAtSelection'),token:uuid,name,description:z.string().max(2000).optional(),timelinePresetId:z.enum(['portrait_1080','landscape_1080','square_1080']).optional(),createFolder:z.boolean()}).strict(),
+ z.object({action:z.literal('instantiateTemplate'),token:uuid,templateId:z.literal('timeline-basics'),templateVersion:z.literal(1),name,requestId:uuid}).strict(),
  z.object({action:z.literal('openSelectedFile')}).strict(),
  z.object({action:z.literal('takePendingOpen')}).strict(),
  z.object({action:z.literal('openPrivacySettings')}).strict(),
@@ -48,6 +53,7 @@ export interface ProjectEntriesDesktopBridge {
  listRecent():Promise<z.infer<typeof projectEntriesResponseSchema>>;
  chooseLocation(input:{purpose:ProjectStoragePurpose;suggestedName:string;message:string}):Promise<ProjectDesktopSelection|null>;
  createAtSelection(input:Omit<Extract<ProjectEntryDesktopRequest,{action:'createAtSelection'}>,'action'>):Promise<z.infer<typeof projectDesktopCreatedSchema>>;
+ instantiateTemplate?(input:Omit<Extract<ProjectEntryDesktopRequest,{action:'instantiateTemplate'}>,'action'>):Promise<import('./project-copies.ts').ProjectCopyResponse>;
  openSelectedFile():Promise<ProjectDesktopOpenResult>;
  takePendingOpen():Promise<ProjectDesktopOpenResult|null>;
  openPrivacySettings():Promise<void>;

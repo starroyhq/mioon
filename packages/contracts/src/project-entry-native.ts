@@ -49,6 +49,7 @@ export type ProjectEntryAdoptCopyInput = z.infer<typeof projectEntryAdoptCopyInp
 
 /** No server types, SQL, caller-selected lease kinds or persisted lease IDs. */
 export interface ProjectEntryControlPort {
+  readonly templates?: readonly import('./project-entry-desktop.ts').ProjectDesktopTemplate[];
   readonly nativeRelink?: NativeAssetMediaPort;
   listRecent(): ProjectEntriesResponse;
   create(input: ProjectEntryCreateInput): Promise<RecentProject>;

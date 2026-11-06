@@ -4,6 +4,10 @@ import type {ProjectMediaOwner} from './project-media-state.ts';
 import {sameMediaOwner} from './project-media-state.ts';
 import {ProjectMediaProvider} from './project-media-read-gate.tsx';
 import {ProjectMediaDialogs} from './ProjectMediaDialogs.tsx';
+import {readProjectMediaNativeClient} from './project-media-native-client.ts';
+import {createProjectMediaCloseReader} from './project-media-native-close.ts';
+import {NativeProjectLocationRisk} from './NativeProjectEntryDialogs.tsx';
+import type {NativeProjectEntryActions} from './native-project-entry.ts';
 import {timelineAudioMediaReadable} from './project-media-readability.ts';
 import type {AssetImportBridge,NativeAssetSelection} from '../../desktop/src/asset-import-preload.ts';
 import { videoBindingCapabilities, parseVideoBinding } from '../../../packages/contracts/src/video-providers.ts';
@@ -383,6 +387,7 @@ export interface MediaPause {(): void}
 export type NativeWindowLike = EditorWindowBinding;
 export interface NativeProjectEntryLike {
   readonly identity?: ProjectEntryIdentityOwner | null;
+  readonly desktop?: NativeProjectEntryActions['desktop'];
   open(projectId: string): Promise<boolean> | boolean; show(mode: string): Promise<unknown> | unknown;
   readCloseSnapshot(): unknown; [key: string]: unknown;
 }
@@ -738,7 +743,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (!scope || !state.instanceId || state.identityBlocked || !projectSessionReady() || !currentProject.current) return null;
     return {appLibraryScope: scope, instanceId: state.instanceId, projectId: currentProject.current, epoch: projectEpoch.current, session: editorSession.current};
   }
+  const [nativeMediaClient] = useState(() => nativeWindow ? readProjectMediaNativeClient(window) : null);
   const projectMedia = useProjectMedia({
+    ...(nativeMediaClient ? {nativeRelink: nativeMediaClient} : {}),
     owner: readProjectMediaOwner(), readOwner: readProjectMediaOwner,
     assets: data.assets.flatMap(asset => typeof asset.projectId === 'string' && typeof asset.referenceRevision === 'number' && Number.isSafeInteger(asset.referenceRevision) && asset.referenceRevision > 0
       ? [{id: asset.id, projectId: asset.projectId, name: asset.name, mimeType: asset.mimeType, referenceRevision: asset.referenceRevision}] : []),
@@ -746,6 +753,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       if (sameMediaOwner(readProjectMediaOwner(), owner)) await refresh(owner.projectId);
     },
   });
+  const projectMediaRef = useRef(projectMedia); projectMediaRef.current = projectMedia;
+  const [readMediaClose] = useState(() => createProjectMediaCloseReader(() => projectMediaRef.current.controller.getState()));
   useEffect(() => {
     const id = data.project?.id;
     if (!id) {setProjectRegistration(null); return;}
@@ -1219,7 +1228,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   useEffect(() => installNativeCloseAdmission(window as unknown as Parameters<typeof installNativeCloseAdmission>[0], {
     registry: nativeCloseRegistry.current, settings: settingsNavigation.current,
-    ...(nativeWindow ? { readAdditionalSnapshot: () => combineNativeEntryClose(readEditorWindowInputs(false) as NativeEntryCloseSnapshot, nativeProjectEntry?.readCloseSnapshot() as NativeEntryCloseSnapshot), onObservationPause: (value: boolean) => nativeSettingsScope?.pauseObservation(value) } : {}),
+    ...(nativeWindow ? { readAdditionalSnapshot: () => combineNativeEntryClose(combineNativeEntryClose(readEditorWindowInputs(false) as NativeEntryCloseSnapshot, nativeProjectEntry?.readCloseSnapshot() as NativeEntryCloseSnapshot), readMediaClose()), onObservationPause: (value: boolean) => nativeSettingsScope?.pauseObservation(value) } : {}),
     readScope: () => JSON.stringify([importSession.current.active, currentProject.current, projectEpoch.current, navigationEpoch.current, editorSession.current]),
     readDocumentURL: () => window.location.href,
     readLegacySnapshot: () => readNativeLegacyClose({ inspectorDirty: dirtyRef.current,
@@ -3040,6 +3049,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   return <ProjectMediaProvider media={projectMedia}>{webSettingsCenter}{retainWorkbenchForIdentity && <div className="notice warning" role="alert" data-testid="project-entry-identity-blocked">{t('projects.locatorKeepWindow')}</div>}<main inert={retainWorkbenchForIdentity || undefined} className={`workbench workbench-v2 dock-workbench shell-redesign ${geometry.narrow ? 'dock-narrow' : ''} ${geometry.compact ? 'dock-compact' : ''} mode-${workspaceMode} mobile-${mobilePanel} ${assetsCollapsed ? 'assets-collapsed' : ''} ${inspectorCollapsed ? 'inspector-collapsed' : ''} ${timelineCollapsed ? 'timeline-collapsed' : ''}`} data-testid="workbench" onClickCapture={guardRetainedInputInteraction} onKeyDownCapture={guardRetainedInputInteraction} onSubmitCapture={guardRetainedInputInteraction} data-workspace-mode={workspaceMode} data-narrow={geometry.narrow ? 'true' : 'false'} data-compact={geometry.compact ? 'true' : 'false'} style={geometry.style as never}>
     {retainWorkbenchForClip && clipConnectionBlocked.current && <div className="notice warning" role="status" data-testid="retained-clip-connection"><p>{t('volume.envelope.connectionRetained')}</p></div>}
     {nativeLeaseRevoked.current&&<div className="notice warning" role="status" data-testid="native-project-lease-revoked"><p>{t('shell.projectLeaseRevoked')}</p></div>}
+    <NativeProjectLocationRisk desktop={nativeProjectEntry?.desktop ?? null} />
     <WorkspaceVisibilityProvider visible={!comparisonId && !previsOpen}>
     <Input ref={fileInput} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,audio/mpeg,audio/wav,audio/mp4,.mp3,.wav,.m4a" multiple aria-label={t('assets.importLocal')} data-testid="asset-upload" onChange={e => importFiles(Array.from(e.target.files ?? []))} />
     <WorkbenchTopbar brand={<a className="brand" href={window.location.pathname} onClick={event => { event.preventDefault(); void showProjectHome(); }} aria-label={t('shell.title')}><span className="brand-name">Mioon</span></a>} projectMenu={<DropdownMenu open={showProjects} onOpenChange={setShowProjects}><DropdownMenuTrigger render={<Button variant="ghost" className="project-trigger" data-testid="project-switcher" aria-label={data.project?.name || t('projects.choose')} title={data.project?.name || t('projects.choose')} />}><Icon name="folder" size={16} /><span>{data.project?.name || t('projects.choose')}</span><Icon name="down" size={13} /></DropdownMenuTrigger><DropdownMenuContent align="start" className="workbench-project-menu"><DropdownMenuGroup><DropdownMenuLabel>{t('projects.yourProjects')}</DropdownMenuLabel>{projects.map(p => <DropdownMenuItem key={p.id} onClick={() => nativeWindow ? nativeProjectEntry?.open(p.id) : selectProject(p.id)}><Icon name="folder" size={15} /><span>{p.name}</span>{p.id === data.project?.id && <Icon name="check" size={14} />}</DropdownMenuItem>)}</DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuItem onClick={() => { setShowProjects(false); if (nativeWindow) void nativeProjectEntry?.show('open'); else setShowProjectChooser(true); }}><Icon name="folder" size={15} />{t('projects.openWorkspace')}</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem data-testid="project-menu-save-version" disabled={loading || !data.project || saveIsDirty} title={saveIsDirty ? t('projectHistory.pendingEdits') : undefined} onClick={() => { setShowProjects(false); showHistory('versions', 'save'); }}><Icon name="layers" size={15} />{t('projectFile.menu.saveVersion')}</DropdownMenuItem><DropdownMenuItem data-testid="project-menu-history" disabled={loading || !data.project} onClick={() => { setShowProjects(false); showHistory(); }}><Icon name="layers" size={15} />{t('projectFile.menu.versionHistory')}</DropdownMenuItem><DropdownMenuItem data-testid="project-menu-rules" disabled={loading || !data.project} onClick={() => { setShowProjects(false); showProjectRules(); }}><Icon name="note" size={15} />{t('projectFile.menu.rules')}</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuSub><DropdownMenuSubTrigger data-testid="panels-menu" disabled={loading || !data.project}><Icon name="grid" size={15} />{t('redesign.shell.view')}</DropdownMenuSubTrigger><DropdownMenuSubContent className="workspace-panels-menu"><DropdownMenuGroup><DropdownMenuLabel>{t('redesign.shell.view')}</DropdownMenuLabel>

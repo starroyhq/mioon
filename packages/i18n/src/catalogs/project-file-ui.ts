@@ -6,6 +6,15 @@ import type { MessageCatalog } from '../types.ts';
  * contract constants. */
 export const projectFileUiMessages = {
   // Shared
+  'projectFile.storage.destinationMessage': { 'zh-Hans': '选择新项目文件的位置，已有文件不会被覆盖。', 'zh-Hant': '選擇新專案檔案的位置，既有檔案不會被覆寫。', en: 'Choose where to save the new project file. Existing files will not be overwritten.', ja: '新しいプロジェクトファイルの保存先を選択してください。既存のファイルは上書きされません。' },
+  'projectFile.media.relink.retryOriginal': { 'zh-Hans': '重试原操作', 'zh-Hant': '重試原操作', en: 'Retry original operation', ja: '元の操作を再試行' },
+  'projectFile.media.relink.outcomeUnknown': { 'zh-Hans': '尚未确认原操作的结果。请保留此窗口；重试将继续原操作，不会改为另一份文件。', 'zh-Hant': '尚未確認原操作的結果。請保留此視窗；重試會繼續原操作，不會改為另一份檔案。', en: 'The original outcome is unconfirmed. Keep this window open. Retrying continues the original operation with the same file.', ja: '元の操作の結果を確認できていません。このウィンドウを開いたままにしてください。再試行では同じファイルに対する元の操作を続行します。' },
+  'projectFile.media.relink.confirmedDirectories': {
+    'zh-Hans': {one:'该操作已确认 {count} 个外部位置。',other:'该操作已确认 {count} 个外部位置。'},
+    'zh-Hant': {one:'該操作已確認 {count} 個外部位置。',other:'該操作已確認 {count} 個外部位置。'},
+    en: {one:'This operation confirmed {count} outside location.',other:'This operation confirmed {count} outside locations.'},
+    ja: {one:'この操作で外部の保存場所を {count} 件確認しました。',other:'この操作で外部の保存場所を {count} 件確認しました。'},
+  },
   'projectFile.common.bytes.b': { 'zh-Hans': '{value} B', 'zh-Hant': '{value} B', en: '{value} B', ja: '{value} B' },
   'projectFile.common.bytes.kb': { 'zh-Hans': '{value} KB', 'zh-Hant': '{value} KB', en: '{value} KB', ja: '{value} KB' },
   'projectFile.common.bytes.mb': { 'zh-Hans': '{value} MB', 'zh-Hant': '{value} MB', en: '{value} MB', ja: '{value} MB' },
